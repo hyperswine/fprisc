@@ -20,7 +20,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
-| Typed codegen contracts | Vector operations/float widths and shared symbol visibility/private import contracts implemented; remaining kernel stages, call-convention contracts and ISA instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
+| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, x64 selected operations and shared entry/transfer protocols implemented; remaining kernel stages, call-convention contracts and A64/RISC-V instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
 | Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
 | Obsolete architecture descriptions and names | Module identity and frontend-owner references corrected; backend references/names still pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
 
@@ -616,3 +616,26 @@ arguments/shared-language and three-million-iteration self/mutual tail calls
 pass, with an 86 MB reported peak. The stage page records the platform skips,
 compile-time overhead and preceding hosted CI result. This stage requires its
 own hosted result after push.
+
+## Constructor-based x64 selected operations (2026-10-26)
+
+[x64 operation contracts](2026-10-26-X64-OPCODE-CONTRACTS.md) carries opcode,
+condition and float-width constructors through selection, placement/allocation
+and rendering. Shared entry, self-tail transfer and argument-cell protocols
+also retain constructors. A dedicated x64 form checker verifies operand roles,
+control/flag/call metadata, fixed banks and ties before allocation and on the
+final physical stream. Other ISA-specific operations remain explicit migration
+inputs and are refused by the x64 path.
+
+The saved-compiler differential oracle passes 120 byte-identical root/unit
+outputs and cache identities across six targets. Independent hosted/QOS x64
+scalar/vector and float-tree oracles pass under Rosetta; real Mach-O runtime
+programs match native AArch64. This architecture-only stage retains revision
+120 and physical ABIs. A64/RISC-V operation vocabularies, call conventions,
+typed later optimizations and the remaining table entries are still required.
+
+Final validation passed all 136 Base jobs in 577.36 seconds on six workers,
+with fixed sources, a fresh cache, no reused results and unchanged timeouts.
+Sol arguments/shared-language and three-million-iteration self/mutual tail
+calls pass, with an 86 MB reported peak. The stage page records exact-emission
+and execution coverage and platform skips; its own hosted result follows push.

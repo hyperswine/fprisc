@@ -11,9 +11,9 @@
 -- hosted uses ELF TLS; QOS borrows {hart, a6, a7} through fpr_g_tlsoff;
 -- macOS uses Mach-O syntax and reaches each cell through its Darwin TLV
 -- descriptor (HartTlvMachO, docs/2026-10-24-X64-MACOS.md).
--- legacy frame pointer = entry rsp + 8, return address fp-8, saved rbp fp-16.
+-- Runtime frame pointer = entry rsp + 8, return address fp-8, saved rbp fp-16.
 -- Parameters are parked before any entry check/tick, and rsp is restored
--- from rbp at exit so stack-segment growth remains compatible with legacy.
+-- from rbp at exit to preserve the runtime stack-segment contract.
 module Codegen.Target.X64
   ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, placement, allocConfig ) where
 
@@ -23,11 +23,13 @@ import Codegen.Frame
 import Codegen.IR
 import Codegen.Place
 import Codegen.Policy
-import Codegen.Selected
+import Codegen.Selected hiding (plain)
+import qualified Codegen.Opcode as O
+import Codegen.Target.X64.Forms (checkForms)
 import Codegen.Target.Common
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
-import Data.List (intercalate, stripPrefix)
+import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -126,50 +128,52 @@ blockLabel :: BId -> Label
 blockLabel (BId n) = Label ("b" ++ show n)
 
 -- ---- selected x86 forms ------------------------------------------------
+plain :: O.Opcode -> [Operand] -> [Operand] -> SInstr
+plain = plainOpcode
 any' :: VReg -> Operand
 any' v = OV v (Any GPR)
 fix :: VReg -> Phys -> Operand
 fix v p = OV v (Fix p)
 mov :: VReg -> VReg -> SInstr
-mov d s = plain "movq" [any' d] [any' s]
+mov d s = plain (O.X64 O.Move) [any' d] [any' s]
 li :: VReg -> Integer -> SInstr
-li d n = plain "li" [any' d] [OI n]
+li d n = plain (O.X64 O.Literal) [any' d] [OI n]
 la :: VReg -> String -> SInstr
-la d s = plain "la" [any' d] [OS s]
+la d s = plain (O.X64 O.Address) [any' d] [OS s]
 
 -- A two-address result occupies the first source's register, after loading
 -- that source from its home. Its home is unchanged (no destructive IR use).
-rrr :: String -> VReg -> VReg -> VReg -> SInstr
-rrr op d a b = (plain op [OV d (Tied 0)] [any' a, any' b]) {siFlags = FlagsDef}
-rri :: String -> VReg -> VReg -> Integer -> SInstr
-rri op d s n = (plain op [OV d (Tied 0)] [any' s, OI n]) {siFlags = FlagsDef}
+rrr :: O.X64Op -> VReg -> VReg -> VReg -> SInstr
+rrr op d a b = (plain (O.X64 op) [OV d (Tied 0)] [any' a, any' b]) {siFlags = FlagsDef}
+rri :: O.X64Op -> VReg -> VReg -> Integer -> SInstr
+rri op d s n = (plain (O.X64 op) [OV d (Tied 0)] [any' s, OI n]) {siFlags = FlagsDef}
 ldrsw :: VReg -> VReg -> Integer -> SInstr
-ldrsw d s off = plain "movslq" [any' d] [any' s, OI off]
+ldrsw d s off = plain (O.X64 O.LoadSigned32) [any' d] [any' s, OI off]
 cmp :: VReg -> VReg -> SInstr
-cmp a b = (plain "cmpq" [] [any' a, any' b]) {siFlags = FlagsDef}
+cmp a b = (plain (O.X64 O.Compare) [] [any' a, any' b]) {siFlags = FlagsDef}
 cmpi :: VReg -> Integer -> SInstr
-cmpi a n = (plain "cmpi" [] [any' a, OI n]) {siFlags = FlagsDef}
-cset :: String -> VReg -> SInstr
-cset cond d = (plain ("set." ++ cond) [any' d] []) {siFlags = FlagsUse}
-csel :: String -> VReg -> VReg -> VReg -> SInstr
-csel cond d a b = (plain ("cmov." ++ cond) [OV d (Tied 0)] [any' b, any' a]) {siFlags = FlagsUse}
-bcond :: String -> Label -> SInstr
-bcond cond l = (plain ("j." ++ cond) [] [OL l]) {siFlags = FlagsUse, siControl = CondTo [l]}
+cmpi a n = (plain (O.X64 O.CompareImmediate) [] [any' a, OI n]) {siFlags = FlagsDef}
+cset :: O.Condition -> VReg -> SInstr
+cset cond d = (plain (O.X64 (O.Set cond)) [any' d] []) {siFlags = FlagsUse}
+csel :: O.Condition -> VReg -> VReg -> VReg -> SInstr
+csel cond d a b = (plain (O.X64 (O.Select cond)) [OV d (Tied 0)] [any' b, any' a]) {siFlags = FlagsUse}
+bcond :: O.Condition -> Label -> SInstr
+bcond cond l = (plain (O.X64 (O.Branch cond)) [] [OL l]) {siFlags = FlagsUse, siControl = CondTo [l]}
 cbz, cbnz :: VReg -> Label -> SInstr
-cbz v l = (plain "jzero" [] [any' v, OL l]) {siFlags = FlagsDef, siControl = CondTo [l]}
-cbnz v l = (plain "jnonzero" [] [any' v, OL l]) {siFlags = FlagsDef, siControl = CondTo [l]}
+cbz v l = (plain (O.X64 O.BranchZero) [] [any' v, OL l]) {siFlags = FlagsDef, siControl = CondTo [l]}
+cbnz v l = (plain (O.X64 O.BranchNonzero) [] [any' v, OL l]) {siFlags = FlagsDef, siControl = CondTo [l]}
 jump :: Label -> SInstr
-jump l = (plain "jmp" [] [OL l]) {siControl = JumpTo l}
+jump l = (plain (O.X64 O.Jump) [] [OL l]) {siControl = JumpTo l}
 
 -- a variable shift: the count in %rcx (the instruction reads %cl), the
 -- value tied to the destination
-shiftv :: String -> VReg -> VReg -> VReg -> SInstr
-shiftv op d a b = (plain op [OV d (Tied 0)] [any' a, fix b (r "rcx")]) {siFlags = FlagsDef}
+shiftv :: O.X64Op -> VReg -> VReg -> VReg -> SInstr
+shiftv op d a b = (plain (O.X64 op) [OV d (Tied 0)] [any' a, fix b (r "rcx")]) {siFlags = FlagsDef}
 
 -- cqto sign-extends the dividend into rdx before idivq. Placement excludes
 -- both fixed rax and implicit rdx when choosing the divisor's register.
 divide :: VReg -> VReg -> VReg -> SInstr
-divide d a b = (plain "divide" [fix d (r "rax")] [fix a (r "rax"), any' b])
+divide d a b = (plain (O.X64 O.Divide) [fix d (r "rax")] [fix a (r "rax"), any' b])
   {siImplicitDefs = [r "rdx"], siFlags = FlagsDef}
 
 -- arguments 7 and 8 into the private TLS cells, 9.. into the per-hart
@@ -179,32 +183,32 @@ divide d a b = (plain "divide" [fix d (r "rax")] [fix a (r "rax"), any' b])
 stageArgs :: [VReg] -> Se ()
 stageArgs args = do
   forM_ (zip [6 :: Int, 7] (take 2 (drop 6 args))) $ \(n,v) ->
-    emitI ((plain "store.cell" [] [any' v, OS ("fpr_x64_a" ++ show n)]) {siImplicitDefs = [r "r10", r "r11"]})
+    emitI ((plain (O.Common O.StoreCell) [] [any' v, OS ("fpr_x64_a" ++ show n)]) {siImplicitDefs = [r "r10", r "r11"]})
   forM_ (zip [0 :: Int ..] (drop 8 args)) $ \(j,v) ->
-    emitI ((plain "store.spill" [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [r "r10", r "r11"]})
+    emitI ((plain (O.Common O.StoreSpill) [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [r "r10", r "r11"]})
 
 emitCall :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> Se ()
 emitCall sym safepoint runtime args res = do
   stageArgs args
-  emitI $ (plain "call" [fix v (r "rax") | Just v <- [res]]
+  emitI $ (plain (O.X64 O.Call) [fix v (r "rax") | Just v <- [res]]
     (OS sym : zipWith fix args argRegs))
     {siClobbers = filter (\p -> p `notElem` [r "rax" | Just _ <- [res]]) callerSaved,
      siImplicitDefs = [r "rsp"], siFlags = FlagsDef,
      siCalls = [Call sym safepoint runtime]}
 
 ret :: VReg -> SInstr
-ret v = (plain "ret" [] [fix v (r "rax")])
+ret v = (plain (O.X64 O.Ret) [] [fix v (r "rax")])
   {siImplicitDefs = map r ["r11", "rbp", "rsp"], siControl = Return}
 emitTail :: String -> Bool -> Bool -> [VReg] -> Se ()
 emitTail sym safepoint runtime args = do
   stageArgs args
-  emitI $ (plain "tailjump" [] (OS sym : zipWith fix args argRegs))
+  emitI $ (plain (O.Common O.TailJump) [] (OS sym : zipWith fix args argRegs))
     {siImplicitDefs = map r ["r11", "rbp", "rsp"], siClobbers = callerSaved,
      siControl = Return, siCalls = [Call sym safepoint runtime]}
 
 entrySeq :: Bool -> Bool -> Label -> SInstr
 entrySeq stack fuel (Label base) =
-  (plain (case (stack, fuel) of (True, True) -> "entry.check.tick"; (True, False) -> "entry.check"; _ -> "entry.tick") [] [])
+  (plain (O.Common (case (stack, fuel) of (True, True) -> O.EntryCheckTick; (True, False) -> O.EntryCheck; _ -> O.EntryTick)) [] [])
     {siImplicitDefs = map r ["r10", "r11", "rax", "rsp"], siClobbers = callerSaved,
      siFlags = FlagsDef,
      siCalls = [Call "fpr_stack_grow" False True | stack] ++ [Call "fpr_fuel_exhausted" True False | fuel],
@@ -274,7 +278,7 @@ selectInstr :: X64Config -> M.Map VId Ty -> Instr -> Se ()
 selectInstr _ _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
-  OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOp = "tick.n", siUses = [OI (fromIntegral n)]})
+  OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOpcode = O.Common O.TickN, siUses = [OI (fromIntegral n)]})
   OSimdPair int e caps a -> do
     when (simdRegisters e > 7) (refuse "an SSE2 pair exceeds seven scratch temporaries")
     simdPair int e (map vreg caps) (vreg a)
@@ -284,24 +288,24 @@ selectInstr _ _ (Instr d op) = case op of
   OAddress v -> def (\r -> emitI (mov r (vreg v)))
   OIndex a i -> def $ \r -> do
     offset <- freshV False
-    emitI (rri "lsl" offset (vreg i) 3)
-    emitI (rrr "add" r (vreg a) offset)
-  OLoad _ a n -> def (\r -> emitI (plain "load.field" [any' r] [any' (vreg a), OI (fromIntegral n)]))
-  OLoadByte a n -> def (\r -> emitI (plain "load.byte" [any' r] [any' (vreg a), OI (fromIntegral n)]))
-  OStore _ a n v -> emitI (plain "store.field" [] [any' (vreg a), any' (vreg v), OI (fromIntegral n)])
+    emitI (rri O.ShiftLeftImmediate offset (vreg i) 3)
+    emitI (rrr O.Add r (vreg a) offset)
+  OLoad _ a n -> def (\r -> emitI (plain (O.X64 O.LoadField) [any' r] [any' (vreg a), OI (fromIntegral n)]))
+  OLoadByte a n -> def (\r -> emitI (plain (O.X64 O.LoadByte) [any' r] [any' (vreg a), OI (fromIntegral n)]))
+  OStore _ a n v -> emitI (plain (O.X64 O.StoreField) [] [any' (vreg a), any' (vreg v), OI (fromIntegral n)])
   OConstInt n -> def (\r -> emitI (li r n))
-  OHartCell j -> def (\r -> emitI (plain "load.spill" [any' r] [OI (fromIntegral j)]))
+  OHartCell j -> def (\r -> emitI (plain (O.Common O.LoadSpill) [any' r] [OI (fromIntegral j)]))
   ORegionRoom mark -> def $ \r -> do
     clock <- freshV False
     used <- freshV False
     scaled <- freshV False
     untagged <- freshV False
-    emitI (plain "load.spill" [any' clock] [OI 58])
-    emitI (rri "asr" untagged (vreg mark) 1) -- the mark is a tagged Int
-    emitI (rrr "sub" used clock untagged)
-    emitI (rri "lsl" scaled used 3)
+    emitI (plain (O.Common O.LoadSpill) [any' clock] [OI 58])
+    emitI (rri O.ShiftRightArithmeticImmediate untagged (vreg mark) 1) -- the mark is a tagged Int
+    emitI (rrr O.Subtract used clock untagged)
+    emitI (rri O.ShiftLeftImmediate scaled used 3)
     emitI (cmpi scaled (65536 * 8))
-    emitI (cset "lo" r)
+    emitI (cset O.UnsignedBelow r)
   OBits n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
   OString text -> def $ \rd -> do
@@ -314,70 +318,70 @@ selectInstr _ _ (Instr d op) = case op of
     forM_ [(0, tid), (4, variant)] $ \(offset, value) -> do
       header <- freshV False
       emitI (li header (fromIntegral value))
-      emitI (plain "store.header" [] [any' rd, any' header, OI offset])
+      emitI (plain (O.X64 O.StoreHeader) [] [any' rd, any' header, OI offset])
     forM_ (zip [0..] fields) $ \(index, value) ->
-      emitI (plain "store.field" [] [any' rd, any' (vreg value), OI (8 + 8 * index)])
+      emitI (plain (O.X64 O.StoreField) [] [any' rd, any' (vreg value), OI (8 + 8 * index)])
   OReuse _ _ root fields -> def $ \rd -> do
     forM_ (zip [0..] fields) $ \(index, value) ->
-      emitI (plain "store.field" [] [any' (vreg root), any' (vreg value), OI (8 + 8 * index)])
+      emitI (plain (O.X64 O.StoreField) [] [any' (vreg root), any' (vreg value), OI (8 + 8 * index)])
     emitI (mov rd (vreg root))
   OField index obj -> def $ \rd ->
-    emitI (plain "load.field" [any' rd] [any' (vreg obj), OI (8 + 8 * fromIntegral index)])
+    emitI (plain (O.X64 O.LoadField) [any' rd] [any' (vreg obj), OI (8 + 8 * fromIntegral index)])
   OStrLen str -> def $ \rd -> do
     tagged <- freshV True
     emitCall "fpr_g_strlen_call1" False True [vreg str] (Just tagged)
-    emitI (rri "asr" rd tagged 1)
+    emitI (rri O.ShiftRightArithmeticImmediate rd tagged 1)
   OCharAt str index -> def $ \rd -> do
     shifted <- freshV False
     taggedIndex <- freshV True
     taggedResult <- freshV True
-    emitI (rri "lsl" shifted (vreg index) 1)
-    emitI (rri "orri" taggedIndex shifted 1)
+    emitI (rri O.ShiftLeftImmediate shifted (vreg index) 1)
+    emitI (rri O.OrImmediate taggedIndex shifted 1)
     emitCall "fpr_g_charAt_call2" False True [vreg str, taggedIndex] (Just taggedResult)
-    emitI (rri "asr" rd taggedResult 1)
-  OSymbol sym -> def (\r -> emitI (la r sym)) -- the legacy `la a0, <symbol>`
+    emitI (rri O.ShiftRightArithmeticImmediate rd taggedResult 1)
+  OSymbol sym -> def (\r -> emitI (la r sym)) -- an immutable symbol address
   OFunValue n -> def (\r -> emitI (la r ("fpr_obj_" ++ mangleName n)))
   -- the generic application: the head then every argument pushed 16 bytes
   -- apart (the last at the stack pointer), fpr_applyN(head, n, &args) with
   -- the call-alignment adjustment, the pushes popped; slots are %rbp-relative
   OApply f as -> def $ \rd -> do
-    forM_ (f : as) $ \v -> emitI ((plain "push" [] [any' (vreg v)]) {siImplicitDefs = [r "rsp"]})
-    emitI ((plain "applyn" [fix rd (r "rax")] [OI (fromIntegral (length as))])
+    forM_ (f : as) $ \v -> emitI ((plain (O.X64 O.Push) [] [any' (vreg v)]) {siImplicitDefs = [r "rsp"]})
+    emitI ((plain (O.X64 O.ApplyN) [fix rd (r "rax")] [OI (fromIntegral (length as))])
              { siImplicitDefs = map r ["rdi", "rsi", "rdx", "rsp"], siClobbers = filter (/= r "rax") callerSaved,
                siFlags = FlagsDef, siCalls = [Call "fpr_applyN" False True] })
   OTag v -> def $ \r -> do
     t <- freshV False
-    emitI (rri "lsl" t (vreg v) 1)
-    emitI (rri "orri" r t 1)
-  OUntag v -> def (\r -> emitI (rri "asr" r (vreg v) 1))
+    emitI (rri O.ShiftLeftImmediate t (vreg v) 1)
+    emitI (rri O.OrImmediate r t 1)
+  OUntag v -> def (\r -> emitI (rri O.ShiftRightArithmeticImmediate r (vreg v) 1))
   OBoolOf p -> def $ \r -> do
     f <- freshV True
     t <- freshV True
     emitI (la f "fpr_false")
     emitI (la t "fpr_true")
     emitI (cmpi (vreg p) 0)
-    emitI (csel "ne" r t f)
+    emitI (csel O.NotEqual r t f)
   OTruth v -> def (\r -> emitI (ldrsw r (vreg v) 4))
-  ONot p -> def (\r -> emitI (rri "eori" r (vreg p) 1))
-  OIsInt v -> def (\r -> emitI (rri "andi" r (vreg v) 1))
+  ONot p -> def (\r -> emitI (rri O.XorImmediate r (vreg p) 1))
+  OIsInt v -> def (\r -> emitI (rri O.AndImmediate r (vreg v) 1))
   OTagTest t c v -> def $ \r -> do
     miss <- freshL "tagno"
     done <- freshL "tagdone"
     bit <- freshV False
-    emitI (rri "andi" bit (vreg v) 1)
+    emitI (rri O.AndImmediate bit (vreg v) 1)
     emitI (cbnz bit miss)
     tid <- freshV False
     want <- freshV False
     emitI (ldrsw tid (vreg v) 0)
     emitI (li want (fromIntegral t))
     emitI (cmp tid want)
-    emitI (bcond "ne" miss)
+    emitI (bcond O.NotEqual miss)
     var <- freshV False
     wantv <- freshV False
     emitI (ldrsw var (vreg v) 4)
     emitI (li wantv (fromIntegral c))
     emitI (cmp var wantv)
-    emitI (cset "eq" r)
+    emitI (cset O.Equal r)
     emitI (jump done)
     emitL miss
     emitI (li r 0)
@@ -385,35 +389,35 @@ selectInstr _ _ (Instr d op) = case op of
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
-  OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> "and"; BOr -> "or"; BXor -> "xor") r (vreg a) (vreg b)))
+  OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> O.And; BOr -> O.Or; BXor -> O.Xor) r (vreg a) (vreg b)))
   -- F64 on the bits through xmm14/xmm15, inside the expansion only (SysV:
   -- caller-saved; no float register is allocated)
-  OFloatBin o a b -> def (\r -> emitI (plain ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
-  OFloatCmp o a b -> def (\r -> emitI ((plain ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
-  OFloat32Bin o a b -> def (\r -> emitI (plain ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
+  OFloatBin o a b -> def (\r -> emitI (plain (O.X64 (O.FloatBinary O.Float64 o)) [any' r] [any' (vreg a), any' (vreg b)]))
+  OFloatCmp o a b -> def (\r -> emitI ((plain (O.X64 (O.FloatCompare O.Float64 o)) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
+  OFloat32Bin o a b -> def (\r -> emitI (plain (O.X64 (O.FloatBinary O.Float32 o)) [any' r] [any' (vreg a), any' (vreg b)]))
   OFloatCmpTree o x y -> def (\r -> do
     forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
-      FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
-      FSNode f n -> emitI (plain ("ftree." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
-    emitI ((plain ("ftree.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] []) {siFlags = FlagsDef}))
+      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.Float64)) [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode f n -> emitI (plain (O.X64 (O.TreeNode O.Float64 f)) [] [OI (fromIntegral n)])
+    emitI ((plain (O.X64 (O.TreeCompare O.Float64 o)) [any' r] []) {siFlags = FlagsDef}))
   OFloat32CmpTree o x y -> def (\r -> do
     forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
-      FSLeaf v n -> emitI (plain "ftree32.leaf" [] [any' (vreg v), OI (fromIntegral n)])
-      FSNode f n -> emitI (plain ("ftree32." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
-    emitI ((plain ("ftree32.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] []) {siFlags = FlagsDef}))
+      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.Float32)) [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode f n -> emitI (plain (O.X64 (O.TreeNode O.Float32 f)) [] [OI (fromIntegral n)])
+    emitI ((plain (O.X64 (O.TreeCompare O.Float32 o)) [any' r] []) {siFlags = FlagsDef}))
   OFloatTree t -> def (\r -> do
     let (steps, root) = ftreeSchedule t
     forM_ steps $ \case
-      FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
-      FSNode o n -> emitI (plain ("ftree." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
-    emitI (plain "ftree.out" [any' r] [OI (fromIntegral root)]))
+      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.Float64)) [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode o n -> emitI (plain (O.X64 (O.TreeNode O.Float64 o)) [] [OI (fromIntegral n)])
+    emitI (plain (O.X64 (O.TreeOutput O.Float64)) [any' r] [OI (fromIntegral root)]))
   OFloat32Tree t -> def (\r -> do
     let (steps, root) = ftreeSchedule t
     forM_ steps $ \case
-      FSLeaf v n -> emitI (plain "ftree32.leaf" [] [any' (vreg v), OI (fromIntegral n)])
-      FSNode o n -> emitI (plain ("ftree32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
-    emitI (plain "ftree32.out" [any' r] [OI (fromIntegral root)]))
-  OFloat32Cmp o a b -> def (\r -> emitI ((plain ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
+      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.Float32)) [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode o n -> emitI (plain (O.X64 (O.TreeNode O.Float32 o)) [] [OI (fromIntegral n)])
+    emitI (plain (O.X64 (O.TreeOutput O.Float32)) [any' r] [OI (fromIntegral root)]))
+  OFloat32Cmp o a b -> def (\r -> emitI ((plain (O.X64 (O.FloatCompare O.Float32 o)) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
@@ -423,11 +427,11 @@ selectInstr _ _ (Instr d op) = case op of
     done <- freshL "eqdone"
     both <- freshV False
     bit <- freshV False
-    emitI (rrr "and" both (vreg a) (vreg b))
-    emitI (rri "andi" bit both 1)
+    emitI (rrr O.And both (vreg a) (vreg b))
+    emitI (rri O.AndImmediate bit both 1)
     emitI (cbz bit slow)
     emitI (cmp (vreg a) (vreg b))
-    emitI (cset (if eq then "eq" else "ne") r)
+    emitI (cset (if eq then O.Equal else O.NotEqual) r)
     emitI (jump done)
     emitL slow
     res <- freshV True
@@ -441,18 +445,18 @@ selectInstr _ _ (Instr d op) = case op of
     def k = case d of
       Just (v, _) -> k (vreg v)
       Nothing -> refuse ("internal: " ++ take 20 (show op) ++ " without a definition")
-    cond = \case Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne"
+    cond = \case Lt -> O.Less; Gt -> O.Greater; Le -> O.LessEqual; Ge -> O.GreaterEqual; Eq -> O.Equal; Ne -> O.NotEqual
     -- xmm8 holds two lanes; xmm9..xmm15 are expression temporaries.
     -- Every selected broadcast has one word operand, keeping reloads bounded.
     simdPair int e caps base = do
       trap <- freshL "lanes"
       done <- freshL "lanesok"
-      emitI (plain "simd.ld" [] [any' base, OI 8])
+      emitI (plain (O.X64 O.PairLoad) [] [any' base, OI 8])
       (res,_) <- simdGo caps e (9 :: Int)
-      emitI (plain "simd.st" [] [any' base, OI (fromIntegral res)])
+      emitI (plain (O.X64 O.PairStore) [] [any' base, OI (fromIntegral res)])
       when int $ forM_ [0,8] $ \off -> do
         t <- freshV False
-        emitI (plain "load.field" [any' t] [any' base, OI off])
+        emitI (plain (O.X64 O.LoadField) [any' t] [any' base, OI off])
         fit t trap
       emitI (jump done)
       emitL trap
@@ -461,29 +465,29 @@ selectInstr _ _ (Instr d op) = case op of
     simdGo caps e next = case e of
       SLane -> pure (8,next)
       SCapture n -> do
-        emitI (plain "simd.dup" [] [any' (caps !! n), OI (fromIntegral next)])
+        emitI (plain (O.X64 O.PairDuplicate) [] [any' (caps !! n), OI (fromIntegral next)])
         pure (next,next+1)
       SConst n -> do
         t <- freshV False
         emitI (li t n)
-        emitI (plain "simd.dup" [] [any' t, OI (fromIntegral next)])
+        emitI (plain (O.X64 O.PairDuplicate) [] [any' t, OI (fromIntegral next)])
         pure (next,next+1)
       SInt op a b -> case op of
-        Add -> simdBinary caps "simd.add" a b next
-        Sub -> simdBinary caps "simd.sub" a b next
+        Add -> simdBinary caps O.PairAdd a b next
+        Sub -> simdBinary caps O.PairSub a b next
         _ -> refuse "an SSE2 Int pair supports only add/subtract"
       SFloat op a b -> case op of
-        FAdd -> simdBinary caps "simd.fadd" a b next
-        FSub -> simdBinary caps "simd.fsub" a b next
-        FMul -> simdBinary caps "simd.fmul" a b next
+        FAdd -> simdBinary caps O.PairFloatAdd a b next
+        FSub -> simdBinary caps O.PairFloatSub a b next
+        FMul -> simdBinary caps O.PairFloatMul a b next
         FDiv -> refuse "an SSE2 pair division is outside the SIMD proof"
     simdBinary caps op a b next = do
       (ra,n1) <- simdGo caps a next
       (rb,n2) <- simdGo caps b n1
-      emitI (plain op [] [OI (fromIntegral n2),OI (fromIntegral ra),OI (fromIntegral rb)])
+      emitI (plain (O.X64 (O.PairBinary op)) [] [OI (fromIntegral n2),OI (fromIntegral ra),OI (fromIntegral rb)])
       pure (n2,n2+1)
-    -- checked Int arithmetic: the legacy worker sequences (Codegen.inlineTable,
-    -- ScalarChecked): the fast path computes and checks the 63-bit fit, the
+    -- Checked Int arithmetic agrees with Codegen.Eval and runtime/runtime.c:
+    -- the fast path computes and checks the 63-bit fit, the
     -- slow path retags the ORIGINAL operands and re-enters the C primitive,
     -- whose panic text and failure order are the language's
     arith kernel o r a b = do
@@ -491,11 +495,11 @@ selectInstr _ _ (Instr d op) = case op of
       done <- freshL "done"
       t <- freshV False
       case o of
-        Add -> emitI (rrr "add" t a b) >> fit t slow
-        Sub -> emitI (rrr "sub" t a b) >> fit t slow
+        Add -> emitI (rrr O.Add t a b) >> fit t slow
+        Sub -> emitI (rrr O.Subtract t a b) >> fit t slow
         Mul -> do
-          emitI (rrr "mul" t a b)
-          emitI (bcond "o" slow) -- full 64-bit overflow, then 63-bit language fit
+          emitI (rrr O.Multiply t a b)
+          emitI (bcond O.Overflow slow) -- full 64-bit overflow, then 63-bit language fit
           fit t slow
         Div -> do
           emitI (cbz b slow)
@@ -519,21 +523,21 @@ selectInstr _ _ (Instr d op) = case op of
         ta' <- freshV True
         tb <- freshV False
         tb' <- freshV True
-        emitI (rri "lsl" ta a 1)
-        emitI (rri "orri" ta' ta 1)
-        emitI (rri "lsl" tb b 1)
-        emitI (rri "orri" tb' tb 1)
+        emitI (rri O.ShiftLeftImmediate ta a 1)
+        emitI (rri O.OrImmediate ta' ta 1)
+        emitI (rri O.ShiftLeftImmediate tb b 1)
+        emitI (rri O.OrImmediate tb' tb 1)
         res <- freshV True
         emitCall (primSymbol o) False True [ta', tb'] (Just res)
-        emitI (rri "asr" r res 1)
+        emitI (rri O.ShiftRightArithmeticImmediate r res 1)
       emitL done
     -- the 63-bit fit check: sign-extend the low 63 bits and compare
     fit t slow = do
       n <- freshV False
-      emitI (rri "sext63" n t 0)
+      emitI (rri O.SignExtend63 n t 0)
       emitI (cmp n t)
-      emitI (bcond "ne" slow)
-    -- BITSHIFTL / BITSHIFTR (Codegen.inlineTable, shiftOk): a count outside
+      emitI (bcond O.NotEqual slow)
+    -- BITSHIFTL / BITSHIFTR agree with runtime/bits.c: a count outside
     -- 0..63 (negative counts included, compared unsigned) takes the slow
     -- path, the HAL entry fpr_g_<name>_call2 with the original operands
     -- retagged, which traps with the primitive's text; the fast path is
@@ -543,22 +547,22 @@ selectInstr _ _ (Instr d op) = case op of
       done <- freshL "shdone"
       t <- freshV False
       emitI (cmpi b 64)
-      emitI (bcond "hs" slow)
-      emitI (shiftv (case o of Shl -> "shlq"; Shr -> "shrq") t a b)
-      emitI (rri "sext63" r t 0)
+      emitI (bcond O.UnsignedAboveEqual slow)
+      emitI (shiftv (case o of Shl -> O.ShiftLeft; Shr -> O.ShiftRight) t a b)
+      emitI (rri O.SignExtend63 r t 0)
       emitI (jump done)
       emitL slow
       ta <- freshV False
       ta' <- freshV True
       tb <- freshV False
       tb' <- freshV True
-      emitI (rri "lsl" ta a 1)
-      emitI (rri "orri" ta' ta 1)
-      emitI (rri "lsl" tb b 1)
-      emitI (rri "orri" tb' tb 1)
+      emitI (rri O.ShiftLeftImmediate ta a 1)
+      emitI (rri O.OrImmediate ta' ta 1)
+      emitI (rri O.ShiftLeftImmediate tb b 1)
+      emitI (rri O.OrImmediate tb' tb 1)
       res <- freshV True
       emitCall ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2") False True [ta', tb'] (Just res)
-      emitI (rri "asr" r res 1)
+      emitI (rri O.ShiftRightArithmeticImmediate r res 1)
       emitL done
 
 -- block parameters are assigned in parallel: a cycle is broken with a
@@ -579,7 +583,7 @@ selectTerm :: X64Config -> Fn -> Block -> Se ()
 selectTerm _ fn b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
   TBr target as
-    | target == fnEntry fn -> -- the self tail call: the legacy transfer re-enters the function through its symbol
+    | target == fnEntry fn -> -- a self tail transfer re-enters through the function symbol
         emitTail (functionSymbol (fnName fn)) True False (map vreg as)
     | otherwise -> do
         parallelMoves (zip (paramsOf target) (map vreg as))
@@ -600,11 +604,11 @@ selectTerm _ fn b = case bTerm b of
   TTailCall c as -> do
     when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
     emitTail (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as)
-  -- a dead arm: the legacy trap if ever reached (`la a0, <str>; call
-  -- fpr_panic`, which does not return); the function's text ends here
+  -- A reached dead arm calls fpr_panic with its reason. It does not
+  -- return; the function's text ends here
   TUnreachable msg -> do
     modify (\s -> s {selStrings = S.insert msg (selStrings s)})
-    emitI ((plain "panic" [] [OS (stringLabel msg)])
+    emitI ((plain (O.X64 O.Panic) [] [OS (stringLabel msg)])
              {siImplicitDefs = map r ["rdi", "rsp"], siClobbers = callerSaved, siControl = Return, siCalls = [Call "fpr_panic" False True]})
   where
     paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
@@ -616,8 +620,8 @@ selectTerm _ fn b = case bTerm b of
 placement :: S.Set VReg -> Placement
 placement managed = Placement
   { plScratch = \case GPR -> scratchPool; FPR -> [],
-    plLoad = \p ref -> plain "load" [OP p] [OF ref 0],
-    plStore = \p ref -> plain "store" [] [OP p, OF ref 0],
+    plLoad = \p ref -> plain (O.X64 O.FrameLoad) [OP p] [OF ref 0],
+    plStore = \p ref -> plain (O.X64 O.FrameStore) [] [OP p, OF ref 0],
     plSlot = \v@(VReg n) -> frameObj n 8 8 (SpillSlot n) (S.member v managed) }
 
 -- the allocator's view of this target (M3): the first six parameters
@@ -630,18 +634,18 @@ allocConfig self managed = AllocConfig
     acScratch = allocScratch,
     acPreserved = map r ["rbp", "rsp"],
     acArrival = \params ->
-      plain "params" (zipWith fix (take 6 params) argRegs) []
-        : [plain "load.cell" [OV p (Any GPR)] [OS ("fpr_x64_a" ++ show n)] | (n, p) <- take 2 (drop 6 (zip [0 :: Int ..] params))]
+      plain (O.Common O.Params) (zipWith fix (take 6 params) argRegs) []
+        : [plain (O.Common O.LoadCell) [OV p (Any GPR)] [OS ("fpr_x64_a" ++ show n)] | (n, p) <- take 2 (drop 6 (zip [0 :: Int ..] params))]
         -- the ninth and later from the hart spill cells (cell j at 8*(1+j)),
         -- the hart block read into the parameter's own register
-        ++ [plain "load.spill" [OV p (Any GPR)] [OI (fromIntegral j)] | (j, p) <- zip [0 :: Int ..] (drop 8 params)],
-    acLoad = \p ref -> plain "load" [OP p] [OF ref 0],
-    acStore = \p ref -> plain "store" [] [OP p, OF ref 0],
-    acMove = \d s' -> plain "movq" [OP d] [OP s'],
+        ++ [plain (O.Common O.LoadSpill) [OV p (Any GPR)] [OI (fromIntegral j)] | (j, p) <- zip [0 :: Int ..] (drop 8 params)],
+    acLoad = \p ref -> plain (O.X64 O.FrameLoad) [OP p] [OF ref 0],
+    acStore = \p ref -> plain (O.X64 O.FrameStore) [] [OP p, OF ref 0],
+    acMove = \d s' -> plain (O.X64 O.Move) [OP d] [OP s'],
     acSlot = \n v -> frameObj n 8 8 (SpillSlot n) (S.member v managed),
     -- cqto writes rdx before idivq reads the divisor
     -- store.spill writes a scratch register before it reads the value
-    acEarlyDef = \i -> siOp i `elem` ["divide", "store.spill", "store.cell"],
+    acEarlyDef = \i -> siOpcode i `elem` [O.X64 O.Divide, O.Common O.StoreSpill, O.Common O.StoreCell],
     acClassOf = rfClassOf x64RegisterFile,
     acSelfLoop = self }
 
@@ -655,6 +659,7 @@ emitFnX64WithSymbols :: SymbolPolicy -> X64Config -> Fn -> Either String NativeF
 emitFnX64WithSymbols symbols cfg fn = do
   (sel0, managed, nulls, strs) <- select cfg fn
   let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg) (tuneEntryArgs (cfgTune cfg)) argRegs fn sel0
+  checkForms (fnName fn) (sfBody sel)
   either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
   let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
   alloc <- either (Left . ("compiler error: " ++)) Right (allocateFn ac sel)
@@ -671,8 +676,8 @@ emitFnX64WithSymbols symbols cfg fn = do
       saveOff o = show (M.findWithDefault (error "X64: a saved register without an offset") (foRef o) (lyOffset ly)) ++ "(%rbp)"
       saveLines = ["movq %" ++ p ++ ", " ++ saveOff o | o <- saves, SavedRegister p <- [foKind o]]
       restores = ["movq " ++ saveOff o ++ ", %" ++ p | o <- saves, SavedRegister p <- [foKind o]]
-      body = I ((plain "enter" [] []) {siImplicitDefs = map r (["rsp", "rbp"] ++ [p | large,p <- ["rax","r11"]])})
-        : [I (plain "save" [] []) | not (null saves)]
+      body = I ((plain (O.X64 O.Enter) [] []) {siImplicitDefs = map r (["rsp", "rbp"] ++ [p | large,p <- ["rax","r11"]])})
+        : [I (plain (O.X64 O.Save) [] []) | not (null saves)]
         ++ allocatedBody
       reserve = if large then reserveFrame (cfgHart cfg) name (toInteger (lyBytes ly)) (length (sfParams sel)) else []
       rendered = [(it, renderItem (cfgHart cfg) ly large name saveLines restores it) | it <- body]
@@ -681,6 +686,7 @@ emitFnX64WithSymbols symbols cfg fn = do
                   ++ (if large then " reserve=yes" else "")
                   ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
         ++ visibilityLines (x64Format (cfgHart cfg)) (if x64Format (cfgHart cfg)==MachO then WeakDefinitionDirective else WeakDirective) (visibilityFor (cfgWeak cfg) symbols name) sym ++ [sym ++ ":"]
+  checkForms name body
   pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs) [])
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
@@ -765,7 +771,7 @@ tlvAddress cell =
 
 renderItem :: X64Hart -> Layout -> Bool -> String -> [String] -> [String] -> Item -> [String]
 renderItem hart _ _ fname _ _ (ILabel l) = [local hart fname l ++ ":"]
-renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
+renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpcode i) (siDefs i) (siUses i))
   where
     indent l = if last l == ':' then l else "    " ++ l
     lbl = local hart fname
@@ -779,96 +785,105 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOp i
       p -> p ++ "d"
     imm = \case OI n -> show n; o -> error ("X64 render: not an immediate " ++ show o)
     slot ref = show (M.findWithDefault (error "X64 render: missing frame object") ref (lyOffset ly)) ++ "(%rbp)"
-    cc = \case "eq" -> "e"; "ne" -> "ne"; "lt" -> "l"; "gt" -> "g"; "le" -> "le"; "ge" -> "ge"; "o" -> "o"; "hs" -> "ae"; "lo" -> "b"; c -> error ("X64 condition " ++ c)
+    cc = \case O.Equal -> "e"; O.NotEqual -> "ne"; O.Less -> "l"; O.Greater -> "g"; O.LessEqual -> "le"; O.GreaterEqual -> "ge"; O.Overflow -> "o"; O.UnsignedAboveEqual -> "ae"; O.UnsignedBelow -> "b"
     call sym = ["subq $8, %rsp", "call " ++ gsym hart sym, "addq $8, %rsp"]
     go op ds us = case (op,ds,us) of
-      ("enter",[],[]) ->
+      (O.X64 O.Enter,[],[]) ->
         if large then ["movq %rbp, %rax", "movabsq $" ++ show (lyBytes ly) ++ ", %r11",
                        "subq %r11, %rsp", "leaq 8(%rsp,%r11), %rbp",
                        "movq %rax, -16(%rbp)", "movq %r10, -24(%rbp)"]
         else ["subq $" ++ show (lyBytes ly) ++ ", %rsp",
          "movq %rbp, " ++ show (lyBytes ly - 8) ++ "(%rsp)",
          "leaq " ++ show (lyBytes ly + 8) ++ "(%rsp), %rbp"]
-      ("save",[],[]) -> saveLines
-      ("params",_,[]) -> [] -- the parameters are where the ABI put them
-      ("load.cell",[d],[OS cell]) -> loadCell cell (reg d)
-      ("load",[d],[OF ref 0]) -> ["movq " ++ slot ref ++ ", " ++ reg d]
-      ("store",[],[s,OF ref 0]) -> ["movq " ++ reg s ++ ", " ++ slot ref]
-      ("store.cell",[],[s,OS cell]) -> storeCell cell (reg s)
+      (O.X64 O.Save,[],[]) -> saveLines
+      (O.Common O.Params,_,[]) -> [] -- the parameters are where the ABI put them
+      (O.Common O.LoadCell,[d],[OS cell]) -> loadCell cell (reg d)
+      (O.X64 O.FrameLoad,[d],[OF ref 0]) -> ["movq " ++ slot ref ++ ", " ++ reg d]
+      (O.X64 O.FrameStore,[],[s,OF ref 0]) -> ["movq " ++ reg s ++ ", " ++ slot ref]
+      (O.Common O.StoreCell,[],[s,OS cell]) -> storeCell cell (reg s)
       -- the hart block in whichever scratch register the value is not in
       -- (a spilled value is reloaded into %r10, the allocator's first
       -- scratch: the merge, docs/2026-10-21-TYPED-IR-MERGE.md)
-      ("store.spill",[],[s,OI j]) -> let h = if reg s == "%r10" then "%r11" else "%r10" in
+      (O.Common O.StoreSpill,[],[s,OI j]) -> let h = if reg s == "%r10" then "%r11" else "%r10" in
         loadCell "fpr_posix_hart" h ++ ["movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(" ++ h ++ ")"]
-      ("load.spill",[d],[OI j]) -> loadCell "fpr_posix_hart" (reg d) ++ ["movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
-      ("movq",[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
-      ("li",[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
-      ("la",[d],[OS s]) -> ["leaq " ++ gsym hart s ++ "(%rip), " ++ reg d]
-      ("load.byte",[d],[base,n]) -> ["movzbq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
-      ("load.field",[d],[base,n]) -> ["movq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
-      ("store.field",[],[base,value,n]) -> ["movq " ++ reg value ++ ", " ++ imm n ++ "(" ++ reg base ++ ")"]
-      ("store.header",[],[base,value,n]) -> ["movl " ++ word32 value ++ ", " ++ imm n ++ "(" ++ reg base ++ ")"]
-      ("ldrsw",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
-      ("movslq",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
-      ("sext63",[d],[_,_]) -> ["shlq $1, " ++ reg d, "sarq $1, " ++ reg d]
-      ("simd.ld",[],[base,OI n]) -> ["movdqu (" ++ reg base ++ "), %xmm" ++ show n]
-      ("simd.st",[],[base,OI n]) -> ["movdqu %xmm" ++ show n ++ ", (" ++ reg base ++ ")"]
-      ("simd.dup",[],[src,OI n]) -> ["movq " ++ reg src ++ ", %xmm" ++ show n,"punpcklqdq %xmm" ++ show n ++ ", %xmm" ++ show n]
-      (o,[],[OI d,OI a,OI b]) | Just inst <- lookup o [("simd.add","paddq"),("simd.sub","psubq"),("simd.fadd","addpd"),("simd.fsub","subpd"),("simd.fmul","mulpd")] ->
-        ["movdqa %xmm" ++ show a ++ ", %xmm" ++ show d,inst ++ " %xmm" ++ show b ++ ", %xmm" ++ show d]
-      -- F32 on the low 32 bits: movd to a 32-bit register zero-extends
-      -- a float tree, one step an instruction: scratch %xmm8.., the
-      -- two-operand forms leave a node's value in its left subtree's register
-      (o, [d], []) | Just c <- stripPrefix "ftree.cmp." o ->
-        let (x, y, pred') = case c of "lt" -> ("%xmm8", "%xmm9", "lt"); "le" -> ("%xmm8", "%xmm9", "le"); "gt" -> ("%xmm9", "%xmm8", "lt"); "ge" -> ("%xmm9", "%xmm8", "le"); "eq" -> ("%xmm8", "%xmm9", "eq"); _ -> ("%xmm8", "%xmm9", "neq")
-         in ["cmp" ++ pred' ++ "sd " ++ y ++ ", " ++ x, "movq " ++ x ++ ", " ++ reg d, "andq $1, " ++ reg d]
-      (o, [d], []) | Just c <- stripPrefix "ftree32.cmp." o ->
-        let (x, y, pred') = case c of "lt" -> ("%xmm8", "%xmm9", "lt"); "le" -> ("%xmm8", "%xmm9", "le"); "gt" -> ("%xmm9", "%xmm8", "lt"); "ge" -> ("%xmm9", "%xmm8", "le"); "eq" -> ("%xmm8", "%xmm9", "eq"); _ -> ("%xmm8", "%xmm9", "neq")
-         in ["cmp" ++ pred' ++ "ss " ++ y ++ ", " ++ x, "movd " ++ x ++ ", " ++ word32 d, "andq $1, " ++ reg d]
-      ("ftree.leaf",[],[x,OI n]) -> ["movq " ++ reg x ++ ", %xmm" ++ show (8 + n)]
-      ("ftree.out",[d],[OI n]) -> ["movq %xmm" ++ show (8 + n) ++ ", " ++ reg d]
-      (o,[],[OI n]) | Just inst <- stripPrefix "ftree." o -> [inst ++ "sd %xmm" ++ show (9 + n) ++ ", %xmm" ++ show (8 + n)]
-      ("ftree32.leaf",[],[x,OI n]) -> ["movd " ++ word32 x ++ ", %xmm" ++ show (8 + n)]
-      ("ftree32.out",[d],[OI n]) -> ["movd %xmm" ++ show (8 + n) ++ ", " ++ word32 d]
-      (o,[],[OI n]) | Just inst <- stripPrefix "ftree32." o -> [inst ++ "ss %xmm" ++ show (9 + n) ++ ", %xmm" ++ show (8 + n)]
-      (o,[d],[a,b]) | Just f <- stripPrefix "fbin32." o ->
-        ["movd " ++ word32 a ++ ", %xmm14", "movd " ++ word32 b ++ ", %xmm15", f ++ "ss %xmm15, %xmm14", "movd %xmm14, " ++ word32 d]
-      (o,[d],[a,b]) | Just c <- stripPrefix "fcmp32." o ->
-        let (x, y, p) = case c of "lt" -> (a, b, "lt"); "le" -> (a, b, "le"); "gt" -> (b, a, "lt"); "ge" -> (b, a, "le"); "eq" -> (a, b, "eq"); _ -> (a, b, "neq")
-         in ["movd " ++ word32 x ++ ", %xmm14", "movd " ++ word32 y ++ ", %xmm15", "cmp" ++ p ++ "ss %xmm15, %xmm14", "movd %xmm14, " ++ word32 d, "andq $1, " ++ reg d]
-      (o,[d],[a,b]) | Just f <- stripPrefix "fbin." o ->
-        ["movq " ++ reg a ++ ", %xmm14", "movq " ++ reg b ++ ", %xmm15", f ++ "sd %xmm15, %xmm14", "movq %xmm14, " ++ reg d]
-      -- cmp<pred>sd leaves all-ones or zero: exact NaN behaviour (ordered
-      -- predicates false, neq true); gt/ge compare the swapped operands
-      (o,[d],[a,b]) | Just c <- stripPrefix "fcmp." o ->
-        let (x, y, p) = case c of "lt" -> (a, b, "lt"); "le" -> (a, b, "le"); "gt" -> (b, a, "lt"); "ge" -> (b, a, "le"); "eq" -> (a, b, "eq"); _ -> (a, b, "neq")
-         in ["movq " ++ reg x ++ ", %xmm14", "movq " ++ reg y ++ ", %xmm15", "cmp" ++ p ++ "sd %xmm15, %xmm14", "movq %xmm14, " ++ reg d, "andq $1, " ++ reg d]
-      (o,[d],[_,n]) | Just mnemonic <- lookup o [("lsl","shlq"),("asr","sarq"),("orri","orq"),("andi","andq"),("eori","xorq")] ->
+      (O.Common O.LoadSpill,[d],[OI j]) -> loadCell "fpr_posix_hart" (reg d) ++ ["movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
+      (O.X64 O.Move,[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
+      (O.X64 O.Literal,[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
+      (O.X64 O.Address,[d],[OS s]) -> ["leaq " ++ gsym hart s ++ "(%rip), " ++ reg d]
+      (O.X64 O.LoadByte,[d],[base,n]) -> ["movzbq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
+      (O.X64 O.LoadField,[d],[base,n]) -> ["movq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
+      (O.X64 O.StoreField,[],[base,value,n]) -> ["movq " ++ reg value ++ ", " ++ imm n ++ "(" ++ reg base ++ ")"]
+      (O.X64 O.StoreHeader,[],[base,value,n]) -> ["movl " ++ word32 value ++ ", " ++ imm n ++ "(" ++ reg base ++ ")"]
+      (O.X64 O.LoadSigned32,[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
+      (O.X64 O.SignExtend63,[d],[_,_]) -> ["shlq $1, " ++ reg d, "sarq $1, " ++ reg d]
+      (O.X64 O.PairLoad,[],[base,OI n]) -> ["movdqu (" ++ reg base ++ "), %xmm" ++ show n]
+      (O.X64 O.PairStore,[],[base,OI n]) -> ["movdqu %xmm" ++ show n ++ ", (" ++ reg base ++ ")"]
+      (O.X64 O.PairDuplicate,[],[src,OI n]) -> ["movq " ++ reg src ++ ", %xmm" ++ show n,"punpcklqdq %xmm" ++ show n ++ ", %xmm" ++ show n]
+      (O.X64 (O.PairBinary op),[],[OI d,OI a,OI b]) ->
+        ["movdqa %xmm" ++ show a ++ ", %xmm" ++ show d,O.simdMnemonic op ++ " %xmm" ++ show b ++ ", %xmm" ++ show d]
+      -- Widths and operations retain their constructors through allocation.
+      (O.X64 (O.TreeCompare w c),[d],[]) ->
+        let (x,y,pred')=comparison c "%xmm8" "%xmm9"
+         in ["cmp" ++ pred' ++ suffix w ++ " " ++ y ++ ", " ++ x,
+             moveOut w x d,"andq $1, " ++ reg d]
+      (O.X64 (O.TreeLeaf w),[],[x,OI n]) -> [moveIn w x ("%xmm" ++ show (8+n))]
+      (O.X64 (O.TreeOutput w),[d],[OI n]) -> [moveOut w ("%xmm" ++ show (8+n)) d]
+      (O.X64 (O.TreeNode w op),[],[OI n]) ->
+        [O.floatName op ++ suffix w ++ " %xmm" ++ show (9+n) ++ ", %xmm" ++ show (8+n)]
+      (O.X64 (O.FloatBinary w op),[d],[a,b]) ->
+        [moveIn w a "%xmm14",moveIn w b "%xmm15",
+         O.floatName op ++ suffix w ++ " %xmm15, %xmm14",moveOut w "%xmm14" d]
+      -- Ordered predicates are false for NaN; inequality is true. gt/ge
+      -- compare swapped operands, preserving the reference evaluator's rule.
+      (O.X64 (O.FloatCompare w c),[d],[a,b]) ->
+        let (x,y,pred')=comparison c a b
+         in [moveIn w x "%xmm14",moveIn w y "%xmm15",
+             "cmp" ++ pred' ++ suffix w ++ " %xmm15, %xmm14",
+             moveOut w "%xmm14" d,"andq $1, " ++ reg d]
+      (O.X64 o,[d],[_,n]) | Just mnemonic <- immediateMnemonic o ->
         [mnemonic ++ " $" ++ imm n ++ ", " ++ reg d]
-      (o,[d],[_,b]) | Just mnemonic <- lookup o [("add","addq"),("sub","subq"),("mul","imulq"),("and","andq"),("or","orq"),("xor","xorq")] ->
+      (O.X64 o,[d],[_,b]) | Just mnemonic <- binaryMnemonic o ->
         [mnemonic ++ " " ++ reg b ++ ", " ++ reg d]
-      (o,[d],[_,c]) | o `elem` ["shlq","shrq"] -> [o ++ " " ++ byte c ++ ", " ++ reg d] -- the count register is %rcx by constraint
-      ("divide",[_],[_,b]) -> ["cqto", "idivq " ++ reg b]
-      ("cmpq",[],[a,b]) -> ["cmpq " ++ reg b ++ ", " ++ reg a]
-      ("cmpi",[],[a,n]) -> ["cmpq $" ++ imm n ++ ", " ++ reg a]
-      ('s':'e':'t':'.':c,[d],[]) -> ["set" ++ cc c ++ " " ++ byte d, "movzbq " ++ byte d ++ ", " ++ reg d]
-      ('c':'m':'o':'v':'.':c,[d],[_,a]) -> ["cmov" ++ cc c ++ " " ++ reg a ++ ", " ++ reg d]
-      ('j':'.':c,[],[OL l]) -> ["j" ++ cc c ++ " " ++ lbl l]
-      (o,[],[v,OL l]) | o `elem` ["jzero","jnonzero"] -> ["testq " ++ reg v ++ ", " ++ reg v, (if o == "jzero" then "jz " else "jnz ") ++ lbl l]
-      ("jmp",[],[OL l]) -> ["jmp " ++ lbl l]
-      ("jump.loop",[],[OL l]) -> ["jmp " ++ lbl l]
-      ("call",_,OS s:_) -> call s
-      ("push",[],[v]) -> ["subq $16, %rsp", "movq " ++ reg v ++ ", (%rsp)"]
-      ("applyn",[_],[OI n]) -> ["movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
+      (O.X64 O.ShiftLeft,[d],[_,c]) -> ["shlq " ++ byte c ++ ", " ++ reg d]
+      (O.X64 O.ShiftRight,[d],[_,c]) -> ["shrq " ++ byte c ++ ", " ++ reg d]
+      (O.X64 O.Divide,[_],[_,b]) -> ["cqto", "idivq " ++ reg b]
+      (O.X64 O.Compare,[],[a,b]) -> ["cmpq " ++ reg b ++ ", " ++ reg a]
+      (O.X64 O.CompareImmediate,[],[a,n]) -> ["cmpq $" ++ imm n ++ ", " ++ reg a]
+      (O.X64 (O.Set c),[d],[]) -> ["set" ++ cc c ++ " " ++ byte d, "movzbq " ++ byte d ++ ", " ++ reg d]
+      (O.X64 (O.Select c),[d],[_,a]) -> ["cmov" ++ cc c ++ " " ++ reg a ++ ", " ++ reg d]
+      (O.X64 (O.Branch c),[],[OL l]) -> ["j" ++ cc c ++ " " ++ lbl l]
+      (O.X64 O.BranchZero,[],[v,OL l]) -> ["testq " ++ reg v ++ ", " ++ reg v,"jz " ++ lbl l]
+      (O.X64 O.BranchNonzero,[],[v,OL l]) -> ["testq " ++ reg v ++ ", " ++ reg v,"jnz " ++ lbl l]
+      (O.X64 O.Jump,[],[OL l]) -> ["jmp " ++ lbl l]
+      (O.Common O.JumpLoop,[],[OL l]) -> ["jmp " ++ lbl l]
+      (O.X64 O.Call,_,OS s:_) -> call s
+      (O.X64 O.Push,[],[v]) -> ["subq $16, %rsp", "movq " ++ reg v ++ ", (%rsp)"]
+      (O.X64 O.ApplyN,[_],[OI n]) -> ["movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
         ++ call "fpr_applyN" ++ ["addq $" ++ show (16 * (n + 1)) ++ ", %rsp"]
-      ("panic",[],[OS s]) -> ("leaq " ++ gsym hart s ++ "(%rip), %rdi") : call "fpr_panic"
-      ("ret",[],[_]) -> epilogue ++ ["ret"]
-      ("tailjump",[],OS s:_) -> epilogue ++ ["jmp " ++ gsym hart s]
-      ("entry.check.tick",_,_) -> hartRead ++ stackCheck ++ tick
-      ("entry.check",_,_) -> hartRead ++ stackCheck
-      ("entry.tick",_,_) -> hartRead ++ tick
-      ("tick.n",_,[OI n]) -> hartRead ++ tickN n
+      (O.X64 O.Panic,[],[OS s]) -> ("leaq " ++ gsym hart s ++ "(%rip), %rdi") : call "fpr_panic"
+      (O.X64 O.Ret,[],[_]) -> epilogue ++ ["ret"]
+      (O.Common O.TailJump,[],OS s:_) -> epilogue ++ ["jmp " ++ gsym hart s]
+      (O.Common O.EntryCheckTick,_,_) -> hartRead ++ stackCheck ++ tick
+      (O.Common O.EntryCheck,_,_) -> hartRead ++ stackCheck
+      (O.Common O.EntryTick,_,_) -> hartRead ++ tick
+      (O.Common O.TickN,_,[OI n]) -> hartRead ++ tickN n
       _ -> error ("X64 render: no form for " ++ show (op,ds,us))
+    suffix O.Float64="sd"
+    suffix O.Float32="ss"
+    moveIn O.Float64 x dst="movq " ++ reg x ++ ", " ++ dst
+    moveIn O.Float32 x dst="movd " ++ word32 x ++ ", " ++ dst
+    moveOut O.Float64 src d="movq " ++ src ++ ", " ++ reg d
+    moveOut O.Float32 src d="movd " ++ src ++ ", " ++ word32 d
+    comparison c a b=case c of
+      Lt->(a,b,"lt");Le->(a,b,"le");Gt->(b,a,"lt");Ge->(b,a,"le");Eq->(a,b,"eq");Ne->(a,b,"neq")
+    immediateMnemonic op=case op of
+      O.ShiftLeftImmediate->Just "shlq";O.ShiftRightArithmeticImmediate->Just "sarq"
+      O.OrImmediate->Just "orq";O.AndImmediate->Just "andq";O.XorImmediate->Just "xorq"
+      _->Nothing
+    binaryMnemonic op=case op of
+      O.Add->Just "addq";O.Subtract->Just "subq";O.Multiply->Just "imulq"
+      O.And->Just "andq";O.Or->Just "orq";O.Xor->Just "xorq"
+      _->Nothing
     -- the callee-saved registers come back first (rbp-relative, so after a
     -- stack-segment change they still read the frame they were saved in)
     epilogue = restores ++ ["movq %rbp, %r11", "movq -16(%rbp), %rbp"]

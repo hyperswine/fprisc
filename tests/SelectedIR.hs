@@ -14,6 +14,8 @@ import Codegen.IR
 import Codegen.Place
 import Codegen.Policy (m2Policy, StackPolicy (..), Policy (..), Profile (..))
 import Codegen.Target.Common (shallowEntry, noTune, shrinkWrap)
+import qualified Codegen.Opcode as Opcode
+import Codegen.Target.X64.Forms (checkForms)
 import Codegen.Selected
 import qualified Codegen.Target.X64 as X64
 import Codegen.Target.A64
@@ -85,6 +87,43 @@ storeA6 = plain "x64.store.cell" [] [gpr 0, OS "fpr_x64_a6"]
 
 main :: IO ()
 main = do
+  let typedMove=plainOpcode (Opcode.X64 Opcode.Move) [gpr 2] [gpr 0]
+      typedCompare=plainOpcode (Opcode.X64 (Opcode.FloatCompare Opcode.Float32 Ne)) [gpr 2] [gpr 0,gpr 1]
+      typedBranch=(plainOpcode (Opcode.X64 (Opcode.Branch Opcode.UnsignedBelow)) [] [OL (Label "typed-out")])
+        {siFlags=FlagsUse,siControl=CondTo [Label "typed-out"]}
+  check "x64 constructors retain explicit width, predicate and branch condition"
+    (checkForms "typed" [I typedMove,I typedCompare {siFlags=FlagsDef},I typedBranch]==Right ())
+  refused "x64 rejects the transitional mnemonic vocabulary" "opcode/operand form"
+    (checkForms "typed" [I (plain "movq" [gpr 2] [gpr 0])])
+  refused "x64 catches a selected operand-count mismatch" "opcode/operand form"
+    (checkForms "typed" [I typedMove {siUses=[]}])
+  refused "x64 catches a selected operand-kind mismatch" "opcode/operand form"
+    (checkForms "typed" [I typedMove {siUses=[OI 0]}])
+  refused "x64 float comparison retains its flag effect" "flag effect"
+    (checkForms "typed" [I typedCompare])
+  refused "x64 branch labels agree with control metadata" "control effect"
+    (checkForms "typed" [I typedBranch {siControl=Next}])
+  refused "x64 scratch tree indices remain inside the physical bank" "opcode/operand form"
+    (checkForms "typed" [I (plainOpcode (Opcode.X64 (Opcode.TreeLeaf Opcode.Float64)) [] [gpr 0,OI 8])])
+  let typedDivide=(plainOpcode (Opcode.X64 Opcode.Divide) [OV (v 2) (Fix (r "rax"))]
+        [OV (v 0) (Fix (r "rax")),gpr 1]) {siImplicitDefs=[r "rdx"],siFlags=FlagsDef}
+      typedAdd=(plainOpcode (Opcode.X64 Opcode.Add) [OV (v 2) (Tied 0)] [gpr 0,gpr 1]) {siFlags=FlagsDef}
+  check "x64 division and two-address contracts accept their real constraints"
+    (checkForms "typed" [I typedDivide,I typedAdd]==Right ())
+  refused "x64 division requires its fixed dividend/result bank" "register constraint"
+    (checkForms "typed" [I typedDivide {siDefs=[gpr 2]}])
+  refused "x64 division declares its hidden remainder register" "register constraint"
+    (checkForms "typed" [I typedDivide {siImplicitDefs=[]}])
+  refused "x64 arithmetic cannot lose its two-address tie" "register constraint"
+    (checkForms "typed" [I typedAdd {siDefs=[gpr 2]}])
+  refused "x64 call metadata cannot silently disappear from bound accounting" "call metadata"
+    (checkForms "typed" [I ((plainOpcode (Opcode.X64 Opcode.Call) [] [OS "target"]) {siFlags=FlagsDef})])
+  let typedEntry=I ((plainOpcode (Opcode.Common Opcode.EntryCheckTick) [] [])
+        {siFlags=FlagsDef,siCalls=[Call "fpr_stack_grow" False True,Call "fpr_fuel_exhausted" True False]})
+  check "shared shallow-entry rewriting retains the typed opcode"
+    (case shallowEntry StackCheckLegacyShallow 32 [typedEntry] of
+      (True,[I i])->siOpcode i==Opcode.Common Opcode.EntryTick && checkForms "typed" [I i]==Right ()
+      _->False)
   let entry = I ((plain "entry.check.tick" [] []) {siCalls = [Call "fpr_stack_grow" False True, Call "fpr_fuel_exhausted" True False]})
       callItem = I callF
       tailItem = I callF {siControl = Return}

@@ -66,6 +66,7 @@ import Codegen.Frame
 import Codegen.IR
 import Codegen.Place
 import Codegen.Policy
+import qualified Codegen.Opcode as Opcode
 import Codegen.Selected
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
@@ -248,7 +249,7 @@ jump l = (plain "b" [] [OL l]) {siControl = JumpTo l}
 call :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> SInstr
 call sym safepoint runtime args res =
   SInstr
-    { siOp = "bl",
+    { siOpcode = Opcode.textOpcode "bl",
       siDefs = [fix r (x 0) | Just r <- [res]],
       siUses = [OS sym] ++ zipWith fix (take 8 args) (map x [0 ..]),
       siImplicitDefs = [],
@@ -371,7 +372,7 @@ selectInstr :: A64Config -> M.Map VId Ty -> Instr -> Se ()
 selectInstr _ _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
-  OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOp = "tick.n", siUses = [OI (fromIntegral n)]})
+  OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOpcode = Opcode.Common Opcode.TickN, siUses = [OI (fromIntegral n)]})
   OSimdPair int e caps a -> simdPair int e (map vreg caps) (vreg a)
   ORvvVlMax -> refuse "a RISC-V vector length on A64"
   ORvvLanes _ _ -> refuse "RISC-V vector lanes on A64"
@@ -795,10 +796,10 @@ floatPool fn = fn {sfBody = evalState (concat <$> mapM item (sfBody fn)) start}
     item (I i)
       | Just op <- lookupPrefix (siOp i) [("fbin.","pool.bin64."),("fbin32.","pool.bin32."),("fcmp.","pool.cmp64."),("fcmp32.","pool.cmp32.")] = do
           args <- mapM asFloat (siUses i)
-          pure (concatMap fst args ++ [I i {siOp=op,siDefs=map def (siDefs i),siUses=map snd args}])
-      | siOp i `elem` ["ftree.out","ftree32.out"] = pure [I i {siOp="pool." ++ siOp i,siDefs=map def (siDefs i)}]
+          pure (concatMap fst args ++ [I i {siOpcode=Opcode.textOpcode op,siDefs=map def (siDefs i),siUses=map snd args}])
+      | siOp i `elem` ["ftree.out","ftree32.out"] = pure [I i {siOpcode=Opcode.textOpcode ("pool." ++ siOp i),siDefs=map def (siDefs i)}]
       | siOp i `elem` ["ftree.leaf","ftree32.leaf"], OV v _ : rest <- siUses i, S.member v floats =
-          pure [I i {siOp="pool." ++ siOp i,siUses=fp v:rest}]
+          pure [I i {siOpcode=Opcode.textOpcode ("pool." ++ siOp i),siUses=fp v:rest}]
       | otherwise = do
           args <- mapM asWord (siUses i)
           pure (concatMap fst args ++ [I i {siUses=map snd args}])

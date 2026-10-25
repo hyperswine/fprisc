@@ -12,6 +12,7 @@ import Codegen.IR (Name)
 import qualified Codegen.IR as IR
 import Codegen.Frame
 import Codegen.Policy (StackPolicy (..))
+import qualified Codegen.Opcode as Opcode
 import Codegen.Selected
 import Data.Bits (shiftR, xor, (.&.))
 import Data.Char (isAlphaNum, isAscii, isDigit, ord)
@@ -40,7 +41,7 @@ forwardEntry enabled general regs fn sf
     (b : _) <- [blk | blk <- IR.fnBlocks fn, IR.bId blk == IR.fnEntry fn] =
       let ps = zip (sfParams sf) regs
           operands = [OV v (Fix p) | (v, p) <- ps]
-          preserve (I i) | siOp i == "entry.check.tick" = I i
+          preserve (I i) | siOpcode i == Opcode.Common Opcode.EntryCheckTick = I i
             {siDefs = operands, siUses = operands,
              siClobbers = filter (`notElem` map snd ps) (siClobbers i)}
           preserve it = it
@@ -71,13 +72,13 @@ shallowEntry policy bytes items
     not (any deepens items) = (True, concatMap strip items)
   | otherwise = (False, items)
   where
-    entry i = siOp i `elem` ["entry.check", "entry.check.tick", "entry.tick"]
+    entry i = siOpcode i `elem` map Opcode.Common [Opcode.EntryCheck, Opcode.EntryCheckTick, Opcode.EntryTick]
     deepens (I i) = not (entry i) && siControl i /= Return
       && any (\c -> callSafepoint c || callTarget c == "fpr_applyN") (siCalls i)
     deepens _ = False
-    strip (I i) | siOp i == "entry.check" = []
-    strip (I i) | siOp i == "entry.check.tick" =
-      [I i {siOp = "entry.tick", siCalls = filter ((/= "fpr_stack_grow") . callTarget) (siCalls i)}]
+    strip (I i) | siOpcode i == Opcode.Common Opcode.EntryCheck = []
+    strip (I i) | siOpcode i == Opcode.Common Opcode.EntryCheckTick =
+      [I i {siOpcode = Opcode.Common Opcode.EntryTick, siCalls = filter ((/= "fpr_stack_grow") . callTarget) (siCalls i)}]
     strip i = [i]
 
 data ObjectFormat = MachO | ELF deriving (Eq, Ord, Show)

@@ -4,9 +4,11 @@
 -- milestone M2; docs/2026-10-21-NATIVE-IR-CONTRACTS.md, "Calls and
 -- target constraints").
 --
--- A selected instruction is a target mnemonic (or a target pseudo that
--- expands to a fixed sequence) over operands that are still virtual
--- registers, each carrying the constraint the target places on it:
+-- A selected instruction carries an operation identity over operands that
+-- are still virtual
+-- registers, each carrying the constraint the target places on it. Shared
+-- protocols and x64 operations use constructors; other ISA operation names
+-- remain explicitly transitional in Codegen.Opcode. Constraints include:
 --
 --   * a register class (the integer bank, the float/vector bank),
 --   * a fixed physical register (an argument or result register, x86-64's
@@ -34,10 +36,11 @@
 module Codegen.Selected
   ( VReg (..), RegClass (..), Phys (..), Constraint (..), Operand (..),
     Flags (..), Control (..), Call (..), SInstr (..), Item (..), Label (..), SFn (..),
-    RegisterFile (..), plain, checkFn, itemLabels, instrVRegs, operandVReg,
+    RegisterFile (..), plain, plainOpcode, siOp, checkFn, itemLabels, instrVRegs, operandVReg,
   ) where
 
 import Codegen.Frame (FrameRef)
+import qualified Codegen.Opcode as Op
 import Control.Monad (forM_, unless, when)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -90,7 +93,7 @@ data Call = Call
 newtype Label = Label String deriving (Eq, Ord, Show)
 
 data SInstr = SInstr
-  { siOp :: String, -- the mnemonic or pseudo name the target printer understands
+  { siOpcode :: Op.Opcode, -- constructor identity survives placement/allocation
     siDefs :: [Operand],
     siUses :: [Operand],
     siImplicitDefs :: [Phys], -- written beyond the listed definitions (an expansion's scratch, %rdx of a division)
@@ -120,7 +123,14 @@ data RegisterFile = RegisterFile
 
 -- an ordinary instruction: no implicit registers, no flags, falls through
 plain :: String -> [Operand] -> [Operand] -> SInstr
-plain op ds us = SInstr op ds us [] [] [] FlagsNone Next [] ""
+plain op = plainOpcode (Op.textOpcode op)
+
+plainOpcode :: Op.Opcode -> [Operand] -> [Operand] -> SInstr
+plainOpcode op ds us = SInstr op ds us [] [] [] FlagsNone Next [] ""
+
+-- Diagnostic spelling only. Typed selectors/renderers use siOpcode.
+siOp :: SInstr -> String
+siOp = Op.opcodeName . siOpcode
 
 operandVReg :: Operand -> Maybe (VReg, Constraint)
 operandVReg = \case
