@@ -3,9 +3,15 @@
 {-# LANGUAGE LambdaCase, TupleSections #-}
 
 -- Linearity checking over surface syntax and ownership-shape evidence.
-module Frontend.Linearity where
+module Frontend.Linearity
+  (LinInfo(..), LinearityResult, checkLinearity, linearityDiagnostics, linearityConstraints,
+   primNames, shapeOfTy, shapeOfTyIn, buildLinInfo, builtinConSh, builtinConAr,
+   conFields, Cnt, LRes, lcheck, lcheckOnce, wildLinErrs, bindPat, linExpr) where
 
 import Core.Syntax ( Name )
+import qualified Diagnostic.Syntax as Diagnostic
+import Ownership.Finding (Finding(..),atFinding)
+import Source.Span (SourceOffset(..))
 import Data.List ( foldl', isPrefixOf, nub, sort )
 import Data.Maybe ( fromMaybe, isJust )
 import Frontend.Paths ( shapeTyTable )
@@ -27,11 +33,10 @@ import Ownership.Shape
       lown,
       substL,
       bindingsL,
-      demandL,
-      isConstraintMark,
+      demandOwnership,
       joinLShape,
-      projectLShape,
-      updateLShape )
+      projectOwnership,
+      updateOwnership )
 import qualified Data.Map.Strict as M
     ( delete,
       empty,
@@ -157,24 +162,43 @@ conFields li c s = do
 
 type Cnt = M.Map Name Int
 
-type LRes = ([String], Maybe Cnt, LShape)
+type LRes = ([Finding], Maybe Cnt, LShape)
 
 -- The unrestricted-variable constraints come from the bodies and from the
 -- calls those bodies make, so they are computed to a fixpoint: a round
 -- derives each function's constraints from the current table, and the
 -- errors of the round in which the table stops changing are the answer.
-lcheck :: LinInfo -> [STop] -> [String]
-lcheck li tops = go (0 :: Int) (liUnres li)
+data LinearityResult = LinearityResult [Diagnostic.Diagnostic] (M.Map Name [Name])
+linearityDiagnostics :: LinearityResult -> [Diagnostic.Diagnostic]
+linearityDiagnostics (LinearityResult ds _)=ds
+linearityConstraints :: LinearityResult -> M.Map Name [Name]
+linearityConstraints (LinearityResult _ constraints)=constraints
+checkLinearity :: LinInfo -> [STop] -> LinearityResult
+checkLinearity li tops = go (M.map (sort . nub) (liUnres li))
   where
-    go n unres =
-      let (errs, unres') = lcheckOnce li {liUnres = unres} tops
-       in if unres' == unres || n > 64 then errs else go (n + 1) unres'
+    -- Each round unions obligations into the old table. The functions and
+    -- shape variables are finite, so strict growth terminates. A fixed round
+    -- cap could return incomplete ownership evidence for a long wrapper chain.
+    go unres =
+      let result=checkLinearityRound li {liUnres=unres} tops
+          next=linearityConstraints result
+      in if next==unres then result else go next
 
+-- Compatibility projections. Compiler consumers keep diagnostics/constraints
+-- coupled in the named result and never inspect encoded string markers.
+lcheck :: LinInfo -> [STop] -> [String]
+lcheck li=map Diagnostic.renderLegacyDiagnostic . linearityDiagnostics . checkLinearity li
 lcheckOnce :: LinInfo -> [STop] -> ([String], M.Map Name [Name])
-lcheckOnce li tops = (concat [es | (_, es, _) <- results], M.unionWith merge (liUnres li) (M.fromList [(n, cs) | (n, _, cs) <- results, not (null cs)]))
+lcheckOnce li tops=let result=checkLinearityRound li tops
+  in (map Diagnostic.renderLegacyDiagnostic (linearityDiagnostics result),linearityConstraints result)
+checkLinearityRound :: LinInfo -> [STop] -> LinearityResult
+checkLinearityRound li tops = LinearityResult (concat [es | (_, es, _) <- results])
+  (M.unionWith merge (liUnres li) (M.fromList [(n, cs) | (n, _, cs) <- results, not (null cs)]))
   where
     merge a b = sort (nub (a ++ b))
-    results = [(n, filter (not . isConstraintMark) raw, sort (nub [v | ('\1' : v) <- raw])) | (n, clauses) <- groups, let raw = concatMap (checkClause n) clauses]
+    results = [(n, [Diagnostic.inDefinition n (Diagnostic.diagnostic Diagnostic.LinearityError offset message)
+                   | Violation offset message<-raw],sort (nub [v | RequireUnrestricted v<-raw]))
+              | (n,clauses)<-groups,let raw=concatMap (checkClause n) clauses]
     groups = groupTB [b | b@TBind {} <- tops]
     groupTB [] = []
     groupTB (TBind n ps g b : rest) = let (same, others) = span (\(TBind n' _ _ _) -> n' == n) rest in (n, (ps, g, b) : [(p', g', b') | TBind _ p' g' b' <- same]) : groupTB others
@@ -185,7 +209,7 @@ lcheckOnce li tops = (concat [es | (_, es, _) <- results], M.unionWith merge (li
             Just (ps, _) | length ps == length pats -> ps
             _ -> replicate (length pats) LU
           binds = concat (zipWith (bindPat li) pats paramShapes)
-          wildErrs = [if isConstraintMark w then w else "in " ++ n ++ ": " ++ w | w <- concat (zipWith (wildLinErrs li) pats paramShapes)]
+          wildErrs = concat (zipWith (wildLinErrs li) pats paramShapes)
           env = M.fromList binds
           (genv, ge, gc) =
             foldl'
@@ -200,9 +224,9 @@ lcheckOnce li tops = (concat [es | (_, es, _) <- results], M.unionWith merge (li
                         -- A failed guard can fall through without disposing
                         -- of a newly created owner. Until failure cleanup is
                         -- modeled, only irrefutable owner bindings are legal.
-                        failureErr = concat [demandL sh "a refutable pattern guard may discard a linear result; use an explicit case" | not (irrefutable p)]
-                          ++ concat [demandL sh "a later failing guard may discard a newly bound linear value; use an explicit case" | any canFail (drop (index + 1) g)]
-                        shadowErr = concat [demandL old ("pattern guard shadows an existing linear variable '" ++ v ++ "'") | (v, _) <- new, Just old <- [M.lookup v en]]
+                        failureErr = concat [demandOwnership sh "a refutable pattern guard may discard a linear result; use an explicit case" | not (irrefutable p)]
+                          ++ concat [demandOwnership sh "a later failing guard may discard a newly bound linear value; use an explicit case" | any canFail (drop (index + 1) g)]
+                        shadowErr = concat [demandOwnership old ("pattern guard shadows an existing linear variable '" ++ v ++ "'") | (v, _) <- new, Just old <- [M.lookup v en]]
                      in (en', errs ++ e' ++ wildLinErrs li p sh ++ failureErr ++ shadowErr, M.unionWith (+) cnt (fromMaybe M.empty c'))
               )
               (env, [], M.empty)
@@ -210,16 +234,11 @@ lcheckOnce li tops = (concat [es | (_, es, _) <- results], M.unionWith merge (li
           (be, bc, _) = lin' genv body
           linear = [v | (v, s) <- M.toList genv, isLin s]
           guardUsed = M.keys (M.filter (> 0) gc)
-          guardErr = concat [demandL (M.findWithDefault LU v genv) ("in " ++ n ++ ": guard uses linear variable(s) " ++ show guardUsed ++ " (guards may re-evaluate on fallthrough)") | v <- guardUsed]
+          guardErr = concat [demandOwnership (M.findWithDefault LU v genv) ("guard uses linear variable(s) " ++ show guardUsed ++ " (guards may re-evaluate on fallthrough)") | v <- guardUsed]
           useErrs = case bc of
             Nothing -> []
-            Just c -> concat [demandL (M.findWithDefault LU v genv) ("in " ++ n ++ ": linear variable '" ++ v ++ "' used " ++ show (M.findWithDefault 0 v c) ++ " time(s), expected exactly 1") | v <- linear, M.findWithDefault 0 v c /= 1]
-          -- EVERY linearity error names its bind (spans step 1: the
-          -- "in NAME:" prefix is what the error sinks anchor to
-          -- file:line) -- body/guard errors from linExpr gain it here;
-          -- a constraint marker is not an error and keeps its form
-          pre e = if isConstraintMark e || ("in " ++ n ++ ":") `isPrefixOf` e then e else "in " ++ n ++ ": " ++ e
-       in map pre (nub (wildErrs ++ ge ++ be ++ guardErr ++ useErrs))
+            Just c -> concat [demandOwnership (M.findWithDefault LU v genv) ("linear variable '" ++ v ++ "' used " ++ show (M.findWithDefault 0 v c) ++ " time(s), expected exactly 1") | v <- linear, M.findWithDefault 0 v c /= 1]
+       in nub (wildErrs ++ ge ++ be ++ guardErr ++ useErrs)
       where
         lin' = linExpr li
         irrefutable (PVar _) = True
@@ -235,16 +254,16 @@ lcheckOnce li tops = (concat [es | (_, es, _) <- results], M.unionWith merge (li
 -- a name and consume it (or `drop` it) instead.  Distributes through
 -- tuple patterns so `(x, _) = Vec.get i v` (discarding the returned
 -- HANDLE) is caught too.
-wildLinErrs :: LinInfo -> SPat -> LShape -> [String]
+wildLinErrs :: LinInfo -> SPat -> LShape -> [Finding]
 wildLinErrs li p s = case p of
-  PWild -> demandL s "a linear value is DISCARDED by `_` -- bind it and consume it (or drop it explicitly)"
+  PWild -> demandOwnership s "a linear value is DISCARDED by `_` -- bind it and consume it (or drop it explicitly)"
   PTup ps -> case s of
     LTupS ss | length ss == length ps -> concat (zipWith (wildLinErrs li) ps ss)
     _ -> []
   PRec names -> case s of
     LRecS fs open ->
-      concat [demandL sh ("record pattern discards linear field '" ++ f ++ "'; bind every owned field") | (f, sh) <- fs, f `notElem` names]
-        ++ concat [demandL s "cannot destructure an owned record with an open row; its remaining owners are unknown" | open]
+      concat [demandOwnership sh ("record pattern discards linear field '" ++ f ++ "'; bind every owned field") | (f, sh) <- fs, f `notElem` names]
+        ++ concat [demandOwnership s "cannot destructure an owned record with an open row; its remaining owners are unknown" | open]
     _ -> []
   -- A successful resource-opening constructor can hide a linear field.
   -- Checking only the outer pattern misses `Opened _` and nested forms.
@@ -282,7 +301,8 @@ linExpr li env0 = go env0
 
     go :: M.Map Name LShape -> SExpr -> LRes
     go env = \case
-      SMark _ e -> go env e
+      SMark offset e -> let (findings,count,shape)=go env e
+                        in (map (atFinding (SourceOffset offset)) findings,count,shape)
       SVar v -> case M.lookup v env of
         Just s | isLin s -> ([], Just (M.singleton v 1), s)
         Just s -> ([], Just zero, s)
@@ -303,20 +323,20 @@ linExpr li env0 = go env0
          in (e1 ++ e2, plus c1 c2, LU)
       SProj e field ->
         let (er, c, sh) = go env e
-            (errs, result) = projectLShape field sh
+            (errs, result) = projectOwnership field sh
          in (er ++ errs, c, result)
       SRec fs ->
         let rs = map (go env . snd) fs
             fields = zip (map fst fs) [s | (_, _, s) <- rs]
             repeated = M.filter (> (1 :: Int)) (M.fromListWith (+) [(f, 1) | (f, _) <- fields])
-            errs = concat [demandL s ("duplicate record field '" ++ f ++ "' discards or aliases an owned value") | f <- M.keys repeated, (n, s) <- fields, n == f]
+            errs = concat [demandOwnership s ("duplicate record field '" ++ f ++ "' discards or aliases an owned value") | f <- M.keys repeated, (n, s) <- fields, n == f]
          in (concat [e | (e, _, _) <- rs] ++ errs, foldl' plus (Just zero) [c | (_, c, _) <- rs], LRecS fields False)
       SUpd m as ->
         let base@(_, _, sh) = go env m
             updates = map (go env . snd) as
             rs = base : updates
             fields = zip (map fst as) [s | (_, _, s) <- updates]
-            (errs, result) = foldl' (\(es, old) (path, new) -> let (more, next) = updateLShape path new old in (es ++ more, next)) ([], sh) fields
+            (errs, result) = foldl' (\(es, old) (path, new) -> let (more, next) = updateOwnership path new old in (es ++ more, next)) ([], sh) fields
          in (concat [e | (e, _, _) <- rs] ++ errs, foldl' plus (Just zero) [c | (_, c, _) <- rs], result)
       SList es ->
         let rs = map (go env) es
@@ -339,7 +359,7 @@ linExpr li env0 = go env0
             capErrs = case bc of
               Nothing -> []
               Just cc ->
-                concat [ demandL s ("lambda body uses linear capture '" ++ v ++ "' " ++ show k ++ " time(s), expected exactly 1")
+                concat [ demandOwnership s ("lambda body uses linear capture '" ++ v ++ "' " ++ show k ++ " time(s), expected exactly 1")
                   | (v, s) <- caps, let k = M.findWithDefault 0 v cc, k /= 1 ]
             -- the closure owns what it captured: applying it twice is
             -- refused outright for a sure owner, and constrains the type
@@ -353,7 +373,7 @@ linExpr li env0 = go env0
             live = [(c, s) | (_, Just c, s) <- armRes]
             agree = case live of
               [] -> []
-              ((c0, _) : rest) -> concat [demandL (M.findWithDefault LU v env) ("case branches disagree on use of linear variable(s) " ++ show (disagreeing c0 c)) | (c, _) <- rest, v <- disagreeing c0 c]
+              ((c0, _) : rest) -> concat [demandOwnership (M.findWithDefault LU v env) ("case branches disagree on use of linear variable(s) " ++ show (disagreeing c0 c)) | (c, _) <- rest, v <- disagreeing c0 c]
             total = case live of
               [] -> Nothing
               ((c0, _) : _) -> plus sc (Just c0)
@@ -374,7 +394,7 @@ linExpr li env0 = go env0
           linear = [v | (v, sh) <- binds, isLin sh]
           errs = case c of
             Nothing -> []
-            Just cc -> concat [demandL (fromMaybe LU (lookup v binds)) ("linear variable '" ++ v ++ "' bound in pattern used " ++ show (M.findWithDefault 0 v cc) ++ " time(s), expected 1") | v <- linear, M.findWithDefault 0 v cc /= 1]
+            Just cc -> concat [demandOwnership (fromMaybe LU (lookup v binds)) ("linear variable '" ++ v ++ "' bound in pattern used " ++ show (M.findWithDefault 0 v cc) ++ " time(s), expected 1") | v <- linear, M.findWithDefault 0 v cc /= 1]
           c' = fmap (\cc -> foldr M.delete cc (map fst binds)) c
        in (wildLinErrs li p sshape ++ es ++ errs, c', s)
 
@@ -385,13 +405,13 @@ linExpr li env0 = go env0
           (e2, c2, shf) = goBlock env' rest final
           errs = case c2 of
             Nothing -> []
-            Just cc | isLin sh, M.findWithDefault 0 n cc /= 1 -> demandL sh ("linear variable '" ++ n ++ "' used " ++ show (M.findWithDefault 0 n cc) ++ " time(s), expected exactly 1")
+            Just cc | isLin sh, M.findWithDefault 0 n cc /= 1 -> demandOwnership sh ("linear variable '" ++ n ++ "' used " ++ show (M.findWithDefault 0 n cc) ++ " time(s), expected exactly 1")
             _ -> []
           c2' = fmap (M.delete n) c2
        in (e1 ++ e2 ++ errs, plus c1 c2', shf)
     goBlock env (SBind n _ps rhs : rest) final =
       let caps = [(v, s) | v <- sFree rhs, Just s <- [M.lookup v env], isLin s]
-          errs = concat [demandL s ("local function '" ++ n ++ "' captures linear variable(s) " ++ show (map fst caps)) | (_, s) <- caps]
+          errs = concat [demandOwnership s ("local function '" ++ n ++ "' captures linear variable(s) " ++ show (map fst caps)) | (_, s) <- caps]
           (e2, c2, shf) = goBlock (M.insert n LU env) rest final
        in (errs ++ e2, c2, shf)
     goBlock env (SBindPat p rhs : rest) final =
@@ -403,7 +423,7 @@ linExpr li env0 = go env0
           linear = [v | (v, s) <- binds, isLin s]
           errs = case c2 of
             Nothing -> []
-            Just cc -> concat [demandL (fromMaybe LU (lookup v binds)) ("linear variable '" ++ v ++ "' used " ++ show (M.findWithDefault 0 v cc) ++ " time(s), expected exactly 1") | v <- linear, M.findWithDefault 0 v cc /= 1]
+            Just cc -> concat [demandOwnership (fromMaybe LU (lookup v binds)) ("linear variable '" ++ v ++ "' used " ++ show (M.findWithDefault 0 v cc) ++ " time(s), expected exactly 1") | v <- linear, M.findWithDefault 0 v cc /= 1]
           c2' = fmap (\cc -> foldr M.delete cc (map fst binds)) c2
        in (e1w ++ e2 ++ errs, plus c1 c2', shf)
 
@@ -441,7 +461,7 @@ linExpr li env0 = go env0
       | Just (ps, r) <- M.lookup g (liSigs li) =
           let b = bindingsL ps argShapes
               required = M.findWithDefault [] g (liUnres li)
-              violated = concat [demandL s ("'" ++ g ++ "' duplicates or discards its argument of type `" ++ v ++ "`, so it cannot take an owned value there") | v <- required, Just s <- [M.lookup v b]]
+              violated = concat [demandOwnership s ("'" ++ g ++ "' duplicates or discards its argument of type `" ++ v ++ "`, so it cannot take an owned value there") | v <- required, Just s <- [M.lookup v b]]
            in (if nargs == length ps then substL b LU r else LU, nargs >= length ps, violated)
       | otherwise = (LU, True, [])
       where

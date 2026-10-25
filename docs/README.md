@@ -298,3 +298,4 @@ they began.
 - [First native typed-Core lowering](2026-10-25-TYPED-CORE-LOWERING.md): checked expression construction used by native desugaring, scope/type/ownership-shape lint and the remaining erasure boundary.
 - [Typed Core aggregates and patterns](2026-10-25-TYPED-CORE-PATTERNS.md): aggregate/pattern lowering and constructor emission, lexical dictionary constraints and the remaining typed transformation work.
 - [Shared compiler options and caches](2026-10-25-COMPILER-OPTIONS.md): typed environment and CLI owners, canonical cache inputs and a reproduced executable-cache mode mismatch.
+- [Structured checking diagnostics](2026-10-25-STRUCTURED-DIAGNOSTICS.md): source metadata through inference, safety and linearity, typed ownership obligations and the completed ownership fixpoint.

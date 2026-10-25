@@ -6,6 +6,7 @@ module Infer.Evidence
     evidenceNamespace, evidenceBinders, evidenceExpressions, evidenceRoots,
     Builder, emptyBuilder, currentExpression, bindNames, refineName, beginExpr, endExpr,
     mapBuilderTypesM, sealEvidence ) where
+import Source.Span (SourceOffset)
 import Core.Identity
 import Frontend.Syntax (SExpr(..))
 import Type.Syntax (Type, Scheme(..))
@@ -24,7 +25,7 @@ data BinderFact = BinderFact
     binderScheme :: Scheme, binderTypeShape :: LShape } deriving (Show)
 data ExprFact = ExprFact
   { expressionIdentity :: ExprId, expressionOwner :: Maybe String,
-    expressionOffset :: Maybe Int, expressionSource :: SExpr,
+    expressionOffset :: Maybe SourceOffset, expressionSource :: SExpr,
     expressionRewritten :: SExpr,
     expressionType :: Type, expressionTypeShape :: LShape,
     expressionReference :: Maybe Reference,
@@ -45,7 +46,7 @@ evidenceRoots (Evidence _ _ _ roots) = roots
 -- Force context projections when entering a node, so a pending expression
 -- does not retain an entire historical inference state through a lazy selector.
 data PendingBinder = PendingBinder !BinderId String !(Maybe String) !BindingRole !Scheme
-data PendingExpr = PendingExpr !ExprId !(Maybe String) !(Maybe Int) !SExpr
+data PendingExpr = PendingExpr !ExprId !(Maybe String) !(Maybe SourceOffset) !SExpr
   !(M.Map String BinderId) !(Maybe Reference) !(Maybe (Type,SExpr)) [ExprId]
 data Builder = Builder Namespace Int Int (IM.IntMap PendingBinder)
   (IM.IntMap PendingExpr) [ExprId] [ExprId] [String]
@@ -76,7 +77,7 @@ refineName (BinderId wanted key) sc (Builder ns nb ne bs es stack roots issues) 
       Builder ns nb ne (IM.insert key (PendingBinder uid n o r sc) bs) es stack roots issues
     _ -> Builder ns nb ne bs es stack roots ("refining an absent binder":issues)
 
-beginExpr :: Maybe String -> Maybe Int -> SExpr -> M.Map String BinderId
+beginExpr :: Maybe String -> Maybe SourceOffset -> SExpr -> M.Map String BinderId
           -> Maybe Reference -> Builder -> (ExprId,Builder)
 beginExpr owner off source scope ref (Builder ns nb next bs es stack roots issues) =
   let uid = ExprId ns next

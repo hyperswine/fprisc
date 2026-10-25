@@ -4,6 +4,7 @@
 module Core.Typed.Syntax
   ( Binder(..), Reference(..), Origin(..), Expr(..), Node(..), Function(..), TypeContext(..), Pattern(..), PatNode(..), Alternative(..), Guard(..), MatchStyle(..), patternBinders,
     binderType, functionType ) where
+import Source.Span (SourceOffset)
 import Core.Identity
 import Type.Syntax (Type(..), Scheme(..))
 import Ownership.Shape (LShape)
@@ -16,7 +17,7 @@ data Reference = Local !BinderId | Global String Scheme deriving (Show)
 data Origin = Checked !ExprId | Reinstantiated !ExprId | Generated deriving (Eq, Show)
 data Expr = Expr
   { exprType :: Type, exprShape :: LShape, exprOrigin :: Origin,
-    exprOffset :: Maybe Int, exprNode :: Node } deriving (Show)
+    exprOffset :: Maybe SourceOffset, exprNode :: Node } deriving (Show)
 data Node
   = Var Reference
   | IntValue Integer

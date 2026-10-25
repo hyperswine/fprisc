@@ -19,9 +19,9 @@
 --
 -- This file was a ~1,000-line fork of Infer.hs; the un-forking is
 -- docs/2026-08-29-MEMORY-V2-PLAN.md's "de-fork the frontend" item made real.
-module Sol.Infer (inferTops) where
+module Sol.Infer (inferTops, inferResult) where
 
-import Infer (IProf (..), TEnv, inferTopsWith, mono, scheme, sv)
+import Infer (IProf (..), TEnv, InferenceResult, inferTopsResult, inferTopsWith, mono, scheme, sv)
 import Type.Syntax (Type(..), tBool, tInt, tList, tStr, tUnit, tcon)
 import qualified Data.Map.Strict as M
 import Ownership.Shape (LShape)
@@ -43,6 +43,9 @@ solProf =
 -- bindings need the same ownership checks as explicitly signed bindings.
 inferTops :: Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [(Name, ([LShape], LShape))], [STop])
 inferTops = inferTopsWith solProf
+
+inferResult :: Sigs -> Structs -> [STop] -> InferenceResult
+inferResult = inferTopsResult Nothing solProf
 
 solBuiltins :: TEnv
 solBuiltins =

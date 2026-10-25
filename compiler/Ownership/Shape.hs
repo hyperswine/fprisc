@@ -5,6 +5,7 @@
 -- Ownership vocabulary/substitution independent of either AST or inference.
 module Ownership.Shape where
 
+import Ownership.Finding (Finding(..),renderLegacyFinding)
 import Data.List ( nub )
 import Data.Maybe ( fromMaybe )
 import qualified Data.Map.Strict as M
@@ -108,12 +109,16 @@ bindingsL decl actual = M.fromListWith joinLShape (concat (zipWith matchL decl a
 
 -- an obligation on a shape: owned for sure is an error; owned only if a
 -- type variable is instantiated with an owner becomes a constraint on that
--- variable (a marker the clause checker collects, never a printed error)
-demandL :: LShape -> String -> [String]
-demandL s msg
-  | hardLin s = [msg]
-  | isLin s = [constraintMark v | v <- lvars s]
+-- variable (an obligation the clause checker collects, never an error)
+demandOwnership :: LShape -> String -> [Finding]
+demandOwnership s msg
+  | hardLin s = [Violation Nothing msg]
+  | isLin s = [RequireUnrestricted v | v <- lvars s]
   | otherwise = []
+
+-- Old helper API projections. The frontend uses the typed functions below.
+demandL :: LShape -> String -> [String]
+demandL shape message=map renderLegacyFinding (demandOwnership shape message)
 
 constraintMark :: String -> String
 constraintMark v = '\1' : v
@@ -133,22 +138,29 @@ joinLShape (LTupS as) (LTupS bs) | length as == length bs = LTupS (zipWith joinL
 joinLShape (LRecS as ar) (LRecS bs br) = LRecS (M.toList (M.unionWith joinLShape (M.fromList as) (M.fromList bs))) (ar || br)
 joinLShape _ _ = LL
 
-projectLShape :: [String] -> LShape -> ([String], LShape)
-projectLShape [] sh = ([], sh)
-projectLShape (field : path) sh = case sh of
+projectOwnership :: [String] -> LShape -> ([Finding], LShape)
+projectOwnership [] sh = ([], sh)
+projectOwnership (field : path) sh = case sh of
   LRecS fs open ->
     let residual = [f | (f, s) <- fs, f /= field, isLin s]
-        errs = concat [demandL s ("record projection discards linear field(s) " ++ show residual ++ "; destructure all owned fields together") | (f, s) <- fs, f /= field, isLin s]
-          ++ concat [demandL sh "cannot project from an owned record with an open row; its remaining owners are unknown" | open]
-        (nested, result) = projectLShape path (fromMaybe LU (lookup field fs))
+        errs = concat [demandOwnership s ("record projection discards linear field(s) " ++ show residual ++ "; destructure all owned fields together") | (f, s) <- fs, f /= field, isLin s]
+          ++ concat [demandOwnership sh "cannot project from an owned record with an open row; its remaining owners are unknown" | open]
+        (nested, result) = projectOwnership path (fromMaybe LU (lookup field fs))
      in (errs ++ nested, result)
   _ -> ([], LU)
 
-updateLShape :: [String] -> LShape -> LShape -> ([String], LShape)
-updateLShape [] new old =
-  (demandL old "record update discards an owned field; destructure and consume it before replacement", new)
-updateLShape (field : path) new sh =
+updateOwnership :: [String] -> LShape -> LShape -> ([Finding], LShape)
+updateOwnership [] new old =
+  (demandOwnership old "record update discards an owned field; destructure and consume it before replacement", new)
+updateOwnership (field : path) new sh =
   let (fs, open) = case sh of LRecS old row -> (old, row); _ -> ([], False)
-      (errs, result) = updateLShape path new (fromMaybe LU (lookup field fs))
-      unknown = concat [demandL sh "cannot replace an unknown field in an owned open record; its ownership is unknown" | open, field `notElem` map fst fs]
+      (errs, result) = updateOwnership path new (fromMaybe LU (lookup field fs))
+      unknown = concat [demandOwnership sh "cannot replace an unknown field in an owned open record; its ownership is unknown" | open, field `notElem` map fst fs]
    in (unknown ++ errs, LRecS (M.toList (M.insert field result (M.fromList fs))) open)
+
+projectLShape :: [String] -> LShape -> ([String], LShape)
+projectLShape fields shape=let (findings,result)=projectOwnership fields shape
+  in (map renderLegacyFinding findings,result)
+updateLShape :: [String] -> LShape -> LShape -> ([String], LShape)
+updateLShape fields new old=let (findings,result)=updateOwnership fields new old
+  in (map renderLegacyFinding findings,result)

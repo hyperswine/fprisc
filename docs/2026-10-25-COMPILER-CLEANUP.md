@@ -19,7 +19,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Checked pipeline products and lint | Structural pass result and initial typed desugaring product implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
-| Structured diagnostics/spans | Diagnostics owner separated; typed diagnostics/spans still pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
+| Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
 | Typed codegen contracts | Vector operations/float widths implemented; remaining kernel stages, call-convention contracts and ISA instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
 | Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
 | Obsolete architecture descriptions and names | Module identity and frontend-owner references corrected; backend references/names still pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
@@ -168,3 +168,29 @@ Validation: 135 Base jobs passed in 435.19 seconds on six workers with no
 reused CI coverage, alongside 128 fresh emission/unit-key comparisons, the
 pre-fix cache-bug reproduction, native mode/contract cache transitions and Sol
 compatibility/bounded-tail checks. The complete architecture goal stays active.
+
+## Structured checking diagnostics and ownership obligations
+
+[Structured checking diagnostics](2026-10-25-STRUCTURED-DIAGNOSTICS.md) introduces
+independent source coordinates, semantic diagnostics and located rendering.
+Inference, safety/measure checking and linearity construct these products;
+native compilation and Sol consume them directly. Legacy string formatting is
+restricted to compatibility APIs. Checking evidence and typed Core retain typed
+source offsets.
+
+Ownership violations and unrestricted type-variable obligations now have
+separate constructors. The named linearity product contains the completed
+constraint table and diagnostics. A verified 64-round truncation bug was fixed:
+the old compiler accepted a 90-wrapper path to duplication of an owned value;
+the true fixpoint rejects it at the call. Deferred operator errors also retain
+their original function/statement context.
+
+Remaining diagnostic producers, full surface ranges/generated origins and
+imported Sol context are still required. The typed-Core transformation seam,
+machine/ABI contracts and other outstanding table entries remain full-goal work.
+
+Validation: all 136 Base jobs passed in 435.56 seconds on six workers without
+reused CI coverage. The structured product/CLI regressions and independently
+verified pre-fix ownership counterexample, 128 fresh emission/unit comparisons,
+parser Binary/cache compatibility and Sol compatibility/bounded-tail checks
+passed. Codegen revision 106 and native ABIs are unchanged.

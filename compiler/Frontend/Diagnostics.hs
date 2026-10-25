@@ -2,9 +2,10 @@
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 {-# LANGUAGE LambdaCase, TupleSections #-}
 
--- Source anchoring compatibility; structured diagnostics are a later stage.
+-- Source definition anchors and compatibility API for diagnostic rendering.
 module Frontend.Diagnostics where
 
+import qualified Diagnostic.Render as Render
 import Core.Syntax ( Name )
 import Data.List ( isPrefixOf, nub )
 import Frontend.Syntax ( STop(TSig, TBind) )
@@ -55,61 +56,4 @@ evalAnchors file src =
     ]
 
 anchorMsg :: Sources -> Anchors -> String -> String
-anchorMsg srcs anchors msg = case msg of
-  'i' : 'n' : ' ' : rest
-    | (n, ':' : ' ' : body) <- break (== ':') rest ->
-        let cleaned = "in " ++ n ++ ": " ++ dropMark body
-         in case M.lookup n anchors of
-              Nothing -> cleaned
-              Just (f, bindLn) -> case markPos f body of
-                Just (l, c) -> at f l c cleaned
-                Nothing -> case tokenPos f n bindLn body of
-                  Just (l, c) -> at f l c cleaned
-                  Nothing -> f ++ ":" ++ show bindLn ++ ": " ++ cleaned
-  _ -> dropMark msg
-  where
-    at f l c rest' = f ++ ":" ++ show l ++ ":" ++ show c ++ ": " ++ rest'
-    -- step 3: "@OFF~ " stamp from the inference engine
-    markPos f ('@' : b)
-      | (ds@(_ : _), '~' : ' ' : _) <- span (`elem` ("0123456789" :: String)) b =
-          offsetPos f (read ds)
-    markPos _ _ = Nothing
-    dropMark ('@' : b)
-      | (_ : _, '~' : ' ' : real) <- span (`elem` ("0123456789" :: String)) b = real
-    dropMark b = b
-    offsetPos f off = do
-      src <- M.lookup f srcs
-      let pre = take off src
-          l = 1 + length (filter (== '\n') pre)
-          c = 1 + length (takeWhile (/= '\n') (reverse pre))
-      pure (l, c)
-    -- step 2: the token the message names, found in the bind's range
-    tokenPos f n bindLn body = do
-      src <- M.lookup f srcs
-      tok <- msgToken body
-      let endLn = case [l | (_, (f', l)) <- M.toList anchors, f' == f, l > bindLn] of
-            [] -> length (lines src)
-            ls -> minimum ls - 1
-          slice = take (endLn - bindLn + 1) (drop (bindLn - 1) (lines src))
-      case [ (bindLn + i, c)
-             | (i, l) <- zip [0 ..] slice,
-               c <- take 1 (wordHits tok l)
-           ] of
-        (p : _) -> Just p
-        [] -> Nothing
-    msgToken body = case break (== '\'') body of
-      (_, '\'' : q) | (tok@(_ : _), '\'' : _) <- break (== '\'') q -> Just tok
-      _
-        | Just r <- afterStr "application of " body -> Just (takeWhile identChar r)
-        | otherwise -> Nothing
-    afterStr pat s
-      | pat `isPrefixOf` s = Just (drop (length pat) s)
-      | otherwise = case s of (_ : t) -> afterStr pat t; [] -> Nothing
-    wordHits tok l =
-      [ i + 1
-        | i <- [0 .. length l - length tok],
-          take (length tok) (drop i l) == tok,
-          i == 0 || not (identChar (l !! (i - 1))),
-          i + length tok >= length l || not (identChar (l !! (i + length tok)))
-      ]
-    identChar c = c `elem` ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.'@" :: String)
+anchorMsg = Render.anchorLegacyMessage

@@ -29,6 +29,7 @@ def base(path, timeout, alone=False, lock=None):
 base('tests/test_check_registry.py', 60)
 base('tests/check_core_pipeline.py', 240, lock='cabal')
 base('tests/check_compiler_options.py', 300, lock='cabal')
+base('tests/check_diagnostics.py', 300, lock='cabal')
 base('tests/check_frontend.py', 240, lock='cabal')
 base('tests/check_inference_evidence.py', 240, lock='cabal')
 base('tests/check_typed_core.py', 240, lock='cabal')

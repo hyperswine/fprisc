@@ -5,6 +5,8 @@ import Core.Identity (BinderId, ExprId, Namespace)
 import Type.Syntax (Type, Row, Scheme)
 import Ownership.Shape (LShape)
 import Struct (Sigs)
+import Diagnostic.Syntax (Diagnostic)
+import Source.Span (SourceOffset)
 import Infer.Pattern (PatternSite, PatternInfo)
 import qualified Infer.Evidence as Evidence
 import qualified Data.Map.Strict as M
@@ -21,7 +23,7 @@ data IEnv = IEnv
   { iFresh :: !Int,
     iSub :: IM.IntMap Type, -- tvar solutions
     iRSub :: IM.IntMap Row, -- rowvar solutions
-    iErrs :: [String],
+    iErrs :: [Diagnostic],
     iNotes :: [(Name, String)], -- pretty-printed inferred schemes
     iDeferredDeclarations :: [(Name,Scheme,Type)],
     iHoles :: [(String, Type)], -- typed holes: ?name / ?? with site type
@@ -30,13 +32,13 @@ data IEnv = IEnv
     iNextSite :: !Int,
     iSites :: IM.IntMap (Name, Type), -- operator/layout sites awaiting resolution
     iSiteExpressions :: IM.IntMap ExprId,
-    iSiteMarks :: IM.IntMap (Maybe Int), -- retain their diagnostic anchors
+    iSiteMarks :: IM.IntMap (Maybe SourceOffset), -- retain their diagnostic anchors
+    iSiteOwners :: IM.IntMap (Maybe Name),
     iCarriers :: IM.IntMap Carrier, -- carrier var -> (param, sig)
     iOperatorScopes :: IM.IntMap OperatorScope,
     iCarrierChoices :: IM.IntMap Carrier,
-    iHere :: Maybe Int, -- spans step 3: the innermost enclosing SMark's
-                        -- source offset while inference walks under it;
-                        -- report stamps it into diagnostics as "@OFF~ "
+    iHere :: Maybe SourceOffset, -- innermost parser point, retained as data
+    iCurrentOwner :: Maybe Name,
     iPairs :: IM.IntMap (Type, Type), -- operator sites whose operand types
                                      -- were NOT unified eagerly (both concrete,
                                      -- at least one user type): resolution may
@@ -90,7 +92,7 @@ initialIEnv capture = IEnv
   { iFresh=0, iSub=IM.empty, iRSub=IM.empty, iErrs=[], iNotes=[],
     iHoles=[], iHolesP=[], iHoledCons=S.empty, iNextSite=0,
     iSites=IM.empty, iSiteExpressions=IM.empty, iSiteMarks=IM.empty, iCarriers=IM.empty,
-    iHere=Nothing, iPairs=IM.empty, iVecPlans=M.empty,
+    iHere=Nothing, iCurrentOwner=Nothing, iSiteOwners=IM.empty, iPairs=IM.empty, iVecPlans=M.empty,
     iVecRefs=IM.empty, iVecOwners=IM.empty, iDefTypes=M.empty,
     iOperatorScopes=IM.empty, iCarrierChoices=IM.empty,
     iInterfaces=[], iEvidenceBuilder=Evidence.emptyBuilder <$> capture,

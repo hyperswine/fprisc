@@ -29,9 +29,11 @@ import Sol.Lang
 import Sol.Mod (resolveModuleParsed, parseCachedSource)
 import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
-import Safety (safetyCheck, trustedLibraryPaths)
+import Safety (checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import Precond (applyPreconds, preTable, validatePre, validatePreUses)
-import Sol.Infer (inferTops)
+import Sol.Infer (inferResult)
+import Infer.Result
+import qualified Diagnostic.Render as SourceDiagnostic
 import Infer (builtinLinShapes)
 import Sol.Width (widthReport)
 import Sol.HandJIT (JitCtx, initJIT)
@@ -133,12 +135,10 @@ compileScript :: FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name 
 compileScript path src ptops utops utopsX0' trusted = do
   noteRef <- newIORef []
   let note msg = modifyIORef' noteRef (msg :) >> diagnostic msg
-  let anchored =
-        map
-          ( anchorMsg
-              (M.singleton path src)
-              (M.union (bindAnchors path src utops) (evalAnchors path src))
-          )
+  let sources=M.singleton path src
+      anchors=M.union (bindAnchors path src utops) (evalAnchors path src)
+      anchored=map (anchorMsg sources anchors)
+      anchoredDiagnostics=map (SourceDiagnostic.renderSourceDiagnostic sources anchors)
   -- `Rand = rnd.Rand.` where the target is an imported STRUCT: resolve the
   -- local alias by rewriting every `Rand` / `Rand.f` reference to the
   -- canonical spliced name, so field calls hit the flat globals and
@@ -190,14 +190,21 @@ compileScript path src ptops utops utopsX0' trusted = do
     if noTypes
       then pure (checkedTops, []) -- ops stay Int prims; debugging only
       else do
-        let (terrs0, notes0, holes0, inferredLinSigs, rewritten0) = inferTops sigs structs checkedTops
+        let result=inferResult sigs structs checkedTops
+            terrs0=inferenceDiagnostics result
+            notes0=inferenceNotes result
+            holes0=inferenceHoles result
+            inferredLinSigs=inferenceLinearity result
+            rewritten0=inferenceTops result
         (terrs, notes, holes, rewritten) <- phase "typecheck" $ pure (terrs0, notes0, holes0, rewritten0)
         let preludeNames = trusted <> S.fromList [n | TBind n _ _ _ <- ptopsExp]
-            (serrs, ssug) = safetyCheck preludeNames (map evalForSafety (ptopsExp ++ topsExp)) notes
+            safety = checkSafety preludeNames (map evalForSafety (ptopsExp ++ topsExp)) notes
+            serrs = safetyDiagnostics safety
+            ssug = safetySuggestions safety
             userNames = S.fromList [n | TBind n _ _ _ <- topsExp]
         unless (null terrs) $ do
           diagnostic "=== TYPE ERRORS ==="
-          mapM_ (diagnostic . ("  * " ++)) (anchored terrs)
+          mapM_ (diagnostic . ("  * " ++)) (anchoredDiagnostics terrs)
           exitFailure
         let namedHoles = [(n, t) | (n, t) <- holes, not (null n)]
         unless (null namedHoles) $ do
@@ -210,7 +217,7 @@ compileScript path src ptops utops utopsX0' trusted = do
         noSafety <- (== Just "1") <$> lookupEnv "SOL_NO_SAFETY"
         unless (noSafety || null serrs) $ do
           diagnostic "=== SAFETY: the safe/unsafe line ==="
-          mapM_ (diagnostic . ("  * " ++)) (anchored serrs)
+          mapM_ (diagnostic . ("  * " ++)) (anchoredDiagnostics serrs)
           sug <- lookupEnv "FPR_UNSAFE_SUGGEST"
           when (sug == Just "1") $ mapM_ (diagnostic . ("SUGGEST " ++)) ssug
           exitFailure
@@ -251,10 +258,11 @@ compileScript path src ptops utops utopsX0' trusted = do
   let li0 = buildLinInfo tops
       li = li0 {liSigs = liSigs li0 `M.union` M.fromList linsigs
                           `M.union` builtinLinShapes (liLinTys li0)}
-      lerrs = lcheck li tops
+      linearity = checkLinearity li tops
+      lerrs = linearityDiagnostics linearity
   unless (null lerrs) $ do
     diagnostic "=== LINEARITY: ERRORS ==="
-    mapM_ (diagnostic . ("  * " ++)) (anchored lerrs)
+    mapM_ (diagnostic . ("  * " ++)) (anchoredDiagnostics lerrs)
     exitFailure
 
   (cons, shapes) <- phase "layout" $ pure (collectCons tops, collectShapes tops)

@@ -2,6 +2,7 @@
 -- Decisions made by checked operator/layout resolution. Consumers must not
 -- rediscover these decisions by parsing marker strings in a rewritten body.
 module Infer.Elaboration (OpTarget(..), ElaborationFact(..), markerPrefix, applySites) where
+import Source.Span (SourceOffset)
 import Core.Identity (ExprId)
 import Frontend.Syntax (SExpr(..), SStmt(..), Seg(..))
 import Core.Syntax (Name)
@@ -17,7 +18,7 @@ data OpTarget = OpPrim String | OpGlobal String | OpVecLayout String String
 data ElaborationFact = ElaborationFact
   { elaborationSite :: Int, elaborationOperation :: String,
     elaborationType :: Type, elaborationTarget :: OpTarget,
-    elaborationOffset :: Maybe Int, elaborationExpression :: Maybe ExprId }
+    elaborationOffset :: Maybe SourceOffset, elaborationExpression :: Maybe ExprId }
   deriving (Show)
 
 markerPrefix :: String

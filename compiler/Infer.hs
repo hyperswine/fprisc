@@ -50,6 +50,8 @@ import Ownership.Shape
 import Ownership.TypeShape
 import Type.Syntax
 import Type.Relation (sameType, fieldType)
+import qualified Diagnostic.Syntax as Diag
+import Source.Span (SourceOffset(..))
 import Infer.State
 import Infer.Pattern
 import Infer.Result
@@ -71,11 +73,18 @@ freshR :: I Row
 freshR = do s <- get; put s {iFresh = iFresh s + 1}; pure (RV (iFresh s))
 
 report :: String -> I ()
-report e = modify (\s -> s {iErrs = iErrs s ++ [stamp (iHere s) e]})
-  where
-    -- the error sinks resolve "@OFF~ " to file:line:col (anchorMsg)
-    stamp (Just o) msg = "@" ++ show o ++ "~ " ++ msg
-    stamp Nothing msg = msg
+report = reportCode Diag.InferenceError
+reportCode :: Diag.DiagnosticCode -> String -> I ()
+reportCode code message = modify (\s ->
+  let d=Diag.diagnostic code (iHere s) message
+      located=maybe d (\owner -> Diag.inDefinition owner d) (iCurrentOwner s)
+  in s {iErrs=iErrs s++[located]})
+reportIn :: Name -> Diag.DiagnosticCode -> String -> I ()
+reportIn owner code message = do
+  before<-gets (length . iErrs)
+  reportCode code message
+  modify (\s -> let (old,new)=splitAt before (iErrs s)
+                 in s {iErrs=old++map (Diag.inDefinition owner) new})
 
 -- ---- zonking (chase solutions) ----------------------------------------------
 
@@ -139,7 +148,7 @@ unify ctx a0 b0 = do
     _ -> do
       pa <- prettyT a
       pb <- prettyT b
-      report (ctx ++ ": cannot unify " ++ pa ++ " with " ++ pb)
+      reportCode Diag.TypeMismatch (ctx ++ ": cannot unify " ++ pa ++ " with " ++ pb)
   where
     bindT v t
       | t == TV v = pure ()
@@ -280,10 +289,10 @@ checkDeclared n sc@(Forall tvs _ _) t
       -- wrongly-general signature breaks it, and saying so five times
       -- buries the one fix
       let headline = "the declared type of " ++ n ++ " is more general"
-      when (broke && not (any (headline `isInfixOf`) errs0)) $ do
+      when (broke && not (any (isInfixOf headline . Diag.diagnosticMessage) errs0)) $ do
         promised <- prettyAsWritten =<< instantiate sc
         actual <- prettyAsWritten t
-        report
+        reportCode Diag.SignatureGenerality
           ( headline
               ++ " than its definition: the signature promises "
               ++ promised
@@ -916,7 +925,8 @@ newSite op t = do
         Just uid -> IM.insert n uid (iSiteExpressions st)
         Nothing -> iSiteExpressions st
   put st {iNextSite = n + 1, iSites = IM.insert n (op, t) (iSites st),
-          iSiteMarks = IM.insert n (iHere st) (iSiteMarks st), iSiteExpressions=origins}
+          iSiteMarks = IM.insert n (iHere st) (iSiteMarks st),
+          iSiteOwners = IM.insert n (iCurrentOwner st) (iSiteOwners st), iSiteExpressions=origins}
   pure n
 
 -- Keep only the local dictionary types that are in scope at an operator.
@@ -968,7 +978,7 @@ constrainCarrierSites sigs first = stabilize
                   modify (\st ->
                     let (previous,new)=splitAt nerrors (iErrs st)
                         owner=case scope of Just (OperatorScope n _)->n; _->Nothing
-                        prefixed=case owner of Just n->["in "++n++": "++e | e<-new]; _->new
+                        prefixed=case owner of Just n->map (Diag.inDefinition n) new; _->new
                     in st {iHere=old,iErrs=previous++prefixed,iCarrierChoices=IM.insert k c (iCarrierChoices st)})
                 _->pure ()
             _->pure ()
@@ -1011,7 +1021,12 @@ recFields (TRec r) = go r
 recFields _ = Nothing
 
 inferE :: ICtx -> SExpr -> I (Type, SExpr)
-inferE ctx e0 = withExprEvidence ctx e0 (inferERaw ctx e0)
+inferE ctx e0 = do
+  previous<-gets iCurrentOwner
+  modify (\s -> s {iCurrentOwner=icOwner ctx})
+  result<-withExprEvidence ctx e0 (inferERaw ctx e0)
+  modify (\s -> s {iCurrentOwner=previous})
+  pure result
 
 inferERaw :: ICtx -> SExpr -> I (Type, SExpr)
 inferERaw ctx e0 = case e0 of
@@ -1019,7 +1034,7 @@ inferERaw ctx e0 = case e0 of
   -- reported below it carry its offset), infer through, keep the mark
   SMark o e -> do
     old <- gets iHere
-    modify (\s -> s {iHere = Just o})
+    modify (\s -> s {iHere = Just (SourceOffset o)})
     (t, e') <- inferE ctx e
     modify (\s -> s {iHere = old})
     pure (t, SMark o e')
@@ -1082,7 +1097,7 @@ inferERaw ctx e0 = case e0 of
         Nothing -> case M.lookup n (icCons ctx) of
           Just sc -> (,SVar n) <$> instantiate sc
           Nothing -> do
-            report ("unbound name: " ++ n)
+            reportCode Diag.UnboundName ("unbound name: " ++ n)
             (,SVar n) <$> freshT
     -- constructor with a ?? field: the VALUE types normally; CALLING it
     -- traps at runtime (eta-wrapped, so earlier args still evaluate)
@@ -1378,10 +1393,13 @@ resolveSites prof sigs env = do
   where
     one k payload = do
       old <- gets iHere
+      owner <- gets iCurrentOwner
       marks <- gets iSiteMarks
-      modify (\st -> st {iHere = IM.findWithDefault Nothing k marks})
+      owners <- gets iSiteOwners
+      modify (\st -> st {iHere = IM.findWithDefault Nothing k marks,
+                         iCurrentOwner = IM.findWithDefault Nothing k owners})
       target <- oneAt k payload
-      modify (\st -> st {iHere = old})
+      modify (\st -> st {iHere = old,iCurrentOwner=owner})
       pure target
     oneAt k (op, t0) = do
       pairs <- gets iPairs
@@ -1633,7 +1651,7 @@ prepareVectorEvidence binds = do
           fn <- maybe freshT zonk (M.lookup n defs)
           let (fv,fr) = ftv fn
           when (n `elem` ["main","machineMain","machineInterrupt"] || any (\e -> let (v,r)=ftv e in not (v `S.isSubsetOf` fv && r `S.isSubsetOf` fr)) es) $
-            report ("in " ++ n ++ ": vector output layout is ambiguous at this entry; give its element a concrete type")
+            reportIn n Diag.InferenceError "vector output layout is ambiguous at this entry; give its element a concrete type"
       -- A wrapper chain can be as long as the program. Bound the solver
       -- by its graph size rather than imposing a 32-helper language limit.
       else if round' >= IM.size sites + M.size defs then report "vector layout requirements did not converge" else stabilize owned (round'+1)
@@ -1749,7 +1767,7 @@ inferTopsResult capture prof sigs structs tops =
         r <- snd <$> inferE (ICtx env cons sigs prof S.empty M.empty (Just ("<eval " ++ show evi ++ ">")) M.empty) e
         modify $ \st ->
           let (old, new) = splitAt nerrs0 (iErrs st)
-           in st {iErrs = old ++ ["in <eval " ++ show evi ++ ">: " ++ m | m <- new]}
+           in st {iErrs = old ++ map (Diag.inDefinition ("<eval "++show evi++">")) new}
         pure r
       -- typed struct conformance
       checkStructConformance sigs structs env
@@ -1805,7 +1823,7 @@ inferTopsResult capture prof sigs structs tops =
               before<-gets (length . iErrs)
               checkDeclared n sc t
               modify (\s -> let (old,new)=splitAt before (iErrs s)
-                             in s {iErrs=old++["in "++n++": "++e | e<-new]})
+                             in s {iErrs=old++map (Diag.inDefinition n) new})
             final=execState verify st
         modify (\s -> s {iErrs=iErrs final})
       modify (\s -> s {iDeferredDeclarations=[]})
@@ -1927,7 +1945,7 @@ inferTopsResult capture prof sigs structs tops =
           -- prefix errors this clause produced with the bind name
           modify $ \st ->
             let (old, new) = splitAt nerrs0 (iErrs st)
-             in st {iErrs = old ++ ["in " ++ n ++ ": " ++ e | e <- new]}
+             in st {iErrs = old ++ map (Diag.inDefinition n) new}
           pure (n, ps, g', b')
         -- anchor the coverage report at the first clause's body: iHere is
         -- an inferE-scoped mark and has been restored by now, so without
@@ -1935,7 +1953,7 @@ inferTopsResult capture prof sigs structs tops =
         unless (null cov) $ do
           old <- gets iHere
           modify (\s -> s {iHere = firstMark (clauses n)})
-          mapM_ (report . (("in " ++ n ++ ": ") ++)) cov
+          mapM_ (reportIn n Diag.CoverageError) cov
           modify (\s -> s {iHere = old})
         pure res
       constrainCarrierSites sigs firstSite
@@ -1970,7 +1988,7 @@ inferTopsResult capture prof sigs structs tops =
       pure (M.union (M.fromList newEnv) env, concat rws)
       where
         clauses n = [(ps, g, b) | TBind n' ps g b <- tops, n' == n]
-        firstMark cls = case [o | (_, _, SMark o _) <- cls] of (o : _) -> Just o; [] -> Nothing
+        firstMark cls = case [o | (_, _, SMark o _) <- cls] of (o : _) -> Just (SourceOffset o); [] -> Nothing
         declaredOrRec n mv t = case M.lookup n env of
           Just declared -> do
             dt <- instantiate declared

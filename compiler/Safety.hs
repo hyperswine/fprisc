@@ -29,7 +29,7 @@
 -- FPR_UNSAFE_SUGGEST=1 prints paste-ready signatures (with the
 -- INFERRED types) for every violation, so adopting the discipline is
 -- mechanical rather than archaeological.
-module Safety (safetyCheck, trustedLibraryPaths, Measure (..), MeasureKind (..), measureCheck) where
+module Safety (SafetyResult, checkSafety, safetyDiagnostics, safetySuggestions, safetyCheck, trustedLibraryPaths, Measure (..), MeasureKind (..), measureCheck) where
 
 import Data.Char (isHexDigit)
 import System.Directory (canonicalizePath)
@@ -41,6 +41,7 @@ import Data.List (intercalate, nub, isInfixOf, isPrefixOf, isSuffixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Core.Syntax (Name)
+import qualified Diagnostic.Syntax as Diagnostic
 import Frontend.Syntax
 import Frontend.Traverse (patVars, unmark)
 import Precond (reservedEntry, splitMeasure)
@@ -181,8 +182,18 @@ approvedLibraries =
     "std/ws.fpr"
   ]
 
+data SafetyResult = SafetyResult [Diagnostic.Diagnostic] [String]
+safetyDiagnostics :: SafetyResult -> [Diagnostic.Diagnostic]
+safetyDiagnostics (SafetyResult ds _)=ds
+safetySuggestions :: SafetyResult -> [String]
+safetySuggestions (SafetyResult _ suggestions)=suggestions
+
+-- String projection for older callers. Native/Sol consume the named product.
 safetyCheck :: S.Set Name -> [STop] -> [(Name, String)] -> ([String], [String])
-safetyCheck preludeNames tops notes = (errs, suggests)
+safetyCheck names tops notes = let result=checkSafety names tops notes
+  in (map Diagnostic.renderLegacyDiagnostic (safetyDiagnostics result),safetySuggestions result)
+checkSafety :: S.Set Name -> [STop] -> [(Name, String)] -> SafetyResult
+checkSafety preludeNames tops notes = SafetyResult errs suggests
   where
     cg = callGraphOf tops
     bindNames = cgBinds cg
@@ -233,10 +244,10 @@ safetyCheck preludeNames tops notes = (errs, suggests)
       | otherwise = "calls an unsafe-marked function"
     errs =
       mErrs
-        ++ [ n ++ " is unsafe (" ++ why n ++ ") but has no explicit `" ++ n ++ " : unsafe ...` signature"
+        ++ [ issue Diagnostic.SafetyError n (n ++ " is unsafe (" ++ why n ++ ") but has no explicit `" ++ n ++ " : unsafe ...` signature")
              | n <- violated
            ]
-        ++ [ n ++ " is declared unsafe but the analysis finds it safe -- drop the marker (or keep it only if the WCET is opaque for another reason)"
+        ++ [ issue Diagnostic.SafetyError n (n ++ " is declared unsafe but the analysis finds it safe -- drop the marker (or keep it only if the WCET is opaque for another reason)")
              | not blanket,
                n <- S.toList marked,
                not (S.member n required),
@@ -354,9 +365,10 @@ data Measure = Measure
 data Delta = Structural | Lin Integer
 
 measureCheck :: [STop] -> (M.Map Name Measure, [String])
-measureCheck tops = measureCheckCG (callGraphOf tops) tops
+measureCheck tops = let (measures,errors)=measureCheckCG (callGraphOf tops) tops
+  in (measures,map Diagnostic.renderLegacyDiagnostic errors)
 
-measureCheckCG :: CallGraph -> [STop] -> (M.Map Name Measure, [String])
+measureCheckCG :: CallGraph -> [STop] -> (M.Map Name Measure, [Diagnostic.Diagnostic])
 measureCheckCG cg tops = (M.fromList [(mFn m, m) | m <- concat oks], concat errs)
   where
     measureOf = M.fromList [(n, e) | TSig n _ pres <- tops, pr@(Just (_, p)) <- pres, not (reservedEntry pr), (Just e, _) <- [splitMeasure p]]
@@ -374,7 +386,7 @@ measureCheckCG cg tops = (M.fromList [(mFn m, m) | m <- concat oks], concat errs
     checkGroup grp
       | not (null missing) =
           ( [],
-            [ n ++ ": measure declared but the recursion is MUTUAL with " ++ intercalate ", " missing ++ ", which " ++ (if length missing == 1 then "declares" else "declare") ++ " no measure -- every function in the cycle needs one"
+            [ issue Diagnostic.MeasureError n (n ++ ": measure declared but the recursion is MUTUAL with " ++ intercalate ", " missing ++ ", which " ++ (if length missing == 1 then "declares" else "declare") ++ " no measure -- every function in the cycle needs one")
               | n <- grp,
                 M.member n measureOf
             ]
@@ -404,18 +416,19 @@ pnameOf _ = Nothing
 
 -- one clause at a time; a clause with no group calls owes nothing.
 -- Returns the errors and, per verified call, how the measure dropped.
-measureErrs :: M.Map Name (SExpr, [Name], Int) -> Name -> [(SExpr, Name, SExpr)] -> [([SPat], [SGuard], SExpr)] -> ([String], [Delta])
+measureErrs :: M.Map Name (SExpr, [Name], Int) -> Name -> [(SExpr, Name, SExpr)] -> [([SPat], [SGuard], SExpr)] -> ([Diagnostic.Diagnostic], [Delta])
 measureErrs gtab n sigFacts cls = (concat es, concat ds)
   where
+    emit=issue Diagnostic.MeasureError n
     (mexpr, _, _) = gtab M.! n
     (es, ds) = unzip (zipWith chk [1 :: Int ..] cls)
     mvars = linVars mexpr
     chk ci (ps, g, b)
       | null calls = ([], [])
       | any (`notElem` pnames) (S.toList mvars) =
-          ([n ++ " (clause " ++ show ci ++ "): the measure names a param this clause does not bind as a plain variable"], [])
+          ([emit (n ++ " (clause " ++ show ci ++ "): the measure names a param this clause does not bind as a plain variable")], [])
       | bindsAny mvars b =
-          ([n ++ " (clause " ++ show ci ++ "): a measure variable is rebound in the body -- rename the binding"], [])
+          ([emit (n ++ " (clause " ++ show ci ++ "): a measure variable is rebound in the body -- rename the binding")], [])
       | otherwise = let rs = map callErr calls in (concat [e | Left e <- rs], [d | Right d <- rs])
       where
         pnames = [v | Just v <- pnameL]
@@ -442,11 +455,11 @@ measureErrs gtab n sigFacts cls = (concat es, concat ds)
           | structuralOk callee args smaller = Right Structural
           | Just d <- linDelta callee args, d <= -1 =
               if floorOk facts then Right (Lin d) else
-                Left [ n ++ " (clause " ++ show ci ++ "): the measure decreases at the call to " ++ callee ++ " but its FLOOR (measure >= 0) is not derivable from the guards -- add a base clause/branch guarded on the measure (e.g. `| x <= 0 = ...`) or a precondition (`x >= 0 and measure x`)" ]
+                Left [ emit (n ++ " (clause " ++ show ci ++ "): the measure decreases at the call to " ++ callee ++ " but its FLOOR (measure >= 0) is not derivable from the guards -- add a base clause/branch guarded on the measure (e.g. `| x <= 0 = ...`) or a precondition (`x >= 0 and measure x`)") ]
           | Just d <- linDelta callee args =
-              Left [n ++ " (clause " ++ show ci ++ "): the measure does not decrease at the call to " ++ callee ++ " (delta " ++ show d ++ ", need <= -1)"]
+              Left [emit (n ++ " (clause " ++ show ci ++ "): the measure does not decrease at the call to " ++ callee ++ " (delta " ++ show d ++ ", need <= -1)")]
           | otherwise =
-              Left [n ++ " (clause " ++ show ci ++ "): the call to " ++ callee ++ " has arguments outside the linear fragment and is not a structural descent -- the measure cannot be verified"]
+              Left [emit (n ++ " (clause " ++ show ci ++ "): the call to " ++ callee ++ " has arguments outside the linear fragment and is not a structural descent -- the measure cannot be verified")]
         -- the callee's measured argument is a strict subterm of the caller's measured value
         structuralOk callee args smaller = case gtab M.! callee of
           (SVar x, cpn, _)
@@ -580,3 +593,6 @@ bindsAny vs e = case e of
 mspine (SMark _ e) acc = mspine e acc
 mspine (SApp f a) acc = mspine f (a : acc)
 mspine h acc = (h, acc)
+
+issue :: Diagnostic.DiagnosticCode -> Name -> String -> Diagnostic.Diagnostic
+issue code owner = Diagnostic.aboutDefinition owner . Diagnostic.diagnostic code Nothing

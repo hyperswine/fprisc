@@ -1,6 +1,7 @@
 -- Capture the types that inference actually proves; never infer a rewritten
 -- body again to reconstruct them. Disabled for compatibility-only API calls.
 module Infer.Trace (withExprEvidence, extendScoped, refineScoped, finishEvidence) where
+import Source.Span (SourceOffset(..))
 import Infer.State
 import qualified Infer.Evidence as E
 import Core.Syntax (Name)
@@ -26,7 +27,7 @@ withExprEvidence ctx source action = do
       case iEvidenceBuilder st of
         Nothing -> pure Nothing
         Just builder -> do
-          let off = case source of SMark n _ -> Just n; _ -> iHere st
+          let off = case source of SMark n _ -> Just (SourceOffset n); _ -> iHere st
               ref = case source of
                 SVar name -> Just $ case M.lookup name (icLocalIds ctx) of
                   Just uid -> E.LocalReference name uid

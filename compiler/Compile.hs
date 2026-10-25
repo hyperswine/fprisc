@@ -38,13 +38,14 @@ import Frontend.Linearity
 import Frontend.Traverse
 import Frontend.Normalize
 import Frontend.Diagnostics
+import qualified Diagnostic.Render as Diagnostic
 import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
 import Infer.Result
 import Frontend.Desugar.Checked (prepareChecked, lowerToUntyped)
 import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTops, inferTopsInterfaces)
-import Safety (measureCheck, safetyCheck, trustedLibraryPaths)
+import Safety (measureCheck, checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import qualified Cost
 import Manifest (Manifest (..), readManifest, renderNs)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
@@ -410,6 +411,7 @@ compileWithInterface accepted = do
                 unitSources
               ]
           anchored = map (anchorMsg sources anchors)
+          anchoredDiagnostics = map (Diagnostic.renderSourceDiagnostic sources anchors)
       -- first-class paths: validate + desugar @Shape.path literals on the
       -- surface tree, first transform after load (ONE table from the
       -- merged program, so root and unit rewrites agree; the generated
@@ -513,7 +515,7 @@ compileWithInterface accepted = do
       -- typecheck the merged expanded program; rewritten tops carry
       -- operator sites resolved to prims / Str.+ / s.(+)
       let inferred = inferTopsChecked (Namespace rootHash) aotProf sigs structs tops'
-          terrs = inferenceErrors inferred
+          terrs = inferenceDiagnostics inferred
           notes = inferenceNotes inferred
           holes = inferenceHoles inferred
           linsigs = inferenceLinearity inferred
@@ -521,7 +523,7 @@ compileWithInterface accepted = do
           interfaces = inferenceInterfaces inferred
       unless (null terrs) $ do
         putStrLn "=== TYPE ERRORS ==="
-        mapM_ (putStrLn . ("  * " ++)) (anchored terrs)
+        mapM_ (putStrLn . ("  * " ++)) (anchoredDiagnostics terrs)
         exitFailure
       -- typed holes: NAMED holes typecheck everything around them and
       -- then refuse to compile, with the inferred type -- exactly the
@@ -551,10 +553,12 @@ compileWithInterface accepted = do
             -- on the tops BEFORE precondition insertion (as Sol does): the
             -- inserted guards wrap call arguments, and a measure must read
             -- the user's arguments to verify the descent
-            (serrs, ssug) = safetyCheck preludeNames tops notes
+            safety = checkSafety preludeNames tops notes
+            serrs = safetyDiagnostics safety
+            ssug = safetySuggestions safety
         unless (null serrs) $ do
           putStrLn "=== SAFETY: the safe/unsafe line ==="
-          mapM_ (putStrLn . ("  * " ++)) (anchored serrs)
+          mapM_ (putStrLn . ("  * " ++)) (anchoredDiagnostics serrs)
           when (Options.diagUnsafeSuggest diagnostic && not (null ssug)) $ do
             putStrLn "-- paste-ready signatures (inferred types):"
             mapM_ (putStrLn . ("SUGGEST " ++)) ssug
@@ -620,7 +624,8 @@ compileWithInterface accepted = do
                     `M.union` M.fromList linsigs
                     `M.union` builtinLinShapes (liLinTys li0)
               }
-          lerrs = lcheck li finalTops
+          linearity = checkLinearity li finalTops
+          lerrs = linearityDiagnostics linearity
       -- real tid clash check: same tid, different qualified type name
       let byTid = M.fromListWith (++) [(t, [q]) | (t, q) <- tidDecls]
           bad = [(t, qs) | (t, qs) <- M.toList byTid, length (S.toList (S.fromList qs)) > 1]
@@ -632,7 +637,7 @@ compileWithInterface accepted = do
         putStrLn ("linear types: " ++ unwords (liLinTys li))
       unless (null lerrs) $ do
         putStrLn "=== LINEARITY: ERRORS ==="
-        mapM_ (putStrLn . ("  * " ++)) (anchored lerrs)
+        mapM_ (putStrLn . ("  * " ++)) (anchoredDiagnostics lerrs)
         exitFailure
       -- ---- resource equations (docs/2026-10-02-RESOURCE-BOUNDS.md) ----
       -- The pass runs when a signature declares a bound (`| work f <= ...`),

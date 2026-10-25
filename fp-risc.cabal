@@ -83,6 +83,9 @@ executable fpr
       Commit
       Compile
       Compiler.Options
+      Source.Span
+      Diagnostic.Syntax
+      Diagnostic.Render
       Compiler.CommandLine
       FPRISC
       Frontend.Syntax
@@ -96,6 +99,7 @@ executable fpr
       Frontend.Traverse
       Frontend.Diagnostics
       Ownership.Shape
+      Ownership.Finding
       Ownership.TypeShape
       Frontend.Linearity
       Home

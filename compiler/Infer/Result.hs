@@ -2,10 +2,11 @@
 -- elaboration decisions. Private fields keep the product's construction local;
 -- public accessors do not permit record updates across checking runs.
 module Infer.Result
-  (InferenceResult, resultFromState, inferenceErrors, inferenceNotes,
+  (InferenceResult, resultFromState, inferenceErrors, inferenceDiagnostics, inferenceNotes,
    inferenceHoles, inferenceLinearity, inferenceTops, inferenceInterfaces,
    inferenceEvidence, inferenceElaborations, inferenceSchemes, inferenceLayoutRequirements,
    inferencePatterns, inferenceConstructors, inferenceBinderNames) where
+import Diagnostic.Syntax (Diagnostic,renderLegacyDiagnostic)
 import Core.Syntax (Name)
 import Core.Identity (BinderId)
 import Frontend.Syntax (STop)
@@ -18,7 +19,7 @@ import Infer.Pattern (PatternSite,PatternInfo)
 import qualified Infer.Evidence as E
 
 data InferenceResult = Result
-  { resultErrors :: [String], resultNotes :: [(Name,String)], resultHoles :: [(String,String)],
+  { resultErrors :: [Diagnostic], resultNotes :: [(Name,String)], resultHoles :: [(String,String)],
     resultLinearity :: [(Name,([LShape],LShape))], resultTops :: [STop], resultInterfaces :: [(Name,Type)],
     resultEvidence :: Either String (Maybe E.Evidence), resultElaborations :: [ElaborationFact],
     resultSchemes :: M.Map Name Scheme, resultLayouts :: M.Map Name [Type],
@@ -32,7 +33,9 @@ resultFromState st tops proof sites schemes layouts = Result
     resultEvidence=proof, resultElaborations=sites, resultSchemes=schemes, resultLayouts=layouts,
     resultPatterns=iPatterns st, resultConstructors=iConstructorSchemes st, resultBinderNames=iBinderTargets st }
 inferenceErrors :: InferenceResult -> [String]
-inferenceErrors = resultErrors
+inferenceErrors = map renderLegacyDiagnostic . resultErrors
+inferenceDiagnostics :: InferenceResult -> [Diagnostic]
+inferenceDiagnostics = resultErrors
 inferenceNotes :: InferenceResult -> [(Name,String)]
 inferenceNotes = resultNotes
 inferenceHoles :: InferenceResult -> [(String,String)]
