@@ -263,7 +263,7 @@ shrinkWrap saved items
             if any (\bk -> not (S.member point (doms M.! bk))) exits then Nothing else
               Just (concat [mark bk its | (bk, its) <- zip [0 ..] blocks])
   where
-    savesHere = plain "saves.here" [] []
+    savesHere = plainOpcode (Opcode.Common Opcode.SavesHere) [] []
     savedSet = S.fromList saved
     namesSaved = any (\case I i -> any isSaved (siDefs i ++ siUses i); _ -> False)
     isSaved = \case OP r -> S.member r savedSet; _ -> False

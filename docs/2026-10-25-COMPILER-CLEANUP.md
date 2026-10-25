@@ -20,7 +20,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
-| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, x64 selected operations and shared entry/transfer protocols implemented; remaining kernel stages, call-convention contracts and A64/RISC-V instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
+| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, all native ISA selected operations and shared entry/transfer protocols implemented; remaining kernel stages, call-convention/symbol-role/annotation contracts pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
 | Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
 | Obsolete architecture descriptions and names | Module identity and frontend-owner references corrected; backend references/names still pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
 
@@ -639,3 +639,32 @@ with fixed sources, a fresh cache, no reused results and unchanged timeouts.
 Sol arguments/shared-language and three-million-iteration self/mutual tail
 calls pass, with an 86 MB reported peak. The stage page records exact-emission
 and execution coverage and platform skips; its own hosted result follows push.
+
+## AArch64/RISC-V selected operation contracts (2026-10-26)
+
+[The remaining native ISA vocabularies](2026-10-26-RISC-OPCODE-CONTRACTS.md)
+now use constructors through selection and rendering. Separate per-ISA modules
+own operations; shared types own protocols and scalar/SIMD payloads. A64 FP
+pooling changes explicit word/FP banks, and RV raw adapters retain typed
+arithmetic/comparison/memory operations. Form checkers verify physical banks,
+operand roles, control/flag effects and call metadata; synthetic/cross-ISA
+instructions cannot enter native rendering. Shared save markers and redundant
+move identity also use constructors.
+
+The expanded differential gate passes 167 byte-identical root/unit outputs and
+cache identities across 85 configurations on eight targets, including hosted
+A64 FP pooling, RVV plugins and builtin ARC/raw. Independent IEEE and real
+ownership-runtime oracles pass. Revision 120 and physical ABIs remain unchanged.
+Existing call-convention, symbol-role and annotation contracts, later typed
+transformations and all other outstanding table entries remain required.
+
+Final fixed-source validation passes all 136 Base jobs in 586.74 seconds on six
+workers, with a fresh cache, no reused results and unchanged timeouts. Sol
+arguments/shared-language and three-million-iteration self/mutual tail calls
+pass, with an 86 MB reported peak. The stage page records exact-emission,
+execution coverage and platform skips. The complete compiler goal stays active.
+
+The preceding integrated head `d190e1a` passed hosted CI run 40222451310,
+including the earlier region-control implementation. Its region-only run was
+cancelled when superseded. The new ISA-constructor stage still needs its own
+hosted result after push.

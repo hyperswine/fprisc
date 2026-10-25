@@ -70,12 +70,19 @@ executable fpr
       Codegen.Policy
       Codegen.Selected
       Codegen.Opcode
+      Codegen.Opcode.Types
+      Codegen.Opcode.X64
+      Codegen.Opcode.A64
+      Codegen.Opcode.RV
       Codegen.Frame
       Codegen.Place
       Codegen.Liveness
       Codegen.Allocate
       Codegen.Bounds
       Codegen.Target.Common
+      Codegen.Target.Forms
+      Codegen.Target.A64.Forms
+      Codegen.Target.RV.Forms
       Codegen.Target.X64
       Codegen.Target.X64.Forms
       Codegen.Target.RV

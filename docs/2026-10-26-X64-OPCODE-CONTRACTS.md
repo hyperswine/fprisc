@@ -90,6 +90,11 @@ Hosted validation for this stage follows its push. The preceding region-control
 run is [40220603207](https://github.com/hyperswine/fprisc/actions/runs/40220603207);
 its status does not substitute for this stage's own hosted result.
 
+The integrated x64 commit `d190e1a` subsequently passed
+[hosted CI run 40222451310](https://github.com/hyperswine/fprisc/actions/runs/40222451310).
+It includes Linux native execution and the earlier region-control work; the
+region-only run was cancelled when superseded rather than completing a pass.
+
 Later typed inlining/fusion/workers/reuse, remaining compatibility forms and
 layout temporaries, source ranges/diagnostics, A64/RISC-V operations and existing
 call-convention contracts remain part of the original active goal.

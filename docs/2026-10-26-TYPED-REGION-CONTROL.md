@@ -108,3 +108,7 @@ probes. Earlier implementation checks do not substitute for this complete run.
 The preceding global-cloning commit `134a992` passed
 [hosted CI run 40210518302](https://github.com/hyperswine/fprisc/actions/runs/40210518302).
 This stage still requires its own hosted validation after push.
+
+The region-only run `40220603207` was cancelled when superseded. The later
+integrated x64 checkpoint `d190e1a`, which includes this region implementation,
+passed [hosted CI run 40222451310](https://github.com/hyperswine/fprisc/actions/runs/40222451310).

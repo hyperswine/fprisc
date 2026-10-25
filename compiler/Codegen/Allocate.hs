@@ -460,7 +460,7 @@ rewrite cfg here locOf _ i = do
       -- a selected move whose two sides share a register (the source dies
       -- there) is nothing
       identity = case (siDefs placed, siUses placed) of
-        ([OP d], [OP s']) -> d == s' && siOp placed == siOp (acMove cfg d s') && siFlags placed == FlagsNone && null (siCalls placed) && siControl placed == Next
+        ([OP d], [OP s']) -> d == s' && siOpcode placed == siOpcode (acMove cfg d s') && siFlags placed == FlagsNone && null (siCalls placed) && siControl placed == Next
         _ -> False
   pure (map I preItems ++ [I placed | not identity] ++ map I postItems)
   where

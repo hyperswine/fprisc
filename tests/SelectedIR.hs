@@ -15,6 +15,10 @@ import Codegen.Place
 import Codegen.Policy (m2Policy, StackPolicy (..), Policy (..), Profile (..))
 import Codegen.Target.Common (shallowEntry, noTune, shrinkWrap)
 import qualified Codegen.Opcode as Opcode
+import qualified Codegen.Opcode.A64 as AOp
+import qualified Codegen.Opcode.RV as ROp
+import qualified Codegen.Target.A64.Forms as AForms
+import qualified Codegen.Target.RV.Forms as RForms
 import Codegen.Target.X64.Forms (checkForms)
 import Codegen.Selected
 import qualified Codegen.Target.X64 as X64
@@ -87,6 +91,43 @@ storeA6 = plain "x64.store.cell" [] [gpr 0, OS "fpr_x64_a6"]
 
 main :: IO ()
 main = do
+  let aOp op=plainOpcode (Opcode.A64 op)
+      aFloat=(aOp (AOp.FloatBinary Opcode.FloatRegisters Opcode.Float64 FAdd)
+        [OV (v 2) (Any FPR)] [OV (v 0) (Any FPR),OV (v 1) (Any FPR)])
+      aBranch=(aOp (AOp.Branch Opcode.UnsignedBelow) [] [OL (Label "out")])
+        {siFlags=FlagsUse,siControl=CondTo [Label "out"]}
+      aForms=AForms.checkForms a64RegisterFile "forms"
+      rvFile=RegisterFile (\(Phys p)->if p `elem` ["a0","a1","a2"] then Just GPR else Nothing) []
+      rvOp op=plainOpcode (Opcode.RV op)
+      rvAdd=rvOp ROp.Add [gpr 2] [gpr 0,gpr 1]
+      rvForms=RForms.checkForms rvFile "forms"
+  check "A64 word/FP boundaries and RV typed operations accept correct banks"
+    (aForms [I aFloat,I aBranch]==Right () && rvForms [I rvAdd]==Right ())
+  refused "A64 pooled arithmetic cannot receive a word operand" "register bank"
+    (aForms [I aFloat {siUses=[gpr 0,OV (v 1) (Any FPR)]}])
+  refused "A64 branch metadata preserves its target" "control effect"
+    (aForms [I aBranch {siControl=Next}])
+  refused "A64 entry metadata cannot lose its fuel event" "call metadata"
+    (aForms [I ((plainOpcode (Opcode.Common Opcode.EntryTick) [] []) {siFlags=FlagsDef})])
+  refused "A64 cannot render synthetic text" "opcode/operand"
+    (aForms [I (plain "mov" [gpr 2] [gpr 0])])
+  refused "A64 cannot render another ISA's instruction" "opcode/operand"
+    (aForms [I rvAdd])
+  refused "RV cannot render synthetic text" "opcode/operand"
+    (rvForms [I (plain "mv" [gpr 2] [gpr 0])])
+  refused "RV cannot render another ISA's instruction" "opcode/operand"
+    (rvForms [I aFloat])
+  refused "RV has no condition flag bank" "condition flags"
+    (rvForms [I rvAdd {siFlags=FlagsDef}])
+  refused "RV load operands cannot lose their offset" "opcode/operand"
+    (rvForms [I (rvOp ROp.Load32 [gpr 2] [gpr 0])])
+  refused "RV float tree nodes remain within scratch registers" "opcode/operand"
+    (rvForms [I (rvOp (ROp.TreeNode Opcode.Float32 FAdd) [] [OI 7])])
+  refused "RV call result must arrive in a0" "register bank"
+    (rvForms [I ((rvOp ROp.Call [OV (v 2) (Fix (Phys "a1"))] [OS "callee"])
+      {siCalls=[Call "callee" False True]})])
+  refused "x64 cannot render an A64 operation" "opcode/operand"
+    (checkForms "forms" [I aFloat])
   let typedMove=plainOpcode (Opcode.X64 Opcode.Move) [gpr 2] [gpr 0]
       typedCompare=plainOpcode (Opcode.X64 (Opcode.FloatCompare Opcode.Float32 Ne)) [gpr 2] [gpr 0,gpr 1]
       typedBranch=(plainOpcode (Opcode.X64 (Opcode.Branch Opcode.UnsignedBelow)) [] [OL (Label "typed-out")])

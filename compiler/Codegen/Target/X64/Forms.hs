@@ -13,10 +13,13 @@ checkForms owner items=forM_ [i | I i<-items] $ \i->do
       ds=siDefs i;us=siUses i
       shape=case siOpcode i of
         O.TargetText _->False
+        O.A64 _->False
+        O.RV _->False
         O.Common op->case op of
           O.EntryCheckTick->entry ds us
           O.EntryCheck->entry ds us
           O.EntryTick->entry ds us
+          O.SavesHere->False
           O.EntryStatic->False -- x64 has no such expansion
           O.TickN->null ds && matches [immediate] us
           O.TailJump->null ds && transfer us

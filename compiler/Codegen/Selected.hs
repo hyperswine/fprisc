@@ -5,10 +5,10 @@
 -- target constraints").
 --
 -- A selected instruction carries an operation identity over operands that
--- are still virtual
--- registers, each carrying the constraint the target places on it. Shared
--- protocols and x64 operations use constructors; other ISA operation names
--- remain explicitly transitional in Codegen.Opcode. Constraints include:
+-- are still virtual registers, each carrying the target's constraint. Shared
+-- protocols and all native ISA operations use constructors in Codegen.Opcode.
+-- Invented text operations are confined to synthetic constraint tests and are
+-- refused by every native emission path. Constraints include:
 --
 --   * a register class (the integer bank, the float/vector bank),
 --   * a fixed physical register (an argument or result register, x86-64's
