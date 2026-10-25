@@ -61,6 +61,7 @@ executable fpr
       Core.Opt.Pipeline
       Codegen
       Codegen.Kernel
+      Codegen.Kernel.Plan
       Codegen.NativeData
       Codegen.IR
       Codegen.Verify
@@ -174,6 +175,7 @@ executable fpr
       Core.Typed.Instantiate
       Core.Typed.Specialize
       Compiler.VectorLayout
+      Compiler.VectorOperation
       Compiler.Trap
       Inline
       ReceiveTurns

@@ -20,7 +20,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
-| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, native ISA operations, instruction annotations/accounting, word/C-export calls, selected code/address roles and shared checked entry/apply/panic contracts implemented; remaining kernel stages and other source/data/linker interfaces pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
+| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, native ISA operations, instruction annotations/accounting, word/C-export calls, selected code/address roles, shared checked entry/apply/panic contracts and checked column/record/layout kernel plans implemented; other source/data/linker interfaces pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
 | Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
 | Obsolete architecture descriptions and names | Module identity and frontend-owner references corrected; backend references/names still pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
 
@@ -772,3 +772,19 @@ compatibility and three-million-iteration self/mutual tail calls pass with an
 86 MB peak. The preceding export/ARC checkpoint `ce77e9f` passed hosted CI run
 40235445898; this selected-runtime stage needs its own hosted result after push.
 The complete compiler cleanup goal remains active.
+
+## Checked column-kernel plans
+
+[Column-kernel plan contracts](2026-10-26-KERNEL-PLAN-CONTRACTS.md) retain
+semantic operation constructors into native lowering and check plan/callback
+evidence before CFG construction. Remaining typed Core transformations,
+record/layout kernel plan ownership and the other open table items remain
+full-goal work.
+
+## Checked record and layout-kernel plans
+
+[Record/layout kernel plan contracts](2026-10-26-RECORD-PLAN-CONTRACTS.md)
+extend the checked plan owner across all three native kernel builders.
+Record callback interfaces, descriptor/capture references and layout-map
+entry boundaries are checked before building CFGs. Later typed Core
+transformations and all other pending table entries remain full-goal work.

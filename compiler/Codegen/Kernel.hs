@@ -1,27 +1,18 @@
 -- Column kernels are ordinary typed CFGs. No target registers or assembly
 -- enter this module. The only memory operations follow descriptor guards;
 -- the hosted/loaded-app profiles have non-moving storage across safepoints.
-module Codegen.Kernel (Kernel(..), Stage(..), RecordKernel(..), RecordOp(..), MapAsKernel(..), SimdExpr(..), kernelCallbacks, lowerKernel, lowerRecordKernel, lowerMapAsKernel) where
+module Codegen.Kernel (Kernel(..), Stage(..), ElementOp(..), RecordKernel(..), RecordOp(..), MapAsKernel(..), SimdExpr(..), kernelCallbacks, lowerKernel, lowerRecordKernel, lowerMapAsKernel) where
 
 import Codegen.IR
 import Codegen.Target.Common (mangleName)
 import Codegen.Policy
+import Codegen.Kernel.Plan
 import Codegen.Verify
 import Codegen.Simplify (simplifyFn)
 import KernelKinds (Kind(..))
 import Control.Monad.State.Strict
 import Control.Monad (forM, forM_, unless, when, foldM)
 import qualified Data.Map.Strict as M
-
--- Capture indices address the original, boxed entry arguments. An optional
--- accumulator also occupies an entry argument, before the vector.
-data Stage = Stage String Name [Int] deriving Show
-data Kernel = Kernel
-  { kernelSymbol :: String, kernelCaptures :: [Kind], kernelElement :: Kind,
-    kernelAccumulator :: Maybe (Int, Kind), kernelStages :: [Stage],
-    kernelSimd :: Maybe (SimdExpr, Int), -- a map's two-lane body with same-kind captures (NEON/SSE2) and its callback entry ticks
-    kernelRvvSum :: Bool -- a capture-free Int sum fold strip-mined on RISC-V V
-  } deriving Show
 
 -- the runtime's column kind descriptor byte (vec.c: 'i' 1, 'd' 3, 's' 7, boxed 0)
 kindByteOf :: Kind -> Integer
@@ -96,25 +87,10 @@ callback program name args
   | otherwise = value TVal (OCall (Callee name (Generated (callbackSymbol name)) (replicate (length args) TVal) TVal) args)
 
 lowerKernel :: Policy -> Program -> Kernel -> Either String Fn
-lowerKernel policy callbacks k = do
-  validatePolicy policy
-  unless (kernelElement k `elem` [KI,KD,KS] && all (`elem` [KI,KD,KS,KB]) (kernelCaptures k))
-    (Left "typed column kernels currently support Int/F64/F32 elements and Int/F64/F32/Bool captures")
-  unless (policyWidth policy == W64 || (kernelElement k == KI && all (`notElem` [KD,KS]) (kernelCaptures k)))
-    (Left "RV32 float columns use boxed values")
-  unless (not (null stages) && all (\(Stage op _ _) -> op `elem` ["map","filter","fold"]) stages)
-    (Left "unsupported typed kernel stages")
-  case kernelSimd k of
-    Just (expr,_) -> do
-      unless ([op | Stage op _ _ <- stages] == ["map"] && all (== kernelElement k) (kernelCaptures k) && kernelElement k `elem` [KI,KD] && policyWidth policy == W64)
-        (Left "a SIMD pair body needs a single map over Int or F64 with matching captures on a 64-bit word")
-      unless (all (\n -> n >= 0 && n < length (kernelCaptures k)) (simdCaptures expr))
-        (Left "SIMD capture index outside the kernel captures")
-      checked (simdExprOk (kernelElement k == KI) expr)
-    Nothing -> pure ()
-  when (kernelRvvSum k) $
-    unless ([op | Stage op _ _ <- stages] == ["fold"] && kernelCaptures k == [KI] && kernelElement k == KI && kernelAccumulator k == Just (0,KI))
-      (Left "an RVV sum strip needs a capture-free Int fold")
+lowerKernel policy callbacks k = checkKernel policy callbacks k >>= lowerCheckedKernel
+
+lowerCheckedKernel :: CheckedKernel -> Either String Fn
+lowerCheckedKernel plan = do
   let ps = [(VId i,TVal) | i <- [0..length (kernelCaptures k)]]
       initial = Build (length ps) 1 (BId 0) ps [] []
       Build _ _ _ _ _ blocks = execState (build (map fst ps)) initial
@@ -126,6 +102,7 @@ lowerKernel policy callbacks k = do
   pure simplified
   where
     checked = either (Left . ("compiler error: " ++)) Right
+    (policy,callbacks,k) = kernelInput plan
     stages = kernelStages k
     w = if policyWidth policy == W32 then 4 else 8
     elemTy = if kernelElement k == KI then TInt else TVal
@@ -178,20 +155,20 @@ lowerKernel policy callbacks k = do
       element <- if elemTy == TInt then value TVal (OTag raw) else pure raw
       nextKept <- fresh TInt; nextAcc <- fresh TVal
       let step (el,a) (Stage op f caps) = do
-            out <- callback callbacks f (map (args !!) caps ++ (if op == "fold" then [a,el] else [el]))
+            out <- callback callbacks f (map (args !!) caps ++ (if op == Fold then [a,el] else [el]))
             case op of
-              "filter" -> do
+              Filter -> do
                 keep <- value TPred (OTruth out)
                 pass <- label
                 end (TCondBr keep pass [] next [fst kept,a])
                 begin pass []
                 pure (el,a)
-              "fold" -> pure (el,out)
-              _ -> pure (out,a)
+              Fold -> pure (el,out)
+              Map -> pure (out,a)
       (el,a) <- foldM step (element,fst acc) stages
       -- A standalone fold does not mutate its input. A fused pipeline
       -- compacts the final mapped values and preserves their order.
-      unless (all (\(Stage op _ _) -> op == "fold") stages) $ do
+      unless (all (\(Stage op _ _) -> op == Fold) stages) $ do
         dest <- value TAddr (OIndex base (fst kept))
         output <- if elemTy == TInt then value TInt (OUntag el) else pure el
         effect (OStore elemTy dest 0 output)
@@ -201,7 +178,7 @@ lowerKernel policy callbacks k = do
       i' <- value TInt (OKernelArith Add (fst i) one)
       end (TBr loop [i',fst nextKept,fst nextAcc])
       begin done [resultAcc,resultKept]
-      unless (all (\(Stage op _ _) -> op == "fold") stages) (effect (OStore TInt addr 8 (fst resultKept)))
+      unless (all (\(Stage op _ _) -> op == Fold) stages) (effect (OStore TInt addr 8 (fst resultKept)))
       result <- case kernelAccumulator k of
         Nothing -> pure vec
         Just _ -> value TVal (OMake 4 0 [fst resultAcc,vec])
@@ -213,9 +190,9 @@ lowerKernel policy callbacks k = do
             fun <- value TVal (OFunValue f)
             closure <- foldM (\h arg -> value TVal (OApply h [args !! arg])) fun caps
             let inputs = [closure] ++ (case (op,kernelAccumulator k) of
-                  ("fold",Just (n,_)) -> [args !! n,v]
+                  (Fold,Just (n,_)) -> [args !! n,v]
                   _ -> [v])
-            value TVal (OCall (Callee ("Vec."++op) (Foreign ("fpr_vec_"++op)) (replicate (length inputs) TVal) TVal) inputs)
+            value TVal (OCall (stageFallback op) inputs)
       foldM generic vec stages >>= end . TRet
     -- the SIMD pair loop ahead of the scalar loop: two lanes a step while two
     -- remain, each step charged both elements' entry ticks (the legacy kernel's
@@ -290,40 +267,11 @@ lowerKernel policy callbacks k = do
       pure (fst iOut, fst accOut)
 
 
--- A record plan describes the dualized callbacks, never architecture details.
--- Columns are (index, kind); map outputs cover the complete record. The map
--- entry retains the planner's capture slot even for a capture-free callback.
-data RecordOp
-  = RecordFold Name Kind
-  | RecordFilter Name
-  | RecordMap [(Name, [Int], [Int])]
-  deriving Show
-data RecordKernel = RecordKernel
-  { recordSymbol :: String, recordOriginal :: Name,
-    recordCaptures :: [Kind], recordHasCapture :: Bool,
-    recordShape :: (Int,Int), recordColumns :: [(Int,Kind)],
-    recordOperation :: RecordOp,
-    recordGpuPairSum :: Bool -- a capture-free Int fold of acc + column 0 + column 1: offered to the GPU hook first (vec.c fpr_gpu_vec_fold_pair_sum)
-  } deriving Show
-
 lowerRecordKernel :: Policy -> Program -> RecordKernel -> Either String Fn
-lowerRecordKernel policy callbacks k = do
-  validatePolicy policy
-  unless (not (null columns) && all ((>=0) . fst) columns)
-    (Left "invalid typed record column plan")
-  case operation of
-    RecordMap fields -> unless
-      (map fst columns == [0..length fields-1] && all (\(_,ps,cs) -> all (>=0) ps && all (`elem` map fst columns) cs) fields)
-      (Left "invalid typed record map field plan")
-    _ -> pure ()
-  unless (all (`elem` [KI,KD,KS]) (map snd columns ++ accumulatorKinds) &&
-          all (`elem` [KI,KD,KS,KB]) (recordCaptures k))
-    (Left "typed record kernels currently support Int/F64/F32 columns and Int/F64/F32/Bool captures")
-  when (recordGpuPairSum k) $
-    unless (null (recordCaptures k) && map fst columns == [0,1] && accumulatorKinds == [KI] && all ((== KI) . snd) columns)
-      (Left "the GPU pair sum needs a capture-free Int fold over columns 0 and 1")
-  unless (policyWidth policy == W64 || all (`notElem` [KD,KS]) (map snd columns ++ accumulatorKinds ++ recordCaptures k))
-    (Left "RV32 float record columns use boxed values")
+lowerRecordKernel policy callbacks k = checkRecordKernel policy callbacks k >>= lowerCheckedRecord
+
+lowerCheckedRecord :: CheckedRecord -> Either String Fn
+lowerCheckedRecord plan = do
   let argc = case operation of RecordMap _ -> 2; _ -> length (recordCaptures k) + length accumulatorKinds + 1
       ps = [(VId i,TVal) | i <- [0..argc-1]]
       Build _ _ _ _ _ blocks = execState (build (map fst ps)) (Build argc 1 (BId 0) ps [] [])
@@ -333,6 +281,7 @@ lowerRecordKernel policy callbacks k = do
   checked (verifyProgramWidth (policyWidth policy) (M.insert (fnName fn) simplified callbacks))
   pure simplified
   where
+    (policy,callbacks,k) = recordInput plan
     checked = either (Left . ("compiler error: " ++)) Right
     columns = recordColumns k
     operation = recordOperation k
@@ -486,10 +435,10 @@ lowerRecordKernel policy callbacks k = do
       let caps = case operation of RecordMap _ -> [args !! 0 | recordHasCapture k]; _ -> take capCount args
       closure <- foldM (\h a -> value TVal (OApply h [a])) fun caps
       let (op,inputs) = case operation of
-            RecordFold _ _ -> ("fold",[closure,args !! capCount,vec])
-            RecordFilter _ -> ("filter",[closure,vec])
-            RecordMap _ -> ("map",[closure,vec])
-      value TVal (OCall (Callee ("Vec."++op) (Foreign ("fpr_vec_"++op)) (replicate (length inputs) TVal) TVal) inputs) >>= end . TRet
+            RecordFold _ _ -> (Fold,[closure,args !! capCount,vec])
+            RecordFilter _ -> (Filter,[closure,vec])
+            RecordMap _ -> (Map,[closure,vec])
+      value TVal (OCall (stageFallback op) inputs) >>= end . TRet
 
 
 -- Vec.mapAs layout f v: a layout-changing map. The output vector is built
@@ -498,14 +447,11 @@ lowerRecordKernel policy callbacks k = do
 -- fuel tick), and the input is freed at the end: the legacy
 -- `Vec.mapAs direct scalar kernel`. Int, boxed and float inputs are read as
 -- one word; an Int word is tagged on the way in. No callback is cloned.
-data MapAsKernel = MapAsKernel
-  { mapAsSymbol :: String, mapAsOriginal :: Name, mapAsCaptures :: Int, mapAsLayout :: String }
-  deriving Show
-
 lowerMapAsKernel :: Policy -> MapAsKernel -> Either String Fn
-lowerMapAsKernel policy k = do
-  validatePolicy policy
-  unless (mapAsCaptures k >= 0 && mapAsCaptures k <= 7) (Left "typed mapAs kernels take at most seven captures")
+lowerMapAsKernel policy k = checkMapAsKernel policy k >>= lowerCheckedMapAs
+
+lowerCheckedMapAs :: CheckedMapAs -> Either String Fn
+lowerCheckedMapAs plan = do
   let argc = mapAsCaptures k + 1
       ps = [(VId i,TVal) | i <- [0..argc-1]]
       Build _ _ _ _ _ blocks = execState (build (map fst ps)) (Build argc 1 (BId 0) ps [] [])
@@ -515,6 +461,7 @@ lowerMapAsKernel policy k = do
   checked (verifyProgramWidth (policyWidth policy) (M.singleton (fnName fn) simplified))
   pure simplified
   where
+    (policy,k) = mapAsInput plan
     checked = either (Left . ("compiler error: " ++)) Right
     w = if policyWidth policy == W32 then 4 else 8
     hal name arity = Callee name (Foreign ("fpr_g_" ++ mangleName name ++ "_call" ++ show arity)) (replicate arity TVal) TVal

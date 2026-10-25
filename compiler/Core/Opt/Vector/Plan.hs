@@ -6,17 +6,12 @@ module Core.Opt.Vector.Plan
 import Core.Syntax
 import Core.Primitives (FloatWidth)
 import KernelKinds (Kind)
+import Compiler.VectorOperation
 import qualified Data.Set as S
 
-data ElementOp = Map | Filter | Fold deriving (Eq, Show)
 data VectorOp = ScalarOp ElementOp | RecordMap | RecordFilter
               | LayoutMap String | WritebackFold Name | FusedPipeline PipePlan
               deriving (Eq)
-
-elementOpName :: ElementOp -> String
-elementOpName Map = "map"
-elementOpName Filter = "filter"
-elementOpName Fold = "fold"
 
 -- Keep the existing symbol/cache ABI. This serialization is not inspected
 -- by optimization or admission: those consumers match constructors.
