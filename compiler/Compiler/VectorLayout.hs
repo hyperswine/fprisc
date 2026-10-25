@@ -3,7 +3,7 @@
 module Compiler.VectorLayout
   (VectorBuilder(..), LayoutSlot(..), LayoutEvidence(..), LayoutContract(..), LayoutOwner(..),
    layoutParameterName, layoutEvidenceType, mapLayoutEvidenceM,
-   builderName, builderRuntimeName, plainBuilder, unresolvedLayoutType, canonicalLayout, validLayout) where
+   builderName, builderRuntimeName, builderArity, plainBuilder, unresolvedLayoutType, canonicalLayout, validLayout) where
 import Type.Syntax
 import Data.List (sortOn)
 import Core.Identity (BinderId)
@@ -29,6 +29,11 @@ builderName BuildFromList="Vec.fromList"
 builderName BuildMap="Vec.map"
 builderRuntimeName :: VectorBuilder -> String
 builderRuntimeName b=builderName b++"As"
+-- Source arguments remaining after the explicit layout-evidence operand.
+builderArity :: VectorBuilder -> Int
+builderArity BuildEmpty=1
+builderArity BuildFromList=1
+builderArity BuildMap=2
 plainBuilder :: VectorBuilder -> LayoutEvidence -> Bool
 plainBuilder b (StaticLayout _ "")=b/=BuildMap
 plainBuilder _ _=False

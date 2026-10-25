@@ -28,7 +28,14 @@ file suffixes; a clause applies to both unless it says which.
 - A program is a list of top-level definitions ended by `.`; `main` is
   the entry.  A `.sol` file (or `--sol`) also accepts `>` top-level
   effects, run in file order.  (today)  `[test: tests/hello.fpr, sol/examples/stddemo.sol]`
-- Strict evaluation, left to right.  Arguments before the call.  (today)  `[test: ]`
+- Strict evaluation, left to right. Arguments before the call. Native call
+  groups are fixed before optimization: a known source entry saturates at its
+  physical parameter count before arguments are applied to its result; an
+  unknown callable group snapshots its head/arguments before native `applyN`.
+  Logical foreign signatures do not establish runtime arity. Sol retains its
+  existing curried bytecode application behavior. See
+  [native call staging](2026-10-25-TYPED-CALL-STAGING.md). (today)
+  `[test: tests/check_typed_staging.py, tests/TypedStaging.hs]`
 - Blocks: `x = e; body` binds then continues.  Every statement in a
   block BINDS -- a bare effect before `;` is a parse error; discard
   with `_ = e;`.  (today)  `[test: ]`

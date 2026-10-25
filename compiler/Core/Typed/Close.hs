@@ -201,6 +201,8 @@ verifyClosed types product@(ClosedFunction root codes _)=do
       ordinary=functionParameters root++concatMap codeParameters (M.elems codes)
       monomorphic b=case binderScheme b of Forall [] [] _->True;_->False
   unless (all monomorphic ordinary) (Left "typed closure: ordinary parameter requires a monomorphic scheme")
+  unless (all (\code->codeKind code/=ClosureCode || not (null (codeParameters code))) (M.elems codes))
+    (Left "typed closure: a callable code entry requires an ordinary parameter")
   unless (length identities==S.size (S.fromList identities)) (Left "typed closure: binder identity reused between functions")
   mapM_ (\(label,code)->unless (label==codeId code) (Left "typed closure: code identity/key mismatch")) (M.toList codes)
   mapM_ (verifyFunctionWith contracts types) functions

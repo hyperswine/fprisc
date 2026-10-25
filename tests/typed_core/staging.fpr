@@ -1,0 +1,29 @@
+unsafe base.
+mark label value = _ = print label; value.
+known n = f = (fn x -> _ = print "known-entered"; fn y -> _ = print "known-body"; x + y + n); f (mark "known-first" 2) (mark "known-second" 3).
+partial n = f = (fn x y -> _ = print "partial-entered"; fn z -> _ = print "partial-body"; x + y + z + n); saved = f (mark "partial-first" 1); _ = print "partial-ready"; saved (mark "partial-second" 2) (mark "partial-third" 3).
+indirect callback = callback (mark "unknown-first" 1) (mark "unknown-second" 2).
+unknown n = indirect (fn x -> _ = print "unknown-entered"; fn y -> _ = print "unknown-body"; x + y + n).
+computed n = f = (if n > 0 then (fn x -> _ = print "computed-entered"; fn y -> _ = print "computed-body"; x + y + n) else (fn x y -> x + y)); f (mark "computed-first" 4) (mark "computed-second" 5).
+factory : Int -> Int -> Int.
+factory = _ = print "factory"; fn x -> _ = print "caf-entered"; fn y -> _ = print "caf-body"; x + y + 100.
+caf u = factory (mark "caf-first" 8) (mark "caf-second" 9).
+globalFirst x = _ = print "global-entered"; fn y -> _ = print "global-body"; x + y.
+global u = globalFirst (mark "global-first" 1) (mark "global-second" 2).
+captured n = f = (fn x y -> _ = print "captured-entered"; fn z -> _ = print "captured-body"; x + y + z + n); g = (fn u -> f (mark "captured-first" 1) (mark "captured-second" 2) (mark "captured-third" 3)); g Unit.
+knownPanic u = f = (fn x -> error "known body"); f (mark "known-first" 1) (mark "WRONG" 2).
+indirectPanic callback = callback (mark "unknown-first" 1) (error "argument panic").
+unknownPanic u = indirectPanic (fn x -> error "body panic").
+suite u =
+  a = known 7;
+  b = partial 7;
+  c = unknown 7;
+  d = computed 7;
+  e = caf Unit;
+  f = global Unit;
+  g = captured 7;
+  print "staging {a} {b} {c} {d} {e} {f} {g}".
+main = case Sys.args Unit of
+  "known" :: _ -> print (knownPanic Unit)
+| "unknown" :: _ -> print (unknownPanic Unit)
+| _ -> suite Unit.

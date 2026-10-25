@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 113 -- checked polymorphic code contracts and typed lexical closure calls
+codegenRev = 114 -- typed application staging preserves physical saturation and operand snapshots
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

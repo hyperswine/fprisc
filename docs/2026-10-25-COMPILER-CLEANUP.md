@@ -366,3 +366,34 @@ remain required. The saved-compiler controls also record an existing
 optimizer-disabled overapplication ordering discrepancy for that staging work.
 All other outstanding table entries remain required; the full cleanup goal stays
 active.
+
+
+## Typed native call staging
+
+[Typed call staging](2026-10-25-TYPED-CALL-STAGING.md) gives native application
+groups checked operand/saturation boundaries before erasure. The source pass
+runs after layout planning and before closure conversion, retaining lexical
+arity inside nested lambdas and recursive bodies. A closed-graph product serves
+later typed transformations. Both products check types, scope, ownership shapes
+and staging invariants; neither guesses physical arity from logical arrows.
+
+This fixes verified optimizer-dependent effect/trap priorities. Known prefixes
+now execute before arguments applied to their result, while operands of unknown
+native groups remain ahead of later specialized callbacks. Stored partials and
+CAFs retain their initialization behavior and arity evidence; foreign signatures
+keep their existing lowering. Codegen revision 114 versions these corrections;
+physical ABIs and runtime memory structures are unchanged.
+
+Validation: the final fresh-cache Base sweep passed all 136 jobs in 485.47 seconds
+on six workers, with no reused coverage and fixed compiler/test sources. Source
+and closed staging invariants, independent machine-IR counterexamples, captured/
+recursive arity evidence, all four optimization modes, one/four-hart native
+answers, imported entries and x64/RV32/RV64 emission pass. The saved compiler
+reproduces both ordering bugs; numeric answers and the Sol-compatible control
+remain unchanged. Existing specialization allocation/mode checks and Sol
+argument/shared-language/bounded-tail checks pass. Hosted CI for `aa6e738`
+passed; this integrated checkpoint requires its own hosted validation after push.
+
+Typed callback cloning and replacement of `Mono` remain required, as do callable
+ownership/multiplicity evidence, downstream typed transformations and the other
+outstanding table entries. The full cleanup goal remains active.
