@@ -29,6 +29,7 @@ mapChildrenM f e = (\node -> e {exprNode=node}) <$> case exprNode e of
   Match s xs as->Match s <$> traverse f xs <*> traverse alt as
   MatchTail s xs as k->MatchTail s <$> traverse f xs <*> traverse alt as <*> f k
   JoinCall label captures xs->JoinCall label captures <$> traverse f xs
+  CodeCall label captures xs->CodeCall label captures <$> traverse f xs
   VectorBuild b x->VectorBuild b <$> f x
   n->pure n
   where
@@ -52,6 +53,7 @@ localUses = nub . go S.empty
       Var (Local uid)->[uid | uid `S.notMember` scope]
       ClosureValue _ captures->filter (`S.notMember` scope) captures
       JoinCall _ captures xs->filter (`S.notMember` scope) captures++concatMap (go scope) xs
+      CodeCall _ captures xs->filter (`S.notMember` scope) captures++concatMap (go scope) xs
       Lambda ps b->go (bind ps scope) b
       Let p a b->go scope a++go (bind [p] scope) b
       LetRec p a b->let scoped=bind [p] scope in go scoped a++go scoped b
@@ -85,6 +87,7 @@ renameUses names e=runIdentity $ do
     Var (Local uid)->Var (Local (name uid))
     ClosureValue label captures->ClosureValue label (map name captures)
     JoinCall label captures xs->JoinCall label (map name captures) xs
+    CodeCall label captures xs->CodeCall label (map name captures) xs
     n->n}
   where name uid=M.findWithDefault uid uid names
 

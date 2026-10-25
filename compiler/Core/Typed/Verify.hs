@@ -2,6 +2,7 @@
 -- untyped body or guesses a representation from an optimized expression.
 module Core.Typed.Verify (verifyFunction, verifyFunctionWith, instanceOf, sameType, fieldType) where
 import Core.Typed.Syntax
+import Core.Typed.Contract (checkInstance)
 import Ownership.TypeShape (linShapeT)
 import Type.Syntax (Type(..), Row(..), Scheme(..))
 import Control.Monad (unless, foldM)
@@ -141,15 +142,15 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
         u<-foldM (check env) used args
         foldM (alternative env (map exprType args) (exprType e)) u alts
       ClosureValue label captures -> do
-        contract<-captureContract env label captures ClosureCode
-        require "closure value type" (sameType (exprType e) (foldr TFn (contractResult contract) (contractParameters contract)))
+        codeInstance env label captures ClosureCode (exprType e)
         pure used
+      CodeCall label captures args -> do
+        require "nullary code is not a callable closure" (not (null args))
+        saturated env label captures ClosureCode args (exprType e)
+        foldM (check env) used args
       JoinCall label captures args -> do
-        contract<-captureContract env label captures JoinCode
         require "nullary join is not a callable continuation" (not (null captures && null args))
-        require "join argument arity/type" (length args==length (contractParameters contract)
-          && and (zipWith (\arg ty -> sameType (exprType arg) ty) args (contractParameters contract)))
-        require "join result type" (sameType (exprType e) (contractResult contract))
+        saturated env label captures JoinCode args (exprType e)
         foldM (check env) used args
       MatchTail style args alts fallback -> do
         require "empty match tail" (not (null alts))
@@ -206,16 +207,19 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
               check env seen x
             NestedUpdate p->updatePlan env seen ty p
 
-    captureContract env label captures kind = do
+    codeInstance env label captures kind actual = do
       contract<-maybe (bad "unknown code identity") Right (M.lookup label contracts)
       require "code kind" (contractKind contract==kind)
       require "capture arity" (length captures==length (contractCaptures contract))
-      mapM_ (\(uid,(scheme,shape)) -> do
+      actualCaptures<-mapM (\uid -> do
         b<-maybe (bad "out-of-scope capture identity") Right (M.lookup uid env)
-        require "capture scheme" (sameScheme (binderScheme b) scheme)
-        require "capture ownership shape" (binderShape b==shape)) (zip captures (contractCaptures contract))
-      pure contract
-    sameScheme (Forall as ar a) (Forall bs br b)=as==bs && ar==br && sameType a b
+        pure (binderScheme b)) captures
+      mapM_ (\(Forall _ _ ty,shape)->require "capture ownership shape" (shape==linShapeT linearTypes ty)) (contractCaptures contract)
+      either bad pure (checkInstance contract actualCaptures actual)
+    saturated env label captures kind args result=do
+      contract<-maybe (bad "unknown code identity") Right (M.lookup label contracts)
+      require "code argument arity" (length args==length (contractParameters contract))
+      codeInstance env label captures kind (foldr (TFn . exprType) result args)
 
     patternScope env used p = do
       case patNode p of

@@ -2,10 +2,11 @@
 -- Typed closure/join conversion. Captures are lexical identities with their
 -- checked schemes; generated code never re-infers an erased expression.
 module Core.Typed.Close
-  (ClosedFunction,closeFunction,closedRoot,closedCode,verifyClosed) where
+  (ClosedFunction,closeFunction,closeFunctionWith,closedRoot,closedCode,closedContracts,mapClosed,verifyClosed) where
 import Core.Typed.Syntax
 import Core.Typed.Verify
 import Core.Typed.Walk
+import Core.Typed.Contract (codeContracts)
 import Core.Identity
 import Type.Syntax
 import Ownership.TypeShape (linShapeT)
@@ -17,18 +18,32 @@ import Data.Functor.Identity (runIdentity)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data ClosedFunction=ClosedFunction Function (M.Map CodeId CodeFunction)
+data ClosedFunction=ClosedFunction Function (M.Map CodeId CodeFunction) (M.Map String Scheme)
 closedRoot :: ClosedFunction -> Function
-closedRoot (ClosedFunction f _)=f
+closedRoot (ClosedFunction f _ _)=f
 closedCode :: ClosedFunction -> M.Map CodeId CodeFunction
-closedCode (ClosedFunction _ codes)=codes
+closedCode (ClosedFunction _ codes _)=codes
+closedContracts :: ClosedFunction -> M.Map CodeId CodeContract
+closedContracts (ClosedFunction _ codes globals)=codeContracts globals codes
+-- Transform an owned closed product and check the complete code graph before
+-- exposing it to another pass. Clients cannot construct an unchecked product.
+mapClosed :: TypeContext -> (Function -> Either String Function) -> (CodeFunction -> Either String CodeFunction) -> ClosedFunction -> Either String ClosedFunction
+mapClosed types rootPass codePass (ClosedFunction root codes globals)=do
+  root'<-rootPass root
+  codes'<-traverse codePass codes
+  let result=ClosedFunction root' codes' globals
+  verifyClosed types result
+  pure result
 data Closing=Closing Int (M.Map CodeId CodeFunction)
 
 closeFunction :: Monad m => Namespace -> (String -> m String) -> TypeContext -> Function -> m (Either String ClosedFunction)
-closeFunction (Namespace sourceNamespace) names types@(TypeContext linears _) input = runExceptT $ do
+closeFunction=closeFunctionWith M.empty
+
+closeFunctionWith :: Monad m => M.Map String Scheme -> Namespace -> (String -> m String) -> TypeContext -> Function -> m (Either String ClosedFunction)
+closeFunctionWith globals (Namespace sourceNamespace) names types@(TypeContext linears _) input = runExceptT $ do
   either throwError pure (verifyFunction types input)
   (root,Closing _ codes)<-runStateT run (Closing 0 M.empty)
-  let result=ClosedFunction root codes
+  let result=ClosedFunction root codes globals
   either throwError pure (verifyClosed types result)
   pure result
   where
@@ -178,11 +193,14 @@ closeFunction (Namespace sourceNamespace) names types@(TypeContext linears _) in
         tails xs@(_:rest)=xs:tails rest
 
 verifyClosed :: TypeContext -> ClosedFunction -> Either String ()
-verifyClosed types (ClosedFunction root codes)=do
-  let contracts=M.map codeContract codes
+verifyClosed types product@(ClosedFunction root codes _)=do
+  let contracts=closedContracts product
       functions=root:map codeAsFunction (M.elems codes)
       binders=concat [functionParameters f++allBinders (functionBody f) | f<-functions]
       identities=map binderId binders
+      ordinary=functionParameters root++concatMap codeParameters (M.elems codes)
+      monomorphic b=case binderScheme b of Forall [] [] _->True;_->False
+  unless (all monomorphic ordinary) (Left "typed closure: ordinary parameter requires a monomorphic scheme")
   unless (length identities==S.size (S.fromList identities)) (Left "typed closure: binder identity reused between functions")
   mapM_ (\(label,code)->unless (label==codeId code) (Left "typed closure: code identity/key mismatch")) (M.toList codes)
   mapM_ (verifyFunctionWith contracts types) functions

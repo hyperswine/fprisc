@@ -46,6 +46,7 @@ data Node
   | LetPattern Pattern Expr Expr
   | Match MatchStyle [Expr] [Alternative]
   | ClosureValue CodeId [BinderId]
+  | CodeCall CodeId [BinderId] [Expr]
   | JoinCall CodeId [BinderId] [Expr]
   | MatchTail MatchStyle [Expr] [Alternative] Expr
   | Fail String
@@ -84,10 +85,10 @@ data CodeFunction = CodeFunction
   { codeId :: CodeId, codeKind :: CodeKind, codeCaptures :: [Binder],
     codeParameters :: [Binder], codeBody :: Expr } deriving (Show)
 data CodeContract = CodeContract
-  { contractKind :: CodeKind, contractCaptures :: [(Scheme,LShape)],
+  { contractKind :: CodeKind, contractQuantifiers :: ([Int],[Int]), contractCaptures :: [(Scheme,LShape)],
     contractParameters :: [Type], contractResult :: Type } deriving (Show)
 codeContract :: CodeFunction -> CodeContract
-codeContract f=CodeContract (codeKind f) [(binderScheme b,binderShape b) | b<-codeCaptures f]
+codeContract f=CodeContract (codeKind f) ([],[]) [(binderScheme b,binderShape b) | b<-codeCaptures f]
   (map binderType (codeParameters f)) (exprType (codeBody f))
 codeAsFunction :: CodeFunction -> Function
 codeAsFunction f=let CodeId name=codeId f in Function name (codeCaptures f++codeParameters f) (codeBody f)

@@ -48,6 +48,10 @@ eraseFunctionWith contracts types layout f = runExceptT $ do
         unless (M.notMember n names) (throwError "typed Core erasure: display spelling would capture a global")
         pure (CVar n)
       ClosureValue (CodeId label) captures -> foldl CApp (CVar label) <$> mapM (capture env names) captures
+      CodeCall (CodeId label) captures args -> do
+        caps<-mapM (capture env names) captures
+        xs<-mapM (go env names) args
+        pure (foldl CApp (CVar label) (caps++xs))
       JoinCall (CodeId label) captures args -> do
         caps<-mapM (capture env names) captures
         xs<-mapM (go env names) args

@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence and structure specialization implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization and checked lexical closure calls implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass results, typed desugaring/closed products and checked unit ownership implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -335,3 +335,34 @@ fresh native cache and no reused coverage. Typed contracts/evaluation,
 one/four-hart native answers, saved/new controls and x64/RV32/RV64 emission pass.
 Sol scope/compatibility/bounded-tail checks pass. Hosted CI for `84fda39` passed;
 this integrated checkpoint requires its own hosted validation after push.
+
+
+## Typed polymorphic code calls
+
+[Typed code calls](2026-10-25-TYPED-CODE-CALLS.md) checks each closure/join's
+capture schemes, ordinary arguments and result in one fresh type/row
+instantiation. Ambient global variables stay rigid through the code graph;
+capture-local foralls retain scope. Private closed transformations recheck code
+identity, binder scope and parameter-role invariants before publication.
+
+Known saturated lexical closure calls now resolve before erasure while retaining
+their original code identity. Captures require manifest immutable types and
+unrestricted ownership shapes. Callable/owned/unknown captures and stored partial
+applications retain the existing path until their ownership/staging evidence is
+available. Codegen revision 113 versions generated code; native ABIs and runtime
+structures remain unchanged.
+
+The fresh-cache 136-job Base sweep passed in 475.13 seconds on six workers with
+no reused coverage. After a defensive capture-shape gate tightening, the complete
+focused typed-Core suite passed again with a fresh native cache. The record
+separates that final focused validation from the earlier full local sweep.
+Saved/new native and Sol effect/identity controls, existing specialization
+allocation/mode regressions and Sol compatibility/bounded-tail checks pass.
+Hosted CI for `a258266` passed; this integrated checkpoint requires its own hosted
+validation after push.
+
+Typed argument staging, `Mono` callback specialization and callable ownership
+remain required. The saved-compiler controls also record an existing
+optimizer-disabled overapplication ordering discrepancy for that staging work.
+All other outstanding table entries remain required; the full cleanup goal stays
+active.

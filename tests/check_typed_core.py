@@ -27,6 +27,8 @@ subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedUnits.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
 subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedStructs.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
+subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedCalls.hs'], cwd=ROOT,
+               env=env, check=True, timeout=180)
 subprocess.run([sys.executable, str(ROOT / 'tests/check_typed_units.py')], cwd=ROOT,
                env=env, check=True, timeout=180)
 
@@ -35,7 +37,8 @@ subprocess.run([sys.executable, str(ROOT / 'tests/check_typed_units.py')], cwd=R
 with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
     native = dict(env, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT))
     native.pop('FPR_FOREIGN', None)
-    cases = [('contracts', 'typed-core 14 5 10 9 42 60 19\n'),
+    cases = [('calls', 'prefix\nready\nbody\nbody\nfirst\nsecond\nover-first\nentered\nover-second\nover-body\ncomputed\nfactory\nargument\ntyped-calls 7 True 9 True 8 True 10 12 13 15 4 True 15 9 103 12 15 106\n'),
+             ('contracts', 'typed-core 14 5 10 9 42 60 19\n'),
              ('closure_layout', 'closure-layout False False True 7 8 9\n'),
              ('recursive_locals', 'recursive-locals 21 7 23 29 21 31 37 41 3 43 47 53\n'),
              ('vector_layouts', 'typed-layouts 2.5 8 3.5 9 4.5 ok 5.5 6.5 0 7.5 11 9 8.5 1 8.5 True\n'),
@@ -120,7 +123,14 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
                                   cwd=ROOT, env=native, capture_output=True, text=True, timeout=120)
         assert compiled.returncode == 0, compiled.stdout + compiled.stderr
         assert re.search(r'^# fn twice#TypedInts .*typed-ir ' + target + r' ', struct_output.read_text(), re.M), target
+        call_output = Path(directory) / f'calls-{target}.s'
+        compiled = subprocess.run([str(ROOT / 'fpr'), 'compile', f'--target={target}',
+                                   str(ROOT / 'tests/typed_core/calls.fpr'), str(call_output)],
+                                  cwd=ROOT, env=native, capture_output=True, text=True, timeout=120)
+        assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+        assert re.search(r'^# fn .*typed-ir ' + target + r' ', call_output.read_text(), re.M), target
 print('Typed Core native contracts: dictionaries, captures, recursive locals, record updates and layout-dependent closure identity on one/four harts passed')
 print('Typed recursive locals: x64/RV32/RV64 native emission passed (execution is host-native only)')
 print('Typed traps: exact native effects/delays and named-hole refusal on one/four harts; x64/RV32/RV64 emission passed')
 print('Typed structures: native one/four-hart answers and closure identity; x64/RV32/RV64 emission passed')
+print('Typed calls: native one/four-hart effects, stored partials, polymorphic calls and code identity; x64/RV32/RV64 emission passed')

@@ -2,7 +2,7 @@
 -- Instantiation of already checked types. This never inspects expressions or
 -- infers a type: only explicitly flexible variables may receive a solution.
 module Type.Substitution
-  (Substitution,variables,schemeVariables,applyType,applyScheme,freshen,unifyTypes) where
+  (Substitution,variables,schemeVariables,applyType,applyScheme,freshen,freshSubstitution,unifyTypes) where
 import Type.Syntax
 import Type.Relation (sameType)
 import Control.Monad.State.Strict
@@ -51,7 +51,12 @@ applyScheme (Substitution ts rs) (Forall qs rqs ty)=Forall qs' rqs' (applyType s
     scoped=Substitution (M.withoutKeys ts (S.fromList qs)) (M.withoutKeys rs (S.fromList rqs))
 
 freshen :: Int -> Scheme -> (Type,Variables,Int)
-freshen start (Forall qs rs ty)=(applyType sub ty,(S.fromList tvs,S.fromList rvs),base+length qs+length rs)
+freshen start sc@(Forall _ _ ty)=let (sub,flex,next)=freshSubstitution start sc in (applyType sub ty,flex,next)
+
+-- The same fresh instantiation can span a code interface and its separately
+-- quantified capture schemes. Caller variables must never become flexible.
+freshSubstitution :: Int -> Scheme -> (Substitution,Variables,Int)
+freshSubstitution start (Forall qs rs ty)=(sub,(S.fromList tvs,S.fromList rvs),base+length qs+length rs)
   where
     vars=variables ty
     base=max start (1+maximum (0:qs++rs++S.toList (fst vars)++S.toList (snd vars)))

@@ -116,6 +116,8 @@ executable fpr
       Core.Typed.Syntax
       Core.Typed.Walk
       Core.Typed.Close
+      Core.Typed.Contract
+      Core.Typed.Resolve
       Core.Typed.Layout
       Core.Typed.Verify
       Core.Typed.Erase

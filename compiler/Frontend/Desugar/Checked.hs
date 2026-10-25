@@ -13,6 +13,7 @@ import Core.Identity
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Erase (Layout(..),eraseFunctionWith)
 import Core.Typed.Close
+import Core.Typed.Resolve (resolveCalls)
 import Core.Typed.Layout (planFunction,plannedFunction)
 import qualified Core.Typed.Walk as Walk
 import Core.Typed.Verify (instanceOf,sameType)
@@ -352,21 +353,21 @@ compileTopChecked plans tops=do
   let ns=planNamespace plans;types=planTypes plans
   st<-get
   let entries=M.map (\(_,_,arity)->["x"++show i | i<-[1..arity]]) (dCons st)
-  constructors<-M.traverseWithKey (constructorFunction ns types) entries
+  constructors<-M.traverseWithKey (constructorFunction (Specialize.globalSchemes (planSpecialization plans)) ns types) entries
   groups<-mapM (lowerCheckedGroup plans) (groupClauses tops)
   pure (Desugared types
     (M.union (M.fromList (map fst groups)) (M.map (\(p,_,_)->p) constructors))
     (M.union (M.fromList [(T.functionName f,f) | (_,Just (f,_))<-groups]) (M.map (\(_,f,_)->f) constructors))
     (M.union (M.fromList [(T.functionName f,c) | (_,Just (f,c))<-groups]) (M.map (\(_,_,c)->c) constructors)))
 
-emitClosed :: Namespace -> T.TypeContext -> T.Function -> D (([String],Core),ClosedFunction)
-emitClosed namespace types fn=do
+emitClosed :: M.Map String Scheme -> Namespace -> T.TypeContext -> T.Function -> D (([String],Core),ClosedFunction)
+emitClosed globals namespace types fn=do
   initial<-get
   planned<-either error pure (planFunction namespace (dShapes initial) types fn)
-  result<-closeFunction namespace fresh types (plannedFunction planned)
-  closed<-either error pure result
+  result<-closeFunctionWith globals namespace fresh types (plannedFunction planned)
+  closed<-either error pure (result >>= resolveCalls types)
   st<-get
-  let contracts=M.map T.codeContract (closedCode closed)
+  let contracts=closedContracts closed
       erase=eraseFunctionWith contracts types (layoutOf st)
   root<-erase (closedRoot closed) >>= either error pure
   forM_ (M.elems (closedCode closed)) $ \code -> do
@@ -377,8 +378,8 @@ emitClosed namespace types fn=do
   pure (root,closed)
 -- Constructor entry points are generated too. Keep their schemas and
 -- identities in the same stage product, including nullary/builtin entries.
-constructorFunction :: Namespace -> T.TypeContext -> String -> [String] -> D (([String],Core),T.Function,ClosedFunction)
-constructorFunction (Namespace ns) types@(T.TypeContext linears schemas) name names = do
+constructorFunction :: M.Map String Scheme -> Namespace -> T.TypeContext -> String -> [String] -> D (([String],Core),T.Function,ClosedFunction)
+constructorFunction globals (Namespace ns) types@(T.TypeContext linears schemas) name names = do
   let Forall _ _ signature=case M.lookup name schemas of
         Just sc->sc
         Nothing->error ("typed Core: missing constructor schema "++name)
@@ -391,7 +392,7 @@ constructorFunction (Namespace ns) types@(T.TypeContext linears schemas) name na
       body=T.Expr result (linShapeT linears result) T.Generated Nothing (T.Construct name (map value ps))
       fn=T.Function name ps body
   unless (length names==length fields) (error ("typed Core: constructor schema/layout arity "++name))
-  (body,closed)<-emitClosed (Namespace ns) types fn
+  (body,closed)<-emitClosed globals (Namespace ns) types fn
   pure (body,fn,closed)
 
 layoutOf :: DEnv -> Layout D
@@ -429,11 +430,11 @@ desugarSpecialized (SpecializedSource checked legacy specialized) selected=do
         in if next==names then names else reach next
       fallbackNames=fallbackSource `S.union` reach (roots `S.intersection` legacyOnly)
   st<-get
-  constructors<-M.traverseWithKey (constructorFunction ns types)
+  constructors<-M.traverseWithKey (constructorFunction (Specialize.globalSchemes (planSpecialization checked)) ns types)
     (M.map (\(_,_,arity)->["x"++show i | i<-[1..arity]]) (dCons st))
   fallback<-mapM compileGroup (M.toAscList (M.restrictKeys legacyGroups fallbackNames))
   converted<-forM (M.toAscList wantedTyped) $ \(name,fn)->do
-    (out,closed)<-emitClosed ns types fn
+    (out,closed)<-emitClosed (Specialize.globalSchemes (planSpecialization checked)) ns types fn
     pure (name,(out,fn,closed))
   let emitted=M.fromList converted
   pure (Desugared types
@@ -448,7 +449,7 @@ lowerCheckedGroup :: CheckedPlans -> (String,[([SPat],[SGuard],SExpr)]) -> D ((S
 lowerCheckedGroup checked group@(name,clauses)=do
   case typedFunction checked group of
     Just f->do
-      (out,closed)<-emitClosed (planNamespace checked) (planTypes checked) f
+      (out,closed)<-emitClosed (Specialize.globalSchemes (planSpecialization checked)) (planNamespace checked) (planTypes checked) f
       pure ((name,out),Just (f,closed))
     Nothing->(,Nothing) <$> compileGroup group
 

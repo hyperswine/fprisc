@@ -1,0 +1,25 @@
+unsafe base.
+mark label n = _ = print label; n.
+poly n = ident x = x; alias = ident; _ = alias n; (ident n,ident True).
+captured n = ident x = x; worker x = (ident x,ident True,n); worker 9.
+identity n = f x = fn y -> y; a = f 1; b = f True; (a == b,a n,b 12).
+escape n = f x = x + n; alias = f; (alias 2,alias).
+partial n = combine x y = mark "body" (x + y); prefix = combine (mark "prefix" n); _ = print "ready"; prefix 2 + prefix 3.
+partialPoly n = choose a b = b; saved = choose n; (saved 4,choose n True).
+effect n = f a b = a + b + n; f (mark "first" 2) (mark "second" 3).
+shadow n = f x = x + n; call f = f 3; call (fn x -> x + 100).
+over n = f = (fn x -> _ = print "entered"; fn y -> _ = print "over-body"; x + y + n); f (mark "over-first" 2) (mark "over-second" 3).
+computed n = f = (if n > 0 then (fn x -> x + 10) else (fn x -> x + 20)); f (mark "computed" 5).
+factory = _ = print "factory"; fn x -> x + 100.
+main =
+  (a,b) = poly 7;
+  (c,d,e) = captured 8;
+  (same,f,g) = identity 10;
+  (h,saved) = escape 11;
+  (i,j) = partialPoly 1;
+  k = partial 5;
+  l = effect 4;
+  m = over 7;
+  o = computed 1;
+  p = factory (mark "argument" 6);
+  print "typed-calls {a} {b} {c} {d} {e} {same} {f} {g} {h} {saved 4} {i} {j} {k} {l} {shadow 0} {m} {o} {p}".

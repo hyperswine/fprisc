@@ -291,7 +291,7 @@ main = do
   check "non-Bool guard refused"
     (failed (verifyFunction model (boxFn {T.functionBody=typed int (T.Match T.CaseMatch [typed box (T.Var (T.Local uid))] [T.Alternative [pat] [T.BoolGuard (typed int (T.IntValue 1))] (typed int (T.Var (T.Local bid)))])})))
   let label=T.CodeId "$test-code"
-      contracts=M.singleton label (T.CodeContract T.ClosureCode [(Forall [] [] int,LU)] [int] int)
+      contracts=M.singleton label (T.CodeContract T.ClosureCode ([],[]) [(Forall [] [] int,LU)] [int] int)
       closure=expr (TFn int int) (T.ClosureValue label [uid])
       closureFn=fn {T.functionBody=closure}
       verify=verifyFunctionWith contracts (T.TypeContext [] M.empty)
@@ -301,9 +301,9 @@ main = do
   check "unregistered closure code refused" (failed (verify (closureFn {T.functionBody=expr (TFn int int) (T.ClosureValue (T.CodeId "absent") [uid])})))
   check "capture count refused" (failed (verify (closureFn {T.functionBody=expr (TFn int int) (T.ClosureValue label [])})))
   check "capture scope refused" (failed (verify (closureFn {T.functionBody=expr (TFn int int) (T.ClosureValue label [bid])})))
-  check "join cannot escape as a closure" (failed (verifyFunctionWith (M.singleton label (T.CodeContract T.JoinCode [] [int] int)) (T.TypeContext [] M.empty) closureFn))
-  check "capture schemes cannot be weakened" (failed (verifyFunctionWith (M.singleton label (T.CodeContract T.ClosureCode [(Forall [] [] bool,LU)] [int] int)) (T.TypeContext [] M.empty) closureFn))
-  check "join argument type refused" (failed (verifyFunctionWith (M.singleton label (T.CodeContract T.JoinCode [] [int] int)) (T.TypeContext [] M.empty)
+  check "join cannot escape as a closure" (failed (verifyFunctionWith (M.singleton label (T.CodeContract T.JoinCode ([],[]) [] [int] int)) (T.TypeContext [] M.empty) closureFn))
+  check "capture schemes cannot be weakened" (failed (verifyFunctionWith (M.singleton label (T.CodeContract T.ClosureCode ([],[]) [(Forall [] [] bool,LU)] [int] int)) (T.TypeContext [] M.empty) closureFn))
+  check "join argument type refused" (failed (verifyFunctionWith (M.singleton label (T.CodeContract T.JoinCode ([],[]) [] [int] int)) (T.TypeContext [] M.empty)
     (fn {T.functionBody=expr int (T.JoinCall label [] [expr bool (T.BoolValue True)])})))
   let wideNamespace=Namespace "wide-input"
       wideParameters=[bind ("p"++show i) (BinderId wideNamespace i) int | i<-[0..63]]

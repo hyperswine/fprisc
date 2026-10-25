@@ -305,3 +305,4 @@ they began.
 - [Typed generated traps](2026-10-25-TYPED-TRAPS.md): checked anonymous holes and constructor wrappers, exact application delays and native effect-order checks.
 - [Checked unit ownership](2026-10-25-CHECKED-UNITS.md): projections of one checked producer, transitive-import correctness and lowered-input/call-context cache identities.
 - [Typed structure specialization](2026-10-25-TYPED-STRUCTURE-SPECIALIZATION.md): checked clone instantiation and identities, polymorphic schemas, layout-capturing members and shared lexical-scope regressions.
+- [Typed polymorphic code calls](2026-10-25-TYPED-CODE-CALLS.md): quantified capture/argument/result contracts, checked closed transformations and lexical closure-call resolution before erasure.
