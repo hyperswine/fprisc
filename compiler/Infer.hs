@@ -44,6 +44,7 @@ import qualified Data.Set as S
 import Exhaust (checkArms, checkClauses, siblingsOf)
 import Core.Syntax (Name)
 import Compiler.VectorLayout
+import Compiler.Trap
 import Frontend.Syntax
 import Frontend.Traverse
 import Frontend.Linearity
@@ -1114,7 +1115,7 @@ inferERaw ctx e0 = case e0 of
     hc <- gets iHoledCons
     case [ar | (c, ar) <- S.toList hc, c == n] of
       (ar : _) ->
-        pure (t, foldr (\i b -> SLam ["?c" ++ show (i :: Int)] b) (SApp (SVar "error") (SStrI [SegStr ("typed hole ?? in constructor " ++ n ++ " (unimplemented)")])) [1 .. ar])
+        pure (t, foldr (\i b -> SLam ["?c" ++ show (i :: Int)] b) (SApp (SVar "error") (SStrI [SegStr (trapMessage (ConstructorHole n))])) [1 .. ar])
       [] | ipVectorLayouts (icProf ctx) && n == "Vec.newAs" ->
              (t, e') <$ report "Vec.newAs requires a literal layout; dynamic or aliased layout declarations are not type-safe"
          | ipVectorLayouts (icProf ctx) && n `elem` ["Vec.new", "Vec.fromList", "Vec.map"] -> do
@@ -1756,9 +1757,8 @@ inferTopsResult capture prof sigs structs tops =
       hz <- gets iHoles
       hzt <- mapM (\(n, t) -> (,) n <$> zonk t) hz
       let trapFor t =
-            let arrows tt = case tt of TFn _ b -> 1 + arrows b; _ -> 0
-                nA = min 1 (arrows t) -- one level: consume the piped arg, then trap
-                body = SApp (SVar "error") (SStrI [SegStr "typed hole ?? (unimplemented)"])
+            let nA = length (trapArguments (anonymousTrap t))
+                body = SApp (SVar "error") (SStrI [SegStr (trapMessage AnonymousHole)])
              in if nA == 0 then body else SLam ["?h"] body
           fixT e = case e of
             SApp (SVar "?trap!") (SInt k) | Just (_, t) <- lookupK (fromIntegral k) hzt -> trapFor t

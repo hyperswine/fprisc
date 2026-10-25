@@ -1,0 +1,14 @@
+unsafe base.
+Broken = Type (Bad Int ??).
+missing : Int -> Int -> Int.
+missing = ??.
+main = case Sys.args Unit of
+  "scalar" :: _ -> _ = print "before"; _ = print (1 + ??); print "after"
+| "piped" :: _ -> (print "argument" >> 7) |> ??
+| "function" :: _ -> _ = print "before"; saved = missing (print "first" >> 7); _ = print "after"; print (saved 8)
+| "partial" :: _ -> saved = Bad (print "first" >> 7); print "partial"
+| "constructor" :: _ -> saved = Bad (print "first" >> 7); _ = print "partial"; result = saved (print "second" >> True); print "after"
+| "saturated" :: _ -> result = Bad (print "first" >> 7) (print "second" >> True); print "after"
+| "shadow" :: _ -> error message = 99; _ = print (1 + ??); print "after"
+| "constructor-shadow" :: _ -> error message = 99; _ = print (Bad 7 True); print "after"
+| _ -> print "select a trap test".

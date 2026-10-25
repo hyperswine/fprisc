@@ -122,6 +122,7 @@ executable fpr
       Type.Syntax
       Type.Relation
       Compiler.VectorLayout
+      Compiler.Trap
       Inline
       ReceiveTurns
       Mono

@@ -5,13 +5,15 @@ module Infer.Result
   (InferenceResult, resultFromState, inferenceErrors, inferenceDiagnostics, inferenceNotes,
    inferenceHoles, inferenceLinearity, inferenceTops, inferenceInterfaces,
    inferenceEvidence, inferenceElaborations, inferenceSchemes, inferenceLayoutRequirements,
-   inferencePatterns, inferenceConstructors, inferenceBinderNames, inferenceLayoutContracts) where
+   inferencePatterns, inferenceConstructors, inferenceBinderNames, inferenceLayoutContracts,
+   inferenceConstructorTraps) where
 import Diagnostic.Syntax (Diagnostic,renderLegacyDiagnostic)
 import Core.Syntax (Name)
 import Core.Identity (BinderId)
 import Frontend.Syntax (STop)
 import Type.Syntax (Type, Scheme)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Ownership.Shape (LShape)
 import Infer.State
 import Infer.Elaboration (ElaborationFact)
@@ -25,7 +27,8 @@ data InferenceResult = Result
     resultEvidence :: Either String (Maybe E.Evidence), resultElaborations :: [ElaborationFact],
     resultSchemes :: M.Map Name Scheme, resultLayouts :: M.Map Name [Type],
     resultPatterns :: M.Map PatternSite PatternInfo, resultConstructors :: M.Map Name Scheme,
-    resultBinderNames :: M.Map BinderId Name, resultLayoutContracts :: M.Map Name LayoutContract }
+    resultBinderNames :: M.Map BinderId Name, resultLayoutContracts :: M.Map Name LayoutContract,
+    resultConstructorTraps :: M.Map Name Int }
 resultFromState :: IEnv -> [STop] -> Either String (Maybe E.Evidence)
                 -> [ElaborationFact] -> M.Map Name Scheme -> M.Map Name [Type] -> InferenceResult
 resultFromState st tops proof sites schemes layouts = Result
@@ -33,7 +36,8 @@ resultFromState st tops proof sites schemes layouts = Result
     resultLinearity=iLinSigs st, resultTops=tops, resultInterfaces=iInterfaces st,
     resultEvidence=proof, resultElaborations=sites, resultSchemes=schemes, resultLayouts=layouts,
     resultPatterns=iPatterns st, resultConstructors=iConstructorSchemes st, resultBinderNames=iBinderTargets st,
-    resultLayoutContracts=iLayoutContracts st }
+    resultLayoutContracts=iLayoutContracts st,
+    resultConstructorTraps=M.fromListWith min (S.toList (iHoledCons st)) }
 inferenceErrors :: InferenceResult -> [String]
 inferenceErrors = map renderLegacyDiagnostic . resultErrors
 inferenceDiagnostics :: InferenceResult -> [Diagnostic]
@@ -65,3 +69,5 @@ inferenceBinderNames :: InferenceResult -> M.Map BinderId Name
 inferenceBinderNames = resultBinderNames
 inferenceLayoutContracts :: InferenceResult -> M.Map Name LayoutContract
 inferenceLayoutContracts = resultLayoutContracts
+inferenceConstructorTraps :: InferenceResult -> M.Map Name Int
+inferenceConstructorTraps = resultConstructorTraps

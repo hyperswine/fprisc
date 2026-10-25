@@ -302,3 +302,4 @@ they began.
 - [Typed closures and joins](2026-10-25-TYPED-CLOSURES.md): identity-based closure conversion, polymorphic capture contracts and typed pattern fallthrough before erasure.
 - [Typed recursive locals](2026-10-25-TYPED-RECURSIVE-LOCALS.md): checked recursive bindings, explicit self/capture code and nested/escaping local-function validation.
 - [Typed layout evidence](2026-10-25-TYPED-LAYOUT-EVIDENCE.md): identity-owned layout arguments/calling schemas, typed vector builders and quantified-scope regressions.
+- [Typed generated traps](2026-10-25-TYPED-TRAPS.md): checked anonymous holes and constructor wrappers, exact application delays and native effect-order checks.

@@ -20,6 +20,8 @@ subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedCore.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
 subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedLayouts.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
+subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedTraps.hs'], cwd=ROOT,
+               env=env, check=True, timeout=180)
 
 # An independent native answer catches source/typed-IR agreement on a wrong
 # binding, and exercises the real native driver rather than only its helpers.
@@ -42,6 +44,34 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
                                  capture_output=True, text=True, timeout=30)
             assert ran.returncode == 0, ran.stdout + ran.stderr
             assert ran.stdout == expected, ran.stdout
+    # One executable exercises independent failure paths, keeping native
+    # builds bounded while checking effects before/after each trap.
+    trap_cases = [('scalar', 'before\n', 'typed hole ?? (unimplemented)'),
+                  ('piped', 'argument\n', 'typed hole ?? (unimplemented)'),
+                  ('function', 'before\nfirst\n', 'typed hole ?? (unimplemented)'),
+                  ('partial', 'first\npartial\n', None),
+                  ('constructor', 'first\npartial\nsecond\n', 'typed hole ?? in constructor Bad (unimplemented)'),
+                  ('saturated', 'first\nsecond\n', 'typed hole ?? in constructor Bad (unimplemented)'),
+                  ('shadow', '', 'typed hole ?? (unimplemented)'),
+                  ('constructor-shadow', '', 'typed hole ?? in constructor Bad (unimplemented)')]
+    for harts in (1, 4):
+        output = Path(directory) / f'traps-{harts}'
+        built = subprocess.run([str(ROOT / 'fpr'), 'build',
+                                str(ROOT / 'tests/typed_core/traps.fpr'),
+                                '--harts', str(harts), '-o', str(output)],
+                               cwd=ROOT, env=native, capture_output=True, text=True, timeout=120)
+        assert built.returncode == 0, built.stdout + built.stderr
+        for case, prefix, message in trap_cases:
+            ran = subprocess.run([str(output), case], cwd=ROOT, env=native,
+                                 capture_output=True, text=True, timeout=30)
+            expected = prefix if message is None else prefix + f'[ERR] {message}\n\n*** FPRISC PANIC [actor 0]: {message} ***\n'
+            assert ran.returncode == (0 if message is None else 1), (case, ran.returncode, ran.stdout, ran.stderr)
+            assert ran.stdout == expected and not ran.stderr, (case, ran.stdout, ran.stderr)
+    named = Path(directory) / 'named.fpr'
+    named.write_text('unsafe base. main = print (1 + ?todo).\n')
+    refused = subprocess.run([str(ROOT / 'fpr'), 'compile', str(named), str(Path(directory) / 'named.s')],
+                             cwd=ROOT, env=native, capture_output=True, text=True, timeout=120)
+    assert refused.returncode != 0 and 'typed hole, ?todo : Int' in refused.stdout, refused.stdout + refused.stderr
     # The new code/capture contracts must reach every ISA's native selector.
     # Execution above is host-native; these are portable emission checks.
     for target in ('x64', 'rv32', 'rv64'):
@@ -53,5 +83,20 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
         code = output.read_text()
         headers = re.findall(r'^# fn (\$typed_recursive_\S+).* typed-ir (\w+) ', code, re.M)
         assert headers and all(isa == target for _, isa in headers), headers
+        trap_output = Path(directory) / f'traps-{target}.s'
+        compiled = subprocess.run([str(ROOT / 'fpr'), 'compile', f'--target={target}',
+                                   str(ROOT / 'tests/typed_core/traps.fpr'), str(trap_output)],
+                                  cwd=ROOT, env=native, capture_output=True, text=True, timeout=120)
+        assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+        trap_code = trap_output.read_text()
+        # Native String objects are length-delimited and split into byte
+        # directives, rather than printed as quoted assembler strings.
+        pools = re.findall(r'^\.Ltirstr_\w+:\n(.*?)(?=^\S[^\n]*:|\Z)', trap_code, re.M | re.S)
+        literals = {bytes(int(n.strip()) for line in pool.splitlines()
+                          if (match := re.fullmatch(r'\s*\.byte\s+(\d+(?:\s*,\s*\d+)*)\s*', line))
+                          for n in match.group(1).split(',')) for pool in pools}
+        for message in ('typed hole ?? (unimplemented)', 'typed hole ?? in constructor Bad (unimplemented)'):
+            assert message.encode() in literals, (target, message)
 print('Typed Core native contracts: dictionaries, captures, recursive locals, record updates and layout-dependent closure identity on one/four harts passed')
 print('Typed recursive locals: x64/RV32/RV64 native emission passed (execution is host-native only)')
+print('Typed traps: exact native effects/delays and named-hole refusal on one/four harts; x64/RV32/RV64 emission passed')

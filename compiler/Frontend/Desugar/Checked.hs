@@ -13,6 +13,7 @@ import Core.Typed.Close
 import Core.Typed.Layout (planFunction,plannedFunction)
 import Core.Typed.Verify (instanceOf,sameType)
 import Compiler.VectorLayout
+import Compiler.Trap
 import Core.Syntax (Core,Prog)
 import Type.Syntax (Type(..),Scheme(..))
 import Ownership.Shape (LShape(..))
@@ -42,6 +43,7 @@ data EPlan = EP E.ExprFact PNode
 data PNode = Ref T.Reference | LitInt Integer | LitString String | LitAtom String
   | Application EPlan EPlan | Lambda [T.Binder] EPlan
   | HiddenReference T.Reference [T.Expr] | VectorConstructor VectorBuilder T.Expr
+  | GeneratedTrap TrapPlan
   | Binding T.Binder [T.Binder] EPlan EPlan | PatternBinding T.Pattern EPlan EPlan
   | RecursiveBinding T.Binder [T.Binder] EPlan EPlan
   | Pipe EPlan EPlan | Sequencing EPlan EPlan | Call2 String EPlan EPlan
@@ -122,6 +124,12 @@ prepareChecked result = do
       plan e=do
         let make n=Right (EP e n)
         case E.expressionSource e of
+          SVar name | Just arity<-M.lookup name (inferenceConstructorTraps result)->do
+            case E.expressionReference e of
+              Just (E.GlobalReference actual sc)->unless (actual==name && instanceOf sc (E.expressionType e)) (corrupt "constructor trap reference/type mismatch")
+              _->corrupt "constructor trap lacks a checked global reference"
+            contract<-either corrupt pure (constructorTrap name arity (E.expressionType e))
+            make (GeneratedTrap contract)
           SVar _->case [elaborationTarget x | x<-M.findWithDefault [] (E.expressionIdentity e) at] of
             [OpDictionary name proofs]->do
               ref<-case E.expressionReference e of
@@ -162,6 +170,7 @@ prepareChecked result = do
             _<-global "strcat" (TFn (TC "String") (TFn (TC "String") (TC "String")))
             make (Interpolation ps)
           SMark _ _->children e >>= \case [a]->make (Note a); _->corrupt "source mark derivation"
+          SApp (SVar "?hole") (SStrI [SegStr ""])->make (GeneratedTrap (anonymousTrap (E.expressionType e)))
           SApp _ _ | [OpDeclaredVector proof]<-[elaborationTarget x | x<-M.findWithDefault [] (E.expressionIdentity e) at]->
             layoutArgument proof >>= make . VectorConstructor BuildEmpty
           SApp _ _->children e >>= \case
@@ -360,6 +369,13 @@ lowerCheckedGroup (Plans (Namespace ns) types plans _) group@(name,clauses)=case
       where
         node=case n of
           Ref r->T.Var r
+          GeneratedTrap contract->
+            let ExprId (Namespace sourceNs) index=E.expressionIdentity e
+                parameters=[T.Binder (BinderId (Namespace (sourceNs++"/trap/"++show index)) i)
+                  ("$trap_"++show i) (Forall [] [] arg) (shape arg) | (i,arg)<-zip [0..] (trapArguments contract)]
+                failure=gen (trapResult contract) (T.Fail (trapMessage (trapOrigin contract)))
+                delayed=foldr (\p body->gen (TFn (T.binderType p) (T.exprType body)) (T.Lambda [p] body)) failure parameters
+            in T.exprNode delayed
           HiddenReference r args->
             let physical=foldr (TFn . T.exprType) (E.expressionType e) args
                 base=gen physical (T.Var r)

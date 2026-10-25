@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins, direct recursive locals and vector-layout evidence implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals and vector-layout evidence implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass result and initial typed desugaring product implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -268,3 +268,24 @@ saved-compiler control/wrong-answer/refusal comparisons, imported layout and
 optimization variants, repaired Rosetta/QEMU kernel oracles and Sol
 compatibility/bounded-tail checks passed. Hosted CI for `605df23` passed;
 integrated-head hosted validation follows this push.
+
+## Typed generated traps
+
+[Typed generated traps](2026-10-25-TYPED-TRAPS.md) carries anonymous holes and
+holed-constructor references into checked native products. A shared private
+plan owns exact argument delays and failure messages. Constructor provenance
+is distinct from ordinary polymorphism; generated parameters retain identities
+and types through closure conversion. Intrinsic failures preserve the tested
+native effects, output and exit status of the saved compiler. Named holes still
+refuse compilation with their inferred types.
+
+Cache revision 110 versions changed private generated code; runtime/context
+memory structures and native ABIs are unchanged. Specialization/per-unit
+evidence, remaining generated forms, typed transformations and all other
+outstanding table entries remain required. The full goal stays active.
+
+Validation: all 136 Base jobs passed in 470.72 seconds on six workers without
+reused coverage, including typed contracts/evaluation, native one/four-hart
+effects, named-hole refusal and x64/RV32/RV64 emission. Saved-compiler fixed
+answers and Sol argument/shared-language/bounded-tail checks pass. Integrated
+hosted validation follows the push; the full cleanup goal remains active.
