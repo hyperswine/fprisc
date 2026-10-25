@@ -16,7 +16,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
 | Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals and vector-layout evidence implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
-| Checked pipeline products and lint | Structural pass result and initial typed desugaring product implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
+| Checked pipeline products and lint | Structural pass results, typed desugaring/closed products and checked unit ownership implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
@@ -289,3 +289,27 @@ reused coverage, including typed contracts/evaluation, native one/four-hart
 effects, named-hole refusal and x64/RV32/RV64 emission. Saved-compiler fixed
 answers and Sol argument/shared-language/bounded-tail checks pass. Integrated
 hosted validation follows the push; the full cleanup goal remains active.
+
+## Checked unit ownership
+
+[Checked units](2026-10-25-CHECKED-UNITS.md) removes the second per-unit
+inference run and its discarded errors. Prelude and dependency units consume
+private owned projections of merged checking, preserving eligible definitions'
+types, identities and elaboration decisions. Global calling arities share the
+same producer. A versioned lowered-input cache identity includes referenced
+calling contracts and reachable constructor bodies while retaining reuse across
+unrelated root declarations.
+
+Saved-compiler probes reproduce a transitive F64 operation emitted as integer
+arithmetic and an imported recursive local refused as an unknown primitive.
+The checked path returns the fixed independent answers. Cache revision 111
+versions these changes; physical ABIs and runtime structures are unchanged.
+Root specialization, downstream typed transformations and the remaining table
+entries stay required. The full cleanup goal remains active.
+
+Validation: all 136 Base jobs passed in 452.84 seconds on six workers without
+reused coverage. Focused unit ownership/composition, native one/four-hart answers,
+warm type/context/flat-curried arity transitions, unrelated-root cache reuse and
+x64/RV32/RV64 emission pass. Saved/new fixed-answer controls and Sol
+argument/shared-language/bounded-tail checks pass. Integrated hosted validation
+follows the push; the full cleanup goal remains active.

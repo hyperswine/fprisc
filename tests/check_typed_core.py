@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +22,10 @@ subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedCore.hs'], cwd=ROOT,
 subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedLayouts.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
 subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedTraps.hs'], cwd=ROOT,
+               env=env, check=True, timeout=180)
+subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedUnits.hs'], cwd=ROOT,
+               env=env, check=True, timeout=180)
+subprocess.run([sys.executable, str(ROOT / 'tests/check_typed_units.py')], cwd=ROOT,
                env=env, check=True, timeout=180)
 
 # An independent native answer catches source/typed-IR agreement on a wrong

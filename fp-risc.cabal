@@ -48,6 +48,7 @@ executable fpr
       Representation
       Interrupt
       Core.Syntax
+      Core.CacheIdentity
       Core.Utils
       Core.Primitives
       Core.Analysis.FusionSafety

@@ -3,7 +3,9 @@
 -- inferred types and binder IDs; layout lowers only at the explicit untyped
 -- compatibility boundary, before the not-yet-migrated transformation passes.
 module Frontend.Desugar.Checked
-  (CheckedPlans, prepareChecked, checkedNames, checkedDeclines,
+  (CheckedPlans, prepareChecked, checkedNames, checkedDeclines, checkedCallArities,
+   CheckedUnit, selectCheckedUnit, checkedUnitTops, checkedUnitNames,
+   desugarCheckedUnit, lowerCheckedUnit,
    Desugared, desugaredCore, desugaredTyped, desugaredClosed, desugaredTypeContext,
    compileTopChecked, lowerToUntyped) where
 import Core.Identity
@@ -35,7 +37,26 @@ import qualified Data.Set as S
 
 data PlanningProblem = Deferred String | Corrupt String
 
-data CheckedPlans = Plans Namespace T.TypeContext (M.Map String Plan) [(String,String)]
+data CheckedPlans = Plans Namespace T.TypeContext (M.Map String Plan) [(String,String)] [STop]
+-- An owned projection of one checking run, including the exact elaborated
+-- clauses its plans describe. Clients cannot pair it with rewritten bodies.
+data CheckedUnit = CheckedUnit CheckedPlans [STop] (S.Set String)
+selectCheckedUnit :: CheckedPlans -> S.Set String -> Either String CheckedUnit
+selectCheckedUnit plans@(Plans _ _ _ _ source) names = do
+  let available=S.fromList [n | TBind n _ _ _<-source]
+      missing=names S.\\ available
+  unless (S.null missing) (Left ("checked unit: absent definitions: "++unwords (S.toAscList missing)))
+  pure (CheckedUnit plans [t | t@(TBind n _ _ _)<-source,n `S.member` names] names)
+checkedUnitTops :: CheckedUnit -> [STop]
+checkedUnitTops (CheckedUnit _ tops _)=tops
+checkedUnitNames :: CheckedUnit -> S.Set String
+checkedUnitNames (CheckedUnit _ _ names)=names
+checkedCallArities :: CheckedPlans -> M.Map String Int
+checkedCallArities (Plans _ _ _ _ source)=M.fromList [(n,length ps) | TBind n ps _ _<-source]
+desugarCheckedUnit :: CheckedUnit -> D Desugared
+desugarCheckedUnit (CheckedUnit plans tops _)=compileTopChecked plans tops
+lowerCheckedUnit :: CheckedUnit -> D Prog
+lowerCheckedUnit = fmap desugaredCore . desugarCheckedUnit
 data Plan = Plan [T.Binder] [Clause] [([SPat],[SGuard],SExpr)]
 data Clause = Clause [T.Pattern] [GuardPlan] EPlan
 data GuardPlan = Boolean EPlan | Matching T.Pattern EPlan
@@ -55,9 +76,9 @@ data PNode = Ref T.Reference | LitInt Integer | LitString String | LitAtom Strin
   | Interpolation [Either String (Maybe String,EPlan)] | RenderApplication EPlan String EPlan
 
 checkedNames :: CheckedPlans -> S.Set String
-checkedNames (Plans _ _ ps _) = M.keysSet ps
+checkedNames (Plans _ _ ps _ _) = M.keysSet ps
 checkedDeclines :: CheckedPlans -> [(String,String)]
-checkedDeclines (Plans _ _ _ ds) = ds
+checkedDeclines (Plans _ _ _ ds _) = ds
 
 prepareChecked :: InferenceResult -> Either String CheckedPlans
 prepareChecked result = do
@@ -264,7 +285,7 @@ prepareChecked result = do
       types=T.TypeContext [n | TType n True _ _<-inferenceTops result] (inferenceConstructors result)
   case [(name,why) | (name,Left (Corrupt why))<-answers] of
     (name,why):_->Left ("invalid checked lowering evidence for "++name++": "++why)
-    []->pure (Plans (E.evidenceNamespace evidence) types (M.fromList [(n,p) | (n,Right p)<-answers]) [(n,why) | (n,Left (Deferred why))<-answers])
+    []->pure (Plans (E.evidenceNamespace evidence) types (M.fromList [(n,p) | (n,Right p)<-answers]) [(n,why) | (n,Left (Deferred why))<-answers] (Struct.erasePSig (inferenceTops result)))
   where
     defer=Left . Deferred
     corrupt=Left . Corrupt
@@ -289,7 +310,7 @@ desugaredClosed (Desugared _ _ _ p)=p
 desugaredTypeContext :: Desugared -> T.TypeContext
 desugaredTypeContext (Desugared t _ _ _)=t
 compileTopChecked :: CheckedPlans -> [STop] -> D Desugared
-compileTopChecked plans@(Plans ns types _ _) tops=do
+compileTopChecked plans@(Plans ns types _ _ _) tops=do
   st<-get
   let entries=M.map (\(_,_,arity)->["x"++show i | i<-[1..arity]]) (dCons st)
   constructors<-M.traverseWithKey (constructorFunction ns types) entries
@@ -342,7 +363,7 @@ lowerToUntyped :: CheckedPlans -> [STop] -> D Prog
 lowerToUntyped ps ts=desugaredCore <$> compileTopChecked ps ts
 
 lowerCheckedGroup :: CheckedPlans -> (String,[([SPat],[SGuard],SExpr)]) -> D ((String,([String],Core)),Maybe (T.Function,ClosedFunction))
-lowerCheckedGroup (Plans (Namespace ns) types plans _) group@(name,clauses)=case M.lookup name plans of
+lowerCheckedGroup (Plans (Namespace ns) types plans _ _) group@(name,clauses)=case M.lookup name plans of
   Just (Plan hidden cls expected) | encode clauses==encode expected->do
     args<-case cls of
       Clause ps _ _:_->forM (zip [1::Int ..] ps) $ \(i,p)->do

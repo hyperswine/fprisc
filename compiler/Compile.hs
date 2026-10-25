@@ -26,6 +26,7 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Core.Syntax
+import Core.CacheIdentity (CallArities(..),coreCacheIdentity)
 import qualified Compiler.Options as Options
 import Compiler.CommandLine
 import Core.Identity (Namespace(..))
@@ -43,8 +44,8 @@ import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
 import Infer.Result
-import Frontend.Desugar.Checked (prepareChecked, lowerToUntyped)
-import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTops, inferTopsInterfaces)
+import Frontend.Desugar.Checked (prepareChecked, lowerToUntyped, selectCheckedUnit, lowerCheckedUnit, checkedCallArities)
+import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTopsInterfaces)
 import Safety (measureCheck, checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import qualified Cost
 import Manifest (Manifest (..), readManifest, renderNs)
@@ -487,12 +488,6 @@ compileWithInterface accepted = do
             TBind n _ _ _ -> n `S.member` sharedEntryNames
             TSig n _ _ -> n `S.member` sharedEntryNames
             _ -> False]
-          -- A root may also add a contract to an existing prelude function.
-          -- Every unit must see the resulting checked callable's signature,
-          -- even if its implementation belongs to a different home unit.
-          checkedSignatures = [t | t@(TSig n _ _) <- tops', "$precond" `isPrefixOf` n]
-          sharedContext = [t | t@(TSig n _ _) <- tops, n `S.member` foreignContracts]
-                            ++ sharedEntryTops ++ checkedSignatures
           removeShared = filter (\t -> case t of
             TBind n _ _ _ -> n `S.notMember` sharedEntryNames
             _ -> True)
@@ -585,8 +580,10 @@ compileWithInterface accepted = do
           consUnits = [(h, collectCons h uts) | (h, uts) <- units]
           consAll = M.unions (consPrelude : consRoot : map snd consUnits)
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
-          compileRaw uts = let (p, st) = runState (lowerToUntyped checkedLowering uts >>= liftFix) (DEnv 0 consAll shapes [] [])
-                            in (M.map (fmap eraseCast) p, S.fromList (dJoins st))
+          compileLowered lower = let (p, st) = runState (lower >>= liftFix) (DEnv 0 consAll shapes [] [])
+                                 in (M.map (fmap eraseCast) p, S.fromList (dJoins st))
+          compileRaw uts = compileLowered (lowerToUntyped checkedLowering uts)
+          compileOwnedRaw unit = compileLowered (lowerCheckedUnit unit)
           turnContext = fst (compileRaw finalTops)
           -- regions (the compiler-placed loop and call kinds) change no work
           -- and no allocation: the cost report sees the program without them
@@ -597,6 +594,7 @@ compileWithInterface accepted = do
                        else receiveTurns (regions && (Options.cgLoopRegions codegen)) (regions && (Options.cgCallRegions codegen)) contextEqs (M.fromList interfaces) finalTops turnContext joins p
           turnPass = turnPassWith True
           compileUnit = fst . turnPass . compileRaw
+          compileOwned = fst . turnPass . compileOwnedRaw
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
           tidDecls =
             [ (t, ownerT ++ "." ++ n)
@@ -753,22 +751,19 @@ compileWithInterface accepted = do
         else accepted [(n, canonicalTypeWith interfaceName t) | (n, t) <- interfaces, S.member n rootBinds]
       when checkOnly exitSuccess
       -- ---- per-unit CODEGEN (separate compilation) ----
-      -- Each unit is expanded already (preludeE/units/root'). For codegen
-      -- we also need operator sites resolved locally (Int prim / Str.+),
-      -- which inferTops does; a unit typechecks standalone WITH the prelude
-      -- in scope. Cross-unit monomorphization clones live in the ROOT
-      -- (specialize ran on the whole program above); finalTops' root
-      -- portion carries them.
-      let resolveUnit uts =
-            let (_, _, _, _, rw) = inferTops sigs structs (preludeE' ++ sharedContext ++ uts)
-                bn = S.fromList ([fst3 b | b@(TBind {}) <- uts])
-             in [t | t@(TBind n _ _ _) <- rw, S.member n bn]
-                  ++ [t | t <- rw, not (isTBind t)]
+      -- Every unit consumes its owned projection of merged source checking.
+      -- Rechecking only a unit plus prelude loses transitive import types and
+      -- could silently emit defaulted integer operations after ignored errors.
+      -- Surface specialization clones still belong to the root compatibility
+      -- path until that transformation preserves typed contracts too.
+      let owned uts = either error id (selectCheckedUnit checkedLowering (bindNames uts))
+          preludeChecked = owned preludeE'
+          checkedUnits = [(h,uts,owned uts) | (h,uts)<-units']
           -- --cost: every boundary placed, by rule, and a count of the pure
           -- groups declined; FPR_RECEIVE_NOTES=1 lists the declined ones too
           -- (docs/2026-10-24-REGIONS-STAGE2.md)
-          reportTurns uts = when ((Options.diagReceiveNotes diagnostic) || oCost opts) $ do
-            let ns = snd (turnPass (compileRaw uts))
+          reportTurns raw = when ((Options.diagReceiveNotes diagnostic) || oCost opts) $ do
+            let ns = snd (turnPass raw)
                 declined = [n | n <- ns, "turn-regions (declined): " `isPrefixOf` n]
             mapM_ (hPutStrLn stderr) (if (Options.diagReceiveNotes diagnostic) then ns else filter (`notElem` declined) ns)
             when (not (Options.diagReceiveNotes diagnostic) && not (null declined)) $
@@ -783,13 +778,11 @@ compileWithInterface accepted = do
                    && any (builtinWideFloat . snd) (M.elems p)) $ do
               hPutStrLn stderr "profile builtin RV32: F64 and I64 require a 64-bit value ABI; F32 also requires the boxed Base runtime; I32 wide conversions require Base"
               exitFailure
-          preludeExt = arities (resolveUnit preludeE')
-          unitExt = M.unions [arities (resolveUnit uts) | (_, uts) <- units']
           -- Checked entries can be owned by the root (including contracts
-          -- added to prelude functions), but every unit needs their physical
-          -- callable arity for direct calls/PAPs.
+          -- added to prelude functions). Every unit also needs the physical
+          -- arity of any checked global it references, including root entries.
           checkedExt = arities [t | t@(TBind n _ _ _) <- finalTops, "$precond" `isPrefixOf` n]
-          sourceExt = M.unions [checkedExt, preludeExt, unitExt]
+          sourceExt = M.union checkedExt (checkedCallArities checkedLowering)
           extFor = M.union (if oArc opts then arcExterns else M.empty) sourceExt -- own names win via prog-first lookup
           -- primitive arities for direct calls: the compiler's builtin
           -- schemes, and every bare signature (foreign declarations --
@@ -920,7 +913,6 @@ compileWithInterface accepted = do
           pureOutside g = maybe False (> 0) (M.lookup g extFor) || maybe False (> 0) (M.lookup g halAr) || g `elem` corePrimNames
           corePrimNames = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "str", "String.len"]
           mono ns ext p = if (not (Options.cgSpecialize codegen)) || oArc opts then p else specializeFunctions ns halAr ext p
-          preludeResolved = resolveUnit preludeE'
           -- constructor stub ownership.  Every unit's Core holds a stub per
           -- constructor of the program (compileTop's conGlobals: the inliner
           -- and `known` need them); the SYMBOL is defined once, by the owner,
@@ -941,22 +933,25 @@ compileWithInterface accepted = do
           -- a constructor is global everywhere: a clone that references one
           -- links against the owner's symbol, so qualifyAux leaves the name
           importedCore = M.unions
-            (qualifyAux ("$specaux.p" ++ take 12 preludeHash ++ ".") (bindNames preludeE' `S.union` allCons) (compileUnit preludeResolved)
-             : [qualifyAux ("$specaux.u" ++ take 12 h ++ ".") (bindNames uts `S.union` allCons) (compileUnit (resolveUnit uts)) | (h,uts) <- units'])
+            (qualifyAux ("$specaux.p" ++ take 12 preludeHash ++ ".") (bindNames preludeE' `S.union` allCons) (compileOwned preludeChecked)
+             : [qualifyAux ("$specaux.u" ++ take 12 h ++ ".") (bindNames uts `S.union` allCons) (compileOwned unit) | (h,uts,unit)<-checkedUnits])
           applyReport label asm = when (Options.diagApply diagnostic) $ hPutStrLn stderr
             ("apply " ++ label ++ ": dispatch=" ++ show (length [() | l <- lines asm, "fpr_apply" `List.isInfixOf` l, any (`List.isInfixOf` l) ["call ", "bl "]])
              ++ " known-partial=" ++ show (length [() | l <- lines asm, "# pap-create:" `List.isPrefixOf` l])
              ++ " static-descriptors=" ++ show (length [() | l <- lines asm, "# static-pap:" `List.isPrefixOf` l]))
-          emitUnit path exps elide ext uts = do
-            reportTurns uts
-            checkBuiltinWidth (compileUnit uts)
+          emitUnit pathBase exps elide ext unit = do
+            let raw=compileOwnedRaw unit
+                unitProgram=fst (turnPass raw)
+                path=pathBase++"-c"++coreCacheIdentity elide (CallArities ext halAr) unitProgram++"-"++tag++".s"
+            reportTurns raw
+            checkBuiltinWidth unitProgram
             cached <- doesFileExist path
             if cached
               then do
                 when (Options.diagApply diagnostic) (readFile path >>= applyReport (takeFileName path))
                 pure (path, "cached")
               else do
-                prog <- own (mono (takeFileName path) M.empty (compileUnit uts))
+                prog <- own (mono (takeFileName path) M.empty unitProgram)
                 -- FORCE before the write: an `error` raised while the
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
@@ -980,8 +975,8 @@ compileWithInterface accepted = do
         if oArc opts || null preludeTops
           then pure []
           else do
-            r <- emitUnit (unitDir </> ("prelude-" ++ take 12 preludeHash ++ "-" ++ tag ++ ".s"))
-                          (bindNames preludeE' `S.union` preludeCons) preludeElided checkedExt preludeResolved
+            r <- emitUnit (unitDir </> ("prelude-" ++ take 12 preludeHash))
+                          (bindNames preludeE' `S.union` preludeCons) preludeElided extFor preludeChecked
             pure [r]
       -- dep module units (hash-qualified; filename carries the prelude
       -- hash too -- unit code depends on prelude arities -- AND a hash of
@@ -991,9 +986,9 @@ compileWithInterface accepted = do
       -- another with a different shape set (the uartroute/timerroute
       -- incident: a cached svc unit from a program without the field)
       let shapesHash = hashAST [TShape (concat fs) [] | fs <- M.keys shapes]
-      unitOuts <- forM (if oArc opts then [] else units') $ \(h, uts) ->
-        emitUnit (unitDir </> ("u-" ++ take 12 h ++ "-p" ++ take 8 preludeHash ++ "-s" ++ take 8 shapesHash ++ "-" ++ tag ++ ".s"))
-                 (bindNames uts `S.union` unitConsOf h) (unitElided h) extFor (resolveUnit uts)
+      unitOuts <- forM (if oArc opts then [] else checkedUnits) $ \(h, uts, unit) ->
+        emitUnit (unitDir </> ("u-" ++ take 12 h ++ "-p" ++ take 8 preludeHash ++ "-s" ++ take 8 shapesHash))
+                 (bindNames uts `S.union` unitConsOf h) (unitElided h) extFor unit
       -- the root: exports its own binds; modtab (all dep exports) lives
       -- here. Root codegen uses the FULLY specialized+resolved tops
       -- (finalTops), filtered to root's own names + any monomorphized
@@ -1054,7 +1049,7 @@ compileWithInterface accepted = do
         hPutStrLn stderr "machineInterrupt requires --arc (raw, allocation-free handler ABI)"
         exitFailure
       checkBuiltinWidth rootProgRaw
-      reportTurns (if oArc opts then finalTops else rootProgTops)
+      reportTurns (compileRaw (if oArc opts then finalTops else rootProgTops))
       rootProgSym <- case symbolize rootProgRaw of
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
@@ -1134,10 +1129,6 @@ compileWithInterface accepted = do
 fst3 :: STop -> String
 fst3 (TBind n _ _ _) = n
 fst3 _ = ""
-
-isTBind :: STop -> Bool
-isTBind TBind {} = True
-isTBind _ = False
 
 -- a cache file appears whole: written to a temp name in its directory, renamed
 writeWhole :: FilePath -> String -> IO ()

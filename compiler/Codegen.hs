@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 110 -- checked generated traps independent of source error bindings
+codegenRev = 111 -- authoritative checked unit projections and lowered-input cache identities
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
