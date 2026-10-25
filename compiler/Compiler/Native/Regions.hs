@@ -4,8 +4,9 @@
 module Compiler.Native.Regions
   (Program,prepare,programNative,programCore,programInterfaces,Context,context,
    Options(..),Analysis,analysisProgram,analysisCosts,Result,place,bypass,
-   resultProgram,resultNotes,resultGenerated,resultAnalysis) where
+   resultProgram,resultNotes,resultGenerated,resultAnalysis,resultTyped) where
 import qualified Compiler.Native.Core as Native
+import qualified Compiler.Native.Regions.Typed as Typed
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Pipeline
 import Compiler.DataLayout
@@ -58,19 +59,22 @@ context measures source=let p=analysis "$region.context." S.empty source
                        in Context source measures (derive measures p)
 derive measures p=Analysis p (Cost.costProgram measures M.empty p)
 data Options=Options {loopRegions :: Bool,callRegions :: Bool} deriving (Eq,Show)
-data Result=Bypassed Program | Placed Program Analysis Turns.Rewrite
+data Result=Bypassed Program | Placed Program Analysis Turns.Rewrite Typed.Program
 resultProgram :: Result -> C.Prog
 resultProgram (Bypassed p)=programCore p
-resultProgram (Placed _ _ r)=Turns.rewriteProgram r
+resultProgram (Placed _ _ r _)=Turns.rewriteProgram r
 resultNotes :: Result -> [String]
 resultNotes (Bypassed _)=[]
-resultNotes (Placed _ _ r)=Turns.rewriteNotes r
+resultNotes (Placed _ _ r _)=Turns.rewriteNotes r
 resultGenerated :: Result -> M.Map Name Turns.Generated
 resultGenerated (Bypassed _)=M.empty
-resultGenerated (Placed _ _ r)=Turns.rewriteGenerated r
+resultGenerated (Placed _ _ r _)=Turns.rewriteGenerated r
 resultAnalysis :: Result -> Maybe Analysis
 resultAnalysis (Bypassed _)=Nothing
-resultAnalysis (Placed _ a _)=Just a
+resultAnalysis (Placed _ a _ _)=Just a
+resultTyped :: Result -> Maybe Typed.Program
+resultTyped (Bypassed _)=Nothing
+resultTyped (Placed _ _ _ p)=Just p
 bypass :: Program -> Result
 bypass=Bypassed
 
@@ -89,7 +93,10 @@ place opts (Context (Program _ worldNs worldLayouts worldModel worldFaces worldS
       view=if same then base else derive measures allCode
   rewrite<-Turns.receiveTurns (loopRegions opts) (callRegions opts) (analysisCosts view) signatures model
     (shared<>worldShared) allCode joins p
-  pure (Placed input view rewrite)
+  typed<-Typed.build (programNative input) (M.map interfaceArity signatures) rewrite
+  projection<-Typed.emitProgram typed
+  published<-Turns.publish rewrite projection
+  pure (Placed input view published typed)
 
 -- Scope only compatibility auxiliaries for cross-view cost/effect analysis.
 -- The emitted program is untouched. In particular, two independent legacy

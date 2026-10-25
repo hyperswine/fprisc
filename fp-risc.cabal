@@ -121,11 +121,18 @@ executable fpr
       Compiler.Native.Linked
       Compiler.Native.Imports
       Compiler.Native.Regions
+      Compiler.Native.Regions.Typed
+      Compiler.Native.Regions.Verify
       Core.Calling
       Core.Region.Interface
       Core.Region.Types
+      Core.Region.Syntax
+      Core.Region.Runtime
+      Core.Region.Analysis
+      Core.Region.Flow
       Core.Opt.Representation
       Core.Analysis.Scope
+      Core.Analysis.Alpha
       Frontend.Desugar.Typed
       Core.Typed.Walk
       Core.Typed.Close

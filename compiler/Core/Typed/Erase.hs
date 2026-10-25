@@ -1,8 +1,12 @@
-{-# LANGUAGE LambdaCase, FlexibleContexts #-}
+{-# LANGUAGE LambdaCase, FlexibleContexts, ScopedTypeVariables #-}
 -- Explicit compatibility boundary. Layout operations lower directly from
 -- typed nodes/patterns; they never reconstruct or re-infer a surface AST.
-module Core.Typed.Erase (Layout(..), eraseFunction, eraseFunctionWith) where
+module Core.Typed.Erase (Layout(..), eraseFunction, eraseFunctionWith, eraseRegionFunctionWith) where
 import Core.Typed.Syntax
+import Core.Identity (BinderId)
+import qualified Core.Region.Syntax as R
+import Core.Region.Flow (functionFlow,flowSource)
+import Core.Region.Runtime (Hook(..),hookName,packState)
 import Core.Typed.Verify (verifyFunctionWith)
 import Core.Syntax (Core(..))
 import Control.Monad (unless, foldM, forM)
@@ -24,12 +28,24 @@ eraseFunction :: Monad m => TypeContext -> Layout m -> Function -> m (Either Str
 eraseFunction = eraseFunctionWith M.empty
 
 eraseFunctionWith :: Monad m => M.Map CodeId CodeContract -> TypeContext -> Layout m -> Function -> m (Either String ([String],Core))
-eraseFunctionWith contracts types layout f = runExceptT $ do
+eraseFunctionWith=eraseWith Nothing
+
+eraseRegionFunctionWith :: Monad m => TypeContext -> Layout m -> R.Function -> m (Either String ([String],Core))
+eraseRegionFunctionWith types layout region=eraseWith (Just region) (R.functionContracts region) types layout actual
+  where
+    source=R.functionSource region
+    actual=case R.functionBody region of
+      R.Ordinary e->source {functionBody=e}
+      _->maybe source (\flow->source {functionBody=flowSource flow}) (functionFlow region)
+
+eraseWith :: forall m. Monad m => Maybe R.Function -> M.Map CodeId CodeContract -> TypeContext -> Layout m -> Function -> m (Either String ([String],Core))
+eraseWith region contracts types layout f = runExceptT $ do
   either throwError pure (verifyFunctionWith contracts types f)
   let ps=functionParameters f
-  body<-go (M.fromList [(binderId b,binderName b) | b<-ps])
-           (M.fromList [(binderName b,binderId b) | b<-ps]) (functionBody f)
-  pure (map binderName ps,body)
+  let env=M.fromList [(binderId b,binderName b) | b<-ps]
+      names=M.fromList [(binderName b,binderId b) | b<-ps]
+  body<-case region of Nothing->go env names (functionBody f);Just r->goRegion env names (R.functionBody r)
+  pure (maybe (map binderName ps) (map R.parameterName . R.functionParameters) region,body)
   where
     fresh p=lift (freshName layout p)
     con n=maybe (throwError ("typed Core layout: unknown constructor "++n)) pure (constructorLayout layout n)
@@ -47,24 +63,34 @@ eraseFunctionWith contracts types layout f = runExceptT $ do
       Var (Global n _) -> do
         unless (M.notMember n names) (throwError "typed Core erasure: display spelling would capture a global")
         pure (CVar n)
-      ClosureValue (CodeId label) captures -> foldl CApp (CVar label) <$> mapM (capture env names) captures
+      ClosureValue (CodeId label) captures -> do
+        unless (M.notMember label names) (throwError "typed Core erasure: display spelling would capture a code identity")
+        foldl CApp (CVar label) <$> mapM (capture env names) captures
       CodeCall (CodeId label) captures args -> do
+        unless (M.notMember label names) (throwError "typed Core erasure: display spelling would capture a code identity")
         caps<-mapM (capture env names) captures
         xs<-mapM (go env names) args
         pure (foldl CApp (CVar label) (caps++xs))
       JoinCall (CodeId label) captures args -> do
+        unless (M.notMember label names) (throwError "typed Core erasure: display spelling would capture a code identity")
         caps<-mapM (capture env names) captures
         xs<-mapM (go env names) args
         pure (foldl CApp (CVar label) (caps++xs))
       Fail message -> pure (CErr message)
       LayoutLiteral spec -> pure (CStr spec)
+      CallRegion body->do
+        unless (all (`M.notMember` names) (map hookName [CallPending,CallLeave]))
+          (throwError "typed Core erasure: display spelling would capture a region operation")
+        tok<-fresh "$call.token"
+        call<-go env names body
+        pure (CLet tok (hook CallPending [CInt 0]) (hook CallLeave [CVar tok,call]))
       VectorBuild builder evidence -> CApp (CVar (builderRuntimeName builder)) <$> go env names evidence
       MatchTail style args alts fallback -> do
         xs<-mapM (go env names) args
         next<-go env names fallback
         case (style,xs) of
-          (CaseMatch,[scrut])->caseArmsWith False next env names scrut alts
-          (FunctionMatch owner,_)->functionArmsWith False next env names owner xs alts
+          (CaseMatch,[scrut])->caseArmsWith go False next env names scrut (map arm alts)
+          (FunctionMatch owner,_)->functionArmsWith go False next env names owner xs (map arm alts)
           _->throwError "typed Core erasure: malformed explicit match tail"
       IntValue n -> pure (CInt n)
       StringValue s -> pure (CStr s)
@@ -127,6 +153,80 @@ eraseFunctionWith contracts types layout f = runExceptT $ do
       If a b c -> CIf <$> go env names a <*> go env names b <*> go env names c
       BoolTest b x -> CTagEq 1 (if b then 1 else 0) <$> go env names x
       Note x -> go env names x
+    hook h=foldl CApp (CVar (hookName h))
+    vars=map (CVar . binderName)
+    finish False e=e
+    finish True (CLet n a b)=CLet n a (finish True b)
+    finish True (CIf c a b)=CIf c (finish True a) (finish True b)
+    finish True e=CMk 4 0 [CMk 1 0 [],e]
+    goFlow receiving controls env names flow=case flow of
+      R.Value e->finish receiving <$> go env names e
+      R.Bind b rhs body->let (env',names')=scope b env names
+                        in CLet (binderName b) <$> go env names rhs <*> goFlow receiving controls env' names' body
+      R.BindPattern p rhs body->do
+        value<-go env names rhs;tmp<-fresh "$region.bind"
+        let (env',names')=patScopes [p] env names
+        next<-goFlow receiving controls env' names' body
+        matched<-matchPat (CVar tmp) p next (finish receiving (CErr ("let pattern: no match; pattern was "++patDisplay p)))
+        pure (CLet tmp value matched)
+      R.Then a b->do
+        value<-go env names a;tmp<-fresh "$region.seq"
+        CLet tmp value <$> goFlow receiving controls env names b
+      R.Branch c a b->CIf <$> go env names c <*> goFlow receiving controls env names a <*> goFlow receiving controls env names b
+      R.Note body->goFlow receiving controls env names body
+      R.Match style args alternatives fallback->do
+        xs<-mapM (go env names) args
+        next<-goFlow receiving controls env names fallback
+        let alts=[(ps,gs,body) | R.Alternative ps gs body<-alternatives]
+            emit=goFlow receiving controls
+        case (style,xs) of
+          (CaseMatch,[scrut])->caseArmsWith emit False next env names scrut alts
+          (FunctionMatch owner,_)->functionArmsWith emit False next env names owner xs alts
+          _->throwError "typed region erasure: match arity"
+      R.Tail call->do
+        args<-mapM (go env names) (R.callArguments call)
+        let route=R.callRoute call
+        if not receiving then case controls of
+          Just (mark,seqn)->pure (foldl CApp (CVar (R.routeLabel route)) (args++[CVar mark,CVar seqn]))
+          Nothing->throwError "typed region erasure: absent loop control cells"
+        else do
+          saved<-mapM (const (fresh "$receive.arg")) args
+          let state=packState [CVar (saved!!i) | i<-R.routeLive route]
+              next=if R.routeBoundary route then CMk 4 0 [CMk 1 1 [],CApp (CVar (R.routeLabel route)) state]
+                   else foldl CApp (CVar (R.routeLabel route)) (map CVar saved)
+          pure (foldr (\(name,value) rest->CLet name value rest) next (zip saved args))
+    goRegion env names body=case body of
+      R.Original->go env names (functionBody f)
+      R.Ordinary e->go env names e
+      R.LoopEntry inner ps mark seqn->pure
+        (CLet (R.controlName seqn) (hook SequenceNumber [CInt 0])
+          (CLet (R.controlName mark) (hook PoolMark [CInt 0])
+            (hook LoopLeave [CVar (R.controlName seqn),foldl CApp (CVar inner)
+              (vars ps++map (CVar . R.controlName) [mark,seqn])])) )
+      R.LoopInner boundary ps mark seqn flow->do
+        inner<-goFlow False (Just (R.controlName mark,R.controlName seqn)) env names flow
+        pure $ case boundary of
+          Nothing->inner
+          Just cold->CIf (hook HasRoom [CVar (R.controlName mark)]) inner
+            (foldl CApp (CVar cold) (vars ps++map (CVar . R.controlName) [mark,seqn]))
+      R.LoopCycle inner ps changing _ seqn->do
+        packed<-fresh "$loop.packed";mark2<-fresh "$loop.mark"
+        let slot i=case lookup i (zip changing [0..]) of
+              Nothing->CVar (binderName (ps!!i))
+              Just k->if length changing==1 then CVar packed else CProj k (CVar packed)
+        pure (CLet packed (hook Cycle [CVar (R.controlName seqn),packState [CVar (binderName (ps!!i)) | i<-changing]])
+          (CLet mark2 (hook PoolMark [CInt 0]) (foldl CApp (CVar inner)
+            ([slot i | i<-[0..length ps-1]]++[CVar mark2,CVar (R.controlName seqn)]))))
+      R.ReceiveEntry helper ps live->pure (hook ReceiveLoop
+        [CApp (CVar helper) (packState [CVar (binderName (ps!!i)) | i<-live]),CInt (fromIntegral (length live))])
+      R.ReceiveThunk state _ slots flow->do
+        result<-goFlow True Nothing env names flow
+        let count=length [() | R.LiveSlot {}<-slots]
+            one slot rest=case slot of
+              R.DeadSlot b->CLet (binderName b) (CInt 0) rest
+              R.LiveSlot b i->CLet (binderName b) (if count==1 then CVar (R.controlName state) else CProj i (CVar (R.controlName state))) rest
+        pure (foldr one result slots)
+      R.ReceiveLocal flow->goFlow True Nothing env names flow
     capture env names uid = do
       n<-maybe (throwError "typed Core erasure: absent capture identity") pure (M.lookup uid env)
       unless (M.lookup n names==Just uid) (throwError "typed Core erasure: capture spelling is shadowed")
@@ -194,11 +294,15 @@ eraseFunctionWith contracts types layout f = runExceptT $ do
       _ -> 0
     trivial (CErr _) = True
     trivial _ = False
-    functionArms env names owner args = functionArmsWith True (CErr ("no matching clause for "++owner)) env names owner args
-    functionArmsWith makeJoins bottom env names owner args = loop
+    arm (Alternative ps gs b)=(ps,gs,b)
+    functionArms env names owner args alts = functionArmsWith go True (CErr ("no matching clause for "++owner)) env names owner args (map arm alts)
+    functionArmsWith :: forall a. (M.Map BinderId String -> M.Map String BinderId -> a -> ExceptT String m Core)
+      -> Bool -> Core -> M.Map BinderId String -> M.Map String BinderId -> String -> [Core]
+      -> [([Pattern],[Guard],a)] -> ExceptT String m Core
+    functionArmsWith emit makeJoins bottom env names owner args = loop
       where
         loop []=pure bottom
-        loop (Alternative ps gs body:rest)=do
+        loop ((ps,gs,body):rest)=do
           next<-loop rest
           fallback<-if makeJoins && sum (map tests ps)+length gs>1 && not (trivial next)
             then do
@@ -209,7 +313,7 @@ eraseFunctionWith contracts types layout f = runExceptT $ do
               pure (foldl CApp (CVar jn) args)
             else pure next
           let (allEnv,allNames)=allScopes ps gs env names
-          b<-go allEnv allNames body
+          b<-emit allEnv allNames body
           let (pEnv,pNames)=patScopes ps env names
           guarded<-guards pEnv pNames gs b fallback
           foldr (\(x,p) k -> k >>= \b -> matchPat x p b fallback) (pure guarded) (zip args ps)
@@ -223,19 +327,22 @@ eraseFunctionWith contracts types layout f = runExceptT $ do
           x<-go env names e; v<-fresh "gp"
           m<-matchPat (CVar v) p inner fallback
           pure (CLet v x m)
-    caseArms env names scrut alts=caseArmsWith True
-      (CErr ("case: no matching pattern; arms were ["++intercalate "," [patDisplay p | Alternative [p] _ _<-alts]++"]")) env names scrut alts
-    caseArmsWith makeJoins fallback env names scrut alts=loop True alts
+    caseArms env names scrut alts=caseArmsWith go True
+      (CErr ("case: no matching pattern; arms were ["++intercalate "," [patDisplay p | Alternative [p] _ _<-alts]++"]")) env names scrut (map arm alts)
+    caseArmsWith :: forall a. (M.Map BinderId String -> M.Map String BinderId -> a -> ExceptT String m Core)
+      -> Bool -> Core -> M.Map BinderId String -> M.Map String BinderId -> Core
+      -> [([Pattern],[Guard],a)] -> ExceptT String m Core
+    caseArmsWith emit makeJoins fallback env names scrut alts=loop True alts
       where
         loop _ []=pure fallback
-        loop first (Alternative [p] gs body:rest)=do
+        loop first (([p],gs,body):rest)=do
           next<-loop False rest
           let build fail'=do
                 let (e,n)=allScopes [p] gs env names
-                b<-go e n body
+                b<-emit e n body
                 let (pe,pn)=patScopes [p] env names
                 inner<-guards pe pn gs b fail'
-                certain<-if null rest && not first && all (\(Alternative _ g _) -> null g) alts then coveredHead p else pure False
+                certain<-if null rest && not first && all (\(_,g,_) -> null g) alts then coveredHead p else pure False
                 if certain then case patNode p of
                   ConstructorPattern _ ps -> matchFields scrut ps inner fail'
                   TuplePattern ps -> matchFields scrut ps inner fail'
@@ -250,7 +357,7 @@ eraseFunctionWith contracts types layout f = runExceptT $ do
         coveredHead p=case patNode p of
           ConstructorPattern name _ -> do
             (tid,_,_)<-con name
-            let earlier=[c | Alternative [q] _ _<-init alts,ConstructorPattern c ps<-[patNode q],all irrefutable ps]
+            let earlier=[c | ([q],_,_)<-init alts,ConstructorPattern c ps<-[patNode q],all irrefutable ps]
                 -- The complete constructor family comes from the type model;
                 -- compare its content-addressed layout, as ordinary lowering does.
                 TypeContext _ constructors=types

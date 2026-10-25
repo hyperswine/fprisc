@@ -5,8 +5,25 @@ import Core.Region.Interface
 import qualified Core.Calling as Calling
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Regions as R
+import qualified Compiler.Native.Regions.Typed as Typed
+import qualified Core.Region.Syntax as IR
+import qualified Core.Typed.Verify as Verify
+import Core.Typed.Walk (mapChildrenM)
+import qualified Core.Typed.Erase as Erase
+import Control.Monad.State.Strict (State,evalState,get,put)
+import Ownership.Shape (LShape(..))
+import Data.Functor.Const (Const(..))
+import Data.Monoid (Sum(..))
+import Core.Typed.Pipeline (closedInput)
+import qualified Core.Typed.Program as Source
+import qualified Compiler.Native.Linked as Linked
+import qualified Compiler.Native.Imports as Imports
+import Codegen.Target.Common (visibilityFor,Visibility(..))
+import qualified Cost
 import qualified ReceiveTurns as Turns
 import Core.Analysis.Scope
+import Core.Analysis.Alpha (sameFunction)
+import qualified Core.Region.Flow as Flow
 import Core.Identity
 import Core.Syntax
 import Compiler.DataLayout
@@ -91,6 +108,151 @@ main=do
         (Turns.generatedSourceInterface g)
       && Just (Turns.generatedParameters g)==(fst <$> M.lookup name (R.resultProgram result)))
       (M.toList (R.resultGenerated result)))
+  let typed=maybe (error "missing typed region product") id (R.resultTyped result)
+      loopHelpers=M.restrictKeys (Typed.programFunctions typed) (M.keysSet (Typed.programHelpers typed))
+  check "loop helpers own checked source bodies, fresh identities and internal control sorts"
+    (not (M.null loopHelpers) && Typed.verifyProgram typed==Right () && all (\f->
+      not (null (IR.functionBinderOrigins f)) && all (uncurry (/=)) (IR.functionBinderOrigins f)
+      && case reverse (IR.functionParameters f) of
+        IR.ControlParameter seqn:IR.ControlParameter mark:_->case (IR.controlType mark,IR.controlType seqn,IR.functionResult f) of
+          (IR.Mark,IR.Sequence,IR.ValueResult t)->t==int
+          _->False
+        _->False) (M.elems loopHelpers))
+  check "a source result cannot be relabeled as an existential receive step"
+    (failed (Typed.rewriteHelpers (\f->Right f {IR.functionResult=IR.ReceiveStep int}) typed))
+  check "a loop helper cannot replace its mark by a sequence cell"
+    (failed (Typed.rewriteHelpers (\f->Right f {IR.functionParameters=map (\p->case p of
+      IR.ControlParameter c->case IR.controlType c of
+        IR.Mark->IR.ControlParameter (c {IR.controlType=IR.Sequence})
+        _->p
+      _->p) (IR.functionParameters f)}) typed))
+  let artifact=right (Linked.artifact Linked.RootArtifact (S.insert "counter" (Native.nativeConstructors compiled)) S.empty compiled)
+      linked=right (Linked.linkArtifacts [artifact])
+      declarations=right (Imports.withRegions (M.singleton Linked.RootArtifact typed) (right (Imports.codeDeclarations linked)))
+      ready=right (Imports.prepareEmission declarations Linked.RootArtifact (Linked.artifactExports artifact) (R.resultProgram result))
+  check "typed protocol helpers publish strong hidden code/PAP home declarations"
+    (all (\name->name `S.member` Imports.preservedCode declarations Linked.RootArtifact
+      && visibilityFor True (Imports.readySymbols ready) name==HiddenSymbol) (M.keys loopHelpers))
+  let receiveNative=native "receive-protocol" "turn me unused n = _ = receiveFrom me me; if n == 0 then 0 else turn me unused (n - 1)." (S.singleton "turn")
+      receiveResult=place (right (R.prepare receiveNative))
+      receiveTyped=maybe (error "missing typed receive product") id (R.resultTyped receiveResult)
+      thunks=[f | f<-M.elems (Typed.programFunctions receiveTyped),IR.ReceiveThunk {}<-[IR.functionBody f]]
+  check "receive helpers distinguish state/tick cells and dead polymorphic logical slots"
+    (not (null thunks) && all (\f->length (IR.functionParameters f)==2
+      && case (IR.functionResult f,IR.functionBody f) of
+        (IR.ReceiveStep t,IR.ReceiveThunk state tick slots _)->t==int
+          && (case (IR.controlType state,IR.controlType tick) of (IR.State fields,IR.Tick)->length fields==2;_->False)
+          && any (\s->case s of
+            IR.DeadSlot b->case T.binderType b of TV _->True;_->False
+            _->False) slots
+        _->False) thunks)
+  check "receive bundle declarations cannot invent a field"
+    (failed (Typed.rewriteHelpers (\f->case IR.functionBody f of
+      IR.ReceiveThunk state tick slots flow->let wrong=state {IR.controlType=IR.State []}
+        in Right f {IR.functionBody=IR.ReceiveThunk wrong tick slots flow}
+      _->Right f) receiveTyped))
+  check "physical receive cells must agree with the logical bundle declaration"
+    (failed (Typed.rewriteHelpers (\f->Right f {IR.functionParameters=map (\p->case p of
+      IR.ControlParameter c->case IR.controlType c of
+        IR.State _->IR.ControlParameter (c {IR.controlType=IR.State []})
+        _->p
+      _->p) (IR.functionParameters f)}) receiveTyped))
+  let typedDeadNative=native "typed-dead" "turn : Int -> Int -> Int -> Int. turn me unused n = _ = receiveFrom me me; if n == 0 then 0 else turn me unused (n - 1)." (S.singleton "turn")
+      typedDead=maybe (error "missing dead-slot product") id (R.resultTyped (place (right (R.prepare typedDeadNative))))
+      readDead f=case IR.functionBody f of
+        IR.ReceiveThunk state tick slots _->case [b | IR.DeadSlot b<-slots] of
+          b:_->let value=T.Expr (T.binderType b) (T.binderShape b) T.Generated Nothing (T.Var (T.Local (T.binderId b)))
+               in Right f {IR.functionBody=IR.ReceiveThunk state tick slots (IR.Value value)}
+          _->error "missing erased slot"
+        _->Right f
+  check "a later helper pass cannot make an erased logical slot observable"
+    (case Typed.rewriteHelpers readDead typedDead of
+      Left reason->"dead argument became observable" `isInfixOf` reason
+      Right _->False)
+  let invariantNative=native "invariant-proof" "spin : Int -> Int -> Int. spin n stable = _ = str n; if n == 0 then stable else spin (n - 1) stable." (S.singleton "spin")
+      invariantTyped=maybe (error "missing invariant product") id (R.resultTyped (place (right (R.prepare invariantNative))))
+      invalidate f=case IR.functionBody f of
+        IR.LoopInner cold ps mark seqn flow->case (ps,Flow.tailCalls flow) of
+          ([n,stable],old:_)->do
+            let ref b=T.Expr (T.binderType b) (T.binderShape b) T.Generated Nothing (T.Var (T.Local (T.binderId b)))
+                expr ty node=T.Expr ty LU T.Generated Nothing node
+                apply f a=case T.exprType f of TFn _ result->expr result (T.Apply f a);_->error "test arrow"
+                binary n=expr (TFn int (TFn int int)) (T.Var (T.Global n (Forall [] [] (TFn int (TFn int int)))))
+                changed=apply (apply (binary "+") (ref stable)) (expr int (T.IntValue 1))
+                witness=apply (apply (binary "spin") (ref n)) changed
+                scratch=apply (expr (TFn int (TC "String")) (T.Var (T.Global "str" (Forall [] [] (TFn int (TC "String")))))) (ref n)
+            call<-IR.makeCall (Flow.scope (IR.functionSource f)) (IR.callRoute old) witness
+            Right f {IR.functionBody=IR.LoopInner cold ps mark seqn (IR.Then scratch (IR.Tail call))}
+          _->error "missing invariant tail"
+        _->Right f
+  check "a later helper pass cannot weaken a retained invariant-state proof"
+    (case Typed.rewriteHelpers invalidate invariantTyped of
+      Left reason->"loop-invariant argument proof changed" `isInfixOf` reason
+      Right _->False)
+  let noted=right (Typed.rewriteHelpers (\f->Right f {IR.functionBody=case IR.functionBody f of
+        IR.LoopInner cold ps mark seqn flow->IR.LoopInner cold ps mark seqn (IR.Note flow)
+        IR.ReceiveThunk state tick slots flow->IR.ReceiveThunk state tick slots (IR.Note flow)
+        IR.ReceiveLocal flow->IR.ReceiveLocal (IR.Note flow)
+        body->body}) receiveTyped)
+  check "a source-equivalent helper pass retains the proof and exact emission"
+    (Typed.emitProgram noted==Typed.emitProgram receiveTyped)
+  check "a helper control cell cannot capture a protocol symbol"
+    (failed (Typed.rewriteHelpers (\f->case IR.functionBody f of
+      IR.LoopInner cold ps mark seqn flow->let wrong=mark {IR.controlName=IR.functionLabel f}
+        in Right f {IR.functionBody=IR.LoopInner cold ps wrong seqn flow,
+          IR.functionParameters=map (\p->case p of
+            IR.ControlParameter c | IR.controlId c==IR.controlId mark->IR.ControlParameter wrong
+            _->p) (IR.functionParameters f)}
+      _->Right f) typed))
+  check "a physical tick cell cannot shadow a language-level callee"
+    (failed (Typed.rewriteHelpers (\f->case IR.functionBody f of
+      IR.ReceiveThunk state tick slots flow->let wrong=tick {IR.controlName="receiveFrom"}
+        in Right f {IR.functionBody=IR.ReceiveThunk state wrong slots flow,
+          IR.functionParameters=map (\p->case p of
+            IR.ControlParameter c | IR.controlId c==IR.controlId tick->IR.ControlParameter wrong
+            _->p) (IR.functionParameters f)}
+      _->Right f) receiveTyped))
+  let callNative=native "call-protocol" "build n = if n == 0 then \"done\" else strcat (str n) (build (n - 1)). client n = build n." (S.fromList ["build","client"])
+      callResult=place (right (R.prepare callNative))
+      callTyped=maybe (error "missing typed call product") id (R.resultTyped callResult)
+      calls=T.functionBody (IR.functionSource (Typed.programFunctions callTyped M.! "client"))
+      regionCount e=(case T.exprNode e of T.CallRegion _->1;_->0)+getSum (getConst (mapChildrenM (Const . Sum . regionCount) e))
+  check "call regions retain checked operands and notes do not duplicate a saturated call"
+    (regionCount calls==1 && any (isInfixOf "client: 1 call(s)") (R.resultNotes callResult))
+  let badBody=T.Expr fn LU T.Generated Nothing (T.Var (T.Global "f" (Forall [] [] fn)))
+      badCall=T.Expr fn LU T.Generated Nothing (T.CallRegion badBody)
+  check "call region verifier refuses function-valued results"
+    (failed (Verify.verifyFunction (T.TypeContext [] M.empty) (T.Function "bad-region" [] badCall)))
+  let identifier=BinderId (Namespace "protocol-shadow") 0
+      parameter name=T.Binder identifier name (Forall [] [] int) LU
+      arg name=T.Expr int LU T.Generated Nothing (T.Var (T.Local identifier))
+      code=T.CodeId "worker"
+      codeContract=T.CodeContract T.EntryCode ([],[]) [] [int] int
+      invocation=T.Expr int LU T.Generated Nothing (T.CodeCall code [] [arg "worker"])
+      codeShadow=T.Function "code-shadow" [parameter "worker"] invocation
+      fresh :: String -> State Int String
+      fresh prefix=do n<-get;put (n+1);pure (prefix++show n)
+      layout=Erase.Layout fresh (const Nothing) M.empty (\_ _ _->pure ())
+      contracts=M.singleton code codeContract
+  check "logical code identities survive even when display names would shadow them"
+    (Verify.verifyFunctionWith contracts (T.TypeContext [] M.empty) codeShadow==Right ()
+      && failed (evalState (Erase.eraseFunctionWith contracts (T.TypeContext [] M.empty) layout codeShadow) 0))
+  let value=T.Expr int LU T.Generated Nothing (T.IntValue 7)
+      regionShadow=T.Function "region-shadow" [parameter "$callPend"]
+        (T.Expr int LU T.Generated Nothing (T.CallRegion value))
+  check "erasure cannot shadow an internal runtime region operation"
+    (failed (evalState (Erase.eraseFunction (T.TypeContext [] M.empty) layout regionShadow) 0))
+  let planProg=R.programCore input
+      modelInput=right (V.valueModel (Source.programTypes (closedInput (Native.nativeClosed compiled))))
+      plan=right (Turns.receiveTurns True True (Cost.costProgram M.empty M.empty planProg)
+        (R.programInterfaces input) modelInput (M.keysSet (R.programInterfaces input)) planProg (Native.nativeJoins compiled) planProg)
+      changedParent=native "physical" "counter n = loop = (fn k -> _ = str k; if k == 0 then 0 else loop (k - 2)); loop n." (S.singleton "counter")
+      projected=right (Typed.emitProgram typed)
+      legacy=Turns.rewriteProgram plan
+  check "typed loop lowering agrees with the existing independent representation oracle"
+    (M.keysSet projected==M.keysSet legacy && and [sameFunction row (projected M.! name) | (name,row)<-M.toList legacy])
+  check "region decisions cannot borrow a different checked body's projection"
+    (failed (Typed.build changedParent (M.map interfaceArity (R.programInterfaces input)) plan))
   let other=right (R.prepare (native "other" body (S.singleton "counter")))
   check "a region context cannot borrow a different checking namespace"
     (failed (R.place (R.Options True True) (R.context M.empty input) other))
@@ -146,4 +308,4 @@ main=do
          ("lifted_1",(["x"],CVar "x"))])
   check "analysis qualification respects lexical shadowing"
     (M.lookup "entry" scoped==Just ([],CLet "lifted_1" (CVar "$scope.lifted_1") (CVar "lifted_1")))
-  putStrLn "Region interfaces: checked physical binders/ownership, constructor models, generated ABI/provenance, scoped costs, declaration quarantine and argument limits passed"
+  putStrLn "Region interfaces/control: checked physical binders, protocol sorts, fresh identities, state proofs, source-equivalent lowering, home declarations, scope refusals and compatibility quarantine passed"

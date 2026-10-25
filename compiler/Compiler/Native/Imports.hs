@@ -2,10 +2,12 @@
 -- Legacy transformations may still change erased bodies; they cannot copy a
 -- checked private definition into a different artifact or invent its arity.
 module Compiler.Native.Imports
-  (CodeDeclarations,codeDeclarations,CodeDeclaration,declarationHome,declarationSource,
+  (CodeDeclarations,codeDeclarations,withRegions,CodeDeclaration,DeclarationContract(..),declarationHome,declarationSource,
    declarationCode,declarationContract,declarationArity,preservedCode,
    ReadyProgram,prepareEmission,prepareEmissionWithImports,readyProgram,readySymbols,readyImports,readyTemplates,importArities) where
 import Compiler.Native.Linked
+import qualified Compiler.Native.Regions.Typed as Regions
+import qualified Core.Region.Syntax as Region
 import Core.Typed.Syntax (CodeId(..),CodeContract(..))
 import Core.Syntax
 import Codegen.Target.Common (SymbolPolicy,symbolPolicy)
@@ -13,7 +15,8 @@ import Control.Monad (unless,forM_)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data CodeDeclaration=CodeDeclaration ArtifactId String CodeId CodeContract
+data DeclarationContract=LanguageContract CodeContract | RegionContract Region.Contract deriving Show
+data CodeDeclaration=CodeDeclaration ArtifactId String CodeId DeclarationContract
   deriving Show
 declarationHome :: CodeDeclaration -> ArtifactId
 declarationHome (CodeDeclaration home _ _ _)=home
@@ -21,20 +24,33 @@ declarationSource :: CodeDeclaration -> String
 declarationSource (CodeDeclaration _ source _ _)=source
 declarationCode :: CodeDeclaration -> CodeId
 declarationCode (CodeDeclaration _ _ code _)=code
-declarationContract :: CodeDeclaration -> CodeContract
+declarationContract :: CodeDeclaration -> DeclarationContract
 declarationContract (CodeDeclaration _ _ _ contract)=contract
 declarationArity :: CodeDeclaration -> Int
-declarationArity entry=let c=declarationContract entry
-                      in length (contractCaptures c)+length (contractParameters c)
+declarationArity entry=case declarationContract entry of
+  LanguageContract c->length (contractCaptures c)+length (contractParameters c)
+  RegionContract c->length (Region.contractParameters c)
 
 data CodeDeclarations=CodeDeclarations (S.Set ArtifactId) (M.Map Name CodeDeclaration)
 codeDeclarations :: LinkedProgram -> Either String CodeDeclarations
 codeDeclarations linked=do
-  let entries=[(name,CodeDeclaration home source code contract)
+  let entries=[(name,CodeDeclaration home source code (LanguageContract contract))
         | (_,SymbolOwner home (PrivateDefinition source code@(CodeId name) contract))<-M.toList (linkedSymbols linked)]
       catalog=M.fromList entries
   unless (length entries==M.size catalog) (Left "native declarations: ambiguous private code identity")
   pure (CodeDeclarations (M.keysSet (linkedArtifacts linked)) catalog)
+
+-- Typed protocol helpers get the same home code/PAP authority as checked
+-- language entries, while retaining their own internal (not source) sorts.
+withRegions :: M.Map ArtifactId Regions.Program -> CodeDeclarations -> Either String CodeDeclarations
+withRegions programs (CodeDeclarations artifacts catalog)=do
+  unless (M.keysSet programs `S.isSubsetOf` artifacts) (Left "native declarations: region program has no artifact owner")
+  let entries=[(name,CodeDeclaration home (Region.functionOwner (Regions.programFunctions p M.! name)) (CodeId name) (RegionContract contract))
+        | (home,p)<-M.toList programs,(name,contract)<-M.toList (Regions.programHelpers p)]
+      helpers=M.fromList entries
+  unless (length entries==M.size helpers && S.null (M.keysSet helpers `S.intersection` M.keysSet catalog))
+    (Left "native declarations: region helper identity collision")
+  pure (CodeDeclarations artifacts (catalog `M.union` helpers))
 
 -- These canonical labels must not be renamed into an importing caller. Only
 -- compatibility helpers without checked code ownership still need that path.

@@ -2,7 +2,8 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh) where
+  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
+   CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
 import Core.Typed.Pipeline
@@ -29,6 +30,20 @@ nativeCompatibility (NativeCore _ _ _ cs _ _ _)=cs
 nativeDeclarations (NativeCore _ _ _ _ ds _ _)=ds
 nativeConstructors (NativeCore _ _ _ _ _ ns _)=ns
 nativeFresh (NativeCore _ _ _ _ _ _ n)=n
+
+-- A flattened checked entry retains its language owner and complete code
+-- context. Consumers do not assemble body/owner/contract tuples themselves.
+data CheckedDefinition=CheckedDefinition Name T.Function (M.Map T.CodeId T.CodeContract)
+checkedOwner (CheckedDefinition owner _ _)=owner
+checkedFunction (CheckedDefinition _ function _)=function
+checkedContracts (CheckedDefinition _ _ contracts)=contracts
+nativeDefinitions :: NativeCore -> M.Map Name CheckedDefinition
+nativeDefinitions native=M.fromList (concatMap entries (M.toList (closedDefinitions (nativeClosed native))))
+  where
+    entries (owner,f)=entry (closedRoot f):map (entry . T.codeAsFunction) (M.elems (closedCode f))
+      where
+        contracts=closedContracts f
+        entry fn=(T.functionName fn,CheckedDefinition owner fn contracts)
 
 compileSelection :: CallbackMode -> Layouts -> SourceSelection -> Either String NativeCore
 compileSelection=compileSelectionAt 0

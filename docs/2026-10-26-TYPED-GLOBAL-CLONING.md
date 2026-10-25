@@ -129,4 +129,6 @@ as passing coverage.
 
 The preceding region-interface commit `bd2830b` passed
 [hosted CI run 40205756522](https://github.com/hyperswine/fprisc/actions/runs/40205756522);
-that result does not substitute for this stage's own hosted run.
+that result does not substitute for this stage's own hosted run. The integrated
+global-cloning commit `134a992` subsequently passed
+[hosted CI run 40210518302](https://github.com/hyperswine/fprisc/actions/runs/40210518302).

@@ -313,3 +313,4 @@ they began.
 - [Home-owned private code imports](2026-10-26-PRIVATE-CODE-IMPORTS.md) - checked home declarations, shared code/PAP visibility, read-only optimization context and the imported closure identity fix.
 - [Checked physical region interfaces and provenance](2026-10-26-REGION-INTERFACES.md) - owned typed inputs, constructor/cost models, scoped compatibility analysis and generated helper contracts.
 - [Checked global callback cloning](2026-10-26-TYPED-GLOBAL-CLONING.md) - typed linked templates, explicit private imports, clone provenance and a restricted erased fallback.
+- [Typed region control](2026-10-26-TYPED-REGION-CONTROL.md) - checked helper bodies, internal protocol sorts, retained state proofs and home-owned helper declarations.

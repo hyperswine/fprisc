@@ -12,6 +12,7 @@ import Compiler.DataLayout (Layouts(..))
 import Mono (specializeCompatibility, qualifyAux)
 import Inline (inlineSmall, inlineWithImports, vecPeek)
 import qualified Compiler.Native.Regions as Regions
+import qualified Compiler.Native.Regions.Typed as TypedRegions
 import qualified Core.Typed.Syntax as TCore
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.Common (Tune (..), dataSyntax)
@@ -919,8 +920,9 @@ compileWithInterface accepted = do
           pureOutside g = maybe False (> 0) (M.lookup g extFor) || maybe False (> 0) (M.lookup g halAr) || g `elem` corePrimNames
           corePrimNames = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "str", "String.len"]
           mono ns ext p = if (not (Options.cgSpecialize codegen)) || oArc opts then p else specializeCompatibility checkedCallbackTargets importedPrivateNames ns halAr ext p
-          checkedCallbackTargets=S.fromList [name | (_,Linked.SymbolOwner _ definition)<-M.toList (Linked.linkedSymbols linked),
+          checkedCallbackTargets=typedRegionNames `S.union` S.fromList [name | (_,Linked.SymbolOwner _ definition)<-M.toList (Linked.linkedSymbols linked),
             name<-case definition of Linked.SourceDefinition n _ _->[n];Linked.PrivateDefinition _ (TCore.CodeId n) _->[n];_->[]]
+          typedRegionNames=S.unions [M.keysSet (TypedRegions.programFunctions p) | p<-M.elems typedRegionPrograms]
           -- constructor stub ownership.  Every unit's Core holds a stub per
           -- constructor of the program (compileTop's conGlobals: the inliner
           -- and `known` need them); the SYMBOL is defined once, by the owner,
@@ -958,11 +960,15 @@ compileWithInterface accepted = do
                 (unitElided h) (nativeUnit unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
           linkedResult=sequence artifactResults >>= Linked.linkArtifacts >>= Linked.specializeLinked callbackMode
           linked=either error id linkedResult
-          declarationsResult=linkedResult >>= NativeImports.codeDeclarations
+          declarationsResult=do
+            verified<-linkedResult
+            base<-NativeImports.codeDeclarations verified
+            NativeImports.withRegions typedRegionPrograms base
           declarations=either error id declarationsResult
           artifactOf key=Linked.linkedArtifacts linked M.! key
           artifactRaw=prepareRegions . Linked.artifactCore
           regionArtifacts=M.map (runTurns . artifactRaw) (Linked.linkedArtifacts linked)
+          typedRegionPrograms=M.mapMaybe Regions.resultTyped regionArtifacts
           artifactRegions key=regionArtifacts M.! key
           ready templates key exports prog=either (\reason->hPutStrLn stderr reason >> exitFailure) pure
             (NativeImports.prepareEmissionWithImports templates declarations key exports prog)

@@ -21,7 +21,8 @@
 module ReceiveTurns
   (Rewrite,receiveTurns,rewriteProgram,rewriteNotes,rewriteGenerated,
    Generated,GeneratedKind(..),generatedKind,generatedSource,generatedParameters,
-   generatedState,generatedSourceInterface) where
+   generatedState,generatedSourceInterface,Group,groupMembers,groupPure,groupBoundaries,
+   groupInvariants,groupLive,rewriteGroups,rewriteCallTargets,rewriteInput,validateSource,publish) where
 
 import Data.List (intercalate, foldl')
 import Data.Graph (SCC (..), stronglyConnComp)
@@ -32,22 +33,73 @@ import Compiler.DataLayout (tupWideBase)
 import Core.Region.Interface
 import qualified Core.Region.Types as Region
 import Type.Syntax (Type (..))
-import Control.Monad (unless)
+import Control.Monad (unless,forM_)
+import qualified Core.Region.Analysis as Analysis
 import Cost (primAllocates, allocGrows, CostEq)
 
 data GeneratedKind=LoopInner | LoopCycle | ReceiveThunk | ReceiveJoin deriving (Eq,Show)
 data Generated=Generated
   { generatedKind :: GeneratedKind,generatedSource :: Name,generatedParameters :: [Name],
     generatedState :: [Name],generatedSourceInterface :: Maybe Interface } deriving Show
-data Rewrite=Rewrite Prog [String] (M.Map Name Generated)
-rewriteProgram (Rewrite p _ _)=p
-rewriteNotes (Rewrite _ ns _)=ns
-rewriteGenerated (Rewrite _ _ gs)=gs
+data Group=Group
+  { groupMembers :: [Name],groupPure :: Bool,groupBoundaries :: S.Set Name,
+    groupInvariants :: S.Set (Name,Int),groupLive :: M.Map Name (S.Set Name) } deriving Show
+data Authority=Authority Prog (S.Set Name) Prog (S.Set Name)
+data Rewrite=Rewrite Prog [String] (M.Map Name Generated) [Group] (M.Map Name (S.Set Name)) Authority
+rewriteProgram (Rewrite p _ _ _ _ _)=p
+rewriteNotes (Rewrite _ ns _ _ _ _)=ns
+rewriteGenerated (Rewrite _ _ gs _ _ _)=gs
+rewriteGroups (Rewrite _ _ _ gs _ _)=gs
+rewriteCallTargets (Rewrite _ _ _ _ ts _)=ts
+rewriteInput (Rewrite _ _ _ _ _ (Authority p _ _ _))=p
+-- Publish a checked producer's new projection, preserving the planner's
+-- source/liveness authority and checking every physical helper declaration.
+publish :: Rewrite -> Prog -> Either String Rewrite
+publish (Rewrite _ notes generated groups targets authority@(Authority before _ _ _)) after=do
+  let facts=M.mapWithKey (\name g->g {generatedParameters=maybe (generatedParameters g) fst (M.lookup name after)}) generated
+      result=Rewrite after notes facts groups targets authority
+  verifyRewrite before result
+  pure result
+
+-- Helper-body passes may simplify a logical source graph, but cannot use the
+-- old region contract after making a dead slot live, weakening invariance,
+-- adding an unmanaged cycle, or invalidating a non-returning result proof.
+validateSource :: Rewrite -> Prog -> Either String ()
+validateSource (Rewrite _ _ _ groups _ (Authority before membership context shared)) current=do
+  let bad why=Left ("typed region proof: "++why)
+      liveNow=Analysis.liveParameters membership current
+      refs (ps,b)=S.fromList (freeVars b) S.\\ S.fromList ps
+      edges p=M.map refs p
+      reaches graph seeds=let next=seeds<>M.keysSet (M.filter (not . S.null . S.intersection seeds) graph)
+                          in if next==seeds then seeds else reaches graph next
+      effect names=let seeds=S.fromList names
+                       external=reaches (edges (current `M.union` context)) seeds `S.intersection` shared
+                   in reaches (edges current) (seeds<>external)
+      managed=effect ["Sys.poolReset","Sys.arena","Sys.loop","Sys.loopWith","$receiveLoop","$loopLeave"]
+      receiving=effect ["receive","receiveFrom","receiveRes","receiveNow","receiveFromRes","receiveFromNow"]
+  forM_ groups $ \g->do
+    let members=S.fromList (groupMembers g)
+        invariantsNow=Analysis.invariantParameters current (groupMembers g)
+        rest=members S.\\ groupBoundaries g
+        cycles p=[() | CyclicSCC _<-stronglyConnComp
+          [(n,n,S.toList (refs (p M.! n) `S.intersection` rest)) | n<-S.toList rest]]
+    unless (all (`M.member` current) (groupMembers g)) (bad "source group lost a definition")
+    unless (S.null (members `S.intersection` managed)) (bad "source group acquired explicit region management")
+    unless (not (groupPure g) || S.null (members `S.intersection` receiving)) (bad "pure loop acquired a receive effect")
+    unless (not (null (cycles before)) || null (cycles current)) (bad "a control cycle bypasses the boundary set")
+    unless (groupInvariants g `S.isSubsetOf` invariantsNow) (bad "loop-invariant argument proof changed")
+    unless (not (Analysis.nonReturning before members) || Analysis.nonReturning current members)
+      (bad "non-returning result proof changed")
+    forM_ (S.toList (groupBoundaries g)) $ \n->do
+      let oldPs=fst (before M.! n);newPs=fst (current M.! n)
+          oldLive=S.fromList [i | (i,p)<-zip [0::Int ..] oldPs,p `S.member` (groupLive g M.! n)]
+          newLive=S.fromList [i | (i,p)<-zip [0::Int ..] newPs,p `S.member` (liveNow M.! n)]
+      unless (length oldPs==length newPs && newLive `S.isSubsetOf` oldLive) (bad ("dead argument became observable at "++n))
 
 receiveTurns :: Bool -> Bool -> M.Map Name (CostEq,CostEq) -> M.Map Name Interface
              -> Region.ValueModel -> S.Set Name -> Prog -> S.Set Name -> Prog -> Either String Rewrite
 receiveTurns loopRegions callRegionsOn contextEqs interfaces model shared context joins prog = do
-  let result=Rewrite final (notes++callNotes) generated
+  let result=Rewrite final (notes++callNotes) generated selectedGroups callTargets (Authority prog (M.keysSet membership) context shared)
   verifyRewrite prog result
   pure result
   where
@@ -88,6 +140,15 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model shared contex
     (final, callNotes) = if callRegionsOn then callRegions turned else (turned, [])
     generated=M.fromList (concat
       [describe ns | (ns,Right _)<-zip groups results,loopRegions || not (isPure ns)])
+    selectedGroups=[Group ns (isPure ns) (entries ns) (invariants ns) (M.restrictKeys live (S.fromList ns))
+      | (ns,Right _)<-zip groups results,loopRegions || not (isPure ns)]
+    callCandidates=[g | (g,(ps,_))<-M.toList (prog `M.union` context),costly g (length ps)]
+    callCandidateSet=S.fromList callCandidates
+    callTargets=if not callRegionsOn then M.empty else M.fromList
+      [(n,targets) | (n,body)<-M.toList prog,M.member n interfaces,
+        let targets=S.filter (\g->g `S.member` callCandidateSet && not (sameGroup n g)) (refs (fst body) (snd body)),
+        not (S.null targets)]
+    sameGroup a b=case (M.lookup a sccIx,M.lookup b sccIx) of (Just x,Just y)->x==y;_->False
     describe ns=concatMap one ns
       where
         boundaries=entries ns
@@ -246,75 +307,11 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model shared contex
     -- loop-invariant parameter slots of a group: (function, index) classes
     -- joined by every call inside the group that passes a caller's own
     -- parameter; a class any call feeds with anything else is variable.
-    invariants ns = S.fromList [slot | slot <- M.keys cls, S.member (rep slot) good]
-      where
-        group = S.fromList ns
-        -- a call's arguments, each resolved to the caller's parameter slot it
-        -- is (through the `let x = param` aliases Core binds the surface names
-        -- with), a global (a constant), or something else (variable)
-        calls = concat [callsIn n (M.fromList (zip ps [0 ..])) b | n <- ns, let (ps, b) = prog M.! n]
-        callsIn n alias e = case spine e of
-          (CVar g, as) | S.member g group, not (M.member g alias), length as == length (fst (prog M.! g)) ->
-            [(g, map (argKind alias) as)] ++ concatMap (callsIn n alias) as
-          _ -> case e of
-            CLet x a b' -> callsIn n alias a ++ callsIn n (case a of
-                             CVar y | Just j <- M.lookup y alias -> M.insert x j alias
-                             _ -> M.delete x alias) b'
-            CIf c t f -> concatMap (callsIn n alias) [c, t, f]
-            CApp a b' -> callsIn n alias a ++ callsIn n alias b'
-            CLam xs b' -> callsIn n (foldr M.delete alias xs) b'
-            CMk _ _ fs -> concatMap (callsIn n alias) fs
-            CTagEq _ _ x -> callsIn n alias x
-            CProj _ x -> callsIn n alias x
-            _ -> []
-          where
-            argKind al a = case a of
-              CVar x | Just j <- M.lookup x al -> Just (Just (n, j))
-                     | M.member x prog -> Just Nothing -- a global: a constant
-              _ -> Nothing
-        slots = [(n, i) | n <- ns, i <- [0 .. length (fst (prog M.! n)) - 1]]
-        -- union-find by a parent map, small groups: repeated path compression
-        -- is not worth the code
-        cls0 = M.fromList [(sl, sl) | sl <- slots]
-        (cls, variable) = foldl' step (cls0, S.empty) calls
-        step (c, var) (g, kinds) = foldl' one (c, var) (zip [0 ..] kinds)
-          where
-            one (c', v') (i, k) = case k of
-              Just (Just slot) -> (union c' (g, i) slot, v')
-              Just Nothing -> (c', v')
-              Nothing -> (c', S.insert (g, i) v')
-        find c sl = let p = c M.! sl in if p == sl then sl else find c p
-        union c a b = let ra = find c a; rb = find c b in if ra == rb then c else M.insert ra rb c
-        rep = find cls
-        variableReps = S.fromList (map rep (S.toList variable))
-        good = S.fromList [rep sl | sl <- slots] S.\\ variableReps
+    invariants = Analysis.invariantParameters prog
     -- Least fixed point: a parameter only forwarded into another dead slot
     -- need not cross the boundary. All argument expressions still execute;
     -- only a read of an already-bound local is effect-free to discard.
-    live = settle (M.map (const S.empty) prog)
-      where
-        settle known =
-          let next = M.mapWithKey (\n (ps,b) -> S.fromList ps `S.intersection` needed known (S.fromList ps) b) prog
-           in if next == known then known else settle next
-        needed known bound e
-          | (CVar n,as) <- spine e, M.member n membership,
-            n `S.notMember` bound, length as == length (fst (prog M.! n)) =
-              S.unions [if p `S.notMember` (known M.! n) && local bound a
-                        then S.empty else needed known bound a
-                       | (p,a) <- zip (fst (prog M.! n)) as]
-          | otherwise = case e of
-              CLet x a b ->
-                let rest = needed known (S.insert x bound) b
-                    rhs = if x `S.notMember` rest && local bound a then S.empty else needed known bound a
-                 in rhs `S.union` S.delete x rest
-              CIf c t f -> S.unions (map (needed known bound) [c,t,f])
-              CApp f a -> needed known bound f `S.union` needed known bound a
-              CMk _ _ fs -> S.unions (map (needed known bound) fs)
-              CTagEq _ _ x -> needed known bound x
-              CProj _ x -> needed known bound x
-              _ -> S.fromList (freeVars e)
-        local bound (CVar v) = v `S.member` bound
-        local _ _ = False
+    live = Analysis.liveParameters (M.keysSet membership) prog
     kept n = filter (`S.member` (live M.! n)) (fst (prog M.! n))
     -- Only entries that can receive BEFORE another source function in the
     -- SCC start a new turn. Other helpers, like generated joins, run inside
@@ -464,17 +461,7 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model shared contex
     isFn _=False
     -- Check EVERY member, including untyped private joins: a source body
     -- ending at a join is not proof that the join itself cannot return.
-    nonReturning n = let group = M.findWithDefault S.empty n membership
-                      in all (\g -> let (ps,b) = prog M.! g in neverReturns group (S.fromList ps) b) (S.toList group)
-    -- An infinite actor needs no copyable result when every terminal path
-    -- in its SCC is another saturated SCC call or a compiler trap.
-    neverReturns group bound = \case
-      CLet x _ b -> neverReturns group (S.insert x bound) b
-      CIf _ t f -> neverReturns group bound t && neverReturns group bound f
-      CErr _ -> True
-      e -> case spine e of
-        (CVar g,as) -> g `S.member` group && g `S.notMember` bound && length as == length (fst (prog M.! g))
-        _ -> False
+    nonReturning n = Analysis.nonReturning prog (M.findWithDefault S.empty n membership)
 
 spine :: Core -> (Core,[Core])
 spine = go [] where go as (CApp f a) = go (a:as) f; go as h = (h,as)
@@ -482,7 +469,7 @@ spine = go [] where go as (CApp f a) = go (a:as) f; go as h = (h,as)
 -- Scope/physical checks here do not claim that erased helper bodies are typed
 -- Core; their checked source interfaces and runtime protocol roles stay distinct.
 verifyRewrite :: Prog -> Rewrite -> Either String ()
-verifyRewrite before (Rewrite after _ generated)=do
+verifyRewrite before (Rewrite after _ generated _ _ _)=do
   let bad why=Left ("region rewrite: "++why)
       newNames=M.keysSet generated
   unless (S.null (newNames `S.intersection` M.keysSet before)) (bad "generated helper collides with an input definition")

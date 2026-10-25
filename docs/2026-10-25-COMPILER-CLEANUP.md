@@ -15,8 +15,8 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical calls and local/global/imported callback cloning implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
-| Checked pipeline products and lint | Owned semantic/native and linked artifact products, region input/cost views, generated helper ABI provenance, complete graph and imported interface contracts implemented; downstream pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical calls, local/global/imported callback cloning and region control implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Checked pipeline products and lint | Owned semantic/native and linked artifacts, region input/cost views, typed region control bodies and protocol/helper contracts, complete graph and imported interface contracts implemented; later pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
@@ -592,4 +592,27 @@ in 540.74 seconds on six workers, with an empty cache, no reused results and
 unchanged timeouts. Sol arguments/shared fixture and three million tail-call
 iterations pass too; the stage page records platform skips and the compile-time
 regression correction. Baseline `bd2830b` is green in hosted CI run 40205756522;
-this stage's hosted validation follows its push.
+the integrated global-cloning commit `134a992` passed hosted CI run 40210518302.
+
+## Typed region control (2026-10-26)
+
+[Typed region control](2026-10-26-TYPED-REGION-CONTROL.md) preserves checked
+source expressions and fresh helper identities through loop, receive and call
+region transformation. Marks, sequences, ticks, state bundles and receive-step
+results have dedicated internal sorts. Verification checks physical interfaces,
+lexical scope, call witnesses, source ownership and state proofs. Changed helper
+bodies re-establish liveness/invariance/effect/cycle obligations. Typed helpers
+retain home code/PAP declarations across artifacts.
+
+The planner's scoped cost projection and mixed compatibility-group rewrite
+remain explicit. `Mono` still serves compatibility code; later transformations,
+layout temporaries, remaining frontend forms, diagnostics and machine/call
+contracts remain required. Revision 120 changes emission/cache identity without
+changing runtime structures or physical ABIs. The full cleanup goal stays active.
+
+Final fixed-source validation passed all 136 Base jobs in 572.64 seconds on six
+workers with a fresh cache, no reused results and unchanged timeouts. Sol
+arguments/shared-language and three-million-iteration self/mutual tail calls
+pass, with an 86 MB reported peak. The stage page records the platform skips,
+compile-time overhead and preceding hosted CI result. This stage requires its
+own hosted result after push.
