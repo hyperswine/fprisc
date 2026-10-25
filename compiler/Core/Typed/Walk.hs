@@ -31,6 +31,7 @@ mapChildrenM f e = (\node -> e {exprNode=node}) <$> case exprNode e of
   JoinCall label captures xs->JoinCall label captures <$> traverse f xs
   CodeCall label captures xs->CodeCall label captures <$> traverse f xs
   VectorBuild b x->VectorBuild b <$> f x
+  CallRegion x->CallRegion <$> f x
   n->pure n
   where
     alt (Alternative ps gs b)=Alternative ps <$> traverse guard gs <*> f b

@@ -4,12 +4,15 @@ module Codegen.Target.Common
   ( ObjectFormat (..), NativeFn (..), mangleName, functionSymbol,
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
-    boxedFloatLabel, boxedFloatObject ) where
+    boxedFloatLabel, boxedFloatObject,
+    SymbolPolicy,symbolPolicy,publicSymbols,symbolNames,
+    Visibility(..),WeakSpelling(..),visibilityFor,visibilityLines ) where
 import Codegen.Bounds (Report)
 import Codegen.IR (Name)
 import qualified Codegen.IR as IR
 import Codegen.Frame
 import Codegen.Policy (StackPolicy (..))
+import qualified Codegen.Opcode as Opcode
 import Codegen.Selected
 import Data.Bits (shiftR, xor, (.&.))
 import Data.Char (isAlphaNum, isAscii, isDigit, ord)
@@ -38,7 +41,7 @@ forwardEntry enabled general regs fn sf
     (b : _) <- [blk | blk <- IR.fnBlocks fn, IR.bId blk == IR.fnEntry fn] =
       let ps = zip (sfParams sf) regs
           operands = [OV v (Fix p) | (v, p) <- ps]
-          preserve (I i) | siOp i == "entry.check.tick" = I i
+          preserve (I i) | siOpcode i == Opcode.Common Opcode.EntryCheckTick = I i
             {siDefs = operands, siUses = operands,
              siClobbers = filter (`notElem` map snd ps) (siClobbers i)}
           preserve it = it
@@ -69,16 +72,45 @@ shallowEntry policy bytes items
     not (any deepens items) = (True, concatMap strip items)
   | otherwise = (False, items)
   where
-    entry i = siOp i `elem` ["entry.check", "entry.check.tick", "entry.tick"]
+    entry i = siOpcode i `elem` map Opcode.Common [Opcode.EntryCheck, Opcode.EntryCheckTick, Opcode.EntryTick]
     deepens (I i) = not (entry i) && siControl i /= Return
       && any (\c -> callSafepoint c || callTarget c == "fpr_applyN") (siCalls i)
     deepens _ = False
-    strip (I i) | siOp i == "entry.check" = []
-    strip (I i) | siOp i == "entry.check.tick" =
-      [I i {siOp = "entry.tick", siCalls = filter ((/= "fpr_stack_grow") . callTarget) (siCalls i)}]
+    strip (I i) | siOpcode i == Opcode.Common Opcode.EntryCheck = []
+    strip (I i) | siOpcode i == Opcode.Common Opcode.EntryCheckTick =
+      [I i {siOpcode = Opcode.Common Opcode.EntryTick, siCalls = filter ((/= "fpr_stack_grow") . callTarget) (siCalls i)}]
     strip i = [i]
 
 data ObjectFormat = MachO | ELF deriving (Eq, Ord, Show)
+
+-- Source exports and linkable implementation symbols have different
+-- visibility. A private implementation entry is strong and hidden even in a
+-- weak library unit. Its code and static PAP must use the same policy.
+data SymbolPolicy=SymbolPolicy (S.Set Name) (S.Set Name) deriving (Eq,Show)
+data Visibility=UnitLocal | PublicSymbol | WeakSymbol | HiddenSymbol deriving (Eq,Show)
+data WeakSpelling=WeakDirective | WeakDefinitionDirective deriving (Eq,Show)
+
+symbolPolicy :: S.Set Name -> S.Set Name -> Either String SymbolPolicy
+symbolPolicy public private
+  | S.null (public `S.intersection` private)=Right (SymbolPolicy public private)
+  | otherwise=Left "symbol policy: public/private export overlap"
+publicSymbols :: S.Set Name -> SymbolPolicy
+publicSymbols ns=SymbolPolicy ns S.empty
+symbolNames :: SymbolPolicy -> S.Set Name
+symbolNames (SymbolPolicy a b)=a<>b
+visibilityFor :: Bool -> SymbolPolicy -> Name -> Visibility
+visibilityFor weak (SymbolPolicy public private) n
+  | n `S.member` private=HiddenSymbol
+  | n `S.notMember` public=UnitLocal
+  | weak && '@' `notElem` n=WeakSymbol
+  | otherwise=PublicSymbol
+visibilityLines :: ObjectFormat -> WeakSpelling -> Visibility -> String -> [String]
+visibilityLines fmt spelling visibility sym=case visibility of
+  UnitLocal->[]
+  PublicSymbol->[global]
+  WeakSymbol->["    "++(case spelling of WeakDirective->".weak ";WeakDefinitionDirective->".weak_definition ")++sym]
+  HiddenSymbol->[global,"    "++(if fmt==MachO then ".private_extern " else ".hidden ")++sym]
+  where global="    .globl "++sym
 
 data NativeFn = NativeFn
   { nfName :: String,
@@ -178,6 +210,7 @@ dataSyntax MachO = map (locals . line)
   where
     line l
       | Just rest <- stripPrefix "    .globl " l = "    .globl " ++ intercalate ", " (map (sym . trim) (splitC rest))
+      | Just rest <- stripPrefix "    .private_extern " l = "    .private_extern " ++ sym (trim rest)
       | Just rest <- stripPrefix "    .quad " l, (c : _) <- dropWhile (== ' ') rest, not (isDigit c), c /= '-' = "    .quad " ++ sym (trim rest)
       | "    .section .rodata" `isPrefixOf` l = "    .section __DATA,__const"
       | (name, ':' : rest) <- break (== ':') l, not (null name), all (/= ' ') name,
@@ -230,13 +263,13 @@ shrinkWrap saved items
             if any (\bk -> not (S.member point (doms M.! bk))) exits then Nothing else
               Just (concat [mark bk its | (bk, its) <- zip [0 ..] blocks])
   where
-    savesHere = plain "saves.here" [] []
+    savesHere = plainOpcode (Opcode.Common Opcode.SavesHere) [] []
     savedSet = S.fromList saved
     namesSaved = any (\case I i -> any isSaved (siDefs i ++ siUses i); _ -> False)
     isSaved = \case OP r -> S.member r savedSet; _ -> False
     returns = any (\case I i -> siControl i == Return; _ -> False)
     noRestore = \case
-      I i | siControl i == Return -> I i {siNote = "norestore"}
+      I i | siControl i == Return -> I i {siAnnotation = SkipRestores}
       it -> it
     -- basic blocks: a label starts one, an instruction that transfers ends one
     blocks = split items

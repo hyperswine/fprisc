@@ -2,13 +2,10 @@
 
 -- Inline small non-recursive supercombinators at saturated call sites.
 --
--- The builtin code generator is deliberately naive: every call stages
--- its arguments through frame slots and every callee opens a frame of
--- its own, so a one-line helper such as `rd a o = Mem.readWord
--- (Addr.add a o)` costs a call, a prologue, a dozen slot moves and an
--- epilogue for two instructions of work.  Inlining the helper's body
--- at the site turns that into two instructions plus the let-bindings
--- of its arguments, which the peephole then folds away.
+-- This reduces native call/entry overhead and exposes arithmetic and
+-- function-valued arguments to later vector/worker planning. Imported private
+-- bodies can be read-only templates: their function/PAP definitions stay at
+-- home even when an owned caller inlines one of their saturated calls.
 --
 -- Semantics are preserved exactly: the arguments are let-bound in call
 -- order before the body (so each is evaluated once, left to right, as
@@ -21,7 +18,7 @@
 -- program (exports, constructor stubs and function values still need
 -- their symbols); only the sites change.
 
-module Inline (inlineSmall, inlineWith, vecPeek) where
+module Inline (inlineSmall, inlineWith,inlineWithImports, vecPeek) where
 
 import Data.List (isInfixOf, isSuffixOf)
 import Control.Monad (foldM)
@@ -32,18 +29,23 @@ import Core.Syntax (Core (..), Name, Prog)
 
 -- | rounds, then the largest callee body (in Core nodes) worth inlining
 inlineSmall :: Int -> Int -> Prog -> Prog
-inlineSmall = inlineGo False (const False)
+inlineSmall = inlineGo M.empty False (const False)
 
 -- | The base profile's inliner: as inlineSmall, plus function-valued
 -- arguments (below), and SAFEPOINT-PRESERVING: an inlined body starts with
--- the fuel tick the callee's entry had (`$fuel`, Codegen.hs).  A call is a
+-- the fuel tick the callee's entry had (`$fuel`, Codegen.Lower). A call is a
 -- preemption point, so removing one without its tick lengthened the
 -- longest path between safepoints -- the kernel's WCET ratchet saw 408
 -- instructions against its ceiling of 200.  With the tick, every path is
 -- exactly as long between safepoints as it was through the call; what goes
 -- is the frame, the argument staging and the stack check.
 inlineWith :: (Name -> Bool) -> Int -> Int -> Prog -> Prog
-inlineWith = inlineGo True
+inlineWith = inlineWithImports M.empty
+
+-- Imported bodies are read-only lookup templates. Only owned definitions are
+-- rewritten/published, so inlining a call never copies its static PAP object.
+inlineWithImports :: Prog -> (Name -> Bool) -> Int -> Int -> Prog -> Prog
+inlineWithImports imports=inlineGo imports True
 
 -- | The same, with a predicate naming the globals outside this unit that
 -- are FUNCTION VALUES (primitives, other units' functions of arity > 0).
@@ -52,18 +54,18 @@ inlineWith = inlineGo True
 -- pure, and `f x` with f known is a direct (or inline) call where `$i.f x`
 -- was a generic apply.  A zero-arity global is never substituted: it is
 -- evaluated where it is named, so it is let-bound like any argument.
-inlineGo :: Bool -> (Name -> Bool) -> Int -> Int -> Prog -> Prog
-inlineGo tick pureOutside rounds limit prog0 = evalState (foldM (const . step') prog0 [1 .. rounds]) 0
+inlineGo :: Prog -> Bool -> (Name -> Bool) -> Int -> Int -> Prog -> Prog
+inlineGo imports tick pureOutside rounds limit prog0 = evalState (foldM (const . step') prog0 [1 .. rounds]) 0
   where
     -- each round: inline at the sites, then propagate function-value
     -- aliases (clause desugaring rebinds a parameter under its source
     -- name, `f = a1`, so a substituted parameter reappears as one)
-    step' prog = M.mapWithKey (\_ (ps, b) -> (ps, propagate prog (S.fromList ps) b)) <$> step prog
+    step' prog = M.mapWithKey (\_ (ps, b) -> (ps, propagate (prog `M.union` imports) (S.fromList ps) b)) <$> step prog
     funValue prog g = case M.lookup g prog of
       Just (ps, _) -> not (null ps)
       Nothing -> pureOutside g
     propagate prog = propagateWith (funValue prog)
-    step prog = M.traverseWithKey (\n (ps, b) -> (,) ps <$> site prog n (S.fromList ps) b) prog
+    step prog = M.traverseWithKey (\n (ps, b) -> (,) ps <$> site (prog `M.union` imports) n (S.fromList ps) b) prog
     candidate prog n = case M.lookup n prog of
       Just (ps, body)
         | not (null ps),

@@ -57,6 +57,7 @@ module Codegen.Allocate
 
 import Codegen.Frame
 import Codegen.Liveness
+import qualified Codegen.Opcode as Opcode
 import Codegen.Selected
 import Control.Monad (forM_, unless, when)
 import Data.List (foldl', nub, sortOn, (\\))
@@ -264,16 +265,16 @@ allocateFn cfg fn = do
         items <- rewrite cfg here locOf p i
         (items ++) <$> walk (p + 2 :: Int) rest
   body <- walk 0 stream
-  let noted n = length [() | I x <- body, siNote x == n]
+  let noted n = length [() | I x <- body, siAllocation x == Just n]
       stats =
         Stats
           { stValues = M.size ivs,
             stInRegister = length [() | Just (Just _) <- map (`M.lookup` assigned) (M.keys ivs)],
             stSpilled = length spilled,
             stSlots = length slotObjs,
-            stReloads = noted "reload",
-            stSpillStores = noted "spill",
-            stCopies = noted "copy",
+            stReloads = noted Reload,
+            stSpillStores = noted SpillStore,
+            stCopies = noted RegisterCopy,
             stCrossing = length [() | v <- M.keys ivs, crossesCallV v],
             stLoops = nloops
           }
@@ -311,30 +312,30 @@ loopForm cfg here fn = case acSelfLoop cfg of
     -- Parameters beyond the register bank arrive through named TLS cells
     -- (x64's seventh/eighth) or indexed hart cells (arguments 9..64 on all
     -- targets). Recover their staged values before replacing a self tail.
-    cellKey (OS _) = True
+    cellKey (OC _) = True
     cellKey (OI _) = True
     cellKey _ = False
-    cells = [(p,key) | i <- acArrival cfg params, siOp i `elem` ["load.cell","load.spill"],
+    cells = [(p,key) | i <- acArrival cfg params, siOpcode i `elem` map Opcode.Common [Opcode.LoadCell,Opcode.LoadSpill],
                        OV p _ <- siDefs i, key <- siUses i, cellKey key]
     nfixed = length params - length cells
-    isSelf self i = siOp i == "tailjump" && take 1 (siUses i) == [OS self] && length [() | OV _ (Fix _) <- siUses i] == nfixed
+    isSelf self i = siOpcode i == Opcode.Common Opcode.TailJump && take 1 (siUses i) == [OS self] && length [() | OV _ (Fix _) <- siUses i] == nfixed
     selfCalls self = [i | I i <- sfBody fn, isSelf self i]
     isCellStore i sym = null (siDefs i) && null (siCalls i) && siControl i == Next && case siUses i of
-      [OV _ _, key] -> key == sym && siOp i == (case sym of OS _ -> "store.cell"; _ -> "store.spill")
+      [OV _ _, key] -> key == sym && siOpcode i == Opcode.Common (case sym of OC _ -> Opcode.StoreCell; _ -> Opcode.StoreSpill)
       _ -> False
     maxV = maximum (0 : [n | VReg n <- params] ++ [n | I i <- sfBody fn, (VReg n, _) <- instrVRegs i]) + 1
     -- the entry pseudo is the first instruction of the body (after the
     -- entry block's label); the label goes between its halves
     splitEntry items = case break isInstr items of
       (labels, I e : rest)
-        | siOp e == "entry.check.tick" ->
-            pure (labels ++ [I (half e "entry.check" [c | c <- siCalls e, not (callSafepoint c)]), ILabel loopLabel, I (half e "entry.tick" [c | c <- siCalls e, callSafepoint c])] ++ rest)
-        | siOp e == "entry.tick" -> pure (labels ++ [ILabel loopLabel, I e] ++ rest)
-        | siOp e == "entry.check" -> pure (labels ++ [I e, ILabel loopLabel] ++ rest)
-        | siOp e == "entry.static" -> pure (labels ++ [I e, ILabel loopLabel] ++ rest)
+        | siOpcode e == Opcode.Common Opcode.EntryCheckTick ->
+            pure (labels ++ [I (half e Opcode.EntryCheck [c | c <- siCalls e, not (callSafepoint c)]), ILabel loopLabel, I (half e Opcode.EntryTick [c | c <- siCalls e, callSafepoint c])] ++ rest)
+        | siOpcode e == Opcode.Common Opcode.EntryTick -> pure (labels ++ [ILabel loopLabel, I e] ++ rest)
+        | siOpcode e == Opcode.Common Opcode.EntryCheck -> pure (labels ++ [I e, ILabel loopLabel] ++ rest)
+        | siOpcode e == Opcode.Common Opcode.EntryStatic -> pure (labels ++ [I e, ILabel loopLabel] ++ rest)
       _ -> Left (here ++ "a self tail call in a function without an entry sequence")
     isInstr = \case I _ -> True; _ -> False
-    half e op calls = e {siOp = op, siCalls = calls}
+    half e op calls = e {siOpcode = Opcode.Common op, siCalls = calls}
     vmove d src = (acMove cfg (Phys "") (Phys "")) {siDefs = [OV d (Any GPR)], siUses = [OV src (Any GPR)]}
     -- walk with the items already emitted (reversed) at hand, so a self
     -- call can take back the cell stores just before it
@@ -351,7 +352,7 @@ loopForm cfg here fn = case acSelfLoop cfg of
           (cellArgs, acc1) <- takeCells (reverse cells) acc
           let args = fixedArgs ++ reverse cellArgs
           when (length args /= length params) (Left (here ++ "a self tail call with the wrong number of arguments"))
-          let items = map I (parallel (zip params args)) ++ [I ((plain "jump.loop" [] [OL loopLabel]) {siControl = JumpTo loopLabel})]
+          let items = map I (parallel (zip params args)) ++ [I ((plainOpcode (Opcode.Common Opcode.JumpLoop) [] [OL loopLabel]) {siControl = JumpTo loopLabel})]
           rewriteCalls self (reverse items ++ acc1) rest
     rewriteCalls self acc (it : rest) = rewriteCalls self (it : acc) rest
     -- block parameters are assigned in parallel: a cycle is broken with a
@@ -459,7 +460,7 @@ rewrite cfg here locOf _ i = do
       -- a selected move whose two sides share a register (the source dies
       -- there) is nothing
       identity = case (siDefs placed, siUses placed) of
-        ([OP d], [OP s']) -> d == s' && siOp placed == siOp (acMove cfg d s') && siFlags placed == FlagsNone && null (siCalls placed) && siControl placed == Next
+        ([OP d], [OP s']) -> d == s' && siOpcode placed == siOpcode (acMove cfg d s') && siFlags placed == FlagsNone && null (siCalls placed) && siControl placed == Next
         _ -> False
   pure (map I preItems ++ [I placed | not identity] ++ map I postItems)
   where
@@ -479,7 +480,7 @@ resolveCopies cfg here raw = do
   forM_ moves $ \case
     (PS _, PS _) -> Left (here ++ "a slot-to-slot copy")
     _ -> pure ()
-  let stores = [(acStore cfg r s) {siNote = "spill"} | (PS s, PR r) <- moves]
+  let stores = [(acStore cfg r s) {siAllocation = Just SpillStore} | (PS s, PR r) <- moves]
       regMoves = [(d, s) | (PR d, s) <- moves]
   rest <- schedule regMoves
   pure (stores ++ rest)
@@ -500,8 +501,8 @@ resolveCopies cfg here raw = do
                          in (emit t (PR sr) :) <$> schedule pending'
                       PS _ -> Left (here ++ "internal: a slot in a copy cycle")
                     [] -> Left (here ++ "no scratch register free to break a copy cycle")
-    emit d (PR s) = (acMove cfg d s) {siNote = "copy"}
-    emit d (PS s) = (acLoad cfg d s) {siNote = "reload"}
+    emit d (PR s) = (acMove cfg d s) {siAllocation = Just RegisterCopy}
+    emit d (PS s) = (acLoad cfg d s) {siAllocation = Just Reload}
 
 -- The independent oracle over the physical stream: liveness of physical
 -- registers, then (1) no clobbered register is live out of the

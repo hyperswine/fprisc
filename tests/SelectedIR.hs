@@ -8,13 +8,21 @@
 -- honours the constraints, the bound analysis finds the missing safepoint,
 -- and the AArch64 pipeline runs end to end on a hand-written function.
 -- Run: cabal exec -- runghc -w -icompiler tests/SelectedIR.hs
+import qualified Codegen.Calling as Calling
 import Codegen.Bounds
 import Codegen.Frame
 import Codegen.IR
 import Codegen.Place
 import Codegen.Policy (m2Policy, StackPolicy (..), Policy (..), Profile (..))
 import Codegen.Target.Common (shallowEntry, noTune, shrinkWrap)
+import qualified Codegen.Opcode as Opcode
+import qualified Codegen.Opcode.A64 as AOp
+import qualified Codegen.Opcode.RV as ROp
+import qualified Codegen.Target.A64.Forms as AForms
+import qualified Codegen.Target.RV.Forms as RForms
+import Codegen.Target.X64.Forms (checkForms)
 import Codegen.Selected
+import qualified Codegen.Annotation as Annotation
 import qualified Codegen.Target.X64 as X64
 import Codegen.Target.A64
 import Control.Monad (unless, forM_)
@@ -81,10 +89,118 @@ align :: SInstr
 align = (plain "x64.callalign" [] []) {siImplicitDefs = [r "rsp"]}
 
 storeA6 :: SInstr
-storeA6 = plain "x64.store.cell" [] [gpr 0, OS "fpr_x64_a6"]
+storeA6 = plain "x64.store.cell" [] [gpr 0, OC Calling.Argument7]
 
 main :: IO ()
 main = do
+  callingContracts
+  let nativeTick=(plainOpcode (Opcode.Common Opcode.EntryTick) [] [])
+        {siAnnotation=EntryLabels (Label "annotation-entry"),siFlags=FlagsDef,
+         siCalls=[Call "fpr_fuel_exhausted" True False]}
+      annotations=Annotation.checkAnnotations Annotation.AlwaysRestores "annotation-test"
+      save=(plainOpcode (Opcode.A64 AOp.Save) [] []) {siAnnotation=SaveGroup 0}
+      move=(plainOpcode (Opcode.A64 AOp.Move) [OP (Phys "x19")] [OP (Phys "x0")])
+        {siAllocation=Just RegisterCopy}
+      reload=(plainOpcode (Opcode.A64 AOp.FrameLoad) [OP (Phys "x19")] [OF (FrameRef 0) 0])
+        {siAllocation=Just Reload}
+  check "typed entry labels and allocator events satisfy native contracts"
+    (checkForms "annotation-test" [I nativeTick]==Right ()
+      && AForms.checkForms a64RegisterFile "annotation-test" [I move,I reload,I save]==Right ())
+  refused "entry labels are required by native entry expansion" "annotation does not match"
+    (checkForms "annotation-test" [I nativeTick {siAnnotation=NoAnnotation}])
+  refused "entry labels cannot annotate ordinary computation" "annotation does not match"
+    (AForms.checkForms a64RegisterFile "annotation-test" [I move {siAnnotation=EntryLabels (Label "copy")}])
+  refused "implicit entry labels cannot capture a local block label" "captures or duplicates"
+    (annotations [I nativeTick,ILabel (Label "annotation-entry_fuel")])
+  refused "entry expansions cannot share a fuel label" "captures or duplicates"
+    (annotations [I nativeTick,I nativeTick])
+  refused "native save operations require a typed group index" "annotation does not match"
+    (AForms.checkForms a64RegisterFile "annotation-test" [I save {siAnnotation=NoAnnotation}])
+  refused "save group must belong to the actual frame" "outside this frame"
+    (Annotation.checkSaveGroups "annotation-test" 1 [I save {siAnnotation=SaveGroup 1}])
+  check "save group resolves within the checked frame"
+    (Annotation.checkSaveGroups "annotation-test" 1 [I save]==Right ())
+  refused "allocator reload accounting cannot attach to a copy" "allocation event"
+    (AForms.checkForms a64RegisterFile "annotation-test" [I move {siAllocation=Just Reload}])
+  refused "allocator events require physical operands" "allocation event"
+    (AForms.checkForms a64RegisterFile "annotation-test" [I move {siDefs=[gpr 0]}])
+  refused "an always-restore backend cannot inherit a shrink-wrap exit marker" "annotation does not match"
+    (checkForms "annotation-test" [I ((plainOpcode (Opcode.X64 Opcode.Ret) [] [OP (Phys "rax")])
+      {siControl=Return,siAnnotation=SkipRestores})])
+  let aOp op=plainOpcode (Opcode.A64 op)
+      aFloat=(aOp (AOp.FloatBinary Opcode.FloatRegisters Opcode.Float64 FAdd)
+        [OV (v 2) (Any FPR)] [OV (v 0) (Any FPR),OV (v 1) (Any FPR)])
+      aBranch=(aOp (AOp.Branch Opcode.UnsignedBelow) [] [OL (Label "out")])
+        {siFlags=FlagsUse,siControl=CondTo [Label "out"]}
+      aForms=AForms.checkForms a64RegisterFile "forms"
+      rvFile=RegisterFile (\(Phys p)->if p `elem` ["a0","a1","a2"] then Just GPR else Nothing) []
+      rvOp op=plainOpcode (Opcode.RV op)
+      rvAdd=rvOp ROp.Add [gpr 2] [gpr 0,gpr 1]
+      rvForms=RForms.checkForms rvFile "forms"
+  check "A64 word/FP boundaries and RV typed operations accept correct banks"
+    (aForms [I aFloat,I aBranch]==Right () && rvForms [I rvAdd]==Right ())
+  refused "A64 pooled arithmetic cannot receive a word operand" "register bank"
+    (aForms [I aFloat {siUses=[gpr 0,OV (v 1) (Any FPR)]}])
+  refused "A64 branch metadata preserves its target" "control effect"
+    (aForms [I aBranch {siControl=Next}])
+  refused "A64 entry metadata cannot lose its fuel event" "call metadata"
+    (aForms [I ((plainOpcode (Opcode.Common Opcode.EntryTick) [] []) {siAnnotation=EntryLabels (Label "a64-tick"),siFlags=FlagsDef})])
+  refused "A64 cannot render synthetic text" "opcode/operand"
+    (aForms [I (plain "mov" [gpr 2] [gpr 0])])
+  refused "A64 cannot render another ISA's instruction" "opcode/operand"
+    (aForms [I rvAdd])
+  refused "RV cannot render synthetic text" "opcode/operand"
+    (rvForms [I (plain "mv" [gpr 2] [gpr 0])])
+  refused "RV cannot render another ISA's instruction" "opcode/operand"
+    (rvForms [I aFloat])
+  refused "RV has no condition flag bank" "condition flags"
+    (rvForms [I rvAdd {siFlags=FlagsDef}])
+  refused "RV load operands cannot lose their offset" "opcode/operand"
+    (rvForms [I (rvOp ROp.Load32 [gpr 2] [gpr 0])])
+  refused "RV float tree nodes remain within scratch registers" "opcode/operand"
+    (rvForms [I (rvOp (ROp.TreeNode Opcode.Float32 FAdd) [] [OI 7])])
+  refused "RV call result must arrive in a0" "result register"
+    (rvForms [I ((rvOp ROp.Call [OV (v 2) (Fix (Phys "a1"))] [OS "callee"])
+      {siCalls=[Call "callee" False True],siTransfer=Just (Calling.Transfer Calling.RuntimeCall 0 Calling.WordResult)})])
+  refused "x64 cannot render an A64 operation" "opcode/operand"
+    (checkForms "forms" [I aFloat])
+  let typedMove=plainOpcode (Opcode.X64 Opcode.Move) [gpr 2] [gpr 0]
+      typedCompare=plainOpcode (Opcode.X64 (Opcode.FloatCompare Opcode.Float32 Ne)) [gpr 2] [gpr 0,gpr 1]
+      typedBranch=(plainOpcode (Opcode.X64 (Opcode.Branch Opcode.UnsignedBelow)) [] [OL (Label "typed-out")])
+        {siFlags=FlagsUse,siControl=CondTo [Label "typed-out"]}
+  check "x64 constructors retain explicit width, predicate and branch condition"
+    (checkForms "typed" [I typedMove,I typedCompare {siFlags=FlagsDef},I typedBranch]==Right ())
+  refused "x64 rejects the transitional mnemonic vocabulary" "opcode/operand form"
+    (checkForms "typed" [I (plain "movq" [gpr 2] [gpr 0])])
+  refused "x64 catches a selected operand-count mismatch" "opcode/operand form"
+    (checkForms "typed" [I typedMove {siUses=[]}])
+  refused "x64 catches a selected operand-kind mismatch" "opcode/operand form"
+    (checkForms "typed" [I typedMove {siUses=[OI 0]}])
+  refused "x64 float comparison retains its flag effect" "flag effect"
+    (checkForms "typed" [I typedCompare])
+  refused "x64 branch labels agree with control metadata" "control effect"
+    (checkForms "typed" [I typedBranch {siControl=Next}])
+  refused "x64 scratch tree indices remain inside the physical bank" "opcode/operand form"
+    (checkForms "typed" [I (plainOpcode (Opcode.X64 (Opcode.TreeLeaf Opcode.Float64)) [] [gpr 0,OI 8])])
+  let typedDivide=(plainOpcode (Opcode.X64 Opcode.Divide) [OV (v 2) (Fix (r "rax"))]
+        [OV (v 0) (Fix (r "rax")),gpr 1]) {siImplicitDefs=[r "rdx"],siFlags=FlagsDef}
+      typedAdd=(plainOpcode (Opcode.X64 Opcode.Add) [OV (v 2) (Tied 0)] [gpr 0,gpr 1]) {siFlags=FlagsDef}
+  check "x64 division and two-address contracts accept their real constraints"
+    (checkForms "typed" [I typedDivide,I typedAdd]==Right ())
+  refused "x64 division requires its fixed dividend/result bank" "register constraint"
+    (checkForms "typed" [I typedDivide {siDefs=[gpr 2]}])
+  refused "x64 division declares its hidden remainder register" "register constraint"
+    (checkForms "typed" [I typedDivide {siImplicitDefs=[]}])
+  refused "x64 arithmetic cannot lose its two-address tie" "register constraint"
+    (checkForms "typed" [I typedAdd {siDefs=[gpr 2]}])
+  refused "x64 calls require a complete transfer contract" "missing transfer contract"
+    (checkForms "typed" [I ((plainOpcode (Opcode.X64 Opcode.Call) [] [OS "target"]) {siFlags=FlagsDef})])
+  let typedEntry=I ((plainOpcode (Opcode.Common Opcode.EntryCheckTick) [] [])
+        {siAnnotation=EntryLabels (Label "typed-entry"),siFlags=FlagsDef,siCalls=[Call "fpr_stack_grow" False True,Call "fpr_fuel_exhausted" True False]})
+  check "shared shallow-entry rewriting retains the typed opcode"
+    (case shallowEntry StackCheckLegacyShallow 32 [typedEntry] of
+      (True,[I i])->siOpcode i==Opcode.Common Opcode.EntryTick && checkForms "typed" [I i]==Right ()
+      _->False)
   let entry = I ((plain "entry.check.tick" [] []) {siCalls = [Call "fpr_stack_grow" False True, Call "fpr_fuel_exhausted" True False]})
       callItem = I callF
       tailItem = I callF {siControl = Return}
@@ -262,7 +378,7 @@ main = do
       br l = (plain "bz" [] [OP (Phys "x0"), OL (Label l)]) {siControl = CondTo [Label l]}
       jmp l = (plain "jump" [] [OL (Label l)]) {siControl = JumpTo (Label l)}
       callS = (op "call" [] []) {siCalls = [Call "f" True False]}
-      notes xs = [(siOp i, siNote i) | I i <- xs]
+      notes xs = [(siOp i, siAnnotation i) | I i <- xs]
       -- entry branches: the leaf returns at once, the other arm uses s1 around a call
       arms = [ I (op "entry" [] []), I (br "leaf"),
                I (op "mv" [s1] [Phys "x0"]), I callS, I (op "mv" [Phys "x0"] [s1]), I ret',
@@ -272,7 +388,7 @@ main = do
       check "the saves move to the arm that uses the register"
         (take 3 (map fst (notes wrapped)) == ["entry", "bz", "saves.here"])
       check "only the returns that arm dominates restore"
-        ([n | (o, n) <- notes wrapped, o == "ret"] == ["", "norestore"])
+        ([n | (o, n) <- notes wrapped, o == "ret"] == [NoAnnotation, SkipRestores])
     Nothing -> error "FAIL: shrink-wrap declined the two-arm stream"
   check "a register used in the entry block keeps the prologue saves"
     (shrinkWrap [s1] (I (op "mv" [s1] [Phys "x0"]) : arms) == Nothing)
@@ -284,3 +400,79 @@ main = do
                        ILabel (Label "join"), I ret' ] == Nothing)
   check "no saved register, no change" (shrinkWrap [] arms == Nothing)
   putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, sized A64 frames and explicit profile/x64 limits, shrink-wrap placement and refusals: PASS"
+
+-- The contract checker runs on both sides of allocation. These cases exercise
+-- the ABI boundaries independently of renderer spelling and allocation choices.
+callingContracts :: IO ()
+callingContracts = do
+  let native=Calling.FprCall Calling.TicksFuel
+      quiet=Calling.FprCall Calling.NoFuel
+      abiBank Calling.X86_64=map Phys ["rdi","rsi","rdx","rcx","r8","r9"]
+      abiBank Calling.AArch64=map (Phys . ("x"++) . show) [0::Int ..7]
+      abiBank Calling.RiscV=map (Phys . ("a"++) . show) [0::Int ..7]
+      transfers abi=Calling.checkTransfers abi "calling-test"
+      select abi convention result n= either error id (Calling.selectTransfer abi convention result "callee"
+        (map VReg [0..n-1]) (if result==Calling.WordResult then Just (VReg n) else Nothing)
+        (plainOpcode (if result==Calling.TailTransfer then Opcode.Common Opcode.TailJump else case abi of
+          Calling.X86_64->Opcode.X64 Opcode.Call
+          Calling.AArch64->Opcode.A64 AOp.Call
+          Calling.RiscV->Opcode.RV ROp.Call) [] []))
+      -- Hard-code the established cell positions rather than regenerating them
+      -- from the contract under test.
+      stores abi n= [I (plainOpcode (Opcode.Common Opcode.StoreCell) [] [gpr j,OC cell])
+                    | abi==Calling.X86_64,(j,cell)<-[(6,Calling.Argument7),(7,Calling.Argument8)],j<n]
+                 ++ [I (plainOpcode (Opcode.Common Opcode.StoreSpill) [] [gpr j,OI (toInteger (j-8))]) | j<-[8..n-1]]
+      physical i=i {siUses=map placed (siUses i),siDefs=map placed (siDefs i)}
+      placed (OV _ (Fix p))=OP p
+      placed other=other
+  check "logical callee kinds retain their ABI through lowering"
+    (all ((==Calling.FprWords) . calleeConvention) [Callee "a" Local [] TVal,Callee "b" Imported [] TVal,Callee "c" (Generated "entry") [] TVal]
+      && calleeConvention (Callee "d" (Foreign "c_entry") [] TVal)==Calling.CWords)
+  forM_ [Calling.X86_64,Calling.AArch64,Calling.RiscV] $ \abi->do
+    check "argument registers have the established ABI order" (Calling.argumentRegisters abi==abiBank abi)
+    forM_ [native,quiet] $ \convention->
+      forM_ [0,6,7,8,9,64] $ \n->
+        forM_ [Calling.WordResult,Calling.DiscardResult,Calling.TailTransfer] $ \result->do
+          let selected=select abi convention result n
+          check "native arity boundaries survive selection and physical placement"
+            (transfers abi (stores abi n++[I selected])==Right ()
+             && transfers abi (stores abi n++[I (physical selected)])==Right ())
+    let c=select abi Calling.RuntimeCall Calling.WordResult (length (abiBank abi))
+    check "supported runtime calls use the native register bank" (transfers abi [I c]==Right ())
+    refused "runtime C stack arguments are not private FPR cells" "unsupported argument count"
+      (Calling.argumentPlaces abi Calling.RuntimeCall (1+length (abiBank abi)))
+    refused "generated call cannot exceed the runtime arity ceiling" "unsupported argument count"
+      (Calling.argumentPlaces abi native 65)
+    refused "negative arity is not an empty signature" "unsupported argument count"
+      (Calling.argumentPlaces abi native (-1))
+    let wide=select abi native Calling.WordResult 9
+        staged=stores abi 9
+        small=select abi native Calling.WordResult 1
+    refused "wide calls cannot lose a cell store" "staged argument cells"
+      (transfers abi (drop 1 staged++[I wide]))
+    refused "duplicate argument cells are not accepted" "staged argument cells"
+      (transfers abi (staged++staged++[I wide]))
+    refused "staged arguments cannot cross a call" "staged argument cells"
+      (transfers abi (staged++[I c,I wide]))
+    refused "staged arguments cannot cross an entry safepoint" "staged argument cells"
+      (transfers abi (staged++[I ((plain "tick" [] []) {siCalls=[Call "tick" True False]}),I wide]))
+    refused "staged arguments cannot cross a branch label" "staged argument cells"
+      (transfers abi (staged++[ILabel (Label "elsewhere"),I wide]))
+    refused "fixed argument bank is authoritative" "argument register"
+      (transfers abi [I small {siUses=[OS "callee",gpr 0]}])
+    refused "clobbers cannot lose a volatile register" "clobber set"
+      (transfers abi [I small {siClobbers=drop 1 (siClobbers small)}])
+    refused "runtime accounting cannot replace a generated fuel event" "call event"
+      (transfers abi [I small {siCalls=[Call "callee" False True]}])
+    refused "transfer result mode agrees with control flow" "tail/return"
+      (transfers abi [I small {siControl=Return}])
+    refused "call contract cannot annotate arithmetic" "non-transfer"
+      (transfers abi [I small {siOpcode=Opcode.Common Opcode.Params}])
+    refused "a direct call cannot lose its convention" "missing transfer"
+      (transfers abi [I small {siTransfer=Nothing}])
+  refused "linker symbols cannot masquerade as x64 argument cells" "opcode/operand"
+    (checkForms "cells" [I (plainOpcode (Opcode.Common Opcode.LoadCell) [gpr 0] [OS "fpr_x64_a6"])])
+  check "borrowed x64 cells keep the runtime TLS block offsets"
+    (map Calling.cellOffset [Calling.Argument7,Calling.Argument8]==[8,16])
+  refused "returning result is not silently discarded" "inconsistent result"
+    (Calling.selectTransfer Calling.X86_64 native Calling.TailTransfer "callee" [] (Just (VReg 0)) (plain "call" [] []))

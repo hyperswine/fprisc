@@ -15,12 +15,12 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical closure calls and local callback cloning implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
-| Checked pipeline products and lint | Structural pass results, typed desugaring/closed products and checked unit ownership implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
-| Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical calls, local/global/imported callback cloning and region control implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Checked pipeline products and lint | Owned semantic/native and linked artifacts, region input/cost views, typed region control bodies and protocol/helper contracts, complete graph and imported interface contracts implemented; later pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
+| Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
-| Typed codegen contracts | Vector operations/float widths implemented; remaining kernel stages, call-convention contracts and ISA instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
+| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, all native ISA selected operations, shared entry protocols, instruction annotations/accounting and direct word-call/staging contracts implemented; remaining kernel stages, C export/embedded call boundaries and general symbol roles pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
 | Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
 | Obsolete architecture descriptions and names | Module identity and frontend-owner references corrected; backend references/names still pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
 
@@ -434,3 +434,283 @@ required before global/imported callback specialization can move and `Mono` can
 retire. Callable ownership/multiplicity evidence, later typed transformations,
 remaining diagnostics and machine/call contracts also remain required. This
 checkpoint does not complete the full cleanup goal.
+
+
+## Owned typed programs and native pipeline
+
+[The owned program pipeline](2026-10-25-TYPED-PROGRAM-PIPELINE.md) moves actual
+native layout, closing and erasure out of frontend desugaring. Semantic source
+selections retain checked schemes, physical arities, types/ownership shapes and
+unique identities; the closed program retains its input and layout authority.
+Complete graph checks cover definition ownership, interfaces, binders, code
+labels and calling evidence. Covered definitions no longer use untyped lambda
+lifting. Compatibility-only clauses remain explicit and separate, with their
+own causes and correctly shared legacy fresh supply.
+
+Signed recursive references now carry the provisional and published schemes
+that source checking actually used. The program records source identity,
+owner/target and scoped permissions; ordinary globals still require compatible
+published interfaces. This models the existing heterogeneous IRQ protocol
+without silently claiming its assumptions prove ABI type equality or changing
+the inference solver. Later typed consumers must retain the distinction.
+
+Owner-qualified private labels preserve existing role markers and unit reuse
+across unrelated roots/constructors and inference namespaces. Source value
+bindings keep their established priority over constructor value stubs. Structure
+specialization publishes generated schemes with its bodies. Codegen revision
+116 versions private naming/cache changes; public native ABIs, source Binary
+identity and runtime/context structures are unchanged.
+
+Validation: all 136 Base jobs passed in 527.71 seconds on six workers with a fresh
+cache, no reused coverage and fixed compiler/test sources. Expanded program
+contracts, independent evaluator/native answers, source assumptions and malformed
+permissions, imported-unit cache transitions, all native emission targets,
+frontend/inference compatibility and existing allocation/mode checks pass. The
+direct complete-prelude audit has 236 semantic definitions and 248 emitted
+functions with no compatibility fallback. Saved/new native identity/effect and
+constructor-shadow controls match exactly. Sol argument/shared-language and
+3,000,000-iteration self/mutual tail-call checks pass (peak 85 MB). Hosted CI for
+`83ee345` passed; integrated-head validation follows the push.
+
+A linked typed owner across artifacts, declaration/visibility contracts for
+private code references, global/imported callback specialization and `Mono`
+retirement remain required. Region provenance, remaining source compatibility
+forms, later typed transformations, diagnostics and machine/call contracts also
+remain active full-goal work. This program handoff is a prerequisite and an actual
+native consumer, not completion of the requested cleanup.
+
+
+## Linked native input ownership
+
+[Linked native program ownership](2026-10-25-LINKED-NATIVE-PROGRAM.md) retains
+root/prelude/dependency typed artifacts, emitted exports/elisions, source
+calling schemes/physical arities and private code contracts in one checked
+product. Actual root/unit emission and imported specialization projections
+consume those retained owners. Exported and artifact-local symbols have distinct
+identities; constructor elision requires exact generated-stub provenance, even
+when a source value shares a constructor's name. Imported published interfaces,
+physical arities, layouts, exports and binder identities are checked before
+assembly reuse or emission.
+
+Validation: all 136 Base jobs passed in 589.73 seconds on five workers with a
+fresh cache and no reused CI coverage. The complete typed/native and registered
+RV QEMU gates, expanded linked-contract refusals and independent evaluator
+answers passed. All 128 fixed-binary root/dependent-unit emission and cache-key
+comparisons were byte-identical without normalization. Sol arguments,
+shared-language execution and 3,000,000-iteration self/mutual tail calls passed
+(peak 85 MB). Codegen revision 116 and the public ABI/cache formats are unchanged.
+Hosted validation for this checkpoint follows the push.
+
+This resolves the linked input-owner prerequisite from the preceding stage.
+Explicit private import declarations/visibility and stable closure/PAP identity
+are next requirements for typed global/imported callback specialization and
+`Mono` retirement. Region/cost provenance, remaining compatibility forms, later
+typed transformations, diagnostics and machine/call contracts remain required.
+The complete compiler cleanup goal remains active.
+
+
+## Home-owned private code imports (2026-10-26)
+
+[Private code imports](2026-10-26-PRIVATE-CODE-IMPORTS.md) derives explicit
+home/source/code/capture contracts from the linked checked graph and prepares
+native emission through an owned program/import/template/symbol-policy product.
+Checked helpers and static PAPs retain their home identity rather than being
+copied by imported callback cloning. ELF hidden and Mach-O private extern
+visibility share one typed policy across native code and data. Read-only
+contexts preserve imported inlining and vector map/pipeline planning; generated
+kernel implementations remain local to their artifact.
+
+A saved-compiler reproducer returned unequal capture-free function objects with
+specialization enabled and equal objects with it disabled. The corrected path
+preserves identity across both paths, while distinct captured closures still
+compare unequal and stored aliases compare equal. Revision 117 versions this
+behavior correction and changed linkage/cache contents, with no physical ABI,
+context or runtime-object-layout change.
+
+The linked-owner baseline `5b52aed` passed hosted CI run 40194815858. All 136
+Base jobs for this checkpoint passed in 515.82 seconds on six workers, with a
+fresh cache, no reused CI coverage and fixed sources. The expanded home-import
+invariants and native identity/effect/cache checks pass, root/provider objects
+assemble in all six native formats, and imported map/fused pipeline plans remain
+specialized. Sol arguments/shared-language execution and self/mutual 3,000,000
+iteration tail calls pass (peak 85 MB). Integrated-head hosted validation follows
+the push; the private-import stage page records the evidence and platform skips.
+Global cloning still uses `Mono`; typed global clone/source provenance and
+region/cost provenance remain the next major requirements. Compatibility/erased
+region helpers, later typed transformations, source diagnostics and machine/call
+contracts remain required. This stage does not complete the compiler cleanup.
+
+
+## Checked physical region interfaces (2026-10-26)
+
+[Region interfaces and provenance](2026-10-26-REGION-INTERFACES.md) supplies
+region placement from the owned checked native graph, including private code,
+hidden physical arguments, binder IDs, ownership shapes and result types.
+Unchanged compatibility clauses may keep a checked source declaration; changed
+clauses cannot borrow it or a same-named context interface. Checked constructor
+schemes replace source-AST type conversion in copyability/boundedness analysis.
+Cost equations retain their exact scoped analysis projection, with compatibility
+counters separated across local/context views. Shared artifact region results
+retain generated helper roles, source interfaces, state and physical parameters.
+The rewrite verifies helper/entry/scope contracts and physical argument limits.
+
+A saved-compiler private receive loop reports 196,480 bytes of heap growth
+against its 4 KiB bound on one and four harts; the corrected path places a
+receive region and passes.
+Revision 118 versions placement/emission/cache changes. Runtime structures and
+physical ABIs are unchanged. Fresh-cache integrated Base validation passed all
+136 jobs in 509 seconds on six workers, with no reused results. Focused region,
+typed-Core and Sol checks passed; the stage page records host/toolchain skips.
+Baseline `38673d2` passed hosted CI run 40198814856; that result precedes this
+stage. The integrated region-interface commit `bd2830b` passed hosted CI run
+40205756522.
+
+This is checked provenance and a structural contract for the existing erased
+region rewrite. Typed helper bodies and global callback clone/source provenance
+remain required before `Mono` retirement. The later typed transformations,
+remaining compatibility forms, diagnostics and machine/call vocabulary remain
+part of the full active cleanup goal.
+
+## Typed global callback cloning (2026-10-26)
+
+[Checked global cloning](2026-10-26-TYPED-GLOBAL-CLONING.md) moves global and
+imported callback specialization before region placement and erasure. A checked
+catalog owns template bodies, schemas, code contracts and shared role analysis.
+Clones instantiate checked annotations with fresh binder identities, retain
+source/template/physical-parameter provenance and preserve escaping callback
+objects. Imported private code remains a home-owned declaration; the linked
+verifier checks it against its actual emitting contract. Ambient rigid variables
+propagate through those imports. Region interfaces retain clone provenance.
+
+Revision 119 versions specialization/emission/cache changes without changing
+runtime structures or physical ABIs. The erased specializer is restricted to
+compatibility definitions and remaining generated region helpers. Typed region
+helper bodies are still required before `Mono` can be removed; later typed
+optimizations, compatibility forms, diagnostics and machine/call contracts
+remain part of the full active goal. Final validation passed all 136 Base jobs
+in 540.74 seconds on six workers, with an empty cache, no reused results and
+unchanged timeouts. Sol arguments/shared fixture and three million tail-call
+iterations pass too; the stage page records platform skips and the compile-time
+regression correction. Baseline `bd2830b` is green in hosted CI run 40205756522;
+the integrated global-cloning commit `134a992` passed hosted CI run 40210518302.
+
+## Typed region control (2026-10-26)
+
+[Typed region control](2026-10-26-TYPED-REGION-CONTROL.md) preserves checked
+source expressions and fresh helper identities through loop, receive and call
+region transformation. Marks, sequences, ticks, state bundles and receive-step
+results have dedicated internal sorts. Verification checks physical interfaces,
+lexical scope, call witnesses, source ownership and state proofs. Changed helper
+bodies re-establish liveness/invariance/effect/cycle obligations. Typed helpers
+retain home code/PAP declarations across artifacts.
+
+The planner's scoped cost projection and mixed compatibility-group rewrite
+remain explicit. `Mono` still serves compatibility code; later transformations,
+layout temporaries, remaining frontend forms, diagnostics and machine/call
+contracts remain required. Revision 120 changes emission/cache identity without
+changing runtime structures or physical ABIs. The full cleanup goal stays active.
+
+Final fixed-source validation passed all 136 Base jobs in 572.64 seconds on six
+workers with a fresh cache, no reused results and unchanged timeouts. Sol
+arguments/shared-language and three-million-iteration self/mutual tail calls
+pass, with an 86 MB reported peak. The stage page records the platform skips,
+compile-time overhead and preceding hosted CI result. This stage requires its
+own hosted result after push.
+
+## Constructor-based x64 selected operations (2026-10-26)
+
+[x64 operation contracts](2026-10-26-X64-OPCODE-CONTRACTS.md) carries opcode,
+condition and float-width constructors through selection, placement/allocation
+and rendering. Shared entry, self-tail transfer and argument-cell protocols
+also retain constructors. A dedicated x64 form checker verifies operand roles,
+control/flag/call metadata, fixed banks and ties before allocation and on the
+final physical stream. Other ISA-specific operations remain explicit migration
+inputs and are refused by the x64 path.
+
+The saved-compiler differential oracle passes 120 byte-identical root/unit
+outputs and cache identities across six targets. Independent hosted/QOS x64
+scalar/vector and float-tree oracles pass under Rosetta; real Mach-O runtime
+programs match native AArch64. This architecture-only stage retains revision
+120 and physical ABIs. A64/RISC-V operation vocabularies, call conventions,
+typed later optimizations and the remaining table entries are still required.
+
+Final validation passed all 136 Base jobs in 577.36 seconds on six workers,
+with fixed sources, a fresh cache, no reused results and unchanged timeouts.
+Sol arguments/shared-language and three-million-iteration self/mutual tail
+calls pass, with an 86 MB reported peak. The stage page records exact-emission
+and execution coverage and platform skips; its own hosted result follows push.
+
+## AArch64/RISC-V selected operation contracts (2026-10-26)
+
+[The remaining native ISA vocabularies](2026-10-26-RISC-OPCODE-CONTRACTS.md)
+now use constructors through selection and rendering. Separate per-ISA modules
+own operations; shared types own protocols and scalar/SIMD payloads. A64 FP
+pooling changes explicit word/FP banks, and RV raw adapters retain typed
+arithmetic/comparison/memory operations. Form checkers verify physical banks,
+operand roles, control/flag effects and call metadata; synthetic/cross-ISA
+instructions cannot enter native rendering. Shared save markers and redundant
+move identity also use constructors.
+
+The expanded differential gate passes 167 byte-identical root/unit outputs and
+cache identities across 85 configurations on eight targets, including hosted
+A64 FP pooling, RVV plugins and builtin ARC/raw. Independent IEEE and real
+ownership-runtime oracles pass. Revision 120 and physical ABIs remain unchanged.
+Existing call-convention, symbol-role and annotation contracts, later typed
+transformations and all other outstanding table entries remain required.
+
+Final fixed-source validation passes all 136 Base jobs in 586.74 seconds on six
+workers, with a fresh cache, no reused results and unchanged timeouts. Sol
+arguments/shared-language and three-million-iteration self/mutual tail calls
+pass, with an 86 MB reported peak. The stage page records exact-emission,
+execution coverage and platform skips. The complete compiler goal stays active.
+
+The preceding integrated head `d190e1a` passed hosted CI run 40222451310,
+including the earlier region-control implementation. Its region-only run was
+cancelled when superseded. The new ISA-constructor stage still needs its own
+hosted result after push.
+
+## Typed instruction annotations and allocation events (2026-10-26)
+
+[Selected-instruction annotations](2026-10-26-INSTRUCTION-ANNOTATIONS.md)
+replace `siNote` with semantic entry/save/restore payloads and independent
+allocator event data. Shared entry-label roles drive both rendering and scope
+checks. Native consumers check annotation roles, internal/local label
+collisions, physical event operands and final-frame save-group bounds; no
+renderer decodes an integer or protocol tag from text. Self-loop splitting and
+shrink-wrap preserve the typed payloads. Labels named `copy`, `reload` or `spill`
+cannot alter real allocation statistics.
+
+All 167 root/unit outputs and cache identities remain byte-identical across 85
+configurations on eight targets. Final fixed-source Base validation passes all
+136 jobs in 584.02 seconds on six workers, with a fresh cache, no reused results
+and unchanged timeouts. Sol compatibility and three-million-iteration
+self/mutual tail calls pass with an 85 MB peak. Revision 120 and physical ABIs
+remain unchanged. The preceding `9c12c6b` checkpoint passed hosted CI run
+40225611701; the annotation checkpoint `4dc7acd` passed hosted CI run
+40228013834. Existing call
+conventions/symbol roles and all remaining table entries stay in the full
+active cleanup goal.
+
+## Explicit native word calling conventions (2026-10-26)
+
+[Native word call contracts](2026-10-26-CALLING-CONVENTIONS.md) separate generated
+entries from existing C runtime adapters and retain arity, fuel policy and result
+mode on every selected direct call/tail transfer. Shared ABI data drives
+selection and arrival; native checkers validate register/result placement,
+complete clobber sets, events and hart-cell staging before and after allocation.
+x64's private argument cells and renderer TLS roles use constructors rather
+than symbol strings. Missing/duplicate cells or staging across a call, safepoint
+or control boundary are refused.
+
+Existing C export trampolines, embedded call boundaries, general symbol roles,
+remaining kernel stages, later typed transformations, compatibility/layout
+forms and the other outstanding table entries remain full-goal work. This
+checkpoint does not complete the compiler cleanup. Final validation evidence
+is recorded on the stage page.
+
+All 167 root/unit outputs and cache identities are byte-identical across 85
+configurations on eight targets. The final fixed-source, fresh-cache Base sweep
+passes all 136 jobs in 584.39 seconds on six workers, with no reused coverage or
+timeout changes. Sol compatibility and three-million-iteration self/mutual tail
+calls pass with an 85 MB peak. Revision 120 and physical/runtime ABIs remain
+unchanged. Hosted validation of this stage is required after push.

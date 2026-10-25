@@ -69,13 +69,25 @@ executable fpr
       Codegen.Split
       Codegen.Policy
       Codegen.Selected
+      Codegen.Annotation
+      Codegen.Calling
+      Codegen.Calling.Types
+      Codegen.Opcode
+      Codegen.Opcode.Types
+      Codegen.Opcode.X64
+      Codegen.Opcode.A64
+      Codegen.Opcode.RV
       Codegen.Frame
       Codegen.Place
       Codegen.Liveness
       Codegen.Allocate
       Codegen.Bounds
       Codegen.Target.Common
+      Codegen.Target.Forms
+      Codegen.Target.A64.Forms
+      Codegen.Target.RV.Forms
       Codegen.Target.X64
+      Codegen.Target.X64.Forms
       Codegen.Target.RV
       Codegen.Target.A64
       KernelKinds
@@ -114,6 +126,26 @@ executable fpr
       Infer.Elaboration
       Core.Identity
       Core.Typed.Syntax
+      Core.Typed.Program
+      Core.Typed.Pipeline
+      Compiler.DataLayout
+      Compiler.Native.Core
+      Compiler.Native.Linked
+      Compiler.Native.Imports
+      Compiler.Native.Regions
+      Compiler.Native.Regions.Typed
+      Compiler.Native.Regions.Verify
+      Core.Calling
+      Core.Region.Interface
+      Core.Region.Types
+      Core.Region.Syntax
+      Core.Region.Runtime
+      Core.Region.Analysis
+      Core.Region.Flow
+      Core.Opt.Representation
+      Core.Analysis.Scope
+      Core.Analysis.Alpha
+      Frontend.Desugar.Typed
       Core.Typed.Walk
       Core.Typed.Close
       Core.Typed.Contract
@@ -121,6 +153,7 @@ executable fpr
       Core.Typed.Stage
       Core.Typed.Callback
       Core.Typed.Callback.Model
+      Core.Typed.Callback.Catalog
       Core.Typed.Callback.Analysis
       Core.Typed.Callback.Trim
       Core.Typed.Layout

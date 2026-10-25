@@ -9,6 +9,7 @@ import Control.Monad (unless, foldM)
 import Type.Relation
 import Data.List (nub,sort)
 import Compiler.VectorLayout (VectorBuilder(..),validLayout)
+import qualified Core.Region.Types as Region
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -23,6 +24,7 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
   where
     bad reason = Left ("typed Core " ++ functionName f ++ ": " ++ reason)
     require reason ok = unless ok (bad reason)
+    regionModel=Region.valueModel (TypeContext linearTypes constructors)
     introduce env used bs = foldM step (env,used) bs
       where
         step (scope,seen) b = do
@@ -185,6 +187,11 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
         u <- check env used body
         require "note changes type" (sameType (exprType body) (exprType e))
         pure u
+      CallRegion body->do
+        model<-either bad Right regionModel
+        require "call region result must be copyable" (Region.copyable model (exprType body))
+        require "call region changes result type" (sameType (exprType body) (exprType e))
+        check env used body
       where
         fixed ty = require "literal type" (sameType ty (exprType e)) >> pure used
 
@@ -217,7 +224,9 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
         b<-maybe (bad "out-of-scope capture identity") Right (M.lookup uid env)
         pure (binderScheme b)) captures
       mapM_ (\(Forall _ _ ty,shape)->require "capture ownership shape" (shape==linShapeT linearTypes ty)) (contractCaptures contract)
-      either bad pure (checkInstance contract actualCaptures actual)
+      either (\reason->bad (reason++" at "++show label++"; contract "++show contract
+        ++"; captures "++show actualCaptures++"; occurrence "++show actual)) pure
+        (checkInstance contract actualCaptures actual)
     saturated env label captures kind args result=do
       contract<-maybe (bad "unknown code identity") Right (M.lookup label contracts)
       require "code argument arity" (length args==length (contractParameters contract))

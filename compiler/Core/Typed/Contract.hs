@@ -1,6 +1,6 @@
 -- Checked code interfaces. Code quantifiers are distinct from each captured
 -- value's own forall; one instantiation relates captures, arguments and result.
-module Core.Typed.Contract (codeContracts,checkInstance) where
+module Core.Typed.Contract (codeContracts,codeContractsWith,contractVariables,sameContract,checkInstance) where
 import Core.Typed.Syntax
 import Core.Typed.Walk (mapChildrenM)
 import Type.Syntax
@@ -12,7 +12,12 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 codeContracts :: M.Map String Scheme -> M.Map CodeId CodeFunction -> M.Map CodeId CodeContract
-codeContracts globals codes=M.mapWithKey contract codes
+codeContracts=codeContractsWith M.empty
+
+-- An imported code contract has already fixed its ambient variables. They
+-- remain rigid through another entry's dependency graph, just like globals.
+codeContractsWith :: M.Map CodeId CodeContract -> M.Map String Scheme -> M.Map CodeId CodeFunction -> M.Map CodeId CodeContract
+codeContractsWith imports globals codes=M.mapWithKey contract codes
   where
     -- Ambient variables in checked global schemas remain rigid, including
     -- those used through another code entry. A reference's instantiated
@@ -25,7 +30,8 @@ codeContracts globals codes=M.mapWithKey contract codes
       CodeCall k _ _->S.singleton k
       JoinCall k _ _->S.singleton k
       _->S.empty)<>getConst (mapChildrenM (Const . references) e)
-    direct=M.map (external . codeBody) codes
+    direct=M.map (\f->external (codeBody f)<>mconcat
+      [contractVariables c | k<-S.toList (references (codeBody f)),Just c<-[M.lookup k imports]]) codes
     dependencies=M.map (references . codeBody) codes
     step env=M.mapWithKey (\k own->own<>mconcat [M.findWithDefault mempty dep env | dep<-S.toList (dependencies M.! k)]) direct
     fix env=let next=step env in if next==env then env else fix next
@@ -35,6 +41,22 @@ codeContracts globals codes=M.mapWithKey contract codes
                        <>mconcat (map variables (contractResult c:contractParameters c))
                      (rt,rr)=rigid M.! k
                  in c {contractQuantifiers=(S.toAscList (ts S.\\ rt),S.toAscList (rs S.\\ rr))}
+
+contractVariables :: CodeContract -> (S.Set Int,S.Set Int)
+contractVariables c=(ts S.\\ S.fromList qs,rows S.\\ S.fromList rs)
+  where
+    (qs,rs)=contractQuantifiers c
+    (ts,rows)=mconcat (map (schemeVariables . fst) (contractCaptures c))
+      <>mconcat (map variables (contractResult c:contractParameters c))
+
+-- Imports retain their provider's exact quantified identity, rather than
+-- accepting a separately generalized or weakened declaration as equivalent.
+sameContract :: CodeContract -> CodeContract -> Bool
+sameContract a b=contractKind a==contractKind b && contractQuantifiers a==contractQuantifiers b
+  && contractParameters a==contractParameters b && contractResult a==contractResult b
+  && length (contractCaptures a)==length (contractCaptures b)
+  && and [qs==qs' && rs==rs' && t==t' && shape==shape'
+    | ((Forall qs rs t,shape),(Forall qs' rs' t',shape'))<-zip (contractCaptures a) (contractCaptures b)]
 
 checkInstance :: CodeContract -> [Scheme] -> Type -> Either String ()
 checkInstance c actualCaptures actualType=do

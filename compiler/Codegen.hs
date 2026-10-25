@@ -6,7 +6,7 @@
 -- Static PAPs, constructor constants and module registries have a separate
 -- native data owner. Refusals are diagnostics; no text translator is retained.
 
-module Codegen (emitProgram, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev) where
+module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.
@@ -27,11 +27,11 @@ import qualified Codegen.Kernel as K
 import Codegen.Lower (lowerProgram, Prim (..))
 import Codegen.Simplify (simplifyProgram)
 import Codegen.Split (splitEntryValues)
-import Codegen.Target.Common (Tune (..), noTune, mangleName)
+import Codegen.Target.Common (Tune (..), noTune, mangleName,SymbolPolicy,publicSymbols,symbolNames)
 import Codegen.Policy (Profile (..), Policy (..), m2Policy, policyWidth)
 import qualified Codegen.Target.X64 as X64
 import qualified Codegen.Target.RV as RV
-import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64)
+import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64WithSymbols)
 import Codegen.Target.Common (rodataDirective, stringLabel, stringObjectWidth, boxedFloatObject)
 import Codegen.Bounds (Report (..))
 import Codegen.Verify (verifyProgram, verifyProgramWidth, simdExprOk)
@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 115 -- typed local callback clones retain checked contracts and object identity
+codegenRev = 120 -- region control IR retains checked bodies, protocol sorts and helper ownership
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -205,14 +205,15 @@ foreignEntries tgt =
 -- refusal is a reported fallback; an invalid
 -- selection, placement or layout is a compiler error.  Whole-unit
 -- granularity turns one fallback into the unit's.
-emitNative :: Target -> NativeMode -> S.Set String -> NativeBackend -> Fn -> Either String NativeFn
-emitNative tgt nm exps backend = case backend of
-  DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
-  DirectQX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) X64.HartBorrow)
-  DirectRV width hart -> RV.emitFnRV (RV.RVConfig width (tgtPolicy tgt) hart exps (tgtWeak tgt) (nmSelfLoops nm))
-  DirectX64 fmt -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls))
+emitNative :: Target -> NativeMode -> SymbolPolicy -> NativeBackend -> Fn -> Either String NativeFn
+emitNative tgt nm symbols backend = case backend of
+  DirectA64 fmt hart -> emitFnA64WithSymbols symbols (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
+  DirectQX64 -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) X64.HartBorrow)
+  DirectRV width hart -> RV.emitFnRVWithSymbols symbols (RV.RVConfig width (tgtPolicy tgt) hart exps (tgtWeak tgt) (nmSelfLoops nm))
+  DirectX64 fmt -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls))
+  where exps=symbolNames symbols
 
-nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String])
+nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String])
 nativeSelect tgt spec nm sigs ext exps prog emitted =
   case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
     Left err -> error ("typed-ir: " ++ err)
@@ -304,7 +305,15 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
       else error ("typed-ir: native emission refused: "++show (emFallbacks e))
 
 emitProgramWith :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> Emission
-emitProgramWith tgt rvv spec exports ext exps elide prog0 =
+emitProgramWith tgt rvv spec exports ext exps=emitProgramWithSymbols tgt rvv spec exports ext (publicSymbols exps)
+
+emitProgramWithSymbols :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
+emitProgramWithSymbols=emitProgramWithImports M.empty
+
+-- Read-only import templates inform fusion/vector plans without becoming
+-- owned definitions or acquiring another static PAP in this artifact.
+emitProgramWithImports :: Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
+emitProgramWithImports imports tgt rvv spec exports ext symbols elide prog0 =
   let opts = OptimizationOptions
         { optFusion = tgtFusion tgt,
           optWorkers = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt),
@@ -312,13 +321,14 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
           optScalarWorkers = tgtScalarWorkers tgt,
           optNormalize = tgtScalarFast tgt,
           optReuse = tgtReuse tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt) }
-      optimized = either (error . ("Core optimization: " ++)) id (optimizeCore opts elide prog0)
+      optimized = either (error . ("Core optimization: " ++)) id (optimizeCoreWithImports imports opts elide prog0)
       prog = optimizedProgram optimized
       workerSigs = optimizedSignatures optimized
       emitted = M.withoutKeys prog elide
       nm = fromMaybe (error "typed-ir: no native backend selected") (tgtNative tgt)
-      (requests,nativeFns,failures,notes) = nativeSelect tgt spec nm workerSigs ext exps prog emitted
-      (kernels,kernelFailures,kernelNotes) = emitSpecs tgt rvv ext exps prog requests
+      context=prog `M.union` imports
+      (requests,nativeFns,failures,notes) = nativeSelect tgt spec nm workerSigs ext symbols context emitted
+      (kernels,kernelFailures,kernelNotes) = emitSpecs tgt rvv ext symbols context requests
       allFns = M.elems nativeFns ++ kernels
       strings = M.elems (M.fromList [(stringLabel str,str) | nf <- allFns,str <- nfStrings nf])
       floats = S.toList (S.fromList (concatMap nfBoxedFloats allFns))
@@ -326,7 +336,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ concatMap nfLines allFns
         ++ (if null strings then [] else rodataDirective format : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) format) strings)
         ++ (if null floats then [] else rodataDirective format : concatMap (uncurry boxedFloatObject) floats)
-      dat = NativeData.emitStaticData format (policyWidth (tgtPolicy tgt)) (tgtArc tgt) (tgtWeak tgt) exports exps emitted
+      dat = NativeData.emitStaticDataWithSymbols format (policyWidth (tgtPolicy tgt)) (tgtArc tgt) (tgtWeak tgt) exports symbols emitted
               (S.fromList (concatMap nfNullaries allFns))
    in Emission
       { emNotes = optimizationNotes optimized ++ concat [declines tgt spec prog fn b | (fn,(_,b)) <- M.toList emitted]
@@ -487,7 +497,7 @@ typedRecordPlan tgt prog sym p
   | otherwise = Left ("typed " ++ operationKey (spOp p) ++ " record/SIMD kernel not implemented")
   where dual = "$record:" ++ sym
 
-emitSpecs :: Target -> Bool -> M.Map String Int -> S.Set String -> Prog -> [(String,SpecPlan)] -> ([NativeFn],[(String,String)],[String])
+emitSpecs :: Target -> Bool -> M.Map String Int -> SymbolPolicy -> Prog -> [(String,SpecPlan)] -> ([NativeFn],[(String,String)],[String])
 emitSpecs tgt rvv ext exps prog requested =
   let native pair@(sym,p) = case tgtNative tgt of
         Just nm | Just backend <- nmBackend nm -> do
@@ -511,7 +521,10 @@ emitSpecs tgt rvv ext exps prog requested =
               callbacks = K.kernelCallbacks loweredCallbacks
           when (not (null failures)) (Left ("callback lowering: " ++ show failures))
           fn <- builder callbacks
-          nfs <- mapM (\f -> emitNative tgt nm (S.insert (fnName f) exps) backend f) (fn : M.elems callbacks)
+          -- These implementations are only called inside this artifact.
+          -- Different units may specialize the same home callback; exporting
+          -- their kernel copies would collide without representing PAP values.
+          nfs <- mapM (\f -> emitNative tgt nm exps backend f) (fn : M.elems callbacks)
           if polFuel (tgtPolicy tgt) && any ((== Nothing) . rSegMax . nfReport) nfs
             then Left "native-insns-v1 is UNBOUNDED"
             else Right nfs

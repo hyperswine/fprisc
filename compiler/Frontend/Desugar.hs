@@ -8,9 +8,11 @@ module Frontend.Desugar where
 import Control.Monad ( when, foldM, unless )
 import Control.Monad.State.Strict
     ( gets, modify, MonadState(put, get), State )
+import qualified Compiler.DataLayout as DataLayout
+import Frontend.Traverse (sourceGroups)
 import Core.Syntax ( Prog, Core(..), Name, freeVars )
 import Data.Bits ( Bits(xor) )
-import Data.Char ( ord, isDigit )
+import Data.Char ( ord )
 import Data.List
     ( foldl', intercalate, isPrefixOf, nub, sort, sortOn )
 import Data.Word ( Word32 )
@@ -258,13 +260,10 @@ tupCon n
   | otherwise = error ("tuple of " ++ show n ++ " elements")
 
 tupWideBase :: Int
-tupWideBase = 0x10000000 -- fpr.h T_TUPN
+tupWideBase = DataLayout.tupWideBase
 
 wideTup :: Name -> Maybe (Int, Int, Int)
-wideTup c = case c of
-  'T' : 'u' : 'p' : ds | not (null ds), all isDigit ds, n > 8 -> Just (tupWideBase + n, 0, n)
-    where n = read ds
-  _ -> Nothing
+wideTup=DataLayout.wideTup
 
 conInfo :: Name -> D (Int, Int, Int)
 conInfo c = do
@@ -438,9 +437,7 @@ constructorStubs = do
 -- EVERY clause of a name, in source order, wherever it sits. Inference reads
 -- a function that way too; contiguous grouping silently discarded clauses.
 groupClauses :: [STop] -> [(Name,[([SPat],[SGuard],SExpr)])]
-groupClauses tops =
-  [ (n, [(ps,g,b) | TBind n' ps g b <- tops, n'==n])
-  | n <- nub [n | TBind n _ _ _ <- tops] ]
+groupClauses=sourceGroups
 
 compileGroup :: (Name, [([SPat], [SGuard], SExpr)]) -> D (Name, ([Name], Core))
 compileGroup (n, clauses@((ps0, _, _) : _)) = do

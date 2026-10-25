@@ -308,4 +308,14 @@ they began.
 - [Typed polymorphic code calls](2026-10-25-TYPED-CODE-CALLS.md): quantified capture/argument/result contracts, checked closed transformations and lexical closure-call resolution before erasure.
 - [Typed native call staging](2026-10-25-TYPED-CALL-STAGING.md): checked saturation/operand boundaries before closure conversion, captured arity evidence and optimizer-independent native effects.
 - [Typed local callbacks](2026-10-25-TYPED-CALLBACKS.md): checked generic clones, identity-preserving callback fields, explicit ownership evidence, nullary computation entries and bounded arity restoration.
+- [Owned typed programs and the native pipeline](2026-10-25-TYPED-PROGRAM-PIPELINE.md): semantic frontend products, complete graph contracts, scoped recursive assumptions and a separate native erasure boundary.
+- [Linked native program ownership](2026-10-25-LINKED-NATIVE-PROGRAM.md) - retained typed artifacts, exported/local symbol ownership and imported calling contracts.
+- [Home-owned private code imports](2026-10-26-PRIVATE-CODE-IMPORTS.md) - checked home declarations, shared code/PAP visibility, read-only optimization context and the imported closure identity fix.
+- [Checked physical region interfaces and provenance](2026-10-26-REGION-INTERFACES.md) - owned typed inputs, constructor/cost models, scoped compatibility analysis and generated helper contracts.
+- [Checked global callback cloning](2026-10-26-TYPED-GLOBAL-CLONING.md) - typed linked templates, explicit private imports, clone provenance and a restricted erased fallback.
+- [Typed region control](2026-10-26-TYPED-REGION-CONTROL.md) - checked helper bodies, internal protocol sorts, retained state proofs and home-owned helper declarations.
+- [Constructor-based x64 operations](2026-10-26-X64-OPCODE-CONTRACTS.md) - typed selected operations and shared protocols, checked physical forms and exact-emission gates.
+- [A64/RISC-V operation contracts](2026-10-26-RISC-OPCODE-CONTRACTS.md) - per-ISA vocabularies, typed FP pooling/raw adapters and checked native register/effect forms.
+- [Typed instruction annotations](2026-10-26-INSTRUCTION-ANNOTATIONS.md) - semantic entry/save/restore payloads, independent allocation events and checked internal label/frame scopes.
+- [Explicit native calling conventions](2026-10-26-CALLING-CONVENTIONS.md) - shared argument/result/clobber contracts, retained transfer signatures and checked hart-cell staging.
 - [Native performance review](2026-10-25-PERFORMANCE-REVIEW.md): what structurally limits run time after the typed IR: allocation, fuel ticks and vector access as calls that clobber scratch registers; inlining and callback specialization stop at unit boundaries; no range analysis or invariant motion; whole-range spills; boxed I64; and an ordered, measured plan starting with a re-baseline.

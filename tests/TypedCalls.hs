@@ -71,6 +71,10 @@ main=do
       rigid=codeContracts M.empty (M.fromList [(code,target),(dependent,wrapper)])
   check "ambient global variables remain rigid" (T.contractQuantifiers (rigid M.! code)==([],[]))
   check "ambient rigidity propagates across code references" (T.contractQuantifiers (rigid M.! dependent)==([],[]))
+  let importedRigid=codeContractsWith (M.singleton code (rigid M.! code)) M.empty (M.singleton dependent wrapper)
+  check "ambient rigidity propagates through an imported code declaration"
+    (T.contractQuantifiers (importedRigid M.! dependent)==([],[])
+      && failed (checkInstance (importedRigid M.! dependent) [] (TFn int int)))
   let polymorphic=codeContracts (M.singleton "ambient" (Forall [0] [] q)) (M.singleton code target)
   check "the authoritative global schema owns rigidity" (T.contractQuantifiers (polymorphic M.! code)==([0],[]))
   let identity=expr (TFn q q) (T.Lambda [parameter] (ref parameter q))

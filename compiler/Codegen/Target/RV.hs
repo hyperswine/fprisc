@@ -3,18 +3,24 @@
 -- consumed here. Checked arithmetic initially uses the exact C primitives;
 -- the shared allocator handles calls, spills, parallel arguments and loops.
 module Codegen.Target.RV
-  ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV ) where
+  ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV, emitFnRVWithSymbols ) where
 
+import qualified Codegen.Calling as Calling
+import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
 import Codegen.Allocate
 import Codegen.Bounds
 import Codegen.Frame
 import Codegen.IR
 import Codegen.Policy
-import Codegen.Selected
+import Codegen.Selected hiding (plain)
+import Codegen.Annotation (EntryPoint(..),entryLabel)
+import qualified Codegen.Opcode as O
+import qualified Codegen.Opcode.RV as R
+import Codegen.Target.RV.Forms (checkForms)
 import Codegen.Target.Common
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
-import Data.List (isPrefixOf, intercalate, stripPrefix)
+import Data.List (isPrefixOf, intercalate)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -53,8 +59,8 @@ data RVConfig = RVConfig
 p :: String -> Phys
 p = Phys
 args, callers, saved, scratch :: [Phys]
-args = map (p . ("a" ++) . show) [0..7 :: Int]
-callers = args ++ map (p . ("t" ++) . show) [0..6 :: Int] ++ [p "ra"]
+args = Calling.argumentRegisters Calling.RiscV
+callers = Calling.callerClobbers Calling.RiscV
 saved = map (p . ("s" ++) . show) [1..11 :: Int]
 scratch = map p ["t0", "t1", "t2"]
 reserved :: [Phys]
@@ -81,51 +87,55 @@ fresh :: S VReg
 fresh = do n <- gets nextV; modify (\s -> s {nextV = n+1}); pure (VReg n)
 freshLabel :: S Label
 freshLabel = do n <- gets nextL; modify (\s -> s {nextL = n+1}); pure (Label ("edge" ++ show n))
-li :: VReg -> Integer -> S ()
-li d n = emit (plain "li" [anyV d] [OI n])
-rr :: String -> VReg -> VReg -> VReg -> S ()
-rr op d a b = emit (plain op [anyV d] [anyV a, anyV b])
-ri :: String -> VReg -> VReg -> Integer -> S ()
-ri op d a n = emit (plain op [anyV d] [anyV a, OI n])
-address :: VReg -> String -> S ()
-address d sym = emit (plain "la" [anyV d] [OS sym])
-branch :: VReg -> Label -> S ()
-branch v l = emit ((plain "bnez" [] [anyV v, OL l]) {siControl = CondTo [l]})
-jump :: Label -> S ()
-jump l = emit ((plain "j" [] [OL l]) {siControl = JumpTo l})
-loadAt :: String -> VReg -> VReg -> Integer -> S ()
-loadAt op d base off = emit ((plain op [anyV d] [anyV base, OI off]) {siImplicitDefs = [p "t6"]})
-storeAt :: String -> VReg -> VReg -> Integer -> S ()
-storeAt op base value off = emit ((plain op [] [anyV base, anyV value, OI off]) {siImplicitDefs = [p "t6"]})
+plain :: O.Opcode -> [Operand] -> [Operand] -> SInstr
+plain = plainOpcode
 
-stage :: [VReg] -> S ()
-stage vs = forM_ (zip [0..] (drop 8 vs)) $ \(n,v) ->
-  emit ((plain "store.spill" [] [anyV v, OI n]) {siImplicitDefs = map p ["t3","t4"]})
-call :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> Bool -> S ()
-call sym tick runtime vs result tailCall = do
-  stage vs
-  emit ((plain (if tailCall then "tailjump" else "call")
-    [fixed v (p "a0") | Just v <- [result]] (OS sym : zipWith fixed vs args))
-    {siClobbers = filter (\r -> r /= p "a0" || result == Nothing) callers,
-     siImplicitDefs = if tailCall then map p ["sp","s0","ra","t3"] else [],
-     siControl = if tailCall then Return else Next,
-     siCalls = [Call sym tick runtime]})
+li :: VReg -> Integer -> S ()
+li d n = emit (plain (O.RV R.Literal) [anyV d] [OI n])
+rr :: R.Opcode -> VReg -> VReg -> VReg -> S ()
+rr op d a b = emit (plain (O.RV op) [anyV d] [anyV a, anyV b])
+ri :: R.Opcode -> VReg -> VReg -> Integer -> S ()
+ri op d a n = emit (plain (O.RV op) [anyV d] [anyV a, OI n])
+address :: VReg -> String -> S ()
+address d sym = emit (plain (O.RV R.Address) [anyV d] [OS sym])
+branch :: VReg -> Label -> S ()
+branch v l = emit ((plain (O.RV R.BranchNonzero) [] [anyV v, OL l]) {siControl = CondTo [l]})
+jump :: Label -> S ()
+jump l = emit ((plain (O.RV R.Jump) [] [OL l]) {siControl = JumpTo l})
+loadAt :: R.Opcode -> VReg -> VReg -> Integer -> S ()
+loadAt op d base off = emit ((plain (O.RV op) [anyV d] [anyV base, OI off]) {siImplicitDefs = [p "t6"]})
+storeAt :: R.Opcode -> VReg -> VReg -> Integer -> S ()
+storeAt op base value off = emit ((plain (O.RV op) [] [anyV base, anyV value, OI off]) {siImplicitDefs = [p "t6"]})
+
+stage :: CallConvention -> [VReg] -> S ()
+stage convention vs = do
+  staged <- lift (Calling.stagedArguments Calling.RiscV convention vs)
+  forM_ [(n,v) | (Calling.HartArgument n,v)<-staged] $ \(n,v) ->
+    emit ((plain (O.Common O.StoreSpill) [] [anyV v,OI (toInteger n)]) {siImplicitDefs=map p ["t3","t4"]})
+call :: String -> CallConvention -> [VReg] -> Maybe VReg -> Bool -> S ()
+call sym convention vs result tailCall = do
+  stage convention vs
+  selected <- lift (Calling.selectTransfer Calling.RiscV convention
+    (if tailCall then TailTransfer else maybe DiscardResult (const WordResult) result) sym vs result
+    ((plain (if tailCall then O.Common O.TailJump else O.RV R.Call) [] [])
+      {siImplicitDefs=if tailCall then map p ["sp","s0","ra","t3"] else []}))
+  emit selected
 calleeSym :: Callee -> String
 calleeSym c = case calleeKind c of Foreign s -> s; Generated s -> s; _ -> functionSymbol (calleeName c)
 entry :: Bool -> Bool -> S ()
 entry stack fuel = do
   Label l <- freshLabel
-  emit ((plain (if stack then if fuel then "entry.check.tick" else "entry.check" else "entry.tick") [] [])
+  emit ((plain (O.Common (if stack then if fuel then O.EntryCheckTick else O.EntryCheck else O.EntryTick)) [] [])
     {siImplicitDefs = map p ["t3","t4","t5","sp"], siImplicitUses = [p "tp"],
-     siClobbers = callers, siNote = l,
+     siClobbers = callers, siAnnotation = EntryLabels (Label l),
      siCalls = [Call "fpr_stack_grow" False True | stack] ++ [Call "fpr_fuel_exhausted" True False | fuel]})
 boxed :: VReg -> S VReg
-boxed v = do t <- fresh; d <- fresh; ri "slli" t v 1; ri "ori" d t 1; pure d
+boxed v = do t <- fresh; d <- fresh; ri R.ShiftLeftImmediate t v 1; ri R.OrImmediate d t 1; pure d
 parallel :: [(VReg,VReg)] -> S ()
 parallel pairs = do
   -- Simultaneous block arguments: first copy every source to a fresh value.
-  staged <- mapM (\(d,s) -> do t <- fresh; emit (plain "mv" [anyV t] [anyV s]); pure (d,t)) pairs
-  forM_ staged $ \(d,t) -> emit (plain "mv" [anyV d] [anyV t])
+  staged <- mapM (\(d,s) -> do t <- fresh; emit (plain (O.RV R.Move) [anyV t] [anyV s]); pure (d,t)) pairs
+  forM_ staged $ \(d,t) -> emit (plain (O.RV R.Move) [anyV d] [anyV t])
 
 select :: RVConfig -> Fn -> Either String (SFn, S.Set VReg, Sel)
 select cfg fn = do
@@ -136,13 +146,14 @@ select cfg fn = do
       params = [vreg v | b <- fnBlocks fn, bId b == fnEntry fn, (v,_) <- bParams b]
       managed = S.fromList [vreg v | (v,TVal) <- defs]
       start = 1 + maximum (0 : [n | (VId n,_) <- defs])
+  when (length params > arityCeiling) (Left ("arity above " ++ show arityCeiling))
   unless (all ((`elem` [TVal,TInt,TPred,TAddr]) . snd) defs) (Left "RV64: a raw or float-register value is not legalized")
   (_, st) <- runStateT (mapM_ block (fnBlocks fn)) (Sel start 0 [] S.empty S.empty S.empty)
   pure (SFn (fnName fn) params (reverse (items st)), managed, st)
   where
     w = toInteger (wordBytes cfg)
-    ld = if cfgWidth cfg == W32 then "lw" else "ld"
-    stWord = if cfgWidth cfg == W32 then "sw" else "sd"
+    ld = if cfgWidth cfg == W32 then R.Load32 else R.Load64
+    stWord = if cfgWidth cfg == W32 then R.Store32 else R.Store64
     block b = do
       mark (label (bId b))
       let (prefix, rest) = span (\(Instr _ op) -> op `elem` [OStackCheck,OSafepoint]) (bInstrs b)
@@ -152,7 +163,7 @@ select cfg fn = do
         let wantStack = polStackCheck (cfgPolicy cfg) /= StackStatic
             wantFuel = polFuel (cfgPolicy cfg)
         unless (stack == wantStack && fuel == wantFuel) (lift (Left "RISC-V entry disagrees with the profile stack/fuel obligations"))
-        if stack || fuel then entry stack fuel else emit (plain "entry.static" [] [])
+        if stack || fuel then entry stack fuel else emit (plain (O.Common O.EntryStatic) [] [])
       else forM_ prefix $ \(Instr _ op) -> case op of
         OSafepoint -> if polFuel (cfgPolicy cfg) then entry False True else lift (Left "a no-fuel profile contains a safepoint")
         _ -> lift (Left "RV64: non-entry stack check")
@@ -165,32 +176,32 @@ select cfg fn = do
       OSafepointN n -> do
         unless (polFuel (cfgPolicy cfg)) (lift (Left "a no-fuel profile contains a counted safepoint"))
         Label l <- freshLabel
-        emit ((plain "tick.n" [] [OI (fromIntegral n)])
+        emit ((plain (O.Common O.TickN) [] [OI (fromIntegral n)])
           {siImplicitDefs = map p ["t3","t4","t5","sp"], siImplicitUses = [p "tp"],
-           siClobbers = callers, siNote = l, siCalls = [Call "fpr_fuel_exhausted" True False]})
+           siClobbers = callers, siAnnotation = EntryLabels (Label l), siCalls = [Call "fpr_fuel_exhausted" True False]})
       OSimdPair {} -> lift (Left "a NEON pair on RISC-V")
       _ -> case result of
         Nothing -> lift (Left "compiler error: RV64 instruction lacks result")
         Just (v,_) -> value (vreg v) op
     value d = \case
-      OAddress v -> emit (plain "mv" [anyV d] [anyV (vreg v)])
+      OAddress v -> emit (plain (O.RV R.Move) [anyV d] [anyV (vreg v)])
       OIndex a i -> do
         offset <- fresh
-        ri "slli" offset (vreg i) (if cfgWidth cfg == W32 then 2 else 3)
-        rr "add" d (vreg a) offset
+        ri R.ShiftLeftImmediate offset (vreg i) (if cfgWidth cfg == W32 then 2 else 3)
+        rr R.Add d (vreg a) offset
       OLoad _ a n -> loadAt ld d (vreg a) (fromIntegral n)
-      OLoadByte a n -> loadAt "lbu" d (vreg a) (fromIntegral n)
+      OLoadByte a n -> loadAt R.LoadByte d (vreg a) (fromIntegral n)
       OStore {} -> lift (Left "compiler error: a store has a result")
       OConstInt n -> li d n
-      OHartCell j -> emit ((plain "load.spill" [anyV d] [OI (fromIntegral j)]) {siImplicitDefs = map p ["t3","t4"]})
+      OHartCell j -> emit ((plain (O.Common O.LoadSpill) [anyV d] [OI (fromIntegral j)]) {siImplicitDefs = map p ["t3","t4"]})
       ORegionRoom mark -> do
         clock <- fresh; used <- fresh; scaled <- fresh; limit <- fresh; untagged <- fresh
-        emit ((plain "load.spill" [anyV clock] [OI 58]) {siImplicitDefs = map p ["t3","t4"]})
-        ri "srai" untagged (vreg mark) 1 -- the mark is a tagged Int
-        rr "sub" used clock untagged
-        ri "slli" scaled used 3
+        emit ((plain (O.Common O.LoadSpill) [anyV clock] [OI 58]) {siImplicitDefs = map p ["t3","t4"]})
+        ri R.ShiftRightArithmeticImmediate untagged (vreg mark) 1 -- the mark is a tagged Int
+        rr R.Subtract used clock untagged
+        ri R.ShiftLeftImmediate scaled used 3
         li limit (65536 * 8)
-        rr "sltu" d scaled limit
+        rr R.LessUnsigned d scaled limit
       OBits n -> li d n
       ONullary t v -> do
         sym <- case (t,v) of
@@ -204,129 +215,129 @@ select cfg fn = do
         address d (boxedFloatLabel width bits)
       OSymbol s -> address d s
       OFunValue n -> address d ("fpr_obj_" ++ mangleName n)
-      OTag v -> do t <- fresh; ri "slli" t (vreg v) 1; ri "ori" d t 1
-      OUntag v -> ri "srai" d (vreg v) 1
-      ONot v -> ri "xori" d (vreg v) 1
-      OIsInt v -> ri "andi" d (vreg v) 1
-      OTruth v -> loadAt "lw" d (vreg v) 4
+      OTag v -> do t <- fresh; ri R.ShiftLeftImmediate t (vreg v) 1; ri R.OrImmediate d t 1
+      OUntag v -> ri R.ShiftRightArithmeticImmediate d (vreg v) 1
+      ONot v -> ri R.XorImmediate d (vreg v) 1
+      OIsInt v -> ri R.AndImmediate d (vreg v) 1
+      OTruth v -> loadAt R.Load32 d (vreg v) 4
       OBoolOf v -> do
         yes <- freshLabel; done <- freshLabel
         branch (vreg v) yes; address d "fpr_false"; jump done
         mark yes; address d "fpr_true"; mark done
       OTagTest t variant v -> do
         miss <- freshLabel; done <- freshLabel
-        bit <- fresh; ri "andi" bit (vreg v) 1; branch bit miss
+        bit <- fresh; ri R.AndImmediate bit (vreg v) 1; branch bit miss
         actual <- fresh; want <- fresh; bad <- fresh
-        loadAt "lw" actual (vreg v) 0; li want (fromIntegral t); rr "cmp.ne" bad actual want; branch bad miss
-        loadAt "lw" actual (vreg v) 4; li want (fromIntegral variant); rr "cmp.eq" d actual want; jump done
+        loadAt R.Load32 actual (vreg v) 0; li want (fromIntegral t); rr (R.Compare Ne) bad actual want; branch bad miss
+        loadAt R.Load32 actual (vreg v) 4; li want (fromIntegral variant); rr (R.Compare Eq) d actual want; jump done
         mark miss; li d 0; mark done
       OMake t variant fs -> do
         size <- fresh; li size (8 + w * fromIntegral (length fs))
         if polProfile (cfgPolicy cfg) == BuiltinArc then do
           fields <- fresh; li fields (fromIntegral (length fs))
-          call "fpr_builtin_alloc_adt" False True [size,fields] (Just d) False
-        else call "fpr_alloc" False True [size] (Just d) False
-        forM_ [(0,t),(4,variant)] $ \(off,n) -> do h <- fresh; li h (fromIntegral n); storeAt "sw" d h off
+          call "fpr_builtin_alloc_adt" Calling.RuntimeCall [size,fields] (Just d) False
+        else call "fpr_alloc" Calling.RuntimeCall [size] (Just d) False
+        forM_ [(0,t),(4,variant)] $ \(off,n) -> do h <- fresh; li h (fromIntegral n); storeAt R.Store32 d h off
         forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord d (vreg v) (8+w*n)
       OReuse _ _ root fs -> do
         forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord (vreg root) (vreg v) (8+w*n)
-        emit (plain "mv" [anyV d] [anyV (vreg root)])
+        emit (plain (O.RV R.Move) [anyV d] [anyV (vreg root)])
       OField n v -> loadAt ld d (vreg v) (8+w*fromIntegral n)
-      OStrLen s -> do t <- fresh; call "fpr_g_strlen_call1" False True [vreg s] (Just t) False; ri "srai" d t 1
-      OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call "fpr_g_charAt_call2" False True [vreg s,i] (Just t) False; ri "srai" d t 1
+      OStrLen s -> do t <- fresh; call "fpr_g_strlen_call1" Calling.RuntimeCall [vreg s] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
+      OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call "fpr_g_charAt_call2" Calling.RuntimeCall [vreg s,i] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
       OKernelArith op a b -> do
         slow <- freshLabel; zero <- freshLabel; done <- freshLabel
         result <- fresh
         let x = vreg a; y = vreg b
-            failUnlessEqual lhs rhs = do bad <- fresh; rr "cmp.ne" bad lhs rhs; branch bad slow
+            failUnlessEqual lhs rhs = do bad <- fresh; rr (R.Compare Ne) bad lhs rhs; branch bad slow
         case op of
-          Add -> rr "add" result x y
-          Sub -> rr "sub" result x y
+          Add -> rr R.Add result x y
+          Sub -> rr R.Subtract result x y
           Mul -> do
-            rr "mul" result x y
+            rr R.Multiply result x y
             high <- fresh; sign <- fresh
-            rr "mulh" high x y
-            ri "srai" sign result (8*w-1)
+            rr R.MultiplyHigh high x y
+            ri R.ShiftRightArithmeticImmediate sign result (8*w-1)
             failUnlessEqual high sign
           Div -> do
             isZero <- fresh; z <- fresh; li z 0
-            rr "cmp.eq" isZero y z; branch isZero zero
-            rr "div" result x y
+            rr (R.Compare Eq) isZero y z; branch isZero zero
+            rr R.Divide result x y
         shifted <- fresh; fit <- fresh
-        ri "slli" shifted result 1; ri "srai" fit shifted 1
+        ri R.ShiftLeftImmediate shifted result 1; ri R.ShiftRightArithmeticImmediate fit shifted 1
         failUnlessEqual fit result
-        emit (plain "mv" [anyV d] [anyV result]); jump done
-        mark slow; call "fpr_int_overflow_kernel" False True [] Nothing False
-        mark zero; call "fpr_div_zero_kernel" False True [] Nothing False
+        emit (plain (O.RV R.Move) [anyV d] [anyV result]); jump done
+        mark slow; call "fpr_int_overflow_kernel" Calling.RuntimeCall [] Nothing False
+        mark zero; call "fpr_div_zero_kernel" Calling.RuntimeCall [] Nothing False
         li d 0 -- unreachable after a noreturn trap
         mark done
       OArith op a b -> do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
-        call ("fpr_prim_fn_" ++ mangleName (arithSymbol op)) False True [x,y] (Just t) False
-        ri "srai" d t 1
-      OBit op a b -> rr (case op of BAnd -> "and"; BOr -> "or"; BXor -> "xor") d (vreg a) (vreg b)
-      OFloatBin o a b -> rr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
-      OFloatCmp o a b -> rr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
-      OFloat32Bin o a b -> rr ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
+        call ("fpr_prim_fn_" ++ mangleName (arithSymbol op)) Calling.RuntimeCall [x,y] (Just t) False
+        ri R.ShiftRightArithmeticImmediate d t 1
+      OBit op a b -> rr (case op of BAnd -> R.And; BOr -> R.Or; BXor -> R.Xor) d (vreg a) (vreg b)
+      OFloatBin o a b -> rr (R.FloatBinary O.Float64 o) d (vreg a) (vreg b)
+      OFloatCmp o a b -> rr (R.FloatCompare O.Float64 o) d (vreg a) (vreg b)
+      OFloat32Bin o a b -> rr (R.FloatBinary O.Float32 o) d (vreg a) (vreg b)
       OFloatCmpTree o x y -> do
         forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
-          FSLeaf v n -> emit (plain "ftree.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
-          FSNode f n -> emit (plain ("ftree." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
-        emit (plain ("ftree.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [anyV d] [])
+          FSLeaf v n -> emit (plain (O.RV (R.TreeLeaf O.Float64)) [] [anyV (vreg v), OI (fromIntegral n)])
+          FSNode f n -> emit (plain (O.RV (R.TreeNode O.Float64 f)) [] [OI (fromIntegral n)])
+        emit (plain (O.RV (R.TreeCompare O.Float64 o)) [anyV d] [])
       OFloat32CmpTree o x y -> do
         forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
-          FSLeaf v n -> emit (plain "ftree32.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
-          FSNode f n -> emit (plain ("ftree32." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
-        emit (plain ("ftree32.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [anyV d] [])
+          FSLeaf v n -> emit (plain (O.RV (R.TreeLeaf O.Float32)) [] [anyV (vreg v), OI (fromIntegral n)])
+          FSNode f n -> emit (plain (O.RV (R.TreeNode O.Float32 f)) [] [OI (fromIntegral n)])
+        emit (plain (O.RV (R.TreeCompare O.Float32 o)) [anyV d] [])
       OFloatTree t -> do
         let (steps, root) = ftreeSchedule t
         forM_ steps $ \step -> case step of
-          FSLeaf v n -> emit (plain "ftree.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
-          FSNode o n -> emit (plain ("ftree." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
-        emit (plain "ftree.out" [anyV d] [OI (fromIntegral root)])
+          FSLeaf v n -> emit (plain (O.RV (R.TreeLeaf O.Float64)) [] [anyV (vreg v), OI (fromIntegral n)])
+          FSNode o n -> emit (plain (O.RV (R.TreeNode O.Float64 o)) [] [OI (fromIntegral n)])
+        emit (plain (O.RV (R.TreeOutput O.Float64)) [anyV d] [OI (fromIntegral root)])
       OFloat32Tree t -> do
         let (steps, root) = ftreeSchedule t
         forM_ steps $ \step -> case step of
-          FSLeaf v n -> emit (plain "ftree32.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
-          FSNode o n -> emit (plain ("ftree32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
-        emit (plain "ftree32.out" [anyV d] [OI (fromIntegral root)])
-      OFloat32Cmp o a b -> rr ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
+          FSLeaf v n -> emit (plain (O.RV (R.TreeLeaf O.Float32)) [] [anyV (vreg v), OI (fromIntegral n)])
+          FSNode o n -> emit (plain (O.RV (R.TreeNode O.Float32 o)) [] [OI (fromIntegral n)])
+        emit (plain (O.RV (R.TreeOutput O.Float32)) [anyV d] [OI (fromIntegral root)])
+      OFloat32Cmp o a b -> rr (R.FloatCompare O.Float32 o) d (vreg a) (vreg b)
       -- RISC-V V: v8 the lanes, v9/v10 reductions; t4..t6 scratch (declared)
-      ORvvVlMax -> emit (plain "rvv.vlmax" [anyV d] [])
-      ORvvLanes a n -> emit ((plain "rvv.lanes" [anyV d] [anyV (vreg a), anyV (vreg n), OI (rvvLaneBound (cfgWidth cfg))]) {siImplicitDefs = map p ["t4","t5","t6"]})
-      ORvvSumLoaded acc -> emit ((plain "rvv.sum" [anyV d] [anyV (vreg acc)]) {siImplicitDefs = [p "t5"]})
+      ORvvVlMax -> emit (plain (O.RV R.VectorMax) [anyV d] [])
+      ORvvLanes a n -> emit ((plain (O.RV R.VectorLanes) [anyV d] [anyV (vreg a), anyV (vreg n), OI (rvvLaneBound (cfgWidth cfg))]) {siImplicitDefs = map p ["t4","t5","t6"]})
+      ORvvSumLoaded acc -> emit ((plain (O.RV R.VectorSum) [anyV d] [anyV (vreg acc)]) {siImplicitDefs = [p "t5"]})
       OShift op a b -> do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
-        call (if op == Shl then "fpr_g_BITSHIFTL_call2" else "fpr_g_BITSHIFTR_call2") False True [x,y] (Just t) False
-        ri "srai" d t 1
-      OCmp op a b -> rr ("cmp." ++ case op of Eq -> "eq"; Ne -> "ne"; Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge") d (vreg a) (vreg b)
+        call (if op == Shl then "fpr_g_BITSHIFTL_call2" else "fpr_g_BITSHIFTR_call2") Calling.RuntimeCall [x,y] (Just t) False
+        ri R.ShiftRightArithmeticImmediate d t 1
+      OCmp op a b -> rr (R.Compare op) d (vreg a) (vreg b)
       OEqVal eq a b -> do
-        t <- fresh; call ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) False True [vreg a,vreg b] (Just t) False
-        loadAt "lw" d t 4
+        t <- fresh; call ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) Calling.RuntimeCall [vreg a,vreg b] (Just t) False
+        loadAt R.Load32 d t 4
       OCall c vs -> do
         inlined <- rawAdapter c (map vreg vs) d
-        unless inlined (call (calleeSym c) (polFuel (cfgPolicy cfg) && not (isForeign c)) (isForeign c) (map vreg vs) (Just d) False)
+        unless inlined (call (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) (Just d) False)
       OApply f vs -> do
-        forM_ (f:vs) $ \v -> emit ((plain "push" [] [anyV (vreg v)]) {siImplicitDefs = [p "sp"]})
-        emit ((plain "applyn" [fixed d (p "a0")] [OI (fromIntegral (length vs))])
+        forM_ (f:vs) $ \v -> emit ((plain (O.RV R.Push) [] [anyV (vreg v)]) {siImplicitDefs = [p "sp"]})
+        emit ((plain (O.RV R.ApplyN) [fixed d (p "a0")] [OI (fromIntegral (length vs))])
           {siImplicitDefs = map p ["a1","a2","sp","t6"], siClobbers = filter (/= p "a0") callers,
            siCalls = [Call "fpr_applyN" False True]})
       op -> lift (Left ("compiler error: RV64 value " ++ show op))
     targetParams bid = [vreg v | b <- fnBlocks fn, bId b == bid, (v,_) <- bParams b]
     edge bid vs = parallel (zip (targetParams bid) (map vreg vs)) >> jump (label bid)
     terminator b = case bTerm b of
-      TRet v -> emit ((plain "ret" [] [fixed (vreg v) (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
-      TBr bid vs | bid == fnEntry fn -> call (functionSymbol (fnName fn)) (polFuel (cfgPolicy cfg)) False (map vreg vs) Nothing True
+      TRet v -> emit ((plain (O.RV R.Ret) [] [fixed (vreg v) (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
+      TBr bid vs | bid == fnEntry fn -> call (functionSymbol (fnName fn)) (Calling.nativeCall (cfgPolicy cfg)) (map vreg vs) Nothing True
                  | otherwise -> edge bid vs
       TCondBr v yes ys no ns -> do l <- freshLabel; branch (vreg v) l; edge no ns; mark l; edge yes ys
       TTailCall c vs -> do
         d <- fresh
         inlined <- rawAdapter c (map vreg vs) d
-        if inlined then emit ((plain "ret" [] [fixed d (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
-        else call (calleeSym c) (polFuel (cfgPolicy cfg) && not (isForeign c)) (isForeign c) (map vreg vs) Nothing True
+        if inlined then emit ((plain (O.RV R.Ret) [] [fixed d (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
+        else call (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) Nothing True
       TUnreachable s -> do
         modify (\st -> st {strings = S.insert s (strings st)})
-        emit ((plain "panic" [] [OS (stringLabel s)]) {siImplicitDefs = [p "a0"], siClobbers = callers, siControl = Return, siCalls = [Call "fpr_panic" False True]})
+        emit ((plain (O.RV R.Panic) [] [OS (stringLabel s)]) {siImplicitDefs = [p "a0"], siClobbers = callers, siControl = Return, siCalls = [Call "fpr_panic" False True]})
 
     -- The ARC representation pass has proved Word/Addr are raw bits and
     -- Ints tagged. These non-owning adapters can be selected directly.
@@ -338,87 +349,92 @@ select cfg fn = do
       | polProfile (cfgPolicy cfg) /= BuiltinArc || not (isForeign c) = pure False
       | otherwise = case (calleeName c,vs) of
           (n,[a]) | n `elem` ["$arc.retain","$arc.release"] -> yes (guarded (\slow -> do
-            bit <- fresh; ri "andi" bit a 1; bad <- fresh; ri "xori" bad bit 1; branch bad slow) $
-              if n=="$arc.retain" then emit (plain "mv" [anyV d] [anyV a]) else address d "fpr_unit")
+            bit <- fresh; ri R.AndImmediate bit a 1; bad <- fresh; ri R.XorImmediate bad bit 1; branch bad slow) $
+              if n=="$arc.retain" then emit (plain (O.RV R.Move) [anyV d] [anyV a]) else address d "fpr_unit")
           (n,[a,b]) | Just op <- M.lookup n intBinary -> yes (do
             x <- fresh; y <- fresh; result <- fresh
-            ri "srai" x a 1; ri "srai" y b 1
+            ri R.ShiftRightArithmeticImmediate x a 1; ri R.ShiftRightArithmeticImmediate y b 1
             guarded (\slow -> do
-              when (op=="div") $ do z <- fresh; li z 0; zero <- fresh; rr "cmp.eq" zero y z; branch zero slow
+              when (op==R.Divide) $ do z <- fresh; li z 0; zero <- fresh; rr (R.Compare Eq) zero y z; branch zero slow
               rr op result x y
-              when (op=="mul") $ do
-                hi <- fresh; sign <- fresh; rr "mulh" hi x y; ri "srai" sign result 63
-                bad <- fresh; rr "cmp.ne" bad hi sign; branch bad slow
-              fit <- fresh; ri "slli" fit result 1; ri "srai" fit fit 1
-              bad <- fresh; rr "cmp.ne" bad fit result; branch bad slow) (tagged result d))
+              when (op==R.Multiply) $ do
+                hi <- fresh; sign <- fresh; rr R.MultiplyHigh hi x y; ri R.ShiftRightArithmeticImmediate sign result 63
+                bad <- fresh; rr (R.Compare Ne) bad hi sign; branch bad slow
+              fit <- fresh; ri R.ShiftLeftImmediate fit result 1; ri R.ShiftRightArithmeticImmediate fit fit 1
+              bad <- fresh; rr (R.Compare Ne) bad fit result; branch bad slow) (tagged result d))
           (n,[a,b]) | Just op <- M.lookup n intCompare -> yes (do t <- fresh; rr op t a b; bool t)
           (n,[a,b]) | n `elem` ["$arc.eq","$arc.ne"] -> yes (guarded (\slow -> do
-            both <- fresh; ri "andi" both a 1; bit <- fresh; ri "andi" bit b 1
-            rr "and" both both bit; bad <- fresh; ri "xori" bad both 1; branch bad slow) $ do
-              t <- fresh; rr (if n=="$arc.eq" then "cmp.eq" else "cmp.ne") t a b; bool t)
+            both <- fresh; ri R.AndImmediate both a 1; bit <- fresh; ri R.AndImmediate bit b 1
+            rr R.And both both bit; bad <- fresh; ri R.XorImmediate bad both 1; branch bad slow) $ do
+              t <- fresh; rr (R.Compare (if n=="$arc.eq" then Eq else Ne)) t a b; bool t)
           (n,[a,b]) | Just op <- M.lookup n wordBinary -> yes (rr op d a b)
-          ("$arc.wordnot",[a]) -> yes (ri "xori" d a (-1))
-          ("$arc.wordfromInt",[a]) -> yes (ri "srai" d a 1)
+          ("$arc.wordnot",[a]) -> yes (ri R.XorImmediate d a (-1))
+          ("$arc.wordfromInt",[a]) -> yes (ri R.ShiftRightArithmeticImmediate d a 1)
           ("$arc.wordtoInt",[a]) -> yes (tagged a d)
           ("$arc.wordbits",[_]) -> yes (li d 129)
-          (n,[a]) | n `elem` ["$arc.addrfromWord","$arc.addrtoWord"] -> yes (emit (plain "mv" [anyV d] [anyV a]))
+          (n,[a]) | n `elem` ["$arc.addrfromWord","$arc.addrtoWord"] -> yes (emit (plain (O.RV R.Move) [anyV d] [anyV a]))
           ("$arc.addrnull",[_]) -> yes (li d 0)
-          ("$arc.addradd",[a,b]) -> yes (do t <- fresh; ri "srai" t b 1; rr "add" d a t)
+          ("$arc.addradd",[a,b]) -> yes (do t <- fresh; ri R.ShiftRightArithmeticImmediate t b 1; rr R.Add d a t)
           (n,[a,b]) | n `elem` ["$arc.wordeq","$arc.addreq","$arc.rawEq","$arc.rawNe"] -> yes (do
-            t <- fresh; rr (if n == "$arc.rawNe" then "cmp.ne" else "cmp.eq") t a b; bool t)
+            t <- fresh; rr (R.Compare (if n == "$arc.rawNe" then Ne else Eq)) t a b; bool t)
           (n,[a,b]) | n `elem` ["$arc.wordshl","$arc.wordshr","$arc.wordbitSet","$arc.wordbitClear","$arc.wordbitTest"] -> yes (do
-            count <- fresh; ri "srai" count b 1
-            guarded (\slow -> do limit <- fresh; li limit 64; valid <- fresh; rr "sltu" valid count limit; bad <- fresh; ri "xori" bad valid 1; branch bad slow) $ case n of
-              "$arc.wordshl" -> rr "sll" d a count
-              "$arc.wordshr" -> rr "srl" d a count
-              "$arc.wordbitTest" -> do t <- fresh; rr "srl" t a count; ri "andi" t t 1; bool t
-              _ -> do one <- fresh; li one 1; mask <- fresh; rr "sll" mask one count
-                      if n == "$arc.wordbitClear" then ri "xori" mask mask (-1) >> rr "and" d a mask else rr "or" d a mask)
+            count <- fresh; ri R.ShiftRightArithmeticImmediate count b 1
+            guarded (\slow -> do limit <- fresh; li limit 64; valid <- fresh; rr R.LessUnsigned valid count limit; bad <- fresh; ri R.XorImmediate bad valid 1; branch bad slow) $ case n of
+              "$arc.wordshl" -> rr R.ShiftLeft d a count
+              "$arc.wordshr" -> rr R.ShiftRight d a count
+              "$arc.wordbitTest" -> do t <- fresh; rr R.ShiftRight t a count; ri R.AndImmediate t t 1; bool t
+              _ -> do one <- fresh; li one 1; mask <- fresh; rr R.ShiftLeft mask one count
+                      if n == "$arc.wordbitClear" then ri R.XorImmediate mask mask (-1) >> rr R.And d a mask else rr R.Or d a mask)
           (n,[a]) | Just (op,alignment,small) <- M.lookup n reads -> yes (memoryGuard a alignment $ do
             if small then do t <- fresh; loadAt op t a 0; tagged t d else loadAt op d a 0)
           (n,[a,b]) | Just (op,alignment,small) <- M.lookup n writes -> yes (memoryGuard a alignment $ do
-            v <- if small then do t <- fresh; ri "srai" t b 1; pure t else pure b
+            v <- if small then do t <- fresh; ri R.ShiftRightArithmeticImmediate t b 1; pure t else pure b
             storeAt op a v 0; address d "fpr_unit")
-          ("$arc.memfence",[_]) -> yes (emit (plain "fence" [] []) >> address d "fpr_unit")
+          ("$arc.memfence",[_]) -> yes (emit (plain (O.RV R.Fence) [] []) >> address d "fpr_unit")
           _ -> pure False
       where
         yes action = action >> pure True
-        tagged a result = do t <- fresh; ri "slli" t a 1; ri "ori" result t 1
+        tagged a result = do t <- fresh; ri R.ShiftLeftImmediate t a 1; ri R.OrImmediate result t 1
         bool t = do yesLabel <- freshLabel; done <- freshLabel; branch t yesLabel
                     address d "fpr_false"; jump done; mark yesLabel; address d "fpr_true"; mark done
         guarded check body = do slow <- freshLabel; done <- freshLabel
                                 check slow; body; jump done; mark slow
-                                call (calleeSym c) False True vs (Just d) False; mark done
+                                call (calleeSym c) Calling.RuntimeCall vs (Just d) False; mark done
         -- Every byte address is aligned. Emitting even an unreachable slow
         -- call requires a nonexistent adapter when this is a RAW library
         -- linked into the hosted runtime (machine/virt/rawunit.c).
         memoryGuard _ 0 body = body
         memoryGuard a mask body = guarded (aligned a mask) body
-        aligned a mask slow = when (mask /= 0) $ do t <- fresh; ri "andi" t a mask; branch t slow
-        intBinary = M.fromList [("$arc."++n,op) | (n,op)<-[("add","add"),("sub","sub"),("mul","mul"),("div","div")]]
-        intCompare = M.fromList [("$arc."++n,"cmp."++n) | n<-["lt","gt","le","ge"]]
-        wordBinary = M.fromList [("$arc.word"++n,op) | (n,op)<-[("add","add"),("sub","sub"),("and","and"),("or","or"),("xor","xor")]]
-        reads = M.fromList [("$arc.memread"++n,(op,mask,small)) | (n,op,mask,small)<-[("8","lbu",0,True),("16","lhu",1,True),("32","lwu",3,False),("Word","ld",7,False)]]
-        writes = M.fromList [("$arc.memwrite"++n,(op,mask,small)) | (n,op,mask,small)<-[("8","sb",0,True),("16","sh",1,True),("32","sw",3,False),("Word","sd",7,False)]]
+        aligned a mask slow = when (mask /= 0) $ do t <- fresh; ri R.AndImmediate t a mask; branch t slow
+        intBinary = M.fromList [("$arc."++n,op) | (n,op)<-[("add",R.Add),("sub",R.Subtract),("mul",R.Multiply),("div",R.Divide)]]
+        intCompare = M.fromList [("$arc."++O.comparisonName c,R.Compare c) | c<-[Lt,Gt,Le,Ge]]
+        wordBinary = M.fromList [("$arc.word"++n,op) | (n,op)<-[("add",R.Add),("sub",R.Subtract),("and",R.And),("or",R.Or),("xor",R.Xor)]]
+        reads = M.fromList [("$arc.memread"++n,(op,mask,small)) | (n,op,mask,small)<-[("8",R.LoadByte,0,True),("16",R.LoadHalf,1,True),("32",R.LoadUnsigned32,3,False),("Word",R.Load64,7,False)]]
+        writes = M.fromList [("$arc.memwrite"++n,(op,mask,small)) | (n,op,mask,small)<-[("8",R.StoreByte,0,True),("16",R.StoreHalf,1,True),("32",R.Store32,3,False),("Word",R.Store64,7,False)]]
 
 allocConfig :: RVConfig -> Fn -> S.Set VReg -> AllocConfig
 allocConfig cfg fn managed = AllocConfig
   { acCalleeSaved = saved, acCallerSaved = args, acScratch = scratch,
     acPreserved = map p ["sp","s0","gp","tp"], acClassOf = rfClassOf regFile,
-    acArrival = \vs -> plain "params" (zipWith fixed (take 8 vs) args) [] :
-      [(plain "load.spill" [anyV v] [OI n]) {siImplicitDefs = map p ["t3","t4"]} | (n,v) <- zip [0..] (drop 8 vs)],
-    acLoad = \r ref -> (plain "load.slot" [OP r] [OF ref 0]) {siImplicitDefs = [p "t6"]},
-    acStore = \r ref -> (plain "store.slot" [] [OP r,OF ref 0]) {siImplicitDefs = [p "t6"]},
-    acMove = \d s -> plain "mv" [OP d] [OP s],
+    acArrival = \vs -> let placed=Calling.arrivalArguments Calling.RiscV vs
+      in plain (O.Common O.Params) [fixed v p | (Calling.ArgumentRegister p,v)<-placed] [] :
+        [(plain (O.Common O.LoadSpill) [anyV v] [OI (toInteger n)]) {siImplicitDefs=map p ["t3","t4"]} | (Calling.HartArgument n,v)<-placed],
+    acLoad = \r ref -> (plain (O.RV R.FrameLoad) [OP r] [OF ref 0]) {siImplicitDefs = [p "t6"]},
+    acStore = \r ref -> (plain (O.RV R.FrameStore) [] [OP r,OF ref 0]) {siImplicitDefs = [p "t6"]},
+    acMove = \d s -> plain (O.RV R.Move) [OP d] [OP s],
     acSlot = \n v -> frameObj n (wordBytes cfg) (wordBytes cfg) (SpillSlot n) (S.member v managed),
     acEarlyDef = const False,
     acSelfLoop = if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing }
 
 emitFnRV :: RVConfig -> Fn -> Either String NativeFn
-emitFnRV cfg fn = do
+emitFnRV cfg=emitFnRVWithSymbols (publicSymbols (cfgExports cfg)) cfg
+
+emitFnRVWithSymbols :: SymbolPolicy -> RVConfig -> Fn -> Either String NativeFn
+emitFnRVWithSymbols symbols cfg fn = do
   (sf, managed, st) <- select cfg fn
   let checked = either (Left . ("compiler error: " ++)) Right
       ac = allocConfig cfg fn managed
+  checkForms regFile (fnName fn) (sfBody sf)
   checked (checkFn regFile sf)
   allocation <- checked (allocateFn ac sf)
   checked (checkAllocation ac (fnName fn) (alBody allocation))
@@ -449,8 +465,9 @@ emitFnRV cfg fn = do
                  ++ (if null (alSaved allocation) then "none" else intercalate "," (map reg (alSaved allocation))) ++ " " ++ statsLine (alStats allocation)]
           ++ ["    .section .text." ++ functionSymbol name ++ ",\"ax\",@progbits" | polProfile (cfgPolicy cfg) == BuiltinArc]
           ++ ["    .balign 4" | polProfile (cfgPolicy cfg) == BuiltinArc]
-          ++ ["    " ++ (if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl") ++ " " ++ functionSymbol name | S.member name (cfgExports cfg)]
+          ++ visibilityLines ELF WeakDirective (visibilityFor (cfgWeak cfg) symbols name) (functionSymbol name)
           ++ [functionSymbol name ++ ":"]
+  checkForms regFile name body
   pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList (nulls st)) (S.toList (strings st)) (S.toList (boxedFloats st)))
   where
     token (ILabel (Label l),_) = [TLabel l]
@@ -513,7 +530,7 @@ hartRead cfg = case cfgHart cfg of
 
 render :: RVConfig -> Fn -> Layout -> Bool -> [String] -> Item -> [String]
 render _ fn _ _ _ (ILabel l) = [local fn l ++ ":"]
-render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else "    " ++ s) (go (siOp i) (siDefs i) (siUses i))
+render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else "    " ++ s) (go (siOpcode i) (siDefs i) (siUses i))
   where
     r (OP (Phys name)) = name
     r o = error ("RV64 unplaced operand " ++ show o)
@@ -525,85 +542,79 @@ render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else 
     stWord = if cfgWidth cfg == W32 then "sw" else "sd"
     epilogue = restores ++ ["mv t3, s0"] ++ memory ld "ra" "s0" (-w) ++ memory ld "s0" "s0" (-2*w) ++ (if large then memory ld "sp" "t3" (-3*w) else ["mv sp, t3"])
     hart = hartRead cfg
-    l suffix = local fn (Label (siNote i ++ suffix))
-    stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l "_stk", "call fpr_stack_grow", "beqz a0, " ++ l "_same", "mv sp, a0", l "_same" ++ ":"] ++ hart ++ [l "_stk" ++ ":"]
+    l point = local fn (entryLabel i point)
+    stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l StackReady, "call fpr_stack_grow", "beqz a0, " ++ l SameStack, "mv sp, a0", l SameStack ++ ":"] ++ hart ++ [l StackReady ++ ":"]
     tick = tickN 1
-    tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l "_fuel", "call fpr_fuel_exhausted", l "_fuel" ++ ":"]
+    tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l FuelReady, "call fpr_fuel_exhausted", l FuelReady ++ ":"]
     ew = if cfgWidth cfg == W32 then "32" else "64"
     go op ds us = case (op,ds,us) of
-      ("entry.static",[],[]) -> []
-      ("params",_,[]) -> []
-      ("load.slot",[d],[OF ref 0]) -> memory ld (r d) "s0" (off ref)
-      ("store.slot",[],[v,OF ref 0]) -> memory stWord (r v) "s0" (off ref)
-      ("load.spill",[d],[n]) -> hart ++ memory ld (r d) "t3" (w*(1+num n))
-      ("store.spill",[],[v,n]) -> hart ++ memory stWord (r v) "t3" (w*(1+num n))
-      ("li",[d],[n]) -> ["li " ++ r d ++ ", " ++ show (num n)]
+      (O.Common O.EntryStatic,[],[]) -> []
+      (O.Common O.Params,_,[]) -> []
+      (O.RV R.FrameLoad,[d],[OF ref 0]) -> memory ld (r d) "s0" (off ref)
+      (O.RV R.FrameStore,[],[v,OF ref 0]) -> memory stWord (r v) "s0" (off ref)
+      (O.Common O.LoadSpill,[d],[n]) -> hart ++ memory ld (r d) "t3" (w*(1+num n))
+      (O.Common O.StoreSpill,[],[v,n]) -> hart ++ memory stWord (r v) "t3" (w*(1+num n))
+      (O.RV R.Literal,[d],[n]) -> ["li " ++ r d ++ ", " ++ show (num n)]
       -- a module's unit is assembled under .option pic: `la` of an external
       -- symbol goes through the GOT (interposable), a unit-local label stays
       -- PC-relative (`lla`), as the A64 module pass keeps local labels
-      ("la",[d],[OS sym]) -> [(if cfgHart cfg == HartTlsIe && ".L" `isPrefixOf` sym then "lla " else "la ") ++ r d ++ ", " ++ sym]
-      ("mv",[d],[v]) -> ["mv " ++ r d ++ ", " ++ r v]
-      (o,[d],[v,n]) | o `elem` ["slli","srai","andi","ori","xori"] -> [o ++ " " ++ r d ++ ", " ++ r v ++ ", " ++ show (num n)]
-      (o,[d],[a,b]) | o `elem` ["add","sub","mul","mulh","div","and","or","xor","sltu","sll","srl"] -> [o ++ " " ++ r d ++ ", " ++ r a ++ ", " ++ r b]
-      (o,[d],[a,b]) | o `elem` ["cmp.eq","cmp.ne"] -> ["xor " ++ r d ++ ", " ++ r a ++ ", " ++ r b, (if o == "cmp.eq" then "seqz " else "snez ") ++ r d ++ ", " ++ r d]
-      (o,[d],[a,b]) | o `elem` ["cmp.lt","cmp.gt","cmp.le","cmp.ge"] ->
-        let (x,y) = if o `elem` ["cmp.gt","cmp.le"] then (b,a) else (a,b)
-         in ["slt " ++ r d ++ ", " ++ r x ++ ", " ++ r y] ++ ["xori " ++ r d ++ ", " ++ r d ++ ", 1" | o `elem` ["cmp.le","cmp.ge"]]
-      (o,[d],[base,n]) | o `elem` ["ld","lw","lbu","lhu","lwu"] -> memory o (r d) (r base) (num n)
-      (o,[],[base,v,n]) | o `elem` ["sd","sw","sh","sb"] -> memory o (r v) (r base) (num n)
-      ("fence",[],[]) -> ["fence iorw, iorw"]
-      ("bnez",[],[v,OL l']) -> ["bnez " ++ r v ++ ", " ++ local fn l']
-      (o,[],[OL l']) | o `elem` ["j","jump.loop"] -> ["j " ++ local fn l']
-      ("call",_,OS sym:_) -> ["call " ++ sym]
-      ("tailjump",[],OS sym:_) -> epilogue ++ ["tail " ++ sym]
-      ("ret",[],[_]) -> epilogue ++ ["ret"]
-      ("push",[],[v]) -> ["addi sp, sp, -16", stWord ++ " " ++ r v ++ ", 0(sp)"]
-      ("applyn",[_],[n]) -> ["mv a2, sp", "li a1, " ++ show (num n)] ++ memory ld "a0" "sp" (16*num n) ++ ["call fpr_applyN"] ++ adjust "sp" "sp" (16*(num n+1))
-      ("panic",[],[OS sym]) -> ["la a0, " ++ sym, "call fpr_panic"]
-      ("entry.check.tick",[],[]) -> hart ++ stack ++ tick
-      ("entry.check",[],[]) -> hart ++ stack
-      ("entry.tick",[],[]) -> hart ++ tick
-      ("tick.n",[],[OI n]) -> hart ++ tickN n
-      ("rvv.vlmax",[d],[]) -> ["vsetvli " ++ r d ++ ", x0, e" ++ ew ++ ", m1, ta, ma"]
-      ("rvv.lanes",[d],[a,n,OI bound]) ->
+      (O.RV R.Address,[d],[OS sym]) -> [(if cfgHart cfg == HartTlsIe && ".L" `isPrefixOf` sym then "lla " else "la ") ++ r d ++ ", " ++ sym]
+      (O.RV R.Move,[d],[v]) -> ["mv " ++ r d ++ ", " ++ r v]
+      (O.RV o,[d],[v,n]) | o `elem` [R.ShiftLeftImmediate,R.ShiftRightArithmeticImmediate,R.AndImmediate,R.OrImmediate,R.XorImmediate] -> [R.name o ++ " " ++ r d ++ ", " ++ r v ++ ", " ++ show (num n)]
+      (O.RV o,[d],[a,b]) | o `elem` [R.Add,R.Subtract,R.Multiply,R.MultiplyHigh,R.Divide,R.And,R.Or,R.Xor,R.LessUnsigned,R.ShiftLeft,R.ShiftRight] -> [R.name o ++ " " ++ r d ++ ", " ++ r a ++ ", " ++ r b]
+      (O.RV (R.Compare c),[d],[a,b]) -> integerCompare c d a b
+      (O.RV o,[d],[base,n]) | o `elem` [R.Load64,R.Load32,R.LoadByte,R.LoadHalf,R.LoadUnsigned32] -> memory (R.name o) (r d) (r base) (num n)
+      (O.RV o,[],[base,v,n]) | o `elem` [R.Store64,R.Store32,R.StoreHalf,R.StoreByte] -> memory (R.name o) (r v) (r base) (num n)
+      (O.RV R.Fence,[],[]) -> ["fence iorw, iorw"]
+      (O.RV R.BranchNonzero,[],[v,OL l']) -> ["bnez " ++ r v ++ ", " ++ local fn l']
+      (O.RV R.Jump,[],[OL l']) -> ["j " ++ local fn l']
+      (O.Common O.JumpLoop,[],[OL l']) -> ["j " ++ local fn l']
+      (O.RV R.Call,_,OS sym:_) -> ["call " ++ sym]
+      (O.Common O.TailJump,[],OS sym:_) -> epilogue ++ ["tail " ++ sym]
+      (O.RV R.Ret,[],[_]) -> epilogue ++ ["ret"]
+      (O.RV R.Push,[],[v]) -> ["addi sp, sp, -16", stWord ++ " " ++ r v ++ ", 0(sp)"]
+      (O.RV R.ApplyN,[_],[n]) -> ["mv a2, sp", "li a1, " ++ show (num n)] ++ memory ld "a0" "sp" (16*num n) ++ ["call fpr_applyN"] ++ adjust "sp" "sp" (16*(num n+1))
+      (O.RV R.Panic,[],[OS sym]) -> ["la a0, " ++ sym, "call fpr_panic"]
+      (O.Common O.EntryCheckTick,[],[]) -> hart ++ stack ++ tick
+      (O.Common O.EntryCheck,[],[]) -> hart ++ stack
+      (O.Common O.EntryTick,[],[]) -> hart ++ tick
+      (O.Common O.TickN,[],[OI n]) -> hart ++ tickN n
+      (O.RV R.VectorMax,[d],[]) -> ["vsetvli " ++ r d ++ ", x0, e" ++ ew ++ ", m1, ta, ma"]
+      (O.RV R.VectorLanes,[d],[a,n,OI bound]) ->
         ["vsetvli t4, " ++ r n ++ ", e" ++ ew ++ ", m1, ta, ma", "vle" ++ ew ++ ".v v8, (" ++ r a ++ ")",
          "vredmax.vs v9, v8, v8", "vredmin.vs v10, v8, v8",
          "vmv.x.s t5, v9", "li t6, " ++ show bound, "slt " ++ r d ++ ", t5, t6",
          "vmv.x.s t5, v10", "li t6, " ++ show (negate bound), "slt t5, t6, t5",
          "and " ++ r d ++ ", " ++ r d ++ ", t5"]
-      ("rvv.sum",[d],[acc]) -> ["vmv.s.x v9, x0", "vredsum.vs v9, v8, v9", "vmv.x.s t5, v9", "add " ++ r d ++ ", " ++ r acc ++ ", t5"]
-      -- F64 on the bits through ft0/ft1, as the legacy inline table does
-      -- F32: the legacy genU forms (fmv.x.w sign-extends; the runtime reads the low 32 bits)
-      -- a float tree, one step an instruction: scratch ft0..ft7
-      (o, [d], []) | Just c <- stripPrefix "ftree.cmp." o -> case c of
-        "lt" -> ["flt.d " ++ r d ++ ", ft0, ft1"]; "gt" -> ["flt.d " ++ r d ++ ", ft1, ft0"]
-        "le" -> ["fle.d " ++ r d ++ ", ft0, ft1"]; "ge" -> ["fle.d " ++ r d ++ ", ft1, ft0"]
-        "eq" -> ["feq.d " ++ r d ++ ", ft0, ft1"]; _ -> ["feq.d " ++ r d ++ ", ft0, ft1", "xori " ++ r d ++ ", " ++ r d ++ ", 1"]
-      (o, [d], []) | Just c <- stripPrefix "ftree32.cmp." o -> case c of
-        "lt" -> ["flt.s " ++ r d ++ ", ft0, ft1"]; "gt" -> ["flt.s " ++ r d ++ ", ft1, ft0"]
-        "le" -> ["fle.s " ++ r d ++ ", ft0, ft1"]; "ge" -> ["fle.s " ++ r d ++ ", ft1, ft0"]
-        "eq" -> ["feq.s " ++ r d ++ ", ft0, ft1"]; _ -> ["feq.s " ++ r d ++ ", ft0, ft1", "xori " ++ r d ++ ", " ++ r d ++ ", 1"]
-      ("ftree.leaf",[],[x,OI n]) -> ["fmv.d.x ft" ++ show n ++ ", " ++ r x]
-      ("ftree.out",[d],[OI n]) -> ["fmv.x.d " ++ r d ++ ", ft" ++ show n]
-      (o,[],[OI n]) | Just inst <- stripPrefix "ftree." o -> ["f" ++ inst ++ ".d ft" ++ show n ++ ", ft" ++ show n ++ ", ft" ++ show (n + 1)]
-      ("ftree32.leaf",[],[x,OI n]) -> ["fmv.w.x ft" ++ show n ++ ", " ++ r x]
-      ("ftree32.out",[d],[OI n]) -> ["fmv.x.w " ++ r d ++ ", ft" ++ show n]
-      (o,[],[OI n]) | Just inst <- stripPrefix "ftree32." o -> ["f" ++ inst ++ ".s ft" ++ show n ++ ", ft" ++ show n ++ ", ft" ++ show (n + 1)]
-      (o,[d],[a,b]) | Just f <- stripPrefix "fbin32." o ->
-        ["fmv.w.x ft0, " ++ r a, "fmv.w.x ft1, " ++ r b, "f" ++ f ++ ".s ft0, ft0, ft1", "fmv.x.w " ++ r d ++ ", ft0"]
-      (o,[d],[a,b]) | Just c <- stripPrefix "fcmp32." o ->
-        ["fmv.w.x ft0, " ++ r a, "fmv.w.x ft1, " ++ r b] ++ case c of
-          "lt" -> ["flt.s " ++ r d ++ ", ft0, ft1"]; "gt" -> ["flt.s " ++ r d ++ ", ft1, ft0"]
-          "le" -> ["fle.s " ++ r d ++ ", ft0, ft1"]; "ge" -> ["fle.s " ++ r d ++ ", ft1, ft0"]
-          "eq" -> ["feq.s " ++ r d ++ ", ft0, ft1"]; _ -> ["feq.s " ++ r d ++ ", ft0, ft1", "xori " ++ r d ++ ", " ++ r d ++ ", 1"]
-      (o,[d],[a,b]) | Just f <- stripPrefix "fbin." o ->
-        ["fmv.d.x ft0, " ++ r a, "fmv.d.x ft1, " ++ r b, "f" ++ f ++ ".d ft0, ft0, ft1", "fmv.x.d " ++ r d ++ ", ft0"]
-      (o,[d],[a,b]) | Just c <- stripPrefix "fcmp." o ->
-        ["fmv.d.x ft0, " ++ r a, "fmv.d.x ft1, " ++ r b] ++ case c of
-          "lt" -> ["flt.d " ++ r d ++ ", ft0, ft1"]; "gt" -> ["flt.d " ++ r d ++ ", ft1, ft0"]
-          "le" -> ["fle.d " ++ r d ++ ", ft0, ft1"]; "ge" -> ["fle.d " ++ r d ++ ", ft1, ft0"]
-          "eq" -> ["feq.d " ++ r d ++ ", ft0, ft1"]; _ -> ["feq.d " ++ r d ++ ", ft0, ft1", "xori " ++ r d ++ ", " ++ r d ++ ", 1"]
+      (O.RV R.VectorSum,[d],[acc]) -> ["vmv.s.x v9, x0", "vredsum.vs v9, v8, v9", "vmv.x.s t5, v9", "add " ++ r d ++ ", " ++ r acc ++ ", t5"]
+      -- Floating-point leaves retain IEEE bits in the word ABI. The
+      -- typed operation chooses width and predicate; rendering never parses it.
+      (O.RV (R.TreeCompare width c),[d],[]) -> floatCompare width c d
+      (O.RV (R.TreeLeaf width),[],[x,OI n]) -> ["fmv." ++ moveWidth width ++ ".x ft" ++ show n ++ ", " ++ r x]
+      (O.RV (R.TreeOutput width),[d],[OI n]) -> ["fmv.x." ++ moveWidth width ++ " " ++ r d ++ ", ft" ++ show n]
+      (O.RV (R.TreeNode width op),[],[OI n]) ->
+        ["f" ++ O.floatName op ++ "." ++ suffix width ++ " ft" ++ show n ++ ", ft" ++ show n ++ ", ft" ++ show (n+1)]
+      (O.RV (R.FloatBinary width op),[d],[a,b]) ->
+        [moveIn width a "ft0",moveIn width b "ft1",
+         "f" ++ O.floatName op ++ "." ++ suffix width ++ " ft0, ft0, ft1","fmv.x." ++ moveWidth width ++ " " ++ r d ++ ", ft0"]
+      (O.RV (R.FloatCompare width c),[d],[a,b]) ->
+        [moveIn width a "ft0",moveIn width b "ft1"] ++ floatCompare width c d
       _ -> error ("RV64 no render form " ++ show (op,ds,us))
+    suffix O.Float64="d";suffix O.Float32="s"
+    moveWidth O.Float64="d";moveWidth O.Float32="w"
+    moveIn width a dest="fmv." ++ moveWidth width ++ ".x " ++ dest ++ ", " ++ r a
+    floatCompare width c d=case c of
+      Lt->cmp "flt" "ft0" "ft1";Gt->cmp "flt" "ft1" "ft0"
+      Le->cmp "fle" "ft0" "ft1";Ge->cmp "fle" "ft1" "ft0"
+      Eq->cmp "feq" "ft0" "ft1";Ne->cmp "feq" "ft0" "ft1" ++ ["xori " ++ r d ++ ", " ++ r d ++ ", 1"]
+      where cmp op a b=[op ++ "." ++ suffix width ++ " " ++ r d ++ ", " ++ a ++ ", " ++ b]
+    integerCompare c d a b=case c of
+      Eq->equal "seqz";Ne->equal "snez"
+      Lt->less a b False;Gt->less b a False;Le->less b a True;Ge->less a b True
+      where
+        equal op=["xor " ++ r d ++ ", " ++ r a ++ ", " ++ r b,op ++ " " ++ r d ++ ", " ++ r d]
+        less x y invert=["slt " ++ r d ++ ", " ++ r x ++ ", " ++ r y] ++ ["xori " ++ r d ++ ", " ++ r d ++ ", 1" | invert]
+
 local :: Fn -> Label -> String
 local fn (Label l) = ".Ltir_" ++ mangleName (fnName fn) ++ "_" ++ l
 

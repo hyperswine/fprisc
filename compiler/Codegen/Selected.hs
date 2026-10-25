@@ -4,9 +4,11 @@
 -- milestone M2; docs/2026-10-21-NATIVE-IR-CONTRACTS.md, "Calls and
 -- target constraints").
 --
--- A selected instruction is a target mnemonic (or a target pseudo that
--- expands to a fixed sequence) over operands that are still virtual
--- registers, each carrying the constraint the target places on it:
+-- A selected instruction carries an operation identity over operands that
+-- are still virtual registers, each carrying the target's constraint. Shared
+-- protocols and all native ISA operations use constructors in Codegen.Opcode.
+-- Invented text operations are confined to synthetic constraint tests and are
+-- refused by every native emission path. Constraints include:
 --
 --   * a register class (the integer bank, the float/vector bank),
 --   * a fixed physical register (an argument or result register, x86-64's
@@ -33,11 +35,14 @@
 -- frame slot) or allocation (M3).
 module Codegen.Selected
   ( VReg (..), RegClass (..), Phys (..), Constraint (..), Operand (..),
-    Flags (..), Control (..), Call (..), SInstr (..), Item (..), Label (..), SFn (..),
-    RegisterFile (..), plain, checkFn, itemLabels, instrVRegs, operandVReg,
+    Flags (..), Control (..), Call (..), Annotation(..), AllocationEvent(..),
+    SInstr (..), Item (..), Label (..), SFn (..),
+    RegisterFile (..), plain, plainOpcode, siOp, checkFn, itemLabels, instrVRegs, operandVReg,
   ) where
 
+import Codegen.Calling.Types (Transfer, ArgumentCell)
 import Codegen.Frame (FrameRef)
+import qualified Codegen.Opcode as Op
 import Control.Monad (forM_, unless, when)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -63,6 +68,7 @@ data Operand
   | OP Phys -- a named physical register (sp, the frame pointer, the hart register)
   | OI Integer -- an immediate
   | OS String -- a symbol: a function, a runtime entry, a data object, a TLS cell
+  | OC ArgumentCell -- a private x64 argument cell, not an arbitrary linker symbol
   | OL Label -- a function-local label
   | OF FrameRef Int -- a frame object plus a byte offset, symbolic until layout
   deriving (Eq, Ord, Show)
@@ -89,8 +95,15 @@ data Call = Call
 
 newtype Label = Label String deriving (Eq, Ord, Show)
 
+-- Semantic payloads and allocation accounting have different owners. An entry
+-- label spelled "copy" cannot become an allocation statistic, and inserting a
+-- copy cannot overwrite a label, frame-save index or restore decision.
+data Annotation=NoAnnotation | EntryLabels Label | SaveGroup Int | SkipRestores
+  deriving (Eq,Ord,Show)
+data AllocationEvent=SpillStore | Reload | RegisterCopy deriving (Eq,Ord,Show)
+
 data SInstr = SInstr
-  { siOp :: String, -- the mnemonic or pseudo name the target printer understands
+  { siOpcode :: Op.Opcode, -- constructor identity survives placement/allocation
     siDefs :: [Operand],
     siUses :: [Operand],
     siImplicitDefs :: [Phys], -- written beyond the listed definitions (an expansion's scratch, %rdx of a division)
@@ -99,7 +112,9 @@ data SInstr = SInstr
     siFlags :: Flags,
     siControl :: Control,
     siCalls :: [Call], -- in order; empty for an ordinary instruction
-    siNote :: String -- a comment the printer may attach
+    siAnnotation :: Annotation,
+    siTransfer :: Maybe Transfer, -- physical entry/argument/result contract for a direct transfer
+    siAllocation :: Maybe AllocationEvent
   }
   deriving (Eq, Ord, Show)
 
@@ -120,7 +135,14 @@ data RegisterFile = RegisterFile
 
 -- an ordinary instruction: no implicit registers, no flags, falls through
 plain :: String -> [Operand] -> [Operand] -> SInstr
-plain op ds us = SInstr op ds us [] [] [] FlagsNone Next [] ""
+plain op = plainOpcode (Op.textOpcode op)
+
+plainOpcode :: Op.Opcode -> [Operand] -> [Operand] -> SInstr
+plainOpcode op ds us = SInstr op ds us [] [] [] FlagsNone Next [] NoAnnotation Nothing Nothing
+
+-- Diagnostic spelling only. Typed selectors/renderers use siOpcode.
+siOp :: SInstr -> String
+siOp = Op.opcodeName . siOpcode
 
 operandVReg :: Operand -> Maybe (VReg, Constraint)
 operandVReg = \case

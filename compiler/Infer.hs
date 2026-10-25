@@ -1744,7 +1744,7 @@ inferTopsResult capture prof sigs structs tops =
       -- statement-offset stamp instead of a file:line:col
       rwEvals <- forM (zip [1 :: Int ..] evals) $ \(evi, e) -> do
         nerrs0 <- length <$> gets iErrs
-        r <- snd <$> inferE (ICtx env cons sigs prof S.empty M.empty (Just ("<eval " ++ show evi ++ ">")) M.empty) e
+        r <- snd <$> inferE (ICtx env cons sigs prof S.empty M.empty (Just ("<eval " ++ show evi ++ ">")) M.empty M.empty) e
         modify $ \st ->
           let (old, new) = splitAt nerrs0 (iErrs st)
            in st {iErrs = old ++ map (Diag.inDefinition ("<eval "++show evi++">")) new}
@@ -1917,7 +1917,7 @@ inferTopsResult capture prof sigs structs tops =
           nerrs0 <- gets (length . iErrs)
           -- params: PSig gets its sig's record type; others infer
           (ptys, penvs, patterns) <- unzip3 <$> mapM (inferParam cons) ps
-          let baseCtx = ICtx recEnv cons sigs prof S.empty M.empty (Just n) M.empty
+          let baseCtx = ICtx recEnv cons sigs prof S.empty M.empty (Just n) M.empty (M.restrictKeys env (S.fromList ns))
           ctx <- extendScoped Evidence.ClauseParameter (M.unions penvs) baseCtx
           forM_ (zip [0..] patterns) $ \(i,pat) -> rememberPattern (ParameterOf n clauseIndex i) (bindPattern (icLocalIds ctx) pat)
           -- guards run left to right; a pattern guard's binds are in

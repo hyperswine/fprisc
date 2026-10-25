@@ -25,12 +25,13 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), simdCaptures, simdRegisters, ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
+    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), simdCaptures, simdRegisters, ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign, calleeConvention,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
   ) where
 
+import Codegen.Calling.Types (EntryConvention(..))
 import qualified Data.Map.Strict as M
 
 type Name = String
@@ -140,9 +141,9 @@ intBits W64 = 63
 -- count outside 0..63 traps with the primitive's text
 data ShiftOp = Shl | Shr deriving (Eq, Ord, Show, Enum, Bounded)
 
--- A call target with its calling convention in representation terms.
--- The legacy convention for FP-RISC functions is every argument and the
--- result TVal; workers and primitives will declare other signatures.
+-- A logical entry kind and its representation signature. Local/imported and
+-- generated entries share the FP-RISC word ABI; Foreign names an existing C
+-- runtime adapter. Physical argument placement is owned by Codegen.Calling.
 data CalleeKind
   = Local -- a function of this unit (`fpr_fn_<mangled>`)
   | Imported -- another unit's export, same shapes, extern symbol
@@ -151,9 +152,14 @@ data CalleeKind
   deriving (Eq, Ord, Show)
 
 isForeign :: Callee -> Bool
-isForeign c = case calleeKind c of
-  Foreign _ -> True
-  _ -> False
+isForeign = (==CWords) . calleeConvention
+
+calleeConvention :: Callee -> EntryConvention
+calleeConvention c = case calleeKind c of
+  Local -> FprWords
+  Imported -> FprWords
+  Foreign _ -> CWords
+  Generated _ -> FprWords
 
 data Callee = Callee
   { calleeName :: Name,
