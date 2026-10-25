@@ -3,8 +3,12 @@ module Compile (compileMain, checkedInterface, parseFile) where
 import Data.List (sortBy)
 import Data.Maybe (fromMaybe,isJust)
 import System.IO (hClose, hPutStr, hPutStrLn, openTempFile, stderr)
-import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
+import Arc (lowerArcWith, lowerRawWith, arcExterns, arcRev)
+import qualified Compiler.Native.Representation as NativeRep
 import Core.Typed.Callback (CallbackMode(..))
+import qualified Compiler.Native.Exports as Exports
+import Codegen.Export.Plan (FloatABI(..))
+import Codegen.Target.RV.Export (renderAdapter)
 import qualified Compiler.Native.Core as NativeCore
 import qualified Compiler.Native.Linked as Linked
 import qualified Compiler.Native.Imports as NativeImports
@@ -15,13 +19,12 @@ import qualified Compiler.Native.Regions as Regions
 import qualified Compiler.Native.Regions.Typed as TypedRegions
 import qualified Core.Typed.Syntax as TCore
 import qualified Codegen.Target.RV as RV
-import Codegen.Target.Common (Tune (..), dataSyntax)
+import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
 import Codegen (Target, codegenRev, emitProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
-import Data.Char (isAlphaNum, isAscii, ord)
-import Numeric (showHex)
+import Data.Char (ord)
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -102,94 +105,6 @@ symbolize = traverse (\(ps, b) -> (,) ps <$> go b)
       CTagEq t v x -> CTagEq t v <$> go x
       CProj i x -> CProj i <$> go x
       _ -> Right e
-
--- C-callable entry points for exported functions (RV64, the builtin
--- profile).  The fpr function keeps its own convention: every parameter
--- in a0..a7 by position, raw Word/Addr/float bits as 64-bit words,
--- Int TAGGED, Bool/Unit as the immortal objects.  The trampoline is the
--- difference between that and the C ABI, and nothing else -- no
--- allocation, no runtime.  Types come from the function's DECLARED
--- signature: an export is a contract, so it must be written down.
-data CKind = KInt | KWord | KAddr | KBool | KUnit | KF64 | KF32 deriving (Eq, Show)
-
-ckindOf :: Ty -> Either String CKind
-ckindOf (TCon "Int" []) = Right KInt
-ckindOf (TCon "Word" []) = Right KWord
-ckindOf (TCon "Addr" []) = Right KAddr
-ckindOf (TCon "Bool" []) = Right KBool
-ckindOf (TCon "Unit" []) = Right KUnit
-ckindOf (TCon "F64" []) = Right KF64
-ckindOf (TCon "F32" []) = Right KF32
-ckindOf t = Left ("not a C-representable type: " ++ show t ++ " (Int, Word, Addr, Bool, Unit, F64, F32 cross the boundary)")
-
-trampoline :: Bool -> String -> String -> [CKind] -> CKind -> [String]
-trampoline hard csym target params result =
-  [ "",
-    "# export " ++ csym ++ " -> " ++ target ++ " (" ++ unwords (map show params) ++ " -> " ++ show result ++ ")",
-    "    .section .text." ++ csym ++ ",\"ax\",@progbits",
-    "    .balign 4",
-    "    .globl " ++ csym,
-    csym ++ ":",
-    "    addi sp, sp, -16",
-    "    sd ra, 8(sp)"
-  ]
-    -- C puts integer arguments in a0.. and float arguments in fa0.. by
-    -- their own counts; fpr wants position i in a_i.  Walk the positions
-    -- from the highest down so an a_j (j <= i) is read before anything
-    -- overwrites it.
-    -- positions 8 and up: C passed them on ITS stack (16(sp) on, above this
-    -- frame); fpr wants them in the hart's spill cells, cell j at 8*(1+j)(tp)
-    -- (Codegen.hs spillRef).  Read, convert, store -- before the register
-    -- moves below, which need t1 no more.
-    ++ concat [ ("    ld t1, " ++ show (16 + 8 * (cSlot i - 8)) ++ "(sp)")
-                  : conv "t1" k
-                  ++ [ "    sd t1, " ++ show (8 * (1 + (i - 8))) ++ "(tp)" ]
-              | (i, k) <- zip [0 :: Int ..] params, i >= 8 ]
-    ++ concat [ arg i k | (i, k) <- reverse (zip [0 :: Int ..] params), i < 8 ]
-    ++ [ "    call " ++ target ]
-    ++ res result
-    ++ [ "    ld ra, 8(sp)",
-         "    addi sp, sp, 16",
-         "    ret" ]
-  where
-    isF k = k == KF64 || k == KF32
-    -- under the soft-float ABI every parameter is an integer-register
-    -- parameter, so the C slot IS the position
-    intSlot i = if hard then length [() | k <- take i params, not (isF k)] else i
-    fltSlot i = length [() | k <- take i params, isF k]
-    a i = "a" ++ show i
-    cSlot i = intSlot i -- (a stacked float under lp64d is refused where exports are checked)
-    conv r k = case k of
-      KInt -> [ "    slli " ++ r ++ ", " ++ r ++ ", 1", "    ori " ++ r ++ ", " ++ r ++ ", 1" ]
-      KBool -> [ "    beqz " ++ r ++ ", 1f", "    la " ++ r ++ ", fpr_true", "    j 2f",
-                 "1:  la " ++ r ++ ", fpr_false", "2:" ]
-      KUnit -> [ "    la " ++ r ++ ", fpr_unit" ]
-      _ -> []
-    -- the float ABI: this link is -mabi=lp64 (SOFT float), under which C
-    -- passes a double as its bits in an integer register -- which is
-    -- FP-RISC's own convention, so nothing moves.  --float-abi=hard
-    -- (lp64d) would put them in fa0.. and need the fmv moves.
-    arg i k
-      | isF k && not hard = if intSlot i /= i then [ "    mv " ++ a i ++ ", " ++ a (intSlot i) ] else []
-      | isF k = [ "    " ++ (if k == KF64 then "fmv.x.d " else "fmv.x.w ") ++ a i ++ ", fa" ++ show (fltSlot i) ]
-      | otherwise =
-          [ "    mv " ++ a i ++ ", " ++ a (intSlot i) | intSlot i /= i ]
-            ++ conv (a i) k
-    res k = case k of
-      KInt -> [ "    srai a0, a0, 1" ]
-      KBool -> [ "    lw a0, 4(a0)" ]
-      KF64 | hard -> [ "    fmv.d.x fa0, a0" ]
-      KF32 | hard -> [ "    fmv.w.x fa0, a0" ]
-      _ -> []
-
--- the symbol encoding Codegen uses for fpr_fn_ names (kept in step)
-mangleName :: String -> String
-mangleName = concatMap enc
-  where
-    enc c
-      | isAscii c && isAlphaNum c = [c]
-      | otherwise = "_x" ++ pad (showHex (ord c) "")
-    pad str = if length str < 2 then '0' : str else str
 
 parseFile :: FilePath -> IO [STop]
 parseFile p = snd <$> parseFileSrc p
@@ -900,9 +815,10 @@ compileWithInterface accepted = do
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit
+          arcSignatures=NativeRep.signatures (Linked.artifactCore (artifactOf Linked.RootArtifact))
           own=ownWith M.empty
           ownWith imports prog = if oArc opts then do
-                       lowered <- either (\e -> hPutStrLn stderr e >> exitFailure) (pure . inlineSmall 3 24) ((if oRaw opts then lowerRaw else lowerArc) sourceExt prog)
+                       lowered <- either (\e -> hPutStrLn stderr e >> exitFailure) (pure . inlineSmall 3 24) ((if oRaw opts then lowerRawWith else lowerArcWith) (M.restrictKeys arcSignatures (M.keysSet prog)) sourceExt prog)
                        -- FPR_DUMP_CORE=name prints that function's Core as the generator sees it
                        let dump = Options.diagCore diagnostic
                        forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList lowered, takeWhile (/= '@') n == want] $ \(n, d) ->
@@ -1111,29 +1027,15 @@ compileWithInterface accepted = do
                                      (NativeImports.readySymbols rootReady)
                                      (Linked.artifactElided (artifactOf Linked.RootArtifact)) (NativeImports.readyProgram rootReady)
           rootVNotes = emNotes rootEmission
-      -- the C-callable entries: each export needs a declared signature
-      -- over C-representable types, a function of that arity, <= 8 params
-      let baseName = takeWhile (/= '@')
-          sigsByBase = M.fromListWith (++) [ (baseName q, [(q, as, r)]) | TSig q (as, r) _ <- tops0RL ]
-      tramps <- forM (oExports opts) $ \(n, csym) -> do
-        let bad m = hPutStrLn stderr ("export " ++ n ++ ": " ++ m) >> exitFailure
-        (q, as, r) <- case M.lookup n sigsByBase of
-          Just [one] -> pure one
-          Just _ -> bad "ambiguous: more than one signature by that name"
-          Nothing -> bad "no declared signature (an export is a contract: write `name : A -> B .`)"
-        ps <- case M.lookup q rootProg of
-          Just (ps, _) -> pure ps
-          Nothing -> bad "no such function in this unit"
-        when (length ps /= length as) $ bad ("signature has " ++ show (length as) ++ " parameters, the function " ++ show (length ps))
-        -- 8 in registers, the rest from C's stack into the hart's spill
-        -- cells: the native convention's 64.  Past that a function takes
-        -- a spilled tuple, which C cannot build: pass a Layout pointer.
-        when (length ps > 64) $ bad "more than 64 parameters: pass a pointer to a Layout instead (docs/2026-09-19-LAYOUTS.md)"
-        when (oHardFloat opts && length ps > 8) $ bad "more than 8 parameters under --float-abi=hard: stacked float arguments are not lowered yet"
-        ks <- either bad pure (traverse ckindOf as)
-        rk <- either bad pure (ckindOf r)
-        putStrLn ("export " ++ csym ++ " : " ++ unwords (map show ks) ++ " -> " ++ show rk ++ "  (" ++ q ++ ")")
-        pure (trampoline (oHardFloat opts) csym ("fpr_fn_" ++ mangleName (checkedTarget q)) ks rk)
+      -- Declaration admission produces checked plans; rendering only consumes
+      -- their explicit sources, conversions, destinations and schedule.
+      exports <- case Exports.prepareExports (if oHardFloat opts then HardFloat else SoftFloat)
+        (oExports opts) tops0RL (M.map (length . fst) rootProg) (functionSymbol . checkedTarget) of
+          Left err -> hPutStrLn stderr ("export " ++ Exports.exportSource err ++ ": " ++ Exports.exportMessage err) >> exitFailure
+          Right checked -> pure checked
+      tramps <- forM exports $ \entry -> do
+        putStrLn (Exports.exportDescription entry)
+        pure (renderAdapter (Exports.exportAdapter entry))
       -- the constructor-name table: what lets `print` say `Some 42` instead of
       -- `<613153155.1 42>`.  The root unit sees every unit's constructors
       -- (consAll), so it carries one table for the whole image; the runtime

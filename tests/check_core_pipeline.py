@@ -12,5 +12,5 @@ for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarc
         env['PKG_CONFIG_PATH'] = keg + ':' + env.get('PKG_CONFIG_PATH', '')
         break
 ghc = ['cabal', 'exec', '--', 'runghc'] if shutil.which('cabal') else ['runghc']
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/CorePipeline.hs'], cwd=ROOT,
+subprocess.run([*ghc, '-w', '-icompiler', '-itests', 'tests/CorePipeline.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)

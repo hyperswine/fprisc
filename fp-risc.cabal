@@ -46,6 +46,8 @@ executable fpr
       Build
       Publish
       Representation
+      Representation.Types
+      Compiler.Native.Representation
       Interrupt
       Core.Syntax
       Core.CacheIdentity
@@ -72,6 +74,9 @@ executable fpr
       Codegen.Annotation
       Codegen.Calling
       Codegen.Calling.Types
+      Codegen.Export.Plan
+      Codegen.Target.RV.Export
+      Compiler.Native.Exports
       Codegen.Opcode
       Codegen.Opcode.Types
       Codegen.Opcode.X64

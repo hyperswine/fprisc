@@ -13,6 +13,7 @@ import tempfile
 
 from check_x64_scalar import fixture
 from check_typed_ir_rv_startup import RVV
+from export_adapter_probe import fixture as export_fixture, export_flags
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,7 +41,27 @@ def main():
         raw = tmp / 'raw-library.fpr'
         raw.write_text('profile builtin.\nroundTrip : Addr -> Int -> Int.\n'
                        'roundTrip p x = _ = Mem.write8 p x; Mem.read8 p.\n')
+        exports = tmp / 'export-library.fpr'
+        exports.write_text(export_fixture())
         compared = 0
+        adapters_compared = 0
+        def adapter_bodies(assembly):
+            # New ABI fixtures expose a proven ownership bug in the saved
+            # compiler. Compare their C adapters exactly; execution oracles
+            # validate the intentionally corrected ARC function bodies.
+            blocks=[]
+            lines=assembly.splitlines(keepends=True)
+            start=None
+            for i,line in enumerate(lines):
+                if line.startswith('# export '):
+                    assert start is None
+                    start=i
+                if start is not None and line.strip()=='ret':
+                    blocks.append(''.join(lines[start:i+1]))
+                    start=None
+            assert start is None and blocks
+            return blocks
+
         for target in targets:
             target_cases = [(name, source, settings, []) for name, source, settings in cases]
             if target in ('rv64', 'rv32'):
@@ -49,6 +70,10 @@ def main():
                 target_cases += [('builtin-arc', ROOT / 'tests/builtin_arc.fpr', {}, ['--profile=bare-metal-builtin', '--arc']),
                                  ('builtin-mixed-raw', ROOT / 'tests/builtin_raw.fpr', {}, ['--profile=bare-metal-builtin', '--arc']),
                                  ('raw-library', raw, {}, ['--profile=bare-metal-builtin', '--arc', '--raw', '--lib', '--export=roundTrip:raw_round_trip'])]
+                target_cases += [('soft-export-adapters', exports, {}, export_flags(False)),
+                                 ('hard-export-adapters', exports, {}, export_flags(True)),
+                                 ('builtin-export-library', ROOT / 'tests/builtin_export.fpr', {},
+                                  ['--profile=bare-metal-builtin', '--arc', '--lib', '--export=mix,wide12,half,isEven,scale,poke,peek,where,sumCell'])]
             for name, source, settings, flags in target_cases:
                 outputs = []
                 for label, compiler in compilers:
@@ -72,13 +97,18 @@ def main():
                 assert before.keys() == after.keys(), (target, name, 'unit/cache identity changed',
                                                        before.keys() ^ after.keys())
                 for key in before:
+                    if name in ('soft-export-adapters', 'hard-export-adapters') and key == 'root':
+                        old_adapters, new_adapters = adapter_bodies(before[key]), adapter_bodies(after[key])
+                        assert old_adapters == new_adapters, (target, name, 'C adapter emission changed')
+                        adapters_compared += len(old_adapters)
+                        continue
+                    compared += 1
                     if before[key] != after[key]:
                         diff = ''.join(difflib.unified_diff(before[key].splitlines(True), after[key].splitlines(True),
                                                            fromfile='before/' + key, tofile='after/' + key))
                         raise AssertionError((target, name, diff[:10000]))
-                compared += len(before)
-            print(f'{target}: {len(target_cases)} root configurations and all dependent units byte-identical', flush=True)
-        print(f'Native emission comparison: {compared} root/unit outputs and cache identities unchanged', flush=True)
+            print(f'{target}: {len(target_cases)} root configurations and dependent units checked', flush=True)
+        print(f'Native emission comparison: {compared} complete root/unit outputs and cache identities unchanged; {adapters_compared} C adapter bodies byte-identical', flush=True)
 
 
 if __name__ == '__main__':

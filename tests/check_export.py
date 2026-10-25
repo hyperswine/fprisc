@@ -4,6 +4,7 @@ program unit and its entries are callable from C with the plain RV64 ABI.
 Then the allocator itself, machine/builtin/heap.fpr, in place of heap.c."""
 from pathlib import Path
 import os, subprocess, tempfile
+from export_adapter_probe import check_adapter_probes
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 def run(args, expected=0, timeout=120):
@@ -50,6 +51,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-export-') as temp:
     assert 'EXPORTS HOLD' in out and 'EXPORT PROGRAM RAN' in out, out
     assert not run(['riscv64-unknown-elf-nm', '-u', image]).strip()
     print('C -> FP-RISC across every boundary type, a library beside a program, Addr.symbol resolved by the linker: PASS')
+    check_adapter_probes(tmp, run)
     # 3. the allocator in FP-RISC: the existing ARC and raw programs, heap.c out of the link
     for prog, want, heap in [('tests/builtin_arc.fpr', 'AUTOMATIC ARC HOLDS', 16384),
                              ('tests/builtin_raw.fpr', 'RAW REPRESENTATIONS HOLD', 16384),

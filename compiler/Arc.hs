@@ -3,13 +3,14 @@
 -- Managed local bindings own a reference; evaluating one produces a retained
 -- reference. Calls/constructors consume their arguments and return owned values.
 -- Cleanup is sequenced before tail transfers, never after them.
-module Arc (lowerArc, lowerRaw, arcExterns, arcRev, primitiveContracts) where
+module Arc (lowerArc, lowerRaw, lowerArcWith, lowerRawWith, arcExterns, arcRev, primitiveContracts) where
 
 import Control.Monad.State.Strict
 import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
 import Interrupt (checkInterrupt, checkRawUnit)
-import Representation (Kind, represent)
+import Representation (representWith)
+import Representation.Types
 import Core.Syntax (Core(..), Prog)
 
 -- Closed set of audited borrowed-input primitives with owned-result adapters.
@@ -96,7 +97,7 @@ arcExterns = M.fromList $ [("$arc.retain",1),("$arc.release",1),("$arc.setLayout
 
 -- Bump when ownership lowering or its runtime ABI changes: keys unit caches.
 arcRev :: Int
-arcRev = 5
+arcRev = 6
 
 type G = StateT Int (Either String)
 type Env = M.Map String String
@@ -120,11 +121,14 @@ spine = go [] where
   go as f = (f,as)
 
 lowerArc :: M.Map String Int -> Prog -> Either String Prog
-lowerArc _external input = do
-  (prog,ann,paramKinds) <- represent input
+lowerArc = lowerArcWith M.empty
+
+lowerArcWith :: M.Map String CallSignature -> M.Map String Int -> Prog -> Either String Prog
+lowerArcWith declarations _external input = do
+  (prog,ann,paramKinds) <- representWith declarations input
   checkInterrupt prog
   result <- lowerRepresented True prog ann paramKinds
-  let managed = maybe True ((== 't') . (ann M.!)) (snd <$> M.lookup "main" prog)
+  let managed = maybe True ((== Managed) . (ann M.!)) (snd <$> M.lookup "main" prog)
   pure (M.insert "$arc.mainManaged" ([],CInt (if managed then 1 else 0)) result)
 
 -- a raw unit: representation kinds as under --arc (Word/Addr/floats
@@ -132,8 +136,11 @@ lowerArc _external input = do
 -- on every function (Interrupt.checkRawUnit), and NO ownership
 -- instrumentation -- nothing here owns anything
 lowerRaw :: M.Map String Int -> Prog -> Either String Prog
-lowerRaw _external input = do
-  (prog,ann,paramKinds) <- represent input
+lowerRaw = lowerRawWith M.empty
+
+lowerRawWith :: M.Map String CallSignature -> M.Map String Int -> Prog -> Either String Prog
+lowerRawWith declarations _external input = do
+  (prog,ann,paramKinds) <- representWith declarations input
   checkRawUnit prog
   result <- lowerRepresented False prog ann paramKinds
   pure (M.insert "$arc.mainManaged" ([],CInt 0) result)
@@ -141,9 +148,9 @@ lowerRaw _external input = do
 lowerRepresented :: Bool -> Prog -> M.Map Core Kind -> M.Map String [Kind] -> Either String Prog
 lowerRepresented instrument prog ann paramKinds = evalStateT (M.traverseWithKey lower prog) 0
   where
-    managed e = instrument && ann M.! e == 't'
+    managed e = instrument && ann M.! e == Managed
     rel ns body = if instrument then release ns body else pure body
-    ownersFor n ps = [p | (p,k) <- zip ps (paramKinds M.! n), k == 't']
+    ownersFor n ps = [p | (p,k) <- zip ps (paramKinds M.! n), k == Managed]
     arities = M.map (length . fst) prog
     prims = M.fromList [(n,(a,"$arc."++adapter)) | (n,a,adapter) <- primitiveContracts]
     lower name (ps,body) = do
@@ -161,11 +168,11 @@ lowerRepresented instrument prog ann paramKinds = evalStateT (M.traverseWithKey 
             Just (ar,adapter) | ar == length args -> case (n,args) of
               (op,[a,_]) | op `elem` ["==","!="], not (managed a) ->
                 pure (case M.lookup a ann of
-                  Just 'd' -> "$arc.F64" ++ if op == "==" then "eq" else "ne"
-                  Just 'f' -> "$arc.F32" ++ if op == "==" then "eq" else "ne"
+                  Just RawF64 -> "$arc.F64" ++ if op == "==" then "eq" else "ne"
+                  Just RawF32 -> "$arc.F32" ++ if op == "==" then "eq" else "ne"
                   _ -> if op == "==" then "$arc.rawEq" else "$arc.rawNe")
               (op,[a]) | op `elem` ["str","print"], not (managed a) ->
-                if M.lookup a ann `elem` [Just 'w',Just 'a']
+                if M.lookup a ann `elem` [Just RawWord,Just RawAddr]
                   then pure (if op == "str" then "$arc.wordStr" else "$arc.wordPrint")
                   else failArc "use F32.str or F64.str to render a raw float"
               _ -> pure adapter
@@ -194,7 +201,7 @@ lowerRepresented instrument prog ann paramKinds = evalStateT (M.traverseWithKey 
         no <- eval env f pure >>= releaseValue cv
         bind (CIf cv yes no) k
       CMk tid variant fields -> argsE env fields $ \vs -> bind (CMk tid variant vs) $ \v ->
-        if null fields || not instrument then k v else bind (call "$arc.setLayout" [v,CStr [ann M.! f | f <- fields]]) (const (k v))
+        if null fields || not instrument then k v else bind (call "$arc.setLayout" [v,CStr [kindTag (ann M.! f) | f <- fields]]) (const (k v))
       CProj i obj -> eval env obj $ \v ->
         bind (if managed expr then call "$arc.retain" [CProj i v] else CProj i v) $ \r -> k r >>= releaseValue v
       CTagEq tid variant obj -> eval env obj $ \v ->
