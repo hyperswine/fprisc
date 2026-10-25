@@ -89,6 +89,7 @@ eraseFunctionWith contracts types layout f = runExceptT $ do
                      in CLam (map binderName ps) <$> go env' names' b
       Let p a b -> let (env',names')=scope p env names
                   in CLet (binderName p) <$> go env names a <*> go env' names' b
+      LetRec _ _ _ -> throwError "typed Core erasure: recursive binding requires closure conversion"
       ResultPipe a fn -> do
         ok<-fresh "ok"; err<-fresh "err"; scrut<-fresh "scrut"
         x<-go env names a

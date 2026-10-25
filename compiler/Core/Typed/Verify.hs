@@ -62,6 +62,14 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
         u'' <- check scope u' body
         require "let result type" (sameType (exprType e) (exprType body))
         pure u''
+      LetRec b rhs body -> do
+        require "recursive initializer must be a function" (case lambdaView rhs of Just _->True; _->False)
+        (scope,u)<-introduce env used [b]
+        require "recursive binding initializer type" (instanceOf (binderScheme b) (exprType rhs))
+        u'<-check scope u rhs
+        u''<-check scope u' body
+        require "recursive binding result type" (sameType (exprType e) (exprType body))
+        pure u''
       If cond yes no -> do
         u <- check env used cond >>= \u -> check env u yes >>= \u -> check env u no
         require "condition is not Bool" (sameType (exprType cond) (TC "Bool"))

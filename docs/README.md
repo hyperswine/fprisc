@@ -300,3 +300,4 @@ they began.
 - [Shared compiler options and caches](2026-10-25-COMPILER-OPTIONS.md): typed environment and CLI owners, canonical cache inputs and a reproduced executable-cache mode mismatch.
 - [Structured checking diagnostics](2026-10-25-STRUCTURED-DIAGNOSTICS.md): source metadata through inference, safety and linearity, typed ownership obligations and the completed ownership fixpoint.
 - [Typed closures and joins](2026-10-25-TYPED-CLOSURES.md): identity-based closure conversion, polymorphic capture contracts and typed pattern fallthrough before erasure.
+- [Typed recursive locals](2026-10-25-TYPED-RECURSIVE-LOCALS.md): checked recursive bindings, explicit self/capture code and nested/escaping local-function validation.

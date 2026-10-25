@@ -12,6 +12,7 @@ mapChildrenM f e = (\node -> e {exprNode=node}) <$> case exprNode e of
   Apply a b->Apply <$> f a <*> f b
   Lambda ps b->Lambda ps <$> f b
   Let p a b->Let p <$> f a <*> f b
+  LetRec p a b->LetRec p <$> f a <*> f b
   If a b c->If <$> f a <*> f b <*> f c
   BoolTest b x->BoolTest b <$> f x
   Note x->Note <$> f x
@@ -52,6 +53,7 @@ localUses = nub . go S.empty
       JoinCall _ captures xs->filter (`S.notMember` scope) captures++concatMap (go scope) xs
       Lambda ps b->go (bind ps scope) b
       Let p a b->go scope a++go (bind [p] scope) b
+      LetRec p a b->let scoped=bind [p] scope in go scoped a++go scoped b
       LetPattern p a b->go scope a++go (bind (patternBinders p) scope) b
       Match _ xs as->concatMap (go scope) xs++concatMap (alt scope) as
       MatchTail _ xs as k->concatMap (go scope) xs++concatMap (alt scope) as++go scope k
@@ -68,6 +70,7 @@ allBinders e = here++getConst (mapChildrenM (Const . allBinders) e)
     here=case exprNode e of
       Lambda ps _->ps
       Let p _ _->[p]
+      LetRec p _ _->[p]
       LetPattern p _ _->patternBinders p
       Match _ _ as->concatMap alt as
       MatchTail _ _ as _->concatMap alt as
@@ -102,6 +105,7 @@ renameBinders names = go . renameUses names
     go e=let child=runIdentity (mapChildrenM (pure . go) e) in child {exprNode=case exprNode child of
       Lambda ps b->Lambda (map binder ps) b
       Let p a b->Let (binder p) a b
+      LetRec p a b->LetRec (binder p) a b
       LetPattern p a b->LetPattern (pattern' p) a b
       Match s xs as->Match s xs (map alt as)
       MatchTail s xs as k->MatchTail s xs (map alt as) k

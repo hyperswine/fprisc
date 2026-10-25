@@ -1,0 +1,19 @@
+unsafe base.
+captured x = loop n acc = if n == 0 then acc else loop (n - 1) (acc + x); loop 3 0.
+anonymous n = loop = (fn k -> if k == 0 then n else loop (k - 1)); loop 3.
+noCapture n = loop k = if k == 0 then 7 else loop (k - 1); loop n.
+nested n = loop k = if k == 0 then n else (fn u -> loop (k - 1)) 0; loop 3.
+escape n = loop k = if k == 0 then n else loop (k - 1); loop.
+partial n = loop k acc = if k == 0 then acc else loop (k - 1) (acc + n); part = loop 3; part 0.
+poly n = loop k x = if k == 0 then x else loop (k - 1) x; (a,b) = (loop 2 n,loop 2 True); if b then a else 0.
+inner n = loop k = (fn unit -> recur j = if j == 0 then loop (k - 1) else recur (j - 1); if k == 0 then n else recur 2) 0; loop 3.
+shadow n = loop k = if k == 0 then n else loop (k - 1); apply loop = loop 2; (loop 3,apply (fn x -> x + 1)).
+recordUpdate r n = {r | f = (fn x -> loop k = if k == 0 then n + x else loop (k - 1); loop 2)}.
+main =
+  saved = escape 29;
+  (first,second) = shadow 41;
+  ra = recordUpdate {a = 1,f = (fn x -> x)} 40;
+  rb = recordUpdate {b = True,f = (fn x -> x)} 50;
+  fa = ra.f;
+  fb = rb.f;
+  print "recursive-locals {captured 7} {noCapture 3} {nested 23} {saved 3} {partial 7} {poly 31} {inner 37} {first} {second} {anonymous 43} {fa 7} {fb 3}".

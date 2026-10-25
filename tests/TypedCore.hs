@@ -75,6 +75,16 @@ source = unlines
   , "boolSyntax a b = a and b."
   , "chain r f = r |>? f."
   , "localFn x = inc n = n + x; inc 2."
+  , "recur n = loop k = if k == 0 then n else loop (k - 1); loop 3."
+  , "recAnon n = loop = (fn k -> if k == 0 then n else loop (k - 1)); loop 3."
+  , "recNoCapture n = loop k = if k == 0 then 7 else loop (k - 1); loop n."
+  , "recNested n = loop k = if k == 0 then n else (fn u -> loop (k - 1)) 0; loop 3."
+  , "recEscape n = loop k = if k == 0 then n else loop (k - 1); loop."
+  , "recEscapeCall n = (recEscape n) 3."
+  , "recPartial n = loop k acc = if k == 0 then acc else loop (k - 1) (acc + n); part = loop 3; part 0."
+  , "recPoly n = loop k x = if k == 0 then x else loop (k - 1) x; (a,b) = (loop 2 n,loop 2 True); if b then a else 0."
+  , "recInner n = loop k = (fn unit -> inner j = if j == 0 then loop (k - 1) else inner (j - 1); if k == 0 then n else inner 2) 0; loop 3."
+  , "recShadow n = loop k = if k == 0 then n else loop (k - 1); apply loop = loop 2; (loop 3,apply (fn x -> x + 1))."
   , "ProbeArith = Sig { ofInt : Int -> t, (+) }."
   , "ProbeOps = Struct ProbeArith { ofInt = fn n -> n, (+) = fn x y -> x + y }."
   , "carrier (s : ProbeArith) n = x = s.ofInt n; x + x."
@@ -88,7 +98,7 @@ main = do
   check "struct expansion" (null expansionErrors)
   check ("source typing "++show (inferenceErrors result)) (null (inferenceErrors result))
   let plans=right (prepareChecked result)
-      expected=S.fromList ["identity","add","fp","cmp","capture","captureCall","deepCapture","deepCall","polyCapture","shadow","local","choose","inverse","pipeline","sequence","text","take","aggregate","classify","nested","wild","tupleArg","recordArg","record","other","outer","project","change","deep","bindShadow","guarded","guardShadow","ints","atom","render","bare","boolSyntax","chain","localFn","ProbeOps.ofInt","ProbeOps.+","ProbeOps","carrier","carrierLeft","carrierRight"]
+      expected=S.fromList ["identity","add","fp","cmp","capture","captureCall","deepCapture","deepCall","polyCapture","shadow","local","choose","inverse","pipeline","sequence","text","take","aggregate","classify","nested","wild","tupleArg","recordArg","record","other","outer","project","change","deep","bindShadow","guarded","guardShadow","ints","atom","render","bare","boolSyntax","chain","localFn","recur","recAnon","recNoCapture","recNested","recEscape","recEscapeCall","recPartial","recPoly","recInner","recShadow","ProbeOps.ofInt","ProbeOps.+","ProbeOps","carrier","carrierLeft","carrierRight"]
   check ("coverage "++show (checkedDeclines plans)) (checkedNames plans==expected)
   let Just (Forall _ _ (TFn dict (TFn _ output)))=M.lookup "carrier" (inferenceSchemes result)
   check "unannotated operator member is constrained before generalization"
@@ -161,6 +171,15 @@ main = do
     check ("closed evaluator covers "++name) (M.member name newIr)
     check ("old evaluator answer "++name) (Eval.ocResult (Eval.evalProgram oldIr name args)==Right answer)
     check ("closed evaluator answer "++name) (Eval.ocResult (Eval.evalProgram newIr name args)==Right answer)) cases
+  -- Source inference accepted these before typed closure conversion, but the
+  -- old native path treated the local self name as an unknown primitive.
+  let recursiveCases=[("recur",[intArg 19],intArg 19),("recAnon",[intArg 43],intArg 43),
+        ("recNoCapture",[intArg 3],intArg 7),("recNested",[intArg 23],intArg 23),
+        ("recEscapeCall",[intArg 29],intArg 29),("recPartial",[intArg 7],intArg 21),
+        ("recPoly",[intArg 31],intArg 31),("recInner",[intArg 37],intArg 37),
+        ("recShadow",[intArg 41],pair (intArg 41) (intArg 3))]
+  mapM_ (\(name,args,answer)->check ("recursive evaluator answer "++name)
+    (Eval.ocResult (Eval.evalProgram newIr name args)==Right answer)) recursiveCases
   -- The compatibility seam must not reuse stale annotations after a surface
   -- transformation; this is explicitly not proof of a typed transformation.
   let changed=[TBind "add" [PVar "x",PVar "y"] [] (SInt 7)]
@@ -205,6 +224,19 @@ main = do
   check "bad result refused" (failed (verifyFunction (T.TypeContext [] M.empty) (fn {T.functionBody=expr bool (T.Let (bind "y" bid int) ref ref)})))
   check "bad arm type refused" (failed (verifyFunction (T.TypeContext [] M.empty) (fn {T.functionBody=expr int (T.If (expr bool (T.BoolValue True)) ref (expr bool (T.BoolValue False)))})))
   check "bad lambda type refused" (failed (verifyFunction (T.TypeContext [] M.empty) (fn {T.functionBody=expr int (T.Lambda [bind "y" bid int] ref)})))
+  check "strict recursive value initializer refused" (failed (verifyFunction (T.TypeContext [] M.empty)
+    (fn {T.functionBody=expr int (T.LetRec (bind "cycle" bid int) (expr int (T.Var (T.Local bid))) ref)})))
+  let recursiveBinder=bind "self" bid (TFn int int)
+      recursiveArg=bind "arg" (BinderId (Namespace "test") 3) int
+      selfRef=expr (TFn int int) (T.Var (T.Local bid))
+      recursiveRhs=expr (TFn int int) (T.Lambda [recursiveArg] (expr int (T.Apply selfRef ref)))
+      recursiveFn=fn {T.functionBody=expr int (T.LetRec recursiveBinder recursiveRhs ref)}
+  check "recursive self is in scope in its function initializer"
+    (not (failed (verifyFunction (T.TypeContext [] M.empty) recursiveFn)))
+  check "ordinary let does not acquire recursive scope" (failed (verifyFunction (T.TypeContext [] M.empty)
+    (fn {T.functionBody=expr int (T.Let recursiveBinder recursiveRhs ref)})))
+  check "recursive initializer signature mismatch refused" (failed (verifyFunction (T.TypeContext [] M.empty)
+    (fn {T.functionBody=expr int (T.LetRec (bind "self" bid (TFn bool int)) recursiveRhs ref)})))
   let runErase f = fst (runState (eraseFunction (T.TypeContext [] M.empty) (Layout fresh (const Nothing) M.empty (\_ _ _->pure ())) f) env)
   check "erasure refuses spelling capture"
     (failed (runErase (fn {T.functionBody=expr int (T.Let (bind "x" bid int) ref ref)})))

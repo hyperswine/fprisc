@@ -5,7 +5,7 @@ module Core.Typed.Syntax
   ( Binder(..), Reference(..), Origin(..), Expr(..), Node(..), Function(..), TypeContext(..), Pattern(..), PatNode(..), Alternative(..), Guard(..), MatchStyle(..), patternBinders,
     CodeId(..), CodeKind(..), CodeFunction(..), CodeContract(..), codeContract, codeAsFunction,
     UpdatePlan(..), UpdateBranch(..), UpdateField(..),
-    binderType, functionType ) where
+    binderType, functionType, lambdaView ) where
 import Source.Span (SourceOffset)
 import Core.Identity
 import Type.Syntax (Type(..), Scheme(..))
@@ -27,6 +27,7 @@ data Node
   | Apply Expr Expr
   | Lambda [Binder] Expr
   | Let Binder Expr Expr
+  | LetRec Binder Expr Expr
   | If Expr Expr Expr
   | BoolValue Bool
   | BoolTest Bool Expr
@@ -91,3 +92,10 @@ binderType :: Binder -> Type
 binderType b = case binderScheme b of Forall _ _ t -> t
 functionType :: Function -> Type
 functionType f = foldr (TFn . binderType) (exprType (functionBody f)) (functionParameters f)
+-- Source notes carry locations, not initialization effects. Recursive locals
+-- must initialize a function; arbitrary strict recursive values have no knot.
+lambdaView :: Expr -> Maybe ([Binder],Expr)
+lambdaView e=case exprNode e of
+  Note x->lambdaView x
+  Lambda ps body | not (null ps)->Just (ps,body)
+  _->Nothing

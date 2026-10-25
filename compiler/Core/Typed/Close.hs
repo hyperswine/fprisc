@@ -13,6 +13,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Except
 import Control.Monad (unless,when)
 import Data.List (intercalate)
+import Data.Functor.Identity (runIdentity)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -59,6 +60,10 @@ closeFunction (Namespace sourceNamespace) names types@(TypeContext linears _) in
       ps<-mapM alpha (functionParameters input)
       body<-go (extend ps M.empty) (functionBody input)
       pure input {functionParameters=ps,functionBody=body}
+    install code=do
+      Closing n existing<-get
+      when (M.member (codeId code) existing) (throwError "typed closure: duplicate generated code identity")
+      put (Closing n (M.insert (codeId code) code existing))
     liftCode env kind params body=do
       let wanted=filter (`S.notMember` S.fromList (map binderId params)) (localUses body)
       captures<-mapM (\uid -> maybe (throwError "typed closure: absent capture identity") pure (M.lookup uid env)) wanted
@@ -66,10 +71,32 @@ closeFunction (Namespace sourceNamespace) names types@(TypeContext linears _) in
       label<-CodeId <$> name (if kind==ClosureCode then "$typed_lifted" else "$typed_join")
       let renamed=renameUses (M.fromList (zip wanted (map binderId freshCaptures))) body
           code=CodeFunction label kind freshCaptures params renamed
-      Closing _ existing<-get
-      when (M.member label existing) (throwError "typed closure: duplicate generated code identity")
-      modify (\(Closing n codes)->Closing n (M.insert label code codes))
+      install code
       pure (label,wanted)
+    -- Self references denote the same code and lexical environment, rather
+    -- than capturing the not-yet-initialized local function value. Substitute
+    -- before closing nested lambdas so their capture sets include that env.
+    selfValue uid label captures e=case exprNode e of
+      Var (Local used) | used==uid->e {exprNode=ClosureValue label captures}
+      _->runIdentity (mapChildrenM (pure . selfValue uid label captures) e)
+    recursive env binder rhs continuation=do
+      (ps,body)<-maybe (throwError "typed closure: recursive initializer is not a function") pure (lambdaView rhs)
+      let wanted=filter (/=binderId binder) (localUses rhs)
+      captures<-mapM (\uid->maybe (throwError "typed closure: absent recursive capture") pure (M.lookup uid env)) wanted
+      freshCaptures<-mapM introduced captures
+      ps'<-mapM alpha ps
+      label<-CodeId <$> name "$typed_recursive"
+      let captureIds=map binderId freshCaptures
+          renamed=renameUses (M.fromList (zip wanted captureIds)) body
+          selfBody=selfValue (binderId binder) label captureIds renamed
+      body'<-go (extend (freshCaptures++ps') M.empty) selfBody
+      install (CodeFunction label ClosureCode freshCaptures ps' body')
+      binder'<-alpha binder
+      continuation'<-go (extend [binder'] env) continuation
+      let value e=case exprNode e of
+            Note x->e {exprNode=Note (value x)}
+            _->e {exprNode=ClosureValue label wanted}
+      pure (Let binder' (value rhs) continuation')
     go env e=case exprNode e of
       RecordUpdate _ _->throwError "typed closure: record update requires layout planning"
       Lambda ps body->do
@@ -82,6 +109,9 @@ closeFunction (Namespace sourceNamespace) names types@(TypeContext linears _) in
         binder'<-alpha binder
         body'<-go (extend [binder'] env) body
         pure e {exprNode=Let binder' rhs' body'}
+      LetRec binder rhs body->do
+        node<-recursive env binder rhs body
+        pure e {exprNode=node}
       LetPattern pat rhs body->do
         rhs'<-go env rhs
         pat'<-pattern' pat
@@ -162,4 +192,5 @@ verifyClosed types (ClosedFunction root codes)=do
       Lambda _ _->Left "typed closure: lambda remains after conversion"
       Match _ _ _->Left "typed closure: implicit match fallthrough remains"
       RecordUpdate _ _->Left "typed closure: unplanned record update remains"
+      LetRec _ _ _->Left "typed closure: recursive binding remains after conversion"
       _->mapChildrenM (\child->closed child >> pure child) e >> pure ()

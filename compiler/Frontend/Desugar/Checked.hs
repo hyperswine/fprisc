@@ -41,6 +41,7 @@ data EPlan = EP E.ExprFact PNode
 data PNode = Ref T.Reference | LitInt Integer | LitString String | LitAtom String
   | Application EPlan EPlan | Lambda [T.Binder] EPlan
   | Binding T.Binder [T.Binder] EPlan EPlan | PatternBinding T.Pattern EPlan EPlan
+  | RecursiveBinding T.Binder [T.Binder] EPlan EPlan
   | Pipe EPlan EPlan | Sequencing EPlan EPlan | Call2 String EPlan EPlan
   | OperatorCall EPlan EPlan EPlan | ProjectCall T.Binder String EPlan EPlan
   | ShortCircuit Bool EPlan EPlan | ResultPipe EPlan EPlan | Cons EPlan EPlan
@@ -143,11 +144,15 @@ prepareChecked result = do
                 block index (SBind n _ _:rest) (rhs:more)=do
                   info<-site (LocalOf (E.expressionIdentity e) index)
                   b<-scoped (matchedBindings info) n
-                  unless (not (uses (T.binderId b) rhs)) (defer "recursive local awaits typed closure lifting")
                   unless (null (M.findWithDefault [] (T.binderName b) (inferenceLayoutRequirements result))) (defer "local layout parameters not yet migrated")
                   ps<-mapM (\p -> case matchedSource p of PVar v->scoped (matchedBindings p) v; _->corrupt "local parameter derivation") (matchedChildren info)
                   body<-block (index+1) rest more
-                  pure (EP e (Binding b ps rhs body))
+                  let recursive=uses (T.binderId b) rhs
+                      isLambda (EP _ (Note x))=isLambda x
+                      isLambda (EP _ (Lambda (_:_) _))=True
+                      isLambda _=False
+                  unless (not recursive || not (null ps) || isLambda rhs) (defer "strict recursive value is not a function initializer")
+                  pure (EP e ((if recursive then RecursiveBinding else Binding) b ps rhs body))
                 block index (SBindPat _ _:rest) (rhs:more)=do
                   p<-site (BindingOf (E.expressionIdentity e) index) >>= patternOf
                   body<-block (index+1) rest more
@@ -209,7 +214,7 @@ prepareChecked result = do
     planType (EP e _)=E.expressionType e
     uses uid (EP _ n)=case n of Ref (T.Local v)->v==uid; _->any (uses uid) (kids n)
     kids n=case n of
-      Application a b->[a,b]; Lambda _ b->[b]; Binding _ _ a b->[a,b]; PatternBinding _ a b->[a,b]
+      Application a b->[a,b]; Lambda _ b->[b]; Binding _ _ a b->[a,b]; RecursiveBinding _ _ a b->[a,b]; PatternBinding _ a b->[a,b]
       Pipe a b->[a,b]; Sequencing a b->[a,b]; Call2 _ a b->[a,b]; OperatorCall f a b->[f,a,b]
       ProjectCall _ _ a b->[a,b]; ShortCircuit _ a b->[a,b]; ResultPipe a b->[a,b]; Cons a b->[a,b]
       Case a bs->a:map snd bs; Note a->[a]; Tuple xs->xs; List xs->xs; Record fs->map snd fs
@@ -316,6 +321,10 @@ lowerCheckedGroup (Plans (Namespace ns) types plans _) group@(name,clauses)=case
             let rhs=lower a
                 value=if null ps then rhs else gen (foldr (TFn . T.binderType) (T.exprType rhs) ps) (T.Lambda ps rhs)
             in T.Let p value (lower b)
+          RecursiveBinding p ps a b->
+            let rhs=lower a
+                value=if null ps then rhs else gen (foldr (TFn . T.binderType) (T.exprType rhs) ps) (T.Lambda ps rhs)
+            in T.LetRec p value (lower b)
           PatternBinding p a b->T.LetPattern p (lower a) (lower b)
           Pipe a b->T.Apply (lower b) (lower a)
           Sequencing a b->T.Sequence (lower a) (lower b)

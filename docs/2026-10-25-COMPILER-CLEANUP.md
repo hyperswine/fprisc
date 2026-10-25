@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting and generated joins implemented; layout/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins and direct recursive local functions implemented; layout/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass result and initial typed desugaring product implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -222,3 +222,26 @@ checks passed. A global-root sampling race in `turnroots` now waits boundedly
 for the exact expected count; a saved-compiler delayed-cleanup reproduction and
 a persistent-root negative control validate that test correction. Hosted CI for
 the preceding `c323657` stage passed; this stage still needs its hosted result.
+
+## Typed recursive local functions
+
+[Typed recursive locals](2026-10-25-TYPED-RECURSIVE-LOCALS.md) adds an explicit
+recursive binding with checked lexical scope and initializer contracts. The
+closure pass turns self into its code plus lexical captures before closing
+nested lambdas. Named/direct-lambda initializers, escaping and partial self
+values, polymorphic uses, nested recursion and record-layout identity cloning
+retain checked schemes and unique binders.
+
+This fixes a verified source/native gap: a captured local accumulator checked
+successfully but was refused as an unknown primitive by the preceding compiler.
+Cache revision 108 distinguishes the newly emitted code; physical ABIs and
+runtime memory structures are unchanged. Hidden layouts, computed recursive
+initializers, generated forms, specialization evidence and downstream typed
+transformations remain required. The full goal remains active.
+
+Validation: all 136 Base jobs passed in 467.51 seconds on six workers without
+reused coverage. New evaluator and one/four-hart native answers, portable
+x64/RV32/RV64 emission, a saved-compiler refusal reproduction, 128 fresh
+root/dependent-unit emission comparisons (cache-revision-only normalization),
+and Sol compatibility/bounded-tail checks passed. Hosted validation of the
+integrated head follows the push.
