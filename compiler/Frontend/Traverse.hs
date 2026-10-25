@@ -14,7 +14,7 @@ import Frontend.Syntax
       Seg(SegExpr),
       SExpr(SStrI, SVar, SMark, SApp, SLam, SBlock, SCase, SBin, SProj,
             SRec, SUpd, STup, SList),
-      mapGuardE )
+      SGuard, mapGuardE )
 import qualified Data.Set as S ( Set, fromList, insert, union )
 
 -- Parser marks survive until lowering; erase them here only when hashing
@@ -129,3 +129,8 @@ transformEP f pf = go
       let x' = go bs x
           (rest', bs') = goStmts (bs `S.union` S.fromList (patVars p)) rest
        in (SBindPat (pf p) x' : rest', bs')
+
+-- Source clause order is part of first-match semantics. Shared by semantic
+-- lowering and the compatibility desugarer, without backend dependencies.
+sourceGroups :: [STop] -> [(Name,[([SPat],[SGuard],SExpr)])]
+sourceGroups tops=[(n,[(ps,g,b) | TBind n' ps g b<-tops,n'==n]) | n<-nub [n | TBind n _ _ _<-tops]]

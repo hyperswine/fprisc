@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 115 -- typed local callback clones retain checked contracts and object identity
+codegenRev = 116 -- owned semantic programs close and erase in the native pipeline
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

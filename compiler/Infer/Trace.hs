@@ -33,7 +33,9 @@ withExprEvidence ctx source action = do
                   Just uid -> E.LocalReference name uid
                   Nothing | name `S.member` icBound ctx -> E.MissingReference name
                   Nothing -> case M.lookup name (icEnv ctx) `orElse` M.lookup name (icCons ctx) of
-                    Just sc -> E.GlobalReference name sc
+                    Just sc -> case M.lookup name (icRecursiveSignatures ctx) of
+                      Just published -> E.RecursiveReference name sc published
+                      Nothing -> E.GlobalReference name sc
                     Nothing -> E.MissingReference name
                 _ -> Nothing
               (uid,builder') = E.beginExpr (icOwner ctx) off source (icLocalIds ctx) ref builder

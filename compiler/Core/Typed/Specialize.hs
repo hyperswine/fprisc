@@ -3,7 +3,7 @@
 -- Clone identities/arity and the existing source application gate are retained;
 -- a local reference can never be mistaken for a same-spelled generic global.
 module Core.Typed.Specialize
-  (Context(..),Specialized,specialize,functions,cloneNames,declines) where
+  (Context(..),Specialized,specialize,functions,cloneNames,declines,callingSchemes) where
 import Core.Typed.Syntax
 import Core.Typed.Walk
 import Core.Typed.Instantiate
@@ -23,10 +23,11 @@ data Context=Context
   { typeContext :: TypeContext, globalSchemes :: M.Map String Scheme,
     genericParameters :: M.Map String [Int], structures :: S.Set String,
     memberEntries :: M.Map String String, eligibleCalls :: S.Set ExprId }
-data Specialized=Specialized (M.Map String Function) (S.Set String) [(String,String)]
-functions (Specialized fs _ _)=fs
-cloneNames (Specialized _ ns _)=ns
-declines (Specialized _ _ ds)=ds
+data Specialized=Specialized (M.Map String Function) (S.Set String) [(String,String)] (M.Map String Scheme)
+functions (Specialized fs _ _ _)=fs
+cloneNames (Specialized _ ns _ _)=ns
+declines (Specialized _ _ ds _)=ds
+callingSchemes (Specialized _ _ _ ss)=ss
 data Problem=Deferred String | Corrupt String
 data Work=Work {nextType :: Int,clones :: M.Map String Function,schemas :: M.Map String Scheme}
 
@@ -42,7 +43,7 @@ specialize (Namespace ns) context input=do
   (out,work,ds)<-foldM one (M.empty,Work start M.empty M.empty,[]) (M.toAscList input)
   let result=M.union out (clones work)
   mapM_ (verifyFunction (typeContext context)) (M.elems result)
-  pure (Specialized result (M.keysSet (clones work)) ds)
+  pure (Specialized result (M.keysSet (clones work)) ds (schemas work `M.union` globalSchemes context))
   where
     allVars=mconcat (map functionVars (M.elems input)
       ++[U.variables t | Forall _ _ t<-M.elems (globalSchemes context)])

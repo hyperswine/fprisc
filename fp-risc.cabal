@@ -114,6 +114,11 @@ executable fpr
       Infer.Elaboration
       Core.Identity
       Core.Typed.Syntax
+      Core.Typed.Program
+      Core.Typed.Pipeline
+      Compiler.DataLayout
+      Compiler.Native.Core
+      Frontend.Desugar.Typed
       Core.Typed.Walk
       Core.Typed.Close
       Core.Typed.Contract

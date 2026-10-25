@@ -18,6 +18,7 @@ import Control.Monad (unless)
 data BindingRole = ClauseParameter | LambdaParameter | LocalBinding
                  | PatternBinding | GuardBinding deriving (Eq, Show)
 data Reference = LocalReference String BinderId | GlobalReference String Scheme
+               | RecursiveReference String Scheme Scheme -- provisional and published SCC interfaces
                | MissingReference String deriving (Show)
 data BinderFact = BinderFact
   { binderIdentity :: BinderId, binderSpelling :: String,
@@ -102,6 +103,7 @@ mapBuilderTypesM solve solveScheme (Builder ns nb ne bs es stack roots issues) =
   where
     binder (PendingBinder uid n o r sc) = PendingBinder uid n o r <$> solveScheme sc
     reference (GlobalReference n sc) = GlobalReference n <$> solveScheme sc
+    reference (RecursiveReference n scoped published) = RecursiveReference n <$> solveScheme scoped <*> solveScheme published
     reference r = pure r
     expr (PendingExpr i o p s env r t kids) =
       PendingExpr i o p s env <$> traverse reference r <*> traverse (\(ty,rw) -> (\t' -> (t',rw)) <$> solve ty) t <*> pure kids

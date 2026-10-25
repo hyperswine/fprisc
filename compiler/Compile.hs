@@ -5,6 +5,8 @@ import Data.Maybe (fromMaybe,isJust)
 import System.IO (hClose, hPutStr, hPutStrLn, openTempFile, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Core.Typed.Callback (CallbackMode(..))
+import qualified Compiler.Native.Core as NativeCore
+import Compiler.DataLayout (Layouts(..))
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
 import ReceiveTurns (receiveTurns)
@@ -21,7 +23,6 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
 import Control.Monad (forM, forM_, unless, when)
-import Control.Monad.State.Strict (runState)
 import Data.List (intercalate, isPrefixOf)
 import qualified Data.List as List
 import qualified Data.Map.Strict as M
@@ -45,7 +46,7 @@ import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
 import Infer.Result
-import Frontend.Desugar.Checked (prepareChecked, selectCheckedUnit, lowerCheckedUnitWith, checkedCallArities, specializeCheckedSource, specializedTops, lowerSpecialized, lowerSpecializedWith)
+import Frontend.Desugar.Typed (prepareChecked,selectCheckedUnit,checkedCallArities,specializeCheckedSource,specializedTops,selectUnit,selectSpecialized)
 import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTopsInterfaces)
 import Safety (measureCheck, checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import qualified Cost
@@ -581,12 +582,15 @@ compileWithInterface accepted = do
           consUnits = [(h, collectCons h uts) | (h, uts) <- units]
           consAll = M.unions (consPrelude : consRoot : map snd consUnits)
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
-          compileLowered lower = let (p, st) = runState (lower >>= liftFix) (DEnv 0 consAll shapes [] [])
-                                 in (M.map (fmap eraseCast) p, S.fromList (dJoins st))
-          compileRaw uts = compileLowered (lowerSpecialized specialized (bindNames uts))
+          nativeLayouts=Layouts consAll shapes
+          compileSelected mode selected=
+            let result=either error id (selected >>= NativeCore.compileSelection mode nativeLayouts)
+            in (M.map (fmap eraseCast) (NativeCore.nativeProgram result),NativeCore.nativeJoins result)
+          selectRoot uts=selectSpecialized (M.keysSet consAll) specialized (bindNames uts)
+          compileRaw uts=compileSelected PreserveCallbacks (selectRoot uts)
           callbackMode=if Options.cgSpecialize codegen && not (oArc opts) then SpecializeCallbacks else PreserveCallbacks
-          compileActual uts=compileLowered (lowerSpecializedWith callbackMode specialized (bindNames uts))
-          compileOwnedRaw unit = compileLowered (lowerCheckedUnitWith callbackMode unit)
+          compileActual uts=compileSelected callbackMode (selectRoot uts)
+          compileOwnedRaw unit=compileSelected callbackMode (selectUnit (M.keysSet consAll) unit)
           turnContext = fst (compileRaw finalTops)
           -- regions (the compiler-placed loop and call kinds) change no work
           -- and no allocation: the cost report sees the program without them

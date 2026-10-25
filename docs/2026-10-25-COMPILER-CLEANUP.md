@@ -16,8 +16,8 @@ cache formats, or explicitly version and test any intentional changes.
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
 | Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical closure calls and local callback cloning implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
-| Checked pipeline products and lint | Structural pass results, typed desugaring/closed products and checked unit ownership implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
-| Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
+| Checked pipeline products and lint | Owned semantic/native program products, complete graph contracts, typed desugaring/closed products and checked unit ownership implemented; downstream pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
+| Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
 | Typed codegen contracts | Vector operations/float widths implemented; remaining kernel stages, call-convention contracts and ISA instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
@@ -434,3 +434,47 @@ required before global/imported callback specialization can move and `Mono` can
 retire. Callable ownership/multiplicity evidence, later typed transformations,
 remaining diagnostics and machine/call contracts also remain required. This
 checkpoint does not complete the full cleanup goal.
+
+
+## Owned typed programs and native pipeline
+
+[The owned program pipeline](2026-10-25-TYPED-PROGRAM-PIPELINE.md) moves actual
+native layout, closing and erasure out of frontend desugaring. Semantic source
+selections retain checked schemes, physical arities, types/ownership shapes and
+unique identities; the closed program retains its input and layout authority.
+Complete graph checks cover definition ownership, interfaces, binders, code
+labels and calling evidence. Covered definitions no longer use untyped lambda
+lifting. Compatibility-only clauses remain explicit and separate, with their
+own causes and correctly shared legacy fresh supply.
+
+Signed recursive references now carry the provisional and published schemes
+that source checking actually used. The program records source identity,
+owner/target and scoped permissions; ordinary globals still require compatible
+published interfaces. This models the existing heterogeneous IRQ protocol
+without silently claiming its assumptions prove ABI type equality or changing
+the inference solver. Later typed consumers must retain the distinction.
+
+Owner-qualified private labels preserve existing role markers and unit reuse
+across unrelated roots/constructors and inference namespaces. Source value
+bindings keep their established priority over constructor value stubs. Structure
+specialization publishes generated schemes with its bodies. Codegen revision
+116 versions private naming/cache changes; public native ABIs, source Binary
+identity and runtime/context structures are unchanged.
+
+Validation: all 136 Base jobs passed in 527.71 seconds on six workers with a fresh
+cache, no reused coverage and fixed compiler/test sources. Expanded program
+contracts, independent evaluator/native answers, source assumptions and malformed
+permissions, imported-unit cache transitions, all native emission targets,
+frontend/inference compatibility and existing allocation/mode checks pass. The
+direct complete-prelude audit has 236 semantic definitions and 248 emitted
+functions with no compatibility fallback. Saved/new native identity/effect and
+constructor-shadow controls match exactly. Sol argument/shared-language and
+3,000,000-iteration self/mutual tail-call checks pass (peak 85 MB). Hosted CI for
+`83ee345` passed; integrated-head validation follows the push.
+
+A linked typed owner across artifacts, declaration/visibility contracts for
+private code references, global/imported callback specialization and `Mono`
+retirement remain required. Region provenance, remaining source compatibility
+forms, later typed transformations, diagnostics and machine/call contracts also
+remain active full-goal work. This program handoff is a prerequisite and an actual
+native consumer, not completion of the requested cleanup.

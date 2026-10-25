@@ -308,3 +308,4 @@ they began.
 - [Typed polymorphic code calls](2026-10-25-TYPED-CODE-CALLS.md): quantified capture/argument/result contracts, checked closed transformations and lexical closure-call resolution before erasure.
 - [Typed native call staging](2026-10-25-TYPED-CALL-STAGING.md): checked saturation/operand boundaries before closure conversion, captured arity evidence and optimizer-independent native effects.
 - [Typed local callbacks](2026-10-25-TYPED-CALLBACKS.md): checked generic clones, identity-preserving callback fields, explicit ownership evidence, nullary computation entries and bounded arity restoration.
+- [Owned typed programs and the native pipeline](2026-10-25-TYPED-PROGRAM-PIPELINE.md): semantic frontend products, complete graph contracts, scoped recursive assumptions and a separate native erasure boundary.

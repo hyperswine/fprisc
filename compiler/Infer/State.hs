@@ -84,7 +84,8 @@ data ICtx = ICtx
     icBound :: S.Set Name,
     icLocalIds :: M.Map Name BinderId,
     icOwner :: Maybe Name,
-    icEvidence :: M.Map Name Name
+    icEvidence :: M.Map Name Name,
+    icRecursiveSignatures :: TEnv -- published interfaces behind this SCC's provisional calls
   }
 
 extend :: TEnv -> ICtx -> ICtx
