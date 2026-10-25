@@ -1,16 +1,20 @@
 -- Check existing annotations and lexical identity. This never solves an
 -- untyped body or guesses a representation from an optimized expression.
-module Core.Typed.Verify (verifyFunction, instanceOf, sameType, fieldType) where
+module Core.Typed.Verify (verifyFunction, verifyFunctionWith, instanceOf, sameType, fieldType) where
 import Core.Typed.Syntax
 import Ownership.TypeShape (linShapeT)
 import Type.Syntax (Type(..), Row(..), Scheme(..))
 import Control.Monad (unless, foldM)
 import Type.Relation
+import Data.List (nub,sort)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 verifyFunction :: TypeContext -> Function -> Either String ()
-verifyFunction (TypeContext linearTypes constructors) f = do
+verifyFunction = verifyFunctionWith M.empty
+
+verifyFunctionWith :: M.Map CodeId CodeContract -> TypeContext -> Function -> Either String ()
+verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
   (env,used) <- introduce M.empty S.empty (functionParameters f)
   _ <- check env used (functionBody f)
   pure ()
@@ -31,7 +35,8 @@ verifyFunction (TypeContext linearTypes constructors) f = do
         b <- maybe (bad "out-of-scope local identity") Right (M.lookup uid env)
         require "local reference type disagrees with its scheme" (instanceOf (binderScheme b) (exprType e))
         pure used
-      Var (Global _ sc) -> do
+      Var (Global name sc) -> do
+        require "code identity requires an explicit closure/join reference" (M.notMember (CodeId name) contracts)
         require "global reference type disagrees with its scheme" (instanceOf sc (exprType e))
         pure used
       IntValue _ -> fixed (TC "Int")
@@ -100,6 +105,10 @@ verifyFunction (TypeContext linearTypes constructors) f = do
         foldM (\seen (path,x) -> do
           require "record update field type" (not (null path) && maybe False (sameType (exprType x)) (fieldType (exprType base) path))
           check env seen x) u fields
+      PlannedUpdate base plan -> do
+        u<-check env used base
+        require "planned record update result type" (sameType (exprType base) (exprType e))
+        updatePlan env u (exprType base) plan
       ResultPipe a fn -> do
         u<-check env used a >>= \u -> check env u fn
         case (exprType a,exprType fn,exprType e) of
@@ -122,12 +131,64 @@ verifyFunction (TypeContext linearTypes constructors) f = do
         require "empty match" (not (null alts))
         u<-foldM (check env) used args
         foldM (alternative env (map exprType args) (exprType e)) u alts
+      ClosureValue label captures -> do
+        contract<-captureContract env label captures ClosureCode
+        require "closure value type" (sameType (exprType e) (foldr TFn (contractResult contract) (contractParameters contract)))
+        pure used
+      JoinCall label captures args -> do
+        contract<-captureContract env label captures JoinCode
+        require "nullary join is not a callable continuation" (not (null captures && null args))
+        require "join argument arity/type" (length args==length (contractParameters contract)
+          && and (zipWith (\arg ty -> sameType (exprType arg) ty) args (contractParameters contract)))
+        require "join result type" (sameType (exprType e) (contractResult contract))
+        foldM (check env) used args
+      MatchTail style args alts fallback -> do
+        require "empty match tail" (not (null alts))
+        require "match tail arguments must be evaluated variables" (all (\x -> case exprNode x of Var (Local _)->True; _->False) args)
+        require "case match tail arity" (style/=CaseMatch || length args==1)
+        u<-foldM (check env) used args
+        u'<-foldM (alternative env (map exprType args) (exprType e)) u alts
+        require "match fallback type" (sameType (exprType e) (exprType fallback))
+        check env u' fallback
+      Fail _ -> pure used
       Note body -> do
         u <- check env used body
         require "note changes type" (sameType (exprType body) (exprType e))
         pure u
       where
         fixed ty = require "literal type" (sameType ty (exprType e)) >> pure used
+
+    updatePlan env used input (UpdatePlan roots branches)=do
+      require "planned update branches" (not (null branches))
+      require "planned update roots" (not (null roots) && roots==nub roots)
+      let ids=[tid | UpdateBranch tid _<-branches]
+      require "planned update duplicate layout" (ids==nub ids)
+      foldM branch used branches
+      where
+        branch seen (UpdateBranch _ fields)=do
+          let names=map fst fields
+          require "planned update layout fields" (names==sort names && names==nub names && all (`elem` names) roots)
+          require "planned update replacement roots" ([n | (n,x)<-fields,case x of KeepField->False; _->True]==sort roots)
+          foldM field seen fields
+        field seen (_,KeepField)=pure seen
+        field seen (name,value)=do
+          ty<-maybe (bad "planned update field absent from input type") Right (fieldType input [name])
+          case value of
+            ReplaceField x->do
+              require "planned update field type" (sameType ty (exprType x))
+              check env seen x
+            NestedUpdate p->updatePlan env seen ty p
+
+    captureContract env label captures kind = do
+      contract<-maybe (bad "unknown code identity") Right (M.lookup label contracts)
+      require "code kind" (contractKind contract==kind)
+      require "capture arity" (length captures==length (contractCaptures contract))
+      mapM_ (\(uid,(scheme,shape)) -> do
+        b<-maybe (bad "out-of-scope capture identity") Right (M.lookup uid env)
+        require "capture scheme" (sameScheme (binderScheme b) scheme)
+        require "capture ownership shape" (binderShape b==shape)) (zip captures (contractCaptures contract))
+      pure contract
+    sameScheme (Forall as ar a) (Forall bs br b)=as==bs && ar==br && sameType a b
 
     patternScope env used p = do
       case patNode p of

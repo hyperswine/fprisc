@@ -4,11 +4,13 @@
 -- compatibility boundary, before the not-yet-migrated transformation passes.
 module Frontend.Desugar.Checked
   (CheckedPlans, prepareChecked, checkedNames, checkedDeclines,
-   Desugared, desugaredCore, desugaredTyped, desugaredTypeContext,
+   Desugared, desugaredCore, desugaredTyped, desugaredClosed, desugaredTypeContext,
    compileTopChecked, lowerToUntyped) where
 import Core.Identity
 import qualified Core.Typed.Syntax as T
-import Core.Typed.Erase (Layout(..),eraseFunction)
+import Core.Typed.Erase (Layout(..),eraseFunctionWith)
+import Core.Typed.Close
+import Core.Typed.Layout (planFunction,plannedFunction)
 import Core.Typed.Verify (instanceOf)
 import Core.Syntax (Core,Prog)
 import Type.Syntax (Type(..),Scheme(..))
@@ -22,7 +24,7 @@ import qualified Infer.Evidence as E
 import Infer.Elaboration
 import Precond (checkedName)
 import qualified Struct
-import Control.Monad (forM,unless)
+import Control.Monad (forM,forM_,unless)
 import Control.Monad.State.Strict (get,modify)
 import Data.Binary (encode)
 import qualified Data.Map.Strict as M
@@ -215,23 +217,45 @@ prepareChecked result = do
       Interpolation ps->[x | Right (_,x)<-ps]; RenderApplication f _ a->[f,a]
       _->[]
 
-data Desugared=Desugared T.TypeContext Prog (M.Map String T.Function)
+data Desugared=Desugared T.TypeContext Prog (M.Map String T.Function) (M.Map String ClosedFunction)
 desugaredCore :: Desugared -> Prog
-desugaredCore (Desugared _ p _)=p
+desugaredCore (Desugared _ p _ _)=p
 desugaredTyped :: Desugared -> M.Map String T.Function
-desugaredTyped (Desugared _ _ p)=p
+desugaredTyped (Desugared _ _ p _)=p
+desugaredClosed :: Desugared -> M.Map String ClosedFunction
+desugaredClosed (Desugared _ _ _ p)=p
 desugaredTypeContext :: Desugared -> T.TypeContext
-desugaredTypeContext (Desugared t _ _)=t
+desugaredTypeContext (Desugared t _ _ _)=t
 compileTopChecked :: CheckedPlans -> [STop] -> D Desugared
 compileTopChecked plans@(Plans ns types _ _) tops=do
   st<-get
   let entries=M.map (\(_,_,arity)->["x"++show i | i<-[1..arity]]) (dCons st)
   constructors<-M.traverseWithKey (constructorFunction ns types) entries
   groups<-mapM (lowerCheckedGroup plans) (groupClauses tops)
-  pure (Desugared types (M.union (M.fromList (map fst groups)) (M.map fst constructors)) (M.union (M.fromList [(T.functionName f,f) | (_,Just f)<-groups]) (M.map snd constructors)))
+  pure (Desugared types
+    (M.union (M.fromList (map fst groups)) (M.map (\(p,_,_)->p) constructors))
+    (M.union (M.fromList [(T.functionName f,f) | (_,Just (f,_))<-groups]) (M.map (\(_,f,_)->f) constructors))
+    (M.union (M.fromList [(T.functionName f,c) | (_,Just (f,c))<-groups]) (M.map (\(_,_,c)->c) constructors)))
+
+emitClosed :: Namespace -> T.TypeContext -> T.Function -> D (([String],Core),ClosedFunction)
+emitClosed namespace types fn=do
+  initial<-get
+  planned<-either error pure (planFunction namespace (dShapes initial) types fn)
+  result<-closeFunction namespace fresh types (plannedFunction planned)
+  closed<-either error pure result
+  st<-get
+  let contracts=M.map T.codeContract (closedCode closed)
+      erase=eraseFunctionWith contracts types (layoutOf st)
+  root<-erase (closedRoot closed) >>= either error pure
+  forM_ (M.elems (closedCode closed)) $ \code -> do
+    (ps,b)<-erase (T.codeAsFunction code) >>= either error pure
+    let T.CodeId label=T.codeId code
+    modify (\s->s {dLifted=(label,ps,b):dLifted s,
+      dJoins=if T.codeKind code==T.JoinCode then label:dJoins s else dJoins s})
+  pure (root,closed)
 -- Constructor entry points are generated too. Keep their schemas and
 -- identities in the same stage product, including nullary/builtin entries.
-constructorFunction :: Namespace -> T.TypeContext -> String -> [String] -> D (([String],Core),T.Function)
+constructorFunction :: Namespace -> T.TypeContext -> String -> [String] -> D (([String],Core),T.Function,ClosedFunction)
 constructorFunction (Namespace ns) types@(T.TypeContext linears schemas) name names = do
   let Forall _ _ signature=case M.lookup name schemas of
         Just sc->sc
@@ -245,9 +269,8 @@ constructorFunction (Namespace ns) types@(T.TypeContext linears schemas) name na
       body=T.Expr result (linShapeT linears result) T.Generated Nothing (T.Construct name (map value ps))
       fn=T.Function name ps body
   unless (length names==length fields) (error ("typed Core: constructor schema/layout arity "++name))
-  st<-get
-  out<-eraseFunction types (layoutOf st) fn
-  case out of Left why->error why; Right body->pure (body,fn)
+  (body,closed)<-emitClosed (Namespace ns) types fn
+  pure (body,fn,closed)
 
 layoutOf :: DEnv -> Layout D
 layoutOf st=Layout fresh (\c->case M.lookup c (dCons st) of Just x->Just x; _->wideTup c) (dShapes st)
@@ -256,7 +279,7 @@ layoutOf st=Layout fresh (\c->case M.lookup c (dCons st) of Just x->Just x; _->w
 lowerToUntyped :: CheckedPlans -> [STop] -> D Prog
 lowerToUntyped ps ts=desugaredCore <$> compileTopChecked ps ts
 
-lowerCheckedGroup :: CheckedPlans -> (String,[([SPat],[SGuard],SExpr)]) -> D ((String,([String],Core)),Maybe T.Function)
+lowerCheckedGroup :: CheckedPlans -> (String,[([SPat],[SGuard],SExpr)]) -> D ((String,([String],Core)),Maybe (T.Function,ClosedFunction))
 lowerCheckedGroup (Plans (Namespace ns) types plans _) group@(name,clauses)=case M.lookup name plans of
   Just (Plan cls expected) | encode clauses==encode expected->do
     args<-case cls of
@@ -267,9 +290,8 @@ lowerCheckedGroup (Plans (Namespace ns) types plans _) group@(name,clauses)=case
     let alts=[T.Alternative ps (map lowerGuard gs) (lower b) | Clause ps gs b<-cls]
         body=case cls of Clause _ _ b:_->gen (ty b) (T.Match (T.FunctionMatch name) (map ref args) alts); _->error "empty typed clauses"
         fn=T.Function name args body
-    st<-get
-    erased<-eraseFunction types (layoutOf st) fn
-    case erased of Left why->error why; Right out->pure ((name,out),Just fn)
+    (out,closed)<-emitClosed (Namespace ns) types fn
+    pure ((name,out),Just (fn,closed))
   _->(,Nothing) <$> compileGroup group
   where
     T.TypeContext linearTypes constructors=types

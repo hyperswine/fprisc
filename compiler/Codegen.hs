@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 106 -- lexical dictionary witnesses and checked member constraints (TYPED-CORE-PATTERNS)
+codegenRev = 107 -- typed closure/join conversion and unique emitted local names
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

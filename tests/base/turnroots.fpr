@@ -24,27 +24,37 @@ echo : Int -> Unit .
 echo self = (who, text) = receive self; _ = send who (strcat text "!"); echo self.
 freeKiB : Unit -> Int .
 freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+# arcLive is global. A reply can wake this actor before the service closes
+# its turn; allow that in-flight cleanup to finish without accepting a leak.
+# No new requests are sent while polling, and the exact count is still required.
+settledRoots : unsafe Int -> Int -> Int -> Int .
+settledRoots me expected attempts =
+  now = arcLive 0;
+  if now == expected then now else
+  if attempts == 0 then error "turnroots: received roots did not settle" else
+  _ = yield me;
+  settledRoots me expected (attempts - 1).
 main =
   me = myself 0;
   s = spawn (fn self -> serve self store Map.strings);
   _ = puts me s 200;
   bad0 = checks me s 200 0;
-  roots = arcLive 0;
+  roots = settledRoots me 0 100000;
   before = freeKiB Unit;
   _ = puts me s 5000;
   bad = checks me s 5000 0;
-  loops = arcLive 0 - roots;
+  loops = settledRoots me 0 100000 - roots;
   # a root received inside an arena dies at the arena's exit, the result copied out first
   e = spawn echo;
   inside = Sys.arena (fn u -> _ = send e (me, "arena"); receiveFrom me e);
-  arena = arcLive 0 - roots;
+  arena = settledRoots me 0 100000 - roots;
   _ = if inside == "arena!" then Unit else error "turnroots: arena result lost";
   # a root received outside every boundary dies at the actor's own reset
   _ = send e (me, "reset");
   t2 = receiveFrom me e;
-  held = arcLive 0 - roots;
+  held = settledRoots me 1 100000 - roots;
   _ = Sys.poolReset 0;
-  reset = arcLive 0 - roots;
+  reset = settledRoots me 0 100000 - roots;
   n = (case ask me s Count of Size k -> k | _ -> 0);
   retained = before - freeKiB Unit;
   _ = kill s; _ = kill e;

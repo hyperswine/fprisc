@@ -15,8 +15,15 @@ Choice a = Type (No | Yes a).
 nested outer pair = case pair of
     (Yes outer,Yes y) -> outer + y
   | _ -> outer.
+capture x = fn y -> x + y.
+deepCapture x = fn y -> fn z -> x + y + z.
+polyCapture n =
+  ident x = x;
+  combine y = (ident y,ident True);
+  (a,b) = combine n;
+  if b then a else 0.
 main =
   dict = Ops;
   r = {x = 3,y = 4};
   updated = {r | x = r.x + 2};
-  print "typed-core {left dict 4} {nested 10 (Yes 2,Yes 3)} {nested 10 (Yes 2,No)} {updated.x + updated.y}".
+  print "typed-core {left dict 4} {nested 10 (Yes 2,Yes 3)} {nested 10 (Yes 2,No)} {updated.x + updated.y} {(capture 40) 2} {((deepCapture 10) 20) 30} {polyCapture 19}".

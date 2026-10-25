@@ -1,8 +1,10 @@
--- Typed expressions before closure lifting. Identities, not display spellings,
+-- Typed expressions through layout planning and closure lifting. Identities, not display spellings,
 -- resolve local references. Erasure is an explicit boundary for passes that
 -- have not migrated yet; it is not a typed optimization result.
 module Core.Typed.Syntax
   ( Binder(..), Reference(..), Origin(..), Expr(..), Node(..), Function(..), TypeContext(..), Pattern(..), PatNode(..), Alternative(..), Guard(..), MatchStyle(..), patternBinders,
+    CodeId(..), CodeKind(..), CodeFunction(..), CodeContract(..), codeContract, codeAsFunction,
+    UpdatePlan(..), UpdateBranch(..), UpdateField(..),
     binderType, functionType ) where
 import Source.Span (SourceOffset)
 import Core.Identity
@@ -36,11 +38,21 @@ data Node
   | RecordValue [(String,Expr)]
   | RecordField Expr [String]
   | RecordUpdate Expr [([String],Expr)]
+  | PlannedUpdate Expr UpdatePlan
   | ResultPipe Expr Expr
   | Sequence Expr Expr
   | LetPattern Pattern Expr Expr
   | Match MatchStyle [Expr] [Alternative]
+  | ClosureValue CodeId [BinderId]
+  | JoinCall CodeId [BinderId] [Expr]
+  | MatchTail MatchStyle [Expr] [Alternative] Expr
+  | Fail String
   deriving (Show)
+-- Layout copies retain opaque row fields without inventing language types for
+-- them. Only replacements contain expressions, each with its checked type.
+data UpdatePlan = UpdatePlan [String] [UpdateBranch] deriving (Show)
+data UpdateBranch = UpdateBranch Int [(String,UpdateField)] deriving (Show)
+data UpdateField = KeepField | ReplaceField Expr | NestedUpdate UpdatePlan deriving (Show)
 data Pattern = Pattern
   { patType :: Type, patDisplay :: String, patNode :: PatNode } deriving (Show)
 data PatNode = Bind Binder | Wildcard | IntegerPattern Integer | StringPattern String
@@ -60,6 +72,21 @@ patternBinders p = case patNode p of
 data Function = Function
   { functionName :: String, functionParameters :: [Binder],
     functionBody :: Expr } deriving (Show)
+-- Capture schemes are separate from the ordinary argument/result arrow.
+-- Capturing a let-polymorphic value must not pretend it is a monomorphic arg.
+newtype CodeId = CodeId String deriving (Eq,Ord,Show)
+data CodeKind = ClosureCode | JoinCode deriving (Eq,Show)
+data CodeFunction = CodeFunction
+  { codeId :: CodeId, codeKind :: CodeKind, codeCaptures :: [Binder],
+    codeParameters :: [Binder], codeBody :: Expr } deriving (Show)
+data CodeContract = CodeContract
+  { contractKind :: CodeKind, contractCaptures :: [(Scheme,LShape)],
+    contractParameters :: [Type], contractResult :: Type } deriving (Show)
+codeContract :: CodeFunction -> CodeContract
+codeContract f=CodeContract (codeKind f) [(binderScheme b,binderShape b) | b<-codeCaptures f]
+  (map binderType (codeParameters f)) (exprType (codeBody f))
+codeAsFunction :: CodeFunction -> Function
+codeAsFunction f=let CodeId name=codeId f in Function name (codeCaptures f++codeParameters f) (codeBody f)
 binderType :: Binder -> Type
 binderType b = case binderScheme b of Forall _ _ t -> t
 functionType :: Function -> Type

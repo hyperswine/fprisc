@@ -1,0 +1,20 @@
+# Layout alternatives must keep distinct code identities after typed lifting.
+unsafe base.
+make r = {r | f = (fn x -> x)}.
+makeNested r = {r | inner.f = (fn x -> x)}.
+main =
+  a = {f = (fn x -> x), a = 1};
+  b = {f = (fn x -> x), b = True};
+  ra = make a;
+  rb = make b;
+  raAgain = make a;
+  fa = ra.f;
+  fb = rb.f;
+  faAgain = raAgain.f;
+  na = {inner = a, a = 1};
+  nb = {inner = b, b = True};
+  nra = makeNested na;
+  nrb = makeNested nb;
+  fna = nra.inner.f;
+  fnb = nrb.inner.f;
+  print "closure-layout {fa == fb} {fna == fnb} {fa == faAgain} {fa 7} {fb 8} {fna 9}".

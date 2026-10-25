@@ -113,6 +113,9 @@ executable fpr
       Infer.Elaboration
       Core.Identity
       Core.Typed.Syntax
+      Core.Typed.Walk
+      Core.Typed.Close
+      Core.Typed.Layout
       Core.Typed.Verify
       Core.Typed.Erase
       Frontend.Desugar.Checked

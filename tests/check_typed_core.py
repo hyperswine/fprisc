@@ -23,15 +23,18 @@ subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedCore.hs'], cwd=ROOT,
 with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
     native = dict(env, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT))
     native.pop('FPR_FOREIGN', None)
-    for harts in (1, 4):
-        output = Path(directory) / f'contracts-{harts}'
+    cases = [('contracts', 'typed-core 14 5 10 9 42 60 19\n'),
+             ('closure_layout', 'closure-layout False False True 7 8 9\n')]
+    for case, expected in cases:
+      for harts in (1, 4):
+        output = Path(directory) / f'{case}-{harts}'
         built = subprocess.run([str(ROOT / 'fpr'), 'build',
-                                str(ROOT / 'tests/typed_core/contracts.fpr'),
+                                str(ROOT / f'tests/typed_core/{case}.fpr'),
                                 '--harts', str(harts), '-o', str(output)],
                                cwd=ROOT, env=native, capture_output=True, text=True, timeout=120)
         assert built.returncode == 0, built.stdout + built.stderr
         ran = subprocess.run([str(output)], cwd=ROOT, env=native,
                              capture_output=True, text=True, timeout=30)
         assert ran.returncode == 0, ran.stdout + ran.stderr
-        assert ran.stdout == 'typed-core 14 5 10 9\n', ran.stdout
-print('Typed Core native contracts: lexical dictionary recursion, failed-pattern capture and record updates on one/four harts passed')
+        assert ran.stdout == expected, ran.stdout
+print('Typed Core native contracts: dictionaries, captures, record updates and layout-dependent closure identity on one/four harts passed')

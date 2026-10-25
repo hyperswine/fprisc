@@ -1,9 +1,9 @@
 {-# LANGUAGE LambdaCase, FlexibleContexts #-}
 -- Explicit compatibility boundary. Layout operations lower directly from
 -- typed nodes/patterns; they never reconstruct or re-infer a surface AST.
-module Core.Typed.Erase (Layout(..), eraseFunction) where
+module Core.Typed.Erase (Layout(..), eraseFunction, eraseFunctionWith) where
 import Core.Typed.Syntax
-import Core.Typed.Verify (verifyFunction)
+import Core.Typed.Verify (verifyFunctionWith)
 import Core.Syntax (Core(..))
 import Control.Monad (unless, foldM, forM)
 import Control.Monad.Except
@@ -20,8 +20,11 @@ data Layout m = Layout
     registerJoin :: String -> [String] -> Core -> m () }
 
 eraseFunction :: Monad m => TypeContext -> Layout m -> Function -> m (Either String ([String],Core))
-eraseFunction types layout f = runExceptT $ do
-  either throwError pure (verifyFunction types f)
+eraseFunction = eraseFunctionWith M.empty
+
+eraseFunctionWith :: Monad m => M.Map CodeId CodeContract -> TypeContext -> Layout m -> Function -> m (Either String ([String],Core))
+eraseFunctionWith contracts types layout f = runExceptT $ do
+  either throwError pure (verifyFunctionWith contracts types f)
   let ps=functionParameters f
   body<-go (M.fromList [(binderId b,binderName b) | b<-ps])
            (M.fromList [(binderName b,binderId b) | b<-ps]) (functionBody f)
@@ -43,6 +46,19 @@ eraseFunction types layout f = runExceptT $ do
       Var (Global n _) -> do
         unless (M.notMember n names) (throwError "typed Core erasure: display spelling would capture a global")
         pure (CVar n)
+      ClosureValue (CodeId label) captures -> foldl CApp (CVar label) <$> mapM (capture env names) captures
+      JoinCall (CodeId label) captures args -> do
+        caps<-mapM (capture env names) captures
+        xs<-mapM (go env names) args
+        pure (foldl CApp (CVar label) (caps++xs))
+      Fail message -> pure (CErr message)
+      MatchTail style args alts fallback -> do
+        xs<-mapM (go env names) args
+        next<-go env names fallback
+        case (style,xs) of
+          (CaseMatch,[scrut])->caseArmsWith False next env names scrut alts
+          (FunctionMatch owner,_)->functionArmsWith False next env names owner xs alts
+          _->throwError "typed Core erasure: malformed explicit match tail"
       IntValue n -> pure (CInt n)
       StringValue s -> pure (CStr s)
       BoolValue b -> pure (CMk 1 (if b then 1 else 0) [])
@@ -64,6 +80,10 @@ eraseFunction types layout f = runExceptT $ do
         x<-go env names base
         v<-fresh "rec"
         CLet v x <$> update env names (CVar v) fields
+      PlannedUpdate base plan -> do
+        x<-go env names base
+        v<-fresh "rec"
+        CLet v x <$> plannedUpdate env names (CVar v) plan
       Apply a b -> CApp <$> go env names a <*> go env names b
       Lambda ps b -> let (env',names')=scopes ps env names
                      in CLam (map binderName ps) <$> go env' names' b
@@ -99,6 +119,10 @@ eraseFunction types layout f = runExceptT $ do
       If a b c -> CIf <$> go env names a <*> go env names b <*> go env names c
       BoolTest b x -> CTagEq 1 (if b then 1 else 0) <$> go env names x
       Note x -> go env names x
+    capture env names uid = do
+      n<-maybe (throwError "typed Core erasure: absent capture identity") pure (M.lookup uid env)
+      unless (M.lookup n names==Just uid) (throwError "typed Core erasure: capture spelling is shadowed")
+      pure (CVar n)
     project scrut name = do
       let cands=[(tid,length (takeWhile (/=name) (sort fs)),length fs)
                 | (fs,tid)<-M.toList (recordLayouts layout),name `elem` fs]
@@ -109,6 +133,20 @@ eraseFunction types layout f = runExceptT $ do
           v<-fresh "r"
           pure (CLet v scrut (foldr (\(tid,idx,ar) rest -> CIf (CTagEq tid ar (CVar v)) (CProj idx (CVar v)) rest)
                   (CErr ("no shape with field ."++name++" matched")) many))
+    plannedUpdate env names scrut (UpdatePlan roots branches)=do
+      let expected=[(tid,sort fs) | (fs,tid)<-M.toList (recordLayouts layout),all (`elem` fs) roots]
+          actual=[(tid,map fst fields) | UpdateBranch tid fields<-branches]
+      unless (actual==expected) (throwError "typed Core layout: stale record update plan")
+      arms<-forM branches $ \(UpdateBranch tid fields)->do
+        values<-forM (zip [0..] fields) $ \(idx,(_,value))->case value of
+          KeepField->pure (CProj idx scrut)
+          ReplaceField x->go env names x
+          NestedUpdate tree->plannedUpdate env names (CProj idx scrut) tree
+        pure (tid,length fields,CMk tid (length fields) values)
+      pure $ case arms of
+        [(_,_,body)]->body
+        _->foldr (\(tid,arity,body) rest->CIf (CTagEq tid arity scrut) body rest)
+          (CErr "record update: no shape matched") arms
     update env names scrut assigns = do
       let roots=nub [head path | (path,_)<-assigns,not (null path)]
           cands=[(fs,tid) | (fs,tid)<-M.toList (recordLayouts layout),all (`elem` fs) roots]
@@ -148,12 +186,13 @@ eraseFunction types layout f = runExceptT $ do
       _ -> 0
     trivial (CErr _) = True
     trivial _ = False
-    functionArms env names owner args = loop
+    functionArms env names owner args = functionArmsWith True (CErr ("no matching clause for "++owner)) env names owner args
+    functionArmsWith makeJoins bottom env names owner args = loop
       where
-        loop []=pure (CErr ("no matching clause for "++owner))
+        loop []=pure bottom
         loop (Alternative ps gs body:rest)=do
           next<-loop rest
-          fallback<-if sum (map tests ps)+length gs>1 && not (trivial next)
+          fallback<-if makeJoins && sum (map tests ps)+length gs>1 && not (trivial next)
             then do
               jn<-fresh (owner++"_fb")
               let params=[n | CVar n<-args]
@@ -176,9 +215,10 @@ eraseFunction types layout f = runExceptT $ do
           x<-go env names e; v<-fresh "gp"
           m<-matchPat (CVar v) p inner fallback
           pure (CLet v x m)
-    caseArms env names scrut alts=loop True alts
+    caseArms env names scrut alts=caseArmsWith True
+      (CErr ("case: no matching pattern; arms were ["++intercalate "," [patDisplay p | Alternative [p] _ _<-alts]++"]")) env names scrut alts
+    caseArmsWith makeJoins fallback env names scrut alts=loop True alts
       where
-        fallback=CErr ("case: no matching pattern; arms were ["++intercalate "," [patDisplay p | Alternative [p] _ _<-alts]++"]")
         loop _ []=pure fallback
         loop first (Alternative [p] gs body:rest)=do
           next<-loop False rest
@@ -193,7 +233,7 @@ eraseFunction types layout f = runExceptT $ do
                   TuplePattern ps -> matchFields scrut ps inner fail'
                   _ -> matchPat scrut p inner fail'
                 else matchPat scrut p inner fail'
-          if not (trivial next) && tests p+length gs>1 then do
+          if makeJoins && not (trivial next) && tests p+length gs>1 then do
             jn<-fresh "$case_fb"; unit<-fresh "$case_unit"
             matched<-build (CApp (CVar jn) (CInt 0))
             pure (CLet jn (CLam [unit] next) matched)

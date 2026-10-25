@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions, aggregates, patterns and constructor entries implemented; dictionary/wrapper/specialization and transformation migration pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting and generated joins implemented; layout/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass result and initial typed desugaring product implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -194,3 +194,31 @@ reused CI coverage. The structured product/CLI regressions and independently
 verified pre-fix ownership counterexample, 128 fresh emission/unit comparisons,
 parser Binary/cache compatibility and Sol compatibility/bounded-tail checks
 passed. Codegen revision 106 and native ABIs are unchanged.
+
+## Typed closure lifting and joins
+
+[Typed closures and joins](2026-10-25-TYPED-CLOSURES.md) moves actual closure and
+pattern-fallthrough conversion before erasure for covered typed entries.
+Opaque closed products retain code identities, polymorphic capture schemes,
+parameter/result types and binder identities. Native erasure consumes those
+products and does not regenerate their joins as untyped lambdas. Typed record
+update plans precede lifting so distinct layout branches keep their existing
+closure identities, including nested updates; stale shape plans are refused.
+
+New local spellings prevent pattern shadowing from capturing fallback values.
+Capture-free continuations stay nonnullary, while a 64-capture continuation
+does not acquire a 65th argument. Differential machine-IR evaluation and
+one/four-hart native answers exercise both captures and joins. Generated code
+changes intentionally advance the cache revision to 107; physical ABIs remain
+unchanged.
+
+The layout/optimization/region seam and the remaining source forms still need
+typed migration. All other outstanding full-goal items remain required.
+
+Validation: all 136 Base jobs passed in 520.63 seconds on six workers without
+reused coverage. Typed invariant/differential evaluation, native one/four-hart
+closure/layout answers, unit-label stability and Sol compatibility/bounded-tail
+checks passed. A global-root sampling race in `turnroots` now waits boundedly
+for the exact expected count; a saved-compiler delayed-cleanup reproduction and
+a persistent-root negative control validate that test correction. Hosted CI for
+the preceding `c323657` stage passed; this stage still needs its hosted result.
