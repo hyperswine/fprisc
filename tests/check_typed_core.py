@@ -25,6 +25,8 @@ subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedTraps.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
 subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedUnits.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
+subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedStructs.hs'], cwd=ROOT,
+               env=env, check=True, timeout=180)
 subprocess.run([sys.executable, str(ROOT / 'tests/check_typed_units.py')], cwd=ROOT,
                env=env, check=True, timeout=180)
 
@@ -36,7 +38,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
     cases = [('contracts', 'typed-core 14 5 10 9 42 60 19\n'),
              ('closure_layout', 'closure-layout False False True 7 8 9\n'),
              ('recursive_locals', 'recursive-locals 21 7 23 29 21 31 37 41 3 43 47 53\n'),
-             ('vector_layouts', 'typed-layouts 2.5 8 3.5 9 4.5 ok 5.5 6.5 0 7.5 11 9 8.5 1 8.5 True\n')]
+             ('vector_layouts', 'typed-layouts 2.5 8 3.5 9 4.5 ok 5.5 6.5 0 7.5 11 9 8.5 1 8.5 True\n'),
+             ('structs', 'typed-structs 6 24 7 4 True 5 99 15 9 6 8 False True 7 8 True 102 10 11 True 12 13 6 True 1 3 1\n')]
     for case, expected in cases:
         for harts in (1, 4):
             output = Path(directory) / f'{case}-{harts}'
@@ -77,6 +80,15 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
     refused = subprocess.run([str(ROOT / 'fpr'), 'compile', str(named), str(Path(directory) / 'named.s')],
                              cwd=ROOT, env=native, capture_output=True, text=True, timeout=120)
     assert refused.returncode != 0 and 'typed hole, ?todo : Int' in refused.stdout, refused.stdout + refused.stderr
+    shadow = Path(directory) / 'struct-shadow.fpr'
+    shadow.write_text('unsafe base. ProbeStructScope = Sig { seed : Int -> t, (+) }. '
+                      'ScopeOps = Struct ProbeStructScope { seed = fn n -> n, (+) = fn x y -> x + y }. '
+                      'pick (s : ProbeStructScope) n = x = s.seed n; x + x. '
+                      'main = pick = fn s n -> n + 100; print (pick ScopeOps 2).\n')
+    sol_env = dict(native, SOL_GPU='0', SOL_CACHE_DIR=str(Path(directory) / 'sol-cache'))
+    sol = subprocess.run([str(ROOT / 'fpr'), 'sol', str(shadow)], cwd=ROOT, env=sol_env,
+                         capture_output=True, text=True, timeout=120)
+    assert sol.returncode == 0 and sol.stdout == '102\n', sol.stdout + sol.stderr
     # The new code/capture contracts must reach every ISA's native selector.
     # Execution above is host-native; these are portable emission checks.
     for target in ('x64', 'rv32', 'rv64'):
@@ -102,6 +114,13 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
                           for n in match.group(1).split(',')) for pool in pools}
         for message in ('typed hole ?? (unimplemented)', 'typed hole ?? in constructor Bad (unimplemented)'):
             assert message.encode() in literals, (target, message)
+        struct_output = Path(directory) / f'structs-{target}.s'
+        compiled = subprocess.run([str(ROOT / 'fpr'), 'compile', f'--target={target}',
+                                   str(ROOT / 'tests/typed_core/structs.fpr'), str(struct_output)],
+                                  cwd=ROOT, env=native, capture_output=True, text=True, timeout=120)
+        assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+        assert re.search(r'^# fn twice#TypedInts .*typed-ir ' + target + r' ', struct_output.read_text(), re.M), target
 print('Typed Core native contracts: dictionaries, captures, recursive locals, record updates and layout-dependent closure identity on one/four harts passed')
 print('Typed recursive locals: x64/RV32/RV64 native emission passed (execution is host-native only)')
 print('Typed traps: exact native effects/delays and named-hole refusal on one/four harts; x64/RV32/RV64 emission passed')
+print('Typed structures: native one/four-hart answers and closure identity; x64/RV32/RV64 emission passed')

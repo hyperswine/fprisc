@@ -304,3 +304,4 @@ they began.
 - [Typed layout evidence](2026-10-25-TYPED-LAYOUT-EVIDENCE.md): identity-owned layout arguments/calling schemas, typed vector builders and quantified-scope regressions.
 - [Typed generated traps](2026-10-25-TYPED-TRAPS.md): checked anonymous holes and constructor wrappers, exact application delays and native effect-order checks.
 - [Checked unit ownership](2026-10-25-CHECKED-UNITS.md): projections of one checked producer, transitive-import correctness and lowered-input/call-context cache identities.
+- [Typed structure specialization](2026-10-25-TYPED-STRUCTURE-SPECIALIZATION.md): checked clone instantiation and identities, polymorphic schemas, layout-capturing members and shared lexical-scope regressions.

@@ -6,6 +6,7 @@ module Frontend.Desugar.Checked
   (CheckedPlans, prepareChecked, checkedNames, checkedDeclines, checkedCallArities,
    CheckedUnit, selectCheckedUnit, checkedUnitTops, checkedUnitNames,
    desugarCheckedUnit, lowerCheckedUnit,
+   SpecializedSource, specializeCheckedSource, specializedTops, desugarSpecialized, lowerSpecialized,
    Desugared, desugaredCore, desugaredTyped, desugaredClosed, desugaredTypeContext,
    compileTopChecked, lowerToUntyped) where
 import Core.Identity
@@ -13,7 +14,9 @@ import qualified Core.Typed.Syntax as T
 import Core.Typed.Erase (Layout(..),eraseFunctionWith)
 import Core.Typed.Close
 import Core.Typed.Layout (planFunction,plannedFunction)
+import qualified Core.Typed.Walk as Walk
 import Core.Typed.Verify (instanceOf,sameType)
+import qualified Core.Typed.Specialize as Specialize
 import Compiler.VectorLayout
 import Compiler.Trap
 import Core.Syntax (Core,Prog)
@@ -21,6 +24,7 @@ import Type.Syntax (Type(..),Scheme(..))
 import Ownership.Shape (LShape(..))
 import Ownership.TypeShape (linShapeT)
 import Frontend.Syntax
+import Frontend.Traverse (sFree)
 import Frontend.Desugar (D,DEnv(..),fresh,groupClauses,compileGroup,wideTup)
 import Infer.Result
 import Infer.Pattern
@@ -31,28 +35,44 @@ import qualified Struct
 import Control.Monad (forM,forM_,unless)
 import Control.Monad.State.Strict (get,modify)
 import Data.Binary (encode)
+import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Set as S
 
 data PlanningProblem = Deferred String | Corrupt String
 
-data CheckedPlans = Plans Namespace T.TypeContext (M.Map String Plan) [(String,String)] [STop]
+data CheckedPlans = Plans
+  { planNamespace :: Namespace, planTypes :: T.TypeContext,
+    planEntries :: M.Map String Plan, planDeclines :: [(String,String)],
+    planSource :: [STop], planSpecialization :: Specialize.Context,
+    planSignatures :: Struct.Sigs, planStructures :: Struct.Structs }
+data SpecializedSource=SpecializedSource CheckedPlans [STop] Specialize.Specialized
+specializeCheckedSource :: CheckedPlans -> Either [String] SpecializedSource
+specializeCheckedSource plans=case Struct.specialize (planSignatures plans) (planStructures plans) (planSource plans) of
+  ([],tops)->do
+    let templates=M.fromList [(name,f) | group@(name,_)<-groupClauses (Struct.erasePSig (planSource plans)),Just f<-[typedFunction plans group]]
+    typed<-either (Left . (:[])) Right (Specialize.specialize (planNamespace plans) (planSpecialization plans) templates)
+    Right (SpecializedSource plans (Struct.erasePSig tops) typed)
+  (errors,_)->Left errors
+specializedTops :: SpecializedSource -> [STop]
+specializedTops (SpecializedSource _ tops _)=tops
 -- An owned projection of one checking run, including the exact elaborated
 -- clauses its plans describe. Clients cannot pair it with rewritten bodies.
 data CheckedUnit = CheckedUnit CheckedPlans [STop] (S.Set String)
 selectCheckedUnit :: CheckedPlans -> S.Set String -> Either String CheckedUnit
-selectCheckedUnit plans@(Plans _ _ _ _ source) names = do
+selectCheckedUnit plans names = do
+  let source=planSource plans
   let available=S.fromList [n | TBind n _ _ _<-source]
       missing=names S.\\ available
   unless (S.null missing) (Left ("checked unit: absent definitions: "++unwords (S.toAscList missing)))
-  pure (CheckedUnit plans [t | t@(TBind n _ _ _)<-source,n `S.member` names] names)
+  pure (CheckedUnit plans (Struct.erasePSig [t | t@(TBind n _ _ _)<-source,n `S.member` names]) names)
 checkedUnitTops :: CheckedUnit -> [STop]
 checkedUnitTops (CheckedUnit _ tops _)=tops
 checkedUnitNames :: CheckedUnit -> S.Set String
 checkedUnitNames (CheckedUnit _ _ names)=names
 checkedCallArities :: CheckedPlans -> M.Map String Int
-checkedCallArities (Plans _ _ _ _ source)=M.fromList [(n,length ps) | TBind n ps _ _<-source]
+checkedCallArities plans=M.fromList [(n,length ps) | TBind n ps _ _<-planSource plans]
 desugarCheckedUnit :: CheckedUnit -> D Desugared
 desugarCheckedUnit (CheckedUnit plans tops _)=compileTopChecked plans tops
 lowerCheckedUnit :: CheckedUnit -> D Prog
@@ -76,9 +96,9 @@ data PNode = Ref T.Reference | LitInt Integer | LitString String | LitAtom Strin
   | Interpolation [Either String (Maybe String,EPlan)] | RenderApplication EPlan String EPlan
 
 checkedNames :: CheckedPlans -> S.Set String
-checkedNames (Plans _ _ ps _ _) = M.keysSet ps
+checkedNames = M.keysSet . planEntries
 checkedDeclines :: CheckedPlans -> [(String,String)]
-checkedDeclines (Plans _ _ _ ds _) = ds
+checkedDeclines = planDeclines
 
 prepareChecked :: InferenceResult -> Either String CheckedPlans
 prepareChecked result = do
@@ -285,7 +305,25 @@ prepareChecked result = do
       types=T.TypeContext [n | TType n True _ _<-inferenceTops result] (inferenceConstructors result)
   case [(name,why) | (name,Left (Corrupt why))<-answers] of
     (name,why):_->Left ("invalid checked lowering evidence for "++name++": "++why)
-    []->pure (Plans (E.evidenceNamespace evidence) types (M.fromList [(n,p) | (n,Right p)<-answers]) [(n,why) | (n,Left (Deferred why))<-answers] (Struct.erasePSig (inferenceTops result)))
+    []->do
+      let source=inferenceTops result
+          calling=M.fromList [(name,layoutCallingScheme c) | (name,c)<-M.toList layoutContracts,layoutContractOwner c==GlobalLayout name]
+          schemas=calling `M.union` inferenceSchemes result `M.union` inferenceConstructors result
+          entries=M.fromList [(raw,let checked=checkedName raw 0 in if checked `S.member` globals then checked else raw)
+            | (name,(_,fs))<-M.toList (inferenceStructures result),field<-fs,let raw=name++"."++field]
+          -- Match the existing surface pass's spine traversal: visit the
+          -- arguments, not partial application prefixes or computed heads.
+          spine uid=case M.lookup uid facts of
+            Just e | SApp _ _<-E.expressionSource e,[f,a]<-E.expressionChildren e->let (h,args)=spine f in (h,args++[a])
+            _->(uid,[])
+          eligible uid=case M.lookup uid facts of
+            Just e | SApp _ _<-E.expressionSource e->uid:concatMap eligible (snd (spine uid))
+            Just e->concatMap eligible (E.expressionChildren e)
+            _->[]
+          context=Specialize.Context types schemas (M.map (map fst) (Struct.genericTable source))
+            (M.keysSet (inferenceStructures result)) entries (S.fromList (concatMap eligible (E.evidenceRoots evidence)))
+      pure (Plans (E.evidenceNamespace evidence) types (M.fromList [(n,p) | (n,Right p)<-answers])
+        [(n,why) | (n,Left (Deferred why))<-answers] source context (inferenceSignatures result) (inferenceStructures result))
   where
     defer=Left . Deferred
     corrupt=Left . Corrupt
@@ -310,7 +348,8 @@ desugaredClosed (Desugared _ _ _ p)=p
 desugaredTypeContext :: Desugared -> T.TypeContext
 desugaredTypeContext (Desugared t _ _ _)=t
 compileTopChecked :: CheckedPlans -> [STop] -> D Desugared
-compileTopChecked plans@(Plans ns types _ _ _) tops=do
+compileTopChecked plans tops=do
+  let ns=planNamespace plans;types=planTypes plans
   st<-get
   let entries=M.map (\(_,_,arity)->["x"++show i | i<-[1..arity]]) (dCons st)
   constructors<-M.traverseWithKey (constructorFunction ns types) entries
@@ -362,21 +401,72 @@ layoutOf st=Layout fresh (\c->case M.lookup c (dCons st) of Just x->Just x; _->w
 lowerToUntyped :: CheckedPlans -> [STop] -> D Prog
 lowerToUntyped ps ts=desugaredCore <$> compileTopChecked ps ts
 
+-- This input is created by the owned source specializer, never by pairing an
+-- arbitrary rewritten body with old annotations. Compatibility-only clones
+-- are kept only when an actual compatibility entry references them.
+desugarSpecialized :: SpecializedSource -> S.Set String -> D Desugared
+desugarSpecialized (SpecializedSource checked legacy specialized) selected=do
+  let ns=planNamespace checked;types=planTypes checked
+      original=S.fromList [n | TBind n _ _ _<-planSource checked]
+      legacyGroups=M.fromList (groupClauses legacy)
+      available=M.keysSet legacyGroups
+  unless (selected `S.isSubsetOf` available) (error "typed specialization: requested an absent source owner")
+  let typed=Specialize.functions specialized
+      cloneNames=Specialize.cloneNames specialized
+      sourceNames=selected `S.intersection` original
+      wantedTyped=M.restrictKeys typed (sourceNames `S.union` cloneNames)
+      fallbackSource=sourceNames S.\\ M.keysSet typed
+      legacyOnly=available S.\\ original S.\\ M.keysSet typed
+      refs clauses=S.fromList (concat [sFree b++concatMap (\g->case g of GBool e->sFree e;GPat _ e->sFree e) gs | (_,gs,b)<-clauses])
+      dependencies=M.map refs legacyGroups
+      globalRefs e=(case T.exprNode e of T.Var (T.Global n _)->S.singleton n;_->S.empty)
+        `S.union` getConst (Walk.mapChildrenM (Const . globalRefs) e)
+      roots=S.unions ([M.findWithDefault S.empty n dependencies | n<-S.toList fallbackSource]
+        ++map (globalRefs . T.functionBody) (M.elems wantedTyped))
+      reach names=
+        let more=S.unions [M.findWithDefault S.empty n dependencies | n<-S.toList names]
+            next=names `S.union` (more `S.intersection` legacyOnly)
+        in if next==names then names else reach next
+      fallbackNames=fallbackSource `S.union` reach (roots `S.intersection` legacyOnly)
+  st<-get
+  constructors<-M.traverseWithKey (constructorFunction ns types)
+    (M.map (\(_,_,arity)->["x"++show i | i<-[1..arity]]) (dCons st))
+  fallback<-mapM compileGroup (M.toAscList (M.restrictKeys legacyGroups fallbackNames))
+  converted<-forM (M.toAscList wantedTyped) $ \(name,fn)->do
+    (out,closed)<-emitClosed ns types fn
+    pure (name,(out,fn,closed))
+  let emitted=M.fromList converted
+  pure (Desugared types
+    (M.unions [M.map (\(p,_,_)->p) emitted,M.fromList fallback,M.map (\(p,_,_)->p) constructors])
+    (M.union (M.map (\(_,f,_)->f) emitted) (M.map (\(_,f,_)->f) constructors))
+    (M.union (M.map (\(_,_,c)->c) emitted) (M.map (\(_,_,c)->c) constructors)))
+
+lowerSpecialized :: SpecializedSource -> S.Set String -> D Prog
+lowerSpecialized source names=desugaredCore <$> desugarSpecialized source names
+
 lowerCheckedGroup :: CheckedPlans -> (String,[([SPat],[SGuard],SExpr)]) -> D ((String,([String],Core)),Maybe (T.Function,ClosedFunction))
-lowerCheckedGroup (Plans (Namespace ns) types plans _ _) group@(name,clauses)=case M.lookup name plans of
-  Just (Plan hidden cls expected) | encode clauses==encode expected->do
-    args<-case cls of
-      Clause ps _ _:_->forM (zip [1::Int ..] ps) $ \(i,p)->do
-        st<-get; n<-fresh ("a"++show i)
-        pure (T.Binder (BinderId (Namespace (ns++"/core/"++name)) (dFresh st)) n (Forall [] [] (T.patType p)) (shape (T.patType p)))
-      _->error "typed Core: empty clause plan"
-    let alts=[T.Alternative ps (map lowerGuard gs) (lower b) | Clause ps gs b<-cls]
+lowerCheckedGroup checked group@(name,clauses)=do
+  case typedFunction checked group of
+    Just f->do
+      (out,closed)<-emitClosed (planNamespace checked) (planTypes checked) f
+      pure ((name,out),Just (f,closed))
+    Nothing->(,Nothing) <$> compileGroup group
+
+typedFunction :: CheckedPlans -> (String,[([SPat],[SGuard],SExpr)]) -> Maybe T.Function
+typedFunction checked group@(name,clauses)=case M.lookup name (planEntries checked) of
+  Just (Plan hidden cls expected) | encode clauses==encode expected->
+    let args=case cls of
+          Clause ps _ _:_->[T.Binder (BinderId (Namespace (ns++"/core/"++name)) i) ("$typed_argument_"++show i)
+            (Forall [] [] (T.patType p)) (shape (T.patType p)) | (i,p)<-zip [0..] ps]
+          _->error "typed Core: empty clause plan"
+        alts=[T.Alternative ps (map lowerGuard gs) (lower b) | Clause ps gs b<-cls]
         body=case cls of Clause _ _ b:_->gen (ty b) (T.Match (T.FunctionMatch name) (map ref args) alts); _->error "empty typed clauses"
         fn=T.Function name (hidden++args) body
-    (out,closed)<-emitClosed (Namespace ns) types fn
-    pure ((name,out),Just (fn,closed))
-  _->(,Nothing) <$> compileGroup group
+    in Just fn
+  _->Nothing
   where
+    Namespace ns=planNamespace checked
+    types=planTypes checked
     T.TypeContext linearTypes constructors=types
     shape=linShapeT linearTypes
     gen t n=T.Expr t (shape t) T.Generated Nothing n

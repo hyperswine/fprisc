@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals and vector-layout evidence implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence and structure specialization implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass results, typed desugaring/closed products and checked unit ownership implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -313,3 +313,25 @@ warm type/context/flat-curried arity transitions, unrelated-root cache reuse and
 x64/RV32/RV64 emission pass. Saved/new fixed-answer controls and Sol
 argument/shared-language/bounded-tail checks pass. Integrated hosted validation
 follows the push; the full cleanup goal remains active.
+
+## Typed structure specialization
+
+[Typed structure specialization](2026-10-25-TYPED-STRUCTURE-SPECIALIZATION.md)
+instantiates checked functions before layout and closure conversion. Clone
+contracts retain polymorphic ordinary/provider/capture schemes, fresh identities
+and instantiated ownership shapes. Owned source products prepare the pass once;
+source parameter identities no longer depend on backend label allocation.
+
+The migration fixes verified local/global callee confusion and loss of captured
+layout arguments when a record field was flattened to a raw global. Shared
+surface scope handling also keeps Sol and compatibility analyses consistent.
+Cache revision 112 versions changed code; physical ABIs and runtime structures
+are unchanged. Function-argument specialization in `Mono`, downstream typed
+transformations and all other outstanding table entries remain required. The
+full cleanup goal stays active.
+
+Validation: all 136 Base jobs passed in 666.05 seconds on six workers with a
+fresh native cache and no reused coverage. Typed contracts/evaluation,
+one/four-hart native answers, saved/new controls and x64/RV32/RV64 emission pass.
+Sol scope/compatibility/bounded-tail checks pass. Hosted CI for `84fda39` passed;
+this integrated checkpoint requires its own hosted validation after push.

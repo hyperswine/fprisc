@@ -38,7 +38,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Core.Syntax (Name)
 import Frontend.Syntax
-import Frontend.Traverse (transformE)
+import Frontend.Traverse (transformE,patVars)
 import Precond (checkedName)
 
 -- ---- tables -----------------------------------------------------------------
@@ -179,73 +179,77 @@ specialize sigs structs tops0 = go 0 tops0 (SpecSt S.empty [] [])
         top t (acc, s) = let (t', s') = rwTop t s in (t' : acc, s')
         rwTop t s = case t of
           TBind n ps g b ->
-            let (g', s1) =
+            let bound=S.fromList (concatMap patVars ps)
+                guardScope bs gd=case gd of GPat p _->bs `S.union` S.fromList (patVars p);_->bs
+                (g', s1) =
                   foldr
-                    ( \gd (acc, sx) -> case gd of
-                        GBool e -> let (e', sx') = rwE e sx in (GBool e' : acc, sx')
-                        GPat p e -> let (e', sx') = rwE e sx in (GPat p e' : acc, sx')
+                    ( \(bs,gd) (acc, sx) -> case gd of
+                        GBool e -> let (e', sx') = rwE bs e sx in (GBool e' : acc, sx')
+                        GPat p e -> let (e', sx') = rwE bs e sx in (GPat p e' : acc, sx')
                     )
                     ([], s)
-                    g
-                (b', s2) = rwE b s1
+                    (zip (scanl guardScope bound g) g)
+                (b', s2) = rwE (foldl' guardScope bound g) b s1
              in (TBind n ps g' b', s2)
           o -> (o, s)
 
     -- bottom-up rewrite; state-threading version of transformE, spine-aware
-    rwE :: SExpr -> SpecSt -> (SExpr, SpecSt)
-    rwE e0 st = case e0 of
-      SMark o e -> let (e', s) = rwE e st in (SMark o e', s)
-      SApp {} -> rwSpine e0 st
-      SVar {} -> rwSpine e0 st -- bare generic ref: 0-arg spine (no rewrite)
-      SLam ps b -> let (b', s) = rwE b st in (SLam ps b', s)
+    rwE :: S.Set Name -> SExpr -> SpecSt -> (SExpr, SpecSt)
+    rwE bound e0 st = case e0 of
+      SMark o e -> let (e', s) = rwE bound e st in (SMark o e', s)
+      SApp {} -> rwSpine bound e0 st
+      SVar {} -> rwSpine bound e0 st -- bare generic ref: 0-arg spine (no rewrite)
+      SLam ps b -> let (b', s) = rwE (bound `S.union` S.fromList ps) b st in (SLam ps b', s)
       SBlock stmts fin ->
-        let (stmts', s1) = foldr stmt ([], st) stmts
-            (fin', s2) = rwE fin s1
+        let (stmts', s1) = foldr stmt ([], st) (zip (scanl scope bound stmts) stmts)
+            (fin', s2) = rwE (foldl' scope bound stmts) fin s1
          in (SBlock stmts' fin', s2)
         where
-          stmt (SBind n ps x) (acc, s) = let (x', s') = rwE x s in (SBind n ps x' : acc, s')
-          stmt (SBindPat p x) (acc, s) = let (x', s') = rwE x s in (SBindPat p x' : acc, s')
+          scope bs (SBind n _ _)=S.insert n bs
+          scope bs (SBindPat p _)=bs `S.union` S.fromList (patVars p)
+          stmt (bs,SBind n ps x) (acc, s) = let (x', s') = rwE (bs `S.union` S.fromList (n:ps)) x s in (SBind n ps x' : acc, s')
+          stmt (bs,SBindPat p x) (acc, s) = let (x', s') = rwE bs x s in (SBindPat p x' : acc, s')
       SCase sc alts ->
-        let (sc', s1) = rwE sc st
+        let (sc', s1) = rwE bound sc st
             (alts', s2) = foldr alt ([], s1) alts
          in (SCase sc' alts', s2)
         where
-          alt (p, e) (acc, s) = let (e', s') = rwE e s in ((p, e') : acc, s')
+          alt (p, e) (acc, s) = let (e', s') = rwE (bound `S.union` S.fromList (patVars p)) e s in ((p, e') : acc, s')
       SBin op a b ->
-        let (a', s1) = rwE a st; (b', s2) = rwE b s1 in (SBin op a' b', s2)
-      SProj e path -> let (e', s) = rwE e st in (SProj e' path, s)
+        let (a', s1) = rwE bound a st; (b', s2) = rwE bound b s1 in (SBin op a' b', s2)
+      SProj e path -> let (e', s) = rwE bound e st in (SProj e' path, s)
       SRec fs ->
         let (fs', s) = foldr fld ([], st) fs in (SRec fs', s)
         where
-          fld (n, e) (acc, s) = let (e', s') = rwE e s in ((n, e') : acc, s')
+          fld (n, e) (acc, s) = let (e', s') = rwE bound e s in ((n, e') : acc, s')
       SUpd m as ->
-        let (m', s1) = rwE m st
+        let (m', s1) = rwE bound m st
             (as', s2) = foldr fld ([], s1) as
          in (SUpd m' as', s2)
         where
-          fld (p, e) (acc, s) = let (e', s') = rwE e s in ((p, e') : acc, s')
+          fld (p, e) (acc, s) = let (e', s') = rwE bound e s in ((p, e') : acc, s')
       STup es -> let (es', s) = list es st in (STup es', s)
       SList es -> let (es', s) = list es st in (SList es', s)
       SStrI segs ->
         let (segs', s) = foldr seg ([], st) segs in (SStrI segs', s)
         where
-          seg (SegExpr e) (acc, s) = let (e', s') = rwE e s in (SegExpr e' : acc, s')
+          seg (SegExpr e) (acc, s) = let (e', s') = rwE bound e s in (SegExpr e' : acc, s')
           seg o (acc, s) = (o : acc, s)
       other -> (other, st)
       where
-        list es s0 = foldr (\e (acc, s) -> let (e', s') = rwE e s in (e' : acc, s')) ([], s0) es
+        list es s0 = foldr (\e (acc, s) -> let (e', s') = rwE bound e s in (e' : acc, s')) ([], s0) es
 
     -- an application spine `f a1 .. an`: if f is generic and every
     -- sig-annotated position within reach holds a struct literal, check
     -- conformance and monomorphize
-    rwSpine :: SExpr -> SpecSt -> (SExpr, SpecSt)
-    rwSpine e st =
+    rwSpine :: S.Set Name -> SExpr -> SpecSt -> (SExpr, SpecSt)
+    rwSpine bound e st =
       let (h, args) = spineS e
-          (args', st1) = foldr (\a (acc, s) -> let (a', s') = rwE a s in (a' : acc, s')) ([], st) args
+          (args', st1) = foldr (\a (acc, s) -> let (a', s') = rwE bound a s in (a' : acc, s')) ([], st) args
           rebuilt = foldl' SApp h args'
        in case h of
             SVar f
-              | Just anns <- M.lookup f generics0,
+              | f `S.notMember` bound, Just anns <- M.lookup f generics0,
                 all (\(i, _) -> i < length args') anns,
                 Just chosen <- mapM (\(i, sg) -> (,) i . (,) sg <$> structArg (args' !! i)) anns ->
                   -- chosen :: [(Int, (SigName, StructName))]

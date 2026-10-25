@@ -122,6 +122,9 @@ executable fpr
       Frontend.Desugar.Checked
       Type.Syntax
       Type.Relation
+      Type.Substitution
+      Core.Typed.Instantiate
+      Core.Typed.Specialize
       Compiler.VectorLayout
       Compiler.Trap
       Inline

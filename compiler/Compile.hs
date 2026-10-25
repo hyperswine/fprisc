@@ -44,12 +44,12 @@ import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
 import Infer.Result
-import Frontend.Desugar.Checked (prepareChecked, lowerToUntyped, selectCheckedUnit, lowerCheckedUnit, checkedCallArities)
+import Frontend.Desugar.Checked (prepareChecked, selectCheckedUnit, lowerCheckedUnit, checkedCallArities, specializeCheckedSource, specializedTops, lowerSpecialized)
 import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTopsInterfaces)
 import Safety (measureCheck, checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import qualified Cost
 import Manifest (Manifest (..), readManifest, renderNs)
-import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
+import Struct (expandStructs, sigTable, structTable)
 import Modules (LoadResult (..), ModExport (..), hashAST, loadProgram)
 import Precond (PreNote (..), PreStatus (..), applyPreconds, checkedName, preTable, renderNote, validatePre, validatePreUses)
 import Home (underHome)
@@ -514,7 +514,6 @@ compileWithInterface accepted = do
           notes = inferenceNotes inferred
           holes = inferenceHoles inferred
           linsigs = inferenceLinearity inferred
-          topsRW = inferenceTops inferred
           interfaces = inferenceInterfaces inferred
       unless (null terrs) $ do
         putStrLn "=== TYPE ERRORS ==="
@@ -558,15 +557,16 @@ compileWithInterface accepted = do
             putStrLn "-- paste-ready signatures (inferred types):"
             mapM_ (putStrLn . ("SUGGEST " ++)) ssug
           exitFailure
-      -- specialize generic calls; clones land in the merged program used
-      -- for whole-program analyses. Per-unit codegen re-expands + rewrites
-      -- its own tops (deterministic), so operator resolution is local.
-      let (specErrs, topsSpec) = specialize sigs structs topsRW
-      unless (null specErrs) $ do
-        putStrLn "=== SIG/STRUCT: ERRORS ==="
-        mapM_ (putStrLn . ("  * " ++)) (anchored specErrs)
-        exitFailure
-      let finalTops = erasePSig topsSpec
+      -- One owned source product supplies the compatibility analyses and
+      -- typed structure transformation. Units keep their checked projections;
+      -- root clones preserve types/identities before layout and closure lifting.
+      specialized <- case specializeCheckedSource checkedLowering of
+        Left specErrs -> do
+          putStrLn "=== SIG/STRUCT: ERRORS ==="
+          mapM_ (putStrLn . ("  * " ++)) (anchored specErrs)
+          exitFailure
+        Right source -> pure source
+      let finalTops = specializedTops specialized
       -- ---- whole-program ANALYSES (cheap; codegen below is per-unit) ----
       let preludeHash = hashAST preludeTops
           -- content-addressed cons: every unit's types under ITS hash;
@@ -582,7 +582,7 @@ compileWithInterface accepted = do
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
           compileLowered lower = let (p, st) = runState (lower >>= liftFix) (DEnv 0 consAll shapes [] [])
                                  in (M.map (fmap eraseCast) p, S.fromList (dJoins st))
-          compileRaw uts = compileLowered (lowerToUntyped checkedLowering uts)
+          compileRaw uts = compileLowered (lowerSpecialized specialized (bindNames uts))
           compileOwnedRaw unit = compileLowered (lowerCheckedUnit unit)
           turnContext = fst (compileRaw finalTops)
           -- regions (the compiler-placed loop and call kinds) change no work

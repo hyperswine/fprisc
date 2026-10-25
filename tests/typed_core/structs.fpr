@@ -1,0 +1,52 @@
+unsafe base.
+ProbeTypedNum = Sig { seed : Int -> t, (+) }.
+TypedInts = Struct ProbeTypedNum { seed = fn n -> n, (+) = fn x y -> x + y }.
+TypedOffset = Struct ProbeTypedNum { seed = fn n -> n + 10, (+) = fn x y -> x + y }.
+TypedFloats = Struct ProbeTypedNum { seed = fn n -> F64.ofInt n, (+) = fn x y -> x + y + 0.0 }.
+ProbeTypedId = Sig { pass : t -> t }.
+ProbeTypedInt = Sig { pass : Int -> Int }.
+TypedIdentity = Struct ProbeTypedId { pass = fn x -> x }.
+TypedWide = Struct ProbeTypedId { pass = fn x -> x, spare = fn x -> x }.
+ProbeTypedVector = Sig { build : Int -> Vector Int }.
+genericVector x = Vec.push x (Vec.new Unit).
+TypedVector : {build : Int -> Vector Int}.
+TypedVector = Struct ProbeTypedVector { build = genericVector }.
+getVector (s : ProbeTypedVector) n = s.build n.
+generic (s : ProbeTypedId) x = s.pass x.
+specific (s : ProbeTypedInt) x = s.pass x.
+twice (s : ProbeTypedNum) n = x = s.seed n; x + x.
+forward (s : ProbeTypedNum) n = twice s n.
+left (s : ProbeTypedNum) n = if n == 0 then s.seed 7 else right s (n - 1).
+right (s : ProbeTypedNum) n = if n == 0 then s.seed 7 else left s (n - 1).
+poly (s : ProbeTypedNum) n x = (s.seed n,x).
+capture (s : ProbeTypedNum) n = fn x -> v = s.seed n; v + x.
+local (s : ProbeTypedNum) n = loop k = if k == 0 then s.seed n else loop (k - 1); loop 3.
+polyLocal (s : ProbeTypedNum) n = ident x = x; fn u -> (ident (s.seed n),ident True).
+makeVec (s : ProbeTypedNum) n = Vec.push (s.seed n) (Vec.new Unit).
+shape (s : ProbeTypedNum) r = {r | f = (fn x -> s.seed x)}.
+constant (s : ProbeTypedNum) = fn x -> x.
+pick (s : ProbeTypedNum) n = twice s n.
+main =
+  pick = fn s n -> n + 100;
+  dict = TypedInts;
+  (pi,pb) = poly TypedInts 4 True;
+  (pj,pn) = poly TypedInts 5 99;
+  a = {a = 1,f = (fn x -> x)};
+  b = {b = True,f = (fn x -> x)};
+  ra = shape TypedInts a;
+  rb = shape TypedInts b;
+  raAgain = shape TypedInts a;
+  fa = ra.f;
+  fb = rb.f;
+  faAgain = raAgain.f;
+  ca = constant TypedInts;
+  cb = constant TypedInts;
+  (pl,pt) = (polyLocal TypedInts 6) Unit;
+  v = makeVec TypedFloats 2;
+  (vn,v) = Vec.len v;
+  _ = Vec.free v;
+  w = getVector TypedVector 3;
+  (wx,w) = Vec.at 0 w;
+  (wn,w) = Vec.len w;
+  _ = Vec.free w;
+  print "typed-structs {twice TypedInts 3} {forward TypedOffset 2} {left TypedInts 3} {pi} {pb} {pj} {pn} {(capture TypedOffset 3) 2} {local TypedInts 9} {twice TypedFloats 3} {forward TypedFloats 4} {fa == fb} {fa == faAgain} {fa 7} {fb 8} {ca == cb} {pick TypedInts 2} {forward dict 5} {generic TypedIdentity 11} {generic TypedIdentity True} {specific TypedIdentity 12} {generic TypedWide 13} {pl} {pt} {vn} {wx} {wn}".

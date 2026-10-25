@@ -1704,7 +1704,7 @@ inferTopsChecked ns = inferTopsResult (Just ns)
 inferTopsResult :: Maybe Namespace -> IProf -> Sigs -> Structs -> [STop] -> InferenceResult
 inferTopsResult capture prof sigs structs tops =
   let ((tops', proof, sites, schemes, layouts), st) = runState run (initialIEnv capture)
-  in resultFromState st tops' proof sites schemes layouts
+  in resultFromState st tops' proof sites schemes layouts sigs structs
   where
     aliases = M.fromList [(n, fs) | TShape n fs <- tops]
     run :: I ([STop], Either String (Maybe Evidence.Evidence), [ElaborationFact], M.Map Name Scheme, M.Map Name [Type])
