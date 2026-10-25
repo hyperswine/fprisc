@@ -456,8 +456,8 @@ simdExprOf kind caps prm body = evalStateT (go env0 body) (0 :: Int)
 typedKernelPlan :: String -> SpecPlan -> Either String K.Kernel
 typedKernelPlan sym p
   | Just pipeline <- pipelineOf p = Right (K.Kernel sym (planCapKinds p) (pipeElement pipeline)
-      (pipeAccumulator pipeline) [K.Stage (elementOpName op) f caps | (op,f,caps) <- pipeStages pipeline] Nothing False)
-  | spOp p `elem` [ScalarOp Map,ScalarOp Filter,ScalarOp Fold], spScalar p,
+      (pipeAccumulator pipeline) [K.Stage op f caps | (op,f,caps) <- pipeStages pipeline] Nothing False)
+  | ScalarOp op <- spOp p, spScalar p,
     spSoa p == Nothing, spMv p == Nothing =
       let k = spCaps p
           kinds = planCapKinds p
@@ -465,11 +465,11 @@ typedKernelPlan sym p
           accKind = case spKinds p of Just (ks,_) -> ks !! k; _ -> KI
           folding = spOp p == ScalarOp Fold
        in Right (K.Kernel sym (kinds ++ [accKind | folding]) element
-            (if folding then Just (k,accKind) else Nothing) [K.Stage (operationKey (spOp p)) (spFn p) [0..k-1]] Nothing False)
+            (if folding then Just (k,accKind) else Nothing) [K.Stage op (spFn p) [0..k-1]] Nothing False)
   -- the write-back fold Vec.fold f z (Vec.map g v): one pass that stores
   -- g(el) and folds f over it, the pipeline shape with map then fold
   | Just g <- wfoldG p, Just (ks,_) <- spKinds p, spScalar p =
-      Right (K.Kernel sym [head ks] (last ks) (Just (0,head ks)) [K.Stage "map" g [], K.Stage "fold" (spFn p) []] Nothing False)
+      Right (K.Kernel sym [head ks] (last ks) (Just (0,head ks)) [K.Stage Map g [], K.Stage Fold (spFn p) []] Nothing False)
   | otherwise = Left ("typed " ++ operationKey (spOp p) ++ " record/SIMD kernel not implemented")
 
 -- Reuse the planner's column duals as ordinary Core functions, so callback
