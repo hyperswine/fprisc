@@ -3,86 +3,89 @@
 -- before allocation and again after physical placement, before rendering.
 module Codegen.Target.X64.Forms (checkForms) where
 import Codegen.Selected
+import Codegen.Annotation
 import qualified Codegen.Opcode as O
 import Control.Monad (unless,forM_)
 
 checkForms :: String -> [Item] -> Either String ()
-checkForms owner items=forM_ [i | I i<-items] $ \i->do
-  let bad why=Left ("selected x64 "++owner++" "++siOp i++": "++why)
-      require why yes=unless yes (bad why)
-      ds=siDefs i;us=siUses i
-      shape=case siOpcode i of
-        O.TargetText _->False
-        O.A64 _->False
-        O.RV _->False
-        O.Common op->case op of
-          O.EntryCheckTick->entry ds us
-          O.EntryCheck->entry ds us
-          O.EntryTick->entry ds us
-          O.SavesHere->False
-          O.EntryStatic->False -- x64 has no such expansion
-          O.TickN->null ds && matches [immediate] us
-          O.TailJump->null ds && transfer us
-          O.JumpLoop->null ds && matches [label] us
-          O.LoadCell->matches [word] ds && matches [symbol] us
-          O.StoreCell->null ds && matches [word,symbol] us
-          O.LoadSpill->matches [word] ds && matches [immediate] us
-          O.StoreSpill->null ds && matches [word,immediate] us
-          O.Params->length ds<=6 && all word ds && null us
-        O.X64 op->case op of
-          O.Move->one [word]
-          O.Literal->one [immediate]
-          O.Address->one [symbol]
-          O.LoadSigned32->one [word,immediate]
-          O.Compare->none [word,word]
-          O.CompareImmediate->none [word,immediate]
-          O.Set _->one []
-          O.Select _->one [word,word]
-          O.Branch _->none [label]
-          O.BranchZero->none [word,label]
-          O.BranchNonzero->none [word,label]
-          O.Jump->none [label]
-          O.Add->binary;O.Subtract->binary;O.Multiply->binary
-          O.And->binary;O.Or->binary;O.Xor->binary
-          O.ShiftLeftImmediate->one [word,immediate]
-          O.ShiftRightArithmeticImmediate->one [word,immediate]
-          O.OrImmediate->one [word,immediate]
-          O.AndImmediate->one [word,immediate]
-          O.XorImmediate->one [word,immediate]
-          O.SignExtend63->one [word,immediate]
-          O.ShiftLeft->binary;O.ShiftRight->binary;O.Divide->binary
-          O.FrameLoad->one [frame]
-          O.FrameStore->none [word,frame]
-          O.LoadByte->one [word,immediate]
-          O.LoadField->one [word,immediate]
-          O.StoreField->none [word,word,immediate]
-          O.StoreHeader->none [word,word,immediate]
-          O.Call->length ds<=1 && all word ds && transfer us
-          O.Ret->none [word]
-          O.Push->none [word]
-          O.ApplyN->one [immediate]
-          O.Panic->none [symbol]
-          O.Enter->none []
-          O.Save->none []
-          O.FloatBinary _ _->binary
-          O.FloatCompare _ _->binary
-          O.TreeLeaf _->none [word,index 0 7]
-          O.TreeNode _ _->none [index 0 6]
-          O.TreeOutput _->one [index 0 7]
-          O.TreeCompare _ _->one []
-          O.PairLoad->none [word,index 8 8]
-          O.PairStore->none [word,index 8 15]
-          O.PairDuplicate->none [word,index 9 15]
-          O.PairBinary _->none [index 9 15,index 8 15,index 8 15]
-      one ps=matches [word] ds && matches ps us
-      none ps=null ds && matches ps us
-      binary=one [word,word]
-  require "opcode/operand form mismatch" shape
-  require "opcode/control effect mismatch" (siControl i==control (siOpcode i) us)
-  require "opcode/flag effect mismatch" (siFlags i==flags (siOpcode i))
-  require "opcode/call metadata mismatch" (calls (siOpcode i) us (siCalls i))
-  require "opcode/register constraint mismatch" (registers (siOpcode i) ds us
-    && (siOpcode i/=O.X64 O.Divide || Phys "rdx" `elem` siImplicitDefs i))
+checkForms owner items=do
+  checkAnnotations AlwaysRestores owner items
+  forM_ [i | I i<-items] $ \i->do
+    let bad why=Left ("selected x64 "++owner++" "++siOp i++": "++why)
+        require why yes=unless yes (bad why)
+        ds=siDefs i;us=siUses i
+        shape=case siOpcode i of
+          O.TargetText _->False
+          O.A64 _->False
+          O.RV _->False
+          O.Common op->case op of
+            O.EntryCheckTick->entry ds us
+            O.EntryCheck->entry ds us
+            O.EntryTick->entry ds us
+            O.SavesHere->False
+            O.EntryStatic->False -- x64 has no such expansion
+            O.TickN->null ds && matches [immediate] us
+            O.TailJump->null ds && transfer us
+            O.JumpLoop->null ds && matches [label] us
+            O.LoadCell->matches [word] ds && matches [symbol] us
+            O.StoreCell->null ds && matches [word,symbol] us
+            O.LoadSpill->matches [word] ds && matches [immediate] us
+            O.StoreSpill->null ds && matches [word,immediate] us
+            O.Params->length ds<=6 && all word ds && null us
+          O.X64 op->case op of
+            O.Move->one [word]
+            O.Literal->one [immediate]
+            O.Address->one [symbol]
+            O.LoadSigned32->one [word,immediate]
+            O.Compare->none [word,word]
+            O.CompareImmediate->none [word,immediate]
+            O.Set _->one []
+            O.Select _->one [word,word]
+            O.Branch _->none [label]
+            O.BranchZero->none [word,label]
+            O.BranchNonzero->none [word,label]
+            O.Jump->none [label]
+            O.Add->binary;O.Subtract->binary;O.Multiply->binary
+            O.And->binary;O.Or->binary;O.Xor->binary
+            O.ShiftLeftImmediate->one [word,immediate]
+            O.ShiftRightArithmeticImmediate->one [word,immediate]
+            O.OrImmediate->one [word,immediate]
+            O.AndImmediate->one [word,immediate]
+            O.XorImmediate->one [word,immediate]
+            O.SignExtend63->one [word,immediate]
+            O.ShiftLeft->binary;O.ShiftRight->binary;O.Divide->binary
+            O.FrameLoad->one [frame]
+            O.FrameStore->none [word,frame]
+            O.LoadByte->one [word,immediate]
+            O.LoadField->one [word,immediate]
+            O.StoreField->none [word,word,immediate]
+            O.StoreHeader->none [word,word,immediate]
+            O.Call->length ds<=1 && all word ds && transfer us
+            O.Ret->none [word]
+            O.Push->none [word]
+            O.ApplyN->one [immediate]
+            O.Panic->none [symbol]
+            O.Enter->none []
+            O.Save->none []
+            O.FloatBinary _ _->binary
+            O.FloatCompare _ _->binary
+            O.TreeLeaf _->none [word,index 0 7]
+            O.TreeNode _ _->none [index 0 6]
+            O.TreeOutput _->one [index 0 7]
+            O.TreeCompare _ _->one []
+            O.PairLoad->none [word,index 8 8]
+            O.PairStore->none [word,index 8 15]
+            O.PairDuplicate->none [word,index 9 15]
+            O.PairBinary _->none [index 9 15,index 8 15,index 8 15]
+        one ps=matches [word] ds && matches ps us
+        none ps=null ds && matches ps us
+        binary=one [word,word]
+    require "opcode/operand form mismatch" shape
+    require "opcode/control effect mismatch" (siControl i==control (siOpcode i) us)
+    require "opcode/flag effect mismatch" (siFlags i==flags (siOpcode i))
+    require "opcode/call metadata mismatch" (calls (siOpcode i) us (siCalls i))
+    require "opcode/register constraint mismatch" (registers (siOpcode i) ds us
+      && (siOpcode i/=O.X64 O.Divide || Phys "rdx" `elem` siImplicitDefs i))
   where
     matches ps xs=length ps==length xs && and (zipWith ($) ps xs)
     word (OV _ (Any FPR))=False

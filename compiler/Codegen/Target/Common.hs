@@ -269,7 +269,7 @@ shrinkWrap saved items
     isSaved = \case OP r -> S.member r savedSet; _ -> False
     returns = any (\case I i -> siControl i == Return; _ -> False)
     noRestore = \case
-      I i | siControl i == Return -> I i {siNote = "norestore"}
+      I i | siControl i == Return -> I i {siAnnotation = SkipRestores}
       it -> it
     -- basic blocks: a label starts one, an instruction that transfers ends one
     blocks = split items

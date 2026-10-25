@@ -70,6 +70,7 @@ import qualified Codegen.Opcode as O
 import qualified Codegen.Opcode.A64 as A
 import Codegen.Target.A64.Forms (checkForms)
 import Codegen.Selected hiding (plain)
+import Codegen.Annotation (EntryPoint(..),entryLabel,checkSaveGroups)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.Bits (shiftR, (.&.))
@@ -263,7 +264,8 @@ call sym safepoint runtime args res =
       siFlags = FlagsDef, -- nothing survives a call: the flags are destroyed too
       siControl = Next,
       siCalls = [Call sym safepoint runtime],
-      siNote = ""
+      siAnnotation = NoAnnotation,
+      siAllocation = Nothing
     }
 
 -- the return: x0 <- the value, then the epilogue
@@ -310,7 +312,7 @@ entrySeq stack fuel (Label base) =
       siClobbers = callerSaved,
       siFlags = FlagsDef,
       siCalls = [Call "fpr_stack_grow" False True | stack] ++ [Call "fpr_fuel_exhausted" True False | fuel],
-      siNote = base
+      siAnnotation = EntryLabels (Label base)
     }
 
 -- ---- selection ---------------------------------------------------------
@@ -858,7 +860,7 @@ emitFnA64WithSymbols symbols cfg fn = do
       -- parameters are parked before the entry sequence's calls: the
       -- legacy order)
       pairs = savePairs ly saves
-      saveItems = [I ((plain (O.A64 A.Save) [] []) {siNote = show k}) | (k, _) <- zip [0 :: Int ..] pairs]
+      saveItems = [I ((plain (O.A64 A.Save) [] []) {siAnnotation = SaveGroup k}) | (k, _) <- zip [0 :: Int ..] pairs]
       wrapped = if tuneShrinkWrap (cfgTune cfg) then shrinkWrap (alSaved alloc) allocatedBody else Nothing
       body = I ((plain (O.A64 A.Enter) [] []) {siImplicitDefs = [Phys "sp", x 29, x 16]})
         : case wrapped of
@@ -879,6 +881,7 @@ emitFnA64WithSymbols symbols cfg fn = do
           ++ [gsym cfg sym ++ ":"]
       lines' = header ++ map (\s -> if last s == ':' then s else "    " ++ s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]
   checkForms a64RegisterFile name body
+  checkSaveGroups name (length pairs) body
   pure (NativeFn name lines' report (S.toList nulls) (S.toList strs) [])
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
@@ -986,7 +989,9 @@ renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOpcode i)
     off ref = M.findWithDefault (error "A64 render: an object without an offset") ref (lyOffset ly)
     go op ds us = case (op, ds, us) of
       (O.A64 A.Enter, [], []) -> enter
-      (O.A64 A.Save, [], []) -> let (regs, lo) = pairs !! read (siNote i) in pairAccess "stp" "str" regs lo
+      (O.A64 A.Save, [], []) -> case siAnnotation i of
+        SaveGroup k -> let (regs, lo) = pairs !! k in pairAccess "stp" "str" regs lo
+        _ -> error "A64 render: missing checked save-group annotation"
       (O.Common O.Params, _, []) -> [] -- the parameters are where the ABI put them
       (O.A64 A.FrameLoad, [d], [OF ref 0]) -> ldst "ldr" "ldur" (reg d) "x29" (fromIntegral (off ref))
       (O.A64 A.FrameStore, [], [s, OF ref 0]) -> ldst "str" "stur" (reg s) "x29" (fromIntegral (off ref))
@@ -1090,11 +1095,10 @@ renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOpcode i)
             ++ (if n < 4096 then ["add x29, sp, #" ++ show n] else ["add x29, sp, x16"])
     -- the callee-saved registers come back first (x29-relative, so after a
     -- stack-segment change they still read the frame they were saved in)
-    epilogue = (if siNote i == "norestore" then [] else restores)
+    epilogue = (if siAnnotation i == SkipRestores then [] else restores)
       ++ (if linkPaired then ["mov x9, x29", "ldp x29, x30, [x9, #-16]"]
           else ["ldur x30, [x29, #-8]", "mov x9, x29", "ldur x29, [x29, #-16]"])
       ++ ["ldur x9, [x9, #-24]" | large] ++ ["mov sp, x9"]
-    base = siNote i
     parkArgs scaled unscaled = concat
       [ldst scaled unscaled (reg o) "x29" (fromIntegral (lyOffset ly M.! FrameRef (entrySlot n)))
       | (n, o) <- zip [0..] (siDefs i)]
@@ -1104,27 +1108,27 @@ renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOpcode i)
         "sub x10, x10, x11",
         "ldr x11, [x9, #" ++ show (8 * (2 + 56 :: Int)) ++ "]", -- stk_span
         "cmp x10, x11",
-        "b.lo " ++ lbl (Label (base ++ "_stk"))
+        "b.lo " ++ lbl (entryLabel i StackReady)
       ] ++ parkArgs "str" "stur" ++ [
         "bl " ++ gsym cfg "fpr_stack_grow",
-        "cbz x0, " ++ lbl (Label (base ++ "_same")),
+        "cbz x0, " ++ lbl (entryLabel i SameStack),
         "mov sp, x0",
-        lbl (Label (base ++ "_same")) ++ ":"
+        lbl (entryLabel i SameStack) ++ ":"
       ]
         ++ parkArgs "ldr" "ldur"
         ++ hartRead -- the call clobbered x9
-        ++ [lbl (Label (base ++ "_stk")) ++ ":"]
+        ++ [lbl (entryLabel i StackReady) ++ ":"]
     tick = tickN 1
     tickN n =
       [ "ldur x10, [x9, #0]",
         "sub x10, x10, #" ++ show n,
         "stur x10, [x9, #0]",
         "cmp x10, #0",
-        "b.gt " ++ lbl (Label (base ++ "_fuel"))
+        "b.gt " ++ lbl (entryLabel i FuelReady)
       ] ++ parkArgs "str" "stur" ++ [
         "bl " ++ gsym cfg "fpr_fuel_exhausted"
       ] ++ parkArgs "ldr" "ldur" ++ [
-        lbl (Label (base ++ "_fuel")) ++ ":"
+        lbl (entryLabel i FuelReady) ++ ":"
       ]
     -- x9 reads the hart under the configured hosted/QOS access contract
     hartRead = hartReadFor cfg

@@ -265,16 +265,16 @@ allocateFn cfg fn = do
         items <- rewrite cfg here locOf p i
         (items ++) <$> walk (p + 2 :: Int) rest
   body <- walk 0 stream
-  let noted n = length [() | I x <- body, siNote x == n]
+  let noted n = length [() | I x <- body, siAllocation x == Just n]
       stats =
         Stats
           { stValues = M.size ivs,
             stInRegister = length [() | Just (Just _) <- map (`M.lookup` assigned) (M.keys ivs)],
             stSpilled = length spilled,
             stSlots = length slotObjs,
-            stReloads = noted "reload",
-            stSpillStores = noted "spill",
-            stCopies = noted "copy",
+            stReloads = noted Reload,
+            stSpillStores = noted SpillStore,
+            stCopies = noted RegisterCopy,
             stCrossing = length [() | v <- M.keys ivs, crossesCallV v],
             stLoops = nloops
           }
@@ -480,7 +480,7 @@ resolveCopies cfg here raw = do
   forM_ moves $ \case
     (PS _, PS _) -> Left (here ++ "a slot-to-slot copy")
     _ -> pure ()
-  let stores = [(acStore cfg r s) {siNote = "spill"} | (PS s, PR r) <- moves]
+  let stores = [(acStore cfg r s) {siAllocation = Just SpillStore} | (PS s, PR r) <- moves]
       regMoves = [(d, s) | (PR d, s) <- moves]
   rest <- schedule regMoves
   pure (stores ++ rest)
@@ -501,8 +501,8 @@ resolveCopies cfg here raw = do
                          in (emit t (PR sr) :) <$> schedule pending'
                       PS _ -> Left (here ++ "internal: a slot in a copy cycle")
                     [] -> Left (here ++ "no scratch register free to break a copy cycle")
-    emit d (PR s) = (acMove cfg d s) {siNote = "copy"}
-    emit d (PS s) = (acLoad cfg d s) {siNote = "reload"}
+    emit d (PR s) = (acMove cfg d s) {siAllocation = Just RegisterCopy}
+    emit d (PS s) = (acLoad cfg d s) {siAllocation = Just Reload}
 
 -- The independent oracle over the physical stream: liveness of physical
 -- registers, then (1) no clobbered register is live out of the

@@ -20,7 +20,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
-| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, all native ISA selected operations and shared entry/transfer protocols implemented; remaining kernel stages, call-convention/symbol-role/annotation contracts pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
+| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, all native ISA selected operations, shared entry/transfer protocols and instruction annotation/accounting contracts implemented; remaining kernel stages and call-convention/symbol-role contracts pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
 | Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
 | Obsolete architecture descriptions and names | Module identity and frontend-owner references corrected; backend references/names still pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
 
@@ -668,3 +668,24 @@ The preceding integrated head `d190e1a` passed hosted CI run 40222451310,
 including the earlier region-control implementation. Its region-only run was
 cancelled when superseded. The new ISA-constructor stage still needs its own
 hosted result after push.
+
+## Typed instruction annotations and allocation events (2026-10-26)
+
+[Selected-instruction annotations](2026-10-26-INSTRUCTION-ANNOTATIONS.md)
+replace `siNote` with semantic entry/save/restore payloads and independent
+allocator event data. Shared entry-label roles drive both rendering and scope
+checks. Native consumers check annotation roles, internal/local label
+collisions, physical event operands and final-frame save-group bounds; no
+renderer decodes an integer or protocol tag from text. Self-loop splitting and
+shrink-wrap preserve the typed payloads. Labels named `copy`, `reload` or `spill`
+cannot alter real allocation statistics.
+
+All 167 root/unit outputs and cache identities remain byte-identical across 85
+configurations on eight targets. Final fixed-source Base validation passes all
+136 jobs in 584.02 seconds on six workers, with a fresh cache, no reused results
+and unchanged timeouts. Sol compatibility and three-million-iteration
+self/mutual tail calls pass with an 85 MB peak. Revision 120 and physical ABIs
+remain unchanged. The preceding `9c12c6b` checkpoint passed hosted CI run
+40225611701; this stage needs its own hosted result after push. Existing call
+conventions/symbol roles and all remaining table entries stay in the full
+active cleanup goal.

@@ -35,7 +35,8 @@
 -- frame slot) or allocation (M3).
 module Codegen.Selected
   ( VReg (..), RegClass (..), Phys (..), Constraint (..), Operand (..),
-    Flags (..), Control (..), Call (..), SInstr (..), Item (..), Label (..), SFn (..),
+    Flags (..), Control (..), Call (..), Annotation(..), AllocationEvent(..),
+    SInstr (..), Item (..), Label (..), SFn (..),
     RegisterFile (..), plain, plainOpcode, siOp, checkFn, itemLabels, instrVRegs, operandVReg,
   ) where
 
@@ -92,6 +93,13 @@ data Call = Call
 
 newtype Label = Label String deriving (Eq, Ord, Show)
 
+-- Semantic payloads and allocation accounting have different owners. An entry
+-- label spelled "copy" cannot become an allocation statistic, and inserting a
+-- copy cannot overwrite a label, frame-save index or restore decision.
+data Annotation=NoAnnotation | EntryLabels Label | SaveGroup Int | SkipRestores
+  deriving (Eq,Ord,Show)
+data AllocationEvent=SpillStore | Reload | RegisterCopy deriving (Eq,Ord,Show)
+
 data SInstr = SInstr
   { siOpcode :: Op.Opcode, -- constructor identity survives placement/allocation
     siDefs :: [Operand],
@@ -102,7 +110,8 @@ data SInstr = SInstr
     siFlags :: Flags,
     siControl :: Control,
     siCalls :: [Call], -- in order; empty for an ordinary instruction
-    siNote :: String -- a comment the printer may attach
+    siAnnotation :: Annotation,
+    siAllocation :: Maybe AllocationEvent
   }
   deriving (Eq, Ord, Show)
 
@@ -126,7 +135,7 @@ plain :: String -> [Operand] -> [Operand] -> SInstr
 plain op = plainOpcode (Op.textOpcode op)
 
 plainOpcode :: Op.Opcode -> [Operand] -> [Operand] -> SInstr
-plainOpcode op ds us = SInstr op ds us [] [] [] FlagsNone Next [] ""
+plainOpcode op ds us = SInstr op ds us [] [] [] FlagsNone Next [] NoAnnotation Nothing
 
 -- Diagnostic spelling only. Typed selectors/renderers use siOpcode.
 siOp :: SInstr -> String

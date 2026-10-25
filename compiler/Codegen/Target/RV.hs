@@ -11,6 +11,7 @@ import Codegen.Frame
 import Codegen.IR
 import Codegen.Policy
 import Codegen.Selected hiding (plain)
+import Codegen.Annotation (EntryPoint(..),entryLabel)
 import qualified Codegen.Opcode as O
 import qualified Codegen.Opcode.RV as R
 import Codegen.Target.RV.Forms (checkForms)
@@ -123,7 +124,7 @@ entry stack fuel = do
   Label l <- freshLabel
   emit ((plain (O.Common (if stack then if fuel then O.EntryCheckTick else O.EntryCheck else O.EntryTick)) [] [])
     {siImplicitDefs = map p ["t3","t4","t5","sp"], siImplicitUses = [p "tp"],
-     siClobbers = callers, siNote = l,
+     siClobbers = callers, siAnnotation = EntryLabels (Label l),
      siCalls = [Call "fpr_stack_grow" False True | stack] ++ [Call "fpr_fuel_exhausted" True False | fuel]})
 boxed :: VReg -> S VReg
 boxed v = do t <- fresh; d <- fresh; ri R.ShiftLeftImmediate t v 1; ri R.OrImmediate d t 1; pure d
@@ -173,7 +174,7 @@ select cfg fn = do
         Label l <- freshLabel
         emit ((plain (O.Common O.TickN) [] [OI (fromIntegral n)])
           {siImplicitDefs = map p ["t3","t4","t5","sp"], siImplicitUses = [p "tp"],
-           siClobbers = callers, siNote = l, siCalls = [Call "fpr_fuel_exhausted" True False]})
+           siClobbers = callers, siAnnotation = EntryLabels (Label l), siCalls = [Call "fpr_fuel_exhausted" True False]})
       OSimdPair {} -> lift (Left "a NEON pair on RISC-V")
       _ -> case result of
         Nothing -> lift (Left "compiler error: RV64 instruction lacks result")
@@ -536,10 +537,10 @@ render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else 
     stWord = if cfgWidth cfg == W32 then "sw" else "sd"
     epilogue = restores ++ ["mv t3, s0"] ++ memory ld "ra" "s0" (-w) ++ memory ld "s0" "s0" (-2*w) ++ (if large then memory ld "sp" "t3" (-3*w) else ["mv sp, t3"])
     hart = hartRead cfg
-    l suffix = local fn (Label (siNote i ++ suffix))
-    stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l "_stk", "call fpr_stack_grow", "beqz a0, " ++ l "_same", "mv sp, a0", l "_same" ++ ":"] ++ hart ++ [l "_stk" ++ ":"]
+    l point = local fn (entryLabel i point)
+    stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l StackReady, "call fpr_stack_grow", "beqz a0, " ++ l SameStack, "mv sp, a0", l SameStack ++ ":"] ++ hart ++ [l StackReady ++ ":"]
     tick = tickN 1
-    tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l "_fuel", "call fpr_fuel_exhausted", l "_fuel" ++ ":"]
+    tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l FuelReady, "call fpr_fuel_exhausted", l FuelReady ++ ":"]
     ew = if cfgWidth cfg == W32 then "32" else "64"
     go op ds us = case (op,ds,us) of
       (O.Common O.EntryStatic,[],[]) -> []

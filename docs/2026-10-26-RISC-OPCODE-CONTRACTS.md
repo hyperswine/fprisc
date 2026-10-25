@@ -88,6 +88,11 @@ The region-control run `40220603207` was cancelled when that commit superseded
 it; cancellation is not a complete hosted pass. This stage needs its own hosted
 result after push.
 
+The integrated native-opcode commit `9c12c6b` subsequently passed
+[hosted CI run 40225611701](https://github.com/hyperswine/fprisc/actions/runs/40225611701),
+including Linux x64 execution, native RISC-V runtime gates and the final Base
+sweep. That result covers the per-ISA constructors and form contracts here.
+
 ## Remaining cleanup
 
 Typed later inlining/fusion/workers/reuse, remaining compatibility source forms

@@ -69,6 +69,7 @@ executable fpr
       Codegen.Split
       Codegen.Policy
       Codegen.Selected
+      Codegen.Annotation
       Codegen.Opcode
       Codegen.Opcode.Types
       Codegen.Opcode.X64

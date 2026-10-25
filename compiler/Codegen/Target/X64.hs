@@ -24,6 +24,7 @@ import Codegen.IR
 import Codegen.Place
 import Codegen.Policy
 import Codegen.Selected hiding (plain)
+import Codegen.Annotation (EntryPoint(..),entryLabel)
 import qualified Codegen.Opcode as O
 import Codegen.Target.X64.Forms (checkForms)
 import Codegen.Target.Common
@@ -212,7 +213,7 @@ entrySeq stack fuel (Label base) =
     {siImplicitDefs = map r ["r10", "r11", "rax", "rsp"], siClobbers = callerSaved,
      siFlags = FlagsDef,
      siCalls = [Call "fpr_stack_grow" False True | stack] ++ [Call "fpr_fuel_exhausted" True False | fuel],
-     siNote = base}
+     siAnnotation = EntryLabels (Label base)}
 
 -- ---- selection ---------------------------------------------------------
 
@@ -893,14 +894,13 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpco
     loadCell = loadCellFor hart
     storeCell = storeCellFor hart
     hartRead = loadCell "fpr_posix_hart" "%r10"
-    base = siNote i
     parkArgs save = ["movq " ++ (if save then reg o ++ ", " ++ slot ref else slot ref ++ ", " ++ reg o)
       | (n, o) <- zip [0..] (siDefs i), let ref = FrameRef (entrySlot n)]
     stackCheck =
-      ["leaq 8(%rsp), %r11", "subq 456(%r10), %r11", "cmpq 464(%r10), %r11", "jb " ++ lbl (Label (base ++ "_stk"))]
+      ["leaq 8(%rsp), %r11", "subq 456(%r10), %r11", "cmpq 464(%r10), %r11", "jb " ++ lbl (entryLabel i StackReady)]
       ++ parkArgs True ++ call "fpr_stack_grow"
-      ++ ["testq %rax, %rax", "jz " ++ lbl (Label (base ++ "_same")), "leaq -8(%rax), %rsp", lbl (Label (base ++ "_same")) ++ ":"]
-      ++ parkArgs False ++ hartRead ++ [lbl (Label (base ++ "_stk")) ++ ":"]
+      ++ ["testq %rax, %rax", "jz " ++ lbl (entryLabel i SameStack), "leaq -8(%rax), %rsp", lbl (entryLabel i SameStack) ++ ":"]
+      ++ parkArgs False ++ hartRead ++ [lbl (entryLabel i StackReady) ++ ":"]
     tick = tickN 1
-    tickN n = ["subq $" ++ show n ++ ", (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (Label (base ++ "_fuel"))]
-      ++ parkArgs True ++ call "fpr_fuel_exhausted" ++ parkArgs False ++ [lbl (Label (base ++ "_fuel")) ++ ":"]
+    tickN n = ["subq $" ++ show n ++ ", (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (entryLabel i FuelReady)]
+      ++ parkArgs True ++ call "fpr_fuel_exhausted" ++ parkArgs False ++ [lbl (entryLabel i FuelReady) ++ ":"]

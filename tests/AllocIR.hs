@@ -20,6 +20,8 @@ import Codegen.Allocate
 import Codegen.Frame
 import Codegen.Liveness
 import Codegen.Selected
+import qualified Codegen.Opcode as Opcode
+import qualified Codegen.Annotation as Annotation
 import Control.Monad (unless, forM_)
 import Data.List (isInfixOf, sort)
 import qualified Data.IntMap.Strict as IM
@@ -102,7 +104,7 @@ jump l = (plain "jump" [] [OL (Label l)]) {siControl = JumpTo (Label l)}
 
 -- the entry sequence and a self tail transfer, as the targets shape them
 entry :: SInstr
-entry = (plain "entry.check.tick" [] []) {siImplicitDefs = [t1], siClobbers = clobbered, siFlags = FlagsDef, siCalls = [Call "fpr_stack_grow" False True, Call "fpr_fuel_exhausted" True False]}
+entry = (plain "entry.check.tick" [] []) {siAnnotation=EntryLabels (Label "allocator-entry"),siImplicitDefs = [t1], siClobbers = clobbered, siFlags = FlagsDef, siCalls = [Call "fpr_stack_grow" False True, Call "fpr_fuel_exhausted" True False]}
 
 tailSelf :: [Int] -> SInstr
 tailSelf args = (plain "tailjump" [] (OS "fpr_fn_probe" : zipWith (\x p -> OV (v x) (Fix p)) args [a0, a1])) {siClobbers = clobbered, siControl = Return, siCalls = [Call "fpr_fn_probe" True False]}
@@ -274,6 +276,17 @@ main = do
   check "the entry sequence is split around the loop label" (ops !! 1 == "entry.check" && ops !! 2 == "entry.tick" || take 3 (dropWhile (/= "entry.check") ops) == ["entry.check", "entry.tick", "bz"])
   check "both parameters hold the budget around the loop" (sort (alSaved la) == [s1, s2] && stSpilled (alStats la) == 0)
   either (error . ("FAIL: loop form oracle: " ++)) pure (checkAllocation loopCfg "loop form" (alBody la))
+  let entryParts=[i | I i<-alBody la,siOp i `elem` ["entry.check","entry.tick"]]
+  check "self-loop splitting preserves typed entry ownership with disjoint internal labels"
+    (map siAnnotation entryParts==replicate 2 (EntryLabels (Label "allocator-entry"))
+      && Annotation.checkAnnotations Annotation.AlwaysRestores "split-entry" (map I entryParts)==Right ())
+  forM_ ["copy","reload","spill"] $ \spelling->do
+    let renamed=swapLoop {sfBody=map (\item->case item of
+          I i | siOpcode i==Opcode.Common Opcode.EntryCheckTick->I i {siAnnotation=EntryLabels (Label spelling)}
+          _->item) (sfBody swapLoop)}
+    annotated<-either error pure (allocateFn loopCfg renamed)
+    check ("entry spelling cannot forge allocator statistics: "++spelling)
+      (alStats annotated==alStats la)
   na <- either (error . ("FAIL: no loop form: " ++)) pure (allocateFn plainCfg swapLoop)
   check "without the switch the self tail call stays a transfer" (stLoops (alStats na) == 0 && "tailjump" `elem` [siOp i | I i <- alBody na])
   let indexedCfg = loopCfg {acArrival = \ps ->

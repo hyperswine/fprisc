@@ -316,3 +316,4 @@ they began.
 - [Typed region control](2026-10-26-TYPED-REGION-CONTROL.md) - checked helper bodies, internal protocol sorts, retained state proofs and home-owned helper declarations.
 - [Constructor-based x64 operations](2026-10-26-X64-OPCODE-CONTRACTS.md) - typed selected operations and shared protocols, checked physical forms and exact-emission gates.
 - [A64/RISC-V operation contracts](2026-10-26-RISC-OPCODE-CONTRACTS.md) - per-ISA vocabularies, typed FP pooling/raw adapters and checked native register/effect forms.
+- [Typed instruction annotations](2026-10-26-INSTRUCTION-ANNOTATIONS.md) - semantic entry/save/restore payloads, independent allocation events and checked internal label/frame scopes.

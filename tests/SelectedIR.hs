@@ -21,6 +21,7 @@ import qualified Codegen.Target.A64.Forms as AForms
 import qualified Codegen.Target.RV.Forms as RForms
 import Codegen.Target.X64.Forms (checkForms)
 import Codegen.Selected
+import qualified Codegen.Annotation as Annotation
 import qualified Codegen.Target.X64 as X64
 import Codegen.Target.A64
 import Control.Monad (unless, forM_)
@@ -91,6 +92,39 @@ storeA6 = plain "x64.store.cell" [] [gpr 0, OS "fpr_x64_a6"]
 
 main :: IO ()
 main = do
+  let nativeTick=(plainOpcode (Opcode.Common Opcode.EntryTick) [] [])
+        {siAnnotation=EntryLabels (Label "annotation-entry"),siFlags=FlagsDef,
+         siCalls=[Call "fpr_fuel_exhausted" True False]}
+      annotations=Annotation.checkAnnotations Annotation.AlwaysRestores "annotation-test"
+      save=(plainOpcode (Opcode.A64 AOp.Save) [] []) {siAnnotation=SaveGroup 0}
+      move=(plainOpcode (Opcode.A64 AOp.Move) [OP (Phys "x19")] [OP (Phys "x0")])
+        {siAllocation=Just RegisterCopy}
+      reload=(plainOpcode (Opcode.A64 AOp.FrameLoad) [OP (Phys "x19")] [OF (FrameRef 0) 0])
+        {siAllocation=Just Reload}
+  check "typed entry labels and allocator events satisfy native contracts"
+    (checkForms "annotation-test" [I nativeTick]==Right ()
+      && AForms.checkForms a64RegisterFile "annotation-test" [I move,I reload,I save]==Right ())
+  refused "entry labels are required by native entry expansion" "annotation does not match"
+    (checkForms "annotation-test" [I nativeTick {siAnnotation=NoAnnotation}])
+  refused "entry labels cannot annotate ordinary computation" "annotation does not match"
+    (AForms.checkForms a64RegisterFile "annotation-test" [I move {siAnnotation=EntryLabels (Label "copy")}])
+  refused "implicit entry labels cannot capture a local block label" "captures or duplicates"
+    (annotations [I nativeTick,ILabel (Label "annotation-entry_fuel")])
+  refused "entry expansions cannot share a fuel label" "captures or duplicates"
+    (annotations [I nativeTick,I nativeTick])
+  refused "native save operations require a typed group index" "annotation does not match"
+    (AForms.checkForms a64RegisterFile "annotation-test" [I save {siAnnotation=NoAnnotation}])
+  refused "save group must belong to the actual frame" "outside this frame"
+    (Annotation.checkSaveGroups "annotation-test" 1 [I save {siAnnotation=SaveGroup 1}])
+  check "save group resolves within the checked frame"
+    (Annotation.checkSaveGroups "annotation-test" 1 [I save]==Right ())
+  refused "allocator reload accounting cannot attach to a copy" "allocation event"
+    (AForms.checkForms a64RegisterFile "annotation-test" [I move {siAllocation=Just Reload}])
+  refused "allocator events require physical operands" "allocation event"
+    (AForms.checkForms a64RegisterFile "annotation-test" [I move {siDefs=[gpr 0]}])
+  refused "an always-restore backend cannot inherit a shrink-wrap exit marker" "annotation does not match"
+    (checkForms "annotation-test" [I ((plainOpcode (Opcode.X64 Opcode.Ret) [] [OP (Phys "rax")])
+      {siControl=Return,siAnnotation=SkipRestores})])
   let aOp op=plainOpcode (Opcode.A64 op)
       aFloat=(aOp (AOp.FloatBinary Opcode.FloatRegisters Opcode.Float64 FAdd)
         [OV (v 2) (Any FPR)] [OV (v 0) (Any FPR),OV (v 1) (Any FPR)])
@@ -108,7 +142,7 @@ main = do
   refused "A64 branch metadata preserves its target" "control effect"
     (aForms [I aBranch {siControl=Next}])
   refused "A64 entry metadata cannot lose its fuel event" "call metadata"
-    (aForms [I ((plainOpcode (Opcode.Common Opcode.EntryTick) [] []) {siFlags=FlagsDef})])
+    (aForms [I ((plainOpcode (Opcode.Common Opcode.EntryTick) [] []) {siAnnotation=EntryLabels (Label "a64-tick"),siFlags=FlagsDef})])
   refused "A64 cannot render synthetic text" "opcode/operand"
     (aForms [I (plain "mov" [gpr 2] [gpr 0])])
   refused "A64 cannot render another ISA's instruction" "opcode/operand"
@@ -160,7 +194,7 @@ main = do
   refused "x64 call metadata cannot silently disappear from bound accounting" "call metadata"
     (checkForms "typed" [I ((plainOpcode (Opcode.X64 Opcode.Call) [] [OS "target"]) {siFlags=FlagsDef})])
   let typedEntry=I ((plainOpcode (Opcode.Common Opcode.EntryCheckTick) [] [])
-        {siFlags=FlagsDef,siCalls=[Call "fpr_stack_grow" False True,Call "fpr_fuel_exhausted" True False]})
+        {siAnnotation=EntryLabels (Label "typed-entry"),siFlags=FlagsDef,siCalls=[Call "fpr_stack_grow" False True,Call "fpr_fuel_exhausted" True False]})
   check "shared shallow-entry rewriting retains the typed opcode"
     (case shallowEntry StackCheckLegacyShallow 32 [typedEntry] of
       (True,[I i])->siOpcode i==Opcode.Common Opcode.EntryTick && checkForms "typed" [I i]==Right ()
@@ -342,7 +376,7 @@ main = do
       br l = (plain "bz" [] [OP (Phys "x0"), OL (Label l)]) {siControl = CondTo [Label l]}
       jmp l = (plain "jump" [] [OL (Label l)]) {siControl = JumpTo (Label l)}
       callS = (op "call" [] []) {siCalls = [Call "f" True False]}
-      notes xs = [(siOp i, siNote i) | I i <- xs]
+      notes xs = [(siOp i, siAnnotation i) | I i <- xs]
       -- entry branches: the leaf returns at once, the other arm uses s1 around a call
       arms = [ I (op "entry" [] []), I (br "leaf"),
                I (op "mv" [s1] [Phys "x0"]), I callS, I (op "mv" [Phys "x0"] [s1]), I ret',
@@ -352,7 +386,7 @@ main = do
       check "the saves move to the arm that uses the register"
         (take 3 (map fst (notes wrapped)) == ["entry", "bz", "saves.here"])
       check "only the returns that arm dominates restore"
-        ([n | (o, n) <- notes wrapped, o == "ret"] == ["", "norestore"])
+        ([n | (o, n) <- notes wrapped, o == "ret"] == [NoAnnotation, SkipRestores])
     Nothing -> error "FAIL: shrink-wrap declined the two-arm stream"
   check "a register used in the entry block keeps the prologue saves"
     (shrinkWrap [s1] (I (op "mv" [s1] [Phys "x0"]) : arms) == Nothing)
