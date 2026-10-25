@@ -2,7 +2,7 @@
 {-# LANGUAGE TupleSections #-}
 -- Function-argument specialization on lifted Core. Unknown/escaping functions
 -- retain the open-world callable ABI. Budgets always fall back to original calls.
-module Mono (specializeFunctions, qualifyAux, references) where
+module Mono (specializeFunctions,specializeFunctionsWithImports, qualifyAux, references) where
 
 import Core.Syntax (Core(..), Name, Prog, freeVars)
 import Data.Graph (SCC(..), stronglyConnComp)
@@ -16,8 +16,9 @@ type Scope = M.Map Name (Maybe Known)
 type Key = (Name, [(Int, Name, Int)])
 data Work = Work { clones :: Prog, seen :: M.Map Key Name, serial :: Int, weight :: Int }
 
--- Auxiliaries have compiler-generated names, not source/module identities.
--- Copies imported into a caller must not collide with its own lifted names.
+-- Compatibility auxiliaries need caller-qualified names. The caller's
+-- preserved set also includes checked private code identities: those remain
+-- home-owned and must not acquire another function/PAP definition here.
 qualifyAux :: String -> S.Set Name -> Prog -> Prog
 qualifyAux prefix source p = M.fromList
   [(ren n, (ps, renameGlobals mapping (S.fromList ps) b)) | (n,(ps,b)) <- M.toList p]
@@ -26,7 +27,10 @@ qualifyAux prefix source p = M.fromList
     ren n = M.findWithDefault n n mapping
 
 specializeFunctions :: String -> M.Map Name Int -> Prog -> Prog -> Prog
-specializeFunctions namespace arities external input = includeAux result
+specializeFunctions=specializeFunctionsWithImports S.empty
+
+specializeFunctionsWithImports :: S.Set Name -> String -> M.Map Name Int -> Prog -> Prog -> Prog
+specializeFunctionsWithImports importedCode namespace arities external input = includeAux result
   where
     -- Global callback identities must stay global even if the caller later
     -- shadows their spelling after binding an alias to the function value.
@@ -49,8 +53,17 @@ specializeFunctions namespace arities external input = includeAux result
     -- Only private imported helpers referenced by emitted bodies are copied.
     -- Ordinary imported globals still link against their cached home units.
     aux = M.filterWithKey (\n _ -> "$specaux." `prefixOf` n) external
+    -- A checked private body stays at home. Looking through its read-only
+    -- template still discovers compatibility/region helpers needed when a
+    -- caller inlines that body; only those untyped helpers are copied.
     includeAux p = let missing = S.unions [references ps b | (ps,b) <- M.elems p] S.\\ M.keysSet p
-                       extra = M.restrictKeys aux missing
+                       reach seen pending
+                         | S.null pending=seen
+                         | otherwise=let more=S.unions [references ps b | name<-S.toList pending,
+                                                name `S.member` importedCode || name `M.member` aux,
+                                                Just (ps,b)<-[M.lookup name external]] S.\\ M.keysSet p
+                                     in reach (seen<>pending) (more S.\\ (seen<>pending))
+                       extra = M.restrictKeys aux (reach S.empty missing)
                    in if M.null extra then p else includeAux (M.union p extra)
     blocked = M.fromList . map (,Nothing)
     fresh :: String -> State Work Name

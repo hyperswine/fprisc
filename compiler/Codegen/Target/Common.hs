@@ -4,7 +4,9 @@ module Codegen.Target.Common
   ( ObjectFormat (..), NativeFn (..), mangleName, functionSymbol,
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
-    boxedFloatLabel, boxedFloatObject ) where
+    boxedFloatLabel, boxedFloatObject,
+    SymbolPolicy,symbolPolicy,publicSymbols,symbolNames,
+    Visibility(..),WeakSpelling(..),visibilityFor,visibilityLines ) where
 import Codegen.Bounds (Report)
 import Codegen.IR (Name)
 import qualified Codegen.IR as IR
@@ -79,6 +81,35 @@ shallowEntry policy bytes items
     strip i = [i]
 
 data ObjectFormat = MachO | ELF deriving (Eq, Ord, Show)
+
+-- Source exports and linkable implementation symbols have different
+-- visibility. A private implementation entry is strong and hidden even in a
+-- weak library unit. Its code and static PAP must use the same policy.
+data SymbolPolicy=SymbolPolicy (S.Set Name) (S.Set Name) deriving (Eq,Show)
+data Visibility=UnitLocal | PublicSymbol | WeakSymbol | HiddenSymbol deriving (Eq,Show)
+data WeakSpelling=WeakDirective | WeakDefinitionDirective deriving (Eq,Show)
+
+symbolPolicy :: S.Set Name -> S.Set Name -> Either String SymbolPolicy
+symbolPolicy public private
+  | S.null (public `S.intersection` private)=Right (SymbolPolicy public private)
+  | otherwise=Left "symbol policy: public/private export overlap"
+publicSymbols :: S.Set Name -> SymbolPolicy
+publicSymbols ns=SymbolPolicy ns S.empty
+symbolNames :: SymbolPolicy -> S.Set Name
+symbolNames (SymbolPolicy a b)=a<>b
+visibilityFor :: Bool -> SymbolPolicy -> Name -> Visibility
+visibilityFor weak (SymbolPolicy public private) n
+  | n `S.member` private=HiddenSymbol
+  | n `S.notMember` public=UnitLocal
+  | weak && '@' `notElem` n=WeakSymbol
+  | otherwise=PublicSymbol
+visibilityLines :: ObjectFormat -> WeakSpelling -> Visibility -> String -> [String]
+visibilityLines fmt spelling visibility sym=case visibility of
+  UnitLocal->[]
+  PublicSymbol->[global]
+  WeakSymbol->["    "++(case spelling of WeakDirective->".weak ";WeakDefinitionDirective->".weak_definition ")++sym]
+  HiddenSymbol->[global,"    "++(if fmt==MachO then ".private_extern " else ".hidden ")++sym]
+  where global="    .globl "++sym
 
 data NativeFn = NativeFn
   { nfName :: String,
@@ -178,6 +209,7 @@ dataSyntax MachO = map (locals . line)
   where
     line l
       | Just rest <- stripPrefix "    .globl " l = "    .globl " ++ intercalate ", " (map (sym . trim) (splitC rest))
+      | Just rest <- stripPrefix "    .private_extern " l = "    .private_extern " ++ sym (trim rest)
       | Just rest <- stripPrefix "    .quad " l, (c : _) <- dropWhile (== ' ') rest, not (isDigit c), c /= '-' = "    .quad " ++ sym (trim rest)
       | "    .section .rodata" `isPrefixOf` l = "    .section __DATA,__const"
       | (name, ':' : rest) <- break (== ':') l, not (null name), all (/= ' ') name,

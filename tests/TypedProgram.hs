@@ -9,6 +9,8 @@ import Core.Identity
 import Core.Syntax
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Linked as Linked
+import qualified Compiler.Native.Imports as Imports
+import Codegen.Target.Common (visibilityFor,Visibility(..))
 import Compiler.DataLayout
 import Frontend.Desugar.Typed
 import Frontend.Desugar (collectCons,collectShapes,DEnv(..))
@@ -91,6 +93,42 @@ main=do
   check "private code remains with its source artifact"
     (not (null [() | (Linked.ArtifactSymbol home _,Linked.SymbolOwner _ (Linked.PrivateDefinition "factory" _ _))
       <-M.toList (Linked.linkedSymbols linked),home==providerId]))
+  let declarations=right (Imports.codeDeclarations linked)
+      privateFactory=head [name | (Linked.ArtifactSymbol home name,Linked.SymbolOwner _ (Linked.PrivateDefinition "factory" _ _))
+        <-M.toList (Linked.linkedSymbols linked),home==providerId]
+      importedBody=CApp (CApp (CVar privateFactory) (CInt 41)) (CInt 1)
+      importer=M.insert "usePrivate" ([],importedBody) (Native.nativeProgram consumer)
+      public=Linked.artifactExports rootArtifact
+      prepared=right (Imports.prepareEmission declarations Linked.RootArtifact public importer)
+      declaration=Imports.readyImports prepared M.! privateFactory
+      homeReady=right (Imports.prepareEmission declarations providerId (Linked.artifactExports providerArtifact) (Native.nativeProgram provider))
+  check "private imports retain home/source/code contracts and physical capture arity"
+    (Imports.declarationHome declaration==providerId && Imports.declarationSource declaration=="factory"
+      && Imports.importArities prepared M.! privateFactory==2
+      && privateFactory `M.notMember` Imports.readyProgram prepared)
+  check "home code and PAP visibility is strong/hidden even in a weak unit"
+    (visibilityFor True (Imports.readySymbols homeReady) privateFactory==HiddenSymbol)
+  check "declared imports execute the home implementation under independent machine evaluation"
+    (answer (Imports.readyProgram prepared `M.union` linkedProjection) "usePrivate" []==Right (Eval.RInt 42))
+  check "a checked private definition cannot be copied to an importing artifact"
+    (rejects "copied away from its home" (Imports.prepareEmission declarations Linked.RootArtifact public
+      (M.insert privateFactory (Native.nativeProgram provider M.! privateFactory) importer)))
+  let ownedPrivate=S.findMin (Imports.preservedCode declarations Linked.RootArtifact)
+      wrongArity=M.adjust (\(ps,b)->(drop 1 ps,b)) ownedPrivate importer
+  check "private emission contracts reject lost definitions and changed capture arities"
+    (rejects "home private definition is absent" (Imports.prepareEmission declarations Linked.RootArtifact public (M.delete ownedPrivate importer))
+      && rejects "private physical arity changed" (Imports.prepareEmission declarations Linked.RootArtifact public wrongArity))
+  let shadowed=M.insert "shadowPrivate" ([],CLet privateFactory (CInt 7) (CVar privateFactory)) (Native.nativeProgram consumer)
+  check "lexical names cannot accidentally acquire private import declarations"
+    (M.null (Imports.readyImports (right (Imports.prepareEmission declarations Linked.RootArtifact public shadowed))))
+  let templates=M.singleton privateFactory (Native.nativeProgram provider M.! privateFactory)
+      preparedTemplates=right (Imports.prepareEmissionWithImports templates declarations Linked.RootArtifact public importer)
+  check "read-only templates retain contracts without becoming owned code"
+    (M.keysSet (Imports.readyTemplates preparedTemplates)==S.singleton privateFactory
+      && privateFactory `M.notMember` Imports.readyProgram preparedTemplates)
+  check "a read-only template cannot invent a calling arity"
+    (rejects "template lacks an imported calling contract"
+      (Imports.prepareEmissionWithImports (M.map (\(ps,b)->(drop 1 ps,b)) templates) declarations Linked.RootArtifact public importer))
   check "independent machine evaluation links checked artifact projections"
     (answer linkedProjection "client" [Eval.RInt 10]==Right (Eval.RInt 12)
       && answer linkedProjection "call" [Eval.RInt 41]==Right (Eval.RInt 42))

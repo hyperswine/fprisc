@@ -1,9 +1,9 @@
-module Core.Opt.Fusion (fuseVecFix) where
+module Core.Opt.Fusion (fuseVecFix,fuseVecFixWithImports) where
 import Core.Syntax
 import Core.Utils
 import Core.Primitives (primArities)
 import Core.Analysis.FusionSafety
-import Core.Opt.Vector (nestPipelines)
+import Core.Opt.Vector (nestPipelinesWithImports)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (foldl', nub)
@@ -17,32 +17,35 @@ import Data.List (foldl', nub)
 -- is a backstop, not a budget: a chain of length n needs n-1 rounds
 -- and real programs stop far short of it.
 fuseVecFix :: Prog -> (Prog, [String])
-fuseVecFix prog = go (0 :: Int) (nestPipelines prog)
+fuseVecFix=fuseVecFixWithImports M.empty
+fuseVecFixWithImports :: Prog -> Prog -> (Prog,[String])
+fuseVecFixWithImports imports prog = go (0 :: Int) (nestPipelinesWithImports imports prog)
   where
     go r p
       | r >= 16 = (p, [])
       | otherwise =
-          let (p', notes) = fuseVec r p
+          let (p', notes) = fuseVec r imports p
            in if M.size p' == M.size p then (p', nub notes) else let (p'', more) = go (r + 1) p' in (p'', nub (notes ++ more))
 
-fuseVec :: Int -> Prog -> (Prog, [String])
-fuseVec round' prog = (M.union extras (M.map (\(ps,b) -> (ps,rewrite b)) prog), nub notes)
+fuseVec :: Int -> Prog -> Prog -> (Prog, [String])
+fuseVec round' imports prog = (M.union extras (M.map (\(ps,b) -> (ps,rewrite b)) prog), nub notes)
   where
+    universe=prog `M.union` imports
     apps = foldl' CApp
     opAt e = case spineOf e of
       (CVar op,[fe,v]) | op `elem` ["Vec.map","Vec.filter"],
         (CVar f,caps) <- spineOf fe,
-        Just (ps,_) <- M.lookup f prog, length ps == length caps + 1 -> Just ((op,f,caps),v)
+        Just (ps,_) <- M.lookup f universe, length ps == length caps + 1 -> Just ((op,f,caps),v)
       _ -> Nothing
     -- Moving capture evaluation across a pass requires the same effect/trap
     -- judgement as moving callbacks. Locals and pure expressions are safe.
-    capSafe e = fusionSafe (M.insert "$capture" (locals,e) prog) "$capture"
-      where locals = [n | n <- freeVars e, M.notMember n prog, n `notElem` prims]
+    capSafe e = fusionSafe (M.insert "$capture" (locals,e) universe) "$capture"
+      where locals = [n | n <- freeVars e, M.notMember n universe, n `notElem` prims]
             prims = map fst primArities
     fusedAt e = do
       ((op,f,fc),v1) <- opAt e
       ((op',g,gc),v) <- opAt v1
-      if op == op' && fusionSafe prog f && fusionSafe prog g && all capSafe (fc++gc)
+      if op == op' && fusionSafe universe f && fusionSafe universe g && all capSafe (fc++gc)
          && length fc + length gc <= 7 then Just () else Nothing
       pure ((op,f,g,length fc,length gc),fc++gc,v)
     -- accumulator form: `e : concatMap walk (children e)` ended in
@@ -74,7 +77,7 @@ fuseVec round' prog = (M.union extras (M.map (\(ps,b) -> (ps,rewrite b)) prog), 
                ++ "` is NOT fused: " ++ why ++ " -- the two passes run in order, each over the whole vector"
             | e <- nodes ++ concatMap letCandidates nodes, Just ((op,f,fc),v) <- [opAt e], Just ((op',g,gc),_) <- [opAt v], op == op',
               Nothing <- [fusedAt e],
-              let why = case [(n,r) | (n,Just r) <- [(g,fusionUnsafeReason prog g),(f,fusionUnsafeReason prog f)]] of
+              let why = case [(n,r) | (n,Just r) <- [(g,fusionUnsafeReason universe g),(f,fusionUnsafeReason universe f)]] of
                           (n,r):_ -> "`" ++ n ++ "` uses " ++ r
                           [] | not (all capSafe (fc++gc)) -> "capture evaluation can have effects or fail"
                              | otherwise -> "combined capture budget exceeded"]

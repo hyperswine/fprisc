@@ -119,6 +119,7 @@ executable fpr
       Compiler.DataLayout
       Compiler.Native.Core
       Compiler.Native.Linked
+      Compiler.Native.Imports
       Frontend.Desugar.Typed
       Core.Typed.Walk
       Core.Typed.Close

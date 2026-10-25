@@ -2,10 +2,10 @@
 -- Static objects have a native owner independent of scalar/kernel rendering.
 -- Keep the existing PAP, immortal constructor and module table layouts, and
 -- preserve module string interning/order while the text generator is removed.
-module Codegen.NativeData (emitStaticData) where
+module Codegen.NativeData (emitStaticData,emitStaticDataWithSymbols) where
 
 import Codegen.IR (Width(..),Name)
-import Codegen.Target.Common (ObjectFormat, dataSyntax, mangleName)
+import Codegen.Target.Common (ObjectFormat, dataSyntax, mangleName,SymbolPolicy,publicSymbols,visibilityFor,visibilityLines,WeakSpelling(..))
 import Core.Syntax (Core(..),Prog)
 import Modules (ModExport(..))
 import Workers (internalWorker)
@@ -17,7 +17,10 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 emitStaticData :: ObjectFormat -> Width -> Bool -> Bool -> [ModExport] -> S.Set Name -> Prog -> S.Set (Int,Int) -> [String]
-emitStaticData fmt width arc weak exports visible emitted referenced = dataSyntax fmt $
+emitStaticData fmt width arc weak exports visible=emitStaticDataWithSymbols fmt width arc weak exports (publicSymbols visible)
+
+emitStaticDataWithSymbols :: ObjectFormat -> Width -> Bool -> Bool -> [ModExport] -> SymbolPolicy -> Prog -> S.Set (Int,Int) -> [String]
+emitStaticDataWithSymbols fmt width arc weak exports symbols emitted referenced = dataSyntax fmt $
   ["    .section .rodata",""] ++ concatMap object (M.toList emitted)
   ++ ["    .section .rodata" | arc] ++ table
   ++ ["    .section .rodata" | arc,not (null table)]
@@ -26,13 +29,12 @@ emitStaticData fmt width arc weak exports visible emitted referenced = dataSynta
   ++ concatMap nullary (S.toList (S.union referenced (S.fromList (concatMap (scan . snd) (M.elems emitted)))))
   where
     dir = if width==W32 then ".word" else ".quad"
-    visibility n = if weak && '@' `notElem` n then ".weak" else ".globl"
     object (n,(ps,_))
       | null ps || internalWorker n = []
       | otherwise =
           ["    .section .rodata.fpr_obj_"++mangleName n++",\"a\",@progbits" | arc]
           ++ ["# static-pap: "++n,"    .balign 8"]
-          ++ ["    "++visibility n++" fpr_obj_"++mangleName n | S.member n visible]
+          ++ visibilityLines fmt WeakDirective (visibilityFor weak symbols n) ("fpr_obj_"++mangleName n)
           ++ ["fpr_obj_"++mangleName n++":","    .long 9001","    .long 0",
               "    "++dir++" fpr_fn_"++mangleName n,"    "++dir++" "++show (length ps),"    "++dir++" 0",""]
     (table,(_,strings)) = runState moduleTable (0 :: Int,M.empty)

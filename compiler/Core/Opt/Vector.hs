@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
-module Core.Opt.Vector (vecSpec, pipelinePlan, nestPipelines, specUsesFloat, arithClosure, planCapKinds) where
+module Core.Opt.Vector (vecSpec, pipelinePlan, nestPipelines,nestPipelinesWithImports, specUsesFloat, arithClosure, planCapKinds) where
 import Core.Syntax
 import Core.Utils
 import Core.Primitives
@@ -82,7 +82,9 @@ pipelinePlan prog local expr = do
 -- pipeline proves that moved captures/seed are already values. Bindings remain
 -- lexical, and a retained intermediate prevents this rewrite.
 nestPipelines :: Prog -> Prog
-nestPipelines prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b)) prog
+nestPipelines=nestPipelinesWithImports M.empty
+nestPipelinesWithImports :: Prog -> Prog -> Prog
+nestPipelinesWithImports imports prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b)) prog
   where
     go bound e = join bound $ case e of
       CLet n a b -> CLet n (go bound a) (go (S.insert n bound) b)
@@ -101,7 +103,7 @@ nestPipelines prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b)) prog
             _ -> Nothing
           plug consumer = do
             candidate <- replace consumer
-            _ <- pipelinePlan prog (`S.member` bound) candidate
+            _ <- pipelinePlan (prog `M.union` imports) (`S.member` bound) candidate
             pure candidate
       in case body of
         CLet y consumer rest | x `notElem` freeVars rest, Just candidate<-plug consumer ->

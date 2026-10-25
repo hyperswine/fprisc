@@ -3,10 +3,10 @@
 -- signatures from another stage. This is a structural check, not Core typing.
 module Core.Opt.Pipeline
   (OptimizationOptions(..), CorePass(..), PassReport(..), OptimizedCore,
-   optimizeCore, optimizedProgram, optimizedSignatures, optimizationNotes,
+   optimizeCore,optimizeCoreWithImports, optimizedProgram, optimizedSignatures, optimizationNotes,
    optimizationReports, verifyPassResult) where
 import Core.Syntax
-import Core.Opt.Fusion (fuseVecFix)
+import Core.Opt.Fusion (fuseVecFixWithImports)
 import Core.Opt.Normalize (normIn)
 import Workers (ScalarSignatures, workerizeWithSignatures, internalWorker)
 import Reuse (reuseProgram)
@@ -43,7 +43,9 @@ optimizationNotes :: OptimizedCore -> [String]
 optimizationNotes = concatMap passNotes . optimizationReports
 
 optimizeCore :: OptimizationOptions -> S.Set Name -> Prog -> Either String OptimizedCore
-optimizeCore opts elide input = do
+optimizeCore=optimizeCoreWithImports M.empty
+optimizeCoreWithImports :: Prog -> OptimizationOptions -> S.Set Name -> Prog -> Either String OptimizedCore
+optimizeCoreWithImports imports opts elide input = do
   verifyPassResult input input M.empty
   foldM run (OptimizedCore input M.empty [])
     [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors]
@@ -51,7 +53,7 @@ optimizeCore opts elide input = do
     run state pass = do
       let before = optimizedProgram state
           (after,sigs,notes,enabled) = case pass of
-            FuseVectors -> let (p,ns) = if optFusion opts then fuseVecFix before else (before,[])
+            FuseVectors -> let (p,ns) = if optFusion opts then fuseVecFixWithImports imports before else (before,[])
                            in (p,optimizedSignatures state,ns,optFusion opts)
             MakeWorkers -> let fields = optWorkers opts && optFieldWorkers opts
                                scalars = optWorkers opts && optScalarWorkers opts

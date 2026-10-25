@@ -15,7 +15,7 @@
 -- Parameters are parked before any entry check/tick, and rsp is restored
 -- from rbp at exit so stack-segment growth remains compatible with legacy.
 module Codegen.Target.X64
-  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, x64RegisterFile, placement, allocConfig ) where
+  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, placement, allocConfig ) where
 
 import Codegen.Allocate
 import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
@@ -649,7 +649,10 @@ savedObjs :: [Phys] -> [FrameObj]
 savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) False False | (k, Phys p) <- zip [0 ..] saved]
 
 emitFnX64 :: X64Config -> Fn -> Either String NativeFn
-emitFnX64 cfg fn = do
+emitFnX64 cfg=emitFnX64WithSymbols (publicSymbols (cfgExports cfg)) cfg
+
+emitFnX64WithSymbols :: SymbolPolicy -> X64Config -> Fn -> Either String NativeFn
+emitFnX64WithSymbols symbols cfg fn = do
   (sel0, managed, nulls, strs) <- select cfg fn
   let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg) (tuneEntryArgs (cfgTune cfg)) argRegs fn sel0
   either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
@@ -674,11 +677,10 @@ emitFnX64 cfg fn = do
       reserve = if large then reserveFrame (cfgHart cfg) name (toInteger (lyBytes ly)) (length (sfParams sel)) else []
       rendered = [(it, renderItem (cfgHart cfg) ly large name saveLines restores it) | it <- body]
       report = analyse ([TIns (length (filter isInstruction reserve)) FNext False 1 | large] ++ concatMap (uncurry tokOf) rendered)
-      visibility = if cfgWeak cfg && '@' `notElem` name then (if x64Format (cfgHart cfg) == MachO then ".weak_definition" else ".weak") else ".globl"
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
                   ++ (if large then " reserve=yes" else "")
                   ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
-        ++ ["    " ++ visibility ++ " " ++ sym | S.member name (cfgExports cfg)] ++ [sym ++ ":"]
+        ++ visibilityLines (x64Format (cfgHart cfg)) (if x64Format (cfgHart cfg)==MachO then WeakDefinitionDirective else WeakDirective) (visibilityFor (cfgWeak cfg) symbols name) sym ++ [sym ++ ":"]
   pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs) [])
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]

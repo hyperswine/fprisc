@@ -7,13 +7,14 @@ import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Core.Typed.Callback (CallbackMode(..))
 import qualified Compiler.Native.Core as NativeCore
 import qualified Compiler.Native.Linked as Linked
+import qualified Compiler.Native.Imports as NativeImports
 import Compiler.DataLayout (Layouts(..))
-import Mono (specializeFunctions, qualifyAux)
-import Inline (inlineSmall, inlineWith, vecPeek)
+import Mono (specializeFunctionsWithImports, qualifyAux)
+import Inline (inlineSmall, inlineWithImports, vecPeek)
 import ReceiveTurns (receiveTurns)
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.Common (Tune (..), dataSyntax)
-import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
+import Codegen (Target, codegenRev, emitProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -898,7 +899,8 @@ compileWithInterface accepted = do
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit
-          own prog = if oArc opts then do
+          own=ownWith M.empty
+          ownWith imports prog = if oArc opts then do
                        lowered <- either (\e -> hPutStrLn stderr e >> exitFailure) (pure . inlineSmall 3 24) ((if oRaw opts then lowerRaw else lowerArc) sourceExt prog)
                        -- FPR_DUMP_CORE=name prints that function's Core as the generator sees it
                        let dump = Options.diagCore diagnostic
@@ -909,14 +911,14 @@ compileWithInterface accepted = do
                      -- saturated sites within the unit (Inline.hs), with
                      -- function-valued arguments substituted
                      else do
-                       let inl = (if oNoInline opts then id else inlineWith pureOutside 3 24) (if (not (Options.cgVecPeek codegen)) then prog else vecPeek prog)
+                       let inl = (if oNoInline opts then id else inlineWithImports imports pureOutside 3 24) (if (not (Options.cgVecPeek codegen)) then prog else vecPeek prog)
                        let dump = Options.diagCore diagnostic
                        forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList inl, takeWhile (/= '@') n == want] $ \(n, d) ->
                          hPutStrLn stderr ("core " ++ n ++ ": " ++ show d)
                        pure inl
           pureOutside g = maybe False (> 0) (M.lookup g extFor) || maybe False (> 0) (M.lookup g halAr) || g `elem` corePrimNames
           corePrimNames = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "str", "String.len"]
-          mono ns ext p = if (not (Options.cgSpecialize codegen)) || oArc opts then p else specializeFunctions ns halAr ext p
+          mono ns ext p = if (not (Options.cgSpecialize codegen)) || oArc opts then p else specializeFunctionsWithImports importedPrivateNames ns halAr ext p
           -- constructor stub ownership.  Every unit's Core holds a stub per
           -- constructor of the program (compileTop's conGlobals: the inliner
           -- and `known` need them); the SYMBOL is defined once, by the owner,
@@ -954,13 +956,19 @@ compileWithInterface accepted = do
                 (unitElided h) (nativeUnit unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
           linkedResult=sequence artifactResults >>= Linked.linkArtifacts
           linked=either error id linkedResult
+          declarationsResult=linkedResult >>= NativeImports.codeDeclarations
+          declarations=either error id declarationsResult
           artifactOf key=Linked.linkedArtifacts linked M.! key
           artifactRaw=projectNative . Linked.artifactCore
+          ready templates key exports prog=either (\reason->hPutStrLn stderr reason >> exitFailure) pure
+            (NativeImports.prepareEmissionWithImports templates declarations key exports prog)
+          importedPrivateNames=S.unions [NativeImports.preservedCode declarations key
+            | key<-M.keys (Linked.linkedArtifacts linked),key/=Linked.RootArtifact]
           rootProgRaw=fst (turnPass (artifactRaw (artifactOf Linked.RootArtifact)))
           -- a constructor is global everywhere: a clone that references one
           -- links against the owner's symbol, so qualifyAux leaves the name
           importedCore = M.unions
-            [qualifyAux (prefix key) (Linked.artifactExports a `S.union` allCons) (fst (turnPass (artifactRaw a)))
+            [qualifyAux (prefix key) (Linked.artifactExports a `S.union` allCons `S.union` NativeImports.preservedCode declarations key) (fst (turnPass (artifactRaw a)))
               | (key,a)<-M.toList (Linked.linkedArtifacts linked),key/=Linked.RootArtifact]
           prefix (Linked.PreludeArtifact h)="$specaux.p"++take 12 h++"."
           prefix (Linked.DependencyArtifact h)="$specaux.u"++take 12 h++"."
@@ -984,11 +992,14 @@ compileWithInterface accepted = do
                 pure (path, "cached")
               else do
                 prog <- own (mono (takeFileName path) M.empty unitProgram)
+                prepared<-ready M.empty (Linked.artifactId artifact) exps prog
                 -- FORCE before the write: an `error` raised while the
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
                 -- compiled unit (the bbspi arity>8 incident)
-                let emission = emitProgramWith tgt rvv spec [] (M.union (if oArc opts then arcExterns else M.empty) ext) exps elide prog
+                let emission = emitProgramWithImports (NativeImports.readyTemplates prepared) tgt rvv spec []
+                      (NativeImports.importArities prepared `M.union` M.union (if oArc opts then arcExterns else M.empty) ext)
+                      (NativeImports.readySymbols prepared) elide (NativeImports.readyProgram prepared)
                     vnotes = emNotes emission
                     asm = moduleFinal (unlines (["# typed IR: no translation"] ++ emNative emission ++ emData emission))
                 directCheck ("unit " ++ takeFileName path) emission
@@ -1004,6 +1015,7 @@ compileWithInterface accepted = do
       -- artifact is reused or emitted. Later legacy passes consume projections;
       -- they do not replace the retained checked inputs with inferred evidence.
       either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) linkedResult
+      either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) declarationsResult
       createDirectoryIfMissing True unitDir
       -- prelude unit (unqualified names; the always-linked stdlib unit).
       -- The prelude is self-contained, so resolve its own operators.
@@ -1076,14 +1088,18 @@ compileWithInterface accepted = do
       rootProgSym <- case symbolize rootProgRaw of
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
-      -- Imported private lifts are renamed into the root before cloning.
+      -- Checked private code retains its home code/PAP identity. Only
+      -- compatibility lifts still need copied, qualified definitions.
       importedSym <- if (not (Options.cgSpecialize codegen)) || oArc opts then pure M.empty else case symbolize importedCore of
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
-      rootProg <- own (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
-      let rootEmission = emitProgramWith tgt rvv spec imageExports extFor
-                                     (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact))
-                                     (Linked.artifactElided (artifactOf Linked.RootArtifact)) rootProg
+      let borrowed=M.restrictKeys importedSym importedPrivateNames
+      rootProg <- ownWith borrowed (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
+      rootReady<-ready borrowed Linked.RootArtifact
+        (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact)) rootProg
+      let rootEmission = emitProgramWithImports (NativeImports.readyTemplates rootReady) tgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
+                                     (NativeImports.readySymbols rootReady)
+                                     (Linked.artifactElided (artifactOf Linked.RootArtifact)) (NativeImports.readyProgram rootReady)
           rootVNotes = emNotes rootEmission
       -- the C-callable entries: each export needs a declared signature
       -- over C-representable types, a function of that arity, <= 8 params

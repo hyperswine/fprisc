@@ -56,7 +56,7 @@
 --     order are the primitive's.
 module Codegen.Target.A64
   ( A64Config (..), ObjectFormat (..), HartAccess (..), NativeFn (..),
-    a64InterfaceRev, a64HostedInterfaceRev, a64SelectionRev, emitFnA64, a64RegisterFile, mangleName, functionSymbol,
+    a64InterfaceRev, a64HostedInterfaceRev, a64SelectionRev, emitFnA64, emitFnA64WithSymbols, a64RegisterFile, mangleName, functionSymbol,
     placement, allocConfig,
   ) where
 
@@ -813,7 +813,10 @@ savedObjs :: [Phys] -> [FrameObj]
 savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) False False | (k, Phys p) <- zip [0 ..] saved]
 
 emitFnA64 :: A64Config -> Fn -> Either String NativeFn
-emitFnA64 cfg fn = do
+emitFnA64 cfg=emitFnA64WithSymbols (publicSymbols (cfgExports cfg)) cfg
+
+emitFnA64WithSymbols :: SymbolPolicy -> A64Config -> Fn -> Either String NativeFn
+emitFnA64WithSymbols symbols cfg fn = do
   (sel0, managed, nulls, strs) <- select cfg fn
   let pooled = if polProfile (cfgPolicy cfg) == QosApp || not (tuneFpPool (cfgTune cfg)) then sel0 else floatPool sel0
       fpValues = S.fromList [v | I i <- sfBody pooled, OV v (Any FPR) <- siDefs i ++ siUses i]
@@ -855,9 +858,8 @@ emitFnA64 cfg fn = do
         ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir a64 frame=" ++ show (lyBytes ly)
            ++ (if large then " reserve=yes" else "")
            ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ (if wrapped == Nothing then "" else " wrapped=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," (map phys ps)) ++ " " ++ statsLine (alStats alloc)]
-          ++ ["    " ++ visibility ++ " " ++ gsym cfg sym | S.member name (cfgExports cfg)]
+          ++ visibilityLines (cfgFormat cfg) WeakDirective (visibilityFor (cfgWeak cfg) symbols name) (gsym cfg sym)
           ++ [gsym cfg sym ++ ":"]
-      visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
       lines' = header ++ map (\s -> if last s == ':' then s else "    " ++ s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]
   pure (NativeFn name lines' report (S.toList nulls) (S.toList strs) [])
   where

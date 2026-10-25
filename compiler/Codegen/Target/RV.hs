@@ -3,7 +3,7 @@
 -- consumed here. Checked arithmetic initially uses the exact C primitives;
 -- the shared allocator handles calls, spills, parallel arguments and loops.
 module Codegen.Target.RV
-  ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV ) where
+  ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV, emitFnRVWithSymbols ) where
 
 import Codegen.Allocate
 import Codegen.Bounds
@@ -415,7 +415,10 @@ allocConfig cfg fn managed = AllocConfig
     acSelfLoop = if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing }
 
 emitFnRV :: RVConfig -> Fn -> Either String NativeFn
-emitFnRV cfg fn = do
+emitFnRV cfg=emitFnRVWithSymbols (publicSymbols (cfgExports cfg)) cfg
+
+emitFnRVWithSymbols :: SymbolPolicy -> RVConfig -> Fn -> Either String NativeFn
+emitFnRVWithSymbols symbols cfg fn = do
   (sf, managed, st) <- select cfg fn
   let checked = either (Left . ("compiler error: " ++)) Right
       ac = allocConfig cfg fn managed
@@ -449,7 +452,7 @@ emitFnRV cfg fn = do
                  ++ (if null (alSaved allocation) then "none" else intercalate "," (map reg (alSaved allocation))) ++ " " ++ statsLine (alStats allocation)]
           ++ ["    .section .text." ++ functionSymbol name ++ ",\"ax\",@progbits" | polProfile (cfgPolicy cfg) == BuiltinArc]
           ++ ["    .balign 4" | polProfile (cfgPolicy cfg) == BuiltinArc]
-          ++ ["    " ++ (if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl") ++ " " ++ functionSymbol name | S.member name (cfgExports cfg)]
+          ++ visibilityLines ELF WeakDirective (visibilityFor (cfgWeak cfg) symbols name) (functionSymbol name)
           ++ [functionSymbol name ++ ":"]
   pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList (nulls st)) (S.toList (strings st)) (S.toList (boxedFloats st)))
   where

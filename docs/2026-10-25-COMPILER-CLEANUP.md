@@ -20,7 +20,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
-| Typed codegen contracts | Vector operations/float widths implemented; remaining kernel stages, call-convention contracts and ISA instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
+| Typed codegen contracts | Vector operations/float widths and shared symbol visibility/private import contracts implemented; remaining kernel stages, call-convention contracts and ISA instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
 | Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
 | Obsolete architecture descriptions and names | Module identity and frontend-owner references corrected; backend references/names still pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
 
@@ -507,3 +507,35 @@ are next requirements for typed global/imported callback specialization and
 `Mono` retirement. Region/cost provenance, remaining compatibility forms, later
 typed transformations, diagnostics and machine/call contracts remain required.
 The complete compiler cleanup goal remains active.
+
+
+## Home-owned private code imports (2026-10-26)
+
+[Private code imports](2026-10-26-PRIVATE-CODE-IMPORTS.md) derives explicit
+home/source/code/capture contracts from the linked checked graph and prepares
+native emission through an owned program/import/template/symbol-policy product.
+Checked helpers and static PAPs retain their home identity rather than being
+copied by imported callback cloning. ELF hidden and Mach-O private extern
+visibility share one typed policy across native code and data. Read-only
+contexts preserve imported inlining and vector map/pipeline planning; generated
+kernel implementations remain local to their artifact.
+
+A saved-compiler reproducer returned unequal capture-free function objects with
+specialization enabled and equal objects with it disabled. The corrected path
+preserves identity across both paths, while distinct captured closures still
+compare unequal and stored aliases compare equal. Revision 117 versions this
+behavior correction and changed linkage/cache contents, with no physical ABI,
+context or runtime-object-layout change.
+
+The linked-owner baseline `5b52aed` passed hosted CI run 40194815858. All 136
+Base jobs for this checkpoint passed in 515.82 seconds on six workers, with a
+fresh cache, no reused CI coverage and fixed sources. The expanded home-import
+invariants and native identity/effect/cache checks pass, root/provider objects
+assemble in all six native formats, and imported map/fused pipeline plans remain
+specialized. Sol arguments/shared-language execution and self/mutual 3,000,000
+iteration tail calls pass (peak 85 MB). Integrated-head hosted validation follows
+the push; the private-import stage page records the evidence and platform skips.
+Global cloning still uses `Mono`; typed global clone/source provenance and
+region/cost provenance remain the next major requirements. Compatibility/erased
+region helpers, later typed transformations, source diagnostics and machine/call
+contracts remain required. This stage does not complete the compiler cleanup.
