@@ -35,6 +35,8 @@ subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedCallbacks.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
 subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedProgram.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
+subprocess.run([*ghc, '-w', '-icompiler', 'tests/RegionInterfaces.hs'], cwd=ROOT,
+               env=env, check=True, timeout=180)
 subprocess.run([sys.executable, str(ROOT / 'tests/check_typed_callbacks.py')], cwd=ROOT,
                env=env, check=True, timeout=240)
 subprocess.run([sys.executable, str(ROOT / 'tests/check_typed_staging.py')], cwd=ROOT,

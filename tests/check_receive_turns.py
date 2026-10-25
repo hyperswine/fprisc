@@ -27,6 +27,18 @@ with tempfile.TemporaryDirectory(prefix='fpr-receive-turns-') as directory:
         p=run(exe,h)
         assert p.returncode == 0 and 'one million ordinary recursive receives bounded' in p.stdout,(h,p.stdout,p.stderr)
     print('automatic receive turns: million messages, one/four harts, 64 MiB PASS')
+    private, notes = build(ROOT/'tests/base/receiveprivate.fpr', 'private',
+                           {'FPR_NO_SPEC':'1', 'FPR_NO_INLINE':'1'})
+    assert any(line.startswith('receive-turns: $typed_recursive_') and
+               line.endswith('automatic value-state turn regions') for line in notes.splitlines()), notes
+    for h in (1, 4):
+        p = run(private, h)
+        assert p.returncode == 0 and p.stdout == 'private receiver bounded\n' and not p.stderr, (h, p.stdout, p.stderr)
+    old_private, _ = build(ROOT/'tests/base/receiveprivate.fpr', 'private-disabled',
+                           {'FPR_NO_SPEC':'1', 'FPR_NO_INLINE':'1', 'FPR_NO_RECEIVE_TURNS':'1'})
+    p = run(old_private)
+    assert p.returncode != 0 and 'private receiver grew' in p.stdout + p.stderr, (p.stdout, p.stderr)
+    print('automatic receive turns: checked private captures/results, one/four harts and opt-out heap-bound reproduction PASS')
     for no_inline in (False, True):
         exe, notes = build(ROOT/'tests/base/receivecoverage.fpr', 'coverage'+str(no_inline),
                            {'FPR_NO_INLINE': str(int(no_inline))})

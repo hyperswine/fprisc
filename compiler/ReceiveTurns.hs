@@ -18,32 +18,49 @@
 --     in the state, is MOVED by the runtime when this actor's base pool owns
 --     it (vec_movable_here) and copied otherwise;
 --   * the notes say which rule placed each boundary; --cost prints them.
-module ReceiveTurns (receiveTurns) where
+module ReceiveTurns
+  (Rewrite,receiveTurns,rewriteProgram,rewriteNotes,rewriteGenerated,
+   Generated,GeneratedKind(..),generatedKind,generatedSource,generatedParameters,
+   generatedState,generatedSourceInterface) where
 
-import Data.List (intercalate, foldl', isPrefixOf)
+import Data.List (intercalate, foldl')
 import Data.Graph (SCC (..), stronglyConnComp)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Core.Syntax
-import Frontend.Syntax
-import Frontend.Desugar (tupWideBase)
-import Type.Syntax (Type (..), Row (..))
+import Compiler.DataLayout (tupWideBase)
+import Core.Region.Interface
+import qualified Core.Region.Types as Region
+import Type.Syntax (Type (..))
+import Control.Monad (unless)
 import Cost (primAllocates, allocGrows, CostEq)
 
-receiveTurns :: Bool -> Bool -> M.Map Name (CostEq, CostEq) -> M.Map Name Type -> [STop] -> Prog -> S.Set Name -> Prog -> (Prog, [String])
-receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog = (final, notes ++ callNotes)
+data GeneratedKind=LoopInner | LoopCycle | ReceiveThunk | ReceiveJoin deriving (Eq,Show)
+data Generated=Generated
+  { generatedKind :: GeneratedKind,generatedSource :: Name,generatedParameters :: [Name],
+    generatedState :: [Name],generatedSourceInterface :: Maybe Interface } deriving Show
+data Rewrite=Rewrite Prog [String] (M.Map Name Generated)
+rewriteProgram (Rewrite p _ _)=p
+rewriteNotes (Rewrite _ ns _)=ns
+rewriteGenerated (Rewrite _ _ gs)=gs
+
+receiveTurns :: Bool -> Bool -> M.Map Name (CostEq,CostEq) -> M.Map Name Interface
+             -> Region.ValueModel -> S.Set Name -> Prog -> S.Set Name -> Prog -> Either String Rewrite
+receiveTurns loopRegions callRegionsOn contextEqs interfaces model shared context joins prog = do
+  let result=Rewrite final (notes++callNotes) generated
+  verifyRewrite prog result
+  pure result
   where
     refs ps = S.fromList . filter (`notElem` ps) . freeVars
     edges p = M.map (uncurry refs) p
     reaches graph seeds = fix seeds
       where fix known = let next = known `S.union` M.keysSet (M.filter (not . S.null . S.intersection known) graph)
                          in if next == known then known else fix next
-    -- Lifted helper names are local to a compilation, and their counters can
-    -- coincide in the whole-program and per-unit Core. Only SOURCE names may
-    -- cross that boundary; follow local helper edges in the local graph.
+    -- Only explicit shared identities cross the context boundary. Checked
+    -- private code has a stable owner; compatibility counters remain local.
     effect names =
       let seeds = S.fromList names
-          external = reaches (edges context) seeds `S.intersection` M.keysSet types
+          external = reaches (edges context) seeds `S.intersection` shared
        in reaches (edges prog) (seeds `S.union` external)
     receivers = effect ["receive", "receiveFrom", "receiveRes", "receiveNow", "receiveFromRes", "receiveFromNow"]
     managed = effect ["Sys.poolReset", "Sys.arena", "Sys.loop", "Sys.loopWith", "$receiveLoop", "$loopLeave"]
@@ -69,6 +86,25 @@ receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog 
     -- the loops that got a region: a call into one needs no call region
     loopEntries = S.fromList (concat [ns | (ns, Right _) <- zip groups results, isPure ns, loopRegions])
     (final, callNotes) = if callRegionsOn then callRegions turned else (turned, [])
+    generated=M.fromList (concat
+      [describe ns | (ns,Right _)<-zip groups results,loopRegions || not (isPure ns)])
+    describe ns=concatMap one ns
+      where
+        boundaries=entries ns
+        invariant=invariants ns
+        one n=let ps=fst (prog M.! n)
+                  state=[p | (i,p)<-zip [0..] ps,p `elem` kept n,S.notMember (n,i) invariant]
+                  make kind params fields=Generated kind n params fields (M.lookup n interfaces)
+                  boundary=n `S.member` boundaries
+              in if isPure ns then
+                   (loopName n,make LoopInner (ps++["$loop.mark","$loop.seq"]) state):
+                   [(cycleName n,make LoopCycle (ps++["$loop.mark","$loop.seq"]) state) | boundary]
+                 else [(receiveName boundary n,if boundary
+                   then make ReceiveThunk ["$receive.state","$receive.unit"] (kept n)
+                   else make ReceiveJoin ps [])]
+    loopName n="$loop.in."++n
+    cycleName n="$loop.cycle."++n
+    receiveName boundary n=(if boundary then "$receive.turn." else "$receive.local.")++n
     isLeft = either (const True) (const False)
     -- does an iteration of n allocate SCRATCH?  Counted: on a path that ends
     -- in a call into the group, every allocation except the constructors
@@ -145,19 +181,21 @@ receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog 
     growingOmega nm = M.member nm prog || M.member nm context || take 1 nm == "?"
     sccIx = M.fromList [(n, i) | (i, c) <- zip [0 :: Int ..] (stronglyConnComp [(n, n, S.toList (refs ps b `S.intersection` M.keysSet prog)) | (n, (ps, b)) <- M.toList prog]), n <- flat c]
       where flat (AcyclicSCC n) = [n]; flat (CyclicSCC ns) = ns
-    costly g arity = case (M.lookup g prog `orElse` M.lookup g context, M.lookup g types, M.lookup g callEqs) of
-      (Just (ps, _), Just ty, Just (_, eq)) | length ps == arity, take 1 g /= "$" ->
-        let (as, r) = split arity ty
-         in length as == arity && value S.empty r && allocGrows growingOmega eq && S.notMember g loopEntries
-      _ -> False
+    costly g arity = case (M.lookup g prog `orElse` M.lookup g context,M.lookup g interfaces,M.lookup g callEqs) of
+      (Just (ps,_),Just signature,Just (_,eq)) | length ps==arity,interfaceArity signature==arity,
+        callableRegionEntry signature ->
+          Region.copyable model (interfaceResult signature) && allocGrows growingOmega eq && S.notMember g loopEntries
+      _->False
     callRegions p = (M.mapWithKey site p, [ "call-regions: " ++ n ++ ": " ++ show k ++ " call(s) under a pending region"
                                           | (n, k) <- M.toList counts, k > 0 ])
       where
         -- every function, the loop bodies included: a costly call inside a loop
         -- is where a region pays most (dtree's `run` inside repeatRuns); the
         -- loop's own boundary only reclaims per slab of its iteration.  Not the
-        -- compiler's own `$` helpers, whose calls are the region bookkeeping.
-        eligible n = (take 1 n /= "$" || "$loop.in." `isPrefixOf` n) && M.member n prog
+        -- generated bookkeeping helpers. Their explicit roles, rather than
+        -- a spelling convention, decide which bodies can contain call regions.
+        eligible n = M.member n prog && (M.member n interfaces ||
+          maybe False ((==LoopInner) . generatedKind) (M.lookup n generated))
         rewritten' = M.mapWithKey (\n (ps, b) -> if eligible n then let (b', k) = wrap n (S.fromList ps) 0 b in ((ps, b'), k) else ((ps, b), 0)) p
         site n _ = fst (rewritten' M.! n)
         counts = M.map snd rewritten'
@@ -197,7 +235,7 @@ receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog 
         localGraph = M.fromList [(n, S.toList ((edges prog M.! n) `S.intersection` group)) | n <- ns]
         calledFromOutside n =
           or [S.member n refsG | (g, refsG) <- M.toList (edges prog), S.notMember g group]
-            || (M.member n types && or [S.member n refsG | (g, refsG) <- M.toList (edges context), S.notMember g group, M.member g types])
+            || (S.member n shared && or [S.member n refsG | (g, refsG) <- M.toList (edges context), S.notMember g group, S.member g shared])
         complete bs =
           let rest = [n | n <- ns, S.notMember n bs]
               cyclic = [c | CyclicSCC c <- stronglyConnComp [(n, n, filter (`S.notMember` bs) (localGraph M.! n)) | n <- rest]]
@@ -300,6 +338,7 @@ receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog 
                                      else "state/result is mutable, functional, polymorphic or lacks type evidence; unchanged (") ++ intercalate "; " problems ++ ")"
                                      ++ (if S.null invariant then "" else "; invariant: " ++ unwords [n ++ "#" ++ show (i + 1) | (n, i) <- S.toList invariant]))
       | any (\n -> length (fst (prog M.! n)) > 64) ns = Left "requires at most 64 parameters after arity spilling; unchanged"
+      | isPure ns && any (\n -> length (fst (prog M.! n))+2>64) ns = Left "loop control cells exceed the physical argument convention; unchanged"
       | isPure ns = do
           bodies <- mapM (\n -> let (ps,b) = prog M.! n in (,) n <$> loopE (S.fromList ps) b) ns
           pure (M.fromList (concatMap pureMake bodies))
@@ -311,7 +350,7 @@ receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog 
         boundaries = entries ns
         invariant = invariants ns
         problems = concatMap (typedProblems (isPure ns) invariant) (S.toList boundaries)
-        helper n = (if n `S.member` boundaries then "$receive.turn." else "$receive.local.") ++ n
+        helper n = receiveName (n `S.member` boundaries) n
         mentions bound e = not . S.null $ (S.fromList (freeVars e) S.\\ bound) `S.intersection` group
         tailE bound = \case
           CLet x a b | not (mentions bound a) -> CLet x a <$> tailE (S.insert x bound) b
@@ -343,7 +382,7 @@ receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog 
         -- region, if one opened, copying the result out.  Invariant arguments
         -- are passed as they are: they were built before the loop, outside
         -- every region it opens.
-        inName n = "$loop.in." ++ n
+        inName = loopName
         loopE bound = \case
           CLet x a b | not (mentions bound a) -> CLet x a <$> loopE (S.insert x bound) b
           CIf c t f | not (mentions bound c) -> CIf c <$> loopE bound t <*> loopE bound f
@@ -360,7 +399,7 @@ receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog 
         -- the test sits at a boundary member's entry, every call to it a plain
         -- tail call: the members stay small (a mutual pair still merges into
         -- one loop), and the cold path is a function of its own
-        cycName n = "$loop.cycle." ++ n
+        cycName = cycleName
         pureMake (n,b) =
           let ps = fst (prog M.! n)
               extra = ["$loop.mark", "$loop.seq"]
@@ -407,55 +446,22 @@ receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog 
     -- copy out of the arguments must not grow with the loop); a receive
     -- loop takes any value type.  An invariant or function-typed parameter
     -- needs no evidence: it is copied as it is, Vectors moved by the runtime.
-    typedProblems pure invariant n = case M.lookup n types of
-      Just ty -> let ps = fst (prog M.! n)
-                     (as,r) = split (length ps) ty
-                     ok = if pure then bounded S.empty else value S.empty
-                     -- a result that is one of the invariant parameters' own
-                     -- (polymorphic) types is the caller's value handed back:
-                     -- it needs no more evidence than the parameter did
-                     handedBack = case r of
-                       TV x -> or [case a of TV y -> x == y; _ -> False
-                                  | (i, a) <- zip [0 ..] as, S.member (n, i) invariant]
-                       _ -> False
-                  in if length as /= length ps then [n ++ ": parameter arity lacks type evidence"] else
-                     [n ++ ": live parameter " ++ show i ++ " has " ++ show a
-                      | (i,p,a) <- zip3 [1::Int ..] ps as, p `elem` kept n, not (ok a),
-                        not (S.member (n, i - 1) invariant), not (isFn a)]
-                     ++ [n ++ ": result has " ++ show r
-                        | not (value S.empty r || nonReturning n || handedBack)]
-      Nothing -> [n ++ ": no checked source interface"]
-    isFn t = case t of TFn _ _ -> True; _ -> False
-    -- bounded: a value whose size does not depend on the loop: scalars,
-    -- handles, Vectors (moved by handle), and products of those; a List,
-    -- String or Result of unbounded parts may grow as the loop runs
-    bounded seen = \case
-      TTupT ts -> all (bounded seen) ts
-      TRec r -> boundedRow seen r
-      t -> case tySpine t of
-        (TC n,as)
-          | n `elem` ["Int","Bool","Unit","Atom","I64","Word","F64","I32"] -> null as
-          | n == "Vector" -> length as == 1
-          | n == "Result" -> length as == 2 && all (bounded seen) as
-          | Just fs <- M.lookup n shapes, null as, n `S.notMember` seen ->
-              all (fieldB (S.insert n seen) M.empty . snd) fs
-          | Just (vs,fields) <- M.lookup n decls,
-            length vs == length as, all (bounded seen) as ->
-              -- a recursive nominal (a Tree) is a value but not bounded: its
-              -- size is the data's, and copying it every iteration would grow
-              -- with the loop
-              n `S.notMember` seen && all (fieldB (S.insert n seen) (M.fromList (zip vs as))) fields
-        _ -> False
-    boundedRow seen = \case
-      RNil -> True
-      RExt _ t r -> bounded seen t && boundedRow seen r
-      _ -> False
-    fieldB seen subst = \case
-      TVarT n -> maybe False (bounded seen) (M.lookup n subst)
-      TCon n ts -> maybe False (bounded seen) (convert subst (TCon n ts))
-      TTup ts -> all (fieldB seen subst) ts
-      TRecT fs Nothing -> all (fieldB seen subst . snd) fs
-      _ -> False
+    typedProblems pure invariant n = case M.lookup n interfaces of
+      Just signature -> let ps=fst (prog M.! n)
+                            as=interfaceArguments signature;r=interfaceResult signature
+                            ok=if pure then Region.bounded model else Region.copyable model
+                            handedBack=case r of
+                              TV x->or [case a of TV y->x==y;_->False
+                                | (i,a)<-zip [0..] as,S.member (n,i) invariant]
+                              _->False
+                        in if length as/=length ps then [n++": parameter arity lacks type evidence"] else
+                          [n++": live parameter "++show i++" has "++show a
+                            | (i,p,a)<-zip3 [1::Int ..] ps as,p `elem` kept n,not (ok a),
+                              S.notMember (n,i-1) invariant,not (isFn a)]
+                          ++[n++": result has "++show r | not (Region.copyable model r || nonReturning n || handedBack)]
+      Nothing->[n++": no checked physical interface"]
+    isFn (TFn _ _)=True
+    isFn _=False
     -- Check EVERY member, including untyped private joins: a source body
     -- ending at a join is not proof that the join itself cannot return.
     nonReturning n = let group = M.findWithDefault S.empty n membership
@@ -469,45 +475,28 @@ receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog 
       e -> case spine e of
         (CVar g,as) -> g `S.member` group && g `S.notMember` bound && length as == length (fst (prog M.! g))
         _ -> False
-    split 0 t = ([],t)
-    split k (TFn a b) = let (as,r) = split (k-1) b in (a:as,r)
-    split _ t = ([],t)
-    decls = M.fromList [(n,(vs,concatMap snd cs)) | TType n False vs cs <- tops]
-    shapes = M.fromList [(n,fs) | TShape n fs <- tops]
-    value seen = \case
-      TTupT ts -> all (value seen) ts
-      TRec r -> row seen r
-      t -> case tySpine t of
-        (TC n,as)
-          | n `elem` ["Int","String","Bool","Unit","Atom","I64","Word","F64","I32"] -> null as
-          | n == "Vector" -> length as == 1 -- moved by handle when owned here, copied otherwise (runtime.c)
-          | n `elem` ["List","Result"] -> length as == (if n == "List" then 1 else 2) && all (value seen) as
-          | Just fs <- M.lookup n shapes, null as, n `S.notMember` seen ->
-              all (field (S.insert n seen) M.empty . snd) fs
-          | Just (vs,fields) <- M.lookup n decls,
-            length vs == length as, all (value seen) as ->
-              n `S.member` seen || all (field (S.insert n seen) (M.fromList (zip vs as))) fields
-        _ -> False
-    row seen = \case
-      RNil -> True
-      RExt _ t r -> value seen t && row seen r
-      _ -> False
-    field seen subst = \case
-      TVarT n -> maybe False (value seen) (M.lookup n subst)
-      TCon n ts -> maybe False (value seen) (convert subst (TCon n ts))
-      TTup ts -> all (field seen subst) ts
-      TRecT fs Nothing -> all (field seen subst . snd) fs
-      _ -> False
-    convert subst = \case
-      TVarT n -> M.lookup n subst
-      TCon n ts -> foldl TAp (TC n) <$> mapM (convert subst) ts
-      TTup ts -> TTupT <$> mapM (convert subst) ts
-      _ -> Nothing
 
 spine :: Core -> (Core,[Core])
 spine = go [] where go as (CApp f a) = go (a:as) f; go as h = (h,as)
-tySpine :: Type -> (Type,[Type])
-tySpine = go [] where go as (TAp f a) = go (a:as) f; go as h = (h,as)
+-- A region result has one explicit declaration for every generated helper.
+-- Scope/physical checks here do not claim that erased helper bodies are typed
+-- Core; their checked source interfaces and runtime protocol roles stay distinct.
+verifyRewrite :: Prog -> Rewrite -> Either String ()
+verifyRewrite before (Rewrite after _ generated)=do
+  let bad why=Left ("region rewrite: "++why)
+      newNames=M.keysSet generated
+  unless (S.null (newNames `S.intersection` M.keysSet before)) (bad "generated helper collides with an input definition")
+  unless (M.keysSet after==M.keysSet before<>newNames) (bad "helper declaration/emission mismatch")
+  mapM_ (\(n,(ps,_))->unless (Just ps==(fst <$> M.lookup n after)) (bad ("changed physical entry: "++n))) (M.toList before)
+  mapM_ (\(n,g)->unless (Just (generatedParameters g)==(fst <$> M.lookup n after))
+    (bad ("generated physical interface: "++n))) (M.toList generated)
+  mapM_ (\(n,(ps,_))->unless (length ps==S.size (S.fromList ps)
+    && (n `M.notMember` generated || length ps<=64))
+    (bad ("invalid physical parameters: "++n))) (M.toList after)
+  let globals p=S.unions [S.fromList (freeVars body) S.\\ S.fromList ps | (ps,body)<-M.elems p]
+      hooks=S.fromList ["$callPend","$callLeave","$loopLeave","$regionSeq","$regionMark","$regionRoom","$regionCycle","$receiveLoop"]
+      unknown=globals after S.\\ (globals before<>M.keysSet after<>hooks)
+  unless (S.null unknown) (bad ("unbound generated references: "++unwords (S.toList unknown)))
 
 -- State bundling keeps the step at two arguments, including its dummy Unit,
 -- even for the 64-argument native convention. Arity spilling has already

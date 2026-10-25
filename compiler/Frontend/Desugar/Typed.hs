@@ -6,8 +6,9 @@ module Frontend.Desugar.Typed
    CheckedUnit,selectCheckedUnit,checkedUnitTops,checkedUnitNames,
    SpecializedSource,specializeCheckedSource,specializedTops,
    SourceSelection,selectionProgram,selectionCompatibility,selectionConstructors,Compatibility,
-   compatibilityClauses,compatibilityReason,selectUnit,selectSpecialized,selectClauses) where
+   compatibilityClauses,compatibilityReason,compatibilityDeclaration,selectUnit,selectSpecialized,selectClauses) where
 import Core.Identity
+import qualified Core.Calling as Calling
 import qualified Core.Typed.Syntax as T
 import qualified Core.Typed.Program as Program
 import Core.Primitives (primArities)
@@ -46,7 +47,8 @@ data CheckedPlans = Plans
     planEntries :: M.Map String Plan, planDeclines :: [(String,String)],
     planSource :: [STop], planSpecialization :: Specialize.Context,
     planSignatures :: Struct.Sigs, planStructures :: Struct.Structs,
-    planAssumptions :: M.Map ExprId Program.RecursiveAssumption }
+    planAssumptions :: M.Map ExprId Program.RecursiveAssumption,
+    planDeclarations :: M.Map String Calling.Calling }
 data SpecializedSource=SpecializedSource CheckedPlans [STop] Specialize.Specialized
 specializeCheckedSource :: CheckedPlans -> Either [String] SpecializedSource
 specializeCheckedSource plans=case Struct.specialize (planSignatures plans) (planStructures plans) (planSource plans) of
@@ -330,7 +332,9 @@ prepareChecked result = do
           context=Specialize.Context types schemas (M.map (map fst) (Struct.genericTable source))
             (M.keysSet (inferenceStructures result)) entries (S.fromList (concatMap eligible (E.evidenceRoots evidence)))
       pure (Plans (E.evidenceNamespace evidence) types (M.fromList [(n,p) | (n,Right p)<-answers])
-        [(n,why) | (n,Left (Deferred why))<-answers] source context (inferenceSignatures result) (inferenceStructures result) recursive)
+        [(n,why) | (n,Left (Deferred why))<-answers] source context (inferenceSignatures result) (inferenceStructures result) recursive
+        (M.fromList [(n,decl) | (n,Forall _ _ ty)<-M.toList schemas,Just ((ps,_,_):_)<-[M.lookup n groups],
+          Just decl<-[Calling.calling (length ps) ty]]))
   where
     defer=Left . Deferred
     corrupt=Left . Corrupt
@@ -347,9 +351,19 @@ prepareChecked result = do
 
 -- A checked semantic program and explicit compatibility-only clauses. The
 -- latter have no borrowed typed annotations and never enter typed transforms.
-data Compatibility=Compatibility [([SPat],[SGuard],SExpr)] String
-compatibilityClauses (Compatibility cs _)=cs
-compatibilityReason (Compatibility _ why)=why
+data Compatibility=Compatibility [([SPat],[SGuard],SExpr)] String (Maybe Calling.Calling)
+compatibilityClauses (Compatibility cs _ _)=cs
+compatibilityReason (Compatibility _ why _)=why
+compatibilityDeclaration (Compatibility _ _ declaration)=declaration
+-- A checked source declaration survives deferred body lowering only for the
+-- exact source clauses it checked. Changed compatibility bodies cannot borrow
+-- either typed expression evidence or their original declaration.
+compatibilityFor plans name clauses why=Compatibility clauses why declaration
+  where
+    originals=M.fromList (sourceGroups (Struct.erasePSig (planSource plans)))
+    declaration=case M.lookup name originals of
+      Just expected | encode clauses==encode expected->M.lookup name (planDeclarations plans)
+      _->Nothing
 data SourceSelection=SourceSelection Program.Program (M.Map String Compatibility) (S.Set String)
 selectionProgram (SourceSelection p _ _)=p
 selectionCompatibility (SourceSelection _ cs _)=cs
@@ -366,7 +380,7 @@ selectClauses constructors plans tops=do
   let groups=sourceGroups tops
       typed=M.fromList [(name,f) | group@(name,_)<-groups,Just f<-[typedFunction plans group]]
       declined=M.fromList (checkedDeclines plans)
-      fallback=M.fromList [(name,Compatibility clauses (M.findWithDefault "clauses differ from the checked owner" name declined))
+      fallback=M.fromList [(name,compatibilityFor plans name clauses (M.findWithDefault "clauses differ from the checked owner" name declined))
         | (name,clauses)<-groups,name `M.notMember` typed]
   assemble constructors plans (Specialize.globalSchemes (planSpecialization plans)) (callingArities plans) typed fallback
 
@@ -395,7 +409,7 @@ selectSpecialized constructors (SpecializedSource checked legacy specialized) se
             next=names `S.union` (more `S.intersection` legacyOnly)
         in if next==names then names else reach next
       fallbackNames=fallbackSource `S.union` reach (roots `S.intersection` legacyOnly)
-      fallback=M.map (\cs->Compatibility cs "compatibility-only structure expansion") (M.restrictKeys legacyGroups fallbackNames)
+      fallback=M.mapWithKey (\name cs->compatibilityFor checked name cs "compatibility-only structure expansion") (M.restrictKeys legacyGroups fallbackNames)
   assemble constructors checked (Specialize.callingSchemes specialized) arities wanted fallback
 
 assemble constructors plans schemas arities typed compatibility=do

@@ -2,7 +2,7 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,compileSelection,compileSelectionAt,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeConstructors,nativeFresh) where
+  (NativeCore,compileSelection,compileSelectionAt,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
 import Core.Typed.Pipeline
@@ -11,6 +11,7 @@ import Core.Typed.Callback (CallbackMode)
 import Core.Typed.Erase
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Core.Syntax
+import qualified Core.Calling as Calling
 import Compiler.DataLayout
 import Frontend.Desugar.Typed
 import qualified Frontend.Desugar as Legacy
@@ -20,13 +21,14 @@ import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data NativeCore=NativeCore ClosedProgram Prog (S.Set String) (M.Map String String) (S.Set String) Int
-nativeProgram (NativeCore _ p _ _ _ _)=p
-nativeJoins (NativeCore _ _ js _ _ _)=js
-nativeClosed (NativeCore p _ _ _ _ _)=p
-nativeCompatibility (NativeCore _ _ _ cs _ _)=cs
-nativeConstructors (NativeCore _ _ _ _ ns _)=ns
-nativeFresh (NativeCore _ _ _ _ _ n)=n
+data NativeCore=NativeCore ClosedProgram Prog (S.Set String) (M.Map String String) (M.Map String Calling.Calling) (S.Set String) Int
+nativeProgram (NativeCore _ p _ _ _ _ _)=p
+nativeJoins (NativeCore _ _ js _ _ _ _)=js
+nativeClosed (NativeCore p _ _ _ _ _ _)=p
+nativeCompatibility (NativeCore _ _ _ cs _ _ _)=cs
+nativeDeclarations (NativeCore _ _ _ _ ds _ _)=ds
+nativeConstructors (NativeCore _ _ _ _ _ ns _)=ns
+nativeFresh (NativeCore _ _ _ _ _ _ n)=n
 
 compileSelection :: CallbackMode -> Layouts -> SourceSelection -> Either String NativeCore
 compileSelection=compileSelectionAt 0
@@ -49,8 +51,11 @@ compileSelectionAt first mode layouts selected=do
       joins=S.fromList [name | f<-M.elems roots,c<-M.elems (closedCode f),T.codeKind c==T.JoinCode,let T.CodeId name=T.codeId c]
         <>S.fromList (Legacy.dJoins state)
       output=covered `M.union` fallback
+      declarations=M.mapMaybe compatibilityDeclaration compatibility
+  mapM_ (\(name,d)->unless (Just (Calling.callingArity d)==(length . fst <$> M.lookup name fallback))
+    (Left ("native Core: checked compatibility declaration changed physical arity: "++name))) (M.toList declarations)
   unless (all (noLambda . snd) (M.elems output)) (Left "native Core: implicit lambda remains at erasure boundary")
-  pure (NativeCore closed output joins (M.map compatibilityReason compatibility) (selectionConstructors selected) (Legacy.dFresh state))
+  pure (NativeCore closed output joins (M.map compatibilityReason compatibility) declarations (selectionConstructors selected) (Legacy.dFresh state))
 
 eraseClosed :: ClosedProgram -> Either String Prog
 eraseClosed closed=do

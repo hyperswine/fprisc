@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 117 -- home-owned typed private code/PAPs replace imported helper copies
+codegenRev = 118 -- region placement consumes owned physical interfaces and checked type models
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

@@ -311,3 +311,4 @@ they began.
 - [Owned typed programs and the native pipeline](2026-10-25-TYPED-PROGRAM-PIPELINE.md): semantic frontend products, complete graph contracts, scoped recursive assumptions and a separate native erasure boundary.
 - [Linked native program ownership](2026-10-25-LINKED-NATIVE-PROGRAM.md) - retained typed artifacts, exported/local symbol ownership and imported calling contracts.
 - [Home-owned private code imports](2026-10-26-PRIVATE-CODE-IMPORTS.md) - checked home declarations, shared code/PAP visibility, read-only optimization context and the imported closure identity fix.
+- [Checked physical region interfaces and provenance](2026-10-26-REGION-INTERFACES.md) - owned typed inputs, constructor/cost models, scoped compatibility analysis and generated helper contracts.

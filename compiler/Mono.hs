@@ -5,6 +5,7 @@
 module Mono (specializeFunctions,specializeFunctionsWithImports, qualifyAux, references) where
 
 import Core.Syntax (Core(..), Name, Prog, freeVars)
+import Core.Analysis.Scope (qualifyPrivate)
 import Data.Graph (SCC(..), stronglyConnComp)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
@@ -20,11 +21,7 @@ data Work = Work { clones :: Prog, seen :: M.Map Key Name, serial :: Int, weight
 -- preserved set also includes checked private code identities: those remain
 -- home-owned and must not acquire another function/PAP definition here.
 qualifyAux :: String -> S.Set Name -> Prog -> Prog
-qualifyAux prefix source p = M.fromList
-  [(ren n, (ps, renameGlobals mapping (S.fromList ps) b)) | (n,(ps,b)) <- M.toList p]
-  where
-    mapping = M.fromList [(n, prefix ++ n) | n <- M.keys p, n `S.notMember` source]
-    ren n = M.findWithDefault n n mapping
+qualifyAux=qualifyPrivate
 
 specializeFunctions :: String -> M.Map Name Int -> Prog -> Prog -> Prog
 specializeFunctions=specializeFunctionsWithImports S.empty
@@ -184,8 +181,6 @@ substitute m = \case
   CTagEq t v x -> CTagEq t v (substitute m x)
   CProj i x -> CProj i (substitute m x)
   e -> e
-renameGlobals :: M.Map Name Name -> S.Set Name -> Core -> Core
-renameGlobals m bound = substitute (M.map CVar (foldr M.delete m (S.toList bound)))
 
 -- Alpha-renaming before callback substitution prevents a callee-local binder
 -- from capturing the global callback supplied by the caller.

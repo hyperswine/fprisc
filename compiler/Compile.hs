@@ -11,7 +11,7 @@ import qualified Compiler.Native.Imports as NativeImports
 import Compiler.DataLayout (Layouts(..))
 import Mono (specializeFunctionsWithImports, qualifyAux)
 import Inline (inlineSmall, inlineWithImports, vecPeek)
-import ReceiveTurns (receiveTurns)
+import qualified Compiler.Native.Regions as Regions
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.Common (Tune (..), dataSyntax)
 import Codegen (Target, codegenRev, emitProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
@@ -586,20 +586,19 @@ compileWithInterface accepted = do
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
           nativeLayouts=Layouts consAll shapes
           compileSelected mode selected=either error id (selected >>= NativeCore.compileSelection mode nativeLayouts)
-          projectNative result=(M.map (fmap eraseCast) (NativeCore.nativeProgram result),NativeCore.nativeJoins result)
+          prepareRegions result=either error id (Regions.prepare result)
           selectRoot uts=selectSpecialized (M.keysSet consAll) specialized (bindNames uts)
-          compileRaw uts=projectNative (compileSelected PreserveCallbacks (selectRoot uts))
+          compileRaw uts=prepareRegions (compileSelected PreserveCallbacks (selectRoot uts))
           callbackMode=if Options.cgSpecialize codegen && not (oArc opts) then SpecializeCallbacks else PreserveCallbacks
           nativeUnit unit=compileSelected callbackMode (selectUnit (M.keysSet consAll) unit)
-          turnContext = fst (compileRaw finalTops)
-          -- regions (the compiler-placed loop and call kinds) change no work
-          -- and no allocation: the cost report sees the program without them
-          -- the whole program's cost equations, once (lazy: only a build with
-          -- call regions on computes them)
-          contextEqs = Cost.costProgram (fst (measureCheck tops)) M.empty turnContext
-          turnPassWith regions (p, joins) = if oBuiltin opts || oArc opts || (not (Options.cgReceiveTurns codegen)) then (p, [])
-                       else receiveTurns (regions && (Options.cgLoopRegions codegen)) (regions && (Options.cgCallRegions codegen)) contextEqs (M.fromList interfaces) finalTops turnContext joins p
-          turnPass = turnPassWith True
+          regionContext=Regions.context (fst (measureCheck tops)) (compileRaw finalTops)
+          runTurnsWith regions input=if oBuiltin opts || oArc opts || not (Options.cgReceiveTurns codegen)
+            then Regions.bypass input
+            else either error id (Regions.place
+              (Regions.Options (regions && Options.cgLoopRegions codegen) (regions && Options.cgCallRegions codegen)) regionContext input)
+          runTurns=runTurnsWith True
+          regionProjection result=(Regions.resultProgram result,Regions.resultNotes result)
+          turnPassWith regions=regionProjection . runTurnsWith regions
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
           tidDecls =
             [ (t, ownerT ++ "." ++ n)
@@ -767,8 +766,8 @@ compileWithInterface accepted = do
           -- --cost: every boundary placed, by rule, and a count of the pure
           -- groups declined; FPR_RECEIVE_NOTES=1 lists the declined ones too
           -- (docs/2026-10-24-REGIONS-STAGE2.md)
-          reportTurns raw = when ((Options.diagReceiveNotes diagnostic) || oCost opts) $ do
-            let ns = snd (turnPass raw)
+          reportTurns result = when ((Options.diagReceiveNotes diagnostic) || oCost opts) $ do
+            let ns=Regions.resultNotes result
                 declined = [n | n <- ns, "turn-regions (declined): " `isPrefixOf` n]
             mapM_ (hPutStrLn stderr) (if (Options.diagReceiveNotes diagnostic) then ns else filter (`notElem` declined) ns)
             when (not (Options.diagReceiveNotes diagnostic) && not (null declined)) $
@@ -959,16 +958,18 @@ compileWithInterface accepted = do
           declarationsResult=linkedResult >>= NativeImports.codeDeclarations
           declarations=either error id declarationsResult
           artifactOf key=Linked.linkedArtifacts linked M.! key
-          artifactRaw=projectNative . Linked.artifactCore
+          artifactRaw=prepareRegions . Linked.artifactCore
+          regionArtifacts=M.map (runTurns . artifactRaw) (Linked.linkedArtifacts linked)
+          artifactRegions key=regionArtifacts M.! key
           ready templates key exports prog=either (\reason->hPutStrLn stderr reason >> exitFailure) pure
             (NativeImports.prepareEmissionWithImports templates declarations key exports prog)
           importedPrivateNames=S.unions [NativeImports.preservedCode declarations key
             | key<-M.keys (Linked.linkedArtifacts linked),key/=Linked.RootArtifact]
-          rootProgRaw=fst (turnPass (artifactRaw (artifactOf Linked.RootArtifact)))
+          rootProgRaw=Regions.resultProgram (artifactRegions Linked.RootArtifact)
           -- a constructor is global everywhere: a clone that references one
           -- links against the owner's symbol, so qualifyAux leaves the name
           importedCore = M.unions
-            [qualifyAux (prefix key) (Linked.artifactExports a `S.union` allCons `S.union` NativeImports.preservedCode declarations key) (fst (turnPass (artifactRaw a)))
+            [qualifyAux (prefix key) (Linked.artifactExports a `S.union` allCons `S.union` NativeImports.preservedCode declarations key) (Regions.resultProgram (artifactRegions key))
               | (key,a)<-M.toList (Linked.linkedArtifacts linked),key/=Linked.RootArtifact]
           prefix (Linked.PreludeArtifact h)="$specaux.p"++take 12 h++"."
           prefix (Linked.DependencyArtifact h)="$specaux.u"++take 12 h++"."
@@ -978,12 +979,12 @@ compileWithInterface accepted = do
              ++ " known-partial=" ++ show (length [() | l <- lines asm, "# pap-create:" `List.isPrefixOf` l])
              ++ " static-descriptors=" ++ show (length [() | l <- lines asm, "# static-pap:" `List.isPrefixOf` l]))
           emitUnit pathBase ext artifact = do
-            let raw=artifactRaw artifact
+            let placed=artifactRegions (Linked.artifactId artifact)
                 exps=Linked.artifactExports artifact
                 elide=Linked.artifactElided artifact
-                unitProgram=fst (turnPass raw)
+                unitProgram=Regions.resultProgram placed
                 path=pathBase++"-c"++coreCacheIdentity elide (CallArities ext halAr) unitProgram++"-"++tag++".s"
-            reportTurns raw
+            reportTurns placed
             checkBuiltinWidth unitProgram
             cached <- doesFileExist path
             if cached
@@ -1084,7 +1085,7 @@ compileWithInterface accepted = do
         hPutStrLn stderr "machineInterrupt requires --arc (raw, allocation-free handler ABI)"
         exitFailure
       checkBuiltinWidth rootProgRaw
-      reportTurns (compileRaw (if oArc opts then finalTops else rootProgTops))
+      reportTurns (artifactRegions Linked.RootArtifact)
       rootProgSym <- case symbolize rootProgRaw of
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
@@ -1193,24 +1194,6 @@ nativeSummary enabled what asm =
     unless (null parsed) $ do
       hPutStrLn stderr ("[native-insns-v1] "++what++": "++show (length parsed)++" function(s), max segment "++show (maximum (map distance parsed))++" target instructions between safepoints")
       mapM_ (\(fn,kvs) -> hPutStrLn stderr ("[native-insns-v1]   "++fn++"  segmax="++maybe "?" id (lookup "segmax" kvs)++"  exittail="++maybe "?" id (lookup "exittail" kvs)++"  ccalls="++maybe "?" id (lookup "ccalls" kvs))) top
-
--- A Layout's two casts (FPRISC.expandLayout) are `$cast x`: typed a -> b so
--- a nominal pointer type can stand for an Addr, and the identity in fact.
--- Erased here, so no backend, no representation pass and no ARC lowering
--- ever meets it: `Block.at a` IS `a`.
-eraseCast :: Core -> Core
-eraseCast = go
-  where
-    go c = case c of
-      CApp (CVar "$cast") x -> go x
-      CApp f x -> CApp (go f) (go x)
-      CLam ps b -> CLam ps (go b)
-      CLet n e b -> CLet n (go e) (go b)
-      CIf a b d -> CIf (go a) (go b) (go d)
-      CMk t k es -> CMk t k (map go es)
-      CTagEq t k e -> CTagEq t k (go e)
-      CProj i e -> CProj i (go e)
-      _ -> c
 
 splitOn :: Char -> String -> [String]
 splitOn c str = case break (== c) str of

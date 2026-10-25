@@ -16,7 +16,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
 | Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical closure calls and local callback cloning implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
-| Checked pipeline products and lint | Owned semantic/native and linked artifact products, complete graph and imported interface contracts, typed desugaring/closed products and checked unit ownership implemented; downstream pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
+| Checked pipeline products and lint | Owned semantic/native and linked artifact products, region input/cost views, generated helper ABI provenance, complete graph and imported interface contracts implemented; downstream pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
@@ -539,3 +539,33 @@ Global cloning still uses `Mono`; typed global clone/source provenance and
 region/cost provenance remain the next major requirements. Compatibility/erased
 region helpers, later typed transformations, source diagnostics and machine/call
 contracts remain required. This stage does not complete the compiler cleanup.
+
+
+## Checked physical region interfaces (2026-10-26)
+
+[Region interfaces and provenance](2026-10-26-REGION-INTERFACES.md) supplies
+region placement from the owned checked native graph, including private code,
+hidden physical arguments, binder IDs, ownership shapes and result types.
+Unchanged compatibility clauses may keep a checked source declaration; changed
+clauses cannot borrow it or a same-named context interface. Checked constructor
+schemes replace source-AST type conversion in copyability/boundedness analysis.
+Cost equations retain their exact scoped analysis projection, with compatibility
+counters separated across local/context views. Shared artifact region results
+retain generated helper roles, source interfaces, state and physical parameters.
+The rewrite verifies helper/entry/scope contracts and physical argument limits.
+
+A saved-compiler private receive loop reports 196,480 bytes of heap growth
+against its 4 KiB bound on one and four harts; the corrected path places a
+receive region and passes.
+Revision 118 versions placement/emission/cache changes. Runtime structures and
+physical ABIs are unchanged. Fresh-cache integrated Base validation passed all
+136 jobs in 509 seconds on six workers, with no reused results. Focused region,
+typed-Core and Sol checks passed; the stage page records host/toolchain skips.
+Baseline `38673d2` passed hosted CI run 40198814856; that result precedes this
+stage and does not substitute for its new hosted run.
+
+This is checked provenance and a structural contract for the existing erased
+region rewrite. Typed helper bodies and global callback clone/source provenance
+remain required before `Mono` retirement. The later typed transformations,
+remaining compatibility forms, diagnostics and machine/call vocabulary remain
+part of the full active cleanup goal.

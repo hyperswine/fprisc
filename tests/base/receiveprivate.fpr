@@ -1,0 +1,18 @@
+# The receiver is checked private code, rather than a top-level binding.
+unsafe base.
+run me limit =
+  caller = strcat "caller" "-owned";
+  before = heapUsed Unit;
+  loop = (fn n text total ->
+    _ = send me ("row {n}", n);
+    message = receiveFrom me me;
+    (row, number) = message;
+    garbage = "{text}: temporary scratch for message {number}";
+    _ = if number == n and row == "row {n}" then Unit else error "private receive message";
+    if n == 0 then (row, total) else loop (n - 1) row (total + strlen garbage));
+  (row,total) = loop limit caller 0;
+  growth = heapUsed Unit - before;
+  _ = if caller == "caller-owned" and row == "row 0" and total > 0 and growth < 4096
+    then Unit else error "private receiver grew {growth}";
+  Unit.
+main = _ = run (myself 0) 30000; print "private receiver bounded".
