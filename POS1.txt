@@ -1,0 +1,19 @@
+Status: the review at 712f24f is the latest, and it records no fixes applied. examples/pos1.fpr, pos1_core.fpr, pos1_pricing.fpr and std/journal.fpr have had no commits since, so all eleven findings are open.
+
+Phase 1 — small and local (the review's own first batch)
+Strict money parsing (items 3+4) — one parser in pos1_core: accept only digits or digits.dd, refuse anything else with a toast. Today cents skips non-digits, so 20,50 becomes $2050.
+Bound admin input (item 4) — apply that parser to addCmd and setV, bound price, stock ≤ 9999 (matching Core.addStock) and tax, and echo dollars before the line is committed.
+Australian money (items 6+7) — store GST-inclusive shelf prices, show GST as 1/11 of the total, round cash to 5c while leaving card exact, and record the rounding on the sale line so the fold stays exact.
+Shop time zone (item 5) — an offset in settings, applied to fmtTime and dayOf.
+Roles (item 1) — a role on the staff line; gate console, voids, price and tax changes; log manager overrides as their own line for the audit trail.
+PIN hardening (item 2) — minimum PIN length, per-name and per-connection backoff, salted hash instead of plaintext on the staff line.
+Note the review's preference: device keys + passkeys (its Authentication section) would replace steps 5 and 6 rather than stack on them.
+Phase 2 — cross-cutting
+Journal durability (item 9) — fsync/fdatasync before Done; the reply currently follows LF.write unsynced at journal.fpr:100.
+Idempotent checkout (item 10) — total + one-time token with Cash/Card, refused on reuse or mismatch.
+Card pending/approved (item 8) — cardstart → sale … card ref=… / cardfail, with boot reconciling any cardstart that has no result.
+Pricing reload bounds (item 11) — evaluate the candidate rate over 0–5000 basis points before pricingAdopted accepts it, and log the refusal.
+Phase 3 — projects of their own
+Card payments sandbox — fake in-fpr processor → Stripe simulated reader → physical test card → live with a cap and an sk_live_ refusal unless --live.
+Deploy architecture — store-local source of truth with the cloud as a replica, instead of the cloud-only setup the review flags as the survey's most costly failure.
+Go-live gaps — day close/Z report, tax invoices with ABN and GST, refund lines naming the original receipt, off-site backups, end-of-day export, and a daily snapshot to bound the fold.
