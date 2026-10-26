@@ -16,27 +16,9 @@ for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarc
         break
 subprocess.run(['make', 'fpr'], cwd=ROOT, env=env, check=True,
                capture_output=True, timeout=300)
-ghc = ['cabal', 'exec', '--', 'runghc'] if shutil.which('cabal') else ['runghc']
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedCore.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedLayouts.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedTraps.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedUnits.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedStructs.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedCalls.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedStaging.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedCallbacks.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
-subprocess.run([*ghc, '-w', '-icompiler', '-itests', 'tests/TypedProgram.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/RegionInterfaces.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
+sys.path.insert(0, str(ROOT / 'tests'))
+from haskell_units import run_units
+run_units(['TypedCore', 'TypedLayouts', 'TypedTraps', 'TypedUnits', 'TypedStructs', 'TypedCalls', 'TypedStaging', 'TypedCallbacks', 'TypedProgram', 'RegionInterfaces'], env)
 subprocess.run([sys.executable, str(ROOT / 'tests/check_typed_callbacks.py')], cwd=ROOT,
                env=env, check=True, timeout=240)
 subprocess.run([sys.executable, str(ROOT / 'tests/check_typed_staging.py')], cwd=ROOT,

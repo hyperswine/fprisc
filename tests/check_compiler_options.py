@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,9 +14,9 @@ for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarc
         env['PKG_CONFIG_PATH'] = keg + ':' + env.get('PKG_CONFIG_PATH', '')
         break
 subprocess.run(['make', 'fpr'], cwd=ROOT, env=env, check=True, capture_output=True, timeout=300)
-ghc = ['cabal', 'exec', '--', 'runghc'] if shutil.which('cabal') else ['runghc']
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/CompilerOptions.hs'], cwd=ROOT,
-               env=env, check=True, timeout=60)
+sys.path.insert(0, str(ROOT / 'tests'))
+from haskell_units import run_units
+run_units(['CompilerOptions'], env, timeout=60)
 
 with tempfile.TemporaryDirectory(prefix='fpr-options-') as directory:
     temp = Path(directory)

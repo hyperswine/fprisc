@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 env = dict(os.environ)
@@ -11,6 +12,6 @@ for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarc
     if Path(keg).is_dir():
         env['PKG_CONFIG_PATH'] = keg + ':' + env.get('PKG_CONFIG_PATH', '')
         break
-ghc = ['cabal', 'exec', '--', 'runghc'] if shutil.which('cabal') else ['runghc']
-subprocess.run([*ghc, '-w', '-icompiler', '-itests', 'tests/CorePipeline.hs'], cwd=ROOT,
-               env=env, check=True, timeout=180)
+sys.path.insert(0, str(ROOT / 'tests'))
+from haskell_units import run_units
+run_units(['CorePipeline'], env, timeout=180)
