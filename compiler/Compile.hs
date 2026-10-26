@@ -14,10 +14,11 @@ import qualified Compiler.Native.Linked as Linked
 import qualified Compiler.Native.Imports as NativeImports
 import Compiler.DataLayout (Layouts(..))
 import Mono (specializeCompatibility, qualifyAux)
-import Inline (inlineSmall, inlineCompatibilityWithImports, vecPeek)
+import Inline (inlineSmall, inlineCompatibilityWithImports, vecPeekCompatibility)
 import qualified Compiler.Native.Regions as Regions
 import qualified Compiler.Native.Regions.Typed as TypedRegions
 import qualified Core.Typed.Syntax as TCore
+import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
 import Codegen (Target, codegenRev, emitProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
@@ -713,8 +714,8 @@ compileWithInterface accepted = do
             M.unions
               [ M.fromList [(n, length as) | TSig n (as, _) _ <- preludeE' ++ concatMap snd units' ++ root'],
                 M.map (\(Forall _ _ t) -> arrows t) builtinEnv,
-                -- the internal pair-free vector reads (Inline.vecPeek, vec.c)
-                M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1), ("$receiveLoop", 2), ("$regionSeq", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2)] ]
+                -- pair-free reads planned by Core.Typed.VectorRead (vec.c)
+                M.fromList (VectorRead.peekArities++[("$receiveLoop", 2), ("$regionSeq", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2)]) ]
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = (Options.cgFloatInline codegen), tgtSimd=(oA64 opts || oX64 opts) && (Options.cgSimd codegen), tgtFusion=(Options.cgFusion codegen),
@@ -826,9 +827,9 @@ compileWithInterface accepted = do
                        pure lowered
                      -- Base checked owners were already inlined before
                      -- region placement. Only compatibility bodies/templates
-                     -- and the remaining vecPeek transform run here.
+                     -- and their vector-read transform run here.
                      else do
-                       let inl = (if oNoInline opts then id else inlineCompatibilityWithImports checkedCallbackTargets imports pureOutside 3 24) (if (not (Options.cgVecPeek codegen)) then prog else vecPeek prog)
+                       let inl = (if oNoInline opts then id else inlineCompatibilityWithImports checkedCallbackTargets imports pureOutside 3 24) (if (not (Options.cgVecPeek codegen)) then prog else vecPeekCompatibility checkedCallbackTargets prog)
                        let dump = Options.diagCore diagnostic
                        forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList inl, takeWhile (/= '@') n == want] $ \(n, d) ->
                          hPutStrLn stderr ("core " ++ n ++ ": " ++ show d)
@@ -877,9 +878,11 @@ compileWithInterface accepted = do
           linkedResult=do
             base<-sequence artifactResults >>= Linked.linkArtifacts
             original<-checkedStage "callback specialization before inlining" (Linked.specializeLinked callbackMode base)
-            if oArc opts || oNoInline opts then pure original else
+            inlined<-if oArc opts || oNoInline opts then pure original else
               do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinked 3 24 original)
                  checkedStage "callback specialization after inlining" (Linked.specializeLinked callbackMode inlined)
+            if oArc opts || not (Options.cgVecPeek codegen) then pure inlined else
+              checkedStage "checked vector reads" (Linked.planVectorReadsLinked inlined)
           checkedStage label=either (Left . ((label++": ")++)) Right
           linked=either error id linkedResult
           declarationsResult=do

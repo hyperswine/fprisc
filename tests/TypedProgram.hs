@@ -1,5 +1,6 @@
 import qualified Core.Typed.Syntax as T
 import TypedInline (checkInlining)
+import TypedVectorRead (checkVectorReads)
 import qualified Core.Typed.Program as P
 import Core.Typed.Pipeline
 import Core.Typed.Callback
@@ -60,6 +61,7 @@ answer p name args=let (ir,_)=Lower.lowerProgram m2Policy M.empty p p M.empty M.
 
 main=do
   checkInlining compile
+  checkVectorReads compile
   let source="provider x = x. client n = local x = provider (n + x); local 2. factory x = fn y -> x + y. call n = (factory n) 1."
       names=S.fromList ["provider","client","factory","call"]
       (selected,output)=compile "unit" source names
@@ -150,6 +152,11 @@ main=do
       projection=M.unions [M.withoutKeys (Native.nativeProgram (Linked.artifactCore a)) (Linked.artifactElided a)
         | a<-M.elems (Linked.linkedArtifacts specialized)]
       faces=Regions.programInterfaces (right (Regions.prepare rootCore))
+      originalArtifacts=Linked.linkedArtifacts generic
+      providers=map Linked.artifactCore (M.elems originalArtifacts)
+      separate=M.map (right . Native.specializeNativeWith SpecializeCallbacks providers . Linked.artifactCore) originalArtifacts
+  check "shared callback snapshot matches separate artifact catalogs including elided stubs"
+    (M.map (Native.nativeProgram . Linked.artifactCore) (Linked.linkedArtifacts specialized)==M.map Native.nativeProgram separate)
   check "linked checked globals are cloned before erasure with source and parameter provenance"
     (not (M.null cloned) && any ((=="produce") . cloneSource) (M.elems cloned)
       && any (any ((==Nothing) . snd) . cloneBindings) (M.elems cloned)

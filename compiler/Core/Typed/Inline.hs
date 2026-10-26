@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 -- Inline checked closed entries, before region planning and erasure. Templates
 -- retain their code homes; only lexical binders are cloned into the caller.
-module Core.Typed.Inline (inlineClosed) where
+module Core.Typed.Inline (Inlining,planInlining,inlineClosed) where
 import Core.Typed.Syntax
 import Core.Typed.Close
 import Core.Typed.Contract
@@ -14,16 +14,40 @@ import Core.Identity
 import Type.Syntax
 import Ownership.TypeShape (linShapeT)
 import Control.Monad.State.Strict
+import Control.Monad (guard,unless,void)
 import Control.Monad.Identity (runIdentity)
 import Data.Functor.Const (Const(..))
-import Data.Monoid (Sum(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 -- One round against an immutable whole-program snapshot. The pipeline owns
 -- the bounded rounds; inserted bodies are not recursively expanded here.
-inlineClosed :: Int -> S.Set String -> Namespace -> TypeContext -> M.Map String Int -> Catalog -> ClosedFunction -> Either String ClosedFunction
-inlineClosed limit forbidden (Namespace ns) types@(TypeContext linears _) snapshotArities snapshot input=do
+data Inlining=Inlining Catalog (M.Map Target (Template,S.Set String))
+
+-- Compute admission once per snapshot, not at every call in every owner.
+-- Stop weighing an oversized template as soon as the node budget is spent.
+planInlining :: Int -> Catalog -> Either String Inlining
+planInlining limit snapshot=do
+  unless (limit>=0) (Left "typed inline: negative node budget")
+  pure (Inlining snapshot (M.mapMaybeWithKey admit (catalogTemplates snapshot)))
+  where
+    admit target template@(Template caps ps body _ _)
+      | target `S.notMember` recursiveCallbacks (catalogAnalysis snapshot),
+        not (null (caps++ps)),Just _<-execStateT (weigh body) limit=
+          Just (template,globals body)
+      | otherwise=Nothing
+    weigh :: Expr -> StateT Int Maybe ()
+    weigh e=do
+      budget<-get
+      let cost=case exprNode e of Note _->0;EntryTick->3;MatchTail {}->4;_->1
+      guard (budget>=cost)
+      put (budget-cost)
+      void (mapChildrenM (\x->weigh x>>pure x) e)
+    globals e=(case exprNode e of Var (Global n _)->S.singleton n;_->S.empty)
+      <>getConst (mapChildrenM (Const . globals) e)
+
+inlineClosed :: S.Set String -> Namespace -> TypeContext -> M.Map String Int -> Inlining -> ClosedFunction -> Either String ClosedFunction
+inlineClosed forbidden (Namespace ns) types@(TypeContext linears _) snapshotArities (Inlining snapshot candidates) input=do
   prepared<-importClosedLibrary types (catalogLibrary snapshot) input
   rewriteClosed types (\root codes->do
     (root',codes')<-evalStateT (do
@@ -36,21 +60,10 @@ inlineClosed limit forbidden (Namespace ns) types@(TypeContext linears _) snapsh
     pure (root',codes')) prepared
   where
     generated ty node=Expr ty (linShapeT linears ty) Generated Nothing node
-    templates=catalogTemplates snapshot
-    eligible self target=case M.lookup target templates of
-      Just template@(Template caps ps body _ _)
-        | target/=self,target `S.notMember` recursiveCallbacks (catalogAnalysis snapshot),
-          not (null (caps++ps)),weight body<=limit,
-          S.null (S.fromList [n | RootTarget n<-S.toList (references body)] `S.intersection` forbidden)->Just template
+    eligible self target=case M.lookup target candidates of
+      Just (template,globals)
+        | target/=self,S.null (globals `S.intersection` forbidden)->Just template
       _->Nothing
-    references e=(case exprNode e of
-      Var (Global n _)->S.singleton (RootTarget n)
-      ClosureValue k _->S.singleton (CodeTarget k)
-      CodeCall k _ _->S.singleton (CodeTarget k)
-      JoinCall k _ _->S.singleton (CodeTarget k)
-      _->S.empty)<>getConst (mapChildrenM (Const . references) e)
-    weight e=(case exprNode e of Note _->0;EntryTick->3;MatchTail {}->4;_->1)
-      +getSum (getConst (mapChildrenM (Const . Sum . weight) e))
     function self fn=do
       let scope=M.fromList [(binderId b,b) | b<-functionParameters fn++allBinders (functionBody fn)]
           walk e=case call e of
@@ -120,18 +133,19 @@ inlineClosed limit forbidden (Namespace ns) types@(TypeContext linears _) snapsh
     -- Erasure prints names. Assign collision-free spellings after the typed
     -- rewrite so a caller local cannot capture a template's global reference.
     hygiene fn=let bs=functionParameters fn++allBinders (functionBody fn)
-                   reserved=catalogNames snapshot<>S.fromList (map binderName bs)<>globals (functionBody fn)
                    globals' = globals (functionBody fn)
+                   reserved=catalogNames snapshot<>S.fromList (map binderName bs)<>globals'
                    choose n=let name="$typed.inline."++show (length (functionName fn))++"."++functionName fn++"."++show n
                             in if name `S.member` reserved then choose (n+1) else (name,n+1)
                    add (names,used,next) b
                      | binderName b `S.notMember` globals',binderName b `S.notMember` used=
-                         (M.insert (binderId b) (binderName b) names,S.insert (binderName b) used,next)
+                         (names,S.insert (binderName b) used,next)
                      | otherwise=let (name,after)=choose next
                                  in (M.insert (binderId b) name names,S.insert name used,after)
                    (names,_,_)=foldl add (M.empty,S.empty,0::Int) bs
-                   rename b=b {binderName=names M.! binderId b}
-               in fn {functionParameters=map rename (functionParameters fn),functionBody=renameBinderNames names (functionBody fn)}
+                   rename b=case M.lookup (binderId b) names of Nothing->b;Just name->b {binderName=name}
+               in if M.null names then fn else
+                 fn {functionParameters=map rename (functionParameters fn),functionBody=renameBinderNames names (functionBody fn)}
     globals e=(case exprNode e of
       Var (Global name _)->S.singleton name
       ClosureValue (CodeId name) _->S.singleton name

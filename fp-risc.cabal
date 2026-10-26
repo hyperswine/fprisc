@@ -53,6 +53,7 @@ executable fpr
       Core.CacheIdentity
       Core.Utils
       Core.Primitives
+      Core.VectorRead
       Core.Analysis.FusionSafety
       Core.Opt.Normalize
       Core.Opt.Fusion
@@ -175,6 +176,7 @@ executable fpr
       Type.Substitution
       Core.Typed.Instantiate
       Core.Typed.Inline
+      Core.Typed.VectorRead
       Core.Typed.Specialize
       Compiler.VectorLayout
       Compiler.VectorOperation

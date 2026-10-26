@@ -12,6 +12,7 @@ import Type.Syntax (Type(..), Scheme(..))
 import Ownership.Shape (LShape)
 import qualified Data.Map.Strict as M
 import Compiler.VectorLayout (VectorBuilder)
+import qualified Core.VectorRead as Read
 
 data Binder = Binder
   { binderId :: !BinderId, binderName :: String,
@@ -52,6 +53,9 @@ data Node
   | Fail String
   | LayoutLiteral String
   | VectorBuild VectorBuilder Expr
+  -- A logical pair whose physical allocation is elided. Admitted only as
+  -- the immediate RHS of a two-field tuple-pattern binding.
+  | VectorReadPair Read.Read [Expr] Expr
   | CallRegion Expr
   | EntryTick
   deriving (Show)

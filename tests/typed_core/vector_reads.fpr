@@ -1,0 +1,25 @@
+unsafe base.
+index label n = _ = print label; n.
+run u =
+  wide = Vec.fromList [7.5];
+  (a,wide) = Vec.at (index "wide" 0) wide;
+  narrow = Vec.fromList [F32.ofF64 2.25];
+  (b,narrow) = Vec.get (index "narrow" 0) narrow;
+  pairs = Vec.fromList [(17,True)];
+  ((c,flag),pairs) = Vec.at (index "pair" 0) pairs;
+  records = Vec.fromList [{x = 23,ok = False}];
+  (row,records) = Vec.get (index "record" 0) records;
+  (n,records) = Vec.len records;
+  _ = Vec.free wide; _ = Vec.free narrow;
+  _ = Vec.free pairs; _ = Vec.free records;
+  # A computed handle is evaluated once and retains the ordinary pair path.
+  (d,temporary) = Vec.get 0 (Vec.fromList [29]);
+  _ = Vec.free temporary;
+  print "vector-reads {a} {b} {c} {flag} {row.x} {row.ok} {n} {d}".
+main = case Sys.args Unit of
+    ["at"] -> v = Vec.iota 2; (x,next) = Vec.at (index "before-at" 2) v; _ = Vec.free next; print "{x}"
+  | ["get"] -> v = Vec.iota 2; (x,next) = Vec.get (index "before-get" (-1)) v; _ = Vec.free next; print "{x}"
+  | ["pattern"] -> v = Vec.iota 2; (99,next) = Vec.at (index "before-pattern" 0) v; _ = Vec.free next; print "unreachable"
+  | ["index"] -> v = Vec.iota 2; (x,next) = Vec.at (index "before-index" (1 / 0)) v; _ = Vec.free next; print "{x}"
+  | ["discard"] -> v = Vec.iota 2; (_,next) = Vec.at (index "before-discard" 2) v; _ = Vec.free next; print "unreachable"
+  | _ -> run Unit.

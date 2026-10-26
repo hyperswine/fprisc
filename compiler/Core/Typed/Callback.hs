@@ -2,7 +2,7 @@
 -- Callback specialization on checked closed Core. Code identities survive
 -- cloning; callback object arguments survive wherever their identity escapes.
 module Core.Typed.Callback
-  (CallbackMode(..),Callbacks,specializeCallbacks,specializeCallbacksWith,specializeFromCatalog,callbackClosed,callbackClones) where
+  (CallbackMode(..),Callbacks,specializeCallbacks,specializeCallbacksWith,specializeFromCatalog,specializeClosedFromCatalog,callbackClosed,callbackClones) where
 import Core.Typed.Syntax
 import Core.Typed.Callback.Model
 import Core.Typed.Callback.Catalog
@@ -54,6 +54,12 @@ specializeCallbacksWith _ namespace types arities providers input=do
 specializeFromCatalog :: Namespace -> TypeContext -> M.Map String Int -> Catalog -> String -> Either String Callbacks
 specializeFromCatalog namespace types arities snapshot name=do
   original<-maybe (Left ("typed callbacks: absent catalog owner "++name)) Right (M.lookup name (catalogOwners snapshot))
+  specializeClosedFromCatalog namespace types arities snapshot original
+
+-- A linked snapshot has one emitting template owner per constructor, while
+-- each artifact retains its own original elided stub and root identities.
+specializeClosedFromCatalog :: Namespace -> TypeContext -> M.Map String Int -> Catalog -> ClosedFunction -> Either String Callbacks
+specializeClosedFromCatalog namespace types arities snapshot original=do
   prepared<-importClosedLibrary types (catalogLibrary snapshot) original
   runCallbacks namespace types arities snapshot prepared
 

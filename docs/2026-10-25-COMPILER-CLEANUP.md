@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical calls, local/global/imported callback cloning, region control and checked Base inlining implemented; layout temporaries/remaining forms, ARC and other later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical calls, local/global/imported callback cloning, region control, checked Base inlining and pair-free vector reads implemented; layout temporaries/remaining forms, ARC and other later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Owned semantic/native and linked artifacts, region input/cost views, typed region control bodies and protocol/helper contracts, complete graph/imported interfaces and checked inlining round snapshots implemented; other later pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -808,3 +808,30 @@ checks pass. Full call-cycle exclusion preserves generated-join receive loops
 and their original heap bounds. The stage page records the initial regressions,
 their fixes, explicit platform skips and preceding hosted CI; this checkpoint
 requires its own hosted result after push. The whole cleanup goal remains active.
+
+## Checked pair-free vector reads
+
+[Typed vector reads](2026-10-26-TYPED-VECTOR-READS.md) retains the logical pair,
+tuple pattern, ownership shape and original identities through read planning.
+The verifier refuses escaped physical values, nonlocal handles and malformed
+operation contracts. Shared ordinary/region erasure snapshots the original
+handle before pattern binders can shadow it. The erased pass is restricted to
+explicit compatibility owners; ARC/raw keep their current boundary. Revision
+122 versions earlier planning and changed physical temporaries. Remaining
+layout/ARC/optimization/interface/diagnostic work stays in the complete goal.
+
+The shared callback driver now builds one verified catalog per linked pass,
+preserves per-artifact original/elided stubs, checks clone provenance and
+relinks the result. Inlining admission is an explicit cached product with
+budget-bounded weighing; hygiene preserves unchanged binders. This addresses
+the preceding hosted POS compile timeout without raising its 180-second limit.
+The isolated cold compile improves from 87.02 to 69.09 seconds with all 61
+assembly outputs and unit identities byte-identical. Hosted confirmation is
+still required; the `5ac6b4d` run is recorded as failed, not green.
+
+Final fixed-source Base validation passes all 136 jobs in 657.10 seconds on six
+workers with fresh caches and no reused results or timeout changes. The
+saved/new vector-read oracle passes 16 executions, 80 traps and 64 emission
+configurations across eight targets. Fresh QOS and Sol compatibility checks
+pass. The stage page records the evidence, explicit platform skips and
+remaining complete-goal work.

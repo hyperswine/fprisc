@@ -9,6 +9,7 @@ import Control.Monad (unless, foldM)
 import Type.Relation
 import Data.List (nub,sort)
 import Compiler.VectorLayout (VectorBuilder(..),validLayout)
+import qualified Core.VectorRead as Read
 import qualified Core.Region.Types as Region
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -134,12 +135,25 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
         require "sequence result type" (sameType (exprType b) (exprType e))
         pure u
       LetPattern p rhs body -> do
-        u<-check env used rhs
+        u<-case exprNode rhs of
+          VectorReadPair op indices handle->do
+            require "pair-free read requires a tuple pattern" (case patNode p of TuplePattern [_,_]->True;_->False)
+            require "pair-free read ownership shape" (exprShape rhs==linShapeT linearTypes (exprType rhs))
+            require "pair-free read index arity" (length indices==Read.indexArity op)
+            require "pair-free read index type" (all (sameType (TC "Int") . exprType) indices)
+            require "pair-free read handle must be an evaluated local" (case exprNode handle of Var (Local _)->True;_->False)
+            case exprType handle of
+              TAp (TC "Vector") element->require "pair-free read result type"
+                (sameType (exprType rhs) (TTupT [if op==Read.Length then TC "Int" else element,exprType handle]))
+              _->bad "pair-free read handle type"
+            foldM (check env) used (indices++[handle])
+          _->check env used rhs
         require "pattern binding input type" (sameType (patType p) (exprType rhs))
         (scope,u')<-patternScope env u p
         u''<-check scope u' body
         require "pattern binding result type" (sameType (exprType body) (exprType e))
         pure u''
+      VectorReadPair {}->bad "pair-free read pair escaped its tuple-pattern binding"
       Match _ args alts -> do
         require "empty match" (not (null alts))
         u<-foldM (check env) used args

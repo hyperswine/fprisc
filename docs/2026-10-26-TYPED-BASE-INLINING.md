@@ -153,3 +153,10 @@ Local records: `/private/tmp/fpr-typed-inline-final4.{log,json}`,
 `/private/tmp/fpr-typed-inline-qos-loader-fresh.log` and
 `/private/tmp/fpr-typed-inline-sol-final.log`. Earlier failed sweeps remain
 failure evidence and are not counted as passes.
+
+Hosted follow-up: [run 40255244633](https://github.com/hyperswine/fprisc/actions/runs/40255244633)
+for `5ac6b4d` failed when the POS application compilation exceeded its existing
+180-second limit. The arithmetic oracle passed first; this checkpoint is not
+hosted-green. [The next checked-pass stage](2026-10-26-TYPED-VECTOR-READS.md)
+records the shared-catalog fix and isolated before/after compilation evidence,
+with the original timeout retained.

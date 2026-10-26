@@ -811,7 +811,7 @@ def images(tmp):
 @case
 def vecpeek(tmp):
     # 4n. pair-free vector reads: `(x, v2) = Vec.at i v` builds no pair
-    # (Inline.vecPeek); the same program without the rewrite agrees on every
+    # (Core.Typed.VectorRead); the same program without the rewrite agrees on every
     # value, and the 2,000 reads cost only the loops' two final pairs
     on = run([build('tests/base/vecpeek.fpr', 'vp1')]).stdout.splitlines()
     exe = tmp / 'vp2'

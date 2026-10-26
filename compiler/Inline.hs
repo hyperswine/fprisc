@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 
--- Erased compatibility/ARC inlining and the remaining vecPeek transform.
--- Checked Base inlining belongs to Core.Typed.Inline.
+-- Erased compatibility/ARC inlining and compatibility vector reads.
+-- Checked Base passes belong to Core.Typed.Inline/Core.Typed.VectorRead.
 --
 -- This reduces native call/entry overhead and exposes arithmetic and
 -- function-valued arguments to later vector/worker planning. Imported private
@@ -19,7 +19,7 @@
 -- program (exports, constructor stubs and function values still need
 -- their symbols); only the sites change.
 
-module Inline (inlineSmall, inlineCompatibilityWithImports, vecPeek) where
+module Inline (inlineSmall, inlineCompatibilityWithImports, vecPeekCompatibility) where
 
 import Data.List (isInfixOf, isSuffixOf)
 import Control.Monad (foldM)
@@ -28,6 +28,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Core.Syntax (Core (..), Name, Prog)
 import Core.Primitives (entryTickName)
+import qualified Core.VectorRead as Read
 
 -- | rounds, then the largest callee body (in Core nodes) worth inlining
 inlineSmall :: Int -> Int -> Prog -> Prog
@@ -247,8 +248,8 @@ rename m fresh = \case
 -- --arc, whose ownership lowering would count the alias.  A site is left
 -- alone unless the handle is a variable, the pair is used only through
 -- its projections, and neither name is rebound before those uses.
-vecPeek :: Prog -> Prog
-vecPeek = M.map (\(ps, b) -> (ps, peek b))
+vecPeekCompatibility :: S.Set Name -> Prog -> Prog
+vecPeekCompatibility protected = M.mapWithKey (\name d@(ps,b) -> if name `S.member` protected then d else (ps,peek b))
   where
     peek = \case
       CLet t rhs body
@@ -264,9 +265,8 @@ vecPeek = M.map (\(ps, b) -> (ps, peek b))
       CProj i e -> CProj i (peek e)
       e -> e
     peekable = \case
-      CApp (CApp (CVar "Vec.at") i) (CVar v) -> Just ("$vec.at", [i], v)
-      CApp (CApp (CVar "Vec.get") i) (CVar v) -> Just ("$vec.get", [i], v)
-      CApp (CVar "Vec.len") (CVar v) -> Just ("$vec.len", [], v)
+      CApp (CApp (CVar name) i) (CVar v) | Just op<-Read.fromSourceName name,Read.indexArity op==1 -> Just (Read.peekName op, [i], v)
+      CApp (CVar name) (CVar v) | Just op<-Read.fromSourceName name,Read.indexArity op==0 -> Just (Read.peekName op, [], v)
       _ -> Nothing
     -- the pattern's shape check is on the pair (Tup2 = tid 4): drop it,
     -- then read t.0 as t and t.1 as v; Nothing when that is not sound

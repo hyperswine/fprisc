@@ -3,7 +3,7 @@
 -- one artifact emits each symbol. Private code keeps its source owner/contract.
 module Compiler.Native.Linked
   (ArtifactId(..),NativeArtifact,artifact,artifactId,artifactCore,artifactExports,artifactElided,
-   LinkedProgram,linkArtifacts,specializeLinked,inlineLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
+   LinkedProgram,linkArtifacts,specializeLinked,inlineLinked,planVectorReadsLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
 import Compiler.Native.Core
 import Compiler.DataLayout
 import Core.Typed.Program
@@ -135,12 +135,10 @@ linkArtifacts inputs=do
 specializeLinked :: CallbackMode -> LinkedProgram -> Either String LinkedProgram
 specializeLinked PreserveCallbacks p=pure p
 specializeLinked mode p=do
-  let as=M.elems (linkedArtifacts p)
-      providers=map artifactCore as
-  changed<-mapM (\a->do
-    core<-specializeNativeWith mode providers (artifactCore a)
-    artifact (artifactId a) (artifactExports a) (artifactElided a) core) as
-  linkArtifacts changed
+  let as=linkedArtifacts p
+  cores<-specializeNativePrograms mode (M.map (\a->(artifactElided a,artifactCore a)) as)
+  changed<-M.traverseWithKey (\key a->artifact key (artifactExports a) (artifactElided a) (cores M.! key)) as
+  linkArtifacts (M.elems changed)
 
 -- Link visibility, not a spelling heuristic, governs imported templates.
 inlineLinked :: Int -> Int -> LinkedProgram -> Either String LinkedProgram
@@ -149,3 +147,10 @@ inlineLinked rounds limit p=do
   changed<-inlineNativePrograms rounds limit inputs
   artifacts<-M.traverseWithKey (\key a->artifact key (artifactExports a) (artifactElided a) (changed M.! key)) (linkedArtifacts p)
   linkArtifacts (M.elems artifacts)
+
+planVectorReadsLinked :: LinkedProgram -> Either String LinkedProgram
+planVectorReadsLinked p=do
+  changed<-mapM (\a->do
+    core<-planNativeVectorReads (artifactCore a)
+    artifact (artifactId a) (artifactExports a) (artifactElided a) core) (M.elems (linkedArtifacts p))
+  linkArtifacts changed

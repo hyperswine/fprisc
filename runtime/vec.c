@@ -625,7 +625,7 @@ static V h_at(V iv, V vec) {
   return h_get(iv, vec);
 }
 /* The same three reads WITHOUT the (value, handle) pair.  The compiler
- * (Inline.hs vecPeek) calls these where the pair is taken apart at once,
+ * (Core.Typed.VectorRead) calls these where the pair is taken apart at once,
  * `(x, v2) = Vec.at i v`: the handle returned is always the one passed
  * in, so v2 is v and the 48-byte tuple was all that was allocated --
  * per element read, in every vector loop.  Same checks, same messages. */

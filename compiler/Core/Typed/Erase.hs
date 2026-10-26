@@ -5,6 +5,7 @@ module Core.Typed.Erase (Layout(..), eraseFunction, eraseFunctionWith, eraseRegi
 import Core.Typed.Syntax
 import Core.Identity (BinderId)
 import Core.Primitives (entryTickName)
+import qualified Core.VectorRead as Read
 import qualified Core.Region.Syntax as R
 import Core.Region.Flow (functionFlow,flowSource)
 import Core.Region.Runtime (Hook(..),hookName,packState)
@@ -87,6 +88,7 @@ eraseWith region contracts types layout f = runExceptT $ do
         call<-go env names body
         pure (CLet tok (hook CallPending [CInt 0]) (hook CallLeave [CVar tok,call]))
       VectorBuild builder evidence -> CApp (CVar (builderRuntimeName builder)) <$> go env names evidence
+      VectorReadPair {}->throwError "typed Core erasure: pair-free read escaped its binding"
       MatchTail style args alts fallback -> do
         xs<-mapM (go env names) args
         next<-go env names fallback
@@ -137,12 +139,8 @@ eraseWith region contracts types layout f = runExceptT $ do
         x<-go env names a; y<-go env names b; v<-fresh "seq"
         pure (CLet v x y)
       LetPattern p rhs body -> do
-        x<-go env names rhs
-        v<-fresh "bind"
         let (env',names')=patScopes [p] env names
-        k<-go env' names' body
-        m<-matchPat (CVar v) p k (CErr ("let pattern: no match; pattern was "++patDisplay p))
-        pure (CLet v x m)
+        bindPattern "bind" env names p rhs (go env' names' body) (CErr ("let pattern: no match; pattern was "++patDisplay p))
       Match CaseMatch [arg] alts -> do
         v<-fresh "scrut"
         x<-go env names arg
@@ -166,11 +164,9 @@ eraseWith region contracts types layout f = runExceptT $ do
       R.Bind b rhs body->let (env',names')=scope b env names
                         in CLet (binderName b) <$> go env names rhs <*> goFlow receiving controls env' names' body
       R.BindPattern p rhs body->do
-        value<-go env names rhs;tmp<-fresh "$region.bind"
         let (env',names')=patScopes [p] env names
-        next<-goFlow receiving controls env' names' body
-        matched<-matchPat (CVar tmp) p next (finish receiving (CErr ("let pattern: no match; pattern was "++patDisplay p)))
-        pure (CLet tmp value matched)
+        bindPattern "$region.bind" env names p rhs (goFlow receiving controls env' names' body)
+          (finish receiving (CErr ("let pattern: no match; pattern was "++patDisplay p)))
       R.Then a b->do
         value<-go env names a;tmp<-fresh "$region.seq"
         CLet tmp value <$> goFlow receiving controls env names b
@@ -233,6 +229,27 @@ eraseWith region contracts types layout f = runExceptT $ do
       n<-maybe (throwError "typed Core erasure: absent capture identity") pure (M.lookup uid env)
       unless (M.lookup n names==Just uid) (throwError "typed Core erasure: capture spelling is shadowed")
       pure (CVar n)
+    bindPattern stem env names p rhs continuation failure=case (exprNode rhs,patNode p) of
+      (VectorReadPair op indices handle,TuplePattern [valuePat,handlePat])->do
+        unless (M.notMember (Read.peekName op) names)
+          (throwError "typed Core erasure: display spelling would capture a vector read operation")
+        args<-mapM (go env names) indices
+        original<-go env names handle
+        saved<-fresh "$vec.handle"
+        value<-fresh stem
+        next<-continuation
+        afterHandle<-matchPat (CVar saved) handlePat next failure
+        matched<-matchPat (CVar value) valuePat afterHandle failure
+        -- Snapshot the old handle before pattern binders can shadow its
+        -- display spelling. The input is a verified evaluated local.
+        pure (CLet saved original (CLet value
+          (foldl CApp (CVar (Read.peekName op)) (args++[CVar saved])) matched))
+      _->do
+        value<-go env names rhs
+        tmp<-fresh stem
+        next<-continuation
+        matched<-matchPat (CVar tmp) p next failure
+        pure (CLet tmp value matched)
     project scrut name = do
       let cands=[(tid,length (takeWhile (/=name) (sort fs)),length fs)
                 | (fs,tid)<-M.toList (recordLayouts layout),name `elem` fs]

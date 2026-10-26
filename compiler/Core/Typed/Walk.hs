@@ -31,6 +31,7 @@ mapChildrenM f e = (\node -> e {exprNode=node}) <$> case exprNode e of
   JoinCall label captures xs->JoinCall label captures <$> traverse f xs
   CodeCall label captures xs->CodeCall label captures <$> traverse f xs
   VectorBuild b x->VectorBuild b <$> f x
+  VectorReadPair op xs v->VectorReadPair op <$> traverse f xs <*> f v
   CallRegion x->CallRegion <$> f x
   n->pure n
   where
@@ -102,7 +103,7 @@ renameBinders names = mapIntroduced binder . renameUses names
 -- Display names are not references. Hygiene changes binders alone; their
 -- identity-based uses and captured identities keep the same resolution.
 renameBinderNames :: M.Map BinderId String -> Expr -> Expr
-renameBinderNames names=mapIntroduced (\b->b {binderName=M.findWithDefault (binderName b) (binderId b) names})
+renameBinderNames names=mapIntroduced (\b->case M.lookup (binderId b) names of Nothing->b;Just name->b {binderName=name})
 
 mapIntroduced :: (Binder -> Binder) -> Expr -> Expr
 mapIntroduced binder=go

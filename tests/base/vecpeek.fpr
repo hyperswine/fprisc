@@ -1,4 +1,4 @@
-# vecpeek.fpr -- pair-free vector reads (Inline.vecPeek, vec.c $vec.*).
+# vecpeek.fpr -- pair-free vector reads (Core.Typed.VectorRead, vec.c $vec.*).
 # `(x, v2) = Vec.at i v` reads x without building the (value, handle) pair.
 # check_base runs this with the rewrite and with FPR_NO_VEC_PEEK=1: every
 # line but the last must be the same, and the last shows the reads in a
