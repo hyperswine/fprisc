@@ -3,7 +3,7 @@
 -- one artifact emits each symbol. Private code keeps its source owner/contract.
 module Compiler.Native.Linked
   (ArtifactId(..),NativeArtifact,artifact,artifactId,artifactCore,artifactExports,artifactElided,
-   LinkedProgram,linkArtifacts,specializeLinked,inlineLinked,planVectorReadsLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
+   LinkedProgram,linkArtifacts,specializeLinked,inlineLinked,planVectorReadsLinked,normalizeLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
 import Compiler.Native.Core
 import Compiler.DataLayout
 import Core.Typed.Program
@@ -152,5 +152,12 @@ planVectorReadsLinked :: LinkedProgram -> Either String LinkedProgram
 planVectorReadsLinked p=do
   changed<-mapM (\a->do
     core<-planNativeVectorReads (artifactCore a)
+    artifact (artifactId a) (artifactExports a) (artifactElided a) core) (M.elems (linkedArtifacts p))
+  linkArtifacts changed
+
+normalizeLinked :: LinkedProgram -> Either String LinkedProgram
+normalizeLinked p=do
+  changed<-mapM (\a->do
+    core<-normalizeNative (artifactCore a)
     artifact (artifactId a) (artifactExports a) (artifactElided a) core) (M.elems (linkedArtifacts p))
   linkArtifacts changed

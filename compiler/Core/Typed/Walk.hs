@@ -1,4 +1,4 @@
-module Core.Typed.Walk (mapChildrenM, mapUpdateM, localUses, allBinders, renameUses, renameBinders,renameBinderNames) where
+module Core.Typed.Walk (mapChildrenM, mapUpdateM, localUses, pinnedLocals, allBinders, renameUses, renameBinders,renameBinderNames) where
 import Core.Typed.Syntax
 import Core.Identity (BinderId)
 import Data.Functor.Const (Const(..))
@@ -68,6 +68,17 @@ localUses = nub . go S.empty
         guards s []=go s b
         guards s (BoolGuard x:rest)=go s x++guards s rest
         guards s (PatternGuard p x:rest)=go s x++guards (bind (patternBinders p) s) rest
+
+-- These protocols require a lexical snapshot, rather than an arbitrary pure
+-- expression. Keep this constraint shared by inlining and normalization.
+pinnedLocals :: Expr -> S.Set BinderId
+pinnedLocals e=(case exprNode e of
+  ClosureValue _ ids->S.fromList ids
+  CodeCall _ ids _->S.fromList ids
+  JoinCall _ ids _->S.fromList ids
+  MatchTail _ xs _ _->S.fromList [uid | x<-xs,Var (Local uid)<-[exprNode x]]
+  VectorReadPair _ _ x->S.fromList [uid | Var (Local uid)<-[exprNode x]]
+  _->S.empty)<>getConst (mapChildrenM (Const . pinnedLocals) e)
 
 allBinders :: Expr -> [Binder]
 allBinders e = here++getConst (mapChildrenM (Const . allBinders) e)

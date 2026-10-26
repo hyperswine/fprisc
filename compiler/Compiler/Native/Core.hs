@@ -2,7 +2,7 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,specializeNativePrograms,inlineNativePrograms,planNativeVectorReads,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
+  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,specializeNativePrograms,inlineNativePrograms,planNativeVectorReads,normalizeNative,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
    CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
@@ -90,6 +90,9 @@ inlineNativePrograms rounds limit inputs=do
 
 planNativeVectorReads :: NativeCore -> Either String NativeCore
 planNativeVectorReads input=planVectorReads (nativeClosed input) >>= (`replaceClosed` input)
+
+normalizeNative :: NativeCore -> Either String NativeCore
+normalizeNative input=normalizeProgram (nativeClosed input) >>= (`replaceClosed` input)
 
 replaceClosed :: ClosedProgram -> NativeCore -> Either String NativeCore
 replaceClosed specialized (NativeCore closed p js compatibility declarations constructors serial)=do

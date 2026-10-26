@@ -15,8 +15,8 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical calls, local/global/imported callback cloning, region control, checked Base inlining and pair-free vector reads implemented; layout temporaries/remaining forms, ARC and other later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
-| Checked pipeline products and lint | Owned semantic/native and linked artifacts, region input/cost views, typed region control bodies and protocol/helper contracts, complete graph/imported interfaces and checked inlining round snapshots implemented; other later pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical calls, local/global/imported callback cloning, region control, checked Base inlining, pair-free vector reads and normalization implemented; layout temporaries/remaining forms, ARC and other later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Checked pipeline products and lint | Owned semantic/native and linked artifacts, region input/cost views, typed region control bodies and protocol/helper contracts, complete graph/imported interfaces and checked inlining round snapshots and checked normalization products implemented; other later pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
@@ -835,3 +835,27 @@ saved/new vector-read oracle passes 16 executions, 80 traps and 64 emission
 configurations across eight targets. Fresh QOS and Sol compatibility checks
 pass. The stage page records the evidence, explicit platform skips and
 remaining complete-goal work.
+
+Hosted follow-up: `d14fe58` passed
+[Linux CI](https://github.com/hyperswine/fprisc/actions/runs/40260883874),
+including the unchanged POS compile timeout.
+
+## Checked Base normalization
+
+[Typed normalization](2026-10-26-TYPED-NORMALIZATION.md) moves literal/local
+alias elimination, strict let sinking and let/conditional commuting into
+verified closed Core before region planning and erasure. It preserves checked
+types, ownership shapes, lexical snapshots and surviving binder identities.
+Revision 123 versions changed physical optimization products; ARC/runtime ABIs
+are unchanged. Late generated/layout normalization remains explicit, alongside
+all other pending rows of this full-goal register.
+
+The final fresh-cache fixed-source Base sweep passes 136/136 jobs in 667.98
+seconds on six workers, without reused results or timeout changes. Saved/new
+compilers pass 16 native executions, 32 trap checks and 64 emissions across
+eight targets. Fresh QOS admission and Sol compatibility/tail-call checks pass.
+The first sweep exposed a fusion-diagnostic regression; preserving explicit
+vector-producer bindings restores the original diagnostic, effect order and
+zero-allocation pure fusion assertions. The stage page records this boundary,
+the failed run, final evidence and remaining full-goal work. This checkpoint
+still requires its own hosted result after push.

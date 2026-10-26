@@ -325,3 +325,4 @@ they began.
 - [Checked record/layout kernel plans](2026-10-26-RECORD-PLAN-CONTRACTS.md): owned admission products for all native kernel builders, boxed callback interfaces and descriptor/capture boundaries.
 - [Checked Base inlining](2026-10-26-TYPED-BASE-INLINING.md): retained types/ownership/identities through inlining, explicit entry ticks, imported code homes and the remaining optimization boundary.
 - [Checked pair-free vector reads](2026-10-26-TYPED-VECTOR-READS.md): scoped tuple plans, typed read contracts, handle reuse through shadowing and the explicit compatibility boundary.
+- [Checked Base normalization](2026-10-26-TYPED-NORMALIZATION.md): alias elimination and strict let sinking preserve checked evidence before region planning and erasure.

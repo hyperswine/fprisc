@@ -122,3 +122,8 @@ Local records: `/private/tmp/fpr-typed-vector-read-final.{log,json}`,
 `/private/tmp/fpr-typed-vector-read-qos-final.log`,
 `/private/tmp/fpr-typed-vector-read-sol-final.log` and the isolated measurements
 and complete emitted files under `/private/tmp/fpr-typed-vector-read-perf/`.
+
+Hosted follow-up: `d14fe58` passed the
+[Linux run](https://github.com/hyperswine/fprisc/actions/runs/40260883874),
+including the unchanged POS compile-time gate. This resolves the hosted
+confirmation required above; it does not complete the full compiler cleanup.

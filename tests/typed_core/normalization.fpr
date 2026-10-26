@@ -1,0 +1,14 @@
+unsafe base.
+mark label n = _ = print label; n.
+simple n = a = 5; b = a; n + b.
+sink n = a = n + 1; b = a + 2; c = b + 3; c.
+captured n = a = 3; f = fn x -> a + x; f n.
+poly n = ident x = x; alias = ident; (alias n,ident True).
+caf = mark "caf" 7.
+once n = a = caf; a + a + n.
+main = case Sys.args Unit of
+    ["dead"] -> _ = print "before"; unused = 10 / 0; print "unreachable"
+  | ["order"] -> a = mark "first" (10 / 0); b = mark "second" 2; print "unreachable {a} {b}"
+  | _ -> a = simple 4; b = sink 4; c = captured 4;
+         (d,flag) = poly 4; e = once 4;
+         print "normalization {a} {b} {c} {d} {flag} {e}".

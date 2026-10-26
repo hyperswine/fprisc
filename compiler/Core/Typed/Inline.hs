@@ -84,7 +84,7 @@ inlineClosed forbidden (Namespace ns) types@(TypeContext linears _) snapshotArit
                         renamed=renameUses (M.fromList (zip (map binderId copiedCaps) ids)) (functionBody copy)
                         -- A function reference is pure, but a closure capture
                         -- requires a lexical binder until callback rewriting.
-                        captured=requiredLocals renamed
+                        captured=pinnedLocals renamed
                         replacements=M.fromList [(binderId p,a) | (p,a)<-zip copiedParams args',
                           pureFunction a,binderId p `S.notMember` captured]
                         inside=substituteValues replacements renamed
@@ -113,21 +113,13 @@ inlineClosed forbidden (Namespace ns) types@(TypeContext linears _) snapshotArit
         Just c->contractKind c==ClosureCode
         _->False
       _->False
-    requiredLocals e=(case exprNode e of
-      ClosureValue _ ids->S.fromList ids
-      CodeCall _ ids _->S.fromList ids
-      JoinCall _ ids _->S.fromList ids
-      -- Match tails share staged scrutinees across their alternatives and
-      -- fallback. Even a pure function value needs its lexical snapshot here.
-      MatchTail _ xs _ _->S.fromList [uid | x<-xs,Var (Local uid)<-[exprNode x]]
-      _->S.empty)<>getConst (mapChildrenM (Const . requiredLocals) e)
     substituteValues env e=let child=runIdentity (mapChildrenM (pure . substituteValues env) e)
       in case exprNode child of
         Var (Local uid) | Just a<-M.lookup uid env->child {exprNode=exprNode (unNote a)}
         _->child
     propagate e=let child=runIdentity (mapChildrenM (pure . propagate) e)
       in case exprNode child of
-        Let b rhs body | pureFunction rhs,binderId b `S.notMember` requiredLocals body->
+        Let b rhs body | pureFunction rhs,binderId b `S.notMember` pinnedLocals body->
           substituteValues (M.singleton (binderId b) rhs) body
         _->child
     -- Erasure prints names. Assign collision-free spellings after the typed

@@ -2,7 +2,7 @@
 -- Native semantic passes operate on a complete owned program before erasure.
 -- Layout authority stays attached to the closed product it helped construct.
 module Core.Typed.Pipeline
-  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,inlinePrograms,planVectorReads,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
+  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,inlinePrograms,planVectorReads,normalizeProgram,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
 import Core.Typed.Program
 import Core.Typed.Syntax
 import Core.Typed.Layout
@@ -13,6 +13,7 @@ import Core.Typed.Callback
 import qualified Core.Typed.Callback.Catalog as Callbacks
 import qualified Core.Typed.Inline as Inline
 import qualified Core.Typed.VectorRead as VectorRead
+import qualified Core.Typed.Normalize as Normalize
 import Core.Typed.Verify (sameType)
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Compiler.DataLayout
@@ -145,6 +146,13 @@ planVectorReads input=do
       root f=Right f {functionBody=VectorRead.planReads (functionBody f)}
       code c=Right c {codeBody=VectorRead.planReads (codeBody c)}
   definitions<-mapM (mapClosed types root code) (closedDefinitions input)
+  let output=ClosedProgram (closedInput input) (closedLayouts input) definitions
+  verifyClosedProgram output
+  pure output
+
+normalizeProgram :: ClosedProgram -> Either String ClosedProgram
+normalizeProgram input=do
+  definitions<-mapM (Normalize.normalizeClosed (programTypes (closedInput input))) (closedDefinitions input)
   let output=ClosedProgram (closedInput input) (closedLayouts input) definitions
   verifyClosedProgram output
   pure output

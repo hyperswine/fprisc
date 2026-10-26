@@ -20,6 +20,7 @@ import qualified Compiler.Native.Regions.Typed as TypedRegions
 import qualified Core.Typed.Syntax as TCore
 import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
+import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
 import Codegen (Target, codegenRev, emitProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
@@ -881,8 +882,10 @@ compileWithInterface accepted = do
             inlined<-if oArc opts || oNoInline opts then pure original else
               do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinked 3 24 original)
                  checkedStage "callback specialization after inlining" (Linked.specializeLinked callbackMode inlined)
-            if oArc opts || not (Options.cgVecPeek codegen) then pure inlined else
+            vectors<-if oArc opts || not (Options.cgVecPeek codegen) then pure inlined else
               checkedStage "checked vector reads" (Linked.planVectorReadsLinked inlined)
+            if oArc opts || oBuiltin opts || Backend.tgtW (oTarget opts)/=8 || not (Options.cgReuse codegen) then pure vectors else
+              checkedStage "checked Base normalization" (Linked.normalizeLinked vectors)
           checkedStage label=either (Left . ((label++": ")++)) Right
           linked=either error id linkedResult
           declarationsResult=do
