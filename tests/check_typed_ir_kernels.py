@@ -65,6 +65,8 @@ def main():
         if Path(keg).is_dir():
             env['PKG_CONFIG_PATH']=keg+':'+env.get('PKG_CONFIG_PATH','')
             break
+    # Native kernel oracles also exercise the opt-in invariant-motion pass.
+    env['FPR_TYPED_IR_LOOP_MOTION']='1'
     run(['make','fpr'],env)
     ghc=['cabal','exec','--','runghc'] if shutil.which('cabal') else ['runghc']
     print(run([*ghc,'-w','-icompiler',ROOT/'tests/KernelIR.hs'],env).strip(),flush=True)

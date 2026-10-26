@@ -740,6 +740,7 @@ compileWithInterface accepted = do
               polFuel = not (oBuiltin opts),
               polStackCheck = if oBuiltin opts then StackStatic else if (Options.nativeShallowStack native) then StackCheckShallow else StackCheckEveryEntry,
               polFloatInline = (Options.cgFloatInline codegen),
+              polLoopMotion = Options.cgLoopMotion codegen,
               polVectorFast = Options.cgVectorFast codegen }
           -- direct backends: the AArch64 hart read follows the
           -- target runtime ABI (x28 under fpr build, the TLV cell on a64mac

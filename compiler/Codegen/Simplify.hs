@@ -3,7 +3,7 @@
 -- (docs/2026-10-20-TYPED-IR-M1.md "Conversions are explicit";
 -- docs/2026-10-21-TYPED-IR-COVERAGE.md, increment 4).
 --
--- Three passes, each a function on a verified function that yields a
+-- Named passes, each a function on a verified function that yields a
 -- verified function, each a compiler error (never a fallback) when the
 -- verifier refuses its result:
 --
@@ -26,27 +26,38 @@
 -- results, traps and event order are unchanged by construction and are
 -- checked to be so: tests/TypedIR.hs runs both programs on the fixtures,
 -- and FPR_TYPED_IR's eval report runs both and errors on a difference.
-module Codegen.Simplify (simplifyFn, simplifyProgram, passes) where
+module Codegen.Simplify (Options(..),defaultOptions,simplifyFn,simplifyProgram,simplifyFnWith,simplifyProgramWith,passes) where
 
 import Codegen.IR
+import Codegen.LoopOptimize (moveInvariants)
 import Codegen.Verify (verifyFn)
 import Codegen.Dump (dumpFn)
 import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
+data Options=Options { moveLoopInvariants :: Bool } deriving (Eq,Show)
+defaultOptions :: Options
+defaultOptions=Options False
+
 -- the passes in order, by name
 passes :: [(String, Fn -> Fn)]
-passes =
+passes=passesWith defaultOptions
+
+passesWith :: Options -> [(String,Fn -> Fn)]
+passesWith options=
   [ ("fold-conversions", dropDeadPure . foldConversions),
     ("branch-on-comparison", dropDeadPure . threadBooleanJoins),
-    ("share-pure-in-block", dropDeadPure . sharePureInBlock),
-    ("fuse-float-trees", dropDeadPure . fuseFloatTrees)
-  ]
+    ("share-pure-in-block", dropDeadPure . sharePureInBlock)
+  ] ++ [("move-loop-invariants",dropDeadPure . moveInvariants) | moveLoopInvariants options]
+    ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
 
 -- the simplified function and the number of instructions it lost
 simplifyFn :: Program -> Fn -> Either String (Fn, Int)
-simplifyFn program fn0 = go fn0 passes
+simplifyFn=simplifyFnWith defaultOptions
+
+simplifyFnWith :: Options -> Program -> Fn -> Either String (Fn,Int)
+simplifyFnWith options program fn0 = go fn0 (passesWith options)
   where
     size f = sum (map (length . bInstrs) (fnBlocks f))
     go f [] = Right (f, size fn0 - size f)
@@ -62,8 +73,11 @@ simplifyFn program fn0 = go fn0 passes
 -- every function; the callers' conventions do not change (entry
 -- parameters and results are untouched), so the program verifies whole
 simplifyProgram :: Program -> Either String (Program, M.Map Name Int)
-simplifyProgram program = do
-  results <- mapM (\(n, f) -> (\(f', k) -> (n, (f', k))) <$> simplifyFn program f) (M.toList program)
+simplifyProgram=simplifyProgramWith defaultOptions
+
+simplifyProgramWith :: Options -> Program -> Either String (Program,M.Map Name Int)
+simplifyProgramWith options program = do
+  results <- mapM (\(n, f) -> (\(f', k) -> (n, (f', k))) <$> simplifyFnWith options program f) (M.toList program)
   pure (M.fromList [(n, f) | (n, (f, _)) <- results], M.fromList [(n, k) | (n, (_, k)) <- results, k > 0])
 
 -- ---- shared helpers ------------------------------------------------------

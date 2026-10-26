@@ -183,6 +183,8 @@ library
       Compiler.VectorLayout
       Compiler.VectorABI
       Codegen.VectorRead
+      Codegen.ControlFlow
+      Codegen.LoopOptimize
       Compiler.VectorOperation
       Compiler.Trap
       Inline
@@ -383,6 +385,11 @@ test-suite ScalarVectorRead
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            ScalarVectorRead.hs
+
+test-suite LoopOptimize
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            LoopOptimize.hs
 
 test-suite TypedLayouts
   import:             unit-test

@@ -25,7 +25,7 @@ import Codegen.IR (Fn (..), Block (..), Width, ArithOp (..), FloatOp (..), simdR
 import qualified Codegen.NativeData as NativeData
 import qualified Codegen.Kernel as K
 import Codegen.Lower (lowerProgram, Prim (..))
-import Codegen.Simplify (simplifyProgram)
+import qualified Codegen.Simplify as Simplify
 import Codegen.Split (splitEntryValues)
 import Codegen.Target.Common (Tune (..), noTune, mangleName,SymbolPolicy,publicSymbols,symbolNames)
 import Codegen.Policy (Profile (..), Policy (..), m2Policy, policyWidth)
@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 127 -- guarded native flat-vector reads with unchanged C fallback and value ABI
+codegenRev = 130 -- shared CFG/loops, conservative invariant motion and dead copy parameters
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -142,7 +142,7 @@ typedIrNotes (Just mode) policy sigs ext hal prog emitted =
     (lowered, failures) = lowerProgram policy sigs prog emitted ext hal
     -- the simplified program is what the backend consumes; the lowered one
     -- is kept beside it as the differential oracle of every evaluation
-    (simplified, removed) = either (\e -> error ("typed-ir: " ++ e)) id (simplifyProgram lowered)
+    (simplified, removed) = either (\e -> error ("typed-ir: " ++ e)) id (Simplify.simplifyProgramWith (Simplify.Options (polLoopMotion policy)) lowered)
     ws = words mode
     evalNote w = case splitOn ':' w of
       ("eval" : fn : args) | Just ns <- mapM readMaybe args ->
@@ -297,7 +297,7 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
           _ -> (e, [])
     -- the simplification passes (Codegen.Simplify), each verified; a
     -- failure is a compiler error
-    lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (simplifyProgram lowered0)
+    lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (Simplify.simplifyProgramWith (Simplify.Options (polLoopMotion (tgtPolicy tgt))) lowered0)
     -- FPR_TYPED_IR_SPLIT_ENTRY: verified like the simplification (a refusal is a compiler error)
     lowered = if nmSplitEntry nm then M.map splitEntryValues lowered1 else lowered1
 

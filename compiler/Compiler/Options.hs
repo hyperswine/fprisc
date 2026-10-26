@@ -25,7 +25,7 @@ data NativeOptions = NativeOptions
     nativeFpPool :: Bool, nativeLinkPairs :: Bool } deriving (Eq,Show)
 data CodegenOptions = CodegenOptions
   { nativeOptions :: NativeOptions, cgIndexedMemory :: Bool, cgFloatInline :: Bool,
-    cgSimd :: Bool, cgFusion :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool,
+    cgSimd :: Bool, cgFusion :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgLoopMotion :: Bool,
     cgScalarWorkers :: Bool, cgFieldWorkers :: Bool, cgPipelineInline :: Bool,
     cgReuse :: Bool, cgSpecialize :: Bool, cgReceiveTurns :: Bool,
     cgLoopRegions :: Bool, cgCallRegions :: Bool, cgInline :: Bool } deriving (Eq,Show)
@@ -60,7 +60,7 @@ parseCompilerOptions env = do
           nativeFpPool=on "FPR_TYPED_IR_FP_POOL", nativeLinkPairs=on "FPR_TYPED_IR_LINK_PAIRS" }
       codegen=CodegenOptions
         { nativeOptions=native, cgIndexedMemory=enabled "INDEXED_MEMORY", cgFloatInline=enabled "F64_INLINE",
-          cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST",
+          cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST", cgLoopMotion=yes "FPR_TYPED_IR_LOOP_MOTION",
           cgScalarWorkers=enabled "SCALAR_WORKERS", cgFieldWorkers=enabled "FIELD_WORKERS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
           cgReceiveTurns=enabled "RECEIVE_TURNS", cgLoopRegions=enabled "LOOP_REGIONS",
@@ -114,7 +114,7 @@ nativeOptionFlags fpAvailable n =
     StrictNames names->"-strict"++take 12 (showHex (fnv (intercalate "," names)) "")
 
 optimizationFlags :: CodegenOptions -> String
-optimizationFlags c = concat
+optimizationFlags c = flag (cgLoopMotion c) "-licm" ++ concat
   [flag (not enabled) suffix | (enabled,suffix)<-
     [(cgPipelineInline c,"-nopinline"),(cgReuse c,"-noreuse"),
      (cgScalarWorkers c,"-noscalar"),(cgFieldWorkers c,"-nofields"),

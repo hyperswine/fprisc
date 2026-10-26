@@ -10,6 +10,7 @@
 module Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth, opSignature, simdExprOk) where
 
 import Codegen.IR
+import Codegen.ControlFlow (analyze,reachable,dominators)
 import Control.Monad (forM_, unless, when)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -177,20 +178,9 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
         t' <- tyOf a
         unless (t' == t) (Left (here ++ "jump argument " ++ show a ++ " is " ++ show t' ++ ", " ++ show t ++ " needed"))
   -- reachability and dominance
-  let succs b = map fst (termSuccs (bTerm b))
-      reach seen [] = seen
-      reach seen (x : xs)
-        | S.member x seen = reach seen xs
-        | otherwise = reach (S.insert x seen) (maybe [] succs (M.lookup x byId) ++ xs)
-      reachable = reach S.empty [bId entry]
-  forM_ blocks $ \b -> unless (S.member (bId b) reachable) (Left (show (bId b) ++ " is unreachable"))
-  let preds = M.fromListWith (++) [(s, [bId b]) | b <- blocks, s <- succs b]
-      allIds = S.fromList ids
-      dom0 = M.fromList [(i, if i == bId entry then S.singleton i else allIds) | i <- ids]
-      step dm = M.mapWithKey (\i d -> if i == bId entry then d
-                                      else S.insert i (foldr1 S.intersection [dm M.! p | p <- M.findWithDefault [] i preds])) dm
-      fixDom dm = let dm' = step dm in if dm' == dm then dm else fixDom dm'
-      doms = fixDom dom0
+  let flow = analyze fn
+  forM_ blocks $ \b -> unless (S.member (bId b) (reachable flow)) (Left (show (bId b) ++ " is unreachable"))
+  let doms = dominators flow
       definedIn = M.fromList [(v, bId b) | b <- blocks, (v, _) <- blockDefs b]
       -- a use in block b is dominated when the value is a parameter of b,
       -- an earlier instruction of b, or a definition in a strict dominator

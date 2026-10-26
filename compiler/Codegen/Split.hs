@@ -25,6 +25,7 @@
 module Codegen.Split (splitEntryValues) where
 
 import Codegen.IR
+import Codegen.ControlFlow (analyze,dominators)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -37,7 +38,7 @@ splitEntryValues fn = case [b | b <- fnBlocks fn, bId b == fnEntry fn] of
       predCount = M.fromListWith (+) [(t, 1 :: Int) | b <- fnBlocks fn, (t, _) <- termSuccs (bTerm b)]
       children =
         [ t | (t, _) <- termSuccs (bTerm entry), t /= fnEntry fn, M.lookup t predCount == Just 1 ]
-      doms = dominators fn
+      doms = dominators (analyze fn)
       splitChild e f child =
         let region = S.fromList [bId b | b <- fnBlocks f, S.member child (M.findWithDefault S.empty (bId b) doms)]
             -- only values the region carries across a call: those are the
@@ -91,17 +92,3 @@ callLike op = case op of
 
 blockUses :: Block -> [VId]
 blockUses b = concat [opUses op | Instr _ op <- bInstrs b] ++ termUses (bTerm b)
-
--- every block's dominator set (itself included)
-dominators :: Fn -> M.Map BId (S.Set BId)
-dominators fn = go start
-  where
-    ids = map bId (fnBlocks fn)
-    allIds = S.fromList ids
-    preds = M.fromListWith (++) [(t, [bId b]) | b <- fnBlocks fn, (t, _) <- termSuccs (bTerm b)]
-    start = M.fromList [(i, if i == fnEntry fn then S.singleton i else allIds) | i <- ids]
-    step dm = M.mapWithKey (\i d -> if i == fnEntry fn then d else
-      case M.findWithDefault [] i preds of
-        [] -> S.singleton i -- unreachable: dominated by nothing else
-        ps -> S.insert i (foldr1 S.intersection [M.findWithDefault allIds p dm | p <- ps])) dm
-    go dm = let dm' = step dm in if dm' == dm then dm else go dm'

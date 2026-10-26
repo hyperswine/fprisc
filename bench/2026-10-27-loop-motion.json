@@ -1,0 +1,59 @@
+{
+  "baseline": "09c0417",
+  "codegen_revision": 130,
+  "pairs": 7,
+  "harts": 1,
+  "platform": "arm64",
+  "source": "unsafe base.\nseed : Unit -> F64.\ntoFloat : Int -> F64.\ntoFloat x = F64.ofInt x.\nwork : F64 -> F64 -> F64 -> F64.\nwork p acc x = acc + x * (p * p + p / (p + 1.0)).\nrounds v p k total = if k == 0 then (total,v) else\n  (s,v) = Vec.fold (work p) 0.0 v; rounds v p (k - 1) (total + s).\nmain = p = seed Unit; v = Vec.map toFloat (Vec.iota 1000000);\n  (total,v) = rounds v p 50 0.0; _ = Vec.free v; print \"loop-motion {total}\".\n",
+  "variants": {
+    "before": {
+      "build_s": 1.0866392918396741,
+      "bytes": 472584,
+      "compiler_sha256": "78b78d0d8c0f367264a3ef287c15118e0b4a2865871364c059c4f8bc807a7b10",
+      "samples_ms": [
+        205.1694157999009,
+        205.84566704928875,
+        205.8153331745416,
+        205.53179108537734,
+        205.49025014042854,
+        205.0422909669578,
+        204.65954206883907
+      ],
+      "median_ms": 205.49025014042854
+    },
+    "after": {
+      "build_s": 3.202120958128944,
+      "bytes": 472584,
+      "compiler_sha256": "05647277f99632d52ef67d5458194c599f95c937bcb279d320f73f5385187c4e",
+      "samples_ms": [
+        227.01179212890565,
+        227.75750001892447,
+        227.3570830002427,
+        227.7086670510471,
+        227.28691692464054,
+        243.87116613797843,
+        226.62733308970928
+      ],
+      "median_ms": 227.3570830002427
+    },
+    "off": {
+      "build_s": 3.1916377909947187,
+      "bytes": 472576,
+      "compiler_sha256": "05647277f99632d52ef67d5458194c599f95c937bcb279d320f73f5385187c4e",
+      "samples_ms": [
+        205.26299998164177,
+        205.84804215468466,
+        205.57970902882516,
+        205.16841602511704,
+        205.35366609692574,
+        205.3357500117272,
+        205.84375015459955
+      ],
+      "median_ms": 205.35366609692574
+    }
+  },
+  "speedup": 0.9038216334795656,
+  "after_mode": "FPR_TYPED_IR_LOOP_MOTION=1",
+  "off_mode": "default (no invariant motion)",
+  "acceptance": "Verified transformation is opt-in: register allocation currently erases its expected speedup."
+}

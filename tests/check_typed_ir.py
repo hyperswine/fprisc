@@ -32,7 +32,7 @@ def run(args, env=ENV, expected=0, timeout=600):
 
 run(['make', 'fpr'])
 from haskell_units import run_units
-run_units(['TypedIR', 'ScalarVectorRead'], ENV)
+run_units(['TypedIR', 'ScalarVectorRead', 'LoopOptimize'], ENV)
 
 FIXTURE = 'tests/typed_ir/scalar.fpr'
 CALLS = [('fib', [20]), ('sum', [1000, 0]), ('addovf', [4611686018427387903, 1]), ('divz', [7, 0]),

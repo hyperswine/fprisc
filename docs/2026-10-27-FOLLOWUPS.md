@@ -11,7 +11,7 @@ Plans and analysis scaffolding alone do not complete an item.
 | Reset-safe reuse and loop-aware inlining | Sound reset barriers, larger bounded budgets at recursive callers, focused native checks and paired hot-loop measurements | First milestone complete |
 | Scalar vector fast paths | Guarded direct flat Int/F64/F32 reads and length, exact bounds/trap behavior and a C fallback | First milestone complete |
 | Request/reply locality | A bounded handoff/locality policy with fairness/migration coverage and paired message measurements | First milestone complete |
-| Loop optimizations | Shared native-IR loop analysis used by a conservative, useful optimization such as pure invariant motion; traps/effects remain ordered | Pending |
+| Loop optimizations | Shared native-IR loop analysis and a verified conservative invariant-motion pass; traps/effects remain ordered | First milestone complete; motion is opt-in |
 | Generational persistent-state copying | A safe initial immutable-state path that avoids copying retained old subgraphs at each cycle, with bounded retained generations/compaction and conservative fallback | Pending |
 
 ## 1. Reset barriers and loop-aware inlining
@@ -189,4 +189,51 @@ This is admission locality, not migration/co-location of request/reply pairs.
 The preference changes un-aged weighted frequencies; the deterministic aged
 rule and existing conditional admission bound remain intact. Follow-up work
 can measure broader mixed loads and tail latency before increasing the budget.
-Items 4-5 remain pending.
+Item 5 remains pending.
+
+## 4. Shared CFG facts and conservative loop motion
+
+`Codegen.ControlFlow` now owns reachability, predecessor/successor sets and
+dominance, shared by the verifier and entry-value splitting. Its natural-loop
+analysis merges multiple latches, identifies nesting and existing unique
+unconditional preheaders, and excludes irreducible entries. There is no
+second independent dominance implementation in the verifier or splitter.
+
+`Codegen.LoopOptimize` moves at most 16 total register operations per natural
+loop into an existing preheader. It resolves strictly dominating single-source
+block parameters so inlined callback captures can become invariant operands.
+Dead callback parameters and their incoming copies are removed after motion.
+Loads, fields, tag/truth dereferences, hart/region clocks, calls, allocations,
+stores, safepoints and trapping arithmetic/shifts stay ordered. No new
+preheader or speculative pointer read is introduced. This covers existing
+CFG loops (particularly kernels); allocator-level self-tail-call loops are
+still formed later and are outside this pass's scope.
+
+`LoopOptimize` verifies input/output at both widths and checks exact evaluator
+answers, traps and events for 72 combinations including zero trips and zero
+divisors. It checks nested loops, multiple latches, irreducible cycles,
+preheader refusals, capture forwarding and non-speculatable operations.
+Compiled CompilerOptions, TypedIR and KernelIR pass. The full native kernel
+oracles pass with motion enabled: hosted one/four-hart values, fallback and
+failure order, plus x64/qx64 under Rosetta and RV32/RV64 under QEMU, including
+record widths up to 300 columns and hostile yields. Those are emulated/hosted
+results, not physical QOS or board qualification.
+
+**Motion remains opt-in with `FPR_TYPED_IR_LOOP_MOTION=1`.** Its typed option
+and `-licm` cache identity reach ordinary units, kernels and the diagnostic
+pipeline. The shared analysis is unconditional. Codegen revision 130
+invalidates earlier experimental artifacts.
+
+The paired capture-dependent F64 fold benchmark does less arithmetic after
+motion, but native allocation spills the accumulator more often. Removing
+dead capture copies did not recover the cost. Seven alternating final pairs
+on Darwin arm64, one hart, give saved main **205.49 ms**, opt-in motion
+**227.36 ms**, default/off **205.35 ms** (see exact raw medians in the report).
+The checked answer is 243,749,756,250,000 over 50 million rows. This is a
+measured regression of roughly 11%, so the pass is available for analysis
+without changing default performance. A register-pressure/profitability model
+and late self-loop integration remain follow-ups, rather than acceptance
+claims. `bench/2026-10-27-loop-motion.json` preserves the source, hashes and
+raw samples. No performance threshold was relaxed.
+
+Local evidence: `/private/tmp/fpr-loop-final-{units,kernels,paired}.log`.
