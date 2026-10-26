@@ -89,8 +89,10 @@ environment's baseline; record it in the commit that makes the compiler
 cheaper, and the check says when a program is more than 10% under budget.
 
 It is a Base job (`tests/check_registry.py`), so CI runs it. CI's environment
-(Debian's GHC on x86-64) has no baseline yet: the check measures and passes
-with a note there until that baseline is recorded from a hosted run.
+(`ghc-9.6.6 x86_64-unknown-linux`, Debian's GHC) has its baseline from hosted
+run 40295946603 at `e0a12b4`: hello 1.66 GB / 26 MB, std-live 37.90 GB /
+831 MB, pos1 93.72 GB / 2136 MB, as printed (allocation to 10 MB, well inside
+the 10% margin). Without a baseline the check now also prints the exact bytes.
 
 ## The per-pass report
 

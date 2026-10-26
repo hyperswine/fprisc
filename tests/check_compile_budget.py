@@ -115,6 +115,8 @@ def main():
         if args.require_baseline:
             raise SystemExit(msg)
         print(msg + " (measured above; --record writes it)")
+        print("compile budget: exact measurements " + json.dumps(
+            {n: {k: v for k, v in results[n].items() if k != "wall_seconds"} for n in missing}, sort_keys=True))
     if failures:
         raise SystemExit("compile budget FAILED:\n  " + "\n  ".join(failures))
     print(f"compile budget: {key} within budget")
