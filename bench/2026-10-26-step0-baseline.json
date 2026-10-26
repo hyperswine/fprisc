@@ -15,8 +15,8 @@
   },
   "region_switches_ms": {
     "note": "fastest of 7, two repetitions agreed within 2 ms",
-    "strbuild": {"default": 174.3, "FPR_NO_LOOP_REGIONS": 125.4, "FPR_NO_CALL_REGIONS": 122.4, "both_off": 174.2},
-    "vecread": {"default": 216.3, "FPR_NO_LOOP_REGIONS": 199.4, "FPR_NO_CALL_REGIONS": 221.2, "both_off": 219.2},
+    "strbuild": {"default": 174.3, "FPR_NO_LOOP_REGIONS": 125.4, "FPR_NO_CALL_REGIONS": 122.4, "both_off": 124.5, "both_off_note": "corrected: the first run set both in one zsh word and read 174.2"},
+    "vecread": {"default": 216.3, "FPR_NO_LOOP_REGIONS": 199.4, "FPR_NO_CALL_REGIONS": 221.2, "both_off": 200.7, "both_off_note": "corrected: first read 219.2"},
     "pingpong_xpingpong": "unchanged by either switch"
   }
 }

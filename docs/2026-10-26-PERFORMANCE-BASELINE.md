@@ -42,12 +42,15 @@ Region switches, fastest of seven, repeated twice (agreeing within 2 ms):
 
 | | default | `FPR_NO_LOOP_REGIONS=1` | `FPR_NO_CALL_REGIONS=1` | both |
 |---|---|---|---|---|
-| strbuild | 174.3 | 125.4 | 122.4 | 174.2 |
-| vecread | 216.3 | 199.4 | 221.2 | 219.2 |
+| strbuild | 174.3 | 125.4 | 122.4 | 124.5 |
+| vecread | 216.3 | 199.4 | 221.2 | 200.7 |
 
-strbuild is about 40% slower with loop and call regions together than with
-either one alone, and switching both off restores the slow time: an
-interaction, not the cost of one mechanism. Loop regions cost vecread about 8%.
+**Correction (same day):** the "both" column first read 174.2 and 219.2.
+Those runs set both variables in one unquoted zsh word, so neither switch took
+effect; the values above are a corrected rerun. strbuild is slow only with
+both kinds of region on. Loop regions cost vecread about 8%.
+[The regression investigation](2026-10-26-PERFORMANCE-REGRESSIONS.md) found
+the causes.
 pingpong and xpingpong do not move with either switch; their regression since
 2026-10-01 has another cause (message lifetime and receive-turn changes are
 the candidates). None of these causes is established yet.

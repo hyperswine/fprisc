@@ -3797,8 +3797,14 @@ V fpr_prim_fn_strcat(V a, V b) {
   s->tid = T_STR;
   s->var = 0;
   s->len = x->len + y->len;
-  for (uw i = 0; i < x->len; i++) s->bytes[i] = x->bytes[i];
-  for (uw i = 0; i < y->len; i++) s->bytes[x->len + i] = y->bytes[i];
+  /* memcpy, not a byte loop: s is a fresh allocation, so nothing overlaps.
+   * The byte loop ran at one byte a cycle at best, and at half that when
+   * the arena put source and destination at an unlucky distance (a
+   * load/store aliasing stall): tests/bench/strbuild.fpr's 20,000 appends
+   * took 50 ms longer depending on where a call region's slab landed
+   * (docs/2026-10-26-PERFORMANCE-REGRESSIONS.md) */
+  __builtin_memcpy(s->bytes, x->bytes, x->len);
+  __builtin_memcpy(s->bytes + x->len, y->bytes, y->len);
   return (V)s;
 }
 

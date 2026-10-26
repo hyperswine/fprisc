@@ -187,6 +187,50 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
     -- a primitive is assumed to allocate.
     allocates group n = let (ps, b) = prog M.! n in iterAlloc (S.fromList ps) b
       where
+        -- A vector read allocates only for a Vector of records or tuples (a
+        -- row is built); Int, float and boxed elements come back as the
+        -- word itself (runtime/vec.c row_at/get_cell). The vector's type is
+        -- its parameter's checked interface type, through let aliases; any
+        -- other read keeps the unknown-code rule and counts as allocating.
+        -- A loop region around a loop that never allocates is only
+        -- overhead (tests/bench/vecread.fpr, 10%).
+        -- names bound exactly once (parameters included), so an alias means
+        -- the same value wherever it is read; a rebound name is never typed
+        binders e = case e of
+          CLet x a b' -> (x, case a of CVar y -> Just y; _ -> Nothing) : binders a ++ binders b'
+          CLam xs b' -> [(x, Nothing) | x <- xs] ++ binders b'
+          CIf c t f -> binders c ++ binders t ++ binders f
+          CApp a b' -> binders a ++ binders b'
+          CMk _ _ fs -> concatMap binders fs
+          CTagEq _ _ x -> binders x
+          CProj _ x -> binders x
+          _ -> []
+        vectorTypes = let (ps, b) = prog M.! n
+                          bs = [(p, Nothing) | p <- ps] ++ binders b
+                          once = M.keysSet (M.filter (== (1 :: Int)) (M.fromListWith (+) [(x, 1) | (x, _) <- bs]))
+                          aliasOf = M.fromList [(x, y) | (x, Just y) <- bs, S.member x once]
+                          params = case M.lookup n interfaces of
+                            Just signature | length (interfaceArguments signature) == length ps ->
+                              M.fromList [(p, t) | (p, t) <- zip ps (interfaceArguments signature), S.member p once]
+                            _ -> M.empty
+                          resolve depth x | depth > (length bs) = Nothing
+                                          | Just t <- M.lookup x params = Just t
+                                          | Just y <- M.lookup x aliasOf = resolve (depth + 1) y
+                                          | otherwise = Nothing
+                      in M.fromList [(x, t) | (x, _) <- bs, Just t <- [resolve 0 x]]
+        flatVector h = case M.lookup h vectorTypes of
+          Just (TAp (TC "Vector") t) -> flatElement t
+          _ -> False
+        flatElement t = case t of
+          TC c -> c `elem` ["Int","Bool","Unit","Atom","I64","Word","F64","F32","I32","String"]
+          TAp _ _ -> not (isRow t)
+          _ -> False
+        isRow t = case spineT t of (TC c, _) -> c `notElem` ["List","Vector","Result","Option","Map"]; _ -> True
+        spineT = goT [] where goT as (TAp g a) = goT (a:as) g; goT as h = (h,as)
+        vectorRead g as = case (g, as) of
+          ("$vec.len", [_]) -> Just False
+          (_, [_, CVar h]) | g `elem` ["$vec.at","$vec.get"], flatVector h -> Just False
+          _ -> Nothing
         groupCall bound e = case spine e of
           (CVar g, as) | not (S.member g bound), S.member g group, not (null as) -> Just as
           _ -> Nothing
@@ -218,7 +262,7 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
         rawAlloc bound e = case spine e of
           (CVar g, as) | not (S.member g bound), not (null as) ->
             if S.member g group then any (argAlloc bound) as
-            else case primAllocates g (length as) of
+            else case maybe (primAllocates g (length as)) Just (vectorRead g as) of
               Just False -> any (rawAlloc bound) as
               Just True -> True
               Nothing -> True -- unknown code: assumed to allocate
