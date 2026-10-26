@@ -1,0 +1,91 @@
+{
+  "baseline": "d5834ff",
+  "pairs": 7,
+  "platform": "arm64",
+  "harts": 1,
+  "source": "unsafe base.\nCost.begin : Unit -> Unit.\nCost.report : Unit -> String.\nlist n = if n == 0 then [] else n :: list (n - 1).\nsum xs acc = case xs of [] -> acc | x :: rest -> sum rest (acc + x).\nstep st = (n,xs,text) = st;\n  _ = if text == \"row {n}\" then Unit else error \"lost state\";\n  (n + 1 < 1000,(n + 1,xs,\"row {n + 1}\")).\nmain = xs = list 10000; _ = Cost.begin Unit;\n  (n,ys,text) = Sys.loop (0,xs,\"row 0\") step;\n  report = Cost.report Unit;\n  _ = print \"state {n} {sum ys 0} {text}\"; print report.\n",
+  "before_runtime_sha256": "fa063e4abc54180f7c52f3b28616a7f47bd8c10924dfe5f15fca71023d43fc38",
+  "candidate_runtime_sha256": "8ef826822a357844cfe49428b768b5bdb3186630717ad28ec099030407c5cf06",
+  "variants": {
+    "before": {
+      "build_s": 3.83571825013496,
+      "bytes": 469336,
+      "samples_ms": [
+        66.94633304141462,
+        66.85308297164738,
+        67.16633285395801,
+        67.58262496441603,
+        63.856624998152256,
+        67.9425410926342,
+        67.36062513664365
+      ],
+      "ledger": {
+        "alloc_requests": 16003,
+        "alloc_bytes": 768144,
+        "copies": 1000,
+        "copy_bytes": 480096000,
+        "message_slabs": 2,
+        "turns": 1000,
+        "buddy_allocs": 3,
+        "buddy_frees": 4,
+        "state_copies": 1000,
+        "state_bytes": 480096000
+      },
+      "median_ms": 67.16633285395801
+    },
+    "after": {
+      "build_s": 3.546159166144207,
+      "bytes": 469352,
+      "samples_ms": [
+        13.111332897096872,
+        13.03991605527699,
+        13.065458042547107,
+        12.942707864567637,
+        12.866042088717222,
+        12.746165972203016,
+        13.642624951899052
+      ],
+      "ledger": {
+        "alloc_requests": 16003,
+        "alloc_bytes": 768144,
+        "copies": 1000,
+        "copy_bytes": 60096000,
+        "message_slabs": 2,
+        "turns": 1000,
+        "buddy_allocs": 3,
+        "buddy_frees": 4,
+        "state_copies": 1000,
+        "state_bytes": 60096000
+      },
+      "median_ms": 13.03991605527699
+    },
+    "off": {
+      "build_s": 3.572137292008847,
+      "bytes": 469344,
+      "samples_ms": [
+        65.94183295965195,
+        69.59558301605284,
+        68.97887494415045,
+        69.76966699585319,
+        69.80516691692173,
+        68.92783404327929,
+        67.372125107795
+      ],
+      "ledger": {
+        "alloc_requests": 16003,
+        "alloc_bytes": 768144,
+        "copies": 1000,
+        "copy_bytes": 480096000,
+        "message_slabs": 2,
+        "turns": 1000,
+        "buddy_allocs": 3,
+        "buddy_frees": 4,
+        "state_copies": 1000,
+        "state_bytes": 480096000
+      },
+      "median_ms": 68.97887494415045
+    }
+  },
+  "speedup": 5.150825555106021,
+  "copy_reduction": 7.9888178913738015
+}

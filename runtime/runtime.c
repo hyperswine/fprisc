@@ -776,6 +776,7 @@ typedef struct {
                       * (vec_movable_here); every other Vector is copied */
   int released;      /* a movevec copy copied some Vector (not moved): the old
                       * state's Vectors are released after the copy */
+  fpr_slab_t *retain; /* state append: old nodes in this ONE slab stay by identity */
 } dctx_t;
 /* a Vector that may cross a turn boundary by handle: its header is in this
  * actor's base pool (so every piece is, vec.c allocates bulk there and a
@@ -833,20 +834,30 @@ static uw img_static_raw(V v, uw pid) {
   }
 }
 
-static uw dc_size(V v) {
+/* A retained transfer graph is self-contained in one slab. Comparing its
+ * address range first avoids reading a preheader for immortal actor handles.
+ * This context is explicit: ordinary message/admission copies never retain. */
+static int dc_retained(V v, fpr_slab_t *retain) {
+  if (!retain || ISINT(v) || !v) return 0;
+  uw address = (uw)v;
+  return address >= (uw)(retain + 1) && address < (uw)retain->hp && slab_of(v) == retain;
+}
+static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
   if (ISINT(v) || !v) return 0;
   if (!fpr_in_heap(v)) {
     uw pid = img_foreign((const void *)v);
     if (!pid) return 0; /* an immortal static, or the receiver's own image */
     uw n = dc_cellsz(img_static_raw(v, pid));
-    if (TID(v) == T_RESULT) n += dc_size(*(V *)((char *)v + 8));
+    if (TID(v) == T_RESULT) n += dc_size_in(*(V *)((char *)v + 8), retain, immutable);
     return n;
   }
+  if (dc_retained(v, retain)) return 0;
   uw total = *(uw *)((char *)v - 16);
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_ACTOR: return 0; /* immortal acb: shared, not copied */
     case T_VEC: {
+      if (immutable) *immutable = 0;
       { fpr_hart_t *mh = fpr_hart(); if (mh && mh->copy_movevec && vec_movable_here(v)) return 0; } /* moved, not copied */
       vec_t *x = (vec_t *)v;
       uw n = dc_cellsz(sizeof(vec_t));
@@ -858,28 +869,29 @@ static uw dc_size(V v) {
         if (x->len) n += dc_cellsz(x->len * sizeof(uw));
         if (!VK_RAW(x->kinds[k])) /* boxed column: elements recurse */
           for (uw i = 0; i < x->len; i++)
-            n += dc_size((V)x->cols[k]->base[i]);
+            n += dc_size_in((V)x->cols[k]->base[i], retain, immutable);
       }
       return n;
     }
     case T_SSTR: fpr_cpanic("send/keep: SString is linear-local");
-    case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER: return total;
+    case T_DEVICE: case T_REGISTER: if (immutable) *immutable = 0; return total;
+    case T_STR: case T_BITS: return total;
     case T_PAP: {
       pap_t *p = (pap_t *)v;
       if (img_foreign((const void *)p->fn))
         fpr_actor_fail("send: a function of another process cannot leave it "
                        "(its code goes when that process ends)");
       uw n = total;
-      for (uw i = 0; i < p->nargs; i++) n += dc_size((V)p->args[i]);
+      for (uw i = 0; i < p->nargs; i++) n += dc_size_in((V)p->args[i], retain, immutable);
       return n;
     }
     case T_LIST: {
       uw n = 0;
       V c = v;
       while (!ISINT(c) && fpr_in_heap(c) && TID(c) == T_LIST &&
-             ((hdr_t *)c)->var == 1) {
+             ((hdr_t *)c)->var == 1 && !dc_retained(c, retain)) {
         n += *(uw *)((char *)c - 16);
-        n += dc_size(*(V *)((char *)c + 8)); /* head */
+        n += dc_size_in(*(V *)((char *)c + 8), retain, immutable); /* head */
         c = *(V *)((char *)c + 8 + sizeof(uw));
       }
       /* the tail: the static nil (not in the heap: 0); a nil a primitive built
@@ -887,19 +899,22 @@ static uw dc_size(V v) {
        * more -- the default case below would derive a field count from the
        * allocation's padding and follow garbage, which hung a send forever);
        * or an improper tail */
+      if (dc_retained(c, retain)) return n;
       if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST) return n + *(uw *)((char *)c - 16);
-      return n + dc_size(c);
+      return n + dc_size_in(c, retain, immutable);
     }
     default: { /* uniform-V constructor: derive field count */
       if (h->tid == T_LIST) return total; /* a heap nil reached directly (var 0): no fields */
       uw nf = (total - 16 - 8) / sizeof(uw);
       uw n = total;
       V *f = (V *)((char *)v + 8);
-      for (uw i = 0; i < nf; i++) n += dc_size(f[i]);
+      for (uw i = 0; i < nf; i++) n += dc_size_in(f[i], retain, immutable);
       return n;
     }
   }
 }
+
+static uw dc_size(V v) { return dc_size_in(v, 0, 0); }
 
 /* Admission walks only as much graph as the receiver can accept. A compact
  * source can share subtrees whose copied representation is exponential.
@@ -1010,6 +1025,7 @@ static V dc_dup(V v, dctx_t *c) {
     if (TID(v) == T_RESULT) *(V *)((char *)n + 8) = dc_dup(*(V *)((char *)v + 8), c);
     return n;
   }
+  if (c && dc_retained(v, c->retain)) return v;
   uw total = *(uw *)((char *)v - 16);
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
@@ -1072,7 +1088,7 @@ static V dc_dup(V v, dctx_t *c) {
       V first = 0, *patch = &first;
       V cur = v;
       while (!ISINT(cur) && fpr_in_heap(cur) && TID(cur) == T_LIST &&
-             ((hdr_t *)cur)->var == 1) {
+             ((hdr_t *)cur)->var == 1 && !(c && dc_retained(cur, c->retain))) {
         V n = dc_cell(cur, c, *(uw *)((char *)cur - 16));
         *patch = n;
         *(V *)((char *)n + 8) = dc_dup(*(V *)((char *)cur + 8), c);
@@ -1572,6 +1588,9 @@ struct fpr_scope {
   fpr_pool_t *arena;
   V held;
   fpr_slab_t *spare;
+  fpr_slab_t *state_slab, *next_slab; /* each carries one scope hold */
+  uw generations;
+  int immutable_state, preserve_state;
   uw rx_mark; /* the actor's received-root count at entry: the roots above it
                * were taken inside this region and die at its boundary */
   /* a compiler-placed region (fpr.h): heap-allocated in the base pool, its
@@ -1592,6 +1611,8 @@ static struct fpr_scope **scope_push(struct fpr_scope *scope) {
   scope->arena = 0;
   scope->held = 0;
   scope->spare = 0;
+  scope->state_slab = scope->next_slab = 0;
+  scope->generations = 0; scope->immutable_state = scope->preserve_state = 0;
   scope->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
   scope->seq = 0;
   scope->prev_override = 0;
@@ -1621,21 +1642,48 @@ static void slab_free_ownerless(fpr_slab_t *sl) {
   slab_home(sl);
   fpr_unlock(&arc_lock);
 }
-/* the next state: one walk to size it, one to copy it into the spare when
- * it fits, else into a fresh slab; a Vector in it is refused by name during
- * the copy (its storage would go with the arena).  The slab being filled
- * sits in `spare` meanwhile, so an actor ended mid-copy still frees it. */
+/* Generations stay INSIDE one transfer slab, so even an exported ARC root
+ * still pins its whole graph. At most eight turns append before a deep
+ * compaction; lack of capacity or any mutable state forces a full copy.
+ * Borrowed state is immutable: native constructor reuse requires a fresh,
+ * nonescaping root and cannot cross a region reset (Reuse.hs). Foreign code
+ * must honor that same value contract; arbitrary writes into tuples are not
+ * a supported state API. Vectors/device/register storage never appends.
+ * Zero/one restores full copying. Builtin heaps retain their existing path. */
+#ifndef FPR_STATE_GENERATIONS
+#define FPR_STATE_GENERATIONS 8
+#endif
 static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int movevec) {
   fpr_hart_t *h = fpr_hart();
   uw pid = fpr_current_pid();
+  fpr_slab_t *retain = scope->state_slab;
+  if (FPR_STATE_GENERATIONS <= 1 || !scope->immutable_state ||
+      scope->generations >= FPR_STATE_GENERATIONS ||
+      (retain && __atomic_load_n(&retain->promoted, __ATOMIC_ACQUIRE))) retain = 0;
   if (h) { h->copy_pid = pid; h->copy_movevec = (uw)movevec; }
-  uw need = dc_size(v);
+  int immutable = 1;
+  uw need = dc_size_in(v, retain, &immutable);
+  if (retain && (!immutable || need > (uw)(retain->end - retain->hp))) {
+    retain = 0;
+    immutable = 1;
+    need = dc_size_in(v, 0, &immutable);
+  }
   if (h) h->copy_movevec = 0;
   FPR_COST_ADD(h, cost_copies, 1);
   FPR_COST_ADD(h, cost_copy_bytes, need);
   FPR_COST_ADD(h, cost_state_copies, 1);
   FPR_COST_ADD(h, cost_state_bytes, need);
-  if (!need) { /* ints, statics, bare actor handles: no cell -- or the state IS a moved Vector */
+  scope->immutable_state = immutable;
+  if (retain && (need || dc_retained(v, retain))) {
+    scope->preserve_state = 1; /* cancellation also owns the slab mid-copy */
+    scope->generations++;
+    dctx_t c = {.hp=retain->hp, .sl=retain, .novec=novec, .movevec=movevec, .retain=retain};
+    V r = dc_dup(v, &c);
+    retain->hp = c.hp;
+    return r;
+  }
+  scope->generations = 0;
+  if (!need) { /* ints, statics, handles, or a moved Vector */
     if (movevec && !ISINT(v) && v && fpr_in_heap(v) && TID(v) == T_VEC && vec_movable_here(v)) return v;
     return dc_dup(v, 0);
   }
@@ -1644,42 +1692,48 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
     if (sl) { scope->spare = 0; slab_free_ownerless(sl); }
     sl = msg_slab_new(need); /* may park: the actor can migrate meanwhile */
     FPR_COST_ADD(fpr_hart(), cost_msg_slabs, 1);
-    scope->spare = sl;
   }
   sl->hp = (char *)(sl + 1);
-  sl->promoted = 0; /* reissued (fpr_arc_decref's pre-check): nothing in it is referenced */
-  sl->pushed = 0;
+  sl->promoted = 0; sl->pushed = 0;
+  sl->holds = 1; /* the scope owns this unseen/reusable slab before publication */
+  scope->spare = 0;
+  scope->next_slab = sl; /* cancellation can find it before the boundary commits */
+  scope->generations = 1;
   h = fpr_hart();
   if (h) h->copy_pid = pid;
-  dctx_t c = {sl->hp, sl, novec, movevec, 0};
+  dctx_t c = {.hp=sl->hp, .sl=sl, .novec=novec, .movevec=movevec};
   V r = dc_dup(v, &c);
   sl->hp = c.hp;
-  scope->spare = 0; /* it is the state now; transfer_retire brings it back */
-  /* the old state dies with this boundary; a Vector of it that had to be
-   * COPIED (boxed columns, or not this actor's) is linear, so its one owner
-   * releases the original's storage here instead of leaking it */
   if (c.released) vec_release_in(v);
   return r;
 }
 static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) { return transfer_copy_in(v, scope, novec, 0); }
-/* the state the turn just left behind: its slab becomes the spare when
- * nothing else references it.  The unlocked reads are sound as they were in
- * the old transfer_free: only this actor could promote from the slab, and a
- * count another actor's drop takes to zero frees the slab on that path. */
+/* Commit the next state after arena/root teardown. A retained graph keeps its
+ * existing hold; otherwise the previous slab loses exactly this scope's hold.
+ * Exported roots/borrow windows can still pin it. Only an unreferenced slab
+ * becomes the warm spare. No root walk is needed, including during reaping. */
 static void transfer_retire(struct fpr_scope *scope) {
-  V t = scope->held;
   scope->held = 0;
-  /* Actor handles are shared ACBs, not copied cells with slab preheaders. */
-  if (ISINT(t) || !fpr_in_heap(t) || TID(t) == T_ACTOR) return;
-  fpr_slab_t *ts = slab_of(t);
-  if (!ts || ts->owner || ts->escaped || ts->holds) return;
+  if (scope->preserve_state) { scope->preserve_state = 0; return; }
+  fpr_slab_t *ts = scope->state_slab;
+  scope->state_slab = scope->next_slab;
+  scope->next_slab = 0;
+  if (!ts) return;
+  fpr_lock(&arc_lock);
+  if (!ts->holds) fpr_cpanic("state copy: missing scope hold");
+  ts->holds--;
+  int reusable = !ts->owner && !ts->escaped && !ts->holds;
+  fpr_unlock(&arc_lock);
+  if (!reusable) return;
   if (!scope->spare) { scope->spare = ts; return; }
   fpr_slab_t *lesser = ts;
   if (slab_room(ts) > slab_room(scope->spare)) { lesser = scope->spare; scope->spare = ts; }
   slab_free_ownerless(lesser);
 }
-/* loop exit and death: the state's slab and the spare go home */
 static void scope_release(struct fpr_scope *scope) {
+  /* An actor may die between copy and commit: release current AND pending. */
+  scope->preserve_state = 0;
+  transfer_retire(scope);
   transfer_retire(scope);
   if (scope->spare) { slab_free_ownerless(scope->spare); scope->spare = 0; }
 }
@@ -1714,6 +1768,8 @@ static struct fpr_scope *region_open(fpr_hart_t *h, uw seq) {
   struct fpr_scope **head = scope_head(h);
   sc->previous = *head;
   sc->held = 0; sc->spare = 0;
+  sc->state_slab = sc->next_slab = 0;
+  sc->generations = 0; sc->immutable_state = sc->preserve_state = 0;
   sc->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
   sc->seq = seq;
   struct fpr_pool **slot = override_slot(h);

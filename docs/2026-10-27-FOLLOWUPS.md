@@ -12,7 +12,7 @@ Plans and analysis scaffolding alone do not complete an item.
 | Scalar vector fast paths | Guarded direct flat Int/F64/F32 reads and length, exact bounds/trap behavior and a C fallback | First milestone complete |
 | Request/reply locality | A bounded handoff/locality policy with fairness/migration coverage and paired message measurements | First milestone complete |
 | Loop optimizations | Shared native-IR loop analysis and a verified conservative invariant-motion pass; traps/effects remain ordered | First milestone complete; motion is opt-in |
-| Generational persistent-state copying | A safe initial immutable-state path that avoids copying retained old subgraphs at each cycle, with bounded retained generations/compaction and conservative fallback | Pending |
+| Generational persistent-state copying | A safe initial immutable-state path that avoids copying retained old subgraphs at each cycle, with bounded retained generations/compaction and conservative fallback | First milestone complete |
 
 ## 1. Reset barriers and loop-aware inlining
 
@@ -189,7 +189,7 @@ This is admission locality, not migration/co-location of request/reply pairs.
 The preference changes un-aged weighted frequencies; the deterministic aged
 rule and existing conditional admission bound remain intact. Follow-up work
 can measure broader mixed loads and tail latency before increasing the budget.
-Item 5 remains pending.
+The broader goal proceeds to the state-copy implementation below.
 
 ## 4. Shared CFG facts and conservative loop motion
 
@@ -237,3 +237,75 @@ claims. `bench/2026-10-27-loop-motion.json` preserves the source, hashes and
 raw samples. No performance threshold was relaxed.
 
 Local evidence: `/private/tmp/fpr-loop-final-{units,kernels,paired}.log`.
+
+## 5. Bounded single-slab state generations
+
+Managed state copies can retain immutable nodes from the current transfer slab
+and append new nodes into its remaining space. The next transfer compacts
+deeply after eight generations, sooner if it cannot fit or if the old slab
+has ever been promoted. Vectors, device/register storage and other existing
+mutable-state refusals keep their full-copy/refusal paths. Builtin loops keep
+their existing heap implementation. Compile the runtime with
+`FPR_STATE_GENERATIONS=1` (or zero) for the independent full-copy control.
+
+All generations remain in **one slab**, with at most one warm spare. Every
+retained heap reference stays within that slab; immutable statics and actor
+handles keep their existing identities. This avoids adding cross-slab graph
+dependencies to ARC. Message/admission copies have no retention context and
+still deep-copy. Loop exit copies the result into its caller's pool. Retired
+garbage stays bounded by slab capacity and the eight-generation age limit;
+this is a single-slab append/compact policy, not a general generational GC.
+As before, separately exported roots can pin their own retired slabs until
+their holders release them.
+
+The scope owns one explicit hold on each current/pending transfer slab.
+Commit retires exactly the old hold, retaining the current one for an append.
+Only slabs with no holds or escaped roots become reusable spares. Reaping
+releases both current and pending state without walking a partial graph.
+This also keeps an ARC export alive safely across compaction and loop exit.
+Borrowed state is immutable under the compiler's fresh-root and reset-barrier
+reuse rules from item 1; foreign code must obey the same value contract.
+Arbitrary C writes into a borrowed tuple are outside this supported path.
+
+`check_state_generations.py` covers retained aliases, changed strings, growing
+list prefixes, capacity-forced early compaction, a promoted old root read after
+loop teardown, ARC counts, and repeated kills of actors parked with live state.
+It also hands state to another actor, drops both external ARC shares, closes
+the reader's borrow window, and checks that the scope can still read its state.
+It runs 32 native cases with generations/full-copy and reuse on/off, one/four
+harts. The alias test copies **960,128,000 -> 121,088,000 bytes** in every
+configuration (122,048,000 bytes with the additional last-holder ARC case).
+The generation bound is checked by transfer-slab identity,
+not just equal output. The full-copy option is compiled into a separately
+keyed runtime, not inferred from a changed environment at execution time.
+
+Existing tests pass for one million turns on a 64 MiB heap, nested
+arena/loop/loopWith cancellation, bare actor handles, all three Vector-state
+refusals, 5,000 received keys retained across turns, and bounded loopWith
+caller growth. Compiler-placed loop/call regions, nested adoption/copy-out,
+and 10,000 Vector-keeper ticks also pass with bounded memory on one/four
+harts. Native migration is observed in the nested-arena regression.
+Reset-reuse controls and consuming workers retain their answers, failure
+order and 20,000-to-10,000 allocation ratchets.
+
+Seven alternating paired runs, Darwin arm64, one hart, 1,000 turns retaining
+a 10,000-element list while changing a small string:
+
+| Runtime | Median wall time | State bytes copied | Message slabs |
+|---|---:|---:|---:|
+| Prior main `d5834ff` | 67.17 ms | 480,096,000 | 2 |
+| Eight generations | 13.04 ms | 60,096,000 | 2 |
+| Candidate, full-copy control | 68.98 ms | 480,096,000 | 2 |
+
+This is **5.15x** faster with **7.99x** less copying on this persistent-state
+case. Allocations, allocated bytes and buddy counts are unchanged; candidate
+binary size grows by 16 bytes (469,336 -> 469,352). All answers and copy-byte
+ledgers are checked on every run. The prior runtime is compiled against the
+same current header/compiler. Source, hashes and samples are checked in at
+`bench/2026-10-27-state-generations.json`. These are host results; physical
+QOS/ESP/board qualification and broader workload measurements remain open.
+
+`cost_state_bytes` now describes actual copied bytes, including zero for
+fully retained state, rather than an implicit live-state-size estimate.
+Local evidence: `/private/tmp/fpr-generations-{native-final2,focused,loops,
+migration,reset,reuse,paired,vectors,regions,cost}.log`.

@@ -470,8 +470,9 @@ typedef struct {
                         * receive trampoline): the denominator of the
                         * per-turn ledgers (docs/2026-10-19-RECEIVE-TURN-ARENA.md) */
   uint64_t cost_state_copies, cost_state_bytes; /* of cost_copies/cost_copy_bytes: the
-                        * transfer copies across a turn boundary -- the state's size,
-                        * as the regions plan measures it (docs/2026-10-24-REGIONS-STAGE0.md) */
+                        * transfer copies across a turn boundary. Bytes count what
+                        * was actually copied: retained generations can cost zero;
+                        * full compactions still count the complete live graph. */
 #endif
 } fpr_hart_t;
 
