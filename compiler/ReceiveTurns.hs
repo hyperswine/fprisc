@@ -32,6 +32,7 @@ import Core.Syntax
 import Compiler.DataLayout (tupWideBase)
 import Core.Region.Interface
 import qualified Core.Region.Types as Region
+import qualified Core.Region.CallSites as Sites
 import Type.Syntax (Type (..))
 import Control.Monad (unless,forM_)
 import qualified Core.Region.Analysis as Analysis
@@ -97,8 +98,8 @@ validateSource (Rewrite _ _ _ groups _ (Authority before membership context shar
       unless (length oldPs==length newPs && newLive `S.isSubsetOf` oldLive) (bad ("dead argument became observable at "++n))
 
 receiveTurns :: Bool -> Bool -> M.Map Name (CostEq,CostEq) -> M.Map Name Interface
-             -> Region.ValueModel -> S.Set Name -> Prog -> S.Set Name -> Prog -> Either String Rewrite
-receiveTurns loopRegions callRegionsOn contextEqs interfaces model shared context joins prog = do
+             -> Region.ValueModel -> Sites.CallSites -> S.Set Name -> Prog -> S.Set Name -> Prog -> Either String Rewrite
+receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared context joins prog = do
   let result=Rewrite final (notes++callNotes) generated selectedGroups callTargets (Authority prog (M.keysSet membership) context shared)
   verifyRewrite prog result
   pure result
@@ -146,7 +147,7 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model shared contex
     callCandidateSet=S.fromList callCandidates
     callTargets=if not callRegionsOn then M.empty else M.fromList
       [(n,targets) | (n,body)<-M.toList prog,M.member n interfaces,
-        let targets=S.filter (\g->g `S.member` callCandidateSet && not (sameGroup n g)) (refs (fst body) (snd body)),
+        let targets=S.filter (\g->g `S.member` callCandidateSet && copyableAt n g && not (sameGroup n g)) (refs (fst body) (snd body)),
         not (S.null targets)]
     sameGroup a b=case (M.lookup a sccIx,M.lookup b sccIx) of (Just x,Just y)->x==y;_->False
     describe ns=concatMap one ns
@@ -247,6 +248,7 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model shared contex
         callableRegionEntry signature ->
           Region.copyable model (interfaceResult signature) && allocGrows growingOmega eq && S.notMember g loopEntries
       _->False
+    copyableAt owner g=Sites.mayCopyResult sites (maybe owner generatedSource (M.lookup owner generated)) g
     callRegions p = (M.mapWithKey site p, [ "call-regions: " ++ n ++ ": " ++ show k ++ " call(s) under a pending region"
                                           | (n, k) <- M.toList counts, k > 0 ])
       where
@@ -263,7 +265,7 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model shared contex
         sameGroup a b = case (M.lookup a sccIx, M.lookup b sccIx) of (Just x, Just y) -> x == y; _ -> False
         -- wrap: (expression, sites so far) -> (expression', sites)
         wrap n bound k e = case spine e of
-          (CVar g, as@(_ : _)) | S.notMember g bound, not (sameGroup n g), costly g (length as) ->
+          (CVar g, as@(_ : _)) | S.notMember g bound, not (sameGroup n g), copyableAt n g, costly g (length as) ->
             -- the arguments are evaluated inside the pending region, as part
             -- of the call: a trip moves only later allocations to the arena,
             -- and the arguments die with the call (unbound, so the field

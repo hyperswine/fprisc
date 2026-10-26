@@ -1,4 +1,4 @@
-module Core.Typed.Walk (mapChildrenM, mapUpdateM, localUses, allBinders, renameUses, renameBinders) where
+module Core.Typed.Walk (mapChildrenM, mapUpdateM, localUses, allBinders, renameUses, renameBinders,renameBinderNames) where
 import Core.Typed.Syntax
 import Core.Identity (BinderId)
 import Data.Functor.Const (Const(..))
@@ -95,9 +95,18 @@ renameUses names e=runIdentity $ do
 -- Clone introduced identities as well as their uses. Free lexical identities
 -- are deliberately absent from the map and remain references to the caller.
 renameBinders :: M.Map BinderId BinderId -> Expr -> Expr
-renameBinders names = go . renameUses names
+renameBinders names = mapIntroduced binder . renameUses names
   where
     binder b=b {binderId=M.findWithDefault (binderId b) (binderId b) names}
+
+-- Display names are not references. Hygiene changes binders alone; their
+-- identity-based uses and captured identities keep the same resolution.
+renameBinderNames :: M.Map BinderId String -> Expr -> Expr
+renameBinderNames names=mapIntroduced (\b->b {binderName=M.findWithDefault (binderName b) (binderId b) names})
+
+mapIntroduced :: (Binder -> Binder) -> Expr -> Expr
+mapIntroduced binder=go
+  where
     pattern' p=p {patNode=case patNode p of
       Bind b->Bind (binder b)
       ConstructorPattern n ps->ConstructorPattern n (map pattern' ps)

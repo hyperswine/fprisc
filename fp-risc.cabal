@@ -151,6 +151,7 @@ executable fpr
       Core.Region.Runtime
       Core.Region.Analysis
       Core.Region.Flow
+      Core.Region.CallSites
       Core.Opt.Representation
       Core.Analysis.Scope
       Core.Analysis.Alpha
@@ -173,6 +174,7 @@ executable fpr
       Type.Relation
       Type.Substitution
       Core.Typed.Instantiate
+      Core.Typed.Inline
       Core.Typed.Specialize
       Compiler.VectorLayout
       Compiler.VectorOperation

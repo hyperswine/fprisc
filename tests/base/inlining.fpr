@@ -1,5 +1,6 @@
 # the base inliner changes no observable behaviour: tools build this with and
 # without inlining (FPR_NO_INLINE=1) and the outputs must be equal
+profile base.
 say : String -> Int -> Int .
 say tag v = _ = print "eval {tag}"; v.
 
@@ -20,7 +21,7 @@ sub a b = a - b.
 mixf : (Int -> Int -> Int) -> Int -> Int .
 mixf sub x = sub x 1.
 
-# a local in the CALLER named like a global the callee uses: the site is skipped
+# a caller local named like a callee global must keep its lexical resolution
 usesSub : Int -> Int .
 usesSub x = sub x 100.
 
@@ -35,11 +36,20 @@ twice : (Int -> Int -> Int) -> Int -> Int -> Int .
 twice f x y = f (f x y) y.
 
 # the caller binds a local named `sub` and calls a helper that uses the
-# global `sub`: inlining there would capture it, so the site stays a call
+# global `sub`: typed inlining must rename the local before erasure
 shadow : Int -> Int .
 shadow v =
   sub = v;
   usesSub sub.
+
+identity x = x.
+poly n = ident x = x; combine y = (ident y,ident True); combine n.
+wide : F64 -> F64.
+wide x = identity (x + 1.25).
+narrow : F32 -> F32.
+narrow x = identity (x + 1.25f).
+Token 1 = Type Int.
+linear n = case identity (Token n) of Token x -> x.
 
 main =
   r1 = add3 (say "a" 1) (say "b" 2) (say "c" 3);
@@ -50,4 +60,6 @@ main =
   r6 = isEven 11;
   r7 = twice band 255 15;
   r8 = twice (fn p q -> p + q) 1 2;
+  (p,b) = poly 23;
+  _ = print "typed-inline {p} {b} {wide 2.25} {F32.str (narrow 2.25f)} {linear 31}";
   print "r1={r1} r2={r2} r3={r3} r4={r4} r5={r5} r6={r6} r7={r7} r8={r8}".

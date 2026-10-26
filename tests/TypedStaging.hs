@@ -13,7 +13,7 @@ import qualified Codegen.Lower as Lower
 import qualified Codegen.Eval as Eval
 import Codegen.Policy (m2Policy)
 import Mono (specializeFunctions)
-import Inline (inlineWith)
+import Inline (inlineCompatibilityWithImports)
 import Control.Monad (unless)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
@@ -43,7 +43,7 @@ erased closed=evalState (do
   pure (M.insert (T.functionName (closedRoot closed)) root (M.fromList codes))) initial
 answer prog name args=let (ir,_)=Lower.lowerProgram m2Policy M.empty prog prog M.empty M.empty
                      in Eval.ocResult (Eval.evalProgram ir name args)
-optimized=inlineWith (const False) 3 24 . specializeFunctions "staging-test" M.empty M.empty
+optimized=inlineCompatibilityWithImports S.empty M.empty (const False) 3 24 . specializeFunctions "staging-test" M.empty M.empty
 occurrences :: BinderId -> T.Expr -> Int
 occurrences uid e=(case T.exprNode e of T.Var (T.Local used) | uid==used->1;_->0)
   +getSum (getConst (mapChildrenM (Const . Sum . occurrences uid) e))

@@ -37,7 +37,7 @@ fusionUnsafeReason prog = go S.empty
       (CVar h, args@(_ : _))
         | h `elem` safePrims, Just ar <- lookup h primArities, length args == ar -> firstJust (map (body' seen env) args)
         | h `elem` safePrims -> Just ("a partial application of `" ++ h ++ "`")
-        | h == "$fuel" -> Nothing
+        | h == entryTickName -> Nothing
         | S.member h env -> Just ("a call through the parameter `" ++ h ++ "` (unknown function)")
         | Just (ps, _) <- M.lookup h prog, length ps == length args -> firstJust (map (body' seen env) args ++ [go seen h])
         | Just _ <- M.lookup h prog -> Just ("a partial application of `" ++ h ++ "`")

@@ -1,4 +1,8 @@
-module Core.Primitives (corePrims, primArities, scalarPrimitives, uPrims, fPrimsOf, fPrims, FloatWidth(..), floatWidthName) where
+module Core.Primitives (corePrims, primArities, scalarPrimitives, uPrims, fPrimsOf, fPrims, FloatWidth(..), floatWidthName,entryTickName) where
+
+-- Compatibility spelling at the erasure boundary; typed Core uses EntryTick.
+entryTickName :: String
+entryTickName = "$fuel"
 
 data FloatWidth = Float32 | Float64 deriving (Eq, Show)
 floatWidthName :: FloatWidth -> String

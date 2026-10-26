@@ -42,7 +42,7 @@ import Workers (ScalarSignatures, internalWorker, scalarPrimitives)
 
 import Core.Syntax (Core (..), Prog)
 import Core.Utils
-import Core.Primitives (corePrims, primArities)
+import Core.Primitives (corePrims, primArities, entryTickName)
 import Core.Opt.Normalize (normIn, indexedMemory)
 import Core.Opt.Vector
 import Core.Opt.Vector.Plan
@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 120 -- region control IR retains checked bodies, protocol sorts and helper ownership
+codegenRev = 121 -- checked Base inlining precedes region planning; preserve entry ticks and invalidate older optimized artifacts
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -172,7 +172,7 @@ externals ext prog = S.toList (S.fromList (concat [go (S.fromList ps) b [] | (_,
       CVar n
         | S.member n env || M.member n prog || M.member n ext || S.member n prims -> acc
         | "$sym." `isPrefixOf` n -> acc -- a linker symbol, not a runtime contract
-        | n == "$fuel" -> acc -- an inlined entry's fuel tick (genT)
+        | n == entryTickName -> acc -- an inlined entry's fuel tick
         | otherwise -> n : acc
       CApp a b -> go env a (go env b acc)
       CLet x a b -> go env a (go (S.insert x env) b acc)

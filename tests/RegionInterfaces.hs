@@ -1,3 +1,4 @@
+import qualified Core.Region.CallSites as Sites
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Callback (CallbackMode(..))
 import qualified Core.Region.Types as V
@@ -245,7 +246,7 @@ main=do
   let planProg=R.programCore input
       modelInput=right (V.valueModel (Source.programTypes (closedInput (Native.nativeClosed compiled))))
       plan=right (Turns.receiveTurns True True (Cost.costProgram M.empty M.empty planProg)
-        (R.programInterfaces input) modelInput (M.keysSet (R.programInterfaces input)) planProg (Native.nativeJoins compiled) planProg)
+        (R.programInterfaces input) modelInput (Sites.compatibilitySites (M.keysSet planProg)) (M.keysSet (R.programInterfaces input)) planProg (Native.nativeJoins compiled) planProg)
       changedParent=native "physical" "counter n = loop = (fn k -> _ = str k; if k == 0 then 0 else loop (k - 2)); loop n." (S.singleton "counter")
       projected=right (Typed.emitProgram typed)
       legacy=Turns.rewriteProgram plan

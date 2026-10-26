@@ -1,5 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
--- Codegen.Lower: Core -> typed IR for the scalar subset of M1.
+-- Codegen.Lower: erased checked/compatibility Core -> native typed CFGs.
 --
 -- The input is the Core a function has when `Codegen.compileFnBody`
 -- receives it: after inlining, fusion, workers, `normIn` and reuse.  The
@@ -7,15 +7,16 @@
 -- byte strings, generic apply, and runtime value-ABI calls (including floats).
 -- Private workers retain their representation signatures and all entries
 -- retain their declared stack/fuel obligations.  Everything else is refused
--- with a reason naming the form, and the function stays on the legacy
--- path: an unsupported form is a reported fallback, never a partial IR.
+-- with a reason naming the form. The native-only driver rejects that
+-- refusal; it never publishes partial IR or a translation fallback.
 --
--- Evaluation order is the legacy generator's: arguments left to right,
+-- Evaluation order follows the runtime/evaluator contract: arguments left to right,
 -- each fully evaluated before the next; a branch's arms are their own
 -- blocks; a trap happens where its operation is.
 module Codegen.Lower (lowerFn, lowerProgram, Reason, Prim (..)) where
 
 import Codegen.IR
+import Core.Primitives (entryTickName)
 import Codegen.Policy
 import Codegen.Target.Common (mangleName, functionSymbol)
 import Control.Monad (when)
@@ -296,7 +297,7 @@ foreignName h = not (any (`isPrefixOf` h) expanded) && h `notElem` inlined
     -- memory forms, link-time symbols and the inlined entry tick. F64/F32 use the declared runtime V ABI, not raw FP registers.
     -- A `$`-name outside them ($receiveLoop, $vec.at/get/len)
     -- is a direct C entry in both generators
-    expanded = ["$arc.", "$scalar.", "$mem.", "$sym.", "$fuel"]
+    expanded = ["$arc.", "$scalar.", "$mem.", "$sym.", entryTickName]
     -- the plain names Codegen.inlineTable expands in place
     inlined = ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "charAt", "strlen", "band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]
 
@@ -552,7 +553,7 @@ lowerVal cx env = \case
       | isPrim cx env h, scalarPrefix `isPrefixOf` h, Just o <- M.lookup (drop (length scalarPrefix) h) arithOps, [a, b] <- args -> arith o a b
       | isPrim cx env h, scalarPrefix `isPrefixOf` h, Just o <- M.lookup (drop (length scalarPrefix) h) cmpOps, [a, b] <- args -> compare' o a b
       -- an inlined callee's entry safepoint (Inline.hs); its value is Unit
-      | h == "$fuel", [_] <- args -> when (polFuel (cxPolicy cx)) (emitDo OSafepoint) >> nullary 0 0
+      | h == entryTickName, [_] <- args -> when (polFuel (cxPolicy cx)) (emitDo OSafepoint) >> nullary 0 0
       -- a loop region's mark and back-edge test (docs/2026-10-25-REGIONS-LOOPS-CALLS.md):
       -- the hart's allocation clock is one hart-cell load; the test is a mask,
       -- a subtraction that cannot overflow (both sides lie in [0, mask]) and a

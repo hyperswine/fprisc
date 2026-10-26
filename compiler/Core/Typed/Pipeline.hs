@@ -2,7 +2,7 @@
 -- Native semantic passes operate on a complete owned program before erasure.
 -- Layout authority stays attached to the closed product it helped construct.
 module Core.Typed.Pipeline
-  (ClosedProgram,closeProgram,specializeProgramWith,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
+  (ClosedProgram,closeProgram,specializeProgramWith,inlinePrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
 import Core.Typed.Program
 import Core.Typed.Syntax
 import Core.Typed.Layout
@@ -11,11 +11,12 @@ import Core.Typed.Stage
 import Core.Typed.Resolve
 import Core.Typed.Callback
 import qualified Core.Typed.Callback.Catalog as Callbacks
+import qualified Core.Typed.Inline as Inline
 import Core.Typed.Verify (sameType)
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Compiler.DataLayout
 import Control.Monad.State.Strict
-import Control.Monad (unless)
+import Control.Monad (unless,foldM)
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -78,6 +79,38 @@ specializeProgramWith mode providers p=do
       [[(CodeId name,(name,closedRoot f))]
         ++[(key,(name,codeAsFunction c)) | (key,c)<-M.toList (closedCode f)]
       | (name,f)<-M.toList catalog])
+
+-- All owned artifacts advance against one immutable snapshot per round.
+-- Forbidden globals are linker-private source entries from other artifacts;
+-- their bodies cannot be copied into a caller without an import contract.
+inlinePrograms :: Ord key => Int -> Int -> M.Map key (S.Set String,S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
+inlinePrograms rounds limit inputs=do
+  unless (rounds>=0 && limit>=0) (Left "typed inline pipeline: negative round/node budget")
+  let programs=[p | (_,_,p)<-M.elems inputs]
+  case programs of
+    []->pure M.empty
+    base:_->do
+      mapM_ (\p->unless (programNamespace (closedInput p)==programNamespace (closedInput base)
+        && constructorLayouts (closedLayouts p)==constructorLayouts (closedLayouts base)
+        && shapeLayouts (closedLayouts p)==shapeLayouts (closedLayouts base))
+          (Left "typed inline pipeline: checking namespace/layout mismatch")) programs
+      foldM step (M.map (\(_,_,p)->p) inputs) [1..rounds]
+  where
+    step programs _=do
+      let allPrograms=M.elems programs
+          owned=M.mapWithKey (\key p->let (_,elided,_)=inputs M.! key in M.withoutKeys (closedDefinitions p) elided) programs
+          owners=M.unions (M.elems owned)
+      unless (M.size owners==sum (map M.size (M.elems owned)))
+        (Left "typed inline pipeline: duplicate source owner")
+      let types=programTypes (closedInput (head allPrograms))
+      snapshot<-Callbacks.catalogPrograms types (map closedInput allPrograms) owners
+      M.traverseWithKey (\key p->do
+        let source=closedInput p
+        definitions<-mapM (Inline.inlineClosed limit (let (forbidden,_,_)=inputs M.! key in forbidden) (programNamespace source)
+          (programTypes source) (programArities source) snapshot) (closedDefinitions p)
+        let output=ClosedProgram source (closedLayouts p) definitions
+        verifyClosedProgram output
+        pure output) programs
 
 verifyClosedProgram :: ClosedProgram -> Either String ()
 verifyClosedProgram result=do

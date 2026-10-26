@@ -14,7 +14,7 @@ import qualified Compiler.Native.Linked as Linked
 import qualified Compiler.Native.Imports as NativeImports
 import Compiler.DataLayout (Layouts(..))
 import Mono (specializeCompatibility, qualifyAux)
-import Inline (inlineSmall, inlineWithImports, vecPeek)
+import Inline (inlineSmall, inlineCompatibilityWithImports, vecPeek)
 import qualified Compiler.Native.Regions as Regions
 import qualified Compiler.Native.Regions.Typed as TypedRegions
 import qualified Core.Typed.Syntax as TCore
@@ -824,11 +824,11 @@ compileWithInterface accepted = do
                        forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList lowered, takeWhile (/= '@') n == want] $ \(n, d) ->
                          hPutStrLn stderr ("core " ++ n ++ ": " ++ show d ++ "\nnormalized: " ++ show (fmap normArc d))
                        pure lowered
-                     -- base: inline small non-recursive functions at their
-                     -- saturated sites within the unit (Inline.hs), with
-                     -- function-valued arguments substituted
+                     -- Base checked owners were already inlined before
+                     -- region placement. Only compatibility bodies/templates
+                     -- and the remaining vecPeek transform run here.
                      else do
-                       let inl = (if oNoInline opts then id else inlineWithImports imports pureOutside 3 24) (if (not (Options.cgVecPeek codegen)) then prog else vecPeek prog)
+                       let inl = (if oNoInline opts then id else inlineCompatibilityWithImports checkedCallbackTargets imports pureOutside 3 24) (if (not (Options.cgVecPeek codegen)) then prog else vecPeek prog)
                        let dump = Options.diagCore diagnostic
                        forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList inl, takeWhile (/= '@') n == want] $ \(n, d) ->
                          hPutStrLn stderr ("core " ++ n ++ ": " ++ show d)
@@ -874,7 +874,13 @@ compileWithInterface accepted = do
                 preludeElided (nativeUnit preludeChecked) | preludeEmitted]
             ++ [Linked.artifact (Linked.DependencyArtifact h) (bindNames uts `S.union` unitConsOf h)
                 (unitElided h) (nativeUnit unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
-          linkedResult=sequence artifactResults >>= Linked.linkArtifacts >>= Linked.specializeLinked callbackMode
+          linkedResult=do
+            base<-sequence artifactResults >>= Linked.linkArtifacts
+            original<-checkedStage "callback specialization before inlining" (Linked.specializeLinked callbackMode base)
+            if oArc opts || oNoInline opts then pure original else
+              do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinked 3 24 original)
+                 checkedStage "callback specialization after inlining" (Linked.specializeLinked callbackMode inlined)
+          checkedStage label=either (Left . ((label++": ")++)) Right
           linked=either error id linkedResult
           declarationsResult=do
             verified<-linkedResult

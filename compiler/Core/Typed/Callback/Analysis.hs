@@ -1,5 +1,5 @@
 -- Callback demand and recursive stability over lexical identities.
-module Core.Typed.Callback.Analysis (CallbackAnalysis,analyzeCallbacks,callbackDemands,stableCallback) where
+module Core.Typed.Callback.Analysis (CallbackAnalysis,analyzeCallbacks,callbackDemands,recursiveCallbacks,stableCallback) where
 import Core.Typed.Callback.Model
 import Core.Typed.Syntax
 import Core.Typed.Walk (mapChildrenM,localUses)
@@ -9,16 +9,19 @@ import Data.Graph (SCC(..),stronglyConnComp)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data CallbackAnalysis=CallbackAnalysis (M.Map Target Template) (M.Map Target [Site]) (M.Map Target (S.Set Slot)) (M.Map Target (S.Set Target))
-analyzeCallbacks templates=CallbackAnalysis templates sites demands groups
+data CallbackAnalysis=CallbackAnalysis (M.Map Target Template) (M.Map Target [Site]) (M.Map Target (S.Set Slot)) (M.Map Target (S.Set Target)) (S.Set Target)
+analyzeCallbacks templates=CallbackAnalysis templates sites demands groups recursive
   where
     sites=M.map (templateSites templates) templates
     demands=demanded templates sites
-    groups=M.fromList [(t,S.fromList ts) | component<-stronglyConnComp
-      [(t,t,S.toList (dependencies template `S.intersection` M.keysSet templates)) | (t,template)<-M.toList templates],
+    components=stronglyConnComp
+      [(t,t,S.toList (dependencies template `S.intersection` M.keysSet templates)) | (t,template)<-M.toList templates]
+    groups=M.fromList [(t,S.fromList ts) | component<-components,
       let ts=case component of AcyclicSCC t->[t];CyclicSCC xs->xs,t<-ts]
-callbackDemands (CallbackAnalysis _ _ demands _)=demands
-stableCallback (CallbackAnalysis templates sites demands groups) target slot=
+    recursive=S.fromList [t | CyclicSCC ts<-components,t<-ts]
+callbackDemands (CallbackAnalysis _ _ demands _ _)=demands
+recursiveCallbacks (CallbackAnalysis _ _ _ _ recursive)=recursive
+stableCallback (CallbackAnalysis templates sites demands groups _) target slot=
   stableRole templates demands sites (M.findWithDefault (S.singleton target) target groups) target slot
 
 -- Symbolic callback roles use term identities, never analysis-only spellings.

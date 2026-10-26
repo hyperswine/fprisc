@@ -1,6 +1,7 @@
 -- Checked code interfaces. Code quantifiers are distinct from each captured
 -- value's own forall; one instantiation relates captures, arguments and result.
-module Core.Typed.Contract (codeContracts,codeContractsWith,contractVariables,sameContract,checkInstance) where
+module Core.Typed.Contract (codeContracts,codeContractsWith,contractVariables,sameContract,checkInstance,
+  ContractInstance,instantiateContract,instanceFresh,instanceSolution,instanceNext) where
 import Core.Typed.Syntax
 import Core.Typed.Walk (mapChildrenM)
 import Type.Syntax
@@ -59,21 +60,32 @@ sameContract a b=contractKind a==contractKind b && contractQuantifiers a==contra
     | ((Forall qs rs t,shape),(Forall qs' rs' t',shape'))<-zip (contractCaptures a) (contractCaptures b)]
 
 checkInstance :: CodeContract -> [Scheme] -> Type -> Either String ()
-checkInstance c actualCaptures actualType=do
+checkInstance c caps ty=instantiateContract 0 c caps ty >> pure ()
+
+-- A checked instantiation carries both substitutions: freshen the template's
+-- quantified variables, then solve them against rigid caller annotations.
+-- Capture-local foralls cannot escape into the ordinary call interface.
+data ContractInstance=ContractInstance Substitution Substitution Int
+instanceFresh (ContractInstance s _ _)=s
+instanceSolution (ContractInstance _ s _)=s
+instanceNext (ContractInstance _ _ n)=n
+instantiateContract :: Int -> CodeContract -> [Scheme] -> Type -> Either String ContractInstance
+instantiateContract first c actualCaptures actualType=do
   unless (length actualCaptures==length captures) (Left "code capture arity")
   let (qs,rs)=contractQuantifiers c
       allTypes=actualType:signature:map schemeBody (actualCaptures++captures)
-      next=above allTypes
+      next=max first (above allTypes)
       (sub,flex,start)=freshSubstitution next (Forall qs rs (TTupT allTypes))
       expected=map (applyScheme sub) captures
   (pairs,skolems,end)<-foldM capture ([],mempty,start) (zip expected actualCaptures)
-  (solved,_)<-unifyTypes flex end ((applyType sub signature,actualType):pairs)
+  (solved,after)<-unifyTypes flex end ((applyType sub signature,actualType):pairs)
   -- Capture-local quantifiers cannot solve an outer code quantifier. Such a
   -- solution would let the capture's private type escape its lexical scope.
   let images=mconcat ([variables (applyType solved (TV q)) | q<-S.toList (fst flex)]
                 ++[variables (applyType solved (TRec (RV q))) | q<-S.toList (snd flex)])
   unless (S.null (fst images `S.intersection` fst skolems)
        && S.null (snd images `S.intersection` snd skolems)) (Left "code capture quantifier escapes")
+  pure (ContractInstance sub solved after)
   where
     captures=map fst (contractCaptures c)
     signature=foldr TFn (contractResult c) (contractParameters c)

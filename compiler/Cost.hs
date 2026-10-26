@@ -34,6 +34,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import Data.Ratio (denominator, numerator, (%))
 import Core.Syntax (Core(..), Name, Prog)
+import Core.Primitives (entryTickName)
 import Frontend.Syntax (SExpr(..), STop(..))
 import Safety (Measure (..), MeasureKind (..))
 
@@ -253,6 +254,7 @@ allocGrows growing (CostEq _ a _ _) = let a' = simp a in mentionsParams a' || an
 
 primCostOf :: Name -> [Cost] -> Maybe (Cost, Cost)
 primCostOf g lens
+  | g == entryTickName, [_] <- lens = unit -- entry scheduling work, no actor allocation
   | g `elem` ["+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "and", "or", "not", "and2", "or2", "neg"] = unit
   | g `elem` ["Word." ++ w | w <- ["fromInt", "toInt", "and", "or", "xor", "add", "sub", "not", "shl", "shr", "mask", "eq", "bitSet", "bitClear", "bitTest"]] = unit
   | g `elem` ["error", "drop"] = unit

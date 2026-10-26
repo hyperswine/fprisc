@@ -513,11 +513,18 @@ def pendreset(tmp):
     # call regions nested past the pend stack's inline eight, across a
     # Sys.poolReset: the grown stack must not live in the pool the reset
     # frees (it did: QOS's tidy loops panicked; this program segfaulted)
-    pr = tmp / 'pendreset'
-    run(['./fpr', 'build', 'tests/base/pendreset.fpr', '--with', 'tests/arc_churn/arcprobe.c', '-o', pr])
-    for harts in ('1', '4'):
-        p = run([pr], env={'FPR_HARTS': harts})
-        assert p.stdout == 'pendreset: 500509 500509 200010000, pend stack grew yes\n', p.stdout + p.stderr
+    for no_inline in (False, True):
+        pr = tmp / ('pendreset-deep' if no_inline else 'pendreset-default')
+        # Earlier inlining can collapse the ten-wrapper chain. Keep a
+        # deliberate deep-call build to prove the grown-stack regression,
+        # alongside the same results/reset checks under normal optimization.
+        run(['./fpr', 'build', 'tests/base/pendreset.fpr', '--with', 'tests/arc_churn/arcprobe.c', '-o', pr],
+            env={'FPR_NO_INLINE': str(int(no_inline))})
+        for harts in ('1', '4'):
+            p = run([pr], env={'FPR_HARTS': harts})
+            assert re.fullmatch(r'pendreset: 500509 500509 200010000, pend stack grew (yes|no)\n', p.stdout), p.stdout + p.stderr
+            if no_inline:
+                assert p.stdout.endswith('pend stack grew yes\n'), p.stdout + p.stderr
     print('Ten nested call regions grow the pend stack outside the pool, and a Sys.poolReset under it leaves later cells intact: PASS')
 
 @case
@@ -703,6 +710,7 @@ def inlining(tmp):
     off = run([exe0]).stdout
     assert on == off, (on, off)
     assert on.endswith('r1=6 r2=20 r3=7 r4=12 r5=-91 r6=False r7=15 r8=5\n') and on.count('eval tick') == 2, on
+    assert 'typed-inline 23 True 3.5 3.5 31\n' in on, on
     print('Inlining changes nothing observable: argument order, CAF arguments, function-valued parameters, shadowing, mutual recursion: PASS')
 
 @case

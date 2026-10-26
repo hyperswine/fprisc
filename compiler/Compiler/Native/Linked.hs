@@ -3,7 +3,7 @@
 -- one artifact emits each symbol. Private code keeps its source owner/contract.
 module Compiler.Native.Linked
   (ArtifactId(..),NativeArtifact,artifact,artifactId,artifactCore,artifactExports,artifactElided,
-   LinkedProgram,linkArtifacts,specializeLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
+   LinkedProgram,linkArtifacts,specializeLinked,inlineLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
 import Compiler.Native.Core
 import Compiler.DataLayout
 import Core.Typed.Program
@@ -141,3 +141,11 @@ specializeLinked mode p=do
     core<-specializeNativeWith mode providers (artifactCore a)
     artifact (artifactId a) (artifactExports a) (artifactElided a) core) as
   linkArtifacts changed
+
+-- Link visibility, not a spelling heuristic, governs imported templates.
+inlineLinked :: Int -> Int -> LinkedProgram -> Either String LinkedProgram
+inlineLinked rounds limit p=do
+  let inputs=M.mapWithKey (\key a->(S.fromList [name | (ArtifactSymbol home name,_)<-M.toList (linkedSymbols p),home/=key],artifactElided a,artifactCore a)) (linkedArtifacts p)
+  changed<-inlineNativePrograms rounds limit inputs
+  artifacts<-M.traverseWithKey (\key a->artifact key (artifactExports a) (artifactElided a) (changed M.! key)) (linkedArtifacts p)
+  linkArtifacts (M.elems artifacts)

@@ -127,8 +127,12 @@ trimCallbacks types@(TypeContext linears _) arities schemas templates plans remo
                 Wildcard->True
                 Bind b->binderId b `notElem` (localUses body++concat [localUses x | g<-guards,x<-case g of BoolGuard e->[e];PatternGuard _ e->[e]])
                 _->False
+              -- Simple unused match slots have no effects: their arguments
+              -- are already lexical snapshots. Drop them through forwarding
+              -- aliases too, or liveness may remove a callback formal while
+              -- cleanup leaves an alias RHS pointing at that dead formal.
               removable i a=case exprNode (unNote a) of
-                Var (Local uid)->uid `S.member` dead && all (\(Alternative ps gs body)->unused (ps!!i) gs body) alternatives
+                Var (Local _)->all (\(Alternative ps gs body)->unused (ps!!i) gs body) alternatives
                 _->False
               keep=[i | (i,a)<-zip [0..] args,not (removable i a)]
               project (Alternative ps gs body)=Alternative [p | (i,p)<-zip [0..] ps,i `elem` keep] gs body

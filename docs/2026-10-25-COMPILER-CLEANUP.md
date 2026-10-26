@@ -15,8 +15,8 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical calls, local/global/imported callback cloning and region control implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
-| Checked pipeline products and lint | Owned semantic/native and linked artifacts, region input/cost views, typed region control bodies and protocol/helper contracts, complete graph and imported interface contracts implemented; later pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical calls, local/global/imported callback cloning, region control and checked Base inlining implemented; layout temporaries/remaining forms, ARC and other later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Checked pipeline products and lint | Owned semantic/native and linked artifacts, region input/cost views, typed region control bodies and protocol/helper contracts, complete graph/imported interfaces and checked inlining round snapshots implemented; other later pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
@@ -788,3 +788,23 @@ extend the checked plan owner across all three native kernel builders.
 Record callback interfaces, descriptor/capture references and layout-map
 entry boundaries are checked before building CFGs. Later typed Core
 transformations and all other pending table entries remain full-goal work.
+
+## Checked Base inlining
+
+[Typed Base inlining](2026-10-26-TYPED-BASE-INLINING.md) carries checked
+instantiations, ownership shapes and fresh lexical identities through the
+inliner before region placement/erasure. Entry ticks retain scheduling and
+nonallocation contracts; linker visibility and original private code homes
+remain authoritative. Unscoped erased Base inliner entry points are retired.
+ARC and the other later transformations, plus all remaining table entries,
+remain required. Codegen revision 121 intentionally invalidates older
+optimized artifacts while physical calling conventions remain unchanged.
+
+The final fixed-source fresh-cache sweep passes all 136 Base jobs in 666.50
+seconds on six workers, without reused results or timeout changes. Saved/new
+compilers pass eight runtime and 32 emission comparisons across eight targets;
+fresh-cache QOS host/application/plugin admission and Sol compatibility/tail
+checks pass. Full call-cycle exclusion preserves generated-join receive loops
+and their original heap bounds. The stage page records the initial regressions,
+their fixes, explicit platform skips and preceding hosted CI; this checkpoint
+requires its own hosted result after push. The whole cleanup goal remains active.

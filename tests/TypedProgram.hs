@@ -1,4 +1,5 @@
 import qualified Core.Typed.Syntax as T
+import TypedInline (checkInlining)
 import qualified Core.Typed.Program as P
 import Core.Typed.Pipeline
 import Core.Typed.Callback
@@ -58,6 +59,7 @@ answer p name args=let (ir,_)=Lower.lowerProgram m2Policy M.empty p p M.empty M.
                    in Eval.ocResult (Eval.evalProgram ir name args)
 
 main=do
+  checkInlining compile
   let source="provider x = x. client n = local x = provider (n + x); local 2. factory x = fn y -> x + y. call n = (factory n) 1."
       names=S.fromList ["provider","client","factory","call"]
       (selected,output)=compile "unit" source names

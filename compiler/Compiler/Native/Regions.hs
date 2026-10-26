@@ -15,6 +15,7 @@ import Core.Identity
 import Core.Syntax hiding (Prog)
 import qualified Core.Syntax as C
 import Core.Region.Interface
+import qualified Core.Region.CallSites as Sites
 import qualified Core.Region.Types as Region
 import Core.Opt.Representation (eraseLayoutCasts)
 import Core.Analysis.Scope (qualifyPrivate,programNames)
@@ -91,7 +92,10 @@ place opts (Context (Program _ worldNs worldLayouts worldModel worldFaces worldS
       allCode=local `M.union` world
       same=M.isSubmapOfBy (==) local world
       view=if same then base else derive measures allCode
-  rewrite<-Turns.receiveTurns (loopRegions opts) (callRegions opts) (analysisCosts view) signatures model
+  let arities=M.map (length . fst) allCode
+      checked=Native.nativeDefinitions (programNative input)
+  sites<-Sites.callSites model arities (M.mapWithKey (\name _->Native.checkedFunction <$> M.lookup name checked) p)
+  rewrite<-Turns.receiveTurns (loopRegions opts) (callRegions opts) (analysisCosts view) signatures model sites
     (shared<>worldShared) allCode joins p
   typed<-Typed.build (programNative input) (M.map interfaceArity signatures) rewrite
   projection<-Typed.emitProgram typed

@@ -53,6 +53,7 @@ data Node
   | LayoutLiteral String
   | VectorBuild VectorBuilder Expr
   | CallRegion Expr
+  | EntryTick
   deriving (Show)
 -- Layout copies retain opaque row fields without inventing language types for
 -- them. Only replacements contain expressions, each with its checked type.

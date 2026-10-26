@@ -33,7 +33,7 @@ subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedStaging.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
 subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedCallbacks.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
-subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedProgram.hs'], cwd=ROOT,
+subprocess.run([*ghc, '-w', '-icompiler', '-itests', 'tests/TypedProgram.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
 subprocess.run([*ghc, '-w', '-icompiler', 'tests/RegionInterfaces.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)

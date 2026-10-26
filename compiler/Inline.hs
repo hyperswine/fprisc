@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 
--- Inline small non-recursive supercombinators at saturated call sites.
+-- Erased compatibility/ARC inlining and the remaining vecPeek transform.
+-- Checked Base inlining belongs to Core.Typed.Inline.
 --
 -- This reduces native call/entry overhead and exposes arithmetic and
 -- function-valued arguments to later vector/worker planning. Imported private
@@ -18,7 +19,7 @@
 -- program (exports, constructor stubs and function values still need
 -- their symbols); only the sites change.
 
-module Inline (inlineSmall, inlineWith,inlineWithImports, vecPeek) where
+module Inline (inlineSmall, inlineCompatibilityWithImports, vecPeek) where
 
 import Data.List (isInfixOf, isSuffixOf)
 import Control.Monad (foldM)
@@ -26,26 +27,19 @@ import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Core.Syntax (Core (..), Name, Prog)
+import Core.Primitives (entryTickName)
 
 -- | rounds, then the largest callee body (in Core nodes) worth inlining
 inlineSmall :: Int -> Int -> Prog -> Prog
-inlineSmall = inlineGo M.empty False (const False)
+inlineSmall = inlineGo S.empty M.empty False (const False)
 
--- | The base profile's inliner: as inlineSmall, plus function-valued
--- arguments (below), and SAFEPOINT-PRESERVING: an inlined body starts with
--- the fuel tick the callee's entry had (`$fuel`, Codegen.Lower). A call is a
--- preemption point, so removing one without its tick lengthened the
--- longest path between safepoints -- the kernel's WCET ratchet saw 408
--- instructions against its ceiling of 200.  With the tick, every path is
--- exactly as long between safepoints as it was through the call; what goes
--- is the frame, the argument staging and the stack check.
-inlineWith :: (Name -> Bool) -> Int -> Int -> Prog -> Prog
-inlineWith = inlineWithImports M.empty
-
--- Imported bodies are read-only lookup templates. Only owned definitions are
--- rewritten/published, so inlining a call never copies its static PAP object.
-inlineWithImports :: Prog -> (Name -> Bool) -> Int -> Int -> Prog -> Prog
-inlineWithImports imports=inlineGo imports True
+-- Compatibility Base calls retain the callee entry's tick after argument
+-- evaluation. Checked Base entries use Core.Typed.Inline before erasure.
+-- ARC still runs inlineSmall after explicit ownership rewriting.
+-- Typed entries have already been rewritten and checked before erasure.
+-- Only explicit compatibility owners/templates remain editable here.
+inlineCompatibilityWithImports :: S.Set Name -> Prog -> (Name -> Bool) -> Int -> Int -> Prog -> Prog
+inlineCompatibilityWithImports protected imports=inlineGo protected imports True
 
 -- | The same, with a predicate naming the globals outside this unit that
 -- are FUNCTION VALUES (primitives, other units' functions of arity > 0).
@@ -54,21 +48,21 @@ inlineWithImports imports=inlineGo imports True
 -- pure, and `f x` with f known is a direct (or inline) call where `$i.f x`
 -- was a generic apply.  A zero-arity global is never substituted: it is
 -- evaluated where it is named, so it is let-bound like any argument.
-inlineGo :: Prog -> Bool -> (Name -> Bool) -> Int -> Int -> Prog -> Prog
-inlineGo imports tick pureOutside rounds limit prog0 = evalState (foldM (const . step') prog0 [1 .. rounds]) 0
+inlineGo :: S.Set Name -> Prog -> Bool -> (Name -> Bool) -> Int -> Int -> Prog -> Prog
+inlineGo protected imports tick pureOutside rounds limit prog0 = evalState (foldM (const . step') prog0 [1 .. rounds]) 0
   where
     -- each round: inline at the sites, then propagate function-value
     -- aliases (clause desugaring rebinds a parameter under its source
     -- name, `f = a1`, so a substituted parameter reappears as one)
-    step' prog = M.mapWithKey (\_ (ps, b) -> (ps, propagate (prog `M.union` imports) (S.fromList ps) b)) <$> step prog
+    step' prog = M.mapWithKey (\n d@(ps,b) -> if n `S.member` protected then d else (ps, propagate (prog `M.union` imports) (S.fromList ps) b)) <$> step prog
     funValue prog g = case M.lookup g prog of
       Just (ps, _) -> not (null ps)
       Nothing -> pureOutside g
     propagate prog = propagateWith (funValue prog)
-    step prog = M.traverseWithKey (\n (ps, b) -> (,) ps <$> site (prog `M.union` imports) n (S.fromList ps) b) prog
+    step prog = M.traverseWithKey (\n d@(ps,b) -> if n `S.member` protected then pure d else (,) ps <$> site (prog `M.union` imports) n (S.fromList ps) b) prog
     candidate prog n = case M.lookup n prog of
       Just (ps, body)
-        | not (null ps),
+        | n `S.notMember` protected,not (null ps),
           size body <= limit || (straight body && size body <= 4 * limit),
           noLam body,
           n `S.notMember` globals ps body ->
@@ -94,7 +88,7 @@ inlineGo imports tick pureOutside rounds limit prog0 = evalState (foldM (const .
                     substd = S.fromList (map fst subst)
                     body' = rename (M.union (M.fromList subst) (M.fromList [(p, fresh p) | p <- ps])) fresh body
                     -- the callee entry's safepoint, after its arguments
-                    entry = if tick then CLet (fresh "$tick") (CApp (CVar "$fuel") (CInt 0)) body' else body'
+                    entry = if tick then CLet (fresh "$tick") (CApp (CVar entryTickName) (CInt 0)) body' else body'
                 pure (foldr (\(p, a) rest -> CLet (fresh p) a rest) entry [(p, a) | (p, a) <- zip ps args', p `S.notMember` substd])
           _ -> descend env e
         descend env = \case

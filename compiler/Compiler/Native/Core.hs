@@ -2,7 +2,7 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
+  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,inlineNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
    CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
@@ -76,6 +76,15 @@ specializeNativeWith :: CallbackMode -> [NativeCore] -> NativeCore -> Either Str
 specializeNativeWith PreserveCallbacks _ input=pure input
 specializeNativeWith mode providers (NativeCore closed p js compatibility declarations constructors serial)=do
   specialized<-specializeProgramWith mode (map nativeClosed providers) closed
+  replaceClosed specialized (NativeCore closed p js compatibility declarations constructors serial)
+
+inlineNativePrograms :: Ord key => Int -> Int -> M.Map key (S.Set String,S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
+inlineNativePrograms rounds limit inputs=do
+  changed<-inlinePrograms rounds limit (M.map (\(forbidden,elided,core)->(forbidden,elided,nativeClosed core)) inputs)
+  M.traverseWithKey (\key (_,_,core)->replaceClosed (changed M.! key) core) inputs
+
+replaceClosed :: ClosedProgram -> NativeCore -> Either String NativeCore
+replaceClosed specialized (NativeCore closed p js compatibility declarations constructors serial)=do
   let checkedNames=M.keysSet (closedDefinitions closed)<>
         S.fromList [name | f<-M.elems (closedDefinitions closed),T.CodeId name<-M.keys (closedCode f)]
   checkedAfter<-eraseClosed specialized

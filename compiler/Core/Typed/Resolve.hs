@@ -39,7 +39,8 @@ resolveCalls types input=do
         in case known env fn of
                   Just (label,captures)
                     | Just contract<-M.lookup label contracts,
-                      all safeCapture (contractCaptures contract),
+                      length captures==length (contractCaptures contract),
+                      and (zipWith (safeCapture env) captures (contractCaptures contract)),
                       length xs==length (contractParameters contract)->e {exprNode=CodeCall label captures xs}
                   _->runIdentity (mapChildrenM (pure . go env) e)
       _->runIdentity (mapChildrenM (pure . go env) e)
@@ -49,10 +50,16 @@ resolveCalls types input=do
       _->(e,args)
     -- Keeping an escaping closure binding while calling its captures directly
     -- introduces another lexical use of those captures. Until callable-owner
-    -- evidence is preserved, permit only manifest immutable data; a function's
-    -- arrow type alone does not prove its captured environment unrestricted.
+    -- evidence is preserved, permit manifest immutable data and values whose
+    -- construction proves they are static, capture-free closures. A function's
+    -- arrow type alone does not prove its environment unrestricted.
     schemeType (Forall _ _ ty)=ty
-    safeCapture (scheme,shape)=not (isLin shape) && plain (schemeType scheme)
+    safeCapture env uid (scheme,shape)=not (isLin shape)
+      && (plain (schemeType scheme) || case M.lookup uid env of
+        Just (label,[]) -> case M.lookup label contracts of
+          Just c->contractKind c==ClosureCode && null (contractCaptures c)
+          _->False
+        _->False)
     plain ty=case ty of
       TC n->n `elem` ["Int","Bool","Atom","F32","F64","String","Unit"]
       TLayout _->True

@@ -36,7 +36,7 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
       node env used e
     node env used e = case exprNode e of
       Var (Local uid) -> do
-        b <- maybe (bad "out-of-scope local identity") Right (M.lookup uid env)
+        b <- maybe (bad ("out-of-scope local identity "++show uid)) Right (M.lookup uid env)
         require "local reference type disagrees with its scheme" (instanceOf (binderScheme b) (exprType e))
         pure used
       Var (Global name sc) -> do
@@ -46,6 +46,7 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
       IntValue _ -> fixed (TC "Int")
       StringValue _ -> fixed (TC "String")
       BoolValue _ -> fixed (TC "Bool")
+      EntryTick -> fixed (TC "Unit")
       Apply fn arg -> do
         u <- check env used fn >>= \u -> check env u arg
         case exprType fn of

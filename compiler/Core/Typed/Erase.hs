@@ -4,6 +4,7 @@
 module Core.Typed.Erase (Layout(..), eraseFunction, eraseFunctionWith, eraseRegionFunctionWith) where
 import Core.Typed.Syntax
 import Core.Identity (BinderId)
+import Core.Primitives (entryTickName)
 import qualified Core.Region.Syntax as R
 import Core.Region.Flow (functionFlow,flowSource)
 import Core.Region.Runtime (Hook(..),hookName,packState)
@@ -77,6 +78,7 @@ eraseWith region contracts types layout f = runExceptT $ do
         xs<-mapM (go env names) args
         pure (foldl CApp (CVar label) (caps++xs))
       Fail message -> pure (CErr message)
+      EntryTick -> pure (CApp (CVar entryTickName) (CInt 0))
       LayoutLiteral spec -> pure (CStr spec)
       CallRegion body->do
         unless (all (`M.notMember` names) (map hookName [CallPending,CallLeave]))

@@ -293,7 +293,15 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     mixed = {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'fib,sum,addovf,divz,even,odd,clamp,boolEq,boolNe,boolResult'}
     mexe = tmp / 'scalar-mixed'
     log = run(['./fpr', 'build', 'tests/typed_ir/scalar.fpr', '-o', mexe, '-v'], mixed)
-    assert any(re.match(r'typed-ir-backend: native \d+/22 functions \(per-function\)', l) for l in notes_of(log)), notes_of(log)[:3]
+    scalar_fns = {'fib', 'sum', 'addovf', 'divz', 'even', 'odd', 'clamp',
+                  'boolEq', 'boolNe', 'boolResult', 'main'}
+    mixed_notes = notes_of(log)
+    summaries = [re.fullmatch(r'typed-ir-backend: native (\d+)/(\d+) functions \(per-function\)', l)
+                 for l in mixed_notes]
+    summaries = [m for m in summaries if m]
+    assert summaries and all(m[1] == m[2] for m in summaries), mixed_notes[:3]
+    reported_fns = {l.split()[1] for l in mixed_notes if ' native (frame ' in l}
+    assert scalar_fns <= reported_fns, scalar_fns - reported_fns
     for k, want in [(('fib', (20,)), ('value', '6765')), (('sum', (1000, 0)), ('value', '500500')), (('addovf', (INT_MAX, 1)), overflow(INT_MAX, '+', 1)),
                     (('divz', (7, 0)), ('trap', 'division by zero')), (('even', (11,)), ('value', '0')), (('clamp', (50, 0, 10)), ('value', '20')),
                     (('boolResult', (3, 1)), ('value', '10')), (('boolResult', (3, 0)), ('value', '1'))]:
@@ -304,7 +312,10 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     run(['./fpr', f'--target={"a64mac" if BACKEND == "a64" else "x64"}', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', on_s], {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed'})
     on_t = on_s.read_text()
     native_fns = re.findall(rf'^# fn (\S+) \(arity \d+\) typed-ir {BACKEND}', on_t, re.M)
-    assert len(native_fns) == 22 and "main" in native_fns, native_fns
+    # Checked specialization can add private entries. Require every source
+    # entry and check counts against actual emission instead of a fixed total.
+    assert scalar_fns <= set(native_fns), scalar_fns - set(native_fns)
+    assert len(native_fns) == len(set(native_fns)), native_fns
     for fn in native_fns:
         body = on_t[on_t.index(f'# fn {fn} (arity'):]
         body = body[:body.index('\n\n')]
@@ -312,7 +323,7 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     assert '# wcet:' not in on_t and len(native_fns)==len(re.findall(r'^# fn ',on_t,re.M)), 'all emitted functions must carry the native metric'
     # Only the selected native instruction metric is reported.
     wlog = run(['./fpr', f'--target={"a64mac" if BACKEND == "a64" else "x64"}', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', tmp / 'w.s'], {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPRC_NATIVE_INSNS': '1'})
-    assert '[native-insns-v1] root: 22 function(s)' in wlog and '[wcet]' not in wlog, wlog[-1500:]
+    assert f'[native-insns-v1] root: {len(native_fns)} function(s)' in wlog and '[wcet]' not in wlog, wlog[-1500:]
     # the Mach-O TLV variant (a64mac without --base) and the ELF variant assemble
     clang = shutil.which('clang')
     if clang and BACKEND == 'a64':
@@ -321,7 +332,9 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
         elf_s = tmp / 'elf.s'
         run(['./fpr', '--target=a64', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', elf_s], {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed'})
         elf_t = elf_s.read_text()
-        assert 'tprel_hi12:fpr_posix_hart' in elf_t and len(re.findall(r'^# fn \S+ \(arity \d+\) typed-ir a64', elf_t, re.M)) == 22
+        elf_fns = re.findall(r'^# fn (\S+) \(arity \d+\) typed-ir a64', elf_t, re.M)
+        assert 'tprel_hi12:fpr_posix_hart' in elf_t and set(elf_fns) == set(native_fns), elf_fns
+        assert len(elf_fns) == len(native_fns), elf_fns
         p = subprocess.run([clang, '-target', 'aarch64-unknown-linux-gnu', '-c', elf_s, '-o', tmp / 'elf.o'], capture_output=True, text=True)
         if p.returncode == 0:
             print('Mach-O TLV and ELF variants assemble with clang: PASS')
