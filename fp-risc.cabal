@@ -181,6 +181,8 @@ library
       Core.FusionPolicy
       Core.Typed.Specialize
       Compiler.VectorLayout
+      Compiler.VectorABI
+      Codegen.VectorRead
       Compiler.VectorOperation
       Compiler.Trap
       Inline
@@ -376,6 +378,11 @@ test-suite TypedIR
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            TypedIR.hs
+
+test-suite ScalarVectorRead
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            ScalarVectorRead.hs
 
 test-suite TypedLayouts
   import:             unit-test

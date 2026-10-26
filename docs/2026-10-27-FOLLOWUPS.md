@@ -9,7 +9,7 @@ Plans and analysis scaffolding alone do not complete an item.
 | Item | First useful milestone | State |
 |---|---|---|
 | Reset-safe reuse and loop-aware inlining | Sound reset barriers, larger bounded budgets at recursive callers, focused native checks and paired hot-loop measurements | First milestone complete |
-| Scalar vector fast paths | Guarded direct flat Int/F64/F32 reads and length, exact bounds/trap behavior and a C fallback | Next |
+| Scalar vector fast paths | Guarded direct flat Int/F64/F32 reads and length, exact bounds/trap behavior and a C fallback | First milestone complete |
 | Request/reply locality | A bounded handoff/locality policy with fairness/migration coverage and paired message measurements | Pending |
 | Loop optimizations | Shared native-IR loop analysis used by a conservative, useful optimization such as pure invariant motion; traps/effects remain ordered | Pending |
 | Generational persistent-state copying | A safe initial immutable-state path that avoids copying retained old subgraphs at each cycle, with bounded retained generations/compaction and conservative fallback | Pending |
@@ -88,7 +88,7 @@ Final compiled `ReuseCheck`, `TypedProgram`, `CorePipeline` and `TypedUnits`
 suites pass. Native reset controls pass all 24 executions; dependent-unit
 warm-cache transitions and x64/RV32/RV64 emission pass with `core2` keys. The
 test registry includes the new reset regression. No test threshold was raised.
-The broader five-item goal remains active; items 2-5 are not implemented here.
+The broader five-item goal remains active.
 
 Local records: `/private/tmp/fpr-followups-step1-{units,reuse,consuming}.log`,
 `/private/tmp/fpr-followups-step1-reset-{before,native}.log`,
@@ -97,3 +97,54 @@ Local records: `/private/tmp/fpr-followups-step1-{units,reuse,consuming}.log`,
 Final cache checks: `/private/tmp/fpr-followups-step1-units-final.log`,
 `/private/tmp/fpr-followups-step1-reset-final.log` and
 `/private/tmp/fpr-followups-step1-cache-native.log`.
+
+## 2. Guarded scalar Vector reads
+
+The typed lowerer now emits guarded CFGs for pair-free `$vec.at`, `$vec.get`
+and `$vec.len` on managed 64-bit hosted/QOS targets. Int and flat F64/F32
+descriptors use direct element loads; all other representations retain their
+original C entry. RV32, builtin and manual/ARC profiles retain the C path.
+The existing source ownership/pair-elision rules still decide which reads
+become these private primitives. Ordinary pair-returning calls are unchanged.
+
+Arguments evaluate once, in source order, before any validation. Each failed
+guard calls the original entry with those values, preserving its diagnostics
+and validation priority (including the different At/Get invalid-index versus
+invalid-handle priorities). Bounds precede column access; empty length reads
+never touch columns. Int cells are retagged; F64/F32 cells preserve raw bits.
+Column bases are read afresh, so mutation/growth cannot leave a stale base.
+
+`Compiler.VectorABI` owns the shared scalar/kernel layout constants.
+`ScalarVectorRead` verifies generated CFGs, policy/ABI/shadowing boundaries,
+operand trap order, and static assertions compiled against the actual C
+descriptor. CompilerOptions, TypedIR and KernelIR also pass. The native
+`check_vector_fast.py` regression covers Int mutation, 80 pushes across growth
+boundaries, signed zero/infinities/NaN payloads for both float widths, boxed,
+tuple and record fallbacks, empty length, bounds and malformed-FFI diagnostics.
+It runs 84 executions over one/four harts, inlining on/off and fast/off/fast
+transitions in the same cache. All four target emission boundaries pass;
+x64/RISC-V hardware execution is not claimed. The regression is registered.
+
+`FPR_NO_VEC_FAST=1` independently disables this lowering and participates in
+unit/run cache identities. Codegen revision 127 invalidates old artifacts.
+Guards assume source-valid descriptor pointers, as the C runtime does; this
+does not add protection against arbitrary corrupt pointers from foreign code.
+
+Seven alternating paired runs of `tests/bench/vecread.fpr` (50 million Int
+reads, one hart, Darwin arm64) check the expected output on every execution:
+
+| Compiler | Median wall time | Executable bytes |
+|---|---:|---:|
+| Saved main `89408c4` | 212.03 ms | 472,504 |
+| Guarded reads | 187.01 ms | 472,504 |
+| Same compiler, fast path disabled | 202.58 ms | 472,496 |
+
+The saved-main comparison is 1.13x; the same-compiler control is 1.08x.
+Single observed builds took 3.99/3.17/3.19 seconds respectively, with separate
+cache directories; these are not compile-budget guarantees. Raw samples and
+compiler hashes are in `bench/2026-10-27-vector-reads.json`. This is one useful
+workload, not a general performance claim. More aggressive guard elimination
+or loop-invariant descriptor loads remain future analysis.
+
+Local evidence: `/private/tmp/fpr-vector-{units,native,paired}.log` and
+`/private/tmp/fpr-vector-paired/report.json`. Items 3-5 remain pending.

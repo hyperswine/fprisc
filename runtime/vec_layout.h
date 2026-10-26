@@ -2,7 +2,7 @@
  *
  * Shared by vec.c (the ops), runtime.c (deep-copy of vectors into
  * message slabs / retention pools), and qos/hal/unix/gfx.c (the host-side
- * scene walker reads app-side vectors raw).  Codegen.hs mirrors the
+ * scene walker reads app-side vectors raw).  Compiler.VectorABI mirrors the
  * field offsets (vLen/vNcols/vKindsP/vColsP and colBlk0 = base at word
  * offset 1) -- change nothing here without changing them there.
  *

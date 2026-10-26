@@ -31,8 +31,8 @@ def run(args, env=ENV, expected=0, timeout=600):
     return p.stdout + p.stderr
 
 run(['make', 'fpr'])
-ghc = ['cabal', 'exec', '--', 'runghc'] if shutil.which('cabal') else ['runghc']
-print(run([*ghc, '-w', '-icompiler', 'tests/TypedIR.hs']), end='', flush=True)
+from haskell_units import run_units
+run_units(['TypedIR', 'ScalarVectorRead'], ENV)
 
 FIXTURE = 'tests/typed_ir/scalar.fpr'
 CALLS = [('fib', [20]), ('sum', [1000, 0]), ('addovf', [4611686018427387903, 1]), ('divz', [7, 0]),

@@ -32,12 +32,13 @@ data Policy = Policy
   { polProfile :: Profile,
     polFuel :: Bool, -- the entry fuel tick and every inlined `$fuel` tick are emitted
     polStackCheck :: StackPolicy,
-    polFloatInline :: Bool -- F64 + - * / and comparisons inline on the 64-bit word (FPR_NO_F64_INLINE=1 keeps the runtime calls, for differential checks)
+    polFloatInline :: Bool, -- F64 + - * / and comparisons inline on the 64-bit word (FPR_NO_F64_INLINE=1 keeps the runtime calls, for differential checks)
+    polVectorFast :: Bool -- guarded scalar flat-vector reads; misses keep the original C entry
   }
   deriving (Eq, Ord, Show)
 
 m2Policy :: Policy
-m2Policy = Policy HostedBase True StackCheckEveryEntry True
+m2Policy = Policy HostedBase True StackCheckEveryEntry True True
 
 profileName :: Profile -> String
 profileName = \case

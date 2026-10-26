@@ -6,6 +6,7 @@ module Codegen.Kernel (Kernel(..), Stage(..), ElementOp(..), RecordKernel(..), R
 import Codegen.IR
 import Codegen.Target.Common (mangleName)
 import Codegen.Policy
+import Compiler.VectorABI
 import Codegen.Kernel.Plan
 import Codegen.Verify
 import Codegen.Simplify (simplifyFn)
@@ -16,7 +17,7 @@ import qualified Data.Map.Strict as M
 
 -- the runtime's column kind descriptor byte (vec.c: 'i' 1, 'd' 3, 's' 7, boxed 0)
 kindByteOf :: Kind -> Integer
-kindByteOf k = case k of KI -> 1; KD -> 3; KS -> 7; KB -> 0
+kindByteOf k = case k of KI -> intKind; KD -> f64Kind; KS -> f32Kind; KB -> 0
 
 callbackSymbol :: Name -> String
 callbackSymbol n = "fpr_tkfn_" ++ mangleName n
@@ -123,9 +124,9 @@ lowerCheckedKernel plan = do
           end (TBr yes []); begin yes []
         _ -> pure ()
       let vec = last args
-      value TPred (OTagTest 9006 (if kernelElement k == KI then 1 else 4) vec) >>= assertGuard fallback
+      value TPred (OTagTest vectorTypeId (if kernelElement k == KI then 1 else 4) vec) >>= assertGuard fallback
       addr <- value TAddr (OAddress vec)
-      kinds <- load TAddr addr (8+4*w)
+      kinds <- load TAddr addr (kindsOffset w)
       kind <- value TInt (OLoadByte kinds 0)
       want <- constant (kindByteOf (kernelElement k))
       value TPred (OCmp Eq kind want) >>= assertGuard fallback
@@ -137,9 +138,9 @@ lowerCheckedKernel plan = do
       empty <- value TPred (OCmp Eq count zero)
       end (TCondBr empty done [acc0,zero] setup [])
       begin setup []
-      cols <- load TAddr addr (8+5*w)
+      cols <- load TAddr addr (columnsOffset w)
       col <- load TAddr cols 0
-      base <- load TAddr col w
+      base <- load TAddr col (columnBaseOffset w)
       i <- fresh TInt; kept <- fresh TInt; acc <- fresh TVal
       (iStart,accStart) <- case (kernelSimd k, kernelRvvSum k) of
         (Just simd,_) -> simdPrefix args base count zero acc0 simd
@@ -324,16 +325,16 @@ lowerCheckedRecord plan = do
       let vec = last args
           capCount = length (recordCaptures k)
       forM_ (zip args (recordCaptures k ++ accumulatorKinds)) $ \(a,ty) -> guardKind fallback a ty
-      value TPred (OTagTest 9006 3 vec) >>= assertGuard fallback
+      value TPred (OTagTest vectorTypeId 3 vec) >>= assertGuard fallback
       addr <- value TAddr (OAddress vec)
       let (tid,var) = recordShape k
       when (tid >= 0) $ do
         load TInt addr (8+w) >>= \v -> equal fallback v tid
         load TInt addr (8+2*w) >>= \v -> equal fallback v var
-      ncols <- load TInt addr (8+3*w)
+      ncols <- load TInt addr (columnCountOffset w)
       required <- constant (fromIntegral (maximum (map fst columns)+1))
       value TPred (OCmp Ge ncols required) >>= assertGuard fallback
-      kinds <- load TAddr addr (8+4*w)
+      kinds <- load TAddr addr (kindsOffset w)
       forM_ columns $ \(n,ty) -> do
         -- Byte offsets are bounded in the IR; indexing keeps wide records
         -- independent of target load-immediate limits.
@@ -348,7 +349,7 @@ lowerCheckedRecord plan = do
       empty <- value TPred (OCmp Eq count zero)
       end (TCondBr empty done [acc0,zero] setup [])
       begin setup []
-      cols <- load TAddr addr (8+5*w)
+      cols <- load TAddr addr (columnsOffset w)
       bases <- M.fromList <$> forM baseIndices (\n -> do idx <- constant (fromIntegral n); b <- baseAt cols idx; pure (n,b))
       i <- fresh TInt; kept <- fresh TInt; acc <- fresh TVal
       -- the GPU hook answers a tagged Int when it took the fold, 0 when it declined
@@ -470,14 +471,14 @@ lowerCheckedMapAs plan = do
       fallback <- label
       let caps = init args; vec = last args
       -- an Int (1), boxed (2) or float (4) column; a record vector goes generic
-      isInt <- value TPred (OTagTest 9006 1 vec)
+      isInt <- value TPred (OTagTest vectorTypeId 1 vec)
       ready <- label; boxedTest <- label; floatTest <- label
       end (TCondBr isInt ready [] boxedTest [])
       begin boxedTest []
-      isBoxed <- value TPred (OTagTest 9006 2 vec)
+      isBoxed <- value TPred (OTagTest vectorTypeId 2 vec)
       end (TCondBr isBoxed ready [] floatTest [])
       begin floatTest []
-      value TPred (OTagTest 9006 4 vec) >>= assertGuard fallback
+      value TPred (OTagTest vectorTypeId 4 vec) >>= assertGuard fallback
       end (TBr ready [])
       begin ready []
       addr <- value TAddr (OAddress vec)
@@ -492,7 +493,7 @@ lowerCheckedMapAs plan = do
       empty <- value TPred (OCmp Eq count zero)
       end (TCondBr empty done [out0] setup [])
       begin setup []
-      cols <- load TAddr addr (8+5*w)
+      cols <- load TAddr addr (columnsOffset w)
       col0 <- load TAddr cols 0
       base <- load TAddr col0 w
       i <- fresh TInt; out <- fresh TVal

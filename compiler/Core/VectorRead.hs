@@ -1,6 +1,6 @@
 -- The three audited reads return the original Vector handle unchanged.
 -- Pair-free lowering keeps the element read/checks and reuses that handle.
-module Core.VectorRead (Read(..),reads,sourceName,fromSourceName,peekName,indexArity,peekArities) where
+module Core.VectorRead (Read(..),reads,sourceName,fromSourceName,peekName,fromPeekName,indexArity,peekArities) where
 import Prelude hiding (Read,reads)
 data Read=At | Get | Length deriving (Eq,Ord,Show)
 reads :: [Read]
@@ -11,6 +11,8 @@ fromSourceName :: String -> Maybe Read
 fromSourceName name=lookup name [(sourceName op,op) | op<-reads]
 peekName :: Read -> String
 peekName op=case op of At->"$vec.at";Get->"$vec.get";Length->"$vec.len"
+fromPeekName :: String -> Maybe Read
+fromPeekName name=lookup name [(peekName op,op) | op<-reads]
 indexArity :: Read -> Int
 indexArity Length=0
 indexArity _=1

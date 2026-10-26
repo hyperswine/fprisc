@@ -18,6 +18,8 @@ module Codegen.Lower (lowerFn, lowerProgram, Reason, Prim (..)) where
 import Codegen.IR
 import Core.Primitives (entryTickName)
 import Codegen.Policy
+import qualified Codegen.VectorRead as ScalarVector
+import qualified Core.VectorRead as VectorRead
 import Codegen.Target.Common (mangleName, functionSymbol)
 import Control.Monad (when)
 import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
@@ -175,6 +177,15 @@ inlineFloat cx env h args =
           ("f64frombits",[CInt _,CInt _]) -> True
           ("f32frombits",[CInt _]) -> True
           _ -> False
+
+scalarVectorCall :: Cx -> Env -> Name -> Int -> Maybe (VectorRead.Read,Callee)
+scalarVectorCall cx env name count
+  | not (isPrim cx env name)=Nothing
+  | otherwise=do
+      op<-VectorRead.fromPeekName name
+      callee<-calleeOf cx name count
+      if count==VectorRead.indexArity op+1 && ScalarVector.canRead (cxPolicy cx) op callee
+        then Just (op,callee) else Nothing
 
 -- the F64 operators lowered inline on the 64-bit word (no runtime call)
 floatBinOps :: M.Map String FloatOp
@@ -349,6 +360,7 @@ lowerTail cx env expr = ended (go expr) >> pure ()
       | (CVar h, args@(_ : _)) <- spineOf e,
         M.notMember h env,
         not (inlineFloat cx env h args),
+        scalarVectorCall cx env h (length args)==Nothing,
         Just c <- calleeOf cx h (length args) -> do
           as <- mapM (lowerVal cx env) args
           if h == cxSelf cx
@@ -472,6 +484,14 @@ lowerVal cx env = \case
           refuse ("call to scalar worker `" ++ h ++ "` without representation metadata")
       | Just (pts, _) <- M.lookup h (cxSigs cx), length pts /= length args ->
           refuse ("call to scalar worker `" ++ h ++ "` whose representation metadata has the wrong arity")
+      | Just (op,callee)<-scalarVectorCall cx env h (length args)->do
+          values<-mapM (\arg->lowerVal cx env arg >>= asVal) args
+          case ScalarVector.planRead (cxPolicy cx) op callee values of
+            Just plan->do
+              let builder=ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 open close
+              result<-ScalarVector.lowerRead builder plan
+              pure (result,TVal)
+            Nothing->(\result->(result,TVal)) <$> emit TVal (OCall callee values)
       -- tagged Int arithmetic and comparison (the base profile's operators)
       | isPrim cx env h, Just o <- M.lookup h arithOps, [a, b] <- args -> arith o a b
       | isPrim cx env h, Just o <- M.lookup h cmpOps, [a, b] <- args -> compare' o a b
