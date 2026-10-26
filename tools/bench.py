@@ -13,6 +13,8 @@ benchmark up by computing something else is a failure, not a win).
   tools/bench.py --record        write the medians as the new baseline
   tools/bench.py --bless         rewrite the .expected outputs
   tools/bench.py fib sha         only these benchmarks
+  tools/bench.py --c             also time tests/bench/c/<name>.c (cc -O2)
+                                 where one exists, and print fpr/C
 
 The baseline is per machine: it records the host it was measured on, and a
 comparison on a different host only reports."""
@@ -33,6 +35,7 @@ def main():
     ap.add_argument('--slack', type=float, default=0.10)
     ap.add_argument('--record', action='store_true')
     ap.add_argument('--bless', action='store_true')
+    ap.add_argument('--c', action='store_true', help='time the C references too')
     a = ap.parse_args()
     subprocess.run(['make', 'fpr'], cwd=ROOT, check=True, capture_output=True)
     names = a.names or sorted(p.stem for p in BENCH.glob('*.fpr'))
@@ -70,6 +73,9 @@ def main():
                     note = f'  x{1 / ratio:.2f} vs baseline' if ratio < 1 else f'  {ratio:.2f}x baseline'
                     if same_host and ratio > 1 + a.slack and not a.record:
                         note += '  <-- SLOWER'; bad.append(n)
+                ref = BENCH / 'c' / f'{n}.c'
+                if a.c and ref.exists():
+                    note += c_reference(ref, Path(t) / f'{n}-c', BENCH / f'{n}.expected', a.runs, best)
                 print(f'{n:10} {best * 1000:9.1f} ms  (median {med * 1000:.1f}){note}')
     if a.record:
         BASE.parent.mkdir(exist_ok=True)
@@ -81,5 +87,17 @@ def main():
         print(f'(baseline is from {base.get("host")}; this is {host()}: reported, not enforced)')
     if bad:
         print('FAILED: ' + ', '.join(bad)); sys.exit(1)
+
+def c_reference(source, exe, expected, runs, best):
+    """The C reference's fastest run, checked against the same .expected."""
+    subprocess.run([os.environ.get('CC', 'cc'), '-O2', '-o', str(exe), str(source)], check=True)
+    times = []
+    for _ in range(runs):
+        t0 = time.perf_counter()
+        p = subprocess.run([str(exe)], capture_output=True, text=True, timeout=600)
+        times.append(time.perf_counter() - t0)
+    if p.stdout != expected.read_text():
+        return f'  C OUTPUT DIFFERS: {p.stdout!r}'
+    return f'  [C -O2 {min(times) * 1000:.1f} ms, fpr/C {best / min(times):.2f}]'
 
 main()

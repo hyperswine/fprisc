@@ -1,0 +1,22 @@
+{
+  "what": "Performance review step 0 (docs/2026-10-25-PERFORMANCE-REVIEW.md): the typed-IR compiler re-measured; fastest of 9 runs, cold builds, tools/bench.py --c",
+  "compiler": "ed05cd9",
+  "host": "Darwin-arm64-macm4 (Apple M4, 10 cores)",
+  "times_ms": {
+    "byteloop": 88.9, "fib": 49.5, "floatcmp": 43.1, "helpers": 109.8, "mixed_locals": 4.0,
+    "nbody": 233.1, "pingpong": 360.6, "sha": 133.9, "specialization": 6.3, "strbuild": 177.4,
+    "vecread": 219.0, "xpingpong": 389.2
+  },
+  "c_reference_ms": {"byteloop": 3.9, "fib": 19.3, "sha": 4.7},
+  "fpr_over_c": {"byteloop": 22.91, "fib": 2.56, "sha": 28.79},
+  "vs_2026_10_01_baseline": {
+    "faster": {"byteloop": 1.16, "fib": 1.11, "helpers": 2.53, "nbody": 1.90, "sha": 1.14},
+    "slower": {"pingpong": 2.13, "strbuild": 1.69, "vecread": 1.39, "xpingpong": 1.52}
+  },
+  "region_switches_ms": {
+    "note": "fastest of 7, two repetitions agreed within 2 ms",
+    "strbuild": {"default": 174.3, "FPR_NO_LOOP_REGIONS": 125.4, "FPR_NO_CALL_REGIONS": 122.4, "both_off": 174.2},
+    "vecread": {"default": 216.3, "FPR_NO_LOOP_REGIONS": 199.4, "FPR_NO_CALL_REGIONS": 221.2, "both_off": 219.2},
+    "pingpong_xpingpong": "unchanged by either switch"
+  }
+}
