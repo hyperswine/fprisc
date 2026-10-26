@@ -1,0 +1,9 @@
+unsafe base.
+ponger self = case receive self of (who,n) -> _ = send who (n + 1); ponger self.
+ping me p k acc = if k == 0 then acc else
+  _ = send p (me,k); r = receiveFrom me p; ping me p (k - 1) (acc + r).
+noise self = _ = yield self; noise self.
+start n = if n == 0 then [] else spawnOn 0 noise :: start (n - 1).
+stop actors = case actors of [] -> Unit | a :: rest -> _ = kill a; stop rest.
+main = me = myself 0; workers = start 8; p = spawnOn 0 ponger;
+  result = ping me p 20000 0; _ = stop workers; _ = kill p; print "locality {result}".

@@ -1012,6 +1012,9 @@ static void xpush(uw src, uw dst, acb_t *a) {
 #define RQ_CAP 4 /* run-queue admissions per refill batch */
 #endif
 #define DONATE_HI 4 /* backlog length past which an idle hart is rung */
+#ifndef FPR_LOCAL_HANDOFF
+#define FPR_LOCAL_HANDOFF 2 /* preferred local wakes before a normal admission */
+#endif
 
 static uw g_tau = FPR_TAU;
 static volatile uw g_adm;      /* machine-wide admission counter (the clock) */
@@ -1126,6 +1129,11 @@ retry:
   acb_t *prev = 0, *a = h->bl_head;
   acb_t *aged = 0, *aged_prev = 0;
   acb_t *pick = 0, *pick_prev = 0;
+  /* Only the owning thread writes this hint. A steal/stale wake can make
+   * it miss; match it against live backlog entries, never dereference it.
+   * Consume once, including when aging or the handoff budget overrides it. */
+  acb_t *hint = h->wake_hint, *local = 0, *local_prev = 0;
+  h->wake_hint = 0;
   uw total = 0, walked = 0;
   while (a) {
     if (++walked > 1000000) backlog_cycle(h);
@@ -1155,11 +1163,14 @@ retry:
     total += a->weight;
     h->lcg = h->lcg * 1103515245u + 12345u;
     if ((h->lcg >> 16) % total < a->weight) { pick = a; pick_prev = prev; }
+    if (a == hint) { local = a; local_prev = prev; }
     prev = a;
     a = nx;
   }
-  acb_t *sel = aged ? aged : pick;
-  acb_t *sp = aged ? aged_prev : pick_prev;
+  int handoff = !aged && local && h->handoff_run < FPR_LOCAL_HANDOFF;
+  acb_t *sel = aged ? aged : handoff ? local : pick;
+  acb_t *sp = aged ? aged_prev : handoff ? local_prev : pick_prev;
+  h->handoff_run = handoff ? h->handoff_run + 1 : 0;
   if (sel) {
     TR(sel, 5);
     if (sp) sp->bl_next = sel->bl_next; else h->bl_head = sel->bl_next;
@@ -1860,6 +1871,10 @@ static void wake(acb_t *a) {
   if (__atomic_compare_exchange_n(&a->var, &exp, ST_READY, 0,
                                   __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
     TR(a, 1);
+    fpr_hart_t *h = fpr_hart();
+    if (FPR_LOCAL_HANDOFF && h->current &&
+        __atomic_load_n(&a->hart, __ATOMIC_ACQUIRE) == h->id)
+      h->wake_hint = a;
     ship(a);
   } else TR(a, 16);
 }

@@ -10,7 +10,7 @@ Plans and analysis scaffolding alone do not complete an item.
 |---|---|---|
 | Reset-safe reuse and loop-aware inlining | Sound reset barriers, larger bounded budgets at recursive callers, focused native checks and paired hot-loop measurements | First milestone complete |
 | Scalar vector fast paths | Guarded direct flat Int/F64/F32 reads and length, exact bounds/trap behavior and a C fallback | First milestone complete |
-| Request/reply locality | A bounded handoff/locality policy with fairness/migration coverage and paired message measurements | Pending |
+| Request/reply locality | A bounded handoff/locality policy with fairness/migration coverage and paired message measurements | First milestone complete |
 | Loop optimizations | Shared native-IR loop analysis used by a conservative, useful optimization such as pure invariant motion; traps/effects remain ordered | Pending |
 | Generational persistent-state copying | A safe initial immutable-state path that avoids copying retained old subgraphs at each cycle, with bounded retained generations/compaction and conservative fallback | Pending |
 
@@ -147,4 +147,46 @@ workload, not a general performance claim. More aggressive guard elimination
 or loop-invariant descriptor loads remain future analysis.
 
 Local evidence: `/private/tmp/fpr-vector-{units,native,paired}.log` and
-`/private/tmp/fpr-vector-paired/report.json`. Items 3-5 remain pending.
+`/private/tmp/fpr-vector-paired/report.json`.
+
+## 3. Bounded local-wake admission
+
+A local BLOCKED-to-READY wake from an actor records a one-shot identity hint.
+The normal selector may prefer it twice consecutively, then must take an
+ordinary weighted pick. Aged/priority actors always precede the preference;
+already admitted FIFO work stays ahead. Hints do not restamp, move, pin or
+enqueue an actor. A dead, blocked, stolen or otherwise absent hint misses
+safely. Cross-hart shipping and the stealing ownership protocol are unchanged.
+`FPR_LOCAL_HANDOFF=0` at runtime compilation is the independent control.
+
+`check_scheduler_locality.py` compiles the actual scheduler in a deterministic
+harness, checking bounded preference, FIFO, aging and priority precedence,
+2,000 admissions with continuous wake pressure, stale/dead/blocked hints,
+pinning/unsaved-context exclusions and a late wake after stealing. It also
+executes contended request/reply traffic on one/four harts. The existing actor
+claim/reap regressions pass. `check_arena_migration.py` passes one/four harts,
+with migration observed in each multi-hart run. Hardware/QOS execution is
+not claimed; the shared scheduler source carries the policy.
+
+Seven alternating pairs on Darwin arm64, one hart, 20,000 round trips with
+eight pinned yielding competitors (`tests/base/locality.fpr`): saved prior
+actors.c median **20.46 ms**, candidate **13.28 ms**, control with handoffs
+disabled **20.65 ms**. This is **1.54x** for the contended case; executable
+size is unchanged against the prior runtime (489,464 bytes). All answers
+are checked, including warmup runs on four harts. The comparison compiles
+the prior scheduler against the same current header/runtime/compiler, via
+separate compiler wrappers/cache keys, so it isolates the admission change.
+Raw samples and the exact source are in
+`bench/2026-10-27-scheduler-locality.json`.
+
+Short uncontended controls (20,000 round trips, seven alternating pairs)
+measure 7.42/7.59 ms before/after on one hart and 9.72/9.98 ms across two
+pinned harts. These startup-inclusive samples are roughly 2-3% slower;
+the contended win is not a claim that every message workload improves.
+The report includes these samples too.
+
+This is admission locality, not migration/co-location of request/reply pairs.
+The preference changes un-aged weighted frequencies; the deterministic aged
+rule and existing conditional admission bound remain intact. Follow-up work
+can measure broader mixed loads and tail latency before increasing the budget.
+Items 4-5 remain pending.

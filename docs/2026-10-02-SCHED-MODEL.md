@@ -29,6 +29,23 @@ actors, one pass over the backlog per admission:
   sampling over `acb->weight` with the hart's LCG. Randomness decides who
   runs among the un-aged only.
 
+### Bounded local wakes, 2026-10-27
+
+A running actor that wakes a blocked peer on its own hart leaves a one-shot
+preference for that peer. In the default tier, up to two consecutive preferred
+admissions may replace the weighted pick, followed by an ordinary weighted
+admission. The aged/priority tier always wins. Existing FIFO entries stay
+ahead of newly admitted work; ready stamps and queue ownership are unchanged.
+A missed, dead, blocked or stolen hint is discarded. The hint is an identity
+reference, never another queue entry. Cross-hart wakes and stealing keep their
+existing rules. `FPR_LOCAL_HANDOFF=0` at runtime compilation restores the old
+default-tier policy for comparisons.
+
+The admission aging rule below still applies. Relative weighted selection
+frequencies among un-aged actors change during repeated local wakes; the
+bounded preference favors request/reply latency over strict weighted sampling
+at every slot. This is admission locality, not cross-hart co-location.
+
 An idle hart steals: it walks the other harts' backlogs in turn, its
 neighbour first, and takes the oldest unpinned ready actor of the first
 that has one (`steal_from`), under that hart's own backlog lock. A hart

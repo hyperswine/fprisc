@@ -451,6 +451,9 @@ typedef struct {
   uw copy_movevec;          /* a turn's state copy in progress: a Vector this
                              * actor's base pool owns crosses by handle
                              * (runtime.c transfer_copy; REGIONS-STAGE2; appended) */
+  struct fpr_acb *wake_hint; /* owner-only, one-shot local wake preference;
+                              * never a queue entry or an ownership transfer */
+  uw handoff_run;           /* consecutive preferred admissions, bounded */
 #ifdef FPR_COST_PROBE
   uint64_t cost_alloc_requests, cost_alloc_bytes;
   uint64_t cost_copies, cost_copy_bytes, cost_msg_slabs;
