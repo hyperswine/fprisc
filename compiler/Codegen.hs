@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 125 -- receive loops take the loop form: a region opened at entry, cycled per slab
+codegenRev = 126 -- loop-aware inlining; constructor reuse respects reset, CAF and callback barriers
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -73,6 +73,9 @@ data Target = Target
     tgtFieldWorkers :: Bool,
     tgtPipelineInline :: Bool,
     tgtReuse :: Bool,
+    -- every function that may reset the pool, over the whole linked program
+    -- (Reuse.poolResetters): constructor reuse never spans a call to one
+    tgtPoolResetters :: S.Set String,
     tgtTypedIr :: Maybe String, -- optional lowering report; does not change emitted code
     tgtHal :: M.Map String Int, -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
@@ -107,7 +110,7 @@ data Emission = Emission
 rv64, rv32 :: Target
 rv64 = Target {tgtW=8,tgtName="rv64",tgtFuel=True,tgtArc=False,tgtWeak=False,
   tgtSimd=False,tgtFusion=True,tgtFloatInline=True,tgtScalarFast=True,tgtIndexedMemory=True,
-  tgtScalarWorkers=True,tgtFieldWorkers=True,tgtPipelineInline=True,tgtReuse=True,
+  tgtScalarWorkers=True,tgtFieldWorkers=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
   tgtTypedIr=Nothing,tgtHal=M.empty,tgtPolicy=m2Policy,
   tgtNative=Just (defaultMode (DirectRV (policyWidth m2Policy) RV.HartTp))}
 rv32 = rv64 {tgtW=4,tgtName="rv32",tgtFloatInline=False,
@@ -323,7 +326,8 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
           optFieldWorkers = tgtFieldWorkers tgt,
           optScalarWorkers = tgtScalarWorkers tgt,
           optNormalize = tgtScalarFast tgt,
-          optReuse = tgtReuse tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt) }
+          optReuse = tgtReuse tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt),
+          optPoolResetters = tgtPoolResetters tgt }
       optimized = either (error . ("Core optimization: " ++)) id (optimizeCoreWithCheckedImports checked imports opts elide prog0)
       prog = optimizedProgram optimized
       workerSigs = optimizedSignatures optimized

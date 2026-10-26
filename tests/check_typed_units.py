@@ -82,7 +82,7 @@ def main():
             run([ROOT / 'fpr', 'compile', f'--target={target}', path, output])
             emitted = list((output_dir / 'units').glob('u-*.s'))
             assert output.exists() and emitted, (target, emitted)
-            assert all('ccore1-' in p.name for p in emitted), (target, emitted)
+            assert all('ccore2-' in p.name for p in emitted), (target, emitted)
         print('Typed units: transitive F64/recursive imports on one/four harts; warm Float/Int/context/flat-curried arity transitions, unrelated-root reuse and x64/RV32/RV64 emission passed')
 
 

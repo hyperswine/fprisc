@@ -9,14 +9,17 @@ import Core.Syntax
 import Core.Opt.Fusion (fuseCompatibilityWithImports)
 import Core.Opt.Normalize (normIn)
 import Workers (ScalarSignatures, workerizeWithSignatures, internalWorker)
-import Reuse (reuseProgram)
+import Reuse (reuseProgram, poolResetters)
 import Control.Monad (foldM, unless)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 data OptimizationOptions = OptimizationOptions
   { optFusion :: Bool, optWorkers :: Bool, optFieldWorkers :: Bool,
-    optScalarWorkers :: Bool, optNormalize :: Bool, optReuse :: Bool }
+    optScalarWorkers :: Bool, optNormalize :: Bool, optReuse :: Bool,
+    -- known pool resetters beyond this program and its imports (the linked
+    -- program's, Reuse.poolResetters): reuse never spans a call to one
+    optPoolResetters :: S.Set Name }
   deriving (Eq, Show)
 
 data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors
@@ -65,7 +68,7 @@ optimizeCoreWithCheckedImports checked imports opts elide input = do
               let enabled = optReuse opts && optNormalize opts
                   p = if enabled then M.map (\(ps,b)->(ps,normIn (S.fromList ps) b)) before else before
               in (p,optimizedSignatures state,[],enabled)
-            ReuseConstructors -> let (p,ns) = if optReuse opts then reuseProgram elide before else (before,[])
+            ReuseConstructors -> let (p,ns) = if optReuse opts then reuseProgram (optPoolResetters opts `S.union` poolResetters (M.union before imports)) elide before else (before,[])
                                  in (p,optimizedSignatures state,ns,optReuse opts)
       case verifyPassResult before after sigs of
         Left err -> Left (show pass ++ ": " ++ err)

@@ -1,0 +1,141 @@
+{
+  "baseline_commit": "2201e4b",
+  "candidate": "working tree, codegen revision 126",
+  "harts": 1,
+  "runs_per_binary": 7,
+  "order": "alternating before/after, reversed every pair",
+  "binary_sha256": {
+    "before": "eaf9b01adc51ff4c495053b0ccb7e7986ba6161f764f962720126f1d654018be",
+    "after": "730a47f7f198a898186e15b515e727df9d41a1cc5c172722d8ad451f4499f51e"
+  },
+  "results": {
+    "helpers": {
+      "build_seconds": {
+        "before": 3.2548799999058247,
+        "after": 3.162747875088826
+      },
+      "binary_bytes": {
+        "before": 472608,
+        "after": 472608
+      },
+      "seconds": {
+        "before": [
+          0.11144837480969727,
+          0.11598383309319615,
+          0.1080529170576483,
+          0.10848416690714657,
+          0.10875591705553234,
+          0.108677624957636,
+          0.11096099996939301
+        ],
+        "after": [
+          0.08475091704167426,
+          0.08602837496437132,
+          0.08725049998611212,
+          0.08541404106654227,
+          0.08627870911732316,
+          0.08413666696287692,
+          0.08338695880956948
+        ]
+      },
+      "median_ms": {
+        "before": 108.75591705553234,
+        "after": 85.41404106654227
+      },
+      "best_ms": {
+        "before": 108.0529170576483,
+        "after": 83.38695880956948
+      },
+      "median_speedup": 1.2732791435404098
+    },
+    "byteloop": {
+      "build_seconds": {
+        "before": 1.382495875004679,
+        "after": 1.431846542051062
+      },
+      "binary_bytes": {
+        "before": 538288,
+        "after": 537712
+      },
+      "seconds": {
+        "before": [
+          0.08822274999693036,
+          0.08761829207651317,
+          0.08777733286842704,
+          0.08799487515352666,
+          0.08793674991466105,
+          0.0881482909899205,
+          0.08760266588069499
+        ],
+        "after": [
+          0.08755945786833763,
+          0.08752958313561976,
+          0.0875192079693079,
+          0.08769087516702712,
+          0.08778008283115923,
+          0.08759158290922642,
+          0.08756229095160961
+        ]
+      },
+      "median_ms": {
+        "before": 87.93674991466105,
+        "after": 87.56229095160961
+      },
+      "best_ms": {
+        "before": 87.60266588069499,
+        "after": 87.5192079693079
+      },
+      "median_speedup": 1.0042764865900822
+    },
+    "sha": {
+      "build_seconds": {
+        "before": 3.6568738331552595,
+        "after": 3.972674542106688
+      },
+      "binary_bytes": {
+        "before": 771704,
+        "after": 787640
+      },
+      "seconds": {
+        "before": [
+          0.128046290948987,
+          0.1265488329809159,
+          0.12778441607952118,
+          0.12869674991816282,
+          0.12843300006352365,
+          0.1282016250770539,
+          0.12612116592936218
+        ],
+        "after": [
+          0.11499483301304281,
+          0.11489879107102752,
+          0.11423833412118256,
+          0.11530579091049731,
+          0.11469754087738693,
+          0.11565466690808535,
+          0.11415524990297854
+        ]
+      },
+      "median_ms": {
+        "before": 128.046290948987,
+        "after": 114.89879107102752
+      },
+      "best_ms": {
+        "before": 126.12116592936218,
+        "after": 114.15524990297854
+      },
+      "median_speedup": 1.1144267903552791
+    }
+  },
+  "candidate_compiler_patch_sha256": "d80db6a2ecad7b3946ec0b79f98f4f3afdd8ee225e9be48eadbdd36cd3724b54",
+  "host": {
+    "system": "Darwin",
+    "architecture": "arm64",
+    "ghc": "9.8.2"
+  },
+  "notes": [
+    "Combined reset-safety and loop-budget change; no isolated attribution between them.",
+    "Per-compiler unit cache reused across fixtures; build wall times are single observations, not a cold compile budget.",
+    "Runtime outputs checked against existing expected files on every warmup and timed run."
+  ]
+}

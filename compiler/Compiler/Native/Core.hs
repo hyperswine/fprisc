@@ -84,9 +84,9 @@ specializeNativePrograms mode inputs=do
   changed<-specializePrograms mode (M.map (\(elided,core)->(elided,nativeClosed core)) inputs)
   M.traverseWithKey (\key (_,core)->replaceClosed (changed M.! key) core) inputs
 
-inlineNativePrograms :: Ord key => Int -> Int -> M.Map key (S.Set String,S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
-inlineNativePrograms rounds limit inputs=do
-  changed<-inlinePrograms rounds limit (M.map (\(forbidden,elided,core)->(forbidden,elided,nativeClosed core)) inputs)
+inlineNativePrograms :: Ord key => Int -> Int -> Int -> M.Map key (S.Set String,S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
+inlineNativePrograms rounds limit loopLimit inputs=do
+  changed<-inlinePrograms rounds limit loopLimit (M.map (\(forbidden,elided,core)->(forbidden,elided,nativeClosed core)) inputs)
   M.traverseWithKey (\key (_,_,core)->replaceClosed (changed M.! key) core) inputs
 
 planNativeVectorReads :: S.Set String -> NativeCore -> Either String NativeCore

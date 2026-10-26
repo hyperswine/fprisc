@@ -327,6 +327,7 @@ they began.
 - [Checked pair-free vector reads](2026-10-26-TYPED-VECTOR-READS.md): scoped tuple plans, typed read contracts, handle reuse through shadowing and the explicit compatibility boundary.
 - [Checked Base normalization](2026-10-26-TYPED-NORMALIZATION.md): alias elimination and strict let sinking preserve checked evidence before region planning and erasure.
 - [Current compiler structural checkpoint](2026-10-26-COMPILER-STRUCTURAL-CHECKPOINT.md): current typed pipeline, checked fusion, amended acceptance audit and explicit performance/CI/migration follow-ups.
+- [Five compiler/runtime follow-ups](2026-10-27-FOLLOWUPS.md): reset-safe reuse/inlining, scalar vector access, scheduler locality, loop optimization and generational state-copy milestones.
 - [Haskell test suite and backend names](2026-10-26-HASKELL-TEST-SUITE.md): the compiler as a cabal library, `make unit-tests` over 26 Haskell checks, two unwired checks in CI, and backend comments re-anchored on current owners.
 - [Compile-time budget](2026-10-26-COMPILE-TIME-BUDGET.md): allocation gate on fixed programs, `make fpr-prof` + `tools/compile_profile.py`, and three costs removed (register-name parsing, repeated region type walks, re-transforming elided constructor stubs) with identical output.
 - [Performance baseline on the typed IR](2026-10-26-PERFORMANCE-BASELINE.md): review step 0 re-measured with C references (fib 2.6x, byteloop 23x, sha 29x from C) and four regressions since 2026-10-01, with region-switch attribution.

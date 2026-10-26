@@ -142,10 +142,11 @@ specializeLinked mode p=do
   linkArtifacts (M.elems changed)
 
 -- Link visibility, not a spelling heuristic, governs imported templates.
-inlineLinked :: Int -> Int -> LinkedProgram -> Either String LinkedProgram
-inlineLinked rounds limit p=do
+-- rounds, the node budget at an ordinary call site, the budget inside a loop
+inlineLinked :: Int -> Int -> Int -> LinkedProgram -> Either String LinkedProgram
+inlineLinked rounds limit loopLimit p=do
   let inputs=M.mapWithKey (\key a->(S.fromList [name | (ArtifactSymbol home name,_)<-M.toList (linkedSymbols p),home/=key],artifactElided a,artifactCore a)) (linkedArtifacts p)
-  changed<-inlineNativePrograms rounds limit inputs
+  changed<-inlineNativePrograms rounds limit loopLimit inputs
   artifacts<-M.traverseWithKey (\key a->artifact key (artifactExports a) (artifactElided a) (changed M.! key)) (linkedArtifacts p)
   linkArtifacts (M.elems artifacts)
 

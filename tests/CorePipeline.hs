@@ -18,7 +18,7 @@ app n = foldl CApp (CVar n)
 right = either error id
 failed (Left _) = True
 failed _ = False
-none = OptimizationOptions False False False False False False
+none = OptimizationOptions False False False False False False S.empty
 
 main = do
   checkExports

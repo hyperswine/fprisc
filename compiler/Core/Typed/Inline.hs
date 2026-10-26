@@ -22,19 +22,24 @@ import qualified Data.Set as S
 
 -- One round against an immutable whole-program snapshot. The pipeline owns
 -- the bounded rounds; inserted bodies are not recursively expanded here.
-data Inlining=Inlining Catalog (M.Map Target (Template,S.Set String))
+-- Each admitted template keeps its weight: a call site inside a loop (a
+-- recursive caller) may take a larger one than a call site elsewhere, since
+-- that is where the call is paid per iteration
+-- (docs/2026-10-27-FOLLOWUPS.md). Two budgets, weighed once.
+data Inlining=Inlining Catalog Int Int (M.Map Target (Template,S.Set String,Int))
 
 -- Compute admission once per snapshot, not at every call in every owner.
--- Stop weighing an oversized template as soon as the node budget is spent.
-planInlining :: Int -> Catalog -> Either String Inlining
-planInlining limit snapshot=do
-  unless (limit>=0) (Left "typed inline: negative node budget")
-  pure (Inlining snapshot (M.mapMaybeWithKey admit (catalogTemplates snapshot)))
+-- Stop weighing an oversized template as soon as the larger budget is spent.
+planInlining :: Int -> Int -> Catalog -> Either String Inlining
+planInlining limit loopLimit snapshot=do
+  unless (limit>=0 && loopLimit>=0) (Left "typed inline: negative node budget")
+  pure (Inlining snapshot limit loopLimit (M.mapMaybeWithKey admit (catalogTemplates snapshot)))
   where
+    cap=max limit loopLimit
     admit target template@(Template caps ps body _ _)
       | target `S.notMember` recursiveCallbacks (catalogAnalysis snapshot),
-        not (null (caps++ps)),Just _<-execStateT (weigh body) limit=
-          Just (template,globals body)
+        not (null (caps++ps)),Just left<-execStateT (weigh body) cap=
+          Just (template,globals body,cap-left)
       | otherwise=Nothing
     weigh :: Expr -> StateT Int Maybe ()
     weigh e=do
@@ -47,7 +52,7 @@ planInlining limit snapshot=do
       <>getConst (mapChildrenM (Const . globals) e)
 
 inlineClosed :: S.Set String -> Namespace -> TypeContext -> M.Map String Int -> Inlining -> ClosedFunction -> Either String ClosedFunction
-inlineClosed forbidden (Namespace ns) types@(TypeContext linears _) snapshotArities (Inlining snapshot candidates) input=do
+inlineClosed forbidden (Namespace ns) types@(TypeContext linears _) snapshotArities (Inlining snapshot limit loopLimit candidates) input=do
   prepared<-importClosedLibrary types (catalogLibrary snapshot) input
   rewriteClosed types (\root codes->do
     (root',codes')<-evalStateT (do
@@ -61,8 +66,9 @@ inlineClosed forbidden (Namespace ns) types@(TypeContext linears _) snapshotArit
   where
     generated ty node=Expr ty (linShapeT linears ty) Generated Nothing node
     eligible self target=case M.lookup target candidates of
-      Just (template,globals)
-        | target/=self,S.null (globals `S.intersection` forbidden)->Just template
+      Just (template,globals,weight)
+        | target/=self,S.null (globals `S.intersection` forbidden),
+          weight<=(if self `S.member` recursiveCallbacks (catalogAnalysis snapshot) then loopLimit else limit)->Just template
       _->Nothing
     function self fn=do
       let scope=M.fromList [(binderId b,b) | b<-functionParameters fn++allBinders (functionBody fn)]

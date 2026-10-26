@@ -52,8 +52,8 @@ checkInlining compile=do
       a=right (Linked.artifact Linked.RootArtifact (names<>Native.nativeConstructors raw) S.empty raw)
       linked=right (Linked.linkArtifacts [a])
       before=Linked.artifactCore (Linked.linkedArtifacts linked M.! Linked.RootArtifact)
-      after=Linked.artifactCore (Linked.linkedArtifacts (right (Linked.inlineLinked 3 24 linked)) M.! Linked.RootArtifact)
-      large=Linked.artifactCore (Linked.linkedArtifacts (right (Linked.inlineLinked 3 256 linked)) M.! Linked.RootArtifact)
+      after=Linked.artifactCore (Linked.linkedArtifacts (right (Linked.inlineLinked 3 24 24 linked)) M.! Linked.RootArtifact)
+      large=Linked.artifactCore (Linked.linkedArtifacts (right (Linked.inlineLinked 3 256 256 linked)) M.! Linked.RootArtifact)
       defs=closedDefinitions (Native.nativeClosed after)
       bodies=map (T.functionBody . Native.checkedFunction) (M.elems (Native.nativeDefinitions after))
       ids=[T.binderId b | d<-M.elems (Native.nativeDefinitions after),let f=Native.checkedFunction d,b<-T.functionParameters f++allBinders (T.functionBody f)]
@@ -89,9 +89,23 @@ checkInlining compile=do
     (hasPolyCall (T.functionBody (Native.checkedFunction (Native.nativeDefinitions before M.! "poly"))))
   check "polymorphic captured code is actually inlined under an admitting budget"
     (ticks (T.functionBody (closedRoot (closedDefinitions (Native.nativeClosed large) M.! "poly")))>0)
-  let noInline=Linked.artifactCore (Linked.linkedArtifacts (right (Linked.inlineLinked 0 24 linked)) M.! Linked.RootArtifact)
+  let noInline=Linked.artifactCore (Linked.linkedArtifacts (right (Linked.inlineLinked 0 24 24 linked)) M.! Linked.RootArtifact)
   check "zero rounds preserve the projection exactly" (Native.nativeProgram noInline==Native.nativeProgram before)
-  check "negative budgets refuse" (failed (Linked.inlineLinked (-1) 24 linked) && failed (Linked.inlineLinked 3 (-1) linked))
+  check "negative budgets refuse" (failed (Linked.inlineLinked (-1) 24 24 linked) && failed (Linked.inlineLinked 3 (-1) (-1) linked)
+    && failed (Linked.inlineLinked 3 24 (-1) linked))
+  -- The loop budget (docs/2026-10-27-FOLLOWUPS.md): a template over the
+  -- ordinary budget is still inlined where the caller is a loop.
+  let loopSource=unlines
+        ["medium a b = (a + b) * (a - b) + a * b - (b * 2).","outside n = medium n 3.",
+         "inLoop : unsafe Int -> Int -> Int.","inLoop n acc = if n == 0 then acc else inLoop (n - 1) (acc + medium n acc)."]
+      loopNames=S.fromList ["medium","outside","inLoop"]
+      (_,loopRaw)=compile "typed-inline-loop" loopSource loopNames
+      loopLinked=right (Linked.linkArtifacts [right (Linked.artifact Linked.RootArtifact (loopNames<>Native.nativeConstructors loopRaw) S.empty loopRaw)])
+      loopBody budget loopBudget name=T.functionBody (closedRoot (closedDefinitions (Native.nativeClosed
+        (Linked.artifactCore (Linked.linkedArtifacts (right (Linked.inlineLinked 3 budget loopBudget loopLinked)) M.! Linked.RootArtifact))) M.! name))
+  check "a template over the ordinary budget stays a call outside a loop" (global "medium" (loopBody 4 64 "outside"))
+  check "a template within the loop budget is inlined into a loop" (not (global "medium" (loopBody 4 64 "inLoop")))
+  check "the loop budget never admits more than it is given" (global "medium" (loopBody 4 4 "inLoop"))
   let protected=M.keysSet (Native.nativeDefinitions after)
       mixed=M.insert "compatEntry" (["v"],CApp (CVar "identity") (CVar "v")) (Native.nativeProgram after)
       late=inlineCompatibilityWithImports protected M.empty (const False) 3 24 mixed
@@ -179,7 +193,7 @@ checkInlining compile=do
       home=Linked.DependencyArtifact "provider"
       dependency=right (Linked.artifact home (S.fromList ["public","factory"]) (Native.nativeConstructors provider) provider)
       original=right (Linked.linkArtifacts [root,dependency])
-      changed=right (Linked.inlineLinked 3 24 original)
+      changed=right (Linked.inlineLinked 3 24 24 original)
       rootCore=Linked.artifactCore (Linked.linkedArtifacts changed M.! Linked.RootArtifact)
       clientBody=T.functionBody (closedRoot (closedDefinitions (Native.nativeClosed rootCore) M.! "client"))
       projection p=M.unions [M.withoutKeys (Native.nativeProgram (Linked.artifactCore artifact)) (Linked.artifactElided artifact)

@@ -23,7 +23,7 @@ import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
-import Codegen (Target, codegenRev, emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
+import Codegen (Target, codegenRev, emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -38,7 +38,8 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Core.Syntax
-import Core.CacheIdentity (CallArities(..),coreCacheIdentity)
+import Reuse (poolResetters)
+import Core.CacheIdentity (CallArities(..),coreCacheIdentityWithResetters)
 import qualified Compiler.Options as Options
 import Compiler.CommandLine
 import Core.Identity (Namespace(..))
@@ -881,7 +882,7 @@ compileWithInterface accepted = do
             base<-sequence artifactResults >>= Linked.linkArtifacts
             original<-checkedStage "callback specialization before inlining" (Linked.specializeLinked callbackMode base)
             inlined<-if oArc opts || oNoInline opts then pure original else
-              do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinked 3 24 original)
+              do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinked 3 24 64 original)
                  checkedStage "callback specialization after inlining" (Linked.specializeLinked callbackMode inlined)
             vectors<-if oArc opts || not (Options.cgVecPeek codegen) then pure inlined else
               checkedStage "checked vector reads" (Linked.planVectorReadsLinked inlined)
@@ -906,6 +907,10 @@ compileWithInterface accepted = do
           importedPrivateNames=S.unions [NativeImports.preservedCode declarations key
             | key<-M.keys (Linked.linkedArtifacts linked),key/=Linked.RootArtifact]
           rootProgRaw=Regions.resultProgram (artifactRegions Linked.RootArtifact)
+          -- every function of the linked program that may reset the pool, by
+          -- the names unit Core calls them: constructor reuse never spans one
+          linkedTgt=tgt {tgtPoolResetters=poolResetters (M.unions
+            [Regions.resultProgram (artifactRegions key) | key<-M.keys (Linked.linkedArtifacts linked)])}
           -- a constructor is global everywhere: a clone that references one
           -- links against the owner's symbol, so qualifyAux leaves the name
           importedCore = M.unions
@@ -923,7 +928,7 @@ compileWithInterface accepted = do
                 exps=Linked.artifactExports artifact
                 elide=Linked.artifactElided artifact
                 unitProgram=Regions.resultProgram placed
-                path=pathBase++"-c"++coreCacheIdentity elide (CallArities ext halAr) unitProgram++"-"++tag++".s"
+                path=pathBase++"-c"++coreCacheIdentityWithResetters (tgtPoolResetters linkedTgt) elide (CallArities ext halAr) unitProgram++"-"++tag++".s"
             reportTurns placed
             checkBuiltinWidth unitProgram
             cached <- doesFileExist path
@@ -938,7 +943,7 @@ compileWithInterface accepted = do
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
                 -- compiled unit (the bbspi arity>8 incident)
-                let emission = emitCheckedProgramWithImports (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates prepared) tgt rvv spec []
+                let emission = emitCheckedProgramWithImports (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates prepared) linkedTgt rvv spec []
                       (NativeImports.importArities prepared `M.union` M.union (if oArc opts then arcExterns else M.empty) ext)
                       (NativeImports.readySymbols prepared) elide (NativeImports.readyProgram prepared)
                     vnotes = emNotes emission
@@ -1039,7 +1044,7 @@ compileWithInterface accepted = do
       rootProg <- ownWith borrowed (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
       rootReady<-ready borrowed Linked.RootArtifact
         (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact)) rootProg
-      let rootEmission = emitCheckedProgramWithImports (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) tgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
+      let rootEmission = emitCheckedProgramWithImports (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) linkedTgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
                                      (NativeImports.readySymbols rootReady)
                                      (Linked.artifactElided (artifactOf Linked.RootArtifact)) (NativeImports.readyProgram rootReady)
           rootVNotes = emNotes rootEmission

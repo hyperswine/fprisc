@@ -17,9 +17,9 @@ main = do
           CIf c a b -> has c || has a || has b
           _ -> False
   check "swapped projections" (marked rebuild)
-  check "branch-local reuse" (marked (CIf (v "flag") rebuild rebuild))
-  check "error branch" (marked (CIf (v "flag") rebuild (CErr "bad")))
-  check "projected child may escape" (marked (CLet "z" (CApp (v "keep") (CProj 0 (v "r"))) rebuild))
+  check "branch-local reuse" (marked (CIf (CMk 1 1 []) rebuild rebuild))
+  check "error branch" (marked (CIf (CMk 1 1 []) rebuild (CErr "bad")))
+  check "projected child can enter another constructor" (marked (CLet "z" (CMk 51 0 [CProj 0 (v "r")]) rebuild))
   check "whole-value escape" (not (marked (CLet "z" (CApp (v "keep") (v "r")) rebuild)))
   check "local alias" (marked (CLet "z" (v "r") (mk [CProj 1 (v "z"), CProj 0 (v "r")])))
   check "closure escape" (not (marked (CLet "z" (CLam [] (CProj 0 (v "r"))) rebuild)))
@@ -28,6 +28,15 @@ main = do
   check "shape mismatch" (not (marked (CMk 43 0 [CInt 0,CInt 1])))
   check "width mismatch" (not (marked (mk [CInt 0])))
   check "self reference" (not (marked (mk [v "r",CInt 0])))
+  -- a pool reset frees the old object: no reuse across it, directly, through
+  -- a field, or through a function that reaches one.
+  check "no reuse across Sys.poolReset" (not (marked (CLet "z" (CApp (v "Sys.poolReset") (CInt 0)) rebuild)))
+  check "no reuse when a field resets the pool" (not (marked (mk [CApp (v "Sys.poolReset") (CInt 0),CProj 0 (v "r")])))
+  check "pool resetters are found transitively"
+    (poolResetters (M.fromList [("boundary",(["s"],CLet "u" (CApp (v "Sys.poolReset") (CInt 0)) (v "s"))),
+                                ("tidy",(["p"],CApp (v "boundary") (v "p"))),("other",(["q"],v "q"))])
+      `S.intersection` S.fromList ["boundary","tidy","other"] == S.fromList ["boundary","tidy"])
+  check "unknown foreign call is a reset barrier" (not (marked (CLet "z" (CApp (v "foreignReset") (CInt 0)) rebuild)))
   check "borrowed parameter unchanged" (reuseFresh rebuild==rebuild)
   let width n = CLet "r" (mk (replicate n (CInt 0)))
         (mk [CProj i (v "r") | i<-[0..n-1]])
@@ -38,11 +47,23 @@ main = do
   let apply f xs=foldl CApp (v f) xs
       update=mk [CProj 1 (v "p"),CProj 0 (v "p")]
       call=apply "update" [v "r"]
-      program body=M.fromList [("update",(["p"],update)),("entry",([],local body))]
-      compile p=fst (reuseProgram S.empty p)
+      program body=M.fromList [("update",(["p"],update)),("entry",(["flag"],local body))]
+      compile p=fst (reuseProgram (poolResetters p) S.empty p)
       private p=[n | n<-M.keys p,"$worker.consume." `isPrefixOf` n]
       selects b=not (null (private (compile (program b))))
       aliasesCall=CLet "s" (v "r") (apply "update" [v "s"])
+      constants=mk [CInt 3,CInt 4] -- source does not access the old root after resetting
+      viaCAF=M.fromList [("resetCAF",([],apply "Sys.poolReset" [CInt 0])),
+                         ("entry",([],local (CLet "z" (v "resetCAF") constants)))]
+      viaCallback=M.fromList [("invoke",(["f"],apply "f" [CInt 0])),
+        ("entry",(["callback"],local (CLet "z" (apply "invoke" [v "callback"]) constants)))]
+      entryHas p=has (snd (compile p M.! "entry"))
+  check "no reuse across resetting CAF evaluation" (not (entryHas viaCAF))
+  check "callback wrappers propagate reset effects" ("invoke" `S.member` poolResetters viaCallback && not (entryHas viaCallback))
+  check "local callable is a reset barrier" (not (entryHas (M.singleton "entry"
+    (["callback"],local (CLet "z" (apply "callback" [CInt 0]) constants)))))
+  check "known nonresetting calls permit child escape" (entryHas (M.fromList
+    [("keep",(["child"],v "child")),("entry",([],local (CLet "z" (apply "keep" [CProj 0 (v "r")]) rebuild)))]))
   check "private consuming entry" (selects call)
   check "alias consuming entry" (selects aliasesCall)
   check "branch consuming entries" (selects (CIf (v "flag") call aliasesCall))
@@ -53,7 +74,7 @@ main = do
   check "post-transfer read blocks" (not (selects (CLet "u" call (CProj 0 (v "r")))))
   check "unknown call blocks" (not (selects (CLet "u" (apply "unknown" [v "r"]) call)))
   check "borrowed entry unchanged" $ null $ private $ compile $ M.fromList [("update",(["p"],update)),("borrow",(["r"],call))]
-  check "excluded entry cannot clone" (null (private (fst (reuseProgram (S.singleton "update") (program call)))))
+  check "excluded entry cannot clone" (null (private (fst (reuseProgram (S.singleton "Sys.poolReset") (S.singleton "update") (program call)))))
   check "shadowed callee cannot select" (not (selects (CLet "update" (v "unknown") call)))
   check "other argument cannot alias" $ null $ private $ compile $ M.fromList
     [("update",(["p","other"],update)),("entry",([],local (apply "update" [v "r",v "r"])))]

@@ -114,9 +114,9 @@ specializeSnapshot elided snapshot templates p=do
 -- All owned artifacts advance against one immutable snapshot per round.
 -- Forbidden globals are linker-private source entries from other artifacts;
 -- their bodies cannot be copied into a caller without an import contract.
-inlinePrograms :: Ord key => Int -> Int -> M.Map key (S.Set String,S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
-inlinePrograms rounds limit inputs=do
-  unless (rounds>=0 && limit>=0) (Left "typed inline pipeline: negative round/node budget")
+inlinePrograms :: Ord key => Int -> Int -> Int -> M.Map key (S.Set String,S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
+inlinePrograms rounds limit loopLimit inputs=do
+  unless (rounds>=0 && limit>=0 && loopLimit>=0) (Left "typed inline pipeline: negative round/node budget")
   let programs=[p | (_,_,p)<-M.elems inputs]
   case programs of
     []->pure M.empty
@@ -135,7 +135,7 @@ inlinePrograms rounds limit inputs=do
         (Left "typed inline pipeline: duplicate source owner")
       let types=programTypes (closedInput (head allPrograms))
       snapshot<-Callbacks.catalogPrograms types (map closedInput allPrograms) owners
-      inlining<-Inline.planInlining limit snapshot
+      inlining<-Inline.planInlining limit loopLimit snapshot
       M.traverseWithKey (\key p->do
         let source=closedInput p
         let (forbidden,elided,_)=inputs M.! key

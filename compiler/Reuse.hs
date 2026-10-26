@@ -1,8 +1,10 @@
 -- Bounded uniqueness proofs for fresh constructors and private consuming entries.
 -- Public calls remain borrowing. Only a fresh, nonescaping root can transfer
 -- ownership; last syntactic use of a borrowed value is never sufficient.
-module Reuse (reuseFresh, reuseProgram, reuseView) where
+module Reuse (reuseFresh, reuseProgram, reuseView, poolResetters) where
 import Core.Syntax (Core(..), Prog)
+import Core.Primitives (primArities,entryTickName)
+import Core.Region.Runtime (Hook(..),hookName)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (isPrefixOf)
@@ -16,13 +18,43 @@ reuseView (CApp (CApp (CVar "$reuse.fresh") (CVar x)) (CMk _ _ fs)) = Just (x,fs
 reuseView _ = Nothing
 
 reuseFresh :: Core -> Core
-reuseFresh = rewrite M.empty S.empty
+reuseFresh body = rewrite (poolResetters (M.singleton "$reuse.entry" ([],body))) M.empty S.empty body
+
+-- A pool reset frees every object allocated in the pool before it. A reused
+-- constructor writes into the old object's memory, so no reuse may span an
+-- expression that can reset the pool: Sys.poolReset itself, or a call to a
+-- function that reaches one (A.tidy's `boundary`, once inlining brought the
+-- match and the rebuilt tuple into one body). A resetting CAF is evaluated at
+-- a bare reference, too. Unknown callbacks and opaque foreign entries are
+-- barriers: the source may legitimately stop using an old allocation before
+-- the callback, while reuse would introduce a new write to it afterwards.
+-- See docs/2026-10-27-FOLLOWUPS.md for the conservative supported contract.
+poolResetters :: Prog -> S.Set String
+poolResetters prog = go initial
+  where
+    base=S.fromList ("Sys.poolReset":map hookName [CallLeave,LoopLeave,Cycle,ReceiveLoop])
+    safe=S.fromList (entryTickName:map fst primArities++map hookName [CallPending,SequenceNumber,Open,PoolMark,HasRoom])
+    facts=M.map (\(ps,b)->references (S.fromList ps) b) prog
+    calls=M.map fst facts
+    unknown=S.unions (M.elems calls) S.\\ (M.keysSet prog `S.union` safe)
+    initial=base `S.union` unknown `S.union` M.keysSet (M.filter snd facts)
+    go known = let next = known `S.union` M.keysSet (M.filter (not . S.null . S.intersection known) calls)
+               in if next == known then known else go next
+    references bound e=case e of
+      CVar f | f `S.notMember` bound->(S.singleton f,False)
+      CLet x rhs body->merge (references bound rhs) (references (S.insert x bound) body)
+      CLam ps body->references (bound `S.union` S.fromList ps) body
+      CApp {}->let (head',args)=spine e
+                   dynamic=case head' of CVar f->f `S.member` bound;_->True
+               in foldr merge (S.empty,dynamic) (map (references bound) (head':args))
+      _->foldr merge (S.empty,False) (map (references bound) (children e))
+    merge (a,x) (b,y)=(a `S.union` b,x || y)
 
 -- Each clone consumes one parameter and returns that same allocation (or
 -- fails). Other parameters remain borrowing. No wrapper, descriptor or exported
 -- ABI is changed. Bodies and call sites are in the same compilation unit.
-reuseProgram :: S.Set String -> Prog -> (Prog,[String])
-reuseProgram excluded prog = (rewritten `M.union` additions,
+reuseProgram :: S.Set String -> S.Set String -> Prog -> (Prog,[String])
+reuseProgram resetting excluded prog = (rewritten `M.union` additions,
   ["# private consuming workers: "++show (M.size additions)])
   where
     choose (name,(ps,b))
@@ -37,27 +69,27 @@ reuseProgram excluded prog = (rewritten `M.union` additions,
       -- Do not assume calls, closures or other parameters are disjoint from
       -- a borrowed input. The caller establishes disjointness for the clone.
       if readsOnly p (width shape) b'
-        then do _ <- consume M.empty (S.fromList ps) p shape b'
+        then do _ <- consume resetting M.empty (S.fromList ps) p shape b'
                 pure (i,shape,length ps,"$worker.consume."++show i++"."++name)
         else Nothing
     plans = M.fromList (take 128 (mapMaybe choose (M.toAscList prog)))
-    rewritten = M.map (\(ps,b)->(ps,rewrite plans (S.fromList ps) b)) prog
+    rewritten = M.map (\(ps,b)->(ps,rewrite resetting plans (S.fromList ps) b)) prog
     used = S.fromList [f | (_,(_,b))<-M.toList rewritten, e<-nodes b,
                           (CVar f,_)<-[spine e], "$worker.consume." `isPrefixOf` f]
     additions = M.fromList [(worker,(ps,out)) |
       (name,(i,shape,_,worker))<-M.toList plans, S.member worker used,
       let (ps,b)=prog M.! name,
       Just b'<-[aliases (ps!!i) b],
-      Just out<-[consume M.empty (S.fromList ps) (ps!!i) shape b']]
+      Just out<-[consume resetting M.empty (S.fromList ps) (ps!!i) shape b']]
 
-rewrite :: Plans -> S.Set String -> Core -> Core
-rewrite plans = go
+rewrite :: S.Set String -> Plans -> S.Set String -> Core -> Core
+rewrite resetting plans = go
   where
     go locals e = case e of
       CLet x a b ->
         let a'=go locals a; scope=S.insert x locals; b'=go scope b
         in CLet x a' $ case resultShape a' of
-          Just shape -> tryRoot plans scope x shape b'
+          Just shape -> tryRoot resetting plans scope x shape b'
           _ -> b'
       CIf a b c -> CIf (go locals a) (go locals b) (go locals c)
       CApp a b -> CApp (go locals a) (go locals b)
@@ -67,29 +99,29 @@ rewrite plans = go
       -- Never move a uniqueness proof into a closure.
       _ -> e
 
-tryRoot :: Plans -> S.Set String -> String -> Shape -> Core -> Core
-tryRoot plans locals x shape b = fromMaybe b $ do
+tryRoot :: S.Set String -> Plans -> S.Set String -> String -> Shape -> Core -> Core
+tryRoot resetting plans locals x shape b = fromMaybe b $ do
   if bounded 256 b then pure () else Nothing
   b' <- aliases x b
-  useRoot plans locals x shape b'
+  useRoot resetting plans locals x shape b'
 
 -- Every successful path returns the original allocation, directly or through a
 -- proven consuming callee. A non-tail transfer is allowed only if no old alias
 -- survives into its continuation; its result becomes the next unique root.
-consume :: Plans -> S.Set String -> String -> Shape -> Core -> Maybe Core
-consume plans locals x shape e = case e of
+consume :: S.Set String -> Plans -> S.Set String -> String -> Shape -> Core -> Maybe Core
+consume resetting plans locals x shape e = case e of
   CMk t v fs | shape==(t,v,length fs), all ro fs ->
     Just (CApp (CApp (CVar "$reuse.fresh") (CVar x)) e)
   CVar y | x==y -> Just e
   CLet y a b | y/=x ->
-    if ro a then CLet y a <$> consume plans (S.insert y locals) x shape b
+    if ro a then CLet y a <$> consume resetting plans (S.insert y locals) x shape b
     else if not (mentions x b) then do
-      a' <- consume plans locals x shape a
+      a' <- consume resetting plans locals x shape a
       b' <- aliases y b
-      CLet y a' <$> consume plans (S.insert y locals) y shape b'
+      CLet y a' <$> consume resetting plans (S.insert y locals) y shape b'
 
     else Nothing
-  CIf c a b | ro c -> CIf c <$> consume plans locals x shape a <*> consume plans locals x shape b
+  CIf c a b | ro c -> CIf c <$> consume resetting plans locals x shape a <*> consume resetting plans locals x shape b
   CErr _ -> Just e
   _ -> case spine e of
     (CVar f,args) | S.notMember f locals,
@@ -97,25 +129,36 @@ consume plans locals x shape e = case e of
       args!!i==CVar x, and [ro a | (j,a)<-zip [0..] args,j/=i] ->
         Just (foldl CApp (CVar worker) args)
     _ -> Nothing
-  where ro = readsOnly x (width shape)
+  where ro e' = readsOnly x (width shape) e' && not (resets resetting locals e')
 
 -- A last-use transfer may feed an arbitrary continuation, but that does not
 -- prove that the entire expression returns the unique root. Keep this separate
 -- from consume, whose return-shape guarantee permits subsequent transfers.
-useRoot :: Plans -> S.Set String -> String -> Shape -> Core -> Maybe Core
-useRoot plans locals x shape e = case consume plans locals x shape e of
+useRoot :: S.Set String -> Plans -> S.Set String -> String -> Shape -> Core -> Maybe Core
+useRoot resetting plans locals x shape e = case consume resetting plans locals x shape e of
   Just out -> Just out
   Nothing -> case e of
     CLet y a b | y/=x ->
-      if ro a then CLet y a <$> useRoot plans (S.insert y locals) x shape b
+      if ro a then CLet y a <$> useRoot resetting plans (S.insert y locals) x shape b
       else if not (mentions x b) then do
-        a' <- consume plans locals x shape a
-        pure (CLet y a' (tryRoot plans (S.insert y locals) y shape b))
+        a' <- consume resetting plans locals x shape a
+        pure (CLet y a' (tryRoot resetting plans (S.insert y locals) y shape b))
       else Nothing
-    CIf c a b | ro c -> CIf c <$> useRoot plans locals x shape a <*> useRoot plans locals x shape b
+    CIf c a b | ro c -> CIf c <$> useRoot resetting plans locals x shape a <*> useRoot resetting plans locals x shape b
     _ | ro e -> Just e
     _ -> Nothing
-  where ro=readsOnly x (width shape)
+  where ro e' = readsOnly x (width shape) e' && not (resets resetting locals e')
+
+-- Does evaluating e call something that may reset the pool?
+resets :: S.Set String -> S.Set String -> Core -> Bool
+resets resetting bound e=case e of
+  CVar f->f `S.member` resetting
+  CLet x rhs body->resets resetting bound rhs || resets resetting (S.insert x bound) body
+  CApp {}->let (head',args)=spine e
+               dynamic=case head' of CVar f->f `S.member` bound;_->True
+           in dynamic || any (resets resetting bound) (head':args)
+  CLam _ _->False -- constructing a closure does not execute its body
+  _->any (resets resetting bound) (children e)
 
 -- Only constructor-producing exits establish freshness. Error exits do not
 -- return. The bounded search rejects differing branch shapes and bare aliases.

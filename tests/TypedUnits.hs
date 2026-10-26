@@ -57,6 +57,10 @@ main=do
       old=key S.empty calls program
   check "external entry arities affect cache identity"
     (old/=key S.empty (CallArities (M.singleton "external" 2) M.empty) program)
+  check "referenced external reset effects affect cache identity"
+    (old/=coreCacheIdentityWithResetters (S.singleton "external") S.empty calls program)
+  check "unrelated reset effects preserve cache identity"
+    (old==coreCacheIdentityWithResetters (S.singleton "unrelated") S.empty calls program)
   check "global/primitive call classification affects cache identity"
     (old/=key S.empty (CallArities M.empty (M.singleton "external" 1)) program)
   check "unrelated calling contracts do not invalidate a unit"
