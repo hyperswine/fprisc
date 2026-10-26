@@ -110,8 +110,8 @@ lowerCheckedKernel plan = do
       when (polStackCheck policy /= StackStatic) (effect OStackCheck)
       when (polFuel policy) (effect OSafepoint)
       fallback <- label
-      -- Integer captures/accumulator have runtime guards, like the legacy
-      -- kernel; float captures rely on the checked callback signature.
+      -- Integer captures/accumulator have runtime guards; float captures
+      -- rely on the checked callback signature.
       forM_ (zip args (kernelCaptures k)) $ \(a,ty) -> case ty of
         KI -> value TPred (OIsInt a) >>= assertGuard fallback
         KB -> do
@@ -195,8 +195,8 @@ lowerCheckedKernel plan = do
             value TVal (OCall (stageFallback op) inputs)
       foldM generic vec stages >>= end . TRet
     -- the SIMD pair loop ahead of the scalar loop: two lanes a step while two
-    -- remain, each step charged both elements' entry ticks (the legacy kernel's
-    -- specFuelN); the scalar loop takes the tail from where the pairs stopped
+    -- remain, each step charged both elements' entry ticks (two
+    -- per pair); the scalar loop takes the tail from where the pairs stopped
     simdPrefix args base count zero acc0 (expr,ticks) = do
       caps <- forM (take (length (kernelCaptures k)) args) $ \a ->
         if kernelElement k == KI then value TInt (OUntag a) else pure a
@@ -444,8 +444,7 @@ lowerCheckedRecord plan = do
 -- Vec.mapAs layout f v: a layout-changing map. The output vector is built
 -- by the runtime (Vec.new or Vec.newAs layout, then one push per element),
 -- the callback is the ORDINARY tagged function (its own messages, its own
--- fuel tick), and the input is freed at the end: the legacy
--- `Vec.mapAs direct scalar kernel`. Int, boxed and float inputs are read as
+-- fuel tick), and the input is freed at the end. Int, boxed and float inputs are read as
 -- one word; an Int word is tagged on the way in. No callback is cloned.
 lowerMapAsKernel :: Policy -> MapAsKernel -> Either String Fn
 lowerMapAsKernel policy k = checkMapAsKernel policy k >>= lowerCheckedMapAs

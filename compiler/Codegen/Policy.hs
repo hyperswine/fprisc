@@ -25,14 +25,14 @@ data Profile
 data StackPolicy
   = StackCheckEveryEntry -- every function entry checks its headroom (M2's choice; the M0 register allows it)
   | StackStatic -- builtin fixed stack; no hosted growth call
-  | StackCheckLegacyShallow -- the legacy rule: skip the check when the frame is small and no generated function is called
+  | StackCheckShallow -- FPR_TYPED_IR_SHALLOW_STACK: skip the check when the frame is small and no generated function is called
   deriving (Eq, Ord, Show)
 
 data Policy = Policy
   { polProfile :: Profile,
     polFuel :: Bool, -- the entry fuel tick and every inlined `$fuel` tick are emitted
     polStackCheck :: StackPolicy,
-    polFloatInline :: Bool -- F64 + - * / and comparisons inline on the 64-bit word (FPR_NO_F64_INLINE=1 keeps the runtime calls, as the legacy differential switch does)
+    polFloatInline :: Bool -- F64 + - * / and comparisons inline on the 64-bit word (FPR_NO_F64_INLINE=1 keeps the runtime calls, for differential checks)
   }
   deriving (Eq, Ord, Show)
 

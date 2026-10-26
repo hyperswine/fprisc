@@ -5,8 +5,8 @@
 --
 -- Selection and placement create frame objects by reference and never
 -- name an offset; `layout` assigns the offsets once the set is complete.
--- The layout reproduces the legacy generated-code frame
--- (Codegen.compileFnBody, docs/2026-10-19-REGISTER-ALLOCATION.md 1.1):
+-- The layout is the generated-code frame (first described for the retired
+-- slot generator, docs/2026-10-19-REGISTER-ALLOCATION.md 1.1):
 -- the link area holds the return address at fp-W and the caller's frame
 -- pointer at fp-2W, objects follow below it in creation order, and the
 -- frame is a multiple of the alignment.  Nothing is shared or reused: M2

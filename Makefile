@@ -187,6 +187,13 @@ fpr-cabal:
 
 fprc: fpr
 
+# The Haskell checks in tests/*.hs as cabal test suites (fp-risc.cabal):
+# built once against the compiler library, run in the package root.
+# UNIT=TypedCore runs one suite.
+.PHONY: unit-tests
+unit-tests:
+	$(NATIVE_PKG_ENV) cabal test $(if $(UNIT),test:$(UNIT),all) --test-show-details=direct
+
 # ---- the std proof pass ------------------------------------------------
 stdcheck: fprc
 	./fprc --stdcheck $(FILE)

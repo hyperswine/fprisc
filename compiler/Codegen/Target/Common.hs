@@ -70,7 +70,7 @@ entrySlot n = -2000 - n
 -- Keep clobbers unchanged: this pass does not change allocation assumptions.
 shallowEntry :: StackPolicy -> Int -> [Item] -> (Bool, [Item])
 shallowEntry policy bytes items
-  | policy == StackCheckLegacyShallow, bytes <= 1024,
+  | policy == StackCheckShallow, bytes <= 1024,
     not (any deepens items) = (True, concatMap strip items)
   | otherwise = (False, items)
   where
@@ -125,7 +125,7 @@ data NativeFn = NativeFn
 
 -- the symbol encoding of Codegen.mangle (ASCII alphanumerics stay, every
 -- other character is `_xHH`); repeated here so this module needs nothing
--- from the legacy generator
+-- from Codegen
 mangleName :: String -> String
 mangleName = concatMap enc
   where
@@ -195,10 +195,8 @@ utf8Bytes = concatMap enc
       | otherwise = [0xF0 + shiftR v 18, 0x80 + (shiftR v 12 .&. 0x3F), 0x80 + (shiftR v 6 .&. 0x3F), 0x80 + (v .&. 0x3F)]
       where v = ord c
 
--- the read-only data section in the target's own syntax (the native text
--- is appended after the legacy lowering and is not translated): Mach-O
--- takes __DATA,__const as the legacy translator does, since the section
--- may hold relocations to code symbols
+-- the read-only data section in the target's own syntax: Mach-O takes
+-- __DATA,__const, since the section may hold relocations to code symbols
 rodataDirective :: ObjectFormat -> String
 rodataDirective = \case
   MachO -> "    .section __DATA,__const"
@@ -206,10 +204,9 @@ rodataDirective = \case
 
 -- A unit's data (function-value objects, the module table, strings,
 -- floats, nullary objects, the constructor table) in the object format's
--- spelling, for a unit with no legacy code to translate
--- (docs/2026-10-22-TYPED-IR-RETIREMENT.md).  ELF data needs no change on
--- AArch64 or x86-64.  Mach-O needs exactly the legacy A64 translator's
--- data rules (A64.macLine and its post pass): a leading underscore on a
+-- spelling (docs/2026-10-22-TYPED-IR-RETIREMENT.md).  ELF data needs no
+-- change on AArch64 or x86-64.  Mach-O needs the data rules the retired A64
+-- translator applied: a leading underscore on a
 -- C-visible symbol in `.globl`, `.quad` and a label definition, `L` for a
 -- `.L` local label, and `__DATA,__const` for `.rodata` (the section holds
 -- relocations to code, which ld64 refuses in __TEXT).

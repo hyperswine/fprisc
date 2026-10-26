@@ -11,8 +11,8 @@
 -- nothing here: their cost is the runtime's.  A cycle with no boundary is
 -- UNBOUNDED, loudly.
 --
--- It is not the legacy `# wcet:` metric: that counts shared-RISC lines
--- before lowering on the legacy emission, and keeps its label there.
+-- It is not the retired `# wcet:` metric, which counted shared-RISC lines
+-- on the retired slot generator's emission.
 -- Neither is elapsed time.
 module Codegen.Bounds (Tok (..), Flow (..), Report (..), analyse, reportLine) where
 

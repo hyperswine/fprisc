@@ -37,7 +37,7 @@ def main():
         tmp=Path(td); exe=tmp/'reuse'
         env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_COST_PROBE='1',XDG_CACHE_HOME=str(tmp/'cache'))
         ghc=['cabal','exec','--','runghc'] if shutil.which('cabal') else ['runghc']
-        print(command([*ghc,'-w','-icompiler','tests/Reuse.hs'],env).stdout,end='',flush=True)
+        print(command([*ghc,'-w','-icompiler','tests/ReuseCheck.hs'],env).stdout,end='',flush=True)
         for no_inline in ('0','1'):
             for no_regs in ('0',):
                 for off in ('1','0','1'):

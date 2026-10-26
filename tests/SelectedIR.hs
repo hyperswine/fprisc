@@ -201,13 +201,13 @@ main = do
   let typedEntry=I (Protocol.selectProtocol Calling.X86_64 ((plainOpcode (Opcode.Common Opcode.EntryCheckTick) [] [])
         {siAnnotation=EntryLabels (Label "typed-entry"),siFlags=FlagsDef,siCalls=[Call.runtimeEvent Call.GrowStackEntry,Call.runtimeEvent Call.FuelEntry]}))
   check "shared shallow-entry rewriting retains the typed opcode"
-    (case shallowEntry StackCheckLegacyShallow 32 [typedEntry] of
+    (case shallowEntry StackCheckShallow 32 [typedEntry] of
       (True,[I i])->siOpcode i==Opcode.Common Opcode.EntryTick && checkForms "typed" [I i]==Right ()
       _->False)
   let entry = I ((plain "entry.check.tick" [] []) {siCalls = [Call.runtimeEvent Call.GrowStackEntry, Call.runtimeEvent Call.FuelEntry]})
       callItem = I callF
       tailItem = I callF {siControl = Return}
-      shallow = shallowEntry StackCheckLegacyShallow
+      shallow = shallowEntry StackCheckShallow
   check "shallow keeps the fuel event" (case shallow 1024 [entry] of
     (True, [I i]) -> siOp i == "entry.tick" && map callTarget (siCalls i) == [Call.runtimeSymbol Call.FuelEntry]
     _ -> False)

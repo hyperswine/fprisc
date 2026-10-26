@@ -148,7 +148,7 @@ data CalleeKind
   = Local -- a function of this unit (`fpr_fn_<mangled>`)
   | Imported -- another unit's export, same shapes, extern symbol
   | Foreign String -- a saturated primitive of declared arity: a C entry (`fpr_prim_fn_<mangled>` for a core primitive, `fpr_g_<mangled>_call<n>` for a HAL/foreign declaration), tagged words in and out
-  | Generated String -- a function of the generated-code ABI under an explicit symbol: a specialized vector kernel or typed callback clone emitted in this unit (`fpr_vspec_...`, `fpr_tkfn_...`), called exactly as the legacy caller calls it (docs/2026-10-22-TYPED-IR-KERNELS.md)
+  | Generated String -- a function of the generated-code ABI under an explicit symbol: a specialized vector kernel or typed callback clone emitted in this unit (`fpr_vspec_...`, `fpr_tkfn_...`), called with the generated-code calling convention (docs/2026-10-22-TYPED-IR-KERNELS.md)
   deriving (Eq, Ord, Show)
 
 isForeign :: Callee -> Bool
@@ -175,7 +175,7 @@ data Op
   | OString String -- immortal byte-string object, same encoding as the source literal
   | OBoxedFloat Width Integer -- TVal: an immortal RV32 numeric leaf; IEEE width and unsigned bits (not an Int payload)
   | OMake Int Int [VId] -- allocate an immutable constructor with tagged fields
-  | OReuse Int Int VId [VId] -- overwrite the fields of a constructor the program owns uniquely (Reuse.reuseFresh proved it), answer it: the legacy `# reuse fresh constructor`; every field is evaluated before the first store
+  | OReuse Int Int VId [VId] -- overwrite the fields of a constructor the program owns uniquely (Reuse.reuseFresh proved it), answer it; every field is evaluated before the first store
   | OAddress VId -- TVal -> TAddr; internal lowering, after the object/representation guard
   | OIndex VId VId -- TAddr, TInt -> TAddr; address + index * target word bytes
   | OLoad Ty VId Int -- word load at a byte offset: TInt, TVal or TAddr; mutable memory, never CSE
@@ -191,7 +191,7 @@ data Op
   | ONot VId -- TPred -> TPred
   | OIsInt VId -- TVal -> TPred: the tag bit (a tagged Int, not an object)
   | OTagTest Int Int VId -- TVal -> TPred: typeid and variant match (a tagged Int never matches)
-  | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a core primitive's object (fpr_prim_obj_), a HAL contract (fpr_g_); the legacy `la a0, <symbol>`
+  | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a core primitive's object (fpr_prim_obj_), a HAL contract (fpr_g_)
   | OFunValue Name -- :: TVal; a program function's static PAP (its arity, no arguments), owned by Codegen.NativeData
   | OApply VId [VId] -- TVal, TVal.. -> TVal: the generic application through the runtime (fpr_applyN): partial, over-saturated, or of a computed head; allocates PAPs in the runtime, calls anything
   | OKernelArith ArithOp VId VId -- checked TInt arithmetic with the vector-kernel overflow/zero diagnostics
@@ -207,7 +207,7 @@ data Op
   | OFloatCmpTree CmpOp FloatTree FloatTree -- TVal leaves -> TPred, scratch roots 0/1
   | OFloat32Tree FloatTree -- F32 operations, rounded at every node
   | OFloat32CmpTree CmpOp FloatTree FloatTree
-  | OFloat32Bin FloatOp VId VId -- TVal TVal -> TVal: F32 arithmetic on the low 32 bits of the word (the runtime's F32 word), inline (the legacy genU F32.+ - * /)
+  | OFloat32Bin FloatOp VId VId -- TVal TVal -> TVal: F32 arithmetic on the low 32 bits of the word (the runtime's F32 word), inline (F32.+ - * /)
   | OFloat32Cmp CmpOp VId VId -- TVal TVal -> TPred: F32 ordered comparison, as OFloatCmp
   | OSafepointN Int -- n fuel ticks before a bounded SIMD pair or callback-free compaction strip
   | OSimdPair Bool SimdExpr [VId] VId -- raw captures (TInt or F64 bits), TAddr: the two Int (True) or F64 (False) lanes at the address, mapped in place through the expression (NEON/SSE2, one 128-bit register); an Int lane that leaves the 63-bit range traps with the kernel diagnostic
@@ -232,7 +232,7 @@ data Term
   | TBr BId [VId] -- a jump with block arguments; to the entry block it is a self tail call
   | TCondBr VId BId [VId] BId [VId] -- predicate, then-target, else-target
   | TTailCall Callee [VId] -- parallel argument assignment, frame teardown, transfer
-  | TUnreachable String -- a dead arm (Core's CErr: exhaustiveness proved it unreachable); if ever reached, the legacy trap with this text (fpr_panic)
+  | TUnreachable String -- a dead arm (Core's CErr: exhaustiveness proved it unreachable); if ever reached, it traps with this text (fpr_panic, runtime/runtime.c)
   deriving (Eq, Ord, Show)
 
 data Block = Block
@@ -482,7 +482,7 @@ shiftName :: ShiftOp -> String
 shiftName = \case Shl -> "BITSHIFTL"; Shr -> "BITSHIFTR"
 
 -- the low 63 bits of a two's-complement value, sign-extended: what
--- `slli 1; ori 1` then `srai 1` leave of a 64-bit result (the legacy
+-- `slli 1; ori 1` then `srai 1` leave of a 64-bit result (the inline
 -- shift expansions and bits.c's TAG((sw)...))
 wrap63 :: Integer -> Integer
 wrap63 v = let m = v `mod` (2 ^ (63 :: Int)) in if m > intMax then m - 2 ^ (63 :: Int) else m

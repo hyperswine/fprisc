@@ -18,7 +18,7 @@ def main():
         env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_COST_PROBE='1',XDG_CACHE_HOME=str(tmp/'cache'))
         env.pop('FPR_FOREIGN',None)
         ghc=['cabal','exec','--','runghc'] if shutil.which('cabal') else ['runghc']
-        print(run([*ghc,'-w','-icompiler','tests/Workers.hs'],env).stdout,end='')
+        print(run([*ghc,'-w','-icompiler','tests/WorkersCheck.hs'],env).stdout,end='')
         ledgers={}; errors={}
         for no_inline in ('0','1'):
             for no_fields,no_scalar in [('1','1'),('0','1'),('1','0'),('0','0'),('1','1')]:

@@ -237,8 +237,7 @@ verifyProgramWidth width program = do
 
 -- A SIMD pair body: at most the 15 scratch vector registers (v17..v31); an
 -- Int body is exactly one + or - over the lane, captures and literals (the stored
--- lanes' 63-bit fit is then the whole overflow test, as the legacy NEON
--- gate argues); an F64 body uses + - * only.
+-- lanes' 63-bit fit is then the whole overflow test); an F64 body uses + - * only.
 simdExprOk :: Bool -> SimdExpr -> Either String ()
 simdExprOk int e = do
   unless (simdRegisters e <= 15) (Left "a SIMD pair expression needs more than the 15 scratch vector registers")

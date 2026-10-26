@@ -27,21 +27,19 @@ flag dev
   default:            False
   manual:             True
 
-executable fpr
-  main-is:            Main.hs
+library
+  -- every compiler module; the fpr executable and the test suites
+  -- below link against it.  compiler/Main.hs is not one of them: the
+  -- executable builds it through the app/Main.hs symlink, so the
+  -- library's modules are compiled once, and the file stays where QOS
+  -- (qos.py, dependency.mk, the Pi SDK) and the Makefile's ghc fallback
+  -- expect it.
   hs-source-dirs:     compiler
   default-language:   Haskell2010
-  -- -O1 matches the Makefile: the compiler deploys ship and the suites
-  -- run (2026-10-18-COMPILER-BUILD-OPT.md found -O2 equal to it);
-  -- FPRISC/Sol.Bytecode/Sol.Cache opt in to -O2.  Keep the threaded RTS
-  -- for subprocess I/O; a 1 ms tick reduces macOS timer-thread shutdown
-  -- latency; a 64 MiB nursery (-A64m, GHC's default is 4 MiB) halves the
-  -- compiler's GC time for 64 MiB more peak RSS.  Override with
-  -- +RTS -V0.01 -A4m -RTS or GHCRTS.
-  ghc-options:        -O1 -rtsopts -threaded "-with-rtsopts=-V0.001 -A64m"
+  ghc-options:        -O1
   if flag(dev)
     ghc-options:      -O0
-  other-modules:
+  exposed-modules:
       Arc
       Build
       Publish
@@ -246,3 +244,181 @@ executable fpr
     , unix
     , time
     , utf8-string
+
+executable fpr
+  main-is:            Main.hs
+  hs-source-dirs:     app
+  default-language:   Haskell2010
+  -- -O1 matches the Makefile: the compiler deploys ship and the suites
+  -- run (2026-10-18-COMPILER-BUILD-OPT.md found -O2 equal to it);
+  -- FPRISC/Sol.Bytecode/Sol.Cache opt in to -O2.  Keep the threaded RTS
+  -- for subprocess I/O; a 1 ms tick reduces macOS timer-thread shutdown
+  -- latency; a 64 MiB nursery (-A64m, GHC's default is 4 MiB) halves the
+  -- compiler's GC time for 64 MiB more peak RSS.  Override with
+  -- +RTS -V0.01 -A4m -RTS or GHCRTS.
+  ghc-options:        -O1 -rtsopts -threaded "-with-rtsopts=-V0.001 -A64m"
+  if flag(dev)
+    ghc-options:      -O0
+  build-depends:
+      base
+    , fp-risc
+
+-- The Haskell checks in tests/: `cabal test` builds them against the
+-- library once and runs them all.  Frontend and FrameEmitters take
+-- arguments from their scripts (check_frontend.py, frame_emitter.py) and
+-- stay script-only; the Python checks still drive native execution.
+common unit-test
+  hs-source-dirs:     tests
+  -- GHC2021, as runghc gives the scripts
+  default-language:   GHC2021
+  ghc-options:        -O0 -w -threaded
+  build-depends:
+      base          >=4.16 && <5
+    , binary
+    , deepseq
+    , array
+    , bytestring
+    , containers
+    , directory
+    , filepath
+    , megaparsec   >=9
+    , mtl
+    , network
+    , process
+    , text
+    , unix
+    , time
+    , utf8-string
+    , fp-risc
+
+test-suite AllocIR
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            AllocIR.hs
+
+test-suite CaseGrowth
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            CaseGrowth.hs
+
+test-suite CompilerOptions
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            CompilerOptions.hs
+
+test-suite CorePipeline
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            CorePipeline.hs
+  other-modules:      ExportPlans
+
+test-suite Diagnostics
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            Diagnostics.hs
+
+test-suite InferenceEvidence
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            InferenceEvidence.hs
+
+test-suite KernelIR
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            KernelIR.hs
+
+test-suite NativeData
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            NativeData.hs
+
+test-suite NullaryConstants
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            NullaryConstants.hs
+
+test-suite RegionInterfaces
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            RegionInterfaces.hs
+
+test-suite ReuseCheck
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            ReuseCheck.hs
+
+test-suite SelectedIR
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            SelectedIR.hs
+
+test-suite Specialization
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            Specialization.hs
+
+test-suite TypedCallbacks
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedCallbacks.hs
+
+test-suite TypedCalls
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedCalls.hs
+
+test-suite TypedCore
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedCore.hs
+
+test-suite TypedIR
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedIR.hs
+
+test-suite TypedLayouts
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedLayouts.hs
+
+test-suite TypedProgram
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedProgram.hs
+  other-modules:      TypedFusion, TypedInline, TypedNormalize, TypedVectorRead
+
+test-suite TypedStaging
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedStaging.hs
+
+test-suite TypedStructs
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedStructs.hs
+
+test-suite TypedTraps
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedTraps.hs
+
+test-suite TypedUnits
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedUnits.hs
+
+test-suite WorkersCheck
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            WorkersCheck.hs
+
+test-suite if-precedence-check
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            if-precedence-check.hs
+
+test-suite module-path-check
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            module-path-check.hs

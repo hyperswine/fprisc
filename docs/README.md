@@ -327,3 +327,4 @@ they began.
 - [Checked pair-free vector reads](2026-10-26-TYPED-VECTOR-READS.md): scoped tuple plans, typed read contracts, handle reuse through shadowing and the explicit compatibility boundary.
 - [Checked Base normalization](2026-10-26-TYPED-NORMALIZATION.md): alias elimination and strict let sinking preserve checked evidence before region planning and erasure.
 - [Current compiler structural checkpoint](2026-10-26-COMPILER-STRUCTURAL-CHECKPOINT.md): current typed pipeline, checked fusion, amended acceptance audit and explicit performance/CI/migration follow-ups.
+- [Haskell test suite and backend names](2026-10-26-HASKELL-TEST-SUITE.md): the compiler as a cabal library, `make unit-tests` over 26 Haskell checks, two unwired checks in CI, and backend comments re-anchored on current owners.

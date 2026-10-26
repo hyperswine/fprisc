@@ -2,17 +2,17 @@
 -- Codegen.Target.A64: direct AArch64 selection from the typed IR, for the
 -- M1 scalar subset under the hosted Base profile
 -- (docs/2026-10-20-TYPED-NATIVE-IR-PLAN.md M2; the ABI facts are the M0
--- register's, docs/2026-10-21-NATIVE-IR-CONTRACTS.md; the sequences are the
--- legacy generator's as docs/2026-10-19-REGISTER-ALLOCATION.md 1.2/3.2
--- and Codegen.compileFnBody state them).
+-- register's, docs/2026-10-21-NATIVE-IR-CONTRACTS.md; the sequences were
+-- first those of the retired slot generator,
+-- docs/2026-10-19-REGISTER-ALLOCATION.md 1.2/3.2).
 --
 -- The pipeline for one function:
 --
 --   select   IR operations -> selected instructions over virtual registers
 --            (Codegen.Selected), every temporary, fixed register, flag use
 --            and call clobber explicit; the entry sequence, calls, tail
---            transfers and the arithmetic slow paths are the legacy
---            generated-code ABI exactly, so legacy and new functions call
+--            transfers and the arithmetic slow paths are the
+--            generated-code ABI exactly, so generated functions call
 --            each other and the runtime without adapters
 --   check    Codegen.Selected.checkFn: an invalid selection is a compiler error
 --   allocate Codegen.Allocate.allocateFn (M3): live ranges over the stream
@@ -23,7 +23,7 @@
 --            liveness over the physical stream and refuses a clobbered
 --            live register or a value across a call outside x19..x27
 --            (M2's Codegen.Place.placeInSlots remains for its tests)
---   layout   Codegen.Frame.layout: the legacy frame shape (ra at fp-8, the
+--   layout   Codegen.Frame.layout: the generated-code frame (ra at fp-8, the
 --            caller's fp at fp-16, the saved callee-saved registers, then
 --            the spill slots, 16-aligned)
 --   render   the Mach-O or ELF text, pseudos expanded
@@ -292,7 +292,7 @@ loadSpill v j = (plain (O.Common O.LoadSpill) [OV v (Any GPR)] [OI (fromIntegral
 -- the entry sequence: the stack check (a call to fpr_stack_grow that may
 -- move sp to a new segment) and the fuel tick (a call to
 -- fpr_fuel_exhausted that may deschedule the actor and resume it on
--- another hart); x9..x11 are its scratch, as the legacy sequence's t0..t2
+-- another hart); x9..x11 are its scratch
 entrySeq :: Protocol.EntryChecks -> Label -> SInstr
 entrySeq checks base=Protocol.selectProtocol Calling.AArch64
   ((plain (O.Common (Protocol.entryOpcode checks)) [] []) {siAnnotation=EntryLabels base})
@@ -639,7 +639,7 @@ selectInstr cfg _ (Instr d op) = case op of
     -- path, the HAL entry fpr_g_<name>_call2 with the original operands
     -- retagged, which traps with the primitive's text; the fast path is
     -- the 64-bit shift of the untagged value with the low 63 bits kept
-    -- (the legacy `slli 1; ori 1` then `srai 1`)
+    -- (as `slli 1; ori 1` then `srai 1` would on RISC-V)
     shift o r a b = do
       slow <- freshL "shslow"
       done <- freshL "shdone"
@@ -681,7 +681,7 @@ selectTerm :: A64Config -> Fn -> Block -> Se ()
 selectTerm cfg fn b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
   TBr target as
-    | target == fnEntry fn -> do -- the self tail call: the legacy transfer re-enters the function through its symbol
+    | target == fnEntry fn -> do -- the self tail call: the transfer re-enters the function through its symbol
         tailJump (CodeSymbol (functionSymbol (fnName fn))) (FprCall TicksFuel) (map vreg as)
     | otherwise -> do
         parallelMoves (zip (paramsOf target) (map vreg as))
@@ -705,8 +705,8 @@ selectTerm cfg fn b = case bTerm b of
   TTailCall c as -> do
     when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
     tailJump (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as)
-  -- a dead arm: the legacy trap if ever reached (`la a0, <str>; call
-  -- fpr_panic`, which does not return); the function's text ends here
+  -- a dead arm: if ever reached it traps with the text (fpr_panic, which
+  -- does not return); the function's text ends here
   TUnreachable msg -> do
     modify (\s -> s {selStrings = S.insert msg (selStrings s)})
     emitI (Protocol.selectProtocol Calling.AArch64 (plain (O.A64 A.Panic) [] [OAddr (StaticObject (stringLabel msg))]))
@@ -832,8 +832,7 @@ emitFnA64WithSymbols symbols cfg fn = do
       sym = functionSymbol name
       -- the prologue: the frame, the callee-saved registers this function
       -- uses, then the arrival copies and the entry sequence (the
-      -- parameters are parked before the entry sequence's calls: the
-      -- legacy order)
+      -- parameters are parked before the entry sequence's calls)
       pairs = savePairs ly saves
       saveItems = [I ((plain (O.A64 A.Save) [] []) {siAnnotation = SaveGroup k}) | (k, _) <- zip [0 :: Int ..] pairs]
       wrapped = if tuneShrinkWrap (cfgTune cfg) then shrinkWrap (alSaved alloc) allocatedBody else Nothing

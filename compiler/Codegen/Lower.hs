@@ -1,8 +1,8 @@
 {-# LANGUAGE LambdaCase #-}
 -- Codegen.Lower: erased checked/compatibility Core -> native typed CFGs.
 --
--- The input is the Core a function has when `Codegen.compileFnBody`
--- receives it: after inlining, fusion, workers, `normIn` and reuse.  The
+-- The input is a function's erased Core after the Core pipeline
+-- (inlining, fusion, workers, `normIn` and reuse).  The
 -- lowering accepts scalar arithmetic, control flow, immutable aggregates,
 -- byte strings, generic apply, and runtime value-ABI calls (including floats).
 -- Private workers retain their representation signatures and all entries
@@ -49,7 +49,7 @@ type L = ExceptT () (StateT St (Either Reason))
 data Cx = Cx
   { cxProg :: Prog,
     cxExt :: M.Map String Int,
-    cxHal :: M.Map String Prim, -- the primitives: core and declared HAL names (the legacy generator's `known` and tgtHal tables)
+    cxHal :: M.Map String Prim, -- the primitives: core and declared HAL names (Core.Primitives plus the target's declared HAL table)
     cxPolicy :: Policy,
     cxSelf :: Name,
     cxEntry :: BId,
@@ -176,21 +176,21 @@ inlineFloat cx env h args =
           ("f32frombits",[CInt _]) -> True
           _ -> False
 
--- the F64 operators the legacy generator expands inline on the 64-bit word
+-- the F64 operators lowered inline on the 64-bit word (no runtime call)
 floatBinOps :: M.Map String FloatOp
 floatBinOps = M.fromList [("F64.+", FAdd), ("F64.-", FSub), ("F64.*", FMul), ("F64./", FDiv)]
 
 floatCmpOps :: M.Map String CmpOp
 floatCmpOps = M.fromList [("F64.<", Lt), ("F64.>", Gt), ("F64.<=", Le), ("F64.>=", Ge), ("F64.==", Eq), ("F64.!=", Ne)]
 
--- the F32 operators the legacy unboxed clones expand inline (fmv.w.x, fadd.s ...)
+-- the F32 operators lowered inline on the word's low 32 bits
 float32BinOps :: M.Map String FloatOp
 float32BinOps = M.fromList [("F32.+", FAdd), ("F32.-", FSub), ("F32.*", FMul), ("F32./", FDiv)]
 
 float32CmpOps :: M.Map String CmpOp
 float32CmpOps = M.fromList [("F32.<", Lt), ("F32.>", Gt), ("F32.<=", Le), ("F32.>=", Ge), ("F32.==", Eq), ("F32.!=", Ne)]
 
--- the bitwise primitives the legacy inline table expands (runtime/bits.c);
+-- the bitwise primitives lowered inline (their C entries: runtime/bits.c);
 -- a declared HAL name of arity two, never shadowed, is the operation
 bitOps :: M.Map String BitOp
 bitOps = M.fromList [(bitName o, o) | o <- [minBound .. maxBound]]
@@ -210,7 +210,7 @@ scalarPrefix = "$scalar."
 -- M2 does not implement refuses every function by name (Codegen.Policy).
 -- `prog` is the whole program the unit was compiled from, for lookups (a
 -- nullary constructor or a callee elided from this unit because a shared
--- unit emits it is still known, as the legacy generator knows it);
+-- unit emits it is still known);
 -- `emitted` are the functions this unit emits, the ones lowered.
 lowerProgram :: Policy -> ScalarSignatures -> Prog -> Prog -> M.Map String Int -> M.Map String Prim -> (Program, [(Name, Reason)])
 lowerProgram policy workerSigs prog emitted ext hal =
@@ -267,12 +267,10 @@ calleeOf cx h n
     Just a <- M.lookup h (cxExt cx), a == n =
       Just (Callee h (Foreign (functionSymbol h)) (replicate n TVal) TVal)
   | Just a <- M.lookup h (cxExt cx), a == n = Just (Callee h Imported (replicate n TVal) TVal)
-  -- a primitive with a direct C entry: the legacy generator's
-  -- `call fpr_prim_fn_<name>` for a core primitive and `call
-  -- fpr_g_<name>_call<n>` for a declared HAL/foreign one (Codegen.genT:
-  -- `known` and the tgtHal case); the names with inline expansions
-  -- ($arc.*, $scalar.*, the integer operators) are not calls there and stay
-  -- refused here
+  -- a primitive with a direct C entry: `fpr_prim_fn_<name>` for a core
+  -- primitive and `fpr_g_<name>_call<n>` for a declared HAL/foreign one;
+  -- the names lowered inline ($arc.*, $scalar.*, the integer operators)
+  -- are not calls and stay refused here
   | M.notMember h (cxProg cx), Just (Prim a (Just sym) _) <- M.lookup h (cxHal cx), a == n, kernelPrefix `isPrefixOf` h = Just (Callee h (Generated sym) (replicate n TVal) TVal)
   -- Private indexed accesses are checked C entries in the manual builtin
   -- runtime, produced only after the address-identity proof in Codegen.
@@ -283,7 +281,7 @@ calleeOf cx h n
   | otherwise = Nothing
 
 -- a vector-specialisation site the native selector rewrote into a call of
--- its legacy-emitted kernel (Codegen.nativeSelect); the kernel takes and
+-- its typed kernel (Codegen.nativeSelect, Codegen.Kernel); the kernel takes and
 -- returns tagged words in the generated-code ABI
 kernelPrefix :: String
 kernelPrefix = "$vkernel:"
@@ -291,14 +289,14 @@ kernelPrefix = "$vkernel:"
 foreignName :: Name -> Bool
 foreignName h = not (any (`isPrefixOf` h) expanded) && h `notElem` inlined
   where
-    -- the families the legacy generator expands in place or routes
-    -- elsewhere (their slow paths and guards are its own, not a C call):
+    -- the families lowered in place or routed elsewhere (their slow
+    -- paths and guards are generated code, not a C call):
     -- the builtin adapters, the scalar workers' raw forms, the indexed
     -- memory forms, link-time symbols and the inlined entry tick. F64/F32 use the declared runtime V ABI, not raw FP registers.
     -- A `$`-name outside them ($receiveLoop, $vec.at/get/len)
-    -- is a direct C entry in both generators
+    -- is a direct C entry
     expanded = ["$arc.", "$scalar.", "$mem.", "$sym.", entryTickName]
-    -- the plain names Codegen.inlineTable expands in place
+    -- the plain names lowered in place (arithOps, cmpOps, bitOps, shiftOps, the string primitives)
     inlined = ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "charAt", "strlen", "band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]
 
 -- a head is a primitive only when nothing shadows it
@@ -339,8 +337,8 @@ lowerTail cx env expr = ended (go expr) >> pure ()
       close (TCondBr p bt [] bf [])
       open bt [] >> lowerTail cx env t
       open bf [] >> lowerTail cx env f
-    -- a dead arm: exhaustiveness proved it unreachable; the legacy generator
-    -- emits the trap there (`la a0, <str>; call fpr_panic`) and so does the IR
+    -- a dead arm: exhaustiveness proved it unreachable; if ever reached it
+    -- traps with this text (fpr_panic, runtime/runtime.c)
     CErr msg -> close (TUnreachable msg)
     CVar h | polProfile (cxPolicy cx) == BuiltinArc,
       not (case M.lookup h (cxProg cx) of Just ([],CMk _ _ []) -> True; _ -> False),
@@ -394,7 +392,7 @@ lowerVal cx env = \case
     | Just r <- M.lookup x env -> pure r
     | polProfile (cxPolicy cx) == BuiltinArc, "$sym." `isPrefixOf` x -> symbolValue (drop 5 x)
     | Just ([], CMk t v []) <- M.lookup x (cxProg cx) -> nullary t v
-    -- a nullary definition is evaluated by a call (the legacy `call fpr_fn_<x>`)
+    -- a nullary definition is evaluated by a call (`fpr_fn_<x>`)
     | Just ([], _) <- M.lookup x (cxProg cx) -> callValue (Callee x Local [] TVal)
     | Just 0 <- M.lookup x (cxExt cx) -> callValue (Callee x Imported [] TVal)
     -- a function value is its static PAP (`la a0, fpr_obj_<x>`); a private
@@ -416,8 +414,8 @@ lowerVal cx env = \case
     fields <- mapM (\e -> lowerVal cx env e >>= asVal) fs
     v <- emit TVal (OMake tid variant fields)
     pure (v, TVal)
-  -- a fresh constructor over a uniquely owned one (Reuse.reuseFresh; the
-  -- legacy `# reuse fresh constructor`): every field first, then the stores
+  -- a fresh constructor over a uniquely owned one (Reuse.reuseFresh):
+  -- every field first, then the stores
   CApp (CApp (CVar "$reuse.fresh") (CVar x)) (CMk tid variant fs@(_ : _))
     | Just root <- M.lookup x env -> do
         fields <- mapM (\e -> lowerVal cx env e >>= asVal) fs
@@ -478,8 +476,8 @@ lowerVal cx env = \case
       | isPrim cx env h, Just o <- M.lookup h arithOps, [a, b] <- args -> arith o a b
       | isPrim cx env h, Just o <- M.lookup h cmpOps, [a, b] <- args -> compare' o a b
       -- the bitwise primitives and the shifts: declared HAL names of arity
-      -- two (Codegen.inlineTable band/bor/bxor/BITSHIFTL/BITSHIFTR; their
-      -- slow path is the fpr_g_<name>_call2 entry, which traps by name)
+      -- two (band/bor/bxor/BITSHIFTL/BITSHIFTR; their slow path is the
+      -- fpr_g_<name>_call2 entry, which traps by name)
       | isPrim cx env h, Just o <- M.lookup h bitOps, [a, b] <- args, Just (Prim 2 _ _) <- M.lookup h (cxHal cx) -> do
           x <- lowerVal cx env a >>= asInt
           y <- lowerVal cx env b >>= asInt
@@ -490,11 +488,11 @@ lowerVal cx env = \case
           y <- lowerVal cx env b >>= asInt
           v <- emit TInt (OShift o x y)
           pure (v, TInt)
-      -- F64 + - * / and comparisons on the 64-bit word: inline, as the
-      -- legacy inline table does (Codegen.inlineTable floatBin/floatCmp);
+      -- F64 + - * / and comparisons on the 64-bit word: inline
+      -- (floatBinOps/floatCmpOps);
       -- the values stay IEEE bits in TVal, nothing new crosses a call
-      -- an F64 literal: its bits, as the legacy generator splices them
-      -- (Codegen.floatLitBits), instead of a runtime f64frombits call
+      -- an F64 literal: its bits (Core.Utils.floatLitBits), instead of a
+      -- runtime f64frombits call
       | isPrim cx env h, policyWidth (cxPolicy cx) == W32,
         h == "f64frombits", [CInt hi, CInt lo] <- args -> boxedFloat W64 (hi*4294967296 + lo `mod` 4294967296)
       | isPrim cx env h, policyWidth (cxPolicy cx) == W32,
@@ -574,12 +572,12 @@ lowerVal cx env = \case
           v <- emit (calleeResult c) (OCall c as')
           pure (v, calleeResult c)
       -- a partial or over-saturated application of a known function: the
-      -- legacy generator stages the whole spine for one fpr_applyN
+      -- whole spine is staged for one fpr_applyN
       | M.member h (cxProg cx) || M.member h (cxExt cx) -> lowerVal cx env (CVar h) >>= \r -> applyGeneric r args
       -- HAL declarations may deliberately hide the runtime arity (QOS uses
       -- a -> b for Sys.storeReq/bindStore). A partial or over-saturated
-      -- primitive therefore applies its actual PAP, just as the legacy
-      -- generator does, rather than guessing a direct _call<n> entry.
+      -- primitive therefore applies its actual PAP rather than guessing a
+      -- direct _call<n> entry.
       | Just (Prim ar _ (Just _)) <- M.lookup h (cxHal cx),
         ar <= arityCeiling, length args <= arityCeiling ->
           lowerVal cx env (CVar h) >>= \r -> applyGeneric r args

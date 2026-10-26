@@ -2,7 +2,7 @@
 -- Codegen.Eval: the reference evaluator of the typed IR.
 --
 -- It states the semantics the backends must preserve: the result, the
--- trap (its text is the legacy primitive's, runtime/runtime.c) and the
+-- trap (its text is the runtime primitive's, runtime/runtime.c) and the
 -- order of effects, recorded as events.  It is not fast and it models no
 -- machine: values are semantic (an Int is an Integer, an object is its
 -- typeid, variant and fields), fuel is counted and never runs out, the
