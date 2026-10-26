@@ -169,6 +169,16 @@ fpr-opt: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/*.c fp-risc.cabal M
 	  (cd compiler && ghc $(GHCOPT) -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -outputdir ../build/ghc$(GHCOPT) -o ../"$$fresh" Main.hs ../build/ghc$(GHCOPT)/*.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" build/fpr-opt
 
+# the compiler with GHC's profiler (late cost centres: the -O1 code, with
+# a cost centre per top-level function), in its own cabal build dir, at
+# build/fpr-prof.  tools/compile_profile.py runs it and prints where a
+# compile spends its time and allocation (docs/2026-10-26-COMPILE-TIME-BUDGET.md).
+.PHONY: fpr-prof
+fpr-prof: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/*.c fp-risc.cabal Makefile
+	@set -e; mkdir -p build; \
+	$(NATIVE_PKG_ENV) cabal build exe:fpr --enable-profiling --profiling-detail=late --builddir=dist-prof; \
+	cp "$$($(NATIVE_PKG_ENV) cabal list-bin fpr --enable-profiling --builddir=dist-prof)" build/fpr-prof
+
 # build through cabal (declared FFI/libs in fp-risc.cabal).  Uses
 # cabal-install when present, else the classic Setup path -- which
 # resolves against the installed package db and needs no hackage

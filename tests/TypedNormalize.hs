@@ -44,7 +44,7 @@ checkNormalization compile=do
          "mapped input = a = Vec.map (fn x -> x + 1) input; b = Vec.map (fn x -> x * 2) a; Vec.free b."]
       names=S.fromList ["simple","alias","sink","first","second","order","dead","caf","cafOK","deadCaf","once","deadAlloc","captured","matched","poly","escaped","shadow","linear","vec","mapped"]
       (_,before)=compile "typed-normalization" source names
-      after=right (Native.normalizeNative before)
+      after=right (Native.normalizeNative S.empty before)
       old=Native.nativeProgram before;new=Native.nativeProgram after
       beforeClosed=Native.nativeClosed before;afterClosed=Native.nativeClosed after
       definitions=closedDefinitions afterClosed
@@ -65,7 +65,7 @@ checkNormalization compile=do
             && sameType (T.functionType a) (T.functionType b)
          | (n,f)<-M.toList (closedDefinitions beforeClosed)])
   check "normalization introduces no new term identities" (ids after `S.isSubsetOf` ids before)
-  check "normalization is idempotent" (Native.nativeProgram (right (Native.normalizeNative after))==new)
+  check "normalization is idempotent" (Native.nativeProgram (right (Native.normalizeNative S.empty after))==new)
   let cases=[(name,[E.RInt n]) | name<-["simple","alias","sink","order","dead","deadCaf","once","deadAlloc","captured","matched","poly","escaped","shadow","linear"],n<-[-3..3]]
       evaluate full name args=
         let p=M.withoutKeys full (S.fromList ["vec","mapped"])
@@ -81,8 +81,8 @@ checkNormalization compile=do
     let a=evaluate old name args;b=evaluate new name args
     check ("independent values/traps/effect order "++name) (observed a==observed b)
     check ("independent evaluator did not get stuck "++name) (case E.ocResult b of Left (E.Stuck _)->False;_->True)
-  let planned=right (Native.planNativeVectorReads before)
-      normalized=right (Native.normalizeNative planned)
+  let planned=right (Native.planNativeVectorReads S.empty before)
+      normalized=right (Native.normalizeNative S.empty planned)
   check "planned vector reads retain lexical handles" (verifyClosedProgram (Native.nativeClosed normalized)==Right ())
   -- A printable source alias may refer to a local that is later shadowed.
   -- Preserve it rather than exposing that identity to the compatibility

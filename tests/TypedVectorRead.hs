@@ -39,7 +39,7 @@ checkVectorReads compile=do
          "captured i v = (fn input -> (x,next) = Vec.at i input; (x,next)) v."]
       names=S.fromList ["at","get","len","whole","computed","captured"]
       (_,before)=compile "typed-vector-reads" source names
-      after=right (Native.planNativeVectorReads before)
+      after=right (Native.planNativeVectorReads S.empty before)
       defs=closedDefinitions (Native.nativeClosed after)
       count e=(case T.exprNode e of T.VectorReadPair {}->1;_->0)
         +sum (getConst (mapChildrenM (Const . (:[]) . count) e))
@@ -52,7 +52,7 @@ checkVectorReads compile=do
     (M.keysSet (Native.nativeProgram before)==M.keysSet (Native.nativeProgram after)
       && Native.nativeJoins before==Native.nativeJoins after
       && identities before==identities after)
-  check "planning is idempotent" (Native.nativeProgram (right (Native.planNativeVectorReads after))==Native.nativeProgram after)
+  check "planning is idempotent" (Native.nativeProgram (right (Native.planNativeVectorReads S.empty after))==Native.nativeProgram after)
   let protected=M.keysSet (Native.nativeDefinitions after)
       raw=M.fromList [("checked",(["v"],CLet "p" (CApp (CVar "Vec.len") (CVar "v"))
         (CIf (CTagEq 4 0 (CVar "p")) (CProj 0 (CVar "p")) (CErr "bad"))))]

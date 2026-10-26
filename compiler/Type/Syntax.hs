@@ -18,13 +18,13 @@ data Type
   | TRec Row
   | TTupT [Type]
   | TLayout Type -- compiler-private evidence for an element's native layout
-  deriving (Eq, Show, Generic, NFData)
+  deriving (Eq, Ord, Show, Generic, NFData)
 
 data Row
   = RV Int
   | RNil
   | RExt String Type Row
-  deriving (Eq, Show, Generic, NFData)
+  deriving (Eq, Ord, Show, Generic, NFData)
 
 data Scheme = Forall [Int] [Int] Type deriving (Show, Generic, NFData) -- tvars, rowvars
 

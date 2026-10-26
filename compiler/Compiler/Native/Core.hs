@@ -89,11 +89,11 @@ inlineNativePrograms rounds limit inputs=do
   changed<-inlinePrograms rounds limit (M.map (\(forbidden,elided,core)->(forbidden,elided,nativeClosed core)) inputs)
   M.traverseWithKey (\key (_,_,core)->replaceClosed (changed M.! key) core) inputs
 
-planNativeVectorReads :: NativeCore -> Either String NativeCore
-planNativeVectorReads input=planVectorReads (nativeClosed input) >>= (`replaceClosed` input)
+planNativeVectorReads :: S.Set String -> NativeCore -> Either String NativeCore
+planNativeVectorReads elided input=planVectorReads elided (nativeClosed input) >>= (`replaceClosed` input)
 
-normalizeNative :: NativeCore -> Either String NativeCore
-normalizeNative input=normalizeProgram (nativeClosed input) >>= (`replaceClosed` input)
+normalizeNative :: S.Set String -> NativeCore -> Either String NativeCore
+normalizeNative elided input=normalizeProgram elided (nativeClosed input) >>= (`replaceClosed` input)
 
 fuseNativePrograms :: Ord key => M.Map key (S.Set String,NativeCore) -> Either String (M.Map key (NativeCore,[FusionNote]))
 fuseNativePrograms inputs=do

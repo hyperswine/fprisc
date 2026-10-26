@@ -124,7 +124,8 @@ def build(prog, name, *flags):
 # last is the whole tail
 LONGEST_FIRST = ('examples/ideal/check.py', 'tests/check_mvu_reload.py', 'tests/check_pos_reload.py',
                  'tests/check_pos_core.py', 'tests/check_workers.py', 'tests/check_pagination.py',
-                 'tests/check_wide_workers.py', 'tests/check_higher_order_contracts.py')
+                 'tests/check_wide_workers.py', 'tests/check_higher_order_contracts.py',
+                 'tests/check_compile_budget.py')
 
 _locks = {}
 

@@ -74,11 +74,13 @@ r = Phys
 x64RegisterFile :: RegisterFile
 x64RegisterFile = RegisterFile classOf (map r ["rsp", "rbp", "r10", "r11"])
   where
-    classOf (Phys p)
-      | p `elem` ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp"]
-          ++ ["r" ++ show n | n <- [8 :: Int .. 15]] = Just GPR
-      | p `elem` ["xmm" ++ show n | n <- [0 :: Int .. 15]] = Just FPR
-      | otherwise = Nothing
+    -- built once: the allocator asks for every operand
+    classOf (Phys p) = M.lookup p x64RegisterClasses
+
+x64RegisterClasses :: M.Map String RegClass
+x64RegisterClasses = M.fromList $
+  [(p, GPR) | p <- ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp"] ++ ["r" ++ show n | n <- [8 :: Int .. 15]]]
+  ++ [("xmm" ++ show n, FPR) | n <- [0 :: Int .. 15]]
 
 callerSaved, argRegs, scratchPool, calleeBudget, callerPool, allocScratch :: [Phys]
 callerSaved = Calling.callerClobbers Calling.X86_64

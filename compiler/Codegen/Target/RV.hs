@@ -68,7 +68,11 @@ scratch = map p ["t0", "t1", "t2"]
 reserved :: [Phys]
 reserved = map p ["zero", "ra", "sp", "gp", "tp", "s0", "t3", "t4", "t5", "t6"]
 regFile :: RegisterFile
-regFile = RegisterFile (\r -> if r `elem` callers ++ saved ++ reserved then Just GPR else Nothing) reserved
+regFile = RegisterFile (\r -> if S.member r regFileMembers then Just GPR else Nothing) reserved
+
+-- built once: the allocator asks for every operand
+regFileMembers :: S.Set Phys
+regFileMembers = S.fromList (callers ++ saved ++ reserved)
 vreg :: VId -> VReg
 vreg (VId n) = VReg n
 anyV :: VReg -> Operand

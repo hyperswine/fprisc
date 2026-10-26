@@ -90,6 +90,7 @@ base('tools/sol-linearity-check.py', 300)
 base('tests/check_structural_ownership.py', 300)
 base('tests/check_generic_ownership.py', 600)
 base('tests/check_pos_core.py', 300)
+base('tests/check_compile_budget.py', 1200)  # cold compiles; allocation is load-independent
 base('tests/check_pagination.py', 300)
 base('tests/check_typed_vectors.py', 300)
 base('tests/check_vector_limits.py', 300)

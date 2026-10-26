@@ -31,3 +31,4 @@ secrets.env
 # Local workshop logs and their recovery files contain user observations.
 *.care.json
 *.care.json.*
+dist-prof/

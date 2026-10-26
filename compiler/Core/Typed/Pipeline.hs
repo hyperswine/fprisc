@@ -65,7 +65,7 @@ specializeProgramWith _ providers p=do
     && shapeLayouts (closedLayouts q)==shapeLayouts layouts)
       (Left "typed pipeline: callback provider namespace/layout mismatch")) providers
   snapshot<-Callbacks.catalogPrograms (programTypes input) (map closedInput (p:providers)) catalog
-  specializeSnapshot snapshot (snapshotInterfaces snapshot) p
+  specializeSnapshot S.empty snapshot (snapshotInterfaces snapshot) p
   where
     input=closedInput p;layouts=closedLayouts p
     catalog=M.unions (map closedDefinitions (p:providers))
@@ -86,7 +86,7 @@ specializePrograms _ inputs=case map snd (M.elems inputs) of
     unless (M.size owners==sum (map M.size owned)) (Left "typed pipeline: duplicate callback source owner")
     snapshot<-Callbacks.catalogPrograms (programTypes (closedInput base)) (map (closedInput . snd) (M.elems inputs)) owners
     let interfaces=snapshotInterfaces snapshot
-    traverse (specializeSnapshot snapshot interfaces . snd) inputs
+    traverse (\(elided,p)->specializeSnapshot elided snapshot interfaces p) inputs
 
 snapshotInterfaces :: Callbacks.Catalog -> M.Map CodeId (String,Function)
 snapshotInterfaces snapshot=M.fromList (concat
@@ -94,10 +94,13 @@ snapshotInterfaces snapshot=M.fromList (concat
     ++[(key,(name,codeAsFunction c)) | (key,c)<-M.toList (closedCode f)]
   | (name,f)<-M.toList (Callbacks.catalogOwners snapshot)])
 
-specializeSnapshot :: Callbacks.Catalog -> M.Map CodeId (String,Function) -> ClosedProgram -> Either String ClosedProgram
-specializeSnapshot snapshot templates p=do
+-- Elided definitions are constructor stubs another artifact owns and emits;
+-- every linked pass transforms them there and passes this artifact's copy
+-- through unchanged (see ownedOnly). Verification still covers them.
+specializeSnapshot :: S.Set String -> Callbacks.Catalog -> M.Map CodeId (String,Function) -> ClosedProgram -> Either String ClosedProgram
+specializeSnapshot elided snapshot templates p=do
   let input=closedInput p
-  definitions<-mapM (\original->callbackClosed <$> specializeClosedFromCatalog (programNamespace input)
+  definitions<-ownedOnly elided (\original->callbackClosed <$> specializeClosedFromCatalog (programNamespace input)
     (programTypes input) (programArities input) snapshot original) (closedDefinitions p)
   mapM_ (\origin->case M.lookup (cloneTemplate origin) templates of
     Just (owner,fn) | cloneSource origin==owner,
@@ -135,25 +138,26 @@ inlinePrograms rounds limit inputs=do
       inlining<-Inline.planInlining limit snapshot
       M.traverseWithKey (\key p->do
         let source=closedInput p
-        definitions<-mapM (Inline.inlineClosed (let (forbidden,_,_)=inputs M.! key in forbidden) (programNamespace source)
+        let (forbidden,elided,_)=inputs M.! key
+        definitions<-ownedOnly elided (Inline.inlineClosed forbidden (programNamespace source)
           (programTypes source) (programArities source) inlining) (closedDefinitions p)
         let output=ClosedProgram source (closedLayouts p) definitions
         verifyClosedProgram output
         pure output) programs
 
-planVectorReads :: ClosedProgram -> Either String ClosedProgram
-planVectorReads input=do
+planVectorReads :: S.Set String -> ClosedProgram -> Either String ClosedProgram
+planVectorReads elided input=do
   let types=programTypes (closedInput input)
       root f=Right f {functionBody=VectorRead.planReads (functionBody f)}
       code c=Right c {codeBody=VectorRead.planReads (codeBody c)}
-  definitions<-mapM (mapClosed types root code) (closedDefinitions input)
+  definitions<-ownedOnly elided (mapClosed types root code) (closedDefinitions input)
   let output=ClosedProgram (closedInput input) (closedLayouts input) definitions
   verifyClosedProgram output
   pure output
 
-normalizeProgram :: ClosedProgram -> Either String ClosedProgram
-normalizeProgram input=do
-  definitions<-mapM (Normalize.normalizeClosed (programTypes (closedInput input))) (closedDefinitions input)
+normalizeProgram :: S.Set String -> ClosedProgram -> Either String ClosedProgram
+normalizeProgram elided input=do
+  definitions<-ownedOnly elided (Normalize.normalizeClosed (programTypes (closedInput input))) (closedDefinitions input)
   let output=ClosedProgram (closedInput input) (closedLayouts input) definitions
   verifyClosedProgram output
   pure output
@@ -172,11 +176,20 @@ fusePrograms inputs=case map snd (M.elems inputs) of
     unless (M.size owners==sum (map M.size owned)) (Left "typed fusion pipeline: duplicate source owner")
     snapshot<-Callbacks.catalogPrograms types (map (closedInput . snd) (M.elems inputs)) owners
     let plan=Fusion.planFusion snapshot
-    traverse (\(_,p)->do
-      changed<-traverse (Fusion.fuseClosed (programNamespace (closedInput p)) types plan) (closedDefinitions p)
+    traverse (\(elided,p)->do
+      changed<-M.traverseWithKey (\name f->if S.member name elided then pure (f,[])
+        else Fusion.fuseClosed (programNamespace (closedInput p)) types plan f) (closedDefinitions p)
       let output=ClosedProgram (closedInput p) (closedLayouts p) (M.map fst changed)
       verifyClosedProgram output
       pure (output,concatMap snd (M.elems changed))) inputs
+
+-- Transform the definitions this artifact owns. Each artifact's program
+-- carries a stub for every constructor of the program (the inliner and the
+-- compatibility lowering read them), but only the owner emits one; the
+-- others elide it. Transforming those copies in every artifact was most of
+-- each linked pass's work (docs/2026-10-26-COMPILE-TIME-BUDGET.md).
+ownedOnly :: Monad m => S.Set String -> (a -> m a) -> M.Map String a -> m (M.Map String a)
+ownedOnly elided f=M.traverseWithKey (\name x->if S.member name elided then pure x else f x)
 
 verifyClosedProgram :: ClosedProgram -> Either String ()
 verifyClosedProgram result=do

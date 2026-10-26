@@ -152,14 +152,14 @@ inlineLinked rounds limit p=do
 planVectorReadsLinked :: LinkedProgram -> Either String LinkedProgram
 planVectorReadsLinked p=do
   changed<-mapM (\a->do
-    core<-planNativeVectorReads (artifactCore a)
+    core<-planNativeVectorReads (artifactElided a) (artifactCore a)
     artifact (artifactId a) (artifactExports a) (artifactElided a) core) (M.elems (linkedArtifacts p))
   linkArtifacts changed
 
 normalizeLinked :: LinkedProgram -> Either String LinkedProgram
 normalizeLinked p=do
   changed<-mapM (\a->do
-    core<-normalizeNative (artifactCore a)
+    core<-normalizeNative (artifactElided a) (artifactCore a)
     artifact (artifactId a) (artifactExports a) (artifactElided a) core) (M.elems (linkedArtifacts p))
   linkArtifacts changed
 

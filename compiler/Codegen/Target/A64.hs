@@ -126,11 +126,15 @@ x n = Phys ("x" ++ show n)
 a64RegisterFile :: RegisterFile
 a64RegisterFile = RegisterFile classOf reserved
   where
+    -- the allocator asks for every operand: a digit fold, not `read`
+    -- (the same answer for every name, leading zeros included)
     classOf (Phys r) = case r of
-      'x' : d | all (`elem` "0123456789") d, not (null d), read d < (31 :: Int) -> Just GPR
-      'd' : d | all (`elem` "0123456789") d, not (null d), read d < (32 :: Int) -> Just FPR
+      'x' : d | below 31 d -> Just GPR
+      'd' : d | below 32 d -> Just FPR
       "sp" -> Just GPR
       _ -> Nothing
+    below limit d = not (null d) && all (\c -> c >= '0' && c <= '9') d
+      && foldl (\n c -> n * 10 + (fromEnum c - fromEnum '0')) 0 d < (limit :: Int)
     reserved = [Phys "sp", x 16, x 17, x 18, x 28, x 29, x 30]
 
 -- what a C call destroys (AAPCS64 caller-saved integer registers and the

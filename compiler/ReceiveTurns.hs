@@ -104,6 +104,14 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
   verifyRewrite prog result
   pure result
   where
+    -- Region.copyable/bounded walk nominal declarations afresh on every
+    -- call, and the boundary checks ask about the same few interface types
+    -- thousands of times: answer each interface type once (the pair's
+    -- components stay lazy, so an unasked property is never computed)
+    typeProperties = M.fromList [(t, (Region.bounded model t, Region.copyable model t))
+                                | signature <- M.elems interfaces, t <- interfaceResult signature : interfaceArguments signature]
+    boundedType t = maybe (Region.bounded model t) fst (M.lookup t typeProperties)
+    copyableType t = maybe (Region.copyable model t) snd (M.lookup t typeProperties)
     refs ps = S.fromList . filter (`notElem` ps) . freeVars
     edges p = M.map (uncurry refs) p
     reaches graph seeds = fix seeds
@@ -246,7 +254,7 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
     costly g arity = case (M.lookup g prog `orElse` M.lookup g context,M.lookup g interfaces,M.lookup g callEqs) of
       (Just (ps,_),Just signature,Just (_,eq)) | length ps==arity,interfaceArity signature==arity,
         callableRegionEntry signature ->
-          Region.copyable model (interfaceResult signature) && allocGrows growingOmega eq && S.notMember g loopEntries
+          copyableType (interfaceResult signature) && allocGrows growingOmega eq && S.notMember g loopEntries
       _->False
     copyableAt owner g=Sites.mayCopyResult sites (maybe owner generatedSource (M.lookup owner generated)) g
     callRegions p = (M.mapWithKey site p, [ "call-regions: " ++ n ++ ": " ++ show k ++ " call(s) under a pending region"
@@ -448,7 +456,7 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
     typedProblems pure invariant n = case M.lookup n interfaces of
       Just signature -> let ps=fst (prog M.! n)
                             as=interfaceArguments signature;r=interfaceResult signature
-                            ok=if pure then Region.bounded model else Region.copyable model
+                            ok=if pure then boundedType else copyableType
                             handedBack=case r of
                               TV x->or [case a of TV y->x==y;_->False
                                 | (i,a)<-zip [0..] as,S.member (n,i) invariant]
@@ -457,7 +465,7 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
                           [n++": live parameter "++show i++" has "++show a
                             | (i,p,a)<-zip3 [1::Int ..] ps as,p `elem` kept n,not (ok a),
                               S.notMember (n,i-1) invariant,not (isFn a)]
-                          ++[n++": result has "++show r | not (Region.copyable model r || nonReturning n || handedBack)]
+                          ++[n++": result has "++show r | not (copyableType r || nonReturning n || handedBack)]
       Nothing->[n++": no checked physical interface"]
     isFn (TFn _ _)=True
     isFn _=False
