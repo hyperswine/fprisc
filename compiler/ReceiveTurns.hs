@@ -21,7 +21,7 @@
 module ReceiveTurns
   (Rewrite,receiveTurns,rewriteProgram,rewriteNotes,rewriteGenerated,
    Generated,GeneratedKind(..),generatedKind,generatedSource,generatedParameters,
-   generatedState,generatedSourceInterface,Group,groupMembers,groupPure,groupBoundaries,
+   generatedState,generatedSourceInterface,Group,groupMembers,groupPure,groupLooped,groupBoundaries,
    groupInvariants,groupLive,rewriteGroups,rewriteCallTargets,rewriteInput,validateSource,publish) where
 
 import Data.List (intercalate, foldl')
@@ -44,7 +44,12 @@ data Generated=Generated
     generatedState :: [Name],generatedSourceInterface :: Maybe Interface } deriving Show
 data Group=Group
   { groupMembers :: [Name],groupPure :: Bool,groupBoundaries :: S.Set Name,
-    groupInvariants :: S.Set (Name,Int),groupLive :: M.Map Name (S.Set Name) } deriving Show
+    groupInvariants :: S.Set (Name,Int),groupLive :: M.Map Name (S.Set Name),
+    -- the loop form: a direct tail loop that tests the allocation clock at
+    -- its boundaries and cycles its region once a slab has filled. Pure
+    -- loops always; receive loops too, except in a QOS process image (its
+    -- plane memory reclaims per turn through the $receiveLoop trampoline)
+    groupLooped :: Bool } deriving Show
 data Authority=Authority Prog (S.Set Name) Prog (S.Set Name)
 data Rewrite=Rewrite Prog [String] (M.Map Name Generated) [Group] (M.Map Name (S.Set Name)) Authority
 rewriteProgram (Rewrite p _ _ _ _ _)=p
@@ -97,9 +102,9 @@ validateSource (Rewrite _ _ _ groups _ (Authority before membership context shar
           newLive=S.fromList [i | (i,p)<-zip [0::Int ..] newPs,p `S.member` (liveNow M.! n)]
       unless (length oldPs==length newPs && newLive `S.isSubsetOf` oldLive) (bad ("dead argument became observable at "++n))
 
-receiveTurns :: Bool -> Bool -> M.Map Name (CostEq,CostEq) -> M.Map Name Interface
+receiveTurns :: Bool -> Bool -> Bool -> M.Map Name (CostEq,CostEq) -> M.Map Name Interface
              -> Region.ValueModel -> Sites.CallSites -> S.Set Name -> Prog -> S.Set Name -> Prog -> Either String Rewrite
-receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared context joins prog = do
+receiveTurns loopRegions callRegionsOn receiveLoops contextEqs interfaces model sites shared context joins prog = do
   let result=Rewrite final (notes++callNotes) generated selectedGroups callTargets (Authority prog (M.keysSet membership) context shared)
   verifyRewrite prog result
   pure result
@@ -134,6 +139,10 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
     groups = receiveGroups ++ pureGroups
     pureSet = S.fromList (map S.fromList pureGroups)
     isPure ns = S.member (S.fromList ns) pureSet
+    -- A receive loop in the loop form (docs/2026-10-26-RECEIVE-TURNS-PER-SLAB.md):
+    -- its region opens at entry, and a turn's scratch and the messages it
+    -- received die when the region cycles, once a slab has filled
+    looped ns = isPure ns || receiveLoops
     membership = M.fromList [(n,S.fromList ns) | ns <- groups, n <- ns]
     results = map transform groups
     rewritten = M.unions [p | (ns, Right p) <- zip groups results, loopRegions || not (isPure ns)]
@@ -141,7 +150,8 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
     -- the closure is one): those lines carry a "(declined)" tag the driver
     -- prints only under FPR_RECEIVE_NOTES, with a count under --cost
     notes = [(if isPure ns then (if isLeft r then "turn-regions (declined): " else if loopRegions then "turn-regions: " else "turn-regions (candidate): ") else "receive-turns: ") ++ unwords ns ++ ": "
-              ++ either id (const (if isPure ns then (if loopRegions then "loop region at the self tail call (opens after a slab, resets per slab)" else "loop region not placed (FPR_NO_LOOP_REGIONS=1)") else "automatic value-state turn regions")) r
+              ++ either id (const (if isPure ns then (if loopRegions then "loop region at the self tail call (opens after a slab, resets per slab)" else "loop region not placed (FPR_NO_LOOP_REGIONS=1)")
+                                   else if looped ns then "turn region at the receive (opens at entry, cycles per slab)" else "automatic value-state turn regions")) r
             | (ns,r) <- zip groups results]
     turned = M.union rewritten prog
     -- the loops that got a region: a call into one needs no call region
@@ -149,7 +159,7 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
     (final, callNotes) = if callRegionsOn then callRegions turned else (turned, [])
     generated=M.fromList (concat
       [describe ns | (ns,Right _)<-zip groups results,loopRegions || not (isPure ns)])
-    selectedGroups=[Group ns (isPure ns) (entries ns) (invariants ns) (M.restrictKeys live (S.fromList ns))
+    selectedGroups=[Group ns (isPure ns) (entries ns) (invariants ns) (M.restrictKeys live (S.fromList ns)) (looped ns)
       | (ns,Right _)<-zip groups results,loopRegions || not (isPure ns)]
     callCandidates=[g | (g,(ps,_))<-M.toList (prog `M.union` context),costly g (length ps)]
     callCandidateSet=S.fromList callCandidates
@@ -166,7 +176,7 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
                   state=[p | (i,p)<-zip [0..] ps,p `elem` kept n,S.notMember (n,i) invariant]
                   make kind params fields=Generated kind n params fields (M.lookup n interfaces)
                   boundary=n `S.member` boundaries
-              in if isPure ns then
+              in if looped ns then
                    (loopName n,make LoopInner (ps++["$loop.mark","$loop.seq"]) state):
                    [(cycleName n,make LoopCycle (ps++["$loop.mark","$loop.seq"]) state) | boundary]
                  else [(receiveName boundary n,if boundary
@@ -389,8 +399,8 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
                                      else "state/result is mutable, functional, polymorphic or lacks type evidence; unchanged (") ++ intercalate "; " problems ++ ")"
                                      ++ (if S.null invariant then "" else "; invariant: " ++ unwords [n ++ "#" ++ show (i + 1) | (n, i) <- S.toList invariant]))
       | any (\n -> length (fst (prog M.! n)) > 64) ns = Left "requires at most 64 parameters after arity spilling; unchanged"
-      | isPure ns && any (\n -> length (fst (prog M.! n))+2>64) ns = Left "loop control cells exceed the physical argument convention; unchanged"
-      | isPure ns = do
+      | looped ns && any (\n -> length (fst (prog M.! n))+2>64) ns = Left "loop control cells exceed the physical argument convention; unchanged"
+      | looped ns = do
           bodies <- mapM (\n -> let (ps,b) = prog M.! n in (,) n <$> loopE (S.fromList ps) b) ns
           pure (M.fromList (concatMap pureMake bodies))
       | otherwise = do
@@ -465,7 +475,12 @@ receiveTurns loopRegions callRegionsOn contextEqs interfaces model sites shared 
                          (foldl CApp (CVar (cycName n)) (map CVar (ps ++ extra)))
               inner = (inName n, (ps ++ extra, if n `S.member` boundaries then tested else b))
               cycle = (cycName n, (ps ++ extra, cycBody))
-              entryE = CLet "$loop.seq.0" (CApp (CVar "$regionSeq") (CInt 0))
+              -- a receive loop opens its region at entry, so the messages
+              -- it receives belong to its scope from the first turn: the
+              -- loop runs on the sequence number $regionOpen returns, which
+              -- keeps the call (an unused one would be dead code)
+              sequence = CApp (CVar "$regionSeq") (CInt 0)
+              entryE = CLet "$loop.seq.0" (if isPure ns then sequence else CApp (CVar "$regionOpen") sequence)
                          (CLet "$loop.mark.0" (CApp (CVar "$regionMark") (CInt 0))
                            (CApp (CApp (CVar "$loopLeave") (CVar "$loop.seq.0"))
                              (foldl CApp (CVar (inName n)) (map CVar ps ++ [CVar "$loop.mark.0", CVar "$loop.seq.0"]))))
@@ -535,7 +550,7 @@ verifyRewrite before (Rewrite after _ generated _ _ _)=do
     && (n `M.notMember` generated || length ps<=64))
     (bad ("invalid physical parameters: "++n))) (M.toList after)
   let globals p=S.unions [S.fromList (freeVars body) S.\\ S.fromList ps | (ps,body)<-M.elems p]
-      hooks=S.fromList ["$callPend","$callLeave","$loopLeave","$regionSeq","$regionMark","$regionRoom","$regionCycle","$receiveLoop"]
+      hooks=S.fromList ["$callPend","$callLeave","$loopLeave","$regionSeq","$regionOpen","$regionMark","$regionRoom","$regionCycle","$receiveLoop"]
       unknown=globals after S.\\ (globals before<>M.keysSet after<>hooks)
   unless (S.null unknown) (bad ("unbound generated references: "++unwords (S.toList unknown)))
 

@@ -63,7 +63,8 @@ data Slot=LiveSlot T.Binder Int | DeadSlot T.Binder deriving Show
 data Body
   = Original
   | Ordinary T.Expr
-  | LoopEntry String [T.Binder] Control Control
+  -- True: a receive loop, whose region opens at entry
+  | LoopEntry Bool String [T.Binder] Control Control
   | LoopInner (Maybe String) [T.Binder] Control Control Flow
   | LoopCycle String [T.Binder] [Int] Control Control
   | ReceiveEntry String [T.Binder] [Int]

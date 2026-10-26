@@ -1578,6 +1578,9 @@ struct fpr_scope {
    * arena inside it; 0 seq for the stack scopes of Sys.arena/loop/loopWith */
   uw seq;
   struct fpr_pool *prev_override;
+  /* the message slab the last received root was charged for (fpr_rx_push):
+   * a receive loop's turns are charged a slab once per slab they pin */
+  fpr_slab_t *msg_slab;
   fpr_pool_t ap;
 };
 static struct fpr_scope *bootstrap_scopes[FPR_NHARTS];
@@ -1592,6 +1595,7 @@ static struct fpr_scope **scope_push(struct fpr_scope *scope) {
   scope->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
   scope->seq = 0;
   scope->prev_override = 0;
+  scope->msg_slab = 0;
   *head = scope;
   return head;
 }
@@ -1714,6 +1718,7 @@ static struct fpr_scope *region_open(fpr_hart_t *h, uw seq) {
   sc->seq = seq;
   struct fpr_pool **slot = override_slot(h);
   sc->prev_override = *slot;
+  sc->msg_slab = 0;
   fpr_pool_init(&sc->ap, 0);
   sc->arena = &sc->ap;
   *head = sc;
@@ -1756,8 +1761,11 @@ static V region_close(fpr_hart_t *h, struct fpr_scope *sc, V r) {
   struct fpr_pool **slot = override_slot(h);
   *slot = sc->prev_override;
   /* a loop region that cycled holds its state in transfer slabs the result
-   * may point into: those close by copy */
-  if (!sc->held && !sc->spare && region_adopt(h, &sc->ap, cur_pool(h), r)) {
+   * may point into: those close by copy.  So does one that received
+   * messages since it opened (a receive loop's last turns): the result may
+   * point into a message, and the messages die here, after the copy */
+  int received = h->current && fpr_acb_rx(h->current)->n > sc->rx_mark;
+  if (!received && !sc->held && !sc->spare && region_adopt(h, &sc->ap, cur_pool(h), r)) {
     scope_release(sc);
     scope_unlink(scope_head(h), sc);
     fpr_free((V)sc);
@@ -1770,6 +1778,7 @@ static V region_close(fpr_hart_t *h, struct fpr_scope *sc, V r) {
   vec_release_in(r);
   struct fpr_pool *dummy = 0;
   arena_close(&dummy, &sc->ap, 0);
+  if (received) scope_roots_die(sc); /* kp_dup copied the result deep: nothing kept points into them */
   scope_release(sc);
   scope_unlink(scope_head(h), sc);
   fpr_free((V)sc);
@@ -1793,6 +1802,16 @@ static V g_region_mark(V u) {
 static V g_region_room(V mark) {
   uw now = fpr_hart()->region_bytes & REGION_MASK;
   return ((now - (uw)UNTAG(mark)) & REGION_MASK) < (uw)FPR_REGION_SLAB ? (V)&fpr_true : (V)&fpr_false;
+}
+/* a receive loop's entry: its region opens now, so every message its turns
+ * take is above the region's mark and dies at a cycle or at the close; the
+ * loop is passed the returned sequence number, which keeps the call
+ * (docs/2026-10-26-RECEIVE-TURNS-PER-SLAB.md) */
+static V g_region_open(V seqv) {
+  if (fpr_plane_memory) return seqv;
+  region_open(fpr_hart(), (uw)UNTAG(seqv));
+  __atomic_fetch_add(&region_opens, 1, __ATOMIC_RELAXED);
+  return seqv;
 }
 /* the back edge tripped: the first time, the region opens (the state was
  * built in the caller's pool, which outlives the loop: nothing to copy);
@@ -1913,6 +1932,7 @@ static V g_region_room(V mark) {
   uw now = fpr_hart()->region_bytes & REGION_MASK;
   return ((now - (uw)UNTAG(mark)) & REGION_MASK) < (uw)FPR_REGION_SLAB ? (V)&fpr_true : (V)&fpr_false;
 }
+static V g_region_open(V seqv) { fpr_builtin_region_open((uw)UNTAG(seqv)); return seqv; }
 static V g_region_cycle(V seqv, V packed) {
   uw seq = (uw)UNTAG(seqv);
   if (fpr_builtin_region_seq() != seq) { fpr_builtin_region_open(seq); return packed; }
@@ -1939,6 +1959,7 @@ FPR_FN(fpr_g__x24regionSeq, g_region_seq, 1);
 FPR_FN(fpr_g__x24regionMark, g_region_mark, 1);
 FPR_FN(fpr_g__x24regionRoom, g_region_room, 1);
 FPR_FN(fpr_g__x24regionCycle, g_region_cycle, 2);
+FPR_FN(fpr_g__x24regionOpen, g_region_open, 1);
 
 FPR_FN(fpr_g__x24loopLeave, g_loop_leave, 2);
 FPR_FN(fpr_g__x24callPend, g_call_pend, 1);
@@ -2626,8 +2647,30 @@ static uw rx_grows, rx_hwm;
 uw fpr_rx_grows_count(void) { return __atomic_load_n(&rx_grows, __ATOMIC_RELAXED); }
 uw fpr_rx_hwm(void) { return __atomic_load_n(&rx_hwm, __ATOMIC_RELAXED); }
 static void rx_inline(fpr_rx_t *r) { r->roots = r->rx0; r->cap = FPR_RX_INLINE; r->n = 0; r->block = 0; }
+#ifndef FPR_RX_CHARGE
+#define FPR_RX_CHARGE ((uw)64) /* a root: at least a message header and its slot; 1,024 to a slab */
+#endif
 void fpr_rx_push(struct fpr_acb *a, V m) {
   if (!a || arc_by_value(m)) return; /* ints, statics, actor handles: nothing to release */
+  /* A received root holds its message, and the message holds the sender's
+   * message slab, until the root is released at a region boundary.  A
+   * receive loop cycles its region when the hart's allocation clock has
+   * moved a slab since its mark (docs/2026-10-26-RECEIVE-TURNS-PER-SLAB.md),
+   * so the clock counts what the roots pin: FPR_RX_CHARGE per root (which
+   * also bounds the roots a cycle holds) and a whole slab the first time a
+   * root pins one the open region has not been charged for. */
+#ifndef FPR_BUILTIN /* the builtin profile places no compiler regions */
+  if (!fpr_plane_memory) {
+    fpr_hart_t *h = fpr_hart();
+    if (h && h->current == a) {
+      uw charge = FPR_RX_CHARGE;
+      struct fpr_scope *sc = *scope_head(h);
+      fpr_slab_t *sl = slab_of(m);
+      if (sc && sc->msg_slab != sl) { sc->msg_slab = sl; charge += FPR_REGION_SLAB; }
+      h->region_bytes += charge;
+    }
+  }
+#endif
   fpr_rx_t *r = fpr_acb_rx(a);
   if (!r->roots) rx_inline(r);
   if (r->n == r->cap) {

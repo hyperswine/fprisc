@@ -196,8 +196,10 @@ eraseWith region contracts types layout f = runExceptT $ do
     goRegion env names body=case body of
       R.Original->go env names (functionBody f)
       R.Ordinary e->go env names e
-      R.LoopEntry inner ps mark seqn->pure
-        (CLet (R.controlName seqn) (hook SequenceNumber [CInt 0])
+      R.LoopEntry eager inner ps mark seqn->pure
+        -- a receive loop opens its region at entry and runs on the sequence
+        -- number $regionOpen returns, which keeps the call
+        (CLet (R.controlName seqn) (if eager then hook Open [hook SequenceNumber [CInt 0]] else hook SequenceNumber [CInt 0])
           (CLet (R.controlName mark) (hook PoolMark [CInt 0])
             (hook LoopLeave [CVar (R.controlName seqn),foldl CApp (CVar inner)
               (vars ps++map (CVar . R.controlName) [mark,seqn])])) )

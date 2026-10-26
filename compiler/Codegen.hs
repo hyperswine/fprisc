@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 124 -- checked callback fusion precedes region planning; original private code stays at home
+codegenRev = 125 -- receive loops take the loop form: a region opened at entry, cycled per slab
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

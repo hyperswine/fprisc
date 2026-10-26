@@ -62,11 +62,13 @@ loop me w n payload acc = if n == 0 then acc else
    if kind=='alloc':assert ledger['alloc_requests']==n and ledger['alloc_bytes']==n*((size+15)//16*16+16),ledger
    elif not turns:assert ledger['copy_bytes']==n*(size+32) and ledger['copies']==2*n,ledger
    else:
-    # The default includes continuation/state transfers in addition to the
-    # two message copies. A worker killed after its last reply may be at
-    # either side of its final boundary, so no exact layout/race count is
-    # promised. Keep the primitive-only ledger exact in the paired mode.
-    assert ledger['copy_bytes']>n*(size+32) and ledger['copies']>2*n,ledger
+    # The default adds state transfers to the two message copies, but only
+    # when a receive loop's region cycles, once a slab has been charged
+    # (docs/2026-10-26-RECEIVE-TURNS-PER-SLAB.md): a short run may copy the
+    # state once or not at all. A worker killed after its last reply may be
+    # at either side of its final boundary, so no exact count is promised.
+    # Keep the primitive-only ledger exact in the paired mode.
+    assert ledger['copy_bytes']>=n*(size+32) and ledger['copies']>=2*n,ledger
    results.append({'kind':kind,'receive_turns':turns,'payload_bytes':size,'operations':n,'harts':harts,
     'best_ms':round(min(times[0])*1000,3),'median_ms':round(statistics.median(times[0])*1000,3),
     'operations_per_second':round(n/min(times[0])),

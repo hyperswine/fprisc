@@ -12,7 +12,9 @@ compiler do more work.
 Where things stand (Apple M4): fib 2.6x from C, byteloop 23x, sha 29x;
 pingpong 2.1x slower than on 2026-10-01; vecread 1.3x slower.
 
-## 1. Receive turns as lazily cycled regions (decision needed)
+## 1. Receive turns as lazily cycled regions (done)
+
+Decided by the user and implemented the same day: [receive turns cycle per slab](2026-10-26-RECEIVE-TURNS-PER-SLAB.md).
 
 **Problem.** Each receive turn runs a runtime trampoline: two generic
 applications, a new `(continue, closure)` pair and closure, a deep copy of the

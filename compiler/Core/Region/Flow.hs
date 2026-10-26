@@ -106,7 +106,7 @@ validateFlow members flow=case flow of
 emittedNames f=S.fromList (map R.parameterName (R.functionParameters f))<>case R.functionBody f of
   R.Original->sourceNames (T.functionBody (R.functionSource f))
   R.Ordinary e->sourceNames e
-  R.LoopEntry _ _ mark seqn->S.fromList (map R.controlName [mark,seqn])
+  R.LoopEntry _ _ _ mark seqn->S.fromList (map R.controlName [mark,seqn])
   R.LoopInner _ _ _ _ flow->flowNames flow
   R.LoopCycle {}->S.empty
   R.ReceiveEntry {}->S.empty
@@ -126,7 +126,7 @@ tailCalls flow=case flow of
 ownedIds f=map R.parameterId (R.functionParameters f)++case R.functionBody f of
   R.Original->map T.binderId (allBinders (T.functionBody (R.functionSource f)))
   R.Ordinary e->map T.binderId (allBinders e)
-  R.LoopEntry _ _ mark seqn->map R.controlId [mark,seqn]
+  R.LoopEntry _ _ _ mark seqn->map R.controlId [mark,seqn]
   R.LoopInner _ _ _ _ flow->locals flow
   R.LoopCycle {}->[]
   R.ReceiveEntry {}->[]

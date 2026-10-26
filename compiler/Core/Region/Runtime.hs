@@ -3,11 +3,11 @@
 module Core.Region.Runtime (Hook(..),hookName,packState) where
 import Core.Syntax (Core(..))
 import Compiler.DataLayout (tupWideBase)
-data Hook=CallPending | CallLeave | LoopLeave | SequenceNumber | PoolMark | HasRoom | Cycle | ReceiveLoop
+data Hook=CallPending | CallLeave | LoopLeave | SequenceNumber | Open | PoolMark | HasRoom | Cycle | ReceiveLoop
   deriving (Eq,Ord,Show)
 hookName h=case h of
   CallPending->"$callPend";CallLeave->"$callLeave";LoopLeave->"$loopLeave"
-  SequenceNumber->"$regionSeq";PoolMark->"$regionMark";HasRoom->"$regionRoom"
+  SequenceNumber->"$regionSeq";Open->"$regionOpen";PoolMark->"$regionMark";HasRoom->"$regionRoom"
   Cycle->"$regionCycle";ReceiveLoop->"$receiveLoop"
 packState []=CInt 0
 packState [x]=x

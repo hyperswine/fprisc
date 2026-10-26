@@ -31,7 +31,7 @@ verifyRegions native rewrite fs helpers blocked=do
       plannedGroups=M.fromList [(n,g) | g<-Turns.rewriteGroups rewrite,n<-Turns.groupMembers g]
       ids=concatMap ownedIds (M.elems fs)
       bad why=Left ("typed region program: "++why)
-      protocolNames=helpers<>S.fromList (map hookName [CallPending,CallLeave,LoopLeave,SequenceNumber,PoolMark,HasRoom,Cycle,ReceiveLoop])
+      protocolNames=helpers<>S.fromList (map hookName [CallPending,CallLeave,LoopLeave,SequenceNumber,Open,PoolMark,HasRoom,Cycle,ReceiveLoop])
   unless (length ids==S.size (S.fromList ids)) (bad "binder identity shared by emitted functions")
   unless ((M.keysSet original S.\\ blocked) `S.isSubsetOf` M.keysSet fs) (bad "lost a checked source entry")
   forM_ (M.toList fs) $ \(name,f)->do
@@ -59,7 +59,7 @@ verifyRegions native rewrite fs helpers blocked=do
     check "duplicate physical parameter" (length (R.functionParameters f)==S.size (S.fromList (map R.parameterId (R.functionParameters f))))
     check "duplicate physical parameter spelling" (length (R.functionParameters f)==S.size (S.fromList (map R.parameterName (R.functionParameters f))))
     let controls=[c | R.ControlParameter c<-R.functionParameters f]++case R.functionBody f of
-          R.LoopEntry _ _ mark seqn->[mark,seqn]
+          R.LoopEntry _ _ _ mark seqn->[mark,seqn]
           _->[]
         controlNames=S.fromList (map R.controlName controls)
         sourceNames=S.fromList (map T.binderName (ps++allBinders (T.functionBody actual)))
@@ -98,8 +98,12 @@ verifyRegions native rewrite fs helpers blocked=do
     case R.functionBody f of
       R.Original->check "original parameter bank" (sameBank (R.functionParameters f) (map R.ValueParameter ps) && name==R.functionSourceName f)
       R.Ordinary _->check "ordinary parameter bank" (sameBank (R.functionParameters f) (map R.ValueParameter ps))
-      R.LoopEntry inner bs mark seqn->do
+      R.LoopEntry eager inner bs mark seqn->do
         check "entry parameter bank" (sameBinders bs ps && sameBank (R.functionParameters f) (map R.ValueParameter ps))
+        -- only a receive loop opens its region at entry; a pure loop's opens
+        -- when a slab has filled, its state built in the caller's pool
+        check "loop entry opening disagrees with its group"
+          (maybe False (\g->Turns.groupLooped g && eager==not (Turns.groupPure g)) (M.lookup (R.functionSourceName f) plannedGroups))
         checkControl mark R.Mark;checkControl seqn R.Sequence
         targetFor (R.functionSourceName f) Turns.LoopInner inner (length ps+2)
       R.LoopInner cold bs mark seqn _->do

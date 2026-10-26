@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-receive-turns-') as directory:
         p=out/(name+'.fpr');p.write_text('unsafe base.\n'+body);return p
 
     exe, notes = build(ROOT/'tests/base/receiveturns.fpr','stress')
-    assert 'turn: automatic value-state turn regions' in notes, notes
+    assert 'turn: turn region at the receive (opens at entry, cycles per slab)' in notes, notes
     for h in (1,4):
         p=run(exe,h)
         assert p.returncode == 0 and 'one million ordinary recursive receives bounded' in p.stdout,(h,p.stdout,p.stderr)
@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-receive-turns-') as directory:
     private, notes = build(ROOT/'tests/base/receiveprivate.fpr', 'private',
                            {'FPR_NO_SPEC':'1', 'FPR_NO_INLINE':'1'})
     assert any(line.startswith('receive-turns: $typed_recursive_') and
-               line.endswith('automatic value-state turn regions') for line in notes.splitlines()), notes
+               line.endswith('turn region at the receive (opens at entry, cycles per slab)') for line in notes.splitlines()), notes
     for h in (1, 4):
         p = run(private, h)
         assert p.returncode == 0 and p.stdout == 'private receiver bounded\n' and not p.stderr, (h, p.stdout, p.stderr)
@@ -43,21 +43,21 @@ with tempfile.TemporaryDirectory(prefix='fpr-receive-turns-') as directory:
         exe, notes = build(ROOT/'tests/base/receivecoverage.fpr', 'coverage'+str(no_inline),
                            {'FPR_NO_INLINE': str(int(no_inline))})
         for name in ('zero', 'clauses', 'patterns', 'dead', 'forwardLeft', 'inside', 'temporary'):
-            assert any(name in line.split(': ')[1].split() and 'automatic value-state' in line
+            assert any(name in line.split(': ')[1].split() and 'opens at entry, cycles per slab' in line
                        for line in notes.splitlines() if line.startswith('receive-turns: ')), notes
         for h in (1, 4):
             p = run(exe, h)
             assert p.returncode == 0 and 'temporary ownership HOLDS' in p.stdout, (h, p.stdout, p.stderr)
     print('automatic receive turns: zero args, shared joins, dead state and strict effects PASS')
     exe, notes = build(ROOT/'tests/base/mvutextmemory.fpr', 'text-memory')
-    assert any('trLoop@' in line and 'automatic value-state turn regions' in line
+    assert any('trLoop@' in line and 'turn region at the receive (opens at entry, cycles per slab)' in line
                for line in notes.splitlines()), notes
     for h in (1, 4):
         p = run(exe, h)
         assert p.returncode == 0 and 'received roots released HOLDS' in p.stdout, (h, p.stdout, p.stderr)
     print('automatic receive turns: concrete MVU text protocol and root ownership PASS')
     exe, notes = build(ROOT/'tests/base/mvueventports.fpr', 'event-ports')
-    assert any('eventPortsAccRes@' in line and 'automatic value-state turn regions' in line
+    assert any('eventPortsAccRes@' in line and 'turn region at the receive (opens at entry, cycles per slab)' in line
                for line in notes.splitlines()), notes
     for h in (1, 4):
         p = run(exe, h)
@@ -104,8 +104,8 @@ main =
 ''')
     for no_inline in (False,True):
         exe,notes=build(mutual,'mutual'+str(no_inline),{'FPR_NO_INLINE':str(int(no_inline))})
-        assert any('left' in line and 'right' in line and 'automatic value-state turn regions' in line for line in notes.splitlines()),notes
-        assert 'ordered: automatic value-state' in notes,notes
+        assert any('left' in line and 'right' in line and 'turn region at the receive (opens at entry, cycles per slab)' in line for line in notes.splitlines()),notes
+        assert 'ordered: turn region at the receive' in notes,notes
         for h in (1,4):
             p=run(exe,h)
             assert p.returncode == 0 and 'strict argument order HOLDS' in p.stdout,(no_inline,h,p.stdout,p.stderr)
@@ -137,7 +137,7 @@ main =
         if suffix == 'off':
             assert p.returncode != 0 and 'imported wide loop:' in p.stdout+p.stderr,(p.stdout,p.stderr)
         else:
-            assert any(line.startswith('receive-turns: wide@') and line.endswith('automatic value-state turn regions') for line in notes.splitlines()),notes
+            assert any(line.startswith('receive-turns: wide@') and line.endswith('turn region at the receive (opens at entry, cycles per slab)') for line in notes.splitlines()),notes
             assert p.returncode == 0 and 'arity-spilled receive loop HOLDS' in p.stdout,(p.stdout,p.stderr)
     print('automatic receive turns: imported helper receives, arity spill and cache isolation PASS')
 
@@ -173,7 +173,7 @@ main =
   print "automatic cancellation HOLDS".
 ''')
     exe,notes=build(cancel,'cancel')
-    assert 'worker: automatic value-state turn regions' in notes,notes
+    assert 'worker: turn region at the receive (opens at entry, cycles per slab)' in notes,notes
     for h in (1,4):
         p=run(exe,h)
         assert p.returncode == 0 and 'automatic cancellation HOLDS' in p.stdout,(h,p.stdout,p.stderr)
@@ -224,7 +224,7 @@ main = Vec.free (loop (myself 0) 10 (Vec.iota 2)).
     }
     for name,body in widened.items():
         exe,notes=build(source(name,body),name)
-        assert 'loop: automatic value-state turn regions' in notes,notes
+        assert 'loop: turn region at the receive (opens at entry, cycles per slab)' in notes,notes
         p=run(exe)
         assert p.returncode == 0,(name,p.stdout,p.stderr)
         print('automatic receive turns:',name,'widened by stage 2, automatic PASS')

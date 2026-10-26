@@ -464,10 +464,17 @@ def autodrop3(tmp):
     ad3 = tmp / 'autodrop3'
     p = run(['./fpr', 'build', '-v', 'tests/base/autodrop3.fpr', '--with', 'tests/arc_churn/arcprobe.c', '-o', ad3])
     assert 'autodrop:' not in p.stdout, p.stdout + p.stderr
+    # since 2026-10-26 a receive loop releases its turns' roots when its
+    # region cycles, within a slab (docs/2026-10-26-RECEIVE-TURNS-PER-SLAB.md):
+    # at most 1,024 roots (64 KiB at FPR_RX_CHARGE 64 bytes) between cycles,
+    # so one actor's list doubles at most seven times from its inline eight;
+    # two actors receive here
     for harts in ('1', '4'):
         p = run([ad3], env={'FPR_HARTS': harts})
-        assert p.stdout == 'autodrop3: pingpong 5000150000 and 7000 Result-wrapped: arc_live = 0 rx_grows = 0\n', p.stdout + p.stderr
-    print('A received message dies with its turn, with no compiler-inserted drop: 100,000 pingpong messages and 1,000 Result-wrapped receives end with zero live Arc entries on one and four harts, and no actor held more than its inline eight roots: PASS')
+        prefix = 'autodrop3: pingpong 5000150000 and 7000 Result-wrapped: arc_live = 0 rx_grows = '
+        assert p.stdout.startswith(prefix), p.stdout + p.stderr
+        assert 0 <= int(p.stdout[len(prefix):]) <= 14, p.stdout + p.stderr
+    print('A received message dies at its region boundary, with no compiler-inserted drop: 100,000 pingpong messages and 1,000 Result-wrapped receives end with zero live Arc entries on one and four harts, and the roots held between cycles stay within a slab: PASS')
 
 @case
 def turnroots(tmp):
@@ -489,7 +496,7 @@ def swarmkeeper(tmp):
     # Vectors cross each boundary by handle and the tick's scratch dies with
     # the turn, so 10,000 ticks leave resident memory flat
     p = run(['./fpr', 'build', '--cost', 'tests/base/swarmkeeper.fpr', '-o', tmp / 'swarmkeeper'], timeout=300)
-    assert any(line.startswith('receive-turns: ') and 'keeper' in line.split(':')[1] and 'automatic value-state turn regions' in line
+    assert any(line.startswith('receive-turns: ') and 'keeper' in line.split(':')[1] and 'turn region at the receive (opens at entry, cycles per slab)' in line
                for line in (p.stdout + p.stderr).splitlines()), p.stdout + p.stderr  # the notes go to stderr
     for harts in ('1', '4'):
         q = run([tmp / 'swarmkeeper'], env={'FPR_HARTS': harts}, timeout=300)

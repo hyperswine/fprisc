@@ -58,7 +58,9 @@ native ns source names=
       layouts=Layouts (collectCons "unit" tops) (collectShapes tops)
       selected=right (selectUnit (M.keysSet (constructorLayouts layouts)) (right (selectCheckedUnit plans names)))
   in right (Native.compileSelection PreserveCallbacks layouts selected)
-place input=right (R.place (R.Options True True) (R.context M.empty input) input)
+place input=right (R.place (R.Options True True True) (R.context M.empty input) input)
+-- a QOS process image: receive loops keep the $receiveLoop trampoline
+placeQos input=right (R.place (R.Options True True False) (R.context M.empty input) input)
 int=TC "Int"
 fn=TFn int int
 con qs fields result=Forall qs [] (foldr TFn result fields)
@@ -135,7 +137,7 @@ main=do
     (all (\name->name `S.member` Imports.preservedCode declarations Linked.RootArtifact
       && visibilityFor True (Imports.readySymbols ready) name==HiddenSymbol) (M.keys loopHelpers))
   let receiveNative=native "receive-protocol" "turn me unused n = _ = receiveFrom me me; if n == 0 then 0 else turn me unused (n - 1)." (S.singleton "turn")
-      receiveResult=place (right (R.prepare receiveNative))
+      receiveResult=placeQos (right (R.prepare receiveNative))
       receiveTyped=maybe (error "missing typed receive product") id (R.resultTyped receiveResult)
       thunks=[f | f<-M.elems (Typed.programFunctions receiveTyped),IR.ReceiveThunk {}<-[IR.functionBody f]]
   check "receive helpers distinguish state/tick cells and dead polymorphic logical slots"
@@ -147,6 +149,15 @@ main=do
             IR.DeadSlot b->case T.binderType b of TV _->True;_->False
             _->False) slots
         _->False) thunks)
+  -- hosted: the same loop takes the loop form, its region opened at entry
+  -- (docs/2026-10-26-RECEIVE-TURNS-PER-SLAB.md)
+  let hostedTyped=maybe (error "missing hosted receive product") id (R.resultTyped (place (right (R.prepare receiveNative))))
+      hostedBodies=map IR.functionBody (M.elems (Typed.programFunctions hostedTyped))
+  check "a hosted receive loop opens its region at entry and has no trampoline helper"
+    (not (null [() | IR.LoopEntry True _ _ _ _<-hostedBodies])
+      && null [() | IR.LoopEntry False _ _ _ _<-hostedBodies]
+      && not (null [() | IR.LoopInner (Just _) _ _ _ _<-hostedBodies])
+      && null [() | IR.ReceiveThunk {}<-hostedBodies] && null [() | IR.ReceiveEntry {}<-hostedBodies])
   check "receive bundle declarations cannot invent a field"
     (failed (Typed.rewriteHelpers (\f->case IR.functionBody f of
       IR.ReceiveThunk state tick slots flow->let wrong=state {IR.controlType=IR.State []}
@@ -159,7 +170,7 @@ main=do
         _->p
       _->p) (IR.functionParameters f)}) receiveTyped))
   let typedDeadNative=native "typed-dead" "turn : Int -> Int -> Int -> Int. turn me unused n = _ = receiveFrom me me; if n == 0 then 0 else turn me unused (n - 1)." (S.singleton "turn")
-      typedDead=maybe (error "missing dead-slot product") id (R.resultTyped (place (right (R.prepare typedDeadNative))))
+      typedDead=maybe (error "missing dead-slot product") id (R.resultTyped (placeQos (right (R.prepare typedDeadNative))))
       readDead f=case IR.functionBody f of
         IR.ReceiveThunk state tick slots _->case [b | IR.DeadSlot b<-slots] of
           b:_->let value=T.Expr (T.binderType b) (T.binderShape b) T.Generated Nothing (T.Var (T.Local (T.binderId b)))
@@ -245,7 +256,7 @@ main=do
     (failed (evalState (Erase.eraseFunction (T.TypeContext [] M.empty) layout regionShadow) 0))
   let planProg=R.programCore input
       modelInput=right (V.valueModel (Source.programTypes (closedInput (Native.nativeClosed compiled))))
-      plan=right (Turns.receiveTurns True True (Cost.costProgram M.empty M.empty planProg)
+      plan=right (Turns.receiveTurns True True True (Cost.costProgram M.empty M.empty planProg)
         (R.programInterfaces input) modelInput (Sites.compatibilitySites (M.keysSet planProg)) (M.keysSet (R.programInterfaces input)) planProg (Native.nativeJoins compiled) planProg)
       changedParent=native "physical" "counter n = loop = (fn k -> _ = str k; if k == 0 then 0 else loop (k - 2)); loop n." (S.singleton "counter")
       projected=right (Typed.emitProgram typed)
@@ -256,7 +267,7 @@ main=do
     (failed (Typed.build changedParent (M.map interfaceArity (R.programInterfaces input)) plan))
   let other=right (R.prepare (native "other" body (S.singleton "counter")))
   check "a region context cannot borrow a different checking namespace"
-    (failed (R.place (R.Options True True) (R.context M.empty input) other))
+    (failed (R.place (R.Options True True True) (R.context M.empty input) other))
   let (physicalPlans,physicalTops)=prepareSource "physical" body
       physicalLayouts=Layouts (collectCons "unit" physicalTops) (collectShapes physicalTops)
       physicalSelection=right (selectUnit (M.keysSet (constructorLayouts physicalLayouts))
@@ -264,13 +275,13 @@ main=do
       changedLayouts=physicalLayouts {shapeLayouts=M.singleton ["unrelated"] 99}
       changedLayoutInput=right (R.prepare (right (Native.compileSelection PreserveCallbacks changedLayouts physicalSelection)))
   check "a region context cannot borrow a different physical layout authority"
-    (failed (R.place (R.Options True True) (R.context M.empty input) changedLayoutInput))
+    (failed (R.place (R.Options True True True) (R.context M.empty input) changedLayoutInput))
   let collisionName="$loop.in."++fst (head private)
       collisionSelection=right (selectClauses (M.keysSet (constructorLayouts physicalLayouts)) physicalPlans
         (physicalTops++[TBind collisionName [] [] (SInt 7)]))
       collisionInput=right (R.prepare (right (Native.compileSelection PreserveCallbacks physicalLayouts collisionSelection)))
   check "generated region names cannot silently overwrite an input definition"
-    (case R.place (R.Options True False) (R.context M.empty collisionInput) collisionInput of
+    (case R.place (R.Options True False True) (R.context M.empty collisionInput) collisionInput of
       Left reason->"generated helper collides" `isInfixOf` reason
       Right _->False)
   let names=["p"++show i | i<-[0..62]]
@@ -283,7 +294,7 @@ main=do
   let scopeSource="entry : Int -> Int -> Int. other : Int -> Int -> Int. entry n = ignored = ignored; fn x -> x + n. other n = ignored = ignored; fn x -> x - n."
       a=right (R.prepare (native "scope" scopeSource (S.singleton "entry")))
       b=right (R.prepare (native "scope" scopeSource (S.singleton "other")))
-      scopeResult=right (R.place (R.Options True True) (R.context M.empty a) b)
+      scopeResult=right (R.place (R.Options True True True) (R.context M.empty a) b)
       scopeProjection=maybe M.empty R.analysisProgram (R.resultAnalysis scopeResult)
   check "deferred source bodies retain only their exact checked declaration"
     (case M.lookup "entry" (R.programInterfaces a) of
@@ -299,7 +310,7 @@ main=do
       changedNative=right (Native.compileSelection PreserveCallbacks layouts changed)
       changedInput=right (R.prepare changedNative)
       original=right (R.prepare (native "borrow" "entry n = n + 1." (S.singleton "entry")))
-      changedResult=right (R.place (R.Options True False) (R.context M.empty original) changedInput)
+      changedResult=right (R.place (R.Options True False True) (R.context M.empty original) changedInput)
   check "changed compatibility clauses cannot borrow their old interface from a context"
     (M.null (Native.nativeDeclarations changedNative) && "entry" `M.notMember` R.programInterfaces changedInput
       && M.null (R.resultGenerated changedResult)

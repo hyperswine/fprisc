@@ -83,7 +83,7 @@ build native arities rewrite=do
       T.binderName b `S.member` (Turns.groupLive g M.! n)]
     routes g=traverse (\n->do
       let boundary=n `S.member` Turns.groupBoundaries g
-      name<-label n (if Turns.groupPure g then Turns.LoopInner else if boundary then Turns.ReceiveThunk else Turns.ReceiveJoin)
+      name<-label n (if Turns.groupLooped g then Turns.LoopInner else if boundary then Turns.ReceiveThunk else Turns.ReceiveJoin)
       pure (R.Route n name boundary (live g n) (T.functionParameters (Native.checkedFunction (available M.! n)))))
       (M.fromList [(n,n) | n<-Turns.groupMembers g])
     calls name=M.findWithDefault S.empty name (Turns.rewriteCallTargets rewrite)
@@ -97,10 +97,10 @@ build native arities rewrite=do
             result=R.ValueResult (T.exprType (T.functionBody original))
             definition body=R.Function name owner name original (map R.ValueParameter ps) result body contracts []
         body<-case M.lookup name groups of
-          Just g | name `S.member` Turns.groupBoundaries g->if Turns.groupPure g then do
+          Just g | name `S.member` Turns.groupBoundaries g->if Turns.groupLooped g then do
             inner<-lift (label name Turns.LoopInner)
             mark<-control "$loop.mark" R.Mark;seqn<-control "$loop.seq" R.Sequence
-            pure (R.LoopEntry inner ps mark seqn)
+            pure (R.LoopEntry (not (Turns.groupPure g)) inner ps mark seqn)
             else do thunk<-lift (label name Turns.ReceiveThunk);pure (R.ReceiveEntry thunk ps (live g name))
           _->pure (if changed then R.Ordinary (T.functionBody original) else R.Original)
         pure (name,definition body)
