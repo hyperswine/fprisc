@@ -1,6 +1,7 @@
 # Compiler cleanup goal
 
-Date: 2026-10-25. Kind: active implementation goal and acceptance register.
+Date: 2026-10-25, acceptance amended 2026-10-26. Kind: structural acceptance
+register and further migration backlog.
 Applies to the Core cleanup rebased on main `0f6df38` and subsequent stages.
 Requested explicitly by the user after the first Core pipeline slice.
 
@@ -9,7 +10,44 @@ Finish the architectural cleanup from the
 Preserve valid-program behavior and established diagnostics, native ABIs and
 cache formats, or explicitly version and test any intentional changes.
 
-## Work and completion criteria
+## Acceptance amended by the user, 2026-10-26
+
+The user explicitly changed this goal to prioritize structural changes and a
+usable typed pipeline. Performance issues and GitHub CI repairs are follow-up
+work. This amendment supersedes the exhaustive migration and validation gates
+in the original register and historical stage records below.
+
+The structural acceptance criteria are:
+
+1. Major frontend, semantic Core, region, optimization and native-backend
+   responsibilities have explicit owners and a readable driver pipeline.
+2. Checked source types, ownership shapes and lexical identities survive the
+   main semantic transformations. New typed passes publish verified products;
+   they do not re-infer erased bodies and present that as retained evidence.
+3. Remaining physical/layout, ARC and optimization compatibility work has a
+   named boundary with explicit inputs/results and interface checks. Complete
+   migration of every generated temporary, worker and ownership rewrite is
+   follow-up work, rather than a prerequisite for accepting the structure.
+4. Compiler options, diagnostic products and the principal native operation,
+   call and kernel-plan contracts use shared typed structures. Remaining span
+   coverage and source/data/linker payload improvements are recorded clearly.
+5. The compiler builds, relevant focused invariant/correctness checks pass,
+   and representative native execution/emission checks exercise the changed
+   path. Known value, trap-order or ownership regressions must be fixed.
+   Full benchmark sweeps, allocation/specialization parity, performance tuning
+   and green GitHub CI are not completion gates for this amended goal.
+6. Document the actual pipeline and remaining work; commit and sync the
+   structural changes with main. Do not claim deferred work has been completed.
+
+The original table remains a detailed migration backlog. An outstanding item
+there does not by itself prevent acceptance under these amended criteria.
+
+The [structural checkpoint and acceptance audit](2026-10-26-COMPILER-STRUCTURAL-CHECKPOINT.md)
+records the current pipeline, checked fusion, focused correctness evidence and
+deferred work. Completion of the amended goal means this structural checkpoint
+is delivered; it does not assert that the original exhaustive backlog is empty.
+
+## Original migration backlog
 
 | Item | Status | Acceptance |
 |---|---|---|
@@ -27,8 +65,8 @@ cache formats, or explicitly version and test any intentional changes.
 Allocator-quality improvements, new foreign-ABI capabilities and the region
 runtime roadmap are separate projects. Typing the existing call-convention
 contracts remains in scope for this cleanup.
-The goal remains active until the table is resolved and required validation is
-green. Finishing this first slice is not completion of the whole goal.
+The goal remains active until the amended structural criteria above are met.
+The historical table and validation records retain their original scope.
 
 ## Landed first slice
 

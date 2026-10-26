@@ -2,6 +2,7 @@ import qualified Core.Typed.Syntax as T
 import TypedInline (checkInlining)
 import TypedVectorRead (checkVectorReads)
 import TypedNormalize (checkNormalization)
+import TypedFusion (checkFusion)
 import qualified Core.Typed.Program as P
 import Core.Typed.Pipeline
 import Core.Typed.Callback
@@ -64,6 +65,7 @@ main=do
   checkInlining compile
   checkVectorReads compile
   checkNormalization compile
+  checkFusion compile
   let source="provider x = x. client n = local x = provider (n + x); local 2. factory x = fn y -> x + y. call n = (factory n) 1."
       names=S.fromList ["provider","client","factory","call"]
       (selected,output)=compile "unit" source names

@@ -3,6 +3,10 @@
 Date: 2026-10-25. Kind: implementation record. Applies to the working-tree
 changes on `97d6ad7`; follows [the architecture review](2026-10-25-ARCHITECTURE-REVIEW.md).
 
+This is a historical first-stage record. See the
+[current structural checkpoint](2026-10-26-COMPILER-STRUCTURAL-CHECKPOINT.md)
+for the checked semantic pipeline and remaining physical boundaries.
+
 The first slice separates Core transformations from native generation without
 changing the generated program. This is not the full typed, uniquely named Core
 migration proposed by the review.

@@ -3,10 +3,10 @@
 -- signatures from another stage. This is a structural check, not Core typing.
 module Core.Opt.Pipeline
   (OptimizationOptions(..), CorePass(..), PassReport(..), OptimizedCore,
-   optimizeCore,optimizeCoreWithImports, optimizedProgram, optimizedSignatures, optimizationNotes,
+   optimizeCore,optimizeCoreWithImports,optimizeCoreWithCheckedImports, optimizedProgram, optimizedSignatures, optimizationNotes,
    optimizationReports, verifyPassResult) where
 import Core.Syntax
-import Core.Opt.Fusion (fuseVecFixWithImports)
+import Core.Opt.Fusion (fuseCompatibilityWithImports)
 import Core.Opt.Normalize (normIn)
 import Workers (ScalarSignatures, workerizeWithSignatures, internalWorker)
 import Reuse (reuseProgram)
@@ -45,7 +45,9 @@ optimizationNotes = concatMap passNotes . optimizationReports
 optimizeCore :: OptimizationOptions -> S.Set Name -> Prog -> Either String OptimizedCore
 optimizeCore=optimizeCoreWithImports M.empty
 optimizeCoreWithImports :: Prog -> OptimizationOptions -> S.Set Name -> Prog -> Either String OptimizedCore
-optimizeCoreWithImports imports opts elide input = do
+optimizeCoreWithImports=optimizeCoreWithCheckedImports S.empty
+optimizeCoreWithCheckedImports :: S.Set Name -> Prog -> OptimizationOptions -> S.Set Name -> Prog -> Either String OptimizedCore
+optimizeCoreWithCheckedImports checked imports opts elide input = do
   verifyPassResult input input M.empty
   foldM run (OptimizedCore input M.empty [])
     [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors]
@@ -53,7 +55,7 @@ optimizeCoreWithImports imports opts elide input = do
     run state pass = do
       let before = optimizedProgram state
           (after,sigs,notes,enabled) = case pass of
-            FuseVectors -> let (p,ns) = if optFusion opts then fuseVecFixWithImports imports before else (before,[])
+            FuseVectors -> let (p,ns) = if optFusion opts then fuseCompatibilityWithImports checked imports before else (before,[])
                            in (p,optimizedSignatures state,ns,optFusion opts)
             MakeWorkers -> let fields = optWorkers opts && optFieldWorkers opts
                                scalars = optWorkers opts && optScalarWorkers opts

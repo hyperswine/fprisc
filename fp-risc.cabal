@@ -178,6 +178,9 @@ executable fpr
       Core.Typed.Inline
       Core.Typed.VectorRead
       Core.Typed.Normalize
+      Core.Typed.Fusion
+      Core.Typed.FusionSafety
+      Core.FusionPolicy
       Core.Typed.Specialize
       Compiler.VectorLayout
       Compiler.VectorOperation

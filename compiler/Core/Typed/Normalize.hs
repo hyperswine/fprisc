@@ -29,8 +29,8 @@ normalize input=input {functionBody=go M.empty body0}
     scope=M.fromList [(binderId b,b) | b<-binders]
     spellings=M.fromListWith (+) [(binderName b,1::Int) | b<-binders]
     globals=globalNames body0
-    -- The remaining erased fusion pass consumes explicit vector producers.
-    -- Preserve that optimization boundary until fusion itself moves here.
+    -- Vector fusion and physical pipeline planning consume explicit producers.
+    -- Preserve this canonical input rather than hiding producers in RHS lets.
     pinned=pinnedLocals body0<>S.fromList [binderId b | b<-binders,vector (binderType b)]
     vector (TAp (TC "Vector") _)=True
     vector _=False

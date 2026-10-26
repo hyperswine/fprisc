@@ -56,6 +56,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
              ('vector_layouts', 'typed-layouts 2.5 8 3.5 9 4.5 ok 5.5 6.5 0 7.5 11 9 8.5 1 8.5 True\n'),
              ('vector_reads', 'wide\nnarrow\npair\nrecord\nvector-reads 7.5 2.25 17 True 23 False 1 29\n'),
              ('normalization', 'caf\nnormalization 9 10 7 4 True 18\n'),
+             ('fusion', 'fusion 16 30 28 5\n'),
              ('structs', 'typed-structs 6 24 7 4 True 5 99 15 9 6 8 False True 7 8 True 102 10 11 True 12 13 6 True 1 3 1\n')]
     for case, expected in cases:
         for harts in (1, 4):
@@ -69,6 +70,10 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
                                  capture_output=True, text=True, timeout=30)
             assert ran.returncode == 0, ran.stdout + ran.stderr
             assert ran.stdout == expected, ran.stdout
+            if case == 'fusion':
+                staged = subprocess.run([str(output), 'staged'], cwd=ROOT, env=native,
+                                        capture_output=True, text=True, timeout=30)
+                assert staged.returncode == 0 and staged.stdout == 'capture\nstaged 24\n', (harts, staged.stdout, staged.stderr)
             if case == 'normalization':
                 for failure, prefix in [('dead', 'before\n'), ('order', '')]:
                     trapped = subprocess.run([str(output), failure], cwd=ROOT, env=native,

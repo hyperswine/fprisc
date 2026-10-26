@@ -3,7 +3,7 @@
 -- one artifact emits each symbol. Private code keeps its source owner/contract.
 module Compiler.Native.Linked
   (ArtifactId(..),NativeArtifact,artifact,artifactId,artifactCore,artifactExports,artifactElided,
-   LinkedProgram,linkArtifacts,specializeLinked,inlineLinked,planVectorReadsLinked,normalizeLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
+   LinkedProgram,linkArtifacts,specializeLinked,inlineLinked,planVectorReadsLinked,normalizeLinked,fuseLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
 import Compiler.Native.Core
 import Compiler.DataLayout
 import Core.Typed.Program
@@ -11,6 +11,7 @@ import Core.Typed.Pipeline
 import Core.Typed.Close
 import Core.Typed.Contract (sameContract)
 import Core.Typed.Callback (CallbackMode(..))
+import Core.Typed.Fusion (FusionNote)
 import Core.Typed.Syntax
 import Core.Typed.Verify (instanceOf)
 import Core.Typed.Walk (allBinders,mapChildrenM)
@@ -161,3 +162,10 @@ normalizeLinked p=do
     core<-normalizeNative (artifactCore a)
     artifact (artifactId a) (artifactExports a) (artifactElided a) core) (M.elems (linkedArtifacts p))
   linkArtifacts changed
+
+fuseLinked :: LinkedProgram -> Either String (LinkedProgram,[FusionNote])
+fuseLinked p=do
+  changed<-fuseNativePrograms (M.map (\a->(artifactElided a,artifactCore a)) (linkedArtifacts p))
+  artifacts<-M.traverseWithKey (\key a->artifact key (artifactExports a) (artifactElided a) (fst (changed M.! key))) (linkedArtifacts p)
+  output<-linkArtifacts (M.elems artifacts)
+  pure (output,concatMap snd (M.elems changed))

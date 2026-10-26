@@ -2,9 +2,9 @@ module Core.Analysis.FusionSafety (fusionSafe, fusionUnsafeReason) where
 import Core.Syntax
 import Core.Utils
 import Core.Primitives
+import Core.FusionPolicy (safePrimitives)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.List (isSuffixOf)
 
 -- EFFECT ORDER (docs/2026-10-03-FUSION-EFFECT-ORDER.md).  Two
 -- materializing maps run the first over EVERY element before the second
@@ -68,8 +68,5 @@ fusionUnsafeReason prog = go S.empty
     -- the program still fail-stops with an Int overflow, and the pair
     -- was its own two passes otherwise.  Division stays out: a zero
     -- divisor is a different failure, and the line is kept narrow.
-    safePrims =
-      [op | op <- uPrims, op /= "/"]
-        ++ [op | w <- [Float64, Float32], op <- fPrimsOf w, not ("/" `isSuffixOf` op) && op /= "F" ++ floatWidthName w ++ "./"]
-        ++ ["and", "or", "not", "and2", "or2"]
+    safePrims = safePrimitives
 

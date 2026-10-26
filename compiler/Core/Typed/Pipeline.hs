@@ -2,7 +2,7 @@
 -- Native semantic passes operate on a complete owned program before erasure.
 -- Layout authority stays attached to the closed product it helped construct.
 module Core.Typed.Pipeline
-  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,inlinePrograms,planVectorReads,normalizeProgram,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
+  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,inlinePrograms,planVectorReads,normalizeProgram,fusePrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
 import Core.Typed.Program
 import Core.Typed.Syntax
 import Core.Typed.Layout
@@ -14,6 +14,7 @@ import qualified Core.Typed.Callback.Catalog as Callbacks
 import qualified Core.Typed.Inline as Inline
 import qualified Core.Typed.VectorRead as VectorRead
 import qualified Core.Typed.Normalize as Normalize
+import qualified Core.Typed.Fusion as Fusion
 import Core.Typed.Verify (sameType)
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Compiler.DataLayout
@@ -156,6 +157,26 @@ normalizeProgram input=do
   let output=ClosedProgram (closedInput input) (closedLayouts input) definitions
   verifyClosedProgram output
   pure output
+
+fusePrograms :: Ord key => M.Map key (S.Set String,ClosedProgram) -> Either String (M.Map key (ClosedProgram,[Fusion.FusionNote]))
+fusePrograms inputs=case map snd (M.elems inputs) of
+  []->pure M.empty
+  base:programs->do
+    mapM_ (\p->unless (programNamespace (closedInput p)==programNamespace (closedInput base)
+      && constructorLayouts (closedLayouts p)==constructorLayouts (closedLayouts base)
+      && shapeLayouts (closedLayouts p)==shapeLayouts (closedLayouts base))
+        (Left "typed fusion pipeline: checking namespace/layout mismatch")) programs
+    let owned=[M.withoutKeys (closedDefinitions p) elided | (elided,p)<-M.elems inputs]
+        owners=M.unions owned
+        types=programTypes (closedInput base)
+    unless (M.size owners==sum (map M.size owned)) (Left "typed fusion pipeline: duplicate source owner")
+    snapshot<-Callbacks.catalogPrograms types (map (closedInput . snd) (M.elems inputs)) owners
+    let plan=Fusion.planFusion snapshot
+    traverse (\(_,p)->do
+      changed<-traverse (Fusion.fuseClosed (programNamespace (closedInput p)) types plan) (closedDefinitions p)
+      let output=ClosedProgram (closedInput p) (closedLayouts p) (M.map fst changed)
+      verifyClosedProgram output
+      pure (output,concatMap snd (M.elems changed))) inputs
 
 verifyClosedProgram :: ClosedProgram -> Either String ()
 verifyClosedProgram result=do

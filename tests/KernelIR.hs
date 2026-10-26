@@ -28,12 +28,12 @@ main = do
         base = case backend of DirectRV W32 _ -> rv32 {tgtPolicy=m2Policy {polProfile=Rv32}}; _ -> rv64
         target = base {tgtNative=Just mode}
         out = emitProgramWith target False True [] M.empty S.empty S.empty program
-    unless (null (emNativeNames out) && any ((=="opaque") . fst) (emFallbacks out))
+    unless (null (emNativeNames out) && any ((=="opaque") . fst) (emRefusals out))
       (error "probe failed to force whole-unit refusal")
     unless (null (emNativeNames out) && not ("fpr_vspec_map_inc:" `isInfixOf` unlines (emNative out)))
       (error ("refused whole unit unexpectedly emitted a kernel: " ++ show backend))
     let supported=emitProgramWith target False True [] M.empty S.empty S.empty (M.delete "opaque" program)
-    unless (null (emFallbacks supported) && "fpr_vspec_map_inc:" `isInfixOf` unlines (emNative supported))
+    unless (null (emRefusals supported) && "fpr_vspec_map_inc:" `isInfixOf` unlines (emNative supported))
       (error "supported whole unit failed to emit its native kernel")
   putStrLn "Typed kernel emission: unsupported whole units refused; complete units retain kernels on all four selectors PASS"
   let floatRecord = K.RecordKernel "float-record" "original" [] False (-1,-1) [(0,KD)] (K.RecordFold "dual" KD) False

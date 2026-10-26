@@ -50,6 +50,14 @@ main = do
   check "reuse opt-out retains Core" (optimizedProgram disabled==aliases)
   check "reuse input is normalized" (snd (optimizedProgram normalized M.! "entry")==v "x")
   check "disabled worker diagnostic retained" (optimizationNotes disabled==["# private workers: fields=0 scalar=0"])
+  let nested=app "Vec.map" [v "inc",app "Vec.map" [v "double",v "xs"]]
+      fusionInput=M.fromList [("inc",(["x"],app "+" [v "x",CInt 1])),
+                             ("double",(["x"],app "*" [v "x",CInt 2])),
+                             ("checked",(["xs"],nested)),("compatibility",(["xs"],nested))]
+      fusionOutput=optimizedProgram (right (optimizeCoreWithCheckedImports (S.singleton "checked") M.empty
+        (none {optFusion=True}) S.empty fusionInput))
+  check "checked owners bypass erased callback composition" (fusionOutput M.! "checked"==fusionInput M.! "checked")
+  check "compatibility owner still composes callbacks" (fusionOutput M.! "compatibility"/=fusionInput M.! "compatibility")
   -- Typed operation payloads: mixed pipelines retain stage/capture order.
   let callbacks=M.fromList [("inc",(["x"],app "+" [v "x",CInt 1])),
                             ("pos",(["x"],app ">" [v "x",CInt 0]))]

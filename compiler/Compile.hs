@@ -18,11 +18,12 @@ import Inline (inlineSmall, inlineCompatibilityWithImports, vecPeekCompatibility
 import qualified Compiler.Native.Regions as Regions
 import qualified Compiler.Native.Regions.Typed as TypedRegions
 import qualified Core.Typed.Syntax as TCore
+import qualified Core.Typed.Fusion as TypedFusion
 import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
-import Codegen (Target, codegenRev, emitProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
+import Codegen (Target, codegenRev, emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -776,7 +777,7 @@ compileWithInterface accepted = do
             exitFailure
           directCheck what emission = do
             strictCheck what (emScalarFallbacks emission)
-            strictCheck what (emFallbacks emission)
+            strictCheck what (emRefusals emission)
           -- a loaded posix module reaches external symbols through the GOT;
           -- the pass works on target syntax and leaves its own output
           -- alone, so it also covers the typed backend's text and a
@@ -884,12 +885,14 @@ compileWithInterface accepted = do
                  checkedStage "callback specialization after inlining" (Linked.specializeLinked callbackMode inlined)
             vectors<-if oArc opts || not (Options.cgVecPeek codegen) then pure inlined else
               checkedStage "checked vector reads" (Linked.planVectorReadsLinked inlined)
-            if oArc opts || oBuiltin opts || Backend.tgtW (oTarget opts)/=8 || not (Options.cgReuse codegen) then pure vectors else
+            normalized<-if oArc opts || oBuiltin opts || Backend.tgtW (oTarget opts)/=8 || not (Options.cgReuse codegen) then pure vectors else
               checkedStage "checked Base normalization" (Linked.normalizeLinked vectors)
+            if oArc opts || not (Options.cgFusion codegen) then pure (normalized,[]) else
+              checkedStage "checked vector fusion" (Linked.fuseLinked normalized)
           checkedStage label=either (Left . ((label++": ")++)) Right
-          linked=either error id linkedResult
+          (linked,fusionNotes)=either error id linkedResult
           declarationsResult=do
-            verified<-linkedResult
+            (verified,_)<-linkedResult
             base<-NativeImports.codeDeclarations verified
             NativeImports.withRegions typedRegionPrograms base
           declarations=either error id declarationsResult
@@ -935,7 +938,7 @@ compileWithInterface accepted = do
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
                 -- compiled unit (the bbspi arity>8 incident)
-                let emission = emitProgramWithImports (NativeImports.readyTemplates prepared) tgt rvv spec []
+                let emission = emitCheckedProgramWithImports (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates prepared) tgt rvv spec []
                       (NativeImports.importArities prepared `M.union` M.union (if oArc opts then arcExterns else M.empty) ext)
                       (NativeImports.readySymbols prepared) elide (NativeImports.readyProgram prepared)
                     vnotes = emNotes emission
@@ -953,6 +956,7 @@ compileWithInterface accepted = do
       -- artifact is reused or emitted. Later legacy passes consume projections;
       -- they do not replace the retained checked inputs with inferred evidence.
       either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) linkedResult
+      mapM_ (putStrLn . TypedFusion.renderNote) fusionNotes
       either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) declarationsResult
       createDirectoryIfMissing True unitDir
       -- prelude unit (unqualified names; the always-linked stdlib unit).
@@ -1035,7 +1039,7 @@ compileWithInterface accepted = do
       rootProg <- ownWith borrowed (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
       rootReady<-ready borrowed Linked.RootArtifact
         (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact)) rootProg
-      let rootEmission = emitProgramWithImports (NativeImports.readyTemplates rootReady) tgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
+      let rootEmission = emitCheckedProgramWithImports (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) tgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
                                      (NativeImports.readySymbols rootReady)
                                      (Linked.artifactElided (artifactOf Linked.RootArtifact)) (NativeImports.readyProgram rootReady)
           rootVNotes = emNotes rootEmission

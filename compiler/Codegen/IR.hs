@@ -17,9 +17,9 @@
 -- What it DOES fix: the order of effects and traps, where the safepoints
 -- are, which calls happen and what they may clobber.
 --
--- Semantics of the checked operations are the legacy generator's (the C
--- primitives in runtime/runtime.c and the inline fast paths in
--- Codegen.inlineTable): Int + - * / trap when the result leaves the
+-- Codegen.Eval and the C primitives in runtime/runtime.c define checked
+-- operation semantics. Native selection must preserve them: Int + - * /
+-- trap when the result leaves the
 -- 63-bit range, / also on a zero divisor, each in program order, each
 -- with the primitive's own message.  The reference evaluator
 -- (Codegen.Eval) is the executable statement of these semantics.
@@ -192,7 +192,7 @@ data Op
   | OIsInt VId -- TVal -> TPred: the tag bit (a tagged Int, not an object)
   | OTagTest Int Int VId -- TVal -> TPred: typeid and variant match (a tagged Int never matches)
   | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a core primitive's object (fpr_prim_obj_), a HAL contract (fpr_g_); the legacy `la a0, <symbol>`
-  | OFunValue Name -- :: TVal; a program function's static PAP (its arity, no arguments): the legacy `la a0, fpr_obj_<name>`
+  | OFunValue Name -- :: TVal; a program function's static PAP (its arity, no arguments), owned by Codegen.NativeData
   | OApply VId [VId] -- TVal, TVal.. -> TVal: the generic application through the runtime (fpr_applyN): partial, over-saturated, or of a computed head; allocates PAPs in the runtime, calls anything
   | OKernelArith ArithOp VId VId -- checked TInt arithmetic with the vector-kernel overflow/zero diagnostics
   | OArith ArithOp VId VId -- TInt TInt -> TInt; traps in program order with the primitive's message
@@ -200,8 +200,8 @@ data Op
   | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
   | OCmp CmpOp VId VId -- TInt TInt -> TPred
   | OEqVal Bool VId VId -- TVal TVal -> TPred: deep structural equality (True) or inequality (False)
-  | OBits Integer -- TVal: a raw 64-bit word, signed form (an F64 literal's IEEE bits, as the legacy generator splices them)
-  | OFloatBin FloatOp VId VId -- TVal TVal -> TVal: F64 arithmetic on the bits, inline (Codegen.inlineTable F64.+ - * /)
+  | OBits Integer -- TVal: a raw 64-bit word, signed form (an F64 literal's IEEE bits)
+  | OFloatBin FloatOp VId VId -- TVal TVal -> TVal: F64 arithmetic on the bits; semantics shared with Codegen.Eval
   | OFloatCmp CmpOp VId VId -- TVal TVal -> TPred: F64 ordered comparison (false on a NaN), != is its negation (true on a NaN)
   | OFloatTree FloatTree -- TVal leaves -> TVal: a tree of F64 operations in the scratch floating-point registers, one move in per leaf, one out (Simplify.fuseFloatTrees)
   | OFloatCmpTree CmpOp FloatTree FloatTree -- TVal leaves -> TPred, scratch roots 0/1

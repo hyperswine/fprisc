@@ -6,7 +6,7 @@
 -- Static PAPs, constructor constants and module registries have a separate
 -- native data owner. Refusals are diagnostics; no text translator is retained.
 
-module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev) where
+module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports,emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.
@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 123 -- checked Base normalization precedes region planning and preserves lexical snapshots
+codegenRev = 124 -- checked callback fusion precedes region planning; original private code stays at home
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -100,7 +100,7 @@ data Emission = Emission
     emNative :: [String], -- native instructions and their literal pools
     emNativeNames :: [String], -- the functions the native backend emitted
     emScalarFallbacks :: [(String, String)], -- scalar selection refusals, before kernel diagnostics
-    emFallbacks :: [(String, String)], -- functions and kernels it did not emit natively, with reasons
+    emRefusals :: [(String, String)], -- functions and kernels it did not emit natively, with reasons
     emData :: [String] -- static objects in the selected target syntax
   }
 
@@ -301,8 +301,8 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps elide prog0 =
   let e = emitProgramWith tgt rvv spec exports ext exps elide prog0
-   in if null (emFallbacks e) then (unlines (emNative e ++ emData e), emNotes e)
-      else error ("typed-ir: native emission refused: "++show (emFallbacks e))
+   in if null (emRefusals e) then (unlines (emNative e ++ emData e), emNotes e)
+      else error ("typed-ir: native emission refused: "++show (emRefusals e))
 
 emitProgramWith :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> Emission
 emitProgramWith tgt rvv spec exports ext exps=emitProgramWithSymbols tgt rvv spec exports ext (publicSymbols exps)
@@ -313,7 +313,10 @@ emitProgramWithSymbols=emitProgramWithImports M.empty
 -- Read-only import templates inform fusion/vector plans without becoming
 -- owned definitions or acquiring another static PAP in this artifact.
 emitProgramWithImports :: Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
-emitProgramWithImports imports tgt rvv spec exports ext symbols elide prog0 =
+emitProgramWithImports=emitCheckedProgramWithImports S.empty
+
+emitCheckedProgramWithImports :: S.Set String -> Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
+emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols elide prog0 =
   let opts = OptimizationOptions
         { optFusion = tgtFusion tgt,
           optWorkers = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt),
@@ -321,7 +324,7 @@ emitProgramWithImports imports tgt rvv spec exports ext symbols elide prog0 =
           optScalarWorkers = tgtScalarWorkers tgt,
           optNormalize = tgtScalarFast tgt,
           optReuse = tgtReuse tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt) }
-      optimized = either (error . ("Core optimization: " ++)) id (optimizeCoreWithImports imports opts elide prog0)
+      optimized = either (error . ("Core optimization: " ++)) id (optimizeCoreWithCheckedImports checked imports opts elide prog0)
       prog = optimizedProgram optimized
       workerSigs = optimizedSignatures optimized
       emitted = M.withoutKeys prog elide
@@ -344,7 +347,7 @@ emitProgramWithImports imports tgt rvv spec exports ext symbols elide prog0 =
         emNative = nativeText,
         emNativeNames = M.keys nativeFns,
         emScalarFallbacks = failures,
-        emFallbacks = failures ++ kernelFailures,
+        emRefusals = failures ++ kernelFailures,
         emData = dat }
 
 declines :: Target -> Bool -> Prog -> String -> Core -> [String]

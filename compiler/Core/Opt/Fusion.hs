@@ -1,4 +1,4 @@
-module Core.Opt.Fusion (fuseVecFix,fuseVecFixWithImports) where
+module Core.Opt.Fusion (fuseVecFix,fuseVecFixWithImports,fuseCompatibilityWithImports) where
 import Core.Syntax
 import Core.Utils
 import Core.Primitives (primArities)
@@ -7,6 +7,16 @@ import Core.Opt.Vector (nestPipelinesWithImports)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (foldl', nub)
+
+-- Checked source already composed its callbacks before erasure. The remaining
+-- layout pipeline canonicalizer still consumes physical Core; only explicit
+-- compatibility owners may create erased callback composites here.
+fuseCompatibilityWithImports :: S.Set Name -> Prog -> Prog -> (Prog,[String])
+fuseCompatibilityWithImports checked imports source=
+  let planned=nestPipelinesWithImports imports source
+      retained=M.restrictKeys planned checked
+      (changed,notes)=fuseVecFixWithImports (retained `M.union` imports) (M.withoutKeys planned checked)
+  in (retained `M.union` changed,notes)
 
 -- run fusion to a FIXPOINT: a 3+ chain's outer pair fuses in round 1,
 -- the composite-over-inner pair in round 2, and so on until no pair is

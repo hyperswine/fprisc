@@ -1,0 +1,22 @@
+unsafe base.
+plus x = x + 1.
+twice x = x * 2.
+adder k x = x + k.
+scale k x = x * k.
+positive x = x > 1.
+sum a x = a + x.
+mark k = _ = print "capture"; k.
+consume v = (s,next) = Vec.fold sum 0 v; _ = Vec.free next; s.
+maps v = first = Vec.map twice v; Vec.map plus first.
+captured v k = offset x = x + k; multiply x = x * k; Vec.map offset (Vec.map multiply v).
+computed v = Vec.map plus (Vec.map (adder (2 + 1)) (Vec.map (scale (4 - 2)) v)).
+filters v = Vec.filter positive (Vec.filter positive v).
+main = case Sys.args Unit of
+    ["staged"] -> callback = adder (mark 3);
+      result = consume (Vec.map twice (Vec.map callback (Vec.iota 3)));
+      print "staged {result}"
+  | _ -> a = consume (maps (Vec.iota 4));
+      b = consume (captured (Vec.iota 4) 3);
+      c = consume (computed (Vec.iota 4));
+      d = consume (filters (Vec.iota 4));
+      print "fusion {a} {b} {c} {d}".
