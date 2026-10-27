@@ -45,6 +45,10 @@ backed by an address eight bytes off that boundary. This reproduces with
 the original allocator before the probe starts and is a separate existing
 alignment issue. The focused result is not a whole-runtime sanitizer pass.
 
+That channel issue is now fixed separately; the
+[channel alignment note](2026-10-27-CHANNEL-ALIGNMENT.md) records the carve
+correction and focused workloads with all runtime C alignment-instrumented.
+
 All 144 Base jobs passed across the initial four-worker run and follow-up
 runs. The initial run passed 65 jobs, then the four-hart live runner timed
 out waiting 20 seconds for `fpr watch` to exit. That check passed in

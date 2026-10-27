@@ -10,6 +10,8 @@ Date: 2026-10-27. Kind: status and plan for the rest of steps 6-8 of
 - Step 6, first part: [clobber-free ticks and noreturn kernel traps](2026-10-27-CLOBBER-FREE-TICKS.md).
 - The measured C allocation changes are implemented:
   [word padding stores and a bucketless-pool bump shortcut](2026-10-27-ALLOC-FAST-PATH.md).
+- [Channel carving now honors its cache-line alignment](2026-10-27-CHANNEL-ALIGNMENT.md),
+  fixing the sanitizer failure discovered during allocation validation.
 
 ## 1b. Parked receive-loop retention (fixed)
 

@@ -741,13 +741,18 @@ static chan_t *chb_take(void) {
     fresh = 1;
     /* fresh backing: the floor-sized block carves several channel
      * blocks; the extras seed the free list (type-stable forever) */
-    uw sz = (sizeof(chblk_t) + 15) & ~(uw)15;
-    uw want = sz * 4;
+    /* Buddy payloads and loader grants need only be word-aligned.
+     * Channel members require cache-line alignment; reserve headroom so
+     * even an exact-sized grant still fits four whole channel blocks. */
+    uw align = _Alignof(chblk_t), sz = sizeof(chblk_t);
+    uw want = sz * 4 + align - 1;
     fpr_chb_carves++;
     char *p = (char *)big_block(want);
     if (!p) return 0;
     uw got = big_block_size(p, want);
-    if (got < sz) got = sz;
+    uw skip = (-(uw)p) & (align - 1);
+    p += skip;
+    got -= skip;
     b = (chblk_t *)p;
     for (char *q = p + sz; q + sz <= p + got; q += sz)
       fpr_fl_put(&chb_fl, q, sz);
