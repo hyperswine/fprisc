@@ -323,6 +323,12 @@ typedef struct fpr_rx {
   V rx0[FPR_RX_INLINE];
 } fpr_rx_t;
 fpr_rx_t *fpr_acb_rx(struct fpr_acb *a);         /* actors.c: &a->rx */
+/* Compiler boundary probes observe the next receive without taking a message.
+ * Keep the tags with Core.Region.Runtime.receiveReady. Unknown prefixes end
+ * the preceding turn conservatively; polls never trigger a park cycle. */
+enum fpr_receive_probe { FPR_RX_UNKNOWN, FPR_RX_ANY, FPR_RX_FROM,
+  FPR_RX_FROM_DEAD, FPR_RX_RESULT, FPR_RX_POLL };
+int fpr_actor_receive_ready(uw kind, V peer);
 void fpr_rx_push(struct fpr_acb *a, V m);         /* runtime.c: a root taken from the mailbox */
 void fpr_rx_release(struct fpr_acb *a, uw mark);  /* runtime.c: a turn ends; the roots above mark die */
 void fpr_rx_forget(struct fpr_acb *a, V m);       /* runtime.c: a drop or a move took the root out */

@@ -2,7 +2,7 @@
 -- existential receive steps, bundles and raw control cells have separate
 -- internal sorts. They never masquerade as source tuples or arrow types.
 module Core.Region.Syntax
-  (ControlType(..),Control(..),Parameter(..),Result(..),Cell(..),Contract(..),Route(..),
+  (ControlType(..),Control(..),Parameter(..),Result(..),Cell(..),Contract(..),Route(..),Boundary(..),ReceiveProbe(..),boundaryLabel,
    Call,makeCall,callWitness,callRoute,callArguments,decodeCall,Flow(..),Alternative(..),Slot(..),Body(..),Function(..),
    parameterId,parameterName,functionContract) where
 import qualified Core.Typed.Syntax as T
@@ -60,12 +60,19 @@ data Alternative=Alternative [T.Pattern] [T.Guard] Flow deriving Show
 -- A dead logical slot has no typed runtime value. Its zero placeholder is
 -- permitted only by the retained liveness proof, never by type coercion.
 data Slot=LiveSlot T.Binder Int | DeadSlot T.Binder deriving Show
+-- A receive probe names only already-evaluated parameter slots. Unknown
+-- prefixes conservatively end the preceding turn; polls never park.
+data ReceiveProbe=UnknownReceive | AnyMessage | SenderMessage Int
+  | SenderMessageOrDead Int | ResultMessage | NonBlocking deriving (Eq,Show)
+data Boundary=AllocationBoundary String | ReceiveBoundary String ReceiveProbe deriving Show
+boundaryLabel (AllocationBoundary name)=name
+boundaryLabel (ReceiveBoundary name _)=name
 data Body
   = Original
   | Ordinary T.Expr
   -- True: a receive loop, whose region opens at entry
   | LoopEntry Bool String [T.Binder] Control Control
-  | LoopInner (Maybe String) [T.Binder] Control Control Flow
+  | LoopInner (Maybe Boundary) [T.Binder] Control Control Flow
   | LoopCycle String [T.Binder] [Int] Control Control
   | ReceiveEntry String [T.Binder] [Int]
   | ReceiveThunk Control Control [Slot] Flow

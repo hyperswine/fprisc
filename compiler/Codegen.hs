@@ -53,7 +53,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 132 -- ticks through a register-saving unit wrapper (no clobbers); kernel traps never return
+codegenRev = 135 -- region placement shares exact post-linked cost analysis across units
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

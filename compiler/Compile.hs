@@ -517,7 +517,6 @@ compileWithInterface accepted = do
             then Regions.bypass input
             else either error id (Regions.place
               (Regions.Options (regions && Options.cgLoopRegions codegen) (regions && Options.cgCallRegions codegen) (not (oQosApp opts))) regionContext input)
-          runTurns=runTurnsWith True
           regionProjection result=(Regions.resultProgram result,Regions.resultNotes result)
           turnPassWith regions=regionProjection . runTurnsWith regions
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
@@ -718,7 +717,7 @@ compileWithInterface accepted = do
               [ M.fromList [(n, length as) | TSig n (as, _) _ <- preludeE' ++ concatMap snd units' ++ root'],
                 M.map (\(Forall _ _ t) -> arrows t) builtinEnv,
                 -- pair-free reads planned by Core.Typed.VectorRead (vec.c)
-                M.fromList (VectorRead.peekArities++[("$receiveLoop", 2), ("$regionSeq", 1), ("$regionOpen", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2)]) ]
+                M.fromList (VectorRead.peekArities++[("$receiveLoop", 2), ("$regionSeq", 1), ("$regionOpen", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$receiveReady", 2), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2)]) ]
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = (Options.cgFloatInline codegen), tgtSimd=(oA64 opts || oX64 opts) && (Options.cgSimd codegen), tgtFusion=(Options.cgFusion codegen),
@@ -902,7 +901,12 @@ compileWithInterface accepted = do
           declarations=either error id declarationsResult
           artifactOf key=Linked.linkedArtifacts linked M.! key
           artifactRaw=prepareRegions . Linked.artifactCore
-          regionArtifacts=M.map (runTurns . artifactRaw) (Linked.linkedArtifacts linked)
+          regionInputs=M.map artifactRaw (Linked.linkedArtifacts linked)
+          regionArtifacts=if oBuiltin opts || oArc opts || not (Options.cgReceiveTurns codegen)
+            then M.map Regions.bypass regionInputs
+            else either error id (Regions.placePrograms
+              (Regions.Options (Options.cgLoopRegions codegen) (Options.cgCallRegions codegen) (not (oQosApp opts)))
+              (fst (measureCheck tops)) regionInputs)
           typedRegionPrograms=M.mapMaybe Regions.resultTyped regionArtifacts
           artifactRegions key=regionArtifacts M.! key
           ready templates key exports prog=either (\reason->hPutStrLn stderr reason >> exitFailure) pure

@@ -8,7 +8,7 @@ import Core.Primitives (entryTickName)
 import qualified Core.VectorRead as Read
 import qualified Core.Region.Syntax as R
 import Core.Region.Flow (functionFlow,flowSource)
-import Core.Region.Runtime (Hook(..),hookName,packState)
+import Core.Region.Runtime (Hook(..),hookName,packState,receiveReady)
 import Core.Typed.Verify (verifyFunctionWith)
 import Core.Syntax (Core(..))
 import Control.Monad (unless, foldM, forM)
@@ -207,8 +207,10 @@ eraseWith region contracts types layout f = runExceptT $ do
         inner<-goFlow False (Just (R.controlName mark,R.controlName seqn)) env names flow
         pure $ case boundary of
           Nothing->inner
-          Just cold->CIf (hook HasRoom [CVar (R.controlName mark)]) inner
-            (foldl CApp (CVar cold) (vars ps++map (CVar . R.controlName) [mark,seqn]))
+          Just gate->let cold=foldl CApp (CVar (R.boundaryLabel gate)) (vars ps++map (CVar . R.controlName) [mark,seqn])
+                         ready=case gate of R.AllocationBoundary _->inner
+                                            R.ReceiveBoundary _ probe->CIf (receiveReady probe (map binderName ps)) inner cold
+                     in CIf (hook HasRoom [CVar (R.controlName mark)]) ready cold
       R.LoopCycle inner ps changing _ seqn->do
         packed<-fresh "$loop.packed";mark2<-fresh "$loop.mark"
         let slot i=case lookup i (zip changing [0..]) of

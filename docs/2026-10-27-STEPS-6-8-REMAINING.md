@@ -9,28 +9,21 @@ Date: 2026-10-27. Kind: status and plan for the rest of steps 6-8 of
   with a register-pressure model gating loop motion.
 - Step 6, first part: [clobber-free ticks and noreturn kernel traps](2026-10-27-CLOBBER-FREE-TICKS.md).
 
-## 1b. A parked receive loop keeps its messages (found, not fixed)
+## 1b. Parked receive-loop retention (fixed)
 
-Step 1 ([receive turns per slab](2026-10-26-RECEIVE-TURNS-PER-SLAB.md))
-releases a receive loop's messages when its region cycles, which happens
-once a slab of allocation has passed. The plan also named a second trigger,
-cycling when the actor parks while holding messages, and it was not
-implemented. An actor that ends parked in its receive therefore keeps the
-messages taken since its last cycle, at most about 1,024 roots (a slab at
-`FPR_RX_CHARGE`), until it next cycles or dies.
+Receive-loop boundaries now cycle before a blocking receive when they own
+previously received roots and no matching work is ready. Live next-state
+values are copied through the existing region protocol; a receive in the
+middle of an activation still retains values needed by its continuation.
+Selective/Result readiness is checked without evaluating source operands.
+`autodrop3` again requires exactly zero live entries on one and four harts.
 
-`autodrop3` (Base) found it: its ponger never exits, and on four harts about
-one run in ten ended with exactly 731 live entries (the commit before
-`2201e4b`: 0 in 200 runs; from `2201e4b` on, 18-27 in 200). It had passed
-the day's Base by chance. The check now asserts the documented bound, at
-most a slab per receiving actor, instead of zero.
-
-The fix is the park trigger: at a receive loop's boundary, cycle also when
-the mailbox is empty and the region holds received roots, so the actor
-parks holding nothing. The boundary test is inline on each target, so this
-adds a mailbox load (hart -> current actor -> mailbox head) to A64, x86-64
-and RISC-V, behind the existing clock test's cold path. It changes no
-semantics beyond releasing earlier.
+The [implementation and validation note](2026-10-27-PARKED-RECEIVE-AND-ANALYSIS.md)
+records the deterministic park regression, emission coverage and noisy
+paired timing samples. It also records the shared post-linked cost
+analysis: the QOS shell warm sample uses 15.3% less compiler CPU and 18.5%
+less allocation. Quiet-machine runtime measurements and the remaining
+allocation/register-allocation work below are still outstanding.
 
 ## 6b. Inline allocation fast path (decided, not started)
 

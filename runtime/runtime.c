@@ -1859,6 +1859,18 @@ static V g_region_room(V mark) {
   uw now = fpr_hart()->region_bytes & REGION_MASK;
   return ((now - (uw)UNTAG(mark)) & REGION_MASK) < (uw)FPR_REGION_SLAB ? (V)&fpr_true : (V)&fpr_false;
 }
+/* A checked receive boundary has evaluated its next state but has not entered
+ * the next activation. Copy that state and release the preceding roots before
+ * an empty/selective receive can park. After cycling, no roots remain above
+ * rx_mark, so the boundary proceeds rather than repeatedly cycling. */
+static V g_receive_ready(V kind, V peer) {
+  if (fpr_plane_memory) return (V)&fpr_true;
+  fpr_hart_t *h = fpr_hart();
+  if (!h || !h->current) return (V)&fpr_true;
+  struct fpr_scope *sc = *scope_head(h);
+  if (!sc || fpr_acb_rx(h->current)->n <= sc->rx_mark) return (V)&fpr_true;
+  return BOOL(fpr_actor_receive_ready((uw)UNTAG(kind), peer));
+}
 /* a receive loop's entry: its region opens now, so every message its turns
  * take is above the region's mark and dies at a cycle or at the close; the
  * loop is passed the returned sequence number, which keeps the call
@@ -1989,6 +2001,7 @@ static V g_region_room(V mark) {
   return ((now - (uw)UNTAG(mark)) & REGION_MASK) < (uw)FPR_REGION_SLAB ? (V)&fpr_true : (V)&fpr_false;
 }
 static V g_region_open(V seqv) { fpr_builtin_region_open((uw)UNTAG(seqv)); return seqv; }
+static V g_receive_ready(V kind, V peer) { (void)kind; (void)peer; return (V)&fpr_true; }
 static V g_region_cycle(V seqv, V packed) {
   uw seq = (uw)UNTAG(seqv);
   if (fpr_builtin_region_seq() != seq) { fpr_builtin_region_open(seq); return packed; }
@@ -2014,6 +2027,7 @@ static V g_call_leave(V tok, V r) {
 FPR_FN(fpr_g__x24regionSeq, g_region_seq, 1);
 FPR_FN(fpr_g__x24regionMark, g_region_mark, 1);
 FPR_FN(fpr_g__x24regionRoom, g_region_room, 1);
+FPR_FN(fpr_g__x24receiveReady, g_receive_ready, 2);
 FPR_FN(fpr_g__x24regionCycle, g_region_cycle, 2);
 FPR_FN(fpr_g__x24regionOpen, g_region_open, 1);
 

@@ -150,6 +150,7 @@ library
       Core.Region.Runtime
       Core.Region.Analysis
       Core.Region.Flow
+      Core.Region.Receive
       Core.Region.CallSites
       Core.Opt.Representation
       Core.Analysis.Scope

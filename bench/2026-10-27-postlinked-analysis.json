@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-27",
+  "host": "Apple Silicon macOS; GHC 9.8.2",
+  "qos_commit": "d1a11db9626370bf7fbddf4780c6a7b595115382",
+  "resource_snapshot": "fprisc 2a44c44 core/ and std/",
+  "method": "One cold and one warm qa64 compile per compiler; separate caches; same source/resource snapshot. CPU and allocations from +RTS -s. Variable host load; wall time is descriptive.",
+  "before_codegen": 134,
+  "after_codegen": 135,
+  "command": "FPR_HOME=<qos> FPR_PATH=<snapshot> FPR_FOREIGN=<qos>/core/foreign.fpr XDG_CACHE_HOME=<variant-cache> <compiler> --target=qa64 --prelude=<snapshot>/core/prelude.fpr <qos>/programs/main.fpr <output>/shell.s +RTS -s",
+  "variants": {
+    "before": {
+      "label": "before",
+      "compiler_sha256": "582de1cfedead755c1ad9e06a24c7e3618a2ee40b2ee4c58fb0960e2b513afee",
+      "source": "qos/programs/main.fpr",
+      "target": "qa64",
+      "runs": [
+        {
+          "mode": "cold",
+          "wall_s": 44.83325745793991,
+          "cpu_s": 42.512,
+          "mutator_s": 36.953,
+          "gc_s": 5.508,
+          "allocated_bytes": 68685669024.0,
+          "residency_bytes": 1125822512.0,
+          "cached_units": 0,
+          "assembly_bytes": 1017337
+        },
+        {
+          "mode": "warm",
+          "wall_s": 35.804350833874196,
+          "cpu_s": 34.238,
+          "mutator_s": 29.802,
+          "gc_s": 4.349,
+          "allocated_bytes": 54050669520.0,
+          "residency_bytes": 1125822512.0,
+          "cached_units": 49,
+          "assembly_bytes": 1017337
+        }
+      ],
+      "assembly_sha256": "dbf8c464d3fcbbaba5b4f439b9ff78d50febd84172434186c2c09ce54855b4ff"
+    },
+    "after": {
+      "label": "after",
+      "compiler_sha256": "ba43b33177d20be7c5a6bfc007ab675b38d6f273f245634a5db2271328e12115",
+      "source": "qos/programs/main.fpr",
+      "target": "qa64",
+      "runs": [
+        {
+          "mode": "cold",
+          "wall_s": 43.973874874878675,
+          "cpu_s": 39.074,
+          "mutator_s": 35.188,
+          "gc_s": 3.808,
+          "allocated_bytes": 58666421992.0,
+          "residency_bytes": 642227936.0,
+          "cached_units": 0,
+          "assembly_bytes": 1017337
+        },
+        {
+          "mode": "warm",
+          "wall_s": 33.167593125021085,
+          "cpu_s": 29.012,
+          "mutator_s": 26.895,
+          "gc_s": 2.092,
+          "allocated_bytes": 44030343160.0,
+          "residency_bytes": 290249328.0,
+          "cached_units": 49,
+          "assembly_bytes": 1017337
+        }
+      ],
+      "assembly_sha256": "418e5c38fb9f9dfd44c4a70dbb649c5e9809dee6556eaaf76ae49cd9b765a61c"
+    }
+  }
+}

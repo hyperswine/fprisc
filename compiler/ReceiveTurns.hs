@@ -31,6 +31,8 @@ import qualified Data.Set as S
 import Core.Syntax
 import Compiler.DataLayout (tupWideBase)
 import Core.Region.Interface
+import Core.Region.Runtime (receiveReady)
+import qualified Core.Region.Receive as Receive
 import qualified Core.Region.Types as Region
 import qualified Core.Region.CallSites as Sites
 import Type.Syntax (Type (..))
@@ -471,8 +473,9 @@ receiveTurns loopRegions callRegionsOn receiveLoops contextEqs interfaces model 
               cycBody = CLet "$loop.packed" (CApp (CApp (CVar "$regionCycle") (CVar "$loop.seq")) (pack [CVar (ps !! i) | i <- vars]))
                           (CLet "$loop.mark2" (CApp (CVar "$regionMark") (CInt 0))
                             (foldl CApp (CVar (inName n)) ([slot i | i <- [0 .. length ps - 1]] ++ [CVar "$loop.mark2", CVar "$loop.seq"])))
-              tested = CIf (CApp (CVar "$regionRoom") (CVar "$loop.mark")) b
-                         (foldl CApp (CVar (cycName n)) (map CVar (ps ++ extra)))
+              cold = foldl CApp (CVar (cycName n)) (map CVar (ps ++ extra))
+              ready = if isPure ns then b else CIf (receiveReady (Receive.coreProbe ps (snd (prog M.! n))) ps) b cold
+              tested = CIf (CApp (CVar "$regionRoom") (CVar "$loop.mark")) ready cold
               inner = (inName n, (ps ++ extra, if n `S.member` boundaries then tested else b))
               cycle = (cycName n, (ps ++ extra, cycBody))
               -- a receive loop opens its region at entry, so the messages
@@ -550,7 +553,7 @@ verifyRewrite before (Rewrite after _ generated _ _ _)=do
     && (n `M.notMember` generated || length ps<=64))
     (bad ("invalid physical parameters: "++n))) (M.toList after)
   let globals p=S.unions [S.fromList (freeVars body) S.\\ S.fromList ps | (ps,body)<-M.elems p]
-      hooks=S.fromList ["$callPend","$callLeave","$loopLeave","$regionSeq","$regionOpen","$regionMark","$regionRoom","$regionCycle","$receiveLoop"]
+      hooks=S.fromList ["$callPend","$callLeave","$loopLeave","$regionSeq","$regionOpen","$regionMark","$regionRoom","$receiveReady","$regionCycle","$receiveLoop"]
       unknown=globals after S.\\ (globals before<>M.keysSet after<>hooks)
   unless (S.null unknown) (bad ("unbound generated references: "++unwords (S.toList unknown)))
 

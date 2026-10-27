@@ -7,6 +7,7 @@ module Compiler.Native.Regions.Typed
 import qualified Compiler.Native.Core as Native
 import qualified Core.Typed.Syntax as T
 import Core.Region.Flow
+import qualified Core.Region.Receive as Receive
 import qualified Compiler.Native.Regions.Verify as Verify
 import qualified Core.Typed.Program as Source
 import Core.Typed.Pipeline
@@ -118,8 +119,12 @@ build native arities rewrite=do
         case Turns.generatedKind description of
           Turns.LoopInner->do
             mark<-control "$loop.mark" R.Mark;seqn<-control "$loop.seq" R.Sequence
-            cold<-if sourceName `S.member` Turns.groupBoundaries g then Just <$> lift (label sourceName Turns.LoopCycle) else pure Nothing
             flow<-lift (flowFor rs f)
+            cold<-if sourceName `S.member` Turns.groupBoundaries g then do
+              target<-lift (label sourceName Turns.LoopCycle)
+              pure (Just (if Turns.groupPure g then R.AllocationBoundary target
+                else R.ReceiveBoundary target (Receive.typedProbe ps (flowSource flow))))
+              else pure Nothing
             pure (name,base (map R.ValueParameter ps++map R.ControlParameter [mark,seqn]) (R.ValueResult result)
               (R.LoopInner cold ps mark seqn flow))
           Turns.LoopCycle->do
