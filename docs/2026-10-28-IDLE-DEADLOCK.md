@@ -1,6 +1,8 @@
 # An idle posix program is declared deadlocked (open)
 
-**Status: open, cause unknown.** Reproduced with a 20-line program, so the bug
+**Status: open.** The memory-actor hypothesis is ruled out (second catch,
+2026-10-27); the evidence now points to another thread touching hart 0's
+sleeper bookkeeping. Reproduced with a 20-line program, so the bug
 is in the runtime, not in any application. Found through qrepo's server
 (`qr serve`) on the Mac mini, which has hit it 14 times since 2026-10-04.
 
@@ -80,7 +82,48 @@ In an idle `accept` loop the only `wait_kind`-1 waits actor 0 can enter are
 `p_sleep` (runtime/actors.c, `a_sleep_us`) and `p_mem` (`fpr_mem_take`, when
 the buddy lock is busy). `p_any`, a plain receive, is not on this path.
 
-## Hypotheses
+## The second diagnostic catch (2026-10-27 18:37Z): not memory
+
+The dump-only build (no ACB fields, nothing on a hot path) caught it in the
+reproducer `idle10`, about 3 h into its run (16 copies):
+
+    dlx: now 8794386623190 g_sleepers 0 g_blocked 2 g_irq_waiting 0 g_activity 5676766
+    dlx: mem reqs 0 waits 0 inline 1 direct 13 frees 0 denied 0
+    dlx: actor 1 (memory actor) slp_on 0 slp_hart 0 wake_at-now -8794386623190 sleep_due 1 mem_reply 0 wait_arg 0 running 0 in_bl 0 in_rq 0
+    dlx: actor 0 slp_on 0 slp_hart 0 wake_at-now -20272050 sleep_due 1 mem_reply 0 wait_arg 0 running 0 in_bl 0 in_rq 0
+    dlx: hart 0 sleepers:
+    dlx: hart 1 sleepers:
+    (dl: lines identical to every other dump)
+
+- Actor 1 **is** the memory actor, and it has never been sent a request
+  (`fpr_mem_reqs` 0). Actor 0 is not waiting on memory (`mem_reply` 0).
+  **Hypothesis 1 below is ruled out.**
+- Actor 0's last sleep was due 2.03 s before the dump (the detector's
+  window), `p_sleep` is true now, and it is on no sleeper list. Its last
+  transitions are `12 10`: resumed, then parked, with no wake (`1`) or failed
+  wake (`16`) after the park.
+- Off this code path the only `wait_kind`-1 wait left is `p_sleep`. So actor
+  0 is **parked in a sleep after leaving the sleeper list**, with its
+  deadline already passed and nothing left to wake it.
+
+On one thread that cannot happen: `a_sleep_us` links before it parks,
+`block_unless` re-checks `p_sleep` after setting BLOCKED, and only hart 0's
+loop drains hart 0's list. So **something touches hart 0's sleeper list, or
+actor 0's `slp_on`/`var`, from another thread.** One way: a thread acting as
+hart 0 that is not (`fpr_hart()` is the x28 register; compare
+docs on the x28 migration bug). It drains hart 0's list while actor 0, on
+the real hart 0 thread, sits between its link and its park, or the reverse.
+`TR` is a plain `tr[tr_i++ % 16]` from whichever thread runs it, so the same
+race can overwrite the one trace entry (`16` or `1`) that would have shown
+it.
+
+Next experiment: record in each hart struct the pthread that runs it, and
+check `pthread_self()` against it in `slp_drain`, in the link in
+`a_sleep_us`, and in `wake`'s ship. One compare each, a panic naming both
+threads on a mismatch. If the hypothesis is right, the next catch names the
+culprit instead of a deadlock.
+
+## Hypotheses (before the second catch)
 
 1. **A memory request whose wake is lost.** Actor 0 allocates, finds
    `buddy_lock` held, posts to the memory actor (`mem_post`: `ring_push`, a
