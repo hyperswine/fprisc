@@ -32,7 +32,7 @@ adds a mailbox load (hart -> current actor -> mailbox head) to A64, x86-64
 and RISC-V, behind the existing clock test's cold path. It changes no
 semantics beyond releasing earlier.
 
-## 6b. Inline allocation fast path (not started: needs a decision)
+## 6b. Inline allocation fast path (decided, not started)
 
 `fpr_alloc` (`runtime/runtime.c`, `alloc_in`) is not a bump allocator with
 a slow path. In order it:
@@ -69,6 +69,34 @@ Options, for a decision:
 Measure first: allocation-heavy benchmarks (strbuild, nbody, helpers) with
 the call cost isolated (`xctrace` time in `alloc_in` and the save/restore
 around the call sites).
+
+**Decision (2026-10-27): option (a), only where it already holds.** The
+compiler's regions (loop, call and receive-turn regions) are created
+without buckets (`arena_close`: "a compiler region has none"), and a small
+free into a bucketless pool is already dropped (`fpr_free`). Inside a
+compiler region `alloc_in` is therefore already bump-only for small
+sizes, so an inline bump there changes no memory behaviour. The actor's
+base pool, `Sys.arena` arenas (which have buckets) and allocations above
+the bucket ceiling (the big-free list) keep the C call.
+
+Design:
+
+- The hart block publishes a bump window: the current slab, its `hp` and
+  `end`. It is valid only while the current pool is a bucketless region
+  (and never in `FPR_COST` builds); otherwise `end` is 0, so the inline
+  test always fails. A native ABI revision.
+- Generated code, for a constructor of known size: `p = hp; n = p + total`;
+  if `n > end` call `fpr_alloc` (which also handles region trips and slab
+  refill); else store `hp = n`, add `total` to the region clock (cell 58,
+  which `alloc_in` charges per allocation today), write the header (total
+  and slab) and zero the rounding pad that `fpr_dcopy` reads.
+- The runtime writes the window back (`slab->hp`, and `pool->allocated`
+  from the bumped distance) before anything reads them: the C allocation
+  path, region open/cycle/close, an override change and an actor switch,
+  and republishes it after.
+
+First step: count allocations by pool kind (compiler region, actor pool,
+arena) in strbuild, nbody and helpers, to bound the win before building it.
 
 ## 7b. Splitting at loop boundaries (next)
 
