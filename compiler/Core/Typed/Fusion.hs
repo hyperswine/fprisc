@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 -- Fuse checked map/filter callbacks, retaining lexical capture contracts.
-module Core.Typed.Fusion (Fusion,planFusion,FusionNote,renderNote,fuseClosed) where
+module Core.Typed.Fusion (Fusion,planFusion,FusionNote(..),Decline(..),renderNote,fuseClosed) where
 import Core.Typed.Syntax
 import Core.Typed.Close
 import Core.Typed.Callback.Catalog
@@ -18,8 +18,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 data Decline=CallbackEffect String Safety.Reason | CaptureEffect | CaptureBudget deriving (Eq,Show)
-data FusionNote=FusionNote ElementOp String String Decline deriving (Eq,Show)
-renderNote (FusionNote op outer inner refusal)=
+data FusionNote=FusionNote String ElementOp String String Decline deriving (Eq,Show)
+renderNote (FusionNote _ op outer inner refusal)=
   "vec note: Vec."++elementOpName op++" `"++outer++"` after Vec."++elementOpName op++" `"++inner
   ++"` is NOT fused: "++reason++" -- the two passes run in order, each over the whole vector"
   where reason=case refusal of
@@ -170,7 +170,7 @@ fuseClosed (Namespace namespace) types@(TypeContext linears _) (Fusion snapshot 
                     | otherwise->Nothing
             case refusal of
               Just why->do
-                modify (\(Build n cs ns)->Build n cs (FusionNote op (name outerKey) (name innerKey) why:ns))
+                modify (\(Build n cs ns)->Build n cs (FusionNote owner op (name outerKey) (name innerKey) why:ns))
                 pure Nothing
               Nothing->do
                 value<-composite scope'' outer inner a b

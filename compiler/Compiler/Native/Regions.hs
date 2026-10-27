@@ -4,7 +4,7 @@
 module Compiler.Native.Regions
   (Program,prepare,programNative,programCore,programInterfaces,Context,context,
    Options(..),Analysis,analysisProgram,analysisCosts,Result,place,placePrograms,bypass,
-   resultProgram,resultNotes,resultGenerated,resultAnalysis,resultTyped) where
+   resultProgram,resultNotes,resultGenerated,resultAnalysis,resultTyped,resultGroups) where
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Regions.Typed as Typed
 import qualified Core.Typed.Syntax as T
@@ -70,6 +70,9 @@ resultProgram (Placed _ _ r _)=Turns.rewriteProgram r
 resultNotes :: Result -> [String]
 resultNotes (Bypassed _)=[]
 resultNotes (Placed _ _ r _)=Turns.rewriteNotes r
+resultGroups :: Result -> [Turns.Group]
+resultGroups (Bypassed _)=[]
+resultGroups (Placed _ _ r _)=Turns.rewriteGroups r
 resultGenerated :: Result -> M.Map Name Turns.Generated
 resultGenerated (Bypassed _)=M.empty
 resultGenerated (Placed _ _ r _)=Turns.rewriteGenerated r

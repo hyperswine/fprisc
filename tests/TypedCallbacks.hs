@@ -3,6 +3,8 @@ import qualified Core.Typed.Syntax as T
 import Core.Typed.Close
 import Core.Typed.Stage
 import Core.Typed.Callback
+import qualified Core.Typed.Callback.Catalog as Catalog
+import qualified Core.Typed.Decision as D
 import Core.Typed.Erase
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Core.Typed.Verify
@@ -60,6 +62,13 @@ main=do
       closed=close source
       result=right (specializeCallbacks SpecializeCallbacks (Namespace "test") types M.empty closed)
       output=callbackClosed result
+  let withDecisions input=right (specializeClosedWithDecisions True (Namespace "test") types M.empty
+        (right (Catalog.catalog types (M.singleton (T.functionName (closedRoot input)) input))) input)
+      reported=withDecisions closed
+  check "callback reporting preserves exact erasure and is off by default"
+    (erased (callbackClosed reported)==erased output && null (callbackDecisions result))
+  check "callback specialization retains its applied decision"
+    (any (\d->case d of D.CallbackDecision "callbacks" _ D.Specialized->True;_->False) (callbackDecisions reported))
   check "one generic clone is shared by Int and Bool" (S.size (callbackClones result)==1)
   check "checked clone graph verifies" (verifyClosed types output==Right ())
   check "callback calls preserve independent evaluation" (answer (erased output) "callbacks" []==Right (Eval.RObj 2 0 [Eval.RInt 7,Eval.RObj 1 1 []])
@@ -130,6 +139,10 @@ main=do
     (S.null (callbackClones overflow) && verifyClosed types (callbackClosed overflow)==Right ()
       && answer (erased (callbackClosed overflow)) "overflow" [Eval.RInt 5]
           ==answer (erased (close (wide True))) "overflow" [Eval.RInt 5])
+  let restored=withDecisions (close (wide True))
+  check "post-liveness private-arity rollback has an explicit refusal"
+    (any (\d->case d of D.CallbackDecision "overflow" _ D.RetainedArityOverflow->True;_->False) (callbackDecisions restored)
+      && erased (callbackClosed restored)==erased (callbackClosed overflow))
   let comb=binder "pattern" 0 "comb" (TFn int (TFn int int))
       prefix=binder "pattern" 1 "prefix" int
       item=binder "pattern" 2 "item" int

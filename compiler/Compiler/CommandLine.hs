@@ -35,7 +35,8 @@ data CompileArguments = CompileArguments
     oNoInline :: Bool, -- --no-inline / FPR_NO_INLINE=1: base code keeps every call (debugging, WCET comparison)
     oCost :: Bool, -- --cost: print every root function's work/alloc equations (Cost.hs), then continue
     oCheckOnly :: Bool, -- check libraries/modules without an executable entry point
-    oManifest :: Maybe FilePath -- --manifest=FILE: judge the root functions against a target manifest (Manifest.hs)
+    oManifest :: Maybe FilePath, -- --manifest=FILE: judge the root functions against a target manifest (Manifest.hs)
+    oRemarks :: Maybe String -- advisory reporting; validated separately, never a codegen/cache option
   }
 
 parseCompileArguments :: [String] -> CompileArguments
@@ -49,7 +50,7 @@ parseCompileArguments = resolveHost . foldl step defaults
         oQosApp=False, oQosSingle=False, oPlugin=False, oRvv=False,
         oStdCheck=False, oSol=False, oPrelude=Nothing, oNoSafety=False,
         oFiles=[], oForeign=[], oNoInline=False, oCost=False,
-        oCheckOnly=False, oManifest=Nothing }
+        oCheckOnly=False, oManifest=Nothing, oRemarks=Nothing }
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
     -- qos-native -> rv64 .qa is built by tools, so the alias maps the
@@ -85,6 +86,8 @@ parseCompileArguments = resolveHost . foldl step defaults
     step o "--profile=qos-portable" = step o "--system=qos-portable"
     step o "--arc" = o {oArc = True}
     step o "--cost" = o {oCost = True}
+    step o "--remarks" = o {oRemarks = Just "hot"}
+    step o a | "--remarks=" `isPrefixOf` a = o {oRemarks = Just (drop (length "--remarks=") a)}
     step o "--lib" = o {oLib = True}
     step o "--raw" = o {oRaw = True}
     step o "--float-abi=hard" = o {oHardFloat = True}

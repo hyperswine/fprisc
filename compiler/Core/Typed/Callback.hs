@@ -2,7 +2,8 @@
 -- Callback specialization on checked closed Core. Code identities survive
 -- cloning; callback object arguments survive wherever their identity escapes.
 module Core.Typed.Callback
-  (CallbackMode(..),Callbacks,specializeCallbacks,specializeCallbacksWith,specializeFromCatalog,specializeClosedFromCatalog,callbackClosed,callbackClones) where
+  (CallbackMode(..),Callbacks,specializeCallbacks,specializeCallbacksWith,specializeFromCatalog,specializeClosedFromCatalog,specializeClosedWithDecisions,callbackClosed,callbackClones,callbackDecisions) where
+import qualified Core.Typed.Decision as D
 import Core.Typed.Syntax
 import Core.Typed.Callback.Model
 import Core.Typed.Callback.Catalog
@@ -18,23 +19,24 @@ import qualified Type.Substitution as U
 import Ownership.Shape (isLin)
 import Ownership.TypeShape (linShapeT)
 import Control.Monad.State.Strict
-import Control.Monad (unless,foldM)
+import Control.Monad (unless,foldM,when)
 import Data.Functor.Const (Const(..))
 import Data.Monoid (Sum(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 data CallbackMode=PreserveCallbacks | SpecializeCallbacks deriving (Eq,Show)
-data Callbacks=Callbacks ClosedFunction (S.Set CodeId)
-callbackClosed (Callbacks p _)=p
-callbackClones (Callbacks _ ns)=ns
+data Callbacks=Callbacks ClosedFunction (S.Set CodeId) [D.Decision]
+callbackClosed (Callbacks p _ _)=p
+callbackClones (Callbacks _ ns _)=ns
+callbackDecisions (Callbacks _ _ ds)=ds
 data Known=Known Target [BinderId] [Expr] deriving Show
 type Key=(Target,[(Slot,Target,Int)])
 data Scope=Scope (M.Map BinderId Binder) (M.Map BinderId Known) (S.Set BinderId)
 data Work=Work
   { code :: M.Map CodeId CodeFunction, keys :: M.Map Key CodeId,
     plans :: M.Map CodeId ClonePlan, origins :: M.Map CodeId CloneOrigin,
-    nextType :: Int,nextTerm :: Int,nextCode :: Int,weight :: Int, removable :: S.Set BinderId }
+    nextType :: Int,nextTerm :: Int,nextCode :: Int,weight :: Int, removable :: S.Set BinderId, decisions :: [D.Decision] }
 
 specializeCallbacks :: CallbackMode -> Namespace -> TypeContext -> M.Map String Int -> ClosedFunction -> Either String Callbacks
 specializeCallbacks mode namespace types arities=specializeCallbacksWith mode namespace types arities []
@@ -45,7 +47,7 @@ specializeCallbacksWith :: CallbackMode -> Namespace -> TypeContext -> M.Map Str
 specializeCallbacksWith PreserveCallbacks _ types arities _ input=do
   verifyClosed types input
   unless (all (>=0) arities) (Left "typed callbacks: negative physical arity")
-  pure (Callbacks input S.empty)
+  pure (Callbacks input S.empty [])
 specializeCallbacksWith _ namespace types arities providers input=do
   snapshot<-catalog types (M.insert (functionName (closedRoot input)) input
     (M.fromList [(functionName (closedRoot p),p) | p<-providers]))
@@ -59,11 +61,14 @@ specializeFromCatalog namespace types arities snapshot name=do
 -- A linked snapshot has one emitting template owner per constructor, while
 -- each artifact retains its own original elided stub and root identities.
 specializeClosedFromCatalog :: Namespace -> TypeContext -> M.Map String Int -> Catalog -> ClosedFunction -> Either String Callbacks
-specializeClosedFromCatalog namespace types arities snapshot original=do
-  prepared<-importClosedLibrary types (catalogLibrary snapshot) original
-  runCallbacks namespace types arities snapshot prepared
+specializeClosedFromCatalog=specializeClosedWithDecisions False
 
-runCallbacks (Namespace ns) types@(TypeContext linears _) arities catalogView input=do
+specializeClosedWithDecisions :: Bool -> Namespace -> TypeContext -> M.Map String Int -> Catalog -> ClosedFunction -> Either String Callbacks
+specializeClosedWithDecisions reporting namespace types arities snapshot original=do
+  prepared<-importClosedLibrary types (catalogLibrary snapshot) original
+  runCallbacks reporting namespace types arities snapshot prepared
+
+runCallbacks reporting (Namespace ns) types@(TypeContext linears _) arities catalogView input=do
   verifyClosed types input
   unless (all (>=0) arities) (Left "typed callbacks: negative physical arity")
   (rootBody,work)<-runStateT (do
@@ -76,7 +81,9 @@ runCallbacks (Namespace ns) types@(TypeContext linears _) arities catalogView in
                          in origin {cloneBindings=[(old,uid >>= \u->if u `S.member` present then Just u else Nothing) | (old,uid)<-cloneBindings origin]}
       cloneOrigins=M.mapWithKey retain (M.restrictKeys (origins work) retained)
   output<-rewriteClosedWithOrigins types (\_ _ previous->Right (finished,codes,cloneOrigins `M.union` previous)) input
-  pure (Callbacks output retained)
+  let restored=[D.CallbackDecision (functionName root) (targetName target) D.RetainedArityOverflow
+        | ClonePlan target _<-M.elems (M.withoutKeys (plans work) retained)]
+  pure (Callbacks output retained (reverse (decisions work)++if reporting then restored else []))
   where
     root=closedRoot input
     original=closedCode input
@@ -87,7 +94,10 @@ runCallbacks (Namespace ns) types@(TypeContext linears _) arities catalogView in
     analysis=catalogAnalysis catalogView
     demands=callbackDemands analysis
     stable=stableCallback analysis
-    initial=Work original M.empty M.empty M.empty (catalogFirstType catalogView) 0 0 0 S.empty
+    initial=Work original M.empty M.empty M.empty (catalogFirstType catalogView) 0 0 0 S.empty []
+    record target why=when reporting (modify (\w->w {decisions=D.CallbackDecision (functionName root) target why:decisions w}))
+    targetName (RootTarget n)=n
+    targetName (CodeTarget (CodeId n))=n
     occupied=catalogBinderIds catalogView
     spellings=catalogNames catalogView
     tempNamespace=Namespace (ns++"/callbacks/"++functionName root++"/temps")
@@ -190,7 +200,8 @@ runCallbacks (Namespace ns) types@(TypeContext linears _) arities catalogView in
         args<-mapM (walk depth s) args0
         case known s head' of
           Just k | safeKnown s S.empty k->invoke depth s e k args
-          _->do result<-apply head' args;pure result {exprOrigin=exprOrigin e,exprOffset=exprOffset e}
+          _->do record "<dynamic>" D.UnknownTarget
+                result<-apply head' args;pure result {exprOrigin=exprOrigin e,exprOffset=exprOffset e}
       CodeCall label caps args->mapM (walk depth s) args >>= invoke depth s e (Known (CodeTarget label) caps [])
       JoinCall label caps args->mapM (walk depth s) args >>= invoke depth s e (Known (CodeTarget label) caps [])
       MatchTail style args alternatives fallback->do
@@ -227,15 +238,26 @@ runCallbacks (Namespace ns) types@(TypeContext linears _) arities catalogView in
               picks=[(slot,cb) | slot<-S.toAscList (M.findWithDefault S.empty target demands),
                 Just argument<-[M.lookup slot actuals],Just cb<-[known s argument],
                 safeKnown s S.empty cb,stable target slot]
-          clone<-if null picks then pure Nothing else getClone depth target picks
+          clone<-if null picks then do
+              let wanted=S.toAscList (M.findWithDefault S.empty target demands)
+                  knowns=[(slot,cb) | slot<-wanted,Just argument<-[M.lookup slot actuals],Just cb<-[known s argument]]
+                  why | any (not . stable target . fst) knowns=D.Unstable
+                      | any (not . safeKnown s S.empty . snd) knowns=D.UnsafeArgument
+                      | otherwise=D.NoKnownArgument
+              when (not (null wanted)) (record (targetName target) why)
+              pure (Left D.NoKnownArgument)
+            else do
+              result<-getClone depth target picks
+              record (targetName target) (either id (const D.Specialized) result)
+              pure result
           case clone of
-            Just label->prepareArguments s picks ordinary $ \_ saved leadingBySlot->do
+            Right label->prepareArguments s picks ordinary $ \_ saved leadingBySlot->do
                 let extraCaps=concat [cs | (_,Known _ cs _)<-picks]
                     savedLeading=concat [M.findWithDefault [] slot leadingBySlot | (slot,_)<-picks]
                 kind<-gets (codeKind . (M.! label) . code)
                 pure old {exprNode=if kind==JoinCode then JoinCall label (caps++extraCaps) (saved++savedLeading)
                   else CodeCall label (caps++extraCaps) (saved++savedLeading)}
-            Nothing->direct s old k args
+            Left _->direct s old k args
         _->direct s old k args
     -- Preserve the argument positions before rearranging private capture and
     -- parameter banks. Callback objects stay available for identity uses.
@@ -269,24 +291,30 @@ runCallbacks (Namespace ns) types@(TypeContext linears _) arities catalogView in
       let key=(target,[(slot,t,length leading) | (slot,Known t _ leading)<-picks])
       existing<-gets (M.lookup key . keys)
       case existing of
-        Just label->pure (Just label)
+        Just label->pure (Right label)
         Nothing->do
           Template caps ps body _ _<-template target
           state<-get
           let extra=sum [length cs+length ls | (_,Known _ cs ls)<-picks]
               minimumArity=length caps+length ps-length picks+extra
-          if minimumArity>64 || depth>=12 || M.size (keys state)>=256 || weight state+nodes body>60000
-            then pure Nothing
-            else do
+          let spent=weight state+nodes body
+              refusal | minimumArity>64=Just (D.OverArity minimumArity 64)
+                      | depth>=12=Just (D.TooDeep depth 12)
+                      | M.size (keys state)>=256=Just (D.TooManyClones (M.size (keys state)) 256)
+                      | spent>60000=Just (D.OverNodeBudget spent 60000)
+                      | otherwise=Nothing
+          case refusal of
+            Just why->pure (Left why)
+            Nothing->do
               built<-prepareClone target picks
               case built of
-                Nothing->put state>>pure Nothing
-                Just (label,clone,scope',candidates,origin)->do
+                Left why->put state>>pure (Left why)
+                Right (label,clone,scope',candidates,origin)->do
                   modify (\w->w {keys=M.insert key label (keys w),code=M.insert label clone (code w),
-                    plans=M.insert label (ClonePlan target candidates) (plans w),origins=M.insert label origin (origins w),weight=weight w+nodes body})
+                    plans=M.insert label (ClonePlan target candidates) (plans w),origins=M.insert label origin (origins w),weight=spent})
                   body'<-walk (depth+1) scope' (codeBody clone)
                   modify (\w->w {code=M.insert label (clone {codeBody=body'}) (code w)})
-                  pure (Just label)
+                  pure (Right label)
     prepareClone target picks=do
       Template caps ps body contract kind<-template target
       label<-freshCode
@@ -303,13 +331,13 @@ runCallbacks (Namespace ns) types@(TypeContext linears _) arities catalogView in
           pairs=[(binderType (selected slot),remaining) | (slot,_,(_,_,remaining,_))<-descriptors]
       next<-gets nextType
       case U.unifyTypes flexible next pairs of
-        Left _->pure Nothing
+        Left _->pure (Left D.Unification)
         Right (solution,afterSolution)->do
           let private=mconcat [let Forall tv rv _=binderScheme (selected slot) in (S.fromList tv,S.fromList rv) | (slot,_,_)<-descriptors]
               extraVars=mconcat [mconcat (map (U.schemeVariables . U.applyScheme solution) captureSchemes)
                 <>mconcat (map (U.variables . U.applyType solution) leadingTypes) | (_,_,(captureSchemes,leadingTypes,_,_))<-descriptors]
           if not (S.null (fst private `S.intersection` fst extraVars) && S.null (snd private `S.intersection` snd extraVars))
-            then pure Nothing else do
+            then pure (Left D.EscapingType) else do
               modify (\w->w {nextType=afterSolution})
               let instantiated=substituteFunction types solution copied
                   (baseCaps,basePs)=splitAt (length caps) (functionParameters instantiated)
@@ -326,7 +354,7 @@ runCallbacks (Namespace ns) types@(TypeContext linears _) arities catalogView in
                   clone=CodeFunction label (if kind==JoinCode then JoinCode else EntryCode) allCaps allPs (functionBody instantiated)
                   (source,templateId)=case target of RootTarget n->(n,CodeId n);CodeTarget k->(sourceOwners M.! k,k)
                   origin=CloneOrigin source templateId (zip (map binderId (caps++ps)) (map (Just . binderId) (baseCaps++basePs)))
-              pure (Just (label,clone,scope',S.fromList (map (binderId . selected' . fst) picks),origin))
+              pure (Right (label,clone,scope',S.fromList (map (binderId . selected' . fst) picks),origin))
     freshCallback (Known target _ leading)=do
       first<-gets nextType
       (captureSchemes,parameters,result,flex,next)<-case target of

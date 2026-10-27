@@ -2,7 +2,7 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,specializeNativePrograms,inlineNativePrograms,planNativeVectorReads,normalizeNative,fuseNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
+  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,specializeNativePrograms,specializeNativeProgramsWithDecisions,inlineNativePrograms,inlineNativeProgramsWithDecisions,planNativeVectorReads,normalizeNative,fuseNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
    CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
@@ -80,13 +80,17 @@ specializeNativeWith mode providers (NativeCore closed p js compatibility declar
   replaceClosed specialized (NativeCore closed p js compatibility declarations constructors serial)
 
 specializeNativePrograms :: Ord key => CallbackMode -> M.Map key (S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
-specializeNativePrograms mode inputs=do
-  changed<-specializePrograms mode (M.map (\(elided,core)->(elided,nativeClosed core)) inputs)
+specializeNativePrograms=specializeNativeProgramsWithDecisions False
+specializeNativeProgramsWithDecisions :: Ord key => Bool -> CallbackMode -> M.Map key (S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
+specializeNativeProgramsWithDecisions reporting mode inputs=do
+  changed<-specializeProgramsWithDecisions reporting mode (M.map (\(elided,core)->(elided,nativeClosed core)) inputs)
   M.traverseWithKey (\key (_,core)->replaceClosed (changed M.! key) core) inputs
 
 inlineNativePrograms :: Ord key => Int -> Int -> Int -> M.Map key (S.Set String,S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
-inlineNativePrograms rounds limit loopLimit inputs=do
-  changed<-inlinePrograms rounds limit loopLimit (M.map (\(forbidden,elided,core)->(forbidden,elided,nativeClosed core)) inputs)
+inlineNativePrograms=inlineNativeProgramsWithDecisions False
+inlineNativeProgramsWithDecisions :: Ord key => Bool -> Int -> Int -> Int -> M.Map key (S.Set String,S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
+inlineNativeProgramsWithDecisions reporting rounds limit loopLimit inputs=do
+  changed<-inlineProgramsWithDecisions reporting rounds limit loopLimit (M.map (\(forbidden,elided,core)->(forbidden,elided,nativeClosed core)) inputs)
   M.traverseWithKey (\key (_,_,core)->replaceClosed (changed M.! key) core) inputs
 
 planNativeVectorReads :: S.Set String -> NativeCore -> Either String NativeCore

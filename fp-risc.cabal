@@ -104,8 +104,10 @@ library
       Commit
       Compile
       Compiler.Options
+      Compiler.Remarks
       Source.Span
       Diagnostic.Syntax
+      Diagnostic.Remark
       Diagnostic.Render
       Compiler.CommandLine
       FPRISC
@@ -174,6 +176,7 @@ library
       Type.Relation
       Type.Substitution
       Core.Typed.Instantiate
+      Core.Typed.Decision
       Core.Typed.Inline
       Core.Typed.VectorRead
       Core.Typed.Normalize

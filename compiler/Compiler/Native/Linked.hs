@@ -3,7 +3,7 @@
 -- one artifact emits each symbol. Private code keeps its source owner/contract.
 module Compiler.Native.Linked
   (ArtifactId(..),NativeArtifact,artifact,artifactId,artifactCore,artifactExports,artifactElided,
-   LinkedProgram,linkArtifacts,specializeLinked,inlineLinked,planVectorReadsLinked,normalizeLinked,fuseLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
+   LinkedProgram,linkArtifacts,specializeLinked,specializeLinkedWithDecisions,inlineLinked,inlineLinkedWithDecisions,planVectorReadsLinked,normalizeLinked,fuseLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
 import Compiler.Native.Core
 import Compiler.DataLayout
 import Core.Typed.Program
@@ -134,19 +134,23 @@ linkArtifacts inputs=do
 -- Re-link after cloning so every new entry receives its emitting owner and
 -- every imported original code reference is checked against its actual home.
 specializeLinked :: CallbackMode -> LinkedProgram -> Either String LinkedProgram
-specializeLinked PreserveCallbacks p=pure p
-specializeLinked mode p=do
+specializeLinked=specializeLinkedWithDecisions False
+specializeLinkedWithDecisions :: Bool -> CallbackMode -> LinkedProgram -> Either String LinkedProgram
+specializeLinkedWithDecisions _ PreserveCallbacks p=pure p
+specializeLinkedWithDecisions reporting mode p=do
   let as=linkedArtifacts p
-  cores<-specializeNativePrograms mode (M.map (\a->(artifactElided a,artifactCore a)) as)
+  cores<-specializeNativeProgramsWithDecisions reporting mode (M.map (\a->(artifactElided a,artifactCore a)) as)
   changed<-M.traverseWithKey (\key a->artifact key (artifactExports a) (artifactElided a) (cores M.! key)) as
   linkArtifacts (M.elems changed)
 
 -- Link visibility, not a spelling heuristic, governs imported templates.
 -- rounds, the node budget at an ordinary call site, the budget inside a loop
 inlineLinked :: Int -> Int -> Int -> LinkedProgram -> Either String LinkedProgram
-inlineLinked rounds limit loopLimit p=do
+inlineLinked=inlineLinkedWithDecisions False
+inlineLinkedWithDecisions :: Bool -> Int -> Int -> Int -> LinkedProgram -> Either String LinkedProgram
+inlineLinkedWithDecisions reporting rounds limit loopLimit p=do
   let inputs=M.mapWithKey (\key a->(S.fromList [name | (ArtifactSymbol home name,_)<-M.toList (linkedSymbols p),home/=key],artifactElided a,artifactCore a)) (linkedArtifacts p)
-  changed<-inlineNativePrograms rounds limit loopLimit inputs
+  changed<-inlineNativeProgramsWithDecisions reporting rounds limit loopLimit inputs
   artifacts<-M.traverseWithKey (\key a->artifact key (artifactExports a) (artifactElided a) (changed M.! key)) (linkedArtifacts p)
   linkArtifacts (M.elems artifacts)
 

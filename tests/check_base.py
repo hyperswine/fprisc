@@ -556,13 +556,13 @@ def vecfuse(tmp):
     # vector fusion keeps effect and failure ORDER: element functions that
     # print or can fail are not fused (and the compile says so); pure pairs
     # still fuse into one in-place pass (docs/2026-10-03-FUSION-EFFECT-ORDER.md)
-    p = run(['./fpr', 'build', '-v', 'tests/base/vecfuse_effects.fpr', '-o', tmp / 'vfe'])
-    assert 'is NOT fused: `first` uses the primitive `print`' in p.stdout, p.stdout
+    p = run(['./fpr', 'build', '-v', '--remarks=all', 'tests/base/vecfuse_effects.fpr', '-o', tmp / 'vfe'])
+    assert 'callback `first` prevents fusion: the primitive `print`' in p.stderr, p.stderr
     # an Int pair fuses although Int + and * trap on overflow: the one
     # reordering fusion may make (docs/2026-10-03-FUSION-EFFECT-ORDER.md,
     # the 2026-10-13 relaxation); the F64 pair fuses as before
-    assert 'idouble' not in p.stdout or 'NOT fused: `iinc`' not in p.stdout, p.stdout
-    assert p.stdout.count('NOT fused') == 1, p.stdout
+    assert 'callback `iinc` prevents fusion' not in p.stderr, p.stderr
+    assert p.stderr.count('remark[not-fused]') == 1, p.stderr
     p = run([tmp / 'vfe'])
     assert p.stdout == 'first 1\nfirst 2\nsecond 1\nsecond 2\npure pair: 62 (pool grew 0 B)\nint pair: 62\n', p.stdout
     p = run([build('tests/base/vecfuse_fail.fpr', 'vff')], expected=1)

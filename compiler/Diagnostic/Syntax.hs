@@ -2,14 +2,15 @@
 -- Semantic source diagnostics. Text never encodes ownership of a source
 -- location or definition. Legacy marker formatting exists only for old APIs.
 module Diagnostic.Syntax
-  (Diagnostic(..), Severity(..), DiagnosticCode(..), DefinitionStyle(..), diagnostic, inDefinition, aboutDefinition,
+  (Diagnostic(..), Severity(..), DiagnosticCode(..), RemarkKind(..), DefinitionStyle(..), diagnostic, inDefinition, aboutDefinition,
    renderLegacyDiagnostic, diagnosticBody) where
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData)
 import Source.Span
 data Severity = Error | Warning | Note deriving (Eq,Ord,Show,Generic)
+data RemarkKind = PathRemark | FusionRemark | RegionRemark | InlineRemark | CallbackRemark deriving (Eq,Ord,Show,Generic)
 data DiagnosticCode = InferenceError | TypeMismatch | UnboundName | CoverageError
-  | SignatureGenerality | SafetyError | MeasureError | LinearityError deriving (Eq,Ord,Show,Generic)
+  | SignatureGenerality | SafetyError | MeasureError | LinearityError | OptimizationRemark RemarkKind deriving (Eq,Ord,Show,Generic)
 data DefinitionStyle = ContextPrefix | MentionedInMessage deriving (Eq,Ord,Show,Generic)
 data Diagnostic = Diagnostic
   { diagnosticSeverity :: Severity, diagnosticCode :: DiagnosticCode,
@@ -38,6 +39,7 @@ definitionPrefix d=case diagnosticDefinitionStyle d of
   MentionedInMessage->""
 
 instance NFData Severity
+instance NFData RemarkKind
 instance NFData DiagnosticCode
 instance NFData Diagnostic
 instance NFData DefinitionStyle

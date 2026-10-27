@@ -2,6 +2,7 @@ module TypedInline (checkInlining) where
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Linked as Linked
 import Frontend.Desugar.Typed (SourceSelection)
+import qualified Core.Typed.Decision as D
 import Core.Typed.Pipeline
 import Core.Typed.Close
 import Core.Typed.Callback (CallbackMode(..))
@@ -62,6 +63,14 @@ checkInlining compile=do
       ticks e=(case T.exprNode e of T.EntryTick->1;_->0)
         +sum (getConst (mapChildrenM (Const . (:[]) . ticks) e))
       body name=T.functionBody (closedRoot (defs M.! name))
+  let reported=Linked.artifactCore (Linked.linkedArtifacts (right (Linked.inlineLinkedWithDecisions True 3 24 24 linked)) M.! Linked.RootArtifact)
+      decisions=closedDecisions (Native.nativeClosed reported)
+  check "reported inlining preserves the exact lowered program"
+    (Native.nativeProgram reported==Native.nativeProgram after && null (closedDecisions (Native.nativeClosed after)))
+  check ("inlining retains the applied identity decision: "++show (take 12 decisions))
+    (D.InlineDecision "twice" "identity" D.Inlined `elem` decisions)
+  check ("inlining retains recursive-callee refusals: "++show (take 12 decisions))
+    (D.InlineDecision "recursive" "recursive" D.RecursiveCallee `elem` decisions)
   check "closed program is checked after each round" (verifyClosedProgram (Native.nativeClosed after)==Right ())
   check "lexical clones do not manufacture new code entries" (M.keysSet (Native.nativeProgram before)==M.keysSet (Native.nativeProgram after))
   check "all binder identities remain unique" (length ids==S.size (S.fromList ids))
@@ -103,6 +112,11 @@ checkInlining compile=do
       loopLinked=right (Linked.linkArtifacts [right (Linked.artifact Linked.RootArtifact (loopNames<>Native.nativeConstructors loopRaw) S.empty loopRaw)])
       loopBody budget loopBudget name=T.functionBody (closedRoot (closedDefinitions (Native.nativeClosed
         (Linked.artifactCore (Linked.linkedArtifacts (right (Linked.inlineLinked 3 budget loopBudget loopLinked)) M.! Linked.RootArtifact))) M.! name))
+  let loopReported=Linked.artifactCore (Linked.linkedArtifacts (right (Linked.inlineLinkedWithDecisions True 3 4 64 loopLinked)) M.! Linked.RootArtifact)
+      loopDecisions=closedDecisions (Native.nativeClosed loopReported)
+  check "size refusals retain the actual ordinary caller budget"
+    (any (\d->case d of D.InlineDecision "outside" "medium" (D.OverWeight n 4)->n>4;_->False) loopDecisions
+      && D.InlineDecision "inLoop" "medium" D.Inlined `elem` loopDecisions)
   check "a template over the ordinary budget stays a call outside a loop" (global "medium" (loopBody 4 64 "outside"))
   check "a template within the loop budget is inlined into a loop" (not (global "medium" (loopBody 4 64 "inLoop")))
   check "the loop budget never admits more than it is given" (global "medium" (loopBody 4 4 "inLoop"))

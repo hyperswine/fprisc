@@ -1,6 +1,7 @@
 module Main where
 import qualified Diagnostic.Syntax as D
 import qualified Diagnostic.Render as R
+import qualified Diagnostic.Remark as Remark
 import Source.Span
 import Frontend.Parser (program)
 import Frontend.Diagnostics (bindAnchors,anchorMsg)
@@ -22,6 +23,17 @@ check :: String -> Bool -> IO ()
 check message ok=unless ok (error message)
 main :: IO ()
 main=do
+  let remark=Remark.Remark "owner" Remark.RecursiveGroup (Remark.CompatibilityLowering "quote\"\n\\🙂")
+      projected=Remark.toDiagnostic remark
+      encoded=Remark.renderJSON M.empty M.empty remark
+  check "remarks are advisory structured diagnostics"
+    (D.diagnosticSeverity projected==D.Note && D.diagnosticCode projected==D.OptimizationRemark D.PathRemark)
+  check "unknown remark locations stay unknown and JSON escapes controls"
+    ("\"file\":null" `isInfixOf` encoded && "quote\\\"\\u000a\\\\🙂" `isInfixOf` encoded)
+  check "remark visibility is independent of codegen"
+    (not (Remark.selected Remark.Off remark) && Remark.selected Remark.Hot remark
+      && not (Remark.selected Remark.Hot remark {Remark.heat=Remark.Cold})
+      && not (Remark.selected Remark.Hot (Remark.Remark "owner" Remark.ReceiveLoop Remark.ReceiveRegionPlaced)))
   let src="helper =\n  value = \"λ🙂\";\n  value.\n"
       offset=SourceOffset (length "helper =\n  value = ")
       sources=M.singleton "unicode.fpr" src

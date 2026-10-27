@@ -1,0 +1,28 @@
+{
+  "fixture": "profile base. main = print 42.",
+  "method": "One cold compile per mode, isolated unit caches; GHC machine-readable RTS stats. Wall time descriptive under concurrent host load.",
+  "codegen_revision": 135,
+  "runs": [
+    {
+      "mode": "before",
+      "allocated_bytes": 1679559080,
+      "max_bytes_used": 25659176,
+      "wall_seconds": 0.7125307088717818,
+      "compiler_sha256": "13ddaac864648e52996bb674b9b43eefdb1f0b0c31a425b0156edb4ccd151f32"
+    },
+    {
+      "mode": "off",
+      "allocated_bytes": 1679536512,
+      "max_bytes_used": 25658472,
+      "wall_seconds": 0.6681679161265492,
+      "compiler_sha256": "e83d97ba1839f49f1be8aef79d2fd930511f11da2cec3215bae4bb1c389d0916"
+    },
+    {
+      "mode": "json",
+      "allocated_bytes": 1694122928,
+      "max_bytes_used": 25200472,
+      "wall_seconds": 0.6421738329809159,
+      "compiler_sha256": "e83d97ba1839f49f1be8aef79d2fd930511f11da2cec3215bae4bb1c389d0916"
+    }
+  ]
+}

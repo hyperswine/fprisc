@@ -2,7 +2,8 @@
 -- Native semantic passes operate on a complete owned program before erasure.
 -- Layout authority stays attached to the closed product it helped construct.
 module Core.Typed.Pipeline
-  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,inlinePrograms,planVectorReads,normalizeProgram,fusePrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
+  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,specializeProgramsWithDecisions,inlinePrograms,inlineProgramsWithDecisions,closedDecisions,planVectorReads,normalizeProgram,fusePrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
+import qualified Core.Typed.Decision as D
 import Core.Typed.Program
 import Core.Typed.Syntax
 import Core.Typed.Layout
@@ -24,16 +25,17 @@ import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data ClosedProgram=ClosedProgram Program Layouts (M.Map String ClosedFunction)
-closedInput (ClosedProgram p _ _)=p
-closedDefinitions (ClosedProgram _ _ fs)=fs
-closedLayouts (ClosedProgram _ layouts _)=layouts
+data ClosedProgram=ClosedProgram Program Layouts (M.Map String ClosedFunction) [D.Decision]
+closedInput (ClosedProgram p _ _ _)=p
+closedDefinitions (ClosedProgram _ _ fs _)=fs
+closedLayouts (ClosedProgram _ layouts _ _)=layouts
+closedDecisions (ClosedProgram _ _ _ ds)=ds
 
 closeProgram :: CallbackMode -> Layouts -> Program -> Either String ClosedProgram
 closeProgram mode layouts input=do
   verifyProgram input
   definitions<-M.traverseWithKey one (programFunctions input)
-  let result=ClosedProgram input layouts definitions
+  let result=ClosedProgram input layouts definitions []
   verifyClosedProgram result
   specializeProgramWith mode [] result
   where
@@ -65,7 +67,7 @@ specializeProgramWith _ providers p=do
     && shapeLayouts (closedLayouts q)==shapeLayouts layouts)
       (Left "typed pipeline: callback provider namespace/layout mismatch")) providers
   snapshot<-Callbacks.catalogPrograms (programTypes input) (map closedInput (p:providers)) catalog
-  specializeSnapshot S.empty snapshot (snapshotInterfaces snapshot) p
+  specializeSnapshot False S.empty snapshot (snapshotInterfaces snapshot) p
   where
     input=closedInput p;layouts=closedLayouts p
     catalog=M.unions (map closedDefinitions (p:providers))
@@ -73,8 +75,10 @@ specializeProgramWith _ providers p=do
 -- Share a checked catalog across all linked artifacts. Constructor elision
 -- selects a unique template owner without replacing an artifact's own stubs.
 specializePrograms :: Ord key => CallbackMode -> M.Map key (S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
-specializePrograms PreserveCallbacks inputs=Right (M.map snd inputs)
-specializePrograms _ inputs=case map snd (M.elems inputs) of
+specializePrograms=specializeProgramsWithDecisions False
+specializeProgramsWithDecisions :: Ord key => Bool -> CallbackMode -> M.Map key (S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
+specializeProgramsWithDecisions _ PreserveCallbacks inputs=Right (M.map snd inputs)
+specializeProgramsWithDecisions reporting _ inputs=case map snd (M.elems inputs) of
   []->Right M.empty
   base:programs->do
     mapM_ (\p->unless (programNamespace (closedInput p)==programNamespace (closedInput base)
@@ -86,7 +90,7 @@ specializePrograms _ inputs=case map snd (M.elems inputs) of
     unless (M.size owners==sum (map M.size owned)) (Left "typed pipeline: duplicate callback source owner")
     snapshot<-Callbacks.catalogPrograms (programTypes (closedInput base)) (map (closedInput . snd) (M.elems inputs)) owners
     let interfaces=snapshotInterfaces snapshot
-    traverse (\(elided,p)->specializeSnapshot elided snapshot interfaces p) inputs
+    traverse (\(elided,p)->specializeSnapshot reporting elided snapshot interfaces p) inputs
 
 snapshotInterfaces :: Callbacks.Catalog -> M.Map CodeId (String,Function)
 snapshotInterfaces snapshot=M.fromList (concat
@@ -97,17 +101,20 @@ snapshotInterfaces snapshot=M.fromList (concat
 -- Elided definitions are constructor stubs another artifact owns and emits;
 -- every linked pass transforms them there and passes this artifact's copy
 -- through unchanged (see ownedOnly). Verification still covers them.
-specializeSnapshot :: S.Set String -> Callbacks.Catalog -> M.Map CodeId (String,Function) -> ClosedProgram -> Either String ClosedProgram
-specializeSnapshot elided snapshot templates p=do
+specializeSnapshot :: Bool -> S.Set String -> Callbacks.Catalog -> M.Map CodeId (String,Function) -> ClosedProgram -> Either String ClosedProgram
+specializeSnapshot reporting elided snapshot templates p=do
   let input=closedInput p
-  definitions<-ownedOnly elided (\original->callbackClosed <$> specializeClosedFromCatalog (programNamespace input)
-    (programTypes input) (programArities input) snapshot original) (closedDefinitions p)
+  changed<-M.traverseWithKey (\name original->if name `S.member` elided then pure (original,[]) else do
+    output<-specializeClosedWithDecisions reporting (programNamespace input)
+      (programTypes input) (programArities input) snapshot original
+    pure (callbackClosed output,callbackDecisions output)) (closedDefinitions p)
+  let definitions=M.map fst changed
   mapM_ (\origin->case M.lookup (cloneTemplate origin) templates of
     Just (owner,fn) | cloneSource origin==owner,
       map fst (cloneBindings origin)==map binderId (functionParameters fn)->pure ()
     _->Left "typed pipeline: clone source/parameter provenance disagrees")
     [origin | f<-M.elems definitions,origin<-M.elems (closedOrigins f)]
-  let result=ClosedProgram input (closedLayouts p) definitions
+  let result=ClosedProgram input (closedLayouts p) definitions (closedDecisions p++concatMap snd (M.elems changed))
   verifyClosedProgram result
   pure result
 
@@ -115,7 +122,9 @@ specializeSnapshot elided snapshot templates p=do
 -- Forbidden globals are linker-private source entries from other artifacts;
 -- their bodies cannot be copied into a caller without an import contract.
 inlinePrograms :: Ord key => Int -> Int -> Int -> M.Map key (S.Set String,S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
-inlinePrograms rounds limit loopLimit inputs=do
+inlinePrograms=inlineProgramsWithDecisions False
+inlineProgramsWithDecisions :: Ord key => Bool -> Int -> Int -> Int -> M.Map key (S.Set String,S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
+inlineProgramsWithDecisions reporting rounds limit loopLimit inputs=do
   unless (rounds>=0 && limit>=0 && loopLimit>=0) (Left "typed inline pipeline: negative round/node budget")
   let programs=[p | (_,_,p)<-M.elems inputs]
   case programs of
@@ -139,9 +148,11 @@ inlinePrograms rounds limit loopLimit inputs=do
       M.traverseWithKey (\key p->do
         let source=closedInput p
         let (forbidden,elided,_)=inputs M.! key
-        definitions<-ownedOnly elided (Inline.inlineClosed forbidden (programNamespace source)
-          (programTypes source) (programArities source) inlining) (closedDefinitions p)
-        let output=ClosedProgram source (closedLayouts p) definitions
+        changed<-M.traverseWithKey (\name original->if name `S.member` elided then pure (original,[]) else
+          Inline.inlineClosedWithDecisions reporting forbidden (programNamespace source)
+            (programTypes source) (programArities source) inlining original) (closedDefinitions p)
+        let output=ClosedProgram source (closedLayouts p) (M.map fst changed)
+              (closedDecisions p++concatMap snd (M.elems changed))
         verifyClosedProgram output
         pure output) programs
 
@@ -151,14 +162,14 @@ planVectorReads elided input=do
       root f=Right f {functionBody=VectorRead.planReads (functionBody f)}
       code c=Right c {codeBody=VectorRead.planReads (codeBody c)}
   definitions<-ownedOnly elided (mapClosed types root code) (closedDefinitions input)
-  let output=ClosedProgram (closedInput input) (closedLayouts input) definitions
+  let output=ClosedProgram (closedInput input) (closedLayouts input) definitions (closedDecisions input)
   verifyClosedProgram output
   pure output
 
 normalizeProgram :: S.Set String -> ClosedProgram -> Either String ClosedProgram
 normalizeProgram elided input=do
   definitions<-ownedOnly elided (Normalize.normalizeClosed (programTypes (closedInput input))) (closedDefinitions input)
-  let output=ClosedProgram (closedInput input) (closedLayouts input) definitions
+  let output=ClosedProgram (closedInput input) (closedLayouts input) definitions (closedDecisions input)
   verifyClosedProgram output
   pure output
 
@@ -179,7 +190,7 @@ fusePrograms inputs=case map snd (M.elems inputs) of
     traverse (\(elided,p)->do
       changed<-M.traverseWithKey (\name f->if S.member name elided then pure (f,[])
         else Fusion.fuseClosed (programNamespace (closedInput p)) types plan f) (closedDefinitions p)
-      let output=ClosedProgram (closedInput p) (closedLayouts p) (M.map fst changed)
+      let output=ClosedProgram (closedInput p) (closedLayouts p) (M.map fst changed) (closedDecisions p)
       verifyClosedProgram output
       pure (output,concatMap snd (M.elems changed))) inputs
 

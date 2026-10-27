@@ -18,7 +18,6 @@ import Inline (inlineSmall, inlineCompatibilityWithImports, vecPeekCompatibility
 import qualified Compiler.Native.Regions as Regions
 import qualified Compiler.Native.Regions.Typed as TypedRegions
 import qualified Core.Typed.Syntax as TCore
-import qualified Core.Typed.Fusion as TypedFusion
 import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
@@ -53,6 +52,8 @@ import Frontend.Traverse
 import Frontend.Normalize
 import Frontend.Diagnostics
 import qualified Diagnostic.Render as Diagnostic
+import qualified Diagnostic.Remark as Remark
+import qualified Compiler.Remarks as Remarks
 import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
@@ -204,6 +205,9 @@ compileWithInterface accepted = do
   (inp, out) <- case oFiles opts0 of
     [i, o] -> pure (i, o)
     _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--host=unix|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|x64mac|qx64|qrv64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
+  remarkMode<-either (\why->hPutStrLn stderr ("error: "++why) >> exitFailure) pure (Remark.parseMode (oRemarks opts0))
+  when (oCheckOnly opts0 && remarkMode/=Remark.Off) $
+    hPutStrLn stderr "error: optimization remarks require native compilation; omit --check-only" >> exitFailure
   (rootSrc0, rootTopsParsed) <- parseFileSrc inp
   -- the PROFILE is the file's: `profile base.` (or `unsafe base.`), a
   -- .sol file is sol; the flag serves a file that says nothing, and
@@ -284,14 +288,16 @@ compileWithInterface accepted = do
   -- FPR_FOREIGN (a path list, like FPR_PATH) names such files for every
   -- invocation in a tree that exports it; the flag adds to it
   let envForeign = Options.driverForeign (Options.driverOptions configuration)
-  foreignTops <- fmap concat . forM (envForeign ++ oForeign opts) $ \f -> do
-    ts <- parseFile f
+  foreignInputs <- forM (envForeign ++ oForeign opts) $ \f -> do
+    (source,ts) <- parseFileSrc f
     let strays = [n | TBind n _ _ _ <- ts]
     unless (null strays) $ do
       hPutStrLn stderr ("--foreign=" ++ f ++ ": declarations only; it defines " ++ unwords (take 5 strays))
       exitFailure
-    pure [t | t@(TSig {}) <- ts]
-  let preludeTops = preludeTops0 ++ foreignTops
+    pure (f,source,[t | t@(TSig {}) <- ts])
+  let foreignTops=concat [ts | (_,_,ts)<-foreignInputs]
+      foreignSources=M.fromList [(file,source) | (file,source,_)<-foreignInputs]
+      preludeTops = preludeTops0 ++ foreignTops
   -- a LIBRARY: the file is compiled as the one import of an empty root,
   -- so every name it defines is qualified by its module hash (no clash
   -- with the program it links into) and nothing requires a `main`
@@ -332,9 +338,9 @@ compileWithInterface accepted = do
               ]
           sources =
             M.unions
-              [ M.singleton inp rootSrc,
+              [ if oLib opts then M.empty else M.singleton inp rootSrc,
                 maybe M.empty (`M.singleton` preludeSrc) (oPrelude opts'),
-                unitSources
+                foreignSources, unitSources
               ]
           anchored = map (anchorMsg sources anchors)
           anchoredDiagnostics = map (Diagnostic.renderSourceDiagnostic sources anchors)
@@ -882,10 +888,10 @@ compileWithInterface accepted = do
                 (unitElided h) (nativeUnit unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
           linkedResult=do
             base<-sequence artifactResults >>= Linked.linkArtifacts
-            original<-checkedStage "callback specialization before inlining" (Linked.specializeLinked callbackMode base)
+            original<-checkedStage "callback specialization before inlining" (Linked.specializeLinkedWithDecisions (remarkMode/=Remark.Off) callbackMode base)
             inlined<-if oArc opts || oNoInline opts then pure original else
-              do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinked 3 24 64 original)
-                 checkedStage "callback specialization after inlining" (Linked.specializeLinked callbackMode inlined)
+              do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinkedWithDecisions (remarkMode/=Remark.Off) 3 24 64 original)
+                 checkedStage "callback specialization after inlining" (Linked.specializeLinkedWithDecisions (remarkMode/=Remark.Off) callbackMode inlined)
             vectors<-if oArc opts || not (Options.cgVecPeek codegen) then pure inlined else
               checkedStage "checked vector reads" (Linked.planVectorReadsLinked inlined)
             normalized<-if oArc opts || oBuiltin opts || Backend.tgtW (oTarget opts)/=8 || not (Options.cgReuse codegen) then pure vectors else
@@ -968,7 +974,11 @@ compileWithInterface accepted = do
       -- artifact is reused or emitted. Later legacy passes consume projections;
       -- they do not replace the retained checked inputs with inferred evidence.
       either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) linkedResult
-      mapM_ (putStrLn . TypedFusion.renderNote) fusionNotes
+      -- These facts are retained before the emission cache, so report them
+      -- from this invocation's source context on cold AND warm builds.
+      Remarks.writeRemarks remarkMode sources anchors (Remarks.collect
+        (map Linked.artifactCore (M.elems (Linked.linkedArtifacts linked)))
+        (M.elems regionArtifacts) fusionNotes)
       either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) declarationsResult
       createDirectoryIfMissing True unitDir
       -- prelude unit (unqualified names; the always-linked stdlib unit).

@@ -1,3 +1,7 @@
+The .txt files like this one are mostly internal notes
+
+------------
+
 Gaussians are themselves a happy-path assumption because they make extreme events vanishingly rare.
 
 engineering practice of using, say, 50-70% of a component’s rated value by default. Bake this into your defaults so the optimistic number requires explicit opt-in, not the other way round.

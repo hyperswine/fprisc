@@ -18,7 +18,12 @@ for validation scope and runtime ABI changes.
 The compiler needs GHC and the dependencies declared in `fp-risc.cabal` (normally
 resolved with Cabal), plus pkg-config, libgit2 >= 1.9 and libarchive >= 3.6 for
 native hosted automation. On macOS install `pkg-config libgit2 libarchive` with
-Homebrew; on Linux install their development packages. Bare-metal builds
+Homebrew; on Linux install their development packages. Homebrew's `libarchive` is
+keg-only, so its pkg-config metadata has to be made visible to Cabal's solver:
+either link it onto the default search path,
+`ln -sfn ../../opt/libarchive/lib/pkgconfig/libarchive.pc "$(brew --prefix)/lib/pkgconfig/"`,
+or select the `tools/pkg-config-homebrew` wrapper in `cabal.project.local` as
+`cabal.project.local.example` shows. Bare-metal builds
 additionally need the RISC-V cross compiler;
 `make bare-metal-run` needs QEMU. Neither building the compiler nor running Sol or
 building bare-metal examples requires QOS.

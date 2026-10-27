@@ -55,6 +55,7 @@ data Plan = Plan
     pPort :: Maybe String, -- esp-idf: the board's serial port
     pCost :: Bool, -- --cost: print the root functions' work/alloc equations
     pManifest :: Maybe String, -- --manifest=FILE: judge them against a target manifest (passed through)
+    pRemarks :: Maybe String, -- native advisory reporting; forwarded without affecting codegen keys
     pRest :: [String],
     pTarget :: Maybe (String, String) -- --target=linux-aarch64|linux-x86_64|linux-riscv64|macos-x86_64: a cross build (os, arch); Nothing is this machine
   }
@@ -71,7 +72,7 @@ usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep
 plan :: [String] -> IO Plan
 plan args = do
   cores <- onlineCores
-  go (Plan "" Nothing (max 2 cores) False False False Nothing [] [] [] "unix" Nothing False Nothing [] Nothing) args
+  go (Plan "" Nothing (max 2 cores) False False False Nothing [] [] [] "unix" Nothing False Nothing Nothing [] Nothing) args
   where
     go p ("-o" : o : rest) = go p {pOut = Just o} rest
     go p ("--harts" : n : rest) = go p {pHarts = read n} rest
@@ -79,6 +80,8 @@ plan args = do
     go p ("--module" : rest) = go p {pModule = True} rest
     go p ("--keep" : rest) = go p {pKeep = True} rest
     go p ("--cost" : rest) = go p {pCost = True} rest
+    go p ("--remarks" : rest) = go p {pRemarks = Just "hot"} rest
+    go p (a : rest) | "--remarks=" `isPrefixOf` a = go p {pRemarks = Just (drop (length "--remarks=") a)} rest
     go p (a : rest) | "--manifest=" `isPrefixOf` a = go p {pCost = True, pManifest = Just a} rest
     go p ("--with" : f : rest) = go p {pWith = pWith p ++ [f]} rest
     go p ("--cflag" : f : rest) = go p {pCFlags = pCFlags p ++ [f]} rest
@@ -149,7 +152,7 @@ build configuration p = do
   -- checker refused exited 1 having said nothing at all.)
   let logf = asm ++ ".log"
   logh <- openFile logf WriteMode
-  (_, _, _, ch) <- createProcess (proc self (["compile", "--system=posix", "--prelude=" ++ prelude] ++ ["--plugin" | pModule p] ++ crossTarget ++ ["--cost" | pCost p] ++ maybe [] pure (pManifest p) ++ [pSource p, asm]))
+  (_, _, _, ch) <- createProcess (proc self (["compile", "--system=posix", "--prelude=" ++ prelude] ++ ["--plugin" | pModule p] ++ crossTarget ++ ["--cost" | pCost p] ++ maybe [] pure (pManifest p) ++ maybe [] (\mode->["--remarks="++mode]) (pRemarks p) ++ [pSource p, asm]))
                      {std_out = if pVerbose p || pCost p then Inherit else UseHandle logh}
   cc0 <- waitForProcess ch
   when (cc0 /= ExitSuccess) $ do
@@ -294,7 +297,7 @@ runMain args = do
           kept = dir </> (takeBaseName (pSource p) ++ "-" ++ key)
       createDirectoryIfMissing True dir
       have <- doesFileExist kept
-      if have then pure kept else do
+      if have && pRemarks p==Nothing then pure kept else do
         pid <- getProcessID
         let fresh = kept ++ ".tmp" ++ show pid -- built beside it, renamed whole: two runs at once never see half a file
         _ <- build configuration p {pOut = Just fresh}

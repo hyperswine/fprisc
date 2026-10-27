@@ -1,7 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 -- Inline checked closed entries, before region planning and erasure. Templates
 -- retain their code homes; only lexical binders are cloned into the caller.
-module Core.Typed.Inline (Inlining,planInlining,inlineClosed) where
+module Core.Typed.Inline (Inlining,planInlining,inlineClosed,inlineClosedWithDecisions) where
+import qualified Core.Typed.Decision as D
 import Core.Typed.Syntax
 import Core.Typed.Close
 import Core.Typed.Contract
@@ -14,7 +15,7 @@ import Core.Identity
 import Type.Syntax
 import Ownership.TypeShape (linShapeT)
 import Control.Monad.State.Strict
-import Control.Monad (guard,unless,void)
+import Control.Monad (guard,unless,void,when)
 import Control.Monad.Identity (runIdentity)
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
@@ -26,21 +27,21 @@ import qualified Data.Set as S
 -- recursive caller) may take a larger one than a call site elsewhere, since
 -- that is where the call is paid per iteration
 -- (docs/2026-10-27-FOLLOWUPS.md). Two budgets, weighed once.
-data Inlining=Inlining Catalog Int Int (M.Map Target (Template,S.Set String,Int))
+data Inlining=Inlining Catalog Int Int (M.Map Target (Either D.InlineReason (Template,S.Set String,Int)))
 
 -- Compute admission once per snapshot, not at every call in every owner.
 -- Stop weighing an oversized template as soon as the larger budget is spent.
 planInlining :: Int -> Int -> Catalog -> Either String Inlining
 planInlining limit loopLimit snapshot=do
   unless (limit>=0 && loopLimit>=0) (Left "typed inline: negative node budget")
-  pure (Inlining snapshot limit loopLimit (M.mapMaybeWithKey admit (catalogTemplates snapshot)))
+  pure (Inlining snapshot limit loopLimit (M.mapWithKey admit (catalogTemplates snapshot)))
   where
     cap=max limit loopLimit
     admit target template@(Template caps ps body _ _)
-      | target `S.notMember` recursiveCallbacks (catalogAnalysis snapshot),
-        not (null (caps++ps)),Just left<-execStateT (weigh body) cap=
-          Just (template,globals body,cap-left)
-      | otherwise=Nothing
+      | target `S.member` recursiveCallbacks (catalogAnalysis snapshot)=Left D.RecursiveCallee
+      | null (caps++ps)=Left D.NullaryCallee
+      | Just left<-execStateT (weigh body) cap=Right (template,globals body,cap-left)
+      | otherwise=Left (D.OverWeight (cap+1) cap)
     weigh :: Expr -> StateT Int Maybe ()
     weigh e=do
       budget<-get
@@ -52,35 +53,53 @@ planInlining limit loopLimit snapshot=do
       <>getConst (mapChildrenM (Const . globals) e)
 
 inlineClosed :: S.Set String -> Namespace -> TypeContext -> M.Map String Int -> Inlining -> ClosedFunction -> Either String ClosedFunction
-inlineClosed forbidden (Namespace ns) types@(TypeContext linears _) snapshotArities (Inlining snapshot limit loopLimit candidates) input=do
+inlineClosed forbidden namespace types arities plan input=
+  fst <$> inlineClosedWithDecisions False forbidden namespace types arities plan input
+
+inlineClosedWithDecisions :: Bool -> S.Set String -> Namespace -> TypeContext -> M.Map String Int -> Inlining -> ClosedFunction -> Either String (ClosedFunction,[D.Decision])
+inlineClosedWithDecisions reporting forbidden (Namespace ns) types@(TypeContext linears _) snapshotArities (Inlining snapshot limit loopLimit candidates) input=do
   prepared<-importClosedLibrary types (catalogLibrary snapshot) input
-  rewriteClosed types (\root codes->do
-    (root',codes')<-evalStateT (do
-      r<-function (RootTarget (functionName root)) root
-      cs<-M.traverseWithKey (\key c->do
-        f<-function (CodeTarget key) (codeAsFunction c)
-        let (caps,ps)=splitAt (length (codeCaptures c)) (functionParameters f)
-        pure c {codeCaptures=caps,codeParameters=ps,codeBody=functionBody f}) codes
-      pure (r,cs)) (0,catalogFirstType snapshot)
-    pure (root',codes')) prepared
+  ((root',codes'),(_,_,notes))<-runStateT (do
+    let root=closedRoot prepared;codes=closedCode prepared
+    r<-function (RootTarget (functionName root)) root
+    cs<-M.traverseWithKey (\key c->do
+      f<-function (CodeTarget key) (codeAsFunction c)
+      let (caps,ps)=splitAt (length (codeCaptures c)) (functionParameters f)
+      pure c {codeCaptures=caps,codeParameters=ps,codeBody=functionBody f}) codes
+    pure (r,cs)) (0,catalogFirstType snapshot,[])
+  output<-rewriteClosed types (\_ _->Right (root',codes')) prepared
+  pure (output,reverse notes)
   where
     generated ty node=Expr ty (linShapeT linears ty) Generated Nothing node
-    eligible self target=case M.lookup target candidates of
-      Just (template,globals,weight)
-        | target/=self,S.null (globals `S.intersection` forbidden),
-          weight<=(if self `S.member` recursiveCallbacks (catalogAnalysis snapshot) then loopLimit else limit)->Just template
-      _->Nothing
+    owner=functionName (closedRoot input)
+    label (RootTarget n)=n
+    label (CodeTarget (CodeId n))=n
+    record target why=when reporting (modify (\(serial,next,notes)->(serial,next,D.InlineDecision owner (label target) why:notes)))
+    eligible self target=let budget=if self `S.member` recursiveCallbacks (catalogAnalysis snapshot) then loopLimit else limit
+      in case M.lookup target candidates of
+      Nothing->Nothing -- runtime/foreign entries have no inline template
+      Just (Left (D.OverWeight n _))->Just (Left (D.OverWeight n budget))
+      Just (Left why)->Just (Left why)
+      Just (Right (template,names,weight))
+        | target==self->Just (Left D.RecursiveCallee)
+        | not (S.null blocked)->Just (Left (D.UsesForbiddenGlobal (S.toAscList blocked)))
+        | weight>budget->Just (Left (D.OverWeight weight budget))
+        | otherwise->Just (Right template)
+        where blocked=names `S.intersection` forbidden
     function self fn=do
       let scope=M.fromList [(binderId b,b) | b<-functionParameters fn++allBinders (functionBody fn)]
           walk e=case call e of
-            Just (target,ids,args) | Just (Template caps ps body contract _) <- eligible self target,
-              length caps==length ids,length ps==length args ->do
+            Just (target,_,_) | Just (Left why)<-eligible self target->record target why >> mapChildrenM walk e
+            Just (target,ids,args) | Just (Right (Template caps ps _ _ _))<-eligible self target,
+              length caps/=length ids || length ps/=length args->
+                record target (D.ArityMismatch (length caps) (length ids) (length ps) (length args)) >> mapChildrenM walk e
+            Just (target,ids,args) | Just (Right (Template caps ps body contract _)) <- eligible self target ->do
                 args'<-mapM walk args
                 actualCaps<-mapM (\uid->maybe (lift (Left "typed inline: absent checked capture")) pure (M.lookup uid scope)) ids
-                (serial,next)<-get
+                (serial,next,_)<-get
                 let full=foldr (TFn . exprType) (exprType e) args'
                 case instantiateContract next contract (map binderScheme actualCaps) full of
-                  Left _->mapChildrenM walk e
+                  Left _->record target D.ContractInstantiation >> mapChildrenM walk e
                   Right instance'->do
                     let (namespace,afterSerial)=chooseNamespace fn serial
                         original=Function "inline template" (caps++ps) body
@@ -98,7 +117,8 @@ inlineClosed forbidden (Namespace ns) types@(TypeContext linears _) snapshotArit
                         entry=generated (exprType inside) (Sequence tick inside)
                         bind (p,a) rest=generated (exprType rest) (Let p a rest)
                         answer=foldr bind entry [(p,a) | (p,a)<-zip copiedParams args',binderId p `M.notMember` replacements]
-                    put (afterSerial,instanceNext instance')
+                    modify (\(_,_,notes)->(afterSerial,instanceNext instance',notes))
+                    record target D.Inlined
                     pure answer {exprOrigin=exprOrigin e,exprOffset=exprOffset e}
             _->mapChildrenM walk e
       body<-walk (functionBody fn)
