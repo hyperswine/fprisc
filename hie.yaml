@@ -1,4 +1,9 @@
 cradle:
   cabal:
+    # Main is the executable entry point; the rest of compiler/ is the library.
+    - path: "./compiler/Main.hs"
+      component: "fp-risc:exe:fpr"
     - path: "./compiler"
+      component: "fp-risc:lib:fp-risc"
+    - path: "./app"
       component: "fp-risc:exe:fpr"

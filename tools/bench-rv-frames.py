@@ -6,8 +6,8 @@ and forced yields. QEMU deterministic instruction counts, not physical time.
 import argparse,hashlib,json,os,random,re,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'tests'))
-from check_typed_ir_rv_frames import actor_runtime
-from check_typed_ir_rv import run
+from check_typed_ir_rv_frames import actor_runtime # type: ignore
+from check_typed_ir_rv import run # type: ignore
 
 COUNTER=r'''#include "fpr.h"
 extern V __real_fpr_fn_main(void);
@@ -43,7 +43,7 @@ def main():
    for variant in order:
     text=run(['qemu-system-riscv'+width,'-icount','shift=0,align=off,sleep=off','-machine','virt','-smp','1','-m','128M','-nographic','-bios','none','-kernel',images[width,variant]],env)
     assert 'RV ACTOR FRAMES HOLD' in text,text
-    samples[width][variant].append(int(re.search(r'GUEST_INSNS=([0-9a-f]{16})',text)[1],16))
+    samples[width][variant].append(int(re.search(r'GUEST_INSNS=([0-9a-f]{16})',text)[1],16)) # type: ignore
   print(f'paired round {i+1}/{a.runs}',flush=True)
  result={'scope':__doc__,'runs':a.runs,'compiler_sha256':identities,'samples_guest_insns':samples,
          'ratio':{w:sum(v['typed'])/sum(v['before']) for w,v in samples.items()},
