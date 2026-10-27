@@ -3,11 +3,13 @@
 Date: 2026-10-27. Kind: status and plan for the rest of steps 6-8 of
 [the performance plan](2026-10-26-PERFORMANCE-PLAN.md).
 
-## Landed
+## Implemented
 
 - Step 7, first part: [live-range holes and loop-weighted spills](2026-10-27-REGISTER-PRESSURE.md),
   with a register-pressure model gating loop motion.
 - Step 6, first part: [clobber-free ticks and noreturn kernel traps](2026-10-27-CLOBBER-FREE-TICKS.md).
+- The measured C allocation changes are implemented:
+  [word padding stores and a bucketless-pool bump shortcut](2026-10-27-ALLOC-FAST-PATH.md).
 
 ## 1b. Parked receive-loop retention (fixed)
 
@@ -92,8 +94,11 @@ First step: count allocations by pool kind (compiler region, actor pool,
 arena) in strbuild, nbody and helpers, to bound the win before building it.
 
 **Measured the same day ([allocation measurement](2026-10-27-ALLOCATION-MEASUREMENT.md)):
-deferred.** Two C changes to `fpr_alloc` take most of the win (sha 108 ->
-100 ms); inlining would add at most about 5% on sha.
+deferred.** The scratch C changes improved sha from 108 to 100 ms in the
+pilot. They are now implemented with regression coverage and
+[separate validation](2026-10-27-ALLOC-FAST-PATH.md). The pilot does not
+establish an upper bound on the remaining benefit of inlining; the extra
+ABI and synchronization work remains deferred.
 
 ## 7b. Splitting at loop boundaries (next)
 

@@ -5,6 +5,11 @@ Date: 2026-10-27. The first step of 6b in
 building an inline bump-allocation path, count allocations by pool and
 caller, and time what they cost.
 
+The two C changes below are now implemented; see
+[the allocator fast-path note](2026-10-27-ALLOC-FAST-PATH.md) for the
+implementation, regression coverage and follow-up measurements. The
+counts, profiles and scratch timings on this page are the original pilot.
+
 ## Method
 
 - **Counts.** A scratch copy of `runtime/runtime.c` counted every
@@ -71,9 +76,9 @@ strbuild 72.9 -> 70.9 ms, byteloop unchanged.
 
 The inline path would remove only what remains after these two changes:
 the call, the hart lookup, the override-slot indirection, and the register
-traffic around the call. On these measurements that is at most about 5%
-on sha and less elsewhere. It would cost a native ABI revision (the hart's
-bump window), runtime write-back points (C allocation, region
+traffic around the call. The pilot suggests a limited marginal win, but
+does not establish an upper bound for inlining. It would cost a native ABI
+revision (the hart's bump window), runtime write-back points (C allocation, region
 open/cycle/close, override changes, actor switches) and code in three
 backends. **Deferred:** not worth building now. Revisit if a workload
 shows generated allocation in regions as a larger share of its time than
@@ -83,13 +88,13 @@ sha does.
 
 In order:
 
-1. **Land the two C changes** in `runtime/runtime.c` (the pad store and
-   the region fast path), with the Base suite. No compiler or ABI change.
+1. **The two C changes are implemented** in `runtime/runtime.c` (the pad
+   store and region fast path). See the linked validation note. No compiler
+   or ABI change.
 2. **`std/digest` indexes a vector, not a list.** `nth` is 44% of sha; it
    is the largest single cost in any benchmark here.
-3. **The parked receive loop** (1b in the steps 6-8 doc): cycle at the
-   boundary when the mailbox is empty and the region holds received roots,
-   so an actor parks holding nothing.
+3. **The parked receive loop is already fixed** in `4f56c95`; see
+   [the retention and analysis note](2026-10-27-PARKED-RECEIVE-AND-ANALYSIS.md).
 4. **pingpong's costs are the scheduler and message copying**, not
    allocation: the next work there is the copy (`dc_size_in`/`dc_dup` on
    each send) and the block/wake path.

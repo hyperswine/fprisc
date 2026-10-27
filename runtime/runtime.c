@@ -479,6 +479,13 @@ void fpr_bkt_put(void **b) {
 #ifndef FPR_BUILTIN
 static fpr_pool_t *base_pool(fpr_hart_t *h) { return h->current ? fpr_acb_pool(h->current) : &h->pool; }
 static int region_trip(fpr_hart_t *h, fpr_pool_t *pool); /* below, with the regions */
+/* Generated cells commonly leave one aligned word of rounding padding.
+ * Keep arbitrary byte-sized payloads on memset's general path. */
+static inline void alloc_zero_pad(char *payload, uw raw_bytes, uw total) {
+  uw pad = total - 16 - raw_bytes;
+  if (pad == sizeof(uw)) *(uw *)(payload + raw_bytes) = 0;
+  else if (pad) __builtin_memset(payload + raw_bytes, 0, pad);
+}
 static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
   uw total = (((raw_bytes + 15) & ~(uw)15)) + 16;
   FPR_COST_ADD(h, cost_alloc_requests, 1);
@@ -488,11 +495,8 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
     void *p = bucket_take(pool, idx);
     if (p) {
       *(uw *)p = total; /* [1] (the slab ptr) survived recycling */
-      { /* zero the rounding pad: the deep copier derives field counts
-         * from total and must read pad words as benign (see fpr_dcopy) */
-        uw pad = (total - 16) - raw_bytes;
-        if (pad) __builtin_memset((char *)p + 16 + raw_bytes, 0, pad);
-      }
+      /* The deep copier may read pad words as constructor fields. */
+      alloc_zero_pad((char *)p + 16, raw_bytes, total);
       return (V)((char *)p + 16);
     }
   }
@@ -520,8 +524,7 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
     if (take) {
       char *p = (char *)take;         /* header ([0] total, [1] slab) intact */
       *(uw *)(p + 16) = 0;            /* the link word: payload must start benign */
-      uw pad = (total - 16) - raw_bytes;
-      if (pad) __builtin_memset(p + 16 + raw_bytes, 0, pad);
+      alloc_zero_pad(p + 16, raw_bytes, total);
       return (V)(p + 16);
     }
   }
@@ -621,13 +624,33 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
   if (!bulk) h->region_bytes += total;
   *(uw *)p = total;
   *(fpr_slab_t **)(p + 8) = sl;
-  { /* pad zeroing, same reason as the bucket path */
-    uw pad = (total - 16) - raw_bytes;
-    if (pad) __builtin_memset(p + 16 + raw_bytes, 0, pad);
-  }
+  alloc_zero_pad(p + 16, raw_bytes, total);
   return (V)(p + 16);
 }
-V fpr_alloc(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, cur_pool(h), raw_bytes, 0); }
+V fpr_alloc(V raw_bytes) {
+  fpr_hart_t *h = fpr_hart();
+  fpr_pool_t *pool = cur_pool(h);
+  /* Compiler regions have no small-block buckets. Only admit small sizes
+   * before rounding, so this shortcut cannot overflow the size arithmetic.
+   * Big blocks, bucketed pools and refills retain alloc_in's reuse/trip path. */
+  if (!pool->buckets && raw_bytes <= (uw)16 * FPR_NBUCKETS - 16) {
+    uw total = ((raw_bytes + 15) & ~(uw)15) + 16;
+    fpr_slab_t *sl = pool->cur;
+    if (sl && total <= (uw)(sl->end - sl->hp)) {
+      char *p = sl->hp;
+      sl->hp += total;
+      pool->allocated += total;
+      h->region_bytes += total;
+      FPR_COST_ADD(h, cost_alloc_requests, 1);
+      FPR_COST_ADD(h, cost_alloc_bytes, total);
+      *(uw *)p = total;
+      *(fpr_slab_t **)(p + 8) = sl;
+      alloc_zero_pad(p + 16, raw_bytes, total);
+      return (V)(p + 16);
+    }
+  }
+  return alloc_in(h, pool, raw_bytes, 0);
+}
 /* a Vector's storage: the base pool, never a turn's arena (fpr.h) */
 V fpr_alloc_bulk(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, base_pool(h), raw_bytes, 1); }
 

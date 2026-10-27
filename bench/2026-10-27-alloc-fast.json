@@ -1,0 +1,804 @@
+{
+  "head": "2a6a098270f5a1095d5e32d54120f1f41562ac55",
+  "compiler_sha256": "c7202b3b23aba6e2491b710a425c0860f69302f366f2bb9f9232fe6d030b04d6",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "cc": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+  "variants": {
+    "before": {
+      "runtime_sha256": "af9fdd30aecbdb4e700c2a5955a3c69049ebebaf9b87efc64833b49734265f8b",
+      "binaries": {
+        "sha": {
+          "sha256": "838e8a81e6355366f72e310d9837928ff505201cbe4c379d1b8598fcd3b0e703",
+          "bytes": 788400
+        },
+        "strbuild": {
+          "sha256": "ad746c254ef7ba76d1677a0a47ae4ad8dff14615c54428dda2e5a6ef8a044471",
+          "bytes": 488872
+        },
+        "byteloop": {
+          "sha256": "7a4e8890c198d9ed965a5317cb15326779bfece26dcb52d673fe50105a2b7ebe",
+          "bytes": 538152
+        },
+        "pingpong": {
+          "sha256": "6dc8f1df65262bf682da83d7f1dd4bd14d7afbb1d21685044acfae411233e3e3",
+          "bytes": 489272
+        },
+        "xpingpong": {
+          "sha256": "0dd29d9008e150ef5cd4b3bca4bb5183b57ca6a9a4a5632ec8636513a53804f2",
+          "bytes": 489272
+        }
+      }
+    },
+    "pad": {
+      "runtime_sha256": "ce98225fbd7631660dc0fb8e521236a72cae894c2f32acce79e16c181c90d373",
+      "binaries": {
+        "sha": {
+          "sha256": "8fa1dd99a36f31e044ba4d2f8fc29e584e97b97385163c59ef7e7ce3a2e9cd83",
+          "bytes": 788400
+        },
+        "strbuild": {
+          "sha256": "09089e1ba8d3796d21874d7df090f908cd82a4e350764258649236ec10c4e034",
+          "bytes": 488872
+        },
+        "byteloop": {
+          "sha256": "da6094adbc45d3411469d4e904df0c5761022b4e360433f49cabc8e757609cf8",
+          "bytes": 538152
+        },
+        "pingpong": {
+          "sha256": "c59dcb8fb5e0761e894894c4d35f099f2f1178db1286fee7cceb7f77a4a2f1b6",
+          "bytes": 489272
+        },
+        "xpingpong": {
+          "sha256": "33de8b360d7bd83cbb3f0d288832c81288871faac4ab0412d8d7c687cc1a93c4",
+          "bytes": 489272
+        }
+      }
+    },
+    "after": {
+      "runtime_sha256": "bde26525f3a73465bd2103a8962c8604bd43f31fc86c2ce208d290a74546ff3f",
+      "binaries": {
+        "sha": {
+          "sha256": "b34f3d561c0a0de3f9d62a7f949802f0ac3ebb4a87a1c34fa4045d2c70a79825",
+          "bytes": 788336
+        },
+        "strbuild": {
+          "sha256": "fe195e95b809b73bd70c6aba5dd945e965b0559b1c1371669878b4746a35c336",
+          "bytes": 472296
+        },
+        "byteloop": {
+          "sha256": "222d18c29048441a6bf6def005614e04a4d11ea1d8988adb14dac69790f730ad",
+          "bytes": 538088
+        },
+        "pingpong": {
+          "sha256": "194463ab1d680f34ec55440450398a27073c7e3bb7d4ba0317a779c23abeef05",
+          "bytes": 472712
+        },
+        "xpingpong": {
+          "sha256": "f32b929efafa5ae34b37bbb8552548ca45bf4af9d6574dc96573b8566752d308",
+          "bytes": 472712
+        }
+      }
+    }
+  },
+  "benchmarks": {
+    "sha": {
+      "source_sha256": "90e079060121a9a2374fe9de5681fbf1f2dfa53e164fd4e19c29e6bb3d1308e8",
+      "harts": 1
+    },
+    "strbuild": {
+      "source_sha256": "01da273c649b8968b4d9f2d54d947b0a9f24f13f269f3be42e50d11e42c1ed6c",
+      "harts": 1
+    },
+    "byteloop": {
+      "source_sha256": "7eacb7a78414d86677ed506f7918573b972a6bc8f13bbb2655f7ddf38b807a4b",
+      "harts": 1
+    },
+    "pingpong": {
+      "source_sha256": "b4c92d84182870a806f34b8746173493e5d3c1dbac988c30798de39cf6f24487",
+      "harts": 1
+    },
+    "xpingpong": {
+      "source_sha256": "052aa510dad5f032bbb4db9483cff46f8ee366dfbe0c769c567ce2c6c8342600",
+      "harts": 4
+    }
+  },
+  "flags": [
+    "--harts",
+    "4"
+  ],
+  "cpu": "Apple M4",
+  "cpu_status_start": "Processes: 706 total, 3 running, 703 sleeping, 4971 threads \n2026/10/27 18:38:24\nLoad Avg: 5.80, 8.38, 6.86 \nCPU usage: 21.36% user, 16.87% sys, 61.75% idle \nSharedLibs: 458M resident, 108M data, 82M linkedit.\nMemRegions: 683075 total, 4260M resident, 166M private, 1020M shared.\nPhysMem: 15G used (3526M wired, 5039M compressor), 102M unused.\nVM: 350T vsize, 57G framework vsize, 340464237(0) swapins, 384607105(0) swapouts.\nNetworks: packets: 278699454/279G in, 167621453/92G out.\nDisks: 864575887/22T read, 280164364/10T written.\n\n\nProcesses: 706 total, 4 running, 702 sleeping, 4986 threads \n2026/10/27 18:38:26\nLoad Avg: 5.80, 8.38, 6.86 \nCPU usage: 22.11% user, 10.38% sys, 67.50% idle \nSharedLibs: 458M resident, 108M data, 82M linkedit.\nMemRegions: 0 total, 0B resident, 166M private, 1020M shared.\nPhysMem: 15G used (3538M wired, 5041M compressor), 114M unused.\nVM: 350T vsize, 57G framework vsize, 340464253(16) swapins, 384607105(0) swapouts.\nNetworks: packets: 278699518/279G in, 167621515/92G out.\nDisks: 864576276/22T read, 280164526/10T written.\n\n\n",
+  "samples_ms": {
+    "sha": {
+      "before": [
+        121.30479095503688,
+        121.42933323048055,
+        121.54041696339846,
+        123.4064579475671,
+        123.83520789444447,
+        121.71566695906222,
+        132.13158305734396,
+        130.49833290278912,
+        124.69800002872944,
+        120.45575003139675,
+        121.64766597561538,
+        124.24012506380677
+      ],
+      "pad": [
+        113.72583312913775,
+        117.38483398221433,
+        113.59620792791247,
+        119.2012089304626,
+        118.9491250552237,
+        121.93454196676612,
+        156.81941690854728,
+        119.14112512022257,
+        115.39658391848207,
+        115.23816711269319,
+        115.0749169755727,
+        114.60170801728964
+      ],
+      "after": [
+        110.684750135988,
+        113.20191691629589,
+        113.21058310568333,
+        114.93350006639957,
+        111.6293331142515,
+        115.88166700676084,
+        115.53425015881658,
+        122.6985000539571,
+        108.66783279925585,
+        110.13495782390237,
+        110.67075002938509,
+        112.60504205711186
+      ]
+    },
+    "strbuild": {
+      "before": [
+        95.39350005798042,
+        89.21420807018876,
+        93.45758403651416,
+        91.86604199931026,
+        89.69599986448884,
+        87.50241692177951,
+        91.76199999637902,
+        100.09908396750689,
+        92.3597919754684,
+        102.24250005558133,
+        95.62808298505843,
+        93.44766708090901
+      ],
+      "pad": [
+        89.13608291186392,
+        87.49300008639693,
+        90.68499994464219,
+        94.24395812675357,
+        89.84541683457792,
+        91.4839580655098,
+        89.84337490983307,
+        93.94033416174352,
+        89.6344999782741,
+        99.00925005786121,
+        89.93291691876948,
+        117.48895887285471
+      ],
+      "after": [
+        83.4872080013156,
+        85.55241697467864,
+        108.62554190680385,
+        104.81924982741475,
+        97.64529205858707,
+        83.31079198978841,
+        89.92058294825256,
+        88.38162501342595,
+        98.72099990025163,
+        94.8406660463661,
+        122.63316684402525,
+        87.32270915061235
+      ]
+    },
+    "byteloop": {
+      "before": [
+        91.78404207341373,
+        92.20812516286969,
+        93.03762507624924,
+        91.2778340280056,
+        91.48374991491437,
+        92.43912505917251,
+        91.72274987213314,
+        91.54675016179681,
+        90.91895911842585,
+        92.19141700305045,
+        91.40337514691055,
+        93.90766709111631
+      ],
+      "pad": [
+        90.94795794226229,
+        90.23279184475541,
+        93.47354108467698,
+        94.31149996817112,
+        93.90404215082526,
+        91.68620803393424,
+        91.4441249333322,
+        92.12925005704165,
+        91.51154197752476,
+        92.10995817556977,
+        93.88866717927158,
+        93.85708393529058
+      ],
+      "after": [
+        90.2015829924494,
+        90.73499985970557,
+        93.37220899760723,
+        93.71779090724885,
+        91.91625006496906,
+        92.34766708686948,
+        92.89874997921288,
+        92.52495900727808,
+        91.82837489061058,
+        91.94995905272663,
+        91.72683395445347,
+        92.60870795696974
+      ]
+    },
+    "pingpong": {
+      "before": [
+        200.39441692642868,
+        198.9977089688182,
+        194.91533399559557,
+        201.79983391426504,
+        198.86895804665983,
+        194.91262501105666,
+        199.66066698543727,
+        198.92854103818536,
+        207.0571668446064,
+        199.32829099707305,
+        199.0723330527544,
+        199.68650001101196
+      ],
+      "pad": [
+        197.22554204054177,
+        197.08837498910725,
+        195.72695810347795,
+        195.08820911869407,
+        195.08433295413852,
+        202.27649994194508,
+        198.90404120087624,
+        197.71487498655915,
+        201.88237517140806,
+        200.2465408295393,
+        197.19349988736212,
+        195.53537503816187
+      ],
+      "after": [
+        195.08633320219815,
+        194.004834163934,
+        197.28395901620388,
+        195.13641693629324,
+        192.59829190559685,
+        193.32449999637902,
+        191.6782499756664,
+        191.71320903114974,
+        198.99387494660914,
+        195.31354098580778,
+        196.29991590045393,
+        201.01745915599167
+      ]
+    },
+    "xpingpong": {
+      "before": [
+        354.1159159503877,
+        354.08337507396936,
+        358.8496660813689,
+        377.75179115124047,
+        366.1226669792086,
+        359.81429112143815,
+        364.2475421074778,
+        378.41845909133554,
+        365.09233294054866,
+        356.66600009426475,
+        369.92470920085907,
+        363.7447920627892
+      ],
+      "pad": [
+        349.3582911323756,
+        370.29795814305544,
+        379.4055839534849,
+        371.97816697880626,
+        353.3830421511084,
+        355.9256249573082,
+        370.73987489566207,
+        362.9688338842243,
+        360.9511249233037,
+        374.5803339406848,
+        363.49137499928474,
+        358.8756250683218
+      ],
+      "after": [
+        344.8894580360502,
+        353.8665841333568,
+        354.2108749970794,
+        378.36645799688995,
+        360.32441700808704,
+        358.17558295093477,
+        375.5981249269098,
+        353.85312512516975,
+        358.3347089588642,
+        362.940332852304,
+        356.3479168806225,
+        376.6916668973863
+      ]
+    }
+  },
+  "orders": [
+    [
+      "before",
+      "pad",
+      "after"
+    ],
+    [
+      "before",
+      "after",
+      "pad"
+    ],
+    [
+      "after",
+      "before",
+      "pad"
+    ],
+    [
+      "after",
+      "pad",
+      "before"
+    ],
+    [
+      "pad",
+      "after",
+      "before"
+    ],
+    [
+      "pad",
+      "before",
+      "after"
+    ],
+    [
+      "before",
+      "pad",
+      "after"
+    ],
+    [
+      "before",
+      "after",
+      "pad"
+    ],
+    [
+      "after",
+      "before",
+      "pad"
+    ],
+    [
+      "after",
+      "pad",
+      "before"
+    ],
+    [
+      "pad",
+      "after",
+      "before"
+    ],
+    [
+      "pad",
+      "before",
+      "after"
+    ]
+  ],
+  "load_start": [
+    5.79638671875,
+    8.37841796875,
+    6.85888671875
+  ],
+  "started": "2026-10-27T18:38:26+1100",
+  "cpu_status_end": "Processes: 707 total, 4 running, 703 sleeping, 5047 threads \n2026/10/27 18:39:04\nLoad Avg: 6.08, 8.13, 6.83 \nCPU usage: 20.25% user, 15.91% sys, 63.83% idle \nSharedLibs: 461M resident, 109M data, 82M linkedit.\nMemRegions: 683149 total, 3732M resident, 184M private, 994M shared.\nPhysMem: 15G used (3435M wired, 5330M compressor), 471M unused.\nVM: 351T vsize, 57G framework vsize, 340464498(0) swapins, 384607105(0) swapouts.\nNetworks: packets: 278702882/279G in, 167624675/92G out.\nDisks: 864585562/22T read, 280165806/10T written.\n\n\nProcesses: 707 total, 5 running, 702 sleeping, 5014 threads \n2026/10/27 18:39:05\nLoad Avg: 6.08, 8.13, 6.83 \nCPU usage: 20.56% user, 8.72% sys, 70.70% idle \nSharedLibs: 461M resident, 109M data, 82M linkedit.\nMemRegions: 0 total, 0B resident, 184M private, 994M shared.\nPhysMem: 15G used (3509M wired, 5317M compressor), 423M unused.\nVM: 351T vsize, 57G framework vsize, 340464498(0) swapins, 384607105(0) swapouts.\nNetworks: packets: 278702950/279G in, 167624743/92G out.\nDisks: 864585564/22T read, 280165807/10T written.\n\n\n",
+  "load_end": [
+    6.078125,
+    8.1259765625,
+    6.83349609375
+  ],
+  "summary_ms": {
+    "sha": {
+      "before": {
+        "best": 120.45575003139675,
+        "median": 122.56106245331466
+      },
+      "pad": {
+        "best": 113.59620792791247,
+        "median": 116.3907089503482
+      },
+      "after": {
+        "best": 108.66783279925585,
+        "median": 112.90347948670387
+      }
+    },
+    "strbuild": {
+      "before": {
+        "best": 87.50241692177951,
+        "median": 92.9037295281887
+      },
+      "pad": {
+        "best": 87.49300008639693,
+        "median": 90.30895843170583
+      },
+      "after": {
+        "best": 83.31079198978841,
+        "median": 92.38062449730933
+      }
+    },
+    "byteloop": {
+      "before": {
+        "best": 90.91895911842585,
+        "median": 91.75339597277343
+      },
+      "pad": {
+        "best": 90.23279184475541,
+        "median": 92.11960411630571
+      },
+      "after": {
+        "best": 90.2015829924494,
+        "median": 92.14881306979805
+      }
+    },
+    "pingpong": {
+      "before": {
+        "best": 194.91262501105666,
+        "median": 199.20031202491373
+      },
+      "pad": {
+        "best": 195.08433295413852,
+        "median": 197.20952096395195
+      },
+      "after": {
+        "best": 191.6782499756664,
+        "median": 195.1113750692457
+      }
+    },
+    "xpingpong": {
+      "before": {
+        "best": 354.08337507396936,
+        "median": 363.9961670851335
+      },
+      "pad": {
+        "best": 349.3582911323756,
+        "median": 363.2301044417545
+      },
+      "after": {
+        "best": 344.8894580360502,
+        "median": 358.2551459548995
+      }
+    }
+  },
+  "paired_median_change_percent": {
+    "sha": {
+      "before->pad": -4.867319105360313,
+      "pad->after": -3.7037367499940688,
+      "before->after": -8.661479773068258
+    },
+    "strbuild": {
+      "before->pad": -2.520802636912667,
+      "pad->after": -1.0660252224364508,
+      "before->after": -3.05561239401132
+    },
+    "byteloop": {
+      "before->pad": 0.2073362784573929,
+      "pad->after": -0.14105586000017212,
+      "before->after": 0.35675137973785187
+    },
+    "pingpong": {
+      "before->pad": -0.9516347868880781,
+      "pad->after": -1.3525627378267346,
+      "before->after": -2.5789146840330623
+    },
+    "xpingpong": {
+      "before->pad": -1.2364561883046132,
+      "pad->after": -1.0020109154348367,
+      "before->after": -0.8740576681509404
+    }
+  },
+  "method": "Twelve paired rounds; all six before/pad/after orders twice; benchmark order rotates each round; one untimed warmup per binary; every stdout checked against its expected file, with zero status and empty stderr. No concurrent builds or tests from this validation. Host remained active; CPU snapshots are included. Smaller changes may be noise.",
+  "benchmark_orders": [
+    [
+      "sha",
+      "strbuild",
+      "byteloop",
+      "pingpong",
+      "xpingpong"
+    ],
+    [
+      "strbuild",
+      "byteloop",
+      "pingpong",
+      "xpingpong",
+      "sha"
+    ],
+    [
+      "byteloop",
+      "pingpong",
+      "xpingpong",
+      "sha",
+      "strbuild"
+    ],
+    [
+      "pingpong",
+      "xpingpong",
+      "sha",
+      "strbuild",
+      "byteloop"
+    ],
+    [
+      "xpingpong",
+      "sha",
+      "strbuild",
+      "byteloop",
+      "pingpong"
+    ],
+    [
+      "sha",
+      "strbuild",
+      "byteloop",
+      "pingpong",
+      "xpingpong"
+    ],
+    [
+      "strbuild",
+      "byteloop",
+      "pingpong",
+      "xpingpong",
+      "sha"
+    ],
+    [
+      "byteloop",
+      "pingpong",
+      "xpingpong",
+      "sha",
+      "strbuild"
+    ],
+    [
+      "pingpong",
+      "xpingpong",
+      "sha",
+      "strbuild",
+      "byteloop"
+    ],
+    [
+      "xpingpong",
+      "sha",
+      "strbuild",
+      "byteloop",
+      "pingpong"
+    ],
+    [
+      "sha",
+      "strbuild",
+      "byteloop",
+      "pingpong",
+      "xpingpong"
+    ],
+    [
+      "strbuild",
+      "byteloop",
+      "pingpong",
+      "xpingpong",
+      "sha"
+    ]
+  ],
+  "runtime_c_flags": [
+    "-O2",
+    "-DFPR_POSIX",
+    "-DFPR_POSIX_CODEGEN_REV=135",
+    "-DFPR_NHARTS=4",
+    "-ffixed-x27",
+    "-ffixed-x28",
+    "-DFPR_HART_X28"
+  ],
+  "cost_probing": false,
+  "validation": {
+    "base_total": 144,
+    "runs": [
+      {
+        "name": "base-times.json",
+        "seconds": 677.2461831669789,
+        "workers": 4,
+        "jobs": {
+          "tests/test_check_registry.py": "ok",
+          "tests/check_core_pipeline.py": "ok",
+          "tests/check_reset_reuse.py": "ok",
+          "tests/check_vector_fast.py": "ok",
+          "tests/check_scheduler_locality.py": "ok",
+          "tests/check_state_generations.py": "ok",
+          "tests/check_alloc_fast.py": "ok",
+          "tests/check_parked_receive.py": "ok",
+          "tests/check_compiler_options.py": "ok",
+          "tests/check_diagnostics.py": "ok",
+          "tests/check_remarks.py": "ok",
+          "tests/check_frontend.py": "ok",
+          "tests/check_inference_evidence.py": "ok",
+          "tests/check_typed_core.py": "ok",
+          "tests/check_typed_ir.py": "ok",
+          "tests/check_typed_ir_a64.py": "ok",
+          "tests/check_typed_ir_x64.py": "ok",
+          "tests/check_typed_ir_kernels.py": "ok",
+          "tests/check_x64_retirement.py": "ok",
+          "tests/check_float_trees.py": "ok",
+          "tests/check_captured_simd.py": "ok",
+          "tests/check_typed_ir_builtin.py": "ok",
+          "tests/check_typed_ir_arc.py": "ok",
+          "tests/check_native_insns_ratchet.py": "ok",
+          "tests/check_rv32_float_constants.py": "ok",
+          "tests/check_a64_fp_pool.py": "ok",
+          "tests/check_a64_retirement.py": "ok",
+          "tests/check_self_loops.py": "ok",
+          "tests/check_self_loop_x64.py": "ok",
+          "tests/check_x64_scalar.py": "ok",
+          "tests/check_x64_qos.py": "ok",
+          "tests/check_x64_macos.py": "ok",
+          "tests/check_self_loop_rv64.py": "ok",
+          "tests/check_rv64_linux.py": "ok",
+          "tests/check_typed_ir_rv_module.py": "ok",
+          "tests/check_typed_ir_rv_startup.py": "ok",
+          "tests/check_typed_ir_rv_frames.py": "ok",
+          "tests/check_typed_ir_a64_frames.py": "cancelled",
+          "tests/check_typed_ir_x64_frames.py": "ok",
+          "tests/check_native_data.py": "ok",
+          "tests/check_native_required.py": "ok",
+          "tests/check_stack_reservation.py": "ok",
+          "tests/check_fixed_stack_reservation.py": "ok",
+          "tests/check_typed_ir_qrv64.py": "ok",
+          "tests/check_typed_ir_esp.py": "ok",
+          "tests/check_byte_strings.py": "ok",
+          "tests/check_view_construction.py": "ok",
+          "tests/check_inbox.py": "ok",
+          "tests/check_check_only.py": "ok",
+          "tests/check_commit_interfaces.py": "ok",
+          "tests/check_publication.py": "ok",
+          "tests/check_watch_app.py": "ok",
+          "tests/check_live_runner.py": "failed",
+          "tests/check_live_writer_lifetime.py": "ok",
+          "tests/check_pos_reload.py": "ok",
+          "tests/check_posix_modules.py": "ok",
+          "tests/check_posix_pic.py": "ok",
+          "tests/check_owned_watchers.py": "ok",
+          "tests/check_loop_state.py": "ok",
+          "tests/check_receive_turns.py": "cancelled",
+          "tests/check_mvu_reload.py": "ok",
+          "tests/check_deadlines.py": "cancelled",
+          "tests/check_actor_reap.py": "cancelled",
+          "examples/ideal/check.py": "ok",
+          "tests/check_higher_order_contracts.py": "ok",
+          "tests/check_contract_rewrites.py": "cancelled",
+          "tests/check_printer_ownership.py": "cancelled",
+          "tools/sol-linearity-check.py": "cancelled",
+          "tests/check_structural_ownership.py": "cancelled",
+          "tests/check_generic_ownership.py": "cancelled",
+          "tests/check_pos_core.py": "ok",
+          "tests/check_compile_budget.py": "ok",
+          "tests/check_pagination.py": "ok",
+          "tests/check_typed_vectors.py": "cancelled",
+          "tests/check_vector_limits.py": "cancelled",
+          "tests/check_vector_kinds.py": "cancelled",
+          "tests/check_vector_pipelines.py": "cancelled",
+          "tests/check_reuse.py": "cancelled",
+          "tests/check_consuming_reuse.py": "cancelled",
+          "tests/check_x64_vectors.py": "cancelled",
+          "tests/check_wide_params.py": "cancelled",
+          "tests/check_vector_fallback_frames.py": "cancelled",
+          "tests/check_trust.py": "cancelled",
+          "tests/check_specialization.py": "cancelled",
+          "tests/check_workers.py": "ok",
+          "tests/check_wide_workers.py": "ok",
+          "admission": "cancelled",
+          "strprims": "cancelled",
+          "confine": "cancelled",
+          "heapnil": "cancelled",
+          "bitrange": "cancelled"
+        }
+      },
+      {
+        "name": "live-retry-times.json",
+        "seconds": 40.279255874920636,
+        "workers": 1,
+        "jobs": {
+          "tests/check_live_runner.py": "ok"
+        }
+      },
+      {
+        "name": "resume-times.json",
+        "seconds": 277.51563266594894,
+        "workers": 4,
+        "jobs": {
+          "tests/check_alloc_fast.py": "ok",
+          "tests/check_typed_ir_a64_frames.py": "ok",
+          "tests/check_receive_turns.py": "ok",
+          "tests/check_deadlines.py": "ok",
+          "tests/check_actor_reap.py": "ok",
+          "tests/check_contract_rewrites.py": "ok",
+          "tests/check_printer_ownership.py": "ok",
+          "tools/sol-linearity-check.py": "ok",
+          "tests/check_structural_ownership.py": "ok",
+          "tests/check_generic_ownership.py": "ok",
+          "tests/check_typed_vectors.py": "ok",
+          "tests/check_vector_limits.py": "ok",
+          "tests/check_vector_kinds.py": "ok",
+          "tests/check_vector_pipelines.py": "ok",
+          "tests/check_reuse.py": "ok",
+          "tests/check_consuming_reuse.py": "ok",
+          "tests/check_x64_vectors.py": "ok",
+          "tests/check_wide_params.py": "ok",
+          "tests/check_vector_fallback_frames.py": "ok",
+          "tests/check_trust.py": "ok",
+          "tests/check_specialization.py": "ok",
+          "admission": "ok",
+          "strprims": "ok",
+          "confine": "ok",
+          "heapnil": "ok",
+          "bitrange": "ok",
+          "intovf": "ok",
+          "longpanic": "ok",
+          "irqroute": "ok",
+          "irqdead": "ok",
+          "logplane": "ok",
+          "logdead": "ok",
+          "killblocked": "ok",
+          "deadmail": "ok",
+          "autodrop2": "ok",
+          "autodrop3": "ok",
+          "turnroots": "ok",
+          "swarmkeeper": "ok",
+          "regionnest": "ok",
+          "pendreset": "ok",
+          "fixedheap": "ok",
+          "vecfuse": "ok",
+          "vecwide": "ok",
+          "vecshape": "ok",
+          "veccaps": "ok",
+          "process": "ok",
+          "streams": "ok",
+          "panic_actors_std": "ok",
+          "stacks": "ok",
+          "sleepwake": "ok",
+          "sleepwait": "ok",
+          "bigheap": "ok",
+          "wide": "ok",
+          "fvec2": "ok",
+          "cafalias": "ok",
+          "inlineprims": "ok",
+          "inlining": "ok",
+          "registers": "ok",
+          "slotprims": "ok",
+          "float_inline": "ok",
+          "cleanup": "ok",
+          "runtime_costs": "ok",
+          "actorfail": "ok",
+          "loopwith": "ok",
+          "arena_migration": "ok",
+          "codepublish": "ok",
+          "modinterface": "ok",
+          "images": "ok",
+          "vecpeek": "ok",
+          "zerobased": "ok",
+          "deadpeer": "ok",
+          "deathwhy": "ok",
+          "actor_claim": "ok",
+          "taskstress": "ok",
+          "fpr_run": "ok",
+          "descriptors": "ok",
+          "job_broker": "ok",
+          "sendmem": "ok",
+          "i64": "ok"
+        }
+      }
+    ],
+    "alignment_runtime_c": "PASS on 1/4 harts, cost probing off/on",
+    "baseline_dispatch_probe": "expected failure: small bucketless allocation missed fast path",
+    "full_runtime_alignment": "Fails in actors.c:755 channel setup with original and final allocator; existing chblk_t 16-byte alignment issue, before the probe starts.",
+    "all_base_jobs_passed": true
+  }
+}
