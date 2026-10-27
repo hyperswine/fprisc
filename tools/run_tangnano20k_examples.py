@@ -122,6 +122,8 @@ def execute_guest(directory, files, arguments, inputs, environment, args, env):
     command = [sys.executable, ROOT / 'tools/run_tangnano20k_base.py', directory / 'base.bin',
                '--root', files, '--freq-mhz', '48', '--port', args.port,
                '--timeout', str(args.timeout)]
+    if getattr(args, 'fpga_manifest', None) is not None:
+        command += ['--manifest', str(args.fpga_manifest.resolve())]
     command += [f'--arg={value}' for value in arguments]
     command += [f'--input={value}' for value in inputs]
     command += [f'--env={key}={value}' for key, value in environment.items()]
