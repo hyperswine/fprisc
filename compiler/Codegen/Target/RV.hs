@@ -3,7 +3,7 @@
 -- consumed here. Checked arithmetic initially uses the exact C primitives;
 -- the shared allocator handles calls, spills, parallel arguments and loops.
 module Codegen.Target.RV
-  ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV, emitFnRVWithSymbols ) where
+  ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV, emitFnRVWithSymbols, fuelSaveWrapper ) where
 
 import qualified Codegen.Calling as Calling
 import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
@@ -125,6 +125,11 @@ call sym convention vs result tailCall = do
     (if tailCall then TailTransfer else maybe DiscardResult (const WordResult) result) sym vs result
     ((plain (if tailCall then O.Common O.TailJump else O.RV R.Call) [] [])
       {siImplicitDefs=if tailCall then map p ["sp","s0","ra","t3"] else []}))
+  emit selected
+-- a call into a noreturn runtime trap: it ends the path (Calling.NeverReturns)
+trapCall :: String -> S ()
+trapCall s = do
+  selected <- lift (Calling.selectTransfer Calling.RiscV Calling.RuntimeCall NeverReturns (CodeSymbol s) [] Nothing (plain (O.RV R.Call) [] []))
   emit selected
 calleeSym :: Callee -> CodeSymbol
 calleeSym = calleeCodeSymbol
@@ -272,8 +277,8 @@ select cfg fn = do
         ri R.ShiftLeftImmediate shifted result 1; ri R.ShiftRightArithmeticImmediate fit shifted 1
         failUnlessEqual fit result
         emit (plain (O.RV R.Move) [anyV d] [anyV result]); jump done
-        mark slow; call (CodeSymbol "fpr_int_overflow_kernel") Calling.RuntimeCall [] Nothing False
-        mark zero; call (CodeSymbol "fpr_div_zero_kernel") Calling.RuntimeCall [] Nothing False
+        mark slow; trapCall "fpr_int_overflow_kernel"
+        mark zero; trapCall "fpr_div_zero_kernel"
         li d 0 -- unreachable after a noreturn trap
         mark done
       OArith op a b -> do
@@ -416,6 +421,21 @@ select cfg fn = do
         reads = M.fromList [("$arc.memread"++n,(op,mask,small)) | (n,op,mask,small)<-[("8",R.LoadByte,0,True),("16",R.LoadHalf,1,True),("32",R.LoadUnsigned32,3,False),("Word",R.Load64,7,False)]]
         writes = M.fromList [("$arc.memwrite"++n,(op,mask,small)) | (n,op,mask,small)<-[("8",R.StoreByte,0,True),("16",R.StoreHalf,1,True),("32",R.Store32,3,False),("Word",R.Store64,7,False)]]
 
+-- The tick's slow path: a unit-local wrapper saves ra, t0..t6 and a0..a7
+-- on the actor's stack around fpr_fuel_exhausted (16 words, 16-byte aligned).
+fuelSaveWrapper :: Width -> [String]
+fuelSaveWrapper width =
+  ["    .text", "    .balign 4", Call.runtimeName Call.FuelSaveEntry ++ ":", "    addi sp, sp, -" ++ show (16 * w)]
+  ++ ["    " ++ st ++ " " ++ r ++ ", " ++ show (w * k) ++ "(sp)" | (k, r) <- zip [0 :: Int ..] saved]
+  ++ ["    call " ++ Call.runtimeName Call.FuelEntry]
+  ++ ["    " ++ ld ++ " " ++ r ++ ", " ++ show (w * k) ++ "(sp)" | (k, r) <- zip [0 :: Int ..] saved]
+  ++ ["    addi sp, sp, " ++ show (16 * w), "    ret", ""]
+  where
+    w = if width == W32 then 4 else 8 :: Int
+    st = if width == W32 then "sw" else "sd"
+    ld = if width == W32 then "lw" else "ld"
+    saved = "ra" : map (("t" ++) . show) [0 .. 6 :: Int] ++ map (("a" ++) . show) [0 .. 7 :: Int]
+
 allocConfig :: RVConfig -> Fn -> S.Set VReg -> AllocConfig
 allocConfig cfg fn managed = AllocConfig
   { acCalleeSaved = saved, acCallerSaved = args, acScratch = scratch,
@@ -472,7 +492,7 @@ emitFnRVWithSymbols symbols cfg fn = do
           ++ visibilityLines ELF WeakDirective (visibilityFor (cfgWeak cfg) symbols name) (functionSymbol name)
           ++ [functionSymbol name ++ ":"]
   checkForms regFile name body
-  pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList (nulls st)) (S.toList (strings st)) (S.toList (boxedFloats st)))
+  pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList (nulls st)) (S.toList (strings st)) (S.toList (boxedFloats st)) (usesTick body))
   where
     token (ILabel (Label l),_) = [TLabel l]
     token (I i,ls) = [TIns (instructionCost ls)
@@ -549,7 +569,7 @@ render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else 
     l point = local fn (entryLabel i point)
     stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l StackReady, ("call " ++ Call.runtimeName Call.GrowStackEntry), "beqz a0, " ++ l SameStack, "mv sp, a0", l SameStack ++ ":"] ++ hart ++ [l StackReady ++ ":"]
     tick = tickN 1
-    tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l FuelReady, ("call " ++ Call.runtimeName Call.FuelEntry), l FuelReady ++ ":"]
+    tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l FuelReady, ("call " ++ Call.runtimeName Call.FuelSaveEntry), l FuelReady ++ ":"]
     ew = if cfgWidth cfg == W32 then "32" else "64"
     go op ds us = case (op,ds,us) of
       (O.Common O.EntryStatic,[],[]) -> []

@@ -104,6 +104,10 @@ ret x = (plain "ret" [] [OV (v x) (Fix a0)]) {siControl = Return}
 jump :: String -> SInstr
 jump l = (plain "jump" [] [OL (Label l)]) {siControl = JumpTo (Label l)}
 
+-- a mid-function tick whose slow path saves every allocatable register
+tick :: SInstr
+tick = (plain "tick" [] []) {siImplicitDefs = [t1], siFlags = FlagsDef, siCalls = [Call.runtimeEvent Call.FuelSaveEntry]}
+
 -- the entry sequence and a self tail transfer, as the targets shape them
 entry :: SInstr
 entry = (plain "entry.check.tick" [] []) {siAnnotation=EntryLabels (Label "allocator-entry"),siImplicitDefs = [t1], siClobbers = clobbered, siFlags = FlagsDef, siCalls = [Call.runtimeEvent Call.GrowStackEntry, Call.runtimeEvent Call.FuelEntry]}
@@ -377,6 +381,18 @@ main = do
   forM_ [[True], [False, True], [False, False, False, True]] $ \path ->
     either (error . (("FAIL: weights simulation " ++ show path ++ ": ") ++)) pure (simulatePath path weighted (alBody wa))
   either (error . ("FAIL: weights oracle: " ++)) pure (checkAllocation plainCfg "weights" (alBody wa))
+  -- a preserving tick: the three values across it stay in caller-saved
+  -- registers (a call there would need three of a budget of two)
+  let ticking =
+        fn [v 0, v 1]
+          [ I (add 2 0 1),
+            I tick,
+            I (add 3 2 0), I (add 4 3 1),
+            I (ret 4) ]
+  ka <- either (error . ("FAIL: preserving tick: " ++)) pure (allocateFn plainCfg ticking)
+  check "values across a preserving tick spill nothing and save no budget register" (stSpilled (alStats ka) == 0 && null (alSaved ka) && stCrossing (alStats ka) == 0)
+  either (error . ("FAIL: preserving tick oracle: " ++)) pure (checkAllocation plainCfg "tick" (alBody ka))
+  either (error . ("FAIL: preserving tick simulation: " ++)) pure (simulate ticking (alBody ka))
   -- determinism
   pb <- either (error . ("FAIL: pressure again: " ++)) pure (allocateFn plainCfg pressure)
   check "allocation is deterministic" (alBody pa == alBody pb && alSaved pa == alSaved pb)
@@ -393,4 +409,4 @@ main = do
     check ("a tied shift's destination is not its fixed count's register (" ++ what ++ ")")
       (case (siDefs (shiftOf a), siUses (shiftOf a)) of ([OP d], [OP x, OP c]) -> d /= c1 && c == c1 && d == x; _ -> False)
     either (error . (("FAIL: tied shift oracle (" ++ what ++ "): ") ++)) pure (checkAllocation plainCfg "shift" (alBody a))
-  putStrLn "AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; holes; loop-weighted spills; the physical-liveness oracle; determinism: PASS"
+  putStrLn "AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; holes; loop-weighted spills; preserving ticks; the physical-liveness oracle; determinism: PASS"

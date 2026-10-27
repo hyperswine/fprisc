@@ -57,7 +57,7 @@
 module Codegen.Target.A64
   ( A64Config (..), ObjectFormat (..), HartAccess (..), NativeFn (..),
     a64InterfaceRev, a64HostedInterfaceRev, a64SelectionRev, emitFnA64, emitFnA64WithSymbols, a64RegisterFile, mangleName, functionSymbol,
-    placement, allocConfig,
+    placement, allocConfig, fuelSaveWrapper,
   ) where
 
 import qualified Codegen.Calling as Calling
@@ -264,6 +264,13 @@ call sym convention args res = do
   stageCells convention args
   selected <- either refuse pure (Calling.selectTransfer Calling.AArch64 convention
     (maybe DiscardResult (const WordResult) res) sym args res
+    ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
+  emitI selected
+
+-- a call into a noreturn runtime trap: it ends the path (Calling.NeverReturns)
+trapCall :: String -> Se ()
+trapCall s = do
+  selected <- either refuse pure (Calling.selectTransfer Calling.AArch64 Calling.RuntimeCall NeverReturns (CodeSymbol s) [] Nothing
     ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
   emitI selected
 
@@ -545,7 +552,7 @@ selectInstr cfg _ (Instr d op) = case op of
         emitI (bcond O.NotEqual trap)
       emitI (jump done)
       emitL trap
-      call (CodeSymbol "fpr_int_overflow_kernel") Calling.RuntimeCall [] Nothing
+      trapCall "fpr_int_overflow_kernel"
       emitL done
     simdGo caps e next = case e of
       SLane -> pure (16, next)
@@ -612,10 +619,10 @@ selectInstr cfg _ (Instr d op) = case op of
       if kernel then do
         zero <- freshL "kernelzero"
         when (o == Div) (emitI (cbz b zero))
-        call (CodeSymbol "fpr_int_overflow_kernel") Calling.RuntimeCall [] Nothing
+        trapCall "fpr_int_overflow_kernel"
         when (o == Div) $ do
           emitL zero
-          call (CodeSymbol "fpr_div_zero_kernel") Calling.RuntimeCall [] Nothing
+          trapCall "fpr_div_zero_kernel"
         -- Both entries are noreturn. Define the result on the impossible
         -- continuation as well so the allocation oracle needs no exception.
         emitI (li r 0)
@@ -860,7 +867,7 @@ emitFnA64WithSymbols symbols cfg fn = do
       lines' = header ++ map (\s -> if last s == ':' then s else "    " ++ s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]
   checkForms a64RegisterFile name body
   checkSaveGroups name (length pairs) body
-  pure (NativeFn name lines' report (S.toList nulls) (S.toList strs) [])
+  pure (NativeFn name lines' report (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody))
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
     tokOf (I i) ls =
@@ -906,6 +913,26 @@ pairAccess paired single regs lo = case regs of
 
 -- a C-visible symbol: Mach-O prefixes the underscore; a .L local label
 -- becomes the L private prefix there
+-- The tick's slow path: a unit-local wrapper saves every caller-saved
+-- register the allocator may use (x0..x15, d0..d7) on the actor's own
+-- stack around fpr_fuel_exhausted, so a tick clobbers nothing allocatable
+-- (Codegen.Protocol). The actor may resume on another hart: the stack
+-- moves with it, and x9..x11 (the hart read and the counter) are the
+-- tick's implicit definitions, never read after it.
+fuelSaveSymbol :: ObjectFormat -> String
+fuelSaveSymbol _ = Call.runtimeName Call.FuelSaveEntry
+
+fuelSaveWrapper :: ObjectFormat -> [String]
+fuelSaveWrapper fmt =
+  ["    .text", "    .balign 4", fuelSaveSymbol fmt ++ ":",
+   "    stp x29, x30, [sp, #-208]!", "    mov x29, sp"]
+  ++ ["    stp x" ++ show r ++ ", x" ++ show (r + 1) ++ ", [sp, #" ++ show (16 + 8 * r) ++ "]" | r <- [0, 2 .. 14 :: Int]]
+  ++ ["    stp d" ++ show r ++ ", d" ++ show (r + 1) ++ ", [sp, #" ++ show (144 + 8 * r) ++ "]" | r <- [0, 2 .. 6 :: Int]]
+  ++ ["    bl " ++ (case fmt of MachO -> "_"; ELF -> "") ++ Call.runtimeName Call.FuelEntry]
+  ++ ["    ldp d" ++ show r ++ ", d" ++ show (r + 1) ++ ", [sp, #" ++ show (144 + 8 * r) ++ "]" | r <- [0, 2 .. 6 :: Int]]
+  ++ ["    ldp x" ++ show r ++ ", x" ++ show (r + 1) ++ ", [sp, #" ++ show (16 + 8 * r) ++ "]" | r <- [0, 2 .. 14 :: Int]]
+  ++ ["    ldp x29, x30, [sp], #208", "    ret", ""]
+
 gsym :: A64Config -> String -> String
 gsym cfg s = case cfgFormat cfg of
   MachO | take 2 s == ".L" -> drop 1 s
@@ -1104,7 +1131,7 @@ renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOpcode i)
         "cmp x10, #0",
         "b.gt " ++ lbl (entryLabel i FuelReady)
       ] ++ parkArgs "str" "stur" ++ [
-        "bl " ++ gsym cfg (Call.runtimeName Call.FuelEntry)
+        "bl " ++ fuelSaveSymbol (cfgFormat cfg)
       ] ++ parkArgs "ldr" "ldur" ++ [
         lbl (entryLabel i FuelReady) ++ ":"
       ]

@@ -2,6 +2,7 @@
 """Typed allocation across observable effects, calls and inliner modes."""
 import os,re,subprocess,tempfile,platform,shutil
 from pathlib import Path
+from fuel_wrapper import fuel_wrapper
 ROOT=Path(__file__).resolve().parents[1]
 ENV={**os.environ,'FPR_HOME':str(ROOT),'FPR_PATH':str(ROOT)};ENV.pop('FPR_FOREIGN',None)
 def run(args,env):
@@ -29,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-regs-') as d:
  mac=platform.system()=='Darwin';native=platform.machine() in ('x86_64','AMD64')
  rosetta=mac and not native and subprocess.run(['arch','-x86_64','/usr/bin/true'],capture_output=True).returncode==0
  if native or rosetta:
-  selected='.text\n'+match.group().replace('%fs:fpr_posix_hart@tpoff','probe_hart(%rip)')
+  selected='.text\n'+(match.group()+fuel_wrapper(text)).replace('%fs:fpr_posix_hart@tpoff','probe_hart(%rip)')
   if mac:
    selected=re.sub(r'\bfpr_[A-Za-z0-9_]+\b',lambda m:'_'+m.group(),selected)
    selected=selected.replace('probe_hart(%rip)','_probe_hart(%rip)')

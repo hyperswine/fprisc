@@ -10,6 +10,7 @@ import tempfile
 import subprocess
 from check_vector_pipelines import check_execution
 from x64_probe import adapt, borrowed_oracle, host, link, run
+from fuel_wrapper import fuel_wrapper
 
 ROOT=Path(__file__).resolve().parents[1]
 FIX=ROOT/'tests/typed_ir'
@@ -152,7 +153,7 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
         assert len(kernels)==kernel_count,(target,kernels)
         print(f'{target}: {kernel_count} typed kernel CFGs; no legacy assembly PASS',flush=True)
         if target=='a64': continue # actual A64 runtime on the matching host above
-        body='\n'.join(b for _,b in chosen)
+        body='\n'.join(b for _,b in chosen)+fuel_wrapper(text)
         objects=set(re.findall(r'\bfpr_obj_[A-Za-z0-9_]+',body))
         oracle=tmp/(target+'.c')
         oracle.write_text((borrowed_oracle(oracle_source) if target == 'qx64' else oracle_source)+'\n'+'\n'.join(f'char {o}[40];' for o in sorted(objects)))

@@ -17,6 +17,8 @@ import Compiler.Options (Granularity(..), Strict(..))
 import Control.Monad (when, unless)
 import Control.Monad.State.Strict (evalStateT,get,put,lift)
 import Data.List (intercalate, isPrefixOf, sort)
+import qualified Codegen.Call as Call
+import qualified Codegen.Target.A64 as A64
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Text.Read (readMaybe)
@@ -51,7 +53,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 131 -- allocator segments (holes) and loop-weighted spill costs; pressure-gated invariant motion
+codegenRev = 132 -- ticks through a register-saving unit wrapper (no clobbers); kernel traps never return
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -340,7 +342,19 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
       strings = M.elems (M.fromList [(stringLabel str,str) | nf <- allFns,str <- nfStrings nf])
       floats = S.toList (S.fromList (concatMap nfBoxedFloats allFns))
       format = case nmBackend nm of Just (DirectA64 fmt _) -> fmt; Just (DirectX64 fmt) -> fmt; _ -> ELF
-      nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ concatMap nfLines allFns
+      fnText = concatMap nfLines allFns
+      -- the ticks' register-saving slow path, once per unit that ticks
+      -- (from the selected code: scanning the text for the wrapper's name
+      -- would hold the whole unit's text in memory)
+      fuelWrapper
+        | not (any nfTicks allFns) = []
+        | otherwise = case nmBackend nm of
+            Just (DirectA64 fmt _) -> A64.fuelSaveWrapper fmt
+            Just (DirectX64 fmt) -> X64.fuelSaveWrapper (if fmt == MachO then X64.HartTlvMachO else X64.HartTls)
+            Just DirectQX64 -> X64.fuelSaveWrapper X64.HartBorrow
+            Just (DirectRV width _) -> RV.fuelSaveWrapper width
+            Nothing -> error "typed-ir: a tick without a native backend"
+      nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ fnText ++ fuelWrapper
         ++ (if null strings then [] else rodataDirective format : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) format) strings)
         ++ (if null floats then [] else rodataDirective format : concatMap (uncurry boxedFloatObject) floats)
       dat = NativeData.emitStaticDataWithSymbols format (policyWidth (tgtPolicy tgt)) (tgtArc tgt) (tgtWeak tgt) exports symbols emitted

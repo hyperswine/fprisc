@@ -47,7 +47,7 @@ checkForms rf owner items=do
             R.TreeNode _ _->none [index 0 6];R.TreeCompare _ _->one []
             R.VectorMax->one [];R.VectorLanes->one [word,word,immediate];R.VectorSum->one [word]
     require "opcode/operand form or register bank mismatch" shape
-    require "opcode/control effect mismatch" (siControl i==control opcode us)
+    require "opcode/control effect mismatch" (siControl i==(if neverReturns i then Return else control opcode us))
     require "RISC-V operation declares condition flags" (siFlags i==FlagsNone)
     let form=case opcode of
           O.RV R.Call->DirectCall
@@ -56,6 +56,8 @@ checkForms rf owner items=do
           _->NoCall
     require "opcode/call metadata mismatch" (callMetadata opcode form us (siCalls i))
   where
+    -- a direct call into a noreturn trap ends its path (Calling.NeverReturns)
+    neverReturns i=siOpcode i==O.RV R.Call && fmap Calling.transferResult (siTransfer i)==Just Calling.NeverReturns
     args=map (Phys . ("a"++) . show) [0::Int ..7]
     control op us=case Protocol.embedded op of
       Just protocol->Protocol.protocolControl protocol

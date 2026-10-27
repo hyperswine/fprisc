@@ -57,7 +57,7 @@ checkForms rf owner items=do
             A.PairLoad->none [word,index 16 16];A.PairStore->none [word,index 16 31]
             A.PairDuplicate->none [word,index 17 31];A.PairBinary _->none [index 17 31,index 16 31,index 16 31]
     require "opcode/operand form or register bank mismatch" shape
-    require "opcode/control effect mismatch" (siControl i==control opcode us)
+    require "opcode/control effect mismatch" (siControl i==(if neverReturns i then Return else control opcode us))
     require "opcode/flag effect mismatch" (siFlags i==flags opcode)
     let form=case opcode of
           O.A64 A.Call->DirectCall
@@ -66,6 +66,8 @@ checkForms rf owner items=do
           _->NoCall
     require "opcode/call metadata mismatch" (callMetadata opcode form us (siCalls i))
   where
+    -- a direct call into a noreturn trap ends its path (Calling.NeverReturns)
+    neverReturns i=siOpcode i==O.A64 A.Call && fmap Calling.transferResult (siTransfer i)==Just Calling.NeverReturns
     args=map (Phys . ("x"++) . show) [0::Int ..7]
     control op us=case Protocol.embedded op of
       Just protocol->Protocol.protocolControl protocol

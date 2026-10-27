@@ -5,7 +5,7 @@
 --
 -- The model counts, per register class, the values live at each point of a
 -- set of blocks (a loop), and separately those live ACROSS an operation that
--- may call: the allocator (Codegen.Allocate) must place those in the
+-- may clobber the caller-saved registers: the allocator (Codegen.Allocate) must place those in the
 -- scheduler-preserved (callee-saved) budget or in a frame slot, so that
 -- budget is the binding one in any loop with a tick or a slow path.
 --
@@ -16,7 +16,7 @@
 -- use it to refuse a change that makes a loop need more registers than
 -- the target has where it needed no more before.
 module Codegen.Pressure
-  ( Pressure (..), loopPressure, fitsBudget, mayCall,
+  ( Pressure (..), loopPressure, fitsBudget, clobbersRegisters,
   ) where
 
 import Codegen.IR
@@ -34,12 +34,14 @@ data Pressure = Pressure
   }
   deriving (Eq, Show)
 
--- An operation the backends may expand into a call: a runtime entry, a
--- generated call, the fuel tick or stack check, an allocation, or a checked
--- operation whose failure path calls the runtime.  `inlineFloats` says
--- whether F64 arithmetic is inline (Policy.polFloatInline).
-mayCall :: Bool -> Op -> Bool
-mayCall inlineFloats = \case
+-- An operation whose expansion may clobber the caller-saved registers: a
+-- generated or runtime call, the stack check, an allocation, or a checked
+-- operation whose failure path re-enters a C primitive. The fuel tick does
+-- not (its slow path saves every allocatable register, Codegen.Protocol),
+-- nor does a kernel's checked arithmetic (its failure is a noreturn trap).
+-- `inlineFloats` says whether F64 arithmetic is inline (polFloatInline).
+clobbersRegisters :: Bool -> Op -> Bool
+clobbersRegisters inlineFloats = \case
   OConstInt {} -> False; OHartCell {} -> False; ORegionRoom {} -> False
   ONullary {} -> False; OString {} -> False; OBoxedFloat {} -> False
   OAddress {} -> False; OIndex {} -> False; OLoad {} -> False; OLoadByte {} -> False
@@ -52,6 +54,7 @@ mayCall inlineFloats = \case
   OFloatTree {} -> not inlineFloats; OFloatCmpTree {} -> not inlineFloats
   OFloat32Bin {} -> not inlineFloats; OFloat32Cmp {} -> not inlineFloats
   OFloat32Tree {} -> not inlineFloats; OFloat32CmpTree {} -> not inlineFloats
+  OSafepoint -> False; OSafepointN {} -> False; OKernelArith {} -> False
   _ -> True
 
 floatOp :: Op -> Bool
@@ -90,7 +93,7 @@ loopPressure budget inlineFloats fn members =
             let born = maybe S.empty (S.singleton . fst) d
                 after = live S.\\ born
                 (g, f) = count live
-                (ga, fa) = if mayCall inlineFloats op then count after else (0, 0)
+                (ga, fa) = if clobbersRegisters inlineFloats op then count after else (0, 0)
                 p' = Pressure (max (prGpr p) g) (max (prFpr p) f) (max (prGprAcross p) ga) (max (prFprAcross p) fa)
              in (S.union (S.fromList (opUses op)) after, p')
           (entry, acc') = foldl' step (out, acc) (reverse (bInstrs b))

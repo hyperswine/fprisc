@@ -87,12 +87,14 @@ checkForms owner items=do
         none ps=null ds && matches ps us
         binary=one [word,word]
     require "opcode/operand form mismatch" shape
-    require "opcode/control effect mismatch" (siControl i==control (siOpcode i) us)
+    require "opcode/control effect mismatch" (siControl i==(if neverReturns i then Return else control (siOpcode i) us))
     require "opcode/flag effect mismatch" (siFlags i==flags (siOpcode i))
     require "opcode/call metadata mismatch" (calls (siOpcode i) us (siCalls i))
     require "opcode/register constraint mismatch" (registers (siOpcode i) ds us
       && (siOpcode i/=O.X64 O.Divide || Phys "rdx" `elem` siImplicitDefs i))
   where
+    -- a direct call into a noreturn trap ends its path (Calling.NeverReturns)
+    neverReturns i=siOpcode i==O.X64 O.Call && fmap Calling.transferResult (siTransfer i)==Just Calling.NeverReturns
     matches ps xs=length ps==length xs && and (zipWith ($) ps xs)
     word (OV _ (Any FPR))=False
     word (OV _ _)=True

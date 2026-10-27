@@ -59,6 +59,7 @@ import Codegen.Frame
 import Codegen.Liveness
 import qualified Codegen.Opcode as Opcode
 import Codegen.Selected
+import Codegen.Call (runtimeEvent, RuntimeEntry (..))
 import Control.Monad (forM_, unless, when)
 import Data.List (foldl', nub, sortOn, (\\))
 import qualified Data.IntMap.Strict as IM
@@ -189,7 +190,9 @@ allocateFn cfg fn = do
           collect r ((p, i) : rest) acc
             | acc == r = acc
             | otherwise = collect r rest (S.union acc (forbiddenAt v p i))
-      callPositions = [(p, i) | (p, i) <- instrs, not (null (siCalls i))]
+      -- calls that preserve every allocatable register (the fuel tick's
+      -- saving wrapper) do not force a value into the preserved budget
+      callPositions = [(p, i) | (p, i) <- instrs, not (all callPreserves (siCalls i))]
       clobberPositions = [(p, i) | (p, i) <- instrs, not (null (siClobbers i))]
       crossesCallV v = case M.lookup v ivs of
         Just iv -> any (\(p, _) -> crosses v p) (within iv callPositions)
@@ -351,7 +354,7 @@ loopForm cfg here fn = case acSelfLoop cfg of
     splitEntry items = case break isInstr items of
       (labels, I e : rest)
         | siOpcode e == Opcode.Common Opcode.EntryCheckTick ->
-            pure (labels ++ [I (half e Opcode.EntryCheck [c | c <- siCalls e, not (callSafepoint c)]), ILabel loopLabel, I (half e Opcode.EntryTick [c | c <- siCalls e, callSafepoint c])] ++ rest)
+            pure (labels ++ [I (half e Opcode.EntryCheck [c | c <- siCalls e, not (callSafepoint c)]), ILabel loopLabel, I ((half e Opcode.EntryTick [runtimeEvent FuelSaveEntry]) {siClobbers = []})] ++ rest)
         | siOpcode e == Opcode.Common Opcode.EntryTick -> pure (labels ++ [ILabel loopLabel, I e] ++ rest)
         | siOpcode e == Opcode.Common Opcode.EntryCheck -> pure (labels ++ [I e, ILabel loopLabel] ++ rest)
         | siOpcode e == Opcode.Common Opcode.EntryStatic -> pure (labels ++ [I e, ILabel loopLabel] ++ rest)
@@ -548,7 +551,7 @@ checkAllocation cfg name items = do
     let where' = "checkAllocation " ++ name ++ " #" ++ show n ++ " " ++ siOp i ++ ": "
     forM_ (siClobbers i) $ \p -> when (IS.member (k p) out && not (any (\o -> o == OP p) (siDefs i))) $
       Left (where' ++ show p ++ " is clobbered and live afterwards")
-    unless (null (siCalls i)) $ do
+    unless (all callPreserves (siCalls i)) $ do
       let across = [p | p <- IS.toList out, IS.notMember p (IS.fromList (defsOf i)), IS.notMember p preserved]
       unless (null across) $ Left (where' ++ "live across a call outside the preserved set: " ++ show (map name' across))
       let floats = [p | p <- IS.toList out, acClassOf cfg (name' p) == Just FPR, IS.notMember p preserved]

@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from fuel_wrapper import fuel_wrapper
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -120,7 +121,7 @@ SECTIONS {
             chosen = [(title, body) for title, body in bodies if title.split()[0] in names.split(',')]
             assert len(chosen) == len(names.split(',')) and all(('typed-ir rv' + width) in title for title, _ in chosen)
             objects = re.findall(r'(?ms)^    \.balign 8\n\.Ltirstr[^:\n]*:\n    \.long 9000\n.*?(?=^$)', text)
-            asm.write_text('.text\n' + '\n'.join(body for _, body in chosen) + '\n.section .rodata\n' + '\n'.join(objects))
+            asm.write_text('.text\n' + '\n'.join(body for _, body in chosen) + fuel_wrapper(text) + '\n.section .rodata\n' + '\n'.join(objects))
             exe = root / 'oracle.elf'
             run(['riscv64-unknown-elf-gcc', '-march=rv' + width + 'im_zicsr_zifencei', '-mabi=' + ('lp64' if width == '64' else 'ilp32'), '-mcmodel=medany',
                  '-msmall-data-limit=0', '-O2', '-ffreestanding', '-nostdlib', '-fno-builtin',

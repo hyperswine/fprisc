@@ -101,9 +101,10 @@ main=do
   check "wide input verifies" (verifyFn wideProgram wide==Right ())
   check "loop pressure counts the values live across the call" (prGprAcross before>=4 && prGpr before>=prGprAcross before)
   check "a large budget admits all of the motion" (widened==moveInvariants Nothing True wide && OBit BOr (v 0) (v 2) `elem` ops widened 0)
-  check "hoisting adds as much across the call as the trade removes" (prGprAcross after==prGprAcross before && prGprAcross (loopPressure big True moved members)==prGprAcross (loopPressure big True loop members)-1)
-  check "motion that only trades values does not raise pressure" (prGprAcross (loopPressure big True moved members)<=prGprAcross (loopPressure big True loop members))
-  let tight=RegisterBudget (prGprAcross before-1) 22 0 0
+  let trade=prGprAcross (loopPressure big True loop members)-prGprAcross (loopPressure big True moved members)
+  check "motion that only trades values does not raise pressure" (trade>=0)
+  check "the hoisted value adds one across the call, less the trade" (prGprAcross after==prGprAcross before+1-trade)
+  let tight=RegisterBudget (prGprAcross after-1) 22 0 0
       gated=moveInvariants (Just tight) True wide
   check "a budget the motion would overflow refuses that move" (OBit BOr (v 0) (v 2) `elem` ops gated 3 && OBit BOr (v 0) (v 2) `notElem` ops gated 0)
   check "moves that fit are still made" (OUntag (v 1) `elem` ops gated 0)
@@ -115,5 +116,7 @@ main=do
         answer=evalProgramWidth width wideProgram "loop" args
     check "gated answers preserved" (answer==evalProgramWidth width (M.insert "loop" gated program) "loop" args)
     check "widened answers preserved" (answer==evalProgramWidth width (M.insert "loop" widened program) "loop" args)
-  check "calls are what the model guards" (mayCall True OSafepoint && mayCall True (OArith Add (v 0) (v 1)) && not (mayCall True (OFloatBin FAdd (v 0) (v 1))) && mayCall False (OFloatBin FAdd (v 0) (v 1)))
+  check "clobbering operations are what the model guards" (clobbersRegisters True (OCall (Callee "identity" Local [TInt] TInt) [v 0]) && clobbersRegisters True (OArith Add (v 0) (v 1))
+    && not (clobbersRegisters True OSafepoint) && not (clobbersRegisters True (OKernelArith Add (v 0) (v 1)))
+    && not (clobbersRegisters True (OFloatBin FAdd (v 0) (v 1))) && clobbersRegisters False (OFloatBin FAdd (v 0) (v 1)))
   putStrLn "Loop optimization: shared CFG/natural loops, capture forwarding, bounded total invariant motion, rematerializable constants, the register-pressure gate, zero-trip traps and exact events on both widths PASS"

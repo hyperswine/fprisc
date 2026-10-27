@@ -49,4 +49,5 @@ main = do
   either error pure (verifyProgramWidth width (M.fromList [(I.fnName f,f)|f<-fns]))
   chosen <- mapM (either error pure . emitFnA64 cfg) fns
   forM_ chosen $ \f -> putStrLn (head (nfLines f))
-  writeFile out (unlines (".text":concatMap nfLines chosen))
+  -- the ticks' register-saving slow path, as Codegen emits it once per unit
+  writeFile out (unlines (".text":concatMap nfLines chosen ++ fuelSaveWrapper (cfgFormat cfg)))

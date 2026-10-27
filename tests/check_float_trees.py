@@ -25,17 +25,22 @@ def main():
    oracle=ROOT/'tests/typed_ir/float_tree_oracle.c';exe=tmp/(target+'-probe')
    if target=='qa64mac':
     if platform.machine() not in ('arm64','aarch64'):print('A64 execution SKIP');continue
-    asm.write_text('.text\n'+body)
+    # the ticks' register-saving wrapper is emitted once per unit, after the functions
+    wrapper=re.search(r'(?ms)^fpr_fuel_save_local:\n.*?^\s*ret\n',text)
+    asm.write_text('.text\n'+body+('\n'+wrapper.group(0) if wrapper else ''))
     run(['clang','-O2','-ffp-contract=off','-ffixed-x28',asm,oracle,'-o',exe],env)
     result=run([exe],env)
    elif target=='x64':
     available=host()
     if available is None:print('x64 execution SKIP');continue
-    mac,runner,label=available;asm.write_text('.text\n'+adapt(body,mac))
+    wrapper=re.search(r'(?ms)^fpr_fuel_save_local:\n.*?^\s*ret\n',text)
+    mac,runner,label=available;asm.write_text('.text\n'+adapt(body+('\n'+wrapper.group(0) if wrapper else ''),mac))
     link(['-ffp-contract=off',asm,oracle],exe,mac,env);result=run([*runner,exe],env)
    else:
     if not all(shutil.which(t) for t in ('riscv64-unknown-elf-gcc','qemu-system-riscv64')):print('RV64 execution SKIP');continue
-    asm.write_text('.text\n'+body)
+    # the ticks' register-saving wrapper is emitted once per unit, after the functions
+    wrapper=re.search(r'(?ms)^fpr_fuel_save_local:\n.*?^\s*ret\n',text)
+    asm.write_text('.text\n'+body+('\n'+wrapper.group(0) if wrapper else ''))
     run(['riscv64-unknown-elf-gcc','-O2','-ffp-contract=off','-march=rv64imafd_zicsr_zifencei','-mabi=lp64','-mcmodel=medany','-msmall-data-limit=0','-ffreestanding','-nostdlib','-fno-builtin','-T',ROOT/'tests/typed_ir/kernel_link.ld',ROOT/'tests/typed_ir/kernel_crt.S',asm,oracle,'-o',exe],env)
     result=run(['qemu-system-riscv64','-machine','virt','-m','16M','-nographic','-bios','none','-kernel',exe],env)
     assert 'FLOAT_TREE_PASS' in result,result

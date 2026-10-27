@@ -35,7 +35,7 @@
 -- frame slot) or allocation (M3).
 module Codegen.Selected
   ( VReg (..), RegClass (..), Phys (..), Constraint (..), Operand (..),
-    Flags (..), Control (..), Call (..), CallEffect(..),callSafepoint,callRuntime,
+    Flags (..), Control (..), Call (..), CallEffect(..),callSafepoint,callRuntime,callPreserves,
     CodeSymbol(..),AddressSymbol(..),addressName, Annotation(..), AllocationEvent(..),
     SInstr (..), Item (..), Label (..), SFn (..),
     RegisterFile (..), plain, plainOpcode, siOp, checkFn, itemLabels, instrVRegs, operandVReg,
@@ -210,7 +210,7 @@ checkFn rf fn = mapLeft (("selected " ++ sfName fn ++ ": ") ++) $ do
     let dup os = [p | (p, vs) <- M.toList (M.fromListWith (++) [(p, [v]) | (p, v) <- fixes os]), length (S.fromList vs) > 1]
     unless (null (dup (siUses i))) (Left (here ++ "two uses fix the same register"))
     unless (null (dup (siDefs i))) (Left (here ++ "two definitions fix the same register"))
-    unless (null (siCalls i) || not (null (siClobbers i))) (Left (here ++ "a call without clobbers"))
+    unless (null (siCalls i) || all callPreserves (siCalls i) || not (null (siClobbers i))) (Left (here ++ "a call without clobbers"))
     forM_ (siClobbers i ++ siImplicitDefs i ++ siImplicitUses i) $ \p ->
       when (rfClassOf rf p == Nothing) (Left (here ++ "names " ++ show p ++ ", not a register"))
     case siControl i of
