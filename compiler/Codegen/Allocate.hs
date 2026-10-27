@@ -59,6 +59,7 @@ import Codegen.Frame
 import Codegen.Liveness
 import qualified Codegen.Opcode as Opcode
 import Codegen.Selected
+import Codegen.Call (runtimeEvent, RuntimeEntry (..))
 import Control.Monad (forM_, unless, when)
 import Data.List (foldl', nub, sortOn, (\\))
 import qualified Data.IntMap.Strict as IM
@@ -189,7 +190,9 @@ allocateFn cfg fn = do
           collect r ((p, i) : rest) acc
             | acc == r = acc
             | otherwise = collect r rest (S.union acc (forbiddenAt v p i))
-      callPositions = [(p, i) | (p, i) <- instrs, not (null (siCalls i))]
+      -- calls that preserve every allocatable register (the fuel tick's
+      -- saving wrapper) do not force a value into the preserved budget
+      callPositions = [(p, i) | (p, i) <- instrs, not (all callPreserves (siCalls i))]
       clobberPositions = [(p, i) | (p, i) <- instrs, not (null (siClobbers i))]
       crossesCallV v = case M.lookup v ivs of
         Just iv -> any (\(p, _) -> crosses v p) (within iv callPositions)
@@ -208,14 +211,35 @@ allocateFn cfg fn = do
            in [u | (j, OV u _) <- zip [0 :: Int ..] (siUses i), j /= k]
         _ -> []
       order = sortOn (\(v, iv) -> (ivStart iv, ivEnd iv, v)) (M.toList ivs)
+      -- Two values may share a register when their segments (the
+      -- intervals with their holes, Codegen.Liveness) never overlap, or
+      -- touch only at an instruction where one dies by a use and the other
+      -- is born by a non-early, untied definition.
+      meets x y p =
+        even p && usedAt x p && not (definedAt x p) && definedAt y p
+          && not (earlyAt p) && x `notElem` tiedOtherUses y p
+      conflicts (u, uiv) (v, viv) = go (ivSegments uiv) (ivSegments viv)
+        where
+          go [] _ = False
+          go _ [] = False
+          go us@((a1, a2) : ur) vs@((b1, b2) : vr)
+            | a2 < b1 = go ur vs
+            | b2 < a1 = go us vr
+            | a2 == b1 && meets u v b1 = go ur vs
+            | b2 == a1 && meets v u a1 = go us vr
+            | otherwise = True
+      -- What a spill costs: a store per definition, a load per use, each
+      -- weighted by the loop depth of its block (8 per level, capped).
+      blockOfPos = IM.fromList [(2 * k, b) | (b, sb) <- zip [0 :: Int ..] (lvBlocks lv), k <- [sbFirst sb .. sbLast sb]]
+      depths = loopDepths (lvBlocks lv)
+      weightAt q = 8 ^ min 4 (maybe 0 (\b -> IM.findWithDefault 0 b depths) (IM.lookup q blockOfPos)) :: Int
+      cost iv = sum (map weightAt (ivDefs iv ++ ivUses iv))
       -- the scan
       scan (active, assign) (v, iv) =
         let start = ivStart iv
             live = [a | a@(_, aiv, _) <- active, ivEnd aiv >= start]
-            reusable (u, uiv, _) =
-              ivEnd uiv == start && even start && definedAt v start
-                && not (earlyAt start) && u `notElem` tiedOtherUses v start
-            busy = [r | a@(_, _, r) <- live, not (reusable a)]
+            clash (u, uiv, _) = conflicts (u, uiv) (v, iv)
+            busy = [r | a@(_, _, r) <- live, clash a]
             -- a value born in a fixed register or dying into one prefers
             -- that register: the copy around the instruction disappears
             hints = [r | Just i <- [IM.lookup start byPos], OV d (Fix r) <- siDefs i, d == v]
@@ -223,14 +247,15 @@ allocateFn cfg fn = do
             allowed0 = filter (`notElem` busy) (prefs v iv)
             cands = filter (`elem` hints) allowed0 ++ filter (`notElem` hints) allowed0
          in case cands of
-              (r : _) -> ([a | a@(_, aiv, _) <- live, ivEnd aiv > start || not (reusable a)] ++ [(v, iv, r)], M.insert v (Just r) assign)
+              (r : _) -> (live ++ [(v, iv, r)], M.insert v (Just r) assign)
               [] ->
-                -- evict the cheapest active interval (fewest accesses, then
-                -- the furthest end) when it is cheaper than the new one and
-                -- holds a register the new one may take; else spill the new one
+                -- evict the cheapest active value (by weighted accesses, then
+                -- the furthest end) that is the only one in the new value's
+                -- way in a register it may take, when it is cheaper than the
+                -- new one; else spill the new one
                 let allowed = S.fromList (prefs v iv)
-                    cost aiv = length (ivDefs aiv) + length (ivUses aiv)
-                    victims = [a | a@(_, aiv, r) <- live, cost aiv < cost iv, S.member r allowed]
+                    holders r = [a | a@(_, _, r') <- live, r' == r, clash a]
+                    victims = [a | r <- S.toList allowed, [a@(_, aiv, _)] <- [holders r], cost aiv < cost iv]
                  in case sortOn (\(_, aiv, _) -> (cost aiv, negate (ivEnd aiv))) victims of
                       ((u, _, r) : _) ->
                         ([a | a@(u', _, _) <- live, u' /= u] ++ [(v, iv, r)], M.insert u Nothing (M.insert v (Just r) assign))
@@ -329,7 +354,7 @@ loopForm cfg here fn = case acSelfLoop cfg of
     splitEntry items = case break isInstr items of
       (labels, I e : rest)
         | siOpcode e == Opcode.Common Opcode.EntryCheckTick ->
-            pure (labels ++ [I (half e Opcode.EntryCheck [c | c <- siCalls e, not (callSafepoint c)]), ILabel loopLabel, I (half e Opcode.EntryTick [c | c <- siCalls e, callSafepoint c])] ++ rest)
+            pure (labels ++ [I (half e Opcode.EntryCheck [c | c <- siCalls e, not (callSafepoint c)]), ILabel loopLabel, I ((half e Opcode.EntryTick [runtimeEvent FuelSaveEntry]) {siClobbers = []})] ++ rest)
         | siOpcode e == Opcode.Common Opcode.EntryTick -> pure (labels ++ [ILabel loopLabel, I e] ++ rest)
         | siOpcode e == Opcode.Common Opcode.EntryCheck -> pure (labels ++ [I e, ILabel loopLabel] ++ rest)
         | siOpcode e == Opcode.Common Opcode.EntryStatic -> pure (labels ++ [I e, ILabel loopLabel] ++ rest)
@@ -526,7 +551,7 @@ checkAllocation cfg name items = do
     let where' = "checkAllocation " ++ name ++ " #" ++ show n ++ " " ++ siOp i ++ ": "
     forM_ (siClobbers i) $ \p -> when (IS.member (k p) out && not (any (\o -> o == OP p) (siDefs i))) $
       Left (where' ++ show p ++ " is clobbered and live afterwards")
-    unless (null (siCalls i)) $ do
+    unless (all callPreserves (siCalls i)) $ do
       let across = [p | p <- IS.toList out, IS.notMember p (IS.fromList (defsOf i)), IS.notMember p preserved]
       unless (null across) $ Left (where' ++ "live across a call outside the preserved set: " ++ show (map name' across))
       let floats = [p | p <- IS.toList out, acClassOf cfg (name' p) == Just FPR, IS.notMember p preserved]

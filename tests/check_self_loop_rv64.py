@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from check_self_loops import ROOT, fixture, run
+from fuel_wrapper import fuel_wrapper
 
 def main():
     for tool in ("riscv64-unknown-elf-gcc", "qemu-system-riscv64"):
@@ -62,7 +63,7 @@ SECTIONS {
             match = re.search(r"(?ms)^\s*\.globl fpr_fn_rotate2\n.*?(?=^# native-insns-v1:)",
                               assembly.read_text())
             assert match
-            selected = ".text\n" + match[0]
+            selected = ".text\n" + match[0] + fuel_wrapper(match.string)
             assert bool(re.search(r"^\.Ltir_rotate2_m3loop:", selected, re.M)) == (enabled == "1")
             assembly.write_text(selected)
             exe = tmp / "oracle.elf"

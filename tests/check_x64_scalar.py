@@ -7,6 +7,7 @@ import tempfile
 import time
 from pathlib import Path
 from x64_probe import ROOT, adapt, borrowed_oracle, environment, host, link, run
+from fuel_wrapper import fuel_wrapper
 
 
 def fixture():
@@ -82,7 +83,7 @@ def main():
             text = assembly.read_text()
             # Select complete top-level functions, including their private workers.
             bodies = re.findall(r'(?ms)^# fn ([^\n]+)\n(.*?)(?=^# (?:wcet|native-insns-v1):)', text)
-            selected = '\n'.join(body for title, body in bodies if not title.startswith('main '))
+            selected = '\n'.join(body for title, body in bodies if not title.startswith('main ')) + fuel_wrapper(text)
             assert 'fpr_fn_rotate63:' in selected and 'idivq' in selected
             # Include tick's dead-arm reason, emitted once in read-only data.
             strings = re.findall(r'(?ms)^    \.balign 8\n(\.L(?:tir)?str[^:\n]*):\n    \.long 9000\n.*?(?=^$)', text)

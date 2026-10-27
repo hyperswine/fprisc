@@ -104,6 +104,10 @@ ret x = (plain "ret" [] [OV (v x) (Fix a0)]) {siControl = Return}
 jump :: String -> SInstr
 jump l = (plain "jump" [] [OL (Label l)]) {siControl = JumpTo (Label l)}
 
+-- a mid-function tick whose slow path saves every allocatable register
+tick :: SInstr
+tick = (plain "tick" [] []) {siImplicitDefs = [t1], siFlags = FlagsDef, siCalls = [Call.runtimeEvent Call.FuelSaveEntry]}
+
 -- the entry sequence and a self tail transfer, as the targets shape them
 entry :: SInstr
 entry = (plain "entry.check.tick" [] []) {siAnnotation=EntryLabels (Label "allocator-entry"),siImplicitDefs = [t1], siClobbers = clobbered, siFlags = FlagsDef, siCalls = [Call.runtimeEvent Call.GrowStackEntry, Call.runtimeEvent Call.FuelEntry]}
@@ -125,23 +129,32 @@ fn = SFn "probe"
 -- names it read; every physical operand register is checked against the
 -- virtual value the instruction expected there (fixed or not), a call
 -- destroys its clobbers afterwards, and the return's register must hold
--- the returned value.  Only straight-line streams are simulated.
+-- the returned value.  `simulatePath` follows branches along a chosen path.
 simulate :: SFn -> [Item] -> Either String ()
-simulate original physical = step (M.fromList [(a0, "v0"), (a1, "v1")]) M.empty (M.fromList [(v 0, "v0"), (v 1, "v1")]) physInstrs virtualInstrs
+simulate = simulatePath []
+
+-- The same simulation along one path through branches: each conditional
+-- transfer is taken or not by the next decision (not taken once they run
+-- out), a jump goes to its label in both streams, a return ends the path.
+simulatePath :: [Bool] -> SFn -> [Item] -> Either String ()
+simulatePath decisions original physical = step (10000 :: Int) decisions (M.fromList [(a0, "v0"), (a1, "v1")]) M.empty (M.fromList [(v 0, "v0"), (v 1, "v1")]) physical (sfBody original)
   where
-    physInstrs = [i | I i <- physical]
-    virtualInstrs = [i | I i <- sfBody original]
+    after l items = case dropWhile (/= ILabel l) items of
+      (_ : rest) -> Right rest
+      [] -> Left ("simulate: no label " ++ show l)
     -- the physical stream has copies between the original instructions:
     -- each original instruction is paired with its physical twin by operation
-    step _ _ _ [] _ = Right ()
-    step regs slots venv (p : ps) vs
-      | siOp p == "mv", [OP d] <- siDefs p, [OP s] <- siUses p = step (M.insert d (reg s) regs) slots venv ps vs
-      | siOp p == "ld", [OP d] <- siDefs p, [OF ref 0] <- siUses p = step (M.insert d (M.findWithDefault "<empty slot>" ref slots) regs) slots venv ps vs
-      | siOp p == "st", [OP s, OF ref 0] <- siUses p = step regs (M.insert ref (reg s) slots) venv ps vs
-      | siOp p == "params" = step regs slots venv ps vs -- the arrival is the allocator's, not in the virtual stream
+    step 0 _ _ _ _ _ _ = Left "simulate: the path does not end"
+    step _ _ _ _ _ [] _ = Right ()
+    step n ds regs slots venv (ILabel _ : ps) vs = step n ds regs slots venv ps vs
+    step n ds regs slots venv ps (ILabel _ : vs) = step n ds regs slots venv ps vs
+    step n ds regs slots venv (I p : ps) vs
+      | siOp p == "mv", [OP d] <- siDefs p, [OP s] <- siUses p = step n ds (M.insert d (reg s) regs) slots venv ps vs
+      | siOp p == "ld", [OP d] <- siDefs p, [OF ref 0] <- siUses p = step n ds (M.insert d (M.findWithDefault "<empty slot>" ref slots) regs) slots venv ps vs
+      | siOp p == "st", [OP s, OF ref 0] <- siUses p = step n ds regs (M.insert ref (reg s) slots) venv ps vs
+      | siOp p == "params" = step n ds regs slots venv ps vs -- the arrival is the allocator's, not in the virtual stream
       | otherwise = case vs of
-          [] -> Left ("simulate: a physical instruction without a virtual twin: " ++ siOp p)
-          (vi : vs') -> do
+          (I vi : vs') -> do
             unless (siOp vi == siOp p) (Left ("simulate: " ++ siOp p ++ " does not match " ++ siOp vi))
             forM_ (zip (siUses vi) (siUses p)) $ \(vo, po) -> case (vo, po) of
               (OV x _, OP q) -> unless (reg q == venv M.! x) (Left ("simulate: " ++ siOp p ++ " expected " ++ venv M.! x ++ " in " ++ show q ++ ", found " ++ reg q))
@@ -150,12 +163,27 @@ simulate original physical = step (M.fromList [(a0, "v0"), (a1, "v1")]) M.empty 
                 venv' = foldr (\o m -> case o of OV d _ -> M.insert d value m; _ -> m) venv (siDefs vi)
                 regs1 = foldr (\q m -> M.insert q "<junk>" m) regs (siClobbers p ++ siImplicitDefs p)
                 regs2 = foldr (\o m -> case o of OP q -> M.insert q value m; _ -> m) regs1 (siDefs p)
-            step regs2 slots venv' ps vs'
+                go = step (n - 1)
+            case siControl p of
+              Return -> Right ()
+              JumpTo l -> do ps' <- after l physical; vs'' <- after l (sfBody original); go ds regs2 slots venv' ps' vs''
+              CondTo [l] | (True : ds') <- ds -> do ps' <- after l physical; vs'' <- after l (sfBody original); go ds' regs2 slots venv' ps' vs''
+              CondTo _ -> go (drop 1 ds) regs2 slots venv' ps vs'
+              _ -> go ds regs2 slots venv' ps vs'
+          _ -> Left ("simulate: a physical instruction without a virtual twin: " ++ siOp p)
       where
         reg q = M.findWithDefault "<undefined>" q regs
 
 physicalLines :: Allocation -> [String]
 physicalLines a = [siOp i ++ " " ++ unwords (map show (siDefs i)) ++ " <- " ++ unwords (map show (siUses i)) | I i <- alBody a]
+
+-- a copy the simulator pairs with its twin (it reads physical "mv" as the allocator's)
+cp :: Int -> Int -> SInstr
+cp d x = plain "copy" [gpr d] [gpr x]
+
+isReg :: Maybe Loc -> Bool
+isReg (Just (InReg _)) = True
+isReg _ = False
 
 main :: IO ()
 main = do
@@ -302,6 +330,69 @@ main = do
   either (error . ("FAIL: indexed-cell loop oracle: "++)) pure (checkAllocation indexedCfg "indexed-cell loop" (alBody ia))
   refused "missing staged indexed argument" "staged cell argument"
     (allocateFn indexedCfg indexedLoop {sfBody=filter (/=cell 1 2) (sfBody indexedLoop)})
+  -- holes: a value that crosses a call before a loop and is next used in a
+  -- cold block placed after the loop is not live in the loop, so it does
+  -- not hold a preserved register there (the two loop values need both)
+  let holed =
+        fn [v 0, v 1]
+          [ I (add 5 0 1),
+            I (call "g" [0] 6),
+            I (branchz 6 "cold"),
+            I (cp 2 6), I (jump "loop"),
+            ILabel (Label "loop"),
+            I (branchz 2 "out"),
+            I (call "f" [1] 3),
+            I (add 4 2 3),
+            I (cp 2 4),
+            I (jump "loop"),
+            ILabel (Label "out"),
+            I (ret 2),
+            ILabel (Label "cold"),
+            I (ret 5) ]
+      hlv = analyseLiveness (map I (acArrival plainCfg [v 0, v 1]) ++ sfBody holed)
+      segs n = ivSegments (lvIntervals hlv M.! v n)
+  check "a segment list has a hole where the value is dead" (length (segs 5) == 2)
+  check "segments lie inside the interval" (all (\(a, b) -> a >= ivStart (lvIntervals hlv M.! v 5) && b <= ivEnd (lvIntervals hlv M.! v 5)) (segs 5))
+  ha <- either (error . ("FAIL: holes: " ++)) pure (allocateFn plainCfg holed)
+  check "the value dead in the loop leaves the budget to the loop's values" (stSpilled (alStats ha) == 0)
+  check "it shares a preserved register with a loop value" (case (M.lookup (v 5) (alLocs ha), M.lookup (v 1) (alLocs ha), M.lookup (v 2) (alLocs ha)) of
+    (Just (InReg r5), Just (InReg r1'), Just (InReg r2')) -> r5 `elem` [r1', r2']; _ -> False)
+  either (error . ("FAIL: holes oracle: " ++)) pure (checkAllocation plainCfg "holes" (alBody ha))
+  -- the cold path, and the loop path with zero, one and three turns
+  forM_ [[True], [False, True], [False, False, False, True], [False, False, False, False, False, True]] $ \path ->
+    either (error . (("FAIL: holes simulation " ++ show path ++ ": ") ++)) pure (simulatePath path holed (alBody ha))
+  -- loop weights: three values cross the loop's call with a budget of two;
+  -- the one used only outside the loop is spilled, not one the loop reads
+  let weighted =
+        fn [v 0, v 1]
+          [ I (add 7 0 1),
+            I (cp 2 0), I (jump "loop"),
+            ILabel (Label "loop"),
+            I (branchz 2 "out"),
+            I (call "f" [1] 3),
+            I (add 4 2 3),
+            I (cp 2 4),
+            I (jump "loop"),
+            ILabel (Label "out"),
+            I (add 8 2 7),
+            I (ret 8) ]
+  wa <- either (error . ("FAIL: weights: " ++)) pure (allocateFn plainCfg weighted)
+  check "the value used outside the loop is the one spilled" (stSpilled (alStats wa) == 1 && M.lookup (v 7) (alLocs wa) /= Nothing && all isReg [M.lookup (v 1) (alLocs wa), M.lookup (v 2) (alLocs wa)])
+  forM_ [[True], [False, True], [False, False, False, True]] $ \path ->
+    either (error . (("FAIL: weights simulation " ++ show path ++ ": ") ++)) pure (simulatePath path weighted (alBody wa))
+  either (error . ("FAIL: weights oracle: " ++)) pure (checkAllocation plainCfg "weights" (alBody wa))
+  -- a preserving tick: the three values across it stay in caller-saved
+  -- registers (a call there would need three of a budget of two)
+  let ticking =
+        fn [v 0, v 1]
+          [ I (add 2 0 1),
+            I tick,
+            I (add 3 2 0), I (add 4 3 1),
+            I (ret 4) ]
+  ka <- either (error . ("FAIL: preserving tick: " ++)) pure (allocateFn plainCfg ticking)
+  check "values across a preserving tick spill nothing and save no budget register" (stSpilled (alStats ka) == 0 && null (alSaved ka) && stCrossing (alStats ka) == 0)
+  either (error . ("FAIL: preserving tick oracle: " ++)) pure (checkAllocation plainCfg "tick" (alBody ka))
+  either (error . ("FAIL: preserving tick simulation: " ++)) pure (simulate ticking (alBody ka))
   -- determinism
   pb <- either (error . ("FAIL: pressure again: " ++)) pure (allocateFn plainCfg pressure)
   check "allocation is deterministic" (alBody pa == alBody pb && alSaved pa == alSaved pb)
@@ -318,4 +409,4 @@ main = do
     check ("a tied shift's destination is not its fixed count's register (" ++ what ++ ")")
       (case (siDefs (shiftOf a), siUses (shiftOf a)) of ([OP d], [OP x, OP c]) -> d /= c1 && c == c1 && d == x; _ -> False)
     either (error . (("FAIL: tied shift oracle (" ++ what ++ "): ") ++)) pure (checkAllocation plainCfg "shift" (alBody a))
-  putStrLn "AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; the physical-liveness oracle; determinism: PASS"
+  putStrLn "AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; holes; loop-weighted spills; preserving ticks; the physical-liveness oracle; determinism: PASS"

@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 from check_self_loops import ROOT, fixture, run
 from x64_probe import adapt, host, link
+from fuel_wrapper import fuel_wrapper
 
 def main():
     target = host()
@@ -31,7 +32,7 @@ def main():
             match = re.search(r"(?ms)^\s*\.globl fpr_fn_rotate2\n.*?(?=^# native-insns-v1:)",
                               assembly.read_text())
             assert match
-            selected = ".text\n" + match[0]
+            selected = ".text\n" + match[0] + fuel_wrapper(match.string)
             assert bool(re.search(r"^\.Ltir_rotate2_m3loop:", selected, re.M)) == (enabled == "1")
             assembly.write_text(adapt(selected, mac))
             exe = tmp / "oracle"

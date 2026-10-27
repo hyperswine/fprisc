@@ -15,7 +15,7 @@
 -- Parameters are parked before any entry check/tick, and rsp is restored
 -- from rbp at exit to preserve the runtime stack-segment contract.
 module Codegen.Target.X64
-  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, placement, allocConfig ) where
+  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, placement, allocConfig, fuelSaveWrapper ) where
 
 import qualified Codegen.Calling as Calling
 import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
@@ -54,6 +54,19 @@ x64Format = \case HartTlvMachO -> MachO; _ -> ELF
 
 -- a C-visible symbol: Mach-O prefixes the underscore, and a .L local label
 -- takes Mach-O's private prefix L (as Common.dataSyntax spells the data)
+-- The tick's slow path: a unit-local wrapper saves the caller-saved
+-- registers (rax, rcx, rdx, rsi, rdi, r8..r11) on the actor's stack around
+-- fpr_fuel_exhausted. Entered with rsp 8 mod 16 (the tick keeps the C call
+-- alignment), nine pushes realign it for the call.
+fuelSaveWrapper :: X64Hart -> [String]
+fuelSaveWrapper hart =
+  ["    .text", "    .balign 16", Call.runtimeName Call.FuelSaveEntry ++ ":"]
+  ++ ["    pushq %" ++ r | r <- saved]
+  ++ ["    call " ++ gsym hart (Call.runtimeName Call.FuelEntry)]
+  ++ ["    popq %" ++ r | r <- reverse saved]
+  ++ ["    ret", ""]
+  where saved = ["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"]
+
 gsym :: X64Hart -> String -> String
 gsym hart s = case x64Format hart of
   MachO | take 2 s == ".L" -> drop 1 s
@@ -200,6 +213,13 @@ emitCall sym convention args res = do
   stageArgs convention args
   selected <- either refuse pure (Calling.selectTransfer Calling.X86_64 convention
     (maybe DiscardResult (const WordResult) res) sym args res
+    ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
+  emitI selected
+
+-- a call into a noreturn runtime trap: it ends the path (Calling.NeverReturns)
+trapCall :: String -> Se ()
+trapCall s = do
+  selected <- either refuse pure (Calling.selectTransfer Calling.X86_64 Calling.RuntimeCall NeverReturns (CodeSymbol s) [] Nothing
     ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
   emitI selected
 
@@ -458,7 +478,7 @@ selectInstr cfg _ (Instr d op) = case op of
         fit t trap
       emitI (jump done)
       emitL trap
-      emitCall (CodeSymbol "fpr_int_overflow_kernel") Calling.RuntimeCall [] Nothing
+      trapCall "fpr_int_overflow_kernel"
       emitL done
     simdGo caps e next = case e of
       SLane -> pure (8,next)
@@ -509,10 +529,10 @@ selectInstr cfg _ (Instr d op) = case op of
       if kernel then do
         zero <- freshL "kernelzero"
         when (o == Div) (emitI (cbz b zero))
-        emitCall (CodeSymbol "fpr_int_overflow_kernel") Calling.RuntimeCall [] Nothing
+        trapCall "fpr_int_overflow_kernel"
         when (o == Div) $ do
           emitL zero
-          emitCall (CodeSymbol "fpr_div_zero_kernel") Calling.RuntimeCall [] Nothing
+          trapCall "fpr_div_zero_kernel"
         -- Both entries are noreturn. Define the result on the impossible
         -- continuation as well so the allocation oracle needs no exception.
         emitI (li r 0)
@@ -683,7 +703,7 @@ emitFnX64WithSymbols symbols cfg fn = do
                   ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
         ++ visibilityLines (x64Format (cfgHart cfg)) (if x64Format (cfgHart cfg)==MachO then WeakDefinitionDirective else WeakDirective) (visibilityFor (cfgWeak cfg) symbols name) sym ++ [sym ++ ":"]
   checkForms name body
-  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs) [])
+  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody))
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
     tokOf (I i) ls = [TIns
@@ -901,4 +921,4 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpco
       ++ parkArgs False ++ hartRead ++ [lbl (entryLabel i StackReady) ++ ":"]
     tick = tickN 1
     tickN n = ["subq $" ++ show n ++ ", (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (entryLabel i FuelReady)]
-      ++ parkArgs True ++ call (Call.runtimeName Call.FuelEntry) ++ parkArgs False ++ [lbl (entryLabel i FuelReady) ++ ":"]
+      ++ parkArgs True ++ ["subq $8, %rsp", "call " ++ Call.runtimeName Call.FuelSaveEntry, "addq $8, %rsp"] ++ parkArgs False ++ [lbl (entryLabel i FuelReady) ++ ":"]

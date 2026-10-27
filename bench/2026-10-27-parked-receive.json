@@ -1,0 +1,72 @@
+{
+  "pairs": 7,
+  "before": "2a44c44",
+  "after_codegen": 134,
+  "variants": {
+    "before": {
+      "compiler_sha256": "342dc7ca281654ac3479f59d8ff66875564940e638f0ad5a09a9a4f0ad7f26b8"
+    },
+    "after": {
+      "compiler_sha256": "41ca6f7eb6995889d9be0e6a4738933ddf65ab555117cdc894ac99a360275199"
+    }
+  },
+  "fixtures": {
+    "pingpong": {
+      "before": {
+        "samples_ms": [
+          242.22279200330377,
+          208.49833288230002,
+          244.30791707709432,
+          244.47683314792812,
+          218.212999869138,
+          312.04683310352266,
+          454.8085411079228
+        ],
+        "bytes": 489280,
+        "median_ms": 244.30791707709432
+      },
+      "after": {
+        "samples_ms": [
+          276.6186660155654,
+          297.989834100008,
+          238.53520909324288,
+          238.7280419934541,
+          247.7497081272304,
+          247.0936661120504,
+          302.3892920464277
+        ],
+        "bytes": 489280,
+        "median_ms": 247.7497081272304
+      }
+    },
+    "xpingpong": {
+      "before": {
+        "samples_ms": [
+          740.3031662106514,
+          915.3775831218809,
+          609.6826249267906,
+          498.11404198408127,
+          586.725665954873,
+          455.46616706997156,
+          407.485333038494
+        ],
+        "bytes": 489280,
+        "median_ms": 586.725665954873
+      },
+      "after": {
+        "samples_ms": [
+          700.9480409324169,
+          614.3245839048177,
+          614.023958100006,
+          607.5457080733031,
+          621.4854158461094,
+          646.1614170111716,
+          491.8168329168111
+        ],
+        "bytes": 489280,
+        "median_ms": 614.3245839048177
+      }
+    }
+  },
+  "method": "Seven alternating paired executions of 1M-message pingpong and xpingpong, one and four harts respectively, same runtime sources. Variable heavy host load; do not infer a speedup or an isolated regression from wall-time medians."
+}

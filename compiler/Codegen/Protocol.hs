@@ -39,8 +39,8 @@ protocolCalls :: Embedded -> [Call]
 protocolCalls protocol=map runtimeEvent $ case protocol of
   CheckAndTick->[GrowStackEntry,FuelEntry]
   CheckStack->[GrowStackEntry]
-  Tick->[FuelEntry]
-  CountedTick->[FuelEntry]
+  Tick->[FuelSaveEntry]
+  CountedTick->[FuelSaveEntry]
   Apply->[ApplyEntry]
   Panic->[PanicEntry]
   StaticEntry->[]
@@ -83,6 +83,9 @@ physical _=Nothing
 clobbers :: ABI -> Embedded -> [Operand] -> [Phys]
 clobbers abi protocol defs
   | protocol `elem` [StaticEntry,PushArgument]=[]
+  -- a tick's slow path goes through the unit's register-saving wrapper
+  -- (fpr_fuel_save_local): nothing allocatable is clobbered
+  | protocol `elem` [Tick,CountedTick]=[]
   | otherwise=filter (`notElem` [p | d<-defs,Just p<-[physical d]]) (callerClobbers abi)
 
 checkProtocols :: ABI -> String -> [Item] -> Either String ()

@@ -17,6 +17,8 @@ import Compiler.Options (Granularity(..), Strict(..))
 import Control.Monad (when, unless)
 import Control.Monad.State.Strict (evalStateT,get,put,lift)
 import Data.List (intercalate, isPrefixOf, sort)
+import qualified Codegen.Call as Call
+import qualified Codegen.Target.A64 as A64
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Text.Read (readMaybe)
@@ -51,7 +53,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 130 -- shared CFG/loops, conservative invariant motion and dead copy parameters
+codegenRev = 135 -- region placement shares exact post-linked cost analysis across units
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -142,7 +144,7 @@ typedIrNotes (Just mode) policy sigs ext hal prog emitted =
     (lowered, failures) = lowerProgram policy sigs prog emitted ext hal
     -- the simplified program is what the backend consumes; the lowered one
     -- is kept beside it as the differential oracle of every evaluation
-    (simplified, removed) = either (\e -> error ("typed-ir: " ++ e)) id (Simplify.simplifyProgramWith (Simplify.Options (polLoopMotion policy)) lowered)
+    (simplified, removed) = either (\e -> error ("typed-ir: " ++ e)) id (Simplify.simplifyProgramWith (Simplify.policyOptions policy) lowered)
     ws = words mode
     evalNote w = case splitOn ':' w of
       ("eval" : fn : args) | Just ns <- mapM readMaybe args ->
@@ -297,7 +299,7 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
           _ -> (e, [])
     -- the simplification passes (Codegen.Simplify), each verified; a
     -- failure is a compiler error
-    lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (Simplify.simplifyProgramWith (Simplify.Options (polLoopMotion (tgtPolicy tgt))) lowered0)
+    lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (Simplify.simplifyProgramWith (Simplify.policyOptions (tgtPolicy tgt)) lowered0)
     -- FPR_TYPED_IR_SPLIT_ENTRY: verified like the simplification (a refusal is a compiler error)
     lowered = if nmSplitEntry nm then M.map splitEntryValues lowered1 else lowered1
 
@@ -340,7 +342,19 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
       strings = M.elems (M.fromList [(stringLabel str,str) | nf <- allFns,str <- nfStrings nf])
       floats = S.toList (S.fromList (concatMap nfBoxedFloats allFns))
       format = case nmBackend nm of Just (DirectA64 fmt _) -> fmt; Just (DirectX64 fmt) -> fmt; _ -> ELF
-      nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ concatMap nfLines allFns
+      fnText = concatMap nfLines allFns
+      -- the ticks' register-saving slow path, once per unit that ticks
+      -- (from the selected code: scanning the text for the wrapper's name
+      -- would hold the whole unit's text in memory)
+      fuelWrapper
+        | not (any nfTicks allFns) = []
+        | otherwise = case nmBackend nm of
+            Just (DirectA64 fmt _) -> A64.fuelSaveWrapper fmt
+            Just (DirectX64 fmt) -> X64.fuelSaveWrapper (if fmt == MachO then X64.HartTlvMachO else X64.HartTls)
+            Just DirectQX64 -> X64.fuelSaveWrapper X64.HartBorrow
+            Just (DirectRV width _) -> RV.fuelSaveWrapper width
+            Nothing -> error "typed-ir: a tick without a native backend"
+      nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ fnText ++ fuelWrapper
         ++ (if null strings then [] else rodataDirective format : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) format) strings)
         ++ (if null floats then [] else rodataDirective format : concatMap (uncurry boxedFloatObject) floats)
       dat = NativeData.emitStaticDataWithSymbols format (policyWidth (tgtPolicy tgt)) (tgtArc tgt) (tgtWeak tgt) exports symbols emitted

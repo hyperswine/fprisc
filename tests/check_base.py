@@ -469,12 +469,15 @@ def autodrop3(tmp):
     # at most 1,024 roots (64 KiB at FPR_RX_CHARGE 64 bytes) between cycles,
     # so one actor's list doubles at most seven times from its inline eight;
     # two actors receive here
+    # The ponger never exits: its boundary must copy any retained state and
+    # release the preceding roots before the next receive parks.
     for harts in ('1', '4'):
         p = run([ad3], env={'FPR_HARTS': harts})
-        prefix = 'autodrop3: pingpong 5000150000 and 7000 Result-wrapped: arc_live = 0 rx_grows = '
-        assert p.stdout.startswith(prefix), p.stdout + p.stderr
-        assert 0 <= int(p.stdout[len(prefix):]) <= 14, p.stdout + p.stderr
-    print('A received message dies at its region boundary, with no compiler-inserted drop: 100,000 pingpong messages and 1,000 Result-wrapped receives end with zero live Arc entries on one and four harts, and the roots held between cycles stay within a slab: PASS')
+        m = re.fullmatch(r'autodrop3: pingpong 5000150000 and 7000 Result-wrapped: arc_live = (\d+) rx_grows = (\d+)\n', p.stdout)
+        assert m, p.stdout + p.stderr
+        assert int(m[1]) == 0, p.stdout + p.stderr
+        assert 0 <= int(m[2]) <= 14, p.stdout + p.stderr
+    print('A received message dies at its region boundary, with no compiler-inserted drop: 100,000 pingpong messages and 1,000 Result-wrapped receives leave zero live Arc entries after parked receivers end their turns on one and four harts, and the roots held between cycles stay within a slab: PASS')
 
 @case
 def turnroots(tmp):

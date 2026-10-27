@@ -83,7 +83,34 @@ def main():
             emitted = list((output_dir / 'units').glob('u-*.s'))
             assert output.exists() and emitted, (target, emitted)
             assert all('ccore2-' in p.name for p in emitted), (target, emitted)
-        print('Typed units: transitive F64/recursive imports on one/four harts; warm Float/Int/context/flat-curried arity transitions, unrelated-root reuse and x64/RV32/RV64 emission passed')
+        # The imported caller is unchanged while its root-provided callee
+        # changes from bounded arithmetic to allocating recursion and back.
+        # Region placement (and therefore the cache key) must follow the
+        # current post-linked body, including on an otherwise warm build.
+        (tmp / 'cost-context.fpr').write_text('invoke n = rootWork n.\n')
+        env.update(FPR_NO_INLINE='1', FPR_NO_SPEC='1', FPR_NO_SCALAR_WORKERS='1',
+                   FPR_NO_FIELD_WORKERS='1', FPR_RECEIVE_NOTES='1')
+        cost_root = tmp / 'cost-root.fpr'
+        header = 'unsafe base. M = use "cost-context.fpr".\n'
+        small = header + 'rootWork n = n + 1. main = print (M.invoke 12).\n'
+        large = header + ('rootWork n = if n == 0 then 0 else '
+                          'strlen "row {n}" + rootWork (n - 1). '
+                          'main = print (M.invoke 12).\n')
+        snapshots = []
+        for label, body, expected, pending in [('small', small, '13\n', False),
+                                                ('large', large, '63\n', True),
+                                                ('small-again', small, '13\n', False)]:
+            cost_root.write_text(body)
+            image = tmp / ('cost-' + label)
+            built = run([ROOT / 'fpr', 'build', cost_root, '-o', image])
+            assert run([image]).stdout == expected, label
+            call_notes = [line for line in built.stderr.splitlines()
+                          if line.startswith('call-regions: invoke@')]
+            assert bool(call_notes) == pending, (label, built.stderr)
+            snapshots.append(keys())
+        assert snapshots[0].keys() < snapshots[1].keys(), 'callee cost change failed to emit a new caller'
+        assert snapshots[1] == snapshots[2], 'warm cost reversal failed to reuse the original caller'
+        print('Typed units: transitive F64/recursive imports on one/four harts; warm Float/Int/context/flat-curried arity transitions, unrelated-root/cost-transition reuse and x64/RV32/RV64 emission passed')
 
 
 if __name__ == '__main__':

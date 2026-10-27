@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 -- Shared native output and symbol identity, independent of instruction set.
 module Codegen.Target.Common
-  ( ObjectFormat (..), NativeFn (..), mangleName, functionSymbol, calleeCodeSymbol,
+  ( ObjectFormat (..), NativeFn (..), usesTick, mangleName, functionSymbol, calleeCodeSymbol,
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
     boxedFloatLabel, boxedFloatObject,
@@ -67,7 +67,9 @@ entrySlot n = -2000 - n
 -- Decide after allocation/layout (and self-loop formation), never from an
 -- estimated frame or assembly text. Tail exits discard this frame first.
 -- Unknown/generic calls are safepoints too and conservatively keep checks.
--- Keep clobbers unchanged: this pass does not change allocation assumptions.
+-- The remaining tick declares the tick protocol's clobbers (none: its slow
+-- path saves every allocatable register); allocation assumed the entry's
+-- larger set, which is safe.
 shallowEntry :: StackPolicy -> Int -> [Item] -> (Bool, [Item])
 shallowEntry policy bytes items
   | policy == StackCheckShallow, bytes <= 1024,
@@ -80,7 +82,7 @@ shallowEntry policy bytes items
     deepens _ = False
     strip (I i) | siOpcode i == Opcode.Common Opcode.EntryCheck = []
     strip (I i) | siOpcode i == Opcode.Common Opcode.EntryCheckTick =
-      [I i {siOpcode = Opcode.Common Opcode.EntryTick, siCalls = protocolCalls Tick}]
+      [I i {siOpcode = Opcode.Common Opcode.EntryTick, siCalls = protocolCalls Tick, siClobbers = []}]
     strip i = [i]
 
 data ObjectFormat = MachO | ELF deriving (Eq, Ord, Show)
@@ -120,7 +122,8 @@ data NativeFn = NativeFn
     nfReport :: Report,
     nfNullaries :: [(Int, Int)], -- the unit-local nullary objects referenced
     nfStrings :: [String], -- the string literals referenced (an unreachable arm's reason); the unit emits one object per distinct text, `stringLabel`
-    nfBoxedFloats :: [(IR.Width,Integer)] -- RV32 immutable numeric leaves, emitted once per IEEE width/bit pattern
+    nfBoxedFloats :: [(IR.Width,Integer)], -- RV32 immutable numeric leaves, emitted once per IEEE width/bit pattern
+    nfTicks :: Bool -- a fuel tick calls the unit's register-saving wrapper (fpr_fuel_save_local)
   }
 
 -- the symbol encoding of Codegen.mangle (ASCII alphanumerics stay, every
@@ -328,3 +331,7 @@ data Tune = Tune
 
 noTune :: Tune
 noTune = Tune False False False False
+
+-- the body has a fuel tick, whose slow path is the unit's saving wrapper
+usesTick :: [Item] -> Bool
+usesTick items = or [siOpcode i `elem` map Opcode.Common [Opcode.EntryCheckTick, Opcode.EntryTick, Opcode.TickN] | I i <- items]

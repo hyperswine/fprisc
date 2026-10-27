@@ -79,7 +79,7 @@ selectTransfer abi convention result sym vs value base=do
     {siDefs=[OV v (Fix resultReg) | Just v<-[value]],
      siUses=OCode sym:[OV v (Fix p) | (ArgumentRegister p,v)<-zip places vs],
      siClobbers=filter (\p->result/=WordResult || p/=resultReg) (callerClobbers abi),
-     siControl=if result==TailTransfer then Return else Next,
+     siControl=if result `elem` [TailTransfer,NeverReturns] then Return else Next,
      siCalls=[callEvent sym convention],
      siTransfer=Just (Transfer convention (length vs) result)}
 
@@ -113,7 +113,7 @@ checkTransfers abi owner=go []
           require "result register placement mismatch" (case (result,siDefs i) of (WordResult,[v])->fixed resultReg v;(_,[])->result/=WordResult;_->False)
           require "caller clobber set mismatch" (sort (siClobbers i)==sort (filter (\p->result/=WordResult || p/=resultReg) (callerClobbers abi)))
           require "call event mismatch" (case siUses i of OCode sym:_->siCalls i==[callEvent sym convention];_->False)
-          require "tail/return contract mismatch" ((result==TailTransfer)==(siOpcode i==O.Common O.TailJump) && siControl i==(if result==TailTransfer then Return else Next))
+          require "tail/return contract mismatch" ((result==TailTransfer)==(siOpcode i==O.Common O.TailJump) && siControl i==(if result `elem` [TailTransfer,NeverReturns] then Return else Next))
           require "staged argument cells mismatch or crossed a call/control boundary" (sort pending==sort cells)
           pure []
       let staged=case (siOpcode i,siUses i) of

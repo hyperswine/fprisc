@@ -14,6 +14,7 @@ available here; the real plane is the acceptance gate.
 """
 import argparse, os, re, shutil, subprocess, tempfile
 from pathlib import Path
+from fuel_wrapper import fuel_wrapper
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ['qArith', 'qChoose', 'qLoop', 'qWide', 'qWideCall', 'qString', 'qFloat', 'qDeep']
@@ -227,7 +228,7 @@ def main():
         # the scalar workers the unit emitted for its loops come along (unit-local symbols)
         workers = [body for title, body in bodies if title.split()[0].startswith('$worker.')]
         probe.write_text('.text\n' + ''.join(f'    .globl fpr_fn_{n}\n' for n in NAMES)
-                         + '\n'.join([chosen[n] for n in NAMES] + workers) + '\n.section .rodata\n' + '\n'.join(objects) + '\n')
+                         + '\n'.join([chosen[n] for n in NAMES] + workers) + fuel_wrapper(whole) + '\n.section .rodata\n' + '\n'.join(objects) + '\n')
         crt = tmp / 'crt.S'; crt.write_text(CRT)
         ld = tmp / 'link.ld'; ld.write_text(LINK)
         oracle = tmp / 'oracle.c'; oracle.write_text(ORACLE)

@@ -4,12 +4,14 @@
 module Codegen.LoopOptimize (moveInvariants) where
 import Codegen.IR
 import Codegen.ControlFlow
+import Codegen.Policy (RegisterBudget)
+import Codegen.Pressure
 import Data.List (sortOn,foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-moveInvariants :: Fn -> Fn
-moveInvariants fn=
+moveInvariants :: Maybe RegisterBudget -> Bool -> Fn -> Fn
+moveInvariants budget inlineFloats fn=
   let moved=foldl' move fn (sortOn (S.size . loopBlocks) (naturalLoops fn flow))
   in if moved==fn then fn else dropUnusedParameters moved
   where
@@ -27,19 +29,57 @@ moveInvariants fn=
             Just d<-[M.lookup arg defs],d/=bId b,dominates d (bId b)]
           resolve v=maybe v resolve (M.lookup v aliases)
           available moved v=S.member v moved || maybe False (\d->S.notMember d members && dominates d pre) (M.lookup v defs)
-          candidates=[(v,Instr (Just (v,t)) (mapOpUses resolve op)) | b<-fnBlocks f,S.member (bId b) members,
-            Instr (Just (v,t)) op<-bInstrs b,speculatable op]
-          choose moved chosen =
-            let (moved',chosen')=foldl' (\(ready,out) (v,i@(Instr _ op))->
-                  if S.size ready<16 && S.notMember v ready && all (available ready) (opUses op)
-                    then (S.insert v ready,out++[i]) else (ready,out)) (moved,chosen) candidates
-            in if moved'==moved then (moved,chosen) else choose moved' chosen'
-          (moving,instructions)=choose S.empty []
-          rewrite b | bId b==pre=b {bInstrs=bInstrs b++instructions}
-                    | S.member (bId b) members=b {bInstrs=[i | i@(Instr d _)<-bInstrs b,maybe True (\(v,_)->S.notMember v moving) d]}
-                    | otherwise=b
-      in f {fnBlocks=map rewrite (fnBlocks f)}
+          loopInstrs=[i | b<-fnBlocks f,S.member (bId b) members,i<-bInstrs b]
+          candidates=[(v,Instr (Just (v,t)) (mapOpUses resolve op)) | Instr (Just (v,t)) op<-loopInstrs,speculatable op]
+          choose excluded=go S.empty []
+            where
+              go moved chosen =
+                let (moved',chosen')=foldl' (\(ready,out) (v,i@(Instr _ op))->
+                      if S.size ready<16 && S.notMember v ready && S.notMember v excluded && all (available ready) (opUses op)
+                        then (S.insert v ready,out++[i]) else (ready,out)) (moved,chosen) candidates
+                in if moved'==moved then (moved,chosen) else go moved' chosen'
+          -- A rematerializable value (a constant or a static address) moves
+          -- only when nothing left in the loop still reads it: hoisting it
+          -- otherwise keeps one more register busy for the whole loop to
+          -- save an instruction the loop could repeat for free.
+          stillRead moving v=any (elem v) ([opUses op | Instr d op<-loopInstrs,maybe True (\(u,_)->S.notMember u moving) d]
+            ++ [termUses (bTerm b) | b<-fnBlocks f,S.member (bId b) members])
+          settle excluded=
+            let (moving,chosen)=choose excluded
+                bad=[v | Instr (Just (v,_)) op<-chosen,cheap op,stillRead moving v]
+            in if null bad then chosen else settle (S.union excluded (S.fromList bad))
+          instructions=settle S.empty
+          apply chosen=
+            let moving=S.fromList [v | Instr (Just (v,_)) _<-chosen]
+                rewrite b | bId b==pre=b {bInstrs=bInstrs b++chosen}
+                          | S.member (bId b) members=b {bInstrs=[i | i@(Instr d _)<-bInstrs b,maybe True (\(v,_)->S.notMember v moving) d]}
+                          | otherwise=b
+            in f {fnBlocks=map rewrite (fnBlocks f)}
+          -- The register-pressure gate (Codegen.Pressure): the longest
+          -- prefix of the dependency-ordered moves whose loop fits the
+          -- target's registers; when no prefix fits (the loop was already
+          -- over budget), the longest that needs no more than before.
+          pressureOf chosen=case budget of
+            Just b->loopPressure b inlineFloats (dropUnusedParameters (apply chosen)) members
+            Nothing->Pressure 0 0 0 0
+          longest ok lo hi | lo>=hi=lo
+                           | otherwise=let mid=(lo+hi+1) `div` 2 in if ok (take mid instructions) then longest ok mid hi else longest ok lo (mid-1)
+          n=length instructions
+          admitted=case budget of
+            Nothing->instructions
+            Just b
+              | fitsBudget b (pressureOf instructions)->instructions
+              | k<-longest (fitsBudget b . pressureOf) 0 n,k>0->take k instructions
+              | otherwise->let before=loopPressure b inlineFloats f members
+                           in take (longest (\c->noWorse (pressureOf c) before) 0 n) instructions
+          noWorse a b=prGpr a<=prGpr b && prFpr a<=prFpr b && prGprAcross a<=prGprAcross b && prFprAcross a<=prFprAcross b
+      in if null admitted then f else apply admitted
     move f _=f
+
+cheap :: Op -> Bool
+cheap op=case op of
+  OConstInt {}->True; OBits {}->True; ONullary {}->True; OSymbol {}->True; OFunValue {}->True
+  _->False
 
 speculatable :: Op -> Bool
 speculatable op=case op of

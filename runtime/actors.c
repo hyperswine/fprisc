@@ -2204,6 +2204,24 @@ static int p_res(acb_t *a, uw unused) {
   return 0;
 }
 
+/* Observations only: mailbox consumer indices and the actor's identity stay
+ * unchanged. A sender can add work after this check; an early region cycle
+ * is harmless. Only this actor can remove a ready message before receiving. */
+int fpr_actor_receive_ready(uw kind, V peer) {
+  acb_t *a = fpr_hart()->current;
+  if (!a) return 1;
+  switch (kind) {
+    case FPR_RX_ANY: return p_any(a, 0);
+    case FPR_RX_RESULT: return p_res(a, 0);
+    case FPR_RX_POLL: return 1;
+    case FPR_RX_FROM: case FPR_RX_FROM_DEAD:
+      /* Leave invalid sender diagnostics to the original receive entry. */
+      if (ISINT(peer) || !peer || TID(peer) != T_ACTOR) return 1;
+      return kind == FPR_RX_FROM ? p_from(a, (uw)peer) : p_from_dead(a, (uw)peer);
+    default: return 0;
+  }
+}
+
 /* remove the message at logical position k (rh <= k < rt), shifting the
  * head side down one -- all touched slots are consumer-owned (< rt). */
 static V take_at(acb_t *a, chan_t *c, uint32_t k) {

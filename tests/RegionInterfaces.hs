@@ -24,6 +24,7 @@ import qualified Cost
 import qualified ReceiveTurns as Turns
 import Core.Analysis.Scope
 import Core.Analysis.Alpha (sameFunction)
+import qualified Core.Region.Receive as Receive
 import qualified Core.Region.Flow as Flow
 import Core.Identity
 import Core.Syntax
@@ -158,6 +159,28 @@ main=do
       && null [() | IR.LoopEntry False _ _ _ _<-hostedBodies]
       && not (null [() | IR.LoopInner (Just _) _ _ _ _<-hostedBodies])
       && null [() | IR.ReceiveThunk {}<-hostedBodies] && null [() | IR.ReceiveEntry {}<-hostedBodies])
+  check "a leading selective receive records its checked sender slot"
+    (not (null [() | IR.LoopInner (Just (IR.ReceiveBoundary _ (IR.SenderMessage 0))) _ _ _ _<-hostedBodies]))
+  check "readiness metadata cannot be forged into a nonblocking poll"
+    (failed (Typed.rewriteHelpers (\f->case IR.functionBody f of
+      IR.LoopInner (Just (IR.ReceiveBoundary label _)) ps mark seqn flow->
+        Right f {IR.functionBody=IR.LoopInner (Just (IR.ReceiveBoundary label IR.NonBlocking)) ps mark seqn flow}
+      _->Right f) hostedTyped))
+  check "a receive boundary cannot silently lose its gate"
+    (failed (Typed.rewriteHelpers (\f->case IR.functionBody f of
+      IR.LoopInner (Just _) ps mark seqn flow->Right f {IR.functionBody=IR.LoopInner Nothing ps mark seqn flow}
+      _->Right f) hostedTyped))
+  let call name args=foldl CApp (CVar name) args
+  check "compatibility probes preserve selective aliases and lexical shadowing"
+    (Receive.coreProbe ["me","peer"] (CLet "sender" (CVar "peer") (call "receiveFrom" [CVar "me",CVar "sender"]))==IR.SenderMessage 1
+      && Receive.coreProbe ["receive","me"] (call "receive" [CVar "me"])==IR.UnknownReceive)
+  check "effectful senders and prefixes are not evaluated by a readiness probe"
+    (Receive.coreProbe ["me","peer"] (call "receiveFrom" [CVar "me",call "effect" [CVar "peer"]])==IR.UnknownReceive
+      && Receive.coreProbe ["me"] (CLet "ignored" (call "send" [CVar "me",CInt 0]) (call "receive" [CVar "me"]))==IR.UnknownReceive)
+  check "polls are distinct from blocking receive probes"
+    (Receive.coreProbe ["me"] (call "receiveNow" [CVar "me"])==IR.NonBlocking
+      && Receive.coreProbe ["me"] (call "receiveRes" [CVar "me"])==IR.ResultMessage
+      && Receive.coreProbe ["me","peer"] (call "receiveFromRes" [CVar "me",CVar "peer"])==IR.SenderMessageOrDead 1)
   check "receive bundle declarations cannot invent a field"
     (failed (Typed.rewriteHelpers (\f->case IR.functionBody f of
       IR.ReceiveThunk state tick slots flow->let wrong=state {IR.controlType=IR.State []}
@@ -320,4 +343,25 @@ main=do
          ("lifted_1",(["x"],CVar "x"))])
   check "analysis qualification respects lexical shadowing"
     (M.lookup "entry" scoped==Just ([],CLet "lifted_1" (CVar "$scope.lifted_1") (CVar "lifted_1")))
+  let batch=right (R.placePrograms (R.Options True True True) M.empty (M.fromList [("left",a),("right",b)]))
+      views=[view | result<-M.elems batch,Just view<-[R.resultAnalysis result]]
+  check "post-linked artifacts share the complete scoped cost snapshot"
+    (length views==2 && all (\view->length (filter (isSuffixOf "lifted_1") (M.keys (R.analysisProgram view)))==2) views
+      && all (\view->R.analysisProgram view==R.analysisProgram (head views)
+        && R.analysisCosts view==R.analysisCosts (head views)) views)
+  check "shared equations equal an independent solve over the exact snapshot"
+    (all (\view->R.analysisCosts view==Cost.costProgram M.empty M.empty (R.analysisProgram view)) views)
+  check "batch analysis rejects foreign namespaces and layout authorities"
+    (failed (R.placePrograms (R.Options True True True) M.empty (M.fromList [(0::Int,input),(1,other)]))
+      && failed (R.placePrograms (R.Options True True True) M.empty (M.fromList [(0::Int,input),(1,changedLayoutInput)])))
+  let leftBody=right (R.prepare (native "ambiguous" "entry n = n + 1." (S.singleton "entry")))
+      rightBody=right (R.prepare (native "ambiguous" "entry n = n + 2." (S.singleton "entry")))
+  check "conflicting public snapshots cannot silently overwrite one another"
+    (case R.placePrograms (R.Options True True True) M.empty (M.fromList [(0::Int,leftBody),(1,rightBody)]) of
+      Left reason->"conflicting post-linked definition entry" `isInfixOf` reason
+      Right _->False)
+  let duplicates=right (R.placePrograms (R.Options True True True) M.empty (M.fromList [(0::Int,input),(1,input)]))
+  check "identical visible definitions and empty batches remain valid"
+    (M.size duplicates==2 && case R.placePrograms (R.Options True True True) M.empty (M.empty::M.Map Int R.Program) of
+      Right results->M.null results;_->False)
   putStrLn "Region interfaces/control: checked physical binders, protocol sorts, fresh identities, state proofs, source-equivalent lowering, home declarations, scope refusals and compatibility quarantine passed"

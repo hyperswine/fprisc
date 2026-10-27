@@ -2,6 +2,7 @@
 """F64 fast paths: C-reference differential tests and x64 backend execution."""
 import os, platform, re, shutil, subprocess, tempfile
 from pathlib import Path
+from fuel_wrapper import fuel_wrapper
 ROOT = Path(__file__).resolve().parents[1]
 ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'FPR_PATH': str(ROOT)}
 ENV.pop('FPR_FOREIGN', None)
@@ -50,7 +51,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-f64-') as temp:
                 m = re.search(r'(?ms)^\s*\.globl fpr_fn_' + n + r'\n.*?(?=^# wcet:|^# native-insns-v1:|^# fn |\Z)', text)
                 assert m, f'missing generated {n}'
                 chunks.append(m.group())
-            selected = '.text\n' + ''.join(chunks)
+            selected = '.text\n' + ''.join(chunks) + fuel_wrapper(text)
             selected = selected.replace('%fs:fpr_posix_hart@tpoff', 'probe_hart(%rip)')
             if mac:
                 selected = re.sub(r'\bfpr_[A-Za-z0-9_]+\b', lambda m: '_' + m.group(), selected)

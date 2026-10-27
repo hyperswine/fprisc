@@ -26,19 +26,24 @@
 -- results, traps and event order are unchanged by construction and are
 -- checked to be so: tests/TypedIR.hs runs both programs on the fixtures,
 -- and FPR_TYPED_IR's eval report runs both and errors on a difference.
-module Codegen.Simplify (Options(..),defaultOptions,simplifyFn,simplifyProgram,simplifyFnWith,simplifyProgramWith,passes) where
+module Codegen.Simplify (Options(..),defaultOptions,policyOptions,simplifyFn,simplifyProgram,simplifyFnWith,simplifyProgramWith,passes) where
 
 import Codegen.IR
 import Codegen.LoopOptimize (moveInvariants)
+import Codegen.Policy (Policy (..), RegisterBudget)
 import Codegen.Verify (verifyFn)
 import Codegen.Dump (dumpFn)
 import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data Options=Options { moveLoopInvariants :: Bool } deriving (Eq,Show)
+data Options=Options { moveLoopInvariants :: Bool, registerBudget :: Maybe RegisterBudget, inlineFloats :: Bool } deriving (Eq,Show)
 defaultOptions :: Options
-defaultOptions=Options False
+defaultOptions=Options False Nothing True
+
+-- the options a policy states
+policyOptions :: Policy -> Options
+policyOptions p=Options (polLoopMotion p) (polRegisters p) (polFloatInline p)
 
 -- the passes in order, by name
 passes :: [(String, Fn -> Fn)]
@@ -49,7 +54,7 @@ passesWith options=
   [ ("fold-conversions", dropDeadPure . foldConversions),
     ("branch-on-comparison", dropDeadPure . threadBooleanJoins),
     ("share-pure-in-block", dropDeadPure . sharePureInBlock)
-  ] ++ [("move-loop-invariants",dropDeadPure . moveInvariants) | moveLoopInvariants options]
+  ] ++ [("move-loop-invariants",dropDeadPure . moveInvariants (registerBudget options) (inlineFloats options)) | moveLoopInvariants options]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
 
 -- the simplified function and the number of instructions it lost

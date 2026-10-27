@@ -209,7 +209,7 @@ main = do
       tailItem = I callF {siControl = Return}
       shallow = shallowEntry StackCheckShallow
   check "shallow keeps the fuel event" (case shallow 1024 [entry] of
-    (True, [I i]) -> siOp i == "entry.tick" && map callTarget (siCalls i) == [Call.runtimeSymbol Call.FuelEntry]
+    (True, [I i]) -> siOp i == "entry.tick" && map callTarget (siCalls i) == [Call.runtimeSymbol Call.FuelSaveEntry] && null (siClobbers i)
     _ -> False)
   check "shallow rejects a large frame" (shallow 1040 [entry] == (False, [entry]))
   check "shallow keeps generated and generic call checks" (shallow 32 [entry, callItem] == (False, [entry, callItem]))
@@ -301,7 +301,7 @@ main = do
   let text = unlines (nfLines nf)
       has s = s `isInfixOf` text
   check "the function is exported under its generated symbol" (has ".globl _fpr_fn_one" && has "_fpr_fn_one:")
-  check "the parameter is moved to a saved register before the entry calls (M3)" (has "stur x19, [x29, #-24]\n    mov x19, x0\n" && has "bl _fpr_stack_grow" && has "bl _fpr_fuel_exhausted")
+  check "the parameter is moved to a saved register before the entry calls (M3)" (has "stur x19, [x29, #-24]\n    mov x19, x0\n" && has "bl _fpr_stack_grow" && has "bl fpr_fuel_save_local")
   check "the saved register comes back before every return" (length (filter (== "    ldur x19, [x29, #-24]") (lines text)) == 2 && has "saved=x19 ")
   check "the hart is read from x28" (has "mov x9, x28")
   check "the subtraction's slow path re-enters the primitive with retagged operands, tagged straight into the argument registers" (has "bl _fpr_prim_fn__x2d" && has "orr x0, x9, #1\n" && has "orr x1, x9, #1\n    bl _fpr_prim_fn__x2d")
@@ -349,7 +349,7 @@ main = do
   forM_ [("a64", fw), ("x64", fx)] $ \(target, result) -> do
     let asm = unlines (nfLines result)
     check (target ++ " forwarding needs no callee-save parking") ("forward=yes saved=none" `isInfixOf` asm)
-    check (target ++ " forwarding retains both slow calls") ("fpr_stack_grow" `isInfixOf` asm && "fpr_fuel_exhausted" `isInfixOf` asm)
+    check (target ++ " forwarding retains both slow calls") ("fpr_stack_grow" `isInfixOf` asm && "fpr_fuel_save_local" `isInfixOf` asm)
     check (target ++ " forwarding keeps its native bound") (rSegMax (nfReport result) /= Nothing)
   -- X64 keeps its explicit frame refusal; growable A64 entries now reserve
   -- their complete frame. Neither may silently overflow the headroom.
@@ -511,7 +511,9 @@ nativeProtocols=do
     check "fuel and runtime calls have disjoint explicit accounting roles"
       (map callSafepoint (siCalls tick)==[True] && not (any callRuntime (siCalls tick))
        && map callRuntime (siCalls apply)==[True] && not (any callSafepoint (siCalls apply)))
-    refused "embedded calls declare every volatile register" "caller clobber" (checkProto [I tick {siClobbers=drop 1 (siClobbers tick)}])
+    refused "embedded calls declare every volatile register" "caller clobber" (checkProto [I panic {siClobbers=drop 1 (siClobbers panic)}])
+    check "a tick's slow path preserves every allocatable register" (null (siClobbers tick) && all callPreserves (siCalls tick))
+    refused "a tick declares no clobbers" "caller clobber" (checkProto [I tick {siClobbers=siClobbers panic}])
     refused "entry scratch registers cannot disappear" "implicit register" (checkProto [I tick {siImplicitDefs=[]}])
     refused "runtime event cannot stand in for the fuel boundary" "runtime event" (checkProto [I tick {siCalls=[Call.runtimeEvent Call.ApplyEntry]}])
     refused "apply cannot lose its staged head" "argument packet" (checkProto [I arg,I apply])

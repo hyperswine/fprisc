@@ -10,6 +10,7 @@ import Core.Typed.Walk
 import Core.Typed.Verify (verifyFunctionWith,sameType)
 import Core.Typed.Erase
 import Core.Region.Flow
+import qualified Core.Region.Receive as Receive
 import qualified Core.Region.Syntax as R
 import Core.Region.Runtime (Hook(..),hookName)
 import Core.Analysis.Alpha (sameFunction)
@@ -31,7 +32,7 @@ verifyRegions native rewrite fs helpers blocked=do
       plannedGroups=M.fromList [(n,g) | g<-Turns.rewriteGroups rewrite,n<-Turns.groupMembers g]
       ids=concatMap ownedIds (M.elems fs)
       bad why=Left ("typed region program: "++why)
-      protocolNames=helpers<>S.fromList (map hookName [CallPending,CallLeave,LoopLeave,SequenceNumber,Open,PoolMark,HasRoom,Cycle,ReceiveLoop])
+      protocolNames=helpers<>S.fromList (map hookName [CallPending,CallLeave,LoopLeave,SequenceNumber,Open,PoolMark,HasRoom,ReceiveReady,Cycle,ReceiveLoop])
   unless (length ids==S.size (S.fromList ids)) (bad "binder identity shared by emitted functions")
   unless ((M.keysSet original S.\\ blocked) `S.isSubsetOf` M.keysSet fs) (bad "lost a checked source entry")
   forM_ (M.toList fs) $ \(name,f)->do
@@ -106,9 +107,19 @@ verifyRegions native rewrite fs helpers blocked=do
           (maybe False (\g->Turns.groupLooped g && eager==not (Turns.groupPure g)) (M.lookup (R.functionSourceName f) plannedGroups))
         checkControl mark R.Mark;checkControl seqn R.Sequence
         targetFor (R.functionSourceName f) Turns.LoopInner inner (length ps+2)
-      R.LoopInner cold bs mark seqn _->do
+      R.LoopInner cold bs mark seqn flow->do
         loopBank f ps bs mark seqn
-        mapM_ (\name->targetFor (R.functionSourceName f) Turns.LoopCycle name (length ps+2)) cold
+        check "loop boundary gate disagrees with its planned entry"
+          ((case cold of Nothing->False;Just _->True)==maybe False
+            (S.member (R.functionSourceName f) . Turns.groupBoundaries)
+            (M.lookup (R.functionSourceName f) plannedGroups))
+        forM_ cold $ \boundary->do
+          targetFor (R.functionSourceName f) Turns.LoopCycle (R.boundaryLabel boundary) (length ps+2)
+          case boundary of
+            R.ReceiveBoundary _ probe->do
+              check "receive readiness proof disagrees with the checked body" (probe==Receive.typedProbe ps (flowSource flow))
+              check "pure loop acquired a receive readiness check" (maybe False (not . Turns.groupPure) (M.lookup (R.functionSourceName f) plannedGroups))
+            R.AllocationBoundary _->check "receive loop lost its park boundary" (maybe False Turns.groupPure (M.lookup (R.functionSourceName f) plannedGroups))
       R.LoopCycle inner bs changing mark seqn->do
         loopBank f ps bs mark seqn
         check "invalid changing state slot" (all (\i->i>=0 && i<length ps) changing && length changing==S.size (S.fromList changing))

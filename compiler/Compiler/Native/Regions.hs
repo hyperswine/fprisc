@@ -3,7 +3,7 @@
 -- explicit; no consumer re-infers types from its generated bodies.
 module Compiler.Native.Regions
   (Program,prepare,programNative,programCore,programInterfaces,Context,context,
-   Options(..),Analysis,analysisProgram,analysisCosts,Result,place,bypass,
+   Options(..),Analysis,analysisProgram,analysisCosts,Result,place,placePrograms,bypass,
    resultProgram,resultNotes,resultGenerated,resultAnalysis,resultTyped) where
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Regions.Typed as Typed
@@ -19,10 +19,11 @@ import qualified Core.Region.CallSites as Sites
 import qualified Core.Region.Types as Region
 import Core.Opt.Representation (eraseLayoutCasts)
 import Core.Analysis.Scope (qualifyPrivate,programNames)
+import Core.Analysis.Alpha (sameFunction)
 import qualified ReceiveTurns as Turns
 import qualified Cost
 import Safety (Measure)
-import Control.Monad (unless)
+import Control.Monad (unless,foldM,forM_)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -81,20 +82,54 @@ resultTyped (Placed _ _ _ p)=Just p
 bypass :: Program -> Result
 bypass=Bypassed
 
-place :: Options -> Context -> Program -> Either String Result
-place opts (Context (Program _ worldNs worldLayouts worldModel worldFaces worldShared _ _) measures base)
-      input@(Program _ ns layouts model faces shared p joins)=do
+-- Batch placement consumes the exact post-linked snapshots. Each private
+-- compatibility namespace is scoped once, then ONE fixed-point analysis is
+-- shared by every artifact. No per-artifact fallback can re-solve it.
+placePrograms :: Ord key => Options -> M.Map Name Measure -> M.Map key Program -> Either String (M.Map key Result)
+placePrograms opts measures programs=case M.elems programs of
+  []->Right M.empty
+  first@(Program native ns layouts model _ _ p joins):_->do
+    mapM_ (sameAuthority first) (M.elems programs)
+    let reserved=S.unions (map (programNames . programCore) (M.elems programs))
+        scoped=M.fromList [(key,analysis ("$region.linked."++show i++".") reserved input)
+          | (i,(key,input))<-zip [0::Int ..] (M.toAscList programs)]
+        faces=M.unions (map programInterfaces (M.elems programs))
+        shared=S.unions [names | Program _ _ _ _ _ names _ _<-M.elems programs]
+        source=Program native ns layouts model faces shared p joins
+    world<-foldM merge M.empty (M.elems scoped)
+    let view=derive measures world
+        snapshot=Context source measures view
+    traverse (\input->placeWith opts snapshot input view) programs
+  where
+    merge world local=do
+      forM_ (M.toList (M.intersectionWith (,) world local)) $ \(name,(a,b))->
+        unless (sameFunction a b) (Left ("region context: conflicting post-linked definition "++name))
+      pure (local `M.union` world)
+
+sameAuthority :: Program -> Program -> Either String ()
+sameAuthority (Program _ worldNs worldLayouts worldModel _ _ _ _) (Program _ ns layouts model _ _ _ _)=
   unless (ns==worldNs && model==worldModel && constructorLayouts layouts==constructorLayouts worldLayouts
     && shapeLayouts layouts==shapeLayouts worldLayouts) (Left "region context: checking namespace/layout model mismatch")
+
+-- Standalone/report clients may supply a different local body. Such a body
+-- still derives its own view and cannot borrow stale costs or interfaces.
+place :: Options -> Context -> Program -> Either String Result
+place opts context@(Context source measures base) input=do
+  sameAuthority source input
   let world=analysisProgram base
       local=analysis "$region.local." (programNames world) input
-      -- A changed/unknown compatibility body must not acquire an interface
-      -- from the context merely because its spelling matches a checked root.
+      view=if M.isSubmapOfBy (==) local world then base else derive measures (local `M.union` world)
+  placeWith opts context input view
+
+placeWith :: Options -> Context -> Program -> Analysis -> Either String Result
+placeWith opts (Context source@(Program _ _ _ _ worldFaces worldShared _ _) _ _)
+      input@(Program _ _ _ model faces shared p joins) view=do
+  sameAuthority source input
+  let allCode=analysisProgram view
+      -- Changed compatibility bodies cannot acquire an interface merely
+      -- because another checked artifact uses the same spelling.
       signatures=faces `M.union` M.withoutKeys worldFaces (M.keysSet p)
-      allCode=local `M.union` world
-      same=M.isSubmapOfBy (==) local world
-      view=if same then base else derive measures allCode
-  let arities=M.map (length . fst) allCode
+      arities=M.map (length . fst) allCode
       checked=Native.nativeDefinitions (programNative input)
   sites<-Sites.callSites model arities (M.mapWithKey (\name _->Native.checkedFunction <$> M.lookup name checked) p)
   rewrite<-Turns.receiveTurns (loopRegions opts) (callRegions opts) (receiveLoops opts) (analysisCosts view) signatures model sites
