@@ -286,6 +286,7 @@ compileScript path src ptops utops utopsX0' trusted = do
 runTxLoop :: FilePath -> [String] -> FilePath -> FilePath -> M.Map Name (Int, Int) -> M.Map Int [Name] -> BProg -> Prog -> Maybe JitCtx -> M.Map Name (Int, Int, Int) -> [Name] -> RtCounts -> Int -> IO ()
 runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt attempt = do
   tx <- newTx
+  txSetSagaJournal tx journalFile
   fuel <- newIORef fuelQuantum
   preempts <- newIORef 0
   gpu <- Gpu.initGPU
@@ -313,7 +314,7 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
     let force = maybe 0 read forceN :: Int
     if attempt < force
       then pure (Conflict ["<forced>"]) -- discard this attempt's effects
-      else phaseIO "transaction-commit" (commit tx journalFile)) `onException` cleanup
+      else phaseIO "transaction-commit" (commit tx journalFile)) `onException` (cleanup >> rollbackSaga tx)
   case res of
     Committed n ncmd sfail efail -> do
       -- the receipt names every effect class that landed: files AND the
@@ -338,11 +339,15 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
           unless (null logs) $ diagnostic ("[sol] " ++ show (length logs) ++ " log line(s) withheld: the commit did not complete")
           exitFailure
         else mapM_ putStrLn logs >> hFlush stdout
-    Conflict stale
-      | attempt + 1 >= maxRetries -> do
+    Conflict stale -> do
+      rollbackSaga tx
+      retry stale
+  where
+    retry stale
+      | attempt + 1 >= maxRetries = do
           diagnostic ("[sol] giving up after " ++ show maxRetries ++ " attempts (conflicts on " ++ show stale ++ ")")
           exitFailure
-      | otherwise -> do
+      | otherwise = do
           diagnostic ("[sol] conflict on " ++ show stale ++ " — retrying (attempt " ++ show (attempt + 2) ++ ")")
           runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt (attempt + 1)
 

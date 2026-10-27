@@ -27,6 +27,8 @@
 module Sol.Val where
 
 import qualified Data.Array as A
+import Data.Unique (Unique)
+import Sol.Effects (DeferredRef)
 import Data.Array.IO (IOArray, getElems, newArray_, readArray, writeArray)
 import Data.IORef
 import Data.Int (Int64)
@@ -55,6 +57,7 @@ data Value
   | VData !Int !Int [Value]
   | VPap String [Value] !Int -- global or HAL symbol, collected args, remaining
   | VVec (IORef VecStore) -- the linear SoA vector
+  | VDeferred Unique DeferredRef -- opaque transaction-local result reference
   | VMod FilePath String -- content-addressed file module: path + AST hash
 
 pattern VStr :: String -> Value
@@ -136,6 +139,7 @@ render (VData t v fs)
       _ -> render x
 render (VData t v fs) = "<" ++ show t ++ "." ++ show v ++ (if null fs then "" else " " ++ unwords (map render fs)) ++ ">"
 render (VPap g _ n) = "<fn " ++ g ++ "/" ++ show n ++ ">"
+render (VDeferred _ _) = "<deferred>"
 render (VVec _) = "<vector>"
 render (VMod p h) = "<module " ++ p ++ "#" ++ take 8 h ++ "...>"
 

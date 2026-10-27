@@ -3,7 +3,7 @@
 This is the consolidated record of Sol improvements. Sections are historical
 snapshots: later entries supersede earlier statements about missing features.
 Earlier timestamps are the corresponding commit times; the latest entry is the
-verification time, rounded to the minute, in Australia/Sydney (AEST, UTC+10). The initial assessment preserves its local edits.
+verification time, rounded to the minute, in Australia/Sydney, with each entry showing its local zone. The initial assessment preserves its local edits.
 
 Current delivered work: clean script output, bounded case lowering, indexed VM
 instructions, validated compiler caching, indexed Unicode text access, and
@@ -1255,3 +1255,15 @@ are implemented. Typed entries preserve the existing direct linear-PAP check;
 this is not a general fix for linear closure capture through aliases. See the
 [application-core record](2026-10-17-CONTRACTED-APPLICATION-CORES.md) and
 `tests/check_higher_order_contracts.py` for the acceptance and remaining scope.
+
+## 2026-10-27 21:30 AEDT — Deferred dataflow and commit records
+
+The closed deferred vocabulary, `SOLJ2` captured-result recovery,
+transactional `logTo`, deferred Git head/tag/push and a bounded
+`Git.commitNow` reference-CAS inverse are implemented. Existing file mode
+preservation and symlink refusal are verified. General process inverses
+and multi-step sagas remain separate work.
+
+See [the implementation and verification record](2026-10-27-SOL-DEFERRED.md)
+for API migration, crash windows and focused coverage. Native digest work
+is recorded separately in [vector SHA schedules](2026-10-27-DIGEST-VECTORS.md).

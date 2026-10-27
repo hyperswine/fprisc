@@ -220,6 +220,7 @@ library
       Sol.Mod
       Sol.Native
       Sol.Preamble
+      Sol.Effects
       Sol.Txn
       Sol.VM
       Sol.Val

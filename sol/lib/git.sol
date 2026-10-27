@@ -1,5 +1,5 @@
 # Native libgit2 automation. Mutations defer in journal order; queries see
-# live pre-commit state. Push refuses pending effects. No hooks or helpers.
+# live pre-commit state. Push is the terminal deferred publication. No hooks or helpers.
 Repo = Type (Repo String String String).
 Selection = Type (All | Updated | Paths (List String)).
 UncommitMode = Type (KeepStaged | KeepWorktree).
@@ -39,5 +39,11 @@ diff r = query GitDiff r.
 diffStaged r = query GitDiffStaged r.
 log count r = if count < 0 or count > 100000 then Err "Git.log count must be 0..100000" else query (GitLog count) r.
 head r = query GitHead r.
+headLater (Repo path _ _) = Deferred.trim (NativeGit.headLater outputLimit path).
+tagAt name sha r = case r of Repo path _ _ ->
+  u = NativeGit.tagAt outputLimit path name sha; r.
+commitNow message (Repo path name email) = NativeGit.commitNow outputLimit path name email message.
 push remote branchName r = case r of Repo path _ _ ->
+  u = NativeGit.pushLater outputLimit path remote branchName; r.
+pushNow remote branchName r = case r of Repo path _ _ ->
   NativeGit.push outputLimit path remote branchName |> mapOk (fn output -> r).

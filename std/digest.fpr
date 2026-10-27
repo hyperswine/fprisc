@@ -53,20 +53,23 @@ blocks buf at h total = case at + 64 > strlen buf of
 
 # the 64 message words of the block at `at`, oldest first
 schedule : String -> Int -> List Int .
-schedule buf at = rev (extend 16 (first16 buf at 0 Nil)) Nil.
-# newest first
-first16 : unsafe String -> Int -> Int -> List Int -> List Int .
+schedule buf at = Vec.toList (extend 16 (first16 buf at 0 (Vec.new Unit))).
+# Schedule words are stored oldest first for constant-time lookbacks.
+first16 : unsafe String -> Int -> Int -> Vector Int -> Vector Int .
 first16 buf at t acc = case t == 16 of
     True -> acc
   | False -> first16 buf at (t + 1)
-      ((charAt buf (at + 4 * t) * 16777216 + charAt buf (at + 4 * t + 1) * 65536 + charAt buf (at + 4 * t + 2) * 256 + charAt buf (at + 4 * t + 3)) :: acc).
-# w is newest first, so w[t-2] is its 2nd element, w[t-7] its 7th, ...
-extend : unsafe Int -> List Int -> List Int .
+      (Vec.push (charAt buf (at + 4 * t) * 16777216 + charAt buf (at + 4 * t + 1) * 65536 + charAt buf (at + 4 * t + 2) * 256 + charAt buf (at + 4 * t + 3)) acc).
+# Four constant-time lookbacks; the vector is consumed when converted for rounds.
+extend : unsafe Int -> Vector Int -> Vector Int .
 extend t w = case t == 64 of
     True -> w
-  | False -> extend (t + 1) (m32 (s1 (nth 2 w) + nth 7 w + s0 (nth 15 w) + nth 16 w) :: w).
-nth : unsafe Int -> List Int -> Int .
-nth i xs = case xs of Nil -> 0 | x :: r -> (case i == 1 of True -> x | False -> nth (i - 1) r).
+  | False ->
+      (w2, v1) = Vec.get (t - 2) w;
+      (w7, v2) = Vec.get (t - 7) v1;
+      (w15, v3) = Vec.get (t - 15) v2;
+      (w16, v4) = Vec.get (t - 16) v3;
+      extend (t + 1) (Vec.push (m32 (s1 w2 + w7 + s0 w15 + w16)) v4).
 s0 : Int -> Int .
 s0 x = bxor (bxor (rotr x 7) (rotr x 18)) (BITSHIFTR x 3).
 s1 : Int -> Int .
@@ -146,13 +149,18 @@ sha1 bytes = E.hex (sha1Bytes bytes).
 sha1Blocks : unsafe String -> Int -> List Int -> String .
 sha1Blocks buf at h = case at + 64 > strlen buf of
     True -> strJoin "" (wordsToBytes h Nil)
-  | False -> sha1Blocks buf (at + 64) (sha1Compress h (rev (extend1 16 (first16 buf at 0 Nil)) Nil)).
+  | False -> sha1Blocks buf (at + 64) (sha1Compress h (Vec.toList (extend1 16 (first16 buf at 0 (Vec.new Unit))))).
 
-# w newest first: w[t] = rotl1 (w[t-3] ^ w[t-8] ^ w[t-14] ^ w[t-16])
-extend1 : unsafe Int -> List Int -> List Int .
+# w[t] = rotl1 (w[t-3] ^ w[t-8] ^ w[t-14] ^ w[t-16]).
+extend1 : unsafe Int -> Vector Int -> Vector Int .
 extend1 t w = case t == 80 of
     True -> w
-  | False -> extend1 (t + 1) (rotl (bxor (bxor (nth 3 w) (nth 8 w)) (bxor (nth 14 w) (nth 16 w))) 1 :: w).
+  | False ->
+      (w3, v1) = Vec.get (t - 3) w;
+      (w8, v2) = Vec.get (t - 8) v1;
+      (w14, v3) = Vec.get (t - 14) v2;
+      (w16, v4) = Vec.get (t - 16) v3;
+      extend1 (t + 1) (Vec.push (rotl (bxor (bxor w3 w8) (bxor w14 w16)) 1) v4).
 
 sha1Compress : List Int -> List Int -> List Int .
 sha1Compress h w = case h of

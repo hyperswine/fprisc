@@ -7,9 +7,9 @@ reading of `compiler/Sol/Txn.hs`, `compiler/Sol/Main.hs`, `compiler/Sol/VM.hs`
 and `sol/lib/git.sol`; nothing was built or executed for this page, so every
 finding below still needs its test before it counts as confirmed.
 
-Status: **decided** -- `Deferred a` is the abstraction for effects outside the
-file transaction. **Not implemented.** The four commit-path gaps are
-unfixed at this revision.
+Historical status at the reviewed revision: **decided, not implemented**.
+Current implementation status is recorded in the dated sections below; the
+initial findings are retained as the decision record.
 
 Builds on [2026-08-25-TRANSACTION.md](2026-08-25-TRANSACTION.md) (the script
 is the transaction) and
@@ -272,3 +272,20 @@ above, with the tests proposed here. See
 The journal is a sibling file per run, `<script>.soljournal.<pid>.<nonce>`,
 not a directory. `log` goes to stdout only; appending to a path is not
 built yet.
+
+## 2026-10-27: closed deferred plans, path logs and the Git inverse
+
+`Deferred a`, the closed projection vocabulary and structured `Arg` inputs
+are implemented with `SOLJ2` plans and captured `SOLR2` completion records.
+`ProcessSpec a` keeps existing string-argument calls while `Proc.later`
+accepts `ProcessSpec Arg`. Deferred Git head/tag/push operations can follow
+a commit in one run; the old immediate push is explicitly `Git.pushNow`.
+
+`logTo` appends audit lines under transaction locks using idempotent
+post-images. Executable mode preservation and symlink refusal were already
+present and are now explicitly covered. `Git.commitNow` adds the first
+immediate inverse: one staged commit per attempt, restored on abort/retry
+by a captured reference CAS, with durable undo/redo ownership across crashes.
+General process inverses and multi-step sagas remain future work.
+
+[Implementation, migration and validation](2026-10-27-SOL-DEFERRED.md).

@@ -124,6 +124,30 @@ int fpr_native_git(const char *path,int op,const char *arg,const char *name,cons
     push_context ctx={&out,0};
     git_push_options opts=GIT_PUSH_OPTIONS_INIT;opts.callbacks.push_update_reference=pushStatus;opts.callbacks.credentials=credentials;opts.callbacks.payload=&ctx;
     e=git_remote_push(remote,&refs,&opts);free(spec);break;}
+  case 16: /* tag at a resolved deferred commit id */
+    if(count!=1 || strlen(paths[0])!=GIT_OID_HEXSZ){e=-1;append(&out,"tagAt needs a full commit id");goto done;}
+    TRY(git_oid_fromstr(&oid,paths[0]));TRY(git_object_lookup(&obj,r,&oid,GIT_OBJECT_COMMIT));
+    TRY(git_tag_create_lightweight(&oid,r,arg,obj,0));break;
+  case 17: { /* prepare an unpublished commit; the caller journals undo before publishing */
+    if(git_repository_head_detached(r)!=0 || git_repository_head_unborn(r)!=0){e=-1;append(&out,"compensable commit requires an existing attached branch");goto done;}
+    TRY(git_repository_head(&ref,r));
+    const git_oid *old=git_reference_target(ref);
+    TRY(git_commit_lookup(&parent,r,old));TRY(git_repository_index(&idx,r));
+    if(git_index_has_conflicts(idx)){e=-1;append(&out,"index has unresolved conflicts");goto done;}
+    TRY(git_index_write_tree(&oid,idx));TRY(git_tree_lookup(&tree,r,&oid));
+    if(git_oid_equal(git_tree_id(tree),git_commit_tree_id(parent))){e=-1;append(&out,"nothing staged to commit");goto done;}
+    if(*name && *email)TRY(git_signature_now(&sig,name,email));else TRY(git_signature_default(&sig,r));
+    TRY(git_commit_create(&oid,r,NULL,sig,sig,NULL,arg,tree,1,(const git_commit **)&parent));
+    char before[GIT_OID_HEXSZ+1],after[GIT_OID_HEXSZ+1];
+    git_oid_tostr(before,sizeof before,old);git_oid_tostr(after,sizeof after,&oid);
+    append(&out,"%s\n%s\n%s\n",git_reference_name(ref),before,after);break;}
+  case 18: case 19: { /* exact reference CAS; undo also accepts an already-restored reference */
+    if(count!=2 || strlen(paths[0])!=GIT_OID_HEXSZ || strlen(paths[1])!=GIT_OID_HEXSZ){e=-1;append(&out,"reference CAS needs two full commit ids");goto done;}
+    git_oid target,expected;TRY(git_oid_fromstr(&target,paths[0]));TRY(git_oid_fromstr(&expected,paths[1]));
+    TRY(git_reference_lookup(&ref,r,arg));
+    if(git_reference_type(ref)!=GIT_REFERENCE_DIRECT){e=-1;append(&out,"reference CAS refuses a symbolic reference");goto done;}
+    if(op==19 && git_oid_equal(git_reference_target(ref),&target))break;
+    TRY(git_reference_create_matching(&ref2,r,arg,&target,1,&expected,"Sol compensable commit"));break;}
   default:e=-1;append(&out,"unknown native Git operation");
   }
 done:

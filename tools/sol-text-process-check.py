@@ -18,6 +18,11 @@ def quote(s):
     return '"' + s.replace('\\', '\\\\').replace('"', '\\"').replace('{', '\\{').replace('}', '\\}').replace('\n', '\\n') + '"'
 
 
+def int_expr(n):
+    # Sol supports runtime Integers; the shared parser bounds integer literals.
+    return str(n) if -(1 << 62) <= n < (1 << 62) else f'(parseInt "{n}")'
+
+
 def main():
     count = 0
     with tempfile.TemporaryDirectory(prefix='sol-text-process-') as tmp:
@@ -44,9 +49,9 @@ def main():
         for start, length in [(-2, 3), (3, 2), (8, 4), (2, -1), (10**40, 2), (2, 10**40), (-10**40, 2)]:
             # 0-based [start, start + length), cut to the string at both ends
             expected = text[max(0, start):max(0, start + max(0, length))]
-            run(prefix + f'> print (substr s {start} {length}).\n', (expected + '\n').encode())
+            run(prefix + f'> print (substr s {int_expr(start)} {int_expr(length)}).\n', (expected + '\n').encode())
         for index in (7, -1, 8, 10**40, -10**40):  # 7 == strlen: one past the last
-            run(prefix + f'> charAt s {index}.\n', code=1, error=b'index out of range')
+            run(prefix + f'> charAt s {int_expr(index)}.\n', code=1, error=b'index out of range')
         run('> print "{strlen \"\"}".\n> print (substr "" 0 10).\n', b'0\n\n')
         run(prefix + '> print "{s == (substr s 0 7)}".\n> print (Str.join "|" (Str.lines "a\\nλ\\n")).\n', 'True\na|λ\n'.encode())
         run(f'J = use "{ROOT}/sol/lib/json.sol".\n> print (J.parse "[true,42,\\\"λ😀\\\"]" |>? (fn j -> Ok (J.render j))).\n', 'Ok [true,42,"λ😀"]\n'.encode())

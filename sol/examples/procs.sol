@@ -64,5 +64,5 @@ query argv = P.output (Proc.query (P.spec argv)).
     (isOk (Git.status (Git.repo "/tmp/sol-procs-not-a-repo"))) False.
 > r = Git.repo "/tmp/sol-procs-repo" |> Git.init;
   expect "push after a queued mutation is refused"
-    (mapErr (fn e -> Str.contains "queued" e) (Git.push "origin" "main" r)) (Err True).
+    (mapErr (fn e -> Str.contains "queued" e) (Git.pushNow "origin" "main" r)) (Err True).
 > print "procs: OK".

@@ -1,5 +1,8 @@
 # proc.sol -- pure builders and result helpers over the structured VM process
-# primitive. ProcessSpec keeps argv structured all the way to exec(3).
+# primitive. ProcessSpec a keeps argv structured all the way to exec(3).
+# Direct/afterCommit APIs use String arguments; Proc.later uses Arg values:
+# Lit "literal" or From (Deferred.out earlier |> Deferred.trim).
+# Deferred projections are data evaluated at commit; they do not run here.
 # Proc.streamNow sends spec stdin and forwards live stdout/stderr directly.
 # Proc.inheritNow inherits all three descriptors; spec stdin must be empty.
 # Both return Result Int String, refuse pending transaction effects, and may

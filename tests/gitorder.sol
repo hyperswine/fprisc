@@ -6,5 +6,5 @@ Git = use "../sol/lib/git".
       |> Git.identity "Sol Test" "sol@example.invalid"
       |> Git.add Git.all
       |> Git.commit "fourth commit";
-  res = Git.push "origin" "main" r;
+  res = Git.pushNow "origin" "main" r;
   print "push: {res}".

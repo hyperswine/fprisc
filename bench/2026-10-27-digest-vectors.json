@@ -1,0 +1,172 @@
+{
+  "head": "1db255668b1662447a2cfbd06e2ad591642d0af9",
+  "compiler_sha256": "c7202b3b23aba6e2491b710a425c0860f69302f366f2bb9f9232fe6d030b04d6",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "samples_ms": {
+    "before": [
+      121.11254199407995,
+      120.6524579320103,
+      141.86858385801315,
+      133.52433405816555,
+      120.55316707119346,
+      112.11354099214077,
+      109.66720897704363,
+      110.22558296099305,
+      110.42845901101828,
+      109.06699998304248,
+      108.8305409066379,
+      179.55162515863776,
+      157.29345800355077,
+      109.70541602000594,
+      111.45275016315281,
+      112.79954109340906,
+      106.78516700863838,
+      112.89512505754828,
+      116.97862483561039,
+      115.85208307951689
+    ],
+    "after": [
+      69.31854202412069,
+      68.30487516708672,
+      69.03716688975692,
+      71.22887508012354,
+      70.2097921166569,
+      67.3242921475321,
+      71.8445829115808,
+      68.7831670511514,
+      68.62308294512331,
+      66.60712510347366,
+      71.94145815446973,
+      71.60062505863607,
+      76.05808391235769,
+      68.88058385811746,
+      67.8397910669446,
+      67.93974991887808,
+      68.71541705913842,
+      70.17033407464623,
+      86.45733306184411,
+      89.8097911849618
+    ]
+  },
+  "binaries": {
+    "before": {
+      "sha256": "1fc866188f106c6d2efd5ad3c0a69f59f8199e44dad21b5ff7f08bb1bae2d2ab",
+      "bytes": 788328
+    },
+    "after": {
+      "sha256": "1fa3f0f21bf50e82e801582fe3e82edc25557bace048f803f3aa6dd4ff1dab22",
+      "bytes": 789048
+    }
+  },
+  "source_sha256": {
+    "before": "e21c9b5fa7b8046c69a6bd2a7aa7750f0c08c70acf026171ece7e303f46cd093",
+    "after": "9ea717877fee352e989fe2c5a0bf3b28780988f5419eb600f6a7664027a3ced2"
+  },
+  "orders": [
+    [
+      "before",
+      "after"
+    ],
+    [
+      "after",
+      "before"
+    ],
+    [
+      "before",
+      "after"
+    ],
+    [
+      "after",
+      "before"
+    ],
+    [
+      "before",
+      "after"
+    ],
+    [
+      "after",
+      "before"
+    ],
+    [
+      "before",
+      "after"
+    ],
+    [
+      "after",
+      "before"
+    ],
+    [
+      "before",
+      "after"
+    ],
+    [
+      "after",
+      "before"
+    ],
+    [
+      "before",
+      "after"
+    ],
+    [
+      "after",
+      "before"
+    ],
+    [
+      "before",
+      "after"
+    ],
+    [
+      "after",
+      "before"
+    ],
+    [
+      "before",
+      "after"
+    ],
+    [
+      "after",
+      "before"
+    ],
+    [
+      "before",
+      "after"
+    ],
+    [
+      "after",
+      "before"
+    ],
+    [
+      "before",
+      "after"
+    ],
+    [
+      "after",
+      "before"
+    ]
+  ],
+  "load_before": [
+    6.98388671875,
+    5.30322265625,
+    5.73779296875
+  ],
+  "cpu": "Apple M4",
+  "cpu_before": "Processes: 855 total, 2 running, 2 stuck, 851 sleeping, 6126 threads \n2026/10/27 20:05:41\nLoad Avg: 6.98, 5.30, 5.74 \nCPU usage: 15.31% user, 27.72% sys, 56.96% idle \nSharedLibs: 484M resident, 86M data, 56M linkedit.\nMemRegions: 1038522 total, 3140M resident, 98M private, 1453M shared.\nPhysMem: 15G used (4511M wired, 6428M compressor), 72M unused.\nVM: 457T vsize, 57G framework vsize, 341936687(0) swapins, 386501923(0) swapouts.\nNetworks: packets: 280885453/281G in, 168722425/93G out.\nDisks: 872648787/22T read, 281963829/10T written.\n\n\nProcesses: 855 total, 4 running, 851 sleeping, 6130 threads \n2026/10/27 20:05:43\nLoad Avg: 6.98, 5.30, 5.74 \nCPU usage: 24.76% user, 23.15% sys, 52.7% idle \nSharedLibs: 484M resident, 86M data, 56M linkedit.\nMemRegions: 0 total, 0B resident, 98M private, 1453M shared.\nPhysMem: 15G used (4936M wired, 6378M compressor), 117M unused.\nVM: 457T vsize, 57G framework vsize, 341936855(168) swapins, 386501923(0) swapouts.\nNetworks: packets: 280885628/281G in, 168722574/93G out.\nDisks: 872652407/22T read, 281963884/10T written.\n\n\n",
+  "cpu_after": "Processes: 856 total, 6 running, 850 sleeping, 6131 threads \n2026/10/27 20:05:48\nLoad Avg: 6.74, 5.28, 5.73 \nCPU usage: 17.59% user, 15.44% sys, 66.96% idle \nSharedLibs: 424M resident, 70M data, 47M linkedit.\nMemRegions: 1038708 total, 2517M resident, 81M private, 1572M shared.\nPhysMem: 15G used (4937M wired, 6019M compressor), 193M unused.\nVM: 458T vsize, 57G framework vsize, 341937054(0) swapins, 386507859(0) swapouts.\nNetworks: packets: 280886139/281G in, 168723025/93G out.\nDisks: 872657244/22T read, 281966745/10T written.\n\n\nProcesses: 857 total, 4 running, 853 sleeping, 6103 threads \n2026/10/27 20:05:49\nLoad Avg: 6.74, 5.28, 5.73 \nCPU usage: 20.64% user, 11.1% sys, 68.33% idle \nSharedLibs: 424M resident, 70M data, 47M linkedit.\nMemRegions: 114 total, 3520K resident, 81M private, 1576M shared.\nPhysMem: 15G used (4880M wired, 5942M compressor), 132M unused.\nVM: 458T vsize, 57G framework vsize, 341937134(80) swapins, 386507859(0) swapouts.\nNetworks: packets: 280886452/281G in, 168723826/93G out.\nDisks: 872658013/22T read, 281966893/10T written.\n\n\n",
+  "load_after": [
+    6.74462890625,
+    5.28125,
+    5.7275390625
+  ],
+  "summary_ms": {
+    "before": {
+      "best": 106.78516700863838,
+      "median": 112.84733307547867
+    },
+    "after": {
+      "best": 66.60712510347366,
+      "median": 69.1778544569388
+    }
+  },
+  "paired_median_change_percent": -39.03071409242075,
+  "method": "Same saved stage-1 compiler, same runtime, native AArch64, one hart; 1MiB SHA-256; one warmup then twenty alternating paired rounds, all outputs checked. No concurrent builds/tests from this task; existing host activity remains."
+}

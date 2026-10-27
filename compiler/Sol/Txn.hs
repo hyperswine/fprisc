@@ -24,12 +24,14 @@
 -- exactly once per operation and therefore cannot be leaked or double-closed
 -- — the runtime table below just maps ids to paths.
 
-module Sol.Txn where
+module Sol.Txn (module Sol.Txn, module Sol.Effects) where
 
 import Sol.Diagnostic (diagnostic)
 import Sol.Native
+import Sol.Effects
+import Data.Unique (Unique, newUnique)
 import Control.Concurrent (threadDelay, forkIOWithUnmask, killThread, newEmptyMVar, putMVar, takeMVar, newChan, writeChan, readChan)
-import Control.Exception (SomeException, bracket, catch, IOException, finally, mask, onException, throwIO, try)
+import Control.Exception (SomeException, bracket, catch, IOException, finally, mask, mask_, onException, throwIO, try)
 import Control.Monad (foldM, forM_, unless, when)
 import Data.IORef
 import Data.Maybe (mapMaybe)
@@ -45,7 +47,8 @@ import Data.List (dropWhileEnd, isInfixOf, isPrefixOf, isSuffixOf, nub, sort)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import System.Directory
-  ( createDirectory,
+  ( canonicalizePath, makeAbsolute, getCurrentDirectory,
+    createDirectory,
     createDirectoryIfMissing,
     doesDirectoryExist,
     doesFileExist,
@@ -59,6 +62,7 @@ import System.Directory
   )
 import Data.Time.Clock.POSIX (getPOSIXTime, utcTimeToPOSIXSeconds)
 import System.Exit (ExitCode (..))
+import System.FilePath (takeDirectory, takeFileName, hasTrailingPathSeparator, (</>))
 import System.IO (readFile', hClose, hIsTerminalDevice)
 import System.IO.Error (isAlreadyExistsError, isDoesNotExistError, isResourceVanishedError)
 import System.IO (hFlush, hGetContents', hIsEOF, hGetLine, stderr, stdin, stdout, hPutStr, hPutStrLn)
@@ -71,29 +75,6 @@ import System.Posix.Process (getProcessGroupID)
 import System.Posix.IO (stdInput)
 import System.Posix.Types (ProcessGroupID)
 
-data ProcessSpec = ProcessSpec
-  { psArgv :: [String],
-    psCwd :: Maybe FilePath,
-    psEnv :: [(String, String)],
-    psStdin :: String,
-    psTimeoutMs :: Maybe Int
-  }
-  deriving (Show, Read)
-
--- The transaction's pending effect on the world, IN DECLARATION ORDER.
--- File writes, removals, mkdirs, and QUEUED external commands interleave
--- exactly as the script issued them; commit replays the log.
-data Effect
-  = EWrite FilePath String
-  | ERemove FilePath
-  | EMkdir FilePath
-  | ERmdir FilePath
-  | EShell String
-  | EProcess ProcessSpec
-  | EGit GitRequest
-  | EArchive FilePath FilePath Integer Integer
-  deriving (Show, Read)
-
 data TxState = TxState
   { txReads :: M.Map FilePath (Maybe String), -- decoded snapshot for repeat reads
     txReadBytes :: M.Map FilePath (Maybe BS.ByteString), -- exact validation snapshot
@@ -105,26 +86,111 @@ data TxState = TxState
     txNextH :: !Int,
     txNonText :: S.Set FilePath, -- snapshotted paths that are NOT valid UTF-8
     txSealed :: !Bool, -- commit has read the effect log; later effects are lost
+    txIdentity :: Maybe Unique,
+    txNextStep :: !Int,
+    txTerminal :: !Bool,
+    txPathLogs :: [(FilePath,String)],
+    txSagaJournal :: Maybe FilePath,
+    txSaga :: Maybe GitUndo,
+    txPivot :: !Bool,
     txLogs :: [String] -- REVERSED `log` lines: emitted only after a clean commit
   }
 
 newTx :: IO (IORef TxState)
-newTx = newIORef emptyTx
+newTx = do
+  identity <- newUnique
+  newIORef emptyTx {txIdentity = Just identity}
 
 emptyTx :: TxState
-emptyTx = TxState M.empty M.empty M.empty [] M.empty M.empty IM.empty 1 S.empty False []
+emptyTx = TxState
+  { txReads=M.empty, txReadBytes=M.empty, txDirReads=M.empty
+  , txEffects=[], txView=M.empty, txDirView=M.empty
+  , txHandles=IM.empty, txNextH=1, txNonText=S.empty, txSealed=False
+  , txIdentity=Nothing, txNextStep=0, txTerminal=False, txPathLogs=[]
+  , txSagaJournal=Nothing, txSaga=Nothing, txPivot=False, txLogs=[]
+  }
 
 resetTx :: IORef TxState -> IO ()
-resetTx ref = writeIORef ref emptyTx
+resetTx ref = newTx >>= readIORef >>= writeIORef ref
 
 -- an effect issued after commit sealed the log (an actor thread that
 -- outlived program order) can only be lost — name it, loudly
 pushEffect :: IORef TxState -> Effect -> IO ()
-pushEffect ref e = do
-  sealed <- atomicModifyIORef' ref (\s -> (s {txEffects = e : txEffects s}, txSealed s))
-  when sealed $
-    hPutStrLn stderr ("[sol] effect AFTER COMMIT (lost): " ++ effectBrief e
-                        ++ " — join actors before the script ends")
+pushEffect ref rawEffect = do
+  e <- captureEffect rawEffect
+  result <- atomicModifyIORef' ref $ \s ->
+    if txSealed s || txTerminal s then (s, Left "effect after commit or terminal Git.push")
+    else (s {txEffects=e:txEffects s, txNextStep=txNextStep s+1, txTerminal=isPush e}, Right ())
+  either (ioError . userError) pure result
+
+txLater :: IORef TxState -> DeferredStep -> IO (Unique, DeferredRef)
+txLater ref rawStep = do
+  step <- captureStep rawStep
+  result <- atomicModifyIORef' ref $ \s ->
+    if txSealed s || txTerminal s then (s, Left "effect after commit or terminal Git.push")
+    else case txIdentity s of
+      Nothing -> (s, Left "missing transaction identity")
+      Just owner -> (s {txEffects=ELater step:txEffects s, txNextStep=txNextStep s+1,
+                        txTerminal=isPush (ELater step)}, Right (owner, DeferredRef (txNextStep s) []))
+  either (ioError . userError) pure result
+
+txLogTo :: IORef TxState -> FilePath -> String -> IO ()
+txLogTo ref rawPath line = do
+  path <- stableWorldPath rawPath
+  link <- (PF.isSymbolicLink <$> PF.getSymbolicLinkStatus path) `catch` \e ->
+    if isDoesNotExistError e then pure False else throwIO (e :: IOException)
+  when link $ ioError (userError ("logTo: refusing symbolic link: " ++ path))
+  ok <- atomicModifyIORef' ref $ \s -> if txSealed s then (s,False)
+    else (s {txPathLogs=(path,line):txPathLogs s},True)
+  unless ok $ ioError (userError "logTo after commit")
+
+txMarkPivot :: IORef TxState -> IO ()
+txMarkPivot ref = do
+  allowed <- atomicModifyIORef' ref $ \s ->
+    if txSaga s /= Nothing then (s,False) else (s {txPivot=True},True)
+  unless allowed $ ioError (userError "immediate pivot after compensable Git commit refused; queue it for commit instead")
+
+-- Capture interpretation context while the script runs. Recovery may be
+-- launched from another directory; argv text stays literal, while process
+-- cwd and file/Git paths in a new plan have stable absolute identities.
+-- Resolve parent aliases (including macOS /var versus /private/var), but
+-- keep the leaf itself: write/rm/archive must not follow a leaf symlink.
+-- A trailing separator retains its directory-only OS interpretation.
+stableWorldPath :: FilePath -> IO FilePath
+stableWorldPath path = do
+  absolute <- makeAbsolute path
+  if hasTrailingPathSeparator absolute then pure absolute else do
+    parent <- canonicalizePath (takeDirectory absolute)
+    pure (parent </> takeFileName absolute)
+
+captureProcessSpec :: ProcessSpec -> IO ProcessSpec
+captureProcessSpec spec = do
+  cwd <- maybe getCurrentDirectory makeAbsolute (psCwd spec)
+  pure spec {psCwd=Just cwd}
+
+captureGit :: GitRequest -> IO GitRequest
+captureGit (GitRequest path op arg name email paths limit) = do
+  absolute <- canonicalizePath path
+  pure (GitRequest absolute op arg name email paths limit)
+
+captureStep :: DeferredStep -> IO DeferredStep
+captureStep (PlannedProcess args spec) = PlannedProcess args <$> captureProcessSpec spec
+captureStep (PlannedGit request) = PlannedGit <$> captureGit request
+captureStep (PlannedTag path name ref limit) = do
+  absolute <- canonicalizePath path
+  pure (PlannedTag absolute name ref limit)
+
+captureEffect :: Effect -> IO Effect
+captureEffect (EWrite path value) = (\p -> EWrite p value) <$> stableWorldPath path
+captureEffect (ERemove path) = ERemove <$> stableWorldPath path
+captureEffect (EMkdir path) = EMkdir <$> stableWorldPath path
+captureEffect (ERmdir path) = ERmdir <$> stableWorldPath path
+captureEffect (EShell cmd) = (\cwd -> EShellAt cwd cmd) <$> getCurrentDirectory
+captureEffect (EProcess spec) = EProcess <$> captureProcessSpec spec
+captureEffect (EGit request) = EGit <$> captureGit request
+captureEffect archive@EArchive{} = pure archive -- archive member names retain their existing path spelling
+captureEffect (ELater step) = ELater <$> captureStep step
+captureEffect other = pure other
 
 -- `log`: a transactional line. `print` is a direct effect (it happens
 -- when called, repeats on retry, survives an abort); a log line records
@@ -148,9 +214,18 @@ effectBrief (EWrite p _) = "write " ++ p
 effectBrief (ERemove p) = "rm " ++ p
 effectBrief (EMkdir p) = "mkdirp " ++ p
 effectBrief (ERmdir p) = "rmdir " ++ p
+effectBrief (EShellAt _ c) = "shq " ++ c
 effectBrief (EShell c) = "shq " ++ c
 effectBrief (EProcess spec) = "Proc.afterCommit " ++ displayProcess spec
 effectBrief (EGit (GitRequest path op _ _ _ _ _)) = "native Git " ++ show op ++ " in " ++ path
+effectBrief (ELater (PlannedProcess args _)) = "Proc.later " ++ case args of
+  LiteralArg exe:_ -> show exe
+  FromArg (DeferredRef i _):_ -> "<executable from step " ++ show i ++ ">"
+  [] -> "<empty argv>"
+effectBrief (ELater (PlannedGit (GitRequest path op _ _ _ _ _))) =
+  (case op of 14 -> "Git.headLater"; 15 -> "Git.push"; _ -> "native Git") ++ " in " ++ path
+effectBrief (ELater (PlannedTag path name _ _)) = "Git.tagAt " ++ name ++ " in " ++ path
+effectBrief (ELogWrite p _) = "transactional log " ++ p
 effectBrief (EArchive source target _ _) = "native archive " ++ source ++ " -> " ++ target
 
 -- The effects this transaction has queued but NOT yet applied, in
@@ -734,6 +809,112 @@ writeAtomic p v = do
     renamePath tmp p
     fsyncPath (parentOf p)) `onException` clean
 
+-- One compensable Git commit per attempt. The immutable commit object is
+-- prepared first; the old/new reference token is durable before its CAS.
+-- No relative reset or worktree/index rewrite is used for compensation.
+txSetSagaJournal :: IORef TxState -> FilePath -> IO ()
+txSetSagaJournal ref path = do
+  absolute <- makeAbsolute path
+  atomicModifyIORef' ref (\s -> (s {txSagaJournal=Just absolute},()))
+
+undoPath :: FilePath -> FilePath
+undoPath j = j ++ ".undo"
+
+txGitCommitNow :: IORef TxState -> Integer -> FilePath -> String -> String -> String -> IO (Either String String)
+txGitCommitNow ref limit path name email message = do
+  state <- readIORef ref
+  if limit < 256 || txSealed state || not (null (txEffects state)) || txPivot state || txSaga state /= Nothing
+    then pure (Left "Git.commitNow requires no pending effects/pivot and permits one compensable commit per attempt")
+    else case txSagaJournal state of
+      Nothing -> pure (Left "Git.commitNow has no transaction journal context")
+      Just j -> do
+        absolute <- canonicalizePath path
+        withLocks (acquire (undoPath j)) [absolute] $ mask_ $ do
+          prepared <- nativeGit (GitRequest absolute 17 message name email [] limit)
+          case prepared of
+            Left why -> pure (Left why)
+            Right text -> case lines text of
+              [branch,old,new] -> do
+                let token=GitUndo absolute branch old new limit
+                writeAtomic (undoPath j) (encodeUndo (UndoRecord j False token))
+                atomicModifyIORef' ref (\s -> (s {txSaga=Just token},()))
+                sagaCrash "prepared"
+                published <- nativeGit (GitRequest absolute 18 branch "" "" [new,old] limit)
+                sagaCrash "published"
+                case published of
+                  Right _ -> pure (Right new)
+                  Left why -> do
+                    undone <- nativeGit (GitRequest absolute 19 branch "" "" [old,new] limit)
+                    either (ioError . userError . ("failed commit could not be compensated: " ++)) (const (pure ())) undone
+                    removeFile (undoPath j)
+                    fsyncPath (parentOf j)
+                    atomicModifyIORef' ref (\s -> (s {txSaga=Nothing},()))
+                    pure (Left why)
+              _ -> pure (Left "invalid native commit preparation result")
+
+sagaCrash :: String -> IO ()
+sagaCrash phase = do
+  enabled <- lookupEnv "SOL_SAGA_CRASH_AT"
+  when (enabled == Just phase) (hFlush stderr >> c_hardExit 137)
+
+-- A redo journal is the commit point. The undo marker must become committed
+-- before that redo journal is cleared, so a later recovery cannot undo a
+-- transaction that already finished. An existing redo bridges a crash in
+-- between the two durable writes.
+commitSaga :: IORef TxState -> FilePath -> IO ()
+commitSaga ref j = do
+  state <- readIORef ref
+  absolute <- makeAbsolute j
+  forM_ (txSaga state) $ \token -> writeAtomic (undoPath absolute) (encodeUndo (UndoRecord absolute True token))
+
+rollbackSaga :: IORef TxState -> IO ()
+rollbackSaga ref = do
+  state <- readIORef ref
+  forM_ (txSagaJournal state) $ \j -> do
+    anchored <- doesFileExist j
+    -- A commit failure leaves live-owner file locks fenced. Do not try to
+    -- reacquire them here: startup/dead-owner recovery will finish the redo.
+    unless anchored (recoverUndo True (undoPath j))
+
+recoverUndo :: Bool -> FilePath -> IO ()
+recoverUndo takeLocks path = do
+  exists <- doesFileExist path
+  when exists $ do
+    initial <- readRecord
+    let UndoRecord _ _ (GitUndo repo _ _ _ _) = initial
+        decide = do
+          still <- doesFileExist path
+          if not still then pure Nothing else do
+            UndoRecord j committed token@(GitUndo root branch old new limit) <- readRecord
+            redo <- doesFileExist j
+            if committed || redo then do
+              when redo $ do
+                txt <- readFile' j
+                unless (maybe False (const True) (parseJournal txt)) $
+                  ioError (userError "undo journal has a corrupt redo anchor")
+              unless committed (writeAtomic path (encodeUndo (UndoRecord j True token)))
+              pure (Just j)
+            else do
+              result <- nativeGit (GitRequest root 19 branch "" "" [old,new] limit)
+              either (ioError . userError . ("Git compensation refused (reference moved; undo journal retained): " ++)) (const (pure ())) result
+              diagnostic "[sol] compensated Git commit by reference compare-and-swap"
+              removeUndo
+              pure Nothing
+    redo <- if takeLocks then do
+      hold <- newIORef True
+      withLocksHold hold (acquireGo False path) [repo] decide
+      else decide
+    -- The committed marker is durable and the repo lock is released before
+    -- redo acquires its own complete path set. Never recursively lock repo.
+    forM_ redo $ \j -> recoverJournal True j >> removeUndo
+  where
+    readRecord = do
+      text <- readFile' path
+      maybe (ioError (userError "corrupt Sol undo journal")) pure (decodeUndo text)
+    removeUndo = do
+      removeFile path `catch` \e -> if isDoesNotExistError e then pure () else throwIO (e :: IOException)
+      fsyncPath (parentOf path)
+
 -- ---- locks ----------------------------------------------------------------
 
 lockPath :: FilePath -> FilePath
@@ -819,7 +1000,11 @@ withLocks takeLock paths action = do
 -- the redo and all-new after it.
 withLocksHold :: IORef Bool -> (FilePath -> IO ()) -> [FilePath] -> IO a -> IO a
 withLocksHold hold takeLock paths action = mask $ \restore -> do
-  acquired <- acquireAll paths
+  -- Deduplicate the actual lock names, not the caller's path spellings.
+  -- A read through "file" and a write through its absolute name must not
+  -- acquire the same mkdir lock twice and wait on this process itself.
+  keyed <- mapM (\p -> do key <- canonicalizePath (lockPath p); pure (key,p)) paths
+  acquired <- acquireAll (M.elems (M.fromList keyed))
   r <- try (restore action)
   case r of
     Right a -> forM_ (reverse acquired) release >> pure a
@@ -849,28 +1034,21 @@ donePath j = j ++ ".done"
 -- complete-or-absent by construction: writeAtomic, plus a trailing COMMIT
 -- line so a torn pre-rename tmp can never be mistaken for a journal
 writeJournal :: FilePath -> [Effect] -> IO ()
-writeJournal j effs = writeAtomic j (unlines ["SOLJ1", show effs, "COMMIT"])
+writeJournal j effs = writeAtomic j (encodeJournal effs)
 
 parseJournal :: String -> Maybe [Effect]
-parseJournal txt = case lines txt of
-  ("SOLJ1" : effsL : "COMMIT" : _) -> case reads effsL of
-    [(es, rest)] | all (`elem` " \t") rest -> Just es
-    _ -> Nothing
-  _ -> Nothing
+parseJournal = decodeJournal
 
-readDone :: FilePath -> IO [Int]
+readDone :: FilePath -> IO Done
 readDone j = do
   r <- try (readFile' (donePath j)) :: IO (Either IOException String)
   case r of
-    Left e
-      | isDoesNotExistError e -> pure []
-      | otherwise -> throwIO e
-    Right txt -> pure (mapMaybe readMaybe (lines txt))
+    Left e | isDoesNotExistError e -> pure IM.empty
+           | otherwise -> throwIO e
+    Right txt -> either (ioError . userError) pure (decodeDone txt)
 
-markDone :: FilePath -> Int -> IO ()
-markDone j i = do
-  appendFile (donePath j) (show i ++ "\n")
-  fsyncPath (donePath j)
+markDone :: FilePath -> Done -> IO ()
+markDone j = writeAtomic (donePath j) . encodeDone
 
 clearJournal :: FilePath -> IO ()
 clearJournal j = do
@@ -887,7 +1065,11 @@ recoverJournal takeLocks j = do
   ex <- doesFileExist j
   when ex $ do
     txt <- readFile' j
-    case parseJournal txt of
+    if ".undo" `isSuffixOf` j || "SOLUNDO1" `isPrefixOf` txt
+      then recoverUndo takeLocks j
+      else recoverRedo txt
+  where
+    recoverRedo txt = case parseJournal txt of
       Nothing -> do
         hPutStrLn stderr ("[sol] discarding incomplete journal " ++ j ++ " (crash before the commit point; the transaction never took effect)")
         clearJournal j
@@ -897,7 +1079,7 @@ recoverJournal takeLocks j = do
               stillThere <- doesFileExist j -- a concurrent reclaimer may have finished it
               when stillThere $ do
                 done <- readDone j
-                hPutStrLn stderr ("[sol] recovering interrupted commit from " ++ j ++ " (" ++ show (length effs) ++ " effect(s), " ++ show (length done) ++ " shell(s) already done)")
+                hPutStrLn stderr ("[sol] recovering interrupted commit from " ++ j ++ " (" ++ show (length effs) ++ " effect(s), " ++ show (IM.size done) ++ " shell(s) already done)")
                 _ <- replayEffs j True done Nothing (zip [0 ..] effs)
                 clearJournal j -- file effects all applied even past a failed shell
         hold <- newIORef True
@@ -924,7 +1106,7 @@ runJournalPath base = do
   me <- c_getpid
   t <- getPOSIXTime
   let nonce = floor (t * 1000000000) :: Integer
-  pure (journalPrefix base ++ show (fromIntegral me :: Int) ++ "." ++ show nonce)
+  makeAbsolute (journalPrefix base ++ show (fromIntegral me :: Int) ++ "." ++ show nonce)
 
 -- heal at startup: redo every journal of this script whose owner is dead
 -- (a live owner is mid-commit and holds its locks; leave it alone), plus
@@ -936,7 +1118,7 @@ recoverScriptJournals base = do
       stem = drop (length dir) (journalPrefix base)
   r <- try (listDirectory dir) :: IO (Either IOException [String])
   me <- c_getpid
-  forM_ (either (const []) sort r) $ \n ->
+  forM_ (reverse (either (const []) sort r)) $ \n ->
     case stripPrefixL stem n of
       Just rest
         | not (".done" `isSuffixOf` n),
@@ -964,9 +1146,14 @@ effectPath (ERemove p) = Just p
 effectPath (EMkdir p) = Just p
 effectPath (ERmdir p) = Just p
 effectPath (EShell _) = Nothing
+effectPath (EShellAt _ _) = Nothing
 effectPath (EProcess _) = Nothing
 effectPath (EGit (GitRequest path _ _ _ _ _ _)) = Just path
 effectPath (EArchive _ target _ _) = Just target
+effectPath (ELogWrite p _) = Just p
+effectPath (ELater (PlannedGit (GitRequest p _ _ _ _ _ _))) = Just p
+effectPath (ELater (PlannedTag p _ _ _)) = Just p
+effectPath (ELater _) = Nothing
 
 -- lock (sorted) -> validate reads AND dir listings -> journal the effect
 -- log (fsynced; the commit point) -> replay it in order -> clear the
@@ -985,7 +1172,8 @@ commit ref jpath = do
           ( M.unions
               [ M.map (const ()) (txReads s),
                 M.map (const ()) (txDirReads s),
-                M.fromList [(p, ()) | e <- effs, Just p <- [effectPath e]]
+                M.fromList [(p, ()) | e <- effs, Just p <- [effectPath e]],
+                M.fromList [(p,()) | (p,_) <- txPathLogs s]
               ]
           )
   hold <- newIORef False
@@ -1023,10 +1211,16 @@ commit ref jpath = do
     let stale = staleC ++ staleD
     if null stale
       then do
+        effs <- materializeLogs effs (reverse (txPathLogs s))
+        either (ioError . userError) pure (validatePlan effs)
         crashAt <- (>>= readMaybe) <$> lookupEnv "SOL_CRASH_AT"
-        when (not (null effs)) (writeJournal jpath effs >> writeIORef hold True)
-        (n, sfail, efail) <- replayEffs jpath False [] crashAt (zip [0 ..] effs)
+        when (not (null effs) || txSaga s /= Nothing) (writeJournal jpath effs >> writeIORef hold True)
+        when (txSaga s /= Nothing) (sagaCrash "anchored")
+        commitSaga ref jpath
+        (n, sfail, efail) <- replayEffs jpath False IM.empty crashAt (zip [0 ..] effs)
         clearJournal jpath
+        when (txSaga s /= Nothing) (sagaCrash "completed")
+        forM_ (txSaga s) $ \_ -> removeFile (undoPath jpath) >> fsyncPath (parentOf jpath)
         writeIORef hold False
         -- a `run` PARENT set SOL_REPORT_COMMIT so it can learn which
         -- paths this child transaction committed (Mod.runModule reads
@@ -1041,6 +1235,7 @@ commit ref jpath = do
 
 -- Native effects have lockable paths as well as deferred-operation receipts.
 deferredEffect :: Effect -> Bool
+deferredEffect (ELater _) = True
 deferredEffect (EGit _) = True
 deferredEffect (EArchive _ _ _ _) = True
 deferredEffect e = case effectPath e of Nothing -> True; Just _ -> False
@@ -1059,34 +1254,32 @@ childCommitMarker = "[sol-child] committed-paths: "
 txChildOverlap :: IORef TxState -> [FilePath] -> IO [FilePath]
 txChildOverlap ref ps = do
   s <- readIORef ref
-  let dirOf p = case dropWhileEnd (/= '/') p of
-        "" -> "."
-        "/" -> "/"
-        d -> init d -- drop the trailing '/': ls keys are written bare
-      hit p =
-        M.member p (txReads s)
-          || M.member p (txView s)
-          || M.member (dirOf p) (txDirReads s)
-  pure (filter hit ps)
+  files <- S.fromList <$> mapM canonicalizePath (M.keys (txReads s) ++ M.keys (txView s))
+  dirs <- S.fromList <$> mapM canonicalizePath (M.keys (txDirReads s))
+  paths <- mapM canonicalizePath ps
+  pure [p | p <- paths, S.member p files || S.member (takeDirectory p) dirs]
 
 -- names in a listing that exist only because this commit's lock protocol
 -- created them: proper ancestors of a touched path, containing nothing
 -- but lock artifacts (recursively). A foreign txn that put real content
 -- there is still a conflict.
 filterOutProtocolDirs :: FilePath -> [FilePath] -> [String] -> IO [String]
-filterOutProtocolDirs dir touched = go
+filterOutProtocolDirs dir touched names = do
+  absolute <- mapM canonicalizePath touched
+  go absolute names
   where
-    go [] = pure []
-    go (n : rest) = do
+    go _ [] = pure []
+    go touchedAbs (n : rest) = do
       let full = dir ++ "/" ++ n
-          ancestor = any (\t -> (full ++ "/") `isPrefixOf` t) touched
+      absoluteFull <- canonicalizePath full
+      let ancestor = any (\t -> (absoluteFull ++ "/") `isPrefixOf` t) touchedAbs
       drop' <-
         if ancestor
           then do
             isD <- doesDirectoryExist full
             if isD then protocolOnly full else pure False
           else pure False
-      rest' <- go rest
+      rest' <- go touchedAbs rest
       pure (if drop' then rest' else n : rest')
     protocolOnly d = do
       r <- try (listDirectory d) :: IO (Either IOException [String])
@@ -1133,100 +1326,108 @@ lockArtifact n =
 -- treated the same way: later commands are skipped, and the run fails.
 -- What comes back is (file effects applied, a deferred command failed,
 -- a file effect failed); either failure makes the run exit non-zero.
-replayEffs :: FilePath -> Bool -> [Int] -> Maybe Int -> [(Int, Effect)] -> IO (Int, Bool, Bool)
-replayEffs j0 recovery0 done0 crashAt0 effs0 = do
+replayEffs :: FilePath -> Bool -> Done -> Maybe Int -> [(Int, Effect)] -> IO (Int, Bool, Bool)
+replayEffs j recovery done crashAt effs = do
+  either (ioError . userError) pure (validatePlan (map snd effs))
+  results <- newIORef done
   bad <- newIORef False
-  (n, sf) <- replayGo bad j0 recovery0 done0 crashAt0 effs0
-  effFailed <- readIORef bad
-  pure (n, sf, effFailed)
-
-replayGo :: IORef Bool -> FilePath -> Bool -> [Int] -> Maybe Int -> [(Int, Effect)] -> IO (Int, Bool)
-replayGo bad j0 recovery0 done0 crashAt0 effs0 = go False effs0
+  (n,sf) <- go results bad False effs
+  ef <- readIORef bad
+  pure (n,sf,ef)
   where
-    go shellFailed [] = pure (0, shellFailed)
-    go shellFailed ((i, e) : rest) = do
-      case crashAt0 of
-        Just k | k == i -> do
-          hPutStrLn stderr ("[sol] SOL_CRASH_AT=" ++ show k ++ ": hard exit before effect " ++ show k)
-          hFlush stderr
-          c_hardExit 137
-        _ -> pure ()
+    go _ _ sf [] = pure (0,sf)
+    go results bad sf ((i,e):rest) = do
+      when (crashAt == Just i) $ do
+        diagnostic ("[sol] SOL_CRASH_AT=" ++ show i ++ ": hard exit before effect " ++ show i)
+        hFlush stderr
+        c_hardExit 137
+      let next failure count = do
+            (n,f) <- go results bad failure rest
+            pure (n+count,f)
+          failed what = writeIORef bad True >> diagnostic ("[sol] effect FAILED (not counted): " ++ what) >> next True 0
+          external label forward action = do
+            saved <- IM.lookup i <$> readIORef results
+            if sf then do
+              let name = case e of EShell _ -> "command"; EShellAt {} -> "command"; EProcess _ -> "process"; _ -> "native effect"
+              diagnostic ("[sol] skipping queued " ++ name ++ " (an earlier one failed): " ++ label)
+              next sf 0
+            else case saved of
+              Just r -> do
+                when recovery (diagnostic ("[sol] redo: skipping already-run " ++ label))
+                when (completionFailed r) (diagnostic ("[sol] redo: recorded failure retained: " ++ label))
+                next (completionFailed r) 0
+              Nothing -> do
+                when recovery (diagnostic ("[sol] redo: re-running " ++ label ++ " (at-least-once)"))
+                r <- action
+                rs <- atomicModifyIORef' results (\m -> let m'=IM.insert i r m in (m',m'))
+                markDone j rs
+                case r of
+                  Right (ProcessCapture _ out err) | forward || completionFailed r -> do
+                    unless (null out) (putStr out)
+                    unless (null err) (hPutStr stderr err)
+                  _ -> pure ()
+                when (completionFailed r) $ do
+                  let why = case r of Left x -> x; Right (ProcessCapture c _ _) -> "exit " ++ show c; _ -> "failed"
+                  let name = case e of EShell _ -> "deferred command"; EShellAt {} -> "deferred command"; EProcess _ -> "deferred process"; EGit _ -> "native effect"; EArchive {} -> "native effect"; _ -> label
+                  diagnostic ("[sol] " ++ name ++ " FAILED (" ++ why ++ "): " ++ label)
+                  diagnostic "[sol] later queued commands will be skipped; file effects still apply"
+                next (completionFailed r) 0
       case e of
-        EWrite p v -> writeAtomic p v >> rec' shellFailed 1 rest
+        EWrite p v -> writeAtomic p v >> next sf 1
+        ELogWrite p v -> do
+          ef <- readIORef bad
+          if sf || ef then diagnostic ("[sol] transactional log withheld: " ++ p) >> next sf 0
+            else writeAtomic p v >> next sf 1
         ERemove p -> do
           _ <- try (removeFile p) :: IO (Either IOException ())
-          still <- doesFileExist p
-          if still
-            then failedEff ("rm " ++ p ++ " (still exists)") >> rec' True 0 rest
-            else rec' shellFailed 1 rest
-        EMkdir p -> createDirectoryIfMissing True p >> rec' shellFailed 1 rest
+          file <- doesFileExist p; dir <- doesDirectoryExist p
+          if file || dir then failed ("rm " ++ p ++ " (still exists)") else next sf 1
+        EMkdir p -> createDirectoryIfMissing True p >> next sf 1
         ERmdir p -> do
           _ <- try (removeDirectory p) :: IO (Either IOException ())
           still <- doesDirectoryExist p
-          if still
-            then failedEff ("rmdir " ++ p ++ " (still exists — not empty?)") >> rec' True 0 rest
-            else rec' shellFailed 1 rest
-        EShell cmd
-          | shellFailed -> do
-              diagnostic ("[sol] skipping queued command (an earlier one failed): " ++ cmd)
-              rec' shellFailed 0 rest
-          | recovery0 && i `elem` done0 -> do
-              hPutStrLn stderr ("[sol] redo: skipping already-run command: " ++ cmd)
-              rec' shellFailed 0 rest
-          | otherwise -> do
-              when recovery0 $ hPutStrLn stderr ("[sol] redo: re-running deferred command (at-least-once): " ++ cmd)
-              (status, out, err) <- readCreateProcessWithExitCode (shell cmd) ""
-              let code = case status of ExitSuccess -> 0; ExitFailure n -> n
-              markDone j0 i
-              unless (null out) (putStr out)
-              unless (null err) (hPutStr stderr err)
-              if code == 0
-                then rec' shellFailed 0 rest
-                else do
-                  diagnostic ("[sol] deferred command FAILED (exit " ++ show code ++ "): " ++ cmd)
-                  diagnostic ("[sol] later queued commands will be skipped; file effects still apply")
-                  rec' True 0 rest
-        EGit request -> nativeEffect i e shellFailed (nativeGit request) rest
-        EArchive source target entries bytes -> nativeEffect i e shellFailed (nativeArchive source target entries bytes) rest
-        EProcess spec
-          | shellFailed -> do
-              diagnostic ("[sol] skipping queued process (an earlier one failed): " ++ displayProcess spec)
-              rec' shellFailed 0 rest
-          | recovery0 && i `elem` done0 -> do
-              hPutStrLn stderr ("[sol] redo: skipping already-run process: " ++ displayProcess spec)
-              rec' shellFailed 0 rest
-          | otherwise -> do
-              when recovery0 $ hPutStrLn stderr ("[sol] redo: re-running deferred process (at-least-once): " ++ displayProcess spec)
-              result <- runProcessSpec spec
-              markDone j0 i
-              case result of
-                Left err -> do
-                  diagnostic ("[sol] deferred process FAILED: " ++ displayProcess spec ++ ": " ++ err)
-                  diagnostic "[sol] later queued commands will be skipped; file effects still apply"
-                  rec' True 0 rest
-                Right (code, out, err) -> do
-                  unless (null out) (putStr out)
-                  unless (null err) (hPutStr stderr err)
-                  if code == 0
-                    then rec' shellFailed 0 rest
-                    else do
-                      diagnostic ("[sol] deferred process FAILED (exit " ++ show code ++ "): " ++ displayProcess spec)
-                      diagnostic "[sol] later queued commands will be skipped; file effects still apply"
-                      rec' True 0 rest
-    -- Native operations use the same durable completion and failure fence as
-    -- deferred processes. Recovery can repeat an unmarked operation; this is
-    -- explicitly at-least-once, not an atomic multi-operation Git transaction.
-    nativeEffect i e sf action rest
-      | sf = diagnostic ("[sol] skipping queued native effect: " ++ effectBrief e) >> rec' sf 0 rest
-      | recovery0 && i `elem` done0 = rec' sf 0 rest
-      | otherwise = do
-          when recovery0 $ diagnostic ("[sol] redo: native effect may repeat (at-least-once): " ++ effectBrief e)
-          result <- action
-          markDone j0 i
-          case result of
-            Left why -> diagnostic ("[sol] native effect FAILED: " ++ effectBrief e ++ ": " ++ why) >> rec' True 0 rest
-            Right _ -> rec' sf 0 rest
-    failedEff what = writeIORef bad True >> diagnostic ("[sol] effect FAILED (not counted): " ++ what)
-    rec' sf k rest = do
-      (n, sf') <- go sf rest
-      pure (k + n, sf')
+          if still then failed ("rmdir " ++ p ++ " (still exists — not empty?)") else next sf 1
+        EShell cmd -> external ("deferred command " ++ cmd) True $ do
+          (status,out,err) <- readCreateProcessWithExitCode (shell cmd) ""
+          pure (Right (ProcessCapture (case status of ExitSuccess -> 0; ExitFailure n -> n) out err))
+        EShellAt cwd cmd -> external ("deferred command " ++ cmd) True $ do
+          (status,out,err) <- readCreateProcessWithExitCode (shell cmd) {cwd=Just cwd} ""
+          pure (Right (ProcessCapture (case status of ExitSuccess -> 0; ExitFailure n -> n) out err))
+        EProcess spec -> external ("deferred process " ++ displayProcess spec) True (captureProcess spec)
+        EGit request -> external ("native effect " ++ effectBrief e) False (fmap TextCapture <$> nativeGit request)
+        EArchive source target entries bytes -> external ("native archive " ++ target) False (fmap TextCapture <$> nativeArchive source target entries bytes)
+        ELater step -> external ("deferred step " ++ show i ++ ": " ++ effectBrief e) True $ do
+          rs <- readIORef results
+          case step of
+            PlannedProcess args spec -> case traverse (resolveArg rs) args of
+              Left why -> pure (Left why)
+              Right argv -> captureProcess spec {psArgv=argv}
+            PlannedGit request -> fmap TextCapture <$> nativeGit request
+            PlannedTag path name ref limit -> case resolveDeferred rs ref of
+              Left why -> pure (Left why)
+              Right sha -> fmap TextCapture <$> nativeGit (GitRequest path 16 name "" "" [sha] limit)
+    captureProcess spec = fmap (\(c,o,e) -> ProcessCapture c o e) <$> runProcessSpec spec
+    resolveArg _ (LiteralArg s) = Right s
+    resolveArg done (FromArg ref) = resolveDeferred done ref
+
+-- Append logs become complete post-images under their path locks. Redo can
+-- write these repeatedly without duplicating lines. They run only after all
+-- ordinary effects succeed, including any terminal publication.
+materializeLogs :: [Effect] -> [(FilePath,String)] -> IO [Effect]
+materializeLogs effects logs = do
+  let paths = nub (map fst logs)
+      final p = foldl (\v e -> case e of
+        EWrite q text | p==q -> Just (Just text)
+        ERemove q | p==q -> Just Nothing
+        _ -> v) Nothing effects
+  appended <- mapM (\p -> do
+    old <- case final p of
+      Just v -> pure (maybe "" id v)
+      Nothing -> do
+        bytes <- diskReadBytes p
+        case fmap decodeSnapshot bytes of
+          Nothing -> pure ""
+          Just (text,True) -> pure text
+          _ -> ioError (userError ("logTo: not UTF-8: " ++ p))
+    pure (ELogWrite p (old ++ concat [line ++ "\n" | (q,line) <- logs, q==p]))) paths
+  pure (effects ++ appended)

@@ -1058,6 +1058,16 @@ mkHal cons scriptArgs tx preempts rt =
       ("NativeGit.push", (4, gitPushH)),
       ("NativeArchive.afterCommit", (4, archiveAfterCommitH)),
       ("Host.snapshot", (1, hostSnapshotH)),
+      ("Proc.later", (1, procLaterH)),
+      ("Deferred.out", (1, projectH Out)),
+      ("Deferred.trim", (1, projectH Trim)),
+      ("Deferred.line", (2, deferredLineH)),
+      ("Deferred.field", (3, deferredFieldH)),
+      ("logTo", (2, logToH)),
+      ("NativeGit.headLater", (2, gitHeadLaterH)),
+      ("NativeGit.tagAt", (4, gitTagAtH)),
+      ("NativeGit.pushLater", (4, gitPushLaterH)),
+      ("NativeGit.commitNow", (5, gitCommitNowH)),
       ("Proc.query", (1, procQueryH)),
       ("Proc.afterCommit", (1, procAfterCommitH)),
       ("Proc.runNow", (1, procRunNowH)),
@@ -1098,6 +1108,7 @@ mkHal cons scriptArgs tx preempts rt =
       ("write", (2, \[pv, v] -> writeIoH pv v))
     ]
   where
+    markEscape name why = txMarkPivot tx >> noteEscape rt name why
     bst = globalBst
     (pathT, handleT) = (tidOf "Path", tidOf "Handle")
     bstrT = tidOf "BStr"
@@ -1131,12 +1142,12 @@ mkHal cons scriptArgs tx preempts rt =
           pure (VData 4 0 [VInt (fromIntegral code), VStr out]))
       -- ---- realtime reads: outside the transaction ----
       | isCon "Now" t g = withP q (\p -> do
-          noteEscape rt "readNow"
+          markEscape "readNow"
             ("re-reads " ++ p ++ " from disk; not snapshotted, so this value "
               ++ "is not validated at commit (transactional: readPath)")
           VStr . maybe "" id <$> rtRead p)
       | isCon "NowSh" t g = withS q (\c -> do
-          noteEscape rt "shNow"
+          markEscape "shNow"
             ("streams `" ++ c ++ "` live and re-runs on every retry "
               ++ "(transactional: shq, which runs once inside the commit)")
           -- shNow answers an exit code, so it cannot refuse the way
@@ -1150,7 +1161,7 @@ mkHal cons scriptArgs tx preempts rt =
     readIoH (VData t 0 []) | t == mtimeT = VInt . round . (* 1e7) <$> getMonotonicTime
     readIoH (VData t g [])
       | isCon "NowLine" t g = do
-          noteEscape rt "readLineNow"
+          markEscape "readLineNow"
             "reads one line of stdin now; re-reads on retry (transactional: input)"
           VStr <$> rtLine
     readIoH v = vmPanic ("read: cannot decode " ++ render v)
@@ -1188,7 +1199,7 @@ mkHal cons scriptArgs tx preempts rt =
     -- until it gives up)
     rtOut p sv kind op = do
       let s = case sv of VStr x -> x; other -> render other
-      noteEscape rt kind
+      markEscape kind
         ("writes " ++ p ++ " immediately; it is on disk before commit and "
           ++ "stays there if the transaction rolls back (transactional: writePath)")
       dropped <- op tx p s
@@ -1334,7 +1345,7 @@ mkHal cons scriptArgs tx preempts rt =
     gitPushH [VInt limit,VStr path,VStr remote,VStr branch] = do
       pending <- txPendingBrief tx
       if not (null pending) then pure (vErr (pendingOrderMsg "Git.push" "Git.commit in a separate run" pending)) else do
-        noteEscape rt "Git.push" "publishes immediately through libgit2; survives rollback and repeats on retry"
+        markEscape "Git.push" "publishes immediately through libgit2; survives rollback and repeats on retry"
         nativeGit (GitRequest path 15 remote "" "" [branch] limit) >>= pure . either vErr (vOk . VStr)
     gitPushH _ = vmPanic "NativeGit.push: arguments"
     archiveAfterCommitH [VStr source,VStr target,VInt entries,VInt bytes]
@@ -1342,6 +1353,60 @@ mkHal cons scriptArgs tx preempts rt =
       , bytes > 0 && bytes <= toInteger (maxBound :: Int64) =
           pushEffect tx (EArchive source target entries bytes) >> pure vUnit
     archiveAfterCommitH _ = vmPanic "archive limits must be positive signed 64-bit integers"
+
+    deferredValue step = do
+      (owner,ref) <- txLater tx step
+      pure (VDeferred owner ref)
+    deferredRef (VDeferred owner ref) = do
+      identity <- txIdentity <$> readIORef tx
+      if identity == Just owner then pure ref else vmPanic "Deferred belongs to another transaction attempt"
+    deferredRef _ = vmPanic "expected an opaque Deferred value"
+    projectH projection [v] = do
+      ref <- deferredRef v
+      case (v,ref) of
+        (VDeferred owner _,DeferredRef i ps) -> pure (VDeferred owner (DeferredRef i (ps ++ [projection])))
+        _ -> vmPanic "invalid Deferred projection"
+    projectH _ _ = vmPanic "Deferred projection arity"
+    deferredLineH [VInt n,v] | n > 0 && n <= toInteger (maxBound :: Int) = projectH (Line (fromInteger n)) [v]
+    deferredLineH _ = vmPanic "Deferred.line index must be a positive host-sized integer (one-based)"
+    deferredFieldH [VStr separator,VInt n,v]
+      | not (null separator), n > 0 && n <= toInteger (maxBound :: Int) = projectH (Field separator (fromInteger n)) [v]
+    deferredFieldH _ = vmPanic "Deferred.field needs a nonempty separator and positive one-based index"
+    logToH [VStr path,value] = txLogTo tx path (render value) >> pure vUnit
+    logToH _ = vmPanic "logTo: expected path and value"
+    procLaterH [VData t 0 [argvV,VStr cwdV,envV,VStr stdinV,VInt timeoutV]] | t == processSpecT = do
+      argv <- argumentValues argvV
+      envPairs <- envValues envV
+      deferredValue (PlannedProcess argv (ProcessSpec [] (if null cwdV then Nothing else Just cwdV) envPairs stdinV
+        (if timeoutV <= 0 then Nothing else Just (fromInteger (min timeoutV (toInteger (maxBound :: Int)))))))
+    procLaterH _ = vmPanic "Proc.later: expected ProcessSpec Arg"
+    argumentValues (VData t 0 []) | t == listT = pure []
+    argumentValues (VData t 1 [arg,rest]) | t == listT = do
+      decoded <- case arg of
+        VData a variant [VStr text] | isCon "Lit" a variant -> pure (LiteralArg text)
+        VData a variant [value] | isCon "From" a variant -> FromArg <$> deferredRef value
+        _ -> vmPanic "Proc.later argv needs Lit String or From (Deferred String)"
+      (decoded:) <$> argumentValues rest
+    argumentValues _ = vmPanic "Proc.later: expected List Arg"
+    gitHeadLaterH [VInt limit,VStr path] = deferredValue (PlannedGit (GitRequest path 14 "" "" "" [] limit))
+    gitHeadLaterH _ = vmPanic "NativeGit.headLater: arguments"
+    gitTagAtH [VInt limit,VStr path,VStr name,value] = do
+      ref <- deferredRef value
+      _ <- txLater tx (PlannedTag path name ref limit)
+      pure vUnit
+    gitTagAtH _ = vmPanic "NativeGit.tagAt: arguments"
+    gitPushLaterH [VInt limit,VStr path,VStr remote,VStr branch] = do
+      _ <- txLater tx (PlannedGit (GitRequest path 15 remote "" "" [branch] limit))
+      pure vUnit
+    gitPushLaterH _ = vmPanic "NativeGit.pushLater: arguments"
+    gitCommitNowH [VInt limit,VStr path,VStr name,VStr email,VStr message] = do
+      result <- txGitCommitNow tx limit path name email message
+      case result of
+        Left why -> pure (vErr why)
+        Right sha -> do
+          noteEscape rt "Git.commitNow" "publishes a commit now; abort/retry uses a journaled reference CAS inverse (not isolation)"
+          pure (vOk (VStr sha))
+    gitCommitNowH _ = vmPanic "NativeGit.commitNow: arguments"
 
     procQueryH [v] = decodeProcessSpec v >>= runProcessH
     procQueryH _ = vmPanic "Proc.query: arity"
@@ -1364,7 +1429,7 @@ mkHal cons scriptArgs tx preempts rt =
       if not (null pending)
         then pure (vErr (pendingOrderMsg ("Proc.runNow " ++ displayProcess spec) "Proc.afterCommit" pending))
         else do
-          noteEscape rt "Proc.runNow"
+          markEscape "Proc.runNow"
             ("runs " ++ displayProcess spec ++ " immediately; it survives rollback "
               ++ "and runs again on every retry (deferred: Proc.afterCommit)")
           runProcessH spec
@@ -1381,7 +1446,7 @@ mkHal cons scriptArgs tx preempts rt =
           -- Flush buffered parent output before handing descriptors to a child.
           hFlush stdout
           hFlush stderr
-          noteEscape rt name ("runs " ++ displayProcess spec ++ " with live I/O; survives rollback and repeats on retry")
+          markEscape name ("runs " ++ displayProcess spec ++ " with live I/O; survives rollback and repeats on retry")
           result <- runProcessMode mode spec
           pure $ case result of
             Left err -> vErr ("process " ++ displayProcess spec ++ ": " ++ err)

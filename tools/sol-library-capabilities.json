@@ -31,7 +31,7 @@
       "module": "sol/lib/git.sol",
       "status": "hosted",
       "gate": "import-and-call",
-      "note": "Native libgit2 operations; deferred mutations, guarded immediate push, bounded responses, SSH agent with no external helpers."
+      "note": "Native libgit2 operations; deferred mutations/head/tag/push dataflow, guarded pushNow, and one journaled CAS-compensable commitNow per attempt. Bounded responses; no external helpers."
     },
     {
       "module": "sol/lib/json.sol",
