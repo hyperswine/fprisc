@@ -25,7 +25,7 @@ analysis: the QOS shell warm sample uses 15.3% less compiler CPU and 18.5%
 less allocation. Quiet-machine runtime measurements and the remaining
 allocation/register-allocation work below are still outstanding.
 
-## 6b. Inline allocation fast path (decided, not started)
+## 6b. Inline allocation fast path (decided, then deferred after measuring)
 
 `fpr_alloc` (`runtime/runtime.c`, `alloc_in`) is not a bump allocator with
 a slow path. In order it:
@@ -90,6 +90,10 @@ Design:
 
 First step: count allocations by pool kind (compiler region, actor pool,
 arena) in strbuild, nbody and helpers, to bound the win before building it.
+
+**Measured the same day ([allocation measurement](2026-10-27-ALLOCATION-MEASUREMENT.md)):
+deferred.** Two C changes to `fpr_alloc` take most of the win (sha 108 ->
+100 ms); inlining would add at most about 5% on sha.
 
 ## 7b. Splitting at loop boundaries (next)
 
