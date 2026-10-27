@@ -76,7 +76,7 @@ import Codegen.Target.A64.Forms (checkForms)
 import Codegen.Selected hiding (plain)
 import Codegen.Annotation (EntryPoint(..),entryLabel,checkSaveGroups)
 import Control.Monad (forM_, unless, when)
-import Control.Monad.State.Strict
+import Control.Monad.State.Strict hiding (fix)
 import Data.Bits (shiftR, (.&.))
 import Data.List (intercalate)
 import qualified Data.Map.Strict as M

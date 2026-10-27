@@ -33,7 +33,7 @@ import qualified Codegen.Opcode as O
 import Codegen.Target.X64.Forms (checkForms)
 import Codegen.Target.Common
 import Control.Monad (forM_, unless, when)
-import Control.Monad.State.Strict
+import Control.Monad.State.Strict hiding (fix)
 import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
