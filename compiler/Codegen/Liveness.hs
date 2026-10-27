@@ -31,11 +31,11 @@
 module Codegen.Liveness
   ( Pos, Interval (..), Liveness (..), SBlock (..),
     analyseLiveness, blocksOf, reservedAt, instrUses, instrDefs,
-    containsPos, crossesPos, instrLiveSets,
+    containsPos, crossesPos, instrLiveSets, loopDepths,
   ) where
 
 import Codegen.Selected
-import Data.List (foldl')
+import Data.List (foldl', sort)
 import qualified Data.IntMap.Strict as IM
 import qualified Data.IntSet as IS
 import qualified Data.Map.Strict as M
@@ -47,7 +47,8 @@ data Interval = Interval
   { ivStart :: Pos, -- even: defined there; odd: live into the block that follows
     ivEnd :: Pos, -- even: last used there; odd: live out of the block that precedes
     ivDefs :: [Pos], -- instruction positions that define the value
-    ivUses :: [Pos] -- instruction positions that use the value
+    ivUses :: [Pos], -- instruction positions that use the value
+    ivSegments :: [(Pos, Pos)] -- the interval with its holes at block granularity, sorted, disjoint, inside [ivStart, ivEnd]
   }
   deriving (Eq, Show)
 
@@ -146,12 +147,39 @@ analyseLiveness items = Liveness instrs blocks intervals live
     exits = M.fromListWith max (concatMap lastOf blocks)
     intervals =
       M.fromList
-        [ (v, Interval s e ds us)
+        [ (v, Interval (fst (head segs)) (snd (last segs)) ds us segs)
           | (v, us) <- M.toList usePositions,
             let ds = M.findWithDefault [] v defPositions
-                s = minimum (ds ++ maybe [] pure (M.lookup v entries) ++ us)
-                e = maximum (us ++ maybe [] pure (M.lookup v exits))
+                segs = merge (M.findWithDefault [] v pieces)
         ]
+    -- Segments: per block, a value occupies from its entry (live in) or its
+    -- first definition or use there, to its exit (live out) or its last
+    -- definition or use there.  A hole inside one block (a last use, then a
+    -- redefinition that is live out) is not split: conservative.  Pieces of
+    -- consecutive blocks meet at the odd position between them and merge.
+    byIdx = IM.fromList (zip [0 ..] [i | (_, i) <- instrs])
+    pieces =
+      M.fromListWith (++)
+        [ (VReg n, [(lo, hi)])
+          | b <- reverse blocks,
+            sbLast b >= sbFirst b,
+            let occ =
+                  IM.fromListWith (\(a1, b1) (a2, b2) -> (min a1 a2, max b1 b2))
+                    [ (n', (2 * k, 2 * k))
+                      | k <- [sbFirst b .. sbLast b],
+                        VReg n' <- let i = byIdx IM.! k in instrDefs i ++ instrUses i
+                    ]
+                ins = blockIn b
+                outs = blockOut b,
+            n <- IS.toList (IS.unions [ins, outs, IM.keysSet occ]),
+            let lo = if IS.member n ins then 2 * sbFirst b - 1 else fst (occ IM.! n)
+                hi = if IS.member n outs then 2 * sbLast b + 1 else snd (occ IM.! n)
+        ]
+    merge = go . sort
+      where
+        go ((a1, b1) : (a2, b2) : rest) | a2 <= b1 + 1 = go ((a1, max b1 b2) : rest)
+        go (x : rest) = x : go rest
+        go [] = []
 
 -- Per-instruction live-in and live-out sets over any integer-keyed
 -- register notion (virtual registers, or physical registers for the
@@ -191,3 +219,30 @@ instrLiveSets usesOf defsOf items = concat [walk k | k <- [0 .. nblocks - 1]]
             let inn = IS.union (IS.fromList (usesOf i)) (IS.difference out (IS.fromList (defsOf i)))
              in (i, inn, out) : go inn rest
        in reverse (go (liveOut IM.! k) (reverse ins))
+
+-- The loop depth of each block of a stream (block index -> depth): the
+-- natural loops of its back edges (an edge to a block on the depth-first
+-- stack), one per header, body = the blocks that reach a latch without
+-- passing the header.  Irreducible cycles still count the blocks a retreating
+-- edge reaches, which is what a spill weight needs.
+loopDepths :: [SBlock] -> IM.IntMap Int
+loopDepths blocks = IM.fromListWith (+) ([(k, 0) | k <- [0 .. n - 1]] ++ [(k, 1) | body <- bodies, k <- IS.toList body])
+  where
+    n = length blocks
+    succsOf = IM.fromList (zip [0 ..] (map sbSuccs blocks))
+    predsOf = IM.fromListWith (++) [(t, [k]) | (k, ts) <- IM.toList succsOf, t <- ts]
+    -- iterative DFS collecting back edges
+    backs = dfs [(0, IM.findWithDefault [] 0 succsOf)] (IS.singleton 0) (IS.singleton 0) []
+      where
+        dfs [] _ _ acc = acc
+        dfs ((k, []) : stack) seen onStack acc = dfs stack seen (IS.delete k onStack) acc
+        dfs ((k, t : ts) : stack) seen onStack acc
+          | IS.member t onStack = dfs ((k, ts) : stack) seen onStack ((k, t) : acc)
+          | IS.member t seen = dfs ((k, ts) : stack) seen onStack acc
+          | otherwise = dfs ((t, IM.findWithDefault [] t succsOf) : (k, ts) : stack) (IS.insert t seen) (IS.insert t onStack) acc
+    headers = IM.fromListWith (++) [(h, [l]) | (l, h) <- backs]
+    bodies = [grow h (IS.singleton h) ls | (h, ls) <- IM.toList headers, n > 0]
+    grow _ acc [] = acc
+    grow h acc (k : ks)
+      | IS.member k acc = grow h acc ks
+      | otherwise = grow h (IS.insert k acc) (IM.findWithDefault [] k predsOf ++ ks)

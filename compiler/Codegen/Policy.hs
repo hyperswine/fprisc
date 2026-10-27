@@ -8,7 +8,7 @@
 -- use a fixed stack with manual ownership or nonmoving conservative GC.
 -- ARC uses the same fixed-stack contract after explicit ownership lowering.
 module Codegen.Policy
-  ( Profile (..), StackPolicy (..), Policy (..), m2Policy, validatePolicy, profileName, policyWidth,
+  ( Profile (..), StackPolicy (..), Policy (..), RegisterBudget (..), registerBudget, m2Policy, validatePolicy, profileName, policyWidth,
   ) where
 
 import Codegen.IR (Width (..))
@@ -34,12 +34,30 @@ data Policy = Policy
     polStackCheck :: StackPolicy,
     polFloatInline :: Bool, -- F64 + - * / and comparisons inline on the 64-bit word (FPR_NO_F64_INLINE=1 keeps the runtime calls, for differential checks)
     polLoopMotion :: Bool, -- move total register invariants to existing loop preheaders
-    polVectorFast :: Bool -- guarded scalar flat-vector reads; misses keep the original C entry
+    polVectorFast :: Bool, -- guarded scalar flat-vector reads; misses keep the original C entry
+    polRegisters :: Maybe RegisterBudget -- the target's allocatable registers, for passes that lengthen live ranges (Codegen.Pressure); Nothing: unlimited
   }
   deriving (Eq, Ord, Show)
 
+-- What a native target's allocator has (Codegen.Target.*: the allocation
+-- configurations): per class, the scheduler-preserved budget a value live
+-- across a call must use, and every allocatable register. A target without
+-- a float bank has zero float registers; its floats are integer words.
+data RegisterBudget = RegisterBudget
+  { rbGprAcross :: Int, rbGprAll :: Int, rbFprAcross :: Int, rbFprAll :: Int }
+  deriving (Eq, Ord, Show)
+
+-- by backend name, as the allocation configurations define them
+registerBudget :: String -> Maybe RegisterBudget
+registerBudget = \case
+  "a64" -> Just (RegisterBudget 9 22 8 14) -- x19..x27 + x0..x12; d8..d15 + d2..d7
+  "x64" -> Just (RegisterBudget 5 12 0 0) -- rbx, r12..r15 + rax, rcx, rdx, rsi, rdi, r8, r9
+  "rv64" -> Just (RegisterBudget 11 19 0 0) -- s1..s11 + a0..a7
+  "rv32" -> Just (RegisterBudget 11 19 0 0)
+  _ -> Nothing
+
 m2Policy :: Policy
-m2Policy = Policy HostedBase True StackCheckEveryEntry True False True
+m2Policy = Policy HostedBase True StackCheckEveryEntry True False True Nothing
 
 profileName :: Profile -> String
 profileName = \case

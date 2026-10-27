@@ -24,7 +24,7 @@ import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
 import Codegen (Target, codegenRev, emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative)
-import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
+import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth, registerBudget)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
 import Data.Char (ord)
@@ -741,7 +741,8 @@ compileWithInterface accepted = do
               polStackCheck = if oBuiltin opts then StackStatic else if (Options.nativeShallowStack native) then StackCheckShallow else StackCheckEveryEntry,
               polFloatInline = (Options.cgFloatInline codegen),
               polLoopMotion = Options.cgLoopMotion codegen,
-              polVectorFast = Options.cgVectorFast codegen }
+              polVectorFast = Options.cgVectorFast codegen,
+              polRegisters = registerBudget (if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts)) }
           -- direct backends: the AArch64 hart read follows the
           -- target runtime ABI (x28 under fpr build, the TLV cell on a64mac
           -- without --base, local-exec TLS on a64 ELF)

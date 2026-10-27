@@ -51,7 +51,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 130 -- shared CFG/loops, conservative invariant motion and dead copy parameters
+codegenRev = 131 -- allocator segments (holes) and loop-weighted spill costs; pressure-gated invariant motion
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -142,7 +142,7 @@ typedIrNotes (Just mode) policy sigs ext hal prog emitted =
     (lowered, failures) = lowerProgram policy sigs prog emitted ext hal
     -- the simplified program is what the backend consumes; the lowered one
     -- is kept beside it as the differential oracle of every evaluation
-    (simplified, removed) = either (\e -> error ("typed-ir: " ++ e)) id (Simplify.simplifyProgramWith (Simplify.Options (polLoopMotion policy)) lowered)
+    (simplified, removed) = either (\e -> error ("typed-ir: " ++ e)) id (Simplify.simplifyProgramWith (Simplify.policyOptions policy) lowered)
     ws = words mode
     evalNote w = case splitOn ':' w of
       ("eval" : fn : args) | Just ns <- mapM readMaybe args ->
@@ -297,7 +297,7 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
           _ -> (e, [])
     -- the simplification passes (Codegen.Simplify), each verified; a
     -- failure is a compiler error
-    lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (Simplify.simplifyProgramWith (Simplify.Options (polLoopMotion (tgtPolicy tgt))) lowered0)
+    lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (Simplify.simplifyProgramWith (Simplify.policyOptions (tgtPolicy tgt)) lowered0)
     -- FPR_TYPED_IR_SPLIT_ENTRY: verified like the simplification (a refusal is a compiler error)
     lowered = if nmSplitEntry nm then M.map splitEntryValues lowered1 else lowered1
 

@@ -185,6 +185,7 @@ library
       Codegen.VectorRead
       Codegen.ControlFlow
       Codegen.LoopOptimize
+      Codegen.Pressure
       Compiler.VectorOperation
       Compiler.Trap
       Inline

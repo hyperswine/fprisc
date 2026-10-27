@@ -98,7 +98,7 @@ lowerCheckedKernel plan = do
       fn = Fn ("$vkernel:" ++ kernelSymbol k) (map (('a':) . show) [0..length ps-1]) TVal (BId 0) (reverse blocks)
   checked (verifyProgramWidth (policyWidth policy) (M.insert (fnName fn) fn callbacks))
   -- Simplification removes tag/untag pairs across the inlined callbacks.
-  (simplified, _) <- checked (Simplify.simplifyFnWith (Simplify.Options (polLoopMotion policy)) callbacks fn)
+  (simplified, _) <- checked (Simplify.simplifyFnWith (Simplify.policyOptions policy) callbacks fn)
   checked (verifyProgramWidth (policyWidth policy) (M.insert (fnName fn) simplified callbacks))
   pure simplified
   where
@@ -278,7 +278,7 @@ lowerCheckedRecord plan = do
       Build _ _ _ _ _ blocks = execState (build (map fst ps)) (Build argc 1 (BId 0) ps [] [])
       fn = Fn ("$vkernel:" ++ recordSymbol k) (map (('a':) . show) [0..argc-1]) TVal (BId 0) (reverse blocks)
   checked (verifyProgramWidth (policyWidth policy) (M.insert (fnName fn) fn callbacks))
-  (simplified,_) <- checked (Simplify.simplifyFnWith (Simplify.Options (polLoopMotion policy)) callbacks fn)
+  (simplified,_) <- checked (Simplify.simplifyFnWith (Simplify.policyOptions policy) callbacks fn)
   checked (verifyProgramWidth (policyWidth policy) (M.insert (fnName fn) simplified callbacks))
   pure simplified
   where
@@ -457,7 +457,7 @@ lowerCheckedMapAs plan = do
       Build _ _ _ _ _ blocks = execState (build (map fst ps)) (Build argc 1 (BId 0) ps [] [])
       fn = Fn ("$vkernel:" ++ mapAsSymbol k) (map (('a':) . show) [0..argc-1]) TVal (BId 0) (reverse blocks)
   checked (verifyProgramWidth (policyWidth policy) (M.singleton (fnName fn) fn))
-  (simplified,_) <- checked (Simplify.simplifyFnWith (Simplify.Options (polLoopMotion policy)) M.empty fn)
+  (simplified,_) <- checked (Simplify.simplifyFnWith (Simplify.policyOptions policy) M.empty fn)
   checked (verifyProgramWidth (policyWidth policy) (M.singleton (fnName fn) simplified))
   pure simplified
   where
