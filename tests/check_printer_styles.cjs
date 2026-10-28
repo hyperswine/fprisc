@@ -131,6 +131,25 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
    await host.evaluate(e=>{const replacement=e.cloneNode();e.replaceWith(replacement);});
    await page.waitForFunction(()=>document.querySelector('[data-camera-id]').shadowRoot?.querySelector('img').hasAttribute('src'));
    assert.equal(requests,start+6);
+   // Snapshot previews recover once per ten seconds. Switching off or hiding
+   // the page cancels even a pending retry; ordinary streams retain policy.
+   await host.evaluate(e=>e.setAttribute('data-camera-mode','snapshot'));
+   await host.locator('img').evaluate(e=>e.dispatchEvent(new Event('error')));
+   await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('retrying in 10s'));
+   await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('Snapshot preview'),{},{timeout:15000});
+   assert.equal(requests,start+7,'snapshot recovery reconnects once');
+   await host.locator('img').evaluate(e=>e.dispatchEvent(new Event('error')));
+   await host.evaluate(e=>e.setAttribute('data-camera-on','false'));
+   await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent==='Camera is off');
+   await page.waitForTimeout(10200);
+   assert.equal(requests,start+7,'off cancels pending snapshot retry');
+   await host.evaluate(e=>e.setAttribute('data-camera-on','true'));
+   await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('Snapshot preview'));
+   await host.locator('img').evaluate(e=>e.dispatchEvent(new Event('error')));
+   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+   await page.waitForFunction(()=>!document.querySelector('[data-camera-id]').shadowRoot.querySelector('img').hasAttribute('src'));
+   await page.waitForTimeout(10200);
+   assert.equal(requests,start+8,'hidden page cancels pending snapshot retry');
    await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide')));
    assert.equal(await host.locator('img').getAttribute('src'),null);
    await page.goto('about:blank');

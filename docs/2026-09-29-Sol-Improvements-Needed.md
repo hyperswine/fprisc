@@ -1267,3 +1267,15 @@ and multi-step sagas remain separate work.
 See [the implementation and verification record](2026-10-27-SOL-DEFERRED.md)
 for API migration, crash windows and focused coverage. Native digest work
 is recorded separately in [vector SHA schedules](2026-10-27-DIGEST-VECTORS.md).
+
+## 2026-10-27 22:02 AEDT — Daily scripting reliability plan
+
+A fresh source review and local check run at `e6fadfb` support adopting Sol for
+bounded, tested scripts, while confirming directory metadata panics, missing-list
+ambiguity, whole-content metadata reads and gaps in binary/streaming I/O.
+The [daily scripting plan](2026-10-27-SOL-DAILY-SCRIPTING-PLAN.md) records the
+verification baseline and the next delivery order: filesystem correctness;
+bytes/streams and host I/O; explicit retry policy and process pipelines;
+practical libraries; installed-runner and daily-workflow acceptance gates.
+It is proposed work. Existing deferred dataflow and recovery remain delivered;
+REPL and shell job-control work remain outside this scripting milestone.

@@ -20,7 +20,7 @@ from check_live_wire import Client, has
 
 ROOT=Path(__file__).resolve().parents[1]
 
-def run(binary,harts,directory,lan=False):
+def run(binary,harts,directory,lan=False,snapshots=False):
     telemetry=camera=None
     feeds=[]
     key=Ed25519PrivateKey.generate()
@@ -34,8 +34,35 @@ def run(binary,harts,directory,lan=False):
         # The camera service permits a first frame later than the WebSocket
         # upgrade timeout. Exercise that contract through the public proxy.
         telemetry,camera=PrinterPeer(faults=True),Peer(first_frame_delay=3.5)
+        if snapshots:
+            camera.close()
+            from check_printer_snapshots import snapshot, JPEG
+            import threading
+            class SnapshotPeer:
+                def __init__(self):
+                    self.starts=0;self.attempts=0
+                    def capture(*args):
+                        self.starts+=1
+                        return JPEG
+                    source=snapshot.Source({},'test-only','unused',capture)
+                    original=source.picture
+                    def picture():
+                        self.attempts+=1
+                        # A decoder/cache accidentally returning an old frame
+                        # must not make it look fresh. Next poll recovers.
+                        if self.attempts==1:return JPEG,int(time.time())-60
+                        return original()
+                    source.picture=picture
+                    self.server=snapshot.Server(('127.0.0.1',0),{'test':source})
+                    self.port=self.server.server_port
+                    self.thread=threading.Thread(target=self.server.serve_forever,daemon=True);self.thread.start()
+                def close(self):self.server.shutdown();self.server.server_close();self.thread.join()
+            camera=SnapshotPeer()
         config=directory/'printers.json'
         config.write_text(json.dumps([{'id':'test','name':'Synthetic native printer','model':'P1S','location':'test','host':'127.0.0.1','mqtt_port':telemetry.port,'serial':'TESTSERIAL','access_code_env':'SYNTHETIC_PRINTER_CODE','tls_peer':'server.example','tls_ca':str(ROOT/'tests/fixtures/tls/rootcert.pem'),'camera':'bambu-jpeg','camera_port':camera.port}]))
+        if snapshots:
+            rows=json.loads(config.read_text());rows[0].update(camera='bambu-rtsps-snapshot',camera_snapshot_port=camera.port)
+            config.write_text(json.dumps(rows))
         arguments=['--config='+str(config)]
         environment['SYNTHETIC_PRINTER_CODE']='test-only'
     child=subprocess.Popen([str(binary),*arguments,'--port=0','--origin=https://print.example','--auth='+str(allow),'--store='+str(directory/'view.kvlog')],cwd=ROOT,env=environment,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
@@ -147,11 +174,19 @@ def run(binary,harts,directory,lan=False):
         assert request('/api/status',cookie=cookie)[0]==200
         if lan:
             from check_native_camera import part
+            assert camera.starts==0,'camera captured without a viewer'
             for _ in range(2):
-                conn=http.client.HTTPConnection('127.0.0.1',port,timeout=5)
+                conn=http.client.HTTPConnection('127.0.0.1',port,timeout=15 if snapshots else 5)
                 conn.request('GET','/camera/test.mjpg',headers={'Cookie':cookie,'Host':f'localhost:{port}'})
                 response=conn.getresponse();feeds.append((conn,response));part(response)
-            assert camera.starts==1 and camera.active==1
+            assert camera.starts==1
+            if snapshots:
+                assert camera.attempts==2,'stale snapshot was accepted instead of retrying'
+                part(feeds[0][1])
+                assert camera.starts==2,'snapshot cadence failed or viewers duplicated captures'
+                row=json.loads(request('/api/status',cookie=cookie)[2])['printers'][0]
+                assert row['camera_mode']=='snapshot' and row['camera_interval_ms']==10000
+            else:assert camera.active==1
         assert request('/auth/logout',{},cookie)[0]==200
         assert request('/api/status',cookie=cookie)[0]==401
         # Logout must terminate an already authenticated WebSocket.
@@ -164,11 +199,15 @@ def run(binary,harts,directory,lan=False):
         with contextlib.suppress(OSError):ws.close()
         assert closed,'logout left WebSocket alive'
         if lan:
-            deadline=time.monotonic()+2
-            while camera.active and time.monotonic()<deadline:time.sleep(.02)
-            assert camera.active==0,'logout did not stop the native upstream camera'
+            if snapshots:
+                captures=camera.starts;time.sleep(11)
+                assert camera.starts==captures,'logout left snapshot polling alive'
+            else:
+                deadline=time.monotonic()+2
+                while camera.active and time.monotonic()<deadline:time.sleep(.02)
+                assert camera.active==0,'logout did not stop the native upstream camera'
             assert request('/camera/test.mjpg')[0]==401
-        print(f"PASS native gateway/auth {harts} harts ({'TLS peers' if lan else 'demo'}): empty tool PATH, origin/host checks, generated login, one-use proof/binding, native Ed25519, public allowlist, session/logout and live revocation",flush=True)
+        print(f"PASS native gateway/auth {harts} harts ({'periodic snapshots' if snapshots else 'TLS peers' if lan else 'demo'}): empty tool PATH, origin/host checks, generated login, one-use proof/binding, native Ed25519, public allowlist, session/logout and live revocation",flush=True)
     finally:
         for conn,response in feeds:
             response.close();conn.close()
@@ -183,12 +222,13 @@ def run(binary,harts,directory,lan=False):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--binary',type=Path,required=True)
     parser.add_argument('--lifetime-binary',type=Path,help='compiled tests/gateway_lifetime.fpr regression')
+    parser.add_argument('--snapshots',action='store_true',help='exercise demand-only snapshot adapter instead of JPEG TLS')
     args=parser.parse_args()
     if args.lifetime_binary:
         for harts in (1,4):
             subprocess.run([str(args.lifetime_binary.resolve())],check=True,env={**os.environ,'FPR_HARTS':str(harts),'PATH':'/nonexistent'},timeout=15)
     with tempfile.TemporaryDirectory(prefix='fpr-native-gateway-') as temp:
         for harts in (1,4):
-            for lan in (False,True):
-                directory=Path(temp)/(str(harts)+'-'+str(lan));directory.mkdir();run(args.binary.resolve(),harts,directory,lan)
+            for lan in ((True,) if args.snapshots else (False,True)):
+                directory=Path(temp)/(str(harts)+'-'+str(lan));directory.mkdir();run(args.binary.resolve(),harts,directory,lan,args.snapshots)
 if __name__=='__main__':main()

@@ -8,6 +8,10 @@ The tracked Nginx template now matches this upstream. Use the
 [migration runbook](../../docs/2026-10-17-PRINTER-MAC-MINI-MIGRATION.md) for
 current service/data paths and rollback. The old macm4 host is retired.
 
+The X1C camera can use [demand-only periodic snapshots](snapshots/README.md)
+through an optional loopback decoder. A1/P1S retain their native JPEG streams.
+The native gateway still owns public authentication and camera viewer lifetime.
+
 A 2026-10-20 outage was recovered by restarting the living-but-unhealthy app.
 See the [incident report](../../docs/2026-10-20-PRINTER-DASHBOARD-OUTAGE.md) and
 [HTTP watchdog runbook](watchdog/README.md), including its GUI-session limitation.

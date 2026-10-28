@@ -10,9 +10,10 @@ stopped. Both printers are verified: A1 at `192.168.0.63` and P1S at
 
 The current application is `examples/printer-host.fpr`: one FP-RISC process
 owns configuration, Ed25519 authentication, the public HTTP gateway, Live UI,
-MQTT/TLS telemetry and shared camera/TLS services. It launches no Python, curl
-or helper programs. TLS and signature operations use linked OpenSSL 3 adapters;
-application policy, limits and lifetime remain FP-RISC.
+MQTT/TLS telemetry and shared camera services. A1/P1S JPEG cameras need no helper.
+X1C RTSPS snapshots use an optional, separately supervised loopback decoder;
+the host itself launches no external programs. TLS and signature operations use
+linked OpenSSL 3 adapters; application policy, limits and lifetime remain FP-RISC.
 
 Build from the repository root (adjust the OpenSSL prefix for your host):
 
@@ -37,8 +38,8 @@ selected literal assignments in the credential file. They never belong in
 arguments, public JSON, the UI model or logs. The file parser does not execute
 shell syntax. Configure explicit `tls_peer` and `tls_ca`, plus optional
 `camera_tls_peer`, `camera_tls_ca`, `mqtt_port` and `camera_port` overrides.
-Set `camera` to `bambu-jpeg` for supported A1/P1S cameras or `none` otherwise.
-Discovery and RTSPS are not implemented by this host; use recorded public
+Set `camera` to `bambu-jpeg` for A1/P1S, `bambu-rtsps-snapshot` for X1C with the
+optional decoder below, or `none`. Discovery is not implemented; use recorded public
 addresses and certificate identities. `--demo` also requires an allowlist and
 uses no printer connection.
 
@@ -62,6 +63,49 @@ the interactions and local styling. The native host was subsequently deployed
 and checked against both real printers through public HTTPS/WSS; see the
 [production acceptance record](#single-process-native-host-deployed-2026-10-15).
 Simulator checks alone do not establish that deployment boundary.
+
+## X1C periodic camera snapshots
+
+X1C exposes RTSPS video instead of the A1/P1S JPEG protocol. Configure its row
+with `camera: "bambu-rtsps-snapshot"`, `camera_port: 322` and optionally
+`camera_snapshot_port: 6741`. Keep its existing `tls_ca`, `tls_peer` and
+`access_code_env` (camera-specific TLS overrides are also supported).
+
+Run `tools/printer_snapshot.py` with Python 3 and FFmpeg with TLS/RTSP support:
+
+```sh
+python3 tools/printer_snapshot.py --config=/path/to/printers.json \
+  --credentials-env-file=/path/to/printer-credentials.env \
+  --ffmpeg=/absolute/path/to/ffmpeg --port=6741
+```
+
+The adapter binds only to `127.0.0.1`. Each configured printer requires its
+runtime access code in a private request header. FFmpeg receives the camera
+URL and verified TLS options through stdin, never argv or logs. Captures are
+limited to eight seconds and 4 MiB, held only in memory, with a two-second cache
+to coalesce concurrent requests. No capture occurs without a request. At most
+eight HTTP clients and four configured snapshot sources are admitted.
+
+FP-RISC requests one picture per printer about every ten seconds while its
+preview is selected, then shares it with all authenticated viewers through the
+existing MJPEG route. UI labels explicitly distinguish **Periodic snapshots**
+from native live feeds. Off, collapsed cards, hidden tabs, logout and expired
+viewer leases stop polling. A capture already in progress can finish within its
+eight-second bound. A failed capture is retried; old frames are not republished
+as fresh. Browser retries wait ten seconds and are cancelled when not viewing.
+Printer telemetry remains independent. This adds camera decoding, not printer
+controls, and no browser receives an RTSPS URL or printer credential.
+
+Regression checks:
+
+```sh
+python3 tests/check_printer_snapshots.py
+python3 tests/check_native_gateway.py --binary=build/printer-host --snapshots
+node tests/check_printer_styles.cjs
+```
+
+See [decoder deployment](../../deploy/printer-dashboard/snapshots/README.md)
+for the optional Mac mini service and rollback.
 
 ## Maintenance, issues and print outcomes
 

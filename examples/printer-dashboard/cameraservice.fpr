@@ -14,13 +14,14 @@ N = use "std/osnet".
 IO = use "std/osio".
 MJ = use "std/mjpeg".
 H = use "std/httpcore".
+HC = use "std/httpclient".
 J = use "std/json".
 L = use "std/list".
 S = use "std/string".
 O = use "std/option".
 Clock = use "std/clock".
 F = use "cameraframe".
-Command = Type (Reserve Int | Join Int | Next Int Int | Leave Int | Observe Int String | Fault Int | Inspect).
+Command = Type (Reserve Int | Join Int | Next Int Int | Leave Int | Observe Int String | Captured Int Int String | Fault Int | Inspect).
 Reply = Type (Accepted | Refused | Waiting | Broken | Picture Int String | Snapshot J.Value).
 now u = Sys.timeUs Unit / 1000.
 firstFrameMs = 12000.
@@ -38,11 +39,11 @@ expire state =
   fresh = {state | tickets = tickets, viewers = viewers};
   if viewers == Nil and (state.source != 0 or state.frame != "" or state.error) then stopSource fresh else fresh.
 renew ticket state = {state | tickets = (ticket, now Unit + 3000) :: L.filter (fn pair -> case pair of (id, _) -> id != ticket) state.tickets}.
-stats state =
+statsWith staleMs state =
   recent = L.filter (fn pair -> case pair of (second, _) -> second > now Unit / 1000 - 30) state.buckets;
   count = L.fold (fn n pair -> case pair of (_, c) -> n + c) 0 recent;
   rate = count * 100 / 30;
-  J.object [("camera_state", J.Text (if state.viewers == Nil then "OFF" else if state.error then "UNAVAILABLE" else if state.last == 0 then "CONNECTING" else if now Unit - state.last > 10000 then "STALE" else "LIVE")),
+  J.object [("camera_state", J.Text (if state.viewers == Nil then "OFF" else if state.error then "UNAVAILABLE" else if state.last == 0 then "CONNECTING" else if now Unit - state.last > staleMs then "STALE" else "LIVE")),
     ("camera_viewers", J.Integer (L.length state.viewers)), ("camera_connections", J.Integer state.starts),
     ("camera_last_frame", J.Integer state.wall), ("camera_hz", J.Real "{rate / 100}.{S.padLeft 2 "0" (str (rate % 100))}")].
 observed bytes state =
@@ -58,7 +59,7 @@ dispatch cfg pool watcher manager from command state = case command of
   | Join ticket -> if not (L.any (fn pair -> case pair of (id, _) -> id == ticket) state.tickets) or L.length state.viewers >= 8 then (Refused, state) else
       fresh = if state.source == 0 or state.viewers == Nil then stopSource state else state;
       epoch = fresh.epoch;
-      source = if fresh.source != 0 then fresh.source else A.spawnWith (A.Static 16) (worker cfg pool watcher manager epoch);
+      source = if fresh.source != 0 then fresh.source else A.spawnWith (A.Static 16) (cfg.worker pool watcher manager epoch);
       (Accepted, renew ticket {fresh | viewers = ticket :: fresh.viewers, source = source, error = False, starts = fresh.starts + (if fresh.source == 0 then 1 else 0)})
   | Next ticket seq -> if not (L.member ticket state.viewers) then (Refused, state) else
       (if state.error then Broken else if state.seq > seq and state.frame != "" then Picture state.seq state.frame else Waiting, renew ticket state)
@@ -66,8 +67,11 @@ dispatch cfg pool watcher manager from command state = case command of
       fresh = {state | viewers = L.filter (fn id -> id != ticket) state.viewers, tickets = L.filter (fn pair -> case pair of (id, _) -> id != ticket) state.tickets};
       (Accepted, if fresh.viewers == Nil then stopSource fresh else fresh)
   | Observe epoch bytes -> if epoch != state.epoch or from != state.source or state.viewers == Nil then (Refused, state) else (Accepted, observed bytes state)
+  | Captured epoch wall bytes -> if epoch != state.epoch or from != state.source or state.viewers == Nil then (Refused, state) else
+      (Accepted, {observed bytes state | wall = wall})
   | Fault epoch -> if epoch != state.epoch or from != state.source then (Refused, state) else (Accepted, {state | error = True, source = 0, frame = ""})
-  | Inspect -> (Snapshot (stats state), state).
+  | Inspect -> (Snapshot (statsWith cfg.staleMs state), state).
+stats state = statsWith 10000 state.
 managerStep cfg pool watcher me state =
   fresh = expire state;
   case receiveNow me of
@@ -104,6 +108,24 @@ sourceStep manager epoch me maximum state =
   | Ok bytes -> (case ask me manager (Observe epoch bytes) of
       Ok Accepted -> (True, (True, next))
     | _ -> (False, (False, next))).
+# One request in flight per printer, shared by all viewers. Decoder failures
+# back off and retry while selected; old bytes are never republished as fresh.
+snapshotWorker cfg pool watcher manager epoch me =
+  _ = Sys.loop Unit (fn u ->
+    began = now Unit;
+    options = {HC.defaults | timeoutMs = 9500, bodyBytes = cfg.maxFrame};
+    request = {method = "GET", url = "http://127.0.0.1:{cfg.port}/snapshot/{cfg.id}.jpg",
+      headers = [("x-printer-camera-code", cfg.code)], body = ""};
+    result = HC.requestOn (W.wait watcher) (budget 9500) pool options request;
+    _ = case result of
+      Ok response -> if response.status != 200 or not (F.jpeg response.body) then Unit else
+        wall = case H.header "x-camera-captured-at" response of O.Some value -> (case S.toInt value of Ok n -> n | _ -> 0) | _ -> 0;
+        if wall <= 0 or wall > Clock.now Unit + 5 or Clock.now Unit - wall > 10 then Unit else
+          _ = ask me manager (Captured epoch wall response.body); Unit
+    | _ -> Unit;
+    remaining = cfg.intervalMs - (now Unit - began);
+    _ = Clock.sleepMs (if remaining > 0 then remaining else 1000);
+    (True, Unit)); Unit.
 respond status body connection =
   (_, next) = ownedParts (budget 1000) [H.renderResponse (H.text status body)] connection; next.
 respondStats value connection =
@@ -119,7 +141,7 @@ request gate head extra = case S.split "\r\n" head of
       if keys != [("x-fpr-camera", gate)] then Err 403 else
       (case S.split " " line of ["GET", path, "HTTP/1.1"] -> if path == "/stream" or path == "/stats" then Ok path else Err 404 | _ -> Err 405).
 connected connection = OT.connected (budget 100) connection.
-viewerStep me manager ticket maximum state =
+viewerStep waitMs me manager ticket maximum state =
   (conn, seq, begun, until) = state;
   (alive, checked) = connected conn;
   if not alive or now Unit >= until then (False, (checked, seq, begun, until)) else
@@ -128,7 +150,7 @@ viewerStep me manager ticket maximum state =
       limit = budget 1500;
       (header, started) = if begun then (Ok Unit, checked) else ownedParts limit [MJ.head] checked;
       (sent, next) = case header of Err why -> (Err why, started) | Ok _ -> ownedWrite limit maximum bytes started;
-      (case sent of Ok _ -> True | Err _ -> False, (next, id, True, now Unit + 12000))
+      (case sent of Ok _ -> True | Err _ -> False, (next, id, True, now Unit + waitMs))
   | Ok Waiting -> _ = Clock.sleepMs 25; (True, (checked, seq, begun, until))
   | _ -> (False, (checked, seq, begun, until)).
 handle cfg manager ticket raw me =
@@ -145,7 +167,7 @@ handle cfg manager ticket raw me =
             | _ -> respond 503 "Camera unavailable\n" next)
           | Ok _ -> (case ask me manager (Join ticket) of
               Ok Accepted ->
-                (last, _, begun, _) = Sys.loop (next, 0, False, now Unit + firstFrameMs) (viewerStep me manager ticket cfg.maxFrame);
+                (last, _, begun, _) = Sys.loop (next, 0, False, now Unit + firstFrameMs) (viewerStep cfg.waitMs me manager ticket cfg.maxFrame);
                 if begun then last else respond 503 "Camera unavailable\n" last
             | _ -> respond 503 "Camera busy\n" next));
       _ = OT.close final;
@@ -161,7 +183,10 @@ acceptStep cfg manager listener me count = case IO.ready listener of
           Ok Accepted -> _ = A.spawnWith (A.Static 16) (handle cfg manager ticket fd); Unit
         | _ -> _ = IO.close fd; Unit);
         (True, count + 1)).
-start cfg =
+start cfg = startUsing {gate = cfg.gate, maxFrame = cfg.maxFrame, worker = worker cfg, staleMs = 10000, waitMs = 12000}.
+startSnapshot cfg = startUsing {gate = cfg.gate, maxFrame = cfg.maxFrame, worker = snapshotWorker cfg,
+  staleMs = cfg.intervalMs + 10000, waitMs = cfg.intervalMs + 12000}.
+startUsing cfg =
   pool = case DNS.create 1 of Ok p -> p | Err _ -> error "camera: resolver unavailable";
   watcher = R.start Unit;
   service = A.spawnWith (A.Static 64) (manager cfg pool watcher);

@@ -162,8 +162,8 @@ card v p =
           [row "Nozzle target" (reading 0 "nozzle_target" p + " °C"), row "Bed target" (reading 0 "bed_target" p + " °C"), row "Print error" (text "error" p), row "Filament" (text "filament" p), row "Active spool" (text "filament_source" p), row "Reports received" (number "reports" p), row "Last report (UTC)" (text "last_report_iso" p)]
         , El "p" UI.notice [Dyn (text "note" p)]
         , El "div" [UI.divider, UI.hidden (not camera)]
-          [El "div" UI.cameraHeading [Txt "LIVE VIEW", El "span" [UI.muted] [Txt "Native camera cadence"]]
-          , El "div" (List.append UI.cameraHost [Att "data-camera-id" id, Att "data-camera-on" (if camera and expanded then "true" else "false"), Att "aria-label" "Camera view from {text "name" p}"]) Nil
+          [El "div" UI.cameraHeading [Dyn (if text "camera_mode" p == "snapshot" then "PERIODIC SNAPSHOTS" else "LIVE VIEW"), El "span" [UI.muted] [Dyn (if text "camera_mode" p == "snapshot" then "About every 10 seconds" else "Native camera cadence")]]
+          , El "div" (List.append UI.cameraHost [Att "data-camera-id" id, Att "data-camera-mode" (text "camera_mode" p), Att "data-camera-on" (if camera and expanded then "true" else "false"), Att "aria-label" "Camera view from {text "name" p}"]) Nil
           , El "p" (Att "data-camera-status" id :: UI.footnote) [Txt "Camera is off"]
           , El "p" UI.footnote [Txt "Stream: ", Dyn (text "camera_state" p), Txt " · ", Dyn (reading 1 "camera_hz" p), Txt " Hz · last frame ", Dyn (age v.now (integer "camera_last_frame" p))]
           , El "p" UI.footnote [Txt "Camera sleeps when this tab is hidden. A printer camera may update slowly; telemetry is the source of truth."]]]]).
@@ -203,7 +203,9 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6732), (
 
 # Local rules travel with the view; no global or component stylesheet.
 css v = "".
-cameraScript = Media.program {hostAttribute = "data-camera-id", onAttribute = "data-camera-on",
+cameraScript = Media.programWithRetry {attribute = "data-camera-mode", value = "snapshot", delayMs = 10000,
+  connected = "Snapshot preview · refreshes about every 10s", failed = "Snapshot unavailable · retrying in 10s"}
+  {hostAttribute = "data-camera-id", onAttribute = "data-camera-on",
   statusAttribute = "data-camera-status", rootId = "lv-root", linkId = "lv-link",
   routePrefix = "/camera/", routeSuffix = ".mjpg",
   image = El "img" [UI.u [G.Display G.Block, G.Width (G.Pct 100), G.Height (G.Pct 100), G.AspectRatio 16 9, G.ObjectFit G.Contain, G.Radius (G.Px 8)]] Nil,

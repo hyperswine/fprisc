@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>cloud.cswine.printer-snapshots</string>
+  <key>UserName</key><string>jq</string>
+  <key>GroupName</key><string>staff</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/jq/printer-host/printer_snapshot.py</string>
+    <string>--config=/Users/jq/printer-host/data/printers.json</string>
+    <string>--credentials-env-file=/Users/jq/printer-host/data/printer-credentials.env</string>
+    <string>--ffmpeg=/opt/homebrew/bin/ffmpeg</string>
+    <string>--port=6741</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/jq/printer-host</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>Umask</key><integer>63</integer>
+  <key>StandardOutPath</key><string>/Users/jq/printer-host/logs/snapshots.stdout.log</string>
+  <key>StandardErrorPath</key><string>/Users/jq/printer-host/logs/snapshots.stderr.log</string>
+</dict></plist>
