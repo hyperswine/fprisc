@@ -103,8 +103,10 @@ below remain open until linked implementation and executable evidence exist.
 Implementation owners: `compiler/Sol/Txn.hs`, `VM.hs`, `Preamble.hs`,
 `Infer.hs`, plus a focused filesystem suite and public library adapters.
 
-- [ ] Add regression cases for the directory panics and missing-list ambiguity
+- [x] Add regression cases for the directory panics and missing-list ambiguity
   before changing the implementation.
+  ([delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md): `tools/sol-fs-check.py`,
+  22 checks, registered in Base)
 - [ ] Define one hosted filesystem result/error model: operation, path and
   distinguishable missing, denied, wrong-kind, symlink-loop and other OS errors.
   Add fallible entrypoints; retain convenience wrappers that fail clearly.
@@ -137,7 +139,9 @@ Acceptance gate:
   dependencies, while exact-byte conflict and recovery suites remain green.
 
 First implementation slice: fix `exists`/`stat` on directories and missing `ls`,
-with focused regressions. Review the transaction dependency model before
+with focused regressions. [Delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md);
+remaining limits and the transaction-dependency review are listed there.
+Review the transaction dependency model before
 expanding this into recursive traversal or changing snapshot storage.
 
 ## Phase 2: bytes, bounded streams and script I/O

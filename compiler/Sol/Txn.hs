@@ -401,18 +401,30 @@ txRmdir ref p = do
 
 -- list a directory: disk listing (validated at commit) composed with this
 -- txn's own additions and removals in that directory. sol-lock artifacts
--- are invisible.
+-- are invisible. ABSENCE IS NOT EMPTY: a missing (or this-txn-removed)
+-- directory fails; only a pending mkdir may compose over an absent disk
+-- listing, because then the entries below are all the directory has.
 txLs :: IORef TxState -> FilePath -> IO [String]
 txLs ref dir = do
   s <- readIORef ref
+  let pendingDir = M.lookup dir (txDirView s)
+  case pendingDir of
+    Just False ->
+      ioError (userError ("*** SOL PANIC: ls: no such directory: " ++ dir
+                            ++ " — removed earlier in this transaction ***"))
+    _ -> pure ()
   base <- case M.lookup dir (txDirReads s) of
     Just names -> pure names
     Nothing -> do
       r <- try (listDirectory dir) :: IO (Either IOException [String])
       names0 <- case r of
         Left e
-          | isDoesNotExistError e -> pure []
-          | otherwise -> throwIO e
+          | isDoesNotExistError e, pendingDir == Just True -> pure []
+          | isDoesNotExistError e ->
+              ioError (userError ("*** SOL PANIC: ls: no such directory: " ++ dir
+                                    ++ " — guard with `exists` ***"))
+          | otherwise ->
+              ioError (userError ("*** SOL PANIC: ls: " ++ show e ++ " ***"))
         Right names -> pure names
       let names = sort (filter (not . lockArtifact) names0)
       atomicModifyIORef' ref (\st -> (st {txDirReads = M.insert dir names (txDirReads st)}, ()))
@@ -437,10 +449,12 @@ txExists ref p = do
     Nothing -> case M.lookup p (txDirView s) of
       Just b -> pure b
       Nothing -> do
-        snap <- snapshot ref p
-        case snap of
-          Just _ -> pure True
-          Nothing -> doesDirectoryExist p -- dirs have no content snapshot
+        -- a directory has no content snapshot: existence is metadata, not a
+        -- read (snapshotting a directory reads it as a file and panics)
+        isD <- doesDirectoryExist p
+        if isD
+          then pure True
+          else maybe False (const True) <$> snapshot ref p
 
 txIsDir :: IORef TxState -> FilePath -> IO Bool
 txIsDir ref p = do
@@ -452,8 +466,13 @@ txIsDir ref p = do
 -- (exists, size, mtime-seconds). The transaction's own view answers
 -- first — a file this txn wrote EXISTS, sized by its pending content
 -- (UTF-8 bytes, matching what commit will put on disk), mtime = now
--- (it has no disk mtime yet). Only a view miss consults the snapshot
--- (content joins the read set for validation) and the disk metadata.
+-- (it has no disk mtime yet); a dir this txn mkdir'd answers from the
+-- disk when it is already there, from the view otherwise. Only a view
+-- miss consults the snapshot (content joins the read set for
+-- validation) and the disk metadata. Directories never snapshot: their
+-- metadata is observed directly, so stat never reads a directory as a
+-- file. Sizes of directories are filesystem-specific; only the
+-- presence bit is contractual.
 txStat :: IORef TxState -> FilePath -> IO (Bool, Integer, Integer)
 txStat ref p = do
   s <- readIORef ref
@@ -462,14 +481,30 @@ txStat ref p = do
     Just (Just w) -> do
       now <- getPOSIXTime
       pure (True, fromIntegral (utf8Len w), floor now)
-    Nothing -> do
-      snap <- snapshot ref p
-      case snap of
-        Nothing -> pure (False, 0, 0)
-        Just _ -> do
-          sz <- getFileSize p
-          mt <- getModificationTime p
-          pure (True, sz, floor (utcTimeToPOSIXSeconds mt))
+    Nothing -> case M.lookup p (txDirView s) of
+      Just False -> pure (False, 0, 0) -- rmdir'd earlier in this txn
+      Just True -> do
+        isD <- doesDirectoryExist p
+        if not isD
+          then do now <- getPOSIXTime; pure (True, 0, floor now)
+          else dirStat p
+      Nothing -> do
+        isD <- doesDirectoryExist p
+        if isD
+          then dirStat p
+          else do
+            snap <- snapshot ref p
+            case snap of
+              Nothing -> pure (False, 0, 0)
+              Just _ -> do
+                sz <- getFileSize p
+                mt <- getModificationTime p
+                pure (True, sz, floor (utcTimeToPOSIXSeconds mt))
+  where
+    dirStat q = do
+      sz <- getFileSize q
+      mt <- getModificationTime q
+      pure (True, sz, floor (utcTimeToPOSIXSeconds mt))
 
 -- byte length of the string as commit will encode it
 utf8Len :: String -> Int
