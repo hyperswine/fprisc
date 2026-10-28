@@ -30,7 +30,7 @@ import System.Posix.Files (deviceID, fileID, fileSize, getFileStatus, modificati
 import Sol.Bytecode (BProg)
 import Sol.Diagnostic (diagnostic)
 import Sol.Lang (Name, Prog, STop)
-import Sol.Startup (phase)
+import Sol.Startup (phase, phaseIO)
 
 data Prepared = Prepared
   { preparedCons :: M.Map Name (Int, Int, Int),
@@ -44,7 +44,7 @@ data Prepared = Prepared
 -- Changing the artifact format/meaning requires a new schema, even though a
 -- rebuilt executable normally also invalidates all entries through its identity.
 schema :: Int
-schema = 3 -- 3: TailCall in the bytecode (2026-10-02)
+schema = 4 -- 4: programs shaken to the reachable set (2026-10-29); 3: TailCall in the bytecode (2026-10-02)
 
 fingerprint :: BS.ByteString -> Word64
 fingerprint = BS.foldl' (\h b -> (h `xor` fromIntegral b) * 0x100000001b3) 0xcbf29ce484222325
@@ -67,7 +67,7 @@ cached path src prelude expanded trusted compile = do
   if flag == Just "0" || Just "1" `elem` inspect
     then traceCache "disabled" >> compile
     else do
-      context <- cacheContext `catch` (\(_ :: IOException) -> pure Nothing)
+      context <- phaseIO "cache-key" cacheContext `catch` (\(_ :: IOException) -> pure Nothing)
       case context of
         Nothing -> traceCache "unavailable" >> compile
         Just (file, key) -> do
@@ -92,6 +92,7 @@ cached path src prelude expanded trusted compile = do
           key = BL.toStrict (encode (schema, identity, (arch, os, compilerName, show compilerVersion), absolute, path, src, prelude, expanded, trusted, options))
           slot = showHex (fingerprint key) "" ++ ".cache"
       dir <- cacheDirectory
+      _ <- evaluate (BS.length key)
       pure (Just (dir </> slot, key))
 
 -- Entries are private local build products. This checksum detects accidental
@@ -108,17 +109,20 @@ readEntry file key = readIt `catch` (\(_ :: IOException) -> pure Nothing)
     readIt = do
       st <- getFileStatus file
       if fileSize st > fromIntegral maxEntryBytes then pure Nothing else do
-        bytes <- BS.readFile file
+        bytes <- phaseIO "cache-file-read" (BS.readFile file >>= evaluate)
         let (header, rest) = BS.splitAt 8 bytes
             (sumBytes, payload) = BS.splitAt 8 rest
         if header /= magic || BS.length sumBytes /= 8 || BS.length bytes > maxEntryBytes
           then pure Nothing
           else case decodeOrFail (BL.fromStrict sumBytes) of
-            Right (_, _, checksum) | checksum == fingerprint payload ->
-              case decodeOrFail (BL.fromStrict payload) of
-                Right (remaining, _, (savedKey, prepared))
-                  | BL.null remaining && savedKey == key -> Just <$> evaluate (force prepared)
-                _ -> pure Nothing
+            Right (_, _, checksum) -> do
+              ok <- phaseIO "cache-checksum" (evaluate (checksum == fingerprint payload))
+              if not ok then pure Nothing else do
+                decoded <- phaseIO "cache-decode" (evaluate (decodeOrFail (BL.fromStrict payload)))
+                case decoded of
+                  Right (remaining, _, (savedKey, prepared))
+                    | BL.null remaining && savedKey == key -> Just <$> phaseIO "cache-force" (evaluate (force prepared))
+                  _ -> pure Nothing
             _ -> pure Nothing
 
 writeEntry :: Binary a => FilePath -> BS.ByteString -> a -> IO ()

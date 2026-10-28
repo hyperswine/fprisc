@@ -26,6 +26,8 @@ import Data.IORef
 import Data.List (intercalate, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+import Data.Foldable (toList)
+import System.IO.Unsafe (unsafeInterleaveIO)
 import Sol.Lang
 import Sol.Mod (resolveModuleParsed, parseCachedSource)
 import Sol.Preamble (halArities, prelude)
@@ -91,7 +93,10 @@ runFile as = do
         Right (_, tops) -> pure tops
     seenRef <- newIORef M.empty
     trustRef <- newIORef S.empty
-    trustedPaths <- trustedLibraryPaths
+    -- canonicalizing ~65 shipped library paths costs ~4 ms; only a script
+    -- with `use` asks the set anything, so a one-liner never pays for it.
+    -- Read-only filesystem queries: deferring them cannot reorder effects.
+    trustedPaths <- unsafeInterleaveIO (phaseIO "library-paths" trustedLibraryPaths)
     expanded <- phase "imports" $ expandUses 8 "" trustedPaths trustRef seenRef (takeExtension path) (takeDirectory path) utops
     trusted <- readIORef trustRef
     cached path src prelude expanded (S.toList trusted) $ do
@@ -116,7 +121,7 @@ runFile as = do
   jitFlag <- lookupEnv "SOL_JIT"
   jc <- case jitFlag of
     Just "0" -> pure Nothing
-    _ -> initJIT
+    _ -> phaseIO "jit-init" initJIT
 
   let shapeNames = M.fromList [(tid, fields) | (fields, tid) <- M.toList shapes]
       consTV = M.map (\(t, v, _) -> (t, v)) cons
@@ -124,7 +129,7 @@ runFile as = do
   journalFile <- if dumpAsm then pure "" else runJournalPath (dropExtension path)
   rt <- newRtCounts
   -- heal first: an earlier run of this script may have crashed mid-commit
-  unless dumpAsm $ recoverScriptJournals (dropExtension path)
+  unless dumpAsm $ phaseIO "journal-recover" (recoverScriptJournals (dropExtension path))
   -- a panic ends the run with the clean SOL PANIC line and exit 1 — not
   -- the raw `fpr: user error (...)` wrapper. Nothing was committed: the
   -- exception propagates out of runTxLoop before its commit call.
@@ -316,7 +321,29 @@ compileScript path src ptops utops utopsX0' trusted = do
           Just fn | fnArity fn == 0 -> ["main"]
           _ -> []
   notes <- readIORef noteRef
-  pure (Prepared cons shapes specialized bprog runList (reverse notes))
+  -- Ship only what the run can reach. The whole prelude is compiled into
+  -- every program, but a one-liner touches a handful of it; the compile
+  -- cache decodes whatever is stored, so unreachable prelude code was the
+  -- dominant warm-start cost (docs/2026-10-29-SOL-STARTUP-ANALYSIS.md).
+  let live = reachableFns bprog runList
+      shake m = M.restrictKeys m live
+  pure (Prepared cons shapes (shake specialized) (shake bprog) runList (reverse notes))
+
+-- Names reachable from the run roots through static calls, tail calls and
+-- globals-as-values. HCall targets are HAL symbols, not program functions.
+reachableFns :: BProg -> [Name] -> S.Set Name
+reachableFns bprog = go S.empty
+  where
+    go seen [] = seen
+    go seen (n : rest)
+      | S.member n seen = go seen rest
+      | otherwise = case M.lookup n bprog of
+          Nothing -> go seen rest
+          Just fn -> go (S.insert n seen) (concatMap refs (toList (fnCode fn)) ++ rest)
+    refs (Call _ g _) = [g]
+    refs (TailCall g _) = [g]
+    refs (MkPap _ g) = [g]
+    refs _ = []
 
 -- run every `>` statement in order inside one transaction, then commit;
 -- on read-set conflict, reset and re-run the whole script
@@ -326,7 +353,7 @@ runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bpr
   txSetSagaJournal tx journalFile
   fuel <- newIORef fuelQuantum
   preempts <- newIORef 0
-  gpu <- Gpu.initGPU
+  gpu <- phaseIO "gpu-init" Gpu.initGPU
   tabFlag <- lookupEnv "SOL_TABLE"
   tab <- if tabFlag == Just "0" then pure Nothing else Just <$> newIORef M.empty
   actors <- VM.newActorRuntime
