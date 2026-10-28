@@ -13,8 +13,9 @@ description:
   never going to do -- cross-compilation, QEMU boots, .qa packaging,
   disk seeding, and the sweep (check-all.sh).  `make fpr-cabal` builds
   through cabal and drops the binary where the sweep expects it.
-license:            NONE
-author:             Jasen
+license:            MIT
+license-file:       LICENSE
+author:             Jasen Qin (hyperswine)
 build-type:         Simple
 
 -- `make fpr-dev` (docs/2026-10-19-COMPILER-DEFAULTS.md): the same
