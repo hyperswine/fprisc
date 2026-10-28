@@ -64,7 +64,9 @@ import Data.Time.Clock.POSIX (getPOSIXTime, utcTimeToPOSIXSeconds)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, takeFileName, hasTrailingPathSeparator, (</>))
 import System.IO (readFile', hClose, hIsTerminalDevice)
-import System.IO.Error (isAlreadyExistsError, isDoesNotExistError, isResourceVanishedError)
+import System.IO.Error (ioeGetErrorType, isAlreadyExistsError, isDoesNotExistError, isResourceVanishedError)
+import Foreign.C.Error (Errno (..), eACCES, eISDIR, eLOOP, eMLINK, eNOENT, eNOTDIR, ePERM)
+import GHC.IO.Exception (IOException (..), IOErrorType (..))
 import System.IO (hFlush, hGetContents', hIsEOF, hGetLine, stderr, stdin, stdout, hPutStr, hPutStrLn)
 import System.Process (CreateProcess (..), StdStream (..), getPid, terminateProcess, createProcess, proc, readCreateProcessWithExitCode, shell, waitForProcess)
 import System.Timeout (timeout)
@@ -413,59 +415,123 @@ txRmdir ref p = do
   pushEffect ref (ERmdir p)
   atomicModifyIORef' ref (\s -> (s {txDirView = M.insert p False (txDirView s)}, ()))
 
+-- the hosted filesystem error model: one value answers WHICH operation
+-- failed, on WHAT path, and a distinguishable WHY (the typed tier —
+-- Try.ls/Try.stat/Try.exists — pattern-matches this; the panicking
+-- spellings render it). feNote carries a plain-text hint that only the
+-- panic message uses (e.g. "removed earlier in this transaction").
+data FsWhy = WhyMissing | WhyDenied | WhyWrongKind | WhyLoop | WhyOther deriving (Eq)
+
+data FsErr = FsErr
+  { feOp :: String, -- "ls" / "stat" / "exists" (also the FsOp constructor)
+    fePath :: FilePath,
+    feWhy :: FsWhy,
+    feMsg :: String, -- the OS report
+    feNote :: String -- panic-message hint; "" on the typed tier
+  }
+
+fsWhyName :: FsWhy -> String
+fsWhyName WhyMissing = "FsMissing"
+fsWhyName WhyDenied = "FsDenied"
+fsWhyName WhyWrongKind = "FsWrongKind"
+fsWhyName WhyLoop = "FsLoop"
+fsWhyName WhyOther = "FsOther"
+
+-- errno first (ELOOP/EISDIR/ENOTDIR only exist there); the IOErrorType
+-- fallback covers exceptions raised without an errno
+classifyIO :: String -> FilePath -> IOException -> FsErr
+classifyIO op p e = FsErr op p why (show e) ""
+  where
+    why = case ioe_errno e of
+      Just n
+        | Errno n == eNOENT -> WhyMissing
+        | Errno n == eACCES || Errno n == ePERM -> WhyDenied
+        | Errno n == eLOOP || Errno n == eMLINK -> WhyLoop
+        | Errno n == eISDIR || Errno n == eNOTDIR -> WhyWrongKind
+      _ -> case ioeGetErrorType e of
+        NoSuchThing -> WhyMissing
+        PermissionDenied -> WhyDenied
+        _ -> WhyOther
+
+-- the panic line a plain spelling renders for a classified failure;
+-- missing keeps its dedicated guard-hint (or the note) for continuity
+fsPanic :: String -> FsErr -> String
+fsPanic spelling fe =
+  "*** SOL PANIC: " ++ spelling ++ ": " ++ body ++ " ***"
+  where
+    body = case feWhy fe of
+      WhyMissing ->
+        "no such " ++ kindOf spelling ++ ": " ++ fePath fe
+          ++ (if null (feNote fe) then " — guard with `exists`, or use Try." ++ spelling
+                                   else " — " ++ feNote fe)
+      _ -> fePath fe ++ ": " ++ feMsg fe ++ " — use Try." ++ spelling
+    kindOf "ls" = "directory"
+    kindOf _ = "file"
+
+txLs :: IORef TxState -> FilePath -> IO [String]
+txLs ref dir = txLsE ref dir >>= either (ioError . userError . fsPanic "ls") pure
+
 -- list a directory: disk listing (validated at commit) composed with this
 -- txn's own additions and removals in that directory. sol-lock artifacts
 -- are invisible. ABSENCE IS NOT EMPTY: a missing (or this-txn-removed)
--- directory fails; only a pending mkdir may compose over an absent disk
--- listing, because then the entries below are all the directory has.
-txLs :: IORef TxState -> FilePath -> IO [String]
-txLs ref dir = do
+-- directory is a typed error; only a pending mkdir may compose over an
+-- absent disk listing, because then the entries below are all the
+-- directory has.
+txLsE :: IORef TxState -> FilePath -> IO (Either FsErr [String])
+txLsE ref dir = do
   s <- readIORef ref
   let pendingDir = M.lookup dir (txDirView s)
-  case pendingDir of
+  base <- case pendingDir of
     Just False ->
-      ioError (userError ("*** SOL PANIC: ls: no such directory: " ++ dir
-                            ++ " — removed earlier in this transaction ***"))
-    _ -> pure ()
-  base <- case M.lookup dir (txDirReads s) of
-    Just names -> pure names
-    Nothing -> do
-      r <- try (listDirectory dir) :: IO (Either IOException [String])
-      names0 <- case r of
-        Left e
-          | isDoesNotExistError e, pendingDir == Just True -> pure []
-          | isDoesNotExistError e ->
-              ioError (userError ("*** SOL PANIC: ls: no such directory: " ++ dir
-                                    ++ " — guard with `exists` ***"))
-          | otherwise ->
-              ioError (userError ("*** SOL PANIC: ls: " ++ show e ++ " ***"))
-        Right names -> pure names
-      let names = sort (filter (not . lockArtifact) names0)
-      atomicModifyIORef' ref (\st -> (st {txDirReads = M.insert dir names (txDirReads st)}, ()))
-      pure names
-  s2 <- readIORef ref
-  let inDir p = takeDir p == dir
-      takeDir p = let q = reverse (dropWhile (/= '/') (reverse p)) in if null q then "." else init q
-      baseName p = reverse (takeWhile (/= '/') (reverse p))
-      added = [baseName p | (p, Just _) <- M.toList (txView s2), inDir p, baseName p `notElem` base]
-      removed = [baseName p | (p, Nothing) <- M.toList (txView s2), inDir p]
-      addedDirs = [baseName p | (p, True) <- M.toList (txDirView s2), inDir p, baseName p `notElem` base]
-  pure (sort ((base ++ added ++ addedDirs) `without` removed))
+      pure (Left (FsErr "ls" dir WhyMissing "" "removed earlier in this transaction"))
+    _ -> case M.lookup dir (txDirReads s) of
+      Just names -> pure (Right names)
+      Nothing -> do
+        r <- try (listDirectory dir) :: IO (Either IOException [String])
+        case r of
+          Left e
+            | isDoesNotExistError e, pendingDir == Just True -> pure (Right [])
+            | otherwise -> pure (Left (classifyIO "ls" dir e))
+          Right names0 -> do
+            let names = sort (filter (not . lockArtifact) names0)
+            atomicModifyIORef' ref (\st -> (st {txDirReads = M.insert dir names (txDirReads st)}, ()))
+            pure (Right names)
+  case base of
+    Left fe -> pure (Left fe)
+    Right names -> do
+      s2 <- readIORef ref
+      let inDir p = takeDir p == dir
+          takeDir p = let q = reverse (dropWhile (/= '/') (reverse p)) in if null q then "." else init q
+          baseName p = reverse (takeWhile (/= '/') (reverse p))
+          added = [baseName p | (p, Just _) <- M.toList (txView s2), inDir p, baseName p `notElem` names]
+          removed = [baseName p | (p, Nothing) <- M.toList (txView s2), inDir p]
+          addedDirs = [baseName p | (p, True) <- M.toList (txDirView s2), inDir p, baseName p `notElem` names]
+      pure (Right (sort ((names ++ added ++ addedDirs) `without` removed)))
   where
     without xs ys = [x | x <- xs, x `notElem` ys]
 
 txExists :: IORef TxState -> FilePath -> IO Bool
-txExists ref p = do
+txExists ref p =
+  txExistsE ref p >>= either (ioError . userError . fsPanic "exists") pure
+
+txExistsE :: IORef TxState -> FilePath -> IO (Either FsErr Bool)
+txExistsE ref p = do
   s <- readIORef ref
   case M.lookup p (txView s) of
-    Just (Just _) -> pure True
-    Just Nothing -> pure False
+    Just (Just _) -> pure (Right True)
+    Just Nothing -> pure (Right False)
     Nothing -> case M.lookup p (txDirView s) of
-      Just b -> pure b
+      Just b -> pure (Right b)
       Nothing -> do
-        o <- diskMeta p
-        recordMeta ref p (MetaSnap (maybe False (const True) o) Nothing Nothing Nothing)
-        pure (maybe False (const True) o)
+        r <- try (diskMeta p) :: IO (Either IOException (Maybe (Bool, Integer, Integer)))
+        case r of
+          Left e -> pure (Left (classifyIO "exists" p e))
+          Right Nothing -> do
+            recordMeta ref p (MetaSnap False Nothing Nothing Nothing)
+            pure (Right False)
+          Right (Just _) -> do
+            recordMeta ref p (MetaSnap True Nothing Nothing Nothing)
+            pure (Right True)
 
 txIsDir :: IORef TxState -> FilePath -> IO Bool
 txIsDir ref p = do
@@ -473,10 +539,13 @@ txIsDir ref p = do
   case M.lookup p (txDirView s) of
     Just b -> pure b
     Nothing -> do
-      o <- diskMeta p
-      let isD = maybe False (\(d, _, _) -> d) o
-      recordMeta ref p (MetaSnap (maybe False (const True) o) (Just isD) Nothing Nothing)
-      pure isD
+      r <- try (diskMeta p) :: IO (Either IOException (Maybe (Bool, Integer, Integer)))
+      case r of
+        Left e -> ioError (userError (fsPanic "isDir" (classifyIO "isDir" p e)))
+        Right o -> do
+          let isD = maybe False (\(d, _, _) -> d) o
+          recordMeta ref p (MetaSnap (maybe False (const True) o) (Just isD) Nothing Nothing)
+          pure isD
 
 -- one stat(2) on the path: no open, follows symlinks (a dangling link
 -- resolves to nothing). Answers (isDir, size, mtime) of whatever the
@@ -518,31 +587,45 @@ mergeMeta new old =
 -- fields. Directory sizes are filesystem-specific; only the presence
 -- bit is contractual.
 txStat :: IORef TxState -> FilePath -> IO (Bool, Integer, Integer)
-txStat ref p = do
+txStat ref p =
+  txStatE ref p >>= either statPlain pure
+  where
+    -- the plain spelling answers absence (its documented contract since
+    -- the metadata slice); only an unknowable observation panics
+    statPlain fe
+      | feWhy fe == WhyMissing = pure (False, 0, 0)
+      | otherwise = ioError (userError (fsPanic "stat" fe))
+
+txStatE :: IORef TxState -> FilePath -> IO (Either FsErr (Bool, Integer, Integer))
+txStatE ref p = do
   s <- readIORef ref
   case M.lookup p (txView s) of
-    Just Nothing -> pure (False, 0, 0) -- removed earlier in this txn
+    Just Nothing -> pure (Right (False, 0, 0)) -- removed earlier in this txn
     Just (Just w) -> do
       now <- getPOSIXTime
-      pure (True, fromIntegral (utf8Len w), floor now)
+      pure (Right (True, fromIntegral (utf8Len w), floor now))
     Nothing -> case M.lookup p (txDirView s) of
-      Just False -> pure (False, 0, 0) -- rmdir'd earlier in this txn
+      Just False -> pure (Right (False, 0, 0)) -- rmdir'd earlier in this txn
       Just True -> do
-        o <- diskMeta p
-        case o of
-          Just (_, sz, mt) -> pure (True, sz, mt)
-          Nothing -> do
+        r <- try (diskMeta p) :: IO (Either IOException (Maybe (Bool, Integer, Integer)))
+        case r of
+          Left e -> pure (Left (classifyIO "stat" p e))
+          Right (Just (_, sz, mt)) -> pure (Right (True, sz, mt))
+          Right Nothing -> do
             now <- getPOSIXTime
-            pure (True, 0, floor now)
+            pure (Right (True, 0, floor now))
       Nothing -> do
-        o <- diskMeta p
-        case o of
-          Nothing -> do
+        r <- try (diskMeta p) :: IO (Either IOException (Maybe (Bool, Integer, Integer)))
+        case r of
+          Left e -> pure (Left (classifyIO "stat" p e))
+          Right Nothing -> do
+            -- the Err IS an observation of absence; the promise keeps the
+            -- presence-flip conflict that exists-missing already records
             recordMeta ref p (MetaSnap False Nothing Nothing Nothing)
-            pure (False, 0, 0)
-          Just (_, sz, mt) -> do
+            pure (Left (FsErr "stat" p WhyMissing "" ""))
+          Right (Just (_, sz, mt)) -> do
             recordMeta ref p (MetaSnap True Nothing (Just sz) (Just mt))
-            pure (True, sz, mt)
+            pure (Right (True, sz, mt))
 
 -- promised-field recheck at commit: a presence flip always conflicts;
 -- kind and size/mtime conflict only where promised. A same-metadata

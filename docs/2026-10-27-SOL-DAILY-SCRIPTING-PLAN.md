@@ -107,9 +107,14 @@ Implementation owners: `compiler/Sol/Txn.hs`, `VM.hs`, `Preamble.hs`,
   before changing the implementation.
   ([delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md): `tools/sol-fs-check.py`,
   22 checks, registered in Base)
-- [ ] Define one hosted filesystem result/error model: operation, path and
+- [x] Define one hosted filesystem result/error model: operation, path and
   distinguishable missing, denied, wrong-kind, symlink-loop and other OS errors.
   Add fallible entrypoints; retain convenience wrappers that fail clearly.
+  ([delivered 2026-10-28](2026-10-28-SOL-FS-RESULT-MODEL.md): the
+  observation surface — `Try.ls`/`Try.stat`/`Try.exists` with a structured
+  `FsError`, classified panics for the plain spellings. Mutations stay
+  commit-time queued effects; their issue-time refusals and the rename/copy
+  entrypoints follow with Phase 2's copy/rename APIs)
 - [ ] Separate metadata observations from content snapshots. `exists` checks
   existence without opening the file; stat/lstat expose file kind and link
   policy. Distinguish a dangling link from a missing directory entry.

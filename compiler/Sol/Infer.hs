@@ -61,6 +61,11 @@ solBuiltins =
       ("Try.parseInt", mono (TFn tStr (tcon "Result" [tInt, tStr]))),
       ("Try.parseNum", mono (TFn tStr (tcon "Result" [tInt, tStr]))),
       ("Try.readPath", mono (TFn tStr (tcon "Result" [tStr, tStr]))),
+      -- the typed filesystem tier: Err is the structured FsError, so the
+      -- reason is pattern-matched, never parsed out of a message
+      ("Try.ls", mono (TFn tStr (tcon "Result" [tList tStr, tcon "FsError" []]))),
+      ("Try.stat", mono (TFn tStr (tcon "Result" [TTupT [tInt, tInt], tcon "FsError" []]))),
+      ("Try.exists", mono (TFn tStr (tcon "Result" [tBool, tcon "FsError" []]))),
       ("charAt", mono (TFn tStr (TFn tInt tInt))), -- returns the char CODE
       ("substr", mono (TFn tStr (TFn tInt (TFn tInt tStr)))),
       -- the O(n) string tier (VM.hs): what Str.split / indexOf / replace /

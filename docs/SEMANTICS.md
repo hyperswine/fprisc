@@ -209,6 +209,16 @@ file suffixes; a clause applies to both unless it says which.
   ignore the locks are outside any Sol guarantee between recheck and
   replay.  A script wanting content validation reads the file.
   (today)  `[test: tools/sol-fs-check.py]`
+- `.sol` fallible filesystem tier: `Try.ls`, `Try.stat`, `Try.exists`
+  answer `Result` whose `Err` is one structured `FsError (op, path,
+  reason, os message)`; the reason is distinguishable (`FsMissing`,
+  `FsDenied`, `FsWrongKind`, `FsLoop`, `FsOther`) and pattern-matched,
+  never parsed out of a message.  `exists` answers plain absence as
+  `Ok False`; `Try.stat` carries absence as `Err` (its `Ok` is the
+  size/mtime pair); an observation the OS cannot make (denied, symlink
+  loop, path component not a directory) is an `Err` on every spelling.
+  The panicking spellings are retained and fail with classified
+  messages.  (today)  `[test: tools/sol-fs-check.py]`
 - `sh`/`shq` are deferred commands with an honest receipt.  (today)  `[test: check-all "sol txn hygiene 2"]`
 
 ### 10. Actors and messages

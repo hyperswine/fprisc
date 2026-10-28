@@ -1053,6 +1053,9 @@ mkHal cons scriptArgs tx preempts rt =
       ("Try.parseInt", (1, tryParseIntH)),
       ("Try.parseNum", (1, tryParseNumH)),
       ("Try.readPath", (1, tryReadPathH)),
+      ("Try.ls", (1, tryLsH)),
+      ("Try.stat", (1, tryStatH)),
+      ("Try.exists", (1, tryExistsH)),
       ("NativeGit.afterCommit", (5, gitAfterCommitH)),
       ("NativeGit.query", (3, gitQueryH)),
       ("NativeGit.push", (4, gitPushH)),
@@ -1274,6 +1277,7 @@ mkHal cons scriptArgs tx preempts rt =
     -- Result values: Ok/Err are builtin constructors (tid 3)
     vOk v = VData 3 0 [v]
     vErr m = VData 3 1 [VStr m]
+    vErrV v = VData 3 1 [v] -- Err carrying a structured value (the FsError tier)
 
     tryParseIntH [v] = do
       s <- vsStr v
@@ -1305,6 +1309,37 @@ mkHal cons scriptArgs tx preempts rt =
         TxNonText -> vErr ("readPath: not a UTF-8 text file: " ++ p)
         TxReadError e -> vErr ("readPath: " ++ p ++ ": " ++ e)
     tryReadPathH _ = vmPanic "Try.readPath: arity"
+
+    -- the typed filesystem tier: one FsError names the operation, the path
+    -- and a distinguishable reason (Txn.classifyIO reads the errno); the
+    -- panicking prelude spellings are sugar that insists. exists answers
+    -- plain absence (Ok False); only an unknowable observation is an Err.
+    fsErrV (FsErr op p why msg _) =
+      VData tErr 0 [VData tOp vOp [], VStr p, VData tWhy vWhy [], VStr msg]
+      where
+        (tErr, _) = conTV "FsError"
+        (tOp, vOp) = conTV (opCon op)
+        (tWhy, vWhy) = conTV (fsWhyName why)
+        opCon "ls" = "OpLs"
+        opCon "stat" = "OpStat"
+        opCon _ = "OpExists"
+    tryLsH [v] = withP v $ \p -> do
+      r <- txLsE tx p
+      pure $ case r of
+        Left fe -> vErrV (fsErrV fe)
+        Right names -> vOk (strList names)
+    tryLsH _ = vmPanic "Try.ls: arity"
+    tryStatH [v] = withP v $ \p -> do
+      r <- txStatE tx p
+      pure $ case r of
+        Left fe -> vErrV (fsErrV fe)
+        -- the presence bit lives in the Ok/Err split; Ok carries the fields
+        Right (_, sz, mt) -> vOk (VData 4 0 [VInt (fromIntegral sz), VInt (fromIntegral mt)])
+    tryStatH _ = vmPanic "Try.stat: arity"
+    tryExistsH [v] = withP v $ \p -> do
+      r <- txExistsE tx p
+      pure $ either (vErrV . fsErrV) (vOk . vBool) r
+    tryExistsH _ = vmPanic "Try.exists: arity"
 
     hostSnapshotH [VInt limit] | limit > 0 && limit <= 1000000 = do
       result <- nativeHost (fromInteger limit)

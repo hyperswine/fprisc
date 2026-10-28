@@ -178,6 +178,72 @@ def main():
               f'> b = exists "{rewritten}"; u = shNow "printf two > {rewritten}"; print "{{b}}".\n',
               b'True\n', error=b'REALTIME: shNow', error_not=b'conflict on')
 
+        # ---- the typed tier: Try.ls / Try.stat / Try.exists ---------------
+        # One FsError carries operation, path and a distinguishable reason;
+        # the panicking spellings stay for scripts that mean to insist.
+        def try_check(name, source, stdout):
+            nonlocal count
+            path = work / (name + '.sol')
+            path.write_text(source)
+            result = subprocess.run([str(FPR), 'sol', str(path)],
+                                    capture_output=True, env=ENV, timeout=30)
+            assert result.returncode == 0, (name, result)
+            assert result.stdout == stdout, (name, result.stdout, stdout, result.stderr)
+            assert result.stderr == b'', (name, result.stderr)
+            count += 1
+
+        why = ('> r = %s;\n'
+               '  out = case r of Ok x -> "ok {x}" | Err (FsError op p why m) -> "{op} {p} {why}";\n'
+               '  print out.\n')
+        try_check('try_ls_ok', f'> r = Try.ls "{full}"; print "{{r}}".\n',
+                  f'Ok [a.txt, b.txt, sub]\n'.encode())
+        try_check('try_ls_missing', why % f'Try.ls "{work}/nope"',
+                  f'OpLs {work}/nope FsMissing\n'.encode())
+        try_check('try_ls_wrong_kind', why % f'Try.ls "{plain}"',
+                  f'OpLs {plain} FsWrongKind\n'.encode())
+        denied_dir = work / 'denieddir'
+        denied_dir.mkdir()
+        denied_dir.chmod(0o000)
+        try_check('try_ls_denied', why % f'Try.ls "{denied_dir}"',
+                  f'OpLs {denied_dir} FsDenied\n'.encode())
+        try_check('try_stat_ok',
+                  f'> r = Try.stat "{plain}";'
+                  f' out = case r of Ok (sz, mt) -> "{{sz > 0}}" | Err e -> "err"; print out.\n',
+                  b'True\n')
+        try_check('try_stat_missing', why % f'Try.stat "{work}/nope"',
+                  f'OpStat {work}/nope FsMissing\n'.encode())
+        # exists answers absence; only an unknowable observation is an error
+        try_check('try_exists_missing',
+                  f'> r = Try.exists "{work}/nope";'
+                  f' out = case r of Ok b -> "{{b}}" | Err e -> "err"; print out.\n',
+                  b'False\n')
+        try_check('try_exists_ok',
+                  f'> r = Try.exists "{plain}";'
+                  f' out = case r of Ok b -> "{{b}}" | Err e -> "err"; print out.\n',
+                  b'True\n')
+        try_check('try_exists_denied', why % f'Try.exists "{denied_dir}/x"',
+                  f'OpExists {denied_dir}/x FsDenied\n'.encode())
+        # a symlink loop is its own reason, on every observation spelling
+        loop_a = work / 'loop-a'
+        loop_b = work / 'loop-b'
+        loop_a.symlink_to(loop_b)
+        loop_b.symlink_to(loop_a)
+        try_check('try_stat_loop', why % f'Try.stat "{loop_a}"',
+                  f'OpStat {loop_a} FsLoop\n'.encode())
+        # the railway composes: isOk / andThen work on the typed tier
+        try_check('try_railway',
+                  f'> d = "{full}"; m = "{work}/nope";'
+                  f' print "{{isOk (Try.ls d)}} {{isOk (Try.ls m)}}".\n',
+                  b'True False\n')
+        # plain spellings on unknowable paths fail CLEARLY (classified panic)
+        check('exists_denied_panic', f'> p = "{denied_dir}/x"; print "{{exists p}}".\n',
+              code=1, error=b'SOL PANIC: exists:')
+        check('isdir_denied_panic', f'> p = "{denied_dir}/x"; print "{{isDir p}}".\n',
+              code=1, error=b'SOL PANIC: isDir:')
+        denied_dir.chmod(0o755)
+        check('stat_loop_panic', f'> p = "{loop_a}"; stat p.\n',
+              code=1, error=b'SOL PANIC: stat:')
+
     print(f'sol fs contract: {count} checks passed')
 
 

@@ -27,6 +27,15 @@ prelude =
       -- the compiler can count them and say so.
       "Io = Type (Dir | Rm | RmDir | Ls x | Stat x | Exists x | IsDir x | Sh x",
       "         | Now x | NowSet x | NowAdd x | NowSh x | NowLine).",
+      -- the typed filesystem error: which operation, on what path, and a
+      -- distinguishable reason (missing / denied / wrong kind / symlink
+      -- loop / other). Try.ls / Try.stat / Try.exists answer Result with
+      -- this; the panicking spellings (ls, stat, exists) insist instead.
+      -- exists answers plain absence as Ok False — only an observation the
+      -- OS cannot make (denied, loop, ...) is an Err.
+      "FsOp = Type (OpLs | OpStat | OpExists).",
+      "FsReason = Type (FsMissing | FsDenied | FsWrongKind | FsLoop | FsOther).",
+      "FsError = Type (FsError FsOp String FsReason String).",
       "open : String -> Handle.",
       "readAll : Handle -> (String, Handle).",
       "writeAll : Handle -> String -> Handle.",
@@ -354,6 +363,7 @@ halArities =
   M.fromList
     [ ("str", 1), ("strcat", 2), ("String.len", 1), ("strlen", 1),
       ("error", 1), ("Try.parseInt", 1), ("Try.parseNum", 1), ("Try.readPath", 1),
+      ("Try.ls", 1), ("Try.stat", 1), ("Try.exists", 1),
       ("charAt", 2), ("chr", 1), ("substr", 3), ("!", 2),
       ("strSplit", 2), ("strIndexOf", 2), ("strIndexFrom", 3), ("strReplace", 3), ("strUpper", 1), ("strLower", 1), ("strTrim", 1), ("strJoin", 2),
       ("strCmp", 2), ("strCodes", 1),
