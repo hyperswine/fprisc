@@ -36,11 +36,16 @@ data Fusion=Fusion Catalog Safety.Safety
 planFusion :: Catalog -> Fusion
 planFusion snapshot=Fusion snapshot (Safety.planSafety (catalogTemplates snapshot))
 
-fuseClosed :: Namespace -> TypeContext -> Fusion -> ClosedFunction -> Either String (ClosedFunction,[FusionNote])
+-- The Bool reports whether any composite was admitted (every body rewrite
+-- inserts its fused code first). Without one the original product keeps its
+-- existing verification and erasure; declined sites still surface as notes.
+fuseClosed :: Namespace -> TypeContext -> Fusion -> ClosedFunction -> Either String (ClosedFunction,[FusionNote],Bool)
 fuseClosed (Namespace namespace) types@(TypeContext linears _) (Fusion snapshot safety) input=do
-  ((root,codes),Build _ _ notes)<-runStateT (pass (closedRoot input) (closedCode input)) (Build 0 M.empty [])
-  result<-rewriteClosed types (\_ _->Right (root,codes)) input
-  pure (result,nub notes)
+  ((root,codes),Build _ added notes)<-runStateT (pass (closedRoot input) (closedCode input)) (Build 0 M.empty [])
+  if M.null added then pure (input,nub notes,False)
+  else do
+    result<-rewriteClosed types (\_ _->Right (root,codes)) input
+    pure (result,nub notes,True)
   where
     owner=functionName (closedRoot input)
     aliases=M.unions [bindings (functionBody f) | f<-closedRoot input:map codeAsFunction (M.elems (closedCode input))]

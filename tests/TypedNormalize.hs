@@ -94,11 +94,11 @@ checkNormalization compile=do
           (\fn->Right fn {T.functionBody=renameBinderNames (M.fromList
             [(T.binderId target,"same"),(T.binderId alias,"kept"),(T.binderId hidden,"same")]) (T.functionBody fn)}) Right original)
         _->error ("shadow fixture has wrong binder structure: "++show bs)
-      changed=right (normalizeClosed (programTypesOf before) renamed)
+      changed=fst (right (normalizeClosed (programTypesOf before) renamed))
   check "display-shadowing aliases remain printable and stable"
     (length (allBinders (T.functionBody (closedRoot changed)))==length bs)
   check "display-shadowing form is idempotent"
-    (show (T.functionBody (closedRoot (right (normalizeClosed (programTypesOf before) changed))))
+    (show (T.functionBody (closedRoot (fst (right (normalizeClosed (programTypesOf before) changed)))))
       ==show (T.functionBody (closedRoot changed)))
   putStrLn "Typed normalization: checked types/identities, aliases/let sinking, strict CAFs/traps/fuel/allocations, captures, staged matches, vector snapshots and display-shadowing refusals passed"
   where

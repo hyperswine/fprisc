@@ -111,9 +111,16 @@ replaceClosed :: ClosedProgram -> NativeCore -> Either String NativeCore
 replaceClosed specialized (NativeCore closed p js compatibility declarations constructors serial)=do
   let checkedNames=M.keysSet (closedDefinitions closed)<>
         S.fromList [name | f<-M.elems (closedDefinitions closed),T.CodeId name<-M.keys (closedCode f)]
-  checkedAfter<-eraseClosed specialized
+      newDefinitions=closedDefinitions specialized
+      touched=closedTouched specialized `S.intersection` M.keysSet newDefinitions
+      -- Erased entries of untouched definitions carry over from the previous
+      -- program; per-definition fresh supplies make a partial erase identical.
+      kept=S.fromList [label | (name,f)<-M.toList newDefinitions,S.notMember name touched,
+        label<-name:[n | T.CodeId n<-M.keys (closedCode f)]]
+  erasedChanged<-eraseDefinitions specialized (S.toList touched)
   let legacy=M.withoutKeys p checkedNames
-      joins=S.fromList [name | f<-M.elems (closedDefinitions specialized),c<-M.elems (closedCode f),
+      checkedAfter=erasedChanged `M.union` M.restrictKeys p kept
+      joins=S.fromList [name | f<-M.elems newDefinitions,c<-M.elems (closedCode f),
         T.codeKind c==T.JoinCode,let T.CodeId name=T.codeId c]
         <> (js S.\\ checkedNames)
   unless (S.null (M.keysSet legacy `S.intersection` M.keysSet checkedAfter))
@@ -121,14 +128,20 @@ replaceClosed specialized (NativeCore closed p js compatibility declarations con
   pure (NativeCore specialized (checkedAfter `M.union` legacy) joins compatibility declarations constructors serial)
 
 eraseClosed :: ClosedProgram -> Either String Prog
-eraseClosed closed=do
+eraseClosed closed=eraseDefinitions closed (M.keys (closedDefinitions closed))
+
+-- Erase only the named owners and their code. Each definition's fresh supply
+-- starts at zero, so partial erasure yields the same entries as a full one.
+eraseDefinitions :: ClosedProgram -> [String] -> Either String Prog
+eraseDefinitions closed owners=do
   -- ClosedProgram's producers already verify every changed graph. Erasure
   -- checks each expression/interface through eraseFunctionWith below.
   outputs<-mapM one functions
   pure (M.fromList outputs)
   where
     input=closedInput closed;types=programTypes input;layouts=closedLayouts closed
-    roots=M.elems (closedDefinitions closed)
+    wanted=S.fromList owners
+    roots=[f | (name,f)<-M.toList (closedDefinitions closed),S.member name wanted]
     functions=[(f,T.functionName (closedRoot f),closedRoot f) | f<-roots]
       ++[(f,name,T.codeAsFunction code) | f<-roots,code<-M.elems (closedCode f),let T.CodeId name=T.codeId code]
     globals e=(case T.exprNode e of T.Var (T.Global n _)->S.singleton n;_->S.empty)

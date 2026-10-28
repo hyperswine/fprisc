@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-28",
+  "change": "pass-scoped verify/erase in the Linked pipeline (closedTouched flags; codegen rev 137 unchanged, byte-identical output)",
+  "benchmark": "qos programs/main.fpr --target=qa64 --prelude=core/prelude.fpr, warm unit cache, +RTS -s",
+  "control": "/tmp/fpr-item3-old (pre-change binary, same codegen rev 137)",
+  "machine": "Apple M4, macOS aarch64, ghc-9.8.2, paired ABBA",
+  "round_A_loadavg1m_1.6_to_2.1": {
+    "note": "new binary predates the touched-accumulation fix (tracking only, transform unchanged)",
+    "A1_old": {"cpu_s": 16.668, "elapsed_s": 16.715, "allocated_bytes": 36490933360, "loadavg1m": 2.07},
+    "B1_new": {"cpu_s": 12.605, "elapsed_s": 12.644, "allocated_bytes": 28684614432, "loadavg1m": 2.05},
+    "B2_new": {"cpu_s": 12.408, "elapsed_s": 12.385, "allocated_bytes": 28684614432, "loadavg1m": 1.59},
+    "A2_old": {"cpu_s": 16.693, "elapsed_s": 16.720, "allocated_bytes": 36490933376, "loadavg1m": 1.72},
+    "ratio_cpu": [1.322, 1.345]
+  },
+  "round_B_loadavg1m_3.4_to_6.9": {
+    "note": "shipped binary with the accumulation fix",
+    "A1_old": {"cpu_s": 22.682, "elapsed_s": 25.032, "allocated_bytes": 36490942272, "loadavg1m": 6.85},
+    "B1_new": {"cpu_s": 16.692, "elapsed_s": 17.580, "allocated_bytes": 29121402848, "loadavg1m": 5.96},
+    "A2_old_excluded": {"cpu_s": 24.101, "elapsed_s": 25.044, "allocated_bytes": 36490939600, "loadavg1m": 3.42},
+    "B2_new_excluded": {"cpu_s": 24.189, "elapsed_s": 32.232, "allocated_bytes": 29121402784, "loadavg1m": 3.85},
+    "exclusion_reason": "B2 vs B1 same work (allocation 64 bytes apart) but +45% CPU: machine contention dominated the pair",
+    "ratio_cpu": 1.359,
+    "alloc_delta_pct": -20.2
+  },
+  "eq_diffing_dead_end": {
+    "profile": "/tmp/qosprof-item3.prof (fpr-prof +RTS -p, 2026-10-28 15:44)",
+    "time_pct": {"$fEqScheme_$c==": 34.0, "$fEqClosedFunction": 27.7, "$fEqRow_$c==": 4.3, "$w$c==": 1.8},
+    "abba": {"old_alloc_bytes": 52437862416, "new_eq_alloc_bytes": 61334936728, "old_cpu_s": [42.126, 31.311], "new_eq_cpu_s": [62.963, 52.145]},
+    "verdict": "derived Eq diffing cost ~68% of compile time; reverted, passes report touched sets instead"
+  },
+  "byte_identity": {
+    "pos1_s_sha256": "698fd2935763063d5c98168f2e532af73c705b1cc95a00770ec1fc33b8c8be6c",
+    "qos_root_s_sha256": "6bd5615467bbf1a703cd05664da22908df71c66de56ccd3525b678795521bbb4",
+    "qos_units": "49 unit prefixes paired old vs new, zero mismatched"
+  },
+  "compile_budget_rerecorded": {
+    "hello": {"before_bytes": 1705523968, "after_bytes": 1436356152, "delta_pct": -15.8},
+    "std_live": {"before_bytes": 31716312328, "after_bytes": 27888445224, "delta_pct": -12.1},
+    "pos1": {"before_bytes": 76842036480, "after_bytes": 65737636432, "delta_pct": -14.4}
+  },
+  "tests": "33 unit suites; all 149 check_base jobs pass; FPR_NO_SPEC=1 specialization_alloc verified on all four flag x cache combos"
+}

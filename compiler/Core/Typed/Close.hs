@@ -3,8 +3,8 @@
 -- checked schemes; generated code never re-infers an erased expression.
 module Core.Typed.Close
   (ClosedFunction,closeFunction,closeFunctionWith,closedRoot,closedCode,closedGlobals,closedContracts,
-   closedOwnedContracts,closedImports,CodeLibrary,codeLibrary,libraryContracts,importClosedLibrary,importClosedCode,CloneOrigin(..),closedOrigins,
-   mapClosed,rewriteClosed,rewriteClosedWithOrigins,verifyClosed) where
+   closedOwnedContracts,closedImports,CodeLibrary,codeLibrary,libraryContracts,importClosedLibrary,importClosedCode,mergeClosedLibrary,CloneOrigin(..),closedOrigins,
+   mapClosed,mapClosedChanged,rewriteClosed,rewriteClosedWithOrigins,verifyClosed) where
 import Core.Typed.Syntax
 import Core.Typed.Verify
 import Core.Typed.Walk
@@ -60,10 +60,17 @@ importClosedCode :: TypeContext -> [ClosedFunction] -> ClosedFunction -> Either 
 importClosedCode types providers input=codeLibrary providers >>= \library->importClosedLibrary types library input
 
 importClosedLibrary :: TypeContext -> CodeLibrary -> ClosedFunction -> Either String ClosedFunction
-importClosedLibrary types (CodeLibrary available) (ClosedFunction root codes globals imports origins)=do
-  let result=ClosedFunction root codes globals (M.withoutKeys (imports `M.union` available) (M.keysSet codes)) origins
+importClosedLibrary types library input=do
+  let result=mergeClosedLibrary library input
   verifyClosed types result
   pure result
+
+-- The merge itself, for callers that verify their own product downstream.
+-- Existing imports win over library duplicates, and entries colliding with
+-- owned code are dropped, so the merge is consistent by construction.
+mergeClosedLibrary :: CodeLibrary -> ClosedFunction -> ClosedFunction
+mergeClosedLibrary (CodeLibrary available) (ClosedFunction root codes globals imports origins)=
+  ClosedFunction root codes globals (M.withoutKeys (imports `M.union` available) (M.keysSet codes)) origins
 -- Transform an owned closed product and check the complete code graph before
 -- exposing it to another pass. Clients cannot construct an unchecked product.
 mapClosed :: TypeContext -> (Function -> Either String Function) -> (CodeFunction -> Either String CodeFunction) -> ClosedFunction -> Either String ClosedFunction
@@ -73,6 +80,18 @@ mapClosed types rootPass codePass (ClosedFunction root codes globals imports ori
   let result=ClosedFunction root' codes' globals imports origins
   verifyClosed types result
   pure result
+-- A reporting pass returns its output paired with whether it rewrote
+-- anything. Untouched products pass through with their existing verification
+-- instead of being rebuilt and re-checked; changed ones verify atomically.
+mapClosedChanged :: TypeContext -> (Function -> Either String (Function,Bool)) -> (CodeFunction -> Either String (CodeFunction,Bool)) -> ClosedFunction -> Either String (ClosedFunction,Bool)
+mapClosedChanged types rootPass codePass input@(ClosedFunction root codes globals imports origins)=do
+  (root',rootChanged)<-rootPass root
+  coded<-traverse codePass codes
+  if not (rootChanged || any snd coded) then pure (input,False)
+  else do
+    let result=ClosedFunction root' (M.map fst coded) globals imports origins
+    verifyClosed types result
+    pure (result,True)
 -- Code-generating passes publish the whole changed graph atomically. Existing
 -- code/capture identities remain checked alongside newly introduced entries.
 rewriteClosed :: TypeContext -> (Function -> M.Map CodeId CodeFunction -> Either String (Function,M.Map CodeId CodeFunction)) -> ClosedFunction -> Either String ClosedFunction

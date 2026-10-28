@@ -74,7 +74,7 @@ checkVectorReads compile=do
           (expr int (T.IntValue 7)))) (ref input))
       body=expr pair (T.TupleValue [ref value,ref next])
       original=T.Function "shadow" [input] (expr pair (T.LetPattern pat readRhs body))
-      planned=original {T.functionBody=planReads (T.functionBody original)}
+      planned=original {T.functionBody=fst (planReads (T.functionBody original))}
       layout=Layout (\stem->do n<-get;put (n+1);pure (stem++show (n::Int)))
         (\name->if name=="Tup2" then Just (4,0,2) else Nothing) M.empty (\_ _ _->error "unexpected join")
       erase fn=right (evalState (eraseFunction context layout fn) 0)

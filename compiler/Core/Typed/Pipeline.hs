@@ -2,7 +2,7 @@
 -- Native semantic passes operate on a complete owned program before erasure.
 -- Layout authority stays attached to the closed product it helped construct.
 module Core.Typed.Pipeline
-  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,specializeProgramsWithDecisions,inlinePrograms,inlineProgramsWithDecisions,closedDecisions,planVectorReads,normalizeProgram,fusePrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
+  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,specializeProgramsWithDecisions,inlinePrograms,inlineProgramsWithDecisions,closedDecisions,closedTouched,planVectorReads,normalizeProgram,fusePrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
 import qualified Core.Typed.Decision as D
 import Core.Typed.Program
 import Core.Typed.Syntax
@@ -20,22 +20,26 @@ import Core.Typed.Verify (sameType)
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Compiler.DataLayout
 import Control.Monad.State.Strict
-import Control.Monad (unless,foldM)
+import Control.Monad (unless)
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data ClosedProgram=ClosedProgram Program Layouts (M.Map String ClosedFunction) [D.Decision]
-closedInput (ClosedProgram p _ _ _)=p
-closedDefinitions (ClosedProgram _ _ fs _)=fs
-closedLayouts (ClosedProgram _ layouts _ _)=layouts
-closedDecisions (ClosedProgram _ _ _ ds)=ds
+data ClosedProgram=ClosedProgram Program Layouts (M.Map String ClosedFunction) [D.Decision] (S.Set String)
+closedInput (ClosedProgram p _ _ _ _)=p
+closedDefinitions (ClosedProgram _ _ fs _ _)=fs
+closedLayouts (ClosedProgram _ layouts _ _ _)=layouts
+closedDecisions (ClosedProgram _ _ _ ds _)=ds
+-- Definitions the most recent pass rewrote. Everything else carries its
+-- previous verification and erasure, so passes report exactly what they
+-- touched and downstream consumers skip the rest.
+closedTouched (ClosedProgram _ _ _ _ touched)=touched
 
 closeProgram :: CallbackMode -> Layouts -> Program -> Either String ClosedProgram
 closeProgram mode layouts input=do
   verifyProgram input
   definitions<-M.traverseWithKey one (programFunctions input)
-  let result=ClosedProgram input layouts definitions []
+  let result=ClosedProgram input layouts definitions [] (M.keysSet definitions)
   verifyClosedProgram result
   specializeProgramWith mode [] result
   where
@@ -100,7 +104,7 @@ snapshotInterfaces snapshot=M.fromList (concat
 
 -- Elided definitions are constructor stubs another artifact owns and emits;
 -- every linked pass transforms them there and passes this artifact's copy
--- through unchanged (see ownedOnly). Verification still covers them.
+-- through unchanged. Verification still covers them.
 specializeSnapshot :: Bool -> S.Set String -> Callbacks.Catalog -> M.Map CodeId (String,Function) -> ClosedProgram -> Either String ClosedProgram
 specializeSnapshot reporting elided snapshot templates p=do
   let input=closedInput p
@@ -114,8 +118,11 @@ specializeSnapshot reporting elided snapshot templates p=do
       map fst (cloneBindings origin)==map binderId (functionParameters fn)->pure ()
     _->Left "typed pipeline: clone source/parameter provenance disagrees")
     [origin | f<-M.elems definitions,origin<-M.elems (closedOrigins f)]
+  -- Specialization rewrites callback products wholesale; only elided stubs
+  -- pass through with their existing verification and erasure.
   let result=ClosedProgram input (closedLayouts p) definitions (closedDecisions p++concatMap snd (M.elems changed))
-  verifyClosedProgram result
+        (S.fromList [name | name<-M.keys definitions,S.notMember name elided])
+  verifyLinkedStep result
   pure result
 
 -- All owned artifacts advance against one immutable snapshot per round.
@@ -134,9 +141,20 @@ inlineProgramsWithDecisions reporting rounds limit loopLimit inputs=do
         && constructorLayouts (closedLayouts p)==constructorLayouts (closedLayouts base)
         && shapeLayouts (closedLayouts p)==shapeLayouts (closedLayouts base))
           (Left "typed inline pipeline: checking namespace/layout mismatch")) programs
-      foldM step (M.map (\(_,_,p)->p) inputs) [1..rounds]
+      go rounds (M.map (\(_,_,p)->p) inputs)
   where
-    step programs _=do
+    -- A round that rewrote nothing is a fixed point: another round would
+    -- rebuild the same catalogue and walk the same bodies to no effect.
+    -- Touched names accumulate across rounds: the next erasure boundary diffs
+    -- against the program as it was before the whole inline pass, not before
+    -- the final round.
+    go 0 programs=pure programs
+    go remaining programs=do
+      (advanced,anyChanged)<-step programs
+      let merged=M.intersectionWith accumulate advanced programs
+          accumulate (ClosedProgram i l ds dd t) (ClosedProgram _ _ _ _ prev)=ClosedProgram i l ds dd (t<>prev)
+      if anyChanged then go (remaining-1) merged else pure merged
+    step programs=do
       let allPrograms=M.elems programs
           owned=M.mapWithKey (\key p->let (_,elided,_)=inputs M.! key in M.withoutKeys (closedDefinitions p) elided) programs
           owners=M.unions (M.elems owned)
@@ -145,32 +163,40 @@ inlineProgramsWithDecisions reporting rounds limit loopLimit inputs=do
       let types=programTypes (closedInput (head allPrograms))
       snapshot<-Callbacks.catalogPrograms types (map closedInput allPrograms) owners
       inlining<-Inline.planInlining limit loopLimit snapshot
-      M.traverseWithKey (\key p->do
+      advanced<-M.traverseWithKey (\key p->do
         let source=closedInput p
         let (forbidden,elided,_)=inputs M.! key
-        changed<-M.traverseWithKey (\name original->if name `S.member` elided then pure (original,[]) else
-          Inline.inlineClosedWithDecisions reporting forbidden (programNamespace source)
-            (programTypes source) (programArities source) inlining original) (closedDefinitions p)
-        let output=ClosedProgram source (closedLayouts p) (M.map fst changed)
-              (closedDecisions p++concatMap snd (M.elems changed))
-        verifyClosedProgram output
+        changed<-M.traverseWithKey (\name original->if name `S.member` elided then pure (original,[],False) else do
+          (output,decisions,touched)<-Inline.inlineClosedWithDecisions reporting forbidden (programNamespace source)
+            (programTypes source) (programArities source) inlining original
+          pure (output,decisions,touched)) (closedDefinitions p)
+        let output=ClosedProgram source (closedLayouts p) (M.map (\(f,_,_)->f) changed)
+              (closedDecisions p++concatMap (\(_,ds,_)->ds) (M.elems changed))
+              (S.fromList [name | (name,(_,_,touched))<-M.toList changed,touched])
+        verifyLinkedStep output
         pure output) programs
+      pure (advanced,any (not . S.null . closedTouched) (M.elems advanced))
 
 planVectorReads :: S.Set String -> ClosedProgram -> Either String ClosedProgram
 planVectorReads elided input=do
   let types=programTypes (closedInput input)
-      root f=Right f {functionBody=VectorRead.planReads (functionBody f)}
-      code c=Right c {codeBody=VectorRead.planReads (codeBody c)}
-  definitions<-ownedOnly elided (mapClosed types root code) (closedDefinitions input)
-  let output=ClosedProgram (closedInput input) (closedLayouts input) definitions (closedDecisions input)
-  verifyClosedProgram output
+      root f=let (body,planned)=VectorRead.planReads (functionBody f) in Right (f {functionBody=body},planned)
+      code c=let (body,planned)=VectorRead.planReads (codeBody c) in Right (c {codeBody=body},planned)
+  stepped<-M.traverseWithKey (\name f->if name `S.member` elided then pure (f,False)
+    else mapClosedChanged types root code f) (closedDefinitions input)
+  let output=ClosedProgram (closedInput input) (closedLayouts input) (M.map fst stepped) (closedDecisions input)
+        (S.fromList [name | (name,(_,planned))<-M.toList stepped,planned])
+  verifyLinkedStep output
   pure output
 
 normalizeProgram :: S.Set String -> ClosedProgram -> Either String ClosedProgram
 normalizeProgram elided input=do
-  definitions<-ownedOnly elided (Normalize.normalizeClosed (programTypes (closedInput input))) (closedDefinitions input)
-  let output=ClosedProgram (closedInput input) (closedLayouts input) definitions (closedDecisions input)
-  verifyClosedProgram output
+  let types=programTypes (closedInput input)
+  stepped<-M.traverseWithKey (\name f->if name `S.member` elided then pure (f,False)
+    else Normalize.normalizeClosed types f) (closedDefinitions input)
+  let output=ClosedProgram (closedInput input) (closedLayouts input) (M.map fst stepped) (closedDecisions input)
+        (S.fromList [name | (name,(_,changed))<-M.toList stepped,changed])
+  verifyLinkedStep output
   pure output
 
 fusePrograms :: Ord key => M.Map key (S.Set String,ClosedProgram) -> Either String (M.Map key (ClosedProgram,[Fusion.FusionNote]))
@@ -188,19 +214,12 @@ fusePrograms inputs=case map snd (M.elems inputs) of
     snapshot<-Callbacks.catalogPrograms types (map (closedInput . snd) (M.elems inputs)) owners
     let plan=Fusion.planFusion snapshot
     traverse (\(elided,p)->do
-      changed<-M.traverseWithKey (\name f->if S.member name elided then pure (f,[])
+      changed<-M.traverseWithKey (\name f->if S.member name elided then pure (f,[],False)
         else Fusion.fuseClosed (programNamespace (closedInput p)) types plan f) (closedDefinitions p)
-      let output=ClosedProgram (closedInput p) (closedLayouts p) (M.map fst changed) (closedDecisions p)
-      verifyClosedProgram output
-      pure (output,concatMap snd (M.elems changed))) inputs
-
--- Transform the definitions this artifact owns. Each artifact's program
--- carries a stub for every constructor of the program (the inliner and the
--- compatibility lowering read them), but only the owner emits one; the
--- others elide it. Transforming those copies in every artifact was most of
--- each linked pass's work (docs/2026-10-26-COMPILE-TIME-BUDGET.md).
-ownedOnly :: Monad m => S.Set String -> (a -> m a) -> M.Map String a -> m (M.Map String a)
-ownedOnly elided f=M.traverseWithKey (\name x->if S.member name elided then pure x else f x)
+      let output=ClosedProgram (closedInput p) (closedLayouts p) (M.map (\(f,_,_)->f) changed) (closedDecisions p)
+            (S.fromList [name | (name,(_,_,fused))<-M.toList changed,fused])
+      verifyLinkedStep output
+      pure (output,concatMap (\(_,notes,_)->notes) (M.elems changed))) inputs
 
 verifyClosedProgram :: ClosedProgram -> Either String ()
 verifyClosedProgram result=do
@@ -220,5 +239,30 @@ verifyClosedProgram result=do
         && map binderId (functionParameters expected)==map binderId (functionParameters actual))
         (Left ("typed pipeline "++name++": changed root interface"))
       verifyClosed (programTypes input) f
+      mapM_ (verifyProgramCalls input name . functionBody)
+        (closedRoot f:map codeAsFunction (M.elems (closedCode f)))
+
+-- A linked pass re-checks only what its producers do not already guarantee.
+-- Every ClosedFunction arrives verified by the transform that built it
+-- (mapClosed/rewriteClosed/closeFunctionWith), and the input program is
+-- invariant across the pipeline and was checked by closeProgram. What
+-- remains per pass: the cross-definition identity checks and, only for the
+-- definitions the pass touched, the source interface and calling contracts.
+verifyLinkedStep :: ClosedProgram -> Either String ()
+verifyLinkedStep result=do
+  unless (M.keysSet definitions==M.keysSet source) (Left "typed pipeline: closed/source owner mismatch")
+  unless (length labels==S.size (S.fromList labels)) (Left "typed pipeline: code label shared by definitions")
+  unless (length ids==S.size (S.fromList ids)) (Left "typed pipeline: binder identity shared by definitions")
+  mapM_ one [(name,f) | (name,f)<-M.toList definitions,S.member name (closedTouched result)]
+  where
+    input=closedInput result;definitions=closedDefinitions result;source=programFunctions input
+    functions=concat [[closedRoot f]++map codeAsFunction (M.elems (closedCode f)) | f<-M.elems definitions]
+    labels=map functionName functions
+    ids=[binderId b | f<-functions,b<-functionParameters f++allBinders (functionBody f)]
+    one (name,f)=do
+      let expected=source M.! name;actual=closedRoot f
+      unless (name==functionName actual && sameType (functionType expected) (functionType actual)
+        && map binderId (functionParameters expected)==map binderId (functionParameters actual))
+        (Left ("typed pipeline "++name++": changed root interface"))
       mapM_ (verifyProgramCalls input name . functionBody)
         (closedRoot f:map codeAsFunction (M.elems (closedCode f)))

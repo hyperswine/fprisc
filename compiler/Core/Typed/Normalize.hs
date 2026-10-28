@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- Normalize checked Base entries without losing types or lexical identities.
 -- Only literals/local aliases disappear. Effectful bindings retain strict
 -- order; a pending binding sinks only into the next RHS that uses it last.
@@ -12,18 +13,23 @@ import Core.Primitives (entryTickName)
 import Compiler.VectorLayout (builderRuntimeName)
 import qualified Core.VectorRead as Read
 import Core.Region.Runtime (Hook(..),hookName)
-import Control.Monad.Identity
+import Control.Monad.Writer
+import Control.Monad (foldM)
+import Data.Monoid (Any(..))
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-normalizeClosed :: TypeContext -> ClosedFunction -> Either String ClosedFunction
-normalizeClosed types=mapClosed types (Right . normalize)
-  (\code->let f=normalize (codeAsFunction code) in Right code {codeBody=functionBody f})
+normalizeClosed :: TypeContext -> ClosedFunction -> Either String (ClosedFunction,Bool)
+normalizeClosed types=mapClosedChanged types (Right . normalize)
+  (\code->let (f,changed)=normalize (codeAsFunction code) in Right (code {codeBody=functionBody f},changed))
 
-normalize :: Function -> Function
-normalize input=input {functionBody=go M.empty body0}
+-- The Bool reports whether any rule fired, so linked passes can leave
+-- untouched products with their existing verification and erasure.
+normalize :: Function -> (Function,Bool)
+normalize input=(input {functionBody=body},changed)
   where
+    (body,Any changed)=runWriter (go M.empty body0)
     body0=functionBody input
     binders=functionParameters input++allBinders body0
     scope=M.fromList [(binderId b,b) | b<-binders]
@@ -43,35 +49,39 @@ normalize input=input {functionBody=go M.empty body0}
     binding old b rhs rest=generated old rest (Let b rhs rest)
     unNote e=case exprNode e of Note x->unNote x;_->e
     go env input=let e=unNote input in case exprNode e of
-      Var (Local uid) | Just value<-M.lookup uid env->e {exprNode=exprNode value}
+      Var (Local uid) | Just value<-M.lookup uid env->tell (Any True) >> pure e {exprNode=exprNode value}
       Let b rhs rest->chain env (counts env e) [] e b rhs rest
-      _->rewrite (runIdentity (mapChildrenM (pure . go env) e))
+      _->mapChildrenM (go env) e >>= rewrite
     -- Counts describe the remaining *canonical* references. An eliminated
     -- alias transfers its future uses, and later RHSs debit that same target.
-    chain env left pending old b rhs rest=
-      let rhs'=go env rhs
-          here=counts env rhs
+    chain env left pending old b rhs rest=do
+      rhs'<-go env rhs
+      let here=counts env rhs
           remaining=M.differenceWith (\n used->Just (n-used)) left here
           uid=binderId b
           finish env' counts'=next env' counts' pending rest
-      in if uid `S.member` pinned || not (unambiguous b) then keep env remaining here pending old b rhs' rest else
+      if uid `S.member` pinned || not (unambiguous b) then keep env remaining here pending old b rhs' rest else
         case exprNode rhs' of
-          IntValue _->finish (M.insert uid rhs' env) (M.delete uid remaining)
+          IntValue _->tell (Any True) >> finish (M.insert uid rhs' env) (M.delete uid remaining)
           Var (Local target) | safeAlias uid target->
             let n=M.findWithDefault 0 uid remaining
-            in finish (M.insert uid rhs' env) (M.insertWith (+) target n (M.delete uid remaining))
+            in tell (Any True) >> finish (M.insert uid rhs' env) (M.insertWith (+) target n (M.delete uid remaining))
           _->keep env remaining here pending old b rhs' rest
-    keep env left here pending old b rhs rest=
-      let (rhs',pending')=absorb left here pending rhs
-      in next (M.delete (binderId b) env) left ((old,b,rhs'):pending') rest
+    keep env left here pending old b rhs rest=do
+      (rhs',pending')<-absorb left here pending rhs
+      next (M.delete (binderId b) env) left ((old,b,rhs'):pending') rest
     next env left pending rest=case exprNode (unNote rest) of
       Let b rhs body->chain env left pending (unNote rest) b rhs body
-      _->foldl (\out (old,b,rhs)->rewrite (binding old b rhs out)) (go env rest) pending
+      _->do
+        out0<-go env rest
+        foldM (\out (old,b,rhs)->rewrite (binding old b rhs out)) out0 pending
     absorb left here pending rhs=case pending of
       (old,b,value):more | binderId b `S.notMember` pinned,
-        M.member (binderId b) here,M.findWithDefault 0 (binderId b) left==0->
-        absorb left here more (rewrite (binding old b value rhs))
-      _->(rhs,pending)
+        M.member (binderId b) here,M.findWithDefault 0 (binderId b) left==0->do
+          tell (Any True)
+          merged<-rewrite (binding old b value rhs)
+          absorb left here more merged
+      _->pure (rhs,pending)
     safeAlias uid target=case M.lookup target scope of
       Just b->M.lookup (binderName b) spellings==Just 1
         && all (instanceOf (binderScheme b)) (M.findWithDefault [] uid uses)
@@ -88,17 +98,19 @@ normalize input=input {functionBody=go M.empty body0}
     occurs uid e=uid `elem` directUses e || any (occurs uid) (children e)
     rewrite e=case exprNode e of
       Let b rhs body | unambiguous b,Var (Local uid)<-exprNode body,uid==binderId b,
-        sameType (exprType rhs) (exprType e)->rhs
+        sameType (exprType rhs) (exprType e)->tell (Any True) >> pure rhs
       Let b rhs body | unambiguous b,If cond yes no<-exprNode body,
         not (occurs (binderId b) yes || occurs (binderId b) no)->case exprNode cond of
-          Var (Local uid) | uid==binderId b->rewrite (generated e yes (If rhs yes no))
+          Var (Local uid) | uid==binderId b->tell (Any True) >> rewrite (generated e yes (If rhs yes no))
           BoolTest flag x | Var (Local uid)<-exprNode x,uid==binderId b->
-            rewrite (generated e yes (If (cond {exprNode=BoolTest flag rhs}) yes no))
-          _->e
+            tell (Any True) >> rewrite (generated e yes (If (cond {exprNode=BoolTest flag rhs}) yes no))
+          _->pure e
       If cond yes no | Let b rhs value<-exprNode cond,mayHoist b,
-        not (occurs (binderId b) yes || occurs (binderId b) no)->
-          rewrite (binding cond b rhs (rewrite (generated e yes (If value yes no))))
-      _->e
+        not (occurs (binderId b) yes || occurs (binderId b) no)->do
+          tell (Any True)
+          inner<-rewrite (generated e yes (If value yes no))
+          rewrite (binding cond b rhs inner)
+      _->pure e
 
 children :: Expr -> [Expr]
 children e=getConst (mapChildrenM (Const . (:[])) e)

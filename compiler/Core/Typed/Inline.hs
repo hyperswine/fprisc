@@ -17,6 +17,8 @@ import Ownership.TypeShape (linShapeT)
 import Control.Monad.State.Strict
 import Control.Monad (guard,unless,void,when)
 import Control.Monad.Identity (runIdentity)
+import Control.Monad.Writer (runWriter,tell)
+import Data.Monoid (Any(..))
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -54,21 +56,27 @@ planInlining limit loopLimit snapshot=do
 
 inlineClosed :: S.Set String -> Namespace -> TypeContext -> M.Map String Int -> Inlining -> ClosedFunction -> Either String ClosedFunction
 inlineClosed forbidden namespace types arities plan input=
-  fst <$> inlineClosedWithDecisions False forbidden namespace types arities plan input
+  (\(f,_,_)->f) <$> inlineClosedWithDecisions False forbidden namespace types arities plan input
 
-inlineClosedWithDecisions :: Bool -> S.Set String -> Namespace -> TypeContext -> M.Map String Int -> Inlining -> ClosedFunction -> Either String (ClosedFunction,[D.Decision])
+-- The Bool reports whether anything was inlined, propagated or renamed.
+-- When nothing fired the original product is returned with its existing
+-- verification and erasure; the merge is consistent by construction and the
+-- rewrite below verifies any changed product before publication.
+inlineClosedWithDecisions :: Bool -> S.Set String -> Namespace -> TypeContext -> M.Map String Int -> Inlining -> ClosedFunction -> Either String (ClosedFunction,[D.Decision],Bool)
 inlineClosedWithDecisions reporting forbidden (Namespace ns) types@(TypeContext linears _) snapshotArities (Inlining snapshot limit loopLimit candidates) input=do
-  prepared<-importClosedLibrary types (catalogLibrary snapshot) input
-  ((root',codes'),(_,_,notes))<-runStateT (do
+  let prepared=mergeClosedLibrary (catalogLibrary snapshot) input
+  ((root',codes',changed),(_,_,notes))<-runStateT (do
     let root=closedRoot prepared;codes=closedCode prepared
-    r<-function (RootTarget (functionName root)) root
+    (r,rootChanged)<-function (RootTarget (functionName root)) root
     cs<-M.traverseWithKey (\key c->do
-      f<-function (CodeTarget key) (codeAsFunction c)
+      (f,codeChanged)<-function (CodeTarget key) (codeAsFunction c)
       let (caps,ps)=splitAt (length (codeCaptures c)) (functionParameters f)
-      pure c {codeCaptures=caps,codeParameters=ps,codeBody=functionBody f}) codes
-    pure (r,cs)) (0,catalogFirstType snapshot,[])
-  output<-rewriteClosed types (\_ _->Right (root',codes')) prepared
-  pure (output,reverse notes)
+      pure (c {codeCaptures=caps,codeParameters=ps,codeBody=functionBody f},codeChanged)) codes
+    pure (r,M.map fst cs,rootChanged || any snd cs)) (0,catalogFirstType snapshot,[])
+  if not changed then pure (input,reverse notes,False)
+  else do
+    output<-rewriteClosed types (\_ _->Right (root',codes')) prepared
+    pure (output,reverse notes,True)
   where
     generated ty node=Expr ty (linShapeT linears ty) Generated Nothing node
     owner=functionName (closedRoot input)
@@ -121,8 +129,12 @@ inlineClosedWithDecisions reporting forbidden (Namespace ns) types@(TypeContext 
                     record target D.Inlined
                     pure answer {exprOrigin=exprOrigin e,exprOffset=exprOffset e}
             _->mapChildrenM walk e
+      before<-gets (\(serial,_,_)->serial)
       body<-walk (functionBody fn)
-      pure (hygiene fn {functionBody=propagate body})
+      after<-gets (\(serial,_,_)->serial)
+      let (body',propagated)=propagate body
+          (fn',renamed)=hygiene fn {functionBody=body'}
+      pure (fn',before/=after || propagated || renamed)
     call e=case exprNode (unNote e) of
       CodeCall key ids args->Just (CodeTarget key,ids,args)
       JoinCall key ids args->Just (CodeTarget key,ids,args)
@@ -143,11 +155,12 @@ inlineClosedWithDecisions reporting forbidden (Namespace ns) types@(TypeContext 
       in case exprNode child of
         Var (Local uid) | Just a<-M.lookup uid env->child {exprNode=exprNode (unNote a)}
         _->child
-    propagate e=let child=runIdentity (mapChildrenM (pure . propagate) e)
+    propagate e=let (child,Any sub)=runWriter (mapChildrenM propagateChild e)
       in case exprNode child of
         Let b rhs body | pureFunction rhs,binderId b `S.notMember` pinnedLocals body->
-          substituteValues (M.singleton (binderId b) rhs) body
-        _->child
+          (substituteValues (M.singleton (binderId b) rhs) body,True)
+        _->(child,sub)
+      where propagateChild x=let (x',fired)=propagate x in tell (Any fired) >> pure x'
     -- Erasure prints names. Assign collision-free spellings after the typed
     -- rewrite so a caller local cannot capture a template's global reference.
     hygiene fn=let bs=functionParameters fn++allBinders (functionBody fn)
@@ -162,8 +175,8 @@ inlineClosedWithDecisions reporting forbidden (Namespace ns) types@(TypeContext 
                                  in (M.insert (binderId b) name names,S.insert name used,after)
                    (names,_,_)=foldl add (M.empty,S.empty,0::Int) bs
                    rename b=case M.lookup (binderId b) names of Nothing->b;Just name->b {binderName=name}
-               in if M.null names then fn else
-                 fn {functionParameters=map rename (functionParameters fn),functionBody=renameBinderNames names (functionBody fn)}
+               in if M.null names then (fn,False) else
+                 (fn {functionParameters=map rename (functionParameters fn),functionBody=renameBinderNames names (functionBody fn)},True)
     globals e=(case exprNode e of
       Var (Global name _)->S.singleton name
       ClosureValue (CodeId name) _->S.singleton name

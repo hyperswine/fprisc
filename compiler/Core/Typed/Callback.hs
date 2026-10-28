@@ -65,11 +65,11 @@ specializeClosedFromCatalog=specializeClosedWithDecisions False
 
 specializeClosedWithDecisions :: Bool -> Namespace -> TypeContext -> M.Map String Int -> Catalog -> ClosedFunction -> Either String Callbacks
 specializeClosedWithDecisions reporting namespace types arities snapshot original=do
-  prepared<-importClosedLibrary types (catalogLibrary snapshot) original
-  runCallbacks reporting namespace types arities snapshot prepared
+  -- The merge is consistent by construction; the rewritten product below
+  -- verifies before publication, so the merged input needs no separate check.
+  runCallbacks reporting namespace types arities snapshot (mergeClosedLibrary (catalogLibrary snapshot) original)
 
 runCallbacks reporting (Namespace ns) types@(TypeContext linears _) arities catalogView input=do
-  verifyClosed types input
   unless (all (>=0) arities) (Left "typed callbacks: negative physical arity")
   (rootBody,work)<-runStateT (do
     body<-walk 0 (scope (functionParameters root)) (functionBody root)
