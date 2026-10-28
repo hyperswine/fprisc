@@ -77,7 +77,11 @@ jobs:
         run: cabal test test:if-precedence-check test:module-path-check --test-show-details=direct
       # in a container job ${{ github.workspace }} is the HOST's path;
       # $GITHUB_WORKSPACE is the one the container sees
-      - run: echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      # tools/run_tangnano20k_base.py imports simple-risc's rom_protocol; its
+      # default (a sibling ../simple-risc) does not exist on the runner.
+      - run: |
+          echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          echo "SIMPLE_RISC_ROOT=$GITHUB_WORKSPACE/.ci/simple-risc" >> "$GITHUB_ENV"
       - name: Tang Nano SoftFloat (RV32 and RV64)
         run: |
           FPR_PRESET=fprisc-48 machine/tangnano20k/build-softfloat.sh
