@@ -10,6 +10,28 @@ make stdcheck
 make bare-metal PROG=tests/fmath.fpr
 ```
 
+## Quickstart (Linux)
+
+Checked on Debian trixie x86-64 with GHC 9.8.2 and cabal 3.12 from
+[ghcup](https://www.haskell.org/ghcup/). CI uses trixie's own GHC 9.6, so
+either should work. Ubuntu 24.04 lacks libgit2 >= 1.9. macOS setup is
+described below.
+
+```sh
+sudo apt-get install make gcc pkg-config python3 libgit2-dev libarchive-dev \
+  libegl-dev libgl-dev libgmp-dev zlib1g-dev
+cabal update
+make fpr                                  # builds ./fpr (first build fetches deps)
+./fpr --version
+./fpr sol sol/examples/tabling.sol        # tabling: fib 27 = 196418 ...
+make stdcheck                             # stdcheck: OK
+cabal test test:if-precedence-check test:module-path-check
+```
+
+`make unit-tests` runs every cabal test suite. `python3 tests/check_ci.py`
+runs the CI groups, which also need the RISC-V cross toolchains and QEMU
+installed by `.github/workflows/ci.yml`.
+
 Native AOT compilation uses verified typed IR and direct RV32/RV64, AArch64 and x64
 selectors. The RISC-V text generator and translators are retired in the current
 migration candidate. See the [retirement acceptance record](docs/2026-10-23-TYPED-GENERATOR-RETIREMENT.md)

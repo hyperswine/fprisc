@@ -96,8 +96,13 @@ with tempfile.TemporaryDirectory(prefix='fpr-scheduler-locality-') as directory:
     (tmp/'actors-locality.c').write_text(source)
     (tmp/'check.c').write_text(HARNESS)
     linker='-Wl,-dead_strip' if sys.platform=='darwin' else '-Wl,--gc-sections'
+    # GCC's SLP vectoriser pools fpr_plane_export's function-pointer pairs in the
+    # one anonymous .data.rel.ro.local section that also holds main's constants,
+    # so GNU ld keeps the whole plane (fpr_actor_fail, a_spawn_heap, ...) and
+    # then fails on their runtime symbols. ld64 strips per symbol and is fine.
+    novec=[] if sys.platform=='darwin' else ['-fno-tree-slp-vectorize']
     exe=tmp/'check'
-    subprocess.run([*shlex.split(os.environ.get('CC','cc')),'-O2','-DFPR_POSIX','-DFPR_NHARTS=2',
+    subprocess.run([*shlex.split(os.environ.get('CC','cc')),'-O2',*novec,'-DFPR_POSIX','-DFPR_NHARTS=2',
                     '-ffunction-sections','-fdata-sections','-I',str(ROOT/'runtime'),tmp/'check.c',linker,'-o',exe],
                    check=True,timeout=60)
     subprocess.run([exe],check=True,timeout=10)
