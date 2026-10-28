@@ -86,8 +86,10 @@ Hosted CI was not run; the Base registration is local evidence only.
   exact-byte validation. Separating metadata validation from content
   validation is the transaction-dependency review the plan calls for
   before changing snapshot storage.
-- `exists` on a FIFO would still open it (blocking); metadata on regular
-  files is not yet open-free.
+- `exists` on a FIFO answers `True` immediately (GHC's nonblocking open)
+  but still takes a content snapshot — an empty phantom dependency.
+  Metadata on regular files is not yet open-free; the
+  [dependency review](2026-10-28-SOL-TXN-DEPENDENCY-REVIEW.md) covers this.
 - Errors surface as panic text, not typed results; denied is not yet
   distinguishable from other OS errors without reading the message.
   Fallible entrypoints and the one result/error model are open.
