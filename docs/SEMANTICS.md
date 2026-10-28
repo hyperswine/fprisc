@@ -69,7 +69,8 @@ file suffixes; a clause applies to both unless it says which.
 - Operators: `+ - * / % ^` on numbers; `+ -` on strings and lists; `+
   - *` on Vec/Matrix; `==` `!=` (NOT `/=`); `< <= > >=`; `&& ||`;
   `::` cons; `|>` pipe; `|>?` Ok/Err pipe; `$` low-precedence apply;
-  `>>` sequence; `!` 1-based list index (sol).  (today)  `[test: tests/opsugar.fpr, sol/examples/algebra.sol]`
+  `>>` sequence; `!` zero-based list index (sol); String indexing is one-based.
+  (today) `[test: tests/opsugar.fpr, tests/base/zerobased.fpr, sol/examples/algebra.sol]`
 - `+` on a tuple is not defined and is refused by name.  User types
   get operators through a struct.  (today)  `[test: sol/examples/operators.sol]`
 - Precedence table: (write it down).  `[test: ]`
@@ -192,9 +193,12 @@ file suffixes; a clause applies to both unless it says which.
 
 - `.fpr`: effects are calls into the HAL through `Sys.*` and services
   (Part II).  `print` is immediate.  (today)
-- `.sol`: a script is ONE atomic transaction over the filesystem;
-  writes land at commit; `print` is not transactional (a retried
-  script re-prints).  A panic aborts totally.  (today)  `[test: tests/txnabort.sol, check-all "txn"]`
+- `.sol`: a run owns ONE file transaction; buffered writes land at commit.
+  A pre-commit panic discards buffered work. `print` and explicit immediate
+  I/O are outside rollback. Guarded retry is the default: a conflict after
+  immediate external work fails without replay. Explicit legacy mode or a
+  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure
+  does not undo applied files. (today) `[test: tests/txnabort.sol, tools/sol-effects-check.py]`
 - `.sol` observations resolve the pending view first (the transaction's
   own writes and mkdirs answer, with no dependency recorded), then a
   content read (whole bytes join the read set; exact-byte validation at
@@ -219,7 +223,8 @@ file suffixes; a clause applies to both unless it says which.
 - `.sol` fallible filesystem tier: `Try.ls`, `Try.stat`, `Try.exists`
   answer `Result` whose `Err` is one structured `FsError (op, path,
   reason, os message)`; the reason is distinguishable (`FsMissing`,
-  `FsDenied`, `FsWrongKind`, `FsLoop`, `FsEncoding`, `FsLimit`, `FsOther`) and pattern-matched,
+  `FsDenied`, `FsWrongKind`, `FsLoop`, `FsEncoding`, `FsLimit`, `FsOther`,
+  `FsExists`, `FsCrossDevice`) and pattern-matched,
   never parsed out of a message.  `exists` answers plain absence as
   `Ok False`; `Try.stat` carries absence as `Err` (its `Ok` is the
   size/mtime pair); an observation the OS cannot make (denied, symlink
@@ -240,7 +245,64 @@ file suffixes; a clause applies to both unless it says which.
   recovery fences retain scratch and report its paths. Hard crashes may leave
   scratch for manual cleanup; temporary paths are not durable output.
   (today)  `[test: tools/sol-fs-check.py]`
-- `sh`/`shq` are deferred commands with an honest receipt.  (today)  `[test: check-all "sol txn hygiene 2"]`
+- `sh` runs immediately; `shq` runs at commit with an honest receipt. Arbitrary
+  Proc.query commands mark external work; Proc.queryReplayable asserts safe
+  repetition without validating output. (today) `[test: tools/sol-retry-policy-check.py]`
+- `.sol` Proc.pipeline/start connect raw byte stages with explicit capture caps,
+  per-stage statuses and PipeLast/PipeFail aggregation. Linear job owners support
+  wait/poll/cancel; attempts sweep jobs before commit and on exit. Timeout,
+  overflow and cancellation kill owned groups, reap direct children and join
+  I/O workers. Detached groups remain outside cleanup. Staged file publication
+  is immediate and requires aggregate success; pending effects fence starts.
+  Text process APIs cap each channel at 1 MiB; durable receipts have aggregate
+  admission and retain the at-least-once crash window. See
+  [Phase 3](2026-10-29-SOL-PROCESS-PHASE3.md). (today)
+  `[test: tools/sol-pipeline-check.py, tools/sol-effects-check.py]`
+- `.sol` immutable Bytes are exact octets, distinct from String/BStr. Indexes
+  and slices are zero-based and checked. UTF-8 encode/decode is explicit;
+  strict decoding rejects malformed/non-scalar input and replacement decoding
+  has separate names. Incremental decoding carries at most three incomplete
+  bytes and strict finalization rejects a truncated sequence.
+  (today) `[test: tools/sol-io-check.py]`
+- `.sol` linear ByteReader/ByteWriter capabilities are attempt-owned, checked
+  against runtime identity and closed on explicit close/attempt exit/retry/
+  cancellation. Streams are immediate, not transaction snapshots; chunk/line
+  limits are explicit, EOF differs from blank lines, and line framing preserves
+  LF/unterminated final bytes. Exact stdout/stderr APIs add no newline. The
+  callback's retained state remains its own memory responsibility.
+  (today) `[test: tools/sol-io-check.py]`
+- `.sol` Script.exit 0..255 stops foreground evaluation, commits and returns
+  that status only after tracked effects succeed; commit/deferred failure wins
+  with status 1. Script.abort 1..255 discards buffered work. Attempt-scoped Env
+  overrides restore before retry/exit. Relative data paths use invocation cwd;
+  imports keep importer-relative lookup. (today) `[test: tools/sol-io-check.py]`
+- `.sol` Fs.copyNow is a bounded exclusive direct copy; Fs.copyPublishNow
+  stages beside its target before complete-file publication. Fs.renameNow
+  is an explicit atomic same-filesystem rename, with native no-clobber support
+  and no cross-device copy/delete fallback. These operations are immediate,
+  outside redo/rollback; neither publication durability nor exactly-once
+  execution is implied. moveText and deprecated mv retain buffered text-only
+  read/write/delete behavior. (today) `[test: tools/sol-io-check.py]`
+- `.sol` Hex/Base64 encode exact Bytes; canonical padded base64 rejects
+  malformed padding/unused bits. Opaque linear Sha256 contexts provide
+  incremental hashing, and Sha256.stream consumes a bounded reader's remaining
+  bytes while retaining its owner for close. No external digest tool is used.
+  (today) `[test: tools/sol-digest-check.py]`
+- `.sol` JSON parseWith admits source UTF-8, depth/container items and decoded
+  field sizes before constructing the tree. CSV parseWith/readCsv/foldCsv share
+  one bounded parser with explicit record/field budgets; quoted CR/LF survives.
+  Stream folds mark the actual read as external work even if opening the reader
+  was inside a replay assertion. CLI/config modules preserve raw tokens, use
+  explicit environment overrides and typed schema errors. See
+  [Phase 4](2026-10-29-SOL-LIBRARIES-PHASE4.md). (today)
+  `[test: tools/sol-format-check.py, tools/sol-cli-config-check.py, tools/sol-retry-policy-check.py]`
+- `.sol` HTTP uses linked libcurl in an owned isolated worker; no curl executable
+  is needed. Requests have explicit deadlines, header/body budgets, validated
+  TLS/hostname checks and redirect policy. Bounded capture preserves non-2xx
+  responses; streamed file downloads publish only a fully received 2xx body.
+  Immediate external-effect policy applies, including guarded conflict refusal
+  and cancellation cleanup. See [HTTP](2026-10-29-SOL-HTTP.md). (today)
+  `[test: tools/sol-http-check.py]`
 
 ### 10. Actors and messages
 
@@ -372,3 +434,16 @@ file suffixes; a clause applies to both unless it says which.
   under the invoking directory.  (today)  `[test: qos/tests-host/install-check.sh]`
 - The `#:` directives a program may carry: `name`, `expect`, `plugins`,
   `host`, `music`, `disk-mb`, `fprd`, `version`.  (today)  `[test: ]`
+
+### Sol installed runner and recovery state (2026-10-29)
+
+The versioned Sol launcher resolves libraries beside its real runner, independent
+of cwd. Importer-relative modules precede the home and explicit FPR_PATH roots.
+Sol AST pins are per-file FNV drift checks, distinct from the native store's
+transitive package identities. New journals live in a private writable state
+root rather than beside source; dead-owner target locks retain absolute recovery
+paths across scripts/cwd. `sol state` inspects retained state; `sol recover`
+replays dead-owner journals, leaves live owners alone, and retains fences on
+replay I/O failure. See the [installation contract](2026-10-29-SOL-INSTALLATION.md)
+for paths, legacy recovery, at-least-once external work, maintenance and migration.
+`[test: tools/sol-install-check.py, tools/sol-effects-check.py]`

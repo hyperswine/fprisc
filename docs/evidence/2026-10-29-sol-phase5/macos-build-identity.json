@@ -1,0 +1,80 @@
+{
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "python": "3.15.2 (main, Oct 25 2026, 16:57:51) [Clang 21.0.0 (clang-2100.3.34.2)]",
+  "base_revision": "27a4cdce69fbdbbfd337cfad6e7ed68203104c80",
+  "build": "make fpr; Cabal default -O1; threaded RTS -V0.001 -A64m; see hashed fp-risc.cabal/Makefile",
+  "binary_sha256": "e0286bce028ce82a6ce18963b16b8840ab6667d77fcb506d39a02953e0b0b866",
+  "source_sha256": {
+    "compiler/Main.hs": "1010b1d8af43cedeaa2e1f4bd1bc687a7ede276ab664db299612211fd67edb16",
+    "compiler/Sol/Main.hs": "b3bcfa320af9687ac2144ec1accd06a32ed3055508e3e41d7b6f1ac036bd2e63",
+    "compiler/Sol/Txn.hs": "736c8ac6f039b6ef026afda29caf8f60c158c9134a398aaa718ff1544b46decb",
+    "compiler/Sol/Cache.hs": "6afb270b43d5626a90e2e2181982d360fe828f766d1446748c3ab9289ed95206",
+    "fp-risc.cabal": "c992bf78ace82f76673e880dca66e8709aa8506b340f206cbbeeeedeaa889de3",
+    "Makefile": "2705fa793e30b2cd3ddab184973221f69aecc8a53c9ea5a84a9d34a7bed28521",
+    "tools/sol-install.py": "d47ba23f8d9e83577cad311557a476ce7830b1cb97c4e69c7ed5477741aaa236",
+    "tools/sol-install-check.py": "911e41e8bef6e4f2f0427e31b70d28ce9943d2c7585ab9c562e2374dca27f66f",
+    "tools/sol-daily-check.py": "7f88289b2ef9689aa0d0cadbdb011ba00390c0bf1e92cdc4310a01922d6de123",
+    "tests/check_registry.py": "de5b2263645664784718cc9b3b3cf972da8ce5385e28b6203699e015df9e9e56"
+  },
+  "commands": [
+    {
+      "command": [
+        "ghc",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "The Glorious Glasgow Haskell Compilation System, version 9.8.2\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "cabal",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "cabal-install version 3.16.1.0 \ncompiled using version 3.16.1.0 of the Cabal library (in-tree)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "pkg-config",
+        "--modversion",
+        "libgit2",
+        "libarchive",
+        "libcurl"
+      ],
+      "returncode": 0,
+      "stdout": "1.9.7\n3.8.10\n8.7.1\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "otool",
+        "-L",
+        "fpr"
+      ],
+      "returncode": 0,
+      "stdout": "fpr:\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1359.0.0)\n\t/opt/homebrew/opt/libgit2/lib/libgit2.1.9.dylib (compatibility version 1.9.0, current version 1.9.7)\n\t/opt/homebrew/opt/libarchive/lib/libarchive.13.dylib (compatibility version 22.0.0, current version 22.10.0)\n\t/usr/lib/libcurl.4.dylib (compatibility version 7.0.0, current version 9.0.0)\n\t/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)\n\t/usr/lib/libffi.dylib (compatibility version 1.0.0, current version 40.0.0)\n\t/usr/lib/libcharset.1.dylib (compatibility version 1.0.0, current version 1.0.0)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "./fpr",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "fpr 0.12.0\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "returncode": 0,
+      "stdout": "check_ci: tests/check_rv64_linux.py::typed-runtime\ncheck_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s\ncheck_ci: tests/check_native_data.py\ncheck_ci: tests/check_native_data.py: 0.0 s\ncheck_ci: tests/check_native_required.py\n",
+      "stderr": "........\n----------------------------------------------------------------------\nRan 8 tests in 0.080s\n\nOK\n"
+    }
+  ]
+}

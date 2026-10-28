@@ -14,7 +14,8 @@
 --     mid-script
 --   * at exit: lock every touched file (sorted order — no deadlock),
 --     VALIDATE the read set against the disk, COMMIT the write set,
---     unlock. If validation fails, the whole script re-runs (STM retry).
+--     unlock. Validation failure re-runs only when the retry policy permits:
+--     guarded (default) stops after immediate external work has started.
 --
 -- Locks are atomic mkdir locks (<path>.sol-lock) so two concurrent `sol`
 -- processes exclude each other portably with no daemon.
@@ -28,9 +29,13 @@ module Sol.Txn (module Sol.Txn, module Sol.Effects) where
 
 import Sol.Diagnostic (diagnostic)
 import Sol.Native
+import qualified Sol.Digest as Digest
 import Sol.Effects
+import qualified Sol.ScriptIO as ScriptIO
+import qualified Sol.Process as Process
+import Data.Bits ((.&.))
 import Data.Unique (Unique, newUnique)
-import Control.Concurrent (threadDelay, forkIOWithUnmask, killThread, newEmptyMVar, putMVar, takeMVar, newChan, writeChan, readChan)
+import Control.Concurrent (ThreadId, myThreadId, threadDelay, forkIOWithUnmask, killThread, newEmptyMVar, putMVar, takeMVar, newChan, writeChan, readChan)
 import Control.Exception (SomeException, bracket, catch, IOException, finally, mask, mask_, onException, throwIO, try)
 import Control.Monad (foldM, forM_, unless, when)
 import Data.IORef
@@ -50,6 +55,7 @@ import System.Directory
   ( canonicalizePath, makeAbsolute, getCurrentDirectory,
     createDirectory,
     createDirectoryIfMissing,
+    getHomeDirectory,
     doesDirectoryExist,
     doesFileExist,
     getTemporaryDirectory,
@@ -64,12 +70,12 @@ import System.Directory
 import Data.Time.Clock.POSIX (getPOSIXTime, utcTimeToPOSIXSeconds)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, takeFileName, hasTrailingPathSeparator, dropTrailingPathSeparator, (</>))
-import System.IO (readFile', hClose, hIsTerminalDevice)
+import System.IO (readFile', openTempFile, hClose, hIsTerminalDevice, openBinaryFile, IOMode(ReadMode))
 import System.IO.Error (ioeGetErrorType, isAlreadyExistsError, isDoesNotExistError, isResourceVanishedError)
-import Foreign.C.Error (Errno (..), eACCES, eISDIR, eLOOP, eMLINK, eNOENT, eNOTDIR, ePERM)
+import Foreign.C.Error (Errno (..), eACCES, eEXIST, eXDEV, eISDIR, eLOOP, eMLINK, eNOENT, eNOTDIR, ePERM)
 import GHC.IO.Exception (IOException (..), IOErrorType (..))
 import System.IO (hFlush, hGetContents', hIsEOF, hGetLine, stderr, stdin, stdout, hPutStr, hPutStrLn)
-import System.Process (CreateProcess (..), StdStream (..), getPid, terminateProcess, createProcess, proc, readCreateProcessWithExitCode, shell, waitForProcess)
+import System.Process (CreateProcess (..), StdStream (..), getPid, terminateProcess, createProcess, proc, shell, waitForProcess)
 import System.Timeout (timeout)
 import qualified System.Posix.Files as PF
 import qualified System.Posix.Directory.ByteString as PDB
@@ -77,6 +83,7 @@ import qualified System.Posix.Temp as PT
 import System.Posix.Signals (signalProcessGroup, sigKILL, sigCONT, sigTTOU, blockSignals, getSignalMask, setSignalMask, addSignal, emptySignalSet)
 import System.Posix.Terminal (getTerminalProcessGroupID, setTerminalProcessGroupID)
 import System.Posix.Process (getProcessGroupID)
+import System.Posix.User (getEffectiveUserID)
 import System.Posix.IO (stdInput)
 import System.Posix.Types (ProcessGroupID)
 
@@ -113,6 +120,17 @@ kindDir = 1
 kindLink = 2
 kindOther = 3
 
+data RetryPolicy = GuardedRetry | LegacyRetry deriving (Eq, Show)
+
+parseRetryPolicy :: String -> Either String RetryPolicy
+parseRetryPolicy "guarded" = Right GuardedRetry
+parseRetryPolicy "legacy" = Right LegacyRetry
+parseRetryPolicy value = Left ("invalid retry policy " ++ show value ++ "; use guarded or legacy")
+
+retryPolicyName :: RetryPolicy -> String
+retryPolicyName GuardedRetry = "guarded"
+retryPolicyName LegacyRetry = "legacy"
+
 data TxState = TxState
   { txReads :: M.Map FilePath (Maybe String), -- decoded snapshot for repeat reads
     txReadBytes :: M.Map FilePath (Maybe BS.ByteString), -- exact validation snapshot
@@ -131,6 +149,11 @@ data TxState = TxState
     txPathLogs :: [(FilePath,String)],
     txSagaJournal :: Maybe FilePath,
     txTemps :: [FilePath], -- owned scratch paths; swept on discard/exit
+    txIO :: Maybe ScriptIO.Runtime,
+    txProcesses :: Maybe Process.Runtime,
+    txRetryPolicy :: RetryPolicy,
+    txExternal :: S.Set String,
+    txReplayableThreads :: M.Map ThreadId Int,
     txSaga :: Maybe GitUndo,
     txPivot :: !Bool,
     txLogs :: [String] -- REVERSED `log` lines: emitted only after a clean commit
@@ -139,7 +162,9 @@ data TxState = TxState
 newTx :: IO (IORef TxState)
 newTx = do
   identity <- newUnique
-  newIORef emptyTx {txIdentity = Just identity}
+  runtime <- ScriptIO.newRuntime
+  processes <- Process.newRuntime
+  newIORef emptyTx {txIdentity = Just identity, txIO = Just runtime, txProcesses=Just processes}
 
 emptyTx :: TxState
 emptyTx = TxState
@@ -147,11 +172,51 @@ emptyTx = TxState
   , txEffects=[], txView=M.empty, txDirView=M.empty
   , txHandles=IM.empty, txNextH=1, txNonText=S.empty, txSealed=False
   , txIdentity=Nothing, txNextStep=0, txTerminal=False, txPathLogs=[]
-  , txSagaJournal=Nothing, txTemps=[], txSaga=Nothing, txPivot=False, txLogs=[]
+  , txSagaJournal=Nothing, txTemps=[], txIO=Nothing, txProcesses=Nothing, txRetryPolicy=GuardedRetry
+  , txExternal=S.empty, txReplayableThreads=M.empty, txSaga=Nothing, txPivot=False, txLogs=[]
   }
 
 resetTx :: IORef TxState -> IO ()
-resetTx ref = newTx >>= readIORef >>= writeIORef ref
+resetTx ref = txCleanup ref >> (newTx >>= readIORef >>= writeIORef ref)
+
+txRuntime :: IORef TxState -> IO ScriptIO.Runtime
+txRuntime ref = readIORef ref >>= maybe (ioError (userError "missing script I/O runtime")) pure . txIO
+
+txProcessRuntime :: IORef TxState -> IO Process.Runtime
+txProcessRuntime ref = readIORef ref >>= maybe (ioError (userError "missing process runtime")) pure . txProcesses
+
+txCleanupProcesses :: IORef TxState -> IO ()
+txCleanupProcesses ref = readIORef ref >>= mapM_ Process.closeRuntime . txProcesses
+
+txCleanup :: IORef TxState -> IO ()
+txCleanup ref = do
+  state <- readIORef ref
+  txCleanupProcesses ref `finally` (mapM_ ScriptIO.closeRuntime (txIO state) `finally` txCleanupTemps ref)
+
+txSetRetryPolicy :: IORef TxState -> RetryPolicy -> IO ()
+txSetRetryPolicy ref policy = modifyIORef' ref (\s -> s {txRetryPolicy = policy})
+
+-- Mark before attempting the effect: an exception/spawn failure cannot
+-- prove that nothing externally visible happened. Replay assertions are
+-- thread-scoped so one actor cannot bless another actor's effects.
+txMarkExternal :: IORef TxState -> String -> IO ()
+txMarkExternal ref name = do
+  tid <- myThreadId
+  atomicModifyIORef' ref $ \s ->
+    (if M.findWithDefault 0 tid (txReplayableThreads s) > 0 then s
+     else s {txExternal = S.insert name (txExternal s)}, ())
+
+txReplayableScope :: IORef TxState -> IO a -> IO a
+txReplayableScope ref action = mask $ \restore -> do
+  tid <- myThreadId
+  atomicModifyIORef' ref (\s -> (s {txReplayableThreads = M.insertWith (+) tid 1 (txReplayableThreads s)}, ()))
+  restore action `finally` atomicModifyIORef' ref (\s ->
+    (s {txReplayableThreads = M.update (\n -> if n <= 1 then Nothing else Just (n-1)) tid (txReplayableThreads s)}, ()))
+
+txRetryRefusal :: IORef TxState -> IO [String]
+txRetryRefusal ref = do
+  state <- readIORef ref
+  pure (if txRetryPolicy state == GuardedRetry then S.toList (txExternal state) else [])
 
 -- an effect issued after commit sealed the log (an actor thread that
 -- outlived program order) can only be lost — name it, loudly
@@ -464,7 +529,7 @@ txRmdir ref raw = do
 -- Try.ls/Try.stat/Try.exists — pattern-matches this; the panicking
 -- spellings render it). feNote carries a plain-text hint that only the
 -- panic message uses (e.g. "removed earlier in this transaction").
-data FsWhy = WhyMissing | WhyDenied | WhyWrongKind | WhyLoop | WhyEncoding | WhyLimit | WhyOther deriving (Eq)
+data FsWhy = WhyMissing | WhyDenied | WhyWrongKind | WhyLoop | WhyEncoding | WhyLimit | WhyOther | WhyExists | WhyCrossDevice deriving (Eq)
 
 data FsErr = FsErr
   { feOp :: String, -- "ls" / "stat" / "exists" (also the FsOp constructor)
@@ -482,6 +547,8 @@ fsWhyName WhyLoop = "FsLoop"
 fsWhyName WhyEncoding = "FsEncoding"
 fsWhyName WhyLimit = "FsLimit"
 fsWhyName WhyOther = "FsOther"
+fsWhyName WhyExists = "FsExists"
+fsWhyName WhyCrossDevice = "FsCrossDevice"
 
 -- errno first (ELOOP/EISDIR/ENOTDIR only exist there); the IOErrorType
 -- fallback covers exceptions raised without an errno
@@ -490,6 +557,8 @@ classifyIO op p e = FsErr op p why (show e) ""
   where
     why = case ioe_errno e of
       Just n
+        | Errno n == eEXIST -> WhyExists
+        | Errno n == eXDEV -> WhyCrossDevice
         | Errno n == eNOENT -> WhyMissing
         | Errno n == eACCES || Errno n == ePERM -> WhyDenied
         | Errno n == eLOOP || Errno n == eMLINK -> WhyLoop
@@ -956,14 +1025,13 @@ utf8Len = sum . map w
 
 -- ---- external commands -----------------------------------------------------
 
--- immediate: for READ-ONLY commands (git status, docker ps). The read-only
--- claim is the caller's assertion — it cannot be enforced, and its output
--- cannot be validated at commit. Reruns on retry.
+-- Immediate arbitrary commands. Output is not validated at commit; the VM
+-- marks external work before calling. Repetition requires a caller assertion
+-- or explicit legacy retry policy. Both channels have bounded text capture.
 txSh :: String -> IO (Int, String)
 txSh cmd = do
-  (code, out, err) <- readCreateProcessWithExitCode (shell cmd) ""
-  let c = case code of ExitSuccess -> 0; ExitFailure n -> n
-  pure (c, out ++ err)
+  result <- runProcessSpec (ProcessSpec ["/bin/sh", "-c", cmd] Nothing [] "" Nothing)
+  either (ioError . userError) (\(c,out,err) -> pure (c,out ++ err)) result
 
 -- queued: for MUTATING commands (git commit, docker rm). Runs at COMMIT,
 -- after validation, interleaved in declaration order with file effects.
@@ -983,6 +1051,20 @@ runProcessSpec :: ProcessSpec -> IO (Either String (Int, String, String))
 runProcessSpec = runProcessMode CaptureIO
 
 runProcessMode :: ProcessIO -> ProcessSpec -> IO (Either String (Int, String, String))
+runProcessMode CaptureIO spec = case ScriptIO.encodeUtf8 (psStdin spec) of
+  Left why -> pure (Left why)
+  Right bytes -> do
+    let pipeline = Process.Pipeline [spec {psStdin="", psTimeoutMs=Nothing}] (Process.InputBytes bytes)
+          (Process.CaptureUtf8 1048576) (Process.CaptureUtf8 1048576) (maybe 0 id (psTimeoutMs spec)) Process.LastStage
+    result <- Process.run pipeline
+    pure $ case result of
+      Left (Process.Failure "timeout" _ _ ms) -> Left ("timed out after " ++ show ms ++ "ms")
+      Left (Process.Failure why stage channel cap) -> Left (why ++ " (stage " ++ show stage ++ ", " ++ channel ++ ", limit " ++ show cap ++ ")")
+      Right (Process.Result code _ out [err]) -> do
+        textOut <- ScriptIO.decodeUtf8 out
+        textErr <- ScriptIO.decodeUtf8 err
+        Right (code,textOut,textErr)
+      Right _ -> Left "process runner returned an invalid capture shape"
 runProcessMode mode spec = case psArgv spec of
   [] -> pure (Left "process argv is empty")
   _ | mode == InheritIO && not (null (psStdin spec)) ->
@@ -1095,9 +1177,9 @@ displayProcess spec = unwords (map show (psArgv spec))
 
 -- ---- REALTIME ESCAPES (outside the transaction) ---------------------------
 --
--- Everything above this line is transactional: reads snapshot, writes buffer,
--- and a validation failure re-runs the script with the world untouched. That
--- is the default and it is what you want almost always.
+-- Buffered file reads/writes snapshot and defer, respectively. Immediate
+-- process/I/O calls are outside rollback. Guarded retry prevents repeating
+-- immediate external work unless its caller explicitly accepts replay.
 --
 -- These are the deliberate holes in it. They exist because three things are
 -- genuinely impossible inside a transaction:
@@ -1112,8 +1194,8 @@ displayProcess spec = unwords (map show (psArgv spec))
 --     line at a time, now.
 --
 -- What you give up, in every case: the operation happens even if the
--- transaction later rolls back, it happens AGAIN on every retry, and its
--- result is not validated at commit. The counter below exists so a run that
+-- transaction later rolls back, can happen again under explicit replay/legacy,
+-- and its result is not validated at commit. The counter exists so a run that
 -- uses these says so out loud.
 
 -- per-kind use counts, for the warning summary; survives retries
@@ -1172,9 +1254,8 @@ rtAppend ref p v = do
 rtShell :: String -> IO Int
 rtShell cmd = do
   hFlush stdout
-  (_, _, _, ph) <- createProcess (shell cmd)
-  code <- waitForProcess ph
-  pure (case code of ExitSuccess -> 0; ExitFailure n -> n)
+  result <- runProcessMode InheritIO (ProcessSpec ["/bin/sh","-c",cmd] Nothing [] "" Nothing)
+  either (ioError . userError) (\(code,_,_) -> pure code) result
 
 -- one line from stdin, now; "" at end of input
 rtLine :: IO String
@@ -1516,11 +1597,36 @@ parseJournal = decodeJournal
 
 readDone :: FilePath -> IO Done
 readDone j = do
-  r <- try (readFile' (donePath j)) :: IO (Either IOException String)
+  r <- try (bracket (openBinaryFile (donePath j) ReadMode) hClose $ \h -> do
+    bytes <- Process.boundedRead 0 "completion journal" 201326592 h
+      `catch` \(Process.Failure why _ _ _) -> ioError (userError ("completion journal: " ++ why))
+    either (ioError . userError) pure (ScriptIO.decodeUtf8 bytes)) :: IO (Either IOException String)
   case r of
     Left e | isDoesNotExistError e -> pure IM.empty
            | otherwise -> throwIO e
-    Right txt -> either (ioError . userError) pure (decodeDone txt)
+    Right txt -> do
+      done <- either (ioError . userError) pure (decodeDone txt)
+      unless (doneBytes done <= 16777216 && IM.size done <= 4096
+              && all ((<= 2097152) . completionBytes) (IM.elems done))
+        (ioError (userError "completion journal exceeds receipt budget"))
+      pure done
+
+-- Inline durable captures have the same caps as live text captures. No spool
+-- files escape receipt cleanup; reserve 1 MiB for failure receipts themselves.
+completionBytes :: Completion -> Int
+completionBytes = sum . map (BS.length . BSU.fromString) . texts
+  where texts (Left s) = [s]
+        texts (Right (TextCapture s)) = [s]
+        texts (Right (ProcessCapture _ out err)) = [out,err]
+
+doneBytes :: Done -> Int
+doneBytes = sum . map completionBytes . IM.elems
+
+boundCompletion :: Done -> Completion -> Completion
+boundCompletion done result
+  | completionBytes result > 2097152 || doneBytes done + completionBytes result > 15728640 =
+      Left "deferred receipt capture budget exceeded; external work may already have occurred"
+  | otherwise = result
 
 markDone :: FilePath -> Done -> IO ()
 markDone j = writeAtomic (donePath j) . encodeDone
@@ -1562,51 +1668,125 @@ recoverJournal takeLocks j = do
           then withLocksHold hold (acquireGo False j) touched recover
           else recover
 
--- ---- one journal per run ---------------------------------------------------
---
--- The journal belongs to the RUN, not the script: two concurrent runs of
--- one script with disjoint write sets never contend on a lock, so a
--- shared <script>.soljournal let one clear or overwrite the other's and a
--- crash in either lost its redo. Each run journals to
--- <script>.soljournal.<pid>.<nonce>, a sibling file (no shared directory
--- to create or remove, so no race on it).
+-- ---- private writable recovery state ---------------------------------------
+-- New journals never require writes to the source/install directory. Legacy
+-- sibling journals remain readable, including absolute paths in old lock owners.
+stateDirectory :: IO FilePath
+stateDirectory = do
+  explicit <- lookupEnv "SOL_STATE_DIR"
+  xdg <- lookupEnv "XDG_STATE_HOME"
+  home <- getHomeDirectory
+  let path = case explicit of
+        Just value -> value
+        Nothing -> maybe (home </> ".local/state/sol") (</> "sol") xdg
+  unless ("/" `isPrefixOf` path) $
+    ioError (userError "Sol state directory must be an absolute path")
+  privateDirectory path
+
+privateDirectory :: FilePath -> IO FilePath
+privateDirectory path = do
+  durableDirectory path
+  st <- PF.getSymbolicLinkStatus path
+  uid <- getEffectiveUserID
+  unless (PF.isDirectory st && PF.fileOwner st == uid) $
+    ioError (userError ("Sol state directory must be an owned directory, not a symlink: " ++ path))
+  when (PF.fileMode st .&. 0o777 /= 0o700) $ do
+    PF.setFileMode path 0o700
+    fsyncPath path
+  canonicalizePath path
+
+-- Persist each new directory entry before a commit can depend on a journal
+-- below it. Syncing only the journal's immediate directory misses newly made
+-- XDG/state parents after power loss. Reuse the runtime's platform sync helper.
+durableDirectory :: FilePath -> IO ()
+durableDirectory path = do
+  exists <- doesDirectoryExist path
+  unless exists $ do
+    durableDirectory (takeDirectory path)
+    createDirectory path `catch` \e -> unless (isAlreadyExistsError e) (throwIO (e :: IOException))
+    fsyncPath (takeDirectory path)
+
+stateBase :: FilePath -> IO FilePath
+stateBase base = do
+  absolute <- makeAbsolute base
+  key <- Digest.hash (BSU.fromString absolute) >>= Digest.encode False
+  root <- stateDirectory
+  dir <- privateDirectory (root </> key)
+  -- This descriptor is for inspection only; recovery trusts the journal/locks.
+  let descriptor = dir </> "script"
+  exists <- doesFileExist descriptor
+  unless exists $ bracket (openTempFile dir ".sol-script-")
+    (\(temp,handle) -> do
+      hClose handle `catch` \(_ :: IOException) -> pure ()
+      removeFile temp `catch` \(_ :: IOException) -> pure ())
+    (\(temp,handle) -> do
+      hPutStr handle (absolute ++ "\n")
+      hClose handle
+      fsyncPath temp
+      renamePath temp descriptor
+      fsyncPath dir)
+  pure (dir </> "run")
 
 journalPrefix :: FilePath -> FilePath
 journalPrefix base = base ++ ".soljournal."
 
--- this run's journal path; the nonce keeps a reused pid from naming a
--- dead predecessor's journal
 runJournalPath :: FilePath -> IO FilePath
 runJournalPath base = do
+  stored <- stateBase base
   me <- c_getpid
   t <- getPOSIXTime
   let nonce = floor (t * 1000000000) :: Integer
-  makeAbsolute (journalPrefix base ++ show (fromIntegral me :: Int) ++ "." ++ show nonce)
+  pure (journalPrefix stored ++ show (fromIntegral me :: Int) ++ "." ++ show nonce)
 
--- heal at startup: redo every journal of this script whose owner is dead
--- (a live owner is mid-commit and holds its locks; leave it alone), plus
--- the pre-per-run <script>.soljournal if an older sol left one
 recoverScriptJournals :: FilePath -> IO ()
 recoverScriptJournals base = do
+  recoverAtBase base -- pre-installation layout, never create files beside it
+  stateBase base >>= recoverAtBase
+
+-- Only dead owners are eligible. The caller's pid cannot own a journal yet;
+-- a same-pid file therefore belongs to a dead predecessor after pid reuse.
+recoverAtBase :: FilePath -> IO ()
+recoverAtBase base = do
   recoverJournal True (base ++ ".soljournal")
-  let dir = parentOf base
-      stem = drop (length dir) (journalPrefix base)
-  r <- try (listDirectory dir) :: IO (Either IOException [String])
+  let dir = takeDirectory base
+      stem = takeFileName (journalPrefix base)
+  names <- listDirectory dir
   me <- c_getpid
-  forM_ (reverse (either (const []) sort r)) $ \n ->
-    case stripPrefixL stem n of
-      Just rest
-        | not (".done" `isSuffixOf` n),
-          not (".sol-tmp" `isSuffixOf` n),
-          Just pid <- readMaybe (takeWhile (/= '.') rest) -> do
-            alive <- c_pidAlive (fromIntegral (pid :: Int))
-            -- our own pid cannot own a journal yet: that one is a dead
-            -- predecessor's whose pid was reused
-            when (alive == 0 || pid == fromIntegral me) $
-              recoverJournal True (dir ++ n)
-      _ -> pure ()
-  where
-    stripPrefixL pre x = if pre `isPrefixOf` x then Just (drop (length pre) x) else Nothing
+  forM_ (reverse (sort names)) $ \name ->
+    case journalOwner stem name of
+      Just pid -> do
+        alive <- c_pidAlive (fromIntegral pid)
+        when (alive == 0 || pid == fromIntegral me) $
+          recoverJournal True (dir </> name)
+      Nothing -> pure ()
+
+journalOwner :: String -> String -> Maybe Int
+journalOwner stem name
+  | stem `isPrefixOf` name && not (any (`isSuffixOf` name) [".done", ".sol-tmp"]) =
+      readMaybe (takeWhile (/= '.') (drop (length stem) name))
+  | otherwise = Nothing
+
+-- Explicit maintenance scans only the runtime's hash-named groups. It leaves
+-- live owners alone and propagates recovery errors instead of deleting fences.
+maintainState :: Bool -> IO ()
+maintainState repair = do
+  root <- stateDirectory
+  putStrLn ("state " ++ root)
+  groups <- sort <$> listDirectory root
+  forM_ [name | name <- groups, length name == 64, all (`elem` "0123456789abcdef") name] $ \name -> do
+    let dir = root </> name
+    st <- PF.getSymbolicLinkStatus dir
+    uid <- getEffectiveUserID
+    unless (PF.isDirectory st && PF.fileOwner st == uid) $
+      ioError (userError ("unsafe Sol state group: " ++ dir))
+    when repair $ recoverAtBase (dir </> "run")
+    names <- sort <$> listDirectory dir
+    forM_ names $ \file -> case journalOwner "run.soljournal." file of
+      Nothing -> pure ()
+      Just pid -> do
+        alive <- c_pidAlive (fromIntegral pid)
+        regular <- doesFileExist (dir </> file)
+        when regular $ putStrLn ((if alive == 0 then "dead " else "live ") ++ dir </> file)
 
 -- ---- commit ---------------------------------------------------------------
 
@@ -1847,7 +2027,9 @@ replayEffs j recovery done crashAt effs = do
                 next (completionFailed r) 0
               Nothing -> do
                 when recovery (diagnostic ("[sol] redo: re-running " ++ label ++ " (at-least-once)"))
-                r <- action
+                raw <- action
+                prior <- readIORef results
+                let r = boundCompletion prior raw
                 rs <- atomicModifyIORef' results (\m -> let m'=IM.insert i r m in (m',m'))
                 markDone j rs
                 case r of
@@ -1876,12 +2058,10 @@ replayEffs j recovery done crashAt effs = do
           _ <- try (removeDirectory p) :: IO (Either IOException ())
           still <- doesDirectoryExist p
           if still then failed ("rmdir " ++ p ++ " (still exists — not empty?)") else next sf 1
-        EShell cmd -> external ("deferred command " ++ cmd) True $ do
-          (status,out,err) <- readCreateProcessWithExitCode (shell cmd) ""
-          pure (Right (ProcessCapture (case status of ExitSuccess -> 0; ExitFailure n -> n) out err))
-        EShellAt cwd cmd -> external ("deferred command " ++ cmd) True $ do
-          (status,out,err) <- readCreateProcessWithExitCode (shell cmd) {cwd=Just cwd} ""
-          pure (Right (ProcessCapture (case status of ExitSuccess -> 0; ExitFailure n -> n) out err))
+        EShell cmd -> external ("deferred command " ++ cmd) True
+          (captureProcess (ProcessSpec ["/bin/sh","-c",cmd] Nothing [] "" Nothing))
+        EShellAt cwd cmd -> external ("deferred command " ++ cmd) True
+          (captureProcess (ProcessSpec ["/bin/sh","-c",cmd] (Just cwd) [] "" Nothing))
         EProcess spec -> external ("deferred process " ++ displayProcess spec) True (captureProcess spec)
         EGit request -> external ("native effect " ++ effectBrief e) False (fmap TextCapture <$> nativeGit request)
         EArchive source target entries bytes -> external ("native archive " ++ target) False (fmap TextCapture <$> nativeArchive source target entries bytes)

@@ -23,7 +23,7 @@ grep -Fq 'SOL PANIC' /tmp/sol-txn-panic.out
 [ ! -e /tmp/sol-txn-a.txt ] && [ ! -e /tmp/sol-txn-b.txt ] && [ ! -e /tmp/sol-txn-q.log ]
 
 # 2. forced retries: file write + shq + afterCommit land ONCE; `sh` runs per attempt
-SOL_FORCE_RETRY=2 ./fpr sol tests/txnretry.sol >/tmp/sol-txn-retry.out 2>&1
+SOL_FORCE_RETRY=2 ./fpr sol --retry-policy=legacy tests/txnretry.sol >/tmp/sol-txn-retry.out 2>&1
 [ "$(cat /tmp/sol-txn-ctr.txt)" = 1 ]
 [ "$(cat /tmp/sol-txn-shq.log)" = q ]
 [ "$(cat /tmp/sol-txn-ac.log)" = p ]
@@ -32,8 +32,8 @@ SOL_FORCE_RETRY=2 ./fpr sol tests/txnretry.sol >/tmp/sol-txn-retry.out 2>&1
 
 # 3. two concurrent writers on one counter: the loser retries, both land
 printf 0 > /tmp/sol-txn-race.txt
-./fpr sol tests/txnrace.sol >/tmp/sol-txn-race1.out 2>&1 &
-./fpr sol tests/txnrace.sol >/tmp/sol-txn-race2.out 2>&1
+./fpr sol --retry-policy=legacy tests/txnrace.sol >/tmp/sol-txn-race1.out 2>&1 &
+./fpr sol --retry-policy=legacy tests/txnrace.sol >/tmp/sol-txn-race2.out 2>&1
 wait
 [ "$(cat /tmp/sol-txn-race.txt)" = 2 ]
 cat /tmp/sol-txn-race1.out /tmp/sol-txn-race2.out | grep -Fq 'conflict on'
@@ -74,7 +74,7 @@ grep -Fq 'effect FAILED' "$W/g2.out"
 # contender redoes it, so no committed result mixes old and new files
 echo A1 >"$W/a"; echo B1 >"$W/b"
 printf '> u1 = writePath @%s/a "A2"; u2 = writePath @%s/b "B2"; print "queued".\n' "$W" "$W" >"$W/w.sol"
-printf '> x = readPath @%s/a; y = readPath @%s/b; u = writePath @%s/c "{x}{y}"; print "read {x}{y}".\n' "$W" "$W" "$W" >"$W/r.sol"
+printf '> x = readPath @%s/a; y = readPath @%s/b; u = writePath @%s/c "{x}{y}"; log "read {x}{y}".\n' "$W" "$W" "$W" >"$W/r.sol"
 mkdir "$W/b.sol-tmp" # the second write of the replay fails
 if ./fpr sol "$W/w.sol" >"$W/g1w.out" 2>&1; then
   echo "G1: a failed replay exited 0" >&2; exit 1
@@ -103,7 +103,7 @@ grep -Fq 'recovering interrupted commit' "$W/g3three.out"
 # 9. G4: print is direct (once per attempt), log is transactional (once
 # per committed run, never for a run that panics or fails its commit)
 printf '> u = writePath @%s/f "x"; u1 = print "progress"; u2 = log "wrote f"; print "end".\n' "$W" >"$W/g4.sol"
-SOL_FORCE_RETRY=2 ./fpr sol "$W/g4.sol" >"$W/g4.out" 2>/dev/null
+SOL_FORCE_RETRY=2 ./fpr sol --retry-policy=legacy "$W/g4.sol" >"$W/g4.out" 2>/dev/null
 [ "$(grep -c '^progress$' "$W/g4.out")" -eq 3 ] && [ "$(grep -c '^wrote f$' "$W/g4.out")" -eq 1 ]
 [ "$(tail -1 "$W/g4.out")" = 'wrote f' ]
 printf '> u1 = log "about to fail"; u = writePath @%s/g "x"; x = 1 / 0; print "no".\n' "$W" >"$W/g4p.sol"

@@ -65,8 +65,17 @@ isPush _ = False
 
 -- Validate before the commit point and again before replaying journal data.
 validatePlan :: [Effect] -> Either String ()
-validatePlan = walk IM.empty False 0
+validatePlan es
+  | length (filter external es) > 4096 = Left "deferred result count exceeds 4096 receipt limit"
+  | otherwise = walk IM.empty False 0 es
   where
+    external EShell{} = True
+    external EShellAt{} = True
+    external EProcess{} = True
+    external EGit{} = True
+    external EArchive{} = True
+    external ELater{} = True
+    external _ = False
     walk _ _ _ [] = Right ()
     walk types pushed i (e:es)
       | pushed, not (isLog e) = Left "Git.push must be the last queued effect"

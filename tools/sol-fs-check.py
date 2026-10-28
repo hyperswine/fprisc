@@ -42,7 +42,7 @@ def main():
             path = work / (name + '.sol')
             path.write_text(source)
             result = subprocess.run([str(FPR), 'sol', str(path)],
-                                    capture_output=True, env=ENV, timeout=30)
+                                    capture_output=True, env=ENV | ({'SOL_RETRY_POLICY': 'legacy'} if error == b'conflict on' else {}), timeout=30)
             assert result.returncode == code, (name, result)
             assert result.stdout == stdout, (name, result.stdout, stdout, result.stderr)
             if error is None:
@@ -373,7 +373,7 @@ def main():
         assert not Path(p1).exists() and not Path(p2).exists(), 'temp dirs must not outlive the run'
         count += 2
         # a discarded attempt sweeps its own temps; the final attempt's too
-        r3 = run_sol('> d = tempDir "retry"; print d.\n', env={'SOL_FORCE_RETRY': '2'})
+        r3 = run_sol('> d = tempDir "retry"; print d.\n', env={'SOL_FORCE_RETRY': '2', 'SOL_RETRY_POLICY': 'legacy'})
         assert r3.returncode == 0, r3
         paths = [Path(line) for line in r3.stdout.decode().splitlines()]
         # forced-retry 2 = two discarded attempts plus the final one

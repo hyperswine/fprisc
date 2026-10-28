@@ -29,6 +29,7 @@ module Sol.Val where
 import qualified Data.Array as A
 import Data.Unique (Unique)
 import Sol.Effects (DeferredRef)
+import qualified Sol.Digest as Digest
 import Data.Array.IO (IOArray, getElems, newArray_, readArray, writeArray)
 import Data.IORef
 import Data.Int (Int64)
@@ -54,6 +55,11 @@ data Value
   -- index. Printing/sequential operations do not force the array. The first
   -- indexed access costs O(n); subsequent length/access cost O(1).
   | VString String Int (A.Array Int Char)
+  | VBytes BS.ByteString -- immutable exact octets, never encoded via String
+  | VByteReader Unique Int -- attempt-owned, unforgeable stream capability
+  | VByteWriter Unique Int
+  | VProcessJob Unique Int
+  | VSha256 Digest.Context
   | VData !Int !Int [Value]
   | VPap String [Value] !Int -- global or HAL symbol, collected args, remaining
   | VVec (IORef VecStore) -- the linear SoA vector
@@ -94,6 +100,7 @@ veq (VNum a) (VNum b) = a == b
 veq (VInt a) (VNum b) = fromIntegral a == b -- Numeric: 1 == 1.0
 veq (VNum a) (VInt b) = a == fromIntegral b
 veq (VStr a) (VStr b) = a == b
+veq (VBytes a) (VBytes b) = a == b
 veq (VData t v fs) (VData t' v' fs') =
   t == t' && v == v' && length fs == length fs' && and (zipWith veq fs fs')
 veq _ _ = False
@@ -111,6 +118,11 @@ render :: Value -> String
 render (VInt i) = show i
 render (VNum d) = renderNum d
 render (VStr s) = s
+render (VBytes bs) = "<bytes " ++ show (BS.length bs) ++ ">"
+render (VByteReader _ _) = "<byte reader>"
+render (VByteWriter _ _) = "<byte writer>"
+render (VProcessJob _ _) = "<process job>"
+render (VSha256 _) = "<SHA-256 context>"
 render v@(VData t 1 [_, _]) | t == listT = "[" ++ intercalate ", " (renderList v) ++ "]"
   where
     renderList (VData _ 1 [y, r]) = render y : renderList r

@@ -5,8 +5,13 @@
 # Deferred projections are data evaluated at commit; they do not run here.
 # Proc.streamNow sends spec stdin and forwards live stdout/stderr directly.
 # Proc.inheritNow inherits all three descriptors; spec stdin must be empty.
-# Both return Result Int String, refuse pending transaction effects, and may
-# repeat on retry. They do not capture output or add a transaction boundary.
+# Both return Result Int String and refuse pending transaction effects.
+# Guarded retry stops after immediate external work; explicit legacy mode or
+# Script.replayable accepts repetition. Proc.queryReplayable is the query
+# convenience, not a read-only validator. Text captures are capped at 1 MiB
+# per channel. Use Proc.pipeline for byte input/sinks, explicit capture budgets,
+# stage statuses and owned jobs (Proc.start/wait/poll/cancel).
+# See docs/2026-10-29-SOL-PROCESS-PHASE3.md for publication and recovery rules.
 
 spec argv = ProcessSpec argv "" [] "" 0.
 

@@ -26,8 +26,9 @@ import qualified Build
 import qualified Commit
 import qualified Compile
 import qualified Sol.Main
+import qualified Sol.Http
 import Data.List (elem)
-import System.Environment (getArgs, withArgs)
+import System.Environment (getArgs, getProgName, withArgs)
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
@@ -66,8 +67,11 @@ main :: IO ()
 main = do
   setLocaleEncoding utf8
   args <- getArgs
+  invoked <- getProgName
   case args of
+    ["sol-http-worker",request] -> Sol.Http.worker request
     ("sol" : rest) -> withArgs rest Sol.Main.main
+    _ | invoked `elem` ["sol", "launch-sol"] -> Sol.Main.main
     -- the VM as a TARGET: `fpr compile --target=bytecode f` (or the
     -- bare-flags form) routes the shared frontend's output into the
     -- Sol pipeline's bytecode emitter — the HostedBytecode profile is

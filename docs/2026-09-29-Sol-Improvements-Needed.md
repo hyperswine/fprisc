@@ -1290,3 +1290,58 @@ composition and directory-stat conflicts caused by the runtime's own locks.
 Recovery-needed scratch is retained and reported. The plan's Phase 1 checklist
 is updated; binary/streaming I/O and copy/rename remain Phase 2. Local macOS
 checks are recorded separately from unrun Linux/hosted-CI coverage.
+
+## 2026-10-29 02:14 AEDT — Daily scripting Phase 2
+
+The [Phase 2 delivery record](2026-10-29-SOL-IO-PHASE2.md) adds immutable Bytes,
+strict/replacement incremental UTF-8, attempt-owned bounded byte streams, exact
+stdout/stderr, EOF-aware lines, environment overrides and explicit commit/abort
+status handling. Binary copy/publication and atomic same-filesystem rename are
+explicit immediate operations. The old move helper remains text-only under
+moveText and deprecated mv. New copy/filter scripts exercise the public surface.
+The saved 100 MiB/1 GiB memory report passes the 32 MiB growth gates; source,
+binary identity and host/execution limits are in that record. Transactional binary
+staging and Phase 3's external-effect retry policy remain separate work.
+
+## 2026-10-29: Phase 3 guarded external effects and owned processes
+
+Guarded retries now stop after immediate external effects; explicit legacy policy
+or replay assertions accept repetition. Byte pipelines and linear jobs add bounded
+captures, per-stage status, raw argv/cwd/env, staged publication and group cleanup.
+Text process captures and durable producer receipts now have explicit admission.
+The [Phase 3 decision/API/evidence](2026-10-29-SOL-PROCESS-PHASE3.md) records all
+local checks, compatibility changes and the remaining cross-host/release gates.
+
+## 2026-10-29: Phase 4 core libraries
+
+Hosted exact-byte encodings and streamed SHA-256, bounded JSON admission, a single
+CSV parser for whole input/record streams, and measured line-reader allocation
+improvements are implemented. CLI/configuration modules reuse std/map and use
+checked structural termination measures. Runnable transform/config workflows
+cover invalid data, no partial destination publication, overrides and recovery.
+See the [Phase 4 API and partial delivery record](2026-10-29-SOL-LIBRARIES-PHASE4.md).
+HTTP and Phase 5 remain open.
+
+## 2026-10-29: Phase 4 HTTP completion
+
+HTTP now uses linked libcurl in an owned native worker, with validated TLS,
+explicit redirect/DNS policy, deadline and header/body budgets, binary capture,
+streamed staged publication and cancellation cleanup. The 61 loopback checks
+include JSON transforms and preserve the prior output on transfer/data failure.
+See the [HTTP contract](2026-10-29-SOL-HTTP.md) and saved macOS validation/memory
+evidence. An isolated Debian x86-64 build is running for Phase 5; no Linux pass
+is claimed until that build and its workflows are verified.
+
+
+### 2026-10-29: daily-scripting installation and release matrix
+
+The five-phase [daily-scripting roadmap](2026-10-27-SOL-DAILY-SCRIPTING-PLAN.md)
+is implemented. Versioned source-plus-runner bundles provide the native `sol`
+command, offline libraries, help/version, raw arguments and supported shebangs.
+Recovery state is writable and private outside installed source; inspect/recover
+commands preserve dead-owner recovery and retained failure fences. The nine
+workflow release matrix passes on macOS arm64 and a Linux x86-64 QEMU guest.
+See the [installation guide and evidence](2026-10-29-SOL-INSTALLATION.md) for
+contracts, exact build/source identities, performance observations and exclusions.
+This closes the scoped daily-scripting milestone, not broad Python library parity
+or a persistent shell/REPL. Hosted CI and physical power-loss tests are unverified.

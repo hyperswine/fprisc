@@ -1,0 +1,57 @@
+{
+  "observed_at_utc": "2026-10-28T17:16:03.531713+00:00",
+  "provider": "local Colima/QEMU x86-64 guest on macOS arm64",
+  "profile": "sol-roadmap",
+  "vm": {
+    "cpus": 4,
+    "memory_gib": 6,
+    "data_disk_gib": 24,
+    "root_disk_gib": 12,
+    "mounts": "none",
+    "activate_context": false
+  },
+  "container": {
+    "name": "sol-roadmap-linux",
+    "id": "f43d0fbaf8afeddf3ef5c5457e55f4f724c7ec39c5a9928abd57d4b2c81ee410",
+    "image": "debian:trixie",
+    "image_digest": "sha256:8c4733a92aacd0bcff3779eadc35a4a5147f36cb20a5fcb56504cbc740212259",
+    "user": "1000:1000",
+    "home": "/workspace/home",
+    "source": "/workspace/repo"
+  },
+  "architecture": "x86_64",
+  "kernel": "6.8.0-117-generic x86_64",
+  "compiler": "GHC 9.6.6",
+  "dependencies": {
+    "libgit2": "1.9.0",
+    "libarchive": "3.7.4",
+    "libcurl": "8.14.1"
+  },
+  "docker_config": "/private/tmp/sol-roadmap-docker-config (empty auths, public anonymous pull)",
+  "socket": "unix:///Users/jasonqin/.colima/sol-roadmap/docker.sock",
+  "host_source_archive": "/private/tmp/sol-roadmap-source.tar.gz",
+  "archive_sha256": "d85e65153b33550bc435c2b3e9b526db1ce1000b5daab2f8dfa7fa1bc2f891ee",
+  "source_manifest_in_guest": "/workspace/repo/sol-source-state.json",
+  "build_command": "cabal build --offline -j4 exe:fpr",
+  "build_log": "/workspace/home/build.log",
+  "build_observation": "in progress; most recent inspected output compiled module 97/194",
+  "remaining": "Refresh the source snapshot for later Phase 5 changes before final Linux validation. No Linux pass is claimed yet. Stop/remove the task-owned container and VM after preserving required artifacts.",
+  "completion": {
+    "matrix": "linux-release.json passes all 11 commands and all nine workflows",
+    "compiler": "GHC 9.6.6 -O1, final rebuild succeeded",
+    "binary_sha256": "8584ece6b2b98d93825234b1362dbd7cec111209bc76d5efebb4408bb0d7993d",
+    "source_comparison": "cross-host-source.json: all 1297 execution sources exactly match final macOS followup",
+    "remaining": "None for this scoped roadmap. Hosted CI, physical x86_64 performance and power-loss testing remain explicitly unverified.",
+    "cleanup": {
+      "completed_at_utc": "2026-10-28T18:11:59.486257+00:00",
+      "container": "sol-roadmap-linux removed after preserving archives and evidence",
+      "vm": "sol-roadmap gracefully stopped and deleted with its test disks",
+      "verified_absent": [
+        "~/.colima/sol-roadmap",
+        "~/.colima/_lima/colima-sol-roadmap",
+        "~/.colima/_lima/_disks/colima-sol-roadmap"
+      ],
+      "scope": "Task-owned profile only; no shared checkout mounts or Docker context change."
+    }
+  }
+}

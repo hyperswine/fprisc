@@ -30,6 +30,10 @@ import Foreign.Marshal.Array (peekArray)
 import Foreign.Ptr ()
 import Foreign.Storable (peek)
 import qualified Sol.Gpu as Gpu
+import qualified Sol.Process as Process
+import qualified Sol.Digest as Digest
+import qualified Sol.Format as Format
+import qualified Sol.Http as Http
 import Control.Monad (forM, forM_, when)
 import Data.List (minimumBy)
 import Data.Ord (comparing)
@@ -61,8 +65,10 @@ import qualified Data.Map.Strict as M
 import Control.Monad (unless, when)
 import Control.Applicative (liftA2)
 import System.IO (hFlush, hGetContents', hPutStrLn, stderr, stdin, stdout)
+import System.IO.Error (ioeGetFileName)
 import Sol.Txn
 import Sol.Native
+import qualified Sol.ScriptIO as ScriptIO
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.UTF8 as BSU
 
@@ -335,6 +341,8 @@ apply _ v _ = vmPanic ("APPLY: not a function: " ++ show v)
 callSym :: VMEnv -> Name -> [Value] -> IO Value
 callSym env g args
   | M.member g (vmProg env) = execFn env g args
+  | g == "Script.replayable", [callback] <- args = txReplayableScope (vmTx env) (apply env callback vUnit)
+  | g `elem` ["Stream.foldChunks", "Stream.foldLines", "Stream.foldCsv"] = streamFoldCall env g args
   | M.member g builtinArities = builtinCall env g args
   | Just op <- M.lookup g arithOps, [a, b] <- args = arith op a b
   | Just (_, f) <- M.lookup g (vmHal env) = f args
@@ -390,12 +398,53 @@ arithN op a b = case op of
 
 halCall :: VMEnv -> Name -> [Value] -> IO Value
 halCall env g args
+  | g == "Script.replayable", [callback] <- args = txReplayableScope (vmTx env) (apply env callback vUnit)
+  | g `elem` ["Stream.foldChunks", "Stream.foldLines", "Stream.foldCsv"] = streamFoldCall env g args
   | M.member g builtinArities = builtinCall env g args
   | otherwise = case M.lookup g (vmHal env) of
       Just (ar, f)
         | length args == ar -> f args
         | otherwise -> vmPanic ("HCALL " ++ g ++ ": arity mismatch")
       Nothing -> vmPanic ("HCALL: unknown HAL symbol " ++ g)
+
+-- The host owns the iteration, so long scans do not retain one VM frame per
+-- chunk/line. The callback controls what the accumulator retains.
+streamFoldCall :: VMEnv -> Name -> [Value] -> IO Value
+streamFoldCall env name args = case args of
+  [step, initial, reader] | name == "Stream.foldChunks" -> foldWith step initial reader
+    (\rt key -> fmap (fmap (fmap VBytes)) (ScriptIO.readChunk rt key))
+  [step, initial, VInt limit, reader] | name == "Stream.foldLines" ->
+    foldWith step initial reader (\rt key -> fmap (fmap (fmap VBytes))
+      (ScriptIO.readLineBytes rt (if limit >= 1 && limit <= 16777216 then fromInteger limit else 0) key))
+  [step, initial, VInt fields, VInt field, VInt record, reader] | name == "Stream.foldCsv" ->
+    foldWith step initial reader (\rt key -> fmap (fmap (fmap strings))
+      (Format.readCsv rt (hostBudget fields) (hostBudget field) (hostBudget record) key))
+  _ -> vmPanic (name ++ ": invalid arguments")
+  where
+    strings = foldr (\s xs -> VData listT 1 [VStr s,xs]) (VData listT 0 [])
+    hostBudget n = if n>=0 && n<=16777216 then fromInteger n else -1
+    foldWith step initial reader action = do
+      runtime <- txRuntime (vmTx env)
+      key <- case reader of
+        VByteReader owner k | owner == ScriptIO.identity runtime -> pure k
+        _ -> vmPanic "fold expects an owned byte reader"
+      let next = action runtime key
+          result x = VData 4 0 [x, reader]
+          loop state = do
+            pending <- txPendingBrief (vmTx env)
+            r <- if null pending then do
+                   txMarkPivot (vmTx env)
+                   txMarkExternal (vmTx env) name
+                   next
+                 else pure (Left (pendingOrderMsg name "split script runs" pending))
+            case r of
+              Left why -> pure (result (VData 3 1 [VStr why]))
+              Right Nothing -> pure (result (VData 3 0 [state]))
+              Right (Just value) -> do
+                partial <- apply env step state
+                state' <- apply env partial value
+                state' `seq` loop state'
+      loop initial
 
 builtinArities :: M.Map Name Int
 builtinArities =
@@ -718,7 +767,9 @@ modCall env "use" [VStr spec] = do
       pure (VMod p h)
 modCall _ "use" [v] = vmPanic ("use: expected a module spec string, got " ++ render v)
 modCall env "run" [VMod p h, x] = do
-  r <- runModule p h (render x)
+  txMarkExternal (vmTx env) "run child module"
+  policy <- txRetryPolicy <$> readIORef (vmTx env)
+  r <- runModule policy p h (render x)
   case r of
     Left e -> vmPanic e
     Right (out, cpaths) -> do
@@ -978,7 +1029,7 @@ bstDelete tbl k = do
 
 mkHal :: M.Map Name (Int, Int, Int) -> [String] -> IORef TxState -> IORef Int -> RtCounts -> M.Map Name (Int, [Value] -> IO Value)
 mkHal cons scriptArgs tx preempts rt =
-  M.fromList
+  M.fromList $
     [ ("str", (1, \[v] -> pure (VStr (render v)))),
       -- Strings retain lazy sequential text and share an on-demand character index.
       ("strcat", (2, \[a, b] -> fmap VStr (liftA2 (++) (vsStr a) (vsStr b)))),
@@ -1077,6 +1128,7 @@ mkHal cons scriptArgs tx preempts rt =
       ("NativeGit.pushLater", (4, gitPushLaterH)),
       ("NativeGit.commitNow", (5, gitCommitNowH)),
       ("Proc.query", (1, procQueryH)),
+      ("Proc.queryReplayable", (1, \args -> txReplayableScope tx (procQueryH args))),
       ("Proc.afterCommit", (1, procAfterCommitH)),
       ("Proc.runNow", (1, procRunNowH)),
       ("Proc.streamNow", (1, procDirectH "Proc.streamNow" StreamIO)),
@@ -1115,8 +1167,211 @@ mkHal cons scriptArgs tx preempts rt =
       ("read", (1, \[v] -> readIoH v)),
       ("write", (2, \[pv, v] -> writeIoH pv v))
     ]
+    ++ [(name, (arity, scriptHal name)) | (name, arity, _) <- ScriptIO.api]
+    ++ [(name, (arity, processHal name)) | (name, arity, _) <- Process.api]
+    ++ [(name, (arity, digestHal name)) | (name, arity, _) <- Digest.api]
+    ++ [(name, (arity, formatHal name)) | (name, arity, _) <- Format.api]
+    ++ [(name, (arity, httpHal name)) | (name, arity, _) <- Http.api]
   where
-    markEscape name why = txMarkPivot tx >> noteEscape rt name why
+    resultV convert = either vErr (vOk . convert)
+    tupleV a b = VData 4 0 [a,b]
+    unitResult = resultV (const vUnit)
+    httpHal "Http.backend" [_] = httpResult VStr <$> Http.backend
+    httpHal "Http.request" [opts,request] = do
+      options <- httpOptions opts
+      req <- httpRequest request
+      blocked <- guardImmediate "Http.request"
+      case blocked of
+        Just why -> pure (vErrV (httpError (Http.Failure 1 0 why)))
+        Nothing -> httpResult httpResponse <$> Http.request options req
+    httpHal "Http.download" [opts,request,VStr target,replace] = do
+      options <- httpOptions opts
+      req <- httpRequest request
+      blocked <- guardImmediate "Http.download"
+      case blocked of
+        Just why -> pure (vErrV (httpError (Http.Failure 1 0 why)))
+        Nothing -> do
+          result <- Http.download options req target (isTrueV replace)
+          case result of Right _ -> txForget tx target >> pure (); _ -> pure ()
+          pure (httpResult httpInfo result)
+    httpHal name _ = vmPanic (name ++ ": invalid arguments")
+    httpOptions (VData t v [VInt deadline,VInt body,VInt headers,redirects,VStr ca,routes]) | isCon "HttpOptions" t v = do
+      policy <- case redirects of
+        VData a b [] | isCon "NoRedirect" a b -> pure Http.NoRedirect
+        VData a b [VInt n] | isCon "RedirectHttps" a b -> pure (Http.HttpsRedirect (httpBudget 20 n))
+        VData a b [VInt n] | isCon "RedirectHttp" a b -> pure (Http.HttpRedirect (httpBudget 20 n))
+        _ -> vmPanic "invalid HTTP redirect policy"
+      mapped <- listVals routes >>= mapM httpRoute
+      pure (Http.Options (httpBudget 86400000 deadline) body (httpBudget 1048576 headers) policy ca mapped)
+    httpOptions _ = vmPanic "expected HttpOptions"
+    httpRoute (VData t v [VStr host,VInt port,VStr address]) | isCon "HttpRoute" t v =
+      pure (host,httpBudget 65535 port,address)
+    httpRoute _ = vmPanic "expected HttpRoute"
+    httpRequest (VData t v [VStr method,VStr url,headers,VBytes body]) | isCon "HttpRequest" t v =
+      Http.Request url method <$> envValues headers <*> pure body
+    httpRequest _ = vmPanic "expected HttpRequest"
+    httpBudget cap n = if n>=0 && n<=cap then fromInteger n else -2
+    httpError (Http.Failure reason code message) =
+      let kinds=["HttpInvalid","HttpUnavailable","HttpTls","HttpTimeout","HttpLimit","HttpRedirect","HttpTransport","HttpIo","HttpStatus"]
+          kind=if reason>=1 && reason<=length kinds then kinds !! (reason-1) else "HttpTransport"
+          (rt,rv)=conTV kind
+          (et,ev)=conTV "HttpError"
+      in VData et ev [VData rt rv [],VInt (fromIntegral code),VStr message]
+    httpResult convert = either (vErrV . httpError) (vOk . convert)
+    httpHeaders = foldr (\(key,value) xs -> VData listT 1 [tupleV (VStr key) (VStr value),xs]) (VData listT 0 [])
+    httpResponse (Http.Response (Http.Info status headers _) bytes) =
+      let (t,v)=conTV "HttpResponse" in VData t v [VInt (fromIntegral status),httpHeaders headers,VBytes bytes]
+    httpInfo (Http.Info status headers bytes) =
+      let (t,v)=conTV "HttpInfo" in VData t v [VInt (fromIntegral status),httpHeaders headers,VInt bytes]
+    formatHal "Format.json" [VInt input,VInt depth,VInt items,VInt field,VStr text] =
+      pure (unitResult (Format.jsonAdmission (formatBudget input) (formatBudget depth) (formatBudget items) (formatBudget field) text))
+    formatHal "Format.csv" [VInt input,VInt records,VInt fields,VInt field,VInt record,VStr text] =
+      pure (resultV (foldr (\row rows -> VData listT 1 [strList row,rows]) (VData listT 0 []))
+        (Format.csv (formatBudget input) (formatBudget records) (formatBudget fields) (formatBudget field) (formatBudget record) text))
+    formatHal "Stream.readCsv" [VInt fields,VInt field,VInt record,reader] = do
+      io <- runtime
+      key <- streamKey io True reader
+      blocked <- guardImmediate "Stream.readCsv"
+      r <- case blocked of
+        Just why -> pure (Left why)
+        Nothing -> Format.readCsv io (formatBudget fields) (formatBudget field) (formatBudget record) key
+      let csvRead Nothing = let (t,v)=conTV "EndCsv" in VData t v []
+          csvRead (Just row) = let (t,v)=conTV "CsvRow" in VData t v [strList row]
+      pure (tupleV (resultV csvRead r) reader)
+    formatHal name _ = vmPanic (name ++ ": invalid arguments")
+    formatBudget n = if n>=0 && n<=16777216 then fromInteger n else -1
+    digestHal name [VBytes bytes] | name `elem` ["Hex.encode","Base64.encode"] =
+      VStr <$> Digest.encode (name == "Base64.encode") bytes
+    digestHal name [VStr text] | name `elem` ["Hex.decode","Base64.decode"] =
+      resultV VBytes <$> Digest.decode (name == "Base64.decode") text
+    digestHal "Sha256.init" [_] = VSha256 <$> Digest.new
+    digestHal "Sha256.update" [VBytes bytes,VSha256 state] = resultV VSha256 <$> Digest.update bytes state
+    digestHal "Sha256.finish" [VSha256 state] = VBytes <$> Digest.finish state
+    digestHal "Sha256.bytes" [VBytes bytes] = VBytes <$> Digest.hash bytes
+    digestHal "Sha256.stream" [reader] = do
+      io <- runtime
+      key <- streamKey io True reader
+      blocked <- guardImmediate "Sha256.stream"
+      r <- case blocked of Just why -> pure (Left why); Nothing -> Digest.stream io key
+      pure (tupleV (resultV VBytes r) reader)
+    digestHal name _ = vmPanic (name ++ ": invalid arguments or forged SHA-256 context")
+    runtime = txRuntime tx
+    bytesRead Nothing = let (t,v) = conTV "EndBytes" in VData t v []
+    bytesRead (Just b) = let (t,v) = conTV "ChunkBytes" in VData t v [VBytes b]
+    streamKey io reader value = case value of
+      VByteReader owner key | reader && owner == ScriptIO.identity io -> pure key
+      VByteWriter owner key | not reader && owner == ScriptIO.identity io -> pure key
+      _ -> vmPanic "closed, forged or foreign stream capability"
+    guardImmediate name = do
+      pending <- txPendingBrief tx
+      if null pending then markEscape name "immediate I/O is not a snapshot; guarded retry stops on a later conflict" >> pure Nothing
+      else pure (Just (pendingOrderMsg name "split script runs" pending))
+    direct name action = do
+      blocked <- guardImmediate name
+      case blocked of Just why -> pure (vErr why); Nothing -> action
+    scriptHal "Bytes.empty" [_] = pure (VBytes BS.empty)
+    scriptHal "Bytes.fromList" [xs] = do
+      values <- listVals xs
+      pure $ case traverse byteValue values of Left why -> vErr why; Right bs -> vOk (VBytes (BS.pack bs))
+    scriptHal "Bytes.toList" [VBytes b] = pure (foldr (\x xs -> VData listT 1 [VInt (fromIntegral x), xs]) (VData listT 0 []) (BS.unpack b))
+    scriptHal "Bytes.len" [VBytes b] = pure (VInt (fromIntegral (BS.length b)))
+    scriptHal "Bytes.at" [VInt i, VBytes b] = pure $
+      if i < 0 || i >= fromIntegral (BS.length b) then vErr "byte index out of range"
+      else vOk (VInt (fromIntegral (BS.index b (fromInteger i))))
+    scriptHal "Bytes.slice" [VInt start, VInt count, VBytes b] = pure $
+      if start < 0 || count < 0 || start + count > fromIntegral (BS.length b) then vErr "byte slice out of range"
+      else vOk (VBytes (BS.copy (BS.take (fromInteger count) (BS.drop (fromInteger start) b))))
+    scriptHal "Bytes.concat" [xs] = do
+      values <- listVals xs
+      chunks <- mapM (\v -> case v of VBytes b -> pure b; _ -> vmPanic "Bytes.concat expects Bytes") values
+      pure (VBytes (BS.concat chunks))
+    scriptHal "Bytes.contains" [VBytes needle, VBytes haystack] = pure (vBool (BS.isInfixOf needle haystack))
+    scriptHal "Utf8.encode" [VStr s] = pure (resultV VBytes (ScriptIO.encodeUtf8 s))
+    scriptHal "Utf8.decode" [VBytes b] = pure (resultV VStr (ScriptIO.decodeUtf8 b))
+    scriptHal "Utf8.decodeReplace" [VBytes b] = pure (VStr (ScriptIO.decodeReplace b))
+    scriptHal name [VBytes carry, VBytes chunk, final] | name `elem` ["Utf8.decodeChunk", "Utf8.decodeChunkReplace"] =
+      pure (resultV (\(s,b) -> tupleV (VStr s) (VBytes b)) (ScriptIO.utf8Chunk (name == "Utf8.decodeChunkReplace") carry chunk (isTrueV final)))
+    scriptHal "Stream.openRead" [VStr path, VInt cap] = direct "Stream.openRead" $ do
+      io <- runtime
+      fmap (resultV (VByteReader (ScriptIO.identity io))) (ScriptIO.openReader io path (boundedCap cap))
+    scriptHal "Stream.openWrite" [VStr path, VInt cap] = direct "Stream.openWrite" $ do
+      io <- runtime
+      fmap (resultV (VByteWriter (ScriptIO.identity io))) (ScriptIO.openWriter io path (boundedCap cap))
+    scriptHal "Stream.stdin" [VInt cap] = direct "Stream.stdin" $ do
+      io <- runtime
+      fmap (resultV (VByteReader (ScriptIO.identity io))) (ScriptIO.standardReader io (boundedCap cap))
+    scriptHal name [VInt cap] | name `elem` ["Stream.stdout", "Stream.stderr"] = do
+      io <- runtime
+      fmap (resultV (VByteWriter (ScriptIO.identity io))) (ScriptIO.standardWriter io (if name == "Stream.stdout" then stdout else stderr) (boundedCap cap))
+    scriptHal "Stream.readChunk" [reader] = do
+      io <- runtime; key <- streamKey io True reader
+      blocked <- guardImmediate "Stream.readChunk"
+      r <- case blocked of Just why -> pure (Left why); Nothing -> ScriptIO.readChunk io key
+      pure (tupleV (resultV bytesRead r) reader)
+    scriptHal "Stream.readLine" [VInt limit, reader] = do
+      io <- runtime; key <- streamKey io True reader
+      blocked <- guardImmediate "Stream.readLine"
+      r <- case blocked of Just why -> pure (Left why); Nothing -> ScriptIO.readLineBytes io (boundedCap limit) key
+      pure (tupleV (resultV bytesRead r) reader)
+    scriptHal "Stream.writeChunk" [VBytes b, writer] = do
+      io <- runtime; key <- streamKey io False writer
+      blocked <- guardImmediate "Stream.writeChunk"
+      r <- case blocked of Just why -> pure (Left why); Nothing -> ScriptIO.writeChunk io b key
+      pure (tupleV (unitResult r) writer)
+    scriptHal name [value] | name `elem` ["Stream.closeRead", "Stream.closeWrite"] = do
+      io <- runtime; key <- streamKey io (name == "Stream.closeRead") value
+      unitResult <$> ScriptIO.closeStream io key
+    scriptHal name [VBytes b] | name `elem` ["IO.stdout", "IO.stderr"] = do
+      txMarkExternal tx name
+      unitResult <$> ScriptIO.writeExact (if name == "IO.stdout" then stdout else stderr) b
+    scriptHal name [VStr s] | name `elem` ["IO.stdoutText", "IO.stderrText"] = case ScriptIO.encodeUtf8 s of
+      Left why -> pure (vErr why)
+      Right b -> do
+        txMarkExternal tx name
+        unitResult <$> ScriptIO.writeExact (if name == "IO.stdoutText" then stdout else stderr) b
+    scriptHal "IO.readLine" [VInt limit] = direct "IO.readLine" $ do
+      io <- runtime
+      r <- ScriptIO.readTextLine io (boundedCap limit)
+      pure (resultV textRead r)
+    scriptHal "IO.cwd" [_] = resultV VStr <$> ScriptIO.cwd
+    scriptHal "Env.get" [VStr key] = resultV envValue <$> ScriptIO.environmentGet key
+    scriptHal "Env.set" [VStr key, VStr value] = direct "Env.set" $ do
+      io <- runtime; unitResult <$> ScriptIO.environmentSet io key (Just value)
+    scriptHal "Env.unset" [VStr key] = direct "Env.unset" $ do
+      io <- runtime; unitResult <$> ScriptIO.environmentSet io key Nothing
+    scriptHal "Script.exit" [VInt code] = ScriptIO.requestExit (if code >= 0 && code <= 255 then fromInteger code else -1)
+    scriptHal "Script.abort" [VInt code] = ScriptIO.requestAbort (if code >= 1 && code <= 255 then fromInteger code else -1)
+    scriptHal "Fs.copyNow" [VStr source, VStr target, VInt cap] = fileImmediate "Fs.copyNow" "copy" target $ do
+      r <- ScriptIO.copyNow source target (boundedCap cap)
+      case r of Right _ -> txForget tx target >> pure (); _ -> pure ()
+      pure (fmap (VInt . fromIntegral) r)
+    scriptHal "Fs.copyPublishNow" [VStr source, VStr target, VInt cap, replace] = fileImmediate "Fs.copyPublishNow" "copyPublish" target $ do
+      r <- ScriptIO.copyPublishNow source target (boundedCap cap) (isTrueV replace)
+      case r of Right _ -> txForget tx target >> pure (); _ -> pure ()
+      pure (fmap (VInt . fromIntegral) r)
+    scriptHal "Fs.renameNow" [VStr source, VStr target, replace] = fileImmediate "Fs.renameNow" "rename" target $ do
+      r <- ScriptIO.renameNow source target (isTrueV replace)
+      case r of Right _ -> txForget tx source >> txForget tx target >> pure (); _ -> pure ()
+      pure (fmap (const vUnit) r)
+    scriptHal name _ = vmPanic (name ++ ": invalid arguments")
+    fileImmediate name op target action = do
+      blocked <- guardImmediate name
+      case blocked of
+        Just why -> pure (vErrV (fsErrV (FsErr op target WhyOther why "")))
+        Nothing -> do
+          r <- action
+          pure (either (\e -> vErrV (fsErrV (classifyIO op (maybe target id (ioeGetFileName e)) e))) vOk r)
+    boundedCap cap = if cap >= 1 && cap <= 16777216 then fromInteger cap else 0
+    byteValue (VInt i) | i >= 0 && i <= 255 = Right (fromInteger i)
+    byteValue _ = Left "byte values must be integers in 0..255"
+    listVals (VData t 0 []) | t == listT = pure []
+    listVals (VData t 1 [x,xs]) | t == listT = (x :) <$> listVals xs
+    listVals _ = vmPanic "expected a list"
+    textRead Nothing = let (t,v) = conTV "EndText" in VData t v []
+    textRead (Just s) = let (t,v) = conTV "LineText" in VData t v [VStr s]
+    envValue Nothing = let (t,v) = conTV "EnvMissing" in VData t v []
+    envValue (Just s) = let (t,v) = conTV "EnvText" in VData t v [VStr s]
+    markEscape name why = txMarkPivot tx >> txMarkExternal tx name >> noteEscape rt name why
     bst = globalBst
     (pathT, handleT) = (tidOf "Path", tidOf "Handle")
     bstrT = tidOf "BStr"
@@ -1146,6 +1401,7 @@ mkHal cons scriptArgs tx preempts rt =
           (e, sz, mt) <- txStat tx p
           pure (VData 5 0 [vBool e, VInt (fromIntegral sz), VInt (fromIntegral mt)]))
       | isCon "Sh" t g = withS q (\c -> do
+          txMarkExternal tx "sh"
           (code, out) <- txSh c
           pure (VData 4 0 [VInt (fromIntegral code), VStr out]))
       -- ---- realtime reads: outside the transaction ----
@@ -1156,7 +1412,7 @@ mkHal cons scriptArgs tx preempts rt =
           VStr . maybe "" id <$> rtRead p)
       | isCon "NowSh" t g = withS q (\c -> do
           markEscape "shNow"
-            ("streams `" ++ c ++ "` live and re-runs on every retry "
+            ("streams `" ++ c ++ "` live; guarded retry stops on a later conflict "
               ++ "(transactional: shq, which runs once inside the commit)")
           -- shNow answers an exit code, so it cannot refuse the way
           -- Proc.runNow does; it still says when it is running ahead of
@@ -1170,12 +1426,12 @@ mkHal cons scriptArgs tx preempts rt =
     readIoH (VData t g [])
       | isCon "NowLine" t g = do
           markEscape "readLineNow"
-            "reads one line of stdin now; re-reads on retry (transactional: input)"
+            "reads one line of stdin now; guarded retry stops on a later conflict (snapshot: input)"
           VStr <$> rtLine
     readIoH v = vmPanic ("read: cannot decode " ++ render v)
 
     writeIoH pv v = case unPath pv of
-      Just "/dev/out" -> putStrLn (render v) >> hFlush stdout >> pure vUnit
+      Just "/dev/out" -> txMarkExternal tx "print" >> putStrLn (render v) >> hFlush stdout >> pure vUnit
       Just "/dev/log" -> txLog tx (render v) >> pure vUnit
       Just "/dev/sh" -> withS v (\c -> txShq tx c >> pure vUnit)
       Just "/dev/clock" -> case v of
@@ -1332,6 +1588,9 @@ mkHal cons scriptArgs tx preempts rt =
         opCon "tempDir" = "OpTempDir"
         opCon "tempFile" = "OpTempFile"
         opCon "statKind" = "OpStatKind"
+        opCon "copy" = "OpCopy"
+        opCon "copyPublish" = "OpCopyPublish"
+        opCon "rename" = "OpRename"
         opCon _ = "OpExists"
     kindV k = VData tK vK []
       where
@@ -1432,7 +1691,7 @@ mkHal cons scriptArgs tx preempts rt =
     gitPushH [VInt limit,VStr path,VStr remote,VStr branch] = do
       pending <- txPendingBrief tx
       if not (null pending) then pure (vErr (pendingOrderMsg "Git.push" "Git.commit in a separate run" pending)) else do
-        markEscape "Git.push" "publishes immediately through libgit2; survives rollback and repeats on retry"
+        markEscape "Git.push" "publishes immediately through libgit2; survives rollback; guarded retry stops on a later conflict"
         nativeGit (GitRequest path 15 remote "" "" [branch] limit) >>= pure . either vErr (vOk . VStr)
     gitPushH _ = vmPanic "NativeGit.push: arguments"
     archiveAfterCommitH [VStr source,VStr target,VInt entries,VInt bytes]
@@ -1495,7 +1754,63 @@ mkHal cons scriptArgs tx preempts rt =
           pure (vOk (VStr sha))
     gitCommitNowH _ = vmPanic "NativeGit.commitNow: arguments"
 
-    procQueryH [v] = decodeProcessSpec v >>= runProcessH
+    processHal name [value] | name `elem` ["Proc.pipeline", "Proc.start"] = do
+      spec <- decodePipeline value
+      blocked <- guardImmediate name
+      case blocked of
+        Just why -> pure (vErrV (processError (Process.Failure why 0 "ordering" 0)))
+        Nothing -> if name == "Proc.pipeline"
+          then processResult <$> Process.run spec
+          else do
+            io <- txProcessRuntime tx
+            key <- Process.start io spec
+            pure (vOk (VProcessJob (Process.identity io) key))
+    processHal "Proc.wait" [value] = do
+      (io,key) <- processJob value
+      processResult <$> Process.wait io key
+    processHal "Proc.cancel" [value] = do
+      (io,key) <- processJob value
+      either (vErrV . processError) (const (vOk vUnit)) <$> Process.cancel io key
+    processHal "Proc.poll" [value] = do
+      (io,key) <- processJob value
+      r <- Process.poll io key
+      pure (tupleV (either (vErrV . processError) (vOk . vBool) r) value)
+    processHal name _ = vmPanic (name ++ ": invalid arguments")
+    processJob (VProcessJob owner key) = do
+      io <- txProcessRuntime tx
+      if owner == Process.identity io then pure (io,key) else vmPanic "process job belongs to another attempt"
+    processJob _ = vmPanic "expected an opaque process job"
+    processError (Process.Failure reason stage channel cap) =
+      let (t,v) = conTV "ProcessError" in VData t v [VStr reason,VInt (fromIntegral stage),VStr channel,VInt (fromIntegral cap)]
+    processResult (Left e) = vErrV (processError e)
+    processResult (Right (Process.Result status stages out errs)) =
+      let (t,v) = conTV "PipelineResult" in vOk (VData t v [VInt (fromIntegral status),
+            intList stages,VBytes out,foldr (\b xs -> VData listT 1 [VBytes b,xs]) (VData listT 0 []) errs])
+    intList = foldr (\n xs -> VData listT 1 [VInt (fromIntegral n),xs]) (VData listT 0 [])
+    decodePipeline (VData t v [stages,input,output,errors,VInt ms,policy]) | isCon "PipelineSpec" t v = do
+      specs <- listVals stages >>= mapM decodeProcessSpec
+      source <- case input of
+        VData a b [VBytes bytes] | isCon "PipeBytes" a b -> pure (Process.InputBytes bytes)
+        VData a b [VStr path] | isCon "PipeFile" a b -> pure (Process.InputFile path)
+        VData a b [] | isCon "PipeInputInherit" a b -> pure Process.InputInherit
+        _ -> vmPanic "invalid pipe input"
+      sink <- decodeSink output
+      err <- decodeSink errors
+      aggregate <- case policy of
+        VData a b [] | isCon "PipeLast" a b -> pure Process.LastStage
+        VData a b [] | isCon "PipeFail" a b -> pure Process.PipeFail
+        _ -> vmPanic "invalid pipe failure policy"
+      pure (Process.Pipeline specs source sink err (if ms >= 0 && ms <= 86400000 then fromInteger ms else -1) aggregate)
+    decodePipeline _ = vmPanic "expected PipelineSpec"
+    decodeSink (VData a b [VInt cap]) | isCon "PipeCapture" a b =
+      pure (Process.Capture (if cap >= 0 && cap <= 16777216 then fromInteger cap else -1))
+    decodeSink (VData a b [VStr path]) | isCon "PipeFileNew" a b = pure (Process.FileNew path)
+    decodeSink (VData a b [VStr path,replace]) | isCon "PipePublish" a b = pure (Process.Publish path (isTrueV replace))
+    decodeSink (VData a b []) | isCon "PipeOutputInherit" a b = pure Process.OutputInherit
+    decodeSink (VData a b []) | isCon "PipeDiscard" a b = pure Process.Discard
+    decodeSink _ = vmPanic "invalid pipe output"
+
+    procQueryH [v] = txMarkExternal tx "Proc.query" >> (decodeProcessSpec v >>= runProcessH)
     procQueryH _ = vmPanic "Proc.query: arity"
 
     procAfterCommitH [v] = do
@@ -1517,8 +1832,8 @@ mkHal cons scriptArgs tx preempts rt =
         then pure (vErr (pendingOrderMsg ("Proc.runNow " ++ displayProcess spec) "Proc.afterCommit" pending))
         else do
           markEscape "Proc.runNow"
-            ("runs " ++ displayProcess spec ++ " immediately; it survives rollback "
-              ++ "and runs again on every retry (deferred: Proc.afterCommit)")
+            ("runs " ++ displayProcess spec ++ " immediately; it survives rollback; "
+              ++ "guarded retry stops on a later conflict (deferred: Proc.afterCommit)")
           runProcessH spec
     procRunNowH _ = vmPanic "Proc.runNow: arity"
 
@@ -1533,7 +1848,7 @@ mkHal cons scriptArgs tx preempts rt =
           -- Flush buffered parent output before handing descriptors to a child.
           hFlush stdout
           hFlush stderr
-          markEscape name ("runs " ++ displayProcess spec ++ " with live I/O; survives rollback and repeats on retry")
+          markEscape name ("runs " ++ displayProcess spec ++ " with live I/O; survives rollback; guarded retry stops on a later conflict")
           result <- runProcessMode mode spec
           pure $ case result of
             Left err -> vErr ("process " ++ displayProcess spec ++ ": " ++ err)

@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "platform": "Linux-6.8.0-117-generic-x86_64-with-glibc2.41",
+  "machine": "x86_64",
+  "binary_sha256": "8584ece6b2b98d93825234b1362dbd7cec111209bc76d5efebb4408bb0d7993d",
+  "source_head": "532af773b0ec11565a6a8d65d541127aaddcb84b",
+  "source_status": " M Makefile\n M README.md\n M compiler/Main.hs\n M compiler/Sol/Cache.hs\n M compiler/Sol/Http.hs\n M compiler/Sol/Main.hs\n M compiler/Sol/Txn.hs\n M docs/2026-09-19-BOUNDS.md\n M docs/2026-09-29-Sol-Improvements-Needed.md\n M docs/2026-10-27-SOL-DAILY-SCRIPTING-PLAN.md\n M docs/2026-10-29-SOL-LIBRARIES-PHASE4.md\n M docs/README.md\n M docs/SEMANTICS.md\n M docs/evidence/2026-10-29-sol-phase4/README.md\n M docs/evidence/2026-10-29-sol-phase4/http-memory.json\n M sol-source-state.json\n M sol/lib/http.sol\n M tests/check_registry.py\n M tools/sol-effects-check.py\n M tools/sol-http-check.py\n M tools/sol-receipt-budget-check.py\n M tools/sol-safety-check.sh\n?? docs/2026-10-29-SOL-HTTP.md\n?? docs/2026-10-29-SOL-INSTALLATION.md\n?? docs/evidence/2026-10-29-sol-phase4/validation-complete-macos.json\n?? docs/evidence/2026-10-29-sol-phase4/validation-http-followup.json\n?? docs/evidence/2026-10-29-sol-phase5/\n?? tools/sol-daily-check.py\n?? tools/sol-install-check.py\n?? tools/sol-install.py\n",
+  "source_files_sha256": {
+    "compiler/Sol/AsmA64.hs": "f876be9b2a3656e546ddb69468419a1a5941a0724d8f9c5cb3e7ff0b572c764b",
+    "compiler/Sol/AsmX64.hs": "d69d81695538e43d00fe0805cfafc2f5801a6b88d0a3739948d3b5bffefc04e0",
+    "compiler/Sol/Bytecode.hs": "cb55a6bf8196e756201418a7efdb7410001c58220d546d208224bd2e69bda15a",
+    "compiler/Sol/Cache.hs": "6afb270b43d5626a90e2e2181982d360fe828f766d1446748c3ab9289ed95206",
+    "compiler/Sol/Diagnostic.hs": "cb117335e8384efd70b1dcc09fd421ffd4ccb7d276c991deae719fb229a8a0c5",
+    "compiler/Sol/Digest.hs": "ab91477a53c1499952948de532aeebcb47b7e43fdd69c500243fb7df08dc3a71",
+    "compiler/Sol/Effects.hs": "632d5faeee04b72b3fae1d6362c4356d82cc0a5e37f7cc1a4427d2c805fb95ef",
+    "compiler/Sol/Format.hs": "d41e0e3e91e2790bb41cdcdfe9549db81e1afe874c291fd55b8eb546c1cb556d",
+    "compiler/Sol/Gpu.hs": "1dd199526c0b6756587276e617b0e75f1eeb559d586b17d4795ed20bd8be9dd4",
+    "compiler/Sol/HandJIT.hs": "f8ee5c553d761a9b22b41ff4519c4f285d46dbd535ae4ee851277a6f5d7412a3",
+    "compiler/Sol/Http.hs": "2f66cd44d2fdf4d5a5c67ff0d4b31598977c01db6bb8e712fee5743e8b0395a5",
+    "compiler/Sol/Infer.hs": "450a9f8d6c7877ea1ced62c7108c33d2407103859e3e43c0d151e8327990d6b0",
+    "compiler/Sol/JitCore.hs": "674cac700fd24c6cc33ce24dc50be00f053979fc4e736415d2ce39e361aa9651",
+    "compiler/Sol/KIR.hs": "cecc3303bdde26f6aba0c38dfe9bdaa7374736aff99e0d129a1c458a52bddd0c",
+    "compiler/Sol/Lang.hs": "066a02e41be5af278521850fbe7bd02148086c4eed34d15447ab60cd2895a80f",
+    "compiler/Sol/Main.hs": "b3bcfa320af9687ac2144ec1accd06a32ed3055508e3e41d7b6f1ac036bd2e63",
+    "compiler/Sol/Mod.hs": "2b67e351ba0cb35aeacf36c5b1b0d78d53b082a85bdd2a46b0cec9f440203fb9",
+    "compiler/Sol/Native.hs": "e8753ff91278d55bbcd71d8188b9b741750c1900504d4bd753e211d3c8fb9236",
+    "compiler/Sol/Preamble.hs": "3719aa5a0017c4801840329b973608edd8efe7fc839ba2686a651deae0e46ba8",
+    "compiler/Sol/Process.hs": "40db49ebdc96d2cbb4b8c4d21bea87983e8e15c66b30b622f102f74abf102d0a",
+    "compiler/Sol/ScriptIO.hs": "b49f0b2be72e55efa235c063725e5e2cb14792d40551530e51d8f8928cff6fe4",
+    "compiler/Sol/Startup.hs": "d0bf20756d11664c02aa47522c9df7e95bf6fc2722b39900fa8b9674cfcf81ef",
+    "compiler/Sol/Txn.hs": "736c8ac6f039b6ef026afda29caf8f60c158c9134a398aaa718ff1544b46decb",
+    "compiler/Sol/VM.hs": "5c5e50699d2c21201318fa3ba1bc7d84e4813c7342cde2a0bfce7dca9be4fd56",
+    "compiler/Sol/Val.hs": "7ee1d6689108188277c8cd53edb9aa851a2ba8f34dcea5c959128b39b41d1431",
+    "compiler/Sol/Web.hs": "b900e0f517d728e6da683d03f748a487d7d3a24c9be609ded8bf9b891365ae3a",
+    "compiler/Sol/WebAssets.hs": "5351d704dc195f6d8983e86fe68a24b68f92a3c4feb2be2ae564ff65e3fe94d8",
+    "compiler/Sol/Width.hs": "b3dde02ff84c97518937649974f7073f38eca6a6f6de8ef79cba93377e47e240",
+    "compiler/cbits/fsx.c": "af62b64e629bb12c6e1d8077a4ddfb3aa50f12488befe525d2ae8fb1d8bc0e7f",
+    "compiler/cbits/sol_digest.c": "7cad405f186c2c3b0f33c732d98fa04f7c9c1d12406b0a9f3c34d6d1f5d4fb09",
+    "sol/lib/digest.sol": "1f449a20a2d37672b452e3afee18f13a24775d6ffbf0aa20c73a4d43fcd4a022",
+    "fp-risc.cabal": "c992bf78ace82f76673e880dca66e8709aa8506b340f206cbbeeeedeaa889de3",
+    "tools/sol-io-benchmark.py": "255e41426531617eda3be845b66e4ec6b6a908e49f4ba3f913fceb6ff8b5c35f",
+    "tools/sol-io-check.py": "d1a78c036213bf22ea0867f27bcacda5e077abedda2a0ae3ced10f2148a08398"
+  },
+  "settings": {
+    "SOL_JIT": "0",
+    "SOL_GPU": "0",
+    "chunk_bytes": 65536,
+    "line_limit_bytes": 65536,
+    "warmups": 1,
+    "runs": 1
+  },
+  "measurement": "fresh child process via /usr/bin/time; macOS RSS bytes or Linux RSS KiB converted to bytes; warm compile cache; output to /dev/null",
+  "samples": [
+    {
+      "case": "idle",
+      "input_bytes": 0,
+      "peak_rss_bytes": 53739520,
+      "wall_seconds": 0.2335960969999178,
+      "mib_per_second": 0.0,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "/workspace/repo/fpr",
+        "sol",
+        "/tmp/sol-io-memory-avuuxwfl/measure.sol"
+      ],
+      "source": "> print \"idle\".\n",
+      "stderr": "\tCommand being timed: \"/workspace/repo/fpr sol /tmp/sol-io-memory-avuuxwfl/measure.sol\"\n\tUser time (seconds): 0.06\n\tSystem time (seconds): 0.16\n\tPercent of CPU this job got: 101%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.22\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 52480\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 8265\n\tVoluntary context switches: 127\n\tInvoluntary context switches: 5\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "case": "copy",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 129368064,
+      "wall_seconds": 1.405901522000022,
+      "mib_per_second": 71.12873728007703,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "/workspace/repo/fpr",
+        "sol",
+        "/tmp/sol-io-memory-avuuxwfl/measure.sol"
+      ],
+      "source": "> r = Fs.copyPublishNow \"/tmp/sol-io-memory-avuuxwfl/input.log\" \"/tmp/sol-io-memory-avuuxwfl/output.bin\" 65536 False; case r of Ok n -> (case n == 104857600 of True -> Unit | False -> error \"copy size\") | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Fs.copyPublishNow \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Fs.copyPublishNow x1\n\tCommand being timed: \"/workspace/repo/fpr sol /tmp/sol-io-memory-avuuxwfl/measure.sol\"\n\tUser time (seconds): 0.14\n\tSystem time (seconds): 1.29\n\tPercent of CPU this job got: 103%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:01.39\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 126336\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 26730\n\tVoluntary context switches: 881\n\tInvoluntary context switches: 7\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 204800\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "case": "filter",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 138280960,
+      "wall_seconds": 1.2422568409997439,
+      "mib_per_second": 80.49865108371789,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "/workspace/repo/fpr",
+        "sol",
+        "/tmp/sol-io-memory-avuuxwfl/measure.sol"
+      ],
+      "source": "pick needle n b = case Bytes.contains needle b of\n True -> u = unwrap (IO.stdout b); n + Bytes.len b\n| False -> n.\n> needle = unwrap (Utf8.encode \"KEEP\"); r = unwrap (Stream.openRead \"/tmp/sol-io-memory-avuuxwfl/input.log\" 65536); (result,r2) = Stream.foldLines (pick needle) 0 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 52428800 of True -> Unit | False -> error \"filter count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n\tCommand being timed: \"/workspace/repo/fpr sol /tmp/sol-io-memory-avuuxwfl/measure.sol\"\n\tUser time (seconds): 0.36\n\tSystem time (seconds): 0.91\n\tPercent of CPU this job got: 103%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:01.23\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 135040\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 42412\n\tVoluntary context switches: 777\n\tInvoluntary context switches: 11\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "case": "digest",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 136462336,
+      "wall_seconds": 2.2277347489998647,
+      "mib_per_second": 44.888647557746594,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "/workspace/repo/fpr",
+        "sol",
+        "/tmp/sol-io-memory-avuuxwfl/measure.sol"
+      ],
+      "source": "> r = unwrap (Stream.openRead \"/tmp/sol-io-memory-avuuxwfl/input.log\" 65536); (result,r2) = Sha256.stream r; u = unwrap (Stream.closeRead r2); hex = Hex.encode (unwrap result); case hex == \"dd3860b5d0ce36b7ef0aa8e3afca97e3997fc0bc7441f00b8913dcea1e08b2f8\" of True -> Unit | False -> error \"digest mismatch\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] REALTIME: Sha256.stream \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 2 realtime escape(s) \u2014 Sha256.stream x1, Stream.openRead x1\n\tCommand being timed: \"/workspace/repo/fpr sol /tmp/sol-io-memory-avuuxwfl/measure.sol\"\n\tUser time (seconds): 1.36\n\tSystem time (seconds): 0.93\n\tPercent of CPU this job got: 103%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:02.22\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 133264\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 41708\n\tVoluntary context switches: 1433\n\tInvoluntary context switches: 12\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "case": "csv",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 106168320,
+      "wall_seconds": 17.506816059999892,
+      "mib_per_second": 5.712060928570732,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "/workspace/repo/fpr",
+        "sol",
+        "/tmp/sol-io-memory-avuuxwfl/measure.sol"
+      ],
+      "source": "countRows n row = n + 1.\n> r = unwrap (Stream.openRead \"/tmp/sol-io-memory-avuuxwfl/input.log\" 65536); (result,r2) = Stream.foldCsv countRows 0 1 65536 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 1600 of True -> Unit | False -> error \"CSV record count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n\tCommand being timed: \"/workspace/repo/fpr sol /tmp/sol-io-memory-avuuxwfl/measure.sol\"\n\tUser time (seconds): 17.43\n\tSystem time (seconds): 0.76\n\tPercent of CPU this job got: 104%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:17.49\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 103680\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 20366\n\tVoluntary context switches: 11483\n\tInvoluntary context switches: 75\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "case": "copy",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 135921664,
+      "wall_seconds": 10.610772744000315,
+      "mib_per_second": 96.50569517465199,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "/workspace/repo/fpr",
+        "sol",
+        "/tmp/sol-io-memory-avuuxwfl/measure.sol"
+      ],
+      "source": "> r = Fs.copyPublishNow \"/tmp/sol-io-memory-avuuxwfl/input.log\" \"/tmp/sol-io-memory-avuuxwfl/output.bin\" 65536 False; case r of Ok n -> (case n == 1073741824 of True -> Unit | False -> error \"copy size\") | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Fs.copyPublishNow \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Fs.copyPublishNow x1\n\tCommand being timed: \"/workspace/repo/fpr sol /tmp/sol-io-memory-avuuxwfl/measure.sol\"\n\tUser time (seconds): 0.31\n\tSystem time (seconds): 9.01\n\tPercent of CPU this job got: 87%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:10.59\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 132736\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 42175\n\tVoluntary context switches: 7182\n\tInvoluntary context switches: 30\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 2097152\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "case": "filter",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 138784768,
+      "wall_seconds": 5.12613952699985,
+      "mib_per_second": 199.76046196294453,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "/workspace/repo/fpr",
+        "sol",
+        "/tmp/sol-io-memory-avuuxwfl/measure.sol"
+      ],
+      "source": "pick needle n b = case Bytes.contains needle b of\n True -> u = unwrap (IO.stdout b); n + Bytes.len b\n| False -> n.\n> needle = unwrap (Utf8.encode \"KEEP\"); r = unwrap (Stream.openRead \"/tmp/sol-io-memory-avuuxwfl/input.log\" 65536); (result,r2) = Stream.foldLines (pick needle) 0 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 536870912 of True -> Unit | False -> error \"filter count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n\tCommand being timed: \"/workspace/repo/fpr sol /tmp/sol-io-memory-avuuxwfl/measure.sol\"\n\tUser time (seconds): 2.06\n\tSystem time (seconds): 3.16\n\tPercent of CPU this job got: 102%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:05.11\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 135532\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 43321\n\tVoluntary context switches: 3392\n\tInvoluntary context switches: 20\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "case": "digest",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 137879552,
+      "wall_seconds": 14.906492592000177,
+      "mib_per_second": 68.6948987952771,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "/workspace/repo/fpr",
+        "sol",
+        "/tmp/sol-io-memory-avuuxwfl/measure.sol"
+      ],
+      "source": "> r = unwrap (Stream.openRead \"/tmp/sol-io-memory-avuuxwfl/input.log\" 65536); (result,r2) = Sha256.stream r; u = unwrap (Stream.closeRead r2); hex = Hex.encode (unwrap result); case hex == \"1a293e39bc5c78ccb637a0e7059dedd6e1cf133a8a3929a539654240249e58b6\" of True -> Unit | False -> error \"digest mismatch\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] REALTIME: Sha256.stream \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 2 realtime escape(s) \u2014 Sha256.stream x1, Stream.openRead x1\n\tCommand being timed: \"/workspace/repo/fpr sol /tmp/sol-io-memory-avuuxwfl/measure.sol\"\n\tUser time (seconds): 12.18\n\tSystem time (seconds): 3.01\n\tPercent of CPU this job got: 102%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:14.89\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 134648\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 42644\n\tVoluntary context switches: 9900\n\tInvoluntary context switches: 53\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "case": "csv",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 107347968,
+      "wall_seconds": 169.340455476,
+      "mib_per_second": 6.046989758717921,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "/workspace/repo/fpr",
+        "sol",
+        "/tmp/sol-io-memory-avuuxwfl/measure.sol"
+      ],
+      "source": "countRows n row = n + 1.\n> r = unwrap (Stream.openRead \"/tmp/sol-io-memory-avuuxwfl/input.log\" 65536); (result,r2) = Stream.foldCsv countRows 0 1 65536 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 16384 of True -> Unit | False -> error \"CSV record count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n\tCommand being timed: \"/workspace/repo/fpr sol /tmp/sol-io-memory-avuuxwfl/measure.sol\"\n\tUser time (seconds): 168.52\n\tSystem time (seconds): 3.82\n\tPercent of CPU this job got: 101%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 2:49.33\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 104832\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 20709\n\tVoluntary context switches: 113835\n\tInvoluntary context switches: 151\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    }
+  ],
+  "gates": {
+    "copy": {
+      "small_peak_rss_bytes": 129368064,
+      "large_peak_rss_bytes": 135921664,
+      "idle_baseline_bytes": 53739520,
+      "incremental_growth_bytes": 6553600,
+      "allowance_bytes": 33554432,
+      "passed": true
+    },
+    "filter": {
+      "small_peak_rss_bytes": 138280960,
+      "large_peak_rss_bytes": 138784768,
+      "idle_baseline_bytes": 53739520,
+      "incremental_growth_bytes": 503808,
+      "allowance_bytes": 33554432,
+      "passed": true
+    },
+    "digest": {
+      "small_peak_rss_bytes": 136462336,
+      "large_peak_rss_bytes": 137879552,
+      "idle_baseline_bytes": 53739520,
+      "incremental_growth_bytes": 1417216,
+      "allowance_bytes": 33554432,
+      "passed": true
+    },
+    "csv": {
+      "small_peak_rss_bytes": 106168320,
+      "large_peak_rss_bytes": 107347968,
+      "idle_baseline_bytes": 53739520,
+      "incremental_growth_bytes": 1179648,
+      "allowance_bytes": 33554432,
+      "passed": true
+    }
+  }
+}

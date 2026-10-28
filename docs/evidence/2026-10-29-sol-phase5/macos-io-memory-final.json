@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "binary_sha256": "e0286bce028ce82a6ce18963b16b8840ab6667d77fcb506d39a02953e0b0b866",
+  "source_head": "27a4cdce69fbdbbfd337cfad6e7ed68203104c80",
+  "source_status": " M .github/workflows/ci.yml\n M Makefile\n M README.md\n M compiler/Main.hs\n M compiler/Sol/Cache.hs\n M compiler/Sol/Effects.hs\n M compiler/Sol/Main.hs\n M compiler/Sol/Mod.hs\n M compiler/Sol/Preamble.hs\n M compiler/Sol/Txn.hs\n M compiler/Sol/VM.hs\n M compiler/Sol/Val.hs\n M compiler/cbits/fsx.c\n M docs/2026-09-19-BOUNDS.md\n M docs/2026-09-29-Sol-Improvements-Needed.md\n M docs/2026-10-27-SOL-DAILY-SCRIPTING-PLAN.md\n M docs/README.md\n M docs/SEMANTICS.md\n M fp-risc.cabal\n M sol/lib/csv.sol\n M sol/lib/json.sol\n M sol/lib/proc.sol\n M tests/check_native_automation.py\n M tests/check_registry.py\n M tests/procdefer.sol\n M tools/sol-cache-txn-check.py\n M tools/sol-effects-check.py\n M tools/sol-fs-check.py\n M tools/sol-library-capabilities.json\n M tools/sol-library-check.py\n M tools/sol-safety-check.sh\n M tools/sol-txn-check.sh\n?? compiler/Sol/Digest.hs\n?? compiler/Sol/Format.hs\n?? compiler/Sol/Http.hs\n?? compiler/Sol/Process.hs\n?? compiler/Sol/ScriptIO.hs\n?? compiler/cbits/sol_digest.c\n?? compiler/cbits/sol_http.c\n?? docs/2026-10-29-SOL-HTTP.md\n?? docs/2026-10-29-SOL-INSTALLATION.md\n?? docs/2026-10-29-SOL-IO-PHASE2.md\n?? docs/2026-10-29-SOL-LIBRARIES-PHASE4.md\n?? docs/2026-10-29-SOL-PROCESS-PHASE3.md\n?? docs/evidence/2026-10-29-sol-phase2/\n?? docs/evidence/2026-10-29-sol-phase3/\n?? docs/evidence/2026-10-29-sol-phase4/\n?? docs/evidence/2026-10-29-sol-phase5/\n?? sol/lib/cli.sol\n?? sol/lib/config.sol\n?? sol/lib/digest.sol\n?? sol/lib/http.sol\n?? sol/scripts/checksum.sol\n?? sol/scripts/config-update.sol\n?? sol/scripts/copy-binary.sol\n?? sol/scripts/copy-pipeline.sol\n?? sol/scripts/http-fetch.sol\n?? sol/scripts/http-json-field.sol\n?? sol/scripts/text/csv-to-jsonlines.sol\n?? sol/scripts/text/filter-stream.sol\n?? sol/scripts/text/jsonlines-select.sol\n?? tools/sol-cli-config-check.py\n?? tools/sol-daily-check.py\n?? tools/sol-digest-check.py\n?? tools/sol-format-check.py\n?? tools/sol-http-check.py\n?? tools/sol-install-check.py\n?? tools/sol-install.py\n?? tools/sol-io-benchmark.py\n?? tools/sol-io-check.py\n?? tools/sol-pipeline-check.py\n?? tools/sol-receipt-budget-check.py\n?? tools/sol-retry-policy-check.py\n",
+  "source_files_sha256": {
+    "compiler/Sol/AsmA64.hs": "f876be9b2a3656e546ddb69468419a1a5941a0724d8f9c5cb3e7ff0b572c764b",
+    "compiler/Sol/AsmX64.hs": "d69d81695538e43d00fe0805cfafc2f5801a6b88d0a3739948d3b5bffefc04e0",
+    "compiler/Sol/Bytecode.hs": "cb55a6bf8196e756201418a7efdb7410001c58220d546d208224bd2e69bda15a",
+    "compiler/Sol/Cache.hs": "6afb270b43d5626a90e2e2181982d360fe828f766d1446748c3ab9289ed95206",
+    "compiler/Sol/Diagnostic.hs": "cb117335e8384efd70b1dcc09fd421ffd4ccb7d276c991deae719fb229a8a0c5",
+    "compiler/Sol/Digest.hs": "ab91477a53c1499952948de532aeebcb47b7e43fdd69c500243fb7df08dc3a71",
+    "compiler/Sol/Effects.hs": "632d5faeee04b72b3fae1d6362c4356d82cc0a5e37f7cc1a4427d2c805fb95ef",
+    "compiler/Sol/Format.hs": "d41e0e3e91e2790bb41cdcdfe9549db81e1afe874c291fd55b8eb546c1cb556d",
+    "compiler/Sol/Gpu.hs": "1dd199526c0b6756587276e617b0e75f1eeb559d586b17d4795ed20bd8be9dd4",
+    "compiler/Sol/HandJIT.hs": "f8ee5c553d761a9b22b41ff4519c4f285d46dbd535ae4ee851277a6f5d7412a3",
+    "compiler/Sol/Http.hs": "2f66cd44d2fdf4d5a5c67ff0d4b31598977c01db6bb8e712fee5743e8b0395a5",
+    "compiler/Sol/Infer.hs": "450a9f8d6c7877ea1ced62c7108c33d2407103859e3e43c0d151e8327990d6b0",
+    "compiler/Sol/JitCore.hs": "674cac700fd24c6cc33ce24dc50be00f053979fc4e736415d2ce39e361aa9651",
+    "compiler/Sol/KIR.hs": "cecc3303bdde26f6aba0c38dfe9bdaa7374736aff99e0d129a1c458a52bddd0c",
+    "compiler/Sol/Lang.hs": "066a02e41be5af278521850fbe7bd02148086c4eed34d15447ab60cd2895a80f",
+    "compiler/Sol/Main.hs": "b3bcfa320af9687ac2144ec1accd06a32ed3055508e3e41d7b6f1ac036bd2e63",
+    "compiler/Sol/Mod.hs": "2b67e351ba0cb35aeacf36c5b1b0d78d53b082a85bdd2a46b0cec9f440203fb9",
+    "compiler/Sol/Native.hs": "e8753ff91278d55bbcd71d8188b9b741750c1900504d4bd753e211d3c8fb9236",
+    "compiler/Sol/Preamble.hs": "3719aa5a0017c4801840329b973608edd8efe7fc839ba2686a651deae0e46ba8",
+    "compiler/Sol/Process.hs": "40db49ebdc96d2cbb4b8c4d21bea87983e8e15c66b30b622f102f74abf102d0a",
+    "compiler/Sol/ScriptIO.hs": "b49f0b2be72e55efa235c063725e5e2cb14792d40551530e51d8f8928cff6fe4",
+    "compiler/Sol/Startup.hs": "d0bf20756d11664c02aa47522c9df7e95bf6fc2722b39900fa8b9674cfcf81ef",
+    "compiler/Sol/Txn.hs": "736c8ac6f039b6ef026afda29caf8f60c158c9134a398aaa718ff1544b46decb",
+    "compiler/Sol/VM.hs": "5c5e50699d2c21201318fa3ba1bc7d84e4813c7342cde2a0bfce7dca9be4fd56",
+    "compiler/Sol/Val.hs": "7ee1d6689108188277c8cd53edb9aa851a2ba8f34dcea5c959128b39b41d1431",
+    "compiler/Sol/Web.hs": "b900e0f517d728e6da683d03f748a487d7d3a24c9be609ded8bf9b891365ae3a",
+    "compiler/Sol/WebAssets.hs": "5351d704dc195f6d8983e86fe68a24b68f92a3c4feb2be2ae564ff65e3fe94d8",
+    "compiler/Sol/Width.hs": "b3dde02ff84c97518937649974f7073f38eca6a6f6de8ef79cba93377e47e240",
+    "compiler/cbits/fsx.c": "af62b64e629bb12c6e1d8077a4ddfb3aa50f12488befe525d2ae8fb1d8bc0e7f",
+    "compiler/cbits/sol_digest.c": "7cad405f186c2c3b0f33c732d98fa04f7c9c1d12406b0a9f3c34d6d1f5d4fb09",
+    "sol/lib/digest.sol": "1f449a20a2d37672b452e3afee18f13a24775d6ffbf0aa20c73a4d43fcd4a022",
+    "fp-risc.cabal": "c992bf78ace82f76673e880dca66e8709aa8506b340f206cbbeeeedeaa889de3",
+    "tools/sol-io-benchmark.py": "255e41426531617eda3be845b66e4ec6b6a908e49f4ba3f913fceb6ff8b5c35f",
+    "tools/sol-io-check.py": "d1a78c036213bf22ea0867f27bcacda5e077abedda2a0ae3ced10f2148a08398"
+  },
+  "settings": {
+    "SOL_JIT": "0",
+    "SOL_GPU": "0",
+    "chunk_bytes": 65536,
+    "line_limit_bytes": 65536,
+    "warmups": 1,
+    "runs": 1
+  },
+  "measurement": "fresh child process via /usr/bin/time; macOS RSS bytes or Linux RSS KiB converted to bytes; warm compile cache; output to /dev/null",
+  "samples": [
+    {
+      "case": "idle",
+      "input_bytes": 0,
+      "peak_rss_bytes": 87097344,
+      "wall_seconds": 0.04061779100447893,
+      "mib_per_second": 0.0,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/measure.sol"
+      ],
+      "source": "> print \"idle\".\n",
+      "stderr": "        0.03 real         0.01 user         0.01 sys\n            87097344  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5852  page reclaims\n                   5  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 113  involuntary context switches\n           291664056  instructions retired\n           112586503  cycles elapsed\n            76939840  peak memory footprint\n"
+    },
+    {
+      "case": "copy",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 169361408,
+      "wall_seconds": 0.23826629179529846,
+      "mib_per_second": 419.69847789427524,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/measure.sol"
+      ],
+      "source": "> r = Fs.copyPublishNow \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/input.log\" \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/output.bin\" 65536 False; case r of Ok n -> (case n == 104857600 of True -> Unit | False -> error \"copy size\") | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Fs.copyPublishNow \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Fs.copyPublishNow x1\n        0.23 real         0.01 user         0.06 sys\n           169361408  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10879  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                 236  voluntary context switches\n                 341  involuntary context switches\n           672564359  instructions retired\n           327435072  cycles elapsed\n           158810736  peak memory footprint\n"
+    },
+    {
+      "case": "filter",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 177225728,
+      "wall_seconds": 0.12523883301764727,
+      "mib_per_second": 798.4743836275535,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/measure.sol"
+      ],
+      "source": "pick needle n b = case Bytes.contains needle b of\n True -> u = unwrap (IO.stdout b); n + Bytes.len b\n| False -> n.\n> needle = unwrap (Utf8.encode \"KEEP\"); r = unwrap (Stream.openRead \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/input.log\" 65536); (result,r2) = Stream.foldLines (pick needle) 0 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 52428800 of True -> Unit | False -> error \"filter count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n        0.12 real         0.07 user         0.04 sys\n           177225728  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               11354  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                 214  involuntary context switches\n          1205357112  instructions retired\n           410929048  cycles elapsed\n           162955864  peak memory footprint\n"
+    },
+    {
+      "case": "digest",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 178257920,
+      "wall_seconds": 0.3521469170227647,
+      "mib_per_second": 283.97238529149314,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/measure.sol"
+      ],
+      "source": "> r = unwrap (Stream.openRead \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/input.log\" 65536); (result,r2) = Sha256.stream r; u = unwrap (Stream.closeRead r2); hex = Hex.encode (unwrap result); case hex == \"dd3860b5d0ce36b7ef0aa8e3afca97e3997fc0bc7441f00b8913dcea1e08b2f8\" of True -> Unit | False -> error \"digest mismatch\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] REALTIME: Sha256.stream \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 2 realtime escape(s) \u2014 Sha256.stream x1, Stream.openRead x1\n        0.34 real         0.29 user         0.04 sys\n           178257920  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               11419  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   6  voluntary context switches\n                 748  involuntary context switches\n          5980916283  instructions retired\n          1273023797  cycles elapsed\n           164020848  peak memory footprint\n"
+    },
+    {
+      "case": "csv",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 97632256,
+      "wall_seconds": 1.6386885419487953,
+      "mib_per_second": 61.02440911747385,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/measure.sol"
+      ],
+      "source": "countRows n row = n + 1.\n> r = unwrap (Stream.openRead \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/input.log\" 65536); (result,r2) = Stream.foldCsv countRows 0 1 65536 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 1600 of True -> Unit | False -> error \"CSV record count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n        1.63 real         1.56 user         0.05 sys\n            97632256  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6499  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   2  voluntary context switches\n                3147  involuntary context switches\n         41520561347  instructions retired\n          5877442621  cycles elapsed\n            83329600  peak memory footprint\n"
+    },
+    {
+      "case": "copy",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 176095232,
+      "wall_seconds": 1.2163102079648525,
+      "mib_per_second": 841.890492486593,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/measure.sol"
+      ],
+      "source": "> r = Fs.copyPublishNow \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/input.log\" \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/output.bin\" 65536 False; case r of Ok n -> (case n == 1073741824 of True -> Unit | False -> error \"copy size\") | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Fs.copyPublishNow \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Fs.copyPublishNow x1\n        1.20 real         0.04 user         0.45 sys\n           176095232  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               11303  page reclaims\n                   3  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                1524  voluntary context switches\n                2299  involuntary context switches\n          3350225251  instructions retired\n          1906383467  cycles elapsed\n           161923672  peak memory footprint\n"
+    },
+    {
+      "case": "filter",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 177242112,
+      "wall_seconds": 0.7738588750362396,
+      "mib_per_second": 1323.238684769295,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/measure.sol"
+      ],
+      "source": "pick needle n b = case Bytes.contains needle b of\n True -> u = unwrap (IO.stdout b); n + Bytes.len b\n| False -> n.\n> needle = unwrap (Utf8.encode \"KEEP\"); r = unwrap (Stream.openRead \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/input.log\" 65536); (result,r2) = Stream.foldLines (pick needle) 0 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 536870912 of True -> Unit | False -> error \"filter count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n        0.76 real         0.57 user         0.18 sys\n           177242112  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               11355  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   3  voluntary context switches\n                1902  involuntary context switches\n          8543337099  instructions retired\n          2744593354  cycles elapsed\n           162972248  peak memory footprint\n"
+    },
+    {
+      "case": "digest",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 178274304,
+      "wall_seconds": 3.24654437485151,
+      "mib_per_second": 315.41229127565384,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/measure.sol"
+      ],
+      "source": "> r = unwrap (Stream.openRead \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/input.log\" 65536); (result,r2) = Sha256.stream r; u = unwrap (Stream.closeRead r2); hex = Hex.encode (unwrap result); case hex == \"1a293e39bc5c78ccb637a0e7059dedd6e1cf133a8a3929a539654240249e58b6\" of True -> Unit | False -> error \"digest mismatch\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] REALTIME: Sha256.stream \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 2 realtime escape(s) \u2014 Sha256.stream x1, Stream.openRead x1\n        3.24 real         2.89 user         0.24 sys\n           178274304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               11676  page reclaims\n                   2  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  11  voluntary context switches\n                9236  involuntary context switches\n         57754741864  instructions retired\n         11754300903  cycles elapsed\n           164119176  peak memory footprint\n"
+    },
+    {
+      "case": "csv",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 102842368,
+      "wall_seconds": 13.101641000015661,
+      "mib_per_second": 78.15814828072116,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/measure.sol"
+      ],
+      "source": "countRows n row = n + 1.\n> r = unwrap (Stream.openRead \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-z92mxfj6/input.log\" 65536); (result,r2) = Stream.foldCsv countRows 0 1 65536 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 16384 of True -> Unit | False -> error \"CSV record count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n       13.09 real        12.92 user         0.20 sys\n           102842368  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6809  page reclaims\n                   7  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   2  voluntary context switches\n               11107  involuntary context switches\n        418290569023  instructions retired\n         51879259176  cycles elapsed\n            88523304  peak memory footprint\n"
+    }
+  ],
+  "gates": {
+    "copy": {
+      "small_peak_rss_bytes": 169361408,
+      "large_peak_rss_bytes": 176095232,
+      "idle_baseline_bytes": 87097344,
+      "incremental_growth_bytes": 6733824,
+      "allowance_bytes": 33554432,
+      "passed": true
+    },
+    "filter": {
+      "small_peak_rss_bytes": 177225728,
+      "large_peak_rss_bytes": 177242112,
+      "idle_baseline_bytes": 87097344,
+      "incremental_growth_bytes": 16384,
+      "allowance_bytes": 33554432,
+      "passed": true
+    },
+    "digest": {
+      "small_peak_rss_bytes": 178257920,
+      "large_peak_rss_bytes": 178274304,
+      "idle_baseline_bytes": 87097344,
+      "incremental_growth_bytes": 16384,
+      "allowance_bytes": 33554432,
+      "passed": true
+    },
+    "csv": {
+      "small_peak_rss_bytes": 97632256,
+      "large_peak_rss_bytes": 102842368,
+      "idle_baseline_bytes": 87097344,
+      "incremental_growth_bytes": 5210112,
+      "allowance_bytes": 33554432,
+      "passed": true
+    }
+  }
+}

@@ -1,0 +1,396 @@
+{
+  "schema": 1,
+  "stage": "Phase 4 core libraries; HTTP and Phase 5 remain open",
+  "validated_at_utc": "2026-10-28T16:33:02.716244+00:00",
+  "host": {
+    "system": "Darwin",
+    "release": "27.0.0",
+    "machine": "arm64"
+  },
+  "base_revision": "27a4cdce69fbdbbfd337cfad6e7ed68203104c80",
+  "working_tree": "uncommitted Phases 2-4",
+  "compiler": "GHC 9.8.2",
+  "build": "make fpr; Cabal development -O1 with existing per-module overrides",
+  "binary_sha256": "d754148e804f960dd1c84c1261894814b9dcf42f97c8755c77929dad8a4b66f8",
+  "source_sha256": {
+    "compiler/Sol/AsmA64.hs": "f876be9b2a3656e546ddb69468419a1a5941a0724d8f9c5cb3e7ff0b572c764b",
+    "compiler/Sol/AsmX64.hs": "d69d81695538e43d00fe0805cfafc2f5801a6b88d0a3739948d3b5bffefc04e0",
+    "compiler/Sol/Bytecode.hs": "cb55a6bf8196e756201418a7efdb7410001c58220d546d208224bd2e69bda15a",
+    "compiler/Sol/Cache.hs": "7f7cf623dcd03dd4e8ac832c314bff712634734e08ff2fa4207c6fcb07033c44",
+    "compiler/Sol/Diagnostic.hs": "cb117335e8384efd70b1dcc09fd421ffd4ccb7d276c991deae719fb229a8a0c5",
+    "compiler/Sol/Digest.hs": "ab91477a53c1499952948de532aeebcb47b7e43fdd69c500243fb7df08dc3a71",
+    "compiler/Sol/Effects.hs": "632d5faeee04b72b3fae1d6362c4356d82cc0a5e37f7cc1a4427d2c805fb95ef",
+    "compiler/Sol/Format.hs": "d41e0e3e91e2790bb41cdcdfe9549db81e1afe874c291fd55b8eb546c1cb556d",
+    "compiler/Sol/Gpu.hs": "1dd199526c0b6756587276e617b0e75f1eeb559d586b17d4795ed20bd8be9dd4",
+    "compiler/Sol/HandJIT.hs": "f8ee5c553d761a9b22b41ff4519c4f285d46dbd535ae4ee851277a6f5d7412a3",
+    "compiler/Sol/Infer.hs": "450a9f8d6c7877ea1ced62c7108c33d2407103859e3e43c0d151e8327990d6b0",
+    "compiler/Sol/JitCore.hs": "674cac700fd24c6cc33ce24dc50be00f053979fc4e736415d2ce39e361aa9651",
+    "compiler/Sol/KIR.hs": "cecc3303bdde26f6aba0c38dfe9bdaa7374736aff99e0d129a1c458a52bddd0c",
+    "compiler/Sol/Lang.hs": "066a02e41be5af278521850fbe7bd02148086c4eed34d15447ab60cd2895a80f",
+    "compiler/Sol/Main.hs": "246718cc6ffe93d654a4befea4cef2ae14fe5d174831a41623f00eba9fd265f9",
+    "compiler/Sol/Mod.hs": "2b67e351ba0cb35aeacf36c5b1b0d78d53b082a85bdd2a46b0cec9f440203fb9",
+    "compiler/Sol/Native.hs": "e8753ff91278d55bbcd71d8188b9b741750c1900504d4bd753e211d3c8fb9236",
+    "compiler/Sol/Preamble.hs": "11d40ae44239e0fd8d710b8a8b80f65fffc5b812275cf2be9b4e469daf2fe36b",
+    "compiler/Sol/Process.hs": "40db49ebdc96d2cbb4b8c4d21bea87983e8e15c66b30b622f102f74abf102d0a",
+    "compiler/Sol/ScriptIO.hs": "b49f0b2be72e55efa235c063725e5e2cb14792d40551530e51d8f8928cff6fe4",
+    "compiler/Sol/Startup.hs": "d0bf20756d11664c02aa47522c9df7e95bf6fc2722b39900fa8b9674cfcf81ef",
+    "compiler/Sol/Txn.hs": "a6de372272cecf80c8f4167643b5fa43430feb9a2259abbadbfb7d0c652a0775",
+    "compiler/Sol/VM.hs": "9d175dfa4059650d8de417106957dd1637e87ecb4b34560a1d8e88ce4903195a",
+    "compiler/Sol/Val.hs": "7ee1d6689108188277c8cd53edb9aa851a2ba8f34dcea5c959128b39b41d1431",
+    "compiler/Sol/Web.hs": "b900e0f517d728e6da683d03f748a487d7d3a24c9be609ded8bf9b891365ae3a",
+    "compiler/Sol/WebAssets.hs": "5351d704dc195f6d8983e86fe68a24b68f92a3c4feb2be2ae564ff65e3fe94d8",
+    "compiler/Sol/Width.hs": "b3dde02ff84c97518937649974f7073f38eca6a6f6de8ef79cba93377e47e240",
+    "compiler/cbits/fsx.c": "af62b64e629bb12c6e1d8077a4ddfb3aa50f12488befe525d2ae8fb1d8bc0e7f",
+    "compiler/cbits/sol_digest.c": "7cad405f186c2c3b0f33c732d98fa04f7c9c1d12406b0a9f3c34d6d1f5d4fb09",
+    "fp-risc.cabal": "2c4cc112032a4c2f15b0b933a93a3feac5cd76e2d4bb6a269e2925e6546d3f44",
+    "sol/lib/archive.sol": "89e81ab94ea205cfe5fe09b5ee86e7b8d61a603d350ae03c6d346cc5d4ffd55d",
+    "sol/lib/auth.sol": "f731defd95887e9e5452af18a5c631542214c92564fdb34e3fe4eb5fb0283e9d",
+    "sol/lib/base.sol": "6ad47d5fac24ed686b8046b0a2de9dc80c078a7da7b729c5055cb4491e9b4707",
+    "sol/lib/cli.sol": "07a938ccbac5f4a5f8c61aa1822d0b81078891980352e7d031f59514254bb422",
+    "sol/lib/config.sol": "71c11431f86f937d1fa81c793bb3f6a9168776844568c5112afb3174291ec00c",
+    "sol/lib/csv.sol": "9baf3e37ec0093cce864216fd408c77ec9ae2c4729b1dc652972d3b59430ee50",
+    "sol/lib/digest.sol": "1f449a20a2d37672b452e3afee18f13a24775d6ffbf0aa20c73a4d43fcd4a022",
+    "sol/lib/fix.sol": "72c4193326c3c465d94782758cb4b57e5aded0850034e179343d4c34f665cba6",
+    "sol/lib/git.sol": "f351368502403eb9b31b5ab0ca10cc5d60c97ef9db14a56b3342ba7d7b5871f1",
+    "sol/lib/json.sol": "8ecfd535773d48fa06980444a4fa4e730601685804cc159c051076a652e9712c",
+    "sol/lib/logic.sol": "bbeb234c3aa71dc60a73eb71fcdf580be015adcb3b09921b580302d5b987f17d",
+    "sol/lib/matrix.sol": "4c806b09260c86022bb56430c8f89f2921470c777b9fb504cdb967862872d3ce",
+    "sol/lib/plot.sol": "27e5e4389b52be1a77dab5c0e0d23ee303d8951fa7f4d998c5e9619401eb33f3",
+    "sol/lib/plparse.sol": "fd6daa5e6a768e5edd6aa881b743c774dee6419c09d12ef98d7df773752e0039",
+    "sol/lib/proc.sol": "1d15998ebcf1bc51e6dd6d51f3bb0f10e7e584ee515c530d4aea62eb67ec646a",
+    "sol/lib/rand.sol": "350524f19287872730df33d9c4438828110954dab51f48e6f4e3765c6a58872f",
+    "sol/lib/system.sol": "c3389be13dec273563577e9a92932aa1fb043f66ebb934b1e70215c83aa662ae",
+    "sol/lib/ui.sol": "6eaa31b1df8394a0ea20b08d122ce5af7ca4fd175a510540fe60e6afcd43beea",
+    "sol/lib/web.sol": "9b7436f917f993263905ccb22b4b06289b4be0051134653e28c02669dfb3200d",
+    "sol/lib/webstyles.sol": "39b2305d2e82f9a2680c685bc73632962bd64b62828c7ca008797d179bee80e4",
+    "std/actor.fpr": "440515569c5cfa50fdceeb1371dfb8c164ca1b0746c934288638c90aab23f611",
+    "std/appearance.fpr": "90205a0b8db2ca2d5e10f0543b209f55a6f72ddabc47932701cb38fe8ef6b2f4",
+    "std/binary.fpr": "5ffbbdfb16210a0269533eb6c1ed03f55dfeb5a406d2aee1076ca6090c340466",
+    "std/ble.fpr": "afc97221e14501257f4ba85fc7cbc41ad20d2b208eac4b4e593cbd9098c52ece",
+    "std/browserautocomplete.fpr": "12031adf1a42561b234f6ed658f7647a073dd8659c3cd62439c086f822ca7f5c",
+    "std/browsercalc.fpr": "dc03f86c90539ae2dc6c9fbb397edaf386aacb965c816beda18db70fea2fe9fe",
+    "std/browserconsole.fpr": "8ae6b2b8a8fe7442b7892b89d684e077d6bd7716a1f93462d1a72eca4a2f645e",
+    "std/browserfeedback.fpr": "6f3a0e5dee8f357134c5bbc17cd99ea83841909340b90242c99195522bf65b9e",
+    "std/browserformfill.fpr": "dd6d64f4f5efedf85b80dbb3968e39bd3b78fc865ec2ef9ea099609aa86a1442",
+    "std/browsermedia.fpr": "65a522be26f3765059cb470436f011538309801a454efb2032e6ddd6c5a2e539",
+    "std/browserstorage.fpr": "ce7209565ed589ebf4591f741f253dcfc91650a94427c366bd862a1151dbe0b5",
+    "std/checkdemo.fpr": "8d10fd8a6e608076732fa722599b9299bc960d5fd10e8a01fac5244427a79d7c",
+    "std/clientcalc.fpr": "146a11d493dc0ee962c93e46d01a9b60f5689072810a36437f7bc941a7969760",
+    "std/clock.fpr": "eb9a409009a59d27e01e0fe51c329e2fcc8df241171184f37c9453e37ee74fc6",
+    "std/config.fpr": "8dd71d5c424b2aadeaacef6976562d05746c90da68cc02fb2adec303c6c7546f",
+    "std/connect.fpr": "77df686480c6bf618f3e172458a2b23b38089c5a4fe5bd938a07365af18b73ce",
+    "std/crypto.fpr": "6fa6bbb0882f64d05402528eec95170d2561e35fafcffd13c96d94549d3fdb54",
+    "std/decode.fpr": "5ed89effacc6f8aa51af66043aedf082313708f7c0e32197cc9b823c84795923",
+    "std/digest.fpr": "9ea717877fee352e989fe2c5a0bf3b28780988f5419eb600f6a7664027a3ced2",
+    "std/dir.fpr": "29cbed351725ec11f15dd77e0dd5800e62207a8818207f69c4c4ec520f1c6619",
+    "std/durable.fpr": "983779315057df204ac2488436bc40092e4ded7f1d07fcc25085b07e2455bab6",
+    "std/encoding.fpr": "80e65685f7e84ccada159023772005493fd598c6e44c4f6b48adf0b7dc2335d8",
+    "std/esp.fpr": "fe8a256178535f32aaa4f7072ec74edb3315658be0b95fa84c533abb3e82df7d",
+    "std/file.fpr": "2d54f52e83abc95825002a3c42e7ef145d641322cde2b4f37c1fd72919b4dae5",
+    "std/gitrevision.fpr": "8247691fd89e6a5257dc506e739f64075aa74455d804b1fafa4061fd548a8355",
+    "std/gpio.fpr": "04d8bce98753febab24a146f3428865867b2b8a8227ec7b9fc6c0b99dc3753f1",
+    "std/http.fpr": "5ba6d794df1dcb6e8b6b03781333211a0b9393c9c7cf2a26081e8d7ead9d4d26",
+    "std/httpclient.fpr": "f94856b154cc5affa6bfcca264455e48dfa5b3a3514704c93c964c3349f94c05",
+    "std/httpcore.fpr": "571a9f6a98dbf2d1a23f0ce5cd81d3ef05a466d07025cb696dc44f4414adab5b",
+    "std/javascript.fpr": "363c3647ab6806303733dafcd0b974ed37928c592675999f8b595d6f8866e6d7",
+    "std/job.fpr": "338a8424ede2e6d2b5f017ab2b1557dbac757da1d27c62bab02d9402ded01317",
+    "std/journal.fpr": "c92c31a99603fbb8703922b842502afb93ba8aba3f38608b09cc02257754c1b3",
+    "std/json.fpr": "ba0fa024b7c9e03e4dcb05b2319e3bdd2f1ce2a9543e169e562484d73b921da6",
+    "std/kvlog.fpr": "6f468effc069ca4c6e2cee0652d6ecad651577c8cb473309493c4078a955b6fc",
+    "std/lens.fpr": "d28816fa133844156ccad7559b911259cb1e24c7cf5e1f80133fe4538d258033",
+    "std/list.fpr": "851c11eb35def567838cc965fd6705ce53b92e532756cdd8697db238c8d7269d",
+    "std/live.fpr": "02003500510e4786a9629e6b2adb033575f3f905a5a6f10b7593719f34d068ce",
+    "std/livejs.fpr": "dea86740d2507420e089d00b64ee395e42e262339d03f4245556e1798008214e",
+    "std/livemetrics.fpr": "e7bbe167604cae4bfb96a246f70ab497bc569aebbb7d20c583ffd688cf372075",
+    "std/livenotice.fpr": "c3a5eefeda237bd90ab63071497b273fa0cfd98a45d16abdc6bb0a428fd3af68",
+    "std/livereload.fpr": "29dc2c62ef88612def904383236bf7d5e31cd82e959d3425db0c738e9e29f26a",
+    "std/log.fpr": "e6cd374cf620b249c1865e0d371843fa51e32e25646e4bcde52794f4f76a851c",
+    "std/logfile.fpr": "70445021f97de41c8450e160a121b7eea126ad0082bf655545e66173f1c85933",
+    "std/map.fpr": "9a7ff0f2f000d1d153c7b2d1a2488f36bcdecd6f840922be4186706f7f43921e",
+    "std/math.fpr": "bdbcfbde5ff17566a15249f78be1cda734799c59eb9bc0f52e14b46a346ca5cd",
+    "std/mjpeg.fpr": "72937b9274b7e4475030a7a4b937b21ae3199497eb003d16e1a7702e8013871f",
+    "std/money.fpr": "bd8da1d4f58d97b05d70405d1812af0319c846a048c20f825e1726665894bd13",
+    "std/mqtt.fpr": "dd4b2b44519570bf696eae7bf6459ac16aaf8f158b479fc55106671bf943b423",
+    "std/mqttclient.fpr": "d84744b8033938648294f2386956fd820ff92f069b4929d71b772a46ff69b1fc",
+    "std/mqttsession.fpr": "c47909571ddf73422052b66a9f7db8e2a6d39598f3c8c1de80db07f369b899b2",
+    "std/mvu.fpr": "29bc2076aca7b387ca1a48bb0a5009f2def5f6f91520f6c0ab29ae1c092dbe4c",
+    "std/native.fpr": "eec48aeddb92a42b9c0a170f1892ef354ae2c1b2d1e3c8d23344f71fe4d34ab9",
+    "std/option.fpr": "5a7c8ccc3141a70cf6e7d202d634fa0a908bda87650546fd8d1ab45eaea30ad7",
+    "std/order.fpr": "69e16095ebfbc6399b4d5056c691e5bfee8f8516ca242b2e4d8536e3f7521bf7",
+    "std/os.fpr": "10d372efc385219dba524d7426eb8fe7d3c98caf6da1de453944296446acd2fd",
+    "std/osconnection.fpr": "6daf0e3f307e3553d1e102ae370e645fb429d7709bae97cfd6b3f798657e0b99",
+    "std/osfs.fpr": "8e78000eea261e04d663b074007353d50e0f5d70e26d9a403468027d52d04ecd",
+    "std/osio.fpr": "3c36f705697e9dce531b78a2d910c30e3480ae35c16fc539cfe8a713f9c7a016",
+    "std/osnet.fpr": "ee7d4e8da842420c661f69edee59bfb65c22ed47a18d72901a5392ebcd807f52",
+    "std/oswatch.fpr": "5986d4edc35b1cb5986c3a2264be8bed2eb7adb484c77699b263e7e697af7b02",
+    "std/ownedmqtt.fpr": "1a9865b6f874cd4953664cec2f8dd02be14bdbfa113ca724381a58dc9f395bb8",
+    "std/ownedtransport.fpr": "81f64c8f32226cb3c207035306358f0199213e8d5d27c1d8211c4ed1fe89e721",
+    "std/pagination.fpr": "f086003b20289ee58fbce49df01c0a73c809ccd4fd9bd802ac82a190a9193a98",
+    "std/path.fpr": "400f7149ddce4de384121a591c3c6dce2239dcc150dd7ec88c24ffc81ba723d6",
+    "std/poller.fpr": "a6c3d8ec09c2c5fa8db5869ab96fae32bc3633497e07515752e2e2a0eadd7d47",
+    "std/printeralertcodes.fpr": "91f88efea1722a69648e7ae473d23c42754b484fe0c2f5ddb9a137ccc1079c86",
+    "std/printeralerts.fpr": "5543471b927b2745aac8c239c976560667b28efb281cf6d1471ca008e0bfe993",
+    "std/printertelemetry.fpr": "66fac3208a724621cbf31233838bacb31d7848a7d5bb103cc75942aa49da2d0d",
+    "std/proc.fpr": "dd4c676961553c2769fd93f7bf4a886048401b13f4bd204a07d50c51b46dbc76",
+    "std/program.fpr": "238dcc65d78a2e7a09d33e4c4971d411469f3b781cbd5b6b3030c6fb4b0f4435",
+    "std/readiness.fpr": "a2192a3b5ae6a403fc85a1e51c0562a52b8edf5baf7b7c2c8d71465574d40c70",
+    "std/reload.fpr": "24a32c896476793ce374186d74b47bd10fcddc77efa062178f068bea835bc5a2",
+    "std/reloadcatalog.fpr": "f3b8d7337c88726d1523bbc8b93b6aacb5789b61cc24244a53bc92dc8418ba2d",
+    "std/resolver.fpr": "3dff8e60b6c74586999cd7303a12b756a55103b9403aa06762ba0ca9b1d862b2",
+    "std/result.fpr": "a657556651b1ecaba328def9aa3715c496d162d97e8f174628901574db12b137",
+    "std/sessionauth.fpr": "811d71956c1eee8afbb266a3782bfb6351b378801e2e18ac0b1e627508479678",
+    "std/set.fpr": "284d38496fbf740ce29b8c13bfb52d1704eecfa700f14e57cddad9c6900fcd78",
+    "std/sockettransport.fpr": "042b546a0b1a31add41af45067c4feea57b44044feecf7220b0e7ee0ec868298",
+    "std/std.fpr": "1560dab38356b16a47ba8b5beb3a3be8a25833d98d3c0e149306dc9ad79618c2",
+    "std/store.fpr": "a0a8bedef62d4de8af8388f9763d1d4ebcee49397e455a3e74e2dd7807b9b2e6",
+    "std/stream.fpr": "387446be82a3a690f7dd15002f407fa864bf56877bc0f8b996641d591a82e4c7",
+    "std/string.fpr": "43a8c7baa37e9b0fdd78e1b204822a19e44ac597a8addd2da07de34bf432cf9f",
+    "std/supervisor.fpr": "8537f286cf209093817b0abf3b2a97b58ad40397d764be7adc1f27c2eb8d149d",
+    "std/task.fpr": "f1b1e3421d45306d2798bd3b35b8c900a6726201119426b69adec76028fcc041",
+    "std/tcp.fpr": "7a388e30385037fcc15b36ee8467f0cc76be483eb339141e20e774298b8126d4",
+    "std/term.fpr": "a759f1b4fe13a2454a21f85d994c75386024c7c372f4ad07d4fc6a49e5523781",
+    "std/tls.fpr": "5d9954917192267a3e056eb29a343ecfa247d6ec971f681f3b2110d6581fc6ee",
+    "std/transport.fpr": "6bc8c010223992a42812691bae027c6a0e24ae80f1abab0535a4a37a067ec406",
+    "std/ui.fpr": "3a4202af474afd9d51427d81dacea8b30697d66312a24f019eb14e7520a03b3c",
+    "std/view.fpr": "0bdc31fca08b1298a9fa5fb0754b3103773b6274900e53f1ca105ed49a23de3b",
+    "std/viewcache.fpr": "30755a1405bfdf3ab07b2d51fa8af06df9a78075c62c9810b017c12afb8a1117",
+    "std/watch.fpr": "0d404d8e022b3810bac42ed201d1e0fc1703b2306873e0860ba2be249534acfe",
+    "std/watchedtransport.fpr": "731fcf1648e8e429259425f8c49277fe13b4ba7fd99151a3833d60736283fa9c",
+    "std/wifi.fpr": "81c817231bb536550e441e61b9a2baf2f7e99ad7edc9a85aacfe39253d8c2742",
+    "std/wire.fpr": "1b8d9ad9d1919397fa2e0bb3ff9389d7bb435a66cd02e56722f9a2581cffb4d1",
+    "std/ws.fpr": "f550853a4bfffab2f1d4b03926c631f3821869a014de8d1d5764441d8a78b3eb"
+  },
+  "checks": [
+    {
+      "command": [
+        "python3",
+        "tests/check_base.py",
+        "-j",
+        "4",
+        "--only",
+        "sol",
+        "--times"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 37.41019529197365,
+      "stdout": "Sol inferred linearity: 8 checks passed\nnote: non-UTF-8 filename fixture unavailable here ([Errno 92] Illegal byte sequence: b'/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-fs-5t76ddhv/badname/bad\\xff.txt'); ls_nonutf8_rejected was not exercised\nsol fs contract: 103 checks passed\nnote: cross-device rename fixture unavailable; native EXDEV case was not exercised\nsol byte/stream/script I/O: 84 checks passed\nsol retry-policy checks: 18 passed\nsol pipeline checks: 35 passed\nsol receipt budget: 14 MiB retained, next 2 MiB saved as failure, following process fenced, files committed and receipts cleaned\nsol byte encoding/SHA-256: 132 checks passed\nsol bounded JSON/CSV formats: 94 checks passed\nsol CLI/configuration: 33 checks passed\nSol effects: closed projections, retry, captured-result recovery, failure fence, concurrent/idempotent path logs, modes and symlinks PASS\nSol Git: deferred commit/head/tag/local push, terminal publication, CAS abort/retry, four crash windows and foreign-head refusal PASS\n",
+      "stderr": "check_base: 10 jobs in 37 s on 4 worker(s)\n     33.8 s  tools/sol-receipt-budget-check.py\n     10.7 s  tools/sol-digest-check.py\n      9.6 s  tools/sol-effects-check.py\n      9.0 s  tools/sol-fs-check.py\n      7.5 s  tools/sol-format-check.py\n      6.9 s  tools/sol-io-check.py\n      6.6 s  tools/sol-pipeline-check.py\n      4.4 s  tools/sol-cli-config-check.py\n      2.3 s  tools/sol-retry-policy-check.py\n      0.8 s  tools/sol-linearity-check.py\n"
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-text-process-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 13.405796583043411,
+      "stdout": "sol text/process: 34 checks passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-output-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 1.9402694997843355,
+      "stdout": "sol output contract: 26 checks passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-library-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 10.983023625100031,
+      "stdout": "sol libraries: 123 contract checks passed (including explicitly catalogued compatibility gaps)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-startup-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 3.822589416988194,
+      "stdout": "sol startup: 52 checks passed (plus assembly and concurrent writers)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-cache-txn-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 0.7283029169775546,
+      "stdout": "sol module-cache/transaction checks: corruption, invalidation, prelude bypass, exact binary conflicts passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-txn-check.sh"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 7.793327125022188,
+      "stdout": "sol transactional properties: panic rollback, retry-once, race serialization, fenced commands, failed removals, torn-replay fencing, per-run journals, transactional log: OK\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-safety-check.sh"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 0.5354014171753079,
+      "stdout": "sol purity + filesystem + locks + retry actors: OK\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-proc-git-check.sh"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 1.3662184588611126,
+      "stdout": "sol structured process + git wrappers: OK\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-scripts-check.sh"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 0.6495806670282036,
+      "stdout": "sol general-purpose scripts: OK\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tests/check_native_automation.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 15.291756541002542,
+      "stdout": "native automation: Git, archive, report, rollback/order/retry/recovery and empty-PATH acceptance passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-examples-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 5.935683666961268,
+      "stdout": "sol examples: 21 checks passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_check_registry.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 0.23636837489902973,
+      "stdout": "check_ci: tests/check_rv64_linux.py::typed-runtime\ncheck_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s\ncheck_ci: tests/check_native_data.py\ncheck_ci: tests/check_native_data.py: 0.0 s\ncheck_ci: tests/check_native_required.py\n",
+      "stderr": "........\n----------------------------------------------------------------------\nRan 8 tests in 0.116s\n\nOK\n"
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-digest-check.py"
+      ],
+      "environment": {
+        "FPR_TEST_JIT": "0"
+      },
+      "exit_code": 0,
+      "seconds": 9.811908916104585,
+      "stdout": "sol byte encoding/SHA-256: 132 checks passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-format-check.py"
+      ],
+      "environment": {
+        "FPR_TEST_JIT": "0"
+      },
+      "exit_code": 0,
+      "seconds": 6.5644946249667555,
+      "stdout": "sol bounded JSON/CSV formats: 94 checks passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-cli-config-check.py"
+      ],
+      "environment": {
+        "FPR_TEST_JIT": "0"
+      },
+      "exit_code": 0,
+      "seconds": 3.833612374961376,
+      "stdout": "sol CLI/configuration: 33 checks passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-io-check.py"
+      ],
+      "environment": {
+        "FPR_TEST_JIT": "0"
+      },
+      "exit_code": 0,
+      "seconds": 5.298717042198405,
+      "stdout": "note: cross-device rename fixture unavailable; native EXDEV case was not exercised\nsol byte/stream/script I/O: 84 checks passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-retry-policy-check.py"
+      ],
+      "environment": {
+        "FPR_TEST_JIT": "0"
+      },
+      "exit_code": 0,
+      "seconds": 1.6690504171419889,
+      "stdout": "sol retry-policy checks: 18 passed\n",
+      "stderr": ""
+    }
+  ],
+  "not_verified": [
+    "HTTP adapter and fixtures not yet implemented",
+    "Phase 5 installation/workflow matrix",
+    "Linux x86-64",
+    "hosted CI",
+    "full Base suite",
+    "hardware targets"
+  ],
+  "unexercised": [
+    "APFS non-UTF-8 filename creation",
+    "native EXDEV fixture (no second local filesystem)"
+  ]
+}

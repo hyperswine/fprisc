@@ -223,6 +223,11 @@ library
       Sol.Mod
       Sol.Native
       Sol.Preamble
+      Sol.ScriptIO
+      Sol.Process
+      Sol.Digest
+      Sol.Format
+      Sol.Http
       Sol.Effects
       Sol.Txn
       Sol.VM
@@ -237,7 +242,9 @@ library
       compiler/cbits/native_git.c
       compiler/cbits/native_archive.c
       compiler/cbits/native_host.c
-  pkgconfig-depends: libgit2 >= 1.9, libarchive >= 3.6
+      compiler/cbits/sol_digest.c
+      compiler/cbits/sol_http.c
+  pkgconfig-depends: libgit2 >= 1.9, libarchive >= 3.6, libcurl >= 8.4
   if !os(darwin)
     extra-libraries:  EGL GL
   build-depends:
@@ -254,7 +261,7 @@ library
     , network
     , process
     , text
-    , unix
+    , unix >=2.8
     , time
     , utf8-string
 
@@ -299,7 +306,7 @@ common unit-test
     , network
     , process
     , text
-    , unix
+    , unix >=2.8
     , time
     , utf8-string
     , fp-risc

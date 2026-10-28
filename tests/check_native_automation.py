@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-native-automation-') as tmp:
     A=f'A = use "{ROOT}/sol/lib/archive.sol".\n'
     repo=w/'repo with spaces'; repo.mkdir(); (repo/'hello.txt').write_text('hello\n')
     r=f'(G.repo "{repo}" |> G.identity "Native Test" "native@example.invalid")'
-    sol(G+f'> r = {r} |> G.initOn "main" |> G.add G.all |> G.commit "first" |> G.branch "feature" |> G.tag "v1"; print "done".', extra={'SOL_FORCE_RETRY':'1'})
+    sol(G+f'> r = {r} |> G.initOn "main" |> G.add G.all |> G.commit "first" |> G.branch "feature" |> G.tag "v1"; log "done".', extra={'SOL_FORCE_RETRY':'1'})
     assert git(repo,'rev-list','--count','HEAD')=='1'
     head=git(repo,'rev-parse','HEAD')
     sol(G+f'> u1 = print (G.head {r}); u2 = print (G.log 0 {r}); print (G.status {r}).')
@@ -62,7 +62,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-native-automation-') as tmp:
     sol(G+f'> print (G.push "origin" "main" {r}).')
     before=git(bare,'rev-parse','main')
     (repo/'third.txt').write_text('third')
-    out=sol(G+f'> r = {r} |> G.add G.all |> G.commit "third"; print (G.push "origin" "main" r).')
+    out=sol(G+f'> r = {r} |> G.add G.all |> G.commit "third"; print (G.pushNow "origin" "main" r).')
     assert 'Err Git.push' in out.stdout and git(bare,'rev-parse','main')==before
     # A failed native effect fences subsequent native effects.
     sol(G+f'> r = {r} |> G.branch "main" |> G.tag "must-not-exist"; print "queued".',ok=False)
@@ -85,7 +85,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-native-automation-') as tmp:
     assert not leaked.exists()
     # Earlier writes land before the archive; retries discard uncommitted plans.
     note=w/'note.txt'; ordered=w/'ordered.tar.gz'
-    sol(A+f'> u1 = writePath "{note}" "new contents"; u2 = A.create "{note}" "{ordered}"; print "queued".',extra={'SOL_FORCE_RETRY':'1'})
+    sol(A+f'> u1 = writePath "{note}" "new contents"; u2 = A.create "{note}" "{ordered}"; log "queued".',extra={'SOL_FORCE_RETRY':'1'})
     with tarfile.open(ordered) as t: assert t.extractfile(next(m for m in t.getmembers() if m.name.endswith('/note.txt'))).read()==b'new contents'
     # Recovery serializes native operations and skips completed Git mutations.
     crash=w/'crash.sol'; crash.write_text(G+A+f'> r = {r} |> G.tag "recovered"; u = A.create "{note}" "{w}/recovered.tar.gz"; print "queued".')

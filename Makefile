@@ -102,7 +102,7 @@ else ifneq ($(FPR_TOOLCHAIN),.)
 fpr:
 	$(MAKE) -C "$(FPR_TOOLCHAIN)" fpr
 else
-fpr: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/fsx.c compiler/cbits/vecgpu.c compiler/cbits/handjit.c compiler/cbits/native_git.c compiler/cbits/native_archive.c compiler/cbits/native_host.c fp-risc.cabal Makefile
+fpr: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/fsx.c compiler/cbits/vecgpu.c compiler/cbits/handjit.c compiler/cbits/native_git.c compiler/cbits/native_archive.c compiler/cbits/native_host.c compiler/cbits/sol_digest.c compiler/cbits/sol_http.c fp-risc.cabal Makefile
 	@set -e; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
 	if command -v cabal >/dev/null 2>&1; then \
 	  $(NATIVE_PKG_ENV) cabal build exe:fpr; cp "$$(cabal list-bin fpr)" "$$fresh"; \
@@ -110,11 +110,14 @@ fpr: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/fsx.c compiler/cbits/ve
 	  gcc -c compiler/cbits/fsx.c -o compiler/cbits/fsx.o; \
 	  gcc -c compiler/cbits/vecgpu.c -o compiler/cbits/vecgpu.o; \
 	  gcc -c compiler/cbits/handjit.c -o compiler/cbits/handjit.o; \
-	  $(NATIVE_PKG_ENV) pkg-config --cflags --libs libgit2 libarchive > build/native-libs.flags; \
+	  $(NATIVE_PKG_ENV) pkg-config --atleast-version=8.4 libcurl; \
+	  $(NATIVE_PKG_ENV) pkg-config --cflags --libs libgit2 libarchive libcurl > build/native-libs.flags; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_git.c -o compiler/cbits/native_git.o; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_archive.c -o compiler/cbits/native_archive.o; \
 	  gcc -c compiler/cbits/native_host.c -o compiler/cbits/native_host.o; \
-	  (cd compiler && ghc -O1 -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -o ../"$$fresh" Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o cbits/native_git.o cbits/native_archive.o cbits/native_host.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
+	  gcc -c compiler/cbits/sol_digest.c -o compiler/cbits/sol_digest.o; \
+	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libcurl) -c compiler/cbits/sol_http.c -o compiler/cbits/sol_http.o; \
+	  (cd compiler && ghc -O1 -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -o ../"$$fresh" Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o cbits/native_git.o cbits/native_archive.o cbits/native_host.o cbits/sol_digest.o cbits/sol_http.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" fpr
 	ln -sf fpr fprc
 endif
@@ -142,10 +145,13 @@ fpr-dev: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/*.c fp-risc.cabal M
 	  gcc -c compiler/cbits/fsx.c -o build/ghc-dev/fsx.o; \
 	  gcc -c compiler/cbits/vecgpu.c -o build/ghc-dev/vecgpu.o; \
 	  gcc -c compiler/cbits/handjit.c -o build/ghc-dev/handjit.o; \
-	  $(NATIVE_PKG_ENV) pkg-config --cflags --libs libgit2 libarchive > build/native-libs.flags; \
+	  $(NATIVE_PKG_ENV) pkg-config --atleast-version=8.4 libcurl; \
+	  $(NATIVE_PKG_ENV) pkg-config --cflags --libs libgit2 libarchive libcurl > build/native-libs.flags; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_git.c -o build/ghc-dev/native_git.o; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_archive.c -o build/ghc-dev/native_archive.o; \
 	  gcc -c compiler/cbits/native_host.c -o build/ghc-dev/native_host.o; \
+	  gcc -c compiler/cbits/sol_digest.c -o build/ghc-dev/sol_digest.o; \
+	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libcurl) -c compiler/cbits/sol_http.c -o build/ghc-dev/sol_http.o; \
 	  (cd compiler && ghc -O0 -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -outputdir ../build/ghc-dev -o ../"$$fresh" Main.hs ../build/ghc-dev/*.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" fpr
 	ln -sf fpr fprc
@@ -162,10 +168,13 @@ fpr-opt: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/*.c fp-risc.cabal M
 	  gcc -c compiler/cbits/fsx.c -o build/ghc$(GHCOPT)/fsx.o; \
 	  gcc -c compiler/cbits/vecgpu.c -o build/ghc$(GHCOPT)/vecgpu.o; \
 	  gcc -c compiler/cbits/handjit.c -o build/ghc$(GHCOPT)/handjit.o; \
-	  $(NATIVE_PKG_ENV) pkg-config --cflags --libs libgit2 libarchive > build/native-libs.flags; \
+	  $(NATIVE_PKG_ENV) pkg-config --atleast-version=8.4 libcurl; \
+	  $(NATIVE_PKG_ENV) pkg-config --cflags --libs libgit2 libarchive libcurl > build/native-libs.flags; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_git.c -o build/ghc$(GHCOPT)/native_git.o; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_archive.c -o build/ghc$(GHCOPT)/native_archive.o; \
 	  gcc -c compiler/cbits/native_host.c -o build/ghc$(GHCOPT)/native_host.o; \
+	  gcc -c compiler/cbits/sol_digest.c -o build/ghc$(GHCOPT)/sol_digest.o; \
+	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libcurl) -c compiler/cbits/sol_http.c -o build/ghc$(GHCOPT)/sol_http.o; \
 	  (cd compiler && ghc $(GHCOPT) -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -outputdir ../build/ghc$(GHCOPT) -o ../"$$fresh" Main.hs ../build/ghc$(GHCOPT)/*.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" build/fpr-opt
 
@@ -381,3 +390,12 @@ else
 	python3 tools/run_simple_risc.py $(basename $(IMAGE)).bin $(SIMPLE_RISC_FLAGS)
 endif
 .PHONY: bare-metal-builtin bare-metal-builtin-run
+
+# Host-specific source-plus-runner distribution, with atomic version activation.
+SOL_PREFIX ?= $(HOME)/.local
+SOL_BUNDLE ?= build/sol-bundle.tar.gz
+.PHONY: sol-bundle sol-install
+sol-bundle: fpr
+	python3 tools/sol-install.py --output "$(SOL_BUNDLE)"
+sol-install: fpr
+	python3 tools/sol-install.py --prefix "$(SOL_PREFIX)"

@@ -1,0 +1,179 @@
+{
+  "seconds": 17.14012337499298,
+  "workers": 4,
+  "reused": [],
+  "jobs": [
+    {
+      "name": "tools/sol-linearity-check.py",
+      "status": "ok",
+      "seconds": 0.7047897921875119,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-linearity-check.py"
+          ],
+          "seconds": 0.699344291118905
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-fs-check.py",
+      "status": "ok",
+      "seconds": 8.872309332946315,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-fs-check.py"
+          ],
+          "seconds": 8.867573416093364
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-io-check.py",
+      "status": "ok",
+      "seconds": 6.822530040983111,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-io-check.py"
+          ],
+          "seconds": 6.81889274995774
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-retry-policy-check.py",
+      "status": "ok",
+      "seconds": 2.131840332876891,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-retry-policy-check.py"
+          ],
+          "seconds": 2.129497499903664
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-pipeline-check.py",
+      "status": "ok",
+      "seconds": 6.359067208133638,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-pipeline-check.py"
+          ],
+          "seconds": 6.356072874972597
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-receipt-budget-check.py",
+      "status": "cancelled",
+      "seconds": 14.117597833042964,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-receipt-budget-check.py"
+          ],
+          "seconds": 14.115170917008072
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-digest-check.py",
+      "status": "cancelled",
+      "seconds": 9.426311457995325,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-digest-check.py"
+          ],
+          "seconds": 9.423722999868914
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-format-check.py",
+      "status": "ok",
+      "seconds": 7.546845333883539,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-format-check.py"
+          ],
+          "seconds": 7.545178374974057
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-cli-config-check.py",
+      "status": "ok",
+      "seconds": 4.476735249860212,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-cli-config-check.py"
+          ],
+          "seconds": 4.473832542076707
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-http-check.py",
+      "status": "cancelled",
+      "seconds": 2.9003976250533015,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-http-check.py"
+          ],
+          "seconds": 2.8977421659510583
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-install-check.py",
+      "status": "failed",
+      "seconds": 1.6369310000445694,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-install-check.py"
+          ],
+          "seconds": 1.6273417498450726
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-effects-check.py",
+      "status": "cancelled",
+      "seconds": 2.1671876311302185e-06,
+      "lock_wait_seconds": 0,
+      "commands": []
+    }
+  ]
+}

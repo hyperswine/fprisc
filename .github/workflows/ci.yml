@@ -46,7 +46,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates python3 zstd \
             make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev \
-            libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev \
+            libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev \
             libegl-dev libgl-dev clang libclang-rt-dev lld \
             gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user \
             gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf qemu-system-misc

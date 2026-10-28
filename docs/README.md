@@ -353,3 +353,10 @@ they began.
 - [Repeated and unnecessary work](2026-10-28-REDUNDANT-WORK-REVIEW.md): source review at `7d8d283` of repeated work in the build driver and tests (cold test caches, `.s` units re-assembled per link, per-hart rebuilds, broad runtime-object keys, `runghc` jobs), inference (`generalize`, defaulting, clause scans), the middle/backend (quadratic `freeVars`, per-artifact reachability, allocator scans, repeated verification), the runtime and Sol; unmeasured, with a suggested order.
 - [Pass-scoped verification and erasure](2026-10-28-PASS-SCOPED-VERIFY-ERASE.md): compile-speed plan item 3 lands — Linked passes report the definitions they rewrote (`closedTouched`) instead of re-verifying and re-erasing the whole program per pass; derived-Eq diffing tried first and reverted (~68% of compile time in `Eq`); a multi-round inline touched-accumulation bug found and fixed; qos warm 1.32-1.36x CPU, −20.2% allocation, byte-identical assembly, codegen rev 137 unchanged.
 - [Sol Phase 1 filesystem completion](2026-10-29-SOL-FS-PHASE1.md): link-aware observations, bounded traversal, scratch ownership, transaction-review fixes and local acceptance evidence.
+- [Sol Phase 2 byte and stream I/O](2026-10-29-SOL-IO-PHASE2.md): exact bytes/UTF-8, owned bounded streams, script host/status APIs, binary copy/publication and native rename, with runnable scripts and memory evidence.
+- [Sol Phase 3 external effects and processes](2026-10-29-SOL-PROCESS-PHASE3.md): guarded default retry, explicit replay assertions/legacy policy, bounded captures and durable receipts, owned byte pipelines/jobs and publication rules.
+- [Sol Phase 4 practical libraries](2026-10-29-SOL-LIBRARIES-PHASE4.md): exact-byte encodings and streamed SHA-256, bounded JSON/CSV and streamed transforms, CLI/schema/configuration and owned HTTP/TLS workflows, with local evidence.
+
+- [Sol HTTP contract](2026-10-29-SOL-HTTP.md): linked libcurl, bounded bytes and headers, validated TLS, explicit redirects, owned cancellation and staged download publication.
+
+- [Sol installation, state and daily-workflow release gate](2026-10-29-SOL-INSTALLATION.md).

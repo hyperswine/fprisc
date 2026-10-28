@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Deferred dataflow/recovery, durable path logs and guarded Git compensation."""
 import collections
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -24,6 +25,8 @@ def run(path, source=None, *, code=0, env=None, cwd=None, relative=False):
     return p
 with tempfile.TemporaryDirectory(prefix='sol-effects-') as directory:
     d=Path(directory)
+    ENV["SOL_STATE_DIR"] = str(d/"state")
+    journal_dir=d/"state"/hashlib.sha256(str(d/"pipe").encode()).hexdigest()
     # Closed projections preserve argv boundaries; deferred streams still forward once.
     out=d/'pipe.out'; script=d/'pipe.sol'
     src=f''' > first = {later(['Lit "/usr/bin/printf"', 'Lit "  alpha:beta gamma\\nsecond:tail\\n  "'])};
@@ -40,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='sol-effects-') as directory:
   {later(['Lit "/bin/sh"','Lit "-c"','Lit '+literal('printf \'%s\' "$1" > "$2"'),'Lit "_"','From b','Lit '+literal(recovered)])}.
 '''
     run(script,src,code=137,env={'SOL_CRASH_AT':'1'})
-    journals=list(d.glob('pipe.soljournal.*'));assert any(p.read_text().startswith('SOLJ2\n') for p in journals if p.is_file())
+    journals=list(journal_dir.glob('run.soljournal.*'));assert any(p.read_text().startswith('SOLJ2\n') for p in journals if p.is_file())
     assert count.read_text()=='x' and not recovered.exists()
     run(script,'> print "recovered".\n');assert count.read_text()=='x' and recovered.read_text()=='original'
     # Existing SOLJ1 plans and integer completion receipts remain readable.
@@ -151,7 +154,7 @@ with tempfile.TemporaryDirectory(prefix='sol-effects-') as directory:
         if phase in ['prepared','published']:
             assert git(repo,'rev-parse','HEAD')==old and not target.exists(),phase
         else:assert git(repo,'rev-parse','HEAD')==new and target.read_text()==new,phase
-        assert not list(d.glob('pipe.soljournal.*')),phase
+        assert not list(journal_dir.glob('run.soljournal.*')),phase
     # Immediate pivots are refused while this inverse is armed.
     (repo/'file').write_text('pivot');git(repo,'add','file');old=git(repo,'rev-parse','HEAD')
     run(script,immediate+f'Proc.runNow ({proc(["/usr/bin/touch",str(forbidden)])}).\n',code=None)
@@ -166,7 +169,7 @@ with tempfile.TemporaryDirectory(prefix='sol-effects-') as directory:
         git(repo,'commit','--allow-empty','-qm','foreign');foreign=git(repo,'rev-parse','HEAD')
         stdout,stderr=p.communicate(timeout=30)
         assert p.returncode!=0 and 'compensation refused' in stderr,(stdout,stderr)
-        assert git(repo,'rev-parse','HEAD')==foreign and list(d.glob('pipe.soljournal.*.undo'))
+        assert git(repo,'rev-parse','HEAD')==foreign and list(journal_dir.glob('run.soljournal.*.undo'))
     finally:
         if p.poll() is None:p.kill();p.wait()
     print('Sol Git: deferred commit/head/tag/local push, terminal publication, CAS abort/retry, four crash windows and foreign-head refusal PASS',flush=True)

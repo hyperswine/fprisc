@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "observed_at_utc": "2026-10-28T17:17:09.857025+00:00",
+  "prior_validation": "validation-complete-macos.json",
+  "reason": "After the broad 19-command run, withRoute was corrected to replace the same case-insensitive host/port. These affected checks were rerun; runtime source and executable are unchanged from the broad report.",
+  "binary_sha256": "9a2923d0a064ee67917c6ce9d1d0ec0d2f9bf399c43cd83fb86edb4856b43959",
+  "source_sha256": {
+    "sol/lib/http.sol": "ba47be3a5ef36e3eadbe6c59a3ab3671204f32dd5ee3015a0d68603ee64aa313",
+    "tools/sol-http-check.py": "60cbcd201994339650c5d57a464c1f229d4dff01fd343ff59bf9cb9a81be8652"
+  },
+  "observed_checks": [
+    {
+      "command": [
+        "python3",
+        "tools/sol-http-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "sol HTTP/TLS: 61 checks passed (loopback fixtures, owned worker, empty PATH)\n"
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-http-check.py"
+      ],
+      "environment": {
+        "FPR_TEST_JIT": "0"
+      },
+      "exit_code": 0,
+      "stdout": "sol HTTP/TLS: 61 checks passed (loopback fixtures, owned worker, empty PATH)\n"
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-library-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "sol libraries: 125 contract checks passed (including explicitly catalogued compatibility gaps)\n"
+    }
+  ]
+}

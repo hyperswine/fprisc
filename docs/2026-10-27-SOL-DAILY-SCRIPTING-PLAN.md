@@ -5,9 +5,14 @@ Kind: implementation plan with a verification baseline.
 Scope: Sol / HostedBytecode (`fpr sol`) for daily file, text, data and process
 automation on POSIX hosts.
 Source baseline: `e6fadfb`; the checkout was clean during the assessment.
-Status: Phase 1 implemented and locally verified on macOS arm64; see the
-[2026-10-29 delivery record](2026-10-29-SOL-FS-PHASE1.md). Phases 2-5 remain
-proposed work. This is not a claim of general scripting release readiness.
+Status: All five phases implemented. The daily-workflow release matrix passes
+on macOS arm64 and a Linux x86-64 QEMU guest; see the
+[Phase 1](2026-10-29-SOL-FS-PHASE1.md),
+[Phase 2](2026-10-29-SOL-IO-PHASE2.md),
+[Phase 3](2026-10-29-SOL-PROCESS-PHASE3.md) and
+[Phase 4](2026-10-29-SOL-LIBRARIES-PHASE4.md) delivery records and the
+[Phase 5 installation/release record](2026-10-29-SOL-INSTALLATION.md). Hosted CI,
+physical x86-64 performance, power-loss testing and other hosts are unverified.
 
 ## Outcome and scope
 
@@ -172,28 +177,35 @@ host coverage. Linux/raw-invalid-name coverage and hosted CI are not claimed.
 Implementation owners: hosted values, inference/linearity, VM/host adapters,
 `sol/lib` interfaces and a new binary/stream acceptance suite.
 
-- [ ] Add immutable Bytes with explicit UTF-8 encode/decode. Keep existing String
+- [x] Add immutable Bytes with explicit UTF-8 encode/decode. Keep existing String
   and BStr meanings; provide strict decoding and separately named replacement
   decoding. Test all 256 octets, NUL and malformed UTF-8.
-- [ ] Add owned/scoped chunk readers and writers with caller-visible buffer
+- [x] Add owned/scoped chunk readers and writers with caller-visible buffer
   limits, cleanup on success/error/cancellation, and a distinct EOF result.
   Incremental decoding must retain partial code points between chunks.
-- [ ] Separate streaming immediate scans from transactional snapshot reads.
+- [x] Separate streaming immediate scans from transactional snapshot reads.
   Immediate scans declare that they are not a stable snapshot. Any replayable
   transactional stream needs explicit spooling/admission and recovery rules;
   do not retain every chunk while advertising bounded memory.
-- [ ] Add exact byte/text writes to stdout/stderr, EOF-aware line reads, env
+- [x] Add exact byte/text writes to stdout/stderr, EOF-aware line reads, env
   lookup/override/removal, cwd inspection, and deliberate script exit status.
   Specify cwd relative to invocation versus script/module location. Define how
   requested exit interacts with commit/abort and later deferred failure; an
   explicit status must not mask failed effects. Keep `print` as newline output.
-- [ ] Provide binary copy and an explicitly immediate same-filesystem rename
+- [x] Provide binary copy and an explicitly immediate same-filesystem rename
   with clear cross-device failure. Offer copy-then-publish as a separate operation
   with its own overwrite and cleanup contract.
-- [ ] Migrate examples away from the current text-only `mv`. Do not silently
+- [x] Migrate examples away from the current text-only `mv`. Do not silently
   turn a buffered transactional helper into an immediate rename; deprecate or
   version the old spelling with a documented migration. Transactional binary
   publication requires staged payload durability, replay and orphan cleanup.
+
+Delivered 2026-10-29: [Phase 2 API, tests and memory evidence](2026-10-29-SOL-IO-PHASE2.md).
+Streaming and copy/publication are explicitly immediate. Transactional binary
+staging/replay is not implemented or implied. `moveText` names the old text
+behavior; `mv` remains its deprecated compatible spelling. New binary-copy and
+bounded-filter scripts demonstrate the supported operations. Local memory gates
+pass; Linux/EXDEV and hosted CI are not claimed.
 
 Acceptance gate:
 
@@ -214,33 +226,36 @@ Acceptance gate:
 Implementation owners: `Main.hs`, `Txn.hs`, `Effects.hs`, `VM.hs`, process
 library/reference, and the existing effects/text-process regression harnesses.
 
-- [ ] Publish a short operation table: when it runs, what can repeat, what can
+- [x] Publish a short operation table: when it runs, what can repeat, what can
   be rolled back/recovered, and what exit failure means after partial success.
   Cover print/input, direct queries, live commands, deferred commands, path logs,
   child modules and the bounded Git inverse separately.
-- [ ] Add an explicit execution policy that refuses automatic whole-script replay
+- [x] Add an explicit execution policy that refuses automatic whole-script replay
   after an unrepeatable immediate effect starts. In that policy, a later conflict
   reports partial external execution and fails; it does not rerun the command.
   Preserve the existing retry policy as an explicit compatibility mode during
   migration. Settle the public spelling and future default in a decision record.
-- [ ] Treat arbitrary `Proc.query` executables as external work: the name is not
+- [x] Treat arbitrary `Proc.query` executables as external work: the name is not
   proof of read-only behavior. Require an explicit replayability/idempotency
   choice to repeat them in the stricter policy. Distinguish this choice from
   validation of their output, which is not currently a transaction dependency.
-- [ ] Keep `Proc.later`/SOLJ2 recovery and its at-least-once window explicit.
+- [x] Keep `Proc.later`/SOLJ2 recovery and its at-least-once window explicit.
   Do not promise exactly-once remote effects or general process compensation.
-- [ ] Add byte-stream process sources/sinks and bounded stdout/stderr capture.
+- [x] Add byte-stream process sources/sinks and bounded stdout/stderr capture.
   Overflow must return a distinct failure and clean up owned processes; no
   silent truncation or unlimited growth. Define bounded result storage and
   durable receipt/spool cleanup for deferred captures as well as live captures.
-- [ ] Add owned pipeline execution with per-stage statuses and an explicit
+- [x] Add owned pipeline execution with per-stage statuses and an explicit
   aggregate failure policy, concurrent drain/backpressure, timeout, cancellation
   and deterministic reaping. Preserve raw argv and make shell parsing opt-in.
-- [ ] Define file redirection and staging/publication separately from buffered
+- [x] Define file redirection and staging/publication separately from buffered
   Sol writes. Retain the current ordering fence unless an explicit boundary
   settles pending work. Preserve foreground terminal restoration.
 
-Acceptance gate:
+Delivered 2026-10-29: [retry decision, operation table, process API and evidence](2026-10-29-SOL-PROCESS-PHASE3.md).
+Guarded replay is the default; explicit legacy policy preserves compatibility.
+
+Acceptance gate (passed locally on macOS arm64):
 
 - A forced conflict after a side-effect counter runs executes it once in the
   stricter policy, exits nonzero and reports the conflict/partial execution.
@@ -258,24 +273,28 @@ Acceptance gate:
 Implementation owners: `sol/lib`, reusable pure `std` modules, hosted adapters,
 `tools/sol-library-capabilities.json` and executable call/contract probes.
 
-- [ ] Keep one public entrypoint per responsibility. Reuse working Map/Set/Path
+- [x] Keep one public entrypoint per responsibility. Reuse working Map/Set/Path
   algorithms; update the catalog with supported operations, limits, dependencies
   and actual call coverage. Do not mark an entire native module hosted-supported
   after implementing one adapter.
-- [ ] Add hex/base64 and streamed SHA-256 on Bytes. Choose shared algorithms or
+- [x] Add hex/base64 and streamed SHA-256 on Bytes. Choose shared algorithms or
   host-backed digest operations after correctness and measured throughput checks;
   native digest vectorization alone does not establish Sol support.
-- [ ] Add configurable input/depth/record/field limits to JSON/CSV and document
+- [x] Add configurable input/depth/record/field limits to JSON/CSV and document
   numeric precision, duplicate keys and Unicode semantics. Provide record-at-a-
   time CSV and JSON Lines workflows; whole-document JSON can remain a separate
   bounded operation. General incremental JSON is not required for this milestone.
-- [ ] Add CLI option parsing and a documented configuration workflow using a
+- [x] Add CLI option parsing and a documented configuration workflow using a
   supported format, explicit environment overrides and useful errors. Additional
   formats can follow actual demand.
-- [ ] Add HTTP with deadlines, response/body limits, status/header access,
+- [x] Add HTTP with deadlines, response/body limits, status/header access,
   validated TLS, redirect limits/policy and streamed bodies. Prefer a hosted
   adapter; any interim external-tool adapter must name and check its dependency.
   Requests follow Phase 3's immediate-effect/retry contract.
+
+Delivered locally 2026-10-29: [library APIs, workflows and evidence](2026-10-29-SOL-LIBRARIES-PHASE4.md).
+Digest/format/CLI/configuration and HTTP/TLS/cancellation gates pass on macOS arm64.
+Linux and installed workflow coverage is recorded under Phase 5.
 
 Acceptance gate:
 
@@ -294,19 +313,19 @@ Acceptance gate:
 Implementation owners: runner/Makefile/install tooling, module/home resolution,
 cache/journal placement, documentation and test registry/CI configuration.
 
-- [ ] Ship a versioned source-plus-runner bundle with `sol` launch/help/version,
+- [x] Ship a versioned source-plus-runner bundle with `sol` launch/help/version,
   script arguments and supported shebang forms. Resolve bundled libraries from
   installation metadata, independent of cwd and the compiler source checkout.
-- [ ] Put caches and per-run recovery state in documented writable locations.
+- [x] Put caches and per-run recovery state in documented writable locations.
   Installed scripts may be read-only. Preserve dead-owner recovery from another
   script/cwd and provide an inspect/repair path for retained recovery fences.
-- [ ] Define supported host/dependency versions, offline library availability,
+- [x] Define supported host/dependency versions, offline library availability,
   module search/shadowing/pinning, cache cleanup and API migration policy.
   Existing local compiler cache files are not a portable distribution format.
-- [ ] Create a daily-scripting acceptance suite and register it with the shared
+- [x] Create a daily-scripting acceptance suite and register it with the shared
   Base/CI registry where appropriate. Use isolated temporary directories and
   disposable local repositories, bounded timeouts and exact outputs/statuses.
-- [ ] Run it on macOS arm64 and Linux x86-64 for the claimed initial support
+- [x] Run it on macOS arm64 and Linux x86-64 for the claimed initial support
   matrix; leave untested hosts explicitly unverified. Report missing environment
   permissions separately from source/test failures.
 

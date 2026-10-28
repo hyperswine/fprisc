@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "baseline_revision": "27a4cdc plus the recorded working-tree contents",
+  "compared_files": 1297,
+  "comparison": "Exact SHA-256 equality for compiler, app, core, std, sol, tools and tests across macOS final installation followup and Linux release matrix",
+  "macos_binary_sha256": "e0286bce028ce82a6ce18963b16b8840ab6667d77fcb506d39a02953e0b0b866",
+  "linux_binary_sha256": "8584ece6b2b98d93825234b1362dbd7cec111209bc76d5efebb4408bb0d7993d",
+  "build_files": "See macos-build-identity.json and linux-build-identity.json for Cabal/Makefile and toolchain identities",
+  "limits": [
+    "Linux is an x86_64 QEMU guest on macOS arm64, not physical x86_64 timing evidence",
+    "Hosted CI, power-loss testing and other hosts are unverified"
+  ]
+}

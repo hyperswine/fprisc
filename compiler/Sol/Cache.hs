@@ -137,7 +137,12 @@ writeEntry file key prepared = writeIt `catch` (\(_ :: IOException) -> traceCach
 -- Parsed module artifacts also save the position-independent pin hash. Always
 -- read the source first: neither timestamps nor a filename hash establish trust.
 cacheDirectory :: IO FilePath
-cacheDirectory = lookupEnv "SOL_CACHE_DIR" >>= maybe ((</> ".sol/cache") <$> getHomeDirectory) pure
+cacheDirectory = do
+  explicit <- lookupEnv "SOL_CACHE_DIR"
+  xdg <- lookupEnv "XDG_CACHE_HOME"
+  case explicit of
+    Just path -> pure path
+    Nothing -> maybe ((</> ".sol/cache") <$> getHomeDirectory) (pure . (</> "sol")) xdg
 
 cachedModule :: FilePath -> String -> IO (Either String (String, [STop])) -> IO (Either String (String, [STop]))
 cachedModule path src parseIt = do

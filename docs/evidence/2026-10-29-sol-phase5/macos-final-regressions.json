@@ -1,0 +1,62 @@
+{
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "e0286bce028ce82a6ce18963b16b8840ab6667d77fcb506d39a02953e0b0b866",
+  "source_sha256": {
+    "compiler/Main.hs": "1010b1d8af43cedeaa2e1f4bd1bc687a7ede276ab664db299612211fd67edb16",
+    "compiler/Sol/Main.hs": "b3bcfa320af9687ac2144ec1accd06a32ed3055508e3e41d7b6f1ac036bd2e63",
+    "compiler/Sol/Cache.hs": "6afb270b43d5626a90e2e2181982d360fe828f766d1446748c3ab9289ed95206",
+    "compiler/Sol/Txn.hs": "736c8ac6f039b6ef026afda29caf8f60c158c9134a398aaa718ff1544b46decb"
+  },
+  "checks": [
+    {
+      "command": [
+        "python3",
+        "tools/sol-startup-check.py"
+      ],
+      "returncode": 0,
+      "stdout": "sol startup: 52 checks passed (plus assembly and concurrent writers)\n",
+      "stderr": "",
+      "seconds": 3.2310551670379937
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-cache-txn-check.py"
+      ],
+      "returncode": 0,
+      "stdout": "sol module-cache/transaction checks: corruption, invalidation, prelude bypass, exact binary conflicts passed\n",
+      "stderr": "",
+      "seconds": 0.5446913328487426
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-txn-check.sh"
+      ],
+      "returncode": 0,
+      "stdout": "sol transactional properties: panic rollback, retry-once, race serialization, fenced commands, failed removals, torn-replay fencing, per-run journals, transactional log: OK\n",
+      "stderr": "",
+      "seconds": 7.244818374980241
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-safety-check.sh"
+      ],
+      "returncode": 0,
+      "stdout": "sol purity + filesystem + locks + retry actors: OK\n",
+      "stderr": "",
+      "seconds": 0.44425387494266033
+    },
+    {
+      "command": [
+        "python3",
+        "tests/check_native_automation.py"
+      ],
+      "returncode": 0,
+      "stdout": "native automation: Git, archive, report, rollback/order/retry/recovery and empty-PATH acceptance passed\n",
+      "stderr": "",
+      "seconds": 12.16748004197143
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "binary_sha256": "b26121365269e6dc89f5233c294d3e644fd72cc77d072fafc6a7cd7866c8e9fc",
+  "source_head": "27a4cdce69fbdbbfd337cfad6e7ed68203104c80",
+  "source_status": " M README.md\n M compiler/Sol/Main.hs\n M compiler/Sol/Preamble.hs\n M compiler/Sol/Txn.hs\n M compiler/Sol/VM.hs\n M compiler/Sol/Val.hs\n M compiler/cbits/fsx.c\n M docs/2026-09-19-BOUNDS.md\n M docs/2026-09-29-Sol-Improvements-Needed.md\n M docs/2026-10-27-SOL-DAILY-SCRIPTING-PLAN.md\n M docs/README.md\n M docs/SEMANTICS.md\n M fp-risc.cabal\n M tests/check_registry.py\n M tools/sol-library-capabilities.json\n?? compiler/Sol/ScriptIO.hs\n?? docs/2026-10-29-SOL-IO-PHASE2.md\n?? docs/evidence/2026-10-29-sol-phase2/\n?? sol/scripts/copy-binary.sol\n?? sol/scripts/text/filter-stream.sol\n?? tools/sol-io-benchmark.py\n?? tools/sol-io-check.py\n",
+  "source_files_sha256": {
+    "compiler/Sol/AsmA64.hs": "f876be9b2a3656e546ddb69468419a1a5941a0724d8f9c5cb3e7ff0b572c764b",
+    "compiler/Sol/AsmX64.hs": "d69d81695538e43d00fe0805cfafc2f5801a6b88d0a3739948d3b5bffefc04e0",
+    "compiler/Sol/Bytecode.hs": "cb55a6bf8196e756201418a7efdb7410001c58220d546d208224bd2e69bda15a",
+    "compiler/Sol/Cache.hs": "7f7cf623dcd03dd4e8ac832c314bff712634734e08ff2fa4207c6fcb07033c44",
+    "compiler/Sol/Diagnostic.hs": "cb117335e8384efd70b1dcc09fd421ffd4ccb7d276c991deae719fb229a8a0c5",
+    "compiler/Sol/Effects.hs": "180694218cb0ffc544fc01caa8cc2a79d5240e27133ff56fc2ae811c045d4024",
+    "compiler/Sol/Gpu.hs": "1dd199526c0b6756587276e617b0e75f1eeb559d586b17d4795ed20bd8be9dd4",
+    "compiler/Sol/HandJIT.hs": "f8ee5c553d761a9b22b41ff4519c4f285d46dbd535ae4ee851277a6f5d7412a3",
+    "compiler/Sol/Infer.hs": "450a9f8d6c7877ea1ced62c7108c33d2407103859e3e43c0d151e8327990d6b0",
+    "compiler/Sol/JitCore.hs": "674cac700fd24c6cc33ce24dc50be00f053979fc4e736415d2ce39e361aa9651",
+    "compiler/Sol/KIR.hs": "cecc3303bdde26f6aba0c38dfe9bdaa7374736aff99e0d129a1c458a52bddd0c",
+    "compiler/Sol/Lang.hs": "066a02e41be5af278521850fbe7bd02148086c4eed34d15447ab60cd2895a80f",
+    "compiler/Sol/Main.hs": "5fa21bac94662935ee14b083b4806d4ba008bf55db2c2fefb71a82851a258277",
+    "compiler/Sol/Mod.hs": "605c587946e633778f6dd13dec4cea2c01579b0b5ab191790499dcfbaea7c4ae",
+    "compiler/Sol/Native.hs": "e8753ff91278d55bbcd71d8188b9b741750c1900504d4bd753e211d3c8fb9236",
+    "compiler/Sol/Preamble.hs": "64da64d108e263386963102a84a5f15c16f0b479fb6816dbe5f14b6e3ff8bfad",
+    "compiler/Sol/ScriptIO.hs": "9268763fd9a22eb1eb9a3324ec4fb09a82b97684945e095da1809b62edd549f9",
+    "compiler/Sol/Startup.hs": "d0bf20756d11664c02aa47522c9df7e95bf6fc2722b39900fa8b9674cfcf81ef",
+    "compiler/Sol/Txn.hs": "8d7b872969798114da93be6f07f4d9a81730fa652a03f309ac0691e0aecdbd92",
+    "compiler/Sol/VM.hs": "c1e4c07d7e958ce87964a7cc2ea7b16e012f4a68ec4da29e456a501a523c87f4",
+    "compiler/Sol/Val.hs": "156ff4d3c83566f5d83f1a0a4008ac877e1d5a5f0efee7ada22e760b96d46f9a",
+    "compiler/Sol/Web.hs": "b900e0f517d728e6da683d03f748a487d7d3a24c9be609ded8bf9b891365ae3a",
+    "compiler/Sol/WebAssets.hs": "5351d704dc195f6d8983e86fe68a24b68f92a3c4feb2be2ae564ff65e3fe94d8",
+    "compiler/Sol/Width.hs": "b3dde02ff84c97518937649974f7073f38eca6a6f6de8ef79cba93377e47e240",
+    "compiler/cbits/fsx.c": "af62b64e629bb12c6e1d8077a4ddfb3aa50f12488befe525d2ae8fb1d8bc0e7f",
+    "fp-risc.cabal": "1ade26a993d6f16ab94d2fd2120c2944d253a0112dd8d2a203f47c07a7976821",
+    "tools/sol-io-benchmark.py": "37928b81ef0fd27d631ef5acfb19208a63481649764bf8c43b5b30a70d331c34",
+    "tools/sol-io-check.py": "0c52bc3ba4a419aa5f8686d06a31fdbf54ac95fb0afa07f25e5de8d33ba5e91f"
+  },
+  "settings": {
+    "SOL_JIT": "0",
+    "SOL_GPU": "0",
+    "chunk_bytes": 65536,
+    "line_limit_bytes": 65536,
+    "warmups": 1,
+    "runs": 2
+  },
+  "measurement": "fresh child process via /usr/bin/time; macOS RSS bytes or Linux RSS KiB converted to bytes; warm compile cache; output to /dev/null",
+  "samples": [
+    {
+      "case": "idle",
+      "input_bytes": 0,
+      "peak_rss_bytes": 82624512,
+      "wall_seconds": 0.024777833139523864,
+      "source": "> print \"idle\".\n",
+      "stderr": "        0.02 real         0.01 user         0.00 sys\n            82624512  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5551  page reclaims\n                   8  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  55  involuntary context switches\n           268141072  instructions retired\n            78215704  cycles elapsed\n            76267976  peak memory footprint\n"
+    },
+    {
+      "case": "idle",
+      "input_bytes": 0,
+      "peak_rss_bytes": 82657280,
+      "wall_seconds": 0.024792165961116552,
+      "source": "> print \"idle\".\n",
+      "stderr": "        0.02 real         0.01 user         0.00 sys\n            82657280  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5559  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  39  involuntary context switches\n           266493188  instructions retired\n            75149528  cycles elapsed\n            76317152  peak memory footprint\n"
+    },
+    {
+      "case": "copy",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 164839424,
+      "wall_seconds": 0.1342771661002189,
+      "source": "> r = Fs.copyPublishNow \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/input.log\" \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/output.bin\" 65536 False; case r of Ok n -> (case n == 104857600 of True -> Unit | False -> error \"copy size\") | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Fs.copyPublishNow \u2014 immediate I/O is not a snapshot and may repeat on retry\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Fs.copyPublishNow x1\n        0.13 real         0.01 user         0.04 sys\n           164839424  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10575  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  40  voluntary context switches\n                 179  involuntary context switches\n           575489038  instructions retired\n           220097820  cycles elapsed\n           158155304  peak memory footprint\n"
+    },
+    {
+      "case": "copy",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 164839424,
+      "wall_seconds": 0.13470824994146824,
+      "source": "> r = Fs.copyPublishNow \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/input.log\" \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/output.bin\" 65536 False; case r of Ok n -> (case n == 104857600 of True -> Unit | False -> error \"copy size\") | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Fs.copyPublishNow \u2014 immediate I/O is not a snapshot and may repeat on retry\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Fs.copyPublishNow x1\n        0.13 real         0.01 user         0.04 sys\n           164839424  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10574  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  40  voluntary context switches\n                 182  involuntary context switches\n           608216646  instructions retired\n           232507998  cycles elapsed\n           158122488  peak memory footprint\n"
+    },
+    {
+      "case": "filter",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 171671552,
+      "wall_seconds": 0.09063883405178785,
+      "source": "pick needle n b = case Bytes.contains needle b of\n True -> u = unwrap (IO.stdout b); n + Bytes.len b\n| False -> n.\n> needle = unwrap (Utf8.encode \"KEEP\"); r = unwrap (Stream.openRead \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/input.log\" 65536); (result,r2) = Stream.foldLines (pick needle) 0 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 52428800 of True -> Unit | False -> error \"filter count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot and may repeat on retry\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n        0.08 real         0.05 user         0.02 sys\n           171671552  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10991  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                  91  involuntary context switches\n          1190645362  instructions retired\n           363397242  cycles elapsed\n           161284624  peak memory footprint\n"
+    },
+    {
+      "case": "filter",
+      "input_bytes": 104857600,
+      "peak_rss_bytes": 171671552,
+      "wall_seconds": 0.09361045807600021,
+      "source": "pick needle n b = case Bytes.contains needle b of\n True -> u = unwrap (IO.stdout b); n + Bytes.len b\n| False -> n.\n> needle = unwrap (Utf8.encode \"KEEP\"); r = unwrap (Stream.openRead \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/input.log\" 65536); (result,r2) = Stream.foldLines (pick needle) 0 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 52428800 of True -> Unit | False -> error \"filter count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot and may repeat on retry\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n        0.09 real         0.06 user         0.02 sys\n           171671552  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10991  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 115  involuntary context switches\n          1191568430  instructions retired\n           365614389  cycles elapsed\n           161284624  peak memory footprint\n"
+    },
+    {
+      "case": "copy",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 171638784,
+      "wall_seconds": 0.35887812497094274,
+      "source": "> r = Fs.copyPublishNow \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/input.log\" \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/output.bin\" 65536 False; case r of Ok n -> (case n == 1073741824 of True -> Unit | False -> error \"copy size\") | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Fs.copyPublishNow \u2014 immediate I/O is not a snapshot and may repeat on retry\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Fs.copyPublishNow x1\n        0.35 real         0.03 user         0.27 sys\n           171638784  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10989  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                 335  voluntary context switches\n                 793  involuntary context switches\n          2834646112  instructions retired\n          1244403410  cycles elapsed\n           161284624  peak memory footprint\n"
+    },
+    {
+      "case": "copy",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 171638784,
+      "wall_seconds": 0.40057216701097786,
+      "source": "> r = Fs.copyPublishNow \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/input.log\" \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/output.bin\" 65536 False; case r of Ok n -> (case n == 1073741824 of True -> Unit | False -> error \"copy size\") | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Fs.copyPublishNow \u2014 immediate I/O is not a snapshot and may repeat on retry\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Fs.copyPublishNow x1\n        0.39 real         0.03 user         0.28 sys\n           171638784  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10989  page reclaims\n                   2  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                 374  voluntary context switches\n                1232  involuntary context switches\n          2838150679  instructions retired\n          1284868818  cycles elapsed\n           161284624  peak memory footprint\n"
+    },
+    {
+      "case": "filter",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 172720128,
+      "wall_seconds": 0.608342207968235,
+      "source": "pick needle n b = case Bytes.contains needle b of\n True -> u = unwrap (IO.stdout b); n + Bytes.len b\n| False -> n.\n> needle = unwrap (Utf8.encode \"KEEP\"); r = unwrap (Stream.openRead \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/input.log\" 65536); (result,r2) = Stream.foldLines (pick needle) 0 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 536870912 of True -> Unit | False -> error \"filter count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot and may repeat on retry\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n        0.60 real         0.48 user         0.11 sys\n           172720128  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               11056  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                 519  involuntary context switches\n          8649285614  instructions retired\n          2590657994  cycles elapsed\n           162333200  peak memory footprint\n"
+    },
+    {
+      "case": "filter",
+      "input_bytes": 1073741824,
+      "peak_rss_bytes": 172720128,
+      "wall_seconds": 0.6126616250257939,
+      "source": "pick needle n b = case Bytes.contains needle b of\n True -> u = unwrap (IO.stdout b); n + Bytes.len b\n| False -> n.\n> needle = unwrap (Utf8.encode \"KEEP\"); r = unwrap (Stream.openRead \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-io-memory-9l4thj3o/input.log\" 65536); (result,r2) = Stream.foldLines (pick needle) 0 65536 r; u = unwrap (Stream.closeRead r2); n = unwrap result; case n == 536870912 of True -> Unit | False -> error \"filter count\".\n",
+      "stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot and may repeat on retry\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Stream.openRead x1\n        0.60 real         0.49 user         0.11 sys\n           172720128  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               11056  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   2  voluntary context switches\n                 522  involuntary context switches\n          8651388036  instructions retired\n          2605092697  cycles elapsed\n           162333200  peak memory footprint\n"
+    }
+  ],
+  "gates": {
+    "copy": {
+      "small_peak_rss_bytes": 164839424,
+      "large_peak_rss_bytes": 171638784,
+      "idle_baseline_bytes": 82657280,
+      "incremental_growth_bytes": 6799360,
+      "allowance_bytes": 33554432,
+      "passed": true
+    },
+    "filter": {
+      "small_peak_rss_bytes": 171671552,
+      "large_peak_rss_bytes": 172720128,
+      "idle_baseline_bytes": 82657280,
+      "incremental_growth_bytes": 1048576,
+      "allowance_bytes": 33554432,
+      "passed": true
+    }
+  }
+}

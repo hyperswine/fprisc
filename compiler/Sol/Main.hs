@@ -8,7 +8,7 @@
 --
 -- The whole run is one transaction: reads snapshot host files, writes are
 -- buffered, and at exit we lock / validate / commit / unlock. A validation
--- failure re-runs the script (STM retry) — see Txn.hs.
+-- failure retries only when the external-effect policy permits — see Txn.hs.
 
 module Sol.Main where
 
@@ -17,6 +17,7 @@ import Sol.Cache (Prepared (..), cached)
 import Sol.Startup (phase, phaseIO)
 import Control.DeepSeq (force)
 import Sol.Diagnostic
+import qualified Sol.ScriptIO as ScriptIO
 import Sol.Bytecode
 import Control.Exception (AsyncException (UserInterrupt), IOException, bracket, catch, finally, onException, throwIO, try, evaluate)
 import Control.Monad (forM, forM_, unless, when)
@@ -54,22 +55,33 @@ maxRetries :: Int
 maxRetries = 12
 
 main :: IO ()
-main = runScript `catch` ioFailure `catch` interrupted
+main = runScript `catch` ioFailure `catch` interrupted `catch` aborted
   where
     ioFailure :: IOException -> IO ()
     ioFailure e = diagnostic ("[sol] " ++ if isUserError e then ioeGetErrorString e else show e) >> exitFailure
     interrupted :: AsyncException -> IO ()
     interrupted UserInterrupt = diagnostic "[sol] interrupted" >> exitWith (ExitFailure 130)
     interrupted e = throwIO e
+    aborted (ScriptIO.ScriptAbort code) = exitWith (ExitFailure code)
 
 runScript :: IO ()
 runScript = do
   setLocaleEncoding utf8
   as <- getArgs
-  (dumpAsm, path, scriptArgs) <- case as of
-    ("--asm" : p : rest) -> pure (True, p, rest)
-    (p : rest) -> pure (False, p, rest)
-    _ -> diagnostic "usage: sol [--asm] <script.sol> [args]" >> exitFailure >> pure (False, "", [])
+  case as of
+    ["--help"] -> putStrLn solHelp
+    ["-h"] -> putStrLn solHelp
+    ["--version"] -> putStrLn "Sol 0.12.0 (scripting API 1)"
+    ["state"] -> maintainState False
+    ["recover"] -> maintainState True
+    _ -> runFile as
+
+runFile :: [String] -> IO ()
+runFile as = do
+  configured <- maybe "guarded" id <$> lookupEnv "SOL_RETRY_POLICY"
+  (dumpAsm, retryPolicy, path, scriptArgs) <- case parseRetryPolicy configured >>= \policy -> parseSolArgs False policy as of
+    Right options -> pure options
+    Left why -> diagnostic why >> exitFailure >> pure (False, GuardedRetry, "", [])
   prepared <- phase "startup" $ do
     src <- phase "source" (readFile path >>= evaluate . force)
     utops <- phase "parse" $ do
@@ -109,7 +121,7 @@ runScript = do
   let shapeNames = M.fromList [(tid, fields) | (fields, tid) <- M.toList shapes]
       consTV = M.map (\(t, v, _) -> (t, v)) cons
       dataFile = dropExtension path ++ ".soldata"
-  journalFile <- runJournalPath (dropExtension path)
+  journalFile <- if dumpAsm then pure "" else runJournalPath (dropExtension path)
   rt <- newRtCounts
   -- heal first: an earlier run of this script may have crashed mid-commit
   unless dumpAsm $ recoverScriptJournals (dropExtension path)
@@ -117,13 +129,38 @@ runScript = do
   -- the raw `fpr: user error (...)` wrapper. Nothing was committed: the
   -- exception propagates out of runTxLoop before its commit call.
   unless dumpAsm $ do
-    r <- try (phase "execute" $ runTxLoop (takeDirectory path) scriptArgs dataFile journalFile consTV shapeNames bprog prog jc cons runList rt 0) :: IO (Either IOException ())
+    r <- try (phase "execute" $ runTxLoop retryPolicy (takeDirectory path) scriptArgs dataFile journalFile consTV shapeNames bprog prog jc cons runList rt 0) :: IO (Either IOException ())
     case r of
       Right () -> pure ()
       Left e -> do
         let msg = if isUserError e then ioeGetErrorString e else show e
         hPutStrLn stderr (if "*** SOL PANIC" `isPrefixOf` msg then msg else "*** SOL PANIC: " ++ msg ++ " ***")
         exitFailure
+
+parseSolArgs :: Bool -> RetryPolicy -> [String] -> Either String (Bool, RetryPolicy, FilePath, [String])
+parseSolArgs asm policy ("--asm":rest) = parseSolArgs True policy rest
+parseSolArgs asm policy ("--":path:rest) = Right (asm,policy,path,rest)
+parseSolArgs asm _ (flag:rest) | "--retry-policy=" `isPrefixOf` flag =
+  parseRetryPolicy (drop (length "--retry-policy=") flag) >>= \policy -> parseSolArgs asm policy rest
+parseSolArgs asm policy (path:rest)
+  | not ("-" `isPrefixOf` path) = Right (asm,policy,path,rest)
+  | otherwise = Left ("unknown Sol option " ++ path ++ "; " ++ solUsage)
+parseSolArgs _ _ _ = Left solUsage
+
+solUsage :: String
+solUsage = "usage: sol [--asm] [--retry-policy=guarded|legacy] <script.sol> [args]"
+
+solHelp :: String
+solHelp = unlines
+  [ solUsage
+  , "       sol --help | --version | state | recover"
+  , "Script arguments follow the script, without shell interpretation."
+  , "state: list retained recovery journals and live/dead owners."
+  , "recover: replay dead-owner journals; errors retain their recovery fences."
+  , "State: SOL_STATE_DIR, XDG_STATE_HOME/sol, or ~/.local/state/sol."
+  , "Cache: SOL_CACHE_DIR, XDG_CACHE_HOME/sol, or ~/.sol/cache."
+  , "Recovery may complete previously committed external effects; see the Sol installation guide."
+  ]
 
 evalForSafety :: STop -> STop
 evalForSafety (TEval e) = TBind "main" [] [] e
@@ -283,8 +320,9 @@ compileScript path src ptops utops utopsX0' trusted = do
 
 -- run every `>` statement in order inside one transaction, then commit;
 -- on read-set conflict, reset and re-run the whole script
-runTxLoop :: FilePath -> [String] -> FilePath -> FilePath -> M.Map Name (Int, Int) -> M.Map Int [Name] -> BProg -> Prog -> Maybe JitCtx -> M.Map Name (Int, Int, Int) -> [Name] -> RtCounts -> Int -> IO ()
-runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt attempt = bracket newTx txCleanupTemps $ \tx -> do
+runTxLoop :: RetryPolicy -> FilePath -> [String] -> FilePath -> FilePath -> M.Map Name (Int, Int) -> M.Map Int [Name] -> BProg -> Prog -> Maybe JitCtx -> M.Map Name (Int, Int, Int) -> [Name] -> RtCounts -> Int -> IO ()
+runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt attempt = bracket newTx txCleanup $ \tx -> do
+  txSetRetryPolicy tx retryPolicy
   txSetSagaJournal tx journalFile
   fuel <- newIORef fuelQuantum
   preempts <- newIORef 0
@@ -292,12 +330,13 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
   tabFlag <- lookupEnv "SOL_TABLE"
   tab <- if tabFlag == Just "0" then pure Nothing else Just <$> newIORef M.empty
   actors <- VM.newActorRuntime
+  requestedExit <- newIORef 0
   let env = VMEnv base dataFile consTV shapeNames bprog core jc gpu tab (mkHal cons scriptArgs tx preempts rt) fuel preempts tx actors
       cleanup = VM.shutdownActorRuntime actors
   res <- (do
-    forM_ topNames $ \n -> do
+    (forM_ topNames $ \n -> do
       _ <- execFn env n []
-      pure ()
+      pure ()) `catch` \(ScriptIO.ScriptExit code) -> writeIORef requestedExit code
     statsFlag <- lookupEnv "SOL_TABLE_STATS"
     when (statsFlag == Just "1") $ VM.dumpTabStats env
     -- Every attempt owns its actor world. Actors still live at the boundary
@@ -309,6 +348,7 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
                   ++ "cancelling them before the transaction boundary "
                   ++ "(join first: have each send a done message and receive it before the script ends)")
     cleanup
+    txCleanupProcesses tx
     forceN <- lookupEnv "SOL_FORCE_RETRY"
     let force = maybe 0 read forceN :: Int
     if attempt < force
@@ -337,9 +377,17 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
         then do
           unless (null logs) $ diagnostic ("[sol] " ++ show (length logs) ++ " log line(s) withheld: the commit did not complete")
           exitFailure
-        else mapM_ putStrLn logs >> hFlush stdout
+        else do
+          mapM_ putStrLn logs >> hFlush stdout
+          code <- readIORef requestedExit
+          when (code /= 0) (exitWith (ExitFailure code))
     Conflict stale -> do
-      rollbackSaga tx `finally` txCleanupTemps tx
+      unsafe <- txRetryRefusal tx
+      rollbackSaga tx `finally` txCleanup tx
+      unless (null unsafe) $ do
+        diagnostic ("[sol] conflict on " ++ show stale ++ "; guarded retry refused after immediate external effects: " ++ intercalate ", " unsafe)
+        diagnostic "[sol] partial external execution may have occurred; buffered file effects were discarded. Mark only known repeatable work with Script.replayable/Proc.queryReplayable, or explicitly select --retry-policy=legacy."
+        exitFailure
       retry stale
   where
     retry stale
@@ -348,7 +396,7 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
           exitFailure
       | otherwise = do
           diagnostic ("[sol] conflict on " ++ show stale ++ " — retrying (attempt " ++ show (attempt + 2) ++ ")")
-          runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt (attempt + 1)
+          runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt (attempt + 1)
 
 numberEvals :: [STop] -> ([STop], [Name])
 numberEvals tops = (map fst numbered, [n | (_, Just n) <- numbered])
@@ -464,8 +512,8 @@ rtWhy :: Name -> String
 rtWhy "readNow" = "re-reads the disk, not snapshotted, not validated at commit (transactional: readPath)"
 rtWhy "writeNow" = "hits the disk before commit and survives a rollback (transactional: writePath)"
 rtWhy "appendNow" = "appends before commit and survives a rollback (transactional: writePath)"
-rtWhy "shNow" = "streams a command live and re-runs on every retry (transactional: shq)"
-rtWhy "readLineNow" = "reads stdin now and re-reads on retry (transactional: input)"
+rtWhy "shNow" = "streams a command live; guarded retry stops on a later conflict (deferred: shq)"
+rtWhy "readLineNow" = "reads stdin now; guarded retry stops on a later conflict (snapshot: input)"
 rtWhy n = n
 
 -- Count realtime uses in code this run can actually REACH.

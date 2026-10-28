@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "binary_sha256": "e0286bce028ce82a6ce18963b16b8840ab6667d77fcb506d39a02953e0b0b866",
+  "source_head": "27a4cdce69fbdbbfd337cfad6e7ed68203104c80",
+  "source_sha256": {
+    "compiler/Sol/AsmA64.hs": "f876be9b2a3656e546ddb69468419a1a5941a0724d8f9c5cb3e7ff0b572c764b",
+    "compiler/Sol/AsmX64.hs": "d69d81695538e43d00fe0805cfafc2f5801a6b88d0a3739948d3b5bffefc04e0",
+    "compiler/Sol/Bytecode.hs": "cb55a6bf8196e756201418a7efdb7410001c58220d546d208224bd2e69bda15a",
+    "compiler/Sol/Cache.hs": "6afb270b43d5626a90e2e2181982d360fe828f766d1446748c3ab9289ed95206",
+    "compiler/Sol/Diagnostic.hs": "cb117335e8384efd70b1dcc09fd421ffd4ccb7d276c991deae719fb229a8a0c5",
+    "compiler/Sol/Digest.hs": "ab91477a53c1499952948de532aeebcb47b7e43fdd69c500243fb7df08dc3a71",
+    "compiler/Sol/Effects.hs": "632d5faeee04b72b3fae1d6362c4356d82cc0a5e37f7cc1a4427d2c805fb95ef",
+    "compiler/Sol/Format.hs": "d41e0e3e91e2790bb41cdcdfe9549db81e1afe874c291fd55b8eb546c1cb556d",
+    "compiler/Sol/Gpu.hs": "1dd199526c0b6756587276e617b0e75f1eeb559d586b17d4795ed20bd8be9dd4",
+    "compiler/Sol/HandJIT.hs": "f8ee5c553d761a9b22b41ff4519c4f285d46dbd535ae4ee851277a6f5d7412a3",
+    "compiler/Sol/Http.hs": "2f66cd44d2fdf4d5a5c67ff0d4b31598977c01db6bb8e712fee5743e8b0395a5",
+    "compiler/Sol/Infer.hs": "450a9f8d6c7877ea1ced62c7108c33d2407103859e3e43c0d151e8327990d6b0",
+    "compiler/Sol/JitCore.hs": "674cac700fd24c6cc33ce24dc50be00f053979fc4e736415d2ce39e361aa9651",
+    "compiler/Sol/KIR.hs": "cecc3303bdde26f6aba0c38dfe9bdaa7374736aff99e0d129a1c458a52bddd0c",
+    "compiler/Sol/Lang.hs": "066a02e41be5af278521850fbe7bd02148086c4eed34d15447ab60cd2895a80f",
+    "compiler/Sol/Main.hs": "b3bcfa320af9687ac2144ec1accd06a32ed3055508e3e41d7b6f1ac036bd2e63",
+    "compiler/Sol/Mod.hs": "2b67e351ba0cb35aeacf36c5b1b0d78d53b082a85bdd2a46b0cec9f440203fb9",
+    "compiler/Sol/Native.hs": "e8753ff91278d55bbcd71d8188b9b741750c1900504d4bd753e211d3c8fb9236",
+    "compiler/Sol/Preamble.hs": "3719aa5a0017c4801840329b973608edd8efe7fc839ba2686a651deae0e46ba8",
+    "compiler/Sol/Process.hs": "40db49ebdc96d2cbb4b8c4d21bea87983e8e15c66b30b622f102f74abf102d0a",
+    "compiler/Sol/ScriptIO.hs": "b49f0b2be72e55efa235c063725e5e2cb14792d40551530e51d8f8928cff6fe4",
+    "compiler/Sol/Startup.hs": "d0bf20756d11664c02aa47522c9df7e95bf6fc2722b39900fa8b9674cfcf81ef",
+    "compiler/Sol/Txn.hs": "736c8ac6f039b6ef026afda29caf8f60c158c9134a398aaa718ff1544b46decb",
+    "compiler/Sol/VM.hs": "5c5e50699d2c21201318fa3ba1bc7d84e4813c7342cde2a0bfce7dca9be4fd56",
+    "compiler/Sol/Val.hs": "7ee1d6689108188277c8cd53edb9aa851a2ba8f34dcea5c959128b39b41d1431",
+    "compiler/Sol/Web.hs": "b900e0f517d728e6da683d03f748a487d7d3a24c9be609ded8bf9b891365ae3a",
+    "compiler/Sol/WebAssets.hs": "5351d704dc195f6d8983e86fe68a24b68f92a3c4feb2be2ae564ff65e3fe94d8",
+    "compiler/Sol/Width.hs": "b3dde02ff84c97518937649974f7073f38eca6a6f6de8ef79cba93377e47e240",
+    "compiler/cbits/sol_http.c": "21792e38386ecd364df0e9c08779f6059dcd7c42de45adf69f03d8cb81cfa8a0",
+    "compiler/Main.hs": "1010b1d8af43cedeaa2e1f4bd1bc687a7ede276ab664db299612211fd67edb16",
+    "fp-risc.cabal": "c992bf78ace82f76673e880dca66e8709aa8506b340f206cbbeeeedeaa889de3",
+    "sol/lib/http.sol": "ba47be3a5ef36e3eadbe6c59a3ab3671204f32dd5ee3015a0d68603ee64aa313",
+    "tools/sol-http-check.py": "60cbcd201994339650c5d57a464c1f229d4dff01fd343ff59bf9cb9a81be8652"
+  },
+  "settings": {
+    "SOL_JIT": "1",
+    "SOL_GPU": "0",
+    "PATH": "/nonexistent",
+    "warmups": 1,
+    "runs": 2
+  },
+  "measurement": "fresh process; system time RSS plus 10ms ps samples of only the timed process family (parent and native worker); independent streamed hashlib verification; local loopback",
+  "samples": [
+    {
+      "input_bytes": 104857600,
+      "wall_seconds": 0.20563937490805984,
+      "mib_per_second": 486.2881928361697,
+      "reported_peak_rss_bytes": 171393024,
+      "sampled_peak_family_rss_bytes": 175603712,
+      "sampled_per_pid_peak_rss_bytes": {
+        "19376": 1163264,
+        "19378": 170999808,
+        "19380": 85884928
+      },
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-http-check-nin5zan4/measure.sol"
+      ],
+      "source": "H = use \"/Users/jasonqin/Documents/GitHub/fprisc/sol/lib/http.sol\".\n> r = Http.download (HttpOptions 120000 104857600 65536 (NoRedirect) \"\" []) (H.get \"http://127.0.0.1:59872/large/104857600\") \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-http-check-nin5zan4/download\" False; case r of Ok (HttpInfo 200 headers n) -> if n == 104857600 then Unit else error \"HTTP size\" | Ok info -> error (str info) | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Http.download \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Http.download x1\n        0.20 real         0.03 user         0.11 sys\n           171393024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               18847  page reclaims\n                   3  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   1  messages sent\n                6401  messages received\n                   0  signals received\n                 270  voluntary context switches\n                 708  involuntary context switches\n           723792742  instructions retired\n           298553532  cycles elapsed\n           159957640  peak memory footprint\n"
+    },
+    {
+      "input_bytes": 104857600,
+      "wall_seconds": 0.2895065830089152,
+      "mib_per_second": 345.41528887072167,
+      "reported_peak_rss_bytes": 171393024,
+      "sampled_peak_family_rss_bytes": 175587328,
+      "sampled_per_pid_peak_rss_bytes": {
+        "19410": 1163264,
+        "19412": 171016192,
+        "19414": 85868544
+      },
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-http-check-nin5zan4/measure.sol"
+      ],
+      "source": "H = use \"/Users/jasonqin/Documents/GitHub/fprisc/sol/lib/http.sol\".\n> r = Http.download (HttpOptions 120000 104857600 65536 (NoRedirect) \"\" []) (H.get \"http://127.0.0.1:59872/large/104857600\") \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-http-check-nin5zan4/download\" False; case r of Ok (HttpInfo 200 headers n) -> if n == 104857600 then Unit else error \"HTTP size\" | Ok info -> error (str info) | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Http.download \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Http.download x1\n        0.28 real         0.03 user         0.12 sys\n           171393024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               18848  page reclaims\n                   2  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   1  messages sent\n                6401  messages received\n                   0  signals received\n                 257  voluntary context switches\n                1017  involuntary context switches\n           731646208  instructions retired\n           330754068  cycles elapsed\n           159974048  peak memory footprint\n"
+    },
+    {
+      "input_bytes": 1073741824,
+      "wall_seconds": 3.30562529200688,
+      "mib_per_second": 309.7749773623975,
+      "reported_peak_rss_bytes": 176455680,
+      "sampled_peak_family_rss_bytes": 183271424,
+      "sampled_per_pid_peak_rss_bytes": {
+        "19718": 1163264,
+        "19720": 176439296,
+        "19721": 86507520
+      },
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-http-check-nin5zan4/measure.sol"
+      ],
+      "source": "H = use \"/Users/jasonqin/Documents/GitHub/fprisc/sol/lib/http.sol\".\n> r = Http.download (HttpOptions 120000 1073741824 65536 (NoRedirect) \"\" []) (H.get \"http://127.0.0.1:59872/large/1073741824\") \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-http-check-nin5zan4/download\" False; case r of Ok (HttpInfo 200 headers n) -> if n == 1073741824 then Unit else error \"HTTP size\" | Ok info -> error (str info) | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Http.download \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Http.download x1\n        3.29 real         0.08 user         0.93 sys\n           176455680  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               18962  page reclaims\n                   2  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   1  messages sent\n               65537  messages received\n                   0  signals received\n                3332  voluntary context switches\n                6270  involuntary context switches\n          3754337908  instructions retired\n          1860523961  cycles elapsed\n           162038408  peak memory footprint\n"
+    },
+    {
+      "input_bytes": 1073741824,
+      "wall_seconds": 2.5763997498434037,
+      "mib_per_second": 397.45385011089206,
+      "reported_peak_rss_bytes": 177504256,
+      "sampled_peak_family_rss_bytes": 183287808,
+      "sampled_per_pid_peak_rss_bytes": {
+        "19911": 1163264,
+        "19913": 177504256,
+        "19915": 86507520
+      },
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "/Users/jasonqin/Documents/GitHub/fprisc/fpr",
+        "sol",
+        "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-http-check-nin5zan4/measure.sol"
+      ],
+      "source": "H = use \"/Users/jasonqin/Documents/GitHub/fprisc/sol/lib/http.sol\".\n> r = Http.download (HttpOptions 120000 1073741824 65536 (NoRedirect) \"\" []) (H.get \"http://127.0.0.1:59872/large/1073741824\") \"/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-http-check-nin5zan4/download\" False; case r of Ok (HttpInfo 200 headers n) -> if n == 1073741824 then Unit else error \"HTTP size\" | Ok info -> error (str info) | Err e -> error (str e).\n",
+      "stderr": "[sol] REALTIME: Http.download \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 1 realtime escape(s) \u2014 Http.download x1\n        2.56 real         0.08 user         0.84 sys\n           177504256  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               19010  page reclaims\n                   6  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   1  messages sent\n               65537  messages received\n                   0  signals received\n                2809  voluntary context switches\n                4190  involuntary context switches\n          3523776979  instructions retired\n          1609073106  cycles elapsed\n           163086984  peak memory footprint\n"
+    }
+  ],
+  "gate": {
+    "small_family_peak_bytes": 175603712,
+    "large_family_peak_bytes": 183287808,
+    "growth_bytes": 7684096,
+    "allowance_bytes": 33554432,
+    "passed": true
+  }
+}

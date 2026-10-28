@@ -1,0 +1,34 @@
+{
+  "status": "passed",
+  "bundles": [
+    {
+      "status": "passed",
+      "archive": "build/sol-0.12.0-api1-macos-arm64.tar.gz",
+      "archive_bytes": 20289545,
+      "archive_sha256": "b341a30fa62423050eb170a0696fb209816cdddd81c896f955ad53ab6ae0b9ea",
+      "bundle_id": "sol-0.12.0-api1-darwin-arm64-a839c6d796accd0d",
+      "binary_sha256": "e0286bce028ce82a6ce18963b16b8840ab6667d77fcb506d39a02953e0b0b866",
+      "verified_source_files": 2537,
+      "verification": "Extract actual archive, verify all manifest source/executable SHA-256 values, run native launch-sol version and bundled digest import with empty PATH, unrelated cwd and private writable state",
+      "version_stdout": "Sol 0.12.0 (scripting API 1)\n",
+      "script_stdout": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n",
+      "script_stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] REALTIME: Sha256.stream \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 2 realtime escape(s) \u2014 Sha256.stream x1, Stream.openRead x1\n",
+      "workspace_archive": "/Users/jasonqin/Documents/GitHub/fprisc/build/sol-0.12.0-api1-macos-arm64.tar.gz"
+    },
+    {
+      "status": "passed",
+      "archive": "/workspace/home/sol-0.12.0-api1-linux-x86_64.tar.gz",
+      "archive_bytes": 15918607,
+      "archive_sha256": "727fa44581b9b6d4a9dfbb3e06d052a6564af2c2258babebcffa616a8be62c83",
+      "bundle_id": "sol-0.12.0-api1-linux-x86_64-c3988f51f063800e",
+      "binary_sha256": "8584ece6b2b98d93825234b1362dbd7cec111209bc76d5efebb4408bb0d7993d",
+      "verified_source_files": 2537,
+      "verification": "Extract actual archive, verify all manifest source/executable SHA-256 values, run native launch-sol version and bundled digest import with empty PATH, unrelated cwd and private writable state",
+      "version_stdout": "Sol 0.12.0 (scripting API 1)\n",
+      "script_stdout": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n",
+      "script_stderr": "[sol] REALTIME: Stream.openRead \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] REALTIME: Sha256.stream \u2014 immediate I/O is not a snapshot; guarded retry stops on a later conflict\n[sol] NOT atomic overall: 2 realtime escape(s) \u2014 Sha256.stream x1, Stream.openRead x1\n",
+      "workspace_archive": "/Users/jasonqin/Documents/GitHub/fprisc/build/sol-0.12.0-api1-linux-x86_64.tar.gz"
+    }
+  ],
+  "note": "Host-specific dynamically linked source-plus-runner archives. Verified manifests cover 2537 source files each; check linked host dependencies before transfer. Archive/source snapshots precede the later cleanup/verification receipts."
+}

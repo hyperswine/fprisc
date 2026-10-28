@@ -19,7 +19,7 @@
       "module": "sol/lib/csv.sol",
       "status": "hosted",
       "gate": "import-and-call",
-      "note": "Representative call coverage; not exhaustive feature certification."
+      "note": "One hosted CSV parser for bounded whole documents and record-at-a-time Stream.readCsv/foldCsv. Explicit record/field/UTF-8 budgets; comma/doubled quote/LF/CRLF with embedded quoted CR/LF. Pure rendering and strict header views retained. sol-format-check.py and sol-library-check.py."
     },
     {
       "module": "sol/lib/fix.sol",
@@ -37,7 +37,7 @@
       "module": "sol/lib/json.sol",
       "status": "hosted",
       "gate": "import-and-call",
-      "note": "Representative call coverage; not exhaustive feature certification."
+      "note": "Bounded UTF-8 source/depth/container-item/decoded-string admission before pure tree parsing. Exact integer and binary64 decimal/exponent Numeric; ordered duplicate keys, first get wins; strict scalar Unicode. JSON Lines via parseLineWith and Stream.foldLines. sol-format-check.py and sol-library-check.py."
     },
     {
       "module": "sol/lib/logic.sol",
@@ -67,7 +67,7 @@
       "module": "sol/lib/proc.sol",
       "status": "hosted",
       "gate": "import-and-call",
-      "note": "Representative call coverage; not exhaustive feature certification."
+      "note": "Raw-argv text helpers, 1 MiB capture per channel; guarded retry with explicit replay assertions. Preprovided Proc.pipeline/start/wait/poll/cancel support bounded bytes, per-stage status and owned groups. Covered by sol-retry-policy-check.py, sol-pipeline-check.py and sol-text-process-check.py; no std/proc parity claim."
     },
     {
       "module": "sol/lib/rand.sol",
@@ -127,25 +127,25 @@
       "module": "std/encoding.fpr",
       "status": "native-only",
       "gate": "known-hosted-gap",
-      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+      "note": "Shared module remains native-only. Sol provides exact-byte Hex/Base64 and Sha256.* hosted primitives with sol/lib/digest.sol file convenience; this does not establish shared-module parity."
     },
     {
       "module": "std/digest.fpr",
       "status": "native-only",
       "gate": "known-hosted-gap",
-      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+      "note": "Shared module remains native-only. Sol provides exact-byte Hex/Base64 and Sha256.* hosted primitives with sol/lib/digest.sol file convenience; this does not establish shared-module parity."
     },
     {
       "module": "std/stream.fpr",
       "status": "native-only",
       "gate": "known-hosted-gap",
-      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+      "note": "Shared module remains native-only. Hosted Stream APIs provide attempt-owned bounded immediate byte I/O; this is not shared-module parity."
     },
     {
       "module": "std/file.fpr",
       "status": "native-only",
       "gate": "known-hosted-gap",
-      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+      "note": "Shared module remains native-only. Sol retains buffered text helpers and adds explicit immediate Stream/Fs binary operations; no shared-module support claim."
     },
     {
       "module": "std/dir.fpr",
@@ -200,6 +200,30 @@
       "status": "hosted",
       "gate": "import-and-call",
       "note": "Native kernel host snapshot; process inventory requires OS permission."
+    },
+    {
+      "module": "sol/lib/digest.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Exact-byte Hex/Base64 and incremental/stream SHA-256 use the portable host adapter, no external executable. Strict canonical padded base64; digest file helpers are immediate reads. Contract vectors in sol-digest-check.py; throughput/RSS in sol-io-benchmark.py --cases digest. No std/digest parity claim."
+    },
+    {
+      "module": "sol/lib/cli.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Long/short raw-argv options, explicit repetitions and -- operands; std/map stores parsed values. Unknown/duplicate/missing/schema errors; sol-cli-config-check.py."
+    },
+    {
+      "module": "sol/lib/config.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Typed JSON fields, duplicate/unknown-key schema checks, explicitly named environment overrides; std/map key tracking. Transactional read/update workflow and CLI precedence demonstrated in sol/scripts/config-update.sol. sol-cli-config-check.py covers schema, rollback, retry, mode and crash recovery."
+    },
+    {
+      "module": "sol/lib/http.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Linked libcurl >=8.4 in an isolated owned request worker; no curl executable. Bounded binary capture and streamed/staged file download, TLS peer+hostname checks, explicit CA/DNS/redirect policy, deadlines and cancellation. Core loopback checks: sol-http-check.py. Native std/http remains separate."
     }
   ]
 }

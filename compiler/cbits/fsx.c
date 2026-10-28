@@ -9,6 +9,10 @@
 #include <signal.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <stdio.h>
+#if defined(__linux__)
+#include <sys/syscall.h>
+#endif
 
 /* fsync the file (or directory) at path. Best-effort: returns -1 if the
  * path cannot be opened or the filesystem refuses (some network FSes do);
@@ -34,3 +38,18 @@ int sol_getpid(void) { return (int)getpid(); }
 /* crash NOW: no atexit handlers, no Haskell RTS shutdown, no buffered
  * flushes — the honest simulation of a kill -9 for SOL_CRASH_AT. */
 void sol_hard_exit(int code) { _exit(code); }
+
+/* Atomic same-filesystem rename. No-clobber uses the host's exclusive
+ * rename primitive, never a racy existence test or link/unlink fallback. */
+int sol_rename_now(const char *source, const char *target, int replace) {
+  int result;
+  if (replace) result = rename(source, target);
+#if defined(__APPLE__)
+  else result = renamex_np(source, target, RENAME_EXCL);
+#elif defined(__linux__) && defined(SYS_renameat2)
+  else result = (int)syscall(SYS_renameat2, AT_FDCWD, source, AT_FDCWD, target, 1 /* RENAME_NOREPLACE */);
+#else
+  else { errno = ENOTSUP; result = -1; }
+#endif
+  return result == 0 ? 0 : errno;
+}

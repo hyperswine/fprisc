@@ -1,0 +1,106 @@
+{
+  "binary_sha256": "199ca4cc9aae2fd12645517d6901aea9a6c7e93e91ac1732f5c9a73a88081a1a",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "checks": [
+    {
+      "command": [
+        "python3",
+        "tools/sol-startup-check.py"
+      ],
+      "returncode": 0,
+      "stdout": "sol startup: 52 checks passed (plus assembly and concurrent writers)\n",
+      "stderr": "",
+      "seconds": 4.017112249974161
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-cache-txn-check.py"
+      ],
+      "returncode": 0,
+      "stdout": "sol module-cache/transaction checks: corruption, invalidation, prelude bypass, exact binary conflicts passed\n",
+      "stderr": "",
+      "seconds": 0.7705662499647588
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-txn-check.sh"
+      ],
+      "returncode": 0,
+      "stdout": "sol transactional properties: panic rollback, retry-once, race serialization, fenced commands, failed removals, torn-replay fencing, per-run journals, transactional log: OK\n",
+      "stderr": "",
+      "seconds": 7.620168542023748
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-safety-check.sh"
+      ],
+      "returncode": 0,
+      "stdout": "sol purity + filesystem + locks + retry actors: OK\n",
+      "stderr": "",
+      "seconds": 0.5978964159730822
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-proc-git-check.sh"
+      ],
+      "returncode": 0,
+      "stdout": "sol structured process + git wrappers: OK\n",
+      "stderr": "",
+      "seconds": 1.3938189160544425
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-scripts-check.sh"
+      ],
+      "returncode": 0,
+      "stdout": "sol general-purpose scripts: OK\n",
+      "stderr": "",
+      "seconds": 0.6990903750993311
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-library-check.py"
+      ],
+      "returncode": 0,
+      "stdout": "sol libraries: 125 contract checks passed (including explicitly catalogued compatibility gaps)\n",
+      "stderr": "",
+      "seconds": 9.113426791969687
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-output-check.py"
+      ],
+      "returncode": 0,
+      "stdout": "sol output contract: 26 checks passed\n",
+      "stderr": "",
+      "seconds": 1.624292500084266
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-text-process-check.py"
+      ],
+      "returncode": 0,
+      "stdout": "sol text/process: 34 checks passed\n",
+      "stderr": "",
+      "seconds": 12.662222333950922
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-examples-check.py"
+      ],
+      "returncode": 0,
+      "stdout": "sol examples: 21 checks passed\n",
+      "stderr": "",
+      "seconds": 4.289780708029866
+    }
+  ]
+}

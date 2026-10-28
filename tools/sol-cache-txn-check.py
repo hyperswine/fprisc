@@ -46,6 +46,7 @@ def main():
         data=w/'binary';data.write_bytes(b'\xff')
         helper=w/'mutate.py';helper.write_text('import os,sys\np=sys.argv[1]\nst=os.stat(p)\nopen(p,"wb").write(bytes([254]))\nos.utime(p,ns=(st.st_atime_ns,st.st_mtime_ns))\n')
         script.write_text(f'> r = Try.readPath @{data}; u = print "attempt"; q = Proc.query (ProcessSpec ["{sys.executable}", "{helper}", "{data}"] "" [] "" 1000); print "done".\n')
+        env['SOL_RETRY_POLICY'] = 'legacy'  # this fixture deliberately replays mutating foreign work
         p=run(b'attempt\ndone\nattempt\ndone\n');assert b'retrying (attempt 2)' in p.stderr,p
         assert data.read_bytes()==b'\xfe'
         # Exact validation still permits an unchanged binary snapshot.

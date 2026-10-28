@@ -34,16 +34,20 @@ lock_dir=$(mktemp -d /tmp/sol-lock-test.XXXXXX)
 cat >"$lock_dir/fail.sol" <<'EOF'
 > u = writePath @/tmp/sol-lock-target "x"; print "queued".
 EOF
-# the journal is written beside the script: a read-only script directory
-# makes that write fail (the journal name is per run, so it cannot be
-# pre-empted by a directory of the same name)
+# Installed scripts can be read-only: journals belong to the writable state root.
 chmod 555 "$lock_dir"
-if ./fpr sol "$lock_dir/fail.sol" >/tmp/sol-lock-fail.out 2>&1; then
-  chmod 755 "$lock_dir"
+./fpr sol "$lock_dir/fail.sol" >/tmp/sol-lock-readonly.out 2>&1
+[ "$(cat /tmp/sol-lock-target)" = x ]
+rm -f /tmp/sol-lock-target
+chmod 755 "$lock_dir"
+mkdir "$lock_dir/state"; chmod 555 "$lock_dir/state"
+# A caller-owned state root is chmodded private by the runner. To make journal
+# creation fail deterministically, point at a regular file instead.
+printf blocked >"$lock_dir/blocked"
+if SOL_STATE_DIR="$lock_dir/blocked" ./fpr sol "$lock_dir/fail.sol" >/tmp/sol-lock-fail.out 2>&1; then
   echo "journal failure unexpectedly succeeded" >&2
   exit 1
 fi
-chmod 755 "$lock_dir"
 [ ! -e /tmp/sol-lock-target.sol-lock ]
 [ ! -e /tmp/sol-lock-target ]
 
@@ -57,7 +61,7 @@ worker parent self =
   got = receive me;
   print "actor retry: child={child} got={got}".
 EOF
-SOL_FORCE_RETRY=1 SOL_TABLE=0 ./fpr sol /tmp/sol-actor-retry.sol >/tmp/sol-actor-retry.out 2>&1
+SOL_FORCE_RETRY=1 SOL_TABLE=0 ./fpr sol --retry-policy=legacy /tmp/sol-actor-retry.sol >/tmp/sol-actor-retry.out 2>&1
 [ "$(grep -c '^actor retry: child=2 got=2$' /tmp/sol-actor-retry.out)" -eq 2 ]
 ! grep -Fq 'child=3' /tmp/sol-actor-retry.out
 

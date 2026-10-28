@@ -7,7 +7,7 @@
 # Numbers use exact Int or inexact Numeric; decimal/exponent precision follows
 # Numeric, and nonfinite values are rejected. Duplicate object keys are retained
 # in input order; get returns the first occurrence. Parsing is whole-document,
-# without a configurable nesting/size limit yet. Unicode escapes combine pairs;
+# with configurable admission before tree construction. Unicode escapes combine pairs;
 # strings reject raw controls and isolated surrogates. Render escapes controls.
 
 Json = Type (JNull | JBool Bool | JNum Int | JStr String
@@ -15,7 +15,16 @@ Json = Type (JNull | JBool Bool | JNum Int | JStr String
 
 # ---- parse (recursive descent; i is a 0-based cursor; peek past the end = 0)
 
-parse s = value s (ws s 0) |>? (fn r -> (v, i) = r;
+Limits = Type (Limits Int Int Int Int).
+# UTF-8 source bytes, container depth, items per container, decoded string bytes.
+defaultLimits = Limits 16777216 128 100000 1048576.
+parse s = parseWith defaultLimits s.
+parseWith limits s = case limits of Limits input depth items field ->
+  Format.json input depth items field s |>? (fn u -> parseRaw s).
+# One JSON value per input line; LF/CRLF count toward the source byte budget.
+parseLineWith limits bytes = Utf8.decode bytes |>? (parseWith limits).
+
+parseRaw s = value s (ws s 0) |>? (fn r -> (v, i) = r;
   case ws s i >= Str.len s of
     True -> Ok v
   | False -> Err "json: trailing characters at {i}").

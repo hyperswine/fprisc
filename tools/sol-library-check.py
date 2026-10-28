@@ -28,6 +28,10 @@ def main():
         calls={
           'base':('> print (L.removeAt 1 [1,2,3]).', b'[1, 3]\n'),
           'csv':('> print (L.records [["name"],["Ada"]]).', b'[[(name, Ada)]]\n'),
+          'cli':('> print (L.parse [] []).', b'Ok Parsed [] []\n'),
+          'config':('J = use "'+str(ROOT/'sol/lib/json.sol')+'".\n> print (isOk (L.schema [] (J.JObj []))).', b'True\n'),
+          'digest':('> print (isOk (L.sha256FileWith 0 "missing")).', b'False\n'),
+          'http':('> print (isOk (Http.backend Unit)).', b'True\n'),
           'fix':('> print (L.toInt (L.fmul (L.fromInt 3) (L.fromInt 4))).', b'12\n'),
           'git':('> print (L.repo "dir with spaces").', b'Repo dir with spaces  \n'),
           'archive':('> print L.defaultLimits.', b'Limits 100000 1073741824\n'),
@@ -49,7 +53,7 @@ def main():
         assert declared == set(calls) | {'auth'} == {p.stem for p in (ROOT/'sol/lib').glob('*.sol')}
         for name,(body,expected) in calls.items():
             run(lib(name,'> print "loaded".'), b'loaded\n')
-            run(lib(name,body), expected)
+            run(lib(name,body), expected, error=b'REALTIME: Stream.openRead' if name=='digest' else None)
         # Heap/trail marks borrow no aliases: each observation returns the
         # successor machine, and undo restores counters and reference cells.
         run(lib('logic', '''> hp = Vec.new Unit; tr = Vec.new Unit;

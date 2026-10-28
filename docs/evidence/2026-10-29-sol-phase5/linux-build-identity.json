@@ -1,0 +1,96 @@
+{
+  "host": "Linux-6.8.0-117-generic-x86_64-with-glibc2.41",
+  "machine": "x86_64",
+  "python": "3.13.5 (main, Aug 10 2026, 12:06:59) [GCC 14.2.0]",
+  "build": "cabal build --offline -j4 exe:fpr; GHC 9.6.6 -O1; threaded RTS -V0.001 -A64m",
+  "environment": "Debian trixie x86_64 in local QEMU/Colima on macOS arm64, UID 1000, 4 vCPU/6 GiB guest, container limit 5 GiB",
+  "binary_sha256": "8584ece6b2b98d93825234b1362dbd7cec111209bc76d5efebb4408bb0d7993d",
+  "source_sha256": {
+    "compiler/Main.hs": "1010b1d8af43cedeaa2e1f4bd1bc687a7ede276ab664db299612211fd67edb16",
+    "compiler/Sol/Main.hs": "b3bcfa320af9687ac2144ec1accd06a32ed3055508e3e41d7b6f1ac036bd2e63",
+    "compiler/Sol/Txn.hs": "736c8ac6f039b6ef026afda29caf8f60c158c9134a398aaa718ff1544b46decb",
+    "compiler/Sol/Cache.hs": "6afb270b43d5626a90e2e2181982d360fe828f766d1446748c3ab9289ed95206",
+    "fp-risc.cabal": "c992bf78ace82f76673e880dca66e8709aa8506b340f206cbbeeeedeaa889de3",
+    "Makefile": "2705fa793e30b2cd3ddab184973221f69aecc8a53c9ea5a84a9d34a7bed28521",
+    "tools/sol-install.py": "d47ba23f8d9e83577cad311557a476ce7830b1cb97c4e69c7ed5477741aaa236",
+    "tools/sol-install-check.py": "911e41e8bef6e4f2f0427e31b70d28ce9943d2c7585ab9c562e2374dca27f66f",
+    "tools/sol-daily-check.py": "7f88289b2ef9689aa0d0cadbdb011ba00390c0bf1e92cdc4310a01922d6de123",
+    "tests/check_registry.py": "de5b2263645664784718cc9b3b3cf972da8ce5385e28b6203699e015df9e9e56"
+  },
+  "commands": [
+    {
+      "command": [
+        "uname",
+        "-a"
+      ],
+      "returncode": 0,
+      "stdout": "Linux f43d0fbaf8af 6.8.0-117-generic #117-Ubuntu SMP PREEMPT_DYNAMIC Tue May  5 19:26:24 UTC 2026 x86_64 GNU/Linux\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "id"
+      ],
+      "returncode": 0,
+      "stdout": "uid=1000 gid=1000 groups=1000\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "ghc",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "The Glorious Glasgow Haskell Compilation System, version 9.6.6\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "cabal",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "cabal-install version 3.10.3.0\ncompiled using version 3.10.3.0 of the Cabal library \n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "pkg-config",
+        "--modversion",
+        "libgit2",
+        "libarchive",
+        "libcurl"
+      ],
+      "returncode": 0,
+      "stdout": "1.9.0\n3.7.4\n8.14.1\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "ldd",
+        "fpr"
+      ],
+      "returncode": 0,
+      "stdout": "\tlinux-vdso.so.1 (0x00007ffdbedaa000)\n\tlibm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007ab959691000)\n\tlibEGL.so.1 => /lib/x86_64-linux-gnu/libEGL.so.1 (0x00007ab95967b000)\n\tlibGL.so.1 => /lib/x86_64-linux-gnu/libGL.so.1 (0x00007ab9595f4000)\n\tlibgit2.so.1.9 => /lib/x86_64-linux-gnu/libgit2.so.1.9 (0x00007ab9594b6000)\n\tlibarchive.so.13 => /lib/x86_64-linux-gnu/libarchive.so.13 (0x00007ab9593e8000)\n\tlibcurl.so.4 => /lib/x86_64-linux-gnu/libcurl.so.4 (0x00007ab9592f8000)\n\tlibgmp.so.10 => /lib/x86_64-linux-gnu/libgmp.so.10 (0x00007ab95926e000)\n\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007ab95907a000)\n\tlibffi.so.8 => /lib/x86_64-linux-gnu/libffi.so.8 (0x00007ab95906d000)\n\tlibnuma.so.1 => /lib/x86_64-linux-gnu/libnuma.so.1 (0x00007ab95905e000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007ab959787000)\n\tlibGLdispatch.so.0 => /lib/x86_64-linux-gnu/libGLdispatch.so.0 (0x00007ab958fa3000)\n\tlibGLX.so.0 => /lib/x86_64-linux-gnu/libGLX.so.0 (0x00007ab958f6f000)\n\tlibgssapi_krb5.so.2 => /lib/x86_64-linux-gnu/libgssapi_krb5.so.2 (0x00007ab958f19000)\n\tlibmbedtls.so.21 => /lib/x86_64-linux-gnu/libmbedtls.so.21 (0x00007ab958ecb000)\n\tlibmbedx509.so.7 => /lib/x86_64-linux-gnu/libmbedx509.so.7 (0x00007ab958eb5000)\n\tlibmbedcrypto.so.16 => /lib/x86_64-linux-gnu/libmbedcrypto.so.16 (0x00007ab958e18000)\n\tlibhttp_parser.so.2.9 => /lib/x86_64-linux-gnu/libhttp_parser.so.2.9 (0x00007ab958e0d000)\n\tlibpcre2-8.so.0 => /lib/x86_64-linux-gnu/libpcre2-8.so.0 (0x00007ab958d5e000)\n\tlibssh2.so.1 => /lib/x86_64-linux-gnu/libssh2.so.1 (0x00007ab958d15000)\n\tlibz.so.1 => /lib/x86_64-linux-gnu/libz.so.1 (0x00007ab958cf5000)\n\tlibnettle.so.8 => /lib/x86_64-linux-gnu/libnettle.so.8 (0x00007ab958c9d000)\n\tlibacl.so.1 => /lib/x86_64-linux-gnu/libacl.so.1 (0x00007ab958c92000)\n\tliblzma.so.5 => /lib/x86_64-linux-gnu/liblzma.so.5 (0x00007ab958c61000)\n\tlibzstd.so.1 => /lib/x86_64-linux-gnu/libzstd.so.1 (0x00007ab958b97000)\n\tliblz4.so.1 => /lib/x86_64-linux-gnu/liblz4.so.1 (0x00007ab958b70000)\n\tlibbz2.so.1.0 => /lib/x86_64-linux-gnu/libbz2.so.1.0 (0x00007ab958b5d000)\n\tlibxml2.so.2 => /lib/x86_64-linux-gnu/libxml2.so.2 (0x00007ab9589a3000)\n\tlibnghttp3.so.9 => /lib/x86_64-linux-gnu/libnghttp3.so.9 (0x00007ab958979000)\n\tlibnghttp2.so.14 => /lib/x86_64-linux-gnu/libnghttp2.so.14 (0x00007ab958947000)\n\tlibidn2.so.0 => /lib/x86_64-linux-gnu/libidn2.so.0 (0x00007ab958914000)\n\tlibrtmp.so.1 => /lib/x86_64-linux-gnu/librtmp.so.1 (0x00007ab9588f6000)\n\tlibpsl.so.5 => /lib/x86_64-linux-gnu/libpsl.so.5 (0x00007ab9588e0000)\n\tlibssl.so.3 => /lib/x86_64-linux-gnu/libssl.so.3 (0x00007ab9587d0000)\n\tlibcrypto.so.3 => /lib/x86_64-linux-gnu/libcrypto.so.3 (0x00007ab958195000)\n\tlibldap.so.2 => /lib/x86_64-linux-gnu/libldap.so.2 (0x00007ab958131000)\n\tliblber.so.2 => /lib/x86_64-linux-gnu/liblber.so.2 (0x00007ab958120000)\n\tlibbrotlidec.so.1 => /lib/x86_64-linux-gnu/libbrotlidec.so.1 (0x00007ab958112000)\n\tlibX11.so.6 => /lib/x86_64-linux-gnu/libX11.so.6 (0x00007ab957fc8000)\n\tlibkrb5.so.3 => /lib/x86_64-linux-gnu/libkrb5.so.3 (0x00007ab957ef0000)\n\tlibk5crypto.so.3 => /lib/x86_64-linux-gnu/libk5crypto.so.3 (0x00007ab957ec2000)\n\tlibcom_err.so.2 => /lib/x86_64-linux-gnu/libcom_err.so.2 (0x00007ab957ebc000)\n\tlibkrb5support.so.0 => /lib/x86_64-linux-gnu/libkrb5support.so.0 (0x00007ab957eae000)\n\tlibxxhash.so.0 => /lib/x86_64-linux-gnu/libxxhash.so.0 (0x00007ab957e99000)\n\tlibunistring.so.5 => /lib/x86_64-linux-gnu/libunistring.so.5 (0x00007ab957cb1000)\n\tlibgnutls.so.30 => /lib/x86_64-linux-gnu/libgnutls.so.30 (0x00007ab957a88000)\n\tlibhogweed.so.6 => /lib/x86_64-linux-gnu/libhogweed.so.6 (0x00007ab957a3d000)\n\tlibsasl2.so.2 => /lib/x86_64-linux-gnu/libsasl2.so.2 (0x00007ab957a21000)\n\tlibbrotlicommon.so.1 => /lib/x86_64-linux-gnu/libbrotlicommon.so.1 (0x00007ab9579fc000)\n\tlibxcb.so.1 => /lib/x86_64-linux-gnu/libxcb.so.1 (0x00007ab9579d1000)\n\tlibkeyutils.so.1 => /lib/x86_64-linux-gnu/libkeyutils.so.1 (0x00007ab9579ca000)\n\tlibresolv.so.2 => /lib/x86_64-linux-gnu/libresolv.so.2 (0x00007ab9579b8000)\n\tlibp11-kit.so.0 => /lib/x86_64-linux-gnu/libp11-kit.so.0 (0x00007ab957817000)\n\tlibtasn1.so.6 => /lib/x86_64-linux-gnu/libtasn1.so.6 (0x00007ab9577ff000)\n\tlibXau.so.6 => /lib/x86_64-linux-gnu/libXau.so.6 (0x00007ab9577fa000)\n\tlibXdmcp.so.6 => /lib/x86_64-linux-gnu/libXdmcp.so.6 (0x00007ab9577f2000)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "./fpr",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "fpr 0.12.0\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "returncode": 0,
+      "stdout": "check_ci: tests/check_rv64_linux.py::typed-runtime\ncheck_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s\ncheck_ci: tests/check_native_data.py\ncheck_ci: tests/check_native_data.py: 0.0 s\ncheck_ci: tests/check_native_required.py\n",
+      "stderr": "........\n----------------------------------------------------------------------\nRan 8 tests in 0.236s\n\nOK\n"
+    }
+  ]
+}

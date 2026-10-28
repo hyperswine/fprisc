@@ -1,0 +1,248 @@
+{
+  "schema": 1,
+  "validated_at_utc": "2026-10-28T16:00:42.027545+00:00",
+  "host": {
+    "system": "Darwin",
+    "release": "27.0.0",
+    "machine": "arm64"
+  },
+  "base_revision": "27a4cdce69fbdbbfd337cfad6e7ed68203104c80",
+  "working_tree": "uncommitted Phases 2-3",
+  "compiler": "GHC 9.8.2",
+  "build": "make fpr; Cabal development -O1 with existing per-module overrides",
+  "binary_sha256": "b5b990c8347c2a1aacd12c863fe1c6d4427ff79b02e9b6c78f3257a694cec3fc",
+  "source_sha256": {
+    "compiler/Sol/AsmA64.hs": "f876be9b2a3656e546ddb69468419a1a5941a0724d8f9c5cb3e7ff0b572c764b",
+    "compiler/Sol/AsmX64.hs": "d69d81695538e43d00fe0805cfafc2f5801a6b88d0a3739948d3b5bffefc04e0",
+    "compiler/Sol/Bytecode.hs": "cb55a6bf8196e756201418a7efdb7410001c58220d546d208224bd2e69bda15a",
+    "compiler/Sol/Cache.hs": "7f7cf623dcd03dd4e8ac832c314bff712634734e08ff2fa4207c6fcb07033c44",
+    "compiler/Sol/Diagnostic.hs": "cb117335e8384efd70b1dcc09fd421ffd4ccb7d276c991deae719fb229a8a0c5",
+    "compiler/Sol/Effects.hs": "632d5faeee04b72b3fae1d6362c4356d82cc0a5e37f7cc1a4427d2c805fb95ef",
+    "compiler/Sol/Gpu.hs": "1dd199526c0b6756587276e617b0e75f1eeb559d586b17d4795ed20bd8be9dd4",
+    "compiler/Sol/HandJIT.hs": "f8ee5c553d761a9b22b41ff4519c4f285d46dbd535ae4ee851277a6f5d7412a3",
+    "compiler/Sol/Infer.hs": "450a9f8d6c7877ea1ced62c7108c33d2407103859e3e43c0d151e8327990d6b0",
+    "compiler/Sol/JitCore.hs": "674cac700fd24c6cc33ce24dc50be00f053979fc4e736415d2ce39e361aa9651",
+    "compiler/Sol/KIR.hs": "cecc3303bdde26f6aba0c38dfe9bdaa7374736aff99e0d129a1c458a52bddd0c",
+    "compiler/Sol/Lang.hs": "066a02e41be5af278521850fbe7bd02148086c4eed34d15447ab60cd2895a80f",
+    "compiler/Sol/Main.hs": "246718cc6ffe93d654a4befea4cef2ae14fe5d174831a41623f00eba9fd265f9",
+    "compiler/Sol/Mod.hs": "2b67e351ba0cb35aeacf36c5b1b0d78d53b082a85bdd2a46b0cec9f440203fb9",
+    "compiler/Sol/Native.hs": "e8753ff91278d55bbcd71d8188b9b741750c1900504d4bd753e211d3c8fb9236",
+    "compiler/Sol/Preamble.hs": "a896a3ec196370d91d832158553744a59af8afa1abc83a2afa8d748e19aac4ba",
+    "compiler/Sol/Process.hs": "40db49ebdc96d2cbb4b8c4d21bea87983e8e15c66b30b622f102f74abf102d0a",
+    "compiler/Sol/ScriptIO.hs": "b0f9967b136662965b13c494ebfe5ff41e2f9924a340f63eed2acaaacfb1bfd3",
+    "compiler/Sol/Startup.hs": "d0bf20756d11664c02aa47522c9df7e95bf6fc2722b39900fa8b9674cfcf81ef",
+    "compiler/Sol/Txn.hs": "a6de372272cecf80c8f4167643b5fa43430feb9a2259abbadbfb7d0c652a0775",
+    "compiler/Sol/VM.hs": "49163fc485287f1383ad6c3bf559926c69c6afe6b8b76c8b4b3ca001d1ff57e7",
+    "compiler/Sol/Val.hs": "b4f446ad8b40c33dbbec70270224f11d4cc1ca92e25d0f459cefbe41e101e844",
+    "compiler/Sol/Web.hs": "b900e0f517d728e6da683d03f748a487d7d3a24c9be609ded8bf9b891365ae3a",
+    "compiler/Sol/WebAssets.hs": "5351d704dc195f6d8983e86fe68a24b68f92a3c4feb2be2ae564ff65e3fe94d8",
+    "compiler/Sol/Width.hs": "b3dde02ff84c97518937649974f7073f38eca6a6f6de8ef79cba93377e47e240",
+    "compiler/cbits/fsx.c": "af62b64e629bb12c6e1d8077a4ddfb3aa50f12488befe525d2ae8fb1d8bc0e7f",
+    "fp-risc.cabal": "d3a7660d3e5c3479e8ab595d5af5024fb0c343a059f62edbd3a98d89a750cc49"
+  },
+  "checks": [
+    {
+      "command": [
+        "python3",
+        "tests/check_base.py",
+        "-j",
+        "4",
+        "--only",
+        "sol",
+        "--times"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 35.86189683293924,
+      "stdout": "Sol inferred linearity: 8 checks passed\nnote: non-UTF-8 filename fixture unavailable here ([Errno 92] Illegal byte sequence: b'/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/sol-fs-doqv2o1_/badname/bad\\xff.txt'); ls_nonutf8_rejected was not exercised\nsol fs contract: 103 checks passed\nnote: cross-device rename fixture unavailable; native EXDEV case was not exercised\nsol byte/stream/script I/O: 84 checks passed\nsol retry-policy checks: 17 passed\nsol pipeline checks: 35 passed\nsol receipt budget: 14 MiB retained, next 2 MiB saved as failure, following process fenced, files committed and receipts cleaned\nSol effects: closed projections, retry, captured-result recovery, failure fence, concurrent/idempotent path logs, modes and symlinks PASS\nSol Git: deferred commit/head/tag/local push, terminal publication, CAS abort/retry, four crash windows and foreign-head refusal PASS\n",
+      "stderr": "check_base: 7 jobs in 36 s on 4 worker(s)\n     32.0 s  tools/sol-receipt-budget-check.py\n      8.9 s  tools/sol-fs-check.py\n      8.7 s  tools/sol-effects-check.py\n      7.1 s  tools/sol-io-check.py\n      6.7 s  tools/sol-pipeline-check.py\n      2.2 s  tools/sol-retry-policy-check.py\n      0.8 s  tools/sol-linearity-check.py\n"
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-text-process-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 14.067482500104234,
+      "stdout": "sol text/process: 34 checks passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-output-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 2.579084041994065,
+      "stdout": "sol output contract: 26 checks passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-library-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 10.741219625109807,
+      "stdout": "sol libraries: 117 contract checks passed (including explicitly catalogued compatibility gaps)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-startup-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 3.9494151670951396,
+      "stdout": "sol startup: 52 checks passed (plus assembly and concurrent writers)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-cache-txn-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 0.7126664579845965,
+      "stdout": "sol module-cache/transaction checks: corruption, invalidation, prelude bypass, exact binary conflicts passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-txn-check.sh"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 7.600279290927574,
+      "stdout": "sol transactional properties: panic rollback, retry-once, race serialization, fenced commands, failed removals, torn-replay fencing, per-run journals, transactional log: OK\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-safety-check.sh"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 0.3874225839972496,
+      "stdout": "sol purity + filesystem + locks + retry actors: OK\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-proc-git-check.sh"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 1.0511241250205785,
+      "stdout": "sol structured process + git wrappers: OK\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sh",
+        "tools/sol-scripts-check.sh"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 0.4754966660402715,
+      "stdout": "sol general-purpose scripts: OK\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tests/check_native_automation.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 12.531718167010695,
+      "stdout": "native automation: Git, archive, report, rollback/order/retry/recovery and empty-PATH acceptance passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-examples-check.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 4.639467207947746,
+      "stdout": "sol examples: 21 checks passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_check_registry.py"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "seconds": 0.17676904192194343,
+      "stdout": "check_ci: tests/check_rv64_linux.py::typed-runtime\ncheck_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s\ncheck_ci: tests/check_native_data.py\ncheck_ci: tests/check_native_data.py: 0.0 s\ncheck_ci: tests/check_native_required.py\n",
+      "stderr": "........\n----------------------------------------------------------------------\nRan 8 tests in 0.084s\n\nOK\n"
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-pipeline-check.py"
+      ],
+      "environment": {
+        "FPR_TEST_JIT": "0"
+      },
+      "exit_code": 0,
+      "seconds": 5.472495374968275,
+      "stdout": "sol pipeline checks: 35 passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-retry-policy-check.py"
+      ],
+      "environment": {
+        "FPR_TEST_JIT": "0"
+      },
+      "exit_code": 0,
+      "seconds": 1.5894456249661744,
+      "stdout": "sol retry-policy checks: 17 passed\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "tools/sol-io-check.py"
+      ],
+      "environment": {
+        "FPR_TEST_JIT": "0"
+      },
+      "exit_code": 0,
+      "seconds": 4.842113625025377,
+      "stdout": "note: cross-device rename fixture unavailable; native EXDEV case was not exercised\nsol byte/stream/script I/O: 84 checks passed\n",
+      "stderr": ""
+    }
+  ],
+  "not_verified": [
+    "Linux x86-64",
+    "hosted CI",
+    "full Base suite",
+    "hardware targets"
+  ],
+  "unexercised": [
+    "APFS non-UTF-8 filename creation",
+    "native EXDEV fixture (no second local filesystem)"
+  ]
+}

@@ -17,8 +17,14 @@ Checked on Debian trixie x86-64 with GHC 9.8.2 and cabal 3.12 from
 either should work. Ubuntu 24.04 lacks libgit2 >= 1.9. macOS setup is
 described below.
 
+Sol's binary stream APIs require the Haskell `unix` package >= 2.8 (declared
+in Cabal). See the [Phase 2 API and validation record](docs/2026-10-29-SOL-IO-PHASE2.md).
+Sol now defaults to guarded retries after external work and provides bounded
+byte pipelines and owned jobs. See the [process contract](docs/2026-10-29-SOL-PROCESS-PHASE3.md)
+for migration from automatic command replay and unlimited text capture.
+
 ```sh
-sudo apt-get install make gcc pkg-config python3 libgit2-dev libarchive-dev \
+sudo apt-get install make gcc pkg-config python3 libgit2-dev libarchive-dev libcurl4-openssl-dev \
   libegl-dev libgl-dev libgmp-dev zlib1g-dev
 cabal update
 make fpr                                  # builds ./fpr (first build fetches deps)
@@ -38,9 +44,11 @@ migration candidate. See the [retirement acceptance record](docs/2026-10-23-TYPE
 for validation scope and runtime ABI changes.
 
 The compiler needs GHC and the dependencies declared in `fp-risc.cabal` (normally
-resolved with Cabal), plus pkg-config, libgit2 >= 1.9 and libarchive >= 3.6 for
-native hosted automation. On macOS install `pkg-config libgit2 libarchive` with
-Homebrew; on Linux install their development packages. Homebrew's `libarchive` is
+resolved with Cabal), plus pkg-config, libgit2 >= 1.9, libarchive >= 3.6 and
+libcurl >= 8.4 with HTTP/HTTPS and TLS for hosted automation. On macOS install
+`pkg-config libgit2 libarchive` with Homebrew; the system libcurl 8.4+ can be used
+or install Homebrew curl. On Linux install their development packages and system
+CA certificates. Homebrew's `libarchive` is
 keg-only, so its pkg-config metadata has to be made visible to Cabal's solver:
 either link it onto the default search path,
 `ln -sfn ../../opt/libarchive/lib/pkgconfig/libarchive.pc "$(brew --prefix)/lib/pkgconfig/"`,
@@ -170,3 +178,8 @@ python3 tools/printer_dashboard.py --demo
 
 See [setup and checks](examples/printer-dashboard/README.md) for local-printer
 configuration and the current validation boundary.
+
+Sol can also be installed as a versioned source-plus-runner bundle with
+`make sol-install SOL_PREFIX="$HOME/.local"`. See the
+[installation and recovery guide](docs/2026-10-29-SOL-INSTALLATION.md) for host
+dependencies, shebangs, writable state, library resolution and release checks.

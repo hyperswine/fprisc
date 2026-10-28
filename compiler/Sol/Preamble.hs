@@ -6,6 +6,11 @@ module Sol.Preamble (prelude, halArities) where
 
 import qualified Data.Map.Strict as M
 import Sol.Lang (Name)
+import qualified Sol.ScriptIO as ScriptIO
+import qualified Sol.Process as Process
+import qualified Sol.Digest as Digest
+import qualified Sol.Format as Format
+import qualified Sol.Http as Http
 
 -- ---- the auto-provided std surface -----------------------------------------
 -- Injected before every script: Path + linear Handle types, and the file API
@@ -13,9 +18,25 @@ import Sol.Lang (Name)
 -- Sol code written against the linear API — the prelude eats its own cooking.
 prelude :: String
 prelude =
-  unlines
+  unlines $
     [ "Path = Type (Path String).",
       "Handle 1 = Type (Handle Int).",
+      "Bytes = Type (BytesValue).",
+      "Sha256 1 = Type (Sha256Token Int).",
+      "ByteReader 1 = Type (ByteReader Int).",
+      "ByteWriter 1 = Type (ByteWriter Int).",
+      "ByteRead = Type (EndBytes | ChunkBytes Bytes).",
+      "TextRead = Type (EndText | LineText String).",
+      "CsvRead = Type (EndCsv | CsvRow (List String)).",
+      "EnvValue = Type (EnvMissing | EnvText String).",
+      "HttpRedirects = Type (NoRedirect | RedirectHttps Int | RedirectHttp Int).",
+      "HttpRoute = Type (HttpRoute String Int String).",
+      "HttpOptions = Type (HttpOptions Int Int Int HttpRedirects String (List HttpRoute)).",
+      "HttpRequest = Type (HttpRequest String String (List (String, String)) Bytes).",
+      "HttpInfo = Type (HttpInfo Int (List (String, String)) Int).",
+      "HttpResponse = Type (HttpResponse Int (List (String, String)) Bytes).",
+      "HttpReason = Type (HttpInvalid | HttpUnavailable | HttpTls | HttpTimeout | HttpLimit | HttpRedirect | HttpTransport | HttpIo | HttpStatus).",
+      "HttpError = Type (HttpError HttpReason Int String).",
       -- Io: the structured intents `write`/`read` decode. Effects (Dir, Rm,
       -- RmDir) are written TO a path; queries (Ls, Stat, Exists, IsDir, Sh)
       -- carry their path/command and are read FROM. Everything below the
@@ -33,8 +54,8 @@ prelude =
       -- this; the panicking spellings (ls, stat, exists) insist instead.
       -- exists answers plain absence as Ok False — only an observation the
       -- OS cannot make (denied, loop, ...) is an Err.
-      "FsOp = Type (OpLs | OpStat | OpExists | OpLstat | OpStatKind | OpWalk | OpTempDir | OpTempFile).",
-      "FsReason = Type (FsMissing | FsDenied | FsWrongKind | FsLoop | FsEncoding | FsLimit | FsOther).",
+      "FsOp = Type (OpLs | OpStat | OpExists | OpLstat | OpStatKind | OpWalk | OpTempDir | OpTempFile | OpCopy | OpCopyPublish | OpRename).",
+      "FsReason = Type (FsMissing | FsDenied | FsWrongKind | FsLoop | FsEncoding | FsLimit | FsOther | FsExists | FsCrossDevice).",
       "FsError = Type (FsError FsOp String FsReason String).",
       -- kind and link policy: lstat does NOT follow (a link is KLink,
       -- however it dangles — the dangling-vs-missing distinguisher);
@@ -84,7 +105,10 @@ prelude =
       "mkdirp p = write p Dir.",
       "rm p = write p Rm.",
       "rmdir p = write p RmDir.",
-      "mv a b = s = read a; u = write b s; write a Rm.",
+      "moveText a b = s = read a; u = write b s; write a Rm.",
+      -- Deprecated compatibility spelling: still a buffered TEXT move.
+      -- Binary copy/publication/rename use explicit immediate Fs.* APIs.
+      "mv a b = moveText a b.",
       "ls p = read (Ls p).",
       "stat p = read (Stat p).",
       "exists p = read (Exists p).",
@@ -141,6 +165,13 @@ prelude =
       -- timeoutMs <= 0 means no timeout.
       "ProcessSpec a = Type (ProcessSpec (List a) String (List (String, String)) String Int).",
       "ProcessResult = Type (ProcessResult Int String String).",
+      "PipeInput = Type (PipeBytes Bytes | PipeFile String | PipeInputInherit).",
+      "PipeOutput = Type (PipeCapture Int | PipeFileNew String | PipePublish String Bool | PipeOutputInherit | PipeDiscard).",
+      "PipePolicy = Type (PipeLast | PipeFail).",
+      "PipelineSpec = Type (PipelineSpec (List (ProcessSpec String)) PipeInput PipeOutput PipeOutput Int PipePolicy).",
+      "PipelineResult = Type (PipelineResult Int (List Int) Bytes (List Bytes)).",
+      "ProcessError = Type (ProcessError String Int String Int).",
+      "ProcessJob 1 = Type (ProcessJob Int).",
       "Deferred a = Type (DeferredToken Int).",
       "Arg = Type (Lit String | From (Deferred String)).",
       "Proc.later : ProcessSpec Arg -> Deferred ProcessResult.",
@@ -154,6 +185,7 @@ prelude =
       "NativeGit.pushLater : Int -> String -> String -> String -> Unit.",
       "NativeGit.commitNow : Int -> String -> String -> String -> String -> Result String String.",
       "Proc.query : ProcessSpec String -> Result ProcessResult String.",
+      "Proc.queryReplayable : ProcessSpec String -> Result ProcessResult String.",
       "Proc.afterCommit : ProcessSpec String -> Unit.",
       "Proc.runNow : ProcessSpec String -> Result ProcessResult String.",
       "Proc.streamNow : ProcessSpec String -> Result Int String.",
@@ -369,11 +401,12 @@ prelude =
       "  gbIns = fn k x g -> case g of Nil -> [(k, [x])] | p :: rest -> (case p of (kk, vs) -> (case kk == k of True -> (kk, List.append vs [x]) :: rest | False -> p :: (List.gbIns k x rest)))",
       "}."
     ]
+    ++ [name ++ " : " ++ signature ++ "." | (name, _, signature) <- ScriptIO.api ++ Process.api ++ Digest.api ++ Format.api ++ Http.api]
 
 -- HAL symbols + arities the bytecode compiler may emit saturated HCALLs for
 halArities :: M.Map Name Int
 halArities =
-  M.fromList
+  M.fromList $
     [ ("str", 1), ("strcat", 2), ("String.len", 1), ("strlen", 1),
       ("error", 1), ("Try.parseInt", 1), ("Try.parseNum", 1), ("Try.readPath", 1),
       ("Try.ls", 1), ("Try.stat", 1), ("Try.exists", 1), ("Try.lstat", 1), ("Try.statKind", 1), ("Try.walk", 4), ("Try.tempDir", 1), ("Try.tempFile", 1),
@@ -388,7 +421,7 @@ halArities =
       ("Host.snapshot", 1),
       ("Proc.later", 1), ("Deferred.out", 1), ("Deferred.trim", 1), ("Deferred.line", 2), ("Deferred.field", 3),
       ("logTo", 2), ("NativeGit.headLater", 2), ("NativeGit.tagAt", 4), ("NativeGit.pushLater", 4), ("NativeGit.commitNow", 5),
-      ("Proc.query", 1), ("Proc.afterCommit", 1), ("Proc.runNow", 1), ("Proc.streamNow", 1), ("Proc.inheritNow", 1),
+      ("Proc.query", 1), ("Proc.queryReplayable", 1), ("Proc.afterCommit", 1), ("Proc.runNow", 1), ("Proc.streamNow", 1), ("Proc.inheritNow", 1),
       ("read", 1), ("write", 2),
       ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2), ("receiveFromRes", 2), ("receiveFromNow", 2), ("Sys.nextId", 1),
       ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("spawnHeap", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
@@ -403,3 +436,4 @@ halArities =
       ("Vec.zipAdd", 2), ("Vec.zipSub", 2), ("Vec.zipMul", 2), ("Vec.dot", 2), ("Vec.scale", 2),
       ("use", 1), ("run", 2), ("View.serve", 5)
     ]
+    ++ [(name, arity) | (name, arity, _) <- ScriptIO.api ++ Process.api ++ Digest.api ++ Format.api ++ Http.api]

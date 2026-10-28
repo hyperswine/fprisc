@@ -1,0 +1,187 @@
+{
+  "seconds": 36.4979200840462,
+  "workers": 4,
+  "reused": [],
+  "jobs": [
+    {
+      "name": "tools/sol-linearity-check.py",
+      "status": "ok",
+      "seconds": 0.7295406670309603,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-linearity-check.py"
+          ],
+          "seconds": 0.7262667501345277
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-fs-check.py",
+      "status": "ok",
+      "seconds": 8.781683583045378,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-fs-check.py"
+          ],
+          "seconds": 8.776850417023525
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-io-check.py",
+      "status": "ok",
+      "seconds": 6.73985558305867,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-io-check.py"
+          ],
+          "seconds": 6.735547249903902
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-retry-policy-check.py",
+      "status": "ok",
+      "seconds": 1.9739551669918,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-retry-policy-check.py"
+          ],
+          "seconds": 1.970917709171772
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-pipeline-check.py",
+      "status": "ok",
+      "seconds": 6.163547916803509,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-pipeline-check.py"
+          ],
+          "seconds": 6.161108542000875
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-receipt-budget-check.py",
+      "status": "ok",
+      "seconds": 33.607520582852885,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-receipt-budget-check.py"
+          ],
+          "seconds": 33.60509745916352
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-digest-check.py",
+      "status": "ok",
+      "seconds": 10.669762499863282,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-digest-check.py"
+          ],
+          "seconds": 10.667134542018175
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-format-check.py",
+      "status": "ok",
+      "seconds": 7.488228709204122,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-format-check.py"
+          ],
+          "seconds": 7.4856057080905885
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-cli-config-check.py",
+      "status": "ok",
+      "seconds": 4.738556624855846,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-cli-config-check.py"
+          ],
+          "seconds": 4.7355988749768585
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-http-check.py",
+      "status": "ok",
+      "seconds": 9.247876334004104,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-http-check.py"
+          ],
+          "seconds": 9.245212582871318
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-install-check.py",
+      "status": "ok",
+      "seconds": 10.758610791992396,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-install-check.py"
+          ],
+          "seconds": 10.756430875044316
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-effects-check.py",
+      "status": "ok",
+      "seconds": 9.44756200001575,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-effects-check.py"
+          ],
+          "seconds": 9.4451872499194
+        }
+      ]
+    }
+  ]
+}
