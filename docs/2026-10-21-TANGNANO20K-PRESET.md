@@ -126,7 +126,7 @@ execution; the suite's ten-run classifier retains its separate 600-second limit.
 ## Continuous integration
 
 The existing Debian CI job now checks out SimpleRisc commit
-`8479466ba159ebaf4faf035502dfc3b6354b2083` into `.ci/simple-risc`, runs both
+`417053d3099dfa52b6ae497d796086a75dc5d4ab` into `.ci/simple-risc`, runs both
 repositories' preset/manifest tests and the UART protocol checks, builds
 SoftFloat for RV32 and RV64, then runs all seven examples in QEMU, the custom
 program regression, and the RV32/RV64 argument and GC-root regressions.
