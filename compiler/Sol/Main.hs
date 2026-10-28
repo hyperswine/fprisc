@@ -18,7 +18,7 @@ import Sol.Startup (phase, phaseIO)
 import Control.DeepSeq (force)
 import Sol.Diagnostic
 import Sol.Bytecode
-import Control.Exception (AsyncException (UserInterrupt), IOException, catch, onException, throwIO, try, evaluate)
+import Control.Exception (AsyncException (UserInterrupt), IOException, bracket, catch, finally, onException, throwIO, try, evaluate)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
 import Data.IORef
@@ -284,8 +284,7 @@ compileScript path src ptops utops utopsX0' trusted = do
 -- run every `>` statement in order inside one transaction, then commit;
 -- on read-set conflict, reset and re-run the whole script
 runTxLoop :: FilePath -> [String] -> FilePath -> FilePath -> M.Map Name (Int, Int) -> M.Map Int [Name] -> BProg -> Prog -> Maybe JitCtx -> M.Map Name (Int, Int, Int) -> [Name] -> RtCounts -> Int -> IO ()
-runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt attempt = do
-  tx <- newTx
+runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt attempt = bracket newTx txCleanupTemps $ \tx -> do
   txSetSagaJournal tx journalFile
   fuel <- newIORef fuelQuantum
   preempts <- newIORef 0
@@ -314,7 +313,7 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
     let force = maybe 0 read forceN :: Int
     if attempt < force
       then pure (Conflict ["<forced>"]) -- discard this attempt's effects
-      else phaseIO "transaction-commit" (commit tx journalFile)) `onException` (cleanup >> rollbackSaga tx)
+      else phaseIO "transaction-commit" (commit tx journalFile)) `onException` (cleanup `finally` rollbackSaga tx)
   case res of
     Committed n ncmd sfail efail -> do
       -- the receipt names every effect class that landed: files AND the
@@ -340,7 +339,7 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
           exitFailure
         else mapM_ putStrLn logs >> hFlush stdout
     Conflict stale -> do
-      rollbackSaga tx
+      rollbackSaga tx `finally` txCleanupTemps tx
       retry stale
   where
     retry stale

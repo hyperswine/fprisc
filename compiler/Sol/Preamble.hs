@@ -33,9 +33,16 @@ prelude =
       -- this; the panicking spellings (ls, stat, exists) insist instead.
       -- exists answers plain absence as Ok False — only an observation the
       -- OS cannot make (denied, loop, ...) is an Err.
-      "FsOp = Type (OpLs | OpStat | OpExists).",
-      "FsReason = Type (FsMissing | FsDenied | FsWrongKind | FsLoop | FsOther).",
+      "FsOp = Type (OpLs | OpStat | OpExists | OpLstat | OpStatKind | OpWalk | OpTempDir | OpTempFile).",
+      "FsReason = Type (FsMissing | FsDenied | FsWrongKind | FsLoop | FsEncoding | FsLimit | FsOther).",
       "FsError = Type (FsError FsOp String FsReason String).",
+      -- kind and link policy: lstat does NOT follow (a link is KLink,
+      -- however it dangles — the dangling-vs-missing distinguisher);
+      -- statKind follows. Plain isLink rides the no-follow kind.
+      "FsKind = Type (KFile | KDir | KLink | KOther).",
+      -- Try.walk root depth entries follow: a bounded pre-order walk of
+      -- (path, kind, depth); see the walker contract in Txn.hs
+      "WalkEntry = Type (WalkEntry String FsKind Int).",
       "open : String -> Handle.",
       "readAll : Handle -> (String, Handle).",
       "writeAll : Handle -> String -> Handle.",
@@ -82,6 +89,12 @@ prelude =
       "stat p = read (Stat p).",
       "exists p = read (Exists p).",
       "isDir p = read (IsDir p).",
+      "isLink p = case Try.lstat p of Ok KLink -> True | Ok k -> False | Err (FsError op path FsMissing msg) -> False | Err e -> error (str e).",
+      -- owned scratch: 0700, under the system temp dir, swept on every
+      -- exit path unless retained for pending recovery. A hard crash can
+      -- strand scratch. Durable output goes to ordinary transactional paths.
+      "tempDir p = case Try.tempDir p of Ok d -> d | Err e -> error (str e).",
+      "tempFile p = case Try.tempFile p of Ok f -> f | Err e -> error (str e).",
       "sh c = read (Sh c).",
       "shq c = write \"/dev/sh\" c.",
       "print v = write \"/dev/out\" v.",
@@ -363,7 +376,7 @@ halArities =
   M.fromList
     [ ("str", 1), ("strcat", 2), ("String.len", 1), ("strlen", 1),
       ("error", 1), ("Try.parseInt", 1), ("Try.parseNum", 1), ("Try.readPath", 1),
-      ("Try.ls", 1), ("Try.stat", 1), ("Try.exists", 1),
+      ("Try.ls", 1), ("Try.stat", 1), ("Try.exists", 1), ("Try.lstat", 1), ("Try.statKind", 1), ("Try.walk", 4), ("Try.tempDir", 1), ("Try.tempFile", 1),
       ("charAt", 2), ("chr", 1), ("substr", 3), ("!", 2),
       ("strSplit", 2), ("strIndexOf", 2), ("strIndexFrom", 3), ("strReplace", 3), ("strUpper", 1), ("strLower", 1), ("strTrim", 1), ("strJoin", 2),
       ("strCmp", 2), ("strCodes", 1),

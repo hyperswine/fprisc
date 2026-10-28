@@ -5,7 +5,9 @@ Kind: implementation plan with a verification baseline.
 Scope: Sol / HostedBytecode (`fpr sol`) for daily file, text, data and process
 automation on POSIX hosts.
 Source baseline: `e6fadfb`; the checkout was clean during the assessment.
-Status: proposed work, not an implementation or a claim of release readiness.
+Status: Phase 1 implemented and locally verified on macOS arm64; see the
+[2026-10-29 delivery record](2026-10-29-SOL-FS-PHASE1.md). Phases 2-5 remain
+proposed work. This is not a claim of general scripting release readiness.
 
 ## Outcome and scope
 
@@ -115,15 +117,16 @@ Implementation owners: `compiler/Sol/Txn.hs`, `VM.hs`, `Preamble.hs`,
   `FsError`, classified panics for the plain spellings. Mutations stay
   commit-time queued effects; their issue-time refusals and the rename/copy
   entrypoints follow with Phase 2's copy/rename APIs)
-- [ ] Separate metadata observations from content snapshots. `exists` checks
+- [x] Separate metadata observations from content snapshots. `exists` checks
   existence without opening the file; stat/lstat expose file kind and link
   policy. Distinguish a dangling link from a missing directory entry.
-  (existence no longer opens the file:
-  [delivered 2026-10-28](2026-10-28-SOL-META-READS.md); the stat/lstat
-  kind and link-policy surface remains open)
-- [ ] Make directory listing distinguish missing/denied/wrong-kind from an
+  ([metadata delivered 2026-10-28](2026-10-28-SOL-META-READS.md);
+  [kind/link policy completed 2026-10-29](2026-10-29-SOL-FS-PHASE1.md))
+- [x] Make directory listing distinguish missing/denied/wrong-kind from an
   empty directory. Preserve sorted results and the transaction's own pending
   mkdir/write/remove view.
+  ([completed 2026-10-29](2026-10-29-SOL-FS-PHASE1.md), including directory
+  removals, mkdirp ancestors and path aliases)
 - [x] Specify metadata validation separately from exact-byte content validation.
   Record/recheck the metadata fields actually promised, under the existing lock
   protocol; do not claim content equality from size/mtime. Content reads retain
@@ -131,13 +134,17 @@ Implementation owners: `compiler/Sol/Txn.hs`, `VM.hs`, `Preamble.hs`,
   ([delivered 2026-10-28](2026-10-28-SOL-META-READS.md): `txMetaReads`
   promised-field recheck; limits promoted into SEMANTICS.md and
   [the dependency review](2026-10-28-SOL-TXN-DEPENDENCY-REVIEW.md))
-- [ ] Add bounded recursive walking with explicit depth/entry limits, a default
+- [x] Add bounded recursive walking with explicit depth/entry limits, a default
   of not following directory symlinks, an opt-in cycle-safe follow policy and
   documented non-UTF-8 filename behavior. Unsupported names must fail explicitly
   rather than be silently replaced.
-- [ ] Define safe temp-file/directory ownership and cleanup. Specify replacement,
+  ([completed 2026-10-29](2026-10-29-SOL-FS-PHASE1.md); invalid-byte filename
+  execution still requires a supporting filesystem, explicitly unverified here)
+- [x] Define safe temp-file/directory ownership and cleanup. Specify replacement,
   permission, symlink and cross-device behavior for later copy/rename APIs.
   Preserve current executable-mode handling and symlink-write refusal.
+  ([completed 2026-10-29](2026-10-29-SOL-FS-PHASE1.md); crash/recovery retention
+  and the proposed Phase 2 copy/rename policy are explicit)
 
 Acceptance gate:
 
@@ -154,6 +161,11 @@ with focused regressions. [Delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md);
 remaining limits and the transaction-dependency review are listed there.
 Review the transaction dependency model before
 expanding this into recursive traversal or changing snapshot storage.
+
+Phase 1 completion (2026-10-29): the remaining surface and review regressions
+are implemented, with 103 local filesystem checks and the existing Sol suites.
+The [delivery record](2026-10-29-SOL-FS-PHASE1.md) states the API, limits and
+host coverage. Linux/raw-invalid-name coverage and hosted CI are not claimed.
 
 ## Phase 2: bytes, bounded streams and script I/O
 

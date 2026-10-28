@@ -66,6 +66,11 @@ solBuiltins =
       ("Try.ls", mono (TFn tStr (tcon "Result" [tList tStr, tcon "FsError" []]))),
       ("Try.stat", mono (TFn tStr (tcon "Result" [TTupT [tInt, tInt], tcon "FsError" []]))),
       ("Try.exists", mono (TFn tStr (tcon "Result" [tBool, tcon "FsError" []]))),
+      ("Try.lstat", mono (TFn tStr (tcon "Result" [tcon "FsKind" [], tcon "FsError" []]))),
+      ("Try.statKind", mono (TFn tStr (tcon "Result" [tcon "FsKind" [], tcon "FsError" []]))),
+      ("Try.walk", mono (TFn tStr (TFn tInt (TFn tInt (TFn tBool (tcon "Result" [tList (tcon "WalkEntry" []), tcon "FsError" []])))))),
+      ("Try.tempDir", mono (TFn tStr (tcon "Result" [tStr, tcon "FsError" []]))),
+      ("Try.tempFile", mono (TFn tStr (tcon "Result" [tStr, tcon "FsError" []]))),
       ("charAt", mono (TFn tStr (TFn tInt tInt))), -- returns the char CODE
       ("substr", mono (TFn tStr (TFn tInt (TFn tInt tStr)))),
       -- the O(n) string tier (VM.hs): what Str.split / indexOf / replace /

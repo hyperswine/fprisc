@@ -52,6 +52,7 @@ import System.Directory
     createDirectoryIfMissing,
     doesDirectoryExist,
     doesFileExist,
+    getTemporaryDirectory,
     getFileSize,
     getModificationTime,
     listDirectory,
@@ -62,7 +63,7 @@ import System.Directory
   )
 import Data.Time.Clock.POSIX (getPOSIXTime, utcTimeToPOSIXSeconds)
 import System.Exit (ExitCode (..))
-import System.FilePath (takeDirectory, takeFileName, hasTrailingPathSeparator, (</>))
+import System.FilePath (takeDirectory, takeFileName, hasTrailingPathSeparator, dropTrailingPathSeparator, (</>))
 import System.IO (readFile', hClose, hIsTerminalDevice)
 import System.IO.Error (ioeGetErrorType, isAlreadyExistsError, isDoesNotExistError, isResourceVanishedError)
 import Foreign.C.Error (Errno (..), eACCES, eISDIR, eLOOP, eMLINK, eNOENT, eNOTDIR, ePERM)
@@ -71,23 +72,46 @@ import System.IO (hFlush, hGetContents', hIsEOF, hGetLine, stderr, stdin, stdout
 import System.Process (CreateProcess (..), StdStream (..), getPid, terminateProcess, createProcess, proc, readCreateProcessWithExitCode, shell, waitForProcess)
 import System.Timeout (timeout)
 import qualified System.Posix.Files as PF
+import qualified System.Posix.Directory.ByteString as PDB
+import qualified System.Posix.Temp as PT
 import System.Posix.Signals (signalProcessGroup, sigKILL, sigCONT, sigTTOU, blockSignals, getSignalMask, setSignalMask, addSignal, emptySignalSet)
 import System.Posix.Terminal (getTerminalProcessGroupID, setTerminalProcessGroupID)
 import System.Posix.Process (getProcessGroupID)
 import System.Posix.IO (stdInput)
 import System.Posix.Types (ProcessGroupID)
 
--- a metadata promise: what a metadata query (exists/isDir/stat) recorded
--- about a path it did NOT read. Commit rechecks exactly these fields
--- under the locks — presence always; kind and size/mtime only where
--- promised. Nothing here claims content equality from size/mtime:
--- content reads keep exact-byte validation (txReadBytes).
+-- a metadata promise: what a metadata query (exists/isDir/stat/statKind/
+-- lstat) recorded about a path it did NOT read. Every field is promised
+-- in a MODALITY: followed presence/kind/size/mtime from stat-style
+-- queries, no-follow presence/kind from lstat. Commit rechecks exactly
+-- the promised fields in their own modality — an lstat promise never
+-- conflicts over what the link points at. Nothing here claims content
+-- equality from size/mtime: content reads keep exact-byte validation
+-- (txReadBytes).
 data MetaSnap = MetaSnap
-  { msPresent :: Bool,
-    msIsDir :: Maybe Bool, -- promised by isDir only
+  { msPresentF :: Maybe Bool, -- followed presence; exists/stat/statKind/isDir
+    msPresentL :: Maybe Bool, -- no-follow presence; lstat
+    msKind :: Maybe Int, -- followed kind (0 file, 1 dir, 3 other)
+    msKindL :: Maybe Int, -- no-follow kind (2 link, ...)
+    msIsDir :: Maybe Bool, -- isDir promises a predicate, not an exact kind
     msSize :: Maybe Integer, -- promised by stat only
-    msMtime :: Maybe Integer -- promised by stat only
+    msMtime :: Maybe Integer, -- promised by stat only
+    msFollowTarget :: Maybe FilePath, -- directory stat resolves to this lock identity
+    msChanged :: Bool -- incompatible observations in one attempt must retry
   }
+
+-- the nothing-promised promise, so every query records with record-update
+-- syntax and no field is accidentally left as a runtime bottom
+noMeta :: MetaSnap
+noMeta = MetaSnap Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing False
+
+-- kind codes shared by FsKind (prelude) and the walker; 2 = link is only
+-- observable without following
+kindFile, kindDir, kindLink, kindOther :: Int
+kindFile = 0
+kindDir = 1
+kindLink = 2
+kindOther = 3
 
 data TxState = TxState
   { txReads :: M.Map FilePath (Maybe String), -- decoded snapshot for repeat reads
@@ -106,6 +130,7 @@ data TxState = TxState
     txTerminal :: !Bool,
     txPathLogs :: [(FilePath,String)],
     txSagaJournal :: Maybe FilePath,
+    txTemps :: [FilePath], -- owned scratch paths; swept on discard/exit
     txSaga :: Maybe GitUndo,
     txPivot :: !Bool,
     txLogs :: [String] -- REVERSED `log` lines: emitted only after a clean commit
@@ -122,7 +147,7 @@ emptyTx = TxState
   , txEffects=[], txView=M.empty, txDirView=M.empty
   , txHandles=IM.empty, txNextH=1, txNonText=S.empty, txSealed=False
   , txIdentity=Nothing, txNextStep=0, txTerminal=False, txPathLogs=[]
-  , txSagaJournal=Nothing, txSaga=Nothing, txPivot=False, txLogs=[]
+  , txSagaJournal=Nothing, txTemps=[], txSaga=Nothing, txPivot=False, txLogs=[]
   }
 
 resetTx :: IORef TxState -> IO ()
@@ -174,7 +199,8 @@ txMarkPivot ref = do
 stableWorldPath :: FilePath -> IO FilePath
 stableWorldPath path = do
   absolute <- makeAbsolute path
-  if hasTrailingPathSeparator absolute then pure absolute else do
+  if takeFileName absolute `elem` [".", ".."] then canonicalizePath absolute
+  else if hasTrailingPathSeparator absolute then pure absolute else do
     parent <- canonicalizePath (takeDirectory absolute)
     pure (parent </> takeFileName absolute)
 
@@ -303,9 +329,11 @@ diskRead p = fmap fst <$> diskReadT p
 -- the snapshot happens lazily at first txHRead so a write-only open doesn't
 -- inflate the read set (and therefore can't cause a spurious conflict).
 txOpen :: IORef TxState -> FilePath -> IO Int
-txOpen ref p = atomicModifyIORef' ref $ \s ->
-  let h = txNextH s
-   in (s {txHandles = IM.insert h p (txHandles s), txNextH = h + 1}, h)
+txOpen ref raw = do
+  p <- stableWorldPath raw
+  atomicModifyIORef' ref $ \s ->
+    let h = txNextH s
+     in (s {txHandles = IM.insert h p (txHandles s), txNextH = h + 1}, h)
 
 txPathOf :: IORef TxState -> Int -> IO FilePath
 txPathOf ref h = do
@@ -323,7 +351,8 @@ txClose ref h = atomicModifyIORef' ref $ \s ->
 -- non-text so the read surface can refuse them. Metadata queries (exists/
 -- stat/isDir) do NOT snapshot: they record promises in txMetaReads instead.
 snapshot :: IORef TxState -> FilePath -> IO (Maybe String)
-snapshot ref p = do
+snapshot ref raw = do
+  p <- stableWorldPath raw
   s <- readIORef ref
   case M.lookup p (txReads s) of
     Just snap -> pure snap
@@ -351,7 +380,8 @@ snapshot ref p = do
 data TxRead = TxText String | TxMissing | TxNonText | TxReadError String
 
 txTryRead :: IORef TxState -> FilePath -> IO TxRead
-txTryRead ref p = do
+txTryRead ref raw = do
+  p <- stableWorldPath raw
   s <- readIORef ref
   case M.lookup p (txView s) of
     Just (Just w) -> pure (TxText w) -- this txn's own write: always text
@@ -393,34 +423,48 @@ txHWrite ref h v = do
     if isDoesNotExistError e then pure False else throwIO (e :: IOException)
   when link $ ioError (userError ("writeAtomic: refusing symbolic link: " ++ p))
   pushEffect ref (EWrite p v)
-  atomicModifyIORef' ref (\s -> (s {txView = M.insert p (Just v) (txView s)}, ()))
+  atomicModifyIORef' ref (\s -> (s {txView = M.insert p (Just v) (txView s), txDirView = M.delete p (txDirView s)}, ()))
 
 -- ---- path-level transactional ops ----------------------------------------
 
 -- remove: snapshot current state (so a concurrent write aborts us), mark
 -- deleted in the view, queue the removal
 txRm :: IORef TxState -> FilePath -> IO ()
-txRm ref p = do
+txRm ref raw = do
+  p <- stableWorldPath raw
   _ <- snapshot ref p
   pushEffect ref (ERemove p)
   atomicModifyIORef' ref (\s -> (s {txView = M.insert p Nothing (txView s)}, ()))
 
 txMkdirp :: IORef TxState -> FilePath -> IO ()
-txMkdirp ref p = do
+txMkdirp ref raw = do
+  p <- stableWorldPath (dropTrailingPathSeparator raw)
   pushEffect ref (EMkdir p)
-  atomicModifyIORef' ref (\s -> (s {txDirView = M.insert p True (txDirView s)}, ()))
+  markParents p
+  where
+    -- mkdirp will create absent ancestors too. Reflect that intent in the
+    -- pending view so a subsequent walk need not guess the future tree.
+    markParents p = do
+      atomicModifyIORef' ref (\s -> (s {txDirView = M.insert p True (txDirView s), txView = M.delete p (txView s)}, ()))
+      let parent = takeDirectory p
+      s <- readIORef ref
+      present <- case M.lookup parent (txDirView s) of
+        Just b -> pure b
+        Nothing -> doesDirectoryExist parent
+      unless (present || parent == p) (markParents parent)
 
 txRmdir :: IORef TxState -> FilePath -> IO ()
-txRmdir ref p = do
+txRmdir ref raw = do
+  p <- stableWorldPath (dropTrailingPathSeparator raw)
   pushEffect ref (ERmdir p)
-  atomicModifyIORef' ref (\s -> (s {txDirView = M.insert p False (txDirView s)}, ()))
+  atomicModifyIORef' ref (\s -> (s {txDirView = M.insert p False (txDirView s), txView = M.delete p (txView s)}, ()))
 
 -- the hosted filesystem error model: one value answers WHICH operation
 -- failed, on WHAT path, and a distinguishable WHY (the typed tier —
 -- Try.ls/Try.stat/Try.exists — pattern-matches this; the panicking
 -- spellings render it). feNote carries a plain-text hint that only the
 -- panic message uses (e.g. "removed earlier in this transaction").
-data FsWhy = WhyMissing | WhyDenied | WhyWrongKind | WhyLoop | WhyOther deriving (Eq)
+data FsWhy = WhyMissing | WhyDenied | WhyWrongKind | WhyLoop | WhyEncoding | WhyLimit | WhyOther deriving (Eq)
 
 data FsErr = FsErr
   { feOp :: String, -- "ls" / "stat" / "exists" (also the FsOp constructor)
@@ -435,6 +479,8 @@ fsWhyName WhyMissing = "FsMissing"
 fsWhyName WhyDenied = "FsDenied"
 fsWhyName WhyWrongKind = "FsWrongKind"
 fsWhyName WhyLoop = "FsLoop"
+fsWhyName WhyEncoding = "FsEncoding"
+fsWhyName WhyLimit = "FsLimit"
 fsWhyName WhyOther = "FsOther"
 
 -- errno first (ELOOP/EISDIR/ENOTDIR only exist there); the IOErrorType
@@ -452,6 +498,13 @@ classifyIO op p e = FsErr op p why (show e) ""
         NoSuchThing -> WhyMissing
         PermissionDenied -> WhyDenied
         _ -> WhyOther
+
+-- Path resolution is fallible too. Keep the caller's spelling in the
+-- public error while using stable keys for the transaction's own view.
+fsAt :: String -> FilePath -> IO (Either FsErr a) -> IO (Either FsErr a)
+fsAt op path action =
+  (either (Left . (\e -> e {fePath = path})) Right <$> action)
+    `catch` \(e :: IOException) -> pure (Left (classifyIO op path e))
 
 -- the panic line a plain spelling renders for a classified failure;
 -- missing keeps its dedicated guard-hint (or the note) for continuity
@@ -478,7 +531,8 @@ txLs ref dir = txLsE ref dir >>= either (ioError . userError . fsPanic "ls") pur
 -- absent disk listing, because then the entries below are all the
 -- directory has.
 txLsE :: IORef TxState -> FilePath -> IO (Either FsErr [String])
-txLsE ref dir = do
+txLsE ref raw = fsAt "ls" raw $ do
+  dir <- stableWorldPath (dropTrailingPathSeparator raw)
   s <- readIORef ref
   let pendingDir = M.lookup dir (txDirView s)
   base <- case pendingDir of
@@ -487,11 +541,11 @@ txLsE ref dir = do
     _ -> case M.lookup dir (txDirReads s) of
       Just names -> pure (Right names)
       Nothing -> do
-        r <- try (listDirectory dir) :: IO (Either IOException [String])
+        r <- listTextDirectory dir
         case r of
-          Left e
-            | isDoesNotExistError e, pendingDir == Just True -> pure (Right [])
-            | otherwise -> pure (Left (classifyIO "ls" dir e))
+          Left fe
+            | feWhy fe == WhyMissing, pendingDir == Just True -> pure (Right [])
+            | otherwise -> pure (Left fe)
           Right names0 -> do
             let names = sort (filter (not . lockArtifact) names0)
             atomicModifyIORef' ref (\st -> (st {txDirReads = M.insert dir names (txDirReads st)}, ()))
@@ -506,16 +560,157 @@ txLsE ref dir = do
           added = [baseName p | (p, Just _) <- M.toList (txView s2), inDir p, baseName p `notElem` names]
           removed = [baseName p | (p, Nothing) <- M.toList (txView s2), inDir p]
           addedDirs = [baseName p | (p, True) <- M.toList (txDirView s2), inDir p, baseName p `notElem` names]
-      pure (Right (sort ((names ++ added ++ addedDirs) `without` removed)))
+          removedDirs = [baseName p | (p, False) <- M.toList (txDirView s2), inDir p]
+      pure (Right (sort (S.toList (S.fromList (names ++ added ++ addedDirs)) `without` (removed ++ removedDirs))))
   where
     without xs ys = [x | x <- xs, x `notElem` ys]
+
+-- surrogate-escaped undecodable bytes (GHC's filesystem decode)
+badUTF8 :: String -> Bool
+badUTF8 = any (\c -> c >= '\xDC80' && c <= '\xDCFF')
+
+-- Read raw entry bytes before decoding: behavior must not depend on the
+-- host locale's replacement/escape policy. The stream is closed even when
+-- an unsupported name or cancellation interrupts enumeration.
+listTextDirectory :: FilePath -> IO (Either FsErr [String])
+listTextDirectory dir
+  | badUTF8 dir = pure (Left encodingError)
+  | otherwise = fsAt "ls" dir $
+      bracket (PDB.openDirStream (BSU.fromString dir)) PDB.closeDirStream (\stream -> gather stream [])
+  where
+    encodingError = FsErr "ls" dir WhyEncoding "non-UTF-8 filename is unsupported" ""
+    gather stream names = do
+      bytes <- PDB.readDirStream stream
+      let (name, valid) = decodeSnapshot bytes
+      if BS.null bytes then pure (Right names)
+      else if not valid then pure (Left encodingError)
+      else if name `elem` [".", ".."] then gather stream names
+      else gather stream (name : names)
+
+-- bounded recursive walk. Emits (path, kind, depth) in pre-order with the
+-- transaction's own view composed over each listing (txLsE) and each
+-- entry kind observed through the promise-recording lstat (txLstatE), so
+-- a walk IS a set of dependencies: a foreign change under any walked
+-- directory conflicts at commit. Limits are explicit: depth counts the
+-- root's children as 1; the entry budget counts every emitted entry.
+-- follow=False never descends a symlink (a POSIX directory cannot be
+-- hard-linked, so this is cycle-free by construction). follow=True
+-- resolves links: the emitted kind is the followed kind, and descent is
+-- cut by ancestor identity, so a symlink cycle terminates at the cut.
+-- Aliases in different branches may repeat, within the entry budget.
+-- Missing entries are errors, never a silently incomplete inventory.
+txWalkE :: IORef TxState -> FilePath -> Int -> Int -> Bool
+        -> IO (Either FsErr [(FilePath, Int, Int)])
+txWalkE ref root maxDepth maxEntries follow = do
+  if maxDepth < 1 || maxDepth > 4096 || maxEntries < 1 || maxEntries > 10000000
+    then pure (Left (FsErr "walk" root WhyLimit "depth must be 1..4096 and entries 1..10000000" ""))
+    else (do
+      -- Resolve the parent, retaining the root's leaf for no-follow policy
+      -- and pending-view lookup. An explicitly supplied link root follows
+      -- only when follow=True, just like a link encountered below it.
+      absolute <- stableWorldPath (dropTrailingPathSeparator root)
+      kr <- txLstatE ref absolute
+      kind <- case kr of
+        Right k | k == kindLink && follow -> txStatKindE ref absolute
+        _ -> pure kr
+      case kind of
+        Left fe -> pure (Left (walkError fe))
+        Right k | k /= kindDir -> pure (Left (FsErr "walk" root WhyWrongKind "walk root must be a directory" ""))
+        _ -> do
+          identity <- canonicalizePath absolute
+          r <- goE absolute 1 (S.singleton identity) 0 []
+          pure (fmap (reverse . fst) r)) `catch` \(e :: IOException) -> pure (Left (classifyIO "walk" root e))
+  where
+    walkError fe = fe {feOp = "walk"}
+    limitErr = FsErr "walk" root WhyLimit ("entry limit of " ++ show maxEntries ++ " reached") ""
+    effKind p k
+      | not follow || k /= kindLink = pure (Right k)
+      | otherwise = do
+          r <- txStatKindE ref p
+          -- A dangling link is still an inventory entry. Recorded followed
+          -- absence makes a target appearing before commit a conflict.
+          pure $ case r of Left fe | feWhy fe == WhyMissing -> Right kindLink; _ -> r
+    goE dir depth seen n acc = do
+      lr <- txLsE ref dir
+      case lr of
+        Left fe -> pure (Left (walkError fe))
+        Right names -> foldNames dir depth seen n acc names
+    foldNames _ _ _ n acc [] = pure (Right (acc, n))
+    foldNames dir depth seen n acc (nm : rest)
+      | n >= maxEntries = pure (Left limitErr)
+      | otherwise = do
+          let full = dir ++ "/" ++ nm
+          kr <- txLstatE ref full
+          case kr of
+            Left fe -> pure (Left (walkError fe))
+            Right k0 -> do
+              fk <- effKind full k0
+              case fk of
+                Left fe -> pure (Left (walkError fe))
+                Right k -> do
+                  let acc' = (full, k, depth) : acc
+                  if k == kindDir && depth < maxDepth
+                    then do
+                      c <- canonicalizePath full
+                      if S.member c seen
+                        then foldNames dir depth seen (n + 1) acc' rest
+                        else do
+                          sub <- goE full (depth + 1) (S.insert c seen) (n + 1) acc'
+                          case sub of
+                            Left fe -> pure (Left fe)
+                            Right (es, n') -> foldNames dir depth seen n' es rest
+                    else foldNames dir depth seen (n + 1) acc' rest
+
+-- an owned scratch directory: created NOW (the script writes into it
+-- during the run), mode 0700, under the system temp dir, named by
+-- prefix plus an unpredictable mkdtemp suffix. Cleanup retains scratch
+-- while a durable recovery fence may still need it. A hard crash can
+-- strand scratch as well; this is not durable application storage.
+txTempDir :: IORef TxState -> String -> IO (Either FsErr FilePath)
+txTempDir ref prefix = txTemp ref "tempDir" PT.mkdtemp prefix
+
+txTempFile :: IORef TxState -> String -> IO (Either FsErr FilePath)
+txTempFile ref prefix = txTemp ref "tempFile" (\template -> do
+  (path, handle) <- PT.mkstemp template
+  hClose handle `onException` removeFile path
+  pure path) prefix
+
+txTemp :: IORef TxState -> String -> (FilePath -> IO FilePath) -> String -> IO (Either FsErr FilePath)
+txTemp ref op allocate prefix = do
+  if null prefix || length prefix > 64 || any (\c -> not (c `elem` (['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "_-"))) prefix
+    then pure (Left (FsErr op prefix WhyOther "prefix must be 1..64 ASCII letters, digits, '_' or '-'" ""))
+    else mask_ $ (do
+      tmp <- getTemporaryDirectory >>= canonicalizePath
+      d <- allocate (tmp </> (prefix ++ "-"))
+      -- Allocation and registration are masked: cancellation cannot strand
+      -- an allocated directory before its owner records it.
+      atomicModifyIORef' ref (\s -> (s {txTemps = d : txTemps s}, ()))
+      pure (Right d)) `catch` \(e :: IOException) -> pure (Left (classifyIO op prefix e))
+
+-- remove every temp dir this attempt still owns; idempotent
+txSweepTemps :: IORef TxState -> IO ()
+txSweepTemps ref = do
+  ts <- atomicModifyIORef' ref (\s -> (s {txTemps = []}, txTemps s))
+  forM_ ts $ \d -> removePathForcibly d `catch` \(e :: IOException) ->
+    diagnostic ("[sol] scratch cleanup failed for " ++ d ++ ": " ++ show e)
+
+txCleanupTemps :: IORef TxState -> IO ()
+txCleanupTemps ref = do
+  s <- readIORef ref
+  recovery <- case txSagaJournal s of
+    Nothing -> pure False
+    Just j -> (||) <$> doesFileExist j <*> doesFileExist (undoPath j)
+  if recovery && not (null (txTemps s))
+    then diagnostic ("[sol] retaining scratch for pending recovery: " ++ show (txTemps s))
+    else txSweepTemps ref
 
 txExists :: IORef TxState -> FilePath -> IO Bool
 txExists ref p =
   txExistsE ref p >>= either (ioError . userError . fsPanic "exists") pure
 
 txExistsE :: IORef TxState -> FilePath -> IO (Either FsErr Bool)
-txExistsE ref p = do
+txExistsE ref raw = fsAt "exists" raw $ do
+  p <- stableWorldPath raw
   s <- readIORef ref
   case M.lookup p (txView s) of
     Just (Just _) -> pure (Right True)
@@ -523,40 +718,106 @@ txExistsE ref p = do
     Nothing -> case M.lookup p (txDirView s) of
       Just b -> pure (Right b)
       Nothing -> do
-        r <- try (diskMeta p) :: IO (Either IOException (Maybe (Bool, Integer, Integer)))
+        r <- try (diskMeta p) :: IO (Either IOException (Maybe (Int, Integer, Integer)))
         case r of
           Left e -> pure (Left (classifyIO "exists" p e))
           Right Nothing -> do
-            recordMeta ref p (MetaSnap False Nothing Nothing Nothing)
+            recordMeta ref p noMeta {msPresentF = Just False}
             pure (Right False)
           Right (Just _) -> do
-            recordMeta ref p (MetaSnap True Nothing Nothing Nothing)
+            recordMeta ref p noMeta {msPresentF = Just True}
             pure (Right True)
 
 txIsDir :: IORef TxState -> FilePath -> IO Bool
-txIsDir ref p = do
+txIsDir ref raw = do
+  p <- stableWorldPath raw
   s <- readIORef ref
-  case M.lookup p (txDirView s) of
+  case if M.member p (txView s) then Just False else M.lookup p (txDirView s) of
     Just b -> pure b
     Nothing -> do
-      r <- try (diskMeta p) :: IO (Either IOException (Maybe (Bool, Integer, Integer)))
+      r <- try (diskMeta p) :: IO (Either IOException (Maybe (Int, Integer, Integer)))
       case r of
         Left e -> ioError (userError (fsPanic "isDir" (classifyIO "isDir" p e)))
         Right o -> do
-          let isD = maybe False (\(d, _, _) -> d) o
-          recordMeta ref p (MetaSnap (maybe False (const True) o) (Just isD) Nothing Nothing)
+          let isD = maybe False (\(k, _, _) -> k == kindDir) o
+          recordMeta ref p noMeta {msPresentF = Just (maybe False (const True) o), msIsDir = Just isD}
           pure isD
 
 -- one stat(2) on the path: no open, follows symlinks (a dangling link
--- resolves to nothing). Answers (isDir, size, mtime) of whatever the
--- path is; Nothing is absent. This is the only disk contact a metadata
--- query makes — no content snapshot, so unreadable files, FIFOs and
--- sparse multi-GiB files all observe at metadata cost.
-diskMeta :: FilePath -> IO (Maybe (Bool, Integer, Integer))
+-- resolves to nothing). Answers (kind, size, mtime) of whatever the path
+-- is; Nothing is absent. This is the only disk contact a followed
+-- metadata query makes — no content snapshot, so unreadable files, FIFOs
+-- and sparse multi-GiB files all observe at metadata cost.
+diskMeta :: FilePath -> IO (Maybe (Int, Integer, Integer))
 diskMeta p = do
   ms <- (Just <$> PF.getFileStatus p) `catch` \e ->
     if isDoesNotExistError e then pure Nothing else throwIO (e :: IOException)
-  pure ((\st -> (PF.isDirectory st, fromIntegral (PF.fileSize st), floor (PF.modificationTimeHiRes st))) <$> ms)
+  pure ((\st -> (kindOf st, fromIntegral (PF.fileSize st), floor (PF.modificationTimeHiRes st))) <$> ms)
+  where
+    kindOf st
+      | PF.isDirectory st = kindDir
+      | PF.isRegularFile st = kindFile
+      | otherwise = kindOther
+
+-- one lstat(2): no follow. A link answers kindLink however it dangles;
+-- Nothing is an absent ENTRY (the dangling-vs-missing distinguisher).
+diskMetaL :: FilePath -> IO (Maybe Int)
+diskMetaL p = do
+  ms <- (Just <$> PF.getSymbolicLinkStatus p) `catch` \e ->
+    if isDoesNotExistError e then pure Nothing else throwIO (e :: IOException)
+  pure (kindOf <$> ms)
+  where
+    kindOf st
+      | PF.isSymbolicLink st = kindLink
+      | PF.isDirectory st = kindDir
+      | PF.isRegularFile st = kindFile
+      | otherwise = kindOther
+
+-- no-follow kind (lstat): the entry's own kind. The transaction's own
+-- pending mkdir/rmdir answers from the view; everything else observes
+-- the disk and records the no-follow promise (validated at commit).
+txLstatE :: IORef TxState -> FilePath -> IO (Either FsErr Int)
+txLstatE ref raw = fsAt "lstat" raw $ do
+  p <- stableWorldPath raw
+  s <- readIORef ref
+  case M.lookup p (txDirView s) of
+    Just True -> pure (Right kindDir)
+    Just False -> pure (Left (FsErr "lstat" p WhyMissing "" "removed earlier in this transaction"))
+    Nothing -> case M.lookup p (txView s) of
+      Just (Just _) -> pure (Right kindFile) -- this txn's own pending write
+      Just Nothing -> pure (Left (FsErr "lstat" p WhyMissing "" "removed earlier in this transaction"))
+      Nothing -> do
+        r <- try (diskMetaL p) :: IO (Either IOException (Maybe Int))
+        case r of
+          Left e -> pure (Left (classifyIO "lstat" p e))
+          Right Nothing -> do
+            recordMeta ref p noMeta {msPresentL = Just False}
+            pure (Left (FsErr "lstat" p WhyMissing "" ""))
+          Right (Just k) -> do
+            recordMeta ref p noMeta {msPresentL = Just True, msKindL = Just k}
+            pure (Right k)
+
+-- followed kind (statKind)
+txStatKindE :: IORef TxState -> FilePath -> IO (Either FsErr Int)
+txStatKindE ref raw = fsAt "statKind" raw $ do
+  p <- stableWorldPath raw
+  s <- readIORef ref
+  case M.lookup p (txDirView s) of
+    Just True -> pure (Right kindDir)
+    Just False -> pure (Left (FsErr "statKind" p WhyMissing "" "removed earlier in this transaction"))
+    Nothing -> case M.lookup p (txView s) of
+      Just (Just _) -> pure (Right kindFile)
+      Just Nothing -> pure (Left (FsErr "statKind" p WhyMissing "" "removed earlier in this transaction"))
+      Nothing -> do
+        r <- try (diskMeta p) :: IO (Either IOException (Maybe (Int, Integer, Integer)))
+        case r of
+          Left e -> pure (Left (classifyIO "statKind" p e))
+          Right Nothing -> do
+            recordMeta ref p noMeta {msPresentF = Just False}
+            pure (Left (FsErr "statKind" p WhyMissing "" ""))
+          Right (Just (k, _, _)) -> do
+            recordMeta ref p noMeta {msPresentF = Just True, msKind = Just k}
+            pure (Right k)
 
 -- record a metadata promise; a second query of the same path widens it
 -- to the union of promised fields (the newest presence wins)
@@ -567,14 +828,25 @@ recordMeta ref p snap = atomicModifyIORef' ref $ \st ->
 mergeMeta :: MetaSnap -> MetaSnap -> MetaSnap
 mergeMeta new old =
   MetaSnap
-    { msPresent = msPresent new,
+    { msPresentF = firstJust (msPresentF new) (msPresentF old),
+      msPresentL = firstJust (msPresentL new) (msPresentL old),
+      msKind = firstJust (msKind new) (msKind old),
+      msKindL = firstJust (msKindL new) (msKindL old),
       msIsDir = firstJust (msIsDir new) (msIsDir old),
       msSize = firstJust (msSize new) (msSize old),
-      msMtime = firstJust (msMtime new) (msMtime old)
+      msMtime = firstJust (msMtime new) (msMtime old),
+      msFollowTarget = firstJust (msFollowTarget new) (msFollowTarget old),
+      msChanged = msChanged old || msChanged new || or
+        [ differs (msPresentF new) (msPresentF old), differs (msPresentL new) (msPresentL old)
+        , differs (msKind new) (msKind old), differs (msKindL new) (msKindL old)
+        , differs (msIsDir new) (msIsDir old), differs (msSize new) (msSize old)
+        , differs (msMtime new) (msMtime old), differs (msFollowTarget new) (msFollowTarget old) ]
     }
   where
     firstJust (Just a) _ = Just a
     firstJust Nothing b = b
+    differs (Just a) (Just b) = a /= b
+    differs _ _ = False
 
 -- (exists, size, mtime-seconds). The transaction's own view answers
 -- first — a file this txn wrote EXISTS, sized by its pending content
@@ -597,7 +869,8 @@ txStat ref p =
       | otherwise = ioError (userError (fsPanic "stat" fe))
 
 txStatE :: IORef TxState -> FilePath -> IO (Either FsErr (Bool, Integer, Integer))
-txStatE ref p = do
+txStatE ref raw = fsAt "stat" raw $ do
+  p <- stableWorldPath raw
   s <- readIORef ref
   case M.lookup p (txView s) of
     Just Nothing -> pure (Right (False, 0, 0)) -- removed earlier in this txn
@@ -607,7 +880,7 @@ txStatE ref p = do
     Nothing -> case M.lookup p (txDirView s) of
       Just False -> pure (Right (False, 0, 0)) -- rmdir'd earlier in this txn
       Just True -> do
-        r <- try (diskMeta p) :: IO (Either IOException (Maybe (Bool, Integer, Integer)))
+        r <- try (diskMeta p) :: IO (Either IOException (Maybe (Int, Integer, Integer)))
         case r of
           Left e -> pure (Left (classifyIO "stat" p e))
           Right (Just (_, sz, mt)) -> pure (Right (True, sz, mt))
@@ -615,30 +888,61 @@ txStatE ref p = do
             now <- getPOSIXTime
             pure (Right (True, 0, floor now))
       Nothing -> do
-        r <- try (diskMeta p) :: IO (Either IOException (Maybe (Bool, Integer, Integer)))
+        r <- try (diskMeta p) :: IO (Either IOException (Maybe (Int, Integer, Integer)))
         case r of
           Left e -> pure (Left (classifyIO "stat" p e))
           Right Nothing -> do
             -- the Err IS an observation of absence; the promise keeps the
             -- presence-flip conflict that exists-missing already records
-            recordMeta ref p (MetaSnap False Nothing Nothing Nothing)
+            recordMeta ref p noMeta {msPresentF = Just False}
             pure (Left (FsErr "stat" p WhyMissing "" ""))
-          Right (Just (_, sz, mt)) -> do
-            recordMeta ref p (MetaSnap True Nothing (Just sz) (Just mt))
+          Right (Just (k, sz, mt)) -> do
+            if k == kindDir then do
+              -- Directory size/mtime must validate at the referent's lock
+              -- before its child locks change those fields. Retain the
+              -- alias-to-referent promise too, so retargeting is not hidden.
+              target <- canonicalizePath p
+              recordMeta ref target noMeta {msPresentF = Just True, msSize = Just sz, msMtime = Just mt}
+              recordMeta ref p noMeta {msPresentF = Just True, msFollowTarget = Just target}
+            else recordMeta ref p noMeta {msPresentF = Just True, msSize = Just sz, msMtime = Just mt}
             pure (Right (True, sz, mt))
 
 -- promised-field recheck at commit: a presence flip always conflicts;
--- kind and size/mtime conflict only where promised. A same-metadata
--- content rewrite passes here BY DESIGN — exact-byte validation lives
--- in the content read set, and a script wanting that dependency reads
--- the file.
-metaStale :: MetaSnap -> Maybe (Bool, Integer, Integer) -> Bool
-metaStale ms Nothing = msPresent ms -- promised present, now gone
-metaStale ms (Just (isD, sz, mt)) =
-  not (msPresent ms)
-    || maybe False (/= isD) (msIsDir ms)
-    || maybe False (/= sz) (msSize ms)
-    || maybe False (/= mt) (msMtime ms)
+-- followed kind, no-follow kind and size/mtime conflict only where
+-- promised. A same-metadata content rewrite passes here BY DESIGN —
+-- exact-byte validation lives in the content read set, and a script
+-- wanting that dependency reads the file.
+metaStale :: MetaSnap -> Maybe (Int, Integer, Integer) -> Maybe Int -> Bool
+metaStale ms nowF nowL = msChanged ms || fStale || lStale
+  where
+    -- each modality's check runs only where that modality was promised
+    fStale = case (msPresentF ms, nowF) of
+      (Nothing, _) -> False
+      (Just False, Nothing) -> False
+      (Just False, Just _) -> True -- promised absent, now there
+      (Just True, Nothing) -> True -- promised present, now gone
+      (Just True, Just (k, sz, mt)) ->
+        maybe False (/= k) (msKind ms)
+          || maybe False (/= (k == kindDir)) (msIsDir ms)
+          || maybe False (/= sz) (msSize ms)
+          || maybe False (/= mt) (msMtime ms)
+    lStale = case (msPresentL ms, nowL) of
+      (Nothing, _) -> False
+      (Just False, Nothing) -> False
+      (Just False, Just _) -> True
+      (Just True, Nothing) -> True
+      (Just True, Just k) -> maybe False (/= k) (msKindL ms)
+
+-- the observations the recheck needs: followed stat always, no-follow
+-- lstat only where a no-follow kind was promised
+metaStaleIO :: MetaSnap -> FilePath -> IO Bool
+metaStaleIO ms p = (do
+  nowF <- maybe (pure Nothing) (const (diskMeta p)) (msPresentF ms)
+  nowL <- maybe (pure Nothing) (const (diskMetaL p)) (msPresentL ms)
+  moved <- case msFollowTarget ms of
+    Nothing -> pure False
+    Just wanted -> (/= wanted) <$> canonicalizePath p
+  pure (moved || metaStale ms nowF nowL)) `catch` \(_ :: IOException) -> pure True
 
 -- byte length of the string as commit will encode it
 utf8Len :: String -> Int
@@ -840,10 +1144,12 @@ rtReport ref = do
 -- own read set and retry forever. Returns True if a claim was actually
 -- dropped, so the caller can say so.
 txForget :: IORef TxState -> FilePath -> IO Bool
-txForget ref p = atomicModifyIORef' ref $ \s ->
-  ( s { txReads = M.delete p (txReads s), txReadBytes = M.delete p (txReadBytes s), txView = M.delete p (txView s), txMetaReads = M.delete p (txMetaReads s) },
-    M.member p (txReads s) || M.member p (txView s) || M.member p (txMetaReads s)
-  )
+txForget ref raw = do
+  p <- stableWorldPath raw
+  atomicModifyIORef' ref $ \s ->
+    ( s { txReads = M.delete p (txReads s), txReadBytes = M.delete p (txReadBytes s), txView = M.delete p (txView s), txMetaReads = M.delete p (txMetaReads s) },
+      M.member p (txReads s) || M.member p (txView s) || M.member p (txMetaReads s)
+    )
 
 -- read the disk NOW, with no snapshot: repeated calls can differ
 rtRead :: FilePath -> IO (Maybe String)
@@ -1347,7 +1653,19 @@ commit ref jpath = do
               ]
           )
   hold <- newIORef False
-  withLocksHold hold (acquire jpath) touched $ do -- sorted: global lock order
+  staleMeta <- newIORef []
+  -- Recheck each metadata promise under its own path lock, before taking
+  -- descendant locks. Those locks are entries inside a directory and
+  -- legitimately change its size/mtime; checking directory stat only after
+  -- creating them would make inventories conflict with themselves forever.
+  -- Paths are stable and sorted parent-before-child. Content and directory
+  -- name sets still validate below after every lock has been acquired.
+  let takeLock p = do
+        acquire jpath p
+        forM_ (M.lookup p (txMetaReads s)) $ \ms -> do
+          stale <- metaStaleIO ms p
+          when stale $ modifyIORef' staleMeta (p :)
+  withLocksHold hold takeLock touched $ do -- sorted: global lock order
     staleC <-
       foldM
         ( \acc (p, snap) -> do
@@ -1356,14 +1674,7 @@ commit ref jpath = do
         )
         []
         (M.toList (txReadBytes s))
-    staleM <-
-      foldM
-        ( \acc (p, ms) -> do
-            now <- diskMeta p
-            pure (if metaStale ms now then p : acc else acc)
-        )
-        []
-        (M.toList (txMetaReads s))
+    staleM <- readIORef staleMeta
     staleD <-
       foldM
         ( \acc (dir, names) -> do

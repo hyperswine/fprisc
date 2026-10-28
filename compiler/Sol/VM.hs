@@ -1056,6 +1056,11 @@ mkHal cons scriptArgs tx preempts rt =
       ("Try.ls", (1, tryLsH)),
       ("Try.stat", (1, tryStatH)),
       ("Try.exists", (1, tryExistsH)),
+      ("Try.lstat", (1, tryLstatH)),
+      ("Try.statKind", (1, tryStatKindH)),
+      ("Try.walk", (4, tryWalkH)),
+      ("Try.tempDir", (1, tryTempDirH)),
+      ("Try.tempFile", (1, tryTempFileH)),
       ("NativeGit.afterCommit", (5, gitAfterCommitH)),
       ("NativeGit.query", (3, gitQueryH)),
       ("NativeGit.push", (4, gitPushH)),
@@ -1322,7 +1327,19 @@ mkHal cons scriptArgs tx preempts rt =
         (tWhy, vWhy) = conTV (fsWhyName why)
         opCon "ls" = "OpLs"
         opCon "stat" = "OpStat"
+        opCon "lstat" = "OpLstat"
+        opCon "walk" = "OpWalk"
+        opCon "tempDir" = "OpTempDir"
+        opCon "tempFile" = "OpTempFile"
+        opCon "statKind" = "OpStatKind"
         opCon _ = "OpExists"
+    kindV k = VData tK vK []
+      where
+        (tK, vK) = conTV (kNameOf k)
+        kNameOf 0 = "KFile"
+        kNameOf 1 = "KDir"
+        kNameOf 2 = "KLink"
+        kNameOf _ = "KOther"
     tryLsH [v] = withP v $ \p -> do
       r <- txLsE tx p
       pure $ case r of
@@ -1340,6 +1357,41 @@ mkHal cons scriptArgs tx preempts rt =
       r <- txExistsE tx p
       pure $ either (vErrV . fsErrV) (vOk . vBool) r
     tryExistsH _ = vmPanic "Try.exists: arity"
+    -- no-follow kind (lstat: a link is a link, however it dangles) and
+    -- followed kind (statKind)
+    tryLstatH [v] = withP v $ \p -> do
+      r <- txLstatE tx p
+      pure $ either (vErrV . fsErrV) (vOk . kindV) r
+    tryLstatH _ = vmPanic "Try.lstat: arity"
+    tryStatKindH [v] = withP v $ \p -> do
+      r <- txStatKindE tx p
+      pure $ either (vErrV . fsErrV) (vOk . kindV) r
+    tryStatKindH _ = vmPanic "Try.statKind: arity"
+    -- the bounded walker: every listing and kind it observes records the
+    -- same dependencies the individual queries make. Non-Sol writers
+    -- retain the documented observation/recheck race window.
+    tryWalkH [v, VInt d, VInt n, f] = withP v $ \p -> do
+      r <- if d < 1 || d > 4096 || n < 1 || n > 10000000
+        then pure (Left (FsErr "walk" p WhyLimit "depth must be 1..4096 and entries 1..10000000" ""))
+        else txWalkE tx p (fromIntegral d) (fromIntegral n) (isTrueV f)
+      pure $ case r of
+        Left fe -> vErrV (fsErrV fe)
+        Right es ->
+          let (tW, _) = conTV "WalkEntry"
+              (_, vW) = conTV "WalkEntry"
+              walkEntryV (p', k, dep) = VData tW vW [VStr p', kindV k, VInt (fromIntegral dep)]
+           in vOk (foldr (\x xs -> VData listT 1 [x, xs]) (VData listT 0 []) (map walkEntryV es))
+    tryWalkH _ = vmPanic "Try.walk: path depth(1..4096) entries(1..10000000) follow"
+    tryTempDirH [v] = withP v $ \p -> do
+      r <- txTempDir tx p
+      pure $ either (vErrV . fsErrV) (vOk . VStr) r
+    tryTempDirH _ = vmPanic "Try.tempDir: arity"
+    tryTempFileH [v] = withP v $ \p -> do
+      r <- txTempFile tx p
+      pure $ either (vErrV . fsErrV) (vOk . VStr) r
+    tryTempFileH _ = vmPanic "Try.tempFile: arity"
+    isTrueV (VData 1 1 []) = True
+    isTrueV _ = False
 
     hostSnapshotH [VInt limit] | limit > 0 && limit <= 1000000 = do
       result <- nativeHost (fromInteger limit)

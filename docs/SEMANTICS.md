@@ -209,16 +209,37 @@ file suffixes; a clause applies to both unless it says which.
   ignore the locks are outside any Sol guarantee between recheck and
   replay.  A script wanting content validation reads the file.
   (today)  `[test: tools/sol-fs-check.py]`
+- `.sol` followed and no-follow metadata promises are separate: `Try.lstat`
+  answers the leaf kind (including dangling links), `Try.statKind` follows;
+  neither reads contents. `isDir` validates its boolean predicate, and
+  contradictory repeated observations force retry. Metadata validates under
+  each path lock before descendant lock artifacts can change directory
+  metadata; directory stat aliases retain their referent dependency too.
+  (today)  `[test: tools/sol-fs-check.py]`
 - `.sol` fallible filesystem tier: `Try.ls`, `Try.stat`, `Try.exists`
   answer `Result` whose `Err` is one structured `FsError (op, path,
   reason, os message)`; the reason is distinguishable (`FsMissing`,
-  `FsDenied`, `FsWrongKind`, `FsLoop`, `FsOther`) and pattern-matched,
+  `FsDenied`, `FsWrongKind`, `FsLoop`, `FsEncoding`, `FsLimit`, `FsOther`) and pattern-matched,
   never parsed out of a message.  `exists` answers plain absence as
   `Ok False`; `Try.stat` carries absence as `Err` (its `Ok` is the
   size/mtime pair); an observation the OS cannot make (denied, symlink
   loop, path component not a directory) is an `Err` on every spelling.
   The panicking spellings are retained and fail with classified
   messages.  (today)  `[test: tools/sol-fs-check.py]`
+- `.sol` `Try.walk root depth entries follow` emits sorted preorder
+  `WalkEntry path kind depth` values, excluding root. Children start at depth
+  1; the depth selects traversal scope, entry overflow/invalid budgets return
+  `FsLimit`, and exact budgets succeed. No-follow refuses a link root and
+  does not descend links; explicit follow cuts ancestor cycles. Unsupported
+  raw filename encodings return `FsEncoding`, not replacement names. Listings
+  and kinds are transaction dependencies, subject to the documented non-Sol
+  race limits; results/listings are materialized, not bounded-memory streams.
+  (today)  `[test: tools/sol-fs-check.py]`
+- `.sol` `Try.tempDir`/`Try.tempFile` allocate private scratch owned by the
+  current attempt, cleaned on success, retry, failure and Ctrl-C. Durable
+  recovery fences retain scratch and report its paths. Hard crashes may leave
+  scratch for manual cleanup; temporary paths are not durable output.
+  (today)  `[test: tools/sol-fs-check.py]`
 - `sh`/`shq` are deferred commands with an honest receipt.  (today)  `[test: check-all "sol txn hygiene 2"]`
 
 ### 10. Actors and messages

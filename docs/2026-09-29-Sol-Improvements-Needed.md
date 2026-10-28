@@ -1279,3 +1279,14 @@ bytes/streams and host I/O; explicit retry policy and process pipelines;
 practical libraries; installed-runner and daily-workflow acceptance gates.
 It is proposed work. Existing deferred dataflow and recovery remain delivered;
 REPL and shell job-control work remain outside this scripting milestone.
+
+## 2026-10-29 01:04 AEDT — Daily scripting Phase 1 completion
+
+The [Phase 1 delivery record](2026-10-29-SOL-FS-PHASE1.md) completes kind/link
+inspection, bounded sorted walking, strict filename decoding, private scratch
+files/directories and their retry/failure/cancellation ownership. It also fixes
+no-follow validation, repeated-observation conflicts, pending directory/path
+composition and directory-stat conflicts caused by the runtime's own locks.
+Recovery-needed scratch is retained and reported. The plan's Phase 1 checklist
+is updated; binary/streaming I/O and copy/rename remain Phase 2. Local macOS
+checks are recorded separately from unrun Linux/hosted-CI coverage.
