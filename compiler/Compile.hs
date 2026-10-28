@@ -510,14 +510,34 @@ compileWithInterface accepted = do
           consRoot = collectCons rootHash root'
           consUnits = [(h, collectCons h uts) | (h, uts) <- units]
           consAll = M.unions (consPrelude : consRoot : map snd consUnits)
+          -- constructor stub ownership.  Each unit's Core now carries ONLY
+          -- the constructor stubs it owns and emits; the others reference the
+          -- owner's symbol through schemas/arities like any cross-unit call.
+          -- The prelude unit owns the builtin and prelude constructors when
+          -- it is emitted, else the root does; a unit owns its own types; the
+          -- root its own.  Under --arc the root is the whole program and owns
+          -- everything (docs/2026-10-19-SHARED-PRELUDE-UNIT.md).
+          preludeEmitted = not (oArc opts) && not (null preludeTops)
+          unitsEmitted = not (oArc opts)
+          allCons = M.keysSet consAll
+          preludeCons = M.keysSet consPrelude
+          unitConsOf h = maybe S.empty M.keysSet (lookup h consUnits) `S.difference` M.keysSet builtinCons
+          rootElided = (if preludeEmitted then preludeCons else S.empty)
+                       `S.union` (if unitsEmitted then S.unions [unitConsOf h | (h, _) <- units'] else S.empty)
+          rootCons = allCons `S.difference` rootElided
+          preludeElided = allCons `S.difference` preludeCons
+          unitElided h = allCons `S.difference` unitConsOf h
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
           nativeLayouts=Layouts consAll shapes
           compileSelected mode selected=either error id (selected >>= NativeCore.compileSelection mode nativeLayouts)
           prepareRegions result=either error id (Regions.prepare result)
-          selectRoot uts=selectSpecialized (M.keysSet consAll) specialized (bindNames uts)
-          compileRaw uts=prepareRegions (compileSelected PreserveCallbacks (selectRoot uts))
+          selectRoot uts=selectSpecialized rootCons specialized (bindNames uts)
+          -- The whole-program raw view (cost bounds, region context) still
+          -- carries every constructor stub: the analyzer costs constructor
+          -- calls from their bodies.
+          compileRaw uts=prepareRegions (compileSelected PreserveCallbacks (selectSpecialized allCons specialized (bindNames uts)))
           callbackMode=if Options.cgSpecialize codegen && not (oArc opts) then SpecializeCallbacks else PreserveCallbacks
-          nativeUnit unit=compileSelected PreserveCallbacks (selectUnit (M.keysSet consAll) unit)
+          nativeUnit cons unit=compileSelected PreserveCallbacks (selectUnit cons unit)
           regionContext=Regions.context (fst (measureCheck tops)) (compileRaw finalTops)
           runTurnsWith regions input=if oBuiltin opts || oArc opts || not (Options.cgReceiveTurns codegen)
             then Regions.bypass input
@@ -747,6 +767,8 @@ compileWithInterface accepted = do
               polFloatInline = (Options.cgFloatInline codegen),
               polLoopMotion = Options.cgLoopMotion codegen,
               polVectorFast = Options.cgVectorFast codegen,
+              polStringFast = Options.cgStringFast codegen,
+              polInterval = Options.cgInterval codegen,
               polRegisters = registerBudget (if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts)) }
           -- direct backends: the AArch64 hart read follows the
           -- target runtime ABI (x28 under fpr build, the TLV cell on a64mac
@@ -851,23 +873,6 @@ compileWithInterface accepted = do
           checkedCallbackTargets=typedRegionNames `S.union` S.fromList [name | (_,Linked.SymbolOwner _ definition)<-M.toList (Linked.linkedSymbols linked),
             name<-case definition of Linked.SourceDefinition n _ _->[n];Linked.PrivateDefinition _ (TCore.CodeId n) _->[n];_->[]]
           typedRegionNames=S.unions [M.keysSet (TypedRegions.programFunctions p) | p<-M.elems typedRegionPrograms]
-          -- constructor stub ownership.  Every unit's Core holds a stub per
-          -- constructor of the program (compileTop's conGlobals: the inliner
-          -- and `known` need them); the SYMBOL is defined once, by the owner,
-          -- and elided from every other unit's emission.  The prelude unit
-          -- owns the builtin and prelude constructors when it is emitted,
-          -- else the root does; a unit owns its own types; the root its own.
-          -- Under --arc nothing is elided (the root is the whole program).
-          preludeEmitted = not (oArc opts) && not (null preludeTops)
-          unitsEmitted = not (oArc opts)
-          allCons = M.keysSet consAll
-          preludeCons = M.keysSet consPrelude
-          unitConsOf h = maybe S.empty M.keysSet (lookup h consUnits) `S.difference` M.keysSet builtinCons
-          rootElided = (if preludeEmitted then preludeCons else S.empty)
-                       `S.union` (if unitsEmitted then S.unions [unitConsOf h | (h, _) <- units'] else S.empty)
-          rootCons = allCons `S.difference` rootElided
-          preludeElided = allCons `S.difference` preludeCons
-          unitElided h = allCons `S.difference` unitConsOf h
           rootNames = S.fromList ([fst3 b | b@(TBind {}) <- root'])
           rootLoweredNames = bindNames root''
           unitNames = S.fromList (concat [[fst3 b | b@(TBind {}) <- uts] | (_, uts) <- units'])
@@ -883,9 +888,9 @@ compileWithInterface accepted = do
               (if oArc opts then M.keysSet (NativeCore.nativeProgram rootNative) else bindNames root'' `S.union` rootCons)
               (if oArc opts then S.empty else rootElided) rootNative
             : [Linked.artifact (Linked.PreludeArtifact preludeHash) (bindNames preludeE' `S.union` preludeCons)
-                preludeElided (nativeUnit preludeChecked) | preludeEmitted]
+                preludeElided (nativeUnit preludeCons preludeChecked) | preludeEmitted]
             ++ [Linked.artifact (Linked.DependencyArtifact h) (bindNames uts `S.union` unitConsOf h)
-                (unitElided h) (nativeUnit unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
+                (unitElided h) (nativeUnit (unitConsOf h) unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
           linkedResult=do
             base<-sequence artifactResults >>= Linked.linkArtifacts
             original<-checkedStage "callback specialization before inlining" (Linked.specializeLinkedWithDecisions (remarkMode/=Remark.Off) callbackMode base)
@@ -936,6 +941,17 @@ compileWithInterface accepted = do
             ("apply " ++ label ++ ": dispatch=" ++ show (length [() | l <- lines asm, "fpr_apply" `List.isInfixOf` l, any (`List.isInfixOf` l) ["call ", "bl "]])
              ++ " known-partial=" ++ show (length [() | l <- lines asm, "# pap-create:" `List.isPrefixOf` l])
              ++ " static-descriptors=" ++ show (length [() | l <- lines asm, "# static-pap:" `List.isPrefixOf` l]))
+          -- Codegen reads constructor layouts from the erased stub bodies in
+          -- its context (a nullary constructor becomes an immortal object, a
+          -- saturated call takes its physical arity).  The typed pipeline no
+          -- longer duplicates foreign stubs into every artifact
+          -- (docs/2026-10-27-COMPILE-SPEED.md 2.3); emission materializes the
+          -- erased forms from the shared constructor authority instead, and
+          -- `elide` keeps non-owned stubs out of the emitted text.
+          erasedConstructorStubs prog=M.fromList
+            [ (name, if arity==0 then ([],CMk tid var []) else (params,CMk tid var (map CVar params)))
+            | (name,(tid,var,arity))<-M.toList consAll, M.notMember name prog
+            , let params=["x"++show i | i<-[1..arity]] ]
           emitUnit pathBase ext artifact = do
             let placed=artifactRegions (Linked.artifactId artifact)
                 exps=Linked.artifactExports artifact
@@ -951,7 +967,7 @@ compileWithInterface accepted = do
                 pure (path, "cached")
               else do
                 prog <- own (mono (takeFileName path) M.empty unitProgram)
-                prepared<-ready M.empty (Linked.artifactId artifact) exps prog
+                prepared<-ready M.empty (Linked.artifactId artifact) exps (prog `M.union` erasedConstructorStubs prog)
                 -- FORCE before the write: an `error` raised while the
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
@@ -1060,7 +1076,7 @@ compileWithInterface accepted = do
       let borrowed=M.restrictKeys importedSym importedPrivateNames
       rootProg <- ownWith borrowed (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
       rootReady<-ready borrowed Linked.RootArtifact
-        (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact)) rootProg
+        (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact)) (rootProg `M.union` erasedConstructorStubs rootProg)
       let rootEmission = emitCheckedProgramWithImports (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) linkedTgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
                                      (NativeImports.readySymbols rootReady)
                                      (Linked.artifactElided (artifactOf Linked.RootArtifact)) (NativeImports.readyProgram rootReady)

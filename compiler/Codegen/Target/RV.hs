@@ -199,6 +199,7 @@ select cfg fn = do
         offset <- fresh
         ri R.ShiftLeftImmediate offset (vreg i) (if cfgWidth cfg == W32 then 2 else 3)
         rr R.Add d (vreg a) offset
+      OIndexByte a i -> rr R.Add d (vreg a) (vreg i)
       OLoad _ a n -> loadAt ld d (vreg a) (fromIntegral n)
       OLoadByte a n -> loadAt R.LoadByte d (vreg a) (fromIntegral n)
       OStore {} -> lift (Left "compiler error: a store has a result")
@@ -282,6 +283,15 @@ select cfg fn = do
         li d 0 -- unreachable after a noreturn trap
         mark done
       OArith op a b -> do
+        x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
+        call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [x,y] (Just t) False
+        ri R.ShiftRightArithmeticImmediate d t 1
+      -- the difference-bound proof removed the overflow check: a plain
+      -- instruction where the checked form keeps the C primitive; Mul/Div
+      -- keep the call (the pass produces only Add/Sub)
+      OArithU Add a b -> rr R.Add d (vreg a) (vreg b)
+      OArithU Sub a b -> rr R.Subtract d (vreg a) (vreg b)
+      OArithU op a b -> do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
         call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [x,y] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 1

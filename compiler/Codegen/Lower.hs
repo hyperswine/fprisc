@@ -19,6 +19,7 @@ import Codegen.IR
 import Core.Primitives (entryTickName)
 import Codegen.Policy
 import qualified Codegen.VectorRead as ScalarVector
+import qualified Codegen.StringRead as StringRead
 import qualified Core.VectorRead as VectorRead
 import Codegen.Target.Common (mangleName, functionSymbol)
 import Control.Monad (when)
@@ -552,15 +553,31 @@ lowerVal cx env = \case
           y <- lowerVal cx env b >>= asVal
           p <- emit TPred (OFloat32Cmp o x y)
           pure (p, TPred)
-      | isPrim cx env h, h == "strlen", [a] <- args, Just (Prim 1 _ _) <- M.lookup h (cxHal cx) -> do
+      | isPrim cx env h, h == "strlen", [a] <- args, Just (Prim 1 (Just sym) _) <- M.lookup h (cxHal cx) -> do
           str <- lowerVal cx env a >>= asVal
-          v <- emit TInt (OStrLen str)
-          pure (v, TInt)
-      | isPrim cx env h, h == "charAt", [a, b] <- args, Just (Prim 2 _ _) <- M.lookup h (cxHal cx) -> do
+          -- strlen is refused by calleeOf (it is in foreignName's inlined
+          -- list): the convention comes from the HAL declaration directly.
+          let c = Callee h (Foreign sym) [TVal] TVal
+          case StringRead.planLength (cxPolicy cx) c str of
+            Just plan -> do
+              let builder = ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 open close
+              result <- StringRead.lowerRead builder plan
+              pure (result, TInt)
+            Nothing -> do
+              v <- emit TInt (OStrLen str)
+              pure (v, TInt)
+      | isPrim cx env h, h == "charAt", [a, b] <- args, Just (Prim 2 (Just sym) _) <- M.lookup h (cxHal cx) -> do
           str <- lowerVal cx env a >>= asVal
           index <- lowerVal cx env b >>= asInt
-          v <- emit TInt (OCharAt str index)
-          pure (v, TInt)
+          let c = Callee h (Foreign sym) [TVal, TVal] TVal
+          case StringRead.planElement (cxPolicy cx) c str index of
+            Just plan -> do
+              let builder = ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 open close
+              result <- StringRead.lowerRead builder plan
+              pure (result, TInt)
+            Nothing -> do
+              v <- emit TInt (OCharAt str index)
+              pure (v, TInt)
       -- the raw forms of the scalar workers
       | isPrim cx env h, h == scalarPrefix ++ "unbox", [a] <- args -> lowerVal cx env a >>= asInt >>= \v -> pure (v, TInt)
       | isPrim cx env h, h == scalarPrefix ++ "box", [a] <- args -> lowerVal cx env a >>= asVal >>= \v -> pure (v, TVal)

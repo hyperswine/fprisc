@@ -1,0 +1,55 @@
+{
+ "what": "Performance plan step 8 measure-first: hand-removed fuel tick in a pure counting loop (docs/2026-10-27-STEPS-6-8-REMAINING.md section 8)",
+ "date": "2026-10-27",
+ "host": "Darwin-arm64-macm4",
+ "compiler": "7d8d283",
+ "codegen_revision": 135,
+ "program": "200,000,000-iteration self tail-call countdown, two Int ops + compare per iteration, no allocation",
+ "source_sha256": "0c4bc8fbf6dc4d502cc02a8f93c01f40c1af18878367bfca3d938e2dc5164f8f",
+ "source": "# tick bound probe: a pure counting loop, no allocation, no calls in the body\nsumTo : unsafe Int -> Int -> Int .\nsumTo i acc = if i == 0 then acc else sumTo (i - 1) (acc + i).\nmain = print \"countdown = {sumTo 200000000 0}\".\n",
+ "method": "build's kept root .s edited by hand; tickonly keeps `mov x9, x28` (hart read) and drops the fuel-cell ops; notick drops both. Same runtime objects, cc flags and prelude unit as `fpr build`. 7 alternating triples after warmup, medians; fastest alongside.",
+ "seconds": {
+  "ref": [
+   0.2721,
+   0.298,
+   0.4175,
+   0.3642,
+   0.3133,
+   0.2814,
+   0.2853
+  ],
+  "tickonly": [
+   0.2029,
+   0.2235,
+   0.3855,
+   0.3055,
+   0.2626,
+   0.2441,
+   0.2041
+  ],
+  "notick": [
+   0.2112,
+   0.2137,
+   0.2325,
+   0.2433,
+   0.2502,
+   0.2118,
+   0.2084
+  ]
+ },
+ "median_s": {
+  "ref": 0.298,
+  "tickonly": 0.2441,
+  "notick": 0.2137
+ },
+ "min_s": {
+  "ref": 0.2721,
+  "tickonly": 0.2029,
+  "notick": 0.2084
+ },
+ "speedup_median": {
+  "tick_ops_only": 1.221,
+  "full_removal": 1.394
+ },
+ "note": "upper bound: the loop body is 6 instructions, so the tick is a large share; loops with real work see proportionally less. The build config reads the hart as `mov x9, x28`; the TLV call seen in `fpr compile --target=a64mac` output is a different hart contract and was not measured."
+}

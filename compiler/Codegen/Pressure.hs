@@ -44,7 +44,7 @@ clobbersRegisters :: Bool -> Op -> Bool
 clobbersRegisters inlineFloats = \case
   OConstInt {} -> False; OHartCell {} -> False; ORegionRoom {} -> False
   ONullary {} -> False; OString {} -> False; OBoxedFloat {} -> False
-  OAddress {} -> False; OIndex {} -> False; OLoad {} -> False; OLoadByte {} -> False
+  OAddress {} -> False; OIndex {} -> False; OIndexByte {} -> False; OLoad {} -> False; OLoadByte {} -> False
   OStore {} -> False; OField {} -> False; OTag {} -> False; OUntag {} -> False
   OBoolOf {} -> False; OTruth {} -> False; ONot {} -> False; OIsInt {} -> False
   OTagTest {} -> False; OSymbol {} -> False; OFunValue {} -> False
@@ -54,7 +54,7 @@ clobbersRegisters inlineFloats = \case
   OFloatTree {} -> not inlineFloats; OFloatCmpTree {} -> not inlineFloats
   OFloat32Bin {} -> not inlineFloats; OFloat32Cmp {} -> not inlineFloats
   OFloat32Tree {} -> not inlineFloats; OFloat32CmpTree {} -> not inlineFloats
-  OSafepoint -> False; OSafepointN {} -> False; OKernelArith {} -> False
+  OSafepoint -> False; OSafepointN {} -> False; OKernelArith {} -> False; OArithU {} -> False
   _ -> True
 
 floatOp :: Op -> Bool

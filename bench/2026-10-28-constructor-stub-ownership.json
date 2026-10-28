@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-28",
+  "topic": "constructor stubs owned by one artifact instead of duplicated into all (compile-speed doc 2.3)",
+  "machine": "aarch64-apple-darwin, ghc-9.8.2, load 3.2-4.1 during pairs",
+  "program": "qos/programs/main.fpr --target=qa64 (38 imported units + prelude + root, 2323 exports)",
+  "old": "fpr before the change (build/constub/fpr-old, codegenRev 137)",
+  "new": "fpr with per-owner constructor stubs (codegenRev 137, emission unchanged)",
+  "cold": {
+    "note": "unit cache cleared; paired single runs, ABBA order A-cold B-cold",
+    "old": {"mut_s": 29.117, "gc_s": 3.213, "cpu_s": 32.330, "alloc_gb": 60.224, "max_residency_mb": 732.7},
+    "new": {"mut_s": 23.571, "gc_s": 2.841, "cpu_s": 26.412, "alloc_gb": 51.332, "max_residency_mb": 581.7},
+    "cpu_ratio": 1.224,
+    "alloc_ratio": 0.852,
+    "residency_ratio": 0.794
+  },
+  "warm": {
+    "note": "all 38 units (cached) for the binary under test; two ABBA pairs",
+    "pair1": {
+      "old": {"mut_s": 18.403, "gc_s": 1.565, "cpu_s": 19.968},
+      "new": {"mut_s": 15.816, "gc_s": 1.477, "cpu_s": 17.293}
+    },
+    "pair2": {
+      "old": {"mut_s": 19.059, "gc_s": 1.613, "cpu_s": 20.672, "alloc_gb": 44.046, "max_residency_mb": 317.8},
+      "new": {"mut_s": 15.868, "gc_s": 1.475, "cpu_s": 17.343, "alloc_gb": 36.491, "max_residency_mb": 312.3}
+    },
+    "cpu_ratio_range": [1.155, 1.192],
+    "alloc_ratio": 0.829
+  },
+  "compile_budget": {
+    "note": "tests/check_compile_budget.py vs its recorded baseline; baseline re-recorded",
+    "std_live": {"alloc_change": "-19.7%", "peak_live_change": "-33.2%"},
+    "pos1": {"alloc_change": "-21.3%", "peak_live_change": "-70.5%"}
+  },
+  "correctness": {
+    "pos1_root_s": "byte-identical old vs new",
+    "pos1_units": "49/49 paired units byte-identical; 10 identity-stable units regenerated and byte-identical",
+    "qos_root_s": "byte-identical old vs new",
+    "qos_units": "45/45 paired units byte-identical, 0 differing, 4 identity-stable singletons",
+    "unit_tests": "PASS",
+    "check_base": "149 jobs PASS",
+    "check_compile_budget": "within budget, new baseline recorded"
+  }
+}

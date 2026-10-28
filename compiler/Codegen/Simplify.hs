@@ -29,21 +29,22 @@
 module Codegen.Simplify (Options(..),defaultOptions,policyOptions,simplifyFn,simplifyProgram,simplifyFnWith,simplifyProgramWith,passes) where
 
 import Codegen.IR
+import Codegen.Interval (discharge)
 import Codegen.LoopOptimize (moveInvariants)
-import Codegen.Policy (Policy (..), RegisterBudget)
+import Codegen.Policy (Policy (..), RegisterBudget, policyWidth)
 import Codegen.Verify (verifyFn)
 import Codegen.Dump (dumpFn)
 import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data Options=Options { moveLoopInvariants :: Bool, registerBudget :: Maybe RegisterBudget, inlineFloats :: Bool } deriving (Eq,Show)
+data Options=Options { moveLoopInvariants :: Bool, registerBudget :: Maybe RegisterBudget, inlineFloats :: Bool, intervalWidth :: Maybe Width } deriving (Eq,Show)
 defaultOptions :: Options
-defaultOptions=Options False Nothing True
+defaultOptions=Options False Nothing True Nothing
 
 -- the options a policy states
 policyOptions :: Policy -> Options
-policyOptions p=Options (polLoopMotion p) (polRegisters p) (polFloatInline p)
+policyOptions p=Options (polLoopMotion p) (polRegisters p) (polFloatInline p) (if polInterval p then Just (policyWidth p) else Nothing)
 
 -- the passes in order, by name
 passes :: [(String, Fn -> Fn)]
@@ -55,6 +56,7 @@ passesWith options=
     ("branch-on-comparison", dropDeadPure . threadBooleanJoins),
     ("share-pure-in-block", dropDeadPure . sharePureInBlock)
   ] ++ [("move-loop-invariants",dropDeadPure . moveInvariants (registerBudget options) (inlineFloats options)) | moveLoopInvariants options]
+    ++ [("discharge-proven-checks", dropDeadPure . discharge width) | Just width <- [intervalWidth options]]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
 
 -- the simplified function and the number of instructions it lost

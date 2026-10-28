@@ -1,0 +1,79 @@
+{
+ "host": "Darwin-arm64-macm4",
+ "loadavg": 7.25390625,
+ "runs": 7,
+ "results": {
+  "byteloop": {
+   "off_ms": 123.0,
+   "on_ms": 126.4,
+   "ratio": 0.973,
+   "off_min_ms": 121.0,
+   "on_min_ms": 116.6
+  },
+  "fib": {
+   "off_ms": 65.9,
+   "on_ms": 67.3,
+   "ratio": 0.98,
+   "off_min_ms": 60.1,
+   "on_min_ms": 59.0
+  },
+  "floatcmp": {
+   "off_ms": 65.3,
+   "on_ms": 66.9,
+   "ratio": 0.977,
+   "off_min_ms": 61.2,
+   "on_min_ms": 62.6
+  },
+  "helpers": {
+   "off_ms": 118.3,
+   "on_ms": 124.2,
+   "ratio": 0.952,
+   "off_min_ms": 108.2,
+   "on_min_ms": 111.1
+  },
+  "mixed_locals": {
+   "off_ms": 12.2,
+   "on_ms": 12.8,
+   "ratio": 0.949,
+   "off_min_ms": 9.3,
+   "on_min_ms": 9.9
+  },
+  "nbody": {
+   "off_ms": 290.4,
+   "on_ms": 292.8,
+   "ratio": 0.992,
+   "off_min_ms": 283.5,
+   "on_min_ms": 279.3
+  },
+  "sha": {
+   "off_ms": 109.7,
+   "on_ms": 105.7,
+   "ratio": 1.038,
+   "off_min_ms": 103.5,
+   "on_min_ms": 101.5
+  },
+  "specialization": {
+   "off_ms": 14.4,
+   "on_ms": 12.8,
+   "ratio": 1.127,
+   "off_min_ms": 11.5,
+   "on_min_ms": 11.1
+  },
+  "strbuild": {
+   "off_ms": 127.1,
+   "on_ms": 132.9,
+   "ratio": 0.957,
+   "off_min_ms": 123.2,
+   "on_min_ms": 124.4
+  },
+  "vecread": {
+   "off_ms": 291.2,
+   "on_ms": 316.3,
+   "ratio": 0.92,
+   "off_min_ms": 273.9,
+   "on_min_ms": 229.3
+  }
+ },
+ "loadavg_end": 10.6943359375,
+ "note": "loop motion on/off emitted byte-identical root and prelude unit assembly on the whole bench suite (codegen 131+ pressure gate); timings under load 7 are noise (floatcmp flipped 0.890 -> 0.977 between paired rounds). Hot self-tail-call loops are formed in Codegen.Allocate.loopForm below the IR, so LoopOptimize sees loops=0 on them. Motion stays opt-in (FPR_TYPED_IR_LOOP_MOTION=1)."
+}

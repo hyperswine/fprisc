@@ -73,8 +73,8 @@ main=do
                   (2,TBr (b 3) []),(3,TBr (b 3) [])]
   check "multiple entry edges do not invent a preheader" (case naturalLoops noPre (analyze noPre) of [l]->loopPreheader l==Nothing;_->False)
   check "no preheader means no motion" (moveInvariants Nothing True noPre==noPre)
-  let Right (off,_)=simplifyFnWith (Options False Nothing True) program loop
-      Right (on,_)=simplifyFnWith (Options True Nothing True) program loop
+  let Right (off,_)=simplifyFnWith (Options False Nothing True Nothing) program loop
+      Right (on,_)=simplifyFnWith (Options True Nothing True Nothing) program loop
   check "independent option preserves an on/off distinction" (OUntag (v 1) `notElem` ops off 0 && OUntag (v 1) `elem` ops on 0)
   -- A constant read by an instruction left in the loop stays there: it
   -- costs a register for the whole loop to save a free instruction.

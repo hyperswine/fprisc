@@ -178,6 +178,7 @@ data Op
   | OReuse Int Int VId [VId] -- overwrite the fields of a constructor the program owns uniquely (Reuse.reuseFresh proved it), answer it; every field is evaluated before the first store
   | OAddress VId -- TVal -> TAddr; internal lowering, after the object/representation guard
   | OIndex VId VId -- TAddr, TInt -> TAddr; address + index * target word bytes
+  | OIndexByte VId VId -- TAddr, TInt -> TAddr; address + index, for byte-addressed data (String bytes)
   | OLoad Ty VId Int -- word load at a byte offset: TInt, TVal or TAddr; mutable memory, never CSE
   | OLoadByte VId Int -- zero-extended byte -> TInt (column kind descriptor)
   | OStore Ty VId Int VId -- word store, same representation as OLoad; uniquely owned vector
@@ -196,6 +197,7 @@ data Op
   | OApply VId [VId] -- TVal, TVal.. -> TVal: the generic application through the runtime (fpr_applyN): partial, over-saturated, or of a computed head; allocates PAPs in the runtime, calls anything
   | OKernelArith ArithOp VId VId -- checked TInt arithmetic with the vector-kernel overflow/zero diagnostics
   | OArith ArithOp VId VId -- TInt TInt -> TInt; traps in program order with the primitive's message
+  | OArithU ArithOp VId VId -- TInt TInt -> TInt, no overflow check: a difference-bound proof (Codegen.Interval) showed the result always fits; only Add/Sub are produced
   | OBit BitOp VId VId -- TInt TInt -> TInt: and, or, xor of the untagged values
   | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
   | OCmp CmpOp VId VId -- TInt TInt -> TPred
@@ -278,6 +280,7 @@ opEffect = \case
   OReuse _ _ _ _ -> Writes
   OAddress _ -> Pure
   OIndex _ _ -> Pure
+  OIndexByte _ _ -> Pure
   OLoad _ _ _ -> Reads
   OLoadByte _ _ -> Reads
   OStore _ _ _ _ -> Writes
@@ -296,6 +299,7 @@ opEffect = \case
   OApply _ _ -> AnyEffect
   OKernelArith _ _ _ -> MayTrap
   OArith _ _ _ -> MayTrap
+  OArithU o _ _ -> if o == Div then MayTrap else Pure -- a zero divisor still traps; the proof removes only the fit check
   OBit _ _ _ -> Pure
   OShift _ _ _ -> MayTrap
   OCmp _ _ _ -> Pure
@@ -332,6 +336,7 @@ opUses = \case
   OReuse _ _ r fs -> r : fs
   OAddress v -> [v]
   OIndex a i -> [a,i]
+  OIndexByte a i -> [a,i]
   OLoad _ a _ -> [a]
   OLoadByte a _ -> [a]
   OStore _ a _ v -> [a,v]
@@ -350,6 +355,7 @@ opUses = \case
   OApply f as -> f : as
   OKernelArith _ a b -> [a,b]
   OArith _ a b -> [a, b]
+  OArithU _ a b -> [a, b]
   OBit _ a b -> [a, b]
   OShift _ a b -> [a, b]
   OCmp _ a b -> [a, b]
@@ -394,6 +400,7 @@ mapOpUses f = \case
   OReuse t v r fs -> OReuse t v (f r) (map f fs)
   OAddress v -> OAddress (f v)
   OIndex a i -> OIndex (f a) (f i)
+  OIndexByte a i -> OIndexByte (f a) (f i)
   OLoad t a n -> OLoad t (f a) n
   OLoadByte a n -> OLoadByte (f a) n
   OStore t a n v -> OStore t (f a) n (f v)
@@ -412,6 +419,7 @@ mapOpUses f = \case
   OApply h as -> OApply (f h) (map f as)
   OKernelArith o a b -> OKernelArith o (f a) (f b)
   OArith o a b -> OArith o (f a) (f b)
+  OArithU o a b -> OArithU o (f a) (f b)
   OBit o a b -> OBit o (f a) (f b)
   OShift o a b -> OShift o (f a) (f b)
   OCmp o a b -> OCmp o (f a) (f b)

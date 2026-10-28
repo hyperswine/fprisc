@@ -800,6 +800,11 @@ typedef struct {
   int released;      /* a movevec copy copied some Vector (not moved): the old
                       * state's Vectors are released after the copy */
   fpr_slab_t *retain; /* state append: old nodes in this ONE slab stay by identity */
+  char *end;         /* set: the copy may not write past here (a packing
+                      * slab's end); a cell that would overflow sets the flag
+                      * and is not written, so the caller can discard the
+                      * uncommitted partial copy and take the sizing path */
+  int overflow;
 } dctx_t;
 /* a Vector that may cross a turn boundary by handle: its header is in this
  * actor's base pool (so every piece is, vec.c allocates bulk there and a
@@ -1014,6 +1019,7 @@ static V dc_dup(V v, dctx_t *c); /* fwd */
 
 static V dc_cell(V v, dctx_t *c, uw total) {
   char *p = c->hp;
+  if (c->end && p + total > c->end) { c->overflow = 1; return 0; }
   c->hp += total;
   *(uw *)p = total;
   *(fpr_slab_t **)(p + 8) = c->sl; /* interior promotes pin THIS slab */
@@ -1026,6 +1032,7 @@ static V dc_cell(V v, dctx_t *c, uw total) {
 static V dc_bump(dctx_t *c, uw raw) {
   uw total = dc_cellsz(raw);
   char *p = c->hp;
+  if (c->end && p + total > c->end) { c->overflow = 1; return 0; }
   c->hp += total;
   *(uw *)p = total;
   *(fpr_slab_t **)(p + 8) = c->sl;
@@ -1044,8 +1051,12 @@ static V dc_dup(V v, dctx_t *c) {
     if (!pid) return v;
     uw raw = img_static_raw(v, pid);
     V n = dc_bump(c, raw);
+    if (c->overflow) return 0;
     __builtin_memcpy((char *)n, (char *)v, raw);
-    if (TID(v) == T_RESULT) *(V *)((char *)n + 8) = dc_dup(*(V *)((char *)v + 8), c);
+    if (TID(v) == T_RESULT) {
+      *(V *)((char *)n + 8) = dc_dup(*(V *)((char *)v + 8), c);
+      if (c->overflow) return 0;
+    }
     return n;
   }
   if (c && dc_retained(v, c->retain)) return v;
@@ -1063,6 +1074,7 @@ static V dc_dup(V v, dctx_t *c) {
        * "freed" as a no-op and dies with the slab at root drop. */
       vec_t *x = (vec_t *)v;
       vec_t *n = (vec_t *)dc_bump(c, sizeof(vec_t));
+      if (c->overflow) return 0;
       n->tid = T_VEC;
       n->var = x->var;
       n->len = x->len; n->eltid = x->eltid; n->elvar = x->elvar;
@@ -1070,28 +1082,35 @@ static V dc_dup(V v, dctx_t *c) {
       n->shape_len=x->shape_len; n->shape=0;
       if (x->shape_len) {
         n->shape=(vec_shape_t *)dc_bump(c,x->shape_len*sizeof(vec_shape_t));
+        if (c->overflow) return 0;
         __builtin_memcpy(n->shape,x->shape,x->shape_len*sizeof(vec_shape_t));
       }
       if (x->ncols) {
         n->cols = (col_t **)dc_bump(c, x->ncols * sizeof(col_t *));
+        if (c->overflow) return 0;
         n->kinds = (uint8_t *)dc_bump(c, VKINDS_BYTES(x->ncols));
+        if (c->overflow) return 0;
         for (uw k = 0; k < VKINDS_BYTES(x->ncols); k++) n->kinds[k] = k < x->ncols ? x->kinds[k] : 0;
         for (uw k = 0; k < x->ncols; k++) n->cols[k] = 0;
       }
       for (uw k = 0; k < x->ncols; k++) {
         if (!x->cols[k]) continue;
         col_t *nc = (col_t *)dc_bump(c, sizeof(col_t));
+        if (c->overflow) return 0;
         nc->cap = 0;
         nc->base = 0;
         if (x->len) {
           nc->base = (uw *)dc_bump(c, x->len * sizeof(uw));
+          if (c->overflow) return 0;
           nc->cap = x->len;
           if (VK_RAW(x->kinds[k]))
             __builtin_memcpy(nc->base, x->cols[k]->base,
                              x->len * sizeof(uw));
           else /* boxed column: elements are Vs, copy them too */
-            for (uw i = 0; i < x->len; i++)
+            for (uw i = 0; i < x->len; i++) {
               nc->base[i] = (uw)dc_dup((V)x->cols[k]->base[i], c);
+              if (c->overflow) return 0;
+            }
         }
         n->cols[k] = nc;
       }
@@ -1102,8 +1121,12 @@ static V dc_dup(V v, dctx_t *c) {
       return dc_cell(v, c, total);
     case T_PAP: {
       V n = dc_cell(v, c, total);
+      if (c->overflow) return 0;
       pap_t *p = (pap_t *)n;
-      for (uw i = 0; i < p->nargs; i++) p->args[i] = (uw)dc_dup((V)p->args[i], c);
+      for (uw i = 0; i < p->nargs; i++) {
+        p->args[i] = (uw)dc_dup((V)p->args[i], c);
+        if (c->overflow) return 0;
+      }
       return n;
     }
     case T_LIST: {
@@ -1113,8 +1136,10 @@ static V dc_dup(V v, dctx_t *c) {
       while (!ISINT(cur) && fpr_in_heap(cur) && TID(cur) == T_LIST &&
              ((hdr_t *)cur)->var == 1 && !(c && dc_retained(cur, c->retain))) {
         V n = dc_cell(cur, c, *(uw *)((char *)cur - 16));
+        if (c->overflow) return 0;
         *patch = n;
         *(V *)((char *)n + 8) = dc_dup(*(V *)((char *)cur + 8), c);
+        if (c->overflow) return 0;
         patch = (V *)((char *)n + 8 + sizeof(uw));
         cur = *(V *)((char *)cur + 8 + sizeof(uw));
       }
@@ -1124,8 +1149,12 @@ static V dc_dup(V v, dctx_t *c) {
     default: {
       uw nf = (total - 16 - 8) / sizeof(uw);
       V n = dc_cell(v, c, total);
+      if (c->overflow) return 0;
       V *f = (V *)((char *)n + 8);
-      for (uw i = 0; i < nf; i++) f[i] = dc_dup(f[i], c);
+      for (uw i = 0; i < nf; i++) {
+        f[i] = dc_dup(f[i], c);
+        if (c->overflow) return 0;
+      }
       return n;
     }
   }
@@ -1216,41 +1245,98 @@ void fpr_slabs_unhold(fpr_slab_t **sls, uw n) {
   for (uw i = 0; i < n; i++) slab_unhold_locked(sls[i]);
   fpr_unlock(&arc_lock);
 }
+static void slab_free_ownerless(fpr_slab_t *sl); /* fwd: defined by the state copies */
 static V msg_copy_held_in(V v, int fresh, uw pid, fpr_slab_t **hold) {
-  if (fpr_hart()) fpr_hart()->copy_pid = pid;
-  uw need = dc_size(v);
-  FPR_COST_ADD(fpr_hart(), cost_copies, 1);
-  FPR_COST_ADD(fpr_hart(), cost_copy_bytes, need);
-  if (!need) return dc_dup(v, 0); /* ints, statics, bare actor handles */
   fpr_hart_t *h = fpr_hart();
+  if (h) h->copy_pid = pid;
+  if (ISINT(v) || !v) { /* ints and nil: nothing to copy, no slab */
+    FPR_COST_ADD(h, cost_copies, 1);
+    return v;
+  }
+  if (!fpr_in_heap(v)) { /* statics and bare actor handles: an image lookup */
+    uw need = dc_size(v);
+    FPR_COST_ADD(h, cost_copies, 1);
+    FPR_COST_ADD(h, cost_copy_bytes, need);
+    if (!need) return dc_dup(v, 0);
+    /* a foreign static, or a Result whose payload is on the heap: copy below */
+  }
   fpr_slab_t **slot = (!fresh && h && h->current) ? fpr_acb_msg_slot(h->current) : 0;
   fpr_slab_t *sl = slot ? *slot : 0;
-  if (sl && sl->hp + need > sl->end) { /* full: the sender's hold ends */
+  /* One pass: copy straight into the packing slab with its end as the
+   * limit, commit the bump pointer on success.  The exact size walk
+   * (dc_size) remains only for the overflow fallbacks below.  The
+   * uncommitted bytes of a failed copy are never published; the next
+   * copy overwrites them. */
+  if (sl) {
+    dctx_t c = {.hp=sl->hp, .sl=sl, .end=sl->end};
+    V r = dc_dup(v, &c);
+    if (!c.overflow) {
+      uw need = c.hp - sl->hp;
+      FPR_COST_ADD(h, cost_copies, 1);
+      FPR_COST_ADD(h, cost_copy_bytes, need);
+      sl->hp = c.hp;
+      if (need && hold) {
+        fpr_lock(&arc_lock);
+        sl->holds++;
+        fpr_unlock(&arc_lock);
+        *hold = sl;
+      }
+      return r;
+    }
+    /* full: the sender's hold ends */
     *slot = 0;
     fpr_slab_unhold(sl, 0);
     sl = 0;
   }
-  if (!sl) {
-    sl = msg_slab_new(need);
-    FPR_COST_ADD(h, cost_msg_slabs, 1);
-    if (slot && need + sizeof(fpr_slab_t) <= MSG_SLAB_SZ) {
-      sl->holds = 1; /* the sender keeps packing into it */
-      *slot = sl;
-    }
-  }
-  if (hold) {
-    fpr_lock(&arc_lock);
-    sl->holds++;
-    fpr_unlock(&arc_lock);
-    *hold = sl;
-  }
+  /* No packing slab: a fresh floor slab, again one pass. */
+  sl = msg_slab_new(MSG_SLAB_SZ - sizeof(fpr_slab_t));
+  FPR_COST_ADD(fpr_hart(), cost_msg_slabs, 1);
   /* Allocation above can park; another actor on this hart can change it. */
   h = fpr_hart(); /* the sender may also have migrated while parked */
   if (h) h->copy_pid = pid;
-  dctx_t c = {sl->hp, sl};
-  V r = dc_dup(v, &c);
-  sl->hp = c.hp;
-  return r;
+  {
+    dctx_t c = {.hp=sl->hp, .sl=sl, .end=sl->end};
+    V r = dc_dup(v, &c);
+    if (!c.overflow) {
+      uw need = c.hp - sl->hp;
+      FPR_COST_ADD(h, cost_copies, 1);
+      FPR_COST_ADD(h, cost_copy_bytes, need);
+      sl->hp = c.hp;
+      if (!need) { slab_free_ownerless(sl); return r; } /* unreachable today: heap graphs copy at least one cell */
+      if (slot && need + sizeof(fpr_slab_t) <= MSG_SLAB_SZ) {
+        sl->holds = 1; /* the sender keeps packing into it */
+        *slot = sl;
+      }
+      if (hold) {
+        fpr_lock(&arc_lock);
+        sl->holds++;
+        fpr_unlock(&arc_lock);
+        *hold = sl;
+      }
+      return r;
+    }
+  }
+  /* Bigger than a floor slab: the exact two-pass path, a slab of its own. */
+  slab_free_ownerless(sl);
+  {
+    uw need = dc_size(v);
+    FPR_COST_ADD(fpr_hart(), cost_copies, 1);
+    FPR_COST_ADD(fpr_hart(), cost_copy_bytes, need);
+    sl = msg_slab_new(need);
+    FPR_COST_ADD(fpr_hart(), cost_msg_slabs, 1);
+    h = fpr_hart();
+    if (h) h->copy_pid = pid;
+    dctx_t c = {sl->hp, sl};
+    V r = dc_dup(v, &c);
+    sl->hp = c.hp;
+    if (hold) {
+      fpr_lock(&arc_lock);
+      sl->holds++;
+      fpr_unlock(&arc_lock);
+      *hold = sl;
+    }
+    return r;
+  }
 }
 static V msg_copy_in(V v, int fresh, uw pid) { return msg_copy_held_in(v, fresh, pid, 0); }
 /* copy v into the sender's message slab; returns the new root (or v

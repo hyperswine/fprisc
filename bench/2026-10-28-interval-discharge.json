@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-28",
+  "change": "difference-bound discharge of proven overflow checks and guards (codegen rev 137, Codegen.Interval)",
+  "control": "FPR_NO_INTERVAL=1 (the -nointerval identity flag)",
+  "machine": "macOS aarch64 (macm4), paired rounds, medians of wall time; load was high all session",
+  "byteloop_interval_only": {
+    "note": "both arms have the inline string reads; this isolates the discharge",
+    "off_median_s": 0.0816918124910444,
+    "on_median_s": 0.07158874999731779,
+    "ratio": 1.1411263989677867,
+    "n_per_arm": 80,
+    "loadavg": [4.99, 6.40, 7.29]
+  },
+  "byteloop_three_arm": {
+    "base_s": 0.10718045895919204,
+    "string_reads_s": 0.09689349983818829,
+    "string_reads_plus_interval_s": 0.08716129185631871,
+    "combined_ratio": 1.2296795593148617,
+    "n_per_arm": 25,
+    "loadavg": [11.14, 10.70, 9.07]
+  },
+  "sha_interval_only": {
+    "off_median_s": 0.0707731869770214,
+    "on_median_s": 0.07162108342163265,
+    "ratio": 0.9881613569063219,
+    "n_per_arm": 40,
+    "loadavg": [14.26, 11.20, 9.19],
+    "note": "sha's rounds are vector/kernel work, not guarded scalar counters: no change within noise"
+  },
+  "discharges_seen": {
+    "byteloop sumB": "i + 1 (guarded by i < n); the accumulator add keeps its check",
+    "fib": "n - 1 and n - 2 (guarded by n >= 2); the result add keeps its check"
+  },
+  "verdict": "byteloop 1.14x from the discharge alone, 1.23x combined with the inline string reads; sha unchanged. What the domain cannot yet see: the initial values of a recursive function's parameters (interprocedural, the precondition checker's) and induction ranges, documented in docs/2026-10-28-INTERVAL-DISCHARGE.md"
+}

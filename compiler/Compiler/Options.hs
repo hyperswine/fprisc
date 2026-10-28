@@ -25,7 +25,7 @@ data NativeOptions = NativeOptions
     nativeFpPool :: Bool, nativeLinkPairs :: Bool } deriving (Eq,Show)
 data CodegenOptions = CodegenOptions
   { nativeOptions :: NativeOptions, cgIndexedMemory :: Bool, cgFloatInline :: Bool,
-    cgSimd :: Bool, cgFusion :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgLoopMotion :: Bool,
+    cgSimd :: Bool, cgFusion :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgStringFast :: Bool, cgInterval :: Bool, cgLoopMotion :: Bool,
     cgScalarWorkers :: Bool, cgFieldWorkers :: Bool, cgPipelineInline :: Bool,
     cgReuse :: Bool, cgSpecialize :: Bool, cgReceiveTurns :: Bool,
     cgLoopRegions :: Bool, cgCallRegions :: Bool, cgInline :: Bool } deriving (Eq,Show)
@@ -60,7 +60,7 @@ parseCompilerOptions env = do
           nativeFpPool=on "FPR_TYPED_IR_FP_POOL", nativeLinkPairs=on "FPR_TYPED_IR_LINK_PAIRS" }
       codegen=CodegenOptions
         { nativeOptions=native, cgIndexedMemory=enabled "INDEXED_MEMORY", cgFloatInline=enabled "F64_INLINE",
-          cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST", cgLoopMotion=yes "FPR_TYPED_IR_LOOP_MOTION",
+          cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST", cgStringFast=enabled "STR_FAST", cgInterval=enabled "INTERVAL", cgLoopMotion=yes "FPR_TYPED_IR_LOOP_MOTION",
           cgScalarWorkers=enabled "SCALAR_WORKERS", cgFieldWorkers=enabled "FIELD_WORKERS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
           cgReceiveTurns=enabled "RECEIVE_TURNS", cgLoopRegions=enabled "LOOP_REGIONS",
@@ -121,7 +121,7 @@ optimizationFlags c = flag (cgLoopMotion c) "-licm" ++ concat
      (cgIndexedMemory c,"-noidx"),(cgReceiveTurns c,"-nort"),
      (cgLoopRegions c,"-nolr"),(cgCallRegions c,"-nocr"),
      (cgSpecialize c,"-nospec"),(cgInline c,"-noinl"),
-     (cgFloatInline c,"-nof64"),(cgVecPeek c,"-novp"),(cgVectorFast c,"-novecfast")]]
+     (cgFloatInline c,"-nof64"),(cgVecPeek c,"-novp"),(cgVectorFast c,"-novecfast"),(cgStringFast c,"-nostrfast"),(cgInterval c,"-nointerval")]]
 vectorOptionFlags :: CodegenOptions -> String
 vectorOptionFlags c = flag (not (cgSimd c)) "-nosimd" ++ flag (not (cgFusion c)) "-nofuse"
 codegenCacheIdentity :: CodegenOptions -> String

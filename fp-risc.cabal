@@ -187,7 +187,9 @@ library
       Compiler.VectorLayout
       Compiler.VectorABI
       Codegen.VectorRead
+      Codegen.StringRead
       Codegen.ControlFlow
+      Codegen.Interval
       Codegen.LoopOptimize
       Codegen.Pressure
       Compiler.VectorOperation
@@ -391,6 +393,16 @@ test-suite ScalarVectorRead
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            ScalarVectorRead.hs
+
+test-suite StringRead
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            StringRead.hs
+
+test-suite Interval
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            Interval.hs
 
 test-suite LoopOptimize
   import:             unit-test

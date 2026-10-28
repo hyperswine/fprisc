@@ -39,6 +39,7 @@ opSignature tyOf = \case
     pure (Just TVal)
   OAddress v -> expect v TVal >> pure (Just TAddr)
   OIndex a i -> expect a TAddr >> expect i TInt >> pure (Just TAddr)
+  OIndexByte a i -> expect a TAddr >> expect i TInt >> pure (Just TAddr)
   OLoad t a n -> memory t a n >> pure (Just t)
   OLoadByte a n -> memory TInt a n >> pure (Just TInt)
   OStore t a n v -> memory t a n >> expect v t >> pure Nothing
@@ -72,6 +73,7 @@ opSignature tyOf = \case
     pure (Just TVal)
   OKernelArith _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OArith _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
+  OArithU _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OBit _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OShift _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OCmp _ a b -> expect a TInt >> expect b TInt >> pure (Just TPred)

@@ -1,0 +1,14 @@
+{
+  "what": "Ceiling measurement for parallel unit emission (docs/2026-10-28-PARALLEL-EMISSION-CEILING.md)",
+  "host": "Darwin-arm64-macm4 (Apple M4, 10 cores), load average 4-9 during the runs",
+  "build": "qos/programs/main.fpr --target=qa64: 38 dependency units + prelude + root (49 unit files)",
+  "method": "cold = fresh output directory (units emitted); warm = same directory (all units cached). emission share = cold - warm, the method of docs/2026-10-27-COMPILE-SPEED.md",
+  "runs": [
+    {"pair": 1, "cold_s": {"real": 40.71, "user": 35.45}, "warm_s": {"real": 49.66, "user": 36.84}, "note": "load spiked 3.9 -> 8.8 mid-pair; discarded"},
+    {"pair": 2, "cold_s": {"real": 64.36, "user": 48.10}, "warm_s": {"real": 57.79, "user": 44.45}, "emission_wall_s": 6.57, "emission_cpu_s": 3.65},
+    {"warm_N4_s": {"real": 58.33, "user": 45.19}, "note": "warm rebuild with +RTS -N4: parallel GC does not help the sequential pipeline (57.79 with -N1)"}
+  ],
+  "emission_share_of_wall": "6-11% cold, ~0% warm and ~0% for single-unit programs",
+  "parallel_emission_ceiling": "at most ~5 s of 64 s wall (~8%) on the largest build in either repo",
+  "decision": "deferred with data; the compile-time item that matters is the sequential pre-cache pipeline (docs/2026-10-27-COMPILE-SPEED.md section 2)"
+}

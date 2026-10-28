@@ -1,0 +1,41 @@
+{
+  "what": "Single-pass message copy: dc_dup with the packing slab's end as a limit, dc_size only on the overflow fallback (docs/2026-10-28-SINGLE-PASS-MSG-COPY.md)",
+  "host": "Darwin-arm64-macm4 (Apple M4, 10 cores)",
+  "method": "paired ABBA rounds, old = runtime.c at HEAD, new = fused copy; outputs must equal the .expected files",
+  "profile_basis": "xctrace on 2026-10-27 (docs/2026-10-27-ALLOCATION-MEASUREMENT.md): pingpong dc_size_in 8%, dc_dup 6%",
+  "rounds": [
+    {
+      "loadavg": [3.06, 3.61, 3.98],
+      "pingpong": {
+        "old_ms": [221.8, 257.5, 293.9, 305.9, 310.7, 333.0, 374.9],
+        "new_ms": [185.1, 222.2, 241.8, 262.6, 267.9, 375.9, 590.0],
+        "fastest_speedup": 1.198,
+        "median_speedup": 1.165
+      }
+    },
+    {
+      "loadavg": [3.19, 3.61, 3.97],
+      "xpingpong_harts4": {
+        "old_ms": [297.2, 308.8, 318.7, 319.5, 601.4],
+        "new_ms": [301.2, 311.9, 312.2, 320.4, 569.3],
+        "note": "neutral: cross-hart cost is the wake/park path, not the copy"
+      }
+    },
+    {
+      "loadavg": [3.68, 6.02, 6.48],
+      "pingpong": {
+        "old_ms": [339.07, 321.94, 304.61, 289.49, 287.88, 325.53],
+        "new_ms": [300.43, 324.89, 302.71, 290.13, 275.08, 296.86],
+        "fastest_speedup": 1.046,
+        "median_speedup": 1.045
+      },
+      "xpingpong_harts4": {
+        "old_ms": [405.38, 323.59, 472.36, 322.72],
+        "new_ms": [323.29, 353.47, 322.95, 324.14],
+        "note": "neutral"
+      }
+    }
+  ],
+  "summary": "pingpong 1.04-1.20x depending on the round (load climbed through the day; the direction is consistent, the size is not); xpingpong unchanged",
+  "verification": "all 149 check_base jobs pass, including admission holds, autodrop3 exact-zero ARC, deadmail, swarmkeeper vector moves, the deep-copier descriptor checks"
+}

@@ -45,7 +45,7 @@ data Failure = Trap String | Stuck String deriving (Eq, Show)
 
 data Outcome = Outcome {ocResult :: Either Failure RV, ocEvents :: [Event]} deriving (Eq, Show)
 
-data Val = VVal RV | VInt Integer | VPred Bool deriving (Eq, Ord, Show)
+data Val = VVal RV | VInt Integer | VPred Bool | VAddr RV Integer deriving (Eq, Ord, Show)
 
 type E = ExceptT Failure (State [Event])
 
@@ -64,7 +64,7 @@ evalProgram = evalProgramWidth W64
 evalProgramWidth :: Width -> Program -> Name -> [RV] -> Outcome
 evalProgramWidth width program name args =
   let (r, evs) = runState (runExceptT (callFn width program name (map VVal args))) []
-   in Outcome (fmap (\case VVal v -> v; VInt n -> RInt n; VPred b -> rvBool b) r) (reverse evs)
+   in Outcome (fmap (\case VVal v -> v; VInt n -> RInt n; VPred b -> rvBool b; VAddr {} -> RSym "<address>") r) (reverse evs)
 
 callFn :: Width -> Program -> Name -> [Val] -> E Val
 callFn width program name args = do
@@ -95,10 +95,25 @@ callFn width program name args = do
           (Nothing, Nothing) -> pure env
           _ -> stuck "an instruction's definition disagrees with its operation"
       opValue env = \case
-        OAddress _ -> stuck "unmanaged memory is outside the Core evaluator; use the native kernel oracle"
+        OAddress v -> val env v >>= \case
+          -- the managed String layout (W64 str_t, runtime/fpr.h), the one
+          -- address the inline read fragments (Codegen.StringRead) form
+          r@RString {} -> pure (Just (VAddr r 0))
+          _ -> stuck "unmanaged memory is outside the Core evaluator; use the native kernel oracle"
         OIndex _ _ -> stuck "unmanaged memory is outside the Core evaluator"
-        OLoad _ _ _ -> stuck "unmanaged memory is outside the Core evaluator"
-        OLoadByte _ _ -> stuck "unmanaged memory is outside the Core evaluator"
+        OIndexByte a i -> look env a >>= \case
+          VAddr r off -> do
+            n <- int env i
+            pure (Just (VAddr r (off + n)))
+          _ -> stuck "a byte cursor outside managed String memory"
+        OLoad TInt a off -> look env a >>= \case
+          VAddr (RString bs) base | base + toInteger off == 8 -> pure (Just (VInt (toInteger (length bs))))
+          _ -> stuck "unmanaged memory is outside the Core evaluator"
+        OLoadByte a off -> look env a >>= \case
+          VAddr (RString bs) base | let i = base + toInteger off - 16, i >= 0 && i < toInteger (length bs) ->
+            pure (Just (VInt (toInteger (bs !! fromInteger i))))
+          _ -> stuck "unmanaged memory is outside the Core evaluator"
+        OLoad {} -> stuck "unmanaged memory is outside the Core evaluator"
         OStore _ _ _ _ -> stuck "unmanaged memory is outside the Core evaluator"
         OConstInt n -> pure (Just (VInt n))
         OHartCell _ -> pure (Just (VInt 0)) -- the evaluator allocates nothing: the clock never moves
@@ -164,6 +179,13 @@ callFn width program name args = do
           y <- int env b
           r <- arith width o x y
           pure (Just (VInt r))
+        -- the difference-bound proof (Codegen.Interval) already ruled the
+        -- overflow out; a zero divisor keeps the primitive's trap
+        OArithU o a b -> do
+          x <- int env a
+          y <- int env b
+          when (o == Div && y == 0) (trap "division by zero")
+          pure (Just (VInt (case o of Add -> x+y; Sub -> x-y; Mul -> x*y; Div -> x `quot` y)))
         OBit o a b -> do
           x <- int env a
           y <- int env b
@@ -193,10 +215,13 @@ callFn width program name args = do
         OFloat32Cmp _ _ _ -> stuck "an inline F32 comparison: the evaluator models no floats"
         OCall c as -> do
           args' <- mapM (look env) as
-          when (isForeign c) (stuck ("a foreign call to " ++ calleeName c ++ ": the evaluator models no C"))
-          case calleeKind c of Generated s -> stuck ("a call of the vector kernel " ++ s ++ ": the evaluator models no kernel"); _ -> pure ()
-          r <- callFn width program (calleeName c) args'
-          pure (Just r)
+          case stringEntry c args' of
+            Just r -> r
+            Nothing -> do
+              when (isForeign c) (stuck ("a foreign call to " ++ calleeName c ++ ": the evaluator models no C"))
+              case calleeKind c of Generated s -> stuck ("a call of the vector kernel " ++ s ++ ": the evaluator models no kernel"); _ -> pure ()
+              r <- callFn width program (calleeName c) args'
+              pure (Just r)
         OSafepoint -> event (EvSafepoint (fnName fn)) >> pure Nothing
         OSafepointN n -> replicateM_ n (event (EvSafepoint (fnName fn))) >> pure Nothing
         OSimdPair {} -> stuck "a NEON pair over unmanaged memory is outside the Core evaluator"
@@ -208,6 +233,20 @@ callFn width program name args = do
       int env v = look env v >>= \case VInt n -> pure n; x -> stuck ("an Int was needed, found " ++ show x)
       val env v = look env v >>= \case VVal x -> pure x; x -> stuck ("a runtime value was needed, found " ++ show x)
       string env prim v = val env v >>= \case RString bs -> pure bs; _ -> trap (prim ++ ": not a string")
+      -- the string C entries the inline read fragments (Codegen.StringRead)
+      -- fall back to on a guard miss, with the runtime's checks in their
+      -- order and their exact trap texts (runtime/runtime.c g_charAt/g_strlen)
+      stringEntry c args' = case (calleeKind c, args') of
+        (Foreign "fpr_g_strlen_call1", [VVal s]) -> Just $ case s of
+          RString bs -> pure (Just (VVal (RInt (toInteger (length bs)))))
+          _ -> trap "strlen: not a string"
+        (Foreign "fpr_g_charAt_call2", [VVal s, VVal (RInt n)]) -> Just $ case s of
+          RString bs -> do
+            when (n < 0 || n >= toInteger (length bs))
+              (trap ("charAt: index out of range (" ++ show n ++ ", length " ++ show (length bs) ++ ")"))
+            pure (Just (VVal (RInt (toInteger (bs !! fromInteger n)))))
+          _ -> trap "charAt: not a string"
+        _ -> Nothing
       predicate env v = look env v >>= \case VPred b -> pure b; x -> stuck ("a predicate was needed, found " ++ show x)
   run (fnEntry fn) args M.empty
 

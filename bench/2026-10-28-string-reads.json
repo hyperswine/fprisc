@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-28",
+  "change": "guarded inline strlen/charAt reads (codegen rev 136, Codegen.StringRead)",
+  "benchmark": "tests/bench/byteloop.fpr (5M charAt + 50 strlen over a 100000-byte string, 50 rounds)",
+  "control": "FPR_NO_STR_FAST=1 (the -nostrfast identity flag)",
+  "machine": "macOS aarch64, paired ABBA rounds, medians of wall time",
+  "round1": {
+    "n_per_arm": 30,
+    "slow_median_s": 0.15066343755461276,
+    "fast_median_s": 0.13398418738506734,
+    "ratio": 1.124486706193244,
+    "loadavg": [6.6328125, 6.2333984375, 4.54736328125]
+  },
+  "round2": {
+    "n_per_arm": 80,
+    "slow_median_s": 0.1170202495995909,
+    "fast_median_s": 0.10148020798806101,
+    "ratio": 1.153133718580456,
+    "loadavg": [5.0029296875, 5.79345703125, 4.4755859375]
+  },
+  "verdict": "byteloop 1.12-1.15x under load 5-7; the remaining iteration cost is the tail-call loop itself, the arithmetic overflow checks and the tick, which steps 4.4 (interval analysis) and 8 (tick amortization) address"
+}

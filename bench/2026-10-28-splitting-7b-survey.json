@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-28",
+  "question": "step 7b (split live ranges at loop boundaries): how much of the suite's spilling is a value live across a loop, unused inside it, spilled everywhere?",
+  "method": "temporary diagnostic in Codegen.Allocate (FPR_ALLOC_DEBUG=1, cold unit caches): per spilled value, accesses at loop depth > 0 vs outside, and whether its interval crosses a loop block; raw profiles kept out of tree",
+  "a64": {
+    "total_spills": 40,
+    "hot_loops_with_spills": ["floatcmp loop (2 spills, 3 reloads)", "sha rounds (23/34)", "sha sha1Rounds (7/10)", "sha blocks (5/5)"],
+    "seven_b_shaped_values": 8,
+    "their_outside_accesses": 19,
+    "note": "one per function: floatcmp's loop, sha's extend/blocks/rounds/sha1Rounds, exactGo/untilGo/scanFrom; every affected access is outside the loop, i.e. cold"
+  },
+  "x64": {
+    "programs": ["sha", "floatcmp", "nbody"],
+    "total_spills": 699,
+    "seven_b_shaped_values": 78,
+    "their_outside_accesses": 189,
+    "note": "the shape is much more common under x64's 12-register budget, but still entirely outside the loops"
+  },
+  "verdict": "7b's split never changes a hot loop body: the value is unused inside, so spilled-or-split the loop is identical; the entire benefit is a handful of cold loads/stores per function. Not worth edge move resolution now. The form with real potential is call-boundary splitting (a spill lasting only across the call that forced it) for loops whose calls force the callee-saved budget, but the suite's hot loops have no such case: pingpong's loops are call-heavy and spill-free, sha's 23 spills in rounds are pure over-pressure with no call in the body — that wants fewer live values (plan step 4.3 cross-block sharing), not splitting"
+}

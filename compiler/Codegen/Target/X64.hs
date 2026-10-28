@@ -310,6 +310,7 @@ selectInstr cfg _ (Instr d op) = case op of
     offset <- freshV False
     emitI (rri O.ShiftLeftImmediate offset (vreg i) 3)
     emitI (rrr O.Add r (vreg a) offset)
+  OIndexByte a i -> def (\r -> emitI (rrr O.Add r (vreg a) (vreg i)))
   OLoad _ a n -> def (\r -> emitI (plain (O.X64 O.LoadField) [any' r] [any' (vreg a), OI (fromIntegral n)]))
   OLoadByte a n -> def (\r -> emitI (plain (O.X64 O.LoadByte) [any' r] [any' (vreg a), OI (fromIntegral n)]))
   OStore _ a n v -> emitI (plain (O.X64 O.StoreField) [] [any' (vreg a), any' (vreg v), OI (fromIntegral n)])
@@ -406,6 +407,11 @@ selectInstr cfg _ (Instr d op) = case op of
     emitL done
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
+  -- the difference-bound proof removed the fit check; Mul/Div keep theirs
+  OArithU o a b -> def (\r -> case o of
+    Add -> emitI (rrr O.Add r (vreg a) (vreg b))
+    Sub -> emitI (rrr O.Subtract r (vreg a) (vreg b))
+    _ -> arith False o r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
   OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> O.And; BOr -> O.Or; BXor -> O.Xor) r (vreg a) (vreg b)))
   -- F64 on the bits through xmm14/xmm15, inside the expansion only (SysV:

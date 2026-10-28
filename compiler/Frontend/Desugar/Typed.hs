@@ -419,7 +419,14 @@ assemble constructors plans schemas arities typed compatibility=do
   let valueBindings=S.fromList [n | TBind n _ _ _<-planSource plans]
   generated<-M.fromList <$> mapM (\n->(n,) <$> constructorDefinition plans n) (S.toAscList (constructors S.\\ valueBindings))
   let functions=typed `M.union` generated
-      ownArities=M.map (length . T.functionParameters) functions `M.union` arities
+      -- Physical constructor arities come from the checked type authority,
+      -- not from local stubs: a unit that only references a constructor its
+      -- owner emits still publishes the arity the linker cross-checks.
+      T.TypeContext _ constructorSchemas=planTypes plans
+      constructorArities=M.map (\(Forall _ _ t)->peel t) constructorSchemas
+      peel (TFn _ rest)=1+peel rest
+      peel _=0
+      ownArities=M.map (length . T.functionParameters) functions `M.union` constructorArities `M.union` arities
   input<-Program.programWithAssumptions (planNamespace plans) (planTypes plans) schemas ownArities functions (planAssumptions plans)
   unless (S.null (M.keysSet functions `S.intersection` M.keysSet compatibility)) (Left "typed source: checked/compatibility owner collision")
   pure (SourceSelection input compatibility (M.keysSet generated))
