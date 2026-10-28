@@ -113,13 +113,19 @@ Implementation owners: `compiler/Sol/Txn.hs`, `VM.hs`, `Preamble.hs`,
 - [ ] Separate metadata observations from content snapshots. `exists` checks
   existence without opening the file; stat/lstat expose file kind and link
   policy. Distinguish a dangling link from a missing directory entry.
+  (existence no longer opens the file:
+  [delivered 2026-10-28](2026-10-28-SOL-META-READS.md); the stat/lstat
+  kind and link-policy surface remains open)
 - [ ] Make directory listing distinguish missing/denied/wrong-kind from an
   empty directory. Preserve sorted results and the transaction's own pending
   mkdir/write/remove view.
-- [ ] Specify metadata validation separately from exact-byte content validation.
+- [x] Specify metadata validation separately from exact-byte content validation.
   Record/recheck the metadata fields actually promised, under the existing lock
   protocol; do not claim content equality from size/mtime. Content reads retain
   exact-byte validation. Document concurrent non-Sol writers and TOCTOU limits.
+  ([delivered 2026-10-28](2026-10-28-SOL-META-READS.md): `txMetaReads`
+  promised-field recheck; limits promoted into SEMANTICS.md and
+  [the dependency review](2026-10-28-SOL-TXN-DEPENDENCY-REVIEW.md))
 - [ ] Add bounded recursive walking with explicit depth/entry limits, a default
   of not following directory symlinks, an opt-in cycle-safe follow policy and
   documented non-UTF-8 filename behavior. Unsupported names must fail explicitly

@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 FPR = Path(os.environ.get('FPR_TEST_BINARY', ROOT / 'fpr')).resolve()
@@ -33,7 +34,7 @@ def main():
         dangling = work / 'dangling'
         dangling.symlink_to(work / 'no-such-target')
 
-        def check(name, source, stdout=b'', code=0, error=None):
+        def check(name, source, stdout=b'', code=0, error=None, error_not=None):
             nonlocal count
             path = work / (name + '.sol')
             path.write_text(source)
@@ -45,6 +46,8 @@ def main():
                 assert result.stderr == b'', (name, result.stderr)
             else:
                 assert error in result.stderr, (name, result.stderr)
+            if error_not is not None:
+                assert error_not not in result.stderr, (name, result.stderr)
             count += 1
             return result
 
@@ -105,6 +108,75 @@ def main():
         check('stat_pending_over_disk',
               f'> u = mkdirp "{full}"; p = "{full}"; (e, sz, mt) = stat p; print "{{e}} {{mt > 0}}".\n',
               b'True True\n')
+
+        # ---- metadata dependencies: promised fields, no content reads ----
+        # A stat-able file whose contents cannot be read: metadata answers.
+        # This doubles as the instrumented proof that a metadata query never
+        # opens contents: any content read fails the check with permission
+        # denied.
+        locked = work / 'locked.txt'
+        locked.write_text('secret')
+        locked.chmod(0o000)
+        check('exists_unreadable', f'> p = "{locked}"; print "{{exists p}}".\n', b'True\n')
+        check('stat_unreadable',
+              f'> p = "{locked}"; (e, sz, mt) = stat p; print "{{e}} {{sz > 0}} {{mt > 0}}".\n',
+              b'True True True\n')
+        locked.chmod(0o644)
+
+        # FIFOs and other non-regular files observe without opening (the old
+        # snapshot recorded a phantom empty-content dependency on them).
+        pipe = work / 'pipe'
+        os.mkfifo(pipe)
+        check('exists_fifo', f'> p = "{pipe}"; print "{{exists p}}".\n', b'True\n')
+        check('stat_fifo', f'> p = "{pipe}"; (e, sz, mt) = stat p; print "{{e}} {{mt > 0}}".\n',
+              b'True True\n')
+        check('ls_fifo', f'> p = "{pipe}"; ls p.\n', code=1, error=b'SOL PANIC: ls:')
+
+        # Metadata does not scale with content size: stat of an 8 GiB sparse
+        # file must answer fast (the whole-content snapshot read all of it).
+        sparse = work / 'sparse.bin'
+        with open(sparse, 'wb') as fh:
+            fh.truncate(8 * 1024 ** 3)
+        t0 = time.monotonic()
+        check('stat_sparse', f'> p = "{sparse}"; (e, sz, mt) = stat p; print "{{e}} {{sz}}".\n',
+              b'True 8589934592\n')
+        elapsed = time.monotonic() - t0
+        assert elapsed < 3.0, ('stat_sparse scaling', elapsed)
+
+        # ---- promised-field validation at commit --------------------------
+        # A promised presence flip conflicts, retries, and the retry sees the
+        # new world. (shNow is a realtime escape: it acts before commit, so
+        # it supplies the foreign writer deterministically.)
+        ftarget = work / 'arrive'
+        check('presence_flip_conflict',
+              f'> b = exists "{ftarget}"; u = shNow "touch {ftarget}"; print "{{b}}".\n',
+              b'False\nTrue\n', error=b'conflict on')
+
+        # stat promises the fields it returned: a size change conflicts.
+        grown = work / 'grown.txt'
+        grown.write_text('abc')
+        check('stat_size_drift_conflict',
+              f'> (e, sz, mt) = stat "{grown}"; u = shNow "printf abcd > {grown}"; print "{{sz}}".\n',
+              b'3\n4\n', error=b'conflict on')
+
+        # An isDir answer is a promise: a kind flip mid-run conflicts instead
+        # of committing on a branch decided by a world that no longer exists.
+        gonedir = work / 'gonedir'
+        gonedir.mkdir()
+        check('isdir_flip_conflict',
+              f'> b = isDir "{gonedir}"; u = shNow "rm -rf {gonedir}"; print "{{b}}".\n',
+              b'True\nFalse\n', error=b'conflict on')
+
+        # The loosening, stated: a metadata-only promise does NOT conflict
+        # when a foreign writer rewrites the path's CONTENT unchanged in
+        # presence. One attempt, no conflict line; the old whole-content
+        # dependency conflicted and printed twice. Scripts wanting the
+        # content dependency read the file (exact-byte validation stays).
+        rewritten = work / 'rewritten.txt'
+        rewritten.write_text('one')
+        check('exists_no_content_conflict',
+              f'> b = exists "{rewritten}"; u = shNow "printf two > {rewritten}"; print "{{b}}".\n',
+              b'True\n', error=b'REALTIME: shNow', error_not=b'conflict on')
 
     print(f'sol fs contract: {count} checks passed')
 

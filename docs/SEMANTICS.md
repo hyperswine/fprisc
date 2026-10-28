@@ -195,6 +195,20 @@ file suffixes; a clause applies to both unless it says which.
 - `.sol`: a script is ONE atomic transaction over the filesystem;
   writes land at commit; `print` is not transactional (a retried
   script re-prints).  A panic aborts totally.  (today)  `[test: tests/txnabort.sol, check-all "txn"]`
+- `.sol` observations resolve the pending view first (the transaction's
+  own writes and mkdirs answer, with no dependency recorded), then a
+  content read (whole bytes join the read set; exact-byte validation at
+  commit), then metadata (stat(2), never an open).  Directory listings
+  join a name-set read set.  (today)  `[test: tools/sol-fs-check.py]`
+- `.sol` metadata queries promise fields, not content: `exists` and
+  `isDir` promise presence (isDir also its directory/file answer),
+  `stat` promises the size and mtime it returned.  Commit rechecks
+  exactly the promised fields under the transaction locks; a
+  same-metadata content rewrite is NOT detected by a metadata promise
+  (size/mtime are never claimed as content equality), and writers that
+  ignore the locks are outside any Sol guarantee between recheck and
+  replay.  A script wanting content validation reads the file.
+  (today)  `[test: tools/sol-fs-check.py]`
 - `sh`/`shq` are deferred commands with an honest receipt.  (today)  `[test: check-all "sol txn hygiene 2"]`
 
 ### 10. Actors and messages

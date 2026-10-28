@@ -75,9 +75,22 @@ import System.Posix.Process (getProcessGroupID)
 import System.Posix.IO (stdInput)
 import System.Posix.Types (ProcessGroupID)
 
+-- a metadata promise: what a metadata query (exists/isDir/stat) recorded
+-- about a path it did NOT read. Commit rechecks exactly these fields
+-- under the locks — presence always; kind and size/mtime only where
+-- promised. Nothing here claims content equality from size/mtime:
+-- content reads keep exact-byte validation (txReadBytes).
+data MetaSnap = MetaSnap
+  { msPresent :: Bool,
+    msIsDir :: Maybe Bool, -- promised by isDir only
+    msSize :: Maybe Integer, -- promised by stat only
+    msMtime :: Maybe Integer -- promised by stat only
+  }
+
 data TxState = TxState
   { txReads :: M.Map FilePath (Maybe String), -- decoded snapshot for repeat reads
     txReadBytes :: M.Map FilePath (Maybe BS.ByteString), -- exact validation snapshot
+    txMetaReads :: M.Map FilePath MetaSnap, -- metadata promises (never a content read)
     txDirReads :: M.Map FilePath [String], -- directory listings taken
     txEffects :: [Effect], -- REVERSED effect log
     txView :: M.Map FilePath (Maybe String), -- current in-txn file view
@@ -103,7 +116,7 @@ newTx = do
 
 emptyTx :: TxState
 emptyTx = TxState
-  { txReads=M.empty, txReadBytes=M.empty, txDirReads=M.empty
+  { txReads=M.empty, txReadBytes=M.empty, txMetaReads=M.empty, txDirReads=M.empty
   , txEffects=[], txView=M.empty, txDirView=M.empty
   , txHandles=IM.empty, txNextH=1, txNonText=S.empty, txSealed=False
   , txIdentity=Nothing, txNextStep=0, txTerminal=False, txPathLogs=[]
@@ -305,7 +318,8 @@ txClose ref h = atomicModifyIORef' ref $ \s ->
 
 -- snapshot a path into the read set (for validation) if not already there;
 -- exact bytes accompany the decoded view. Non-UTF-8 files are remembered as
--- non-text so the read surface can refuse them while exists/stat still work
+-- non-text so the read surface can refuse them. Metadata queries (exists/
+-- stat/isDir) do NOT snapshot: they record promises in txMetaReads instead.
 snapshot :: IORef TxState -> FilePath -> IO (Maybe String)
 snapshot ref p = do
   s <- readIORef ref
@@ -449,30 +463,60 @@ txExists ref p = do
     Nothing -> case M.lookup p (txDirView s) of
       Just b -> pure b
       Nothing -> do
-        -- a directory has no content snapshot: existence is metadata, not a
-        -- read (snapshotting a directory reads it as a file and panics)
-        isD <- doesDirectoryExist p
-        if isD
-          then pure True
-          else maybe False (const True) <$> snapshot ref p
+        o <- diskMeta p
+        recordMeta ref p (MetaSnap (maybe False (const True) o) Nothing Nothing Nothing)
+        pure (maybe False (const True) o)
 
 txIsDir :: IORef TxState -> FilePath -> IO Bool
 txIsDir ref p = do
   s <- readIORef ref
   case M.lookup p (txDirView s) of
     Just b -> pure b
-    Nothing -> doesDirectoryExist p
+    Nothing -> do
+      o <- diskMeta p
+      let isD = maybe False (\(d, _, _) -> d) o
+      recordMeta ref p (MetaSnap (maybe False (const True) o) (Just isD) Nothing Nothing)
+      pure isD
+
+-- one stat(2) on the path: no open, follows symlinks (a dangling link
+-- resolves to nothing). Answers (isDir, size, mtime) of whatever the
+-- path is; Nothing is absent. This is the only disk contact a metadata
+-- query makes — no content snapshot, so unreadable files, FIFOs and
+-- sparse multi-GiB files all observe at metadata cost.
+diskMeta :: FilePath -> IO (Maybe (Bool, Integer, Integer))
+diskMeta p = do
+  ms <- (Just <$> PF.getFileStatus p) `catch` \e ->
+    if isDoesNotExistError e then pure Nothing else throwIO (e :: IOException)
+  pure ((\st -> (PF.isDirectory st, fromIntegral (PF.fileSize st), floor (PF.modificationTimeHiRes st))) <$> ms)
+
+-- record a metadata promise; a second query of the same path widens it
+-- to the union of promised fields (the newest presence wins)
+recordMeta :: IORef TxState -> FilePath -> MetaSnap -> IO ()
+recordMeta ref p snap = atomicModifyIORef' ref $ \st ->
+  (st {txMetaReads = M.insertWith mergeMeta p snap (txMetaReads st)}, ())
+
+mergeMeta :: MetaSnap -> MetaSnap -> MetaSnap
+mergeMeta new old =
+  MetaSnap
+    { msPresent = msPresent new,
+      msIsDir = firstJust (msIsDir new) (msIsDir old),
+      msSize = firstJust (msSize new) (msSize old),
+      msMtime = firstJust (msMtime new) (msMtime old)
+    }
+  where
+    firstJust (Just a) _ = Just a
+    firstJust Nothing b = b
 
 -- (exists, size, mtime-seconds). The transaction's own view answers
 -- first — a file this txn wrote EXISTS, sized by its pending content
 -- (UTF-8 bytes, matching what commit will put on disk), mtime = now
 -- (it has no disk mtime yet); a dir this txn mkdir'd answers from the
--- disk when it is already there, from the view otherwise. Only a view
--- miss consults the snapshot (content joins the read set for
--- validation) and the disk metadata. Directories never snapshot: their
--- metadata is observed directly, so stat never reads a directory as a
--- file. Sizes of directories are filesystem-specific; only the
--- presence bit is contractual.
+-- disk when it is already there, from the view otherwise, and the
+-- transaction owns the path so no dependency is recorded. A view miss
+-- observes disk metadata only (stat(2), no content read) and records
+-- its promise in txMetaReads; commit rechecks exactly the promised
+-- fields. Directory sizes are filesystem-specific; only the presence
+-- bit is contractual.
 txStat :: IORef TxState -> FilePath -> IO (Bool, Integer, Integer)
 txStat ref p = do
   s <- readIORef ref
@@ -484,27 +528,34 @@ txStat ref p = do
     Nothing -> case M.lookup p (txDirView s) of
       Just False -> pure (False, 0, 0) -- rmdir'd earlier in this txn
       Just True -> do
-        isD <- doesDirectoryExist p
-        if not isD
-          then do now <- getPOSIXTime; pure (True, 0, floor now)
-          else dirStat p
+        o <- diskMeta p
+        case o of
+          Just (_, sz, mt) -> pure (True, sz, mt)
+          Nothing -> do
+            now <- getPOSIXTime
+            pure (True, 0, floor now)
       Nothing -> do
-        isD <- doesDirectoryExist p
-        if isD
-          then dirStat p
-          else do
-            snap <- snapshot ref p
-            case snap of
-              Nothing -> pure (False, 0, 0)
-              Just _ -> do
-                sz <- getFileSize p
-                mt <- getModificationTime p
-                pure (True, sz, floor (utcTimeToPOSIXSeconds mt))
-  where
-    dirStat q = do
-      sz <- getFileSize q
-      mt <- getModificationTime q
-      pure (True, sz, floor (utcTimeToPOSIXSeconds mt))
+        o <- diskMeta p
+        case o of
+          Nothing -> do
+            recordMeta ref p (MetaSnap False Nothing Nothing Nothing)
+            pure (False, 0, 0)
+          Just (_, sz, mt) -> do
+            recordMeta ref p (MetaSnap True Nothing (Just sz) (Just mt))
+            pure (True, sz, mt)
+
+-- promised-field recheck at commit: a presence flip always conflicts;
+-- kind and size/mtime conflict only where promised. A same-metadata
+-- content rewrite passes here BY DESIGN — exact-byte validation lives
+-- in the content read set, and a script wanting that dependency reads
+-- the file.
+metaStale :: MetaSnap -> Maybe (Bool, Integer, Integer) -> Bool
+metaStale ms Nothing = msPresent ms -- promised present, now gone
+metaStale ms (Just (isD, sz, mt)) =
+  not (msPresent ms)
+    || maybe False (/= isD) (msIsDir ms)
+    || maybe False (/= sz) (msSize ms)
+    || maybe False (/= mt) (msMtime ms)
 
 -- byte length of the string as commit will encode it
 utf8Len :: String -> Int
@@ -707,8 +758,8 @@ rtReport ref = do
 -- dropped, so the caller can say so.
 txForget :: IORef TxState -> FilePath -> IO Bool
 txForget ref p = atomicModifyIORef' ref $ \s ->
-  ( s { txReads = M.delete p (txReads s), txReadBytes = M.delete p (txReadBytes s), txView = M.delete p (txView s) },
-    M.member p (txReads s) || M.member p (txView s)
+  ( s { txReads = M.delete p (txReads s), txReadBytes = M.delete p (txReadBytes s), txView = M.delete p (txView s), txMetaReads = M.delete p (txMetaReads s) },
+    M.member p (txReads s) || M.member p (txView s) || M.member p (txMetaReads s)
   )
 
 -- read the disk NOW, with no snapshot: repeated calls can differ
@@ -1190,9 +1241,9 @@ effectPath (ELater (PlannedGit (GitRequest p _ _ _ _ _ _))) = Just p
 effectPath (ELater (PlannedTag p _ _ _)) = Just p
 effectPath (ELater _) = Nothing
 
--- lock (sorted) -> validate reads AND dir listings -> journal the effect
--- log (fsynced; the commit point) -> replay it in order -> clear the
--- journal -> unlock. Deferred shell commands run inside the commit, after
+-- lock (sorted) -> validate content reads, metadata promises and dir
+-- listings -> journal the effect log (fsynced; the commit point) ->
+-- replay it in order -> clear the journal -> unlock. Deferred shell commands run inside the commit, after
 -- validation: if the txn retried they never happened. Once released they
 -- CANNOT be rolled back — a failing deferred command stops the replay and
 -- reports what did not run.
@@ -1207,6 +1258,7 @@ commit ref jpath = do
           ( M.unions
               [ M.map (const ()) (txReads s),
                 M.map (const ()) (txDirReads s),
+                M.map (const ()) (txMetaReads s),
                 M.fromList [(p, ()) | e <- effs, Just p <- [effectPath e]],
                 M.fromList [(p,()) | (p,_) <- txPathLogs s]
               ]
@@ -1221,6 +1273,14 @@ commit ref jpath = do
         )
         []
         (M.toList (txReadBytes s))
+    staleM <-
+      foldM
+        ( \acc (p, ms) -> do
+            now <- diskMeta p
+            pure (if metaStale ms now then p : acc else acc)
+        )
+        []
+        (M.toList (txMetaReads s))
     staleD <-
       foldM
         ( \acc (dir, names) -> do
@@ -1243,7 +1303,7 @@ commit ref jpath = do
         )
         []
         (M.toList (txDirReads s))
-    let stale = staleC ++ staleD
+    let stale = staleC ++ staleM ++ staleD
     if null stale
       then do
         effs <- materializeLogs effs (reverse (txPathLogs s))
@@ -1289,7 +1349,7 @@ childCommitMarker = "[sol-child] committed-paths: "
 txChildOverlap :: IORef TxState -> [FilePath] -> IO [FilePath]
 txChildOverlap ref ps = do
   s <- readIORef ref
-  files <- S.fromList <$> mapM canonicalizePath (M.keys (txReads s) ++ M.keys (txView s))
+  files <- S.fromList <$> mapM canonicalizePath (M.keys (txReads s) ++ M.keys (txView s) ++ M.keys (txMetaReads s))
   dirs <- S.fromList <$> mapM canonicalizePath (M.keys (txDirReads s))
   paths <- mapM canonicalizePath ps
   pure [p | p <- paths, S.member p files || S.member (takeDirectory p) dirs]
