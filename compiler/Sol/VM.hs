@@ -1112,6 +1112,7 @@ mkHal cons scriptArgs tx preempts rt =
       ("Try.walk", (4, tryWalkH)),
       ("Try.tempDir", (1, tryTempDirH)),
       ("Try.tempFile", (1, tryTempFileH)),
+      ("Try.sh", (1, tryShH)),
       ("NativeGit.afterCommit", (5, gitAfterCommitH)),
       ("NativeGit.query", (3, gitQueryH)),
       ("NativeGit.push", (4, gitPushH)),
@@ -1539,6 +1540,20 @@ mkHal cons scriptArgs tx preempts rt =
     vOk v = VData 3 0 [v]
     vErr m = VData 3 1 [VStr m]
     vErrV v = VData 3 1 [v] -- Err carrying a structured value (the FsError tier)
+
+    -- Try.sh: the typed process tier for shell strings. Exit 0 is Ok
+    -- stdout; anything else (127 = not found, -1 = could not spawn) is
+    -- Err (ShError command code stdout stderr), never a parsed message.
+    tryShH [v] = withS v $ \c -> do
+      txMarkExternal tx "sh"
+      r <- txShFull c
+      let (tE, _) = conTV "ShError"
+          shErr code out err = vErrV (VData tE 0 [VStr c, VInt (fromIntegral code), VStr out, VStr err])
+      pure $ case r of
+        Right (0, out, _) -> vOk (VStr out)
+        Right (code, out, err) -> shErr code out err
+        Left why -> shErr (-1 :: Int) "" why
+    tryShH _ = vmPanic "Try.sh: arity"
 
     tryParseIntH [v] = do
       s <- vsStr v

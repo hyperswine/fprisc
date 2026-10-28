@@ -245,7 +245,12 @@ file suffixes; a clause applies to both unless it says which.
   recovery fences retain scratch and report its paths. Hard crashes may leave
   scratch for manual cleanup; temporary paths are not durable output.
   (today)  `[test: tools/sol-fs-check.py]`
-- `sh` runs immediately; `shq` runs at commit with an honest receipt. Arbitrary
+- `sh` runs immediately and insists: exit 0 answers stdout, any other exit
+  (127 = command not found) panics with ``sh: `cmd` exited N: stderr``.
+  `Try.sh` is its Result twin, `Err (ShError cmd code stdout stderr)`, and
+  `shStatus` keeps the never-failing `(code, stdout ++ stderr)` form.
+  `[test: tools/sol-sh-check.py]`
+- `shq` runs at commit with an honest receipt. Arbitrary
   Proc.query commands mark external work; Proc.queryReplayable asserts safe
   repetition without validating output. (today) `[test: tools/sol-retry-policy-check.py]`
 - `.sol` Proc.pipeline/start connect raw byte stages with explicit capture caps,

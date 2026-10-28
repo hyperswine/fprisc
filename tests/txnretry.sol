@@ -4,5 +4,5 @@
   u1 = writePath @/tmp/sol-txn-ctr.txt "{n + 1}";
   u2 = shq "printf q >> /tmp/sol-txn-shq.log";
   u3 = Proc.afterCommit (ProcessSpec ["/bin/sh", "-c", "printf p >> /tmp/sol-txn-ac.log"] "" [] "" 2000);
-  (c, o) = sh "printf i >> /tmp/sol-txn-sh.log";
+  o = sh "printf i >> /tmp/sol-txn-sh.log";
   print "attempt saw {n}".
