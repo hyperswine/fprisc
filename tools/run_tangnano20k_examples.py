@@ -31,7 +31,8 @@ EXPECTED = {'hello': 'SimpleRisc: factorial(6)=720',
             'host': 'RV32 BASE HOST HOLDS'}
 ARGUMENTS = ['', 'two words', '-n', '雪', 'quote"slash\\']
 FPGA_CONFIG = dict(xlen=32, compressed=True, cpu_mhz=48, memory_mhz=48,
-                   ram_bytes=8388608, cache_bytes=65536, phase_degrees=135,
+                   ram_bytes=8388608, cache_bytes=65536, cache_ways=1,
+                   cache_line_bits=12, phase_degrees=135,
                    placement=2, write_update=True)
 
 
@@ -85,7 +86,13 @@ def fpga_image(path):
     report = json.loads(path.read_text())
     require(report.get('preset') == 'fprisc-48' and report.get('ready') is True,
             'FPGA manifest must be a completed fprisc-48 build')
-    require(report.get('configuration') == FPGA_CONFIG, 'FPGA preset configuration mismatch')
+    config = report.get('configuration')
+    # Manifests emitted before cache geometry was explicit describe the
+    # validated one-way, 4096-line preset. Accept only that complete legacy
+    # shape; partial geometry or a different/unknown configuration is refused.
+    if isinstance(config, dict) and not any(key in config for key in ('cache_ways', 'cache_line_bits')):
+        config = {**config, 'cache_ways': 1, 'cache_line_bits': 12}
+    require(config == FPGA_CONFIG, 'FPGA preset configuration mismatch')
     artifacts = report.get('artifacts', {})
     require(all(name in artifacts for name in ('impl/pnr/sdram_test.fs', 'impl/pnr/sdram_test.tr')),
             'FPGA manifest lacks bitstream or checked timing report')

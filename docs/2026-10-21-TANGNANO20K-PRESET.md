@@ -37,6 +37,11 @@ Use `--port` for a different UART and `--loader` for another openFPGALoader
 installation. This command programs volatile FPGA SRAM and writes guest images
 to SDRAM. It does not program FPGA flash or write the SD card. The runner
 checks the preset configuration and artifact hashes before programming.
+The configuration contract includes `cache_ways: 1` and `cache_line_bits: 12`.
+Complete older manifests that omit both fields retain their documented one-way
+geometry; partial geometry, conflicting values and unknown settings are rejected.
+A regression compares the runner's configuration with the actual pinned
+SimpleRisc manifest producer.
 
 Both commands build the compiler with `make fpr` and build the pinned RV32
 SoftFloat archive if missing. Existing SoftFloat archives are hashed in each
@@ -126,7 +131,7 @@ execution; the suite's ten-run classifier retains its separate 600-second limit.
 ## Continuous integration
 
 The existing Debian CI job now checks out SimpleRisc commit
-`417053d3099dfa52b6ae497d796086a75dc5d4ab` into `.ci/simple-risc`, runs both
+`9d29a6b746c4472795ac56516c96b2096e6b70b8` into `.ci/simple-risc`, runs both
 repositories' preset/manifest tests and the UART protocol checks, builds
 SoftFloat for RV32 and RV64, then runs all seven examples in QEMU, the custom
 program regression, and the RV32/RV64 argument and GC-root regressions.

@@ -2,6 +2,7 @@
 import copy
 import json
 import os
+import runpy
 from pathlib import Path
 import subprocess
 import sys
@@ -102,6 +103,33 @@ class ExampleGate(unittest.TestCase):
             (root / 'impl/pnr/sdram_test.fs').write_text('corrupted')
             with self.assertRaisesRegex(ValueError, 'hash mismatch'):
                 fpga_image(path)
+
+    def test_manifest_geometry_matches_actual_simple_risc_producer(self):
+        hardware = Path(os.environ.get('SIMPLE_RISC_ROOT', ROOT.parent / 'simple-risc'))
+        producer = runpy.run_path(str(hardware / 'boards/tangnano20k/sdram/preset_manifest.py'))
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp)
+            (out / 'impl/pnr').mkdir(parents=True)
+            artifacts = {}
+            for name in ('impl/pnr/sdram_test.fs', 'impl/pnr/sdram_test.tr'):
+                (out / name).write_text(name)
+                artifacts[name] = sha(out / name)
+            path = out / 'build-manifest.json'
+            config = producer['CONFIG']
+            self.assertEqual(config, FPGA_CONFIG)
+            report = dict(preset='fprisc-48', ready=True, configuration=config, artifacts=artifacts)
+            path.write_text(json.dumps(report))
+            self.assertEqual(fpga_image(path)[0], out / 'impl/pnr/sdram_test.fs')
+            legacy = {key: value for key, value in config.items()
+                      if key not in ('cache_ways', 'cache_line_bits')}
+            path.write_text(json.dumps({**report, 'configuration': legacy}))
+            self.assertEqual(fpga_image(path)[0], out / 'impl/pnr/sdram_test.fs')
+            for bad in ({**config, 'cache_ways': 2}, {**config, 'cache_line_bits': 11},
+                        {**legacy, 'cache_ways': 1}, {**legacy, 'cache_line_bits': 12},
+                        {**config, 'unknown_setting': 1}):
+                path.write_text(json.dumps({**report, 'configuration': bad}))
+                with self.assertRaisesRegex(ValueError, 'configuration mismatch'):
+                    fpga_image(path)
 
     def test_classifier_region_summary_and_refusals(self):
         # The real CI summary after collector retirement: one exit sample,
