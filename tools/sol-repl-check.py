@@ -88,8 +88,6 @@ def main():
         check('eof_exit', ['> print "bye".\n'], 'bye\n')
 
         # ---- latency: session commands vs process-per-command -----------
-        script = work / 'one.sol'
-        script.write_text('> print "tick".\n')
         lines = ['> print "tick".\n'] * 50
 
         t0 = time.monotonic()
@@ -98,15 +96,26 @@ def main():
         assert r.returncode == 0 and r.stdout == 'tick\n' * 50, r.stderr[-300:]
         count += 1
 
+        # Baseline: each REPL line is NEW source, so compare against 50
+        # distinct one-shot scripts (compile-cache misses). Re-running one
+        # script would measure cache hits (~7 ms startup, no typecheck) —
+        # the REPL bypasses that cache, so that baseline is not comparable.
+        # docs/2026-10-29-SOL-REPL-LATENCY.md
+        nonce = os.urandom(6).hex()  # never a cache hit from an earlier run
+        scripts = []
+        for i in range(50):
+            s = work / f'tick{i}.sol'
+            s.write_text(f'> print "tick {i} {nonce}".\n')
+            scripts.append(s)
         t0 = time.monotonic()
-        for _ in range(50):
-            subprocess.run([str(FPR), 'sol', str(script)], capture_output=True,
+        for s in scripts:
+            subprocess.run([str(FPR), 'sol', str(s)], capture_output=True,
                            env=ENV, cwd=work, timeout=30)
         processes_ms = (time.monotonic() - t0) * 1000
         per_cmd_session = session_ms / 50
         per_cmd_process = processes_ms / 50
         print(f'repl latency (50 trivial commands): session {per_cmd_session:.2f} ms/command, '
-              f'process-per-command {per_cmd_process:.2f} ms/command '
+              f'process-per-command (distinct, uncached) {per_cmd_process:.2f} ms/command '
               f'({per_cmd_process / per_cmd_session:.1f}x)')
 
         # responsive-session bar (human-perception threshold), and no worse
