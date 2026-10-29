@@ -1,0 +1,291 @@
+{
+  "checked_on": "2026-10-29",
+  "origin": "https://3dprint.cswine.cloud",
+  "scope": "Read-only investigation; existing printers and services were not restarted or reconfigured. Temporary camera sessions were closed and test login sessions signed out.",
+  "deployed_services": {
+    "native_host": "system/cloud.cswine.printer-host",
+    "snapshot_adapter": "gui/501/cloud.cswine.printer-snapshots",
+    "both_running": true
+  },
+  "connectivity": {
+    "tested_from": "SSH process on Mini",
+    "all_three_camera_and_MQTT_ports_passed_TCP_and_verified_TLS": true,
+    "limit": "This does not independently prove GUI-domain Local Network permissions."
+  },
+  "public_first_frame_probe": [
+    {
+      "id": "a1",
+      "status": 200,
+      "type": "multipart/x-mixed-replace; boundary=frame",
+      "seconds": 2.76,
+      "received_bytes": 1024,
+      "jpeg_marker": true
+    },
+    {
+      "id": "p1s",
+      "status": 200,
+      "type": "multipart/x-mixed-replace; boundary=frame",
+      "seconds": 2.03,
+      "received_bytes": 1024,
+      "jpeg_marker": true
+    },
+    {
+      "id": "x1c",
+      "status": 503,
+      "type": "text/plain; charset=utf-8",
+      "seconds": 12.2,
+      "received_bytes": 23,
+      "jpeg_marker": false
+    }
+  ],
+  "a1_and_p1s_decoding": [
+    {
+      "printer": "a1",
+      "attempts": 3,
+      "complete_decoded_frames": 24,
+      "errors": [],
+      "first_frame_seconds": [
+        2.76,
+        2.77,
+        3.04
+      ],
+      "dimensions": [
+        1536,
+        1080
+      ]
+    },
+    {
+      "printer": "p1s",
+      "attempts": 3,
+      "complete_decoded_frames": 24,
+      "errors": [],
+      "first_frame_seconds": [
+        2.29,
+        2.51,
+        2.25
+      ],
+      "dimensions": [
+        1280,
+        720
+      ]
+    }
+  ],
+  "x1c": {
+    "live_adapter_returns": 503,
+    "live_adapter_timeout_seconds": 8,
+    "direct_decoder_extended_bound_seconds": 25,
+    "valid_frame_observations": [
+      {
+        "printer": "x1c",
+        "mode": "running-adapter",
+        "error_type": "HTTPError",
+        "status": 503,
+        "seconds": 8.03
+      },
+      {
+        "printer": "x1c",
+        "mode": "direct-decoder",
+        "bytes": 22987,
+        "jpeg": true,
+        "diagnostic_categories": [],
+        "seconds": 9.01,
+        "capture_progress": {
+          "bytes": 22987,
+          "first_byte_seconds": 9.0
+        },
+        "stream_identified": true,
+        "video_codec_h264": true,
+        "video_codec_h265": false,
+        "decoder_waiting_25s": true
+      },
+      {
+        "printer": "x1c",
+        "mode": "running-adapter",
+        "error_type": "HTTPError",
+        "status": 503,
+        "seconds": 8.02
+      },
+      {
+        "printer": "x1c",
+        "mode": "direct-decoder",
+        "bytes": 22884,
+        "jpeg": true,
+        "diagnostic_categories": [],
+        "seconds": 8.92,
+        "capture_progress": {
+          "bytes": 22884,
+          "first_byte_seconds": 8.91
+        },
+        "stream_identified": true,
+        "video_codec_h264": true,
+        "video_codec_h265": false,
+        "fast_probe_options": {
+          "analyzeduration_us": 500000,
+          "probesize_bytes": 32768
+        }
+      },
+      {
+        "printer": "x1c",
+        "mode": "running-adapter",
+        "error_type": "HTTPError",
+        "status": 503,
+        "seconds": 8.03
+      },
+      {
+        "printer": "x1c",
+        "mode": "direct-decoder",
+        "bytes": 25080,
+        "jpeg": true,
+        "diagnostic_categories": [],
+        "seconds": 10.18,
+        "capture_progress": {
+          "bytes": 25080,
+          "first_byte_seconds": 10.18
+        },
+        "stream_identified": true,
+        "video_codec_h264": true,
+        "video_codec_h265": false,
+        "fast_probe_options": {
+          "analyzeduration_us": 500000,
+          "probesize_bytes": 32768
+        }
+      },
+      {
+        "printer": "x1c",
+        "mode": "running-adapter",
+        "error_type": "HTTPError",
+        "status": 503,
+        "seconds": 8.03
+      },
+      {
+        "printer": "x1c",
+        "mode": "direct-decoder",
+        "bytes": 24592,
+        "jpeg": true,
+        "diagnostic_categories": [],
+        "seconds": 8.9,
+        "capture_progress": {
+          "bytes": 24592,
+          "first_byte_seconds": 8.9
+        },
+        "stream_identified": true,
+        "video_codec_h264": true,
+        "video_codec_h265": false,
+        "decoder_waiting_25s": true
+      }
+    ],
+    "confirmed_problem": "The current 8 s capture budget is shorter than the observed 9-10 s first-frame startup. A slow-but-valid source is discarded as unavailable.",
+    "analysis_flag_trials": "Shorter FFmpeg probe/analyse settings alone did not consistently shorten capture below the deployed bound.",
+    "related_budgets": {
+      "decoder_capture_s": 8,
+      "decoder_handler_socket_s": 10,
+      "native_snapshot_http_s": 9.5,
+      "first_frame_wait_s": 12,
+      "gateway_upstream_headers_s": 14
+    },
+    "next_fix": "Use coherent bounded capture, HTTP, first-frame and gateway deadlines, or keep a decoder alive while selected to avoid repeated stream startup. Validate in the deployed GUI context."
+  },
+  "webkit_tests": [
+    {
+      "engine": "WebKit",
+      "profile": "desktop",
+      "cameraRequests": 3,
+      "pageErrors": 0,
+      "initial": {
+        "label": "Camera connected \u00b7 native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "sustained": {
+        "label": "Camera connected \u00b7 native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "afterTransient": {
+        "label": "Camera unavailable. Switch off and on to retry.",
+        "width": 0,
+        "height": 0,
+        "source": true,
+        "hidden": false
+      },
+      "afterRecoveryWait": {
+        "label": "Camera unavailable. Switch off and on to retry.",
+        "width": 0,
+        "height": 0,
+        "source": true,
+        "hidden": false
+      },
+      "automaticRetryRequests": 0,
+      "manualReconnect": {
+        "label": "Camera connected \u00b7 native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "completed": true
+    },
+    {
+      "engine": "WebKit",
+      "profile": "iPhone-like",
+      "cameraRequests": 3,
+      "pageErrors": 0,
+      "initial": {
+        "label": "Camera connected \u00b7 native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "sustained": {
+        "label": "Camera connected \u00b7 native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "afterTransient": {
+        "label": "Camera unavailable. Switch off and on to retry.",
+        "width": 0,
+        "height": 0,
+        "source": true,
+        "hidden": false
+      },
+      "afterRecoveryWait": {
+        "label": "Camera unavailable. Switch off and on to retry.",
+        "width": 0,
+        "height": 0,
+        "source": true,
+        "hidden": false
+      },
+      "automaticRetryRequests": 0,
+      "manualReconnect": {
+        "label": "Camera connected \u00b7 native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "completed": true
+    }
+  ],
+  "a1": {
+    "original_intermittent_source_failure_reproduced": false,
+    "confirmed_recovery_gap": "On a single simulated transient network failure, desktop and mobile WebKit retain the failed image src and send no automatic retry. Manual off/on recovers.",
+    "source_evidence": [
+      "std/browsermedia.fpr:retryEnabled and attach onerror",
+      "examples/printers.fpr:programWithRetry enabled only for camera_mode snapshot"
+    ],
+    "limit": "WebKit test profiles are not the owner actual Safari sessions. A brief A1 stream failure is a plausible trigger; the initial interruption cause was not captured.",
+    "next_fix": "Add bounded reconnect/backoff for native streams, with cancellation on off, hidden tab and logout; show connecting/retrying status rather than a permanently failed image."
+  },
+  "unrelated_checkout_edits_preserved": [
+    "compiler/Build.hs"
+  ],
+  "credentials": "Private login key stayed on Mac; printer access codes resolved and used on Mini only; no secrets, cookies, signatures or decoder diagnostic text were logged.",
+  "printer_controls_sent": []
+}

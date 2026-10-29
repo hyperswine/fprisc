@@ -203,8 +203,9 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6732), (
 
 # Local rules travel with the view; no global or component stylesheet.
 css v = "".
-cameraScript = Media.programWithRetry {attribute = "data-camera-mode", value = "snapshot", delayMs = 10000,
+cameraScript = Media.programWithReconnect {attribute = "data-camera-mode", value = "snapshot", delayMs = 10000,
   connected = "Snapshot preview · refreshes about every 10s", failed = "Snapshot unavailable · retrying in 10s"}
+  {delayMs = 1000, maxDelayMs = 10000, failed = "Camera interrupted · reconnecting…"}
   {hostAttribute = "data-camera-id", onAttribute = "data-camera-on",
   statusAttribute = "data-camera-status", rootId = "lv-root", linkId = "lv-link",
   routePrefix = "/camera/", routeSuffix = ".mjpg",

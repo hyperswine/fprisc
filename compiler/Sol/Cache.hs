@@ -8,7 +8,7 @@
 -- A disposable compiler-result cache, never a cache of evaluated values or
 -- effects. Imports are resolved before lookup. Exact encoded inputs are checked
 -- after the filename hash, so hash collisions cannot select a different program.
-module Sol.Cache (Prepared (..), cached, cachedModule) where
+module Sol.Cache (Prepared (..), cached, cachedModule, cachedPrelude) where
 
 import Control.DeepSeq (NFData, force)
 import Control.Exception (IOException, bracketOnError, catch, evaluate)
@@ -44,7 +44,7 @@ data Prepared = Prepared
 -- Changing the artifact format/meaning requires a new schema, even though a
 -- rebuilt executable normally also invalidates all entries through its identity.
 schema :: Int
-schema = 4 -- 4: programs shaken to the reachable set (2026-10-29); 3: TailCall in the bytecode (2026-10-02)
+schema = 5 -- 5: programs may be compiled against a sliced prelude, internal names renumbered (2026-10-29); 4: programs shaken to the reachable set (2026-10-29); 3: TailCall in the bytecode (2026-10-02)
 
 fingerprint :: BS.ByteString -> Word64
 fingerprint = BS.foldl' (\h b -> (h `xor` fromIntegral b) * 0x100000001b3) 0xcbf29ce484222325
@@ -149,7 +149,16 @@ cacheDirectory = do
     Nothing -> maybe ((</> ".sol/cache") <$> getHomeDirectory) (pure . (</> "sol")) xdg
 
 cachedModule :: FilePath -> String -> IO (Either String (String, [STop])) -> IO (Either String (String, [STop]))
-cachedModule path src parseIt = do
+cachedModule = cachedParse "modules"
+
+-- The parsed prelude (Sol.Main.preludeTops), in its own directory: same key
+-- discipline as a module (schema + executable identity + source), so a new
+-- build or a new prelude text can never read an old parse.
+cachedPrelude :: String -> IO (Either String (String, [STop])) -> IO (Either String (String, [STop]))
+cachedPrelude = cachedParse "prelude" "<sol-prelude>"
+
+cachedParse :: FilePath -> FilePath -> String -> IO (Either String (String, [STop])) -> IO (Either String (String, [STop]))
+cachedParse subdir path src parseIt = do
   disabled <- (== Just "0") <$> lookupEnv "SOL_CACHE"
   if disabled then parseIt else do
     context <- (Just <$> moduleContext) `catch` (\(_ :: IOException) -> pure Nothing)
@@ -173,5 +182,5 @@ cachedModule path src parseIt = do
       dir <- cacheDirectory
       let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
           key = BL.toStrict (encode (schema, identity, arch, os, absolute, path, src))
-          file = dir </> "modules" </> (showHex (fingerprint key) "" ++ ".cache")
+          file = dir </> subdir </> (showHex (fingerprint key) "" ++ ".cache")
       pure (file, key)

@@ -21,7 +21,7 @@ import time
 from urllib.parse import quote
 
 MAX_FRAME = 4194304
-CAPTURE_SECONDS = 8
+CAPTURE_SECONDS = 15
 CACHE_SECONDS = 2
 
 
@@ -140,7 +140,7 @@ class Server(ThreadingHTTPServer):
 
 class Handler(BaseHTTPRequestHandler):
     def setup(self):
-        super().setup();self.connection.settimeout(10)
+        super().setup();self.connection.settimeout(CAPTURE_SECONDS + 4)
 
     def log_message(self,*args):
         pass

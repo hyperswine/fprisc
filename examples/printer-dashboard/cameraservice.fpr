@@ -25,8 +25,10 @@ Command = Type (Reserve Int | Join Int | Next Int Int | Leave Int | Observe Int 
 Reply = Type (Accepted | Refused | Waiting | Broken | Picture Int String | Snapshot J.Value).
 now u = Sys.timeUs Unit / 1000.
 firstFrameMs = 12000.
+snapshotRequestMs = 18000.
+snapshotFirstFrameMs = 22000.
 # Include the bounded error response and loopback relay scheduling margin.
-headerBudgetMs = firstFrameMs + 2000.
+headerBudgetMs = snapshotFirstFrameMs + 2000.
 budget ms = case Sock.forMs ms of Ok b -> b | Err _ -> error "camera: invalid duration".
 ask me manager command = A.callWithin 500 me manager command.
 initial = {tickets = Nil, viewers = Nil, source = 0, epoch = 0, seq = 0, frame = "", error = False, last = 0, wall = 0, buckets = Nil, starts = 0}.
@@ -113,10 +115,10 @@ sourceStep manager epoch me maximum state =
 snapshotWorker cfg pool watcher manager epoch me =
   _ = Sys.loop Unit (fn u ->
     began = now Unit;
-    options = {HC.defaults | timeoutMs = 9500, bodyBytes = cfg.maxFrame};
+    options = {HC.defaults | timeoutMs = snapshotRequestMs, bodyBytes = cfg.maxFrame};
     request = {method = "GET", url = "http://127.0.0.1:{cfg.port}/snapshot/{cfg.id}.jpg",
       headers = [("x-printer-camera-code", cfg.code)], body = ""};
-    result = HC.requestOn (W.wait watcher) (budget 9500) pool options request;
+    result = HC.requestOn (W.wait watcher) (budget snapshotRequestMs) pool options request;
     _ = case result of
       Ok response -> if response.status != 200 or not (F.jpeg response.body) then Unit else
         wall = case H.header "x-camera-captured-at" response of O.Some value -> (case S.toInt value of Ok n -> n | _ -> 0) | _ -> 0;
@@ -124,7 +126,9 @@ snapshotWorker cfg pool watcher manager epoch me =
           _ = ask me manager (Captured epoch wall response.body); Unit
     | _ -> Unit;
     remaining = cfg.intervalMs - (now Unit - began);
-    _ = Clock.sleepMs (if remaining > 0 then remaining else 1000);
+    # The adapter coalesces frames for two seconds. A slow capture must not
+    # immediately poll that cache and publish the same capture as a new frame.
+    _ = Clock.sleepMs (if remaining > 2500 then remaining else 2500);
     (True, Unit)); Unit.
 respond status body connection =
   (_, next) = ownedParts (budget 1000) [H.renderResponse (H.text status body)] connection; next.
@@ -167,7 +171,7 @@ handle cfg manager ticket raw me =
             | _ -> respond 503 "Camera unavailable\n" next)
           | Ok _ -> (case ask me manager (Join ticket) of
               Ok Accepted ->
-                (last, _, begun, _) = Sys.loop (next, 0, False, now Unit + firstFrameMs) (viewerStep cfg.waitMs me manager ticket cfg.maxFrame);
+                (last, _, begun, _) = Sys.loop (next, 0, False, now Unit + cfg.firstFrameMs) (viewerStep cfg.waitMs me manager ticket cfg.maxFrame);
                 if begun then last else respond 503 "Camera unavailable\n" last
             | _ -> respond 503 "Camera busy\n" next));
       _ = OT.close final;
@@ -183,9 +187,9 @@ acceptStep cfg manager listener me count = case IO.ready listener of
           Ok Accepted -> _ = A.spawnWith (A.Static 16) (handle cfg manager ticket fd); Unit
         | _ -> _ = IO.close fd; Unit);
         (True, count + 1)).
-start cfg = startUsing {gate = cfg.gate, maxFrame = cfg.maxFrame, worker = worker cfg, staleMs = 10000, waitMs = 12000}.
+start cfg = startUsing {gate = cfg.gate, maxFrame = cfg.maxFrame, worker = worker cfg, staleMs = 10000, waitMs = 12000, firstFrameMs = firstFrameMs}.
 startSnapshot cfg = startUsing {gate = cfg.gate, maxFrame = cfg.maxFrame, worker = snapshotWorker cfg,
-  staleMs = cfg.intervalMs + 10000, waitMs = cfg.intervalMs + 12000}.
+  staleMs = cfg.intervalMs + snapshotRequestMs, waitMs = cfg.intervalMs + snapshotFirstFrameMs, firstFrameMs = snapshotFirstFrameMs}.
 startUsing cfg =
   pool = case DNS.create 1 of Ok p -> p | Err _ -> error "camera: resolver unavailable";
   watcher = R.start Unit;

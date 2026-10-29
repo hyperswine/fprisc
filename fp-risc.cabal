@@ -223,6 +223,7 @@ library
       Sol.Mod
       Sol.Native
       Sol.Preamble
+      Sol.Slice
       Sol.ScriptIO
       Sol.Process
       Sol.Digest

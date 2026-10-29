@@ -34,8 +34,9 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
   assert.equal(await syntaxPage.evaluate(()=>window.generated.text),'</script><script>window.injected=true</script>\u2028');
   await syntaxPage.close();
   const page=await browser.newPage();
-  let requests=0;
+  let requests=0,failMedia=false;
   await page.route('**/camera/**',async route=>{requests++;
+    if(failMedia){await route.abort('connectionreset');return;}
     await route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ioAAAAASUVORK5CYII=','base64')});});
   for (const harts of [1,4]) {
    const v=JSON.parse(execFileSync(bin,{encoding:'utf8',env:{...process.env,FPR_HARTS:String(harts)}}));
@@ -91,7 +92,7 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
    await page.locator('article').evaluate(e=>{e.style.color='rgb(200, 0, 0)';});
    assert.equal(await page.locator('h1').evaluate(e=>getComputedStyle(e).color),'rgb(38, 51, 46)');
    await page.evaluate(()=>{const base=document.createElement('base');base.href='http://media.test/';document.head.append(base);});
-   const start=requests;
+   let start=requests;
    await page.addScriptTag({content:v.media});
    const host=page.locator('[data-camera-id]');
    await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('Camera connected'));
@@ -114,14 +115,36 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
    await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('Camera connected'));
    assert.equal(requests,start+3);
    await host.locator('img').evaluate(e=>e.dispatchEvent(new Event('error')));
-   await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('Camera unavailable'));
-   await page.waitForTimeout(40);
-   assert.equal(requests,start+3,'failure does not start a reconnect loop');
+   await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('reconnecting'));
+   await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('Camera connected'));
+   assert.equal(requests,start+4,'native stream reconnects without an off/on toggle');
+   // Accelerate only retry timers while checking the generated backoff values.
+   // The actual request fails, so every error goes through the image event path.
+   const beforeBackoff=requests;
+   await page.evaluate(()=>{window.mediaRetryDelays=[];window.mediaSetTimeout=window.setTimeout;
+    window.setTimeout=(fn,ms,...args)=>{if(ms>=1000&&ms<=10000){window.mediaRetryDelays.push(ms);return window.mediaSetTimeout(fn,20,...args);}return window.mediaSetTimeout(fn,ms,...args);};});
+   failMedia=true;
+   await host.locator('img').evaluate(e=>e.dispatchEvent(new Event('error')));
+   await page.waitForFunction(()=>window.mediaRetryDelays.length>=6);
+   assert.deepEqual(await page.evaluate(()=>window.mediaRetryDelays.slice(0,6)),[1000,2000,4000,8000,10000,10000]);
+   failMedia=false;
+   await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('Camera connected'));
+   const resetAt=await page.evaluate(()=>window.mediaRetryDelays.length);
+   await host.locator('img').evaluate(e=>e.dispatchEvent(new Event('error')));
+   await page.waitForFunction(n=>window.mediaRetryDelays.length>n,resetAt);
+   assert.equal(await page.evaluate(n=>window.mediaRetryDelays[n],resetAt),1000,'successful frame resets retry delay');
+   await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('Camera connected'));
+   await page.evaluate(()=>{window.setTimeout=window.mediaSetTimeout;});
+   start+=requests-beforeBackoff;
+   // Off cancels a pending native retry as well as releasing the stream.
+   await host.locator('img').evaluate(e=>e.dispatchEvent(new Event('error')));
    await host.evaluate(e=>e.setAttribute('data-camera-on','false'));
    await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent==='Camera is off');
+   await page.waitForTimeout(1200);
+   assert.equal(requests,start+4,'off cancels pending native retry');
    await host.evaluate(e=>e.setAttribute('data-camera-on','true'));
    await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('Camera connected'));
-   assert.equal(requests,start+4);
+   start++;
    await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
    assert.equal(await host.locator('img').getAttribute('src'),null);
    await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
@@ -132,7 +155,7 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
    await page.waitForFunction(()=>document.querySelector('[data-camera-id]').shadowRoot?.querySelector('img').hasAttribute('src'));
    assert.equal(requests,start+6);
    // Snapshot previews recover once per ten seconds. Switching off or hiding
-   // the page cancels even a pending retry; ordinary streams retain policy.
+   // the page cancels even a pending retry; native backoff was checked above.
    await host.evaluate(e=>e.setAttribute('data-camera-mode','snapshot'));
    await host.locator('img').evaluate(e=>e.dispatchEvent(new Event('error')));
    await page.waitForFunction(()=>document.querySelector('[data-camera-status]').textContent.includes('retrying in 10s'));

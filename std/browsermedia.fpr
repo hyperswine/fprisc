@@ -47,14 +47,18 @@ imageHtml image = case G.renderStyled image of (ss, ds) ->
   if ds != Nil then error "BrowserMedia.image: expected static presentation" else strJoin "" ss.
 Retry = {attribute : String, value : String, delayMs : Int, connected : String, failed : String}.
 program cfg = programWithRetry {attribute = "data-media-retry", value = "", delayMs = 0, connected = cfg.labels.connected, failed = cfg.labels.failed} cfg.
-programWithRetry retry cfg = JS.program [JS.Do (call (JS.Function Nil (definitions retry cfg)) Nil)].
+# Native streams recover with bounded backoff; snapshot labels/cadence remain distinct.
+Reconnect = {delayMs : Int, maxDelayMs : Int, failed : String}.
+programWithRetry retry cfg = programWithReconnect retry {delayMs = 0, maxDelayMs = 0, failed = cfg.labels.failed} cfg.
+programWithReconnect retry reconnect cfg = JS.program [JS.Do (call (JS.Function Nil (definitions retry reconnect cfg)) Nil)].
+baseDelay retry reconnect = JS.Choose (retryEnabled retry) (JS.Number retry.delayMs) (JS.Number reconnect.delayMs).
 retryEnabled retry = JS.Binary JS.And (JS.Boolean (retry.delayMs > 0)) (equal (attr (n "host") retry.attribute) (t retry.value)).
-definitions retry cfg =
-  [JS.Const "media" (JS.New (n "Map") Nil), JS.Let "queued" (JS.Boolean False), JS.Let "running" (JS.Boolean True),
+definitions retry reconnect cfg =
+  [JS.Const "media" (JS.New (n "Map") Nil), JS.Let "sequence" (JS.Number 0), JS.Let "queued" (JS.Boolean False), JS.Let "running" (JS.Boolean True),
    JS.Define "stopMedia" Nil [JS.ForOf "state" (method (n "media") "values" Nil) (stopSource (n "state"))],
    JS.Define "schedule" Nil [JS.If (JS.Binary JS.And (n "running") (neg (n "queued")))
       [JS.Assign (n "queued") (JS.Boolean True), JS.Do (call (n "queueMicrotask") [n "sync"])] Nil],
-   JS.Define "sync" Nil (sync retry cfg),
+   JS.Define "sync" Nil (sync retry reconnect cfg),
    JS.Const "root" (method (n "document") "getElementById" [t cfg.rootId]),
    JS.Const "link" (method (n "document") "getElementById" [t cfg.linkId]),
    JS.Const "treeObserver" (JS.New (n "MutationObserver") [n "schedule"]),
@@ -65,7 +69,7 @@ definitions retry cfg =
    doMethod (n "window") "addEventListener" [t "pagehide", JS.Function Nil [JS.Assign (n "running") (JS.Boolean False), JS.Do (call (n "stopMedia") Nil)]],
    doMethod (n "window") "addEventListener" [t "pageshow", JS.Function ["event"] [JS.If (f (n "event") "persisted") [JS.Assign (n "running") (JS.Boolean True), JS.Do (call (n "schedule") Nil)] Nil]],
    JS.Do (call (n "schedule") Nil)].
-sync retry cfg =
+sync retry reconnect cfg =
   [JS.Assign (n "queued") (JS.Boolean False), JS.If (neg (n "running")) [JS.Return JS.Null] Nil,
    JS.Const "link" (method (n "document") "getElementById" [t cfg.linkId]),
    JS.Const "live" (JS.Binary JS.And (n "link") (equal (f (n "link") "textContent") (t "live"))),
@@ -73,33 +77,43 @@ sync retry cfg =
    JS.ForOf "entry" (n "media")
     [JS.Const "host" (JS.Index (n "entry") (JS.Number 0)), JS.Const "state" (JS.Index (n "entry") (JS.Number 1)),
      JS.If (neg (f (n "host") "isConnected")) (L.append (stopSource (n "state")) [doMethod (n "media") "delete" [n "host"]]) Nil],
-   JS.ForOf "host" (method (n "document") "querySelectorAll" [selector cfg.hostAttribute]) (syncHost retry cfg)].
-syncHost retry cfg =
+   JS.ForOf "host" (method (n "document") "querySelectorAll" [selector cfg.hostAttribute]) (syncHost retry reconnect cfg)].
+syncHost retry reconnect cfg =
   [JS.Const "id" (attr (n "host") cfg.hostAttribute), JS.Let "label" JS.Null,
    JS.ForOf "candidate" (method (n "document") "querySelectorAll" [selector cfg.statusAttribute])
      [JS.If (equal (attr (n "candidate") cfg.statusAttribute) (n "id")) [JS.Assign (n "label") (n "candidate")] Nil],
    JS.Let "state" (method (n "media") "get" [n "host"]),
-   JS.If (neg (n "state")) (attach retry cfg) Nil,
+   JS.If (neg (n "state")) (attach retry reconnect cfg) Nil,
    JS.Const "selected" (equal (attr (n "host") cfg.onAttribute) (t "true")),
    JS.If (neg (ruleExpr active))
-     (L.append (stopSource (n "state")) [JS.Assign (f (n "state") "text") (JS.Choose (n "selected") (t cfg.labels.paused) (t cfg.labels.off))])
+     (L.append (stopSource (n "state")) [JS.Assign (f (n "state") "delay") (baseDelay retry reconnect), JS.Assign (f (n "state") "text") (JS.Choose (n "selected") (t cfg.labels.paused) (t cfg.labels.off))])
      [JS.If (neg (method (f (n "state") "img") "hasAttribute" [t "src"]))
-       [setMessage cfg Connecting, JS.Assign (f (f (n "state") "img") "src")
-         (JS.Binary JS.Add (JS.Binary JS.Add (t cfg.routePrefix) (call (n "encodeURIComponent") [n "id"])) (t cfg.routeSuffix))] Nil],
+       [setMessage cfg Connecting,
+        JS.Assign (n "sequence") (JS.Binary JS.Add (n "sequence") (JS.Number 1)),
+        JS.Const "route" (JS.Binary JS.Add (JS.Binary JS.Add (t cfg.routePrefix) (call (n "encodeURIComponent") [n "id"])) (t cfg.routeSuffix)),
+        # A reconnect must open a new response, not reuse a cached/broken image.
+        JS.Assign (f (f (n "state") "img") "src")
+          (JS.Binary JS.Add (n "route") (JS.Binary JS.Add
+            (JS.Choose (method (n "route") "includes" [t "?"]) (t "&") (t "?"))
+            (JS.Binary JS.Add (t "_media=") (JS.Binary JS.Add (method (n "Date") "now" Nil)
+              (JS.Binary JS.Add (t "-") (n "sequence"))))))] Nil],
    JS.If (JS.Binary JS.And (n "label") (JS.Binary JS.NotEqual (f (n "label") "textContent") (f (n "state") "text")))
      [JS.Assign (f (n "label") "textContent") (f (n "state") "text")] Nil].
-attach retry cfg =
+attach retry reconnect cfg =
   [JS.Const "shadow" (method (n "host") "attachShadow" [JS.Object [("mode",t "open")]]),
    JS.Assign (f (n "shadow") "innerHTML") (t (imageHtml cfg.image)),
    JS.Const "img" (method (n "shadow") "querySelector" [t "img"]),
    JS.Assign (f (n "img") "alt") (JS.Binary JS.Or (attr (n "host") "aria-label") (t "Camera")),
-   JS.Assign (n "state") (JS.Object [("img",n "img"),("text",t cfg.labels.off),("retry",JS.Null)]),
-   JS.Assign (f (n "img") "onload") (JS.Function Nil [JS.Assign (f (n "state") "text")
+   JS.Assign (n "state") (JS.Object [("img",n "img"),("text",t cfg.labels.off),("retry",JS.Null),("delay",baseDelay retry reconnect)]),
+   JS.Assign (f (n "img") "onload") (JS.Function Nil [JS.Do (call (n "clearTimeout") [f (n "state") "retry"]), JS.Assign (f (n "state") "retry") JS.Null, JS.Assign (f (n "state") "delay") (baseDelay retry reconnect), JS.Assign (f (n "state") "text")
      (JS.Choose (retryEnabled retry) (t retry.connected) (t cfg.labels.connected)), JS.Do (call (n "schedule") Nil)]),
-   JS.Assign (f (n "img") "onerror") (JS.Function Nil [setMessage cfg Failed, JS.Do (call (n "schedule") Nil),
-     JS.If (JS.Binary JS.And (retryEnabled retry) (method (n "img") "hasAttribute" [t "src"]))
-       [JS.Do (call (n "clearTimeout") [f (n "state") "retry"]),
-        JS.Assign (f (n "state") "text") (t retry.failed),
+   JS.Assign (f (n "img") "onerror") (JS.Function Nil [
+     JS.If (JS.Binary JS.And (JS.Binary JS.Or (retryEnabled retry) (JS.Boolean (reconnect.delayMs > 0))) (method (n "img") "hasAttribute" [t "src"]))
+       [JS.If (equal (f (n "state") "retry") JS.Null) [
+        JS.Assign (f (n "state") "text") (JS.Choose (retryEnabled retry) (t retry.failed) (t reconnect.failed)),
         JS.Assign (f (n "state") "retry") (call (n "setTimeout") [JS.Function Nil
-          (L.append (stopSource (n "state")) [JS.Do (call (n "schedule") Nil)]), JS.Number retry.delayMs])] Nil]),
+          (L.append (stopSource (n "state")) [JS.Do (call (n "schedule") Nil)]), JS.Choose (retryEnabled retry) (JS.Number retry.delayMs) (f (n "state") "delay")]),
+        JS.Assign (f (n "state") "delay") (JS.Choose (retryEnabled retry) (JS.Number retry.delayMs)
+          (method (n "Math") "min" [JS.Number reconnect.maxDelayMs, JS.Binary JS.Multiply (f (n "state") "delay") (JS.Number 2)]))] Nil]
+       [setMessage cfg Failed], JS.Do (call (n "schedule") Nil)]),
    doMethod (n "media") "set" [n "host",n "state"]].

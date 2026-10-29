@@ -207,8 +207,19 @@ def main():
         denied_dir = work / 'denieddir'
         denied_dir.mkdir()
         denied_dir.chmod(0o000)
-        try_check('try_ls_denied', why % f'Try.ls "{denied_dir}"',
-                  f'OpLs {denied_dir} FsDenied\n'.encode())
+        # root (e.g. the check_base CI container) ignores mode bits, so a
+        # chmod 000 directory is still readable there; only assert FsDenied
+        # where the kernel actually refuses the read.
+        try:
+            os.listdir(denied_dir)
+            can_deny = False
+        except PermissionError:
+            can_deny = True
+        if not can_deny:
+            print('SKIP denied-path checks: chmod 000 does not deny (running as root?)')
+        if can_deny:
+            try_check('try_ls_denied', why % f'Try.ls "{denied_dir}"',
+                      f'OpLs {denied_dir} FsDenied\n'.encode())
         try_check('try_stat_ok',
                   f'> r = Try.stat "{plain}";'
                   f' out = case r of Ok (sz, mt) -> "{{sz > 0}}" | Err e -> "err"; print out.\n',
@@ -224,8 +235,9 @@ def main():
                   f'> r = Try.exists "{plain}";'
                   f' out = case r of Ok b -> "{{b}}" | Err e -> "err"; print out.\n',
                   b'True\n')
-        try_check('try_exists_denied', why % f'Try.exists "{denied_dir}/x"',
-                  f'OpExists {denied_dir}/x FsDenied\n'.encode())
+        if can_deny:
+            try_check('try_exists_denied', why % f'Try.exists "{denied_dir}/x"',
+                      f'OpExists {denied_dir}/x FsDenied\n'.encode())
         # a symlink loop is its own reason, on every observation spelling
         loop_a = work / 'loop-a'
         loop_b = work / 'loop-b'
@@ -239,10 +251,11 @@ def main():
                   f' print "{{isOk (Try.ls d)}} {{isOk (Try.ls m)}}".\n',
                   b'True False\n')
         # plain spellings on unknowable paths fail CLEARLY (classified panic)
-        check('exists_denied_panic', f'> p = "{denied_dir}/x"; print "{{exists p}}".\n',
-              code=1, error=b'SOL PANIC: exists:')
-        check('isdir_denied_panic', f'> p = "{denied_dir}/x"; print "{{isDir p}}".\n',
-              code=1, error=b'SOL PANIC: isDir:')
+        if can_deny:
+            check('exists_denied_panic', f'> p = "{denied_dir}/x"; print "{{exists p}}".\n',
+                  code=1, error=b'SOL PANIC: exists:')
+            check('isdir_denied_panic', f'> p = "{denied_dir}/x"; print "{{isDir p}}".\n',
+                  code=1, error=b'SOL PANIC: isDir:')
         denied_dir.chmod(0o755)
         check('stat_loop_panic', f'> p = "{loop_a}"; stat p.\n',
               code=1, error=b'SOL PANIC: stat:')

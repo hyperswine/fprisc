@@ -41,6 +41,13 @@ def main():
         for file in cache.glob('*.cache'):file.unlink()
         p=subprocess.run([str(FPR),'sol',str(script)],env=timed,capture_output=True,timeout=15)
         assert p.returncode==0 and b'prelude-parse' in p.stderr,p
+        # The parsed-prelude entry: a corrupt one is ignored and rewritten.
+        preludes=list((cache/'prelude').glob('*.cache'));assert len(preludes)==1,preludes
+        good=preludes[0].read_bytes()
+        for broken in (b'', good[:-1], bytes([good[0]^1])+good[1:]):
+            preludes[0].write_bytes(broken)
+            for file in cache.glob('*.cache'):file.unlink()
+            run();assert preludes[0].read_bytes()==good
         # Both FF and FE decode to U+FFFD in the previous implementation. Their
         # equal size/mtime must not hide a content change during a transaction.
         data=w/'binary';data.write_bytes(b'\xff')
@@ -51,7 +58,7 @@ def main():
         assert data.read_bytes()==b'\xfe'
         # Exact validation still permits an unchanged binary snapshot.
         p=run(b'attempt\ndone\n');assert b'retrying' not in p.stderr,p
-    print('sol module-cache/transaction checks: corruption, invalidation, prelude bypass, exact binary conflicts passed')
+    print('sol module-cache/transaction checks: corruption, invalidation, prelude bypass, parsed-prelude entry, exact binary conflicts passed')
 
 
 if __name__=='__main__':main()
