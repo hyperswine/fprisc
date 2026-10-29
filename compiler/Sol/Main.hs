@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase, ScopedTypeVariables #-}
 
 -- Main.hs — `sol script.sol`
 --
@@ -19,11 +19,12 @@ import Control.DeepSeq (force)
 import Sol.Diagnostic
 import qualified Sol.ScriptIO as ScriptIO
 import Sol.Bytecode
-import Control.Exception (AsyncException (UserInterrupt), IOException, bracket, catch, finally, onException, throwIO, try, evaluate)
+import Control.Exception (AsyncException (UserInterrupt), Handler (..), IOException, bracket, catch, catches, finally, onException, throwIO, try, evaluate)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
 import Data.IORef
-import Data.List (intercalate, isPrefixOf)
+import Data.Char (isSpace)
+import Data.List (intercalate, isInfixOf, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Foldable (toList)
@@ -42,10 +43,11 @@ import Sol.Width (widthReport)
 import Sol.HandJIT (JitCtx, initJIT)
 import System.Environment (getArgs, lookupEnv)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
-import System.Exit (ExitCode (ExitFailure), exitFailure, exitWith)
-import System.IO (hFlush, hPutStrLn, stderr, stdout)
+import System.Exit (ExitCode (..), exitFailure, exitSuccess, exitWith)
+import System.IO (hFlush, hGetLine, hIsTerminalDevice, hPutStr, hPutStrLn, putStr, stderr, stdin, stdout)
 import System.IO.Error (ioeGetErrorString, isUserError)
-import System.Directory (canonicalizePath)
+import System.Directory (canonicalizePath, getCurrentDirectory, getTemporaryDirectory)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.FilePath (dropExtension, takeDirectory, takeExtension)
 import Text.Megaparsec (errorBundlePretty, parse)
 import Sol.Txn
@@ -76,6 +78,7 @@ runScript = do
     ["--version"] -> putStrLn "Sol 0.12.0 (scripting API 1)"
     ["state"] -> maintainState False
     ["recover"] -> maintainState True
+    ("--repl" : rest) -> runRepl rest
     _ -> runFile as
 
 runFile :: [String] -> IO ()
@@ -153,13 +156,14 @@ parseSolArgs asm policy (path:rest)
 parseSolArgs _ _ _ = Left solUsage
 
 solUsage :: String
-solUsage = "usage: sol [--asm] [--retry-policy=guarded|legacy] <script.sol> [args]"
+solUsage = "usage: sol [--asm] [--retry-policy=guarded|legacy] <script.sol> [args] | --repl [args]"
 
 solHelp :: String
 solHelp = unlines
   [ solUsage
   , "       sol --help | --version | state | recover"
   , "Script arguments follow the script, without shell interpretation."
+  , "--repl: interactive session; one command, one transaction (Ctrl-D exits)."
   , "state: list retained recovery journals and live/dead owners."
   , "recover: replay dead-owner journals; errors retain their recovery fences."
   , "State: SOL_STATE_DIR, XDG_STATE_HOME/sol, or ~/.local/state/sol."
@@ -424,6 +428,195 @@ runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bpr
       | otherwise = do
           diagnostic ("[sol] conflict on " ++ show stale ++ " — retrying (attempt " ++ show (attempt + 2) ++ ")")
           runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt (attempt + 1)
+
+-- ---- the REPL: one command, one transaction -------------------------------
+-- docs/2026-10-29-SOL-REPL-DESIGN.md. The session is a growing source text:
+-- each command recompiles the accumulated program (in memory; the module
+-- disk cache is bypassed) and executes ONLY its own evals in a fresh
+-- transaction. Definitions persist because they stay in the program —
+-- checked purity means they carry no state needing transactional
+-- protection. Effects, handles and actors die with their command. Guarded
+-- retry only, at command granularity: a clean conflict re-runs the
+-- command; a conflict after realtime escapes is reported, never replayed;
+-- a panic or Ctrl-C aborts the command's transaction and returns to the
+-- prompt. Sessions cannot redefine a name (the accumulated program is the
+-- environment; redefinition would need incremental compilation).
+
+replMaxAttempts :: Int
+replMaxAttempts = 12
+
+runRepl :: [String] -> IO ()
+runRepl scriptArgs = do
+  tty <- hIsTerminalDevice stdin
+  base <- getCurrentDirectory
+  rt <- newRtCounts
+  jitFlag <- lookupEnv "SOL_JIT"
+  jc <- case jitFlag of
+    Just "0" -> pure Nothing
+    _ -> initJIT
+  gpu <- Gpu.initGPU
+  ptops <- parseOrDie "<prelude>" prelude
+  trustedPaths <- trustedLibraryPaths
+  seenRef <- newIORef M.empty
+  trustRef <- newIORef S.empty
+  recoverScriptJournals "sol-repl"
+  journalFile <- runJournalPath "sol-repl"
+  tmp <- getTemporaryDirectory
+  now <- getPOSIXTime
+  let dataFile = tmp ++ "/sol-repl-" ++ show (floor (now * 1000000) :: Integer) ++ ".soldata"
+  when tty $
+    putStrLn "Sol 0.12.0 (scripting API 1) — one command, one transaction. Ctrl-D exits."
+  let
+    loop tty acc buffer evalsDone defined = do
+      when tty (putStr (if null buffer then "sol> " else "...> ") >> hFlush stdout)
+      got <- try (hGetLine stdin) :: IO (Either IOException String)
+      case got of
+        Left _ -> do
+          when tty (putStrLn "")
+          exitWith ExitSuccess
+        Right line
+          | all isSpace line && null buffer -> loop tty acc buffer evalsDone defined
+          | otherwise -> do
+              let buffer' = if null buffer then line ++ "\n" else buffer ++ line ++ "\n"
+                  trial = acc ++ buffer'
+              case parse program "<repl>" trial of
+                Left e
+                  -- a def ending mid-'.' keeps the buffer and prompts for
+                  -- more; a blank line while waiting is the way out
+                  | "unexpected end of input" `isInfixOf` errorBundlePretty e ->
+                      if all isSpace line && not (null buffer)
+                        then do
+                          hPutStrLn stderr "[repl] incomplete input discarded"
+                          loop tty acc "" evalsDone defined
+                        else loop tty acc buffer' evalsDone defined
+                  | otherwise -> do
+                      hPutStr stderr (errorBundlePretty e)
+                      hPutStrLn stderr "[repl] input rejected"
+                      loop tty acc "" evalsDone defined
+                Right tops -> do
+                  -- names THIS command adds: parse the new lines alone, so
+                  -- the accumulated program's own definitions do not clash
+                  -- with themselves
+                  let cmdNames = case parse program "<cmd>" buffer' of
+                        Right ts -> S.fromList (concatMap replTopName ts)
+                        Left _ -> S.empty
+                      clash = S.toList (S.intersection cmdNames defined)
+                  if not (null clash)
+                    then do
+                      hPutStrLn stderr ("[repl] already defined this session: " ++ unwords clash
+                                        ++ " (restart the session to redefine)")
+                      loop tty acc "" evalsDone defined
+                    else do
+                      r <- try (runReplCommand base scriptArgs dataFile journalFile
+                                  ptops trustedPaths seenRef trustRef rt jc gpu
+                                  trial tops evalsDone)
+                      case r of
+                        Left (_ :: ExitCode) ->
+                          -- compile rejected the line: its diagnostics are
+                          -- printed; the accumulated source stays as it was
+                          loop tty acc "" evalsDone defined
+                        Right evals' -> loop tty trial "" evals' (S.union defined cmdNames)
+  loop tty "" "" 0 S.empty
+
+-- top-level names a command defines (for the no-redefinition rule)
+replTopName :: STop -> [Name]
+replTopName (TBind n _ _ _) = [n]
+replTopName (TType n _ _ _) = [n]
+replTopName _ = []
+
+-- compile the accumulated program, execute only the new evals, commit.
+-- Panics/interrupts abort the command's transaction but still consume the
+-- command (it is in the program text; never silently re-run later).
+runReplCommand :: FilePath -> [String] -> FilePath -> FilePath -> [STop] -> S.Set FilePath
+               -> IORef (M.Map FilePath String) -> IORef (S.Set FilePath) -> RtCounts
+               -> Maybe JitCtx -> Maybe Gpu.GpuCtx -> String -> [STop] -> Int -> IO Int
+runReplCommand base scriptArgs dataFile journalFile ptops trustedPaths seenRef trustRef rt jc gpu trial tops evalsDone = do
+  expanded <- expandUses 8 "" trustedPaths trustRef seenRef ".sol" base tops
+  trusted <- readIORef trustRef
+  prepared <- compileScript "<repl>" trial ptops tops expanded trusted
+  let Prepared cons shapes prog bprog runList _ = prepared
+  writeIORef VM.conNames
+    [ ((t, v, ar), reverse (takeWhile (/= '.') (reverse c)))
+    | (c, (t, v, ar)) <- M.toList cons, M.notMember c builtinCons
+    ]
+  let newRuns = drop evalsDone runList
+      consTV = M.map (\(t, v, _) -> (t, v)) cons
+      shapeNames = M.fromList [(tid, fields) | (fields, tid) <- M.toList shapes]
+  if null newRuns
+    then pure (length runList) -- pure definitions: nothing to execute or commit
+    else do
+      let done = pure (length runList)
+      (replExecCommit base scriptArgs dataFile journalFile consTV shapeNames
+         bprog prog jc gpu cons newRuns rt (0 :: Int)
+         >> done) `catches`
+        [ Handler (\(ScriptIO.ScriptExit code) -> exitWith (ExitFailure code)),
+          Handler (\UserInterrupt ->
+            diagnostic "[repl] interrupted — command aborted, its transaction discarded" >> done),
+          Handler (\(e :: IOException) -> do
+            let msg = if isUserError e then ioeGetErrorString e else show e
+            hPutStrLn stderr (if "*** SOL PANIC" `isPrefixOf` msg then msg else "*** SOL PANIC: " ++ msg ++ " ***")
+            done)
+        ]
+
+-- the command's own mini runTxLoop: fresh transaction, run the new evals,
+-- commit; clean conflicts retry the command, guarded refusals stop it
+replExecCommit base scriptArgs dataFile journalFile consTV shapeNames bprog prog jc gpu cons newRuns rt attempt =
+  bracket newTx txCleanup $ \tx -> do
+    txSetRetryPolicy tx GuardedRetry
+    txSetSagaJournal tx journalFile
+    fuel <- newIORef fuelQuantum
+    preempts <- newIORef 0
+    tabFlag <- lookupEnv "SOL_TABLE"
+    tab <- if tabFlag == Just "0" then pure Nothing else Just <$> newIORef M.empty
+    actors <- VM.newActorRuntime
+    let env = VMEnv base dataFile consTV shapeNames bprog prog jc gpu tab (mkHal cons scriptArgs tx preempts rt) fuel preempts tx actors
+        cleanup = VM.shutdownActorRuntime actors
+    res <- (do
+      requestedExit <- newIORef 0
+      (forM_ newRuns $ \n -> do
+        _ <- execFn env n []
+        pure ()) `catch` \(ScriptIO.ScriptExit code) -> writeIORef requestedExit code
+      liveA <- VM.liveSpawnedActors actors
+      unless (null liveA) $
+        diagnostic ("[sol] WARNING: " ++ show (length liveA) ++ " spawned actor(s) still running at the transaction boundary — "
+                    ++ "cancelling them before the transaction boundary "
+                    ++ "(join first: have each send a done message and receive it before the script ends)")
+      cleanup
+      txCleanupProcesses tx
+      code <- readIORef requestedExit
+      if code /= 0
+        then throwIO (ScriptIO.ScriptExit code)
+        else phaseIO "transaction-commit" (commit tx journalFile)) `onException` (cleanup `finally` rollbackSaga tx)
+    case res of
+      Committed n ncmd sfail efail -> do
+        let cmds = if ncmd > 0 then " + " ++ show ncmd ++ " deferred command(s)" else ""
+        when ((n > 0 || ncmd > 0) && not sfail && not efail) $
+          verbose ("[sol] committed " ++ show n ++ " file(s)" ++ cmds ++ " (file transaction committed; external commands are not atomic)")
+        when (sfail && not efail) $
+          diagnostic ("[sol] committed " ++ show n ++ " file(s); NOT atomic: a deferred command failed (later queued commands skipped; file effects all applied)")
+        when efail $
+          diagnostic ("[sol] committed " ++ show n ++ " file(s); FAILED: a file effect did not reach its goal state (named above; later queued commands skipped)")
+        total <- rtTotal rt
+        when (total > 0) $ do
+          kinds <- rtReport rt
+          diagnostic ("[sol] NOT atomic overall: " ++ show total ++ " realtime escape(s) — " ++ intercalate ", " kinds)
+        logs <- txTakeLogs tx
+        if sfail || efail
+          then unless (null logs) $
+                 diagnostic ("[sol] " ++ show (length logs) ++ " log line(s) withheld: the commit did not complete")
+          else mapM_ putStrLn logs >> hFlush stdout
+      Conflict stale -> do
+        unsafe <- txRetryRefusal tx
+        rollbackSaga tx `finally` txCleanup tx
+        unless (null unsafe) $ do
+          diagnostic ("[sol] conflict on " ++ show stale ++ "; guarded retry refused after immediate external effects: " ++ intercalate ", " unsafe)
+          diagnostic "[sol] partial external execution may have occurred; buffered file effects were discarded. Mark only known repeatable work with Script.replayable/Proc.queryReplayable, or explicitly select --retry-policy=legacy."
+        when (null unsafe) $
+          if attempt + 1 >= replMaxAttempts
+            then diagnostic ("[sol] giving up on this command after " ++ show replMaxAttempts ++ " attempts (conflicts on " ++ show stale ++ "); effects discarded")
+            else do
+              diagnostic ("[sol] conflict on " ++ show stale ++ " — retrying command (attempt " ++ show (attempt + 2) ++ ")")
+              replExecCommit base scriptArgs dataFile journalFile consTV shapeNames bprog prog jc gpu cons newRuns rt (attempt + 1)
 
 numberEvals :: [STop] -> ([STop], [Name])
 numberEvals tops = (map fst numbered, [n | (_, Just n) <- numbered])
