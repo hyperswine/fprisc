@@ -44,6 +44,10 @@ GENERATED = {
     'redefine-twice.sol': 'f x = 1.\nf x = 2.\n> print (f 0).\n',
     'linear.sol': 'g h = close h.\n> print 1.\n',
     'empty.sol': '',
+    'carrier.sol': 'total (s : Add) xs = List.fold (fn a b -> a + b) s.zero xs.\n> print (total Numeric [1, 2]).\n> print (total Str ["a", "b"]).\n',
+    'carrier-only.sol': 'twice (s : Add) x = x + x.\n> print (twice Str "ab").\n> print (twice List [1]).\n',
+    'interp.sol': '> x = 3; print "x={x} y={x * 2} z={Str.upper "q"}".\n',
+    'vec-ops.sol': '> v = Vec.fromList [1, 2]; w = Vec.fromList [3, 4]; print (Vec.toList (v + w)).\n',
     'only-defs.sol': 'sq x = x * x.\n',
     'main.sol': 'main = print "from main".\n',
 }

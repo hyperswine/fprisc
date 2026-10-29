@@ -13,7 +13,7 @@
 module Sol.Main where
 
 import Mono (specializeFunctions)
-import Sol.Cache (Prepared (..), cached, cachedModule)
+import Sol.Cache (Prepared (..), cached, cachedPrelude)
 import Sol.Startup (phase, phaseIO)
 import Control.DeepSeq (force)
 import Sol.Diagnostic
@@ -36,7 +36,7 @@ import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Safety (checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import Precond (applyPreconds, preTable, validatePre, validatePreUses)
 import Sol.Infer (inferResult, builtinNames)
-import Sol.Slice (injectedNames, mentions, slicePrelude)
+import Sol.Slice (injectedNames, mentions, shapeSeed, slicePrelude)
 import Infer.Result
 import qualified Diagnostic.Render as SourceDiagnostic
 import Infer (builtinLinShapes)
@@ -177,11 +177,11 @@ evalForSafety (TEval e) = TBind "main" [] [] e
 evalForSafety t = t
 
 -- The parsed prelude. Parsing the ~450-line text costs ~30 ms; the result
--- depends only on this executable, so it lives in the module cache under
--- the executable's identity (Sol.Cache.cachedModule; SOL_CACHE=0 parses).
+-- depends only on this executable, so it is cached under the executable's
+-- identity (Sol.Cache.cachedPrelude; SOL_CACHE=0 always parses).
 preludeTops :: IO [STop]
 preludeTops = do
-  r <- cachedModule "<sol-prelude>" prelude (pure (either (Left . errorBundlePretty) (\ts -> Right ("", ts)) (parse program "<prelude>" prelude)))
+  r <- cachedPrelude prelude (pure (either (Left . errorBundlePretty) (\ts -> Right ("", ts)) (parse program "<prelude>" prelude)))
   case r of
     Right (_, ts) -> pure ts
     Left e -> diagnostic e >> exitFailure >> pure []
@@ -196,17 +196,14 @@ preludeTops = do
 compilePrepared :: FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
 compilePrepared path src ptops utops expanded trusted = do
   mode <- lookupEnv "SOL_INCREMENTAL"
-  let full = compileScript path src ptops utops expanded trusted
-      seeds = S.unions [mentions expanded, S.fromList injectedNames, S.fromList builtinNames]
-      sliced = slicePrelude seeds ptops
+  let full = compileScript False path src ptops utops expanded trusted
       trace msg = when (mode == Just "trace") (hPutStrLn stderr ("[sol incremental] " ++ msg))
   -- SOL_TYPES / SOL_WIDTHS print inferred types: always the full program
   inspect <- mapM lookupEnv ["SOL_TYPES", "SOL_WIDTHS"]
   if mode == Just "0" || Just "1" `elem` inspect
     then full
     else do
-      trace ("prelude " ++ show (length sliced) ++ "/" ++ show (length ptops) ++ " declarations")
-      r <- try (withBufferedDiagnostics (compileScript path src sliced utops expanded trusted >>= evaluate . force))
+      r <- try (withBufferedDiagnostics (compileScript True path src ptops utops expanded trusted >>= evaluate . force))
       case r of
         -- typed-hole notes print type-variable names, which depend on the
         -- whole program's fresh-variable supply: a compile that has one is
@@ -221,8 +218,8 @@ compilePrepared path src ptops utops expanded trusted = do
 
 -- Successful compiler output is pure data; transactions, actors, JIT state and
 -- script arguments are deliberately created outside this cached boundary.
-compileScript :: FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
-compileScript path src ptops utops utopsX0' trusted = do
+compileScript :: Bool -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
+compileScript slicing path src ptopsAll utops utopsX0' trusted = do
   noteRef <- newIORef []
   let note msg = modifyIORef' noteRef (msg :) >> diagnostic msg
   let sources=M.singleton path src
@@ -246,6 +243,19 @@ compileScript path src ptops utops utopsX0' trusted = do
     diagnostic "=== PATH LITERALS: ERRORS ==="
     mapM_ (diagnostic . ("  * " ++)) pathErrs
     exitFailure
+
+  -- incremental prelude (Sol.Slice): the prelude declarations this program
+  -- can name, found from the program AFTER alias/path expansion so names the
+  -- path codecs introduce (wireAnd, WRec, ...) are demanded like any other
+  ptops <-
+    if not slicing then pure ptopsAll else do
+      mode <- lookupEnv "SOL_INCREMENTAL"
+      let kept = slicePrelude (mentions utopsX0) (S.fromList (injectedNames ++ builtinNames)) ptopsAll
+      when (mode == Just "trace") $
+        hPutStrLn stderr ("[sol incremental] prelude " ++ show (length kept) ++ "/" ++ show (length ptopsAll) ++ " declarations")
+      when (mode == Just "names") $
+        hPutStrLn stderr ("[sol incremental] " ++ unwords [n | t <- kept, n <- case t of { TBind n _ _ _ -> [n]; TStruct n _ _ -> [n]; TSigDef n _ -> [n]; _ -> [] }])
+      pure kept
 
   -- sigs / structs / (s : Sig) params — now including the PRELUDE stdlib
   -- structs (Numeric/Str/List): conformance-check, expand structs to flat
@@ -355,7 +365,7 @@ compileScript path src ptops utops utopsX0' trusted = do
     mapM_ (diagnostic . ("  * " ++)) (anchoredDiagnostics lerrs)
     exitFailure
 
-  (cons, shapes) <- phase "layout" $ pure (collectCons tops, collectShapes tops)
+  (cons, shapes) <- phase "layout" $ pure (collectCons tops, collectShapes (shapeSeed ptopsAll ++ tops))
   -- The shared frontend stores UTF-8 bytes; the VM uses Chars.
   prog <- phase "lower" $ pure (decodeProgStrings (fst (runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes [] []))))
   noSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
