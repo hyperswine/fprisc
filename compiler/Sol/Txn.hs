@@ -1033,6 +1033,11 @@ txSh cmd = do
   result <- runProcessSpec (ProcessSpec ["/bin/sh", "-c", cmd] Nothing [] "" Nothing)
   either (ioError . userError) (\(c,out,err) -> pure (c,out ++ err)) result
 
+-- the separated-channel form behind Try.sh: (code, stdout, stderr), or
+-- Left when the shell itself could not be spawned.
+txShFull :: String -> IO (Either String (Int, String, String))
+txShFull cmd = runProcessSpec (ProcessSpec ["/bin/sh", "-c", cmd] Nothing [] "" Nothing)
+
 -- queued: for MUTATING commands (git commit, docker rm). Runs at COMMIT,
 -- after validation, interleaved in declaration order with file effects.
 -- On retry the queue is discarded: the world was never touched.

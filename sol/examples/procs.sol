@@ -5,7 +5,9 @@
 #   Proc.query      immediate, read-only tools; Result, never panics
 #   Proc.afterCommit  queued; runs INSIDE commit exactly once
 #   Proc.runNow     realtime; REFUSED while any effect is queued
-#   sh cmd          immediate (code, out)  -- reruns on every retry attempt
+#   sh cmd          immediate stdout; nonzero exit PANICS -- reruns per retry attempt
+#   Try.sh cmd      immediate Result String ShError (cmd, code, stdout, stderr)
+#   shStatus cmd    immediate (code, stdout ++ stderr), never fails (the old sh)
 #   shq cmd         queued, Unit           -- once, at commit
 #
 #   ./fpr sol sol/examples/procs.sol
@@ -47,7 +49,7 @@ query argv = P.output (Proc.query (P.spec argv)).
 # ---- ordering is enforced by the runtime ----
 # (an immediate `sh` for scratch cleanup: it reruns per retry attempt, which
 #  is harmless here and exactly why mutations normally go through shq)
-> (c, o) = sh "rm -f /tmp/sol-procs-order.txt";
+> o = sh "rm -f /tmp/sol-procs-order.txt";
   u = Proc.afterCommit (P.spec ["/bin/sh", "-c", "printf queued > /tmp/sol-procs-order.txt"]);
   expect "query sees pre-commit state"
     (readPathOr "absent" @/tmp/sol-procs-order.txt) "absent".
@@ -56,8 +58,12 @@ query argv = P.output (Proc.query (P.spec argv)).
     (mapErr (fn e -> Str.contains "queued" e) (Proc.runNow (P.spec ["/bin/sh", "-c", "true"]))) (Err True).
 
 # ---- the string doors ----
-> expect "sh" (sh "printf hi; exit 0") (0, "hi").
-> expect "sh nonzero" (sh "exit 4") (4, "").
+> expect "sh" (sh "printf hi; exit 0") "hi".
+> expect "Try.sh ok" (Try.sh "printf hi") (Ok "hi").
+> expect "Try.sh nonzero payload" (Try.sh "printf o; printf e >&2; exit 4")
+    (Err (ShError "printf o; printf e >&2; exit 4" 4 "o" "e")).
+> expect "Try.sh not found" (case Try.sh "sol-no-such-cmd-xyz" of Ok o -> 0 | Err (ShError c code o e) -> code) 127.
+> expect "shStatus keeps the old shape" (shStatus "printf a; exit 4") (4, "a").
 
 # ---- Git wrapper: queries are Results, push discipline is enforced ----
 > expect "Git.status on a non-repo is Err"

@@ -33,7 +33,7 @@ transactional `log` for progress that should only appear after a successful run.
 | `print`, exact stdout/stderr | Immediately | Guarded conflict stops; replay assertion/legacy may duplicate output | Output survives failure; cannot be retracted |
 | `input Unit` | First read snapshots all stdin in this process | Retries reuse the snapshot | Whole-input text API; use bounded streams for large/live input |
 | Live stdin/streams, `readNow`, immediate Fs/Env APIs | Immediately | Guarded conflict stops | Streams/scratch swept; Env restored; external writes/publications survive |
-| `sh`, `Proc.query` | Immediately, bounded capture | Arbitrary executables mark external work; no output dependency | Process failure is Result (sh insists); external changes survive |
+| `sh`, `Try.sh`, `shStatus`, `Proc.query` | Immediately, bounded capture | Arbitrary executables mark external work; no output dependency | `Try.sh`/`Proc.query` answer Result; `sh` insists (nonzero exit panics with the ShError text); `shStatus` never fails; external changes survive |
 | `shNow`, `Proc.runNow/streamNow/inheritNow`, pipeline/start | Immediately | Guarded conflict stops | Owned groups cleaned on timeout/cancel; immediate work survives failure |
 | `shq`, `Proc.afterCommit`, `Proc.later` | Ordered commit replay | Discarded queue before commit; SOLJ2 after commit | Saved failure fences later commands; applied files remain; crash window is at-least-once |
 | `log`, `logTo` | After successful ordinary effects | Once per successful committed run | Failed runs withhold logs; path logs save complete post-images for redo |
@@ -185,3 +185,20 @@ this delivery snapshot's open Linux/installation gate. Its complete daily-workfl
 matrix passes on macOS arm64 and an emulated Linux x86-64 Debian trixie guest,
 with exact source/executable identities and explicit remaining exclusions.
 The older measurements above retain their original executable identity and scope.
+
+## Update (2026-10-29): `sh` fails on a nonzero exit
+
+`sh` follows the same two-tier rule as `readPath`/`Try.readPath` and
+`tempDir`/`Try.tempDir`: a typed `Try.*` primitive plus a panicking prelude
+spelling that insists.
+
+| Spelling | Type | Exit 0 | Nonzero exit / not found (127) / spawn failure (-1) |
+| --- | --- | --- | --- |
+| `Try.sh cmd` | `Result String ShError` | `Ok stdout` | `Err (ShError cmd code stdout stderr)` |
+| `sh cmd` | `String` | stdout | panic: ``sh: `cmd` exited N: <stderr>`` (exit 1) |
+| `shStatus cmd` | `(Int, String)` | `(0, stdout ++ stderr)` | `(code, stdout ++ stderr)`, never fails (the old `sh`) |
+
+`ShError = Type (ShError String Int String String)` is a constructor to
+pattern-match, like `FsError`/`HttpError`/`ProcessError`. It is not a message to
+parse. Migration: `(c, o) = sh "..."` becomes `o = sh "..."`, or
+`(c, o) = shStatus "..."` when the exit code is data. Test: `tools/sol-sh-check.py`.
