@@ -8,7 +8,7 @@
 -- A disposable compiler-result cache, never a cache of evaluated values or
 -- effects. Imports are resolved before lookup. Exact encoded inputs are checked
 -- after the filename hash, so hash collisions cannot select a different program.
-module Sol.Cache (Prepared (..), cached, cachedModule, cachedPrelude) where
+module Sol.Cache (Prepared (..), cached, cachedModule, cachedPrelude, checkedLibraries, recordCheckedLibraries) where
 
 import Control.DeepSeq (NFData, force)
 import Control.Exception (IOException, bracketOnError, catch, evaluate)
@@ -44,7 +44,7 @@ data Prepared = Prepared
 -- Changing the artifact format/meaning requires a new schema, even though a
 -- rebuilt executable normally also invalidates all entries through its identity.
 schema :: Int
-schema = 5 -- 5: programs may be compiled against a sliced prelude, internal names renumbered (2026-10-29); 4: programs shaken to the reachable set (2026-10-29); 3: TailCall in the bytecode (2026-10-02)
+schema = 6 -- 6: checked-library verdicts (libchecks/), libraries sliced like the prelude (2026-10-29); 5: programs may be compiled against a sliced prelude, internal names renumbered (2026-10-29); 4: programs shaken to the reachable set (2026-10-29); 3: TailCall in the bytecode (2026-10-02)
 
 fingerprint :: BS.ByteString -> Word64
 fingerprint = BS.foldl' (\h b -> (h `xor` fromIntegral b) * 0x100000001b3) 0xcbf29ce484222325
@@ -184,3 +184,36 @@ cachedParse subdir path src parseIt = do
           key = BL.toStrict (encode (schema, identity, arch, os, absolute, path, src))
           file = dir </> subdir </> (showHex (fingerprint key) "" ++ ".cache")
       pure (file, key)
+
+-- ---- checked-library verdicts (docs/2026-10-29-SOL-LIBRARY-CHECK-CACHE.md) --
+-- A verdict records that this exact set of spliced `use` libraries (their
+-- renamed top-level declarations, which include their own dependencies)
+-- passed the whole pipeline under this executable and these options. Keyed
+-- by schema, executable identity, the checking options and the SHA-256 of
+-- the encoded declarations; the stored key is compared on read.
+libraryKey :: String -> [String] -> IO (Maybe (FilePath, BS.ByteString))
+libraryKey digest options = (Just <$> context) `catch` (\(_ :: IOException) -> pure Nothing)
+  where
+    context = do
+      exe <- getExecutablePath >>= makeAbsolute
+      st <- getFileStatus exe
+      dir <- cacheDirectory
+      let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
+          key = BL.toStrict (encode (schema, identity, arch, os, options, digest))
+      pure (dir </> "libchecks" </> (showHex (fingerprint key) "" ++ ".cache"), key)
+
+checkedLibraries :: String -> [String] -> IO Bool
+checkedLibraries digest options = do
+  disabled <- (== Just "0") <$> lookupEnv "SOL_CACHE"
+  if disabled then pure False else do
+    k <- libraryKey digest options
+    case k of
+      Nothing -> pure False
+      Just (file, key) -> maybe False (\() -> True) <$> readEntry file key
+
+recordCheckedLibraries :: String -> [String] -> IO ()
+recordCheckedLibraries digest options = do
+  disabled <- (== Just "0") <$> lookupEnv "SOL_CACHE"
+  if disabled then pure () else do
+    k <- libraryKey digest options
+    mapM_ (\(file, key) -> writeEntry file key ()) k
