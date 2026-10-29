@@ -43,6 +43,10 @@ def run(binary,harts,directory,lan=False,snapshots=False):
                     self.starts=0;self.attempts=0
                     def capture(*args):
                         self.starts+=1
+                        # A valid X1C frame can need nine seconds to start.
+                        # Together with the first stale poll this also checks
+                        # the public first-frame/header deadline chain.
+                        time.sleep(9)
                         return JPEG
                     source=snapshot.Source({},'test-only','unused',capture)
                     original=source.picture
@@ -176,8 +180,8 @@ def run(binary,harts,directory,lan=False,snapshots=False):
             from check_native_camera import part
             assert camera.starts==0,'camera captured without a viewer'
             for _ in range(2):
-                conn=http.client.HTTPConnection('127.0.0.1',port,timeout=15 if snapshots else 5)
-                conn.request('GET','/camera/test.mjpg',headers={'Cookie':cookie,'Host':f'localhost:{port}'})
+                conn=http.client.HTTPConnection('127.0.0.1',port,timeout=26 if snapshots else 5)
+                conn.request('GET','/camera/test.mjpg?_media=regression',headers={'Cookie':cookie,'Host':f'localhost:{port}'})
                 response=conn.getresponse();feeds.append((conn,response));part(response)
             assert camera.starts==1
             if snapshots:

@@ -1,0 +1,272 @@
+{
+  "checked_on": "2026-10-29",
+  "origin": "https://3dprint.cswine.cloud",
+  "supersedes_investigation": "2026-10-29-printer-cameras.json",
+  "changes": {
+    "x1c": "Allow slow but valid decoder startup through the complete timeout chain; keep a 2.5 s minimum pause after capture so the next poll does not republish the adapter 2 s cache as a new frame.",
+    "native_streams": "Retry interrupted streams with 1, 2, 4, 8, 10 s capped backoff and unique request URLs. Reset after a successful image; cancel on off, hidden/disconnected page, detach or pagehide.",
+    "snapshot_mode": "Preserve separate 10 s retry policy and snapshot labels. Slow captures can make the effective frame interval exceed 10 s."
+  },
+  "deployment": {
+    "source": "fprisc b8865bd + camera recovery source hashes",
+    "deployed_at": 1793247919,
+    "backup": "/Users/jq/printer-host/rollback/camera-recovery-20261029T042507Z",
+    "old_pid": 84152,
+    "new_pid": 86222,
+    "unsigned_sha256": "2e20912a7be710df971817287be632ffe3a2ce77ae6e3f1e0489966a2f6718d9",
+    "signed_sha256": "02c4f67ddfd669c46d35db318fb8a5697d69511ab4c4edafc85b045d879e3ba5",
+    "adapter_sha256": "3dcaeea6c74c310072a50c3af30a6576875ec8ae30e2c168808580164e28b016",
+    "config_unchanged": true,
+    "maintenance_preserved": true,
+    "active_sessions_preserved": true,
+    "session_mode": "0600",
+    "supervised_decoder_probe": {
+      "status": 200,
+      "bytes": 31735,
+      "seconds": 9.33
+    },
+    "health": true,
+    "capture_budget_s": 15,
+    "snapshot_http_budget_ms": 18000,
+    "first_snapshot_budget_ms": 22000,
+    "gateway_headers_budget_ms": 24000,
+    "printer_controls_sent": []
+  },
+  "authenticated_public_acceptance": {
+    "started_at": 1793248030.541416,
+    "origin": "https://3dprint.cswine.cloud",
+    "predeployment_authenticated_session": false,
+    "existing_session_after_deploy": 200,
+    "telemetry": {
+      "a1": {
+        "connection": "ONLINE",
+        "state": "FAILED",
+        "reports": 41,
+        "last_report": 1793248028
+      },
+      "p1s": {
+        "connection": "ONLINE",
+        "state": "FINISH",
+        "reports": 35,
+        "last_report": 1793248029
+      },
+      "x1c": {
+        "connection": "ONLINE",
+        "state": "RUNNING",
+        "reports": 8,
+        "last_report": 1793248028
+      }
+    },
+    "cameras": {
+      "a1": {
+        "decoded_frames": [
+          {
+            "bytes": 144782,
+            "dimensions": [
+              1536,
+              1080
+            ],
+            "seconds": 2.91
+          },
+          {
+            "bytes": 140472,
+            "dimensions": [
+              1536,
+              1080
+            ],
+            "seconds": 5.44
+          },
+          {
+            "bytes": 140472,
+            "dimensions": [
+              1536,
+              1080
+            ],
+            "seconds": 5.78
+          }
+        ],
+        "viewers": 2,
+        "state": "LIVE",
+        "shared_upstream": true,
+        "cleanup": true
+      },
+      "p1s": {
+        "decoded_frames": [
+          {
+            "bytes": 86656,
+            "dimensions": [
+              1280,
+              720
+            ],
+            "seconds": 2.08
+          },
+          {
+            "bytes": 86519,
+            "dimensions": [
+              1280,
+              720
+            ],
+            "seconds": 3.56
+          },
+          {
+            "bytes": 86519,
+            "dimensions": [
+              1280,
+              720
+            ],
+            "seconds": 3.84
+          }
+        ],
+        "viewers": 2,
+        "state": "LIVE",
+        "shared_upstream": true,
+        "cleanup": true
+      },
+      "x1c": {
+        "decoded_frames": [
+          {
+            "bytes": 18164,
+            "dimensions": [
+              1168,
+              720
+            ],
+            "seconds": 10.74
+          },
+          {
+            "bytes": 13602,
+            "dimensions": [
+              1168,
+              720
+            ],
+            "seconds": 22.58
+          },
+          {
+            "bytes": 13602,
+            "dimensions": [
+              1168,
+              720
+            ],
+            "seconds": 22.94
+          }
+        ],
+        "viewers": 2,
+        "state": "LIVE",
+        "shared_upstream": true,
+        "cleanup": true
+      }
+    },
+    "finished_at": 1793248076.7254279,
+    "passed": true
+  },
+  "predeployment_session": {
+    "opened_before_deployment": true,
+    "session_endpoint_after_deployment": 200,
+    "note": "The first camera acceptance pass later sampled P1S viewer count before its periodic projection updated. The final pass waited for that projection and passed all cameras."
+  },
+  "webkit_public_acceptance": [
+    {
+      "engine": "WebKit",
+      "profile": "desktop",
+      "cameraRequests": 5,
+      "pageErrors": 0,
+      "initial": {
+        "label": "Camera connected · native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "sustained": {
+        "label": "Camera connected · native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "afterTransient": {
+        "label": "Camera interrupted · reconnecting…",
+        "width": 0,
+        "height": 0,
+        "source": true,
+        "hidden": false
+      },
+      "automaticRecovery": {
+        "label": "Camera connected · native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "automaticRetryRequests": 1,
+      "hiddenRetryCancelled": true,
+      "x1c": {
+        "width": 1168,
+        "height": 720,
+        "label": "Snapshot preview · refreshes about every 10s"
+      },
+      "completed": true
+    },
+    {
+      "engine": "WebKit",
+      "profile": "iPhone-like",
+      "cameraRequests": 5,
+      "pageErrors": 0,
+      "initial": {
+        "label": "Camera connected · native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "sustained": {
+        "label": "Camera connected · native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "afterTransient": {
+        "label": "Camera interrupted · reconnecting…",
+        "width": 0,
+        "height": 0,
+        "source": true,
+        "hidden": false
+      },
+      "automaticRecovery": {
+        "label": "Camera connected · native frame rate",
+        "width": 1536,
+        "height": 1080,
+        "source": true,
+        "hidden": false
+      },
+      "automaticRetryRequests": 1,
+      "hiddenRetryCancelled": true,
+      "x1c": {
+        "width": 1168,
+        "height": 720,
+        "label": "Snapshot preview · refreshes about every 10s"
+      },
+      "completed": true
+    }
+  ],
+  "browser_limitations": [
+    "These WebKit profiles approximate desktop and iPhone Safari; they are not tests on the owner physical devices.",
+    "The first mobile probe timed out before requesting a camera. A separate mobile rerun passed the complete recovery and X1C sequence.",
+    "The original intermittent A1 interruption trigger was not captured; the reproducible missing-recovery behavior is fixed."
+  ],
+  "anonymous_after_deploy": {
+    "/api/status": 401,
+    "/camera/a1.mjpg": 401,
+    "/camera/x1c.mjpg": 401
+  },
+  "local_regressions": {
+    "decoder": "4 tests passed, including a 9 s delayed valid frame.",
+    "native_gateway": "Demo and TLS peer authentication/camera lifecycle passed on 1 and 4 harts.",
+    "snapshot_gateway": "9 s delayed capture after stale-frame rejection passed on 1 and 4 harts.",
+    "browser": "Generated presentation/lifecycle and actual Live UI checks passed on 1 and 4 harts, including backoff sequence/reset, off/hidden cancellation, visibility, disconnect, BFCache and detach.",
+    "native_host": "Built with existing compiler, 4 harts and OpenSSL; pure browsermedia policy passed."
+  },
+  "operational_limit": "X1C decoder remains a GUI LaunchAgent and requires user login after a Mini reboot.",
+  "credentials": "Existing printer credentials used on Mini only. Mac dashboard key used locally for ordinary challenge signing. No private keys, access codes, signatures or cookies included in evidence.",
+  "printer_controls_sent": []
+}

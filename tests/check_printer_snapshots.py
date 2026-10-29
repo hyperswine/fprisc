@@ -16,6 +16,14 @@ JPEG=b'\xff\xd8test\xff\xd9'
 
 
 class Tests(unittest.TestCase):
+    def test_slow_valid_first_frame_fits_capture_budget(self):
+        row={'host':'127.0.0.1','tls_peer':'server.example','tls_ca':'/synthetic/ca.pem'}
+        with tempfile.TemporaryDirectory() as temp:
+            fake=Path(temp)/'ffmpeg'
+            fake.write_text('#!/usr/bin/env python3\nimport sys,time\nsys.stdin.read()\ntime.sleep(9)\nsys.stdout.buffer.write(b"\\xff\\xd8slow\\xff\\xd9")\n')
+            fake.chmod(0o700)
+            self.assertEqual(snapshot.decode(row,'test-only',str(fake)),b'\xff\xd8slow\xff\xd9')
+
     def test_shared_capture_and_failure_recovery(self):
         calls=[]
         def capture(*args):
