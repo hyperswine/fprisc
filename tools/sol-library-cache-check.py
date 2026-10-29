@@ -82,6 +82,20 @@ def main():
         # auth needs the app's record shape: verified in one program's
         # context, it must not be trusted in another's (shared cache below)
         programs['auth-app.sol'] = f'L = use "{LIB}/auth".\nmodel = {{user = Persistent "demo", pendu = "", pendp = "", note = ""}}.\n> print (L.unwrapU model).\n'
+        # per-program-interface verdicts: same declarations with other
+        # bodies reuse the verdict; other shapes / names / a missing field
+        # must not (identical diagnostics either way)
+        A = f'L = use "{LIB}/auth".\n'
+        M = 'model = {user = Persistent "demo", pendu = "", pendp = "", note = ""}.\n'
+        programs['auth-app-body.sol'] = A + M + '> print (L.unwrapU model).\n> print 42.\n'
+        programs['auth-app-body2.sol'] = A + M + '> print (L.unwrapU model).\n> print (L.doLogin "a b" model).\n'
+        programs['auth-app-fn.sol'] = A + M + 'go v = L.doReg v model.\n> print (go "x y").\n'
+        programs['auth-app-fn2.sol'] = A + M + 'go v = L.doLogin v model.\n> print (go "x y").\n'
+        programs['auth-app-extra.sol'] = A + M + 'other = {pendu = "q", zz = 1}.\n> print (L.unwrapU model).\n> print other.zz.\n'
+        programs['auth-app-missing.sol'] = A + 'model = {user = Persistent "demo", pendu = "", pendp = ""}.\n> print (L.unwrapU model).\n'
+        programs['auth-app-missing2.sol'] = A + 'model = {user = Persistent "demo", pendu = "", pendp = ""}.\n> print (L.doReg "a b" model).\n'
+        programs['auth-app-typeerr.sol'] = A + M + '> print (L.unwrapU model + 1).\n'
+        programs['auth-app-shadow.sol'] = A + M + 'unwrapU m = 7.\n> print (unwrapU model).\n> print (L.unwrapU model).\n'
         programs['auth-bare.sol'] = f'L = use "{LIB}/auth".\n> print "loaded".\n'
         programs['json-twice.sol'] = f'J = use "{LIB}/json".\nK = use "{LIB}/json".\n> print (K.render (J.strs ["z"])).\n'
         for name, text in programs.items():

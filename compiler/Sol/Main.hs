@@ -227,20 +227,33 @@ compilePrepared path src ptops utops expanded trusted = do
       -- candidates to the library's record and field lowering, never remove
       -- them. (A library that needs the program's shapes -- sol/lib/auth's
       -- generic record update -- fails alone and is never sliced.)
+      establish :: IO Bool
       establish = do
         alone <- try (withBufferedDiagnostics (compileScript SlicePrelude "<libraries>" "" ptops [] libPart trusted >>= evaluate . force))
         let ok = case alone of
               Right (_, held) -> not (any ("[hole]" `isPrefixOf`) held)
               Left (_ :: SomeException) -> False
-        trace ("libraries on their own: " ++ (if ok then "pass; verdict recorded" else "fail; always compiled whole"))
+        trace ("libraries on their own: " ++ (if ok then "pass; verdict recorded" else "fail; checked per program interface"))
         recordCheckedLibraries digest opts ok
+        pure ok
   -- SOL_TYPES / SOL_WIDTHS print inferred types: always the full program
   inspect <- mapM lookupEnv ["SOL_TYPES", "SOL_WIDTHS"]
   if mode == Just "0" || Just "1" `elem` inspect
     then full
     else do
       verdict <- if libEligible then checkedLibraries digest opts else pure Nothing
-      let verified = verdict == Just True
+      -- libraries that only check inside a program (sol/lib/auth needs the
+      -- app's record shape): verdict per program INTERFACE -- every user
+      -- declaration except function bodies, plus every record shape the user
+      -- part writes. Library code is spliced under its alias and can only be
+      -- affected by the program through that global namespace and shape set,
+      -- never by a function body. Recorded only after this very program
+      -- compiled the libraries whole and passed.
+      ctxDigest <- if verdict /= Just False && verdict /= Nothing then pure "" else do
+        h <- Digest.hash (BL.toStrict (Bin.encode (digest, concatMap interfaceOf utops, M.keys (collectShapes [case t of TEval e -> TBind "" [] [] e; _ -> t | t <- utops]))))
+        pure ("ctx-" ++ concatMap (\w -> let x = showHex w "" in if length x < 2 then '0' : x else x) (BS.unpack h))
+      ctxVerdict <- if libEligible && verdict == Just False then checkedLibraries ctxDigest opts else pure Nothing
+      let verified = verdict == Just True || ctxVerdict == Just True
           level = if verified then SliceAll else SlicePrelude
       when (nLib > 0) $ trace ("libraries " ++ (if verified then "verified: sliced" else "not verified: compiled whole"))
       r <- try (withBufferedDiagnostics (compileScript level path src ptops utops expanded trusted >>= evaluate . force))
@@ -253,11 +266,27 @@ compilePrepared path src ptops utops expanded trusted = do
           | any ("[hole]" `isPrefixOf`) held -> trace "typed-hole note; full prelude" >> full
           | otherwise -> do
               mapM_ (hPutStrLn stderr) held
-              when (libEligible && verdict == Nothing) establish
+              when libEligible $ do
+                okAlone <- if verdict == Nothing then establish else pure (verdict == Just True)
+                -- this program compiled the libraries whole and passed
+                when (not okAlone && ctxVerdict == Nothing && not (null ctxDigest)) $ do
+                  trace "libraries checked in this program: verdict recorded for its declarations"
+                  recordCheckedLibraries ctxDigest opts True
               pure prepared
         Left (e :: SomeException)
           | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
           | otherwise -> trace ("sliced compile rejected (" ++ takeWhile (/= '\n') (show e) ++ "); full prelude") >> full
+
+-- A user declaration's part of the program interface: a function's name
+-- (Left), nothing for a top-level eval or blank, the whole declaration
+-- (Right) for types, signatures, shapes, structs, aliases and imports.
+-- Record shapes written in bodies and evals are keyed separately.
+interfaceOf :: STop -> [Either Name STop]
+interfaceOf t = case t of
+  TBind n _ _ _ -> [Left n]
+  TEval _ -> []
+  TSkip -> []
+  _ -> [Right t]
 
 data Slicing = SliceNone | SlicePrelude | SliceAll deriving (Eq)
 
