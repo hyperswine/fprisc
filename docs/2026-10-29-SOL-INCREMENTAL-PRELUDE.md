@@ -107,7 +107,7 @@ compiles.
 
 ## Evidence
 
-- `tools/sol-incremental-check.py` (in `tools/sol-ci.sh`) checks 161 cases:
+- `tools/sol-incremental-check.py` (in `tools/sol-ci.sh`) checks 169 cases:
   - `--asm` of every `.sol` in the tree plus 24 generated programs. These
     cover type errors, holes, shadowed prelude names and structs, method and
     operator dispatch, sig carriers, `%`/`^`, Vec operators, interpolation,
