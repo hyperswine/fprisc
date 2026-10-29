@@ -133,6 +133,12 @@ Compiles check a script against only the prelude declarations it can name
 against the whole prelude, as before; `SOL_INCREMENTAL=trace` reports slice
 sizes and fallbacks on stderr.
 
+Imported libraries (`use`) are checked once on their own and the verdict is
+cached under `libchecks/`, keyed on the executable and the library text
+(docs/2026-10-29-SOL-LIBRARY-CHECK-CACHE.md); verified libraries are then
+sliced like the prelude. `SOL_LIB_INCREMENTAL=0` always compiles libraries
+whole.
+
 New state-directory entries use the same platform sync policy as journals; this
 is crash-recovery testing, not physical power-loss proof. `SOL_NOSYNC` explicitly
 disables those syncs as described in the transaction contract.
