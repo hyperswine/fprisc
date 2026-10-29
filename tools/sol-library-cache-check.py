@@ -52,10 +52,11 @@ def run(cmd, cwd, cache, mode=None, stdin=None, extra=None):
     return p.returncode, p.stdout, ''.join(err)
 
 
-def differential(label, cmd, cwd, tmp, failures, stdin=None, canon=True, extra=None):
+def differential(label, cmd, cwd, tmp, failures, stdin=None, canon=True, extra=None, shared=False):
     full_cache = tmp / 'cache-full'
-    inc_cache = tmp / 'cache-inc'
-    shutil.rmtree(inc_cache, ignore_errors=True)
+    inc_cache = tmp / ('cache-shared' if shared else 'cache-inc')
+    if not shared:
+        shutil.rmtree(inc_cache, ignore_errors=True)
     full = run(cmd, cwd, full_cache, '0', stdin, extra)
     run(cmd, cwd, inc_cache, None, stdin, extra)      # records the verdict
     second = run(cmd, cwd, inc_cache, None, stdin, extra)  # sliced libraries
@@ -78,6 +79,10 @@ def main():
         programs['json-shadow.sol'] = f'J = use "{LIB}/json".\nrender x = 7.\nstrs x = 8.\n> print (render 1 + strs 2).\n> print (J.render (J.strs ["q"])).\n'
         programs['json-type-error.sol'] = f'J = use "{LIB}/json".\n> print (J.render 3).\n'
         programs['json-unknown.sol'] = f'J = use "{LIB}/json".\n> print (J.nosuchThing 3).\n'
+        # auth needs the app's record shape: verified in one program's
+        # context, it must not be trusted in another's (shared cache below)
+        programs['auth-app.sol'] = f'L = use "{LIB}/auth".\nmodel = {{user = Persistent "demo", pendu = "", pendp = "", note = ""}}.\n> print (L.unwrapU model).\n'
+        programs['auth-bare.sol'] = f'L = use "{LIB}/auth".\n> print "loaded".\n'
         programs['json-twice.sol'] = f'J = use "{LIB}/json".\nK = use "{LIB}/json".\n> print (K.render (J.strs ["z"])).\n'
         for name, text in programs.items():
             (gen / name).write_text(text)
@@ -87,6 +92,11 @@ def main():
                         and 'use "' in p.read_text(errors='replace'))
         for f in files:
             differential(f'asm {f.name if f.parent == gen else f.relative_to(ROOT)}', [str(FPR), 'sol', '--asm', str(f)], f.parent, tmp, failures)
+            n += 1
+        # one cache shared by every program, in order: verdicts recorded for
+        # one program are used by the next ones
+        for f in files:
+            differential(f'shared {f.name if f.parent == gen else f.relative_to(ROOT)}', [str(FPR), 'sol', '--asm', str(f)], f.parent, tmp, failures, shared=True)
             n += 1
         for name in ('json-csv.sol', 'json-shadow.sol', 'json-twice.sol'):
             differential(f'run {name}', [str(FPR), 'sol', str(gen / name)], gen, tmp, failures, canon=False)

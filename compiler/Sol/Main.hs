@@ -220,24 +220,29 @@ compilePrepared path src ptops utops expanded trusted = do
     h <- Digest.hash (BL.toStrict (Bin.encode (libPart, S.toList trusted)))
     pure (concatMap (\w -> let x = showHex w "" in if length x < 2 then '0' : x else x) (BS.unpack h))
   let opts = map (maybe "" id) options
-      record = when libEligible (recordCheckedLibraries digest opts)
-      full
-        | libEligible = do
-            -- forced before the verdict: a pass can fail lazily (an `error`
-            -- in lowering), and only a program that fully compiled has
-            -- checked its libraries
-            prepared <- compileScript SliceNone path src ptops utops expanded trusted >>= evaluate . force
-            record
-            pure prepared
-        | otherwise = compileScript SliceNone path src ptops utops expanded trusted
+      full = compileScript SliceNone path src ptops utops expanded trusted
+      -- the verdict: do the libraries compile ON THEIR OWN? A library that
+      -- passes alone passes inside any program: a program only adds
+      -- declarations under its own names and record shapes, which add
+      -- candidates to the library's record and field lowering, never remove
+      -- them. (A library that needs the program's shapes -- sol/lib/auth's
+      -- generic record update -- fails alone and is never sliced.)
+      establish = do
+        alone <- try (withBufferedDiagnostics (compileScript SlicePrelude "<libraries>" "" ptops [] libPart trusted >>= evaluate . force))
+        let ok = case alone of
+              Right (_, held) -> not (any ("[hole]" `isPrefixOf`) held)
+              Left (_ :: SomeException) -> False
+        trace ("libraries on their own: " ++ (if ok then "pass; verdict recorded" else "fail; always compiled whole"))
+        recordCheckedLibraries digest opts ok
   -- SOL_TYPES / SOL_WIDTHS print inferred types: always the full program
   inspect <- mapM lookupEnv ["SOL_TYPES", "SOL_WIDTHS"]
   if mode == Just "0" || Just "1" `elem` inspect
-    then compileScript SliceNone path src ptops utops expanded trusted
+    then full
     else do
-      verified <- if libEligible then checkedLibraries digest opts else pure False
-      let level = if verified then SliceAll else SlicePrelude
-      when (nLib > 0) $ trace ("libraries " ++ (if verified then "verified: sliced" else "not verified: checked in full"))
+      verdict <- if libEligible then checkedLibraries digest opts else pure Nothing
+      let verified = verdict == Just True
+          level = if verified then SliceAll else SlicePrelude
+      when (nLib > 0) $ trace ("libraries " ++ (if verified then "verified: sliced" else "not verified: compiled whole"))
       r <- try (withBufferedDiagnostics (compileScript level path src ptops utops expanded trusted >>= evaluate . force))
       case r of
         -- typed-hole notes print type-variable names, which depend on the
@@ -248,8 +253,7 @@ compilePrepared path src ptops utops expanded trusted = do
           | any ("[hole]" `isPrefixOf`) held -> trace "typed-hole note; full prelude" >> full
           | otherwise -> do
               mapM_ (hPutStrLn stderr) held
-              -- a successful compile with the libraries whole checked them
-              unless verified record
+              when (libEligible && verdict == Nothing) establish
               pure prepared
         Left (e :: SomeException)
           | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e

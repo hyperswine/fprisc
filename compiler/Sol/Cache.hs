@@ -186,9 +186,10 @@ cachedParse subdir path src parseIt = do
       pure (file, key)
 
 -- ---- checked-library verdicts (docs/2026-10-29-SOL-LIBRARY-CHECK-CACHE.md) --
--- A verdict records that this exact set of spliced `use` libraries (their
+-- A verdict records whether this exact set of spliced `use` libraries (their
 -- renamed top-level declarations, which include their own dependencies)
--- passed the whole pipeline under this executable and these options. Keyed
+-- passes the whole pipeline ON ITS OWN, with no user program, under this
+-- executable and these options. Keyed
 -- by schema, executable identity, the checking options and the SHA-256 of
 -- the encoded declarations; the stored key is compared on read.
 libraryKey :: String -> [String] -> IO (Maybe (FilePath, BS.ByteString))
@@ -202,18 +203,21 @@ libraryKey digest options = (Just <$> context) `catch` (\(_ :: IOException) -> p
           key = BL.toStrict (encode (schema, identity, arch, os, options, digest))
       pure (dir </> "libchecks" </> (showHex (fingerprint key) "" ++ ".cache"), key)
 
-checkedLibraries :: String -> [String] -> IO Bool
+-- Nothing: no verdict yet. Just True: the libraries compile on their own.
+-- Just False: they do not (they need declarations from the program that
+-- uses them), so they are always compiled whole.
+checkedLibraries :: String -> [String] -> IO (Maybe Bool)
 checkedLibraries digest options = do
   disabled <- (== Just "0") <$> lookupEnv "SOL_CACHE"
-  if disabled then pure False else do
+  if disabled then pure Nothing else do
     k <- libraryKey digest options
     case k of
-      Nothing -> pure False
-      Just (file, key) -> maybe False (\() -> True) <$> readEntry file key
+      Nothing -> pure Nothing
+      Just (file, key) -> readEntry file key
 
-recordCheckedLibraries :: String -> [String] -> IO ()
-recordCheckedLibraries digest options = do
+recordCheckedLibraries :: String -> [String] -> Bool -> IO ()
+recordCheckedLibraries digest options verdict = do
   disabled <- (== Just "0") <$> lookupEnv "SOL_CACHE"
   if disabled then pure () else do
     k <- libraryKey digest options
-    mapM_ (\(file, key) -> writeEntry file key ()) k
+    mapM_ (\(file, key) -> writeEntry file key verdict) k
