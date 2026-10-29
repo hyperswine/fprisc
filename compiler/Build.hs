@@ -29,7 +29,7 @@ import Data.Bits (xor)
 import Data.Time.Clock (UTCTime)
 import Data.Word (Word64)
 import Numeric (showHex)
-import System.Directory (XdgDirectory (..), makeAbsolute, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, renameFile, getModificationTime, getTemporaryDirectory, getXdgDirectory, removeFile)
+import System.Directory (XdgDirectory (..), makeAbsolute, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, renameFile, getModificationTime, getTemporaryDirectory, getXdgDirectory, removeFile, canonicalizePath)
 import System.Environment (getExecutablePath, withArgs)
 import qualified System.Environment
 import System.Exit (ExitCode (..), exitFailure, exitWith)
@@ -61,7 +61,7 @@ data Plan = Plan
   }
 
 usage :: String
-usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module]\n                 [--target=linux-aarch64|linux-x86_64|linux-riscv64 --cc CROSS-GCC]\n                 [--target=macos-x86_64]  (on a Mac: x86-64 Mach-O, runs under Rosetta)\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
+usage = "usage: fpr build --target=qos-portable [-v]  (installed QOS SDK project)\n       fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module]\n                 [--target=linux-aarch64|linux-x86_64|linux-riscv64 --cc CROSS-GCC]\n                 [--target=macos-x86_64]  (on a Mac: x86-64 Mach-O, runs under Rosetta)\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
 
 -- The hart CAP compiled in is this machine's processor count (it was a flat 2,
 -- so a server on a ten-core machine ran on two threads).  The running program
@@ -263,6 +263,7 @@ profileOf src = do
 
 buildMain :: [String] -> IO ()
 buildMain args = do
+  when ("--target=qos-portable" `elem` args) $ qosPortable args
   p <- plan args
   unless (null (pRest p)) $ hPutStrLn stderr usage >> exitFailure
   when (pModule p && pHost p /= "unix") $ hPutStrLn stderr "host modules require --host=unix" >> exitFailure
@@ -272,6 +273,20 @@ buildMain args = do
   configuration <- Options.readCompilerOptions
   out <- build configuration p
   hPutStrLn stderr ("fpr build: " ++ out)
+
+-- QOS owns its installed desktop builder. Resolve it from the real compiler
+-- location; keep app project discovery and packaging out of the POSIX plan.
+-- --manifest retains its existing cost-contract meaning (the QOS builder
+-- refuses unsupported options instead of silently changing their meaning).
+qosPortable :: [String] -> IO ()
+qosPortable args = do
+  self <- getExecutablePath >>= canonicalizePath
+  explicit <- System.Environment.lookupEnv "QOS_PORTABLE_BUILDER"
+  let builder = fromMaybe (takeDirectory (takeDirectory self) </> "tools" </> "portable_sdk.py") explicit
+  exists <- doesFileExist builder
+  unless exists $ hPutStrLn stderr "fpr build: install a matching QOS Portable SDK and use its bin/fpr (or set QOS_PORTABLE_BUILDER)" >> exitFailure
+  code <- rawSystem "python3" ([builder, "build", "--compiler", self] ++ filter (/= "--target=qos-portable") args)
+  exitWith code
 
 runMain :: [String] -> IO ()
 runMain args = do
