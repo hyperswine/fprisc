@@ -19,7 +19,7 @@
 --
 -- This file was a ~1,000-line fork of Infer.hs; the un-forking is
 -- docs/2026-08-29-MEMORY-V2-PLAN.md's "de-fork the frontend" item made real.
-module Sol.Infer (inferTops, inferResult) where
+module Sol.Infer (inferTops, inferResult, builtinNames) where
 
 import Infer (IProf (..), TEnv, InferenceResult, inferTopsResult, inferTopsWith, mono, scheme, sv)
 import Type.Syntax (Type(..), tBool, tInt, tList, tStr, tUnit, tcon)
@@ -46,6 +46,11 @@ inferTops = inferTopsWith solProf
 
 inferResult :: Sigs -> Structs -> [STop] -> InferenceResult
 inferResult = inferTopsResult Nothing solProf
+
+-- names the checker types without the prelude (Sol.Slice keeps any
+-- prelude definition that would shadow one)
+builtinNames :: [Name]
+builtinNames = M.keys solBuiltins
 
 solBuiltins :: TEnv
 solBuiltins =

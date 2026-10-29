@@ -125,7 +125,13 @@ products, checked against exact inputs and executable identity. They are not
 portable bytecode distribution files. Missing, unwritable or corrupt caches
 fall back to compilation. After stopping Sol processes, delete only the cache
 directory you selected to reclaim space; never substitute a recovery directory.
-There is no automatic cache eviction.
+There is no automatic cache eviction. The parsed prelude is cached once per
+executable under `prelude/` in the same directory.
+
+Compiles check a script against only the prelude declarations it can name
+(docs/2026-10-29-SOL-INCREMENTAL-PRELUDE.md). `SOL_INCREMENTAL=0` compiles
+against the whole prelude, as before; `SOL_INCREMENTAL=trace` reports slice
+sizes and fallbacks on stderr.
 
 New state-directory entries use the same platform sync policy as journals; this
 is crash-recovery testing, not physical power-loss proof. `SOL_NOSYNC` explicitly

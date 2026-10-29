@@ -7,7 +7,7 @@ import Control.Exception (evaluate)
 import GHC.Clock (getMonotonicTimeNSec)
 import System.Environment (lookupEnv)
 import Text.Printf (printf)
-import Sol.Diagnostic (diagnostic)
+import System.IO (hPutStrLn, stderr)
 
 phase :: NFData a => String -> IO a -> IO a
 phase name action = do
@@ -16,7 +16,7 @@ phase name action = do
     start <- getMonotonicTimeNSec
     result <- action >>= evaluate . force
     end <- getMonotonicTimeNSec
-    diagnostic (printf "[sol timing] %s: %.3f ms" name (fromIntegral (end - start) / 1e6 :: Double))
+    hPutStrLn stderr (printf "[sol timing] %s: %.3f ms" name (fromIntegral (end - start) / 1e6 :: Double))
     pure result
 
 -- For completed I/O operations such as commit, whose work is performed before
@@ -28,5 +28,5 @@ phaseIO name action = do
     start <- getMonotonicTimeNSec
     result <- action
     end <- getMonotonicTimeNSec
-    diagnostic (printf "[sol timing] %s: %.3f ms" name (fromIntegral (end - start) / 1e6 :: Double))
+    hPutStrLn stderr (printf "[sol timing] %s: %.3f ms" name (fromIntegral (end - start) / 1e6 :: Double))
     pure result
