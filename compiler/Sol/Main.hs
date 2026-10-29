@@ -494,7 +494,9 @@ runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bpr
 -- command; a conflict after realtime escapes is reported, never replayed;
 -- a panic or Ctrl-C aborts the command's transaction and returns to the
 -- prompt. Sessions cannot redefine a name (the accumulated program is the
--- environment; redefinition would need incremental compilation).
+-- environment; redefinition would need incremental compilation). Each
+-- command compiles against only the prelude declarations the session names
+-- (docs/2026-10-29-SOL-INCREMENTAL-PRELUDE.md); the prelude is parsed once.
 
 replMaxAttempts :: Int
 replMaxAttempts = 12
