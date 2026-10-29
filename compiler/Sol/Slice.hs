@@ -9,11 +9,11 @@
 -- small program.  Over-inclusion is always safe; the caller treats any
 -- rejection of the sliced program as "inconclusive" and recompiles with the
 -- full prelude, so diagnostics are always the full pipeline's.
-module Sol.Slice (slicePrelude, mentions, injectedNames, shapeSeed) where
+module Sol.Slice (slicePrelude, sliceIndices, mentions, injectedNames, shapeSeed, orderedShapes) where
 
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.List (foldl')
+import Data.List (foldl', sortOn)
 import Frontend.Syntax (STop (..), Ty (TOther))
 import Sol.Lang (Name)
 
@@ -84,7 +84,12 @@ members t = case t of
 -- slice lacks is unbound or unresolvable, the sliced compile is rejected,
 -- and the caller compiles with the whole prelude.
 slicePrelude :: S.Set Name -> S.Set Name -> [STop] -> [STop]
-slicePrelude seeds fixed ptops = [t | (i, t) <- indexed, S.member i kept]
+slicePrelude seeds fixed ptops = [t | (i, t) <- zip [0 ..] ptops, S.member i (sliceIndices seeds fixed ptops)]
+
+-- The positions slicePrelude keeps. Used over prelude ++ verified libraries
+-- (Sol.Main), which are sliced as one body of trusted, already-checked code.
+sliceIndices :: S.Set Name -> S.Set Name -> [STop] -> S.Set Int
+sliceIndices seeds fixed ptops = kept
   where
     indexed = zip [0 :: Int ..] ptops
     byName = M.fromListWith (++) [(n, [i]) | (i, t) <- indexed, n <- defines t]
@@ -114,3 +119,8 @@ slicePrelude seeds fixed ptops = [t | (i, t) <- indexed, S.member i kept]
 -- whole-prelude compile gives it, whatever the slice kept.
 shapeSeed :: [STop] -> [STop]
 shapeSeed ptops = [TShape n [(f, TOther) | (f, _) <- fs] | TStruct n _ fs <- ptops] ++ [t | t@TShape {} <- ptops]
+
+-- Shapes as TShape declarations in id order, for seeding: the record shapes
+-- a list of declarations introduces, in first-appearance order.
+orderedShapes :: M.Map [Name] Int -> [STop]
+orderedShapes m = [TShape "" [(f, TOther) | f <- fs] | (fs, _) <- sortOn snd (M.toList m)]

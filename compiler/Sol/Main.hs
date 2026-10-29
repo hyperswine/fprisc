@@ -13,7 +13,7 @@
 module Sol.Main where
 
 import Mono (specializeFunctions)
-import Sol.Cache (Prepared (..), cached, cachedPrelude)
+import Sol.Cache (Prepared (..), cached, cachedPrelude, checkedLibraries, recordCheckedLibraries)
 import Sol.Startup (phase, phaseIO)
 import Control.DeepSeq (force)
 import Sol.Diagnostic
@@ -36,7 +36,12 @@ import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Safety (checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import Precond (applyPreconds, preTable, validatePre, validatePreUses)
 import Sol.Infer (inferResult, builtinNames)
-import Sol.Slice (injectedNames, mentions, shapeSeed, slicePrelude)
+import Sol.Slice (injectedNames, mentions, orderedShapes, shapeSeed, sliceIndices)
+import qualified Sol.Digest as Digest
+import qualified Data.Binary as Bin
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
+import Numeric (showHex)
 import Infer.Result
 import qualified Diagnostic.Render as SourceDiagnostic
 import Infer (builtinLinShapes)
@@ -196,14 +201,49 @@ preludeTops = do
 compilePrepared :: FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
 compilePrepared path src ptops utops expanded trusted = do
   mode <- lookupEnv "SOL_INCREMENTAL"
-  let full = compileScript False path src ptops utops expanded trusted
-      trace msg = when (mode == Just "trace") (hPutStrLn stderr ("[sol incremental] " ++ msg))
+  libMode <- lookupEnv "SOL_LIB_INCREMENTAL"
+  let trace msg = when (mode == Just "trace") (hPutStrLn stderr ("[sol incremental] " ++ msg))
+      -- spliced `use` libraries come first in the expanded program
+      -- (expandUses), each renamed under its alias, dependencies included
+      nLib = length expanded - length utops
+      libPart = take nLib expanded
+  -- checked-library verdicts (docs/2026-10-29-SOL-LIBRARY-CHECK-CACHE.md):
+  -- only meaningful when the libraries were fully checked, so never under
+  -- SOL_NO_SAFETY / SOL_NOTYPES / the notypes pragma
+  cacheOff <- (== Just "0") <$> lookupEnv "SOL_CACHE"
+  noSafety <- (== Just "1") <$> lookupEnv "SOL_NO_SAFETY"
+  envNoTypes <- (== Just "1") <$> lookupEnv "SOL_NOTYPES"
+  options <- mapM lookupEnv ["SOL_NOTYPES", "SOL_NO_SAFETY", "FPR_HOME", "FPR_PATH", "FPR_NO_SPEC"]
+  let pragmaNoTypes = any ("sol:notypes" `isPrefixOf`) (map (dropWhile (`elem` "# \t")) (take 20 (lines src)))
+      libEligible = nLib > 0 && not cacheOff && libMode /= Just "0" && mode /= Just "0" && not noSafety && not envNoTypes && not pragmaNoTypes
+  digest <- if not libEligible then pure "" else do
+    h <- Digest.hash (BL.toStrict (Bin.encode (libPart, S.toList trusted)))
+    pure (concatMap (\w -> let x = showHex w "" in if length x < 2 then '0' : x else x) (BS.unpack h))
+  let opts = map (maybe "" id) options
+      full = compileScript SliceNone path src ptops utops expanded trusted
+      -- the verdict: do the libraries compile ON THEIR OWN? A library that
+      -- passes alone passes inside any program: a program only adds
+      -- declarations under its own names and record shapes, which add
+      -- candidates to the library's record and field lowering, never remove
+      -- them. (A library that needs the program's shapes -- sol/lib/auth's
+      -- generic record update -- fails alone and is never sliced.)
+      establish = do
+        alone <- try (withBufferedDiagnostics (compileScript SlicePrelude "<libraries>" "" ptops [] libPart trusted >>= evaluate . force))
+        let ok = case alone of
+              Right (_, held) -> not (any ("[hole]" `isPrefixOf`) held)
+              Left (_ :: SomeException) -> False
+        trace ("libraries on their own: " ++ (if ok then "pass; verdict recorded" else "fail; always compiled whole"))
+        recordCheckedLibraries digest opts ok
   -- SOL_TYPES / SOL_WIDTHS print inferred types: always the full program
   inspect <- mapM lookupEnv ["SOL_TYPES", "SOL_WIDTHS"]
   if mode == Just "0" || Just "1" `elem` inspect
     then full
     else do
-      r <- try (withBufferedDiagnostics (compileScript True path src ptops utops expanded trusted >>= evaluate . force))
+      verdict <- if libEligible then checkedLibraries digest opts else pure Nothing
+      let verified = verdict == Just True
+          level = if verified then SliceAll else SlicePrelude
+      when (nLib > 0) $ trace ("libraries " ++ (if verified then "verified: sliced" else "not verified: compiled whole"))
+      r <- try (withBufferedDiagnostics (compileScript level path src ptops utops expanded trusted >>= evaluate . force))
       case r of
         -- typed-hole notes print type-variable names, which depend on the
         -- whole program's fresh-variable supply: a compile that has one is
@@ -211,14 +251,19 @@ compilePrepared path src ptops utops expanded trusted = do
         -- (realtime escapes, the notypes pragma) name only user code.
         Right (prepared, held)
           | any ("[hole]" `isPrefixOf`) held -> trace "typed-hole note; full prelude" >> full
-          | otherwise -> mapM_ (hPutStrLn stderr) held >> pure prepared
+          | otherwise -> do
+              mapM_ (hPutStrLn stderr) held
+              when (libEligible && verdict == Nothing) establish
+              pure prepared
         Left (e :: SomeException)
           | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
           | otherwise -> trace ("sliced compile rejected (" ++ takeWhile (/= '\n') (show e) ++ "); full prelude") >> full
 
+data Slicing = SliceNone | SlicePrelude | SliceAll deriving (Eq)
+
 -- Successful compiler output is pure data; transactions, actors, JIT state and
 -- script arguments are deliberately created outside this cached boundary.
-compileScript :: Bool -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
+compileScript :: Slicing -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
 compileScript slicing path src ptopsAll utops utopsX0' trusted = do
   noteRef <- newIORef []
   let note msg = modifyIORef' noteRef (msg :) >> diagnostic msg
@@ -238,7 +283,7 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
   -- program's declared shapes and desugar to {get,set,segs} records,
   -- bare @Shape to the flattened schema; sol file-path literals
   -- (lowercase / '/' roots) pass through untouched.
-  let (pathErrs, utopsX0) = expandPathLits (shapeTyTable utopsX1) (typeTyTable utopsX1) utopsX1
+  let (pathErrs, utopsXP) = expandPathLits (shapeTyTable utopsX1) (typeTyTable utopsX1) utopsX1
   unless (null pathErrs) $ do
     diagnostic "=== PATH LITERALS: ERRORS ==="
     mapM_ (diagnostic . ("  * " ++)) pathErrs
@@ -247,15 +292,29 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
   -- incremental prelude (Sol.Slice): the prelude declarations this program
   -- can name, found from the program AFTER alias/path expansion so names the
   -- path codecs introduce (wireAnd, WRec, ...) are demanded like any other
-  ptops <-
-    if not slicing then pure ptopsAll else do
+  let nLib = length utopsX0' - length utops
+      (libX, userX) = splitAt nLib utopsXP
+  (ptops, libKept) <-
+    if slicing == SliceNone then pure (ptopsAll, libX) else do
       mode <- lookupEnv "SOL_INCREMENTAL"
-      let kept = slicePrelude (mentions utopsX0) (S.fromList (injectedNames ++ builtinNames)) ptopsAll
+      -- SliceAll: verified libraries are sliced together with the prelude,
+      -- from the user's own program; otherwise libraries are seeds too
+      let body = if slicing == SliceAll then ptopsAll ++ libX else ptopsAll
+          seeds = mentions (if slicing == SliceAll then userX else utopsXP)
+          ks = sliceIndices seeds (S.fromList (injectedNames ++ builtinNames)) body
+          np = length ptopsAll
+          pk = [t | (i, t) <- zip [0 ..] ptopsAll, S.member i ks]
+          lk = if slicing == SliceAll then [t | (i, t) <- zip [np ..] libX, S.member i ks] else libX
       when (mode == Just "trace") $
-        hPutStrLn stderr ("[sol incremental] prelude " ++ show (length kept) ++ "/" ++ show (length ptopsAll) ++ " declarations")
+        hPutStrLn stderr ("[sol incremental] prelude " ++ show (length pk) ++ "/" ++ show np ++ " declarations"
+          ++ (if slicing == SliceAll then ", libraries " ++ show (length lk) ++ "/" ++ show (length libX) else ""))
       when (mode == Just "names") $
-        hPutStrLn stderr ("[sol incremental] " ++ unwords [n | t <- kept, n <- case t of { TBind n _ _ _ -> [n]; TStruct n _ _ -> [n]; TSigDef n _ -> [n]; _ -> [] }])
-      pure kept
+        hPutStrLn stderr ("[sol incremental] " ++ unwords [n | t <- pk ++ lk, n <- case t of { TBind n _ _ _ -> [n]; TStruct n _ _ -> [n]; TSigDef n _ -> [n]; _ -> [] }])
+      pure (pk, lk)
+  let utopsX0 = libKept ++ userX
+      -- record shape ids of the WHOLE libraries, in first-appearance order,
+      -- so a sliced library leaves every later shape's id unchanged
+      libShapes = orderedShapes (collectShapes (snd (expandStructs (sigTable (ptopsAll ++ utopsXP)) libX)))
 
   -- sigs / structs / (s : Sig) params — now including the PRELUDE stdlib
   -- structs (Numeric/Str/List): conformance-check, expand structs to flat
@@ -365,7 +424,7 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
     mapM_ (diagnostic . ("  * " ++)) (anchoredDiagnostics lerrs)
     exitFailure
 
-  (cons, shapes) <- phase "layout" $ pure (collectCons tops, collectShapes (shapeSeed ptopsAll ++ tops))
+  (cons, shapes) <- phase "layout" $ pure (collectCons tops, collectShapes (shapeSeed ptopsAll ++ libShapes ++ tops))
   -- The shared frontend stores UTF-8 bytes; the VM uses Chars.
   prog <- phase "lower" $ pure (decodeProgStrings (fst (runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes [] []))))
   noSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
@@ -587,6 +646,12 @@ runReplCommand :: FilePath -> [String] -> FilePath -> FilePath -> [STop] -> S.Se
                -> IORef (M.Map FilePath String) -> IORef (S.Set FilePath) -> RtCounts
                -> Maybe JitCtx -> Maybe Gpu.GpuCtx -> String -> [STop] -> Int -> IO Int
 runReplCommand base scriptArgs dataFile journalFile ptops trustedPaths seenRef trustRef rt jc gpu trial tops evalsDone = do
+  -- every command recompiles the whole session text, so its imports are
+  -- spliced afresh: a module-dedup table left over from the previous
+  -- command made every earlier `use` alias onto a copy that was no longer
+  -- spliced (J.f unbound from the second command on)
+  writeIORef seenRef M.empty
+  writeIORef trustRef S.empty
   expanded <- expandUses 8 "" trustedPaths trustRef seenRef ".sol" base tops
   trusted <- readIORef trustRef
   prepared <- compilePrepared "<repl>" trial ptops tops expanded trusted
