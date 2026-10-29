@@ -646,6 +646,12 @@ runReplCommand :: FilePath -> [String] -> FilePath -> FilePath -> [STop] -> S.Se
                -> IORef (M.Map FilePath String) -> IORef (S.Set FilePath) -> RtCounts
                -> Maybe JitCtx -> Maybe Gpu.GpuCtx -> String -> [STop] -> Int -> IO Int
 runReplCommand base scriptArgs dataFile journalFile ptops trustedPaths seenRef trustRef rt jc gpu trial tops evalsDone = do
+  -- every command recompiles the whole session text, so its imports are
+  -- spliced afresh: a module-dedup table left over from the previous
+  -- command made every earlier `use` alias onto a copy that was no longer
+  -- spliced (J.f unbound from the second command on)
+  writeIORef seenRef M.empty
+  writeIORef trustRef S.empty
   expanded <- expandUses 8 "" trustedPaths trustRef seenRef ".sol" base tops
   trusted <- readIORef trustRef
   prepared <- compilePrepared "<repl>" trial ptops tops expanded trusted

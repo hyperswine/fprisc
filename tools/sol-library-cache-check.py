@@ -127,6 +127,14 @@ def main():
             'use-error-recover': ['J = use "../lib/json".', '> print (J.render 3).', '> print (J.nosuch 1).', '> print "fine".', 'C = use "../lib/csv".', '> print "both".'],
             'use-shadow': ['J = use "../lib/json".', 'render x = 1.', '> print (render 0).', '> print (J.render (J.strs []))'],
         }
+        # `use` stays in effect for later REPL commands (each command
+        # recompiles the session; its imports are spliced afresh)
+        r = run([str(FPR), 'sol', '--repl'], ROOT / 'sol' / 'examples', tmp / 'cache-repl', None,
+                '\n'.join(sessions['use-json']) + '\n')
+        if r[1] != '["a"]\n["b"]\n':
+            failures.append('repl use persists')
+            print('DIFF repl use persists', r)
+        n += 1
         for name, lines in sessions.items():
             differential(f'repl {name}', [str(FPR), 'sol', '--repl'], ROOT / 'sol' / 'examples', tmp, failures,
                          stdin='\n'.join(lines) + '\n', canon=False)
