@@ -84,7 +84,8 @@ int solgpu_init(void) {
   if (!eglMakeCurrent(d, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx)) return 0;
   const char *ver = (const char *)glGetString(GL_VERSION);
   if (!ver || ver[0] < '4' || (ver[0] == '4' && ver[2] < '3')) return 0; /* need 4.3 compute */
-  fprintf(stderr, "[gpu] init: %s\n", ver);
+  { const char *v = getenv("SOL_VERBOSE"); /* quiet by default: stderr is the script's */
+    if (v && strcmp(v, "1") == 0) fprintf(stderr, "[gpu] init: %s\n", ver); }
   g_ready = 1;
   return 1;
 }
