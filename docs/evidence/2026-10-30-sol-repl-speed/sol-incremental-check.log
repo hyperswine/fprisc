@@ -1,0 +1,6 @@
+369/369 identical
+  incremental:  143 x libraries not verified: compiled whole
+  incremental:  388 x prelude .. declarations
+  incremental:  110 x sliced compile rejected ..; full prelude
+  incremental:    5 x typed-hole note; full prelude
+PASS sol-incremental-check

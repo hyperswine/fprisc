@@ -1,0 +1,15 @@
+{
+  "head": "af94c7a30202f3d823a1235f9c8950c2f88cc497",
+  "before": {
+    "head": "94f699b",
+    "compilerSha256": "b20b50c46d2b19bb6664e9c4b390f725c23d2b06b8bdeb41d1027a4ca756065b"
+  },
+  "compilerSha256": "569f2f9fffaeb8a21544518b22eb1c142c7d59505380397ce7fb9fdaa1039211",
+  "machine": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "options": {
+    "SOL_GPU": "0",
+    "SOL_JIT": "default",
+    "SOL_CACHE": "default"
+  },
+  "method": "PTY input echo disabled; write-to-next-prompt wall time; output validated; cache roots isolated; 3 sessions per command workload, 5 prompt trials"
+}

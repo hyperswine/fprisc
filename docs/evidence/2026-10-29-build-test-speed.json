@@ -1,0 +1,1235 @@
+{
+  "metadata": {
+    "head": "94f699bc868f49c1e5b5019f9228512e85415993",
+    "patchSha256": "e64b086afb48d4d75e5d7e02fa17cc1ea842c3e74812c22da7aa8086a1be5382",
+    "baselineCompilerSha256": "b20b50c46d2b19bb6664e9c4b390f725c23d2b06b8bdeb41d1027a4ca756065b",
+    "snapshot": "/private/tmp/fprisc-speed-20261029-221954/source",
+    "scope": "uncommitted working-tree speed changes versus HEAD; local compiler dependency store retained; benchmark caches isolated",
+    "host": "Mac16,10",
+    "createdAt": "2026-10-29T22:19:55+1100",
+    "libraryModules": 195,
+    "haskellSuites": 30,
+    "baseJobs": 160,
+    "baseWorkers": 4,
+    "compilerOptimization": "-O1",
+    "devFlag": false,
+    "warmAppSamples": 3,
+    "applicationAssemblyParity": true,
+    "baselineCompilerArtifact": "baseline-fpr",
+    "newCompilerArtifact": "new-fpr",
+    "newCompilerSha256": "9516d0dcdf6dcb57a83936c9d71e37c65353bc8a32963ec137ab054eeed0e0c1",
+    "rebuiltHeadCompilerSha256": "f9c1ce7a638648f6732bf6f38d8e82817959ad302b89024bfee8187068ebdc21",
+    "toolVersions": {
+      "ghc": "9.8.2",
+      "cabal": "3.16.1.0",
+      "cc": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+      "python": "3.15.2",
+      "macOS": "27.0.1"
+    },
+    "liveTrackedEditsUnchanged": true,
+    "liveCompilerUnchanged": true
+  },
+  "measurements": [
+    {
+      "name": "compiler-clean",
+      "seconds": 201.30151783302426,
+      "exit": 0,
+      "loadBefore": [
+        12.6318359375,
+        11.49365234375,
+        12.72119140625
+      ],
+      "loadAfter": [
+        5.99560546875,
+        8.64208984375,
+        11.22705078125
+      ],
+      "command": [
+        "make",
+        "fpr"
+      ],
+      "maximumResidentBytes": 707739648,
+      "userCpuSeconds": 186.42,
+      "systemCpuSeconds": 9.14,
+      "cpuSeconds": 195.56
+    },
+    {
+      "name": "compiler-noop-0",
+      "seconds": 0.05674508400261402,
+      "exit": 0,
+      "loadBefore": [
+        5.99560546875,
+        8.64208984375,
+        11.22705078125
+      ],
+      "loadAfter": [
+        5.99560546875,
+        8.64208984375,
+        11.22705078125
+      ],
+      "command": [
+        "make",
+        "fpr"
+      ],
+      "maximumResidentBytes": 2801664,
+      "userCpuSeconds": 0.02,
+      "systemCpuSeconds": 0.02,
+      "cpuSeconds": 0.04
+    },
+    {
+      "name": "compiler-noop-1",
+      "seconds": 0.05443041608668864,
+      "exit": 0,
+      "loadBefore": [
+        5.99560546875,
+        8.64208984375,
+        11.22705078125
+      ],
+      "loadAfter": [
+        5.99560546875,
+        8.64208984375,
+        11.22705078125
+      ],
+      "command": [
+        "make",
+        "fpr"
+      ],
+      "maximumResidentBytes": 2719744,
+      "userCpuSeconds": 0.02,
+      "systemCpuSeconds": 0.02,
+      "cpuSeconds": 0.04
+    },
+    {
+      "name": "compiler-noop-2",
+      "seconds": 0.05521279200911522,
+      "exit": 0,
+      "loadBefore": [
+        5.99560546875,
+        8.64208984375,
+        11.22705078125
+      ],
+      "loadAfter": [
+        5.99560546875,
+        8.64208984375,
+        11.22705078125
+      ],
+      "command": [
+        "make",
+        "fpr"
+      ],
+      "maximumResidentBytes": 2768896,
+      "userCpuSeconds": 0.02,
+      "systemCpuSeconds": 0.02,
+      "cpuSeconds": 0.04
+    },
+    {
+      "name": "compiler-leaf-edit",
+      "seconds": 6.905242790933698,
+      "exit": 0,
+      "loadBefore": [
+        5.99560546875,
+        8.64208984375,
+        11.22705078125
+      ],
+      "loadAfter": [
+        7.3505859375,
+        8.8369140625,
+        11.26513671875
+      ],
+      "command": [
+        "make",
+        "fpr"
+      ],
+      "maximumResidentBytes": 528269312,
+      "userCpuSeconds": 5.9,
+      "systemCpuSeconds": 1.0,
+      "cpuSeconds": 6.9
+    },
+    {
+      "name": "compiler-leaf-restore",
+      "seconds": 0.10232487507164478,
+      "exit": 0,
+      "loadBefore": [
+        7.3505859375,
+        8.8369140625,
+        11.26513671875
+      ],
+      "loadAfter": [
+        7.3505859375,
+        8.8369140625,
+        11.26513671875
+      ],
+      "command": [
+        "make",
+        "fpr"
+      ],
+      "maximumResidentBytes": 2719744,
+      "userCpuSeconds": 0.03,
+      "systemCpuSeconds": 0.03,
+      "cpuSeconds": 0.06
+    },
+    {
+      "name": "compiler-restore-exact",
+      "seconds": 7.015995041001588,
+      "exit": 0,
+      "loadBefore": [
+        11.2841796875,
+        10.10400390625,
+        11.4130859375
+      ],
+      "loadAfter": [
+        10.95166015625,
+        10.06787109375,
+        11.384765625
+      ],
+      "command": [
+        "make",
+        "fpr"
+      ],
+      "maximumResidentBytes": 531185664,
+      "userCpuSeconds": 5.34,
+      "systemCpuSeconds": 1.32,
+      "cpuSeconds": 6.66
+    },
+    {
+      "name": "app-hello-before-cold",
+      "seconds": 5.7474982920102775,
+      "exit": 0,
+      "loadBefore": [
+        10.95166015625,
+        10.06787109375,
+        11.384765625
+      ],
+      "loadAfter": [
+        10.39453125,
+        9.966796875,
+        11.34130859375
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/tests/base/hello.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-hello-before"
+      ],
+      "maximumResidentBytes": 157777920,
+      "userCpuSeconds": 3.58,
+      "systemCpuSeconds": 0.78,
+      "cpuSeconds": 4.36
+    },
+    {
+      "name": "app-hello-before-warm1",
+      "seconds": 1.2723402080591768,
+      "exit": 0,
+      "loadBefore": [
+        10.39453125,
+        9.966796875,
+        11.34130859375
+      ],
+      "loadAfter": [
+        10.39453125,
+        9.966796875,
+        11.34130859375
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/tests/base/hello.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-hello-before"
+      ],
+      "maximumResidentBytes": 122912768,
+      "userCpuSeconds": 1.09,
+      "systemCpuSeconds": 0.11,
+      "cpuSeconds": 1.2000000000000002
+    },
+    {
+      "name": "app-hello-before-warm2",
+      "seconds": 0.9338406249880791,
+      "exit": 0,
+      "loadBefore": [
+        10.39453125,
+        9.966796875,
+        11.34130859375
+      ],
+      "loadAfter": [
+        10.39453125,
+        9.966796875,
+        11.34130859375
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/tests/base/hello.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-hello-before"
+      ],
+      "maximumResidentBytes": 122339328,
+      "userCpuSeconds": 0.85,
+      "systemCpuSeconds": 0.09,
+      "cpuSeconds": 0.94
+    },
+    {
+      "name": "app-hello-before-warm3",
+      "seconds": 0.9841674158815295,
+      "exit": 0,
+      "loadBefore": [
+        10.39453125,
+        9.966796875,
+        11.34130859375
+      ],
+      "loadAfter": [
+        10.39453125,
+        9.966796875,
+        11.34130859375
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/tests/base/hello.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-hello-before"
+      ],
+      "maximumResidentBytes": 122896384,
+      "userCpuSeconds": 0.9,
+      "systemCpuSeconds": 0.1,
+      "cpuSeconds": 1.0
+    },
+    {
+      "name": "app-hello-after-cold",
+      "seconds": 5.958959500072524,
+      "exit": 0,
+      "loadBefore": [
+        10.39453125,
+        9.966796875,
+        11.34130859375
+      ],
+      "loadAfter": [
+        10.1923828125,
+        9.93505859375,
+        11.3134765625
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/tests/base/hello.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-hello-after"
+      ],
+      "maximumResidentBytes": 154451968,
+      "userCpuSeconds": 4.11,
+      "systemCpuSeconds": 0.91,
+      "cpuSeconds": 5.0200000000000005
+    },
+    {
+      "name": "app-hello-after-warm1",
+      "seconds": 0.506796000059694,
+      "exit": 0,
+      "loadBefore": [
+        10.1923828125,
+        9.93505859375,
+        11.3134765625
+      ],
+      "loadAfter": [
+        10.1923828125,
+        9.93505859375,
+        11.3134765625
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/tests/base/hello.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-hello-after"
+      ],
+      "maximumResidentBytes": 123043840,
+      "userCpuSeconds": 0.45,
+      "systemCpuSeconds": 0.06,
+      "cpuSeconds": 0.51
+    },
+    {
+      "name": "app-hello-after-warm2",
+      "seconds": 0.5272416251245886,
+      "exit": 0,
+      "loadBefore": [
+        10.1923828125,
+        9.93505859375,
+        11.3134765625
+      ],
+      "loadAfter": [
+        10.1923828125,
+        9.93505859375,
+        11.3134765625
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/tests/base/hello.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-hello-after"
+      ],
+      "maximumResidentBytes": 123060224,
+      "userCpuSeconds": 0.48,
+      "systemCpuSeconds": 0.07,
+      "cpuSeconds": 0.55
+    },
+    {
+      "name": "app-hello-after-warm3",
+      "seconds": 0.5056634999345988,
+      "exit": 0,
+      "loadBefore": [
+        10.1923828125,
+        9.93505859375,
+        11.3134765625
+      ],
+      "loadAfter": [
+        10.1923828125,
+        9.93505859375,
+        11.3134765625
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/tests/base/hello.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-hello-after"
+      ],
+      "maximumResidentBytes": 123043840,
+      "userCpuSeconds": 0.46,
+      "systemCpuSeconds": 0.06,
+      "cpuSeconds": 0.52
+    },
+    {
+      "name": "app-logbook-after-cold",
+      "seconds": 61.576304000103846,
+      "exit": 0,
+      "loadBefore": [
+        10.1923828125,
+        9.93505859375,
+        11.3134765625
+      ],
+      "loadAfter": [
+        33.005859375,
+        16.52783203125,
+        13.67724609375
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/logbook.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-logbook-after"
+      ],
+      "maximumResidentBytes": 1021640704,
+      "userCpuSeconds": 51.34,
+      "systemCpuSeconds": 4.14,
+      "cpuSeconds": 55.480000000000004
+    },
+    {
+      "name": "app-logbook-after-warm1",
+      "seconds": 21.523091583978385,
+      "exit": 0,
+      "loadBefore": [
+        33.005859375,
+        16.52783203125,
+        13.67724609375
+      ],
+      "loadAfter": [
+        24.048828125,
+        15.73193359375,
+        13.4716796875
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/logbook.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-logbook-after"
+      ],
+      "maximumResidentBytes": 771637248,
+      "userCpuSeconds": 19.87,
+      "systemCpuSeconds": 0.68,
+      "cpuSeconds": 20.55
+    },
+    {
+      "name": "app-logbook-after-warm2",
+      "seconds": 22.426758375018835,
+      "exit": 0,
+      "loadBefore": [
+        24.048828125,
+        15.73193359375,
+        13.4716796875
+      ],
+      "loadAfter": [
+        20.3076171875,
+        15.42333984375,
+        13.4130859375
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/logbook.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-logbook-after"
+      ],
+      "maximumResidentBytes": 823820288,
+      "userCpuSeconds": 20.95,
+      "systemCpuSeconds": 0.73,
+      "cpuSeconds": 21.68
+    },
+    {
+      "name": "app-logbook-after-warm3",
+      "seconds": 18.01720733405091,
+      "exit": 0,
+      "loadBefore": [
+        20.3076171875,
+        15.42333984375,
+        13.4130859375
+      ],
+      "loadAfter": [
+        15.9208984375,
+        14.7451171875,
+        13.216796875
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/logbook.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-logbook-after"
+      ],
+      "maximumResidentBytes": 827129856,
+      "userCpuSeconds": 17.48,
+      "systemCpuSeconds": 0.31,
+      "cpuSeconds": 17.79
+    },
+    {
+      "name": "app-logbook-before-cold",
+      "seconds": 37.19272379204631,
+      "exit": 0,
+      "loadBefore": [
+        15.9208984375,
+        14.7451171875,
+        13.216796875
+      ],
+      "loadAfter": [
+        11.16650390625,
+        13.6826171875,
+        12.8896484375
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/logbook.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-logbook-before"
+      ],
+      "maximumResidentBytes": 1681735680,
+      "userCpuSeconds": 34.61,
+      "systemCpuSeconds": 1.52,
+      "cpuSeconds": 36.13
+    },
+    {
+      "name": "app-logbook-before-warm1",
+      "seconds": 24.644279249943793,
+      "exit": 0,
+      "loadBefore": [
+        11.16650390625,
+        13.6826171875,
+        12.8896484375
+      ],
+      "loadAfter": [
+        9.896484375,
+        13.15185546875,
+        12.71875
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/logbook.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-logbook-before"
+      ],
+      "maximumResidentBytes": 823279616,
+      "userCpuSeconds": 23.63,
+      "systemCpuSeconds": 0.63,
+      "cpuSeconds": 24.259999999999998
+    },
+    {
+      "name": "app-logbook-before-warm2",
+      "seconds": 25.4116096671205,
+      "exit": 0,
+      "loadBefore": [
+        9.896484375,
+        13.15185546875,
+        12.71875
+      ],
+      "loadAfter": [
+        9.0107421875,
+        12.73828125,
+        12.5849609375
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/logbook.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-logbook-before"
+      ],
+      "maximumResidentBytes": 823885824,
+      "userCpuSeconds": 24.43,
+      "systemCpuSeconds": 0.61,
+      "cpuSeconds": 25.04
+    },
+    {
+      "name": "app-logbook-before-warm3",
+      "seconds": 29.488468083785847,
+      "exit": 0,
+      "loadBefore": [
+        9.0107421875,
+        12.73828125,
+        12.5849609375
+      ],
+      "loadAfter": [
+        16.49853515625,
+        13.978515625,
+        13.02587890625
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/logbook.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-logbook-before"
+      ],
+      "maximumResidentBytes": 792428544,
+      "userCpuSeconds": 26.59,
+      "systemCpuSeconds": 1.05,
+      "cpuSeconds": 27.64
+    },
+    {
+      "name": "app-pos1-before-cold",
+      "seconds": 60.01888925000094,
+      "exit": 0,
+      "loadBefore": [
+        16.49853515625,
+        13.978515625,
+        13.02587890625
+      ],
+      "loadAfter": [
+        13.27099609375,
+        13.80078125,
+        13.0400390625
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/pos1.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-pos1-before"
+      ],
+      "maximumResidentBytes": 1441595392,
+      "userCpuSeconds": 55.63,
+      "systemCpuSeconds": 2.42,
+      "cpuSeconds": 58.050000000000004
+    },
+    {
+      "name": "app-pos1-before-warm1",
+      "seconds": 37.312428375007585,
+      "exit": 0,
+      "loadBefore": [
+        13.27099609375,
+        13.80078125,
+        13.0400390625
+      ],
+      "loadAfter": [
+        9.10986328125,
+        12.7001953125,
+        12.66845703125
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/pos1.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-pos1-before"
+      ],
+      "maximumResidentBytes": 1004077056,
+      "userCpuSeconds": 36.17,
+      "systemCpuSeconds": 0.85,
+      "cpuSeconds": 37.02
+    },
+    {
+      "name": "app-pos1-before-warm2",
+      "seconds": 38.01768120797351,
+      "exit": 0,
+      "loadBefore": [
+        9.10986328125,
+        12.7001953125,
+        12.66845703125
+      ],
+      "loadAfter": [
+        7.06982421875,
+        11.73095703125,
+        12.31396484375
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/pos1.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-pos1-before"
+      ],
+      "maximumResidentBytes": 1003667456,
+      "userCpuSeconds": 36.81,
+      "systemCpuSeconds": 0.95,
+      "cpuSeconds": 37.760000000000005
+    },
+    {
+      "name": "app-pos1-before-warm3",
+      "seconds": 39.894132083049044,
+      "exit": 0,
+      "loadBefore": [
+        7.06982421875,
+        11.73095703125,
+        12.31396484375
+      ],
+      "loadAfter": [
+        7.25,
+        11.19873046875,
+        12.09130859375
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/baseline-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/pos1.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-pos1-before"
+      ],
+      "maximumResidentBytes": 1003618304,
+      "userCpuSeconds": 38.49,
+      "systemCpuSeconds": 0.9,
+      "cpuSeconds": 39.39
+    },
+    {
+      "name": "app-pos1-after-cold",
+      "seconds": 54.974914291873574,
+      "exit": 0,
+      "loadBefore": [
+        7.25,
+        11.19873046875,
+        12.09130859375
+      ],
+      "loadAfter": [
+        9.169921875,
+        11.013671875,
+        11.95947265625
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/pos1.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-pos1-after"
+      ],
+      "maximumResidentBytes": 1762213888,
+      "userCpuSeconds": 51.0,
+      "systemCpuSeconds": 2.95,
+      "cpuSeconds": 53.95
+    },
+    {
+      "name": "app-pos1-after-warm1",
+      "seconds": 29.908980624983087,
+      "exit": 0,
+      "loadBefore": [
+        9.169921875,
+        11.013671875,
+        11.95947265625
+      ],
+      "loadAfter": [
+        6.8115234375,
+        10.26318359375,
+        11.6533203125
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/pos1.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-pos1-after"
+      ],
+      "maximumResidentBytes": 987824128,
+      "userCpuSeconds": 29.58,
+      "systemCpuSeconds": 0.48,
+      "cpuSeconds": 30.06
+    },
+    {
+      "name": "app-pos1-after-warm2",
+      "seconds": 30.09711691690609,
+      "exit": 0,
+      "loadBefore": [
+        6.8115234375,
+        10.26318359375,
+        11.6533203125
+      ],
+      "loadAfter": [
+        5.32763671875,
+        9.56884765625,
+        11.3525390625
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/pos1.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-pos1-after"
+      ],
+      "maximumResidentBytes": 1003798528,
+      "userCpuSeconds": 29.71,
+      "systemCpuSeconds": 0.49,
+      "cpuSeconds": 30.2
+    },
+    {
+      "name": "app-pos1-after-warm3",
+      "seconds": 30.97125379112549,
+      "exit": 0,
+      "loadBefore": [
+        5.32763671875,
+        9.56884765625,
+        11.3525390625
+      ],
+      "loadAfter": [
+        5.22314453125,
+        9.14501953125,
+        11.13623046875
+      ],
+      "command": [
+        "/private/tmp/fprisc-speed-20261029-221954/new-fpr",
+        "build",
+        "/private/tmp/fprisc-speed-20261029-221954/source/examples/pos1.fpr",
+        "--keep",
+        "-o",
+        "/private/tmp/fprisc-speed-20261029-221954/app-pos1-after"
+      ],
+      "maximumResidentBytes": 988086272,
+      "userCpuSeconds": 29.69,
+      "systemCpuSeconds": 0.68,
+      "cpuSeconds": 30.37
+    },
+    {
+      "name": "haskell-units-first",
+      "seconds": 23.572302624816075,
+      "exit": 0,
+      "loadBefore": [
+        4.64990234375,
+        8.078125,
+        10.55908203125
+      ],
+      "loadAfter": [
+        18.599609375,
+        10.97119140625,
+        11.53466796875
+      ],
+      "command": [
+        "make",
+        "unit-tests"
+      ],
+      "maximumResidentBytes": 475840512,
+      "userCpuSeconds": 125.33,
+      "systemCpuSeconds": 23.79,
+      "cpuSeconds": 149.12
+    },
+    {
+      "name": "haskell-units-warm",
+      "seconds": 8.228566166944802,
+      "exit": 0,
+      "loadBefore": [
+        18.599609375,
+        10.97119140625,
+        11.53466796875
+      ],
+      "loadAfter": [
+        18.56787109375,
+        11.2177734375,
+        11.615234375
+      ],
+      "command": [
+        "make",
+        "unit-tests"
+      ],
+      "maximumResidentBytes": 467255296,
+      "userCpuSeconds": 40.77,
+      "systemCpuSeconds": 7.46,
+      "cpuSeconds": 48.230000000000004
+    },
+    {
+      "name": "base-after-cold",
+      "seconds": 778.0849748749752,
+      "exit": 0,
+      "loadBefore": [
+        18.56787109375,
+        11.2177734375,
+        11.615234375
+      ],
+      "loadAfter": [
+        13.22216796875,
+        16.68359375,
+        14.97998046875
+      ],
+      "command": [
+        "python3",
+        "tests/check_base.py",
+        "-j",
+        "4",
+        "--times",
+        "--timings-json",
+        "/private/tmp/fprisc-speed-20261029-221954/base-after-cold-times.json"
+      ],
+      "maximumResidentBytes": 1693614080,
+      "userCpuSeconds": 2215.39,
+      "systemCpuSeconds": 198.53,
+      "cpuSeconds": 2413.92
+    },
+    {
+      "name": "baseline-compiler-rebuild",
+      "seconds": 5.848160249879584,
+      "exit": 0,
+      "loadBefore": [
+        20.27783203125,
+        17.58642578125,
+        15.40966796875
+      ],
+      "loadAfter": [
+        19.21435546875,
+        17.41064453125,
+        15.3603515625
+      ],
+      "command": [
+        "make",
+        "fpr"
+      ],
+      "maximumResidentBytes": 529874944,
+      "userCpuSeconds": 4.64,
+      "systemCpuSeconds": 1.05,
+      "cpuSeconds": 5.6899999999999995
+    },
+    {
+      "name": "base-before-cold",
+      "seconds": 906.5233619168866,
+      "exit": 0,
+      "loadBefore": [
+        19.21435546875,
+        17.41064453125,
+        15.3603515625
+      ],
+      "loadAfter": [
+        7.318359375,
+        13.09130859375,
+        15.673828125
+      ],
+      "command": [
+        "python3",
+        "tests/check_base.py",
+        "-j",
+        "4",
+        "--times",
+        "--timings-json",
+        "/private/tmp/fprisc-speed-20261029-221954/base-before-cold-times.json"
+      ],
+      "maximumResidentBytes": 2254962688,
+      "userCpuSeconds": 2570.62,
+      "systemCpuSeconds": 229.77,
+      "cpuSeconds": 2800.39
+    }
+  ],
+  "applications": [
+    {
+      "program": "hello",
+      "assemblyParity": true,
+      "versions": {
+        "before": {
+          "coldSeconds": 5.7474982920102775,
+          "warmSecondsMedian": 0.9841674158815295,
+          "warmSecondsRange": [
+            0.9338406249880791,
+            1.2723402080591768
+          ],
+          "warmCcSecondsMedian": 0.48065975005738437,
+          "samples": 3
+        },
+        "after": {
+          "coldSeconds": 5.958959500072524,
+          "warmSecondsMedian": 0.506796000059694,
+          "warmSecondsRange": [
+            0.5056634999345988,
+            0.5272416251245886
+          ],
+          "warmCcSecondsMedian": 0.05486941686831415,
+          "samples": 3
+        }
+      },
+      "observedWarmReductionPercent": 48.50510270087012
+    },
+    {
+      "program": "logbook",
+      "assemblyParity": true,
+      "versions": {
+        "before": {
+          "coldSeconds": 37.19272379204631,
+          "warmSecondsMedian": 25.4116096671205,
+          "warmSecondsRange": [
+            24.644279249943793,
+            29.488468083785847
+          ],
+          "warmCcSecondsMedian": 7.862325583817437,
+          "samples": 3
+        },
+        "after": {
+          "coldSeconds": 61.576304000103846,
+          "warmSecondsMedian": 21.523091583978385,
+          "warmSecondsRange": [
+            18.01720733405091,
+            22.426758375018835
+          ],
+          "warmCcSecondsMedian": 0.7074191248975694,
+          "samples": 3
+        }
+      },
+      "observedWarmReductionPercent": 15.302132112368234
+    },
+    {
+      "program": "pos1",
+      "assemblyParity": true,
+      "versions": {
+        "before": {
+          "coldSeconds": 60.01888925000094,
+          "warmSecondsMedian": 38.01768120797351,
+          "warmSecondsRange": [
+            37.312428375007585,
+            39.894132083049044
+          ],
+          "warmCcSecondsMedian": 8.621115582995117,
+          "samples": 3
+        },
+        "after": {
+          "coldSeconds": 54.974914291873574,
+          "warmSecondsMedian": 30.09711691690609,
+          "warmSecondsRange": [
+            29.908980624983087,
+            30.97125379112549
+          ],
+          "warmCcSecondsMedian": 1.4855236250441521,
+          "samples": 3
+        }
+      },
+      "observedWarmReductionPercent": 20.833896332967907
+    }
+  ],
+  "base": {
+    "base-after-cold-times.json": {
+      "seconds": 778.0025869591627,
+      "workers": 4,
+      "jobs": 160,
+      "statuses": {
+        "ok": 160
+      },
+      "slowest": [
+        {
+          "name": "examples/ideal/check.py",
+          "status": "ok",
+          "seconds": 225.67532399995252,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_typed_ir_a64_frames.py",
+          "status": "ok",
+          "seconds": 224.98567966697738,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_mvu_reload.py",
+          "status": "ok",
+          "seconds": 171.41926612518728,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_typed_ir_kernels.py",
+          "status": "ok",
+          "seconds": 161.7157677919604,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_pos_reload.py",
+          "status": "ok",
+          "seconds": 154.35136237507686,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_typed_ir_rv_frames.py",
+          "status": "ok",
+          "seconds": 110.68201608280651,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_wide_workers.py",
+          "status": "ok",
+          "seconds": 110.008374000201,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_typed_ir_arc.py",
+          "status": "ok",
+          "seconds": 96.36278937500902,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_typed_ir.py",
+          "status": "ok",
+          "seconds": 94.40830454207025,
+          "lock_wait_seconds": 80.51593404216692
+        },
+        {
+          "name": "tests/check_typed_core.py",
+          "status": "ok",
+          "seconds": 82.85349750006571,
+          "lock_wait_seconds": 3.4938161668833345
+        },
+        {
+          "name": "tests/check_compile_budget.py",
+          "status": "ok",
+          "seconds": 80.77823808300309,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_pos_core.py",
+          "status": "ok",
+          "seconds": 75.21074637491256,
+          "lock_wait_seconds": 0
+        }
+      ]
+    },
+    "base-before-cold-times.json": {
+      "seconds": 906.4559278329834,
+      "workers": 4,
+      "jobs": 160,
+      "statuses": {
+        "ok": 160
+      },
+      "slowest": [
+        {
+          "name": "tests/check_typed_ir_a64_frames.py",
+          "status": "ok",
+          "seconds": 252.25929391710088,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "examples/ideal/check.py",
+          "status": "ok",
+          "seconds": 236.59655229211785,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_mvu_reload.py",
+          "status": "ok",
+          "seconds": 202.06066866684705,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_pos_reload.py",
+          "status": "ok",
+          "seconds": 189.280166832963,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_typed_ir_kernels.py",
+          "status": "ok",
+          "seconds": 173.57789266691543,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_typed_ir.py",
+          "status": "ok",
+          "seconds": 137.01504449988715,
+          "lock_wait_seconds": 121.22854008409195
+        },
+        {
+          "name": "tests/check_typed_core.py",
+          "status": "ok",
+          "seconds": 123.38842491689138,
+          "lock_wait_seconds": 4.308012125082314
+        },
+        {
+          "name": "tests/check_wide_workers.py",
+          "status": "ok",
+          "seconds": 119.88885066704825,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_typed_ir_rv_frames.py",
+          "status": "ok",
+          "seconds": 113.23303120816126,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_typed_ir_arc.py",
+          "status": "ok",
+          "seconds": 92.45146874990314,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_pos_core.py",
+          "status": "ok",
+          "seconds": 89.72902958281338,
+          "lock_wait_seconds": 0
+        },
+        {
+          "name": "tests/check_typed_ir_x64_frames.py",
+          "status": "ok",
+          "seconds": 80.76663666591048,
+          "lock_wait_seconds": 0
+        }
+      ]
+    }
+  },
+  "methodNotes": [
+    "Working snapshot frozen before measurement; live source and compiler not replaced.",
+    "Cold compiler: empty local dist-newstyle, existing Cabal dependency store.",
+    "App builds instrument the same native cc wrapper; warm values are medians of three runs, with exact assembly parity.",
+    "Full Base runs use four workers, no coverage receipts, independent cache roots per source version; Haskell suites already built.",
+    "Standard host/tool-dependent internal skips are preserved.",
+    "Other machine load varied; these are observed developer-workflow timings, not quiet-machine regression limits."
+  ],
+  "baseComparison": {
+    "identicalJobs": 160,
+    "allPassedBoth": true,
+    "wallSecondsBefore": 906.5233619168866,
+    "wallSecondsAfter": 778.0849748749752,
+    "wallReductionPercent": 14.168237955867173,
+    "cpuSecondsBefore": 2800.39,
+    "cpuSecondsAfter": 2413.92,
+    "cpuReductionPercent": 13.800577776666815
+  }
+}

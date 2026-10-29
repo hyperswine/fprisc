@@ -1,0 +1,4 @@
+=== TYPE ERRORS ===
+  * <repl>:2:7: in <eval 1>: unbound name: J.render
+  * <repl>:2:7: in <eval 1>: unbound name: J.strs
+  * <repl>:2: in <eval 1>: unbound name: C.render

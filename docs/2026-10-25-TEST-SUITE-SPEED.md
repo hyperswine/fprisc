@@ -108,3 +108,37 @@ frames (237 s) and typed kernels (190 s) ahead of Ideal (149 s) and MVU reload
 (136 s). Next FP-RISC work should split or share the expensive fixture
 construction in those suites. For QOS, first give each leg its own build/disk/
 port/process state, then introduce bounded parallel service groups.
+
+## Update 2026-10-30: native unit objects and shared test caches
+
+Commit `9489871` preserves the patch measured on 2026-10-29 against `94f699b`.
+Native `fpr build` now caches imported units' assembled objects, with atomic
+publication; ordinary test fixtures honor an outer XDG cache and additional
+Haskell checks use the existing compiled Cabal test suites. No registered
+Base jobs are removed.
+
+The paired runs used the same 160 jobs and four workers, isolated FP caches,
+a built compiler/library and built Haskell test binaries. Both passed all jobs,
+with normal host/tool-specific internal skips. Wall time fell from 906.5 s to
+778.0 s (14.2%); aggregate user/system CPU fell from 2800.4 s to 2413.9 s (13.8%).
+These measurements precede the latest Sol merge and are not a full-suite
+measurement of that merge. External load varied.
+
+Warm native builds (three-run medians) changed as follows:
+
+| App | Before | New |
+| --- | ---: | ---: |
+| Hello | 0.98 s | 0.51 s |
+| Logbook | 25.41 s | 21.52 s |
+| POS1 | 38.02 s | 30.10 s |
+
+Assembly is byte-identical for all three. Cold app samples show no consistent
+improvement under the varying load. The clean compiler build took 201.3 s
+(dependencies cached), an edit to a Build.hs leaf took 6.9 s to rebuild, and
+unchanged `make fpr` took 55 ms. All 30 Haskell suites passed in 23.6 s for
+the first build/run against the built library and 8.2 s for a repeat.
+
+[Consolidated evidence](evidence/2026-10-29-build-test-speed.json) retains the
+source/patch/binary identities, per-command CPU/RSS/load data, app timings and
+per-job bottleneck summary. The main remaining slow jobs are Ideal, A64 frame
+oracles, MVU reload and typed kernels.

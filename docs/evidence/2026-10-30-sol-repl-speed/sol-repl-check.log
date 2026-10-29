@@ -1,0 +1,2 @@
+repl latency (50 trivial commands): session 2.13 ms/command, process-per-command (distinct, uncached) 21.87 ms/command (10.2x)
+sol repl contract: 11 checks passed

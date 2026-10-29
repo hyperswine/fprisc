@@ -1,0 +1,17 @@
+prompt-before-fresh-cache 37.672458
+prompt-before-warm-cache 30.232542
+prompt-after-fresh-cache 30.033833
+prompt-after-warm-cache 20.577959
+trivial-before 1.7094165000000001
+trivial-after 1.60825
+json-csv-current-default 13.268354
+json-csv-current-unsliced-control 38.751604
+definitions-100 15.4835625
+definitions-500 60.472417
+type-error-response 21.938459
+recovery-after-type-error 1.59175
+piped-before-per-command-including-startup 2.01806666
+distinct-process-before-per-command 21.72622084
+piped-after-per-command-including-startup 2.01485334
+distinct-process-after-per-command 22.076495839999996
+REPL_BENCHMARK_PASSED

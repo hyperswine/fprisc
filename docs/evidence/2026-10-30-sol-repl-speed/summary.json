@@ -1,0 +1,239 @@
+{
+  "head": "af94c7a30202f3d823a1235f9c8950c2f88cc497",
+  "remoteMain": "f9f63a6da31ca1e92f7f7ded64ad6fe475741075",
+  "beforeHead": "94f699bc868f49c1e5b5019f9228512e85415993",
+  "compilerSha256": "569f2f9fffaeb8a21544518b22eb1c142c7d59505380397ce7fb9fdaa1039211",
+  "macOS": "27.0.1",
+  "architecture": "arm64",
+  "ghc": "9.8.2",
+  "settings": {
+    "SOL_GPU": "0",
+    "SOL_JIT": "default",
+    "cacheRoots": "isolated per compiler/workload",
+    "TTY": "real PTY, echo disabled, canonical input; response measured until next prompt"
+  },
+  "rounds": 2,
+  "perRound": {
+    "promptTrials": 5,
+    "sessionsPerCommandWorkload": 3,
+    "trivialCommandsPerSession": 50,
+    "libraryCommandsPerSession": 30,
+    "growingSessionQueries": 20,
+    "distinctProcessCommandsPerTrial": 50
+  },
+  "measurements": [
+    {
+      "name": "prompt-before-fresh-cache",
+      "sampleCount": 10,
+      "medianMs": 37.419708,
+      "p95Ms": 71.615166,
+      "minMs": 25.622459,
+      "maxMs": 71.615166
+    },
+    {
+      "name": "prompt-before-warm-cache",
+      "sampleCount": 10,
+      "medianMs": 29.069875500000002,
+      "p95Ms": 32.022875,
+      "minMs": 26.8045,
+      "maxMs": 32.022875
+    },
+    {
+      "name": "prompt-after-fresh-cache",
+      "sampleCount": 10,
+      "medianMs": 33.8150415,
+      "p95Ms": 39.702083,
+      "minMs": 25.621042,
+      "maxMs": 39.702083
+    },
+    {
+      "name": "prompt-after-warm-cache",
+      "sampleCount": 10,
+      "medianMs": 28.7685,
+      "p95Ms": 30.983708,
+      "minMs": 18.99575,
+      "maxMs": 30.983708
+    },
+    {
+      "name": "trivial-before",
+      "sampleCount": 300,
+      "medianMs": 1.6399585,
+      "p95Ms": 2.962208,
+      "minMs": 1.249916,
+      "maxMs": 16.466792,
+      "importOrDefinitionsSetupMs": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "trivial-after",
+      "sampleCount": 300,
+      "medianMs": 1.6050415,
+      "p95Ms": 2.247334,
+      "minMs": 1.241,
+      "maxMs": 7.264417,
+      "importOrDefinitionsSetupMs": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "json-csv-current-default",
+      "sampleCount": 180,
+      "medianMs": 13.1810625,
+      "p95Ms": 15.517333,
+      "minMs": 11.73925,
+      "maxMs": 16.645791,
+      "importOrDefinitionsSetupMs": [
+        79.403541,
+        3.8595,
+        3.86125,
+        79.168416,
+        4.700542,
+        3.782583
+      ]
+    },
+    {
+      "name": "json-csv-current-unsliced-control",
+      "sampleCount": 180,
+      "medianMs": 38.598104000000006,
+      "p95Ms": 40.720708,
+      "minMs": 35.990333,
+      "maxMs": 47.051708,
+      "importOrDefinitionsSetupMs": [
+        43.867125,
+        38.181209,
+        41.672541,
+        43.486084,
+        41.165791,
+        44.672791
+      ]
+    },
+    {
+      "name": "definitions-100",
+      "sampleCount": 120,
+      "medianMs": 15.333667,
+      "p95Ms": 16.916292,
+      "minMs": 13.834833,
+      "maxMs": 18.974084,
+      "importOrDefinitionsSetupMs": [
+        9.597833000000001,
+        10.395416,
+        12.20175,
+        10.909375,
+        13.994957,
+        14.309084
+      ]
+    },
+    {
+      "name": "definitions-500",
+      "sampleCount": 120,
+      "medianMs": 60.4089585,
+      "p95Ms": 63.719458,
+      "minMs": 56.604958,
+      "maxMs": 66.338917,
+      "importOrDefinitionsSetupMs": [
+        189.737542,
+        189.748915,
+        191.01125100000002,
+        187.646542,
+        189.977749,
+        193.081127
+      ]
+    },
+    {
+      "name": "type-error-response",
+      "sampleCount": 30,
+      "medianMs": 21.639812499999998,
+      "p95Ms": 25.647834,
+      "minMs": 19.949625,
+      "maxMs": 27.158458
+    },
+    {
+      "name": "recovery-after-type-error",
+      "sampleCount": 30,
+      "medianMs": 1.5490415,
+      "p95Ms": 3.047209,
+      "minMs": 1.406208,
+      "maxMs": 3.0845
+    },
+    {
+      "name": "piped-before-per-command-including-startup",
+      "sampleCount": 6,
+      "medianMs": 2.01630166,
+      "p95Ms": 3.4672775000000002,
+      "minMs": 1.98963584,
+      "maxMs": 3.4672775000000002
+    },
+    {
+      "name": "distinct-process-before-per-command",
+      "sampleCount": 6,
+      "medianMs": 21.389452079999998,
+      "p95Ms": 21.8811675,
+      "minMs": 21.1956225,
+      "maxMs": 21.8811675
+    },
+    {
+      "name": "piped-after-per-command-including-startup",
+      "sampleCount": 6,
+      "medianMs": 2.01043167,
+      "p95Ms": 2.1300399999999997,
+      "minMs": 1.9868816599999999,
+      "maxMs": 2.1300399999999997
+    },
+    {
+      "name": "distinct-process-after-per-command",
+      "sampleCount": 6,
+      "medianMs": 21.75739917,
+      "p95Ms": 22.66356832,
+      "minMs": 21.635925,
+      "maxMs": 22.66356832
+    },
+    {
+      "name": "arithmetic-after",
+      "sampleCount": 150,
+      "medianMs": 11.132792,
+      "p95Ms": 12.154541,
+      "minMs": 10.082542,
+      "maxMs": 24.587958,
+      "additionalWorkload": "one run of three sessions, 50 commands each"
+    }
+  ],
+  "checks": [
+    {
+      "name": "sol-repl-check",
+      "seconds": 2.6057519579771906,
+      "exit": 0
+    },
+    {
+      "name": "sol-library-cache-check",
+      "seconds": 85.04125979193486,
+      "exit": 0
+    },
+    {
+      "name": "sol-incremental-check",
+      "seconds": 45.27019574982114,
+      "exit": 0
+    }
+  ],
+  "oldLibraryReplBaseline": "invalid: old compiler loses imported aliases after the first command; stdout empty and unbound-name errors observed",
+  "libraryPerformanceControl": "same current binary, SOL_LIB_INCREMENTAL=0; validated identical expected output",
+  "caveats": [
+    "Local measurements; no hardware/CI claim.",
+    "Growing sessions recompile accumulated user source; library slicing does not make the whole pipeline incremental.",
+    "Prompt-to-prompt samples include compilation, execution, transaction completion and terminal transport."
+  ],
+  "additionalArithmeticRun": {
+    "sessions": 3,
+    "commandsPerSession": 50
+  }
+}
