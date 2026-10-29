@@ -360,3 +360,5 @@ they began.
 - [Sol HTTP contract](2026-10-29-SOL-HTTP.md): linked libcurl, bounded bytes and headers, validated TLS, explicit redirects, owned cancellation and staged download publication.
 
 - [Sol installation, state and daily-workflow release gate](2026-10-29-SOL-INSTALLATION.md).
+
+- [Txn: a linear transaction type](2026-10-29-TXN.md): proposal, not implemented. A `std/txn.fpr` over any state-threaded resource: per-step undo tokens as data, deferred steps at commit, a pivot as a phase type, unknown outcomes latched; the ~25 hand-rolled sites in fprisc and qos it would replace, ranked, and the four linearity-checker gaps it depends on.
