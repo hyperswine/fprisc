@@ -41,7 +41,7 @@ def run(cmd, cwd, cache, mode=None, stdin=None, extra=None):
     # never reuse a whole-program entry: only verdicts and parses persist
     for f in Path(cache).glob('*.cache'):
         f.unlink()
-    p = subprocess.run(cmd, cwd=cwd, env=env, input=stdin, capture_output=True, text=True, timeout=180)
+    p = subprocess.run(cmd, cwd=cwd, env=env, input=stdin if stdin is not None else '', capture_output=True, text=True, timeout=180)
     err = []
     for line in p.stderr.splitlines(keepends=True):
         if line.startswith('[sol incremental] '):
