@@ -85,7 +85,7 @@ def service(exe, tmp):
 
 
 def check(tmp):
-    ENV['XDG_CACHE_HOME'] = str(tmp / 'cache')
+    ENV['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache'))
     bins = {}
     for name in ['wc', 'report', 'todo', 'service', 'measure', 'pipeline', 'buffer', 'transitions']:
         exe = tmp / ('ideal-' + name)

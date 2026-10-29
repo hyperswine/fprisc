@@ -36,7 +36,7 @@ def actor_runtime(out,env,width,*,compiler=None,strict=True,counter=None,execute
  compiler=compiler or ROOT/'fpr'
  out.mkdir(parents=True,exist_ok=True)
  source=actor_source(out/('actor-'+width+'.fpr'))
- mode=dict(env,FPR_TYPED_IR_BACKEND='mixed',FPR_TYPED_IR_STRICT='all' if strict else '',FPR_NO_F64_INLINE='1',FPR_NO_INLINE='1',FPR_NO_SCALAR_WORKERS='1',FPR_NO_FIELD_WORKERS='1',FPR_NO_REUSE='1',XDG_CACHE_HOME=str(out/('cache-'+width)))
+ mode=dict(env,FPR_TYPED_IR_BACKEND='mixed',FPR_TYPED_IR_STRICT='all' if strict else '',FPR_NO_F64_INLINE='1',FPR_NO_INLINE='1',FPR_NO_SCALAR_WORKERS='1',FPR_NO_FIELD_WORKERS='1',FPR_NO_REUSE='1',XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(out/('cache-'+width))))
  asm=out/('actor-'+width+'.s');run([compiler,'compile','--system=bare-metal','--target=rv'+width,source,asm],mode)
  whole=asm.read_text()
  if strict:

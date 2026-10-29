@@ -13,7 +13,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fpr-utilities-'));
 const binary = path.join(tmp, 'utilities');
 const liveBinary = path.join(tmp, 'liveutilities');
 const inventoryBinary = path.join(tmp, 'inventorystyles');
-const env = {...process.env, FPR_HOME: root, XDG_CACHE_HOME: path.join(tmp, 'cache')};
+const env = {...process.env, FPR_HOME: root, XDG_CACHE_HOME: process.env.XDG_CACHE_HOME || path.join(tmp, 'cache')};
 (async () => {
   let browser;
   try {

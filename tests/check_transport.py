@@ -8,7 +8,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='fpr-transport-') as directory:
     tmp = Path(directory)
-    env = {**os.environ, 'FPR_HOME': str(ROOT), 'XDG_CACHE_HOME': str(tmp / 'cache')}
+    env = {**os.environ, 'FPR_HOME': str(ROOT), 'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache'))}
 
     def build(source, name):
         binary = tmp / name

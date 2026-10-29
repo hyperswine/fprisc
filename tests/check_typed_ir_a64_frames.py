@@ -34,7 +34,7 @@ def production_runtime(out,env,emitter):
  run([emitter,'a64','mac' if platform.system()=='Darwin' else 'elf','x28','1',asm],env)
  support=ROOT/'tests/typed_ir/actor_frames.c'
  mode=dict(env,FPR_TYPED_IR_BACKEND='mixed',FPR_TYPED_IR_STRICT='all',FPR_NO_INLINE='1',
-           FPR_NO_SCALAR_WORKERS='1',FPR_NO_FIELD_WORKERS='1',FPR_NO_REUSE='1',XDG_CACHE_HOME=str(out/'cache'))
+           FPR_NO_SCALAR_WORKERS='1',FPR_NO_FIELD_WORKERS='1',FPR_NO_REUSE='1',XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(out/'cache')))
  for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig','/usr/local/opt/libarchive/lib/pkgconfig'):
   if Path(keg).is_dir():mode['PKG_CONFIG_PATH']=keg+':'+mode.get('PKG_CONFIG_PATH','');break
  for harts in (1,4):

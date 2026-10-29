@@ -11,7 +11,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-admission-') as folder:
     wrapper = tmp / 'cc-admission'
     wrapper.write_text('#!/bin/sh\nexec cc -DFPR_ADMISSION_TEST "$@"\n')
     wrapper.chmod(0o755)
-    env = dict(os.environ, XDG_CACHE_HOME=str(tmp / 'cache'))
+    env = dict(os.environ, XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache')))
     def run(args, **kwargs):
         p = subprocess.run(list(map(str, args)), cwd=root, env=kwargs.pop('env', env),
                            text=True, capture_output=True, timeout=180, **kwargs)

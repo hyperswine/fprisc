@@ -63,11 +63,12 @@ rotate{width} n {' '.join(names)} = if n == 0 then {' + '.join(f'{i} * {n}' for 
 def main():
     with tempfile.TemporaryDirectory(prefix='fpr-self-loops-') as td:
         tmp=Path(td)
-        env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=str(tmp/'cache'),
+        env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),
+                 XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME',str(tmp/'cache')),
                  FPR_NO_INLINE='1',FPR_NO_SCALAR_WORKERS='1',FPR_NO_FIELD_WORKERS='1')
         env.pop('FPR_FOREIGN',None)
-        ghc=['cabal','exec','--','runghc']
-        print(run([*ghc,'-w','-icompiler','tests/NullaryConstants.hs'],env),end='',flush=True)
+        from haskell_units import run_units
+        run_units(['NullaryConstants'],env,timeout=240)
         source=tmp/'selfloops.fpr';text,expected=fixture();source.write_text(text)
         for enabled in ('0','1'):
             mode=dict(env,FPR_TYPED_IR_SELF_LOOPS=enabled)

@@ -32,7 +32,7 @@ BUDGETS = {
 with tempfile.TemporaryDirectory(prefix='fpr-linear-strings-') as directory:
     out = Path(directory)
     env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
-               FPR_COST_PROBE='1', XDG_CACHE_HOME=str(out/'cache'))
+               FPR_COST_PROBE='1', XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(out/'cache')))
     env.pop('FPR_FOREIGN', None)
     exe = out/'linearstrings'
     run([ROOT/'fpr', 'build', 'tests/base/linearstrings.fpr', '--harts', '4', '--with',

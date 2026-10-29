@@ -143,7 +143,7 @@ def main():
         program = tmp / 'probe.fpr'
         program.write_text('unsafe base.\nAlloc.check : Unit -> Int.\nmain = print (Alloc.check Unit).\n')
         env = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
-        env.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=str(tmp / 'cache'))
+        env.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache')))
         for cost in ('0', '1'):
             mode = dict(env, FPR_COST_PROBE=cost)
             exe = tmp / ('probe-' + cost)

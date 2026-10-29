@@ -117,7 +117,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='fpr-state-generations-') as directory:
         tmp=Path(directory); source=tmp/'state.fpr'; source.write_text(SOURCE)
         probe=tmp/'probe.c'; probe.write_text(PROBE)
-        env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=str(tmp/'cache'),
+        env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp/'cache')),
                  FPR_COST_PROBE='1',FPR_NO_LOOP_REGIONS='1',FPR_NO_CALL_REGIONS='1')
         env.pop('FPR_FOREIGN',None)
         results={}

@@ -172,7 +172,7 @@ def main():
     run(['make', 'fpr'], env)
     with tempfile.TemporaryDirectory(prefix='fpr-esp-') as d:
         tmp = Path(d)
-        env['XDG_CACHE_HOME'] = str(tmp / 'cache')
+        env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache'))
         source = tmp / 'esp.fpr'
         source.write_text(PROGRAM)
         asm = tmp / 'esp.s'

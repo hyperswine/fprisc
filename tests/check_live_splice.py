@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix='live-splice-') as temp:
     source.write_text('unsafe base.\nL = use "std/live".\nmain =\n' + ''.join(
         f'  _ = print (L.splice {literal(a)} {literal(b)});\n' for a,b in cases) + ''.join(
         f'  _ = print (L.multi {literal(a)} {literal(b)});\n' for a,b in cases + shaped) + '  0.\n')
-    env = {**os.environ, 'FPR_HOME':str(root), 'XDG_CACHE_HOME':str(p/'cache')}
+    env = {**os.environ, 'FPR_HOME':str(root), 'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME', str(p/'cache'))}
     subprocess.run([str(root/'fpr'), 'build', str(source), '-o', str(p/'splice')], cwd=root, env=env, check=True, capture_output=True)
     result = subprocess.run([str(p/'splice')], check=True, capture_output=True, text=True)
     lines = result.stdout.splitlines()

@@ -29,7 +29,7 @@ def host():
 def environment(cache):
     # Set every exercised optimization explicitly, independent of the shell.
     env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
-               XDG_CACHE_HOME=str(cache), FPR_NO_INLINE='1',
+               XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(cache)), FPR_NO_INLINE='1',
                FPR_NO_FIELD_WORKERS='1', FPR_NO_SCALAR_WORKERS='1',
                FPR_TYPED_IR_SELF_LOOPS='1')
     env.pop('FPR_FOREIGN', None)

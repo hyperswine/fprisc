@@ -8,7 +8,7 @@ def main():
  if platform.machine() not in ('arm64','aarch64'):print('A64 FP pool execution SKIP');return
  env={k:v for k,v in os.environ.items() if not k.startswith('FPR_')};env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_NO_INLINE='1')
  with tempfile.TemporaryDirectory(prefix='fpr-a64-fp-') as d:
-  tmp=Path(d);env['XDG_CACHE_HOME']=str(tmp/'cache')
+  tmp=Path(d);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp/'cache'))
   exe=tmp/'context'
   run(['clang','-O2','-DFPR_POSIX','-ffixed-x28','-I'+str(ROOT/'runtime'),ROOT/'tests/base/a64_fp_context.c',ROOT/'tests/base/a64_fp_context.S',ROOT/'machine/unix/ctx_a64.S','-o',exe],env)
   print(run([exe],env).strip(),flush=True)

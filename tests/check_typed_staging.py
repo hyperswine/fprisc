@@ -27,7 +27,7 @@ def run(args, env, code=0, timeout=120):
 with tempfile.TemporaryDirectory(prefix='fpr-typed-staging-') as directory:
     temp = Path(directory)
     env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
-               XDG_CACHE_HOME=str(temp / 'cache'))
+               XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(temp / 'cache')))
     env.pop('FPR_FOREIGN', None)
     # Four cache modes on one hart, plus both extreme modes on four harts.
     for harts, specialize, inline in ((1, 0, 0), (1, 1, 0), (1, 0, 1),

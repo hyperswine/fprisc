@@ -19,7 +19,7 @@ def run(args, cwd, expected=0):
 
 with tempfile.TemporaryDirectory(prefix='fpr-persistence-') as temp:
     tmp = Path(temp)
-    env = {**os.environ, 'FPR_HOME': str(ROOT), 'XDG_CACHE_HOME': str(tmp / 'cache')}
+    env = {**os.environ, 'FPR_HOME': str(ROOT), 'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache'))}
     exe = tmp / 'persistence'
     run([ROOT / 'fpr', 'build', 'tests/base/persistence_failure.fpr', '-o', exe], ROOT)
     work = tmp / 'work'

@@ -216,7 +216,7 @@ def main():
     flags, openssl = openssl_flags(options.openssl_prefix)
     with tempfile.TemporaryDirectory(prefix='fpr-native-services-') as tmp:
         directory = Path(tmp)
-        env = {**os.environ, 'XDG_CACHE_HOME': str(directory / 'cache'), 'FPR_HOME': str(ROOT)}
+        env = {**os.environ, 'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME', str(directory / 'cache')), 'FPR_HOME': str(ROOT)}
 
         def build(source, name, extra=()):
             binary = directory / name

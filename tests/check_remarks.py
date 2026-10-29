@@ -26,7 +26,7 @@ count n acc = if n == 0 then acc else scratch = "row {n}";
         source.write_text('unsafe base. P = use "provider.fpr".\n'
                           'main = _ = print (P.run 9); print (P.count 12 0).\n')
         env = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
-        env.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=str(tmp / 'cache'),
+        env.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache')),
                    FPR_NO_INLINE='1')
 
         def run(args, code=0):

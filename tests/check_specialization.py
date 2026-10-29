@@ -21,11 +21,11 @@ def run(args, env, timeout=120, code=0):
 def main():
     with tempfile.TemporaryDirectory(prefix='fpr-specialization-') as tmp:
         tmp = Path(tmp)
-        env = {**os.environ, 'XDG_CACHE_HOME': str(tmp / 'cache'),
+        env = {**os.environ, 'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache')),
                'SOL_CACHE_DIR': str(tmp / 'sol-cache'), 'SOL_JIT': '0', 'SOL_GPU': '0'}
         run(['make', 'fpr'], env, timeout=300)
-        print(run(['cabal', 'exec', '--', 'runghc', '-w', '-icompiler',
-                   'tests/Specialization.hs'], env).stdout, end='')
+        from haskell_units import run_units
+        run_units(['Specialization'], env, timeout=180)
         for setting, no_inline in (('0', '0'), ('1', '0'), ('0', '0'), ('0', '1'), ('1', '1')):
             mode = {**env, 'FPR_NO_SPEC': setting, 'FPR_NO_INLINE': no_inline}
             exe = tmp / 'native'

@@ -99,7 +99,7 @@ def main():
         assert 'use "proc"' not in source and 'viaCurl' not in source and 'P.spawn' not in source
     with tempfile.TemporaryDirectory(prefix='fpr-http-native-') as temp:
         temp = Path(temp)
-        env = {**os.environ, 'FPR_HOME': str(ROOT), 'XDG_CACHE_HOME': str(temp / 'cache')}
+        env = {**os.environ, 'FPR_HOME': str(ROOT), 'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME', str(temp / 'cache'))}
         def build(source, name, tls=False):
             binary = temp / name
             cmd = [str(ROOT / 'fpr'), 'build', source, '-o', str(binary), '--with', 'tests/http_dns.c']

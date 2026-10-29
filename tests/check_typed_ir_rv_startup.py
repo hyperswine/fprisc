@@ -116,7 +116,7 @@ def main():
             env['PKG_CONFIG_PATH']=keg+':'+env.get('PKG_CONFIG_PATH','');break
     run(['make','fpr'],env)
     with (nullcontext(args.keep_dir) if args.keep_dir else tempfile.TemporaryDirectory(prefix='fpr-rv-startup-')) as d:
-        tmp=Path(d);env['XDG_CACHE_HOME']=str(tmp/'cache')
+        tmp=Path(d);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp/'cache'))
         for width in ('32','64'):
             missing=[t for t in ('riscv64-unknown-elf-gcc','riscv64-unknown-elf-readelf','qemu-system-riscv'+width) if not shutil.which(t)]
             assert not (missing and args.require_execution),missing

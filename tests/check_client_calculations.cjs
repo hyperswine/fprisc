@@ -7,7 +7,7 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {execFileSync,spawnSync,spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-client-calculations-'));
-const env={...process.env,FPR_HOME:root,XDG_CACHE_HOME:path.join(tmp,'cache')};
+const env={...process.env,FPR_HOME:root,XDG_CACHE_HOME: process.env.XDG_CACHE_HOME || path.join(tmp,'cache')};
 const build=(source,out)=>execFileSync(path.join(root,'fpr'),['build',source,'-o',out],
   {cwd:root,env,timeout:180000,stdio:'pipe'});
 async function stop(child) {

@@ -15,7 +15,7 @@ def run(args, env, expected=0):
 
 with tempfile.TemporaryDirectory(prefix='fpr-byte-strings-') as temp:
     env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
-               FPR_COST_PROBE='1', XDG_CACHE_HOME=temp)
+               FPR_COST_PROBE='1', XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', temp))
     env.pop('FPR_FOREIGN', None)
     exe = Path(temp) / 'bytestrings'
     run([ROOT/'fpr', 'build', 'tests/base/bytestrings.fpr', '--harts', '4',

@@ -121,7 +121,7 @@ def main():
         probe = tmp / 'probe.fpr'
         probe.write_text('unsafe base.\nChannel.check : Unit -> Int.\nmain = print (Channel.check Unit).\n')
         env = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
-        env.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=str(tmp / 'cache'),
+        env.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache')),
                    UBSAN_OPTIONS='halt_on_error=1')
         for line in args.cacheline or (64, 128):
             cc = tmp / ('cc-' + str(line))

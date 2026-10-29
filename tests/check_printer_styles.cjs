@@ -20,10 +20,10 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
   const sample=path.join(tmp,'printers.fpr');
   fs.writeFileSync(sample,src.replace(/^main =/m,'applicationMain =')+'\n'+fs.readFileSync(path.join(root,'tests/printerstyles.fprinc'),'utf8'));
   const bin=path.join(tmp,'sample');
-  execFileSync(path.join(root,'fpr'),['build',sample,'-o',bin],{cwd:root,env:{...process.env,FPR_HOME:root,XDG_CACHE_HOME:path.join(tmp,'cache')},timeout:180000,stdio:'pipe'});
+  execFileSync(path.join(root,'fpr'),['build',sample,'-o',bin],{cwd:root,env:{...process.env,FPR_HOME:root,XDG_CACHE_HOME: process.env.XDG_CACHE_HOME || path.join(tmp,'cache')},timeout:180000,stdio:'pipe'});
   browser=await chromium.launch({headless:true,...(process.env.CHROME_BIN?{executablePath:process.env.CHROME_BIN}:{})});
   const syntax=path.join(tmp,'syntax');
-  execFileSync(path.join(root,'fpr'),['build','tests/std/javascript.fpr','-o',syntax],{cwd:root,env:{...process.env,FPR_HOME:root,XDG_CACHE_HOME:path.join(tmp,'cache')},timeout:180000,stdio:'pipe'});
+  execFileSync(path.join(root,'fpr'),['build','tests/std/javascript.fpr','-o',syntax],{cwd:root,env:{...process.env,FPR_HOME:root,XDG_CACHE_HOME: process.env.XDG_CACHE_HOME || path.join(tmp,'cache')},timeout:180000,stdio:'pipe'});
   for(const flag of ['bad-name','reserved','bad-assignment']) {
     const result=spawnSync(syntax,[flag],{encoding:'utf8',timeout:10000});
     assert.equal(result.status,1);assert.match(result.stdout+result.stderr,/JavaScript: invalid/);
@@ -179,7 +179,7 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
 
   }
   const application=path.join(tmp,'application');
-  execFileSync(path.join(root,'fpr'),['build','examples/printers.fpr','-o',application],{cwd:root,env:{...process.env,FPR_HOME:root,XDG_CACHE_HOME:path.join(tmp,'cache')},timeout:180000,stdio:'pipe'});
+  execFileSync(path.join(root,'fpr'),['build','examples/printers.fpr','-o',application],{cwd:root,env:{...process.env,FPR_HOME:root,XDG_CACHE_HOME: process.env.XDG_CACHE_HOME || path.join(tmp,'cache')},timeout:180000,stdio:'pipe'});
   for(const harts of [1,4]) {
    const status=path.join(tmp,'status-'+harts+'.json');
    const snapshot={schema:1,generated_at:Math.floor(Date.now()/1000),printers:[{id:'native-test',name:'Native test',model:'P1S',location:'test',connection:'ONLINE',state:'Printing',progress:12,camera_available:true}]};

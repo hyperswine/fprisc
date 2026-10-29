@@ -177,7 +177,7 @@ def main():
     run(['make', 'fpr'], env)
     with tempfile.TemporaryDirectory(prefix='fpr-rv64-module-') as d:
         tmp = Path(d)
-        env['XDG_CACHE_HOME'] = str(tmp / 'cache')
+        env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache'))
         source = tmp / 'math.fpr'
         source.write_text(MODULE)
         asm = tmp / 'module.s'

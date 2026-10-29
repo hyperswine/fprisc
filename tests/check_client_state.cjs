@@ -14,7 +14,7 @@ const {execFileSync, spawn} = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fpr-client-state-'));
 const binary = path.join(tmp, 'clientlive');
-const env = {...process.env, FPR_HOME: root, XDG_CACHE_HOME: path.join(tmp, 'cache')};
+const env = {...process.env, FPR_HOME: root, XDG_CACHE_HOME: process.env.XDG_CACHE_HOME || path.join(tmp, 'cache')};
 const shown = el => getComputedStyle(el).display !== 'none';
 (async () => {
   let browser;

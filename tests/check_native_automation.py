@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FPR = ROOT / 'fpr'
 ENV = {**os.environ, 'SOL_JIT':'0', 'SOL_GPU':'0', 'SOL_TABLE':'0',
-       'XDG_CACHE_HOME':'/private/tmp/fpr-pure-cache'}
+       'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME', '/private/tmp/fpr-pure-cache')}
 def command(argv, **kwargs):
     r = subprocess.run(list(map(str,argv)), capture_output=True, text=True, timeout=90, **kwargs)
     assert r.returncode == 0, (argv,r.stdout,r.stderr)

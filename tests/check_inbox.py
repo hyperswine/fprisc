@@ -7,7 +7,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='fpr-inbox-') as directory:
     out = Path(directory)
-    env = dict(os.environ, XDG_CACHE_HOME=str(out/'cache'))
+    env = dict(os.environ, XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(out/'cache')))
     wrapper = out/'cc-inbox'
     wrapper.write_text('#!/bin/sh\nexec cc -DFPR_INBOX_TEST -DFPR_ADMISSION_TEST "$@"\n')
     wrapper.chmod(0o755)

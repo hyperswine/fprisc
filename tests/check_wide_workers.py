@@ -99,7 +99,7 @@ def command(args,env):
 def main():
     with tempfile.TemporaryDirectory(prefix='fpr-wide-workers-') as td:
         tmp=Path(td); source=tmp/'wide.fpr';source.write_text(fixture())
-        base=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_COST_PROBE='1',FPR_NO_SPEC='1',XDG_CACHE_HOME=str(tmp/'cache'))
+        base=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_COST_PROBE='1',FPR_NO_SPEC='1',XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp/'cache')))
         base.pop('FPR_FOREIGN',None)
         results={}
         for inline in ('0','1'):

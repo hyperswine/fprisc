@@ -137,7 +137,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     images = Path(tempfile.mkdtemp(prefix="sparse-media-", dir=out))
     binary = out / "sd-prepare-model"
-    env = {**os.environ, "XDG_CACHE_HOME": str(out / "cache")}
+    env = {**os.environ, "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME", str(out / "cache"))}
     command = [str(ROOT / "fpr"), "build", "tests/tangnano20k_sd_prepare.fpr",
                "--harts", "1", "--with", "machine/tangnano20k/sd_hal.c",
                "--with", "tests/base/tangnano20k_sd_model.c",

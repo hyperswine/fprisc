@@ -107,7 +107,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-scheduler-locality-') as directory:
                    check=True,timeout=60)
     subprocess.run([exe],check=True,timeout=10)
     native=tmp/'native'
-    env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=str(tmp/'cache'))
+    env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp/'cache')))
     subprocess.run([ROOT/'fpr','build',ROOT/'tests/base/locality.fpr','--harts','4','-o',native],
                    cwd=ROOT,env=env,check=True,capture_output=True,text=True,timeout=180)
     for harts in ('1','4','4'):

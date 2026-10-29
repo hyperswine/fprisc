@@ -118,7 +118,7 @@ def main():
         env.pop(k, None)
     with tempfile.TemporaryDirectory(prefix='fpr-x64mac-') as d:
         tmp = Path(d)
-        env['XDG_CACHE_HOME'] = str(tmp / 'cache')
+        env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache'))
         emission(tmp, env)
         runner = x86_runner()
         if runner is None:

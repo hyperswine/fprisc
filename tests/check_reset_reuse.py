@@ -50,7 +50,7 @@ static V reset_entry(V u) {
 FPR_FN(fpr_g_resetForeign, reset_entry, 1);
 ''')
         env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
-                   XDG_CACHE_HOME=str(tmp / 'cache'), FPR_NO_LOOP_REGIONS='1',
+                   XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache')), FPR_NO_LOOP_REGIONS='1',
                    FPR_NO_CALL_REGIONS='1', FPR_NO_FIELD_WORKERS='1', FPR_NO_SCALAR_WORKERS='1')
         env.pop('FPR_FOREIGN', None)
         for no_inline, no_spec in [('0', '0'), ('1', '1')]:

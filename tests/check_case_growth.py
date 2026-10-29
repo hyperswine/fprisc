@@ -21,9 +21,8 @@ def run(args, *, env=None, timeout=60):
 def main():
     run(['make', 'fpr'], timeout=300)
     # Cabal supplies the exact compiler dependencies (not the global GHC DB).
-    growth = run(['cabal', 'exec', '--', 'runghc', '-w', '-icompiler',
-                  'tests/CaseGrowth.hs'], timeout=120)
-    print(growth.stdout, end='')
+    from haskell_units import run_units
+    run_units(['CaseGrowth'], dict(os.environ), timeout=120)
     source = ROOT / 'tests/cases/fallback_scope.fpr'
     expected = (ROOT / 'tests/cases/fallback_scope.expected').read_text()
     sol = run([FPR, 'sol', source], env=ENV)

@@ -6,7 +6,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {execFileSync,spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-live-metrics-'));
-const env={...process.env,FPR_HOME:root,XDG_CACHE_HOME:path.join(tmp,'cache')};
+const env={...process.env,FPR_HOME:root,XDG_CACHE_HOME: process.env.XDG_CACHE_HOME || path.join(tmp,'cache')};
 (async()=>{
   let browser;
   try {

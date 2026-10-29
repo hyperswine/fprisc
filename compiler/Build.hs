@@ -207,13 +207,17 @@ build configuration p = do
       -- against another libc is not this object either -- without cc in the
       -- key a warm host build silently hands its own .o files to the linker
       rtdir = cache </> "rt" </> (tOS ++ "-" ++ tArch ++ "-h" ++ show (pHarts p) ++ "-" ++ showHex (fnv64 (cc ++ " " ++ unwords cflags)) "")
+      unitFlags = archFlags ++ fixed ++ ["-fPIC" | pModule p]
+      uodir = cache </> "unit-obj" </> (tOS ++ "-" ++ tArch ++ (if pModule p then "-pic-" else "-") ++ showHex (fnv64 (cc ++ " " ++ unwords unitFlags)) "")
   createDirectoryIfMissing True rtdir
+  createDirectoryIfMissing True uodir
   -- an object is stale when ANY header is newer, not just its own source: a
   -- changed struct in fpr.h (the hart block) otherwise links new objects
   -- against old ones, which is a crash with no message
   hdrs <- fmap concat (mapM headersIn [runtime, machine </> "posix", machine </> "unix"])
   hdrTime <- if null hdrs then pure Nothing else Just . maximum <$> mapM getModificationTime hdrs
   objs <- if pModule p then pure [] else mapM (objectFor cc cflags rtdir hdrTime) (posix ++ core)
+  unitObjs <- mapM (unitObjectFor cc unitFlags uodir) units
   -- --with: a program that IS a host brings the device primitives it calls
   -- (the fpr_g_ names it leaves undefined) as C beside the runtime.  They
   -- are compiled with the runtime's flags plus --cflag, never cached.
@@ -221,7 +225,7 @@ build configuration p = do
   when (pModule p) $ writeFile shim ("#include \"fpr.h\"\nconst uw fpr_posix_module_nativeabi = FPR_NATIVE_ABI;\nconst uw fpr_posix_module_codegen = " ++ show codegenRev ++ ";\n")
   let links = if pModule p then (if tOS == "darwin" then ["-dynamiclib", "-Wl,-undefined,dynamic_lookup"] else ["-shared", "-Wl,-Bsymbolic"]) ++ [shim]
               else linux ++ (if tOS == "linux" then ["-rdynamic", "-ldl"] else ["-Wl,-export_dynamic"])
-      args = cflags ++ (if pModule p then ["-fPIC", "-DFPR_POSIX_MODULE"] else []) ++ pCFlags p ++ links ++ [asm] ++ units ++ objs ++ pWith p ++ pLink p ++ ["-lpthread", "-lm", "-o", out]
+      args = cflags ++ (if pModule p then ["-fPIC", "-DFPR_POSIX_MODULE"] else []) ++ pCFlags p ++ links ++ [asm] ++ unitObjs ++ objs ++ pWith p ++ pLink p ++ ["-lpthread", "-lm", "-o", out]
   code <- rawSystem cc args
   when (code /= ExitSuccess) $ hPutStrLn stderr ("fpr build: " ++ cc ++ " failed") >> exitWith code
   if pKeep p
@@ -251,8 +255,35 @@ objectFor cc cflags rtdir hdrTime src = do
       to <- getModificationTime obj
       pure (to >= ts && maybe True (to >=) hdrTime)
   unless fresh $ do
-    code <- rawSystem cc (cflags ++ ["-c", src, "-o", obj])
-    when (code /= ExitSuccess) $ hPutStrLn stderr ("fpr build: " ++ cc ++ " failed on " ++ src) >> exitWith code
+    pid <- getProcessID
+    let tmp = obj ++ ".tmp." ++ show pid ++ ".o"
+    code <- rawSystem cc (cflags ++ ["-c", src, "-o", tmp])
+    when (code /= ExitSuccess) $ do
+      doesFileExist tmp >>= \e -> when e (removeFile tmp)
+      hPutStrLn stderr ("fpr build: " ++ cc ++ " failed on " ++ src)
+      exitWith code
+    renameFile tmp obj
+  pure obj
+
+-- assemble one cached unit .s into a cached .o unless its object is fresh
+unitObjectFor :: String -> [String] -> FilePath -> FilePath -> IO FilePath
+unitObjectFor cc unitFlags uodir src = do
+  let obj = uodir </> (takeFileName src ++ ".o")
+  fresh <- do
+    e <- doesFileExist obj
+    if not e then pure False else do
+      ts <- getModificationTime src
+      to <- getModificationTime obj
+      pure (to >= ts)
+  unless fresh $ do
+    pid <- getProcessID
+    let tmp = obj ++ ".tmp." ++ show pid ++ ".o"
+    code <- rawSystem cc (unitFlags ++ ["-c", src, "-o", tmp])
+    when (code /= ExitSuccess) $ do
+      doesFileExist tmp >>= \e -> when e (removeFile tmp)
+      hPutStrLn stderr ("fpr build: " ++ cc ++ " failed on " ++ src)
+      exitWith code
+    renameFile tmp obj
   pure obj
 
 -- the profile the file declares (`profile sol.` or a .sol name means the VM)

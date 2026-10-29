@@ -77,7 +77,7 @@ def main():
         source, probe = tmp / 'reads.fpr', tmp / 'probe.c'
         source.write_text(SOURCE)
         probe.write_text(PROBE)
-        env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=str(tmp / 'cache'))
+        env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache')))
         env.pop('FPR_FOREIGN', None)
         for no_inline in ('0', '1'):
             # Alternate within the same cache to catch missing option identities.

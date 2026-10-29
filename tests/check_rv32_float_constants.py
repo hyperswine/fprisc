@@ -91,7 +91,7 @@ def main():
     env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_TYPED_IR_BACKEND='mixed',FPR_TYPED_IR_STRICT='all')
     if 'FPR_SOFTFLOAT_ROOT' in os.environ:env['FPR_SOFTFLOAT_ROOT']=os.environ['FPR_SOFTFLOAT_ROOT']
     with tempfile.TemporaryDirectory(prefix='fpr-boxed-floats-') as d:
-        tmp=Path(d);env['XDG_CACHE_HOME']=str(tmp/'cache')
+        tmp=Path(d);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp/'cache'))
         print(run([sys.executable,ROOT/'tests/check_rv32_base_codegen.py'],env),end='',flush=True)
         missing=[t for t in ('riscv64-unknown-elf-gcc','qemu-system-riscv32') if not shutil.which(t)]
         soft=Path(env.get('FPR_SOFTFLOAT_ROOT',ROOT/'build/tangnano20k-softfloat'))/'build/Linux-RISCV32-GCC/softfloat.a'

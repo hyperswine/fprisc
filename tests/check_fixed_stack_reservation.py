@@ -54,7 +54,7 @@ def main():
   print('Fixed stack reservation SKIP: '+', '.join(missing));return
  run(['make','fpr'],env)
  with tempfile.TemporaryDirectory(prefix='fpr-fixed-reserve-') as d:
-  out=args.keep_dir or Path(d);out.mkdir(parents=True,exist_ok=True);env['XDG_CACHE_HOME']=str(out/'cache')
+  out=args.keep_dir or Path(d);out.mkdir(parents=True,exist_ok=True);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(out/'cache'))
   oracle=out/'oracle.c';oracle.write_text(ORACLE)
   images=[]
   for negative,depth in ((False,5),(True,80)):

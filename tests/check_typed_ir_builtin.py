@@ -20,7 +20,7 @@ def main():
  env={k:v for k,v in os.environ.items() if not k.startswith('FPR_')}
  env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_NO_INLINE='1',FPR_TYPED_IR_BACKEND='mixed',FPR_TYPED_IR_STRICT='all')
  with tempfile.TemporaryDirectory(prefix='fpr-typed-builtin-') as d:
-  tmp=Path(d);env['XDG_CACHE_HOME']=str(tmp/'cache')
+  tmp=Path(d);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp/'cache'))
   for width in (32,64):
    asm=tmp/f'builtin{width}.s'
    run([ROOT/'fprc','--system=bare-metal','--profile=builtin','--target=rv'+str(width),ROOT/'tests/typed_ir/builtin_gc.fpr',asm],env)

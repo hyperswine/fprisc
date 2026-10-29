@@ -32,7 +32,7 @@ def check_execution(run,run_cost,enabled):
 def main():
     with tempfile.TemporaryDirectory(prefix='fpr-consuming-') as td:
         tmp=Path(td);exe=tmp/'probe'
-        env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_COST_PROBE='1',XDG_CACHE_HOME=str(tmp/'cache'))
+        env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_COST_PROBE='1',XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp/'cache')))
         def command(args,mode):
             p=subprocess.run(list(map(str,args)),cwd=ROOT,env=mode,capture_output=True,text=True,timeout=300)
             assert p.returncode==0,(args,p.stdout[-2000:],p.stderr[-2000:])

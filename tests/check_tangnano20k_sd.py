@@ -224,7 +224,7 @@ def main():
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     binary = out / "sd-model"
-    build_env = {**os.environ, "XDG_CACHE_HOME": str(out / "cache")}
+    build_env = {**os.environ, "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME", str(out / "cache"))}
     build = subprocess.run([str(ROOT / "fpr"), "build", "tests/tangnano20k_sd_model.fpr",
                             "--harts", "1", "--with", "machine/tangnano20k/sd_hal.c",
                             "--with", "tests/base/tangnano20k_sd_model.c",

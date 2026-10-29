@@ -41,7 +41,7 @@ def command(args,env):
 def main():
     with tempfile.TemporaryDirectory(prefix='fpr-pipelines-') as td:
         tmp=Path(td)
-        base=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=str(tmp/'cache'))
+        base=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp/'cache')))
         base.pop('FPR_FOREIGN',None)
         for no_inline in ('0','1'):
             for no_regs in ('0',):

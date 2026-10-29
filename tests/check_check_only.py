@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     with tempfile.TemporaryDirectory(prefix='fpr-check-only-') as temp:
         work = Path(temp)
-        env = {**os.environ, 'FPR_HOME': str(ROOT), 'XDG_CACHE_HOME': str(work/'cache')}
+        env = {**os.environ, 'FPR_HOME': str(ROOT), 'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME', str(work/'cache'))}
         env.pop('FPR_FOREIGN', None)
         output = work/'out.s'
 

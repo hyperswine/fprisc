@@ -35,9 +35,10 @@ def command(args,env):
 def main():
     with tempfile.TemporaryDirectory(prefix='fpr-reuse-') as td:
         tmp=Path(td); exe=tmp/'reuse'
-        env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_COST_PROBE='1',XDG_CACHE_HOME=str(tmp/'cache'))
-        ghc=['cabal','exec','--','runghc'] if shutil.which('cabal') else ['runghc']
-        print(command([*ghc,'-w','-icompiler','tests/ReuseCheck.hs'],env).stdout,end='',flush=True)
+        env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_COST_PROBE='1',
+                 XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME',str(tmp/'cache')))
+        from haskell_units import run_units
+        run_units(['ReuseCheck'],env,timeout=240)
         for no_inline in ('0','1'):
             for no_regs in ('0',):
                 for off in ('1','0','1'):

@@ -112,7 +112,7 @@ def main():
         actors=actors.replace(marker,'      if (__atomic_load_n(&n->var, __ATOMIC_ACQUIRE)==ST_BLOCKED) fpr_test_parked(n,fpr_acb_rx(n)->n);\n'+marker)
         (tmp/'actors.c').write_text(actors)
         cc=tmp/'cc';cc.write_text('#!/usr/bin/env python3\nimport os,sys\na=['+repr(str(tmp/'actors.c'))+' if x.endswith("/runtime/actors.c") else x for x in sys.argv[1:]]\nos.execvp("cc",["cc",*a])\n');cc.chmod(0o755)
-        env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=str(tmp/'cache'))
+        env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp/'cache')))
         env.pop('FPR_FOREIGN',None)
         for disabled in ('0','1'):
             executable=tmp/'parked'

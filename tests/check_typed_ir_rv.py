@@ -39,7 +39,7 @@ def main():
     run(['make', 'fpr'], env)
     with tempfile.TemporaryDirectory(prefix='fpr-tir-rv-') as d:
         root = Path(d)
-        env['XDG_CACHE_HOME'] = str(root / 'cache')
+        env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(root / 'cache'))
         source = root / 'probe.fpr'
         source.write_text('''unsafe base.
 rvArith a b = (a * b + a) - b.

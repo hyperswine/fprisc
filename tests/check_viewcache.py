@@ -15,7 +15,7 @@ def run(args, expected=0, env=None):
 
 with tempfile.TemporaryDirectory(prefix='viewcache-') as directory:
     tmp=Path(directory)
-    env={**os.environ,'FPR_HOME':str(ROOT),'XDG_CACHE_HOME':str(tmp/'cache')}
+    env={**os.environ,'FPR_HOME':str(ROOT),'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME', str(tmp/'cache'))}
     unit=tmp/'unit';app=tmp/'logbook'
     run([ROOT/'fpr','build','tests/base/viewcache.fpr','-o',unit],env=env)
     assert 'cache: hits skip rendering' in run([unit])

@@ -243,6 +243,7 @@ def main():
     results = [None] * len(JOBS)
     with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         tmp_root = Path(temp)
+        os.environ.setdefault('XDG_CACHE_HOME', str(Path.home() / '.cache'))
         if workers > 1:
             # one build first, alone: the compiled prelude unit and the
             # runtime objects every later build links are then in the cache

@@ -23,7 +23,7 @@ def main():
         tmp = Path(directory)
         source = tmp / 'loops.fpr'
         source.write_text(SOURCE)
-        env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=str(tmp / 'cache'))
+        env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache')))
         for no_interval in ('0', '1', '0'):
             # Alternate within the same cache to catch a missing option identity.
             mode = dict(env, FPR_NO_INTERVAL=no_interval)

@@ -69,10 +69,10 @@ def main():
     # Native kernel oracles also exercise the opt-in invariant-motion pass.
     env['FPR_TYPED_IR_LOOP_MOTION']='1'
     run(['make','fpr'],env)
-    ghc=['cabal','exec','--','runghc'] if shutil.which('cabal') else ['runghc']
-    print(run([*ghc,'-w','-icompiler',ROOT/'tests/KernelIR.hs'],env).strip(),flush=True)
+    from haskell_units import run_units
+    run_units(['KernelIR'],env,timeout=240)
     with tempfile.TemporaryDirectory(prefix='fpr-typed-kernels-') as d:
-        tmp=Path(d);env['XDG_CACHE_HOME']=str(tmp/'cache')
+        tmp=Path(d);env['XDG_CACHE_HOME']=os.environ.get('XDG_CACHE_HOME',str(tmp/'cache'))
         # The real runtime supplies allocation, fallback and actor scheduling.
         exe=tmp/'hosted'
         run([ROOT/'fpr','build',FIX/'kernels.fpr','-o',exe],env)

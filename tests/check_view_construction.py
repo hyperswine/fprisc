@@ -18,7 +18,7 @@ def run(args, env):
 with tempfile.TemporaryDirectory(prefix='fpr-view-construction-') as directory:
     out = Path(directory)
     env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
-               FPR_COST_PROBE='1', XDG_CACHE_HOME=str(out/'cache'))
+               FPR_COST_PROBE='1', XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(out/'cache')))
     env.pop('FPR_FOREIGN', None)
     source = (ROOT/'tests/base/viewconstruction.fpr').read_text()
     baseline_source = out/'baseline.fpr'

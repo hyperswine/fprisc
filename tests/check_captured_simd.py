@@ -9,7 +9,7 @@ def main():
     env={k:v for k,v in os.environ.items() if not k.startswith('FPR_')}
     env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_NO_INLINE='1',FPR_NO_SCALAR_WORKERS='1',FPR_NO_FIELD_WORKERS='1',FPR_TYPED_IR_STRICT='all')
     with tempfile.TemporaryDirectory(prefix='fpr-captured-simd-') as d:
-        tmp=Path(d);env['XDG_CACHE_HOME']=str(tmp/'cache')
+        tmp=Path(d);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp/'cache'))
         fixture=ROOT/'tests/typed_ir/captured_simd.fpr'
         for target in ('qa64mac','x64','qx64'):
           a64=target=='qa64mac'

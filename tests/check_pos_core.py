@@ -28,7 +28,7 @@ def literal(rows):
 
 with tempfile.TemporaryDirectory(prefix="fpr-pos-core-") as tmp:
     d = Path(tmp)
-    env = {**os.environ, "XDG_CACHE_HOME": str(d / "cache")}
+    env = {**os.environ, "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME", str(d / "cache"))}
     random_source = random.Random(170026)
     extreme = [MIN, -1, 0, 1, 998, 999, 1000, 9998, 9999, 10000, MAX]
     quantities = [(a, b) for a in extreme for b in extreme]

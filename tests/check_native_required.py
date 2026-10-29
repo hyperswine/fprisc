@@ -8,7 +8,7 @@ def main():
  env={k:v for k,v in os.environ.items() if not k.startswith('FPR_')}
  env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT))
  with tempfile.TemporaryDirectory(prefix='fpr-native-required-') as d:
-  out=Path(d);env['XDG_CACHE_HOME']=str(out/'cache')
+  out=Path(d);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(out/'cache'))
   good=out/'good.fpr';good.write_text('main = print 42.\n')
   bad=out/'unsupported.fpr'
   bad.write_text('Wide.call : '+' -> '.join(['Int']*66)+'.\nsafe x = x+1.\n'

@@ -22,7 +22,7 @@ def main():
         assert r.returncode==expected,(cmd,r.returncode,r.stdout,r.stderr)
         return r.stdout+r.stderr
     with tempfile.TemporaryDirectory(prefix='fpr-typed-arc-') as d:
-        tmp=Path(d);env['XDG_CACHE_HOME']=str(tmp/'cache')
+        tmp=Path(d);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp/'cache'))
         for script in ('check_arc.py','check_raw.py','check_layout.py','check_export.py'):
             print(run([sys.executable,ROOT/'tests'/script]),end='',flush=True)
 

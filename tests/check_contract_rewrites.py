@@ -17,7 +17,7 @@ FPR = ROOT / "fpr"
 with tempfile.TemporaryDirectory(prefix="fpr-contract-rewrites-") as directory:
     tmp = Path(directory)
     env = {**os.environ, "FPR_HOME": str(ROOT), "FPR_PATH": str(ROOT),
-           "XDG_CACHE_HOME": str(tmp / "cache"),
+           "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME", str(tmp / "cache")),
            "SOL_CACHE_DIR": str(tmp / "sol-cache"), "SOL_GPU": "0"}
     env.pop("FPR_FOREIGN", None)
 

@@ -13,7 +13,7 @@ def main():
   if Path(keg).is_dir():env['PKG_CONFIG_PATH']=keg+':'+env.get('PKG_CONFIG_PATH','');break
  p=run(['make','fpr'],env);assert p.returncode==0,p.stdout+p.stderr
  with tempfile.TemporaryDirectory(prefix='fpr-stack-reserve-') as t:
-  out=Path(t);env['XDG_CACHE_HOME']=str(out/'cache')
+  out=Path(t);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(out/'cache'))
   for mode,reason in [(0,None),(1,'reservation exceeds the address range'),(2,'plane memory ABI mismatch'),
                       (3,"fpr_stack_max"),(4,'actor-owned stack'),(5,'plane memory ABI mismatch')]:
    src=out/f'mode-{mode}.fpr';src.write_text(f'unsafe base.\nReserve.exercise : Int -> Int.\nmain = print (Reserve.exercise {mode}).\n')

@@ -85,7 +85,7 @@ def main():
         # rollback request must not turn this native gate into legacy coverage.
         source=tmp/'real.fpr';source.write_text('step n = n + 1.\nmain = step 8.\n')
         env={k:v for k,v in os.environ.items() if not k.startswith('FPR_')}
-        env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_TYPED_IR_BACKEND='legacy',XDG_CACHE_HOME=str(tmp/'cache'))
+        env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_TYPED_IR_BACKEND='legacy',XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp/'cache')))
         real=[sys.executable,ROOT/'tools/native-insns-ratchet.py',source,'100000','rv64',
               '--runtime-call-sites-ceiling','100000','--json-output',result]
         run(real,0,env);data=json.loads(result.read_text())
