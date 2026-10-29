@@ -136,3 +136,70 @@ jobs:
           path: |
             ${{ runner.temp }}/check-results.json
             ${{ runner.temp }}/base-times.json
+
+  # Sol scripting suites (tools/sol-ci.sh). Separate job: it needs only a
+  # built fpr, so unrelated red steps in x86-64 do not mask it.
+  sol:
+    name: sol suites (debian trixie)
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    timeout-minutes: 90
+    steps:
+      - name: tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates python3 zstd \
+            make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev \
+            libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev \
+            libegl-dev libgl-dev clang lld curl
+      - uses: actions/checkout@v4
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: git config --global user.email ci@example.invalid && git config --global user.name ci
+      - name: make fpr
+        run: |
+          cabal update
+          cabal build
+          make fpr
+      - run: echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      # The container runs as root, which ignores the permission bits that
+      # the denied-path checks (e.g. sol-fs-check try_ls_denied) rely on.
+      - name: Sol suites (as an unprivileged user)
+        run: |
+          useradd -m sol
+          chown -R sol "$GITHUB_WORKSPACE"
+          su sol -c 'git config --global --add safe.directory "$GITHUB_WORKSPACE"; git config --global user.email ci@example.invalid; git config --global user.name ci; export FPR_HOME="$GITHUB_WORKSPACE"; cd "$GITHUB_WORKSPACE" && sh tools/sol-ci.sh'
+      - name: Sol logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sol-logs-linux
+          if-no-files-found: warn
+          path: build/sol-ci/
+
+  # Sol was verified on macOS arm64; informational leg, never blocks.
+  sol-macos:
+    name: sol suites (macos-15, non-blocking)
+    runs-on: macos-15
+    continue-on-error: true
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: tools
+        run: brew install ghc cabal-install libgit2 libarchive curl pkg-config
+      # libarchive and curl are keg-only in Homebrew
+      - run: echo "PKG_CONFIG_PATH=$(brew --prefix libarchive)/lib/pkgconfig:$(brew --prefix curl)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+      - name: make fpr
+        run: |
+          cabal update
+          cabal build
+          make fpr
+      - run: echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: Sol suites
+        run: sh tools/sol-ci.sh
+      - name: Sol logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sol-logs-macos
+          if-no-files-found: warn
+          path: build/sol-ci/
