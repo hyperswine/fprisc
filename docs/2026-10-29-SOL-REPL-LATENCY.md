@@ -18,3 +18,10 @@ the REPL bypasses the cache, so the ratio compared uncached vs cached. Fair base
 
 The 50 ms absolute bar is kept: it is missed on CI runners by real compute (prelude re-inference + whole-program
 bytecode, ~90% of the command), not noise. Unlock: incremental compilation (prelude inferred/lowered once per session).
+
+## Update: after incremental prelude (PR #27)
+PR #27 compiles each command against only the prelude declarations it names.
+Measured on the box: the session costs ~4.4 ms/command (was ~37.5). The gate's two
+baselines both pass: cached process ~14.6 ms (CI linux 17.3, macOS 33.8) and
+distinct uncached scripts ~26 ms. The fair baseline here is still the right
+comparison; with #27 the gate is no longer close.
