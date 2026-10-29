@@ -13,13 +13,13 @@
 module Sol.Main where
 
 import Mono (specializeFunctions)
-import Sol.Cache (Prepared (..), cached)
+import Sol.Cache (Prepared (..), cached, cachedModule)
 import Sol.Startup (phase, phaseIO)
 import Control.DeepSeq (force)
 import Sol.Diagnostic
 import qualified Sol.ScriptIO as ScriptIO
 import Sol.Bytecode
-import Control.Exception (AsyncException (UserInterrupt), Handler (..), IOException, bracket, catch, catches, finally, onException, throwIO, try, evaluate)
+import Control.Exception (AsyncException (UserInterrupt), Handler (..), IOException, SomeAsyncException, SomeException, fromException, bracket, catch, catches, finally, onException, throwIO, try, evaluate)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
 import Data.IORef
@@ -35,7 +35,8 @@ import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Safety (checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import Precond (applyPreconds, preTable, validatePre, validatePreUses)
-import Sol.Infer (inferResult)
+import Sol.Infer (inferResult, builtinNames)
+import Sol.Slice (injectedNames, mentions, slicePrelude)
 import Infer.Result
 import qualified Diagnostic.Render as SourceDiagnostic
 import Infer (builtinLinShapes)
@@ -103,8 +104,8 @@ runFile as = do
     expanded <- phase "imports" $ expandUses 8 "" trustedPaths trustRef seenRef (takeExtension path) (takeDirectory path) utops
     trusted <- readIORef trustRef
     cached path src prelude expanded (S.toList trusted) $ do
-      ptops <- phase "prelude-parse" $ parseOrDie "<prelude>" prelude
-      compileScript path src ptops utops expanded trusted
+      ptops <- phase "prelude-parse" preludeTops
+      compilePrepared path src ptops utops expanded trusted
   let Prepared cons shapes prog bprog runList _ = prepared
   -- user constructors only (the builtins have their own spellings in render),
   -- by their BASE name: `L.O.Some` prints as `Some`
@@ -174,6 +175,49 @@ solHelp = unlines
 evalForSafety :: STop -> STop
 evalForSafety (TEval e) = TBind "main" [] [] e
 evalForSafety t = t
+
+-- The parsed prelude. Parsing the ~450-line text costs ~30 ms; the result
+-- depends only on this executable, so it lives in the module cache under
+-- the executable's identity (Sol.Cache.cachedModule; SOL_CACHE=0 parses).
+preludeTops :: IO [STop]
+preludeTops = do
+  r <- cachedModule "<sol-prelude>" prelude (pure (either (Left . errorBundlePretty) (\ts -> Right ("", ts)) (parse program "<prelude>" prelude)))
+  case r of
+    Right (_, ts) -> pure ts
+    Left e -> diagnostic e >> exitFailure >> pure []
+
+-- Incremental prelude (docs/2026-10-29-SOL-INCREMENTAL-PRELUDE.md): compile
+-- against only the prelude declarations the program can name (Sol.Slice).
+-- The sliced compile is a trial: its diagnostics are held, and if it is
+-- rejected for any reason the program is compiled again with the whole
+-- prelude, exactly as before, so every diagnostic a user sees comes from
+-- the full pipeline. SOL_INCREMENTAL=0 always compiles the whole prelude;
+-- SOL_INCREMENTAL=trace reports slice sizes and fallbacks on stderr.
+compilePrepared :: FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
+compilePrepared path src ptops utops expanded trusted = do
+  mode <- lookupEnv "SOL_INCREMENTAL"
+  let full = compileScript path src ptops utops expanded trusted
+      seeds = S.unions [mentions expanded, S.fromList injectedNames, S.fromList builtinNames]
+      sliced = slicePrelude seeds ptops
+      trace msg = when (mode == Just "trace") (hPutStrLn stderr ("[sol incremental] " ++ msg))
+  -- SOL_TYPES / SOL_WIDTHS print inferred types: always the full program
+  inspect <- mapM lookupEnv ["SOL_TYPES", "SOL_WIDTHS"]
+  if mode == Just "0" || Just "1" `elem` inspect
+    then full
+    else do
+      trace ("prelude " ++ show (length sliced) ++ "/" ++ show (length ptops) ++ " declarations")
+      r <- try (withBufferedDiagnostics (compileScript path src sliced utops expanded trusted >>= evaluate . force))
+      case r of
+        -- typed-hole notes print type-variable names, which depend on the
+        -- whole program's fresh-variable supply: a compile that has one is
+        -- redone in full so the wording is the full pipeline's. Other notes
+        -- (realtime escapes, the notypes pragma) name only user code.
+        Right (prepared, held)
+          | any ("[hole]" `isPrefixOf`) held -> trace "typed-hole note; full prelude" >> full
+          | otherwise -> mapM_ (hPutStrLn stderr) held >> pure prepared
+        Left (e :: SomeException)
+          | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+          | otherwise -> trace ("sliced compile rejected (" ++ takeWhile (/= '\n') (show e) ++ "); full prelude") >> full
 
 -- Successful compiler output is pure data; transactions, actors, JIT state and
 -- script arguments are deliberately created outside this cached boundary.
@@ -455,7 +499,7 @@ runRepl scriptArgs = do
     Just "0" -> pure Nothing
     _ -> initJIT
   gpu <- Gpu.initGPU
-  ptops <- parseOrDie "<prelude>" prelude
+  ptops <- preludeTops
   trustedPaths <- trustedLibraryPaths
   seenRef <- newIORef M.empty
   trustRef <- newIORef S.empty
@@ -533,7 +577,7 @@ runReplCommand :: FilePath -> [String] -> FilePath -> FilePath -> [STop] -> S.Se
 runReplCommand base scriptArgs dataFile journalFile ptops trustedPaths seenRef trustRef rt jc gpu trial tops evalsDone = do
   expanded <- expandUses 8 "" trustedPaths trustRef seenRef ".sol" base tops
   trusted <- readIORef trustRef
-  prepared <- compileScript "<repl>" trial ptops tops expanded trusted
+  prepared <- compilePrepared "<repl>" trial ptops tops expanded trusted
   let Prepared cons shapes prog bprog runList _ = prepared
   writeIORef VM.conNames
     [ ((t, v, ar), reverse (takeWhile (/= '.') (reverse c)))
