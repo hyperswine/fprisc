@@ -369,7 +369,6 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
         mapM_ (\(_, t) -> note ("[hole] ?? (runtime trap) : " ++ t)) [h | h@(n, _) <- holes, null n]
         -- the safe/unsafe line, HostedBytecode profile: same checker,
         -- same rules as the AOT path (SOL_NO_SAFETY=1 for transition)
-        cacheOff <- (== Just "0") <$> lookupEnv "SOL_CACHE"
   noSafety <- (== Just "1") <$> lookupEnv "SOL_NO_SAFETY"
         unless (noSafety || null serrs) $ do
           diagnostic "=== SAFETY: the safe/unsafe line ==="
