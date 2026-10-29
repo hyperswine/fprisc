@@ -71,6 +71,8 @@ solBuiltins =
       ("Try.walk", mono (TFn tStr (TFn tInt (TFn tInt (TFn tBool (tcon "Result" [tList (tcon "WalkEntry" []), tcon "FsError" []])))))),
       ("Try.tempDir", mono (TFn tStr (tcon "Result" [tStr, tcon "FsError" []]))),
       ("Try.tempFile", mono (TFn tStr (tcon "Result" [tStr, tcon "FsError" []]))),
+      -- sh's honest tier: Ok stdout, Err (ShError cmd code stdout stderr)
+      ("Try.sh", mono (TFn tStr (tcon "Result" [tStr, tcon "ShError" []]))),
       ("charAt", mono (TFn tStr (TFn tInt tInt))), -- returns the char CODE
       ("substr", mono (TFn tStr (TFn tInt (TFn tInt tStr)))),
       -- the O(n) string tier (VM.hs): what Str.split / indexOf / replace /

@@ -81,9 +81,16 @@ shebang as a comment. No shell quoting or expansion is applied to script argumen
 
 For a scheduler, set an explicit HOME, PATH and writable state/cache locations;
 invoke an absolute script path. The script and bundled libraries may be read-only.
-Relative file and process paths use the script directory, as with checkout runs;
-choose absolute output paths when that directory is read-only. The installation
-checks use an unrelated working directory and a minimal environment.
+Relative file and process paths (`readPath`, `writePath`, `ls`, `exists`,
+`Try.*`, `sh`, `Proc.*` with an empty cwd) resolve against the **current working
+directory of the process**, exactly like bash or Python, for checkout runs and
+installed `sol` alike. They are *not* relative to the script's directory. A
+scheduler usually starts in `/` or `$HOME`, so `cd` first or use absolute
+paths, and choose absolute output paths when the cwd is read-only. Only `use`
+imports resolve relative to the importing source file (see below).
+`tools/sol-cwd-check.py` pins this by running a script from a different cwd.
+The installation checks use an unrelated working directory and a minimal
+environment.
 
 ## Libraries, shadowing and pins
 

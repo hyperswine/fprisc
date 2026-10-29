@@ -119,7 +119,15 @@ prelude =
       -- strand scratch. Durable output goes to ordinary transactional paths.
       "tempDir p = case Try.tempDir p of Ok d -> d | Err e -> error (str e).",
       "tempFile p = case Try.tempFile p of Ok f -> f | Err e -> error (str e).",
-      "sh c = read (Sh c).",
+      -- sh insists: a nonzero exit (127 = command not found) is a PANIC
+      -- carrying the rendered ShError, exactly as readPath insists on a
+      -- present file. Try.sh is the honest tier: Ok stdout, or
+      -- Err (ShError command code stdout stderr) to pattern-match.
+      -- shStatus keeps the old never-failing (code, stdout ++ stderr).
+      "ShError = Type (ShError String Int String String).",
+      "sh c = case Try.sh c of Ok out -> out | Err e -> error (shErrorText e).",
+      "shErrorText e = case e of ShError cmd code out err -> \"sh: `{cmd}` exited {code}: {Str.trim err}\".",
+      "shStatus c = read (Sh c).",
       "shq c = write \"/dev/sh\" c.",
       "print v = write \"/dev/out\" v.",
       "log v = write \"/dev/log\" v.",
@@ -409,7 +417,7 @@ halArities =
   M.fromList $
     [ ("str", 1), ("strcat", 2), ("String.len", 1), ("strlen", 1),
       ("error", 1), ("Try.parseInt", 1), ("Try.parseNum", 1), ("Try.readPath", 1),
-      ("Try.ls", 1), ("Try.stat", 1), ("Try.exists", 1), ("Try.lstat", 1), ("Try.statKind", 1), ("Try.walk", 4), ("Try.tempDir", 1), ("Try.tempFile", 1),
+      ("Try.ls", 1), ("Try.stat", 1), ("Try.exists", 1), ("Try.lstat", 1), ("Try.statKind", 1), ("Try.walk", 4), ("Try.tempDir", 1), ("Try.tempFile", 1), ("Try.sh", 1),
       ("charAt", 2), ("chr", 1), ("substr", 3), ("!", 2),
       ("strSplit", 2), ("strIndexOf", 2), ("strIndexFrom", 3), ("strReplace", 3), ("strUpper", 1), ("strLower", 1), ("strTrim", 1), ("strJoin", 2),
       ("strCmp", 2), ("strCodes", 1),

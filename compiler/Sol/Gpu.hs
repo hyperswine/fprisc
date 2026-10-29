@@ -42,14 +42,29 @@ foreign import ccall unsafe "solgpu_map_f64" c_map :: CString -> Ptr Double -> C
 
 newtype GpuCtx = GpuCtx ()
 
+-- Lazy: the EGL/Mesa context (~30 ms and ~100 MB RSS on Linux) is created
+-- on the first map that clears every other gate, never at startup. An
+-- unavailable GPU is then discovered there and the caller falls back.
 initGPU :: IO (Maybe GpuCtx)
 initGPU = do
   flag <- lookupEnv "SOL_GPU"
-  if flag == Just "0"
-    then pure Nothing
-    else do
-      ok <- c_init
-      pure (if ok == 1 then Just (GpuCtx ()) else Nothing)
+  pure (if flag == Just "0" then Nothing else Just (GpuCtx ()))
+
+-- solgpu_init memoizes success itself; this memoizes the answer, failure
+-- included, so an absent GPU is probed once per process.
+gpuReady :: IO Bool
+gpuReady = do
+  known <- readIORef gpuProbe
+  case known of
+    Just ok -> pure ok
+    Nothing -> do
+      ok <- (== 1) <$> c_init
+      writeIORef gpuProbe (Just ok)
+      pure ok
+
+{-# NOINLINE gpuProbe #-}
+gpuProbe :: IORef (Maybe Bool)
+gpuProbe = unsafePerformIO (newIORef Nothing)
 
 gpuMinLen :: Int
 gpuMinLen = unsafePerformIO $ do
@@ -119,6 +134,8 @@ glslOfFn prog g nCap = do
 -- loudly, it declines)
 gpuMapF64 :: GpuCtx -> String -> [Double] -> [Double] -> IO (Maybe [Double])
 gpuMapF64 _ src us xs = do
+ ready <- gpuReady
+ if not ready then pure Nothing else do
   let n = length xs
   withCString src $ \csrc ->
     withArray (us ++ [0]) $ \pus -> -- pad so the array is never empty; C reads only nu

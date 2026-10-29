@@ -388,7 +388,7 @@ def main():
         count += 1
         # 0700 on both spellings of stat
         flag = '-f %Lp' if sys.platform == 'darwin' else '-c %a'
-        r5 = run_sol(f'> d = tempDir "m"; (code, mode) = sh "stat {flag} {{d}}";'
+        r5 = run_sol(f'> d = tempDir "m"; mode = sh "stat {flag} {{d}}";'
                      f' print "{{mode}}".\n')
         assert r5.returncode == 0 and r5.stdout.strip() == b'700', r5
         count += 1
@@ -500,7 +500,7 @@ def main():
             r = run_sol(f'> print (isOk (Try.tempDir {json.dumps(prefix)})).\n')
             assert r.returncode == 0 and r.stdout == b'False\n' and not r.stderr, r
             count += 1
-        r = run_sol(f'> f = tempFile "private"; (code, mode) = sh "stat {flag} {{f}}";'
+        r = run_sol(f'> f = tempFile "private"; mode = sh "stat {flag} {{f}}";'
                     ' u = print f; print mode.\n')
         assert r.returncode == 0 and not r.stderr, r
         temp_path, *mode_lines = r.stdout.decode().splitlines()
