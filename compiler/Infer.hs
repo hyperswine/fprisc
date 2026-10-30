@@ -334,10 +334,25 @@ generalize env t0 = do
     -- A scheme's bound IDs are not solver metavariables. Alpha-rename them
     -- in an isolated snapshot before applying the solver substitution;
     -- otherwise builtin quantifier 0 can alias the first definition's 0.
-    schemeFtv sc = do
+    -- A scheme with no free variable outside its quantifiers (checked on the
+    -- stored type, before zonking) has none after: zonk only rewrites
+    -- metavariables, and snapshotScheme renames exactly the quantifiers.
+    -- Skipping the snapshot for those is output-identical; at top level
+    -- nearly every entry is closed, and the snapshot + zonk + force per
+    -- entry per SCC made inference quadratic in the number of definitions.
+    schemeFtv sc
+      | closedScheme sc = pure mempty
+      | otherwise = openSchemeFtv sc
+    openSchemeFtv sc = do
       Forall qs rqs ty' <- snapshotScheme sc
       let (tv, rv) = ftv ty'
       pure (tv S.\\ S.fromList qs, rv S.\\ S.fromList rqs)
+
+-- No free type or row variable besides the quantifiers (see generalize).
+closedScheme :: Scheme -> Bool
+closedScheme (Forall qs rqs t) =
+  let (tv, rv) = ftv t
+   in all (`elem` qs) (S.toList tv) && all (`elem` rqs) (S.toList rv)
 
 mono :: Type -> Scheme
 mono = Forall [] []

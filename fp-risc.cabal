@@ -419,6 +419,11 @@ test-suite Interval
   type:               exitcode-stdio-1.0
   main-is:            Interval.hs
 
+test-suite GeneralizeClosed
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            GeneralizeClosed.hs
+
 test-suite SourceGroups
   import:             unit-test
   type:               exitcode-stdio-1.0
