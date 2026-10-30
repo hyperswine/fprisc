@@ -6,7 +6,8 @@
 module Frontend.Traverse where
 
 import Core.Syntax ( Name )
-import Data.List ( nub )
+import Data.List ( nub, foldl' )
+import qualified Data.Map.Strict as M
 import Frontend.Syntax
     ( STop(TStruct, TBind, TEval),
       SPat(PRec, PVar, PSig, PCon, PTup),
@@ -133,4 +134,12 @@ transformEP f pf = go
 -- Source clause order is part of first-match semantics. Shared by semantic
 -- lowering and the compatibility desugarer, without backend dependencies.
 sourceGroups :: [STop] -> [(Name,[([SPat],[SGuard],SExpr)])]
-sourceGroups tops=[(n,[(ps,g,b) | TBind n' ps g b<-tops,n'==n]) | n<-nub [n | TBind n _ _ _<-tops]]
+-- One pass: names in first-occurrence order, each with its clauses in source
+-- order (the earlier nub + per-name rescan was O(names * tops)).
+sourceGroups tops=[(n,reverse (byName M.! n)) | n<-reverse order]
+  where
+    (order,byName)=foldl' step ([],M.empty) tops
+    step (ns,m) (TBind n ps g b)=case M.lookup n m of
+      Nothing->(n:ns,M.insert n [(ps,g,b)] m)
+      Just cs->(ns,M.insert n ((ps,g,b):cs) m)
+    step acc _=acc

@@ -364,3 +364,5 @@ they began.
 - [Txn: a linear transaction type](2026-10-29-TXN.md): proposal, not implemented. A `std/txn.fpr` over any state-threaded resource: per-step undo tokens as data, deferred steps at commit, a pivot as a phase type, unknown outcomes latched; the ~25 hand-rolled sites in fprisc and qos it would replace, ranked, and the four linearity-checker gaps it depends on.
 
 - [Sol REPL speed after sync](2026-10-30-SOL-REPL-SPEED.md): terminal startup, command response, checked-library optimization and growing sessions, with raw samples.
+
+- [Installed FP-RISC developer toolchain roadmap](2026-10-30-INSTALLED-TOOLCHAIN-ROADMAP.md): standalone Homebrew/native/Sol workflow, managed cross targets, release gates and a tested private SDK feasibility probe.

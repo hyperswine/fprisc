@@ -1,0 +1,163 @@
+{
+  "date": "2026-10-30",
+  "scope": "Local macOS ARM64 private staged SDK, not a published Homebrew release",
+  "status": "passed",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "sourceRevision": "9d086f0c5c52d9cd684d6d0cf26c6735bf7709ac",
+  "sourceDirty": true,
+  "compilerSha256": "3a8fb23d69b9c204d221de2b76036f327458af89531b4ab754fea68735e1f7b6",
+  "minimumMacOS": "27.0",
+  "nativeLibraries": [
+    "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1359.0.0)",
+    "\t/opt/homebrew/opt/libgit2/lib/libgit2.1.9.dylib (compatibility version 1.9.0, current version 1.9.7)",
+    "\t/opt/homebrew/opt/libarchive/lib/libarchive.13.dylib (compatibility version 22.0.0, current version 22.10.0)",
+    "\t/usr/lib/libcurl.4.dylib (compatibility version 7.0.0, current version 9.0.0)",
+    "\t/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)",
+    "\t/usr/lib/libffi.dylib (compatibility version 1.0.0, current version 40.0.0)",
+    "\t/usr/lib/libcharset.1.dylib (compatibility version 1.0.0, current version 1.0.0)"
+  ],
+  "sdkFileCount": 164,
+  "sourceAccess": "denied",
+  "absentTools": [
+    "ghc",
+    "cabal",
+    "make",
+    "git"
+  ],
+  "sdkReadOnly": true,
+  "installedFilesUnchanged": true,
+  "relocation": true,
+  "checks": [
+    {
+      "name": "source-denied",
+      "seconds": 0.013888832880184054,
+      "exit": 1
+    },
+    {
+      "name": "make-denied",
+      "seconds": 0.00964383315294981,
+      "exit": 71
+    },
+    {
+      "name": "tools-absent",
+      "seconds": 0.014616375090554357,
+      "exit": 0
+    },
+    {
+      "name": "version",
+      "seconds": 0.38935162499547005,
+      "exit": 0
+    },
+    {
+      "name": "native-build",
+      "seconds": 5.526504916138947,
+      "exit": 0
+    },
+    {
+      "name": "native-execute",
+      "seconds": 0.05135720781981945,
+      "exit": 0
+    },
+    {
+      "name": "native-run",
+      "seconds": 1.1992200838867575,
+      "exit": 0
+    },
+    {
+      "name": "module-check",
+      "seconds": 0.16226645791903138,
+      "exit": 0
+    },
+    {
+      "name": "module-build",
+      "seconds": 1.717799082864076,
+      "exit": 0
+    },
+    {
+      "name": "diagnostics",
+      "seconds": 0.12345845787785947,
+      "exit": 1
+    },
+    {
+      "name": "sol-library",
+      "seconds": 0.15410979092121124,
+      "exit": 0
+    },
+    {
+      "name": "sol-shebang",
+      "seconds": 0.09119729208759964,
+      "exit": 0
+    },
+    {
+      "name": "sol-repl",
+      "seconds": 0.046051458921283484,
+      "exit": 0
+    },
+    {
+      "name": "x64-build",
+      "seconds": 5.004246916156262,
+      "exit": 0
+    },
+    {
+      "name": "x64-identity",
+      "seconds": 0.018409499898552895,
+      "exit": 0
+    },
+    {
+      "name": "x64-rosetta",
+      "seconds": 1.141174125019461,
+      "exit": 0
+    },
+    {
+      "name": "standalone-app",
+      "seconds": 0.01993945799767971,
+      "exit": 0
+    },
+    {
+      "name": "relocated-sol",
+      "seconds": 0.15813866700045764,
+      "exit": 0
+    },
+    {
+      "name": "relocated-native",
+      "seconds": 7.723373166052625,
+      "exit": 0
+    },
+    {
+      "name": "relocated-execute",
+      "seconds": 0.11224670801311731,
+      "exit": 0
+    },
+    {
+      "name": "qos-scaffold",
+      "seconds": 0.18990491586737335,
+      "exit": 0
+    },
+    {
+      "name": "qos-private-build",
+      "seconds": 19.000463541131467,
+      "exit": 0
+    }
+  ],
+  "qosCoexistence": {
+    "privateCompiler": "/opt/homebrew/Cellar/qos-portable/0.1.0/libexec/qos-portable/compiler/fpr",
+    "compilerSha256": "b20b50c46d2b19bb6664e9c4b390f725c23d2b06b8bdeb41d1027a4ca756065b",
+    "scope": "external build with standalone fpr on PATH; no Brew co-installation"
+  },
+  "regression": {
+    "beforeCompilerSha256": "569f2f9fffaeb8a21544518b22eb1c142c7d59505380397ce7fb9fdaa1039211",
+    "beforeError": "native-build: clang: error: no such file or directory: '/private/tmp/fprisc-installed-sdk-before-20261030/cache'\nclang: error: no input files\nfpr build: cc failed on /private/tmp/fprisc-installed-sdk-before-20261030/cache\n",
+    "fix": "Read Compile .units as newline-delimited paths rather than whitespace-separated words",
+    "buildSourceSha256": "7d690c60d31b3ad9de7e154fdf51676590ad91cfff7fec4f76bc5a1a9f38bd7e"
+  },
+  "notQualified": [
+    "Public Homebrew formula/artifact installation and upgrade",
+    "Homebrew co-installation command ownership",
+    "Dependency notices and release provenance",
+    "Older macOS, Linux and managed Linux cross toolchains",
+    "Proposed project scaffold/manifest commands"
+  ]
+}
