@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-30",
+  "scope": "Published FP-RISC 0.12.0 standalone toolchain, installed through Homebrew on macOS ARM64",
+  "result": "passed",
+  "release": {
+    "tag": "v0.12.0",
+    "url": "https://github.com/hyperswine/fprisc/releases/tag/v0.12.0",
+    "target": "eb7edcf06232291d38f1e35a0ae72d12fada9bec",
+    "assets": [
+      "fprisc-0.12.0-macos-arm64.tar.gz",
+      "fprisc.rb",
+      "release.json",
+      "SHA256SUMS"
+    ],
+    "archiveSha256": "51ad74f0074fc0d3f570c7688ddb5a4ba3e9571dae99905e31266a63b10df4ab",
+    "downloadedArchiveMatches": true
+  },
+  "tap": {
+    "repository": "hyperswine/homebrew-tap",
+    "commit": "31ed921",
+    "formula": "Formula/fprisc.rb"
+  },
+  "compiler": {
+    "version": "fpr 0.12.0",
+    "sha256": "b4d9508f86184fe5d6eefaf6c9b453c86fba17406f6ce141d868f9cab11b783f",
+    "minimumMacOS": "27.0",
+    "noticesPackages": 33
+  },
+  "prePublication": {
+    "tool": "tools/toolchain-install-check.py --release",
+    "status": "passed",
+    "steps": 23,
+    "qosCoexistence": {
+      "privateCompiler": "/opt/homebrew/Cellar/qos-portable/0.2.0/libexec/qos-portable/compiler/fpr",
+      "compilerSha256": "b20b50c46d2b19bb6664e9c4b390f725c23d2b06b8bdeb41d1027a4ca756065b",
+      "scope": "external build with standalone fpr on PATH; no Brew co-installation"
+    }
+  },
+  "homebrew": {
+    "install": "brew install hyperswine/tap/fprisc: only fprisc added; no dependency upgrades",
+    "brewTest": "passed",
+    "brewLinkage": "libgit2 and libarchive resolved; nothing missing",
+    "commands": {
+      "fpr": "/opt/homebrew/bin/fpr -> Cellar/fprisc/0.12.0",
+      "sol": "/opt/homebrew/bin/sol -> Cellar/fprisc/0.12.0 (symlink to fpr)"
+    },
+    "smoke": [
+      "native build and run of a std/list program",
+      "fpr run",
+      "absolute #!/opt/homebrew/bin/sol shebang with arguments",
+      "fpr build --target=qos-portable refused with exit 2, pointing to qos build",
+      "qos-portable 0.2.0: qos new + qos build still use QOS's private compiler"
+    ],
+    "uninstall": "removed only fpr and sol; project files unchanged; built program still ran; qos build still worked; reinstalled"
+  },
+  "solEntryDecision": "symlink kept; a wrapper script broke absolute shebangs on macOS and added ~7 ms (roadmap step 2)",
+  "notes": [
+    "~/.local/bin/sol (an older Sol prefix install) precedes /opt/homebrew/bin on this PATH and shadows the formula's sol",
+    "brew info reported hyperswine/tap as untrusted; install proceeded; trust settings were not changed"
+  ],
+  "rawEvidenceDirectory": "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/02550f56-ef86-4033-a4c5-b561bb9f8f71/scratchpad/fr"
+}

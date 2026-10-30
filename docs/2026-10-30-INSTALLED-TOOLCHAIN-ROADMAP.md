@@ -316,9 +316,45 @@ Still open, in order:
    `bin/sol`, and the Sol prefix installer remains for non-Homebrew
    installs; PATH order picks between them. Both use the same per-user
    recovery state directory.
-3. Publishing the release asset and tap formula, then an actual Homebrew
-   install, upgrade, uninstall and co-installation test with `qos-portable`
-   0.2.0, which this machine now has installed.
+3. Done: FP-RISC 0.12.0 is published (see below).
+
+## FP-RISC 0.12.0 published (30 October 2026, later)
+
+[FP-RISC 0.12.0](https://github.com/hyperswine/fprisc/releases/tag/v0.12.0) is
+the first standalone toolchain release. It is built from `eb7edcf`, which
+merges this work with `origin/main`, so the compiler was rebuilt with that
+merge's Sol changes. `Formula/fprisc.rb` in `hyperswine/homebrew-tap` is at
+`31ed921`:
+
+```sh
+brew install hyperswine/tap/fprisc
+```
+
+The archive passed the 23-step `--release` qualification before publication,
+and the downloaded asset matches `SHA256SUMS`. On this Mac:
+
+- **Install.** `brew install` added only `fprisc`, with no dependency
+  upgrades. `brew test` passed, and `brew linkage` resolves `libgit2` and
+  `libarchive`.
+- **Smoke checks.** A native build and run, `fpr run`, and an absolute
+  `#!/opt/homebrew/bin/sol` shebang with arguments all worked.
+  `fpr build --target=qos-portable` was refused with a pointer to
+  `qos build`.
+- **QOS.** QOS Portable 0.2.0's `qos build` still used QOS's own compiler.
+- **Uninstall.** Uninstalling removed only `fpr` and `sol`. The project was
+  unchanged, the built program still ran, and `qos build` still worked.
+  The toolchain was then reinstalled.
+
+See the [evidence](evidence/2026-10-30-fprisc-0.12.0-release.json). On this
+machine an older `~/.local/bin/sol`, from the Sol prefix installer, comes
+first on PATH and shadows the formula's `sol`. Remove it or reorder PATH to
+use the Homebrew one.
+
+Still open: there is no upgrade path to test until a second release exists.
+The Cabal dependency plan is not frozen, so a rebuild of the same commit can
+resolve newer Haskell packages, as QOS 0.2.0 found. The project workflow
+(step 2 of the roadmap: `fpr new`, the manifest, `fpr test`), managed cross
+targets and other platforms remain.
 
 Related work: [Sol installation](2026-10-29-SOL-INSTALLATION.md),
 [Logbook service restoration](2026-10-30-LOGBOOK-M1-RESTORE.md), and the sibling
