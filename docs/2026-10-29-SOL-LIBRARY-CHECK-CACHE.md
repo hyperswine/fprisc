@@ -25,7 +25,18 @@ falls back to the whole compile.
   `False` (also cached, so such libraries are always compiled whole without
   re-trying). A library that only checks in the context of a particular
   program (e.g. `sol/lib/auth` needs a record shape the app defines) is
-  therefore never trusted.
+  not trusted on its own; see below.
+* Per-program-interface verdicts (for such libraries): when the standalone
+  verdict is `False`, a second key adds the program's *interface*: every
+  user declaration except function bodies and top-level evals (types,
+  signatures, shapes, structs, aliases, imports kept whole; functions by
+  name) plus the set of record shapes the user part writes anywhere. It is
+  recorded `True` only after that program compiled the libraries whole and
+  passed. Library code is spliced under its alias, so the program can reach
+  it only through its global names and record shapes; editing a function
+  body or an eval keeps the key, adding/removing a declaration or a record
+  shape changes it. The sliced compile is still a trial with full fallback.
+  Of the 21 libraries in `sol/lib`, only `auth` fails on its own.
 * Verified libraries: the prelude **and** the libraries are sliced from what
   the user part names (`SliceAll`); library record shapes are seeded from the
   whole libraries so shape ids match the whole compile.
@@ -42,11 +53,25 @@ from the previous command survived, so from the second command on a `use`d
 module was aliased to a copy that was no longer spliced (`J.f` unbound).
 The REPL now resets it per command. This also fails on main.
 
+## auth-style libraries (measured)
+
+Script importing `sol/lib/auth` (pulls `base` and `ui`), body edited each
+run, warm cache, interleaved runs, median ms:
+
+| | main | `SOL_LIB_INCREMENTAL=0` | this branch |
+|---|---|---|---|
+| auth app, first run of edited source | 147.7 | 150.5 | 54.5 |
+
+Phases (lib cache off → on): typecheck 56.1 → 3.2, lower 3.7 → 0.3,
+bytecode 5.9 → 0.9. Before the per-interface verdict the branch compiled
+these libraries whole (~194 ms in that measurement session vs 188 on main).
+The first compile of each new interface still pays the whole compile.
+
 ## Evidence
 
-* `tools/sol-library-cache-check.py`: 171 differential cases (every library
+* `tools/sol-library-cache-check.py`: 189 differential cases (every library
   alone and all together, combinations, shadowing, type errors, unknown
-  members, double `use`, context-dependent library, every tree file with
+  members, double `use`, context-dependent library (body edits, new functions, extra record shape, missing field, type error, shadowing), every tree file with
   `use`, shared cache, run output, edited-library invalidation,
   `SOL_NO_SAFETY`, REPL sessions) — identical asm/diagnostics/exit status
   against `SOL_LIB_INCREMENTAL=0`.
