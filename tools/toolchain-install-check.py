@@ -14,6 +14,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,10 +26,35 @@ def hashes(root):
             for p in sorted(root.rglob('*')) if p.is_symlink() or p.is_file()}
 
 
+def unpack_release(archive, prefix, work):
+    """The packaged tarball, checksum-verified, laid out as the formula installs it:
+    libexec/fprisc plus bin/fpr and bin/sol links to its real compiler."""
+    sums = (archive.parent / 'SHA256SUMS').read_text().split()
+    if sums[1:2] != [archive.name] or sums[0] != hashlib.sha256(archive.read_bytes()).hexdigest():
+        raise SystemExit('release archive does not match its SHA256SUMS')
+    unpacked = work / 'unpacked'
+    with tarfile.open(archive) as tar:
+        tar.extractall(unpacked, filter='data')
+    (top,) = unpacked.iterdir()
+    meta = json.loads((top / 'libexec/fprisc/toolchain.json').read_text())
+    files = {str(p.relative_to(top)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(top.rglob('*'))
+             if p.is_file() and p.name != 'toolchain.json' and not p.is_symlink()}
+    if files != meta['files'] or not meta.get('release'):
+        raise SystemExit('release archive inventory mismatch')
+    (prefix / 'libexec').mkdir(parents=True)
+    (top / 'libexec/fprisc').rename(prefix / 'libexec/fprisc')
+    (prefix / 'bin').mkdir()
+    for name in ('fpr', 'sol'):
+        (prefix / 'bin' / name).symlink_to('../libexec/fprisc/fpr')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, default=ROOT / 'fpr')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--release', type=Path, metavar='ARCHIVE',
+                        help='qualify a packaged release tarball (tools/package-toolchain.py; its SHA256SUMS beside it) '
+                             'instead of staging --binary')
     parser.add_argument('--qos', type=Path, help='also prove an installed QOS CLI keeps using its private compiler')
     args = parser.parse_args()
     if sys.platform != 'darwin':
@@ -38,8 +64,11 @@ def main():
         parser.error('output must be outside the workspace that this probe denies')
     work.mkdir(parents=True, exist_ok=False)
     prefix = work / 'SDK with spaces'
-    subprocess.run([sys.executable, ROOT / 'tools/stage-toolchain.py', '--binary', args.binary,
-                    '--output', prefix], check=True, capture_output=True, text=True)
+    if args.release:
+        unpack_release(args.release.resolve(), prefix, work)
+    else:
+        subprocess.run([sys.executable, ROOT / 'tools/stage-toolchain.py', '--binary', args.binary,
+                        '--output', prefix], check=True, capture_output=True, text=True)
     before = hashes(prefix)
     for p in sorted(prefix.rglob('*'), reverse=True):
         if not p.is_symlink():
@@ -117,6 +146,9 @@ def main():
             result = run('x64-identity', ['/usr/bin/file', project / 'hello-x64'])
             assert 'x86_64' in result.stdout
             run('x64-rosetta', ['/usr/bin/arch', '-x86_64', project / 'hello-x64'], 'installed native: 3\n')
+        # A standalone install never searches for a QOS SDK; it points at `qos build`.
+        result = run('qos-target-refused', [fpr, 'build', '--target=qos-portable'], failure=True)
+        assert result.returncode == 2 and 'qos build' in result.stderr, result.stderr
         independent = work / 'no-sdk.sb'
         independent.write_text(policy.read_text() + f'(deny file-read* (subpath {json.dumps(str(prefix))}))\n')
         run('standalone-app', [project / 'hello'], 'installed native: 3\n',
@@ -144,6 +176,10 @@ def main():
             report['qosCoexistence'] = dict(privateCompiler=str(compiler), compilerSha256=meta['compilerSha256'],
                                           scope='external build with standalone fpr on PATH; no Brew co-installation')
             assert hashes(relocated) == before, 'QOS altered standalone SDK'
+        if args.release:
+            report.update(release=json.loads((relocated / 'libexec/fprisc/toolchain.json').read_text())['release'],
+                          archive=args.release.name,
+                          archiveSha256=hashlib.sha256(args.release.read_bytes()).hexdigest())
         report.update(status='passed', compilerSha256=hashlib.sha256((relocated / 'bin/fpr').read_bytes()).hexdigest(),
                       installedFilesUnchanged=True, relocation=True, output=str(work))
     except BaseException as why:

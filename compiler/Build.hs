@@ -308,6 +308,10 @@ buildMain args = do
 
 -- QOS owns its installed desktop builder. Resolve it from the real compiler
 -- location; keep app project discovery and packaging out of the POSIX plan.
+-- Only QOS's own matched compiler has the builder beside it. A standalone
+-- FP-RISC install never searches for a QOS SDK (that could pair a newer
+-- compiler with an older QOS package): it points at `qos build`, which
+-- always selects QOS's private compiler.
 -- --manifest retains its existing cost-contract meaning (the QOS builder
 -- refuses unsupported options instead of silently changing their meaning).
 qosPortable :: [String] -> IO ()
@@ -316,7 +320,7 @@ qosPortable args = do
   explicit <- System.Environment.lookupEnv "QOS_PORTABLE_BUILDER"
   let builder = fromMaybe (takeDirectory (takeDirectory self) </> "tools" </> "portable_sdk.py") explicit
   exists <- doesFileExist builder
-  unless exists $ hPutStrLn stderr "fpr build: install a matching QOS Portable SDK and use its bin/fpr (or set QOS_PORTABLE_BUILDER)" >> exitFailure
+  unless exists $ hPutStrLn stderr "fpr build: QOS Portable apps are built by the QOS SDK with its own compiler; run `qos build` in the project (this fpr has no QOS builder)" >> exitWith (ExitFailure 2)
   code <- rawSystem "python3" ([builder, "build", "--compiler", self] ++ filter (/= "--target=qos-portable") args)
   exitWith code
 
