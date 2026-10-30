@@ -167,7 +167,8 @@ build configuration p = do
     removeFile logf
     exitWith cc0
   removeFile logf
-  units <- words <$> readFile (asm ++ ".units")
+  -- Compile writes one path per line; cache and installed SDK paths can contain spaces.
+  units <- filter (not . null) . lines <$> readFile (asm ++ ".units")
   cc <- case pCC p of
     Just c -> pure c
     Nothing -> pure (fromMaybe "cc" (Options.driverCC driver))
