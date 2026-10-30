@@ -73,6 +73,18 @@ def project_workflow(run, fpr, project, work):
     result = run('project-check-fails', [fpr, 'check'], failure=True, cwd=hello)
     assert result.returncode == 1 and 'src/greeting.fpr' in result.stderr and 'not checked' in result.stderr, result.stderr
     (hello / 'src/greeting.fpr').write_text('greet : String -> String .\ngreet who = "hello, {who}".\n')
+    # a second check of unchanged files answers from the check cache
+    run('project-check-cached', [fpr, 'check'], 'fpr check: 3 files ok\n', cwd=hello)
+    # a pinned use resolves from the project's .fpr/store even when run from src/
+    (hello / 'src/loud.fpr').write_text('shout : String -> String .\nshout s = "{s}!".\n')
+    run('project-commit', [fpr, 'commit', 'src/loud.fpr'], cwd=hello)
+    pin = (hello / '.fpr/versions.db').read_text().split()[2]
+    main_source = (hello / 'src/main.fpr').read_text()
+    (hello / 'src/main.fpr').write_text(f'profile base.\nLoud = use "loud#{pin}".\nmain = print (Loud.shout "pinned").\n')
+    (hello / 'src/loud.fpr').write_text('shout : String -> String .\nshout s = "{s}?".\n')  # drifted: only the store has the pin
+    run('project-run-pinned', [fpr, 'run'], 'pinned!\n', cwd=hello / 'src')
+    (hello / 'src/main.fpr').write_text(main_source)
+    (hello / 'src/loud.fpr').unlink()
     # explicit files never consult the manifest
     run('project-explicit-file', [fpr, 'run', 'src/main.fpr', 'Bo'], 'hello, Bo\n', cwd=hello)
     run('sol-project-new', [fpr, 'new', 'notes', '--template=sol'])

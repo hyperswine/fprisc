@@ -33,6 +33,10 @@ import Frontend.Syntax (STop (..))
 import Frontend.Traverse (stripPosTops)
 import Home (fprHome)
 import qualified Data.IORef
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, readMVar)
+import Control.Concurrent.QSem (newQSem, signalQSem, waitQSem)
+import Control.Exception (bracket_)
 import qualified Data.Map.Strict as M
 import qualified Sol.Cache
 import qualified Sol.Txn
@@ -521,16 +525,21 @@ filesIn root rel = do
       isFile <- doesFileExist (root </> rel </> n)
       pure [rel </> n | isFile, takeExtension n `elem` [".fpr", ".sol"]]
 
+checkArgs :: FilePath -> IO [String]
+checkArgs f = do
+  home <- fprHome
+  pure $
+    if takeExtension f == ".sol"
+      then ["sol", "--asm", f]
+      else ["compile", "--system=posix", "--check-only", "--prelude=" ++ (home </> "core" </> "prelude.fpr"), f, "/dev/null"]
+
 -- One file through the normal checker, no code generated: a .fpr module with
 -- `fpr compile --check-only` (which needs no `main`), a .sol one with the Sol
 -- compiler (`sol --asm`, its listing discarded).  Diagnostics come back as text.
 checkFile :: FilePath -> IO (Either String ())
 checkFile f = do
   self <- getExecutablePath
-  home <- fprHome
-  let command
-        | takeExtension f == ".sol" = [ "sol", "--asm", f ]
-        | otherwise = ["compile", "--system=posix", "--check-only", "--prelude=" ++ (home </> "core" </> "prelude.fpr"), f, "/dev/null"]
+  command <- checkArgs f
   r <- try (readProcessWithExitCode self command "") :: IO (Either SomeException (ExitCode, String, String))
   pure $ case r of
     Left why -> Left (show why)
@@ -544,13 +553,15 @@ checkFile f = do
            in Left (trim (unlines ((if null said then ls else said) ++ lines err)))
 
 checkMain :: String -> [String] -> IO ()
-checkMain version args = do
+checkMain version args0 = do
+  let fresh = "--fresh" `elem` args0
+      args = filter (/= "--fresh") args0
   case [a | a <- args, "-" `isPrefixOf` a] of
     [] -> pure ()
-    a : _ -> usageError "check" ("unknown option " ++ a ++ "\nusage: fpr check [FILE...]   (no FILE: the project's entry, src/ and tests/)")
+    a : _ -> usageError "check" ("unknown option " ++ a ++ "\nusage: fpr check [--fresh] [FILE...]   (no FILE: the project's entry, src/ and tests/)")
   if not (null args)
     then do
-      results <- mapM (\f -> (,) f <$> checkFile f) args
+      results <- checkInOrder fresh args
       finish (length args) [(f, why) | (f, Left why) <- results]
     else do
       p <- loadProject version "check"
@@ -559,7 +570,7 @@ checkMain version args = do
       entryExists <- doesFileExist (mEntry m)
       unless entryExists $ usageError "check" (manifestFile ++ ": the entry " ++ mEntry m ++ " does not exist")
       files <- sources p
-      results <- checkInOrder files
+      results <- checkInOrder fresh files
       entryProblems <- entryHasMain m [f | (f, Right ()) <- results]
       depProblems <- dependencyProblems p
       finish (length files) ([(f, why) | (f, Left why) <- results] ++ entryProblems ++ depProblems)
@@ -575,24 +586,49 @@ checkMain version args = do
 
 -- Check imports before importers: a file importing a project file that
 -- failed is not checked again (its diagnostics would be the import's, once
--- per importer), it is reported as depending on that failure.
-checkInOrder :: [FilePath] -> IO [(FilePath, Either String ())]
-checkInOrder files = do
+-- per importer), it is reported as depending on that failure.  Files whose
+-- imports are settled are checked at the same time, one compiler per core.
+checkInOrder :: Bool -> [FilePath] -> IO [(FilePath, Either String ())]
+checkInOrder fresh files = do
   deps <- forM files $ \f -> (,) f <$> localImports files f
-  done <- Data.IORef.newIORef M.empty
-  let visit seen f = do
-        have <- M.lookup f <$> Data.IORef.readIORef done
-        case have of
-          Just r -> pure r
-          Nothing -> do
-            let mine = [d | d <- fromMaybe [] (lookup f deps), d `notElem` seen]
-            rs <- mapM (\d -> (,) d <$> visit (f : seen) d) mine
-            r <- case [d | (d, Left _) <- rs] of
-              [] -> checkFile f
-              bad -> pure (Left ("not checked: it imports " ++ intercalate ", " bad ++ ", which failed"))
-            Data.IORef.modifyIORef' done (M.insert f r)
-            pure r
-  mapM (\f -> (,) f <$> visit [] f) files
+  -- a depth-first order, imports first; a file waits only on imports that
+  -- come before it, so an import cycle cannot deadlock
+  let order = foldl (visit []) [] files
+      visit seen acc f
+        | f `elem` acc || f `elem` seen = acc
+        | otherwise = f : foldl (visit (f : seen)) acc (fromMaybe [] (lookup f deps))
+      position = M.fromList (zip (reverse order) [0 :: Int ..])
+  cores <- Build.onlineCores
+  slots <- newQSem (max 1 cores)
+  results <- M.fromList <$> forM files (\f -> (,) f <$> newEmptyMVar)
+  forM_ (reverse order) $ \f -> forkIO $ do
+    let earlier = [d | d <- fromMaybe [] (lookup f deps), M.lookup d position < M.lookup f position]
+    settled <- mapM (\d -> (,) d <$> readMVar (results M.! d)) earlier
+    r <- case [d | (d, Left _) <- settled] of
+      [] -> do
+        attempt <- try (bracket_ (waitQSem slots) (signalQSem slots) (checkCached fresh f)) :: IO (Either SomeException (Either String ()))
+        pure (either (Left . show) id attempt)
+      bad -> pure (Left ("not checked: it imports " ++ intercalate ", " bad ++ ", which failed"))
+    putMVar (results M.! f) r
+  forM files $ \f -> (,) f <$> readMVar (results M.! f)
+
+-- A .fpr file that passed with exactly these inputs (Build.checkKey) is not
+-- checked again; --fresh checks it anyway.  Only passes are remembered.
+checkCached :: Bool -> FilePath -> IO (Either String ())
+checkCached fresh f
+  | takeExtension f == ".sol" = checkFile f
+  | otherwise = do
+      args <- checkArgs f
+      key <- Build.checkKey args f
+      cache <- getXdgDirectory XdgCache "fpr"
+      let marker = cache </> "check" </> key
+      seen <- if fresh then pure False else doesFileExist marker
+      if seen then pure (Right ()) else do
+        r <- checkFile f
+        when (r == Right ()) $ do
+          createDirectoryIfMissing True (takeDirectory marker)
+          writeFile marker (f ++ "\n")
+        pure r
 
 -- the project files a file `use`s, resolved beside it as the compilers do
 localImports :: [FilePath] -> FilePath -> IO [FilePath]
@@ -657,8 +693,9 @@ runMain version args = do
       (flags, rest) = break (== "--") args
   when (mTarget m /= "host" && not (any ("--target=" `isPrefixOf`) flags)) $
     usageError "run" ("the project targets " ++ mTarget m ++ ", which does not run here: `fpr build` builds it")
-  -- the program keeps the caller's working directory; only its file is the project's
-  Build.runMain (flags ++ [pRoot p </> mEntry m] ++ drop 1 rest)
+  -- the program keeps the caller's working directory; it is compiled in the
+  -- root, where a pinned use finds .fpr/store
+  Build.runMainIn (Just (pRoot p)) (flags ++ [pRoot p </> mEntry m] ++ drop 1 rest)
 
 -- the manifest's target unless the command line names one
 targetFlag :: Manifest -> [String] -> [String]

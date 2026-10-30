@@ -102,7 +102,7 @@ explicit-file command. `fpr build --target=qos-portable` keeps its QOS refusal.
 | command | what it does |
 |---|---|
 | `fpr new NAME [--template=cli\|service\|sol]` | Writes a new project directory (`NAME` may be a path; its last part names the project). It refuses a non-empty directory or an invalid name. The default template is `cli`. |
-| `fpr check [FILE...]` | Type and safety checks the entry and every `.fpr`/`.sol` under `src/` and `tests/`, generating no code. Then it checks that the native entry has `main`, and verifies the dependencies. |
+| `fpr check [--fresh] [FILE...]` | Type and safety checks the entry and every `.fpr`/`.sol` under `src/` and `tests/`, generating no code. Then it checks that the native entry has `main`, and verifies the dependencies. |
 | `fpr build [--release] [flags]` | Builds the entry into `build/NAME`, or `build/release/NAME` with `--release`. Other `fpr build` flags pass through (`--harts`, `--cc`, `--target=`, `-v`, ...). A sol project is refused: it is not built into an executable. |
 | `fpr run [flags] [-- args]` | Builds and runs the entry, through the run cache. A sol entry runs on the VM. Program arguments follow `--`. The program keeps the caller's working directory. |
 | `fpr test [-v] [FILE...]` | Runs the tests (below). |
@@ -241,7 +241,7 @@ missing thing is marked `PROBLEM:` with the fix, for example
   refusals (format, unknown keys and sections, duplicates, kinds, names, entry
   paths, targets, toolchain and dependency spellings, string syntax); version
   compatibility; when build and run act on the project; and that each template's
-  manifest parses and names files it writes. All 32 unit suites pass.
+  manifest parses and names files it writes. 
 - **Install check.** `tools/toolchain-install-check.py` stages the SDK read-only and
   denies the checkouts, GHC, Cabal, make and git, as before. After its native, Sol
   and cross steps, it now runs these in a project folder whose path has spaces:
@@ -255,24 +255,67 @@ missing thing is marked `PROBLEM:` with the fix, for example
   - the `service` template through check, test and build;
   - the `qos.toml` refusal.
 
-  Result on macOS arm64, 31 October 2026, with an uncommitted candidate of this
-  branch: all 42 steps passed. The 23 existing steps stayed green, and 19 are new.
-  With `--qos /opt/homebrew/bin/qos`, all 44 passed: QOS Portable 0.2.0's
-  `qos build` still selected its own hash-matched compiler. See the
+  Result on macOS arm64, 31 October 2026, after the follow-ups below and a
+  merge of main: all 45 steps passed. The 23 existing steps stayed green, and
+  22 are new: the first 19, then `project-check-cached`, `project-commit` and
+  `project-run-pinned`. With `--qos /opt/homebrew/bin/qos`, all 47 passed:
+  QOS Portable 0.2.0's `qos build` still selected its own hash-matched
+  compiler. All 33 unit suites pass. See the
   [evidence](evidence/2026-10-31-project-workflow.json) (the `--qos` run).
 
-## Not done, and known limits
+## Follow-ups, later on 31 October
 
-- **Editor extension.** The roadmap's "reuse installed-compiler discovery in the
-  editor extension" is not done. `fpr check FILE` and `fpr doctor` are what it
-  would call. A `fpr doctor --json` would make that easier.
-- **`fpr run` from a subdirectory.** It keeps the caller's working directory, so
-  a pinned `use "NAME#HASH"` resolves `.fpr/store` from there: run it from the
-  root when a project pins committed versions. `check`, `build` and `test` run in
-  the root.
-- **Speed.** `fpr check` runs the compiler once per file, and imports are checked
-  again inside each importer. The `cli` template checks in about 1 s and the
-  `service` template, which imports `std/http`, in about 5 s. A project-wide
-  single pass would be faster.
+The first version left three gaps. All three are now addressed.
+
+1. **The editor extension did not find an installed compiler.** It already
+   resolved `fpr` from PATH and followed the symlink to the SDK's home. But VS
+   Code started from the Dock or Finder does not get a login shell's PATH, so
+   `/opt/homebrew/bin/fpr` was invisible to it. Its project root was also only a
+   `.fpr` store directory. `fpr-vscode-2` 0.6.3 (`f7364a3`, pushed) does two
+   things:
+   - When `fpr` is not on PATH, it tries `/opt/homebrew/bin`, `/usr/local/bin`,
+     Linuxbrew and `~/.local/bin`.
+   - It runs the check in the nearest directory with `fpr.toml` or `.fpr`.
+
+   Its new `test/discovery.js` covers both. The extension's `check` and
+   `builtins` tests were already failing before this change: its builtin docs
+   lack Sol names added since (`Deferred.*`, `NativeGit.*`,
+   `Proc.queryReplayable`). That is still open.
+2. **`fpr run` from a subdirectory missed pinned modules.** The compiler finds
+   `.fpr/store` from its working directory (`Modules.loadModule`). Project
+   `fpr run` now compiles in the project root (`Build.runMainIn`), and the program
+   still starts in the caller's directory. The install check's
+   `project-run-pinned` step proves it from `src/`. It commits a module, pins it,
+   then edits the working file so that only the store holds the pinned code. An
+   explicit `fpr run main.fpr` from `src/` still behaves as before: it fails to
+   resolve the pin, because explicit-file commands are unchanged.
+3. **`fpr check` cost a compiler run per file, every time.** Now:
+   - **Cache.** A `.fpr` file that passed is remembered under a key of everything
+     the check reads (`Build.checkKey`): the file and its whole `use` closure
+     (as byte digests), the compiler's and prelude's stamps, `--foreign` files,
+     `FPR_PATH`, the working directory and the flags. `--fresh` ignores the cache.
+     Failures are never cached. Sol files are not cached; they take about 0.1 s.
+   - **Parallel.** Files whose imports are settled are checked at the same time,
+     one compiler per core.
+   - **Shared closure walk.** `fpr run`'s cache key uses the same closure walk,
+     which now also follows `FPR_PATH` roots and pinned store blobs.
+
+   Measured on this Mac (10 cores):
+
+   | project | before | first check | unchanged | one file edited |
+   |---|---|---|---|---|
+   | `cli` (3 files) | 0.7 s | 0.25 s | 0.02 s | |
+   | `service` (3 files, imports `std/http`) | 2.7 s warm, 4.6 s cold | 3.2 s | 0.20 s | 1.2 s |
+
+   A first check of the service template is not faster. One module checks
+   `std/http` (1.9 s), and the two files importing it then run in parallel. A
+   project-wide single compiler pass would remove the repeated import checking.
+   That is a larger change and is not done.
+
+## Known limits
+
 - **Platforms.** Only macOS arm64 is qualified. The code has Linux branches
-  (`doctor` without `xcrun`), but they are not tested here.
+  (`doctor` without `xcrun`, Linuxbrew in the extension), but they are not
+  tested here.
+- **`fpr doctor --json`.** There is none yet; the editor could use it to show
+  which toolchain it found.

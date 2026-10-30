@@ -140,7 +140,7 @@ manifest a different filename, so neither tool picks up the other's project.
 A proposed `fpr check` would also sit beside the existing `fpr stdcheck` (the
 std proof pass); name or document the difference.
 
-**Done on 31 October 2026, except the editor extension**
+**Done on 31 October 2026**
 ([project workflow](2026-10-31-PROJECT-WORKFLOW.md)):
 
 - The manifest is `fpr.toml`, format 1. It records the entry, kind
@@ -156,7 +156,7 @@ std proof pass); name or document the difference.
 - `fpr doctor` reports the C tools, SDK, toolchain and caches.
 - `tools/toolchain-install-check.py` runs the workflow with the checkouts denied.
 
-The editor extension does not use installed-compiler discovery yet.
+The editor extension finds an installed toolchain from `fpr-vscode-2` 0.6.3 on (see the project workflow page's follow-ups).
 
 ### 3. Managed cross targets
 

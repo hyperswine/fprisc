@@ -13,7 +13,7 @@
 -- same three parts a bare-metal image is made of, with libc as the board.
 -- On the esp-idf host the same parts are built as an ESP-IDF project by
 -- machine/esp-idf/build.sh (docs/2026-09-23-ESP-IDF.md).
-module Build (buildMain, runMain, isDiagnostic) where
+module Build (buildMain, runMain, runMainIn, isDiagnostic, checkKey, onlineCores) where
 
 import Data.List (isPrefixOf)
 import Data.List (isInfixOf)
@@ -23,9 +23,12 @@ import qualified Compile
 import Codegen (codegenRev)
 import qualified Compiler.Options as Options
 import Frontend.Normalize (declaredProfile)
-import Home (fprHome)
+import Home (fprHome, underHome)
 import qualified Sol.Main
 import Data.Bits (xor)
+import Data.List (foldl')
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as B8
 import Data.Time.Clock (UTCTime)
 import Data.Word (Word64)
 import Numeric (showHex)
@@ -58,7 +61,8 @@ data Plan = Plan
     pRemarks :: Maybe String, -- native advisory reporting; forwarded without affecting codegen keys
     pRest :: [String],
     pTarget :: Maybe (String, String), -- --target=linux-aarch64|linux-x86_64|linux-riscv64|macos-x86_64: a cross build (os, arch); Nothing is this machine
-    pRelease :: Bool -- --release: the toolchain's default code generation only (releaseGuard)
+    pRelease :: Bool, -- --release: the toolchain's default code generation only (releaseGuard)
+    pCompileDir :: Maybe FilePath -- where the compiler runs (a project's root: its .fpr/store); Nothing is here
   }
 
 usage :: String
@@ -73,7 +77,7 @@ usage = "usage: fpr build --target=qos-portable [-v]  (installed QOS SDK project
 plan :: [String] -> IO Plan
 plan args = do
   cores <- onlineCores
-  go (Plan "" Nothing (max 2 cores) False False False Nothing [] [] [] "unix" Nothing False Nothing Nothing [] Nothing False) args
+  go (Plan "" Nothing (max 2 cores) False False False Nothing [] [] [] "unix" Nothing False Nothing Nothing [] Nothing False Nothing) args
   where
     go p ("-o" : o : rest) = go p {pOut = Just o} rest
     go p ("--harts" : n : rest) = go p {pHarts = read n} rest
@@ -155,7 +159,7 @@ build configuration p = do
   let logf = asm ++ ".log"
   logh <- openFile logf WriteMode
   (_, _, _, ch) <- createProcess (proc self (["compile", "--system=posix", "--prelude=" ++ prelude] ++ ["--plugin" | pModule p] ++ crossTarget ++ ["--cost" | pCost p] ++ maybe [] pure (pManifest p) ++ maybe [] (\mode->["--remarks="++mode]) (pRemarks p) ++ [pSource p, asm]))
-                     {std_out = if pVerbose p || pCost p then Inherit else UseHandle logh}
+                     {cwd = pCompileDir p, std_out = if pVerbose p || pCost p then Inherit else UseHandle logh}
   cc0 <- waitForProcess ch
   when (cc0 /= ExitSuccess) $ do
     -- a complaint in a shape isDiagnostic does not know (a module's parse
@@ -343,8 +347,16 @@ releaseGuard cmd configured = do
     exitWith (ExitFailure 2)
 
 runMain :: [String] -> IO ()
-runMain args = do
-  p <- plan args
+runMain = runMainIn Nothing
+
+-- `fpr run` in a project: the program keeps the caller's working directory,
+-- but its source is compiled in the project's root, where a pinned
+-- `use "NAME#HASH"` finds .fpr/store (Modules.hs looks for it from the
+-- compiler's working directory)
+runMainIn :: Maybe FilePath -> [String] -> IO ()
+runMainIn dir args = do
+  p0 <- plan args
+  let p = p0 {pCompileDir = dir}
   when (pModule p) $ hPutStrLn stderr "use fpr build --module, then Native.attach" >> exitFailure
   when (pHost p == "esp-idf") $ do
     unless (null (pRest p)) $ hPutStrLn stderr "fpr run: a board program is started with no arguments (Sys.args is [] there)" >> exitFailure
@@ -387,11 +399,11 @@ runKey :: Options.CompilerOptions -> Plan -> IO String
 runKey configuration p = do
   home <- fprHome
   self <- getExecutablePath
-  srcs <- closure home [] [pSource p]
+  srcs <- map fst <$> sourceClosure (pSource p)
   let rtDirs = [home </> "runtime", home </> "machine" </> "posix", home </> "machine" </> "unix"]
   rtFiles <- fmap concat (mapM listed rtDirs)
   stamps <- mapM stamp (self : (home </> "core" </> "prelude.fpr") : rtFiles ++ pWith p)
-  bodies <- mapM readFileStrict srcs
+  bodies <- map (show . snd) <$> sourceClosure (pSource p)
   let driver = Options.driverOptions configuration
       foreignDecls = Options.driverForeign driver
       modes = Options.codegenCacheIdentity (Options.codegenOptions configuration)
@@ -399,45 +411,85 @@ runKey configuration p = do
   let text = unlines (srcs ++ bodies ++ stamps ++ foreignBodies ++
         [show (pHarts p), show (pCC p), show (Options.driverCC driver),
          show (pTarget p), unwords (pCFlags p ++ pLink p),
-         show foreignDecls, show (Options.driverCostProbe driver), modes])
+         show foreignDecls, show (Options.driverCostProbe driver), modes, show (pCompileDir p)])
   pure (showHex (fnv64 text) "")
   where
     listed d = do
       e <- doesDirectoryExist d
       if e then map (d </>) <$> listDirectory d else pure []
-    stamp f = do
-      e <- doesFileExist f
-      if not e then pure (f ++ " missing") else do
-        t <- getModificationTime f
-        pure (f ++ " " ++ show t)
-    readFileStrict f = do
-      e <- doesFileExist f
-      if not e then pure "" else do
-        t <- readFile f
-        length t `seq` pure t
+
+-- Everything `fpr compile --check-only FILE` reads, as a key: the file and
+-- every module it uses (sourceClosure), the prelude and this compiler (their
+-- stamps), the --foreign declarations, FPR_PATH, the working directory (it
+-- holds .fpr/store) and the flags.  `fpr check` skips a file whose key last
+-- passed.
+checkKey :: [String] -> FilePath -> IO String
+checkKey flags file = do
+  home <- fprHome
+  self <- getExecutablePath
+  here <- getCurrentDirectory'
+  closure <- sourceClosure file
+  let srcs = [f ++ " " ++ show h | (f, h) <- closure]
+      bodies = []
+  stamps <- mapM stamp [self, home </> "core" </> "prelude.fpr"]
+  configuration <- Options.readCompilerOptions
+  let foreignDecls = Options.driverForeign (Options.driverOptions configuration)
+  foreignBodies <- mapM readFileStrict foreignDecls
+  path <- System.Environment.lookupEnv "FPR_PATH"
+  pure (showHex (fnv64 (unlines (srcs ++ bodies ++ stamps ++ foreignDecls ++ foreignBodies ++ [show path, here, home] ++ flags))) "")
+  where
+    getCurrentDirectory' = makeAbsolute "."
+
+stamp :: FilePath -> IO String
+stamp f = do
+  e <- doesFileExist f
+  if not e then pure (f ++ " missing") else do
+    t <- getModificationTime f
+    pure (f ++ " " ++ show t)
+
+readFileStrict :: FilePath -> IO String
+readFileStrict f = do
+  e <- doesFileExist f
+  if not e then pure "" else do
+    t <- readFile f
+    length t `seq` pure t
+
+-- a program and every module it `use`s, transitively, resolved as Modules.hs
+-- resolves them: beside the importer, then under the home and FPR_PATH roots;
+-- each with a digest of its bytes.  Read strictly as bytes: a std/http
+-- closure is ~170 files, 2 MB.
+sourceClosure :: FilePath -> IO [(FilePath, Word64)]
+sourceClosure root = do
+  home <- fprHome
+  closure home [] [root]
+  where
     closure _ seen [] = pure (reverse seen)
     closure home seen (f : rest)
-      | f `elem` seen = closure home seen rest
+      | f `elem` map fst seen = closure home seen rest
       | otherwise = do
           e <- doesFileExist f
           if not e then closure home seen rest else do
-            t <- readFileStrict f
-            deps <- mapM (resolve home (takeDirectory f)) (usesIn t)
-            closure home (f : seen) (rest ++ deps)
+            bytes <- B.readFile f
+            let uses = usesIn bytes
+            deps <- mapM (resolve home (takeDirectory f)) uses
+            -- a pinned use may resolve from the store (from the working directory)
+            let pinned = [".fpr" </> "store" </> (drop 1 h ++ ".fpr") | u <- uses, let h = dropWhile (/= '#') u, not (null h)]
+            closure home ((f, fnvBytes bytes) : seen) (rest ++ deps ++ pinned)
     resolve home dir nm0 = do
       let nm = takeWhile (/= '#') nm0
           file = if takeExtension nm == ".fpr" then nm else nm ++ ".fpr"
           here = if take 1 file == "/" then file else dir </> file
       e <- doesFileExist here
-      pure (if e then here else home </> file)
-    usesIn t = [takeWhile (/= '"') r | l <- lines t, Just r <- [after "use \"" l]]
-    after pat l
-      | null l = Nothing
-      | take (length pat) l == pat = Just (drop (length pat) l)
-      | otherwise = after pat (drop 1 l)
+      if e then pure here else maybe (home </> file) id <$> underHome file
+    usesIn bytes = [B8.unpack (B8.takeWhile (/= '"') (B.drop (B.length pat) r))
+                   | l <- B8.lines bytes, let (_, r) = B.breakSubstring pat l, not (B.null r)]
+    pat = B8.pack "use \""
+
+fnvBytes :: B.ByteString -> Word64
+fnvBytes = B.foldl' (\h c -> (h `xor` fromIntegral c) * 1099511628211) 14695981039346656037
 
 fnv64 :: String -> Word64
-fnv64 = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) 14695981039346656037
+fnv64 = foldl' (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) 14695981039346656037
 
 -- --host=esp-idf: the board's build and console live beside its host layer
 -- (machine/esp-idf/build.sh, run.sh, console.py), in ESP-IDF's tools; fpr
