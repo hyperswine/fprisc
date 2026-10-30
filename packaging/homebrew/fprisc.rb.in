@@ -39,7 +39,7 @@ class Fprisc < Formula
   end
 
   test do
-    assert_match "fpr __VERSION__", shell_output("#{bin}/fpr --version")
+    assert_match "fpr __COMPILER_VERSION__", shell_output("#{bin}/fpr --version")
     (testpath/"s.sol").write "B = use \"sol/lib/base\".\n> print \"sol: {B.max0 7}\".\n"
     assert_match "sol: 7", shell_output("#{bin}/sol s.sol")
     (testpath/"hello.fpr").write "main = print \"fpr: {List.len (1 :: 2 :: Nil)}\".\n"

@@ -87,7 +87,7 @@ def package(prefix, version, notices, output):
     (output / 'SHA256SUMS').write_text(f'{sha}  {archive.name}\n')
     (output / 'release.json').write_text(json.dumps(dict(meta, archive=archive.name, sha256=sha), indent=2) + '\n')
     formula = (ROOT / 'packaging/homebrew/fprisc.rb.in').read_text()
-    formula = formula.replace('__VERSION__', version).replace('__ARCHIVE__', archive.name).replace('__SHA256__', sha)
+    formula = formula.replace('__COMPILER_VERSION__', version.split('-')[0]).replace('__VERSION__', version).replace('__ARCHIVE__', archive.name).replace('__SHA256__', sha)
     (output / 'fprisc.rb').write_text(formula)
     print(archive)
     print(f'SHA256 {sha}')
