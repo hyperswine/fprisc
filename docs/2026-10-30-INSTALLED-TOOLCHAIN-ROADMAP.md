@@ -231,6 +231,76 @@ Homebrew co-installation. Native project scaffolding and the manifest belong to
 the following workflow slice; they are not required to package the already
 working explicit-file commands.
 
+## Release packaging, first pass (30 October 2026, later)
+
+This section records work after the feasibility record above. Steps 2 and 3
+of the "next concrete release work" list are done locally, and the
+candidate is qualified. Nothing is published or installed into Homebrew.
+
+**The `qosPortable` dispatch decision (step 2).** The dispatch is kept,
+but it never searches. `fpr build --target=qos-portable` still runs a QOS
+builder that sits beside the running compiler, which is only true of QOS's
+own matched private compiler, or one named explicitly by
+`QOS_PORTABLE_BUILDER`. Otherwise it exits 2 with "run `qos build` in the
+project". It used to say "use its bin/fpr", which pointed at the global
+command QOS is meant to stop exporting.
+
+**Packaging (step 3).**
+
+- `tools/compiler-licenses.py` collects notices for the compiler's Haskell
+  dependencies from its Cabal plan, the GHC docs and the source cache. It
+  fails closed when one is missing. It is the QOS SDK packager's tool, moved
+  here because the notices describe this compiler.
+- `tools/package-toolchain.py` takes a stage from `tools/stage-toolchain.py`
+  and refuses unless all of these hold:
+  - the tree is clean and the stage was made from the current commit;
+  - the version matches the compiler's `fpr --version`;
+  - the host is macOS ARM64;
+  - the staged file inventory and compiler hash are intact;
+  - the binary's minimum macOS (27) matches the formula's
+    `depends_on macos: :golden_gate`.
+
+  It writes `fprisc-VERSION-macos-arm64.tar.gz`, `SHA256SUMS`,
+  `release.json` and `fprisc.rb`, generated from
+  `packaging/homebrew/fprisc.rb.in`.
+- The formula installs `libexec/fprisc` and links `bin/fpr` and `bin/sol` to
+  the real compiler. It depends on `libgit2` and `libarchive`, and conflicts
+  with `qos-fpr` and with `qos-portable`. Remove the `qos-portable` conflict
+  once a QOS release stops exporting `fpr`. Its caveats name the Xcode
+  Command Line Tools for native builds, and its test runs Sol, a native
+  `fpr run` and the `qos build` refusal.
+- `tools/toolchain-install-check.py --release ARCHIVE` qualifies the packaged
+  archive itself. It verifies the archive against `SHA256SUMS` and its own
+  inventory, then lays it out the way the formula installs it, and runs
+  every feasibility step plus the new refusal.
+
+Candidate `0.12.0-rc1`, packaged from `4269300`, passed all 23 steps with
+checkouts denied. QOS 0.1.0's `qos build` still selected its own
+hash-matched compiler. `brew style` reports only Homebrew-internal
+conventions (Sorbet sigil, frozen string literal) that the QOS formula also
+omits. See the [evidence](evidence/2026-10-30-toolchain-release-candidate.json).
+
+```sh
+make fpr
+python3 tools/compiler-licenses.py --plan dist-newstyle/cache/plan.json --output /tmp/fpr-notices
+python3 tools/stage-toolchain.py --output /tmp/fpr-stage
+python3 tools/package-toolchain.py --sdk /tmp/fpr-stage --version 0.12.0-rc1 \
+  --notices /tmp/fpr-notices --output /tmp/fpr-release
+python3 tools/toolchain-install-check.py --release /tmp/fpr-release/fprisc-0.12.0-rc1-macos-arm64.tar.gz \
+  --qos /opt/homebrew/bin/qos --output /tmp/fpr-qual
+```
+
+Still open, in order:
+
+1. The QOS Portable release that stops exporting `fpr` (QOS repository).
+   Until it ships, this formula and `qos-portable` cannot be installed
+   together.
+2. `sol` ownership against the Sol prefix installer.
+3. Publishing the release asset and tap formula, then an actual Homebrew
+   install, upgrade, uninstall and co-installation test. This machine has
+   `qos-portable` 0.1.0 installed, so a local `brew install` of this
+   candidate is refused by the declared conflict until step 1.
+
 Related work: [Sol installation](2026-10-29-SOL-INSTALLATION.md),
 [Logbook service restoration](2026-10-30-LOGBOOK-M1-RESTORE.md), and the sibling
 QOS repository's `docs/2026-10-29-DESKTOP-RELEASE.md`.

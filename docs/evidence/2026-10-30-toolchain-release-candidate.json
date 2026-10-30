@@ -1,0 +1,154 @@
+{
+  "date": "2026-10-30",
+  "scope": "Local macOS ARM64 release candidate packaged from a clean commit; not published, not installed with Homebrew",
+  "status": "passed",
+  "release": "0.12.0-rc1",
+  "archive": "fprisc-0.12.0-rc1-macos-arm64.tar.gz",
+  "archiveSha256": "2c60ac8cbd9d7ed4d8e1caaac792f5a1755f3bdb2cc451c59eefdf27bec776a4",
+  "sourceRevision": "4269300e35369dac1a61338b235eeb9518a16fb5",
+  "sourceDirty": false,
+  "compilerVersion": "fpr 0.12.0",
+  "compilerSha256": "5e3f0f3fb92bd74a8fa001bb814d309f2b760493edebdd0d023701485bad2dbc",
+  "compilerNotices": {
+    "compiler": "ghc-9.8.2",
+    "packages": 33
+  },
+  "minimumMacOS": "27.0",
+  "nativeLibraries": [
+    "/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1359.0.0)",
+    "/opt/homebrew/opt/libgit2/lib/libgit2.1.9.dylib (compatibility version 1.9.0, current version 1.9.7)",
+    "/opt/homebrew/opt/libarchive/lib/libarchive.13.dylib (compatibility version 22.0.0, current version 22.10.0)",
+    "/usr/lib/libcurl.4.dylib (compatibility version 7.0.0, current version 9.0.0)",
+    "/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)",
+    "/usr/lib/libffi.dylib (compatibility version 1.0.0, current version 40.0.0)",
+    "/usr/lib/libcharset.1.dylib (compatibility version 1.0.0, current version 1.0.0)"
+  ],
+  "formula": {
+    "template": "packaging/homebrew/fprisc.rb.in",
+    "brewStyle": "clean except Sorbet sigil and frozen-string-literal notices (Homebrew-internal conventions; the QOS formula omits them too)",
+    "conflicts": [
+      "qos-fpr",
+      "qos-portable"
+    ]
+  },
+  "qualification": {
+    "tool": "tools/toolchain-install-check.py --release",
+    "layout": "formula layout: libexec/fprisc plus bin/fpr and bin/sol links",
+    "sourceAccess": "denied",
+    "absentTools": [
+      "ghc",
+      "cabal",
+      "make",
+      "git"
+    ],
+    "sdkReadOnly": true,
+    "installedFilesUnchanged": true,
+    "relocation": true,
+    "steps": [
+      {
+        "name": "source-denied",
+        "exit": 1
+      },
+      {
+        "name": "make-denied",
+        "exit": 71
+      },
+      {
+        "name": "tools-absent",
+        "exit": 0
+      },
+      {
+        "name": "version",
+        "exit": 0
+      },
+      {
+        "name": "native-build",
+        "exit": 0
+      },
+      {
+        "name": "native-execute",
+        "exit": 0
+      },
+      {
+        "name": "native-run",
+        "exit": 0
+      },
+      {
+        "name": "module-check",
+        "exit": 0
+      },
+      {
+        "name": "module-build",
+        "exit": 0
+      },
+      {
+        "name": "diagnostics",
+        "exit": 1
+      },
+      {
+        "name": "sol-library",
+        "exit": 0
+      },
+      {
+        "name": "sol-shebang",
+        "exit": 0
+      },
+      {
+        "name": "sol-repl",
+        "exit": 0
+      },
+      {
+        "name": "x64-build",
+        "exit": 0
+      },
+      {
+        "name": "x64-identity",
+        "exit": 0
+      },
+      {
+        "name": "x64-rosetta",
+        "exit": 0
+      },
+      {
+        "name": "qos-target-refused",
+        "exit": 2
+      },
+      {
+        "name": "standalone-app",
+        "exit": 0
+      },
+      {
+        "name": "relocated-sol",
+        "exit": 0
+      },
+      {
+        "name": "relocated-native",
+        "exit": 0
+      },
+      {
+        "name": "relocated-execute",
+        "exit": 0
+      },
+      {
+        "name": "qos-scaffold",
+        "exit": 0
+      },
+      {
+        "name": "qos-private-build",
+        "exit": 0
+      }
+    ],
+    "qosCoexistence": {
+      "privateCompiler": "/opt/homebrew/Cellar/qos-portable/0.1.0/libexec/qos-portable/compiler/fpr",
+      "compilerSha256": "b20b50c46d2b19bb6664e9c4b390f725c23d2b06b8bdeb41d1027a4ca756065b",
+      "scope": "external build with standalone fpr on PATH; no Brew co-installation"
+    }
+  },
+  "notQualified": [
+    "Homebrew install, upgrade and uninstall of the formula (would conflict with the installed qos-portable 0.1.0)",
+    "Publication: GitHub release asset, tap update",
+    "Older macOS (binary minimum is 27.0), Linux, managed cross targets",
+    "The binary was built from the working tree just before commit 18e1b52; later commits changed only packaging files"
+  ],
+  "rawEvidenceDirectory": "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/02550f56-ef86-4033-a4c5-b561bb9f8f71/scratchpad/fpr-qual2"
+}
