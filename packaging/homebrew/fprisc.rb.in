@@ -15,9 +15,8 @@ class Fprisc < Formula
   depends_on macos: :golden_gate
 
   conflicts_with "qos-fpr", because: "both install fpr and sol"
-  # QOS Portable 0.1.0 exports its private compiler as fpr. A QOS release that
-  # builds apps with `qos build` only removes this conflict.
-  conflicts_with "qos-portable", because: "qos-portable 0.1.0 also installs fpr"
+  # qos-portable 0.2.0+ installs only `qos` (its compiler stays private), so the
+  # two coexist. Users still on 0.1.0 get a link conflict on fpr until they upgrade.
 
   def install
     libexec.install "libexec/fprisc"

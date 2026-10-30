@@ -292,14 +292,16 @@ python3 tools/toolchain-install-check.py --release /tmp/fpr-release/fprisc-0.12.
 
 Still open, in order:
 
-1. The QOS Portable release that stops exporting `fpr` (QOS repository).
-   Until it ships, this formula and `qos-portable` cannot be installed
-   together.
+1. Done later the same day: QOS Portable 0.2.0 (QOS
+   `docs/2026-10-30-DESKTOP-RELEASE-0.2.md`, tag `desktop-v0.2.0`) installs
+   only `qos`, and it is published in `hyperswine/homebrew-tap`. The formula
+   therefore no longer declares `conflicts_with "qos-portable"`. Anyone still
+   on `qos-portable` 0.1.0 gets a Homebrew link conflict on `fpr` until they
+   upgrade it.
 2. `sol` ownership against the Sol prefix installer.
 3. Publishing the release asset and tap formula, then an actual Homebrew
-   install, upgrade, uninstall and co-installation test. This machine has
-   `qos-portable` 0.1.0 installed, so a local `brew install` of this
-   candidate is refused by the declared conflict until step 1.
+   install, upgrade, uninstall and co-installation test with `qos-portable`
+   0.2.0, which this machine now has installed.
 
 Related work: [Sol installation](2026-10-29-SOL-INSTALLATION.md),
 [Logbook service restoration](2026-10-30-LOGBOOK-M1-RESTORE.md), and the sibling
