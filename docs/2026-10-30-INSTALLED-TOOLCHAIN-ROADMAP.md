@@ -298,7 +298,24 @@ Still open, in order:
    therefore no longer declares `conflicts_with "qos-portable"`. Anyone still
    on `qos-portable` 0.1.0 gets a Homebrew link conflict on `fpr` until they
    upgrade it.
-2. `sol` ownership against the Sol prefix installer.
+2. Decided: `sol` is a symlink to the same `fpr` binary, which runs the
+   `fpr sol` path when invoked as `sol`; there is no second binary. A wrapper
+   script (`exec fpr sol "$@"`) was compared on the packaged candidate and
+   behaved identically for:
+   - arguments with spaces, empty strings, `--`, `$HOME` and `*`;
+   - `--repl`, `--help`, `--version` and `state`;
+   - exit codes, panics, `-- -dash.sol` and stdin pipes;
+   - SIGTERM (exit 143);
+   - a user's own symlink to `sol`;
+   - `#!/usr/bin/env sol`.
+
+   It differed in two ways. It took 38 ms per start against 31 ms. And it
+   broke `#!/absolute/prefix/bin/sol` shebangs, because macOS will not use a
+   script as a shebang interpreter, so the file ran under bash. The Sol docs
+   support that shebang, so the symlink stays. The Homebrew formula owns
+   `bin/sol`, and the Sol prefix installer remains for non-Homebrew
+   installs; PATH order picks between them. Both use the same per-user
+   recovery state directory.
 3. Publishing the release asset and tap formula, then an actual Homebrew
    install, upgrade, uninstall and co-installation test with `qos-portable`
    0.2.0, which this machine now has installed.
