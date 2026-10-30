@@ -1678,15 +1678,20 @@ recoverJournal takeLocks j = do
 -- sibling journals remain readable, including absolute paths in old lock owners.
 stateDirectory :: IO FilePath
 stateDirectory = do
-  explicit <- lookupEnv "SOL_STATE_DIR"
-  xdg <- lookupEnv "XDG_STATE_HOME"
-  home <- getHomeDirectory
-  let path = case explicit of
-        Just value -> value
-        Nothing -> maybe (home </> ".local/state/sol") (</> "sol") xdg
+  path <- stateDirectoryPath
   unless ("/" `isPrefixOf` path) $
     ioError (userError "Sol state directory must be an absolute path")
   privateDirectory path
+
+-- where the state directory is, without creating it (fpr doctor asks)
+stateDirectoryPath :: IO FilePath
+stateDirectoryPath = do
+  explicit <- lookupEnv "SOL_STATE_DIR"
+  xdg <- lookupEnv "XDG_STATE_HOME"
+  home <- getHomeDirectory
+  pure $ case explicit of
+    Just value -> value
+    Nothing -> maybe (home </> ".local/state/sol") (</> "sol") xdg
 
 privateDirectory :: FilePath -> IO FilePath
 privateDirectory path = do

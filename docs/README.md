@@ -366,3 +366,5 @@ they began.
 - [Sol REPL speed after sync](2026-10-30-SOL-REPL-SPEED.md): terminal startup, command response, checked-library optimization and growing sessions, with raw samples.
 
 - [Installed FP-RISC developer toolchain roadmap](2026-10-30-INSTALLED-TOOLCHAIN-ROADMAP.md): standalone Homebrew/native/Sol workflow, managed cross targets, release gates and a tested private SDK feasibility probe.
+
+- [FP-RISC projects](2026-10-31-PROJECT-WORKFLOW.md): roadmap step 2. The `fpr.toml` manifest (entry, kind, application version, dependency identities, target, compatible toolchain; it stops at `qos.toml`); `fpr new --template=cli|service|sol`; `check` (not `stdcheck`), `build [--release]`, `run`, `test` with no file; the test convention with `std/test` and `sol/lib/test`; `fpr doctor`; the install check extended to 42 steps.

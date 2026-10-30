@@ -43,6 +43,7 @@ library
   exposed-modules:
       Arc
       Build
+      Project
       Publish
       Representation
       Representation.Types
@@ -321,6 +322,11 @@ test-suite CaseGrowth
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            CaseGrowth.hs
+
+test-suite ProjectWorkflow
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            ProjectWorkflow.hs
 
 test-suite CompilerOptions
   import:             unit-test

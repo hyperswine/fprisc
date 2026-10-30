@@ -1,0 +1,46 @@
+# std/test.fpr -- Test: checks for the programs `fpr test` runs.
+#
+#   Test = use "std/test".
+#   main = Test.run (
+#        Test.that "two is even" (2 % 2 == 0)
+#     :: Test.equalInt "sum" 6 (1 + 2 + 3)
+#     :: Test.equalString "greeting" "hi" (strcat "h" "i")
+#     :: Nil).
+#
+# A test file is an ordinary program (docs/2026-10-31-PROJECT-WORKFLOW.md):
+# `fpr test` passes it when it exits 0.  `run` prints one line per check,
+# "ok N - name" or "not ok N - name: why", and answers 0 when every check
+# passed and 1 otherwise, which `main` returns as the exit status.
+
+Outcome = Type (Pass name | Fail name why).
+
+# a named condition
+that : String -> Bool -> Outcome .
+that name ok = case ok of True -> Pass name | False -> Fail name "expected True".
+
+equalInt : String -> Int -> Int -> Outcome .
+equalInt name want got = case want == got of
+    True -> Pass name
+  | False -> Fail name "want {want}, got {got}".
+
+equalString : String -> String -> String -> Outcome .
+equalString name want got = case want == got of
+    True -> Pass name
+  | False -> Fail name "want \"{want}\", got \"{got}\"".
+
+# a Result that should be Ok
+isOk : String -> Result a String -> Outcome .
+isOk name r = case r of Ok _ -> Pass name | Err why -> Fail name "Err {why}".
+
+# report every check; 0 when all passed, 1 otherwise
+run : List Outcome -> Int .
+run checks = report 1 0 checks.
+
+report : Int -> Int -> (checks : List Outcome | measure checks) -> Int .
+report n failed checks = case checks of
+    Nil -> (case failed == 0 of
+        True -> _ = print "{n - 1} passed"; 0
+      | False -> _ = print "{failed} of {n - 1} failed"; 1)
+  | c :: rest -> (case c of
+        Pass name -> _ = print "ok {n} - {name}"; report (n + 1) failed rest
+      | Fail name why -> _ = print "not ok {n} - {name}: {why}"; report (n + 1) (failed + 1) rest).

@@ -9,6 +9,9 @@
 --                                        bytecode VM/JIT (Sol.*), the
 --                                        transactional runtime, the `>`
 --                                        surface view, std auto-visible
+--   fpr new|check|test|doctor           projects: an fpr.toml manifest
+--                                        (Project.hs; build and run with no
+--                                        file act on the project)
 --   fpr stdcheck file.fpr               the std proof pass
 --   fpr commit file.fpr [--major]       mint an immutable version into
 --                                        .fpr (Commit.hs)
@@ -22,6 +25,7 @@
 module Main where
 
 import qualified Publish
+import qualified Project
 import qualified Build
 import qualified Commit
 import qualified Compile
@@ -44,6 +48,12 @@ usage =
   unlines
     [ "fpr — the merged FP-RISC tool (one frontend, multiple execution profiles)",
       "",
+      "  fpr new NAME [--template=cli|service|sol]  a project: fpr.toml, src/, tests/",
+      "  fpr check [FILE...]                    type and safety check every module of the project (no main needed)",
+      "  fpr build [--release]                  in a project: its entry point into build/ (build/release/)",
+      "  fpr run [-- args...]                   in a project: build and run its entry point",
+      "  fpr test [-v] [FILE...]                in a project: run tests/*.fpr|*.sol; exit 0 passes each",
+      "  fpr doctor                             toolchain, C compiler, SDK, caches and the project",
       "  fpr build <prog.fpr> [-o out] [--module]          an executable for this machine (the posix system)",
       "  fpr run <prog.fpr> [args...]           build and run it; a `profile sol.` program runs on the VM",
       "  fpr compile [flags] <in.fpr> <out.s>   AOT for a --system (bare-metal | qos-native | qos-portable | posix [--host=unix|esp-idf])",
@@ -52,7 +62,7 @@ usage =
       "    --remarks[=hot|all|json]             native optimization remarks (compile/build; stderr)",
       "  fpr compile --target=bytecode <f>      the VM as a target: bytecode listing",
       "  fpr sol <script.sol> [args]            HostedBytecode profile (the sol VM)",
-      "  fpr stdcheck <file.fpr>                the std proof pass",
+      "  fpr stdcheck <file.fpr>                the std proof pass (intervals, measures, WCET); not `fpr check`",
       "  fpr commit <file.fpr> [--major]        mint an immutable version into .fpr/",
       "  fpr versions [name]                    list committed versions (use \"name#hash\")",
       "  fpr publish <module.fpr>              publish an immutable host module; --stored NAME uses a commit",
@@ -79,6 +89,12 @@ main = do
     ("compile" : rest) | "--target=bytecode" `elem` rest ->
       withArgs ("--asm" : [a | a <- rest, a /= "--target=bytecode"]) Sol.Main.main
     ("compile" : rest) -> withArgs rest Compile.compileMain
+    ("new" : rest) -> Project.newMain version rest
+    ("check" : rest) -> Project.checkMain version rest
+    ("test" : rest) -> Project.testMain version rest
+    ("doctor" : rest) -> Project.doctorMain version rest
+    ("build" : rest) | Project.projectMode rest -> Project.buildMain version rest
+    ("run" : rest) | Project.projectMode rest -> Project.runMain version rest
     ("build" : rest) -> Build.buildMain rest
     ("publish" : rest) -> Publish.publishMain rest
     ("watch" : rest) -> Publish.watchMain rest

@@ -13,7 +13,7 @@
 -- same three parts a bare-metal image is made of, with libc as the board.
 -- On the esp-idf host the same parts are built as an ESP-IDF project by
 -- machine/esp-idf/build.sh (docs/2026-09-23-ESP-IDF.md).
-module Build (buildMain, runMain) where
+module Build (buildMain, runMain, isDiagnostic) where
 
 import Data.List (isPrefixOf)
 import Data.List (isInfixOf)
@@ -57,11 +57,12 @@ data Plan = Plan
     pManifest :: Maybe String, -- --manifest=FILE: judge them against a target manifest (passed through)
     pRemarks :: Maybe String, -- native advisory reporting; forwarded without affecting codegen keys
     pRest :: [String],
-    pTarget :: Maybe (String, String) -- --target=linux-aarch64|linux-x86_64|linux-riscv64|macos-x86_64: a cross build (os, arch); Nothing is this machine
+    pTarget :: Maybe (String, String), -- --target=linux-aarch64|linux-x86_64|linux-riscv64|macos-x86_64: a cross build (os, arch); Nothing is this machine
+    pRelease :: Bool -- --release: the toolchain's default code generation only (releaseGuard)
   }
 
 usage :: String
-usage = "usage: fpr build --target=qos-portable [-v]  (installed QOS SDK project)\n       fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module]\n                 [--target=linux-aarch64|linux-x86_64|linux-riscv64 --cc CROSS-GCC]\n                 [--target=macos-x86_64]  (on a Mac: x86-64 Mach-O, runs under Rosetta)\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
+usage = "usage: fpr build --target=qos-portable [-v]  (installed QOS SDK project)\n       fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module] [--release]\n                 [--target=linux-aarch64|linux-x86_64|linux-riscv64 --cc CROSS-GCC]\n                 [--target=macos-x86_64]  (on a Mac: x86-64 Mach-O, runs under Rosetta)\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
 
 -- The hart CAP compiled in is this machine's processor count (it was a flat 2,
 -- so a server on a ten-core machine ran on two threads).  The running program
@@ -72,13 +73,14 @@ usage = "usage: fpr build --target=qos-portable [-v]  (installed QOS SDK project
 plan :: [String] -> IO Plan
 plan args = do
   cores <- onlineCores
-  go (Plan "" Nothing (max 2 cores) False False False Nothing [] [] [] "unix" Nothing False Nothing Nothing [] Nothing) args
+  go (Plan "" Nothing (max 2 cores) False False False Nothing [] [] [] "unix" Nothing False Nothing Nothing [] Nothing False) args
   where
     go p ("-o" : o : rest) = go p {pOut = Just o} rest
     go p ("--harts" : n : rest) = go p {pHarts = read n} rest
     go p ("--cc" : c : rest) = go p {pCC = Just c} rest
     go p ("--module" : rest) = go p {pModule = True} rest
     go p ("--keep" : rest) = go p {pKeep = True} rest
+    go p ("--release" : rest) = go p {pRelease = True} rest
     go p ("--cost" : rest) = go p {pCost = True} rest
     go p ("--remarks" : rest) = go p {pRemarks = Just "hot"} rest
     go p (a : rest) | "--remarks=" `isPrefixOf` a = go p {pRemarks = Just (drop (length "--remarks=") a)} rest
@@ -303,6 +305,7 @@ buildMain args = do
   prof <- profileOf (pSource p)
   when (prof == "sol") $ hPutStrLn stderr "fpr build: a sol program runs on the VM (`fpr run`, `fpr sol`); it is not built into an executable" >> exitFailure
   configuration <- Options.readCompilerOptions
+  when (pRelease p) $ releaseGuard "build" configuration
   out <- build configuration p
   hPutStrLn stderr ("fpr build: " ++ out)
 
@@ -324,6 +327,21 @@ qosPortable args = do
   code <- rawSystem "python3" ([builder, "build", "--compiler", self] ++ filter (/= "--target=qos-portable") args)
   exitWith code
 
+-- A release is built the way the toolchain builds by default.  The FPR_*
+-- code generation and cost-probe controls are for developing the compiler;
+-- one left set in the shell would make a release differ from what its
+-- manifest and toolchain say, so --release refuses them rather than ignore them.
+releaseGuard :: String -> Options.CompilerOptions -> IO ()
+releaseGuard cmd configured = do
+  let defaults = either (error . Options.renderOptionError) id (Options.parseCompilerOptions (const Nothing))
+      differs = Options.codegenOptions configured /= Options.codegenOptions defaults
+             || Options.driverCostProbe (Options.driverOptions configured)
+  when differs $ do
+    env <- System.Environment.getEnvironment
+    let set = [k | (k, _) <- env, "FPR_" `isPrefixOf` k, k `notElem` ["FPR_HOME", "FPR_PATH", "FPR_CC", "FPR_FOREIGN", "FPR_HARTS", "FPR_NO_RUN_CACHE"]]
+    hPutStrLn stderr ("fpr " ++ cmd ++ " --release: builds with the toolchain's default code generation; unset " ++ unwords set)
+    exitWith (ExitFailure 2)
+
 runMain :: [String] -> IO ()
 runMain args = do
   p <- plan args
@@ -333,6 +351,7 @@ runMain args = do
     espIdf "run.sh" p (maybe [] (: []) (pPort p))
   prof <- profileOf (pSource p)
   when (prof == "sol") $ withArgs (pSource p : pRest p) Sol.Main.main >> exitWith ExitSuccess
+  when (pRelease p) $ Options.readCompilerOptions >>= releaseGuard "run"
   -- A program that has not changed is not compiled again: the executable is
   -- kept under a key of everything that made it (runKey), so a script starts
   -- as fast as it runs.  FPR_NO_RUN_CACHE=1 builds afresh into a temp file.

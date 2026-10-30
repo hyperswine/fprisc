@@ -48,6 +48,51 @@ def unpack_release(archive, prefix, work):
         (prefix / 'bin' / name).symlink_to('../libexec/fprisc/fpr')
 
 
+def project_workflow(run, fpr, project, work):
+    """The project workflow (docs/2026-10-31-PROJECT-WORKFLOW.md): `fpr new`, then
+    check, build, run and test inside each template with no file argument."""
+    result = run('doctor', [fpr, 'doctor'])
+    assert 'no problems found' in result.stdout and str(work / 'cache with spaces') in result.stdout, result.stdout
+    run('project-new', [fpr, 'new', 'greeter', '--template=cli'])
+    hello = project / 'greeter'
+    assert all((hello / f).is_file() for f in ('fpr.toml', 'src/main.fpr', 'src/greeting.fpr', 'tests/greeting.fpr'))
+    run('project-check', [fpr, 'check'], 'fpr check: 3 files ok\n', cwd=hello)
+    run('project-build', [fpr, 'build'], cwd=hello)
+    run('project-execute', [hello / 'build/greeter', 'Ada'], 'hello, Ada\n')
+    # found by walking up from a subdirectory; the program keeps that directory
+    run('project-run', [fpr, 'run', '--', 'Ada'], 'hello, Ada\n', cwd=hello / 'src')
+    run('project-release', [fpr, 'build', '--release'], cwd=hello)
+    run('project-release-execute', [hello / 'build/release/greeter'], 'hello, world\n')
+    result = run('project-test', [fpr, 'test'], cwd=hello)
+    assert result.stdout.endswith('fpr test: 1 passed, 0 failed\n'), result.stdout
+    (hello / 'tests/broken.fpr').write_text('Test = use "std/test".\nmain = Test.run (Test.equalInt "sum" 5 (2 + 2) :: Nil).\n')
+    result = run('project-test-fails', [fpr, 'test'], failure=True, cwd=hello)
+    assert result.returncode == 1 and 'FAIL tests/broken.fpr' in result.stdout and 'want 5, got 4' in result.stdout, result.stdout
+    (hello / 'tests/broken.fpr').unlink()
+    (hello / 'src/greeting.fpr').write_text('greet : String -> String .\ngreet who = 1 + who.\n')
+    result = run('project-check-fails', [fpr, 'check'], failure=True, cwd=hello)
+    assert result.returncode == 1 and 'src/greeting.fpr' in result.stderr and 'not checked' in result.stderr, result.stderr
+    (hello / 'src/greeting.fpr').write_text('greet : String -> String .\ngreet who = "hello, {who}".\n')
+    # explicit files never consult the manifest
+    run('project-explicit-file', [fpr, 'run', 'src/main.fpr', 'Bo'], 'hello, Bo\n', cwd=hello)
+    run('sol-project-new', [fpr, 'new', 'notes', '--template=sol'])
+    notes = project / 'notes'
+    run('sol-project-check', [fpr, 'check'], 'fpr check: 3 files ok\n', cwd=notes)
+    run('sol-project-run', [fpr, 'run'], 'hello from notes!\n', cwd=notes)
+    run('sol-project-test', [fpr, 'test'], cwd=notes)
+    run('service-project-new', [fpr, 'new', 'web', '--template=service'])
+    web = project / 'web'
+    run('service-project-check', [fpr, 'check'], 'fpr check: 3 files ok\n', cwd=web)
+    run('service-project-test', [fpr, 'test'], cwd=web)
+    run('service-project-build', [fpr, 'build'], cwd=web)
+    assert (web / 'build/web').is_file()
+    # a QOS project is QOS's: fpr never adopts its qos.toml
+    (project / 'qos-like/src').mkdir(parents=True)
+    (project / 'qos-like/qos.toml').write_text('name = "qos-like"\n')
+    result = run('project-qos-refused', [fpr, 'check'], failure=True, cwd=project / 'qos-like/src')
+    assert result.returncode == 2 and 'qos build' in result.stderr, result.stderr
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, default=ROOT / 'fpr')
@@ -100,9 +145,9 @@ def main():
     def save():
         (work / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
 
-    def run(name, command, expected=None, failure=False, input=None, extra_guard=None):
+    def run(name, command, expected=None, failure=False, input=None, extra_guard=None, cwd=None):
         start = time.monotonic()
-        result = subprocess.run((extra_guard or guard) + list(map(str, command)), cwd=project,
+        result = subprocess.run((extra_guard or guard) + list(map(str, command)), cwd=cwd or project,
                                 env=env, capture_output=True, text=True, input=input, timeout=180)
         (work / (name + '.log')).write_text(result.stdout + result.stderr)
         report['steps'].append(dict(name=name, command=list(map(str, command)),
@@ -149,6 +194,7 @@ def main():
         # A standalone install never searches for a QOS SDK; it points at `qos build`.
         result = run('qos-target-refused', [fpr, 'build', '--target=qos-portable'], failure=True)
         assert result.returncode == 2 and 'qos build' in result.stderr, result.stderr
+        project_workflow(run, fpr, project, work)
         independent = work / 'no-sdk.sb'
         independent.write_text(policy.read_text() + f'(deny file-read* (subpath {json.dumps(str(prefix))}))\n')
         run('standalone-app', [project / 'hello'], 'installed native: 3\n',

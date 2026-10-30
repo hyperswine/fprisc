@@ -1,0 +1,455 @@
+{
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "sourceAccess": "denied",
+  "sdkReadOnly": true,
+  "absentTools": [
+    "ghc",
+    "cabal",
+    "make",
+    "git"
+  ],
+  "steps": [
+    {
+      "name": "source-denied",
+      "command": [
+        "/bin/cat",
+        "/Users/jasonqin/Documents/GitHub/fprisc-project/core/prelude.fpr"
+      ],
+      "seconds": 0.025795958004891872,
+      "exit": 1
+    },
+    {
+      "name": "make-denied",
+      "command": [
+        "/usr/bin/make",
+        "--version"
+      ],
+      "seconds": 0.020821291022002697,
+      "exit": 71
+    },
+    {
+      "name": "tools-absent",
+      "command": [
+        "/bin/sh",
+        "-c",
+        "for t in ghc cabal make git; do command -v \"$t\" && exit 1; done; exit 0"
+      ],
+      "seconds": 0.03830337501130998,
+      "exit": 0
+    },
+    {
+      "name": "version",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "--version"
+      ],
+      "seconds": 0.49214825010858476,
+      "exit": 0
+    },
+    {
+      "name": "native-build",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "build",
+        "main.fpr",
+        "-o",
+        "hello"
+      ],
+      "seconds": 8.059039041865617,
+      "exit": 0
+    },
+    {
+      "name": "native-execute",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/external project/hello"
+      ],
+      "seconds": 0.06505887513048947,
+      "exit": 0
+    },
+    {
+      "name": "native-run",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "run",
+        "main.fpr"
+      ],
+      "seconds": 1.6626175409182906,
+      "exit": 0
+    },
+    {
+      "name": "module-check",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "compile",
+        "--system=posix",
+        "--check-only",
+        "library.fpr",
+        "unused.s"
+      ],
+      "seconds": 0.2355402079410851,
+      "exit": 0
+    },
+    {
+      "name": "module-build",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "build",
+        "library.fpr",
+        "--module",
+        "-o",
+        "library.dylib"
+      ],
+      "seconds": 2.2491367091424763,
+      "exit": 0
+    },
+    {
+      "name": "diagnostics",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "build",
+        "bad.fpr",
+        "-o",
+        "bad"
+      ],
+      "seconds": 0.20791295799426734,
+      "exit": 1
+    },
+    {
+      "name": "sol-library",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/sol",
+        "daily.sol"
+      ],
+      "seconds": 0.2567159589380026,
+      "exit": 0
+    },
+    {
+      "name": "sol-shebang",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/external project/daily.sol"
+      ],
+      "seconds": 0.16058679204434156,
+      "exit": 0
+    },
+    {
+      "name": "sol-repl",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/sol",
+        "--repl"
+      ],
+      "seconds": 0.07308974978514016,
+      "exit": 0
+    },
+    {
+      "name": "x64-build",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "build",
+        "main.fpr",
+        "--target=macos-x86_64",
+        "-o",
+        "hello-x64"
+      ],
+      "seconds": 7.230653875041753,
+      "exit": 0
+    },
+    {
+      "name": "x64-identity",
+      "command": [
+        "/usr/bin/file",
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/external project/hello-x64"
+      ],
+      "seconds": 0.02356025017797947,
+      "exit": 0
+    },
+    {
+      "name": "x64-rosetta",
+      "command": [
+        "/usr/bin/arch",
+        "-x86_64",
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/external project/hello-x64"
+      ],
+      "seconds": 1.4048537081107497,
+      "exit": 0
+    },
+    {
+      "name": "qos-target-refused",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "build",
+        "--target=qos-portable"
+      ],
+      "seconds": 0.053505334071815014,
+      "exit": 2
+    },
+    {
+      "name": "doctor",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "doctor"
+      ],
+      "seconds": 0.1089644581079483,
+      "exit": 0
+    },
+    {
+      "name": "project-new",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "new",
+        "greeter",
+        "--template=cli"
+      ],
+      "seconds": 0.05735004204325378,
+      "exit": 0
+    },
+    {
+      "name": "project-check",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "check"
+      ],
+      "seconds": 0.7608070001006126,
+      "exit": 0
+    },
+    {
+      "name": "project-build",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "build"
+      ],
+      "seconds": 1.085706708021462,
+      "exit": 0
+    },
+    {
+      "name": "project-execute",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/external project/greeter/build/greeter",
+        "Ada"
+      ],
+      "seconds": 0.15253645810298622,
+      "exit": 0
+    },
+    {
+      "name": "project-run",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "run",
+        "--",
+        "Ada"
+      ],
+      "seconds": 1.2494654590263963,
+      "exit": 0
+    },
+    {
+      "name": "project-release",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "build",
+        "--release"
+      ],
+      "seconds": 1.105390707962215,
+      "exit": 0
+    },
+    {
+      "name": "project-release-execute",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/external project/greeter/build/release/greeter"
+      ],
+      "seconds": 0.06311929086223245,
+      "exit": 0
+    },
+    {
+      "name": "project-test",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "test"
+      ],
+      "seconds": 1.6121797079686075,
+      "exit": 0
+    },
+    {
+      "name": "project-test-fails",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "test"
+      ],
+      "seconds": 1.544614041922614,
+      "exit": 1
+    },
+    {
+      "name": "project-check-fails",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "check"
+      ],
+      "seconds": 0.21136408299207687,
+      "exit": 1
+    },
+    {
+      "name": "project-explicit-file",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "run",
+        "src/main.fpr",
+        "Bo"
+      ],
+      "seconds": 1.2648075830657035,
+      "exit": 0
+    },
+    {
+      "name": "sol-project-new",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "new",
+        "notes",
+        "--template=sol"
+      ],
+      "seconds": 0.05006862501613796,
+      "exit": 0
+    },
+    {
+      "name": "sol-project-check",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "check"
+      ],
+      "seconds": 0.27959554200060666,
+      "exit": 0
+    },
+    {
+      "name": "sol-project-run",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "run"
+      ],
+      "seconds": 0.1017042079474777,
+      "exit": 0
+    },
+    {
+      "name": "sol-project-test",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "test"
+      ],
+      "seconds": 0.10341416578739882,
+      "exit": 0
+    },
+    {
+      "name": "service-project-new",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "new",
+        "web",
+        "--template=service"
+      ],
+      "seconds": 0.051759749883785844,
+      "exit": 0
+    },
+    {
+      "name": "service-project-check",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "check"
+      ],
+      "seconds": 3.749899333110079,
+      "exit": 0
+    },
+    {
+      "name": "service-project-test",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "test"
+      ],
+      "seconds": 12.919256290886551,
+      "exit": 0
+    },
+    {
+      "name": "service-project-build",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "build"
+      ],
+      "seconds": 6.325622499920428,
+      "exit": 0
+    },
+    {
+      "name": "project-qos-refused",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/SDK with spaces/bin/fpr",
+        "check"
+      ],
+      "seconds": 0.05667887511663139,
+      "exit": 2
+    },
+    {
+      "name": "standalone-app",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/external project/hello"
+      ],
+      "seconds": 0.02796799992211163,
+      "exit": 0
+    },
+    {
+      "name": "relocated-sol",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/relocated SDK/bin/sol",
+        "daily.sol"
+      ],
+      "seconds": 0.2623017500154674,
+      "exit": 0
+    },
+    {
+      "name": "relocated-native",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/relocated SDK/bin/fpr",
+        "build",
+        "main.fpr",
+        "-o",
+        "relocated-hello"
+      ],
+      "seconds": 5.877999792108312,
+      "exit": 0
+    },
+    {
+      "name": "relocated-execute",
+      "command": [
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/external project/relocated-hello"
+      ],
+      "seconds": 0.06497558322735131,
+      "exit": 0
+    },
+    {
+      "name": "qos-scaffold",
+      "command": [
+        "/opt/homebrew/bin/qos",
+        "new",
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/external project/qos-counter"
+      ],
+      "seconds": 0.2840218339115381,
+      "exit": 0
+    },
+    {
+      "name": "qos-private-build",
+      "command": [
+        "/opt/homebrew/bin/qos",
+        "build",
+        "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3/external project/qos-counter"
+      ],
+      "seconds": 14.64491670904681,
+      "exit": 0
+    }
+  ],
+  "status": "passed",
+  "qosCoexistence": {
+    "privateCompiler": "/opt/homebrew/Cellar/qos-portable/0.2.0/libexec/qos-portable/compiler/fpr",
+    "compilerSha256": "b20b50c46d2b19bb6664e9c4b390f725c23d2b06b8bdeb41d1027a4ca756065b",
+    "scope": "external build with standalone fpr on PATH; no Brew co-installation"
+  },
+  "compilerSha256": "32c5161aa71956fec3a0e69b86a14c33c901cd8a964f2d9e3b03b1d509076943",
+  "installedFilesUnchanged": true,
+  "relocation": true,
+  "output": "/private/tmp/claude-501/-Users-jasonqin-Documents-GitHub/9373df31-c691-4fb1-b7c0-d50238e5c2a1/scratchpad/ic3"
+}

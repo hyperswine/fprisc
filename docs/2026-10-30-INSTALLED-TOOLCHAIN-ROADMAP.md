@@ -15,23 +15,31 @@ platform SDK, installed or diagnosed automatically. Running Sol does not require
 that native-build toolchain. Applications and durable data live outside the
 Homebrew Cellar, release directories and temporary folders.
 
-Proposed project-level interface:
+Project-level interface (implemented 31 October 2026, after 0.12.0; see
+[the project workflow](2026-10-31-PROJECT-WORKFLOW.md)):
 
 ```sh
 brew install hyperswine/tap/fprisc
-fpr new hello --template=cli
+fpr new hello --template=cli      # or service, sol
 cd hello
 fpr check
-fpr run
-fpr build --release
+fpr run -- Ada
+fpr build --release               # build/release/hello
 fpr test
+fpr doctor
 sol --repl
 ```
 
-Existing `fpr build file.fpr`, `fpr run file.fpr`, `fpr sol file.sol` and Sol's
-REPL already work. The formula, project discovery, `new`, `check`, `test` and
-`--release` interface above remain proposed. The existing `--manifest` flag
-names a cost contract; do not reuse it for a project manifest.
+The formula (0.12.0) and the explicit-file commands (`fpr build file.fpr`,
+`fpr run file.fpr`, `fpr sol file.sol`, Sol's REPL) are released. The project
+interface is implemented but not in 0.12.0:
+
+- the `fpr.toml` manifest, found by walking up from the current directory;
+- `new`, `check`, `test` and `doctor`;
+- `build`, `run` and `build --release` with no file.
+
+Explicit-file commands are unchanged. The project manifest is `fpr.toml`; the
+existing `--manifest` flag keeps its cost-contract meaning.
 
 ## Roadmap
 
@@ -131,6 +139,24 @@ finds `qos.toml` by walking up parent directories. Give the FP-RISC project
 manifest a different filename, so neither tool picks up the other's project.
 A proposed `fpr check` would also sit beside the existing `fpr stdcheck` (the
 std proof pass); name or document the difference.
+
+**Done on 31 October 2026, except the editor extension**
+([project workflow](2026-10-31-PROJECT-WORKFLOW.md)):
+
+- The manifest is `fpr.toml`, format 1. It records the entry, kind
+  (cli / service / sol), application version, dependency identities
+  (`vX.Y#HASH` committed versions), target and compatible toolchain.
+  Discovery stops at a `qos.toml`.
+- `fpr new --template=cli|service|sol` scaffolds a project.
+- `fpr check` checks every module without requiring `main`; `fpr --help`
+  distinguishes it from `stdcheck`.
+- `fpr build [--release]`, `fpr run` and `fpr test` work with no file. The
+  test convention: programs in `tests/` pass by exiting 0, with `std/test` and
+  `sol/lib/test` helpers.
+- `fpr doctor` reports the C tools, SDK, toolchain and caches.
+- `tools/toolchain-install-check.py` runs the workflow with the checkouts denied.
+
+The editor extension does not use installed-compiler discovery yet.
 
 ### 3. Managed cross targets
 
@@ -352,9 +378,9 @@ use the Homebrew one.
 
 Still open: there is no upgrade path to test until a second release exists.
 The Cabal dependency plan is not frozen, so a rebuild of the same commit can
-resolve newer Haskell packages, as QOS 0.2.0 found. The project workflow
-(step 2 of the roadmap: `fpr new`, the manifest, `fpr test`), managed cross
-targets and other platforms remain.
+resolve newer Haskell packages, as QOS 0.2.0 found. Managed cross targets and
+other platforms remain. The project workflow (step 2) was implemented the next
+day; see [its page](2026-10-31-PROJECT-WORKFLOW.md).
 
 Related work: [Sol installation](2026-10-29-SOL-INSTALLATION.md),
 [Logbook service restoration](2026-10-30-LOGBOOK-M1-RESTORE.md), and the sibling

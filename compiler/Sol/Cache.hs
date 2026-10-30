@@ -8,7 +8,7 @@
 -- A disposable compiler-result cache, never a cache of evaluated values or
 -- effects. Imports are resolved before lookup. Exact encoded inputs are checked
 -- after the filename hash, so hash collisions cannot select a different program.
-module Sol.Cache (Prepared (..), cached, cachedModule, cachedPrelude, checkedLibraries, recordCheckedLibraries) where
+module Sol.Cache (Prepared (..), cacheDirectory, cached, cachedModule, cachedPrelude, checkedLibraries, recordCheckedLibraries) where
 
 import Control.DeepSeq (NFData, force)
 import Control.Exception (IOException, bracketOnError, catch, evaluate)
