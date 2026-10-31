@@ -5,6 +5,9 @@ implementation or timing certificate. Source reviewed: main `744941d`.
 This records the agreed next steps after the October native performance work.
 It builds on the [performance plan](2026-10-26-PERFORMANCE-PLAN.md), with the
 later findings below taking precedence over that plan's earlier assumptions.
+A companion page frames the longer-horizon destination, zero or low overhead,
+and the follow-ups past this plan's horizon:
+[the zero-overhead follow-up inventory](2026-10-31-ZERO-OVERHEAD-FOLLOWUPS.md).
 
 The primary objective is useful performance with predictable time, memory,
 effects and failure behavior. Matching C is a useful comparison, not a universal
