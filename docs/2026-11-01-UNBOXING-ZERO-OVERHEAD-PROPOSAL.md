@@ -1,7 +1,7 @@
 # Unboxing and zero-overhead builtin types: a proposal
 
 Date: 1 November 2026. Kind: design proposal with measurements. It changes no
-compiler behaviour. Base: main `origin/main` at the branch point of this PR.
+compiler behaviour. Base: main `251c6d0`.
 It builds on [the zero-overhead follow-ups](2026-10-31-ZERO-OVERHEAD-FOLLOWUPS.md),
 which call uniform representation "the zero-overhead endgame" (its item 2) and
 leave list fusion as an open question (its item 5), and on
@@ -80,12 +80,12 @@ measured.
 | Value | Representation | Where |
 | --- | --- | --- |
 | `Int` | one tagged word `(n << 1) \| 1`; untagged only inside typed-IR regions (`TInt`) | `runtime/fpr.h:3-5,54-55`; `compiler/Codegen/IR.hs:50-57` |
-| `Bool`, `Unit`, `Nil`, `None` | pointers to static immortal objects; a test loads the variant word at +4 | `runtime/fpr.h:21-24,37`; x86-64 output uses `.Lnul_2_0` for `Nil` and `movslq 4(%rax)` after `==` |
-| Constructors, tuples, `Some`, cons | heap node `[u32 type id \| u32 variant \| word fields]` behind a 16 B allocator preheader `(total, slab)` | `runtime/fpr.h:37`; `runtime/runtime.c:636-649` |
-| Closures | PAP object `[hdr \| fn \| arity \| nargs \| args...]`; known functions are static PAPs | `runtime/fpr.h:38-39` |
-| `String` | `[hdr \| len \| bytes]` | `runtime/fpr.h:40` |
+| `Bool`, `Unit`, `Nil`, `None` | pointers to static immortal objects; a test loads the variant word at +4 | `runtime/fpr.h:21-24,36`; x86-64 output uses `.Lnul_2_0` for `Nil` and `movslq 4(%rax)` after `==` |
+| Constructors, tuples, `Some`, cons | heap node `[u32 type id \| u32 variant \| word fields]` behind a 16 B allocator preheader `(total, slab)` | `runtime/fpr.h:36`; `runtime/runtime.c:636-649` |
+| Closures | PAP object `[hdr \| fn \| arity \| nargs \| args...]`; known functions are static PAPs | `runtime/fpr.h:37-38` |
+| `String` | `[hdr \| len \| bytes]` | `runtime/fpr.h:39` |
 | `Vector` | flat SoA columns in the base pool, fused/SIMD kernels | `core/prelude.fpr:717-724`; `runtime/vec.c` |
-| `F64` | IEEE bits in a word on 64-bit; boxed `T_BITS` on RV32 | `runtime/fpr.h:42-47`; `IR.hs:66-67` |
+| `F64` | IEEE bits in a word on 64-bit; boxed `T_BITS` on RV32 | `runtime/fpr.h:42-47`; `IR.hs:67-68` |
 | Polymorphic functions | compiled once over tagged words; specialization only over known callbacks | `compiler/Mono.hs:1-3`; `compiler/Core/Typed/Specialize.hs:2-4` |
 
 There are no thunks: the language is strict, so the boxing problem is only
