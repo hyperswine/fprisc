@@ -359,9 +359,14 @@ runStdCheck tops0 = do
             not (M.member g okDefs),
             g `notElem` [n | (n, _) <- failed]
         ]
+      -- an out-of-fragment function keeps its SOURCE arity: a one-parameter
+      -- stub made every caller of a multi-argument helper an arity error
+      -- (std/list.fpr's rangeGo, revOnto, zipGo, ...)
+      sourceArity n = maybe 1 (\clauses -> length (canonicalParams [ps | (ps, _, _) <- clauses])) (lookup n clauseGroups)
       failedStubs =
-        [ SC.FnDef n [SC.Param "a1" SC.top] SC.top SC.UnsafeFn Nothing (SC.Call (negate 2) n [SC.Var "a1"])
-          | (n, _) <- failed
+        [ SC.FnDef n [SC.Param ("a" ++ show i) SC.top | i <- [1 .. k]] SC.top SC.UnsafeFn Nothing (SC.Call (negate 2) n [SC.Var ("a" ++ show i) | i <- [1 .. k]])
+          | (n, _) <- failed,
+            let k = sourceArity n
         ]
 
       env0 = M.fromList [(SC.fName f, f) | f <- M.elems okDefs ++ externs ++ failedStubs]

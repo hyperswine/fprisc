@@ -1,0 +1,23 @@
+# std modules `fpr stdcheck` cannot pass yet, one per line: module<TAB>reason.
+# tests/reliability/stdcheck_std.py fails if any OTHER module fails, or if a module
+# listed here starts passing (remove it then). Reasons are the first error, 2026-11-01.
+browserautocomplete	higher-order call through a function-valued parameter/local: error: call at site N to n: expected 0 args, got 1
+browsercalc	higher-order call through a function-valued parameter/local: error: call at site N to n: expected 0 args, got 1
+browserfeedback	higher-order call through a function-valued parameter/local: error: call at site N to n: expected 0 args, got 1
+browserformfill	higher-order call through a function-valued parameter/local: error: call at site N to n: expected 0 args, got 1
+browsermedia	higher-order call through a function-valued parameter/local: error: call at site N to f: expected 0 args, got 2
+browserstorage	higher-order call through a function-valued parameter/local: error: call at site N to n: expected 0 args, got 1
+clientcalc	higher-order call through a function-valued parameter/local: error: call at site N to n: expected 0 args, got 1
+clock	primitive/host call modelled as an unsafe extern: error: declared safe but (transitively) calls UNSAFE `Sys.timeUs` -- unsafety is infectious upward; mark elaps
+digest	primitive/host call modelled as an unsafe extern: error: declared safe but (transitively) calls UNSAFE `band` -- unsafety is infectious upward; mark m32 unsafe
+encoding	declared-safe function outside the checkable fragment: std: b64Val: NOT in the checkable fragment (condition outside the comparison fragment: SBin "and" (SBin ">=" (
+gpio	primitive/host call modelled as an unsafe extern: error: declared safe but (transitively) calls UNSAFE `GpioHost.info` -- unsafety is infectious upward; mark in
+live	partial application (fewer args than the definition): error: call at site N to connection: expected 6 args, got 4
+math	declared-safe function outside the checkable fragment: std: mod: NOT in the checkable fragment (condition outside the comparison fragment: SBin "and" (SBin "!=" (SVa
+money	declared-safe function outside the checkable fragment: std: tax: NOT in the checkable fragment (outside the checkable fragment: SStrI [SegStr "cents"])  <-- signed I
+mvu	declared-safe function outside the checkable fragment: std: napTick: NOT in the checkable fragment (block statement outside fragment: SBindPat PWild (SMark 19450 (SA
+supervisor	primitive/host call modelled as an unsafe extern: error: declared safe but (transitively) calls UNSAFE `spawn` -- unsafety is infectious upward; mark monitor un
+ui	declared-safe function outside the checkable fragment: std: spacing: NOT in the checkable fragment (outside the checkable fragment: SCase (SVar "n") [(PInt 0,SMark 2
+view	partial application (fewer args than the definition): error: call at site N to textOf: expected 2 args, got 1
+watch	partial application (fewer args than the definition): error: call at site N to watch: expected 5 args, got 4
+watchedtransport	partial application (fewer args than the definition): error: call at site N to wait: expected 4 args, got 1

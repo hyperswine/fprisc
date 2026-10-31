@@ -1,0 +1,5 @@
+# an out-of-fragment two-argument helper called from another function: was "expected 1 args, got 2"
+go : (xs : List a | measure xs) -> Int -> Int .
+go xs n = case xs of Nil -> n | _ :: r -> go r (n + 1).
+len : List a -> Int .
+len xs = go xs 0.
