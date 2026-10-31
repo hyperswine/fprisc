@@ -25,6 +25,28 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def units(cache):
+    """{unit key: (sha256, {fn: header})} for every compiled unit in a mode's
+    cache, keyed without the flag-dependent cache suffix, so off/on pair up"""
+    out = {}
+    for path in sorted((cache / 'fpr/build/units').glob('*.s')):
+        key = path.name.split('-pd')[0] if path.name.startswith('u-') else path.name.split('-ccore')[0]
+        heads = {l.split()[2]: l for l in path.read_text().splitlines() if l.startswith('# fn ')}
+        out[key] = (sha(path), heads)
+    return out
+
+
+def library_delta(off_cache, on_cache):
+    """units and functions whose emitted code differs between the modes"""
+    a, b = units(off_cache), units(on_cache)
+    changed = {}
+    for key in sorted(set(a) | set(b)):
+        if a.get(key, (None,))[0] != b.get(key, (None,))[0]:
+            fa, fb = a.get(key, (None, {}))[1], b.get(key, (None, {}))[1]
+            changed[key] = sorted(f for f in set(fa) | set(fb) if fa.get(f) != fb.get(f))
+    return changed
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--output', type=Path, required=True)
@@ -91,8 +113,16 @@ def main():
             outputs[name] = output
             row['modes'][mode] = {'samples_ms': [], 'compile_s': compile_s,
                                    'allocated_bytes': int(rts['bytes allocated']), 'binary_bytes': exe.stat().st_size,
-                                   'assembly_sha256': sha(asm),
+                                   'assembly_sha256': sha(asm), 'binary_sha256': sha(exe),
                                    'scan_header': next((l for l in asm.read_text().splitlines() if l.startswith('# fn sumB ')), None)}
+        # Whole-program identity: the root assembly can match while linked
+        # library units (std/string, ...) differ between the modes.
+        off_m, on_m = row['modes']['off'], row['modes']['on']
+        row['root_assembly_identical'] = off_m['assembly_sha256'] == on_m['assembly_sha256']
+        row['binary_identical'] = off_m['binary_sha256'] == on_m['binary_sha256']
+        row['changed_units'] = library_delta(folder / 'off' / 'cache', folder / 'on' / 'cache')
+        if row['root_assembly_identical'] and not row['binary_identical']:
+            print(f'{name}: NOTE root assembly identical but the executables differ; changed library code: {row["changed_units"]}', flush=True)
         if args.baseline_compiler:
             exe = folder / 'saved-compiler-program'
             settings = dict(env, FPR_TYPED_IR_STRING_SCAN='0', XDG_CACHE_HOME=str(folder / 'saved-cache'))
