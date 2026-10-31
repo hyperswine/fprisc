@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               fp-risc
-version:            0.12.0
+version:            0.13.0
 synopsis:           The FP-RISC compiler: one grammar, five backends, one binary
 description:
   fpr -- AOT (rv32/rv64/a64/a64mac/x64/qx64/qa64), the HostedBytecode

@@ -1,7 +1,8 @@
 # FP-RISC projects: `fpr.toml`, `fpr new`, check, build, run, test, doctor
 
-Status: implemented on branch `project-workflow`, 31 October 2026. Not yet in a
-release; 0.12.0 does not have it. This is step 2 of the
+Status: implemented 31 October 2026 and merged to main, which is versioned
+`0.13.0-dev`. Not yet in a release; the released 0.12.0 does not have it, so
+a project created by main asks for `fpr = "0.13.0"` and 0.12.0 refuses it. This is step 2 of the
 [installed toolchain roadmap](2026-10-30-INSTALLED-TOOLCHAIN-ROADMAP.md)
 ("small external-project workflow").
 
@@ -50,7 +51,7 @@ name = "host"           # host | linux-aarch64 | linux-x86_64 | linux-riscv64 | 
 | `project.version` | The application's own version. Recorded now; step 4 packaging will use it. |
 | `project.kind` | `cli` or `service` (native executables) or `sol` (a script run on the Sol VM). |
 | `project.entry` | The program file, relative to the root: `.fpr` for native kinds, `.sol` for `sol`. It may not leave the project. |
-| `toolchain.fpr` | The oldest compatible `fpr`. The running `fpr` must be the same series and not older. While the major is 0, the series is major.minor, so `0.12.0` accepts 0.12.x. From 1.0 it is the major alone. Otherwise every project command stops with status 2. |
+| `toolchain.fpr` | The oldest compatible `fpr`. The running `fpr` must be the same series and not older. While the major is 0, the series is major.minor, so `0.12.0` accepts 0.12.x. From 1.0 it is the major alone. A pre-release such as `0.13.0-dev` counts as the release it leads to (0.13.0), and `fpr new` writes that release. Otherwise every project command stops with status 2. |
 | `target.name` | `host` (the default) or a `fpr build --target=` name. A `--target=` on the command line wins. A sol project's target is always `host`. |
 | `[dependencies]` | `name = "vX.Y#HASH"`: a committed module version, as `fpr versions` prints it. |
 

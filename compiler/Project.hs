@@ -239,9 +239,14 @@ renderManifest m =
     q s = show s
     note l n = l ++ replicate (max 1 (24 - length l)) ' ' ++ "# " ++ n
 
--- "0.12.0" -> [0,12,0]
+-- A pre-release ("0.13.0-dev", "0.13.0-rc1") stands for the release it
+-- leads to: the version a new project asks for, and the one checked.
+releaseOf :: String -> String
+releaseOf = takeWhile (/= '-')
+
+-- "0.12.0" -> [0,12,0]; "0.13.0-dev" -> [0,13,0]
 parseVersion :: String -> Maybe [Int]
-parseVersion s = case splitOn '.' s of
+parseVersion s0 = let s = releaseOf s0 in case splitOn '.' s of
   parts | not (null parts), length parts <= 3, all (\p -> not (null p) && all isDigit p) parts -> Just (map read parts)
   _ -> Nothing
   where
@@ -328,7 +333,7 @@ newMain version args = do
     unless (null entries) $ usageError "new" (path ++ " already exists and is not empty")
   isFile <- doesFileExist path
   when isFile $ usageError "new" (path ++ " is a file")
-  forM_ (templateFiles version template name) $ \(rel, body) -> do
+  forM_ (templateFiles (releaseOf version) template name) $ \(rel, body) -> do
     let f = path </> rel
     createDirectoryIfMissing True (takeDirectory f)
     writeFile f body
