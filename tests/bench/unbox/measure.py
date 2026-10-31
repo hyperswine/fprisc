@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-unbox-') as d:
         for m in ms:
             jobs[f'c:{m}'] = [tmp / 'ref_c', m] + CARGS.get(m, '1000000 20').split()
     jobs['c:empty'] = [tmp / 'ref_c', 'none', '1', '1']
-    ghc = shutil.which('ghc')
+    ghc = shutil.which('ghc') or next((str(p) for p in [Path.home() / '.ghcup/bin/ghc'] if p.exists()), None)
     if ghc:
         run([ghc, '-O2', '-rtsopts', HERE / 'ref.hs', '-outputdir', tmp / 'hs', '-o', tmp / 'ref_hs'])
         for b, m in HS.items():
