@@ -41,7 +41,7 @@ import GHC.IO.Encoding (setLocaleEncoding, utf8)
 -- than Paths_fp_risc because the Makefile's fallback path builds with raw
 -- ghc, where that module does not exist.
 version :: String
-version = "0.12.0"
+version = "0.13.0-dev"
 
 usage :: String
 usage =

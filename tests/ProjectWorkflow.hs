@@ -64,7 +64,7 @@ main = do
   refused "string type" (replace "\"hello\"" "3" base) "quoted string"
   -- compatibility: the same series, not older
   forM_
-    [ ("0.12.0", "0.12.0", True), ("0.12.1", "0.12.0", True), ("0.12.0", "0.12.1", False),
+    [ ("0.12.0", "0.12.0", True), ("0.13.0-dev", "0.13.0", True), ("0.13.0-dev", "0.12.0", False), ("0.12.1", "0.12.0", True), ("0.12.0", "0.12.1", False),
       ("0.13.0", "0.12.0", False), ("0.12", "0.12.0", True), ("1.3.0", "1.0", True),
       ("2.0.0", "1.9.9", False), ("1.0.0", "0.12.0", False), ("x", "0.12.0", False)
     ]

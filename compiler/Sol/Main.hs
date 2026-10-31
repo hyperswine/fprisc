@@ -81,7 +81,7 @@ runScript = do
   case as of
     ["--help"] -> putStrLn solHelp
     ["-h"] -> putStrLn solHelp
-    ["--version"] -> putStrLn "Sol 0.12.0 (scripting API 1)"
+    ["--version"] -> putStrLn "Sol 0.13.0-dev (scripting API 1)"
     ["state"] -> maintainState False
     ["recover"] -> maintainState True
     ("--repl" : rest) -> runRepl rest
@@ -609,7 +609,7 @@ runRepl scriptArgs = do
   now <- getPOSIXTime
   let dataFile = tmp ++ "/sol-repl-" ++ show (floor (now * 1000000) :: Integer) ++ ".soldata"
   when tty $
-    putStrLn "Sol 0.12.0 (scripting API 1) — one command, one transaction. Ctrl-D exits."
+    putStrLn "Sol 0.13.0-dev (scripting API 1) — one command, one transaction. Ctrl-D exits."
   let
     loop tty acc buffer evalsDone defined = do
       when tty (putStr (if null buffer then "sol> " else "...> ") >> hFlush stdout)
