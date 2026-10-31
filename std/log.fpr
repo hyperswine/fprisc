@@ -20,14 +20,14 @@ S = use "string".
 Level = Type (Debug | Info | Warn | Error).
 
 rank : Level -> Int
-  | work rank <= 6 | alloc rank <= 0 .
+  | work rank <= 8 | alloc rank <= 0 .
 rank Debug = 0.
 rank Info = 1.
 rank Warn = 2.
 rank Error = 3.
 
 name : Level -> String
-  | work name <= 6 | alloc name <= 0 .
+  | work name <= 8 | alloc name <= 0 .
 name Debug = "DEBUG".
 name Info = "INFO ".
 name Warn = "WARN ".
