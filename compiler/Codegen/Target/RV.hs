@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 -- Direct RV32/RV64 selection from typed IR with an explicit word policy. No RISC-V text from Codegen.hs is
--- consumed here. Checked arithmetic initially uses the exact C primitives;
+-- consumed here. Checked arithmetic is inline with the Int-domain fit proof;
+-- the exact C primitives remain as the slow path, and
 -- the shared allocator handles calls, spills, parallel arguments and loops.
 module Codegen.Target.RV
   ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV, emitFnRVWithSymbols, fuelSaveWrapper ) where
@@ -27,7 +28,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 26 -- the hart-cell load (loop region clock); prior: byte access has no alignment slow path
+rvSelectionRev = 27 -- checked Int arithmetic is inline (fit-check fast path, the C primitive as the slow path); prior: the hart-cell load (loop region clock)
 
 -- Native startup, shared by every RVV unit. The runtime calls the surviving
 -- COMDAT definition on each hart; ordinary builds retain its weak no-op.
@@ -140,6 +141,48 @@ entry checks = do
     ((plain (O.Common (Protocol.entryOpcode checks)) [] []) {siAnnotation=EntryLabels l}))
 boxed :: VReg -> S VReg
 boxed v = do t <- fresh; d <- fresh; ri R.ShiftLeftImmediate t v 1; ri R.OrImmediate d t 1; pure d
+
+-- Checked Int arithmetic agrees with Codegen.Eval and runtime/runtime.c: the
+-- fast path computes on the raw words and checks the Int-domain fit (the word
+-- overflow of +- and the mulh sign check coincide with the C primitive's
+-- __builtin_*_overflow, and the fit shift is its fits_int); the slow path
+-- either retags the ORIGINAL operands and re-enters the C primitive, whose
+-- panic text and failure order are the language's, or traps with the kernel
+-- diagnostics. Operands are always in the Int domain, so re-tagging
+-- reconstructs the primitive's exact arguments and both paths trap together.
+-- A zero divisor branches to the slow path BEFORE dividing: RISC-V div by
+-- zero returns -1 instead of trapping, and -1 would pass the fit check.
+arith :: Integer -> Bool -> ArithOp -> VReg -> VReg -> VReg -> S ()
+arith w kernel op d x y = do
+  slow <- freshLabel; zero <- freshLabel; done <- freshLabel
+  result <- fresh
+  let failUnlessEqual lhs rhs = do bad <- fresh; rr (R.Compare Ne) bad lhs rhs; branch bad slow
+  case op of
+    Add -> rr R.Add result x y
+    Sub -> rr R.Subtract result x y
+    Mul -> do
+      rr R.Multiply result x y
+      high <- fresh; sign <- fresh
+      rr R.MultiplyHigh high x y
+      ri R.ShiftRightArithmeticImmediate sign result (8*w-1)
+      failUnlessEqual high sign
+    Div -> do
+      isZero <- fresh; z <- fresh; li z 0
+      rr (R.Compare Eq) isZero y z; branch isZero (if kernel then zero else slow)
+      rr R.Divide result x y
+  shifted <- fresh; fit <- fresh
+  ri R.ShiftLeftImmediate shifted result 1; ri R.ShiftRightArithmeticImmediate fit shifted 1
+  failUnlessEqual fit result
+  emit (plain (O.RV R.Move) [anyV d] [anyV result]); jump done
+  mark slow
+  if kernel then trapCall "fpr_int_overflow_kernel" else do
+    tx <- boxed x; ty <- boxed y; t <- fresh
+    call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [tx,ty] (Just t) False
+    ri R.ShiftRightArithmeticImmediate d t 1
+  when kernel $ do
+    mark zero; trapCall "fpr_div_zero_kernel"
+    li d 0 -- both trap entries are noreturn; define d for the allocation oracle
+  mark done
 parallel :: [(VReg,VReg)] -> S ()
 parallel pairs = do
   -- Simultaneous block arguments: first copy every source to a fresh value.
@@ -256,36 +299,8 @@ select cfg fn = do
       OField n v -> loadAt ld d (vreg v) (8+w*fromIntegral n)
       OStrLen s -> do t <- fresh; call (CodeSymbol "fpr_g_strlen_call1") Calling.RuntimeCall [vreg s] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
       OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call (CodeSymbol "fpr_g_charAt_call2") Calling.RuntimeCall [vreg s,i] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
-      OKernelArith op a b -> do
-        slow <- freshLabel; zero <- freshLabel; done <- freshLabel
-        result <- fresh
-        let x = vreg a; y = vreg b
-            failUnlessEqual lhs rhs = do bad <- fresh; rr (R.Compare Ne) bad lhs rhs; branch bad slow
-        case op of
-          Add -> rr R.Add result x y
-          Sub -> rr R.Subtract result x y
-          Mul -> do
-            rr R.Multiply result x y
-            high <- fresh; sign <- fresh
-            rr R.MultiplyHigh high x y
-            ri R.ShiftRightArithmeticImmediate sign result (8*w-1)
-            failUnlessEqual high sign
-          Div -> do
-            isZero <- fresh; z <- fresh; li z 0
-            rr (R.Compare Eq) isZero y z; branch isZero zero
-            rr R.Divide result x y
-        shifted <- fresh; fit <- fresh
-        ri R.ShiftLeftImmediate shifted result 1; ri R.ShiftRightArithmeticImmediate fit shifted 1
-        failUnlessEqual fit result
-        emit (plain (O.RV R.Move) [anyV d] [anyV result]); jump done
-        mark slow; trapCall "fpr_int_overflow_kernel"
-        mark zero; trapCall "fpr_div_zero_kernel"
-        li d 0 -- unreachable after a noreturn trap
-        mark done
-      OArith op a b -> do
-        x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
-        call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [x,y] (Just t) False
-        ri R.ShiftRightArithmeticImmediate d t 1
+      OKernelArith op a b -> arith w True op d (vreg a) (vreg b)
+      OArith op a b -> arith w False op d (vreg a) (vreg b)
       -- the difference-bound proof removed the overflow check: a plain
       -- instruction where the checked form keeps the C primitive; Mul/Div
       -- keep the call (the pass produces only Add/Sub)
