@@ -35,6 +35,7 @@ import Control.DeepSeq (force)
 import Control.Monad (foldM, forM, forM_, unless, when, zipWithM, zipWithM_)
 import Control.Monad.State.Strict
 import Data.Graph (SCC (..), stronglyConnComp)
+import qualified Data.IntSet as IS
 import qualified Data.IntMap.Strict as IM
 import qualified Data.List
 import Data.List (foldl', intercalate, isInfixOf, nub, stripPrefix, sortOn)
@@ -943,6 +944,10 @@ aotProf = IProf builtinEnv False False True True
 -- Inference marks each site (SBin "op#N#+") and resolveSites rewrites.
 
 
+-- the operators numeric defaulting pins to Int when still at a bare variable
+defaultedOps :: [Name]
+defaultedOps = ["+", "-", "*", "/", "<", "<=", ">", ">="]
+
 newSite :: Name -> Type -> I Int
 newSite op t = do
   st <- get
@@ -951,6 +956,7 @@ newSite op t = do
         Just uid -> IM.insert n uid (iSiteExpressions st)
         Nothing -> iSiteExpressions st
   put st {iNextSite = n + 1, iSites = IM.insert n (op, t) (iSites st),
+          iPendingNumeric = if op `elem` defaultedOps then IS.insert n (iPendingNumeric st) else iPendingNumeric st,
           iSiteMarks = IM.insert n (iHere st) (iSiteMarks st),
           iSiteOwners = IM.insert n (iCurrentOwner st) (iSiteOwners st), iSiteExpressions=origins}
   pure n
@@ -975,7 +981,7 @@ constrainCarrierSites sigs first = stabilize
     stabilize = do
       before<-gets (IM.size . iCarrierChoices)
       sites<-gets iSites
-      forM_ [(k,op,t) | (k,(op,t))<-IM.toList sites,k>=first,op `elem` ["+","-","*","/","%","^","<","<=",">",">="]] $ \(k,op,t0)->do
+      forM_ [(k,op,t) | (k,(op,t))<-IM.toList (snd (IM.split (first-1) sites)),op `elem` ["+","-","*","/","%","^","<","<=",">",">="]] $ \(k,op,t0)->do
         chosen<-gets (IM.member k . iCarrierChoices)
         unless chosen $ do
           t<-zonk t0
@@ -1722,14 +1728,25 @@ inferTopsResult capture prof sigs structs tops =
   in resultFromState st tops' proof sites schemes layouts sigs structs
   where
     aliases = M.fromList [(n, fs) | TShape n fs <- tops]
+    -- every bind's clauses in source order, indexed once per run (inferSCC
+    -- and the dependency graph used to rescan all of `tops` per name)
+    clauseMap = M.fromListWith (flip (++)) [(n, [(ps, g, b)]) | TBind n ps g b <- tops]
+    -- nub keeping first occurrences, O(n log n)
+    ordNub :: Ord a => [a] -> [a]
+    ordNub = go S.empty
+      where
+        go _ [] = []
+        go seen (x : xs)
+          | S.member x seen = go seen xs
+          | otherwise = x : go (S.insert x seen) xs
     run :: I ([STop], Either String (Maybe Evidence.Evidence), [ElaborationFact], M.Map Name Scheme, M.Map Name [Type])
     run = do
       cons <- (\u -> M.union u builtinCons') <$> consEnv aliases tops
       declared <- sigAnnEnv aliases tops
       let env0 = M.union declared (ipBuiltins prof)
       -- group multi-clause binds under one name, preserving first-seen order
-      let bindNames = nub [n | TBind n _ _ _ <- tops]
-          clausesOf n = [(ps, g, b) | TBind n' ps g b <- tops, n' == n]
+      let bindNames = ordNub [n | TBind n _ _ _ <- tops]
+          clausesOf n = M.findWithDefault [] n clauseMap
           -- `> expr.` top-level effects: inferred and rewritten in the
           -- HostedBytecode profile; the AOT driver owns them otherwise
           -- (empty list = rebuild leaves every TEval untouched)
@@ -1737,7 +1754,7 @@ inferTopsResult capture prof sigs structs tops =
           topSet = S.fromList bindNames
           availableGlobals = topSet `S.union` S.fromList [n | TSig n _ _ <- tops]
           nodes =
-            [ (n, n, nub (concatMap refs (clausesOf n)))
+            [ (n, n, ordNub (concatMap refs (clausesOf n)))
               | n <- bindNames
             ]
           refs (ps, g, b) =
@@ -1748,11 +1765,12 @@ inferTopsResult capture prof sigs structs tops =
                 gExprs = [e | gd <- g, e <- case gd of GBool e' -> [e']; GPat _ e' -> [e']]
              in topRefs2 topSet gbound b ++ concatMap (topRefs2 topSet bound) gExprs
           sccs = stronglyConnComp nodes
-      (env, rwBinds) <-
+      (env, rwChunks) <-
         foldM
-          (\(e, acc) ns -> do (e', rws) <- inferSCC cons (M.keysSet declared) e ns; pure (e', acc ++ rws))
+          (\(e, acc) ns -> do (e', rws) <- inferSCC cons (M.keysSet declared) e ns; pure (e', rws : acc))
           (env0, [])
           [ns | scc <- sccs, let ns = flat scc]
+      let rwBinds = concat (reverse rwChunks)
       -- `> expr.` errors get the same "in NAME:" treatment a clause gets,
       -- under the eval's ordinal -- otherwise they reach the sinks
       -- unprefixed, which is also unanchored, which leaked the raw
@@ -1856,7 +1874,8 @@ inferTopsResult capture prof sigs structs tops =
               _ -> ((evs, bnds), t)
             TSig n (ps,r) pre -> ((evs,bnds), TSig n (replicate (length (hidden n)) (TCon "String" []) ++ ps,r) (replicate (length (hidden n)) Nothing ++ pre))
             _ -> ((evs, bnds), t)
-          (_, tops') = foldl' (\(st', acc) t -> let (st2, t') = rebuild st' t in (st2, acc ++ [t'])) ((rwEvals, fmap reverse rwMap), []) tops
+          (_, topsRev) = foldl' (\(st', acc) t -> let (st2, t') = rebuild st' t in (st2, t' : acc)) ((rwEvals, fmap reverse rwMap), []) tops
+          tops' = reverse topsRev
       errors <- gets iErrs
       namedHoles <- gets (any (not . null . fst) . iHoles)
       proof <- if null errors && not namedHoles
@@ -1980,15 +1999,27 @@ inferTopsResult capture prof sigs structs tops =
       -- generic helper) whose marker simply strips -- defaulting
       -- either would Int-pin every generic function that compares or
       -- interpolates its argument.
+      --
+      -- Every such site of EVERY earlier group is still considered (a later
+      -- group's defaulting can pin an earlier site), but only through the
+      -- worklist of sites that may still be a bare variable: a site leaves
+      -- it once its zonked type is not a variable, which can never revert.
+      -- Same sites, same order (ascending), same unifications as scanning
+      -- the whole site map; solved sites were no-ops there.
       do
         sites <- gets iSites
         reps <- carrierReps
-        forM_ (IM.elems sites) $ \(op, t0) ->
-          when (op `elem` ["+", "-", "*", "/", "<", "<=", ">", ">="]) $ do
+        pending <- gets iPendingNumeric
+        forM_ (IS.toList pending) $ \k -> forM_ (IM.lookup k sites) $ \(_, t0) -> do
+            modify (\st -> st {iDefaultWork = iDefaultWork st + 1})
             t <- zonk t0
             case t of
               TV v | not (IM.member v reps) -> unify "numeric default" (TV v) tInt
               _ -> pure ()
+            t' <- zonk t0
+            case t' of
+              TV _ -> pure ()
+              _ -> modify (\st -> st {iPendingNumeric = IS.delete k (iPendingNumeric st)})
       forM_ (zip ns mvs) $ \(n,t) -> do
         actual <- gets (M.lookup n . iDefTypes)
         tz <- zonk (maybe t id actual)
@@ -2001,7 +2032,7 @@ inferTopsResult capture prof sigs structs tops =
         pure (n, sc)
       pure (M.union (M.fromList newEnv) env, concat rws)
       where
-        clauses n = [(ps, g, b) | TBind n' ps g b <- tops, n' == n]
+        clauses n = M.findWithDefault [] n clauseMap
         firstMark cls = case [o | (_, _, SMark o _) <- cls] of (o : _) -> Just (SourceOffset o); [] -> Nothing
         declaredOrRec n mv t = case M.lookup n env of
           Just declared -> do

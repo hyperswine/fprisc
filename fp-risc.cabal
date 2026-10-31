@@ -431,6 +431,11 @@ test-suite GeneralizeClosed
   type:               exitcode-stdio-1.0
   main-is:            GeneralizeClosed.hs
 
+test-suite DefaultingWorklist
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            DefaultingWorklist.hs
+
 test-suite SourceGroups
   import:             unit-test
   type:               exitcode-stdio-1.0
