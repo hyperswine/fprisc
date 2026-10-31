@@ -9,7 +9,7 @@
 S = use "string".
 O = use "option".
 
-rev : unsafe List a -> List a -> List a .
+rev : (xs : List a | measure xs) -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
 isAbsolute : String -> Bool .
@@ -17,22 +17,23 @@ isAbsolute p = S.startsWith "/" p.
 
 # Path.join "a/b" "c" = "a/b/c"; an absolute second part wins, as `cd` would
 join : String -> String -> String .
-join a b = case isAbsolute b of
-    True -> b
-  | False -> (case strlen a == 0 of
-        True -> b
-      | False -> (case S.endsWith "/" a of True -> strcat a b | False -> strJoin "/" (a :: b :: Nil))).
+join a b | isAbsolute b = b.
+join a b | strlen a == 0 = b.
+join a b | S.endsWith "/" a = strcat a b.
+join a b = "{a}/{b}".
 
 joinAll : List String -> String .
 joinAll parts = joinGo parts "".
-joinGo : unsafe List String -> String -> String .
+joinGo : (parts : List String | measure parts) -> String -> String .
 joinGo parts acc = case parts of Nil -> acc | p :: r -> joinGo r (join acc p).
 
 # where the last "/" is (0-based), or -1
 lastSlash : String -> Int .
 lastSlash p = lastSlashGo p (strlen p - 1).
-lastSlashGo : unsafe String -> Int -> Int .
-lastSlashGo p i = case i < 0 of True -> 0 - 1 | False -> (case charAt p i == 47 of True -> i | False -> lastSlashGo p (i - 1)).
+lastSlashGo : String -> (i : Int | measure i) -> Int .
+lastSlashGo p i | i < 0 = 0 - 1.
+lastSlashGo p i | charAt p i == 47 = i.
+lastSlashGo p i = lastSlashGo p (i - 1).
 
 # "a/b/c.txt" -> "c.txt"
 fileName : String -> String .
@@ -42,62 +43,62 @@ fileName p = S.dropLeft (lastSlash p + 1) p.
 parent : String -> String .
 parent p =
   at = lastSlash p;
-  case at < 0 of
-    True -> "."
-  | False -> (case at == 0 of True -> "/" | False -> S.left at p).
+  if at < 0 then "." else if at == 0 then "/" else S.left at p.
 
 # where the extension's "." is within the FILE NAME (0-based), or -1 (a leading dot is a
 # hidden file, not an extension: ".bashrc" has none)
 extDot : String -> Int .
 extDot name = extDotGo name (strlen name - 1).
-extDotGo : unsafe String -> Int -> Int .
-extDotGo name i = case i <= 0 of True -> 0 - 1 | False -> (case charAt name i == 46 of True -> i | False -> extDotGo name (i - 1)).
+extDotGo : String -> (i : Int | measure i) -> Int .
+extDotGo name i | i <= 0 = 0 - 1.
+extDotGo name i | charAt name i == 46 = i.
+extDotGo name i = extDotGo name (i - 1).
 
 # "c.tar.gz" -> Some "gz"; "Makefile" -> None
 extension : String -> O.Option String .
 extension p =
   name = fileName p;
   at = extDot name;
-  case at < 0 of True -> O.None | False -> O.Some (S.dropLeft (at + 1) name).
+  if at < 0 then O.None else O.Some (S.dropLeft (at + 1) name).
 
 # the file name without its extension: "a/b/c.txt" -> "c"
 stem : String -> String .
 stem p =
   name = fileName p;
   at = extDot name;
-  case at < 0 of True -> name | False -> S.left at name.
+  if at < 0 then name else S.left at name.
 
 # Path.withExtension "md" "notes/a.txt" = "notes/a.md"
 withExtension : String -> String -> String .
 withExtension ext p =
   dir = parent p;
-  name = strJoin "." (stem p :: ext :: Nil);
-  case lastSlash p < 0 of True -> name | False -> join dir name.
+  name = "{stem p}.{ext}";
+  if lastSlash p < 0 then name else join dir name.
 
 # the parts between slashes, empty ones dropped
 parts : String -> List String .
 parts p = partsGo (S.split "/" p) Nil.
-partsGo : unsafe List String -> List String -> List String .
+partsGo : (ps : List String | measure ps) -> List String -> List String .
 partsGo ps acc = case ps of
     Nil -> rev acc Nil
-  | x :: r -> (case strlen x == 0 of True -> partsGo r acc | False -> partsGo r (x :: acc)).
+  | x :: r -> if strlen x == 0 then partsGo r acc else partsGo r (x :: acc).
 
 # "." and empty parts dropped, "x/.." folded: "a/./b/../c" -> "a/c"
 normalize : String -> String .
 normalize p =
   body = strJoin "/" (rev (normGo (isAbsolute p) (parts p) Nil) Nil);
-  case isAbsolute p of
-    True -> strcat "/" body
-  | False -> (case strlen body == 0 of True -> "." | False -> body).
+  if isAbsolute p then "/{body}"
+  else if strlen body == 0 then "."
+  else body.
 # the kept parts, newest first.  ".." above the root of an ABSOLUTE path is
 # the root; above a relative path it has to be kept.
-normGo : unsafe Bool -> List String -> List String -> List String .
+normGo : Bool -> (ps : List String | measure ps) -> List String -> List String .
 normGo abs ps acc = case ps of
     Nil -> acc
-  | x :: r -> (case x == "." of
-        True -> normGo abs r acc
-      | False -> (case x == ".." of
-            True -> (case acc of
-                Nil -> (case abs of True -> normGo abs r acc | False -> normGo abs r (x :: acc))
-              | top :: under -> (case top == ".." of True -> normGo abs r (x :: acc) | False -> normGo abs r under))
-          | False -> normGo abs r (x :: acc))).
+  | x :: r ->
+      if x == "." then normGo abs r acc
+      else if x == ".." then
+        (case acc of
+            Nil -> if abs then normGo abs r acc else normGo abs r (x :: acc)
+          | top :: under -> if top == ".." then normGo abs r (x :: acc) else normGo abs r under)
+      else normGo abs r (x :: acc).

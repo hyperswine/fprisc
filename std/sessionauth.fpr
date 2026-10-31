@@ -25,7 +25,7 @@ text key value = O.withDefault "" (O.andThen J.asString (J.field key value)).
 loadKeys value = case J.asList value of
     O.None -> Err "auth must contain 1..32 public keys"
   | O.Some rows -> if L.length rows < 1 or L.length rows > 32 then Err "auth must contain 1..32 public keys" else keys rows Nil.
-keys : unsafe List J.Value -> List Key -> Result (List Key) String .
+keys : (rows : List J.Value | measure rows) -> List Key -> Result (List Key) String .
 keys rows acc = case rows of Nil -> Ok (L.reverse acc) | value :: rest ->
   name = text "name" value;
   public = text "public_key" value;
@@ -60,10 +60,10 @@ valid at token origin state = if strlen token < 32 or strlen token > 128 then Fa
 logout token state = digest = D.sha256 token; {state | sessions = L.filter (fn s -> s.digest != digest) state.sessions}.
 budget u = case Socket.forMs 2000 of Ok b -> b | Err _ -> error "auth: invalid budget".
 random u = case C.random (budget Unit) 1 32 of Ok bytes -> Ok (E.hex bytes) | Err _ -> Err "auth mechanism unavailable".
-verifyKeys : unsafe List Key -> String -> String -> Bool .
-verifyKeys keys message signature = case keys of Nil -> False | key :: rest ->
+verifyKeys : (ks : List Key | measure ks) -> String -> String -> Bool .
+verifyKeys ks message signature = case ks of Nil -> False | key :: rest ->
   case C.verify (budget Unit) 1 key.public message signature of Ok True -> True | Ok False -> verifyKeys rest message signature | Err _ -> False.
-dispatch limits keys command state = case command of
+dispatch limits ks command state = case command of
     Challenge origin address -> (case random Unit of Err _ -> (Refused, state) | Ok id ->
       case random Unit of Err _ -> (Refused, state) | Ok binding -> challenge limits (now Unit) origin address id binding state)
   | Verify origin id binding signature ->
@@ -72,19 +72,19 @@ dispatch limits keys command state = case command of
       (case message of O.None -> (Refused, consumed) | O.Some text ->
         decoded = if strlen signature != 88 then Err "invalid signature" else E.fromBase64 signature;
         (case decoded of Err _ -> (Refused, consumed) | Ok bytes ->
-          if strlen bytes != 64 or E.base64 bytes != signature or not (verifyKeys keys text bytes) then (Refused, consumed) else
+          if strlen bytes != 64 or E.base64 bytes != signature or not (verifyKeys ks text bytes) then (Refused, consumed) else
           case random Unit of Err _ -> (Refused, consumed) | Ok token -> issue limits (now Unit) origin token consumed))
   | Valid token origin -> (Authorized (valid (now Unit) token origin state), state)
   | Logout token -> (Authorized True, logout token state)
   | Inspect -> (Counts (L.length state.pending) (L.length state.sessions) (L.length state.attempts), state).
-step limits keys me state =
+step limits ks me state =
   message = receive me;
   (from, id, borrowed) = message;
   command = keep borrowed;
   _ = drop message;
-  (reply, next) = dispatch limits keys command (prune (now Unit) state);
+  (reply, next) = dispatch limits ks command (prune (now Unit) state);
   _ = A.reply (from, id) reply;
   (True, next).
-start limits keys = A.spawnWith (A.Static 64) (fn me -> _ = Sys.loop initial (step limits keys me); Unit).
+start limits ks = A.spawnWith (A.Static 64) (fn me -> _ = Sys.loop initial (step limits ks me); Unit).
 call service command = A.callWithin 2500 (myself 0) service command.
 authorized service token origin = case call service (Valid token origin) of Ok (Authorized yes) -> yes | _ -> False.

@@ -15,21 +15,21 @@
 
 # the builtin bounded recursion scheme: iteration count = hi - lo + 1;
 # --stdcheck uses the once-proven Fold bound rather than re-analyzing.
-foldRange : unsafe Int -> Int -> (Int -> p36 -> p36) -> p36 -> p36 .
-foldRange lo hi f acc = case lo > hi of
-  True -> acc
-  | False -> foldRange (lo + 1) hi f (f lo acc).
+foldRange : (lo : Int) -> (hi : Int | measure (hi - lo)) -> (Int -> p36 -> p36) -> p36 -> p36 .
+foldRange lo hi f acc | lo > hi = acc.
+foldRange lo hi f acc = foldRange (lo + 1) hi f (f lo acc).
 
-clampInt : Int -> Int -> Int -> Int.
-clampInt lo hi x = case x < lo of
-  True -> lo
-  | False -> case x > hi of True -> hi | False -> x.
+clampInt : Int -> Int -> Int -> Int
+  | work clampInt <= 6 | alloc clampInt <= 0 .
+clampInt lo hi x | x < lo = lo.
+clampInt lo hi x | x > hi = hi.
+clampInt lo hi x = x.
 
 # bounded retry: run step up to n times, stop at first success.
 # step : Int -> IoV-ish tagged result via caller convention (0 = retry).
 # The WCET equation is n * (w(step) + c) — the uncertainty term is the
 # caller's step, the bound is std's.
-retryN : unsafe Int -> (Int -> Int) -> Int .
+retryN : Int -> (Int -> Int) -> Int .
 retryN n step = foldRange 1 n (fn i acc -> case acc of
   0 -> step i
   | _ -> acc) 0.

@@ -1,10 +1,12 @@
 # MQTT 3.1.1 packets in FP-RISC: anonymous or username/password CONNECT,
 # QoS 0/1, subscriptions, acknowledgements, ping and disconnect. QoS 2/wills
 # remain refused. Authentication bytes must travel over a verified transport.
+
 B = use "binary".
 L = use "list".
 S = use "string".
 O = use "option".
+
 Credentials = Type (UserName String | UserPassword String String).
 Packet = Type (Connect String Bool Int | ConnectAuth String Bool Int Credentials | ConnAck Bool Int |
   Publish String String Int Int Bool Bool | PubAck Int |
@@ -12,7 +14,9 @@ Packet = Type (Connect String Bool Int | ConnectAuth String Bool Int Credentials
   Unsubscribe Int (List String) | UnsubAck Int | PingReq | PingResp | Disconnect).
 Decoder = Type (Decoder Int Int String).
 Length = Type (Incomplete | Sized Int Int).
+
 identifier n = n > 0 and n <= 65535.
+
 # Strict UTF-8, no NUL, surrogate or Unicode noncharacter scalars. BOM remains
 # part of the string. This also rejects overlong encodings and bad continuations.
 utf8 text = utfGo text 0.

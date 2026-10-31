@@ -11,14 +11,12 @@ Target = Type (Attribute String | Id String).
 # A hook is ONE value: the page's view places it (`B.mark tax "{m.tax}"`) and
 # the script selects by it (`B.Each tax [...]`), so the name is written once.
 mark : Target -> String -> G.Attr .
-mark target value = case target of
-    Attribute name -> G.Att name value
-  | Id name -> G.Att "id" name.
+mark (Attribute name) value = G.Att name value.
+mark (Id name) value = G.Att "id" value.
 # the attribute a target names, for an effect that reads it (ReadAttribute)
 attributeOf : Target -> String .
-attributeOf target = case target of
-    Attribute name -> name
-  | Id name -> "id".
+attributeOf (Attribute name) = name.
+attributeOf (Id _) = "id".
 Effect = Type (SetNumber String C.IntExpr | SetText String C.TextExpr |
   ReadAttribute String String | ReadLocal String C.TextExpr |
   ReadTextAttribute String String | Each Target (List Effect) |
@@ -52,12 +50,15 @@ queue body = doMethod (n "_writes") "push" [JS.Function Nil body].
 writeAll u = doMethod (n "_writes") "forEach" [JS.Function ["write"] [JS.Do (call "write" Nil)]].
 errorEvent = doMethod (n "document") "dispatchEvent" [JS.New (n "CustomEvent") [t "fpr:client-error", JS.Object [("detail", JS.Object [("message", call "String" [f (n "error") "message"])])]]].
 # Copies isolate computed state; DOM writes commit after all calculations pass.
-invokeAst persistent effects = JS.Function ["_event", "_scope"]
+invokeWrap : Bool -> List JS.Statement -> JS.Expr .
+invokeWrap persistent stmts = JS.Function ["_event", "_scope"]
   (L.append [JS.Const "_n" (JS.Binary JS.Or (n "_scope") (n "document")),
     JS.Const "_copies" (if persistent then method (n "_state") "map" [JS.Function ["s"] [JS.Return (method (n "Object") "assign" [empty Unit, n "s"])]] else JS.Array [empty Unit, empty Unit, empty Unit, empty Unit]),
     JS.Const "_ns" (JS.Index (n "_copies") (num 0)), JS.Const "_ss" (JS.Index (n "_copies") (num 1)),
     JS.Const "_ls" (JS.Index (n "_copies") (num 2)), JS.Const "_ts" (JS.Index (n "_copies") (num 3)), JS.Const "_writes" (JS.Array Nil)]
-    (L.append (accessorNodes Unit) [JS.Try (L.append (emitNodes effects) (L.append (if persistent then [assign (n "_state") (n "_copies")] else Nil) [writeAll Unit])) "error" [errorEvent] Nil])).
+    (L.append (accessorNodes Unit) [JS.Try (L.append stmts (L.append (if persistent then [assign (n "_state") (n "_copies")] else Nil) [writeAll Unit])) "error" [errorEvent] Nil])).
+invokeAst : Bool -> List Effect -> JS.Expr .
+invokeAst persistent effects = invokeWrap persistent (emitNodes effects).
 invoke effects = JS.expr (invokeAst True effects).
 accessor name table label = JS.Define name ["k"]
   [JS.If (neg (method (n "Object") "hasOwn" [n table, n "k"])) [JS.Throw (call "Error" [JS.Binary JS.Add (t "BrowserCalc: missing {label} ") (n "k")])] Nil,
@@ -94,6 +95,7 @@ subscriptionNodes handler = [JS.Scope (case handler of
 subscription handler = JS.program (subscriptionNodes handler).
 suspendedNodes handler = case handler of OnSuspend effects -> [JS.Do (JS.Call (invokeAst True effects) [JS.Null])] | _ -> Nil.
 suspended handler = JS.program (suspendedNodes handler).
+validInterval : Int -> Bool .
 validInterval ms = ms >= 1 and (ms / 1000000000 < 2 or (ms / 1000000000 == 2 and ms % 1000000000 <= 147483647)).
 runtime u = JS.program (runtimeNodes u).
 runtimeNodes u =
@@ -104,14 +106,17 @@ runtimeNodes u =
    JS.Define "_parse" ["s", "local"] [JS.If (JS.Binary JS.Or (JS.Binary JS.NotEqual (JS.Unary JS.TypeOf (n "s")) (t "string")) (JS.Binary JS.Or (neg (method (JS.Pattern "^-?[0-9]+$" "") "test" [n "s"])) (JS.Binary JS.NotEqual (method (n "s") "trim" Nil) (n "s")))) [JS.If (n "local") [JS.Return (JS.BigInteger 0)] Nil, JS.Throw (call "Error" [t "BrowserCalc: expected decimal attribute"])] Nil, JS.Return (call "_int" [call "BigInt" [n "s"]])]].
 outOfBounds u = JS.Binary JS.Or (JS.Binary JS.Less (n "i") (JS.BigInteger 0)) (JS.Binary JS.GreaterEqual (n "i") (call "BigInt" [f (n "xs") "length"])).
 selector target = JS.expr (selectorAst target).
-selectorAst target = case target of Attribute name -> JS.Binary JS.Add (JS.Binary JS.Add (t "[") (method (n "CSS") "escape" [t name])) (t "]") | Id name -> JS.Binary JS.Add (t "#") (method (n "CSS") "escape" [t name]).
+selectorAst (Attribute name) = JS.Binary JS.Add (JS.Binary JS.Add (t "[") (method (n "CSS") "escape" [t name])) (t "]").
+selectorAst (Id name) = JS.Binary JS.Add (t "#") (method (n "CSS") "escape" [t name]).
 emit effects = JS.program (emitNodes effects).
-emitNodes : unsafe List Effect -> List JS.Statement .
-emitNodes effects = L.map (fn effect -> JS.Scope (effectNodes effect)) effects.
+emitNodes : (effects : List Effect | measure effects) -> List JS.Statement .
+emitNodes effects = case effects of
+    Nil -> Nil
+  | effect :: rest -> JS.Scope (effectNodes effect) :: emitNodes rest.
 statement effect = JS.program [JS.Scope (effectNodes effect)].
 selected target body = method (n "_n") "querySelectorAll" [selectorAst target] |> (fn nodes -> JS.Do (method nodes "forEach" [JS.Function ["node"] body])).
 set table key value = assign (JS.Index (n table) (t key)) value.
-effectNodes : unsafe Effect -> List JS.Statement .
+effectNodes : (effect : Effect | measure effect) -> List JS.Statement .
 effectNodes effect = case effect of
     SetNumber key value -> [set "_ns" key (C.astInt value)]
   | SetText key value -> [set "_ss" key (C.astText value)]
@@ -134,16 +139,19 @@ effectNodes effect = case effect of
   | PreventDefault -> [queue [doMethod (n "_event") "preventDefault" Nil]]
   | Ancestor target body -> [JS.Const "parent" (JS.Choose (JS.Binary JS.InstanceOf (n "_n") (n "Element")) (method (n "_n") "closest" [selectorAst target]) JS.Null), JS.If (n "parent") [JS.Do (JS.Call (JS.Function ["_n"] (emitNodes body)) [n "parent"])] Nil]
   | After ms body -> if ms != 0 and not (validInterval ms) then error "BrowserCalc.After: delay 0..2147483647 ms" else
-      [JS.Const "scope" (n "_n"), JS.Const "event" (n "_event"), queue [JS.Do (call "_later" [JS.Function Nil [JS.Do (JS.Call (invokeAst True body) [n "event", n "scope"])], num ms])]]
+      [JS.Const "scope" (n "_n"), JS.Const "event" (n "_event"), queue [JS.Do (call "_later" [JS.Function Nil [JS.Do (JS.Call (invokeWrap True (emitNodes body)) [n "event", n "scope"])], num ms])]]
   | AtDocument body -> [JS.Do (JS.Call (JS.Function ["_n"] (emitNodes body)) [n "document"])]
   | ScrollBottom target -> [selected target [queue [JS.If (f (method (n "node") "getClientRects" Nil) "length") [assign (f (n "node") "scrollTop") (f (n "node") "scrollHeight")] Nil]]]
   | ScrollStart target behavior -> [selected target [queue [JS.If (f (method (n "node") "getClientRects" Nil) "length") [doMethod (n "node") "scrollIntoView" [JS.Object [("block", t "start"), ("behavior", t (scrollBehavior behavior))]]] Nil]]].
 inputEvent u = doMethod (n "node") "dispatchEvent" [JS.New (n "Event") [t "input", JS.Object [("bubbles", JS.Boolean True)]]].
 scrollBehavior : ScrollBehavior -> String .
-scrollBehavior behavior = case behavior of Instant -> "instant" | Smooth -> "smooth".
-ownsTimeouts : unsafe List Effect -> Bool .
-ownsTimeouts effects = L.any ownsTimeout effects.
-ownsTimeout : unsafe Effect -> Bool .
+scrollBehavior Instant = "instant".
+scrollBehavior Smooth = "smooth".
+ownsTimeouts : (effects : List Effect | measure effects) -> Bool .
+ownsTimeouts effects = case effects of
+    Nil -> False
+  | effect :: rest -> ownsTimeout effect or ownsTimeouts rest.
+ownsTimeout : (effect : Effect | measure effect) -> Bool .
 ownsTimeout effect = case effect of
     After _ _ -> True | ClearValueLater -> True
   | Each _ body -> ownsTimeouts body | When _ body -> ownsTimeouts body

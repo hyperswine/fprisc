@@ -23,21 +23,24 @@ Statement = Type (Const String Expr | Let String Expr | Assign Expr Expr
   | Try (List Statement) String (List Statement) (List Statement)
   | AsyncDefine String (List String) (List Statement) | Strict | Scope (List Statement)).
 identifier text = if validName text then text else error "JavaScript: invalid identifier".
-validName text = strlen text > 0 and initial (charAt text 0) and nameTail text 1 and
+validName text = strlen text > 0 and initial (charAt text 0) and nameTail text 1 (strlen text) and
   not (L.member text ["break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof", "let", "new", "null", "return", "super", "switch", "this", "throw", "true", "try", "typeof", "var", "void", "while", "with", "yield", "await", "implements", "interface", "package", "private", "protected", "public", "static"]).
 initial c = (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95 or c == 36.
-nameTail : unsafe String -> Int -> Bool .
-nameTail text i = if i >= strlen text then True else
+nameTail : String -> (i : Int | measure (n - i)) -> (n : Int) -> Bool .
+nameTail text i n | i >= n = True.
+nameTail text i n =
   c = charAt text i;
-  (initial c or (c >= 48 and c <= 57)) and nameTail text (i + 1).
+  (initial c or (c >= 48 and c <= 57)) and nameTail text (i + 1) n.
 quote text = J.quote text |> S.replace "<" "\\u003c" |> S.replace ">" "\\u003e" |> S.replace "&" "\\u0026"
   |> S.replace (chr 226 + chr 128 + chr 168) "\\u2028" |> S.replace (chr 226 + chr 128 + chr 169) "\\u2029".
-flagChars : unsafe String -> Int -> List String .
-flagChars text i = if i >= strlen text then Nil else chr (charAt text i) :: flagChars text (i + 1).
+flagChars : String -> (i : Int | measure (n - i)) -> (n : Int) -> List String .
+flagChars text i n | i >= n = Nil.
+flagChars text i n = chr (charAt text i) :: flagChars text (i + 1) n.
 operator op = case op of Equal -> "===" | NotEqual -> "!==" | And -> "&&" | Or -> "||" | Add -> "+" | Less -> "<" | Greater -> ">"
   | LessEqual -> "<=" | GreaterEqual -> ">=" | Multiply -> "*" | Divide -> "/" | Subtract -> "-" | Modulo -> "%"
   | In -> " in " | InstanceOf -> " instanceof " | Nullish -> "??".
-expr : unsafe Expr -> String .
+assignable e = case e of Name _ -> True | Field _ _ -> True | Index _ _ -> True | _ -> False.
+expr : (e : Expr | measure e) -> String .
 expr e = case e of
     Name name -> identifier name
   | Text value -> quote value
@@ -45,15 +48,15 @@ expr e = case e of
   | BigInteger value -> "({value}n)"
   | OptionalField target name -> "({expr target})?.[{quote name}]"
   | Real value -> (case J.parse value of Ok (J.Real _) -> value | Ok (J.Integer _) -> value | _ -> error "JavaScript: invalid number literal")
-  | Pattern value flags -> if L.all (fn c -> S.contains c "dgimsuvy") (flagChars flags 0) then "new RegExp({quote value},{quote flags})" else error "JavaScript: invalid pattern flags"
+  | Pattern value flags -> if L.all (fn c -> S.contains c "dgimsuvy") (flagChars flags 0 (strlen flags)) then "new RegExp({quote value},{quote flags})" else error "JavaScript: invalid pattern flags"
   | Boolean value -> if value then "true" else "false"
   | Null -> "null"
-  | Array values -> "[{strJoin "," (L.map expr values)}]"
-  | Object fields -> "(\{{strJoin "," (L.map (fn pair -> case pair of (key, value) -> "[{quote key}]:{expr value}") fields)}})"
+  | Array values -> "[{strJoin "," (exprList values)}]"
+  | Object fields -> "(\{{strJoin "," (fieldList fields)}})"
   | Field target name -> "({expr target})[{quote name}]"
   | Index target index -> "({expr target})[{expr index}]"
-  | Call target args -> "({expr target})({strJoin "," (L.map expr args)})"
-  | New target args -> "new ({expr target})({strJoin "," (L.map expr args)})"
+  | Call target args -> "({expr target})({strJoin "," (exprList args)})"
+  | New target args -> "new ({expr target})({strJoin "," (exprList args)})"
   | Binary op a b -> "({expr a}{operator op}{expr b})"
   | Unary Not a -> "(!{expr a})"
   | Unary TypeOf a -> "(typeof {expr a})"
@@ -62,35 +65,40 @@ expr e = case e of
   | Unary Delete a -> "(delete {expr a})"
   | Unary Void a -> "(void {expr a})"
   | Choose condition yes no -> "({expr condition}?{expr yes}:{expr no})"
-  | Function args body -> "(function({strJoin "," (L.map identifier args)})\{{program body}})"
-  | AsyncFunction args body -> "(async function({strJoin "," (L.map identifier args)})\{{program body}})"
+  | Function args body -> "(function({strJoin "," (L.map identifier args)})\{{strJoin "" (stmtList body)}})"
+  | AsyncFunction args body -> "(async function({strJoin "," (L.map identifier args)})\{{strJoin "" (stmtList body)}})"
   | Await value -> "(await {expr value})"
   | Spread value -> "...{expr value}"
-  | Sequence values -> "({strJoin "," (L.map expr values)})"
+  | Sequence values -> "({strJoin "," (exprList values)})"
   | AssignValue target value -> if assignable target then "({expr target}={expr value})" else error "JavaScript: invalid assignment target"
   | Increment target -> if assignable target then "({expr target}++)" else error "JavaScript: invalid assignment target"
   | Decrement target -> if assignable target then "({expr target}--)" else error "JavaScript: invalid assignment target".
-assignable expr = case expr of Name _ -> True | Field _ _ -> True | Index _ _ -> True | _ -> False.
-statement : unsafe Statement -> String .
+exprList : (es : List Expr | measure es) -> List String .
+exprList es = case es of Nil -> Nil | x :: r -> expr x :: exprList r.
+fieldList : (fs : List (String, Expr) | measure fs) -> List String .
+fieldList fs = case fs of Nil -> Nil | (key, value) :: r -> "[{quote key}]:{expr value}" :: fieldList r.
+statement : (stmt : Statement | measure stmt) -> String .
 statement stmt = case stmt of
     Const name value -> "const {identifier name}={expr value};\n"
   | Var name value -> "var {identifier name}={expr value};\n"
   | Let name value -> "let {identifier name}={expr value};\n"
   | Assign target value -> if assignable target then "{expr target}={expr value};\n" else error "JavaScript: invalid assignment target"
   | Do value -> "{expr value};\n"
-  | If condition yes no -> "if({expr condition})\{{program yes}}else\{{program no}}\n"
+  | If condition yes no -> "if({expr condition})\{{strJoin "" (stmtList yes)}}else\{{strJoin "" (stmtList no)}}\n"
   | Return value -> "return {expr value};\n"
-  | ForOf name values body -> "for(const {identifier name} of {expr values})\{{program body}}\n"
-  | Define name args body -> "function {identifier name}({strJoin "," (L.map identifier args)})\{{program body}}\n"
-  | AsyncDefine name args body -> "async function {identifier name}({strJoin "," (L.map identifier args)})\{{program body}}\n"
-  | While condition body -> "while({expr condition})\{{program body}}\n"
-  | For initial condition update body -> "\{{program initial}for(;{expr condition};{expr update})\{{program body}}}\n"
-  | ForIn name target body -> "for(var {identifier name} in {expr target})\{{program body}}\n"
+  | ForOf name values body -> "for(const {identifier name} of {expr values})\{{strJoin "" (stmtList body)}}\n"
+  | Define name args body -> "function {identifier name}({strJoin "," (L.map identifier args)})\{{strJoin "" (stmtList body)}}\n"
+  | AsyncDefine name args body -> "async function {identifier name}({strJoin "," (L.map identifier args)})\{{strJoin "" (stmtList body)}}\n"
+  | While condition body -> "while({expr condition})\{{strJoin "" (stmtList body)}}\n"
+  | For initial condition update body -> "\{{strJoin "" (stmtList initial)}for(;{expr condition};{expr update})\{{strJoin "" (stmtList body)}}}\n"
+  | ForIn name target body -> "for(var {identifier name} in {expr target})\{{strJoin "" (stmtList body)}}\n"
   | Throw value -> "throw {expr value};\n"
   | Continue -> "continue;\n"
   | ReturnVoid -> "return;\n"
-  | Try body name handler cleanup -> "try\{{program body}}catch({identifier name})\{{program handler}}finally\{{program cleanup}}\n"
+  | Try body name handler cleanup -> "try\{{strJoin "" (stmtList body)}}catch({identifier name})\{{strJoin "" (stmtList handler)}}finally\{{strJoin "" (stmtList cleanup)}}\n"
   | Strict -> "\"use strict\";\n"
-  | Scope body -> "\{{program body}}\n".
-program : unsafe List Statement -> String .
-program statements = strJoin "" (L.map statement statements).
+  | Scope body -> "\{{strJoin "" (stmtList body)}}\n".
+stmtList : (stmts : List Statement | measure stmts) -> List String .
+stmtList stmts = case stmts of Nil -> Nil | s :: r -> statement s :: stmtList r.
+program : List Statement -> String .
+program statements = strJoin "" (stmtList statements).

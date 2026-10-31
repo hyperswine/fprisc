@@ -23,32 +23,32 @@ fromList cmp xs = insertAll xs (empty cmp).
 
 insertAll : List a -> Set a -> Set a .
 insertAll xs s = insertAllGo xs s.
-insertAllGo : unsafe List a -> Set a -> Set a .
+insertAllGo : (xs : List a | measure xs) -> Set a -> Set a .
 insertAllGo xs s = case xs of Nil -> s | x :: r -> insertAllGo r (insert x s).
 
 insert : a -> Set a -> Set a .
-insert x s = case s of Set m -> Set (M.insert x Unit m).
+insert x (Set m) = Set (M.insert x Unit m).
 
 remove : a -> Set a -> Set a .
-remove x s = case s of Set m -> Set (M.remove x m).
+remove x (Set m) = Set (M.remove x m).
 
 member : a -> Set a -> Bool .
-member x s = case s of Set m -> M.member x m.
+member x (Set m) = M.member x m.
 
 size : Set a -> Int .
-size s = case s of Set m -> M.size m.
+size (Set m) = M.size m.
 
 isEmpty : Set a -> Bool .
 isEmpty s = size s == 0.
 
 toList : Set a -> List a .
-toList s = case s of Set m -> M.keys m.
+toList (Set m) = M.keys m.
 
 union : Set a -> Set a -> Set a .
-union a b = case a of Set ma -> (case b of Set mb -> Set (M.union ma mb)).
+union (Set ma) (Set mb) = Set (M.union ma mb).
 
 intersect : Set a -> Set a -> Set a .
-intersect a b = case a of Set ma -> Set (M.filter (fn k u -> member k b) ma).
+intersect (Set ma) b = Set (M.filter (fn k u -> member k b) ma).
 
 diff : Set a -> Set a -> Set a .
-diff a b = case a of Set ma -> Set (M.filter (fn k u -> not (member k b)) ma).
+diff (Set ma) b = Set (M.filter (fn k u -> not (member k b)) ma).

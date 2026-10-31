@@ -1,0 +1,49 @@
+# std/browser.fpr -- Unified browser & client UI surface (ExtBase).
+#
+#   Browser = use "std/browser".
+#
+# Combines the client expression DSL (`ClientCalc`), DOM effect projections
+# (`BrowserCalc`), and structured browser capabilities (`Console`, `Storage`,
+# `FormFill`, `Feedback`, `Autocomplete`, `Media`, `Metrics`, `Notice`, `Money`)
+# under a single module import while preserving all standalone sub-modules.
+
+Calc = use "browsercalc".
+ClientCalc = use "clientcalc".
+Console = use "browserconsole".
+Storage = use "browserstorage".
+FormFill = use "browserformfill".
+Feedback = use "browserfeedback".
+Autocomplete = use "browserautocomplete".
+Media = use "browsermedia".
+Metrics = use "livemetrics".
+Notice = use "livenotice".
+Money = use "money".
+JS = use "javascript".
+
+# Direct re-exports of common BrowserCalc / ClientCalc entry points
+mark = Calc.mark.
+attributeOf = Calc.attributeOf.
+program = Calc.program.
+onLocals = Calc.onLocals.
+validInterval = Calc.validInterval.
+runtime = Calc.runtime.
+
+console = Console.script.
+pager = Console.pager.
+storage = Storage.script.
+formFill = FormFill.src.
+feedback = Feedback.src.
+feedbackPrototypes = Feedback.prototypes.
+feedbackTheme = Feedback.theme.
+autocomplete = Autocomplete.src.
+autocompleteScope = Autocomplete.scope.
+autocompleteFrom = Autocomplete.from.
+autocompletePrototypes = Autocomplete.prototypes.
+media = Media.program.
+mediaWithRetry = Media.programWithRetry.
+mediaWithReconnect = Media.programWithReconnect.
+metrics = Metrics.script.
+noticeInit = Notice.init.
+noticeView = Notice.view.
+formatCents = Money.format.
+taxCents = Money.tax.

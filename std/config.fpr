@@ -22,7 +22,7 @@ S = use "string".
 D = use "decode".
 F = use "file".
 
-rev : unsafe List a -> List a -> List a .
+rev : (xs : List a | measure xs) -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
 load : { defaults : J.Value, file : O.Option String, envPrefix : String, args : List String } -> Result J.Value String .
@@ -30,52 +30,51 @@ load c = case fileLayer c.file of
     Err why -> Err why
   | Ok fromFile ->
       base = (case c.defaults of J.Object m -> m | _ -> M.empty S.compare);
-      keys = M.keys (M.union fromFile base);
-      Ok (J.Object (argLayer c.args (envLayer c.envPrefix keys (M.union fromFile base)))).
+      merged = M.union fromFile base;
+      keys = M.keys merged;
+      Ok (J.Object (argLayer c.args (envLayer c.envPrefix keys merged))).
 
 fileLayer : O.Option String -> Result (M.Map String J.Value) String .
-fileLayer file = case file of
-    O.None -> Ok (M.empty S.compare)
-  | O.Some path -> (case F.exists path of
-        False -> Ok (M.empty S.compare)
-      | True -> (case F.readText path of
-            Err why -> Err "{path}: {why}"
-          | Ok text -> (case J.parse text of
-                Err why -> Err "{path}: {why}"
-              | Ok v -> (case v of J.Object m -> Ok m | _ -> Err "{path}: expected a JSON object")))).
+fileLayer O.None = Ok (M.empty S.compare).
+fileLayer (O.Some path) | not (F.exists path) = Ok (M.empty S.compare).
+fileLayer (O.Some path) = case F.readText path of
+    Err why -> Err "{path}: {why}"
+  | Ok text -> (case J.parse text of
+        Err why -> Err "{path}: {why}"
+      | Ok (J.Object m) -> Ok m
+      | Ok _ -> Err "{path}: expected a JSON object").
 
 # only KNOWN keys are looked up in the environment (PREFIX + the key in capitals,
 # "-" and "." as "_"): there is no portable way to list it, and no surprise
 # settings can arrive by it
 envLayer : String -> List String -> M.Map String J.Value -> M.Map String J.Value .
 envLayer prefix keys m = envGo prefix keys m.
-envGo : unsafe String -> List String -> M.Map String J.Value -> M.Map String J.Value .
+envGo : String -> (keys : List String | measure keys) -> M.Map String J.Value -> M.Map String J.Value .
 envGo prefix keys m = case keys of
     Nil -> m
   | k :: r -> (case Sys.env (strcat prefix (envName k)) of
         Ok v -> envGo prefix r (M.insert k (D.infer v) m)
       | Err _ -> envGo prefix r m).
 envName : String -> String .
-envName k = S.toUpper (S.replace "." "_" (S.replace "-" "_" k)).
+envName k = k |> S.replace "-" "_" |> S.replace "." "_" |> S.toUpper.
 
 argLayer : List String -> M.Map String J.Value -> M.Map String J.Value .
 argLayer args m = argGo args m.
-argGo : unsafe List String -> M.Map String J.Value -> M.Map String J.Value .
+argGo : (args : List String | measure args) -> M.Map String J.Value -> M.Map String J.Value .
 argGo args m = case args of
     Nil -> m
-  | a :: r -> (case S.startsWith "--" a and strlen a > 2 of
-        False -> argGo r m
-      | True ->
-          body = S.dropLeft 2 a;
-          at = strIndexOf "=" body;
-          (case at < 0 of
-              True -> argGo r (M.insert body (J.Boolean True) m)
-            | False -> argGo r (M.insert (S.left at body) (D.infer (S.dropLeft (at + 1) body)) m))).
+  | a :: r ->
+      if not (S.startsWith "--" a and strlen a > 2) then argGo r m
+      else
+        body = S.dropLeft 2 a;
+        at = strIndexOf "=" body;
+        if at < 0 then argGo r (M.insert body (J.Boolean True) m)
+        else argGo r (M.insert (S.left at body) (D.infer (S.dropLeft (at + 1) body)) m).
 
 # the arguments that are not "--" settings, in order
 positional : List String -> List String .
 positional args = posGo args Nil.
-posGo : unsafe List String -> List String -> List String .
+posGo : (args : List String | measure args) -> List String -> List String .
 posGo args acc = case args of
     Nil -> rev acc Nil
-  | a :: r -> (case S.startsWith "--" a of True -> posGo r acc | False -> posGo r (a :: acc)).
+  | a :: r -> if S.startsWith "--" a then posGo r acc else posGo r (a :: acc).

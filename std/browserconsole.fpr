@@ -9,7 +9,7 @@ cursor = C.Number "cursor".
 command = C.StringVar "command".
 # Blank commands do not change history or its cursor. Consecutive duplicates
 # do reset the cursor to the newest entry, without taking another slot.
-remembered : Int -> C.TextListExpr .
+remembered : (limit : Int | limit >= 1) -> C.TextListExpr .
 remembered limit =
   normalized = C.Trim command;
   C.IfTexts (C.TextEqual normalized (C.Text "")) history
@@ -21,6 +21,7 @@ recallIndex delta =
   moved = C.Add cursor (C.Literal delta);
   C.IfInt (C.Less moved (C.Literal 0)) (C.Literal 0)
     (C.IfInt (C.Less size moved) size moved).
+remember : (limit : Int | limit >= 1) -> String -> List B.Effect .
 remember limit key =
   [B.ReadValue "command", B.SetText "command" (C.Trim command),
    B.When (C.Not (C.TextEqual command (C.Text "")))
@@ -32,16 +33,18 @@ recall delta =
     [B.SetNumber "cursor" (recallIndex delta), B.SetValue (C.TextAt history cursor), B.PreventDefault]].
 script : {scope : B.Target, input : B.Target, run : B.Target, output : B.Target,
   storageKey : String, limit : Int} -> String .
-script cfg = if cfg.limit < 1 then error "BrowserConsole: history limit must be positive" else
-  run = [B.Ancestor cfg.scope [B.Each cfg.input (remember cfg.limit cfg.storageKey)]];
-  bottom = [B.Each cfg.scope [B.ScrollBottom cfg.output]];
-  B.program (L.append
-    [B.LoadStoredTexts "history" cfg.storageKey,
-     B.SetTexts "history" (C.TextTakeLast cfg.limit history), B.SetNumber "cursor" size] bottom)
-    [B.Key cfg.input "Enter" run, B.Click cfg.run run,
-     B.Key cfg.input "ArrowUp" [B.Ancestor cfg.scope [B.Each cfg.input (recall (0 - 1))]],
-     B.Key cfg.input "ArrowDown" [B.Ancestor cfg.scope [B.Each cfg.input (recall 1)]],
-     B.On "live:frame" bottom, B.On "live:locals" bottom].
+script cfg =
+  limit = cfg.limit;
+  if limit < 1 then error "BrowserConsole: history limit must be positive" else
+    run = [B.Ancestor cfg.scope [B.Each cfg.input (remember limit cfg.storageKey)]];
+    bottom = [B.Each cfg.scope [B.ScrollBottom cfg.output]];
+    B.program (L.append
+      [B.LoadStoredTexts "history" cfg.storageKey,
+       B.SetTexts "history" (C.TextTakeLast limit history), B.SetNumber "cursor" size] bottom)
+      [B.Key cfg.input "Enter" run, B.Click cfg.run run,
+       B.Key cfg.input "ArrowUp" [B.Ancestor cfg.scope [B.Each cfg.input (recall (0 - 1))]],
+       B.Key cfg.input "ArrowDown" [B.Ancestor cfg.scope [B.Each cfg.input (recall 1)]],
+       B.On "live:frame" bottom, B.On "live:locals" bottom].
 pager : B.Target -> B.Target -> B.Target -> String .
 pager scope button list = B.program Nil
   [B.Click button [B.Ancestor scope

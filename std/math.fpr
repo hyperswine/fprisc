@@ -9,47 +9,63 @@
 # of zero answer what IEEE 754 says (NaN, -inf), and `isFinite` asks.
 
 # ---- Int ---------------------------------------------------------------------------
-abs : Int -> Int .
-abs n = case n < 0 of True -> 0 - n | False -> n.
+abs : Int -> Int
+  | work abs <= 4 | alloc abs <= 0 .
+abs n | n < 0 = 0 - n.
+abs n = n.
 
-min : Int -> Int -> Int .
-min a b = case a < b of True -> a | False -> b.
+min : Int -> Int -> Int
+  | work min <= 4 | alloc min <= 0 .
+min a b | a < b = a.
+min _ b = b.
 
-max : Int -> Int -> Int .
-max a b = case a > b of True -> a | False -> b.
+max : Int -> Int -> Int
+  | work max <= 4 | alloc max <= 0 .
+max a b | a > b = a.
+max _ b = b.
 
 # Math.clamp lo hi x
-clamp : Int -> Int -> Int -> Int .
-clamp lo hi x = case x < lo of True -> lo | False -> (case x > hi of True -> hi | False -> x).
+clamp : Int -> Int -> Int -> Int
+  | work clamp <= 6 | alloc clamp <= 0 .
+clamp lo hi x | x < lo = lo.
+clamp lo hi x | x > hi = hi.
+clamp _ _ x = x.
 
-sign : Int -> Int .
-sign n = case n < 0 of True -> 0 - 1 | False -> (case n == 0 of True -> 0 | False -> 1).
+sign : Int -> Int
+  | work sign <= 6 | alloc sign <= 0 .
+sign n | n < 0 = 0 - 1.
+sign n | n == 0 = 0.
+sign _ = 1.
 
 # the remainder with the sign of the DIVISOR (so `mod (0 - 1) 12` is 11)
-mod : Int -> Int -> Int .
+mod : Int -> (b : Int | b != 0) -> Int
+  | work mod <= 20 | alloc mod <= 32 .
 mod a b =
   r = a - (a / b) * b;
-  case r != 0 and ((r < 0) != (b < 0)) of True -> r + b | False -> r.
+  if r != 0 and ((r < 0) != (b < 0)) then r + b else r.
 
 # the remainder with the sign of the dividend, as `/` truncates
-rem : Int -> Int -> Int .
+rem : Int -> (b : Int | b != 0) -> Int
+  | work rem <= 6 | alloc rem <= 0 .
 rem a b = a - (a / b) * b.
 
-isEven : Int -> Bool .
+isEven : Int -> Bool
+  | work isEven <= 10 | alloc isEven <= 16 .
 isEven n = rem n 2 == 0.
 
 gcd : Int -> Int -> Int .
 gcd a b = gcdGo (abs a) (abs b).
 gcdGo : unsafe Int -> Int -> Int .
-gcdGo a b = case b == 0 of True -> a | False -> gcdGo b (rem a b).
+gcdGo a b | b == 0 = a.
+gcdGo a b = gcdGo b (rem a b).
 
 # exact, by squaring; a negative exponent has no exact answer and gives 0
 powInt : Int -> Int -> Int .
-powInt a n = case n < 0 of True -> 0 | False -> powGo a n 1.
+powInt a n | n < 0 = 0.
+powInt a n = powGo a n 1.
 powGo : unsafe Int -> Int -> Int -> Int .
-powGo a n acc = case n == 0 of
-    True -> acc
-  | False -> powGo (a * a) (n / 2) (case rem n 2 == 1 of True -> acc * a | False -> acc).
+powGo a n acc | n == 0 = acc.
+powGo a n acc = powGo (a * a) (n / 2) (if rem n 2 == 1 then acc * a else acc).
 
 # ---- F64 ---------------------------------------------------------------------------
 pi = 3.141592653589793.
@@ -65,16 +81,17 @@ truncate x = F64.toInt x.
 floor : F64 -> Int .
 floor x =
   t = F64.toInt x;
-  case F64.ofInt t > x of True -> t - 1 | False -> t.
+  if F64.ofInt t > x then t - 1 else t.
 
 ceiling : F64 -> Int .
 ceiling x =
   t = F64.toInt x;
-  case F64.ofInt t < x of True -> t + 1 | False -> t.
+  if F64.ofInt t < x then t + 1 else t.
 
 # halves away from zero
 round : F64 -> Int .
-round x = case x < 0.0 of True -> 0 - floor (0.5 - x) | False -> floor (x + 0.5).
+round x | x < 0.0 = 0 - floor (0.5 - x).
+round x = floor (x + 0.5).
 
 sqrt : F64 -> F64 .
 sqrt x = F64.sqrt x.
@@ -102,16 +119,21 @@ tan : F64 -> F64 .
 tan x = F64.sin x / F64.cos x.
 
 absF : F64 -> F64 .
-absF x = case x < 0.0 of True -> 0.0 - x | False -> x.
+absF x | x < 0.0 = 0.0 - x.
+absF x = x.
 
 minF : F64 -> F64 -> F64 .
-minF a b = case a < b of True -> a | False -> b.
+minF a b | a < b = a.
+minF _ b = b.
 
 maxF : F64 -> F64 -> F64 .
-maxF a b = case a > b of True -> a | False -> b.
+maxF a b | a > b = a.
+maxF _ b = b.
 
 clampF : F64 -> F64 -> F64 -> F64 .
-clampF lo hi x = case x < lo of True -> lo | False -> (case x > hi of True -> hi | False -> x).
+clampF lo hi x | x < lo = lo.
+clampF lo hi x | x > hi = hi.
+clampF _ _ x = x.
 
 # not NaN and not an infinity
 isFinite : F64 -> Bool .

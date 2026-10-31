@@ -12,40 +12,41 @@ O = use "option".
 
 # ---- reading ---------------------------------------------------------------------
 u8 : Int -> String -> O.Option Int .
-u8 at s = case at >= 0 and at < strlen s of True -> O.Some (charAt s at) | False -> O.None.
+u8 at s | at >= 0 and at < strlen s = O.Some (charAt s at).
+u8 _ _ = O.None.
 
 u16le : Int -> String -> O.Option Int .
-u16le at s = case at >= 0 and at + 1 < strlen s of
-    True -> O.Some (charAt s at + charAt s (at + 1) * 256)
-  | False -> O.None.
+u16le at s | at >= 0 and at + 1 < strlen s =
+  O.Some (charAt s at + charAt s (at + 1) * 256).
+u16le _ _ = O.None.
 
 u16be : Int -> String -> O.Option Int .
-u16be at s = case at >= 0 and at + 1 < strlen s of
-    True -> O.Some (charAt s at * 256 + charAt s (at + 1))
-  | False -> O.None.
+u16be at s | at >= 0 and at + 1 < strlen s =
+  O.Some (charAt s at * 256 + charAt s (at + 1)).
+u16be _ _ = O.None.
 
 u32le : Int -> String -> O.Option Int .
-u32le at s = case at >= 0 and at + 3 < strlen s of
-    True -> O.Some (charAt s at + charAt s (at + 1) * 256 + charAt s (at + 2) * 65536 + charAt s (at + 3) * 16777216)
-  | False -> O.None.
+u32le at s | at >= 0 and at + 3 < strlen s =
+  O.Some (charAt s at + charAt s (at + 1) * 256 + charAt s (at + 2) * 65536 + charAt s (at + 3) * 16777216).
+u32le _ _ = O.None.
 
 u32be : Int -> String -> O.Option Int .
-u32be at s = case at >= 0 and at + 3 < strlen s of
-    True -> O.Some (charAt s at * 16777216 + charAt s (at + 1) * 65536 + charAt s (at + 2) * 256 + charAt s (at + 3))
-  | False -> O.None.
+u32be at s | at >= 0 and at + 3 < strlen s =
+  O.Some (charAt s at * 16777216 + charAt s (at + 1) * 65536 + charAt s (at + 2) * 256 + charAt s (at + 3)).
+u32be _ _ = O.None.
 
 # two's complement views of what was read
 i8 : Int -> String -> O.Option Int .
-i8 at s = O.map (fn v -> case v >= 128 of True -> v - 256 | False -> v) (u8 at s).
+i8 at s = O.map (fn v -> if v >= 128 then v - 256 else v) (u8 at s).
 
 i16le : Int -> String -> O.Option Int .
-i16le at s = O.map (fn v -> case v >= 32768 of True -> v - 65536 | False -> v) (u16le at s).
+i16le at s = O.map (fn v -> if v >= 32768 then v - 65536 else v) (u16le at s).
 
 i32le : Int -> String -> O.Option Int .
-i32le at s = O.map (fn v -> case v >= 2147483648 of True -> v - 4294967296 | False -> v) (u32le at s).
+i32le at s = O.map (fn v -> if v >= 2147483648 then v - 4294967296 else v) (u32le at s).
 
 i32be : Int -> String -> O.Option Int .
-i32be at s = O.map (fn v -> case v >= 2147483648 of True -> v - 4294967296 | False -> v) (u32be at s).
+i32be at s = O.map (fn v -> if v >= 2147483648 then v - 4294967296 else v) (u32be at s).
 
 # ---- writing (the low bits of the Int; negatives wrap as two's complement) ------------
 putU8 : Int -> String .

@@ -24,11 +24,11 @@ S = use "string".
 # a failure: the path to it (innermost LAST) and what was wrong
 Decoder a = Type (Decoder (J.Value -> Result a (List String, String))).
 
-rev : unsafe List a -> List a -> List a .
+rev : (xs : List a | measure xs) -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
 apply : Decoder a -> J.Value -> Result a (List String, String) .
-apply d v = case d of Decoder f -> f v.
+apply (Decoder f) v = f v.
 
 # ---- running ---------------------------------------------------------------------
 run : Decoder a -> J.Value -> Result a String .
@@ -71,7 +71,8 @@ nullable d = Decoder (fn v -> case v of
 
 # ---- structure -------------------------------------------------------------------
 under : String -> Result a (List String, String) -> Result a (List String, String) .
-under seg r = case r of Ok x -> Ok x | Err (path, why) -> Err (seg :: path, why).
+under _ (Ok x) = Ok x.
+under seg (Err (path, why)) = Err (seg :: path, why).
 
 # a REQUIRED key of an object
 field : String -> Decoder a -> Decoder a .
@@ -92,14 +93,14 @@ optional k dflt d = Decoder (fn v -> case v of
 # a path of keys
 at : List String -> Decoder a -> Decoder a .
 at path d = atGo (rev path Nil) d.
-atGo : unsafe List String -> Decoder a -> Decoder a .
+atGo : (revPath : List String | measure revPath) -> Decoder a -> Decoder a .
 atGo revPath d = case revPath of Nil -> d | k :: r -> atGo r (field k d).
 
 list : Decoder a -> Decoder (List a) .
 list d = Decoder (fn v -> case v of
-    J.Sequence xs -> listGo d xs 0 Nil
+    J.Sequence items -> listGo d items 0 Nil
   | _ -> wrong "a list" v).
-listGo : unsafe Decoder a -> List J.Value -> Int -> List a -> Result (List a) (List String, String) .
+listGo : Decoder a -> (xs : List J.Value | measure xs) -> Int -> List a -> Result (List a) (List String, String) .
 listGo d xs i acc = case xs of
     Nil -> Ok (rev acc Nil)
   | x :: r -> (case apply d x of
@@ -111,7 +112,7 @@ dict : Decoder a -> Decoder (List (String, a)) .
 dict d = Decoder (fn v -> case v of
     J.Object m -> dictGo d (M.entries m) Nil
   | _ -> wrong "an object" v).
-dictGo : unsafe Decoder a -> List (String, J.Value) -> List (String, a) -> Result (List (String, a)) (List String, String) .
+dictGo : Decoder a -> (kvs : List (String, J.Value) | measure kvs) -> List (String, a) -> Result (List (String, a)) (List String, String) .
 dictGo d kvs acc = case kvs of
     Nil -> Ok (rev acc Nil)
   | (k, x) :: r -> (case apply d x of
@@ -135,7 +136,7 @@ check ok d = Decoder (fn v -> case apply d v of
 # the first that succeeds; all failing, the LAST one's reason
 oneOf : List (Decoder a) -> Decoder a .
 oneOf ds = Decoder (fn v -> oneOfGo ds v (Err (Nil, "no decoder given"))).
-oneOfGo : unsafe List (Decoder a) -> J.Value -> Result a (List String, String) -> Result a (List String, String) .
+oneOfGo : (ds : List (Decoder a) | measure ds) -> J.Value -> Result a (List String, String) -> Result a (List String, String) .
 oneOfGo ds v lastErr = case ds of
     Nil -> lastErr
   | d :: r -> (case apply d v of Ok x -> Ok x | Err e -> oneOfGo r v (Err e)).
@@ -168,9 +169,7 @@ andMap da df = Decoder (fn v -> case apply df v of
 infer : String -> J.Value .
 infer t = case S.toInt t of
     Ok n -> J.Integer n
-  | Err _ -> (case t == "true" of
-        True -> J.Boolean True
-      | False -> (case t == "false" of True -> J.Boolean False | False -> J.Text t)).
+  | Err _ -> if t == "true" then J.Boolean True else if t == "false" then J.Boolean False else J.Text t.
 
 # the design's Decode.fields: a string map, decoded like an object
 fields : Decoder a -> M.Map String String -> Result a String .

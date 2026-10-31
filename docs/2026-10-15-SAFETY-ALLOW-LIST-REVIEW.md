@@ -29,6 +29,7 @@ three kinds, all of which the modules already on the list contain:
 | Linear forwarding facades (2026-10-17) | ownedtransport, ownedmqtt | no new recursion or unsafe-marked helpers; consume/rebuild one owner around existing vetted transport/TLS/MQTT mechanisms; terminal close and failed creation release the native lease |
 | Pure bounded arithmetic (2026-10-17) | pagination | no recursion or unsafe helpers; positive-size/nonnegative-count contracts and checked scalar work/allocation declarations |
 | Measured test reporting (2026-10-31) | test | no unsafe helpers; `report` consumes its input list with `measure checks`; comparisons, checked counters, string interpolation and the existing `print` primitive implement the assertions and output |
+| Unified browser & client UI facade (2026-11-01) | browser | no unsafe helpers; re-exports measured `browsercalc`, `clientcalc`, `browsermedia`, `javascript`, `browserconsole`, `browserstorage`, `browserformfill`, `browserfeedback`, `browserautocomplete`, `livemetrics`, `livenotice`, and `money` |
 | Actor loops that run until stopped | readiness (`begin`, `waker`, `waking`, `loop`), watch (`watch`, a poll every 300 ms) | servers by design, as `std/poller` and `std/tcp` are |
 
 Eighteen modules have no `unsafe` function at all (appearance,

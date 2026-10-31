@@ -37,19 +37,21 @@ fromList cmp kvs = insertAll kvs (empty cmp).
 # later pairs win
 insertAll : List (k, v) -> Map k v -> Map k v .
 insertAll kvs m = insertAllGo kvs m.
-insertAllGo : unsafe List (k, v) -> Map k v -> Map k v .
+insertAllGo : (kvs : List (k, v) | measure kvs) -> Map k v -> Map k v .
 insertAllGo kvs m = case kvs of Nil -> m | (k, v) :: r -> insertAllGo r (insert k v m).
 
 # ---- reading -------------------------------------------------------------------
-size : Map k v -> Int .
-size m = case m of Map _ n _ -> n.
+size : Map k v -> Int
+  | work size <= 5 | alloc size <= 0 .
+size (Map _ n _) = n.
 
-isEmpty : Map k v -> Bool .
+isEmpty : Map k v -> Bool
+  | work isEmpty <= 8 | alloc isEmpty <= 16 .
 isEmpty m = size m == 0.
 
 get : k -> Map k v -> O.Option v .
-get k m = case m of Map cmp _ t -> getGo cmp k t.
-getGo : unsafe (k -> k -> Ord.Ordering) -> k -> Tree k v -> O.Option v .
+get k (Map cmp _ t) = getGo cmp k t.
+getGo : (k -> k -> Ord.Ordering) -> k -> (t : Tree k v | measure t) -> O.Option v .
 getGo cmp k t = case t of
     Leaf -> O.None
   | Node _ l k2 v r -> (case cmp k k2 of
@@ -64,48 +66,51 @@ member : k -> Map k v -> Bool .
 member k m = O.isSome (get k m).
 
 # ---- the tree --------------------------------------------------------------------
-height : Tree k v -> Int .
-height t = case t of Leaf -> 0 | Node h _ _ _ _ -> h.
+height : Tree k v -> Int
+  | work height <= 5 | alloc height <= 0 .
+height Leaf = 0.
+height (Node h _ _ _ _) = h.
 
 node : Tree k v -> k -> v -> Tree k v -> Tree k v .
 node l k v r =
   hl = height l;
   hr = height r;
-  Node (1 + (case hl > hr of True -> hl | False -> hr)) l k v r.
+  Node (1 + (if hl > hr then hl else hr)) l k v r.
 
 # rebuild `l k v r` when one side has become two taller than the other
 balance : Tree k v -> k -> v -> Tree k v -> Tree k v .
 balance l k v r =
   hl = height l;
   hr = height r;
-  case hl > hr + 1 of
-    True -> rotRight l k v r
-  | False -> (case hr > hl + 1 of True -> rotLeft l k v r | False -> node l k v r).
+  if hl > hr + 1 then rotRight l k v r
+  else if hr > hl + 1 then rotLeft l k v r
+  else node l k v r.
 
 rotRight : Tree k v -> k -> v -> Tree k v -> Tree k v .
 rotRight l k v r = case l of
     Leaf -> node l k v r
-  | Node _ ll lk lv lr -> (case height ll >= height lr of
-        True -> node ll lk lv (node lr k v r)
-      | False -> (case lr of
+  | Node _ ll lk lv lr -> (if height ll >= height lr then
+        node ll lk lv (node lr k v r)
+      else (case lr of
             Leaf -> node ll lk lv (node lr k v r)
           | Node _ lrl lrk lrv lrr -> node (node ll lk lv lrl) lrk lrv (node lrr k v r))).
 
 rotLeft : Tree k v -> k -> v -> Tree k v -> Tree k v .
 rotLeft l k v r = case r of
     Leaf -> node l k v r
-  | Node _ rl rk rv rr -> (case height rr >= height rl of
-        True -> node (node l k v rl) rk rv rr
-      | False -> (case rl of
+  | Node _ rl rk rv rr -> (if height rr >= height rl then
+        node (node l k v rl) rk rv rr
+      else (case rl of
             Leaf -> node (node l k v rl) rk rv rr
           | Node _ rll rlk rlv rlr -> node (node l k v rll) rlk rlv (node rlr rk rv rr))).
 
 # ---- writing ---------------------------------------------------------------------
 insert : k -> v -> Map k v -> Map k v .
-insert k v m = case m of Map cmp n t ->
-  (case insGo cmp k v t of (t2, added) -> Map cmp (n + added) t2).
-# (the new tree, 1 if the key is new else 0).  Depth is O(log n): plain recursion.
-insGo : unsafe (k -> k -> Ord.Ordering) -> k -> v -> Tree k v -> (Tree k v, Int) .
+insert k v (Map cmp n t) =
+  (t2, added) = insGo cmp k v t;
+  Map cmp (n + added) t2.
+# (the new tree, 1 if the key is new else 0).  Depth is O(log n): structural descent on `t`.
+insGo : (k -> k -> Ord.Ordering) -> k -> v -> (t : Tree k v | measure t) -> (Tree k v, Int) .
 insGo cmp k v t = case t of
     Leaf -> (Node 1 Leaf k v Leaf, 1)
   | Node h l k2 v2 r -> (case cmp k k2 of
@@ -114,9 +119,10 @@ insGo cmp k v t = case t of
       | Ord.Equal -> (Node h l k v r, 0)).
 
 remove : k -> Map k v -> Map k v .
-remove k m = case m of Map cmp n t ->
-  (case remGo cmp k t of (t2, gone) -> Map cmp (n - gone) t2).
-remGo : unsafe (k -> k -> Ord.Ordering) -> k -> Tree k v -> (Tree k v, Int) .
+remove k (Map cmp n t) =
+  (t2, gone) = remGo cmp k t;
+  Map cmp (n - gone) t2.
+remGo : (k -> k -> Ord.Ordering) -> k -> (t : Tree k v | measure t) -> (Tree k v, Int) .
 remGo cmp k t = case t of
     Leaf -> (Leaf, 0)
   | Node _ l k2 v2 r -> (case cmp k k2 of
@@ -125,11 +131,12 @@ remGo cmp k t = case t of
       | Ord.Equal -> (glue l r, 1)).
 
 # two trees, every key of `l` below every key of `r`
-glue : unsafe Tree k v -> Tree k v -> Tree k v .
-glue l r = case r of
-    Leaf -> l
-  | _ -> (case popMin r of (k, v, r2) -> balance l k v r2).
-popMin : unsafe Tree k v -> (k, v, Tree k v) .
+glue : Tree k v -> Tree k v -> Tree k v .
+glue l Leaf = l.
+glue l r =
+  (k, v, r2) = popMin r;
+  balance l k v r2.
+popMin : (t : Tree k v | measure t) -> (k, v, Tree k v) .
 popMin t = case t of
     Node _ l k v r -> (case l of
         Leaf -> (k, v, r)
@@ -145,11 +152,14 @@ update k f m = case f (get k m) of
 
 # ---- traversing (ascending by key) -----------------------------------------------
 fold : (b -> k -> v -> b) -> b -> Map k v -> b .
-fold f z m = case m of Map _ _ t -> foldGo f z t.
-foldGo : unsafe (b -> k -> v -> b) -> b -> Tree k v -> b .
+fold f z (Map _ _ t) = foldGo f z t.
+foldGo : (b -> k -> v -> b) -> b -> (t : Tree k v | measure t) -> b .
 foldGo f z t = case t of
     Leaf -> z
   | Node _ l k v r -> foldGo f (f (foldGo f z l) k v) r.
+
+rev : (xs : List a | measure xs) -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
 entries : Map k v -> List (k, v) .
 entries m = rev (fold (fn acc k v -> (k, v) :: acc) Nil m) Nil.
@@ -160,17 +170,14 @@ keys m = rev (fold (fn acc k v -> k :: acc) Nil m) Nil.
 values : Map k v -> List v .
 values m = rev (fold (fn acc k v -> v :: acc) Nil m) Nil.
 
-rev : unsafe List a -> List a -> List a .
-rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
-
 map : (v -> w) -> Map k v -> Map k w .
-map f m = case m of Map cmp n t -> Map cmp n (mapGo f t).
-mapGo : unsafe (v -> w) -> Tree k v -> Tree k w .
+map f (Map cmp n t) = Map cmp n (mapGo f t).
+mapGo : (v -> w) -> (t : Tree k v | measure t) -> Tree k w .
 mapGo f t = case t of Leaf -> Leaf | Node h l k v r -> Node h (mapGo f l) k (f v) (mapGo f r).
 
 filter : (k -> v -> Bool) -> Map k v -> Map k v .
 filter p m = case m of Map cmp _ _ ->
-  fold (fn acc k v -> case p k v of True -> insert k v acc | False -> acc) (empty cmp) m.
+  fold (fn acc k v -> if p k v then insert k v acc else acc) (empty cmp) m.
 
 # every key of either; where both have it, `a`'s value (the first argument's)
 union : Map k v -> Map k v -> Map k v .
@@ -181,17 +188,14 @@ equal : Map k v -> Map k v -> Bool .
 equal a b = entries a == entries b.
 
 equalBy : (v -> v -> Bool) -> Map k v -> Map k v -> Bool .
-equalBy veq a b = case size a == size b of
-    False -> False
-  | True -> pairsEq veq (entries a) (entries b).
-pairsEq : unsafe (v -> v -> Bool) -> List (k, v) -> List (k, v) -> Bool .
+equalBy veq a b | size a != size b = False.
+equalBy veq a b = pairsEq veq (entries a) (entries b).
+pairsEq : (v -> v -> Bool) -> (xs : List (k, v) | measure xs) -> List (k, v) -> Bool .
 pairsEq veq xs ys = case xs of
     Nil -> True
   | (k1, v1) :: xr -> (case ys of
         Nil -> False
-      | (k2, v2) :: yr -> (case k1 == k2 of
-            False -> False
-          | True -> (case veq v1 v2 of True -> pairsEq veq xr yr | False -> False))).
+      | (k2, v2) :: yr -> k1 == k2 and veq v1 v2 and pairsEq veq xr yr).
 
 # the least / greatest key
 first : Map k v -> O.Option (k, v) .

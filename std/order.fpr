@@ -9,16 +9,22 @@
 
 Ordering = Type (Less | Equal | Greater).
 
-int : Int -> Int -> Ordering .
-int a b = case a < b of True -> Less | False -> (case a == b of True -> Equal | False -> Greater).
+int : Int -> Int -> Ordering
+  | work int <= 6 | alloc int <= 16 .
+int a b | a < b = Less.
+int a b | a == b = Equal.
+int _ _ = Greater.
 
 # bytewise; a prefix sorts first
 string : String -> String -> Ordering .
 string a b = fromInt (strCmp a b).
 
 # a negative, zero or positive number, as C's comparators answer
-fromInt : Int -> Ordering .
-fromInt n = case n < 0 of True -> Less | False -> (case n == 0 of True -> Equal | False -> Greater).
+fromInt : Int -> Ordering
+  | work fromInt <= 6 | alloc fromInt <= 16 .
+fromInt n | n < 0 = Less.
+fromInt n | n == 0 = Equal.
+fromInt _ = Greater.
 
 reverse : (a -> a -> Ordering) -> a -> a -> Ordering .
 reverse cmp a b = cmp b a.
@@ -31,8 +37,10 @@ by key cmp a b = cmp (key a) (key b).
 thenBy : (a -> a -> Ordering) -> (a -> a -> Ordering) -> a -> a -> Ordering .
 thenBy second first a b = case first a b of Equal -> second a b | o -> o.
 
-isLess : Ordering -> Bool .
-isLess o = case o of Less -> True | _ -> False.
+isLess : Ordering -> Bool
+  | work isLess <= 5 | alloc isLess <= 16 .
+isLess Less = True.
+isLess _ = False.
 
 min : (a -> a -> Ordering) -> a -> a -> a .
 min cmp a b = case cmp b a of Less -> b | _ -> a.

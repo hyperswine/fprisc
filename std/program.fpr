@@ -19,11 +19,11 @@ envOr : String -> String -> String .
 envOr d name = case Sys.env name of Ok v -> v | Err _ -> d.
 
 # end now, with this status (0..255)
-exit : Int -> a .
+exit : (code : Int | code >= 0 and code <= 255) -> a .
 exit code = Sys.exit code.
 
 # say why on stderr, then end with a failing status
-fail : Int -> String -> a .
+fail : (code : Int | code >= 0 and code <= 255) -> String -> a .
 fail code why = _ = Sys.stderr (strcat why "\n"); Sys.exit code.
 
 # ---- the three streams ------------------------------------------------------
@@ -31,13 +31,14 @@ fail code why = _ = Sys.stderr (strcat why "\n"); Sys.exit code.
 readLine : Unit -> O.Option String .
 readLine u = case Sys.readLine u of Ok l -> O.Some l | Err _ -> O.None.
 
+rev : (xs : List a | measure xs) -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
 # all of stdin's remaining lines
 readLines : Unit -> List String .
 readLines u = readGo Nil.
 readGo : unsafe List String -> List String .
 readGo acc = case Sys.readLine Unit of Ok l -> readGo (l :: acc) | Err _ -> rev acc Nil.
-rev : unsafe List a -> List a -> List a .
-rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
 writeLine : String -> Unit .
 writeLine s = print s.

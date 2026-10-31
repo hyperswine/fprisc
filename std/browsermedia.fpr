@@ -12,7 +12,7 @@ Config = {hostAttribute : String, onAttribute : String, statusAttribute : String
   linkId : String, routePrefix : String, routeSuffix : String, image : G.Node, labels : Labels}.
 # The same structured rule is evaluated natively and lowered for the browser.
 active = Both (Signal Selected) (Both (Signal Visible) (Signal Live)).
-evaluate : unsafe Signals -> Rule -> Bool .
+evaluate : Signals -> (rule : Rule | measure rule) -> Bool .
 evaluate s rule = case rule of
     Signal Selected -> s.selected | Signal Visible -> s.visible | Signal Live -> s.live
   | Both a b -> evaluate s a and evaluate s b
@@ -22,7 +22,7 @@ phase signals hasSource previous = if not (evaluate signals active) then
   if signals.selected then Paused else Off
   else if hasSource then previous else Connecting.
 message labels phase = case phase of Off -> labels.off | Paused -> labels.paused | Connecting -> labels.connecting | Connected -> labels.connected | Failed -> labels.failed.
-ruleExpr : unsafe Rule -> JS.Expr .
+ruleExpr : (rule : Rule | measure rule) -> JS.Expr .
 ruleExpr rule = case rule of
     Signal Selected -> JS.Name "selected" | Signal Visible -> JS.Name "visible" | Signal Live -> JS.Name "live"
   | Both a b -> JS.Binary JS.And (ruleExpr a) (ruleExpr b)

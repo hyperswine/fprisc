@@ -30,13 +30,38 @@ noNumber k = error "ClientCalc: missing number {k}".
 noString k = error "ClientCalc: missing text {k}".
 noSequence k = error "ClientCalc: missing sequence {k}".
 
+# Browser trim whitespace, represented as UTF-8 byte strings for native
+# evaluation. Non-whitespace Unicode and internal whitespace remain intact.
+spaces = L.append [" ", "\t", "\n", "\r", chr 11, chr 12]
+  (L.map (fn escaped -> case J.parse ("\"{escaped}\"") of Ok (J.Text s) -> s | _ -> error "ClientCalc: whitespace literal")
+    ["\\u00a0", "\\u1680", "\\u2000", "\\u2001", "\\u2002", "\\u2003", "\\u2004", "\\u2005",
+     "\\u2006", "\\u2007", "\\u2008", "\\u2009", "\\u200a", "\\u2028", "\\u2029", "\\u202f", "\\u205f", "\\u3000", "\\ufeff"]).
+trim : String -> String .
+trim s = trimLeftGo (strlen s + 1) s 0 |> trimRightGo (strlen s + 1).
+spaceAt : String -> Int -> (ws : List String | measure ws) -> Int .
+spaceAt s at ws = case ws of Nil -> 0 | w :: r ->
+  if substr s at (strlen w) == w then strlen w else spaceAt s at r.
+trimLeftGo : (fuel : Int | measure fuel) -> String -> Int -> String .
+trimLeftGo fuel s at | fuel <= 0 = S.dropLeft at s.
+trimLeftGo fuel s at =
+  len = spaceAt s at spaces;
+  if len == 0 then S.dropLeft at s else trimLeftGo (fuel - 1) s (at + len).
+spaceEnd : String -> (ws : List String | measure ws) -> Int .
+spaceEnd s ws = case ws of Nil -> 0 | w :: r ->
+  if strlen s >= strlen w and S.right (strlen w) s == w then strlen w else spaceEnd s r.
+trimRightGo : (fuel : Int | measure fuel) -> String -> String .
+trimRightGo fuel s | fuel <= 0 = s.
+trimRightGo fuel s =
+  len = spaceEnd s spaces;
+  if len == 0 then s else trimRightGo (fuel - 1) (S.dropRight len s).
+
 integer : (String -> Int) -> IntExpr -> Int .
 integer env e = intGo (Env env noString noSequence) e.
 evalInt : Env -> IntExpr -> Int .
 evalInt env e = intGo env e.
-intGo : unsafe Env -> IntExpr -> Int .
+intGo : Env -> (e : IntExpr | measure e) -> Int .
 intGo env e = case e of
-    Literal n -> n
+    Literal val -> val
   | Number k -> (case env of Env ns _ _ -> ns k | TextEnv ns _ _ _ -> ns k)
   | Add a b -> intGo env a + intGo env b
   | Sub a b -> intGo env a - intGo env b
@@ -47,15 +72,17 @@ intGo env e = case e of
   | Length xs -> L.length (listGo env xs)
   | Sum xs -> L.sum (listGo env xs)
   | Maximum xs fallback -> (case L.maximum O.int (listGo env xs) of
-      Opt.Some n -> n | Opt.None -> intGo env fallback)
+      Opt.Some v -> v | Opt.None -> intGo env fallback)
   | At xs index -> (case L.get (intGo env index) (listGo env xs) of
-      Opt.Some n -> n | Opt.None -> error "ClientCalc.At: index out of bounds")
+      Opt.Some v -> v | Opt.None -> error "ClientCalc.At: index out of bounds")
   | TextLength xs -> L.length (textListGo env xs).
+intsGo : Env -> (xs : List IntExpr | measure xs) -> List Int .
+intsGo env xs = case xs of Nil -> Nil | x :: r -> intGo env x :: intsGo env r.
 boolean : (String -> Int) -> BoolExpr -> Bool .
 boolean env e = boolGo (Env env noString noSequence) e.
 evalBool : Env -> BoolExpr -> Bool .
 evalBool env e = boolGo env e.
-boolGo : unsafe Env -> BoolExpr -> Bool .
+boolGo : Env -> (e : BoolExpr | measure e) -> Bool .
 boolGo env e = case e of
     Equal a b -> intGo env a == intGo env b
   | Less a b -> intGo env a < intGo env b
@@ -67,61 +94,40 @@ text : (String -> Int) -> (String -> String) -> TextExpr -> String .
 text numbers strings e = textGo (Env numbers strings noSequence) e.
 evalText : Env -> TextExpr -> String .
 evalText env e = textGo env e.
-textGo : unsafe Env -> TextExpr -> String .
+textGo : Env -> (e : TextExpr | measure e) -> String .
 textGo env e = case e of
     Text s -> s
   | StringVar k -> (case env of Env _ ss _ -> ss k | TextEnv _ ss _ _ -> ss k)
-  | Decimal n -> str (intGo env n)
+  | Decimal val -> str (intGo env val)
   | Concat xs -> strJoin "" (textsGo env xs)
-  | PadZero width n -> if width < 0 then error "ClientCalc.PadZero: negative width"
-      else S.padLeft width "0" (str (intGo env n))
+  | PadZero width val -> if width < 0 then error "ClientCalc.PadZero: negative width"
+      else S.padLeft width "0" (str (intGo env val))
   | IfText p a b -> if boolGo env p then textGo env a else textGo env b
-  | Trim t -> trim (textGo env t)
+  | Trim sub -> trim (textGo env sub)
   | TextAt xs index -> (case L.get (intGo env index) (textListGo env xs) of
-      Opt.Some t -> t | Opt.None -> "").
-textsGo : unsafe Env -> List TextExpr -> List String .
+      Opt.Some s -> s | Opt.None -> "").
+textsGo : Env -> (xs : List TextExpr | measure xs) -> List String .
 textsGo env xs = case xs of Nil -> Nil | x :: r -> textGo env x :: textsGo env r.
 evalList : Env -> IntListExpr -> List Int .
 evalList env e = listGo env e.
-listGo : unsafe Env -> IntListExpr -> List Int .
+listGo : Env -> (e : IntListExpr | measure e) -> List Int .
 listGo env e = case e of
-    Values xs -> L.map (intGo env) xs
+    Values xs -> intsGo env xs
   | Sequence k -> (case env of Env _ _ ls -> ls k | TextEnv _ _ ls _ -> ls k)
-  | Snoc xs n -> L.append (listGo env xs) [intGo env n]
-  | TakeLast n xs -> if n < 0 then error "ClientCalc.TakeLast: negative count"
-      else L.reverse (L.take n (L.reverse (listGo env xs)))
+  | Snoc xs val -> L.append (listGo env xs) [intGo env val]
+  | TakeLast count xs -> if count < 0 then error "ClientCalc.TakeLast: negative count"
+      else L.reverse (L.take count (L.reverse (listGo env xs)))
   | Sorted xs -> L.sortWith O.int (listGo env xs).
 evalTexts : Env -> TextListExpr -> List String .
 evalTexts env e = textListGo env e.
-textListGo : unsafe Env -> TextListExpr -> List String .
+textListGo : Env -> (e : TextListExpr | measure e) -> List String .
 textListGo env e = case e of
     Texts xs -> textsGo env xs
   | TextSequence k -> (case env of TextEnv _ _ _ ts -> ts k | _ -> error "ClientCalc: missing text sequence {k}")
-  | TextSnoc xs t -> L.append (textListGo env xs) [textGo env t]
-  | TextTakeLast n xs -> if n < 0 then error "ClientCalc.TextTakeLast: negative count"
-      else L.reverse (L.take n (L.reverse (textListGo env xs)))
+  | TextSnoc xs val -> L.append (textListGo env xs) [textGo env val]
+  | TextTakeLast count xs -> if count < 0 then error "ClientCalc.TextTakeLast: negative count"
+      else L.reverse (L.take count (L.reverse (textListGo env xs)))
   | IfTexts p a b -> if boolGo env p then textListGo env a else textListGo env b.
-
-# Browser trim whitespace, represented as UTF-8 byte strings for native
-# evaluation. Non-whitespace Unicode and internal whitespace remain intact.
-spaces = L.append [" ", "\t", "\n", "\r", chr 11, chr 12]
-  (L.map (fn escaped -> case J.parse ("\"{escaped}\"") of Ok (J.Text s) -> s | _ -> error "ClientCalc: whitespace literal")
-    ["\\u00a0", "\\u1680", "\\u2000", "\\u2001", "\\u2002", "\\u2003", "\\u2004", "\\u2005",
-     "\\u2006", "\\u2007", "\\u2008", "\\u2009", "\\u200a", "\\u2028", "\\u2029", "\\u202f", "\\u205f", "\\u3000", "\\ufeff"]).
-trim : String -> String .
-trim s = trimLeftGo s 0 |> trimRightGo.
-spaceAt : unsafe String -> Int -> List String -> Int .
-spaceAt s at ws = case ws of Nil -> 0 | w :: r ->
-  if substr s at (strlen w) == w then strlen w else spaceAt s at r.
-trimLeftGo : unsafe String -> Int -> String .
-trimLeftGo s at = n = spaceAt s at spaces;
-  if n == 0 then S.dropLeft at s else trimLeftGo s (at + n).
-spaceEnd : unsafe String -> List String -> Int .
-spaceEnd s ws = case ws of Nil -> 0 | w :: r ->
-  if strlen s >= strlen w and S.right (strlen w) s == w then strlen w else spaceEnd s r.
-trimRightGo : unsafe String -> String .
-trimRightGo s = n = spaceEnd s spaces;
-  if n == 0 then s else trimRightGo (S.dropRight n s).
 
 # Lower the same native expression values to structured browser syntax.
 JS = use "javascript".
@@ -131,16 +137,20 @@ t = JS.Text.
 call name args = JS.Call (n name) args.
 method target name args = JS.Call (JS.Field target name) args.
 checked expr = call "_int" [expr].
+arithmetic op lhs rhs = checked (JS.Binary op lhs rhs).
+last : (count : Int | count >= 0) -> JS.Expr -> JS.Expr .
+last count target = method target "slice" (if count == 0 then [JS.Number 0, JS.Number 0] else [JS.Number (0 - count)]).
+
 jsInt e = JS.expr (astInt e).
-astInt : unsafe IntExpr -> JS.Expr .
+astInt : (e : IntExpr | measure e) -> JS.Expr .
 astInt e = case e of
     Literal value -> JS.BigInteger value
   | Number key -> call "_number" [t key]
-  | Add a b -> arithmetic JS.Add a b
-  | Sub a b -> arithmetic JS.Subtract a b
-  | Mul a b -> arithmetic JS.Multiply a b
-  | Quot a b -> arithmetic JS.Divide a b
-  | Rem a b -> arithmetic JS.Modulo a b
+  | Add a b -> arithmetic JS.Add (astInt a) (astInt b)
+  | Sub a b -> arithmetic JS.Subtract (astInt a) (astInt b)
+  | Mul a b -> arithmetic JS.Multiply (astInt a) (astInt b)
+  | Quot a b -> arithmetic JS.Divide (astInt a) (astInt b)
+  | Rem a b -> arithmetic JS.Modulo (astInt a) (astInt b)
   | IfInt p a b -> JS.Choose (astBool p) (astInt a) (astInt b)
   | Length xs -> checked (call "BigInt" [JS.Field (astList xs) "length"])
   | TextLength xs -> checked (call "BigInt" [JS.Field (astTexts xs) "length"])
@@ -148,9 +158,10 @@ astInt e = case e of
   | Maximum xs fallback -> JS.Call (JS.Function ["xs"] [JS.Return (JS.Choose (JS.Field (n "xs") "length")
       (method (n "xs") "reduce" [JS.Function ["a", "b"] [JS.Return (JS.Choose (JS.Binary JS.Greater (n "a") (n "b")) (n "a") (n "b"))]]) (astInt fallback))]) [astList xs]
   | At xs index -> call "_at" [astList xs, astInt index].
-arithmetic op a b = checked (JS.Binary op (astInt a) (astInt b)).
+astIntList : (xs : List IntExpr | measure xs) -> List JS.Expr .
+astIntList xs = case xs of Nil -> Nil | x :: r -> astInt x :: astIntList r.
 jsBool e = JS.expr (astBool e).
-astBool : unsafe BoolExpr -> JS.Expr .
+astBool : (e : BoolExpr | measure e) -> JS.Expr .
 astBool e = case e of
     Equal a b -> JS.Binary JS.Equal (astInt a) (astInt b)
   | Less a b -> JS.Binary JS.Less (astInt a) (astInt b)
@@ -159,32 +170,32 @@ astBool e = case e of
   | Not a -> JS.Unary JS.Not (astBool a)
   | TextEqual a b -> JS.Binary JS.Equal (astText a) (astText b).
 jsText e = JS.expr (astText e).
-astText : unsafe TextExpr -> JS.Expr .
+astText : (e : TextExpr | measure e) -> JS.Expr .
 astText e = case e of
     Text value -> t value
   | StringVar key -> call "_string" [t key]
   | Decimal value -> call "String" [astInt value]
-  | Concat values -> method (JS.Array (L.map astText values)) "join" [t ""]
+  | Concat values -> method (JS.Array (astTextList values)) "join" [t ""]
   | PadZero width value -> if width < 0 then error "ClientCalc.PadZero: negative width" else method (call "String" [astInt value]) "padStart" [JS.Number width, t "0"]
   | IfText p a b -> JS.Choose (astBool p) (astText a) (astText b)
   | Trim value -> method (astText value) "trim" Nil
   | TextAt xs index -> call "_textAt" [astTexts xs, astInt index].
+astTextList : (xs : List TextExpr | measure xs) -> List JS.Expr .
+astTextList xs = case xs of Nil -> Nil | x :: r -> astText x :: astTextList r.
 jsList e = JS.expr (astList e).
-astList : unsafe IntListExpr -> JS.Expr .
+astList : (e : IntListExpr | measure e) -> JS.Expr .
 astList e = case e of
-    Values xs -> JS.Array (L.map astInt xs)
+    Values xs -> JS.Array (astIntList xs)
   | Sequence key -> call "_sequence" [t key]
   | Snoc xs value -> method (astList xs) "concat" [JS.Array [astInt value]]
-  | TakeLast count xs -> last count (astList xs)
+  | TakeLast count xs -> if count < 0 then error "ClientCalc.TakeLast: negative count" else last count (astList xs)
   | Sorted xs -> method (method (astList xs) "slice" Nil) "sort" [JS.Function ["a", "b"] [JS.Return
       (JS.Choose (JS.Binary JS.Less (n "a") (n "b")) (JS.Number (0 - 1)) (JS.Choose (JS.Binary JS.Greater (n "a") (n "b")) (JS.Number 1) (JS.Number 0)))]] .
 jsTexts e = JS.expr (astTexts e).
-astTexts : unsafe TextListExpr -> JS.Expr .
+astTexts : (e : TextListExpr | measure e) -> JS.Expr .
 astTexts e = case e of
-    Texts xs -> JS.Array (L.map astText xs)
+    Texts xs -> JS.Array (astTextList xs)
   | TextSequence key -> call "_textSequence" [t key]
   | TextSnoc xs value -> method (astTexts xs) "concat" [JS.Array [astText value]]
-  | TextTakeLast count xs -> last count (astTexts xs)
+  | TextTakeLast count xs -> if count < 0 then error "ClientCalc.TextTakeLast: negative count" else last count (astTexts xs)
   | IfTexts p a b -> JS.Choose (astBool p) (astTexts a) (astTexts b).
-last count xs = if count < 0 then error "ClientCalc.TakeLast: negative count" else
-  method xs "slice" (if count == 0 then [JS.Number 0, JS.Number 0] else [JS.Number (0 - count)]).

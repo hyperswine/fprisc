@@ -1,39 +1,52 @@
-# Structured browser capability program. FP-RISC syntax values are authoritative.
+# Structured browser form-fill capability. FP-RISC syntax values are authoritative.
 # No foreign source asset or Raw node is read at runtime.
 JS = use "std/javascript".
+
+n = JS.Name.
+t = JS.Text.
+f = JS.Field.
+call name args = JS.Call (n name) args.
+method target name args = JS.Call (f target name) args.
+doMethod target name args = JS.Do (method target name args).
+
 src u = JS.program [
-  JS.Do (JS.Call (JS.Function [] (bodyBody1 Unit)) [])
+  JS.Do (JS.Call (JS.Function Nil (setupNodes Unit)) Nil)
 ].
 
-bodyBody4 u = [
-  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "value") (JS.Index (JS.Name "pending") (JS.Name "n"))),
-  JS.Do (JS.Call (JS.Field (JS.Name "el") "dispatchEvent") [(JS.New (JS.Name "Event") [(JS.Text "input")])])
+applyInputValue u = [
+  JS.Do (JS.AssignValue (f (n "el") "value") (JS.Index (n "pending") (n "n"))),
+  doMethod (n "el") "dispatchEvent" [JS.New (n "Event") [t "input"]]
 ].
 
-bodyBody3 u = [
-  JS.Var "els" (JS.Call (JS.Field (JS.Name "document") "querySelectorAll") [(JS.Binary JS.Add (JS.Binary JS.Add (JS.Text "[data-input=\"") (JS.Name "n")) (JS.Text "\"]"))]),
-  JS.If (JS.Unary JS.Not (JS.Field (JS.Name "els") "length")) [JS.ReturnVoid] [],
-  JS.Do (JS.Call (JS.Field (JS.Name "els") "forEach") [(JS.Function ["el"] (bodyBody4 Unit))]),
-  JS.Do (JS.Unary JS.Delete (JS.Index (JS.Name "pending") (JS.Name "n")))
+fillField u = [
+  JS.Var "els" (method (n "document") "querySelectorAll" [
+    JS.Binary JS.Add (JS.Binary JS.Add (t "[data-input=\"") (n "n")) (t "\"]")
+  ]),
+  JS.If (JS.Unary JS.Not (f (n "els") "length")) [JS.ReturnVoid] Nil,
+  doMethod (n "els") "forEach" [JS.Function ["el"] (applyInputValue Unit)],
+  JS.Do (JS.Unary JS.Delete (JS.Index (n "pending") (n "n")))
 ].
 
-fillBody2 u = [
-  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "Object") "keys") [(JS.Name "pending")]) "forEach") [(JS.Function ["n"] (bodyBody3 Unit))])
+fillPending u = [
+  doMethod (method (n "Object") "keys" [n "pending"]) "forEach" [JS.Function ["n"] (fillField Unit)]
 ].
 
-bodyBody6 u = [
-  JS.Do (JS.AssignValue (JS.Index (JS.Name "pending") (JS.Name "n")) (JS.Index (JS.Name "vals") (JS.Name "n")))
+recordPendingKey u = [
+  JS.Do (JS.AssignValue (JS.Index (n "pending") (n "n")) (JS.Index (n "vals") (n "n")))
 ].
 
-bodyBody5 u = [
-  JS.Var "vals" (JS.Call (JS.Field (JS.Name "JSON") "parse") [(JS.Field (JS.Name "e") "detail")]),
-  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "Object") "keys") [(JS.Name "vals")]) "forEach") [(JS.Function ["n"] (bodyBody6 Unit))]),
-  JS.Do (JS.Call (JS.Name "fill") [])
+onLiveSet u = [
+  JS.Var "vals" (method (n "JSON") "parse" [f (n "e") "detail"]),
+  doMethod (method (n "Object") "keys" [n "vals"]) "forEach" [JS.Function ["n"] (recordPendingKey Unit)],
+  JS.Do (call "fill" Nil)
 ].
 
-bodyBody1 u = [
-  JS.Var "pending" (JS.Call (JS.Field (JS.Name "Object") "create") [JS.Null]),
-  JS.Define "fill" [] (fillBody2 Unit),
-  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "live:set"), (JS.Function ["e"] (bodyBody5 Unit))]),
-  JS.Do (JS.Call (JS.Field (JS.New (JS.Name "MutationObserver") [(JS.Name "fill")]) "observe") [(JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text "lv-root")]), (JS.Object [("childList", JS.Boolean True), ("subtree", JS.Boolean True)])])
+setupNodes u = [
+  JS.Var "pending" (method (n "Object") "create" [JS.Null]),
+  JS.Define "fill" Nil (fillPending Unit),
+  doMethod (n "document") "addEventListener" [t "live:set", JS.Function ["e"] (onLiveSet Unit)],
+  doMethod (JS.New (n "MutationObserver") [n "fill"]) "observe" [
+    method (n "document") "getElementById" [t "lv-root"],
+    JS.Object [("childList", JS.Boolean True), ("subtree", JS.Boolean True)]
+  ]
 ].

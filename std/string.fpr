@@ -17,11 +17,16 @@
 O = use "option".
 Ord = use "order".
 
-length : String -> Int .
+length : String -> Int
+  | work length <= 4 | alloc length <= 0 .
 length s = strlen s.
 
-isEmpty : String -> Bool .
+isEmpty : String -> Bool
+  | work isEmpty <= 5 | alloc isEmpty <= 16 .
 isEmpty s = strlen s == 0.
+
+rev : (xs : List a | measure xs) -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
 # ---- joining and splitting -------------------------------------------------------
 # one allocation, however many pieces (the strJoin primitive)
@@ -37,45 +42,40 @@ append a b = strcat a b.
 # String.split "," "a,b,,c" = ["a", "b", "", "c"]; an empty separator is refused
 # the only sensible way: the whole string, unsplit.
 split : String -> String -> List String .
-split sep s = case strlen sep == 0 of
-    True -> s :: Nil
-  | False -> splitGo sep s 0 Nil.
-splitGo : unsafe String -> String -> Int -> List String -> List String .
-splitGo sep s from acc = splitAt sep s from acc (strIndexFrom sep s from).
-splitAt : unsafe String -> String -> Int -> List String -> Int -> List String .
-splitAt sep s from acc at = case at < 0 of
-    True -> rev (substr s from (strlen s - from) :: acc) Nil
-  | False -> splitGo sep s (at + strlen sep) (substr s from (at - from) :: acc).
-
-rev : unsafe List a -> List a -> List a .
-rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+split sep s | strlen sep == 0 = s :: Nil.
+split sep s = splitGo (strlen s + 1) sep s 0 Nil.
+splitGo : (fuel : Int | measure fuel) -> String -> String -> Int -> List String -> List String .
+splitGo fuel sep s from acc | fuel <= 0 = rev acc Nil.
+splitGo fuel sep s from acc =
+  at = strIndexFrom sep s from;
+  if at < 0 then rev (substr s from (strlen s - from) :: acc) Nil
+  else splitGo (fuel - 1) sep s (at + strlen sep) (substr s from (at - from) :: acc).
 
 # on "\n"; a trailing newline does not make an empty last line, and "\r\n" ends a line too
 lines : String -> List String .
 lines s = linesTidy (split "\n" s) Nil.
-linesTidy : unsafe List String -> List String -> List String .
+linesTidy : (ls : List String | measure ls) -> List String -> List String .
 linesTidy ls acc = case ls of
     Nil -> rev acc Nil
-  | l :: Nil -> (case strlen l == 0 of True -> rev acc Nil | False -> rev (dropCr l :: acc) Nil)
+  | l :: Nil -> if strlen l == 0 then rev acc Nil else rev (dropCr l :: acc) Nil
   | l :: r -> linesTidy r (dropCr l :: acc).
 dropCr : String -> String .
-dropCr l = case endsWith "\r" l of True -> substr l 0 (strlen l - 1) | False -> l.
+dropCr l | endsWith "\r" l = substr l 0 (strlen l - 1).
+dropCr l = l.
 
 # maximal runs of non-whitespace
 words : String -> List String .
 words s = wordsGo s 0 (strlen s) Nil.
-wordsGo : unsafe String -> Int -> Int -> List String -> List String .
-wordsGo s i n acc = case i >= n of
-    True -> rev acc Nil
-  | False -> (case isSpace (charAt s i) of
-        True -> wordsGo s (i + 1) n acc
-      | False -> wordEnd s i (i + 1) n acc).
-wordEnd : unsafe String -> Int -> Int -> Int -> List String -> List String .
-wordEnd s i j n acc = case j >= n of
-    True -> rev (substr s i (j - i) :: acc) Nil
-  | False -> (case isSpace (charAt s j) of
-        True -> wordsGo s (j + 1) n (substr s i (j - i) :: acc)
-      | False -> wordEnd s i (j + 1) n acc).
+wordsGo : String -> (pos : Int | measure (n - pos)) -> (n : Int) -> List String -> List String .
+wordsGo s pos n acc | pos >= n = rev acc Nil.
+wordsGo s pos n acc =
+  if isSpace (charAt s pos) then wordsGo s (pos + 1) n acc
+  else wordEnd s pos (pos + 1) n acc.
+wordEnd : String -> Int -> (pos : Int | measure (n - pos)) -> (n : Int) -> List String -> List String .
+wordEnd s start pos n acc | pos >= n = rev (substr s start (pos - start) :: acc) Nil.
+wordEnd s start pos n acc =
+  if isSpace (charAt s pos) then wordsGo s (pos + 1) n (substr s start (pos - start) :: acc)
+  else wordEnd s start (pos + 1) n acc.
 
 # ---- searching ---------------------------------------------------------------------
 # where `p` first occurs, from 0; `indexFrom i` looks at or after position i
@@ -84,7 +84,8 @@ indexOf p s = found (strIndexOf p s).
 indexFrom : Int -> String -> String -> O.Option Int .
 indexFrom i p s = found (strIndexFrom p s i).
 found : Int -> O.Option Int .
-found at = case at < 0 of True -> O.None | False -> O.Some at.
+found at | at < 0 = O.None.
+found at = O.Some at.
 
 contains : String -> String -> Bool .
 contains p s = strIndexOf p s >= 0.
@@ -97,59 +98,72 @@ endsWith p s = strlen p <= strlen s and substr s (strlen s - strlen p) (strlen p
 
 # how many times, not overlapping
 count : String -> String -> Int .
-count p s = case strlen p == 0 of True -> 0 | False -> countGo p s 0 0.
-countGo : unsafe String -> String -> Int -> Int -> Int .
-countGo p s from n = countAt p s n (strIndexFrom p s from).
-countAt : unsafe String -> String -> Int -> Int -> Int .
-countAt p s n at = case at < 0 of True -> n | False -> countGo p s (at + strlen p) (n + 1).
+count p s | strlen p == 0 = 0.
+count p s = countGo (strlen s + 1) p s 0 0.
+countGo : (fuel : Int | measure fuel) -> String -> String -> Int -> Int -> Int .
+countGo fuel p s from n | fuel <= 0 = n.
+countGo fuel p s from n =
+  at = strIndexFrom p s from;
+  if at < 0 then n else countGo (fuel - 1) p s (at + strlen p) (n + 1).
 
 # ---- slicing (positions from 0, clamped) ---------------------------------------------
 # the bytes [from, to): `from` included, `to` not; String.slice 0 (String.length s) s = s
 slice : Int -> Int -> String -> String .
-slice from to s = sliceAt (case from < 0 of True -> 0 | False -> from) to s.
+slice from to s = sliceAt (if from < 0 then 0 else from) to s.
 sliceAt : Int -> Int -> String -> String .
-sliceAt from to s = case to <= from of True -> "" | False -> substr s from (to - from).
+sliceAt from to s | to <= from = "".
+sliceAt from to s = substr s from (to - from).
 
 left : Int -> String -> String .
 left n s = substr s 0 n.
 
 right : Int -> String -> String .
-right n s = case n >= strlen s of True -> s | False -> substr s (strlen s - n) n.
+right n s | n >= strlen s = s.
+right n s = substr s (strlen s - n) n.
 
 dropLeft : Int -> String -> String .
-dropLeft n s = case n <= 0 of True -> s | False -> substr s n (strlen s - n).
+dropLeft n s | n <= 0 = s.
+dropLeft n s = substr s n (strlen s - n).
 
 dropRight : Int -> String -> String .
-dropRight n s = case n <= 0 of True -> s | False -> substr s 0 (strlen s - n).
+dropRight n s | n <= 0 = s.
+dropRight n s = substr s 0 (strlen s - n).
 
 # ---- trimming ------------------------------------------------------------------------
-isSpace : Int -> Bool .
+isSpace : Int -> Bool
+  | work isSpace <= 8 | alloc isSpace <= 16 .
 isSpace c = c == 32 or (c >= 9 and c <= 13).
 
 trim : String -> String .
-trim s = trimRight (trimLeft s).
+trim s = s |> trimLeft |> trimRight.
 
 trimLeft : String -> String .
 trimLeft s = dropLeft (leadGo s 0 (strlen s)) s.
 # the position of the first non-space byte (n when there is none) = how many lead
 leadGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int .
-leadGo s i n = case i >= n of True -> i | False -> (case isSpace (charAt s i) of True -> leadGo s (i + 1) n | False -> i).
+leadGo s i n | i >= n = i.
+leadGo s i n | isSpace (charAt s i) = leadGo s (i + 1) n.
+leadGo _ i _ = i.
 
 trimRight : String -> String .
 trimRight s = left (trailGo s (strlen s - 1)) s.
 # one past the last non-space byte = how many to keep
 trailGo : String -> (i : Int | measure i) -> Int .
-trailGo s i = case i < 0 of True -> 0 | False -> (case isSpace (charAt s i) of True -> trailGo s (i - 1) | False -> i + 1).
+trailGo s i | i < 0 = 0.
+trailGo s i | isSpace (charAt s i) = trailGo s (i - 1).
+trailGo _ i = i + 1.
 
 # ---- rewriting -----------------------------------------------------------------------
 # every occurrence, left to right, not overlapping
 replace : String -> String -> String -> String .
-replace old new s = case strlen old == 0 of True -> s | False -> strJoin new (split old s).
+replace old new s | strlen old == 0 = s.
+replace old new s = strJoin new (split old s).
 
 repeat : Int -> String -> String .
 repeat n s = strJoin "" (repeatGo n s Nil).
 repeatGo : (n : Int | measure n) -> String -> List String -> List String .
-repeatGo n s acc = case n <= 0 of True -> acc | False -> repeatGo (n - 1) s (s :: acc).
+repeatGo n s acc | n <= 0 = acc.
+repeatGo n s acc = repeatGo (n - 1) s (s :: acc).
 
 # to a width, with a pad byte given as a one-byte String: String.padLeft 5 "0" "42"
 padLeft : Int -> String -> String -> String .
@@ -163,16 +177,17 @@ reverse s = fromCodes (rev (codes s) Nil).
 
 # ASCII only: a byte outside A-Z / a-z is left alone, so UTF-8 survives
 toUpper : String -> String .
-toUpper s = mapCodes (fn c -> case c >= 97 and c <= 122 of True -> c - 32 | False -> c) s.
+toUpper s = mapCodes (fn c -> if c >= 97 and c <= 122 then c - 32 else c) s.
 
 toLower : String -> String .
-toLower s = mapCodes (fn c -> case c >= 65 and c <= 90 of True -> c + 32 | False -> c) s.
+toLower s = mapCodes (fn c -> if c >= 65 and c <= 90 then c + 32 else c) s.
 
 # ---- bytes ---------------------------------------------------------------------------
 codes : String -> List Int .
 codes s = codesGo s (strlen s - 1) Nil.
 codesGo : String -> (i : Int | measure i) -> List Int -> List Int .
-codesGo s i acc = case i < 0 of True -> acc | False -> codesGo s (i - 1) (charAt s i :: acc).
+codesGo s i acc | i < 0 = acc.
+codesGo s i acc = codesGo s (i - 1) (charAt s i :: acc).
 
 fromCodes : List Int -> String .
 fromCodes cs = strJoin "" (chrs cs Nil).
@@ -182,12 +197,15 @@ chrs cs acc = case cs of Nil -> rev acc Nil | c :: r -> chrs r (chr c :: acc).
 mapCodes : (Int -> Int) -> String -> String .
 mapCodes f s = strJoin "" (mapGo f s (strlen s - 1) Nil).
 mapGo : (Int -> Int) -> String -> (i : Int | measure i) -> List String -> List String .
-mapGo f s i acc = case i < 0 of True -> acc | False -> mapGo f s (i - 1) (chr (f (charAt s i)) :: acc).
+mapGo f s i acc | i < 0 = acc.
+mapGo f s i acc = mapGo f s (i - 1) (chr (f (charAt s i)) :: acc).
 
-isDigit : Int -> Bool .
+isDigit : Int -> Bool
+  | work isDigit <= 6 | alloc isDigit <= 16 .
 isDigit c = c >= 48 and c <= 57.
 
-isAlpha : Int -> Bool .
+isAlpha : Int -> Bool
+  | work isAlpha <= 10 | alloc isAlpha <= 32 .
 isAlpha c = (c >= 97 and c <= 122) or (c >= 65 and c <= 90).
 
 # ---- numbers -------------------------------------------------------------------------
@@ -199,28 +217,25 @@ toInt : String -> Result Int String .
 toInt s =
   n = strlen s;
   neg = startsWith "-" s;
-  first = case neg of True -> 1 | False -> 0;
-  case first >= n of
-    True -> Err "not a number: \"{s}\""
-  | False -> (case digitsGo s first n 0 of
+  first = if neg then 1 else 0;
+  if first >= n then Err "not a number: \"{s}\""
+  else (case digitsGo s first n 0 of
         Err 1 -> Err "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})"
       | Err _ -> Err "not a number: \"{s}\""
-      | Ok v -> (case neg of
-            True -> Ok v
-          | False -> (case v == intMin Unit of
-                True -> Err "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})"
-              | False -> Ok (0 - v)))).
+      | Ok v ->
+          if neg then Ok v
+          else if v == intMin Unit then Err "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})"
+          else Ok (0 - v)).
 # The digits accumulate NEGATIVELY so the most negative Int is reachable.
 # Err 0: not a digit; Err 1: the value would pass the 63-bit Int (it used
 # to wrap silently: "4611686018427387904" answered -4611686018427387904)
-digitsGo : unsafe String -> Int -> Int -> Int -> Result Int Int .
-digitsGo s i n acc = case i >= n of
-    True -> Ok acc
-  | False -> (case isDigit (charAt s i) of
-        True -> (case acc < (intMin Unit + (charAt s i - 48)) / 10 of
-            True -> Err 1
-          | False -> digitsGo s (i + 1) n (acc * 10 - (charAt s i - 48)))
-      | False -> Err 0).
+digitsGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Result Int Int .
+digitsGo s i n acc | i >= n = Ok acc.
+digitsGo s i n acc =
+  c = charAt s i;
+  if not (isDigit c) then Err 0
+  else if acc < (intMin Unit + (c - 48)) / 10 then Err 1
+  else digitsGo s (i + 1) n (acc * 10 - (c - 48)).
 
 # ---- ordering ------------------------------------------------------------------------
 compare : String -> String -> Ord.Ordering .

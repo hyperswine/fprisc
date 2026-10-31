@@ -87,6 +87,7 @@ approvedLibraries =
     "std/appearance.fpr",
     "std/binary.fpr",
     "std/ble.fpr",
+    "std/browser.fpr",
     "std/browserautocomplete.fpr",
     "std/browsercalc.fpr",
     "std/browserconsole.fpr",

@@ -10,36 +10,52 @@
 Option a = Type (None | Some a).
 
 map : (a -> b) -> Option a -> Option b .
-map f o = case o of None -> None | Some x -> Some (f x).
+map _ None = None.
+map f (Some x) = Some (f x).
 
 andThen : (a -> Option b) -> Option a -> Option b .
-andThen f o = case o of None -> None | Some x -> f x.
+andThen _ None = None.
+andThen f (Some x) = f x.
 
-withDefault : a -> Option a -> a .
-withDefault d o = case o of None -> d | Some x -> x.
+withDefault : a -> Option a -> a
+  | work withDefault <= 5 | alloc withDefault <= 0 .
+withDefault d None = d.
+withDefault _ (Some x) = x.
 
 # the first that is there
-orElse : Option a -> Option a -> Option a .
-orElse other o = case o of None -> other | Some x -> Some x.
+orElse : Option a -> Option a -> Option a
+  | work orElse <= 7 | alloc orElse <= 16 .
+orElse other None = other.
+orElse _ (Some x) = Some x.
 
-isSome : Option a -> Bool .
-isSome o = case o of None -> False | Some _ -> True.
+isSome : Option a -> Bool
+  | work isSome <= 5 | alloc isSome <= 16 .
+isSome None = False.
+isSome (Some _) = True.
 
-isNone : Option a -> Bool .
-isNone o = case o of None -> True | Some _ -> False.
+isNone : Option a -> Bool
+  | work isNone <= 5 | alloc isNone <= 16 .
+isNone None = True.
+isNone (Some _) = False.
 
 filter : (a -> Bool) -> Option a -> Option a .
-filter p o = case o of
-    None -> None
-  | Some x -> (case p x of True -> Some x | False -> None).
+filter _ None = None.
+filter p (Some x) | p x = Some x.
+filter _ (Some _) = None.
 
 # absence becomes the failure `e`
-toResult : e -> Option a -> Result a e .
-toResult e o = case o of None -> Err e | Some x -> Ok x.
+toResult : e -> Option a -> Result a e
+  | work toResult <= 7 | alloc toResult <= 16 .
+toResult e None = Err e.
+toResult _ (Some x) = Ok x.
 
 # a failure becomes absence (the reason is dropped)
-fromResult : Result a e -> Option a .
-fromResult r = case r of Ok x -> Some x | Err _ -> None.
+fromResult : Result a e -> Option a
+  | work fromResult <= 7 | alloc fromResult <= 16 .
+fromResult (Ok x) = Some x.
+fromResult (Err _) = None.
 
-toList : Option a -> List a .
-toList o = case o of None -> Nil | Some x -> x :: Nil.
+toList : Option a -> List a
+  | work toList <= 8 | alloc toList <= 40 .
+toList None = Nil.
+toList (Some x) = x :: Nil.
