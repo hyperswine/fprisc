@@ -51,7 +51,7 @@ static V h_list_dir(V pathv) {
     names[n++] = strdup(e->d_name);
   }
   closedir(d);
-  qsort(names, n, sizeof *names, name_cmp); /* readdir's order is the filesystem's whim */
+  if (n) qsort(names, n, sizeof *names, name_cmp); /* qsort(NULL, 0) is UB; readdir's order is the filesystem's whim */
   V l = (V)&os_nil;
   for (size_t i = n; i-- > 0;) { l = os_cons(os_str(names[i], (uw)strlen(names[i])), l); free(names[i]); }
   free(names);
