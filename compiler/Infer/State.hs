@@ -11,6 +11,7 @@ import Infer.Pattern (PatternSite, PatternInfo)
 import Compiler.VectorLayout (LayoutContract)
 import qualified Infer.Evidence as Evidence
 import qualified Data.Map.Strict as M
+import qualified Data.IntSet as IS
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Set as S
 import Control.Monad.State.Strict (State)
@@ -32,6 +33,8 @@ data IEnv = IEnv
     iHoledCons :: S.Set (Name, Int), -- constructors with ?? fields: calls trap
     iNextSite :: !Int,
     iSites :: IM.IntMap (Name, Type), -- operator/layout sites awaiting resolution
+    iPendingNumeric :: IS.IntSet, -- arith/ordered-compare sites whose type may still be a bare variable
+    iDefaultWork :: !Int, -- sites visited by numeric defaulting (a deterministic work counter)
     iSiteExpressions :: IM.IntMap ExprId,
     iSiteMarks :: IM.IntMap (Maybe SourceOffset), -- retain their diagnostic anchors
     iSiteOwners :: IM.IntMap (Maybe Name),
@@ -96,7 +99,7 @@ initialIEnv :: Maybe Namespace -> IEnv
 initialIEnv capture = IEnv
   { iFresh=0, iSub=IM.empty, iRSub=IM.empty, iErrs=[], iNotes=[],
     iHoles=[], iHolesP=[], iHoledCons=S.empty, iNextSite=0,
-    iSites=IM.empty, iSiteExpressions=IM.empty, iSiteMarks=IM.empty, iCarriers=IM.empty,
+    iSites=IM.empty, iPendingNumeric=IS.empty, iDefaultWork=0, iSiteExpressions=IM.empty, iSiteMarks=IM.empty, iCarriers=IM.empty,
     iHere=Nothing, iCurrentOwner=Nothing, iSiteOwners=IM.empty, iPairs=IM.empty, iVecPlans=M.empty,
     iVecRefs=IM.empty, iVecOwners=IM.empty, iDefTypes=M.empty,
     iLocalLayoutSchemes=M.empty, iLocalLayoutBindings=M.empty, iLayoutContracts=M.empty,
