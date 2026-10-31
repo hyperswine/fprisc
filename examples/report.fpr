@@ -41,8 +41,8 @@ report dir out =
   files = (case Dir.walk dir of Ok fs -> fs | Err why -> Program.fail 1 "report: {why}");
   entries = files |> List.filter (fn p -> not (String.contains "/." p)) |> List.filterMap entry;
   byExt = List.fold tally Map.strings entries
-    |> Map.entries
-    |> List.sortWith (Order.by (fn r -> case r of (_, (_, bytes)) -> bytes) (Order.reverse Order.int));
+       |> Map.entries
+       |> List.sortWith (Order.by (fn r -> case r of (_, (_, bytes)) -> bytes) (Order.reverse Order.int));
   biggest = entries |> List.sortBy (Order.reverse Order.int) (fn e -> e.size) |> List.take 5;
   total = List.sum (List.map (fn e -> e.size) entries);
   _ = print "{dir}: {List.length entries} files, {kib total}";
