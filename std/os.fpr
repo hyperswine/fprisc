@@ -5,58 +5,57 @@
 # definition, implemented by machine/posix/os_*.c.  A system without them (a
 # board) fails a program that imports them at LINK time, by name: a program's
 # imports are its capability manifest (docs/2026-09-18-BASE.md).
+#
+# Sub-seams (`osfs`, `osio`, `osnet`, `oswatch`, `osconnection`) remain available
+# for embedded targets that link only a subset of POSIX runtime units, while
+# `std/os` provides the complete unified surface (`Fs`, `Io`, `Net`, `Watch`,
+# `Conn`, plus top-level primitive bindings).
 
-Os.readFile  : String -> Result String String .
-Os.listDir   : String -> Result (List String) String .
-Os.stat      : String -> Result (Int, Int, Int) String .
-Os.mkdir     : String -> Result Unit String .
-Os.remove    : String -> Result Unit String .
-Os.rename    : String -> String -> Result Unit String .
-Os.cwd       : Unit -> String .
+Fs = use "osfs".
+Io = use "osio".
+Net = use "osnet".
+Watch = use "oswatch".
+Conn = use "osconnection".
+
 Os.run       : List String -> String -> String -> List String -> Int -> Result (Int, String, String) String .
 Os.wallClock : Unit -> Int .
 Os.tzOffset  : Int -> Int .
-Os.open      : String -> String -> Result Int String .
-Os.ready     : Int -> Bool .
-Os.poll      : List Int -> List Int .
-Os.watchOpen : Unit -> Result Int String .
-Os.watchArm  : Int -> List Int -> Unit .
-Os.watchTake : Int -> List Int .
-Os.read      : Int -> Int -> Result String String .
-Os.write     : Int -> String -> Result Int String .
-Os.seek      : Int -> Int -> Result Int String .
-Os.close     : Int -> Result Unit String .
-Os.connect   : String -> Int -> Result Int String .
-Os.listen    : String -> Int -> Result Int String .
-Os.accept    : Int -> Result (Int, String) String .
-Os.localPort : Int -> Result Int String .
 Os.exec      : List String -> Result Unit String .
 Os.exePath   : Unit -> Result String String .
 Os.ttyRaw    : Bool -> Result Unit String .
 Os.ttySize   : Unit -> (Int, Int) .
 
-readFile p = Os.readFile p.
-listDir p = Os.listDir p.
-stat p = Os.stat p.
-mkdir p = Os.mkdir p.
-remove p = Os.remove p.
-rename a b = Os.rename a b.
-cwd u = Os.cwd u.
+readFile p = Fs.readFile p.
+listDir p = Fs.listDir p.
+stat p = Fs.stat p.
+mkdir p = Fs.mkdir p.
+remove p = Fs.remove p.
+rename a b = Fs.rename a b.
+cwd u = Fs.cwd u.
+
+open path mode = Io.open path mode.
+ready fd = Io.ready fd.
+readyFor fd mask = Io.readyFor fd mask.
+poll fds = Io.poll fds.
+read fd n = Io.read fd n.
+write fd bytes = Io.write fd bytes.
+seek fd at = Io.seek fd at.
+close fd = Io.close fd.
+
+connect host port = Net.connect host port.
+listen addr port = Net.listen addr port.
+accept fd = Net.accept fd.
+localPort fd = Net.localPort fd.
+prepareSocket fd = Net.prepareSocket fd.
+
+watchOpen u = Watch.watchOpen u.
+watchArm w fds = Watch.watchArm w fds.
+watchTake w = Watch.watchTake w.
+watchArmEvents w events us = Watch.watchArmEvents w events us.
+watchTakeEvents w = Watch.watchTakeEvents w.
+watchClose w = Watch.watchClose w.
+
 run argv dir input env limitMs = Os.run argv dir input env limitMs.
-open path mode = Os.open path mode.
-ready fd = Os.ready fd.
-poll fds = Os.poll fds.
-watchOpen u = Os.watchOpen u.
-watchArm w fds = Os.watchArm w fds.
-watchTake w = Os.watchTake w.
-read fd n = Os.read fd n.
-write fd bytes = Os.write fd bytes.
-seek fd at = Os.seek fd at.
-close fd = Os.close fd.
-connect host port = Os.connect host port.
-listen addr port = Os.listen addr port.
-accept fd = Os.accept fd.
-localPort fd = Os.localPort fd.
 exec argv = Os.exec argv.
 exePath u = Os.exePath u.
 ttyRaw on = Os.ttyRaw on.
@@ -64,9 +63,3 @@ ttySize u = Os.ttySize u.
 wallClock u = Os.wallClock u.
 # the local time zone's offset from UTC at that instant, seconds east
 tzOffset secs = Os.tzOffset secs.
-
-# Unsafe owned handle: stop arm/take first; retry after yielding while False.
-# True releases the handle, which must never be used again (IRQ slots reuse).
-# This does not unbind an IRQ actor or cancel Poller.await callers.
-Os.watchClose : Int -> Bool .
-watchClose w = Os.watchClose w.

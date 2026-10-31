@@ -95,28 +95,30 @@ renderStyled n =
   fin (goN (Ctx (start :: Nil) Nil Nil) n).
 fin (Ctx cur ss ds) = (rev (static cur :: ss), rev ds).
 
-goN : unsafe Ctx -> Node -> Ctx .
-goN c (Fragment ss ds _) = appendFragment c ss ds.
-goN c (Txt s) = emit c (esc s).
-goN c (Dyn v) = slot c v.
-goN c (LTxt n) = emit c "<span data-text=\"{n}\"></span>".
-goN c (Inp attrs) = emit c "<input{attrsOf attrs}>".
-goN c (El tag attrs kids) =
-  c1 = emit c "<{tag}{attrsOf attrs}>";
-  c2 = goKids c1 kids;
-  emit c2 "</{tag}>".
+goN : Ctx -> (node : Node | measure node) -> Ctx .
+goN c node = case node of
+    Fragment ss ds _ -> appendFragment c ss ds
+  | Txt s -> emit c (esc s)
+  | Dyn v -> slot c v
+  | LTxt n -> emit c "<span data-text=\"{n}\"></span>"
+  | Inp attrs -> emit c "<input{attrsOf attrs}>"
+  | El tag attrs kids ->
+      c1 = emit c "<{tag}{attrsOf attrs}>";
+      c2 = goKids c1 kids;
+      emit c2 "</{tag}>".
 
 # Cached fragments have LOCAL slots. Compose them into this render's context;
 # global slot indices are assigned only by the final interleaved arrays.
-appendFragment : unsafe Ctx -> List String -> List String -> Ctx .
-appendFragment c ss ds = case (ss, ds) of
-    (s :: Nil, Nil) -> emit c s
-  | (s :: rest, d :: more) -> appendFragment (slot (emit c s) d) rest more
+appendFragment : Ctx -> (ss : List String | measure ss) -> List String -> Ctx .
+appendFragment c ss ds = case ss of
+    s :: Nil -> (case ds of Nil -> emit c s | _ -> error "View: invalid cached fragment shape")
+  | s :: rest -> (case ds of d :: more -> appendFragment (slot (emit c s) d) rest more | _ -> error "View: invalid cached fragment shape")
   | _ -> error "View: invalid cached fragment shape".
 
-goKids : unsafe Ctx -> List Node -> Ctx .
-goKids c Nil = c.
-goKids c (k :: r) = goKids (goN c k) r.
+goKids : Ctx -> (kids : List Node | measure kids) -> Ctx .
+goKids c kids = case kids of
+    Nil -> c
+  | k :: r -> goKids (goN c k) r.
 
 emit (Ctx cur ss ds) s = Ctx (s :: cur) ss ds.
 slot (Ctx cur ss ds) v = Ctx Nil (static cur :: ss) (v :: ds).
@@ -138,12 +140,11 @@ attrsOf as = _ = once as; strcat (xdata (localsOf as)) (strcat (xjson (clientOf 
 # the first, and the second would be a silent no-op.  Say so instead.
 once : List Attr -> Unit .
 once as = onceGo (L.concatMap eventsOf as) Nil.
-onceGo : unsafe List String -> List String -> Unit .
+onceGo : (names : List String | measure names) -> List String -> Unit .
 onceGo names seen = case names of
     Nil -> Unit
-  | n :: r -> (case memS n seen of
-      True -> error "View: an element carries two {n} attributes; the browser would keep only the first"
-    | False -> onceGo r (n :: seen)).
+  | n :: r -> if memS n seen then error "View: an element carries two {n} attributes; the browser would keep only the first"
+      else onceGo r (n :: seen).
 eventsOf a = case a of
     OnSet _ _ -> ["data-set"] | ClientSet _ _ -> ["data-set"] | ClientStep _ _ _ _ -> ["data-set"] | ClientToggle _ -> ["data-set"]
   | OnBoth _ _ _ _ -> ["data-set", "data-click"]
@@ -152,47 +153,54 @@ eventsOf a = case a of
   | OnEnter _ _ -> ["data-enter"] | ClientEnter _ _ -> ["data-enter"]
   | Input _ -> ["data-input"] | ClientBind _ _ -> ["data-input"]
   | _ -> Nil.
-localStyle key value declarations = LocalStyle key value declarations.
+localStyle key value ds = LocalStyle key value ds.
 localStyleAttribute attrs = case localStyleValues attrs of Nil -> "" | values -> " data-local-style=\"{esc (J.render (J.Sequence values))}\"".
-localStyleValues : unsafe List Attr -> List J.Value .
+localStyleValues : (attrs : List Attr | measure attrs) -> List J.Value .
 localStyleValues attrs = case attrs of
     Nil -> Nil
   | LocalStyle key value ds :: rest -> J.object [("key", J.Text key), ("value", J.Text value), ("classes", J.Text (atomClasses (lastAtoms (declarations 6 ds))))] :: localStyleValues rest
   | _ :: rest -> localStyleValues rest.
-localStyleAtoms : unsafe List Attr -> List Atom .
-localStyleAtoms attrs = case attrs of Nil -> Nil | LocalStyle _ _ ds :: rest -> append (lastAtoms (declarations 6 ds)) (localStyleAtoms rest) | _ :: rest -> localStyleAtoms rest.
-localsOf : unsafe List Attr -> String .
-localsOf Nil = "".
-localsOf (Local n init :: r) = join2 (localsOf r) "{n}={init}".
-localsOf (a :: r) = localsOf r.
+localStyleAtoms : (attrs : List Attr | measure attrs) -> List Atom .
+localStyleAtoms attrs = case attrs of
+    Nil -> Nil
+  | LocalStyle _ _ ds :: rest -> append (lastAtoms (declarations 6 ds)) (localStyleAtoms rest)
+  | _ :: rest -> localStyleAtoms rest.
+localsOf : (attrs : List Attr | measure attrs) -> String .
+localsOf attrs = case attrs of
+    Nil -> ""
+  | Local n init :: r -> join2 (localsOf r) "{n}={init}"
+  | _ :: r -> localsOf r.
 xdata "" = "".
 xdata s = " x-data=\"{s}\"".
 # typed client state (ClientInit, from `locals` and `hold`) merges into one
 # x-json object the same way: name -> the JSON the page starts with
-clientOf : unsafe List Attr -> String .
-clientOf Nil = "".
-clientOf (ClientInit n v :: r) = joinComma "{J.quote n}:{v}" (clientOf r).
-clientOf (a :: r) = clientOf r.
+clientOf : (attrs : List Attr | measure attrs) -> String .
+clientOf attrs = case attrs of
+    Nil -> ""
+  | ClientInit n v :: r -> joinComma "{J.quote n}:{v}" (clientOf r)
+  | _ :: r -> clientOf r.
 joinComma a "" = a.
 joinComma a b = strcat a (strcat "," b).
 xjson "" = "".
 xjson s = " x-json=\"{esc "\{{s}}"}\"".
-classesOf : unsafe List Attr -> String .
-classesOf Nil = "".
-classesOf (Cls s :: r) = joinSp s (classesOf r).
-classesOf (a :: r) = classesOf r.
+classesOf : (attrs : List Attr | measure attrs) -> String .
+classesOf attrs = case attrs of
+    Nil -> ""
+  | Cls s :: r -> joinSp s (classesOf r)
+  | _ :: r -> classesOf r.
 joinSp "" b = b.
 joinSp a "" = a.
 joinSp a b = strcat a (strcat " " b).
 classAttr "" = "".
 classAttr s = " class=\"{s}\"".
-others : unsafe List Attr -> String .
-others Nil = "".
-others (Local n init :: r) = others r.
-others (ClientInit n v :: r) = others r.
-others (Cls s :: r) = others r.
-others (Utilities _ :: r) = others r.
-others (a :: r) = strcat (attrOf a) (others r).
+others : (attrs : List Attr | measure attrs) -> String .
+others attrs = case attrs of
+    Nil -> ""
+  | Local _ _ :: r -> others r
+  | ClientInit _ _ :: r -> others r
+  | Cls _ :: r -> others r
+  | Utilities _ :: r -> others r
+  | a :: r -> strcat (attrOf a) (others r).
 
 attrOf (Cls s) = " class=\"{s}\"".
 attrOf (Att k v) = " {k}=\"{esc v}\"".
@@ -215,7 +223,7 @@ attrOf (ClientEnter msg names) = " data-enter=\"{esc msg}\" data-args=\"{esc nam
 # client state is not an attribute: it is collected into the element's
 # x-data (`xdata`) instead.  `others` already skips it, so this clause is
 # how the function stays total rather than depending on that one caller.
-attrOf (Local n init) = "".
+attrOf (Local _ _) = "".
 attrOf (ClientInit _ _) = "".
 attrOf (Utilities _) = "".
 attrOf (LocalStyle _ _ _) = "".
@@ -338,75 +346,86 @@ disabled ds = Utilities [Disabled ds].
 Atom = Type (Atom Int String String).
 localAtoms : List Attr -> List Atom .
 localAtoms attrs = lastAtoms (collectAtoms attrs).
-collectAtoms : unsafe List Attr -> List Atom .
-collectAtoms Nil = Nil.
-collectAtoms (Utilities us :: rest) = append (utilityAtoms us) (collectAtoms rest).
-collectAtoms (_ :: rest) = collectAtoms rest.
-utilityAtoms : unsafe List Utility -> List Atom .
-utilityAtoms Nil = Nil.
-utilityAtoms (u :: rest) = append (oneUtility u) (utilityAtoms rest).
+collectAtoms : (attrs : List Attr | measure attrs) -> List Atom .
+collectAtoms attrs = case attrs of
+    Nil -> Nil
+  | Utilities us :: rest -> append (utilityAtoms us) (collectAtoms rest)
+  | _ :: rest -> collectAtoms rest.
+utilityAtoms : (us : List Utility | measure us) -> List Atom .
+utilityAtoms us = case us of
+    Nil -> Nil
+  | u :: rest -> append (oneUtility u) (utilityAtoms rest).
 oneUtility (Base ds) = declarations 0 ds.
 oneUtility (Narrow ds) = declarations 1 ds.
 oneUtility (Wide ds) = declarations 2 ds.
 oneUtility (Hover ds) = declarations 3 ds.
 oneUtility (Focus ds) = declarations 4 ds.
 oneUtility (Disabled ds) = declarations 5 ds.
-declarations : unsafe Int -> List Decl -> List Atom .
-declarations scope Nil = Nil.
-declarations scope (d :: rest) = append (declaration scope d) (declarations scope rest).
-declaration scope (Padding l) = declarations scope [PaddingTop l, PaddingRight l, PaddingBottom l, PaddingLeft l].
-declaration scope (PaddingX l) = declarations scope [PaddingLeft l, PaddingRight l].
-declaration scope (PaddingY l) = declarations scope [PaddingTop l, PaddingBottom l].
-declaration scope (Margin l) = declarations scope [MarginTop l, MarginRight l, MarginBottom l, MarginLeft l].
-declaration scope (MarginX l) = declarations scope [MarginLeft l, MarginRight l].
-declaration scope (MarginY l) = declarations scope [MarginTop l, MarginBottom l].
-declaration scope (Overflow mode) = declarations scope [OverflowX mode, OverflowY mode].
-declaration scope (Gap l) = declarations scope [RowGap l, ColumnGap l].
-declaration scope (BorderWidth l) = borderAtoms scope "width" (lenCss l).
-declaration scope (BorderColour colour) = borderAtoms scope "color" (colourCss colour).
-declaration scope (BorderStyle style) = borderAtoms scope "style" (case style of SolidBorder -> "solid" | DashedBorder -> "dashed" | NoBorder -> "none").
-declaration scope (BorderTop l colour) = [Atom scope "border-top-width" "border-top-width:{lenCss l}", Atom scope "border-top-style" "border-top-style:solid", Atom scope "border-top-color" "border-top-color:{colourCss colour}"].
-declaration scope (BorderBottom l colour) = [Atom scope "border-bottom-width" "border-bottom-width:{lenCss l}", Atom scope "border-bottom-style" "border-bottom-style:solid", Atom scope "border-bottom-color" "border-bottom-color:{colourCss colour}"].
-declaration scope (OutlineWidth l) = [Atom scope "outline-width" "outline-width:{lenCss l}", Atom scope "outline-style" "outline-style:solid"].
-declaration scope (Prop _ _) = error "View.utilities: Prop is a legacy escape hatch; use typed declarations".
-declaration scope d =
+declarations : Int -> (ds : List Decl | measure ds) -> List Atom .
+declarations scope ds = case ds of
+    Nil -> Nil
+  | d :: rest -> append (declaration scope d) (declarations scope rest).
+singleAtom scope d =
   css = declCss d;
-  [Atom scope (substr css 0 (strIndexOf ":" css)) css].
+  Atom scope (substr css 0 (strIndexOf ":" css)) css.
+declaration : Int -> Decl -> List Atom .
+declaration scope d = case d of
+    Padding l -> [singleAtom scope (PaddingTop l), singleAtom scope (PaddingRight l), singleAtom scope (PaddingBottom l), singleAtom scope (PaddingLeft l)]
+  | PaddingX l -> [singleAtom scope (PaddingLeft l), singleAtom scope (PaddingRight l)]
+  | PaddingY l -> [singleAtom scope (PaddingTop l), singleAtom scope (PaddingBottom l)]
+  | Margin l -> [singleAtom scope (MarginTop l), singleAtom scope (MarginRight l), singleAtom scope (MarginBottom l), singleAtom scope (MarginLeft l)]
+  | MarginX l -> [singleAtom scope (MarginLeft l), singleAtom scope (MarginRight l)]
+  | MarginY l -> [singleAtom scope (MarginTop l), singleAtom scope (MarginBottom l)]
+  | Overflow mode -> [singleAtom scope (OverflowX mode), singleAtom scope (OverflowY mode)]
+  | Gap l -> [singleAtom scope (RowGap l), singleAtom scope (ColumnGap l)]
+  | BorderWidth l -> borderAtoms scope "width" (lenCss l)
+  | BorderColour colour -> borderAtoms scope "color" (colourCss colour)
+  | BorderStyle style -> borderAtoms scope "style" (case style of SolidBorder -> "solid" | DashedBorder -> "dashed" | NoBorder -> "none")
+  | BorderTop l colour -> [Atom scope "border-top-width" "border-top-width:{lenCss l}", Atom scope "border-top-style" "border-top-style:solid", Atom scope "border-top-color" "border-top-color:{colourCss colour}"]
+  | BorderBottom l colour -> [Atom scope "border-bottom-width" "border-bottom-width:{lenCss l}", Atom scope "border-bottom-style" "border-bottom-style:solid", Atom scope "border-bottom-color" "border-bottom-color:{colourCss colour}"]
+  | OutlineWidth l -> [Atom scope "outline-width" "outline-width:{lenCss l}", Atom scope "outline-style" "outline-style:solid"]
+  | Prop _ _ -> error "View.utilities: Prop is a legacy escape hatch; use typed declarations"
+  | other -> [singleAtom scope other].
 borderAtoms scope property value = L.map (fn side ->
   key = "border-{side}-{property}"; Atom scope key "{key}:{value}") ["top", "right", "bottom", "left"].
-lastAtoms : unsafe List Atom -> List Atom .
-lastAtoms Nil = Nil.
-lastAtoms (Atom scope property css :: rest) =
-  if hasAtom scope property rest then lastAtoms rest
-  else Atom scope property css :: lastAtoms rest.
-hasAtom : unsafe Int -> String -> List Atom -> Bool .
-hasAtom scope property Nil = False.
-hasAtom scope property (Atom s p _ :: rest) = (scope == s and property == p) or hasAtom scope property rest.
+lastAtoms : (atoms : List Atom | measure atoms) -> List Atom .
+lastAtoms atoms = case atoms of
+    Nil -> Nil
+  | Atom scope property css :: rest ->
+      if hasAtom scope property rest then lastAtoms rest
+      else Atom scope property css :: lastAtoms rest.
+hasAtom : Int -> String -> (atoms : List Atom | measure atoms) -> Bool .
+hasAtom scope property atoms = case atoms of
+    Nil -> False
+  | Atom s p _ :: rest -> (scope == s and property == p) or hasAtom scope property rest.
 # Encoding the declaration is collision-free, deterministic and CSS-safe. The
 # class carries enough information for cached Fragment classes to emit CSS too.
 atomClass (Atom scope _ css) = "fpr-u-{scope}-{Encoding.hex css}".
-atomClasses : unsafe List Atom -> String .
+atomClasses : List Atom -> String .
 atomClasses Nil = "".
 atomClasses atoms = strJoin " " (atomNames atoms).
-atomNames : unsafe List Atom -> List String .
-atomNames Nil = Nil.
-atomNames (a :: rest) = atomClass a :: atomNames rest.
+atomNames : (atoms : List Atom | measure atoms) -> List String .
+atomNames atoms = case atoms of
+    Nil -> Nil
+  | a :: rest -> atomClass a :: atomNames rest.
 
 # Fixed precedence: base, viewport, hover, focus, disabled. State rules share
 # specificity, so disabled wins even when focus and hover are also active.
 localCss cs = localStages 0 cs.
-localStages : unsafe Int -> List String -> String .
-localStages scope cs = if scope > 6 then "" else strcat (localStage scope cs) (localStages (scope + 1) cs).
-localStage : unsafe Int -> List String -> String .
+localStages : (scope : Int | measure (7 - scope)) -> List String -> String .
+localStages scope cs | scope > 6 = "".
+localStages scope cs = strcat (localStage scope cs) (localStages (scope + 1) cs).
+localStage : Int -> List String -> String .
 # Join once: concatenating each rule with the remaining stylesheet copies
 # that suffix again, even for a class belonging to another scope.
 localStage scope Nil = "".
 localStage scope cs = strJoin "" (localRules scope "fpr-u-{scope}-" cs).
-localRules : unsafe Int -> String -> List String -> List String .
-localRules scope prefix Nil = Nil.
-localRules scope prefix (c :: rest) =
-  rule = localRuleFor scope prefix c;
-  if rule == "" then localRules scope prefix rest else rule :: localRules scope prefix rest.
+localRules : Int -> String -> (cs : List String | measure cs) -> List String .
+localRules scope prefix cs = case cs of
+    Nil -> Nil
+  | c :: rest ->
+      rule = localRuleFor scope prefix c;
+      if rule == "" then localRules scope prefix rest else rule :: localRules scope prefix rest.
 localRule scope c = localRuleFor scope "fpr-u-{scope}-" c.
 # A normal scope occupies byte 6. Reject other scopes before comparing the
 # prefix, and construct that prefix once per stage instead of once per class.
@@ -434,46 +453,55 @@ localDeclRule scope c css = case scope of
 # explicit Cls values and the encoded classes carried by cached Fragments.
 CssEntry = Type (CssAtom String Int String | CssName String).
 cssFor tree = entryStages 0 (nubEntries (allCssEntries tree Nil)).
-entryStages : unsafe Int -> List CssEntry -> String .
-entryStages scope Nil = "".
-entryStages scope entries = if scope > 6 then "" else
-  strcat (strJoin "" (entryRules scope "fpr-u-{scope}-" entries)) (entryStages (scope + 1) entries).
-entryRules : unsafe Int -> String -> List CssEntry -> List String .
-entryRules scope prefix Nil = Nil.
-entryRules scope prefix (entry :: rest) =
-  rule = entryRule scope prefix entry;
-  if rule == "" then entryRules scope prefix rest else rule :: entryRules scope prefix rest.
+entryStages : (scope : Int | measure (7 - scope)) -> List CssEntry -> String .
+entryStages scope entries | scope > 6 = "".
+entryStages scope entries = case entries of
+    Nil -> ""
+  | _ -> strcat (strJoin "" (entryRules scope "fpr-u-{scope}-" entries)) (entryStages (scope + 1) entries).
+entryRules : Int -> String -> (entries : List CssEntry | measure entries) -> List String .
+entryRules scope prefix entries = case entries of
+    Nil -> Nil
+  | entry :: rest ->
+      rule = entryRule scope prefix entry;
+      if rule == "" then entryRules scope prefix rest else rule :: entryRules scope prefix rest.
 entryRule scope prefix (CssAtom name own css) = if scope == own then localDeclRule scope name css else "".
 entryRule scope prefix (CssName name) = localRuleFor scope prefix name.
 entryName (CssAtom name _ _) = name.
 entryName (CssName name) = name.
-nubEntries : unsafe List CssEntry -> List CssEntry .
-nubEntries Nil = Nil.
-nubEntries (entry :: rest) = if entryMember (entryName entry) rest then nubEntries rest else entry :: nubEntries rest.
-entryMember : unsafe String -> List CssEntry -> Bool .
-entryMember name Nil = False.
-entryMember name (CssAtom other _ _ :: rest) = name == other or entryMember name rest.
-entryMember name (CssName other :: rest) = name == other or entryMember name rest.
-atomEntries : unsafe List Atom -> List CssEntry .
-atomEntries Nil = Nil.
-atomEntries (a :: rest) = case a of Atom scope _ css -> CssAtom (atomClass a) scope css :: atomEntries rest.
-namedEntries : unsafe List String -> List CssEntry .
-namedEntries Nil = Nil.
-namedEntries (name :: rest) = CssName name :: namedEntries rest.
-allCssEntries : unsafe Node -> List CssEntry -> List CssEntry .
-allCssEntries (El _ attrs kids) acc = cssKids kids (cssAttrs attrs acc).
-allCssEntries (Inp attrs) acc = cssAttrs attrs acc.
-allCssEntries (Fragment _ _ classes) acc = append (namedEntries classes) acc.
-allCssEntries _ acc = acc.
-cssKids : unsafe List Node -> List CssEntry -> List CssEntry .
-cssKids Nil acc = acc.
-cssKids (kid :: rest) acc = cssKids rest (allCssEntries kid acc).
+nubEntries : (entries : List CssEntry | measure entries) -> List CssEntry .
+nubEntries entries = case entries of
+    Nil -> Nil
+  | entry :: rest -> if entryMember (entryName entry) rest then nubEntries rest else entry :: nubEntries rest.
+entryMember : String -> (entries : List CssEntry | measure entries) -> Bool .
+entryMember name entries = case entries of
+    Nil -> False
+  | CssAtom other _ _ :: rest -> name == other or entryMember name rest
+  | CssName other :: rest -> name == other or entryMember name rest.
+atomEntries : (atoms : List Atom | measure atoms) -> List CssEntry .
+atomEntries atoms = case atoms of
+    Nil -> Nil
+  | a :: rest -> (case a of Atom scope _ css -> CssAtom (atomClass a) scope css :: atomEntries rest).
+namedEntries : (names : List String | measure names) -> List CssEntry .
+namedEntries names = case names of
+    Nil -> Nil
+  | name :: rest -> CssName name :: namedEntries rest.
+allCssEntries : (node : Node | measure node) -> List CssEntry -> List CssEntry .
+allCssEntries node acc = case node of
+    El _ attrs kids -> cssKids kids (cssAttrs attrs acc)
+  | Inp attrs -> cssAttrs attrs acc
+  | Fragment _ _ classes -> append (namedEntries classes) acc
+  | _ -> acc.
+cssKids : (kids : List Node | measure kids) -> List CssEntry -> List CssEntry .
+cssKids kids acc = case kids of
+    Nil -> acc
+  | kid :: rest -> cssKids rest (allCssEntries kid acc).
 cssAttrs attrs acc = append (atomEntries (localStyleAtoms attrs))
   (append (atomEntries (localAtoms attrs)) (classEntries attrs acc)).
-classEntries : unsafe List Attr -> List CssEntry -> List CssEntry .
-classEntries Nil acc = acc.
-classEntries (Cls names :: rest) acc = classEntries rest (append (namedEntries (splitSp names)) acc).
-classEntries (_ :: rest) acc = classEntries rest acc.
+classEntries : (attrs : List Attr | measure attrs) -> List CssEntry -> List CssEntry .
+classEntries attrs acc = case attrs of
+    Nil -> acc
+  | Cls names :: rest -> classEntries rest (append (namedEntries (splitSp names)) acc)
+  | _ :: rest -> classEntries rest acc.
 
 cssWith : List Style -> Node -> String .
 cssWith styles tree =
@@ -482,45 +510,51 @@ cssWith styles tree =
     (strcat (media styles "narrow" "(max-width:760px)" cs)
       (strcat (media styles "wide" "(min-width:761px)" cs) (localCss cs)))).
 
-rules : unsafe List Style -> List String -> String .
+rules : List Style -> List String -> String .
 rules styles cs = strJoin "" (rev (rulesGo styles cs Nil)).
-rulesGo : unsafe List Style -> List String -> List String -> List String .
-rulesGo styles Nil acc = acc.
-rulesGo styles (c :: r) acc = rulesGo styles r (cssExtra c :: rule1 ".{c}" (declsOf styles c) :: acc).
+rulesGo : List Style -> (cs : List String | measure cs) -> List String -> List String .
+rulesGo styles cs acc = case cs of
+    Nil -> acc
+  | c :: r -> rulesGo styles r (cssExtra c :: rule1 ".{c}" (declsOf styles c) :: acc).
 rule1 sel "" = "".
 rule1 sel d = "{sel}\{{d}}\n".
 
 # the breakpoint's rules: every `name:` class in the tree, as its base class
-media : unsafe List Style -> String -> String -> List String -> String .
+media : List Style -> String -> String -> List String -> String .
 media styles name query cs = wrapMedia query (strJoin "" (rev (mediaGo styles name cs Nil))).
 wrapMedia q "" = "".
 wrapMedia q body = "@media {q}\{\n{body}}\n".
-mediaGo : unsafe List Style -> String -> List String -> List String -> List String .
-mediaGo styles name Nil acc = acc.
-mediaGo styles name (c :: r) acc | hasPrefix "{name}:" c = mediaGo styles name r (mediaRule styles name (dropPrefix (strlen name + 1) c) :: acc).
-mediaGo styles name (c :: r) acc = mediaGo styles name r acc.
+mediaGo : List Style -> String -> (cs : List String | measure cs) -> List String -> List String .
+mediaGo styles name cs acc = case cs of
+    Nil -> acc
+  | c :: r ->
+      if hasPrefix "{name}:" c then
+        mediaGo styles name r (mediaRule styles name (dropPrefix (strlen name + 1) c) :: acc)
+      else mediaGo styles name r acc.
 mediaRule styles name base = rule1 ".{name}\\:{base}" (declsOf styles base).
-hasPrefix : unsafe String -> String -> Bool .
+hasPrefix : String -> String -> Bool .
 # Keep the strict-length convention (an exact match is not a prefix here),
 # but compare bytes without allocating a temporary substring.
 hasPrefix pre s = if strlen s > strlen pre then prefixAt pre s 0 (strlen pre) else False.
-prefixAt : unsafe String -> String -> Int -> Int -> Bool .
-prefixAt pre s i n = if i >= n then True else
+prefixAt : String -> String -> (i : Int | measure (n - i)) -> (n : Int) -> Bool .
+prefixAt pre s i n | i >= n = True.
+prefixAt pre s i n =
   if charAt pre i == charAt s i then prefixAt pre s (i + 1) n else False.
-dropPrefix : unsafe Int -> String -> String .
+dropPrefix : Int -> String -> String .
 dropPrefix n s = substr s n (strlen s - n).
 
 # a class's declarations: the app's style of that name, else the utility's
-declsOf : unsafe List Style -> String -> String .
-declsOf Nil c = cssRule c.
-declsOf (Style n ds :: r) c | strEq n c = declsCss ds.
-declsOf (st :: r) c = declsOf r c.
+declsOf : (styles : List Style | measure styles) -> String -> String .
+declsOf styles c = case styles of
+    Nil -> cssRule c
+  | Style n ds :: r -> if strEq n c then declsCss ds else declsOf r c.
 
-declsCss : unsafe List Decl -> String .
-declsCss Nil = "".
-declsCss (d :: Nil) = declCss d.
-declsCss (d :: r) = "{declCss d};{declsCss r}".
-declCss : unsafe Decl -> String .
+declsCss : (ds : List Decl | measure ds) -> String .
+declsCss ds = case ds of
+    Nil -> ""
+  | d :: Nil -> declCss d
+  | d :: r -> "{declCss d};{declsCss r}".
+declCss : Decl -> String .
 declCss (Width l) = "width:{lenCss l}".
 declCss (BorderCollapse mode) = "border-collapse:{(case mode of CollapseBorders -> "collapse" | SeparateBorders -> "separate")}".
 declCss (UserSelect mode) = "user-select:{(case mode of SelectText -> "text" | SelectNone -> "none")}".
@@ -658,31 +692,35 @@ themeName Card = "card".
 themeName Panel = "panel".
 themeName Line = "line".
 themeName (NamedToken name) = if validToken name then name else error "View.NamedToken: expected a lowercase letter followed by lowercase letters, digits or hyphens".
-validToken name = if strlen name == 0 then False else charAt name 0 >= 97 and charAt name 0 <= 122 and tokenTail name 1.
-tokenTail : unsafe String -> Int -> Bool .
-tokenTail name i = if i >= strlen name then True else
+validToken name = if strlen name == 0 then False else charAt name 0 >= 97 and charAt name 0 <= 122 and tokenTail name 1 (strlen name).
+tokenTail : String -> (i : Int | measure (n - i)) -> (n : Int) -> Bool .
+tokenTail name i n | i >= n = True.
+tokenTail name i n =
   c = charAt name i;
-  ((c >= 97 and c <= 122) or (c >= 48 and c <= 57) or c == 45) and tokenTail name (i + 1).
+  ((c >= 97 and c <= 122) or (c >= 48 and c <= 57) or c == 45) and tokenTail name (i + 1) n.
 shadowsCss Nil = "none".
 shadowsCss parts = strJoin "," (shadowParts parts).
-shadowParts : unsafe List ShadowPart -> List String .
-shadowParts Nil = Nil.
-shadowParts (ShadowPart x y blur spread colour :: rest) =
-  "{lenCss x} {lenCss y} {lenCss blur} {lenCss spread} {colourCss colour}" :: shadowParts rest.
+shadowParts : (parts : List ShadowPart | measure parts) -> List String .
+shadowParts parts = case parts of
+    Nil -> Nil
+  | ShadowPart x y blur spread colour :: rest ->
+      "{lenCss x} {lenCss y} {lenCss blur} {lenCss spread} {colourCss colour}" :: shadowParts rest.
 imagesCss Nil = "none".
 imagesCss images = strJoin "," (imageParts images).
-imageParts : unsafe List BackgroundImage -> List String .
-imageParts Nil = Nil.
-imageParts (image :: rest) = imageCss image :: imageParts rest.
+imageParts : (images : List BackgroundImage | measure images) -> List String .
+imageParts images = case images of
+    Nil -> Nil
+  | image :: rest -> imageCss image :: imageParts rest.
 imageCss (LinearGradient degrees stops) = "linear-gradient({degrees}deg,{stopsCss stops})".
 imageCss (RadialGradient x y atX atY stops) = "radial-gradient({lenCss x} {lenCss y} at {lenCss atX} {lenCss atY},{stopsCss stops})".
 imageCss (TokenImage token) = "var(--{themeName token})".
 stopsCss stops = case stops of
     _ :: _ :: _ -> strJoin "," (stopParts stops)
   | _ -> error "View.gradient: expected at least two stops".
-stopParts : unsafe List GradientStop -> List String .
-stopParts Nil = Nil.
-stopParts (Stop colour at :: rest) = "{colourCss colour} {lenCss at}" :: stopParts rest.
+stopParts : (stops : List GradientStop | measure stops) -> List String .
+stopParts stops = case stops of
+    Nil -> Nil
+  | Stop colour at :: rest -> "{colourCss colour} {lenCss at}" :: stopParts rest.
 alignmentCss AlignStart = "flex-start".
 alignmentCss AlignCenter = "center".
 alignmentCss AlignEnd = "flex-end".
@@ -712,23 +750,26 @@ positionCss Fixed = "fixed".
 positionCss Sticky = "sticky".
 transformCss Nil = "none".
 transformCss ops = transformOps ops.
-transformOps : unsafe List TransformOp -> String .
-transformOps Nil = "".
-transformOps (TranslateX l :: rest) = joinSp "translateX({lenCss l})" (transformOps rest).
-transformOps (TranslateY l :: rest) = joinSp "translateY({lenCss l})" (transformOps rest).
-transformOps (Scale percent :: rest) = if percent < 0 or percent > 1000 then error "View.Scale: expected 0..1000 percent" else
-  joinSp "scale({percent / 100}.{(if percent % 100 < 10 then "0" else "") + str (percent % 100)})" (transformOps rest).
-lenCss : unsafe Len -> String .
-lenCss (Px n) = "{n}px".
-lenCss (MilliPx n) = scaledLength n "px".
-lenCss (Em n) = scaledLength n "em".
-lenCss (Pct n) = "{n}%".
-lenCss (Vh n) = "{n}vh".
-lenCss (Dvh n) = "{n}dvh".
-lenCss (Vw n) = "{n}vw".
-lenCss (Less a b) = "calc({lenCss a} - {lenCss b})".
-lenCss Auto = "auto".
-lenCss Inherit = "inherit".
+transformOps : (ops : List TransformOp | measure ops) -> String .
+transformOps ops = case ops of
+    Nil -> ""
+  | TranslateX l :: rest -> joinSp "translateX({lenCss l})" (transformOps rest)
+  | TranslateY l :: rest -> joinSp "translateY({lenCss l})" (transformOps rest)
+  | Scale percent :: rest ->
+      if percent < 0 or percent > 1000 then error "View.Scale: expected 0..1000 percent" else
+        joinSp "scale({percent / 100}.{(if percent % 100 < 10 then "0" else "") + str (percent % 100)})" (transformOps rest).
+lenCss : (len : Len | measure len) -> String .
+lenCss len = case len of
+    Px n -> "{n}px"
+  | MilliPx n -> scaledLength n "px"
+  | Em n -> scaledLength n "em"
+  | Pct n -> "{n}%"
+  | Vh n -> "{n}vh"
+  | Dvh n -> "{n}dvh"
+  | Vw n -> "{n}vw"
+  | Less a b -> "calc({lenCss a} - {lenCss b})"
+  | Auto -> "auto"
+  | Inherit -> "inherit".
 scaledLength n suffix = if n == intMin Unit then error "View: scaled length exceeds range" else
   value = if n < 0 then 0 - n else n;
   "{(if n < 0 then "-" else "")}{value / 1000}.{(if value % 1000 < 100 then "0" else "")}{(if value % 1000 < 10 then "0" else "")}{value % 1000}{suffix}".
@@ -736,18 +777,21 @@ scaledLength n suffix = if n == intMin Unit then error "View: scaled length exce
 # what a utility needs beyond its own rule (the page around it, a state)
 cssExtra c = "".
 
-allClasses : unsafe Node -> List String -> List String .
-allClasses (El tag attrs kids) acc = allKids kids (append (atomNames (localStyleAtoms attrs)) (append (atomNames (localAtoms attrs)) (attrCls attrs acc))).
-allClasses (Fragment _ _ classes) acc = append classes acc.
-allClasses (Inp attrs) acc = append (atomNames (localStyleAtoms attrs)) (append (atomNames (localAtoms attrs)) (attrCls attrs acc)).
-allClasses n acc = acc.
-allKids : unsafe List Node -> List String -> List String .
-allKids Nil acc = acc.
-allKids (k :: r) acc = allKids r (allClasses k acc).
-attrCls : unsafe List Attr -> List String -> List String .
-attrCls Nil acc = acc.
-attrCls (Cls s :: r) acc = attrCls r (append (splitSp s) acc).
-attrCls (a :: r) acc = attrCls r acc.
+allClasses : (node : Node | measure node) -> List String -> List String .
+allClasses node acc = case node of
+    El _ attrs kids -> allKids kids (append (atomNames (localStyleAtoms attrs)) (append (atomNames (localAtoms attrs)) (attrCls attrs acc)))
+  | Fragment _ _ classes -> append classes acc
+  | Inp attrs -> append (atomNames (localStyleAtoms attrs)) (append (atomNames (localAtoms attrs)) (attrCls attrs acc))
+  | _ -> acc.
+allKids : (kids : List Node | measure kids) -> List String -> List String .
+allKids kids acc = case kids of
+    Nil -> acc
+  | k :: r -> allKids r (allClasses k acc).
+attrCls : (attrs : List Attr | measure attrs) -> List String -> List String .
+attrCls attrs acc = case attrs of
+    Nil -> acc
+  | Cls s :: r -> attrCls r (append (splitSp s) acc)
+  | _ :: r -> attrCls r acc.
 
 # the utility table. Adding a rule here makes a class available to the
 # whole app; using one anywhere in the tree is what emits it.
@@ -837,28 +881,28 @@ cssBase = "".
 # ---- delta: which dynamic slots changed ------------------------------------
 # The whole point of the split, in five clauses.
 
-deltaJson : unsafe List String -> List String -> String .
+deltaJson : List String -> List String -> String .
 deltaJson old new = strcat "\{" (strcat (dGo old new 0 "") "}").
-dGo : unsafe List String -> List String -> Int -> String -> String .
-dGo Nil Nil i acc = acc.
-dGo Nil ns i acc = acc.
-dGo os Nil i acc = acc.
-dGo (o :: os) (n :: ns) i acc | strEq o n = dGo os ns (i + 1) acc.
-dGo (o :: os) (n :: ns) i acc = dGo os ns (i + 1) (join acc "\"{i}\":\"{jesc n}\"").
+dGo : (os : List String | measure os) -> List String -> Int -> String -> String .
+dGo os ns i acc = case os of
+    Nil -> acc
+  | o :: orest -> (case ns of
+        Nil -> acc
+      | n :: nrest -> if strEq o n then dGo orest nrest (i + 1) acc
+          else dGo orest nrest (i + 1) (join acc "\"{i}\":\"{jesc n}\"")).
 
-sameStatics : unsafe List String -> List String -> Bool .
-sameStatics Nil Nil = True.
-sameStatics Nil b = False.
-sameStatics a Nil = False.
-sameStatics (a :: as) (b :: bs) | strEq a b = sameStatics as bs.
-sameStatics a b = False.
+sameStatics : (xs : List String | measure xs) -> List String -> Bool .
+sameStatics xs ys = case xs of
+    Nil -> (case ys of Nil -> True | _ -> False)
+  | a :: as -> (case ys of Nil -> False | b :: bs -> strEq a b and sameStatics as bs).
 
 # statics + dynamics as JSON arrays (the first paint, and any reshape)
-jarr : unsafe List String -> String .
+jarr : List String -> String .
 jarr xs = strcat "[" (strcat (jaGo xs "") "]").
-jaGo : unsafe List String -> String -> String .
-jaGo Nil acc = acc.
-jaGo (s :: r) acc = jaGo r (join acc "\"{jesc s}\"").
+jaGo : (xs : List String | measure xs) -> String -> String .
+jaGo xs acc = case xs of
+    Nil -> acc
+  | s :: r -> jaGo r (join acc "\"{jesc s}\"").
 join "" x = x.
 join acc x = strcat acc (strcat "," x).
 join2 "" x = x.
@@ -868,9 +912,9 @@ join2 acc x = strcat acc (strcat ";" x).
 
 # runs of plain bytes are copied whole (substr) and the pieces joined once, as
 # jesc does below; a text with nothing to escape is answered as it is
-esc : unsafe String -> String .
+esc : String -> String .
 esc s = escGo s 0 0 (strlen s) Nil.
-escGo : unsafe String -> Int -> Int -> Int -> List String -> String .
+escGo : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> List String -> String .
 escGo s st i n acc | i >= n = escDone s st i acc.
 escGo s st i n acc | escPlain (charAt s i) = escGo s st (i + 1) n acc.
 escGo s st i n acc = escGo s (i + 1) (i + 1) n (escCh (charAt s i) :: escRun s st i acc).
@@ -891,9 +935,9 @@ escCh c = chr c.
 
 # runs of plain bytes are copied whole (substr), so a long dynamic -- a
 # receipt log -- costs garbage proportional to its escapes, not its length
-jesc : unsafe String -> String .
+jesc : String -> String .
 jesc s = strJoin "" (rev (jGo s 0 0 (strlen s) Nil)).
-jGo : unsafe String -> Int -> Int -> Int -> List String -> List String .
+jGo : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> List String -> List String .
 jGo s st i n acc | i >= n = jRunTo s st i acc.
 jGo s st i n acc | jPlain (charAt s i) = jGo s st (i + 1) n acc.
 jGo s st i n acc = jGo s (i + 1) (i + 1) n (jCh (charAt s i) :: jRunTo s st i acc).
@@ -910,31 +954,26 @@ strEq a b = a == b.
 and2 a b = a and b.
 
 # the words of s, LAST FIRST; each word is one substr of its run
-splitSp : unsafe String -> List String .
+splitSp : String -> List String .
 splitSp s = spGo s 0 0 (strlen s) Nil.
-spGo : unsafe String -> Int -> Int -> Int -> List String -> List String .
+spGo : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> List String -> List String .
 spGo s st i n acc | i >= n = spAdd s st i acc.
 spGo s st i n acc | charAt s i == 32 = spGo s (i + 1) (i + 1) n (spAdd s st i acc).
 spGo s st i n acc = spGo s st (i + 1) n acc.
 spAdd s st i acc | i > st = substr s st (i - st) :: acc.
 spAdd s st i acc = acc.
 
-nub : unsafe List String -> List String .
-nub Nil = Nil.
-nub (x :: r) | memS x r = nub r.
-nub (x :: r) = x :: nub r.
-memS : unsafe String -> List String -> Bool .
-memS x Nil = False.
-memS x (y :: r) | strEq x y = True.
-memS x (y :: r) = memS x r.
+nub : (xs : List String | measure xs) -> List String .
+nub xs = case xs of
+    Nil -> Nil
+  | x :: r -> if memS x r then nub r else x :: nub r.
+memS : String -> List String -> Bool .
+memS x xs = L.member x xs.
 
-append : unsafe List a -> List a -> List a .
-append xs ys = case xs of Nil -> ys | x :: r -> x :: append r ys.
-rev : unsafe List t84 -> List t84 .
-rev l = rvGo l Nil.
-rvGo : unsafe List o84 -> List o84 -> List o84 .
-rvGo Nil acc = acc.
-rvGo (x :: r) acc = rvGo r (x :: acc).
+append : List a -> List a -> List a .
+append xs ys = L.append xs ys.
+rev : List a -> List a .
+rev xs = L.reverse xs.
 
 # ---- TYPED events and client state: no names in strings ----------------------------------------
 # The attributes above take a message NAME and a local's NAME, as text; a typo
@@ -1060,10 +1099,10 @@ text path = LTxt (localName path).
 # bare literal `@Client` is its schema (docs/2026-08-27-PATHS.md)
 locals : List { path : String, wire : c -> Wire | r } -> c -> List Attr .
 locals schema init = localsGo schema init.
-localsGo : unsafe List { path : String, wire : c -> Wire | r } -> c -> List Attr .
+localsGo : (schema : List { path : String, wire : c -> Wire | r } | measure schema) -> c -> List Attr .
 localsGo schema init = case schema of
     Nil -> Nil
-  | e :: rest -> ClientInit (dots e.path 0 Nil) (held (e.wire init)) :: localsGo rest init.
+  | e :: rest -> ClientInit (dots e.path 0 (strlen e.path) Nil) (held (e.wire init)) :: localsGo rest init.
 # a value as the page starts with it: a scalar as its text, a family as the list
 # of [key, text] pairs, anything else as its JSON
 held : Wire -> String .
@@ -1078,10 +1117,11 @@ pairText w = case w of
     WList (WStr k :: v :: Nil) -> J.Sequence [J.Text k, J.Text (J.wireText v)]
   | other -> J.fromWire other.
 # "ui.tab" -> "ui_tab", the spelling localName gives
-dots : unsafe String -> Int -> List String -> String .
-dots p i acc = case i >= strlen p of
-    True -> strJoin "" (rev acc)
-  | False -> dots p (i + 1) ((case charAt p i == 46 of True -> "_" | False -> chr (charAt p i)) :: acc).
+dots : String -> (i : Int | measure (n - i)) -> (n : Int) -> List String -> String .
+dots p i n acc | i >= n = strJoin "" (rev acc).
+dots p i n acc =
+  c = charAt p i;
+  dots p (i + 1) n ((if c == 46 then "_" else chr c) :: acc).
 
 # one value of a family: the page holds it as `cart[FW]`
 entry : { segs : List String, enc : List (String, a) -> Wire | r } -> String -> { segs : List String, enc : a -> Wire } .

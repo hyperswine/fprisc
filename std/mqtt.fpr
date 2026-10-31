@@ -19,24 +19,28 @@ identifier n = n > 0 and n <= 65535.
 
 # Strict UTF-8, no NUL, surrogate or Unicode noncharacter scalars. BOM remains
 # part of the string. This also rejects overlong encodings and bad continuations.
-utf8 text = utfGo text 0.
-utfGo : unsafe String -> Int -> Bool .
-utfGo text at = if at == strlen text then True else
+utf8 : String -> Bool .
+utf8 text = utfGo (strlen text + 1) text 0.
+utfGo : (fuel : Int | measure fuel) -> String -> Int -> Bool .
+utfGo fuel text at | fuel <= 0 = False.
+utfGo fuel text at | at >= strlen text = True.
+utfGo fuel text at =
   lead = charAt text at;
-  if lead < 128 then lead != 0 and utfGo text (at + 1) else
+  if lead < 128 then lead != 0 and utfGo (fuel - 1) text (at + 1) else
   count = if lead >= 194 and lead <= 223 then 1 else if lead >= 224 and lead <= 239 then 2 else if lead >= 240 and lead <= 244 then 3 else 0;
   if count == 0 or at + count >= strlen text then False else
   cp = continuation text (at + 1) count (band lead (if count == 1 then 31 else if count == 2 then 15 else 7));
   cp >= (if count == 1 then 128 else if count == 2 then 2048 else 65536) and cp <= 1114111 and
   not (cp >= 55296 and cp <= 57343) and not (cp >= 64976 and cp <= 65007) and band cp 65535 < 65534 and
-  utfGo text (at + count + 1).
-continuation : unsafe String -> Int -> Int -> Int -> Int .
-continuation text at left value = if left == 0 then value else
+  utfGo (fuel - 1) text (at + count + 1).
+continuation : String -> Int -> (left : Int | measure left) -> Int -> Int .
+continuation text at left value | left <= 0 = value.
+continuation text at left value =
   b = charAt text at;
   if b < 128 or b > 191 then 0 - 1 else continuation text (at + 1) (left - 1) (value * 64 + b - 128).
 topic text = strlen text > 0 and utf8 text and not (S.contains "+" text) and not (S.contains "#" text).
 filter text = strlen text > 0 and utf8 text and filterLevels (S.split "/" text).
-filterLevels : unsafe List String -> Bool .
+filterLevels : (levels : List String | measure levels) -> Bool .
 filterLevels levels = case levels of Nil -> True | level :: rest ->
   if level == "#" then rest == Nil else
   if level == "+" then filterLevels rest else
@@ -47,10 +51,17 @@ takeField bytes = if strlen bytes < 2 then Err "short MQTT field" else
   if n > strlen bytes - 2 then Err "short MQTT field" else
   text = substr bytes 2 n;
   if not (utf8 text) then Err "invalid MQTT UTF-8 field" else Ok (text, substr bytes (n + 2) (strlen bytes - n - 2)).
-remaining n = if n < 128 then B.putU8 n else strcat (B.putU8 (n % 128 + 128)) (remaining (n / 128)).
+remaining : Int -> String .
+remaining n = remainingGo 8 n.
+remainingGo : (fuel : Int | measure fuel) -> Int -> String .
+remainingGo fuel n | fuel <= 0 = B.putU8 n.
+remainingGo fuel n | n < 128 = B.putU8 n.
+remainingGo fuel n = strcat (B.putU8 (n % 128 + 128)) (remainingGo (fuel - 1) (n / 128)).
 frame header body = if strlen body > 268435455 then Err "MQTT packet too large" else Ok (strJoin "" [B.putU8 header, remaining (strlen body), body]).
+fields : (xs : List String | measure xs) -> Result String String .
 fields xs = case xs of Nil -> Ok "" | text :: rest -> case field text of
   Err why -> Err why | Ok part -> case fields rest of Err why -> Err why | Ok tail -> Ok (strcat part tail).
+subscriptions : (xs : List (String, Int) | measure xs) -> Result String String .
 subscriptions xs = case xs of Nil -> Ok "" | (text, qos) :: rest ->
   if not (filter text) or qos < 0 or qos > 1 then Err "unsupported MQTT filter/QoS" else
   case field text of Err why -> Err why | Ok part -> case subscriptions rest of Err why -> Err why | Ok tail -> Ok (strJoin "" [part, B.putU8 qos, tail]).
@@ -86,8 +97,10 @@ encode packet = case packet of
   | PingResp -> frame 208 ""
   | Disconnect -> frame 224 "".
 idPacket header id = if identifier id then frame header (B.putU16be id) else Err "invalid MQTT packet identifier".
-lengthAt bytes at value multiplier = if at >= strlen bytes then Ok Incomplete else
-  if at > 4 then Err "MQTT Remaining Length exceeds four bytes" else
+lengthAt : String -> (at : Int | measure (5 - at)) -> Int -> Int -> Result Length String .
+lengthAt bytes at value multiplier | at > 4 = Err "MQTT Remaining Length exceeds four bytes".
+lengthAt bytes at value multiplier | at >= strlen bytes = Ok Incomplete.
+lengthAt bytes at value multiplier =
   b = charAt bytes at;
   total = value + band b 127 * multiplier;
   if b < 128 then
@@ -95,9 +108,13 @@ lengthAt bytes at value multiplier = if at >= strlen bytes then Ok Incomplete el
   else if at == 4 then Err "MQTT Remaining Length exceeds four bytes" else lengthAt bytes (at + 1) total (multiplier * 128).
 decoder packetLimit chunkLimit = if packetLimit < 1 or packetLimit > 268435455 or chunkLimit < 1 then Err "invalid MQTT decoder limits" else Ok (Decoder packetLimit chunkLimit "").
 feed bytes dec = case dec of Decoder packetLimit chunkLimit pending ->
-  if strlen bytes > chunkLimit then Err "MQTT input chunk exceeds limit" else decodeFrames packetLimit chunkLimit (strcat pending bytes) Nil.
-decodeFrames : unsafe Int -> Int -> String -> List Packet -> Result (List Packet, Decoder) String .
-decodeFrames limit chunk bytes acc = if strlen bytes < 2 then Ok (L.reverse acc, Decoder limit chunk bytes) else
+  if strlen bytes > chunkLimit then Err "MQTT input chunk exceeds limit" else
+    combined = strcat pending bytes;
+    decodeFrames (strlen combined + 1) packetLimit chunkLimit combined Nil.
+decodeFrames : (fuel : Int | measure fuel) -> Int -> Int -> String -> List Packet -> Result (List Packet, Decoder) String .
+decodeFrames fuel limit chunk bytes acc | fuel <= 0 = Ok (L.reverse acc, Decoder limit chunk bytes).
+decodeFrames fuel limit chunk bytes acc | strlen bytes < 2 = Ok (L.reverse acc, Decoder limit chunk bytes).
+decodeFrames fuel limit chunk bytes acc =
   case lengthAt bytes 1 0 1 of
     Err why -> Err why
   | Ok Incomplete -> Ok (L.reverse acc, Decoder limit chunk bytes)
@@ -105,17 +122,28 @@ decodeFrames limit chunk bytes acc = if strlen bytes < 2 then Ok (L.reverse acc,
       if strlen bytes - header < n then Ok (L.reverse acc, Decoder limit chunk bytes) else
       case decodePacket (charAt bytes 0) (substr bytes header n) of
         Err why -> Err why
-      | Ok packet -> decodeFrames limit chunk (substr bytes (header + n) (strlen bytes - header - n)) (packet :: acc).
+      | Ok packet -> decodeFrames (fuel - 1) limit chunk (substr bytes (header + n) (strlen bytes - header - n)) (packet :: acc).
 readId bytes = if strlen bytes < 2 then Err "short MQTT identifier" else
   id = charAt bytes 0 * 256 + charAt bytes 1;
   if identifier id then Ok (id, substr bytes 2 (strlen bytes - 2)) else Err "zero MQTT identifier".
-decodeSubscriptions bytes = if strlen bytes == 0 then Ok Nil else case takeField bytes of
-  Err why -> Err why
+decodeSubscriptions : String -> Result (List (String, Int)) String .
+decodeSubscriptions bytes = decodeSubsGo (strlen bytes + 1) bytes.
+decodeSubsGo : (fuel : Int | measure fuel) -> String -> Result (List (String, Int)) String .
+decodeSubsGo fuel bytes | fuel <= 0 = Ok Nil.
+decodeSubsGo fuel bytes | strlen bytes == 0 = Ok Nil.
+decodeSubsGo fuel bytes = case takeField bytes of
+    Err why -> Err why
   | Ok (text, rest) -> if strlen rest == 0 or not (filter text) or charAt rest 0 > 1 then Err "invalid/unsupported subscription" else
-      case decodeSubscriptions (substr rest 1 (strlen rest - 1)) of Err why -> Err why | Ok tail -> Ok ((text, charAt rest 0) :: tail).
-decodeFields bytes = if strlen bytes == 0 then Ok Nil else case takeField bytes of
-  Err why -> Err why | Ok (text, rest) -> if not (filter text) then Err "invalid topic filter" else
-    case decodeFields rest of Err why -> Err why | Ok tail -> Ok (text :: tail).
+      case decodeSubsGo (fuel - 1) (substr rest 1 (strlen rest - 1)) of Err why -> Err why | Ok tail -> Ok ((text, charAt rest 0) :: tail).
+decodeFields : String -> Result (List String) String .
+decodeFields bytes = decodeFieldsGo (strlen bytes + 1) bytes.
+decodeFieldsGo : (fuel : Int | measure fuel) -> String -> Result (List String) String .
+decodeFieldsGo fuel bytes | fuel <= 0 = Ok Nil.
+decodeFieldsGo fuel bytes | strlen bytes == 0 = Ok Nil.
+decodeFieldsGo fuel bytes = case takeField bytes of
+    Err why -> Err why
+  | Ok (text, rest) -> if not (filter text) then Err "invalid topic filter" else
+      case decodeFieldsGo (fuel - 1) rest of Err why -> Err why | Ok tail -> Ok (text :: tail).
 decodePacket first body =
   kind = first / 16;
   flags = first % 16;

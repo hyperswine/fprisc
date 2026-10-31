@@ -1,71 +1,60 @@
-# std/reload -- the runner's platform-independent attachment gate.
+# std/reload -- the runner's platform-independent attachment gate and catalog.
 # The caller is the SOLE attachment writer during this operation. Its env
 # stores a table index per live module; never compare with newest globally.
 # attach bytes must register exactly one table on Ok, none on Err.
 # Mod.compatAt checks root exports, arities and compiler-generated checked
 # type/contract/ABI stamps. Opaque exports refuse reload. Images are trusted;
 # these stamps are not cryptographic signatures or image identity proofs.
+Catalog = use "reloadcatalog".
+
 attachAt : Int -> (String -> Result a String) -> String -> Result Int String .
+attachAt baseline attach bytes | baseline < 0 = Err "reload: invalid baseline table".
 attachAt baseline attach bytes =
   before = Mod.plugs 0;
-  case baseline >= 0 of
-    False -> Err "reload: invalid baseline table"
-  | True -> baselineAt baseline before attach bytes.
-baselineAt baseline before attach bytes = case baseline < before of
-    False -> Err "reload: missing baseline table"
-  | True -> attached baseline before (attach bytes).
-attached baseline before r = case r of
-    Err why -> Err why
-  | Ok u -> registered baseline before (Mod.plugs 0).
-registered baseline before after = case after == before + 1 of
-    False -> Err "reload: adapter must attach exactly one table"
-  | True -> gated baseline before (Mod.compatAt baseline before).
-gated baseline candidate r =
-  (ok, why) = r;
-  case ok == 1 of
-    True -> Ok candidate
-  | False -> refused why.
+  baselineAt baseline before attach bytes.
+baselineAt baseline before attach bytes | baseline >= before = Err "reload: missing baseline table".
+baselineAt baseline before attach bytes = attached baseline before (attach bytes).
+attached baseline before (Err why) = Err why.
+attached baseline before (Ok _) = registered baseline before (Mod.plugs 0).
+registered baseline before after | after != before + 1 = Err "reload: adapter must attach exactly one table".
+registered baseline before _ = gated baseline before (Mod.compatAt baseline before).
+gated baseline candidate (1, _) = Ok candidate.
+gated _ _ (_, why) = refused why.
 refused why =
   _ = Mod.detachLast Unit;
   Err "reload: incompatible, refused: {why}".
 # Scope lookup to the adopted module. Stored old function values remain valid.
 bindAt table name =
   (ok, f) = Mod.findAt table name;
-  case ok == 1 of
-    True -> f
-  | False -> error "reload: no export {name} in table {table}".
+  if ok == 1 then f else error "reload: no export {name} in table {table}".
 
 # Version-aware adoption: event hashes must name the actual compiled roots.
 # Source hashes identify trusted compiler output; they are not signatures.
 attachVersionAt : Int -> String -> String -> (String -> Result a String) -> String -> Result Int String .
 attachVersionAt baseline from to attach bytes = case preflightVersionAt baseline from to of
     Err why -> Err why
-  | Ok u -> attachedVersion baseline (Mod.plugs 0) to (attach bytes).
+  | Ok _ -> attachedVersion baseline (Mod.plugs 0) to (attach bytes).
 preflightVersionAt : Int -> String -> String -> Result Unit String .
-preflightVersionAt baseline from to = case baseline >= 0 of
-    False -> Err "reload: invalid baseline table"
-  | True -> versionBaseline baseline from to (Mod.plugs 0).
-versionBaseline baseline from to count = case baseline < count of
-    False -> Err "reload: missing baseline table"
-  | True -> versionFrom baseline from to.
-versionFrom baseline from to = case from == "" of
-    True -> Err "reload: empty source identity"
-  | False -> versionTo baseline from to.
-versionTo baseline from to = case to == "" of
-    True -> Err "reload: empty candidate identity"
-  | False -> versionMatch baseline from.
-versionMatch baseline from = case Mod.hashAt baseline == from of
-    False -> Err "reload: stale module identity"
-  | True -> Ok Unit.
-attachedVersion baseline before to r = case r of
-    Err why -> Err why
-  | Ok u -> registeredVersion baseline before to (Mod.plugs 0).
-registeredVersion baseline before to after = case after == before + 1 of
-    False -> Err "reload: adapter must attach exactly one table"
-  | True -> candidateVersion baseline before to.
-candidateVersion baseline candidate to = case Mod.hashAt candidate == to of
-    True -> gated baseline candidate (Mod.compatAt baseline candidate)
-  | False -> identityRefused Unit.
+preflightVersionAt baseline from to | baseline < 0 = Err "reload: invalid baseline table".
+preflightVersionAt baseline from to = versionBaseline baseline from to (Mod.plugs 0).
+versionBaseline baseline from to count | baseline >= count = Err "reload: missing baseline table".
+versionBaseline baseline from to _ | from == "" = Err "reload: empty source identity".
+versionBaseline baseline from to _ | to == "" = Err "reload: empty candidate identity".
+versionBaseline baseline from _ _ | Mod.hashAt baseline != from = Err "reload: stale module identity".
+versionBaseline _ _ _ _ = Ok Unit.
+attachedVersion baseline before to (Err why) = Err why.
+attachedVersion baseline before to (Ok _) = registeredVersion baseline before to (Mod.plugs 0).
+registeredVersion baseline before to after | after != before + 1 = Err "reload: adapter must attach exactly one table".
+registeredVersion baseline before to _ = candidateVersion baseline before to.
+candidateVersion baseline candidate to | Mod.hashAt candidate == to = gated baseline candidate (Mod.compatAt baseline candidate).
+candidateVersion _ _ _ = identityRefused Unit.
 identityRefused u =
   _ = Mod.detachLast Unit;
   Err "reload: candidate module identity mismatch".
+
+# Re-export catalog helpers (`parse`, `event`, `image`, `identity`) so callers
+# only need `use "std/reload"`.
+parseCatalog = Catalog.parse.
+catalogEvent = Catalog.event.
+catalogImage = Catalog.image.
+catalogIdentity = Catalog.identity.
