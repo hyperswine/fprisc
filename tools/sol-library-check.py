@@ -46,6 +46,7 @@ def main():
           'webstyles':('> print (List.len (L.classes [L.p2, L.p4])).', b'4\n'),
           'ui':('> print (L.text "ok" == L.Txt "ok").', b'True\n'),
           'web':('> v = L.text "ok"; print v.text.', b'ok\n'),
+          'test':('> L.run [L.that "t" True, L.equal "e" 2 (1 + 1)].', b'ok 1 - t\nok 2 - e\n2 passed\n'),
         }
         catalog = json.loads((ROOT/'tools/sol-library-capabilities.json').read_text())
         assert catalog['schema'] == 1
