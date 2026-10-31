@@ -21,6 +21,11 @@ scan cmp step changing = (["s","i","n","acc"],
     (app "scan" [CVar "s",app "+" [CVar "i",step],
       if changing then app "-" [CVar "n",CInt 1] else CVar "n",
       app "+" [CVar "acc",app "charAt" [CVar "s",CVar "i"]]]))
+-- an early-exit search: a body branch leaves the loop before i >= n
+search = (["s","i","n","acc"],
+  CIf (app ">=" [CVar "i",CVar "n"]) (CVar "acc")
+    (CIf (app "==" [app "charAt" [CVar "s",CVar "i"],CInt 32]) (CVar "i")
+      (app "scan" [CVar "s",app "+" [CVar "i",CInt 1],CVar "n",CVar "acc"])))
 twoLatches stride = (["s","i","n","acc"],
   CIf (app ">=" [CVar "i",CVar "n"]) (CVar "acc")
     (CIf (app "==" [CVar "i",CInt 0]) (recur 1) (recur stride)))
@@ -72,7 +77,7 @@ main=do
   check "independent accumulator overflow" (case ocResult (evalProgram fast "scan" [RString [1],RInt 0,RInt 1,RInt hi]) of Left (Trap _)->True;_->False)
   forM_ [("inclusive",scan ">" (CInt 1) False),("stride two",scan ">=" (CInt 2) False),
          ("descending",scan ">=" (CInt (-1)) False),("changing bound",scan ">=" (CInt 1) True),
-         ("mixed backedges",scan ">=" (CIf (app "==" [CVar "i",CInt 0]) (CInt 1) (CInt 2)) False)] $ \(label,body)->do
+         ("early-exit search (profitability)",search),("mixed backedges",scan ">=" (CIf (app "==" [CVar "i",CInt 0]) (CInt 1) (CInt 2)) False)] $ \(label,body)->do
     let plain=simplify policy (lower policy body)
         candidate=simplify (policy {polStringScan=True}) (lower policy body)
     check (label++" refuses") (plain==candidate)

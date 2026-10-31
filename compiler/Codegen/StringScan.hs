@@ -12,7 +12,7 @@ import Data.Maybe (listToMaybe)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
--- One small loop per function, one string, one unit-stride index. Deliberate
+-- One small single-exit loop per function, one string, one unit-stride index. Deliberate
 -- admission limits bound code growth and leave more general loops unchanged.
 versionScan :: Fn -> Fn
 versionScan fn = maybe fn build candidate
@@ -48,6 +48,17 @@ versionScan fn = maybe fn build candidate
       -- header still executes in both copies, with exactly its original ops.
       if M.lookup body (predecessors flow) == Just (S.singleton h) && exit /= body && all (\(Instr _ o) -> opEffect o == Pure) (bInstrs header)
          && null exitArgs && null bodyArgs then pure () else Nothing
+      -- Profitability: admit only loops whose sole exit is the header's
+      -- `i >= n` test, so the trip count is n - i and the one-time dispatch
+      -- is amortized over the whole range. Early-exit searches (a body
+      -- branch or return leaving the loop, e.g. std/string wordsGo, wordEnd,
+      -- leadGo) usually run a few iterations and keep their checked form.
+      let inLoop t = S.member t (loopBlocks loop)
+          staysIn b = bId b == h || case bTerm b of
+            TBr t _ -> inLoop t
+            TCondBr _ y _ n _ -> inLoop y && inLoop n
+            _ -> False
+      if all staysIn [b | b <- blocks, inLoop (bId b)] then pure () else Nothing
       (slot,(param,ty)) <- find (\(_, (p,t)) -> (t==TInt && idx==p) || (t==TVal && op idx==Just (OUntag p)))
                            (zip [0..] (bParams header))
       (bound,unboxBound) <- rawSource limit
