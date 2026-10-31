@@ -6,7 +6,7 @@ module Infer.Result
    inferenceHoles, inferenceLinearity, inferenceTops, inferenceInterfaces,
    inferenceEvidence, inferenceElaborations, inferenceSchemes, inferenceLayoutRequirements,
    inferencePatterns, inferenceConstructors, inferenceBinderNames, inferenceLayoutContracts,
-   inferenceConstructorTraps, inferenceSignatures, inferenceStructures) where
+   inferenceConstructorTraps, inferenceSignatures, inferenceStructures, inferenceDefaultingWork) where
 import Diagnostic.Syntax (Diagnostic,renderLegacyDiagnostic)
 import Core.Syntax (Name)
 import Core.Identity (BinderId)
@@ -29,7 +29,8 @@ data InferenceResult = Result
     resultSchemes :: M.Map Name Scheme, resultLayouts :: M.Map Name [Type],
     resultPatterns :: M.Map PatternSite PatternInfo, resultConstructors :: M.Map Name Scheme,
     resultBinderNames :: M.Map BinderId Name, resultLayoutContracts :: M.Map Name LayoutContract,
-    resultConstructorTraps :: M.Map Name Int, resultSignatures :: Sigs, resultStructures :: Structs }
+    resultConstructorTraps :: M.Map Name Int, resultSignatures :: Sigs, resultStructures :: Structs,
+    resultDefaultingWork :: Int }
 resultFromState :: IEnv -> [STop] -> Either String (Maybe E.Evidence)
                 -> [ElaborationFact] -> M.Map Name Scheme -> M.Map Name [Type] -> Sigs -> Structs -> InferenceResult
 resultFromState st tops proof sites schemes layouts sigs structs = Result
@@ -38,7 +39,11 @@ resultFromState st tops proof sites schemes layouts sigs structs = Result
     resultEvidence=proof, resultElaborations=sites, resultSchemes=schemes, resultLayouts=layouts,
     resultPatterns=iPatterns st, resultConstructors=iConstructorSchemes st, resultBinderNames=iBinderTargets st,
     resultLayoutContracts=iLayoutContracts st,
-    resultConstructorTraps=M.fromListWith min (S.toList (iHoledCons st)), resultSignatures=sigs, resultStructures=structs }
+    resultConstructorTraps=M.fromListWith min (S.toList (iHoledCons st)), resultSignatures=sigs, resultStructures=structs,
+    resultDefaultingWork=iDefaultWork st }
+-- operator sites numeric defaulting visited over the whole run (work, not output)
+inferenceDefaultingWork :: InferenceResult -> Int
+inferenceDefaultingWork = resultDefaultingWork
 inferenceErrors :: InferenceResult -> [String]
 inferenceErrors = map renderLegacyDiagnostic . resultErrors
 inferenceDiagnostics :: InferenceResult -> [Diagnostic]
