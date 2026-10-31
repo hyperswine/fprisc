@@ -83,6 +83,20 @@ The reduction column is the median of the 15 within-pair reductions, not a
 ratio of the two marginal medians. All three scan workloads won every pair.
 SHA, helpers and float comparison produced byte-identical root assembly and
 unchanged executable sizes; their sub-1% paired changes are treated as noise.
+
+**Correction (1 November 2026).** Identical *root* assembly does not mean the
+comparison programs were unchanged: library units are compiled separately and
+linked in. On Linux x86-64 the scan-on SHA executable differed from scan-off
+(969,832 -> 974,032 bytes) because `std/string` `leadGo`, `wordEnd`, `wordsGo`
+and prelude `strTakeGo` were versioned, although SHA never calls them. A 7-pair
+run there measured SHA 9.8% slower with the pass on (1/7 faster) and a 10-pair
+rerun about 3% slower (8/10 slower): a code-placement effect of changed but
+unexecuted library code, not of the versioned loops. Equal executable size is
+not identity either (page/section padding can hide changes). The benchmark
+tool now records each executable's SHA-256, whether root assembly and the
+whole binary are identical, and the library units and functions whose emitted
+code differs (`changed_units`), and prints a note when only library code
+changed. Treat a control as unchanged only when `binary_identical` is true.
 This is a consistent improvement for the admitted scans, not a general native
 compiler speedup.
 
