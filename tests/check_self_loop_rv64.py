@@ -64,7 +64,7 @@ SECTIONS {
                               assembly.read_text())
             assert match
             selected = ".text\n" + match[0] + fuel_wrapper(match.string)
-            assert bool(re.search(r"^\.Ltir_rotate2_m3loop:", selected, re.M)) == (enabled == "1")
+            assert bool(re.search(r"^\.Ltir_rotate2_m3loop:", selected, re.M)) == (enabled == "1" and env.get('FPR_TYPED_IR_EARLY_LOOPS') != '1')
             assembly.write_text(selected)
             exe = tmp / "oracle.elf"
             run(["riscv64-unknown-elf-gcc", "-march=rv64im_zicsr_zifencei",

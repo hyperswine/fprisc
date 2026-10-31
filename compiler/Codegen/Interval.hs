@@ -85,6 +85,9 @@ discharge width fn
       [ ((bId b, target), facts)
       | b <- fnBlocks fn
       , TCondBr p yes _ no _ <- [bTerm b]
+      -- A single predecessor BLOCK does not imply a single incoming EDGE:
+      -- when both outcomes converge here, neither condition is established.
+      , yes /= no
       , Just (o, x, y) <- [M.lookup (resolve p) cmps]
       , (target, o') <- [(yes, o), (no, negateCmp o)]
       , let facts = factsOf o' x y

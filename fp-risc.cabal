@@ -193,6 +193,8 @@ library
       Codegen.ControlFlow
       Codegen.Interval
       Codegen.LoopOptimize
+      Codegen.StringScan
+      Codegen.LoopForm
       Codegen.Pressure
       Compiler.VectorOperation
       Compiler.Trap
@@ -414,6 +416,11 @@ test-suite StringRead
   type:               exitcode-stdio-1.0
   main-is:            StringRead.hs
 
+test-suite StringScan
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            StringScan.hs
+
 test-suite Interval
   import:             unit-test
   type:               exitcode-stdio-1.0
@@ -433,6 +440,11 @@ test-suite LoopOptimize
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            LoopOptimize.hs
+
+test-suite LoopForm
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            LoopForm.hs
 
 test-suite TypedLayouts
   import:             unit-test

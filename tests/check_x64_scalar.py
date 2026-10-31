@@ -119,7 +119,11 @@ def main():
             assert spills >= 7, headers['pressure']  # twelve values across a call, five budget registers
             assert all(s in ('none', 'rbx', 'r12', 'r13', 'r14', 'r15') for t in headers.values() for s in re.search(r'saved=(\S+)', t).group(1).split(',')), headers
             for width in (6,7,8,63):
-                assert int(re.search(r'loops=(\d+)',headers['rotate'+str(width)]).group(1)) == int(looped),headers['rotate'+str(width)]
+                # This counter records allocator conversions. Early CFG
+                # loops already reuse their frame without that late step;
+                # the cell-store checks and execution oracle cover both.
+                late_loop = looped and mode.get('FPR_TYPED_IR_EARLY_LOOPS') != '1'
+                assert int(re.search(r'loops=(\d+)',headers['rotate'+str(width)]).group(1)) == int(late_loop),headers['rotate'+str(width)]
             print(f'{name}: strict direct coverage {len(native_names)} functions; including arities 9 and 64; pressure spills {spills}; rotate6 loop={looped}', flush=True)
             assert ('fpr_fn__x24worker_x2escalar_x2e' in selected) == (mode['FPR_NO_SCALAR_WORKERS'] == '0')
             if shutil.which('clang'):

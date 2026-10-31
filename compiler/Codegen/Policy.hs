@@ -34,6 +34,8 @@ data Policy = Policy
     polStackCheck :: StackPolicy,
     polFloatInline :: Bool, -- F64 + - * / and comparisons inline on the 64-bit word (FPR_NO_F64_INLINE=1 keeps the runtime calls, for differential checks)
     polLoopMotion :: Bool, -- move total register invariants to existing loop preheaders
+    polEarlyLoops :: Bool, -- expose direct self-tail loops before native IR optimization (opt-in)
+    polStringScan :: Bool, -- guarded unit-stride String scan versioning (opt-in)
     polVectorFast :: Bool, -- guarded scalar flat-vector reads; misses keep the original C entry
     polStringFast :: Bool, -- guarded scalar String length/byte reads; misses keep the original C entry
     polInterval :: Bool, -- discharge overflow checks and guards a difference-bound proof covers (Codegen.Interval)
@@ -59,7 +61,7 @@ registerBudget = \case
   _ -> Nothing
 
 m2Policy :: Policy
-m2Policy = Policy HostedBase True StackCheckEveryEntry True False True True True Nothing
+m2Policy = Policy HostedBase True StackCheckEveryEntry True False False False True True True Nothing
 
 profileName :: Profile -> String
 profileName = \case

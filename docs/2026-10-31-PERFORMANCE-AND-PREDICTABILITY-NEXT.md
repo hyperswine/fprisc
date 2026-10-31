@@ -30,6 +30,12 @@ parameters, back edges and exits before optimization. Start with supported self
 tail calls. Mutual tail recursion needs an explicit group/calling contract;
 ordinary non-tail recursion cannot simply be converted into a loop.
 
+Implementation follow-up: [the first early-loop slice](2026-10-31-EARLY-LOOPS.md)
+is available behind `FPR_TYPED_IR_EARLY_LOOPS=1`. Direct self-tail branches now
+have a preheader before optimization; the linked report records the precise
+supported forms, semantic checks and performance evidence. The flag defaults
+off; this does not complete the remaining range, pressure or fuel work below.
+
 Preserve argument evaluation, parallel parameter transfers, entry checks,
 required fuel events, region boundaries and the lifetime of values across
 resets. Keep a conservative fallback for unsupported forms. This opens the
@@ -47,6 +53,11 @@ that `i < n` makes `i + 1` safe from overflow. It does not generally connect
 the caller's `i = 0` and `n = strlen s` with a recursive loop's parameters.
 Consequently, bounds guards can remain even when the algorithm makes their
 safety apparent.
+
+Implemented subset: opt-in [guarded String scan versioning](2026-10-31-STRING-SCAN-RANGES.md)
+establishes entry facts with runtime guards and proves every unit-stride
+backedge, retaining the original checked fallback. General caller facts and
+mutable-descriptor proofs remain follow-ups.
 
 Next: propagate verified caller/precondition facts and derive induction ranges
 for loop-carried values. Establish entry facts, prove they survive every back

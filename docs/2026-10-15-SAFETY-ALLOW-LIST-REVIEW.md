@@ -28,6 +28,7 @@ three kinds, all of which the modules already on the list contain:
 | I/O loops bounded by a budget and a limit | httpclient (`line`, `headers` with count <= 100, `untilEnd`, `chunked` with chunks < 65536, `response` with interim < 8), mjpeg (`headerGo`), transport (`someGo`, `exactGo`, `writeGo`: zero progress is a `DriverViolation`), connect (`attempts` over the address list, `establishing`), crypto (`await`), resolver (`resolving`), tls (`drive`) | each step either makes progress toward a stated limit or waits under `R.gate budget`, which refuses when the deadline passes; this is `std/stream`'s `readGo` shape, already on the list |
 | Linear forwarding facades (2026-10-17) | ownedtransport, ownedmqtt | no new recursion or unsafe-marked helpers; consume/rebuild one owner around existing vetted transport/TLS/MQTT mechanisms; terminal close and failed creation release the native lease |
 | Pure bounded arithmetic (2026-10-17) | pagination | no recursion or unsafe helpers; positive-size/nonnegative-count contracts and checked scalar work/allocation declarations |
+| Measured test reporting (2026-10-31) | test | no unsafe helpers; `report` consumes its input list with `measure checks`; comparisons, checked counters, string interpolation and the existing `print` primitive implement the assertions and output |
 | Actor loops that run until stopped | readiness (`begin`, `waker`, `waking`, `loop`), watch (`watch`, a poll every 300 ms) | servers by design, as `std/poller` and `std/tcp` are |
 
 Eighteen modules have no `unsafe` function at all (appearance,

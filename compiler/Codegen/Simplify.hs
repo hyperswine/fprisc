@@ -29,22 +29,23 @@
 module Codegen.Simplify (Options(..),defaultOptions,policyOptions,simplifyFn,simplifyProgram,simplifyFnWith,simplifyProgramWith,passes) where
 
 import Codegen.IR
+import Codegen.StringScan (versionScan)
 import Codegen.Interval (discharge)
 import Codegen.LoopOptimize (moveInvariants)
-import Codegen.Policy (Policy (..), RegisterBudget, policyWidth)
+import Codegen.Policy (Policy (..), Profile (..), RegisterBudget, policyWidth)
 import Codegen.Verify (verifyFn)
 import Codegen.Dump (dumpFn)
 import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data Options=Options { moveLoopInvariants :: Bool, registerBudget :: Maybe RegisterBudget, inlineFloats :: Bool, intervalWidth :: Maybe Width } deriving (Eq,Show)
+data Options=Options { moveLoopInvariants :: Bool, registerBudget :: Maybe RegisterBudget, inlineFloats :: Bool, intervalWidth :: Maybe Width, stringScan :: Bool } deriving (Eq,Show)
 defaultOptions :: Options
-defaultOptions=Options False Nothing True Nothing
+defaultOptions=Options False Nothing True Nothing False
 
 -- the options a policy states
 policyOptions :: Policy -> Options
-policyOptions p=Options (polLoopMotion p) (polRegisters p) (polFloatInline p) (if polInterval p then Just (policyWidth p) else Nothing)
+policyOptions p=Options (polLoopMotion p) (polRegisters p) (polFloatInline p) (if polInterval p then Just (policyWidth p) else Nothing) (polStringScan p && polStringFast p && policyWidth p == W64 && polProfile p `elem` [HostedBase,QosApp])
 
 -- the passes in order, by name
 passes :: [(String, Fn -> Fn)]
@@ -57,6 +58,7 @@ passesWith options=
     ("share-pure-in-block", dropDeadPure . sharePureInBlock)
   ] ++ [("move-loop-invariants",dropDeadPure . moveInvariants (registerBudget options) (inlineFloats options)) | moveLoopInvariants options]
     ++ [("discharge-proven-checks", dropDeadPure . discharge width) | Just width <- [intervalWidth options]]
+    ++ [("version-string-scan", dropDeadPure . versionScan) | stringScan options]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
 
 -- the simplified function and the number of instructions it lost
