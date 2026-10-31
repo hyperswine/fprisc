@@ -1,20 +1,46 @@
 # Cryptographic mechanisms supplied by an optional linked engine. No tools.
 # Input/admission/deadline policy is FP-RISC; native jobs are off-hart and
 # remain charged against capacity until their workers really finish.
+
 T = use "transport".
 R = use "resolver".
+
 CryptoHost.verifyBegin : String -> String -> String -> Int -> Result Int String .
 CryptoHost.randomBegin : Int -> Int -> Result Int String .
 CryptoHost.poll : Int -> Result (Bool, String) String .
 CryptoHost.close : Int -> Result Unit String .
+
 await : unsafe T.Budget -> Int -> Result (Bool, String) String .
-await budget id = case R.gate budget of Err _ -> Err "native crypto deadline/cancellation" | Ok _ ->
-  case CryptoHost.poll id of Err "again" -> _ = R.nap budget; await budget id | answer -> answer.
-finish budget begun = case begun of Err why -> Err why | Ok id ->
-  answer = await budget id;
-  cleanup = CryptoHost.close id;
-  case cleanup of Err _ -> Err "native crypto cleanup failed" | Ok _ -> answer.
-random budget capacity count = if count < 1 or count > 4096 then Err "entropy length must be 1..4096" else
-  case finish budget (CryptoHost.randomBegin count capacity) of Err why -> Err why | Ok (_, bytes) -> Ok bytes.
-verify budget capacity key message signature = if strlen key != 32 or strlen signature != 64 or strlen message > 4096 then Err "invalid Ed25519 input lengths" else
-  case finish budget (CryptoHost.verifyBegin key message signature capacity) of Err why -> Err why | Ok (valid, _) -> Ok valid.
+await budget id =
+  case R.gate budget of
+    Err _ -> Err "native crypto deadline/cancellation"
+  | Ok _ ->
+      case CryptoHost.poll id of
+        Err "again" -> _ = R.nap budget; await budget id
+    | answer -> answer.
+
+finish budget begun =
+  case begun of
+    Err why -> Err why
+  | Ok id ->
+      answer = await budget id;
+      cleanup = CryptoHost.close id;
+      case cleanup of
+        Err _ -> Err "native crypto cleanup failed"
+      | Ok _ -> answer.
+
+random budget capacity count =
+  if count < 1 or count > 4096 then
+    Err "entropy length must be 1..4096"
+  else
+    case finish budget (CryptoHost.randomBegin count capacity) of
+      Err why -> Err why
+    | Ok (_, bytes) -> Ok bytes.
+
+verify budget capacity key message signature =
+  if strlen key != 32 or strlen signature != 64 or strlen message > 4096 then
+    Err "invalid Ed25519 input lengths"
+  else
+    case finish budget (CryptoHost.verifyBegin key message signature capacity) of
+      Err why -> Err why
+    | Ok (valid, _) -> Ok valid.
