@@ -1,0 +1,5 @@
+# unbox bench: length (reverse xs), R times over one list
+List = use "std/list".
+go : unsafe Int -> List Int -> Int -> Int .
+go r xs acc = if r == 0 then acc else go (r - 1) xs (acc + List.length (List.reverse xs)).
+main = print "list_length_rev {go 20 (List.range 1 1000000) 0}".

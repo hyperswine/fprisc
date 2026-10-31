@@ -1,0 +1,10 @@
+# unbox bench: scan a 1 MB string counting 'a' bytes, R times
+mk : unsafe Int -> List String -> List String .
+mk n acc = if n == 0 then acc else mk (n - 1) ("abcdefgh" :: acc).
+count : unsafe String -> Int -> Int -> Int -> Int .
+count s n i acc = if i >= n then acc else count s n (i + 1) (if charAt s i == 97 then acc + 1 else acc).
+go : unsafe String -> Int -> Int -> Int .
+go s r acc = if r == 0 then acc else go s (r - 1) (acc + count s (strlen s) 0 0).
+main =
+  s = strJoin "" (mk 131072 Nil);
+  print "string_scan {go s 20 0}".

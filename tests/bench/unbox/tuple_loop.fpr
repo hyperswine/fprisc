@@ -1,0 +1,6 @@
+# unbox bench: tuple-heavy loop; a step returning a pair every iteration (fib mod)
+step : (Int, Int) -> (Int, Int) .
+step p = case p of (a, b) -> (b, (a + b) % 1000003).
+loop : unsafe Int -> (Int, Int) -> Int .
+loop i p = if i == 0 then (case p of (a, _) -> a) else loop (i - 1) (step p).
+main = print "tuple_loop {loop 20000000 (0, 1)}".
