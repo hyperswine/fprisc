@@ -1,0 +1,133 @@
+{
+  "name": "fpr-lang",
+  "displayName": "FP-RISC (fpr + sol)",
+  "description": "FP-RISC and Sol language support: compiler diagnostics on save, syntax highlighting, source-generated API hovers, completions, outlines, semantic tokens, and cross-module navigation.",
+  "version": "0.8.0",
+  "publisher": "jasen",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hyperswine/fprisc.git",
+    "directory": "lsp"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./client/extension.js",
+  "activationEvents": [
+    "onLanguage:fpr",
+    "onLanguage:sol",
+    "onCommand:fpr.showOptimizationRemarks"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "fpr",
+        "aliases": [
+          "FP-RISC",
+          "fpr"
+        ],
+        "extensions": [
+          ".fpr"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "sol",
+        "aliases": [
+          "Sol",
+          "sol"
+        ],
+        "extensions": [
+          ".sol"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "fpr",
+        "scopeName": "source.fpr",
+        "path": "./syntaxes/fpr.tmLanguage.json"
+      },
+      {
+        "language": "sol",
+        "scopeName": "source.sol",
+        "path": "./syntaxes/sol.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "FP-RISC",
+      "properties": {
+        "fpr.home": {
+          "type": "string",
+          "default": "",
+          "description": "FP-RISC module home (FPR_HOME). Set to your fprisc checkout or installed library root."
+        },
+        "fpr.modulePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional module roots, searched after the home (FPR_PATH)."
+        },
+        "fpr.check": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the compiler on open and on save and show its errors (type, parse, safety, linearity, precondition, imports). .fpr files use `fpr compile --check-only`; .sol files compile to bytecode without running."
+        },
+        "fpr.compilerPath": {
+          "type": "string",
+          "default": "",
+          "description": "The `fpr` executable used for compiler diagnostics. Empty: `fpr` in the module home (fpr.home or FPR_HOME), else `fpr` on PATH, else an installed toolchain (/opt/homebrew/bin/fpr, /usr/local/bin/fpr)."
+        },
+        "fpr.checkArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--system=posix"
+          ],
+          "description": "Flags given to `fpr compile --check-only` for .fpr files, e.g. [\"--system=qos-portable\"] for QOS apps."
+        },
+        "fpr.unresolvedNames": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show informational squiggles for names the source scanner cannot resolve. This is best-effort, not compiler validation; dynamic record members and type-variable positions are excluded."
+        },
+        "fpr.unsafeCalls": {
+          "type": "boolean",
+          "default": false,
+          "description": "Underline statically resolved calls to functions declared unsafe, including blanket unsafe modules. Informational diagnostics; does not infer safety through dynamic function values."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "fpr.showOptimizationRemarks",
+        "title": "FP-RISC: Show Optimization Remarks"
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "scripts": {
+    "builtins": "node tools/mkbuiltins.js .. server/builtins.json",
+    "test": "node test/editor-metadata.js && node test/workspace-index.js && node test/editor-features.js && node test/check-scheduling.js && node test/check-lsp.js && node test/release.js && node test/check.js && node test/discovery.js && node test/builtins.js && node test/current-api.js && node test/case-bindings.js && node test/strings.js && node test/compiler-check.js && node test/modules.js && node test/optimization-remarks.js",
+    "package": "node tools/release.js package",
+    "publish:marketplace": "node tools/release.js publish"
+  },
+  "homepage": "https://github.com/hyperswine/fprisc/tree/main/lsp#readme",
+  "bugs": {
+    "url": "https://github.com/hyperswine/fprisc/issues"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.0.0"
+  }
+}

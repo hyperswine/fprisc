@@ -32,3 +32,6 @@ secrets.env
 *.care.json
 *.care.json.*
 dist-prof/
+
+# Nested agent worktrees are separate Git checkouts.
+.claude/worktrees/

@@ -1,0 +1,111 @@
+{
+  "date": "2026-11-01",
+  "status": "implemented and locally verified; VSIX packaged; Marketplace not published",
+  "source_import": {
+    "repository": "https://github.com/hyperswine/fpr-vscode-2",
+    "revision": "1dd79391f18272ca1e856ebb60182bdd0832cb92",
+    "version": "0.6.4",
+    "destination": "lsp/",
+    "original_checkout": "retained unchanged"
+  },
+  "compiler_checkout_head": "7060b1ba49deea217c02ee77bf6f7b8a4471af47",
+  "compiler_test_binary": {
+    "version": "fpr 0.13.0-dev",
+    "sha256": "908c206cda4dd851213375f178892fcbc90ac8409feac4fca0b8144cdb82a9df",
+    "build_scope": "Fresh make fpr build including native and Sol editor report integration."
+  },
+  "extension_version": "0.8.0",
+  "test_command": "tools/lsp-release.sh publish --dry-run",
+  "test_groups": 15,
+  "tests_passed": true,
+  "work_reduction": {
+    "method": "deterministic compiler process counts plus real LSP save/watch notifications; not wall-time benchmarking",
+    "rapid_same_file_requests": 12,
+    "compiler_processes_after_coalescing": 1,
+    "unchanged_successful_save_compiler_processes": 0,
+    "unrelated_importer_extra_compiler_processes_after_dependency_edit": 0,
+    "max_concurrent_processes": 2,
+    "workspace_symbol_queries": 25,
+    "additional_source_parses_for_queries": 0
+  },
+  "coverage": [
+    "transitive dependency edits",
+    "same-size restored-mtime source edits",
+    "new resolution candidates",
+    "pinned store blobs",
+    "explicit and environment foreign declarations",
+    "fallback preludes",
+    "compiler identity",
+    "dirty root/dependency buffers",
+    "stale in-flight results",
+    "failed-check retry",
+    "timeout and output bounds",
+    "SIGTERM escalation and shutdown reaping",
+    "LSP diagnostic deduplication",
+    "closed-file clearing",
+    "workspace file notifications",
+    "non-BMP UTF-16 columns",
+    "pinned literal whitespace",
+    "builtin freshness and real compiler diagnostics",
+    "optimization remarks provenance and cancellation",
+    "versioned native and Sol editor reports",
+    "compiler-reported input digests and metadata-only dependencies",
+    "inferred top-level and imported symbol hovers",
+    "stale inferred type suppression",
+    "older compiler option fallback",
+    "canonical path aliases preserve editor URIs",
+    "multi-root workspace index and unsaved overlays",
+    "workspace create/delete and restored-mtime updates",
+    "namespace scanner navigation and completion",
+    "local shadowing suppresses global hover types",
+    "editor flag after Sol script path remains a script argument"
+  ],
+  "package": {
+    "version": "0.8.0",
+    "files": 214,
+    "bytes": 2156612,
+    "sha256": "46c9039f1e2b7bb250bf2f9233ac461cbd5a82dcee07f9e4ab3ffb7173a3d7ae",
+    "production_package_verified": true,
+    "source_matches_archive": true
+  },
+  "vscode_acceptance": {
+    "passed": true,
+    "version": "0.8.0",
+    "vscode": "1.144.0",
+    "checks": [
+      "activation",
+      "fpr language registration",
+      "real compiler diagnostics",
+      "builtin hover",
+      "inferred type hover",
+      "workspace index",
+      "save and clear errors",
+      "explicit optimization command and diagnostics"
+    ]
+  },
+  "limitations": [
+    "macOS arm64 local validation only; hosted Linux CI has not been observed for this change",
+    "VS Code 1.144.0 tested; declared 1.82 minimum not run directly",
+    "Compiler currently rejects direct mymod.x = 1. bindings; scanner support does not add language syntax",
+    "Inferred hovers cover top-level symbols, not local binders; navigation remains approximate",
+    "Consumed-source metadata is compiler-provided; missing resolution candidates still use a conservative scan",
+    "Some legacy/import failures retain file-level positions or text fallback",
+    "File notifications cover workspace roots; external libraries are revalidated on next check",
+    "No live Marketplace publication or replacement of user-installed extension"
+  ],
+  "test_notes": [
+    "Restricted file-watcher test failed with EMFILE; full suite passed with normal file-watcher access.",
+    "First packaged optimization-command assertion saw no diagnostic after immediate save. Repeat with known remark fixture and settled save notifications passed; immediate-save cancellation UX remains a follow-up.",
+    "Report tests caught and fixed canonical /private/var versus editor /var URI mapping, including subsequent checks with learned dependency paths."
+  ],
+  "evidence_logs": [
+    "/private/tmp/fpr-lsp-release-080.log",
+    "/private/tmp/fpr-editor-unit.log",
+    "build/lsp-validation/vscode-080.log"
+  ],
+  "compiler_checkout_head_scope": "base revision before the editor/report integration commit",
+  "compiler_unit_checks": {
+    "command": "cabal test Diagnostics CompilerOptions --test-show-details=direct",
+    "passed": true
+  }
+}

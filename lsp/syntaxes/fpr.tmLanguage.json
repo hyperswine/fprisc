@@ -1,0 +1,268 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "FP-RISC",
+  "scopeName": "source.fpr",
+  "patterns": [
+    {
+      "include": "#profile"
+    },
+    {
+      "include": "#directive"
+    },
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#pathLiteral"
+    },
+    {
+      "include": "#typeDecl"
+    },
+    {
+      "include": "#typeSig"
+    },
+    {
+      "include": "#useDecl"
+    },
+    {
+      "include": "#valueDef"
+    },
+    {
+      "include": "#topDef"
+    },
+    {
+      "include": "#hole"
+    },
+    {
+      "include": "#unsafeKw"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#storage"
+    },
+    {
+      "include": "#constructor"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#operator"
+    },
+    {
+      "include": "#qualified"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.fpr"
+    },
+    "string": {
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.fpr",
+      "patterns": [
+        {
+          "match": "\\\\.",
+          "name": "constant.character.escape.fpr"
+        },
+        {
+          "begin": "\\{",
+          "end": "\\}",
+          "name": "meta.embedded.interpolation.fpr",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.begin.fpr"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.end.fpr"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#interpolationBody"
+            }
+          ]
+        }
+      ]
+    },
+    "typeDecl": {
+      "match": "^([A-Z][A-Za-z0-9_']*)\\s*(1)?\\s*(?:[a-z_][A-Za-z0-9_']*\\s+)*(=)\\s*(Type|Sig|Struct|Layout)\\b",
+      "captures": {
+        "1": {
+          "name": "entity.name.type.fpr"
+        },
+        "2": {
+          "name": "storage.modifier.linear.fpr"
+        },
+        "3": {
+          "name": "keyword.operator.assignment.fpr"
+        },
+        "4": {
+          "name": "storage.type.fpr"
+        }
+      }
+    },
+    "typeSig": {
+      "match": "^([A-Za-z_][A-Za-z0-9_']*(?:\\.[A-Za-z_][A-Za-z0-9_']*)*)\\s*(:)(?!:)",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.fpr"
+        },
+        "2": {
+          "name": "keyword.operator.type-annotation.fpr"
+        }
+      }
+    },
+    "useDecl": {
+      "match": "^([A-Za-z_][A-Za-z0-9_']*)\\s*(=)\\s*(use)\\b",
+      "captures": {
+        "1": {
+          "name": "entity.name.namespace.fpr"
+        },
+        "2": {
+          "name": "keyword.operator.assignment.fpr"
+        },
+        "3": {
+          "name": "keyword.control.import.fpr"
+        }
+      }
+    },
+    "topDef": {
+      "match": "^([a-z_][A-Za-z0-9_']*)(?=\\s+[A-Za-z_(\\[0-9\"].*=|\\s*=[^=])",
+      "name": "entity.name.function.fpr"
+    },
+    "keywords": {
+      "match": "\\b(case|of|fn|use|error|if|then|else|and|or)\\b",
+      "name": "keyword.control.fpr"
+    },
+    "storage": {
+      "match": "\\b(Type|Sig|Struct|Layout)\\b",
+      "name": "storage.type.fpr"
+    },
+    "constructor": {
+      "match": "\\b[A-Z][A-Za-z0-9_']*\\b",
+      "name": "entity.name.type.constructor.fpr"
+    },
+    "number": {
+      "match": "\\b(?:0x[0-9a-fA-F]+|[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?[fFdD]?)\\b",
+      "name": "constant.numeric.fpr"
+    },
+    "operator": {
+      "match": "(->|<-|::|\\|>\\?|\\|>|>>|==|!=|<=|>=|\\|\\||&&|[|=<>+\\-*/%^$!])",
+      "name": "keyword.operator.fpr"
+    },
+    "qualified": {
+      "match": "\\b([A-Z][A-Za-z0-9_']*)\\.([a-z_][A-Za-z0-9_']*)",
+      "captures": {
+        "1": {
+          "name": "entity.name.namespace.fpr"
+        },
+        "2": {
+          "name": "variable.other.member.fpr"
+        }
+      }
+    },
+    "hole": {
+      "patterns": [
+        {
+          "match": "\\?\\?",
+          "name": "constant.language.hole.fpr"
+        },
+        {
+          "match": "\\?[a-z][A-Za-z0-9_\\']*",
+          "name": "constant.language.hole.named.fpr"
+        }
+      ]
+    },
+    "unsafeKw": {
+      "match": "\\b(unsafe|measure)\\b",
+      "name": "storage.modifier.unsafe.fpr"
+    },
+    "directive": {
+      "match": "^(#:)\\s*(\\S+)(.*)$",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.directive.fpr"
+        },
+        "2": {
+          "name": "keyword.control.directive.fpr"
+        },
+        "3": {
+          "name": "string.unquoted.directive.fpr"
+        }
+      }
+    },
+    "pathLiteral": {
+      "match": "@[A-Za-z_][\\w.']*",
+      "name": "string.other.path.fpr"
+    },
+    "profile": {
+      "match": "^\\s*(profile|unsafe)\\s+(builtin|base|extbase|sol|program|module)\\s*\\.",
+      "name": "storage.modifier.profile.fpr"
+    },
+    "valueDef": {
+      "match": "^([a-z_][A-Za-z0-9_']*)(?=\\s*=(?!=)(?!\\s*fn\\b))",
+      "name": "variable.other.readwrite.fpr"
+    },
+    "interpolationBody": {
+      "patterns": [
+        {
+          "include": "#string"
+        },
+        {
+          "include": "#interpolationBraces"
+        },
+        {
+          "include": "#pathLiteral"
+        },
+        {
+          "include": "#hole"
+        },
+        {
+          "include": "#unsafeKw"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#storage"
+        },
+        {
+          "include": "#number"
+        },
+        {
+          "include": "#qualified"
+        },
+        {
+          "include": "#constructor"
+        },
+        {
+          "include": "#operator"
+        },
+        {
+          "match": "[A-Za-z_][A-Za-z0-9_']*",
+          "name": "variable.other.interpolated.fpr"
+        }
+      ]
+    },
+    "interpolationBraces": {
+      "begin": "\\{",
+      "end": "\\}",
+      "name": "meta.braces.interpolation.fpr",
+      "patterns": [
+        {
+          "include": "#interpolationBody"
+        }
+      ]
+    }
+  }
+}

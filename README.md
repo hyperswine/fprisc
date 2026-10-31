@@ -183,3 +183,11 @@ Sol can also be installed as a versioned source-plus-runner bundle with
 `make sol-install SOL_PREFIX="$HOME/.local"`. See the
 [installation and recovery guide](docs/2026-10-29-SOL-INSTALLATION.md) for host
 dependencies, shebangs, writable state, library resolution and release checks.
+
+## VS Code extension
+
+The FP-RISC/Sol extension lives in [`lsp/`](lsp/README.md), alongside its
+compiler-backed tests. Build `fpr`, then run `tools/lsp-release.sh package`
+to test and create a VSIX. `tools/lsp-release.sh publish --dry-run` rehearses
+the release; `publish` uploads the tested artifact to the existing
+`jasen.fpr-lang` Marketplace entry.

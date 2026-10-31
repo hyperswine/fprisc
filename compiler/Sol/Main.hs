@@ -12,6 +12,7 @@
 
 module Sol.Main where
 
+import qualified Compiler.Editor as Editor
 import Mono (specializeFunctions)
 import Sol.Cache (Prepared (..), cached, cachedPrelude, checkedLibraries, recordCheckedLibraries)
 import Sol.Startup (phase, phaseIO)
@@ -30,7 +31,7 @@ import qualified Data.Set as S
 import Data.Foldable (toList)
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Sol.Lang
-import Sol.Mod (resolveModuleParsed, parseCachedSource)
+import Sol.Mod (resolveModuleParsedWith, parseCachedSource)
 import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Safety (checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
@@ -89,16 +90,34 @@ runScript = do
 
 runFile :: [String] -> IO ()
 runFile as = do
+  let (editor,args,root) = editorArguments as
+  Editor.run editor root $ \report -> runFileWith report editor args
+
+-- Compiler options end at the script path (or --). A script argument named
+-- --editor-json must never turn an ordinary run into an editor-only check.
+editorArguments :: [String] -> (Bool,[String],FilePath)
+editorArguments = go False []
+  where
+    go enabled flags [] = (enabled,reverse flags,"<input>")
+    go enabled flags ("--":file:rest) = (enabled,reverse flags ++ ("--":file:rest),file)
+    go _ flags ("--editor-json":rest) = go True flags rest
+    go enabled flags (arg:rest)
+      | "--" `isPrefixOf` arg = go enabled (arg:flags) rest
+      | otherwise = (enabled,reverse flags ++ (arg:rest),arg)
+
+runFileWith :: Editor.Report -> Bool -> [String] -> IO ()
+runFileWith report editor as = do
   configured <- maybe "guarded" id <$> lookupEnv "SOL_RETRY_POLICY"
   (dumpAsm, retryPolicy, path, scriptArgs) <- case parseRetryPolicy configured >>= \policy -> parseSolArgs False policy as of
     Right options -> pure options
     Left why -> diagnostic why >> exitFailure >> pure (False, GuardedRetry, "", [])
   prepared <- phase "startup" $ do
     src <- phase "source" (readFile path >>= evaluate . force)
+    Editor.source report path src
     utops <- phase "parse" $ do
       parsed <- parseCachedSource path src
       case parsed of
-        Left err -> diagnostic err >> exitFailure >> pure []
+        Left err -> Editor.problem report "parse" err Nothing >> diagnostic err >> exitFailure >> pure []
         Right (_, tops) -> pure tops
     seenRef <- newIORef M.empty
     trustRef <- newIORef S.empty
@@ -106,11 +125,15 @@ runFile as = do
     -- with `use` asks the set anything, so a one-liner never pays for it.
     -- Read-only filesystem queries: deferring them cannot reorder effects.
     trustedPaths <- unsafeInterleaveIO (phaseIO "library-paths" trustedLibraryPaths)
-    expanded <- phase "imports" $ expandUses 8 "" trustedPaths trustRef seenRef (takeExtension path) (takeDirectory path) utops
+    expanded <- phase "imports" $ expandUsesWith report 8 "" trustedPaths trustRef seenRef (takeExtension path) (takeDirectory path) utops
     trusted <- readIORef trustRef
-    cached path src prelude expanded (S.toList trusted) $ do
+    if editor then do
+      ptops <- preludeTops
+      compileScriptWith report SliceNone path src ptops utops expanded trusted
+    else cached path src prelude expanded (S.toList trusted) $ do
       ptops <- phase "prelude-parse" preludeTops
       compilePrepared path src ptops utops expanded trusted
+  when editor exitSuccess
   let Prepared cons shapes prog bprog runList _ = prepared
   -- user constructors only (the builtins have their own spellings in render),
   -- by their BASE name: `L.O.Some` prints as `Some`
@@ -293,13 +316,17 @@ data Slicing = SliceNone | SlicePrelude | SliceAll deriving (Eq)
 -- Successful compiler output is pure data; transactions, actors, JIT state and
 -- script arguments are deliberately created outside this cached boundary.
 compileScript :: Slicing -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
-compileScript slicing path src ptopsAll utops utopsX0' trusted = do
+compileScript = compileScriptWith Editor.disabled
+
+compileScriptWith :: Editor.Report -> Slicing -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
+compileScriptWith report slicing path src ptopsAll utops utopsX0' trusted = do
   noteRef <- newIORef []
   let note msg = modifyIORef' noteRef (msg :) >> diagnostic msg
   let sources=M.singleton path src
       anchors=M.union (bindAnchors path src utops) (evalAnchors path src)
       anchored=map (anchorMsg sources anchors)
       anchoredDiagnostics=map (SourceDiagnostic.renderSourceDiagnostic sources anchors)
+  Editor.context report sources anchors
   -- `Rand = rnd.Rand.` where the target is an imported STRUCT: resolve the
   -- local alias by rewriting every `Rand` / `Rand.f` reference to the
   -- canonical spliced name, so field calls hit the flat globals and
@@ -314,6 +341,7 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
   -- (lowercase / '/' roots) pass through untouched.
   let (pathErrs, utopsXP) = expandPathLits (shapeTyTable utopsX1) (typeTyTable utopsX1) utopsX1
   unless (null pathErrs) $ do
+    Editor.legacy report "path-literal" pathErrs
     diagnostic "=== PATH LITERALS: ERRORS ==="
     mapM_ (diagnostic . ("  * " ++)) pathErrs
     exitFailure
@@ -354,6 +382,7 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
       (perrs, ptopsExp) = expandStructs sigs ptops
       (structErrs1, topsExp) = expandStructs sigs utopsX0
   unless (null (perrs ++ structErrs1)) $ do
+    Editor.legacy report "sig-struct" (perrs ++ structErrs1)
     diagnostic "=== SIG/STRUCT: ERRORS ==="
     mapM_ (diagnostic . ("  * " ++)) (perrs ++ structErrs1)
     exitFailure
@@ -361,6 +390,7 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
   let contracts = preTable (ptopsExp ++ topsExp)
       contractErrors = validatePre contracts ++ validatePreUses contracts (ptopsExp ++ topsExp)
   unless (null contractErrors) $ do
+    Editor.legacy report "precondition" contractErrors
     diagnostic "=== PRECONDITION: ERRORS ==="
     mapM_ (diagnostic . ("  * " ++)) (anchored contractErrors)
     exitFailure
@@ -391,11 +421,13 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
             ssug = safetySuggestions safety
             userNames = S.fromList [n | TBind n _ _ _ <- topsExp]
         unless (null terrs) $ do
+          Editor.diagnostics report "type-error" terrs
           diagnostic "=== TYPE ERRORS ==="
           mapM_ (diagnostic . ("  * " ++)) (anchoredDiagnostics terrs)
           exitFailure
         let namedHoles = [(n, t) | (n, t) <- holes, not (null n)]
         unless (null namedHoles) $ do
+          Editor.legacy report "typed-hole" ["got into a typed hole, ?" ++ n ++ " : " ++ t | (n,t) <- namedHoles]
           diagnostic "=== TYPED HOLES ==="
           mapM_ (\(n, t) -> diagnostic ("  * got into a typed hole, ?" ++ n ++ " : " ++ t)) namedHoles
           exitFailure
@@ -404,6 +436,7 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
         -- same rules as the AOT path (SOL_NO_SAFETY=1 for transition)
         noSafety <- (== Just "1") <$> lookupEnv "SOL_NO_SAFETY"
         unless (noSafety || null serrs) $ do
+          Editor.diagnostics report "safety" serrs
           diagnostic "=== SAFETY: the safe/unsafe line ==="
           mapM_ (diagnostic . ("  * " ++)) (anchoredDiagnostics serrs)
           sug <- lookupEnv "FPR_UNSAFE_SUGGEST"
@@ -413,6 +446,7 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
           diagnostic "=== INFERRED TYPES ==="
           forM_ [nt | nt@(n, _) <- notes, S.member n userNames] $ \(n, t) ->
             diagnostic ("  " ++ n ++ " : " ++ t)
+        Editor.types report notes
         pure (rewritten, inferredLinSigs)
 
   (structErrs2, topsSpec) <- phase "specialize" $ pure (specialize sigs structs combined)
@@ -422,6 +456,7 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
     diagnostic "=== NUMERIC WIDTHS (advisory) ==="
     mapM_ diagnostic (widthReport allX)
   unless (null structErrs2) $ do
+    Editor.legacy report "sig-struct" structErrs2
     diagnostic "=== SIG/STRUCT: ERRORS ==="
     mapM_ (diagnostic . ("  * " ++)) structErrs2
     exitFailure
@@ -449,6 +484,7 @@ compileScript slicing path src ptopsAll utops utopsX0' trusted = do
       linearity = checkLinearity li tops
       lerrs = linearityDiagnostics linearity
   unless (null lerrs) $ do
+    Editor.diagnostics report "linearity" lerrs
     diagnostic "=== LINEARITY: ERRORS ==="
     mapM_ (diagnostic . ("  * " ++)) (anchoredDiagnostics lerrs)
     exitFailure
@@ -797,13 +833,24 @@ parseOrDie name src = case parse program name src of
 -- a PT built by a library's internal logic import unifies with the app's
 -- own logic import because they are literally the same declarations.
 expandUses :: Int -> String -> S.Set FilePath -> IORef (S.Set Name) -> IORef (M.Map String String) -> String -> FilePath -> [STop] -> IO [STop]
-expandUses 0 _ _ _ _ _ _ _ = diagnostic "[sol] use: module nesting too deep" >> exitFailure >> pure []
-expandUses depth prefix trustedPaths trustRef seenRef impExt baseDir tops = do
+expandUses = expandUsesWith Editor.disabled
+
+expandUsesWith :: Editor.Report -> Int -> String -> S.Set FilePath -> IORef (S.Set Name) -> IORef (M.Map String String) -> String -> FilePath -> [STop] -> IO [STop]
+expandUsesWith report 0 _ _ _ _ _ _ _ = Editor.problem report "import" "Module nesting too deep" Nothing >> diagnostic "[sol] use: module nesting too deep" >> exitFailure >> pure []
+expandUsesWith report depth prefix trustedPaths trustRef seenRef impExt baseDir tops = do
   let aliases = [(mn, spec) | TUse mn spec <- tops]
   pairs <- forM aliases $ \(mn, spec) -> do
-    r <- resolveModuleParsed impExt baseDir spec
+    let record file body = case report of
+          Nothing -> pure ()
+          Just _ -> do
+            Editor.source report file body
+            parsed <- parseCachedSource file body
+            case parsed of
+              Right (_, ts) -> Editor.context report M.empty (M.mapKeys (\n -> prefix ++ mn ++ "." ++ n) (bindAnchors file body ts))
+              Left _ -> pure ()
+    r <- resolveModuleParsedWith record impExt baseDir spec
     case r of
-      Left e -> diagnostic e >> exitFailure >> pure ([], (mn, mn))
+      Left e -> Editor.problem report "import" e Nothing >> diagnostic e >> exitFailure >> pure ([], (mn, mn))
       Right (mpath, h, pinned, mtops0) -> do
         approved <- (`S.member` trustedPaths) <$> canonicalizePath mpath
         when approved $ modifyIORef' trustRef (<> S.fromList
@@ -822,7 +869,7 @@ expandUses depth prefix trustedPaths trustRef seenRef impExt baseDir tops = do
             pure ([], (mn, localName))
           Nothing -> do
             modifyIORef' seenRef (M.insert h (prefix ++ mn))
-            mtops1 <- expandUses (depth - 1) (prefix ++ mn ++ ".") trustedPaths trustRef seenRef (takeExtension mpath) (takeDirectory mpath) mtops0
+            mtops1 <- expandUsesWith report (depth - 1) (prefix ++ mn ++ ".") trustedPaths trustRef seenRef (takeExtension mpath) (takeDirectory mpath) mtops0
             let defs = [t | t <- mtops1, notEval t]
                 rn = M.fromList [(n, mn ++ "." ++ n) | n <- topNames defs]
             pure (renameTops rn defs, (mn, mn))

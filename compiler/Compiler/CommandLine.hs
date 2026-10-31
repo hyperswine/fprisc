@@ -34,6 +34,7 @@ data CompileArguments = CompileArguments
     oForeign :: [FilePath], -- --foreign=FILE: the SYSTEM's primitive declarations (signatures only)
     oNoInline :: Bool, -- --no-inline / FPR_NO_INLINE=1: base code keeps every call (debugging, WCET comparison)
     oCost :: Bool, -- --cost: print every root function's work/alloc equations (Cost.hs), then continue
+    oEditorJSON :: Bool, -- versioned editor report, never executes or emits code
     oCheckOnly :: Bool, -- check libraries/modules without an executable entry point
     oManifest :: Maybe FilePath, -- --manifest=FILE: judge the root functions against a target manifest (Manifest.hs)
     oRemarks :: Maybe String -- advisory reporting; validated separately, never a codegen/cache option
@@ -50,7 +51,7 @@ parseCompileArguments = resolveHost . foldl step defaults
         oQosApp=False, oQosSingle=False, oPlugin=False, oRvv=False,
         oStdCheck=False, oSol=False, oPrelude=Nothing, oNoSafety=False,
         oFiles=[], oForeign=[], oNoInline=False, oCost=False,
-        oCheckOnly=False, oManifest=Nothing, oRemarks=Nothing }
+        oEditorJSON=False, oCheckOnly=False, oManifest=Nothing, oRemarks=Nothing }
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
     -- qos-native -> rv64 .qa is built by tools, so the alias maps the
@@ -93,6 +94,7 @@ parseCompileArguments = resolveHost . foldl step defaults
     step o "--float-abi=hard" = o {oHardFloat = True}
     step o "--float-abi=soft" = o {oHardFloat = False}
     step o "--stdcheck" = o {oStdCheck = True}
+    step o "--editor-json" = o {oEditorJSON = True, oCheckOnly = True}
     step o "--check-only" = o {oCheckOnly = True}
     step o "--sol" = o {oSol = True}
     step o "--target=rv32" = o {oTarget = rv32, oTargetFlag = True}

@@ -54,12 +54,16 @@ parseModuleFile :: FilePath -> IO (Either String (FilePath, String))
 parseModuleFile path = fmap (fmap (\(p, h, _) -> (p, h))) (parseModuleSource path)
 
 parseModuleSource :: FilePath -> IO (Either String (FilePath, String, [STop]))
-parseModuleSource path = do
+parseModuleSource = parseModuleSourceWith (\_ _ -> pure ())
+
+parseModuleSourceWith :: (FilePath -> String -> IO ()) -> FilePath -> IO (Either String (FilePath, String, [STop]))
+parseModuleSourceWith record path = do
   ok <- doesFileExist path
   if not ok
     then pure (Left ("use: no such module file: " ++ path))
     else do
       src <- readFile path
+      record path src
       result <- parseCachedSource path src
       pure $ case result of
         Left err -> Left ("use: module " ++ path ++ " does not parse:\n" ++ err)
@@ -82,7 +86,10 @@ resolveModule prefExt baseDir spec =
   fmap (fmap (\(p, h, pin, _) -> (p, h, pin))) (resolveModuleParsed prefExt baseDir spec)
 
 resolveModuleParsed :: String -> FilePath -> String -> IO (Either String (FilePath, String, Bool, [STop]))
-resolveModuleParsed prefExt baseDir spec = do
+resolveModuleParsed = resolveModuleParsedWith (\_ _ -> pure ())
+
+resolveModuleParsedWith :: (FilePath -> String -> IO ()) -> String -> FilePath -> String -> IO (Either String (FilePath, String, Bool, [STop]))
+resolveModuleParsedWith record prefExt baseDir spec = do
   let (name, hashPart) = break (== '#') spec
       wantHash = drop 1 hashPart
       pinned = not (null wantHash)
@@ -98,7 +105,7 @@ resolveModuleParsed prefExt baseDir spec = do
         (f : _, _) -> mkPath f
         ([], h : _) -> h
         _ -> mkPath (head cands)
-  r <- parseModuleSource path
+  r <- parseModuleSourceWith record path
   pure $ case r of
     Left e -> Left e
     Right (p, h, tops)

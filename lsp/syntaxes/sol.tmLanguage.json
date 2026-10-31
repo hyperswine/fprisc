@@ -1,0 +1,289 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Sol",
+  "scopeName": "source.sol",
+  "patterns": [
+    {
+      "include": "#profile"
+    },
+    {
+      "include": "#directive"
+    },
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#pathLiteral"
+    },
+    {
+      "include": "#transactionMark"
+    },
+    {
+      "include": "#typeDecl"
+    },
+    {
+      "include": "#typeSig"
+    },
+    {
+      "include": "#useDecl"
+    },
+    {
+      "include": "#valueDef"
+    },
+    {
+      "include": "#topDef"
+    },
+    {
+      "include": "#hole"
+    },
+    {
+      "include": "#unsafeKw"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#storage"
+    },
+    {
+      "include": "#realtime"
+    },
+    {
+      "include": "#ioBuiltin"
+    },
+    {
+      "include": "#constructor"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#operator"
+    },
+    {
+      "include": "#qualified"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.sol"
+    },
+    "string": {
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.sol",
+      "patterns": [
+        {
+          "match": "\\\\.",
+          "name": "constant.character.escape.sol"
+        },
+        {
+          "begin": "\\{",
+          "end": "\\}",
+          "name": "meta.embedded.interpolation.sol",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.begin.sol"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.end.sol"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#interpolationBody"
+            }
+          ]
+        }
+      ]
+    },
+    "pathLiteral": {
+      "match": "@[^\\s;,)\\]}\"]*[^\\s;,.)\\]}\"]",
+      "name": "string.other.path.sol"
+    },
+    "transactionMark": {
+      "match": "^>",
+      "name": "keyword.control.transaction.sol"
+    },
+    "typeDecl": {
+      "match": "^([A-Z][A-Za-z0-9_']*)\\s*(1)?\\s*(?:[a-z_][A-Za-z0-9_']*\\s+)*(=)\\s*(Type|Sig|Struct|Layout)\\b",
+      "captures": {
+        "1": {
+          "name": "entity.name.type.sol"
+        },
+        "2": {
+          "name": "storage.modifier.linear.sol"
+        },
+        "3": {
+          "name": "keyword.operator.assignment.sol"
+        },
+        "4": {
+          "name": "storage.type.sol"
+        }
+      }
+    },
+    "typeSig": {
+      "match": "^([A-Za-z_][A-Za-z0-9_']*(?:\\.[A-Za-z_][A-Za-z0-9_']*)*)\\s*(:)(?!:)",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.sol"
+        },
+        "2": {
+          "name": "keyword.operator.type-annotation.sol"
+        }
+      }
+    },
+    "useDecl": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_']*)\\s*(=)\\s*(use)\\b",
+      "captures": {
+        "1": {
+          "name": "entity.name.namespace.sol"
+        },
+        "2": {
+          "name": "keyword.operator.assignment.sol"
+        },
+        "3": {
+          "name": "keyword.control.import.sol"
+        }
+      }
+    },
+    "topDef": {
+      "match": "^([a-z_][A-Za-z0-9_']*)(?=\\s+[A-Za-z_(\\[0-9\"@{].*=|\\s*=[^=])",
+      "name": "entity.name.function.sol"
+    },
+    "keywords": {
+      "match": "\\b(case|of|fn|use|error|if|then|else|and|or)\\b",
+      "name": "keyword.control.sol"
+    },
+    "storage": {
+      "match": "\\b(Type|Sig|Struct|Layout)\\b",
+      "name": "storage.type.sol"
+    },
+    "realtime": {
+      "match": "\\b(readNow|writeNow|appendNow|shNow|readLineNow)\\b",
+      "name": "markup.underline.support.function.unsafe.realtime.sol"
+    },
+    "ioBuiltin": {
+      "match": "\\b(readPath|writePath|mkdirp|rmdir|rm|mv|ls|stat|exists|isDir|shq|sh|print|input|sleepMs|open|readAll|writeAll|close)\\b",
+      "name": "support.function.io.transactional.sol"
+    },
+    "constructor": {
+      "match": "\\b[A-Z][A-Za-z0-9_']*\\b",
+      "name": "entity.name.type.constructor.sol"
+    },
+    "number": {
+      "match": "\\b(?:0x[0-9a-fA-F]+|[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?[fFdD]?)\\b",
+      "name": "constant.numeric.sol"
+    },
+    "operator": {
+      "match": "(->|<-|::|\\|>\\?|\\|>|>>|==|!=|<=|>=|\\|\\||&&|[|=<>+\\-*/%^$!])",
+      "name": "keyword.operator.sol"
+    },
+    "qualified": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_']*)\\.([a-z_][A-Za-z0-9_']*)",
+      "captures": {
+        "1": {
+          "name": "entity.name.namespace.sol"
+        },
+        "2": {
+          "name": "variable.other.member.sol"
+        }
+      }
+    },
+    "hole": {
+      "patterns": [
+        {
+          "match": "\\?\\?",
+          "name": "constant.language.hole.sol"
+        },
+        {
+          "match": "\\?[a-z][A-Za-z0-9_\\']*",
+          "name": "constant.language.hole.named.sol"
+        }
+      ]
+    },
+    "unsafeKw": {
+      "match": "\\b(unsafe|measure)\\b",
+      "name": "storage.modifier.unsafe.sol"
+    },
+    "directive": {
+      "match": "^(#:)\\s*(\\S+)(.*)$",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.directive.sol"
+        },
+        "2": {
+          "name": "keyword.control.directive.sol"
+        },
+        "3": {
+          "name": "string.unquoted.directive.sol"
+        }
+      }
+    },
+    "profile": {
+      "match": "^\\s*(profile|unsafe)\\s+(builtin|base|extbase|sol|program|module)\\s*\\.",
+      "name": "storage.modifier.profile.sol"
+    },
+    "valueDef": {
+      "match": "^([a-z_][A-Za-z0-9_']*)(?=\\s*=(?!=)(?!\\s*fn\\b))",
+      "name": "variable.other.readwrite.sol"
+    },
+    "interpolationBody": {
+      "patterns": [
+        {
+          "include": "#string"
+        },
+        {
+          "include": "#interpolationBraces"
+        },
+        {
+          "include": "#pathLiteral"
+        },
+        {
+          "include": "#hole"
+        },
+        {
+          "include": "#unsafeKw"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#storage"
+        },
+        {
+          "include": "#number"
+        },
+        {
+          "include": "#qualified"
+        },
+        {
+          "include": "#constructor"
+        },
+        {
+          "include": "#operator"
+        },
+        {
+          "match": "[A-Za-z_][A-Za-z0-9_']*",
+          "name": "variable.other.interpolated.sol"
+        }
+      ]
+    },
+    "interpolationBraces": {
+      "begin": "\\{",
+      "end": "\\}",
+      "name": "meta.braces.interpolation.sol",
+      "patterns": [
+        {
+          "include": "#interpolationBody"
+        }
+      ]
+    }
+  }
+}

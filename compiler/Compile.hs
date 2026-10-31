@@ -52,6 +52,9 @@ import Frontend.Traverse
 import Frontend.Normalize
 import Frontend.Diagnostics
 import qualified Diagnostic.Render as Diagnostic
+import qualified Compiler.Editor as Editor
+import qualified Source.Span as Source
+import qualified Data.List.NonEmpty as NE
 import qualified Diagnostic.Remark as Remark
 import qualified Compiler.Remarks as Remarks
 import Ownership.Shape
@@ -77,7 +80,7 @@ import Data.IORef (newIORef, readIORef, writeIORef)
 import System.Environment (withArgs)
 import System.FilePath (takeDirectory, takeExtension, takeFileName, (</>))
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
-import Text.Megaparsec (errorBundlePretty, parse)
+import Text.Megaparsec (errorBundlePretty, parse, bundleErrors, errorOffset)
 
 -- a module reached by two spellings (`ep` and `../programs/mods/ep`, a pin
 -- and a path) is ONE unit: its hash is its identity.  Listed twice it was
@@ -117,7 +120,10 @@ parseFile p = snd <$> parseFileSrc p
 -- keep the source: bindAnchors scans it for the file:line of every
 -- top-level definition (spans step 1)
 parseFileSrc :: FilePath -> IO (String, [STop])
-parseFileSrc p = do
+parseFileSrc = parseFileSrcEditor Editor.disabled
+
+parseFileSrcEditor :: Editor.Report -> FilePath -> IO (String, [STop])
+parseFileSrcEditor report p = do
   bytes <- BS.readFile p
   -- a source file is UTF-8 text; a byte order mark is skipped (an editor
   -- wrote it, it is not a character) and a byte that is not UTF-8 is
@@ -129,8 +135,11 @@ parseFileSrc p = do
       let bad = length (takeWhile id (zipWith (==) (BS.unpack body) (BS.unpack (TE.encodeUtf8 (TE.decodeUtf8With TEE.lenientDecode body)))))
       hPutStrLn stderr ("error: " ++ p ++ ": byte " ++ show bad ++ " is not UTF-8 (a source file is UTF-8 text)")
       exitFailure
+  Editor.source report p src
   case parse program p src of
-    Left e -> putStrLn (errorBundlePretty e) >> exitFailure >> pure (src, [])
+    Left e -> do
+      Editor.problem report "parse" (errorBundlePretty e) (Just (Source.pointSpan p (Source.SourceOffset (errorOffset (NE.head (bundleErrors e))))))
+      putStrLn (errorBundlePretty e) >> exitFailure >> pure (src, [])
     Right tops -> pure (src, tops)
 
 -- top-level bind name -> arity, for the extern-known-globals map:
@@ -188,6 +197,13 @@ checkedInterface file = do
 
 compileWithInterface :: ([(Name, String)] -> IO ()) -> IO ()
 compileWithInterface accepted = do
+  args <- getArgs
+  let options = parseCompileArguments args
+      root = case oFiles options of f:_ -> f; _ -> "<input>"
+  Editor.run (oEditorJSON options) root (compileWithReport accepted)
+
+compileWithReport :: ([(Name, String)] -> IO ()) -> Editor.Report -> IO ()
+compileWithReport accepted report = do
   setLocaleEncoding utf8
   args <- getArgs
   let opts0 = parseCompileArguments args
@@ -208,7 +224,7 @@ compileWithInterface accepted = do
   remarkMode<-either (\why->hPutStrLn stderr ("error: "++why) >> exitFailure) pure (Remark.parseMode (oRemarks opts0))
   when (oCheckOnly opts0 && remarkMode/=Remark.Off) $
     hPutStrLn stderr "error: optimization remarks require native compilation; omit --check-only" >> exitFailure
-  (rootSrc0, rootTopsParsed) <- parseFileSrc inp
+  (rootSrc0, rootTopsParsed) <- parseFileSrcEditor report inp
   -- the PROFILE is the file's: `profile base.` (or `unsafe base.`), a
   -- .sol file is sol; the flag serves a file that says nothing, and
   -- may not contradict one that does.  Base is the default.
@@ -216,7 +232,7 @@ compileWithInterface accepted = do
         Just d -> Just d
         Nothing | takeExtension inp == ".sol" -> Just "sol"
                 | otherwise -> Nothing
-      refuse m = hPutStrLn stderr ("error: " ++ m) >> exitFailure
+      refuse m = Editor.problem report "profile" m Nothing >> hPutStrLn stderr ("error: " ++ m) >> exitFailure
   profile <- case (declared, oProfileFlag opts0) of
     (Just d, Just f) | d /= f -> refuse ("the file declares `profile " ++ d ++ ".` but the command line asks for " ++ f) >> pure d
     (Just d, _) -> pure d
@@ -277,7 +293,7 @@ compileWithInterface accepted = do
     Nothing | oBuiltin opts -> pure Nothing
             | otherwise -> underHome ("core" </> "prelude.fpr")
   let opts' = opts {oPrelude = prelude}
-  (preludeSrc, preludeTops0) <- maybe (pure ("", [])) parseFileSrc prelude
+  (preludeSrc, preludeTops0) <- maybe (pure ("", [])) (parseFileSrcEditor report) prelude
   -- --foreign=FILE: the primitives the SYSTEM supplies, declared by whoever
   -- implements them.  The compiler used to type every QOS device and system
   -- primitive itself (glRender, blkRead, Pin.*, Sys.caps, Apps.*): a language
@@ -289,7 +305,7 @@ compileWithInterface accepted = do
   -- invocation in a tree that exports it; the flag adds to it
   let envForeign = Options.driverForeign (Options.driverOptions configuration)
   foreignInputs <- forM (envForeign ++ oForeign opts) $ \f -> do
-    (source,ts) <- parseFileSrc f
+    (source,ts) <- parseFileSrcEditor report f
     let strays = [n | TBind n _ _ _ <- ts]
     unless (null strays) $ do
       hPutStrLn stderr ("--foreign=" ++ f ++ ": declarations only; it defines " ++ unwords (take 5 strays))
@@ -323,7 +339,7 @@ compileWithInterface accepted = do
     exitFailure
   lr <- loadProgram preludeTops inp rootTops
   case lr of
-    Left e -> putStrLn e >> exitFailure
+    Left e -> Editor.problem report "import" e Nothing >> putStrLn e >> exitFailure
     Right (LoadResult tops0RL exports notes units0L root0L rootHash unitAnchors rootAliases unitSources) -> do
       mapM_ putStrLn notes
       -- spans steps 1-3: every "in NAME:" diagnostic below gets the
@@ -344,6 +360,7 @@ compileWithInterface accepted = do
               ]
           anchored = map (anchorMsg sources anchors)
           anchoredDiagnostics = map (Diagnostic.renderSourceDiagnostic sources anchors)
+      Editor.context report sources anchors
       -- first-class paths: validate + desugar @Shape.path literals on the
       -- surface tree, first transform after load (ONE table from the
       -- merged program, so root and unit rewrites agree; the generated
@@ -362,6 +379,7 @@ compileWithInterface accepted = do
       unless (null pathErrs) $ do
         putStrLn "=== PATH LITERALS: ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchored pathErrs)
+        Editor.legacy report "path-literal" pathErrs
         exitFailure
       -- A received message dies with its turn (docs/2026-10-24-REGIONS-STAGE1.md):
       -- the runtime releases every root an actor took when the turn that
@@ -391,6 +409,7 @@ compileWithInterface accepted = do
       unless (null preludeExpErrs) $ do
         putStrLn "=== SIG/STRUCT: ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchored preludeExpErrs)
+        Editor.legacy report "sig-struct" preludeExpErrs
         exitFailure
       -- ---- preconditions (contracts): signatures may constrain params,
       -- (n : Int | n > 0).  Discharge obligations statically from local
@@ -404,6 +423,7 @@ compileWithInterface accepted = do
       unless (null preFragErrs) $ do
         putStrLn "=== PRECONDITION: ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchored preFragErrs)
+        Editor.legacy report "precondition" preFragErrs
         exitFailure
       let (pnAll, tops') = applyPreconds preTab tops
           -- Bodyless foreign signatures keep a global name across imports.
@@ -449,6 +469,7 @@ compileWithInterface accepted = do
       unless (null terrs) $ do
         putStrLn "=== TYPE ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchoredDiagnostics terrs)
+        Editor.diagnostics report "type-error" terrs
         exitFailure
       -- typed holes: NAMED holes typecheck everything around them and
       -- then refuse to compile, with the inferred type -- exactly the
@@ -458,6 +479,7 @@ compileWithInterface accepted = do
       unless (null named) $ do
         putStrLn "=== TYPED HOLES ==="
         mapM_ (\(n, t) -> putStrLn ("  * got into a typed hole, ?" ++ n ++ " : " ++ t)) named
+        Editor.legacy report "typed-hole" ["got into a typed hole, ?" ++ n ++ " : " ++ t | (n,t) <- named]
         unless (null [t | (_, t) <- holes, False]) (pure ())
         exitFailure
       case inferenceEvidence inferred of
@@ -484,6 +506,7 @@ compileWithInterface accepted = do
         unless (null serrs) $ do
           putStrLn "=== SAFETY: the safe/unsafe line ==="
           mapM_ (putStrLn . ("  * " ++)) (anchoredDiagnostics serrs)
+          Editor.diagnostics report "safety" serrs
           when (Options.diagUnsafeSuggest diagnostic && not (null ssug)) $ do
             putStrLn "-- paste-ready signatures (inferred types):"
             mapM_ (putStrLn . ("SUGGEST " ++)) ssug
@@ -495,6 +518,7 @@ compileWithInterface accepted = do
         Left specErrs -> do
           putStrLn "=== SIG/STRUCT: ERRORS ==="
           mapM_ (putStrLn . ("  * " ++)) (anchored specErrs)
+          Editor.legacy report "sig-struct" specErrs
           exitFailure
         Right source -> pure source
       let finalTops = specializedTops specialized
@@ -586,6 +610,7 @@ compileWithInterface accepted = do
       unless (null lerrs) $ do
         putStrLn "=== LINEARITY: ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchoredDiagnostics lerrs)
+        Editor.diagnostics report "linearity" lerrs
         exitFailure
       -- ---- resource equations (docs/2026-10-02-RESOURCE-BOUNDS.md) ----
       -- The pass runs when a signature declares a bound (`| work f <= ...`),
@@ -699,6 +724,7 @@ compileWithInterface accepted = do
             unless (null missing) $ hPutStrLn stderr ("checked interface: missing inferred exports: " ++ unwords missing) >> exitFailure
             accepted [(n, canonicalTypeWith id t) | (n, t) <- public]
         else accepted [(n, canonicalTypeWith interfaceName t) | (n, t) <- interfaces, S.member n rootBinds]
+      Editor.types report notes
       when checkOnly exitSuccess
       -- ---- per-unit CODEGEN (separate compilation) ----
       -- Every unit consumes its owned projection of merged source checking.

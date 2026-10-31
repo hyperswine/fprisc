@@ -111,6 +111,7 @@ library
       Diagnostic.Syntax
       Diagnostic.Remark
       Diagnostic.Render
+      Compiler.Editor
       Compiler.CommandLine
       FPRISC
       Frontend.Syntax

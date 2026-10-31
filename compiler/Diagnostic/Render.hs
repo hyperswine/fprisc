@@ -2,7 +2,7 @@
 -- The legacy adapter is for old API callers; native/Sol inference bypass it.
 module Diagnostic.Render
   (Sources,Anchors,LocatedDiagnostic,resolveDiagnostic,locatedDiagnostic,
-   diagnosticLocation,locatedSpan,renderLocated,renderSourceDiagnostic,anchorLegacyMessage) where
+   diagnosticLocation,locatedSpan,renderLocated,renderSourceDiagnostic,anchorLegacyMessage,legacyDiagnostic) where
 import Diagnostic.Syntax
 import Source.Span
 import Data.List (isPrefixOf)
@@ -55,7 +55,10 @@ renderSourceDiagnostic sources anchors=renderLocated . resolveDiagnostic sources
 -- here once; no inference producer or structured renderer inspects prose for
 -- owner/offset metadata. Literal marker-looking text in a Diagnostic is text.
 anchorLegacyMessage :: Sources -> Anchors -> String -> String
-anchorLegacyMessage sources anchors text=renderSourceDiagnostic sources anchors d
+anchorLegacyMessage sources anchors=renderSourceDiagnostic sources anchors . legacyDiagnostic
+
+legacyDiagnostic :: String -> Diagnostic
+legacyDiagnostic text=d
   where
     (owner,body)=case text of
       'i':'n':' ':rest | (n,':':' ':more)<-break (==':') rest -> (Just n,more)

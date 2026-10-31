@@ -45,6 +45,8 @@ main=do
   require (driverForeign (driverOptions (options [("FPR_FOREIGN",":one::two:")]))==["one","two"]) "foreign path normalization"
   let cli=parseCompileArguments ["--check-only","--lib","--no-inline","module.fpr","/dev/null"]
   require (oCheckOnly cli && oLib cli && oNoInline cli && oFiles cli==["module.fpr","/dev/null"]) "typed CLI product lost module/check-only/inline flags"
+  let editor=parseCompileArguments ["--editor-json","module.fpr","/dev/null"]
+  require (oEditorJSON editor && oCheckOnly editor && oFiles editor==["module.fpr","/dev/null"]) "editor report must imply check-only and never become an input file"
   forM_ [("--remarks","hot"),("--remarks=all","all"),("--remarks=json","json")] $ \(flag,mode)->do
     let reported=parseCompileArguments [flag,"module.fpr","out.s"]
     require (oRemarks reported==Just mode && oFiles reported==["module.fpr","out.s"]) "remark flag became an input file"

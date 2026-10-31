@@ -71,6 +71,21 @@ jobs:
         run: |
           make fpr
           ./fpr --version || test -x ./fpr
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lsp/package-lock.json
+      - name: Editor checks and VSIX (matching compiler)
+        working-directory: lsp
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fpr-lang-vsix
+          path: lsp/artifacts/*.vsix
+          if-no-files-found: error
       # the two Haskell checks no script runs; the other cabal test suites
       # run inside check_base (make unit-tests runs them all locally)
       - name: cabal test (parser grouping, module search path)

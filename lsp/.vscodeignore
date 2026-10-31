@@ -1,0 +1,11 @@
+test/**
+node_modules/**/*.md
+node_modules/**/*.ts
+.npmrc
+artifacts/**
+.gitignore
+
+*.vsix
+.DS_Store
+tools/**
+zip-project.sh
