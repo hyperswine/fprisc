@@ -27,6 +27,7 @@ import Codegen.Selected
 import qualified Codegen.Annotation as Annotation
 import qualified Codegen.Target.X64 as X64
 import Codegen.Target.A64
+import qualified Codegen.Target.RV as RV
 import Control.Monad (unless, forM_)
 import Data.List (isInfixOf, isPrefixOf)
 import qualified Data.Map.Strict as M
@@ -331,6 +332,14 @@ main = do
   check "direct x64: SysV parameter moved to rbx, rbx saved, TLS hart" ("movq %rbx, -24(%rbp)\n    movq %rdi, %rbx\n" `isInfixOf` xt && "%fs:fpr_posix_hart@tpoff" `isInfixOf` xt && "saved=rbx " `isInfixOf` xt)
   check "direct x64: aligned primitive call" ("subq $8, %rsp\n    call fpr_prim_fn__x2d\n    addq $8, %rsp" `isInfixOf` xt)
   check "direct x64: frame-based return and native bound" ("leaq -8(%r11), %rsp\n    ret" `isInfixOf` xt && rSegMax (nfReport nfx) /= Nothing)
+  -- the same function through direct RV64: the subtraction is now inline
+  -- (the fit-check fast path), and the C primitive survives only as the
+  -- slow path with retagged operands, the A64/X64 contract
+  nrv <- either (error . ("FAIL: rv64: " ++)) pure (RV.emitFnRV (RV.RVConfig W64 (m2Policy {polProfile = HostedBase}) RV.HartTp (S.singleton "one") False False) one)
+  let rt = unlines (nfLines nrv)
+  check "direct rv64: the subtraction is inline with the fit check" ("sub " `isInfixOf` rt && "slli " `isInfixOf` rt)
+  check "direct rv64: the slow path re-enters the primitive" ("call fpr_prim_fn__x2d" `isInfixOf` rt)
+  check "direct rv64: native bound survives the cold slow path" (rSegMax (nfReport nrv) /= Nothing)
   let pairFn n = Fn "pair" ["base"] TVal (BId 0)
         [Block (BId 0) [(VId 0,TAddr)]
           [Instr Nothing OStackCheck, Instr Nothing OSafepoint,

@@ -1,0 +1,1044 @@
+{
+  "date": "2026-10-31",
+  "base_revision": "a8ef86b",
+  "codegen_revision": 139,
+  "early_loops_default": false,
+  "base_environment": {
+    "FPR_TYPED_IR_EARLY_LOOPS": "1"
+  },
+  "coverage": "All 161 registered Base jobs succeeded across resumed runs. This is combined local evidence, not a single uninterrupted run or hosted CI. The final std/test-only allow-list repair was followed by the remaining jobs and repeat frontend/check-only/import-publication/trust checks. Code-generation sources were unchanged between these runs.",
+  "job_count": 161,
+  "runs": [
+    {
+      "label": "final",
+      "seconds": 742.7841480420902,
+      "workers": 4,
+      "successful_jobs": 41,
+      "failed_jobs": [
+        "tests/check_x64_scalar.py"
+      ]
+    },
+    {
+      "label": "resume",
+      "seconds": 558.2513861248735,
+      "workers": 4,
+      "successful_jobs": 57,
+      "failed_jobs": [
+        "tests/check_trust.py"
+      ]
+    },
+    {
+      "label": "resume2",
+      "seconds": 130.101379084168,
+      "workers": 4,
+      "successful_jobs": 67,
+      "failed_jobs": []
+    }
+  ],
+  "jobs": [
+    {
+      "name": "actor_claim",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.5397348329424858
+    },
+    {
+      "name": "actorfail",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.387356750201434
+    },
+    {
+      "name": "admission",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 25.73193749994971
+    },
+    {
+      "name": "arena_migration",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.4665653330739588
+    },
+    {
+      "name": "autodrop2",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.8053960411343724
+    },
+    {
+      "name": "autodrop3",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.934385749977082
+    },
+    {
+      "name": "bigheap",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.3074377081356943
+    },
+    {
+      "name": "bitrange",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.734298791969195
+    },
+    {
+      "name": "cafalias",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.1069124171044677
+    },
+    {
+      "name": "cleanup",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.339806792093441
+    },
+    {
+      "name": "codepublish",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.4479691251181066
+    },
+    {
+      "name": "confine",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.6641716670710593
+    },
+    {
+      "name": "deadmail",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.3847718748729676
+    },
+    {
+      "name": "deadpeer",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 8.992775209015235
+    },
+    {
+      "name": "deathwhy",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.3526413750369102
+    },
+    {
+      "name": "descriptors",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 5.23098075017333
+    },
+    {
+      "name": "examples/ideal/check.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 376.56591450003907
+    },
+    {
+      "name": "fixedheap",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.7971404590643942
+    },
+    {
+      "name": "float_inline",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 10.665010374970734
+    },
+    {
+      "name": "fpr_run",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.2872567079029977
+    },
+    {
+      "name": "fvec2",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.235803582938388
+    },
+    {
+      "name": "heapnil",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.6142508329357952
+    },
+    {
+      "name": "i64",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 3.751774584176019
+    },
+    {
+      "name": "images",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.575535667128861
+    },
+    {
+      "name": "inlineprims",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 3.8199643748812377
+    },
+    {
+      "name": "inlining",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.454379541100934
+    },
+    {
+      "name": "intovf",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.9513540838379413
+    },
+    {
+      "name": "irqdead",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.6243386249989271
+    },
+    {
+      "name": "irqroute",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.6832580000627786
+    },
+    {
+      "name": "job_broker",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 3.0020206249319017
+    },
+    {
+      "name": "killblocked",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.1952850420493633
+    },
+    {
+      "name": "logdead",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 3.1125126250553876
+    },
+    {
+      "name": "logplane",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.5051644160412252
+    },
+    {
+      "name": "longpanic",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.6114165419712663
+    },
+    {
+      "name": "loopwith",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 4.728773916838691
+    },
+    {
+      "name": "modinterface",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.7645818339660764
+    },
+    {
+      "name": "panic_actors_std",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 5.065942165907472
+    },
+    {
+      "name": "pendreset",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.5497809580992907
+    },
+    {
+      "name": "process",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 4.466078082798049
+    },
+    {
+      "name": "regionnest",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.7972102910280228
+    },
+    {
+      "name": "registers",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 13.115979458903894
+    },
+    {
+      "name": "runtime_costs",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 45.84315416589379
+    },
+    {
+      "name": "sendmem",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.8409994998946786
+    },
+    {
+      "name": "sleepwait",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 4.3023586249910295
+    },
+    {
+      "name": "sleepwake",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 7.336805499857292
+    },
+    {
+      "name": "slotprims",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.1603632918559015
+    },
+    {
+      "name": "stacks",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.1647373330779374
+    },
+    {
+      "name": "streams",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.4484851250890642
+    },
+    {
+      "name": "strprims",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.466966375010088
+    },
+    {
+      "name": "swarmkeeper",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 22.2311352500692
+    },
+    {
+      "name": "taskstress",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 13.195938125019893
+    },
+    {
+      "name": "tests/check_a64_fp_pool.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 4.914945208001882
+    },
+    {
+      "name": "tests/check_a64_retirement.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 62.0778475839179
+    },
+    {
+      "name": "tests/check_actor_reap.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 1.363628291990608
+    },
+    {
+      "name": "tests/check_alloc_fast.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 17.82698387489654
+    },
+    {
+      "name": "tests/check_byte_strings.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 3.574971708934754
+    },
+    {
+      "name": "tests/check_captured_simd.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 33.040207292186096
+    },
+    {
+      "name": "tests/check_channel_alignment.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 32.52354079205543
+    },
+    {
+      "name": "tests/check_check_only.py",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 3.624310915824026
+    },
+    {
+      "name": "tests/check_commit_interfaces.py",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 20.05116687505506
+    },
+    {
+      "name": "tests/check_compile_budget.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 133.23556004092097
+    },
+    {
+      "name": "tests/check_compiler_options.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 22.308371334103867
+    },
+    {
+      "name": "tests/check_consuming_reuse.py",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 21.71781862480566
+    },
+    {
+      "name": "tests/check_contract_rewrites.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 15.950007125036791
+    },
+    {
+      "name": "tests/check_core_pipeline.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 3.9910593337845057
+    },
+    {
+      "name": "tests/check_deadlines.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 16.460949959000573
+    },
+    {
+      "name": "tests/check_diagnostics.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 18.951782915974036
+    },
+    {
+      "name": "tests/check_digest_vectors.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 8.829137500142679
+    },
+    {
+      "name": "tests/check_early_loops.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 35.98880295921117
+    },
+    {
+      "name": "tests/check_fixed_stack_reservation.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 47.83588304114528
+    },
+    {
+      "name": "tests/check_float_trees.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 4.379923625150695
+    },
+    {
+      "name": "tests/check_frontend.py",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 8.088122416986153
+    },
+    {
+      "name": "tests/check_generic_ownership.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 19.3161934169475
+    },
+    {
+      "name": "tests/check_higher_order_contracts.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 92.8439050000161
+    },
+    {
+      "name": "tests/check_inbox.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 36.60864287498407
+    },
+    {
+      "name": "tests/check_inference_evidence.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 14.387489999877289
+    },
+    {
+      "name": "tests/check_interval.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 8.002807416021824
+    },
+    {
+      "name": "tests/check_live_runner.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 45.54223858285695
+    },
+    {
+      "name": "tests/check_live_writer_lifetime.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 37.24212324991822
+    },
+    {
+      "name": "tests/check_loop_state.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 9.391164791071787
+    },
+    {
+      "name": "tests/check_mvu_reload.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 190.683668917045
+    },
+    {
+      "name": "tests/check_native_data.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 44.791383625008166
+    },
+    {
+      "name": "tests/check_native_insns_ratchet.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 2.6799817089922726
+    },
+    {
+      "name": "tests/check_native_required.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 12.548115333076566
+    },
+    {
+      "name": "tests/check_owned_watchers.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 7.537054291926324
+    },
+    {
+      "name": "tests/check_pagination.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 130.87457400001585
+    },
+    {
+      "name": "tests/check_parked_receive.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 26.69593650009483
+    },
+    {
+      "name": "tests/check_pos_core.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 126.17578495806083
+    },
+    {
+      "name": "tests/check_pos_reload.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 283.2479564170353
+    },
+    {
+      "name": "tests/check_posix_modules.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 13.375229875091463
+    },
+    {
+      "name": "tests/check_posix_pic.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 3.9562257919460535
+    },
+    {
+      "name": "tests/check_printer_ownership.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 43.21625179098919
+    },
+    {
+      "name": "tests/check_publication.py",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 24.672748208977282
+    },
+    {
+      "name": "tests/check_receive_turns.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 29.399014415917918
+    },
+    {
+      "name": "tests/check_remarks.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 39.04634837503545
+    },
+    {
+      "name": "tests/check_reset_reuse.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 8.233627334004268
+    },
+    {
+      "name": "tests/check_reuse.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 24.203029999975115
+    },
+    {
+      "name": "tests/check_rv32_float_constants.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 48.937922707991675
+    },
+    {
+      "name": "tests/check_rv64_linux.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 11.696669250028208
+    },
+    {
+      "name": "tests/check_scheduler_locality.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 2.953003207920119
+    },
+    {
+      "name": "tests/check_self_loop_rv64.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 3.479914417024702
+    },
+    {
+      "name": "tests/check_self_loop_x64.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 5.264298750087619
+    },
+    {
+      "name": "tests/check_self_loops.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 16.955209124833345
+    },
+    {
+      "name": "tests/check_specialization.py",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 40.103998749982566
+    },
+    {
+      "name": "tests/check_stack_reservation.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 7.47849345812574
+    },
+    {
+      "name": "tests/check_state_generations.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 27.960483707953244
+    },
+    {
+      "name": "tests/check_string_fast.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 18.956063624937087
+    },
+    {
+      "name": "tests/check_structural_ownership.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 19.392500499961898
+    },
+    {
+      "name": "tests/check_trust.py",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 0.04668333288282156
+    },
+    {
+      "name": "tests/check_typed_core.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 162.93745270906948
+    },
+    {
+      "name": "tests/check_typed_ir.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 184.33146370900795
+    },
+    {
+      "name": "tests/check_typed_ir_a64.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 83.49349662498571
+    },
+    {
+      "name": "tests/check_typed_ir_a64_frames.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 411.6521681670565
+    },
+    {
+      "name": "tests/check_typed_ir_arc.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 199.17893483303487
+    },
+    {
+      "name": "tests/check_typed_ir_builtin.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 0.2679014999885112
+    },
+    {
+      "name": "tests/check_typed_ir_esp.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 2.2150503750890493
+    },
+    {
+      "name": "tests/check_typed_ir_kernels.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 263.8059722909238
+    },
+    {
+      "name": "tests/check_typed_ir_qrv64.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 3.074472957989201
+    },
+    {
+      "name": "tests/check_typed_ir_rv_frames.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 210.76434724987485
+    },
+    {
+      "name": "tests/check_typed_ir_rv_module.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 2.1311012080404907
+    },
+    {
+      "name": "tests/check_typed_ir_rv_startup.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 62.79204862494953
+    },
+    {
+      "name": "tests/check_typed_ir_x64.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 12.31311208405532
+    },
+    {
+      "name": "tests/check_typed_ir_x64_frames.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 134.42147891689092
+    },
+    {
+      "name": "tests/check_typed_vectors.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 5.6041872499044985
+    },
+    {
+      "name": "tests/check_vector_fallback_frames.py",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 18.296299250097945
+    },
+    {
+      "name": "tests/check_vector_fast.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 20.109566415892914
+    },
+    {
+      "name": "tests/check_vector_kinds.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 33.664200958795846
+    },
+    {
+      "name": "tests/check_vector_limits.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 22.66023987508379
+    },
+    {
+      "name": "tests/check_vector_pipelines.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 28.561792958993465
+    },
+    {
+      "name": "tests/check_view_construction.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 23.167829208076
+    },
+    {
+      "name": "tests/check_watch_app.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 53.114628040930256
+    },
+    {
+      "name": "tests/check_wide_params.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 3.8175770421512425
+    },
+    {
+      "name": "tests/check_wide_workers.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 178.59495029202662
+    },
+    {
+      "name": "tests/check_workers.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 51.25953758391552
+    },
+    {
+      "name": "tests/check_x64_macos.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 46.57296891603619
+    },
+    {
+      "name": "tests/check_x64_qos.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 16.01848083292134
+    },
+    {
+      "name": "tests/check_x64_retirement.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 14.459438667166978
+    },
+    {
+      "name": "tests/check_x64_scalar.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 17.20809800014831
+    },
+    {
+      "name": "tests/check_x64_vectors.py",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 26.9826330000069
+    },
+    {
+      "name": "tests/test_check_registry.py",
+      "status": "ok",
+      "run": "final",
+      "seconds": 0.5171570421662182
+    },
+    {
+      "name": "tools/sol-cli-config-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 4.478528750129044
+    },
+    {
+      "name": "tools/sol-digest-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 6.234007833059877
+    },
+    {
+      "name": "tools/sol-effects-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 10.123959332937375
+    },
+    {
+      "name": "tools/sol-format-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 6.614902999950573
+    },
+    {
+      "name": "tools/sol-fs-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 6.056321791140363
+    },
+    {
+      "name": "tools/sol-http-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 8.78797045815736
+    },
+    {
+      "name": "tools/sol-install-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 15.796464582905173
+    },
+    {
+      "name": "tools/sol-io-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 4.3857571659609675
+    },
+    {
+      "name": "tools/sol-linearity-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 0.7662325000856072
+    },
+    {
+      "name": "tools/sol-pipeline-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 6.331685625016689
+    },
+    {
+      "name": "tools/sol-receipt-budget-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 58.80061054206453
+    },
+    {
+      "name": "tools/sol-repl-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 3.004180750111118
+    },
+    {
+      "name": "tools/sol-retry-policy-check.py",
+      "status": "ok",
+      "run": "resume",
+      "seconds": 2.2541669998317957
+    },
+    {
+      "name": "turnroots",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.8773431670852005
+    },
+    {
+      "name": "veccaps",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 7.949930583126843
+    },
+    {
+      "name": "vecfuse",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.663955957861617
+    },
+    {
+      "name": "vecpeek",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 5.800578999798745
+    },
+    {
+      "name": "vecshape",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 2.097725708037615
+    },
+    {
+      "name": "vecwide",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 25.035725708818063
+    },
+    {
+      "name": "wide",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 1.5596423749811947
+    },
+    {
+      "name": "zerobased",
+      "status": "ok",
+      "run": "resume2",
+      "seconds": 7.02504654112272
+    }
+  ],
+  "repaired_failures": {
+    "tests/check_x64_scalar.py": "Adjusted the late allocator-conversion counter assertion for early CFG loops; cell-transfer checks and independent execution oracle retained.",
+    "tests/check_trust.py": "Reviewed std/test (no unsafe helpers, measured list recursion), registered it and documented the trust review."
+  },
+  "additional_checks": [
+    "LoopForm, LoopOptimize, CompilerOptions, TypedIR and Interval Haskell suites passed, including the convergent-edge overflow regression and non-Stuck loop evaluation.",
+    "Compile-budget gates passed without threshold changes.",
+    "ProjectWorkflow Haskell suite passed after the trust-list repair.",
+    "Safe-profile std/test native passing/failing output and exit status checked on one and four harts.",
+    "git diff --check passed."
+  ],
+  "execution_evidence": [
+    "Host-native macOS A64 on one/four harts; selected stress cases use additional harts.",
+    "x64 under Rosetta: independent scalar/C ABI oracle and real Darwin runtime checks.",
+    "RV32/RV64 under QEMU: kernel, self-loop, module and frame/runtime probes."
+  ],
+  "platform_skips": [
+    "Generic x64 M2 execution skipped on the nonmatching native host; separate Rosetta probes ran.",
+    "Linux x64 production actor runtime skipped on nonmatching host.",
+    "POSIX RV64 artifact check skipped because this clang lacks its RISC-V backend."
+  ],
+  "not_claimed": [
+    "Hosted CI",
+    "Physical board execution/timings",
+    "A general performance improvement",
+    "Hard wall-clock resource guarantees"
+  ],
+  "final_compiler_sha256": "5fbee1b29af13f1821ad546e48aefccd7eb8a738ebac2b1a967a566af3af8d52",
+  "codegen_sources_sha256": {
+    "compiler/Codegen.hs": "54291bbe6cb530e99288a62eb78e11ff93f7ada534d53a365ecf67533faff9e0",
+    "compiler/Codegen/Interval.hs": "80f4287bf4dbb7345b83cc8d603ca786c0488f5d3b2417f311022b80bec25c2c",
+    "compiler/Codegen/LoopForm.hs": "c173007b8a80b827fa6d1fcf9b57338bc7cd4c31cabba35fca5a24134843c06d",
+    "compiler/Codegen/Lower.hs": "df2293b522417399ccd49809a2298138a0b35fd057c9e3034238c7500c0d3ba8",
+    "compiler/Codegen/Policy.hs": "86626863156473fd1174df380f03a3c70f3502fd7d2aadf6e67877257824ac4c",
+    "compiler/Compile.hs": "e09af9dbc89bec592d4bb9f4bbec148212e44afcada653448f5b5a567c8057e2",
+    "compiler/Compiler/Options.hs": "a911d528604bac2729bd0687d7d4cb8d459500605948a838ceeab8a8ebe9da4e"
+  },
+  "final_safety_source_sha256": "238b56a3869c56dd822e83361e966d4b45b60435264229513eff9da89b1bdc87"
+}

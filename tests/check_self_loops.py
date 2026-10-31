@@ -82,7 +82,7 @@ def main():
                 asm=tmp/(target+'.s')
                 run([ROOT/'fpr','compile','--target='+target,source,asm],mode)
                 text=asm.read_text()
-                assert ('_m3loop:' in text)==(enabled=='1')
+                assert ('_m3loop:' in text)==(enabled=='1' and env.get('FPR_TYPED_IR_EARLY_LOOPS')!='1')
                 assert '# wcet:' not in text and 'segmax=UNBOUNDED' not in text
             print(f'Typed self loops={enabled}: cycles of 2/7/8/63 arguments, effects, fuel, stacks, fairness, 1/4 harts and RV32/RV64 emission PASS',flush=True)
 
