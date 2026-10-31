@@ -2011,7 +2011,7 @@ inferTopsResult capture prof sigs structs tops =
         reps <- carrierReps
         pending <- gets iPendingNumeric
         forM_ (IS.toList pending) $ \k -> forM_ (IM.lookup k sites) $ \(_, t0) -> do
-            modify (\st -> st {iDefaultWork = iDefaultWork st + 1})
+            modify' (\st -> st {iDefaultWork = iDefaultWork st + 1})
             t <- zonk t0
             case t of
               TV v | not (IM.member v reps) -> unify "numeric default" (TV v) tInt
@@ -2019,7 +2019,7 @@ inferTopsResult capture prof sigs structs tops =
             t' <- zonk t0
             case t' of
               TV _ -> pure ()
-              _ -> modify (\st -> st {iPendingNumeric = IS.delete k (iPendingNumeric st)})
+              _ -> modify' (\st -> st {iPendingNumeric = IS.delete k (iPendingNumeric st)})
       forM_ (zip ns mvs) $ \(n,t) -> do
         actual <- gets (M.lookup n . iDefTypes)
         tz <- zonk (maybe t id actual)

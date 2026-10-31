@@ -979,14 +979,22 @@ compileWithInterface accepted = do
                       (NativeImports.readySymbols prepared) elide (NativeImports.readyProgram prepared)
                     vnotes = emNotes emission
                     asm = moduleFinal (unlines (["# typed IR: no translation"] ++ emNative emission ++ emData emission))
-                directCheck ("unit " ++ takeFileName path) emission
+                -- Pack the text first, while the emission's per-function lines
+                -- are produced and dropped one at a time; then the strict and
+                -- verifier checks, still before anything is written.
+                let packed = T.pack asm
+                T.length packed `seq` directCheck ("unit " ++ takeFileName path) emission
                 mapM_ putStrLn vnotes
                 -- written beside it and renamed whole: a build running at the
                 -- same time (check_base runs many) finds the unit complete or
                 -- absent, never half-written and taken as cached
-                length asm `seq` writeWhole path asm
-                nativeSummary (Options.diagNativeInsns diagnostic) ("unit " ++ takeFileName path) asm
-                applyReport (takeFileName path) asm
+                -- Forced once into a packed Text (about 1 byte per char instead
+                -- of a ~40-byte cons cell): the whole unit is still produced
+                -- before the write, but the String is never held in full; the
+                -- writes and reports below re-stream it from the Text.
+                writeWhole path (T.unpack packed)
+                nativeSummary (Options.diagNativeInsns diagnostic) ("unit " ++ takeFileName path) (T.unpack packed)
+                applyReport (takeFileName path) (T.unpack packed)
                 pure (path, show (M.size prog) ++ " supercombinators")
       -- Validate the complete linked ownership/interface product before any
       -- artifact is reused or emitted. Later legacy passes consume projections;
