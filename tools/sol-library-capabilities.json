@@ -202,6 +202,12 @@
       "note": "Native kernel host snapshot; process inventory requires OS permission."
     },
     {
+      "module": "sol/lib/test.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Checks for Sol scripts run by `fpr test`: that/equal/run print TAP-like lines and exit 1 on failure (docs/2026-10-31-PROJECT-WORKFLOW.md). sol-library-check.py."
+    },
+    {
       "module": "sol/lib/digest.sol",
       "status": "hosted",
       "gate": "import-and-call",
