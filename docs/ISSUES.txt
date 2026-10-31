@@ -17,3 +17,11 @@ Live-range splitting and inline bump allocation (fib 2.6x vs. C): Split virtual-
 4. Compile-Time Memory & Test-Suite Consolidation
 Dead-symbol pruning before Typed Core transformations (docs/2026-10-26-COMPILE-TIME-BUDGET.md): Prune unreferenced imported/prelude definitions right after module splicing and reachability analysis so large multi-unit builds (pos1.fpr still allocates ~97.7 GB across stages) do not carry unused definitions through Infer, Core.Typed.*, and Regions.
 Grouped Cabal test runner (fp-risc.cabal): Consolidate the 15 separate test-suite executables (TypedCore, TypedCalls, TypedCallbacks, TypedStaging, TypedStructs, TypedTraps, TypedUnits, etc.) into 2–3 multi-module test runners (matching the pattern used in test-suite TypedProgram) to reduce Cabal link overhead during make base.
+
+------------
+
+Zero overhead is desired.
+
+Not necessarily C level perf, but not paying for what you don't use.
+
+And most importantly, WCET and correctness and reliability.
