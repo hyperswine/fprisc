@@ -1,0 +1,7 @@
+# unbox bench: Option-heavy loop; a partial function returning Option on every step
+O = use "std/option".
+half : Int -> O.Option Int .
+half x = if x % 2 == 0 then O.Some (x / 2) else O.None.
+loop : unsafe Int -> Int -> Int .
+loop i acc = if i == 0 then acc else loop (i - 1) (case half i of O.Some y -> acc + y | O.None -> acc + 1).
+main = print "option_loop {loop 20000000 0}".
