@@ -1,0 +1,5 @@
+# unbox bench: sum (filter even (range 1 N)), R times
+List = use "std/list".
+go : unsafe Int -> Int -> Int .
+go r acc = if r == 0 then acc else go (r - 1) (acc + List.sum (List.filter (fn x -> x % 2 == 0) (List.range 1 1000000))).
+main = print "list_filter {go 20 0}".
