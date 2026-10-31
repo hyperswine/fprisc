@@ -1,0 +1,9 @@
+# fuzz repro (mutant of tests/base/mvudeadlines.fpr): ill-typed constructor patterns made Exhaust.useful take head [] -- must report errors, not crash
+MV = use "std/mvu".
+backend mode me =
+  case q of
+      MV.Dims u -> if mode == 1 then _ = Sys.sleepUs 2000000; Unit else _ = AC.sendSure me from (80, 24); backend mode me
+    | MV.Render  sc fr -> if mode == 2 then _ = Sys.sleepUs 2000000; Unit else _ = AC.sendSure me from (0, 0); backend mode me
+    | MV.Poll u -> if mode == 3 then _ = Sys.sleepUs 2000000; Unit else _ = AC.sendSure me from (0, 0, 0); backend mode me.
+runCase me render input port mode =
+  MV.runResultWithin (if mode == 7 then 500 else 30) me cfg app.

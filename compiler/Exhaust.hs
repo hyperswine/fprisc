@@ -189,7 +189,10 @@ useful _ _ [] = False
 useful sibs rows (q : qs) = case headOf q of
   Just (h, args) -> useful sibs (specialize h (length args) rows) (args ++ qs)
   Nothing ->
-    let heads = nub (mapMaybe (fmap fst . headOf . head) rows)
+    -- rows can be ragged when a pattern's arity disagrees with its
+    -- constructor's (an ill-typed program whose type error is reported
+    -- separately): an exhausted row contributes no head, never a crash
+    let heads = nub [h | (p : _) <- rows, Just (h, _) <- [headOf p]]
      in case complete sibs heads of
           Just all' -> any (\(h, a) -> useful sibs (specialize h a rows) (replicate a PWild ++ qs)) all'
           Nothing -> useful sibs [ps | (p : ps) <- rows, isNothing (headOf p)] qs
