@@ -1,0 +1,1063 @@
+{
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "runs": 15,
+  "harts": 1,
+  "compiler_sha256": "98f6ea9dfc5e499868078e02f0feecc934b4d826d9a6723a8d2a9dd87465b80b",
+  "baseline_sha256": "5fbee1b29af13f1821ad546e48aefccd7eb8a738ebac2b1a967a566af3af8d52",
+  "settings": {
+    "FPR_HOME": "/Users/jasonqin/Documents/GitHub/fprisc",
+    "FPR_PATH": "/Users/jasonqin/Documents/GitHub/fprisc",
+    "FPR_HARTS": "1",
+    "FPR_TYPED_IR_EARLY_LOOPS": "1",
+    "FPR_TYPED_IR_LOOP_MOTION": "0"
+  },
+  "method": "Two warmups; paired off/on runs with seeded balanced randomized order. All compilation ends before timing. Exact output checked on every run. Early loops enabled in both modes; loop motion disabled.",
+  "source_sha256": {
+    "compiler/Arc.hs": "f19763fc7fd8e39a078a283812068a841f5f6fe1b87eb88e5c8e991881537e39",
+    "compiler/Build.hs": "ff7e78a81f7e3ba0a7303e7ee98f9c68538420bafaf10ae4993605372d1a8147",
+    "compiler/Codegen/Allocate.hs": "18278e8d3cd19b94a36b587b5a67da66428cac4c8890c83f9956584eec91b357",
+    "compiler/Codegen/Annotation.hs": "d97aa185a6ca9600fc2eaba6b6e00c78ccb83dbfdbc3ad66158b667ba4bdae7e",
+    "compiler/Codegen/Bounds.hs": "7c0e08485ac7ed260f5b249987710e713ce69136c5ea2c679169320811868c99",
+    "compiler/Codegen/Call.hs": "f80c27b98517126a55ed666a9ba5d6115a1eafc55ce2579105ac0643086282b2",
+    "compiler/Codegen/Calling/Types.hs": "b6d05958c2358c81dc1e93bb7ea163b3bdf9cf728270d29f21efc628f10b18a8",
+    "compiler/Codegen/Calling.hs": "f8c5d2f8ffde940096f563cb38f3f73c1128fc01cf9e493aec15231006f61be5",
+    "compiler/Codegen/ControlFlow.hs": "e3f2e90ace5555cb716d8d4bb29bc96a4de55395fad941be609374536003b826",
+    "compiler/Codegen/Dump.hs": "d902dac0d7c517abf271840649dd2869f4b5744d2c4ad05864c07a7e9b041a64",
+    "compiler/Codegen/Eval.hs": "c48166eb700ef975b89c46b9e0020e3d6b8fd37179d988cdba6b003a30d6fe7e",
+    "compiler/Codegen/Export/Plan.hs": "089b1e02f03cf7881306bd8586823c4349a5f35d9c839bc04853de7aa145e1ae",
+    "compiler/Codegen/Frame.hs": "de6aa82eb6c1260095b19d1f148697005e5dcfa62fb129337306494e553333a2",
+    "compiler/Codegen/IR.hs": "ab62a2adb54918cd9b61c269d0db45fc39f9a04fa0bd612bfe80a1a15278f67a",
+    "compiler/Codegen/Interval.hs": "80f4287bf4dbb7345b83cc8d603ca786c0488f5d3b2417f311022b80bec25c2c",
+    "compiler/Codegen/Kernel/Plan.hs": "93e4a0ec11a21aebba4ef4da13adf36447f1abc6299d8686c98e579dafd936c7",
+    "compiler/Codegen/Kernel.hs": "49c011ed29c105ae6a72d5025e5d3285298653f74f50f93707f6becffcb8384f",
+    "compiler/Codegen/Liveness.hs": "28a8ed45472c7174d981ee3bf04b5cf2726dcaf73226c3dbe08eb2fa4339890b",
+    "compiler/Codegen/LoopForm.hs": "c173007b8a80b827fa6d1fcf9b57338bc7cd4c31cabba35fca5a24134843c06d",
+    "compiler/Codegen/LoopOptimize.hs": "7ffc35edcbf51ad34d31c7ab80fd1580fa8e0837483bc286e7ba3a0965f626df",
+    "compiler/Codegen/Lower.hs": "df2293b522417399ccd49809a2298138a0b35fd057c9e3034238c7500c0d3ba8",
+    "compiler/Codegen/NativeData.hs": "85dbf1f59cea8e8f1aa70b29421df1b770196cc68113f92457c6610cbb7882fd",
+    "compiler/Codegen/Opcode/A64.hs": "15d25bc05c1132aa8afabe73d35f3db4e320d406480ce4f2367337da2210e5f4",
+    "compiler/Codegen/Opcode/RV.hs": "5f750a2978d76dadf3d2fe3afb17c91ab5e4ffae9e0229bcf5b906434e42b18c",
+    "compiler/Codegen/Opcode/Types.hs": "4bfce5145853a6f20658132ee6c530643926a510293a596a64eadd4949d80272",
+    "compiler/Codegen/Opcode/X64.hs": "d64b0355451f849f0a01dbf785e48cfbba360f8f45cd77778473d8316dacaf71",
+    "compiler/Codegen/Opcode.hs": "ee84d96c771df21c484ba7e89cbbb2f328e052dcdfa2b5fd7f283c3caf82a40b",
+    "compiler/Codegen/Place.hs": "79b544a7dc5ce984dde681d65358b7a85d691d8b1fbbf6dbcf30643f20507c06",
+    "compiler/Codegen/Policy.hs": "637fc95cfaab7fe57326609fd4b27df15e8bac5a3633ee68424a4e8ec6f1ee6c",
+    "compiler/Codegen/Pressure.hs": "4632dc9f95c37532193653b896537fd84edee3afa000c8bdb46fd382392b983a",
+    "compiler/Codegen/Protocol.hs": "a53e93f84a3699c6668fb724b21816c8dff468a7e05ea0f98bed261034565325",
+    "compiler/Codegen/Selected.hs": "88b8e31dcc7b593f986d8175afc3e081cffabd18b46feb7523f98cab4d603a1b",
+    "compiler/Codegen/Simplify.hs": "05392fccff9040458bfad88b01a69403802f5055ceebff37a97f1f2bfea2f985",
+    "compiler/Codegen/Split.hs": "bac1ffd8b7fbdd78fe655ded41e7ef094ebc823eebc5792ae8212f0173b43014",
+    "compiler/Codegen/StringRead.hs": "b8e3c9a7a71a4d9f64755467756c605e38ac52497149f8fbf56d9424f831002f",
+    "compiler/Codegen/StringScan.hs": "e5c32a5617deca886c37fe6ee382b62005d4dbd33756eb329423e05d5a5b4b17",
+    "compiler/Codegen/Symbol.hs": "8467492cf8a7a8547fc4521b79a1fc1eeded6858330edf3e3ee37415995ae642",
+    "compiler/Codegen/Target/A64/Forms.hs": "ace8ae0fd7b7b7b7b6e08213569af90422136a38efcb4dae1ee4ca6ea7de2799",
+    "compiler/Codegen/Target/A64.hs": "822bc76b21ffdc6af2169135030b6f5eed191fbc3a04d8823e50702d40ee8bb1",
+    "compiler/Codegen/Target/Common.hs": "d911e81497f792ed7ced13a693e18859f4bbe414d9c86213e7090f7e33385d69",
+    "compiler/Codegen/Target/Forms.hs": "5ba3bc8a34c82c0cff6d3636c42ec865400d9313ea941fec7d51fc8e2591077c",
+    "compiler/Codegen/Target/RV/Export.hs": "3a55dde6912f107d648520051fda1a1e8ecf17e30899882892d1b195e55df9ca",
+    "compiler/Codegen/Target/RV/Forms.hs": "c3fd18f1ca3e3fa7dbd521366aa0d3f71fd3213e13c234cabf0afd94446a1e20",
+    "compiler/Codegen/Target/RV.hs": "277046705d734fc6d0ea81a72db81f630dc539b597ce37a8bd7a7cd8a07563bf",
+    "compiler/Codegen/Target/X64/Forms.hs": "a8db82cc7732a1e231b8dcd880d42a46037b2c51c6904d4608089a657f5e8de1",
+    "compiler/Codegen/Target/X64.hs": "4ebd9a48b1f7dac25cdc8e3038608d270b0ab76d3ec59f895ac249cf422e97cb",
+    "compiler/Codegen/VectorRead.hs": "e2de8835f5005a3fa1d5aadedbbcd5367fd9610cd664516c856b3b5809d7ab4b",
+    "compiler/Codegen/Verify.hs": "9bd5558bb6d048311fecd9f6bbcf9826a0c73888c4823b9d34a3624e4bdb33b6",
+    "compiler/Codegen.hs": "d7bc5fb8008195f4940abf389c41e2e11a78ead0f2e6f78973a2044161e4404f",
+    "compiler/Commit.hs": "20d663af343d624e532acb25558b4ef52a83734483f73aca7b65bd3eb4ff0b6b",
+    "compiler/Compile.hs": "19922375117cccc59f36dcf760c2d5073cbf354c543d5f0bdd5969061dde3b9b",
+    "compiler/Compiler/CommandLine.hs": "64c274ff1e0ad3bc6c2c0b049682ccb566d16da7ce89d4ab4a118a5de6dcc661",
+    "compiler/Compiler/DataLayout.hs": "a91ab29a7035820baae57c4e26d11a4ee0e14a4b598196dee5a09823030529fa",
+    "compiler/Compiler/Native/Core.hs": "16dcf5affadcb383da2bd029f25253a3f1fefb00b4d8ae6de39df50459998e7b",
+    "compiler/Compiler/Native/Exports.hs": "5ac424f85f6f7beb45a7d083c190ba8a042542865d9df6aca3a234580be2c39f",
+    "compiler/Compiler/Native/Imports.hs": "d430a434989f4607cdc105e5524e8766ad0ee9ee4896ff8451fb5723af3dc0c2",
+    "compiler/Compiler/Native/Linked.hs": "0938679cb0ea28b3b7a597e219db50abb8a9346cf2aa043152233a68096b17fe",
+    "compiler/Compiler/Native/Regions/Typed.hs": "c100a66ff45e8dcdafd04db7a10bd93ee45fb044b9120fb6505e56100e590c22",
+    "compiler/Compiler/Native/Regions/Verify.hs": "6300d62a71f738f15a19852f03f38aa43de871d337076d56505deb58a36e51c8",
+    "compiler/Compiler/Native/Regions.hs": "f97deca858e9fa0b621ec953d3b68eaf18326d3d27973ec738babee551f0ef19",
+    "compiler/Compiler/Native/Representation.hs": "b39fb7895c32ba5c1001ad2790d61fb5961491aba4168a7deb38fa365f2be0e4",
+    "compiler/Compiler/Options.hs": "c51a054ece75c69792f9dfaa98583d62d2014c7c3fd3a3c938dae9f45c239993",
+    "compiler/Compiler/Remarks.hs": "28910ac83d19f021189325ed6dac95a60c6c2267656bddbba14774188ae69121",
+    "compiler/Compiler/Trap.hs": "2068ce7139ca7ca9489f31a58ac02db0924260acd553be6d4d9854c28662e020",
+    "compiler/Compiler/VectorABI.hs": "43e24d805698fb067e58c4f30f1aea58cded85d3a494c26e60eab947debb72a5",
+    "compiler/Compiler/VectorLayout.hs": "af1585ca28a435e528307889d3cb3346e8ac164d400a16191303dc7f043d65f4",
+    "compiler/Compiler/VectorOperation.hs": "f9765ffacd0ea5f198edec54f7aba8466bf29f5a3eca78d258f025f99ce631fa",
+    "compiler/Core/Analysis/Alpha.hs": "58c2d9b82d1185e228d9fbce6a2b0952e4d81487011e932aa3ec8df0291097ba",
+    "compiler/Core/Analysis/FusionSafety.hs": "046b41470fd47b9ef212fae384499b00ffaa85da0402e061f04eccf56b73970d",
+    "compiler/Core/Analysis/Scope.hs": "0e00a5aae0485d178bad4e2cee151786a7bc62398bc0029f55e8da48ac96bbbc",
+    "compiler/Core/CacheIdentity.hs": "3f84cf593bad6844f9099e2a0173c2ecd12913b093c43db8b0970c41eb3544a1",
+    "compiler/Core/Calling.hs": "1bf3562baae2e1005ee254a3e41649766d9dacf9615b4df22f31fdb7818b6e00",
+    "compiler/Core/FusionPolicy.hs": "27ede6d3c3eeccdf26aa87d8b3a0ff3c48bbca4de988b89f49eee5b34363d1b8",
+    "compiler/Core/Identity.hs": "9a20adb40d5110022370ca78b00483535e26e980bcc50794444b0056e59fc98a",
+    "compiler/Core/Opt/Fusion.hs": "2312a2a233c28e0910d70694a6a0f302e76c03a958a574ac13558ff47c0dac29",
+    "compiler/Core/Opt/Normalize.hs": "dac8861e50b370febfb702f741d71a93626222a7de4aefa7c4b6cdf601d0e446",
+    "compiler/Core/Opt/Pipeline.hs": "5110e2bc7bbb104eb0d002ca7367031f88ee2cf9299757d52bce24cc28ebc150",
+    "compiler/Core/Opt/Representation.hs": "14f8d069bdafa688bc34a5d3d6244f13b45ad42444022866691fb68853adee6f",
+    "compiler/Core/Opt/Vector/Plan.hs": "f9188a9221bf914ce62d79448e802ef00d5607a8be02565cdd2fb0dbb35842ff",
+    "compiler/Core/Opt/Vector.hs": "05ffe726cfd90ac3fdb7ba102888590645ddac87da330d1b562ed043b3cf4369",
+    "compiler/Core/Pretty.hs": "f493a0376db9711b1f4b4ee421165d285f871ce96bbb21e8585689d2c9d62051",
+    "compiler/Core/Primitives.hs": "4b1cd0af7f099c3160b893021a0fc9fd2756d45a266cb38a902218c7c8a0ca83",
+    "compiler/Core/Region/Analysis.hs": "dd5264cf65571cb48bc8ae090010743486d526ed26b4025b7e3d69f60e30a155",
+    "compiler/Core/Region/CallSites.hs": "d0852f64d457231d5863bbe2d2b1a5a99a340a50ab374aa212f6cc917b2f2254",
+    "compiler/Core/Region/Flow.hs": "a9c8f476d3f402fa02101a73610387d9c4c1e014c3e1f87d3ab67c06fc21698a",
+    "compiler/Core/Region/Interface.hs": "d7ba4e1e9bd00b9cfe3c6430cfd55203dc1e2c2e7b4124fd7bacc99897de2928",
+    "compiler/Core/Region/Receive.hs": "27ad44fb1de5d010c76e0a906023e3f79fee5ab29769daf88321ec36d6a4d85b",
+    "compiler/Core/Region/Runtime.hs": "2c1c21a72806e2c456a84580402da517f8a05f3fd11f1fc993dae9ef4215c69e",
+    "compiler/Core/Region/Syntax.hs": "afd9a12afbe8f62ff2d799761ac432c24dea0d07bb1d80074da4837818f89428",
+    "compiler/Core/Region/Types.hs": "d1dc886e4eafac3e3ffcbe537a2ce366eb44350b502b913319ca11e2eee205b0",
+    "compiler/Core/Syntax.hs": "07a6a5cfbc9c7ee9054abfe533e18ce50bb586cb8343692d512b03af087c7ac2",
+    "compiler/Core/Typed/Callback/Analysis.hs": "fab0218b4634176f397c4b472b09fca51dbc6503db3720563919e56f5e873d54",
+    "compiler/Core/Typed/Callback/Catalog.hs": "adb926634468147f51c069594c207fc8445e5c07d3a19c22c2431b59cb121a73",
+    "compiler/Core/Typed/Callback/Model.hs": "2826a3c556289df269b115ec5aa93b63d5edd3e3c23d5732c1c7956a3998aa19",
+    "compiler/Core/Typed/Callback/Trim.hs": "6164ef3bb28a8b07e1084a30cfb449e13a12af51b7e861e0a6faaae19783ee9b",
+    "compiler/Core/Typed/Callback.hs": "057da7157d79e175d433c0526a4b49e8e8afeff21f30e2fa35a50adab67f9b19",
+    "compiler/Core/Typed/Close.hs": "f81810c86f04668b52a88da56a40d7b69cb28018e3ea949f94cc9dbfcb868b5d",
+    "compiler/Core/Typed/Contract.hs": "3a082f68d5b4530549e060bb328ed7d78901876ae0b2e58c2f5aee746a301e59",
+    "compiler/Core/Typed/Decision.hs": "fad11a1d8105340bba836f873266ba2b14dae839d5faed4da3c751fc7f809a1d",
+    "compiler/Core/Typed/Erase.hs": "20a801dc06fe4ffdd6dd7cab176b1d575316edb76bc65ada8352a6a128f46cfb",
+    "compiler/Core/Typed/Fusion.hs": "3b1e0aa9ae01e113c8964a4aa4d0f486493b2c5c194c2365a10bbe47a4b193dc",
+    "compiler/Core/Typed/FusionSafety.hs": "9be65d941c400329969c5c841200d332e69c257efb20f7446337672574451c90",
+    "compiler/Core/Typed/Inline.hs": "76c9b8900d112ae4645dc317358a2e873cb6f61b4ce932c9de12b35c9cf049f5",
+    "compiler/Core/Typed/Instantiate.hs": "0e0fc68f8a9b246a877e992f10cd92b269c4349ce5479d189ea9babd7656ec74",
+    "compiler/Core/Typed/Layout.hs": "ebab70ade58698a712749385be20267c73f2b24cc8780ca99affd2ef6aed6cb3",
+    "compiler/Core/Typed/Normalize.hs": "65f84a005dd97bc5688d2c59d01ae7a8f9344644f749c7a3c5cb3cf90b546b4e",
+    "compiler/Core/Typed/Pipeline.hs": "a53c8636daf7b0b0b5d78c8448193400e2b19b2a2648b75ce231a0f8630cea40",
+    "compiler/Core/Typed/Program.hs": "6592b6e6576924063557230a24607d4f8fcfdd28d3bccbd52b160a113e89d62d",
+    "compiler/Core/Typed/Resolve.hs": "894d09dfe5bcc56280ed1f718ea016dc93feb57e7dfb40ff9931ebb09b87ab23",
+    "compiler/Core/Typed/Specialize.hs": "f5bf94008bd49ec58507930c2e4c854c61fb3cbfcf4c72eaba0571c91037a313",
+    "compiler/Core/Typed/Stage.hs": "2b32e66dffd2cf1152d2d095e4f76a6d73d3405a6f5ac37bc74011ed72dec402",
+    "compiler/Core/Typed/Syntax.hs": "bcfb7480664bf981d17f93da1350b31907471ce83920d009d73ace1445c54a48",
+    "compiler/Core/Typed/VectorRead.hs": "3b6b59a0a05b6919e87f81660abd62eb6a6c3d87cd4e714c2ede79cbf0dc7b7c",
+    "compiler/Core/Typed/Verify.hs": "be80e2a94cd3a5166b4aca369f5d6c451e7da6518abecacc6bb87d6b096c7fc4",
+    "compiler/Core/Typed/Walk.hs": "26cab6234aba013dafcfb432b2905818288d041e178b1e3c4e59ecddc42df147",
+    "compiler/Core/Utils.hs": "44bbda7a0014b5082cd454fe3043838a9b45acb631c6585485cdd0ce7f7535d2",
+    "compiler/Core/VectorRead.hs": "494088c7bb5dae75517fafbfe3c14ab5288f1436eeecdc667c607dda7ed23045",
+    "compiler/Cost.hs": "80bef0704ed6c409be7c4f2be80e56a77e79c354d6ed595ec6b98afbe9917a1a",
+    "compiler/Diagnostic/Remark.hs": "1ef314e216c7589f8fd85ac55b972692b87c925f5e4bfc66313372e7fcbde552",
+    "compiler/Diagnostic/Render.hs": "6d881f16d59d4f330a7eb19e61d348ae8b8383afe447148f4fc595ca21f8b73f",
+    "compiler/Diagnostic/Syntax.hs": "dbc2227ac1d1324c0319cf403ffb8fcf5930967769da64506102a60549b88ddd",
+    "compiler/Exhaust.hs": "fce1c4c143187255963f6b574fa66a3a020890e727e02dbf710cd658ad69a0ef",
+    "compiler/FPRISC.hs": "06d17bfb98473b7b9aa579fbe4fd114c3aad137afa9642e80e4f20ac827756e7",
+    "compiler/Frontend/Desugar/Checked.hs": "b40fbd3de6b5853703c46cca98a06dcb6f26a29bf7c7fabd7c04b6d25f89b604",
+    "compiler/Frontend/Desugar/Typed.hs": "cdba8890c05d317b134ae28f019c80b62df6b338fe8a0e3a164482a687f4e598",
+    "compiler/Frontend/Desugar.hs": "bf06c31e802bd7953936764f56f106b1d1babaff1ded53fa96590ecec2839fcf",
+    "compiler/Frontend/Diagnostics.hs": "e80f9983910eba8b63100275de673295574d8a1e9bc6c7a74bfb4bc2c8be07db",
+    "compiler/Frontend/Lexer.hs": "667a19c39b5dbf9cc8d1f023ffcc0cbfecbf607e8f42ca12f2bed31a56df8d2b",
+    "compiler/Frontend/Linearity.hs": "6f5f67091a5989320632a9bd0d8e15262aadb072a5d68ad77adce7d0dd192011",
+    "compiler/Frontend/MemoryLayout.hs": "64874680ccb786430c32de10b8839962f0fcf1cea2d696da37189f721c7b9150",
+    "compiler/Frontend/Normalize.hs": "76e2430f486f8ac8b4a4043bcf1577fa242da0396b3a013e3e2e1649aac26527",
+    "compiler/Frontend/Parser.hs": "35e9c0c9f84cb17b1b2864084d4951e7a07ea4ff37eff953b2df1e003e9fe526",
+    "compiler/Frontend/Paths.hs": "9bf2386677d8f5be0ebc0a6024e249f68d957ef66b9988299054f9cabc876024",
+    "compiler/Frontend/Syntax.hs": "877a294f21680001c30cd5832c0ffdec6549ee5fb3f0404fbef0db8d4f226239",
+    "compiler/Frontend/Traverse.hs": "4532d0b31af933ec480fa5f3530c7169d8b94095e0624ddba6e6af8ef27cb60d",
+    "compiler/Home.hs": "c707ef331641c0a995c8d02cc73ab7a521f4b5401e53d3b14f69380045e7d96e",
+    "compiler/Infer/Elaboration.hs": "6387eee0f74d6082907f8468d397a533d2e3e7c4c12f313f6405658677678ed8",
+    "compiler/Infer/Evidence.hs": "73c98bfbc95be19d67ea9131b2e3c16daccf39a9ac820b426db6648854ec45e7",
+    "compiler/Infer/Pattern.hs": "994ff14dd0bba21f2f93f2a41bf5e6adaf7c359e76cd191a6ae1da21b304fc7d",
+    "compiler/Infer/Result.hs": "7c615e608e3448dbe304e5e9e0c34cbff2f0945a97ddff67072918c8f371aac3",
+    "compiler/Infer/State.hs": "c4e69aec160c6d4f10179ff73fbe5fd7e8509c0a7f0812938cc10c04d9716c70",
+    "compiler/Infer/Trace.hs": "106ec7fa38bff4629408aca347c9447f62fa560977d306e733dc2ca6a0cc7595",
+    "compiler/Infer.hs": "cf682a95b0584df4454bc60971a6bd2b8c1a50a437ae9eb8de33e5fa42fe8279",
+    "compiler/Inline.hs": "1656478af217c427f596e4107222888cd024d55929f7cee66f559c4443eb36c9",
+    "compiler/Interrupt.hs": "a52ea321fb6d5222b35081d3af45ff605488a6e72fdf7b15d9304a7a3880b783",
+    "compiler/KernelKinds.hs": "064ee3bc6e0f46e7af5a179f73e837f7e45c36200b89c30ec3b2670478d6b8be",
+    "compiler/Main.hs": "89048517245060b9b099076136b0b5a91dbfaeb55d165137f253b9d5cad2fc05",
+    "compiler/Manifest.hs": "a121b62d1c2efeb5b313f939c94f2a4f6ec97ab3bfe1cb7c25a0321960f11d9a",
+    "compiler/Modules.hs": "eb96b233e48b156b6a95fda1ae627fa7ae122319fd566076a7ac8abd71ee5557",
+    "compiler/Mono.hs": "068616c6c36fee1be371341005253ce5e2a20654795c090822d149837058c19c",
+    "compiler/Ownership/Finding.hs": "a6d7969dfd6f73bfdd6838098f03792e415c3865b98721fcc99c35b14eae8408",
+    "compiler/Ownership/Shape.hs": "1e6bd63da14ee6d6453f9f15e22173658eaac8d5c06856b486b7687beb32562e",
+    "compiler/Ownership/TypeShape.hs": "e71736eb931b85f54d15a93c26593c40e54c7d2f2cede0adf6eadb427a3351a0",
+    "compiler/Precond.hs": "806b7f3497d6db4bb86a8cbea4f80011c32854835651bf37d5f11e7c723d1f77",
+    "compiler/Project.hs": "d9d6e8ee913934ee1a0ad940ae9eacffdc7f8b05c9f4baad2d928f199bf6bde0",
+    "compiler/Publish.hs": "b1821734f8dcc98af5fa7a4e3d6ee27668f301883c347f840403432f2e2c2ee8",
+    "compiler/ReceiveTurns.hs": "73aa29bdce1df376ef73c1a404c50f4c2e91cda838146add0f9c8fd4c6c1dccd",
+    "compiler/Representation/Types.hs": "81a69d4e795813faa71a601a61cbe97f57d7dca7b1029b8504f5d3b8b0cfc7b7",
+    "compiler/Representation.hs": "9a4688270bee5271148b0be2211d36030f526306b1e62db257a45cc79687b6e7",
+    "compiler/Reuse.hs": "74eebb669b3de98b440a9c15d1d239e3ee3769a69d9c1df686f9330290f372e8",
+    "compiler/Safety.hs": "238b56a3869c56dd822e83361e966d4b45b60435264229513eff9da89b1bdc87",
+    "compiler/Sol/AsmA64.hs": "f876be9b2a3656e546ddb69468419a1a5941a0724d8f9c5cb3e7ff0b572c764b",
+    "compiler/Sol/AsmX64.hs": "d69d81695538e43d00fe0805cfafc2f5801a6b88d0a3739948d3b5bffefc04e0",
+    "compiler/Sol/Bytecode.hs": "cb55a6bf8196e756201418a7efdb7410001c58220d546d208224bd2e69bda15a",
+    "compiler/Sol/Cache.hs": "932e8597a701386d3d10bd05019680242f1d4602cc8f5799b780c54230c7624e",
+    "compiler/Sol/Diagnostic.hs": "174ed14a21c09587fe5ed3e0d282fdd07099d89de83b27917f5b9bc353fb5068",
+    "compiler/Sol/Digest.hs": "ab91477a53c1499952948de532aeebcb47b7e43fdd69c500243fb7df08dc3a71",
+    "compiler/Sol/Effects.hs": "632d5faeee04b72b3fae1d6362c4356d82cc0a5e37f7cc1a4427d2c805fb95ef",
+    "compiler/Sol/Format.hs": "d41e0e3e91e2790bb41cdcdfe9549db81e1afe874c291fd55b8eb546c1cb556d",
+    "compiler/Sol/Gpu.hs": "157c72ea1beb252d5aa68816673132194db80e67df75b70eee59cc89f92be7e8",
+    "compiler/Sol/HandJIT.hs": "f8ee5c553d761a9b22b41ff4519c4f285d46dbd535ae4ee851277a6f5d7412a3",
+    "compiler/Sol/Http.hs": "2f66cd44d2fdf4d5a5c67ff0d4b31598977c01db6bb8e712fee5743e8b0395a5",
+    "compiler/Sol/Infer.hs": "792abc711c5eb1f288477b4a6feee91b86d915ee128a30ce4dafba9b98127156",
+    "compiler/Sol/JitCore.hs": "674cac700fd24c6cc33ce24dc50be00f053979fc4e736415d2ce39e361aa9651",
+    "compiler/Sol/KIR.hs": "cecc3303bdde26f6aba0c38dfe9bdaa7374736aff99e0d129a1c458a52bddd0c",
+    "compiler/Sol/Lang.hs": "066a02e41be5af278521850fbe7bd02148086c4eed34d15447ab60cd2895a80f",
+    "compiler/Sol/Main.hs": "1b166bfccf680d1b9782716faf8b6a6636da5e4e5af863f24bc756213ac80904",
+    "compiler/Sol/Mod.hs": "2b67e351ba0cb35aeacf36c5b1b0d78d53b082a85bdd2a46b0cec9f440203fb9",
+    "compiler/Sol/Native.hs": "e8753ff91278d55bbcd71d8188b9b741750c1900504d4bd753e211d3c8fb9236",
+    "compiler/Sol/Preamble.hs": "b35aa188cd97102e1e707ded1041b8c4a8e19f58eda8b143a4a1dd6b38df9f12",
+    "compiler/Sol/Process.hs": "40db49ebdc96d2cbb4b8c4d21bea87983e8e15c66b30b622f102f74abf102d0a",
+    "compiler/Sol/ScriptIO.hs": "b49f0b2be72e55efa235c063725e5e2cb14792d40551530e51d8f8928cff6fe4",
+    "compiler/Sol/Slice.hs": "7160f1a705b6904db2c0a171f9c7abb320ee40fc84c1bdd01331be8c962f81be",
+    "compiler/Sol/Startup.hs": "f9c0a729136404e9b0f96e04b3e76898d1fcd44b3558cf2132fd5a5865e36f77",
+    "compiler/Sol/Txn.hs": "54651d3773e49a55e61e8f135bb5fd494b46d18ecbc149c79ddfcf84207ca18b",
+    "compiler/Sol/VM.hs": "f26ba7188432ff917e9356730b9ee634724bccb615673ee5909ac1f58e951b4d",
+    "compiler/Sol/Val.hs": "7ee1d6689108188277c8cd53edb9aa851a2ba8f34dcea5c959128b39b41d1431",
+    "compiler/Sol/Web.hs": "b900e0f517d728e6da683d03f748a487d7d3a24c9be609ded8bf9b891365ae3a",
+    "compiler/Sol/WebAssets.hs": "5351d704dc195f6d8983e86fe68a24b68f92a3c4feb2be2ae564ff65e3fe94d8",
+    "compiler/Sol/Width.hs": "b3dde02ff84c97518937649974f7073f38eca6a6f6de8ef79cba93377e47e240",
+    "compiler/Source/Span.hs": "60b6efba45d0f417d8037e1c6f2554d2ab6dd6221cdaff022d92c2293ab2a030",
+    "compiler/StdBridge.hs": "de6821d4ee6240b0c8ba9058ee6a0e277f93ee967800c85401c4f66888b818ee",
+    "compiler/StdCheck.hs": "8c8919aee2a9fa3c208c3f1587940a42709f23fc3ae1da2c3e3e0354d39a0230",
+    "compiler/Struct.hs": "eb9dc24905728928197bb2021c120bef1427cd58f7e6da2f5d45eab4d5579d4b",
+    "compiler/Target.hs": "ae62b2720b5abc914fdd4d7849dcbe296eba410aa5311e56b09da83c10b32cc9",
+    "compiler/Type/Relation.hs": "4f42beb5a9413d8c8ad5cb547343a0d3edbbe2a7b82e245af8378d7ca0b00af5",
+    "compiler/Type/Substitution.hs": "b85f28b7d1fbdfec99a60eeed9505fc386e28dba2e19b840807f3ffa6aab19da",
+    "compiler/Type/Syntax.hs": "7fb35029ace28035aa44b2e52f6ba5bb031c799c70699b4a429fa05299409203",
+    "compiler/Workers.hs": "becbd47de9a9ee01e8b4ba8a081807ce93063f9ff3b60e7b399709dcf4611908"
+  },
+  "benchmarks": {
+    "byteloop-long": {
+      "source": "# bench: a byte loop -- charAt, strlen, compare, add per byte\nString = use \"std/string\".\nsumB : unsafe String -> Int -> Int -> Int -> Int .\nsumB s i n acc = if i >= n then acc else sumB s (i + 1) n (acc + charAt s i).\nrounds : unsafe String -> Int -> Int -> Int .\nrounds s k acc = if k == 0 then acc else rounds s (k - 1) (acc + sumB s 0 (strlen s) 0).\nmain =\n  s = String.repeat 100000 \"abcdefgh\";\n  print \"byteloop = {rounds s 500 0}\".\n",
+      "source_sha256": "d23f8002e568edcd5322baf4f9a987c9f11228e943855b85deedc19fbe534427",
+      "modes": {
+        "off": {
+          "samples_ms": [
+            994.1450420301408,
+            912.627125158906,
+            1007.8449167776853,
+            1017.4790830351412,
+            862.9022920504212,
+            941.2433749530464,
+            808.3235421217978,
+            805.0853749737144,
+            946.4625830296427,
+            925.6601668894291,
+            935.1164998952299,
+            1027.1824591327459,
+            937.1276670135558,
+            824.3772499263287,
+            796.0749578196555
+          ],
+          "compile_s": 1.677677792031318,
+          "allocated_bytes": 2065119984,
+          "binary_bytes": 538088,
+          "assembly_sha256": "c2d9f3c83712393e1eb70e635feb30b3a6db49c6c0ea6fa396cb31c3537c435e",
+          "scan_header": "# fn sumB (arity 4) typed-ir a64 frame=48 shallow=no saved=x19,x20,x21,x22 values=42 regs=42 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=6 loops=0",
+          "median_ms": 935.1164998952299
+        },
+        "on": {
+          "samples_ms": [
+            692.3175000119954,
+            616.2569581065327,
+            726.3662498444319,
+            939.6700840443373,
+            606.7265828605741,
+            588.4280409663916,
+            588.5940839070827,
+            689.3327080179006,
+            822.3845830652863,
+            746.6211658902466,
+            703.7371250335127,
+            779.4136661104858,
+            611.1245830543339,
+            658.9832080062479,
+            679.0864579379559
+          ],
+          "compile_s": 1.6982114168349653,
+          "allocated_bytes": 2125600952,
+          "binary_bytes": 554600,
+          "assembly_sha256": "b1c2b05a4c82901be870fa4a49ae7dbfad67dc3666e02ce54a883d450db2153c",
+          "scan_header": "# fn sumB (arity 4) typed-ir a64 frame=48 shallow=no saved=x19,x20,x21,x22 values=81 regs=81 spills=0 slots=0 reloads=0 stores=0 copies=8 crossing=7 loops=0",
+          "median_ms": 689.3327080179006
+        }
+      },
+      "saved_compiler_output_verified": true,
+      "expected_stdout": "byteloop = 40200000000\n",
+      "order": [
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ]
+      ],
+      "paired_on_off_ratios": [
+        0.6963948626633151,
+        0.6752560176197157,
+        0.720712321660354,
+        0.9235276672629971,
+        0.703123155947211,
+        0.6251603534481665,
+        0.7281664497387528,
+        0.8562231155179125,
+        0.868903428208244,
+        0.8065823642375995,
+        0.7525662579072866,
+        0.7587879438367238,
+        0.652125216836111,
+        0.7993709288619241,
+        0.8530433613913496
+      ],
+      "paired_wins": 15,
+      "median_paired_reduction_pct": 24.74337420927134,
+      "root_assembly_identical": false
+    },
+    "sha-long": {
+      "source": "# bench: SHA-256 of 1 MiB written in FP-RISC (std/digest)\nString = use \"std/string\".\nDigest = use \"std/digest\".\nmain = print \"sha256 1MiB = {Digest.sha256 (String.repeat 10485760 \"a\")}\".\n",
+      "source_sha256": "824ec76952f801fceea247689d080c5f7f2792d7b0fca946ab20852f9c3bb598",
+      "modes": {
+        "off": {
+          "samples_ms": [
+            1007.7845000196248,
+            1269.713125191629,
+            1056.2467919662595,
+            986.9720840360969,
+            909.2055419459939,
+            915.702834026888,
+            963.9392080716789,
+            844.967250013724,
+            862.1738750953227,
+            957.3162919841707,
+            875.1729161012918,
+            1069.919457891956,
+            996.2457919027656,
+            1017.3408749978989,
+            977.1010829135776
+          ],
+          "compile_s": 4.956046750070527,
+          "allocated_bytes": 5263626448,
+          "binary_bytes": 805592,
+          "assembly_sha256": "6b9ebdb031384a18fa3a3c9cf37aaac781a57bfa937fb8b7c3d05bd88d715c90",
+          "scan_header": null,
+          "median_ms": 977.1010829135776
+        },
+        "on": {
+          "samples_ms": [
+            976.8960420042276,
+            1166.018292075023,
+            1005.1761670038104,
+            996.6779160313308,
+            947.5810409057885,
+            949.6577500831336,
+            931.5298330038786,
+            926.6558340750635,
+            983.3652919624001,
+            886.929458938539,
+            925.3265000879765,
+            1087.984916055575,
+            992.5093329511583,
+            954.2902079410851,
+            970.4151670448482
+          ],
+          "compile_s": 4.830250874860212,
+          "allocated_bytes": 5391364992,
+          "binary_bytes": 805592,
+          "assembly_sha256": "6b9ebdb031384a18fa3a3c9cf37aaac781a57bfa937fb8b7c3d05bd88d715c90",
+          "scan_header": null,
+          "median_ms": 970.4151670448482
+        }
+      },
+      "saved_compiler_output_verified": true,
+      "expected_stdout": "sha256 1MiB = b5eec3f68ef64d15e82dad91ff908582c5f081e61a62e22427af9bec2cd35f8d\n",
+      "order": [
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ]
+      ],
+      "paired_on_off_ratios": [
+        0.9693501358526593,
+        0.9183320774911609,
+        0.951648965610226,
+        1.0098339478413039,
+        1.0422077266243435,
+        1.0370807152653723,
+        0.9663781960559173,
+        1.0966766274787723,
+        1.1405649375001978,
+        0.9264748405150975,
+        1.057307056770116,
+        1.0168848767356873,
+        0.996249460743547,
+        0.9380240501425404,
+        0.9931573959075013
+      ],
+      "paired_wins": 8,
+      "median_paired_reduction_pct": 0.3750539256452967,
+      "root_assembly_identical": true
+    },
+    "helpers-long": {
+      "source": "# bench: small helper functions called in a hot loop (the shape most library\n# and application code has): clamp, lerp, a mix built from both, and a\n# higher-order helper given a known function\nclamp : Int -> Int -> Int -> Int .\nclamp lo hi x = if x < lo then lo else if x > hi then hi else x.\nlerp : Int -> Int -> Int -> Int .\nlerp a b t = a + (b - a) * t / 256.\nmix : Int -> Int -> Int .\nmix x y = clamp 0 255 (lerp x y 77).\ntwice : (Int -> Int -> Int) -> Int -> Int -> Int .\ntwice f x y = f (f x y) y.\nloop : unsafe Int -> Int -> Int .\nloop n acc = if n == 0 then acc else loop (n - 1) (acc + twice mix (band n 255) (band acc 255)).\nmain = print \"helpers = {loop 100000000 0}\".\n",
+      "source_sha256": "6686f260d6aab29eba43c2e6c4d09967f318b5b19143c2d379a6da53c266e7b9",
+      "modes": {
+        "off": {
+          "samples_ms": [
+            1178.9660840295255,
+            1168.6547079589218,
+            1032.121832948178,
+            1018.678542226553,
+            960.7653750572354,
+            973.5980411060154,
+            1046.8709580600262,
+            1090.8455830067396,
+            1075.42962487787,
+            1184.3846659176052,
+            1071.0606249049306,
+            991.2808330263942,
+            1040.68575007841,
+            1097.106833010912,
+            1075.2614580560476
+          ],
+          "compile_s": 1.4007226249668747,
+          "allocated_bytes": 1456763936,
+          "binary_bytes": 489384,
+          "assembly_sha256": "1b032744eb2419c7e602694f87f59f38fd596541351d926d300c4dcdc9dd2082",
+          "scan_header": null,
+          "median_ms": 1071.0606249049306
+        },
+        "on": {
+          "samples_ms": [
+            1203.393500065431,
+            1145.4547909088433,
+            961.4593328442425,
+            1026.636374881491,
+            979.6956249047071,
+            972.5502498913556,
+            1045.6115419510752,
+            1114.8629998788238,
+            1050.4354999866337,
+            1005.2291660103947,
+            1053.838583175093,
+            1101.9137501716614,
+            1062.57254187949,
+            1038.9259580988437,
+            1080.2751670125872
+          ],
+          "compile_s": 1.1125800001900643,
+          "allocated_bytes": 1483712528,
+          "binary_bytes": 489384,
+          "assembly_sha256": "1b032744eb2419c7e602694f87f59f38fd596541351d926d300c4dcdc9dd2082",
+          "scan_header": null,
+          "median_ms": 1050.4354999866337
+        }
+      },
+      "saved_compiler_output_verified": true,
+      "expected_stdout": "helpers = 12600000145\n",
+      "order": [
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ]
+      ],
+      "paired_on_off_ratios": [
+        1.0207193543281723,
+        0.9801481850095846,
+        0.9315366676217928,
+        1.0078119174254367,
+        1.0197033014916301,
+        0.9989237948615124,
+        0.9987969710122776,
+        1.022017247212831,
+        0.9767589395781477,
+        0.8487353770589311,
+        0.9839205724406438,
+        1.1116060287451572,
+        1.0210311247169772,
+        0.9469688154685939,
+        1.0046627812416935
+      ],
+      "paired_wins": 8,
+      "median_paired_reduction_pct": 0.1076205138487607,
+      "root_assembly_identical": true
+    },
+    "floatcmp-long": {
+      "source": "# bench: scalar F64 comparisons as branches, with finite moving inputs.\nloop : unsafe Int -> F64 -> Int -> Int .\nloop n x count = if n == 0 then count else\n  a = if x < 0.0 then 1 else 0;\n  b = if x <= 0.0 then 1 else 0;\n  c = if x > 0.0 then 1 else 0;\n  d = if x >= 0.0 then 1 else 0;\n  e = if x == 0.0 then 1 else 0;\n  f = if x != 0.0 then 1 else 0;\n  loop (n - 1) (0.0 - x) (count + a + b + c + d + e + f).\nmain = print \"floatcmp: {loop 100000000 1.0 0}\".\n",
+      "source_sha256": "f9030de766321c756a00e2caf4e82468266856953af1881f33d465fc08a5a31c",
+      "modes": {
+        "off": {
+          "samples_ms": [
+            649.5605418458581,
+            584.5975421834737,
+            583.7152088060975,
+            562.6382080372423,
+            571.4652079623193,
+            581.2939170282334,
+            558.6609579622746,
+            581.3593750353903,
+            527.4268330540508,
+            542.6081251353025,
+            577.20712502487,
+            620.5807500518858,
+            858.3930409513414,
+            943.5182919260114,
+            1312.6311670057476
+          ],
+          "compile_s": 1.1866790410131216,
+          "allocated_bytes": 1438809184,
+          "binary_bytes": 472408,
+          "assembly_sha256": "9eebda2de3772243738ddf3106e34121172b59c0a0de8c95092a2c57bf18bab6",
+          "scan_header": null,
+          "median_ms": 581.3593750353903
+        },
+        "on": {
+          "samples_ms": [
+            553.8992499932647,
+            581.5039998851717,
+            618.5063750017434,
+            502.72874999791384,
+            484.96683314442635,
+            629.530374892056,
+            683.4880828391761,
+            501.21254194527864,
+            530.6864578742534,
+            606.5072498749942,
+            612.6808330882341,
+            592.9209999740124,
+            939.7282500285655,
+            1095.5752921290696,
+            691.4405000861734
+          ],
+          "compile_s": 1.0870300421956927,
+          "allocated_bytes": 1466059712,
+          "binary_bytes": 472408,
+          "assembly_sha256": "9eebda2de3772243738ddf3106e34121172b59c0a0de8c95092a2c57bf18bab6",
+          "scan_header": null,
+          "median_ms": 606.5072498749942
+        }
+      },
+      "saved_compiler_output_verified": true,
+      "expected_stdout": "floatcmp: 300000000\n",
+      "order": [
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ]
+      ],
+      "paired_on_off_ratios": [
+        0.8527292135375827,
+        0.9947082529858958,
+        1.0596029804787956,
+        0.8935204591804705,
+        0.8486375485109211,
+        1.0829811846482469,
+        1.2234398575698051,
+        0.8621389169388854,
+        1.0061802407763893,
+        1.1177629338369344,
+        1.061457502039386,
+        0.9554292490130238,
+        1.0947528756606435,
+        1.161159567868751,
+        0.5267591669817069
+      ],
+      "paired_wins": 7,
+      "median_paired_reduction_pct": -0.6180240776389345,
+      "root_assembly_identical": true
+    },
+    "short-scan": {
+      "source": "# bench: a byte loop -- charAt, strlen, compare, add per byte\nString = use \"std/string\".\nsumB : unsafe String -> Int -> Int -> Int -> Int .\nsumB s i n acc = if i >= n then acc else sumB s (i + 1) n (acc + charAt s i).\nrounds : unsafe String -> Int -> Int -> Int .\nrounds s k acc = if k == 0 then acc else rounds s (k - 1) (acc + sumB s 0 (strlen s) 0).\nmain =\n  s = String.repeat 1 \"abcdefgh\";\n  print \"byteloop = {rounds s 5000000 0}\".\n",
+      "source_sha256": "ed2e16b993a997dbce099aa0201cbf32e57c5a68c15000f1b6266c8e1512d359",
+      "modes": {
+        "off": {
+          "samples_ms": [
+            188.98720806464553,
+            179.06529107131064,
+            158.49308297038078,
+            153.14137493260205,
+            150.48454189673066,
+            149.67820816673338,
+            132.52625009045005,
+            118.42016689479351,
+            135.3842921089381,
+            112.95333411544561,
+            127.11141700856388,
+            133.10366705991328,
+            123.08104196563363,
+            117.89629212580621,
+            113.53179207071662
+          ],
+          "compile_s": 1.542004375020042,
+          "allocated_bytes": 2065115328,
+          "binary_bytes": 538088,
+          "assembly_sha256": "871ecc69bf832dfbd93e58b2888176a76bcd94917cc17fe0d996ee79dd16c0a9",
+          "scan_header": "# fn sumB (arity 4) typed-ir a64 frame=48 shallow=no saved=x19,x20,x21,x22 values=42 regs=42 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=6 loops=0",
+          "median_ms": 133.10366705991328
+        },
+        "on": {
+          "samples_ms": [
+            157.52612496726215,
+            141.0396669525653,
+            134.25487512722611,
+            107.08208405412734,
+            124.07408398576081,
+            112.62529203668237,
+            110.69466709159315,
+            106.199000030756,
+            100.80224997363985,
+            93.79195817746222,
+            102.95308381319046,
+            97.38824982196093,
+            107.36774979159236,
+            103.01816696301103,
+            92.51141687855124
+          ],
+          "compile_s": 1.7503635419998318,
+          "allocated_bytes": 2125593312,
+          "binary_bytes": 554600,
+          "assembly_sha256": "db710413d21428580e18e58a95c0babc7d415efb89ae2e208e5399827d740062",
+          "scan_header": "# fn sumB (arity 4) typed-ir a64 frame=48 shallow=no saved=x19,x20,x21,x22 values=81 regs=81 spills=0 slots=0 reloads=0 stores=0 copies=8 crossing=7 loops=0",
+          "median_ms": 107.08208405412734
+        }
+      },
+      "saved_compiler_output_verified": true,
+      "expected_stdout": "byteloop = 4020000000\n",
+      "order": [
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ]
+      ],
+      "paired_on_off_ratios": [
+        0.8335279756785353,
+        0.7876438036023292,
+        0.8470708791267294,
+        0.6992367941142912,
+        0.8244972036457145,
+        0.7524494942592038,
+        0.835265971956826,
+        0.8967982634672774,
+        0.7445638515621035,
+        0.8303602448919372,
+        0.8099436402809844,
+        0.7316721768313419,
+        0.8723337735601174,
+        0.8738032817273095,
+        0.8148503180582914
+      ],
+      "paired_wins": 15,
+      "median_paired_reduction_pct": 17.550279635428545,
+      "root_assembly_identical": false
+    },
+    "partial-scan": {
+      "source": "# bench: a byte loop -- charAt, strlen, compare, add per byte\nString = use \"std/string\".\nsumB : unsafe String -> Int -> Int -> Int -> Int .\nsumB s i n acc = if i >= n then acc else sumB s (i + 1) n (acc + charAt s i).\nrounds : unsafe String -> Int -> Int -> Int .\nrounds s k acc = if k == 0 then acc else rounds s (k - 1) (acc + sumB s 17 (strlen s - 19) 0).\nmain =\n  s = String.repeat 100000 \"abcdefgh\";\n  print \"byteloop = {rounds s 500 0}\".\n",
+      "source_sha256": "048e959eb691d0454b70a800397151a21a357d42859d72a5028e9da2b59d152f",
+      "modes": {
+        "off": {
+          "samples_ms": [
+            858.8304999284446,
+            829.3335419148207,
+            861.700041918084,
+            1033.5960001684725,
+            1115.3590001631528,
+            1114.9667920544744,
+            1078.261415939778,
+            903.4732920117676,
+            889.1641248483211,
+            1011.1704578157514,
+            1027.8413330670446,
+            967.9745831526816,
+            948.9531249273568,
+            962.3387909960002,
+            1013.2042090408504
+          ],
+          "compile_s": 1.621314459014684,
+          "allocated_bytes": 2065983088,
+          "binary_bytes": 538088,
+          "assembly_sha256": "86a1929929cf992668377fca62797faeefc17b25abbf3d9a3760ce967b273e37",
+          "scan_header": "# fn sumB (arity 4) typed-ir a64 frame=48 shallow=no saved=x19,x20,x21,x22 values=42 regs=42 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=6 loops=0",
+          "median_ms": 967.9745831526816
+        },
+        "on": {
+          "samples_ms": [
+            630.5629580747336,
+            580.6169582065195,
+            655.3232499863952,
+            787.4591660220176,
+            785.4100409895182,
+            696.919749956578,
+            612.7454580273479,
+            616.9234591070563,
+            734.885125188157,
+            665.1674581225961,
+            699.2176249623299,
+            657.6135829091072,
+            665.0762918870896,
+            575.757791986689,
+            590.6582500319928
+          ],
+          "compile_s": 2.403664458077401,
+          "allocated_bytes": 2126467288,
+          "binary_bytes": 554600,
+          "assembly_sha256": "5705cacabe8c6d30748621207adf7ae90ae13a3fa5e8cce47f94ecf9c6f3fdd2",
+          "scan_header": "# fn sumB (arity 4) typed-ir a64 frame=48 shallow=no saved=x19,x20,x21,x22 values=81 regs=81 spills=0 slots=0 reloads=0 stores=0 copies=8 crossing=7 loops=0",
+          "median_ms": 657.6135829091072
+        }
+      },
+      "saved_compiler_output_verified": true,
+      "expected_stdout": "byteloop = 40198189000\n",
+      "order": [
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ],
+        [
+          "on",
+          "off"
+        ],
+        [
+          "off",
+          "on"
+        ]
+      ],
+      "paired_on_off_ratios": [
+        0.7342111838450898,
+        0.7001006577714827,
+        0.7605004271877387,
+        0.7618635965054669,
+        0.7041768980880861,
+        0.625058750559208,
+        0.568271709410374,
+        0.6828353030041987,
+        0.8264898511436435,
+        0.6578193152116381,
+        0.6802777845836259,
+        0.6793707131929722,
+        0.7008526284562283,
+        0.5982901212896052,
+        0.5829607148899819
+      ],
+      "paired_wins": 15,
+      "median_paired_reduction_pct": 31.71646969958013,
+      "root_assembly_identical": false
+    }
+  },
+  "codegen_revision": 141,
+  "scope": "Local macOS AArch64, one hart. Runtime results compare same final compiler with StringScan off/on, early loops enabled and loop motion disabled. Not hosted CI or physical RISC-V evidence.",
+  "validation": "docs/evidence/2026-10-31-string-scan-validation.json",
+  "exploratory_result": "An earlier un-compacted version (revision 140) retained unconditional jump chains: full scan 12/15 wins, 3.61% median paired reduction; tiny scans 2/15 wins, 10.50% slower. The reported final revision 141 coalesces single-predecessor straight-line blocks and was revalidated and remeasured."
+}

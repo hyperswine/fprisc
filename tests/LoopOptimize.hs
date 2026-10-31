@@ -33,6 +33,16 @@ loop=Fn "loop" ["n","seed","divisor"] TInt (b 0)
      (TBr (b 1) [v 15,v 14]),
    Block (b 4) [] [] (TRet (v 6))]
 ops f bid=[op | block<-fnBlocks f,bId block==b bid,Instr _ op<-bInstrs block]
+-- evalProgramWidth's external arguments are tagged values. The loop's
+-- private ABI takes raw Ints; without this adapter every comparison merely
+-- compared two Stuck outcomes before any loop iteration executed.
+evalLoop width program args=evalProgramWidth width (M.insert "loopTestEntry" entry program) "loopTestEntry" args
+  where
+    entry=Fn "loopTestEntry" ["n","seed","divisor"] TInt (b 0)
+      [Block (b 0) [(v 0,TVal),(v 1,TVal),(v 2,TVal)]
+        [instr 3 TInt (OUntag (v 0)),instr 4 TInt (OUntag (v 2)),
+         instr 5 TInt (OCall (Callee "loop" Local [TInt,TVal,TInt] TInt) [v 3,v 1,v 4])]
+        (TRet (v 5))]
 main=do
   let program=M.fromList [(fnName f,f) | f<-[identity,loop]]
       moved=moveInvariants Nothing True loop
@@ -46,7 +56,10 @@ main=do
   check "motion is idempotent" (moveInvariants Nothing True moved==moved)
   forM_ [W32,W64] $ \width->forM_ [0,1,2,7] $ \n->forM_ [-7,0,11] $ \seed->forM_ [0,1,3] $ \divisor->do
     let args=[RInt n,RInt seed,RInt divisor]
-    check "answers, exact traps and events preserved" (evalProgramWidth width program "loop" args==evalProgramWidth width candidate "loop" args)
+        answer=evalLoop width program args
+    check "answers, exact traps and events preserved" (answer==evalLoop width candidate args)
+    check "the evaluator executes the loop rather than getting stuck" (case ocResult answer of Left (Stuck _)->False;_->True)
+    check "zero trips independently return zero" (n/=0 || ocResult answer==Right (RInt 0))
   let risky=[instr 16 TAddr (OAddress (v 1)),instr 17 TInt (OLoad TInt (v 16) 0),
              instr 18 TInt (OLoadByte (v 16) 0),instr 19 TVal (OField 0 (v 1)),
              instr 20 TPred (OTagTest 7 0 (v 1)),instr 21 TInt (OHartCell 58),
@@ -73,8 +86,8 @@ main=do
                   (2,TBr (b 3) []),(3,TBr (b 3) [])]
   check "multiple entry edges do not invent a preheader" (case naturalLoops noPre (analyze noPre) of [l]->loopPreheader l==Nothing;_->False)
   check "no preheader means no motion" (moveInvariants Nothing True noPre==noPre)
-  let Right (off,_)=simplifyFnWith (Options False Nothing True Nothing) program loop
-      Right (on,_)=simplifyFnWith (Options True Nothing True Nothing) program loop
+  let Right (off,_)=simplifyFnWith (Options False Nothing True Nothing False) program loop
+      Right (on,_)=simplifyFnWith (Options True Nothing True Nothing False) program loop
   check "independent option preserves an on/off distinction" (OUntag (v 1) `notElem` ops off 0 && OUntag (v 1) `elem` ops on 0)
   -- A constant read by an instruction left in the loop stays there: it
   -- costs a register for the whole loop to save a free instruction.
@@ -86,7 +99,7 @@ main=do
   forM_ [W32,W64] $ \width->forM_ [0,3] $ \n->forM_ [0,2] $ \divisor->do
     let args=[RInt n,RInt 5,RInt divisor]
         mixedProgram=M.insert "loop" mixed program
-    check "mixed answers preserved" (evalProgramWidth width mixedProgram "loop" args==evalProgramWidth width (M.insert "loop" mixedMoved program) "loop" args)
+    check "mixed answers preserved" (evalLoop width mixedProgram args==evalLoop width (M.insert "loop" mixedMoved program) args)
   -- The pressure model: values live at once, and live across a call.
   -- In `loop`, motion trades one value live across the call for another;
   -- in `wide`, n|divisor is computed after the call and used at once, so
@@ -113,9 +126,9 @@ main=do
   check "gated output verifies" (verifyFn wideProgram gated==Right ())
   forM_ [W32,W64] $ \width->forM_ [0,1,7] $ \n->forM_ [0,3] $ \divisor->do
     let args=[RInt n,RInt (-7),RInt divisor]
-        answer=evalProgramWidth width wideProgram "loop" args
-    check "gated answers preserved" (answer==evalProgramWidth width (M.insert "loop" gated program) "loop" args)
-    check "widened answers preserved" (answer==evalProgramWidth width (M.insert "loop" widened program) "loop" args)
+        answer=evalLoop width wideProgram args
+    check "gated answers preserved" (answer==evalLoop width (M.insert "loop" gated program) args)
+    check "widened answers preserved" (answer==evalLoop width (M.insert "loop" widened program) args)
   check "clobbering operations are what the model guards" (clobbersRegisters True (OCall (Callee "identity" Local [TInt] TInt) [v 0]) && clobbersRegisters True (OArith Add (v 0) (v 1))
     && not (clobbersRegisters True OSafepoint) && not (clobbersRegisters True (OKernelArith Add (v 0) (v 1)))
     && not (clobbersRegisters True (OFloatBin FAdd (v 0) (v 1))) && clobbersRegisters False (OFloatBin FAdd (v 0) (v 1)))

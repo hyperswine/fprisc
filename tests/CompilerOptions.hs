@@ -29,13 +29,14 @@ main=do
     ++ [("FPR_TYPED_IR_"++name,value) | (name,value)<-
       [("BACKEND","1"),("STRICT","all"),("SELF_LOOPS","0"),("FP_POOL","0"),
        ("SHALLOW_STACK","1"),("FORWARD_PARAMS","1"),("ENTRY_ARGS","1"),
-       ("SPLIT_ENTRY","1"),("SHRINK_WRAP","1"),("LINK_PAIRS","0"),("LOOP_MOTION","1")]]) $ \value ->
+       ("SPLIT_ENTRY","1"),("SHRINK_WRAP","1"),("LINK_PAIRS","0"),("LOOP_MOTION","1"),("EARLY_LOOPS","1"),("STRING_SCAN","1")]]) $ \value ->
     require (identity [value]/=baseline) ("missing cache control: "++show value)
   forM_ ["FPR_TYPED_IR","FPR_RECEIVE_NOTES","FPRC_APPLY","FPR_PRECOND_NOTES",
          "FPR_UNSAFE_SUGGEST","FPR_DUMP_CORE","FPRC_NATIVE_INSNS"] $ \name ->
     require (identity [(name,"1")]==baseline) ("diagnostic alters codegen identity: "++name)
   let defaults=options []
       native=nativeOptions (codegenOptions defaults)
+  require (identity [("FPR_TYPED_IR_EARLY_LOOPS","1"),("FPR_TYPED_IR_SELF_LOOPS","0")]==identity [("FPR_TYPED_IR_SELF_LOOPS","0")]) "self-loop disable must also disable early formation"
   require (nativeOptionFlags True native=="mixed-fpregs" && nativeOptionFlags False native=="mixed") "default unit native tag changed"
   require (optimizationFlags (codegenOptions defaults)=="" && vectorOptionFlags (codegenOptions defaults)=="") "default optimization tag changed"
   require (nativeStrict (nativeOptions (codegenOptions (options [("FPR_TYPED_IR_STRICT",",f,,g,")])) )==StrictNames ["f","g"]) "strict names parsing"

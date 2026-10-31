@@ -1,0 +1,345 @@
+{
+  "base_revision": "a8ef86b",
+  "harts": 1,
+  "runs": 7,
+  "compiler_wall_note": "First fixture builds overlap regression work; allocation is the compile-cost comparison. Native samples wait for regression completion.",
+  "modes": {
+    "baseline": {
+      "compiler_sha256": "ed47b63b78fab04b656d5d028e79f75ab9a7b36076d79b23ce6a49827c61a620",
+      "settings": {}
+    },
+    "off": {
+      "compiler_sha256": "a6b113a6bfa1911f9013594afd95b22b79b506b054d198ee29c3fcc821e766ec",
+      "settings": {
+        "FPR_TYPED_IR_EARLY_LOOPS": "0",
+        "FPR_TYPED_IR_LOOP_MOTION": "0"
+      }
+    },
+    "early": {
+      "compiler_sha256": "a6b113a6bfa1911f9013594afd95b22b79b506b054d198ee29c3fcc821e766ec",
+      "settings": {
+        "FPR_TYPED_IR_EARLY_LOOPS": "1",
+        "FPR_TYPED_IR_LOOP_MOTION": "0"
+      }
+    },
+    "motion": {
+      "compiler_sha256": "a6b113a6bfa1911f9013594afd95b22b79b506b054d198ee29c3fcc821e766ec",
+      "settings": {
+        "FPR_TYPED_IR_EARLY_LOOPS": "1",
+        "FPR_TYPED_IR_LOOP_MOTION": "1"
+      }
+    }
+  },
+  "benchmarks": {
+    "byteloop": {
+      "baseline": {
+        "compile_seconds": 2.2129064998589456,
+        "build_seconds": 7.855845540994778,
+        "allocated_bytes": 2049166232,
+        "binary_bytes": 538088,
+        "samples_ms": [
+          109.87916681915522,
+          110.67420803010464,
+          112.46270802803338,
+          94.12841708399355,
+          124.13895805366337,
+          112.11120802909136,
+          102.3350830655545
+        ],
+        "median_ms": 110.67420803010464
+      },
+      "off": {
+        "compile_seconds": 2.0929902500938624,
+        "build_seconds": 9.003709041979164,
+        "allocated_bytes": 2049206104,
+        "binary_bytes": 538088,
+        "samples_ms": [
+          106.43475013785064,
+          111.6584581322968,
+          98.14545814879239,
+          108.30304189585149,
+          122.33462487347424,
+          106.42129206098616,
+          100.45624990016222
+        ],
+        "median_ms": 106.43475013785064
+      },
+      "early": {
+        "compile_seconds": 2.660107832867652,
+        "build_seconds": 8.823119832901284,
+        "allocated_bytes": 2065043088,
+        "binary_bytes": 538088,
+        "samples_ms": [
+          104.7340000513941,
+          113.6133330874145,
+          104.51937490142882,
+          112.42429097183049,
+          103.35679189302027,
+          97.67687506973743,
+          105.29541689902544
+        ],
+        "median_ms": 104.7340000513941
+      },
+      "motion": {
+        "compile_seconds": 2.221049959072843,
+        "build_seconds": 9.33714049984701,
+        "allocated_bytes": 2124944016,
+        "binary_bytes": 538088,
+        "samples_ms": [
+          98.67308312095702,
+          108.15920797176659,
+          106.44866689108312,
+          117.44141695089638,
+          116.6497920639813,
+          108.4877080284059,
+          98.25337491929531
+        ],
+        "median_ms": 108.15920797176659
+      }
+    },
+    "sha": {
+      "baseline": {
+        "compile_seconds": 5.459483167156577,
+        "build_seconds": 11.91517633292824,
+        "allocated_bytes": 5208512224,
+        "binary_bytes": 805592,
+        "samples_ms": [
+          93.16179109737277,
+          99.29470904171467,
+          105.56283313781023,
+          117.78845801018178,
+          91.80500009097159,
+          91.54625004157424,
+          97.19216683879495
+        ],
+        "median_ms": 97.19216683879495
+      },
+      "off": {
+        "compile_seconds": 4.6456775409169495,
+        "build_seconds": 10.812549165915698,
+        "allocated_bytes": 5208557776,
+        "binary_bytes": 805592,
+        "samples_ms": [
+          100.35399999469519,
+          102.5123749859631,
+          99.97187508270144,
+          108.50295796990395,
+          98.09054108336568,
+          91.40045894309878,
+          97.07091702148318
+        ],
+        "median_ms": 99.97187508270144
+      },
+      "early": {
+        "compile_seconds": 4.849881791975349,
+        "build_seconds": 10.9072841249872,
+        "allocated_bytes": 5263559928,
+        "binary_bytes": 805592,
+        "samples_ms": [
+          101.59687511622906,
+          108.77849999815226,
+          95.55437485687435,
+          109.52745797112584,
+          96.84112505055964,
+          98.64458302035928,
+          95.71800008416176
+        ],
+        "median_ms": 98.64458302035928
+      },
+      "motion": {
+        "compile_seconds": 4.334949540905654,
+        "build_seconds": 10.494075667113066,
+        "allocated_bytes": 5616615720,
+        "binary_bytes": 805592,
+        "samples_ms": [
+          96.50416718795896,
+          105.30454199761152,
+          87.23895787261426,
+          98.13329204916954,
+          99.0326248575002,
+          104.92158285342157,
+          95.30695900321007
+        ],
+        "median_ms": 98.13329204916954
+      }
+    },
+    "helpers": {
+      "baseline": {
+        "compile_seconds": 1.2788589999545366,
+        "build_seconds": 6.020830625202507,
+        "allocated_bytes": 1446453496,
+        "binary_bytes": 472872,
+        "samples_ms": [
+          115.71966693736613,
+          116.11516703851521,
+          110.24950002320111,
+          118.09691693633795,
+          109.79024996049702,
+          108.64212503656745,
+          104.72674993798137
+        ],
+        "median_ms": 110.24950002320111
+      },
+      "off": {
+        "compile_seconds": 1.3661772918421775,
+        "build_seconds": 5.738481292035431,
+        "allocated_bytes": 1446487720,
+        "binary_bytes": 472872,
+        "samples_ms": [
+          123.36212489753962,
+          109.33004110120237,
+          123.47779190167785,
+          111.33045796304941,
+          113.03791706450284,
+          124.87929104827344,
+          125.95524988137186
+        ],
+        "median_ms": 123.36212489753962
+      },
+      "early": {
+        "compile_seconds": 1.1896093748509884,
+        "build_seconds": 5.828262667171657,
+        "allocated_bytes": 1456711216,
+        "binary_bytes": 489384,
+        "samples_ms": [
+          122.21208307892084,
+          105.9427501168102,
+          126.61316688172519,
+          110.8893749769777,
+          114.31420897133648,
+          119.83733298256993,
+          129.45375009439886
+        ],
+        "median_ms": 119.83733298256993
+      },
+      "motion": {
+        "compile_seconds": 1.2271852500271052,
+        "build_seconds": 5.524584667058662,
+        "allocated_bytes": 1492714736,
+        "binary_bytes": 489384,
+        "samples_ms": [
+          120.48912490718067,
+          106.26649996265769,
+          117.97079094685614,
+          123.97266714833677,
+          118.1756251025945,
+          116.02883297018707,
+          115.30570895411074
+        ],
+        "median_ms": 117.97079094685614
+      }
+    },
+    "floatcmp": {
+      "baseline": {
+        "compile_seconds": 1.274045833852142,
+        "build_seconds": 5.305497833993286,
+        "allocated_bytes": 1427926032,
+        "binary_bytes": 472408,
+        "samples_ms": [
+          68.59183288179338,
+          60.53183297626674,
+          61.464291997253895,
+          60.47841696999967,
+          62.178332824259996,
+          61.70941703021526,
+          60.209125047549605
+        ],
+        "median_ms": 61.464291997253895
+      },
+      "off": {
+        "compile_seconds": 1.1686700840946287,
+        "build_seconds": 5.386217749910429,
+        "allocated_bytes": 1427953056,
+        "binary_bytes": 472408,
+        "samples_ms": [
+          65.21112518385053,
+          60.65350002609193,
+          72.63729185797274,
+          59.085415909066796,
+          69.89350006915629,
+          67.0627080835402,
+          66.22904213145375
+        ],
+        "median_ms": 66.22904213145375
+      },
+      "early": {
+        "compile_seconds": 1.1398972091265023,
+        "build_seconds": 5.554324832977727,
+        "allocated_bytes": 1438756600,
+        "binary_bytes": 472408,
+        "samples_ms": [
+          57.398041943088174,
+          57.74937500245869,
+          64.00941708125174,
+          61.31995818577707,
+          69.49350005015731,
+          66.82125013321638,
+          66.3255830295384
+        ],
+        "median_ms": 64.00941708125174
+      },
+      "motion": {
+        "compile_seconds": 1.0873853750526905,
+        "build_seconds": 5.705637624952942,
+        "allocated_bytes": 1477592424,
+        "binary_bytes": 472408,
+        "samples_ms": [
+          63.37479199282825,
+          60.35979208536446,
+          60.14437507838011,
+          63.04987519979477,
+          66.20308291167021,
+          68.39216593652964,
+          64.40875004045665
+        ],
+        "median_ms": 63.37479199282825
+      }
+    }
+  },
+  "date": "2026-10-31",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "codegen_revision": 139,
+  "expected_output_checked_every_run": true,
+  "interpretation": "Small same-compiler median differences overlap substantial control variation. This establishes changed code and bounded compile cost, not a general speedup. Early formation remains opt-in.",
+  "compiler_sources_sha256": {
+    "compiler/Codegen.hs": "54291bbe6cb530e99288a62eb78e11ff93f7ada534d53a365ecf67533faff9e0",
+    "compiler/Codegen/Interval.hs": "80f4287bf4dbb7345b83cc8d603ca786c0488f5d3b2417f311022b80bec25c2c",
+    "compiler/Codegen/LoopForm.hs": "c173007b8a80b827fa6d1fcf9b57338bc7cd4c31cabba35fca5a24134843c06d",
+    "compiler/Codegen/Lower.hs": "df2293b522417399ccd49809a2298138a0b35fd057c9e3034238c7500c0d3ba8",
+    "compiler/Codegen/Policy.hs": "86626863156473fd1174df380f03a3c70f3502fd7d2aadf6e67877257824ac4c",
+    "compiler/Compile.hs": "e09af9dbc89bec592d4bb9f4bbec148212e44afcada653448f5b5a567c8057e2",
+    "compiler/Compiler/Options.hs": "a911d528604bac2729bd0687d7d4cb8d459500605948a838ceeab8a8ebe9da4e"
+  },
+  "inputs_sha256": {
+    "byteloop": {
+      "fpr": "7eacb7a78414d86677ed506f7918573b972a6bc8f13bbb2655f7ddf38b807a4b",
+      "expected": "2c9616fe804e3e87715d132718dfcdbafea070c5297033dd0211755866d28c72"
+    },
+    "sha": {
+      "fpr": "90e079060121a9a2374fe9de5681fbf1f2dfa53e164fd4e19c29e6bb3d1308e8",
+      "expected": "342c76c770cfab202e619e849541a951efb07e400aa199dc558b56a9ee8dc487"
+    },
+    "helpers": {
+      "fpr": "8f3bda797b6e3561d26c68279e1d83a621492919e05e3b141e9749a27afb3a3c",
+      "expected": "52b87968a9faec9628f1a518b70c19678a0b87268acc8dedb4372bd4a40fe3bc"
+    },
+    "floatcmp": {
+      "fpr": "6a77573c58abc3b1034177a56a8ab3cb79cbac1290a9b5fce4398a2cdce3ebff",
+      "expected": "660e23882e2fa45cc4016c80ef72b6271019e363eeffc9da0e002240e18bacaf"
+    }
+  },
+  "default_root_headers_equal": {
+    "byteloop": true,
+    "sha": true,
+    "helpers": true,
+    "floatcmp": true
+  },
+  "byteloop_sumB_headers": {
+    "baseline": "# fn sumB (arity 4) typed-ir a64 frame=64 shallow=no saved=x19,x20,x21,x22,x23 values=40 regs=40 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=6 loops=1",
+    "off": "# fn sumB (arity 4) typed-ir a64 frame=64 shallow=no saved=x19,x20,x21,x22,x23 values=40 regs=40 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=6 loops=1",
+    "early": "# fn sumB (arity 4) typed-ir a64 frame=48 shallow=no saved=x19,x20,x21,x22 values=42 regs=42 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=6 loops=0",
+    "motion": "# fn sumB (arity 4) typed-ir a64 frame=64 shallow=no saved=x19,x20,x21,x22,x23,x24 values=42 regs=42 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=9 loops=0"
+  },
+  "measurement_scope": "Benchmarked after the loop and interval fixes, before the final std/test-only Safety.approvedLibraries registration repair. The recorded code-generation source hashes are unchanged by that repair."
+}

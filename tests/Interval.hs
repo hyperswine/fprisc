@@ -27,15 +27,39 @@ prog=M.fromList
       (CIf (app "<" [CVar "i",CVar "n"]) (CInt 1) (CInt 2)) (CInt 0)))]
 lowered=let (ir,failures)=lowerProgram m2Policy M.empty prog prog M.empty M.empty
   in if null failures then ir else error (show failures)
-on =Options False Nothing True (Just W64)
-off=Options False Nothing True Nothing
+on =Options False Nothing True (Just W64) False
+off=Options False Nothing True Nothing False
 simplified o=fst (either error id (simplifyProgramWith o lowered))
 operations fn=[op | b<-fnBlocks fn,Instr _ op<-bInstrs b]
 unchecked fn=[() | OArithU {} <- operations fn]
 condbrs fn=[() | b<-fnBlocks fn,TCondBr {}<-[bTerm b]]
 maxI=4611686018427387903 :: Integer
 
+-- Both outcomes enter b1. Having one predecessor block does not establish
+-- either i < n or i >= n there. In particular i=maxInt must still trap.
+sameDestination=Fn "sameDestination" ["i","n"] TInt (BId 0)
+  [Block (BId 0) [(VId 0,TVal),(VId 1,TVal)]
+     [Instr (Just (VId 2,TInt)) (OUntag (VId 0)),
+      Instr (Just (VId 3,TInt)) (OUntag (VId 1)),
+      Instr (Just (VId 4,TPred)) (OCmp Lt (VId 2) (VId 3))]
+     (TCondBr (VId 4) (BId 1) [] (BId 1) []),
+   Block (BId 1) []
+     [Instr (Just (VId 5,TInt)) (OConstInt 1),
+      Instr (Just (VId 6,TInt)) (OArith Add (VId 2) (VId 5))]
+     (TRet (VId 6))]
+
 main=do
+  forM_ [W32,W64] $ \width->do
+    let original=M.singleton "sameDestination" sameDestination
+        candidate=fst (either error id (simplifyProgramWith (Options False Nothing True (Just width) False) original))
+        (lo,hi)=intBounds width
+    check "convergent branch verifies before and after" (all ((==Right ()) . verifyProgramWidth width) [original,candidate])
+    check "convergent branch cannot discharge overflow" (null (unchecked (candidate M.! "sameDestination")))
+    forM_ [(0,1),(5,1),(hi,hi),(lo,lo)] $ \(i,n)->do
+      let before=evalProgramWidth width original "sameDestination" [RInt i,RInt n]
+          after=evalProgramWidth width candidate "sameDestination" [RInt i,RInt n]
+      check "both outcomes preserve real answers and exact traps" (before==after)
+      check "independent answer excludes a stuck evaluator" (if i==hi then case ocResult after of Left (Trap _)->True;_->False else ocResult after==Right (RInt (i+1)))
   let fast=simplified on
       slow=simplified off
   check "both pipelines verify" (verifyProgramWidth W64 fast==Right () && verifyProgramWidth W64 slow==Right ())
