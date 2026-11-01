@@ -11,7 +11,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-from run_tangnano20k_examples import FPGA_CONFIG, fpga_image, validate_case, validate_classifier
+from run_tangnano20k_examples import FPGA_CONFIG, FPGA_CONFIG_72, fpga_image, validate_case, validate_classifier
 from tangnano_artifact import sha
 
 
@@ -130,6 +130,42 @@ class ExampleGate(unittest.TestCase):
                 path.write_text(json.dumps({**report, 'configuration': bad}))
                 with self.assertRaisesRegex(ValueError, 'configuration mismatch'):
                     fpga_image(path)
+
+    def test_preset_72_matches_simple_risc_and_refuses_the_48_image(self):
+        hardware = Path(os.environ.get('SIMPLE_RISC_ROOT', ROOT.parent / 'simple-risc'))
+        producer = runpy.run_path(str(hardware / 'boards/tangnano20k/sdram/preset_manifest.py'))
+        self.assertEqual(producer['PRESETS']['fprisc-72'], FPGA_CONFIG_72)
+        self.assertEqual(producer['PRESETS']['fprisc-48'], FPGA_CONFIG)
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp)
+            (out / 'impl/pnr').mkdir(parents=True)
+            artifacts = {}
+            for name in ('impl/pnr/sdram_test.fs', 'impl/pnr/sdram_test.tr'):
+                (out / name).write_text(name)
+                artifacts[name] = sha(out / name)
+            path = out / 'build-manifest.json'
+            report = dict(preset='fprisc-72', ready=True, configuration=FPGA_CONFIG_72, artifacts=artifacts)
+            path.write_text(json.dumps(report))
+            self.assertEqual(fpga_image(path, 'fprisc-72')[0], out / 'impl/pnr/sdram_test.fs')
+            with self.assertRaisesRegex(ValueError, 'completed fprisc-48 build'):
+                fpga_image(path)
+            # no legacy geometry fill-in for the 72 MHz preset
+            partial = {k: v for k, v in FPGA_CONFIG_72.items() if k not in ('cache_ways', 'cache_line_bits')}
+            for bad in ({**FPGA_CONFIG_72, 'cpu_mhz': 48}, partial, FPGA_CONFIG):
+                path.write_text(json.dumps({**report, 'configuration': bad}))
+                with self.assertRaisesRegex(ValueError, 'configuration mismatch'):
+                    fpga_image(path, 'fprisc-72')
+
+    def test_runtime_preset_72_sets_its_clock(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
+        script = ROOT / 'machine/tangnano20k/preset.sh'
+        command = ['bash', '-c', 'set -eu; source "$1"; echo "$FPR_CPU_MHZ $FPR_XLEN $FPR_RVC"', 'test', str(script)]
+        good = subprocess.run(command, env={**env, 'FPR_PRESET': 'fprisc-72'}, capture_output=True, text=True)
+        self.assertEqual(good.stdout.strip(), '72 32 1', good.stderr)
+        bad = subprocess.run(command, env={**env, 'FPR_PRESET': 'fprisc-72', 'FPR_CPU_MHZ': '48'},
+                             capture_output=True, text=True)
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertIn('requires FPR_CPU_MHZ=72', bad.stderr)
 
     def test_classifier_region_summary_and_refusals(self):
         # The real CI summary after collector retirement: one exit sample,

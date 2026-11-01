@@ -5,6 +5,9 @@ RV32IMC, CPU/SDRAM 48/48 MHz, 64 KiB cache and conservative collection enabled.
 The [preset and example guide](../../docs/2026-10-21-TANGNANO20K-PRESET.md)
 has the matching FPGA command, one-command QEMU/board suite, build manifests
 and verification limits. Without the preset the legacy defaults below remain.
+**`FPR_PRESET=fprisc-72`** is the same with a 72 MHz CPU, for simple-risc's
+`SDRAM_PRESET=fprisc-72` image (CPU 72 / SDRAM 48 MHz); the runner takes
+`--preset fprisc-72` ([record](../../docs/2026-11-01-TANGNANO20K-72-PRESET.md)).
 
 This is an experimental RV32IM/IMC and RV64IM/IMC Base host, alongside the
 established RV32 Builtin target. Both Base variants use cached 8 MiB SDRAM and

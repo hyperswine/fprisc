@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Build and run fprisc-48 programs or verify the example suite in QEMU/on FPGA.
+"""Build and run fprisc-48/72 programs or verify the example suite in QEMU/on FPGA.
 
 The board target programs FPGA SRAM from a checked preset build manifest.
+--preset picks the CPU clock: fprisc-48 (48/48 MHz, the default) or fprisc-72
+(CPU 72 / SDRAM 48 MHz), each matching simple-risc's preset of that name.
 It does not write FPGA flash or the SD card. QEMU verifies software only.
 """
 import argparse
@@ -34,6 +36,13 @@ FPGA_CONFIG = dict(xlen=32, compressed=True, cpu_mhz=48, memory_mhz=48,
                    ram_bytes=8388608, cache_bytes=65536, cache_ways=1,
                    cache_line_bits=12, phase_degrees=135,
                    placement=2, write_update=True)
+# simple-risc's fprisc-72 (boards/tangnano20k/sdram/preset_manifest.py).
+FPGA_CONFIG_72 = dict(xlen=32, compressed=True, cpu_mhz=72, memory_mhz=48,
+                      ram_bytes=8388608, cache_bytes=65536, cache_ways=2,
+                      cache_line_bits=11, phase_degrees=135,
+                      placement=0, write_update=True, placer_target_mhz=79,
+                      map_option=3, route_option=1, route_maxfan=8)
+PRESETS = {'fprisc-48': FPGA_CONFIG, 'fprisc-72': FPGA_CONFIG_72}
 
 
 def require(condition, message):
@@ -82,17 +91,18 @@ def run(command, log, env, timeout=180):
     return result.stdout
 
 
-def fpga_image(path):
+def fpga_image(path, preset='fprisc-48'):
     report = json.loads(path.read_text())
-    require(report.get('preset') == 'fprisc-48' and report.get('ready') is True,
-            'FPGA manifest must be a completed fprisc-48 build')
+    require(report.get('preset') == preset and report.get('ready') is True,
+            f'FPGA manifest must be a completed {preset} build')
     config = report.get('configuration')
     # Manifests emitted before cache geometry was explicit describe the
     # validated one-way, 4096-line preset. Accept only that complete legacy
     # shape; partial geometry or a different/unknown configuration is refused.
-    if isinstance(config, dict) and not any(key in config for key in ('cache_ways', 'cache_line_bits')):
+    if preset == 'fprisc-48' and isinstance(config, dict) \
+            and not any(key in config for key in ('cache_ways', 'cache_line_bits')):
         config = {**config, 'cache_ways': 1, 'cache_line_bits': 12}
-    require(config == FPGA_CONFIG, 'FPGA preset configuration mismatch')
+    require(config == PRESETS[preset], 'FPGA preset configuration mismatch')
     artifacts = report.get('artifacts', {})
     require(all(name in artifacts for name in ('impl/pnr/sdram_test.fs', 'impl/pnr/sdram_test.tr')),
             'FPGA manifest lacks bitstream or checked timing report')
@@ -127,14 +137,14 @@ def execute_guest(directory, files, arguments, inputs, environment, args, env):
         return run_image(directory / 'base.elf', files, args.timeout,
                          device=Device(files, environment, inputs, arguments), log=log)
     command = [sys.executable, ROOT / 'tools/run_tangnano20k_base.py', directory / 'base.bin',
-               '--root', files, '--freq-mhz', '48', '--port', args.port,
+               '--root', files, '--freq-mhz', str(args.mhz), '--port', args.port,
                '--timeout', str(args.timeout)]
     if getattr(args, 'fpga_manifest', None) is not None:
         command += ['--manifest', str(args.fpga_manifest.resolve())]
     command += [f'--arg={value}' for value in arguments]
     command += [f'--input={value}' for value in inputs]
     command += [f'--env={key}={value}' for key, value in environment.items()]
-    upload_seconds = (directory / 'base.bin').stat().st_size * 8680 / 48000000
+    upload_seconds = (directory / 'base.bin').stat().st_size * 8680 / (args.mhz * 1000000)
     output = run(command, log, env, args.timeout + 60 + upload_seconds)
     require(output.rstrip().endswith('DONE'), 'board did not return to loader')
     return output
@@ -143,6 +153,8 @@ def execute_guest(directory, files, arguments, inputs, environment, args, env):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--target', choices=('qemu', 'board'), default='qemu')
+    parser.add_argument('--preset', choices=tuple(PRESETS), default='fprisc-48',
+                        help='CPU clock and matching FPGA preset (default: fprisc-48)')
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument('--cases', nargs='+', choices=CASES)
     selection.add_argument('--program', type=Path, help='compile and run a Base .fpr program instead of the suite')
@@ -160,6 +172,7 @@ def main():
         parser.error('--target board requires --fpga-manifest from the matching preset build')
     if args.target == 'qemu' and args.fpga_manifest is not None:
         parser.error('--fpga-manifest is only used with --target board')
+    args.mhz = PRESETS[args.preset]['cpu_mhz']
     args.cases = args.cases or list(CASES)
     if len(set(args.cases)) != len(args.cases):
         parser.error('duplicate cases')
@@ -167,9 +180,9 @@ def main():
     default_directory = f'program-{args.target}' if args.program is not None else args.target
     out = (args.out or ROOT / f'build/tangnano20k-examples/{default_directory}').resolve()
     out.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, 'FPR_PRESET': 'fprisc-48', 'FPR_QEMU': str(int(args.target == 'qemu')),
+    env = {**os.environ, 'FPR_PRESET': args.preset, 'FPR_QEMU': str(int(args.target == 'qemu')),
            'FPR_HEAP_REPORT': '1'}
-    report = dict(preset='fprisc-48', target=args.target, mode=mode, passed=False,
+    report = dict(preset=args.preset, target=args.target, mode=mode, passed=False,
                   suite_complete=False, repository=None, cases=[])
     # Invalidate a previous pass before any work, including interrupted runs
     # and the identity lookup below (git can refuse a container's checkout).
@@ -198,10 +211,10 @@ def main():
         # Validate the preset before compiler builds, tool downloads or hardware
         # changes. The shell contract refuses conflicting inherited settings.
         run(['bash', '-c', 'source machine/tangnano20k/preset.sh'], out / 'preset.log', env)
-        env.update(FPR_XLEN='32', FPR_RVC='1', FPR_CPU_MHZ='48')
+        env.update(FPR_XLEN='32', FPR_RVC='1', FPR_CPU_MHZ=str(args.mhz))
         bitstream = None
         if args.target == 'board':
-            bitstream, report['fpga'] = fpga_image(args.fpga_manifest.resolve())
+            bitstream, report['fpga'] = fpga_image(args.fpga_manifest.resolve(), args.preset)
         run(['make', 'fpr'], out / 'compiler-build.log', env, 900)
         softfloat = Path(env.get('FPR_SOFTFLOAT_ROOT', ROOT / 'build/tangnano20k-softfloat'))
         if not (softfloat / 'build/Linux-RISCV32-GCC/softfloat.a').is_file():
@@ -228,7 +241,7 @@ def main():
             run([args.loader, '-b', 'tangnano20k', bitstream], out / 'program-fpga.log', env, 120)
             report['fpga_programmed_sram'] = True
         for name in args.cases:
-            print(f'{name}: building/running ({args.target}, fprisc-48)', flush=True)
+            print(f'{name}: building/running ({args.target}, {args.preset})', flush=True)
             case = dict(name=name, passed=False)
             report['cases'].append(case)
             directory = out / name
@@ -237,7 +250,7 @@ def main():
             if name == 'classifier':
                 command = [sys.executable, ROOT / 'tests/check_tangnano20k_dtree.py',
                            '--qemu' if args.target == 'qemu' else '--hardware',
-                           '--xlen', '32', '--freq-mhz', '48', '--train', '512', '--test', '128',
+                           '--xlen', '32', '--freq-mhz', str(args.mhz), '--train', '512', '--test', '128',
                            '--bins', '16', '--depth', '6', '--min-leaf', '5', '--repeat', '10',
                            '--timeout', '600', '--output', directory, '--port', args.port]
                 if bitstream:
