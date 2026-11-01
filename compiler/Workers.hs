@@ -2,7 +2,7 @@
 -- stay general. This pass runs after all source safety/ownership checking.
 module Workers (workerize, workerizeWithSignatures, ScalarSignatures, internalWorker, scalarPrimitives) where
 
-import Core.Primitives (scalarPrimitives)
+import Core.Primitives (scalarPrimitives, entryTickName)
 import Core.Syntax (Core(..), Prog)
 import KernelKinds (Kind(..), signatureStrict)
 import qualified Data.Map.Strict as M
@@ -205,6 +205,8 @@ scalarWorkers prog = (M.union wrapped workers,M.mapKeys worker chosen)
       (CVar h,args@(_:_)) | not (S.member h bound),
         (M.member h prog && length args==length (fst (prog M.! h))) ||
         (M.notMember h prog && h `elem` ops && length args==2) -> all (admissible bound) args
+      -- An inlined callee's entry tick stays in place; it touches no value.
+      (CVar h,[CInt _]) | h == entryTickName -> True
       _ -> case e of
         CVar n -> S.member n bound; CInt _ -> True; CMk 1 _ [] -> True
         CTagEq 1 _ x -> admissible bound x

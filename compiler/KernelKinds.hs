@@ -4,6 +4,7 @@ module KernelKinds (Kind(..), signature, signatureStrict) where
 import Core.Syntax (Core(..), Prog)
 import Control.Monad.State.Strict
 import Control.Monad (guard, zipWithM_)
+import Core.Primitives (entryTickName)
 import qualified Data.Map.Strict as M
 
 data Kind = KI | KD | KS | KB deriving (Eq,Show)
@@ -41,6 +42,7 @@ expr :: Bool -> Prog -> M.Map String Term -> Core -> K Term
 expr strict prog env e = case spine e of
   (CVar "f64frombits",[CInt _,CInt _]) -> pure (Known KD)
   (CVar "f32frombits",[CInt _]) -> pure (Known KS)
+  (CVar t,[CInt _]) | strict, t == entryTickName -> pure (Known KI)
   (CVar op,[a,b]) | M.notMember op prog, Just (input,output) <- primitive op -> do
     x <- expr strict prog env a; y <- expr strict prog env b
     if strict && op `elem` ["==","!="] then unify x y else unify x (Known input) >> unify y (Known input)

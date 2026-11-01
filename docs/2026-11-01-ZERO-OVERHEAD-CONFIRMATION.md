@@ -88,7 +88,7 @@ everything else. The proposal's 52-instruction fold loop shows how much of
 the current cost is removable: the 17-instruction `Nil` test, the double
 tick, tag/untag churn and the redundant allocations are all pure overhead.
 
-## Consequence for B1 (started with this page)
+## Consequence for B1 (landed)
 
 List fusion proceeds as the proposal's phase 3 item B1, pulled forward:
 fuse the std producer/consumer combinators (`range`, `map`, `filter`,
@@ -99,3 +99,29 @@ and byte-identical output/trap behaviour against the unfused build, except
 for `Core.FusionPolicy`'s documented Int-overflow relaxation (including the
 `foldRange` endpoint edge). No representation change, no SIMD, no new
 language surface.
+
+### Status
+
+B1 is implemented; see [2026-11-01-LIST-FUSION.md](2026-11-01-LIST-FUSION.md)
+for the pass, its regression evidence and measurements. Follow-up checks:
+
+- **Differential sweep.** Building every host-buildable program under
+  `tests/`, `tests/bench/unbox/`, `examples/` and `examples/ideal/` with and
+  without `FPR_NO_LIST_FUSE=1` gave identical exit code, stdout and stderr for
+  all 101 programs that build on the host (40 more fail to build identically
+  in both modes: bare-metal and device targets). One nominal difference was
+  an `elapsed_us` timing line. The sweep compares behaviour, not whether
+  fusion fired, so it is a no-regression check rather than coverage evidence.
+  It did not catch a let-float defect that the Base suite did (a floated
+  single-use producer substituted into a match scrutinee made
+  `tests/base/taskfailure.fpr` fail typed-core verification); that is fixed
+  and pinned in `tests/check_list_fusion.py`.
+- **B5 bridge (fused pipeline onto the vector kernels): measured, declined.**
+  For N = 1M, `Vec.fold` over `Vec.range` took 43.3 ms against 36.6 ms for the
+  fused List sum (31.3 ms after the scalar-worker tick fix in the List-fusion
+  doc), and `Vec.map` 59.4 ms against 47.3 ms for the fused List map. The
+  vector path has to materialise an N-word column, which the fused loop
+  avoids entirely, so lowering fused pipelines onto the kernels is not a
+  default win. Revisit only for pipelines whose input is already a dense column.
+- **Still open:** fuel-tick batching in specialised loops (the remaining
+  gap to a hand loop) and representation work (C2).
