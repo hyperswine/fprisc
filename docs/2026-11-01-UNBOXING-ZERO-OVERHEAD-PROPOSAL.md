@@ -265,7 +265,7 @@ and keeps an `FPR_NO_<NAME>` rollback flag following
 | Phase | Work | Gate | Expected gain |
 | --- | --- | --- | --- |
 | 0 | This PR: benchmarks, probe counts, analysis | - | - |
-| 1 | A1 known-constructor (`FPR_NO_CASE_KNOWN`), A2 tuple scalars (`FPR_NO_TUPLE_SCALARS`), one tick per loop iteration | `option_loop` and `tuple_loop` allocs = 0; differential clean | est. 2-20x on those rows |
+| 1 | A1 known-constructor (`FPR_NO_CASE_KNOWN`, landed: [record](2026-11-01-CASE-KNOWN.md)), A2 tuple scalars (`FPR_NO_TUPLE_SCALARS`), one tick per loop iteration | `option_loop` and `tuple_loop` allocs = 0; differential clean | est. 2-20x on those rows |
 | 2 | Inline bump-allocation fast path (plan step 6), type-directed case tests | allocator calls gone from cons loops | est. 1.2-1.5x on allocating rows |
 | 3 | B1 list fusion (`FPR_NO_LIST_FUSE`), B2 TRMC (`FPR_NO_TRMC`) | `list_sum/map/filter` allocs = 0 when fused; quadratic families unchanged | up to 8x (ceiling measured by `loop_sum`) |
 | 4 | C1 header-free region cells and immediate nullary constructors (runtime revision) | bytes/cell 48 -> 32 or 24; walkers audited | est. 1.2-1.5x on residual allocating code; exact arena sizes |
@@ -342,7 +342,9 @@ Programs: `tests/bench/unbox/*.fpr`, `*.sol`, references `ref.c`, `ref.hs`.
 These extend the proposal without changing its phases; they answer gaps the
 [follow-ups inventory](2026-10-31-ZERO-OVERHEAD-FOLLOWUPS.md) and the B1
 review surfaced. B1's first slice has since landed
-([its record](2026-11-01-LIST-FUSION.md)).
+([its record](2026-11-01-LIST-FUSION.md)), as has A1
+([its record](2026-11-01-CASE-KNOWN.md): `option_loop` 10 M -> 0 allocations,
+98.7 -> 63.5 ms).
 
 **A. Deterministic per-inductive representation is C2's cache-identity
 answer.** C2's listed risk is cache fragmentation: if a type's

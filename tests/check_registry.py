@@ -119,6 +119,7 @@ base('tests/check_compile_budget.py', 1200)  # cold compiles; allocation is load
 base('tests/check_pagination.py', 300)
 base('tests/check_typed_vectors.py', 300)
 base('tests/check_list_fusion.py', 300)
+base('tests/check_case_known.py', 300)
 base('tests/check_vector_limits.py', 300)
 base('tests/check_vector_kinds.py', 300)
 base('tests/check_vector_pipelines.py', 600)

@@ -927,8 +927,10 @@ compileWithReport accepted report = do
             inlined<-if oArc opts || oNoInline opts then pure original else
               do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinkedWithDecisions (remarkMode/=Remark.Off) 3 24 64 original)
                  checkedStage "callback specialization after inlining" (Linked.specializeLinkedWithDecisions (remarkMode/=Remark.Off) callbackMode inlined)
-            vectors<-if oArc opts || not (Options.cgVecPeek codegen) then pure inlined else
-              checkedStage "checked vector reads" (Linked.planVectorReadsLinked inlined)
+            known<-if oArc opts || oBuiltin opts || not (Options.cgCaseKnown codegen) then pure inlined else
+              checkedStage "checked case of known constructor" (Linked.caseKnownLinked inlined)
+            vectors<-if oArc opts || not (Options.cgVecPeek codegen) then pure known else
+              checkedStage "checked vector reads" (Linked.planVectorReadsLinked known)
             normalized<-if oArc opts || oBuiltin opts || Backend.tgtW (oTarget opts)/=8 || not (Options.cgReuse codegen) then pure vectors else
               checkedStage "checked Base normalization" (Linked.normalizeLinked vectors)
             if oArc opts || not (Options.cgFusion codegen) then pure (normalized,listNotes) else

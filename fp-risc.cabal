@@ -183,6 +183,7 @@ library
       Core.Typed.Inline
       Core.Typed.VectorRead
       Core.Typed.Normalize
+      Core.Typed.CaseKnown
       Core.Typed.Fusion
       Core.Typed.FusionSafety
       Core.Typed.ListFusion

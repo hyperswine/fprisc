@@ -2,7 +2,7 @@
 -- Native semantic passes operate on a complete owned program before erasure.
 -- Layout authority stays attached to the closed product it helped construct.
 module Core.Typed.Pipeline
-  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,specializeProgramsWithDecisions,inlinePrograms,inlineProgramsWithDecisions,closedDecisions,closedTouched,planVectorReads,normalizeProgram,fusePrograms,fuseListPrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
+  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,specializeProgramsWithDecisions,inlinePrograms,inlineProgramsWithDecisions,closedDecisions,closedTouched,planVectorReads,normalizeProgram,caseKnownProgram,fusePrograms,fuseListPrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
 import qualified Core.Typed.Decision as D
 import Core.Typed.Program
 import Core.Typed.Syntax
@@ -15,6 +15,7 @@ import qualified Core.Typed.Callback.Catalog as Callbacks
 import qualified Core.Typed.Inline as Inline
 import qualified Core.Typed.VectorRead as VectorRead
 import qualified Core.Typed.Normalize as Normalize
+import qualified Core.Typed.CaseKnown as CaseKnown
 import qualified Core.Typed.Fusion as Fusion
 import qualified Core.Typed.ListFusion as ListFusion
 import Core.Typed.Verify (sameType)
@@ -195,6 +196,16 @@ normalizeProgram elided input=do
   let types=programTypes (closedInput input)
   stepped<-M.traverseWithKey (\name f->if name `S.member` elided then pure (f,False)
     else Normalize.normalizeClosed types f) (closedDefinitions input)
+  let output=ClosedProgram (closedInput input) (closedLayouts input) (M.map fst stepped) (closedDecisions input)
+        (S.fromList [name | (name,(_,changed))<-M.toList stepped,changed])
+  verifyLinkedStep output
+  pure output
+
+caseKnownProgram :: S.Set String -> ClosedProgram -> Either String ClosedProgram
+caseKnownProgram elided input=do
+  let types=programTypes (closedInput input)
+  stepped<-M.traverseWithKey (\name f->if name `S.member` elided then pure (f,False)
+    else CaseKnown.caseKnownClosed types f) (closedDefinitions input)
   let output=ClosedProgram (closedInput input) (closedLayouts input) (M.map fst stepped) (closedDecisions input)
         (S.fromList [name | (name,(_,changed))<-M.toList stepped,changed])
   verifyLinkedStep output
