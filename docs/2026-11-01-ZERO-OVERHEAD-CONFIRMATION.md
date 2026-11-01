@@ -32,7 +32,7 @@ companion for starting the proposal's B1 (list fusion).
 
 3. **The strict language makes this tractable.** No thunks, so no
    laziness-driven boxing; the entire problem is value representation.
-   The unconnected pieces the protposal lists exist as described:
+   The unconnected pieces the proposal lists exist as described:
    `Representation.hs` infers representations whole-program for the
    standalone ARC ABI and rejects representation-polymorphic code;
    `Workers.hs` gives private unboxed worker conventions with one

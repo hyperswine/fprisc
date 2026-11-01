@@ -36,10 +36,15 @@ rewrite (TypeContext _ constructors) input=(input {functionBody=body},changed)
     walk e=mapChildrenM walk e >>= \e'->case exprNode e' of
       -- Closure conversion lowers `case x of ...` to a let of the scrutinee
       -- and a match tail on that fresh, otherwise unused, binder.
-      Let sb rhs m | MatchTail CaseMatch [x] alts _<-exprNode m,Var (Local sid)<-exprNode x,sid==binderId sb,
-                     length (filter (==sid) (localUses m))==1,
+      Let sb rhs m | MatchTail CaseMatch [x] alts fb<-exprNode m,Var (Local sid)<-exprNode x,sid==binderId sb,
+                     not (usedInArms sid alts fb),
                      Just r<-evalStateT (leaf e' alts rhs) S.empty->tell (Any True) >> pure r
       _->pure e'
+    usedInArms sid alts fb=sid `elem` localUses fb || any usedInAlt alts
+      where
+        usedInAlt (Alternative _ gs b)=sid `elem` localUses b || any (elem sid . guardUses) gs
+        guardUses (BoolGuard g)=localUses g
+        guardUses (PatternGuard _ g)=localUses g
     arity name=case M.lookup name constructors of
       Just (Forall _ _ t)->Just (count t)
       Nothing->Nothing

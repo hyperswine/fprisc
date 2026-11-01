@@ -215,10 +215,12 @@ Lowering fused pipelines onto the vector kernels was measured and declined
 (the column materialisation costs more than the fused loop; see
 [the zero-overhead confirmation](2026-11-01-ZERO-OVERHEAD-CONFIRMATION.md)).
 
-A single-use let-bound producer is not floated into a match scrutinee:
-match-tail arguments must remain evaluated locals, and substituting a call
-there failed typed-core verification (`tests/base/taskfailure.fpr`). The
-regression is pinned in `tests/check_list_fusion.py`.
+A single-use let-bound producer is not floated into a match (`Match` or
+`MatchTail`), a closure capture list (`ClosureValue`/`CodeCall`/`JoinCall`), or
+a conditional branch (`If` arms): match-tail arguments and capture lists must
+remain evaluated locals, and moving a producer into a conditional arm would make
+its evaluation (and any trap in its callback) conditional on taking that arm.
+All three boundaries are pinned in `tests/check_list_fusion.py`.
 
 The larger zero-overhead order remains: representation-neutral fusion first;
 List representation and type-directed unboxing separately; SIMD only after a

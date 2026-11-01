@@ -79,7 +79,9 @@ main =
             'filter': ('main = print (List.sum (List.filter (fn x -> x <= 500) (List.range 1 1000))).\n',
                        '125250\n', 2000),
             'length-range': ('main = print (List.length (List.range 1 1000)).\n', '1000\n', 1000),
-            'length-map': ('main = print (List.length (List.map (fn x -> x + 1) (List.range 1 1000))).\n',
+            # a callback that cannot trap; with x + 1 (which can overflow) length
+            # after map declines and only map over range fuses: 3000 -> 1000
+            'length-map': ('main = print (List.length (List.map (fn x -> x > 500) (List.range 1 1000))).\n',
                            '1000\n', 3000),
             'length-filter': ('main = print (List.length (List.filter (fn x -> x <= 500) (List.range 1 1000))).\n',
                               '500\n', 2000),
@@ -158,20 +160,91 @@ main =
                 disabled, observed.returncode, observed.stdout, observed.stderr)
         print('List fusion: let-bound producers fuse; multi-use and unsafe-seed bindings stay untouched PASS', flush=True)
 
-        # A single-use binding whose use is a match scrutinee must not be
-        # substituted: match-tail arguments are evaluated locals.
+        # A single-use binding whose use is a match scrutinee, closure capture,
+        # or conditional branch must not be floated across that boundary.
         scrutinee = source('scrutinee', '''List = use "std/list".
+mk n =
+  xs = List.range 1 n;
+  fn y -> List.sum xs + y.
 main =
   xs = List.map (fn x -> x + 1) (1 :: 2 :: Nil);
   r = case xs of Nil -> 0 | a :: _ -> a;
-  print "{r}".
+  f = mk 5;
+  print (r, f 10).
 ''')
         for disabled in (False, True):
             exe, env = build(scrutinee, 'scrutinee-' + str(disabled), disabled)
             observed = execute(exe, env)
-            assert observed.returncode == 0 and observed.stdout == '2\n' and not observed.stderr, (
+            assert observed.returncode == 0 and observed.stdout == '(2, 25)\n' and not observed.stderr, (
                 disabled, observed.returncode, observed.stdout, observed.stderr)
-        print('List fusion: let-bound producer used as a match scrutinee is left in place PASS', flush=True)
+        branch_trap = source('branch-trap', '''List = use "std/list".
+main =
+  xs = List.map (fn x -> 100 / x) (List.range 0 2);
+  print (if False then List.sum xs else 42).
+''')
+        branch_results = []
+        for disabled in (False, True):
+            exe, env = build(branch_trap, 'branch-trap-' + str(disabled), disabled)
+            observed = execute(exe, env)
+            assert observed.returncode != 0 and 'division by zero' in (observed.stdout + observed.stderr), (
+                disabled, observed.returncode, observed.stdout, observed.stderr)
+            branch_results.append((observed.returncode, observed.stdout, observed.stderr))
+        assert branch_results[0] == branch_results[1], branch_results
+        print('List fusion: let-bound producer used as a match scrutinee, closure capture or branch is left in place PASS', flush=True)
+
+        # A let-bound producer moves only into positions that always run.
+        # Each of these traps at the binding in the unfused program; fusion
+        # must keep exactly that trap (2026-11-02 review: t1, t5, t8, t9).
+        always = {
+            'if-arm': 'pick c =\n  ys = List.map (fn x -> 100 / x) (List.range 0 3);\n  if c then List.sum ys else 0.\nmain = print "{pick False}".\n',
+            'case-arm': 'pick c =\n  ys = List.map (fn x -> 100 / x) (List.range 0 3);\n  case c of True -> List.sum ys | False -> 0.\nmain = print "{pick False}".\n',
+            'and-operand': 'pick c =\n  ys = List.map (fn x -> 100 / x) (List.range 0 3);\n  c and List.sum ys > 0.\nmain = print "{pick False}".\n',
+            'refutable-pattern': 'O = use "std/option".\npick o =\n  ys = List.map (fn x -> 100 / x) (List.range 0 3);\n  O.Some v = o;\n  v + List.sum ys.\nmain = print "{pick O.None}".\n',
+            'result-pipe': 'pick r =\n  ys = List.map (fn x -> 100 / x) (List.range 0 3);\n  r |>? (fn v -> Ok (v + List.sum ys)).\nmain = print (case pick (Err "no") of Ok v -> v | Err e -> 0).\n',
+        }
+        for name, body in always.items():
+            path = source(name, 'List = use "std/list".\n' + body)
+            seen = []
+            for disabled in (False, True):
+                exe, env = build(path, f'{name}-{disabled}', disabled)
+                observed = execute(exe, env)
+                assert observed.returncode != 0 and 'division by zero' in (observed.stdout + observed.stderr), (
+                    name, disabled, observed.returncode, observed.stdout, observed.stderr)
+                seen.append((observed.returncode, observed.stdout, observed.stderr))
+            assert seen[0] == seen[1], (name, seen)
+        print('List fusion: let-bound producers stay put before branches, refutable patterns and result pipelines PASS', flush=True)
+
+        # A use that is only a closure capture is not floated (it used to
+        # delete the binding and fail verification: review t2).
+        capture = source('capture-only', 'List = use "std/list".\nmain =\n  ys = List.range 1 5;\n  print (List.map (fn k -> k + List.sum ys) [1, 2]).\n')
+        for disabled in (False, True):
+            exe, env = build(capture, f'capture-only-{disabled}', disabled)
+            observed = execute(exe, env)
+            assert observed.returncode == 0 and observed.stdout == '[16, 17]\n', (disabled, observed.stdout, observed.stderr)
+        print('List fusion: a producer used only through a closure capture compiles and is left in place PASS', flush=True)
+
+        # length after map never calls the callback, so it may not drop an
+        # Int overflow either: the callback needs the strict evidence (review t3).
+        dropped = source('length-overflow', 'List = use "std/list".\nmain = print (List.length (List.map (fn x -> x * 4611686018427387903) (List.range 1 3))).\n')
+        for disabled in (False, True):
+            exe, env = build(dropped, f'length-overflow-{disabled}', disabled)
+            observed = execute(exe, env)
+            assert observed.returncode != 0 and 'overflow' in (observed.stdout + observed.stderr).lower(), (
+                disabled, observed.returncode, observed.stdout, observed.stderr)
+        print('List fusion: length after map keeps an overflowing callback\'s trap PASS', flush=True)
+
+        # mapRange calls its callback from the top of the range down. The
+        # overflow relaxation lets that change WHICH element overflows, never
+        # whether the program traps; pinned so the order is a decision (review t6).
+        order = source('maprange-order', 'List = use "std/list".\nmain = print (List.map (fn x -> x * 2305843009213693952) (List.range 1 3)).\n')
+        messages = []
+        for disabled in (False, True):
+            exe, env = build(order, f'maprange-order-{disabled}', disabled)
+            observed = execute(exe, env)
+            assert observed.returncode != 0, (disabled, observed.stdout, observed.stderr)
+            messages.append(observed.stdout + observed.stderr)
+        assert '3 * 2305843009213693952' in messages[0] and '2 * 2305843009213693952' in messages[1], messages
+        print('List fusion: mapRange descending callback order pinned (overflow relaxation) PASS', flush=True)
 
         # Fused let-bound pipelines allocate nothing; declined ones keep the
         # unfused allocation exactly in both modes.
@@ -186,7 +259,9 @@ main =
             'let-chain': ('main =\n  m2 = List.map (fn x -> x + 1) (List.range 1 1000);\n'
                           '  m3 = List.map (fn x -> x * 2) m2;\n  print (List.sum m3).\n',
                           '1003000\n', 5000),
-            'let-length-map': ('main =\n  xs = List.map (fn x -> x + 1) (List.range 1 2000);\n  print (List.length xs).\n',
+            # length after map drops the callback's calls, so only a callback
+            # that cannot trap at all fuses (x + 1 could overflow: see below)
+            'let-length-map': ('main =\n  xs = List.map (fn x -> x > 1000) (List.range 1 2000);\n  print (List.length xs).\n',
                                '2000\n', 6000),
             'let-length-filter': ('main =\n  xs = List.filter (fn x -> x <= 500) (List.range 1 1000);\n  print (List.length xs).\n',
                                   '500\n', 2000),

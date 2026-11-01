@@ -39,6 +39,9 @@ foldRangeGo f z a b = case a > b of True -> z | False -> foldRangeGo f (f z a) (
 
 # Producer-only range/map target: builds the mapped list in one descending
 # pass (one cell per element; no intermediate range list and no reverse).
+# It calls f from b down to a. Fusion admits only callbacks whose one trap is
+# Int overflow, so the order shows only in WHICH element overflows (the
+# documented relaxation; tests/check_list_fusion.py pins it).
 mapRange : (Int -> a) -> (a : Int) -> (b : Int) -> List a | size mapRange <= b - a + 1 .
 mapRange f a b = mapRangeGo f a b Nil.
 mapRangeGo : (Int -> a) -> (a : Int) -> (b : Int | measure (b - a)) -> List a -> List a .
