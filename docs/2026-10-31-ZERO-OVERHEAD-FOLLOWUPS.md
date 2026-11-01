@@ -84,7 +84,12 @@ cache-identity safe:
    change and must carry its own revision identity.
 
 This is the multi-quarter item and the one that most deserves analysis
-before commitment (see the open questions below).
+before commitment (see the open questions below). The follow-up analysis
+landed as [the unboxing proposal](2026-11-01-UNBOXING-ZERO-OVERHEAD-PROPOSAL.md)
+(with its addendum: deterministic per-inductive representation as the
+cache-identity answer, and proof-gated flat lists), and its first
+representation-neutral slice, [checked List fusion](2026-11-01-LIST-FUSION.md),
+is implemented and on by default.
 
 ## 3. The hosted entry tax is a policy coupling, not a cost
 

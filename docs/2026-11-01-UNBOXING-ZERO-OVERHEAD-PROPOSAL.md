@@ -336,3 +336,46 @@ tests/bench/unbox/measure.py 15 > out.json   # ~10 min; needs gcc, optional ghc
 ```
 
 Programs: `tests/bench/unbox/*.fpr`, `*.sol`, references `ref.c`, `ref.hs`.
+
+## Addendum (1 November, later session): three additions from further analysis
+
+These extend the proposal without changing its phases; they answer gaps the
+[follow-ups inventory](2026-10-31-ZERO-OVERHEAD-FOLLOWUPS.md) and the B1
+review surfaced. B1's first slice has since landed
+([its record](2026-11-01-LIST-FUSION.md)).
+
+**A. Deterministic per-inductive representation is C2's cache-identity
+answer.** C2's listed risk is cache fragmentation: if a type's
+representation depends on the surrounding program, every unit mentioning it
+needs a program-specific identity. The structural escape: make each type's
+representation a pure function of its *definition* (Lean 4 style - nullary
+constructors become immortal statics; a single scalar constructor becomes an
+immediate; a small all-unboxable arity becomes an unboxed struct; recursive
+or mixed types stay boxed nodes), with one global promotion rule (managed
+when shared or crossing a dynamic boundary). The choice then never depends
+on the program, so the `kindTag` vocabulary already present in
+`Representation/Types.hs` enters unit cache identities without
+cross-program fragmentation - and clone identities stay deterministic as
+`f(origin, instantiation)`. This is what keeps MLton's whole-program
+compile-time trap out of C2.
+
+**B. B6, proof-gated flat lists.** Rejecting B4 as a default is correct.
+But the wish-list idea it answers has a conditional form the compiler's own
+discipline supports: where the ownership analysis proves a List is built
+once and consumed linearly - no tail sharing, no second consumer - the same
+pattern-match API may lower onto chunked or flat storage with observably
+identical behavior, because no program that could observe the difference
+exists. Where the proof fails, refuse and keep honest cons cells, with a
+lint steering bulk shapes to `Vector`; a warned fallback would ship a
+silently different program, which this tree does not do elsewhere. B6
+depends on C1/C2 machinery, keeps `O(1)` cons and sharing for every list
+the proof does not cover, and would sit behind its own `FPR_NO_*` flag.
+
+**C. Two C2 prerequisites worth naming now.** Multi-register returns:
+today a result is one word in `a0`; `Option Int` in registers or an unboxed
+pair return is a calling-convention extension, exactly what the `.abirev`
+stamp exists to version. And a cheap link-tier experiment forcing `RawWord`
+fields on one non-escaping type (for example `Pair Int Int`) through the
+existing pipeline with a differential oracle is the natural phase-5
+pre-step: it proves the representation plumbing end to end before any
+budget or cloning work.

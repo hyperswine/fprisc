@@ -138,6 +138,24 @@ evidence rather than broad pattern matching. Later callback specialization,
 inlining, representation selection and loop optimization determine how close
 the fused scalar loop gets to hand-written code.
 
+Measured cost of the deferred rules (probe, 1 November): with
+`xs = List.map f (List.range 1 2000)` consumed by a fold through that
+binding, both the fused and unfused builds make **9,001** allocation
+requests (`FPR_COST_PROBE`, loop/call regions off) - the let-bound producer
+is the difference between fusing and not for the most idiomatic spelling,
+and it pays the full map tax (range cells plus accumulator plus reverse,
+three cells per element). Ranked by measured user impact the deferred
+rules are:
+
+1. let-bound producer consumption (single-use list bindings; the ownership
+   analysis can prove the single use);
+2. map/filter cross-composition (`map f (filter p xs)` and conversely);
+3. `length` rules (`length (map f xs)` reduces to `length xs`; `length`
+   through filter needs the predicate but not the cells);
+4. producer-only `map` over `range`, whose floor is one cell per element
+   because the output is a List - the range materialization and the
+   `reverse` are what can go.
+
 The larger zero-overhead order remains: representation-neutral fusion first;
 List representation and type-directed unboxing separately; SIMD only after a
 profitable dense representation exists. No default chunked/array-backed List
