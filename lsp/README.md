@@ -4,6 +4,19 @@ Language support for `.fpr` and `.sol`, maintained with the compiler in
 [`fprisc/lsp`](https://github.com/hyperswine/fprisc/tree/main/lsp).
 The Marketplace identity remains **jasen.fpr-lang**. Requires VS Code 1.82+.
 
+## Version 0.8.1
+
+- Qualified signatures such as `MyMod.x : I64.` are declarations of external
+  symbols, not value definitions. Hover, navigation, completion, outline and
+  highlighting preserve the complete name and declared type.
+- Multiline signatures retain their full type and function/value classification.
+  Explicit signatures take precedence over builtin completion details.
+- Native imports preserve global foreign names: a signature `MyMod.x` in an
+  imported file remains `MyMod.x`. Sol splices that signature under the import
+  alias, for example `M.MyMod.x`. Lookup follows reachable imports, including
+  unsaved changes, and does not borrow names from unrelated workspace files.
+- Unknown qualified names no longer navigate or hover as an unrelated bare name.
+
 ## Version 0.8.0
 
 - Moved from `hyperswine/fpr-vscode-2` commit `1dd7939` into this compiler
@@ -251,7 +264,7 @@ and packages the extension:
 
 ```sh
 /path/to/fprisc/tools/lsp-release.sh package
-code --install-extension /path/to/fprisc/lsp/artifacts/fpr-lang-0.8.0.vsix
+code --install-extension /path/to/fprisc/lsp/artifacts/fpr-lang-0.8.1.vsix
 ```
 
 For iteration after `npm ci`, run `npm run package` inside `lsp/`. The VSIX

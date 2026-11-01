@@ -1,0 +1,49 @@
+{
+  "date": "2026-11-01",
+  "version": "0.8.1",
+  "compiler_base_revision": "cd362d5b5dc0626f8ed95c8f9917ae1af424811c",
+  "compiler_sha256": "e11d3f326dfb814c3b2d155d2e4d8bfcff899b8bee697fc0089ac5b983a872b3",
+  "compiler_build": "Fresh make fpr after fast-forwarding to origin/main",
+  "tests": {
+    "groups": 16,
+    "passed": true,
+    "command": "node lsp/tools/release.js publish --dry-run",
+    "log": "/private/tmp/fpr-lsp-081-final-release.log"
+  },
+  "vscode_acceptance": {
+    "passed": true,
+    "version": "0.8.1",
+    "vscode": "1.144.0",
+    "checks": [
+      "activation",
+      "fpr language registration",
+      "real compiler diagnostics",
+      "builtin hover",
+      "inferred type hover",
+      "workspace index",
+      "save and clear errors",
+      "explicit optimization command and diagnostics",
+      "qualified signature hover and definition",
+      "multiline qualified signature hover"
+    ]
+  },
+  "vscode_log": "build/lsp-validation/vscode-081-final.log",
+  "package": {
+    "version": "0.8.1",
+    "files": 214,
+    "bytes": 2157521,
+    "sha256": "dfc435176cbce1d567832f8e65f79b1cf692fecd281400fd4230386e7c575de4",
+    "source_matches_archive": true
+  },
+  "language_contract": [
+    "MyMod.x : I64. declares a typed symbol without defining a value",
+    "Native foreign declarations remain global across imports",
+    "Sol imports qualify declarations under the use alias",
+    "Direct dotted value definitions remain unsupported"
+  ],
+  "marketplace": {
+    "status": "prepared; publication follows source push",
+    "publisher": "jasen",
+    "name": "fpr-lang"
+  }
+}

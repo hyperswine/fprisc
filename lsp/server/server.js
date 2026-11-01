@@ -370,7 +370,7 @@ function analyze(uri, text) {
 
     // type signature
     if ((m = head.match(/^([A-Za-z_][\w']*(?:\.[A-Za-z_][\w']*)*)\s*:(?!:)/))) {
-      bySig.set(m[1], i);
+      bySig.set(m[1], { line: i, endLine, text: clean.slice(i, endLine + 1).join('\n').trim() });
       continue;
     }
 
@@ -398,14 +398,17 @@ function analyze(uri, text) {
 
   for (const d of decls) {
     if (d.clauses && bySig.has(d.name)) {
-      d.sigLine = bySig.get(d.name);
-      d.detail = clean[d.sigLine].trim().replace(/\.$/, '');
+      const signature = bySig.get(d.name);
+      d.sigLine = signature.line;
+      d.signature = signature.text;
+      d.detail = signature.text.replace(/\s+/g, ' ').replace(/\.$/, '');
       if (!d.doc) d.doc = docAbove(d.sigLine);
     }
   }
-  for (const [name, line] of bySig) {
+  for (const [name, signature] of bySig) {
     if (!decls.some((dd) => dd.name === name)) {
-      decls.push({ name, kind: clean[line].includes('->') ? SymbolKind.Function : SymbolKind.Variable, line, sigLine: line, endLine: line, detail: clean[line].trim(), children: [], doc: docAbove(line) });
+      const { line, endLine, text } = signature;
+      decls.push({ name, kind: text.includes('->') ? SymbolKind.Function : SymbolKind.Variable, line, sigLine: line, endLine, signature: text, detail: text.replace(/\s+/g, ' '), children: [], doc: docAbove(line) });
     }
   }
   decls.sort((a, b) => a.line - b.line || (a.col || 0) - (b.col || 0));
@@ -482,6 +485,35 @@ function resolveName(doc, name, depth) {
   return { kind: 'local', doc, decl: d };
 }
 
+// Bodyless qualified signatures are global foreign declarations in native
+// compilation. Sol splices them under each use-alias instead. Traverse only
+// reachable imports, never unrelated workspace declarations. Recompute per
+// request so open-buffer and watched import changes cannot leave a stale map.
+let qualifiedCache = new Map();
+function qualifiedDeclarations(doc) {
+  if (qualifiedCache.has(doc)) return qualifiedCache.get(doc);
+  const declarations = new Map(), sol = doc.uri.endsWith('.sol'), visited = new Set();
+  let remaining = 256;
+  function visit(source, prefix, depth, ancestors) {
+    if (depth <= 0 || remaining <= 0 || ancestors.has(source.uri) || (!sol && visited.has(source.uri))) return;
+    visited.add(source.uri); remaining--;
+    const seen = new Set(ancestors); seen.add(source.uri);
+    for (const decl of source.decls) {
+      if (!decl.name.includes('.')) continue;
+      if (source !== doc && (decl.sigLine === undefined || decl.clauses)) continue;
+      const name = prefix + decl.name;
+      if (!declarations.has(name)) declarations.set(name, { doc: source, decl });
+    }
+    for (const alias of source.decls.filter(d => d.usePath)) {
+      const imported = loadModule(source.uri, alias.usePath);
+      if (imported) visit(imported, sol ? prefix + alias.name + '.' : '', depth - 1, seen);
+    }
+  }
+  visit(doc, '', sol ? 9 : 32, new Set());
+  qualifiedCache.set(doc, declarations);
+  return declarations;
+}
+
 // Conservative local shadowing guard for source/type hovers and namespaces.
 // Unresolved local types are omitted instead of borrowing a global's type.
 function locallyBound(doc, name, pos) {
@@ -514,8 +546,11 @@ function findDefinition(uri, doc, pos, wantDeclaration) {
 
   if (qualifier) {
     if (locallyBound(doc, qualifier.split('.')[0], pos)) return null;
-    const direct = doc.decls.find(d => d.name === `${qualifier}.${word}`);
-    if (direct) return loc(uri, wantDeclaration && direct.sigLine !== undefined ? direct.sigLine : direct.line, direct.col || 0, (direct.col || 0) + direct.name.length);
+    const direct = qualifiedDeclarations(doc).get(`${qualifier}.${word}`);
+    if (direct) {
+      const d = direct.decl;
+      return loc(direct.doc.uri, wantDeclaration && d.sigLine !== undefined ? d.sigLine : d.line, d.col || 0, (d.col || 0) + d.name.length);
+    }
     const r = resolveName(doc, qualifier, 3);
     if (r) {
       const owner = r.kind === 'module' ? null : r.decl;
@@ -533,9 +568,8 @@ function findDefinition(uri, doc, pos, wantDeclaration) {
         return loc(r.doc.uri, owner.line, col, col + owner.name.length);
       }
     }
-    const foreign = doc.decls.find(d => d.name === `${qualifier}.${word}`);
-    if (foreign) return loc(uri, foreign.line, 0, foreign.name.length);
-    // unknown qualifier (Vec.*, Str.* builtins): fall through
+    // A qualified lookup must not resolve an unrelated unqualified name.
+    return null;
   }
 
   const top = doc.decls.find((d) => d.name === word);
@@ -576,7 +610,7 @@ function findDefinition(uri, doc, pos, wantDeclaration) {
 // ---------------------------------------------------------------------------
 
 function declHeadLine(d, srcDoc) {
-  if (d.sigLine !== undefined) return srcDoc.clean[d.sigLine].trim();
+  if (d.sigLine !== undefined) return d.signature || srcDoc.clean[d.sigLine].trim();
   return (srcDoc.clean[d.line] || '').trim().replace(/\s+/g, ' ').slice(0, 100);
 }
 
@@ -630,8 +664,10 @@ function hoverFor(uri, doc, pos) {
 
   if (locallyBound(doc, (qualifier || word).split('.')[0], pos)) return null;
 
-  // 1. qualified through a module/alias
+  // 1. qualified through a declaration or module/alias
   if (qualifier) {
+    const direct = qualifiedDeclarations(doc).get(`${qualifier}.${word}`);
+    if (direct) return md(renderDecl(direct.decl, direct.doc, `${qualifier}.${word}`, uri));
     const r = resolveName(doc, qualifier, 3);
     if (r) {
       if (r.kind === 'module') {
@@ -646,11 +682,10 @@ function hoverFor(uri, doc, pos) {
         }
       }
     }
-    const declared = doc.decls.find(d => d.name === `${qualifier}.${word}`);
-    if (declared) return md(renderDecl(declared, doc, declared.name, uri));
     if (r) return null; // A source namespace shadows the builtin namespace.
     const q = builtinFor(uri, `${qualifier}.${word}`);
     if (q) return md(renderBuiltin(`${qualifier}.${word}`, q, uri));
+    return null;
   }
 
   // 2. local decl
@@ -804,6 +839,7 @@ const checker = createChecker({
     return open ? open.text : null;
   },
   onResult: (file, byPath) => {
+    qualifiedCache.clear();
     const before = compilerDiags.get(file);
     if (byPath && docs.has(pathToUri(file))) compilerDiags.set(file, byPath);
     else compilerDiags.delete(file);
@@ -1003,6 +1039,12 @@ function semanticTokens(doc) {
   const push = (line, col, len, type, mods) => toks.push([line, col, len, type, mods || 0]);
 
   // index the module's names once
+  const qualifiedDecls = qualifiedDeclarations(doc);
+  const namespaces = new Set();
+  for (const name of qualifiedDecls.keys()) {
+    const parts = name.split('.');
+    for (let i = 1; i < parts.length; i++) namespaces.add(parts.slice(0, i).join('.'));
+  }
   const byName = new Map();
   for (const d of doc.decls) {
     if (!byName.has(d.name)) byName.set(d.name, d);
@@ -1042,9 +1084,13 @@ function semanticTokens(doc) {
         while (qa > 0 && /[\w'.]/.test(line[qa - 1])) qa--;
         const qual = line.slice(qa, col - 1);
         if (!qual || locallyBound(doc, qual.split('.')[0], { line: li, character: qa })) continue;
-        const direct = byName.get(qual + '.' + word);
-        if (direct) { push(li, col, word.length, declarationToken(direct)); continue; }
-        if (doc.decls.some(d => d.name.startsWith(qual + '.' + word + '.'))) { push(li, col, word.length, TT.namespace); continue; }
+        const direct = qualifiedDecls.get(qual + '.' + word);
+        if (direct) {
+          const d = direct.decl;
+          const isDeclaration = direct.doc === doc && li === d.line && col === (d.col || 0) + d.name.length - word.length;
+          push(li, col, word.length, declarationToken(d), isDeclaration ? TM.declaration : 0); continue;
+        }
+        if (namespaces.has(qual + '.' + word)) { push(li, col, word.length, TT.namespace); continue; }
         const r = resolveName(doc, qual, 3);
         if (r && r.kind === 'module') {
           const remote = r.doc.decls.find((x) => x.name === word);
@@ -1076,7 +1122,7 @@ function semanticTokens(doc) {
         // Parameters also shadow builtins, including on the clause head.
         if (scope.binders.has(word)) { push(li, col, word.length, TT.parameter); continue; }
       }
-      if (line[col + word.length] === '.' && doc.decls.some(d => d.name.startsWith(word + '.'))) { push(li, col, word.length, TT.namespace); continue; }
+      if (line[col + word.length] === '.' && namespaces.has(word)) { push(li, col, word.length, TT.namespace); continue; }
       const d = byName.get(word);
       if (d) {
         const isDeclSite = li === d.line && col === (d.col !== undefined ? d.col : nameColOnLine(doc, d.line, d.name));
@@ -1146,10 +1192,12 @@ function completions(doc, pos) {
   const add = (name, detail, documentation) => items.set(name, { label: name, kind: 3, detail, documentation });
   if (match) {
     if (locallyBound(doc, match[1].split('.')[0], pos)) return [];
+    for (const [name, entry] of qualifiedDeclarations(doc))
+      if (name.startsWith(match[1] + '.' + match[2])) add(name.slice(match[1].length + 1), entry.decl.detail, entry.decl.doc || '');
     const resolved = resolveName(doc, match[1], 3);
     if (resolved) {
       const declarations = resolved.kind === 'module' ? resolved.doc.decls : resolved.decl.children || [];
-      for (const d of declarations) if (d.name.startsWith(match[2])) add(d.name, d.detail || d.name, d.doc || '');
+      for (const d of declarations) if (d.name.startsWith(match[2]) && !items.has(d.name)) add(d.name, d.detail || d.name, d.doc || '');
       return [...items.values()];
     }
     for (const d of doc.decls) if (d.name.startsWith(match[1] + '.' + match[2])) add(d.name.slice(match[1].length + 1), d.detail, d.doc || '');
@@ -1160,7 +1208,7 @@ function completions(doc, pos) {
     const b = builtinFor(doc.uri, name);
     if (!b || !/^[A-Za-z_]/.test(name)) continue;
     if (match) {
-      if (name.startsWith(match[1] + '.' + match[2])) add(name.slice(match[1].length + 1), b.sig, b.doc);
+      if (name.startsWith(match[1] + '.' + match[2]) && !items.has(name.slice(match[1].length + 1))) add(name.slice(match[1].length + 1), b.sig, b.doc);
     } else if (!items.has(name)) add(name, b.sig, b.doc);
   }
   return [...items.values()];
@@ -1189,11 +1237,12 @@ function changedFiles(files, saved) {
 
 function resetChecks() {
   for (const uri of docs.keys()) dropCheck(uri);
-  modCache.clear(); homeCache = null;
+  modCache.clear(); qualifiedCache.clear(); homeCache = null;
   for (const [uri, doc] of docs) { publishDiagnostics(uri, doc); checkDoc(uri); }
 }
 
 function handle(msg) {
+  qualifiedCache.clear();
   const { id, method, params } = msg;
   try {
     switch (method) {
@@ -1245,7 +1294,7 @@ function handle(msg) {
         break;
       case 'textDocument/didSave':
         remarkRunner.invalidate('A source file was saved');
-        modCache.clear();
+        modCache.clear(); qualifiedCache.clear();
         changedFiles([uriToPath(params.textDocument.uri)], true);
         break;
       case 'textDocument/didChange': {
@@ -1268,7 +1317,7 @@ function handle(msg) {
         break;
       case 'workspace/didChangeWatchedFiles': {
         remarkRunner.invalidate('Workspace source files changed');
-        modCache.clear(); homeCache = null;
+        modCache.clear(); qualifiedCache.clear(); homeCache = null;
         const files = (params.changes || []).map(c => uriToPath(c.uri)).filter(Boolean);
         for (const file of files) workspaceIndex.update(file);
         if (files.some(f => path.basename(f) === 'fpr.toml')) resetChecks();
