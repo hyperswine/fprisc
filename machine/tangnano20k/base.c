@@ -163,6 +163,10 @@ FPR_FN(fpr_g_fileAppend,h_append,2);
 FPR_FN(fpr_g_Sys_x2eenv,h_env,1);
 FPR_FN(fpr_g_Sys_x2etimeUs,h_time,1);
 FPR_FN(fpr_g_Sys_x2eargs,h_args,1);
+/* The name this program was started under. The host protocol sends arguments
+ * without an argv[0], so it is empty, as on POSIX when no argv[0] is given. */
+static V h_name(V u){(void)u;return (V)mktext("",0);}
+FPR_FN(fpr_g_Sys_x2ename,h_name,1);
 FPR_FN(fpr_g_Sys_x2eexit,h_exit,1);
 FPR_FN(fpr_g_Sys_x2estderr,h_stderr,1);
 FPR_FN(fpr_g_Sys_x2ereadLine,h_line,1);
