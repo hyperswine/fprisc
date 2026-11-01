@@ -1,0 +1,991 @@
+#!/usr/bin/env -S fpr run
+# ============================================================================
+# mconf.fpr -- MConf, the typed configuration language of docs/MCONF-DESIGN.md,
+# as one FP-RISC Base program: lexing, parsing, namespaces, references, types
+# and JSON, plus the v0.1 CLI.
+#
+#   fpr run examples/mconf.fpr check   config.mconf
+#   fpr run examples/mconf.fpr to-json config.mconf [-o config.json]
+#   fpr run examples/mconf.fpr get     config.mconf server.port
+#   fpr run examples/mconf.fpr type    config.mconf server.port
+#
+# THE PIPELINE (design §9) is five pure stages, each a function of the text:
+#
+#   parseMconf  text        -> Result (List Decl) String    what was written
+#   spaceOf     decls       -> Result Space (List String)   the namespace, and
+#                                                           every path clash
+#   resolveRoot space       -> Result MValue (List String)  references, cycles
+#   typeErrors  space value -> List String                  declared types
+#   renderValue value       -> String                       JSON
+#
+# Only `load` reads a file, and only the CLI at the bottom prints or exits.
+#
+# A document is a SET of declarations, not a sequence (§1, §11): the order
+# assignments appear in never changes the result, and every problem a stage
+# finds is reported with the line and column of the declaration that caused it.
+# A document with any problem yields no configuration at all (§6, atomicity),
+# so a stage that cannot produce its output stops the pipeline.  `check` still
+# lists every clash at once, every unresolved reference at once, and every type
+# error at once.
+# ============================================================================
+profile base.
+# The scanner, the parser and the two whole-document walks recurse on a byte
+# OFFSET, not on a subterm, so their termination is a property of the input's
+# length and not something a structural measure can carry (std/json.fpr says
+# the same about its own reader).  Everything an MConf document can contain is
+# finite, so the boundary is the program, and `unsafe program.` states it once.
+unsafe program.
+File = use "std/file".
+Json = use "std/json".
+List = use "std/list".
+Map = use "std/map".
+Option = use "std/option".
+Program = use "std/program".
+String = use "std/string".
+
+# ---- the model (§9) --------------------------------------------------------
+# MValue is what a valid document MEANS.  MType is what it PROMISES.  Expr is
+# what was WRITTEN: a reference is not a value until it is resolved, so a
+# literal, a reference, a list and an object are all expressions.
+MValue = Type (VNull | VString String | VInt Int | VFloat String | VBool Bool
+             | VDuration String | VArray (List MValue) | VObject (Map.Map String MValue)).
+
+MType = Type (TString | TInt | TFloat | TBool | TDuration | TNull | TAnything
+            | TListOf MType | TMapOf MType MType | TOptional MType
+            | TUnion (List MType) | TRecord (List (String, MType))).
+
+Expr = Type (ELiteral MValue | EReference (List String)
+           | EArray (List Expr) | EObject (List (String, Expr))).
+
+Decl = Type (Assign (List String) Expr Site | Declare (List String) MType Site).
+
+Site = { line : Int, column : Int }.
+Space = { values : List (List String, Expr, Site), types : List (List String, MType, Site) }.
+Config = { root : MValue, space : Space }.
+
+# ---- text ------------------------------------------------------------------
+# Positions are byte offsets into the source; a line and a column come from
+# them only when a diagnostic is printed.
+
+# the byte at i, or 0 past the end, so comparisons simply fail
+atOr : String -> Int -> Int .
+atOr s i = if i >= strlen s then 0 else charAt s i.
+
+isDigitAt c = c >= 48 and c <= 57.
+isLower c = c >= 97 and c <= 122.
+isUpper c = c >= 65 and c <= 90.
+isNameStart c = isLower c or isUpper c or c == 95.
+isNameChar c = isNameStart c or isDigitAt c.
+
+# `#' to the end of the line, leaving the newline itself
+lineEnd : unsafe String -> Int -> Int .
+lineEnd s i = if i >= strlen s then i else lineStep s i (atOr s i).
+
+lineStep : unsafe String -> Int -> Int -> Int .
+lineStep s i c | c == 10 = i.
+lineStep s i _ = lineEnd s (i + 1).
+
+# spaces, tabs, CRs and a trailing comment: everything but the newline
+skipInline : unsafe String -> Int -> Int .
+skipInline s i = if i >= strlen s then i else inlineStep s i (atOr s i).
+
+inlineStep : unsafe String -> Int -> Int -> Int .
+inlineStep s i c | c == 32 = skipInline s (i + 1).
+inlineStep s i c | c == 9 = skipInline s (i + 1).
+inlineStep s i c | c == 13 = skipInline s (i + 1).
+inlineStep s i c | c == 35 = lineEnd s (i + 1).
+inlineStep _ i _ = i.
+
+# and the newlines between declarations
+skipBlank : unsafe String -> Int -> Int .
+skipBlank s i = if i >= strlen s then i else blankStep s i (atOr s i).
+
+blankStep : unsafe String -> Int -> Int -> Int .
+blankStep s i c | c == 32 = skipBlank s (i + 1).
+blankStep s i c | c == 9 = skipBlank s (i + 1).
+blankStep s i c | c == 13 = skipBlank s (i + 1).
+blankStep s i c | c == 10 = skipBlank s (i + 1).
+blankStep s i c | c == 35 = skipBlank s (lineEnd s (i + 1)).
+blankStep _ i _ = i.
+
+lineCol : unsafe String -> Int -> Int -> Int -> Int -> (Int, Int) .
+lineCol s i at l c = case i >= at of
+    True -> (l, c)
+  | False ->
+      next = if charAt s i == 10 then (l + 1, 1) else (l, c + 1);
+      case next of (l2, c2) -> lineCol s (i + 1) at l2 c2.
+
+siteOf : unsafe String -> Int -> Site .
+siteOf s at = case lineCol s 0 at 1 1 of (l, c) -> { line = l, column = c }.
+
+locatedAt : unsafe String -> Int -> String -> String .
+locatedAt s at why = case lineCol s 0 at 1 1 of (l, c) -> "line {l}, column {c}: {why}".
+
+atSite : Site -> String -> String .
+atSite site why = "line {site.line}, column {site.column}: {why}".
+
+# a dotted path as a reader sees it
+pathText : (ps : List String | measure ps) -> String .
+pathText ps = case ps of
+    Nil -> ""
+  | p :: Nil -> p
+  | p :: rest -> strcat p (strcat "." (pathText rest)).
+
+# ---- strings ---------------------------------------------------------------
+# `i` is the opening quote; answers the decoded text and the position past the
+# closing quote.  MConf strings are literal unless quoted in a path, so there
+# is no interpolation here -- the interpreter of an MConf document only ever
+# sees the bytes.
+stringLit : unsafe String -> Int -> Result (String, Int) (Int, String) .
+stringLit s i = stringGo s (i + 1) (i + 1) Nil.
+
+stringGo : unsafe String -> Int -> Int -> List String -> Result (String, Int) (Int, String) .
+stringGo s from i acc = case i >= strlen s of
+    True -> Err (i, "unterminated string")
+  | False -> case charAt s i == 34 of
+        True -> Ok (strJoin "" (List.revOnto (substr s from (i - from) :: acc) Nil), i + 1)
+      | False -> if charAt s i == 92 then escaped s i from acc else stringGo s from (i + 1) acc.
+
+escaped : unsafe String -> Int -> Int -> List String -> Result (String, Int) (Int, String) .
+escaped s i from acc = case escapeOf (atOr s (i + 1)) of
+    Option.None -> Err (i, "unknown escape in a string")
+  | Option.Some t -> stringGo s (i + 2) (i + 2) (t :: substr s from (i - from) :: acc).
+
+escapeOf : Int -> Option.Option String .
+escapeOf c =
+  if c == 110 then Option.Some "\n"
+  else if c == 116 then Option.Some "\t"
+  else if c == 114 then Option.Some "\r"
+  else if c == 34 then Option.Some "\""
+  else if c == 92 then Option.Some "\\"
+  else if c == 123 then Option.Some "\{"
+  else if c == 125 then Option.Some "\}"
+  else Option.None.
+
+# ---- names -----------------------------------------------------------------
+nameRun : unsafe String -> Int -> Int -> Int .
+nameRun s i n = case i >= n of
+    True -> i
+  | False -> if isNameChar (charAt s i) then nameRun s (i + 1) n else i.
+
+# one dotted-path component: a bare name, or a quoted one ("a.b" is one field)
+component : unsafe String -> Int -> Result (String, Int) (Int, String) .
+component s i = if atOr s i == 34 then stringLit s i else bareComponent s i (atOr s i).
+
+bareComponent : unsafe String -> Int -> Int -> Result (String, Int) (Int, String) .
+bareComponent s i c | isNameStart c = namedRun s i (nameRun s i (strlen s)).
+bareComponent _ i _ = Err (i, "expected a field name").
+
+namedRun : String -> Int -> Int -> Result (String, Int) (Int, String) .
+namedRun s i k = Ok (substr s i (k - i), k).
+
+# ---- parse (§2, §3) --------------------------------------------------------
+parseMconf : String -> Result (List Decl) String .
+parseMconf s = case decls s (skipBlank s 0) Nil of
+    Err (at, why) -> Err (locatedAt s at why)
+  | Ok ds -> Ok ds.
+
+decls : unsafe String -> Int -> List Decl -> Result (List Decl) (Int, String) .
+decls s i acc = case skipBlank s i >= strlen s of
+    True -> Ok (List.revOnto acc Nil)
+  | False -> (case statement s (skipBlank s i) Nil of
+        Err e -> Err e
+      | Ok (ds, next) -> decls s next (List.revOnto ds acc)).
+
+# `path = value`, `path : Type`, or `path { ... }` -- a block is sugar for the
+# same paths (design §2), so it rewrites to them here and nowhere else.
+statement : unsafe String -> Int -> List String -> Result (List Decl, Int) (Int, String) .
+statement s i prefix = case pathAt s i Nil of
+    Err e -> Err e
+  | Ok (path, next) -> afterPath s next (List.append prefix path) (siteOf s i).
+
+afterPath : unsafe String -> Int -> List String -> Site -> Result (List Decl, Int) (Int, String) .
+afterPath s i path site =
+  j = skipInline s i;
+  c = atOr s j;
+  if c == 61 then assignment s (j + 1) path site
+  else if c == 58 then typeDeclaration s (j + 1) path site
+  else if c == 123 then blockDecls s (j + 1) path Nil
+  else Err (j, "expected '=', ':' or a block after a path").
+
+assignment : unsafe String -> Int -> List String -> Site -> Result (List Decl, Int) (Int, String) .
+assignment s i path site = case exprAt s (skipInline s i) of
+    Err e -> Err e
+  | Ok (e, next) -> Ok (Assign path e site :: Nil, next).
+
+typeDeclaration : unsafe String -> Int -> List String -> Site -> Result (List Decl, Int) (Int, String) .
+typeDeclaration s i path site = case typeAt s (skipInline s i) of
+    Err e -> Err e
+  | Ok (t, next) -> Ok (Declare path t site :: Nil, next).
+
+blockDecls : unsafe String -> Int -> List String -> List Decl -> Result (List Decl, Int) (Int, String) .
+blockDecls s i path acc =
+  j = skipBlank s i;
+  if j >= strlen s then Err (j, "unterminated block")
+  else if atOr s j == 125 then Ok (List.revOnto acc Nil, j + 1)
+  else (case statement s j path of
+      Err e -> Err e
+    | Ok (ds, next) -> blockDecls s next path (List.revOnto ds acc)).
+
+# a dotted path: server."http.port".tls
+pathAt : unsafe String -> Int -> List String -> Result (List String, Int) (Int, String) .
+pathAt s i acc = case component s (skipInline s i) of
+    Err e -> Err e
+  | Ok (name, next) -> pathTail s (skipInline s next) (name :: acc).
+
+pathTail : unsafe String -> Int -> List String -> Result (List String, Int) (Int, String) .
+pathTail s i acc =
+  if atOr s i == 46 then pathAt s (i + 1) acc else Ok (List.revOnto acc Nil, i).
+
+# ---- expressions -----------------------------------------------------------
+exprAt : unsafe String -> Int -> Result (Expr, Int) (Int, String) .
+exprAt s i =
+  j = skipInline s i;
+  c = atOr s j;
+  if c == 34 then stringExpr s j
+  else if c == 123 then objectExpr s (j + 1) Nil
+  else if c == 91 then arrayExpr s (j + 1) Nil
+  else if c == 45 or isDigitAt c then numberExpr s j
+  else referenceExpr s j.
+
+stringExpr : unsafe String -> Int -> Result (Expr, Int) (Int, String) .
+stringExpr s i = case stringLit s i of
+    Err e -> Err e
+  | Ok (t, next) -> Ok (ELiteral (VString t), next).
+
+objectExpr : unsafe String -> Int -> List (String, Expr) -> Result (Expr, Int) (Int, String) .
+objectExpr s i acc =
+  j = skipBlank s i;
+  if j >= strlen s then Err (j, "unterminated object")
+  else if atOr s j == 125 then Ok (EObject (List.revOnto acc Nil), j + 1)
+  else (case component s j of
+      Err e -> Err e
+    | Ok (k, next) -> objectField s (skipInline s next) k acc).
+
+objectField : unsafe String -> Int -> String -> List (String, Expr) -> Result (Expr, Int) (Int, String) .
+objectField s i k acc =
+  c = atOr s i;
+  if c == 61 or c == 58 then (case exprAt s (i + 1) of
+      Err e -> Err e
+    | Ok (v, next) -> objectNext s next ((k, v) :: acc))
+  else Err (i, "expected '=' or ':' after an object key").
+
+objectNext : unsafe String -> Int -> List (String, Expr) -> Result (Expr, Int) (Int, String) .
+objectNext s i acc =
+  j = skipBlank s i;
+  if atOr s j == 44 then objectExpr s (j + 1) acc else objectExpr s j acc.
+
+arrayExpr : unsafe String -> Int -> List Expr -> Result (Expr, Int) (Int, String) .
+arrayExpr s i acc =
+  j = skipBlank s i;
+  if j >= strlen s then Err (j, "unterminated list")
+  else if atOr s j == 93 then Ok (EArray (List.revOnto acc Nil), j + 1)
+  else (case exprAt s j of
+      Err e -> Err e
+    | Ok (v, next) -> arrayNext s next (v :: acc)).
+
+arrayNext : unsafe String -> Int -> List Expr -> Result (Expr, Int) (Int, String) .
+arrayNext s i acc =
+  j = skipBlank s i;
+  if atOr s j == 44 then arrayExpr s (j + 1) acc else arrayExpr s j acc.
+
+digitRun : unsafe String -> Int -> Int .
+digitRun s i = if isDigitAt (atOr s i) then digitRun s (i + 1) else i.
+
+# 42, -3.5, 1e6, 30s and 5m; the digits of a float are kept as written, so
+# rendering a document cannot change a number's value (std/json's rule too)
+numberExpr : unsafe String -> Int -> Result (Expr, Int) (Int, String) .
+numberExpr s i =
+  start = i;
+  a = if atOr s i == 45 then i + 1 else i;
+  b = digitRun s a;
+  if b == a then Err (i, "expected a value") else numberTail s start b.
+
+numberTail : unsafe String -> Int -> Int -> Result (Expr, Int) (Int, String) .
+numberTail s start k =
+  f = if atOr s k == 46 then digitRun s (k + 1) else k;
+  e = exponentEnd s f;
+  u = unitEnd s e;
+  if u > e then Ok (ELiteral (VDuration (substr s start (u - start))), u)
+  else if f > k and e == k and f == k + 1 then Err (start, "expected digits after '.'")
+  else numericAt s start k (if e > f then e else f).
+
+exponentEnd : unsafe String -> Int -> Int .
+exponentEnd s i =
+  j = signEnd s (i + 1);
+  k = digitRun s j;
+  c = atOr s i;
+  if c == 101 or c == 69 then (if k > j then k else i) else i.
+
+signEnd : String -> Int -> Int .
+signEnd s i = if atOr s i == 43 or atOr s i == 45 then i + 1 else i.
+
+# s, ms, m, h and d, and only when the unit is the whole token: `5m` is a
+# duration while `5minutes` is a number followed by rubbish, which the caller
+# reports at the rubbish.
+unitEnd : String -> Int -> Int .
+unitEnd s i =
+  c = atOr s i;
+  if c == 109 then (if atOr s (i + 1) == 115 then unitOnly s (i + 2) else unitOnly s (i + 1))
+  else if c == 115 or c == 104 or c == 100 then unitOnly s (i + 1)
+  else i.
+
+unitOnly : String -> Int -> Int .
+unitOnly s k = if isNameChar (atOr s k) then 0 else k.
+
+numericAt : String -> Int -> Int -> Int -> Result (Expr, Int) (Int, String) .
+numericAt s start k end =
+  if end == k then integralAt s start k
+  else Ok (ELiteral (VFloat (substr s start (end - start))), end).
+
+integralAt : String -> Int -> Int -> Result (Expr, Int) (Int, String) .
+integralAt s start k = case String.toInt (substr s start (k - start)) of
+    Ok n -> Ok (ELiteral (VInt n), k)
+  | Err _ -> Ok (ELiteral (VFloat (substr s start (k - start))), k).
+
+# a bare name is a reference unless it is one of the three keywords
+referenceExpr : unsafe String -> Int -> Result (Expr, Int) (Int, String) .
+referenceExpr s i = case pathAt s i Nil of
+    Err e -> Err e
+  | Ok (path, next) -> Ok (referenceOf path, next).
+
+referenceOf : List String -> Expr .
+referenceOf path = case path of
+    k :: Nil -> referenceName path k
+  | _ -> EReference path.
+
+referenceName : List String -> String -> Expr .
+referenceName path k = case keywordOf k of
+    Option.Some v -> ELiteral v
+  | Option.None -> EReference path.
+
+keywordOf : String -> Option.Option MValue .
+keywordOf k =
+  if k == "true" then Option.Some (VBool True)
+  else if k == "false" then Option.Some (VBool False)
+  else if k == "null" then Option.Some VNull
+  else Option.None.
+
+# ---- types (§3) ------------------------------------------------------------
+typeAt : unsafe String -> Int -> Result (MType, Int) (Int, String) .
+typeAt s i = unionAt s i Nil.
+
+unionAt : unsafe String -> Int -> List MType -> Result (MType, Int) (Int, String) .
+unionAt s i acc = case suffixed s (skipInline s i) of
+    Err e -> Err e
+  | Ok (t, next) -> unionNext s (skipInline s next) (t :: acc).
+
+unionNext : unsafe String -> Int -> List MType -> Result (MType, Int) (Int, String) .
+unionNext s i acc =
+  if atOr s i == 124 then unionAt s (i + 1) acc else Ok (unionOf (List.revOnto acc Nil), i).
+
+unionOf : List MType -> MType .
+unionOf ts = case ts of
+    t :: Nil -> t
+  | _ -> TUnion ts.
+
+suffixed : unsafe String -> Int -> Result (MType, Int) (Int, String) .
+suffixed s i = case typeAtom s i of
+    Err e -> Err e
+  | Ok (t, next) -> optionalTail s (skipInline s next) t.
+
+optionalTail : unsafe String -> Int -> MType -> Result (MType, Int) (Int, String) .
+optionalTail s i t =
+  if atOr s i == 63 then optionalTail s (skipInline s (i + 1)) (TOptional t) else Ok (t, i).
+
+typeAtom : unsafe String -> Int -> Result (MType, Int) (Int, String) .
+typeAtom s i =
+  c = atOr s i;
+  if c == 123 then recordType s (skipInline s (i + 1)) Nil
+  else if c == 40 then parenType s (skipInline s (i + 1))
+  else if isNameStart c then namedType s i (nameRun s i (strlen s))
+  else Err (i, "expected a type").
+
+parenType : unsafe String -> Int -> Result (MType, Int) (Int, String) .
+parenType s i = case typeAt s i of
+    Err e -> Err e
+  | Ok (t, next) -> if atOr s (skipInline s next) == 41 then Ok (t, skipInline s next + 1) else Err (skipInline s next, "expected ')'").
+
+namedType : unsafe String -> Int -> Int -> Result (MType, Int) (Int, String) .
+namedType s i k = case primitiveType (substr s i (k - i)) of
+    Option.Some t -> Ok (t, k)
+  | Option.None -> appliedType s i (substr s i (k - i)) k.
+
+primitiveType : String -> Option.Option MType .
+primitiveType n =
+  if n == "String" then Option.Some TString
+  else if n == "Int" then Option.Some TInt
+  else if n == "Float" then Option.Some TFloat
+  else if n == "Bool" then Option.Some TBool
+  else if n == "Duration" then Option.Some TDuration
+  else if n == "Null" then Option.Some TNull
+  else Option.None.
+
+# List[T] and Map[K, V]
+appliedType : unsafe String -> Int -> String -> Int -> Result (MType, Int) (Int, String) .
+appliedType s i name k =
+  j = skipInline s k;
+  if atOr s j != 91 then Err (i, strcat "unknown type " name)
+  else if name == "List" then listType s (skipInline s (j + 1))
+  else if name == "Map" then mapType s (skipInline s (j + 1))
+  else Err (i, strcat "unknown type " name).
+
+listType : unsafe String -> Int -> Result (MType, Int) (Int, String) .
+listType s i = case typeAt s i of
+    Err e -> Err e
+  | Ok (t, next) -> bracketClose s (skipInline s next) (TListOf t).
+
+bracketClose : String -> Int -> MType -> Result (MType, Int) (Int, String) .
+bracketClose s i t = if atOr s i == 93 then Ok (t, i + 1) else Err (i, "expected ']'").
+
+mapType : unsafe String -> Int -> Result (MType, Int) (Int, String) .
+mapType s i = case typeAt s i of
+    Err e -> Err e
+  | Ok (keyType, next) -> mapValueType s (skipInline s next) keyType.
+
+mapValueType : unsafe String -> Int -> MType -> Result (MType, Int) (Int, String) .
+mapValueType s i keyType =
+  if atOr s i != 44 then Err (i, "expected ',' between a map's key and value types")
+  else case typeAt s (skipInline s (i + 1)) of
+      Err e -> Err e
+    | Ok (valueType, next) -> bracketClose s (skipInline s next) (TMapOf keyType valueType).
+
+recordType : unsafe String -> Int -> List (String, MType) -> Result (MType, Int) (Int, String) .
+recordType s i acc =
+  j = skipBlank s i;
+  if j >= strlen s then Err (j, "unterminated record type")
+  else if atOr s j == 125 then Ok (TRecord (List.revOnto acc Nil), j + 1)
+  else case component s j of
+      Err e -> Err e
+    | Ok (name, next) -> recordFieldType s (skipInline s next) name acc.
+
+recordFieldType : unsafe String -> Int -> String -> List (String, MType) -> Result (MType, Int) (Int, String) .
+recordFieldType s i name acc =
+  if atOr s i != 58 then Err (i, "expected ':' after a field name")
+  else case typeAt s (skipInline s (i + 1)) of
+      Err e -> Err e
+    | Ok (t, next) -> recordFieldNext s next ((name, t) :: acc).
+
+recordFieldNext : unsafe String -> Int -> List (String, MType) -> Result (MType, Int) (Int, String) .
+recordFieldNext s i acc =
+  j = skipBlank s i;
+  if atOr s j == 44 then recordType s (j + 1) acc else recordType s j acc.
+
+# ---- the namespace (§6) ----------------------------------------------------
+# A document is flattened into two lists: one value per assigned path, one type
+# per declared path.  Two lists are all the checks need, and they keep the
+# declaration that caused each problem.
+collectValues : List Decl -> List (List String, Expr, Site) .
+collectValues ds = List.filterMap valueOf ds.
+
+valueOf : Decl -> Option.Option (List String, Expr, Site) .
+valueOf d = case d of
+    Assign p e site -> Option.Some (p, e, site)
+  | Declare _ _ _ -> Option.None.
+
+collectTypes : List Decl -> List (List String, MType, Site) .
+collectTypes ds = List.filterMap typeOfDecl ds.
+
+typeOfDecl : Decl -> Option.Option (List String, MType, Site) .
+typeOfDecl d = case d of
+    Declare p t site -> Option.Some (p, t, site)
+  | Assign _ _ _ -> Option.None.
+
+spaceOf : List Decl -> Result Space (List String) .
+spaceOf ds =
+  vs = collectValues ds;
+  ts = collectTypes ds;
+  problems = List.append (valueProblems vs) (typeProblems ts);
+  if List.isEmpty problems then Ok { values = vs, types = ts } else Err problems.
+
+# duplicate assignment, and a path that is a value in one declaration and a
+# parent of a value in another (design §6, "leaf/object path collision")
+valueProblems : (vs : List (List String, Expr, Site) | measure vs) -> List String .
+valueProblems vs = case vs of
+    Nil -> Nil
+  | v :: rest -> List.append (valueAgainst v rest) (valueProblems rest).
+
+valueAgainst : (List String, Expr, Site) -> (rest : List (List String, Expr, Site) | measure rest) -> List String .
+valueAgainst v rest = List.filterMap (fn w -> valueClash v w) rest.
+
+# blame the LATER declaration: it is the one the reader has to change
+valueClash : (List String, Expr, Site) -> (List String, Expr, Site) -> Option.Option String .
+valueClash (p, _, _) (q, _, site) = (case clashKind p q of
+    Option.None -> Option.None
+  | Option.Some why -> Option.Some (atSite site why)).
+
+clashKind : List String -> List String -> Option.Option String .
+clashKind p q | samePath p q = Option.Some (strcat "duplicate assignment to " (pathText p)).
+clashKind p q | prefixOf p q = Option.Some (strcat (strcat (pathText p) " is a value, but ") (strcat (pathText q) " is a path inside it")).
+clashKind p q | prefixOf q p = Option.Some (strcat (strcat (pathText q) " is a value, but ") (strcat (pathText p) " is a path inside it")).
+clashKind _ _ = Option.None.
+
+typeProblems : (ts : List (List String, MType, Site) | measure ts) -> List String .
+typeProblems ts = case ts of
+    Nil -> Nil
+  | (p, t, site) :: rest -> List.append (typeAgainst p t site rest) (typeProblems rest).
+
+typeAgainst : List String -> MType -> Site -> (rest : List (List String, MType, Site) | measure rest) -> List String .
+typeAgainst p t site rest = List.filterMap (fn entry -> typeEntry p t site entry) rest.
+
+typeEntry : List String -> MType -> Site -> (List String, MType, Site) -> Option.Option String .
+typeEntry p t _ (q, u, later) = typeClash p t later q u.
+
+typeClash : List String -> MType -> Site -> List String -> MType -> Option.Option String .
+typeClash p t later q u | samePath p q = if sameType t u then Option.None else Option.Some (atSite later (strcat "conflicting type declarations for " (pathText p))).
+typeClash _ _ _ _ _ = Option.None.
+
+# ---- paths -----------------------------------------------------------------
+samePath : (p : List String | measure p) -> List String -> Bool .
+samePath p q = case p of
+    Nil -> (case q of Nil -> True | _ -> False)
+  | a :: rest -> (case q of Nil -> False | b :: more -> a == b and samePath rest more).
+
+# p is a proper prefix of q
+prefixOf : (p : List String | measure p) -> List String -> Bool .
+prefixOf p q = case p of
+    Nil -> (case q of Nil -> False | _ -> True)
+  | a :: rest -> (case q of Nil -> False | b :: more -> a == b and prefixOf rest more).
+
+covers : List String -> List String -> Bool .
+covers p q = samePath p q or prefixOf p q.
+
+stripPrefix : (p : List String | measure p) -> List String -> Option.Option (List String) .
+stripPrefix p q = case p of
+    Nil -> Option.Some q
+  | a :: rest -> case q of Nil -> Option.None | b :: more -> if a == b then stripPrefix rest more else Option.None.
+
+# ---- resolve (§4) ----------------------------------------------------------
+# Resolving the empty path answers the whole document: a leaf is assigned an
+# expression, an internal node is the object its children make.  `stack` is the
+# chain of paths being resolved right now, which is exactly what a cycle needs.
+resolveRoot : Space -> Result MValue (List String) .
+resolveRoot sp = case childrenOf sp.values Nil of
+    Nil -> Ok (VObject Map.strings)
+  | cs -> case objectOf sp Nil rootSite Nil cs Map.strings Nil of
+        Err problems -> Err problems
+      | Ok m -> Ok (VObject m).
+
+rootSite = { line = 1, column = 1 }.
+
+# every child is resolved even after one fails, so a document with three
+# undefined references reports three lines rather than one.
+objectOf : unsafe Space -> List (List String) -> Site -> List String -> List String -> Map.Map String MValue -> List String -> Result (Map.Map String MValue) (List String) .
+objectOf sp stack blame path cs m problems = case cs of
+    Nil -> if List.isEmpty problems then Ok m else Err problems
+  | c :: rest -> objectStep sp stack blame path c rest m problems.
+
+objectStep : unsafe Space -> List (List String) -> Site -> List String -> String -> List String -> Map.Map String MValue -> List String -> Result (Map.Map String MValue) (List String) .
+objectStep sp stack blame path c rest m problems = case resolveNode sp stack blame (List.append path (c :: Nil)) of
+    Err more -> objectOf sp stack blame path rest m (List.append problems more)
+  | Ok v -> objectOf sp stack blame path rest (Map.insert c v m) problems.
+
+# `blame` is the declaration that mentioned this path: a value's own site, or
+# the site of the reference being followed -- so an error points at the line a
+# reader has to change.
+resolveNode : Space -> List (List String) -> Site -> List String -> Result MValue (List String) .
+resolveNode sp stack blame path = case findValue sp.values path of
+    Option.Some (e, site) -> evalExpr sp (path :: stack) site e
+  | Option.None -> resolveMissing sp stack blame path.
+
+resolveMissing : Space -> List (List String) -> Site -> List String -> Result MValue (List String) .
+resolveMissing sp stack blame path = case childrenOf sp.values path of
+    Nil -> Err (atSite blame (strcat "undefined reference: " (pathText path)) :: Nil)
+  | cs -> (case objectOf sp stack blame path cs Map.strings Nil of
+        Err problems -> Err problems
+      | Ok m -> Ok (VObject m)).
+
+evalExpr : Space -> List (List String) -> Site -> Expr -> Result MValue (List String) .
+evalExpr sp stack site e = case e of
+    ELiteral v -> Ok v
+  | EReference q -> if memberPath q stack then Err (atSite site (cycleText stack q) :: Nil) else resolveNode sp stack site q
+  | EArray xs -> evalEach sp stack site xs Map.strings Nil
+  | EObject kvs -> evalMembers sp stack site kvs.
+
+evalEach : unsafe Space -> List (List String) -> Site -> List Expr -> Map.Map String MValue -> List MValue -> Result MValue (List String) .
+evalEach sp stack site xs keys acc = case xs of
+    Nil -> Ok (VArray (List.revOnto acc Nil))
+  | x :: rest -> evalElem sp stack site rest (evalExpr sp stack site x) keys acc.
+
+evalElem : Space -> List (List String) -> Site -> List Expr -> Result MValue (List String) -> Map.Map String MValue -> List MValue -> Result MValue (List String) .
+evalElem sp stack site rest r keys acc = case r of
+    Err problems -> Err problems
+  | Ok v -> evalEach sp stack site rest keys (v :: acc).
+
+evalMembers : unsafe Space -> List (List String) -> Site -> List (String, Expr) -> Result MValue (List String) .
+evalMembers sp stack site kvs = case kvs of
+    Nil -> Ok (VObject Map.strings)
+  | (k, x) :: rest -> (case repeatedKey k rest of
+        True -> Err (atSite site (strcat "duplicate key " (strcat k " in one object")) :: Nil)
+      | False -> evalMembersRest sp stack site rest x k).
+
+evalMembersRest : Space -> List (List String) -> Site -> List (String, Expr) -> Expr -> String -> Result MValue (List String) .
+evalMembersRest sp stack site rest x k = (case evalExpr sp stack site x of
+        Err problems -> Err problems
+      | Ok v -> (case evalMembers sp stack site rest of
+            Err problems -> Err problems
+          | Ok (VObject m) -> Ok (VObject (Map.insert k v m))
+          | Ok other -> Ok other)).
+
+repeatedKey : String -> (kvs : List (String, Expr) | measure kvs) -> Bool .
+repeatedKey k kvs = case kvs of
+    Nil -> False
+  | (k2, _) :: rest -> if k == k2 then True else repeatedKey k rest.
+
+memberPath : List String -> (stack : List (List String) | measure stack) -> Bool .
+memberPath q stack = case stack of
+    Nil -> False
+  | s :: rest -> if samePath q s then True else memberPath q rest.
+
+cycleText : List (List String) -> List String -> String .
+cycleText stack q = strcat "reference cycle: " (strcat (String.join " -> " (List.map pathText (List.revOnto stack Nil))) (strcat " -> " (pathText q))).
+
+findValue : (vs : List (List String, Expr, Site) | measure vs) -> List String -> Option.Option (Expr, Site) .
+findValue vs path = case vs of
+    Nil -> Option.None
+  | (q, e, site) :: rest -> if samePath q path then Option.Some (e, site) else findValue rest path.
+
+childrenOf : (vs : List (List String, Expr, Site) | measure vs) -> List String -> List String .
+childrenOf vs path = List.unique (List.filterMap (fn entry -> childOfPath path entry) vs).
+
+childOfPath : List String -> (List String, Expr, Site) -> Option.Option String .
+childOfPath path (q, _, _) = childOf path q.
+
+childOf : List String -> List String -> Option.Option String .
+childOf p q = case stripPrefix p q of
+    Option.Some rest -> childRest rest
+  | Option.None -> Option.None.
+
+childRest : List String -> Option.Option String .
+childRest rest = case rest of
+    Nil -> Option.None
+  | c :: _ -> Option.Some c.
+
+# ---- types against values (§3, §6) -----------------------------------------
+typeErrors : Space -> MValue -> List String .
+typeErrors sp root = List.concatMap (fn entry -> oneTypeError root entry) sp.types.
+
+oneTypeError : MValue -> (List String, MType, Site) -> List String .
+oneTypeError root (p, t, site) = typeError root p t site.
+
+typeError : MValue -> List String -> MType -> Site -> List String .
+typeError root p t site = case valueAt p root of
+    Option.Some v -> List.map (atSite site) (against (pathText p) t v)
+  | Option.None -> if isOptional t then Nil else (atSite site (strcat "missing required field: " (pathText p)) :: Nil).
+
+against : String -> MType -> MValue -> List String .
+against at t v = case t of
+    TAnything -> Nil
+  | TString -> okOr (case v of VString _ -> True | _ -> False) at t v
+  | TInt -> okOr (case v of VInt _ -> True | _ -> False) at t v
+  | TFloat -> okOr (case v of VFloat _ -> True | _ -> False) at t v
+  | TBool -> okOr (case v of VBool _ -> True | _ -> False) at t v
+  | TDuration -> okOr (case v of VDuration _ -> True | _ -> False) at t v
+  | TNull -> okOr (case v of VNull -> True | _ -> False) at t v
+  | TListOf e -> (case v of VArray xs -> elements at e xs | _ -> mismatch at t v)
+  | TMapOf k vt -> (case v of VObject m -> membersOf at k vt (Map.entries m) | _ -> mismatch at t v)
+  | TRecord fields -> (case v of VObject m -> recordFields at fields m | _ -> mismatch at t v)
+  | TOptional inner -> (case v of VNull -> Nil | _ -> against at inner v)
+  | TUnion ts -> if List.isEmpty (List.filter (fn u -> List.isEmpty (against at u v)) ts) then (strcat at (strcat ": expected " (strcat (unionText ts) (strcat ", found " (describe v)))) :: Nil) else Nil.
+
+okOr : Bool -> String -> MType -> MValue -> List String .
+okOr good at t v = if good then Nil else mismatch at t v.
+
+mismatch : String -> MType -> MValue -> List String .
+mismatch at t v = strcat at (strcat ": expected " (strcat (showType t) (strcat ", found " (describe v)))) :: Nil.
+
+elements : unsafe String -> MType -> List MValue -> List String .
+elements at e xs = case xs of
+    Nil -> Nil
+  | x :: rest -> List.append (against (strcat at "[]") e x) (elements at e rest).
+
+membersOf : unsafe String -> MType -> MType -> List (String, MValue) -> List String .
+membersOf at k vt es = case es of
+    Nil -> Nil
+  | (name, v) :: rest ->
+      here = child at name;
+      List.append (against here k (VString name)) (List.append (against here vt v) (membersOf at k vt rest)).
+
+recordFields : String -> List (String, MType) -> Map.Map String MValue -> List String .
+recordFields at fields m = List.append (presentFields at fields m) (List.append (missingFields at fields m) (unknownFields at fields m)).
+
+presentFields : unsafe String -> List (String, MType) -> Map.Map String MValue -> List String .
+presentFields at fields m = case fields of
+    Nil -> Nil
+  | (name, t) :: rest -> (case Map.get name m of
+        Option.Some v -> List.append (against (child at name) t v) (presentFields at rest m)
+      | Option.None -> presentFields at rest m).
+
+missingFields : String -> (fields : List (String, MType) | measure fields) -> Map.Map String MValue -> List String .
+missingFields at fields m = case fields of
+    Nil -> Nil
+  | (name, t) :: rest -> if Map.member name m or isOptional t then missingFields at rest m else List.append (strcat "missing required field: " (child at name) :: Nil) (missingFields at rest m).
+
+unknownFields : String -> List (String, MType) -> Map.Map String MValue -> List String .
+unknownFields at fields m = List.filterMap (fn name -> if fieldNamed name fields then Option.None else Option.Some (strcat "unknown field: " (child at name))) (Map.keys m).
+
+fieldNamed : String -> (fields : List (String, MType) | measure fields) -> Bool .
+fieldNamed name fields = case fields of
+    Nil -> False
+  | (n, _) :: rest -> if n == name then True else fieldNamed name rest.
+
+child : String -> String -> String .
+child at name = strcat at (strcat "." name).
+
+valueAt : unsafe List String -> MValue -> Option.Option MValue .
+valueAt p v = case p of
+    Nil -> Option.Some v
+  | k :: rest -> descend rest v k.
+
+descend : unsafe List String -> MValue -> String -> Option.Option MValue .
+descend rest v k = case v of
+    VObject m -> (case Map.get k m of
+        Option.Some inner -> valueAt rest inner
+      | Option.None -> Option.None)
+  | _ -> Option.None.
+
+# an empty collection has nothing to infer an element type from (§3)
+emptyProblems : Space -> MValue -> List String .
+emptyProblems sp root = List.filterMap (fn p -> emptyProblem sp p) (emptyPaths root Nil).
+
+emptyPaths : unsafe MValue -> List String -> List (List String) .
+emptyPaths v path = case v of
+    VArray Nil -> path :: Nil
+  | VArray xs -> List.concatMap (fn x -> emptyPaths x path) xs
+  | VObject m -> if Map.isEmpty m then path :: Nil else List.concatMap (fn entry -> childEmpties path entry) (Map.entries m)
+  | _ -> Nil.
+
+emptyProblem : Space -> List String -> Option.Option String .
+emptyProblem sp p | List.isEmpty p = Option.None.
+emptyProblem sp p | declaredUnder sp.types p = Option.None.
+emptyProblem sp p = Option.Some (atSite (siteFor sp.values p) (strcat "an empty collection needs a declared type: " (pathText p))).
+
+declaredUnder : (ts : List (List String, MType, Site) | measure ts) -> List String -> Bool .
+declaredUnder ts p = case ts of
+    Nil -> False
+  | (q, _, _) :: rest -> if covers q p then True else declaredUnder rest p.
+
+siteFor : (vs : List (List String, Expr, Site) | measure vs) -> List String -> Site .
+siteFor vs p = case List.head (List.filterMap (fn entry -> siteUnder p entry) vs) of
+    Option.Some site -> site
+  | Option.None -> { line = 1, column = 1 }.
+
+# ---- types as text ---------------------------------------------------------
+fieldTextOf : (String, MType) -> String .
+fieldTextOf (n, t) = strcat n (strcat ": " (showType t)).
+
+inferField : (String, MValue) -> (String, MType) .
+inferField (k, x) = (k, inferType x).
+
+memberText : Int -> (String, MValue) -> String .
+memberText depth (k, x) = strcat (pad (depth + 1)) (strcat (Json.quote k) (strcat ": " (renderValue (depth + 1) x))).
+
+siteUnder : List String -> (List String, Expr, Site) -> Option.Option Site .
+siteUnder p (q, _, site) = if covers q p then Option.Some site else Option.None.
+
+childEmpties : List String -> (String, MValue) -> List (List String) .
+childEmpties path (k, x) = emptyPaths x (List.append path (k :: Nil)).
+
+
+isOptional : MType -> Bool .
+isOptional t = case t of TOptional _ -> True | _ -> False.
+
+showType : unsafe MType -> String .
+showType t = case t of
+    TString -> "String"
+  | TInt -> "Int"
+  | TFloat -> "Float"
+  | TBool -> "Bool"
+  | TDuration -> "Duration"
+  | TNull -> "Null"
+  | TAnything -> "?"
+  | TListOf e -> strcat "List[" (strcat (showType e) "]")
+  | TMapOf k v -> strcat "Map[" (strcat (showType k) (strcat ", " (strcat (showType v) "]")))
+  | TOptional e -> strcat (showType e) "?"
+  | TUnion ts -> unionText ts
+  | TRecord fields -> recordText fields.
+
+unionText : List MType -> String .
+unionText ts = String.join " | " (List.map (fn t -> showType t) ts).
+
+recordText : unsafe List (String, MType) -> String .
+recordText fields = strcat "\{" (strcat (String.join ", " (List.map fieldTextOf fields)) "\}").
+
+describe : MValue -> String .
+describe v = case v of
+    VNull -> "Null"
+  | VString _ -> "String"
+  | VInt _ -> "Int"
+  | VFloat _ -> "Float"
+  | VBool _ -> "Bool"
+  | VDuration _ -> "Duration"
+  | VArray _ -> "List"
+  | VObject _ -> "Object".
+
+# what a value's type is, when nothing declared one (`mconf type`)
+inferType : unsafe MValue -> MType .
+inferType v = case v of
+    VNull -> TNull
+  | VString _ -> TString
+  | VInt _ -> TInt
+  | VFloat _ -> TFloat
+  | VBool _ -> TBool
+  | VDuration _ -> TDuration
+  | VArray Nil -> TListOf TAnything
+  | VArray (x :: _) -> TListOf (inferType x)
+  | VObject m -> TRecord (List.map inferField (Map.entries m)).
+
+sameType : unsafe MType -> MType -> Bool .
+sameType (TListOf x) (TListOf y) = sameType x y.
+sameType (TMapOf k v) (TMapOf k2 v2) = sameType k k2 and sameType v v2.
+sameType (TOptional x) (TOptional y) = sameType x y.
+sameType (TUnion ts) (TUnion us) = sameTypes ts us.
+sameType (TRecord fs) (TRecord gs) = sameFields fs gs.
+sameType TString TString = True.
+sameType TInt TInt = True.
+sameType TFloat TFloat = True.
+sameType TBool TBool = True.
+sameType TDuration TDuration = True.
+sameType TNull TNull = True.
+sameType TAnything TAnything = True.
+sameType _ _ = False.
+
+sameTypes : unsafe List MType -> List MType -> Bool .
+sameTypes Nil Nil = True.
+sameTypes Nil _ = False.
+sameTypes (_ :: _) Nil = False.
+sameTypes (t :: rest) (u :: more) = sameType t u and sameTypes rest more.
+
+sameFields : unsafe List (String, MType) -> List (String, MType) -> Bool .
+sameFields Nil Nil = True.
+sameFields Nil _ = False.
+sameFields (_ :: _) Nil = False.
+sameFields ((n, t) :: rest) ((m, u) :: more) = n == m and sameType t u and sameFields rest more.
+
+# ---- JSON (§7) -------------------------------------------------------------
+# Two spaces of indentation, keys ascending (a Map), a duration as its
+# canonical text, absent optionals simply not there.
+pad : Int -> String .
+pad depth = String.repeat depth "  ".
+
+renderValue : unsafe Int -> MValue -> String .
+renderValue depth v = case v of
+    VNull -> "null"
+  | VString t -> Json.quote t
+  | VInt n -> str n
+  | VFloat t -> t
+  | VBool b -> if b then "true" else "false"
+  | VDuration t -> Json.quote t
+  | VArray Nil -> "[]"
+  | VArray xs -> bracketed depth (List.map (fn x -> renderValue (depth + 1) x) xs)
+  | VObject m -> if Map.isEmpty m then "\{\}" else braced depth m.
+
+bracketed : Int -> List String -> String .
+bracketed depth pieces = strcat "[\n" (strcat (String.join ",\n" (List.map (fn piece -> strcat (pad (depth + 1)) piece) pieces)) (strcat "\n" (strcat (pad depth) "]"))).
+
+braced : Int -> Map.Map String MValue -> String .
+braced depth m = strcat "\{\n" (strcat (String.join ",\n" (List.map (fn entry -> memberText depth entry) (Map.entries m))) (strcat "\n" (strcat (pad depth) "\}"))).
+
+# ---- the CLI (§8) ----------------------------------------------------------
+usage = String.join "\n" [
+    "usage: mconf <command> [arguments]",
+    "  check   FILE            parse, resolve and type check FILE; report every problem",
+    "  to-json FILE [-o OUT]   FILE as JSON, on stdout or in OUT",
+    "  get     FILE PATH       the value at PATH, as JSON",
+    "  type    FILE PATH       the declared or inferred type at PATH" ].
+
+# read is the only effect: everything above is a function of the text
+load : String -> Result Config (List String) .
+load file = case File.readText file of
+    Err why -> Err (why :: Nil)
+  | Ok text -> validate text.
+
+validate : String -> Result Config (List String) .
+validate text = case parseMconf text of
+    Err why -> Err (why :: Nil)
+  | Ok ds -> (case spaceOf ds of
+        Err problems -> Err problems
+      | Ok sp -> (case resolveRoot sp of
+            Err problems -> Err problems
+          | Ok root -> settled sp root)).
+
+settled : Space -> MValue -> Result Config (List String) .
+settled sp root =
+  problems = List.append (typeErrors sp root) (emptyProblems sp root);
+  if List.isEmpty problems then Ok { root = root, space = sp } else Err problems.
+
+report : String -> List String -> Unit .
+report file problems = List.each (fn why -> Program.writeError (strcat file (strcat ":" why))) problems.
+
+rejected : String -> List String -> a .
+rejected file problems = _ = report file problems; Program.exit 1.
+
+main = case Program.args Unit of
+    cmd :: rest -> command cmd rest
+  | Nil -> Program.fail 2 usage.
+
+command "check" args = checkCmd args.
+command "to-json" args = toJsonCmd args.
+command "get" args = getCmd args.
+command "type" args = typeCmd args.
+command "help" _ = print usage.
+command name _ = Program.fail 2 (strcat "mconf: unknown command " (strcat name (strcat "\n" usage))).
+
+checkCmd : List String -> Unit .
+checkCmd args = case args of
+    file :: _ -> (case load file of
+        Ok _ -> print (strcat file ": ok")
+      | Err problems -> rejected file problems)
+  | Nil -> Program.fail 2 usage.
+
+toJsonCmd : List String -> Unit .
+toJsonCmd args = case args of
+    file :: rest -> (case load file of
+        Err problems -> rejected file problems
+      | Ok config -> writeOut rest (renderValue 0 config.root))
+  | Nil -> Program.fail 2 usage.
+
+writeOut : List String -> String -> Unit .
+writeOut rest text = case rest of
+    "-o" :: out :: _ -> (case File.writeText out (strcat text "\n") of
+        Ok _ -> Unit
+      | Err why -> Program.fail 1 (strcat "mconf: " why))
+  | _ -> print text.
+
+getCmd : List String -> Unit .
+getCmd args = case args of
+    file :: pathArg :: _ -> (case load file of
+        Err problems -> rejected file problems
+      | Ok config -> (case pathOf pathArg of
+            Err why -> Program.fail 2 (strcat "mconf: " why)
+          | Ok path -> (case valueAt path config.root of
+                Option.Some v -> print (renderValue 0 v)
+              | Option.None -> Program.fail 1 (strcat "mconf: no such path: " pathArg))))
+  | _ -> Program.fail 2 usage.
+
+typeCmd : List String -> Unit .
+typeCmd args = case args of
+    file :: pathArg :: _ -> (case load file of
+        Err problems -> rejected file problems
+      | Ok config -> (case pathOf pathArg of
+            Err why -> Program.fail 2 (strcat "mconf: " why)
+          | Ok path -> typeOfPath config path pathArg))
+  | _ -> Program.fail 2 usage.
+
+typeOfPath : Config -> List String -> String -> Unit .
+typeOfPath config path label = case declaredType config.space.types path of
+    Option.Some t -> print (showType t)
+  | Option.None -> (case valueAt path config.root of
+        Option.Some v -> print (showType (inferType v))
+      | Option.None -> Program.fail 1 (strcat "mconf: no such path: " label)).
+
+declaredType : (ts : List (List String, MType, Site) | measure ts) -> List String -> Option.Option MType .
+declaredType ts path = case ts of
+    Nil -> Option.None
+  | (q, t, _) :: rest -> if samePath q path then Option.Some t else declaredType rest path.
+
+# a PATH argument, written the way a path in the document is written
+pathOf : String -> Result (List String) String .
+pathOf text = case pathAt text 0 Nil of
+    Err (at, why) -> Err (locatedAt text at why)
+  | Ok (path, next) -> if skipInline text next < strlen text then Err "a path, not an expression" else Ok path.
