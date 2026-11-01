@@ -184,6 +184,11 @@ jobs:
         env:
           RELIABILITY_FULL: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: FPR_HOME="$GITHUB_WORKSPACE" python3 -u tests/reliability/run_all.py
+      # TEMPORARY (compile-budget rebaseline PR): record on CI's GHC and print.
+      - name: TEMP record compile budget baseline
+        run: |
+          FPR_HOME="$GITHUB_WORKSPACE" python3 -u tests/check_compile_budget.py --record
+          echo "RECORDED-BASELINE-BEGIN"; cat tests/compile_budget.json; echo "RECORDED-BASELINE-END"
       - name: fuzz failures (for minimization)
         if: failure()
         uses: actions/upload-artifact@v4
