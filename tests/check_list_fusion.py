@@ -38,8 +38,9 @@ def main():
         def execute(exe, env, report=False):
             return run([exe], dict(env, FPR_COST_REPORT='1') if report else env, timeout=60)
 
-        # All admitted rules, including capture composition and transformer-only
-        # map/map and filter/filter chains, agree with the disabled pipeline.
+        # All admitted rules, including capture composition, map/map,
+        # filter/filter, map/filter cross-composition, length consumer rules,
+        # and producer-only map over range, agree with the disabled pipeline.
         differential = source('differential', '''List = use "std/list".
 main =
   a = List.sum (List.range 1 20);
@@ -51,24 +52,37 @@ main =
   f = List.map (fn x -> x * 2) (List.map (fn x -> x + 1) (List.range 1 4));
   g = List.filter (fn x -> x > 2) (List.filter (fn x -> x < 5) (List.range 1 6));
   h = List.fold (fn z x -> z + x) 0 (List.map (fn x -> x * 3) [1, 2, 3]);
-  print (a, b, c, d, e, f, g, h).
+  mf = List.map (fn x -> x * 2) (List.filter (fn x -> x < 4) (List.range 1 6));
+  fm = List.filter (fn y -> y > 4) (List.map (fn x -> x * 2) (List.range 1 5));
+  lr = List.length (List.range 1 25);
+  lm = List.length (List.map (fn x -> x + k) (List.range 1 15));
+  lf = List.length (List.filter (fn x -> x <= 7) (List.range 1 20));
+  lmf = List.length (List.map (fn x -> x * 2) (List.filter (fn x -> x <= 5) (List.range 1 10)));
+  lfm = List.length (List.filter (fn y -> y > 6) (List.map (fn x -> x * 2) (List.range 1 6)));
+  mr = List.map (fn x -> x + 10) (List.range 1 4);
+  print (a, b, c, d, e, f, g, h, mf, fm, lr, lm, lf, lmf, lfm, mr).
 ''')
-        expected = '(210, 120, 57, 22, 6, [4, 6, 8, 10], [3, 4], 18)\n'
+        expected = '(210, 120, 57, 22, 6, [4, 6, 8, 10], [3, 4], 18, [2, 4, 6], [6, 8, 10], 25, 15, 7, 5, 3, [11, 12, 13, 14])\n'
         for disabled in (False, True):
             exe, env = build(differential, 'differential-' + str(disabled), disabled)
             observed = execute(exe, env)
             assert observed.returncode == 0 and observed.stdout == expected and not observed.stderr, (
                 disabled, observed.returncode, observed.stdout, observed.stderr)
-        print('List fusion: fold/sum/product/range, captures, map/map, filter/filter and list-input composition PASS', flush=True)
+        print('List fusion: fold/sum/product/length/range, captures, map/map, filter/filter, map/filter cross-composition and mapRange PASS', flush=True)
 
         # Pin the whole pipeline's allocator requests; callback application can
-        # allocate as well as cons construction. Fused pipelines allocate none.
+        # allocate as well as cons construction. Fused scalar pipelines allocate none.
         cases = {
             'sum': ('main = print (List.sum (List.range 1 1000)).\n', '500500\n', 1000),
             'map': ('main = print (List.sum (List.map (fn x -> x + 1) (List.range 1 1000))).\n',
                     '501500\n', 3000),
             'filter': ('main = print (List.sum (List.filter (fn x -> x <= 500) (List.range 1 1000))).\n',
                        '125250\n', 2000),
+            'length-range': ('main = print (List.length (List.range 1 1000)).\n', '1000\n', 1000),
+            'length-map': ('main = print (List.length (List.map (fn x -> x + 1) (List.range 1 1000))).\n',
+                           '1000\n', 3000),
+            'length-filter': ('main = print (List.length (List.filter (fn x -> x <= 500) (List.range 1 1000))).\n',
+                              '500\n', 2000),
         }
         for name, (body, expected_output, unfused_requests) in cases.items():
             path = source(name, 'List = use "std/list".\n' + body)
@@ -85,6 +99,32 @@ main =
                 if not disabled:
                     assert ledger['alloc_bytes'] == 0, (name, ledger)
             print(f'List fusion allocation: {name} {unfused_requests} -> 0 requests PASS', flush=True)
+
+        # Producer-only list pipelines: map over range drops range materialization
+        # and reverse (3001 -> 1001 requests including head's Option); map/filter
+        # cross-composition drops the intermediate list (3001 -> 2001 and 4001 -> 2001).
+        producer_cases = {
+            'map-range': (
+                'main = print (List.head (List.map (fn x -> x + 1) (List.range 1 1000))).\n',
+                'Some 2\n', 3001, 1001),
+            'map-filter': (
+                'main = print (List.head (List.map (fn x -> x * 2) (List.filter (fn x -> x <= 500) (List.range 1 1000)))).\n',
+                'Some 2\n', 3001, 2001),
+            'filter-map': (
+                'main = print (List.head (List.filter (fn y -> y <= 1000) (List.map (fn x -> x * 2) (List.range 1 1000)))).\n',
+                'Some 2\n', 4001, 2001),
+        }
+        for name, (body, expected_output, unfused_requests, fused_requests) in producer_cases.items():
+            path = source(name, 'List = use "std/list".\n' + body)
+            for disabled in (False, True):
+                exe, env = build(path, f'{name}-{disabled}', disabled, probe=True)
+                observed = execute(exe, env, report=True)
+                assert observed.returncode == 0 and observed.stdout == expected_output, (
+                    name, disabled, observed.stdout, observed.stderr)
+                ledger = json.loads(re.search(r'\[fpr cost\] (\{.*\})', observed.stderr).group(1))
+                wanted = unfused_requests if disabled else fused_requests
+                assert ledger['alloc_requests'] == wanted, (name, disabled, ledger)
+            print(f'List fusion producer allocation: {name} {unfused_requests} -> {fused_requests} requests PASS', flush=True)
 
         # Let-bound producers: the single-use binding is part of the peeled
         # safe prefix, so the producer's evaluation moves to the source
@@ -118,6 +158,21 @@ main =
                 disabled, observed.returncode, observed.stdout, observed.stderr)
         print('List fusion: let-bound producers fuse; multi-use and unsafe-seed bindings stay untouched PASS', flush=True)
 
+        # A single-use binding whose use is a match scrutinee must not be
+        # substituted: match-tail arguments are evaluated locals.
+        scrutinee = source('scrutinee', '''List = use "std/list".
+main =
+  xs = List.map (fn x -> x + 1) (1 :: 2 :: Nil);
+  r = case xs of Nil -> 0 | a :: _ -> a;
+  print "{r}".
+''')
+        for disabled in (False, True):
+            exe, env = build(scrutinee, 'scrutinee-' + str(disabled), disabled)
+            observed = execute(exe, env)
+            assert observed.returncode == 0 and observed.stdout == '2\n' and not observed.stderr, (
+                disabled, observed.returncode, observed.stdout, observed.stderr)
+        print('List fusion: let-bound producer used as a match scrutinee is left in place PASS', flush=True)
+
         # Fused let-bound pipelines allocate nothing; declined ones keep the
         # unfused allocation exactly in both modes.
         let_cases = {
@@ -131,6 +186,10 @@ main =
             'let-chain': ('main =\n  m2 = List.map (fn x -> x + 1) (List.range 1 1000);\n'
                           '  m3 = List.map (fn x -> x * 2) m2;\n  print (List.sum m3).\n',
                           '1003000\n', 5000),
+            'let-length-map': ('main =\n  xs = List.map (fn x -> x + 1) (List.range 1 2000);\n  print (List.length xs).\n',
+                               '2000\n', 6000),
+            'let-length-filter': ('main =\n  xs = List.filter (fn x -> x <= 500) (List.range 1 1000);\n  print (List.length xs).\n',
+                                  '500\n', 2000),
         }
         for name, (body, expected_output, unfused_requests) in let_cases.items():
             path = source(name, 'List = use "std/list".\n' + body)
@@ -166,12 +225,13 @@ main =
         # std catalog shapes and must remain untouched.
         lookalike = source('lookalike', '''range a b = [1, 2].
 sum xs = 99.
-main = print (sum (range 0 1)).
+length xs = 77.
+main = print (sum (range 0 1), length (range 0 1)).
 ''')
         for disabled in (False, True):
             exe, env = build(lookalike, 'lookalike-' + str(disabled), disabled)
             observed = execute(exe, env)
-            assert observed.returncode == 0 and observed.stdout == '99\n', observed.stdout + observed.stderr
+            assert observed.returncode == 0 and observed.stdout == '(99, 77)\n', observed.stdout + observed.stderr
         assembly = tmp / 'lookalike.s'
         compiled = run([ROOT / 'fpr', 'compile', lookalike, assembly], base)
         assert compiled.returncode == 0 and '$typed.listfusion.' not in assembly.read_text(), compiled.stderr

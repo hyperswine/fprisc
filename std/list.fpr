@@ -37,6 +37,13 @@ foldRange f z a b = foldRangeGo f z a b.
 foldRangeGo : (b -> Int -> b) -> b -> (a : Int) -> (b : Int | measure (b - a)) -> b .
 foldRangeGo f z a b = case a > b of True -> z | False -> foldRangeGo f (f z a) (a + 1) b.
 
+# Producer-only range/map target: builds the mapped list in one descending
+# pass (one cell per element; no intermediate range list and no reverse).
+mapRange : (Int -> a) -> (a : Int) -> (b : Int) -> List a | size mapRange <= b - a + 1 .
+mapRange f a b = mapRangeGo f a b Nil.
+mapRangeGo : (Int -> a) -> (a : Int) -> (b : Int | measure (b - a)) -> List a -> List a .
+mapRangeGo f a b acc = case b < a of True -> acc | False -> mapRangeGo f a (b - 1) (f b :: acc).
+
 repeat : (n : Int) -> a -> List a | size repeat <= n .
 repeat n x = repeatGo n x Nil.
 repeatGo : (n : Int | measure n) -> a -> List a -> List a .
@@ -47,6 +54,12 @@ length : List a -> Int .
 length xs = lengthGo xs 0.
 lengthGo : (xs : List a | measure xs) -> Int -> Int .
 lengthGo xs n = case xs of Nil -> n | _ :: r -> lengthGo r (n + 1).
+
+# Fusion target: `length (range a b)` counts the range without building it.
+lengthRange : Int -> Int -> Int .
+lengthRange a b = lengthRangeGo a b 0.
+lengthRangeGo : (a : Int) -> (b : Int | measure (b - a)) -> Int -> Int .
+lengthRangeGo a b n = case b < a of True -> n | False -> lengthRangeGo a (b - 1) (n + 1).
 
 isEmpty : List a -> Bool .
 isEmpty xs = case xs of Nil -> True | _ -> False.
@@ -86,6 +99,21 @@ filterGo : (a -> Bool) -> (xs : List a | measure xs) -> List a -> List a .
 filterGo p xs acc = case xs of
     Nil -> reverse acc
   | x :: r -> (case p x of True -> filterGo p r (x :: acc) | False -> filterGo p r acc).
+
+# Fusion targets for map/filter cross-composition:
+mapFilter : (a -> b) -> (a -> Bool) -> (xs : List a) -> List b | size mapFilter <= len xs .
+mapFilter f p xs = mapFilterGo f p xs Nil.
+mapFilterGo : (a -> b) -> (a -> Bool) -> (xs : List a | measure xs) -> List b -> List b .
+mapFilterGo f p xs acc = case xs of
+    Nil -> reverse acc
+  | x :: r -> (case p x of True -> mapFilterGo f p r (f x :: acc) | False -> mapFilterGo f p r acc).
+
+filterMapped : (b -> Bool) -> (a -> b) -> (xs : List a) -> List b | size filterMapped <= len xs .
+filterMapped p f xs = filterMappedGo p f xs Nil.
+filterMappedGo : (b -> Bool) -> (a -> b) -> (xs : List a | measure xs) -> List b -> List b .
+filterMappedGo p f xs acc = case xs of
+    Nil -> reverse acc
+  | x :: r -> y = f x; case p y of True -> filterMappedGo p f r (y :: acc) | False -> filterMappedGo p f r acc.
 
 # map and keep what is there: List.filterMap parseLine lines
 filterMap : (a -> O.Option b) -> (xs : List a) -> List b | size filterMap <= len xs .
