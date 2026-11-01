@@ -42,8 +42,15 @@
     "Direct dotted value definitions remain unsupported"
   ],
   "marketplace": {
-    "status": "prepared; publication follows source push",
+    "status": "blocked by publisher authentication; not published",
     "publisher": "jasen",
-    "name": "fpr-lang"
+    "name": "fpr-lang",
+    "attempted_command": "vsce publish --packagePath artifacts/fpr-lang-0.8.1.vsix",
+    "exit_status": 1,
+    "error_code": "TF400813",
+    "reason": "Configured publisher authentication is not authorized to access the Marketplace resource.",
+    "browser_fallback": "Publisher management opens Microsoft sign-in; no signed-in publisher session available.",
+    "source_revision": "01d4519486b8a7d47f74d4b932e50705f0a5a378",
+    "log": "/private/tmp/fpr-marketplace-publish-081.log"
   }
 }
