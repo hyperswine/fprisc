@@ -599,18 +599,18 @@ evalExpr : Space -> List (List String) -> Site -> Expr -> Result MValue (List St
 evalExpr sp stack site e = case e of
     ELiteral v -> Ok v
   | EReference q -> if memberPath q stack then Err (atSite site (cycleText stack q) :: Nil) else resolveNode sp stack site q
-  | EArray xs -> evalEach sp stack site xs Map.strings Nil
+  | EArray xs -> evalEach sp stack site xs Nil
   | EObject kvs -> evalMembers sp stack site kvs.
 
-evalEach : unsafe Space -> List (List String) -> Site -> List Expr -> Map.Map String MValue -> List MValue -> Result MValue (List String) .
-evalEach sp stack site xs keys acc = case xs of
+evalEach : unsafe Space -> List (List String) -> Site -> List Expr -> List MValue -> Result MValue (List String) .
+evalEach sp stack site xs acc = case xs of
     Nil -> Ok (VArray (List.revOnto acc Nil))
-  | x :: rest -> evalElem sp stack site rest (evalExpr sp stack site x) keys acc.
+  | x :: rest -> evalElem sp stack site rest (evalExpr sp stack site x) acc.
 
-evalElem : Space -> List (List String) -> Site -> List Expr -> Result MValue (List String) -> Map.Map String MValue -> List MValue -> Result MValue (List String) .
-evalElem sp stack site rest r keys acc = case r of
+evalElem : Space -> List (List String) -> Site -> List Expr -> Result MValue (List String) -> List MValue -> Result MValue (List String) .
+evalElem sp stack site rest r acc = case r of
     Err problems -> Err problems
-  | Ok v -> evalEach sp stack site rest keys (v :: acc).
+  | Ok v -> evalEach sp stack site rest (v :: acc).
 
 evalMembers : unsafe Space -> List (List String) -> Site -> List (String, Expr) -> Result MValue (List String) .
 evalMembers sp stack site kvs = case kvs of
