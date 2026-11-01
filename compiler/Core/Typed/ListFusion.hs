@@ -12,6 +12,8 @@ import Core.Typed.Callback.Catalog
 import Core.Typed.Callback.Model
 import qualified Core.Typed.FusionSafety as Safety
 import Core.Typed.Fusion (FusionNote(..),Decline(..))
+import Core.FusionPolicy (safePrimitives)
+import Core.Primitives (primArities)
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Core.Identity
 import Type.Syntax
@@ -29,6 +31,19 @@ data Site=Site Expr Kind Expr [Expr] [(Binder,Expr)]
 data Callback=Callback Target Expr [(Expr,Scheme)] Int [Expr]
 data Build=Build Int (M.Map CodeId CodeFunction) [FusionNote] (M.Map String Bool) Bool
 
+-- Capture-aware occurrence counts: ClosureValue/CodeCall/JoinCall capture
+-- lists are uses exactly like Var references, so a value consumed by a
+-- synthesized closure still counts. Over-counting only declines fusion.
+countUses :: Expr -> M.Map BinderId Int
+countUses e=here<>getConst (mapChildrenM (Const . countUses) e)
+  where
+    here=case exprNode e of
+      Var (Local uid)->M.singleton uid 1
+      ClosureValue _ captures->M.fromList [(u,1)|u<-captures]
+      CodeCall _ captures _->M.fromList [(u,1)|u<-captures]
+      JoinCall _ captures _->M.fromList [(u,1)|u<-captures]
+      _->M.empty
+
 fuseListClosed :: Namespace -> TypeContext -> Catalog -> CodeLibrary -> ClosedFunction -> Either String (ClosedFunction,[FusionNote],Bool)
 fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot library input=do
   let source=mergeClosedLibrary library input
@@ -41,6 +56,7 @@ fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot libr
     safety=Safety.planSafety (catalogTemplates snapshot)
     owner=functionName (closedRoot input)
     aliases=M.unions [bindings (functionBody f) | f<-closedRoot input:map codeAsFunction (M.elems (closedCode input))]
+    counts=M.unionsWith (+) [countUses (functionBody f) | f<-closedRoot input:map codeAsFunction (M.elems (closedCode input))]
     bindings e=(case exprNode e of Let b rhs _->M.singleton (binderId b) rhs;_->M.empty)
       <>getConst (mapChildrenM (Const . bindings) e)
     -- Resolve only value operands, exactly as checked vector fusion does.
@@ -72,9 +88,57 @@ fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot libr
       Build _ added _ _ _<-get
       pure (root',codes' `M.union` added)
     function fn=do
-      let scope=M.fromList [(binderId b,b) | b<-functionParameters fn++allBinders (functionBody fn)]
-      body<-go scope (functionBody fn)
+      floated<-floatProducer (functionBody fn)
+      let scope=M.fromList [(binderId b,b) | b<-functionParameters fn++allBinders floated]
+      body<-go scope floated
       pure fn {functionBody=body}
+    -- Float single-use let-bound producers to their use position before the
+    -- site walk: the producer's evaluation then moves across only movable
+    -- work (FusionPolicy-safe, or a bare function value, whose body runs
+    -- only when a combinator calls it), so the float is observationally
+    -- equivalent even when the later composition declines. Directly nested
+    -- sites, chained bindings and uses under arbitrary expressions (a
+    -- `print (sum r)`) all reduce to the same nested spine afterwards.
+    floatProducer e=case exprNode (unNote e) of
+      Let b rhs rest
+        | Just (Site _ kind _ _ _)<-site rhs,kind `elem` [KRange,KMap,KFilter]
+        -- a binder's occurrences cannot leave its binding's scope, so the
+        -- whole-program count is exactly the count in the body
+        , M.lookup (binderId b) counts==Just 1
+        , Just rest'<-tryFloat (binderId b) rhs rest->do
+            modify (\(Build n cs ns v _)->Build n cs ns v True)
+            floatProducer rest'
+      _->mapChildrenM floatProducer e
+    -- Replace binder uid's single occurrence with the producer. Children
+    -- are visited in evaluation order; the producer may move behind earlier
+    -- siblings only while they are movable, and never into a lambda.
+    tryFloat uid producer e=case exprNode (unNote e) of
+      Var (Local u)|u==uid->Just producer
+      Lambda {}->Nothing
+      _->fst <$> runStateT (mapChildrenM child e) True
+      where
+        child x=do
+          ok<-get
+          x'<-if M.member uid (countUses x)
+                then if ok then maybe (lift Nothing) pure (tryFloat uid producer x)
+                     else lift Nothing
+                else pure x
+          put (ok && movable x)
+          pure x'
+    movable e=case exprNode (unNote e) of
+      ClosureValue {}->True
+      Var (Global _ _)->True
+      _->case spine (unNote e) [] of
+        (head',args)|Var (Global name _)<-exprNode (unNote head'),underApplied name args->all movable args
+        _->Safety.unsafeExpression safety e==Nothing
+    -- A partial application only allocates the function value; the body or
+    -- primitive runs when a combinator saturates it, an interleaving the
+    -- composition rules already rule on. Saturated calls keep FusionSafety's
+    -- judgment (an unknown or exact-arity call is not movable by itself).
+    underApplied name args
+      | Just (Template _ ps _ _ _)<-M.lookup (RootTarget name) (catalogTemplates snapshot)=length args<length ps
+      | Just arity<-lookup name primArities=name `elem` safePrimitives&&length args<arity
+      | otherwise=False
     go scope e=mapChildrenM (go scope) e >>= \e'->case site e' of
       Nothing->pure e'
       Just s->do
