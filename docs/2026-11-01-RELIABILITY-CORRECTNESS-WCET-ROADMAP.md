@@ -50,7 +50,10 @@ one missing oracle, an executable reference interpreter over checked Core,
 and use it for generated-program differential testing and translation
 validation of the risky passes. WCET proper starts with a cycle model for
 simple-risc and an IPET pass over the selected low IR, validated against
-`mcycle`, behind a `wcet` profile that refuses anything unbounded.
+`mcycle`. WCET is not a profile: per Jack's decision (section 6) it is part
+of the type system, always on, using the `| work f <= ...` signature syntax
+already proposed in `2026-10-02-RESOURCE-BOUNDS.md`; the reference target is
+the cached SDRAM simple-risc configuration.
 
 ## 1. Reliability: what exists
 
@@ -173,8 +176,13 @@ What sound per-target bounds need, in dependency order:
    documented SDRAM configuration runs with a 64 KiB cache
    (`simple-risc/README.md:62`). Options: a scratchpad/uncached WCET
    configuration (fixed latencies, simplest and sound), or a cache model
-   (must/may analysis, as aiT does). Recommend the uncached/BRAM-only config
-   for the first certified mode.
+   (must/may analysis, as aiT does). **Decided (2026-11-01): the cached SDRAM
+   configuration is the reference target**, so a cache model (must/may
+   abstract interpretation over the 64 KiB cache, plus SDRAM refresh/row
+   latencies) is on the critical path, not optional. The uncached/BRAM
+   configuration remains useful as a stepping stone: same IPET pass, fixed
+   latencies, so the pipeline model can be validated against `mcycle` before
+   the cache model lands.
 2. **Analysis on the selected low IR, then on the binary.** IPET over the
    typed-IR CFG with loop bounds from `measure`s, using the selected
    instruction stream `Codegen.Bounds` already walks; a binary-level
@@ -193,11 +201,137 @@ What sound per-target bounds need, in dependency order:
    proposal phases 1-5) change code and therefore bounds; analysis must run
    after them on the final stream (as `Bounds` already does), and a
    regression gate tracks bound changes per admitted function.
-6. **A `wcet` profile/flag** that refuses compilation for any reachable
-   unbounded loop, unknown callback without a cost contract, opaque primitive
-   without a timing entry, or allocation without an arena bound, and emits a
-   report (per function: bound in cycles, loop bounds used, assumptions,
-   manifest/compiler/runtime versions; JSON plus text, like `--remarks=json`).
+6. **Bounds in the type system, not a profile** (decided 2026-11-01; section
+   4a). Every function has a cost, always: safe code a derived closed form,
+   `unsafe` code ω. A declared bound is a checked part of the signature, and
+   a target manifest turns it into cycles. The refusals that the earlier
+   draft gave a `wcet` profile become ordinary type errors at a declared
+   bound: a reachable unbounded loop, a callback without a cost contract, an
+   opaque primitive without a timing entry, or an allocation without an
+   arena bound under a declared `alloc`/`live` bound. The report (per
+   function: bound in cycles, loop bounds used, assumptions,
+   manifest/compiler/runtime versions; JSON plus text, like
+   `--remarks=json`) is what `fpr build --cost --target=<manifest>` prints.
+
+### 4a. WCET in the type system: alignment with the existing proposal
+
+The syntax already exists in the tree and is the one to use; no new keyword
+or profile is introduced:
+
+```
+f : (a : Int) -> (b : Int) -> Int
+  | work  f <= 12 * a + 40     -- abstract ops (Cost.hs units)
+  | alloc f <= 16 * a          -- bytes requested over the call
+  | live  f <= 64 .            -- peak resident bytes (Stage 4)
+```
+
+Sources: `2026-10-02-RESOURCE-BOUNDS.md` (grammar, Stages 1-4: derived
+equations, bounds in signatures and interfaces, target manifests, live
+memory), `2026-08-25-SAFETY.md` (the `unsafe` marker is exactly the set of
+WCET-opaque functions, always on), and the `measure`/`size` annotations that
+bound iteration counts. What exists now: `work`/`alloc` contracts on std
+functions checked by `fpr build --cost` (PR #41 adds the drift gate).
+
+How the roadmap maps onto it:
+
+| Roadmap piece | Lands as |
+| --- | --- |
+| cycle bound per function | `work f <= e` judged against a manifest for cached-SDRAM simple-risc (Stage 3) |
+| loop bounds | `measure`s and `size`s, already in the checker |
+| callback contracts | `work g` of a function-typed parameter on the right-hand side (Stage 2) |
+| opaque primitives | foreign declarations carry bounds or are ω (Stage 2) |
+| static arenas / stack bound | `alloc`/`live` plus a `stack f <= n` quantity (the fourth quantity named in RESOURCE-BOUNDS) |
+| "refuse anything unbounded" | a declared bound that cannot be proven is a compile error naming the ω |
+| preemption latency | `segmax` from `Codegen.Bounds`, reported beside `work` |
+
+One extension is needed beyond RESOURCE-BOUNDS: Stage 3's manifest is
+ns-per-abstract-op times a safety factor, which is unsound on a cached
+target. For the reference target the manifest's per-op cost must come from
+the IPET + cache analysis over the selected low IR (section 4, items 1-2),
+so a manifest entry becomes "cycles for this function's CFG under this
+cache model", with the abstract-op form kept as the portable fallback.
+
+### 4b. Proposal: the Sol bytecode VM as the reference interpreter
+
+Status: proposal only; nothing implemented.
+
+**Idea.** Section 3 asks for an executable reference over checked Core. The
+Sol VM (`compiler/Sol/VM.hs`, `Bytecode.hs`, about 11k lines across
+`compiler/Sol/`) already runs the shared FPRISC.hs surface -> Core pipeline
+(`Sol/Lang.hs` imports `FPRISC`) on a bytecode interpreter written in
+Haskell, independent of the native back end (`Codegen`, the C runtime). It
+is the cheapest independent second implementation available.
+
+**Semantics that differ from native today (from the source; each must be
+closed or declared for a trap-exact reference):**
+
+| Area | Native | Sol VM |
+| --- | --- | --- |
+| `Int` | 64-bit, overflow traps (`2026-10-12-INT-OVERFLOW.md`) | `VInt !Integer`, unbounded (`Sol/Val.hs:52`); no overflow trap |
+| Int/Numeric mixing | separate types | `VInt` promotes into `VNum` on contact (`Val.hs:53`, `veq` 1 == 1.0) |
+| division by zero | trap | `vmPanic "division by zero"` (`VM.hs:370`): same outcome, different text path |
+| trap text | `*** FPRISC PANIC [actor N]: msg ***` | `*** SOL PANIC: msg ***` |
+| evaluation order / trap order | native after fusion, inlining, discharge | bytecode order; JIT tiers (`HandJIT`, `JitCore`) are separate code |
+| actors | real harts, C scheduler | VM scheduler; a spawned actor's panic printed, not propagated the same way (`VM.hs:507,638`) |
+| host services | QOS / HAL | ScriptIO, Txn, Process; size caps (`16777216`) in host budgets |
+| profile | `base`, `builtin` | `sol` prelude and `>` statements |
+
+**What "reference mode" would be.** A `fpr sol --reference` (or
+`FPR_SOL_REFERENCE=1`) switch that: uses checked i64 arithmetic with the
+native trap points and texts; disables Int->Numeric promotion; disables
+every JIT tier; uses a deterministic single-hart schedule (and a seeded
+interleaving mode for actor tests); and accepts the `base` prelude so ordinary
+`tests/std` and generated programs run unchanged. Output contract: stdout
+equal to native, exit code equal, and the trap reason equal byte for byte.
+
+**Pros.** Already exists and is exercised by the sol CI job; independent of
+`Codegen`, the C runtime, region inference, reuse and the vector paths that
+the differential most needs to check; Haskell `Integer` makes an
+overflow-checking mode easy to write correctly; shares no low-level code
+with native, so agreement is meaningful.
+
+**Cons.** It shares the front end (parser, typechecker, Core), so front-end
+bugs are invisible to it (the fuzz smoke and the exhaustiveness repros cover
+some of that); it is a product interpreter with performance work in it
+(JITs, caches), which is the opposite of a minimal reference, and each
+reference-mode switch is a fork inside product code; it is slow for large
+inputs; actor semantics differ enough that actor-heavy programs need their
+own spec first. A minimal Core interpreter (a few hundred lines) would be
+simpler to trust but is another implementation to maintain.
+
+**Cost (estimate).** Reference-mode switches and trap texts: 1 week.
+Running `tests/std` and benches through it with a diff gate: 3-4 days.
+Generated-program differential (reference vs native x configs): reuses
+`tests/reliability/config_differential.py`, 1 week for the generator.
+Actor determinism spec: 1-2 weeks, can follow. CI: about 3-5 minutes on
+the PR subset, the full set nightly.
+
+**Recommendation.** Do it, scoped: reference mode on the Sol VM for
+single-actor programs first, with the differences above as an explicit
+checklist and a test per row; revisit a minimal Core interpreter only if the
+shared front end turns out to hide real bugs.
+
+### 4c. Design: sandboxing Sol `sh` by default (design only)
+
+Status: design; not scheduled this week.
+
+- **Default:** `sh`/`Process` children run with: read access to the
+  script's directory, the working directory and system paths; write access
+  only to the working directory and `$TMPDIR`; no network unless the script
+  declares it; no new privileges.
+- **Linux:** landlock (filesystem) + seccomp (no `ptrace`, no namespace
+  escapes) + `PR_SET_NO_NEW_PRIVS`; degrade to an explicit warning on kernels
+  without landlock rather than silently running unsandboxed.
+- **macOS:** `sandbox-exec` with a generated profile (deprecated but
+  shipped); otherwise a warning.
+- **Opt-out:** `--unsandboxed` / `SOL_SANDBOX=0` per run, and a script-level
+  declaration (e.g. `needs net, write "~/out".`) that widens the policy and is
+  printed by `--explain`.
+- **Compatibility:** a one-release warn-only phase logging what would be
+  denied; existing tests run with the sandbox on to find scripts that need a
+  declaration.
+- **Tests:** escape attempts (write outside allowed roots, open a socket,
+  `ptrace`) must fail with a named error; allowed operations must not.
 
 Comparison (checked on the web this session: OTAWA is an open-source
 IPET-based binary-level framework, documented ISAs ARM/PowerPC/SPARC/TriCore,
@@ -244,24 +378,38 @@ Each step is small, mergeable, and either a new gate or behind a flag
 
 | Step | Effort | Gate / metric |
 | --- | --- | --- |
-| simple-risc timing model (uncached/BRAM config first), cycle-level IPET on selected IR | 1-2 mo | bound >= observed `mcycle` on every admitted function; tightness reported |
-| `wcet` profile: static arenas, static stack bound, no refill/growth, refusal diagnostics, JSON report | 1-2 mo | rejection tests for each missing property |
+| simple-risc timing model (BRAM config to validate the pipeline model, then the cached SDRAM reference target), cycle-level IPET on selected IR | 1-2 mo | bound >= observed `mcycle` on every admitted function; tightness reported |
+| Bounds in the type system (RESOURCE-BOUNDS Stages 2-4): manifests from IPET, `stack` quantity, static arenas, no refill/growth under a declared bound, JSON report | 1-2 mo | rejection tests for each missing property |
 | Binary-level cross-check (own or OTAWA-style) | 1 mo | agrees with IR-level bound |
 | Mechanized semantics (Lean 4) of Core subset; proofs for discharge and fusion trap-order | 3+ mo | proofs checked in CI |
-| Cache-aware analysis if the cached SDRAM config must be certified | 2+ mo | as above |
+| Cache-aware analysis (must/may) for the cached SDRAM reference target: required | 2+ mo | as above |
 
-## Open questions for Jack
+## 6. Decisions (Jack, 2026-11-01)
 
-1. Is the first certified WCET target the uncached/BRAM simple-risc
-   configuration, or must the 64 KiB-cache SDRAM configuration be covered?
-2. Should `wcet` be a profile (like `builtin`) or a flag on `builtin`/`base`?
-3. What CI time budget is acceptable for the new jobs (the differential matrix
-   alone is about 10 minutes on 6 workers)?
-4. Should declared `work`/`alloc` contracts in std be machine-maintained
-   (re-derived and rewritten by a tool) to stop drift like bug 2?
-5. Reference interpreter in Haskell inside the compiler package, or a separate
-   minimal implementation to keep it independent of compiler code?
-6. Is sandboxing Sol `sh` by default acceptable for existing scripts?
+1. **Reference WCET target: the cached SDRAM simple-risc configuration.**
+   A cache model is required (section 4, item 1); uncached BRAM is a
+   validation stepping stone only.
+2. **WCET is not a profile.** It always exists and lives in the type system
+   with the existing `| work f <= ...` syntax (section 4a).
+3. **CI budget: under 30 minutes total, ideally 15-20.** New checks run in
+   one `reliability` job in parallel with the x86-64 job (no added wall
+   time), with fixed seeds, a PR subset and a nightly full run (PR #44).
+   Heavy work (full configuration differential, 2000-mutant fuzz) is nightly.
+4. **Yes to machine-maintained contracts:** `tests/reliability/std_contracts.py`
+   fails on drift and `--fix` rewrites (PR #41).
+5. **Reference interpreter:** write a proposal for the Sol VM (section 4b).
+6. **Sol `sh` sandbox by default: yes, design only for now** (section 4c).
+
+### This week's items: status
+
+| Item | PR |
+| --- | --- |
+| A. bugs 1-4 with regression tests | #43 (stdcheck arity), #41 (log contracts), #42 (Exhaust crash), #40 (qsort NULL) |
+| B. reliability CI job | #44 |
+| C. panics and diagnostics to stderr | see the PR linked from #39 |
+| D. vecwide compile-time tracking | see the PR linked from #39 |
+| E. contract-sync check | #41 |
+| F. this update | #39 |
 
 ## Verified vs unverified
 
