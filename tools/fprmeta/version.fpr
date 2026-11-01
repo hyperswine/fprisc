@@ -1,0 +1,85 @@
+# version.fpr -- release versions and project pins, for fprmeta.
+#
+# A version is MAJOR.MINOR.PATCH with an optional "-tag" (0.13.0-rc1,
+# 0.13.0-dev). A pre-release sorts just before the release it leads to, and is
+# compatible like that release, the same rule as compiler/Project.hs.
+#
+# A pin is what a project asks for:
+#   "0.12.0"   compatible: this version or a later one in the same series
+#              (major.minor while the major is 0, else the major)
+#   "=0.12.3"  exact: that version and nothing else
+
+S = use "std/string".
+L = use "std/list".
+O = use "std/option".
+Ord = use "std/order".
+
+Version = { parts : List Int, tag : String, text : String }.
+Pin = { exact : Bool, version : Version }.
+
+digitsOnly : unsafe String -> Int -> Bool .
+digitsOnly s i = if i >= strlen s then strlen s > 0 else S.isDigit (charAt s i) and digitsOnly s (i + 1).
+
+numbers : unsafe List String -> List Int -> Result (List Int) String .
+numbers xs acc = case xs of
+    Nil -> Ok (L.reverse acc)
+  | x :: rest -> if digitsOnly x 0 then
+        (case S.toInt x of Ok n -> numbers rest (n :: acc) | Err why -> Err why)
+      else Err "not a number".
+
+parse : unsafe String -> Result Version String .
+parse text =
+  (core, tag) = case S.indexOf "-" text of
+      O.Some at -> (S.left at text, S.dropLeft (at + 1) text)
+    | O.None -> (text, "");
+  bad = Err "\"{text}\" is not a version (expected MAJOR.MINOR.PATCH, for example 0.12.0)";
+  case numbers (S.split "." core) Nil of
+      Ok ps -> if L.length ps == 3 and not (S.contains " " tag) and not (S.contains "/" tag)
+                  and (tag != "" or not (S.contains "-" text))
+               then Ok { parts = ps, tag = tag, text = text } else bad
+    | Err _ -> bad.
+
+parsePin : unsafe String -> Result Pin String .
+parsePin text =
+  if S.startsWith "=" text then
+    (case parse (S.dropLeft 1 text) of Ok v -> Ok { exact = True, version = v } | Err why -> Err why)
+  else
+    (case parse text of Ok v -> Ok { exact = False, version = v } | Err why -> Err why).
+
+pinText : Pin -> String .
+pinText p = if p.exact then "={p.version.text}" else p.version.text.
+
+listCompare : unsafe List Int -> List Int -> Ord.Ordering .
+listCompare a b = case (a, b) of
+    (x :: xs, y :: ys) -> if x < y then Ord.Less else if x > y then Ord.Greater else listCompare xs ys
+  | (Nil, Nil) -> Ord.Equal
+  | (Nil, _) -> Ord.Less
+  | _ -> Ord.Greater.
+
+# newest last when sorted with this; a pre-release before its release
+compare : unsafe Version -> Version -> Ord.Ordering .
+compare a b = case listCompare a.parts b.parts of
+    Ord.Equal ->
+      if a.tag == b.tag then Ord.Equal
+      else if a.tag == "" then Ord.Greater
+      else if b.tag == "" then Ord.Less
+      else Ord.string a.tag b.tag
+  | other -> other.
+
+series : Version -> List Int .
+series v = case v.parts of
+    0 :: minor :: _ -> [0, minor]
+  | major :: _ -> [major]
+  | Nil -> Nil.
+
+# does an installed version satisfy a pin?
+satisfies : unsafe Pin -> Version -> Bool .
+satisfies pin v =
+  if pin.exact then v.text == pin.version.text
+  else sameList (series v) (series pin.version) and notLess (listCompare v.parts pin.version.parts).
+
+sameList : unsafe List Int -> List Int -> Bool .
+sameList a b = case listCompare a b of Ord.Equal -> True | _ -> False.
+
+notLess : Ord.Ordering -> Bool .
+notLess o = case o of Ord.Less -> False | _ -> True.

@@ -134,7 +134,7 @@ endif
 # (GHCOPT=-O2, build/fpr-opt; 2026-10-18-COMPILER-BUILD-OPT.md found it
 # equal to -O1).  Without cabal the classic ghc path builds each level
 # into its own build/ghc-* dir for the same reason.
-.PHONY: fpr-dev
+.PHONY: fpr-dev fprmeta
 fpr-dev: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/*.c fp-risc.cabal Makefile
 	@set -e; mkdir -p build; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
 	if command -v cabal >/dev/null 2>&1; then \
@@ -210,6 +210,12 @@ fprc: fpr
 # built once against the compiler library, run in the package root.
 # UNIT=TypedCore runs one suite.
 .PHONY: unit-tests
+# ---- fprmeta: the toolchain manager and launcher (docs/2026-11-01-FPRMETA.md) ----
+# One binary; link it as fprmeta, qosmeta, fpr, sol and qos.
+fprmeta: fpr
+	mkdir -p build/fprmeta
+	FPR_HOME=$(CURDIR) ./fpr build tools/fprmeta/fprmeta.fpr -o build/fprmeta/fprmeta
+
 unit-tests:
 	$(NATIVE_PKG_ENV) cabal test $(if $(UNIT),test:$(UNIT),all) --test-show-details=direct
 

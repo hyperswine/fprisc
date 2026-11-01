@@ -62,6 +62,18 @@ static V h_args(V u) {
 }
 FPR_FN(fpr_g_Sys_x2eargs, h_args, 1);
 
+/* The name this program was started under: the last part of argv[0], so a
+ * binary reached through a link named `sol` sees "sol". Launchers and
+ * multi-call tools dispatch on it. Empty when the host gave no argv[0]. */
+static V h_name(V u) {
+  (void)u;
+  const char *a = fpr_posix_argc > 0 && fpr_posix_argv[0] ? fpr_posix_argv[0] : "";
+  const char *slash = strrchr(a, '/');
+  if (slash) a = slash + 1;
+  return mkstr(a, (uw)strlen(a));
+}
+FPR_FN(fpr_g_Sys_x2ename, h_name, 1);
+
 static V h_exit(V code) {
   if (!ISINT(code)) fpr_cpanic("Sys.exit: expected an Int");
   /* a process status is one byte; 300 used to become 44 without a word */

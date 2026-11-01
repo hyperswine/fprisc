@@ -520,6 +520,7 @@ builtinEnv =
       ("fileAppend", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
       ("fileExists", mono (TFn tStr tBool)),
       ("Sys.args", mono (TFn tUnit (tList tStr))),
+      ("Sys.name", mono (TFn tUnit tStr)),
       ("Sys.exit", scheme [0] (TFn tInt (sv 0))),
       ("Sys.env", mono (TFn tStr (tcon "Result" [tStr, tStr]))),
       ("Sys.readLine", mono (TFn tUnit (tcon "Result" [tStr, tStr]))),
