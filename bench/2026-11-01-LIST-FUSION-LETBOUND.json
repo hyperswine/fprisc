@@ -1,0 +1,80 @@
+{
+ "platform": "macOS-27.0.1-arm64",
+ "date": "2026-11-01",
+ "runs": 15,
+ "method": "Two warmups; 15 interleaved balanced on/off runs per workload; exact output checked equal in both modes. FPR_NO_LIST_FUSE toggles the pass; hosted defaults otherwise (loop/call regions on). Workloads bind the pipeline with a let inside a recursive unsafe driver, 20 x 1M elements: let_sum binds range, let_map and let_filter bind the transformer output, all consumed by sum through the binding.",
+ "settings": {
+  "FPR_HARTS": "1"
+ },
+ "results": {
+  "let_sum": {
+   "median_s": {
+    "off": 0.210958,
+    "on": 0.070061
+   },
+   "min_s": {
+    "off": 0.204648,
+    "on": 0.062056
+   },
+   "output": "let_sum 10000010000000",
+   "paired_on_off_ratios": [
+    0.303,
+    0.315,
+    0.316,
+    0.331,
+    0.332,
+    0.332,
+    0.327,
+    0.325,
+    0.322
+   ],
+   "runs": 15
+  },
+  "let_map": {
+   "median_s": {
+    "off": 0.537913,
+    "on": 0.094166
+   },
+   "min_s": {
+    "off": 0.502943,
+    "on": 0.089181
+   },
+   "output": "let_map 10000030000000",
+   "paired_on_off_ratios": [
+    0.177,
+    0.169,
+    0.177,
+    0.176,
+    0.175,
+    0.178,
+    0.179,
+    0.175,
+    0.182
+   ],
+   "runs": 15
+  },
+  "let_filter": {
+   "median_s": {
+    "off": 0.366188,
+    "on": 0.100088
+   },
+   "min_s": {
+    "off": 0.341406,
+    "on": 0.09388
+   },
+   "output": "let_filter 2500005000000",
+   "paired_on_off_ratios": [
+    0.275,
+    0.274,
+    0.27,
+    0.268,
+    0.273,
+    0.272,
+    0.273,
+    0.274,
+    0.256
+   ],
+   "runs": 15
+  }
+ }
+}
