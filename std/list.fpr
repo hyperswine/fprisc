@@ -26,6 +26,17 @@ range a b = rangeGo a b Nil.
 rangeGo : (a : Int) -> (b : Int | measure (b - a)) -> List Int -> List Int .
 rangeGo a b acc = case b < a of True -> acc | False -> rangeGo a (b - 1) (b :: acc).
 
+# Fusion target (checked list fusion, FPR_NO_LIST_FUSE to roll back):
+# `fold f z (range a b)` rewrites to `foldRange f z a b`, ascending like
+# the fold, without building the list. The unfused range's descending
+# `b - 1` underflows when a = minInt; the fused loop's `a + 1` overflows
+# only at b = maxInt. This edge follows the checked-fusion policy's
+# documented Int-overflow relaxation (compiler/Core/FusionPolicy.hs).
+foldRange : (b -> Int -> b) -> b -> Int -> Int -> b .
+foldRange f z a b = foldRangeGo f z a b.
+foldRangeGo : (b -> Int -> b) -> b -> (a : Int) -> (b : Int | measure (b - a)) -> b .
+foldRangeGo f z a b = case a > b of True -> z | False -> foldRangeGo f (f z a) (a + 1) b.
+
 repeat : (n : Int) -> a -> List a | size repeat <= n .
 repeat n x = repeatGo n x Nil.
 repeatGo : (n : Int | measure n) -> a -> List a -> List a .

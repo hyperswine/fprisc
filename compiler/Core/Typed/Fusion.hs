@@ -18,14 +18,16 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 data Decline=CallbackEffect String Safety.Reason | CaptureEffect | CaptureBudget deriving (Eq,Show)
-data FusionNote=FusionNote String ElementOp String String Decline deriving (Eq,Show)
+data FusionNote=FusionNote String ElementOp String String Decline | ListNote String String String String Decline deriving (Eq,Show)
+renderNote (ListNote _ composition outer inner refusal)=
+  "list note: "++composition++" (`"++outer++"` after `"++inner
+  ++"`) is NOT fused: "++renderDecline refusal++" -- the two passes run in order, each over the whole list"
 renderNote (FusionNote _ op outer inner refusal)=
   "vec note: Vec."++elementOpName op++" `"++outer++"` after Vec."++elementOpName op++" `"++inner
-  ++"` is NOT fused: "++reason++" -- the two passes run in order, each over the whole vector"
-  where reason=case refusal of
-          CallbackEffect name why->"`"++name++"` uses "++Safety.renderReason why
-          CaptureEffect->"capture evaluation can have effects or fail"
-          CaptureBudget->"combined capture budget exceeded"
+  ++"` is NOT fused: "++renderDecline refusal++" -- the two passes run in order, each over the whole vector"
+renderDecline (CallbackEffect name why)="`"++name++"` uses "++Safety.renderReason why
+renderDecline CaptureEffect="capture evaluation can have effects or fail"
+renderDecline CaptureBudget="combined capture budget exceeded"
 
 data Site=Site Expr ElementOp Expr Expr (Maybe Expr) Expr [(Binder,Expr)]
 -- The original code captures retain their schemes; leading ordinary args use

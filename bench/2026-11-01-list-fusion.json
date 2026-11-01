@@ -1,0 +1,160 @@
+{
+  "median_s": {
+    "disabled:list_filter": 0.376541,
+    "disabled:list_filter_safe": 0.353482,
+    "disabled:list_map": 0.514999,
+    "disabled:list_sum": 0.197943,
+    "enabled:list_filter": 0.350414,
+    "enabled:list_filter_safe": 0.113571,
+    "enabled:list_map": 0.112533,
+    "enabled:list_sum": 0.075825,
+    "enabled:loop_sum": 0.046031
+  },
+  "min_s": {
+    "disabled:list_filter": 0.317026,
+    "disabled:list_filter_safe": 0.284665,
+    "disabled:list_map": 0.415994,
+    "disabled:list_sum": 0.151663,
+    "enabled:list_filter": 0.320703,
+    "enabled:list_filter_safe": 0.079684,
+    "enabled:list_map": 0.071278,
+    "enabled:list_sum": 0.048444,
+    "enabled:loop_sum": 0.035096
+  },
+  "notes": {
+    "list_filter": "The original evenness predicate reaches division and must decline under FusionPolicy.",
+    "list_filter_safe": "Same range/filter/sum shape with a non-trapping x <= 500000 predicate."
+  },
+  "output": {
+    "disabled:list_filter": "list_filter 5000010000000",
+    "disabled:list_filter_safe": "list_filter_safe 2500005000000",
+    "disabled:list_map": "list_map 10000030000000",
+    "disabled:list_sum": "list_sum 10000010000000",
+    "enabled:list_filter": "list_filter 5000010000000",
+    "enabled:list_filter_safe": "list_filter_safe 2500005000000",
+    "enabled:list_map": "list_map 10000030000000",
+    "enabled:list_sum": "list_sum 10000010000000",
+    "enabled:loop_sum": "list_sum 10000010000000"
+  },
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "probe": {
+    "disabled:list_filter": {
+      "alloc_bytes": 1920000112,
+      "alloc_requests": 40000002,
+      "buddy_allocs": 3678,
+      "buddy_frees": 0,
+      "copies": 1,
+      "copy_bytes": 0,
+      "message_slabs": 0,
+      "receives": 0,
+      "state_bytes": 0,
+      "state_copies": 0,
+      "turns": 0
+    },
+    "disabled:list_filter_safe": {
+      "alloc_bytes": 1920000112,
+      "alloc_requests": 40000002,
+      "buddy_allocs": 3678,
+      "buddy_frees": 0,
+      "copies": 1,
+      "copy_bytes": 0,
+      "message_slabs": 0,
+      "receives": 0,
+      "state_bytes": 0,
+      "state_copies": 0,
+      "turns": 0
+    },
+    "disabled:list_map": {
+      "alloc_bytes": 2880000112,
+      "alloc_requests": 60000002,
+      "buddy_allocs": 5510,
+      "buddy_frees": 0,
+      "copies": 1,
+      "copy_bytes": 0,
+      "message_slabs": 0,
+      "receives": 0,
+      "state_bytes": 0,
+      "state_copies": 0,
+      "turns": 0
+    },
+    "disabled:list_sum": {
+      "alloc_bytes": 960000112,
+      "alloc_requests": 20000002,
+      "buddy_allocs": 1847,
+      "buddy_frees": 0,
+      "copies": 1,
+      "copy_bytes": 0,
+      "message_slabs": 0,
+      "receives": 0,
+      "state_bytes": 0,
+      "state_copies": 0,
+      "turns": 0
+    },
+    "enabled:list_filter": {
+      "alloc_bytes": 1920000112,
+      "alloc_requests": 40000002,
+      "buddy_allocs": 3678,
+      "buddy_frees": 0,
+      "copies": 1,
+      "copy_bytes": 0,
+      "message_slabs": 0,
+      "receives": 0,
+      "state_bytes": 0,
+      "state_copies": 0,
+      "turns": 0
+    },
+    "enabled:list_filter_safe": {
+      "alloc_bytes": 112,
+      "alloc_requests": 2,
+      "buddy_allocs": 14,
+      "buddy_frees": 0,
+      "copies": 1,
+      "copy_bytes": 0,
+      "message_slabs": 0,
+      "receives": 0,
+      "state_bytes": 0,
+      "state_copies": 0,
+      "turns": 0
+    },
+    "enabled:list_map": {
+      "alloc_bytes": 112,
+      "alloc_requests": 2,
+      "buddy_allocs": 14,
+      "buddy_frees": 0,
+      "copies": 1,
+      "copy_bytes": 0,
+      "message_slabs": 0,
+      "receives": 0,
+      "state_bytes": 0,
+      "state_copies": 0,
+      "turns": 0
+    },
+    "enabled:list_sum": {
+      "alloc_bytes": 112,
+      "alloc_requests": 2,
+      "buddy_allocs": 14,
+      "buddy_frees": 0,
+      "copies": 1,
+      "copy_bytes": 0,
+      "message_slabs": 0,
+      "receives": 0,
+      "state_bytes": 0,
+      "state_copies": 0,
+      "turns": 0
+    },
+    "enabled:loop_sum": {
+      "alloc_bytes": 112,
+      "alloc_requests": 2,
+      "buddy_allocs": 14,
+      "buddy_frees": 0,
+      "copies": 1,
+      "copy_bytes": 0,
+      "message_slabs": 0,
+      "receives": 0,
+      "state_bytes": 0,
+      "state_copies": 0,
+      "turns": 0
+    }
+  },
+  "runs": 15
+}

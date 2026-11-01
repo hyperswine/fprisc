@@ -921,7 +921,9 @@ compileWithReport accepted report = do
                 (unitElided h) (nativeUnit (unitConsOf h) unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
           linkedResult=do
             base<-sequence artifactResults >>= Linked.linkArtifacts
-            original<-checkedStage "callback specialization before inlining" (Linked.specializeLinkedWithDecisions (remarkMode/=Remark.Off) callbackMode base)
+            (listed,listNotes)<-if oArc opts || oBuiltin opts || not (Options.cgListFuse codegen) then pure (base,[]) else
+              checkedStage "checked list fusion" (Linked.fuseListLinked base)
+            original<-checkedStage "callback specialization before inlining" (Linked.specializeLinkedWithDecisions (remarkMode/=Remark.Off) callbackMode listed)
             inlined<-if oArc opts || oNoInline opts then pure original else
               do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinkedWithDecisions (remarkMode/=Remark.Off) 3 24 64 original)
                  checkedStage "callback specialization after inlining" (Linked.specializeLinkedWithDecisions (remarkMode/=Remark.Off) callbackMode inlined)
@@ -929,8 +931,9 @@ compileWithReport accepted report = do
               checkedStage "checked vector reads" (Linked.planVectorReadsLinked inlined)
             normalized<-if oArc opts || oBuiltin opts || Backend.tgtW (oTarget opts)/=8 || not (Options.cgReuse codegen) then pure vectors else
               checkedStage "checked Base normalization" (Linked.normalizeLinked vectors)
-            if oArc opts || not (Options.cgFusion codegen) then pure (normalized,[]) else
-              checkedStage "checked vector fusion" (Linked.fuseLinked normalized)
+            if oArc opts || not (Options.cgFusion codegen) then pure (normalized,listNotes) else
+              do (fused,vecNotes)<-checkedStage "checked vector fusion" (Linked.fuseLinked normalized)
+                 pure (fused,listNotes++vecNotes)
           checkedStage label=either (Left . ((label++": ")++)) Right
           (linked,fusionNotes)=either error id linkedResult
           declarationsResult=do

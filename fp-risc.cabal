@@ -185,6 +185,7 @@ library
       Core.Typed.Normalize
       Core.Typed.Fusion
       Core.Typed.FusionSafety
+      Core.Typed.ListFusion
       Core.FusionPolicy
       Core.Typed.Specialize
       Compiler.VectorLayout

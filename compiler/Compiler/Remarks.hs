@@ -34,7 +34,9 @@ collect natives regions fusion=Set.toAscList (Set.fromList (paths++fusions++boun
       D.CallbackDecision n target why->R.Remark n (heat n) (R.CallbackAttempt target why)
       | native<-natives,decision<-closedDecisions (N.nativeClosed native)]
     paths=[R.Remark n (heat n) (R.CompatibilityLowering why) | native<-natives,(n,why)<-M.toList (N.nativeCompatibility native)]
-    fusions=[R.Remark n (heat n) (refusal why) | F.FusionNote n _ _ _ why<-fusion]
+    fusions=map fusionRemark fusion
+    fusionRemark (F.FusionNote n _ _ _ why)=R.Remark n (heat n) (refusal why)
+    fusionRemark (F.ListNote n _ _ _ why)=R.Remark n (heat n) (refusal why)
     refusal why=case why of
       F.CallbackEffect name cause->R.CallbackEffect name (effect cause) (S.renderReason cause)
       F.CaptureEffect->R.CaptureEffect;F.CaptureBudget->R.CaptureBudget

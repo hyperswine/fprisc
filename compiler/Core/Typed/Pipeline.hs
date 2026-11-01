@@ -2,7 +2,7 @@
 -- Native semantic passes operate on a complete owned program before erasure.
 -- Layout authority stays attached to the closed product it helped construct.
 module Core.Typed.Pipeline
-  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,specializeProgramsWithDecisions,inlinePrograms,inlineProgramsWithDecisions,closedDecisions,closedTouched,planVectorReads,normalizeProgram,fusePrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
+  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,specializeProgramsWithDecisions,inlinePrograms,inlineProgramsWithDecisions,closedDecisions,closedTouched,planVectorReads,normalizeProgram,fusePrograms,fuseListPrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
 import qualified Core.Typed.Decision as D
 import Core.Typed.Program
 import Core.Typed.Syntax
@@ -16,6 +16,7 @@ import qualified Core.Typed.Inline as Inline
 import qualified Core.Typed.VectorRead as VectorRead
 import qualified Core.Typed.Normalize as Normalize
 import qualified Core.Typed.Fusion as Fusion
+import qualified Core.Typed.ListFusion as ListFusion
 import Core.Typed.Verify (sameType)
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Compiler.DataLayout
@@ -216,6 +217,27 @@ fusePrograms inputs=case map snd (M.elems inputs) of
     traverse (\(elided,p)->do
       changed<-M.traverseWithKey (\name f->if S.member name elided then pure (f,[],False)
         else Fusion.fuseClosed (programNamespace (closedInput p)) types plan f) (closedDefinitions p)
+      let output=ClosedProgram (closedInput p) (closedLayouts p) (M.map (\(f,_,_)->f) changed) (closedDecisions p)
+            (S.fromList [name | (name,(_,_,fused))<-M.toList changed,fused])
+      verifyLinkedStep output
+      pure (output,concatMap (\(_,notes,_)->notes) (M.elems changed))) inputs
+
+fuseListPrograms :: Ord key => M.Map key (S.Set String,ClosedProgram) -> Either String (M.Map key (ClosedProgram,[Fusion.FusionNote]))
+fuseListPrograms inputs=case map snd (M.elems inputs) of
+  []->pure M.empty
+  base:programs->do
+    mapM_ (\p->unless (programNamespace (closedInput p)==programNamespace (closedInput base)
+      && constructorLayouts (closedLayouts p)==constructorLayouts (closedLayouts base)
+      && shapeLayouts (closedLayouts p)==shapeLayouts (closedLayouts base))
+        (Left "typed list fusion pipeline: checking namespace/layout mismatch")) programs
+    let owned=[M.withoutKeys (closedDefinitions p) elided | (elided,p)<-M.elems inputs]
+        owners=M.unions owned
+        types=programTypes (closedInput base)
+    unless (M.size owners==sum (map M.size owned)) (Left "typed list fusion pipeline: duplicate source owner")
+    snapshot<-Callbacks.catalogPrograms types (map (closedInput . snd) (M.elems inputs)) owners
+    traverse (\(elided,p)->do
+      changed<-M.traverseWithKey (\name f->if S.member name elided then pure (f,[],False)
+        else ListFusion.fuseListClosed (programNamespace (closedInput p)) types snapshot (Callbacks.catalogLibrary snapshot) f) (closedDefinitions p)
       let output=ClosedProgram (closedInput p) (closedLayouts p) (M.map (\(f,_,_)->f) changed) (closedDecisions p)
             (S.fromList [name | (name,(_,_,fused))<-M.toList changed,fused])
       verifyLinkedStep output

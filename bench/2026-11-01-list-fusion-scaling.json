@@ -1,0 +1,60 @@
+{
+  "results": [
+    {
+      "functions": 4,
+      "enabled": false,
+      "allocated_bytes": 2383639840,
+      "max_bytes_used": 38909472,
+      "wall_seconds": 1.301
+    },
+    {
+      "functions": 4,
+      "enabled": true,
+      "allocated_bytes": 2385575432,
+      "max_bytes_used": 34733384,
+      "wall_seconds": 1.264
+    },
+    {
+      "functions": 8,
+      "enabled": false,
+      "allocated_bytes": 1529578032,
+      "max_bytes_used": 17431488,
+      "wall_seconds": 0.824
+    },
+    {
+      "functions": 8,
+      "enabled": true,
+      "allocated_bytes": 1518387032,
+      "max_bytes_used": 17932360,
+      "wall_seconds": 0.837
+    },
+    {
+      "functions": 16,
+      "enabled": false,
+      "allocated_bytes": 1712376384,
+      "max_bytes_used": 21661432,
+      "wall_seconds": 0.938
+    },
+    {
+      "functions": 16,
+      "enabled": true,
+      "allocated_bytes": 1666549456,
+      "max_bytes_used": 19005280,
+      "wall_seconds": 0.916
+    },
+    {
+      "functions": 32,
+      "enabled": false,
+      "allocated_bytes": 2097183088,
+      "max_bytes_used": 25599128,
+      "wall_seconds": 1.171
+    },
+    {
+      "functions": 32,
+      "enabled": true,
+      "allocated_bytes": 1971047112,
+      "max_bytes_used": 28274472,
+      "wall_seconds": 1.079
+    }
+  ]
+}
