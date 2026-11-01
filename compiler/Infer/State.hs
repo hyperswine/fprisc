@@ -33,7 +33,7 @@ data IEnv = IEnv
     iHoledCons :: S.Set (Name, Int), -- constructors with ?? fields: calls trap
     iNextSite :: !Int,
     iSites :: IM.IntMap (Name, Type), -- operator/layout sites awaiting resolution
-    iPendingNumeric :: IS.IntSet, -- arith/ordered-compare sites whose type may still be a bare variable
+    iPendingNumeric :: !IS.IntSet, -- arith/ordered-compare sites whose type may still be a bare variable
     iDefaultWork :: !Int, -- sites visited by numeric defaulting (a deterministic work counter)
     iSiteExpressions :: IM.IntMap ExprId,
     iSiteMarks :: IM.IntMap (Maybe SourceOffset), -- retain their diagnostic anchors
