@@ -2999,8 +2999,15 @@ static V g_arcLive(V d) {
  * stream does not -- so it is hal_putc's to add (machine/virt, machine/builtin).
  * It used to be inserted here, which made every hosted program's stdout
  * CRLF and every check pipe its output through `tr -d '\r'`. */
+/* Diagnostics -- a panic's last words, and [warn]/[ERR] log echo -- go to
+ * hal_eputc.  On a board with one console it IS hal_putc (this weak
+ * default); a hosted target (machine/posix) defines it to write stderr, so
+ * a program's stdout carries only what the program printed and a pipeline
+ * never mistakes a panic for data.  FPR_DIAG_STDOUT=1 restores the old
+ * single-stream behaviour there (roadmap #39, item C). */
+__attribute__((weak)) void hal_eputc(char c) { hal_putc(c); }
 static void praw(const char *s) {
-  while (*s) hal_putc(*s++);
+  while (*s) hal_eputc(*s++);
 }
 
 extern uw fpr_current_id(void);
@@ -3008,7 +3015,7 @@ static void pdec(uw u) {
   char b[24]; int i = 23;
   if (u == 0) b[i--] = '0';
   while (u) { b[i--] = '0' + (u % 10); u /= 10; }
-  for (int j = i + 1; j <= 23; j++) hal_putc(b[j]);
+  for (int j = i + 1; j <= 23; j++) hal_eputc(b[j]);
 }
 void fpr_logput(int sev, const char *b, uw n);
 /* #24: last-words persistence.  A hosted target (qosp via entry.c)
@@ -3031,7 +3038,7 @@ void fpr_cpanic_n(const char *m, uw n) {
   praw("\n*** FPRISC PANIC [actor ");
   pdec(fpr_current_id());
   praw("]: ");
-  for (uw i = 0; i < n; i++) hal_putc(m[i]);
+  for (uw i = 0; i < n; i++) hal_eputc(m[i]);
   praw(" ***\n");
   hal_poweroff(1); /* QEMU: exit 1; real HW: no-op, park below */
   for (;;) FPR_PARK();
@@ -3778,9 +3785,10 @@ void fpr_logput(int sev, const char *b, uw n) {
     s = " line(s); rings intact)\n";
     for (const char *c = s; *c; c++) hal_putc(*c);
   }
-  for (const char *c = pre[sev]; *c; c++) hal_putc(*c);
-  for (uw i = 0; i < n; i++) hal_putc(b[i]);
-  hal_putc('\n');
+  void (*out)(char) = sev == 1 || sev == 2 ? hal_eputc : hal_putc;
+  for (const char *c = pre[sev]; *c; c++) out(*c);
+  for (uw i = 0; i < n; i++) out(b[i]);
+  out('\n');
   fpr_unlock(&fpr_con_lock);
 }
 

@@ -926,6 +926,7 @@ extern void (*fpr_panic_persist)(const char *msg, uw n);
 str_t *fpr_mkstr(const uint8_t *src, uw n);
 
 void hal_putc(char c); /* hal.c: raw console for panics + runtime */
+void hal_eputc(char c); /* diagnostics: hal_putc, or stderr where the board has one */
 /* posix hosts (machine/posix/hal.c): interrupt sources for host threads that
  * raise on actors' behalf (the readiness watcher, the job broker), taken from
  * one pool instead of ranges carved out by convention.  0: none left.  The
