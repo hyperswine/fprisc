@@ -10,7 +10,7 @@ const root = path.resolve(__dirname, '..');
 function plan(mode, dryRun = false) {
   if (!['package', 'publish'].includes(mode)) throw new Error('Expected package or publish');
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  if (pkg.name !== 'fpr-lang' || pkg.publisher !== 'jasen') throw new Error('Marketplace identity changed');
+  if (pkg.name !== 'fpr-lang' || pkg.publisher !== 'hyperswine') throw new Error('Marketplace identity changed');
   if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) throw new Error('Set a stable extension version before releasing');
   const vsix = path.join(root, 'artifacts', `${pkg.name}-${pkg.version}.vsix`);
   const vsce = path.join(root, 'node_modules', '@vscode', 'vsce', 'vsce');

@@ -5,6 +5,7 @@ const path = require('path');
 const { plan } = require('../tools/release');
 const pkg = require('../package.json');
 const lock = require('../package-lock.json');
+assert.equal(pkg.publisher, 'hyperswine');
 assert.equal(pkg.version, lock.version);
 assert.equal(pkg.version, lock.packages[''].version);
 assert.equal(pkg.repository.directory, 'lsp');

@@ -2,7 +2,11 @@
 
 Language support for `.fpr` and `.sol`, maintained with the compiler in
 [`fprisc/lsp`](https://github.com/hyperswine/fprisc/tree/main/lsp).
-The Marketplace identity remains **jasen.fpr-lang**. Requires VS Code 1.82+.
+The Marketplace identity is **hyperswine.fpr-lang**. Requires VS Code 1.82+.
+
+If you installed an older `jasen.fpr-lang` VSIX, disable or uninstall it before
+installing this extension. The publisher ID changed because `jasen` is unavailable
+to this publisher account; existing installations do not automatically migrate.
 
 ## Version 0.8.1
 
@@ -272,7 +276,7 @@ contains the client, server, grammars and production dependencies; it does not
 bundle the compiler, tests, release tools or the rest of the compiler repository.
 The CI job builds the matching compiler, tests the extension and retains its VSIX.
 
-Publishing is explicit and uses the existing `jasen` publisher authentication
+Publishing is explicit and requires authentication for publisher `hyperswine`
 configured for Microsoft's `vsce` tool:
 
 ```sh
@@ -285,8 +289,7 @@ the same checks and uploads that exact VSIX with `vsce publish --packagePath`.
 It does not change versions, create commits/tags or install into VS Code.
 Before each release, update the version and lock with
 `npm version <version> --no-git-tag-version`, update these notes, and review the
-package. The name and publisher stay unchanged so existing users receive
-updates. No Marketplace publication is implied by a successful local package.
+package. Keep this new publisher identity stable for subsequent updates. No Marketplace publication is implied by a successful local package.
 
 See Microsoft's [publishing guide](https://code.visualstudio.com/api/working-with-extensions/publishing-extension).
 

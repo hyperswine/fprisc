@@ -3,7 +3,7 @@
   "displayName": "FP-RISC (fpr + sol)",
   "description": "FP-RISC and Sol language support: compiler diagnostics on save, syntax highlighting, source-generated API hovers, completions, outlines, semantic tokens, and cross-module navigation.",
   "version": "0.8.1",
-  "publisher": "jasen",
+  "publisher": "hyperswine",
   "repository": {
     "type": "git",
     "url": "https://github.com/hyperswine/fprisc.git",
