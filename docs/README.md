@@ -383,3 +383,4 @@ they began.
 - [Case of known constructor (A1)](2026-11-01-CASE-KNOWN.md): typed Core selects the alternative of a scrutinee whose constructor is known, single-leaf cases only; `FPR_NO_CASE_KNOWN=1` rolls it back.
 - [MConf design draft](MCONF-DESIGN.md): a typed configuration language in FP-RISC (draft 0.1; `examples/mconf.fpr`). Undated name, kept as committed.
 - [List fusion: trap safety fixes](2026-11-02-LIST-FUSION-TRAP-SAFETY.md): the let-bound producer float enters only positions that always run; length after map takes strict (no overflow) evidence; mapRange's descending order pinned; the case-of-known-constructor use count fixed; regression tests for each reviewed defect.
+- [fprmeta and qosmeta published](2026-11-02-FPRMETA-PUBLISHED.md): the tap installs only the two managers; version lists in the tap, read by a built-in URL; `fprmeta available`; FP-RISC 0.12.0 and QOS SDK 0.3.0 offered; lists unsigned, Homebrew libgit2/libarchive/glfw still needed.

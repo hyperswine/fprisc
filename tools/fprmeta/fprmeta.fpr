@@ -37,19 +37,27 @@ metaVersion = "0.1.0".
 
 # ---- what each name manages -------------------------------------------------------
 
+# The published version lists live beside the formulas in the Homebrew tap.
+# --index FILE|URL or FPRMETA_INDEX / QOSMETA_INDEX replace them. The lists
+# are not signed yet: each entry's SHA-256 is checked, so they guard against
+# corrupt downloads but trust GitHub for the list itself.
+indexBase = "https://raw.githubusercontent.com/hyperswine/homebrew-tap/main/toolchains".
+
 Kind = { kind : String, manager : String, component : String, homeVar : String, homeDir : String,
          pinVar : String, commands : List String, payload : String, metaFile : String,
-         invFile : String, invField : String, invBase : String }.
+         invFile : String, invField : String, invBase : String, index : String }.
 
 fprKind = { kind = "fpr", manager = "fprmeta", component = "fprisc", homeVar = "FPRMETA_HOME", homeDir = ".fpr",
             pinVar = "FPR_TOOLCHAIN", commands = ["fpr", "sol"], payload = "libexec/fprisc",
             metaFile = "libexec/fprisc/toolchain.json",
-            invFile = "libexec/fprisc/toolchain.json", invField = "files", invBase = "" }.
+            invFile = "libexec/fprisc/toolchain.json", invField = "files", invBase = "",
+            index = "{indexBase}/fprisc.json" }.
 
 qosKind = { kind = "qos", manager = "qosmeta", component = "qos-portable", homeVar = "QOSMETA_HOME", homeDir = ".qos",
             pinVar = "QOS_SDK", commands = ["qos"], payload = "libexec/qos-portable",
             metaFile = "libexec/qos-portable/sdk.json",
-            invFile = "libexec/qos-portable/files.sha256.json", invField = "", invBase = "libexec/qos-portable" }.
+            invFile = "libexec/qos-portable/files.sha256.json", invField = "", invBase = "libexec/qos-portable",
+            index = "{indexBase}/qos-portable.json" }.
 
 die : Int -> String -> a .
 die code why = Program.fail code why.
@@ -398,13 +406,14 @@ installFromIndex k version where = case readIndex where of
 usage : Kind -> String .
 usage k = S.join "\n" [
   "usage: {k.manager} COMMAND",
-  "  install VERSION [--index FILE|URL]     download, verify and install a version",
+  "  install [VERSION] [--index FILE|URL]   download, verify and install a version (default: the newest)",
   "  install --archive FILE [--sha256 HEX]   install a release tarball you already have",
   "  uninstall VERSION                       remove one version (projects are untouched)",
   "  list                                    installed versions and the default",
   "  default [VERSION]                       show or set the default version",
   "  which [{S.join "|" k.commands}]                 the binary this directory would run, and why",
   "  pin [VERSION]                           pin this project exactly (=VERSION)",
+  "  available [--index FILE|URL]            the versions the version list offers",
   "Versions live in {home k} ({k.homeVar} overrides it)."].
 
 flag : unsafe String -> List String -> O.Option String .
@@ -434,15 +443,9 @@ cmdInstall k args =
         | Err why -> Err why)
   | O.None ->
       version = case positional args of v :: _ -> O.Some v | Nil -> O.None;
-      where = case flag "--index" args of
-          O.Some w -> O.Some w
-        | O.None -> Program.env "{S.toUpper k.manager}_INDEX";
-      (case where of
-          O.None -> die 2 "{k.manager}: no version list is published yet; pass --index FILE|URL (or {S.toUpper k.manager}_INDEX), or --archive FILE"
-        | O.Some w ->
-            report k (case installFromIndex k version w of
-                Ok v -> done v
-              | Err why -> Err why)).
+      report k (case installFromIndex k version (indexOf k args) of
+          Ok v -> done v
+        | Err why -> Err why).
 
 cmdUninstall : unsafe Kind -> List String -> Unit .
 cmdUninstall k args = case positional args of
@@ -510,11 +513,29 @@ cmdPin k args =
                         Ok _ -> Ok "{found.file}:{found.line}: pinned exactly to {version} (was \"{found.value}\"){note}"
                       | Err why -> Err why))).
 
+indexOf : unsafe Kind -> List String -> String .
+indexOf k args = case flag "--index" args of
+    O.Some w -> w
+  | O.None -> O.withDefault k.index (Program.env "{S.toUpper k.manager}_INDEX").
+
+cmdAvailable : unsafe Kind -> List String -> Unit .
+cmdAvailable k args =
+  where = indexOf k args;
+  case readIndex where of
+      Err why -> die 1 "{k.manager}: {why}"
+    | Ok index ->
+        plat = platform Unit;
+        have = installed k;
+        all = L.sortWith (fn a b -> V.compare a.version b.version) (entries k plat index);
+        if L.length all == 0 then print "{where} offers no {k.component} release for {plat}"
+        else L.each (fn e -> print (if L.any (fn i -> i.text == e.version.text) have then "{e.version.text}  (installed)" else e.version.text)) all.
+
 manage : unsafe Kind -> List String -> Unit .
 manage k args = case args of
     "install" :: rest -> cmdInstall k rest
   | "uninstall" :: rest -> cmdUninstall k rest
   | "list" :: _ -> cmdList k
+  | "available" :: rest -> cmdAvailable k rest
   | "default" :: rest -> cmdDefault k rest
   | "which" :: rest -> cmdWhich k rest
   | "pin" :: rest -> cmdPin k rest
