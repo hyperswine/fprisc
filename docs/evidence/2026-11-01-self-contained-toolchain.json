@@ -1,0 +1,317 @@
+{
+  "date": "2026-11-01",
+  "scope": "Self-contained macOS ARM64 toolchain archive (toolchain manager step 1). Local candidate only: not published, not installed with Homebrew, tap untouched.",
+  "status": "passed",
+  "candidate": {
+    "release": "0.13.0-rc1",
+    "archive": "fprisc-0.13.0-rc1-macos-arm64.tar.gz",
+    "archiveSha256": "ab779c1eeaaae89dee0e7231719ce018e815b40313ff55607a4f632fa04a3fe5",
+    "sourceRevision": "bb2a0c6c9670abeb75121c3b315b55d259d7352d",
+    "sourceBranch": "self-contained-candidate (local; = self-contained-toolchain 6111dea plus a version-only commit)",
+    "sourceDirty": false,
+    "compilerVersion": "fpr 0.13.0",
+    "compilerSha256": "7829980189a1676eaa93f351b96da9a829cf51339f886fb3aa006f8c1028301b",
+    "minimumMacOS": "27.0",
+    "files": 227,
+    "archiveBytes": 18992723
+  },
+  "cabalPlan": {
+    "freeze": "cabal.project.freeze",
+    "planSha256": "a4d3ddfc359b09367792373130fc5c2fcf18c58122b7e21cb4e1a4f9574f5ea1",
+    "compiler": "ghc-9.8.2",
+    "packages": 34,
+    "network": "3.2.7.0",
+    "drift": [],
+    "note": "an unconstrained resolve at index-state 2026-10-30 picks network 3.2.10.0; the freeze pins 3.2.7.0, the version 0.12.0 was built with"
+  },
+  "compilerLinkage": [
+    "/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1359.0.0)",
+    "@rpath/libgit2.1.9.dylib (compatibility version 1.9.0, current version 1.9.7)",
+    "@rpath/libarchive.13.dylib (compatibility version 22.0.0, current version 22.10.0)",
+    "/usr/lib/libcurl.4.dylib (compatibility version 7.0.0, current version 9.0.0)",
+    "/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)",
+    "/usr/lib/libffi.dylib (compatibility version 1.0.0, current version 40.0.0)",
+    "/usr/lib/libcharset.1.dylib (compatibility version 1.0.0, current version 1.0.0)"
+  ],
+  "bundledLibraries": [
+    {
+      "file": "lib/libgit2.1.9.dylib",
+      "installName": "/opt/homebrew/opt/libgit2/lib/libgit2.1.9.dylib",
+      "package": "libgit2",
+      "packageVersion": "1.9.7_2",
+      "notices": [
+        "lib/licenses/libgit2-1.9.7_2/COPYING"
+      ]
+    },
+    {
+      "file": "lib/libarchive.13.dylib",
+      "installName": "/opt/homebrew/opt/libarchive/lib/libarchive.13.dylib",
+      "package": "libarchive",
+      "packageVersion": "3.8.10",
+      "notices": [
+        "lib/licenses/libarchive-3.8.10/COPYING"
+      ]
+    },
+    {
+      "file": "lib/liblzma.5.dylib",
+      "installName": "/opt/homebrew/opt/xz/lib/liblzma.5.dylib",
+      "package": "xz",
+      "packageVersion": "5.8.4",
+      "notices": [
+        "lib/licenses/xz-5.8.4/COPYING",
+        "lib/licenses/xz-5.8.4/COPYING.0BSD",
+        "lib/licenses/xz-5.8.4/COPYING.GPLv2",
+        "lib/licenses/xz-5.8.4/COPYING.GPLv3",
+        "lib/licenses/xz-5.8.4/COPYING.LGPLv2.1"
+      ]
+    },
+    {
+      "file": "lib/libzstd.1.dylib",
+      "installName": "/opt/homebrew/opt/zstd/lib/libzstd.1.dylib",
+      "package": "zstd",
+      "packageVersion": "1.5.7_1",
+      "notices": [
+        "lib/licenses/zstd-1.5.7_1/COPYING",
+        "lib/licenses/zstd-1.5.7_1/LICENSE"
+      ]
+    },
+    {
+      "file": "lib/liblz4.1.dylib",
+      "installName": "/opt/homebrew/opt/lz4/lib/liblz4.1.dylib",
+      "package": "lz4",
+      "packageVersion": "1.10.0",
+      "notices": [
+        "lib/licenses/lz4-1.10.0/LICENSE"
+      ]
+    },
+    {
+      "file": "lib/libb2.1.dylib",
+      "installName": "/opt/homebrew/opt/libb2/lib/libb2.1.dylib",
+      "package": "libb2",
+      "packageVersion": "0.98.1",
+      "notices": [
+        "lib/licenses/libb2-0.98.1/COPYING"
+      ]
+    },
+    {
+      "file": "lib/libssl.4.dylib",
+      "installName": "/opt/homebrew/opt/openssl@4/lib/libssl.4.dylib",
+      "package": "openssl@4",
+      "packageVersion": "4.1.0",
+      "notices": [
+        "lib/licenses/openssl@4-4.1.0/LICENSE.txt"
+      ]
+    },
+    {
+      "file": "lib/libcrypto.4.dylib",
+      "installName": "/opt/homebrew/opt/openssl@4/lib/libcrypto.4.dylib",
+      "package": "openssl@4",
+      "packageVersion": "4.1.0",
+      "notices": [
+        "lib/licenses/openssl@4-4.1.0/LICENSE.txt"
+      ]
+    },
+    {
+      "file": "lib/libllhttp.9.4.dylib",
+      "installName": "/opt/homebrew/opt/llhttp/lib/libllhttp.9.4.dylib",
+      "package": "llhttp",
+      "packageVersion": "9.4.3",
+      "notices": [
+        "lib/licenses/llhttp-9.4.3/LICENSE",
+        "lib/licenses/llhttp-9.4.3/LICENSE-MIT"
+      ]
+    },
+    {
+      "file": "lib/libssh2.1.dylib",
+      "installName": "/opt/homebrew/opt/libssh2/lib/libssh2.1.dylib",
+      "package": "libssh2",
+      "packageVersion": "1.11.1_7",
+      "notices": [
+        "lib/licenses/libssh2-1.11.1_7/COPYING"
+      ]
+    }
+  ],
+  "recursiveOtool": {
+    "machOFiles": 11,
+    "distinctLoadPaths": [
+      "/usr/lib/libSystem.B.dylib",
+      "/usr/lib/libbz2.1.0.dylib",
+      "/usr/lib/libcharset.1.dylib",
+      "/usr/lib/libcurl.4.dylib",
+      "/usr/lib/libexpat.1.dylib",
+      "/usr/lib/libffi.dylib",
+      "/usr/lib/libiconv.2.dylib",
+      "/usr/lib/libz.1.dylib",
+      "@rpath/libarchive.13.dylib",
+      "@rpath/libb2.1.dylib",
+      "@rpath/libcrypto.4.dylib",
+      "@rpath/libgit2.1.9.dylib",
+      "@rpath/libllhttp.9.4.dylib",
+      "@rpath/liblz4.1.dylib",
+      "@rpath/liblzma.5.dylib",
+      "@rpath/libssh2.1.dylib",
+      "@rpath/libssl.4.dylib",
+      "@rpath/libzstd.1.dylib"
+    ],
+    "problems": [],
+    "rpaths": {
+      "libexec/fprisc/fpr": [
+        "@executable_path/lib"
+      ],
+      "libexec/fprisc/lib/libarchive.13.dylib": [
+        "@loader_path"
+      ],
+      "libexec/fprisc/lib/libb2.1.dylib": [
+        "@loader_path"
+      ],
+      "libexec/fprisc/lib/libcrypto.4.dylib": [
+        "@loader_path"
+      ],
+      "libexec/fprisc/lib/libgit2.1.9.dylib": [
+        "@loader_path"
+      ],
+      "libexec/fprisc/lib/libllhttp.9.4.dylib": [
+        "@loader_path"
+      ],
+      "libexec/fprisc/lib/liblz4.1.dylib": [
+        "@loader_path"
+      ],
+      "libexec/fprisc/lib/liblzma.5.dylib": [
+        "@loader_path"
+      ],
+      "libexec/fprisc/lib/libssh2.1.dylib": [
+        "@loader_path"
+      ],
+      "libexec/fprisc/lib/libssl.4.dylib": [
+        "@loader_path"
+      ],
+      "libexec/fprisc/lib/libzstd.1.dylib": [
+        "@loader_path/../lib",
+        "@loader_path"
+      ]
+    }
+  },
+  "restage": {
+    "compilerSha256": "7829980189a1676eaa93f351b96da9a829cf51339f886fb3aa006f8c1028301b",
+    "identicalFiles": true
+  },
+  "installCheck": {
+    "tool": "tools/toolchain-install-check.py --release",
+    "status": "passed",
+    "steps": 51,
+    "homebrewDenied": [
+      "/opt/homebrew"
+    ],
+    "sourceAccess": "denied",
+    "expectedFailures": [
+      "source-denied",
+      "make-denied",
+      "homebrew-libgit2-denied",
+      "homebrew-libarchive-denied",
+      "diagnostics",
+      "qos-target-refused",
+      "project-test-fails",
+      "project-check-fails",
+      "project-qos-refused"
+    ],
+    "stepNames": [
+      "source-denied",
+      "make-denied",
+      "homebrew-libgit2-denied",
+      "homebrew-libarchive-denied",
+      "tools-absent",
+      "version",
+      "native-build",
+      "native-execute",
+      "native-run",
+      "module-check",
+      "module-build",
+      "diagnostics",
+      "sol-library",
+      "sol-shebang",
+      "sol-repl",
+      "x64-build",
+      "x64-identity",
+      "x64-rosetta",
+      "qos-target-refused",
+      "dyld-libraries",
+      "native-git",
+      "native-git-log",
+      "native-archive",
+      "doctor",
+      "project-new",
+      "project-check",
+      "project-build",
+      "project-execute",
+      "project-run",
+      "project-release",
+      "project-release-execute",
+      "project-test",
+      "project-test-fails",
+      "project-check-fails",
+      "project-check-cached",
+      "project-commit",
+      "project-run-pinned",
+      "project-explicit-file",
+      "sol-project-new",
+      "sol-project-check",
+      "sol-project-run",
+      "sol-project-test",
+      "service-project-new",
+      "service-project-check",
+      "service-project-test",
+      "service-project-build",
+      "project-qos-refused",
+      "standalone-app",
+      "relocated-sol",
+      "relocated-native",
+      "relocated-execute"
+    ],
+    "dyldLoadedFromToolchain": [
+      "libarchive.13.dylib",
+      "libb2.1.dylib",
+      "libcrypto.4.dylib",
+      "libgit2.1.9.dylib",
+      "libllhttp.9.4.dylib",
+      "liblz4.1.dylib",
+      "liblzma.5.dylib",
+      "libssh2.1.dylib",
+      "libssl.4.dylib",
+      "libzstd.1.dylib"
+    ],
+    "dyldLoadedFromElsewhere": [],
+    "relocation": true,
+    "installedFilesUnchanged": true,
+    "stagingModeRun": {
+      "status": "passed",
+      "steps": 51,
+      "compiler": "fpr 0.13.0-dev (branch self-contained-toolchain)"
+    }
+  },
+  "negativeChecks": [
+    {
+      "name": "old compiler under the check profile",
+      "binary": "main fpr 0.13.0-dev, Homebrew-linked",
+      "exit": 134,
+      "result": "dyld: Library not loaded: /opt/homebrew/opt/libgit2/lib/libgit2.1.9.dylib (blocked by sandbox)"
+    },
+    {
+      "name": "linkage refusal message",
+      "binary": "unbundled libexec/fprisc/fpr",
+      "result": "libexec/fprisc/fpr loads /opt/homebrew/opt/libgit2/lib/libgit2.1.9.dylib (library outside /usr/lib, /System and the toolchain); libexec/fprisc/fpr loads /opt/homebrew/opt/libarchive/lib/libarchive.13.dylib (...)"
+    },
+    {
+      "name": "plan drift",
+      "method": "plan_drift on a recorded plan with network 3.2.10.0 and fp-risc +dev",
+      "result": [
+        "fp-risc: flag dev is True in the plan, False in the freeze",
+        "network: plan 3.2.10.0, freeze 3.2.7.0"
+      ]
+    }
+  ],
+  "notTested": [
+    "brew install of the candidate (Homebrew rewrites dylib IDs inside a keg on install; loading uses @rpath so it should not matter)",
+    "libgit2 push over SSH with Homebrew denied (local init/add/commit/log and libarchive gzip/tar were exercised)",
+    "the bundled OpenSSL keeps its compiled-in OPENSSLDIR /opt/homebrew/etc/openssl@4; with it unreadable the exercised paths still worked"
+  ]
+}
