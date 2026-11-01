@@ -22,6 +22,9 @@ on:
     branches: [main, typed-ir-retire, codex/a64-overflow-checks-20261020, codex/typed-ir-migration-20261022]
   pull_request:
   workflow_dispatch:
+  # nightly: the reliability job at full size (all std programs x configs, 2000 fuzz mutants)
+  schedule:
+    - cron: '17 15 * * *'
 
 permissions:
   contents: read
@@ -151,6 +154,43 @@ jobs:
           path: |
             ${{ runner.temp }}/check-results.json
             ${{ runner.temp }}/base-times.json
+
+  # Reliability gates (tests/reliability/*.py, docs/2026-11-01-RELIABILITY-CORRECTNESS-WCET-ROADMAP.md):
+  # stdcheck over std, std contract sync, UBSan runtime, config differential,
+  # fixed-seed fuzz smoke, compiler-crash repros. Parallel to x86-64, so it adds
+  # runner minutes but no wall-clock time. PRs run the small sizes; the nightly
+  # schedule sets RELIABILITY_FULL=1.
+  reliability:
+    name: reliability gates (debian trixie)
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    timeout-minutes: 40
+    steps:
+      - name: tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates python3 zstd \
+            make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev \
+            libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev \
+            libegl-dev libgl-dev clang lld
+      - uses: actions/checkout@v4
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: make fpr
+        run: |
+          cabal update
+          cabal build
+          make fpr
+      - name: reliability checks
+        env:
+          RELIABILITY_FULL: ${{ github.event_name == 'schedule' && '1' || '0' }}
+        run: FPR_HOME="$GITHUB_WORKSPACE" python3 -u tests/reliability/run_all.py
+      - name: fuzz failures (for minimization)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-smoke-failures
+          if-no-files-found: ignore
+          path: build/fuzz-smoke/
 
   # Sol scripting suites (tools/sol-ci.sh). Separate job: it needs only a
   # built fpr, so unrelated red steps in x86-64 do not mask it.
