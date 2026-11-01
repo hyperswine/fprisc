@@ -11,6 +11,13 @@ tests/compile_budget.json, because a different GHC allocates differently.
   check_compile_budget.py              compare with this environment's baseline
   check_compile_budget.py --record     write this environment's baseline
   check_compile_budget.py --require-baseline   fail when there is none
+  check_compile_budget.py --tracked    report-only: front-end time on TRACKED
+  check_compile_budget.py --tracked --nightly  ... including the slow ones
+
+TRACKED programs are measured with `fpr check` (the front end, where their
+time goes) and reported, never gated: they exist to make a slow-compile
+family visible (vecwide.fpr ~19 s, clientstate.fpr minutes; #39 item D)
+until it is fixed and can join PROGRAMS with a baseline.
 
 A program over budget fails the check. A program well under it passes and
 says so: record the new baseline in the same commit as the improvement.
@@ -37,6 +44,12 @@ PROGRAMS = [
     ("hello", "profile base.\nmain = print 42.\n", None),
     ("std-live", 'profile base.\nLive = use "std/live".\nmain = print 42.\n', None),
     ("pos1", None, ROOT / "examples" / "pos1.fpr"),
+]
+
+# (name, file, nightly-only): report-only front-end timings (`fpr check`)
+TRACKED = [
+    ("vecwide", ROOT / "tests" / "base" / "vecwide.fpr", False),
+    ("clientstate", ROOT / "tests" / "std" / "clientstate.fpr", True),
 ]
 
 
@@ -69,12 +82,55 @@ def measure(name, text, path, tmp):
             "wall_seconds": round(wall, 1)}
 
 
+def measure_check(name, path, tmp):
+    """`fpr check` cold: GHC's statistics and wall time, never asserted on."""
+    stats = tmp / f"{name}.check.rts"
+    env = {**os.environ, "XDG_CACHE_HOME": str(tmp / f"check-cache-{name}"),
+           "FPR_HOME": os.environ.get("FPR_HOME", str(ROOT))}
+    env.pop("GHCRTS", None)
+    start = time.monotonic()
+    try:
+        p = subprocess.run([FPR, "check", path, "+RTS", f"-t{stats}", "--machine-readable", "-RTS"],
+                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=TIMEOUT)
+        code = p.returncode
+    except subprocess.TimeoutExpired:
+        code = "timeout"
+    wall = round(time.monotonic() - start, 1)
+    got = {"exit": code, "wall_seconds": wall}
+    if stats.is_file():
+        rts = dict(ast.literal_eval(stats.read_text().split("\n", 1)[1]))
+        got.update(allocated_bytes=int(rts["bytes allocated"]), max_bytes_used=int(rts["max_bytes_used"]),
+                   mutator_seconds=round(float(rts.get("mutator_cpu_seconds", rts.get("mut_cpu_seconds", 0))), 1),
+                   gc_seconds=round(float(rts.get("GC_cpu_seconds", 0)), 1))
+    return got
+
+
+def tracked(nightly):
+    with tempfile.TemporaryDirectory(prefix="fpr-compile-tracked-") as d:
+        for name, path, slow in TRACKED:
+            if slow and not nightly:
+                print(f"tracked {name}: skipped (nightly only)")
+                continue
+            got = measure_check(name, path, Path(d))
+            line = f"tracked {name}: fpr check {got['wall_seconds']} s, exit {got['exit']}"
+            if "allocated_bytes" in got:
+                line += (f", {got['allocated_bytes'] / 1e9:.1f} GB allocated, {got['max_bytes_used'] / 1e6:.0f} MB peak live,"
+                         f" mutator {got['mutator_seconds']} s, GC {got['gc_seconds']} s")
+            print(line, flush=True)
+            print("compile tracked: " + json.dumps({name: got}, sort_keys=True), flush=True)
+    print("compile tracked: report only, not gated")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--record", action="store_true", help="write this environment's baseline")
     ap.add_argument("--require-baseline", action="store_true", help="fail without a baseline")
     ap.add_argument("--only", help="one program by name")
+    ap.add_argument("--tracked", action="store_true", help="report-only timings of TRACKED (never fails)")
+    ap.add_argument("--nightly", action="store_true", help="with --tracked: include the slow programs")
     args = ap.parse_args()
+    if args.tracked:
+        return tracked(args.nightly)
 
     key = environment()
     baselines = json.loads(BASELINE.read_text()) if BASELINE.is_file() else {}
