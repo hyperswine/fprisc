@@ -7,8 +7,8 @@
   "tests": {
     "groups": 16,
     "passed": true,
-    "command": "node lsp/tools/release.js publish --dry-run",
-    "log": "/private/tmp/fpr-lsp-081-final-release.log"
+    "command": "node lsp/tools/release.js package",
+    "log": "/private/tmp/fpr-hyperswine-candidate.log"
   },
   "vscode_acceptance": {
     "passed": true,
@@ -27,13 +27,16 @@
       "multiline qualified signature hover"
     ]
   },
-  "vscode_log": "build/lsp-validation/vscode-081-final.log",
+  "vscode_log": "build/lsp-validation/vscode-hyperswine-candidate.log",
   "package": {
     "version": "0.8.1",
     "files": 214,
-    "bytes": 2157521,
-    "sha256": "dfc435176cbce1d567832f8e65f79b1cf692fecd281400fd4230386e7c575de4",
-    "source_matches_archive": true
+    "bytes": 2157608,
+    "sha256": "eb3f3c4830070add9ae3ef1350e5b20701624a18825c0ffd116eb95934dc2aad",
+    "source_matches_archive": true,
+    "publisher": "hyperswine",
+    "extension": "hyperswine.fpr-lang",
+    "source_revision": "6f91e362dce28fe93b6bab768f87475844ac96c1"
   },
   "language_contract": [
     "MyMod.x : I64. declares a typed symbol without defining a value",
@@ -42,6 +45,26 @@
     "Direct dotted value definitions remain unsupported"
   ],
   "marketplace": {
+    "status": "uploaded; Marketplace verification pending",
+    "publisher": "hyperswine",
+    "name": "fpr-lang",
+    "version": "0.8.1",
+    "method": "Authenticated publisher management web upload",
+    "publisher_created": true,
+    "publisher_role": "Owner",
+    "identity_change_authorized": true,
+    "reason_for_identity_change": "jasen publisher ID is already taken and unavailable to the signed-in account",
+    "migration": "Disable or uninstall jasen.fpr-lang before installing hyperswine.fpr-lang; no automatic migration",
+    "listing_url": "https://marketplace.visualstudio.com/items?itemName=hyperswine.fpr-lang",
+    "source_revision": "6f91e362dce28fe93b6bab768f87475844ac96c1",
+    "published_date": "2026-11-01T02:14:00.040Z",
+    "public_query_log": "/private/tmp/fpr-marketplace-public-081.json",
+    "last_checked_utc": "2026-11-01T02:17:41.923041+00:00",
+    "extension_flags": 256,
+    "version_flags": 0,
+    "public_listing_available": false
+  },
+  "marketplace_previous_attempt": {
     "status": "blocked by publisher authentication; not published",
     "publisher": "jasen",
     "name": "fpr-lang",
