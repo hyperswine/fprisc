@@ -3,6 +3,11 @@
 
 Keeps logs and metadata in a fresh --output directory outside the workspace.
 No Homebrew installation, global command, or QOS SDK is changed.
+
+Homebrew (/opt/homebrew) is unreadable to every step except the optional QOS
+ones, so a toolchain that still loads a Homebrew library fails here. The
+native-git and native-archive steps exercise the bundled libgit2 and
+libarchive, and dyld-libraries records every library the compiler loads.
 """
 import argparse
 import hashlib
@@ -105,6 +110,38 @@ def project_workflow(run, fpr, project, work):
     assert result.returncode == 2 and 'qos build' in result.stderr, result.stderr
 
 
+def loaded_libraries(stderr):
+    """Paths from DYLD_PRINT_LIBRARIES output: `dyld[pid]: <UUID> /path`."""
+    return [line.split('> ', 1)[1] for line in stderr.splitlines()
+            if line.startswith('dyld[') and ']: <' in line and '> /' in line]
+
+
+def native_libraries(run, fpr, project, prefix, env):
+    """libgit2 and libarchive from inside the toolchain, with Homebrew unreadable."""
+    real = (prefix / 'libexec/fprisc').resolve()
+    result = run('dyld-libraries', ['/usr/bin/env', 'DYLD_PRINT_LIBRARIES=1', fpr, '--version'])
+    loaded = loaded_libraries(result.stderr)
+    outside = [p for p in loaded if not p.startswith(('/usr/lib/', '/System/', str(real) + '/'))]
+    bundled = sorted(Path(p).name for p in loaded if p.startswith(str(real) + '/lib/'))
+    assert not outside and 'libgit2.1.9.dylib' in bundled and 'libarchive.13.dylib' in bundled, (outside, bundled)
+    repo = project / 'git repo'
+    repo.mkdir()
+    (repo / 'hello.txt').write_text('hello\n')
+    who = f'(G.repo "{repo}" |> G.identity "Install Check" "install@example.invalid")'
+    (project / 'git-commit.sol').write_text('G = use "sol/lib/git".\n'
+                                            f'> r = {who} |> G.initOn "main" |> G.add G.all |> G.commit "first"; log "done".\n')
+    run('native-git', [fpr, 'sol', 'git-commit.sol'])
+    (project / 'git-log.sol').write_text(f'G = use "sol/lib/git".\n> print (G.log 1 {who}).\n')
+    result = run('native-git-log', [fpr, 'sol', 'git-log.sol'])
+    assert 'first' in result.stdout and (repo / '.git/HEAD').is_file(), result.stdout
+    (project / 'archive.sol').write_text(f'A = use "sol/lib/archive".\n> u = A.create "{repo}" "{project / "repo.tar.gz"}"; print "queued".\n')
+    run('native-archive', [fpr, 'sol', 'archive.sol'], 'queued\n')
+    with tarfile.open(project / 'repo.tar.gz') as tar:
+        names = tar.getnames()
+    assert any(n.endswith('hello.txt') for n in names), names
+    return dict(bundled=bundled, outside=outside)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, default=ROOT / 'fpr')
@@ -144,14 +181,21 @@ def main():
                XDG_CACHE_HOME=str(work / 'cache with spaces'), XDG_STATE_HOME=str(work / 'state'),
                TMPDIR=str(work / 'tmp'), LANG='en_US.UTF-8', SOL_GPU='0', FPR_HARTS='2')
     blocked = [ROOT.parent, Path.home() / '.ghcup', Path.home() / '.cabal']
+    homebrew = [p for p in (Path('/opt/homebrew'), Path('/usr/local/opt'), Path('/usr/local/Cellar')) if p.exists()]
+
+    def profile(denied):
+        return ('(version 1)\n(allow default)\n' + ''.join(
+            f'(deny file-read* file-write* (subpath {json.dumps(str(p))}))\n' for p in denied)
+            + f'(deny file-write* (subpath {json.dumps(str(prefix))}))\n'
+            + '(deny process-exec (literal "/usr/bin/make") (literal "/usr/bin/git"))\n')
     policy = work / 'installed.sb'
-    policy.write_text('(version 1)\n(allow default)\n' + ''.join(
-        f'(deny file-read* file-write* (subpath {json.dumps(str(p))}))\n' for p in blocked)
-        + f'(deny file-write* (subpath {json.dumps(str(prefix))}))\n'
-        + '(deny process-exec (literal "/usr/bin/make") (literal "/usr/bin/git"))\n')
+    policy.write_text(profile(blocked + homebrew))
+    # QOS's CLI is a Homebrew install, so only its steps may read Homebrew.
+    qos_policy = work / 'qos.sb'
+    qos_policy.write_text(profile(blocked))
     guard = ['/usr/bin/sandbox-exec', '-f', str(policy)]
     report = dict(host=dict(system=platform.system(), machine=platform.machine()),
-                  sourceAccess='denied', sdkReadOnly=True, absentTools=['ghc', 'cabal', 'make', 'git'],
+                  sourceAccess='denied', homebrewDenied=[str(p) for p in homebrew], sdkReadOnly=True, absentTools=['ghc', 'cabal', 'make', 'git'],
                   steps=[], status='running')
 
     def save():
@@ -176,6 +220,9 @@ def main():
     try:
         run('source-denied', ['/bin/cat', ROOT / 'core/prelude.fpr'], failure=True)
         run('make-denied', ['/usr/bin/make', '--version'], failure=True)
+        for name in ('libgit2', 'libarchive'):
+            if homebrew:
+                run(f'homebrew-{name}-denied', ['/bin/ls', Path('/opt/homebrew/opt') / name / 'lib'], failure=True)
         run('tools-absent', ['/bin/sh', '-c', 'for t in ghc cabal make git; do command -v "$t" && exit 1; done; exit 0'])
         fpr, sol = prefix / 'bin/fpr', prefix / 'bin/sol'
         metadata = json.loads((prefix / 'libexec/fprisc/toolchain.json').read_text())
@@ -206,6 +253,7 @@ def main():
         # A standalone install never searches for a QOS SDK; it points at `qos build`.
         result = run('qos-target-refused', [fpr, 'build', '--target=qos-portable'], failure=True)
         assert result.returncode == 2 and 'qos build' in result.stderr, result.stderr
+        report['nativeLibraries'] = native_libraries(run, fpr, project, prefix, env)
         project_workflow(run, fpr, project, work)
         independent = work / 'no-sdk.sb'
         independent.write_text(policy.read_text() + f'(deny file-read* (subpath {json.dumps(str(prefix))}))\n')
@@ -215,15 +263,17 @@ def main():
         relocated = prefix.with_name('relocated SDK')
         prefix.rename(relocated)
         env['PATH'] = str(relocated / 'bin') + ':' + str(restricted)
-        policy.write_text(policy.read_text().replace(str(prefix), str(relocated)))
+        for sb in (policy, qos_policy):
+            sb.write_text(sb.read_text().replace(str(prefix), str(relocated)))
         run('relocated-sol', [relocated / 'bin/sol', 'daily.sol'], '["installed","sol"]\n')
         env['XDG_CACHE_HOME'] = str(work / 'fresh relocated cache')
         run('relocated-native', [relocated / 'bin/fpr', 'build', 'main.fpr', '-o', 'relocated-hello'])
         run('relocated-execute', [project / 'relocated-hello'], 'installed native: 3\n')
         assert hashes(relocated) == before, 'relocated installed bytes changed'
         if args.qos:
-            run('qos-scaffold', [args.qos, 'new', project / 'qos-counter'])
-            run('qos-private-build', [args.qos, 'build', project / 'qos-counter'])
+            qos_guard = ['/usr/bin/sandbox-exec', '-f', str(qos_policy)]
+            run('qos-scaffold', [args.qos, 'new', project / 'qos-counter'], extra_guard=qos_guard)
+            run('qos-private-build', [args.qos, 'build', project / 'qos-counter'], extra_guard=qos_guard)
             assert (project / 'qos-counter/build/qos-counter.qa').is_file()
             log = (project / 'qos-counter/build/qos-build.log').read_text()
             commands = [shlex.split(line[2:]) for line in log.splitlines() if line.startswith('+ ')]

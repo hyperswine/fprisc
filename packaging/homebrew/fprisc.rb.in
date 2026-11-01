@@ -9,8 +9,8 @@ class Fprisc < Formula
   license "MIT"
 
   depends_on arch: :arm64
-  depends_on "libarchive"
-  depends_on "libgit2"
+  # libgit2, libarchive and what they load ship inside libexec/fprisc/lib and
+  # load through @rpath; the packager refuses any other library path.
   # The binary records its own minimum macOS; the packager refuses a mismatch.
   depends_on macos: :golden_gate
 

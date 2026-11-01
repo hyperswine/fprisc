@@ -4,7 +4,9 @@
 Contributor-only: does not download dependencies or run on app authors' machines.
 The package inventory records the collected notices; missing notices fail closed.
 Used by tools/package-toolchain.py (and by QOS's SDK packager, which ships
-this compiler too).
+this compiler too). Notices for the C libraries bundled beside the compiler
+(libgit2, libarchive and their dependencies) are copied by
+tools/stage-toolchain.py into libexec/fprisc/lib/licenses.
 """
 import argparse
 import hashlib
