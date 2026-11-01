@@ -86,6 +86,82 @@ main =
                     assert ledger['alloc_bytes'] == 0, (name, ledger)
             print(f'List fusion allocation: {name} {unfused_requests} -> 0 requests PASS', flush=True)
 
+        # Let-bound producers: the single-use binding is part of the peeled
+        # safe prefix, so the producer's evaluation moves to the source
+        # position only across safe work and safe consumer arguments.
+        letbound = source('letbound', '''List = use "std/list".
+main =
+  r = List.range 1 20;
+  m = List.map (fn x -> x * 2) (List.range 1 4);
+  f = List.filter (fn x -> x < 4) (List.range 1 6);
+  mm = List.map (fn x -> x * 2) (List.map (fn x -> x + 1) (List.range 1 4));
+  m2 = List.map (fn x -> x + 1) (List.range 1 4);
+  chained = List.map (fn x -> x * 3) m2;
+  a = List.sum r;
+  b = List.sum m;
+  c = List.sum f;
+  d = List.sum mm;
+  e = List.sum chained;
+  r2 = List.range 1 8;
+  s1 = List.sum r2;
+  s2 = List.fold (fn z x -> z * 10 + x) 0 r2;
+  k = 2;
+  r3 = List.range 1 10;
+  u = List.fold (fn z x -> z + x) (100 / k) r3;
+  print (a, b, c, d, e, s1, s2, u).
+''')
+        let_expected = '(210, 20, 6, 28, 42, 36, 12345678, 105)\n'
+        for disabled in (False, True):
+            exe, env = build(letbound, 'letbound-' + str(disabled), disabled)
+            observed = execute(exe, env)
+            assert observed.returncode == 0 and observed.stdout == let_expected and not observed.stderr, (
+                disabled, observed.returncode, observed.stdout, observed.stderr)
+        print('List fusion: let-bound producers fuse; multi-use and unsafe-seed bindings stay untouched PASS', flush=True)
+
+        # Fused let-bound pipelines allocate nothing; declined ones keep the
+        # unfused allocation exactly in both modes.
+        let_cases = {
+            'let-sum': ('main =\n  r = List.range 1 1000;\n  print (List.sum r).\n', '500500\n', 1000),
+            'let-fold': ('main =\n  r = List.range 1 1000;\n  print (List.fold (fn z x -> z + x) 0 r).\n',
+                         '500500\n', 1000),
+            'let-map': ('main =\n  m = List.map (fn x -> x + 1) (List.range 1 1000);\n  print (List.sum m).\n',
+                        '501500\n', 3000),
+            'let-filter': ('main =\n  f = List.filter (fn x -> x <= 500) (List.range 1 1000);\n  print (List.sum f).\n',
+                           '125250\n', 2000),
+            'let-chain': ('main =\n  m2 = List.map (fn x -> x + 1) (List.range 1 1000);\n'
+                          '  m3 = List.map (fn x -> x * 2) m2;\n  print (List.sum m3).\n',
+                          '1003000\n', 5000),
+        }
+        for name, (body, expected_output, unfused_requests) in let_cases.items():
+            path = source(name, 'List = use "std/list".\n' + body)
+            for disabled in (False, True):
+                exe, env = build(path, f'{name}-{disabled}', disabled, probe=True)
+                observed = execute(exe, env, report=True)
+                assert observed.returncode == 0 and observed.stdout == expected_output, (
+                    name, disabled, observed.stdout, observed.stderr)
+                ledger = json.loads(re.search(r'\[fpr cost\] (\{.*\})', observed.stderr).group(1))
+                wanted = unfused_requests if disabled else 0
+                assert ledger['alloc_requests'] == wanted, (name, disabled, ledger)
+            print(f'List fusion allocation: {name} {unfused_requests} -> 0 requests PASS', flush=True)
+        declines = {
+            'let-multi-use': ('main =\n  r2 = List.range 1 1000;\n  s1 = List.sum r2;\n'
+                              '  s2 = List.sum r2;\n  print (s1 + s2).\n', '1001000\n'),
+            'let-unsafe-seed': ('main =\n  k = 2;\n  r3 = List.range 1 1000;\n'
+                                '  print (List.fold (fn z x -> z + x) (100 / k) r3).\n', '500550\n'),
+        }
+        for name, (body, expected_output) in declines.items():
+            path = source(name, 'List = use "std/list".\n' + body)
+            seen = []
+            for disabled in (False, True):
+                exe, env = build(path, f'{name}-{disabled}', disabled, probe=True)
+                observed = execute(exe, env, report=True)
+                assert observed.returncode == 0 and observed.stdout == expected_output, (
+                    name, disabled, observed.stdout, observed.stderr)
+                ledger = json.loads(re.search(r'\[fpr cost\] (\{.*\})', observed.stderr).group(1))
+                seen.append(ledger['alloc_requests'])
+            assert seen[0] == seen[1] and seen[0] > 0, (name, seen)
+            print(f'List fusion declined allocation: {name} unchanged at {seen[0]} requests PASS', flush=True)
+
         # Name coincidence is not identity: the local wrappers do not have the
         # std catalog shapes and must remain untouched.
         lookalike = source('lookalike', '''range a b = [1, 2].
