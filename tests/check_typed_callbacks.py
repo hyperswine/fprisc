@@ -36,8 +36,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-callbacks-') as directory:
         normal = run([exe], mode)
         assert normal.stdout == EXPECTED and not normal.stderr, (harts, specialize, inline, normal.stdout, normal.stderr)
         trapped = run([exe, 'panic'], mode, code=1)
+        # diagnostics go to stderr (#39 item C); stdout keeps only what was printed
         expected = '[ERR] capture panic\n\n*** FPRISC PANIC [actor 0]: capture panic ***\n'
-        assert trapped.stdout == expected and not trapped.stderr, (trapped.stdout, trapped.stderr)
+        assert trapped.stdout == '' and trapped.stderr == expected, (trapped.stdout, trapped.stderr)
     # Exercise owned imported units and root-dependent cache reuse. A new root
     # declaration changes inference IDs but must leave private code stable.
     module = temp / 'provider.fpr'

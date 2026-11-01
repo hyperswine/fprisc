@@ -40,8 +40,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-staging-') as directory:
         for action, prefix, message in [('known', 'known-first\n', 'known body'),
                                         ('unknown', 'unknown-first\n', 'argument panic')]:
             trapped = run([exe, action], mode, code=1)
-            expected = prefix + f'[ERR] {message}\n\n*** FPRISC PANIC [actor 0]: {message} ***\n'
-            assert trapped.stdout == expected and not trapped.stderr, (action, specialize, inline, trapped.stdout, trapped.stderr)
+            diag = f'[ERR] {message}\n\n*** FPRISC PANIC [actor 0]: {message} ***\n'
+            assert trapped.stdout == prefix and trapped.stderr == diag, (action, specialize, inline, trapped.stdout, trapped.stderr)
     # Calling metadata from an imported checked unit must be physical, too.
     remote = temp / 'remote.fpr'
     remote.write_text('unsafe base. first x = _ = print "remote-entered"; fn y -> x + y.\n')

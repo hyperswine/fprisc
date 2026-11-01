@@ -39,6 +39,20 @@ void hal_putc(char c) {
   if (c == '\n') fflush(stdout);
 }
 
+/* diagnostics (runtime.c praw, [warn]/[ERR] echo): stderr, unbuffered,
+ * after flushing stdout so the two streams interleave in program order on
+ * a shared terminal.  FPR_DIAG_STDOUT=1: the pre-#39 single stream. */
+void hal_eputc(char c) {
+  static int to_stdout = -1;
+  if (to_stdout < 0) {
+    const char *e = getenv("FPR_DIAG_STDOUT");
+    to_stdout = e && *e && *e != '0';
+  }
+  if (to_stdout) { hal_putc(c); return; }
+  fflush(stdout);
+  fputc(c, stderr);
+}
+
 /* ---- external interrupts from host threads ---------------------------
  * A host thread that waits in the kernel on the actors' behalf (os_watch.c's
  * descriptor watcher) is this board's interrupt controller: it RAISES a

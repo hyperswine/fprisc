@@ -94,9 +94,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
         for case, prefix, message in trap_cases:
             ran = subprocess.run([str(output), case], cwd=ROOT, env=native,
                                  capture_output=True, text=True, timeout=30)
-            expected = prefix if message is None else prefix + f'[ERR] {message}\n\n*** FPRISC PANIC [actor 0]: {message} ***\n'
+            diag = '' if message is None else f'[ERR] {message}\n\n*** FPRISC PANIC [actor 0]: {message} ***\n'
             assert ran.returncode == (0 if message is None else 1), (case, ran.returncode, ran.stdout, ran.stderr)
-            assert ran.stdout == expected and not ran.stderr, (case, ran.stdout, ran.stderr)
+            assert ran.stdout == prefix and ran.stderr == diag, (case, ran.stdout, ran.stderr)
     named = Path(directory) / 'named.fpr'
     named.write_text('unsafe base. main = print (1 + ?todo).\n')
     refused = subprocess.run([str(ROOT / 'fpr'), 'compile', str(named), str(Path(directory) / 'named.s')],
