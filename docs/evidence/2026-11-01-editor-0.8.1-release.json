@@ -45,7 +45,7 @@
     "Direct dotted value definitions remain unsupported"
   ],
   "marketplace": {
-    "status": "uploaded; Marketplace verification pending",
+    "status": "published and validated; public listing verified",
     "publisher": "hyperswine",
     "name": "fpr-lang",
     "version": "0.8.1",
@@ -59,10 +59,12 @@
     "source_revision": "6f91e362dce28fe93b6bab768f87475844ac96c1",
     "published_date": "2026-11-01T02:14:00.040Z",
     "public_query_log": "/private/tmp/fpr-marketplace-public-081.json",
-    "last_checked_utc": "2026-11-01T02:17:41.923041+00:00",
-    "extension_flags": 256,
-    "version_flags": 0,
-    "public_listing_available": false
+    "last_checked_utc": "2026-11-01T02:19:17.005275+00:00",
+    "extension_flags": 260,
+    "version_flags": 1,
+    "public_listing_available": true,
+    "public_listing_http_status": 200,
+    "public_listing_title": "FP-RISC (fpr + sol) - Visual Studio Marketplace"
   },
   "marketplace_previous_attempt": {
     "status": "blocked by publisher authentication; not published",
