@@ -1,0 +1,347 @@
+{
+  "old": "0.12.0-rc1",
+  "new": "0.12.0",
+  "sourceAccess": "denied",
+  "steps": [
+    {
+      "name": "source-denied",
+      "argv": [
+        "/bin/cat",
+        "/Users/jasonqin/Documents/GitHub/fprisc-fprmeta/core/prelude.fpr"
+      ],
+      "exit": 1,
+      "seconds": 0.009
+    },
+    {
+      "name": "nothing-chosen",
+      "argv": [
+        "fpr",
+        "--version"
+      ],
+      "exit": 2,
+      "seconds": 0.056
+    },
+    {
+      "name": "install-archive",
+      "argv": [
+        "fprmeta",
+        "install",
+        "--archive",
+        "$OUT/archives/fprisc-0.12.0-rc1-macos-arm64.tar.gz"
+      ],
+      "exit": 0,
+      "seconds": 0.339
+    },
+    {
+      "name": "default-launch",
+      "argv": [
+        "fpr",
+        "--version"
+      ],
+      "exit": 0,
+      "seconds": 0.477
+    },
+    {
+      "name": "wrong-sha",
+      "argv": [
+        "fprmeta",
+        "install",
+        "--archive",
+        "$OUT/archives/fprisc-0.12.0-macos-arm64.tar.gz",
+        "--sha256",
+        "0000000000000000000000000000000000000000000000000000000000000000"
+      ],
+      "exit": 1,
+      "seconds": 0.053
+    },
+    {
+      "name": "tampered-refused",
+      "argv": [
+        "fprmeta",
+        "install",
+        "--archive",
+        "$OUT/archives/fprisc-0.0.1-tampered.tar.gz",
+        "--sha256",
+        "c5b6a129dc732e7925b31138d6519f95833abdbf53de2d1f60a7125e33e82963"
+      ],
+      "exit": 1,
+      "seconds": 0.351
+    },
+    {
+      "name": "duplicate-refused",
+      "argv": [
+        "fprmeta",
+        "install",
+        "--archive",
+        "$OUT/archives/fprisc-0.12.0-rc1-macos-arm64.tar.gz"
+      ],
+      "exit": 1,
+      "seconds": 0.209
+    },
+    {
+      "name": "lock-refused",
+      "argv": [
+        "fprmeta",
+        "install",
+        "--archive",
+        "$OUT/archives/fprisc-0.12.0-macos-arm64.tar.gz"
+      ],
+      "exit": 1,
+      "seconds": 0.06
+    },
+    {
+      "name": "which-8",
+      "argv": [
+        "fprmeta",
+        "which",
+        "fpr"
+      ],
+      "exit": 0,
+      "seconds": 0.012
+    },
+    {
+      "name": "pin-exact",
+      "argv": [
+        "fprmeta",
+        "pin"
+      ],
+      "exit": 0,
+      "seconds": 0.012
+    },
+    {
+      "name": "build-old",
+      "argv": [
+        "fpr",
+        "build",
+        "src/main.fpr",
+        "-o",
+        "hello-old"
+      ],
+      "exit": 0,
+      "seconds": 3.924
+    },
+    {
+      "name": "run-old",
+      "argv": [
+        "$OUT/external project/hello-old"
+      ],
+      "exit": 0,
+      "seconds": 0.057
+    },
+    {
+      "name": "index-withdrawn",
+      "argv": [
+        "fprmeta",
+        "install",
+        "0.0.1",
+        "--index",
+        "$OUT/index.json"
+      ],
+      "exit": 1,
+      "seconds": 0.02
+    },
+    {
+      "name": "install-index",
+      "argv": [
+        "fprmeta",
+        "install",
+        "--index",
+        "file://$OUT/index.json"
+      ],
+      "exit": 0,
+      "seconds": 0.384
+    },
+    {
+      "name": "list",
+      "argv": [
+        "fprmeta",
+        "list"
+      ],
+      "exit": 0,
+      "seconds": 0.012
+    },
+    {
+      "name": "which-15",
+      "argv": [
+        "fprmeta",
+        "which",
+        "fpr"
+      ],
+      "exit": 0,
+      "seconds": 0.012
+    },
+    {
+      "name": "plus-override",
+      "argv": [
+        "fprmeta",
+        "which",
+        "fpr"
+      ],
+      "exit": 0,
+      "seconds": 0.012
+    },
+    {
+      "name": "plus-arg",
+      "argv": [
+        "fpr",
+        "+0.12.0",
+        "--version"
+      ],
+      "exit": 0,
+      "seconds": 0.456
+    },
+    {
+      "name": "rebuild-old",
+      "argv": [
+        "fpr",
+        "build",
+        "src/main.fpr",
+        "-o",
+        "hello-old"
+      ],
+      "exit": 0,
+      "seconds": 0.676
+    },
+    {
+      "name": "which-19",
+      "argv": [
+        "fprmeta",
+        "which",
+        "fpr"
+      ],
+      "exit": 0,
+      "seconds": 0.012
+    },
+    {
+      "name": "build-new",
+      "argv": [
+        "fpr",
+        "build",
+        "src/main.fpr",
+        "-o",
+        "hello-new"
+      ],
+      "exit": 0,
+      "seconds": 2.857
+    },
+    {
+      "name": "run-new",
+      "argv": [
+        "$OUT/external project/hello-new"
+      ],
+      "exit": 0,
+      "seconds": 0.274
+    },
+    {
+      "name": "sol-env-shebang",
+      "argv": [
+        "$OUT/external project/args.sol",
+        "a b",
+        "",
+        "--x"
+      ],
+      "exit": 0,
+      "seconds": 0.164
+    },
+    {
+      "name": "sol-absolute-shebang",
+      "argv": [
+        "$OUT/external project/abs.sol",
+        "one",
+        "two"
+      ],
+      "exit": 0,
+      "seconds": 1.114
+    },
+    {
+      "name": "uninstall-old",
+      "argv": [
+        "fprmeta",
+        "uninstall",
+        "0.12.0-rc1"
+      ],
+      "exit": 0,
+      "seconds": 0.042
+    },
+    {
+      "name": "pinned-missing",
+      "argv": [
+        "fpr",
+        "build",
+        "src/main.fpr",
+        "-o",
+        "x"
+      ],
+      "exit": 2,
+      "seconds": 0.012
+    },
+    {
+      "name": "old-binary-still-runs",
+      "argv": [
+        "$OUT/external project/hello-old"
+      ],
+      "exit": 0,
+      "seconds": 0.346
+    },
+    {
+      "name": "qos-install",
+      "argv": [
+        "qosmeta",
+        "install",
+        "--archive",
+        "/Users/jasonqin/Library/Caches/Homebrew/qos-portable--0.2.0.tar.gz",
+        "--sha256",
+        "2a25165a1ffcc641c688fc93372620c78e305face349bb79fe70bcc91d4d2e71"
+      ],
+      "exit": 0,
+      "seconds": 0.431
+    },
+    {
+      "name": "qos-version",
+      "argv": [
+        "qos",
+        "--version"
+      ],
+      "exit": 0,
+      "seconds": 0.106
+    },
+    {
+      "name": "qos-new",
+      "argv": [
+        "qos",
+        "new",
+        "$OUT/external project/qos-app"
+      ],
+      "exit": 0,
+      "seconds": 0.065
+    },
+    {
+      "name": "qos-build",
+      "argv": [
+        "qos",
+        "build"
+      ],
+      "exit": 0,
+      "seconds": 11.236
+    }
+  ],
+  "status": "passed",
+  "pinnedBuildSha256": "377974a4217060bd7db60071492f418973d6396982f5c3e917171e60f999d013",
+  "launcherMs": {
+    "direct": 19.4,
+    "launched": 23.7,
+    "overhead": 4.3
+  },
+  "qos": "installed, chosen by default, built a desktop app through the launcher",
+  "output": "$OUT (a fresh directory outside the workspace)",
+  "date": "2026-11-01",
+  "host": "macOS 27 arm64",
+  "archives": {
+    "old": "fprisc-0.12.0-rc1-macos-arm64.tar.gz",
+    "new": "fprisc-0.12.0-macos-arm64.tar.gz (published, sha256 51ad74f0...)",
+    "qos": "qos-portable 0.2.0 (published)"
+  },
+  "fprmetaLinkage": [
+    "/usr/lib/libSystem.B.dylib"
+  ]
+}

@@ -12,6 +12,11 @@ O = use "option".
 args : Unit -> List String .
 args u = Sys.args u.
 
+# the name this program was started under (the last part of argv[0]): a
+# binary reached through a link named `sol` gets "sol"
+name : Unit -> String .
+name u = Sys.name u.
+
 env : String -> O.Option String .
 env name = case Sys.env name of Ok v -> O.Some v | Err _ -> O.None.
 

@@ -191,8 +191,8 @@ parseManifest text = do
   unless (isRelative entry && ".." `notElem` splitDirectories entry && takeExtension entry == want) $
     Left (line ("project", "entry") ++ "the entry is a " ++ want ++ " file inside the project (a relative path)")
   tool <- need ("toolchain", "fpr")
-  unless (isJust (parseVersion tool)) $
-    Left (line ("toolchain", "fpr") ++ "the toolchain is a version, for example 0.12.0")
+  unless (isJust (parseVersion (pinVersion tool))) $
+    Left (line ("toolchain", "fpr") ++ "the toolchain is a version: \"0.12.0\" (that or a later compatible release) or \"=0.12.3\" (exactly that release)")
   target <- opt ("target", "name") "host"
   unless (target `elem` targets) $
     Left (line ("target", "name") ++ "target is one of " ++ intercalate ", " targets)
@@ -226,7 +226,7 @@ renderManifest m =
       "entry = " ++ q (mEntry m),
       "",
       "[toolchain]",
-      note ("fpr = " ++ q (mToolchain m)) "this fpr or a later compatible one",
+      note ("fpr = " ++ q (mToolchain m)) (if isExact (mToolchain m) then "exactly this fpr" else "this fpr or a later compatible one"),
       "",
       "[target]",
       note ("name = " ++ q (mTarget m)) (intercalate " | " targets),
@@ -254,16 +254,27 @@ parseVersion s0 = let s = releaseOf s0 in case splitOn '.' s of
       (a, _ : b) -> a : splitOn c b
       (a, []) -> [a]
 
--- `running` satisfies a manifest asking for `wanted` when it is the same
--- release series (major.minor while the major is 0, else the major) and
--- not older.  Either side unparsable is incompatible.
+-- A pin is "0.12.0" (that release or a later compatible one) or "=0.12.3"
+-- (exactly that release; docs/2026-11-01-TOOLCHAIN-MANAGER.md).
+isExact :: String -> Bool
+isExact p = take 1 p == "="
+
+pinVersion :: String -> String
+pinVersion p = if isExact p then drop 1 p else p
+
+-- `running` satisfies a manifest asking for `wanted`.  A compatible pin
+-- wants the same release series (major.minor while the major is 0, else the
+-- major) and not older; an exact pin wants that release.  A compiler knows
+-- only its release number, so "=0.13.0-rc1" is checked here as 0.13.0: the
+-- fprmeta launcher is what tells pre-releases apart.  Either side
+-- unparsable is incompatible.
 compatible :: String -> String -> Bool
-compatible running wanted = case (parseVersion running, parseVersion wanted) of
+compatible running wanted = case (parseVersion running, parseVersion (pinVersion wanted)) of
   (Just r, Just w) ->
     let pad v = take 3 (v ++ repeat 0)
         (r', w') = (pad r, pad w)
         series v = if take 1 v == [0] then take 2 v else take 1 v
-     in series r' == series w' && r' >= w'
+     in if isExact wanted then r' == w' else series r' == series w' && r' >= w'
   _ -> False
 
 -- ---- finding the project --------------------------------------------------
@@ -292,8 +303,10 @@ loadProject version cmd = do
   root <- either (usageError cmd) pure found
   text <- readFile (root </> manifestFile)
   m <- either (\why -> usageError cmd (root </> why)) pure (parseManifest text)
-  unless (compatible version (mToolchain m)) $
-    usageError cmd (root </> manifestFile ++ ": the project asks for fpr " ++ mToolchain m ++ " (a compatible release); this is fpr " ++ version)
+  let pin = mToolchain m
+      asked = if isExact pin then "exactly " ++ pinVersion pin else pin ++ " (a compatible release)"
+  unless (compatible version pin) $
+    usageError cmd (root </> manifestFile ++ ": the project asks for fpr " ++ asked ++ "; this is fpr " ++ version)
   pure (Project root m)
 
 usageError :: String -> String -> IO a

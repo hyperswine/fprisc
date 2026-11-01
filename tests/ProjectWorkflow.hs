@@ -36,6 +36,10 @@ main = do
   -- what render writes, parse reads back
   let full = Manifest 1 "tool-2" "1.4.0-rc1" Service "src/srv.fpr" "0.12.0" "linux-aarch64" [("greet", "v1.2#3f2e7b4929116f16")]
   require (parseManifest (renderManifest full) == Right full) "render/parse round trip"
+  -- an exact pin parses, renders with its own note, and reads back
+  let exact = full {mToolchain = "=0.12.3"}
+  require (parseManifest (renderManifest exact) == Right exact) "exact pin round trip"
+  require ("exactly this fpr" `isInfixOf` renderManifest exact) "exact pin note"
   -- comments, blank lines, a # inside a string, escapes
   case parseManifest (base ++ "# trailing comment\n\n[dependencies]\nlib = \"v1.0#0123456789abcdef\"   # pinned\n") of
     Right m -> require (mDeps m == [("lib", "v1.0#0123456789abcdef")]) "dependency read"
@@ -58,6 +62,8 @@ main = do
   refused "sol target" (replace "src/main.fpr" "src/main.sol" (replace "\"cli\"" "\"sol\"" base) ++ "[target]\nname = \"linux-aarch64\"\n") "target is host"
   refused "target" (base ++ "[target]\nname = \"windows\"\n") "target is one of"
   refused "toolchain" (replace "\"0.12.0\"" "\"latest\"" base) "toolchain is a version"
+  refused "exact toolchain" (replace "\"0.12.0\"" "\"=latest\"" base) "toolchain is a version"
+  refused "double equals" (replace "\"0.12.0\"" "\"==0.12.0\"" base) "toolchain is a version"
   refused "dependency" (base ++ "[dependencies]\nlib = \"1.0\"\n") "a dependency is"
   refused "unterminated" (replace "\"hello\"" "\"hello" base) "unterminated string"
   refused "unquoted" (replace "\"hello\"" "hello" base) "strings are quoted"
@@ -66,7 +72,10 @@ main = do
   forM_
     [ ("0.12.0", "0.12.0", True), ("0.13.0-dev", "0.13.0", True), ("0.13.0-dev", "0.12.0", False), ("0.12.1", "0.12.0", True), ("0.12.0", "0.12.1", False),
       ("0.13.0", "0.12.0", False), ("0.12", "0.12.0", True), ("1.3.0", "1.0", True),
-      ("2.0.0", "1.9.9", False), ("1.0.0", "0.12.0", False), ("x", "0.12.0", False)
+      ("2.0.0", "1.9.9", False), ("1.0.0", "0.12.0", False), ("x", "0.12.0", False),
+      -- exact pins: that release only (a compiler knows its release number)
+      ("0.12.3", "=0.12.3", True), ("0.12.4", "=0.12.3", False), ("0.12.2", "=0.12.3", False),
+      ("0.13.0", "=0.13.0-rc1", True), ("0.13.0-dev", "=0.13.0", True), ("0.12", "=0.12.0", True), ("x", "=0.12.0", False)
     ]
     $ \(running, wanted, ok) -> require (compatible running wanted == ok) ("compatible " ++ running ++ " " ++ wanted)
   -- build/run with no file act on the project; a named file never does

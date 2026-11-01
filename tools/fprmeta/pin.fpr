@@ -1,0 +1,59 @@
+# pin.fpr -- find a project's toolchain pin, for fprmeta's launcher.
+#
+# Walks up from a directory to the nearest manifest:
+#   fpr.toml  [toolchain] fpr = "0.12.0" | "=0.12.3"
+#   qos.toml  [sdk] version = "0.3.0" | "=0.3.0"   (qos.toml v2)
+#
+# This reads only the one line it needs. The compiler (compiler/Project.hs)
+# still validates the whole manifest when the chosen fpr runs, so a launcher
+# that tolerates a key it does not know never weakens that check.
+
+S = use "std/string".
+L = use "std/list".
+O = use "std/option".
+F = use "std/file".
+P = use "std/path".
+
+Found = { file : String, value : String, line : Int }.
+
+# the quoted value of `key = "..."` inside [section], if present
+valueIn : unsafe List String -> String -> String -> String -> Int -> O.Option (String, Int) .
+valueIn lines section key current n = case lines of
+    Nil -> O.None
+  | raw :: rest ->
+      line = S.trim raw;
+      if S.startsWith "[" line then valueIn rest section key (S.trim line) (n + 1)
+      else if current == "[{section}]" and S.startsWith key line then
+        after = S.trimLeft (S.dropLeft (strlen key) line);
+        if S.startsWith "=" after then
+          v = S.trimLeft (S.dropLeft 1 after);
+          if S.startsWith "\"" v then
+            (case S.indexOf "\"" (S.dropLeft 1 v) of
+                O.Some close -> O.Some (S.slice 1 (close + 1) v, n)
+              | O.None -> valueIn rest section key current (n + 1))
+          else valueIn rest section key current (n + 1)
+        else valueIn rest section key current (n + 1)
+      else valueIn rest section key current (n + 1).
+
+# the nearest directory at or above `dir` holding `name`
+nearest : unsafe String -> String -> O.Option String .
+nearest name dir =
+  candidate = P.join dir name;
+  if F.isFile candidate then O.Some candidate
+  else
+    up = P.parent dir;
+    if up == dir or up == "" then O.None else nearest name up.
+
+# (manifest file, pinned text, 1-based line) for a launcher kind: "fpr" or "qos"
+find : unsafe String -> String -> Result (O.Option Found) String .
+find kind dir =
+  (name, section, key) = if kind == "qos" then ("qos.toml", "sdk", "version") else ("fpr.toml", "toolchain", "fpr");
+  case nearest name dir of
+      O.None -> Ok O.None
+    | O.Some file ->
+        (case F.readText file of
+            Err why -> Err "{file}: {why}"
+          | Ok text ->
+              (case valueIn (S.lines text) section key "" 1 of
+                  O.None -> Ok O.None
+                | O.Some (v, n) -> Ok (O.Some { file = file, value = v, line = n }))).
