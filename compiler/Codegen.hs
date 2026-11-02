@@ -72,6 +72,7 @@ data Target = Target
     tgtScalarFast :: Bool, -- normalize Core and enable private scalar workers
     tgtIndexedMemory :: Bool, -- fuse private manual Addr.add/access/release
     tgtScalarWorkers :: Bool,
+    tgtTickBatch :: Bool,
     tgtFieldWorkers :: Bool,
     tgtPipelineInline :: Bool,
     tgtReuse :: Bool,
@@ -112,7 +113,7 @@ data Emission = Emission
 rv64, rv32 :: Target
 rv64 = Target {tgtW=8,tgtName="rv64",tgtFuel=True,tgtArc=False,tgtWeak=False,
   tgtSimd=False,tgtFusion=True,tgtFloatInline=True,tgtScalarFast=True,tgtIndexedMemory=True,
-  tgtScalarWorkers=True,tgtFieldWorkers=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
+  tgtScalarWorkers=True,tgtTickBatch=True,tgtFieldWorkers=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
   tgtTypedIr=Nothing,tgtHal=M.empty,tgtPolicy=m2Policy,
   tgtNative=Just (defaultMode (DirectRV (policyWidth m2Policy) RV.HartTp))}
 rv32 = rv64 {tgtW=4,tgtName="rv32",tgtFloatInline=False,
@@ -327,6 +328,7 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
           optWorkers = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt),
           optFieldWorkers = tgtFieldWorkers tgt,
           optScalarWorkers = tgtScalarWorkers tgt,
+          optTickBatch = tgtTickBatch tgt,
           optNormalize = tgtScalarFast tgt,
           optReuse = tgtReuse tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt),
           optPoolResetters = tgtPoolResetters tgt }

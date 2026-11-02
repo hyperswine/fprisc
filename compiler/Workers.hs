@@ -91,17 +91,18 @@ vectorCallbacks prog = close roots
 
 workerize :: Bool -> Bool -> Prog -> (Prog,[String])
 workerize fields scalars prog =
-  let (p, notes, _) = workerizeWithSignatures fields scalars prog
+  let (p, notes, _) = workerizeWithSignatures fields scalars True prog
   in (p, notes)
 
 -- Ordered parameter/result representations, recorded when the worker is
 -- chosen. Consumers must not infer this ABI from an already-rewritten body.
 type ScalarSignatures = M.Map String ([Kind], Kind)
 
-workerizeWithSignatures :: Bool -> Bool -> Prog -> (Prog,[String],ScalarSignatures)
-workerizeWithSignatures fields scalars prog =
+-- `batch` (FPR_NO_TICK_BATCH=1 turns it off): see `batchTicks`.
+workerizeWithSignatures :: Bool -> Bool -> Bool -> Prog -> (Prog,[String],ScalarSignatures)
+workerizeWithSignatures fields scalars batch prog =
   let (p,nf) = if fields then fieldWorkers prog else (prog,0)
-      (q,sigs) = if scalars then scalarWorkers p else (p,M.empty)
+      (q,sigs) = if scalars then scalarWorkers batch p else (p,M.empty)
   in (q,["# private workers: fields="++show nf++" scalar="++show (M.size sigs)],sigs)
 
 -- One fixed-width constructor parameter per function. The expanded arity
@@ -196,8 +197,8 @@ fieldWorkers input = (M.map (\(ps,b)->(ps,rewrite (S.fromList ps) b)) combined,M
         CMk t v xs -> CMk t v (map (rewrite bound) xs); CTagEq t v x -> CTagEq t v (rewrite bound x)
         CProj k x -> CProj k (rewrite bound x); _ -> e
 
-scalarWorkers :: Prog -> (Prog,ScalarSignatures)
-scalarWorkers prog = (M.union wrapped workers,M.mapKeys worker chosen)
+scalarWorkers :: Bool -> Prog -> (Prog,ScalarSignatures)
+scalarWorkers batch prog = (M.union wrapped workers,M.mapKeys worker chosen)
   where
     -- The fragment has no allocation, managed projections, unknown callbacks
     -- or foreign calls. Bool values retain the normal immutable ABI.
@@ -243,7 +244,14 @@ scalarWorkers prog = (M.union wrapped workers,M.mapKeys worker chosen)
       _ -> case e of
         CLet n a b -> CLet n (raw a) (raw b); CIf a b c -> CIf (raw a) (raw b) (raw c)
         CTagEq t v x -> CTagEq t v (raw x); _ -> e
-    workers = M.fromList [(worker n,(ps,raw b)) | (n,_)<-M.toList chosen, let (ps,b)=prog M.! n]
+    workers = M.fromList [(worker n,(ps,tickPolicy n (raw b))) | (n,_)<-M.toList chosen, let (ps,b)=prog M.! n]
+    -- One fuel tick per loop iteration: a worker that calls itself keeps its
+    -- own entry tick (every iteration, and every entry, still ticks once);
+    -- the ticks of callees inlined into its body are dropped. The fragment
+    -- has no loops of its own other than calls, which tick on entry, so the
+    -- work between two ticks stays bounded by the body size.
+    tickPolicy n b | batch && S.member n (edges n) = batchTicks b
+                   | otherwise = b
     wrapped = M.mapWithKey (\n def@(ps,b) -> case M.lookup n chosen of
       Nothing -> def
       Just (ks,r) ->
@@ -259,3 +267,18 @@ scalarWorkers prog = (M.union wrapped workers,M.mapKeys worker chosen)
             condition=foldr (\(p,k) yes -> CIf (valid p k) yes (CMk 1 0 [])) (CMk 1 1 []) (zip ps ks)
             guarded=CIf condition boxed b
         in (ps,guarded)) prog
+
+-- Drop inlined callees' entry ticks (`let t = $fuel 0 in b`, t unused) from a
+-- scalar worker body. Only straight-line positions inside the body are
+-- rewritten; the worker's own entry tick is emitted by codegen and remains.
+batchTicks :: Core -> Core
+batchTicks e = case e of
+  CLet n a b | isTick a, n `notElem` vars b -> batchTicks b
+  CLet n a b -> CLet n (batchTicks a) (batchTicks b)
+  CIf a b c -> CIf (batchTicks a) (batchTicks b) (batchTicks c)
+  CTagEq t v x -> CTagEq t v (batchTicks x)
+  CApp f x -> CApp (batchTicks f) (batchTicks x)
+  _ -> e
+  where
+    isTick x = case spine x of (CVar h,[CInt _]) -> h == entryTickName; _ -> False
+    vars x = case x of CVar v -> [v]; _ -> concatMap vars (children x)

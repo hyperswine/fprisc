@@ -16,7 +16,7 @@ import qualified Data.Set as S
 
 data OptimizationOptions = OptimizationOptions
   { optFusion :: Bool, optWorkers :: Bool, optFieldWorkers :: Bool,
-    optScalarWorkers :: Bool, optNormalize :: Bool, optReuse :: Bool,
+    optScalarWorkers :: Bool, optTickBatch :: Bool, optNormalize :: Bool, optReuse :: Bool,
     -- known pool resetters beyond this program and its imports (the linked
     -- program's, Reuse.poolResetters): reuse never spans a call to one
     optPoolResetters :: S.Set Name }
@@ -62,7 +62,7 @@ optimizeCoreWithCheckedImports checked imports opts elide input = do
                            in (p,optimizedSignatures state,ns,optFusion opts)
             MakeWorkers -> let fields = optWorkers opts && optFieldWorkers opts
                                scalars = optWorkers opts && optScalarWorkers opts
-                               (p,ns,ss) = workerizeWithSignatures fields scalars before
+                               (p,ns,ss) = workerizeWithSignatures fields scalars (optTickBatch opts) before
                            in (p,ss,ns,fields || scalars)
             NormalizeForReuse ->
               let enabled = optReuse opts && optNormalize opts
