@@ -71,12 +71,12 @@ def main():
         # live checkout changes during the copy. Never hash one version then
         # ship another; a source snapshot is not a signed build attestation.
         version = subprocess.check_output([bundle/'fpr', 'sol', '--version'], text=True, timeout=30).strip()
-        if version != 'Sol 0.13.0 (scripting API 1)':
+        if version != 'Sol 0.14.0-dev (scripting API 1)':
             ap.error('unexpected runner version '+version)
         hashes = {name: sha(source/name) for name in files}
         binary_hash = sha(bundle/'fpr')
         identity = hashlib.sha256(json.dumps([binary_hash, hashes], sort_keys=True).encode()).hexdigest()
-        bundle_id = f'sol-0.13.0-api1-{platform.system().lower()}-{platform.machine()}-{identity[:16]}'
+        bundle_id = f'sol-0.14.0-dev-api1-{platform.system().lower()}-{platform.machine()}-{identity[:16]}'
         manifest = dict(format=1, version=version, bundle_id=bundle_id, binary_sha256=binary_hash,
                         source_sha256=hashes, host=dict(system=platform.system(), machine=platform.machine()),
                         libraries=['core', 'std', 'sol'], dependencies='See docs/2026-10-29-SOL-INSTALLATION.md')

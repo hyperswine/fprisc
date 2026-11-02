@@ -56,7 +56,7 @@ def main():
             return p
 
         try:
-            run([sol, '--version'], b'Sol 0.13.0 (scripting API 1)\n')
+            run([sol, '--version'], b'Sol 0.14.0-dev (scripting API 1)\n')
             assert b'SOL_STATE_DIR' in run([sol, '--help']).stdout
             expected = b'[a b;*, , --literal]\nba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n'
             run([sol, script, 'a b;*', '', '--literal'], expected)
