@@ -28,3 +28,8 @@ FP values across scheduler yields passed. The
 records the outstanding gate. Homebrew still offers the previously published
 SDK 0.3.1; the compiler fixes are source changes, not a replacement of the
 immutable FP-RISC 0.13.1 archive.
+
+After concurrent upstream changes were synced, combined FP-RISC source at
+`a24055b` again passed all 36 unit suites and the cost regression suite. The SDK
+candidate remains frozen at `858238c`; advance its pin and rerun SDK acceptance
+when the outstanding retention gate is resolved.
