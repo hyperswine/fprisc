@@ -126,3 +126,30 @@ full Base suite passes **137 jobs in 610 s on seven workers** with no reused
 coverage, including the new budget job, which ran under the sweep's
 parallel load and matched its baseline allocation exactly (peak residency
 -2.9% for pos1). Hosted CI follows the push.
+
+## Addendum (2026-11-02): darwin baseline re-recorded after the zero-overhead phase 1
+
+The `ghc-9.8.2 aarch64-apple-darwin` baseline dated from 2026-10-28
+(`ab50224`) and had not moved through case of known constructor (A1),
+List fusion (B1), tick batching and tuple scalars (A2). The gate on this Mac
+at `b4abc6e`:
+
+| program | allocation | peak live |
+| --- | --- | --- |
+| hello | 1.47 GB (+2.0%) | 43 MB (+58.5%, over the 25% margin) |
+| std-live | 29.92 GB (+7.3%) | 403 MB (-16.0%) |
+| pos1 | 64.81 GB (-1.4%) | 834 MB (+23.6%) |
+
+The failing number is `hello`'s peak, and it is the same effect #38
+recorded for CI: `max_bytes_used` is sampled only at major GCs, so a small
+compile's peak moves with GC timing, not with the compiler's work (CI's
+`hello` baseline is 45 MB for the same reason). The A1 record already noted
+the darwin gate failing before A1 and A1 adding about 5 MB to `hello`'s peak.
+
+The allocation numbers are the real cost of the four passes: `std-live` is
+7.3% up since 2026-10-28, most of the 10% margin. The baseline is
+re-recorded here so that growth from this point is caught again; it is an
+acceptance of that 7.3%, not a claim that it is free. The proposal names
+`FusionSafety`, `Workers` and `Reuse` as the quadratic families these passes
+extend; the next phase (bump allocation, type-directed case tests) should
+land with its own budget delta stated.
