@@ -265,7 +265,7 @@ and keeps an `FPR_NO_<NAME>` rollback flag following
 | Phase | Work | Gate | Expected gain |
 | --- | --- | --- | --- |
 | 0 | This PR: benchmarks, probe counts, analysis | - | - |
-| 1 | A1 known-constructor (`FPR_NO_CASE_KNOWN`, landed: [record](2026-11-01-CASE-KNOWN.md)), A2 tuple scalars (`FPR_NO_TUPLE_SCALARS`), one tick per loop iteration | `option_loop` and `tuple_loop` allocs = 0; differential clean | est. 2-20x on those rows |
+| 1 | A1 known-constructor (`FPR_NO_CASE_KNOWN`, landed: [record](2026-11-01-CASE-KNOWN.md)), A2 tuple scalars (`FPR_NO_TUPLE_SCALARS`, landed: [record](2026-11-02-TUPLE-SCALARS.md)), one tick per loop iteration (`FPR_NO_TICK_BATCH`, landed: [record](2026-11-02-TICK-BATCH.md)) | `option_loop` and `tuple_loop` allocs = 0; differential clean | est. 2-20x on those rows |
 | 2 | Inline bump-allocation fast path (plan step 6), type-directed case tests | allocator calls gone from cons loops | est. 1.2-1.5x on allocating rows |
 | 3 | B1 list fusion (`FPR_NO_LIST_FUSE`), B2 TRMC (`FPR_NO_TRMC`) | `list_sum/map/filter` allocs = 0 when fused; quadratic families unchanged | up to 8x (ceiling measured by `loop_sum`) |
 | 4 | C1 header-free region cells and immediate nullary constructors (runtime revision) | bytes/cell 48 -> 32 or 24; walkers audited | est. 1.2-1.5x on residual allocating code; exact arena sizes |

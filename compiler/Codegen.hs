@@ -53,7 +53,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 143 -- checked typed-core List fusion
+codegenRev = 144 -- scalar replacement of loop-carried tuples/records
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -74,6 +74,7 @@ data Target = Target
     tgtScalarWorkers :: Bool,
     tgtTickBatch :: Bool,
     tgtFieldWorkers :: Bool,
+    tgtTupleScalars :: Bool,
     tgtPipelineInline :: Bool,
     tgtReuse :: Bool,
     -- every function that may reset the pool, over the whole linked program
@@ -113,7 +114,7 @@ data Emission = Emission
 rv64, rv32 :: Target
 rv64 = Target {tgtW=8,tgtName="rv64",tgtFuel=True,tgtArc=False,tgtWeak=False,
   tgtSimd=False,tgtFusion=True,tgtFloatInline=True,tgtScalarFast=True,tgtIndexedMemory=True,
-  tgtScalarWorkers=True,tgtTickBatch=True,tgtFieldWorkers=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
+  tgtScalarWorkers=True,tgtTickBatch=True,tgtFieldWorkers=True,tgtTupleScalars=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
   tgtTypedIr=Nothing,tgtHal=M.empty,tgtPolicy=m2Policy,
   tgtNative=Just (defaultMode (DirectRV (policyWidth m2Policy) RV.HartTp))}
 rv32 = rv64 {tgtW=4,tgtName="rv32",tgtFloatInline=False,
@@ -327,6 +328,7 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
         { optFusion = tgtFusion tgt,
           optWorkers = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt),
           optFieldWorkers = tgtFieldWorkers tgt,
+          optTupleScalars = tgtTupleScalars tgt,
           optScalarWorkers = tgtScalarWorkers tgt,
           optTickBatch = tgtTickBatch tgt,
           optNormalize = tgtScalarFast tgt,

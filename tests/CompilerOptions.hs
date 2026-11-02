@@ -24,7 +24,7 @@ main=do
   -- Every code-affecting environment control must distinguish an executable
   -- cache entry. The receive-turn control was absent from Build's old list.
   forM_ ([ ("FPR_NO_"++name,"1") | name<-
-    ["PIPELINE_INLINE","REUSE","VEC_FUSE","VEC_SIMD","SCALAR_WORKERS","FIELD_WORKERS",
+    ["PIPELINE_INLINE","REUSE","VEC_FUSE","VEC_SIMD","SCALAR_WORKERS","FIELD_WORKERS","TUPLE_SCALARS",
      "F64_INLINE","INLINE","VEC_PEEK","VEC_FAST","SPEC","INDEXED_MEMORY","RECEIVE_TURNS","LOOP_REGIONS","CALL_REGIONS"]]
     ++ [("FPR_TYPED_IR_"++name,value) | (name,value)<-
       [("BACKEND","1"),("STRICT","all"),("SELF_LOOPS","0"),("FP_POOL","0"),

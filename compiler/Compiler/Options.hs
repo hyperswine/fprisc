@@ -26,7 +26,7 @@ data NativeOptions = NativeOptions
 data CodegenOptions = CodegenOptions
   { nativeOptions :: NativeOptions, cgIndexedMemory :: Bool, cgFloatInline :: Bool,
     cgSimd :: Bool, cgFusion :: Bool, cgListFuse :: Bool, cgCaseKnown :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgStringFast :: Bool, cgInterval :: Bool, cgLoopMotion :: Bool, cgEarlyLoops :: Bool, cgStringScan :: Bool,
-    cgScalarWorkers :: Bool, cgTickBatch :: Bool, cgFieldWorkers :: Bool, cgPipelineInline :: Bool,
+    cgScalarWorkers :: Bool, cgTickBatch :: Bool, cgFieldWorkers :: Bool, cgTupleScalars :: Bool, cgPipelineInline :: Bool,
     cgReuse :: Bool, cgSpecialize :: Bool, cgReceiveTurns :: Bool,
     cgLoopRegions :: Bool, cgCallRegions :: Bool, cgInline :: Bool } deriving (Eq,Show)
 data DiagnosticOptions = DiagnosticOptions
@@ -63,7 +63,7 @@ parseCompilerOptions env = do
           cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgListFuse=enabled "LIST_FUSE", cgCaseKnown=enabled "CASE_KNOWN", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST", cgStringFast=enabled "STR_FAST", cgInterval=enabled "INTERVAL", cgLoopMotion=yes "FPR_TYPED_IR_LOOP_MOTION",
           cgStringScan=yes "FPR_TYPED_IR_STRING_SCAN",
           cgEarlyLoops=yes "FPR_TYPED_IR_EARLY_LOOPS" && nativeSelfLoops native,
-          cgScalarWorkers=enabled "SCALAR_WORKERS", cgTickBatch=enabled "TICK_BATCH", cgFieldWorkers=enabled "FIELD_WORKERS",
+          cgScalarWorkers=enabled "SCALAR_WORKERS", cgTickBatch=enabled "TICK_BATCH", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
           cgReceiveTurns=enabled "RECEIVE_TURNS", cgLoopRegions=enabled "LOOP_REGIONS",
           cgCallRegions=enabled "CALL_REGIONS", cgInline=enabled "INLINE" }
@@ -119,7 +119,7 @@ optimizationFlags :: CodegenOptions -> String
 optimizationFlags c = flag (cgLoopMotion c) "-licm" ++ flag (cgEarlyLoops c) "-earlyloops" ++ flag (cgStringScan c) "-strscan" ++ concat
   [flag (not enabled) suffix | (enabled,suffix)<-
     [(cgPipelineInline c,"-nopinline"),(cgReuse c,"-noreuse"),
-     (cgScalarWorkers c,"-noscalar"),(cgTickBatch c,"-notickbatch"),(cgFieldWorkers c,"-nofields"),
+     (cgScalarWorkers c,"-noscalar"),(cgTickBatch c,"-notickbatch"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),
      (cgIndexedMemory c,"-noidx"),(cgReceiveTurns c,"-nort"),
      (cgLoopRegions c,"-nolr"),(cgCallRegions c,"-nocr"),
      (cgSpecialize c,"-nospec"),(cgInline c,"-noinl"),

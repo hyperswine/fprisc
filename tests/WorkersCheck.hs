@@ -76,6 +76,58 @@ main = do
   check "one-off helper declines" (fst (workerize False True helper)==helper)
   let many=M.fromList [("f"++show n,(["x"],CIf (app "==" [v "x",CInt 0]) (CInt 0) (app ("f"++show n) [app "-" [v "x",CInt 1]]))) | n<-[1..300]]
   check "clone count bounded" (M.size (fst (workerize False True many))==M.size many+128)
+  -- A2: constructor-tree recursive arguments (inlined step helper, let-bound
+  -- next state, conditional branch forwarding parameter, multi-tuple loops)
+  -- unbox to scalar workers when tupleScalars is enabled, and decline when
+  -- FPR_NO_TUPLE_SCALARS disables tupleScalars.
+  let stepArg=CLet "$tick" (CApp (v "$fuel") (CInt 0))
+        (CIf (CTagEq 4 0 (v "p"))
+          (CLet "a" (CProj 0 (v "p"))
+            (CLet "b" (CProj 1 (v "p"))
+              (pair (v "b") (app "+" [v "a",v "b"]))))
+          (CErr "shape"))
+      stepLoop=(["n","p"],
+        CIf (app "==" [v "n",CInt 0])
+          (CIf (CTagEq 4 0 (v "p")) (CProj 0 (v "p")) (CErr "shape"))
+          (app "loop" [app "-" [v "n",CInt 1],stepArg]))
+      stepProg=M.fromList [("loop",stepLoop),("main",([],app "loop" [CInt 10,pair (CInt 0) (CInt 1)]))]
+      (stepOn,_,stepSigsOn)=workerizeWithOptions True True True True stepProg
+      (stepOff,_,stepSigsOff)=workerizeWithOptions True False True True stepProg
+  check "inlined step tuple loop unboxes to field and scalar workers"
+    (M.member "$worker.fields.loop" stepOn && M.member "$worker.scalar.$worker.fields.loop" stepSigsOn)
+  check "FPR_NO_TUPLE_SCALARS disables constructor-tree field worker"
+    (not (M.member "$worker.fields.loop" stepOff) && M.null stepSigsOff)
+  let letLoop=(["n","p"],
+        CIf (app "==" [v "n",CInt 0])
+          (CIf (CTagEq 4 0 (v "p")) (CProj 0 (v "p")) (CErr "shape"))
+          (CLet "next" stepArg (app "loop" [app "-" [v "n",CInt 1],v "next"])))
+      letProg=M.fromList [("loop",letLoop)]
+      (letOn,_,letSigsOn)=workerizeWithOptions True True True True letProg
+  check "let-bound next-state tuple unboxes to field and scalar workers"
+    (M.member "$worker.fields.loop" letOn && M.member "$worker.scalar.$worker.fields.loop" letSigsOn)
+  let branchLoop=(["n","p"],
+        CIf (app "==" [v "n",CInt 0])
+          (CIf (CTagEq 4 0 (v "p")) (CProj 0 (v "p")) (CErr "shape"))
+          (app "loop" [app "-" [v "n",CInt 1],
+            CIf (app ">" [v "n",CInt 5]) stepArg (v "p")]))
+      (branchOn,_,branchSigsOn)=workerizeWithOptions True True True True (M.fromList [("loop",branchLoop)])
+  check "conditional branch forwarding tuple parameter unboxes"
+    (M.member "$worker.fields.loop" branchOn && M.member "$worker.scalar.$worker.fields.loop" branchSigsOn)
+  let twoTupleLoop=(["n","p","q"],
+        CIf (app "==" [v "n",CInt 0])
+          (CIf (CTagEq 4 0 (v "p"))
+            (CIf (CTagEq 4 0 (v "q"))
+              (app "+" [CProj 0 (v "p"),CProj 0 (v "q")])
+              (CErr "shape"))
+            (CErr "shape"))
+          (app "loop2"
+            [ app "-" [v "n",CInt 1]
+            , CIf (CTagEq 4 0 (v "p")) (pair (CProj 1 (v "p")) (app "+" [CProj 0 (v "p"),CProj 1 (v "p")])) (CErr "shape")
+            , CIf (CTagEq 4 0 (v "q")) (pair (CProj 1 (v "q")) (app "+" [CProj 0 (v "q"),CInt 1])) (CErr "shape") ]))
+      (twoOn,_,twoSigsOn)=workerizeWithOptions True True True True (M.fromList [("loop2",twoTupleLoop)])
+  check "multi-tuple loop unboxes both tuple parameters to scalar worker"
+    (M.member "$worker.fields.$worker.fields.loop2" twoOn
+      && M.member "$worker.scalar.$worker.fields.$worker.fields.loop2" twoSigsOn)
   putStrLn "Workers Core: admission, public arity, shadowing, escaping values, unknown kinds, vector tier and clone budget PASS"
 
 hasProj e = case e of

@@ -257,12 +257,32 @@ receiveTurns loopRegions callRegionsOn receiveLoops contextEqs interfaces model 
             CTagEq _ _ x -> reach bound x
             CProj _ x -> reach bound x
             _ -> False
+        usedOnlyAsResult x e = case e of
+          CVar y -> y == x
+          CLet y a b'
+            | y == x -> x `notElem` freeVars a
+            | a == CVar x -> x `notElem` freeVars b' && usedOnlyAsResult y b'
+            | otherwise -> x `notElem` freeVars a && usedOnlyAsResult x b'
+          CIf c t f -> x `notElem` freeVars c && usedOnlyAsResult x t && usedOnlyAsResult x f
+          _ -> False
+        usedOnlyAsGroupArg bound x e
+          | x `notElem` freeVars e = True
+          | Just as <- groupCall bound e =
+              all (\a -> a == CVar x || x `notElem` freeVars a) as
+          | otherwise = case e of
+              CLet y a b'
+                | y == x -> x `notElem` freeVars a
+                | a == CVar x -> usedOnlyAsGroupArg (S.insert y bound) x b' && usedOnlyAsGroupArg (S.insert y bound) y b'
+                | otherwise -> x `notElem` freeVars a && usedOnlyAsGroupArg (S.insert y bound) x b'
+              CIf c t f -> x `notElem` freeVars c && usedOnlyAsGroupArg bound x t && usedOnlyAsGroupArg bound x f
+              _ -> False
         iterAlloc bound e = case groupCall bound e of
           Just as -> any (argAlloc bound) as
           Nothing -> case e of
             CLet x a b' -> let bound' = S.insert x bound
+                               asArg = usedOnlyAsGroupArg bound' x b'
                             in (reach bound a && iterAlloc bound a)
-                               || (reach bound' b' && (rawAlloc bound a || iterAlloc bound' b'))
+                               || (reach bound' b' && ((if asArg then argAlloc bound a else rawAlloc bound a) || iterAlloc bound' b'))
             CIf c t f -> ((reach bound t || reach bound f) && rawAlloc bound c)
                          || (reach bound t && iterAlloc bound t)
                          || (reach bound f && iterAlloc bound f)
@@ -270,6 +290,11 @@ receiveTurns loopRegions callRegionsOn receiveLoops contextEqs interfaces model 
         -- an argument of the recursive call: its constructors are the state
         argAlloc bound e = case e of
           CMk _ _ fs -> any (argAlloc bound) fs
+          CLet x a b' ->
+            let bound' = S.insert x bound
+                asRes = usedOnlyAsResult x b'
+             in (if asRes then argAlloc bound a else rawAlloc bound a) || argAlloc bound' b'
+          CIf c t f -> rawAlloc bound c || argAlloc bound t || argAlloc bound f
           _ -> rawAlloc bound e
         rawAlloc bound e = case spine e of
           (CVar g, as) | not (S.member g bound), not (null as) ->
