@@ -22,7 +22,7 @@ import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
-import Codegen (Target, codegenRev, emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative)
+import Codegen (Target, codegenRev, emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtTickBatch, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth, registerBudget)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -773,7 +773,7 @@ compileWithReport accepted report = do
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = (Options.cgFloatInline codegen), tgtSimd=(oA64 opts || oX64 opts) && (Options.cgSimd codegen), tgtFusion=(Options.cgFusion codegen),
-                               tgtScalarFast = True, tgtIndexedMemory = (Options.cgIndexedMemory codegen), tgtScalarWorkers = (Options.cgScalarWorkers codegen), tgtFieldWorkers = (Options.cgFieldWorkers codegen), tgtPipelineInline = (Options.cgPipelineInline codegen), tgtReuse = (Options.cgReuse codegen), tgtTypedIr = (Options.diagTypedIr diagnostic), tgtPolicy = irPolicy, tgtNative = nativeMode}
+                               tgtScalarFast = True, tgtIndexedMemory = (Options.cgIndexedMemory codegen), tgtScalarWorkers = (Options.cgScalarWorkers codegen), tgtTickBatch = (Options.cgTickBatch codegen), tgtFieldWorkers = (Options.cgFieldWorkers codegen), tgtPipelineInline = (Options.cgPipelineInline codegen), tgtReuse = (Options.cgReuse codegen), tgtTypedIr = (Options.diagTypedIr diagnostic), tgtPolicy = irPolicy, tgtNative = nativeMode}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts
