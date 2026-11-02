@@ -8,6 +8,7 @@ module Core.Opt.Pipeline
 import Core.Syntax
 import Core.Opt.Fusion (fuseCompatibilityWithImports)
 import Core.Opt.Normalize (normIn)
+import Core.Opt.Ticks (batchProgramTicks)
 import Workers (ScalarSignatures, workerizeWithOptions, internalWorker)
 import Reuse (reuseProgram, poolResetters)
 import Control.Monad (foldM, unless)
@@ -22,7 +23,7 @@ data OptimizationOptions = OptimizationOptions
     optPoolResetters :: S.Set Name }
   deriving (Eq, Show)
 
-data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors
+data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | BatchTicks
   deriving (Eq, Show)
 
 data PassReport = PassReport
@@ -53,7 +54,7 @@ optimizeCoreWithCheckedImports :: S.Set Name -> Prog -> OptimizationOptions -> S
 optimizeCoreWithCheckedImports checked imports opts elide input = do
   verifyPassResult input input M.empty
   foldM run (OptimizedCore input M.empty [])
-    [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors]
+    [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BatchTicks]
   where
     run state pass = do
       let before = optimizedProgram state
@@ -70,6 +71,9 @@ optimizeCoreWithCheckedImports checked imports opts elide input = do
               in (p,optimizedSignatures state,[],enabled)
             ReuseConstructors -> let (p,ns) = if optReuse opts then reuseProgram (optPoolResetters opts `S.union` poolResetters (M.union before imports)) elide before else (before,[])
                                  in (p,optimizedSignatures state,ns,optReuse opts)
+            -- last, so reuse sees the calls it has always seen
+            BatchTicks -> let (p,ns) = if optTickBatch opts then batchProgramTicks before else (before,[])
+                          in (p,optimizedSignatures state,ns,optTickBatch opts)
       case verifyPassResult before after sigs of
         Left err -> Left (show pass ++ ": " ++ err)
         Right () -> Right (OptimizedCore after sigs

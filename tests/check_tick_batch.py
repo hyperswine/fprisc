@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Batched fuel ticks in scalar self-loop workers (FPR_NO_TICK_BATCH=1 rolls back).
+"""Batched fuel ticks in self-looping functions (FPR_NO_TICK_BATCH=1 rolls back).
 
-A scalar worker that calls itself keeps one entry tick per iteration; the
-entry ticks of callees inlined into its body are dropped
-(Workers.batchTicks). Checks: identical output with batching on and off on the
-unbox benchmarks; the fused list_sum worker emits one tick on RV64 batched and
-two unbatched; and a child spinning in a batched worker is still preempted
-(1 and 4 harts), so the parent receives its message and kills it."""
+A function that calls itself keeps one entry tick per iteration; the entry
+ticks of callees inlined into its body are dropped (Core.Opt.Ticks; scalar
+workers use the same rule via Workers.batchTicks). Checks: identical output
+with batching on and off on the unbox benchmarks; the fused list_sum scalar
+worker and the non-worker fused list_filter loop emit one tick on RV64 batched
+and more unbatched; and a child spinning in a batched worker is still
+preempted (1 and 4 harts), so the parent receives its message and kills it."""
 import os, re, subprocess, tempfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +33,7 @@ def main():
             e = dict(base, XDG_CACHE_HOME=str(tmp / ('c-on' if batched else 'c-off')))
             if not batched: e['FPR_NO_TICK_BATCH'] = '1'
             return e
-        for name in ['list_sum', 'list_map', 'option_loop', 'loop_sum']:
+        for name in ['list_sum', 'list_map', 'list_filter', 'list_fold', 'list_length_rev', 'option_loop', 'loop_sum', 'tuple_loop', 'tree_sum', 'string_scan']:
             seen = []
             for batched in (True, False):
                 exe = tmp / f'{name}.{batched}'
@@ -56,6 +57,18 @@ def main():
         # the worker since foldRange's final step inlines its own callback).
         assert ticks[True] == 1 and ticks[False] >= 2, ticks
         print(f'Tick batching: fused list_sum worker has 1 tick on RV64 ({ticks[False]} unbatched) PASS', flush=True)
+
+        filt = {}
+        for batched in (True, False):
+            out = tmp / f'filter-{batched}.s'
+            c = run([ROOT / 'fpr', 'compile', '--system=posix', '--target=rv64', ROOT / 'tests/bench/unbox/list_filter.fpr', out], env(batched))
+            assert c.returncode == 0, c.stderr[-3000:]
+            text = out.read_text() + ''.join(Path(p).read_text() for p in Path(str(out) + '.units').read_text().split())
+            m = re.search(r'^fpr_fn__x24typed_x2emono_x2ego_x2e1:\n(.*?)# native-insns-v1', text, re.S | re.M)
+            assert m, 'fused list_filter loop not found'
+            filt[batched] = m.group(1).count('call fpr_fuel_save_local')
+        assert filt[True] == 1 and filt[False] >= 2, filt
+        print(f'Tick batching: non-worker fused list_filter loop has 1 tick on RV64 ({filt[False]} unbatched) PASS', flush=True)
 
         src = tmp / 'fair.fpr'; src.write_text(FAIR)
         for harts in ('1', '4'):

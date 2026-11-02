@@ -2,6 +2,7 @@
 -- stay general. This pass runs after all source safety/ownership checking.
 module Workers (workerize, workerizeWithSignatures, workerizeWithOptions, ScalarSignatures, internalWorker, scalarPrimitives) where
 
+import Core.Opt.Ticks (batchTicks)
 import Core.Primitives (scalarPrimitives, entryTickName)
 import Core.Syntax (Core(..), Prog)
 import KernelKinds (Kind(..), signatureStrict)
@@ -407,9 +408,7 @@ scalarWorkers batch prog = (M.union wrapped workers,M.mapKeys worker chosen)
     workers = M.fromList [(worker n,(ps,tickPolicy n (raw b))) | (n,_)<-M.toList chosen, let (ps,b)=prog M.! n]
     -- One fuel tick per loop iteration: a worker that calls itself keeps its
     -- own entry tick (every iteration, and every entry, still ticks once);
-    -- the ticks of callees inlined into its body are dropped. The fragment
-    -- has no loops of its own other than calls, which tick on entry, so the
-    -- work between two ticks stays bounded by the body size.
+    -- the ticks of callees inlined into its body are dropped (Core.Opt.Ticks).
     tickPolicy n b | batch && S.member n (edges n) = batchTicks b
                    | otherwise = b
     wrapped = M.mapWithKey (\n def@(ps,b) -> case M.lookup n chosen of
@@ -428,17 +427,7 @@ scalarWorkers batch prog = (M.union wrapped workers,M.mapKeys worker chosen)
             guarded=CIf condition boxed b
         in (ps,guarded)) prog
 
--- Drop inlined callees' entry ticks (`let t = $fuel 0 in b`, t unused) from a
--- scalar worker body. Only straight-line positions inside the body are
--- rewritten; the worker's own entry tick is emitted by codegen and remains.
-batchTicks :: Core -> Core
-batchTicks e = case e of
-  CLet n a b | isTick a, n `notElem` vars b -> batchTicks b
-  CLet n a b -> CLet n (batchTicks a) (batchTicks b)
-  CIf a b c -> CIf (batchTicks a) (batchTicks b) (batchTicks c)
-  CTagEq t v x -> CTagEq t v (batchTicks x)
-  CApp f x -> CApp (batchTicks f) (batchTicks x)
-  _ -> e
-  where
-    isTick x = case spine x of (CVar h,[CInt _]) -> h == entryTickName; _ -> False
-    vars x = case x of CVar v -> [v]; _ -> concatMap vars (children x)
+-- `batchTicks` (Core.Opt.Ticks) drops the inlined callees' entry ticks from a
+-- scalar worker that calls itself; the worker's own entry tick is emitted by
+-- codegen and remains. The same rule reaches non-worker self loops as its own
+-- pipeline pass.

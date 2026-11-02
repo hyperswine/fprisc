@@ -123,5 +123,6 @@ for the pass, its regression evidence and measurements. Follow-up checks:
   vector path has to materialise an N-word column, which the fused loop
   avoids entirely, so lowering fused pipelines onto the kernels is not a
   default win. Revisit only for pipelines whose input is already a dense column.
-- **Still open:** fuel-tick batching in specialised loops (the remaining
-  gap to a hand loop) and representation work (C2).
+- **Closed:** fuel-tick batching in specialised loops
+  ([record](2026-11-02-TICK-BATCH.md), `Core.Opt.Ticks`).
+- **Still open:** representation work (C2).

@@ -209,7 +209,9 @@ scalar worker and paid tag/untag churn every iteration. Admitting a literal
 1.41x to 1.21x); `list_map` stays near 47 ms. The remainder is fuel accounting:
 the fused loop still pays about two ticks per iteration (three for `list_map`)
 against one in the hand loop. Batching them changes fuel accounting and
-belongs with the proposal's loop-tick work, so it is not done here.
+belongs with the proposal's loop-tick work, so it is not done here. (Done
+afterwards for every self-looping function: see
+[tick batching](2026-11-02-TICK-BATCH.md); `list_sum` is now at the hand loop.)
 
 Lowering fused pipelines onto the vector kernels was measured and declined
 (the column materialisation costs more than the fused loop; see

@@ -1,0 +1,70 @@
+-- Batched fuel ticks in self-looping functions.
+--
+-- Inlining keeps an inlined callee's entry tick (`let t = $fuel 0 in b`,
+-- Core/Typed/Inline.hs and Inline.hs), so fuel still counts calls. A function
+-- that calls itself ticks on every invocation, and when codegen turns the self
+-- tail call into a loop (Codegen.Allocate.loopForm) that entry tick sits on the
+-- loop head, so the ticks of the callees inlined into the body are redundant:
+-- every iteration still charges one unit, and the work between two ticks stays
+-- bounded by the body, because an inlined callee is non-recursive and a call
+-- that was not inlined ticks at its own entry.
+module Core.Opt.Ticks (batchTicks, selfLooping, batchProgramTicks) where
+import Core.Primitives (entryTickName)
+import Core.Syntax (Core(..), Prog)
+import Core.Utils (spineOf)
+import qualified Data.Map.Strict as M
+
+-- The body-size bound the scalar workers already use (Workers.hs): batching
+-- keeps one tick per iteration, so a body larger than this keeps its inlined
+-- ticks and the work between two ticks with them.
+bodyBound :: Int
+bodyBound = 1024
+
+-- A direct call to the function itself, at any call position.
+selfLooping :: String -> Core -> Bool
+selfLooping name body = any (calls name) (nodes body)
+  where
+    calls n e = case spineOf e of
+      (CVar h, _ : _) -> h == n
+      _ -> False
+    nodes e = e : concatMap nodes (children e)
+
+-- Drop inlined callees' entry ticks (`let t = $fuel 0 in b`, t unused) from a
+-- self-looping body. Every other position is rebuilt unchanged, including the
+-- inside of a lambda: a lambda's callers do not tick for it.
+batchTicks :: Core -> Core
+batchTicks e = case e of
+  CLet n a b | isTick a, n `notElem` vars b -> batchTicks b
+  CLet n a b -> CLet n (batchTicks a) (batchTicks b)
+  CIf a b c -> CIf (batchTicks a) (batchTicks b) (batchTicks c)
+  CTagEq t v x -> CTagEq t v (batchTicks x)
+  CApp f x -> CApp (batchTicks f) (batchTicks x)
+  _ -> e
+  where
+    isTick x = case spineOf x of (CVar h,[CInt _]) -> h == entryTickName; _ -> False
+    vars x = case x of CVar v -> [v]; _ -> concatMap vars (children x)
+
+children :: Core -> [Core]
+children e = case e of
+  CApp a b -> [a,b]; CLet _ a b -> [a,b]; CIf a b c -> [a,b,c]
+  CMk _ _ xs -> xs; CTagEq _ _ x -> [x]; CProj _ x -> [x]
+  CLam _ x -> [x]; _ -> []
+
+size :: Core -> Int
+size e = 1 + sum (map size (children e))
+
+-- Every self-looping function within the bound keeps one tick per iteration.
+-- A note is reported only when the pass had something to decide.
+batchProgramTicks :: Prog -> (Prog, [String])
+batchProgramTicks prog = (M.mapWithKey one prog, note)
+  where
+    one name (ps, b)
+      | selfLooping name b && size b <= bodyBound = (ps, batchTicks b)
+      | otherwise = (ps, b)
+    loops = [(name, size b) | (name, (_, b)) <- M.toList prog, selfLooping name b]
+    batched = length [() | (_, n) <- loops, n <= bodyBound]
+    declined = [name ++ " (" ++ show n ++ " nodes)" | (name, n) <- loops, n > bodyBound]
+    note
+      | null loops = []
+      | otherwise = ["# tick batching: self-loops=" ++ show (length loops) ++ " batched=" ++ show batched
+                     ++ concatMap (\name -> "; declined " ++ name) declined]
