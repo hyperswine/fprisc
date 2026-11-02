@@ -32,15 +32,17 @@ Json = use "std/json".
 Ord = use "std/order".
 V = use "version".
 Pin = use "pin".
+Host = use "host".
+Trust = use "trust".
 
-metaVersion = "0.1.0".
+metaVersion = "0.2.0".
 
 # ---- what each name manages -------------------------------------------------------
 
 # The published version lists live beside the formulas in the Homebrew tap.
 # --index FILE|URL or FPRMETA_INDEX / QOSMETA_INDEX replace them. The lists
-# are not signed yet: each entry's SHA-256 is checked, so they guard against
-# corrupt downloads but trust GitHub for the list itself.
+# require an explicitly trusted Ed25519 public key; unsigned lists require
+# --allow-unsigned-index. The dedicated trust root is in trust.fpr.
 indexBase = "https://raw.githubusercontent.com/hyperswine/homebrew-tap/main/toolchains".
 
 Kind = { kind : String, manager : String, component : String, homeVar : String, homeDir : String,
@@ -92,12 +94,18 @@ platform u =
 receiptOf : Kind -> String -> String .
 receiptOf k v = Path.joinAll [home k, "receipts", "{v}.json"].
 
+internalReceipt : Kind -> String -> String .
+internalReceipt k v = Path.joinAll [home k, v, ".fprmeta-receipt.json"].
+
+hasReceipt : Kind -> String -> Bool .
+hasReceipt k v = F.isFile (internalReceipt k v) or F.isFile (receiptOf k v).
+
 installed : unsafe Kind -> List { parts : List Int, tag : String, text : String } .
 installed k = case Dir.list (home k) of
     Err _ -> Nil
   | Ok names ->
       vs = L.filterMap (fn n -> case V.parse n of
-              Ok v -> if F.isFile (receiptOf k n) and F.isDir (Path.join (home k) n) then O.Some v else O.None
+              Ok v -> if hasReceipt k n and F.isDir (Path.join (home k) n) then O.Some v else O.None
             | Err _ -> O.None) names;
       L.sortWith V.compare vs.
 
@@ -107,14 +115,16 @@ settingsFile k = Path.join (home k) "settings.toml".
 defaultOf : unsafe Kind -> O.Option String .
 defaultOf k = case F.readText (settingsFile k) of
     Err _ -> O.None
-  | Ok text -> O.map (fn found -> case found of (v, _) -> v) (Pin.valueIn (S.lines text) "toolchain" "default" "" 1).
+  | Ok text -> (case Pin.readValue (S.lines text) "toolchain" "default" "" 1 O.None of
+      Err why -> die 2 "{settingsFile k}: {why}"
+    | Ok value -> O.map (fn found -> case found of (v, _) -> v) value).
 
-setDefault : Kind -> O.Option String -> Result Unit String .
+setDefault : unsafe Kind -> O.Option String -> Result Unit String .
 setDefault k v =
   body = case v of
       O.Some text -> "# written by {k.manager}\n[toolchain]\ndefault = \"{text}\"\n"
     | O.None -> "# written by {k.manager}\n[toolchain]\n";
-  F.writeText (settingsFile k) body.
+  Host.atomicWrite (settingsFile k) body.
 
 # ---- choosing a version -------------------------------------------------------------
 
@@ -189,7 +199,7 @@ jsonText at v = O.andThen Json.asString (Json.at at v).
 # every regular file under dir except toolchain.json/sdk.json, as path -> sha256
 inventoryOf : String -> String -> Result (M.Map String String) String .
 inventoryOf dir metaName =
-  script = "cd \"$1\" && find . -type f ! -name \"$2\" -print0 | xargs -0 /usr/bin/shasum -a 256";
+  script = "cd \"$1\" && find . -type f ! -path \"./$2\" ! -path ./.fprmeta-receipt.json -print0 | xargs -0 /usr/bin/shasum -a 256";
   case run ["/bin/sh", "-c", script, "sh", dir, metaName] of
       Err why -> Err why
     | Ok out ->
@@ -202,7 +212,7 @@ inventoryOf dir metaName =
 # files.sha256.json) must match exactly what was unpacked
 checkInventory : Kind -> String -> Result Unit String .
 checkInventory k top =
-  invName = Path.fileName k.invFile;
+  invName = if k.invBase == "" then k.invFile else Path.fileName k.invFile;
   listing = case F.readText (Path.join top k.invFile) of
       Err _ -> O.None
     | Ok text -> (case Json.parse text of
@@ -239,77 +249,124 @@ expectedSha archive given = case given of
 lockDir : Kind -> String .
 lockDir k = Path.join (home k) "lock".
 
-withLock : Kind -> (Unit -> Result a String) -> Result a String .
+withLock : unsafe Kind -> (Unit -> Result a String) -> Result a String .
 withLock k body =
   _ = Dir.create (home k);
-  # std's mkdir succeeds on an existing folder; /bin/mkdir without -p fails
-  # on one, atomically, which is what a lock needs
-  case run ["/bin/mkdir", lockDir k] of
-      Err _ -> Err "another {k.manager} is installing (if none is running, remove {lockDir k})"
-    | Ok _ ->
-        result = body Unit;
-        _ = OS.remove (lockDir k);
-        result.
+  if F.isDir (lockDir k) then Err "another {k.manager} is installing (legacy lock directory: {lockDir k})"
+  else case Host.lock (lockDir k) of
+      Err why -> Err "another {k.manager} is installing: {why}"
+    | Ok fd -> result = body Unit; _ = Host.unlock fd; result.
+
+validSha : unsafe String -> Bool .
+validSha h = strlen h == 64 and shaChars (S.toLower h) 0.
+shaChars : unsafe String -> Int -> Bool .
+shaChars h i = if i >= strlen h then True else c = charAt h i;
+  (S.isDigit c or (c >= 97 and c <= 102)) and shaChars h (i + 1).
+
+# Optional index fields remain optional for old format-1 release lists. If
+# supplied, none is ignored. Payload identity/platform are always checked.
+Entry = { version : { parts : List Int, tag : String, text : String }, url : String, sha256 : String,
+          minimumOS : String, size : Int, requires : List String, yanked : Bool }.
+
+checkMinimum : unsafe String -> Result Unit String .
+checkMinimum minimum = if minimum == "" then Ok Unit else
+  case (run ["/usr/bin/sw_vers", "-productVersion"], V.numbers (S.split "." minimum) Nil) of
+      (Ok current, Ok need) ->
+        (case V.numbers (S.split "." (S.trim current)) Nil of
+            Ok have -> if V.notLess (V.listCompare (L.take 3 (L.append have [0,0,0])) (L.take 3 (L.append need [0,0,0])))
+                       then Ok Unit else Err "release needs macOS {minimum}; this host is {S.trim current}"
+          | Err why -> Err why)
+    | _ -> Err "invalid minimumOS or cannot determine the host OS".
+
+checkRequirements : List String -> Result Unit String .
+checkRequirements requirements = L.fold (fn result r -> case result of
+    Err why -> Err why
+  | Ok _ -> if r == "xcode-clt" then
+      # Build-only: installing/running Sol does not require developer tools.
+      (case run ["/usr/bin/xcode-select", "-p"] of
+          Ok _ -> Ok Unit
+        | Err _ -> _ = print "note: native builds need Command Line Tools: xcode-select --install"; Ok Unit)
+    else if S.startsWith "homebrew:" r and L.member (S.dropLeft 9 r) ["libgit2", "libarchive", "glfw"] then
+      if F.isDir (Path.join "/opt/homebrew/opt" (S.dropLeft 9 r)) then Ok Unit
+      else Err "missing runtime requirement {r}; install it with Homebrew"
+    else Err "unsupported release requirement {r}") (Ok Unit) requirements.
+
+checkPayload : unsafe Kind -> Json.Value -> O.Option Entry -> Result Unit String .
+checkPayload k meta expected =
+  actual = if k.kind == "fpr" then
+      "{O.withDefault "" (jsonText ["host", "system"] meta)}-{O.withDefault "" (jsonText ["host", "machine"] meta)}"
+    else "{O.withDefault "" (jsonText ["os"] meta)}-{O.withDefault "" (jsonText ["architecture"] meta)}";
+  normalized = S.replace "aarch64" "arm64" (S.replace "darwin" "macos" (S.replace "Darwin" "macos" actual));
+  minimum = O.withDefault "" (jsonText ["minimumMacOS"] meta);
+  if O.andThen Json.asInt (Json.field "format" meta) != O.Some 1 then Err "unsupported payload metadata format"
+  else if normalized != platform Unit then Err "payload platform {normalized} differs from host {platform Unit}"
+  else if minimum == "" then Err "payload must declare minimumMacOS"
+  else case expected of
+      O.Some e -> if jsonText ["release"] meta != O.Some e.version.text then Err "index version {e.version.text} differs from payload release"
+        else if e.minimumOS != "" and e.minimumOS != minimum then Err "index minimumOS differs from payload minimumMacOS"
+        else checkMinimum minimum
+    | O.None -> checkMinimum minimum.
 
 installArchive : unsafe Kind -> String -> O.Option String -> String -> Result String String .
-installArchive k archive given source =
+installArchive k archive given source = installExpected k archive given source O.None.
+
+installExpected : unsafe Kind -> String -> O.Option String -> String -> O.Option Entry -> Result String String .
+installExpected k archive given source expected =
   if not (F.isFile archive) then Err "no such archive: {archive}"
   else case expectedSha archive given of
       Err why -> Err why
-    | Ok want ->
-        (case sha256 archive of
+    | Ok want -> if not (validSha want) then Err "SHA-256 must be 64 hexadecimal digits"
+      else withLock k (fn u ->
+        case Host.tempDir (Path.join (home k) "install-XXXXXX") of
             Err why -> Err why
-          | Ok got ->
-              if got != want then Err "{archive}: SHA-256 is {got}, expected {want}"
-              else withLock k (fn u -> unpackInstall k archive got source)).
+          | Ok tmp ->
+              snapshot = Path.join tmp "archive.tar.gz";
+              result = case run ["/bin/cp", archive, snapshot] of
+                  Err why -> Err why
+                | Ok _ -> (case (sha256 snapshot, Host.size snapshot) of
+                    (Ok got, Ok size) -> if got != want then Err "{archive}: SHA-256 is {got}, expected {want}"
+                      else if size > 268435456 then Err "archive exceeds 256 MiB limit"
+                      else (case expected of
+                        O.Some e -> if e.size > 0 and size != e.size then Err "archive size differs from index" else unpackInstall k snapshot got source tmp expected
+                      | O.None -> unpackInstall k snapshot got source tmp expected)
+                  | (Err why, _) -> Err why
+                  | (_, Err why) -> Err why);
+              _ = run ["/bin/chmod", "-R", "u+w", tmp];
+              _ = Dir.removeAll tmp;
+              result).
 
-unpackInstall : unsafe Kind -> String -> String -> String -> Result String String .
-unpackInstall k archive sha source =
-  tmp = Path.joinAll [home k, "tmp", "install-{OS.wallClock Unit}"];
-  _ = run ["/bin/chmod", "-R", "u+w", Path.join (home k) "tmp"];
-  _ = Dir.removeAll (Path.join (home k) "tmp");
-  case Dir.create tmp of
-      Err why -> Err "{tmp}: {why}"
-    | Ok _ ->
-        result = placeUnpacked k archive sha source tmp;
-        _ = run ["/bin/chmod", "-R", "u+w", tmp];
-        _ = Dir.removeAll (Path.join (home k) "tmp");
-        result.
-
-placeUnpacked : unsafe Kind -> String -> String -> String -> String -> Result String String .
-placeUnpacked k archive sha source tmp =
-  case run ["/usr/bin/tar", "-xzf", archive, "-C", tmp] of
+unpackInstall : unsafe Kind -> String -> String -> String -> String -> O.Option Entry -> Result String String .
+unpackInstall k archive sha source tmp expected =
+  unpacked = Path.join tmp "unpacked";
+  _ = Dir.create unpacked;
+  case Host.extract archive unpacked of
       Err why -> Err why
-    | Ok _ ->
-        (case Dir.list tmp of
-            Ok (one :: Nil) -> placeTop k archive sha source (Path.join tmp one)
-          | Ok _ -> Err "{archive}: expected exactly one top-level folder"
-          | Err why -> Err why).
+    | Ok _ -> (case Dir.list unpacked of
+        Ok (one :: Nil) -> placeTop k archive sha source (Path.join unpacked one) expected
+      | Ok _ -> Err "{archive}: expected exactly one top-level folder"
+      | Err why -> Err why).
 
-placeTop : unsafe Kind -> String -> String -> String -> String -> Result String String .
-placeTop k archive sha source top =
+placeTop : unsafe Kind -> String -> String -> String -> String -> O.Option Entry -> Result String String .
+placeTop k archive sha source top expected =
   metaPath = Path.join top k.metaFile;
   case F.readText metaPath of
       Err _ -> Err "{archive} is not a {k.component} release (no {k.metaFile})"
-    | Ok text ->
-        (case Json.parse text of
-            Err why -> Err "{k.metaFile}: {why}"
-          | Ok meta ->
-              (case jsonText ["release"] meta of
-                  O.None -> Err "{archive}: {k.metaFile} names no release version"
-                | O.Some release ->
-                    (case V.parse release of
-                        Err why -> Err why
-                      | Ok v ->
-                          final = Path.join (home k) v.text;
-                          if F.exists final then Err "{k.component} {v.text} is already installed ({final})"
-                          else
-                            (case checkInventory k top of
-                                Err why -> Err "{archive}: {why}"
-                              | Ok _ ->
-                                  (case links k top of
-                                      Err why -> Err why
-                                    | Ok _ -> finish k v archive sha source top final))))).
+    | Ok text -> (case Json.parse text of
+        Err why -> Err "{k.metaFile}: {why}"
+      | Ok meta -> (case checkPayload k meta expected of
+          Err why -> Err why
+        | Ok _ -> (case jsonText ["release"] meta of
+            O.None -> Err "{archive}: {k.metaFile} names no release version"
+          | O.Some release -> (case V.parse release of
+              Err why -> Err why
+            | Ok v ->
+                final = Path.join (home k) v.text;
+                if F.exists final then Err "{k.component} {v.text} is already installed ({final})"
+                else (case checkInventory k top of
+                    Err why -> Err "{archive}: {why}"
+                  | Ok _ -> (case links k top of
+                      Err why -> Err why
+                    | Ok _ -> finish k v archive sha source top final)))))).
 
 # the commands a version provides: bin/NAME links to the payload's binary
 links : Kind -> String -> Result Unit String .
@@ -326,80 +383,178 @@ links k top =
                 else (case run ["/bin/ln", "-s", "../{k.payload}/fpr", Path.join bin name] of Ok _ -> Ok Unit | Err why -> Err why))
       (Ok Unit) k.commands.
 
+receipt : Kind -> String -> String -> String -> Json.Value .
+receipt k version sha source = Json.object [
+  ("component", Json.Text k.component), ("version", Json.Text version),
+  ("sha256", Json.Text sha), ("source", Json.Text source),
+  ("installedAt", Json.Integer (OS.wallClock Unit)), ("manager", Json.Text "{k.manager} {metaVersion}")].
+
 finish : unsafe Kind -> { parts : List Int, tag : String, text : String } -> String -> String -> String -> String -> String -> Result String String .
 finish k v archive sha source top final =
-  # read-only like the qualification runs, except the folder itself until it is in place
-  case run ["/bin/sh", "-c", "find \"$1\" -mindepth 1 ! -type l -exec /bin/chmod a-w \{\} +", "sh", top] of
+  # The receipt travels in the same atomic rename as the verified payload.
+  # A crash before settings/legacy-receipt publication leaves a usable install.
+  body = "{Json.render (receipt k v.text sha source)}\n";
+  case Host.atomicWrite (Path.join top ".fprmeta-receipt.json") body of
       Err why -> Err why
-    | Ok _ ->
-        (case OS.rename top final of
-            Err why -> Err "{final}: {why}"
+    | Ok _ -> (case run ["/bin/sh", "-c", "find \"$1\" -mindepth 1 ! -type l -exec /bin/chmod a-w \{\} +", "sh", top] of
+        Err why -> Err why
+      | Ok _ -> (case OS.rename top final of
+          Err why -> Err "{final}: {why}"
+        | Ok _ ->
+            _ = run ["/bin/chmod", "a-w", final];
+            _ = Dir.create (Path.join (home k) "receipts");
+            _ = Host.atomicWrite (receiptOf k v.text) body;
+            (case defaultOf k of
+                O.Some _ -> Ok v.text
+              | O.None -> (case setDefault k (O.Some v.text) of
+                  Ok _ -> Ok v.text
+                | Err why -> Err "installed {v.text}; could not set default: {why}. Run {k.manager} default {v.text}")))).
+
+# Recover interrupted old installs only after full metadata/inventory checks.
+# New installs already have their receipt at the atomic publication boundary.
+repair : unsafe Kind -> Result String String .
+repair k = withLock k (fn u ->
+  case Dir.list (home k) of
+      Err why -> Err why
+    | Ok names ->
+        versions = L.filterMap (fn n -> case V.parse n of Ok v -> O.Some v | Err _ -> O.None) names;
+        L.fold (fn result v -> case result of
+            Err why -> Err why
           | Ok _ ->
-              _ = run ["/bin/chmod", "a-w", final];
-              _ = Dir.create (Path.join (home k) "receipts");
-              receipt = Json.object [
-                ("component", Json.Text k.component), ("version", Json.Text v.text),
-                ("archive", Json.Text (Path.fileName archive)), ("sha256", Json.Text sha),
-                ("source", Json.Text source), ("installedAt", Json.Integer (OS.wallClock Unit)),
-                ("manager", Json.Text "{k.manager} {metaVersion}")];
-              (case F.writeText (receiptOf k v.text) "{Json.render receipt}\n" of
+              top = Path.join (home k) v.text;
+              if not (F.isDir top) then Ok "receipts repaired"
+              else case F.readText (Path.join top k.metaFile) of
                   Err why -> Err why
-                | Ok _ ->
-                    # the first version installed becomes the default
-                    (case defaultOf k of
-                        O.Some _ -> Ok v.text
-                      | O.None -> (case setDefault k (O.Some v.text) of
-                            Ok _ -> Ok v.text
-                          | Err why -> Err why)))).
+                | Ok text -> (case Json.parse text of
+                    Err why -> Err why
+                  | Ok meta -> (case checkPayload k meta O.None of
+                      Err why -> Err why
+                    | Ok _ -> if jsonText ["release"] meta != O.Some v.text then Err "{top}: release differs from directory"
+                      else (case checkInventory k top of
+                          Err why -> Err why
+                        | Ok _ ->
+                            _ = Dir.create (Path.join (home k) "receipts");
+                            body = case F.readText (internalReceipt k v.text) of Ok b -> b | Err _ -> "{Json.render (receipt k v.text "" "recovered local install; archive hash unavailable")}\n";
+                            (case Host.atomicWrite (receiptOf k v.text) body of Ok _ -> Ok "receipts repaired" | Err why -> Err why)))))
+          (Ok "receipts repaired; choose a default with the default command if needed") versions).
 
 # ---- the version list ---------------------------------------------------------------
 
-readIndex : String -> Result Json.Value String .
-readIndex where =
-  text = if S.startsWith "https://" where or S.startsWith "file://" where
-         then run ["/usr/bin/curl", "-fsSL", "--proto", "=https,file", where]
-         else F.readText where;
-  case text of
-      Err why -> Err "the version list {where}: {why}"
-    | Ok t -> (case Json.parse t of Ok v -> Ok v | Err why -> Err "the version list {where}: {why}").
+readLocation : String -> Result String String .
+readLocation where = if S.startsWith "https://" where or S.startsWith "file://" where
+  then run ["/usr/bin/curl", "-fsSL", "--max-filesize", "1048576", "--proto", "=https,file", "--proto-redir", "=https,file", where]
+  else F.readText where.
 
-Entry = { version : { parts : List Int, tag : String, text : String }, url : String, sha256 : String }.
+# SSHSIG uses the OS's Ed25519 verifier; no Homebrew crypto dependency.
+# The key is supplied independently of the index. Never fetch it beside it.
+verifyIndex : unsafe Kind -> List String -> String -> String -> Result Unit String .
+verifyIndex k args where text =
+  trusted = case flag "--trusted-key" args of O.Some p -> O.Some p | O.None -> Program.env "{S.toUpper k.manager}_TRUSTED_KEY";
+  case trusted of
+      O.None -> if L.member "--allow-unsigned-index" args then Ok Unit
+        else verifyKey k where text Trust.publicKey
+    | O.Some keyFile -> (case F.readText keyFile of
+        Err why -> Err "trusted public key: {why}"
+      | Ok key -> verifyKey k where text key).
 
-entries : unsafe Kind -> String -> Json.Value -> List Entry .
-entries k plat index =
-  items = O.withDefault Nil (O.andThen Json.asList (Json.field "entries" index));
-  L.filterMap (fn e ->
-      ok = jsonText ["component"] e == O.Some k.component and jsonText ["platform"] e == O.Some plat
-           and O.andThen Json.asBool (Json.field "yanked" e) != O.Some True;
-      if not ok then O.None
-      else case (O.andThen (fn t -> case V.parse t of Ok v -> O.Some v | Err _ -> O.None) (jsonText ["version"] e),
-                 jsonText ["url"] e, jsonText ["sha256"] e) of
-          (O.Some v, O.Some u, O.Some h) -> O.Some { version = v, url = u, sha256 = h }
-        | _ -> O.None) items.
-
-installFromIndex : unsafe Kind -> O.Option String -> String -> Result String String .
-installFromIndex k version where = case readIndex where of
-    Err why -> Err why
-  | Ok index ->
-      plat = platform Unit;
-      all = L.sortWith (fn a b -> V.compare a.version b.version) (entries k plat index);
-      chosen = case version of
-          O.Some text -> L.find (fn e -> e.version.text == text) all
-        | O.None -> lastOf all;
-      (case chosen of
-          O.None -> Err "{where} has no {k.component} {O.withDefault "release" version} for {plat} (available: {texts (L.map (fn e -> e.version) all)})"
-        | O.Some e ->
-            if F.exists (Path.join (home k) e.version.text) then Err "{k.component} {e.version.text} is already installed"
-            else
-              dl = Path.joinAll [home k, "downloads"];
-              _ = Dir.create dl;
-              file = Path.join dl (Path.fileName e.url);
-              (case run ["/usr/bin/curl", "-fsSL", "--proto", "=https,file", "-o", file, e.url] of
+verifyKey : unsafe Kind -> String -> String -> String -> Result Unit String .
+verifyKey k where text key =
+  words = S.words (S.trim key);
+  if L.length words < 2 or not (S.startsWith "ssh-ed25519 " (S.trim key)) or L.length (S.lines (S.trim key)) != 1 then Err "trusted key must be one OpenSSH ssh-ed25519 public key"
+  else case readLocation "{where}.sig" of
+      Err why -> Err "index signature: {why} (unsigned indexes require explicit --allow-unsigned-index)"
+    | Ok sig ->
+        _ = Dir.create (home k);
+        (case Host.tempDir (Path.join (home k) "verify-XXXXXX") of
+            Err why -> Err why
+          | Ok tmp ->
+              allowed = Path.join tmp "allowed";
+              signature = Path.join tmp "index.sig";
+              result = case F.writeText allowed "fpr-release namespaces=\"fprmeta-index\" {S.join " " (L.take 2 words)}\n" of
                   Err why -> Err why
-                | Ok _ ->
-                    result = installArchive k file (O.Some e.sha256) e.url;
-                    _ = F.remove file;
-                    result)).
+                | Ok _ -> (case F.writeText signature sig of
+                    Err why -> Err why
+                  | Ok _ -> (case Proc.pipeTo ["/usr/bin/ssh-keygen", "-Y", "verify", "-f", allowed, "-I", "fpr-release", "-n", "fprmeta-index", "-s", signature] text of
+                      Ok r -> if r.status == 0 then Ok Unit else Err "index signature verification failed: {S.trim r.err}"
+                    | Err why -> Err why));
+              _ = Dir.removeAll tmp;
+              result).
+
+readIndex : unsafe Kind -> List String -> String -> Result Json.Value String .
+readIndex k args where = case readLocation where of
+    Err why -> Err "the version list {where}: {why}"
+  | Ok text -> if strlen text > 1048576 then Err "index exceeds 1 MiB limit"
+    else (case verifyIndex k args where text of
+        Err why -> Err why
+      | Ok _ -> (case Json.parse text of
+          Err why -> Err "the version list {where}: {why}"
+        | Ok index ->
+            if O.andThen Json.asInt (Json.field "format" index) != O.Some 1 then Err "unsupported index format"
+            else if jsonText ["component"] index != O.Some k.component then Err "index component differs from {k.component}"
+            else Ok index)).
+
+parseEntry : unsafe Json.Value -> Result Entry String .
+parseEntry e = case (jsonText ["version"] e, jsonText ["url"] e, jsonText ["sha256"] e) of
+    (O.Some version, O.Some url, O.Some sha) ->
+      (case V.parse version of
+          Err why -> Err why
+        | Ok v ->
+            size = O.withDefault 0 (O.andThen Json.asInt (Json.field "size" e));
+            minimum = O.withDefault "" (jsonText ["minimumOS"] e);
+            requires = O.withDefault Nil (O.andThen Json.asList (Json.field "requires" e));
+            if not (validSha sha) then Err "invalid SHA-256 in index"
+            else if not (S.startsWith "https://" url or S.startsWith "file://" url) then Err "index URL must use HTTPS or file://"
+            else if Json.field "size" e != O.None and (size <= 0 or size > 268435456) then Err "invalid index size"
+            else if Json.field "minimumOS" e != O.None and minimum == "" then Err "invalid minimumOS"
+            else if Json.field "requires" e != O.None and O.andThen Json.asList (Json.field "requires" e) == O.None then Err "requires must be an array"
+            else if not (L.all (fn r -> Json.asString r != O.None) requires) then Err "requires must contain strings"
+            else if Json.field "yanked" e != O.None and O.andThen Json.asBool (Json.field "yanked" e) == O.None then Err "yanked must be boolean"
+            else Ok { version = v, url = url, sha256 = S.toLower sha, size = size,
+                      minimumOS = minimum, requires = L.filterMap Json.asString requires,
+                      yanked = O.withDefault False (O.andThen Json.asBool (Json.field "yanked" e)) })
+  | _ -> Err "index entry needs version, url and sha256".
+
+entries : unsafe Kind -> String -> Json.Value -> Result (List Entry) String .
+entries k plat index = case O.andThen Json.asList (Json.field "entries" index) of
+    O.None -> Err "index needs an entries array"
+  | O.Some items ->
+      result = L.fold (fn result item -> case result of
+          Err why -> Err why
+        | Ok acc -> if jsonText ["component"] item == O.None or jsonText ["platform"] item == O.None then Err "index entry needs component and platform"
+          else if jsonText ["component"] item != O.Some k.component or jsonText ["platform"] item != O.Some plat then Ok acc
+          else case parseEntry item of
+              Err why -> Err why
+            | Ok e -> if L.any (fn old -> old.version.text == e.version.text) acc then Err "duplicate index entry for {e.version.text}"
+              else Ok (e :: acc)) (Ok Nil) items;
+      (case result of Err why -> Err why | Ok all -> Ok (L.filter (fn e -> not e.yanked) all)).
+
+installFromIndex : unsafe Kind -> O.Option String -> String -> List String -> Result String String .
+installFromIndex k version where args = case readIndex k args where of
+    Err why -> Err why
+  | Ok index -> (case entries k (platform Unit) index of
+      Err why -> Err why
+    | Ok offered ->
+        all = L.sortWith (fn a b -> V.compare a.version b.version) offered;
+        chosen = case version of
+            O.Some text -> L.find (fn e -> e.version.text == text) all
+          | O.None -> lastOf (L.filter (fn e -> e.version.tag == "") all);
+        (case chosen of
+            O.None -> Err "{where} has no {k.component} {O.withDefault "stable release" version} for {platform Unit} (available: {texts (L.map (fn e -> e.version) all)})"
+          | O.Some e -> (case checkMinimum e.minimumOS of
+              Err why -> Err why
+            | Ok _ -> (case checkRequirements e.requires of
+                Err why -> Err why
+              | Ok _ ->
+                  _ = Dir.create (home k);
+                  (case Host.tempDir (Path.join (home k) "download-XXXXXX") of
+                      Err why -> Err why
+                    | Ok tmp ->
+                        file = Path.join tmp "release.tar.gz";
+                        result = case run ["/usr/bin/curl", "-fsSL", "--max-filesize", "268435456", "--proto", "=https,file", "--proto-redir", "=https,file", "-o", file, e.url] of
+                            Err why -> Err why
+                          | Ok _ -> installExpected k file (O.Some e.sha256) e.url (O.Some e);
+                        _ = Dir.removeAll tmp;
+                        result))))).
 
 # ---- the commands -------------------------------------------------------------------
 
@@ -410,10 +565,12 @@ usage k = S.join "\n" [
   "  install --archive FILE [--sha256 HEX]   install a release tarball you already have",
   "  uninstall VERSION                       remove one version (projects are untouched)",
   "  list                                    installed versions and the default",
+  "  repair                                  recover verified interrupted installs/receipts",
   "  default [VERSION]                       show or set the default version",
   "  which [{S.join "|" k.commands}]                 the binary this directory would run, and why",
   "  pin [VERSION]                           pin this project exactly (=VERSION)",
   "  available [--index FILE|URL]            the versions the version list offers",
+  "Index trust: --trusted-key FILE (Ed25519 public key), or explicit --allow-unsigned-index.",
   "Versions live in {home k} ({k.homeVar} overrides it)."].
 
 flag : unsafe String -> List String -> O.Option String .
@@ -423,7 +580,7 @@ flag name args = case args of
 
 positional : unsafe List String -> List String .
 positional args = case args of
-    a :: v :: rest -> if S.startsWith "--" a then positional rest else a :: positional (v :: rest)
+    a :: v :: rest -> if a == "--allow-unsigned-index" then positional (v :: rest) else if S.startsWith "--" a then positional rest else a :: positional (v :: rest)
   | a :: Nil -> if S.startsWith "--" a then Nil else [a]
   | Nil -> Nil.
 
@@ -443,15 +600,16 @@ cmdInstall k args =
         | Err why -> Err why)
   | O.None ->
       version = case positional args of v :: _ -> O.Some v | Nil -> O.None;
-      report k (case installFromIndex k version (indexOf k args) of
+      report k (case installFromIndex k version (indexOf k args) args of
           Ok v -> done v
         | Err why -> Err why).
 
 cmdUninstall : unsafe Kind -> List String -> Unit .
 cmdUninstall k args = case positional args of
     v :: Nil ->
+      _ = case V.parse v of Ok _ -> Unit | Err why -> die 2 why;
       dir = Path.join (home k) v;
-      if not (F.isDir dir) or not (F.isFile (receiptOf k v)) then die 1 "{k.manager}: {k.component} {v} is not installed"
+      if not (F.isDir dir) or not (hasReceipt k v) then die 1 "{k.manager}: {k.component} {v} is not installed"
       else report k (withLock k (fn u ->
           _ = run ["/bin/chmod", "-R", "u+w", dir];
           case Dir.removeAll dir of
@@ -476,8 +634,9 @@ cmdDefault : unsafe Kind -> List String -> Unit .
 cmdDefault k args = case positional args of
     Nil -> print (O.withDefault "no default" (defaultOf k))
   | v :: Nil ->
-      if not (L.any (fn i -> i.text == v) (installed k)) then die 1 "{k.manager}: {k.component} {v} is not installed (installed: {texts (installed k)})"
-      else report k (case setDefault k (O.Some v) of Ok _ -> Ok "default {k.component} is now {v}" | Err why -> Err why)
+      report k (withLock k (fn u ->
+        if not (L.any (fn i -> i.text == v) (installed k)) then Err "{k.component} {v} is not installed (installed: {texts (installed k)})"
+        else case setDefault k (O.Some v) of Ok _ -> Ok "default {k.component} is now {v}" | Err why -> Err why))
   | _ -> die 2 (usage k).
 
 cmdWhich : unsafe Kind -> List String -> Unit .
@@ -505,7 +664,9 @@ cmdPin k args =
                     lines = S.lines text;
                     edited = L.indexedMap (fn i line ->
                         if i + 1 == found.line
-                        then S.replace "# this fpr or a later compatible one" "# exactly this fpr" (S.replace "\"{found.value}\"" "\"={version}\"" line)
+                        then at = O.withDefault 0 (S.indexOf "=" line);
+                          comment = S.dropLeft (Pin.commentEnd line 0 0 False) line;
+                          S.replace "# this fpr or a later compatible one" "# exactly this fpr" "{S.left (at + 1) line} \"={version}\"{if comment == "" then "" else " "}{comment}"
                         else line) lines;
                     note = if L.any (fn v -> v.text == version) (installed k) then ""
                            else "\n(not installed yet: {k.manager} install {version})";
@@ -521,19 +682,23 @@ indexOf k args = case flag "--index" args of
 cmdAvailable : unsafe Kind -> List String -> Unit .
 cmdAvailable k args =
   where = indexOf k args;
-  case readIndex where of
+  case readIndex k args where of
       Err why -> die 1 "{k.manager}: {why}"
     | Ok index ->
         plat = platform Unit;
         have = installed k;
-        all = L.sortWith (fn a b -> V.compare a.version b.version) (entries k plat index);
-        if L.length all == 0 then print "{where} offers no {k.component} release for {plat}"
-        else L.each (fn e -> print (if L.any (fn i -> i.text == e.version.text) have then "{e.version.text}  (installed)" else e.version.text)) all.
+        (case entries k plat index of
+            Err why -> die 1 "{k.manager}: {why}"
+          | Ok offered ->
+              all = L.sortWith (fn a b -> V.compare a.version b.version) offered;
+              if L.length all == 0 then print "{where} offers no {k.component} release for {plat}"
+              else L.each (fn e -> print (if L.any (fn i -> i.text == e.version.text) have then "{e.version.text}  (installed)" else e.version.text)) all).
 
 manage : unsafe Kind -> List String -> Unit .
 manage k args = case args of
     "install" :: rest -> cmdInstall k rest
   | "uninstall" :: rest -> cmdUninstall k rest
+  | "repair" :: _ -> report k (repair k)
   | "list" :: _ -> cmdList k
   | "available" :: rest -> cmdAvailable k rest
   | "default" :: rest -> cmdDefault k rest

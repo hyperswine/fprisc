@@ -1,6 +1,9 @@
 # Proposal: a toolchain manager instead of versioned formulas
 
-Status: proposal, 1 November 2026. Nothing here is shipped. It changes how
+Status: original proposal, 1 November 2026. Managers were subsequently
+[published](2026-11-02-FPRMETA-PUBLISHED.md). The
+[review fixes and current contracts](2026-11-02-PACKAGING-CONTRACT-FIXES.md)
+supersede the signing, version and receipt details below. It changes how
 roadmap steps 1 and 5 of the
 [installed toolchain roadmap](2026-10-30-INSTALLED-TOOLCHAIN-ROADMAP.md) are
 delivered. Steps 2 to 4 are unchanged. The QOS side, which also covers making
@@ -104,7 +107,9 @@ form. It changes only that one line of `fpr.toml`.
 
 `fpr build --release` and `qos build` already record the compiler identity.
 They should also record the exact version the launcher chose, so a build can
-be repeated exactly even under a compatible pin.
+be selected again even under a compatible pin. An exact pin alone does not
+make a build hermetic or byte-identical across hosts: system tools, SDKs,
+settings and paths remain inputs. See the review fixes, section 4.
 
 ### Launchers must be real executables
 
@@ -235,7 +240,8 @@ The planned 0.12.1 `brew upgrade` test is replaced by:
 
 1. `fprmeta install 0.12.1` beside 0.12.0.
 2. Check that a project pinned exactly (`"=0.12.0"`) still builds with
-   0.12.0, with byte-identical output.
+   0.12.0, with byte-identical output under the same paths, settings and host
+   tools. This checks upgrade isolation, not cross-machine reproducibility.
 3. Check that a project with a compatible pin (`"0.12.0"`) now builds with
    0.12.1, and that its build records 0.12.1.
 4. Uninstall 0.12.0 and check that the projects, their caches and Sol recovery

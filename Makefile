@@ -214,7 +214,7 @@ fprc: fpr
 # One binary; link it as fprmeta, qosmeta, fpr, sol and qos.
 fprmeta: fpr
 	mkdir -p build/fprmeta
-	FPR_HOME=$(CURDIR) ./fpr build tools/fprmeta/fprmeta.fpr -o build/fprmeta/fprmeta
+	FPR_HOME=$(CURDIR) ./fpr build tools/fprmeta/fprmeta.fpr --with tools/fprmeta/host.c --link -larchive -o build/fprmeta/fprmeta
 
 unit-tests:
 	$(NATIVE_PKG_ENV) cabal test $(if $(UNIT),test:$(UNIT),all) --test-show-details=direct

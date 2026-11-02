@@ -1,0 +1,14 @@
+# Host mechanisms only; install/version/trust policy stays in fprmeta.fpr.
+unsafe base.
+Meta.lock : String -> Result Int String .
+Meta.unlock : Int -> Unit .
+Meta.atomicWrite : String -> String -> Result Unit String .
+Meta.tempDir : String -> Result String String .
+Meta.size : String -> Result Int String .
+Meta.extract : String -> String -> Result Unit String .
+lock p = Meta.lock p.
+unlock fd = Meta.unlock fd.
+atomicWrite p s = Meta.atomicWrite p s.
+tempDir p = Meta.tempDir p.
+size p = Meta.size p.
+extract p d = Meta.extract p d.

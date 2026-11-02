@@ -11,29 +11,56 @@
 S = use "std/string".
 L = use "std/list".
 O = use "std/option".
+J = use "std/json".
 F = use "std/file".
 P = use "std/path".
 
 Found = { file : String, value : String, line : Int }.
 
-# the quoted value of `key = "..."` inside [section], if present
-valueIn : unsafe List String -> String -> String -> String -> Int -> O.Option (String, Int) .
-valueIn lines section key current n = case lines of
-    Nil -> O.None
+# Strip comments outside basic/literal strings, including section comments.
+# Pin values are versions, but the rest of a project may contain quoted '#'.
+commentEnd : unsafe String -> Int -> Int -> Bool -> Int .
+commentEnd s i quote escaped = if i >= strlen s then i
+  else c = charAt s i;
+    if escaped then commentEnd s (i + 1) quote False
+    else if quote == 34 and c == 92 then commentEnd s (i + 1) quote True
+    else if quote != 0 and c == quote then commentEnd s (i + 1) 0 False
+    else if quote == 0 and (c == 34 or c == 39) then commentEnd s (i + 1) c False
+    else if quote == 0 and c == 35 then i
+    else commentEnd s (i + 1) quote False.
+clean : unsafe String -> String .
+clean raw = S.trim (S.left (commentEnd raw 0 0 False) raw).
+
+quoted value = if S.startsWith "'" value and S.endsWith "'" value and strlen value >= 2 then
+    body = S.slice 1 (strlen value - 1) value;
+    if S.contains "'" body then Err "text after a pin string" else Ok body
+  else case J.parse value of
+    Ok (J.Text s) -> Ok s
+  | _ -> Err "a pin must be one quoted version string".
+
+# Read the complete pin section: malformed or duplicate keys must not turn
+# into a missing pin and silently select the default. Other project policy
+# remains the selected compiler/SDK's responsibility.
+readValue : unsafe List String -> String -> String -> String -> Int -> O.Option (String, Int) -> Result (O.Option (String, Int)) String .
+readValue lines section key current n found = case lines of
+    Nil -> Ok found
   | raw :: rest ->
-      line = S.trim raw;
-      if S.startsWith "[" line then valueIn rest section key (S.trim line) (n + 1)
-      else if current == "[{section}]" and S.startsWith key line then
-        after = S.trimLeft (S.dropLeft (strlen key) line);
-        if S.startsWith "=" after then
-          v = S.trimLeft (S.dropLeft 1 after);
-          if S.startsWith "\"" v then
-            (case S.indexOf "\"" (S.dropLeft 1 v) of
-                O.Some close -> O.Some (S.slice 1 (close + 1) v, n)
-              | O.None -> valueIn rest section key current (n + 1))
-          else valueIn rest section key current (n + 1)
-        else valueIn rest section key current (n + 1)
-      else valueIn rest section key current (n + 1).
+      line = clean raw;
+      if S.startsWith "[" line then
+        if not (S.endsWith "]" line) then Err "line {n}: malformed section header"
+        else readValue rest section key (S.trim (S.slice 1 (strlen line - 1) line)) (n + 1) found
+      else if current == section then
+        (case S.indexOf "=" line of
+            O.Some at ->
+              if S.trim (S.left at line) != key then readValue rest section key current (n + 1) found
+              else (case found of
+                O.Some _ -> Err "line {n}: {section}.{key} is given twice"
+              | O.None -> (case quoted (S.trim (S.dropLeft (at + 1) line)) of
+                    Err why -> Err "line {n}: {section}.{key}: {why}"
+                  | Ok value -> readValue rest section key current (n + 1) (O.Some (value, n))))
+          | O.None -> if line == key then Err "line {n}: expected {key} = \"VERSION\""
+                      else readValue rest section key current (n + 1) found)
+      else readValue rest section key current (n + 1) found.
 
 # the nearest directory at or above `dir` holding `name`
 nearest : unsafe String -> String -> O.Option String .
@@ -54,6 +81,7 @@ find kind dir =
         (case F.readText file of
             Err why -> Err "{file}: {why}"
           | Ok text ->
-              (case valueIn (S.lines text) section key "" 1 of
-                  O.None -> Ok O.None
-                | O.Some (v, n) -> Ok (O.Some { file = file, value = v, line = n }))).
+              (case readValue (S.lines text) section key "" 1 O.None of
+                  Err why -> Err "{file}: {why}"
+                | Ok O.None -> if kind == "fpr" then Err "{file}: missing [toolchain] fpr pin" else Ok O.None
+                | Ok (O.Some (v, n)) -> Ok (O.Some { file = file, value = v, line = n }))).

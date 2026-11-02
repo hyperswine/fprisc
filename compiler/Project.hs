@@ -52,6 +52,7 @@ import qualified System.Info
 import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
 import Data.Time.Clock (diffUTCTime, getCurrentTime)
 import Numeric (showFFloat)
+import Text.Read (readMaybe)
 
 -- ---- the manifest ---------------------------------------------------------
 
@@ -191,7 +192,7 @@ parseManifest text = do
   unless (isRelative entry && ".." `notElem` splitDirectories entry && takeExtension entry == want) $
     Left (line ("project", "entry") ++ "the entry is a " ++ want ++ " file inside the project (a relative path)")
   tool <- need ("toolchain", "fpr")
-  unless (isJust (parseVersion (pinVersion tool))) $
+  unless (isJust (toolchainVersion (pinVersion tool))) $
     Left (line ("toolchain", "fpr") ++ "the toolchain is a version: \"0.12.0\" (that or a later compatible release) or \"=0.12.3\" (exactly that release)")
   target <- opt ("target", "name") "host"
   unless (target `elem` targets) $
@@ -239,20 +240,34 @@ renderManifest m =
     q s = show s
     note l n = l ++ replicate (max 1 (24 - length l)) ' ' ++ "# " ++ n
 
--- A pre-release ("0.13.0-dev", "0.13.0-rc1") stands for the release it
--- leads to: the version a new project asks for, and the one checked.
+-- Numeric core for ordering and legacy short-version readers. Prerelease
+-- identity is retained separately by compatible and by newly created projects.
 releaseOf :: String -> String
 releaseOf = takeWhile (/= '-')
 
 -- "0.12.0" -> [0,12,0]; "0.13.0-dev" -> [0,13,0]
 parseVersion :: String -> Maybe [Int]
 parseVersion s0 = let s = releaseOf s0 in case splitOn '.' s of
-  parts | not (null parts), length parts <= 3, all (\p -> not (null p) && all isDigit p) parts -> Just (map read parts)
+  parts | not (null parts), length parts <= 3, all (\p -> not (null p) && all isDigit p) parts -> traverse readMaybe parts
   _ -> Nothing
   where
     splitOn c t = case break (== c) t of
       (a, _ : b) -> a : splitOn c b
       (a, []) -> [a]
+
+-- Public toolchain pins use the same three-component syntax as the launchers.
+-- parseVersion remains permissive for old vX.Y dependency references.
+toolchainVersion :: String -> Maybe [Int]
+toolchainVersion text = do
+  parts <- parseVersion text
+  let core = releaseOf text
+      tag = drop (length core) text
+      split s = case break (== '.') s of (a, []) -> [a]; (a, _:b) -> a : split b
+      ascii c = c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '-'
+      canonical = intercalate "." (map show parts) == core
+      goodTag = case tag of [] -> True; '-' : rest -> all (\p -> not (null p) && all ascii p) (split rest); _ -> False
+  if length parts == 3 && canonical && goodTag && all (\n -> n >= 0 && toInteger n <= 4611686018427387903) parts
+    then Just parts else Nothing
 
 -- A pin is "0.12.0" (that release or a later compatible one) or "=0.12.3"
 -- (exactly that release; docs/2026-11-01-TOOLCHAIN-MANAGER.md).
@@ -264,18 +279,43 @@ pinVersion p = if isExact p then drop 1 p else p
 
 -- `running` satisfies a manifest asking for `wanted`.  A compatible pin
 -- wants the same release series (major.minor while the major is 0, else the
--- major) and not older; an exact pin wants that release.  A compiler knows
--- only its release number, so "=0.13.0-rc1" is checked here as 0.13.0: the
--- fprmeta launcher is what tells pre-releases apart.  Either side
--- unparsable is incompatible.
+-- major) and not older. Stable pins never opt into prereleases; exact pins
+-- distinguish tags. Installed compilers use the archive's recorded release
+-- identity, since an rc archive may contain a compiler reporting the base version.
 compatible :: String -> String -> Bool
-compatible running wanted = case (parseVersion running, parseVersion (pinVersion wanted)) of
+compatible running wanted = case (toolchainVersion running, toolchainVersion (pinVersion wanted)) of
   (Just r, Just w) ->
     let pad v = take 3 (v ++ repeat 0)
         (r', w') = (pad r, pad w)
         series v = if take 1 v == [0] then take 2 v else take 1 v
-     in if isExact wanted then r' == w' else series r' == series w' && r' >= w'
+        tag s = case dropWhile (/= '-') s of [] -> ""; _ : t -> t
+        rt = tag running
+        wt = tag (pinVersion wanted)
+        prerelease a b
+          | null a && null b = EQ
+          | null a = GT
+          | null b = LT
+          | otherwise = compareTags (splitTag a) (splitTag b)
+        splitTag s = case break (== '.') s of (x, []) -> [x]; (x, _ : more) -> x : splitTag more
+        compareTags [] [] = EQ
+        compareTags [] _ = LT
+        compareTags _ [] = GT
+        compareTags (x:xs) (y:ys) = case identifier x y of EQ -> compareTags xs ys; other -> other
+        identifier x y
+          | all isDigit x && all isDigit y = compare (read x :: Integer) (read y :: Integer)
+          | all isDigit x = LT
+          | all isDigit y = GT
+          | otherwise = compare x y
+     in if isExact wanted then r' == w' && rt == wt
+        else series r' == series w' && (null rt || not (null wt))
+          && (r' > w' || (r' == w' && prerelease rt wt /= LT))
   _ -> False
+
+toolchainIdentity :: String -> IO String
+toolchainIdentity fallback = do
+  home <- fprHome
+  metadata <- tryRead (home </> "toolchain.json")
+  pure (fromMaybe fallback (metadata >>= jsonField "release"))
 
 -- ---- finding the project --------------------------------------------------
 
@@ -298,6 +338,7 @@ discover dir0 = canonicalizePath dir0 >>= go
 -- against this toolchain; any problem ends the command with status 2
 loadProject :: String -> String -> IO Project
 loadProject version cmd = do
+  identity <- toolchainIdentity version
   here <- getCurrentDirectory
   found <- discover here
   root <- either (usageError cmd) pure found
@@ -305,8 +346,8 @@ loadProject version cmd = do
   m <- either (\why -> usageError cmd (root </> why)) pure (parseManifest text)
   let pin = mToolchain m
       asked = if isExact pin then "exactly " ++ pinVersion pin else pin ++ " (a compatible release)"
-  unless (compatible version pin) $
-    usageError cmd (root </> manifestFile ++ ": the project asks for fpr " ++ asked ++ "; this is fpr " ++ version)
+  unless (compatible identity pin) $
+    usageError cmd (root </> manifestFile ++ ": the project asks for fpr " ++ asked ++ "; this is fpr " ++ identity)
   pure (Project root m)
 
 usageError :: String -> String -> IO a
@@ -346,7 +387,8 @@ newMain version args = do
     unless (null entries) $ usageError "new" (path ++ " already exists and is not empty")
   isFile <- doesFileExist path
   when isFile $ usageError "new" (path ++ " is a file")
-  forM_ (templateFiles (releaseOf version) template name) $ \(rel, body) -> do
+  identity <- toolchainIdentity version
+  forM_ (templateFiles identity template name) $ \(rel, body) -> do
     let f = path </> rel
     createDirectoryIfMissing True (takeDirectory f)
     writeFile f body
@@ -786,7 +828,8 @@ doctorMain version args = do
   envHome <- lookupEnv "FPR_HOME"
   problems <- newProblems
   section "toolchain"
-  row "fpr" version
+  identity <- toolchainIdentity version
+  row "fpr" identity
   row "executable" real
   row "home" (home ++ (if isJust envHome then "  (FPR_HOME)" else ""))
   missing <- filterM' (fmap not . doesPathExist') [home </> "core" </> "prelude.fpr", home </> "std", home </> "sol" </> "lib", home </> "runtime", home </> "machine" </> "posix", home </> "machine" </> "unix"]
@@ -839,9 +882,9 @@ doctorMain version args = do
         Right m -> do
           row "manifest" (root </> manifestFile)
           row "project" (mName m ++ " " ++ mVersion m ++ " (" ++ kindName (mKind m) ++ "), entry " ++ mEntry m ++ ", target " ++ mTarget m)
-          if compatible version (mToolchain m)
+          if compatible identity (mToolchain m)
             then row "toolchain" ("asks for " ++ mToolchain m ++ ": compatible")
-            else problem problems "toolchain" ("asks for " ++ mToolchain m ++ "; this is " ++ version)
+            else problem problems "toolchain" ("asks for " ++ mToolchain m ++ "; this is " ++ identity)
   n <- countProblems problems
   if n == 0 then putStrLn "\nno problems found" else hPutStrLn stderr ("\n" ++ plural n "problem" ++ " found") >> exitWith (ExitFailure 1)
   where

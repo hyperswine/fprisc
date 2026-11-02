@@ -70,12 +70,16 @@ main = do
   refused "string type" (replace "\"hello\"" "3" base) "quoted string"
   -- compatibility: the same series, not older
   forM_
-    [ ("0.12.0", "0.12.0", True), ("0.13.0-dev", "0.13.0", True), ("0.13.0-dev", "0.12.0", False), ("0.12.1", "0.12.0", True), ("0.12.0", "0.12.1", False),
-      ("0.13.0", "0.12.0", False), ("0.12", "0.12.0", True), ("1.3.0", "1.0", True),
+    [ ("0.12.0", "0.12.0", True), ("0.13.0-dev", "0.13.0", False), ("0.13.0-dev", "0.12.0", False), ("0.12.1", "0.12.0", True), ("0.12.0", "0.12.1", False),
+      ("0.13.0", "0.12.0", False), ("0.12", "0.12.0", False), ("1.3.0", "1.0", False),
       ("2.0.0", "1.9.9", False), ("1.0.0", "0.12.0", False), ("x", "0.12.0", False),
-      -- exact pins: that release only (a compiler knows its release number)
+      -- exact pins include the prerelease identity
       ("0.12.3", "=0.12.3", True), ("0.12.4", "=0.12.3", False), ("0.12.2", "=0.12.3", False),
-      ("0.13.0", "=0.13.0-rc1", True), ("0.13.0-dev", "=0.13.0", True), ("0.12", "=0.12.0", True), ("x", "=0.12.0", False)
+      ("0.13.0", "=0.13.0-rc1", False), ("0.13.0-dev", "=0.13.0", False), ("0.12", "=0.12.0", False), ("x", "=0.12.0", False),
+      ("0.13.0-dev", "0.13.0-dev", True), ("0.13.0", "0.13.0-rc.2", True),
+      ("0.13.0-rc.1", "0.13.0-rc.2", False), ("0.13.0-rc.10", "0.13.0-rc.2", True),
+      ("0.13.0-rc.999999999999999999999", "0.13.0-rc.1000000000000000000000", False),
+      ("0.13.0", "=00.13.0", False), ("0.13.0", "0.13.0-", False), ("0.13.0-00", "0.13.0-a", False)
     ]
     $ \(running, wanted, ok) -> require (compatible running wanted == ok) ("compatible " ++ running ++ " " ++ wanted)
   -- build/run with no file act on the project; a named file never does

@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "scope": "local macOS ARM64 candidate; not CI or a published release",
+  "nativeManagerTestGroups": 12,
+  "compilerProjectSuite": "ProjectWorkflow: passed",
+  "qosProjectTestGroups": 19,
+  "qosNativeReferenceVersionCases": 20,
+  "installedWorkflowSteps": 34,
+  "installedWorkflowEvidence": "2026-11-02-packaging-manager-acceptance.json",
+  "managerSha256": "d4b5f1e00d02a2f3a4bfbf117a7f6bacc411dbae9bcb26f99f56613ac398ae42",
+  "dynamicDependencies": [
+    "/usr/lib/libarchive.2.dylib",
+    "/usr/lib/libSystem.B.dylib"
+  ],
+  "signedIndexes": "local candidates verified using the embedded dedicated public key",
+  "publishedIndexesChanged": false,
+  "installedManagersChanged": false
+}

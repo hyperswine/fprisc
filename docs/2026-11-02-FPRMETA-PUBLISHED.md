@@ -3,6 +3,11 @@
 Status: done, 2 November 2026. This is step 4 ("Publish") of the
 [toolchain manager proposal](2026-11-01-TOOLCHAIN-MANAGER.md), without signing.
 
+A [local follow-up candidate](2026-11-02-PACKAGING-CONTRACT-FIXES.md) fixes
+pin parsing, aligns release selection and adds signed-index validation and
+interruption recovery. It does not change the published 0.1.0 behavior
+described here.
+
 ## What changed
 
 - The Homebrew tap (`hyperswine/homebrew-tap`) now has two formulas,

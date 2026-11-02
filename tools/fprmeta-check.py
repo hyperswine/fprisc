@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Acceptance for fprmeta/qosmeta and the launchers, with source checkouts denied.
 
-Takes two FP-RISC release archives of the same series, OLD and NEW (each with
+Takes two FP-RISC release archives, OLD and NEW (each with
 its SHA256SUMS beside it), and optionally a QOS SDK archive. Everything runs
 under sandbox-exec in a fresh --output directory outside the workspace:
 installing from an archive and from a version list, refusals (checksum,
@@ -13,6 +13,7 @@ launcher's start-up cost. docs/2026-11-01-TOOLCHAIN-MANAGER.md.
 """
 import argparse
 import hashlib
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -47,7 +48,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--fprmeta', type=Path, default=ROOT / 'build/fprmeta/fprmeta')
     ap.add_argument('--old', type=Path, required=True, help='the older FP-RISC release archive')
-    ap.add_argument('--new', type=Path, required=True, help='the newer one, same series')
+    ap.add_argument('--new', type=Path, required=True, help='the newer archive')
     ap.add_argument('--qos', type=Path, help='optional QOS SDK release archive for qosmeta')
     ap.add_argument('--output', type=Path, required=True)
     args = ap.parse_args()
@@ -58,6 +59,10 @@ def main():
         ap.error('output must be outside the workspace that this check denies')
     out.mkdir(parents=True, exist_ok=False)
     old_v, new_v = release_of(args.old), release_of(args.new)
+    def series(v):
+        parts = v.split("-", 1)[0].split(".")
+        return parts[:2] if parts[0] == "0" else parts[:1]
+    compatible_upgrade = series(old_v) == series(new_v)
 
     # inputs copied out of the denied workspace
     tools = out / 'path'
@@ -109,6 +114,12 @@ def main():
 
     try:
         run('source-denied', ['/bin/cat', ROOT / 'core/prelude.fpr'], code=1)
+        # Verify actual signed release-index candidates using the embedded key.
+        for component, manager in [('fprisc', 'fprmeta'), ('qos-portable', 'qosmeta')]:
+            signed = out / f'{component}.json'
+            for suffix in ('', '.sig'):
+                shutil.copyfile(ROOT / 'docs/release-indexes' / f'{component}.json{suffix}', Path(str(signed) + suffix))
+            run(f'signed-{component}-index', [manager, 'available', '--index', signed], expect='0.')
         run('nothing-chosen', ['fpr', '--version'], code=2, expect='fprmeta install VERSION')
         # install OLD from its archive; the first install becomes the default
         run('install-archive', ['fprmeta', 'install', '--archive', archives / args.old.name], expect='(now the default)')
@@ -132,10 +143,11 @@ def main():
         run('tampered-refused', ['fprmeta', 'install', '--archive', bad, '--sha256', sha(bad)], code=1, expect='inventory')
         assert not (home / '0.0.1').exists()
         run('duplicate-refused', ['fprmeta', 'install', '--archive', archives / args.old.name], code=1, expect='already installed')
-        (home / 'lock').mkdir()
-        run('lock-refused', ['fprmeta', 'install', '--archive', archives / args.new.name], code=1, expect='another fprmeta is installing')
-        assert (home / 'lock').is_dir(), 'a refused install removed the lock it did not take'
-        (home / 'lock').rmdir()
+        with (home / 'lock').open('a') as locked:
+            fcntl.flock(locked, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            run('lock-refused', ['fprmeta', 'install', '--archive', archives / args.new.name], code=1, expect='another fprmeta is installing')
+            assert (home / 'lock').is_file(), 'a refused install removed the lock inode'
+
 
         # a project with a compatible pin on OLD, built and fingerprinted
         (project / 'src/deep').mkdir(parents=True)
@@ -154,11 +166,11 @@ def main():
         index = out / 'index.json'
         def entry(v, archive, **more):
             return dict(component='fprisc', version=v, platform='macos-arm64', url=f'file://{archive}', sha256=sha(archive), **more)
-        index.write_text(json.dumps(dict(format=1, entries=[
+        index.write_text(json.dumps(dict(format=1, component='fprisc', entries=[
             entry(old_v, archives / args.old.name), entry(new_v, archives / args.new.name),
             entry('0.0.1', bad, yanked=True), dict(entry('9.9.9', bad), platform='linux-arm64')])))
-        run('index-withdrawn', ['fprmeta', 'install', '0.0.1', '--index', index], code=1, expect='has no fprisc 0.0.1')
-        run('install-index', ['fprmeta', 'install', '--index', f'file://{index}'], expect=f'installed fprisc {new_v}')
+        run('index-withdrawn', ['fprmeta', 'install', '0.0.1', '--index', index, '--allow-unsigned-index'], code=1, expect='has no fprisc 0.0.1')
+        run('install-index', ['fprmeta', 'install', '--index', f'file://{index}', '--allow-unsigned-index'], expect=f'installed fprisc {new_v}')
         run('list', ['fprmeta', 'list'], expect=f'{old_v}  (default)')
 
         # choosing: the exact pin stays, +VERSION and the environment override
@@ -172,10 +184,14 @@ def main():
         report['pinnedBuildSha256'] = before
         # a compatible pin moves to the newest installed release of its series
         manifest.write_text(manifest.read_text().replace(f'"={old_v}"', f'"{old_v}"'))
-        assert which().startswith(f'fprisc {new_v}, chosen by {manifest}')
+        assert which().startswith(f'fprisc {new_v if compatible_upgrade else old_v}, chosen by {manifest}')
+        if not compatible_upgrade:
+            # A 0.x minor upgrade must be an explicit project decision.
+            manifest.write_text(manifest.read_text().replace(f'"{old_v}"', f'"{new_v}"'))
+            assert which().startswith(f'fprisc {new_v}, chosen by {manifest}')
         run('build-new', ['fpr', 'build', 'src/main.fpr', '-o', 'hello-new'])
         run('run-new', [project / 'hello-new'], expect='pinned: 3')
-        manifest.write_text(manifest.read_text().replace(f'"{old_v}"', f'"={old_v}"'))
+        manifest.write_text(manifest.read_text().replace(f'"{new_v if not compatible_upgrade else old_v}"', f'"={old_v}"'))
 
         # Sol through the launcher, both shebang forms, arguments intact
         script = project / 'args.sol'
@@ -209,8 +225,8 @@ def main():
         report['launcherMs'] = dict(direct=round(direct, 1), launched=round(launched, 1), overhead=round(launched - direct, 1))
 
         if args.qos:
-            # QOS 0.2.0's own bin/qos still needs Python 3.11+ and Homebrew llvm/lld
-            # (docs/2026-11-01-SDK-PROCESS-APPS.md removes both)
+            # SDK 0.3.0 ships its native command and ld.lld; its private
+            # compiler and qosp-gl still use declared Homebrew runtime libraries.
             qenv = dict(PATH=f'{tools}:/opt/homebrew/bin:/usr/bin:/bin')
             run('qos-install', ['qosmeta', 'install', '--archive', args.qos, '--sha256', sha(args.qos)], expect='(now the default)')
             run('qos-version', ['qos', '--version'], expect='QOS Portable', extra=qenv)
