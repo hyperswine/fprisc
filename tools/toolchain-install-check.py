@@ -149,6 +149,8 @@ def main():
     parser.add_argument('--release', type=Path, metavar='ARCHIVE',
                         help='qualify a packaged release tarball (tools/package-toolchain.py; its SHA256SUMS beside it) '
                              'instead of staging --binary')
+    parser.add_argument('--deny-source', type=Path, action='append', default=[],
+                        help='additional source/worktree root to deny during qualification')
     parser.add_argument('--qos', type=Path, help='also prove an installed QOS CLI keeps using its private compiler')
     args = parser.parse_args()
     if sys.platform != 'darwin':
@@ -180,7 +182,8 @@ def main():
     env = dict(PATH=str(prefix / 'bin') + ':' + str(restricted), HOME=str(work / 'home'),
                XDG_CACHE_HOME=str(work / 'cache with spaces'), XDG_STATE_HOME=str(work / 'state'),
                TMPDIR=str(work / 'tmp'), LANG='en_US.UTF-8', SOL_GPU='0', FPR_HARTS='2')
-    blocked = [ROOT.parent, Path.home() / '.ghcup', Path.home() / '.cabal']
+    blocked = [ROOT.parent, Path.home() / '.ghcup', Path.home() / '.cabal',
+               *(p.resolve() for p in args.deny_source)]
     homebrew = [p for p in (Path('/opt/homebrew'), Path('/usr/local/opt'), Path('/usr/local/Cellar')) if p.exists()]
 
     def profile(denied):
