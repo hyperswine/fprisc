@@ -30,6 +30,7 @@ import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
 import KernelKinds (Kind (..))
 import Workers (ScalarSignatures)
+import Core.Opt.PairReturns (pairWorker)
 import Core.Syntax (Core (..), Prog)
 
 type Reason = String
@@ -257,7 +258,8 @@ lowerFn policy sigs prog ext hal name (params, body)
       result <- evalStateT (runExceptT go) (St 0 0 Nothing [])
       either (const (Left "internal: uncaught terminated function")) (Right . formSelfLoop policy) result
   where
-    (ptys, rty) = M.findWithDefault (map (const TVal) params, TVal) name sigs
+    (ptys, rty0) = M.findWithDefault (map (const TVal) params, TVal) name sigs
+    rty = if pairWorker name then TPair else rty0
     go = do
       pvs <- mapM (const fresh) params
       entry <- freshB
@@ -274,6 +276,10 @@ lowerFn policy sigs prog ext hal name (params, body)
       blocks <- gets (reverse . stDone)
       pure Fn {fnName = name, fnSourceParams = params, fnResult = rty, fnEntry = entry, fnBlocks = blocks}
 
+-- the environment name of a pair call's second word
+pairSecond :: Name -> Name
+pairSecond x = x ++ "$ret2"
+
 -- the convention of a known callee
 calleeOf :: Cx -> Name -> Int -> Maybe Callee
 calleeOf cx h n
@@ -282,7 +288,7 @@ calleeOf cx h n
   | Just (pts, _) <- M.lookup h (cxSigs cx), length pts /= n = Nothing
   | Just (ps, _) <- M.lookup h (cxProg cx), length ps == n =
       let (pts, r) = M.findWithDefault (map (const TVal) ps, TVal) h (cxSigs cx)
-       in Just (Callee h Local pts r)
+       in Just (Callee h Local pts (if pairWorker h then TPair else r))
   -- Ownership lowering introduces a closed set of consuming C adapters.
   -- Local source definitions still win; these calls have runtime costs,
   -- and never become generated-code fuel boundaries.
@@ -368,6 +374,11 @@ lowerTail cx env expr = ended (go expr) >> pure ()
       M.notMember h env, Just c <- calleeOf cx h 0 ->
       if h == cxSelf cx then close (TBr (cxEntry cx) [])
       else close (TTailCall c [])
+    -- a pair worker answers its constructor's two words in two registers
+    CMk _ _ [a, b] | cxResult cx == TPair -> do
+      x <- lowerVal cx env a >>= asVal
+      y <- lowerVal cx env b >>= asVal
+      close (TRet2 x y)
     e
       | (CVar h, args@(_ : _)) <- spineOf e,
         M.notMember h env,
@@ -392,6 +403,15 @@ lowerTail cx env expr = ended (go expr) >> pure ()
 lowerBind :: Cx -> Env -> Name -> Core -> L Env
 lowerBind cx env x a = case a of
   CVar y | Just b <- M.lookup y env -> pure (M.insert x b env)
+  -- the call of a pair worker: both answer words are bound at once, the
+  -- second right behind the call, under the name only a projection reads
+  CApp _ _
+    | (CVar h, args) <- spineOf a, M.notMember h env, pairWorker h, Just c <- calleeOf cx h (length args) -> do
+        as <- mapM (lowerVal cx env) args
+        as' <- mapM (uncurry coerce) (zip as (calleeParams c))
+        first <- emit TVal (OCall2 c as')
+        second <- emit TVal OSecond
+        pure (M.insert x (first, TPair) (M.insert (pairSecond x) (second, TVal) env))
   _ -> do
     r <- lowerVal cx env a
     pure (M.insert x r env)
@@ -446,6 +466,12 @@ lowerVal cx env = \case
         r <- asVal root
         v <- emit TVal (OReuse tid variant r fields)
         pure (v, TVal)
+  CProj index (CVar x)
+    | Just (first, TPair) <- M.lookup x env, Just second <- M.lookup (pairSecond x) env ->
+        case index of
+          0 -> pure (first, TVal)
+          1 -> pure second
+          _ -> refuse "internal: a projection past the two words of a pair"
   CProj index obj -> do
     value <- lowerVal cx env obj >>= asVal
     v <- emit TVal (OField index value)
@@ -618,6 +644,7 @@ lowerVal cx env = \case
           pure (p, TPred)
       -- a saturated known call
       | M.notMember h env, Just c <- calleeOf cx h (length args) -> do
+          when (calleeResult c == TPair) (refuse ("a pair worker call " ++ h ++ " outside a let binding"))
           as <- mapM (lowerVal cx env) args
           as' <- mapM (uncurry coerce) (zip as (calleeParams c))
           v <- emit (calleeResult c) (OCall c as')

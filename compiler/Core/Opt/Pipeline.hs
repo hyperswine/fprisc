@@ -9,6 +9,7 @@ import Core.Syntax
 import Core.Opt.Fusion (fuseCompatibilityWithImports)
 import Core.Opt.Normalize (normIn)
 import Core.Opt.Ticks (batchProgramTicks)
+import Core.Opt.PairReturns (pairReturnProgram)
 import Workers (ScalarSignatures, workerizeWithOptions, internalWorker)
 import Reuse (reuseProgram, poolResetters)
 import Control.Monad (foldM, unless)
@@ -17,13 +18,13 @@ import qualified Data.Set as S
 
 data OptimizationOptions = OptimizationOptions
   { optFusion :: Bool, optWorkers :: Bool, optFieldWorkers :: Bool, optTupleScalars :: Bool,
-    optScalarWorkers :: Bool, optTickBatch :: Bool, optNormalize :: Bool, optReuse :: Bool,
+    optScalarWorkers :: Bool, optTickBatch :: Bool, optPairReturns :: Bool, optNormalize :: Bool, optReuse :: Bool,
     -- known pool resetters beyond this program and its imports (the linked
     -- program's, Reuse.poolResetters): reuse never spans a call to one
     optPoolResetters :: S.Set Name }
   deriving (Eq, Show)
 
-data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | BatchTicks
+data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | BatchTicks | PairReturns
   deriving (Eq, Show)
 
 data PassReport = PassReport
@@ -54,7 +55,7 @@ optimizeCoreWithCheckedImports :: S.Set Name -> Prog -> OptimizationOptions -> S
 optimizeCoreWithCheckedImports checked imports opts elide input = do
   verifyPassResult input input M.empty
   foldM run (OptimizedCore input M.empty [])
-    [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BatchTicks]
+    [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BatchTicks, PairReturns]
   where
     run state pass = do
       let before = optimizedProgram state
@@ -74,6 +75,9 @@ optimizeCoreWithCheckedImports checked imports opts elide input = do
             -- last, so reuse sees the calls it has always seen
             BatchTicks -> let (p,ns) = if optTickBatch opts then batchProgramTicks before else (before,[])
                           in (p,optimizedSignatures state,ns,optTickBatch opts)
+            -- after every pass that reads call results: the twins are the last functions made
+            PairReturns -> let (p,ss,ns) = if optPairReturns opts then pairReturnProgram before (optimizedSignatures state) else (before,optimizedSignatures state,[])
+                           in (p,ss,ns,optPairReturns opts)
       case verifyPassResult before after sigs of
         Left err -> Left (show pass ++ ": " ++ err)
         Right () -> Right (OptimizedCore after sigs

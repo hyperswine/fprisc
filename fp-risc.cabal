@@ -61,6 +61,7 @@ library
       Core.Opt.Vector.Plan
       Core.Opt.Pipeline
       Core.Opt.Ticks
+      Core.Opt.PairReturns
       Codegen
       Codegen.Kernel
       Codegen.Kernel.Plan

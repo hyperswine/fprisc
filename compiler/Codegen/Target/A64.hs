@@ -267,12 +267,24 @@ call sym convention args res = do
     ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
   emitI selected
 
+-- a call that answers two words in x0 and x1
+call2 :: CodeSymbol -> CallConvention -> [VReg] -> VReg -> VReg -> Se ()
+call2 sym convention args r1 r2 = do
+  stageCells convention args
+  selected <- either refuse pure (Calling.selectPairTransfer Calling.AArch64 convention sym args r1 r2
+    ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
+  emitI selected
+
 -- a call into a noreturn runtime trap: it ends the path (Calling.NeverReturns)
 trapCall :: String -> Se ()
 trapCall s = do
   selected <- either refuse pure (Calling.selectTransfer Calling.AArch64 Calling.RuntimeCall NeverReturns (CodeSymbol s) [] Nothing
     ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
   emitI selected
+
+-- the pair return: x0 and x1 <- the words, then the epilogue
+ret2 :: VReg -> VReg -> SInstr
+ret2 a b = (plain (O.A64 A.Ret) [] [fix a (x 0), fix b (x 1)]) {siImplicitDefs = [x 9, x 29, x 30, Phys "sp"], siControl = Return}
 
 -- the return: x0 <- the value, then the epilogue
 ret :: VReg -> SInstr
@@ -362,7 +374,16 @@ selectBlock cfg fn tyMap b = do
       when stack (refuse "a stack check outside the entry block")
       -- an inlined callee's tick ($fuel) at the start of a non-entry block
       forM_ entryOps $ \_ -> freshL "tick" >>= emitI . entrySeq Protocol.FuelOnly
-  forM_ rest (selectInstr cfg tyMap)
+  let run (Instr d1 (OCall2 c as) : Instr d2 OSecond : more) = do
+        -- the pair call: one transfer answers both words, x0 and x1
+        when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
+        case (d1, d2) of
+          (Just (v1, _), Just (v2, _)) -> call2 (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (vreg v1) (vreg v2)
+          _ -> refuse "internal: a pair call without both definitions"
+        run more
+      run (i : more) = selectInstr cfg tyMap i >> run more
+      run [] = pure ()
+  run rest
   selectTerm cfg fn b
 
 selectInstr :: A64Config -> M.Map VId Ty -> Instr -> Se ()
@@ -541,6 +562,8 @@ selectInstr cfg _ (Instr d op) = case op of
     call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a, vreg b] (Just res)
     emitI (ldrsw r res 4)
     emitL done
+  OCall2 _ _ -> refuse "internal: a pair call that selection did not fuse with its second word"
+  OSecond -> refuse "internal: a second pair word without its call"
   OCall c as -> do
     when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
     def (\r -> call (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (Just r))
@@ -707,6 +730,7 @@ parallelMoves = go . filter (uncurry (/=))
 selectTerm :: A64Config -> Fn -> Block -> Se ()
 selectTerm cfg fn b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
+  TRet2 a b -> emitI (ret2 (vreg a) (vreg b))
   TBr target as
     | target == fnEntry fn -> do -- the self tail call: the transfer re-enters the function through its symbol
         tailJump (CodeSymbol (functionSymbol (fnName fn))) (FprCall TicksFuel) (map vreg as)
@@ -1050,6 +1074,7 @@ renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOpcode i)
           "bl " ++ gsym cfg (Call.runtimeName Call.ApplyEntry), "add sp, sp, #" ++ show (16 * (n + 1)) ]
       (O.A64 A.Panic, [], [OAddr s]) -> address "x0" (addressName s) ++ ["bl " ++ gsym cfg (Call.runtimeName Call.PanicEntry)]
       (O.A64 A.Ret, [], [_]) -> epilogue ++ ["ret"]
+      (O.A64 A.Ret, [], [_, _]) -> epilogue ++ ["ret"]
       (O.Common O.TailJump, [], OCode s : _) -> epilogue ++ ["b " ++ gsym cfg (codeName s)]
       (O.Common O.StoreSpill, [], [s, OI j]) -> hartRead ++ ldst "str" "stur" (reg s) "x9" (8 * (1 + j))
       (O.Common O.LoadSpill, [d], [OI j]) -> case cfgHart cfg of

@@ -106,7 +106,16 @@ opSignature tyOf = \case
       Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments for " ++ show (length (calleeParams c)) ++ " parameters")
     when (length as > arityCeiling) $ Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments is above the ceiling of " ++ show arityCeiling)
     mapM_ (uncurry expect) (zip as (calleeParams c))
+    when (calleeResult c == TPair) (Left ("call " ++ calleeName c ++ ": a pair answer needs a pair call"))
     pure (Just (calleeResult c))
+  OCall2 c as -> do
+    when (length as /= length (calleeParams c)) $
+      Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments for " ++ show (length (calleeParams c)) ++ " parameters")
+    when (length as > arityCeiling) $ Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments is above the ceiling of " ++ show arityCeiling)
+    mapM_ (uncurry expect) (zip as (calleeParams c))
+    unless (calleeResult c == TPair) (Left ("pair call " ++ calleeName c ++ " answers " ++ show (calleeResult c)))
+    pure (Just TVal)
+  OSecond -> pure (Just TVal)
   OSafepoint -> pure Nothing
   OSafepointN n -> do
     unless (n >= 1) (Left "a counted safepoint charges at least one tick")
@@ -165,6 +174,9 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
       TRet v -> do
         t <- tyOf v
         unless (t == fnResult fn) (Left (here ++ "returns " ++ show t ++ ", " ++ show (fnResult fn) ++ " needed"))
+      TRet2 a b -> do
+        unless (fnResult fn == TPair) (Left (here ++ "returns a pair from a function answering " ++ show (fnResult fn)))
+        forM_ [a, b] $ \v -> tyOf v >>= \t -> unless (t == TVal) (Left (here ++ "returns " ++ show v ++ " as " ++ show t ++ " in a pair"))
       TCondBr c _ _ _ _ -> do
         t <- tyOf c
         unless (t == TPred) (Left (here ++ "branches on " ++ show t ++ ", TPred needed"))
@@ -183,6 +195,13 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
       forM_ (zip args (bParams tb)) $ \(a, (_, t)) -> do
         t' <- tyOf a
         unless (t' == t) (Left (here ++ "jump argument " ++ show a ++ " is " ++ show t' ++ ", " ++ show t ++ " needed"))
+  -- the second word is read right after its call and nowhere else
+  forM_ blocks $ \b -> do
+    let pairs = zip (Nothing : map (\(Instr _ op) -> Just op) (bInstrs b)) (bInstrs b)
+    forM_ pairs $ \(before, Instr _ op) -> case (op, before) of
+      (OSecond, Just (OCall2 _ _)) -> pure ()
+      (OSecond, _) -> Left (show (bId b) ++ ": a second word that does not follow its pair call")
+      _ -> pure ()
   -- reachability and dominance
   let flow = analyze fn
   forM_ blocks $ \b -> unless (S.member (bId b) (reachable flow)) (Left (show (bId b) ++ " is unreachable"))
@@ -202,7 +221,7 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
     go (S.fromList (map fst (bParams b))) (bInstrs b)
   -- a known local callee that is in the program must agree on its convention
   forM_ blocks $ \b -> do
-    let callees = [c | Instr _ (OCall c _) <- bInstrs b] ++ [c | TTailCall c _ <- [bTerm b]]
+    let callees = [c | Instr _ (OCall c _) <- bInstrs b] ++ [c | Instr _ (OCall2 c _) <- bInstrs b] ++ [c | TTailCall c _ <- [bTerm b]]
     forM_ callees $ \c -> case M.lookup (calleeName c) program of
       Just f | calleeKind c == Local, (entryOf : _) <- [x | x <- fnBlocks f, bId x == fnEntry f] -> do
         let ps = map snd (bParams entryOf)

@@ -66,8 +66,8 @@ checkForms owner items=do
             O.LoadField->one [word,immediate]
             O.StoreField->none [word,word,immediate]
             O.StoreHeader->none [word,word,immediate]
-            O.Call->length ds<=1 && all word ds && transfer us
-            O.Ret->none [word]
+            O.Call->length ds<=2 && all word ds && transfer us
+            O.Ret->none [word] || none [word,word]
             O.Push->none [word]
             O.ApplyN->one [immediate]
             O.Panic->none [symbol]
@@ -121,9 +121,9 @@ checkForms owner items=do
       O.X64 O.ShiftLeft->tied ds us && fixed "rcx" (last us)
       O.X64 O.ShiftRight->tied ds us && fixed "rcx" (last us)
       O.X64 (O.Select _)->tied ds us
-      O.X64 O.Call->all (fixed "rax") ds && arguments (drop 1 us)
+      O.X64 O.Call->(case ds of [a]->fixed "rax" a;[a,b]->fixed "rax" a && fixed "rdx" b;_->True) && arguments (drop 1 us)
       O.Common O.TailJump->arguments (drop 1 us)
-      O.X64 O.Ret->all (fixed "rax") us
+      O.X64 O.Ret->(case us of [a]->fixed "rax" a;[a,b]->fixed "rax" a && fixed "rdx" b;_->False)
       O.X64 x | x `elem` [O.Add,O.Subtract,O.Multiply,O.And,O.Or,O.Xor,O.ShiftLeftImmediate,
           O.ShiftRightArithmeticImmediate,O.OrImmediate,O.AndImmediate,O.XorImmediate,O.SignExtend63]->tied ds us
       _->True

@@ -43,9 +43,9 @@ checkForms rf owner items=do
             A.Compare->none [word,word];A.CompareImmediate->none [word,immediate]
             A.Set _->one [];A.Select _->binary;A.Branch _->none [label]
             A.BranchZero->none [word,label];A.BranchNonzero->none [word,label];A.Jump->none [label]
-            A.Call->length ds<=1 && all (fixed (Phys "x0")) ds && case us of OCode _:vs->arguments args vs;_->False
+            A.Call->(null ds || matches [fixed (Phys "x0")] ds || matches [fixed (Phys "x0"),fixed (Phys "x1")] ds) && case us of OCode _:vs->arguments args vs;_->False
             A.Push->none [word];A.ApplyN->matches [fixed (Phys "x0")] ds && matches [immediate] us
-            A.Panic->none [symbol];A.Ret->none [fixed (Phys "x0")]
+            A.Panic->none [symbol];A.Ret->none [fixed (Phys "x0")] || none [fixed (Phys "x0"),fixed (Phys "x1")]
             A.Enter->none [];A.Save->none []
             A.LoadByte->one [word,immediate];A.LoadField->one [word,immediate]
             A.StoreField->none [word,word,immediate];A.StoreHeader->none [word,word,immediate]

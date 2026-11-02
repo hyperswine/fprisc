@@ -23,7 +23,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
-import Codegen.IR (Fn (..), Block (..), Width, ArithOp (..), FloatOp (..), simdRegisters)
+import Codegen.IR (Fn (..), Block (..), Width (..), ArithOp (..), FloatOp (..), simdRegisters)
 import qualified Codegen.NativeData as NativeData
 import qualified Codegen.Kernel as K
 import Codegen.Lower (lowerProgram, Prim (..))
@@ -53,7 +53,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 147 -- fuel tick batching in every self-looping function
+codegenRev = 148 -- pair returns in two registers (rax/rdx, x0/x1, a0/a1)
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -73,6 +73,7 @@ data Target = Target
     tgtIndexedMemory :: Bool, -- fuse private manual Addr.add/access/release
     tgtScalarWorkers :: Bool,
     tgtTickBatch :: Bool,
+    tgtPairReturns :: Bool, -- Core.Opt.PairReturns: a pair answered in two registers
     tgtFieldWorkers :: Bool,
     tgtTupleScalars :: Bool,
     tgtPipelineInline :: Bool,
@@ -114,7 +115,7 @@ data Emission = Emission
 rv64, rv32 :: Target
 rv64 = Target {tgtW=8,tgtName="rv64",tgtFuel=True,tgtArc=False,tgtWeak=False,
   tgtSimd=False,tgtFusion=True,tgtFloatInline=True,tgtScalarFast=True,tgtIndexedMemory=True,
-  tgtScalarWorkers=True,tgtTickBatch=True,tgtFieldWorkers=True,tgtTupleScalars=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
+  tgtScalarWorkers=True,tgtTickBatch=True,tgtPairReturns=True,tgtFieldWorkers=True,tgtTupleScalars=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
   tgtTypedIr=Nothing,tgtHal=M.empty,tgtPolicy=m2Policy,
   tgtNative=Just (defaultMode (DirectRV (policyWidth m2Policy) RV.HartTp))}
 rv32 = rv64 {tgtW=4,tgtName="rv32",tgtFloatInline=False,
@@ -322,6 +323,14 @@ emitProgramWithSymbols=emitProgramWithImports M.empty
 emitProgramWithImports :: Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
 emitProgramWithImports=emitCheckedProgramWithImports S.empty
 
+-- the backends that answer a pair in two registers (Calling.selectPairTransfer); QOS and RV32 keep the word ABI
+pairBackend :: Maybe NativeBackend -> Bool
+pairBackend = \case
+  Just (DirectA64 _ _) -> True
+  Just (DirectX64 _) -> True
+  Just (DirectRV w _) -> w == W64
+  _ -> False
+
 emitCheckedProgramWithImports :: S.Set String -> Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
 emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols elide prog0 =
   let opts = OptimizationOptions
@@ -331,6 +340,7 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
           optTupleScalars = tgtTupleScalars tgt,
           optScalarWorkers = tgtScalarWorkers tgt,
           optTickBatch = tgtTickBatch tgt,
+          optPairReturns = tgtPairReturns tgt && tgtW tgt == 8 && not (tgtArc tgt) && polProfile (tgtPolicy tgt) == HostedBase && pairBackend (tgtNative tgt >>= nmBackend),
           optNormalize = tgtScalarFast tgt,
           optReuse = tgtReuse tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt),
           optPoolResetters = tgtPoolResetters tgt }

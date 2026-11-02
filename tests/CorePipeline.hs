@@ -6,7 +6,7 @@ import Core.Opt.Vector.Plan
 import Core.Primitives
 import KernelKinds (Kind(..))
 import Control.Monad (unless)
-import Data.List (isInfixOf)
+import Data.List (isInfixOf,isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
@@ -19,7 +19,7 @@ app n = foldl CApp (CVar n)
 right = either error id
 failed (Left _) = True
 failed _ = False
-none = OptimizationOptions False False False False False False False False S.empty
+none = OptimizationOptions False False False False False False False False False S.empty
 
 main = do
   checkExports
@@ -36,8 +36,8 @@ main = do
   check "worker ABI retained through normalization and reuse" (M.lookup worker sigs==Just ([KI,KI],KI))
   check "public entry retained" (fst (optimizedProgram result M.! "sum")==["n","a"])
   check "named pass order" (map passName (optimizationReports result)==
-    [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,BatchTicks])
-  check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False])
+    [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,BatchTicks,PairReturns])
+  check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False,False])
   check "missing function refused" (failed (verifyPassResult source M.empty M.empty))
   check "entry arity drift refused" (failed (verifyPassResult source (M.singleton "sum" (["n"],CInt 0)) M.empty))
   check "duplicate parameters refused" (failed (optimizeCore none S.empty (M.singleton "f" (["x","x"],v "x"))))
@@ -69,6 +69,24 @@ main = do
   check "tick batching rollback keeps inlined entry ticks" (hasTick "loop" tickOff)
   check "tick batching reports its decision"
     ("# tick batching: self-loops=1 batched=1" `elem` optimizationNotes tickOnResult)
+  -- A pair answered to a caller that only decides its shape and reads its
+  -- fields is answered in two registers (the $worker.ret2 twin).
+  let pairF=(["n"],CIf (app "==" [v "n",CInt 0]) (CMk 4 0 [CInt 0,CInt 0])
+        (CLet "t" (app "pairf" [app "-" [v "n",CInt 1]])
+          (CIf (CTagEq 4 0 (v "t"))
+            (CLet "s" (CProj 0 (v "t")) (CLet "c" (CProj 1 (v "t")) (CMk 4 0 [app "+" [v "s",v "n"],app "+" [v "c",CInt 1]])))
+            (CErr "no match"))))
+      escapes=(["n"],CLet "t" (app "pairf" [v "n"]) (CMk 4 0 [v "t",v "t"]))
+      pairInput=M.fromList [("pairf",pairF),("escapes",escapes)]
+      pairOnResult=right (optimizeCore (none {optPairReturns=True}) S.empty pairInput)
+      pairOn=optimizedProgram pairOnResult
+      callsTwin name=maybe False (("$worker.ret2.pairf" `isInfixOf`) . show . snd) (M.lookup name pairOn)
+  check "pair returns create a twin for the recursive pair function" (M.member "$worker.ret2.pairf" pairOn)
+  check "pair returns route the recursive call through the twin" (callsTwin "$worker.ret2.pairf")
+  check "pair returns keep the original function" (fmap fst (M.lookup "pairf" pairOn)==Just ["n"])
+  check "pair returns leave an escaping pair alone" (M.lookup "escapes" pairOn==Just escapes)
+  check "pair returns report their decision" (any ("# pair returns:" `isPrefixOf`) (optimizationNotes pairOnResult))
+  check "pair returns rollback keeps the word ABI" (not (M.member "$worker.ret2.pairf" (optimizedProgram (right (optimizeCore none S.empty pairInput)))))
   let nested=app "Vec.map" [v "inc",app "Vec.map" [v "double",v "xs"]]
       fusionInput=M.fromList [("inc",(["x"],app "+" [v "x",CInt 1])),
                              ("double",(["x"],app "*" [v "x",CInt 2])),

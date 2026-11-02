@@ -38,8 +38,8 @@ checkForms rf owner items=do
             R.Store64->store;R.Store32->store;R.StoreHalf->store;R.StoreByte->store
             R.FrameLoad->one [frame];R.FrameStore->none [word,frame];R.Fence->none []
             R.BranchNonzero->none [word,label];R.Jump->none [label]
-            R.Call->length ds<=1 && all (fixed (Phys "a0")) ds && case us of OCode _:vs->arguments args vs;_->False
-            R.Ret->none [fixed (Phys "a0")];R.Push->none [word]
+            R.Call->(null ds || matches [fixed (Phys "a0")] ds || matches [fixed (Phys "a0"),fixed (Phys "a1")] ds) && case us of OCode _:vs->arguments args vs;_->False
+            R.Ret->none [fixed (Phys "a0")] || none [fixed (Phys "a0"),fixed (Phys "a1")];R.Push->none [word]
             R.ApplyN->matches [fixed (Phys "a0")] ds && matches [immediate] us
             R.Panic->none [symbol]
             R.FloatBinary _ _->binary;R.FloatCompare _ _->binary

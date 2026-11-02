@@ -54,6 +54,7 @@ data Ty
   | TPred -- a predicate, 0 or 1
   | TAddr -- an unmanaged address
   | TF64 -- an IEEE binary64 value
+  | TPair -- two tagged words answered in two registers: only a private pair worker's result (Core.Opt.PairReturns)
   deriving (Eq, Ord, Show)
 
 data ArithOp = Add | Sub | Mul | Div deriving (Eq, Ord, Show, Enum, Bounded)
@@ -218,6 +219,8 @@ data Op
   | ORvvLanes VId VId -- TAddr, TInt n -> TPred: RISC-V V: vl = n, the n Int lanes at the address loaded into the vector unit, true when every lane is within rvvLaneBound; the lanes stay loaded for ORvvSumLoaded, which follows with no other vector operation between
   | ORvvSumLoaded VId -- TInt acc -> TInt: acc plus the lanes ORvvLanes loaded (vredsum), unchecked: the builder proved the bound
   | OCall Callee [VId] -- calleeParams -> calleeResult; clobbers every caller-saved register; any effect
+  | OCall2 Callee [VId] -- a call to a pair worker (calleeResult TPair): defines the first word, TVal; the second is read by the OSecond that follows it
+  | OSecond -- :: TVal; the second word of the OCall2 just before it, in the register the callee answered it in; nothing may sit between the two
   | OSafepoint -- the fuel tick: a runtime call that may deschedule the actor
   | OStackCheck -- the entry headroom check: a runtime call that may move sp to a new segment
   | OHartCell Int -- :: TInt; the raw word of the hart block at W*(1+j), the spill cells' addressing: j = 58 is the
@@ -232,6 +235,7 @@ data Instr = Instr (Maybe (VId, Ty)) Op deriving (Eq, Ord, Show)
 
 data Term
   = TRet VId -- the function's result, TVal
+  | TRet2 VId VId -- a pair worker's two tagged words, answered in two registers
   | TBr BId [VId] -- a jump with block arguments; to the entry block it is a self tail call
   | TCondBr VId BId [VId] BId [VId] -- predicate, then-target, else-target
   | TTailCall Callee [VId] -- parallel argument assignment, frame teardown, transfer
@@ -316,6 +320,8 @@ opEffect = \case
   OFloat32Bin _ _ _ -> Pure
   OFloat32Cmp _ _ _ -> Pure
   OCall _ _ -> AnyEffect
+  OCall2 _ _ -> AnyEffect
+  OSecond -> AnyEffect -- never merged, moved or dropped away from its call
   OSafepoint -> RuntimeCall
   OStackCheck -> RuntimeCall
   OSafepointN _ -> RuntimeCall
@@ -373,6 +379,8 @@ opUses = \case
   OFloat32Bin _ a b -> [a, b]
   OFloat32Cmp _ a b -> [a, b]
   OCall _ as -> as
+  OCall2 _ as -> as
+  OSecond -> []
   OSafepoint -> []
   OStackCheck -> []
   OSafepointN _ -> []
@@ -384,6 +392,7 @@ opUses = \case
 termUses :: Term -> [VId]
 termUses = \case
   TRet v -> [v]
+  TRet2 a b -> [a, b]
   TBr _ as -> as
   TCondBr c _ as _ bs -> c : as ++ bs
   TTailCall _ as -> as
@@ -438,6 +447,8 @@ mapOpUses f = \case
   OFloat32Bin o a b -> OFloat32Bin o (f a) (f b)
   OFloat32Cmp o a b -> OFloat32Cmp o (f a) (f b)
   OCall c as -> OCall c (map f as)
+  OCall2 c as -> OCall2 c (map f as)
+  OSecond -> OSecond
   OSafepoint -> OSafepoint
   OStackCheck -> OStackCheck
   OSafepointN n -> OSafepointN n
@@ -449,6 +460,7 @@ mapOpUses f = \case
 mapTermUses :: (VId -> VId) -> Term -> Term
 mapTermUses f = \case
   TRet v -> TRet (f v)
+  TRet2 a b -> TRet2 (f a) (f b)
   TBr b as -> TBr b (map f as)
   TCondBr c t as e bs -> TCondBr (f c) t (map f as) e (map f bs)
   TTailCall c as -> TTailCall c (map f as)
@@ -457,6 +469,7 @@ mapTermUses f = \case
 termSuccs :: Term -> [(BId, [VId])]
 termSuccs = \case
   TRet _ -> []
+  TRet2 _ _ -> []
   TBr b as -> [(b, as)]
   TCondBr _ t as e bs -> [(t, as), (e, bs)]
   TTailCall _ _ -> []

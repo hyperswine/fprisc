@@ -70,6 +70,8 @@ dumpFn fn =
       OFloat32Bin o a b -> "fbin32 " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
       OFloat32Cmp o a b -> "fcmp32 " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OCall c as -> "call " ++ callee c ++ args as
+      OCall2 c as -> "call2 " ++ callee c ++ args as
+      OSecond -> "second"
       OSafepoint -> "safepoint"
       OSafepointN n -> "safepoint x" ++ show n
       OSimdPair int e caps a -> "simd.pair " ++ (if int then "int " else "f64 ") ++ simdText e ++ " captures=[" ++ unwords (map value caps) ++ "] " ++ value a
@@ -79,6 +81,7 @@ dumpFn fn =
       OStackCheck -> "stackcheck"
     term = \case
       TRet v -> "ret " ++ value v
+      TRet2 a b -> "ret2 " ++ value a ++ " " ++ value b
       TBr b as -> "br " ++ block b ++ args as
       TCondBr c t as e bs -> "condbr " ++ value c ++ " -> " ++ block t ++ args as ++ " | " ++ block e ++ args bs
       TTailCall c as -> "tailcall " ++ callee c ++ args as

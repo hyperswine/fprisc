@@ -127,6 +127,12 @@ call sym convention vs result tailCall = do
     ((plain (if tailCall then O.Common O.TailJump else O.RV R.Call) [] [])
       {siImplicitDefs=if tailCall then map p ["sp","s0","ra","t3"] else []}))
   emit selected
+-- a call that answers two words in a0 and a1
+call2 :: CodeSymbol -> CallConvention -> [VReg] -> VReg -> VReg -> S ()
+call2 sym convention vs r1 r2 = do
+  stage convention vs
+  selected <- lift (Calling.selectPairTransfer Calling.RiscV convention sym vs r1 r2 (plain (O.RV R.Call) [] []))
+  emit selected
 -- a call into a noreturn runtime trap: it ends the path (Calling.NeverReturns)
 trapCall :: String -> S ()
 trapCall s = do
@@ -221,7 +227,15 @@ select cfg fn = do
       else forM_ prefix $ \(Instr _ op) -> case op of
         OSafepoint -> if polFuel (cfgPolicy cfg) then entry Protocol.FuelOnly else lift (Left "a no-fuel profile contains a safepoint")
         _ -> lift (Left "RV64: non-entry stack check")
-      mapM_ instruction rest
+      let run (Instr d1 (OCall2 c vs) : Instr d2 OSecond : more) = do
+            -- the pair call: one transfer answers both words, a0 and a1
+            case (d1, d2) of
+              (Just (v1, _), Just (v2, _)) -> call2 (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) (vreg v1) (vreg v2)
+              _ -> lift (Left "internal: a pair call without both definitions")
+            run more
+          run (i : more) = instruction i >> run more
+          run [] = pure ()
+      run rest
       terminator b
     instruction (Instr result op) = case op of
       OStore _ a n v -> storeAt stWord (vreg a) (vreg v) (fromIntegral n)
@@ -357,6 +371,8 @@ select cfg fn = do
       OCall c vs -> do
         inlined <- rawAdapter c (map vreg vs) d
         unless inlined (call (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) (Just d) False)
+      OCall2 _ _ -> lift (Left "internal: a pair call that selection did not fuse with its second word")
+      OSecond -> lift (Left "internal: a second pair word without its call")
       OApply f vs -> do
         forM_ (f:vs) $ \v -> emit (Protocol.selectProtocol Calling.RiscV (plain (O.RV R.Push) [] [anyV (vreg v)]))
         emit (Protocol.selectProtocol Calling.RiscV
@@ -366,6 +382,7 @@ select cfg fn = do
     edge bid vs = parallel (zip (targetParams bid) (map vreg vs)) >> jump (label bid)
     terminator b = case bTerm b of
       TRet v -> emit ((plain (O.RV R.Ret) [] [fixed (vreg v) (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
+      TRet2 a b -> emit ((plain (O.RV R.Ret) [] [fixed (vreg a) (p "a0"), fixed (vreg b) (p "a1")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
       TBr bid vs | bid == fnEntry fn -> call (CodeSymbol (functionSymbol (fnName fn))) (Calling.nativeCall (cfgPolicy cfg)) (map vreg vs) Nothing True
                  | otherwise -> edge bid vs
       TCondBr v yes ys no ns -> do l <- freshLabel; branch (vreg v) l; edge no ns; mark l; edge yes ys
@@ -626,6 +643,7 @@ render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else 
       (O.RV R.Call,_,OCode sym:_) -> ["call " ++ codeName sym]
       (O.Common O.TailJump,[],OCode sym:_) -> epilogue ++ ["tail " ++ codeName sym]
       (O.RV R.Ret,[],[_]) -> epilogue ++ ["ret"]
+      (O.RV R.Ret,[],[_,_]) -> epilogue ++ ["ret"]
       (O.RV R.Push,[],[v]) -> ["addi sp, sp, -16", stWord ++ " " ++ r v ++ ", 0(sp)"]
       (O.RV R.ApplyN,[_],[n]) -> ["mv a2, sp", "li a1, " ++ show (num n)] ++ memory ld "a0" "sp" (16*num n) ++ [("call " ++ Call.runtimeName Call.ApplyEntry)] ++ adjust "sp" "sp" (16*(num n+1))
       (O.RV R.Panic,[],[OAddr sym]) -> ["la a0, " ++ addressName sym, ("call " ++ Call.runtimeName Call.PanicEntry)]

@@ -1,0 +1,7 @@
+# unbox bench: a non-tail recursive function answering a pair (not inlinable, so the pair
+# is a heap cell per call on the word ABI and two registers with pair returns)
+sumcount : unsafe Int -> (Int, Int) .
+sumcount n = if n == 0 then (0, 0) else (case sumcount (n - 1) of (s, c) -> (s + n, c + 1)).
+rep : unsafe Int -> Int -> Int .
+rep k acc = if k == 0 then acc else rep (k - 1) (acc + (case sumcount 1000 of (s, c) -> s - c)).
+main = print "pair_ret {rep 20000 0}".

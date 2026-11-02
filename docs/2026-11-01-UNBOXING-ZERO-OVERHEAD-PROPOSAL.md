@@ -456,7 +456,9 @@ fallback, as the callback specializer's does.
    non-escaping type (`Pair Int Int`) through `Representation.hs` with a
    differential oracle (the experiment is done:
    [record](2026-11-03-PAIR-RAWWORD-EXPERIMENT.md); plumbing sound, raw fields
-   alone buy 2-4%, multi-register returns remain).
+   alone buy 2-4%) and multi-register returns (done:
+   [record](2026-11-04-MULTI-REGISTER-RETURNS.md); -23% on a pair-returning
+   recursion, hosted A64/X64/RV64, `FPR_NO_PAIR_RETURNS=1` rolls back).
 3. C1 piece 2a, the layout table and the preheader removal.
 4. C2 on `builtin`.
 

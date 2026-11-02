@@ -4,9 +4,9 @@
 -- These contracts do not describe arbitrary C stack/FP argument signatures.
 module Codegen.Calling
   (module Codegen.Calling.Types, ABI(..), ArgumentPlace(..),
-   argumentRegisters, resultRegister, callerClobbers, argumentPlaces, nativePlaces,
+   argumentRegisters, resultRegister, secondResultRegister, callerClobbers, argumentPlaces, nativePlaces,
    cellSymbol, cellOffset, calleeCall, nativeCall, callEvent,
-   selectTransfer, stagedArguments, arrivalArguments, checkTransfers) where
+   selectTransfer, selectPairTransfer, stagedArguments, arrivalArguments, checkTransfers) where
 
 import Codegen.Calling.Types
 import Codegen.IR (Callee,calleeConvention,arityCeiling)
@@ -29,6 +29,9 @@ argumentRegisters abi=map Phys $ case abi of
   RiscV->["a"++show n | n<-[0::Int ..7]]
 resultRegister :: ABI -> Phys
 resultRegister abi=Phys $ case abi of AArch64->"x0";X86_64->"rax";RiscV->"a0"
+-- the register a pair worker answers its second word in: the next result register of the ABI
+secondResultRegister :: ABI -> Phys
+secondResultRegister abi=Phys $ case abi of AArch64->"x1";X86_64->"rdx";RiscV->"a1"
 callerClobbers :: ABI -> [Phys]
 callerClobbers abi=map Phys $ case abi of
   AArch64->["x"++show n | n<-[0::Int ..17]++[30]]++["d"++show n | n<-[0::Int ..7]++[16..31]]
@@ -83,6 +86,20 @@ selectTransfer abi convention result sym vs value base=do
      siCalls=[callEvent sym convention],
      siTransfer=Just (Transfer convention (length vs) result)}
 
+-- a call that answers two words: the first in the result register, the second
+-- in the second result register; both leave the clobber set
+selectPairTransfer :: ABI -> CallConvention -> CodeSymbol -> [VReg] -> VReg -> VReg -> SInstr -> Either String SInstr
+selectPairTransfer abi convention sym vs first second base=do
+  when (null (codeName sym)) (Left "call convention: empty code symbol")
+  places<-argumentPlaces abi convention (length vs)
+  pure base
+    {siDefs=[OV first (Fix (resultRegister abi)),OV second (Fix (secondResultRegister abi))],
+     siUses=OCode sym:[OV v (Fix p) | (ArgumentRegister p,v)<-zip places vs],
+     siClobbers=filter (`notElem` [resultRegister abi,secondResultRegister abi]) (callerClobbers abi),
+     siControl=Next,
+     siCalls=[callEvent sym convention],
+     siTransfer=Just (Transfer convention (length vs) PairResult)}
+
 -- Validate both virtual selection and physical placement. Staged cells must
 -- belong to this transfer and cannot survive a branch, call or safepoint.
 checkTransfers :: ABI -> String -> [Item] -> Either String ()
@@ -108,10 +125,15 @@ checkTransfers abi owner=go []
           let registers=[p | ArgumentRegister p<-places]
               cells=[OC c | NamedArgument c<-places]++[OI (toInteger n) | HartArgument n<-places]
               resultReg=resultRegister abi
+              answered=if result==PairResult then [resultReg,secondResultRegister abi] else [resultReg | result==WordResult]
           require "missing or empty code target" (case siUses i of OCode sym:_->not (null (codeName sym));_->False)
           require "argument register placement mismatch" (case siUses i of OCode _:vs->length vs==length registers && and (zipWith fixed registers vs);_->False)
-          require "result register placement mismatch" (case (result,siDefs i) of (WordResult,[v])->fixed resultReg v;(_,[])->result/=WordResult;_->False)
-          require "caller clobber set mismatch" (sort (siClobbers i)==sort (filter (\p->result/=WordResult || p/=resultReg) (callerClobbers abi)))
+          require "result register placement mismatch" (case (result,siDefs i) of
+            (WordResult,[v])->fixed resultReg v
+            (PairResult,[v,w])->fixed resultReg v && fixed (secondResultRegister abi) w
+            (_,[])->result `notElem` [WordResult,PairResult]
+            _->False)
+          require "caller clobber set mismatch" (sort (siClobbers i)==sort (filter (`notElem` answered) (callerClobbers abi)))
           require "call event mismatch" (case siUses i of OCode sym:_->siCalls i==[callEvent sym convention];_->False)
           require "tail/return contract mismatch" ((result==TailTransfer)==(siOpcode i==O.Common O.TailJump) && siControl i==(if result `elem` [TailTransfer,NeverReturns] then Return else Next))
           require "staged argument cells mismatch or crossed a call/control boundary" (sort pending==sort cells)

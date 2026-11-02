@@ -7,7 +7,8 @@ data FuelEntry = TicksFuel | NoFuel deriving (Eq,Ord,Show)
 data CallConvention = FprCall FuelEntry | RuntimeCall deriving (Eq,Ord,Show)
 -- NeverReturns: a call into a noreturn runtime entry (a trap); control ends
 -- with it, so nothing is live after it and nothing must survive it
-data TransferResult = WordResult | DiscardResult | TailTransfer | NeverReturns deriving (Eq,Ord,Show)
+-- PairResult: two words, in the result register and the second result register
+data TransferResult = WordResult | PairResult | DiscardResult | TailTransfer | NeverReturns deriving (Eq,Ord,Show)
 data Transfer = Transfer
   { transferConvention :: CallConvention,
     transferArity :: Int,
