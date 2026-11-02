@@ -96,12 +96,12 @@ For example, a callback containing `/` is declined because division can trap.
 The original `tests/bench/unbox/list_filter.fpr` deliberately retains this
 behavior.
 
-Range/fold fusion has one intentional boundary difference already admitted by
-`Core.FusionPolicy`: checked Int overflow may occur at a different point. In
-particular, an unfused singleton range ending at tagged-Int `maxInt` returns,
-whereas the ascending fused loop traps while computing its final `a + 1`.
-The regression suite pins this edge; it is not claimed as byte-identical trap
-behavior.
+Range/fold fusion matches the unfused pipeline at the Int limits (fixed
+2026-11-02; earlier the fused loop computed `b + 1` after the last element and
+trapped on a range ending at `maxInt`, which the unfused program does not).
+`foldRange` stops at `a == b`, and evaluates the unfused range's `a - 1` first,
+so a range starting at `minInt` still traps with that underflow before any
+callback runs. The regression suite compares both ends with fusion on and off.
 
 The rollback is `FPR_NO_LIST_FUSE=1`. `-nolistfuse` participates in codegen
 cache identity, so switching the pass cannot reuse incompatible cached native
@@ -123,7 +123,7 @@ output.
 - refusal of same-named user combinators (`range`, `sum`, `length`);
 - identical output/trap behavior for a division callback, plus its decline
   remark;
-- the documented `foldRange` maxInt overflow edge.
+- fold over ranges ending at `maxInt` and starting at `minInt` (identical output and trap with fusion on and off).
 
 With allocator probing restricted to the pipeline (`FPR_NO_LOOP_REGIONS=1` and
 `FPR_NO_CALL_REGIONS=1`), the enabled `sum`, `map`, `filter`, `length-range`,

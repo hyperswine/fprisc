@@ -87,3 +87,14 @@ allocation gate now uses one. Every other allocation gate is unchanged.
 - The random-pipeline differential test with trapping callbacks is still not
   written.
 - Case of known constructor still explains no declines through `--remarks`.
+
+## Addendum (2026-11-02, later): `foldRange` at the Int limits
+
+The relaxation statement above ("move a trap, never add or drop one") did not
+hold for `foldRange`: the fused loop computed `b + 1` after the last element,
+so `List.sum (List.range a maxInt)` trapped where the unfused program returned,
+and a range starting at `minInt` lost the unfused range's `minInt - 1` underflow.
+`foldRange` now stops at `a == b` and evaluates `a - 1` up front, so it matches
+the unfused pipeline exactly; `tests/check_list_fusion.py` compares six limit
+cases with fusion on and off. `lengthRange` and `mapRange` already count down
+like the unfused range and were unaffected.
