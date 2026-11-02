@@ -1,0 +1,482 @@
+{
+  "method": "1 warmup + 7 shuffled samples; fresh processes, warm filesystem; misses remove compiled and module artifacts; JIT/GPU/table disabled; wall measurements without timing instrumentation",
+  "rts_tick_override": null,
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "timestamp_utc": "2026-11-02T08:48:44Z",
+  "binary_sha256": {
+    "before": "8245d50b387cbe23746560cee995ab791eec0232971be5d12948fd4df03fb659",
+    "after": "589d65bab73541ada34590ef57fc12a8190df096be57a41ca3abd1797d463c2e"
+  },
+  "rows": [
+    {
+      "version": "before",
+      "mode": "hit",
+      "case": "hello",
+      "samples_ms": [
+        17.205625,
+        17.515375,
+        17.045167,
+        17.073125,
+        16.946834,
+        18.9395,
+        17.605041
+      ],
+      "median_ms": 17.205625
+    },
+    {
+      "version": "before",
+      "mode": "hit",
+      "case": "imports",
+      "samples_ms": [
+        19.907833,
+        19.585833,
+        19.67725,
+        19.378167,
+        19.646458,
+        20.104541,
+        19.767333
+      ],
+      "median_ms": 19.67725
+    },
+    {
+      "version": "before",
+      "mode": "hit",
+      "case": "read_65536",
+      "samples_ms": [
+        21.399041,
+        21.622333,
+        21.134042,
+        21.380083,
+        22.911834,
+        22.084834,
+        21.752417
+      ],
+      "median_ms": 21.622333
+    },
+    {
+      "version": "before",
+      "mode": "hit",
+      "case": "read_262144",
+      "samples_ms": [
+        32.6155,
+        32.705625,
+        32.788083,
+        32.587958,
+        35.568875,
+        34.440875,
+        32.870917
+      ],
+      "median_ms": 32.788083
+    },
+    {
+      "version": "before",
+      "mode": "hit",
+      "case": "read_1048576",
+      "samples_ms": [
+        80.400292,
+        80.437458,
+        80.469958,
+        80.408709,
+        80.365959,
+        84.108125,
+        81.654917
+      ],
+      "median_ms": 80.437458
+    },
+    {
+      "version": "before",
+      "mode": "miss",
+      "case": "hello",
+      "samples_ms": [
+        25.57275,
+        27.412791,
+        28.407458,
+        26.029917,
+        25.913792,
+        30.132625,
+        27.013833
+      ],
+      "median_ms": 27.013833
+    },
+    {
+      "version": "before",
+      "mode": "miss",
+      "case": "imports",
+      "samples_ms": [
+        93.739959,
+        91.001,
+        92.052792,
+        91.841667,
+        96.844041,
+        99.006792,
+        92.453042
+      ],
+      "median_ms": 92.453042
+    },
+    {
+      "version": "before",
+      "mode": "miss",
+      "case": "read_65536",
+      "samples_ms": [
+        31.083666,
+        30.934333,
+        31.053708,
+        31.260333,
+        30.046167,
+        34.4415,
+        32.049458
+      ],
+      "median_ms": 31.083666
+    },
+    {
+      "version": "before",
+      "mode": "miss",
+      "case": "read_262144",
+      "samples_ms": [
+        44.057125,
+        42.6565,
+        44.155167,
+        43.961958,
+        42.663375,
+        46.157333,
+        43.272542
+      ],
+      "median_ms": 43.961958
+    },
+    {
+      "version": "before",
+      "mode": "miss",
+      "case": "read_1048576",
+      "samples_ms": [
+        99.100625,
+        97.570708,
+        99.895125,
+        96.416041,
+        98.042083,
+        105.327,
+        101.092834
+      ],
+      "median_ms": 99.100625
+    },
+    {
+      "version": "before",
+      "mode": "disabled",
+      "case": "hello",
+      "samples_ms": [
+        23.626916,
+        23.703875,
+        23.461917,
+        24.037833,
+        25.120458,
+        26.745292,
+        23.839334
+      ],
+      "median_ms": 23.839334
+    },
+    {
+      "version": "before",
+      "mode": "disabled",
+      "case": "imports",
+      "samples_ms": [
+        61.779583,
+        61.237708,
+        59.380041,
+        61.7865,
+        66.078292,
+        66.463292,
+        63.212625
+      ],
+      "median_ms": 61.7865
+    },
+    {
+      "version": "before",
+      "mode": "disabled",
+      "case": "read_65536",
+      "samples_ms": [
+        30.690125,
+        29.639792,
+        30.139917,
+        30.055917,
+        28.756917,
+        33.150667,
+        30.706666
+      ],
+      "median_ms": 30.139917
+    },
+    {
+      "version": "before",
+      "mode": "disabled",
+      "case": "read_262144",
+      "samples_ms": [
+        49.370833,
+        48.609084,
+        47.514125,
+        48.087541,
+        51.072917,
+        54.629,
+        49.47075
+      ],
+      "median_ms": 49.370833
+    },
+    {
+      "version": "before",
+      "mode": "disabled",
+      "case": "read_1048576",
+      "samples_ms": [
+        99.225,
+        98.397584,
+        98.940625,
+        98.675333,
+        101.109042,
+        106.886042,
+        99.918291
+      ],
+      "median_ms": 99.225
+    },
+    {
+      "version": "after",
+      "mode": "hit",
+      "case": "hello",
+      "samples_ms": [
+        17.520833,
+        15.757416,
+        17.826334,
+        18.013792,
+        17.777292,
+        19.701875,
+        17.572958
+      ],
+      "median_ms": 17.777292
+    },
+    {
+      "version": "after",
+      "mode": "hit",
+      "case": "imports",
+      "samples_ms": [
+        17.3865,
+        16.945792,
+        17.514875,
+        17.496542,
+        17.395083,
+        19.608125,
+        17.508
+      ],
+      "median_ms": 17.496542
+    },
+    {
+      "version": "after",
+      "mode": "hit",
+      "case": "read_65536",
+      "samples_ms": [
+        21.339792,
+        20.94275,
+        21.406583,
+        22.030334,
+        19.777333,
+        21.840916,
+        22.399375
+      ],
+      "median_ms": 21.406583
+    },
+    {
+      "version": "after",
+      "mode": "hit",
+      "case": "read_262144",
+      "samples_ms": [
+        32.774,
+        32.671375,
+        34.288166,
+        33.293375,
+        36.891833,
+        34.197542,
+        32.871291
+      ],
+      "median_ms": 33.293375
+    },
+    {
+      "version": "after",
+      "mode": "hit",
+      "case": "read_1048576",
+      "samples_ms": [
+        81.367958,
+        79.414042,
+        82.579958,
+        79.392792,
+        88.795625,
+        84.486167,
+        82.607541
+      ],
+      "median_ms": 82.579958
+    },
+    {
+      "version": "after",
+      "mode": "miss",
+      "case": "hello",
+      "samples_ms": [
+        27.733083,
+        27.663042,
+        31.246791,
+        26.605208,
+        28.74425,
+        29.02475,
+        28.22475
+      ],
+      "median_ms": 28.22475
+    },
+    {
+      "version": "after",
+      "mode": "miss",
+      "case": "imports",
+      "samples_ms": [
+        62.889958,
+        62.787667,
+        62.406542,
+        64.042792,
+        64.050584,
+        66.678042,
+        65.634
+      ],
+      "median_ms": 64.042792
+    },
+    {
+      "version": "after",
+      "mode": "miss",
+      "case": "read_65536",
+      "samples_ms": [
+        31.505125,
+        30.315584,
+        31.236333,
+        31.782958,
+        31.909666,
+        36.352916,
+        32.02125
+      ],
+      "median_ms": 31.782958
+    },
+    {
+      "version": "after",
+      "mode": "miss",
+      "case": "read_262144",
+      "samples_ms": [
+        43.040083,
+        42.992542,
+        42.842292,
+        43.105708,
+        41.551458,
+        45.99225,
+        41.629458
+      ],
+      "median_ms": 42.992542
+    },
+    {
+      "version": "after",
+      "mode": "miss",
+      "case": "read_1048576",
+      "samples_ms": [
+        113.724417,
+        112.417333,
+        114.633083,
+        113.17025,
+        112.396583,
+        115.066875,
+        110.647959
+      ],
+      "median_ms": 113.17025
+    },
+    {
+      "version": "after",
+      "mode": "disabled",
+      "case": "hello",
+      "samples_ms": [
+        23.751,
+        23.940375,
+        23.739375,
+        24.887708,
+        28.023417,
+        25.505167,
+        24.616833
+      ],
+      "median_ms": 24.616833
+    },
+    {
+      "version": "after",
+      "mode": "disabled",
+      "case": "imports",
+      "samples_ms": [
+        60.588708,
+        60.411708,
+        63.238083,
+        60.334209,
+        60.265917,
+        64.425792,
+        60.785041
+      ],
+      "median_ms": 60.588708
+    },
+    {
+      "version": "after",
+      "mode": "disabled",
+      "case": "read_65536",
+      "samples_ms": [
+        28.939791,
+        29.018208,
+        30.790792,
+        30.554792,
+        30.333708,
+        33.415041,
+        29.743292
+      ],
+      "median_ms": 30.333708
+    },
+    {
+      "version": "after",
+      "mode": "disabled",
+      "case": "read_262144",
+      "samples_ms": [
+        49.490667,
+        48.923959,
+        49.573083,
+        46.286083,
+        55.235125,
+        54.375209,
+        51.002
+      ],
+      "median_ms": 49.573083
+    },
+    {
+      "version": "after",
+      "mode": "disabled",
+      "case": "read_1048576",
+      "samples_ms": [
+        99.619875,
+        98.117,
+        98.576208,
+        98.5305,
+        97.888292,
+        107.875584,
+        99.892917
+      ],
+      "median_ms": 98.576208
+    }
+  ],
+  "separate_instrumented_samples": {
+    "before": {
+      "hello": "[sol timing] source: 0.121 ms\n[sol timing] cache-file-read: 0.055 ms\n[sol timing] cache-checksum: 0.001 ms\n[sol timing] cache-decode: 0.021 ms\n[sol timing] cache-force: 0.003 ms\n[sol timing] parse: 0.408 ms\n[sol timing] imports: 0.009 ms\n[sol timing] cache-key: 0.255 ms\n[sol timing] cache-file-read: 0.039 ms\n[sol timing] cache-checksum: 0.032 ms\n[sol timing] cache-decode: 0.047 ms\n[sol timing] cache-force: 0.020 ms\n[sol timing] cache-read: 0.352 ms\n[sol timing] startup: 2.545 ms\n[sol timing] journal-recover: 0.140 ms\n[sol timing] gpu-init: 0.001 ms\n[sol timing] transaction-commit: 0.040 ms\n[sol timing] execute: 0.241 ms\n",
+      "imports": "[sol timing] source: 0.118 ms\n[sol timing] cache-file-read: 0.037 ms\n[sol timing] cache-checksum: 0.001 ms\n[sol timing] cache-decode: 0.025 ms\n[sol timing] cache-force: 0.003 ms\n[sol timing] parse: 0.341 ms\n[sol timing] cache-file-read: 0.028 ms\n[sol timing] cache-checksum: 0.004 ms\n[sol timing] cache-decode: 0.036 ms\n[sol timing] cache-force: 0.007 ms\n[sol timing] library-paths: 1.302 ms\n[sol timing] cache-file-read: 0.027 ms\n[sol timing] cache-checksum: 0.008 ms\n[sol timing] cache-decode: 0.083 ms\n[sol timing] cache-force: 0.012 ms\n[sol timing] cache-file-read: 0.027 ms\n[sol timing] cache-checksum: 0.033 ms\n[sol timing] cache-decode: 0.283 ms\n[sol timing] cache-force: 0.064 ms\n[sol timing] imports: 3.269 ms\n[sol timing] cache-key: 0.688 ms\n[sol timing] cache-file-read: 0.037 ms\n[sol timing] cache-checksum: 0.055 ms\n[sol timing] cache-decode: 0.049 ms\n[sol timing] cache-force: 0.020 ms\n[sol timing] cache-read: 0.427 ms\n[sol timing] startup: 5.119 ms\n[sol timing] journal-recover: 0.134 ms\n[sol timing] gpu-init: 0.001 ms\n[sol timing] transaction-commit: 0.049 ms\n[sol timing] execute: 0.286 ms\n",
+      "read_65536": "[sol timing] source: 0.117 ms\n[sol timing] cache-file-read: 0.045 ms\n[sol timing] cache-checksum: 0.001 ms\n[sol timing] cache-decode: 0.025 ms\n[sol timing] cache-force: 0.005 ms\n[sol timing] parse: 0.415 ms\n[sol timing] imports: 0.010 ms\n[sol timing] cache-key: 0.256 ms\n[sol timing] cache-file-read: 0.034 ms\n[sol timing] cache-checksum: 0.026 ms\n[sol timing] cache-decode: 0.060 ms\n[sol timing] cache-force: 0.025 ms\n[sol timing] cache-read: 0.342 ms\n[sol timing] startup: 1.409 ms\n[sol timing] journal-recover: 0.136 ms\n[sol timing] gpu-init: 0.001 ms\n[sol timing] transaction-commit: 0.544 ms\n[sol timing] execute: 4.479 ms\n",
+      "read_262144": "[sol timing] source: 0.085 ms\n[sol timing] cache-file-read: 0.047 ms\n[sol timing] cache-checksum: 0.001 ms\n[sol timing] cache-decode: 0.026 ms\n[sol timing] cache-force: 0.005 ms\n[sol timing] parse: 0.390 ms\n[sol timing] imports: 0.010 ms\n[sol timing] cache-key: 0.297 ms\n[sol timing] cache-file-read: 0.042 ms\n[sol timing] cache-checksum: 0.033 ms\n[sol timing] cache-decode: 0.074 ms\n[sol timing] cache-force: 0.023 ms\n[sol timing] cache-read: 0.380 ms\n[sol timing] startup: 1.439 ms\n[sol timing] journal-recover: 0.139 ms\n[sol timing] gpu-init: 0.001 ms\n[sol timing] transaction-commit: 0.679 ms\n[sol timing] execute: 16.039 ms\n",
+      "read_1048576": "[sol timing] source: 0.095 ms\n[sol timing] cache-file-read: 0.046 ms\n[sol timing] cache-checksum: 0.001 ms\n[sol timing] cache-decode: 0.034 ms\n[sol timing] cache-force: 0.005 ms\n[sol timing] parse: 0.412 ms\n[sol timing] imports: 0.011 ms\n[sol timing] cache-key: 0.273 ms\n[sol timing] cache-file-read: 0.043 ms\n[sol timing] cache-checksum: 0.032 ms\n[sol timing] cache-decode: 0.096 ms\n[sol timing] cache-force: 0.028 ms\n[sol timing] cache-read: 0.445 ms\n[sol timing] startup: 1.508 ms\n[sol timing] journal-recover: 0.157 ms\n[sol timing] gpu-init: 0.001 ms\n[sol timing] transaction-commit: 0.755 ms\n[sol timing] execute: 63.718 ms\n"
+    },
+    "after": {
+      "hello": "[sol timing] source: 0.088 ms\n[sol timing] cache-file-read: 0.048 ms\n[sol timing] cache-checksum: 0.001 ms\n[sol timing] cache-decode: 0.023 ms\n[sol timing] cache-force: 0.002 ms\n[sol timing] parse: 0.392 ms\n[sol timing] imports: 0.010 ms\n[sol timing] cache-key: 0.266 ms\n[sol timing] cache-file-read: 0.037 ms\n[sol timing] cache-checksum: 0.009 ms\n[sol timing] cache-decode: 0.056 ms\n[sol timing] cache-force: 0.019 ms\n[sol timing] cache-read: 0.305 ms\n[sol timing] startup: 1.366 ms\n[sol timing] journal-recover: 0.154 ms\n[sol timing] gpu-init: 0.001 ms\n[sol timing] transaction-commit: 0.043 ms\n[sol timing] execute: 0.255 ms\n",
+      "imports": "[sol timing] source: 0.099 ms\n[sol timing] cache-file-read: 0.035 ms\n[sol timing] cache-checksum: 0.001 ms\n[sol timing] cache-decode: 0.025 ms\n[sol timing] cache-force: 0.003 ms\n[sol timing] parse: 0.352 ms\n[sol timing] cache-file-read: 0.027 ms\n[sol timing] cache-checksum: 0.005 ms\n[sol timing] cache-decode: 0.031 ms\n[sol timing] cache-force: 0.007 ms\n[sol timing] library-paths: 0.011 ms\n[sol timing] cache-file-read: 0.028 ms\n[sol timing] cache-checksum: 0.008 ms\n[sol timing] cache-decode: 0.055 ms\n[sol timing] cache-force: 0.016 ms\n[sol timing] cache-file-read: 0.031 ms\n[sol timing] cache-checksum: 0.033 ms\n[sol timing] cache-decode: 0.290 ms\n[sol timing] cache-force: 0.066 ms\n[sol timing] imports: 2.084 ms\n[sol timing] cache-key: 0.261 ms\n[sol timing] cache-file-read: 0.033 ms\n[sol timing] cache-checksum: 0.008 ms\n[sol timing] cache-decode: 0.044 ms\n[sol timing] cache-force: 0.019 ms\n[sol timing] cache-read: 0.304 ms\n[sol timing] startup: 3.371 ms\n[sol timing] journal-recover: 0.149 ms\n[sol timing] gpu-init: 0.001 ms\n[sol timing] transaction-commit: 0.053 ms\n[sol timing] execute: 0.288 ms\n",
+      "read_65536": "[sol timing] source: 0.083 ms\n[sol timing] cache-file-read: 0.035 ms\n[sol timing] cache-checksum: 0.001 ms\n[sol timing] cache-decode: 0.023 ms\n[sol timing] cache-force: 0.005 ms\n[sol timing] parse: 0.353 ms\n[sol timing] imports: 0.009 ms\n[sol timing] cache-key: 0.263 ms\n[sol timing] cache-file-read: 0.035 ms\n[sol timing] cache-checksum: 0.011 ms\n[sol timing] cache-decode: 0.093 ms\n[sol timing] cache-force: 0.022 ms\n[sol timing] cache-read: 0.339 ms\n[sol timing] startup: 1.299 ms\n[sol timing] journal-recover: 0.128 ms\n[sol timing] gpu-init: 0.001 ms\n[sol timing] transaction-commit: 0.530 ms\n[sol timing] execute: 4.720 ms\n",
+      "read_262144": "[sol timing] source: 0.086 ms\n[sol timing] cache-file-read: 0.035 ms\n[sol timing] cache-checksum: 0.001 ms\n[sol timing] cache-decode: 0.025 ms\n[sol timing] cache-force: 0.006 ms\n[sol timing] parse: 0.379 ms\n[sol timing] imports: 0.009 ms\n[sol timing] cache-key: 0.292 ms\n[sol timing] cache-file-read: 0.035 ms\n[sol timing] cache-checksum: 0.012 ms\n[sol timing] cache-decode: 0.057 ms\n[sol timing] cache-force: 0.023 ms\n[sol timing] cache-read: 0.304 ms\n[sol timing] startup: 1.330 ms\n[sol timing] journal-recover: 0.140 ms\n[sol timing] gpu-init: 0.001 ms\n[sol timing] transaction-commit: 0.814 ms\n[sol timing] execute: 16.518 ms\n",
+      "read_1048576": "[sol timing] source: 0.106 ms\n[sol timing] cache-file-read: 0.040 ms\n[sol timing] cache-checksum: 0.001 ms\n[sol timing] cache-decode: 0.026 ms\n[sol timing] cache-force: 0.006 ms\n[sol timing] parse: 0.381 ms\n[sol timing] imports: 0.010 ms\n[sol timing] cache-key: 0.312 ms\n[sol timing] cache-file-read: 0.045 ms\n[sol timing] cache-checksum: 0.009 ms\n[sol timing] cache-decode: 0.062 ms\n[sol timing] cache-force: 0.024 ms\n[sol timing] cache-read: 0.337 ms\n[sol timing] startup: 1.402 ms\n[sol timing] journal-recover: 0.152 ms\n[sol timing] gpu-init: 0.001 ms\n[sol timing] transaction-commit: 0.849 ms\n[sol timing] execute: 63.002 ms\n"
+    }
+  },
+  "separate_rts_read_1m": {
+    "before": "     384,979,304 bytes allocated in the heap\n      82,972,928 bytes copied during GC\n      28,267,944 bytes maximum residency (2 sample(s))\n       1,161,816 bytes maximum slop\n             147 MiB total memory in use (0 MiB lost due to fragmentation)\n\n                                     Tot time (elapsed)  Avg pause  Max pause\n  Gen  0         4 colls,     0 par    0.020s   0.022s     0.0054s    0.0057s\n  Gen  1         2 colls,     0 par    0.009s   0.011s     0.0057s    0.0105s\n\n  TASKS: 4 (1 bound, 3 peak workers (3 total), using -N1)\n\n  SPARKS: 0 (0 converted, 0 overflowed, 0 dud, 0 GC'd, 0 fizzled)\n\n  INIT    time    0.003s  (  0.003s elapsed)\n  MUT     time    0.036s  (  0.032s elapsed)\n  GC      time    0.029s  (  0.033s elapsed)\n  EXIT    time    0.001s  (  0.001s elapsed)\n  Total   time    0.069s  (  0.070s elapsed)\n\n  Alloc rate    10,704,871,784 bytes per MUT second\n\n  Productivity  52.2% of total user, 46.5% of total elapsed\n\n",
+    "after": "     384,971,808 bytes allocated in the heap\n      82,981,336 bytes copied during GC\n      28,272,480 bytes maximum residency (2 sample(s))\n       1,161,376 bytes maximum slop\n             147 MiB total memory in use (0 MiB lost due to fragmentation)\n\n                                     Tot time (elapsed)  Avg pause  Max pause\n  Gen  0         4 colls,     0 par    0.020s   0.022s     0.0054s    0.0058s\n  Gen  1         2 colls,     0 par    0.009s   0.012s     0.0058s    0.0105s\n\n  TASKS: 4 (1 bound, 3 peak workers (3 total), using -N1)\n\n  SPARKS: 0 (0 converted, 0 overflowed, 0 dud, 0 GC'd, 0 fizzled)\n\n  INIT    time    0.003s  (  0.003s elapsed)\n  MUT     time    0.036s  (  0.033s elapsed)\n  GC      time    0.029s  (  0.033s elapsed)\n  EXIT    time    0.001s  (  0.001s elapsed)\n  Total   time    0.069s  (  0.070s elapsed)\n\n  Alloc rate    10,648,111,080 bytes per MUT second\n\n  Productivity  52.3% of total user, 46.9% of total elapsed\n\n"
+  }
+}

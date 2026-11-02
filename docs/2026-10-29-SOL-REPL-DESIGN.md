@@ -7,6 +7,14 @@ profile. Follows the completed
 [daily-scripting roadmap](2026-10-27-SOL-DAILY-SCRIPTING-PLAN.md), which
 scoped a persistent REPL out of that milestone.
 
+## 2026-11-02 update
+
+The [incremental checking report](2026-11-02-SOL-REPL-INCREMENTAL.md) supersedes
+this prototype's performance observations and full-reparse description. The
+REPL retains accepted syntax and closed definition interfaces, checks new helper
+definitions incrementally, and rechecks evals. Later compiler phases and the
+command-per-transaction execution contract still apply to the retained program.
+
 ## The question
 
 A REPL session wants incremental definitions and instant feedback. Sol

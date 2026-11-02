@@ -31,6 +31,7 @@
 
 module Infer (module Infer, module Type.Syntax, module Infer.State, module Infer.Result, module Infer.Elaboration, module Ownership.TypeShape) where
 
+import qualified Data.Binary as Bin
 import Control.DeepSeq (force)
 import Control.Monad (foldM, forM, forM_, unless, when, zipWithM, zipWithM_)
 import Control.Monad.State.Strict
@@ -58,6 +59,7 @@ import Source.Span (SourceOffset(..))
 import Infer.State
 import Infer.Pattern
 import Infer.Result
+import Infer.Session
 import Infer.Elaboration
 import Infer.Trace
 import qualified Infer.Evidence as Evidence
@@ -1725,9 +1727,31 @@ inferTopsChecked ns = inferTopsResult (Just ns)
 
 inferTopsResult :: Maybe Namespace -> IProf -> Sigs -> Structs -> [STop] -> InferenceResult
 inferTopsResult capture prof sigs structs tops =
+  let (r,_,_) = inferTopsSession False Nothing capture prof sigs structs tops in r
+
+-- The Sol REPL may reuse closed schemes and fully resolved clauses when the
+-- declaration context and old clauses are unchanged; fresh non-shadowing
+-- bindings may be appended. Evals are always inferred again.
+-- Evidence-producing/native profiles never use this session boundary.
+inferTopsSession :: Bool -> Maybe CheckedDefinitions -> Maybe Namespace -> IProf -> Sigs -> Structs -> [STop]
+                 -> (InferenceResult, Maybe CheckedDefinitions, Int)
+inferTopsSession session previous capture prof sigs structs tops =
   let ((tops', proof, sites, schemes, layouts), st) = runState run (initialIEnv capture)
-  in resultFromState st tops' proof sites schemes layouts sigs structs
+      result = resultFromState st tops' proof sites schemes layouts sigs structs
+      candidate
+        | eligible && null (iErrs st) && null (iHoles st)
+          && M.size schemes == M.size clauseMap && all closedScheme (M.elems schemes) =
+            case reused of
+              Just old | M.size seeds == M.size clauseMap -> Just old
+              _ -> Just (rememberDefinitions contextKey tops schemes tops')
+        | otherwise = Nothing
+  in (result, candidate, M.size seeds)
   where
+    eligible = session && not (ipVectorLayouts prof) && case capture of Nothing -> True; _ -> False
+    contextKey = Bin.encode (sigs, structs, show (ipBuiltins prof), ipTopEvals prof, ipPathStr prof, ipMat4 prof)
+    reused = if eligible then matchingDefinitions contextKey tops previous else Nothing
+    seeds = maybe M.empty checkedSchemes reused
+    oldBinds = [(n,ps,g,b) | t <- maybe [] checkedTops reused, TBind n ps g b <- [t]]
     aliases = M.fromList [(n, fs) | TShape n fs <- tops]
     -- every bind's clauses in source order, indexed once per run (inferSCC
     -- and the dependency graph used to rescan all of `tops` per name)
@@ -1744,7 +1768,7 @@ inferTopsResult capture prof sigs structs tops =
     run = do
       cons <- (\u -> M.union u builtinCons') <$> consEnv aliases tops
       declared <- sigAnnEnv aliases tops
-      let env0 = M.union declared (ipBuiltins prof)
+      let env0 = seeds `M.union` declared `M.union` ipBuiltins prof
       -- group multi-clause binds under one name, preserving first-seen order
       let bindNames = ordNub [n | TBind n _ _ _ <- tops]
           clausesOf n = M.findWithDefault [] n clauseMap
@@ -1756,7 +1780,7 @@ inferTopsResult capture prof sigs structs tops =
           availableGlobals = topSet `S.union` S.fromList [n | TSig n _ _ <- tops]
           nodes =
             [ (n, n, ordNub (concatMap refs (clausesOf n)))
-              | n <- bindNames
+              | n <- bindNames, M.notMember n seeds
             ]
           refs (ps, g, b) =
             let bound = S.fromList (concatMap patVars ps)
@@ -1771,7 +1795,7 @@ inferTopsResult capture prof sigs structs tops =
           (\(e, acc) ns -> do (e', rws) <- inferSCC cons (M.keysSet declared) e ns; pure (e', rws : acc))
           (env0, [])
           [ns | scc <- sccs, let ns = flat scc]
-      let rwBinds = concat (reverse rwChunks)
+      let rwBinds = oldBinds ++ concat (reverse rwChunks)
       -- `> expr.` errors get the same "in NAME:" treatment a clause gets,
       -- under the eval's ordinal -- otherwise they reach the sinks
       -- unprefixed, which is also unanchored, which leaked the raw
@@ -1918,7 +1942,12 @@ inferTopsResult capture prof sigs structs tops =
             pure (LayoutContract owner calling requirements)) layouts
           modify (\st -> st {iLayoutContracts=contracts})
           pure (schemes,layouts)
-        _ -> pure (M.empty,M.empty)
+        _ | eligible -> do
+              -- Closed schemes have no solver variables to zonk; their bound
+              -- IDs are instantiated afresh by every later checking run.
+              let bindings = M.restrictKeys env (M.keysSet clauseMap)
+              pure (bindings, M.empty)
+          | otherwise -> pure (M.empty,M.empty)
       case capture of
         Just _ | null errors && not namedHoles -> do
           matches<-gets iPatterns >>= traverse (mapPatternTypesM (\t -> do z<-zonk t; force z `seq` pure z))

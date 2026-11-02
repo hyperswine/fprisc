@@ -19,9 +19,10 @@
 --
 -- This file was a ~1,000-line fork of Infer.hs; the un-forking is
 -- docs/2026-08-29-MEMORY-V2-PLAN.md's "de-fork the frontend" item made real.
-module Sol.Infer (inferTops, inferResult, builtinNames) where
+module Sol.Infer (inferTops, inferResult, inferSession, builtinNames) where
 
-import Infer (IProf (..), TEnv, InferenceResult, inferTopsResult, inferTopsWith, mono, scheme, sv)
+import Infer (IProf (..), TEnv, InferenceResult, inferTopsResult, inferTopsSession, inferTopsWith, mono, scheme, sv)
+import Infer.Session (CheckedDefinitions)
 import Type.Syntax (Type(..), tBool, tInt, tList, tStr, tUnit, tcon)
 import qualified Data.Map.Strict as M
 import Ownership.Shape (LShape)
@@ -46,6 +47,10 @@ inferTops = inferTopsWith solProf
 
 inferResult :: Sigs -> Structs -> [STop] -> InferenceResult
 inferResult = inferTopsResult Nothing solProf
+
+-- Session snapshots are opt-in and only supported by this profile.
+inferSession :: Maybe CheckedDefinitions -> Sigs -> Structs -> [STop] -> (InferenceResult, Maybe CheckedDefinitions, Int)
+inferSession old = inferTopsSession True old Nothing solProf
 
 -- names the checker types without the prelude (Sol.Slice keeps any
 -- prelude definition that would shadow one)

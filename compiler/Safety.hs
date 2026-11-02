@@ -29,12 +29,14 @@
 -- FPR_UNSAFE_SUGGEST=1 prints paste-ready signatures (with the
 -- INFERRED types) for every violation, so adopting the discipline is
 -- mechanical rather than archaeological.
-module Safety (SafetyResult, checkSafety, safetyDiagnostics, safetySuggestions, safetyCheck, trustedLibraryPaths, Measure (..), MeasureKind (..), measureCheck) where
+module Safety (SafetyResult, checkSafety, safetyDiagnostics, safetySuggestions, safetyCheck, trustedLibraryPaths, trustedLibraryChecker, Measure (..), MeasureKind (..), measureCheck) where
 
 import Data.Char (isHexDigit)
-import System.Directory (canonicalizePath)
-import System.FilePath (takeDirectory, (</>))
-import Home (underHome)
+import Data.IORef (newIORef, readIORef, writeIORef)
+import System.Directory (canonicalizePath, doesFileExist)
+import System.Environment (lookupEnv)
+import System.FilePath (splitSearchPath, takeDirectory, takeFileName, (</>))
+import Home (fprHome)
 import Data.Maybe (catMaybes)
 import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (intercalate, nub, isInfixOf, isPrefixOf, isSuffixOf)
@@ -54,18 +56,64 @@ import Precond (reservedEntry, splitMeasure)
 -- tests/check_trust.py refuses a std module that is not listed here, and
 -- docs/2026-10-15-SAFETY-ALLOW-LIST-REVIEW.md records what each module's
 -- unsafe helpers are (the review that admits a module).
-trustedLibraryPaths :: IO (S.Set FilePath)
-trustedLibraryPaths = do
-  shipped <- catMaybes <$> mapM underHome approvedLibraries
-  -- The platform owns its own explicit allow-list, just as it owns the
-  -- foreign primitive declarations. Entries are relative to this file.
-  manifest <- underHome "core/trusted-modules.txt"
-  platform <- case manifest of
+homeRoots :: IO [FilePath]
+homeRoots = do
+  h <- fprHome
+  extra <- lookupEnv "FPR_PATH"
+  pure [root | root <- h : maybe [] splitSearchPath extra, not (null root)]
+
+underRoots :: [FilePath] -> FilePath -> IO (Maybe FilePath)
+underRoots [] _ = pure Nothing
+underRoots (r : rs) rel = do
+  let p = r </> rel
+  ok <- doesFileExist p
+  if ok then pure (Just p) else underRoots rs rel
+
+platformTrustedEntries :: [FilePath] -> IO [FilePath]
+platformTrustedEntries roots = do
+  manifest <- underRoots roots "core/trusted-modules.txt"
+  case manifest of
     Nothing -> pure []
     Just p -> do
       entries <- lines <$> readFile p
       pure [takeDirectory p </> line | line <- entries, c : _ <- [line], c /= '#']
+
+trustedLibraryPaths :: IO (S.Set FilePath)
+trustedLibraryPaths = do
+  roots <- homeRoots
+  shipped <- catMaybes <$> mapM (underRoots roots) approvedLibraries
+  platform <- platformTrustedEntries roots
   S.fromList <$> mapM canonicalizePath (shipped ++ platform)
+
+-- On-demand per-file trust check for Sol scripts and the REPL. Resolves and
+-- canonicalizes only the approved library entries whose filename matches the
+-- imported module (typically 1-4 files instead of all 88 approvedLibraries).
+trustedLibraryChecker :: IO (FilePath -> IO Bool)
+trustedLibraryChecker = do
+  roots <- homeRoots
+  platform <- platformTrustedEntries roots
+  canonPlatform <- S.fromList <$> mapM canonicalizePath platform
+  cacheRef <- newIORef M.empty
+  let byBase = M.fromListWith (++) [(takeFileName rel, [rel]) | rel <- approvedLibraries]
+      resolveBase base = do
+        cache <- readIORef cacheRef
+        case M.lookup base cache of
+          Just resolved -> pure resolved
+          Nothing -> do
+            let rels = M.findWithDefault [] base byBase
+            found <- catMaybes <$> mapM (underRoots roots) rels
+            canonSet <- S.fromList <$> mapM canonicalizePath found
+            writeIORef cacheRef (M.insert base canonSet cache)
+            pure canonSet
+  pure $ \mpath -> do
+    let rawBase = takeFileName mpath
+    if M.notMember rawBase byBase && S.null canonPlatform
+      then pure False
+      else do
+        canon <- canonicalizePath mpath
+        if S.member canon canonPlatform
+          then pure True
+          else S.member canon <$> resolveBase (takeFileName canon)
 
 approvedLibraries :: [FilePath]
 approvedLibraries =

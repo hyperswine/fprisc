@@ -48,6 +48,22 @@ def main():
             preludes[0].write_bytes(broken)
             for file in cache.glob('*.cache'):file.unlink()
             run();assert preludes[0].read_bytes()==good
+        # Compact dependency keys must still see valid, same-size edits even
+        # when timestamps are restored, including transitive imports.
+        st=module.stat();module.write_text('answer = 43.\n')
+        os.utime(module,ns=(st.st_atime_ns,st.st_mtime_ns))
+        p=run(b'43\n');assert b'[sol cache] miss' in p.stderr,p
+        module.write_text('answer = 42.\n');run()
+        child=w/'child.sol';child.write_text('value = 7.\n')
+        module.write_text('B = use "child".\nanswer = B.value.\n')
+        run(b'7\n');p=run(b'7\n');assert b'[sol cache] hit' in p.stderr,p
+        st=child.stat();child.write_text('value = 8.\n')
+        os.utime(child,ns=(st.st_atime_ns,st.st_mtime_ns))
+        p=run(b'8\n');assert b'[sol cache] miss' in p.stderr,p
+        # A matching basename outside the approved toolchain is not trusted.
+        impostor=w/'json.sol';impostor.write_text('spin x = spin (x + 1).\n')
+        script.write_text('J = use "json".\n> print "unused".\n')
+        p=run(b'',1);assert b'SAFETY' in p.stderr,p
         # Both FF and FE decode to U+FFFD in the previous implementation. Their
         # equal size/mtime must not hide a content change during a transaction.
         data=w/'binary';data.write_bytes(b'\xff')

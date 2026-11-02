@@ -1,0 +1,1 @@
+Sol REPL incremental: 34 differential sessions passed (JIT off/on, actual reuse, import edits and committed data)

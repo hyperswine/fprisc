@@ -8,7 +8,17 @@
 -- A disposable compiler-result cache, never a cache of evaluated values or
 -- effects. Imports are resolved before lookup. Exact encoded inputs are checked
 -- after the filename hash, so hash collisions cannot select a different program.
-module Sol.Cache (Prepared (..), cacheDirectory, cached, cachedModule, cachedPrelude, checkedLibraries, recordCheckedLibraries) where
+module Sol.Cache
+  ( Prepared (..),
+    ImportStamp,
+    cacheDirectory,
+    cached,
+    cachedModule,
+    cachedPrelude,
+    checkedLibraries,
+    recordCheckedLibraries,
+    sourceDigest
+  ) where
 
 import Control.DeepSeq (NFData, force)
 import Control.Exception (IOException, bracketOnError, catch, evaluate)
@@ -19,6 +29,9 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as M
 import Data.Word (Word64)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Sol.Digest as Digest
 import GHC.Generics (Generic)
 import Numeric (showHex)
 import System.Directory (createDirectoryIfMissing, getHomeDirectory, makeAbsolute, removeFile, renameFile)
@@ -41,13 +54,21 @@ data Prepared = Prepared
     preparedNotes :: [String]
   } deriving (Generic, NFData, Binary)
 
+-- (qualified alias prefix, resolved module path, AST+content stamp, trusted)
+type ImportStamp = (String, FilePath, BS.ByteString, Bool)
+
 -- Changing the artifact format/meaning requires a new schema, even though a
 -- rebuilt executable normally also invalidates all entries through its identity.
 schema :: Int
-schema = 6 -- 6: checked-library verdicts (libchecks/), libraries sliced like the prelude (2026-10-29); 5: programs may be compiled against a sliced prelude, internal names renumbered (2026-10-29); 4: programs shaken to the reachable set (2026-10-29); 3: TailCall in the bytecode (2026-10-02)
+schema = 8 -- compact SHA-256 import/prelude stamps and checked-library shape artifacts
 
 fingerprint :: BS.ByteString -> Word64
 fingerprint = BS.foldl' (\h b -> (h `xor` fromIntegral b) * 0x100000001b3) 0xcbf29ce484222325
+
+-- FNV selects filenames only. Compact content identities use SHA-256;
+-- the complete structured key is still compared after loading each entry.
+sourceDigest :: String -> IO BS.ByteString
+sourceDigest = Digest.hash . TE.encodeUtf8 . T.pack
 
 traceCache :: String -> IO ()
 traceCache msg = do
@@ -60,8 +81,8 @@ ignoreIO action = action `catch` (\(_ :: IOException) -> pure ())
 -- Stat identity avoids reading/hash-scanning the entire executable on every
 -- tiny invocation. Replacement/rebuild changes inode, size, mtime or ctime;
 -- compiler/runtime ABI and schema are also part of the exact input key.
-cached :: FilePath -> String -> String -> [STop] -> [Name] -> IO Prepared -> IO Prepared
-cached path src prelude expanded trusted compile = do
+cached :: FilePath -> String -> String -> [ImportStamp] -> IO Prepared -> IO Prepared
+cached path src prelude importStamps compile = do
   flag <- lookupEnv "SOL_CACHE"
   inspect <- mapM lookupEnv ["SOL_TYPES", "SOL_WIDTHS"]
   if flag == Just "0" || Just "1" `elem` inspect
@@ -84,12 +105,13 @@ cached path src prelude expanded trusted compile = do
               pure prepared
   where
     cacheContext = do
+      preludeStamp <- sourceDigest prelude
       exe <- getExecutablePath >>= makeAbsolute
       st <- getFileStatus exe
       absolute <- makeAbsolute path
       options <- mapM lookupEnv ["SOL_NOTYPES", "SOL_NO_SAFETY", "FPR_HOME", "FPR_PATH", "FPR_NO_SPEC"]
       let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
-          key = BL.toStrict (encode (schema, identity, (arch, os, compilerName, show compilerVersion), absolute, path, src, prelude, expanded, trusted, options))
+          key = BL.toStrict (encode (schema, identity, (arch, os, compilerName, show compilerVersion), absolute, path, src, preludeStamp, importStamps, options))
           slot = showHex (fingerprint key) "" ++ ".cache"
       dir <- cacheDirectory
       _ <- evaluate (BS.length key)
@@ -176,12 +198,13 @@ cachedParse subdir path src parseIt = do
             pure result
   where
     moduleContext = do
+      sourceKey <- if subdir == "prelude" then sourceDigest src else pure (TE.encodeUtf8 (T.pack src))
       exe <- getExecutablePath >>= makeAbsolute
       st <- getFileStatus exe
       absolute <- makeAbsolute path
       dir <- cacheDirectory
       let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
-          key = BL.toStrict (encode (schema, identity, arch, os, absolute, path, src))
+          key = BL.toStrict (encode (schema, identity, arch, os, absolute, path, sourceKey))
           file = dir </> subdir </> (showHex (fingerprint key) "" ++ ".cache")
       pure (file, key)
 
@@ -189,9 +212,8 @@ cachedParse subdir path src parseIt = do
 -- A verdict records whether this exact set of spliced `use` libraries (their
 -- renamed top-level declarations, which include their own dependencies)
 -- passes the whole pipeline ON ITS OWN, with no user program, under this
--- executable and these options. Keyed
--- by schema, executable identity, the checking options and the SHA-256 of
--- the encoded declarations; the stored key is compared on read.
+-- executable and these options, together with the libraries' ordered record
+-- shape declarations so sliced compiles need not re-expand all library structs.
 libraryKey :: String -> [String] -> IO (Maybe (FilePath, BS.ByteString))
 libraryKey digest options = (Just <$> context) `catch` (\(_ :: IOException) -> pure Nothing)
   where
@@ -203,10 +225,10 @@ libraryKey digest options = (Just <$> context) `catch` (\(_ :: IOException) -> p
           key = BL.toStrict (encode (schema, identity, arch, os, options, digest))
       pure (dir </> "libchecks" </> (showHex (fingerprint key) "" ++ ".cache"), key)
 
--- Nothing: no verdict yet. Just True: the libraries compile on their own.
--- Just False: they do not (they need declarations from the program that
--- uses them), so they are always compiled whole.
-checkedLibraries :: String -> [String] -> IO (Maybe Bool)
+-- Nothing: no verdict yet. Just (True, shapes): the libraries compile on their
+-- own with those record shapes. Just (False, []): they do not (they need
+-- declarations from the program that uses them).
+checkedLibraries :: String -> [String] -> IO (Maybe (Bool, [STop]))
 checkedLibraries digest options = do
   disabled <- (== Just "0") <$> lookupEnv "SOL_CACHE"
   if disabled then pure Nothing else do
@@ -215,7 +237,7 @@ checkedLibraries digest options = do
       Nothing -> pure Nothing
       Just (file, key) -> readEntry file key
 
-recordCheckedLibraries :: String -> [String] -> Bool -> IO ()
+recordCheckedLibraries :: String -> [String] -> (Bool, [STop]) -> IO ()
 recordCheckedLibraries digest options verdict = do
   disabled <- (== Just "0") <$> lookupEnv "SOL_CACHE"
   if disabled then pure () else do

@@ -1,0 +1,10 @@
+193/193 identical
+  incremental:   16 x libraries checked in this program: verdict recorded for its declarations
+  incremental:   43 x libraries not verified: compiled whole
+  incremental:   21 x libraries on their own: fail; checked per program interface
+  incremental:  136 x libraries on their own: pass; verdict recorded
+  incremental:  358 x libraries verified: sliced
+  incremental:  208 x prelude .. declarations
+  incremental:  358 x prelude .. declarations, libraries ..
+  incremental:   69 x sliced compile rejected ..; full prelude
+PASS sol-library-cache-check

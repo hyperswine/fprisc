@@ -14,7 +14,7 @@ module Sol.Main where
 
 import qualified Compiler.Editor as Editor
 import Mono (specializeFunctions)
-import Sol.Cache (Prepared (..), cached, cachedPrelude, checkedLibraries, recordCheckedLibraries)
+import Sol.Cache (Prepared (..), ImportStamp, cached, cachedPrelude, checkedLibraries, recordCheckedLibraries, sourceDigest)
 import Sol.Startup (phase, phaseIO)
 import Control.DeepSeq (force)
 import Sol.Diagnostic
@@ -24,6 +24,7 @@ import Control.Exception (AsyncException (UserInterrupt), Handler (..), IOExcept
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
 import Data.IORef
+import Data.Maybe (isNothing)
 import Data.Char (isSpace)
 import Data.List (intercalate, isInfixOf, isPrefixOf)
 import qualified Data.Map.Strict as M
@@ -34,9 +35,11 @@ import Sol.Lang
 import Sol.Mod (resolveModuleParsedWith, parseCachedSource)
 import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
-import Safety (checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
+import Safety (checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryChecker)
 import Precond (applyPreconds, preTable, validatePre, validatePreUses)
-import Sol.Infer (inferResult, builtinNames)
+import Sol.Infer (inferResult, inferSession, builtinNames)
+import Infer.Session (CheckedDefinitions)
+import Sol.ReplParse (appendCommand)
 import Sol.Slice (injectedNames, mentions, orderedShapes, shapeSeed, sliceIndices)
 import qualified Sol.Digest as Digest
 import qualified Data.Binary as Bin
@@ -121,16 +124,18 @@ runFileWith report editor as = do
         Right (_, tops) -> pure tops
     seenRef <- newIORef M.empty
     trustRef <- newIORef S.empty
-    -- canonicalizing ~65 shipped library paths costs ~4 ms; only a script
-    -- with `use` asks the set anything, so a one-liner never pays for it.
-    -- Read-only filesystem queries: deferring them cannot reorder effects.
-    trustedPaths <- unsafeInterleaveIO (phaseIO "library-paths" trustedLibraryPaths)
-    expanded <- phase "imports" $ expandUsesWith report 8 "" trustedPaths trustRef seenRef (takeExtension path) (takeDirectory path) utops
-    trusted <- readIORef trustRef
+    stampsRef <- newIORef []
+    -- Only canonicalize the approved library paths that match an imported
+    -- module's filename, and defer until `use` actually runs.
+    isTrusted <- unsafeInterleaveIO (phaseIO "library-paths" trustedLibraryChecker)
+    expanded <- phase "imports" $ expandUsesWith report 8 "" isTrusted trustRef seenRef stampsRef (takeExtension path) (takeDirectory path) utops
+    stamps <- reverse <$> readIORef stampsRef
     if editor then do
+      trusted <- readIORef trustRef
       ptops <- preludeTops
-      compileScriptWith report SliceNone path src ptops utops expanded trusted
-    else cached path src prelude expanded (S.toList trusted) $ do
+      compileScriptWith report SliceNone Nothing path src ptops utops expanded trusted
+    else cached path src prelude stamps $ do
+      trusted <- readIORef trustRef
       ptops <- phase "prelude-parse" preludeTops
       compilePrepared path src ptops utops expanded trusted
   when editor exitSuccess
@@ -222,7 +227,10 @@ preludeTops = do
 -- the full pipeline. SOL_INCREMENTAL=0 always compiles the whole prelude;
 -- SOL_INCREMENTAL=trace reports slice sizes and fallbacks on stderr.
 compilePrepared :: FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
-compilePrepared path src ptops utops expanded trusted = do
+compilePrepared = compilePreparedSession Nothing
+
+compilePreparedSession :: Maybe (IORef (Maybe CheckedDefinitions)) -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
+compilePreparedSession session path src ptops utops expanded trusted = do
   mode <- lookupEnv "SOL_INCREMENTAL"
   libMode <- lookupEnv "SOL_LIB_INCREMENTAL"
   let trace msg = when (mode == Just "trace") (hPutStrLn stderr ("[sol incremental] " ++ msg))
@@ -244,27 +252,40 @@ compilePrepared path src ptops utops expanded trusted = do
     pure (concatMap (\w -> let x = showHex w "" in if length x < 2 then '0' : x else x) (BS.unpack h))
   let opts = map (maybe "" id) options
       full = compileScript SliceNone path src ptops utops expanded trusted
+      computeLibShapes :: [STop] -> [STop]
+      computeLibShapes ctxTops =
+        let (_, libX) = expandPathLits (shapeTyTable libPart) (typeTyTable libPart) (aliasStructRefs libPart)
+            (_, ctxX) = expandPathLits (shapeTyTable ctxTops) (typeTyTable ctxTops) (aliasStructRefs ctxTops)
+         in orderedShapes (collectShapes (snd (expandStructs (sigTable (ptops ++ ctxX)) libX)))
       -- the verdict: do the libraries compile ON THEIR OWN? A library that
       -- passes alone passes inside any program: a program only adds
       -- declarations under its own names and record shapes, which add
       -- candidates to the library's record and field lowering, never remove
       -- them. (A library that needs the program's shapes -- sol/lib/auth's
       -- generic record update -- fails alone and is never sliced.)
-      establish :: IO Bool
+      establish :: IO (Bool, [STop])
       establish = do
-        alone <- try (withBufferedDiagnostics (compileScript SlicePrelude "<libraries>" "" ptops [] libPart trusted >>= evaluate . force))
+        let shapes = computeLibShapes libPart
+        alone <- try (withBufferedDiagnostics (compileScriptWith Editor.disabled SlicePrelude (Just shapes) "<libraries>" "" ptops [] libPart trusted >>= evaluate . force))
+        case alone of
+          Left e | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+          _ -> pure ()
         let ok = case alone of
               Right (_, held) -> not (any ("[hole]" `isPrefixOf`) held)
               Left (_ :: SomeException) -> False
+            saved = (ok, if ok then shapes else [])
         trace ("libraries on their own: " ++ (if ok then "pass; verdict recorded" else "fail; checked per program interface"))
-        recordCheckedLibraries digest opts ok
-        pure ok
+        recordCheckedLibraries digest opts saved
+        pure saved
   -- SOL_TYPES / SOL_WIDTHS print inferred types: always the full program
   inspect <- mapM lookupEnv ["SOL_TYPES", "SOL_WIDTHS"]
   if mode == Just "0" || Just "1" `elem` inspect
     then full
     else do
-      verdict <- if libEligible then checkedLibraries digest opts else pure Nothing
+      verdict0 <- if libEligible then checkedLibraries digest opts else pure Nothing
+      verdict <- case verdict0 of
+        Nothing | libEligible -> Just <$> establish
+        other -> pure other
       -- libraries that only check inside a program (sol/lib/auth needs the
       -- app's record shape): verdict per program INTERFACE -- every user
       -- declaration except function bodies, plus every record shape the user
@@ -272,14 +293,24 @@ compilePrepared path src ptops utops expanded trusted = do
       -- affected by the program through that global namespace and shape set,
       -- never by a function body. Recorded only after this very program
       -- compiled the libraries whole and passed.
-      ctxDigest <- if verdict /= Just False && verdict /= Nothing then pure "" else do
+      let aloneFailed = case verdict of Just (False, _) -> True; _ -> False
+      ctxDigest <- if not aloneFailed then pure "" else do
         h <- Digest.hash (BL.toStrict (Bin.encode (digest, concatMap interfaceOf utops, M.keys (collectShapes [case t of TEval e -> TBind "" [] [] e; _ -> t | t <- utops]))))
         pure ("ctx-" ++ concatMap (\w -> let x = showHex w "" in if length x < 2 then '0' : x else x) (BS.unpack h))
-      ctxVerdict <- if libEligible && verdict == Just False then checkedLibraries ctxDigest opts else pure Nothing
-      let verified = verdict == Just True || ctxVerdict == Just True
+      ctxVerdict <- if libEligible && aloneFailed then checkedLibraries ctxDigest opts else pure Nothing
+      -- User type/sig/struct declarations can affect struct expansion.
+      -- Recompute shapes in that context instead of reusing standalone ones.
+      let stableShapeContext = all (\t -> case t of
+            TBind {} -> True; TEval {} -> True; TUse {} -> True; TSkip -> True; _ -> False) utops
+          cachedShapes = case (verdict, ctxVerdict) of
+            (Just (True, sh), _) -> Just sh
+            (_, Just (True, sh)) -> Just sh
+            _ -> Nothing
+          verified = case cachedShapes of Just _ -> True; Nothing -> False
+          mShapes = if stableShapeContext || aloneFailed then cachedShapes else Nothing
           level = if verified then SliceAll else SlicePrelude
       when (nLib > 0) $ trace ("libraries " ++ (if verified then "verified: sliced" else "not verified: compiled whole"))
-      r <- try (withBufferedDiagnostics (compileScript level path src ptops utops expanded trusted >>= evaluate . force))
+      r <- try (withBufferedDiagnostics (compileScriptSession session Editor.disabled level mShapes path src ptops utops expanded trusted >>= evaluate . force))
       case r of
         -- typed-hole notes print type-variable names, which depend on the
         -- whole program's fresh-variable supply: a compile that has one is
@@ -289,12 +320,9 @@ compilePrepared path src ptops utops expanded trusted = do
           | any ("[hole]" `isPrefixOf`) held -> trace "typed-hole note; full prelude" >> full
           | otherwise -> do
               mapM_ (hPutStrLn stderr) held
-              when libEligible $ do
-                okAlone <- if verdict == Nothing then establish else pure (verdict == Just True)
-                -- this program compiled the libraries whole and passed
-                when (not okAlone && ctxVerdict == Nothing && not (null ctxDigest)) $ do
-                  trace "libraries checked in this program: verdict recorded for its declarations"
-                  recordCheckedLibraries ctxDigest opts True
+              when (libEligible && aloneFailed && isNothing ctxVerdict && not (null ctxDigest)) $ do
+                trace "libraries checked in this program: verdict recorded for its declarations"
+                recordCheckedLibraries ctxDigest opts (True, computeLibShapes expanded)
               pure prepared
         Left (e :: SomeException)
           | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
@@ -316,10 +344,13 @@ data Slicing = SliceNone | SlicePrelude | SliceAll deriving (Eq)
 -- Successful compiler output is pure data; transactions, actors, JIT state and
 -- script arguments are deliberately created outside this cached boundary.
 compileScript :: Slicing -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
-compileScript = compileScriptWith Editor.disabled
+compileScript slicing = compileScriptWith Editor.disabled slicing Nothing
 
-compileScriptWith :: Editor.Report -> Slicing -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
-compileScriptWith report slicing path src ptopsAll utops utopsX0' trusted = do
+compileScriptWith :: Editor.Report -> Slicing -> Maybe [STop] -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
+compileScriptWith = compileScriptSession Nothing
+
+compileScriptSession :: Maybe (IORef (Maybe CheckedDefinitions)) -> Editor.Report -> Slicing -> Maybe [STop] -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
+compileScriptSession session report slicing mLibShapes path src ptopsAll utops utopsX0' trusted = do
   noteRef <- newIORef []
   let note msg = modifyIORef' noteRef (msg :) >> diagnostic msg
   let sources=M.singleton path src
@@ -371,7 +402,9 @@ compileScriptWith report slicing path src ptopsAll utops utopsX0' trusted = do
   let utopsX0 = libKept ++ userX
       -- record shape ids of the WHOLE libraries, in first-appearance order,
       -- so a sliced library leaves every later shape's id unchanged
-      libShapes = orderedShapes (collectShapes (snd (expandStructs (sigTable (ptopsAll ++ utopsXP)) libX)))
+      libShapes = case mLibShapes of
+        Just sh -> sh
+        Nothing -> orderedShapes (collectShapes (snd (expandStructs (sigTable (ptopsAll ++ utopsXP)) libX)))
 
   -- sigs / structs / (s : Sig) params — now including the PRELUDE stdlib
   -- structs (Numeric/Str/List): conformance-check, expand structs to flat
@@ -404,16 +437,25 @@ compileScriptWith report slicing path src ptopsAll utops utopsX0' trusted = do
       noTypes = envNoTypes || pragmaNoTypes
   when pragmaNoTypes $ note "[sol] types: skipped (# sol:notypes pragma)"
   showTypes <- (== Just "1") <$> lookupEnv "SOL_TYPES"
+  candidateRef <- newIORef Nothing
   (combined, linsigs) <-
     if noTypes
       then pure (checkedTops, []) -- ops stay Int prims; debugging only
       else do
-        let result=inferResult sigs structs checkedTops
+        previous <- maybe (pure Nothing) readIORef session
+        let (result, candidate, reused) = case session of
+              Nothing -> (inferResult sigs structs checkedTops, Nothing, 0)
+              Just _ -> inferSession previous sigs structs checkedTops
             terrs0=inferenceDiagnostics result
             notes0=inferenceNotes result
             holes0=inferenceHoles result
             inferredLinSigs=inferenceLinearity result
             rewritten0=inferenceTops result
+        writeIORef candidateRef candidate
+        traceSession <- (== Just "trace") <$> lookupEnv "SOL_REPL_INCREMENTAL"
+        when (traceSession && not (isNothing session)) $ do
+          let total = S.size (S.fromList [n | TBind n _ _ _ <- checkedTops])
+          hPutStrLn stderr ("[sol repl-check] reused " ++ show reused ++ "/" ++ show total ++ " definitions; evals rechecked")
         (terrs, notes, holes, rewritten) <- phase "typecheck" $ pure (terrs0, notes0, holes0, rewritten0)
         let preludeNames = trusted <> S.fromList [n | TBind n _ _ _ <- ptopsExp]
             safety = checkSafety preludeNames (map evalForSafety (ptopsExp ++ topsExp)) notes
@@ -489,6 +531,8 @@ compileScriptWith report slicing path src ptopsAll utops utopsX0' trusted = do
     mapM_ (diagnostic . ("  * " ++)) (anchoredDiagnostics lerrs)
     exitFailure
 
+  -- Library verdicts must cover layout/lowering and bytecode as well as
+  -- inference: context-dependent record updates can fail only here.
   (cons, shapes) <- phase "layout" $ pure (collectCons tops, collectShapes (shapeSeed ptopsAll ++ libShapes ++ tops))
   -- The shared frontend stores UTF-8 bytes; the VM uses Chars.
   prog <- phase "lower" $ pure (decodeProgStrings (fst (runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes [] []))))
@@ -509,7 +553,15 @@ compileScriptWith report slicing path src ptopsAll utops utopsX0' trusted = do
   -- dominant warm-start cost (docs/2026-10-29-SOL-STARTUP-ANALYSIS.md).
   let live = reachableFns bprog runList
       shake m = M.restrictKeys m live
-  pure (Prepared cons shapes (shake specialized) (shake bprog) runList (reverse notes))
+  let prepared = Prepared cons shapes (shake specialized) (shake bprog) runList (reverse notes)
+  -- Lowering/bytecode can fail lazily. Publish a checked interface only after
+  -- every compiler phase succeeds; execution and transactions are never cached.
+  case session of
+    Nothing -> pure prepared
+    Just ref -> do
+      complete <- evaluate (force prepared)
+      readIORef candidateRef >>= evaluate . force >>= writeIORef ref
+      pure complete
 
 -- Names reachable from the run roots through static calls, tail calls and
 -- globals-as-values. HCall targets are HAL symbols, not program functions.
@@ -636,9 +688,12 @@ runRepl scriptArgs = do
     _ -> initJIT
   gpu <- Gpu.initGPU
   ptops <- preludeTops
-  trustedPaths <- trustedLibraryPaths
+  isTrusted <- trustedLibraryChecker
   seenRef <- newIORef M.empty
   trustRef <- newIORef S.empty
+  replMode <- lookupEnv "SOL_REPL_INCREMENTAL"
+  checkRef <- newIORef Nothing
+  let session = if replMode == Just "0" then Nothing else Just checkRef
   recoverScriptJournals "sol-repl"
   journalFile <- runJournalPath "sol-repl"
   tmp <- getTemporaryDirectory
@@ -647,7 +702,7 @@ runRepl scriptArgs = do
   when tty $
     putStrLn "Sol 0.14.0-dev (scripting API 1) — one command, one transaction. Ctrl-D exits."
   let
-    loop tty acc buffer evalsDone defined = do
+    loop tty acc accepted buffer evalsDone defined = do
       when tty (putStr (if null buffer then "sol> " else "...> ") >> hFlush stdout)
       got <- try (hGetLine stdin) :: IO (Either IOException String)
       case got of
@@ -655,11 +710,15 @@ runRepl scriptArgs = do
           when tty (putStrLn "")
           exitWith ExitSuccess
         Right line
-          | all isSpace line && null buffer -> loop tty acc buffer evalsDone defined
+          | all isSpace line && null buffer -> loop tty acc accepted buffer evalsDone defined
           | otherwise -> do
               let buffer' = if null buffer then line ++ "\n" else buffer ++ line ++ "\n"
                   trial = acc ++ buffer'
-              case parse program "<repl>" trial of
+                  commandParsed = parse program "<cmd>" buffer'
+                  parsed = case (session, commandParsed) of
+                    (Just _, Right command) -> Right (appendCommand (length acc) accepted command)
+                    _ -> parse program "<repl>" trial
+              case parsed of
                 Left e
                   -- a def ending mid-'.' keeps the buffer and prompts for
                   -- more; a blank line while waiting is the way out
@@ -667,17 +726,17 @@ runRepl scriptArgs = do
                       if all isSpace line && not (null buffer)
                         then do
                           hPutStrLn stderr "[repl] incomplete input discarded"
-                          loop tty acc "" evalsDone defined
-                        else loop tty acc buffer' evalsDone defined
+                          loop tty acc accepted "" evalsDone defined
+                        else loop tty acc accepted buffer' evalsDone defined
                   | otherwise -> do
                       hPutStr stderr (errorBundlePretty e)
                       hPutStrLn stderr "[repl] input rejected"
-                      loop tty acc "" evalsDone defined
+                      loop tty acc accepted "" evalsDone defined
                 Right tops -> do
                   -- names THIS command adds: parse the new lines alone, so
                   -- the accumulated program's own definitions do not clash
                   -- with themselves
-                  let cmdNames = case parse program "<cmd>" buffer' of
+                  let cmdNames = case commandParsed of
                         Right ts -> S.fromList (concatMap replTopName ts)
                         Left _ -> S.empty
                       clash = S.toList (S.intersection cmdNames defined)
@@ -685,18 +744,18 @@ runRepl scriptArgs = do
                     then do
                       hPutStrLn stderr ("[repl] already defined this session: " ++ unwords clash
                                         ++ " (restart the session to redefine)")
-                      loop tty acc "" evalsDone defined
+                      loop tty acc accepted "" evalsDone defined
                     else do
                       r <- try (runReplCommand base scriptArgs dataFile journalFile
-                                  ptops trustedPaths seenRef trustRef rt jc gpu
+                                  ptops isTrusted seenRef trustRef rt jc gpu session
                                   trial tops evalsDone)
                       case r of
                         Left (_ :: ExitCode) ->
                           -- compile rejected the line: its diagnostics are
                           -- printed; the accumulated source stays as it was
-                          loop tty acc "" evalsDone defined
-                        Right evals' -> loop tty trial "" evals' (S.union defined cmdNames)
-  loop tty "" "" 0 S.empty
+                          loop tty acc accepted "" evalsDone defined
+                        Right evals' -> loop tty trial tops "" evals' (S.union defined cmdNames)
+  loop tty "" [] "" 0 S.empty
 
 -- top-level names a command defines (for the no-redefinition rule)
 replTopName :: STop -> [Name]
@@ -707,19 +766,20 @@ replTopName _ = []
 -- compile the accumulated program, execute only the new evals, commit.
 -- Panics/interrupts abort the command's transaction but still consume the
 -- command (it is in the program text; never silently re-run later).
-runReplCommand :: FilePath -> [String] -> FilePath -> FilePath -> [STop] -> S.Set FilePath
+runReplCommand :: FilePath -> [String] -> FilePath -> FilePath -> [STop] -> (FilePath -> IO Bool)
                -> IORef (M.Map FilePath String) -> IORef (S.Set FilePath) -> RtCounts
-               -> Maybe JitCtx -> Maybe Gpu.GpuCtx -> String -> [STop] -> Int -> IO Int
-runReplCommand base scriptArgs dataFile journalFile ptops trustedPaths seenRef trustRef rt jc gpu trial tops evalsDone = do
+               -> Maybe JitCtx -> Maybe Gpu.GpuCtx -> Maybe (IORef (Maybe CheckedDefinitions)) -> String -> [STop] -> Int -> IO Int
+runReplCommand base scriptArgs dataFile journalFile ptops isTrusted seenRef trustRef rt jc gpu session trial tops evalsDone = do
   -- every command recompiles the whole session text, so its imports are
   -- spliced afresh: a module-dedup table left over from the previous
   -- command made every earlier `use` alias onto a copy that was no longer
   -- spliced (J.f unbound from the second command on)
   writeIORef seenRef M.empty
   writeIORef trustRef S.empty
-  expanded <- expandUses 8 "" trustedPaths trustRef seenRef ".sol" base tops
+  stampsRef <- newIORef []
+  expanded <- expandUses 8 "" isTrusted trustRef seenRef stampsRef ".sol" base tops
   trusted <- readIORef trustRef
-  prepared <- compilePrepared "<repl>" trial ptops tops expanded trusted
+  prepared <- compilePreparedSession session "<repl>" trial ptops tops expanded trusted
   let Prepared cons shapes prog bprog runList _ = prepared
   writeIORef VM.conNames
     [ ((t, v, ar), reverse (takeWhile (/= '.') (reverse c)))
@@ -832,28 +892,34 @@ parseOrDie name src = case parse program name src of
 -- their qualified references onto it. This is what keeps one type ONE type:
 -- a PT built by a library's internal logic import unifies with the app's
 -- own logic import because they are literally the same declarations.
-expandUses :: Int -> String -> S.Set FilePath -> IORef (S.Set Name) -> IORef (M.Map String String) -> String -> FilePath -> [STop] -> IO [STop]
+expandUses :: Int -> String -> (FilePath -> IO Bool) -> IORef (S.Set Name) -> IORef (M.Map String String) -> IORef [ImportStamp] -> String -> FilePath -> [STop] -> IO [STop]
 expandUses = expandUsesWith Editor.disabled
 
-expandUsesWith :: Editor.Report -> Int -> String -> S.Set FilePath -> IORef (S.Set Name) -> IORef (M.Map String String) -> String -> FilePath -> [STop] -> IO [STop]
-expandUsesWith report 0 _ _ _ _ _ _ _ = Editor.problem report "import" "Module nesting too deep" Nothing >> diagnostic "[sol] use: module nesting too deep" >> exitFailure >> pure []
-expandUsesWith report depth prefix trustedPaths trustRef seenRef impExt baseDir tops = do
+expandUsesWith :: Editor.Report -> Int -> String -> (FilePath -> IO Bool) -> IORef (S.Set Name) -> IORef (M.Map String String) -> IORef [ImportStamp] -> String -> FilePath -> [STop] -> IO [STop]
+expandUsesWith report 0 _ _ _ _ _ _ _ _ = Editor.problem report "import" "Module nesting too deep" Nothing >> diagnostic "[sol] use: module nesting too deep" >> exitFailure >> pure []
+expandUsesWith report depth prefix isTrusted trustRef seenRef stampsRef impExt baseDir tops = do
   let aliases = [(mn, spec) | TUse mn spec <- tops]
   pairs <- forM aliases $ \(mn, spec) -> do
-    let record file body = case report of
-          Nothing -> pure ()
-          Just _ -> do
-            Editor.source report file body
-            parsed <- parseCachedSource file body
-            case parsed of
-              Right (_, ts) -> Editor.context report M.empty (M.mapKeys (\n -> prefix ++ mn ++ "." ++ n) (bindAnchors file body ts))
-              Left _ -> pure ()
+    srcRef <- newIORef ""
+    let record file body = do
+          writeIORef srcRef body
+          case report of
+            Nothing -> pure ()
+            Just _ -> do
+              Editor.source report file body
+              parsed <- parseCachedSource file body
+              case parsed of
+                Right (_, ts) -> Editor.context report M.empty (M.mapKeys (\n -> prefix ++ mn ++ "." ++ n) (bindAnchors file body ts))
+                Left _ -> pure ()
     r <- resolveModuleParsedWith record impExt baseDir spec
     case r of
       Left e -> Editor.problem report "import" e Nothing >> diagnostic e >> exitFailure >> pure ([], (mn, mn))
       Right (mpath, h, pinned, mtops0) -> do
-        approved <- (`S.member` trustedPaths) <$> canonicalizePath mpath
-        when approved $ modifyIORef' trustRef (<> S.fromList
+        approved <- isTrusted mpath
+        msrc <- readIORef srcRef
+        stamp <- sourceDigest msrc
+        modifyIORef' stampsRef ((prefix ++ mn, mpath, stamp, approved) :)
+        when approved $ modifyIORef trustRef (<> S.fromList
           ([prefix ++ mn ++ "." ++ n | TBind n _ _ _ <- mtops0]
            ++ [prefix ++ mn ++ "." ++ n ++ "." ++ f | TStruct n _ fs <- mtops0, (f, _) <- fs]))
         unless pinned $
@@ -869,7 +935,7 @@ expandUsesWith report depth prefix trustedPaths trustRef seenRef impExt baseDir 
             pure ([], (mn, localName))
           Nothing -> do
             modifyIORef' seenRef (M.insert h (prefix ++ mn))
-            mtops1 <- expandUsesWith report (depth - 1) (prefix ++ mn ++ ".") trustedPaths trustRef seenRef (takeExtension mpath) (takeDirectory mpath) mtops0
+            mtops1 <- expandUsesWith report (depth - 1) (prefix ++ mn ++ ".") isTrusted trustRef seenRef stampsRef (takeExtension mpath) (takeDirectory mpath) mtops0
             let defs = [t | t <- mtops1, notEval t]
                 rn = M.fromList [(n, mn ++ "." ++ n) | n <- topNames defs]
             pure (renameTops rn defs, (mn, mn))

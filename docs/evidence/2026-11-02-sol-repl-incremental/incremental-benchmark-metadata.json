@@ -1,0 +1,20 @@
+{
+  "head": "e085e872edc3f67ad89d9e357a207ac69e1b6f4e",
+  "before": {
+    "head": "e085e87-plus-completed-cache-patch",
+    "compilerSha256": "589d65bab73541ada34590ef57fc12a8190df096be57a41ca3abd1797d463c2e"
+  },
+  "compilerSha256": "06c25f808c69381231897f65cc6dba7743ee6bcc17019e577d3a0ed8201d1966",
+  "machine": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "options": {
+    "SOL_GPU": "0",
+    "SOL_JIT": "default",
+    "SOL_CACHE": "default",
+    "overrides": {
+      "before": {},
+      "after": {}
+    }
+  },
+  "method": "PTY input echo disabled; write-to-next-prompt wall time; output validated; cache roots isolated; 4 counterbalanced sessions per compiler/workload, 5 prompt trials",
+  "sourcePatchSha256": "e5b37ae62f0d69257fec7ff8df3d7018b07723ba51751c93283db98cfbc1db91"
+}

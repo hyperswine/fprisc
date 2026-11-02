@@ -135,6 +135,7 @@ library
       Infer.Trace
       Infer.Evidence
       Infer.Result
+      Infer.Session
       Infer.Pattern
       Infer.Elaboration
       Core.Identity
@@ -226,6 +227,7 @@ library
       Sol.AsmA64
       Sol.Lang
       Sol.Main
+      Sol.ReplParse
       Sol.Mod
       Sol.Native
       Sol.Preamble
@@ -499,3 +501,8 @@ test-suite module-path-check
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            module-path-check.hs
+
+test-suite SolReplIncremental
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            SolReplIncremental.hs

@@ -1,0 +1,23 @@
+{
+  "baseRevision": "e085e872edc3f67ad89d9e357a207ac69e1b6f4e",
+  "target": "macOS arm64, GHC 9.8.2, standard make fpr build (Cabal O1; cache module O2)",
+  "compilers": {
+    "before": "8245d50b387cbe23746560cee995ab791eec0232971be5d12948fd4df03fb659",
+    "completedCache": "589d65bab73541ada34590ef57fc12a8190df096be57a41ca3abd1797d463c2e",
+    "incremental": "06c25f808c69381231897f65cc6dba7743ee6bcc17019e577d3a0ed8201d1966"
+  },
+  "checks": {
+    "compilerUnitSuites": 37,
+    "libraryDifferentials": 193,
+    "preludeDifferentials": 173,
+    "replDifferentialSessions": 34,
+    "replContracts": 11,
+    "inferredLinearityChecks": 8,
+    "supportedLocalSolSuites": 28,
+    "excludedSolSuites": [
+      "sol-daily-check.py",
+      "sol-hjit-a64-check.sh"
+    ]
+  },
+  "scope": "Local functional and wall-clock timing evidence. No release, hosted CI or physical-board qualification."
+}

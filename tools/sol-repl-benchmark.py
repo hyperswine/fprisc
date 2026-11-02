@@ -15,11 +15,20 @@ ap.add_argument('--before',type=Path,required=True)
 ap.add_argument('--before-revision',default='unspecified')
 ap.add_argument('--after',type=Path,default=ROOT/'fpr')
 ap.add_argument('--output',type=Path,required=True)
+ap.add_argument('--before-env',action='append',default=[],help='NAME=VALUE for the before compiler')
+ap.add_argument('--after-env',action='append',default=[],help='NAME=VALUE for the after compiler')
 args=ap.parse_args()
 BEFORE=args.before.resolve();AFTER=args.after.resolve();OUT=args.output.resolve()
 if not BEFORE.is_file() or not AFTER.is_file():ap.error('both compiler executables must exist')
 OUT.mkdir(parents=True,exist_ok=False)
 ROWS=[]
+def overrides(values):
+    result={}
+    for value in values:
+        if '=' not in value:ap.error('environment overrides need NAME=VALUE')
+        key,val=value.split('=',1);result[key]=val
+    return result
+EXTRA={'before':overrides(args.before_env),'after':overrides(args.after_env)}
 BASE={k:v for k,v in os.environ.items() if not k.startswith(('SOL_','FPR_','GHCRTS'))}
 BASE.update(FPR_HOME=str(ROOT),SOL_GPU='0')
 
@@ -74,13 +83,14 @@ class Session:
 
 
 def prompt_trials(version,binary):
+    extra=EXTRA[version]
     for state in ('fresh-cache','warm-cache'):
         samples=[];cache=OUT/f'cache-prompt-{version}-{state}'
         if state=='warm-cache':
-            s=Session(binary,cache);s.close()
+            s=Session(binary,cache,extra);s.close()
         for trial in range(5):
             actual=cache/str(trial) if state=='fresh-cache' else cache
-            s=Session(binary,actual);samples.append(s.startupMs);s.close()
+            s=Session(binary,actual,extra);samples.append(s.startupMs);s.close()
         add(dict(name=f'prompt-{version}-{state}',**stats(samples)))
 
 
@@ -101,7 +111,7 @@ def pipe_and_process(version,binary):
     cache=OUT/('cache-pipe-'+version);per_cmd=[];proc_cmd=[]
     for trial in range(3):
         expected=''.join(f'tick {i}\n' for i in range(50));lines=''.join(f'> print "tick {i}".\n' for i in range(50))
-        t=time.perf_counter_ns();p=subprocess.run([str(binary),'sol','--repl'],input=lines,text=True,cwd=OUT,env=env_for(cache),capture_output=True,timeout=120);elapsed=(time.perf_counter_ns()-t)/1e6
+        t=time.perf_counter_ns();p=subprocess.run([str(binary),'sol','--repl'],input=lines,text=True,cwd=OUT,env=env_for(cache,EXTRA[version]),capture_output=True,timeout=120);elapsed=(time.perf_counter_ns()-t)/1e6
         assert p.returncode==0 and p.stdout==expected and p.stderr=='',p
         per_cmd.append(elapsed/50)
         folder=OUT/f'distinct-{version}-{trial}';folder.mkdir();scripts=[]
@@ -109,32 +119,48 @@ def pipe_and_process(version,binary):
             path=folder/f'{i}.sol';value=f'tick {i} trial {trial}';path.write_text(f'> print "{value}".\n');scripts.append((path,value+'\n'))
         t=time.perf_counter_ns()
         for path,value in scripts:
-            p=subprocess.run([str(binary),'sol',str(path)],text=True,cwd=OUT,env=env_for(cache),capture_output=True,timeout=30)
+            p=subprocess.run([str(binary),'sol',str(path)],text=True,cwd=OUT,env=env_for(cache,EXTRA[version]),capture_output=True,timeout=30)
             assert p.returncode==0 and p.stdout==value and p.stderr=='',p
         proc_cmd.append((time.perf_counter_ns()-t)/1e6/50)
     add(dict(name=f'piped-{version}-per-command-including-startup',commandsPerRun=50,**stats(per_cmd)))
     add(dict(name=f'distinct-process-{version}-per-command',commandsPerRun=50,**stats(proc_cmd)))
 
 
+def paired_commands(name,setup,command,expected,count=30):
+    # Counterbalance session order; never compare a successful command with
+    # an error path. Each compiler retains only its own workload cache.
+    samples={'before':[],'after':[]};starts={'before':[],'after':[]};setups={'before':[],'after':[]}
+    for trial,version in enumerate(('before','after','after','before','after','before','before','after')):
+        binary=BEFORE if version=='before' else AFTER
+        session=Session(binary,OUT/f'cache-{name}-{version}',EXTRA[version])
+        starts[version].append(session.startupMs)
+        try:
+            setups[version].append(sum(session.send(line) for line in setup))
+            samples[version].extend(session.send(command(i),expected(i)) for i in range(count))
+            (OUT/f'{name}-{version}-{trial}.transcript.txt').write_text(''.join(session.trace))
+        finally:session.close()
+    for version in ('before','after'):
+        add(dict(name=name+'-'+version,promptMs=starts[version],setupMs=setups[version],order='ABBA BAAB',**stats(samples[version])))
+
+
 def main():
     assert not (OUT/'samples.json').exists(),'use a new output directory for another run'
-    meta=dict(head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),before={'head':args.before_revision,'compilerSha256':hashlib.sha256(BEFORE.read_bytes()).hexdigest()},compilerSha256=hashlib.sha256(AFTER.read_bytes()).hexdigest(),machine=platform.platform(),options={'SOL_GPU':'0','SOL_JIT':'default','SOL_CACHE':'default'},method='PTY input echo disabled; write-to-next-prompt wall time; output validated; cache roots isolated; 3 sessions per command workload, 5 prompt trials')
+    meta=dict(head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),before={'head':args.before_revision,'compilerSha256':hashlib.sha256(BEFORE.read_bytes()).hexdigest()},compilerSha256=hashlib.sha256(AFTER.read_bytes()).hexdigest(),machine=platform.platform(),options={'SOL_GPU':'0','SOL_JIT':'default','SOL_CACHE':'default','overrides':EXTRA},method='PTY input echo disabled; write-to-next-prompt wall time; output validated; cache roots isolated; 4 counterbalanced sessions per compiler/workload, 5 prompt trials')
+    meta['sourcePatchSha256']=hashlib.sha256(subprocess.check_output(['git','diff','--binary'],cwd=ROOT)).hexdigest()
     (OUT/'benchmark-metadata.json').write_text(json.dumps(meta,indent=2)+'\n')
     for version,binary in (('before',BEFORE),('after',AFTER)):prompt_trials(version,binary)
-    for version,binary in (('before',BEFORE),('after',AFTER)):
-        command_trials('trivial-'+version,binary,[],lambda i:f'> print "tick {i}".',lambda i:f'tick {i}\n')
-    command_trials('arithmetic-after',AFTER,[],lambda i:'> print (41 + 1).',lambda i:'42\n')
+    paired_commands('trivial',[],lambda i:f'> print "tick {i}".',lambda i:f'tick {i}\n',count=30)
+    paired_commands('arithmetic',[],lambda i:'> print (41 + 1).',lambda i:'42\n',count=30)
     imports=[f'J = use "{ROOT}/sol/lib/json". C = use "{ROOT}/sol/lib/csv".']
     cmd=lambda i:'> u = print (J.render (J.strs ["a", "b"])); print (C.render [["c", "d"]]).'
     expected=lambda i:'["a","b"]\nc,d\n\n'
-    command_trials('json-csv-current-default',AFTER,imports,cmd,expected,count=30)
-    command_trials('json-csv-current-unsliced-control',AFTER,imports,cmd,expected,{'SOL_LIB_INCREMENTAL':'0'},count=30)
+    paired_commands('json-csv',imports,cmd,expected,count=30)
     for count in (100,500):
         defs=[f'v{i} = {i}.' for i in range(count)];chunks=[' '.join(defs[i:i+50]) for i in range(0,len(defs),50)]
-        command_trials(f'definitions-{count}',AFTER,chunks,lambda i:f'> print (v{count-1} + 1).',lambda i:f'{count}\n',count=20)
+        paired_commands(f'definitions-{count}',chunks,lambda i:f'> print (v{count-1} + 1).',lambda i:f'{count}\n',count=20)
     samples=[];recover=[];cache=OUT/'cache-errors'
     for trial in range(3):
-        s=Session(AFTER,cache)
+        s=Session(AFTER,cache,EXTRA['after'])
         try:
             for _ in range(5):
                 samples.append(s.send('> print (1 + "x").','TYPE ERRORS',error=True));recover.append(s.send('> print "ok".','ok\n'))

@@ -1,0 +1,21 @@
+{
+  "head": "e085e872edc3f67ad89d9e357a207ac69e1b6f4e",
+  "before": {
+    "head": "e085e87",
+    "compilerSha256": "8245d50b387cbe23746560cee995ab791eec0232971be5d12948fd4df03fb659"
+  },
+  "compilerSha256": "589d65bab73541ada34590ef57fc12a8190df096be57a41ca3abd1797d463c2e",
+  "machine": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "options": {
+    "SOL_GPU": "0",
+    "SOL_JIT": "default",
+    "SOL_CACHE": "default",
+    "overrides": {
+      "before": {},
+      "after": {}
+    }
+  },
+  "method": "PTY input echo disabled; write-to-next-prompt wall time; output validated; cache roots isolated; 3 sessions per command workload, 5 prompt trials",
+  "sourcePatchSha256": "1cd029e227694b0dbdfc753951d5966c6690ba8d2efee92203a0314e23165d70",
+  "methodCorrection": "Paired command workloads use four sessions per compiler, in ABBA BAAB order. The original method string predates counterbalancing."
+}
