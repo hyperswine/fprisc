@@ -42,9 +42,10 @@ bytes and hashes were preserved. Fresh installs then passed using the default
 public URLs, without an unsigned-index override.
 
 The compiler's own stricter project admission and QOS builder policy changes
-are committed to their main branches. This manager release does not replace
-the compiler or builder inside FP-RISC 0.13.0 or QOS SDK 0.3.0. They need their
-next compiler/SDK releases to obtain those direct-check changes.
+subsequently shipped in [FP-RISC 0.13.1](2026-11-02-FPRISC-0.13.1-RELEASE.md)
+and [QOS SDK 0.3.1](https://github.com/hyperswine/qos/blob/main/docs/2026-11-02-PORTABLE-SDK-0.3.1-RELEASE.md).
+This manager release does not replace the compiler or builder inside existing
+FP-RISC 0.13.0 or QOS SDK 0.3.0 archives.
 
 ## Qualification
 

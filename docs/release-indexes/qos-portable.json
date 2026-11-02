@@ -10,7 +10,28 @@
       "sha256": "d3b6204e5afe2702c70f3f040432e3e31e436c10b80e6fac954e86fd05e6ab7e",
       "size": 54515712,
       "minimumOS": "27.0",
-      "requires": ["xcode-clt", "homebrew:libgit2", "homebrew:libarchive", "homebrew:glfw"],
+      "requires": [
+        "xcode-clt",
+        "homebrew:libgit2",
+        "homebrew:libarchive",
+        "homebrew:glfw"
+      ],
+      "yanked": false
+    },
+    {
+      "component": "qos-portable",
+      "version": "0.3.1",
+      "platform": "macos-arm64",
+      "url": "https://github.com/hyperswine/qos/releases/download/desktop-v0.3.1/qos-portable-0.3.1-macos-arm64.tar.gz",
+      "sha256": "672b790480f296d423a58b788158cd4c5affcf81f9e49490129d8748804f1575",
+      "size": 54516149,
+      "minimumOS": "27.2",
+      "requires": [
+        "xcode-clt",
+        "homebrew:libgit2",
+        "homebrew:libarchive",
+        "homebrew:glfw"
+      ],
       "yanked": false
     }
   ]
