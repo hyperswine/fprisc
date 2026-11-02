@@ -1,6 +1,6 @@
 # Per-project managed toolchains in the editor
 
-Status: implemented and packaged as extension 0.9.0, 2 November 2026.
+Status: extension 0.9.0 published to the Visual Studio Marketplace, 2 November 2026.
 
 The old editor resolved `/opt/homebrew/bin/fpr` to the manager binary, then
 looked beside that manager for the compiler's `std`. It also cached one module
@@ -35,10 +35,12 @@ automatic package discovery. A nonempty `fpr.checkArgs` overrides target flags;
 its new default is empty. Explicit extra module roots remain supported.
 Manager-home environment overrides should be absolute paths.
 
-The packaged VSIX is `lsp/artifacts/fpr-lang-0.9.0.vsix`; this task does not
-publish a Marketplace release. The previous Marketplace version remains
-independent of the local artifact. Install the VSIX explicitly to use this
-candidate before a Marketplace release.
+Extension 0.9.0 is available on the
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=hyperswine.fpr-lang).
+The public downloadable VSIX matches the previously tested
+`lsp/artifacts/fpr-lang-0.9.0.vsix` byte for byte. See the
+[publication evidence](evidence/2026-11-02-editor-0.9.0-marketplace.json).
+Existing `hyperswine.fpr-lang` installations can update normally in VS Code.
 
 ## Validation and limits
 

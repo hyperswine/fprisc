@@ -10,6 +10,8 @@ to this publisher account; existing installations do not automatically migrate.
 
 ## Version 0.9.0: managed toolchains and QOS SDKs
 
+Published on the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=hyperswine.fpr-lang), 2 November 2026.
+
 Install the managers with `brew install hyperswine/tap/fprmeta hyperswine/tap/qosmeta`
 and install the versions your projects need. Manager 0.2.0 or later is required.
 Leave `fpr.home` and `fpr.compilerPath` empty for automatic discovery.
@@ -301,7 +303,7 @@ and packages the extension:
 
 ```sh
 /path/to/fprisc/tools/lsp-release.sh package
-code --install-extension /path/to/fprisc/lsp/artifacts/fpr-lang-0.8.1.vsix
+code --install-extension /path/to/fprisc/lsp/artifacts/fpr-lang-0.9.0.vsix
 ```
 
 For iteration after `npm ci`, run `npm run package` inside `lsp/`. The VSIX

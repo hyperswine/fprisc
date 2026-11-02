@@ -1,0 +1,14 @@
+{
+  "status": "published and publicly downloadable",
+  "extension": "hyperswine.fpr-lang",
+  "version": "0.9.0",
+  "marketplaceUrl": "https://marketplace.visualstudio.com/items?itemName=hyperswine.fpr-lang",
+  "publicationMethod": "authenticated publisher dashboard upload",
+  "sourceRevision": "47288cb",
+  "uploadedVsixSha256": "4f04b37d9baa4816626dd46479aa1c846cab25db91e23bbc8ef2e0430cb213bf",
+  "downloadedVsixSha256": "4f04b37d9baa4816626dd46479aa1c846cab25db91e23bbc8ef2e0430cb213bf",
+  "exactTestedArtifactMatch": true,
+  "marketplaceLastUpdated": "2026-11-02T02:57:56.960Z",
+  "verifiedAt": "2026-11-02T02:59:31.782338+00:00",
+  "previousValidation": "2026-11-02-signed-managers-and-editor.json"
+}
