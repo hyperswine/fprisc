@@ -59,6 +59,7 @@ def build(name, *needles, ok=True):
 build('bound_ok.fpr')
 build('bound_caller.fpr')
 build('bound_over.fpr', 'OVER (n: derived 5, declared 4)', ok=False)
+build('bound_unused_over.fpr', 'OVER (n: derived 5, declared 4)', ok=False)
 build('bound_free_name.fpr', 'the bound names `omega`, which is not a parameter of count', ok=False)
 build('bound_unproved.fpr', 'UNPROVED (opaque: print)', ok=False)
 r = cost(CASES / 'bound_caller.fpr')

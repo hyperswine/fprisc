@@ -25,7 +25,7 @@
 -- structurally is `len p`.  Arguments to callees substitute into the
 -- callee's equation when they are linear in the caller's parameters;
 -- anything else is the opaque `?`.
-module Cost (Cost (..), CostEq (..), Declared (..), Verdict (..), costProgram, declaredBounds, checkBounds, checkBoundsWith, renderVerdict, substCoefs, coefsIn, resolvePrims, evalConst, omegas, prettyCost, prettyIn, renderReport, hasOmega, primAllocates, allocGrows) where
+module Cost (Cost (..), CostEq (..), Declared (..), Verdict (..), costProgram, costProgramFor, declaredBounds, checkBounds, checkBoundsWith, renderVerdict, substCoefs, coefsIn, resolvePrims, evalConst, omegas, prettyCost, prettyIn, renderReport, hasOmega, primAllocates, allocGrows) where
 
 import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (intercalate, nub, sort)
@@ -281,8 +281,20 @@ costProgram ::
   M.Map Name Declared -> -- declared bounds over Core parameter names
   Prog ->
   M.Map Name (CostEq, CostEq) -- (derived, effective): callers see the DECLARED bound where there is one
-costProgram measures declared prog = M.mapWithKey (\n e -> (e, effective n e)) final
+costProgram measures declared prog = costProgramFor (M.keysSet prog) measures declared prog
+
+-- Derive only requested contracts and their transitive dependencies. In
+-- particular, importing a bounded library helper must not force equations
+-- for an application's unrelated, potentially enormous rendering graph.
+costProgramFor :: S.Set Name -> M.Map Name Measure -> M.Map Name Declared -> Prog -> M.Map Name (CostEq, CostEq)
+costProgramFor roots measures declared allProg = M.mapWithKey (\n e -> (e, effective n e)) final
   where
+    prog = M.restrictKeys allProg (needed S.empty (S.toList roots))
+    needed seen [] = seen
+    needed seen (n : rest)
+      | n `S.member` seen = needed seen rest
+      | Just (_, body) <- M.lookup n allProg = needed (S.insert n seen) (calleesOf body ++ rest)
+      | otherwise = needed seen rest
     effective n e@(CostEq w a l _) = case M.lookup n declared of
       Just d -> e {ceWork = fromMaybe w (dWork d), ceAlloc = fromMaybe a (dAlloc d), ceLive = fromMaybe l (dLive d)}
       Nothing -> e
@@ -290,7 +302,7 @@ costProgram measures declared prog = M.mapWithKey (\n e -> (e, effective n e)) f
     sizeOf g = M.lookup g declared >>= dSize
     -- what a CALLER substitutes for g: its declaration if it has one
     seen done g = effective g <$> M.lookup g done
-    globals = M.keysSet prog
+    globals = M.keysSet allProg
     calleesOf body = S.toList (S.fromList [g | g <- freeGlobals body])
     freeGlobals = go S.empty
       where

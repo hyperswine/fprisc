@@ -12,6 +12,8 @@ import qualified Safety
 import Frontend.Linearity
 import Frontend.Syntax
 import Ownership.Finding
+import qualified Cost
+import qualified Core.Syntax as Core
 import Ownership.Shape (LShape(..),demandOwnership)
 import qualified Data.Set as S
 import Text.Megaparsec (parse,errorBundlePretty)
@@ -93,6 +95,14 @@ main=do
         (SApp (SVar "error") (SVar "owned"))
   check "a local error callback is not the diverging builtin"
     (localErrorCount==Just (M.singleton "owned" 1))
+  let costProg=M.fromList [("leaf",([],Core.CInt 0)),
+                          ("bounded",([],Core.CVar "leaf")),
+                          ("unrelated",([],Core.CVar "unrelated"))]
+      allCosts=Cost.costProgram M.empty M.empty costProg
+      selectedCosts=Cost.costProgramFor (S.singleton "bounded") M.empty M.empty costProg
+  check "selected cost equations retain dependencies and exclude unrelated functions"
+    (M.keysSet selectedCosts==S.fromList ["bounded","leaf"]
+     && selectedCosts==M.restrictKeys allCosts (M.keysSet selectedCosts))
   let names=["chain"++show i | i<-[0::Int ..90]]
       signatures=M.fromList [(name,([LVar "a"],LTupS [LVar "a",LVar "a"])) | name<-names]
       chain=TBind (head names) [PVar "x"] [] (STup [SVar "x",SVar "x"])

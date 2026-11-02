@@ -635,7 +635,13 @@ compileWithReport accepted report = do
             -- the manifest binds the coefficients; without one a bound that
             -- uses them stays symbolic and cannot be judged
             declared = M.map (\d -> d {Cost.dWork = Cost.substCoefs coefs <$> Cost.dWork d, Cost.dAlloc = Cost.substCoefs coefs <$> Cost.dAlloc d, Cost.dLive = Cost.substCoefs coefs <$> Cost.dLive d}) declared0
-            eqs = Cost.costProgram measTable declared costProg
+            -- Implicit checks must verify every declared contract, including
+            -- unused imports, but need no equations for unrelated functions.
+            -- Reports and target judgements retain the whole-program view.
+            contractRoots = M.keysSet (M.filter (\d -> Cost.dWork d /= Nothing || Cost.dAlloc d /= Nothing || Cost.dLive d /= Nothing) declared)
+            eqs = if oCost opts || isJust manifest
+              then Cost.costProgram measTable declared costProg
+              else Cost.costProgramFor contractRoots measTable declared costProg
             rootNames = [n | n <- S.toList rootBinds, M.member n costProg]
             priceW g = fst <$> M.lookup g prims
             priceA g = snd <$> M.lookup g prims
