@@ -88,6 +88,18 @@ allocation gate now uses one. Every other allocation gate is unchanged.
   written.
 - Case of known constructor still explains no declines through `--remarks`.
 
+## Addendum (2026-11-02, later): the float crossed overflow-capable work
+
+`tryFloat` judged the siblings a producer moves past with the relaxed
+FusionSafety evidence, in which Int `+`, `-` and `*` count as safe. A producer
+whose callback divides could therefore move past `z = x * 2`: with `x` large
+the fused program reported "Int overflow" where the unfused one reports
+"division by zero", even though fusion itself then declined. So "move a trap,
+never drop it" was not true for the float: it changed *which* trap fires.
+`movable` now uses the strict evidence (`unsafeExpressionStrict`), so a
+producer only crosses trap-free work. This is conservative for producers whose
+only trap is overflow; the let-bound allocation gates still pass.
+`tests/check_list_fusion.py` compares both repros with fusion on and off.
 ## Addendum (2026-11-02, later): `foldRange` at the Int limits
 
 The relaxation statement above ("move a trap, never add or drop one") did not

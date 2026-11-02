@@ -177,7 +177,10 @@ fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot libr
       Var (Global _ _)->True
       _->case spine (unNote e) [] of
         (head',args)|Var (Global name _)<-exprNode (unNote head'),underApplied name args->all movable args
-        _->Safety.unsafeExpression safety e==Nothing
+        -- Strict evidence: the floated producer may itself trap (a division
+        -- callback), so moving it past a sibling that can overflow would change
+        -- which error the program reports. Only trap-free work is crossed.
+        _->Safety.unsafeExpressionStrict safety e==Nothing
     -- A partial application only allocates the function value; the body or
     -- primitive runs when a combinator saturates it, an interleaving the
     -- composition rules already rule on. Saturated calls keep FusionSafety's

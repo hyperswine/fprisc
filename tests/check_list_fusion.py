@@ -351,5 +351,22 @@ main = print (List.sum (List.map (fn x -> 100 / x) (List.range 0 2))).
         assert seen[0][0] != 0 and 'overflow' in seen[0][2].lower(), seen
         print('List fusion: fold over ranges ending at maxInt / starting at minInt matches unfused PASS', flush=True)
 
+        # A floated producer must not cross work that can trap: a division
+        # callback moved past an overflowing `x * 2` reported the overflow
+        # instead of the division by zero the unfused program reports.
+        swaps = {
+            'swap-mul': 'pick x =\n  ys = List.map (fn v -> 100 / v) (List.range 0 3);\n  z = x * 2;\n  z + List.sum ys.\nmain = print "{pick 4611686018427387000}".\n',
+            'swap-add': 'pick x =\n  ys = List.map (fn v -> 100 / v) (List.range 0 3);\n  z = x + 1;\n  z + List.sum ys.\nmain = print "{pick 4611686018427387903}".\n',
+        }
+        for name, text in swaps.items():
+            path = source(name, 'List = use "std/list".\n' + text)
+            seen = []
+            for disabled in (False, True):
+                exe, env = build(path, name + str(disabled), disabled)
+                r = execute(exe, env)
+                seen.append((r.returncode, r.stdout, r.stderr))
+            assert seen[0] == seen[1] and 'division by zero' in seen[0][2], (name, seen)
+        print('List fusion: let-float never crosses trapping work (trap identity kept) PASS', flush=True)
+
 if __name__ == '__main__':
     main()
