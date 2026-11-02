@@ -2,8 +2,9 @@
 
 Status: manager fixes published as 0.2.0 on 2 November 2026; see the
 [release and qualification](2026-11-02-SIGNED-MANAGERS-RELEASE.md). The original
-candidate checks below preceded publication. Compiler and SDK direct-check
-changes remain on main for their next releases.
+candidate checks below preceded publication. Direct checks are now published in
+[FP-RISC 0.13.1](2026-11-02-FPRISC-0.13.1-RELEASE.md) and
+[QOS SDK 0.3.1](https://github.com/hyperswine/qos/blob/main/docs/2026-11-02-PORTABLE-SDK-0.3.1-RELEASE.md).
 
 ## 1. Project pins are authoritative
 
@@ -47,8 +48,8 @@ pin behavior; it is not a qualified release SDK.
 The FP-RISC version policy lives in `tools/fprmeta/version.fpr`; QOS carries
 the same implementation in `tools/qos/version.fpr` so an installed SDK needs
 no sibling checkout. Native/reference policy parity is covered by tests.
-These compiler/builder fixes require their next respective releases; updating
-only the manager cannot change an older toolchain's own project checks.
+These compiler/builder fixes shipped in FP-RISC 0.13.1 and QOS SDK 0.3.1.
+Updating only the manager cannot change an older toolchain's own project checks.
 
 ## 3. Installation, authentication and recovery
 

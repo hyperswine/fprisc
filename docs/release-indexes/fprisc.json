@@ -28,6 +28,19 @@
         "xcode-clt"
       ],
       "yanked": false
+    },
+    {
+      "component": "fprisc",
+      "version": "0.13.1",
+      "platform": "macos-arm64",
+      "url": "https://github.com/hyperswine/fprisc/releases/download/v0.13.1/fprisc-0.13.1-macos-arm64.tar.gz",
+      "sha256": "f59a88dcb48f095d71d2f067ed5c49d7421d64e0efaf86a47e1ebc5157e0495a",
+      "size": 19122226,
+      "minimumOS": "27.2",
+      "requires": [
+        "xcode-clt"
+      ],
+      "yanked": false
     }
   ]
 }

@@ -1,0 +1,698 @@
+{
+  "date": "2026-11-02",
+  "status": "published and public-install verified",
+  "releaseUrl": "https://github.com/hyperswine/fprisc/releases/tag/v0.13.1",
+  "sourceRevision": "e8fddc578308089d57bab48deb83f5257bfe6f3f",
+  "unitSuitesPassed": 36,
+  "nativeManagerContractGroupsPassed": 13,
+  "installedQualification": {
+    "host": {
+      "system": "Darwin",
+      "machine": "arm64"
+    },
+    "sourceAccess": "denied",
+    "homebrewDenied": [
+      "/opt/homebrew"
+    ],
+    "sdkReadOnly": true,
+    "absentTools": [
+      "ghc",
+      "cabal",
+      "make",
+      "git"
+    ],
+    "steps": [
+      {
+        "name": "source-denied",
+        "command": [
+          "/bin/cat",
+          "/Users/jasonqin/Documents/GitHub/fprisc/core/prelude.fpr"
+        ],
+        "seconds": 0.01621004199841991,
+        "exit": 1
+      },
+      {
+        "name": "make-denied",
+        "command": [
+          "/usr/bin/make",
+          "--version"
+        ],
+        "seconds": 0.014455166998232016,
+        "exit": 71
+      },
+      {
+        "name": "homebrew-libgit2-denied",
+        "command": [
+          "/bin/ls",
+          "/opt/homebrew/opt/libgit2/lib"
+        ],
+        "seconds": 0.01472812499923748,
+        "exit": 1
+      },
+      {
+        "name": "homebrew-libarchive-denied",
+        "command": [
+          "/bin/ls",
+          "/opt/homebrew/opt/libarchive/lib"
+        ],
+        "seconds": 0.012182124999526422,
+        "exit": 1
+      },
+      {
+        "name": "tools-absent",
+        "command": [
+          "/bin/sh",
+          "-c",
+          "for t in ghc cabal make git; do command -v \"$t\" && exit 1; done; exit 0"
+        ],
+        "seconds": 0.018415832999380655,
+        "exit": 0
+      },
+      {
+        "name": "version",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "--version"
+        ],
+        "seconds": 0.7215756250006962,
+        "exit": 0
+      },
+      {
+        "name": "native-build",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "build",
+          "main.fpr",
+          "-o",
+          "hello"
+        ],
+        "seconds": 5.275076333999095,
+        "exit": 0
+      },
+      {
+        "name": "native-execute",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/external project/hello"
+        ],
+        "seconds": 0.25840345799952047,
+        "exit": 0
+      },
+      {
+        "name": "native-run",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "run",
+          "main.fpr"
+        ],
+        "seconds": 1.5286713749992487,
+        "exit": 0
+      },
+      {
+        "name": "module-check",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "compile",
+          "--system=posix",
+          "--check-only",
+          "library.fpr",
+          "unused.s"
+        ],
+        "seconds": 0.15755587500098045,
+        "exit": 0
+      },
+      {
+        "name": "module-build",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "build",
+          "library.fpr",
+          "--module",
+          "-o",
+          "library.dylib"
+        ],
+        "seconds": 1.8955036249990371,
+        "exit": 0
+      },
+      {
+        "name": "diagnostics",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "build",
+          "bad.fpr",
+          "-o",
+          "bad"
+        ],
+        "seconds": 0.1692549159997725,
+        "exit": 1
+      },
+      {
+        "name": "sol-library",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/sol",
+          "daily.sol"
+        ],
+        "seconds": 0.19005608299994492,
+        "exit": 0
+      },
+      {
+        "name": "sol-shebang",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/external project/daily.sol"
+        ],
+        "seconds": 0.3043925419988227,
+        "exit": 0
+      },
+      {
+        "name": "sol-repl",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/sol",
+          "--repl"
+        ],
+        "seconds": 0.058873875001154374,
+        "exit": 0
+      },
+      {
+        "name": "x64-build",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "build",
+          "main.fpr",
+          "--target=macos-x86_64",
+          "-o",
+          "hello-x64"
+        ],
+        "seconds": 5.41496795799867,
+        "exit": 0
+      },
+      {
+        "name": "x64-identity",
+        "command": [
+          "/usr/bin/file",
+          "/private/tmp/fprisc-0.13.1-release-work/check/external project/hello-x64"
+        ],
+        "seconds": 0.01902887500000361,
+        "exit": 0
+      },
+      {
+        "name": "x64-rosetta",
+        "command": [
+          "/usr/bin/arch",
+          "-x86_64",
+          "/private/tmp/fprisc-0.13.1-release-work/check/external project/hello-x64"
+        ],
+        "seconds": 1.4861879580003006,
+        "exit": 0
+      },
+      {
+        "name": "qos-target-refused",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "build",
+          "--target=qos-portable"
+        ],
+        "seconds": 0.04251829200075008,
+        "exit": 2
+      },
+      {
+        "name": "dyld-libraries",
+        "command": [
+          "/usr/bin/env",
+          "DYLD_PRINT_LIBRARIES=1",
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "--version"
+        ],
+        "seconds": 0.046204958998714574,
+        "exit": 0
+      },
+      {
+        "name": "native-git",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "sol",
+          "git-commit.sol"
+        ],
+        "seconds": 0.13855958400017698,
+        "exit": 0
+      },
+      {
+        "name": "native-git-log",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "sol",
+          "git-log.sol"
+        ],
+        "seconds": 0.08086625000032654,
+        "exit": 0
+      },
+      {
+        "name": "native-archive",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "sol",
+          "archive.sol"
+        ],
+        "seconds": 0.08364925000023504,
+        "exit": 0
+      },
+      {
+        "name": "doctor",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "doctor"
+        ],
+        "seconds": 0.06979604099979042,
+        "exit": 0
+      },
+      {
+        "name": "project-new",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "new",
+          "greeter",
+          "--template=cli"
+        ],
+        "seconds": 0.043551541999477195,
+        "exit": 0
+      },
+      {
+        "name": "project-check",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "check"
+        ],
+        "seconds": 0.48915733299872954,
+        "exit": 0
+      },
+      {
+        "name": "project-build",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "build"
+        ],
+        "seconds": 1.9295615830014867,
+        "exit": 0
+      },
+      {
+        "name": "project-execute",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/external project/greeter/build/greeter",
+          "Ada"
+        ],
+        "seconds": 0.2620290830000158,
+        "exit": 0
+      },
+      {
+        "name": "project-run",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "run",
+          "--",
+          "Ada"
+        ],
+        "seconds": 1.1553091250007128,
+        "exit": 0
+      },
+      {
+        "name": "project-release",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "build",
+          "--release"
+        ],
+        "seconds": 0.8868705000004411,
+        "exit": 0
+      },
+      {
+        "name": "project-release-execute",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/external project/greeter/build/release/greeter"
+        ],
+        "seconds": 0.05495320800037007,
+        "exit": 0
+      },
+      {
+        "name": "project-test",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "test"
+        ],
+        "seconds": 1.083292375000383,
+        "exit": 0
+      },
+      {
+        "name": "project-test-fails",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "test"
+        ],
+        "seconds": 1.0104421249998268,
+        "exit": 1
+      },
+      {
+        "name": "project-check-fails",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "check"
+        ],
+        "seconds": 0.11393216699980258,
+        "exit": 1
+      },
+      {
+        "name": "project-check-cached",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "check"
+        ],
+        "seconds": 0.47695254199970805,
+        "exit": 0
+      },
+      {
+        "name": "project-commit",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "commit",
+          "src/loud.fpr"
+        ],
+        "seconds": 0.14482720799969684,
+        "exit": 0
+      },
+      {
+        "name": "project-run-pinned",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "run"
+        ],
+        "seconds": 1.0073548750006012,
+        "exit": 0
+      },
+      {
+        "name": "project-explicit-file",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "run",
+          "src/main.fpr",
+          "Bo"
+        ],
+        "seconds": 1.1163659999983793,
+        "exit": 0
+      },
+      {
+        "name": "sol-project-new",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "new",
+          "notes",
+          "--template=sol"
+        ],
+        "seconds": 0.039315957999860984,
+        "exit": 0
+      },
+      {
+        "name": "sol-project-check",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "check"
+        ],
+        "seconds": 0.16606762499941397,
+        "exit": 0
+      },
+      {
+        "name": "sol-project-run",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "run"
+        ],
+        "seconds": 0.06461979199957568,
+        "exit": 0
+      },
+      {
+        "name": "sol-project-test",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "test"
+        ],
+        "seconds": 0.07471912500113831,
+        "exit": 0
+      },
+      {
+        "name": "service-project-new",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "new",
+          "web",
+          "--template=service"
+        ],
+        "seconds": 0.03462254199985182,
+        "exit": 0
+      },
+      {
+        "name": "service-project-check",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "check"
+        ],
+        "seconds": 3.433664457999839,
+        "exit": 0
+      },
+      {
+        "name": "service-project-test",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "test"
+        ],
+        "seconds": 12.778183583999635,
+        "exit": 0
+      },
+      {
+        "name": "service-project-build",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "build"
+        ],
+        "seconds": 15.52770341699943,
+        "exit": 0
+      },
+      {
+        "name": "project-qos-refused",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/SDK with spaces/bin/fpr",
+          "check"
+        ],
+        "seconds": 0.0517207499997312,
+        "exit": 2
+      },
+      {
+        "name": "standalone-app",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/external project/hello"
+        ],
+        "seconds": 0.02118874999905529,
+        "exit": 0
+      },
+      {
+        "name": "relocated-sol",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/relocated SDK/bin/sol",
+          "daily.sol"
+        ],
+        "seconds": 0.21042970899907232,
+        "exit": 0
+      },
+      {
+        "name": "relocated-native",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/relocated SDK/bin/fpr",
+          "build",
+          "main.fpr",
+          "-o",
+          "relocated-hello"
+        ],
+        "seconds": 6.467754125000283,
+        "exit": 0
+      },
+      {
+        "name": "relocated-execute",
+        "command": [
+          "/private/tmp/fprisc-0.13.1-release-work/check/external project/relocated-hello"
+        ],
+        "seconds": 0.30580387500049255,
+        "exit": 0
+      }
+    ],
+    "status": "passed",
+    "nativeLibraries": {
+      "bundled": [
+        "libarchive.13.dylib",
+        "libb2.1.dylib",
+        "libcrypto.4.dylib",
+        "libgit2.1.9.dylib",
+        "libllhttp.9.4.dylib",
+        "liblz4.1.dylib",
+        "liblzma.5.dylib",
+        "libssh2.1.dylib",
+        "libssl.4.dylib",
+        "libzstd.1.dylib"
+      ],
+      "outside": []
+    },
+    "release": "0.13.1",
+    "archive": "fprisc-0.13.1-macos-arm64.tar.gz",
+    "archiveSha256": "f59a88dcb48f095d71d2f067ed5c49d7421d64e0efaf86a47e1ebc5157e0495a",
+    "compilerSha256": "3f8ec8a5e1d039cd10335c0cfe31a33331cd665d00faacbf3a03b3057b0ab974",
+    "installedFilesUnchanged": true,
+    "relocation": true,
+    "output": "/private/tmp/fprisc-0.13.1-release-work/check"
+  },
+  "packagedPinChecks": {
+    "status": "passed",
+    "fprRelease": "0.13.1",
+    "sdkRelease": "0.3.1",
+    "steps": [
+      {
+        "name": "fpr-new",
+        "exit": 0
+      },
+      {
+        "name": "fpr-pin-0",
+        "exit": 0
+      },
+      {
+        "name": "fpr-pin-1",
+        "exit": 0
+      },
+      {
+        "name": "fpr-pin-2",
+        "exit": 0
+      },
+      {
+        "name": "fpr-pin-3",
+        "exit": 2
+      },
+      {
+        "name": "fpr-pin-4",
+        "exit": 2
+      },
+      {
+        "name": "fpr-pin-5",
+        "exit": 2
+      },
+      {
+        "name": "fpr-pin-6",
+        "exit": 2
+      },
+      {
+        "name": "fpr-test",
+        "exit": 0
+      },
+      {
+        "name": "sdk-new",
+        "exit": 0
+      },
+      {
+        "name": "sdk-pin-0",
+        "exit": 0
+      },
+      {
+        "name": "sdk-pin-1",
+        "exit": 0
+      },
+      {
+        "name": "sdk-pin-2",
+        "exit": 0
+      },
+      {
+        "name": "sdk-pin-3",
+        "exit": 1
+      },
+      {
+        "name": "sdk-pin-4",
+        "exit": 1
+      },
+      {
+        "name": "sdk-pin-5",
+        "exit": 1
+      },
+      {
+        "name": "sdk-pin-6",
+        "exit": 1
+      }
+    ],
+    "sourceAccess": "denied",
+    "fprPinCases": 7,
+    "sdkPinCases": 7
+  },
+  "publicDelivery": {
+    "status": "passed",
+    "delivery": "published signed indexes via installed Homebrew managers 0.2.0",
+    "versions": {
+      "fprisc": "0.13.1",
+      "qos-portable": "0.3.1"
+    },
+    "freshInstalls": true,
+    "defaultLatestSelection": true,
+    "fprProjectTest": true,
+    "qosExternalCounterBuild": true,
+    "userStoresChanged": false,
+    "installed": {
+      "fpr": {
+        "selection": {
+          "binary": "/private/tmp/pin-release-public-install/fpr/0.13.1/bin/fpr",
+          "checkArgs": [
+            "--system=posix"
+          ],
+          "command": "fpr",
+          "compiler": "/private/tmp/pin-release-public-install/fpr/0.13.1/libexec/fprisc/fpr",
+          "component": "fprisc",
+          "foreign": "",
+          "format": 1,
+          "metadata": "/private/tmp/pin-release-public-install/fpr/0.13.1/libexec/fprisc/toolchain.json",
+          "moduleHome": "/private/tmp/pin-release-public-install/fpr/0.13.1/libexec/fprisc/",
+          "modulePaths": [],
+          "requested": "=0.13.1",
+          "source": "the default (/private/tmp/pin-release-public-install/fpr/settings.toml)",
+          "version": "0.13.1"
+        },
+        "receipt": {
+          "component": "fprisc",
+          "installedAt": 1793591711,
+          "manager": "fprmeta 0.2.0",
+          "sha256": "f59a88dcb48f095d71d2f067ed5c49d7421d64e0efaf86a47e1ebc5157e0495a",
+          "source": "https://github.com/hyperswine/fprisc/releases/download/v0.13.1/fprisc-0.13.1-macos-arm64.tar.gz",
+          "version": "0.13.1"
+        }
+      },
+      "qos": {
+        "selection": {
+          "binary": "/private/tmp/pin-release-public-install/qos/0.3.1/bin/qos",
+          "checkArgs": [
+            "--target=qa64",
+            "--prelude=/private/tmp/pin-release-public-install/qos/0.3.1/libexec/qos-portable/compiler/core/prelude.fpr"
+          ],
+          "command": "qos",
+          "compiler": "/private/tmp/pin-release-public-install/qos/0.3.1/libexec/qos-portable/compiler/fpr",
+          "component": "qos-portable",
+          "foreign": "/private/tmp/pin-release-public-install/qos/0.3.1/libexec/qos-portable/modules/core/foreign.fpr",
+          "format": 1,
+          "metadata": "/private/tmp/pin-release-public-install/qos/0.3.1/libexec/qos-portable/sdk.json",
+          "moduleHome": "/private/tmp/pin-release-public-install/qos/0.3.1/libexec/qos-portable/modules",
+          "modulePaths": [
+            "/private/tmp/pin-release-public-install/qos/0.3.1/libexec/qos-portable/compiler",
+            "/private/tmp/pin-release-public-install/qos/0.3.1/libexec/qos-portable/modules/programs"
+          ],
+          "requested": "=0.3.1",
+          "source": "the default (/private/tmp/pin-release-public-install/qos/settings.toml)",
+          "version": "0.3.1"
+        },
+        "receipt": {
+          "component": "qos-portable",
+          "installedAt": 1793591718,
+          "manager": "qosmeta 0.2.0",
+          "sha256": "672b790480f296d423a58b788158cd4c5affcf81f9e49490129d8748804f1575",
+          "source": "https://github.com/hyperswine/qos/releases/download/desktop-v0.3.1/qos-portable-0.3.1-macos-arm64.tar.gz",
+          "version": "0.3.1"
+        }
+      }
+    }
+  },
+  "scope": "macOS ARM64, minimum macOS 27.2; hosted tests and Rosetta execution, no new hardware deployment"
+}
