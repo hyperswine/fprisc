@@ -27,6 +27,7 @@ const os = require('os');
 const path = require('path');
 const inputs = require('./check-inputs');
 const { readReport } = require('./editor-report');
+const toolchains = require('./toolchains');
 
 const SEVERITY = { error: 1, warning: 2, info: 3 };
 
@@ -266,6 +267,7 @@ function projectRoot(file, workspaceRoot) {
   for (;;) {
     // an fpr.toml marks a project root (`fpr new`), as `fpr check` finds it
     try { if (fs.statSync(path.join(dir, 'fpr.toml')).isFile()) return dir; } catch (e) { /* .fpr? */ }
+    try { if (fs.statSync(path.join(dir, 'qos.toml')).isFile()) return dir; } catch (_) { /* .fpr? */ }
     try { if (fs.statSync(path.join(dir, '.fpr')).isDirectory()) return dir; } catch (e) { /* up */ }
     const up = path.dirname(dir);
     if (up === dir) break;
@@ -341,6 +343,29 @@ function envFor(settings) {
   return env;
 }
 
+// One context for checks, navigation and remarks. QOS's modules and private
+// compiler must be selected together; a global FP-RISC std is not its SDK.
+function compilerContext(file, settings, cwd = projectRoot(file, '')) {
+  const fallback = compilerFor(settings);
+  const selected = toolchains.resolve(settings, file, cwd, fallback);
+  let effective = settings, env = envFor(settings), compiler = fallback;
+  let home = settings.home || env.FPR_HOME || compilerHome(settings);
+  if (selected && !selected.error) {
+    compiler = selected.compiler; home = selected.moduleHome;
+    effective = { ...settings, home, compilerPath: compiler,
+      checkArgs: settings.checkArgs?.length ? settings.checkArgs : selected.checkArgs };
+    if (selected.kind === 'qos') {
+      for (const key of Object.keys(env)) if (key.startsWith('FPR_') || key === 'FPRISC_ROOT') delete env[key];
+      env.FPR_HOME = home;
+      env.FPR_PATH = [...selected.modulePaths, ...(settings.modulePaths || [])].join(path.delimiter);
+      env.FPR_FOREIGN = selected.foreign;
+    } else env.FPR_HOME = home;
+  }
+  const modulePaths = (env.FPR_PATH || '').split(path.delimiter).filter(Boolean);
+  return { compiler, home, env, settings: effective, modulePaths, selected,
+    controls: selected?.controls || [], error: selected?.error || null };
+}
+
 // One checker per server. check(file) runs the compiler on the saved file; a
 // newer request for the same file supersedes (kills) the one in flight.
 // onResult(file, Map(path -> diags) | null) -- null when the compiler could
@@ -352,15 +377,15 @@ function createChecker({ settings, workspaceRoot, readText, readOpen = () => nul
   const warned = new Set();
   let timer = null, disposed = false;
   function describe(file) {
-    const s = settings(), compiler = compilerFor(s);
-    const cwd = projectRoot(file, workspaceRoot ? workspaceRoot() : '');
-    const cmd = commandFor(file, s, cwd), env = envFor(s);
+    const s = settings(), cwd = projectRoot(file, workspaceRoot ? workspaceRoot() : '');
+    const context = compilerContext(file, s, cwd), { compiler, env } = context;
+    const cmd = commandFor(file, context.settings, cwd);
     let identity = compiler;
     try { const st = fs.statSync(path.isAbsolute(compiler) ? compiler : onPath(compiler)); identity += `:${st.mtimeMs}:${st.ctimeMs}:${st.size}`; } catch (_) {}
     if (legacyCompilers.has(identity)) cmd.args = cmd.args.filter(a => a !== "--editor-json");
-    const input = inputs.snapshot({ file, cwd, home: s.home || env.FPR_HOME || compilerHome(s),
-      compiler, args: cmd.args, env, readOpen, additionalFiles: reportedFiles.get(file) || [] });
-    return { file, compiler, identity, cwd, cmd, env, input };
+    const input = inputs.snapshot({ file, cwd, home: context.home,
+      compiler, args: cmd.args, env, readOpen, additionalFiles: reportedFiles.get(file) || [], controlFiles: context.controls });
+    return { file, compiler, identity, cwd, cmd, env, input, selectionError: context.error };
   }
   function stop(job) {
     job.superseded = true;
@@ -371,6 +396,10 @@ function createChecker({ settings, workspaceRoot, readText, readOpen = () => nul
     if (disposed) return;
     const request = describe(file), { input } = request;
     known.set(file, input);
+    if (request.selectionError) {
+      cancel(file); onResult(file, new Map([[file, [{ range: FILE_LEVEL, severity: 1,
+        source: 'toolchain manager', code: 'toolchain-selection', message: request.selectionError }]]])); return;
+    }
     if (input.dirty) { cancel(file); onResult(file, null); return; }
     const previous = running.get(file);
     if (previous && !previous.superseded && input.complete && previous.input.key === input.key) return;
@@ -390,7 +419,8 @@ function createChecker({ settings, workspaceRoot, readText, readOpen = () => nul
       // Re-read at dequeue: inputs may change while another check is running.
       const request = describe(file);
       known.set(file, request.input);
-      if (!request.input.dirty) start(request);
+      if (request.selectionError) check(file);
+      else if (!request.input.dirty) start(request);
     }
   }
   function start({ file, compiler, identity, cwd, cmd, env, input }) {
@@ -505,4 +535,4 @@ function createChecker({ settings, workspaceRoot, readText, readOpen = () => nul
   return { check, cancel, affected, invalidate, forget, dispose };
 }
 
-module.exports = { parseReport, createChecker, compilerFor, compilerHome, commandFor, projectRoot, envFor, installedCompilers };
+module.exports = { parseReport, createChecker, compilerFor, compilerHome, commandFor, projectRoot, envFor, installedCompilers, compilerContext };

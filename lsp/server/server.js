@@ -30,7 +30,8 @@ const fs = require('fs');
 const path = require('path');
 const { caseBindings } = require('./case-bindings');
 const { unsafeCalls } = require('./unsafe-calls');
-const { createChecker, compilerHome, projectRoot } = require('./compiler-check');
+const { createChecker, compilerContext, projectRoot } = require('./compiler-check');
+const toolchains = require('./toolchains');
 const { createRemarkRunner } = require('./optimization-remarks');
 
 const BUILTINS = (() => {
@@ -140,11 +141,9 @@ function splitSpec(spec) {
 // The module home as the compiler sees it: the setting, FPR_HOME, else the
 // compiler's own home (so the editor and the compiler read the same std),
 // else the workspace root. Recomputed when settings change.
-let homeCache = null;
-function moduleHome() {
-  if (homeCache === null)
-    homeCache = moduleSettings.home || process.env.FPR_HOME || compilerHome(moduleSettings) || rootPath || '';
-  return homeCache;
+function moduleHome(fromFile) {
+  const context = compilerContext(fromFile, moduleSettings, projectRoot(fromFile, rootPath));
+  return context.error ? '' : context.home || rootPath || '';
 }
 
 function modulePath(fromUri, usePath) {
@@ -155,8 +154,8 @@ function modulePath(fromUri, usePath) {
   const tries = EXTS.some((e) => name.endsWith(e))
     ? [name]
     : [name + own, ...EXTS.filter((e) => e !== own).map((e) => name + e)];
-  const extra = [...(moduleSettings.modulePaths || []), ...(process.env.FPR_PATH || '').split(path.delimiter)].filter(Boolean);
-  const roots = [path.dirname(from), moduleHome(), ...extra].filter(Boolean);
+  const context = compilerContext(from, moduleSettings, projectRoot(from, rootPath));
+  const roots = [path.dirname(from), context.error ? '' : context.home || rootPath, ...context.modulePaths].filter(Boolean);
   let found = null;
   for (const root of roots) {
     for (const t of tries) {
@@ -176,7 +175,7 @@ function modulePath(fromUri, usePath) {
 // the committed copy of a version: the project's store (where the compiler
 // runs, see projectRoot), then the home's
 function storeBlob(fromFile, hash) {
-  const stores = [projectRoot(fromFile, rootPath), moduleHome()].filter(Boolean);
+  const stores = [projectRoot(fromFile, rootPath), moduleHome(fromFile)].filter(Boolean);
   for (const root of stores) {
     const p = path.join(root, '.fpr', 'store', hash + '.fpr');
     try { if (fs.statSync(p).isFile()) return p; } catch (e) { /* next */ }
@@ -1237,9 +1236,19 @@ function changedFiles(files, saved) {
 
 function resetChecks() {
   for (const uri of docs.keys()) dropCheck(uri);
-  modCache.clear(); qualifiedCache.clear(); homeCache = null;
+  modCache.clear(); qualifiedCache.clear(); toolchains.clear();
   for (const [uri, doc] of docs) { publishDiagnostics(uri, doc); checkDoc(uri); }
 }
+
+let managerState = toolchains.managerState();
+const managerPoll = setInterval(() => {
+  const now = toolchains.managerState();
+  if (now !== managerState) {
+    managerState = now; toolchains.clear();
+    remarkRunner.invalidate('Installed toolchain selection changed'); resetChecks();
+  }
+}, 1000);
+managerPoll.unref();
 
 function handle(msg) {
   qualifiedCache.clear();
@@ -1317,12 +1326,24 @@ function handle(msg) {
         break;
       case 'workspace/didChangeWatchedFiles': {
         remarkRunner.invalidate('Workspace source files changed');
-        modCache.clear(); qualifiedCache.clear(); homeCache = null;
+        modCache.clear(); qualifiedCache.clear(); toolchains.clear();
         const files = (params.changes || []).map(c => uriToPath(c.uri)).filter(Boolean);
         for (const file of files) workspaceIndex.update(file);
-        if (files.some(f => path.basename(f) === 'fpr.toml')) resetChecks();
+        if (files.some(f => ['fpr.toml', 'qos.toml'].includes(path.basename(f)))) resetChecks();
         else changedFiles(files, true);
         for (const [uri, doc] of docs) publishDiagnostics(uri, doc);
+        break;
+      }
+      case 'fpr/toolchain': {
+        const file = uriToPath(params && params.uri);
+        if (!file) { replyErr(id, -32602, 'Open an FP-RISC or Sol file first'); break; }
+        const context = compilerContext(file, moduleSettings, projectRoot(file, rootPath));
+        reply(id, context.error ? { status: 'error', message: context.error } : {
+          status: 'ok', compiler: context.compiler, moduleHome: context.home,
+          modulePaths: context.modulePaths, checkArgs: context.settings.checkArgs || ['--system=posix'],
+          selection: context.selected || null,
+          override: !!(moduleSettings.home || moduleSettings.compilerPath || process.env.FPR_HOME),
+        });
         break;
       }
       case 'fpr/optimizationRemarks': {
@@ -1362,8 +1383,8 @@ function handle(msg) {
         reply(id, doc ? hoverFor(params.textDocument.uri, doc, params.position) : null);
         break;
       }
-      case 'shutdown': Promise.all([checker.dispose(), remarkRunner.dispose()]).then(() => reply(id, null), e => replyErr(id, -32603, e.message)); break;
-      case 'exit': Promise.all([checker.dispose(), remarkRunner.dispose()]).finally(() => process.exit(0)); break;
+      case 'shutdown': clearInterval(managerPoll); Promise.all([checker.dispose(), remarkRunner.dispose()]).then(() => reply(id, null), e => replyErr(id, -32603, e.message)); break;
+      case 'exit': clearInterval(managerPoll); Promise.all([checker.dispose(), remarkRunner.dispose()]).finally(() => process.exit(0)); break;
       default:
         if (id !== undefined) replyErr(id, -32601, `method not found: ${method}`);
     }

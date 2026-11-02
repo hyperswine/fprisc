@@ -910,6 +910,19 @@
    }
   }
  },
+ "Sys.name": {
+  "sig": "Sys.name : Unit -> String",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "Return the last path component of argv[0]. Native launchers use it to distinguish command names such as fpr, sol and qos; std/program exposes it as Program.name.",
+  "profile": "fpr",
+  "variants": {
+   "fpr": {
+    "sig": "Sys.name : Unit -> String",
+    "doc": "Return the last path component of argv[0]. Native launchers use it to distinguish command names such as fpr, sol and qos; std/program exposes it as Program.name.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   }
+  }
+ },
  "Sys.exit": {
   "sig": "Sys.exit : Int -> a",
   "section": "FP-RISC builtins (compiler/Infer.hs)",

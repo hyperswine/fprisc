@@ -5,6 +5,7 @@
 // runtime/{actors,runtime,vec,sstr,mod}.c and docs/{2026-10-18-I32,
 // 2026-10-05-I64,2026-10-12-INT-OVERFLOW,2026-10-01-TYPED-VECTORS}.md.
 const docs = {
+  'Sys.name': 'Return the last path component of argv[0]. Native launchers use it to distinguish command names such as fpr, sol and qos; std/program exposes it as Program.name.',
   'NativeGit.headLater': 'Plan a read of the repository HEAD commit id (output limit, repository path) to run at commit; return it as a Deferred String. sol/lib/git.sol trims it as Git.headLater.',
   'NativeGit.tagAt': 'Queue creating a tag (output limit, repository path, tag name) at a deferred commit id; the tag is made at commit, after the step that produces the id.',
   'NativeGit.pushLater': 'Queue a push (output limit, repository path, remote, branch) as the terminal publication at commit. Another queued world effect after it is refused.',

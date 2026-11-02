@@ -1,0 +1,62 @@
+{
+  "status": "passed",
+  "date": "2026-11-02",
+  "scope": "local macOS ARM64 and public Homebrew/GitHub release verification",
+  "managers": {
+    "format": 1,
+    "version": "0.2.0",
+    "component": "fprmeta",
+    "platform": "macos-arm64",
+    "sourceRevision": "dfcb333c6e8e9fafbec5e36867cd43abb135fe25",
+    "archive": "fprmeta-0.2.0-macos-arm64.tar.gz",
+    "sha256": "f5f9ee18878496e670a7cca0c35f72c0d49c799eee79f3aebb28c1867e86fc3b",
+    "size": 319594,
+    "nativeLibraries": [
+      "/usr/lib/libarchive.2.dylib (compatibility version 9.0.0, current version 9.2.0)",
+      "/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1359.40.3)"
+    ],
+    "publicKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPjg4GnBSDH2QSo4R3IArFRyKhN9SDe636ww2BqIp/+5 FP-RISC and QOS release indexes"
+  },
+  "managerReleaseUrl": "https://github.com/hyperswine/fprisc/releases/tag/fprmeta-v0.2.0",
+  "nativeManagerContractGroups": 13,
+  "installedWorkflowSteps": 34,
+  "homebrew": {
+    "fprmeta": "0.2.0",
+    "qosmeta": "0.2.0",
+    "upgrade": "passed",
+    "formulaTests": "passed, including signature tampering refusals"
+  },
+  "publicSignedInstalls": [
+    "fprisc 0.12.0",
+    "fprisc 0.13.0",
+    "qos-portable 0.3.0"
+  ],
+  "indexCorrection": {
+    "component": "fprisc",
+    "version": "0.13.0",
+    "minimumOS": "27.2",
+    "archiveUnchanged": true
+  },
+  "editor": {
+    "version": "0.9.0",
+    "fullSuite": "passed",
+    "installedPackageLsp": "passed; two FP-RISC versions and private QOS SDK; default and pin invalidation",
+    "vsixSha256": "4f04b37d9baa4816626dd46479aa1c846cab25db91e23bbc8ef2e0430cb213bf",
+    "isolatedVscode": {
+      "status": "passed",
+      "extension": "hyperswine.fpr-lang",
+      "checks": [
+        "managed packaged compiler diagnostic",
+        "saved correction clears diagnostics",
+        "definition resolves into pinned installed std",
+        "inferred hover from packaged compiler",
+        "active toolchain command"
+      ]
+    },
+    "marketplacePublished": false
+  },
+  "limits": [
+    "Linux/Intel/CI/hardware QOS deployment not executed",
+    "compiler/SDK direct-check changes need their next payload releases"
+  ]
+}

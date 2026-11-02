@@ -3,10 +3,9 @@
 Status: done, 2 November 2026. This is step 4 ("Publish") of the
 [toolchain manager proposal](2026-11-01-TOOLCHAIN-MANAGER.md), without signing.
 
-A [local follow-up candidate](2026-11-02-PACKAGING-CONTRACT-FIXES.md) fixes
-pin parsing, aligns release selection and adds signed-index validation and
-interruption recovery. It does not change the published 0.1.0 behavior
-described here.
+The [0.2.0 follow-up](2026-11-02-SIGNED-MANAGERS-RELEASE.md) is now published
+with signed indexes, stricter selection/installation and interruption recovery.
+This page records the original 0.1.0 release; its unsigned-index gap is historical.
 
 ## What changed
 

@@ -33,6 +33,26 @@ function activate(context) {
   client.onNotification('fpr/remarksInvalidated', ({ message }) => {
     output.clear(); output.appendLine(`Remarks invalidated: ${message}. Run the command again.`);
   });
+  const toolchainOutput = vscode.window.createOutputChannel('FP-RISC Toolchain');
+  context.subscriptions.push(toolchainOutput, vscode.commands.registerCommand('fpr.showToolchain', async () => {
+    const document = vscode.window.activeTextEditor?.document;
+    if (!document || !['fpr', 'sol'].includes(document.languageId) || document.uri.scheme !== 'file') {
+      vscode.window.showInformationMessage('Open an FP-RISC or Sol file first.'); return;
+    }
+    await ready;
+    const result = await client.sendRequest('fpr/toolchain', { uri: document.uri.toString() });
+    toolchainOutput.clear();
+    if (result.status !== 'ok') toolchainOutput.appendLine(result.message);
+    else {
+      if (result.selection) toolchainOutput.appendLine(`${result.selection.component} ${result.selection.version}: ${result.selection.source}`);
+      if (result.override) toolchainOutput.appendLine('Explicit compiler/home settings override automatic SDK discovery.');
+      toolchainOutput.appendLine(`Compiler: ${result.compiler}`);
+      toolchainOutput.appendLine(`Module home: ${result.moduleHome || '(not found)'}`);
+      toolchainOutput.appendLine(`Module paths: ${result.modulePaths.join(', ')}`);
+      toolchainOutput.appendLine(`Check flags: ${result.checkArgs.join(' ')}`);
+    }
+    toolchainOutput.show(true);
+  }));
   context.subscriptions.push(vscode.commands.registerCommand('fpr.showOptimizationRemarks', async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'fpr' || editor.document.uri.scheme !== 'file') {

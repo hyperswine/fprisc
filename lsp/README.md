@@ -8,6 +8,39 @@ If you installed an older `jasen.fpr-lang` VSIX, disable or uninstall it before
 installing this extension. The publisher ID changed because `jasen` is unavailable
 to this publisher account; existing installations do not automatically migrate.
 
+## Version 0.9.0: managed toolchains and QOS SDKs
+
+Install the managers with `brew install hyperswine/tap/fprmeta hyperswine/tap/qosmeta`
+and install the versions your projects need. Manager 0.2.0 or later is required.
+Leave `fpr.home` and `fpr.compilerPath` empty for automatic discovery.
+
+- Compiler checks, imported-module navigation, hovers and remarks use the
+  release selected for **each file's project** by `fprmeta which --json` or
+  `qosmeta which --json`. Opening projects on different versions no longer
+  gives them one shared library home.
+- A native file under `qos.toml` uses its SDK's private compiler, QOS modules,
+  foreign declarations, compiler prelude and native target. `.sol` scripts
+  use FP-RISC's own manager. No source checkout, GHC or Cabal is needed.
+- Saved changes to either manifest reset selection. Changes to installed
+  versions or manager defaults outside the workspace are detected within
+  about one second. Pins, defaults, selected metadata and compiler identity
+  participate in check invalidation; stale results are discarded.
+- **FP-RISC: Show Active Toolchain** reports the selected release, selection
+  source, compiler and module paths. Missing versions show the manager's
+  install hint; the editor never installs or downloads automatically.
+
+An explicit `fpr.home`, inherited `FPR_HOME`, or explicit real compiler path
+remains a developer override. Use Show Active Toolchain to diagnose an old
+checkout setting. A nonempty `fpr.checkArgs` overrides automatic target flags;
+its default is now empty. Explicit module paths remain additional roots.
+Discovery is cached and bounded; ordinary hover requests do not spawn a manager
+for every lookup. Manager homes set through environment variables should be
+absolute paths. Selection uses saved manifests, not unsaved TOML buffers.
+
+Only macOS ARM64 installed-package acceptance was executed. Workspace-wide
+resource-specific VS Code settings and automatic notifications for arbitrary
+external library edits remain separate work.
+
 ## Version 0.8.1
 
 - Qualified signatures such as `MyMod.x : I64.` are declarations of external

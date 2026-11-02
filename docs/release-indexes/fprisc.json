@@ -23,7 +23,7 @@
       "url": "https://github.com/hyperswine/fprisc/releases/download/v0.13.0/fprisc-0.13.0-macos-arm64.tar.gz",
       "sha256": "1a473349a1a3df1968ac15806162fedaba2f5fce0c9052adefedeb5a89a75eed",
       "size": 19127857,
-      "minimumOS": "27.0",
+      "minimumOS": "27.2",
       "requires": [
         "xcode-clt"
       ],

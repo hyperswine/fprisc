@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
-const { compilerFor, projectRoot, envFor } = require('./compiler-check');
+const { compilerContext, projectRoot } = require('./compiler-check');
 
 function digest(bytes) {
   let h = 14695981039346656037n;
@@ -105,7 +105,9 @@ function createRemarkRunner({ settings, workspaceRoot, readOpen, onResult, onInv
     const saved = disk(file), open = readOpen(file);
     if (!file.endsWith('.fpr') || saved === null || (open !== null && open !== saved))
       return Promise.resolve({ status: 'error', message: 'Save this native .fpr file before requesting remarks' });
-    const extra = (Array.isArray(s.checkArgs) ? s.checkArgs : ['--system=posix'])
+    const context = compilerContext(file, s, cwd);
+    if (context.error) return Promise.resolve({ status: 'error', message: context.error });
+    const extra = (Array.isArray(context.settings.checkArgs) ? context.settings.checkArgs : ['--system=posix'])
       .filter(a => a !== '--check-only' && !/^--remarks(?:=|$)/.test(a));
     if (extra.some(a => /^(--lib|--stdcheck|--arc|--raw|--sol|--target=bytecode|--manifest)$/.test(a) || a.startsWith('--manifest=')))
       return Promise.resolve({ status: 'error', message: 'This remark command supports native Base files and modules; remove incompatible checkArgs' });
@@ -114,8 +116,8 @@ function createRemarkRunner({ settings, workspaceRoot, readOpen, onResult, onInv
     const output = path.join(temporary, `${++serial}-${crypto.createHash('sha256').update(file).digest('hex').slice(0, 12)}.s`);
     const ticket = generation;
     return new Promise(resolve => {
-      const child = spawn(compilerFor(s), ['compile', ...extra, '--plugin', '--remarks=json', file, output],
-        { cwd, env: envFor(s), stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(context.compiler, ['compile', ...extra, '--plugin', '--remarks=json', file, output],
+        { cwd, env: context.env, stdio: ['ignore', 'pipe', 'pipe'] });
       const job = { child, done: false, finish(result) { if (!this.done) { this.done = true; resolve(result); } } };
       active = job; jobs.add(job);
       const chunks = []; let size = 0;
@@ -134,7 +136,7 @@ function createRemarkRunner({ settings, workspaceRoot, readOpen, onResult, onInv
         if (code !== 0) { job.finish({ status: 'error', message: text.trim().split('\n').slice(-12).join('\n') || 'Compiler failed' }); return; }
         try {
           const { inputs, records } = parseRemarks(text, cwd);
-          if (!inputs.has(file) || !current(inputs)) { job.finish({ status: 'stale', message: 'Source changed or a dependency has unsaved edits; save and rerun remarks' }); return; }
+          if (JSON.stringify(compilerContext(file, s, cwd)) !== JSON.stringify(context) || !inputs.has(file) || !current(inputs)) { job.finish({ status: 'stale', message: 'Source changed or a dependency has unsaved edits; save and rerun remarks' }); return; }
           // Install watchers before the final check to close the publication gap.
           watch(inputs);
           if (!current(inputs)) { clearWatchers(); job.finish({ status: 'stale', message: 'Source changed during analysis' }); return; }

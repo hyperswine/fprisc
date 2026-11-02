@@ -2,7 +2,7 @@
   "name": "fpr-lang",
   "displayName": "FP-RISC (fpr + sol)",
   "description": "FP-RISC and Sol language support: compiler diagnostics on save, syntax highlighting, source-generated API hovers, completions, outlines, semantic tokens, and cross-module navigation.",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "publisher": "hyperswine",
   "repository": {
     "type": "git",
@@ -20,7 +20,8 @@
   "activationEvents": [
     "onLanguage:fpr",
     "onLanguage:sol",
-    "onCommand:fpr.showOptimizationRemarks"
+    "onCommand:fpr.showOptimizationRemarks",
+    "onCommand:fpr.showToolchain"
   ],
   "contributes": {
     "languages": [
@@ -65,7 +66,7 @@
         "fpr.home": {
           "type": "string",
           "default": "",
-          "description": "FP-RISC module home (FPR_HOME). Set to your fprisc checkout or installed library root."
+          "description": "Explicit module home (FPR_HOME). Leave empty for automatic per-project fprmeta/qosmeta selection. Setting a checkout home overrides managed SDK discovery."
         },
         "fpr.modulePaths": {
           "type": "array",
@@ -83,17 +84,15 @@
         "fpr.compilerPath": {
           "type": "string",
           "default": "",
-          "description": "The `fpr` executable used for compiler diagnostics. Empty: `fpr` in the module home (fpr.home or FPR_HOME), else `fpr` on PATH, else an installed toolchain (/opt/homebrew/bin/fpr, /usr/local/bin/fpr)."
+          "description": "Explicit compiler or manager proxy. Empty: automatically follow project pins via fprmeta/qosmeta, then PATH and usual installed locations."
         },
         "fpr.checkArgs": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "default": [
-            "--system=posix"
-          ],
-          "description": "Flags given to `fpr compile --check-only` for .fpr files, e.g. [\"--system=qos-portable\"] for QOS apps."
+          "default": [],
+          "description": "Compiler check flags. Empty: use the selected SDK target/prelude, or posix for ordinary FP-RISC. A nonempty list overrides automatic check flags."
         },
         "fpr.unresolvedNames": {
           "type": "boolean",
@@ -111,6 +110,10 @@
       {
         "command": "fpr.showOptimizationRemarks",
         "title": "FP-RISC: Show Optimization Remarks"
+      },
+      {
+        "command": "fpr.showToolchain",
+        "title": "FP-RISC: Show Active Toolchain"
       }
     ]
   },
@@ -119,7 +122,7 @@
   },
   "scripts": {
     "builtins": "node tools/mkbuiltins.js .. server/builtins.json",
-    "test": "node test/qualified-signatures.js && node test/editor-metadata.js && node test/workspace-index.js && node test/editor-features.js && node test/check-scheduling.js && node test/check-lsp.js && node test/release.js && node test/check.js && node test/discovery.js && node test/builtins.js && node test/current-api.js && node test/case-bindings.js && node test/strings.js && node test/compiler-check.js && node test/modules.js && node test/optimization-remarks.js",
+    "test": "node test/toolchains.js && node test/qualified-signatures.js && node test/editor-metadata.js && node test/workspace-index.js && node test/editor-features.js && node test/check-scheduling.js && node test/check-lsp.js && node test/release.js && node test/check.js && node test/discovery.js && node test/builtins.js && node test/current-api.js && node test/case-bindings.js && node test/strings.js && node test/compiler-check.js && node test/modules.js && node test/optimization-remarks.js",
     "package": "node tools/release.js package",
     "publish:marketplace": "node tools/release.js publish"
   },

@@ -1,8 +1,9 @@
 # Packaging contracts after the manager review
 
-Status: local candidate, 2 November 2026. These changes are not a new published
-manager or SDK. The public managers remain 0.1.0 and their indexes remain
-unsigned until the release steps below are completed.
+Status: manager fixes published as 0.2.0 on 2 November 2026; see the
+[release and qualification](2026-11-02-SIGNED-MANAGERS-RELEASE.md). The original
+candidate checks below preceded publication. Compiler and SDK direct-check
+changes remain on main for their next releases.
 
 ## 1. Project pins are authoritative
 
@@ -125,8 +126,10 @@ staging directories may remain on disk; they are never launcher candidates.
    works immediately. The old manager ignores the added signatures.
 4. Release the compiler and SDK changes for their direct pin checks as well.
 
-No public index, Homebrew formula, installed manager or active user toolchain
-was replaced by this local implementation and validation.
+The initial local qualification did not replace any public index, formula or
+installed manager. The subsequent release above published the signed indexes,
+updated both formulas and upgraded the managers without replacing existing
+user toolchains.
 
 ## 4. Exact version selection is not a hermetic build
 

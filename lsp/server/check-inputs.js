@@ -27,7 +27,7 @@ function imports(text) {
   return { specs, complete };
 }
 
-function snapshot({ file, cwd, home, compiler, args, env, readOpen = () => null, additionalFiles = [] }) {
+function snapshot({ file, cwd, home, compiler, args, env, readOpen = () => null, additionalFiles = [], controlFiles = [] }) {
   const files = new Map(), texts = new Map(), realFiles = new Set();
   let complete = true, dirty = false;
   const roots = [home, ...(env.FPR_PATH || '').split(path.delimiter)].filter(Boolean);
@@ -63,6 +63,7 @@ function snapshot({ file, cwd, home, compiler, args, env, readOpen = () => null,
   }
   visit(file);
   for (const extra of additionalFiles) visit(extra);
+  for (const control of controlFiles) visit(control, false);
   for (const root of roots) visit(path.join(root, 'core', 'prelude.fpr'));
   if (!home) complete = false;
   for (const foreign of (env.FPR_FOREIGN || '').split(path.delimiter).filter(Boolean)) visit(foreign);
@@ -73,7 +74,7 @@ function snapshot({ file, cwd, home, compiler, args, env, readOpen = () => null,
     else if (arg.startsWith('--foreign=')) visit(arg.slice('--foreign='.length));
     else if (arg.startsWith('--prelude=')) { if (arg.slice(10)) visit(arg.slice(10)); }
     else if (arg.startsWith('--manifest=')) { visit(arg.slice(11), false); complete = false; }
-    else if (arg.startsWith('--') && !/^(--check-only|--editor-json|--target=bytecode|--system=[\w-]+)$/.test(arg)) complete = false;
+    else if (arg.startsWith('--') && !/^(--check-only|--editor-json|--target=[\w-]+|--system=[\w-]+)$/.test(arg)) complete = false;
   }
   let executable = compiler;
   if (!path.isAbsolute(executable)) executable = (env.PATH || '').split(path.delimiter)
