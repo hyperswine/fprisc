@@ -449,7 +449,8 @@ fallback, as the callback specializer's does.
 
 ### Order
 
-1. C1 piece 1, type-directed case tests.
+1. C1 piece 1, type-directed case tests (`FPR_NO_TYPED_CASE`, landed:
+   [record](2026-11-02-TYPED-CASE.md)).
 2. The two C2 prerequisites from addendum C: multi-register returns under
    `.abirev`, and the link-tier experiment forcing `RawWord` fields on one
    non-escaping type (`Pair Int Int`) through `Representation.hs` with a

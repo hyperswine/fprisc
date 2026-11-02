@@ -97,7 +97,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 27 -- the hart-cell load (loop region clock); sized frames; prior: captured NEON, FP pool, comparison/F32 trees
+a64SelectionRev = 28 -- OVariantTest (type-directed case variant test at +4); prior: hart-cell load (loop region clock); sized frames
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -474,6 +474,16 @@ selectInstr cfg _ (Instr d op) = case op of
     emitL miss
     emitI (li r 0)
     emitL done
+  OVariantTest c v -> def $ \r -> do
+    var <- freshV False
+    emitI (ldrsw var (vreg v) 4)
+    if c >= 0 && c < 4096
+      then emitI (cmpi var (fromIntegral c))
+      else do
+        want <- freshV False
+        emitI (li want (fromIntegral c))
+        emitI (cmp var want)
+    emitI (cset O.Equal r)
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
   -- the difference-bound proof removed the fit check; Mul/Div keep theirs

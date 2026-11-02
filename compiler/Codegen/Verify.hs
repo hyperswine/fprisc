@@ -60,6 +60,10 @@ opSignature tyOf = \case
   ONot v -> expect v TPred >> pure (Just TPred)
   OIsInt v -> expect v TVal >> pure (Just TPred)
   OTagTest _ _ v -> expect v TVal >> pure (Just TPred)
+  OVariantTest c v -> do
+    when (c < 0 || toInteger c > 2147483647) (Left "constructor variant is outside signed 32-bit layout")
+    expect v TVal
+    pure (Just TPred)
   OSymbol sym -> do
     when (null sym) (Left "an empty symbol")
     pure (Just TVal)

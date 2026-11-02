@@ -192,6 +192,7 @@ data Op
   | ONot VId -- TPred -> TPred
   | OIsInt VId -- TVal -> TPred: the tag bit (a tagged Int, not an object)
   | OTagTest Int Int VId -- TVal -> TPred: typeid and variant match (a tagged Int never matches)
+  | OVariantTest Int VId -- TVal -> TPred: constructor variant at +4 matches (nominal ADT type statically known)
   | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a core primitive's object (fpr_prim_obj_), a HAL contract (fpr_g_)
   | OFunValue Name -- :: TVal; a program function's static PAP (its arity, no arguments), owned by Codegen.NativeData
   | OApply VId [VId] -- TVal, TVal.. -> TVal: the generic application through the runtime (fpr_applyN): partial, over-saturated, or of a computed head; allocates PAPs in the runtime, calls anything
@@ -294,6 +295,7 @@ opEffect = \case
   ONot _ -> Pure
   OIsInt _ -> Pure
   OTagTest _ _ _ -> Pure
+  OVariantTest _ _ -> Pure
   OSymbol _ -> Pure
   OFunValue _ -> Pure
   OApply _ _ -> AnyEffect
@@ -350,6 +352,7 @@ opUses = \case
   ONot v -> [v]
   OIsInt v -> [v]
   OTagTest _ _ v -> [v]
+  OVariantTest _ v -> [v]
   OSymbol _ -> []
   OFunValue _ -> []
   OApply f as -> f : as
@@ -414,6 +417,7 @@ mapOpUses f = \case
   ONot v -> ONot (f v)
   OIsInt v -> OIsInt (f v)
   OTagTest t c v -> OTagTest t c (f v)
+  OVariantTest c v -> OVariantTest c (f v)
   OSymbol s -> OSymbol s
   OFunValue n -> OFunValue n
   OApply h as -> OApply (f h) (map f as)

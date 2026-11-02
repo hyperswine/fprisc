@@ -39,7 +39,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 26 -- the hart-cell load (loop region clock); sized frames; prior: SSE2, comparison/F32 trees, QOS borrowed TLS cells
+x64SelectionRev = 27 -- OVariantTest (type-directed case variant test at +4); prior: hart-cell load (loop region clock); sized frames
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -405,6 +405,11 @@ selectInstr cfg _ (Instr d op) = case op of
     emitL miss
     emitI (li r 0)
     emitL done
+  OVariantTest c v -> def $ \r -> do
+    var <- freshV False
+    emitI (ldrsw var (vreg v) 4)
+    emitI (cmpi var (fromIntegral c))
+    emitI (cset O.Equal r)
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
   -- the difference-bound proof removed the fit check; Mul/Div keep theirs

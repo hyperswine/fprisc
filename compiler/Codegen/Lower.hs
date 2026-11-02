@@ -217,6 +217,16 @@ workerPrefix = "$worker.scalar."
 scalarPrefix :: String
 scalarPrefix = "$scalar."
 
+-- Content-addressed nominal ADTs (Frontend.Desugar.tidFor: 0x20000000 ..
+-- 0x7EFFFFFF) and the builtin sum types List (2) and Result (3) have
+-- disjoint type IDs from record shapes (0x00010000 .. 0x0FF0FFFF) and
+-- single-constructor tuples (4, 5, 10..14, 0x10000000+). A scrutinee
+-- tested by CTagEq at these nominal sum types is statically typed as
+-- that type, so its low bit is 0 and its type_id at +0 is t; only the
+-- 32-bit variant word at +4 needs to be compared.
+isStaticNominalTid :: Int -> Bool
+isStaticNominalTid t = t == 2 || t == 3 || (t >= 0x20000000 && t < 0x7F000000)
+
 -- The producer's ordered signatures survive normalization and reuse.
 -- Unsupported kinds remain absent, causing explicit worker fallback.
 -- The policy says which profile's entry sequence the IR states; a profile
@@ -446,7 +456,10 @@ lowerVal cx env = \case
   CTagEq 1 0 c -> (\p -> (p, TPred)) <$> lowerCond cx env (CTagEq 1 0 c)
   CTagEq t v c -> do
     x <- lowerVal cx env c >>= asVal
-    p <- emit TPred (OTagTest t v x)
+    let op = if polTypedCase (cxPolicy cx) && isStaticNominalTid t
+               then OVariantTest v x
+               else OTagTest t v x
+    p <- emit TPred op
     pure (p, TPred)
   CLet x a b -> lowerBind cx env x a >>= \env' -> lowerVal cx env' b
   CIf c t f -> do

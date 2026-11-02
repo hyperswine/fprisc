@@ -49,6 +49,7 @@ dumpFn fn =
       ONot v -> "not " ++ value v
       OIsInt v -> "isint " ++ value v
       OTagTest t c v -> "tagtest " ++ show t ++ " " ++ show c ++ " " ++ value v
+      OVariantTest c v -> "vartest " ++ show c ++ " " ++ value v
       OSymbol sym -> "symbol " ++ sym
       OFunValue n -> "funvalue " ++ n
       OApply f as -> "apply " ++ value f ++ args as

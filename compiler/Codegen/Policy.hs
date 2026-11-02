@@ -39,6 +39,7 @@ data Policy = Policy
     polVectorFast :: Bool, -- guarded scalar flat-vector reads; misses keep the original C entry
     polStringFast :: Bool, -- guarded scalar String length/byte reads; misses keep the original C entry
     polInterval :: Bool, -- discharge overflow checks and guards a difference-bound proof covers (Codegen.Interval)
+    polTypedCase :: Bool, -- type-directed case variant tests on statically-typed nominal sum types (FPR_NO_TYPED_CASE=1 keeps full OTagTest)
     polRegisters :: Maybe RegisterBudget -- the target's allocatable registers, for passes that lengthen live ranges (Codegen.Pressure); Nothing: unlimited
   }
   deriving (Eq, Ord, Show)
@@ -61,7 +62,7 @@ registerBudget = \case
   _ -> Nothing
 
 m2Policy :: Policy
-m2Policy = Policy HostedBase True StackCheckEveryEntry True False False False True True True Nothing
+m2Policy = Policy HostedBase True StackCheckEveryEntry True False False False True True True True Nothing
 
 profileName :: Profile -> String
 profileName = \case

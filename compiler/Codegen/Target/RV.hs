@@ -28,7 +28,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 27 -- checked Int arithmetic is inline (fit-check fast path, the C primitive as the slow path); prior: the hart-cell load (loop region clock)
+rvSelectionRev = 28 -- OVariantTest (type-directed case variant test at +4); prior: checked Int arithmetic inline
 
 -- Native startup, shared by every RVV unit. The runtime calls the surviving
 -- COMDAT definition on each hart; ordinary builds retain its weak no-op.
@@ -285,6 +285,11 @@ select cfg fn = do
         loadAt R.Load32 actual (vreg v) 0; li want (fromIntegral t); rr (R.Compare Ne) bad actual want; branch bad miss
         loadAt R.Load32 actual (vreg v) 4; li want (fromIntegral variant); rr (R.Compare Eq) d actual want; jump done
         mark miss; li d 0; mark done
+      OVariantTest variant v -> do
+        actual <- fresh; want <- fresh
+        loadAt R.Load32 actual (vreg v) 4
+        li want (fromIntegral variant)
+        rr (R.Compare Eq) d actual want
       OMake t variant fs -> do
         size <- fresh; li size (8 + w * fromIntegral (length fs))
         if polProfile (cfgPolicy cfg) == BuiltinArc then do

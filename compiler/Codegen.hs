@@ -53,7 +53,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 144 -- scalar replacement of loop-carried tuples/records
+codegenRev = 145 -- type-directed case variant tests on statically-typed nominal ADTs
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

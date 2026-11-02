@@ -547,5 +547,23 @@ main = do
       badArity = snd (lowerProgram m2Policy wrong bp bp M.empty M.empty)
   check "wrong metadata arity refuses worker and wrapper"
     (length badArity == 2 && all (isInfixOf "wrong arity" . snd) badArity)
+  -- C1 Piece 1: type-directed case variant tests on statically-typed nominal ADTs
+  let listCase = (["xs"], CIf (CTagEq 2 0 (var "xs")) (CInt 0) (CProj 0 (var "xs")))
+      recCase = (["r"], CIf (CTagEq 0x00020000 2 (var "r")) (CProj 0 (var "r")) (CProj 1 (var "r")))
+      tupCase = (["p"], CIf (CTagEq 4 0 (var "p")) (CProj 0 (var "p")) (CErr "shape"))
+      caseProg = M.fromList [("listCase", listCase), ("recCase", recCase), ("tupCase", tupCase)]
+      (caseOn, caseFailOn) = lowerProgram m2Policy M.empty caseProg caseProg M.empty M.empty
+      (caseOff, caseFailOff) = lowerProgram (m2Policy {polTypedCase = False}) M.empty caseProg caseProg M.empty M.empty
+  check "type-directed case shapes lower and verify"
+    (null caseFailOn && null caseFailOff && verifyProgram caseOn == Right () && verifyProgram caseOff == Right ())
+  check "nominal ADT case lowers to OVariantTest when polTypedCase is on"
+    ("vartest 0 " `isInfixOf` dumpFn (caseOn M.! "listCase") && not ("tagtest " `isInfixOf` dumpFn (caseOn M.! "listCase")))
+  check "nominal ADT case lowers to OTagTest when polTypedCase is off"
+    ("tagtest 2 0 " `isInfixOf` dumpFn (caseOff M.! "listCase") && not ("vartest " `isInfixOf` dumpFn (caseOff M.! "listCase")))
+  check "record shape and single-constructor tuple tests keep OTagTest"
+    ("tagtest 131072 2 " `isInfixOf` dumpFn (caseOn M.! "recCase") && "tagtest 4 0 " `isInfixOf` dumpFn (caseOn M.! "tupCase"))
+  check "OVariantTest and OTagTest agree on nominal ADT values"
+    (and [evalProgram caseOn "listCase" [x] == evalProgram caseOff "listCase" [x]
+         | x <- [RObj 2 0 [], RObj 2 1 [RInt 42, RObj 2 0 []]]])
   putStrLn "Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS"
   putStrLn "Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS"
