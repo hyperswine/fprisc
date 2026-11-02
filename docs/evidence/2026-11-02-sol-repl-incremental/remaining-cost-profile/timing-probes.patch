@@ -1,0 +1,45 @@
+--- a/compiler/Sol/Main.hs
++++ b/compiler/Sol/Main.hs
+@@ -366 +366 @@
+-  let utopsX1 = aliasStructRefs utopsX0'
++  utopsX1 <- phase "aliases" $ pure (aliasStructRefs utopsX0')
+@@ -373 +373 @@
+-  let (pathErrs, utopsXP) = expandPathLits (shapeTyTable utopsX1) (typeTyTable utopsX1) utopsX1
++  (pathErrs, utopsXP) <- phase "paths" $ pure (expandPathLits (shapeTyTable utopsX1) (typeTyTable utopsX1) utopsX1)
+@@ -385 +385 @@
+-  (ptops, libKept) <-
++  (ptops, libKept) <- phase "slice" $
+@@ -416,0 +417 @@
++  _ <- phase "struct-expand" $ pure (perrs, ptopsExp, structErrs1, topsExp)
+@@ -424,0 +426 @@
++  _ <- phase "preconditions-check" $ pure contractErrors
+@@ -430 +432 @@
+-  let checkedTops = snd (applyPreconds contracts (ptopsExp ++ topsExp))
++  checkedTops <- phase "preconditions-rewrite" $ pure (snd (applyPreconds contracts (ptopsExp ++ topsExp)))
+@@ -459,0 +462 @@
++        _ <- phase "inference-linearity-spine" $ pure (length inferredLinSigs)
+@@ -462 +464,0 @@
+-            serrs = safetyDiagnostics safety
+@@ -464,0 +467 @@
++        serrs <- phase "safety" $ pure (safetyDiagnostics safety)
+@@ -510 +513 @@
+-  let rtUses = scanRealtime allX
++  rtUses <- phase "realtime-scan" $ pure (scanRealtime allX)
+@@ -527 +530 @@
+-      lerrs = linearityDiagnostics linearity
++  lerrs <- phase "linearity" $ pure (linearityDiagnostics linearity)
+@@ -540 +543 @@
+-  let specialized = if noSpec then prog else specializeFunctions "sol" halArities M.empty prog
++  specialized <- phase "mono" $ pure (if noSpec then prog else specializeFunctions "sol" halArities M.empty prog)
+@@ -562,2 +565,3 @@
+-      complete <- evaluate (force prepared)
+-      readIORef candidateRef >>= evaluate . force >>= writeIORef ref
++      complete <- phase "prepare-shake" $ evaluate (force prepared)
++      snapshot <- phase "session-publish" $ (readIORef candidateRef >>= evaluate . force)
++      writeIORef ref snapshot
+@@ -780 +784 @@
+-  expanded <- expandUses 8 "" isTrusted trustRef seenRef stampsRef ".sol" base tops
++  expanded <- phase "repl-imports" $ expandUses 8 "" isTrusted trustRef seenRef stampsRef ".sol" base tops
+@@ -782 +786 @@
+-  prepared <- compilePreparedSession session "<repl>" trial ptops tops expanded trusted
++  prepared <- phase "repl-compile" $ compilePreparedSession session "<repl>" trial ptops tops expanded trusted

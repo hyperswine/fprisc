@@ -124,6 +124,95 @@ around 21 ms. Rejected commands still take the full diagnostic path.
 
 Checking is incremental; compilation is still proportional to the retained
 program. Safety/ownership, specialization, lowering and bytecode generation still
-run over it, and old eval expressions are rechecked. The next useful work is to
-measure those remaining phases and cache dependency-keyed post-check artifacts,
-without caching effects or weakening whole-program ownership/safety checks.
+run over it, and old eval expressions are rechecked. The follow-up profile below identifies repeated graph construction and metadata
+assembly as cheaper first targets than post-check artifact caching.
+
+
+## Follow-up: remaining compilation cost (after sync to main)
+
+All pending work was committed and synced in `acf85ff` (Sol) and `f05f089`
+(existing board preset metadata). The production compiler is unchanged by this
+follow-up; the new `tools/sol-repl-profile.py` records validated PTY phase timings.
+Finer probes were built only in an isolated checkout from the same compiler
+sources. Their exact overlay and raw samples are in the
+[profile evidence](evidence/2026-11-02-sol-repl-incremental/remaining-cost-profile/summary.json).
+
+Three sessions per case, 15 queries per session, first query omitted from the
+summary: 42 measured queries per case, GPU disabled and default JIT. Every setup
+and query output was checked. The 0/100/500/1000 cases use constant definitions
+and a tiny arithmetic query; JSON/CSV uses the earlier paired benchmark command.
+These are attribution measurements with extra forcing/timing boundaries, not new
+uninstrumented latency results. Totals are nested; medians do not add exactly.
+
+| Instrumented phase | 100 definitions | 500 definitions | 1000 definitions |
+| --- | ---: | ---: | ---: |
+| Whole compile | 8.33 ms | 21.40 ms | 56.87 ms |
+| Safety | 1.19 ms | 10.69 ms | 35.38 ms |
+| Inference / checked-interface matching | 0.52 ms | 1.44 ms | 5.24 ms |
+| Ownership-signature list spine | 0.06 ms | 0.57 ms | 2.84 ms |
+| Ownership checking / table construction | 0.57 ms | 0.89 ms | 1.33 ms |
+| Prelude dependency slicing | 1.27 ms | 1.88 ms | 2.48 ms |
+| Core specialization | 1.12 ms | 1.17 ms | 1.31 ms |
+| Lowering / lifting | 0.36 ms | 0.63 ms | 1.03 ms |
+| Bytecode generation | 0.48 ms | 0.53 ms | 0.61 ms |
+| Transaction commit | 0.06 ms | 0.08 ms | 0.09 ms |
+
+**First: index the safety graph once per check.** `Safety.callGraphOf` currently
+uses `nub` for definition names, rescans all tops for each function's clauses,
+and recomputes `callsOf` in graph and taint/measure queries. At 500 definitions
+safety consumes about half the measured compile time; at 1000 it dominates.
+Use the existing order-preserving `Frontend.Traverse.sourceGroups`, index
+clauses, and share each function's call edges. Continue running the same SCC,
+termination-measure and unsafe-taint rules. This is an indexing change, with no
+need to cache a safety verdict across commands.
+
+**Second: build inference metadata lists in batches.** Although definition SCCs
+are reused, `Infer` still appends one element at a time to `iNotes`,
+`iInterfaces` and `iLinSigs`. The `iLinSigs` list spine alone takes about 2.84 ms
+at 1000 definitions. Build these lists once in source order. Inferred notes are
+also forced in the typecheck bucket; ownership-signature assembly was previously
+charged to the ownership phase through laziness. The separate spine probe avoids
+mistaking all that cost for ownership analysis. Preserve type-variable freshness,
+interface order, ownership signatures and diagnostic order.
+
+**Then: avoid rebuilding immutable dependency indexes.** Prelude slicing takes
+about 1.9 ms at 500 definitions and 2.5 ms at 1000. It rebuilds name/member maps
+and discovers dependencies by rendering ASTs with `Show` and reading their string
+fields back. Cache immutable prelude/library indexes by exact context and/or use
+an exhaustive AST string-field traversal with the same conservative seed set.
+Changing the dependency policy needs semantic differentials, including operator
+resolution, shadows, record shapes and diagnostics.
+
+**Reprofile before caching lowered Core or bytecode.** The old `bytecode` timer
+also forced lazy Core specialization. Split probes put actual bytecode generation
+near 0.5-0.6 ms, lowering at 0.6-1.0 ms and Core specialization at 1.2-1.3 ms.
+Their combined budget is much smaller than safety graph construction here.
+A cache must account for constructor/shape IDs, polymorphic record dispatch,
+call arities, specialization dependencies and generated names. Pruning unused
+source before validation could suppress lowering errors, so it is not a safe
+shortcut. JSON/CSV also spends about 1.7 ms re-resolving imports; keep source/pin
+verification intact.
+
+Acceptance for the next implementation: paired uninstrumented latency before and
+after each change; unchanged diagnostics, source/clauses order, SCC membership,
+termination-measure verdicts, unsafe-marker policy and ownership behavior; native
+and Sol regressions because the safety and inference code are shared. The timings
+identify a budget to reduce, not a promised speedup.
+
+Reproduce the stock compiler profile:
+
+```sh
+python3 tools/sol-repl-profile.py --sizes 0 100 500 1000 \
+  --output /tmp/sol-stock-profile
+```
+
+For the finer split, use a throwaway checkout (the patch contains timing probes):
+
+```sh
+git worktree add --detach /tmp/sol-phase-probes f05f089
+git -C /tmp/sol-phase-probes apply --unidiff-zero \
+  "$PWD/docs/evidence/2026-11-02-sol-repl-incremental/remaining-cost-profile/timing-probes.patch"
+make -C /tmp/sol-phase-probes fpr
+python3 tools/sol-repl-profile.py --binary /tmp/sol-phase-probes/fpr \
+  --home "$PWD" --sizes 0 100 500 1000 --output /tmp/sol-split-profile
+```
