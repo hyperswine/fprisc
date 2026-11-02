@@ -28,14 +28,18 @@ rangeGo a b acc = case b < a of True -> acc | False -> rangeGo a (b - 1) (b :: a
 
 # Fusion target (checked list fusion, FPR_NO_LIST_FUSE to roll back):
 # `fold f z (range a b)` rewrites to `foldRange f z a b`, ascending like
-# the fold, without building the list. The unfused range's descending
-# `b - 1` underflows when a = minInt; the fused loop's `a + 1` overflows
-# only at b = maxInt. This edge follows the checked-fusion policy's
-# documented Int-overflow relaxation (compiler/Core/FusionPolicy.hs).
+# the fold, without building the list. Trap behaviour matches the unfused
+# pipeline exactly: the unfused range counts down from b and computes `a - 1`
+# after consing a, so it traps with that underflow (before any callback runs)
+# exactly when a = minInt and a <= b; foldRange evaluates the same `a - 1`
+# first. The loop stops at a == b and never computes `b + 1`, so a range
+# ending at maxInt does not trap.
 foldRange : (b -> Int -> b) -> b -> Int -> Int -> b .
-foldRange f z a b = foldRangeGo f z a b.
+foldRange f z a b = case a > b of
+    True -> z
+  | False -> (case a - 1 < b of True -> foldRangeGo f z a b | False -> z).
 foldRangeGo : (b -> Int -> b) -> b -> (a : Int) -> (b : Int | measure (b - a)) -> b .
-foldRangeGo f z a b = case a > b of True -> z | False -> foldRangeGo f (f z a) (a + 1) b.
+foldRangeGo f z a b = case a < b of True -> foldRangeGo f (f z a) (a + 1) b | False -> f z a.
 
 # Producer-only range/map target: builds the mapped list in one descending
 # pass (one cell per element; no intermediate range list and no reverse).

@@ -329,21 +329,27 @@ main = print (List.sum (List.map (fn x -> 100 / x) (List.range 0 2))).
         assert trap_results[0] == trap_results[1], trap_results
         print('List fusion: trapping callback declines with a remark; output/trap behavior matches PASS', flush=True)
 
-        # Pin the consciously documented Int-overflow relaxation. The original
-        # descending range returns here; the ascending fused loop ticks a + 1
-        # after the last element and traps at maxInt.
-        edge = source('edge', '''List = use "std/list".
-main = print (List.fold (fn z x -> z) 0 (List.range 4611686018427387903 4611686018427387903)).
-''')
-        enabled_exe, enabled_env = build(edge, 'edge-enabled')
-        disabled_exe, disabled_env = build(edge, 'edge-disabled', disabled=True)
-        fused_edge = execute(enabled_exe, enabled_env)
-        plain_edge = execute(disabled_exe, disabled_env)
-        assert plain_edge.returncode == 0 and plain_edge.stdout == '0\n', plain_edge.stdout + plain_edge.stderr
-        assert fused_edge.returncode != 0 and 'overflow' in (fused_edge.stdout + fused_edge.stderr).lower(), (
-            fused_edge.returncode, fused_edge.stdout, fused_edge.stderr)
-        print('List fusion: documented maxInt foldRange overflow edge pinned PASS', flush=True)
-
+        # Range ends at the tagged-Int limits: the fused fold must neither add
+        # a trap (no `b + 1` past a range ending at maxInt) nor drop one (the
+        # unfused range computes `minInt - 1` after its last cons).
+        ends = {
+            'max-singleton': 'main = print (List.fold (fn z x -> z) 0 (List.range 4611686018427387903 4611686018427387903)).\n',
+            'max-sum': 'top : Int -> Int .\ntop k = k * 2 + 1.\nmain = print "{List.sum (List.range (top 2305843009213693951) (top 2305843009213693951))}".\n',
+            'max-pair': 'main = print (List.fold (fn z x -> z + 1) 0 (List.range 4611686018427387902 4611686018427387903)).\n',
+            'min-start': 'main = print (List.fold (fn z x -> z + 1) 0 (List.range (0 - 4611686018427387903 - 1) (0 - 4611686018427387902))).\n',
+            'min-empty': 'main = print (List.fold (fn z x -> z + 1) 0 (List.range (0 - 4611686018427387903 - 1) (0 - 4611686018427387903 - 2))).\n',
+            'min-sum': 'main = print (List.sum (List.range (0 - 4611686018427387903 - 1) (0 - 4611686018427387900))).\n',
+        }
+        for name, text in ends.items():
+            path = source('ends-' + name, 'List = use "std/list".\n' + text)
+            seen = []
+            for disabled in (False, True):
+                exe, env = build(path, 'ends-' + name + str(disabled), disabled)
+                r = execute(exe, env)
+                seen.append((r.returncode, r.stdout, r.stderr))
+            assert seen[0] == seen[1], (name, seen)
+        assert seen[0][0] != 0 and 'overflow' in seen[0][2].lower(), seen
+        print('List fusion: fold over ranges ending at maxInt / starting at minInt matches unfused PASS', flush=True)
 
         # A floated producer must not cross work that can trap: a division
         # callback moved past an overflowing `x * 2` reported the overflow
