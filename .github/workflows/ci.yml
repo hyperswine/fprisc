@@ -157,7 +157,8 @@ jobs:
 
   # Reliability gates (tests/reliability/*.py, docs/2026-11-01-RELIABILITY-CORRECTNESS-WCET-ROADMAP.md):
   # stdcheck over std, std contract sync, UBSan runtime, config differential,
-  # fixed-seed fuzz smoke, compiler-crash repros. Parallel to x86-64, so it adds
+  # fixed-seed fuzz smoke, compiler-crash repros, List-fusion random
+  # differential (list_fusion_random.py). Parallel to x86-64, so it adds
   # runner minutes but no wall-clock time. PRs run the small sizes; the nightly
   # schedule sets RELIABILITY_FULL=1.
   reliability:
