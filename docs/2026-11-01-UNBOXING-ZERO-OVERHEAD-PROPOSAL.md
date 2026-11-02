@@ -381,3 +381,84 @@ fields on one non-escaping type (for example `Pair Int Int`) through the
 existing pipeline with a differential oracle is the natural phase-5
 pre-step: it proves the representation plumbing end to end before any
 budget or cloning work.
+
+## Addendum (2026-11-02): decisions on C1 and C2
+
+Decided by Jack on 2026-11-02 at main `8cabb16`, with phase 1 (A1, A2, tick
+batching) and B1 landed. These answer open questions 1 and 2 above and fix
+the order of phases 4 and 5. They change no compiler behaviour.
+
+### The fact that couples C1 to C2
+
+Every runtime walker (`msg_copy`, `transfer_copy`, deep copy, `==`, ARC
+drop, the printers) derives an object's field count from the 16-byte
+allocator preheader: `nfields = (total-16-8)/W` (`runtime/runtime.c:737`).
+A cell without that preheader needs another source for its size, and that
+source is the per-type knowledge C2 builds. So C1 is three pieces of
+unequal risk, not one step:
+
+| Piece | Gain | Touches | ABI revision |
+| --- | --- | --- | --- |
+| 1. Type-directed case tests | the 17-instruction `Nil` test becomes about 3 on every `case` whose scrutinee type is static | codegen only | no |
+| 2. Drop the 16 B preheader (48 -> 32 B per cons) | less allocation traffic on every residual cell; exact arena sizes for WCET | the field-count source and every walker | one `abirev` bump |
+| 3. Header-free cells (-> 24 B) | a further 25% | walkers that know the type statically | yes, and needs C2 |
+
+For piece 2 the size can come from (2a) a per-type layout table in rodata,
+read by the uniform walkers through the type id; (2b) spare bits of the
+existing 8 B header; or (2c) region-pool objects only, copied out with a
+preheader on escape. 2c is refused: two live layouts in the walkers. 2b
+spends header bits permanently. 2a is the table C2 needs anyway.
+
+### Decision 1 (question 1): one runtime-object revision this quarter
+
+Yes, as pieces 1 and 2a. Piece 1 lands first and alone, since it needs no
+revision. Piece 2a lands as one `abirev` bump with the walker audit, and
+is default-on only after a differential suite that includes actor message
+passing between harts and a QOS re-qualification against the new pin; B1's
+trap-safety fixes are the reason the suite comes before the default, not
+after. Piece 3 waits for C2.
+
+### Decision 2 (question 2): the C2 budget is a real limit, not a percentage
+
+A fixed percentage or an absolute cap is an arbitrary bound
+([the rule](2026-09-19-BOUNDS.md)). The bounds that exist are the target's:
+Tang Nano 20K admits a 2 MiB image into 8 MiB of SDRAM
+(`machine/tangnano20k/link.ld`). So the `builtin` budget is
+manifest-declared and derived from the board's image limit; hosted
+profiles have no size cap and are bounded by the compile-time gate
+(`tests/check_compile_budget.py`) alone. Every declined clone is explained
+through `--remarks`, as inlining and callback specialization are now;
+nothing is declined silently.
+
+### Decision 3: deterministic per-inductive representation
+
+As addendum A: a type's representation is a pure function of its
+definition, never of the surrounding program. Nullary constructors are
+immediates, a single scalar constructor is an immediate, a small all-scalar
+arity is an unboxed struct, recursive or mixed types stay boxed nodes, with
+the one global promotion rule (managed when shared or crossing a dynamic
+boundary). Unit cache identities and clone identities stay deterministic.
+Program-dependent representation is refused for its cache fragmentation.
+
+### Decision 4: scope and fallback
+
+`builtin` first, then `base` behind `FPR_NO_TYPE_SPEC`, then `extbase`.
+Exported, reloadable, FFI and QOS kernel entries keep the tagged-word
+signature in every profile; the uniform entry always exists as the
+fallback, as the callback specializer's does.
+
+### Order
+
+1. C1 piece 1, type-directed case tests.
+2. The two C2 prerequisites from addendum C: multi-register returns under
+   `.abirev`, and the link-tier experiment forcing `RawWord` fields on one
+   non-escaping type (`Pair Int Int`) through `Representation.hs` with a
+   differential oracle.
+3. C1 piece 2a, the layout table and the preheader removal.
+4. C2 on `builtin`.
+
+Phase 2 (bump allocation, the remaining type-directed tests) and B2 are
+unchanged and may land in between; each states its compile-budget delta.
+
+Questions 3 to 6 above stay open. Question 6 (header-free arena cells that
+cannot be individually freed) is now piece 3 and is decided with C2.
