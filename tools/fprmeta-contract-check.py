@@ -243,6 +243,16 @@ class Contracts(unittest.TestCase):
             check = subprocess.run([compiler, 'check'], env=env, cwd=project, capture_output=True, text=True, timeout=30)
             self.assertEqual(check.returncode, status, check.stdout + check.stderr)
 
+    def test_editor_selection_contract(self):
+        self.installed('0.12.0')
+        for qos in (False, True):
+            self.run_meta('default', '0.12.0', qos=qos)
+            selected = json.loads(self.run_meta('which', 'qos' if qos else 'fpr', '--json', qos=qos))
+            self.assertEqual((selected['format'], selected['version']), (1, '0.12.0'))
+            self.assertIn('compiler/fpr' if qos else 'fprisc/fpr', selected['compiler'])
+            self.assertIn('modules' if qos else 'fprisc', selected['moduleHome'])
+            self.assertEqual(selected['checkArgs'][0], '--target=qa64' if qos else '--system=posix')
+
     def test_signed_index(self):
         index = self.root / 'signed.json'
         sig = Path(str(index) + '.sig')

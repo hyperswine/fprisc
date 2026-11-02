@@ -567,7 +567,7 @@ usage k = S.join "\n" [
   "  list                                    installed versions and the default",
   "  repair                                  recover verified interrupted installs/receipts",
   "  default [VERSION]                       show or set the default version",
-  "  which [{S.join "|" k.commands}]                 the binary this directory would run, and why",
+  "  which [{S.join "|" k.commands}] [--json]        the binary this directory would run, and why",
   "  pin [VERSION]                           pin this project exactly (=VERSION)",
   "  available [--index FILE|URL]            the versions the version list offers",
   "Index trust: --trusted-key FILE (Ed25519 public key), or explicit --allow-unsigned-index.",
@@ -643,7 +643,22 @@ cmdWhich : unsafe Kind -> List String -> Unit .
 cmdWhich k args =
   name = case positional args of n :: _ -> n | Nil -> case k.commands of c :: _ -> c | Nil -> k.kind;
   (v, c, _) = resolve k name Nil;
-  print "{Path.joinAll [home k, v.text, "bin", name]}\n{k.component} {v.text}, chosen by {c.source} (asks for {V.pinText c.pin})".
+  binary = Path.joinAll [home k, v.text, "bin", name];
+  payload = Path.joinAll [home k, v.text, k.payload];
+  if L.member "--json" args then
+    compiler = Path.join payload (if k.kind == "qos" then "compiler/fpr" else "fpr");
+    moduleHome = Path.join payload (if k.kind == "qos" then "modules" else "");
+    modulePaths = if k.kind == "qos" then [Path.join payload "compiler", Path.join payload "modules/programs"] else Nil;
+    checkArgs = if k.kind == "qos" then ["--target=qa64", "--prelude={Path.join payload "compiler/core/prelude.fpr"}"] else ["--system=posix"];
+    print (Json.render (Json.object [
+      ("format", Json.Integer 1), ("component", Json.Text k.component), ("version", Json.Text v.text),
+      ("command", Json.Text name), ("binary", Json.Text binary), ("compiler", Json.Text compiler),
+      ("moduleHome", Json.Text moduleHome), ("modulePaths", Json.Sequence (L.map Json.Text modulePaths)),
+      ("checkArgs", Json.Sequence (L.map Json.Text checkArgs)),
+      ("foreign", Json.Text (if k.kind == "qos" then Path.join payload "modules/core/foreign.fpr" else "")),
+      ("source", Json.Text c.source), ("requested", Json.Text (V.pinText c.pin)),
+      ("metadata", Json.Text (Path.joinAll [home k, v.text, k.metaFile]))]))
+  else print "{binary}\n{k.component} {v.text}, chosen by {c.source} (asks for {V.pinText c.pin})".
 
 cmdPin : unsafe Kind -> List String -> Unit .
 cmdPin k args =

@@ -171,3 +171,13 @@ installed-workflow steps. The signed production-index candidates verified
 with the embedded key under the source-denied sandbox. See the
 [check summary](evidence/2026-11-02-packaging-contract-checks.json) and
 [installed-workflow evidence](evidence/2026-11-02-packaging-manager-acceptance.json).
+
+## Editor selection API
+
+Manager 0.2.0 adds `fprmeta which fpr --json` and
+`qosmeta which qos --json`. Format 1 reports the selected release, selection
+source/pin, command path, compiler path, module home/search roots, foreign
+declarations, default check flags and metadata path. This is read-only and
+never installs a missing version. Consumers must query from the project
+directory and must not infer a compiler home by resolving the launcher's
+symlink. Existing human-readable `which` output is unchanged.
