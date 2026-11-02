@@ -81,6 +81,18 @@ main=do
       checkedGeneric=checkLinearity genericInfo generic
   check "typed unrestricted obligations propagate through the fixpoint"
     (null (linearityDiagnostics checkedGeneric) && M.lookup "dup" (linearityConstraints checkedGeneric)==Just ["a"] && M.lookup "wrap" (linearityConstraints checkedGeneric)==Just ["b"])
+  let shadowInfo=(buildLinInfo [])
+        {liSigs=M.fromList [("key",([LU],LL)),("reuse",([LVar "k"],LU))],
+         liUnres=M.singleton "reuse" ["k"]}
+      shadowCall=SApp (SVar "reuse") (SApp (SVar "key") (SInt 0))
+      (localErrors,_,_)=linExpr shadowInfo (M.singleton "key" LU) shadowCall
+      (globalErrors,_,_)=linExpr shadowInfo M.empty shadowCall
+  check "a local callback cannot inherit a same-named global's owned result"
+    (null localErrors && not (null globalErrors))
+  let (_,localErrorCount,_)=linExpr shadowInfo (M.fromList [("error",LU),("owned",LL)])
+        (SApp (SVar "error") (SVar "owned"))
+  check "a local error callback is not the diverging builtin"
+    (localErrorCount==Just (M.singleton "owned" 1))
   let names=["chain"++show i | i<-[0::Int ..90]]
       signatures=M.fromList [(name,([LVar "a"],LTupS [LVar "a",LVar "a"])) | name<-names]
       chain=TBind (head names) [PVar "x"] [] (STup [SVar "x",SVar "x"])

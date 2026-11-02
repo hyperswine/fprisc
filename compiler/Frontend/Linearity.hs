@@ -434,7 +434,7 @@ linExpr li env0 = go env0
           argCnt = foldl' plus (Just zero) [c | (_, c, _) <- argRes]
           anyLinArg = any (\(_, _, s) -> isLin s) argRes
        in case h of
-            SVar "error" -> (argErrs, Nothing, LU)
+            SVar "error" | Nothing <- M.lookup "error" env -> (argErrs, Nothing, LU)
             SVar g ->
               -- a PARTIAL application over linear argument(s) is a
               -- linear PAP: the args are consumed into it (argCnt
@@ -443,7 +443,12 @@ linExpr li env0 = go env0
               -- callee's type variables from the arguments: the result
               -- carries the ownership that went in, and a variable the
               -- callee duplicates or discards may not receive an owner.
-              let (sh, full, callErrs) = headShape g [s | (_, _, s) <- argRes]
+              -- Local callbacks shadow globals, just as they do during
+              -- inference and execution. A global with the same spelling
+              -- cannot supply this callback's result shape or constraints.
+              let (sh, full, callErrs) = case M.lookup g env of
+                    Just _ -> (LU, True, [])
+                    Nothing -> headShape g [s | (_, _, s) <- argRes]
                   sh2 = if anyLinArg && not full then LL else sh
                   (he, hc, _) = go env (SVar g)
                in (argErrs ++ callErrs ++ he, plus hc argCnt, sh2)
