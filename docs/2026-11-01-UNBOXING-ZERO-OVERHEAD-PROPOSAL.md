@@ -454,7 +454,9 @@ fallback, as the callback specializer's does.
 2. The two C2 prerequisites from addendum C: multi-register returns under
    `.abirev`, and the link-tier experiment forcing `RawWord` fields on one
    non-escaping type (`Pair Int Int`) through `Representation.hs` with a
-   differential oracle.
+   differential oracle (the experiment is done:
+   [record](2026-11-03-PAIR-RAWWORD-EXPERIMENT.md); plumbing sound, raw fields
+   alone buy 2-4%, multi-register returns remain).
 3. C1 piece 2a, the layout table and the preheader removal.
 4. C2 on `builtin`.
 

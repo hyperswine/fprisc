@@ -28,7 +28,7 @@ class CoverageTests(unittest.TestCase):
 
     def test_old_explicit_configurations_are_preserved(self):
         # Lock down the execution obligations during the move out of YAML.
-        self.assertEqual(len(CI), 31)
+        self.assertEqual(len(CI), 32)
         self.assertEqual(len({(c.path, c.args, c.env) for c in CI.values()}), len(CI))
         with self.assertRaisesRegex(ValueError, 'variant'):
             ci('tests/check_typed_ir_x64.py', required=True, env=(('FPR_NO_INLINE', '1'),))

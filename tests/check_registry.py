@@ -195,6 +195,7 @@ GROUPS = {
         # ARC runs check_raw with a strict typed environment. Keep this default
         # environment invocation too; those are different configurations.
         ci('tests/check_raw.py'),
+        ci('tests/check_pair_raw.py'),
         ci('tests/check_self_loops.py'),
         ci('tests/check_workers.py'),
         ci('tests/check_registers.py'),

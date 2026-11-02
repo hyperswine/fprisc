@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Link-tier experiment: RawWord fields on one non-escaping type (Pair).
+
+The same observations are made on a Pair of Int (managed fields) and on a
+Pair of Word (RawWord fields, the representation a type specialiser would pick
+for `Pair Int Int`), each in its own builtin ARC program on QEMU RV64. Checks:
+identical output and no live allocation afterwards for both; the raw program
+retains and releases less; and one program that mixes both pairs through a
+shared List is refused by Representation.hs (representation-polymorphic code
+needs cloning, which is C2 proper)."""
+from pathlib import Path
+import os
+import re
+import subprocess
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+os.chdir(ROOT)
+
+TEMPLATE = '''# Pair experiment ({name}): identical observations on {desc}.
+Pair = Type (Pair a b).
+check b = case b of True -> Unit | False -> error "pair observation failed".
+leaks = Mem.liveAllocations Unit.
+mk a b = {mk}.
+swap p = case p of Pair a b -> Pair b a.
+total p = case p of Pair a b -> {total}.
+shared p = total p + total (swap p).
+build n = case n == 0 of True -> [] | False -> Pair {a} {b} :: build (n - 1).
+tot xs = case xs of [] -> 0 | p :: r -> total p + tot r.
+step p = case p of Pair a b -> Pair b {step}.
+loop i p = case i == 0 of True -> total p | False -> loop (i - 1) (step p).
+main =
+  base = leaks;
+  _ = print (str (total (mk 3 4)));
+  _ = print (str (shared (mk 5 6)));
+  _ = print (str (tot (build 50)));
+  _ = print (str (mk 1 2 == mk 1 2));
+  _ = print (str (mk 1 2 == mk 2 1));
+  _ = print (str (loop 1000 (mk 0 1)));
+  _ = check (leaks == base);
+  print "PAIR HOLDS".
+'''
+
+INT = dict(name='Int fields', desc='managed fields', mk='Pair a b', total='a + b',
+           a='n', b='(n * 2)', step='((a + b) - ((a + b) / 1000003) * 1000003)')
+WORD = dict(name='RawWord fields', desc='RawWord fields',
+            mk='Pair (Word.fromInt a) (Word.fromInt b)', total='Word.toInt (Word.add a b)',
+            a='(Word.fromInt n)', b='(Word.fromInt (n * 2))',
+            step='(Word.fromInt (Word.toInt (Word.add a b) - (Word.toInt (Word.add a b) / 1000003) * 1000003))')
+
+MIXED = '''IPair = Type (IPair a b).
+WPair = Type (WPair a b).
+build n = case n == 0 of True -> [] | False -> IPair n n :: build (n - 1).
+buildW n = case n == 0 of True -> [] | False -> WPair (Word.fromInt n) (Word.fromInt n) :: buildW (n - 1).
+main = _ = build 3; _ = buildW 3; Unit.
+'''
+
+
+def run(args, expected=0, timeout=120):
+    p = subprocess.run([str(a) for a in args], capture_output=True, text=True, timeout=timeout)
+    if p.returncode != expected:
+        raise AssertionError(f'{args}: exit {p.returncode}\n{p.stdout[-2000:]}\n{p.stderr[-2000:]}')
+    return p
+
+
+def fn_body(asm, name):
+    m = re.search(r'^# fn ' + name + r' .*?(?=^# native-insns-v1)', asm, re.M | re.S)
+    assert m, name
+    return m[0]
+
+
+def ownership_calls(asm):
+    total = 0
+    for name in ('total', 'swap', 'build', 'tot', 'step', 'loop'):
+        total += len(re.findall(r'call fpr_fn__x24arc_x2e(?:retain|release)\b', fn_body(asm, name)))
+    return total
+
+
+def main():
+    run(['make', 'fpr'], timeout=300)
+    with tempfile.TemporaryDirectory(prefix='fpr-pair-raw-') as temp:
+        tmp = Path(temp)
+        seen = {}
+        calls = {}
+        for label, params in (('int', INT), ('word', WORD)):
+            source = tmp / f'{label}.fpr'
+            source.write_text(TEMPLATE.format(**params))
+            build = tmp / label
+            image = tmp / f'{label}.elf'
+            run(['make', 'bare-metal-builtin', 'ARC=1', 'ARC_CHECK=1', 'BUILTIN_HEAP_BYTES=16384',
+                 f'PROG={source}', f'BUILD={build}', f'IMAGE={image}'], timeout=300)
+            out = run(['qemu-system-riscv64', '-machine', 'virt', '-m', '128M', '-nographic',
+                       '-bios', 'none', '-kernel', image], timeout=60).stdout
+            assert out.rstrip().endswith('PAIR HOLDS'), (label, out)
+            seen[label] = out
+            calls[label] = ownership_calls((build / 'builtin.s').read_text())
+        assert seen['int'] == seen['word'], seen
+        print('RawWord Pair: output identical to the Int Pair; no live allocation left: PASS')
+
+        assert calls['word'] < calls['int'], calls
+        print(f"RawWord Pair: {calls['word']} retain/release sites against {calls['int']} for Int fields: PASS")
+
+        mixed = tmp / 'mixed.fpr'
+        mixed.write_text(MIXED)
+        p = subprocess.run(['make', 'bare-metal-builtin', 'ARC=1', 'BUILTIN_HEAP_BYTES=16384',
+                            f'PROG={mixed}', f'BUILD={tmp / "mixed"}', f'IMAGE={tmp / "mixed.elf"}'],
+                           capture_output=True, text=True, timeout=300)
+        assert p.returncode != 0 and 'incompatible representations' in p.stdout + p.stderr, p.stdout[-1500:]
+        print('Int and Word pairs through one shared List are refused (needs cloning): PASS')
+
+
+if __name__ == '__main__':
+    main()
