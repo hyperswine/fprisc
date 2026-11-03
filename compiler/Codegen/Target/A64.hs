@@ -97,7 +97,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 28 -- OVariantTest (type-directed case variant test at +4); prior: hart-cell load (loop region clock); sized frames
+a64SelectionRev = 29 -- OSetField (TRMC field link store); prior: OVariantTest
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -404,6 +404,7 @@ selectInstr cfg _ (Instr d op) = case op of
   OLoad _ a n -> def (\r -> emitI (plain (O.A64 A.LoadField) [any' r] [any' (vreg a), OI (fromIntegral n)]))
   OLoadByte a n -> def (\r -> emitI (plain (O.A64 A.LoadByte) [any' r] [any' (vreg a), OI (fromIntegral n)]))
   OStore _ a n v -> emitI (plain (O.A64 A.StoreField) [] [any' (vreg a), any' (vreg v), OI (fromIntegral n)])
+  OSetField index obj val -> emitI (plain (O.A64 A.StoreField) [] [any' (vreg obj), any' (vreg val), OI (8 + 8 * fromIntegral index)])
   OConstInt n -> def (\r -> emitI (li r n))
   OHartCell j -> def (\r -> emitI ((plain (O.Common O.LoadSpill) [any' r] [OI (fromIntegral j)]) {siImplicitDefs = [x 9, x 16, x 17]}))
   ORegionRoom mark -> def $ \r -> do

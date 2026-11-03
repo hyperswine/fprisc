@@ -43,6 +43,11 @@ opSignature tyOf = \case
   OLoad t a n -> memory t a n >> pure (Just t)
   OLoadByte a n -> memory TInt a n >> pure (Just TInt)
   OStore t a n v -> memory t a n >> expect v t >> pure Nothing
+  OSetField index obj val -> do
+    when (index < 0 || toInteger index > 268435454) (Left "field index is outside the native displacement range")
+    expect obj TVal
+    expect val TVal
+    pure Nothing
   OField index obj -> do
     when (index < 0 || toInteger index > 268435454) (Left "field index is outside the native displacement range")
     expect obj TVal

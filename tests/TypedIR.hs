@@ -565,5 +565,40 @@ main = do
   check "OVariantTest and OTagTest agree on nominal ADT values"
     (and [evalProgram caseOn "listCase" [x] == evalProgram caseOff "listCase" [x]
          | x <- [RObj 2 0 [], RObj 2 1 [RInt 42, RObj 2 0 []]]])
+  -- Pair return alias lowering & dumpFn formatting, plus B2 TRMC OSetField lowering & evaluation
+  let pairWorkerDef = (["n"], CMk 4 0 [var "n", app "+" [var "n", CInt 10]])
+      pairCallerDef = (["n"], CLet "p" (app "$worker.ret2.mkp" [var "n"])
+        (CLet "alias" (var "p")
+          (app "+" [CProj 0 (var "alias"), CProj 1 (var "alias")])))
+      pairProg = M.fromList [("$worker.ret2.mkp", pairWorkerDef), ("caller", pairCallerDef)]
+      (pairIr, pairFail) = lowerProgram m2Policy M.empty pairProg pairProg M.empty M.empty
+  check "pair worker and aliased pair caller lower and verify"
+    (null pairFail && verifyProgram pairIr == Right ())
+  check "dumpFn formats TPair result"
+    ("-> pair " `isInfixOf` dumpFn (pairIr M.! "$worker.ret2.mkp"))
+  check "aliased pair projection evaluates both registers"
+    (ocResult (evalProgram pairIr "caller" [RInt 16]) == Right (RInt 42))
+  let trmcWorkerDef = (["xs", "root", "last"],
+        CIf (CTagEq 2 0 (var "xs")) (var "root")
+          (CLet "hd" (app "+" [CProj 0 (var "xs"), CInt 1])
+            (CLet "tl" (CProj 1 (var "xs"))
+              (CLet "cell" (CMk 2 1 [var "hd", CMk 2 0 []])
+                (CLet "u" (app "$trmc.setTail" [var "last", var "cell"])
+                  (app "$worker.trmc.mapInc" [var "tl", var "root", var "cell"]))))))
+      trmcEntryDef = (["xs"],
+        CIf (CTagEq 2 0 (var "xs")) (CMk 2 0 [])
+          (CLet "cell0" (CMk 2 1 [app "+" [CProj 0 (var "xs"), CInt 1], CMk 2 0 []])
+            (app "$worker.trmc.mapInc" [CProj 1 (var "xs"), var "cell0", var "cell0"])))
+      trmcProg = M.fromList [("$worker.trmc.mapInc", trmcWorkerDef), ("mapInc", trmcEntryDef)]
+      (trmcIr, trmcFail) = lowerProgram m2Policy M.empty trmcProg trmcProg M.empty M.empty
+      inList = RObj 2 1 [RInt 5, RObj 2 1 [RInt 5, RObj 2 1 [RInt 10, RObj 2 0 []]]]
+      outList = RObj 2 1 [RInt 6, RObj 2 1 [RInt 6, RObj 2 1 [RInt 11, RObj 2 0 []]]]
+  check "TRMC worker with $trmc.setTail lowers and verifies"
+    (null trmcFail && verifyProgram trmcIr == Right ()
+     && "setfield 1 " `isInfixOf` dumpFn (trmcIr M.! "$worker.trmc.mapInc"))
+  check "TRMC worker evaluates in-place tail linking with 1 allocation per element"
+    (let out = evalProgram trmcIr "mapInc" [inList]
+      in ocResult out == Right outList
+         && length [() | EvAllocate _ 2 1 _ <- ocEvents out] == 3)
   putStrLn "Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS"
   putStrLn "Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS"

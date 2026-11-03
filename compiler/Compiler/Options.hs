@@ -25,8 +25,8 @@ data NativeOptions = NativeOptions
     nativeFpPool :: Bool, nativeLinkPairs :: Bool } deriving (Eq,Show)
 data CodegenOptions = CodegenOptions
   { nativeOptions :: NativeOptions, cgIndexedMemory :: Bool, cgFloatInline :: Bool,
-    cgSimd :: Bool, cgFusion :: Bool, cgListFuse :: Bool, cgCaseKnown :: Bool, cgTypedCase :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgStringFast :: Bool, cgInterval :: Bool, cgLoopMotion :: Bool, cgEarlyLoops :: Bool, cgStringScan :: Bool,
-    cgScalarWorkers :: Bool, cgTickBatch :: Bool, cgPairReturns :: Bool, cgFieldWorkers :: Bool, cgTupleScalars :: Bool, cgPipelineInline :: Bool,
+    cgSimd :: Bool, cgFusion :: Bool, cgListFuse :: Bool, cgCaseKnown :: Bool, cgTypeSpec :: Bool, cgTypedCase :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgStringFast :: Bool, cgInterval :: Bool, cgLoopMotion :: Bool, cgEarlyLoops :: Bool, cgStringScan :: Bool,
+    cgScalarWorkers :: Bool, cgTrmc :: Bool, cgTickBatch :: Bool, cgPairReturns :: Bool, cgFieldWorkers :: Bool, cgTupleScalars :: Bool, cgPipelineInline :: Bool,
     cgReuse :: Bool, cgSpecialize :: Bool, cgReceiveTurns :: Bool,
     cgLoopRegions :: Bool, cgCallRegions :: Bool, cgInline :: Bool } deriving (Eq,Show)
 data DiagnosticOptions = DiagnosticOptions
@@ -60,10 +60,10 @@ parseCompilerOptions env = do
           nativeFpPool=on "FPR_TYPED_IR_FP_POOL", nativeLinkPairs=on "FPR_TYPED_IR_LINK_PAIRS" }
       codegen=CodegenOptions
         { nativeOptions=native, cgIndexedMemory=enabled "INDEXED_MEMORY", cgFloatInline=enabled "F64_INLINE",
-          cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgListFuse=enabled "LIST_FUSE", cgCaseKnown=enabled "CASE_KNOWN", cgTypedCase=enabled "TYPED_CASE", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST", cgStringFast=enabled "STR_FAST", cgInterval=enabled "INTERVAL", cgLoopMotion=yes "FPR_TYPED_IR_LOOP_MOTION",
+          cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgListFuse=enabled "LIST_FUSE", cgCaseKnown=enabled "CASE_KNOWN", cgTypeSpec=enabled "TYPE_SPEC", cgTypedCase=enabled "TYPED_CASE", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST", cgStringFast=enabled "STR_FAST", cgInterval=enabled "INTERVAL", cgLoopMotion=yes "FPR_TYPED_IR_LOOP_MOTION",
           cgStringScan=yes "FPR_TYPED_IR_STRING_SCAN",
           cgEarlyLoops=yes "FPR_TYPED_IR_EARLY_LOOPS" && nativeSelfLoops native,
-          cgScalarWorkers=enabled "SCALAR_WORKERS", cgTickBatch=enabled "TICK_BATCH", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
+          cgScalarWorkers=enabled "SCALAR_WORKERS", cgTrmc=enabled "TRMC", cgTickBatch=enabled "TICK_BATCH", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
           cgReceiveTurns=enabled "RECEIVE_TURNS", cgLoopRegions=enabled "LOOP_REGIONS",
           cgCallRegions=enabled "CALL_REGIONS", cgInline=enabled "INLINE" }
@@ -119,8 +119,8 @@ optimizationFlags :: CodegenOptions -> String
 optimizationFlags c = flag (cgLoopMotion c) "-licm" ++ flag (cgEarlyLoops c) "-earlyloops" ++ flag (cgStringScan c) "-strscan" ++ concat
   [flag (not enabled) suffix | (enabled,suffix)<-
     [(cgPipelineInline c,"-nopinline"),(cgReuse c,"-noreuse"),
-     (cgScalarWorkers c,"-noscalar"),(cgTickBatch c,"-notickbatch"),(cgPairReturns c,"-nopairret"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),
-     (cgTypedCase c,"-notypedcase"),(cgIndexedMemory c,"-noidx"),(cgReceiveTurns c,"-nort"),
+     (cgScalarWorkers c,"-noscalar"),(cgTrmc c,"-notrmc"),(cgTickBatch c,"-notickbatch"),(cgPairReturns c,"-nopairret"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),
+     (cgTypeSpec c,"-notypespec"),(cgTypedCase c,"-notypedcase"),(cgIndexedMemory c,"-noidx"),(cgReceiveTurns c,"-nort"),
      (cgLoopRegions c,"-nolr"),(cgCallRegions c,"-nocr"),
      (cgSpecialize c,"-nospec"),(cgInline c,"-noinl"),
      (cgFloatInline c,"-nof64"),(cgVecPeek c,"-novp"),(cgVectorFast c,"-novecfast"),(cgStringFast c,"-nostrfast"),(cgInterval c,"-nointerval")]]

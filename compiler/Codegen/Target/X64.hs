@@ -39,7 +39,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 27 -- OVariantTest (type-directed case variant test at +4); prior: hart-cell load (loop region clock); sized frames
+x64SelectionRev = 28 -- OSetField (TRMC field link store); prior: OVariantTest
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -334,6 +334,7 @@ selectInstr cfg _ (Instr d op) = case op of
   OLoad _ a n -> def (\r -> emitI (plain (O.X64 O.LoadField) [any' r] [any' (vreg a), OI (fromIntegral n)]))
   OLoadByte a n -> def (\r -> emitI (plain (O.X64 O.LoadByte) [any' r] [any' (vreg a), OI (fromIntegral n)]))
   OStore _ a n v -> emitI (plain (O.X64 O.StoreField) [] [any' (vreg a), any' (vreg v), OI (fromIntegral n)])
+  OSetField index obj val -> emitI (plain (O.X64 O.StoreField) [] [any' (vreg obj), any' (vreg val), OI (8 + 8 * fromIntegral index)])
   OConstInt n -> def (\r -> emitI (li r n))
   OHartCell j -> def (\r -> emitI (plain (O.Common O.LoadSpill) [any' r] [OI (fromIntegral j)]))
   ORegionRoom mark -> def $ \r -> do

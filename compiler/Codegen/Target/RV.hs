@@ -28,7 +28,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 28 -- OVariantTest (type-directed case variant test at +4); prior: checked Int arithmetic inline
+rvSelectionRev = 29 -- OSetField (TRMC field link store); prior: OVariantTest
 
 -- Native startup, shared by every RVV unit. The runtime calls the surviving
 -- COMDAT definition on each hart; ordinary builds retain its weak no-op.
@@ -239,6 +239,7 @@ select cfg fn = do
       terminator b
     instruction (Instr result op) = case op of
       OStore _ a n v -> storeAt stWord (vreg a) (vreg v) (fromIntegral n)
+      OSetField index obj val -> storeAt stWord (vreg obj) (vreg val) (8 + w * fromIntegral index)
       OStackCheck -> lift (Left "RV64: misplaced stack check")
       OSafepoint -> if polFuel (cfgPolicy cfg) then entry Protocol.FuelOnly else lift (Left "a no-fuel profile contains a safepoint")
       OSafepointN n -> do
@@ -260,6 +261,7 @@ select cfg fn = do
       OLoad _ a n -> loadAt ld d (vreg a) (fromIntegral n)
       OLoadByte a n -> loadAt R.LoadByte d (vreg a) (fromIntegral n)
       OStore {} -> lift (Left "compiler error: a store has a result")
+      OSetField {} -> lift (Left "compiler error: a field store has a result")
       OConstInt n -> li d n
       OHartCell j -> emit ((plain (O.Common O.LoadSpill) [anyV d] [OI (fromIntegral j)]) {siImplicitDefs = map p ["t3","t4"]})
       ORegionRoom mark -> do

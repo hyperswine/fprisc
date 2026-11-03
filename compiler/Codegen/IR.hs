@@ -183,6 +183,7 @@ data Op
   | OLoad Ty VId Int -- word load at a byte offset: TInt, TVal or TAddr; mutable memory, never CSE
   | OLoadByte VId Int -- zero-extended byte -> TInt (column kind descriptor)
   | OStore Ty VId Int VId -- word store, same representation as OLoad; uniquely owned vector
+  | OSetField Int VId VId -- overwrite a zero-based constructor field of a uniquely owned cell (Core.Opt.Trmc)
   | OField Int VId -- read a statically typed constructor field (zero-based)
   | OStrLen VId -- checked String byte length -> TInt
   | OCharAt VId VId -- checked String and TInt byte index -> TInt
@@ -289,6 +290,7 @@ opEffect = \case
   OLoad _ _ _ -> Reads
   OLoadByte _ _ -> Reads
   OStore _ _ _ _ -> Writes
+  OSetField _ _ _ -> Writes
   OField _ _ -> Pure
   OStrLen _ -> MayTrap
   OCharAt _ _ -> MayTrap
@@ -348,6 +350,7 @@ opUses = \case
   OLoad _ a _ -> [a]
   OLoadByte a _ -> [a]
   OStore _ a _ v -> [a,v]
+  OSetField _ a v -> [a, v]
   OField _ v -> [v]
   OStrLen v -> [v]
   OCharAt s n -> [s, n]
@@ -416,6 +419,7 @@ mapOpUses f = \case
   OLoad t a n -> OLoad t (f a) n
   OLoadByte a n -> OLoadByte (f a) n
   OStore t a n v -> OStore t (f a) n (f v)
+  OSetField n a v -> OSetField n (f a) (f v)
   OField n v -> OField n (f v)
   OStrLen v -> OStrLen (f v)
   OCharAt s n -> OCharAt (f s) (f n)

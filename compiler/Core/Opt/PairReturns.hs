@@ -38,14 +38,14 @@ type Shape = (Int, Int)
 data Leaf = Make Shape | Call Name Int | Trap
 
 -- where a function's result comes from; Nothing for any other result
-leaves :: Core -> Maybe [Leaf]
-leaves e = case e of
-  CLet _ _ b -> leaves b
-  CIf _ t f -> (++) <$> leaves t <*> leaves f
+leaves :: S.Set Name -> Core -> Maybe [Leaf]
+leaves bound e = case e of
+  CLet x _ b -> leaves (S.insert x bound) b
+  CIf _ t f -> (++) <$> leaves bound t <*> leaves bound f
   CMk t v [_, _] -> Just [Make (t, v)]
   CErr _ -> Just [Trap]
   _ -> case spineOf e of
-    (CVar h, args@(_ : _)) -> Just [Call h (length args)]
+    (CVar h, args@(_ : _)) | S.notMember h bound -> Just [Call h (length args)]
     _ -> Nothing
 
 -- the functions that answer a pair of one constructor, with that constructor
@@ -54,7 +54,7 @@ pairFunctions prog = go (M.mapMaybe candidate prog)
   where
     candidate (ps, b)
       | null ps || size b > bodyBound = Nothing
-      | otherwise = leaves b
+      | otherwise = leaves (S.fromList ps) b
     go cands =
       let shapes = fixShapes cands
           keep n ls = and
@@ -86,38 +86,64 @@ children e = case e of
   CMk _ _ xs -> xs; CTagEq _ _ x -> [x]; CProj _ x -> [x]
   CLam _ x -> [x]; _ -> []
 
--- `t` is read only as the test of its own constructor and as field 0 or 1:
--- the body with the tests decided, or Nothing when `t` is used any other way
--- (it escapes, is rebound, or is captured by a lambda)
+-- `t` is read at least once and only as the test of its own constructor and as
+-- field 0 or 1: the body with the tests decided, or Nothing when `t` is unused
+-- or used any other way (it escapes, is rebound, or is captured by a lambda)
 pairUses :: Shape -> Name -> Core -> Maybe Core
-pairUses (tid, var) t = go
+pairUses (tid, var) t body = do
+  (body', used) <- go body
+  if used then Just body' else Nothing
   where
     go e = case e of
       CVar x | x == t -> Nothing
-      CIf (CTagEq t' v' (CVar x)) a _ | x == t -> if (t', v') == (tid, var) then go a else Nothing
-      CProj i (CVar x) | x == t -> if i == 0 || i == 1 then Just e else Nothing
+      CIf (CTagEq t' v' (CVar x)) a b | x == t ->
+        if (t', v') == (tid, var)
+          then (\(a', _) -> (a', True)) <$> go a
+          else if t' == tid
+            then (\(b', _) -> (b', True)) <$> go b
+            else Nothing
+      CProj i (CVar x) | x == t -> if i == 0 || i == 1 then Just (e, True) else Nothing
       CLet y a b | y == t -> Nothing
-                 | otherwise -> CLet y <$> go a <*> go b
-      CLam ps b | t `elem` ps || t `elem` freeIn b -> Nothing
-                | otherwise -> Just (CLam ps b)
-      CApp a b -> CApp <$> go a <*> go b
-      CIf c a b -> CIf <$> go c <*> go a <*> go b
-      CMk i v xs -> CMk i v <$> mapM go xs
-      CTagEq i v x -> CTagEq i v <$> go x
-      CProj i x -> CProj i <$> go x
-      _ -> Just e
-    freeIn b = case b of
-      CVar x -> [x]
-      _ -> concatMap freeIn (children b)
+                 | otherwise -> do
+                     (a', u1) <- go a
+                     (b', u2) <- go b
+                     Just (CLet y a' b', u1 || u2)
+      CLam ps b | t `elem` ps || mentions t b -> Nothing
+                | otherwise -> Just (CLam ps b, False)
+      CApp a b -> do
+        (a', u1) <- go a
+        (b', u2) <- go b
+        Just (CApp a' b', u1 || u2)
+      CIf c a b -> do
+        (c', u1) <- go c
+        (a', u2) <- go a
+        (b', u3) <- go b
+        Just (CIf c' a' b', u1 || u2 || u3)
+      CMk i v xs -> do
+        rs <- mapM go xs
+        Just (CMk i v (map fst rs), any snd rs)
+      CTagEq i v x -> do
+        (x', u) <- go x
+        Just (CTagEq i v x', u)
+      CProj i x -> do
+        (x', u) <- go x
+        Just (CProj i x', u)
+      _ -> Just (e, False)
+    mentions x (CVar y) = x == y
+    mentions x (CLet y a b) = mentions x a || (y /= x && mentions x b)
+    mentions x (CLam ps b) = x `notElem` ps && mentions x b
+    mentions x e = any (mentions x) (children e)
 
--- every let that binds a pair function's call and reads it as above calls the
--- twin instead
-rewriteLets :: M.Map Name Shape -> S.Set Name -> Core -> (Core, Int)
-rewriteLets pairs = go
+-- every saturated let that binds a pair function's call and reads it as above
+-- calls the twin instead
+rewriteLets :: M.Map Name Int -> M.Map Name Shape -> S.Set Name -> Core -> (Core, Int)
+rewriteLets arities pairs = go
   where
     go bound e = case e of
       CLet t a b
-        | (CVar q, args) <- spineOf a, q `S.notMember` bound, Just shape <- M.lookup q pairs,
+        | (CVar q, args) <- spineOf a, q `S.notMember` bound,
+          Just ar <- M.lookup q arities, length args == ar,
+          Just shape <- M.lookup q pairs,
           Just b' <- pairUses shape t b ->
             let (args', n1) = goAll bound args
                 (b'', n2) = go (S.insert t bound) b'
@@ -135,15 +161,18 @@ rewriteLets pairs = go
       _ -> (e, 0)
     goAll bound xs = let rs = map (go bound) xs in (map fst rs, sum (map snd rs))
 
--- the twin's body: the calls it ends in go to the callees' twins
-twinBody :: M.Map Name Shape -> S.Set Name -> Core -> Core
-twinBody pairs = go
+-- the twin's body: the saturated calls it ends in go to the callees' twins
+twinBody :: M.Map Name Int -> M.Map Name Shape -> S.Set Name -> Core -> Core
+twinBody arities pairs = go
   where
     go bound e = case e of
       CLet x a b -> CLet x a (go (S.insert x bound) b)
       CIf c t f -> CIf c (go bound t) (go bound f)
       _ -> case spineOf e of
-        (CVar h, args@(_ : _)) | h `S.notMember` bound, M.member h pairs -> foldl CApp (CVar (pairWorkerName h)) args
+        (CVar h, args@(_ : _))
+          | h `S.notMember` bound, M.member h pairs,
+            Just ar <- M.lookup h arities, length args == ar ->
+              foldl CApp (CVar (pairWorkerName h)) args
         _ -> e
 
 pairReturnProgram :: Prog -> ScalarSignatures -> (Prog, ScalarSignatures, [String])
@@ -151,12 +180,13 @@ pairReturnProgram prog sigs
   | M.null pairs || sites == 0 = (prog, sigs, [])
   | otherwise = (prog', sigs', [note])
   where
+    arities = M.map (length . fst) prog
     pairs = pairFunctions prog
-    rewritten = M.mapWithKey (\_ (ps, b) -> let (b', n) = rewriteLets pairs (S.fromList ps) b in ((ps, b'), n)) prog
+    rewritten = M.mapWithKey (\_ (ps, b) -> let (b', n) = rewriteLets arities pairs (S.fromList ps) b in ((ps, b'), n)) prog
     sites = sum (map snd (M.elems rewritten))
     bodies = M.map fst rewritten
     allTwins = M.fromList
-      [ (pairWorkerName f, (ps, twinBody pairs (S.fromList ps) b))
+      [ (pairWorkerName f, (ps, twinBody arities pairs (S.fromList ps) b))
       | (f, (ps, b)) <- M.toList bodies, M.member f pairs ]
     -- only the twins a rewritten call reaches, through the twins' own calls
     reach seen [] = seen

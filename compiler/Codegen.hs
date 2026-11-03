@@ -53,7 +53,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 148 -- pair returns in two registers (rax/rdx, x0/x1, a0/a1)
+codegenRev = 149 -- B2 TRMC for accumulator-reverse list loops and append; prior: pair returns in two registers
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -72,6 +72,7 @@ data Target = Target
     tgtScalarFast :: Bool, -- normalize Core and enable private scalar workers
     tgtIndexedMemory :: Bool, -- fuse private manual Addr.add/access/release
     tgtScalarWorkers :: Bool,
+    tgtTrmc :: Bool, -- Core.Opt.Trmc: tail recursion modulo cons
     tgtTickBatch :: Bool,
     tgtPairReturns :: Bool, -- Core.Opt.PairReturns: a pair answered in two registers
     tgtFieldWorkers :: Bool,
@@ -115,7 +116,7 @@ data Emission = Emission
 rv64, rv32 :: Target
 rv64 = Target {tgtW=8,tgtName="rv64",tgtFuel=True,tgtArc=False,tgtWeak=False,
   tgtSimd=False,tgtFusion=True,tgtFloatInline=True,tgtScalarFast=True,tgtIndexedMemory=True,
-  tgtScalarWorkers=True,tgtTickBatch=True,tgtPairReturns=True,tgtFieldWorkers=True,tgtTupleScalars=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
+  tgtScalarWorkers=True,tgtTrmc=True,tgtTickBatch=True,tgtPairReturns=True,tgtFieldWorkers=True,tgtTupleScalars=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
   tgtTypedIr=Nothing,tgtHal=M.empty,tgtPolicy=m2Policy,
   tgtNative=Just (defaultMode (DirectRV (policyWidth m2Policy) RV.HartTp))}
 rv32 = rv64 {tgtW=4,tgtName="rv32",tgtFloatInline=False,
@@ -180,7 +181,7 @@ externals ext prog = S.toList (S.fromList (concat [go (S.fromList ps) b [] | (_,
       CVar n
         | S.member n env || M.member n prog || M.member n ext || S.member n prims -> acc
         | "$sym." `isPrefixOf` n -> acc -- a linker symbol, not a runtime contract
-        | n == entryTickName -> acc -- an inlined entry's fuel tick
+        | n == entryTickName || n == "$trmc.setTail" || n == "$reuse.fresh" -> acc -- internal lowering forms
         | otherwise -> n : acc
       CApp a b -> go env a (go env b acc)
       CLet x a b -> go env a (go (S.insert x env) b acc)
@@ -339,6 +340,7 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
           optFieldWorkers = tgtFieldWorkers tgt,
           optTupleScalars = tgtTupleScalars tgt,
           optScalarWorkers = tgtScalarWorkers tgt,
+          optTrmc = tgtTrmc tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt) && polProfile (tgtPolicy tgt) `elem` [HostedBase, QosApp],
           optTickBatch = tgtTickBatch tgt,
           optPairReturns = tgtPairReturns tgt && tgtW tgt == 8 && not (tgtArc tgt) && polProfile (tgtPolicy tgt) == HostedBase && pairBackend (tgtNative tgt >>= nmBackend),
           optNormalize = tgtScalarFast tgt,

@@ -19,7 +19,7 @@ app n = foldl CApp (CVar n)
 right = either error id
 failed (Left _) = True
 failed _ = False
-none = OptimizationOptions False False False False False False False False False S.empty
+none = OptimizationOptions False False False False False False False False False False S.empty
 
 main = do
   checkExports
@@ -36,8 +36,8 @@ main = do
   check "worker ABI retained through normalization and reuse" (M.lookup worker sigs==Just ([KI,KI],KI))
   check "public entry retained" (fst (optimizedProgram result M.! "sum")==["n","a"])
   check "named pass order" (map passName (optimizationReports result)==
-    [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,BatchTicks,PairReturns])
-  check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False,False])
+    [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,Trmc,BatchTicks,PairReturns])
+  check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False,False,False])
   check "missing function refused" (failed (verifyPassResult source M.empty M.empty))
   check "entry arity drift refused" (failed (verifyPassResult source (M.singleton "sum" (["n"],CInt 0)) M.empty))
   check "duplicate parameters refused" (failed (optimizeCore none S.empty (M.singleton "f" (["x","x"],v "x"))))
@@ -57,18 +57,53 @@ main = do
   let tick=CApp (CVar entryTickName) (CInt 0)
       ticked b=CLet "$inlined.tick" tick b
       loopDef=(["n","a"],CIf (app "==" [v "n",CInt 0]) (v "a")
-        (ticked (app "loop" [app "-" [v "n",CInt 1],app "+" [v "a",v "n"]])))
+        (ticked (app "loop" [app "-" [v "n",CInt 1],CMk 2 1 [ticked (v "n"),v "a"]])))
       helperDef=(["n"],ticked (app "+" [v "n",CInt 1]))
-      tickInput=M.fromList [("loop",loopDef),("helper",helperDef)]
+      shadowLoopDef=(["shadowLoop","x"],ticked (app "shadowLoop" [v "x"]))
+      tickInput=M.fromList [("loop",loopDef),("helper",helperDef),("shadowLoop",shadowLoopDef)]
       tickOnResult=right (optimizeCore (none {optTickBatch=True}) S.empty tickInput)
       tickOn=optimizedProgram tickOnResult
       tickOff=optimizedProgram (right (optimizeCore none S.empty tickInput))
       hasTick name p=case M.lookup name p of Just (_,b)->"$fuel" `isInfixOf` show b; Nothing->False
-  check "self-looping function batches inlined entry ticks" (not (hasTick "loop" tickOn))
+  check "self-looping function batches inlined entry ticks including inside CMk" (not (hasTick "loop" tickOn))
   check "non-looping function keeps its inlined entry tick" (hasTick "helper" tickOn)
+  check "shadowed parameter does not trigger self-loop tick batching" (hasTick "shadowLoop" tickOn)
   check "tick batching rollback keeps inlined entry ticks" (hasTick "loop" tickOff)
   check "tick batching reports its decision"
     ("# tick batching: self-loops=1 batched=1" `elem` optimizationNotes tickOnResult)
+  -- B2 TRMC: accumulator-reverse list loops and two-pass append.
+  let revOntoDef=(["xs","acc"],CIf (CTagEq 2 0 (v "xs")) (v "acc")
+        (app "revOnto" [CProj 1 (v "xs"),CMk 2 1 [CProj 0 (v "xs"),v "acc"]]))
+      reverseDef=(["xs"],app "revOnto" [v "xs",CMk 2 0 []])
+      mapGoDef=(["f","xs","acc"],CIf (CTagEq 2 0 (v "xs")) (app "reverse" [v "acc"])
+        (app "mapGo" [v "f",CProj 1 (v "xs"),CMk 2 1 [CApp (v "f") (CProj 0 (v "xs")),v "acc"]]))
+      filterGoDef=(["p","xs","acc"],CIf (CTagEq 2 0 (v "xs")) (app "revOnto" [v "acc",CMk 2 0 []])
+        (CIf (CTagEq 1 1 (CApp (v "p") (CProj 0 (v "xs"))))
+          (app "filterGo" [v "p",CProj 1 (v "xs"),CMk 2 1 [CProj 0 (v "xs"),v "acc"]])
+          (app "filterGo" [v "p",CProj 1 (v "xs"),v "acc"])))
+      appendDef=(["xs","ys"],app "revOnto" [app "revOnto" [v "xs",CMk 2 0 []],v "ys"])
+      trmcInput=M.fromList [("revOnto",revOntoDef),("reverse",reverseDef),
+                            ("mapGo",mapGoDef),("filterGo",filterGoDef),("append",appendDef)]
+      trmcOnResult=right (optimizeCore (none {optTrmc=True}) S.empty trmcInput)
+      trmcOn=optimizedProgram trmcOnResult
+      trmcOff=optimizedProgram (right (optimizeCore none S.empty trmcInput))
+  check "TRMC creates private workers for accumulator-reverse list loops"
+    (M.member "$worker.trmc.mapGo" trmcOn && M.member "$worker.trmc.filterGo" trmcOn)
+  check "TRMC leaves revOnto and reverse untouched"
+    (not (M.member "$worker.trmc.revOnto" trmcOn) && M.lookup "revOnto" trmcOn==Just revOntoDef)
+  check "TRMC rewrites two-pass append to single-pass worker"
+    (M.member "$worker.trmc.append" trmcOn && "$worker.trmc.append" `isInfixOf` show (trmcOn M.! "append"))
+  check "TRMC workers link tail cells with $trmc.setTail"
+    ("$trmc.setTail" `isInfixOf` show (trmcOn M.! "$worker.trmc.mapGo")
+     && not ("reverse" `isInfixOf` show (trmcOn M.! "$worker.trmc.mapGo")))
+  -- A worker nothing calls saves nothing: the entry must branch into it when
+  -- the accumulator is empty and keep the original loop otherwise.
+  check "TRMC entries transition into their worker"
+    (all (\n -> ("$worker.trmc." ++ n) `isInfixOf` show (snd (trmcOn M.! n))) ["mapGo","filterGo"]
+     && "$worker.trmc.append" `isInfixOf` show (snd (trmcOn M.! "append")))
+  check "TRMC reports loop and append counts"
+    ("# trmc: loops=2 appends=1" `elem` optimizationNotes trmcOnResult)
+  check "TRMC rollback leaves program unchanged" (trmcOff==trmcInput)
   -- A pair answered to a caller that only decides its shape and reads its
   -- fields is answered in two registers (the $worker.ret2 twin).
   let pairF=(["n"],CIf (app "==" [v "n",CInt 0]) (CMk 4 0 [CInt 0,CInt 0])
@@ -77,7 +112,9 @@ main = do
             (CLet "s" (CProj 0 (v "t")) (CLet "c" (CProj 1 (v "t")) (CMk 4 0 [app "+" [v "s",v "n"],app "+" [v "c",CInt 1]])))
             (CErr "no match"))))
       escapes=(["n"],CLet "t" (app "pairf" [v "n"]) (CMk 4 0 [v "t",v "t"]))
-      pairInput=M.fromList [("pairf",pairF),("escapes",escapes)]
+      partialPair=(["n"],CLet "unused" (CVar "pairf") (CInt 42))
+      shadowPair=(["pairf","x"],app "pairf" [v "x"])
+      pairInput=M.fromList [("pairf",pairF),("escapes",escapes),("partialPair",partialPair),("shadowPair",shadowPair)]
       pairOnResult=right (optimizeCore (none {optPairReturns=True}) S.empty pairInput)
       pairOn=optimizedProgram pairOnResult
       callsTwin name=maybe False (("$worker.ret2.pairf" `isInfixOf`) . show . snd) (M.lookup name pairOn)
@@ -85,7 +122,9 @@ main = do
   check "pair returns route the recursive call through the twin" (callsTwin "$worker.ret2.pairf")
   check "pair returns keep the original function" (fmap fst (M.lookup "pairf" pairOn)==Just ["n"])
   check "pair returns leave an escaping pair alone" (M.lookup "escapes" pairOn==Just escapes)
-  check "pair returns report their decision" (any ("# pair returns:" `isPrefixOf`) (optimizationNotes pairOnResult))
+  check "pair returns do not rewrite partial or unused applications" (M.lookup "partialPair" pairOn==Just partialPair)
+  check "pair returns do not misclassify shadowed local calls" (not (M.member "$worker.ret2.shadowPair" pairOn))
+  check "pair returns report their decision" (any ("# pair returns:" `isInfixOf`) (optimizationNotes pairOnResult))
   check "pair returns rollback keeps the word ABI" (not (M.member "$worker.ret2.pairf" (optimizedProgram (right (optimizeCore none S.empty pairInput)))))
   let nested=app "Vec.map" [v "inc",app "Vec.map" [v "double",v "xs"]]
       fusionInput=M.fromList [("inc",(["x"],app "+" [v "x",CInt 1])),

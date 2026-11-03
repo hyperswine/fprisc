@@ -39,6 +39,7 @@ dumpFn fn =
       OLoad t a n -> "load " ++ show t ++ " " ++ value a ++ "+" ++ show n
       OLoadByte a n -> "load.byte " ++ value a ++ "+" ++ show n
       OStore t a n v -> "store " ++ show t ++ " " ++ value a ++ "+" ++ show n ++ " " ++ value v
+      OSetField n a v -> "setfield " ++ show n ++ " " ++ value a ++ ", " ++ value v
       OField n v -> "field " ++ show n ++ " " ++ value v
       OStrLen v -> "strlen " ++ value v
       OCharAt s n -> "charAt " ++ value s ++ ", " ++ value n
@@ -99,6 +100,7 @@ dumpFn fn =
       TPred -> "pred"
       TAddr -> "addr"
       TF64 -> "f64"
+      TPair -> "pair"
 
 simdText :: SimdExpr -> String
 simdText = \case

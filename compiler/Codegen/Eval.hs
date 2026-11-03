@@ -99,6 +99,22 @@ callFn width program name args = do
           x -> stuck ("a pair call answered " ++ show x)
       instr env (Instr (Just (v, _)) OSecond) =
         maybe (stuck "a second word without a pair call") (\x -> pure (M.insert v x (M.delete pairSlot env))) (M.lookup pairSlot env)
+      instr env (Instr Nothing (OSetField n objV valV)) = do
+        target <- val env objV
+        newField <- val env valV
+        updated <- case target of
+          RObj t c fs | n >= 0 && n < length fs ->
+            pure (RObj t c (take n fs ++ [newField] ++ drop (n + 1) fs))
+          _ -> stuck "a field store outside its statically typed constructor"
+        let replace r
+              | r == target = updated
+              | RObj t c fs <- r = RObj t c (map replace fs)
+              | otherwise = r
+            updateSlot k v
+              | k == valV = v
+              | VVal r <- v = VVal (replace r)
+              | otherwise = v
+        pure (M.mapWithKey updateSlot env)
       instr env (Instr d op) = do
         r <- opValue env op
         case (d, r) of
@@ -126,6 +142,7 @@ callFn width program name args = do
           _ -> stuck "unmanaged memory is outside the Core evaluator"
         OLoad {} -> stuck "unmanaged memory is outside the Core evaluator"
         OStore _ _ _ _ -> stuck "unmanaged memory is outside the Core evaluator"
+        OSetField {} -> stuck "internal: a field store with a result"
         OConstInt n -> pure (Just (VInt n))
         OHartCell _ -> pure (Just (VInt 0)) -- the evaluator allocates nothing: the clock never moves
         ORegionRoom _ -> pure (Just (VPred True))

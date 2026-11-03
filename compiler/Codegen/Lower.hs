@@ -324,7 +324,7 @@ foreignName h = not (any (`isPrefixOf` h) expanded) && h `notElem` inlined
     -- memory forms, link-time symbols and the inlined entry tick. F64/F32 use the declared runtime V ABI, not raw FP registers.
     -- A `$`-name outside them ($receiveLoop, $vec.at/get/len)
     -- is a direct C entry
-    expanded = ["$arc.", "$scalar.", "$mem.", "$sym.", entryTickName]
+    expanded = ["$arc.", "$scalar.", "$mem.", "$sym.", "$trmc.", entryTickName]
     -- the plain names lowered in place (arithOps, cmpOps, bitOps, shiftOps, the string primitives)
     inlined = ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "charAt", "strlen", "band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]
 
@@ -402,7 +402,10 @@ lowerTail cx env expr = ended (go expr) >> pure ()
 -- a let binder: a local alias shares the value; anything else is lowered
 lowerBind :: Cx -> Env -> Name -> Core -> L Env
 lowerBind cx env x a = case a of
-  CVar y | Just b <- M.lookup y env -> pure (M.insert x b env)
+  CVar y | Just b <- M.lookup y env ->
+    pure $ case M.lookup (pairSecond y) env of
+      Just second -> M.insert x b (M.insert (pairSecond x) second env)
+      Nothing -> M.insert x b env
   -- the call of a pair worker: both answer words are bound at once, the
   -- second right behind the call, under the name only a projection reads
   CApp _ _
@@ -629,6 +632,12 @@ lowerVal cx env = \case
       | isPrim cx env h, scalarPrefix `isPrefixOf` h, Just o <- M.lookup (drop (length scalarPrefix) h) cmpOps, [a, b] <- args -> compare' o a b
       -- an inlined callee's entry safepoint (Inline.hs); its value is Unit
       | h == entryTickName, [_] <- args -> when (polFuel (cxPolicy cx)) (emitDo OSafepoint) >> nullary 0 0
+      -- TRMC tail link store (Core.Opt.Trmc): overwrite field 1 of a uniquely owned Cons cell
+      | h == "$trmc.setTail", [obj, val] <- args, M.notMember h env -> do
+          o <- lowerVal cx env obj >>= asVal
+          v <- lowerVal cx env val >>= asVal
+          emitDo (OSetField 1 o v)
+          nullary 0 0
       -- a loop region's mark and back-edge test (docs/2026-10-25-REGIONS-LOOPS-CALLS.md):
       -- the hart's allocation clock is one hart-cell load; the test is a mask,
       -- a subtraction that cannot overflow (both sides lie in [0, mask]) and a
