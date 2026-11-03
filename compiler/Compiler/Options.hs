@@ -37,7 +37,7 @@ data DriverOptions = DriverOptions
   { driverCC :: Maybe String, driverCostProbe :: Bool, driverNoRunCache :: Bool,
     -- the layout-check build of the runtime (C1 piece 2a, slice 1): compare the
     -- (tid, variant) layout table against the allocator's field count
-    driverLayoutCheck :: Bool, driverLayoutFault :: Bool,
+    driverLayoutCheck :: Bool, driverLayoutFault :: Bool, driverLayoutReport :: Bool,
     driverForeign :: [FilePath] } deriving (Eq,Show)
 data CompilerOptions = CompilerOptions
   { codegenOptions :: CodegenOptions, diagnosticOptions :: DiagnosticOptions,
@@ -78,6 +78,7 @@ parseCompilerOptions env = do
       driver=DriverOptions
         { driverCC=env "FPR_CC", driverCostProbe=yes "FPR_COST_PROBE",
           driverLayoutCheck=yes "FPR_LAYOUT_CHECK", driverLayoutFault=yes "FPR_LAYOUT_FAULT",
+          driverLayoutReport=yes "FPR_LAYOUT_REPORT",
           driverNoRunCache=maybe False (not . null) (env "FPR_NO_RUN_CACHE"),
           driverForeign=maybe [] (filter (not . null) . split ':') (env "FPR_FOREIGN") }
   pure (CompilerOptions codegen diagnostic driver)

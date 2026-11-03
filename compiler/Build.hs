@@ -181,6 +181,7 @@ build configuration p = do
   let costProbe = Options.driverCostProbe driver
       layoutCheck = Options.driverLayoutCheck driver
       layoutFault = Options.driverLayoutFault driver
+      layoutReport = Options.driverLayoutReport driver
   let ctx = case tArch of
         "aarch64" -> "ctx_a64.S"
         "riscv64" -> "ctx_rv64.S"
@@ -205,7 +206,7 @@ build configuration p = do
         "aarch64" -> ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"]
         "riscv64" -> ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany"]
         _ -> []
-      cflags = archFlags ++ ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe] ++ ["-DFPR_LAYOUT_CHECK" | layoutCheck] ++ ["-DFPR_LAYOUT_FAULT" | layoutFault]
+      cflags = archFlags ++ ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe] ++ ["-DFPR_LAYOUT_CHECK" | layoutCheck] ++ ["-DFPR_LAYOUT_FAULT" | layoutFault] ++ ["-DFPR_LAYOUT_REPORT" | layoutReport]
       linux = if tOS == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
       -- when their source is newer: a warm build compiles the program

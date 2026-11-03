@@ -230,6 +230,82 @@ uw fpr_image_count(void) {
 }
 void (*fpr_pid_quiet)(uw pid);
 
+#ifdef FPR_LAYOUT_CHECK
+/* C1 piece 2a, slice 2.  The allocator's 16-byte preheader carries the object's
+ * total size in word 0; slice 3 replaces that read with a size derived from the
+ * object itself.  This build derives the size for every class and asserts it
+ * equals the preheader's, at every read of the preheader, so the derivation can
+ * become the authority without changing a layout.  FPR_LAYOUT_FAULT adds a row
+ * of slack so the check must stop the program rather than pass vacuously. */
+#define LAYOUT_ROUND(n) ((((n) + 15) & ~(uw)15))
+extern const uw fpr_layout_table[];
+static uw layout_arity(uw tid, uw var) {
+  uw n = fpr_layout_table[0];
+  for (uw i = 0; i < n; i++) {
+    const uw *e = &fpr_layout_table[1 + i * (uw)3];
+    if (e[0] == tid && e[1] == var) return e[2];
+  }
+  fpr_cpanic("layout check: the layout table has no entry for this constructor");
+  return 0;
+}
+/* total = rounded payload + the preheader, the way fpr_alloc computes it.  0 for
+ * an object that never had a cell (a static actor, device or register handle). */
+static uw layout_total(V v) {
+  uw raw;
+  switch (TID(v)) {
+    case T_STR: case T_SSTR: raw = sizeof(str_t) + ((str_t *)v)->len; break;
+    case T_BITS:
+      raw = (((bits_t *)v)->var == 4 || ((bits_t *)v)->var == 5)
+              ? sizeof(fpr_num64_t) : sizeof(bits_t);
+      break;
+    case T_PAP: raw = sizeof(pap_t) + ((pap_t *)v)->arity * sizeof(V); break;
+    case T_VEC: raw = sizeof(vec_t); break;
+    case T_ACTOR: case T_DEVICE: case T_REGISTER: return 0;
+    default: raw = sizeof(hdr_t) + sizeof(uw) * layout_arity(TID(v), ((hdr_t *)v)->var);
+  }
+  return LAYOUT_ROUND(raw) + 16;
+}
+#ifdef FPR_LAYOUT_REPORT
+static void praw(const char *s); /* declared for real further down */
+/* one line per class, so a harness can tell "the rule held" from "no object of
+ * that class was ever walked" -- the vacuity the first version of this check
+ * could not see */
+static uw layout_seen;
+static void layout_report(V v) {
+  uw bit;
+  const char *name;
+  switch (TID(v)) {
+    case T_STR: case T_SSTR: bit = 1; name = "string"; break;
+    case T_BITS: bit = 2; name = "bits"; break;
+    case T_PAP: bit = 4; name = "pap"; break;
+    case T_VEC: bit = 8; name = "vector"; break;
+    case T_ACTOR: case T_DEVICE: case T_REGISTER: return;
+    default: bit = 16; name = "constructor"; break;
+  }
+  if (layout_seen & bit) return;
+  layout_seen |= bit;
+  praw("[layout] verified ");
+  praw(name);
+  praw("\n");
+}
+#endif
+static uw preheader_total(V v) {
+  uw total = *(uw *)((char *)v - 16);
+  uw want = layout_total(v);
+#ifdef FPR_LAYOUT_FAULT
+  want = want ? want + 16 : 16;
+#endif
+  if (want != 0 && want != total)
+    fpr_cpanic("layout check: derived size disagrees with the allocation");
+#ifdef FPR_LAYOUT_REPORT
+  layout_report(v);
+#endif
+  return total;
+}
+#define PREHEADER(v) preheader_total(v)
+#else
+#define PREHEADER(v) (*(uw *)((char *)(v) - 16))
+#endif
 #ifndef FPR_BUILTIN
 int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
   /* a loaded process's IMAGE lives inside the span (the fixed slot)
@@ -668,7 +744,7 @@ V fpr_alloc_bulk(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, b
  * buddy_realloc already provides it. */
 V fpr_realloc(V v, V want) {
   if (!v) return fpr_alloc(want);
-  uw old = *(uw *)((char *)v - 16) - 16; /* payload capacity */
+  uw old = PREHEADER(v) - 16; /* payload capacity */
   if (old >= (uw)want) return v;
   V n = fpr_alloc(want);
   __builtin_memcpy((void *)n, (void *)v, old);
@@ -677,7 +753,7 @@ V fpr_realloc(V v, V want) {
 }
 V fpr_realloc_bulk(V v, V want) {
   if (!v) return fpr_alloc_bulk(want);
-  uw old = *(uw *)((char *)v - 16) - 16;
+  uw old = PREHEADER(v) - 16;
   if (old >= (uw)want) return v;
   V n = fpr_alloc_bulk(want);
   __builtin_memcpy((void *)n, (void *)v, old);
@@ -719,38 +795,6 @@ void fpr_free(V v) {
 
 #endif
 
-#ifdef FPR_LAYOUT_CHECK
-/* C1 piece 2a, slice 1.  Every walker derives a constructor's field count from
- * the allocator's 16-byte preheader: nfields = (total - 16 - 8) / W -- which is
- * the arity plus whatever rounding pad fpr_alloc zeroed.  The compiler emits
- * the arity per (tid, variant) in fpr_layout_table (compiler/Compile.hs), so
- * this build checks that the capacity implied by the table is exactly the one
- * the allocator produced, on every object a walker sees.  Agreement across the
- * differential suite is what lets the table -- not the preheader -- become the
- * authority when the preheader shrinks.
- * FPR_LAYOUT_FAULT adds a row of slack so the check must stop the program. */
-extern const uw fpr_layout_table[];
-static uw layout_arity(uw tid, uw var) {
-  uw n = fpr_layout_table[0];
-  for (uw i = 0; i < n; i++) {
-    const uw *e = &fpr_layout_table[1 + i * (uw)3];
-    if (e[0] == tid && e[1] == var) return e[2];
-  }
-  fpr_cpanic("layout check: the layout table has no entry for this constructor");
-  return 0;
-}
-static void layout_check(V v, uw total) {
-  uw ar = layout_arity(TID(v), ((hdr_t *)v)->var);
-  uw payload = ((8 + sizeof(uw) * ar) + 15) & ~(uw)15;
-#ifdef FPR_LAYOUT_FAULT
-  payload += 16;
-#endif
-  if (payload != total - 16)
-    fpr_cpanic("layout check: the layout table disagrees with the allocation");
-}
-#else
-#define layout_check(v, total) ((void)0)
-#endif
 
 /* ==== DEEP-COPY MESSAGE TRANSFER (the "it just works" send) ==========
  *
@@ -813,9 +857,8 @@ static void dc_release(V v) {
       return;
     }
     default: {
-      uw total = *(uw *)((char *)v - 16);
+      uw total = PREHEADER(v);
       uw nf = (total - 16 - 8) / sizeof(uw);
-      layout_check(v, total);
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) dc_release(f[i]);
       return;
@@ -914,7 +957,7 @@ static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
     return n;
   }
   if (dc_retained(v, retain)) return 0;
-  uw total = *(uw *)((char *)v - 16);
+  uw total = PREHEADER(v);
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_ACTOR: return 0; /* immortal acb: shared, not copied */
@@ -952,7 +995,7 @@ static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
       V c = v;
       while (!ISINT(c) && fpr_in_heap(c) && TID(c) == T_LIST &&
              ((hdr_t *)c)->var == 1 && !dc_retained(c, retain)) {
-        n += *(uw *)((char *)c - 16);
+        n += PREHEADER(c);
         n += dc_size_in(*(V *)((char *)c + 8), retain, immutable); /* head */
         c = *(V *)((char *)c + 8 + sizeof(uw));
       }
@@ -962,14 +1005,12 @@ static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
        * allocation's padding and follow garbage, which hung a send forever);
        * or an improper tail */
       if (dc_retained(c, retain)) return n;
-      if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST) return n + *(uw *)((char *)c - 16);
+      if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST) return n + PREHEADER(c);
       return n + dc_size_in(c, retain, immutable);
     }
     default: { /* uniform-V constructor: derive field count */
-      layout_check(v, total);
       if (h->tid == T_LIST) return total; /* a heap nil reached directly (var 0): no fields */
       uw nf = (total - 16 - 8) / sizeof(uw);
-      layout_check(v, total);
       uw n = total;
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) n += dc_size_in(f[i], retain, immutable);
@@ -1001,7 +1042,7 @@ static int dc_budget(V v, uw *left, unsigned depth) {
     if (raw > (uw)-1 - 31 || !budget_take(left, dc_cellsz(raw))) return 0;
     return TID(v) != T_RESULT || dc_budget(*(V *)((char *)v + 8), left, depth + 1);
   }
-  uw total = *(uw *)((char *)v - 16);
+  uw total = PREHEADER(v);
   switch (TID(v)) {
     case T_ACTOR: return 1;
     case T_VEC: {
@@ -1033,18 +1074,17 @@ static int dc_budget(V v, uw *left, unsigned depth) {
     case T_LIST: {
       V c = v;
       while (!ISINT(c) && fpr_in_heap(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1) {
-        if (!budget_take(left, *(uw *)((char *)c - 16)) ||
+        if (!budget_take(left, PREHEADER(c)) ||
             !dc_budget(*(V *)((char *)c + 8), left, depth + 1)) return 0;
         c = *(V *)((char *)c + 8 + sizeof(uw));
       }
       if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST)
-        return budget_take(left, *(uw *)((char *)c - 16));
+        return budget_take(left, PREHEADER(c));
       return dc_budget(c, left, depth + 1);
     }
     default: {
       if (!budget_take(left, total)) return 0;
       uw nf = (total - 16 - 8) / sizeof(uw);
-      layout_check(v, total);
       V *fields = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) if (!dc_budget(fields[i], left, depth + 1)) return 0;
       return 1;
@@ -1097,7 +1137,7 @@ static V dc_dup(V v, dctx_t *c) {
     return n;
   }
   if (c && dc_retained(v, c->retain)) return v;
-  uw total = *(uw *)((char *)v - 16);
+  uw total = PREHEADER(v);
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: {
@@ -1172,7 +1212,7 @@ static V dc_dup(V v, dctx_t *c) {
       V cur = v;
       while (!ISINT(cur) && fpr_in_heap(cur) && TID(cur) == T_LIST &&
              ((hdr_t *)cur)->var == 1 && !(c && dc_retained(cur, c->retain))) {
-        V n = dc_cell(cur, c, *(uw *)((char *)cur - 16));
+        V n = dc_cell(cur, c, PREHEADER(cur));
         if (c->overflow) return 0;
         *patch = n;
         *(V *)((char *)n + 8) = dc_dup(*(V *)((char *)cur + 8), c);
@@ -1185,7 +1225,6 @@ static V dc_dup(V v, dctx_t *c) {
     }
     default: {
       uw nf = (total - 16 - 8) / sizeof(uw);
-      layout_check(v, total);
       V n = dc_cell(v, c, total);
       if (c->overflow) return 0;
       V *f = (V *)((char *)n + 8);
@@ -1421,7 +1460,7 @@ V fpr_msg_copy_fresh(V v) { return msg_copy_in(v, 1, fpr_current_pid()); }
  * model needs. */
 static V kp_dup(V v) {
   if (ISINT(v) || !v || !fpr_in_heap(v)) return v;
-  uw total = *(uw *)((char *)v - 16);
+  uw total = PREHEADER(v);
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: {
@@ -1486,7 +1525,7 @@ static V kp_dup(V v) {
       V cur = v;
       while (!ISINT(cur) && fpr_in_heap(cur) && TID(cur) == T_LIST &&
              ((hdr_t *)cur)->var == 1) {
-        uw t = *(uw *)((char *)cur - 16);
+        uw t = PREHEADER(cur);
         V n = fpr_alloc(t - 16);
         __builtin_memcpy((void *)n, (void *)cur, t - 16);
         *patch = n;
@@ -1499,7 +1538,6 @@ static V kp_dup(V v) {
     }
     default: {
       uw nf = (total - 16 - 8) / sizeof(uw);
-      layout_check(v, total);
       V n = fpr_alloc(total - 16);
       __builtin_memcpy((void *)n, (void *)v, total - 16);
       V *f = (V *)((char *)n + 8);
@@ -1530,7 +1568,7 @@ static int kp_reaches(V v, uw *left) {
           for (uw i = 0; i < x->len; i++) if (kp_reaches((V)x->cols[k]->base[i], left)) return 1;
       return 0;
     }
-    uw total = *(uw *)((char *)v - 16);
+    uw total = PREHEADER(v);
     if (total >= *left) return 1;
     *left -= total;
     switch (h->tid) {
@@ -1547,7 +1585,6 @@ static int kp_reaches(V v, uw *left) {
         continue;
       default: {
         uw nf = (total - 16 - 8) / sizeof(uw);
-        layout_check(v, total);
         V *f = (V *)((char *)v + 8);
         for (uw i = 0; i < nf; i++) if (kp_reaches(f[i], left)) return 1;
         return 0;
@@ -1606,9 +1643,8 @@ static int has_vec(V v) {
       return has_vec(c);
     }
     default: {
-      uw total = *(uw *)((char *)v - 16);
+      uw total = PREHEADER(v);
       uw nf = (total - 16 - 8) / sizeof(uw);
-      layout_check(v, total);
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++)
         if (has_vec(f[i])) return 1;
@@ -1645,9 +1681,8 @@ static void vec_release_in(V v) {
       return;
     }
     default: {
-      uw total = *(uw *)((char *)v - 16);
+      uw total = PREHEADER(v);
       uw nf = (total - 16 - 8) / sizeof(uw);
-      layout_check(v, total);
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) vec_release_in(f[i]);
       return;
@@ -3531,7 +3566,7 @@ static int veq(V a0, V b0) {
        * capacity and zero padding are not part of a list's value. */
       nf = ((hdr_t *)a)->var == 1 ? 2 : 0;
     } else {
-      uw ta = *(uw *)((char *)a - 16), tb = *(uw *)((char *)b - 16);
+      uw ta = PREHEADER(a), tb = PREHEADER(b);
       if (ta != tb) { eq = 0; break; }
       if (ta < 24) continue;
       nf = (ta - 16 - 8) / sizeof(uw);

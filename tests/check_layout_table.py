@@ -11,8 +11,10 @@ for every object a walker sees, so the table can become the authority before the
 preheader shrinks.
 
 Per program: the check build must match the plain build's output and exit code
-(no behaviour change), and a build with FPR_LAYOUT_FAULT -- which adds a row of
-slack to the looked-up size -- must panic, so the check cannot pass vacuously.
+(no behaviour change); a build with FPR_LAYOUT_FAULT -- which adds a row of
+slack to the derived size -- must panic, so the check cannot pass vacuously; and
+a build with FPR_LAYOUT_REPORT must name every class the program drives through
+the preheader, so a rule cannot pass by never running.
 """
 from pathlib import Path
 import os
@@ -38,11 +40,16 @@ echoList : unsafe Int -> p36 .
 echoList me =
   m = receive me;
   case m of (replyTo, xs) -> send replyTo (List.length xs) >> echoList me .
+echoAny : unsafe Int -> p36 .
+echoAny me =
+  m = receive me;
+  case m of (replyTo, s) -> send replyTo (String.len (str s)) >> echoAny me .
 main =
   me = myself 0;
   s = spawn echoShape;
   p = spawn echoPoint;
   l = spawn echoList;
+  a = spawn echoAny;
   _ = send s (me, Box 3 4);
   _ = print (str (receive me));
   _ = send s (me, Dot);
@@ -52,8 +59,20 @@ main =
   _ = send l (me, List.range 1 10);
   _ = print (str (receive me));
   _ = send l (me, List.map (fn x -> x * 2) (List.range 1 5));
+  _ = print (str (receive me));
+  # a heap string and a capturing closure: the classes a literal cannot reach
+  text = strcat "hel" "lo";
+  _ = send a (me, text);
+  _ = print (str (receive me));
+  n = 5;
+  f = (fn y -> y + n);
+  _ = send a (me, f);
   print (str (receive me)).
 '''
+
+# classes each program must drive through the preheader
+CLASSES = {'messages': {'constructor', 'string', 'pap'},
+           'actors': {'constructor'}}
 
 
 def run(args, env, timeout):
@@ -90,17 +109,25 @@ def main():
             fault, fault_env = build(path, f'{name}-fault',
                                      {'FPR_LAYOUT_CHECK': '1', 'FPR_LAYOUT_FAULT': '1'},
                                      f'cache-{name}-fault')
+            report, report_env = build(path, f'{name}-report',
+                                       {'FPR_LAYOUT_CHECK': '1', 'FPR_LAYOUT_REPORT': '1'},
+                                       f'cache-{name}-report')
             obs = [run([exe], env, 60) for exe, env in
                    ((plain, plain_env), (check, check_env))]
             assert obs[0].returncode == 0, (name, obs[0].stdout, obs[0].stderr)
             assert (obs[1].returncode, obs[1].stdout) == (obs[0].returncode, obs[0].stdout), (
                 name, obs[1].returncode, obs[1].stdout, obs[1].stderr)
+            watched = run([report], report_env, 60)
+            verified = {line.split('verified ')[1].strip()
+                        for line in (watched.stdout + watched.stderr).splitlines()
+                        if '[layout] verified' in line}
+            assert CLASSES[name] <= verified, (name, sorted(verified))
             broken = run([fault], fault_env, 60)
             seen = broken.stdout + broken.stderr
             assert broken.returncode != 0 and 'layout check' in seen, (
                 name, broken.returncode, seen[-1500:])
             print(f'Layout table {name}: check build agrees with the allocator; '
-                  f'fault injection panics PASS', flush=True)
+                  f'classes {sorted(verified)}; fault injection panics PASS', flush=True)
 
 
 if __name__ == '__main__':
