@@ -1162,8 +1162,30 @@ compileWithReport accepted report = do
                                 "    " ++ dir ++ " " ++ show ar, "    " ++ dir ++ " .Lfprcon" ++ show i ]
                             | (i, (tid, var, ar, _)) <- zip [0 :: Int ..] conRows ]
                   ++ [ "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "" ]
+          -- C1 piece 2a, slice 1: (tid, variant) -> field count for every
+          -- constructor cell in the image. The runtime reads it only when it is
+          -- built with FPR_LAYOUT_CHECK, where every walker asserts that the
+          -- count it derives from the preheader agrees with this table; that is
+          -- what makes the table -- not the preheader -- the authority later.
+          layoutRows = M.toList (M.fromList (
+                         [ ((tid, var), ar) | (_, (tid, var, ar)) <- M.toList consAll, tid >= 0 ]
+                         -- record shapes: a record cell carries its field count in
+                         -- the variant word (Core.Typed.Erase's RecordValue), so the
+                         -- table is keyed by it; var 0 also answers the name table.
+                         ++ concat [ [ ((sid, length fs), length fs), ((sid, 0), length fs) ]
+                                   | (fs, sid) <- M.toList shapes ]))
+          layoutTab
+            -- the same owners as the name table: a library unit or the builtin
+            -- profile has no runtime.c allocator reading this table, and a
+            -- second definition would collide at link time
+            | oBuiltin opts || oLib opts || oPlugin opts = ""
+            | otherwise = unlines $
+                [ "", "# constructor layout: count, then (tid, variant, fields) triples", "    .balign 8", "    .globl fpr_layout_table", "fpr_layout_table:" ]
+                  ++ [ "    " ++ dir ++ " " ++ show (length layoutRows) ]
+                  ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var, "    " ++ dir ++ " " ++ show ar ]
+                            | ((tid, var), ar) <- layoutRows ]
       let rootAsm = moduleFinal (unlines (["# typed IR: no translation"] ++ emNative rootEmission ++ emData rootEmission
-                                   ++ dataSyntax directFormat (lines conTab))) ++ unlines (concat tramps)
+                                   ++ dataSyntax directFormat (lines conTab ++ lines layoutTab))) ++ unlines (concat tramps)
           directFormat = if a64mac || x64mac then MachO else ELF
       directCheck "root" rootEmission
       mapM_ putStrLn rootVNotes

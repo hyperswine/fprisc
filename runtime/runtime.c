@@ -719,6 +719,39 @@ void fpr_free(V v) {
 
 #endif
 
+#ifdef FPR_LAYOUT_CHECK
+/* C1 piece 2a, slice 1.  Every walker derives a constructor's field count from
+ * the allocator's 16-byte preheader: nfields = (total - 16 - 8) / W -- which is
+ * the arity plus whatever rounding pad fpr_alloc zeroed.  The compiler emits
+ * the arity per (tid, variant) in fpr_layout_table (compiler/Compile.hs), so
+ * this build checks that the capacity implied by the table is exactly the one
+ * the allocator produced, on every object a walker sees.  Agreement across the
+ * differential suite is what lets the table -- not the preheader -- become the
+ * authority when the preheader shrinks.
+ * FPR_LAYOUT_FAULT adds a row of slack so the check must stop the program. */
+extern const uw fpr_layout_table[];
+static uw layout_arity(uw tid, uw var) {
+  uw n = fpr_layout_table[0];
+  for (uw i = 0; i < n; i++) {
+    const uw *e = &fpr_layout_table[1 + i * (uw)3];
+    if (e[0] == tid && e[1] == var) return e[2];
+  }
+  fpr_cpanic("layout check: the layout table has no entry for this constructor");
+  return 0;
+}
+static void layout_check(V v, uw total) {
+  uw ar = layout_arity(TID(v), ((hdr_t *)v)->var);
+  uw payload = ((8 + sizeof(uw) * ar) + 15) & ~(uw)15;
+#ifdef FPR_LAYOUT_FAULT
+  payload += 16;
+#endif
+  if (payload != total - 16)
+    fpr_cpanic("layout check: the layout table disagrees with the allocation");
+}
+#else
+#define layout_check(v, total) ((void)0)
+#endif
+
 /* ==== DEEP-COPY MESSAGE TRANSFER (the "it just works" send) ==========
  *
  * The four blood-paid laws -- copy-on-retain, never-send-live-state,
@@ -782,6 +815,7 @@ static void dc_release(V v) {
     default: {
       uw total = *(uw *)((char *)v - 16);
       uw nf = (total - 16 - 8) / sizeof(uw);
+      layout_check(v, total);
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) dc_release(f[i]);
       return;
@@ -932,8 +966,10 @@ static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
       return n + dc_size_in(c, retain, immutable);
     }
     default: { /* uniform-V constructor: derive field count */
+      layout_check(v, total);
       if (h->tid == T_LIST) return total; /* a heap nil reached directly (var 0): no fields */
       uw nf = (total - 16 - 8) / sizeof(uw);
+      layout_check(v, total);
       uw n = total;
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) n += dc_size_in(f[i], retain, immutable);
@@ -1008,6 +1044,7 @@ static int dc_budget(V v, uw *left, unsigned depth) {
     default: {
       if (!budget_take(left, total)) return 0;
       uw nf = (total - 16 - 8) / sizeof(uw);
+      layout_check(v, total);
       V *fields = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) if (!dc_budget(fields[i], left, depth + 1)) return 0;
       return 1;
@@ -1148,6 +1185,7 @@ static V dc_dup(V v, dctx_t *c) {
     }
     default: {
       uw nf = (total - 16 - 8) / sizeof(uw);
+      layout_check(v, total);
       V n = dc_cell(v, c, total);
       if (c->overflow) return 0;
       V *f = (V *)((char *)n + 8);
@@ -1461,6 +1499,7 @@ static V kp_dup(V v) {
     }
     default: {
       uw nf = (total - 16 - 8) / sizeof(uw);
+      layout_check(v, total);
       V n = fpr_alloc(total - 16);
       __builtin_memcpy((void *)n, (void *)v, total - 16);
       V *f = (V *)((char *)n + 8);
@@ -1508,6 +1547,7 @@ static int kp_reaches(V v, uw *left) {
         continue;
       default: {
         uw nf = (total - 16 - 8) / sizeof(uw);
+        layout_check(v, total);
         V *f = (V *)((char *)v + 8);
         for (uw i = 0; i < nf; i++) if (kp_reaches(f[i], left)) return 1;
         return 0;
@@ -1568,6 +1608,7 @@ static int has_vec(V v) {
     default: {
       uw total = *(uw *)((char *)v - 16);
       uw nf = (total - 16 - 8) / sizeof(uw);
+      layout_check(v, total);
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++)
         if (has_vec(f[i])) return 1;
@@ -1606,6 +1647,7 @@ static void vec_release_in(V v) {
     default: {
       uw total = *(uw *)((char *)v - 16);
       uw nf = (total - 16 - 8) / sizeof(uw);
+      layout_check(v, total);
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) vec_release_in(f[i]);
       return;
