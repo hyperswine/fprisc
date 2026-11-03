@@ -97,7 +97,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 30 -- OMake as the inline bump (BumpAlloc); prior: OSetField
+a64SelectionRev = 31 -- OVariantTest checks the Int bit and typeid; prior: OMake as the inline bump
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -504,16 +504,24 @@ selectInstr cfg _ (Instr d op) = case op of
     emitL miss
     emitI (li r 0)
     emitL done
-  OVariantTest c v -> def $ \r -> do
-    var <- freshV False
-    emitI (ldrsw var (vreg v) 4)
-    if c >= 0 && c < 4096
-      then emitI (cmpi var (fromIntegral c))
-      else do
-        want <- freshV False
-        emitI (li want (fromIntegral c))
-        emitI (cmp var want)
+  -- OTagTest's answer with one header load: typeid (+0) and variant (+4)
+  -- compared as one little-endian word, after the Int check
+  OVariantTest t c v -> def $ \r -> do
+    miss <- freshL "varno"
+    done <- freshL "vardone"
+    bit <- freshV False
+    emitI (rri A.AndImmediate bit (vreg v) 1)
+    emitI (cbnz bit miss)
+    hdr <- freshV False
+    want <- freshV False
+    emitI (plain (O.A64 A.LoadField) [any' hdr] [any' (vreg v), OI 0])
+    emitI (li want (headerWord t c))
+    emitI (cmp hdr want)
     emitI (cset O.Equal r)
+    emitI (jump done)
+    emitL miss
+    emitI (li r 0)
+    emitL done
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
   -- the difference-bound proof removed the fit check; Mul/Div keep theirs

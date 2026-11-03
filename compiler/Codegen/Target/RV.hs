@@ -28,7 +28,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 30 -- OMake as the inline bump (BumpAlloc); prior: OSetField
+rvSelectionRev = 31 -- OVariantTest checks the Int bit and typeid; prior: OMake as the inline bump
 
 -- Native startup, shared by every RVV unit. The runtime calls the surviving
 -- COMDAT definition on each hart; ordinary builds retain its weak no-op.
@@ -301,11 +301,20 @@ select cfg fn = do
         loadAt R.Load32 actual (vreg v) 0; li want (fromIntegral t); rr (R.Compare Ne) bad actual want; branch bad miss
         loadAt R.Load32 actual (vreg v) 4; li want (fromIntegral variant); rr (R.Compare Eq) d actual want; jump done
         mark miss; li d 0; mark done
-      OVariantTest variant v -> do
-        actual <- fresh; want <- fresh
-        loadAt R.Load32 actual (vreg v) 4
-        li want (fromIntegral variant)
-        rr (R.Compare Eq) d actual want
+      -- OTagTest's answer; RV64 compares the whole header word at once
+      OVariantTest t variant v -> do
+        miss <- freshLabel; done <- freshLabel
+        bit <- fresh; ri R.AndImmediate bit (vreg v) 1; branch bit miss
+        if cfgWidth cfg == W64
+          then do
+            hdr <- fresh; want <- fresh
+            loadAt R.Load64 hdr (vreg v) 0; li want (headerWord t variant); rr (R.Compare Eq) d hdr want
+          else do
+            actual <- fresh; want <- fresh; bad <- fresh
+            loadAt R.Load32 actual (vreg v) 0; li want (fromIntegral t); rr (R.Compare Ne) bad actual want; branch bad miss
+            loadAt R.Load32 actual (vreg v) 4; li want (fromIntegral variant); rr (R.Compare Eq) d actual want
+        jump done
+        mark miss; li d 0; mark done
       OMake t variant fs
         -- the inline bump (docs/2026-11-03-INLINE-BUMP-ALLOC.md): hosted
         -- Linux RV64 reads its own hart through TLS; bare-metal tp images

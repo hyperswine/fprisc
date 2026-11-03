@@ -39,7 +39,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 29 -- OMake as the inline bump (BumpAlloc); prior: OSetField
+x64SelectionRev = 30 -- OVariantTest checks the Int bit and typeid; prior: OMake as the inline bump
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -448,11 +448,24 @@ selectInstr cfg _ (Instr d op) = case op of
     emitL miss
     emitI (li r 0)
     emitL done
-  OVariantTest c v -> def $ \r -> do
-    var <- freshV False
-    emitI (ldrsw var (vreg v) 4)
-    emitI (cmpi var (fromIntegral c))
+  -- OTagTest's answer with one header load: typeid (+0) and variant (+4)
+  -- compared as one little-endian word, after the Int check
+  OVariantTest t c v -> def $ \r -> do
+    miss <- freshL "varno"
+    done <- freshL "vardone"
+    bit <- freshV False
+    emitI (rri O.AndImmediate bit (vreg v) 1)
+    emitI (cbnz bit miss)
+    hdr <- freshV False
+    want <- freshV False
+    emitI (plain (O.X64 O.LoadField) [any' hdr] [any' (vreg v), OI 0])
+    emitI (li want (headerWord t c))
+    emitI (cmp hdr want)
     emitI (cset O.Equal r)
+    emitI (jump done)
+    emitL miss
+    emitI (li r 0)
+    emitL done
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
   -- the difference-bound proof removed the fit check; Mul/Div keep theirs

@@ -65,6 +65,28 @@ stepChainFn=Fn "stepChain" ["i","n"] TInt (BId 0)
    Block (BId 2) [] [Instr (Just (VId 8,TInt)) (OConstInt 0)] (TRet (VId 8)),
    Block (BId 3) [] [] (TRet (VId 6))]
 
+-- A ladder of guards a_i < a_{i+1}, a_i < b_{i+1}, b_i < a_{i+1} and
+-- b_i < b_{i+1}: the fact graph from a_0 to b_k has 2^k paths. The final
+-- a_0 < b_k holds by any of them (a_0 - b_k <= -k), so its branch threads.
+-- The old search walked every simple path and never finished at this size
+-- (QOS's guishell main, 2026-11-03 pin trial); shortest distances do.
+ladderK=30 :: Int -- 62 parameters, under the arity ceiling
+ladderFn=Fn "ladder" (map show [0..2*ladderK+1]) TInt (BId 0) (guards++[final,yes,no])
+  where
+    a i=VId i
+    b i=VId (ladderK+1+i)
+    pairs=concat [[(a i,a (i+1)),(a i,b (i+1)),(b i,a (i+1)),(b i,b (i+1))] | i<-[0..ladderK-1]]
+    n=length pairs
+    params=[(VId v,TInt) | v<-[0..2*ladderK+1]]
+    guards=[Block (BId j) (if j==0 then params else [])
+              [Instr (Just (VId (1000+j),TPred)) (OCmp Lt x y)]
+              (TCondBr (VId (1000+j)) (BId (j+1)) [] (BId (n+2)) [])
+           | (j,(x,y))<-zip [0..] pairs]
+    final=Block (BId n) [] [Instr (Just (VId 2000,TPred)) (OCmp Lt (a 0) (b ladderK))]
+      (TCondBr (VId 2000) (BId (n+1)) [] (BId (n+2)) [])
+    yes=Block (BId (n+1)) [] [Instr (Just (VId 2001,TInt)) (OConstInt 1)] (TRet (VId 2001))
+    no=Block (BId (n+2)) [] [Instr (Just (VId 2002,TInt)) (OConstInt 0)] (TRet (VId 2002))
+
 -- Acyclic join-block fact intersection: both arms of b0 establish `i < n`
 -- before jumping to join block b3, so `i + 1` in b3 discharges to OArithU.
 joinIntersectFn=Fn "joinIntersect" ["c","i","n"] TInt (BId 0)
@@ -172,5 +194,8 @@ main=do
        Left (Trap reason)->"Int overflow" `prefix` reason; _->False)
   check "a discharged counter reaches maxInt exactly without trapping"
     (ocResult (evalProgram fast "count" [RInt (maxI-1),RInt maxI,RInt 0])==Right (RInt (maxI-1)))
-  putStrLn "Interval discharge: guarded-counter proofs, step chains, join intersection, loop induction, producer bounds, cross-block sharing and evaluator differential PASS"
+  let (ladderSimpl,_)=either error id (simplifyFnWith on M.empty ladderFn)
+  check "ladder: the 2^30-path guard threads (shortest distances, not path search)"
+    (verifyFn M.empty ladderSimpl==Right () && length (condbrs ladderSimpl)==4*ladderK)
+  putStrLn "Interval discharge: guarded-counter proofs, step chains, join intersection, loop induction, producer bounds, the path ladder, cross-block sharing and evaluator differential PASS"
   where prefix p s=take (length p) s==p

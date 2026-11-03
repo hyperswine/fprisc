@@ -36,6 +36,31 @@ factsOf o x y = case o of
   Eq -> [(x, y, 0), (y, x, 0)]
   Ne -> []
 
+-- a fact a - b <= c as the edge a -> b of weight c, and reversed
+forward, backward :: [Fact] -> M.Map VId [(VId, Integer)]
+forward fs = edgesOf [(a, b, c) | (a, b, c) <- fs]
+backward fs = edgesOf [(b, a, c) | (a, b, c) <- fs]
+
+edgesOf :: [Fact] -> M.Map VId [(VId, Integer)]
+edgesOf fs = M.fromListWith (++)
+  [(a, [(b, c)]) | ((a, b), c) <- M.toList (M.fromListWith min [((a, b), c) | (a, b, c) <- fs, a /= b])]
+
+-- Shortest walk sums from src (src itself at 0). Relaxation runs from the
+-- nodes that improved last round and stops at a fixed point, or after as
+-- many rounds as there are nodes when contradictory facts make a negative
+-- cycle (an unreachable block, where every bound is vacuously sound).
+distances :: M.Map VId [(VId, Integer)] -> VId -> M.Map VId Integer
+distances adj src = go (M.size adj + 1) (M.singleton src 0) [src]
+  where
+    go :: Int -> M.Map VId Integer -> [VId] -> M.Map VId Integer
+    go 0 d _ = d
+    go _ d [] = d
+    go n d frontier =
+      let offers = M.fromListWith min
+            [ (w, dv + c) | v <- frontier, Just dv <- [M.lookup v d], (w, c) <- M.findWithDefault [] v adj ]
+          better = M.filterWithKey (\w nd -> maybe True (nd <) (M.lookup w d)) offers
+       in go (n - 1) (M.union better d) (M.keys better)
+
 discharge :: Width -> Fn -> Fn
 discharge width fn
   | not changed = fn
@@ -144,11 +169,12 @@ discharge width fn
     closeOnce :: [Fact] -> [Fact]
     closeOnce fs =
       let m0 = M.fromListWith min [((a, b), c) | (a, b, c) <- fs, a /= b]
+          out = M.fromListWith (++) [(a, [(b, c)]) | ((a, b), c) <- M.toList m0]
           m1 = M.fromListWith min
             [ ((a, c), k1 + k2)
             | ((a, b), k1) <- M.toList m0
-            , ((b', c), k2) <- M.toList m0
-            , b == b' && a /= c ]
+            , (c, k2) <- M.findWithDefault [] b out
+            , a /= c ]
        in [ (a, b, c) | ((a, b), c) <- M.toList (M.unionWith min m0 m1) ]
     endFactsOf p = M.findWithDefault [] p baseBlockFacts ++ M.findWithDefault [] p blockInstrFacts
     outFactsOnEdge p s = closeOnce (endFactsOf p ++ M.findWithDefault [] (p, s) edgeFacts)
@@ -172,31 +198,25 @@ discharge width fn
       [ (bid, M.findWithDefault [] bid baseBlockFacts ++ concat [M.findWithDefault [] s joinOwnFacts | s <- S.toList (M.findWithDefault S.empty bid doms)])
       | b <- fnBlocks fn, let bid = bId b ]
     -- Bounds under a given fact set and optional extra lower/upper maps.
-    ubWith extraUB fs = go S.empty
+    -- ub x = min over walks x -> v of (sum + v's own upper bound), and lb
+    -- the mirror over reversed facts. Any walk's sum is a valid bound, so
+    -- shortest distances give the same answers the old search over every
+    -- simple path did, in polynomial time: on a function of many diamonds
+    -- (QOS's guishell main) the path search never finished.
+    ubWith extraUB fs x = minimum'
+      [ d + own v | (v, d) <- M.toList (distances (forward fs) x) ]
       where
-        go seen x = minimum' (catMaybes (direct : extra : Just hi : map step toward))
-          where
-            direct = snd <$> M.lookup x producerBounds
-            extra = M.lookup x extraUB
-            toward = [(v, c) | (a, v, c) <- fs, a == x]
-            step (v, c) = if S.member v seen then Nothing else (+ c) <$> go (S.insert x seen) v
-    lbWith extraLB fs = go S.empty
+        own v = minimum (catMaybes [snd <$> M.lookup v producerBounds, M.lookup v extraUB, Just hi])
+    lbWith extraLB fs x = maximum'
+      [ own v - d | (v, d) <- M.toList (distances (backward fs) x) ]
       where
-        go seen x = maximum' (catMaybes (direct : extra : Just lo : map step toward))
-          where
-            direct = fst <$> M.lookup x producerBounds
-            extra = M.lookup x extraLB
-            toward = [(v, c) | (v, b, c) <- fs, b == x]
-            step (v, c) = if S.member v seen then Nothing else subtract c <$> go (S.insert x seen) v
+        own v = maximum (catMaybes [fst <$> M.lookup v producerBounds, M.lookup v extraLB, Just lo])
     minimum' xs = if null xs then Nothing else Just (minimum xs)
     maximum' xs = if null xs then Nothing else Just (maximum xs)
     diffUBWith extraLB extraUB fs a b =
-      minimum' (catMaybes (walk S.empty a : [Just (u - l) | Just u <- [ubWith extraUB fs a], Just l <- [lbWith extraLB fs b]]))
+      minimum' (catMaybes (walk : [Just (u - l) | Just u <- [ubWith extraUB fs a], Just l <- [lbWith extraLB fs b]]))
       where
-        walk seen x
-          | x == b = Just 0
-          | S.member x seen = Nothing
-          | otherwise = minimum' [c + d | (src, dst, c) <- fs, src == x, Just d <- [walk (S.insert x seen) dst]]
+        walk = M.lookup b (distances (forward fs) a)
     leq :: Maybe Integer -> Integer -> Bool
     leq (Just n) c = n <= c
     leq Nothing _ = False

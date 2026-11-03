@@ -188,9 +188,12 @@ callFn width program name args = do
           RSym s -> stuck ("a tag test on the immortal object " ++ s ++ ", whose typeid the evaluator does not model")
           RString _ -> pure (Just (VPred (t == 9000 && c == 0)))
           RPap _ _ -> pure (Just (VPred False)) -- T_PAP is no constructor's typeid
-        OVariantTest c v -> val env v >>= \case
-          RObj _ c' _ -> pure (Just (VPred (c == c')))
-          x -> stuck ("a variant test on a non-constructor value " ++ show x)
+        OVariantTest t c v -> val env v >>= \case
+          RObj t' c' _ -> pure (Just (VPred (t == t' && c == c')))
+          RInt _ -> pure (Just (VPred False))
+          RSym s -> stuck ("a variant test on the immortal object " ++ s ++ ", whose typeid the evaluator does not model")
+          RString _ -> pure (Just (VPred False))
+          RPap _ _ -> pure (Just (VPred False))
         OSymbol sym -> pure (Just (VVal (RSym sym)))
         OFunValue n -> pure (Just (VVal (RPap n [])))
         OApply f as -> do

@@ -26,7 +26,7 @@
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
     ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), simdCaptures, simdRegisters, ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign, calleeConvention,
-    Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
+    Op (..), headerWord, Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
   ) where
@@ -194,7 +194,9 @@ data Op
   | ONot VId -- TPred -> TPred
   | OIsInt VId -- TVal -> TPred: the tag bit (a tagged Int, not an object)
   | OTagTest Int Int VId -- TVal -> TPred: typeid and variant match (a tagged Int never matches)
-  | OVariantTest Int VId -- TVal -> TPred: constructor variant at +4 matches (nominal ADT type statically known)
+  | OVariantTest Int Int VId -- TVal -> TPred: same answer as OTagTest (an Int or another type is no match), but
+  -- the typeid and variant words are compared as one 64-bit header word. A nominal
+  -- type is not trusted: received messages are typed by their use, not checked.
   | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a core primitive's object (fpr_prim_obj_), a HAL contract (fpr_g_)
   | OFunValue Name -- :: TVal; a program function's static PAP (its arity, no arguments), owned by Codegen.NativeData
   | OApply VId [VId] -- TVal, TVal.. -> TVal: the generic application through the runtime (fpr_applyN): partial, over-saturated, or of a computed head; allocates PAPs in the runtime, calls anything
@@ -301,7 +303,7 @@ opEffect = \case
   ONot _ -> Pure
   OIsInt _ -> Pure
   OTagTest _ _ _ -> Pure
-  OVariantTest _ _ -> Pure
+  OVariantTest _ _ _ -> Pure
   OSymbol _ -> Pure
   OFunValue _ -> Pure
   OApply _ _ -> AnyEffect
@@ -361,7 +363,7 @@ opUses = \case
   ONot v -> [v]
   OIsInt v -> [v]
   OTagTest _ _ v -> [v]
-  OVariantTest _ v -> [v]
+  OVariantTest _ _ v -> [v]
   OSymbol _ -> []
   OFunValue _ -> []
   OApply f as -> f : as
@@ -430,7 +432,7 @@ mapOpUses f = \case
   ONot v -> ONot (f v)
   OIsInt v -> OIsInt (f v)
   OTagTest t c v -> OTagTest t c (f v)
-  OVariantTest c v -> OVariantTest c (f v)
+  OVariantTest t c v -> OVariantTest t c (f v)
   OSymbol s -> OSymbol s
   OFunValue n -> OFunValue n
   OApply h as -> OApply (f h) (map f as)
@@ -481,6 +483,11 @@ termSuccs = \case
 
 blockDefs :: Block -> [(VId, Ty)]
 blockDefs b = bParams b ++ [d | Instr (Just d) _ <- bInstrs b]
+
+
+-- An object's first word on a little-endian target: typeid at +0, variant at +4.
+headerWord :: Int -> Int -> Integer
+headerWord t c = toInteger c * 4294967296 + toInteger t
 
 -- the generated-code convention's arity ceiling: eight register arguments
 -- and the 56 per-hart spill cells (fpr.h FPR_ARGSPILL, Codegen.spillCells;

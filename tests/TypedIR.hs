@@ -557,7 +557,7 @@ main = do
   check "type-directed case shapes lower and verify"
     (null caseFailOn && null caseFailOff && verifyProgram caseOn == Right () && verifyProgram caseOff == Right ())
   check "nominal ADT case lowers to OVariantTest when polTypedCase is on"
-    ("vartest 0 " `isInfixOf` dumpFn (caseOn M.! "listCase") && not ("tagtest " `isInfixOf` dumpFn (caseOn M.! "listCase")))
+    ("vartest 2 0 " `isInfixOf` dumpFn (caseOn M.! "listCase") && not ("tagtest " `isInfixOf` dumpFn (caseOn M.! "listCase")))
   check "nominal ADT case lowers to OTagTest when polTypedCase is off"
     ("tagtest 2 0 " `isInfixOf` dumpFn (caseOff M.! "listCase") && not ("vartest " `isInfixOf` dumpFn (caseOff M.! "listCase")))
   check "record shape and single-constructor tuple tests keep OTagTest"
@@ -565,6 +565,10 @@ main = do
   check "OVariantTest and OTagTest agree on nominal ADT values"
     (and [evalProgram caseOn "listCase" [x] == evalProgram caseOff "listCase" [x]
          | x <- [RObj 2 0 [], RObj 2 1 [RInt 42, RObj 2 0 []]]])
+  -- a received value is typed by its use: a tuple or an Int is no List
+  check "OVariantTest rejects an Int and another type's object like OTagTest"
+    (and [evalProgram caseOn "listCase" [x] == evalProgram caseOff "listCase" [x]
+         | x <- [RInt 7, RObj 4 0 [RInt 1, RInt 2]]])
   -- Pair return alias lowering & dumpFn formatting, plus B2 TRMC OSetField lowering & evaluation
   let pairWorkerDef = (["n"], CMk 4 0 [var "n", app "+" [var "n", CInt 10]])
       pairCallerDef = (["n"], CLet "p" (app "$worker.ret2.mkp" [var "n"])

@@ -223,8 +223,11 @@ scalarPrefix = "$scalar."
 -- disjoint type IDs from record shapes (0x00010000 .. 0x0FF0FFFF) and
 -- single-constructor tuples (4, 5, 10..14, 0x10000000+). A scrutinee
 -- tested by CTagEq at these nominal sum types is statically typed as
--- that type, so its low bit is 0 and its type_id at +0 is t; only the
--- 32-bit variant word at +4 needs to be compared.
+-- that type, but the type is not a promise: `receive` (and the rest of
+-- the message primitives) return whatever was sent, typed by its use, and
+-- std/mvu's port relies on a mismatched message falling through to `_`.
+-- So OVariantTest still rejects an Int and checks the type_id; it only
+-- compares type_id and variant as one 64-bit header word.
 isStaticNominalTid :: Int -> Bool
 isStaticNominalTid t = t == 2 || t == 3 || (t >= 0x20000000 && t < 0x7F000000)
 
@@ -486,7 +489,7 @@ lowerVal cx env = \case
   CTagEq t v c -> do
     x <- lowerVal cx env c >>= asVal
     let op = if polTypedCase (cxPolicy cx) && isStaticNominalTid t
-               then OVariantTest v x
+               then OVariantTest t v x
                else OTagTest t v x
     p <- emit TPred op
     pure (p, TPred)

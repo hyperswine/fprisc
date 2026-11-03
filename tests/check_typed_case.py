@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""C1 Piece 1: type-directed case variant tests on statically-typed nominal ADTs."""
+"""C1 Piece 1: type-directed case variant tests on statically-typed nominal ADTs.
+
+The static type is not a promise for received values (receive is typed by its
+use), so the nominal test still rejects an Int and checks the typeid; it only
+compares typeid and variant as one header word (2026-11-04 fix).
+"""
 from pathlib import Path
 import os, re, subprocess, tempfile
 
@@ -39,7 +44,44 @@ main =
   b2 = updX b 35;
   print "{getX a2} {getX b2} {a2.y} {b2.z}".
 ''',
+    # a received tuple and a received Int are not Q's constructors: they fall to `_`
+    'receive_tuple': '''Q = Type (PA Int | PB Int).
+main =
+  me = myself 0;
+  _ = send me ("x", "y");
+  m = receive me;
+  r = case m of
+      PA x -> "PA"
+    | PB x -> "PB"
+    | _ -> "other";
+  print r.
+''',
+    'receive_int': '''Q = Type (PA Int | PB Int).
+main =
+  me = myself 0;
+  _ = send me 5;
+  m = receive me;
+  r = case m of
+      PA x -> "PA"
+    | PB x -> "PB"
+    | _ -> "other";
+  print r.
+''',
+    # std/mvu's port queues tuples beside its own PDrain/PBarrier messages
+    'receive_list': '''L = use "std/list".
+main =
+  me = myself 0;
+  _ = send me (1, 2);
+  m = receive me;
+  r = case m of
+      Nil -> "Nil"
+    | _ :: _ -> "Cons"
+    | _ -> "other";
+  print r.
+''',
 }
+
+EXPECTED = {'receive_tuple': 'other', 'receive_int': 'other', 'receive_list': 'other'}
 
 
 def run(args, env, timeout=180):
@@ -76,6 +118,8 @@ def main():
                 assert ran.returncode == 0, (name, disabled, ran.stdout, ran.stderr)
                 outputs[disabled] = (ran.returncode, ran.stdout, ran.stderr)
             assert outputs[False] == outputs[True], (name, outputs)
+            if name in EXPECTED:
+                assert outputs[False][1].strip() == EXPECTED[name], (name, outputs[False])
             print(f'Type-directed case differential: {name} -> {outputs[False][1].strip()} PASS', flush=True)
 
         # 2. Target codegen verification across x64, a64mac, and rv64 on nominal_adt & record_poly.
@@ -91,6 +135,11 @@ def main():
             body_on = fn_block(asm_on.read_text(), 'sumTree')
             body_off = fn_block(asm_off.read_text(), 'sumTree')
             assert 'tagno' not in body_on and 'tagdone' not in body_on, (target, body_on)
+            # the Int check survives, then one 64-bit header load at +0
+            if target in ('x64', 'a64mac'):
+                assert 'varno' in body_on, (target, body_on)
+            else:
+                assert re.search(r'andi \w+, \w+, 1\n\s+bnez', body_on) and re.search(r'ld \w+, 0\(', body_on), (target, body_on)
             if target in ('x64', 'a64mac'):
                 assert 'tagno' in body_off and 'tagdone' in body_off, (target, body_off)
             assert len(body_on.splitlines()) < len(body_off.splitlines()), (target, len(body_on.splitlines()), len(body_off.splitlines()))
@@ -102,7 +151,7 @@ def main():
             getx_body = fn_block(rec_asm.read_text(), 'getX')
             if target in ('x64', 'a64mac'):
                 assert 'tagno' in getx_body and 'tagdone' in getx_body, (target, getx_body)
-            print(f'Type-directed case target selection ({target}): nominal ADT branchless, record shape guarded PASS', flush=True)
+            print(f'Type-directed case target selection ({target}): nominal ADT one header load, record shape guarded PASS', flush=True)
 
 
 if __name__ == '__main__':
