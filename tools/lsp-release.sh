@@ -3,9 +3,9 @@
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 case "${1:-}" in
-  package|publish) ;;
+  package|publish|verify) ;;
   --help|-h) exec node "$root/lsp/tools/release.js" --help ;;
-  *) echo 'Usage: tools/lsp-release.sh package|publish [--dry-run]' >&2; exit 2 ;;
+  *) echo 'Usage: tools/lsp-release.sh package|publish|verify [--dry-run]' >&2; exit 2 ;;
 esac
 if [ "$#" -gt 2 ] || { [ "$#" -eq 2 ] && [ "$2" != --dry-run ]; }; then
   echo 'Unexpected release arguments (use --help)' >&2; exit 2

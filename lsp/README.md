@@ -323,8 +323,32 @@ contains the client, server, grammars and production dependencies; it does not
 bundle the compiler, tests, release tools or the rest of the compiler repository.
 The CI job builds the matching compiler, tests the extension and retains its VSIX.
 
-Publishing is explicit and requires authentication for publisher `hyperswine`
-configured for Microsoft's `vsce` tool:
+Publishing is explicit and uses the existing Marketplace publisher `hyperswine`.
+An Azure DevOps organization supplies the publishing identity/credential; it is
+separate from the Marketplace publisher and does not require moving or deleting
+the listing. The publisher is managed at
+[Manage Publishers & Extensions](https://marketplace.visualstudio.com/manage/publishers/hyperswine).
+
+For local publishing, put `AZURE_DEVOPS_PAT` (or `VSCE_PAT`) in `lsp/.env`, and
+restrict that file to your user (`chmod 600 lsp/.env`). The file is excluded from
+Git and the VSIX. Only authenticated `vsce` commands load it; tests, packaging
+and publish dry runs do not receive its contents. An explicit process `VSCE_PAT`,
+then `AZURE_DEVOPS_PAT`, overrides the local file. The helper does not save the
+credential in `vsce`'s credential store. Missing or empty publishing credentials
+fail rather than silently using an old saved credential.
+
+Verify publisher access without uploading anything:
+
+```sh
+/path/to/fprisc/tools/lsp-release.sh verify
+# Or, after npm ci inside lsp/: npm run verify:marketplace
+```
+
+The local PAT was verified for `hyperswine` on 3 November 2026. The signed-in
+Marketplace account already owns that publisher, so no publisher migration or
+removal was needed. This verification did not publish an extension version.
+
+Then package or publish explicitly:
 
 ```sh
 /path/to/fprisc/tools/lsp-release.sh publish --dry-run
@@ -339,6 +363,9 @@ Before each release, update the version and lock with
 package. Keep this new publisher identity stable for subsequent updates. No Marketplace publication is implied by a successful local package.
 
 See Microsoft's [publishing guide](https://code.visualstudio.com/api/working-with-extensions/publishing-extension).
+Its current guidance retires global Azure DevOps PATs on 1 December 2026;
+GitHub Trusted Publishing or an Entra-backed Azure Pipeline should replace
+local PAT publishing before then. That is a separate publishing-workflow change.
 
 Between saves the language server is a lightweight source scanner; type
 errors come from the compiler check on save. The scanner does not typecheck, infer generated codec members, enforce

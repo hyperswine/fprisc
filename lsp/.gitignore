@@ -2,3 +2,6 @@ node_modules/
 artifacts/
 *.vsix
 .DS_Store
+.env
+
+.env.*

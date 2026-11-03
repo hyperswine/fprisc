@@ -2,6 +2,10 @@ test/**
 node_modules/**/*.md
 node_modules/**/*.ts
 .npmrc
+.env
+.env.*
+**/.env
+**/.env.*
 artifacts/**
 .gitignore
 
