@@ -21,7 +21,9 @@ entryChecks stack fuel=case (stack,fuel) of
 entryOpcode :: EntryChecks -> O.CommonOp
 entryOpcode checks=case checks of StackAndFuel->O.EntryCheckTick;StackOnly->O.EntryCheck;FuelOnly->O.EntryTick
 
-data Embedded = CheckAndTick | CheckStack | Tick | CountedTick | StaticEntry | Apply | Panic | PushArgument deriving (Eq,Ord,Show)
+-- BumpAllocate: the inline bump allocation (docs/2026-11-03-INLINE-BUMP-ALLOC.md),
+-- whose refill calls fpr_alloc through the unit's register-saving wrapper
+data Embedded = CheckAndTick | CheckStack | Tick | CountedTick | StaticEntry | Apply | Panic | PushArgument | BumpAllocate deriving (Eq,Ord,Show)
 embedded :: O.Opcode -> Maybe Embedded
 embedded opcode=case opcode of
   O.Common op->case op of
@@ -30,6 +32,7 @@ embedded opcode=case opcode of
     O.EntryTick->Just Tick
     O.TickN->Just CountedTick
     O.EntryStatic->Just StaticEntry
+    O.BumpAlloc->Just BumpAllocate
     _->Nothing
   O.X64 O.ApplyN->Just Apply;O.X64 O.Panic->Just Panic;O.X64 O.Push->Just PushArgument
   O.A64 A.ApplyN->Just Apply;O.A64 A.Panic->Just Panic;O.A64 A.Push->Just PushArgument
@@ -45,6 +48,7 @@ protocolCalls protocol=map runtimeEvent $ case protocol of
   Panic->[PanicEntry]
   StaticEntry->[]
   PushArgument->[]
+  BumpAllocate->[AllocSaveEntry]
 
 -- Definitions on forwarded entry pseudos are preserved around their slow
 -- calls. A result definition is likewise not a clobbered value.
@@ -64,14 +68,16 @@ implicitDefs abi protocol=map Phys $ case protocol of
   PushArgument->case abi of X86_64->["rsp"];_->["sp"]
   Apply->case abi of AArch64->["x1","x2","sp"];X86_64->["rdi","rsi","rdx","rsp"];RiscV->["a1","a2","sp","t6"]
   Panic->case abi of AArch64->["x0"];X86_64->["rdi","rsp"];RiscV->["a0"]
+  -- the hart's slab, a scratch word, and the wrapper's size/cell register
+  BumpAllocate->case abi of AArch64->["x16","x17"];X86_64->["r10","r11","rsp"];RiscV->["t3","t4","t5"]
   _->case abi of AArch64->["x9","x10","x11","sp"];X86_64->["r10","r11","rax","rsp"];RiscV->["t3","t4","t5","sp"]
 implicitUses :: ABI -> Embedded -> [Phys]
 implicitUses abi protocol
-  | entry protocol=case abi of AArch64->[Phys "x28"];RiscV->[Phys "tp"];X86_64->[]
+  | entry protocol || protocol==BumpAllocate=case abi of AArch64->[Phys "x28"];RiscV->[Phys "tp"];X86_64->[]
   | otherwise=[]
 protocolFlags :: ABI -> Embedded -> Flags
 protocolFlags abi protocol
-  | abi/=RiscV && (entry protocol || protocol==Apply)=FlagsDef
+  | abi/=RiscV && (entry protocol || protocol `elem` [Apply,BumpAllocate])=FlagsDef
   | otherwise=FlagsNone
 protocolControl :: Embedded -> Control
 protocolControl Panic=Return
@@ -86,6 +92,8 @@ clobbers abi protocol defs
   -- a tick's slow path goes through the unit's register-saving wrapper
   -- (fpr_fuel_save_local): nothing allocatable is clobbered
   | protocol `elem` [Tick,CountedTick]=[]
+  -- so does the inline bump's refill (fpr_alloc_save_local)
+  | protocol==BumpAllocate=[]
   | otherwise=filter (`notElem` [p | d<-defs,Just p<-[physical d]]) (callerClobbers abi)
 
 checkProtocols :: ABI -> String -> [Item] -> Either String ()
@@ -104,6 +112,7 @@ checkProtocols abi owner items=do
             Apply->case (siDefs i,siUses i) of ([d],[OI n])->fixed (resultRegister abi) d && n>=1;_->False
             Panic->null (siDefs i) && case siUses i of [OAddr (StaticObject _)]->True;_->False
             CountedTick->null (siDefs i) && case siUses i of [OI n]->n>=1;_->False
+            BumpAllocate->case (siDefs i,siUses i) of ([OV _ _],[OI n])->n>=8;([OP _],[OI n])->n>=8;_->False
             _->siDefs i==siUses i && params (siDefs i)
       require "operand/target contract mismatch" shape
       require "runtime event contract mismatch" (siCalls i==protocolCalls protocol)

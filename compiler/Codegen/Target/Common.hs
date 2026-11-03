@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 -- Shared native output and symbol identity, independent of instruction set.
 module Codegen.Target.Common
-  ( ObjectFormat (..), NativeFn (..), usesTick, mangleName, functionSymbol, calleeCodeSymbol,
+  ( ObjectFormat (..), NativeFn (..), usesTick, usesBump, BumpCell (..), bumpCell, bumpSlabCell, bumpBucketsCell, bumpRegionCell, bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated, mangleName, functionSymbol, calleeCodeSymbol,
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
     boxedFloatLabel, boxedFloatObject,
@@ -123,7 +123,8 @@ data NativeFn = NativeFn
     nfNullaries :: [(Int, Int)], -- the unit-local nullary objects referenced
     nfStrings :: [String], -- the string literals referenced (an unreachable arm's reason); the unit emits one object per distinct text, `stringLabel`
     nfBoxedFloats :: [(IR.Width,Integer)], -- RV32 immutable numeric leaves, emitted once per IEEE width/bit pattern
-    nfTicks :: Bool -- a fuel tick calls the unit's register-saving wrapper (fpr_fuel_save_local)
+    nfTicks :: Bool, -- a fuel tick calls the unit's register-saving wrapper (fpr_fuel_save_local)
+    nfBumps :: Bool -- an inline bump's refill calls the unit's register-saving wrapper (fpr_alloc_save_local)
   }
 
 -- the symbol encoding of Codegen.mangle (ASCII alphanumerics stay, every
@@ -335,3 +336,38 @@ noTune = Tune False False False False
 -- the body has a fuel tick, whose slow path is the unit's saving wrapper
 usesTick :: [Item] -> Bool
 usesTick items = or [siOpcode i `elem` map Opcode.Common [Opcode.EntryCheckTick, Opcode.EntryTick, Opcode.TickN] | I i <- items]
+
+-- the body has an inline bump, whose refill is the unit's saving wrapper
+usesBump :: [Item] -> Bool
+usesBump items = or [siOpcode i == Opcode.Common Opcode.BumpAlloc | I i <- items]
+
+-- The inline bump allocation (docs/2026-11-03-INLINE-BUMP-ALLOC.md): the
+-- cell's footprint exactly as alloc_in computes it (the payload rounded to 16
+-- plus the 16-byte preheader), its bucket index, and the zero pad alloc_in
+-- writes after the payload.  Word offsets below are runtime/fpr.h's, pinned
+-- there by static assertions: hart cells 58-60 (region_bytes, bump_slab,
+-- bump_bkt), the slab's owner/hp/end words and the pool's allocated word.
+data BumpCell = BumpCell { bcRaw :: Integer, bcTotal :: Integer, bcIndex :: Integer, bcPad :: Maybe Integer }
+  deriving (Eq, Show)
+
+-- Nothing: this cell keeps the fpr_alloc call.  The bound is the RISC-V
+-- I-type immediate (signed 12 bits): every target adds the total as one
+-- immediate and reads the bucket head at 8*index from the bucket array, so a
+-- cell is inline when its total fits in 2032 bytes (250 fields); a larger
+-- cell is no less correct on the call path, and none exists in practice.
+bumpCell :: Integer -> Maybe BumpCell
+bumpCell raw
+  | raw <= 0 || total > 2032 = Nothing
+  | otherwise = Just (BumpCell raw total (total `div` 16 - 1) (if total - 16 - raw > 0 then Just raw else Nothing))
+  where total = ((raw + 15) `div` 16) * 16 + 16
+
+bumpRegionCell, bumpSlabCell, bumpBucketsCell :: Int
+bumpRegionCell = 58
+bumpSlabCell = 59
+bumpBucketsCell = 60
+-- in words: fpr_slab_t owner/hp/end, fpr_pool_t allocated
+bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated :: Integer
+bumpSlabOwner = 1
+bumpSlabHp = 4
+bumpSlabEnd = 5
+bumpPoolAllocated = 2

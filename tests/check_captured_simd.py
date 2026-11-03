@@ -41,7 +41,7 @@ def main():
                 if available is None:print('x64 execution SKIP');continue
                 mac,runner,label=available
             chosen=[b for n,b in bodies if n.split()[0] not in ('main','plus','mixedCap','probeMixed') and not n.startswith('$vkernel:fpr_vspec_fold_') and not n.startswith('lifted_')]
-            body='\n'.join(chosen)+fuel_wrapper(text)
+            body='\n'.join(chosen);body+=fuel_wrapper(text,body)
             objects=set(re.findall(r'\b_?(fpr_obj_[A-Za-z0-9_]+)',body))
             source=(ROOT/'tests/typed_ir/captured_simd_oracle.c').read_text()
             if target=='qx64':source=borrowed_oracle(source)

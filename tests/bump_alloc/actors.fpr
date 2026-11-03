@@ -1,0 +1,22 @@
+# the inline bump allocation under actors (docs/2026-11-03-INLINE-BUMP-ALLOC.md):
+# eight workers build and fold lists on their own pools while the hart loop
+# switches and migrates them, then send a list each to the boss, whose
+# receives copy it into its own pool.  Every switch closes the hart's window;
+# a cell bumped into another actor's slab would corrupt a sum below.
+L = use "std/list".
+build : unsafe Int -> Int -> List Int -> List Int .
+build n k acc = if n == 0 then acc else build (n - 1) k ((n * k) :: acc).
+churn : unsafe Int -> Int -> Int -> Int .
+churn r k acc = if r == 0 then acc else churn (r - 1) k (acc + L.sum (L.map (fn x -> x + 1) (build 20000 k Nil))).
+worker : unsafe Int -> Int -> Int -> Unit .
+worker boss k self = _ = send boss (churn 40 k 0, build 1000 k Nil); Unit.
+collect : unsafe Int -> List Int -> Int -> Int .
+collect me ws acc = case ws of
+    Nil -> acc
+  | w :: rest -> (case receiveFrom me w of (s, xs) -> collect me rest (acc + s + L.sum xs)).
+spawnAll : unsafe Int -> Int -> List Int -> List Int .
+spawnAll me k acc = if k == 0 then acc else spawnAll me (k - 1) (spawn (worker me k) :: acc).
+main =
+  me = myself 0;
+  ws = spawnAll me 8 Nil;
+  print "bumpactors {collect me ws 0}".

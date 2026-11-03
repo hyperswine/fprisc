@@ -11,13 +11,14 @@ import Control.Monad (unless,forM_)
 import qualified Data.Set as S
 
 data RestoreSupport=ConditionalRestores | AlwaysRestores deriving (Eq,Show)
-data EntryPoint=StackReady | SameStack | FuelReady deriving (Eq,Ord,Show)
+data EntryPoint=StackReady | SameStack | FuelReady | BumpRefill | BumpDone deriving (Eq,Ord,Show)
 
 entryPoints opcode=case opcode of
   O.Common O.EntryCheckTick->[StackReady,SameStack,FuelReady]
   O.Common O.EntryCheck->[StackReady,SameStack]
   O.Common O.EntryTick->[FuelReady]
   O.Common O.TickN->[FuelReady]
+  O.Common O.BumpAlloc->[BumpRefill,BumpDone] -- the inline bump's refill call and its join
   _->[]
 
 checkAnnotations :: RestoreSupport -> String -> [Item] -> Either String ()
@@ -59,5 +60,5 @@ checkSaveGroups owner count items=forM_ [k | I i<-items,SaveGroup k<-[siAnnotati
 entryLabel :: SInstr -> EntryPoint -> Label
 entryLabel i point=case siAnnotation i of
   EntryLabels (Label stem)->Label (stem++case point of
-    StackReady->"_stk";SameStack->"_same";FuelReady->"_fuel")
+    StackReady->"_stk";SameStack->"_same";FuelReady->"_fuel";BumpRefill->"_refill";BumpDone->"_bumped")
   _->error "selected renderer: missing checked entry-label annotation"

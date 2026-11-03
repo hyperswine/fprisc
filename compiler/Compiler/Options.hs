@@ -27,7 +27,7 @@ data CodegenOptions = CodegenOptions
   { nativeOptions :: NativeOptions, cgIndexedMemory :: Bool, cgFloatInline :: Bool,
     cgSimd :: Bool, cgFusion :: Bool, cgListFuse :: Bool, cgCaseKnown :: Bool, cgTypeSpec :: Bool, cgTypedCase :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgStringFast :: Bool, cgInterval :: Bool, cgLoopMotion :: Bool, cgEarlyLoops :: Bool, cgStringScan :: Bool,
     cgScalarWorkers :: Bool, cgTrmc :: Bool, cgTickBatch :: Bool, cgPairReturns :: Bool, cgFieldWorkers :: Bool, cgTupleScalars :: Bool, cgPipelineInline :: Bool,
-    cgReuse :: Bool, cgSpecialize :: Bool, cgReceiveTurns :: Bool,
+    cgReuse :: Bool, cgSpecialize :: Bool, cgReceiveTurns :: Bool, cgBumpAlloc :: Bool,
     cgLoopRegions :: Bool, cgCallRegions :: Bool, cgInline :: Bool } deriving (Eq,Show)
 data DiagnosticOptions = DiagnosticOptions
   { diagTypedIr :: Maybe String, diagReceiveNotes :: Bool, diagApply :: Bool,
@@ -38,6 +38,9 @@ data DriverOptions = DriverOptions
     -- the layout-check build of the runtime (C1 piece 2a, slice 1): compare the
     -- (tid, variant) layout table against the allocator's field count
     driverLayoutCheck :: Bool, driverLayoutFault :: Bool, driverLayoutReport :: Bool,
+    -- the bump-check build of the runtime: verify the inline bump window
+    -- against the current pool at every fuel tick and refill (2026-11-03)
+    driverBumpCheck :: Bool,
     driverForeign :: [FilePath] } deriving (Eq,Show)
 data CompilerOptions = CompilerOptions
   { codegenOptions :: CodegenOptions, diagnosticOptions :: DiagnosticOptions,
@@ -68,7 +71,7 @@ parseCompilerOptions env = do
           cgEarlyLoops=yes "FPR_TYPED_IR_EARLY_LOOPS" && nativeSelfLoops native,
           cgScalarWorkers=enabled "SCALAR_WORKERS", cgTrmc=enabled "TRMC", cgTickBatch=enabled "TICK_BATCH", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
-          cgReceiveTurns=enabled "RECEIVE_TURNS", cgLoopRegions=enabled "LOOP_REGIONS",
+          cgReceiveTurns=enabled "RECEIVE_TURNS", cgBumpAlloc=enabled "BUMP_ALLOC", cgLoopRegions=enabled "LOOP_REGIONS",
           cgCallRegions=enabled "CALL_REGIONS", cgInline=enabled "INLINE" }
       diagnostic=DiagnosticOptions
         { diagTypedIr=env "FPR_TYPED_IR", diagReceiveNotes=yes "FPR_RECEIVE_NOTES",
@@ -78,7 +81,7 @@ parseCompilerOptions env = do
       driver=DriverOptions
         { driverCC=env "FPR_CC", driverCostProbe=yes "FPR_COST_PROBE",
           driverLayoutCheck=yes "FPR_LAYOUT_CHECK", driverLayoutFault=yes "FPR_LAYOUT_FAULT",
-          driverLayoutReport=yes "FPR_LAYOUT_REPORT",
+          driverLayoutReport=yes "FPR_LAYOUT_REPORT", driverBumpCheck=yes "FPR_BUMP_CHECK",
           driverNoRunCache=maybe False (not . null) (env "FPR_NO_RUN_CACHE"),
           driverForeign=maybe [] (filter (not . null) . split ':') (env "FPR_FOREIGN") }
   pure (CompilerOptions codegen diagnostic driver)
@@ -125,7 +128,7 @@ optimizationFlags c = flag (cgLoopMotion c) "-licm" ++ flag (cgEarlyLoops c) "-e
   [flag (not enabled) suffix | (enabled,suffix)<-
     [(cgPipelineInline c,"-nopinline"),(cgReuse c,"-noreuse"),
      (cgScalarWorkers c,"-noscalar"),(cgTrmc c,"-notrmc"),(cgTickBatch c,"-notickbatch"),(cgPairReturns c,"-nopairret"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),
-     (cgTypeSpec c,"-notypespec"),(cgTypedCase c,"-notypedcase"),(cgIndexedMemory c,"-noidx"),(cgReceiveTurns c,"-nort"),
+     (cgTypeSpec c,"-notypespec"),(cgTypedCase c,"-notypedcase"),(cgBumpAlloc c,"-nobump"),(cgIndexedMemory c,"-noidx"),(cgReceiveTurns c,"-nort"),
      (cgLoopRegions c,"-nolr"),(cgCallRegions c,"-nocr"),
      (cgSpecialize c,"-nospec"),(cgInline c,"-noinl"),
      (cgFloatInline c,"-nof64"),(cgVecPeek c,"-novp"),(cgVectorFast c,"-novecfast"),(cgStringFast c,"-nostrfast"),(cgInterval c,"-nointerval")]]

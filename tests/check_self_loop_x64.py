@@ -32,7 +32,7 @@ def main():
             match = re.search(r"(?ms)^\s*\.globl fpr_fn_rotate2\n.*?(?=^# native-insns-v1:)",
                               assembly.read_text())
             assert match
-            selected = ".text\n" + match[0] + fuel_wrapper(match.string)
+            selected = ".text\n" + match[0] + fuel_wrapper(match.string, match[0])
             assert bool(re.search(r"^\.Ltir_rotate2_m3loop:", selected, re.M)) == (enabled == "1" and env.get('FPR_TYPED_IR_EARLY_LOOPS') != '1')
             assembly.write_text(adapt(selected, mac))
             exe = tmp / "oracle"

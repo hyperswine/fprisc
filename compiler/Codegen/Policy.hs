@@ -8,7 +8,7 @@
 -- use a fixed stack with manual ownership or nonmoving conservative GC.
 -- ARC uses the same fixed-stack contract after explicit ownership lowering.
 module Codegen.Policy
-  ( Profile (..), StackPolicy (..), Policy (..), RegisterBudget (..), registerBudget, m2Policy, validatePolicy, profileName, policyWidth,
+  ( Profile (..), StackPolicy (..), Policy (..), RegisterBudget (..), registerBudget, m2Policy, validatePolicy, profileName, policyWidth, bumpAllocates,
   ) where
 
 import Codegen.IR (Width (..))
@@ -40,6 +40,7 @@ data Policy = Policy
     polStringFast :: Bool, -- guarded scalar String length/byte reads; misses keep the original C entry
     polInterval :: Bool, -- discharge overflow checks and guards a difference-bound proof covers (Codegen.Interval)
     polTypedCase :: Bool, -- type-directed case variant tests on statically-typed nominal sum types (FPR_NO_TYPED_CASE=1 keeps full OTagTest)
+    polBumpAlloc :: Bool, -- constructor cells bump the hart's allocation window inline, fpr_alloc only on refill (FPR_NO_BUMP_ALLOC=1 keeps every allocation a call; hosted Base only: bumpAllocates)
     polRegisters :: Maybe RegisterBudget -- the target's allocatable registers, for passes that lengthen live ranges (Codegen.Pressure); Nothing: unlimited
   }
   deriving (Eq, Ord, Show)
@@ -62,7 +63,7 @@ registerBudget = \case
   _ -> Nothing
 
 m2Policy :: Policy
-m2Policy = Policy HostedBase True StackCheckEveryEntry True False False False True True True True Nothing
+m2Policy = Policy HostedBase True StackCheckEveryEntry True False False False True True True True True Nothing
 
 profileName :: Profile -> String
 profileName = \case
@@ -104,3 +105,10 @@ validatePolicy p = if polProfile p `elem` [HostedBase,QosApp,Rv32] && polStackCh
 -- Word width is separate from the fixed/growable-stack distinction.
 policyWidth :: Policy -> Width
 policyWidth p = if polProfile p `elem` [Rv32,Builtin32] then W32 else W64
+
+-- The inline bump fast path (docs/2026-11-03-INLINE-BUMP-ALLOC.md) needs the
+-- hosted runtime's hart window (runtime/fpr.h bump_slab), which only an image
+-- that owns its runtime and its harts keeps: a loaded QOS app and RV32 keep
+-- their allocation calls, and the builtin heaps have no slabs.
+bumpAllocates :: Policy -> Bool
+bumpAllocates p = polBumpAlloc p && polProfile p == HostedBase

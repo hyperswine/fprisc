@@ -804,6 +804,7 @@ compileWithReport accepted report = do
               polStringFast = Options.cgStringFast codegen,
               polInterval = Options.cgInterval codegen,
               polTypedCase = Options.cgTypedCase codegen,
+              polBumpAlloc = Options.cgBumpAlloc codegen,
               polRegisters = registerBudget (if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts)) }
           -- direct backends: the AArch64 hart read follows the
           -- target runtime ABI (x28 under fpr build, the TLV cell on a64mac

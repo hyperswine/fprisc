@@ -38,6 +38,7 @@ checkForms owner items=do
             O.LoadSpill->matches [word] ds && matches [immediate] us
             O.StoreSpill->null ds && matches [word,immediate] us
             O.Params->length ds<=6 && all word ds && null us
+            O.BumpAlloc->matches [word] ds && matches [immediate] us
           O.X64 op->case op of
             O.Move->one [word]
             O.Literal->one [immediate]

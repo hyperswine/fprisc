@@ -4,7 +4,7 @@
 -- the exact C primitives remain as the slow path, and
 -- the shared allocator handles calls, spills, parallel arguments and loops.
 module Codegen.Target.RV
-  ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV, emitFnRVWithSymbols, fuelSaveWrapper ) where
+  ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV, emitFnRVWithSymbols, fuelSaveWrapper, allocSaveWrapper ) where
 
 import qualified Codegen.Calling as Calling
 import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
@@ -28,7 +28,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 29 -- OSetField (TRMC field link store); prior: OVariantTest
+rvSelectionRev = 30 -- OMake as the inline bump (BumpAlloc); prior: OSetField
 
 -- Native startup, shared by every RVV unit. The runtime calls the surviving
 -- COMDAT definition on each hart; ordinary builds retain its weak no-op.
@@ -306,6 +306,16 @@ select cfg fn = do
         loadAt R.Load32 actual (vreg v) 4
         li want (fromIntegral variant)
         rr (R.Compare Eq) d actual want
+      OMake t variant fs
+        -- the inline bump (docs/2026-11-03-INLINE-BUMP-ALLOC.md): hosted
+        -- Linux RV64 reads its own hart through TLS; bare-metal tp images
+        -- (the QOS kernel and its plane processes) keep the call
+        | Just _ <- bumpCell raw, bumpAllocates (cfgPolicy cfg), cfgWidth cfg == W64, cfgHart cfg `elem` [HartTls, HartTlsIe] -> do
+            l <- freshLabel
+            emit (Protocol.selectProtocol Calling.RiscV ((plain (O.Common O.BumpAlloc) [anyV d] [OI raw]) {siAnnotation=EntryLabels l}))
+            forM_ [(0,t),(4,variant)] $ \(off,n) -> do h <- fresh; li h (fromIntegral n); storeAt R.Store32 d h off
+            forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord d (vreg v) (8+w*n)
+        where raw = 8 + w * fromIntegral (length fs)
       OMake t variant fs -> do
         size <- fresh; li size (8 + w * fromIntegral (length fs))
         if polProfile (cfgPolicy cfg) == BuiltinArc then do
@@ -485,6 +495,18 @@ fuelSaveWrapper width =
     ld = if width == W32 then "lw" else "ld"
     saved = "ra" : map (("t" ++) . show) [0 .. 6 :: Int] ++ map (("a" ++) . show) [0 .. 7 :: Int]
 
+-- The inline bump's refill: a unit-local wrapper saving ra, t0..t2, t6 and
+-- a0..a7 around fpr_alloc (t3..t5 are the bump's declared scratch); the raw
+-- size arrives in t3 and the cell returns in t3.  RV64 only.
+allocSaveWrapper :: [String]
+allocSaveWrapper =
+  ["    .text", "    .balign 4", Call.runtimeName Call.AllocSaveEntry ++ ":", "    addi sp, sp, -112"]
+  ++ ["    sd " ++ r ++ ", " ++ show (8 * k) ++ "(sp)" | (k, r) <- zip [0 :: Int ..] saved]
+  ++ ["    mv a0, t3", "    call " ++ Call.runtimeName Call.AllocEntry, "    mv t3, a0"]
+  ++ ["    ld " ++ r ++ ", " ++ show (8 * k) ++ "(sp)" | (k, r) <- zip [0 :: Int ..] saved]
+  ++ ["    addi sp, sp, 112", "    ret", ""]
+  where saved = ["ra", "t0", "t1", "t2", "t6"] ++ map (("a" ++) . show) [0 .. 7 :: Int]
+
 allocConfig :: RVConfig -> Fn -> S.Set VReg -> AllocConfig
 allocConfig cfg fn managed = AllocConfig
   { acCalleeSaved = saved, acCallerSaved = args, acScratch = scratch,
@@ -541,7 +563,7 @@ emitFnRVWithSymbols symbols cfg fn = do
           ++ visibilityLines ELF WeakDirective (visibilityFor (cfgWeak cfg) symbols name) (functionSymbol name)
           ++ [functionSymbol name ++ ":"]
   checkForms regFile name body
-  pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList (nulls st)) (S.toList (strings st)) (S.toList (boxedFloats st)) (usesTick body))
+  pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList (nulls st)) (S.toList (strings st)) (S.toList (boxedFloats st)) (usesTick body) (usesBump body))
   where
     token (ILabel (Label l),_) = [TLabel l]
     token (I i,ls) = [TIns (instructionCost ls)
@@ -617,6 +639,46 @@ render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else 
     hart = hartRead cfg
     l point = local fn (entryLabel i point)
     stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l StackReady, ("call " ++ Call.runtimeName Call.GrowStackEntry), "beqz a0, " ++ l SameStack, "mv sp, a0", l SameStack ++ ":"] ++ hart ++ [l StackReady ++ ":"]
+    -- The inline bump (Protocol BumpAllocate; runtime/fpr.h bump_slab): t3
+    -- is the hart and then the pool, t4 the window's slab, t5 a scratch word,
+    -- d the new cell's end and then the cell.  Every test precedes every
+    -- store; the refill passes the raw size in t3 and takes the cell in t3
+    -- from fpr_alloc_save_local, which preserves every allocatable register.
+    bump d c =
+      let t = bcTotal c
+          cell k = show (w * (1 + toInteger k))
+          wd k = show (w * k)
+          refill = l BumpRefill
+          done = l BumpDone
+       in hart
+          ++ [ "ld t4, " ++ cell bumpSlabCell ++ "(t3)",
+               "beqz t4, " ++ refill,
+               "ld t5, " ++ cell bumpBucketsCell ++ "(t3)",
+               "ld t5, " ++ show (8 * bcIndex c) ++ "(t5)",
+               "bnez t5, " ++ refill,
+               "ld " ++ d ++ ", " ++ wd bumpSlabHp ++ "(t4)",
+               "addi " ++ d ++ ", " ++ d ++ ", " ++ show t,
+               "ld t5, " ++ wd bumpSlabEnd ++ "(t4)",
+               "bltu t5, " ++ d ++ ", " ++ refill,
+               "sd " ++ d ++ ", " ++ wd bumpSlabHp ++ "(t4)",
+               "ld t5, " ++ cell bumpRegionCell ++ "(t3)",
+               "addi t5, t5, " ++ show t,
+               "sd t5, " ++ cell bumpRegionCell ++ "(t3)",
+               "ld t3, " ++ wd bumpSlabOwner ++ "(t4)",
+               "ld t5, " ++ wd bumpPoolAllocated ++ "(t3)",
+               "addi t5, t5, " ++ show t,
+               "sd t5, " ++ wd bumpPoolAllocated ++ "(t3)",
+               "addi " ++ d ++ ", " ++ d ++ ", " ++ show (16 - t),
+               "li t5, " ++ show t,
+               "sd t5, -16(" ++ d ++ ")",
+               "sd t4, -8(" ++ d ++ ")" ]
+          ++ ["sd zero, " ++ show p ++ "(" ++ d ++ ")" | Just p <- [bcPad c]]
+          ++ [ "j " ++ done,
+               refill ++ ":",
+               "li t3, " ++ show (bcRaw c),
+               "call " ++ Call.runtimeName Call.AllocSaveEntry,
+               "mv " ++ d ++ ", t3",
+               done ++ ":" ]
     tick = tickN 1
     tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l FuelReady, ("call " ++ Call.runtimeName Call.FuelSaveEntry), l FuelReady ++ ":"]
     ew = if cfgWidth cfg == W32 then "32" else "64"
@@ -625,6 +687,7 @@ render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else 
       (O.Common O.Params,_,[]) -> []
       (O.RV R.FrameLoad,[d],[OF ref 0]) -> memory ld (r d) "s0" (off ref)
       (O.RV R.FrameStore,[],[v,OF ref 0]) -> memory stWord (r v) "s0" (off ref)
+      (O.Common O.BumpAlloc,[d],[OI raw]) | Just c <- bumpCell raw -> bump (r d) c
       (O.Common O.LoadSpill,[d],[n]) -> hart ++ memory ld (r d) "t3" (w*(1+num n))
       (O.Common O.StoreSpill,[],[v,n]) -> hart ++ memory stWord (r v) "t3" (w*(1+num n))
       (O.RV R.Literal,[d],[n]) -> ["li " ++ r d ++ ", " ++ show (num n)]

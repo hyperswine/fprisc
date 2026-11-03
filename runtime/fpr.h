@@ -426,6 +426,21 @@ typedef struct {
    * actor reads another hart's clock, which can only make a reset early,
    * never put one off for ever. */
   uw region_bytes;
+  /* THE INLINE BUMP WINDOW (hart cells 59 and 60: Codegen Lower.bumpSlabCell,
+   * docs/2026-11-03-INLINE-BUMP-ALLOC.md).  Generated code allocates a
+   * constructor cell without calling fpr_alloc when bump_slab is set, the
+   * cell fits below bump_slab->end, and bump_bkt[idx] (the size class's
+   * recycled-block head) is empty: it bumps bump_slab->hp itself, adds the
+   * cell to bump_slab->owner->allocated and to region_bytes, and writes the
+   * same preheader (total, slab) and zero pad that alloc_in writes.  The slab
+   * is ALWAYS the current pool's bump slab: the runtime sets the window only
+   * at the end of fpr_alloc (bump_open) and clears bump_slab (bump_close) at
+   * every change of current pool, of that pool's slab or buckets, and of the
+   * running actor.  0 means closed, so a zeroed hart block (.bss, a QOS app
+   * image's harts) is a closed window.  bump_bkt points at the pool's bucket
+   * array, or at an all-empty one for a bucketless region arena. */
+  struct fpr_slab *bump_slab;
+  void **bump_bkt;
   uw id;
   fpr_pool_t pool;                /* boot/hart-loop allocs (pre-actor, never freed) */
   struct fpr_acb *current;        /* running actor, 0 = in the hart loop */
@@ -489,9 +504,21 @@ _Static_assert(__builtin_offsetof(fpr_hart_t, argspill) == sizeof(sw),
                "argspill must sit at offset W (tp-relative, Codegen.hs)");
 _Static_assert(__builtin_offsetof(fpr_hart_t, region_bytes) == sizeof(sw) * (3 + FPR_ARGSPILL),
                "region_bytes must follow stk_lo/stk_span: hart cell 58 (Lower.regionCell)");
+_Static_assert(__builtin_offsetof(fpr_hart_t, bump_slab) == sizeof(sw) * (4 + FPR_ARGSPILL) &&
+               __builtin_offsetof(fpr_hart_t, bump_bkt) == sizeof(sw) * (5 + FPR_ARGSPILL),
+               "bump_slab/bump_bkt must follow region_bytes: hart cells 59, 60 (Lower.bumpSlabCell)");
+/* the slab and pool words the inline bump reads and writes (Lower.bump*Offset) */
+_Static_assert(__builtin_offsetof(fpr_slab_t, owner) == sizeof(sw) * 1 &&
+               __builtin_offsetof(fpr_slab_t, hp) == sizeof(sw) * 4 &&
+               __builtin_offsetof(fpr_slab_t, end) == sizeof(sw) * 5 &&
+               __builtin_offsetof(fpr_pool_t, allocated) == sizeof(sw) * 2,
+               "slab owner/hp/end and pool allocated: the inline bump's offsets (Codegen Lower)");
 _Static_assert(__builtin_offsetof(fpr_hart_t, stk_lo) == sizeof(sw) * (1 + FPR_ARGSPILL) &&
                __builtin_offsetof(fpr_hart_t, stk_span) == sizeof(sw) * (2 + FPR_ARGSPILL),
                "stk_lo/stk_span must follow the spill cells (Codegen.hs stackCheck)");
+
+/* close the hart's inline bump window (the field's comment says when) */
+static inline void fpr_bump_close(fpr_hart_t *h) { if (h) h->bump_slab = 0; }
 
 /* Opt-in per-hart cost ledger. Ordinary builds emit no increments. */
 #ifdef FPR_COST_PROBE

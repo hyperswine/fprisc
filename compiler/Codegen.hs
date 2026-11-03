@@ -53,7 +53,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 150 -- checked typed TRMC after specialization; private fresh-cell protocol
+codegenRev = 151 -- the inline bump allocation (hart cells 59-60); prior: checked typed TRMC
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -368,7 +368,16 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
             Just DirectQX64 -> X64.fuelSaveWrapper X64.HartBorrow
             Just (DirectRV width _) -> RV.fuelSaveWrapper width
             Nothing -> error "typed-ir: a tick without a native backend"
-      nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ fnText ++ fuelWrapper
+      -- the inline bump's register-saving refill, once per unit that bumps
+      allocWrapper
+        | not (any nfBumps allFns) = []
+        | otherwise = case nmBackend nm of
+            Just (DirectA64 fmt _) -> A64.allocSaveWrapper fmt
+            Just (DirectX64 fmt) -> X64.allocSaveWrapper (if fmt == MachO then X64.HartTlvMachO else X64.HartTls)
+            Just DirectQX64 -> error "typed-ir: an inline bump in a loaded QOS app"
+            Just (DirectRV _ _) -> RV.allocSaveWrapper
+            Nothing -> error "typed-ir: an inline bump without a native backend"
+      nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ fnText ++ fuelWrapper ++ allocWrapper
         ++ (if null strings then [] else rodataDirective format : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) format) strings)
         ++ (if null floats then [] else rodataDirective format : concatMap (uncurry boxedFloatObject) floats)
       dat = NativeData.emitStaticDataWithSymbols format (policyWidth (tgtPolicy tgt)) (tgtArc tgt) (tgtWeak tgt) exports symbols emitted
