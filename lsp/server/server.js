@@ -222,6 +222,26 @@ function loadModule(fromUri, usePath) {
   } catch (e) { return null; }
 }
 
+// Foreign declarations (sndMusic, glInit, sndPlay, ...) live in the project's
+// FPR_FOREIGN file: the compiler is given it, no `use` names it, and a name
+// declared there is not unresolved.  Cached by the file's mtime.
+const foreignCache = new Map();
+function foreignDeclarations(uri) {
+  const from = uriToPath(uri);
+  if (!from) return new Set();
+  const context = compilerContext(from, moduleSettings, projectRoot(from, rootPath));
+  const file = (context.env && context.env.FPR_FOREIGN) || '';
+  if (!file) return new Set();
+  try {
+    const st = fs.statSync(file);
+    const hit = foreignCache.get(file);
+    if (hit && hit.mtimeMs === st.mtimeMs) return hit.names;
+    const names = new Set(analyze(pathToUri(file), fs.readFileSync(file, 'utf8')).decls.map((d) => d.name));
+    foreignCache.set(file, { mtimeMs: st.mtimeMs, names });
+    return names;
+  } catch (e) { return new Set(); }
+}
+
 // ---------------------------------------------------------------------------
 // analysis: line-shaped scan of one module
 // ---------------------------------------------------------------------------
@@ -762,6 +782,7 @@ function unresolvedDiagnostics(doc) {
     text => text.replace(/[^\r\n]/g, ' ')).split(/\r?\n/);
   const types = new Set(['Int', 'List', 'String', 'Bool', 'Unit', 'F32', 'F64', 'I32', 'I64', 'Word', 'Addr', 'Vector', 'SString', 'Result', 'True', 'False', 'Nil', 'Cons', 'Ok', 'Err']);
   const namespaces = new Set([...Object.keys(BUILTINS).filter(n => builtinFor(doc.uri, n) && n.includes('.')), ...doc.decls.map(d => d.name).filter(n => n.includes('.'))].map(n => n.split('.')[0]));
+  const foreignNames = foreignDeclarations(doc.uri);
   const diagnostics = [];
   for (const d of doc.decls) {
     if (!d.clauses) continue;
@@ -776,8 +797,19 @@ function unresolvedDiagnostics(doc) {
         for (const name of m[1].split(/\s+/)) additional.add(name);
       for (const m of block.matchAll(/(?:^|[;\n]|->)\s*([a-z_][\w']*(?:\s+[a-z_][\w']*)*)\s*=(?!=)/g))
         for (const name of m[1].split(/\s+/)) additional.add(name);
-      for (const m of block.matchAll(/(?:^|[;\n]|->)\s*([([{][^=;\n]+)=(?!=)/g))
+      // a tuple, list or record pattern binds: `p = (x, y, z) = q` too, so the
+      // clause's own body marker can open one.  `{ base | field = ... }` is a
+      // record update, not a pattern: those fields are uses, not binders.
+      for (const m of block.matchAll(/(?:^|[;\n]|->|=(?!=))\s*([([{][^=;|\n]+)=(?!=)/g))
         for (const name of m[1].match(/[a-z_][\w']*/g) || []) additional.add(name);
+      // a constructor pattern that opens a body statement binds its lowercase
+      // arguments: `An kind s fz fc tz tc t done = m.anim` binds all eight,
+      // qualified constructor or not.  A Type names its fields by position,
+      // so the scanner cannot know them any other way.
+      for (const m of block.matchAll(
+        /^\s*([A-Z][\w']*(?:\.[A-Za-z_][\w']*)*\s+[a-z_][\w']*(?:\s+[a-z_][\w']*)*)\s*=(?!=)/gm))
+        for (const name of m[1].match(/[a-z_][\w']*/g) || []) additional.add(name);
+      for (const name of foreignNames) additional.add(name);
       for (let li = from; li <= to; li++) {
         const source = masked[li] || '';
         for (const m of source.matchAll(/[A-Za-z_][\w']*/g)) {
@@ -1236,7 +1268,7 @@ function changedFiles(files, saved) {
 
 function resetChecks() {
   for (const uri of docs.keys()) dropCheck(uri);
-  modCache.clear(); qualifiedCache.clear(); toolchains.clear();
+  modCache.clear(); qualifiedCache.clear(); foreignCache.clear(); toolchains.clear();
   for (const [uri, doc] of docs) { publishDiagnostics(uri, doc); checkDoc(uri); }
 }
 
@@ -1303,7 +1335,7 @@ function handle(msg) {
         break;
       case 'textDocument/didSave':
         remarkRunner.invalidate('A source file was saved');
-        modCache.clear(); qualifiedCache.clear();
+        modCache.clear(); qualifiedCache.clear(); foreignCache.clear();
         changedFiles([uriToPath(params.textDocument.uri)], true);
         break;
       case 'textDocument/didChange': {
@@ -1326,7 +1358,7 @@ function handle(msg) {
         break;
       case 'workspace/didChangeWatchedFiles': {
         remarkRunner.invalidate('Workspace source files changed');
-        modCache.clear(); qualifiedCache.clear(); toolchains.clear();
+        modCache.clear(); qualifiedCache.clear(); foreignCache.clear(); toolchains.clear();
         const files = (params.changes || []).map(c => uriToPath(c.uri)).filter(Boolean);
         for (const file of files) workspaceIndex.update(file);
         if (files.some(f => ['fpr.toml', 'qos.toml'].includes(path.basename(f)))) resetChecks();

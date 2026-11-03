@@ -177,6 +177,11 @@ record r = { count = r.count, text = "unknownName" }.
 number = 0xff + 1.25e3.
 hole = ?todo.
 missing x = misspelled x + anotherMissing.
+body r =
+  Ok item = r;
+  (a, b) = (1, 2);
+  item + a + b.
+inline p = (x, y) = p; x + y.
 `;
     open(file, source);
     await ask('documentSymbol', file);
