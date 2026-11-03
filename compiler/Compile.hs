@@ -3,7 +3,7 @@ module Compile (compileMain, checkedInterface, parseFile) where
 import Data.List (sortBy)
 import Data.Maybe (fromMaybe,isJust)
 import System.IO (hClose, hPutStr, hPutStrLn, openTempFile, stderr)
-import Arc (lowerArcWith, lowerRawWith, arcExterns, arcRev)
+import Arc (lowerArcWithOptions, lowerRawWithOptions, arcExterns, arcRev)
 import qualified Compiler.Native.Representation as NativeRep
 import Core.Typed.Callback (CallbackMode(..))
 import qualified Compiler.Native.Exports as Exports
@@ -22,7 +22,7 @@ import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
-import Codegen (Target, codegenRev, emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtTickBatch, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative)
+import Codegen (Target, codegenRev, emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtTrmc, tgtTickBatch, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth, registerBudget)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -779,7 +779,7 @@ compileWithReport accepted report = do
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = (Options.cgFloatInline codegen), tgtSimd=(oA64 opts || oX64 opts) && (Options.cgSimd codegen), tgtFusion=(Options.cgFusion codegen),
-                               tgtScalarFast = True, tgtIndexedMemory = (Options.cgIndexedMemory codegen), tgtScalarWorkers = (Options.cgScalarWorkers codegen), tgtTickBatch = (Options.cgTickBatch codegen), tgtPairReturns = (Options.cgPairReturns codegen), tgtFieldWorkers = (Options.cgFieldWorkers codegen), tgtTupleScalars = (Options.cgTupleScalars codegen), tgtPipelineInline = (Options.cgPipelineInline codegen), tgtReuse = (Options.cgReuse codegen), tgtTypedIr = (Options.diagTypedIr diagnostic), tgtPolicy = irPolicy, tgtNative = nativeMode}
+                               tgtScalarFast = True, tgtIndexedMemory = (Options.cgIndexedMemory codegen), tgtScalarWorkers = (Options.cgScalarWorkers codegen), tgtTrmc = (Options.cgTrmc codegen), tgtTickBatch = (Options.cgTickBatch codegen), tgtPairReturns = (Options.cgPairReturns codegen), tgtFieldWorkers = (Options.cgFieldWorkers codegen), tgtTupleScalars = (Options.cgTupleScalars codegen), tgtPipelineInline = (Options.cgPipelineInline codegen), tgtReuse = (Options.cgReuse codegen), tgtTypedIr = (Options.diagTypedIr diagnostic), tgtPolicy = irPolicy, tgtNative = nativeMode}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts
@@ -885,9 +885,13 @@ compileWithReport accepted report = do
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit
           arcSignatures=NativeRep.signatures (Linked.artifactCore (artifactOf Linked.RootArtifact))
+          pinnedTypeSpec=S.fromList ("main" : "machineInterrupt" : map fst (oExports opts))
           own=ownWith M.empty
           ownWith imports prog = if oArc opts then do
-                       lowered <- either (\e -> hPutStrLn stderr e >> exitFailure) (pure . inlineSmall 3 24) ((if oRaw opts then lowerRawWith else lowerArcWith) (M.restrictKeys arcSignatures (M.keysSet prog)) sourceExt prog)
+                       (lowered, declined) <- either (\e -> hPutStrLn stderr e >> exitFailure) (\(p, d) -> pure (inlineSmall 3 24 p, d)) ((if oRaw opts then lowerRawWithOptions else lowerArcWithOptions) (Options.cgTypeSpec codegen) pinnedTypeSpec (M.restrictKeys arcSignatures (M.keysSet prog)) sourceExt prog)
+                       when (remarkMode /= Remark.Off) $
+                         forM_ declined $ \(fn, why) ->
+                           hPutStrLn stderr ("remark[type-spec] " ++ fn ++ ": " ++ why)
                        -- FPR_DUMP_CORE=name prints that function's Core as the generator sees it
                        let dump = Options.diagCore diagnostic
                        forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList lowered, takeWhile (/= '@') n == want] $ \(n, d) ->
@@ -934,7 +938,7 @@ compileWithReport accepted report = do
             inlined<-if oArc opts || oNoInline opts then pure original else
               do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinkedWithDecisions (remarkMode/=Remark.Off) 3 24 64 original)
                  checkedStage "callback specialization after inlining" (Linked.specializeLinkedWithDecisions (remarkMode/=Remark.Off) callbackMode inlined)
-            known<-if oArc opts || oBuiltin opts || not (Options.cgCaseKnown codegen) then pure inlined else
+            known<-if not (Options.cgCaseKnown codegen) || ((oArc opts || oBuiltin opts) && not (Options.cgTypeSpec codegen)) then pure inlined else
               checkedStage "checked case of known constructor" (Linked.caseKnownLinked inlined)
             vectors<-if oArc opts || not (Options.cgVecPeek codegen) then pure known else
               checkedStage "checked vector reads" (Linked.planVectorReadsLinked known)

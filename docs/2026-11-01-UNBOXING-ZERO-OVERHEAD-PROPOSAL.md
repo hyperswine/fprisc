@@ -269,7 +269,7 @@ and keeps an `FPR_NO_<NAME>` rollback flag following
 | 2 | Inline bump-allocation fast path (plan step 6), type-directed case tests | allocator calls gone from cons loops | est. 1.2-1.5x on allocating rows |
 | 3 | B1 list fusion (`FPR_NO_LIST_FUSE`, landed: [record](2026-11-01-LIST-FUSION.md)), B2 TRMC (`FPR_NO_TRMC`, landed: [record](2026-11-03-TRMC.md)) | `list_sum/map/filter` allocs = 0 when fused; unfused `map`/`filter`/`append` drop `reverse` allocations; quadratic families unchanged | up to 8x (ceiling measured by `loop_sum`), 2x fewer cells unfused |
 | 4 | C1 header-free region cells and immediate nullary constructors (runtime revision) | bytes/cell 48 -> 32 or 24; walkers audited | est. 1.2-1.5x on residual allocating code; exact arena sizes |
-| 5 | C2 budgeted type monomorphization, `builtin` first then `base` (`FPR_NO_TYPE_SPEC`) | text growth under budget (start at +10%), compile time linear | unboxed cells and register tuples; est. approach C cons |
+| 5 | C2 budgeted type monomorphization, `builtin` first ([record](2026-11-03-BUILTIN-TYPE-SPEC-AND-INTERVAL.md)) then `base` (`FPR_NO_TYPE_SPEC`) | text growth under budget (start at +10%), compile time linear | unboxed cells and register tuples; est. approach C cons |
 | 6 | WCET mode: static arenas from `Cost` equations for admitted bounded callbacks; simple-risc first | admission refuses unproved budgets; board timing | predictability, not throughput |
 
 Do first: phase 1. It is small, measurable on this PR's benchmarks, changes no

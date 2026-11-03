@@ -84,8 +84,22 @@ with tempfile.TemporaryDirectory(prefix='fpr-raw-') as temp:
         assert message in boot(1)
     print('Raw shift/bit/alignment and checked Int overflow/division failures retain adapter diagnostics: PASS')
 
+    poly = tmp/'poly-representation.fpr'
+    poly.write_text('identity x = x.\n'
+                    'len xs = case xs of [] -> 0 | _ :: r -> 1 + len r.\n'
+                    'main = _ = identity 1; _ = identity (Word.fromInt 1); '
+                    'print (str (len [1, 2] + len [Word.fromInt 3, Word.fromInt 4])).\n')
+    build(poly)
+    assert '4' in boot()
+    env_nospec = dict(os.environ, FPR_NO_TYPE_SPEC='1')
+    p_nospec = subprocess.run(['./fprc', '--profile=bare-metal-builtin', '--arc', str(poly), str(tmp/'nospec.s')],
+                              capture_output=True, text=True, env=env_nospec, timeout=60)
+    assert p_nospec.returncode == 1 and 'incompatible representations' in p_nospec.stdout + p_nospec.stderr
+    print('Representation-polymorphic functions and containers specialize under C2 (and roll back under FPR_NO_TYPE_SPEC=1): PASS')
+
     source = tmp/'bad-representation.fpr'
-    source.write_text('identity x = x.\nmain = _ = identity 1; identity (Word.fromInt 1).\n')
+    source.write_text('same c x y = case c of True -> x | False -> y.\n'
+                      'main = same True 1 (Word.fromInt 1).\n')
     output = run(['./fprc', '--profile=bare-metal-builtin', '--arc', source, tmp/'bad.s'], 1)
     assert 'incompatible representations' in output or 'cannot unify Int with Word' in output
     print('Conflicting representation instantiations rejected: PASS')

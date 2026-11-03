@@ -105,3 +105,38 @@ checkRepresentations=do
     (Representation.representWith (sig Rep.RawAddr) arithmetic)
   check "runtime constructor field-kind ABI is unchanged"
     (map Rep.kindTag [Rep.Managed,Rep.RawWord,Rep.RawAddr,Rep.RawF64,Rep.RawF32]=="twadf")
+  -- C2 on builtin: representation-polymorphic function cloning and per-instance data representations
+  let polyProg=M.fromList
+        [("identity",(["x"],Core.CVar "x")),
+         ("main",([],Core.CLet "a" (Core.CApp (Core.CVar "identity") (Core.CInt 1))
+                     (Core.CApp (Core.CVar "identity") (Core.CApp (Core.CVar "Word.fromInt") (Core.CInt 2)))))]
+      (specProg,_,_,declined)=right (Representation.representWithOptions True mempty M.empty polyProg)
+      (arcProg,arcDeclined)=right (Arc.lowerArcWithOptions True mempty M.empty M.empty polyProg)
+  check "representation-polymorphic identity clones on demand under C2"
+    (null declined && null arcDeclined
+     && any ("identity$typespec$" `isInfixOf`) (M.keys specProg)
+     && any ("identity$typespec$" `isInfixOf`) (M.keys arcProg))
+  refused "FPR_NO_TYPE_SPEC=1 refuses representation-polymorphic identity" "incompatible representations"
+    (Representation.representWithOptions False mempty M.empty polyProg)
+  let listProg=M.fromList
+        [("buildI",(["n"],Core.CMk 2 1 [Core.CVar "n",Core.CMk 2 0 []])),
+         ("buildW",(["n"],Core.CMk 2 1 [Core.CApp (Core.CVar "Word.fromInt") (Core.CVar "n"),Core.CMk 2 0 []])),
+         ("main",([],Core.CLet "xs" (Core.CApp (Core.CVar "buildI") (Core.CInt 1))
+                     (Core.CLet "ys" (Core.CApp (Core.CVar "buildW") (Core.CInt 2)) (Core.CInt 0))))]
+      (_,listKinds,_,listDeclined)=right (Representation.representWithOptions True mempty M.empty listProg)
+      wordFields=[k | (Core.CApp (Core.CVar "Word.fromInt") _,k)<-M.toList listKinds]
+      nominalTids=[tid | (Core.CMk tid _ _, _)<-M.toList listKinds]
+  -- The two instances stay apart through the per-instance field table, not
+  -- through a synthetic runtime type id: every walker in runtime.c recognises
+  -- a List by its nominal tid, so a synthetic id is C1 piece 2 work.
+  check "disjoint List Int and List Word instances specialize without merging"
+    (null listDeclined && wordFields==[Rep.RawWord] && all (==2) nominalTids)
+  -- Two cells of one list must agree; the source checker owns element
+  -- homogeneity, so the representation check is exercised where two instances
+  -- really meet: the two arms of one branch.
+  let mixedBranches=M.fromList
+        [("main",([],Core.CIf (Core.CMk 1 1 [])
+                     (Core.CMk 2 1 [Core.CInt 1,Core.CMk 2 0 []])
+                     (Core.CMk 2 1 [Core.CApp (Core.CVar "Word.fromInt") (Core.CInt 2),Core.CMk 2 0 []])))]
+  refused "List Int and List Word values meeting in one branch are refused" "incompatible representations"
+    (Representation.representWithOptions True mempty M.empty mixedBranches)

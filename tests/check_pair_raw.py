@@ -102,11 +102,16 @@ def main():
 
         mixed = tmp / 'mixed.fpr'
         mixed.write_text(MIXED)
+        run(['make', 'bare-metal-builtin', 'ARC=1', 'ARC_CHECK=1', 'BUILTIN_HEAP_BYTES=16384',
+             f'PROG={mixed}', f'BUILD={tmp / "mixed"}', f'IMAGE={tmp / "mixed.elf"}'], timeout=300)
+        run(['qemu-system-riscv64', '-machine', 'virt', '-m', '128M', '-nographic',
+             '-bios', 'none', '-kernel', tmp / 'mixed.elf'], timeout=60)
+        env_nospec = dict(os.environ, FPR_NO_TYPE_SPEC='1')
         p = subprocess.run(['make', 'bare-metal-builtin', 'ARC=1', 'BUILTIN_HEAP_BYTES=16384',
-                            f'PROG={mixed}', f'BUILD={tmp / "mixed"}', f'IMAGE={tmp / "mixed.elf"}'],
-                           capture_output=True, text=True, timeout=300)
+                            f'PROG={mixed}', f'BUILD={tmp / "mixed-nospec"}', f'IMAGE={tmp / "mixed-nospec.elf"}'],
+                           capture_output=True, text=True, env=env_nospec, timeout=300)
         assert p.returncode != 0 and 'incompatible representations' in p.stdout + p.stderr, p.stdout[-1500:]
-        print('Int and Word pairs through one shared List are refused (needs cloning): PASS')
+        print('Int and Word pairs through List specialize under C2 and refuse under FPR_NO_TYPE_SPEC=1: PASS')
 
 
 if __name__ == '__main__':

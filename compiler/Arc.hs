@@ -3,13 +3,24 @@
 -- Managed local bindings own a reference; evaluating one produces a retained
 -- reference. Calls/constructors consume their arguments and return owned values.
 -- Cleanup is sequenced before tail transfers, never after them.
-module Arc (lowerArc, lowerRaw, lowerArcWith, lowerRawWith, arcExterns, arcRev, primitiveContracts) where
+module Arc
+  ( lowerArc,
+    lowerRaw,
+    lowerArcWith,
+    lowerRawWith,
+    lowerArcWithOptions,
+    lowerRawWithOptions,
+    arcExterns,
+    arcRev,
+    primitiveContracts,
+  ) where
 
 import Control.Monad.State.Strict
 import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Interrupt (checkInterrupt, checkRawUnit)
-import Representation (representWith)
+import Representation (representWithOptions)
 import Representation.Types
 import Core.Syntax (Core(..), Prog)
 
@@ -97,7 +108,7 @@ arcExterns = M.fromList $ [("$arc.retain",1),("$arc.release",1),("$arc.setLayout
 
 -- Bump when ownership lowering or its runtime ABI changes: keys unit caches.
 arcRev :: Int
-arcRev = 6
+arcRev = 7
 
 type G = StateT Int (Either String)
 type Env = M.Map String String
@@ -124,12 +135,16 @@ lowerArc :: M.Map String Int -> Prog -> Either String Prog
 lowerArc = lowerArcWith M.empty
 
 lowerArcWith :: M.Map String CallSignature -> M.Map String Int -> Prog -> Either String Prog
-lowerArcWith declarations _external input = do
-  (prog,ann,paramKinds) <- representWith declarations input
+lowerArcWith declarations external input =
+  fst <$> lowerArcWithOptions True S.empty declarations external input
+
+lowerArcWithOptions :: Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String, String)])
+lowerArcWithOptions typeSpec pinned declarations _external input = do
+  (prog,ann,paramKinds,decls) <- representWithOptions typeSpec pinned declarations input
   checkInterrupt prog
   result <- lowerRepresented True prog ann paramKinds
   let managed = maybe True ((== Managed) . (ann M.!)) (snd <$> M.lookup "main" prog)
-  pure (M.insert "$arc.mainManaged" ([],CInt (if managed then 1 else 0)) result)
+  pure (M.insert "$arc.mainManaged" ([],CInt (if managed then 1 else 0)) result, decls)
 
 -- a raw unit: representation kinds as under --arc (Word/Addr/floats
 -- unboxed, prims through the raw adapters), the allocation-free contract
@@ -139,11 +154,15 @@ lowerRaw :: M.Map String Int -> Prog -> Either String Prog
 lowerRaw = lowerRawWith M.empty
 
 lowerRawWith :: M.Map String CallSignature -> M.Map String Int -> Prog -> Either String Prog
-lowerRawWith declarations _external input = do
-  (prog,ann,paramKinds) <- representWith declarations input
+lowerRawWith declarations external input =
+  fst <$> lowerRawWithOptions True S.empty declarations external input
+
+lowerRawWithOptions :: Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String, String)])
+lowerRawWithOptions typeSpec pinned declarations _external input = do
+  (prog,ann,paramKinds,decls) <- representWithOptions typeSpec pinned declarations input
   checkRawUnit prog
   result <- lowerRepresented False prog ann paramKinds
-  pure (M.insert "$arc.mainManaged" ([],CInt 0) result)
+  pure (M.insert "$arc.mainManaged" ([],CInt 0) result, decls)
 
 lowerRepresented :: Bool -> Prog -> M.Map Core Kind -> M.Map String [Kind] -> Either String Prog
 lowerRepresented instrument prog ann paramKinds = evalStateT (M.traverseWithKey lower prog) 0

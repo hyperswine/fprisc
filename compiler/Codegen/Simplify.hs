@@ -17,8 +17,9 @@
 --     block passes `boolof p` and ends in that jump branches on p itself;
 --     the join stays for the edges that pass anything else and goes when
 --     none remain;
---   * share repeated pure operations within a block: the second `untag v`
---     (or `const`, `nullary`, `cmp`, ...) of a block becomes the first.
+--   * share repeated pure operations within a block (and across strictly
+--     dominating blocks when no register-clobbering call intervenes): the
+--     second `untag v` (or `field`, `tag`, `cmp`, ...) becomes the first.
 --
 -- Pure definitions nothing uses are dropped afterwards; an operation that
 -- may trap, calls, or ticks is never moved, merged or removed, so the
@@ -29,10 +30,12 @@
 module Codegen.Simplify (Options(..),defaultOptions,policyOptions,simplifyFn,simplifyProgram,simplifyFnWith,simplifyProgramWith,passes) where
 
 import Codegen.IR
+import Codegen.ControlFlow (analyze,dominators,predecessors,reachable)
 import Codegen.StringScan (versionScan)
 import Codegen.Interval (discharge)
 import Codegen.LoopOptimize (moveInvariants)
 import Codegen.Policy (Policy (..), Profile (..), RegisterBudget, policyWidth)
+import Codegen.Pressure (clobbersRegisters)
 import Codegen.Verify (verifyFn)
 import Codegen.Dump (dumpFn)
 import Data.List (foldl')
@@ -58,6 +61,7 @@ passesWith options=
     ("share-pure-in-block", dropDeadPure . sharePureInBlock)
   ] ++ [("move-loop-invariants",dropDeadPure . moveInvariants (registerBudget options) (inlineFloats options)) | moveLoopInvariants options]
     ++ [("discharge-proven-checks", dropDeadPure . discharge width) | Just width <- [intervalWidth options]]
+    ++ [("share-pure-across-blocks", dropDeadPure . sharePureAcrossBlocks (inlineFloats options)) | intervalWidth options /= Nothing]
     ++ [("version-string-scan", dropDeadPure . versionScan) | stringScan options]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
 
@@ -194,6 +198,86 @@ sharePureInBlock fn =
         Just w -> resolve m w
         Nothing -> v
    in substitute sub fn
+
+-- ---- pass 3b: share non-constant pure operations across dominating blocks ---
+-- Reuses a pure non-constant computation from a strictly dominating block `d`
+-- in block `b` when no register-clobbering instruction can execute between the
+-- dominating definition and any use of the duplicate value. Rematerializable
+-- constants (OConstInt, ONullary, OBits, OSymbol, OFunValue) and hart/region
+-- reads stay block-local so register live ranges never lengthen across calls.
+sharePureAcrossBlocks :: Bool -> Fn -> Fn
+sharePureAcrossBlocks inlineFloats fn =
+  let flow = analyze fn
+      doms = dominators flow
+      preds = predecessors flow
+      live = reachable flow
+      byId = M.fromList [(bId b, b) | b <- fnBlocks fn]
+      clobbers op = clobbersRegisters inlineFloats op || case op of
+        OStrLen {} -> True; OCharAt {} -> True; _ -> False
+      blockHasClobber bid = maybe False (any (\(Instr _ op) -> clobbers op) . bInstrs) (M.lookup bid byId)
+      useBlocksOf = M.fromListWith S.union
+        [ (u, S.singleton (bId b))
+        | b <- fnBlocks fn
+        , S.member (bId b) live
+        , u <- concatMap (\(Instr _ op) -> opUses op) (bInstrs b) ++ termUses (bTerm b) ]
+      -- Backward walk from the blocks using `v` (and `b` itself) stopping at
+      -- dominator `d`: every block on any execution path from `d` to a use of `v`.
+      spanFrom d b v = walk S.empty (S.toList (S.insert b (M.findWithDefault S.empty v useBlocksOf)))
+        where
+          walk seen [] = seen
+          walk seen (x : xs)
+            | x == d || S.member x seen = walk seen xs
+            | otherwise =
+                let ps = S.toList (S.intersection live (M.findWithDefault S.empty x preds))
+                 in walk (S.insert x seen) (ps ++ xs)
+      -- Candidate dominating definitions that have no register-clobbering
+      -- instruction after them in their own defining block.
+      domDefs :: M.Map BId (M.Map Op VId)
+      domDefs = M.fromList
+        [ (bId b, M.fromList
+            [ (op, v)
+            | (Instr (Just (v, _)) op, rest) <- tailsWithRest (bInstrs b)
+            , crossShareable op
+            , not (any (\(Instr _ rop) -> clobbers rop) rest) ])
+        | b <- fnBlocks fn
+        , S.member (bId b) live ]
+      tailsWithRest [] = []
+      tailsWithRest (x : xs) = (x, xs) : tailsWithRest xs
+      resolve sub v = case M.lookup v sub of
+        Just w | w /= v -> resolve sub w
+        _ -> v
+      -- Process blocks in topological dominator-size order so multi-hop chains
+      -- resolve cleanly.
+      orderedBlocks =
+        [ b | b <- fnBlocks fn, S.member (bId b) live ]
+      subFinal = foldl' visitBlock M.empty orderedBlocks
+      visitBlock sub b =
+        let bid = bId b
+            strictDoms = [d | d <- S.toList (M.findWithDefault S.empty bid doms), d /= bid]
+            step sub' (Instr (Just (v, _)) op)
+              | crossShareable op =
+                  let op' = mapOpUses (resolve sub') op
+                      candidates =
+                        [ u
+                        | d <- strictDoms
+                        , Just m <- [M.lookup d domDefs]
+                        , Just u <- [M.lookup op' (M.mapKeys (mapOpUses (resolve sub')) m)]
+                        , all (not . blockHasClobber) (S.toList (spanFrom d bid v)) ]
+                   in case candidates of
+                        u : _ -> M.insert v u sub'
+                        [] -> sub'
+            step sub' _ = sub'
+         in foldl' step sub (bInstrs b)
+   in foldConversions (substitute subFinal fn)
+
+crossShareable :: Op -> Bool
+crossShareable = \case
+  OUntag {} -> True; OTag {} -> True; OField {} -> True
+  OTruth {} -> True; OBoolOf {} -> True; ONot {} -> True; OIsInt {} -> True
+  OTagTest {} -> True; OVariantTest {} -> True
+  OAddress {} -> True; OIndex {} -> True; OIndexByte {} -> True
+  OArithU {} -> True; OBit {} -> True; OCmp {} -> True
+  _ -> False
 
 -- Single-use F64/F32 arithmetic within a block becomes a tree, including
 -- arithmetic operands of comparisons. Each precision has its own candidates;
