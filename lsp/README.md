@@ -8,6 +8,18 @@ If you installed an older `jasen.fpr-lang` VSIX, disable or uninstall it before
 installing this extension. The publisher ID changed because `jasen` is unavailable
 to this publisher account; existing installations do not automatically migrate.
 
+## Version 0.9.1
+
+- The unresolved-name scan now reads constructor patterns. A `Type` names its
+  fields by position, so `An kind s fz fc tz tc t done = m.anim` binds all
+  eight names instead of painting them as unknown; qualified constructors
+  (`Md.An ...`) and tuple, list and record patterns that open on a clause's
+  own line bind the same way.
+- Names declared in the project's foreign file (`FPR_FOREIGN`: `sndMusic`,
+  `sndPlay`, `glInit`, ...) are known to the scan, so a module that calls one
+  no longer shows an informational squiggle. Both changes are covered by
+  `test/current-api.js`.
+
 ## Version 0.9.0: managed toolchains and QOS SDKs
 
 Published on the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=hyperswine.fpr-lang), 2 November 2026.
