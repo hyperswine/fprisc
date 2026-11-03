@@ -119,6 +119,7 @@ base('tests/check_compile_budget.py', 1200)  # cold compiles; allocation is load
 base('tests/check_pagination.py', 300)
 base('tests/check_typed_vectors.py', 300)
 base('tests/check_list_fusion.py', 300)
+base('tests/check_abstraction_equivalence.py', 1200)  # 16 spellings, cold+warm compiles, paired timing
 base('tests/check_case_known.py', 300)
 base('tests/check_trmc.py', 300)
 base('tests/check_layout_table.py', 600)
