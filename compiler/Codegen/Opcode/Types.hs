@@ -4,7 +4,7 @@ module Codegen.Opcode.Types where
 import Codegen.IR (FloatOp(..),CmpOp(..))
 
 data CommonOp=EntryCheckTick | EntryCheck | EntryTick | EntryStatic | TickN
-  | TailJump | JumpLoop | SavesHere | LoadCell | StoreCell | LoadSpill | StoreSpill | Params
+  | TailJump | JumpLoop | SavesHere | LoadCell | StoreCell | LoadSpill | StoreSpill | Params | BumpAlloc
   deriving (Eq,Ord,Show,Enum,Bounded)
 data Condition=Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual
   | Overflow | UnsignedAboveEqual | UnsignedBelow
@@ -17,7 +17,7 @@ data FloatBank=WordBits | FloatRegisters deriving (Eq,Ord,Show)
 commonName op=case op of
   EntryCheckTick->"entry.check.tick";EntryCheck->"entry.check";EntryTick->"entry.tick"
   EntryStatic->"entry.static";TickN->"tick.n";TailJump->"tailjump";JumpLoop->"jump.loop";SavesHere->"saves.here"
-  LoadCell->"load.cell";StoreCell->"store.cell";LoadSpill->"load.spill";StoreSpill->"store.spill";Params->"params"
+  LoadCell->"load.cell";StoreCell->"store.cell";LoadSpill->"load.spill";StoreSpill->"store.spill";Params->"params";BumpAlloc->"alloc.bump"
 conditionName c=case c of
   Equal->"eq";NotEqual->"ne";Less->"lt";Greater->"gt";LessEqual->"le";GreaterEqual->"ge"
   Overflow->"o";UnsignedAboveEqual->"hs";UnsignedBelow->"lo"

@@ -562,6 +562,60 @@ static inline void alloc_zero_pad(char *payload, uw raw_bytes, uw total) {
   if (pad == sizeof(uw)) *(uw *)(payload + raw_bytes) = 0;
   else if (pad) __builtin_memset(payload + raw_bytes, 0, pad);
 }
+/* The inline bump window (fpr.h, bump_slab).  Opened at the end of every
+ * fpr_alloc over the pool that is then current; generated code then bumps
+ * that pool's slab itself until the slab is full or the size class has a
+ * recycled block, when it calls fpr_alloc (through the unit's register-saving
+ * wrapper) and the window reopens here.  Never opened:
+ *   - in a cost-probe build, so cost_alloc_requests/bytes count every
+ *     allocation on the call path, exactly as before (the probe measures
+ *     the program's requests, not the allocator's speed);
+ *   - in a process routed through the shared plane, whose pools grow in the
+ *     kernel and whose actors the kernel's scheduler switches. */
+static void *bump_nobuckets[FPR_NBUCKETS]; /* a region arena's: always empty */
+static inline void bump_open(fpr_hart_t *h) {
+#ifdef FPR_COST_PROBE
+  (void)h;
+#else
+  if (fpr_plane_memory) return;
+  fpr_pool_t *pool = cur_pool(h);
+  if (!pool->cur) return;
+  h->bump_bkt = pool->buckets ? pool->buckets : bump_nobuckets;
+  h->bump_slab = pool->cur;
+#endif
+}
+#ifdef FPR_BUMP_CHECK
+/* the bump-check build (FPR_BUMP_CHECK=1 fpr build): at every fuel tick and
+ * every fpr_alloc, an open window must be the current pool's bump slab, its
+ * buckets the pool's, its cursor inside the slab.  A close missing from
+ * some change of pool or slab shows up here at the next tick instead of as a
+ * cell bumped into a pool that is no longer current.  The counts printed at
+ * exit say whether open windows were ever seen (not vacuous). */
+static uw bump_checks, bump_checks_open, bump_refills;
+void fpr_bump_check(fpr_hart_t *h) {
+  if (!h) return;
+  __atomic_fetch_add(&bump_checks, 1, __ATOMIC_RELAXED);
+  fpr_slab_t *sl = h->bump_slab;
+  if (!sl) return;
+  __atomic_fetch_add(&bump_checks_open, 1, __ATOMIC_RELAXED);
+  fpr_pool_t *pool = cur_pool(h);
+  if (fpr_plane_memory) fpr_cpanic("bump check: a window in a plane-routed process");
+  if (sl != pool->cur) fpr_cpanic("bump check: the window is not the current pool's bump slab");
+  if (sl->owner != pool) fpr_cpanic("bump check: the window's slab belongs to another pool");
+  if (h->bump_bkt != (pool->buckets ? pool->buckets : bump_nobuckets))
+    fpr_cpanic("bump check: the window's buckets are not the current pool's");
+  if (sl->hp < (char *)(sl + 1) || sl->hp > sl->end) fpr_cpanic("bump check: the cursor is outside its slab");
+}
+__attribute__((destructor)) static void bump_check_report(void) {
+  praw("[bump-check] checks ");
+  pdec(__atomic_load_n(&bump_checks, __ATOMIC_RELAXED));
+  praw(" open ");
+  pdec(__atomic_load_n(&bump_checks_open, __ATOMIC_RELAXED));
+  praw(" calls ");
+  pdec(__atomic_load_n(&bump_refills, __ATOMIC_RELAXED));
+  praw("\n");
+}
+#endif
 static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
   uw total = (((raw_bytes + 15) & ~(uw)15)) + 16;
   FPR_COST_ADD(h, cost_alloc_requests, 1);
@@ -692,6 +746,7 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
     sl->pushed = 0;
     sl->hp = (char *)(sl + 1);
     sl->next = pool->cur;
+    fpr_bump_close(fpr_hart()); /* this pool's bump slab changes (it may be the window's) */
     pool->cur = sl;
   }
   char *p = sl->hp;
@@ -705,6 +760,10 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
 }
 V fpr_alloc(V raw_bytes) {
   fpr_hart_t *h = fpr_hart();
+#ifdef FPR_BUMP_CHECK
+  fpr_bump_check(h);
+  __atomic_fetch_add(&bump_refills, 1, __ATOMIC_RELAXED);
+#endif
   fpr_pool_t *pool = cur_pool(h);
   /* Compiler regions have no small-block buckets. Only admit small sizes
    * before rounding, so this shortcut cannot overflow the size arithmetic.
@@ -722,10 +781,13 @@ V fpr_alloc(V raw_bytes) {
       *(uw *)p = total;
       *(fpr_slab_t **)(p + 8) = sl;
       alloc_zero_pad(p + 16, raw_bytes, total);
+      bump_open(h);
       return (V)(p + 16);
     }
   }
-  return alloc_in(h, pool, raw_bytes, 0);
+  V r = alloc_in(h, pool, raw_bytes, 0);
+  bump_open(fpr_hart()); /* the allocation can park: the actor can migrate */
+  return r;
 }
 /* a Vector's storage: the base pool, never a turn's arena (fpr.h) */
 V fpr_alloc_bulk(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, base_pool(h), raw_bytes, 1); }
@@ -1697,10 +1759,12 @@ static void arena_open(struct fpr_pool **slot, fpr_pool_t *ap) {
                                       * with garbage there walked it as
                                       * a freelist on any >ceiling alloc */
   if (!ap->buckets) fpr_exhausted("Sys.arena: no memory for a bucket array");
+  fpr_bump_close(fpr_hart());
   *slot = (struct fpr_pool *)ap;
 }
 /* teardown, poolReset-style, under arc_lock (owner/escaped race) */
 static void arena_close(struct fpr_pool **slot, fpr_pool_t *ap, struct fpr_pool *prev) {
+  fpr_bump_close(fpr_hart());
   fpr_lock(&arc_lock);
   fpr_slab_t *sl = ap->cur;
   while (sl) {
@@ -1726,6 +1790,7 @@ static void arena_close(struct fpr_pool **slot, fpr_pool_t *ap, struct fpr_pool 
  * (docs/2026-10-19-RECEIVE-TURN-ARENA.md). */
 static void arena_reset(fpr_pool_t *ap) {
   uw pushed = 0; /* did any cell of any slab reach the buckets this turn */
+  fpr_bump_close(fpr_hart());
   fpr_lock(&arc_lock);
   fpr_slab_t *sl = ap->cur, *keep = 0;
   while (sl) {
@@ -1964,6 +2029,7 @@ static struct fpr_scope *region_open(fpr_hart_t *h, uw seq) {
   fpr_pool_init(&sc->ap, 0);
   sc->arena = &sc->ap;
   *head = sc;
+  fpr_bump_close(h);
   *slot = (struct fpr_pool *)&sc->ap;
   return sc;
 }
@@ -2001,6 +2067,7 @@ static int region_adopt(fpr_hart_t *h, fpr_pool_t *ap, fpr_pool_t *into, V r) {
 }
 static V region_close(fpr_hart_t *h, struct fpr_scope *sc, V r) {
   struct fpr_pool **slot = override_slot(h);
+  fpr_bump_close(h);
   *slot = sc->prev_override;
   /* a loop region that cycled holds its state in transfer slabs the result
    * may point into: those close by copy.  So does one that received
@@ -2770,6 +2837,7 @@ static void arc_decref_in(V v) {
 /* death teardown, under the same lock that guards owner/escaped:
  * escape-free slabs return to buddy; the rest are orphaned. */
 void fpr_arc_teardown_pool(fpr_pool_t *pool) {
+  fpr_bump_close(fpr_hart()); /* the window can only be over a pool of this hart's */
   fpr_lock(&arc_lock);
   fpr_slab_t *sl = pool->cur;
   while (sl) {
@@ -2804,6 +2872,7 @@ static V g_poolReset(V u) {
   if (fpr_plane_memory) { fpr_plane_memory->pool_reset(); return (V)&fpr_unit; }
   fpr_hart_t *h = fpr_hart();
   fpr_pool_t *pool = cur_pool(h);
+  fpr_bump_close(h);
   if (h->current) fpr_rx_release_outer(h->current); /* the turn's received roots die with it */
   fpr_drop_drain_current(); /* soft death = end of frame: borrows are done */
   fpr_lock(&arc_lock);

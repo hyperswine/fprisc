@@ -38,6 +38,7 @@ commonShape rf bank static op ds us=case op of
   O.LoadCell->False
   O.StoreCell->False
   O.SavesHere->False -- an internal shrink-wrap marker, removed before emission
+  O.BumpAlloc->matches [register rf GPR] ds && matches [immediate] us -- the cell, its raw size
   where entry=ds==us && arguments bank ds
 
 data CallForm=DirectCall | ApplyCall | PanicCall | NoCall deriving (Eq,Show)

@@ -1684,6 +1684,7 @@ static void hart_loop(fpr_hart_t *h) {
     if (n) {
       h->idle = 0;
       stable = 0;
+      fpr_bump_close(h); /* the hart loop's window is not the actor's */
       h->current = n;
       h->stk_lo = n->stk_lo; /* the entry check reads the RUNNING actor's segment */
       h->stk_span = n->stk_span;
@@ -1710,6 +1711,7 @@ static void hart_loop(fpr_hart_t *h) {
       hal_actor_stack(0); /* the hart loop may free that stack (reap): nothing watched here */
       __atomic_store_n(&n->running, 0, __ATOMIC_RELEASE); /* saved: it may run elsewhere now */
       if (fpr_hart() != h) hart_reg_lost(h, n);
+      fpr_bump_close(h); /* the actor's window, closed whichever way it left */
       h->current = 0;
       /* body-return / kill marked it DEAD before switching back; we are
        * on the hart-loop stack now, so ITS stack is safe to reclaim */
@@ -1787,6 +1789,9 @@ static void to_sched(void) {
 void fpr_fuel_exhausted(void) {
   if (fpr_plane_actors) { fpr_plane_actors->fuel(); return; }
   fpr_hart_t *h = fpr_hart();
+#ifdef FPR_BUMP_CHECK
+  { extern void fpr_bump_check(fpr_hart_t *); fpr_bump_check(h); }
+#endif
   h->fuel_preempts++;
   h->fuel = FUEL_QUANTUM;
   TR(h->current, 14);
