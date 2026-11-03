@@ -142,13 +142,26 @@ new stage.
 3. Flip the default, delete the Core loop transform, port `append`.
 4. Enable for `builtin`/`--arc` — the profiles the Core pass never served.
 
-## Interim, independent
+## The `builtin` gate is not a one-line win (measured)
 
-The `oArc`/`oBuiltin` guards in `linkedResult` already skip inlining and
-specialization, so the copy problem does not exist on those profiles; only
-`optTrmc`'s `not (tgtArc tgt)` keeps TRMC off there. Relaxing that one
-condition is a separate, one-line, measurable change for `builtin`/QOS. It does
-nothing for the hosted gap, so it is not a substitute for this plan.
+`optTrmc` also blocks `tgtArc` and requires fuel, so `builtin`/QOS never get the
+Core pass. Widening the gate was tried and is a **no-op**: on a builtin-ARC
+program with a direct-call accumulator loop the pass reports `# trmc: loops=0`
+(no plan) while `# tick batching` still fires, because the body it is handed is
+already ARC-lowered — a nest of `$arc.retain`/`$arc.release` lets whose branch
+condition is a bound variable, not the `CTagEq` the recognizer wants:
+
+```
+CLet l211 ($arc.retain xs) (CLet l213 ($arc.retain acc) ...
+  (CLet l218 (CTagEq 2 0 l217) (CLet l247 ($arc.release l217)
+    (CIf (CVar l218) ... ))))
+```
+
+Reaching that shape is not a recognizer tweak either: linking a tail in place
+changes ownership, so the transform would have to thread ARC retain/release
+through the worker. The honest placement is *before* erasure — the typed IR —
+which is where this plan puts it, and which is also what makes `builtin` a
+stage-4 gain rather than a separate Core hack.
 
 ## Rejected alternatives
 
