@@ -43,11 +43,11 @@ FPGA_CONFIG_72 = dict(xlen=32, compressed=True, cpu_mhz=72, memory_mhz=48,
                       cache_line_bits=11, phase_degrees=135,
                       placement=0, write_update=True, placer_target_mhz=79,
                       map_option=3, route_option=1, route_maxfan=8)
-# simple-risc's fprisc-81: the fprisc-72 shape at CPU 81 MHz, placement 3.
+# simple-risc's fprisc-81: the fprisc-72 shape at CPU 81 MHz, placement 1.
 FPGA_CONFIG_81 = dict(xlen=32, compressed=True, cpu_mhz=81, memory_mhz=48,
                       ram_bytes=8388608, cache_bytes=65536, cache_ways=2,
                       cache_line_bits=11, phase_degrees=135,
-                      placement=3, write_update=True, placer_target_mhz=89,
+                      placement=1, write_update=True, placer_target_mhz=89,
                       map_option=3, route_option=1, route_maxfan=8)
 PRESETS = {'fprisc-48': FPGA_CONFIG, 'fprisc-72': FPGA_CONFIG_72,
            'fprisc-81': FPGA_CONFIG_81}
