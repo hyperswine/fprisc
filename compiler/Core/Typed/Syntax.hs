@@ -58,6 +58,11 @@ data Node
   | VectorReadPair Read.Read [Expr] Expr
   | CallRegion Expr
   | EntryTick
+  -- Internal builder protocol. The marker names the private root/cursor
+  -- parameters; TrmcProof checks freshness, all callers and every use.
+  -- LShape describes owned payloads, not unique list-cell provenance.
+  | ListBuilder BinderId BinderId Expr
+  | SetField Expr Int Expr
   deriving (Show)
 -- Layout copies retain opaque row fields without inventing language types for
 -- them. Only replacements contain expressions, each with its checked type.

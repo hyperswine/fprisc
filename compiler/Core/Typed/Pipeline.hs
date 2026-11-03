@@ -2,7 +2,7 @@
 -- Native semantic passes operate on a complete owned program before erasure.
 -- Layout authority stays attached to the closed product it helped construct.
 module Core.Typed.Pipeline
-  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,specializeProgramsWithDecisions,inlinePrograms,inlineProgramsWithDecisions,closedDecisions,closedTouched,planVectorReads,normalizeProgram,caseKnownProgram,fusePrograms,fuseListPrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
+  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,specializeProgramsWithDecisions,inlinePrograms,inlineProgramsWithDecisions,closedDecisions,closedTouched,planVectorReads,normalizeProgram,caseKnownProgram,fusePrograms,fuseListPrograms,trmcPrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
 import qualified Core.Typed.Decision as D
 import Core.Typed.Program
 import Core.Typed.Syntax
@@ -18,6 +18,7 @@ import qualified Core.Typed.Normalize as Normalize
 import qualified Core.Typed.CaseKnown as CaseKnown
 import qualified Core.Typed.Fusion as Fusion
 import qualified Core.Typed.ListFusion as ListFusion
+import qualified Core.Typed.Trmc as Trmc
 import Core.Typed.Verify (sameType)
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Compiler.DataLayout
@@ -253,6 +254,28 @@ fuseListPrograms inputs=case map snd (M.elems inputs) of
             (S.fromList [name | (name,(_,_,fused))<-M.toList changed,fused])
       verifyLinkedStep output
       pure (output,concatMap (\(_,notes,_)->notes) (M.elems changed))) inputs
+
+trmcPrograms :: Ord key => M.Map key (S.Set String,ClosedProgram) -> Either String (M.Map key (ClosedProgram,(Int,Int)))
+trmcPrograms inputs=case map snd (M.elems inputs) of
+  []->pure M.empty
+  base:programs->do
+    mapM_ (\p->unless (programNamespace (closedInput p)==programNamespace (closedInput base)
+      && constructorLayouts (closedLayouts p)==constructorLayouts (closedLayouts base)
+      && shapeLayouts (closedLayouts p)==shapeLayouts (closedLayouts base))
+        (Left "typed TRMC pipeline: checking namespace/layout mismatch")) programs
+    let owned=[M.withoutKeys (closedDefinitions p) elided | (elided,p)<-M.elems inputs]
+        owners=M.unions owned
+        types=programTypes (closedInput base)
+    unless (M.size owners==sum (map M.size owned)) (Left "typed TRMC pipeline: duplicate source owner")
+    snapshot<-Callbacks.catalogPrograms types (map (closedInput . snd) (M.elems inputs)) owners
+    let plan=Trmc.planTrmc snapshot
+    traverse (\(elided,p)->do
+      changed<-M.traverseWithKey (\name f->if S.member name elided then pure (f,0,0,False)
+        else Trmc.trmcClosed (programNamespace (closedInput p)) types plan f) (closedDefinitions p)
+      let output=ClosedProgram (closedInput p) (closedLayouts p) (M.map (\(f,_,_,_)->f) changed) (closedDecisions p)
+            (S.fromList [name | (name,(_,_,_,rewritten))<-M.toList changed,rewritten])
+      verifyLinkedStep output
+      pure (output,(sum [l | (_,l,_,_)<-M.elems changed],sum [a | (_,_,a,_)<-M.elems changed]))) inputs
 
 verifyClosedProgram :: ClosedProgram -> Either String ()
 verifyClosedProgram result=do

@@ -96,9 +96,11 @@ fuse the std producer/consumer combinators (`range`, `map`, `filter`,
 with `FusionSafety` effect-order evidence and per-decline remarks,
 gated on zero-allocation fused pipelines (`list_sum/map/filter` allocs = 0)
 and byte-identical output/trap behaviour against the unfused build, except
-for `Core.FusionPolicy`'s documented Int-overflow relaxation (including the
-`foldRange` endpoint edge). No representation change, no SIMD, no new
-language surface.
+for `Core.FusionPolicy`'s documented Int-overflow report reordering when both
+executions overflow. That policy does not permit changing success into failure:
+the `foldRange` endpoint discrepancy was fixed in the
+[2 November limit addendum](2026-11-02-LIST-FUSION-TRAP-SAFETY.md#addendum-2026-11-02-later-foldrange-at-the-int-limits).
+No representation change, no SIMD, no new language surface.
 
 ### Status
 

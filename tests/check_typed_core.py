@@ -18,7 +18,7 @@ subprocess.run(['make', 'fpr'], cwd=ROOT, env=env, check=True,
                capture_output=True, timeout=300)
 sys.path.insert(0, str(ROOT / 'tests'))
 from haskell_units import run_units
-run_units(['TypedCore', 'TypedLayouts', 'TypedTraps', 'TypedUnits', 'TypedStructs', 'TypedCalls', 'TypedStaging', 'TypedCallbacks', 'TypedProgram', 'RegionInterfaces'], env)
+run_units(['TypedCore', 'TypedTrmc', 'TypedLayouts', 'TypedTraps', 'TypedUnits', 'TypedStructs', 'TypedCalls', 'TypedStaging', 'TypedCallbacks', 'TypedProgram', 'RegionInterfaces'], env)
 subprocess.run([sys.executable, str(ROOT / 'tests/check_typed_callbacks.py')], cwd=ROOT,
                env=env, check=True, timeout=240)
 subprocess.run([sys.executable, str(ROOT / 'tests/check_typed_staging.py')], cwd=ROOT,

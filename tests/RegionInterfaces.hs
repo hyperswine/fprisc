@@ -254,6 +254,21 @@ main=do
       regionCount e=(case T.exprNode e of T.CallRegion _->1;_->0)+getSum (getConst (mapChildrenM (Const . Sum . regionCount) e))
   check "call regions retain checked operands and notes do not duplicate a saturated call"
     (regionCount calls==1 && any (isInfixOf "client: 1 call(s)") (R.resultNotes callResult))
+  let listNative=native "list-builder" (unlines
+        ["revOnto : List Int -> List Int -> List Int ."
+        ,"revOnto xs acc = case xs of Nil -> acc | h :: t -> revOnto t (h :: acc)."
+        ,"copy : List Int -> List Int -> List Int ."
+        ,"copy xs acc = case xs of Nil -> revOnto acc Nil | h :: t -> copy t (h :: acc)."])
+        (S.fromList ["revOnto","copy"])
+      (listTrmc,(loopCount,_))=right (Native.trmcNativePrograms (M.singleton () (S.empty,listNative))) M.! ()
+      listInput=right (R.prepare listTrmc)
+      builders=M.filter builderRegionEntry (R.programInterfaces listInput)
+      listRegions=place listInput
+  check "private builders retain provenance and cannot acquire call/loop regions"
+    (loopCount==1 && not (M.null builders)
+      && all (not . callableRegionEntry) (M.elems builders)
+      && all (\name->M.lookup name (R.resultProgram listRegions)==M.lookup name (R.programCore listInput)) (M.keys builders)
+      && any (isInfixOf "private list builder state cannot cross a region boundary") (R.resultNotes listRegions))
   let badBody=T.Expr fn LU T.Generated Nothing (T.Var (T.Global "f" (Forall [] [] fn)))
       badCall=T.Expr fn LU T.Generated Nothing (T.CallRegion badBody)
   check "call region verifier refuses function-valued results"

@@ -2,6 +2,7 @@
 -- untyped body or guesses a representation from an optimized expression.
 module Core.Typed.Verify (verifyFunction, verifyFunctionWith, instanceOf, sameType, fieldType) where
 import Core.Typed.Syntax
+import Core.Typed.TrmcProof (verifyBuilderFunction)
 import Core.Typed.Contract (checkInstance)
 import Ownership.TypeShape (linShapeT)
 import Type.Syntax (Type(..), Row(..), Scheme(..))
@@ -19,6 +20,7 @@ verifyFunction = verifyFunctionWith M.empty
 
 verifyFunctionWith :: M.Map CodeId CodeContract -> TypeContext -> Function -> Either String ()
 verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
+  verifyBuilderFunction f
   (env,used) <- introduce M.empty S.empty (functionParameters f)
   _ <- check env used (functionBody f)
   pure ()
@@ -48,6 +50,19 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
       StringValue _ -> fixed (TC "String")
       BoolValue _ -> fixed (TC "Bool")
       EntryTick -> fixed (TC "Unit")
+      ListBuilder root cursor body -> do
+        require "builder parameter/result types" (case (M.lookup root env,M.lookup cursor env,exprType e) of
+          (Just r,Just c,TAp (TC "List") _)->sameType (binderType r) (exprType e) && sameType (binderType c) (exprType e)
+          _->False)
+        require "builder result type" (sameType (exprType body) (exprType e))
+        check env used body
+      SetField base index value -> do
+        require "builder tail index" (index==1)
+        require "builder tail type" (case exprType base of
+          TAp (TC "List") _->sameType (exprType base) (exprType value)
+          _->False)
+        require "builder store result" (sameType (exprType e) (TC "Unit"))
+        check env used base >>= \u->check env u value
       Apply fn arg -> do
         u <- check env used fn >>= \u -> check env u arg
         case exprType fn of

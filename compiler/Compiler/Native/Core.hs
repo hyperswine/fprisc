@@ -2,7 +2,7 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,specializeNativePrograms,specializeNativeProgramsWithDecisions,inlineNativePrograms,inlineNativeProgramsWithDecisions,planNativeVectorReads,normalizeNative,caseKnownNative,fuseNativePrograms,fuseListNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
+  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,specializeNativePrograms,specializeNativeProgramsWithDecisions,inlineNativePrograms,inlineNativeProgramsWithDecisions,planNativeVectorReads,normalizeNative,caseKnownNative,fuseNativePrograms,fuseListNativePrograms,trmcNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
    CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
@@ -108,6 +108,14 @@ caseKnownNative elided input=do
 fuseListNativePrograms :: Ord key => M.Map key (S.Set String,NativeCore) -> Either String (M.Map key (NativeCore,[FusionNote]))
 fuseListNativePrograms inputs=do
   changed<-fuseListPrograms (M.map (\(elided,core)->(elided,nativeClosed core)) inputs)
+  M.traverseWithKey (\key (_,core)->do
+    let (closed,notes)=changed M.! key
+    result<-replaceClosed closed core
+    pure (result,notes)) inputs
+
+trmcNativePrograms :: Ord key => M.Map key (S.Set String,NativeCore) -> Either String (M.Map key (NativeCore,(Int,Int)))
+trmcNativePrograms inputs=do
+  changed<-trmcPrograms (M.map (\(elided,core)->(elided,nativeClosed core)) inputs)
   M.traverseWithKey (\key (_,core)->do
     let (closed,notes)=changed M.! key
     result<-replaceClosed closed core

@@ -632,7 +632,7 @@ lowerVal cx env = \case
       | isPrim cx env h, scalarPrefix `isPrefixOf` h, Just o <- M.lookup (drop (length scalarPrefix) h) cmpOps, [a, b] <- args -> compare' o a b
       -- an inlined callee's entry safepoint (Inline.hs); its value is Unit
       | h == entryTickName, [_] <- args -> when (polFuel (cxPolicy cx)) (emitDo OSafepoint) >> nullary 0 0
-      -- TRMC tail link store (Core.Opt.Trmc): overwrite field 1 of a uniquely owned Cons cell
+      -- TRMC tail link store (Core.Typed.Trmc): overwrite field 1 of a uniquely owned Cons cell
       | h == "$trmc.setTail", [obj, val] <- args, M.notMember h env -> do
           o <- lowerVal cx env obj >>= asVal
           v <- lowerVal cx env val >>= asVal

@@ -60,7 +60,6 @@ library
       Core.Opt.Vector
       Core.Opt.Vector.Plan
       Core.Opt.Pipeline
-      Core.Opt.Trmc
       Core.Opt.Ticks
       Core.Opt.PairReturns
       Codegen
@@ -190,6 +189,8 @@ library
       Core.Typed.CaseKnown
       Core.Typed.Fusion
       Core.Typed.FusionSafety
+      Core.Typed.Trmc
+      Core.Typed.TrmcProof
       Core.Typed.ListFusion
       Core.FusionPolicy
       Core.Typed.Specialize
@@ -408,6 +409,11 @@ test-suite TypedCore
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            TypedCore.hs
+
+test-suite TypedTrmc
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            TypedTrmc.hs
 
 test-suite TypedIR
   import:             unit-test

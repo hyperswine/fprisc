@@ -3,7 +3,7 @@
 module Core.Region.Interface
   (Interface,Provenance(..),closedInterfaces,declaredInterface,interfaceProvenance,
    interfaceParameters,interfaceArguments,interfaceResult,interfaceResultShape,interfaceArity,interfaceCloneOrigin,
-   callableRegionEntry) where
+   callableRegionEntry,builderRegionEntry) where
 import Core.Typed.Syntax
 import Core.Typed.Pipeline
 import Core.Typed.Close
@@ -13,6 +13,7 @@ import Ownership.Shape (LShape)
 import qualified Data.Map.Strict as M
 
 data Provenance=SourceEntry String | PrivateEntry String CodeId CodeKind | SourceDeclaration String
+  | ListBuilderEntry String CodeId
   deriving (Eq,Show)
 data Interface=Interface Provenance (Maybe [Binder]) Calling (Maybe LShape) (Maybe CloneOrigin) deriving Show
 interfaceProvenance :: Interface -> Provenance
@@ -37,10 +38,20 @@ closedInterfaces closed=M.fromList (concatMap one (M.toList (closedDefinitions c
       Just c->Interface role (Just (functionParameters fn)) c (Just (exprShape (functionBody fn))) origin
       Nothing->error "region interfaces: verified physical function lost its arrows"
     one (name,f)=(name,make (SourceEntry name) Nothing (closedRoot f)):
-      [(n,make (PrivateEntry name key (codeKind code)) (M.lookup key (closedOrigins f)) (codeAsFunction code))
+      [(n,make (case exprNode (codeBody code) of
+          ListBuilder {}->ListBuilderEntry name key
+          _->PrivateEntry name key (codeKind code)) (M.lookup key (closedOrigins f)) (codeAsFunction code))
         | (key@(CodeId n),code)<-M.toList (closedCode f)]
 declaredInterface :: String -> Calling -> Interface
 declaredInterface name c=Interface (SourceDeclaration name) Nothing c Nothing Nothing
 
 callableRegionEntry :: Interface -> Bool
-callableRegionEntry f=case interfaceProvenance f of PrivateEntry _ _ JoinCode->False;_->True
+callableRegionEntry f=case interfaceProvenance f of
+  PrivateEntry _ _ JoinCode->False
+  ListBuilderEntry {}->False
+  _->True
+
+-- Root and cursor alias one unfinished chain. Copying either independently,
+-- or linking a caller's cell to a temporary callee arena, breaks that proof.
+builderRegionEntry :: Interface -> Bool
+builderRegionEntry f=case interfaceProvenance f of ListBuilderEntry {}->True;_->False

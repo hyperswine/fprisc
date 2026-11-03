@@ -4,6 +4,11 @@ Date: 3 November 2026. Kind: design; changes no compiler behaviour. Closes the
 open *Placement* item of [the B2 record](2026-11-03-TRMC.md) and supersedes its
 "revisit" sentence with a plan.
 
+Implementation update, later on 3 November: the [typed TRMC implementation
+record](2026-11-03-TYPED-TRMC-IMPLEMENTATION.md) supersedes the proposed freshness
+check and records the hosted default implementation. The design below is kept
+as the original plan; builtin/ARC is still a later gate.
+
 ## Why the Core pass cannot reach the copies (measured)
 
 `mapGo f xs acc = case xs of Nil -> reverse acc | x :: r -> mapGo f r (f x :: acc)`

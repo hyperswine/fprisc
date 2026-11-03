@@ -115,16 +115,76 @@ main =
         assert trap_seen[0] == trap_seen[1], trap_seen
         print('TRMC trap preservation: callback trap order and diagnostic match rollback PASS', flush=True)
 
+        # Observable callbacks, arguments on both sides of the accumulator,
+        # shared inputs, and a user function named reverse are independent
+        # differentials: one trap must not hide the next case.
+        extra_cases = {
+            'printing-divide': ('main = print (List.map (fn x -> print x >> (10 / x)) [2, 1, 0, 4]).', '2\n1\n0\n'),
+            'printing-overflow': ('main = print (List.map (fn x -> print x >> (x + 1)) [0, 4611686018427387903, 2]).', '0\n4611686018427387903\n'),
+            'argument-order': ("""tap x = print x >> x.
+loop : (n : Int | measure n) -> Int -> List Int -> Int -> List Int.
+loop n left acc z = case n <= 0 of True -> List.reverse acc
+  | False -> loop (n - 1) (tap n) ((tap (n + 10)) :: acc) (tap z).
+main = print (loop 3 0 [] 8).""", None),
+            'shared-accumulator': ("""loop : (n : Int | measure n) -> List Int -> List Int.
+loop n acc = case n <= 0 of True -> List.reverse acc
+  | False -> loop (n - 1) (n :: acc).
+main = acc = [9, 8]; result = loop 3 acc; print (result, acc).""", '([8, 9, 3, 2, 1], [9, 8])\n'),
+            'escaping-accumulator': ("""loop : (n : Int | measure n) -> List Int -> List Int.
+loop n acc = print acc >> case n <= 0 of True -> List.reverse acc
+  | False -> loop (n - 1) (n :: acc).
+main = print (loop 3 []).""", None),
+            'fake-reverse': ("""reverse xs = xs.
+loop : (n : Int | measure n) -> List Int -> List Int.
+loop n acc = case n <= 0 of True -> reverse acc
+  | False -> loop (n - 1) (n :: acc).
+main = print (loop 3 []).""", '[1, 2, 3]\n'),
+        }
+        for name, (body, expected_stdout) in extra_cases.items():
+            path = source(name, 'List = use "std/list".\n' + body + '\n')
+            seen = []
+            for disabled in (False, True):
+                exe, env, _ = build(path, f'{name}-{disabled}', disabled=disabled)
+                result = execute(exe, env)
+                seen.append((result.returncode, result.stdout, result.stderr))
+            assert seen[0] == seen[1], (name, seen)
+            if expected_stdout is not None:
+                assert seen[0][1] == expected_stdout, (name, seen)
+            assert (seen[0][0] != 0) == name.startswith('printing-'), (name, seen)
+            print(f'TRMC effect/sharing differential: {name} PASS', flush=True)
+
+        # Private root/cursor state must stay together while surrounding
+        # ordinary regions still reclaim repeated materialized lists.
+        region_prog = source('regions', '''List = use "std/list".
+repeat : (n : Int | measure n) -> Int -> Int.
+repeat n acc = case n <= 0 of True -> acc | False ->
+  xs = List.map (fn x -> x + n) (List.range 1 1000);
+  repeat (n - 1) (acc + List.length xs).
+main = print (repeat 1000 0).
+''')
+        for disabled in (False, True):
+            env = dict(base, FPR_NO_LIST_FUSE='1')
+            if disabled:
+                env['FPR_NO_TRMC'] = '1'
+            exe = tmp / f'regions-{disabled}'
+            made = run([ROOT / 'fpr', 'build', region_prog, '--harts', '4', '-o', exe], env)
+            assert made.returncode == 0, (made.stdout, made.stderr)
+            for harts in ('1', '4'):
+                result = execute(exe, dict(env, FPR_HARTS=harts, FPR_HEAP_MB='16'))
+                assert (result.returncode, result.stdout, result.stderr) == (0, '1000000\n', ''), (
+                    disabled, harts, result)
+        print('TRMC surrounding regions: repeated materialized maps, 16 MiB, 1/4 harts PASS', flush=True)
+
         # 3. Allocation reduction ratchets (with list fusion off so the list
         # allocations themselves are measured): TRMC cuts each reverse pass out,
-        # saving 1 Cons cell per output element. The `FPR_NO_SPEC` pair isolates
-        # the transform: the typed specializer inlines the pre-TRMC body of a
-        # called loop into its caller, so on the default profile a callback-
-        # carrying List.map/filter keeps its inlined reverse pass (see B2's
-        # record, "Placement"); `append` is not inlined and always improves.
+        # saving 1 Cons cell per output element. Default, no-inlining and
+        # no-specialization builds must all reach the typed worker.
         alloc_cases = {
             'map-1000': (
                 'main = print (List.length (List.map (fn x -> x + 1) (List.range 1 1000))).\n',
+                '1000\n', 2000, 3000),
+            'map-capture-1000': (
+                'run bias = print (List.length (List.map (fn x -> x + bias) (List.range 1 1000))).\nmain = run 7.\n',
                 '1000\n', 2000, 3000),
             'filter-1000': (
                 'main = print (List.length (List.filter (fn x -> x <= 500) (List.range 1 1000))).\n',
@@ -137,25 +197,25 @@ main =
             path = source(name, 'List = use "std/list".\n' + body)
             counts = {}
             for disabled, extra in ((False, {}), (True, {}),
-                                    (False, {'FPR_NO_SPEC': '1'}), (True, {'FPR_NO_SPEC': '1'})):
-                tag = f'{name}-{disabled}-{"nospec" if extra else "spec"}'
+                                    (False, {'FPR_NO_SPEC': '1'}), (True, {'FPR_NO_SPEC': '1'}),
+                                    (False, {'FPR_NO_INLINE': '1'}), (True, {'FPR_NO_INLINE': '1'})):
+                mode = next(iter(extra), 'default')
+                tag = f'{name}-{disabled}-{mode}'
                 exe, env, _ = build(path, tag, disabled=disabled, probe=True, extra_env=extra)
                 obs = execute(exe, env, report=True)
                 assert obs.returncode == 0 and obs.stdout == wanted_out, (
                     name, tag, obs.stdout, obs.stderr)
                 match = re.search(r'\[fpr cost\] (\{.*\})', obs.stderr)
                 assert match, (name, tag, obs.stderr)
-                counts[(disabled, bool(extra))] = json.loads(match.group(1))['alloc_requests']
-            # rollback is the unchanged baseline in both configurations
-            assert counts[(True, False)] == no_trmc_allocs and counts[(True, True)] == no_trmc_allocs, (
-                name, counts, no_trmc_allocs)
-            # no configuration may regress against the rollback
-            for key, value in counts.items():
-                assert value <= no_trmc_allocs, (name, key, counts)
-            # the transform itself must save the reverse pass
-            assert counts[(False, True)] == trmc_allocs, (name, 'no-specialization', counts, trmc_allocs)
-            print(f'TRMC allocation: {name} trmc={counts[(False, False)]} no_trmc={counts[(True, False)]} '
-                  f'(no-specialization trmc={counts[(False, True)]}) PASS', flush=True)
+                counts[(disabled, mode)] = json.loads(match.group(1))['alloc_requests']
+            for mode in ('default', 'FPR_NO_SPEC', 'FPR_NO_INLINE'):
+                # Without specialization the captured callback keeps one PAP.
+                closure = int(name == 'map-capture-1000' and mode == 'FPR_NO_SPEC')
+                assert counts[(True, mode)] == no_trmc_allocs + closure, (name, mode, counts)
+                assert counts[(False, mode)] == trmc_allocs + closure, (name, mode, counts)
+            pap_note = '; both counts +1 PAP without specialization' if name == 'map-capture-1000' else ''
+            print(f'TRMC allocation: {name} {no_trmc_allocs} -> {trmc_allocs} '
+                  f'(default, no-specialization, no-inlining{pap_note}) PASS', flush=True)
 
         # 4. Multi-target assembly emission (AArch64, x86-64, RV64): verify
         # `$worker.trmc.` and `OSetField` lower cleanly on all 64-bit targets.

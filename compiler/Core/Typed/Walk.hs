@@ -33,6 +33,8 @@ mapChildrenM f e = (\node -> e {exprNode=node}) <$> case exprNode e of
   VectorBuild b x->VectorBuild b <$> f x
   VectorReadPair op xs v->VectorReadPair op <$> traverse f xs <*> f v
   CallRegion x->CallRegion <$> f x
+  ListBuilder root cursor x->ListBuilder root cursor <$> f x
+  SetField base index value->SetField <$> f base <*> pure index <*> f value
   n->pure n
   where
     alt (Alternative ps gs b)=Alternative ps <$> traverse guard gs <*> f b
@@ -100,6 +102,7 @@ renameUses names e=runIdentity $ do
     Var (Local uid)->Var (Local (name uid))
     ClosureValue label captures->ClosureValue label (map name captures)
     JoinCall label captures xs->JoinCall label (map name captures) xs
+    ListBuilder root cursor x->ListBuilder (name root) (name cursor) x
     CodeCall label captures xs->CodeCall label (map name captures) xs
     n->n}
   where name uid=M.findWithDefault uid uid names

@@ -8,7 +8,6 @@ module Core.Opt.Pipeline
 import Core.Syntax
 import Core.Opt.Fusion (fuseCompatibilityWithImports)
 import Core.Opt.Normalize (normIn)
-import Core.Opt.Trmc (trmcProgramWithImports)
 import Core.Opt.Ticks (batchProgramTicks)
 import Core.Opt.PairReturns (pairReturnProgram)
 import Workers (ScalarSignatures, workerizeWithOptions, internalWorker)
@@ -19,13 +18,13 @@ import qualified Data.Set as S
 
 data OptimizationOptions = OptimizationOptions
   { optFusion :: Bool, optWorkers :: Bool, optFieldWorkers :: Bool, optTupleScalars :: Bool,
-    optScalarWorkers :: Bool, optTrmc :: Bool, optTickBatch :: Bool, optPairReturns :: Bool, optNormalize :: Bool, optReuse :: Bool,
+    optScalarWorkers :: Bool, optTickBatch :: Bool, optPairReturns :: Bool, optNormalize :: Bool, optReuse :: Bool,
     -- known pool resetters beyond this program and its imports (the linked
     -- program's, Reuse.poolResetters): reuse never spans a call to one
     optPoolResetters :: S.Set Name }
   deriving (Eq, Show)
 
-data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | Trmc | BatchTicks | PairReturns
+data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | BatchTicks | PairReturns
   deriving (Eq, Show)
 
 data PassReport = PassReport
@@ -56,7 +55,7 @@ optimizeCoreWithCheckedImports :: S.Set Name -> Prog -> OptimizationOptions -> S
 optimizeCoreWithCheckedImports checked imports opts elide input = do
   verifyPassResult input input M.empty
   foldM run (OptimizedCore input M.empty [])
-    [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, Trmc, BatchTicks, PairReturns]
+    [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BatchTicks, PairReturns]
   where
     run state pass = do
       let before = optimizedProgram state
@@ -73,10 +72,7 @@ optimizeCoreWithCheckedImports checked imports opts elide input = do
               in (p,optimizedSignatures state,[],enabled)
             ReuseConstructors -> let (p,ns) = if optReuse opts then reuseProgram (optPoolResetters opts `S.union` poolResetters (M.union before imports)) elide before else (before,[])
                                  in (p,optimizedSignatures state,ns,optReuse opts)
-            -- after reuse and before tick batching, so generated TRMC workers also get their inlined ticks batched
-            Trmc -> let (p,ns) = if optTrmc opts then trmcProgramWithImports imports before else (before,[])
-                    in (p,optimizedSignatures state,ns,optTrmc opts)
-            -- last before pair returns, so reuse sees the calls it has always seen
+            -- Typed TRMC workers already exist here and get their inlined ticks batched too.
             BatchTicks -> let (p,ns) = if optTickBatch opts then batchProgramTicks before else (before,[])
                           in (p,optimizedSignatures state,ns,optTickBatch opts)
             -- after every pass that reads call results: the twins are the last functions made

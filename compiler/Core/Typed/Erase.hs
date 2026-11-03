@@ -80,6 +80,9 @@ eraseWith region contracts types layout f = runExceptT $ do
         pure (foldl CApp (CVar label) (caps++xs))
       Fail message -> pure (CErr message)
       EntryTick -> pure (CApp (CVar entryTickName) (CInt 0))
+      ListBuilder _ _ body -> go env names body
+      SetField base 1 value -> CApp <$> (CApp (CVar "$trmc.setTail") <$> go env names base) <*> go env names value
+      SetField {} -> throwError "typed Core erasure: unsupported builder field"
       LayoutLiteral spec -> pure (CStr spec)
       CallRegion body->do
         unless (all (`M.notMember` names) (map hookName [CallPending,CallLeave]))

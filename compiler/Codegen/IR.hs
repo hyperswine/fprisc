@@ -183,7 +183,7 @@ data Op
   | OLoad Ty VId Int -- word load at a byte offset: TInt, TVal or TAddr; mutable memory, never CSE
   | OLoadByte VId Int -- zero-extended byte -> TInt (column kind descriptor)
   | OStore Ty VId Int VId -- word store, same representation as OLoad; uniquely owned vector
-  | OSetField Int VId VId -- overwrite a zero-based constructor field of a uniquely owned cell (Core.Opt.Trmc)
+  | OSetField Int VId VId -- overwrite a zero-based constructor field of a uniquely owned cell (Core.Typed.Trmc)
   | OField Int VId -- read a statically typed constructor field (zero-based)
   | OStrLen VId -- checked String byte length -> TInt
   | OCharAt VId VId -- checked String and TInt byte index -> TInt

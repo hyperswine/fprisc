@@ -1,0 +1,57 @@
+{
+  "revision": "9ffd4d2141d363c6e8454f81b717bb7d5518ac29",
+  "dirty": true,
+  "compiler_sha256": "5090d70c427dd21e9581795d91e019e85cc0c9d3fdde3717f5da580926bbba34",
+  "environment": "ghc-9.8.2 aarch64-apple-darwin",
+  "measurement": "fresh cache per program/variant, GHC RTS machine-readable statistics; wall time informational",
+  "baseline": {
+    "hello": {
+      "allocated_bytes": 1465668336,
+      "max_bytes_used": 42631656
+    },
+    "pos1": {
+      "allocated_bytes": 64807737672,
+      "max_bytes_used": 833612360
+    },
+    "std-live": {
+      "allocated_bytes": 29921614160,
+      "max_bytes_used": 402922048
+    }
+  },
+  "results": {
+    "off": {
+      "hello": {
+        "allocated_bytes": 1514637360,
+        "max_bytes_used": 42566792,
+        "wall_seconds": 0.8
+      },
+      "std-live": {
+        "allocated_bytes": 30787806184,
+        "max_bytes_used": 454005216,
+        "wall_seconds": 22.6
+      },
+      "pos1": {
+        "allocated_bytes": 66720303936,
+        "max_bytes_used": 775534008,
+        "wall_seconds": 44.5
+      }
+    },
+    "on": {
+      "hello": {
+        "allocated_bytes": 1539672624,
+        "max_bytes_used": 26127560,
+        "wall_seconds": 0.7
+      },
+      "std-live": {
+        "allocated_bytes": 31936732800,
+        "max_bytes_used": 456486904,
+        "wall_seconds": 21.4
+      },
+      "pos1": {
+        "allocated_bytes": 69362282680,
+        "max_bytes_used": 815080248,
+        "wall_seconds": 49.3
+      }
+    }
+  }
+}

@@ -2,6 +2,11 @@
 
 Date: 1 November 2026. Kind: design proposal with measurements. It changes no
 compiler behaviour. Base: main `251c6d0`.
+
+For implementation status and the next priorities as of 3 November, read the
+[roadmap checkpoint](2026-11-03-ZERO-OVERHEAD-ROADMAP-CHECKPOINT.md).
+The proposal and dated decisions below retain their original scope.
+
 It builds on [the zero-overhead follow-ups](2026-10-31-ZERO-OVERHEAD-FOLLOWUPS.md),
 which call uniform representation "the zero-overhead endgame" (its item 2) and
 leave list fusion as an open question (its item 5), and on

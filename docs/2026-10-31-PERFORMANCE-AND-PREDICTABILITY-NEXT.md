@@ -2,6 +2,11 @@
 
 Date: 31 October 2026. Kind: prioritized plan and design direction, not an
 implementation or timing certificate. Source reviewed: main `744941d`.
+
+For implementation status and the next priorities as of 3 November, read the
+[roadmap checkpoint](2026-11-03-ZERO-OVERHEAD-ROADMAP-CHECKPOINT.md).
+This page preserves the original plan and its design constraints.
+
 This records the agreed next steps after the October native performance work.
 It builds on the [performance plan](2026-10-26-PERFORMANCE-PLAN.md), with the
 later findings below taking precedence over that plan's earlier assumptions.

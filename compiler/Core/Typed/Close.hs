@@ -7,6 +7,7 @@ module Core.Typed.Close
    mapClosed,mapClosedChanged,rewriteClosed,rewriteClosedWithOrigins,verifyClosed) where
 import Core.Typed.Syntax
 import Core.Typed.Verify
+import Core.Typed.TrmcProof (verifyBuilderGraph)
 import Core.Typed.Walk
 import Core.Typed.Contract (codeContractsWith)
 import Core.Identity
@@ -15,7 +16,7 @@ import Ownership.TypeShape (linShapeT)
 import Control.Monad.State.Strict
 import Control.Monad.Except
 import Control.Monad (unless,when)
-import Data.List (intercalate)
+import Data.List (intercalate,isPrefixOf)
 import Data.Functor.Identity (runIdentity)
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
@@ -269,6 +270,9 @@ closeFunctionWith globals (Namespace sourceNamespace) names types@(TypeContext l
 
 verifyClosed :: TypeContext -> ClosedFunction -> Either String ()
 verifyClosed types product@(ClosedFunction root codes _ imports origins)=do
+  unless (all (\(CodeId n)->not ("$worker.trmc." `isPrefixOf` n)) (M.keys imports))
+    (Left "typed closure: a list-builder capability cannot be imported")
+  verifyBuilderGraph root codes
   let contracts=closedContracts product
       functions=root:map codeAsFunction (M.elems codes)
       binders=concat [functionParameters f++allBinders (functionBody f) | f<-functions]

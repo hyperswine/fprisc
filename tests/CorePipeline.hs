@@ -19,7 +19,7 @@ app n = foldl CApp (CVar n)
 right = either error id
 failed (Left _) = True
 failed _ = False
-none = OptimizationOptions False False False False False False False False False False S.empty
+none = OptimizationOptions False False False False False False False False False S.empty
 
 main = do
   checkExports
@@ -36,8 +36,8 @@ main = do
   check "worker ABI retained through normalization and reuse" (M.lookup worker sigs==Just ([KI,KI],KI))
   check "public entry retained" (fst (optimizedProgram result M.! "sum")==["n","a"])
   check "named pass order" (map passName (optimizationReports result)==
-    [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,Trmc,BatchTicks,PairReturns])
-  check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False,False,False])
+    [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,BatchTicks,PairReturns])
+  check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False,False])
   check "missing function refused" (failed (verifyPassResult source M.empty M.empty))
   check "entry arity drift refused" (failed (verifyPassResult source (M.singleton "sum" (["n"],CInt 0)) M.empty))
   check "duplicate parameters refused" (failed (optimizeCore none S.empty (M.singleton "f" (["x","x"],v "x"))))
@@ -71,39 +71,6 @@ main = do
   check "tick batching rollback keeps inlined entry ticks" (hasTick "loop" tickOff)
   check "tick batching reports its decision"
     ("# tick batching: self-loops=1 batched=1" `elem` optimizationNotes tickOnResult)
-  -- B2 TRMC: accumulator-reverse list loops and two-pass append.
-  let revOntoDef=(["xs","acc"],CIf (CTagEq 2 0 (v "xs")) (v "acc")
-        (app "revOnto" [CProj 1 (v "xs"),CMk 2 1 [CProj 0 (v "xs"),v "acc"]]))
-      reverseDef=(["xs"],app "revOnto" [v "xs",CMk 2 0 []])
-      mapGoDef=(["f","xs","acc"],CIf (CTagEq 2 0 (v "xs")) (app "reverse" [v "acc"])
-        (app "mapGo" [v "f",CProj 1 (v "xs"),CMk 2 1 [CApp (v "f") (CProj 0 (v "xs")),v "acc"]]))
-      filterGoDef=(["p","xs","acc"],CIf (CTagEq 2 0 (v "xs")) (app "revOnto" [v "acc",CMk 2 0 []])
-        (CIf (CTagEq 1 1 (CApp (v "p") (CProj 0 (v "xs"))))
-          (app "filterGo" [v "p",CProj 1 (v "xs"),CMk 2 1 [CProj 0 (v "xs"),v "acc"]])
-          (app "filterGo" [v "p",CProj 1 (v "xs"),v "acc"])))
-      appendDef=(["xs","ys"],app "revOnto" [app "revOnto" [v "xs",CMk 2 0 []],v "ys"])
-      trmcInput=M.fromList [("revOnto",revOntoDef),("reverse",reverseDef),
-                            ("mapGo",mapGoDef),("filterGo",filterGoDef),("append",appendDef)]
-      trmcOnResult=right (optimizeCore (none {optTrmc=True}) S.empty trmcInput)
-      trmcOn=optimizedProgram trmcOnResult
-      trmcOff=optimizedProgram (right (optimizeCore none S.empty trmcInput))
-  check "TRMC creates private workers for accumulator-reverse list loops"
-    (M.member "$worker.trmc.mapGo" trmcOn && M.member "$worker.trmc.filterGo" trmcOn)
-  check "TRMC leaves revOnto and reverse untouched"
-    (not (M.member "$worker.trmc.revOnto" trmcOn) && M.lookup "revOnto" trmcOn==Just revOntoDef)
-  check "TRMC rewrites two-pass append to single-pass worker"
-    (M.member "$worker.trmc.append" trmcOn && "$worker.trmc.append" `isInfixOf` show (trmcOn M.! "append"))
-  check "TRMC workers link tail cells with $trmc.setTail"
-    ("$trmc.setTail" `isInfixOf` show (trmcOn M.! "$worker.trmc.mapGo")
-     && not ("reverse" `isInfixOf` show (trmcOn M.! "$worker.trmc.mapGo")))
-  -- A worker nothing calls saves nothing: the entry must branch into it when
-  -- the accumulator is empty and keep the original loop otherwise.
-  check "TRMC entries transition into their worker"
-    (all (\n -> ("$worker.trmc." ++ n) `isInfixOf` show (snd (trmcOn M.! n))) ["mapGo","filterGo"]
-     && "$worker.trmc.append" `isInfixOf` show (snd (trmcOn M.! "append")))
-  check "TRMC reports loop and append counts"
-    ("# trmc: loops=2 appends=1" `elem` optimizationNotes trmcOnResult)
-  check "TRMC rollback leaves program unchanged" (trmcOff==trmcInput)
   -- A pair answered to a caller that only decides its shape and reads its
   -- fields is answered in two registers (the $worker.ret2 twin).
   let pairF=(["n"],CIf (app "==" [v "n",CInt 0]) (CMk 4 0 [CInt 0,CInt 0])

@@ -420,6 +420,7 @@ receiveTurns loopRegions callRegionsOn receiveLoops contextEqs interfaces model 
                                 [n | n <- ns, not (S.null ((graph M.! n) `S.intersection` joins `S.intersection` known))]
                        in if next == known then known else close next
     transform ns
+      | any (\n->maybe False builderRegionEntry (M.lookup n interfaces)) ns = Left "private list builder state cannot cross a region boundary; unchanged"
       | any (`S.member` managed) ns = Left "explicit region management; unchanged"
       | S.null boundaries = Left "no checked receive entry; unchanged"
       | not (null problems) = Left ((if isPure ns then "state is unbounded, polymorphic or lacks type evidence; unchanged ("

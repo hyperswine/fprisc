@@ -80,12 +80,14 @@ allocation gate now uses one. Every other allocation gate is unchanged.
 
 `tests/check_list_fusion.py` and `tests/check_case_known.py` pass.
 
-## Not done
+## Follow-ups (status updated 3 November)
 
 - The raw benchmark data behind the 2026-11-01 figures (list_sum 31.3 ms, B5,
   option_loop) is still not committed.
-- The random-pipeline differential test with trapping callbacks is still not
-  written.
+- The random-pipeline differential test with trapping callbacks has landed in
+  `tests/reliability/list_fusion_random.py` and is wired into the reliability
+  CI runner. The [roadmap checkpoint](2026-11-03-ZERO-OVERHEAD-ROADMAP-CHECKPOINT.md)
+  proposes extending its effect coverage and testing trapping cases independently.
 - Case of known constructor still explains no declines through `--remarks`.
 
 ## Addendum (2026-11-02, later): the float crossed overflow-capable work
