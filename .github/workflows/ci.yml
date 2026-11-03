@@ -68,6 +68,9 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE/.ci/simple-risc"
       - name: cabal build (Linux x86-64)
         run: |
+          # cabal.project.freeze pins the release plan (GHC 9.8.2 boot packages);
+          # CI runners ship other GHCs, so build CI against their own plan.
+          rm -f cabal.project.freeze
           cabal update
           cabal build
       - name: make fpr
@@ -178,6 +181,9 @@ jobs:
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: make fpr
         run: |
+          # cabal.project.freeze pins the release plan (GHC 9.8.2 boot packages);
+          # CI runners ship other GHCs, so build CI against their own plan.
+          rm -f cabal.project.freeze
           cabal update
           cabal build
           make fpr
@@ -213,6 +219,9 @@ jobs:
       - run: git config --global user.email ci@example.invalid && git config --global user.name ci
       - name: make fpr
         run: |
+          # cabal.project.freeze pins the release plan (GHC 9.8.2 boot packages);
+          # CI runners ship other GHCs, so build CI against their own plan.
+          rm -f cabal.project.freeze
           cabal update
           cabal build
           make fpr
@@ -246,6 +255,9 @@ jobs:
       - run: echo "PKG_CONFIG_PATH=$(brew --prefix libarchive)/lib/pkgconfig:$(brew --prefix curl)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
       - name: make fpr
         run: |
+          # cabal.project.freeze pins the release plan (GHC 9.8.2 boot packages);
+          # CI runners ship other GHCs, so build CI against their own plan.
+          rm -f cabal.project.freeze
           cabal update
           cabal build
           make fpr
