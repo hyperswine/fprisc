@@ -16,7 +16,32 @@ main = do
   let shadow=M.insert "shadow" (["loop"],app "loop" [CInt 10,pair (CInt 0) (CInt 0)]) p
   check "lexical shadow preserved" (fst (workerize True False shadow) M.! "shadow"==shadow M.! "shadow")
   let escape=M.insert "loop" (["n","p"],CIf (app "==" [v "n",CInt 0]) (v "p") (snd loop)) p
-  check "whole value escaping declines" (not (M.member "$worker.fields.loop" (fst (workerize True False escape))))
+  check "whole value returned at exit gets a scalar worker"
+    (M.member "$worker.fields.loop" (fst (workerize True False escape)))
+  let (escapeOff,_,_)=workerizeWithOptions True False False False escape
+  check "whole return scalarization respects tuple opt-out"
+    (not (M.member "$worker.fields.loop" escapeOff))
+  let forward=(["n","p"],CIf (app "<" [v "n",CInt 0]) (v "p") (app "loop" [v "n",v "p"]))
+      forwardProg=M.insert "forward" forward escape
+      forwardOut=fst (workerize True False forwardProg)
+  check "guarded shape crosses a nonrecursive forwarding wrapper"
+    (M.member "$worker.fields.forward" forwardOut)
+  check "forwarding wrapper retains original fallback"
+    (case snd (forwardOut M.! "forward") of CIf (CTagEq 4 0 _) _ fallback->fallback==snd forward;_->False)
+  let observed=M.insert "forward" (["n","p"],CLet "seen" (app "unknown" [v "p"]) (app "loop" [v "n",v "p"])) forwardProg
+  check "forwarding refuses whole-value observation"
+    (not (M.member "$worker.fields.forward" (fst (workerize True False observed))))
+  let shadowForward=M.insert "forward" (["loop","p"],app "loop" [CInt 10,v "p"]) forwardProg
+  check "forwarding refuses a shadowed target"
+    (not (M.member "$worker.fields.forward" (fst (workerize True False shadowForward))))
+  let seeded=M.insert "seeded" ([],CLet "seed" (pair (app "left" [CInt 0]) (app "right" [CInt 0]))
+        (app "$callLeave" [CInt 0,app "forward" [CInt 10,v "seed"]])) forwardProg
+      seededOut=fst (workerize True False seeded)
+  check "seed fields stay in order before the region-adapted worker call"
+    (case snd (seededOut M.! "seeded") of
+       CLet l (CApp (CVar "left") (CInt 0)) (CLet r (CApp (CVar "right") (CInt 0)) rest)->
+         rest==app "$callLeave" [CInt 0,app "$worker.fields.forward" [CInt 10,v l,v r]]
+       _->False)
   let variable=M.insert "other" ([],CMk 4 0 [CInt 1]) p
   check "variable constructor arity declines" (not (M.member "$worker.fields.loop" (fst (workerize True False variable))))
   -- Wider products use all fields in order, including the spill-cell limit.

@@ -27,7 +27,10 @@ def check_execution(run,run_cost,enabled):
     assert result=='100020000' and ledger['alloc_requests']==(10000 if enabled else 20000),(result,ledger)
     return ledger
 
-NO_REGIONS={'FPR_NO_LOOP_REGIONS':'1','FPR_NO_CALL_REGIONS':'1'}
+# Keep the allocation ratchet specific to reuse: pair returns can independently
+# remove the same temporary pair even with reuse disabled. Values still run
+# with the normal pair-return optimization above.
+COST_OPTIONS={'FPR_NO_LOOP_REGIONS':'1','FPR_NO_CALL_REGIONS':'1','FPR_NO_PAIR_RETURNS':'1'}
 def command(args,env):
     p=subprocess.run(list(map(str,args)),cwd=ROOT,env=env,capture_output=True,text=True,timeout=300)
     assert p.returncode==0,(args,p.stdout[-2500:],p.stderr[-2500:])
@@ -51,7 +54,7 @@ def main():
                     def build(out,extra):
                         command([ROOT/'fpr','build',ROOT/'tests/base/freshreuse.fpr','--harts','4',
                                  '--with',ROOT/'tests/bench/costprobe.c','--with',ROOT/'tests/bench/workers_clock.c','-o',out],dict(mode,**extra))
-                    build(exe,{}); build(tmp/'reuse-cost',NO_REGIONS)
+                    build(exe,{}); build(tmp/'reuse-cost',COST_OPTIONS)
                     def runner(path):
                         def run(case,harts):
                             p=subprocess.run([str(path)]+([case] if case else []),env=dict(mode,FPR_HARTS=str(harts)),capture_output=True,text=True,timeout=90)
@@ -61,7 +64,7 @@ def main():
                     print(f'reuse disabled={off} inline-disabled={no_inline} registers-disabled={no_regs}: {ledger["alloc_requests"]} allocations PASS',flush=True)
         # Exercise the separate executable-run cache, not only unit caching.
         for off in ('1','0','1'):
-            mode=dict(env,FPR_NO_REUSE=off,FPR_HARTS='1',**NO_REGIONS)
+            mode=dict(env,FPR_NO_REUSE=off,FPR_HARTS='1',**COST_OPTIONS)
             mode.pop('FPR_NO_RUN_CACHE',None)
             out=command([ROOT/'fpr','run',ROOT/'tests/base/freshreuse.fpr',
                          '--with',ROOT/'tests/bench/costprobe.c',

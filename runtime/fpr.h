@@ -16,6 +16,10 @@
 #include <stdint.h>
 
 typedef uintptr_t V;
+/* Constructor metadata is copied into a process-lifetime registry before a
+ * module is published. Values may outlive the image that defined their type. */
+int fpr_layout_register(const uintptr_t *table);
+uintptr_t fpr_layout_fields(uintptr_t tid, uintptr_t variant);
 typedef uintptr_t uw; /* one machine word: field / length / count type */
 typedef intptr_t sw;
 
@@ -77,6 +81,25 @@ extern const hdr_t fpr_true, fpr_false, fpr_unit;
 #define FPR_NHARTS 2
 #endif
 #define FPR_NBUCKETS 512
+/* One default managed layout on 64-bit runtimes. Builtin and RV32 retain
+ * their independent heap contracts. The old prefix is a diagnostic rollback,
+ * never compatible with compact modules or a compact shared-memory plane. */
+#if UINTPTR_MAX > UINT32_MAX && !defined(FPR_BUILTIN) && !defined(FPR_LEGACY_CELLS)
+#ifndef FPR_COMPACT_CELLS
+#define FPR_COMPACT_CELLS
+#endif
+#endif
+#if (defined(FPR_BUILTIN) || UINTPTR_MAX <= UINT32_MAX) && defined(FPR_COMPACT_CELLS)
+#undef FPR_COMPACT_CELLS
+#endif
+#ifdef FPR_COMPACT_CELLS
+#define FPR_MANAGED_PREFIX 8u
+#define FPR_SLAB_PAD 15u
+#else
+#define FPR_MANAGED_PREFIX 16u
+#define FPR_SLAB_PAD 0u
+#endif
+#define FPR_RAW_PREFIX 16u
 /* argument-spill cells per hart: max supported call arity is
  * 8 (registers) + FPR_ARGSPILL (cells) = 64.  Codegen.hs and callf()
  * both bake this number; change all three together. */
@@ -99,8 +122,8 @@ struct fpr_scope; /* runtime.c: stack-resident scratch-region cleanup */
  * buddy when its last promoted object is dropped -- cross-actor
  * references can never dangle.  Stacks are buddy blocks too and never
  * escape, so death always reclaims them: the v2 "stacks leak on death"
- * caveat is structurally gone.  Block header (16 bytes, alignment
- * preserved): [0] = total size, [1] = owning slab. */
+ * caveat is structurally gone.  Managed blocks keep the owning slab at value-8. Compact 64-bit blocks
+ * omit the size word; raw storage and the legacy layout retain it. */
 typedef struct fpr_slab {
   struct fpr_slab *next;
   struct fpr_pool *owner; /* NULL = orphaned (freed when escaped hits 0) */
@@ -126,6 +149,15 @@ typedef struct fpr_slab {
                            * slab it keeps.  (Also what keeps sizeof a multiple
                            * of 16: objects start at sl + 1, 16-aligned.) */
 } fpr_slab_t;
+/* Buddy payloads are only word-aligned. Compact slabs explicitly align
+ * block starts so opaque raw storage retains 16-byte alignment. */
+static inline char *fpr_slab_start(fpr_slab_t *sl) {
+#ifdef FPR_COMPACT_CELLS
+  return (char *)(((uw)(sl+1)+15)&~(uw)15);
+#else
+  return (char *)(sl+1);
+#endif
+}
 _Static_assert(sizeof(fpr_slab_t) % 16 == 0, "fpr_slab_t: objects start at sl + 1, keep it 16-aligned");
 
 typedef struct fpr_pool {
@@ -198,8 +230,20 @@ void fpr_bkt_put(void **b);
 #else
 #define FPR_NATIVE_ABI 8u /* QOS and other hosted layouts: v6 plus the acb's received-root list (REGIONS-STAGE1), the hart's region clock and the acb's pending call regions (REGIONS-LOOPS-CALLS) */
 #endif
+#ifdef FPR_COMPACT_CELLS
+#undef FPR_NATIVE_ABI
+#if defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
+#define FPR_NATIVE_ABI 10u
+#else
+#define FPR_NATIVE_ABI 9u
+#endif
+#endif
 #define FPR_PLANE_ACTORS_ABI 3u /* v3: opt-in transactional spawn_inbox; v2: receive_from_now */
+#ifdef FPR_COMPACT_CELLS
+#define FPR_PLANE_MEMORY_ABI 5u
+#else
 #define FPR_PLANE_MEMORY_ABI 4u /* v4: loop_turn, the compiler-placed turn that moves owned Vectors; v3: sized stack reservation before a generated frame */
+#endif
 typedef struct fpr_plane_actors {
   uw abi;                             /* FPR_PLANE_ACTORS_ABI of the exporter */
   V (*send_as)(uw sender_key, V target, V m);
@@ -238,6 +282,10 @@ typedef struct fpr_plane_memory {
   V (*loop_with)(V vec, V state, V f);
   V (*loop_turn)(V state, V f);       /* v4: g_loop with owned Vectors moved, not refused (REGIONS-STAGE2) */
   uw (*stack_reserve)(uw sp, uw bytes); /* pre-frame SP; frame bytes plus runtime headroom */
+#ifdef FPR_COMPACT_CELLS
+  int (*layout_register)(const uw *table);
+  uw (*layout_fields)(uw tid, uw variant);
+#endif
 } fpr_plane_memory_t;
 extern fpr_plane_actors_t *fpr_plane_actors; /* NULL = this image is the plane */
 extern fpr_plane_memory_t *fpr_plane_memory; /* NULL = this image owns its heap */
@@ -906,16 +954,29 @@ void fpr_hart_secondary(int id); /* actors.c: secondary hart's loop */
 void fpr_ctx_fabricate(uw *ctx, void (*entry)(void), uw stack_top16,
                        fpr_hart_t *owner); /* ctx layer (virt/posix) */
 
-V fpr_alloc(V raw_bytes); /* runtime allocator; RAW byte count, not tagged */
-/* bulk storage (a Vector's header, directory and columns, runtime/vec.c):
+V fpr_alloc(V raw_bytes); /* managed object; byte count is untagged */
+/* Opaque bulk storage (a Vector's directory and columns, runtime/vec.c):
  * allocated in the actor's BASE pool whatever region is open, so an owned
  * Vector survives a turn's reset and crosses the boundary by handle; it is
  * linear, so its one owner frees it (docs/2026-10-24-REGIONS-STAGE2.md) */
 V fpr_alloc_bulk(V raw_bytes);
 V fpr_realloc_bulk(V v, V want);
-V fpr_realloc(V obj, V raw_bytes); /* grow to a new payload size (copy-based;
-                                    * the freed block recycles exactly) */
+V fpr_realloc(V buffer, V raw_bytes); /* hosted opaque-buffer growth; alias of
+                                       * fpr_realloc_raw, using raw capacity */
 void fpr_free(V obj);     /* runtime-specific deallocation; not a recursive ADT drop */
+/* Opaque bytes have no type header from which a walker can derive a size.
+ * Keep these calls distinct from managed values, including vector storage. */
+#ifdef FPR_BUILTIN
+#define fpr_alloc_raw fpr_alloc
+#define fpr_realloc_raw fpr_realloc
+#define fpr_free_raw fpr_free
+#define fpr_alloc_object_bulk fpr_alloc_bulk
+#else
+V fpr_alloc_raw(V bytes);
+V fpr_realloc_raw(V buffer,V bytes);
+void fpr_free_raw(V buffer);
+V fpr_alloc_object_bulk(V bytes);
+#endif
 int fpr_in_heap(V v);     /* heap pointer (promotable) vs int/immortal static */
 V fpr_msg_copy(V v);      /* deep copy into the sender's message slab (packed) */
 V fpr_msg_copy_fresh(V v); /* ... into a slab of its own (Sys.arena's transfer) */

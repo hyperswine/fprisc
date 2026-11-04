@@ -41,6 +41,7 @@ data Policy = Policy
     polInterval :: Bool, -- discharge overflow checks and guards a difference-bound proof covers (Codegen.Interval)
     polTypedCase :: Bool, -- type-directed case variant tests on statically-typed nominal sum types (FPR_NO_TYPED_CASE=1 keeps full OTagTest)
     polBumpAlloc :: Bool, -- constructor cells bump the hart's allocation window inline, fpr_alloc only on refill (FPR_NO_BUMP_ALLOC=1 keeps every allocation a call; hosted Base only: bumpAllocates)
+    polCompactCells :: Bool, -- 8-byte managed owner prefix; opaque buffers retain their size word
     polRegisters :: Maybe RegisterBudget -- the target's allocatable registers, for passes that lengthen live ranges (Codegen.Pressure); Nothing: unlimited
   }
   deriving (Eq, Ord, Show)
@@ -63,7 +64,7 @@ registerBudget = \case
   _ -> Nothing
 
 m2Policy :: Policy
-m2Policy = Policy HostedBase True StackCheckEveryEntry True False False False True True True True True Nothing
+m2Policy = Policy HostedBase True StackCheckEveryEntry True False False False True True True True True True Nothing
 
 profileName :: Profile -> String
 profileName = \case

@@ -6,7 +6,7 @@
 -- globals are shape-verified against their catalog templates (std/list's
 -- content hash changes on every edit, so a name alone is not an identity);
 -- safety evidence and the Int-overflow relaxation are Core.FusionPolicy's.
-module Core.Typed.ListFusion (fuseListClosed) where
+module Core.Typed.ListFusion (fuseListClosed,fuseListClosedAfterInline) where
 import Core.Typed.Syntax
 import Core.Typed.Close
 import Core.Typed.Callback.Catalog
@@ -15,12 +15,13 @@ import qualified Core.Typed.FusionSafety as Safety
 import Core.Typed.Fusion (FusionNote(..),Decline(..))
 import Core.FusionPolicy (safePrimitives)
 import Core.Primitives (primArities)
-import Core.Typed.Walk (allBinders,mapChildrenM)
+import Core.Typed.Walk (allBinders,mapChildrenM,renameUses)
 import Core.Identity
 import Type.Syntax
 import Ownership.TypeShape (linShapeT)
 import Control.Monad.State.Strict
 import Data.Functor.Const (Const(..))
+import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -43,17 +44,25 @@ data Build=Build Int (M.Map CodeId CodeFunction) [FusionNote] (M.Map String Bool
 -- lists are uses exactly like Var references, so a value consumed by a
 -- synthesized closure still counts. Over-counting only declines fusion.
 countUses :: Expr -> M.Map BinderId Int
-countUses e=here<>getConst (mapChildrenM (Const . countUses) e)
+countUses=walk M.empty
   where
-    here=case exprNode e of
-      Var (Local uid)->M.singleton uid 1
-      ClosureValue _ captures->M.fromList [(u,1)|u<-captures]
-      CodeCall _ captures _->M.fromList [(u,1)|u<-captures]
-      JoinCall _ captures _->M.fromList [(u,1)|u<-captures]
-      _->M.empty
+    walk counts e=foldl' walk (foldl' (\m u->M.insertWith (+) u 1 m) counts (directUses e)) (children e)
+
+directUses e=case exprNode e of
+  Var (Local uid)->[uid]
+  ClosureValue _ captures->captures
+  CodeCall _ captures _->captures
+  JoinCall _ captures _->captures
+  _->[]
+children e=getConst (mapChildrenM (Const . (:[])) e)
+occurs uid e=uid `elem` directUses e || any (occurs uid) (children e)
+occurrences uid e=length (filter (==uid) (directUses e))+sum (map (occurrences uid) (children e))
 
 fuseListClosed :: Namespace -> TypeContext -> Catalog -> CodeLibrary -> ClosedFunction -> Either String (ClosedFunction,[FusionNote],Bool)
-fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot library input=do
+fuseListClosed=fuseListClosedAfterInline False
+
+fuseListClosedAfterInline :: Bool -> Namespace -> TypeContext -> Catalog -> CodeLibrary -> ClosedFunction -> Either String (ClosedFunction,[FusionNote],Bool)
+fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linears _) snapshot library input=do
   let source=mergeClosedLibrary library input
   ((root,codes),Build _ added notes _ changed)<-runStateT (pass (closedRoot source) (closedCode source)) (Build 0 M.empty [] M.empty False)
   if not changed then pure (input,notes,False)
@@ -64,7 +73,6 @@ fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot libr
     safety=Safety.planSafety (catalogTemplates snapshot)
     owner=functionName (closedRoot input)
     aliases=M.unions [bindings (functionBody f) | f<-closedRoot input:map codeAsFunction (M.elems (closedCode input))]
-    counts=M.unionsWith (+) [countUses (functionBody f) | f<-closedRoot input:map codeAsFunction (M.elems (closedCode input))]
     bindings e=(case exprNode e of Let b rhs _->M.singleton (binderId b) rhs;_->M.empty)
       <>getConst (mapChildrenM (Const . bindings) e)
     -- Resolve only value operands, exactly as checked vector fusion does.
@@ -96,7 +104,8 @@ fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot libr
       Build _ added _ _ _<-get
       pure (root',codes' `M.union` added)
     function fn=do
-      floated<-floatProducer (functionBody fn)
+      exposed<-if inlined && hasInlineTick (functionBody fn) then canonical (functionBody fn) else pure (functionBody fn)
+      floated<-floatProducer (countUses exposed) exposed
       let scope0=M.fromList [(binderId b,b) | b<-functionParameters fn++allBinders floated]
       folded<-go scope0 floated
       let scope1=M.fromList [(binderId b,b) | b<-functionParameters fn++allBinders folded]
@@ -104,6 +113,31 @@ fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot libr
       let scope2=M.fromList [(binderId b,b) | b<-functionParameters fn++allBinders crossed]
       body<-goRange scope2 crossed
       pure fn {functionBody=body}
+    hasInlineTick e=case exprNode e of
+      Sequence tick _ | EntryTick<-exprNode (unNote tick)->True
+      _->or (getConst (mapChildrenM (Const . (:[]) . hasInlineTick) e))
+    -- Checked inlining retains strict argument lets, function-clause aliases
+    -- and entry ticks. Remove only identity aliases; keep the tick as a Unit
+    -- binding so site prefixes preserve it when a surrounding chain fuses.
+    canonical e=mapChildrenM canonical e >>= \x->case exprNode x of
+      Let b rhs body | Var (Local uid)<-exprNode (unNote rhs)->do
+        changed
+        canonical (renameUses (M.singleton (binderId b) uid) body)
+      MatchTail (FunctionMatch _) args [Alternative pats [] body] _
+        | length args==length pats,Just pairs<-traverse alias (zip pats args)->do
+            changed
+            canonical (renameUses (M.fromList pairs) body)
+      Sequence tick body | EntryTick<-exprNode (unNote tick)->do
+        (label,ns)<-fresh 1
+        let b=Binder (BinderId ns 0) (targetName (CodeTarget label)++".$tick")
+                (Forall [] [] (TC "Unit")) (linShapeT linears (TC "Unit"))
+        changed
+        pure (gen x (exprType body) (Let b tick body))
+      _->pure x
+    alias (p,a)=case (patNode p,exprNode (unNote a)) of
+      (Bind b,Var (Local uid))->Just (binderId b,uid)
+      _->Nothing
+    changed=modify (\(Build n cs ns v _)->Build n cs ns v True)
     -- Float single-use let-bound producers to their use position before the
     -- site walk: the producer's evaluation then moves across only movable
     -- work (FusionPolicy-safe, or a bare function value, whose body runs
@@ -111,17 +145,19 @@ fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot libr
     -- equivalent even when the later composition declines. Directly nested
     -- sites, chained bindings and uses under arbitrary expressions (a
     -- `print (sum r)`) all reduce to the same nested spine afterwards.
-    floatProducer e=case exprNode (unNote e) of
-      Let b rhs rest
-        | Just (Site _ kind _ _ _)<-site rhs,kind `elem` [KRange,KMap,KFilter]
-        -- a binder's occurrences cannot leave its binding's scope, so the
-        -- whole-program count is exactly the count in the body
-        , M.lookup (binderId b) counts==Just 1
-        , Just rest'<-tryFloat (binderId b) rhs rest
-        , M.notMember (binderId b) (countUses rest')->do
-            modify (\(Build n cs ns v _)->Build n cs ns v True)
-            floatProducer rest'
-      _->mapChildrenM floatProducer e
+    floatProducer counts e=mapChildrenM (floatProducer counts) e >>= floatHere
+      where
+        floatHere e=case exprNode (unNote e) of
+          Let b rhs rest
+            | Just (Site _ kind _ _ _)<-site rhs,kind `elem` [KRange,KMap,KFilter]
+            -- A binder's occurrences cannot leave its binding's scope; this
+            -- function count includes ordinary uses and closure captures.
+            , M.lookup (binderId b) counts==Just 1
+            , Just rest'<-tryFloat (binderId b) rhs rest
+            , not (occurs (binderId b) rest')->do
+                changed
+                floatProducer counts rest'
+          _->pure e
     -- Replace binder uid's single occurrence with the producer. Only
     -- positions that always run are entered, so the producer still runs
     -- exactly when it ran before; children are visited in evaluation order
@@ -143,7 +179,7 @@ fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot libr
         | uses rest->Nothing
         | otherwise->(\x'->e {exprNode=ResultPipe x' rest}) <$> tryFloat uid producer x
       PlannedUpdate x plan
-        | M.member uid (countUses x)&&M.findWithDefault 0 uid (countUses x)==M.findWithDefault 0 uid (countUses e)->
+        | occurs uid x && occurrences uid x==occurrences uid e->
             (\x'->e {exprNode=PlannedUpdate x' plan}) <$> tryFloat uid producer x
         | otherwise->Nothing
       CodeCall _ captures _|uid `elem` captures->Nothing
@@ -151,7 +187,7 @@ fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot libr
       node|alwaysRuns node->inOrder
       _->Nothing
       where
-        uses x=M.member uid (countUses x)
+        uses=occurs uid
         inOrder=fst <$> runStateT (mapChildrenM child e) True
         child x=do
           ok<-get
@@ -217,7 +253,7 @@ fuseListClosed (Namespace namespace) types@(TypeContext linears _) snapshot libr
     site e=peel [] e
       where
         peel prefix old=case exprNode (unNote old) of
-          Let b rhs rest | Safety.unsafeExpression safety rhs==Nothing->peel (prefix++[(b,rhs)]) rest
+          Let b rhs rest | Safety.unsafeExpressionStrict safety rhs==Nothing->peel (prefix++[(b,rhs)]) rest
           _->case spine old [] of
             (head',args)|Var (Global name _)<-exprNode head'->case (kindOf name,args) of
               (Just KFold,[_,_,_])->Just (Site e KFold head' args prefix)

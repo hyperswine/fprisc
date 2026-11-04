@@ -98,34 +98,38 @@ isCtorTree mp (t,v) width = go
     go (CIf _ a b) = branch a && branch b && not (deadBranch a && deadBranch b)
     go _ = False
     branch e = deadBranch e || go e
-usedOnlyAsRecArg :: String -> String -> Core -> Bool
-usedOnlyAsRecArg name x = go False
+usedOnlyAsCallArg :: (String -> Bool) -> String -> Core -> Bool
+usedOnlyAsCallArg selected x body = mentions x body && go body
   where
-    go seen e = case spine e of
+    go e | not (mentions x e) = True
+    go e = case spine e of
       (CVar f, args@(_ : _))
-        | f == name ->
+        | selected f ->
             let hits = length [() | CVar y <- args, y == x]
                 otherUses = any (\a -> a /= CVar x && mentions x a) args
-             in hits <= 1 && not otherUses && (seen || hits == 1)
+             in hits == 1 && not otherUses
       _ -> case e of
         CLet y a b
-          | y == x -> not (mentions x a) && seen
-          | otherwise -> not (mentions x a) && go seen b
+          | y == x -> not (mentions x a)
+          | otherwise -> not (mentions x a) && go b
         CIf c t f ->
           not (mentions x c)
-            && (go seen t || (deadBranch t && not (mentions x t)))
-            && (go seen f || (deadBranch f && not (mentions x f)))
-            && (mentions x t || mentions x f)
+            && go t && go f
+        -- Region adapters may surround the selected call. Its arguments are
+        -- still evaluated in place; only the fresh seed's box disappears.
+        CApp f a -> go f && go a
         _ -> False
 prepRecArgLets :: String -> [String] -> Core -> Core
-prepRecArgLets name ps = go
+prepRecArgLets name=prepCallArgLets (==name)
+prepCallArgLets :: (String -> Bool) -> [String] -> Core -> Core
+prepCallArgLets selected ps = go
   where
     paramSet = S.fromList ps
     go e = case e of
       CLet n a b ->
         let a' = go a
             b' = go b
-         in if not (rebinds n b') && usedOnlyAsRecArg name n b' && not (S.null (ctorTags a'))
+         in if not (rebinds n b') && usedOnlyAsCallArg selected n b' && not (S.null (ctorTags a'))
               then floatLet n a' b'
               else CLet n a' b'
       CApp a b -> CApp (go a) (go b)
@@ -222,7 +226,8 @@ fieldWorkers tupleScalars input
 
 fieldWorkersStep :: Bool -> S.Set String -> Prog -> (Prog,S.Set String)
 fieldWorkersStep tupleScalars allowedWorkers input =
-  (M.map (\(ps,b)->(ps,rewrite (S.fromList ps) b)) combined,M.fromList [(w,()) | (_,(_,_,_,w))<-M.toList plans] `seq` S.fromList [w | (_,(_,_,_,w))<-M.toList plans])
+  (M.map (\(ps,b)->(ps,rewrite (S.fromList ps) (if tupleScalars && not (M.null plans) then prepCallArgLets (`M.member` plans) ps (aliases (S.fromList ps) b) else b))) combined,
+   S.fromList [w | (_,(_,_,_,w))<-M.toList plans])
   where
     prep name (ps,b) =
       let b0 = aliases (S.fromList ps) b
@@ -267,7 +272,7 @@ fieldWorkersStep tupleScalars allowedWorkers input =
       if width < 2 || length ps - 1 + width > 64 || size narrowed > 1024 || null projections ||
          any (\k -> k < 0 || k >= width) projections ||
          name `elem` ps || rebinds name b || rebinds p b ||
-         not (uses name i p width narrowed) ||
+         not ((if tupleScalars then usesTail else uses) name i p width narrowed) ||
          size (snd (makeBody name ps b i tv width)) > 1024 ||
          not (any (recursive name (length ps) i p tv width) (nodes narrowed))
         then Nothing else Just (i,tv,width)
@@ -299,10 +304,70 @@ fieldWorkersStep tupleScalars allowedWorkers input =
           CLet x rhs body -> uses name i p width rhs && (x==p || usesArg name i p width body)
           CIf c t f -> uses name i p width c && usesArg name i p width t && usesArg name i p width f
           _ -> uses name i p width a
+    -- Returning the accumulator is a boundary, not an observation inside the
+    -- loop. The field worker reconstructs it once at that exit; unknown calls,
+    -- captures and whole-value uses in operands still decline.
+    usesTail name i p width e=case e of
+      CVar x | x==p->True
+      CLet x a b->uses name i p width a && (x==p || usesTail name i p width b)
+      CIf c a b->uses name i p width c && usesTail name i p width a && usesTail name i p width b
+      _->uses name i p width e
     -- Bound both the source scan (8192 nodes, allowing record shape chains)
     -- and the actual cloned body (1024 nodes, including expanded forwarding).
     -- All selected calls remain saturated; at most 128 workers per unit.
-    plans = M.fromList (take 128 (mapMaybe choose (M.toAscList prog)))
+    loopPlans = M.fromList (take 128 (mapMaybe choose (M.toAscList prog)))
+    plans = if tupleScalars then forwardPlans (3::Int) loopPlans else loopPlans
+    -- A specialized fold's public-shaped entry may check for an empty range
+    -- before calling the actual accumulator loop. Propagate a guarded shape
+    -- through small nonrecursive forwarding entries, so the seed need not be
+    -- boxed just to cross that wrapper. Never infer a shape from a name.
+    forwarding = [(name,ps,b,sites) | (name,(ps,b))<-M.toAscList prog,
+      eligibleName name,name `S.notMember` blocked,not (null ps),length ps<=64,size b<=128,
+      let sites=[(f,args) | e<-nodes b,(CVar f,args@(_:_))<-[spine e],
+                    Just (qs,_)<-[M.lookup f prog],length args==length qs],
+      not (any ((==name) . fst) sites)]
+    forwardPlans 0 known=known
+    forwardPlans remaining known
+      | M.null known || M.size known>=128=known
+      | otherwise=
+          let added=M.fromList (take (128-M.size known)
+                (mapMaybe (chooseForward known) forwarding))
+          in if M.null added then known else forwardPlans (remaining-1) (known `M.union` added)
+    chooseForward known (name,ps,b,sites)
+      | M.member name known || not (any (\(f,_)->M.member f known) sites)=Nothing
+      | not (S.null (M.keysSet known `S.intersection` (S.fromList ps `S.union` boundIn b)))=Nothing
+      | otherwise=case mapMaybe candidateForward (zip [0..] ps) of
+          (i,tv,width):_->Just (name,(i,tv,width,prefix++"fields."++name))
+          _->Nothing
+      where
+        candidateForward (i,p)=do
+          (tv,width)<-case S.toList (S.fromList [(shape,w) | (f,args)<-sites,
+            Just (j,shape,w,_)<-[M.lookup f known],args!!j==CVar p]) of
+              [shape]->Just shape
+              _->Nothing
+          let body=narrow p tv b
+          if length ps-1+width>64 || rebinds p b ||
+             not (forwardUses known p tv width True body) ||
+             size (snd (makeBody name ps b i tv width))>1024
+            then Nothing else Just (i,tv,width)
+    forwardUses known p tv width tailPosition e=case e of
+      CVar x | x==p->tailPosition
+      CProj k (CVar x) | x==p->k>=0 && k<width
+      CTagEq _ _ (CVar x) | x==p->True
+      CLet x a b->plain a && (x==p || forwardUses known p tv width tailPosition b)
+      CIf c a b->plain c && forwardUses known p tv width tailPosition a && forwardUses known p tv width tailPosition b
+      _->case spine e of
+        (CVar f,args@(_:_)) | Just (i,shape,w,_)<-M.lookup f known,
+          shape==tv,w==width,length args==length (fst (prog M.! f))->
+            and [if j==i then argument a else plain a | (j,a)<-zip [0..] args]
+        _->all plain (children e)
+      where
+        plain=forwardUses known p tv width False
+        argument a=case a of
+          CVar x | x==p->True
+          CLet x rhs b->plain rhs && (x==p || argument b)
+          CIf c a b->plain c && argument a && argument b
+          _->plain a
     additions = M.fromList [(worker,makeBody name ps b i tv width) |
                    (name,(i,tv,width,worker))<-M.toList plans, let (ps,b)=prog M.! name]
     makeBody name ps b i (t,v) width =

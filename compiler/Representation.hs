@@ -164,7 +164,8 @@ primitiveShape n = M.lookup n shapes
       M.fromList $
         [(x, sh [t, t] t) | x <- ["+", "-", "*", "/"]]
           ++ [(x, sh [t, t] b) | x <- ["<", ">", "<=", ">="]]
-          ++ [ ("==", sh [AnyValue, AnyValue] b),
+          ++ [ ("$trmc.setTail", sh [AnyValue, AnyValue] u),
+               ("==", sh [AnyValue, AnyValue] b),
                ("!=", sh [AnyValue, AnyValue] b),
                ("str", sh [AnyValue] s),
                ("print", sh [AnyValue] u),

@@ -22,6 +22,8 @@ Each generated program holds LFR_K independent cases. A case is one of:
   tick     a self-looping accumulator around a pipeline (tick batching);
   known    an Option-returning helper or a tuple scrutinised in a loop
            (case of known constructor), with trapping fields.
+  helper   map/filter wrappers with captures, effects and shared results.
+  fold     tuple accumulators with captures, conditional forwarding and traps.
 Callbacks may trap: division by zero, Int overflow, `error`, a failed
 refutable pattern. Range ends include minInt/maxInt.
 
@@ -60,7 +62,7 @@ PASSES = ['FPR_NO_LIST_FUSE', 'FPR_NO_CASE_KNOWN', 'FPR_NO_TUPLE_SCALARS',
           'FPR_NO_TICK_BATCH', 'FPR_NO_TRMC', 'FPR_NO_PAIR_RETURNS']
 VARIANTS = {'default': (), 'all-off': tuple(PASSES)}
 VARIANTS.update({p[len('FPR_NO_'):].lower() + '-off': (p,) for p in PASSES})
-KINDS = ['plain', 'print', 'capture', 'cond', 'trmc', 'tuple', 'pair', 'tick', 'known']
+KINDS = ['plain', 'print', 'capture', 'cond', 'trmc', 'tuple', 'pair', 'tick', 'known', 'helper', 'fold']
 
 
 def lit(v):
@@ -151,6 +153,29 @@ class Gen:
         if r.random() < .5:
             return '', f'k = {k};\n  ys = {p};\n  {self.consumer("ys")}'
         return '', f'k = {k};\n  {self.consumer(p)}'
+
+    def helper(self, i):
+        r = self.r
+        f = self.lam(self.fbody(['n']), r.random() < .3)
+        p = self.lam(self.pbody(['n']), r.random() < .3)
+        defs = (f'hm{i} n xs = List.map ({f}) xs.\n'
+                f'hp{i} n xs = List.filter ({p}) xs.\n')
+        pipeline = f'hm{i} n (hp{i} n ({source(r)}))'
+        if r.random() < .3:
+            return defs, f'ys = {pipeline};\n  List.sum ys + List.length ys'
+        return defs, self.int_consumer(pipeline)
+
+    def fold(self, i):
+        r = self.r
+        field = f's + ({self.fbody(["n"])})'
+        if r.random() < .3:
+            field = f'print "{self.tag()} {{x}}" >> ({field})'
+        step = f'case p of (s, c) -> ({field}, c + 1)'
+        if r.random() < .5:
+            step = f'if x > n then p else ({step})'
+        xs = self.pipeline(['n'], .15, (0, 1))
+        return '', (f'case List.fold (fn p x -> {step}) (n, 0) ({xs}) '
+                    'of (s, c) -> s + c')
 
     def cond(self, i):
         r = self.r; p = self.pipeline(['n'], .25); use = self.int_consumer('ys')
@@ -249,7 +274,7 @@ def program(r):
         kind = r.choice(KINDS); kinds.append(kind)
         helpers, body = g.case(i, kind)
         # a case calling an unsafe (unmeasured) loop must say so; all return Int
-        sig = f'c{i} : unsafe Int -> Int .\n' if helpers else ''
+        sig = f'c{i} : unsafe Int -> Int .\n' if helpers and kind != 'helper' else ''
         defs.append(helpers + sig + f'c{i} n =\n  {body}.\n')
         a, b = r.sample([0, 1, 2, 3, MAXI], 2)
         arms.append(f'["{i}"] -> _ = print (c{i} {a}); print (c{i} {b})')

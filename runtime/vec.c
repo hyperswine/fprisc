@@ -66,8 +66,8 @@ static col_t *col_new(void) {
 }
 
 static void col_free(col_t *c) {
-  if (c->base) fpr_free((V)c->base); /* >8KiB: bigfree LIFO */
-  fpr_free((V)c);
+  if (c->base) fpr_free_raw((V)c->base); /* >8KiB: bigfree LIFO */
+  fpr_free_raw((V)c);
 }
 
 /* ---- vector object ---------------------------------------------------- */
@@ -111,12 +111,12 @@ static void vdir_alloc(vec_t *x, uw ncols) {
   for (uw k = 0; k < ncols; k++) x->cols[k] = 0;
 }
 static void vdir_free(vec_t *x) {
-  if (x->cols) fpr_free((V)x->cols);
-  if (x->kinds) fpr_free((V)x->kinds);
+  if (x->cols) fpr_free_raw((V)x->cols);
+  if (x->kinds) fpr_free_raw((V)x->kinds);
   x->cols = 0;
   x->kinds = 0;
   x->ncols = 0;
-  if (x->shape) fpr_free((V)x->shape);
+  if (x->shape) fpr_free_raw((V)x->shape);
   x->shape = 0; x->shape_len = 0;
 }
 static int vhas_float(const vec_t *x) {
@@ -143,7 +143,7 @@ static void vdir_like(vec_t *x, const vec_t *src) {
   }
 }
 static vec_t *vcopy(vec_t *x) {
-  vec_t *n = (vec_t *)fpr_alloc_bulk(sizeof(vec_t));
+  vec_t *n = (vec_t *)fpr_alloc_object_bulk(sizeof(vec_t));
   n->tid = T_VEC;
   n->var = (uint32_t)VREP(x); /* rc 0: sole owner */
   n->len = x->len; n->eltid = x->eltid; n->elvar = x->elvar;
@@ -168,7 +168,7 @@ void fpr_vec_release(V v) { vfree((vec_t *)v); }
 
 static V h_new(V unit) {
   (void)unit;
-  vec_t *x = (vec_t *)fpr_alloc_bulk(sizeof(vec_t));
+  vec_t *x = (vec_t *)fpr_alloc_object_bulk(sizeof(vec_t));
   x->tid = T_VEC;
   x->var = VR_UNSET;
   x->len = 0;
@@ -296,7 +296,7 @@ static void tree_layout(vec_t *x, str_t *sp) {
   }
   vdir_alloc(x, leaves);
   x->shape = (vec_shape_t *)fpr_alloc_bulk(sp->len * sizeof(vec_shape_t));
-  uw *stack = (uw *)fpr_alloc(sp->len * sizeof(uw));
+  uw *stack = (uw *)fpr_alloc_raw(sp->len * sizeof(uw));
   uw depth=0, col=0, nodes=0, roots=0;
   for (uw i=0; i<sp->len; i++) {
     char c=sp->bytes[i];
@@ -310,7 +310,7 @@ static void tree_layout(vec_t *x, str_t *sp) {
   if (depth || roots != 1) fpr_cpanic("Vec.newAs: malformed product layout");
   for (uw n=0; n<nodes; n++) if (x->shape[n].column == VS_PRODUCT && !x->shape[n].arity)
     fpr_cpanic("Vec.newAs: empty product layout");
-  fpr_free((V)stack);
+  fpr_free_raw((V)stack);
   x->shape_len=nodes; x->var=VR_TREE;
   for (uw k=0; k<x->ncols; k++) x->cols[k]=col_new();
 }

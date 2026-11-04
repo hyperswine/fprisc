@@ -805,6 +805,7 @@ compileWithReport accepted report = do
               polInterval = Options.cgInterval codegen,
               polTypedCase = Options.cgTypedCase codegen,
               polBumpAlloc = Options.cgBumpAlloc codegen,
+              polCompactCells = Options.cgCompactCells codegen && not (oBuiltin opts) && tgtName (oTarget opts) /= "rv32",
               polRegisters = registerBudget (if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts)) }
           -- direct backends: the AArch64 hart read follows the
           -- target runtime ABI (x28 under fpr build, the TLV cell on a64mac
@@ -934,7 +935,7 @@ compileWithReport accepted report = do
           linkedResult=do
             base<-sequence artifactResults >>= Linked.linkArtifacts
             (listed,listNotes)<-if oArc opts || oBuiltin opts || not (Options.cgListFuse codegen) then pure (base,[]) else
-              checkedStage "checked list fusion" (Linked.fuseListLinked base)
+              checkedStage "checked list fusion" (Linked.fuseListLinkedWithHelpers (remarkMode/=Remark.Off) (not (oNoInline opts)) base)
             original<-checkedStage "callback specialization before inlining" (Linked.specializeLinkedWithDecisions (remarkMode/=Remark.Off) callbackMode listed)
             inlined<-if oArc opts || oNoInline opts then pure original else
               do inlined<-checkedStage "checked Base inlining" (Linked.inlineLinkedWithDecisions (remarkMode/=Remark.Off) 3 24 64 original)
@@ -948,7 +949,9 @@ compileWithReport accepted report = do
             (fused,notes)<-if oArc opts || not (Options.cgFusion codegen) then pure (normalized,listNotes) else
               do (fused,vecNotes)<-checkedStage "checked vector fusion" (Linked.fuseLinked normalized)
                  pure (fused,listNotes++vecNotes)
-            (built,trmcNotes)<-if oArc opts || oBuiltin opts || polProfile irPolicy `notElem` [HostedBase,QosApp] || Backend.tgtW (oTarget opts)/=8 || not (Options.cgTrmc codegen) then pure (fused,[]) else
+            -- ARC erasure routes the proven store through its consuming adapter.
+            -- The allocation-free raw runtime and 32-bit ABI remain excluded.
+            (built,trmcNotes)<-if oRaw opts || polProfile irPolicy `notElem` [HostedBase,QosApp,Builtin,BuiltinArc] || Backend.tgtW (oTarget opts)/=8 || not (Options.cgTrmc codegen) then pure (fused,[]) else
               checkedStage "checked TRMC" (Linked.trmcLinked fused)
             pure (built,notes,trmcNotes)
           checkedStage label=either (Left . ((label++": ")++)) Right
@@ -1180,12 +1183,12 @@ compileWithReport accepted report = do
                          ++ concat [ [ ((sid, length fs), length fs), ((sid, 0), length fs) ]
                                    | (fs, sid) <- M.toList shapes ]))
           layoutTab
-            -- the same owners as the name table: a library unit or the builtin
-            -- profile has no runtime.c allocator reading this table, and a
-            -- second definition would collide at link time
-            | oBuiltin opts || oLib opts || oPlugin opts = ""
+            -- A plugin owns a private alias so ELF symbol interposition cannot
+            -- bind its module metadata to the host table. Library units and
+            -- builtin profiles do not publish a runtime layout table.
+            | oBuiltin opts || oLib opts = ""
             | otherwise = unlines $
-                [ "", "# constructor layout: count, then (tid, variant, fields) triples", "    .balign 8", "    .globl fpr_layout_table", "fpr_layout_table:" ]
+                [ "", "# constructor layout: count, then (tid, variant, fields) triples", "    .balign 8", "    .globl fpr_layout_table", "fpr_layout_table:", ".Lfpr_layout_table:" ]
                   ++ [ "    " ++ dir ++ " " ++ show (length layoutRows) ]
                   ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var, "    " ++ dir ++ " " ++ show ar ]
                             | ((tid, var), ar) <- layoutRows ]

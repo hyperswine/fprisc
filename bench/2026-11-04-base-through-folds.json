@@ -1,0 +1,3757 @@
+{
+  "seconds": 921.198805958993,
+  "workers": 4,
+  "reused": [],
+  "jobs": [
+    {
+      "name": "tests/test_check_registry.py",
+      "status": "ok",
+      "seconds": 0.22354424998047762,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/test_check_registry.py"
+          ],
+          "seconds": 0.22051704200566746
+        }
+      ]
+    },
+    {
+      "name": "tests/check_core_pipeline.py",
+      "status": "ok",
+      "seconds": 2.2597772090230137,
+      "lock_wait_seconds": 1.2090022210031748e-06,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_core_pipeline.py"
+          ],
+          "seconds": 2.2569104159774724
+        }
+      ]
+    },
+    {
+      "name": "tests/check_reset_reuse.py",
+      "status": "ok",
+      "seconds": 6.170364332996542,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_reset_reuse.py"
+          ],
+          "seconds": 6.16757145797601
+        }
+      ]
+    },
+    {
+      "name": "tests/check_vector_fast.py",
+      "status": "ok",
+      "seconds": 13.709895458014216,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_vector_fast.py"
+          ],
+          "seconds": 13.707327999989502
+        }
+      ]
+    },
+    {
+      "name": "tests/check_string_fast.py",
+      "status": "ok",
+      "seconds": 14.356390417000512,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_string_fast.py"
+          ],
+          "seconds": 14.352821417007362
+        }
+      ]
+    },
+    {
+      "name": "tests/check_string_scan.py",
+      "status": "ok",
+      "seconds": 31.47659341598046,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_string_scan.py"
+          ],
+          "seconds": 31.473813124990556
+        }
+      ]
+    },
+    {
+      "name": "tests/check_interval.py",
+      "status": "ok",
+      "seconds": 5.405186082993168,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_interval.py"
+          ],
+          "seconds": 5.4011131250008475
+        }
+      ]
+    },
+    {
+      "name": "tests/check_early_loops.py",
+      "status": "ok",
+      "seconds": 22.674285832996247,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_early_loops.py"
+          ],
+          "seconds": 22.67161112499889
+        }
+      ]
+    },
+    {
+      "name": "tests/check_scheduler_locality.py",
+      "status": "ok",
+      "seconds": 1.7874857500137296,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_scheduler_locality.py"
+          ],
+          "seconds": 1.7850628340092953
+        }
+      ]
+    },
+    {
+      "name": "tests/check_state_generations.py",
+      "status": "ok",
+      "seconds": 16.2860646659974,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_state_generations.py"
+          ],
+          "seconds": 16.283589166996535
+        }
+      ]
+    },
+    {
+      "name": "tests/check_alloc_fast.py",
+      "status": "ok",
+      "seconds": 8.11423491599271,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_alloc_fast.py"
+          ],
+          "seconds": 8.112025125010405
+        }
+      ]
+    },
+    {
+      "name": "tests/check_channel_alignment.py",
+      "status": "ok",
+      "seconds": 15.0668435000116,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_channel_alignment.py"
+          ],
+          "seconds": 15.064521249994868
+        }
+      ]
+    },
+    {
+      "name": "tests/check_digest_vectors.py",
+      "status": "ok",
+      "seconds": 4.708011584007181,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_digest_vectors.py"
+          ],
+          "seconds": 4.705309874989325
+        }
+      ]
+    },
+    {
+      "name": "tests/check_parked_receive.py",
+      "status": "ok",
+      "seconds": 12.11455133400159,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_parked_receive.py"
+          ],
+          "seconds": 12.111934750020737
+        }
+      ]
+    },
+    {
+      "name": "tests/check_compiler_options.py",
+      "status": "ok",
+      "seconds": 11.01563687500311,
+      "lock_wait_seconds": 4.159810487180948e-07,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_compiler_options.py"
+          ],
+          "seconds": 11.013690124993445
+        }
+      ]
+    },
+    {
+      "name": "tests/check_diagnostics.py",
+      "status": "ok",
+      "seconds": 6.565318375010975,
+      "lock_wait_seconds": 4.353822500008391,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_diagnostics.py"
+          ],
+          "seconds": 2.20928583299974
+        }
+      ]
+    },
+    {
+      "name": "tests/check_remarks.py",
+      "status": "ok",
+      "seconds": 16.13429187500151,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_remarks.py"
+          ],
+          "seconds": 16.13216933401418
+        }
+      ]
+    },
+    {
+      "name": "tests/check_frontend.py",
+      "status": "ok",
+      "seconds": 4.574165500001982,
+      "lock_wait_seconds": 2.2114007079799194,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_frontend.py"
+          ],
+          "seconds": 2.360664125008043
+        }
+      ]
+    },
+    {
+      "name": "tests/check_inference_evidence.py",
+      "status": "ok",
+      "seconds": 5.922603083017748,
+      "lock_wait_seconds": 4.094455417012796,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_inference_evidence.py"
+          ],
+          "seconds": 1.8260069999960251
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_core.py",
+      "status": "ok",
+      "seconds": 100.5832965419977,
+      "lock_wait_seconds": 4.190889291989151,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_core.py"
+          ],
+          "seconds": 96.3895616250229
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir.py",
+      "status": "ok",
+      "seconds": 122.31315629198798,
+      "lock_wait_seconds": 98.22060287499335,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir.py"
+          ],
+          "seconds": 24.089771792001557
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_a64.py",
+      "status": "ok",
+      "seconds": 58.78562845799024,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_a64.py"
+          ],
+          "seconds": 58.78349366699695
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_x64.py",
+      "status": "ok",
+      "seconds": 24.47880358400289,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_x64.py"
+          ],
+          "seconds": 24.47668141699978
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_kernels.py",
+      "status": "ok",
+      "seconds": 221.10336333300802,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_kernels.py"
+          ],
+          "seconds": 221.101227792009
+        }
+      ]
+    },
+    {
+      "name": "tests/check_x64_retirement.py",
+      "status": "ok",
+      "seconds": 7.9635646249807905,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_x64_retirement.py"
+          ],
+          "seconds": 7.961672333010938
+        }
+      ]
+    },
+    {
+      "name": "tests/check_float_trees.py",
+      "status": "ok",
+      "seconds": 2.5791728339972906,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_float_trees.py"
+          ],
+          "seconds": 2.5771552920050453
+        }
+      ]
+    },
+    {
+      "name": "tests/check_captured_simd.py",
+      "status": "ok",
+      "seconds": 22.75869345801766,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_captured_simd.py"
+          ],
+          "seconds": 22.756600875000004
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_builtin.py",
+      "status": "ok",
+      "seconds": 0.13102925001294352,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_builtin.py"
+          ],
+          "seconds": 0.1289666669908911
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_arc.py",
+      "status": "ok",
+      "seconds": 87.71805116700125,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_arc.py"
+          ],
+          "seconds": 87.71602112500113
+        }
+      ]
+    },
+    {
+      "name": "tests/check_native_insns_ratchet.py",
+      "status": "ok",
+      "seconds": 1.0774422919785138,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_native_insns_ratchet.py"
+          ],
+          "seconds": 1.0751858750008978
+        }
+      ]
+    },
+    {
+      "name": "tests/check_rv32_float_constants.py",
+      "status": "ok",
+      "seconds": 24.723388833983336,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_rv32_float_constants.py"
+          ],
+          "seconds": 24.721172749996185
+        }
+      ]
+    },
+    {
+      "name": "tests/check_a64_fp_pool.py",
+      "status": "ok",
+      "seconds": 2.1152585840027314,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_a64_fp_pool.py"
+          ],
+          "seconds": 2.1129533330095
+        }
+      ]
+    },
+    {
+      "name": "tests/check_a64_retirement.py",
+      "status": "ok",
+      "seconds": 30.942619458015542,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_a64_retirement.py"
+          ],
+          "seconds": 30.9405665420054
+        }
+      ]
+    },
+    {
+      "name": "tests/check_self_loops.py",
+      "status": "ok",
+      "seconds": 9.70945154200308,
+      "lock_wait_seconds": 5.420006345957518e-07,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_self_loops.py"
+          ],
+          "seconds": 9.706923499994446
+        }
+      ]
+    },
+    {
+      "name": "tests/check_self_loop_x64.py",
+      "status": "ok",
+      "seconds": 2.790518207999412,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_self_loop_x64.py"
+          ],
+          "seconds": 2.7883389579947107
+        }
+      ]
+    },
+    {
+      "name": "tests/check_x64_scalar.py",
+      "status": "ok",
+      "seconds": 8.737403459002962,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_x64_scalar.py"
+          ],
+          "seconds": 8.734387375006918
+        }
+      ]
+    },
+    {
+      "name": "tests/check_x64_qos.py",
+      "status": "ok",
+      "seconds": 8.345772250002483,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_x64_qos.py"
+          ],
+          "seconds": 8.342600167001365
+        }
+      ]
+    },
+    {
+      "name": "tests/check_x64_macos.py",
+      "status": "ok",
+      "seconds": 23.84892416599905,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_x64_macos.py"
+          ],
+          "seconds": 23.846199375024298
+        }
+      ]
+    },
+    {
+      "name": "tests/check_self_loop_rv64.py",
+      "status": "ok",
+      "seconds": 1.9431120419758372,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_self_loop_rv64.py"
+          ],
+          "seconds": 1.9404079999949317
+        }
+      ]
+    },
+    {
+      "name": "tests/check_rv64_linux.py",
+      "status": "ok",
+      "seconds": 5.779300124995643,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_rv64_linux.py"
+          ],
+          "seconds": 5.776651541003957
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_rv_module.py",
+      "status": "ok",
+      "seconds": 1.1157935000082944,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_rv_module.py"
+          ],
+          "seconds": 1.1137355829996523
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_rv_startup.py",
+      "status": "ok",
+      "seconds": 36.02815433399519,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_rv_startup.py"
+          ],
+          "seconds": 36.025179042015225
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_rv_frames.py",
+      "status": "ok",
+      "seconds": 99.33560387499165,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_rv_frames.py"
+          ],
+          "seconds": 99.333159916976
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_a64_frames.py",
+      "status": "ok",
+      "seconds": 225.06845795799745,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_a64_frames.py"
+          ],
+          "seconds": 225.06621641700622
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_x64_frames.py",
+      "status": "ok",
+      "seconds": 64.36415491701337,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_x64_frames.py"
+          ],
+          "seconds": 64.36207525001373
+        }
+      ]
+    },
+    {
+      "name": "tests/check_native_data.py",
+      "status": "ok",
+      "seconds": 28.78896120900754,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_native_data.py"
+          ],
+          "seconds": 28.785132749995682
+        }
+      ]
+    },
+    {
+      "name": "tests/check_native_required.py",
+      "status": "ok",
+      "seconds": 7.837356000003638,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_native_required.py"
+          ],
+          "seconds": 7.834546041005524
+        }
+      ]
+    },
+    {
+      "name": "tests/check_stack_reservation.py",
+      "status": "ok",
+      "seconds": 4.756075084005715,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_stack_reservation.py"
+          ],
+          "seconds": 4.753299167001387
+        }
+      ]
+    },
+    {
+      "name": "tests/check_fixed_stack_reservation.py",
+      "status": "ok",
+      "seconds": 29.057734790985705,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_fixed_stack_reservation.py"
+          ],
+          "seconds": 29.054907583020395
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_qrv64.py",
+      "status": "ok",
+      "seconds": 1.6085345419996884,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_qrv64.py"
+          ],
+          "seconds": 1.6060142919886857
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_esp.py",
+      "status": "ok",
+      "seconds": 0.9178627090004738,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_esp.py"
+          ],
+          "seconds": 0.9150682089966722
+        }
+      ]
+    },
+    {
+      "name": "tests/check_byte_strings.py",
+      "status": "ok",
+      "seconds": 2.141241083998466,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_byte_strings.py"
+          ],
+          "seconds": 2.139050458004931
+        }
+      ]
+    },
+    {
+      "name": "tests/check_view_construction.py",
+      "status": "ok",
+      "seconds": 14.145430791017134,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_view_construction.py"
+          ],
+          "seconds": 14.143276166985743
+        }
+      ]
+    },
+    {
+      "name": "tests/check_inbox.py",
+      "status": "ok",
+      "seconds": 31.224581792019308,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_inbox.py"
+          ],
+          "seconds": 31.22200208401773
+        }
+      ]
+    },
+    {
+      "name": "tests/check_check_only.py",
+      "status": "ok",
+      "seconds": 1.0035090830060653,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_check_only.py"
+          ],
+          "seconds": 1.0014168749912642
+        }
+      ]
+    },
+    {
+      "name": "tests/check_commit_interfaces.py",
+      "status": "ok",
+      "seconds": 5.907877791993087,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_commit_interfaces.py"
+          ],
+          "seconds": 5.905896791024134
+        }
+      ]
+    },
+    {
+      "name": "tests/check_publication.py",
+      "status": "ok",
+      "seconds": 18.41100654201,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_publication.py"
+          ],
+          "seconds": 18.408850625011837
+        }
+      ]
+    },
+    {
+      "name": "tests/check_watch_app.py",
+      "status": "ok",
+      "seconds": 36.52305074999458,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_watch_app.py"
+          ],
+          "seconds": 36.52034108299995
+        }
+      ]
+    },
+    {
+      "name": "tests/check_live_runner.py",
+      "status": "ok",
+      "seconds": 33.37461237498792,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_live_runner.py"
+          ],
+          "seconds": 33.372116584010655
+        }
+      ]
+    },
+    {
+      "name": "tests/check_live_writer_lifetime.py",
+      "status": "ok",
+      "seconds": 15.455430790985702,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_live_writer_lifetime.py"
+          ],
+          "seconds": 15.453468374995282
+        }
+      ]
+    },
+    {
+      "name": "tests/check_pos_reload.py",
+      "status": "ok",
+      "seconds": 133.979518291977,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_pos_reload.py"
+          ],
+          "seconds": 133.97530620900216
+        }
+      ]
+    },
+    {
+      "name": "tests/check_posix_modules.py",
+      "status": "ok",
+      "seconds": 13.386794749996625,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_posix_modules.py"
+          ],
+          "seconds": 13.38470666698413
+        }
+      ]
+    },
+    {
+      "name": "tests/check_posix_pic.py",
+      "status": "ok",
+      "seconds": 2.493936457991367,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_posix_pic.py"
+          ],
+          "seconds": 2.491715500014834
+        }
+      ]
+    },
+    {
+      "name": "tests/check_owned_watchers.py",
+      "status": "ok",
+      "seconds": 7.194183415995212,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_owned_watchers.py"
+          ],
+          "seconds": 7.191958500014152
+        }
+      ]
+    },
+    {
+      "name": "tests/check_loop_state.py",
+      "status": "ok",
+      "seconds": 5.993541832984192,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_loop_state.py"
+          ],
+          "seconds": 5.990562332997797
+        }
+      ]
+    },
+    {
+      "name": "tests/check_receive_turns.py",
+      "status": "ok",
+      "seconds": 20.70047420798801,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_receive_turns.py"
+          ],
+          "seconds": 20.69772687499062
+        }
+      ]
+    },
+    {
+      "name": "tests/check_mvu_reload.py",
+      "status": "ok",
+      "seconds": 144.44089591602096,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_mvu_reload.py"
+          ],
+          "seconds": 144.43797141697723
+        }
+      ]
+    },
+    {
+      "name": "tests/check_deadlines.py",
+      "status": "ok",
+      "seconds": 13.176701582997339,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_deadlines.py"
+          ],
+          "seconds": 13.174414500012062
+        }
+      ]
+    },
+    {
+      "name": "tests/check_actor_reap.py",
+      "status": "ok",
+      "seconds": 0.8629418750060722,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_actor_reap.py"
+          ],
+          "seconds": 0.8608968749758787
+        }
+      ]
+    },
+    {
+      "name": "examples/ideal/check.py",
+      "status": "ok",
+      "seconds": 180.0515486249933,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "examples/ideal/check.py"
+          ],
+          "seconds": 180.0461238329881
+        }
+      ]
+    },
+    {
+      "name": "tests/check_higher_order_contracts.py",
+      "status": "ok",
+      "seconds": 67.57732358301291,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_higher_order_contracts.py"
+          ],
+          "seconds": 67.57399687499856
+        }
+      ]
+    },
+    {
+      "name": "tests/check_contract_rewrites.py",
+      "status": "ok",
+      "seconds": 9.935286082996754,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_contract_rewrites.py"
+          ],
+          "seconds": 9.933178665989544
+        }
+      ]
+    },
+    {
+      "name": "tests/check_printer_ownership.py",
+      "status": "ok",
+      "seconds": 24.68758712502313,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_printer_ownership.py"
+          ],
+          "seconds": 24.685584625025513
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-linearity-check.py",
+      "status": "ok",
+      "seconds": 0.37829470800352283,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-linearity-check.py"
+          ],
+          "seconds": 0.37624179100384936
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-fs-check.py",
+      "status": "ok",
+      "seconds": 3.3162919160095043,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-fs-check.py"
+          ],
+          "seconds": 3.31410083398805
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-repl-check.py",
+      "status": "ok",
+      "seconds": 1.680420583987143,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-repl-check.py"
+          ],
+          "seconds": 1.6783367920143064
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-io-check.py",
+      "status": "ok",
+      "seconds": 2.424052499991376,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-io-check.py"
+          ],
+          "seconds": 2.4214113329944666
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-retry-policy-check.py",
+      "status": "ok",
+      "seconds": 1.0385674579883926,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-retry-policy-check.py"
+          ],
+          "seconds": 1.0359744999732357
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-pipeline-check.py",
+      "status": "ok",
+      "seconds": 4.047019417019328,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-pipeline-check.py"
+          ],
+          "seconds": 4.044428124994738
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-receipt-budget-check.py",
+      "status": "ok",
+      "seconds": 32.77328291698359,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-receipt-budget-check.py"
+          ],
+          "seconds": 32.77016158300103
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-digest-check.py",
+      "status": "ok",
+      "seconds": 3.548706834000768,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-digest-check.py"
+          ],
+          "seconds": 3.546656874998007
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-format-check.py",
+      "status": "ok",
+      "seconds": 3.362606582988519,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-format-check.py"
+          ],
+          "seconds": 3.3596369590086397
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-cli-config-check.py",
+      "status": "ok",
+      "seconds": 2.2475815420039,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-cli-config-check.py"
+          ],
+          "seconds": 2.2450647500227205
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-http-check.py",
+      "status": "ok",
+      "seconds": 5.738553417002549,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-http-check.py"
+          ],
+          "seconds": 5.720168250001734
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-install-check.py",
+      "status": "ok",
+      "seconds": 9.648942792002345,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-install-check.py"
+          ],
+          "seconds": 9.64653829098097
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-effects-check.py",
+      "status": "ok",
+      "seconds": 7.290791542007355,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-effects-check.py"
+          ],
+          "seconds": 7.288212999992538
+        }
+      ]
+    },
+    {
+      "name": "tests/check_structural_ownership.py",
+      "status": "ok",
+      "seconds": 11.80301120801596,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_structural_ownership.py"
+          ],
+          "seconds": 11.800462874991354
+        }
+      ]
+    },
+    {
+      "name": "tests/check_generic_ownership.py",
+      "status": "ok",
+      "seconds": 12.25666091698804,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_generic_ownership.py"
+          ],
+          "seconds": 12.253894499997841
+        }
+      ]
+    },
+    {
+      "name": "tests/check_pos_core.py",
+      "status": "ok",
+      "seconds": 47.02126116701402,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_pos_core.py"
+          ],
+          "seconds": 47.01788787500118
+        }
+      ]
+    },
+    {
+      "name": "tests/check_compile_budget.py",
+      "status": "ok",
+      "seconds": 74.99952029201086,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_compile_budget.py"
+          ],
+          "seconds": 74.99704424999072
+        }
+      ]
+    },
+    {
+      "name": "tests/check_pagination.py",
+      "status": "ok",
+      "seconds": 72.22159212498809,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_pagination.py"
+          ],
+          "seconds": 72.2188053749851
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_vectors.py",
+      "status": "ok",
+      "seconds": 3.541504916996928,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_vectors.py"
+          ],
+          "seconds": 3.539092790975701
+        }
+      ]
+    },
+    {
+      "name": "tests/check_list_fusion.py",
+      "status": "ok",
+      "seconds": 117.60814825000125,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_list_fusion.py"
+          ],
+          "seconds": 117.60553033300675
+        }
+      ]
+    },
+    {
+      "name": "tests/check_list_helpers.py",
+      "status": "ok",
+      "seconds": 77.10381225001765,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_list_helpers.py"
+          ],
+          "seconds": 77.10088199999882
+        }
+      ]
+    },
+    {
+      "name": "tests/check_fold_scalars.py",
+      "status": "ok",
+      "seconds": 43.233909417001996,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_fold_scalars.py"
+          ],
+          "seconds": 43.23079712499748
+        }
+      ]
+    },
+    {
+      "name": "tests/check_abstraction_equivalence.py",
+      "status": "ok",
+      "seconds": 67.4269561249821,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_abstraction_equivalence.py"
+          ],
+          "seconds": 67.42338849999942
+        }
+      ]
+    },
+    {
+      "name": "tests/check_case_known.py",
+      "status": "ok",
+      "seconds": 25.76385891600512,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_case_known.py"
+          ],
+          "seconds": 25.760389666975243
+        }
+      ]
+    },
+    {
+      "name": "tests/check_trmc.py",
+      "status": "ok",
+      "seconds": 68.8292220410076,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_trmc.py"
+          ],
+          "seconds": 68.82694012499996
+        }
+      ]
+    },
+    {
+      "name": "tests/check_layout_table.py",
+      "status": "ok",
+      "seconds": 35.408221374993445,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_layout_table.py"
+          ],
+          "seconds": 35.40522499999497
+        }
+      ]
+    },
+    {
+      "name": "tests/check_tick_batch.py",
+      "status": "ok",
+      "seconds": 37.33280654202099,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_tick_batch.py"
+          ],
+          "seconds": 37.330744082981255
+        }
+      ]
+    },
+    {
+      "name": "tests/check_ret2.py",
+      "status": "ok",
+      "seconds": 28.58105166698806,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_ret2.py"
+          ],
+          "seconds": 28.578765000012936
+        }
+      ]
+    },
+    {
+      "name": "tests/check_tuple_scalars.py",
+      "status": "ok",
+      "seconds": 16.550776292016963,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_tuple_scalars.py"
+          ],
+          "seconds": 16.547791125020012
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_case.py",
+      "status": "ok",
+      "seconds": 25.125881833024323,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_case.py"
+          ],
+          "seconds": 25.12273508301587
+        }
+      ]
+    },
+    {
+      "name": "tests/check_bump_alloc.py",
+      "status": "ok",
+      "seconds": 61.859846707986435,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_bump_alloc.py"
+          ],
+          "seconds": 61.856997416995
+        }
+      ]
+    },
+    {
+      "name": "tests/check_vector_limits.py",
+      "status": "ok",
+      "seconds": 14.503469791001407,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_vector_limits.py"
+          ],
+          "seconds": 14.501342583011137
+        }
+      ]
+    },
+    {
+      "name": "tests/check_vector_kinds.py",
+      "status": "ok",
+      "seconds": 23.468855874991277,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_vector_kinds.py"
+          ],
+          "seconds": 23.46591987501597
+        }
+      ]
+    },
+    {
+      "name": "tests/check_vector_pipelines.py",
+      "status": "ok",
+      "seconds": 18.68365883399383,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_vector_pipelines.py"
+          ],
+          "seconds": 18.681254708004417
+        }
+      ]
+    },
+    {
+      "name": "tests/check_reuse.py",
+      "status": "ok",
+      "seconds": 17.80523045899463,
+      "lock_wait_seconds": 6.250047590583563e-07,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_reuse.py"
+          ],
+          "seconds": 17.802305332996184
+        }
+      ]
+    },
+    {
+      "name": "tests/check_consuming_reuse.py",
+      "status": "ok",
+      "seconds": 16.022896667011082,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_consuming_reuse.py"
+          ],
+          "seconds": 16.019922084000427
+        }
+      ]
+    },
+    {
+      "name": "tests/check_x64_vectors.py",
+      "status": "ok",
+      "seconds": 13.991380958992522,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_x64_vectors.py"
+          ],
+          "seconds": 13.988766499998746
+        }
+      ]
+    },
+    {
+      "name": "tests/check_wide_params.py",
+      "status": "ok",
+      "seconds": 2.4797085000027437,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_wide_params.py"
+          ],
+          "seconds": 2.477792749996297
+        }
+      ]
+    },
+    {
+      "name": "tests/check_vector_fallback_frames.py",
+      "status": "ok",
+      "seconds": 8.57074554200517,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_vector_fallback_frames.py"
+          ],
+          "seconds": 8.56812170901685
+        }
+      ]
+    },
+    {
+      "name": "tests/check_trust.py",
+      "status": "ok",
+      "seconds": 0.024243416992248967,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_trust.py"
+          ],
+          "seconds": 0.022069333004765213
+        }
+      ]
+    },
+    {
+      "name": "tests/check_specialization.py",
+      "status": "ok",
+      "seconds": 19.542997458018363,
+      "lock_wait_seconds": 5.00003807246685e-07,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_specialization.py"
+          ],
+          "seconds": 19.54035958298482
+        }
+      ]
+    },
+    {
+      "name": "tests/check_workers.py",
+      "status": "ok",
+      "seconds": 21.02726283299853,
+      "lock_wait_seconds": 1.916982000693679e-06,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_workers.py"
+          ],
+          "seconds": 21.025072374992305
+        }
+      ]
+    },
+    {
+      "name": "tests/check_wide_workers.py",
+      "status": "ok",
+      "seconds": 120.12422416699701,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_wide_workers.py"
+          ],
+          "seconds": 120.12023495900212
+        }
+      ]
+    },
+    {
+      "name": "admission",
+      "status": "ok",
+      "seconds": 18.342311290994985,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_admission.py"
+          ],
+          "seconds": 18.339491791994078
+        }
+      ]
+    },
+    {
+      "name": "strprims",
+      "status": "ok",
+      "seconds": 0.8720480409974698,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/strprims.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/117-strprims/strprims"
+          ],
+          "seconds": 0.5971825000015087
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/117-strprims/strprims"
+          ],
+          "seconds": 0.2718953749863431
+        }
+      ]
+    },
+    {
+      "name": "confine",
+      "status": "ok",
+      "seconds": 1.1204009580251295,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/confine.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/118-confine/confine"
+          ],
+          "seconds": 0.7977367079874966
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/118-confine/confine"
+          ],
+          "seconds": 0.31915399999707006
+        }
+      ]
+    },
+    {
+      "name": "heapnil",
+      "status": "ok",
+      "seconds": 0.7515873330121394,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/heapnil.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/119-heapnil/heapnil"
+          ],
+          "seconds": 0.4885384170047473
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/119-heapnil/heapnil"
+          ],
+          "seconds": 0.25905145800788887
+        }
+      ]
+    },
+    {
+      "name": "bitrange",
+      "status": "ok",
+      "seconds": 0.7482549999840558,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/bitrange.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/120-bitrange/bitrange"
+          ],
+          "seconds": 0.4873793750011828
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/120-bitrange/bitrange",
+            "63",
+            "value"
+          ],
+          "seconds": 0.24636454199207947
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/120-bitrange/bitrange",
+            "64",
+            "inline"
+          ],
+          "seconds": 0.003995792008936405
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/120-bitrange/bitrange",
+            "-1",
+            "value"
+          ],
+          "seconds": 0.0038209999911487103
+        }
+      ]
+    },
+    {
+      "name": "intovf",
+      "status": "ok",
+      "seconds": 0.8634309580083936,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/intovf.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf"
+          ],
+          "seconds": 0.5483607079950161
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf"
+          ],
+          "seconds": 0.23896595800761133
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf"
+          ],
+          "seconds": 0.005960540991509333
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "add"
+          ],
+          "seconds": 0.004060041974298656
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "sub"
+          ],
+          "seconds": 0.007287415995961055
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "mul"
+          ],
+          "seconds": 0.0041820830083452165
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "mulsmall"
+          ],
+          "seconds": 0.003813707997323945
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "div"
+          ],
+          "seconds": 0.003878499992424622
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "neg"
+          ],
+          "seconds": 0.0038216249959077686
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "kernel"
+          ],
+          "seconds": 0.004030915995826945
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "kernel2"
+          ],
+          "seconds": 0.003799250000156462
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "fold"
+          ],
+          "seconds": 0.0041328340012114495
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "chr"
+          ],
+          "seconds": 0.003960000001825392
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/121-intovf/intovf",
+            "exit"
+          ],
+          "seconds": 0.004114957991987467
+        }
+      ]
+    },
+    {
+      "name": "longpanic",
+      "status": "ok",
+      "seconds": 1.181257167016156,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/longpanic.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/122-longpanic/longpanic"
+          ],
+          "seconds": 0.5217067920020781
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/122-longpanic/longpanic"
+          ],
+          "seconds": 0.6560389169899281
+        }
+      ]
+    },
+    {
+      "name": "irqroute",
+      "status": "ok",
+      "seconds": 0.754084749991307,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/irqroute.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/123-irqroute/irqroute"
+          ],
+          "seconds": 0.4792399579891935
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/123-irqroute/irqroute"
+          ],
+          "seconds": 0.2573221659986302
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/123-irqroute/irqroute",
+            "other"
+          ],
+          "seconds": 0.004568042000755668
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/123-irqroute/irqroute",
+            "steal"
+          ],
+          "seconds": 0.003550041001290083
+        }
+      ]
+    },
+    {
+      "name": "irqdead",
+      "status": "ok",
+      "seconds": 0.9246147919911891,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/irqdead.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/124-irqdead/irqdead"
+          ],
+          "seconds": 0.5708934590220451
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/124-irqdead/irqdead"
+          ],
+          "seconds": 0.35003479101578705
+        }
+      ]
+    },
+    {
+      "name": "logplane",
+      "status": "ok",
+      "seconds": 0.9973330000066198,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/logplane.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/125-logplane/logplane"
+          ],
+          "seconds": 0.6630147499963641
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/125-logplane/logplane"
+          ],
+          "seconds": 0.32999812500202097
+        }
+      ]
+    },
+    {
+      "name": "logdead",
+      "status": "ok",
+      "seconds": 1.8774897499824874,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/logdead.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/126-logdead/logdead"
+          ],
+          "seconds": 0.6295112499792594
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/126-logdead/logdead"
+          ],
+          "seconds": 0.3290534999978263
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/logmemory.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/126-logdead/logmemory"
+          ],
+          "seconds": 0.6684378340141848
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/126-logdead/logmemory"
+          ],
+          "seconds": 0.23437645900412463
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/126-logdead/logmemory"
+          ],
+          "seconds": 0.005992124992189929
+        }
+      ]
+    },
+    {
+      "name": "killblocked",
+      "status": "ok",
+      "seconds": 1.1803044170083012,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/killblocked.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/127-killblocked/killblocked"
+          ],
+          "seconds": 0.4965359590132721
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/127-killblocked/killblocked"
+          ],
+          "seconds": 0.4471350829990115
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/127-killblocked/killblocked"
+          ],
+          "seconds": 0.2300646250077989
+        }
+      ]
+    },
+    {
+      "name": "deadmail",
+      "status": "ok",
+      "seconds": 1.3843147079751361,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/deadmail.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/128-deadmail/deadmail"
+          ],
+          "seconds": 0.5817725000088103
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/128-deadmail/deadmail"
+          ],
+          "seconds": 0.5460293329961132
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/128-deadmail/deadmail"
+          ],
+          "seconds": 0.2513170000165701
+        }
+      ]
+    },
+    {
+      "name": "autodrop2",
+      "status": "ok",
+      "seconds": 1.3344121669942979,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/autodrop2.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/129-autodrop2/autodrop2"
+          ],
+          "seconds": 0.572513291001087
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/129-autodrop2/autodrop2"
+          ],
+          "seconds": 0.7582098330021836
+        }
+      ]
+    },
+    {
+      "name": "autodrop3",
+      "status": "ok",
+      "seconds": 0.9263978340022732,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "-v",
+            "tests/base/autodrop3.fpr",
+            "--with",
+            "tests/arc_churn/arcprobe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/130-autodrop3/autodrop3"
+          ],
+          "seconds": 0.6114351249998435
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/130-autodrop3/autodrop3"
+          ],
+          "seconds": 0.2745027919881977
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/130-autodrop3/autodrop3"
+          ],
+          "seconds": 0.0355774579802528
+        }
+      ]
+    },
+    {
+      "name": "turnroots",
+      "status": "ok",
+      "seconds": 2.0290108749759383,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/turnroots.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/131-turnroots/turnroots"
+          ],
+          "seconds": 1.1195252079924103
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/131-turnroots/turnroots"
+          ],
+          "seconds": 0.6310999160050415
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/131-turnroots/turnroots"
+          ],
+          "seconds": 0.2716545420116745
+        }
+      ]
+    },
+    {
+      "name": "swarmkeeper",
+      "status": "ok",
+      "seconds": 13.66451733300346,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "--cost",
+            "tests/base/swarmkeeper.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/132-swarmkeeper/swarmkeeper"
+          ],
+          "seconds": 9.725755209015915
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/132-swarmkeeper/swarmkeeper"
+          ],
+          "seconds": 2.1864044159883633
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/132-swarmkeeper/swarmkeeper"
+          ],
+          "seconds": 1.7446856249880511
+        }
+      ]
+    },
+    {
+      "name": "regionnest",
+      "status": "ok",
+      "seconds": 1.141236082999967,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/regionnest.fpr",
+            "--with",
+            "tests/arc_churn/arcprobe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/133-regionnest/regionnest"
+          ],
+          "seconds": 0.643660625006305
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/133-regionnest/regionnest"
+          ],
+          "seconds": 0.3600012919923756
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/133-regionnest/regionnest"
+          ],
+          "seconds": 0.13224612499470823
+        }
+      ]
+    },
+    {
+      "name": "pendreset",
+      "status": "ok",
+      "seconds": 1.697747458005324,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/pendreset.fpr",
+            "--with",
+            "tests/arc_churn/arcprobe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/134-pendreset/pendreset-default"
+          ],
+          "seconds": 0.6464072499948088
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/134-pendreset/pendreset-default"
+          ],
+          "seconds": 0.2899076670000795
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/134-pendreset/pendreset-default"
+          ],
+          "seconds": 0.005553499999223277
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/pendreset.fpr",
+            "--with",
+            "tests/arc_churn/arcprobe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/134-pendreset/pendreset-deep"
+          ],
+          "seconds": 0.5057833750033751
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/134-pendreset/pendreset-deep"
+          ],
+          "seconds": 0.22958145799930207
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/134-pendreset/pendreset-deep"
+          ],
+          "seconds": 0.0069137910031713545
+        }
+      ]
+    },
+    {
+      "name": "fixedheap",
+      "status": "ok",
+      "seconds": 1.3780024169827811,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/fixedheap.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/135-fixedheap/fixedheap"
+          ],
+          "seconds": 0.9092298749892507
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/135-fixedheap/fixedheap"
+          ],
+          "seconds": 0.3458522919972893
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/135-fixedheap/fixedheap"
+          ],
+          "seconds": 0.11629487501340918
+        }
+      ]
+    },
+    {
+      "name": "vecfuse",
+      "status": "ok",
+      "seconds": 1.8881159580196254,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "-v",
+            "--remarks=all",
+            "tests/base/vecfuse_effects.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/136-vecfuse/vfe"
+          ],
+          "seconds": 0.8004925420100335
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/136-vecfuse/vfe"
+          ],
+          "seconds": 0.24231970799155533
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecfuse_fail.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/136-vecfuse/vff"
+          ],
+          "seconds": 0.5935791670053732
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/136-vecfuse/vff"
+          ],
+          "seconds": 0.24339725001482293
+        }
+      ]
+    },
+    {
+      "name": "vecwide",
+      "status": "ok",
+      "seconds": 9.758303375012474,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecwide.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/137-vecwide/vecwide"
+          ],
+          "seconds": 9.512323125003604
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/137-vecwide/vecwide"
+          ],
+          "seconds": 0.2422489169985056
+        }
+      ]
+    },
+    {
+      "name": "vecshape",
+      "status": "ok",
+      "seconds": 0.9703620829968713,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecshape.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/138-vecshape/vecshape"
+          ],
+          "seconds": 0.7208283749932889
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/138-vecshape/vecshape"
+          ],
+          "seconds": 0.24469612500979565
+        }
+      ]
+    },
+    {
+      "name": "veccaps",
+      "status": "ok",
+      "seconds": 4.075524417014094,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "-v",
+            "tests/base/veccaps.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/139-veccaps/veccaps"
+          ],
+          "seconds": 0.8830690000031609
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/139-veccaps/veccaps"
+          ],
+          "seconds": 0.24171104200650007
+        },
+        {
+          "command": [
+            "./fprc",
+            "--profile=base",
+            "--target=rv64",
+            "tests/base/veccaps.fpr",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/139-veccaps/veccaps-rv64.s"
+          ],
+          "seconds": 0.9993729999987409
+        },
+        {
+          "command": [
+            "./fprc",
+            "--profile=base",
+            "--target=rv32",
+            "tests/base/veccaps.fpr",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/139-veccaps/veccaps-rv32.s"
+          ],
+          "seconds": 0.9424077500007115
+        },
+        {
+          "command": [
+            "./fprc",
+            "--profile=base",
+            "--target=x64",
+            "tests/base/veccaps.fpr",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/139-veccaps/veccaps-x64.s"
+          ],
+          "seconds": 0.9990308329870459
+        }
+      ]
+    },
+    {
+      "name": "process",
+      "status": "ok",
+      "seconds": 2.546133333002217,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/hello.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/140-process/hello"
+          ],
+          "seconds": 0.5787097919965163
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/140-process/hello"
+          ],
+          "seconds": 0.24586766699212603
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/args.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/140-process/args"
+          ],
+          "seconds": 0.6168748750060331
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/140-process/args",
+            "one",
+            "two"
+          ],
+          "seconds": 0.24103783298050985
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/status.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/140-process/status"
+          ],
+          "seconds": 0.6123901669925544
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/140-process/status"
+          ],
+          "seconds": 0.23080166699946858
+        }
+      ]
+    },
+    {
+      "name": "streams",
+      "status": "ok",
+      "seconds": 1.7183386670076288,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/lines.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/141-streams/lines"
+          ],
+          "seconds": 0.6218677079887129
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/141-streams/lines"
+          ],
+          "seconds": 0.23870112499571405
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/files.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/141-streams/files"
+          ],
+          "seconds": 0.5832830840081442
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/141-streams/files"
+          ],
+          "seconds": 0.26708220900036395
+        }
+      ]
+    },
+    {
+      "name": "panic_actors_std",
+      "status": "ok",
+      "seconds": 3.732660833018599,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/panic.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/142-panic_actors_std/panic"
+          ],
+          "seconds": 0.5762052499921992
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/142-panic_actors_std/panic"
+          ],
+          "seconds": 0.24678804198629223
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/actors.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/142-panic_actors_std/actors"
+          ],
+          "seconds": 0.6404255000234116
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/142-panic_actors_std/actors"
+          ],
+          "seconds": 0.23578987500513904
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/stduse.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/142-panic_actors_std/stduse"
+          ],
+          "seconds": 1.788956042000791
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/142-panic_actors_std/stduse"
+          ],
+          "seconds": 0.23260387498885393
+        }
+      ]
+    },
+    {
+      "name": "stacks",
+      "status": "ok",
+      "seconds": 0.8603610419959296,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/overflow.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/143-stacks/overflow"
+          ],
+          "seconds": 0.6050760419748258
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/143-stacks/overflow"
+          ],
+          "seconds": 0.2512390839983709
+        }
+      ]
+    },
+    {
+      "name": "sleepwake",
+      "status": "ok",
+      "seconds": 6.915536666987464,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/sleepwake.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/144-sleepwake/sleepwake"
+          ],
+          "seconds": 0.5904355410020798
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/144-sleepwake/sleepwake"
+          ],
+          "seconds": 1.7609092089987826
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/144-sleepwake/sleepwake"
+          ],
+          "seconds": 1.5161422500095796
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/144-sleepwake/sleepwake"
+          ],
+          "seconds": 1.5153304580016993
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/144-sleepwake/sleepwake"
+          ],
+          "seconds": 1.5223291250003967
+        }
+      ]
+    },
+    {
+      "name": "sleepwait",
+      "status": "ok",
+      "seconds": 3.783141042018542,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/sleepwait.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/145-sleepwait/sleepwait"
+          ],
+          "seconds": 0.5463907079829369
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/145-sleepwait/sleepwait"
+          ],
+          "seconds": 3.2333303750201594
+        }
+      ]
+    },
+    {
+      "name": "bigheap",
+      "status": "ok",
+      "seconds": 0.865342667006189,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/bigheap.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/146-bigheap/bigheap"
+          ],
+          "seconds": 0.49273108298075385
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/146-bigheap/bigheap"
+          ],
+          "seconds": 0.3531513749912847
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/146-bigheap/bigheap"
+          ],
+          "seconds": 0.012728750007227063
+        }
+      ]
+    },
+    {
+      "name": "wide",
+      "status": "ok",
+      "seconds": 1.0426364589948207,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/wide.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/147-wide/wide"
+          ],
+          "seconds": 0.8082478340074886
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/147-wide/wide"
+          ],
+          "seconds": 0.23100795899517834
+        }
+      ]
+    },
+    {
+      "name": "fvec2",
+      "status": "ok",
+      "seconds": 0.7654972090094816,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/fvec2.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/148-fvec2/fvec2"
+          ],
+          "seconds": 0.5285389169875998
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/148-fvec2/fvec2"
+          ],
+          "seconds": 0.23362316700513475
+        }
+      ]
+    },
+    {
+      "name": "cafalias",
+      "status": "ok",
+      "seconds": 0.7375166249985341,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/cafalias.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/149-cafalias/cafalias"
+          ],
+          "seconds": 0.49172895797528327
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/149-cafalias/cafalias"
+          ],
+          "seconds": 0.24181158302235417
+        }
+      ]
+    },
+    {
+      "name": "inlineprims",
+      "status": "ok",
+      "seconds": 2.3285889579856303,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/inlineprims.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/150-inlineprims/inlineprims"
+          ],
+          "seconds": 0.5650244579883292
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/150-inlineprims/inlineprims"
+          ],
+          "seconds": 0.2665147090156097
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/150-inlineprims/c0.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/150-inlineprims/c0"
+          ],
+          "seconds": 0.5066711670078803
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/150-inlineprims/c0"
+          ],
+          "seconds": 0.2359696250059642
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/150-inlineprims/cm1.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/150-inlineprims/cm1"
+          ],
+          "seconds": 0.49292633298318833
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/150-inlineprims/cm1"
+          ],
+          "seconds": 0.25120437500299886
+        }
+      ]
+    },
+    {
+      "name": "inlining",
+      "status": "ok",
+      "seconds": 1.4789646659919526,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/inlining.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/151-inlining/inl1"
+          ],
+          "seconds": 0.6027747500047553
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/151-inlining/inl1"
+          ],
+          "seconds": 0.2261999580077827
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/inlining.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/151-inlining/inl0"
+          ],
+          "seconds": 0.4118911669938825
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/151-inlining/inl0"
+          ],
+          "seconds": 0.23094583401689306
+        }
+      ]
+    },
+    {
+      "name": "registers",
+      "status": "ok",
+      "seconds": 7.271103832987137,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_registers.py"
+          ],
+          "seconds": 7.267934625007911
+        }
+      ]
+    },
+    {
+      "name": "slotprims",
+      "status": "ok",
+      "seconds": 0.7755173750047106,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/slotprims.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/153-slotprims/slotprims"
+          ],
+          "seconds": 0.5174590419919696
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/153-slotprims/slotprims"
+          ],
+          "seconds": 0.25458687500213273
+        }
+      ]
+    },
+    {
+      "name": "float_inline",
+      "status": "ok",
+      "seconds": 6.311621833010577,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_float_inline.py"
+          ],
+          "seconds": 6.308718041022075
+        }
+      ]
+    },
+    {
+      "name": "cleanup",
+      "status": "ok",
+      "seconds": 0.7893067499971949,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/cleanup.fpr",
+            "--with",
+            "tests/base/cleanup_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/155-cleanup/cleanup"
+          ],
+          "seconds": 0.5197224159783218
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/155-cleanup/cleanup"
+          ],
+          "seconds": 0.24408837500959635
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/155-cleanup/cleanup"
+          ],
+          "seconds": 0.020047416997840628
+        }
+      ]
+    },
+    {
+      "name": "runtime_costs",
+      "status": "ok",
+      "seconds": 26.955909208976664,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/runtime-costs.py",
+            "--quick",
+            "--runs",
+            "1"
+          ],
+          "seconds": 26.952825207990827
+        }
+      ]
+    },
+    {
+      "name": "actorfail",
+      "status": "ok",
+      "seconds": 0.787058416986838,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/actorfail.fpr",
+            "--with",
+            "tests/base/actorfail_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/157-actorfail/actorfail"
+          ],
+          "seconds": 0.5279046249925159
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/157-actorfail/actorfail"
+          ],
+          "seconds": 0.2494402909942437
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/157-actorfail/actorfail"
+          ],
+          "seconds": 0.004274249979062006
+        }
+      ]
+    },
+    {
+      "name": "loopwith",
+      "status": "ok",
+      "seconds": 2.9511702499876264,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/loopwith.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/158-loopwith/loopwith"
+          ],
+          "seconds": 0.6553521659807302
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/158-loopwith/loopwith"
+          ],
+          "seconds": 0.7497943330090493
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/158-loopwith/lwgrow.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/158-loopwith/lwgrow"
+          ],
+          "seconds": 0.5018623750074767
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/158-loopwith/lwgrow"
+          ],
+          "seconds": 0.23968324999441393
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/158-loopwith/lwstate.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/158-loopwith/lwstate"
+          ],
+          "seconds": 0.5517875409859698
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/158-loopwith/lwstate"
+          ],
+          "seconds": 0.24191345798317343
+        }
+      ]
+    },
+    {
+      "name": "arena_migration",
+      "status": "ok",
+      "seconds": 1.3783832500048447,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_arena_migration.py"
+          ],
+          "seconds": 1.3760427080269437
+        }
+      ]
+    },
+    {
+      "name": "codepublish",
+      "status": "ok",
+      "seconds": 0.830438624980161,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/codepublish.fpr",
+            "--with",
+            "tests/base/codepublish_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/160-codepublish/codepublish"
+          ],
+          "seconds": 0.5829573750088457
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/160-codepublish/codepublish"
+          ],
+          "seconds": 0.24344016599934548
+        }
+      ]
+    },
+    {
+      "name": "modinterface",
+      "status": "ok",
+      "seconds": 2.775140374986222,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/modinterface.fpr",
+            "--with",
+            "tests/base/modinterface_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/161-modinterface/modinterface"
+          ],
+          "seconds": 2.520393124985276
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/161-modinterface/modinterface"
+          ],
+          "seconds": 0.25131925000459887
+        }
+      ]
+    },
+    {
+      "name": "images",
+      "status": "ok",
+      "seconds": 0.8130829159927089,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/images.fpr",
+            "--with",
+            "tests/base/images_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/162-images/images"
+          ],
+          "seconds": 0.5630887500010431
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/162-images/images"
+          ],
+          "seconds": 0.23952070900122635
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/162-images/images"
+          ],
+          "seconds": 0.004291292018024251
+        }
+      ]
+    },
+    {
+      "name": "vecpeek",
+      "status": "ok",
+      "seconds": 3.9298097910068464,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecpeek.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/163-vecpeek/vp-default"
+          ],
+          "seconds": 0.5823143329762388
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/163-vecpeek/vp-default"
+          ],
+          "seconds": 0.2325025839963928
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecpeek.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/163-vecpeek/vp1"
+          ],
+          "seconds": 0.5614735410199501
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/163-vecpeek/vp1"
+          ],
+          "seconds": 0.2337358339864295
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecpeek.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/163-vecpeek/vp2"
+          ],
+          "seconds": 1.2821377090003807
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/163-vecpeek/vp2"
+          ],
+          "seconds": 0.26454645799822174
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/163-vecpeek/vp3.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/163-vecpeek/vp3"
+          ],
+          "seconds": 0.5300927500065882
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/163-vecpeek/vp3"
+          ],
+          "seconds": 0.22738679198664613
+        }
+      ]
+    },
+    {
+      "name": "zerobased",
+      "status": "ok",
+      "seconds": 3.8944710409850813,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/zerobased.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zerobased"
+          ],
+          "seconds": 0.5287832090107258
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zerobased"
+          ],
+          "seconds": 0.2420482909947168
+        },
+        {
+          "command": [
+            "./fpr",
+            "sol",
+            "tests/base/zerobased.fpr"
+          ],
+          "seconds": 0.03737995802657679
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb1.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb1"
+          ],
+          "seconds": 0.5243464589875657
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb1"
+          ],
+          "seconds": 0.24561566600459628
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb2.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb2"
+          ],
+          "seconds": 0.5135252920154016
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb2"
+          ],
+          "seconds": 0.23712183299358003
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb3.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb3"
+          ],
+          "seconds": 0.508102499996312
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb3"
+          ],
+          "seconds": 0.23346037499140948
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb4.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb4"
+          ],
+          "seconds": 0.5637363749847282
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/164-zerobased/zb4"
+          ],
+          "seconds": 0.2402410000213422
+        }
+      ]
+    },
+    {
+      "name": "deadpeer",
+      "status": "ok",
+      "seconds": 4.427089500008151,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/deadpeer.fpr",
+            "--harts",
+            "8",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/165-deadpeer/deadpeer"
+          ],
+          "seconds": 2.9471509580034763
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/165-deadpeer/deadpeer"
+          ],
+          "seconds": 0.5878924169810489
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/165-deadpeer/deadpeer"
+          ],
+          "seconds": 0.4494757919746917
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/165-deadpeer/deadpeer"
+          ],
+          "seconds": 0.4336151249881368
+        }
+      ]
+    },
+    {
+      "name": "deathwhy",
+      "status": "ok",
+      "seconds": 0.8453362919972278,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/deathwhy.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/166-deathwhy/deathwhy"
+          ],
+          "seconds": 0.5470385420194361
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/166-deathwhy/deathwhy"
+          ],
+          "seconds": 0.26181733299745247
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/166-deathwhy/deathwhy"
+          ],
+          "seconds": 0.03178124999976717
+        }
+      ]
+    },
+    {
+      "name": "actor_claim",
+      "status": "ok",
+      "seconds": 0.8261930409935303,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_actor_claim.py"
+          ],
+          "seconds": 0.8240122919960413
+        }
+      ]
+    },
+    {
+      "name": "taskstress",
+      "status": "ok",
+      "seconds": 8.581853167008376,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/taskstress.fpr",
+            "--harts",
+            "10",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/168-taskstress/taskstress-0"
+          ],
+          "seconds": 2.836003875010647
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/168-taskstress/taskstress-0"
+          ],
+          "seconds": 0.370633665996138
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/168-taskstress/taskstress-0"
+          ],
+          "seconds": 0.12008445797255263
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/taskstress.fpr",
+            "--harts",
+            "10",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/168-taskstress/taskstress-1"
+          ],
+          "seconds": 3.8750521250185557
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/168-taskstress/taskstress-1"
+          ],
+          "seconds": 0.4060017910087481
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/168-taskstress/taskstress-1"
+          ],
+          "seconds": 0.13848024999606423
+        }
+      ]
+    },
+    {
+      "name": "fpr_run",
+      "status": "ok",
+      "seconds": 1.2845836660126224,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "run",
+            "tests/base/args.fpr",
+            "x",
+            "y"
+          ],
+          "seconds": 0.7620905000076164
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/hello.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/169-fpr_run/hello2",
+            "-v"
+          ],
+          "seconds": 0.5191334580013063
+        }
+      ]
+    },
+    {
+      "name": "descriptors",
+      "status": "ok",
+      "seconds": 3.6185674169973936,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "machine/esp-idf/examples/load.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/170-descriptors/load"
+          ],
+          "seconds": 2.3599668749957345
+        }
+      ]
+    },
+    {
+      "name": "job_broker",
+      "status": "ok",
+      "seconds": 1.904954124998767,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/job.fpr",
+            "--with",
+            "tests/base/job_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/171-job_broker/job"
+          ],
+          "seconds": 1.551994334004121
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/171-job_broker/job"
+          ],
+          "seconds": 0.34849608401418664
+        }
+      ]
+    },
+    {
+      "name": "sendmem",
+      "status": "ok",
+      "seconds": 1.2374826669984031,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/sendmem.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/172-sendmem/sendmem"
+          ],
+          "seconds": 0.9858930420014076
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/172-sendmem/sendmem"
+          ],
+          "seconds": 0.24677233301918022
+        }
+      ]
+    },
+    {
+      "name": "i64",
+      "status": "ok",
+      "seconds": 2.276693042018451,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/i64.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/173-i64/i64"
+          ],
+          "seconds": 1.1115658749768045
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/173-i64/i64"
+          ],
+          "seconds": 0.23509179201209918
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/i64_divzero.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/173-i64/i64dz"
+          ],
+          "seconds": 0.45984233301714994
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-w7bs52v0/173-i64/i64dz"
+          ],
+          "seconds": 0.23536874999990687
+        }
+      ]
+    }
+  ]
+}

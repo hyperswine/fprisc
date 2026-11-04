@@ -37,4 +37,15 @@ void fpr_builtin_release(V value);
 void fpr_builtin_set_layout(V value,V descriptor);
 uw fpr_builtin_field_count(V value);
 char fpr_builtin_field_kind(V value,uw index);
+/* Internal owned-call primitive, available only to a verified fresh builder.
+ * Its root may alias cursor; value's owned reference becomes the new edge. */
+static inline void fpr_builtin_trmc_set_tail(V cursor,V value) {
+  if(fpr_builtin_field_count(cursor)!=2 || fpr_builtin_field_kind(cursor,1)!='t')
+    fpr_cpanic("Builtin: invalid TRMC cursor layout");
+  V *tail=&((V *)(cursor+8))[1];
+  V previous=*tail;
+  *tail=value;
+  fpr_builtin_release(previous);
+  fpr_builtin_release(cursor);
+}
 #endif

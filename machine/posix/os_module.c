@@ -12,7 +12,7 @@ static V attach(V pathv) {
   if (ISINT(pathv) || TID(pathv) != T_STR) fpr_cpanic("Native.attach: path must be a String");
   const str_t *p = (const str_t *)pathv;
   if (!p->len || memchr(p->bytes, 0, p->len)) return fpr_mkresult(1, "module path is empty or contains NUL");
-  char *path = (char *)fpr_alloc(p->len + 1);
+  char *path = (char *)fpr_alloc_raw(p->len + 1);
   memcpy(path, p->bytes, p->len); path[p->len] = 0;
   void *handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
   if (!handle) return fpr_mkresult(1, dlerror());

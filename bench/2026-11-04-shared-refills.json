@@ -1,0 +1,39 @@
+{
+  "scope": "Static instruction/pseudo counts of the build function, including all local shared tails; this is a code-size comparison, not a runtime speedup claim. RV pseudo expansion is not included.",
+  "source": "unsafe program.\nList = use \"std/list\".\nbuild n acc = if n == 0 then acc else build (n - 1) (Cons (n + 0) (Cons (n + 1) (Cons (n + 2) (Cons (n + 3) (Cons (n + 4) (Cons (n + 5) (Cons (n + 6) (Cons (n + 7) (Cons (n + 8) (Cons (n + 9) (Cons (n + 10) (Cons (n + 11) (Cons (n + 12) (Cons (n + 13) (Cons (n + 14) (Cons (n + 15) (Cons (n + 16) (Cons (n + 17) (Cons (n + 18) (Cons (n + 19) (Cons (n + 20) (Cons (n + 21) (Cons (n + 22) (Cons (n + 23) acc)))))))))))))))))))))))).\nmain = print (List.sum (build 200 Nil)).\n",
+  "results": [
+    {
+      "target": "a64mac",
+      "before": {
+        "text_instructions": 1234,
+        "compiler_sha256": "cbdfe84332745354da7b07e1a3ab9f01f86793ed00f71f9b8ca8d7e4b3e24f2f"
+      },
+      "after": {
+        "text_instructions": 1198,
+        "compiler_sha256": "210342ffb0e7728e1bd21921470ba8918bc783c09182961d1dd6e861680e1451"
+      }
+    },
+    {
+      "target": "x64mac",
+      "before": {
+        "text_instructions": 1860,
+        "compiler_sha256": "cbdfe84332745354da7b07e1a3ab9f01f86793ed00f71f9b8ca8d7e4b3e24f2f"
+      },
+      "after": {
+        "text_instructions": 1772,
+        "compiler_sha256": "210342ffb0e7728e1bd21921470ba8918bc783c09182961d1dd6e861680e1451"
+      }
+    },
+    {
+      "target": "rv64",
+      "before": {
+        "text_instructions": 1427,
+        "compiler_sha256": "cbdfe84332745354da7b07e1a3ab9f01f86793ed00f71f9b8ca8d7e4b3e24f2f"
+      },
+      "after": {
+        "text_instructions": 1391,
+        "compiler_sha256": "210342ffb0e7728e1bd21921470ba8918bc783c09182961d1dd6e861680e1451"
+      }
+    }
+  ]
+}

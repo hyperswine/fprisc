@@ -1,5 +1,7 @@
 # Zero-overhead roadmap checkpoint
 
+Follow-up implementation and qualification: [priorities 1–5, 4 November](2026-11-04-ZERO-OVERHEAD-EXECUTION.md). This dated record describes the earlier checkpoint.
+
 Date: 3 November 2026. Reviewed source: `9ffd4d2`. This is a status and
 priority review, not a new implementation, release qualification or timing
 certificate. It updates the reading order of the

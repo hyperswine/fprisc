@@ -53,7 +53,7 @@ import Core.Opt.Pipeline
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 152 -- typed case tests check the typeid again (received values); prior: the inline bump allocation
+codegenRev = 162 -- compact 64-bit managed cells and schema-2 module layout contracts
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -380,7 +380,8 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
       nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ fnText ++ fuelWrapper ++ allocWrapper
         ++ (if null strings then [] else rodataDirective format : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) format) strings)
         ++ (if null floats then [] else rodataDirective format : concatMap (uncurry boxedFloatObject) floats)
-      dat = NativeData.emitStaticDataWithSymbols format (policyWidth (tgtPolicy tgt)) (tgtArc tgt) (tgtWeak tgt) exports symbols emitted
+      dat = NativeData.emitStaticDataWithLayout format (policyWidth (tgtPolicy tgt)) (tgtArc tgt) (tgtWeak tgt) exports symbols
+              (if polProfile (tgtPolicy tgt) `elem` [Builtin,Builtin32,BuiltinArc] then Nothing else Just (".Lfpr_layout_table",if polCompactCells (tgtPolicy tgt) then 8 else 16)) emitted
               (S.fromList (concatMap nfNullaries allFns))
    in Emission
       { emNotes = optimizationNotes optimized ++ concat [declines tgt spec prog fn b | (fn,(_,b)) <- M.toList emitted]

@@ -25,6 +25,121 @@
  * both ELF and Mach-O.) */
 __attribute__((weak)) const uw fpr_modtab[1] = {0};
 
+/* Layouts cannot borrow plugin rodata: a message can survive its sender's
+ * image. Copy numeric rows into a grow-only hash index. Readers need no lock;
+ * writers publish a slot's tid last, and old indices survive growth for any
+ * reader that already loaded their address. Only doubling allocates an index,
+ * so retained logical capacity stays below twice the current capacity.
+ * Buddy minimum-block rounding adds overhead to small indices. */
+__attribute__((weak)) const uw fpr_layout_table[1] = {0};
+typedef struct { uw tid_plus_one, variant, fields; } layout_slot;
+typedef struct { uw capacity, used; layout_slot slots[]; } layout_index;
+static layout_index *layouts;
+static fpr_lock_t layout_lock;
+
+static uw layout_hash(uw tid, uw variant) {
+  return (tid * (uw)2654435761u) ^ (variant * (uw)2246822519u);
+}
+static layout_slot *layout_find(layout_index *index, uw tid, uw variant) {
+  uw at=layout_hash(tid,variant)&(index->capacity-1);
+  for (;;) {
+    layout_slot *slot=&index->slots[at];
+    uw key=__atomic_load_n(&slot->tid_plus_one,__ATOMIC_ACQUIRE);
+    if (!key || (key==tid+1 && slot->variant==variant)) return slot;
+    at=(at+1)&(index->capacity-1);
+  }
+}
+static void layout_insert(layout_index *index, uw tid, uw variant, uw fields) {
+  layout_slot *slot=layout_find(index,tid,variant);
+  if (slot->tid_plus_one) return;
+  slot->variant=variant;
+  slot->fields=fields;
+  __atomic_store_n(&slot->tid_plus_one,tid+1,__ATOMIC_RELEASE);
+  index->used++;
+}
+/* Caller holds layout_lock. Reject the whole table before publishing any
+ * conflicting row. Tables are strictly sorted by (type, variant), matching
+ * compiler emission; this also makes duplicate validation linear. */
+static int layout_add(const uw *table) {
+  layout_index *old=layouts;
+  uw count=table?table[0]:0, extra=0;
+  if (count>((uw)-1-1)/3) return -1;
+  for (uw i=0;i<count;i++) {
+    const uw *r=table+1+3*i;
+    if (r[0]>UINT32_MAX || r[0]==(uw)-1 || r[1]>UINT32_MAX ||
+        r[2]>((uw)-1-8-FPR_MANAGED_PREFIX-15)/sizeof(V)) return -1;
+    if (r[0]>T_TUPN && r[0]<T_TUPN_END && (r[1] || r[2]!=r[0]-T_TUPN)) return -1;
+    layout_slot *found=old?layout_find(old,r[0],r[1]):0;
+    if (found && found->tid_plus_one) {
+      if (found->fields!=r[2]) return -1;
+    } else extra++;
+    if (i) {
+      const uw *prior=table+1+3*(i-1);
+      if (prior[0]>r[0] || (prior[0]==r[0] && prior[1]>=r[1])) return -1;
+    }
+  }
+  uw used=old?old->used:0;
+  if (extra>(uw)-1-used) return -2;
+  uw need=used+extra, capacity=old?old->capacity:8;
+  while (need>capacity/2) {
+    if (capacity>((uw)-1)/2) return -2;
+    capacity*=2;
+  }
+  layout_index *index=old;
+  if (!old || old->capacity!=capacity) {
+    if (capacity>((uw)-1-sizeof *index)/sizeof(layout_slot)) return -2;
+    uw bytes=sizeof *index+capacity*sizeof(layout_slot);
+    if (fpr_mem_own) index=buddy_alloc(bytes);
+    else if (fpr_grow_memory) {
+      fpr_grant_t grant=fpr_grow_memory(bytes);
+      index=grant.size>=bytes?grant.ptr:0;
+    } else index=0;
+    if (!index) return -2;
+    __builtin_memset(index,0,bytes);
+    index->capacity=capacity;
+    if (old) for (uw i=0;i<old->capacity;i++) {
+      layout_slot *r=&old->slots[i];
+      if (r->tid_plus_one) layout_insert(index,r->tid_plus_one-1,r->variant,r->fields);
+    }
+  }
+  for (uw i=0;i<count;i++) {
+    const uw *r=table+1+3*i;
+    layout_insert(index,r[0],r[1],r[2]);
+  }
+  if (index!=old) __atomic_store_n(&layouts,index,__ATOMIC_RELEASE);
+  return 0;
+}
+int fpr_layout_register(const uw *table) {
+#ifdef FPR_COMPACT_CELLS
+  if (fpr_plane_memory) return fpr_plane_memory->layout_register(table?table:fpr_layout_table);
+#endif
+  fpr_lock(&layout_lock);
+  int result=layouts?0:layout_add(fpr_layout_table);
+  if (!result && table!=fpr_layout_table) result=layout_add(table);
+  fpr_unlock(&layout_lock);
+  return result;
+}
+uw fpr_layout_fields(uw tid, uw variant) {
+  /* Wide tuples encode their arity in the reserved type-id range. They
+   * are synthesized during erasure and need no image-owned table row. */
+  if (tid>T_TUPN && tid<T_TUPN_END) {
+    if (variant) fpr_cpanic("layout check: invalid wide tuple variant");
+    return tid-T_TUPN;
+  }
+#ifdef FPR_COMPACT_CELLS
+  if (fpr_plane_memory) return fpr_plane_memory->layout_fields(tid,variant);
+#endif
+  layout_index *index=__atomic_load_n(&layouts,__ATOMIC_ACQUIRE);
+  if (!index) {
+    if (fpr_layout_register(0)) fpr_cpanic("layout table: cannot initialize constructor metadata");
+    index=__atomic_load_n(&layouts,__ATOMIC_ACQUIRE);
+  }
+  layout_slot *found=layout_find(index,tid,variant);
+  if (__atomic_load_n(&found->tid_plus_one,__ATOMIC_ACQUIRE)!=tid+1 || found->variant!=variant)
+    fpr_cpanic("layout check: the layout table has no entry for this constructor");
+  return found->fields;
+}
+
 /* ---- attached tables: DYNAMICALLY LOADED module tables --------------
  * A loaded plugin image (qos_abi.h's plugin slot) carries its own
  * checked module table; fpr_mod_attach registers it.  This file is the
@@ -58,12 +173,12 @@ static int nxtabs, capxtabs;
 static fpr_lock_t xlock;
 
 #define MOD_MAGIC ((uw)0x4650524d)
-#define MOD_SCHEMA ((uw)1)
-#define MOD_HEADER 3
+#define MOD_SCHEMA ((uw)2)
+#define MOD_HEADER 5
 #define MOD_ROW 4
 static const uw *rows(const uw *tab) {
   if (!tab || !tab[0]) return 0;
-  if (tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA)
+  if (tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA || tab[4] != FPR_MANAGED_PREFIX)
     fpr_cpanic("module table: unsupported interface schema (rebuild image)");
   return tab + MOD_HEADER;
 }
@@ -82,8 +197,10 @@ int fpr_mod_registered(const uw *tab) {
 }
 int fpr_mod_attach(const uw *tab) {
   /* Reject legacy tables before publishing or walking their old row layout. */
-  if (!tab || tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA) return -1;
+  if (!tab || tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA || tab[4] != FPR_MANAGED_PREFIX) return -1;
   if (!tab[2] || ISINT(tab[2]) || TID(tab[2]) != T_STR) return -1;
+  int layout_status = fpr_layout_register((const uw *)tab[3]);
+  if (layout_status) return layout_status;
   uw nrows = count_rows(tab);
   fpr_lock(&xlock);
   for (int i = 0; i < nxtabs; i++)

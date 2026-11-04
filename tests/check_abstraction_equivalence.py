@@ -98,12 +98,13 @@ def families(n):
 #  - materialize: map after filter over a range is the producer composition
 #    tests/check_list_fusion.py pins at 1501; the loop conses 500 then reverses.
 # Known gaps, reported and not gated (docs/2026-11-03-DEFAULT-BUILD-GATES.md):
-# helper-wrapped pipelines do not fuse (2000 / 1500), and a tuple accumulator
-# in List.fold allocates one tuple per element (505) where the loop needs 5.
+# Helper-wrapped scalar pipelines now share the zero-allocation gate.
+# Tuple folds now share the scalar loop's boundary-only allocation gate.
 EXPECT = {
-    ('sum-map-filter', 'direct'): 0, ('sum-map-filter', 'let'): 0, ('sum-map-filter', 'loop'): 0,
-    ('count-filter', 'direct'): 0, ('count-filter', 'let'): 0, ('count-filter', 'loop'): 0,
-    ('sum-count-pair', 'loop'): 5,
+    ('sum-map-filter', 'helper'): 0, ('sum-map-filter', 'direct'): 0, ('sum-map-filter', 'let'): 0, ('sum-map-filter', 'loop'): 0,
+    ('count-filter', 'helper'): 0, ('count-filter', 'direct'): 0, ('count-filter', 'let'): 0, ('count-filter', 'loop'): 0,
+    ('sum-count-pair', 'direct'): 5, ('sum-count-pair', 'let'): 5,
+    ('sum-count-pair', 'helper'): 5, ('sum-count-pair', 'loop'): 5,
     ('materialize', 'direct'): 1501, ('materialize', 'let'): 1501, ('materialize', 'loop'): 1001,
 }
 

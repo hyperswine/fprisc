@@ -1,5 +1,7 @@
 # Layout table and object sizes (C1 piece 2a, slices 1-2)
 
+Follow-up implementation and qualification: [priorities 1–5, 4 November](2026-11-04-ZERO-OVERHEAD-EXECUTION.md). This dated record describes the earlier checkpoint.
+
 Date: 3 November 2026. Kind: implementation record. Applies to
 `compiler/Compile.hs`, `compiler/Compiler/Options.hs`, `compiler/Build.hs`,
 `runtime/runtime.c`, and `tests/check_layout_table.py`. Changes no observable

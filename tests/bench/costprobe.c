@@ -35,7 +35,7 @@ static V report(V u) {
 }
 static V allocs(V nv,V sizev) {
   uw n=(uw)UNTAG(nv),size=(uw)UNTAG(sizev),sum=0;
-  for (uw i=0;i<n;i++) { V p=fpr_alloc(size); ((uint8_t*)p)[0]=(uint8_t)i; sum+=((uint8_t*)p)[0]; fpr_free(p); }
+  for (uw i=0;i<n;i++) { V p=fpr_alloc_raw(size); ((uint8_t*)p)[0]=(uint8_t)i; sum+=((uint8_t*)p)[0]; fpr_free_raw(p); }
   return TAG((sw)sum);
 }
 static V payload(V sizev) {

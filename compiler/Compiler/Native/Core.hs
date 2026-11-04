@@ -2,7 +2,7 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,specializeNativePrograms,specializeNativeProgramsWithDecisions,inlineNativePrograms,inlineNativeProgramsWithDecisions,planNativeVectorReads,normalizeNative,caseKnownNative,fuseNativePrograms,fuseListNativePrograms,trmcNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
+  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,specializeNativePrograms,specializeNativeProgramsWithDecisions,inlineNativePrograms,inlineNativeProgramsWithDecisions,planNativeVectorReads,normalizeNative,caseKnownNative,fuseNativePrograms,fuseListNativePrograms,fuseListNativeProgramsWithHelpers,trmcNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
    CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
@@ -106,9 +106,12 @@ caseKnownNative elided input=do
   if S.null (closedTouched stepped) then pure Nothing else Just <$> replaceClosed stepped input
 
 fuseListNativePrograms :: Ord key => M.Map key (S.Set String,NativeCore) -> Either String (M.Map key (NativeCore,[FusionNote]))
-fuseListNativePrograms inputs=do
-  changed<-fuseListPrograms (M.map (\(elided,core)->(elided,nativeClosed core)) inputs)
-  M.traverseWithKey (\key (_,core)->do
+fuseListNativePrograms=fuseListNativeProgramsWithHelpers False False . M.map (\(elided,core)->(S.empty,elided,core))
+
+fuseListNativeProgramsWithHelpers :: Ord key => Bool -> Bool -> M.Map key (S.Set String,S.Set String,NativeCore) -> Either String (M.Map key (NativeCore,[FusionNote]))
+fuseListNativeProgramsWithHelpers reporting helpers inputs=do
+  changed<-fuseListProgramsWithHelpers reporting helpers (M.map (\(forbidden,elided,core)->(forbidden,elided,nativeClosed core)) inputs)
+  M.traverseWithKey (\key (_,_,core)->do
     let (closed,notes)=changed M.! key
     result<-replaceClosed closed core
     pure (result,notes)) inputs

@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 -- Inline checked closed entries, before region planning and erasure. Templates
 -- retain their code homes; only lexical binders are cloned into the caller.
-module Core.Typed.Inline (Inlining,planInlining,inlineClosed,inlineClosedWithDecisions) where
+module Core.Typed.Inline (Inlining,planInlining,planListHelpers,hasListHelperPipeline,inlineClosed,inlineClosedWithDecisions) where
 import qualified Core.Typed.Decision as D
 import Core.Typed.Syntax
 import Core.Typed.Close
@@ -31,12 +31,50 @@ import qualified Data.Set as S
 -- (docs/2026-10-27-FOLLOWUPS.md). Two budgets, weighed once.
 data Inlining=Inlining Catalog Int Int (M.Map Target (Either D.InlineReason (Template,S.Set String,Int)))
 
+-- Expose small helper bodies before callback specialization hides their List
+-- calls. Names here are only a profitability hint: ordinary checked inlining
+-- grants no fusion authority, and ListFusion still verifies every combinator.
+-- Keep the catalog combinators themselves intact for that verification.
+planListHelpers :: Int -> Int -> Catalog -> Either String Inlining
+planListHelpers=planInliningSelected wanted
+  where
+    wanted (RootTarget n) (Template _ _ body _ _)=not (listCombinator n) && tailList body
+    wanted _ _=False
+    tailList e=case exprNode (unNote e) of
+      MatchTail (FunctionMatch _) _ [Alternative _ [] body] _->tailList body
+      Let _ _ body->tailList body
+      Sequence _ body->tailList body
+      _->case spine e [] of
+        (h,_:_) | Var (Global n _)<-exprNode h->listCombinator n
+        _->False
+
+listCombinator n=takeWhile (/='@') n `elem` ["map","filter","fold","sum","product","length","range","mapFilter","filterMapped","mapRange","foldRange","lengthRange"]
+
+-- The preliminary helper pass has few candidates. Avoid importing/rechecking
+-- a code library or running hygiene for owners that cannot call any of them.
+-- A lone wrapper has no cross-helper pipeline to expose. Require two List
+-- operations/helper references in the same body, rather than growing every
+-- standalone call in a large dependency graph. This is profitability only.
+hasListHelperPipeline :: Inlining -> ClosedFunction -> Bool
+hasListHelperPipeline (Inlining _ _ _ candidates) input=any (pipeline . functionBody)
+  (closedRoot input:map codeAsFunction (M.elems (closedCode input)))
+  where
+    pipeline e=let (helper,ops)=walk e in helper && ops>=2
+    walk e=foldr combine here (getConst (mapChildrenM (Const . (:[]) . walk) e))
+      where here=case exprNode e of
+              Var (Global n _) | M.member (RootTarget n) candidates->(True,1::Int)
+              Var (Global n _) | listCombinator n->(False,1)
+              _->(False,0)
+    combine (a,n) (b,m)=(a || b,min 2 (n+m))
+
 -- Compute admission once per snapshot, not at every call in every owner.
 -- Stop weighing an oversized template as soon as the larger budget is spent.
 planInlining :: Int -> Int -> Catalog -> Either String Inlining
-planInlining limit loopLimit snapshot=do
+planInlining=planInliningSelected (\_ _->True)
+
+planInliningSelected select limit loopLimit snapshot=do
   unless (limit>=0 && loopLimit>=0) (Left "typed inline: negative node budget")
-  pure (Inlining snapshot limit loopLimit (M.mapWithKey admit (catalogTemplates snapshot)))
+  pure (Inlining snapshot limit loopLimit (M.mapWithKey admit (M.filterWithKey select (catalogTemplates snapshot))))
   where
     cap=max limit loopLimit
     admit target template@(Template caps ps body _ _)

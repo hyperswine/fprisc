@@ -35,6 +35,7 @@ SUPPORT = SUPPORT.replace('    *(volatile unsigned *)0x100000 = code ?', '''
 PLUGIN_ORACLE = r'''
 extern V fpr_fn_mathOp(V), fpr_fn_twice(V), fpr_fn_greeting(V), fpr_fn_wideCall(V);
 extern uintptr_t fpr_modtab[];
+extern uintptr_t fpr_layout_table[];
 struct Str { uint32_t tid,var; uintptr_t len; unsigned char bytes[]; };
 static int eq(struct Str *s, const char *t) {
     unsigned i=0; for (;t[i];i++) if(i>=s->len || s->bytes[i]!=(unsigned char)t[i]) return 0;
@@ -49,9 +50,11 @@ int main(void) {
         hart[0]=1; CHECK(fpr_fn_wideCall(tag(x))==tag(x+44));
     }
     hart[0]=1; CHECK(eq((void *)fpr_fn_greeting((V)&fpr_unit),"mod"));
-    CHECK(fpr_modtab[0]==0x4650524d && fpr_modtab[1]==1);
+    CHECK(fpr_modtab[0]==0x4650524d && fpr_modtab[1]==2);
+    CHECK(fpr_modtab[3]==(uintptr_t)fpr_layout_table);
+    CHECK(fpr_modtab[4]==(sizeof(uintptr_t)==8 ? 8 : 16));
     unsigned rows=0, found=0;
-    for(uintptr_t *r=fpr_modtab+3;*r;r+=4) {
+    for(uintptr_t *r=fpr_modtab+5;*r;r+=4) {
         CHECK(((struct Str *)r[0])->tid==9000 && ((struct Str *)r[3])->tid==9000);
         if(eq((void *)r[1],"mathOp")) {
             uintptr_t *pap=(void *)r[2];

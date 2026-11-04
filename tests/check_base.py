@@ -632,7 +632,7 @@ def streams(tmp):
 def panic_actors_std(tmp):
     # 4. a panic is exit 1 with its message; a Sys.exit inside an actor program is honoured
     p = run([build('tests/base/panic.fpr', 'panic')], 1)
-    assert 'deliberate' in p.stdout, p.stdout
+    assert not p.stdout and 'deliberate' in p.stderr, (p.stdout, p.stderr)
     # 5. the same programs every profile runs: actors on pthread harts, a std module
     p = run([build('tests/actors.fpr', 'actors')], env={'FPR_HARTS': '2'})
     assert 'actor demo done' in p.stdout, p.stdout
@@ -825,18 +825,25 @@ def vecpeek(tmp):
     # 4n. pair-free vector reads: `(x, v2) = Vec.at i v` builds no pair
     # (Core.Typed.VectorRead); the same program without the rewrite agrees on every
     # value, and the 2,000 reads cost only the loops' two final pairs
-    on = run([build('tests/base/vecpeek.fpr', 'vp1')]).stdout.splitlines()
+    default = run([build('tests/base/vecpeek.fpr', 'vp-default')]).stdout.splitlines()
+    probe = {'FPR_NO_LOOP_REGIONS': '1', 'FPR_NO_CALL_REGIONS': '1', 'FPR_NO_PAIR_RETURNS': '1'}
+    on_exe = tmp / 'vp1'
+    run(['./fpr', 'build', 'tests/base/vecpeek.fpr', '-o', on_exe], env=probe)
+    on = run([on_exe]).stdout.splitlines()
     exe = tmp / 'vp2'
     # the baseline counts the pairs, so no loop region may reclaim them (one
     # resets inside the second loop: 82,960 bytes; docs/2026-10-25-REGIONS-LOOPS-CALLS.md)
-    run(['./fpr', 'build', 'tests/base/vecpeek.fpr', '-o', exe], env={'FPR_NO_VEC_PEEK': '1', 'FPR_NO_LOOP_REGIONS': '1', 'FPR_NO_CALL_REGIONS': '1'})
+    # Pair returns can erase a final loop pair independently of vector reads.
+    # Disable them symmetrically for this allocation comparison.
+    run(['./fpr', 'build', 'tests/base/vecpeek.fpr', '-o', exe], env={**probe, 'FPR_NO_VEC_PEEK': '1'})
     off = run([exe]).stdout.splitlines()
-    assert on[0] == off[0] == 'at 1499500 get 1499500 whole 70 shadow 3998', (on, off)
-    assert on[1] == '2000 reads: 96 bytes' and off[1] == '2000 reads: 96096 bytes', (on, off)
+    assert default[0] == on[0] == off[0] == 'at 1499500 get 1499500 whole 70 shadow 3998', (default, on, off)
+    pair_bytes = 48 if os.environ.get('FPR_COMPACT_CELLS') == '0' else 32
+    assert on[1] == f'2000 reads: {2*pair_bytes} bytes' and off[1] == f'2000 reads: {2002*pair_bytes} bytes', (on, off)
     (tmp / 'vp3.fpr').write_text('unsafe program.\nmain =\n  v = Vec.iota 3;\n  (x, v2) = Vec.at 3 v;\n  _ = Vec.free v2;\n  x.\n')
     p = run([build(tmp / 'vp3.fpr', 'vp3')], 1)
     assert 'Vec.get: index out of range' in p.stdout + p.stderr, p.stdout + p.stderr
-    print('Vector reads taken apart at once build no pair: 2,000 reads 96 B (was 96,096), the same values, the same out-of-range panic: PASS')
+    print(f'Vector reads taken apart at once build no pair: 2,000 reads {2*pair_bytes} B (was {2002*pair_bytes}), the same values, the same out-of-range panic: PASS')
 
 @case
 def zerobased(tmp):

@@ -5,6 +5,7 @@ import Codegen.IR (Width(..))
 import Codegen.Target.Common (ObjectFormat(..),symbolPolicy,visibilityFor,Visibility(..))
 import FPRISC (Core(..))
 import Modules (ModExport(..))
+import Data.List (isSuffixOf)
 import Control.Monad (forM_,unless)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -24,9 +25,9 @@ main = do
   forM_ [False,True] $ \weak -> do
    let key=show (fmt,width,arc,weak)
        actual=emitStaticData fmt width arc weak exports visible emitted (S.singleton (43,2))
-   unless (M.lookup key golden==Just actual) $
+   unless (fmap upgradeHeader (M.lookup key golden)==Just actual) $
     error ("native static data differs from predecessor snapshot: "++key)
- putStrLn "Native static data: exact prior text for RV32/RV64/A64 Mach-O/x64/ARC, weak/strong visibility, PAP arity, module schema/strings, UTF-8/raw bytes and elided native nullaries PASS"
+ putStrLn "Native static data: prior text except the explicit schema-2 header for RV32/RV64/A64 Mach-O/x64/ARC, weak/strong visibility, PAP arity, module schema/strings, UTF-8/raw bytes and elided native nullaries PASS"
  let policy=either error id (symbolPolicy (S.singleton "mk") (S.singleton "idn@123"))
      hidden fmt=emitStaticDataWithSymbols fmt W64 False True [] policy prog S.empty
  unless (visibilityFor True policy "mk"==WeakSymbol && visibilityFor True policy "idn@123"==HiddenSymbol
@@ -40,3 +41,13 @@ main = do
   Left _->pure ()
   Right _->error "overlapping public/private visibility accepted"
  putStrLn "Native symbol policy: disjoint public/private authority, strong hidden PAPs, ELF visibility and Mach-O private extern spelling PASS"
+
+-- Independently describe the sole permitted change to the frozen schema-1
+-- snapshots: a schema version, a layout pointer and the managed prefix size.
+upgradeHeader :: [String] -> [String]
+upgradeHeader (magic:version:root:rest)
+  | "0x4650524d" `isSuffixOf` magic =
+      let directive=take (length version-1) version
+      in magic:(directive++"2"):root:(directive++"0"):(directive++"16"):upgradeHeader rest
+upgradeHeader (x:xs)=x:upgradeHeader xs
+upgradeHeader []=[]

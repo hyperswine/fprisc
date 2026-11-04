@@ -3,7 +3,7 @@
 -- one artifact emits each symbol. Private code keeps its source owner/contract.
 module Compiler.Native.Linked
   (ArtifactId(..),NativeArtifact,artifact,artifactId,artifactCore,artifactExports,artifactElided,
-   LinkedProgram,linkArtifacts,specializeLinked,specializeLinkedWithDecisions,inlineLinked,inlineLinkedWithDecisions,planVectorReadsLinked,normalizeLinked,caseKnownLinked,fuseLinked,fuseListLinked,trmcLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
+   LinkedProgram,linkArtifacts,specializeLinked,specializeLinkedWithDecisions,inlineLinked,inlineLinkedWithDecisions,planVectorReadsLinked,normalizeLinked,caseKnownLinked,fuseLinked,fuseListLinked,fuseListLinkedWithHelpers,trmcLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
 import Compiler.Native.Core
 import Compiler.DataLayout
 import Core.Typed.Program
@@ -178,8 +178,12 @@ caseKnownLinked p=do
   if any snd stepped then linkArtifacts (map fst stepped) else pure p
 
 fuseListLinked :: LinkedProgram -> Either String (LinkedProgram,[FusionNote])
-fuseListLinked p=do
-  changed<-fuseListNativePrograms (M.map (\a->(artifactElided a,artifactCore a)) (linkedArtifacts p))
+fuseListLinked=fuseListLinkedWithHelpers False False
+
+fuseListLinkedWithHelpers :: Bool -> Bool -> LinkedProgram -> Either String (LinkedProgram,[FusionNote])
+fuseListLinkedWithHelpers reporting helpers p=do
+  let inputs=M.mapWithKey (\key a->(S.fromList [name | (ArtifactSymbol home name,_)<-M.toList (linkedSymbols p),home/=key],artifactElided a,artifactCore a)) (linkedArtifacts p)
+  changed<-fuseListNativeProgramsWithHelpers reporting helpers inputs
   artifacts<-M.traverseWithKey (\key a->artifact key (artifactExports a) (artifactElided a) (fst (changed M.! key))) (linkedArtifacts p)
   output<-linkArtifacts (M.elems artifacts)
   pure (output,concatMap snd (M.elems changed))

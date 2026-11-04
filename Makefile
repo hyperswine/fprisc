@@ -34,7 +34,8 @@ QOSSLAB ?= 32768
 # shaped (fprlive) builds with QOSSTACK=65536 for four times the sessions
 QOSSTACK ?= 262144
 QOSCFLAGS_EXTRA ?=
-CFLAGS = $(ARCHFLAGS) -DFPR_NHARTS=$(HARTS) \
+FPR_LAYOUT_CFLAGS = $(if $(filter 0,$(FPR_COMPACT_CELLS)),-DFPR_LEGACY_CELLS,)
+CFLAGS = $(FPR_LAYOUT_CFLAGS) $(ARCHFLAGS) -DFPR_NHARTS=$(HARTS) \
          -ffreestanding -nostdlib -nostartfiles -O2 -Wall -Wextra \
          -fno-builtin -fno-stack-protector
 QEMU  = qemu-system-riscv64
@@ -266,7 +267,7 @@ $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
 	LC_ALL=C.UTF-8 ./fprc --system=posix --prelude=core/prelude.fpr $(PROG) $@
 
 posix: $(BUILD)/base.s $(RT_POSIX) $(RT_CORE)
-	$(CC) -O2 -Wall -Wextra $(POSIXFIXED) -DFPR_POSIX -DFPR_POSIX_CODEGEN_REV=$(shell sed -n 's/^codegenRev = \([0-9]*\).*/\1/p' compiler/Codegen.hs) -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(RUNTIME) -I$(MACHINE)/posix -I$(MACHINE)/unix \
+	$(CC) -O2 -Wall -Wextra $(FPR_LAYOUT_CFLAGS) $(POSIXFIXED) -DFPR_POSIX -DFPR_POSIX_CODEGEN_REV=$(shell sed -n 's/^codegenRev = \([0-9]*\).*/\1/p' compiler/Codegen.hs) -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(RUNTIME) -I$(MACHINE)/posix -I$(MACHINE)/unix \
 	  $(BUILD)/base.s $$(cat $(BUILD)/base.s.units) $(RT_POSIX) $(RT_CORE) -lpthread -lm -o $(BIN)
 
 posix-run: posix

@@ -7,6 +7,14 @@
 V fpr_fn__x24arc_x2eretain(V v) { return fpr_builtin_retain(v); }
 V fpr_fn__x24arc_x2erelease(V v) { fpr_builtin_release(v); return (V)&fpr_unit; }
 V fpr_fn__x24arc_x2esetLayout(V v,V layout) { fpr_builtin_set_layout(v,layout); return (V)&fpr_unit; }
+/* The checked TRMC capability proof confines cursor mutation to fresh cells.
+ * Both inputs are owned: transfer value into the field, release its previous
+ * edge, then release the temporary cursor reference. Root/cursor aliases are
+ * expected; requiring a unique RC here would reject the builder protocol. */
+V fpr_fn__x24arc_x2etrmcSetTail(V cursor,V value) {
+  fpr_builtin_trmc_set_tail(cursor,value);
+  return (V)&fpr_unit;
+}
 V fpr_fn__x24arc_x2erawEq(V a,V b) { return a==b?(V)&fpr_true:(V)&fpr_false; }
 V fpr_fn__x24arc_x2erawNe(V a,V b) { return a!=b?(V)&fpr_true:(V)&fpr_false; }
 extern V fpr_prim_fn_str(V), fpr_prim_fn_print(V);

@@ -2379,7 +2379,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   if (grant) {
     grant->next = 0; grant->owner = &a->pool;
     grant->escaped = grant->holds = 0;
-    grant->hp = (char *)(grant + 1);
+    grant->hp = fpr_slab_start(grant);
     grant->end = grant->hp + heap_bytes;
     a->pool.cur = grant;
     a->pool.fixed_heap = heap_bytes;
@@ -2536,9 +2536,11 @@ static V a_spawn_heap(V bytesv, V f) {
    * It is freed on refusal. No child is registered or scheduled until commit. */
   spawn_gate();
   hdr_t *r = (hdr_t *)fpr_alloc(8 + sizeof(V));
+  r->tid = T_RESULT; r->var = 0;
+  *(V *)((char *)r + 8) = 0;
   admission_t ad = {0};
   if (!fpr_actor_cleanup_set(admission_rollback, &ad)) { fpr_free((V)r); return (V)&heap_denied; }
-  ad.grant = fpr_slab_new(bytes + sizeof(fpr_slab_t));
+  ad.grant = fpr_slab_new(bytes + sizeof(fpr_slab_t) + FPR_SLAB_PAD);
   if (!ad.grant || ADMISSION_FAIL(1)) goto denied;
   ad.stack = (char *)stack_block(&ad.stack_size);
   if (!ad.stack || ADMISSION_FAIL(2)) goto denied;
@@ -2574,6 +2576,8 @@ static V a_spawn_inbox(V hv, V countv, V bytesv, V f) {
       UNTAG(bytesv) < 1 || ISINT(f) || TID(f) != T_PAP) return (V)&inbox_bad;
   spawn_gate();
   hdr_t *r = (hdr_t *)fpr_alloc(8 + sizeof(V));
+  r->tid = T_RESULT; r->var = 0;
+  *(V *)((char *)r + 8) = 0;
   admission_t ad = {0};
   ad.inbox_max_messages = (uw)UNTAG(countv);
   ad.inbox_max_bytes = (uw)UNTAG(bytesv);
@@ -3615,6 +3619,10 @@ void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
   actors->send_linear = a_send_linear;
   actors->send_arc = a_send_arc;
   memory->abi = FPR_PLANE_MEMORY_ABI;
+#ifdef FPR_COMPACT_CELLS
+  memory->layout_register = fpr_layout_register;
+  memory->layout_fields = fpr_layout_fields;
+#endif
   memory->arc_incref = fpr_arc_incref;
   memory->arc_decref = fpr_arc_decref;
   memory->arc_live = sched_arc_live;

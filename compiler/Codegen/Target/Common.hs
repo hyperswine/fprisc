@@ -1,17 +1,17 @@
 {-# LANGUAGE LambdaCase #-}
 -- Shared native output and symbol identity, independent of instruction set.
 module Codegen.Target.Common
-  ( ObjectFormat (..), NativeFn (..), usesTick, usesBump, BumpCell (..), bumpCell, bumpSlabCell, bumpBucketsCell, bumpRegionCell, bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated, mangleName, functionSymbol, calleeCodeSymbol,
+  ( ObjectFormat (..), NativeFn (..), usesTick, usesBump, BumpCell (..), bumpCell, bumpCellFor, bumpSlabCell, bumpBucketsCell, bumpRegionCell, bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated, mangleName, functionSymbol, calleeCodeSymbol,
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
-    boxedFloatLabel, boxedFloatObject,
+    boxedFloatLabel, boxedFloatObject, BumpRefills, planBumpRefills, bumpRefill,
     SymbolPolicy,symbolPolicy,publicSymbols,symbolNames,
     Visibility(..),WeakSpelling(..),visibilityFor,visibilityLines ) where
 import Codegen.Bounds (Report)
 import Codegen.IR (Name)
 import qualified Codegen.IR as IR
 import Codegen.Frame
-import Codegen.Policy (StackPolicy (..))
+import Codegen.Policy (StackPolicy (..), Policy (..))
 import qualified Codegen.Opcode as Opcode
 import Codegen.Call (RuntimeEntry(..),runtimeSymbol)
 import Codegen.Protocol (protocolCalls,Embedded(..))
@@ -341,13 +341,30 @@ usesTick items = or [siOpcode i `elem` map Opcode.Common [Opcode.EntryCheckTick,
 usesBump :: [Item] -> Bool
 usesBump items = or [siOpcode i == Opcode.Common Opcode.BumpAlloc | I i <- items]
 
+-- Pool only identical placed destinations and sizes. The destination is a
+-- definition, not a live input; A64/RV may park the nested return PC there.
+-- Thresholds are derived by each target from emitted instruction savings.
+type BumpRefills = M.Map (String,Integer) Label
+planBumpRefills :: Int -> [Item] -> BumpRefills
+planBumpRefills minimumUses items = M.fromList
+  [(key,Label ("bump_shared_"++show n)) | (n,key)<-zip [0::Int ..] eligible]
+  where
+    counts=M.fromListWith (+) [(key,1::Int) | I i<-items,Just key<-[bumpKey i]]
+    eligible=M.keys (M.filter (>=minimumUses) counts)
+bumpRefill :: BumpRefills -> SInstr -> Maybe Label
+bumpRefill pools i = bumpKey i >>= (`M.lookup` pools)
+bumpKey :: SInstr -> Maybe (String,Integer)
+bumpKey i=case (siOpcode i,siDefs i,siUses i) of
+  (Opcode.Common Opcode.BumpAlloc,[OP (Phys d)],[OI raw]) -> Just (d,raw)
+  _ -> Nothing
+
 -- The inline bump allocation (docs/2026-11-03-INLINE-BUMP-ALLOC.md): the
--- cell's footprint exactly as alloc_in computes it (the payload rounded to 16
--- plus the 16-byte preheader), its bucket index, and the zero pad alloc_in
+-- cell's footprint exactly as alloc_in computes it (prefix plus payload,
+-- rounded together to 16), its bucket index, and the zero pad alloc_in
 -- writes after the payload.  Word offsets below are runtime/fpr.h's, pinned
 -- there by static assertions: hart cells 58-60 (region_bytes, bump_slab,
 -- bump_bkt), the slab's owner/hp/end words and the pool's allocated word.
-data BumpCell = BumpCell { bcRaw :: Integer, bcTotal :: Integer, bcIndex :: Integer, bcPad :: Maybe Integer }
+data BumpCell = BumpCell { bcPrefix :: Integer, bcRaw :: Integer, bcTotal :: Integer, bcIndex :: Integer, bcPad :: Maybe Integer }
   deriving (Eq, Show)
 
 -- Nothing: this cell keeps the fpr_alloc call.  The bound is the RISC-V
@@ -356,10 +373,16 @@ data BumpCell = BumpCell { bcRaw :: Integer, bcTotal :: Integer, bcIndex :: Inte
 -- cell is inline when its total fits in 2032 bytes (250 fields); a larger
 -- cell is no less correct on the call path, and none exists in practice.
 bumpCell :: Integer -> Maybe BumpCell
-bumpCell raw
+bumpCell = bumpCellWith 16
+
+bumpCellFor :: Policy -> Integer -> Maybe BumpCell
+bumpCellFor policy = bumpCellWith (if polCompactCells policy then 8 else 16)
+
+bumpCellWith :: Integer -> Integer -> Maybe BumpCell
+bumpCellWith prefix raw
   | raw <= 0 || total > 2032 = Nothing
-  | otherwise = Just (BumpCell raw total (total `div` 16 - 1) (if total - 16 - raw > 0 then Just raw else Nothing))
-  where total = ((raw + 15) `div` 16) * 16 + 16
+  | otherwise = Just (BumpCell prefix raw total (total `div` 16 - 1) (if total - prefix - raw > 0 then Just raw else Nothing))
+  where total = ((raw + prefix + 15) `div` 16) * 16
 
 bumpRegionCell, bumpSlabCell, bumpBucketsCell :: Int
 bumpRegionCell = 58

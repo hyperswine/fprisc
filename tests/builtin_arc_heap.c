@@ -48,4 +48,22 @@ int main(void) {
   fpr_builtin_release(root);
   assert(fpr_builtin_live_allocations()==0);
   puts("ARC LAYOUT AND DEEP RELEASE HOLD");
+  /* A builder retains an internal cursor alias and attaches a shared tail.
+   * Replacing an edge, including with the same value, consumes exactly one
+   * owned reference and leaves the external tail alive after root release. */
+  V shared=fpr_builtin_alloc_adt(24,2);
+  ((V *)(shared+8))[0]=TAG(9);
+  ((V *)(shared+8))[1]=TAG(0);
+  root=fpr_builtin_alloc_adt(24,2);
+  ((V *)(root+8))[0]=TAG(1);
+  ((V *)(root+8))[1]=TAG(0);
+  fpr_builtin_trmc_set_tail(fpr_builtin_retain(root),fpr_builtin_retain(shared));
+  fpr_builtin_trmc_set_tail(fpr_builtin_retain(root),fpr_builtin_retain(shared));
+  assert(fpr_builtin_live_allocations()==2);
+  fpr_builtin_release(root);
+  assert(fpr_builtin_live_allocations()==1);
+  assert(((V *)(shared+8))[0]==TAG(9));
+  fpr_builtin_release(shared);
+  assert(fpr_builtin_live_allocations()==0);
+  puts("ARC TRMC OWNED TAIL TRANSFER HOLDS");
 }

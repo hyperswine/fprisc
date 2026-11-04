@@ -19,10 +19,10 @@ const hdr_t fpr_true = {T_BOOL, 1};
 const hdr_t fpr_false = {T_BOOL, 0};
 const hdr_t fpr_unit = {T_UNIT, 0};
 
-/* ---- allocator v2: bump + size header + segregated free list ---------
- * Every allocation carries its total size in a hidden 16-byte header
- * (16 to preserve alignment), which is what makes fpr_free -- and
- * therefore ARC reclamation -- possible at all. Freed blocks go into
+/* ---- allocator: bump + owning slab + segregated free list ------------
+ * Compact managed cells carry an 8-byte slab prefix and derive their size
+ * from initialized object headers and constructor metadata. Legacy cells
+ * and opaque raw buffers retain a 16-byte size/slab prefix. Freed blocks go into
  * exact-fit free lists by size class (16-byte steps up to the bucket
  * ceiling); blocks ABOVE the ceiling recycle through the pool's
  * exact-fit bigfree LIFO (the "larger blocks leak by design" PoC rule
@@ -123,6 +123,10 @@ void fpr_rt_init(void) {
     fpr_mem_own = 1; /* this image runs the buddy: the memory actor follows */
   }
   fpr_set_tp(&fpr_harts[0]);
+#ifdef FPR_COMPACT_CELLS
+  /* Metadata allocation must precede ARC-locked frees and worker startup. */
+  if (fpr_layout_register(0)) fpr_cpanic("layout table: cannot initialize constructor metadata");
+#endif
   fpr_rvv_enable();
   fpr_actors_init();
   /* everything above happens-before any secondary's first instruction */
@@ -230,40 +234,58 @@ uw fpr_image_count(void) {
 }
 void (*fpr_pid_quiet)(uw pid);
 
-#ifdef FPR_LAYOUT_CHECK
-/* C1 piece 2a, slice 2.  The allocator's 16-byte preheader carries the object's
- * total size in word 0; slice 3 replaces that read with a size derived from the
- * object itself.  This build derives the size for every class and asserts it
- * equals the preheader's, at every read of the preheader, so the derivation can
- * become the authority without changing a layout.  FPR_LAYOUT_FAULT adds a row
- * of slack so the check must stop the program rather than pass vacuously. */
-#define LAYOUT_ROUND(n) ((((n) + 15) & ~(uw)15))
-extern const uw fpr_layout_table[];
-static uw layout_arity(uw tid, uw var) {
-  uw n = fpr_layout_table[0];
-  for (uw i = 0; i < n; i++) {
-    const uw *e = &fpr_layout_table[1 + i * (uw)3];
-    if (e[0] == tid && e[1] == var) return e[2];
+/* Debug-only independent allocation extent oracle. This records the actual
+ * rounded allocator/copier request, before the object's header exists. It is
+ * deliberately separate from layout_total's type-derived answer. Entries are
+ * overwritten when a slab address is reused; exhaustion fails explicitly. */
+#if defined(FPR_COMPACT_CELLS) && defined(FPR_LAYOUT_CHECK)
+#define LAYOUT_EXTENTS (1u << 18)
+static struct { V address; uw total; } layout_extents[LAYOUT_EXTENTS];
+static fpr_lock_t layout_extent_lock;
+static uw layout_extent(V address,uw record) {
+  fpr_lock(&layout_extent_lock);
+  uw at=(address>>3)&(LAYOUT_EXTENTS-1);
+  for (uw n=0;n<LAYOUT_EXTENTS;n++,at=(at+1)&(LAYOUT_EXTENTS-1)) {
+    if (layout_extents[at].address==address || !layout_extents[at].address) {
+      uw total=layout_extents[at].total;
+      if (record) { layout_extents[at].address=address; layout_extents[at].total=record; total=record; }
+      fpr_unlock(&layout_extent_lock);
+      if (!total) fpr_cpanic("layout check: allocation extent missing");
+      return total;
+    }
   }
-  fpr_cpanic("layout check: the layout table has no entry for this constructor");
+  fpr_unlock(&layout_extent_lock);
+  fpr_cpanic("layout check: extent oracle capacity exhausted");
   return 0;
 }
-/* total = rounded payload + the preheader, the way fpr_alloc computes it.  0 for
- * an object that never had a cell (a static actor, device or register handle). */
+#endif
+
+#if defined(FPR_LAYOUT_CHECK) || defined(FPR_COMPACT_CELLS)
+/* Managed extents come from the object's class and constructor metadata.
+ * A legacy check compares with the size preheader; a compact check compares
+ * with independently recorded allocation requests. Fault injection must stop
+ * the program rather than make an unexercised rule pass vacuously. */
+#define LAYOUT_ROUND(n) ((((n) + 15) & ~(uw)15))
+static uw layout_arity(uw tid, uw var) { return fpr_layout_fields(tid,var); }
+/* Round the combined prefix and payload, exactly as fpr_alloc does. Actor
+ * handles are not allocated cells; managed Device/Register values are fixed. */
 static uw layout_total(V v) {
   uw raw;
   switch (TID(v)) {
-    case T_STR: case T_SSTR: raw = sizeof(str_t) + ((str_t *)v)->len; break;
+    case T_STR: raw = sizeof(str_t) + ((str_t *)v)->len; break;
+    case T_SSTR: raw = sizeof(sstr_t); break;
     case T_BITS:
       raw = (((bits_t *)v)->var == 4 || ((bits_t *)v)->var == 5)
               ? sizeof(fpr_num64_t) : sizeof(bits_t);
       break;
     case T_PAP: raw = sizeof(pap_t) + ((pap_t *)v)->arity * sizeof(V); break;
     case T_VEC: raw = sizeof(vec_t); break;
-    case T_ACTOR: case T_DEVICE: case T_REGISTER: return 0;
+    case T_DEVICE: raw = sizeof(fpr_dev_t); break;
+    case T_REGISTER: raw = sizeof(reg_t); break;
+    case T_ACTOR: return 0;
     default: raw = sizeof(hdr_t) + sizeof(uw) * layout_arity(TID(v), ((hdr_t *)v)->var);
   }
-  return LAYOUT_ROUND(raw) + 16;
+  return LAYOUT_ROUND(raw + FPR_MANAGED_PREFIX);
 }
 #ifdef FPR_LAYOUT_REPORT
 static void praw(const char *s); /* declared for real further down */
@@ -290,13 +312,21 @@ static void layout_report(V v) {
 }
 #endif
 static uw preheader_total(V v) {
+#if defined(FPR_COMPACT_CELLS) && defined(FPR_LAYOUT_CHECK)
+  uw total = layout_extent(v,0);
+#elif defined(FPR_COMPACT_CELLS)
+  uw total = layout_total(v);
+#else
   uw total = *(uw *)((char *)v - 16);
+#endif
+#ifdef FPR_LAYOUT_CHECK
   uw want = layout_total(v);
 #ifdef FPR_LAYOUT_FAULT
   want = want ? want + 16 : 16;
 #endif
   if (want != 0 && want != total)
     fpr_cpanic("layout check: derived size disagrees with the allocation");
+#endif
 #ifdef FPR_LAYOUT_REPORT
   layout_report(v);
 #endif
@@ -306,6 +336,14 @@ static uw preheader_total(V v) {
 #else
 #define PREHEADER(v) (*(uw *)((char *)(v) - 16))
 #endif
+#define RAW_TOTAL(v) (*(uw *)((char *)(v) - FPR_RAW_PREFIX))
+static void allocation_header(char *p,uw total,fpr_slab_t *sl,uw prefix) {
+  if (prefix==FPR_RAW_PREFIX) *(uw *)p=total;
+  *(fpr_slab_t **)(p+prefix-8)=sl;
+#if defined(FPR_COMPACT_CELLS) && defined(FPR_LAYOUT_CHECK)
+  if (prefix==FPR_MANAGED_PREFIX) layout_extent((V)(p+prefix),total);
+#endif
+}
 #ifndef FPR_BUILTIN
 int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
   /* a loaded process's IMAGE lives inside the span (the fixed slot)
@@ -519,7 +557,7 @@ static uw grant_pool_len(void) {
 #endif
 
 static void grant_put(fpr_slab_t *sl) {
-  fpr_fl_put(&grant_fl, sl, (uw)(sl->end - (char *)(sl + 1)));
+  fpr_fl_put(&grant_fl, sl, (uw)(sl->end - fpr_slab_start(sl)));
 }
 
 /* bucket-array recycler (see fpr.h): fixed-size, type-stable */
@@ -557,8 +595,8 @@ static fpr_pool_t *base_pool(fpr_hart_t *h) { return h->current ? fpr_acb_pool(h
 static int region_trip(fpr_hart_t *h, fpr_pool_t *pool); /* below, with the regions */
 /* Generated cells commonly leave one aligned word of rounding padding.
  * Keep arbitrary byte-sized payloads on memset's general path. */
-static inline void alloc_zero_pad(char *payload, uw raw_bytes, uw total) {
-  uw pad = total - 16 - raw_bytes;
+static inline void alloc_zero_pad(char *payload, uw raw_bytes, uw total, uw prefix) {
+  uw pad = total - prefix - raw_bytes;
   if (pad == sizeof(uw)) *(uw *)(payload + raw_bytes) = 0;
   else if (pad) __builtin_memset(payload + raw_bytes, 0, pad);
 }
@@ -574,7 +612,7 @@ static inline void alloc_zero_pad(char *payload, uw raw_bytes, uw total) {
  *     kernel and whose actors the kernel's scheduler switches. */
 static void *bump_nobuckets[FPR_NBUCKETS]; /* a region arena's: always empty */
 static inline void bump_open(fpr_hart_t *h) {
-#ifdef FPR_COST_PROBE
+#if defined(FPR_COST_PROBE) || (defined(FPR_COMPACT_CELLS) && defined(FPR_LAYOUT_CHECK))
   (void)h;
 #else
   if (fpr_plane_memory) return;
@@ -604,7 +642,7 @@ void fpr_bump_check(fpr_hart_t *h) {
   if (sl->owner != pool) fpr_cpanic("bump check: the window's slab belongs to another pool");
   if (h->bump_bkt != (pool->buckets ? pool->buckets : bump_nobuckets))
     fpr_cpanic("bump check: the window's buckets are not the current pool's");
-  if (sl->hp < (char *)(sl + 1) || sl->hp > sl->end) fpr_cpanic("bump check: the cursor is outside its slab");
+  if (sl->hp < fpr_slab_start(sl) || sl->hp > sl->end) fpr_cpanic("bump check: the cursor is outside its slab");
 }
 __attribute__((destructor)) static void bump_check_report(void) {
   praw("[bump-check] checks ");
@@ -616,18 +654,20 @@ __attribute__((destructor)) static void bump_check_report(void) {
   praw("\n");
 }
 #endif
-static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
-  uw total = (((raw_bytes + 15) & ~(uw)15)) + 16;
+static V alloc_in_size(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk,uw prefix) {
+  if (raw_bytes>(uw)-1-prefix-15-sizeof(fpr_slab_t)-FPR_SLAB_PAD) fpr_cpanic("allocation size overflow");
+  uw total = (raw_bytes+prefix+15)&~(uw)15;
   FPR_COST_ADD(h, cost_alloc_requests, 1);
   FPR_COST_ADD(h, cost_alloc_bytes, total);
   if (total <= (uw)16 * FPR_NBUCKETS) {
     uw idx = total / 16 - 1;
     void *p = bucket_take(pool, idx);
     if (p) {
-      *(uw *)p = total; /* [1] (the slab ptr) survived recycling */
+      fpr_slab_t *owner=*(fpr_slab_t **)((char *)p+8);
+      allocation_header(p,total,owner,prefix);
       /* The deep copier may read pad words as constructor fields. */
-      alloc_zero_pad((char *)p + 16, raw_bytes, total);
-      return (V)((char *)p + 16);
+      alloc_zero_pad((char *)p + prefix, raw_bytes, total,prefix);
+      return (V)((char *)p + prefix);
     }
   }
   if (total > (uw)16 * FPR_NBUCKETS && pool->bigfree) {
@@ -653,18 +693,20 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
     }
     if (take) {
       char *p = (char *)take;         /* header ([0] total, [1] slab) intact */
-      *(uw *)(p + 16) = 0;            /* the link word: payload must start benign */
-      alloc_zero_pad(p + 16, raw_bytes, total);
-      return (V)(p + 16);
+      fpr_slab_t *owner=*(fpr_slab_t **)(p+8);
+      allocation_header(p,total,owner,prefix);
+      *(uw *)(p+prefix)=0;
+      alloc_zero_pad(p+prefix,raw_bytes,total,prefix);
+      return (V)(p+prefix);
     }
   }
   fpr_slab_t *sl = pool->cur;
   if (!sl || total > (uw)(sl->end - sl->hp)) {
     /* the slab refill: a pending call region whose call has used a slab of
      * this pool opens here, and the allocation goes to its arena instead */
-    if (!bulk && region_trip(h, pool)) return alloc_in(h, cur_pool(h), raw_bytes, 0);
+    if (!bulk && region_trip(h, pool)) return alloc_in_size(h, cur_pool(h), raw_bytes, 0,prefix);
     if (pool->fixed_heap) fpr_actor_fail("fixed heap: local grant exhausted");
-    uw want = total + sizeof(fpr_slab_t);
+    uw want = total + sizeof(fpr_slab_t) + FPR_SLAB_PAD;
     /* A pool's slabs START SMALL AND DOUBLE, to SLAB_SZ: the first is one
      * buddy block (64 KiB), each next twice the last.  Every actor that
      * allocated anything used to take a whole SLAB_SZ (256 KiB) at once, so a
@@ -720,7 +762,7 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
           praw("\n");
         }
 #endif
-        if (!g.ptr || g.size < total + sizeof(fpr_slab_t)) {
+        if (!g.ptr || g.size < total + sizeof(fpr_slab_t) + FPR_SLAB_PAD) {
           /* the post-mortem journal should carry the numbers: how much
            * had been taken and what was being asked when it died (a
            * process's budget says its own: fpr_exhausted) */
@@ -744,7 +786,7 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
     sl->holds = 0;
     sl->promoted = 0;
     sl->pushed = 0;
-    sl->hp = (char *)(sl + 1);
+    sl->hp = fpr_slab_start(sl);
     sl->next = pool->cur;
     fpr_bump_close(fpr_hart()); /* this pool's bump slab changes (it may be the window's) */
     pool->cur = sl;
@@ -753,10 +795,15 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
   sl->hp += total;
   pool->allocated += total;
   if (!bulk) h->region_bytes += total;
-  *(uw *)p = total;
-  *(fpr_slab_t **)(p + 8) = sl;
-  alloc_zero_pad(p + 16, raw_bytes, total);
-  return (V)(p + 16);
+  allocation_header(p,total,sl,prefix);
+  alloc_zero_pad(p+prefix,raw_bytes,total,prefix);
+  return (V)(p+prefix);
+}
+static V alloc_in(fpr_hart_t *h,fpr_pool_t *pool,V bytes,int bulk) {
+  return alloc_in_size(h,pool,bytes,bulk,FPR_MANAGED_PREFIX);
+}
+static V alloc_raw_in(fpr_hart_t *h,fpr_pool_t *pool,V bytes,int bulk) {
+  return alloc_in_size(h,pool,bytes,bulk,FPR_RAW_PREFIX);
 }
 V fpr_alloc(V raw_bytes) {
   fpr_hart_t *h = fpr_hart();
@@ -768,8 +815,8 @@ V fpr_alloc(V raw_bytes) {
   /* Compiler regions have no small-block buckets. Only admit small sizes
    * before rounding, so this shortcut cannot overflow the size arithmetic.
    * Big blocks, bucketed pools and refills retain alloc_in's reuse/trip path. */
-  if (!pool->buckets && raw_bytes <= (uw)16 * FPR_NBUCKETS - 16) {
-    uw total = ((raw_bytes + 15) & ~(uw)15) + 16;
+  if (!pool->buckets && raw_bytes <= (uw)16 * FPR_NBUCKETS - FPR_MANAGED_PREFIX) {
+    uw total = (raw_bytes + FPR_MANAGED_PREFIX + 15) & ~(uw)15;
     fpr_slab_t *sl = pool->cur;
     if (sl && total <= (uw)(sl->end - sl->hp)) {
       char *p = sl->hp;
@@ -778,11 +825,10 @@ V fpr_alloc(V raw_bytes) {
       h->region_bytes += total;
       FPR_COST_ADD(h, cost_alloc_requests, 1);
       FPR_COST_ADD(h, cost_alloc_bytes, total);
-      *(uw *)p = total;
-      *(fpr_slab_t **)(p + 8) = sl;
-      alloc_zero_pad(p + 16, raw_bytes, total);
+      allocation_header(p,total,sl,FPR_MANAGED_PREFIX);
+      alloc_zero_pad(p+FPR_MANAGED_PREFIX,raw_bytes,total,FPR_MANAGED_PREFIX);
       bump_open(h);
-      return (V)(p + 16);
+      return (V)(p + FPR_MANAGED_PREFIX);
     }
   }
   V r = alloc_in(h, pool, raw_bytes, 0);
@@ -790,7 +836,14 @@ V fpr_alloc(V raw_bytes) {
   return r;
 }
 /* a Vector's storage: the base pool, never a turn's arena (fpr.h) */
-V fpr_alloc_bulk(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, base_pool(h), raw_bytes, 1); }
+V fpr_alloc_bulk(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_raw_in(h, base_pool(h), raw_bytes, 1); }
+V fpr_alloc_raw(V raw_bytes) {
+  fpr_hart_t *h=fpr_hart();
+  V v=alloc_raw_in(h,cur_pool(h),raw_bytes,0);
+  bump_open(fpr_hart());
+  return v;
+}
+V fpr_alloc_object_bulk(V raw_bytes) { fpr_hart_t *h=fpr_hart(); return alloc_in(h,base_pool(h),raw_bytes,1); }
 
 /* called ONLY from the ARC drop path, under arc_lock -- which is what
  * makes reading slab->owner race-free against death teardown (also
@@ -805,30 +858,34 @@ V fpr_alloc_bulk(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, b
  * behind Memory.qa's buddy (docs/2026-08-29-MEMORY-V2-PLAN.md), where
  * buddy_realloc already provides it. */
 V fpr_realloc(V v, V want) {
-  if (!v) return fpr_alloc(want);
-  uw old = PREHEADER(v) - 16; /* payload capacity */
+  if (!v) return fpr_alloc_raw(want);
+  uw old = RAW_TOTAL(v) - FPR_RAW_PREFIX; /* payload capacity */
   if (old >= (uw)want) return v;
-  V n = fpr_alloc(want);
+  V n = fpr_alloc_raw(want);
   __builtin_memcpy((void *)n, (void *)v, old);
-  fpr_free(v);
+  fpr_free_raw(v);
   return n;
 }
 V fpr_realloc_bulk(V v, V want) {
   if (!v) return fpr_alloc_bulk(want);
-  uw old = PREHEADER(v) - 16;
+  uw old = RAW_TOTAL(v) - FPR_RAW_PREFIX;
   if (old >= (uw)want) return v;
   V n = fpr_alloc_bulk(want);
   __builtin_memcpy((void *)n, (void *)v, old);
-  fpr_free(v);
+  fpr_free_raw(v);
   return n;
 }
+V fpr_realloc_raw(V v,V want) { return fpr_realloc(v,want); }
 
-void fpr_free(V v) {
-  char *p = (char *)v - 16;
-  uw total = *(uw *)p;
-  fpr_slab_t *sl = *(fpr_slab_t **)(p + 8);
+static void free_block(V v,uw prefix,uw total) {
+  char *p = (char *)v-prefix;
+  fpr_slab_t *sl = *(fpr_slab_t **)((char *)v-8);
   if (total == 0) return; /* corrupt or double-freed: stays in slab */
   if (!sl || !sl->owner) return;
+  /* All recycled blocks expose the same link/owner/size slots, even if
+   * the next allocation uses the other prefix. */
+  *(fpr_slab_t **)(p+8)=sl;
+  *(uw *)p=total;
   if (total > (uw)16 * FPR_NBUCKETS) {
     /* above the bucket ceiling: exact-fit bigfree LIFO.  The header
      * stays intact (reuse needs total + slab), the link rides the
@@ -844,7 +901,7 @@ void fpr_free(V v) {
   }
   fpr_pool_t *pool = sl->owner;
   uw idx = total / 16 - 1;
-  *(uw *)p = 0; /* poison size: crude double-free tripwire */
+  *(uw *)p = 0; /* initialize the free-list link */
   void *old;
   if (!pool->buckets) return;
   sl->pushed = 1; /* an arena's turn reset zeroes the buckets only then */
@@ -854,6 +911,9 @@ void fpr_free(V v) {
   } while (!__atomic_compare_exchange_n(&pool->buckets[idx], &old, p, 0,
                                         __ATOMIC_RELEASE, __ATOMIC_RELAXED));
 }
+
+void fpr_free(V v) { free_block(v,FPR_MANAGED_PREFIX,PREHEADER(v)); }
+void fpr_free_raw(V v) { free_block(v,FPR_RAW_PREFIX,RAW_TOTAL(v)); }
 
 #endif
 
@@ -872,10 +932,11 @@ void fpr_free(V v) {
  * of the root frees EVERYTHING, and nothing the sender does afterward
  * (poolReset, death, mutation) can touch the receiver's copy.
  *
- * Field discovery is DERIVED, not tabled: every object carries its
- * total size in the 16-byte preheader, so nfields = (total-16-8)/W for
- * uniform-V constructors; the rounding pad is zeroed at alloc, and a
- * zero word is copied verbatim, never recursed.  Special tids:
+ * Field discovery uses the allocation extent: compact cells derive it
+ * from constructor metadata; legacy cells retain it in the preheader.
+ * The uniform-V span is (total-FPR_MANAGED_PREFIX-8)/W, including any
+ * zeroed rounding pad. A zero word is copied verbatim, never recursed.
+ * Special tids:
  *   T_STR/T_BITS/T_DEVICE/T_REGISTER  raw bytes, no V fields
  *   T_PAP                              nargs known in the struct
  *   T_VEC                              COPIED like everything else
@@ -920,7 +981,7 @@ static void dc_release(V v) {
     }
     default: {
       uw total = PREHEADER(v);
-      uw nf = (total - 16 - 8) / sizeof(uw);
+      uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) dc_release(f[i]);
       return;
@@ -971,7 +1032,8 @@ static int vec_movable_here(V v) {
 }
 
 /* a fresh cell's slab footprint: fpr_alloc's exact rounding + header */
-static uw dc_cellsz(uw raw) { return (((raw + 15) & ~(uw)15)) + 16; }
+static uw dc_cellsz(uw raw) { return (raw+FPR_MANAGED_PREFIX+15)&~(uw)15; }
+static uw dc_rawsz(uw raw) { return (raw+FPR_RAW_PREFIX+15)&~(uw)15; }
 
 /* A STATIC from another process's image may not travel by identity: the
  * image goes when its process ends.  Data is copied -- the code generator
@@ -1028,12 +1090,12 @@ static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
       { fpr_hart_t *mh = fpr_hart(); if (mh && mh->copy_movevec && vec_movable_here(v)) return 0; } /* moved, not copied */
       vec_t *x = (vec_t *)v;
       uw n = dc_cellsz(sizeof(vec_t));
-      if (x->shape_len) n += dc_cellsz(x->shape_len * sizeof(vec_shape_t));
-      if (x->ncols) n += dc_cellsz(x->ncols * sizeof(col_t *)) + dc_cellsz(VKINDS_BYTES(x->ncols));
+      if (x->shape_len) n += dc_rawsz(x->shape_len * sizeof(vec_shape_t));
+      if (x->ncols) n += dc_rawsz(x->ncols * sizeof(col_t *)) + dc_rawsz(VKINDS_BYTES(x->ncols));
       for (uw k = 0; k < x->ncols; k++) {
         if (!x->cols[k]) continue;
-        n += dc_cellsz(sizeof(col_t));
-        if (x->len) n += dc_cellsz(x->len * sizeof(uw));
+        n += dc_rawsz(sizeof(col_t));
+        if (x->len) n += dc_rawsz(x->len * sizeof(uw));
         if (!VK_RAW(x->kinds[k])) /* boxed column: elements recurse */
           for (uw i = 0; i < x->len; i++)
             n += dc_size_in((V)x->cols[k]->base[i], retain, immutable);
@@ -1072,7 +1134,7 @@ static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
     }
     default: { /* uniform-V constructor: derive field count */
       if (h->tid == T_LIST) return total; /* a heap nil reached directly (var 0): no fields */
-      uw nf = (total - 16 - 8) / sizeof(uw);
+      uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       uw n = total;
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) n += dc_size_in(f[i], retain, immutable);
@@ -1092,7 +1154,7 @@ static int budget_take(uw *left, uw bytes) {
 }
 static int budget_cells(uw *left, uw count, uw width) {
   if (count > ((uw)-1 - 31) / width) return 0;
-  return budget_take(left, dc_cellsz(count * width));
+  return budget_take(left, dc_rawsz(count * width));
 }
 static int dc_budget(V v, uw *left, unsigned depth) {
   if (ISINT(v) || !v) return 1;
@@ -1115,7 +1177,7 @@ static int dc_budget(V v, uw *left, unsigned depth) {
                        !budget_cells(left, VKINDS_BYTES(x->ncols), 1))) return 0;
       for (uw k = 0; k < x->ncols; k++) {
         if (!x->cols[k]) continue;
-        if (!budget_take(left, dc_cellsz(sizeof(col_t)))) return 0;
+        if (!budget_take(left, dc_rawsz(sizeof(col_t)))) return 0;
         if (x->len && !budget_cells(left, x->len, sizeof(uw))) return 0;
         if (!VK_RAW(x->kinds[k]))
           for (uw i = 0; i < x->len; i++)
@@ -1146,7 +1208,7 @@ static int dc_budget(V v, uw *left, unsigned depth) {
     }
     default: {
       if (!budget_take(left, total)) return 0;
-      uw nf = (total - 16 - 8) / sizeof(uw);
+      uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *fields = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) if (!dc_budget(fields[i], left, depth + 1)) return 0;
       return 1;
@@ -1160,28 +1222,28 @@ static V dc_cell(V v, dctx_t *c, uw total) {
   char *p = c->hp;
   if (c->end && p + total > c->end) { c->overflow = 1; return 0; }
   c->hp += total;
-  *(uw *)p = total;
-  *(fpr_slab_t **)(p + 8) = c->sl; /* interior promotes pin THIS slab */
-  __builtin_memcpy(p + 16, (char *)v, total - 16);
-  return (V)(p + 16);
+  allocation_header(p,total,c->sl,FPR_MANAGED_PREFIX);
+  __builtin_memcpy(p+FPR_MANAGED_PREFIX,(char *)v,total-FPR_MANAGED_PREFIX);
+  return (V)(p+FPR_MANAGED_PREFIX);
 }
 
 /* a FRESH cell in the slab (no source memcpy): the vec copier builds
  * its header/cols/data cells directly */
-static V dc_bump(dctx_t *c, uw raw) {
-  uw total = dc_cellsz(raw);
+static V dc_bump_size(dctx_t *c, uw raw,uw prefix) {
+  uw total = (raw+prefix+15)&~(uw)15;
   char *p = c->hp;
   if (c->end && p + total > c->end) { c->overflow = 1; return 0; }
   c->hp += total;
-  *(uw *)p = total;
-  *(fpr_slab_t **)(p + 8) = c->sl;
+  allocation_header(p,total,c->sl,prefix);
   /* Generic constructor walkers include alignment padding in their field
    * count. A foreign image's nullary constructor only supplies its header;
    * clear the remaining bytes just as fpr_alloc does before copying it. */
-  if (total - 16 > raw)
-    __builtin_memset(p + 16 + raw, 0, total - 16 - raw);
-  return (V)(p + 16);
+  if (total-prefix>raw) __builtin_memset(p+prefix+raw,0,total-prefix-raw);
+  return (V)(p+prefix);
 }
+
+static V dc_bump(dctx_t *c,uw raw) { return dc_bump_size(c,raw,FPR_MANAGED_PREFIX); }
+static V dc_buffer(dctx_t *c,uw raw) { return dc_bump_size(c,raw,FPR_RAW_PREFIX); }
 
 static V dc_dup(V v, dctx_t *c) {
   if (ISINT(v) || !v) return v;
@@ -1220,26 +1282,26 @@ static V dc_dup(V v, dctx_t *c) {
       n->ncols = x->ncols; n->kinds = 0; n->cols = 0;
       n->shape_len=x->shape_len; n->shape=0;
       if (x->shape_len) {
-        n->shape=(vec_shape_t *)dc_bump(c,x->shape_len*sizeof(vec_shape_t));
+        n->shape=(vec_shape_t *)dc_buffer(c,x->shape_len*sizeof(vec_shape_t));
         if (c->overflow) return 0;
         __builtin_memcpy(n->shape,x->shape,x->shape_len*sizeof(vec_shape_t));
       }
       if (x->ncols) {
-        n->cols = (col_t **)dc_bump(c, x->ncols * sizeof(col_t *));
+        n->cols = (col_t **)dc_buffer(c, x->ncols * sizeof(col_t *));
         if (c->overflow) return 0;
-        n->kinds = (uint8_t *)dc_bump(c, VKINDS_BYTES(x->ncols));
+        n->kinds = (uint8_t *)dc_buffer(c, VKINDS_BYTES(x->ncols));
         if (c->overflow) return 0;
         for (uw k = 0; k < VKINDS_BYTES(x->ncols); k++) n->kinds[k] = k < x->ncols ? x->kinds[k] : 0;
         for (uw k = 0; k < x->ncols; k++) n->cols[k] = 0;
       }
       for (uw k = 0; k < x->ncols; k++) {
         if (!x->cols[k]) continue;
-        col_t *nc = (col_t *)dc_bump(c, sizeof(col_t));
+        col_t *nc = (col_t *)dc_buffer(c, sizeof(col_t));
         if (c->overflow) return 0;
         nc->cap = 0;
         nc->base = 0;
         if (x->len) {
-          nc->base = (uw *)dc_bump(c, x->len * sizeof(uw));
+          nc->base = (uw *)dc_buffer(c, x->len * sizeof(uw));
           if (c->overflow) return 0;
           nc->cap = x->len;
           if (VK_RAW(x->kinds[k]))
@@ -1286,7 +1348,7 @@ static V dc_dup(V v, dctx_t *c) {
       return first;
     }
     default: {
-      uw nf = (total - 16 - 8) / sizeof(uw);
+      uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V n = dc_cell(v, c, total);
       if (c->overflow) return 0;
       V *f = (V *)((char *)n + 8);
@@ -1339,8 +1401,8 @@ uw fpr_msg_charge_to(V v, uw pid, int shared, uw limit) {
     if (sl && (uw)(sl->end - (char *)sl) > need) need = (uw)(sl->end - (char *)sl);
   }
   if (!need) return 0;
-  if (need > (uw)-1 - sizeof(fpr_slab_t) - 32) return (uw)-1;
-  uw want = need + sizeof(fpr_slab_t) + 32;
+  if (need > (uw)-1 - sizeof(fpr_slab_t) - FPR_SLAB_PAD - 32) return (uw)-1;
+  uw want = need + sizeof(fpr_slab_t) + FPR_SLAB_PAD + 32;
   if (want < MSG_SLAB_SZ) want = MSG_SLAB_SZ;
   uw bound = 1;
   while (bound < want) {
@@ -1350,13 +1412,14 @@ uw fpr_msg_charge_to(V v, uw pid, int shared, uw limit) {
   return bound;
 }
 static fpr_slab_t *msg_slab_new(uw need) {
+  if (need>(uw)-1-sizeof(fpr_slab_t)-FPR_SLAB_PAD) fpr_cpanic("message allocation size overflow");
   fpr_slab_t *sl = 0;
-  uw want = need + sizeof(fpr_slab_t);
+  uw want = need + sizeof(fpr_slab_t) + FPR_SLAB_PAD;
   if (want < MSG_SLAB_SZ) want = MSG_SLAB_SZ;
   if (!fpr_mem_own && fpr_is_process && fpr_grow_memory) sl = grant_take(need);
   if (!sl) {
     fpr_grant_t g = fpr_grow_counted(want, 6); /* msg */
-    if (!g.ptr || g.size < need + sizeof(fpr_slab_t))
+    if (!g.ptr || g.size < need + sizeof(fpr_slab_t) + FPR_SLAB_PAD)
       fpr_exhausted("send: no block for the message slab");
     sl = (fpr_slab_t *)g.ptr;
     sl->end = (char *)g.ptr + g.size;
@@ -1366,7 +1429,7 @@ static fpr_slab_t *msg_slab_new(uw need) {
   sl->holds = 0;
   sl->promoted = 0;
   sl->pushed = 0;
-  sl->hp = (char *)(sl + 1);
+  sl->hp = fpr_slab_start(sl);
   sl->next = 0;
   return sl;
 }
@@ -1442,7 +1505,7 @@ static V msg_copy_held_in(V v, int fresh, uw pid, fpr_slab_t **hold) {
       FPR_COST_ADD(h, cost_copy_bytes, need);
       sl->hp = c.hp;
       if (!need) { slab_free_ownerless(sl); return r; } /* unreachable today: heap graphs copy at least one cell */
-      if (slot && need + sizeof(fpr_slab_t) <= MSG_SLAB_SZ) {
+      if (slot && need + sizeof(fpr_slab_t) + FPR_SLAB_PAD <= MSG_SLAB_SZ) {
         sl->holds = 1; /* the sender keeps packing into it */
         *slot = sl;
       }
@@ -1498,11 +1561,11 @@ int fpr_entry_copy_try(V v, uw pid, V *out, fpr_slab_t **hold) {
   uw need = dc_size(v);
   *hold = 0;
   if (!need) { *out = dc_dup(v, 0); return 1; }
-  if (need > (uw)-1 - sizeof(fpr_slab_t)) return 0;
-  fpr_slab_t *sl = fpr_slab_new(need + sizeof(fpr_slab_t));
+  if (need > (uw)-1 - sizeof(fpr_slab_t) - FPR_SLAB_PAD) return 0;
+  fpr_slab_t *sl = fpr_slab_new(need + sizeof(fpr_slab_t) + FPR_SLAB_PAD);
   if (!sl) return 0;
   sl->owner = 0; sl->escaped = 0; sl->holds = 1; sl->promoted = 0; sl->pushed = 0;
-  sl->hp = (char *)(sl + 1); sl->next = 0;
+  sl->hp = fpr_slab_start(sl); sl->next = 0;
   dctx_t c = {sl->hp, sl};
   *out = dc_dup(v, &c);
   sl->hp = c.hp;
@@ -1535,22 +1598,22 @@ static V kp_dup(V v) {
       n->ncols = x->ncols; n->kinds = 0; n->cols = 0;
       n->shape_len=x->shape_len; n->shape=0;
       if (x->shape_len) {
-        n->shape=(vec_shape_t *)fpr_alloc(x->shape_len*sizeof(vec_shape_t));
+        n->shape=(vec_shape_t *)fpr_alloc_raw(x->shape_len*sizeof(vec_shape_t));
         __builtin_memcpy(n->shape,x->shape,x->shape_len*sizeof(vec_shape_t));
       }
       if (x->ncols) {
-        n->cols = (col_t **)fpr_alloc(x->ncols * sizeof(col_t *));
-        n->kinds = (uint8_t *)fpr_alloc(VKINDS_BYTES(x->ncols));
+        n->cols = (col_t **)fpr_alloc_raw(x->ncols * sizeof(col_t *));
+        n->kinds = (uint8_t *)fpr_alloc_raw(VKINDS_BYTES(x->ncols));
         for (uw k = 0; k < VKINDS_BYTES(x->ncols); k++) n->kinds[k] = k < x->ncols ? x->kinds[k] : 0;
         for (uw k = 0; k < x->ncols; k++) n->cols[k] = 0;
       }
       for (uw k = 0; k < x->ncols; k++) {
         if (!x->cols[k]) continue;
-        col_t *nc = (col_t *)fpr_alloc(sizeof(col_t));
+        col_t *nc = (col_t *)fpr_alloc_raw(sizeof(col_t));
         nc->cap = 0;
         nc->base = 0;
         if (x->len) {
-          nc->base = (uw *)fpr_alloc(x->len * sizeof(uw));
+          nc->base = (uw *)fpr_alloc_raw(x->len * sizeof(uw));
           nc->cap = x->len;
           if (VK_RAW(x->kinds[k]))
             __builtin_memcpy(nc->base, x->cols[k]->base,
@@ -1566,21 +1629,21 @@ static V kp_dup(V v) {
     case T_ACTOR: return v;
     case T_SSTR: fpr_cpanic("keep: SString is linear-local");
     case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER: {
-      V n = fpr_alloc(total - 16);
-      __builtin_memcpy((void *)n, (void *)v, total - 16);
+      V n = fpr_alloc(total - FPR_MANAGED_PREFIX);
+      __builtin_memcpy((void *)n, (void *)v, total - FPR_MANAGED_PREFIX);
       return n;
     }
     case T_PAP: {
-      V n = fpr_alloc(total - 16);
-      __builtin_memcpy((void *)n, (void *)v, total - 16);
+      V n = fpr_alloc(total - FPR_MANAGED_PREFIX);
+      __builtin_memcpy((void *)n, (void *)v, total - FPR_MANAGED_PREFIX);
       pap_t *p = (pap_t *)n;
       for (uw i = 0; i < p->nargs; i++) p->args[i] = (uw)kp_dup((V)p->args[i]);
       return n;
     }
     case T_LIST: {
       if (h->var != 1) {
-        V n = fpr_alloc(total - 16);
-        __builtin_memcpy((void *)n, (void *)v, total - 16);
+        V n = fpr_alloc(total - FPR_MANAGED_PREFIX);
+        __builtin_memcpy((void *)n, (void *)v, total - FPR_MANAGED_PREFIX);
         return n;
       }
       V first = 0, *patch = &first;
@@ -1588,8 +1651,8 @@ static V kp_dup(V v) {
       while (!ISINT(cur) && fpr_in_heap(cur) && TID(cur) == T_LIST &&
              ((hdr_t *)cur)->var == 1) {
         uw t = PREHEADER(cur);
-        V n = fpr_alloc(t - 16);
-        __builtin_memcpy((void *)n, (void *)cur, t - 16);
+        V n = fpr_alloc(t - FPR_MANAGED_PREFIX);
+        __builtin_memcpy((void *)n, (void *)cur, t - FPR_MANAGED_PREFIX);
         *patch = n;
         *(V *)((char *)n + 8) = kp_dup(*(V *)((char *)cur + 8));
         patch = (V *)((char *)n + 8 + sizeof(uw));
@@ -1599,9 +1662,9 @@ static V kp_dup(V v) {
       return first;
     }
     default: {
-      uw nf = (total - 16 - 8) / sizeof(uw);
-      V n = fpr_alloc(total - 16);
-      __builtin_memcpy((void *)n, (void *)v, total - 16);
+      uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
+      V n = fpr_alloc(total - FPR_MANAGED_PREFIX);
+      __builtin_memcpy((void *)n, (void *)v, total - FPR_MANAGED_PREFIX);
       V *f = (V *)((char *)n + 8);
       for (uw i = 0; i < nf; i++) f[i] = kp_dup(f[i]);
       return n;
@@ -1622,7 +1685,7 @@ static int kp_reaches(V v, uw *left) {
       if (mh && mh->copy_movevec && vec_movable_here(v)) return 0;
       vec_t *x = (vec_t *)v;
       uw n = dc_cellsz(sizeof(vec_t));
-      for (uw k = 0; k < x->ncols; k++) if (x->cols[k]) n += dc_cellsz(sizeof(col_t)) + dc_cellsz(x->len * sizeof(uw));
+      for (uw k = 0; k < x->ncols; k++) if (x->cols[k]) n += dc_rawsz(sizeof(col_t)) + dc_rawsz(x->len * sizeof(uw));
       if (n >= *left) return 1;
       *left -= n;
       for (uw k = 0; k < x->ncols; k++)
@@ -1646,7 +1709,7 @@ static int kp_reaches(V v, uw *left) {
         v = *(V *)((char *)v + 8 + sizeof(uw)); /* the spine iteratively, as kp_dup */
         continue;
       default: {
-        uw nf = (total - 16 - 8) / sizeof(uw);
+        uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
         V *f = (V *)((char *)v + 8);
         for (uw i = 0; i < nf; i++) if (kp_reaches(f[i], left)) return 1;
         return 0;
@@ -1706,7 +1769,7 @@ static int has_vec(V v) {
     }
     default: {
       uw total = PREHEADER(v);
-      uw nf = (total - 16 - 8) / sizeof(uw);
+      uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++)
         if (has_vec(f[i])) return 1;
@@ -1744,7 +1807,7 @@ static void vec_release_in(V v) {
     }
     default: {
       uw total = PREHEADER(v);
-      uw nf = (total - 16 - 8) / sizeof(uw);
+      uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *f = (V *)((char *)v + 8);
       for (uw i = 0; i < nf; i++) vec_release_in(f[i]);
       return;
@@ -1802,7 +1865,7 @@ static void arena_reset(fpr_pool_t *ap) {
     sl = nx;
   }
   if (keep) {
-    keep->hp = (char *)(keep + 1);
+    keep->hp = fpr_slab_start(keep);
     keep->next = 0;
     keep->promoted = 0; /* reissued: nothing in it is referenced (fpr_arc_decref) */
     keep->pushed = 0;
@@ -1885,7 +1948,7 @@ static void scope_roots_die(struct fpr_scope *scope) {
   fpr_hart_t *h = fpr_hart(); /* re-read: the actor may have migrated */
   if (h && h->current) fpr_rx_release(h->current, scope->rx_mark);
 }
-static uw slab_room(fpr_slab_t *sl) { return (uw)(sl->end - (char *)(sl + 1)); }
+static uw slab_room(fpr_slab_t *sl) { return (uw)(sl->end - fpr_slab_start(sl)); }
 /* an ownerless slab nothing references any more goes home (arc_lock: the
  * owner/escaped protocol slab_home's callers keep) */
 static void slab_free_ownerless(fpr_slab_t *sl) {
@@ -1944,7 +2007,7 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
     sl = msg_slab_new(need); /* may park: the actor can migrate meanwhile */
     FPR_COST_ADD(fpr_hart(), cost_msg_slabs, 1);
   }
-  sl->hp = (char *)(sl + 1);
+  sl->hp = fpr_slab_start(sl);
   sl->promoted = 0; sl->pushed = 0;
   sl->holds = 1; /* the scope owns this unseen/reusable slab before publication */
   scope->spare = 0;
@@ -2014,7 +2077,7 @@ static struct fpr_scope **scope_head(fpr_hart_t *h) {
 /* open a compiler region now: its scope at the chain's head, its arena the
  * actor's current pool from here on */
 static struct fpr_scope *region_open(fpr_hart_t *h, uw seq) {
-  struct fpr_scope *sc = (struct fpr_scope *)alloc_in(h, base_pool(h), sizeof(struct fpr_scope), 1);
+  struct fpr_scope *sc = (struct fpr_scope *)fpr_alloc_bulk(sizeof(struct fpr_scope));
   h = fpr_hart(); /* allocation can park; the actor can migrate */
   struct fpr_scope **head = scope_head(h);
   sc->previous = *head;
@@ -2077,7 +2140,7 @@ static V region_close(fpr_hart_t *h, struct fpr_scope *sc, V r) {
   if (!received && !sc->held && !sc->spare && region_adopt(h, &sc->ap, cur_pool(h), r)) {
     scope_release(sc);
     scope_unlink(scope_head(h), sc);
-    fpr_free((V)sc);
+    fpr_free_raw((V)sc);
     return r;
   }
   h->copy_movevec = 1;
@@ -2090,7 +2153,7 @@ static V region_close(fpr_hart_t *h, struct fpr_scope *sc, V r) {
   if (received) scope_roots_die(sc); /* kp_dup copied the result deep: nothing kept points into them */
   scope_release(sc);
   scope_unlink(scope_head(h), sc);
-  fpr_free((V)sc);
+  fpr_free_raw((V)sc);
   return out;
 }
 static V g_region_seq(V u) {
@@ -2348,8 +2411,8 @@ static void vec_snap(vec_snap_t *sn, V v) {
   sn->dir = sn->x->cols;
   sn->kinds = sn->x->kinds;
   sn->shape = sn->x->shape;
-  sn->cols = sn->ncols ? (col_t **)fpr_alloc(sn->ncols * sizeof(col_t *)) : 0;
-  sn->base = sn->ncols ? (uw **)fpr_alloc(sn->ncols * sizeof(uw *)) : 0;
+  sn->cols = sn->ncols ? (col_t **)fpr_alloc_raw(sn->ncols * sizeof(col_t *)) : 0;
+  sn->base = sn->ncols ? (uw **)fpr_alloc_raw(sn->ncols * sizeof(uw *)) : 0;
   for (uw i = 0; i < sn->ncols; i++) {
     sn->cols[i] = sn->x->cols[i];
     sn->base[i] = sn->cols[i] ? sn->cols[i]->base : 0;
@@ -2882,7 +2945,7 @@ static V g_poolReset(V u) {
       fpr_unlock(&arc_lock);
       fpr_actor_fail("fixed heap: reset blocked by escaped data");
     }
-    sl->hp = (char *)(sl + 1);
+    sl->hp = fpr_slab_start(sl);
     pool->allocated = 0; pool->bigfree = 0;
     if (pool->buckets)
       for (int i = 0; i < FPR_NBUCKETS; i++) pool->buckets[i] = 0;
@@ -3638,15 +3701,15 @@ static int veq(V a0, V b0) {
       uw ta = PREHEADER(a), tb = PREHEADER(b);
       if (ta != tb) { eq = 0; break; }
       if (ta < 24) continue;
-      nf = (ta - 16 - 8) / sizeof(uw);
+      nf = (ta - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
     }
 #endif
     if (n + nf > cap) {
       uw ncap = cap;
       while (n + nf > ncap) ncap *= 2;
-      if (spill) spill = fpr_realloc(spill, (V)(ncap * sizeof(veq_pair_t)));
+      if (spill) spill = fpr_realloc_raw(spill, (V)(ncap * sizeof(veq_pair_t)));
       else {
-        spill = fpr_alloc((V)(ncap * sizeof(veq_pair_t)));
+        spill = fpr_alloc_raw((V)(ncap * sizeof(veq_pair_t)));
         for (uw i = 0; i < n; i++) ((veq_pair_t *)spill)[i] = inl[i];
       }
       st = (veq_pair_t *)spill;
@@ -3669,7 +3732,7 @@ static int veq(V a0, V b0) {
     }
   }
 done:
-  if (spill) fpr_free(spill);
+  if (spill) fpr_free_raw(spill);
   return eq;
 }
 V fpr_prim_fn__x3d_x3d(V a, V b) { return BOOL(veq(a, b)); }
@@ -3968,8 +4031,8 @@ static V g_logStaged(V u) {
   for (;;) {
     uw want = __atomic_load_n(&stage_used, __ATOMIC_RELAXED);
     if (want > cap) {
-      if (buf) fpr_free((V)buf);
-      buf = (unsigned char *)fpr_alloc((V)want);
+      if (buf) fpr_free_raw((V)buf);
+      buf = (unsigned char *)fpr_alloc_raw((V)want);
       cap = want;
     }
     fpr_lock(&log_lock);
@@ -3997,7 +4060,7 @@ static V g_logStaged(V u) {
     list = (V)cell;
     at += STAGE_HDR + len;
   }
-  if (buf) fpr_free((V)buf);
+  if (buf) fpr_free_raw((V)buf);
   return log_tup2(TAG((sw)dropped), list);
 }
 

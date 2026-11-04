@@ -44,7 +44,9 @@ def main():
                     # values on the default build; the allocation ratchet on a
                     # build without loop/call regions, whose own records and
                     # state copies share the counted allocator (as check_reuse)
-                    for out,extra in ((exe,{}),(tmp/'probe-cost',{'FPR_NO_LOOP_REGIONS':'1','FPR_NO_CALL_REGIONS':'1'})):
+                    # Pair returns independently erase the allocation measured
+                    # here; isolate the reuse ratchet, keeping default values.
+                    for out,extra in ((exe,{}),(tmp/'probe-cost',{'FPR_NO_LOOP_REGIONS':'1','FPR_NO_CALL_REGIONS':'1','FPR_NO_PAIR_RETURNS':'1'})):
                         command([ROOT/'fpr','build',ROOT/'tests/base/consumingreuse.fpr','--harts','4',
                             '--with',ROOT/'tests/bench/costprobe.c','--with',ROOT/'tests/bench/workers_clock.c','-o',out],dict(mode,**extra))
                     def runner(path):

@@ -32,7 +32,8 @@ primitiveContracts =
    ("==",2,"eq"),("!=",2,"ne"),("<",2,"lt"),(">",2,"gt"),
    ("<=",2,"le"),(">=",2,"ge"),("print",1,"print"),("str",1,"str"),
    ("strcat",2,"strcat"),("String.len",1,"strlen"),("error",1,"error"),
-   ("intMax",1,"intMax"),("intMin",1,"intMin")]
+   ("intMax",1,"intMax"),("intMin",1,"intMin"),
+   ("$trmc.setTail",2,"trmcSetTail")]
   ++ [("Word." ++ n,a,"word" ++ n) | (n,a) <-
        [("fromInt",1),("toInt",1),("bits",1),("and",2),("or",2),("xor",2),
         ("add",2),("sub",2),("not",1),("shl",2),("shr",2),("mask",2),("eq",2),("bitSet",2),("bitClear",2),("bitTest",2)]]
@@ -108,7 +109,7 @@ arcExterns = M.fromList $ [("$arc.retain",1),("$arc.release",1),("$arc.setLayout
 
 -- Bump when ownership lowering or its runtime ABI changes: keys unit caches.
 arcRev :: Int
-arcRev = 7
+arcRev = 8
 
 type G = StateT Int (Either String)
 type Env = M.Map String String

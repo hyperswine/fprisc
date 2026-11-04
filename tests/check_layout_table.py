@@ -18,6 +18,7 @@ the preheader, so a rule cannot pass by never running.
 """
 from pathlib import Path
 import os
+import argparse
 import subprocess
 import tempfile
 
@@ -67,11 +68,16 @@ main =
   n = 5;
   f = (fn y -> y + n);
   _ = send a (me, f);
+  _ = print (str (receive me));
+  # Force dynamic boxed numeric and vector values through the message walker.
+  _ = send a (me, I64.ofInt 123);
+  _ = print (str (receive me));
+  _ = send a (me, Vec.iota 8);
   print (str (receive me)).
 '''
 
 # classes each program must drive through the preheader
-CLASSES = {'messages': {'constructor', 'string', 'pap'},
+CLASSES = {'messages': {'constructor', 'string', 'pap', 'bits', 'vector'},
            'actors': {'constructor'}}
 
 
@@ -81,10 +87,14 @@ def run(args, env, timeout):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--compact", action="store_true")
+    args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='fpr-layout-') as directory:
         tmp = Path(directory)
         base = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
         base.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), FPR_HARTS='2')
+        base['FPR_COMPACT_CELLS'] = '1' if args.compact else '0'
 
         def source(name, text):
             path = tmp / (name + '.fpr')

@@ -183,6 +183,7 @@ build configuration p = do
       layoutFault = Options.driverLayoutFault driver
       layoutReport = Options.driverLayoutReport driver
       bumpCheck = Options.driverBumpCheck driver
+      compactCells = Options.driverCompactCells driver
   let ctx = case tArch of
         "aarch64" -> "ctx_a64.S"
         "riscv64" -> "ctx_rv64.S"
@@ -207,7 +208,7 @@ build configuration p = do
         "aarch64" -> ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"]
         "riscv64" -> ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany"]
         _ -> []
-      cflags = archFlags ++ ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe] ++ ["-DFPR_LAYOUT_CHECK" | layoutCheck] ++ ["-DFPR_LAYOUT_FAULT" | layoutFault] ++ ["-DFPR_LAYOUT_REPORT" | layoutReport] ++ ["-DFPR_BUMP_CHECK" | bumpCheck]
+      cflags = archFlags ++ ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe] ++ ["-DFPR_LAYOUT_CHECK" | layoutCheck] ++ ["-DFPR_LAYOUT_FAULT" | layoutFault] ++ ["-DFPR_LAYOUT_REPORT" | layoutReport] ++ ["-DFPR_BUMP_CHECK" | bumpCheck] ++ ["-DFPR_LEGACY_CELLS" | not compactCells]
       linux = if tOS == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
       -- when their source is newer: a warm build compiles the program
@@ -416,7 +417,8 @@ runKey configuration p = do
         [show (pHarts p), show (pCC p), show (Options.driverCC driver),
          show (pTarget p), unwords (pCFlags p ++ pLink p),
          show foreignDecls, show (Options.driverCostProbe driver), modes, show (pCompileDir p)]
-        ++ ["bump-check" | Options.driverBumpCheck driver])
+        ++ ["bump-check" | Options.driverBumpCheck driver]
+        ++ ["compact-cells" | Options.driverCompactCells driver])
   pure (showHex (fnv64 text) "")
   where
     listed d = do

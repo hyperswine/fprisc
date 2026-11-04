@@ -127,7 +127,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='fpr-alloc-fast-') as directory:
         tmp = Path(directory)
         source = args.runtime_source.read_text()
-        marker = 'static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {'
+        marker = 'static V alloc_in_size(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk,uw prefix) {'
         assert source.count(marker) == 1
         source = source.replace(marker, 'static _Thread_local uw alloc_test_slow_calls;\n' + marker + '\n  alloc_test_slow_calls++;')
         (tmp / 'runtime.c').write_text(source + '\n' + PROBE)
@@ -143,7 +143,7 @@ def main():
         program = tmp / 'probe.fpr'
         program.write_text('unsafe base.\nAlloc.check : Unit -> Int.\nmain = print (Alloc.check Unit).\n')
         env = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
-        env.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache')))
+        env.update(FPR_COMPACT_CELLS="0", FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / 'cache')))
         for cost in ('0', '1'):
             mode = dict(env, FPR_COST_PROBE=cost)
             exe = tmp / ('probe-' + cost)

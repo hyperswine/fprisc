@@ -69,7 +69,8 @@ def main():
             assert present==(target!='rv32'),target
             assert '# static-pap: $worker.' not in asm,target
             assert '# fn $worker.scalar.poly' not in asm,target
-            assert '# fn $worker.fields.escapeLoop' not in asm,target
+            # Returning the accumulator now boxes once at the exit boundary.
+            assert ('# fn $worker.fields.escapeLoop' in asm)==(target!='rv32'),target
             assert not re.search(r'# native-insns-v1: \$worker\..*segmax=UNBOUNDED',asm),target
         print('Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS')
         builtin=tmp/'builtin.fpr'; out=tmp/'builtin.s'

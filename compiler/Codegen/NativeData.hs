@@ -2,7 +2,7 @@
 -- Static objects have a native owner independent of scalar/kernel rendering.
 -- Keep the existing PAP, immortal constructor and module table layouts, and
 -- preserve module string interning/order while the text generator is removed.
-module Codegen.NativeData (emitStaticData,emitStaticDataWithSymbols) where
+module Codegen.NativeData (emitStaticData,emitStaticDataWithSymbols,emitStaticDataWithLayout) where
 
 import Codegen.IR (Width(..),Name)
 import Codegen.Target.Common (ObjectFormat, dataSyntax, mangleName,SymbolPolicy,publicSymbols,visibilityFor,visibilityLines,WeakSpelling(..))
@@ -20,7 +20,10 @@ emitStaticData :: ObjectFormat -> Width -> Bool -> Bool -> [ModExport] -> S.Set 
 emitStaticData fmt width arc weak exports visible=emitStaticDataWithSymbols fmt width arc weak exports (publicSymbols visible)
 
 emitStaticDataWithSymbols :: ObjectFormat -> Width -> Bool -> Bool -> [ModExport] -> SymbolPolicy -> Prog -> S.Set (Int,Int) -> [String]
-emitStaticDataWithSymbols fmt width arc weak exports symbols emitted referenced = dataSyntax fmt $
+emitStaticDataWithSymbols fmt width arc weak exports symbols = emitStaticDataWithLayout fmt width arc weak exports symbols Nothing
+
+emitStaticDataWithLayout :: ObjectFormat -> Width -> Bool -> Bool -> [ModExport] -> SymbolPolicy -> Maybe (String,Integer) -> Prog -> S.Set (Int,Int) -> [String]
+emitStaticDataWithLayout fmt width arc weak exports symbols layoutRef emitted referenced = dataSyntax fmt $
   ["    .section .rodata",""] ++ concatMap object (M.toList emitted)
   ++ ["    .section .rodata" | arc] ++ table
   ++ ["    .section .rodata" | arc,not (null table)]
@@ -53,7 +56,9 @@ emitStaticDataWithSymbols fmt width arc weak exports symbols emitted referenced 
           rows <- concat <$> mapM row [e | e<-exports,meArity e>=1]
           root <- intern (case [meHash e | e<-exports,meQual e==meName e || meQual e=="$precond0."++meName e] of h:_->h;[]->"")
           pure $ ["    .balign 8","    .globl fpr_modtab","fpr_modtab:",
-                  "    "++dir++" 0x4650524d","    "++dir++" 1","    "++dir++" "++root]
+                  "    "++dir++" 0x4650524d","    "++dir++" 2","    "++dir++" "++root,
+                  "    "++dir++" "++maybe "0" fst layoutRef,
+                  "    "++dir++" "++show (maybe 16 snd layoutRef)]
             ++ rows ++ ["    "++dir++" 0",""]
     row e = do
       hash <- intern (meHash e);name <- intern (meName e);interface <- intern (meInterface e)

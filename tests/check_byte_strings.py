@@ -14,25 +14,26 @@ def run(args, env, expected=0):
     return p.stdout + p.stderr
 
 with tempfile.TemporaryDirectory(prefix='fpr-byte-strings-') as temp:
-    env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
-               FPR_COST_PROBE='1', XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', temp))
-    env.pop('FPR_FOREIGN', None)
-    exe = Path(temp) / 'bytestrings'
-    run([ROOT/'fpr', 'build', 'tests/base/bytestrings.fpr', '--harts', '4',
-         '--with', 'tests/base/bytestrings_probe.c', '-o', exe], env)
-    images = Path(temp) / 'images'
-    run([ROOT/'fpr', 'build', 'tests/base/images.fpr', '--harts', '4',
-         '--with', 'tests/base/images_probe.c', '-o', images], env)
-    for harts in ('1', '4'):
-        e = dict(env, FPR_HARTS=harts)
-        assert 'byte Strings: 256 values, zero chr allocations, encodings and actor lifetime PASS' in run([exe], e)
-        for mode, message in (
-            ('negative', 'chr: -1 is not a byte (0..255)'),
-            ('overflow', 'chr: 256 is not a byte (0..255)'),
-            ('type', 'chr: not an Int'),
-        ):
-            assert message in run([exe, mode], e, 1)
-        image_result = run([images], e)
-        assert 'kept: from the image; a function of the image: refused' in image_result, image_result
-        print(f'Byte Strings: all values, zero allocations, actor lifetime and refusals ({harts} workers) PASS')
-        print(f'Foreign image: byte Strings survive poisoning/unload ({harts} workers) PASS')
+    for compact in ('0', '1'):
+        env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
+                   FPR_COST_PROBE='1', FPR_COMPACT_CELLS=compact, XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', temp))
+        env.pop('FPR_FOREIGN', None)
+        exe = Path(temp) / 'bytestrings'
+        run([ROOT/'fpr', 'build', 'tests/base/bytestrings.fpr', '--harts', '4',
+             '--with', 'tests/base/bytestrings_probe.c', '-o', exe], env)
+        images = Path(temp) / 'images'
+        run([ROOT/'fpr', 'build', 'tests/base/images.fpr', '--harts', '4',
+             '--with', 'tests/base/images_probe.c', '-o', images], env)
+        for harts in ('1', '4'):
+            e = dict(env, FPR_HARTS=harts)
+            assert 'byte Strings: 256 values, zero chr allocations, encodings and actor lifetime PASS' in run([exe], e)
+            for mode, message in (
+                ('negative', 'chr: -1 is not a byte (0..255)'),
+                ('overflow', 'chr: 256 is not a byte (0..255)'),
+                ('type', 'chr: not an Int'),
+            ):
+                assert message in run([exe, mode], e, 1)
+            image_result = run([images], e)
+            assert 'kept: from the image; a function of the image: refused' in image_result, image_result
+            print(f'Byte Strings: all values, zero allocations, actor lifetime and refusals ({harts} workers, compact={compact}) PASS')
+            print(f'Foreign image: byte Strings survive poisoning/unload ({harts} workers, compact={compact}) PASS')

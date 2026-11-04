@@ -1,5 +1,7 @@
 # Typed TRMC: the executed loops now lose their reverse pass
 
+Follow-up implementation and qualification: [priorities 1–5, 4 November](2026-11-04-ZERO-OVERHEAD-EXECUTION.md). This dated record describes the earlier checkpoint.
+
 Date: 3 November 2026. Implementation based on `9ffd4d2`, codegen revision
 150. This completes the hosted placement work in the
 [typed TRMC design](2026-11-03-TYPED-IR-TRMC.md); builtin/ARC remains gated off.

@@ -102,9 +102,9 @@ static V result(unsigned err,V payload){hdr_t *v=(hdr_t *)fpr_alloc(8+sizeof(V))
 static V h_read(V p){const str_t *s=string(p);unsigned e;V v=rpc(1,s->bytes,s->len,0,0,&e);if(e)fpr_panic(v);return v;}
 static V h_exists(V p){const str_t *s=string(p);unsigned e;V v=rpc(2,s->bytes,s->len,0,0,&e);const str_t *r=string(v);return BOOL(!e && r->len==1 && r->bytes[0]=='1');}
 static V file_put(V p,V d,unsigned op){
- const str_t *s=string(p),*t=string(d);uint8_t *path=(uint8_t *)fpr_alloc(s->len+1);
+ const str_t *s=string(p),*t=string(d);uint8_t *path=(uint8_t *)fpr_alloc_raw(s->len+1);
  memcpy(path,s->bytes,s->len);path[s->len]=0;unsigned e;V v=rpc(op,path,s->len+1,t->bytes,t->len,&e);
- fpr_free((V)path);return result(e,e?v:(V)&fpr_unit);
+ fpr_free_raw((V)path);return result(e,e?v:(V)&fpr_unit);
 }
 static V h_write(V p,V d){return file_put(p,d,3);}
 static V h_append(V p,V d){return file_put(p,d,4);}

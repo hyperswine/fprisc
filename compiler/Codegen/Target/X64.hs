@@ -39,7 +39,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 30 -- OVariantTest checks the Int bit and typeid; prior: OMake as the inline bump
+x64SelectionRev = 31 -- shared refill tails keyed by placed destination and raw size
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -369,7 +369,7 @@ selectInstr cfg _ (Instr d op) = case op of
     emitI (la rd (StaticObject (stringLabel text)))
   OMake tid variant fields -> def $ \rd -> do
     let raw = 8 + 8 * fromIntegral (length fields)
-    case bumpCell raw of
+    case bumpCellFor (cfgPolicy cfg) raw of
       -- the inline bump (docs/2026-11-03-INLINE-BUMP-ALLOC.md); a loaded QOS
       -- app (the borrowed hart cell) keeps the call
       Just _ | bumpAllocates (cfgPolicy cfg) && cfgHart cfg /= HartBorrow -> do
@@ -766,18 +766,25 @@ emitFnX64WithSymbols symbols cfg fn = do
         : [I (plain (O.X64 O.Save) [] []) | not (null saves)]
         ++ allocatedBody
       reserve = if large then reserveFrame (cfgHart cfg) name (toInteger (lyBytes ly)) (length (sfParams sel)) else []
-      rendered = [(it, renderItem (cfgHart cfg) ly large name saveLines restores it) | it <- body]
-      report = analyse ([TIns (length (filter isInstruction reserve)) FNext False 1 | large] ++ concatMap (uncurry tokOf) rendered)
+      refills = planBumpRefills 2 body
+      -- The site's call supplies the alignment word the old inline refill
+      -- reserved explicitly. The wrapper sees exactly the same stack depth.
+      refillCode = concat
+        [[local (cfgHart cfg) name label ++ ":", "    movq $"++show raw++", %r11",
+          "    call "++Call.runtimeName Call.AllocSaveEntry,
+          "    movq %r11, %"++d, "    ret"] | ((d,raw),label)<-M.toList refills]
+      rendered = [(it, renderItem cfg ly large name saveLines restores refills it) | it <- body]
+      report = analyse ([TIns (length (filter isInstruction reserve)) FNext False 1 | large] ++ concatMap (uncurry (tokOf refills)) rendered)
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
                   ++ (if large then " reserve=yes" else "")
                   ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
         ++ visibilityLines (x64Format (cfgHart cfg)) (if x64Format (cfgHart cfg)==MachO then WeakDefinitionDirective else WeakDirective) (visibilityFor (cfgWeak cfg) symbols name) sym ++ [sym ++ ":"]
   checkForms name body
-  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
+  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ refillCode ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
   where
-    tokOf (ILabel (Label l)) _ = [TLabel l]
-    tokOf (I i) ls = [TIns
-      { tCost = length [() | l <- ls, isInstruction l],
+    tokOf _ (ILabel (Label l)) _ = [TLabel l]
+    tokOf pools (I i) ls = [TIns
+      { tCost = length [() | l <- ls, isInstruction l] + (case bumpRefill pools i of Just _ -> 4; Nothing -> 0),
         tFlow = case siControl i of
           Next -> FNext; CondTo labels -> FCond [l | Label l <- labels]; JumpTo (Label l) -> FJump l; Return -> FExit,
         tReset = any callSafepoint (siCalls i), tCCalls = length (filter callRuntime (siCalls i)) }]
@@ -858,10 +865,11 @@ tlvAddress cell =
   ["movq %rsp, %rbx", "andq $-16, %rsp", "movq " ++ gsym HartTlvMachO cell ++ "@TLVP(%rip), %rdi",
    "call *(%rdi)", "movq %rbx, %rsp"]
 
-renderItem :: X64Hart -> Layout -> Bool -> String -> [String] -> [String] -> Item -> [String]
-renderItem hart _ _ fname _ _ (ILabel l) = [local hart fname l ++ ":"]
-renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpcode i) (siDefs i) (siUses i))
+renderItem :: X64Config -> Layout -> Bool -> String -> [String] -> [String] -> BumpRefills -> Item -> [String]
+renderItem cfg _ _ fname _ _ _ (ILabel l) = [local (cfgHart cfg) fname l ++ ":"]
+renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (siOpcode i) (siDefs i) (siUses i))
   where
+    hart = cfgHart cfg
     indent l = if last l == ':' then l else "    " ++ l
     lbl = local hart fname
     reg = \case OP (Phys p) -> '%' : p; o -> error ("X64 render: unplaced operand " ++ show o)
@@ -877,7 +885,7 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpco
     cc = \case O.Equal -> "e"; O.NotEqual -> "ne"; O.Less -> "l"; O.Greater -> "g"; O.LessEqual -> "le"; O.GreaterEqual -> "ge"; O.Overflow -> "o"; O.UnsignedAboveEqual -> "ae"; O.UnsignedBelow -> "b"
     call sym = ["subq $8, %rsp", "call " ++ gsym hart sym, "addq $8, %rsp"]
     go op ds us = case (op,ds,us) of
-      (O.Common O.BumpAlloc,[d],[OI raw]) | Just c <- bumpCell raw -> bump (reg d) c
+      (O.Common O.BumpAlloc,[d],[OI raw]) | Just c <- bumpCellFor (cfgPolicy cfg) raw -> bump (reg d) c
       (O.X64 O.Enter,[],[]) ->
         if large then ["movq %rbp, %rax", "movabsq $" ++ show (lyBytes ly) ++ ", %r11",
                        "subq %r11, %rsp", "leaq 8(%rsp,%r11), %rbp",
@@ -1017,16 +1025,18 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpco
                "addq $" ++ t ++ ", " ++ cell bumpRegionCell ++ "(%r11)",
                "movq " ++ w bumpSlabOwner ++ "(%r10), %r11",
                "addq $" ++ t ++ ", " ++ w bumpPoolAllocated ++ "(%r11)",
-               "subq $" ++ show (bcTotal c - 16) ++ ", " ++ d,
-               "movq $" ++ t ++ ", -16(" ++ d ++ ")",
-               "movq %r10, -8(" ++ d ++ ")" ]
+               "subq $" ++ show (bcTotal c - bcPrefix c) ++ ", " ++ d ]
+          ++ ["movq $" ++ t ++ ", -16(" ++ d ++ ")" | bcPrefix c == 16]
+          ++ ["movq %r10, -8(" ++ d ++ ")"]
           ++ ["movq $0, " ++ show p ++ "(" ++ d ++ ")" | Just p <- [bcPad c]]
           ++ [ "jmp " ++ done,
-               refill ++ ":",
-               "movq $" ++ show (bcRaw c) ++ ", %r11",
-               "subq $8, %rsp", "call " ++ Call.runtimeName Call.AllocSaveEntry, "addq $8, %rsp",
-               "movq %r11, " ++ d,
-               done ++ ":" ]
+               refill ++ ":" ]
+          ++ (case bumpRefill pools i of
+                Just shared -> ["call " ++ lbl shared]
+                Nothing -> ["movq $" ++ show (bcRaw c) ++ ", %r11",
+                            "subq $8, %rsp", "call " ++ Call.runtimeName Call.AllocSaveEntry, "addq $8, %rsp",
+                            "movq %r11, " ++ d])
+          ++ [done ++ ":"]
     tick = tickN 1
     tickN n = ["subq $" ++ show n ++ ", (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (entryLabel i FuelReady)]
       ++ parkArgs True ++ ["subq $8, %rsp", "call " ++ Call.runtimeName Call.FuelSaveEntry, "addq $8, %rsp"] ++ parkArgs False ++ [lbl (entryLabel i FuelReady) ++ ":"]

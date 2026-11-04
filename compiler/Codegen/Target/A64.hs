@@ -97,7 +97,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 31 -- OVariantTest checks the Int bit and typeid; prior: OMake as the inline bump
+a64SelectionRev = 32 -- shared refill tails keyed by placed destination and raw size
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -423,7 +423,7 @@ selectInstr cfg _ (Instr d op) = case op of
     emitI (la rd (StaticObject (stringLabel text)))
   OMake tid variant fields -> def $ \rd -> do
     let raw = 8 + 8 * fromIntegral (length fields)
-    case bumpCell raw of
+    case bumpCellFor (cfgPolicy cfg) raw of
       -- the inline bump (docs/2026-11-03-INLINE-BUMP-ALLOC.md): hosted Base
       -- reads the hart window through x28; another hart access keeps the call
       Just _ | bumpAllocates (cfgPolicy cfg) && cfgHart cfg == HartX28 -> do
@@ -910,10 +910,15 @@ emitFnA64WithSymbols symbols cfg fn = do
             Just items -> concatMap (\it -> case it of I s | siOpcode s == O.Common O.SavesHere -> saveItems; _ -> [it]) items
       restores = concatMap (uncurry (pairAccess "ldp" "ldr")) pairs
       reserve = if large then reserveFrame cfg name (toInteger (lyBytes ly)) (length (sfParams sel)) else []
-      rendered = map (\it -> (it, renderItem cfg ly large name pairs restores it)) body
+      refills = planBumpRefills 4 body
+      refillCode = concat
+        [[local cfg name label ++ ":", "    mov "++d++", x30", "    mov x16, #"++show raw,
+          "    bl "++Call.runtimeName Call.AllocSaveEntry, "    mov x30, "++d,
+          "    mov "++d++", x17", "    ret"] | ((d,raw),label)<-M.toList refills]
+      rendered = map (\it -> (it, renderItem cfg ly large name pairs restores refills it)) body
       toks = [TIns (length (filter isInstruction reserve)) FNext False
                 (1 + if cfgHart cfg == HartTlvMachO then 3 else 0) | large]
-             ++ concatMap (uncurry tokOf) rendered
+             ++ concatMap (uncurry (tokOf refills)) rendered
       report = analyse toks
       header =
         ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir a64 frame=" ++ show (lyBytes ly)
@@ -921,15 +926,15 @@ emitFnA64WithSymbols symbols cfg fn = do
            ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ (if wrapped == Nothing then "" else " wrapped=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," (map phys ps)) ++ " " ++ statsLine (alStats alloc)]
           ++ visibilityLines (cfgFormat cfg) WeakDirective (visibilityFor (cfgWeak cfg) symbols name) (gsym cfg sym)
           ++ [gsym cfg sym ++ ":"]
-      lines' = header ++ map (\s -> if last s == ':' then s else "    " ++ s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]
+      lines' = header ++ map (\s -> if last s == ':' then s else "    " ++ s) reserve ++ concatMap snd rendered ++ refillCode ++ [reportLine name report, ""]
   checkForms a64RegisterFile name body
   checkSaveGroups name (length pairs) body
   pure (NativeFn name lines' report (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
   where
-    tokOf (ILabel (Label l)) _ = [TLabel l]
-    tokOf (I i) ls =
+    tokOf _ (ILabel (Label l)) _ = [TLabel l]
+    tokOf pools (I i) ls =
       [ TIns
-          { tCost = length [() | l <- ls, isInstruction l],
+          { tCost = length [() | l <- ls, isInstruction l] + (case bumpRefill pools i of Just _ -> 6; Nothing -> 0),
             tFlow = case siControl i of
               Next -> FNext
               CondTo ls' -> FCond [l | Label l <- ls']
@@ -1047,9 +1052,9 @@ reserveFrame cfg name bytes argc =
     label s = local cfg name (Label ("reserve_"++s))
     slow=label "slow";fast=label "fast";same=label "same";ready=label "ready"
 
-renderItem :: A64Config -> Layout -> Bool -> String -> [([String], Integer)] -> [String] -> Item -> [String]
-renderItem cfg _ _ fname _ _ (ILabel l) = [local cfg fname l ++ ":"]
-renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOpcode i) (siDefs i) (siUses i))
+renderItem :: A64Config -> Layout -> Bool -> String -> [([String], Integer)] -> [String] -> BumpRefills -> Item -> [String]
+renderItem cfg _ _ fname _ _ _ (ILabel l) = [local cfg fname l ++ ":"]
+renderItem cfg ly large fname pairs restores pools (I i) = map indent (go (siOpcode i) (siDefs i) (siUses i))
   where
     indent l = if last l == ':' then l else "    " ++ l -- a pseudo's internal labels stand in column one
     lbl = local cfg fname
@@ -1112,7 +1117,7 @@ renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOpcode i)
         HartX28 -> ldst "ldr" "ldur" (reg d) "x28" (8 * (1 + j)) -- the hart register itself: no copy into x9
         _ -> hartRead ++ ldst "ldr" "ldur" (reg d) "x9" (8 * (1 + j))
       (O.A64 A.SubtractShifted1, [d], [a, b]) -> ["sub " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b ++ ", asr #1"]
-      (O.Common O.BumpAlloc, [d], [OI raw]) | Just c <- bumpCell raw -> bump (reg d) c
+      (O.Common O.BumpAlloc, [d], [OI raw]) | Just c <- bumpCellFor (cfgPolicy cfg) raw -> bump (reg d) c
       (O.Common O.EntryCheckTick, _, _) -> hartRead ++ stackCheck ++ tick
       (O.Common O.EntryCheck, _, _) -> hartRead ++ stackCheck
       (O.Common O.EntryTick, _, _) -> hartRead ++ tick
@@ -1220,9 +1225,9 @@ renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOpcode i)
             "ldr x17, [x17, #" ++ show (8 * bcIndex c) ++ "]",
             "cbnz x17, " ++ refill,
             "str " ++ d ++ ", [x16, #" ++ show (w bumpSlabHp) ++ "]",
-            "sub " ++ d ++ ", " ++ d ++ ", #" ++ show (bcTotal c - 16),
-            "mov x17, #" ++ t,
-            "stp x17, x16, [" ++ d ++ ", #-16]" ]
+            "sub " ++ d ++ ", " ++ d ++ ", #" ++ show (bcTotal c - bcPrefix c) ]
+          ++ (if bcPrefix c == 8 then ["str x16, [" ++ d ++ ", #-8]"]
+              else ["mov x17, #" ++ t, "stp x17, x16, [" ++ d ++ ", #-16]"])
           ++ ["str xzr, [" ++ d ++ ", #" ++ show p ++ "]" | Just p <- [bcPad c]]
           ++ [ "ldr x16, [x16, #" ++ show (w bumpSlabOwner) ++ "]",
                "ldr x17, [x16, #" ++ show (w bumpPoolAllocated) ++ "]",
@@ -1232,11 +1237,13 @@ renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOpcode i)
                "add x17, x17, #" ++ t,
                "str x17, [x28, #" ++ show (cell bumpRegionCell) ++ "]",
                "b " ++ done,
-               refill ++ ":",
-               "mov x16, #" ++ show (bcRaw c),
-               "bl " ++ Call.runtimeName Call.AllocSaveEntry, -- unit-local, as the tick's wrapper
-               "mov " ++ d ++ ", x17",
-               done ++ ":" ]
+               refill ++ ":" ]
+          ++ (case bumpRefill pools i of
+                Just shared -> ["bl " ++ lbl shared]
+                Nothing -> ["mov x16, #" ++ show (bcRaw c),
+                            "bl " ++ Call.runtimeName Call.AllocSaveEntry,
+                            "mov " ++ d ++ ", x17"])
+          ++ [done ++ ":"]
     tick = tickN 1
     tickN n =
       [ "ldur x10, [x9, #0]",
