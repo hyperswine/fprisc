@@ -1,0 +1,169 @@
+{
+  "compiler_sha256": "76c95e3f2a6744d499aa28caf0cf025ce20cdc9a0c73f4ea20a175a81a1dfdd9",
+  "revision": 194,
+  "checks": [
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "exit": 0,
+      "seconds": 22.61,
+      "log_sha256": "996fe990bf005be87e31ae20ef7514e5a0b504a206dcddc9c1423f5ffd902e24",
+      "tail": [
+        "Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS",
+        "Test suite TypedIR: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/TypedIR/test/fp-risc-0.13.1-TypedIR.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ]
+    },
+    {
+      "name": "compile-budget",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "exit": 0,
+      "seconds": 90.8,
+      "log_sha256": "12c8efd71e28fd41049dfb80e09e0028d7be3d5426f23cadc344b0237a824abc",
+      "tail": [
+        "hello: 1.61 GB allocated, 27 MB peak live, 0.9 s (+9.7% allocation, -37.6% peak vs baseline)",
+        "std-live: 32.87 GB allocated, 355 MB peak live, 24.7 s (+9.9% allocation, -11.9% peak vs baseline)",
+        "pos1: 67.58 GB allocated, 499 MB peak live, 64.2 s (+4.3% allocation, -40.2% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "workers",
+      "command": [
+        "python3",
+        "tests/check_workers.py"
+      ],
+      "exit": 0,
+      "seconds": 41.43,
+      "log_sha256": "f14d6a0eceb7c92cf59dccd97cbc05bf8f6966a7396184ff2e228f6b572f90de",
+      "tail": [
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Workers: native 1/4-worker differential, independent switches/inliner, warm caches, dynamic entry and exact failure reasons PASS",
+        "{\"allocations\": {\"0:0:0:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:pair-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0,",
+        "Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS",
+        "Workers: optimized shared module called by general-ABI host PASS"
+      ]
+    },
+    {
+      "name": "returns",
+      "command": [
+        "python3",
+        "tests/check_product_returns.py"
+      ],
+      "exit": 0,
+      "seconds": 88.93,
+      "log_sha256": "964790cf20960a29e4fd66145bead7acb883ddf86c6a0c1faceeb1f7b3145a04",
+      "tail": [
+        "Product returns: eight-field mutual tail calls PASS",
+        "Product returns: tagged escape and heap-valued fields PASS",
+        "Product returns: a64mac width admission and register emission PASS",
+        "Product returns: rv64 width admission and register emission PASS",
+        "Product returns: x64 width admission and register emission PASS"
+      ]
+    },
+    {
+      "name": "lifetimes",
+      "command": [
+        "python3",
+        "tests/check_unary_return_lifetimes.py"
+      ],
+      "exit": 0,
+      "seconds": 18.46,
+      "log_sha256": "829a4e1c8145906887fc9fa06bfe17b865461659e5f550dd8f3852aebfaf34c7",
+      "tail": [
+        "Unary payload lifetime: False False {} 1/4 harts PASS",
+        "Unary payload lifetime: False True {False: 25157, True: 16772} 1/4 harts PASS",
+        "Unary payload lifetime: True False {} 1/4 harts PASS",
+        "Unary payload lifetime: True True {False: 16772, True: 8388} 1/4 harts PASS"
+      ]
+    },
+    {
+      "name": "rv64",
+      "command": [
+        "python3",
+        "tests/check_product_returns_rv.py",
+        "--require-execution"
+      ],
+      "exit": 0,
+      "seconds": 5.57,
+      "log_sha256": "8734d5f1f06f317ed097bbd05e29aece5e92ea3d1ec99df529521ef64ddbc758",
+      "tail": [
+        "Product returns RV64: 4 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 5 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 6 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 7 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 8 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS"
+      ]
+    },
+    {
+      "name": "x64",
+      "command": [
+        "python3",
+        "tests/check_product_returns_x64.py",
+        "--require-execution"
+      ],
+      "exit": 0,
+      "seconds": 13.96,
+      "log_sha256": "ea82d6e37bee76c02c7b2d925aaa92dbbe88cdf6a55156c4b67dcd57c08d0284",
+      "tail": [
+        "x64 product returns: 6 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 7 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 8 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 8 fields, repeated=True, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 real runtime: eight-field recursive results, three actors, observed fuel exhaustion and 1/4 harts PASS"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--require-baseline",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256"
+      ],
+      "exit": 0,
+      "seconds": 4.27,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "tail": [
+        "16 helpers: same 10832 code bytes/55 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "static-arena",
+      "command": [
+        "python3",
+        "tests/check_static_arena.py"
+      ],
+      "exit": 0,
+      "seconds": 49.28,
+      "log_sha256": "1440e4ece55767e2110645f6978456cc765874ae0d0bb04a464954c24d92782e",
+      "tail": [
+        "mixed: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-zero: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-wrap: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-long: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+      ]
+    }
+  ]
+}

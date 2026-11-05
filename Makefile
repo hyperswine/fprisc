@@ -321,12 +321,16 @@ BUILTIN_BOARD ?= virt
 BUILTIN_RAM ?= bram
 BUILTIN_RVC ?= 0
 BUILTIN_LINK = $(MACHINE)/builtin/link.ld
+BUILTIN_DEFAULT_IMAGE_MANIFEST = $(MACHINE)/builtin/targets/virt.json
+BUILTIN_IMAGE_TARGET = builtin-rv64-virt-128m
 BUILTIN_ARCHFLAGS = $(CFLAGS)
 ifeq ($(BUILTIN_BOARD),tangnano20k)
 ifeq ($(ARC),1)
 $(error tangnano20k currently supports manual ownership only, not ARC=1)
 endif
 BUILTIN_LINK = $(MACHINE)/builtin/tangnano20k/link.ld
+BUILTIN_DEFAULT_IMAGE_MANIFEST = $(MACHINE)/builtin/targets/tangnano20k-$(BUILTIN_RAM).json
+BUILTIN_IMAGE_TARGET = builtin-rv32-tangnano20k-$(BUILTIN_RAM)
 ifeq ($(BUILTIN_RAM),sdram)
 BUILTIN_LINK = $(MACHINE)/builtin/tangnano20k/link-sdram.ld
 else ifneq ($(BUILTIN_RAM),bram)
@@ -360,6 +364,10 @@ ifeq ($(ARC),1)
 BUILTIN_COMPILER_FLAGS = --arc
 BUILTIN_CFLAGS = -DFPR_BUILTIN_ARC -DFPR_BUILTIN_RAW
 endif
+BUILTIN_IMAGE_MANIFEST ?= $(BUILTIN_DEFAULT_IMAGE_MANIFEST)
+# Optional final-image stack gate, e.g. "my_callback:1024 other_callback:512".
+# These are per-entry SP bounds, not startup/interrupt/whole-image arena proofs.
+BUILTIN_STACK_ENTRIES ?=
 
 # ---- a library unit: FP-RISC compiled to a linkable object with C exports
 #   make builtin-lib LIB=path/to/x.fpr LIB_EXPORT=f:c_f,g   -> $(BUILD)/lib-x.s
@@ -379,16 +387,22 @@ endif
 ifeq ($(ARC_CHECK),1)
 BUILTIN_CFLAGS += -DFPR_ARC_CHECK
 endif
-bare-metal-builtin: fprc $(BUILTIN_RT) $(BUILTIN_LINK) FORCE
+bare-metal-builtin: fprc $(BUILTIN_RT) $(BUILTIN_LINK) $(BUILTIN_IMAGE_MANIFEST) tools/check_target_image.py tools/check_linked_stack.py tools/riscv_compressed.py FORCE
 	@mkdir -p $(BUILD)
 	./fprc --system=bare-metal --profile=builtin $(BUILTIN_COMPILER_FLAGS) $(FPRC_FLAGS) $(PROG) $(BUILD)/builtin.s
+	@set -eu; temporary=$$(mktemp -d "$(dir $(IMAGE)).fpr-image.XXXXXX"); \
+	trap 'rm -rf "$$temporary"' EXIT; \
 	$(CROSS)gcc $(BUILTIN_ARCHFLAGS) -UFPR_NHARTS -DFPR_NHARTS=1 -DFPR_BUILTIN $(BUILTIN_CFLAGS) -ffunction-sections -fdata-sections \
 	  -Wl,--gc-sections -T $(BUILTIN_LINK) -I$(RUNTIME) -I$(MACHINE)/builtin \
-	  $(BUILTIN_RT) $(BUILD)/builtin.s $$(cat $(BUILD)/builtin.s.units) $(BUILTIN_EXTRA) $(BUILTIN_LDFLAGS) -o $(IMAGE)
-ifeq ($(BUILTIN_BOARD),tangnano20k)
-	$(CROSS)objcopy -O binary $(IMAGE) $(basename $(IMAGE)).bin
-	$(CROSS)size $(IMAGE)
-endif
+	  $(BUILTIN_RT) $(BUILD)/builtin.s $$(cat $(BUILD)/builtin.s.units) $(BUILTIN_EXTRA) $(BUILTIN_LDFLAGS) -o "$$temporary/image.elf"; \
+	python3 tools/check_target_image.py --image "$$temporary/image.elf" --manifest "$(BUILTIN_IMAGE_MANIFEST)" --target "$(BUILTIN_IMAGE_TARGET)" --stack-entries "$(BUILTIN_STACK_ENTRIES)" --report "$$temporary/image.json"; \
+	if [ "$(BUILTIN_BOARD)" = tangnano20k ]; then \
+	  $(CROSS)objcopy -O binary "$$temporary/image.elf" "$$temporary/image.bin"; \
+	  $(CROSS)size "$$temporary/image.elf"; \
+	  mv "$$temporary/image.bin" "$(basename $(IMAGE)).bin"; \
+	fi; \
+	mv "$$temporary/image.json" "$(IMAGE).admission.json"; \
+	mv "$$temporary/image.elf" "$(IMAGE)"
 
 bare-metal-builtin-run: bare-metal-builtin
 ifeq ($(BUILTIN_BOARD),virt)

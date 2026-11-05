@@ -1,0 +1,102 @@
+{
+  "schema": "field-shape-prefilter-validation-v1",
+  "codegen_revision": 191,
+  "compiler_sha256": "b7a94a303c588e2176ad71e9b4236eabe467dc294e9255bf166566e5b8ebf035",
+  "checks": [
+    {
+      "name": "haskell",
+      "command": [
+        "cabal",
+        "test",
+        "WorkersCheck",
+        "RegionInterfaces",
+        "--test-show-details=direct"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 2.71,
+      "log_sha256": "69144db7d53462b2d13e90b22f8d31d9a21d40b59e26aa909a35298353ec7c5e",
+      "output_tail": [
+        "Running 1 test suites...",
+        "Test suite RegionInterfaces: RUNNING...",
+        "Workers Core: admission, public arity, shadowing, escaping values, unknown kinds, vector tier and clone budget PASS",
+        "Test suite WorkersCheck: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/WorkersCheck/test/fp-risc-0.13.1-WorkersCheck.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Region interfaces/control: checked physical binders, protocol sorts, fresh identities, state proofs, source-equivalent lowering, home declarations, scope refusals and compatibility quarantine passed",
+        "Test suite RegionInterfaces: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/RegionInterfaces/test/fp-risc-0.13.1-RegionInterfaces.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ],
+      "suites": 2
+    },
+    {
+      "name": "finite-fields",
+      "command": [
+        "python3",
+        "tests/check_finite_field_workers.py",
+        "--record",
+        "bench/2026-11-05-field-shape-prefilter.json"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 134.42,
+      "log_sha256": "b401f6df0e37cf4215e2b083477fb5644fd487ef64719250da2609b235b65f02",
+      "output_tail": [
+        "returns-8: {'default': 0, 'boxed': 8000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "helpers-129: {'default': 0, 'boxed': 129, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "body-256: {'default': 0, 'boxed': 1000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "body-2048: {'default': 0, 'boxed': 1000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "let-order: exact four-mode effects/traps PASS",
+        "max-success: exact four-mode effects/traps PASS",
+        "min-success: exact four-mode effects/traps PASS",
+        "overflow: exact four-mode effects/traps PASS",
+        "minimum-underflow: exact four-mode effects/traps PASS",
+        "division-first: exact four-mode effects/traps PASS",
+        "wide-argument-order: exact four-mode effects/traps PASS",
+        "Deep dynamic payload retains the original inner fallback PASS"
+      ]
+    },
+    {
+      "name": "compile-cost",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 56.55,
+      "log_sha256": "d42b31ed9549bf8629d77ee4cf78225c838aa95b3d7aa21fe20f89e289dd695b",
+      "output_tail": [
+        "hello: 1.61 GB allocated, 27 MB peak live, 0.7 s (+9.7% allocation, -37.6% peak vs baseline)",
+        "std-live: 32.80 GB allocated, 350 MB peak live, 17.6 s (+9.6% allocation, -13.1% peak vs baseline)",
+        "pos1: 67.51 GB allocated, 501 MB peak live, 38.2 s (+4.2% allocation, -39.9% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    }
+  ],
+  "scope": "Compiler-only ordering of existing pure shape/capture/use checks. Focused semantic and unchanged absolute cost gates passed; exact RV64 emission and diagnostics match the saved qualified codegen-191 compiler across eleven fixtures. The prior full 41-suite run and runtime timings remain bound to the earlier compiler, not rerun or relabeled here. Physical scheduling remains open.",
+  "comparisons": [
+    "bench/2026-11-05-field-shape-prefilter-code.json",
+    "bench/2026-11-05-field-shape-prefilter-cost.json"
+  ],
+  "input_sha256": {
+    "compiler/Workers.hs": "dd2074801097e4b36d7ba8b2dac6958f3c53a088d5142c1b2e6733a8662f16a0",
+    "compiler/Codegen.hs": "f8bc8b97cc15f96aa26096dc482afb01d05124429901023759f1a5bab406c102",
+    "tests/WorkersCheck.hs": "05e8f9744c672454c15e03160b28fa66f5f951d74d0b851fc61c9cc1e9785386",
+    "tests/RegionInterfaces.hs": "2aecedb74b2807357d8b9c0c3b9f60bbe94326b1ca1b26b1bd83ab9eeee50e60",
+    "tests/check_finite_field_workers.py": "5f87bb9755bd227c522709086d2c4f77d36060bb8ad204beb5a00f6699863168",
+    "tests/check_compile_budget.py": "2ecb43e7bc87c3cc5a4a77675c3768d96a9ac77ddab77a0947ff18a72ba973fb",
+    "tests/compile_budget.json": "1030bccbc557ddea3cd2ae9e0dd82d3791044bfbf0faacc67cae465099257a69",
+    "tools/bench_field_worker_scaling.py": "40213879ab1102f7cc880034e3b4dccfc6f265c723c6a83ac397835cef3c48dc",
+    "bench/2026-11-05-field-shape-prefilter.json": "0110b6076dda4ce8f42a2fadfd55085ef518e8cd4b1899af757d61e373610454",
+    "bench/2026-11-05-field-shape-prefilter-code.json": "7964fcc89c2e6e52839f840baee7f301ce2cc4bec4bc05698500ec3281452913",
+    "bench/2026-11-05-field-shape-prefilter-cost.json": "f18d8ef43c8c987e86ad16f788163b084b9ca13cbc454b982cc9451ac67947c8",
+    "docs/2026-11-05-FIELD-SHAPE-PREFILTER.md": "3a8eb606a9f54031221416f10ff9d535aee269ee771714f68a719153fff04900",
+    "docs/2026-11-05-FINITE-BASE-FIELD-WORKERS.md": "3be7ef441243bfd5324d064089d49f24dd8f0e0e8eacc2043b6784fdf543183e",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "0b1421ecad7ae96e31a392a1a7c1965fc30698d2b69458a0a9f4c2b3f2bb2ab8"
+  }
+}

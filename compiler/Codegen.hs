@@ -6,7 +6,7 @@
 -- Static PAPs, constructor constants and module registries have a separate
 -- native data owner. Refusals are diagnostics; no text translator is retained.
 
-module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports,emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev) where
+module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports,emitCheckedProgramWithImports,emitProductProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, productBackendWidth) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.
@@ -18,6 +18,7 @@ import Control.Monad (when, unless)
 import Control.Monad.State.Strict (evalStateT,get,put,lift)
 import Data.List (intercalate, isPrefixOf, sort)
 import qualified Codegen.Call as Call
+import qualified Codegen.Heap as Heap
 import qualified Codegen.Target.A64 as A64
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -29,13 +30,14 @@ import qualified Codegen.Kernel as K
 import Codegen.Lower (lowerProgram, Prim (..))
 import qualified Codegen.Simplify as Simplify
 import Codegen.Split (splitEntryValues)
-import Codegen.Target.Common (Tune (..), noTune, mangleName,SymbolPolicy,publicSymbols,symbolNames)
-import Codegen.Policy (Profile (..), Policy (..), m2Policy, policyWidth)
+import Codegen.Target.Common (Tune (..), noTune, mangleName,SymbolPolicy,publicSymbols,symbolNames,visibilityFor,Visibility(..))
+import Codegen.Policy (Profile (..), StackPolicy(..), Policy (..), m2Policy, policyWidth)
 import qualified Codegen.Target.X64 as X64
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64WithSymbols)
 import Codegen.Target.Common (rodataDirective, stringLabel, stringObjectWidth, boxedFloatObject)
 import Codegen.Bounds (Report (..))
+import qualified Codegen.Stack as Stack
 import Codegen.Verify (verifyProgram, verifyProgramWidth, simdExprOk)
 import Codegen.Dump (dumpFn)
 import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgramWidth)
@@ -43,17 +45,19 @@ import KernelKinds (Kind(..))
 import Workers (ScalarSignatures, internalWorker, scalarPrimitives)
 
 import Core.Syntax (Core (..), Prog)
+import Core.ProductABI (productMarker)
 import Core.Utils
 import Core.Primitives (corePrims, primArities, entryTickName)
 import Core.Opt.Normalize (normIn, indexedMemory)
 import Core.Opt.Vector
 import Core.Opt.Vector.Plan
 import Core.Opt.Pipeline
+import Core.Opt.ProductParameters
 
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 162 -- compact 64-bit managed cells and schema-2 module layout contracts
+codegenRev = 204 -- importing artifacts own checked scalar-wrapper adapters
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -63,6 +67,8 @@ data Target = Target
     tgtName :: String,  -- for the banner comment
     tgtFuel :: Bool,    -- cooperative scheduler instrumentation
     tgtArc :: Bool,     -- explicit field layouts for managed constructors
+    tgtStackReport :: Bool, -- explicit report/admission or public C entries
+    tgtHeapProof :: Bool, -- opt-in cumulative builtin ARC allocation analysis
     tgtWeak :: Bool,    -- a LIBRARY unit: its unqualified globals (the
                         -- constructor stubs, $arc.mainManaged) are emitted
                         -- .weak so a program unit's copies win at link
@@ -107,13 +113,16 @@ data Emission = Emission
   { emNotes :: [String],
     emNative :: [String], -- native instructions and their literal pools
     emNativeNames :: [String], -- the functions the native backend emitted
+    emHeapEquations :: ![Heap.Equation], -- force disabled analysis to [] before retaining any IR
+
+    emStackFrames :: ![Stack.Frame], -- structured authority for callback admission
     emScalarFallbacks :: [(String, String)], -- scalar selection refusals, before kernel diagnostics
     emRefusals :: [(String, String)], -- functions and kernels it did not emit natively, with reasons
     emData :: [String] -- static objects in the selected target syntax
   }
 
 rv64, rv32 :: Target
-rv64 = Target {tgtW=8,tgtName="rv64",tgtFuel=True,tgtArc=False,tgtWeak=False,
+rv64 = Target {tgtW=8,tgtName="rv64",tgtFuel=True,tgtArc=False,tgtWeak=False,tgtHeapProof=False,tgtStackReport=False,
   tgtSimd=False,tgtFusion=True,tgtFloatInline=True,tgtScalarFast=True,tgtIndexedMemory=True,
   tgtScalarWorkers=True,tgtTickBatch=True,tgtPairReturns=True,tgtFieldWorkers=True,tgtTupleScalars=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
   tgtTypedIr=Nothing,tgtHal=M.empty,tgtPolicy=m2Policy,
@@ -181,6 +190,7 @@ externals ext prog = S.toList (S.fromList (concat [go (S.fromList ps) b [] | (_,
         | S.member n env || M.member n prog || M.member n ext || S.member n prims -> acc
         | "$sym." `isPrefixOf` n -> acc -- a linker symbol, not a runtime contract
         | n == entryTickName || n == "$trmc.setTail" || n == "$reuse.fresh" -> acc -- internal lowering forms
+        | Just _ <- productMarker n -> acc
         | otherwise -> n : acc
       CApp a b -> go env a (go env b acc)
       CLet x a b -> go env a (go (S.insert x env) b acc)
@@ -221,18 +231,26 @@ emitNative tgt nm symbols backend = case backend of
   DirectX64 fmt -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls))
   where exps=symbolNames symbols
 
-nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String])
+nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation])
 nativeSelect tgt spec nm sigs ext exps prog emitted =
   case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
-      Nothing -> ([], M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm) | n <- M.keys emitted], [])
+      Nothing -> ([], M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm) | n <- M.keys emitted], [], [])
       Just backend ->
         let emit = emitNative tgt nm exps backend
             results = [(n, emit f) | (n, f) <- M.toList lowered]
             errors = [n ++ ": " ++ e | (n, Left e) <- results, "compiler error: " `isPrefixOf` e]
             refusals = [(n, e) | (n, Left e) <- results, not ("compiler error: " `isPrefixOf` e)]
             accepted = M.fromList [(n, nf) | (n, Right nf) <- results]
+            heapFacts
+              | not (tgtHeapProof tgt) = []
+              | DirectRV W64 RV.HartTp <- backend,
+                polProfile (tgtPolicy tgt)==BuiltinArc, not (polFuel (tgtPolicy tgt)),
+                polStackCheck (tgtPolicy tgt)==StackStatic = concat
+                  [Heap.fromFn (visibilityFor (tgtWeak tgt) exps n==WeakSymbol) f
+                  | (n,f)<-M.toList lowered,M.member n accepted]
+              | otherwise = error "heap proof requires builtin RV64 ARC fixed-stack selection"
             declined = failures ++ refusals
             nativeNote nf = "typed-ir-backend: " ++ nfName nf ++ " native (frame " ++ frameOf nf ++ ", native-insns-v1 segmax=" ++ bound (rSegMax (nfReport nf)) ++ " exittail=" ++ bound (rExitTail (nfReport nf)) ++ " ccalls=" ++ show (rCCalls (nfReport nf)) ++ ")"
             -- the header's layout and allocation facts: `frame=N saved=... values=... spills=...` (M3)
@@ -246,13 +264,13 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
                   ( kernelsOf accepted, accepted,
                     declined ++ [(n, "native-insns-v1 is UNBOUNDED: a cycle without a safepoint") | n <- unbounded],
                     ("typed-ir-backend: native " ++ show (M.size accepted) ++ "/" ++ show (M.size emitted) ++ " functions (per-function)")
-                      : map nativeNote (M.elems accepted) ++ ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- declined]
+                      : map nativeNote (M.elems accepted) ++ ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- declined], heapFacts
                   )
                 WholeUnit
                   | null declined && null unbounded ->
                       ( kernelsOf accepted, accepted, [],
                         ("typed-ir-backend: native " ++ show (M.size accepted) ++ "/" ++ show (M.size emitted) ++ " functions (whole unit)")
-                          : map nativeNote (M.elems accepted)
+                          : map nativeNote (M.elems accepted), heapFacts
                       )
                   | otherwise ->
                       let reasons = declined ++ [(n, "native-insns-v1 is UNBOUNDED: a cycle without a safepoint") | n <- unbounded]
@@ -260,7 +278,7 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
                        in ( [], M.empty,
                             reasons ++ [(n, why) | n <- M.keys emitted, n `notElem` map fst reasons],
                             ("typed-ir-backend: native 0/" ++ show (M.size emitted) ++ " functions (" ++ why ++ ")")
-                              : ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- reasons]
+                              : ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- reasons], []
                           )
   where
     (lowered0, loweringFailures) = lowerProgram (tgtPolicy tgt) sigs lookupProg eligible ext (M.union kernelPrims (foreignEntries tgt))
@@ -323,16 +341,20 @@ emitProgramWithSymbols=emitProgramWithImports M.empty
 emitProgramWithImports :: Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
 emitProgramWithImports=emitCheckedProgramWithImports S.empty
 
--- the backends that answer a pair in two registers (Calling.selectPairTransfer); QOS and RV32 keep the word ABI
-pairBackend :: Maybe NativeBackend -> Bool
-pairBackend = \case
-  Just (DirectA64 _ _) -> True
-  Just (DirectX64 _) -> True
-  Just (DirectRV w _) -> w == W64
-  _ -> False
+-- Width of the private register-result convention. Other profiles and RV32
+-- retain the tagged ABI. Each admitted backend supplies eight private words.
+productBackendWidth :: Maybe NativeBackend -> Int
+productBackendWidth = \case
+  Just (DirectA64 _ _) -> 8
+  Just (DirectX64 _) -> 8
+  Just (DirectRV W64 _) -> 8
+  _ -> 0
 
 emitCheckedProgramWithImports :: S.Set String -> Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
-emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols elide prog0 =
+emitCheckedProgramWithImports=emitProductProgramWithImports emptyProductParameters
+
+emitProductProgramWithImports :: ProductParameters -> S.Set String -> Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
+emitProductProgramWithImports products checked imports tgt rvv spec exports ext symbols elide prog0 =
   let opts = OptimizationOptions
         { optFusion = tgtFusion tgt,
           optWorkers = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt),
@@ -340,23 +362,27 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
           optTupleScalars = tgtTupleScalars tgt,
           optScalarWorkers = tgtScalarWorkers tgt,
           optTickBatch = tgtTickBatch tgt,
-          optPairReturns = tgtPairReturns tgt && tgtW tgt == 8 && not (tgtArc tgt) && polProfile (tgtPolicy tgt) == HostedBase && pairBackend (tgtNative tgt >>= nmBackend),
+          optPairReturns = tgtPairReturns tgt && tgtW tgt == 8 && not (tgtArc tgt) && polProfile (tgtPolicy tgt) == HostedBase && productBackendWidth (tgtNative tgt >>= nmBackend) >= 2,
+          optProductWidth = productBackendWidth (tgtNative tgt >>= nmBackend),
           optNormalize = tgtScalarFast tgt,
           optReuse = tgtReuse tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt),
           optPoolResetters = tgtPoolResetters tgt }
-      optimized = either (error . ("Core optimization: " ++)) id (optimizeCoreWithCheckedImports checked imports opts elide prog0)
+      optimized = either (error . ("Core optimization: " ++)) id (optimizeCoreWithProducts products checked imports opts elide prog0)
       prog = optimizedProgram optimized
       workerSigs = optimizedSignatures optimized
       emitted = M.withoutKeys prog elide
       nm = fromMaybe (error "typed-ir: no native backend selected") (tgtNative tgt)
       context=prog `M.union` imports
-      (requests,nativeFns,failures,notes) = nativeSelect tgt spec nm workerSigs ext symbols context emitted
+      (requests,nativeFns,failures,notes,heapFacts) = nativeSelect tgt spec nm workerSigs ext symbols context emitted
       (kernels,kernelFailures,kernelNotes) = emitSpecs tgt rvv ext symbols context requests
       allFns = M.elems nativeFns ++ kernels
       strings = M.elems (M.fromList [(stringLabel str,str) | nf <- allFns,str <- nfStrings nf])
       floats = S.toList (S.fromList (concatMap nfBoxedFloats allFns))
       format = case nmBackend nm of Just (DirectA64 fmt _) -> fmt; Just (DirectX64 fmt) -> fmt; _ -> ELF
-      fnText = concatMap nfLines allFns
+      stackBounds = Stack.analyse (map nfStack allFns)
+      stackLines = if not (tgtStackReport tgt) then [] else [Stack.reportLine f b | nf <- allFns, let f = nfStack nf,
+                    Just b <- [M.lookup (Stack.frameSymbol f) stackBounds]]
+      fnText = concatMap nfLines allFns ++ stackLines
       -- the ticks' register-saving slow path, once per unit that ticks
       -- (from the selected code: scanning the text for the wrapper's name
       -- would hold the whole unit's text in memory)
@@ -388,6 +414,8 @@ emitCheckedProgramWithImports checked imports tgt rvv spec exports ext symbols e
           ++ kernelNotes ++ typedIrNotes (tgtTypedIr tgt) (tgtPolicy tgt) workerSigs ext (foreignEntries tgt) prog emitted ++ notes,
         emNative = nativeText,
         emNativeNames = M.keys nativeFns,
+        emHeapEquations = if tgtHeapProof tgt then heapFacts else [],
+        emStackFrames = if tgtStackReport tgt then map nfStack allFns else [],
         emScalarFallbacks = failures,
         emRefusals = failures ++ kernelFailures,
         emData = dat }

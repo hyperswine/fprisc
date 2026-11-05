@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "target": "builtin-rv32-tangnano20k-bram",
+  "elf_class_bits": 32,
+  "ram_origin": 2147483648,
+  "ram_bytes": 65536,
+  "max_image_bytes": 65536,
+  "min_free_bytes": 12288
+}

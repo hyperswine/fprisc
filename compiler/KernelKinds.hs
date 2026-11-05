@@ -1,6 +1,6 @@
 -- Kinds of the raw-word callback ABI, solved independently for every argument
 -- and result. Conflicts/unsupported Core decline to the ordinary tagged path.
-module KernelKinds (Kind(..), signature, signatureStrict) where
+module KernelKinds (Kind(..), signature, signatureStrict, componentSignatures) where
 import Core.Syntax (Core(..), Prog)
 import Control.Monad.State.Strict
 import Control.Monad (guard, zipWithM_)
@@ -89,3 +89,19 @@ signatureStrict prog ps body = evalStateT solve (Solve 0 M.empty M.empty)
       result <- expr True prog (M.fromList (zip ps args)) body
       let kind t = resolve t >>= \r -> case r of Known k -> pure k; _ -> lift Nothing
       ks <- mapM kind args; k <- kind result; pure (ks,k)
+
+-- Solve one recursive component in a single constraint environment. Callees
+-- outside it have independently proved signatures. An unresolved component
+-- declines as a unit, so evidence from its callers can never pin a generic
+-- callee to a representation. Each function body is visited once.
+componentSignatures :: Prog -> [String] -> M.Map String ([Kind],Kind)
+                    -> Maybe (M.Map String ([Kind],Kind))
+componentSignatures prog names imports = evalStateT solve (Solve 0 M.empty known)
+  where
+    known = M.map (\(args,result) -> (map Known args,Known result)) imports
+    solve = do
+      terms <- traverse (function True prog) names
+      kinds <- traverse concrete terms
+      pure (M.fromList (zip names kinds))
+    concrete (args,result) = (,) <$> traverse kind args <*> kind result
+    kind t = resolve t >>= \r -> case r of Known k -> pure k; Var _ -> lift Nothing

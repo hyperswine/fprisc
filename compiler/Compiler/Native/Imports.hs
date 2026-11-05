@@ -35,7 +35,11 @@ data CodeDeclarations=CodeDeclarations (S.Set ArtifactId) (M.Map Name CodeDeclar
 codeDeclarations :: LinkedProgram -> Either String CodeDeclarations
 codeDeclarations linked=do
   let entries=[(name,CodeDeclaration home source code (LanguageContract contract))
-        | (_,SymbolOwner home (PrivateDefinition source code@(CodeId name) contract))<-M.toList (linkedSymbols linked)]
+        | (_,SymbolOwner home definition)<-M.toList (linkedSymbols linked),
+          (source,code@(CodeId name),contract)<-case definition of
+            PrivateDefinition source code contract->[(source,code,contract)]
+            TypeInstanceDefinition source code _ contract->[(source,code,contract)]
+            _->[]]
       catalog=M.fromList entries
   unless (length entries==M.size catalog) (Left "native declarations: ambiguous private code identity")
   pure (CodeDeclarations (M.keysSet (linkedArtifacts linked)) catalog)

@@ -1,0 +1,112 @@
+{
+  "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+  "refusals": [
+    {
+      "case": "short",
+      "reason": "error: stack budget twice: needs 80 bytes, limit 79"
+    },
+    {
+      "case": "wrapper-short",
+      "reason": "error: stack budget run: needs 32 bytes, limit 16"
+    },
+    {
+      "case": "invalid-2",
+      "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+    },
+    {
+      "case": "invalid-3",
+      "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+    },
+    {
+      "case": "invalid-4",
+      "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+    },
+    {
+      "case": "invalid-5",
+      "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+    },
+    {
+      "case": "invalid-6",
+      "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+    },
+    {
+      "case": "check-only",
+      "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+    },
+    {
+      "case": "no-entries",
+      "reason": "error: --stack-budget requires builtin RV64 --arc --lib with explicit --export entries"
+    },
+    {
+      "case": "duplicates",
+      "reason": "error: stack budget has duplicate public callback entries"
+    },
+    {
+      "case": "retaining-recursion",
+      "reason": "error: stack budget recur: UNPROVED (recursive-stack:fpr_fn_recur_x4085e4deb060d7e9e2)"
+    },
+    {
+      "case": "uniform-conversion",
+      "reason": "error: stack budget identity: UNPROVED (runtime:fpr_fn__x24arc_x2euniformBoxWord, runtime:fpr_fn__x24arc_x2euniformUnboxWord)"
+    },
+    {
+      "case": "runtime-write",
+      "reason": "error: stack budget write: UNPROVED (runtime:fpr_fn__x24arc_x2ememwriteWord)"
+    },
+    {
+      "case": "overflow-path",
+      "reason": "error: stack budget plus: UNPROVED (runtime:fpr_fn__x24arc_x2eadd)"
+    }
+  ],
+  "predicted_bytes": {
+    "run": 32,
+    "twice": 80,
+    "product": 32
+  },
+  "stack_capacity_bytes": 80,
+  "observed_bytes": {
+    "run": 32,
+    "twice": 80,
+    "product": 32
+  },
+  "execution": "rv64-qemu-pass",
+  "invocations_per_mode": 192,
+  "guard_bytes_each_side": 16,
+  "allocator_symbols_absent": true,
+  "assembly_sha256": "348216f45870aa0fb0e96a4f0fa7fdd0991ca9c296e1a057e32536c59dd2558e",
+  "target_manifest": {
+    "schema": 1,
+    "target": "qemu-virt-rv64-8m-callback-test",
+    "elf_class_bits": 64,
+    "ram_origin": 2147483648,
+    "ram_bytes": 8388608,
+    "max_image_bytes": 8323072,
+    "min_free_bytes": 65536
+  },
+  "images": {
+    "plain": {
+      "schema": 2,
+      "target": "qemu-virt-rv64-8m-callback-test",
+      "elf_class_bits": 64,
+      "image_sha256": "207a136c14c833fd17ee71e8acb68f39bb22c83b60feffd5ad2d4d001ba808a7",
+      "manifest_sha256": "d2e6a9d4b3d1938dbe80cc7cc3d03053aa143c6a0e0b6635c6a10e629203f896",
+      "image_bytes": 1528,
+      "image_limit_bytes": 8323072,
+      "static_memory_bytes": 1672,
+      "remaining_ram_bytes": 8386936,
+      "min_free_bytes": 65536
+    },
+    "measured": {
+      "schema": 2,
+      "target": "qemu-virt-rv64-8m-callback-test",
+      "elf_class_bits": 64,
+      "image_sha256": "c12fcd78cc5f7253a9f7178d5c60bf3dfa3fccff1342581083cf2111af9a461c",
+      "manifest_sha256": "d2e6a9d4b3d1938dbe80cc7cc3d03053aa143c6a0e0b6635c6a10e629203f896",
+      "image_bytes": 1752,
+      "image_limit_bytes": 8323072,
+      "static_memory_bytes": 1896,
+      "remaining_ram_bytes": 8386712,
+      "min_free_bytes": 65536
+    }
+  }
+}

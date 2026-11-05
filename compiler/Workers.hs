@@ -1,16 +1,18 @@
 -- Private Base worker/wrapper conventions. Public arities and function values
 -- stay general. This pass runs after all source safety/ownership checking.
-module Workers (workerize, workerizeWithSignatures, workerizeWithOptions, ScalarSignatures, internalWorker, scalarPrimitives) where
+module Workers (workerize, workerizeWithSignatures, workerizeWithOptions, workerizeWithProducts, ScalarSignatures, internalWorker, scalarPrimitives) where
 
+import Codegen.IR (arityCeiling)
 import Core.Opt.Ticks (batchTicks)
 import Core.Primitives (scalarPrimitives, entryTickName)
 import Core.Syntax (Core(..), Prog)
-import KernelKinds (Kind(..), signatureStrict)
+import Core.Opt.ProductParameters
+import KernelKinds (Kind(..), componentSignatures)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.List (isPrefixOf)
+import Data.List (foldl',isPrefixOf,sortOn)
 import Data.Maybe (mapMaybe)
-import Data.Graph (SCC(..), stronglyConnComp)
+import Data.Graph (SCC(..), flattenSCC, stronglyConnComp)
 
 prefix :: String
 prefix = "$worker."
@@ -129,7 +131,10 @@ prepCallArgLets selected ps = go
       CLet n a b ->
         let a' = go a
             b' = go b
-         in if not (rebinds n b') && usedOnlyAsCallArg selected n b' && not (S.null (ctorTags a'))
+         -- Most lets bind scalar computations. Reject those before scanning
+         -- their entire continuation for capture and single-call use; repeated
+         -- field expansion otherwise pays that scan at every worker round.
+         in if not (S.null (ctorTags a')) && not (rebinds n b') && usedOnlyAsCallArg selected n b'
               then floatLet n a' b'
               else CLet n a' b'
       CApp a b -> CApp (go a) (go b)
@@ -151,7 +156,7 @@ prepCallArgLets selected ps = go
           not (S.null (ctorTags f)) || isParamVar f,
           size b <= 64 ->
             CIf cond (floatLet n t b) (floatLet n f b)
-      CMk t v xs | length xs >= 2, length xs <= 64 ->
+      CMk t v xs | not (null xs), length xs <= 64 ->
         let fields = [prefix ++ "let." ++ show k ++ "." ++ n | k <- [0 .. length xs - 1]]
             b' = subst n (CMk t v (map CVar fields)) b
          in foldr (uncurry CLet) b' (zip fields xs)
@@ -199,10 +204,60 @@ workerizeWithSignatures fields scalars batch prog =
   workerizeWithOptions fields True scalars batch prog
 
 workerizeWithOptions :: Bool -> Bool -> Bool -> Bool -> Prog -> (Prog,[String],ScalarSignatures)
-workerizeWithOptions fields tupleScalars scalars batch prog =
-  let (p,nf) = if fields then fieldWorkers tupleScalars prog else (prog,0)
+workerizeWithOptions=workerizeWithProducts emptyProductParameters
+
+workerizeWithProducts :: ProductParameters -> Bool -> Bool -> Bool -> Bool -> Prog -> (Prog,[String],ScalarSignatures)
+workerizeWithProducts products fields tupleScalars scalars batch prog =
+  let (p,nf,fieldNotes) = if fields then fieldWorkers products tupleScalars prog else (prog,0,[])
       (q,sigs) = if scalars then scalarWorkers batch p else (p,M.empty)
-  in (q,["# private workers: fields="++show nf++" scalar="++show (M.size sigs)],sigs)
+  in (q,["# private workers: fields="++show nf++" scalar="++show (M.size sigs)]++fieldNotes,sigs)
+
+-- Successive field plans need not publish a quadratic chain of general
+-- fallback bodies. A generated guard entry used ONLY by its parent can join
+-- that parent's guard. The parent's original fallback remains authoritative:
+-- under the parent guard, the child's fallback is its field-expanded body.
+-- Keep each removed entry's fuel tick, evaluated only when its parent guard
+-- succeeds. No arbitrary function, escape, recursive worker or effectful
+-- argument can supply this provenance.
+coalesceFieldGuards :: M.Map String String -> Prog -> (Prog,Int)
+coalesceFieldGuards lineages input=foldl combine (input,0) (sortOn length (M.keys input))
+  where
+    descends child parent=go S.empty child
+      where
+        go seen name | S.member name seen=False
+        go seen name=case M.lookup name lineages of
+          Just source->source==parent || go (S.insert name seen) source
+          Nothing->False
+    references=M.fromListWith (+) [(n,1::Int) | (_,body)<-M.elems input,CVar n<-nodes body]
+    nodes e=e:concatMap nodes (children e)
+    projection ps e=case e of
+      CVar n->n `elem` ps
+      CProj k a->k>=0 && projection ps a
+      _->False
+    guard ps e=case e of
+      CTagEq _ _ a->projection ps a
+      CMk 1 v []->v==0 || v==1
+      CIf c a b->all (guard ps) [c,a,b]
+      CLet n (CApp (CVar tick) (CInt 0)) b->tick==entryTickName && not (mentions n b) && guard ps b
+      _->False
+    combine (prog,removed) name=case M.lookup name prog of
+      Just (ps,CIf condition yes fallback)
+        | guard ps condition,
+          (CVar child,args)<-spine yes,
+          descends child name,M.lookup child references==Just 1,
+          Just (qs,CIf childCondition childYes _)<-M.lookup child prog,
+          length args==length qs,all (projection ps) args,guard qs childCondition,
+          (CVar grand,grandArgs)<-spine childYes,descends grand child,
+          all (projection qs) grandArgs ->
+            let substitution=M.fromList (zip qs args)
+                instantiate=walk (\e->case e of CVar n->M.findWithDefault e n substitution;_->e)
+                tickName=prefix++"guard.tick."++child
+                condition'=CIf condition
+                  (CLet tickName (app entryTickName [CInt 0]) (instantiate childCondition)) (CMk 1 0 [])
+                body=CIf condition' (app grand (map instantiate grandArgs)) fallback
+                next=M.insert name (ps,body) (M.delete child prog)
+            in combine (next,removed+1) name
+      _->(prog,removed)
 
 -- Fixed-width constructor parameters. The expanded arity must fit the native
 -- ABI (8 registers plus 56 per-hart spill cells). Whole-value uses must
@@ -212,22 +267,53 @@ workerizeWithOptions fields tupleScalars scalars batch prog =
 -- recursive arguments may also be let/if trees ending in constructors (such as
 -- an inlined step helper after CaseKnown), and multiple tuple/record parameters
 -- unbox across successive rounds.
-fieldWorkers :: Bool -> Prog -> (Prog,Int)
-fieldWorkers tupleScalars input
-  | not tupleScalars = let (p,added) = fieldWorkersStep False S.empty input in (p,S.size added)
-  | otherwise = go (4 :: Int) S.empty 0 input
+-- One-field wrappers use the same guarded entry and boxed escape convention;
+-- their payload remains an ordinary Base value, including heap references.
+-- A finite rank of observed parameter paths, not a cloning/depth budget.
+-- Aliases and projection-bound lets preserve the root parameter. Duplicating
+-- a branch does not create a new path; unknown calls/joins supply no evidence.
+-- Every admitted round maps each source to at most one child, never increases
+-- a child's rank, and strictly decreases the sum across the new frontier.
+projectionRank :: [String] -> Core -> Int
+projectionRank ps body = sum [length path | (_,path)<-S.toList (visit initial body)]
   where
-    go 0 _ total prog = (prog,total)
-    go rounds allowed total prog =
-      let (prog',added) = fieldWorkersStep True allowed prog
-       in if S.null added
-            then (prog',total)
-            else go (rounds - 1) added (total + S.size added) prog'
+    initial=M.fromList [(p,(i,[])) | (i,p)<-zip [0::Int ..] ps]
+    path env e=case e of
+      CVar n->M.lookup n env
+      CProj k x->do (root,indices)<-path env x;pure (root,indices++[k])
+      _->Nothing
+    visit env e=case e of
+      CLet n a b->visit env a `S.union` visit
+        (maybe (M.delete n env) (\p->M.insert n p env) (path env a)) b
+      CLam ns b->visit (foldr M.delete env ns) b
+      _->let here=case e of CProj _ _->maybe S.empty S.singleton (path env e);_->S.empty
+         in here `S.union` S.unions (map (visit env) (children e))
 
-fieldWorkersStep :: Bool -> S.Set String -> Prog -> (Prog,S.Set String)
-fieldWorkersStep tupleScalars allowedWorkers input =
+fieldWorkers :: ProductParameters -> Bool -> Prog -> (Prog,Int,[String])
+fieldWorkers products tupleScalars input
+  | not tupleScalars = let (p,added,_) = fieldWorkersStep products False S.empty input in (p,M.size added,[])
+  | otherwise = go products S.empty 0 0 M.empty input
+  where
+    summary removed=["# private field guards coalesced: "++show removed | removed>0]
+    go evidence allowed total removed lineages prog =
+      let (prog',added,evidence') = fieldWorkersStep evidence True allowed prog
+          transitions=[(projectionRank ps body,projectionRank qs after) |
+            (worker,source)<-M.toList added,
+            Just (ps,body)<-[M.lookup source prog],Just (qs,after)<-[M.lookup worker prog']]
+          finite=length transitions==M.size added && all (uncurry (>=)) transitions &&
+            sum (map snd transitions)<sum (map fst transitions)
+       in if M.null added then (prog,total,summary removed)
+          else if finite then
+            let lineages'=M.union added lineages
+                (compact,discarded)=coalesceFieldGuards lineages' prog'
+            in go evidence' (M.keysSet added) (total+M.size added-discarded) (removed+discarded) lineages' compact
+          else (prog,total,summary removed++["# private field workers: declined round without decreasing structural projection-path rank"])
+
+fieldWorkersStep :: ProductParameters -> Bool -> S.Set String -> Prog -> (Prog,M.Map String String,ProductParameters)
+fieldWorkersStep products tupleScalars allowedWorkers input =
   (M.map (\(ps,b)->(ps,rewrite (S.fromList ps) (if tupleScalars && not (M.null plans) then prepCallArgLets (`M.member` plans) ps (aliases (S.fromList ps) b) else b))) combined,
-   S.fromList [w | (_,(_,_,_,w))<-M.toList plans])
+   M.fromList [(w,n) | (n,(_,_,_,w))<-M.toList plans],
+   M.foldlWithKey' transport products plans)
   where
     prep name (ps,b) =
       let b0 = aliases (S.fromList ps) b
@@ -237,15 +323,41 @@ fieldWorkersStep tupleScalars allowedWorkers input =
                  (_,(_,b)) <- M.toList prog, CMk t v xs <- nodes b]
     nodes e = e : concatMap nodes (children e)
     blocked = vectorCallbacks prog
+    -- Only pay for a new nonrecursive entry when this artifact contains a
+    -- constructor call it can remove. This scan is lexical, including strict
+    -- let-bound constructors; the existing rewrite separately proves movement.
+    supplied = S.unions [sites (S.fromList ps) M.empty b | (ps,b)<-M.elems prog]
+    sites bound known e = case e of
+      CLet n a b -> sites bound known a `S.union`
+        sites (S.insert n bound) (case shapeOf known a of
+          Just s | not (rebinds n b), usedOnlyAsCallArg (`M.member` prog) n b->M.insert n s known
+          _->M.delete n known) b
+      CLam ps b->sites (bound `S.union` S.fromList ps) (foldr M.delete known ps) b
+      _ -> let here=case spine e of
+                 (CVar f,args) | f `S.notMember` bound,Just (ps,_)<-M.lookup f prog,length args==length ps ->
+                   S.fromList [(f,i,s) | (i,a)<-zip [0..] args,Just s<-[shapeOf known a]]
+                 _->S.empty
+           in here `S.union` S.unions (map (sites bound known) (children e))
+    shapeOf known e=case e of
+      CMk t v xs->Just (t,v,length xs)
+      CVar x->M.lookup x known
+      CLet n a b->shapeOf (case shapeOf known a of Just s->M.insert n s known;Nothing->M.delete n known) b
+      CIf _ a b->do x<-shapeOf known a;y<-shapeOf known b;if x==y then Just x else Nothing
+      _->Nothing
     eligibleName name
       | S.null allowedWorkers = not (internalWorker name)
       | otherwise = S.member name allowedWorkers
     choose (name,(ps,b))
       | S.member name blocked = Nothing
-      | null ps || length ps > 64 || size b > 8192 || not (eligibleName name) = Nothing
-      | otherwise = case mapMaybe (candidate name ps b) (zip [0..] ps) of
+      | null ps || length ps > arityCeiling || not (eligibleName name) = Nothing
+      | otherwise = case mapMaybe (candidate name ps b) [(i,p) | (i,p)<-zip [0..] ps,S.member p projected] of
           (i,tv,width):_ -> Just (name,(i,tv,width,prefix++"fields."++name))
           _ -> Nothing
+      where
+        -- A projection is already a mandatory admission condition. Index it
+        -- once, rather than rescanning tags/recursive calls for every scalar
+        -- parameter introduced by earlier rounds of a wide product plan.
+        projected=S.fromList [p | CProj _ (CVar p)<-nodes b]
     candidate name ps b (i,p) = do
       let tags = S.fromList [(t,v) | CTagEq t v (CVar x) <- nodes b, x==p]
           -- Record projections may test several shapes sharing a field name.
@@ -257,24 +369,31 @@ fieldWorkersStep tupleScalars allowedWorkers input =
                                 f==name, length args==length ps,
                                 (t,v)<-if tupleScalars then S.toList (ctorTags (args!!i))
                                        else [(t,v) | CMk t v _ <- [args!!i]]]
-      tv <- case (S.toList rebuilt, S.toList tags) of
-              ([one], _) -> Just one
-              (_, [one]) -> Just one
-              _ -> Nothing
-      width <- case M.lookup tv arities of
-        Just widths | [n] <- S.toList widths -> Just n
-        _ -> Nothing
+          checked=parameterProduct products name ps i
+      (tv,width) <- case checked of
+        Just (t,v,w) | maybe True (==S.singleton w) (M.lookup (t,v) arities)->Just ((t,v),w)
+        Just _->Nothing
+        Nothing->do
+          tv<-case (S.toList rebuilt,S.toList tags) of
+            ([one],_)->Just one
+            (_,[one])->Just one
+            _->Nothing
+          width<-case M.lookup tv arities of
+            Just widths | [n]<-S.toList widths->Just n
+            _->Nothing
+          Just (tv,width)
       -- Discard only branches excluded by the guarded constructor shape.
       -- A shared record field can have different offsets in other shapes;
       -- those unreachable projections must not veto this worker.
       let narrowed = narrow p tv b
           projections = [k | CProj k (CVar x) <- nodes narrowed, x==p]
-      if width < 2 || length ps - 1 + width > 64 || size narrowed > 1024 || null projections ||
+      if width < 1 || length ps - 1 + width > arityCeiling || null projections ||
          any (\k -> k < 0 || k >= width) projections ||
          name `elem` ps || rebinds name b || rebinds p b ||
          not ((if tupleScalars then usesTail else uses) name i p width narrowed) ||
-         size (snd (makeBody name ps b i tv width)) > 1024 ||
-         not (any (recursive name (length ps) i p tv width) (nodes narrowed))
+         not (any (recursive name (length ps) i p tv width) (nodes narrowed) ||
+              (tupleScalars && checked/=Nothing &&
+               not (mentions name b) && S.member (name,i,(fst tv,snd tv,width)) supplied))
         then Nothing else Just (i,tv,width)
     narrow p tv = walk $ \e -> case e of
       CTagEq t v (CVar x) | x==p -> CMk 1 (if tv==(t,v) then 1 else 0) []
@@ -312,43 +431,39 @@ fieldWorkersStep tupleScalars allowedWorkers input =
       CLet x a b->uses name i p width a && (x==p || usesTail name i p width b)
       CIf c a b->uses name i p width c && usesTail name i p width a && usesTail name i p width b
       _->uses name i p width e
-    -- Bound both the source scan (8192 nodes, allowing record shape chains)
-    -- and the actual cloned body (1024 nodes, including expanded forwarding).
-    -- All selected calls remain saturated; at most 128 workers per unit.
-    loopPlans = M.fromList (take 128 (mapMaybe choose (M.toAscList prog)))
-    plans = if tupleScalars then forwardPlans (3::Int) loopPlans else loopPlans
-    -- A specialized fold's public-shaped entry may check for an empty range
-    -- before calling the actual accumulator loop. Propagate a guarded shape
-    -- through small nonrecursive forwarding entries, so the seed need not be
-    -- boxed just to cross that wrapper. Never infer a shape from a name.
+    -- Every source contributes at most one entry to this finite round.
+    -- The outer driver proves progress before publishing it. Target arity and
+    -- final image admission, plus compiler-cost gates, bound resource use.
+    loopPlans = M.fromList (mapMaybe choose (M.toAscList prog))
+    plans = if tupleScalars then forwardPlans loopPlans else loopPlans
     forwarding = [(name,ps,b,sites) | (name,(ps,b))<-M.toAscList prog,
-      eligibleName name,name `S.notMember` blocked,not (null ps),length ps<=64,size b<=128,
+      eligibleName name,name `S.notMember` blocked,not (null ps),length ps<=arityCeiling,
       let sites=[(f,args) | e<-nodes b,(CVar f,args@(_:_))<-[spine e],
                     Just (qs,_)<-[M.lookup f prog],length args==length qs],
       not (any ((==name) . fst) sites)]
-    forwardPlans 0 known=known
-    forwardPlans remaining known
-      | M.null known || M.size known>=128=known
+    -- Monotonically add original names, never generated names, within this
+    -- round. No fixed chain length or helper count can truncate the closure.
+    forwardPlans known
+      | M.null known=known
       | otherwise=
-          let added=M.fromList (take (128-M.size known)
-                (mapMaybe (chooseForward known) forwarding))
-          in if M.null added then known else forwardPlans (remaining-1) (known `M.union` added)
+          let added=M.fromList (mapMaybe (chooseForward known) forwarding)
+          in if M.null added then known else forwardPlans (known `M.union` added)
     chooseForward known (name,ps,b,sites)
       | M.member name known || not (any (\(f,_)->M.member f known) sites)=Nothing
       | not (S.null (M.keysSet known `S.intersection` (S.fromList ps `S.union` boundIn b)))=Nothing
-      | otherwise=case mapMaybe candidateForward (zip [0..] ps) of
+      | otherwise=case mapMaybe candidateForward [(i,p) | (i,p)<-zip [0..] ps,S.member p forwarded] of
           (i,tv,width):_->Just (name,(i,tv,width,prefix++"fields."++name))
           _->Nothing
       where
+        forwarded=S.fromList [p | (f,args)<-sites,Just (i,_,_,_)<-[M.lookup f known],CVar p<-[args!!i]]
         candidateForward (i,p)=do
           (tv,width)<-case S.toList (S.fromList [(shape,w) | (f,args)<-sites,
             Just (j,shape,w,_)<-[M.lookup f known],args!!j==CVar p]) of
               [shape]->Just shape
               _->Nothing
           let body=narrow p tv b
-          if length ps-1+width>64 || rebinds p b ||
-             not (forwardUses known p tv width True body) ||
-             size (snd (makeBody name ps b i tv width))>1024
+          if length ps-1+width>arityCeiling || rebinds p b ||
+             not (forwardUses known p tv width True body)
             then Nothing else Just (i,tv,width)
     forwardUses known p tv width tailPosition e=case e of
       CVar x | x==p->tailPosition
@@ -368,6 +483,8 @@ fieldWorkersStep tupleScalars allowedWorkers input =
           CLet x rhs b->plain rhs && (x==p || argument b)
           CIf c a b->plain c && argument a && argument b
           _->plain a
+    transport evidence name (i,(t,v),width,worker)=
+      expandProductParameter name (fst (prog M.! name)) worker (fst (additions M.! worker)) i (t,v,width) evidence
     additions = M.fromList [(worker,makeBody name ps b i tv width) |
                    (name,(i,tv,width,worker))<-M.toList plans, let (ps,b)=prog M.! name]
     makeBody name ps b i (t,v) width =
@@ -428,40 +545,64 @@ scalarWorkers batch prog = (M.union wrapped workers,M.mapKeys worker chosen)
   where
     -- The fragment has no allocation, managed projections, unknown callbacks
     -- or foreign calls. Bool values retain the normal immutable ABI.
-    admissible bound e = case spine e of
-      (CVar h,args@(_:_)) | not (S.member h bound),
-        (M.member h prog && length args==length (fst (prog M.! h))) ||
-        (M.notMember h prog && h `elem` ops && length args==2) -> all (admissible bound) args
-      -- An inlined callee's entry tick stays in place; it touches no value.
-      (CVar h,[CInt _]) | h == entryTickName -> True
+    dependencies bound e = case spine e of
+      (CVar h, args@(_:_)) | S.notMember h bound,
+        Just (params, _) <- M.lookup h prog, length args == length params,
+        S.notMember (worker h) bound -> S.insert h <$> arguments args
+      (CVar h, [a,b]) | S.notMember h bound, M.notMember h prog, h `elem` ops -> arguments [a,b]
+      (CVar h, [CInt _]) | h == entryTickName, S.notMember h bound -> Just S.empty
       _ -> case e of
-        CVar n -> S.member n bound; CInt _ -> True; CMk 1 _ [] -> True
-        CTagEq 1 _ x -> admissible bound x
-        CLet n a b -> admissible bound a && admissible (S.insert n bound) b
-        CIf a b c -> all (admissible bound) [a,b,c]; CErr _ -> True; _ -> False
-    calls ps b = S.fromList [h | e <- nodes b, let (head0,args)=spine e,
-                           CVar h <- [head0], not (null args), h `notElem` ps, M.member h prog]
-    nodes e = e : concatMap nodes (children e)
+        CVar n | S.member n bound -> Just S.empty
+        CInt _ -> Just S.empty
+        CMk 1 _ [] -> Just S.empty
+        CTagEq 1 _ x -> dependencies bound x
+        CLet n a b -> S.union <$> dependencies bound a <*> dependencies (S.insert n bound) b
+        CIf c a b -> arguments [c,a,b]
+        CErr _ -> Just S.empty
+        _ -> Nothing
+      where arguments xs = S.unions <$> traverse (dependencies bound) xs
+
     blocked = vectorCallbacks prog
-    candidates = M.fromList [(n,(ks,r)) | (n,(ps,b)) <- M.toAscList prog,
-      S.notMember n blocked, not (null ps), length ps<=8, size b<=1024, admissible (S.fromList ps) b,
-      Just (ks,r)<-[signatureStrict prog ps b], all (`elem` [KI,KB]) (r:ks), KI `elem` ks]
-    closed set = let next=M.filterWithKey (\n _ -> let (ps,b)=prog M.! n in calls ps b `S.isSubsetOf` M.keysSet set) set
-                 in if M.size next==M.size set then set else closed next
-    -- Bound total cloned Core as well as count. Prune incomplete call graphs.
-    budget _ [] = []
-    budget left ((n,sig):rest) | cost<=left = (n,sig):budget (left-cost) rest
-                             | otherwise = budget left rest
-      where cost=size (snd (prog M.! n))
-    eligible = closed candidates
-    edges n = let (ps,b)=prog M.! n in calls ps b
-    loops = S.fromList (concat [ns | CyclicSCC ns <- stronglyConnComp
-              [(n,n,S.toList (edges n)) | n<-M.keys eligible]])
-    reachable seen = let next=seen `S.union` S.unions (map edges (S.toList seen))
-                     in if next==seen then next else reachable next
-    -- Entry guards amortize over loops. Do not add a worker/wrapper call to
-    -- every tiny nonrecursive scalar helper in ordinary application code.
-    chosen = closed (M.fromList (budget 20000 (take 128 (M.toAscList (M.restrictKeys eligible (reachable loops))))))
+    candidate n (ps,b)
+      | S.member n blocked || null ps || length ps > arityCeiling || M.member (worker n) prog = Nothing
+      | otherwise = dependencies (S.fromList ps) b
+    graph = M.mapMaybeWithKey candidate prog
+    edges n = graph M.! n
+    components = stronglyConnComp [(n,n,S.toList callees) | (n,callees) <- M.toAscList graph]
+
+    -- Process recursive components together, with callees first. A loop
+    -- that reaches a foreign, unsupported or untyped callee stays general.
+    closed allowed = foldl' keep S.empty components
+      where
+        keep accepted component
+          | members `S.isSubsetOf` allowed && external `S.isSubsetOf` accepted = S.union members accepted
+          | otherwise = accepted
+          where members = S.fromList (flattenSCC component)
+                external = S.unions (map edges (S.toList members)) `S.difference` members
+    eligible = closed (M.keysSet graph)
+    loops = [n | CyclicSCC ns <- components, n <- ns, S.member n eligible]
+    reachable seen [] = seen
+    reachable seen (n:rest)
+      | S.member n seen = reachable seen rest
+      | otherwise = reachable (S.insert n seen) (S.toList (edges n) ++ rest)
+
+    -- Solve kinds only for functions used by eligible scalar loops. Each
+    -- source has one worker at most. The hosted compiler-cost gate applies
+    -- regardless of function names, body size or the number of peers.
+    wanted = reachable S.empty loops
+    signatures = foldl' solve M.empty components
+    solve known component
+      | S.disjoint members wanted = known
+      | M.size imports /= S.size external = known
+      | Just sigs <- componentSignatures prog names imports,
+        all scalarKinds (M.elems sigs) = M.union sigs known
+      | otherwise = known
+      where names = flattenSCC component
+            members = S.fromList names
+            external = S.unions (map edges names) `S.difference` members
+            imports = M.restrictKeys known external
+            scalarKinds (ks,r) = KI `elem` ks && all (`elem` [KI,KB]) (r:ks)
+    chosen = M.restrictKeys signatures (reachable S.empty (filter (`M.member` signatures) loops))
     worker n = prefix++"scalar."++n
     raw (CInt n) = app "$scalar.unbox" [CInt n]
     raw e = case spine e of

@@ -37,6 +37,7 @@ artifactCore (NativeArtifact _ _ _ p)=p
 -- Compatibility definitions deliberately have no invented typed contract.
 data Definition=SourceDefinition String Scheme Int
   | PrivateDefinition String CodeId CodeContract
+  | TypeInstanceDefinition String CodeId Scheme CodeContract
   | CompatibilityDefinition Int
   deriving Show
 data SymbolKey=ExportedSymbol String | ArtifactSymbol ArtifactId String deriving (Eq,Ord,Show)
@@ -96,12 +97,22 @@ linkArtifacts inputs=do
     definitions=concatMap entries inputs
     entries a=
       let p=source a
-          typed=M.fromList ([(name,SourceDefinition name (programSchemas p M.! name) (length (functionParameters (closedRoot f)))) | (name,f)<-owned a]
+          instances=nativeTypeInstances (artifactCore a)
+          typed=M.fromList ([(name,sourceDefinition instances a p name f) | (name,f)<-owned a]
             ++[(name,PrivateDefinition owner k c) | (owner,f)<-owned a,(k@(CodeId name),c)<-M.toList (closedOwnedContracts f)])
       in [(key name,SymbolOwner (artifactId a) (M.findWithDefault (CompatibilityDefinition (length ps)) name typed))
           | (name,(ps,_))<-M.toList (emitted a)]
       where key name=if name `S.member` artifactExports a then ExportedSymbol name else ArtifactSymbol (artifactId a) name
+    sourceDefinition instances a p name f
+      | name `S.notMember` artifactExports a,
+        Just original<-M.lookup name instances =
+          let fn=closedRoot f
+              code=CodeFunction (CodeId name) ClosureCode [] (functionParameters fn) (functionBody fn)
+          in TypeInstanceDefinition original (CodeId name) (programSchemas p M.! name) (codeContract code)
+      | otherwise = SourceDefinition name (programSchemas p M.! name) (length (functionParameters (closedRoot f)))
     symbols=M.fromList definitions
+    typeInstances=M.fromListWith (++) [(name,[(home,published,contract)])
+      | (ArtifactSymbol home name,SymbolOwner _ (TypeInstanceDefinition _ _ published contract))<-M.toList symbols]
     privateNames=S.fromList [name | ArtifactSymbol _ name<-M.keys symbols]
     elisions=S.unions [artifactElided a `S.intersection` M.keysSet (nativeProgram (artifactCore a)) | a<-inputs]
     references e=(case exprNode e of Var (Global name _)->S.singleton name;_->S.empty)
@@ -127,9 +138,19 @@ linkArtifacts inputs=do
             CompatibilityDefinition arity->unless (M.lookup name (programArities (source a))==Just arity)
               (bad ("compatibility physical arity disagrees at "++name))
             PrivateDefinition {}->bad ("private code needs an explicit imported declaration: "++name)
+            TypeInstanceDefinition {}->bad ("private type instance cannot be a public source entry: "++name)
         Just _->pure ()
-        Nothing->unless (name `S.notMember` privateNames)
-          (bad ("cross-artifact reference to private symbol "++name))
+        Nothing->case M.lookup name typeInstances of
+          Just [(home,published,contract)] | home/=artifactId a->do
+            let declaration=M.lookup name (nativeTypeInstanceDeclarations (artifactCore a))
+            unless (maybe False (equivalent published . fst) declaration)
+              (bad ("imported type-instance scheme disagrees at "++name))
+            unless (fmap snd declaration==Just (length (contractParameters contract)))
+              (bad ("imported type-instance arity disagrees at "++name))
+          _ | M.member name (nativeTypeInstances (artifactCore a))->
+                bad ("type instance has no unique emitting home: "++name)
+            | otherwise->unless (name `S.notMember` privateNames)
+                (bad ("cross-artifact reference to private symbol "++name))
 
 -- Re-link after cloning so every new entry receives its emitting owner and
 -- every imported original code reference is checked against its actual home.

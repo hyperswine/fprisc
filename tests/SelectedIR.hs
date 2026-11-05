@@ -449,6 +449,43 @@ callingContracts = do
           check "native arity boundaries survive selection and physical placement"
             (transfers abi (stores abi n++[I selected])==Right ()
              && transfers abi (stores abi n++[I (physical selected)])==Right ())
+    let expectedResults = case abi of
+          Calling.X86_64 -> map Phys ["rax","rdx","rcx","rsi","rdi","r8","r9","r10"]
+          Calling.AArch64 -> map (Phys . ("x"++) . show) [0::Int ..7]
+          Calling.RiscV -> map (Phys . ("a"++) . show) [0::Int ..7]
+        productCall convention n = Calling.selectProductTransfer abi convention (CodeSymbol "product")
+          (map VReg [0..8]) (map VReg [9..8+n]) (select abi native Calling.WordResult 9)
+    check "private product register bank is explicit" (Calling.productRegisters abi == expectedResults)
+    forM_ [native, quiet] $ \convention -> forM_ [2..length expectedResults] $ \n -> do
+      let selected = either error id (productCall convention n)
+          defs = siDefs selected
+      check "every result survives selection and physical placement"
+        (transfers abi (stores abi 9 ++ [I selected]) == Right ()
+         && transfers abi (stores abi 9 ++ [I (physical selected)]) == Right ())
+      check "all result registers leave the clobber set"
+        (not (any (`elem` siClobbers selected) (take n expectedResults)))
+      refused "missing product result is rejected" "result register"
+        (transfers abi (stores abi 9 ++ [I selected {siDefs=drop 1 defs}]))
+      refused "result register order is authoritative" "result register"
+        (transfers abi (stores abi 9 ++ [I selected {siDefs=reverse defs}]))
+      refused "result registers cannot also be clobbered" "clobber set"
+        (transfers abi (stores abi 9 ++ [I selected {siClobbers=head expectedResults:siClobbers selected}]))
+      refused "foreign product metadata is rejected" "private FPR"
+        (Calling.resultPlaces abi Calling.RuntimeCall (Calling.ProductResult n))
+      if abi==Calling.X86_64 then do
+        let returned rs=(plainOpcode (Opcode.X64 Opcode.Ret) [] (map OP rs)) {siControl=Return}
+        check "x64 returns validate every ordered result"
+          (checkForms "product" [I (returned (take n expectedResults))]==Right ())
+        refused "x64 rejects reordered result registers" "register"
+          (checkForms "product" [I (returned (reverse (take n expectedResults)))])
+        else pure ()
+    forM_ [-1,0,1,length expectedResults+1] $ \n ->
+      refused "unsupported widths do not truncate" "unsupported product result count"
+        (Calling.resultPlaces abi native (Calling.ProductResult n))
+    refused "product results cannot use scalar selection" "needs product selection"
+      (Calling.selectTransfer abi native (Calling.ProductResult 3) (CodeSymbol "p") [] Nothing (select abi native Calling.DiscardResult 0))
+    refused "product definitions are distinct" "duplicate product"
+      (Calling.selectProductTransfer abi native (CodeSymbol "p") [] [VReg 0,VReg 0] (select abi native Calling.DiscardResult 0))
     let c=select abi Calling.RuntimeCall Calling.WordResult (length (abiBank abi))
     check "supported runtime calls use the native register bank" (transfers abi [I c]==Right ())
     refused "runtime C stack arguments are not private FPR cells" "unsupported argument count"

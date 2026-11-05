@@ -1,0 +1,219 @@
+{
+  "schema": "static-arena-validation-v1",
+  "codegen_revision": 181,
+  "compiler_sha256": "8591f084d6324b8c1b8bb4b6f8d41cadb50ca8290085778ea29930fcbc8fd78a",
+  "unchanged_compiler_qualification": "bench/2026-11-05-owned-products-validation.json",
+  "checks": [
+    {
+      "name": "static-arena",
+      "command": [
+        "python3",
+        "tests/check_static_arena.py",
+        "--require-execution",
+        "--record",
+        "bench/2026-11-05-static-arena.json"
+      ],
+      "status": "PASS",
+      "log_sha256": "e2a076a06b29540c172724833ac26bf85dfaee47616d5944f43fe2636482785d",
+      "output_tail": [
+        "identity: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "wide: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "arity-limit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-yes: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-no: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-low: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-high: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "bool: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "unit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "mixed: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+      ]
+    },
+    {
+      "name": "heap-demand-regression",
+      "command": [
+        "python3",
+        "tests/check_heap_budget.py",
+        "--require-execution",
+        "--record",
+        "/tmp/fpr-static-existing-heap.json"
+      ],
+      "status": "PASS",
+      "log_sha256": "87beec7f823ee7f46a5d17a56029bf23639c9475251a1d23c8100a3c46c6f7e1",
+      "output_tail": [
+        "Heap admission: conversion requests, exact/short limits, zero-allocation raw entry and unknown-boundary refusals PASS",
+        "RV64 plain/measured: 256 allocated callbacks per mode, fixed-arena guards and complete reclamation PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "status": "PASS",
+      "log_sha256": "f39c9112fd2485427ef1d48152272f1796880b0f947f7d99beacc30b326d707b",
+      "output_tail": [
+        "..check_ci: tests/check_rv64_linux.py::typed-runtime",
+        "check_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s",
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.068s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "heap_regression": {
+    "compiler_sha256": "8591f084d6324b8c1b8bb4b6f8d41cadb50ca8290085778ea29930fcbc8fd78a",
+    "refusals": [
+      {
+        "case": "one-byte-short",
+        "reason": "error: heap budget wide: needs 2640 bytes, limit 2639"
+      },
+      {
+        "case": "admitted",
+        "reason": "error: heap budget wide: needs 2640 bytes, limit 2639"
+      },
+      {
+        "case": "invalid-0",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-1",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-2",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-3",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-4",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-5",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "check-only",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "no-entries",
+        "reason": "error: --heap-budget requires builtin RV64 --arc --lib with explicit --export entries"
+      },
+      {
+        "case": "rv32",
+        "reason": "profile builtin RV32 currently supports manual ownership only; --arc/--raw/--export require RV64"
+      },
+      {
+        "case": "duplicates",
+        "reason": "error: heap budget has duplicate public callback entries"
+      },
+      {
+        "case": "foreign",
+        "reason": "error: heap budget speak: UNPROVED [\"runtime:fpr_fn__x24arc_x2eprint\"]"
+      },
+      {
+        "case": "overflow",
+        "reason": "error: heap budget plus: UNPROVED [\"runtime:fpr_fn__x24arc_x2eadd\"]"
+      }
+    ],
+    "stack_report_refresh_preserves_code_and_unit_identities": true,
+    "stack_report_refreshed_units": 1,
+    "unchanged_instructions_and_data": true,
+    "cached_short_budget_preserves_existing_output": true,
+    "bounds": {
+      "identity": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "arena_bytes": 416
+      },
+      "wide": {
+        "requests": 13,
+        "requested_bytes": 312,
+        "arena_bytes": 2640
+      },
+      "choose": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "arena_bytes": 624
+      }
+    },
+    "maximum_arena_bytes": 2640,
+    "execution": {
+      "status": "RV64-QEMU-PASS",
+      "rvc": false,
+      "calls_per_mode": 256,
+      "images": {
+        "plain": {
+          "admission": {
+            "schema": 2,
+            "target": "qemu-rv64-heap-budget-test",
+            "elf_class_bits": 64,
+            "image_sha256": "c501f5109cae9da5451e975bf8d1e1258d7eacd93f132742eb79931969ed275d",
+            "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+            "image_bytes": 6424,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 14336,
+            "remaining_ram_bytes": 8374272,
+            "min_free_bytes": 65536
+          },
+          "output": "identity 0\nwide 0\nchoose 0\nHEAP_BUDGET_FIXED_ARENAS_PASS\n"
+        },
+        "measured": {
+          "admission": {
+            "schema": 2,
+            "target": "qemu-rv64-heap-budget-test",
+            "elf_class_bits": 64,
+            "image_sha256": "d7db929e0990bb40d0436ae1b091861b0b2b1d5e3cb10dbc8d6f294828f97474",
+            "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+            "image_bytes": 6720,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 14672,
+            "remaining_ram_bytes": 8373936,
+            "min_free_bytes": 65536
+          },
+          "output": "identity 112\nwide 1344\nchoose 224\nHEAP_BUDGET_FIXED_ARENAS_PASS\n"
+        }
+      },
+      "target_manifest": {
+        "schema": 1,
+        "target": "qemu-rv64-heap-budget-test",
+        "elf_class_bits": 64,
+        "ram_origin": 2147483648,
+        "ram_bytes": 8388608,
+        "max_image_bytes": 8323072,
+        "min_free_bytes": 65536
+      },
+      "assembly_sha256": "2a308b2f2db8ccc323fb307abd9dfcd9da73a13dcac6bb48de776fa2232bd961"
+    }
+  },
+  "inputs_sha256": {
+    "tools/build_static_arena.py": "5dec8f7551fb7ac195e97771eb56c8d0948f76818f2bf9ea52de76b0c7b50731",
+    "tools/static_arena_runtime.py": "71fdce0309c5a2b628312254a4a8d6212acafa1585b6b944f5d401944c6adf97",
+    "tools/check_linked_stack.py": "b8bad483f8ad3ef4305e456cca64e1443c7a22eed2d236c245ad407d8b4c4e12",
+    "tools/riscv_compressed.py": "d7f6edd0808e6beba607018ec8e02d905e7e4121a2d8d1c6e14db5107223590e",
+    "tools/check_target_image.py": "72ba9f2776137ac988f2bcc3fe65bb41b36100c29cbe1cd4c8616f7c9700d4ee",
+    "tests/check_static_arena.py": "563734cec553d62dd17e554be58393c2f399fa124d4c08019ec69cd0aad195fb",
+    "tests/check_registry.py": "12f15c05ed3c9245ff6de7076de778573dab9559456d82afc341b2611a6bc897",
+    "tests/test_check_registry.py": "a38281c38007ae9d73a58982a528030ba2a77c33ea4410442499dd3c75ea1f5d",
+    "machine/builtin/contracts/rv64-c-heap-v1.json": "2d36868b6cc644248f0998303a4a3415532fa8b2a3a49da078e66647e61e79dd",
+    "machine/builtin/targets/virt.json": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+    "docs/2026-11-05-STATIC-ACTIVATION-ARENAS.md": "8630fa27c3cbace76687921ee10b115b2b41ec5ac6215c930be8b66f3c9296a8",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "7cd339d8a26b09dfcca47dae26b558deb93a573604472cde19b8d9e0f73dea77",
+    "docs/2026-11-05-CALLBACK-HEAP-BUDGETS.md": "93c7914eda3530bebdd10e0598a37f8fac26a50dd1b0086c5173d2ba2337bfe0",
+    "docs/2026-11-05-LINKED-STACK-ADMISSION.md": "af920fde317c8a3fe73c632ccb95496a285d014ec8563d4261f5813035ee7f6f",
+    "docs/2026-09-18-BAREMETAL-BUILTIN.md": "1065d13ed69abc9c605e4ed1a7221e83073902d62ea41dad9fdd593e8de69f5b",
+    "bench/2026-11-05-static-arena.json": "b8c90ea70a6e9c0903435f787733602bbf11e0c07160b438c41462584b4194ad"
+  },
+  "scope": "Local host and RV64 QEMU controlled activation; no remote CI, physical board, general-application or WCET claim"
+}

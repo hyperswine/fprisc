@@ -1,0 +1,19 @@
+{
+  "source": "unsafe base.\nBox = Type (Box a).\nflag : Box -> Int.\nflag b = case b of Box True -> 1 | Box False -> 2 | _ -> 0.\nmain = _=print (flag (Box 7)); _=print (flag (Box True)); _=print (flag (Box False)); print (flag (Box [2])).\n",
+  "records": [
+    {
+      "label": "before",
+      "compiler_sha256": "65a4d73bbe265de4ee4cbe723d54bf64292b35491728263962a1d0e44535d6b6",
+      "returncode": -11,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "label": "after",
+      "compiler_sha256": "64f733497a6f6703ed10de2aa815e59817d4d42acd23419d1ce2c0aa8e84c722",
+      "returncode": 0,
+      "stdout": "0\n1\n2\n0\n",
+      "stderr": ""
+    }
+  ]
+}

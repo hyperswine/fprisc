@@ -54,18 +54,8 @@ builtinCons =
       ("Nil", (2, 0, 0)),
       ("Cons", (2, 1, 2)),
       ("Ok", (3, 0, 1)),
-      ("Err", (3, 1, 1)),
-      ("Tup2", (4, 0, 2)),
-      ("Tup3", (5, 0, 3)),
-      -- wide tuples: tids 10..14 (fpr.h T_TUP4..T_TUP8).  Capped at 8
-      -- to match call arity's register span; wider anonymous data
-      -- should be a record or a declared constructor.
-      ("Tup4", (10, 0, 4)),
-      ("Tup5", (11, 0, 5)),
-      ("Tup6", (12, 0, 6)),
-      ("Tup7", (13, 0, 7)),
-      ("Tup8", (14, 0, 8))
-    ]
+      ("Err", (3, 1, 1))
+    ] `M.union` DataLayout.smallTupleLayouts
 
 boolT, listT, atomT :: Int
 boolT = 1

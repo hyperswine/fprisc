@@ -1,0 +1,165 @@
+{
+  "schema": "callback-stack-validation-v1",
+  "codegen_revision": 179,
+  "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+  "sources": {
+    "compiler/Codegen.hs": "f80b66ac0a784c97b6e90b7fb33e12be1a1278ed728565a9ccdb6d5ff5253c37",
+    "compiler/Codegen/Stack.hs": "1e83a64a1af4ce2ed4a68827b7f95738e2be21e8105a910bf3561a3adcb6c49f",
+    "compiler/Codegen/Simplify.hs": "4b33c47eae2887622ddc67bd6fb933a2a485f618b98a765685ab10dcb8ad7c85",
+    "compiler/Codegen/Target/RV/Export.hs": "6edf088b51bea127ccaa397478dfa24285989a571e2f9a064b36d3ede8833e85",
+    "compiler/Codegen/Target/RV.hs": "acd2fa5c69515dd1860e81b61f94cacada58d693b11ed583ff73523f675a4781",
+    "compiler/Codegen/Target/A64.hs": "b6d8b4b0a9b77a7c918a8b90b953690b0519bd3856ae1616fb6311076eb2a133",
+    "compiler/Codegen/Target/X64.hs": "690612eb33c01786db8ef9af01f843ccad9ddeb2a3ad12a53b9042b05c05736e",
+    "compiler/Compile.hs": "51aec018501bc23f2ae3452cef20bb748e7d550a852febebd6d772b79f5c1106",
+    "compiler/Compiler/CommandLine.hs": "09ab2c41d6c7d5f1f5b8cb2b4333b9455ddb8d87f2e7495c2f5429719f0efa18",
+    "compiler/Main.hs": "71b7c27bb414f0eac74e6680f31ef85f536a70eb787cb51d02774dc5d34ce544",
+    "tests/NativeStack.hs": "9330d0c0e6deea418af64cf63fe2602c28bb90434f78b7129b4163f2d78729c0",
+    "tests/TypedIR.hs": "ddd215b42e992f58b807fbbede4296af1597a14da4407f251c7b627451432466",
+    "tests/CompilerOptions.hs": "95ee9748dd28760472bdd6df76e7247d0994df2778e93b9da19c84faa283ee92",
+    "tests/check_native_stack.py": "f98b1eb329b56343eea88f635132dccb8cad0fd3a20f81b5e4c92a1f392447e1",
+    "tests/check_callback_stack.py": "d1e00957b34859527c9e945752885a6136e87258ce7f6f98c08a7a56b6558f60",
+    "tests/check_registry.py": "e2f598d1fdd720a6c2790336852ae64dfa51fc733ffff8e300fc170a8b532d89",
+    "tests/test_check_registry.py": "391ae293c42b04831af1e8a127146a5001e7cde92a0fdc2b9234b387859a0f1f",
+    "docs/2026-11-05-CALLBACK-STACK-BUDGETS.md": "822889a0de38eb6290c30b4cc7e85ba56b175c292fa7378196ee13fecdfa25cb",
+    "docs/2026-11-05-NATIVE-STACK-ACCOUNTING.md": "d9169cfd3bff833d93a5b557cfb03b41abefc52c7d944fd60377b8dae0b57424",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "823ceb67cf0eaafcd3cc1674b35beafcb063be39b7db1d08905946b9de90d695",
+    "bench/2026-11-05-callback-stack.json": "db9661af9614e9baa34e94baac74b06e99dbc03d6997a4b45895c1c961375119",
+    "bench/2026-11-05-callback-native-stack.json": "4e8c2955cf93f2d04b91523db6576d4c3dd057892c516979b0aa8c1547abbc8a",
+    "bench/2026-11-05-callback-stack-specialization-cost.json": "78f8c69106d5f68f903cf83835df4aafbbf6d37672b4ea0e58667536c77495ee"
+  },
+  "checks": [
+    {
+      "name": "Haskell",
+      "command": "cabal test all --test-show-details=direct",
+      "status": "PASS",
+      "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+      "log_sha256": "6b8c7bc67c598db74307d7de73257634ee2a2c57be25c9c8f6bc6b72cbcc0695",
+      "output_tail": [
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/AllocIR/test/fp-risc-0.13.1-AllocIR.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Interval discharge: guarded-counter proofs, step chains, join intersection, loop induction, producer bounds, the path ladder, cross-block sharing and evaluator differential PASS",
+        "Test suite Interval: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/Interval/test/fp-risc-0.13.1-Interval.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ],
+      "suites_passed": 40
+    },
+    {
+      "name": "compiler-budget",
+      "command": "python3 tests/check_compile_budget.py --require-baseline",
+      "status": "PASS",
+      "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+      "log_sha256": "0d6524b81a7d74fa5499731042983ca7e22ebe2f6e45370f90434ed26d78c2f0",
+      "output_tail": [
+        "hello: 1.60 GB allocated, 45 MB peak live, 0.7 s (+9.2% allocation, +6.2% peak vs baseline)",
+        "std-live: 32.80 GB allocated, 503 MB peak live, 18.3 s (+9.6% allocation, +24.9% peak vs baseline)",
+        "pos1: 69.20 GB allocated, 704 MB peak live, 40.7 s (+6.8% allocation, -15.5% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "C2-cost",
+      "command": "python3 tests/check_type_spec_cost.py --sizes 16 32 64 128 256 --require-baseline --record bench/2026-11-05-callback-stack-specialization-cost.json",
+      "status": "PASS",
+      "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+      "log_sha256": "58c01bea9d2fb9d4b3f0f92ccaca455afde0185a4a1cb0a31692b6f071bcf87f",
+      "output_tail": [
+        "16 helpers: same 10520 code bytes/48 functions; compiler allocation 1.004x explicit twins",
+        "32 helpers: same 16952 code bytes/80 functions; compiler allocation 1.004x explicit twins",
+        "64 helpers: same 30136 code bytes/144 functions; compiler allocation 1.004x explicit twins",
+        "128 helpers: same 56504 code bytes/272 functions; compiler allocation 1.004x explicit twins",
+        "256 helpers: same 109240 code bytes/528 functions; compiler allocation 1.005x explicit twins"
+      ]
+    },
+    {
+      "name": "callback-execution",
+      "command": "python3 tests/check_callback_stack.py --require-execution --record bench/2026-11-05-callback-stack.json",
+      "status": "PASS",
+      "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+      "log_sha256": "4feb6f4cbd124cd16fca3a25fda5408dd2857227bf741ce88fbb64328dbed1c8",
+      "output_tail": [
+        "Callback admission: exact/short budgets, wrapper storage, runtime paths and recursive refusals PASS",
+        "RV64 plain: 192 admitted callbacks on a guarded fixed stack without an allocator PASS",
+        "RV64 measured: 192 admitted callbacks on a guarded fixed stack without an allocator PASS"
+      ]
+    },
+    {
+      "name": "native-stack",
+      "command": "python3 tests/check_native_stack.py --require-execution --record bench/2026-11-05-callback-native-stack.json",
+      "status": "PASS",
+      "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+      "log_sha256": "0a0c86f8670a8220bd53ab9559c1ecfff7fae996b207c136cdf1d39b74dafb7e",
+      "output_tail": [
+        "native stack: graph oracle and four target layouts passed",
+        "Test suite NativeStack: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/NativeStack/test/fp-risc-0.13.1-NativeStack.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "",
+        "rv32: physical stack bounds match all five executed probes",
+        "rv64: physical stack bounds match all five executed probes"
+      ]
+    },
+    {
+      "name": "raw-products",
+      "command": "python3 tests/check_raw_products.py",
+      "status": "PASS",
+      "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+      "log_sha256": "d371b3262554e556f936cd1a8071d15f7f1bde2a6ebcfcd85fe0ad890f563498",
+      "output_tail": [
+        "c, type-spec rollback=False: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "fpr, type-spec rollback=False: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "Expanded register ABI, boxed export, incompatible generic representations, heap storage and product rollback: refused before emission PASS",
+        "type-spec rollback=True: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+        "soft, type-spec rollback=True: eight-word recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "hard, type-spec rollback=True: eight-word recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "c, type-spec rollback=True: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "fpr, type-spec rollback=True: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS"
+      ]
+    },
+    {
+      "name": "materializing-pipelines",
+      "command": "python3 tests/check_list_materialize.py",
+      "status": "PASS",
+      "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "output_tail": [
+        "Materializing pipeline: max-singleton PASS",
+        "Materializing pipeline: max-pair PASS",
+        "Materializing pipeline: min-singleton-rejected PASS",
+        "Materializing pipeline: min-range-before-effects PASS",
+        "Materializing pipeline: near-min PASS",
+        "Materializing pipeline: map-overflow PASS",
+        "Materializing pipeline: division-before-overflow PASS",
+        "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+      ]
+    },
+    {
+      "name": "check-registry",
+      "command": "python3 tests/test_check_registry.py",
+      "status": "PASS",
+      "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+      "log_sha256": "6ba9d2e586160fabc438a5ad919649b19cc7e7af0785d2ca5813ca23c379c397",
+      "output_tail": [
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.076s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "qualification_limits": [
+    "Closed builtin RV64 public C-entry stack admission including checked adapters; weak entries and unknown runtime costs refuse",
+    "Plain and measured RV64 fixed-stack execution in QEMU; no physical-board or remote CI evidence",
+    "No heap/peak-live arena admission, runtime C-stack contract, startup/interrupt nesting bound or WCET claim",
+    "Incoming C stack arguments and caller frames, static/per-hart storage and scheduler contexts are separate obligations",
+    "Compiler cost gates and baselines unchanged; std-live residency is close to its ceiling",
+    "Working-tree validation; no commit, push or deployment performed"
+  ]
+}

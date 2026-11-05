@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase, FlexibleContexts, ScopedTypeVariables #-}
 -- Explicit compatibility boundary. Layout operations lower directly from
 -- typed nodes/patterns; they never reconstruct or re-infer a surface AST.
-module Core.Typed.Erase (Layout(..), eraseFunction, eraseFunctionWith, eraseRegionFunctionWith) where
+module Core.Typed.Erase (Layout(..), eraseFunction, eraseFunctionWith, eraseFunctionAnnotated, eraseRegionFunctionWith) where
 import Core.Typed.Syntax
 import Core.Identity (BinderId)
 import Core.Primitives (entryTickName)
@@ -10,6 +10,8 @@ import qualified Core.Region.Syntax as R
 import Core.Region.Flow (functionFlow,flowSource)
 import Core.Region.Runtime (Hook(..),hookName,packState,receiveReady)
 import Core.Typed.Verify (verifyFunctionWith)
+import Core.Typed.Layout (recordShapes,closedRowShape)
+import Type.Relation (fieldType)
 import Core.Syntax (Core(..))
 import Control.Monad (unless, foldM, forM)
 import Control.Monad.Except
@@ -30,18 +32,23 @@ eraseFunction :: Monad m => TypeContext -> Layout m -> Function -> m (Either Str
 eraseFunction = eraseFunctionWith M.empty
 
 eraseFunctionWith :: Monad m => M.Map CodeId CodeContract -> TypeContext -> Layout m -> Function -> m (Either String ([String],Core))
-eraseFunctionWith=eraseWith Nothing
+eraseFunctionWith=eraseFunctionAnnotated (\_ -> id)
+
+-- An owner may retain checked expression evidence at the compatibility
+-- boundary. The callback does not re-infer or alter the typed input.
+eraseFunctionAnnotated :: Monad m => (Expr -> Core -> Core) -> M.Map CodeId CodeContract -> TypeContext -> Layout m -> Function -> m (Either String ([String],Core))
+eraseFunctionAnnotated annotation=eraseWith annotation Nothing
 
 eraseRegionFunctionWith :: Monad m => TypeContext -> Layout m -> R.Function -> m (Either String ([String],Core))
-eraseRegionFunctionWith types layout region=eraseWith (Just region) (R.functionContracts region) types layout actual
+eraseRegionFunctionWith types layout region=eraseWith (\_ -> id) (Just region) (R.functionContracts region) types layout actual
   where
     source=R.functionSource region
     actual=case R.functionBody region of
       R.Ordinary e->source {functionBody=e}
       _->maybe source (\flow->source {functionBody=flowSource flow}) (functionFlow region)
 
-eraseWith :: forall m. Monad m => Maybe R.Function -> M.Map CodeId CodeContract -> TypeContext -> Layout m -> Function -> m (Either String ([String],Core))
-eraseWith region contracts types layout f = runExceptT $ do
+eraseWith :: forall m. Monad m => (Expr -> Core -> Core) -> Maybe R.Function -> M.Map CodeId CodeContract -> TypeContext -> Layout m -> Function -> m (Either String ([String],Core))
+eraseWith annotation region contracts types layout f = runExceptT $ do
   either throwError pure (verifyFunctionWith contracts types f)
   let ps=functionParameters f
   let env=M.fromList [(binderId b,binderName b) | b<-ps]
@@ -57,7 +64,8 @@ eraseWith region contracts types layout f = runExceptT $ do
     patScopes ps env names=scopes (concatMap patternBinders ps) env names
     allScopes ps gs env names=foldl (\(e,n) g -> case g of
       PatternGuard p _ -> patScopes [p] e n; _ -> (e,n)) (patScopes ps env names) gs
-    go env names e=case exprNode e of
+    go env names e=annotation e <$> node env names e
+    node env names e=case exprNode e of
       Var (Local uid) -> do
         n<-maybe (throwError "typed Core erasure: absent local") pure (M.lookup uid env)
         unless (M.lookup n names==Just uid) (throwError "typed Core erasure: display spelling would capture a local identity")
@@ -115,7 +123,11 @@ eraseWith region contracts types layout f = runExceptT $ do
         let sorted=sortOn fst fs
         tid<-shape (map fst sorted)
         CMk tid (length sorted) <$> mapM (go env names . snd) sorted
-      RecordField base path -> go env names base >>= \x -> foldM project x path
+      RecordField base path -> do
+        x<-go env names base
+        fst <$> foldM (\(value,ty) name->do
+          field<-project ty value name
+          pure (field,ty >>= (\t->fieldType t [name]))) (x,Just (exprType base)) path
       RecordUpdate base fields -> do
         x<-go env names base
         v<-fresh "rec"
@@ -123,7 +135,7 @@ eraseWith region contracts types layout f = runExceptT $ do
       PlannedUpdate base plan -> do
         x<-go env names base
         v<-fresh "rec"
-        CLet v x <$> plannedUpdate env names (CVar v) plan
+        CLet v x <$> plannedUpdate env names (Just (exprType base)) (CVar v) plan
       Apply a b -> CApp <$> go env names a <*> go env names b
       Lambda ps b -> let (env',names')=scopes ps env names
                      in CLam (map binderName ps) <$> go env' names' b
@@ -257,28 +269,33 @@ eraseWith region contracts types layout f = runExceptT $ do
         next<-continuation
         matched<-matchPat (CVar tmp) p next failure
         pure (CLet tmp value matched)
-    project scrut name = do
+    project recordType scrut name = do
       let cands=[(tid,length (takeWhile (/=name) (sort fs)),length fs)
-                | (fs,tid)<-M.toList (recordLayouts layout),name `elem` fs]
+                | (fs,tid)<-recordShapes (recordLayouts layout) recordType [name]]
       case cands of
         [] -> pure (CErr ("no record shape has field ."++name))
-        [(_,idx,_)] -> pure (CProj idx scrut)
+        [(_,idx,_)] | closedRowShape recordType -> pure (CProj idx scrut)
         many -> do
           v<-fresh "r"
           pure (CLet v scrut (foldr (\(tid,idx,ar) rest -> CIf (CTagEq tid ar (CVar v)) (CProj idx (CVar v)) rest)
                   (CErr ("no shape with field ."++name++" matched")) many))
-    plannedUpdate env names scrut (UpdatePlan roots branches)=do
-      let expected=[(tid,sort fs) | (fs,tid)<-M.toList (recordLayouts layout),all (`elem` fs) roots]
+    plannedUpdate env names recordType scrut (UpdatePlan roots branches)=do
+      let expected=[(tid,fs) | (fs,tid)<-recordShapes (recordLayouts layout) recordType roots]
+          catalog=[(tid,fs) | (fs,tid)<-recordShapes (recordLayouts layout) Nothing roots]
           actual=[(tid,map fst fields) | UpdateBranch tid fields<-branches]
-      unless (actual==expected) (throwError "typed Core layout: stale record update plan")
-      arms<-forM branches $ \(UpdateBranch tid fields)->do
-        values<-forM (zip [0..] fields) $ \(idx,(_,value))->case value of
+      -- Instantiation/inlining can close an originally open row. Keep every
+      -- now-admissible branch, reject missing/foreign layout facts, and omit
+      -- alternatives that the checked instantiated type makes unreachable.
+      unless (not (null expected) && all (`elem` actual) expected && all (`elem` catalog) actual)
+        (throwError "typed Core layout: stale record update plan")
+      arms<-forM [b | b@(UpdateBranch tid fields)<-branches,(tid,map fst fields) `elem` expected] $ \(UpdateBranch tid fields)->do
+        values<-forM (zip [0..] fields) $ \(idx,(name,value))->case value of
           KeepField->pure (CProj idx scrut)
           ReplaceField x->go env names x
-          NestedUpdate tree->plannedUpdate env names (CProj idx scrut) tree
+          NestedUpdate tree->plannedUpdate env names (recordType >>= (\t->fieldType t [name])) (CProj idx scrut) tree
         pure (tid,length fields,CMk tid (length fields) values)
       pure $ case arms of
-        [(_,_,body)]->body
+        [(_,_,body)] | closedRowShape recordType->body
         _->foldr (\(tid,arity,body) rest->CIf (CTagEq tid arity scrut) body rest)
           (CErr "record update: no shape matched") arms
     update env names scrut assigns = do
@@ -310,7 +327,7 @@ eraseWith region contracts types layout f = runExceptT $ do
         inner<-matchFields scrut ps ok fail'
         pure (CIf (CTagEq tid var scrut) inner fail')
       RecordPattern fs -> foldr (\(name,b) rest -> do
-        x<-project scrut name; CLet (binderName b) x <$> rest) (pure ok) fs
+        x<-project (Just (patType p)) scrut name; CLet (binderName b) x <$> rest) (pure ok) fs
     matchFields scrut ps ok fail'=foldr (\(i,p) rest -> rest >>= \k -> matchPat (CProj i scrut) p k fail')
       (pure ok) (zip [0..] ps)
     tests p=case patNode p of

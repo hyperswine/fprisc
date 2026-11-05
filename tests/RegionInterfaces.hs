@@ -3,6 +3,15 @@ import qualified Core.Typed.Syntax as T
 import Core.Typed.Callback (CallbackMode(..))
 import qualified Core.Region.Types as V
 import Core.Region.Interface
+import Core.Opt.StoredLists (storeLists)
+import qualified Core.Typed.Parametric as Parametric
+import Core.Opt.ProductParameters
+import Core.CacheIdentity
+import Workers (workerizeWithProducts)
+import qualified Codegen.Eval as Eval
+import qualified Codegen.Lower as Lower
+import Codegen.Policy (m2Policy)
+import Mono (specializeCompatibilityWithProducts)
 import qualified Core.Calling as Calling
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Regions as R
@@ -68,6 +77,206 @@ con qs fields result=Forall qs [] (foldr TFn result fields)
 app n t=TAp (TC n) t
 
 main=do
+  let (carrierPlans,_)=prepareSource "carrier-transports" (unlines
+        ["Box a = Type (Box a).","store x = Box x.",
+         "forward n x = if n <= 0 then store x else forward (n - 1) x.",
+         "observed x = _ = print x; x.","relay x = observed x.",
+         "opaque : a -> a .","foreignRelay x = Box (opaque x).",
+         "interval n x = _ = print n; forward n x."])
+      catalog=checkedTransportCatalog (right (either (Left . unlines) Right (specializeCheckedSource carrierPlans)))
+      from=TC "Meters"
+      box x=TAp (TC "Box") x
+      prove=Parametric.transportClosure catalog
+      builder x=TFn int (TFn x (box x))
+      one x=TFn x x
+  check "recursive transport admits effectful control with an unchanged abstract payload"
+    (case prove "interval" (builder from) (builder int) of
+       Right paths->all (\n->any ((==n) . fst) paths) ["interval","forward","store"]
+       _->False)
+  check "transport refuses a transitive observer, a foreign body, and retyping a concrete control"
+    (failed (prove "relay" (one from) (one int))
+      && failed (prove "foreignRelay" (TFn from (box from)) (TFn int (box int)))
+      && failed (prove "forward" (builder from) (TFn (TC "Bool") (TFn int (box int)))))
+  check "a changed parameter may not hide in an existential field or disagree across occurrences"
+    (failed (Parametric.constructorTransport (Forall [0] [] (TFn (TV 0) (TC "Hidden")))
+                 (TFn from (TC "Hidden")) (TFn int (TC "Hidden")))
+      && failed (Parametric.changedParameters (TFn (TV 0) (TV 0)) (one from) (TFn int from)))
+  let productsNative=native "products" (unlines
+        ["Cell a = Type (Cell a).","Choice = Type (LeftCell Int | RightCell Int).",
+         "makeChoice n = if n == 1 then LeftCell n else RightCell n.","getCell c = case c of Cell x -> x + 1 | _ -> 99.",
+         "genericCell c = case c of Cell x -> x.",
+         "getChoice c = case c of LeftCell x -> x | RightCell x -> x.",
+         "getPair p = case p of (x,y) -> x + y.",
+         "twoCells a b = case a of Cell x -> (case b of Cell y -> x + y | _ -> 88) | _ -> 99.",
+         "nestedCell a = case a of Cell inner -> (case inner of Cell x -> x | _ -> 88) | _ -> 99.",
+         "getRow p = p.x.","main = getCell (Cell 7)."])
+        (S.fromList ["makeChoice","getCell","genericCell","getChoice","getPair","twoCells","nestedCell","getRow","main"])
+      productsInput=right (R.prepare productsNative)
+      products=R.resultProductParameters (R.bypass productsInput)
+      -- Constructor inlining precedes field workers in the linked pipeline.
+      productProg=M.insert "main" ([],CApp (CVar "getCell") (CMk cellTid cellVariant [CInt 7])) (R.programCore productsInput)
+      shape name=parameterProduct products name (fst (productProg M.! name)) 0
+      Just (cellTid,cellVariant,1)=shape "getCell"
+      optimize facts p=let (q,_,_)=workerizeWithProducts facts True True False False p in q
+      productOut=optimize products productProg
+      evaluate p argument=let (ir,_)=Lower.lowerProgram m2Policy M.empty p p M.empty M.empty
+        in Eval.ocResult (Eval.evalProgram ir "getCell" [argument])
+  check "Base checked products use complete nominal definitions even with generic fields"
+    (shape "genericCell"==shape "getCell" && case shape "getPair" of Just (_,_,2)->True;_->False)
+  let resultEvidence=variantResults productProg products
+  check "Base sum return layouts include all declared scalar alternatives and binders"
+    (case M.lookup "makeChoice" resultEvidence of
+      Just (_,vs)->M.toList vs==[(0,1),(1,1)]
+      _->False)
+  check "sum layout authority refuses replaced parameters and participates in the cache key"
+    (M.notMember "makeChoice" (variantResults (M.singleton "makeChoice" (["other"],CInt 0)) products)
+      && productParameterKey productProg products/=productParameterKey productProg (withoutVariantResults products))
+  let storageNative=native "stored-lists" (unlines
+        ["W = Type (W Int).","mk n = [W n].","score xs = case xs of [] -> 0 | W x :: rest -> x.",
+         "main = xs = mk 2; score xs."]) (S.fromList ["mk","score","main"])
+      storageInput=right (R.prepare storageNative)
+      storageFacts=R.resultProductParameters (R.bypass storageInput)
+      originals=R.programCore storageInput
+      ([n],_)=originals M.! "mk"
+      ([arg],_)=originals M.! "score"
+      (entries,_)=storageLists originals storageFacts
+      (wid,_)=entries M.! "mk"
+      makeBody=CMk 2 1 [CMk wid 0 [CVar n],CMk 2 0 []]
+      readBody=CIf (CTagEq 2 0 (CVar arg)) (CInt 0) (CLet "h" (CProj 0 (CVar arg)) (CProj 0 (CVar "h")))
+      site body=CLet "xs" (CApp (CVar "mk") (CInt 7)) body
+      readCall=CApp (CVar "score") (CVar "xs")
+      storageProg=M.fromList [("mk",([n],makeBody)),("score",([arg],readBody)),
+        ("main",([],site (CMk 4 0 [readCall,readCall]))),
+        ("escapes",([],site (CMk 4 0 [readCall,CVar "xs"]))),
+        ("capture",([],site (CLam ["u"] readCall))),
+        ("shadow",(["$worker.storage.list.mk"],site readCall)),
+        ("readerShadow",(["score"],site readCall))]
+      transform p=fst (storeLists storageFacts 8 p)
+      stored=transform storageProg
+  check "checked private list shares one producer with both consumers"
+    (all (\name->M.member name stored) ["$worker.storage.list.mk","$worker.storage.read.score"]
+      && stored M.! "mk"==storageProg M.! "mk" && stored M.! "score"==storageProg M.! "score")
+  mapM_ (\name->check ("storage fallback: "++name) (stored M.! name==storageProg M.! name))
+    ["escapes","capture","shadow","readerShadow"]
+  let blocked p=not (M.member "$worker.storage.list.mk" (transform p))
+  check "storage refuses unproved tails and mixed normal/private head demand"
+    (blocked (M.insert "mk" ([n],CApp (CVar "foreignList") (CVar n)) storageProg)
+      && blocked (M.insert "mk" ([n],CLet "item" (CMk wid 0 [CVar n]) (CLet "observe" (CApp (CVar "print") (CVar "item"))
+         (CMk 2 1 [CVar "item",CMk 2 0 []]))) storageProg))
+  check "storage requires evidence of a nonempty spine before a field load"
+    (blocked (M.insert "score" ([arg],CProj 0 (CProj 0 (CVar arg))) storageProg))
+  check "storage requires a reachable nonempty constructor"
+    (blocked (M.insert "mk" ([n],CMk 2 0 []) storageProg))
+  check "storage refuses stale binder evidence and private-name collisions"
+    (blocked (M.insert "mk" (["different"],makeBody) storageProg)
+      && let collision=M.insert "$worker.storage.list.mk" ([],CInt 9) storageProg in transform collision==collision)
+  let fieldNative=native "stored-fields" (unlines
+        ["W = Type (First Int | Last Int).","T = Type (Empty | Fork T W T).",
+         "build n = Fork Empty (First n) Empty.","readT t = case t of Empty -> 0 | Fork l w r -> case w of First x -> x | Last y -> y.",
+         "main = t = build 3; readT t."]) (S.fromList ["build","readT","main"])
+      fieldInput=right (R.prepare fieldNative)
+      fieldFacts=R.resultProductParameters (R.bypass fieldInput)
+      fieldCore=R.programCore fieldInput
+      ([count],_)=fieldCore M.! "build"
+      ([tree],_)=fieldCore M.! "readT"
+      (fieldOwners,_)=storagePlans fieldCore fieldFacts
+      FieldStorage tid fork [empty] roles (vt,variants)=fieldOwners M.! "build"
+      leaf=CMk tid empty []
+      srcNode=CMk tid fork [leaf,CMk vt (fst (M.findMin variants)) [CVar count],leaf]
+      tested=CIf (CTagEq tid empty (CVar tree)) (CInt 0)
+        (CLet "h" (CProj 1 (CVar tree)) (CProj 0 (CVar "h")))
+      consumer=CApp (CVar "readT") (CVar "t")
+      rootUse body=CLet "t" (CApp (CVar "build") (CInt 9)) body
+      treeProg=M.fromList [("build",([count],srcNode)),("readT",([tree],tested)),
+        ("main",([],rootUse (CMk 4 0 [consumer,consumer]))),
+        ("escape",([],rootUse (CMk 4 0 [consumer,CVar "t"])))]
+      convert=fst . storeLists fieldFacts 8
+      treeResult=convert treeProg
+      fieldWorker="$worker.storage.aggregate.build"
+      refused p=M.notMember fieldWorker (convert p)
+  check "private aggregate evidence separates managed children and the known scalar field"
+    (roles==[ChildField,InlineField,ChildField] && M.member fieldWorker treeResult
+      && treeResult M.! "escape"==treeProg M.! "escape" && treeResult M.! "build"==treeProg M.! "build")
+  check "private aggregate projections need constructor evidence and exact binder agreement"
+    (refused (M.insert "readT" ([tree],CProj 1 (CVar tree)) treeProg)
+      && refused (M.insert "build" (["replaced"],srcNode) treeProg)
+      && refused (M.insert "readT" ([tree],CIf (CTagEq tid empty (CVar tree)) (CInt 0)
+           (CApp (CVar "foreign") (CProj 0 (CVar tree)))) treeProg))
+  check "incompatible shared field demand and unproved recursive children reject the whole candidate"
+    (refused (M.insert "build" ([count],CMk tid fork [CApp (CVar "opaque") (CVar count),
+          CMk vt (fst (M.findMin variants)) [CVar count],leaf]) treeProg)
+      && refused (M.insert "readT" ([tree],CIf (CTagEq tid empty (CVar tree)) (CInt 0)
+           (CLet "h" (CProj 1 (CVar tree)) (CVar "h"))) treeProg))
+  check "Base checked products refuse sum and open-row shape guesses"
+    (shape "getChoice"==Nothing && shape "getRow"==Nothing)
+  check "Base checked product evidence refuses changed physical binders"
+    (parameterProduct products "getCell" ["different"] 0==Nothing)
+  let identity evidence prog=coreCacheIdentityWithProducts evidence S.empty S.empty (CallArities M.empty M.empty) prog
+  check "checked product evidence affects cache identity even with identical erased code"
+    (identity products productProg/=identity emptyProductParameters productProg)
+  check "unrelated product evidence does not invalidate a unit"
+    (identity products (M.singleton "unrelated" ([],CInt 1))==
+     identity emptyProductParameters (M.singleton "unrelated" ([],CInt 1)))
+  check "a checked nonrecursive product helper gets a private field entry"
+    (M.member "$worker.fields.getCell" productOut && not (M.member "$worker.fields.genericCell" productOut))
+  mapM_ (\arg->check "checked product entry retains exact general fallback answers"
+    (evaluate productOut arg==evaluate productProg arg))
+    [Eval.RObj cellTid cellVariant [Eval.RInt 7],Eval.RObj (cellTid+1) cellVariant [Eval.RInt 7],
+     Eval.RObj cellTid (cellVariant+1) [Eval.RInt 7],Eval.RInt 7]
+  let (localized,localizedProducts)=specializeCompatibilityWithProducts products S.empty S.empty "test" M.empty M.empty productProg
+  check "compatibility alpha-renaming explicitly transports checked parameters"
+    (M.member "$worker.fields.getCell" (optimize localizedProducts localized)
+      && not (M.member "$worker.fields.getCell" (optimize products localized)))
+  check "nonrecursive products need a constructor call benefit"
+    (not (M.member "$worker.fields.getCell" (optimize products (M.delete "main" productProg))))
+  let cell=CMk cellTid cellVariant . (:[])
+      calls=CLet "first" (CApp (CApp (CVar "twoCells") (cell (CInt 7))) (cell (CInt 9)))
+        (CApp (CVar "nestedCell") (cell (cell (CInt 7))))
+      many=M.insert "main" ([],calls) productProg
+      manyOut=optimize products many
+      evalMany p name arguments=let (ir,_)=Lower.lowerProgram m2Policy M.empty p p M.empty M.empty
+        in Eval.ocResult (Eval.evalProgram ir name arguments)
+      obj=Eval.RObj cellTid cellVariant . (:[])
+  check "checked field steps retain remaining and instantiated nested parameter plans"
+    (all (`M.member` manyOut) ["$worker.fields.$worker.fields.twoCells","$worker.fields.$worker.fields.nestedCell"])
+  mapM_ (\(name,args,expected)->check "multiple/nested entries preserve independently specified fallback results"
+    (evalMany many name args==Right (Eval.RInt expected) && evalMany manyOut name args==Right (Eval.RInt expected)))
+    [("twoCells",[obj (Eval.RInt 7),obj (Eval.RInt 9)],16),
+     ("twoCells",[obj (Eval.RInt 7),Eval.RInt 9],88),
+     ("twoCells",[Eval.RInt 7,obj (Eval.RInt 9)],99),
+     ("nestedCell",[obj (obj (Eval.RInt 7))],7),
+     ("nestedCell",[obj (Eval.RInt 7)],88),("nestedCell",[Eval.RInt 7],99)]
+  check "unique intermediate field guards coalesce using their recorded lineage"
+    (all (`M.notMember` manyOut) ["$worker.fields.twoCells","$worker.fields.nestedCell"])
+  let safepoints p name arguments=let (ir,_)=Lower.lowerProgram m2Policy M.empty p p M.empty M.empty
+        in length [() | Eval.EvSafepoint _<-Eval.ocEvents (Eval.evalProgram ir name arguments)]
+  mapM_ (\(name,args,expected)->check "coalesced guards retain each conditional entry fuel tick"
+    (safepoints manyOut name args==expected))
+    [("twoCells",[obj (Eval.RInt 7),obj (Eval.RInt 9)],3),
+     ("twoCells",[obj (Eval.RInt 7),Eval.RInt 9],2),
+     ("twoCells",[Eval.RInt 7,obj (Eval.RInt 9)],1),
+     ("nestedCell",[obj (obj (Eval.RInt 7))],3),
+     ("nestedCell",[obj (Eval.RInt 7)],2),("nestedCell",[Eval.RInt 7],1)]
+  let shared=M.insert "partial" (["b"],CApp (CApp (CVar "twoCells") (cell (CInt 7))) (CVar "b")) many
+      sharedOut=optimize products shared
+  check "a private intermediate with another caller retains its own guarded entry"
+    (M.member "$worker.fields.twoCells" sharedOut
+      && evalMany sharedOut "partial" [obj (Eval.RInt 9)]==Right (Eval.RInt 16)
+      && evalMany sharedOut "partial" [Eval.RInt 9]==Right (Eval.RInt 88))
+  let latent field=right (R.prepare (native "latent"
+        ("Cell a = Type (Cell a). Outer = Type (Outer "++field++"). opaque : Outer -> Int. opaque p = 1.")
+        (S.singleton "opaque")))
+      direct=latent "Int"
+      nested=latent "(Cell Int)"
+  check "latent nested layouts change the cache key even when immediate shapes and erased code coincide"
+    (R.programCore direct==R.programCore nested &&
+      identity (R.resultProductParameters (R.bypass direct)) (R.programCore direct)/=
+      identity (R.resultProductParameters (R.bypass nested)) (R.programCore nested))
+  let recursive=right (R.prepare (native "recursive-layout"
+        "Grow a = Type (Grow (Grow (List a))). opaque : Grow Int -> Int. opaque p = 1."
+        (S.singleton "opaque")))
+  check "expanding recursive layouts have a finite declaration-based cache dependency key"
+    (not (null (identity (R.resultProductParameters (R.bypass recursive)) (R.programCore recursive))))
   let schemas=M.fromList
         [("Box",con [0] [TV 0] (app "Box" (TV 0))),
          ("Leaf",con [1] [TV 1] (app "Tree" (TV 1))),

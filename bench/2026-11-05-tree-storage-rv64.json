@@ -1,0 +1,605 @@
+{
+  "status": "PASS",
+  "compiler_sha256": "035fd0859d7b74e99515b971b640c4f9f360e57b0dc218508335603ebba9463d",
+  "kernel_sha256": "fa5212db039b1e62b14eac585ba5f31c01d7a0017f92ced73ce6f089e1273465",
+  "binaries": {
+    "tree0": "a76c0741e3b1475e02e3ef5bdf72d6bac583e2cb10cfdfab2d36376342c13c5e",
+    "tree1": "57662c47f681ec5c0a354e5db71b9cd4494cbcd0876e6f99caa5166f204ecec9",
+    "control0": "4fd7c4451eccfff326dbbf729d4849a24c9febd3a4ad1dacc215540384cc619d",
+    "control1": "9f89d5cebe819a9b7f679ef76e53349a332d2fb633b06e73e373a2332e36671d",
+    "active0": "413fb783d966003e1c3041e7c45eac8f6b0fdcc6de7c6bf1787020dc76003d9a",
+    "active1": "a9782d7866628ebc18d57f3950619c870625892919982db9bb9009e8bfec4c8f"
+  },
+  "sources": {
+    "tree": "fd3a1fb78a969e7c90ea12af395be56262b642afe10ae1bed816bf22c5948b30",
+    "control": "2b814277dd0b2bb4f51f9f4f1a86254cac3c742078c520052cc677719a936b59",
+    "active": "17ed701af591e2ed8927bb239a448f2bb45f44598141299f7dc5283eace232f8"
+  },
+  "console_sha256": "7cfadd4a56b47072b01d90094dc4ba4fe21dfe67a274696837911a5c38e28432",
+  "rows": [
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "-2\n5\n",
+      "trap": null,
+      "binary": "tree0",
+      "allocations": 2046,
+      "bytes": 81840
+    },
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "-2\n5\n",
+      "trap": null,
+      "binary": "tree0",
+      "allocations": 2046,
+      "bytes": 81840
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "-2\n5\n",
+      "trap": null,
+      "binary": "tree1",
+      "allocations": 1023,
+      "bytes": 49104
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "-2\n5\n",
+      "trap": null,
+      "binary": "tree1",
+      "allocations": 1023,
+      "bytes": 49104
+    },
+    {
+      "case": "prior",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "7\n",
+      "trap": "division by zero",
+      "binary": "control0"
+    },
+    {
+      "case": "later",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "7\n20\n",
+      "trap": "Int overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "branch",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "7\n10\n5\n20\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "shared",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "4072\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "empty",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "ok",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "0\n10\n4\n-28\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "division",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "0\n",
+      "trap": "division by zero",
+      "binary": "control0"
+    },
+    {
+      "case": "overflow",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "0\n20\n",
+      "trap": "Int overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "lower",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "0\n20\n-4611686018427387903\n-40\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "bundle",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "40\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "stop",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "16\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "escape",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "2\nBranch Leaf (Plus 2) Leaf\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "max",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "min",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "closure",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "Branch Leaf (Minus 1) Leaf\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "actor",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "-1\nBranch Leaf (Minus 1) Leaf\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "prior",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "7\n",
+      "trap": "division by zero",
+      "binary": "control0"
+    },
+    {
+      "case": "later",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "7\n20\n",
+      "trap": "Int overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "branch",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "7\n10\n5\n20\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "shared",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "4072\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "empty",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "ok",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "0\n10\n4\n-28\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "division",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "0\n",
+      "trap": "division by zero",
+      "binary": "control0"
+    },
+    {
+      "case": "overflow",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "0\n20\n",
+      "trap": "Int overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "lower",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "0\n20\n-4611686018427387903\n-40\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "bundle",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "40\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "stop",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "16\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "escape",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "2\nBranch Leaf (Plus 2) Leaf\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "max",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "min",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "closure",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "Branch Leaf (Minus 1) Leaf\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "actor",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "-1\nBranch Leaf (Minus 1) Leaf\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "prior",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "7\n",
+      "trap": "division by zero",
+      "binary": "control1"
+    },
+    {
+      "case": "later",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "7\n20\n",
+      "trap": "Int overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "branch",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "7\n10\n5\n20\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "shared",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "4072\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "empty",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "ok",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "0\n10\n4\n-28\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "division",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "0\n",
+      "trap": "division by zero",
+      "binary": "control1"
+    },
+    {
+      "case": "overflow",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "0\n20\n",
+      "trap": "Int overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "lower",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "0\n20\n-4611686018427387903\n-40\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "bundle",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "40\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "stop",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "16\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "escape",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "2\nBranch Leaf (Plus 2) Leaf\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "max",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "min",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "closure",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "Branch Leaf (Minus 1) Leaf\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "actor",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "-1\nBranch Leaf (Minus 1) Leaf\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "prior",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "7\n",
+      "trap": "division by zero",
+      "binary": "control1"
+    },
+    {
+      "case": "later",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "7\n20\n",
+      "trap": "Int overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "branch",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "7\n10\n5\n20\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "shared",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "4072\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "empty",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "ok",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "0\n10\n4\n-28\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "division",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "0\n",
+      "trap": "division by zero",
+      "binary": "control1"
+    },
+    {
+      "case": "overflow",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "0\n20\n",
+      "trap": "Int overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "lower",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "0\n20\n-4611686018427387903\n-40\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "bundle",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "40\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "stop",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "16\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "escape",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "2\nBranch Leaf (Plus 2) Leaf\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "max",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "min",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "closure",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "Branch Leaf (Minus 1) Leaf\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "actor",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "-1\nBranch Leaf (Minus 1) Leaf\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "region",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "16382\n",
+      "trap": null,
+      "binary": "active0"
+    },
+    {
+      "case": "region",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "16382\n",
+      "trap": null,
+      "binary": "active0"
+    },
+    {
+      "case": "region",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "16382\n",
+      "trap": null,
+      "binary": "active1"
+    },
+    {
+      "case": "region",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "16382\n",
+      "trap": null,
+      "binary": "active1"
+    }
+  ]
+}

@@ -60,6 +60,7 @@ module Codegen.Target.A64
     placement, allocConfig, fuelSaveWrapper, allocSaveWrapper,
   ) where
 
+import Compiler.DataLayout (storedListTid)
 import qualified Codegen.Calling as Calling
 import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
 import qualified Codegen.Call as Call
@@ -67,6 +68,7 @@ import qualified Codegen.Protocol as Protocol
 import Codegen.Allocate
 import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
 import Codegen.Frame
+import qualified Codegen.Stack as Stack
 import Codegen.IR
 import Codegen.Place
 import Codegen.Policy
@@ -267,11 +269,11 @@ call sym convention args res = do
     ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
   emitI selected
 
--- a call that answers two words in x0 and x1
-call2 :: CodeSymbol -> CallConvention -> [VReg] -> VReg -> VReg -> Se ()
-call2 sym convention args r1 r2 = do
+-- A private product call answers in the declared result register bank.
+callProduct :: CodeSymbol -> CallConvention -> [VReg] -> [VReg] -> Se ()
+callProduct sym convention args results = do
   stageCells convention args
-  selected <- either refuse pure (Calling.selectPairTransfer Calling.AArch64 convention sym args r1 r2
+  selected <- either refuse pure (Calling.selectProductTransfer Calling.AArch64 convention sym args results
     ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
   emitI selected
 
@@ -282,9 +284,12 @@ trapCall s = do
     ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
   emitI selected
 
--- the pair return: x0 and x1 <- the words, then the epilogue
-ret2 :: VReg -> VReg -> SInstr
-ret2 a b = (plain (O.A64 A.Ret) [] [fix a (x 0), fix b (x 1)]) {siImplicitDefs = [x 9, x 29, x 30, Phys "sp"], siControl = Return}
+-- Place every product word before the epilogue.
+retProduct :: [VReg] -> Se ()
+retProduct values = do
+  places <- either refuse pure (Calling.resultPlaces Calling.AArch64 (FprCall NoFuel) (ProductResult (length values)))
+  emitI ((plain (O.A64 A.Ret) [] (zipWith fix values places))
+    {siImplicitDefs = [x 9, x 29, x 30, Phys "sp"], siControl = Return})
 
 -- the return: x0 <- the value, then the epilogue
 ret :: VReg -> SInstr
@@ -374,12 +379,9 @@ selectBlock cfg fn tyMap b = do
       when stack (refuse "a stack check outside the entry block")
       -- an inlined callee's tick ($fuel) at the start of a non-entry block
       forM_ entryOps $ \_ -> freshL "tick" >>= emitI . entrySeq Protocol.FuelOnly
-  let run (Instr d1 (OCall2 c as) : Instr d2 OSecond : more) = do
-        -- the pair call: one transfer answers both words, x0 and x1
-        when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
-        case (d1, d2) of
-          (Just (v1, _), Just (v2, _)) -> call2 (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (vreg v1) (vreg v2)
-          _ -> refuse "internal: a pair call without both definitions"
+  let run (Instr d (OCallProduct c as) : following) = do
+        (results, more) <- either (refuse) pure (productCallResults c d following)
+        callProduct (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (map vreg results)
         run more
       run (i : more) = selectInstr cfg tyMap i >> run more
       run [] = pure ()
@@ -421,24 +423,10 @@ selectInstr cfg _ (Instr d op) = case op of
   OString text -> def $ \rd -> do
     modify (\st -> st {selStrings = S.insert text (selStrings st)})
     emitI (la rd (StaticObject (stringLabel text)))
-  OMake tid variant fields -> def $ \rd -> do
-    let raw = 8 + 8 * fromIntegral (length fields)
-    case bumpCellFor (cfgPolicy cfg) raw of
-      -- the inline bump (docs/2026-11-03-INLINE-BUMP-ALLOC.md): hosted Base
-      -- reads the hart window through x28; another hart access keeps the call
-      Just _ | bumpAllocates (cfgPolicy cfg) && cfgHart cfg == HartX28 -> do
-        l <- freshL "bump"
-        emitI (Protocol.selectProtocol Calling.AArch64 ((plain (O.Common O.BumpAlloc) [any' rd] [OI raw]) {siAnnotation = EntryLabels l}))
-      _ -> do
-        size <- freshV False
-        emitI (li size raw)
-        call (CodeSymbol "fpr_alloc") Calling.RuntimeCall [size] (Just rd)
-    forM_ [(0, tid), (4, variant)] $ \(offset, value) -> do
-      header <- freshV False
-      emitI (li header (fromIntegral value))
-      emitI (plain (O.A64 A.StoreHeader) [] [any' rd, any' header, OI offset])
-    forM_ (zip [0..] fields) $ \(index, value) ->
-      emitI (plain (O.A64 A.StoreField) [] [any' rd, any' (vreg value), OI (8 + 8 * index)])
+  OMake tid variant fields -> makeCell tid (Left variant) fields
+  OMakeSpine ordinal fields
+    | polProfile (cfgPolicy cfg)==HostedBase -> makeCell storedListTid (Right ordinal) fields
+    | otherwise -> refuse "private stored lists require hosted Base"
   OReuse _ _ root fields -> def $ \rd -> do
     forM_ (zip [0..] fields) $ \(index, value) ->
       emitI (plain (O.A64 A.StoreField) [] [any' (vreg root), any' (vreg value), OI (8 + 8 * index)])
@@ -579,12 +567,40 @@ selectInstr cfg _ (Instr d op) = case op of
     call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a, vreg b] (Just res)
     emitI (ldrsw r res 4)
     emitL done
-  OCall2 _ _ -> refuse "internal: a pair call that selection did not fuse with its second word"
-  OSecond -> refuse "internal: a second pair word without its call"
+  OCallProduct _ _ -> refuse "internal: a product call outside its result packet"
+  OResult _ -> refuse "internal: a product word without its call"
   OCall c as -> do
     when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
     def (\r -> call (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (Just r))
   where
+    makeCell tid variant fields = def $ \rd -> do
+      let literal n = do r <- freshV False; emitI (li r (fromIntegral n)); pure r
+          storeHeader offset h = emitI (plain (O.A64 A.StoreHeader) [] [any' rd, any' h, OI offset])
+          raw = 8 + 8 * fromIntegral (length fields)
+      case bumpCellFor (cfgPolicy cfg) raw of
+        -- the inline bump (docs/2026-11-03-INLINE-BUMP-ALLOC.md): hosted Base
+        -- reads the hart window through x28; another hart access keeps the call
+        Just _ | bumpAllocates (cfgPolicy cfg) && cfgHart cfg == HartX28 -> do
+          l <- freshL "bump"
+          emitI (Protocol.selectProtocol Calling.AArch64 ((plain (O.Common O.BumpAlloc) [any' rd] [OI raw]) {siAnnotation = EntryLabels l}))
+        _ -> do
+          size <- freshV False
+          emitI (li size raw)
+          call (CodeSymbol "fpr_alloc") Calling.RuntimeCall [size] (Just rd)
+      storeHeader 0 =<< literal tid
+      header <- case variant of
+        Left v -> literal v
+        Right v -> do
+          shifted <- freshV False
+          emitI (rri A.ShiftLeftImmediate shifted (vreg v) 3)
+          if length fields==2 then pure shifted else do
+            extra <- literal (length fields-2)
+            encoded <- freshV False
+            emitI (rrr A.Add encoded shifted extra)
+            pure encoded
+      storeHeader 4 header
+      forM_ (zip [0..] fields) $ \(index, value) ->
+        emitI (plain (O.A64 A.StoreField) [] [any' rd, any' (vreg value), OI (8 + 8 * index)])
     def k = case d of
       Just (v, _) -> k (vreg v)
       Nothing -> refuse ("internal: " ++ take 20 (show op) ++ " without a definition")
@@ -747,7 +763,7 @@ parallelMoves = go . filter (uncurry (/=))
 selectTerm :: A64Config -> Fn -> Block -> Se ()
 selectTerm cfg fn b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
-  TRet2 a b -> emitI (ret2 (vreg a) (vreg b))
+  TRetProduct vs -> retProduct (map vreg vs)
   TBr target as
     | target == fnEntry fn -> do -- the self tail call: the transfer re-enters the function through its symbol
         tailJump (CodeSymbol (functionSymbol (fnName fn))) (FprCall TicksFuel) (map vreg as)
@@ -929,7 +945,10 @@ emitFnA64WithSymbols symbols cfg fn = do
       lines' = header ++ map (\s -> if last s == ':' then s else "    " ++ s) reserve ++ concatMap snd rendered ++ refillCode ++ [reportLine name report, ""]
   checkForms a64RegisterFile name body
   checkSaveGroups name (length pairs) body
-  pure (NativeFn name lines' report (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
+  let stack = Stack.selectedFrame Stack.LinkRegister ly (CodeSymbol (functionSymbol name))
+        (["interposable-entry:"++functionSymbol name | visibilityFor (cfgWeak cfg) symbols name == WeakSymbol]
+          ++ ["segmented-stack-reservation" | large] ++ ["darwin-tlv-boundary" | cfgHart cfg == HartTlvMachO]) body
+  pure (NativeFn name lines' report stack (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
   where
     tokOf _ (ILabel (Label l)) _ = [TLabel l]
     tokOf pools (I i) ls =
@@ -1109,8 +1128,7 @@ renderItem cfg ly large fname pairs restores pools (I i) = map indent (go (siOpc
         [ "mov x2, sp", "mov x1, #" ++ show n, "ldr x0, [sp, #" ++ show (16 * n) ++ "]",
           "bl " ++ gsym cfg (Call.runtimeName Call.ApplyEntry), "add sp, sp, #" ++ show (16 * (n + 1)) ]
       (O.A64 A.Panic, [], [OAddr s]) -> address "x0" (addressName s) ++ ["bl " ++ gsym cfg (Call.runtimeName Call.PanicEntry)]
-      (O.A64 A.Ret, [], [_]) -> epilogue ++ ["ret"]
-      (O.A64 A.Ret, [], [_, _]) -> epilogue ++ ["ret"]
+      (O.A64 A.Ret, [], values) | not (null values) && length values <= 8 -> epilogue ++ ["ret"]
       (O.Common O.TailJump, [], OCode s : _) -> epilogue ++ ["b " ++ gsym cfg (codeName s)]
       (O.Common O.StoreSpill, [], [s, OI j]) -> hartRead ++ ldst "str" "stur" (reg s) "x9" (8 * (1 + j))
       (O.Common O.LoadSpill, [d], [OI j]) -> case cfgHart cfg of

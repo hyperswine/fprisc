@@ -97,7 +97,7 @@ nestPipelinesWithImports imports prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b
     join bound e@(CLet x producer body) =
       let replace consumer = case spineOf consumer of
             (CVar op,args) | op `elem` ["Vec.map","Vec.filter","Vec.fold"],
-              not (null args), all (not . elem x . freeVars) (init args) -> do
+              not (null args), all (not . occurs x) (init args) -> do
                 input <- if last args==CVar x then Just producer else replace (last args)
                 pure (foldl' CApp (CVar op) (init args++[input]))
             _ -> Nothing
@@ -106,7 +106,10 @@ nestPipelinesWithImports imports prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b
             _ <- pipelinePlan (prog `M.union` imports) (`S.member` bound) candidate
             pure candidate
       in case body of
-        CLet y consumer rest | x `notElem` freeVars rest, Just candidate<-plug consumer ->
+        -- Reject non-pipelines before inspecting the suffix. Checking free
+        -- variables at every let in an ordinary straight-line block made
+        -- this vector pass cubic, even when there was no vector operation.
+        CLet y consumer rest | Just candidate<-plug consumer, not (occurs x rest) ->
           go bound (CLet y candidate rest)
         _ | Just candidate<-plug body -> go bound candidate
         _ -> e
@@ -484,7 +487,7 @@ soaDualPred prog f = do
           CTagEq t v x -> CTagEq t v (inl d x)
           CProj k x -> CProj k (inl d x)
           other -> other
-      mentions v e = v `elem` freeVars e
+      mentions = occurs
   (body', (ks, tvs)) <- go el body1
   tv <- case S.toList (S.fromList tvs) of
     [one] -> Just one

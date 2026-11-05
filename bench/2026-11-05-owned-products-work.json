@@ -1,0 +1,155 @@
+{
+  "schema": "owned-product-work-v1",
+  "measure": "QEMU icount guest instructions, not hardware cycles or host wall time",
+  "baseline_compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+  "compiler_sha256": "8591f084d6324b8c1b8bb4b6f8d41cadb50ca8290085778ea29930fcbc8fd78a",
+  "tool_sha256": "d79623bc42feadde3d1428a2e05fa472d21dfc98b3e6e2f96a987cfe886dc2a3",
+  "source_sha256": "eb45f638cb432b7eb203ed55ebea214771c8ed342039de09e068605460c93412",
+  "qemu_version": "QEMU emulator version 11.1.3",
+  "records": [
+    {
+      "mode": "before",
+      "counts": {
+        "100": {
+          "plain": [
+            37108,
+            37108,
+            37108
+          ],
+          "owned": [
+            194381,
+            194381,
+            194381
+          ]
+        },
+        "1000": {
+          "plain": [
+            359341,
+            359341,
+            359341
+          ],
+          "owned": [
+            1917014,
+            1917014,
+            1917014
+          ]
+        },
+        "10000": {
+          "plain": [
+            3581374,
+            3581374,
+            3581374
+          ],
+          "owned": [
+            19143047,
+            19143047,
+            19143047
+          ]
+        }
+      },
+      "image_sha256": "02c5165524f8d4cd4e7f47d76b41efb1ff11ea431910a32dd5c9794ef6b621c2",
+      "assembly_sha256": "07a4084839fe186ae300548cc779b3d981c647d865ac76d5f229b608fd59f354"
+    },
+    {
+      "mode": "after",
+      "counts": {
+        "100": {
+          "plain": [
+            37108,
+            37108,
+            37108
+          ],
+          "owned": [
+            22361,
+            22361,
+            22361
+          ]
+        },
+        "1000": {
+          "plain": [
+            359341,
+            359341,
+            359341
+          ],
+          "owned": [
+            213194,
+            213194,
+            213194
+          ]
+        },
+        "10000": {
+          "plain": [
+            3581374,
+            3581374,
+            3581374
+          ],
+          "owned": [
+            2121227,
+            2121227,
+            2121227
+          ]
+        }
+      },
+      "image_sha256": "302f651d135d06a6e88d6a944be6eeeb2cc512bbf29493122731ff31bbd41cb3",
+      "assembly_sha256": "7990e270aaa376414150631b7b253e97076e76ffa640260b3f5bfdc25c477a0b"
+    },
+    {
+      "mode": "rollback",
+      "counts": {
+        "100": {
+          "plain": [
+            37108,
+            37108,
+            37108
+          ],
+          "owned": [
+            194381,
+            194381,
+            194381
+          ]
+        },
+        "1000": {
+          "plain": [
+            359341,
+            359341,
+            359341
+          ],
+          "owned": [
+            1917014,
+            1917014,
+            1917014
+          ]
+        },
+        "10000": {
+          "plain": [
+            3581374,
+            3581374,
+            3581374
+          ],
+          "owned": [
+            19143047,
+            19143047,
+            19143047
+          ]
+        }
+      },
+      "image_sha256": "2be39af0e8211e076329a2c87a68fa6e0419e3809e983b4e09c87bf64adbc8f6",
+      "assembly_sha256": "07a4084839fe186ae300548cc779b3d981c647d865ac76d5f229b608fd59f354"
+    }
+  ],
+  "qemu_command": [
+    "qemu-system-riscv64",
+    "-machine",
+    "virt",
+    "-smp",
+    "1",
+    "-m",
+    "128M",
+    "-nographic",
+    "-bios",
+    "none",
+    "-icount",
+    "shift=0,sleep=off"
+  ],
+  "architecture_flags": "-march=rv64imafdc_zicsr -mabi=lp64 -mcmodel=medany"
+}

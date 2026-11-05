@@ -2,13 +2,17 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,specializeNativePrograms,specializeNativeProgramsWithDecisions,inlineNativePrograms,inlineNativeProgramsWithDecisions,planNativeVectorReads,normalizeNative,caseKnownNative,fuseNativePrograms,fuseListNativePrograms,fuseListNativeProgramsWithHelpers,trmcNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,
-   CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts) where
+  (NativeCore,compileSelection,compileSelectionAt,compileSelectionBase,compileSelectionTypeSpecialized,compileSelectionTypeSpecializedKeepingEntries,specializeNativeWith,specializeNativePrograms,specializeNativeProgramsWithDecisions,inlineNativePrograms,inlineNativeProgramsWithDecisions,planNativeVectorReads,normalizeNative,caseKnownNative,fuseNativePrograms,fuseListNativePrograms,fuseListNativeProgramsWithHelpers,trmcNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,nativeTypeSpecNotes,nativeTypeInstances,annotatedProgram,
+   CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts,nativeTypeInstanceDeclarations) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
 import Core.Typed.Pipeline
 import Core.Typed.Close
 import Core.Typed.Callback (CallbackMode(..))
+import qualified Core.Typed.BaseTransport as BaseTransport
+import qualified Core.Typed.Carrier as Carrier
+import Core.Typed.Parametric (Catalog)
+import qualified Core.Typed.Monomorphize as Monomorphize
 import Core.Typed.Fusion (FusionNote)
 import Core.Typed.Erase
 import Core.Typed.Walk (allBinders,mapChildrenM)
@@ -22,15 +26,26 @@ import Control.Monad (unless,forM)
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+import Type.Syntax (Type,Scheme)
 
-data NativeCore=NativeCore ClosedProgram Prog (S.Set String) (M.Map String String) (M.Map String Calling.Calling) (S.Set String) Int
-nativeProgram (NativeCore _ p _ _ _ _ _)=p
-nativeJoins (NativeCore _ _ js _ _ _ _)=js
-nativeClosed (NativeCore p _ _ _ _ _ _)=p
-nativeCompatibility (NativeCore _ _ _ cs _ _ _)=cs
-nativeDeclarations (NativeCore _ _ _ _ ds _ _)=ds
-nativeConstructors (NativeCore _ _ _ _ _ ns _)=ns
-nativeFresh (NativeCore _ _ _ _ _ _ n)=n
+data NativeCore=NativeCore ClosedProgram Prog (S.Set String) (M.Map String String) (M.Map String Calling.Calling) (S.Set String) Int [(String,String)] (M.Map String (String,Scheme,Int))
+nativeProgram (NativeCore _ p _ _ _ _ _ _ _)=p
+nativeJoins (NativeCore _ _ js _ _ _ _ _ _)=js
+nativeClosed (NativeCore p _ _ _ _ _ _ _ _)=p
+nativeCompatibility (NativeCore _ _ _ cs _ _ _ _ _)=cs
+nativeDeclarations (NativeCore _ _ _ _ ds _ _ _ _)=ds
+nativeConstructors (NativeCore _ _ _ _ _ ns _ _ _)=ns
+nativeFresh (NativeCore _ _ _ _ _ _ n _ _)=n
+nativeTypeSpecNotes (NativeCore _ _ _ _ _ _ _ notes _)=notes
+-- Includes local instances and declarations from the shared checked catalog.
+-- Transformations must not discard imported provenance:
+-- otherwise a lost home could be mistaken for an undeclared runtime external.
+nativeTypeInstances=M.map (\(origin,_,_)->origin) . typeInstanceCatalog
+nativeTypeInstanceDeclarations=M.map (\(_,schema,arity)->(schema,arity)) . typeInstanceCatalog
+typeInstanceCatalog (NativeCore _ _ _ _ _ _ _ _ instances)=instances
+
+inheritTypeInstances available (NativeCore closed p js cs ds ns serial notes instances)=
+  NativeCore closed p js cs ds ns serial notes (instances `M.union` available)
 
 -- A flattened checked entry retains its language owner and complete code
 -- context. Consumers do not assemble body/owner/contract tuples themselves.
@@ -52,16 +67,43 @@ compileSelection=compileSelectionAt 0
 -- The compatibility facade may share a legacy fresh supply with its caller.
 -- Fully checked programs never consume it.
 compileSelectionAt :: Int -> CallbackMode -> Layouts -> SourceSelection -> Either String NativeCore
-compileSelectionAt first mode layouts selected=do
-  closed<-closeProgram mode layouts (selectionProgram selected)
-  covered<-eraseClosed closed
+compileSelectionAt first=compileSelectionWith first Nothing
+
+compileSelectionTypeSpecialized :: S.Set String -> CallbackMode -> Layouts -> SourceSelection -> Either String NativeCore
+compileSelectionTypeSpecialized pinned=compileSelectionWith 0 (Just (Monomorphize.monomorphizeWithOrigins pinned))
+
+-- Separately emitted units keep their complete original entry set. Private
+-- checked instances may be added, but callers in other units, function values
+-- and dynamic entries continue to enter through the original tagged contract.
+-- Instance identities still depend only on the source name and complete type.
+-- The consumer selects only types that its representation lowering can use.
+compileSelectionTypeSpecializedKeepingEntries :: (Type -> Bool) -> S.Set String -> CallbackMode -> Layouts -> SourceSelection -> Either String NativeCore
+compileSelectionTypeSpecializedKeepingEntries admitted pinned=compileSelectionWith 0 (Just (Monomorphize.monomorphizeKeepingEntriesWithOrigins admitted pinned))
+
+compileSelectionBase :: Maybe (String,Catalog) -> Bool -> S.Set String -> CallbackMode -> Layouts -> SourceSelection -> Either String NativeCore
+compileSelectionBase catalog reporting pinned=compileSelectionWith 0 (Just specialize)
+  where
+    specialize retained input=do
+      (carried,notes,origins)<-case catalog of
+        Nothing->pure (input,[],M.empty)
+        Just (home,evidence)->Carrier.specializeCarriers reporting home evidence pinned input
+      (output,more,instances)<-BaseTransport.specializeTransport reporting pinned retained carried
+      pure (output,notes++more,origins `M.union` instances)
+
+compileSelectionWith first specialization mode layouts selected=do
   let compatibility=selectionCompatibility selected
       lower=do
         roots<-M.fromList <$> mapM (Legacy.compileGroup . fmap compatibilityClauses) (M.toAscList compatibility)
         Legacy.liftFix roots
       initial=Legacy.DEnv first (constructorLayouts layouts) (shapeLayouts layouts) [] []
       (fallback,state)=if M.null compatibility then (M.empty,initial) else runState lower initial
-      collisions=M.keysSet covered `S.intersection` M.keysSet fallback
+      retained=selectionConstructors selected `S.union` S.fromList (concatMap (freeVars . snd) (M.elems fallback))
+  (input,notes,typeInstances)<-case specialization of
+    Nothing->pure (selectionProgram selected,[],M.empty)
+    Just specialize->specialize retained (selectionProgram selected)
+  closed<-closeProgram mode layouts input
+  covered<-eraseClosed closed
+  let collisions=M.keysSet covered `S.intersection` M.keysSet fallback
   unless (S.null collisions) (Left ("native Core: checked/compatibility symbol collision: "++unwords (S.toList collisions)))
   let roots=closedDefinitions closed
       joins=S.fromList [name | f<-M.elems roots,c<-M.elems (closedCode f),T.codeKind c==T.JoinCode,let T.CodeId name=T.codeId c]
@@ -71,27 +113,32 @@ compileSelectionAt first mode layouts selected=do
   mapM_ (\(name,d)->unless (Just (Calling.callingArity d)==(length . fst <$> M.lookup name fallback))
     (Left ("native Core: checked compatibility declaration changed physical arity: "++name))) (M.toList declarations)
   unless (all (noLambda . snd) (M.elems output)) (Left "native Core: implicit lambda remains at erasure boundary")
-  pure (NativeCore closed output joins (M.map compatibilityReason compatibility) declarations (selectionConstructors selected) (Legacy.dFresh state))
+  let instances=M.mapWithKey (\name origin->(origin,programSchemas input M.! name,programArities input M.! name)) typeInstances
+  pure (NativeCore closed output joins (M.map compatibilityReason compatibility) declarations (selectionConstructors selected) (Legacy.dFresh state) notes instances)
 
 specializeNativeWith :: CallbackMode -> [NativeCore] -> NativeCore -> Either String NativeCore
 specializeNativeWith PreserveCallbacks _ input=pure input
-specializeNativeWith mode providers (NativeCore closed p js compatibility declarations constructors serial)=do
+specializeNativeWith mode providers (NativeCore closed p js compatibility declarations constructors serial notes typeInstances)=do
   specialized<-specializeProgramWith mode (map nativeClosed providers) closed
-  replaceClosed specialized (NativeCore closed p js compatibility declarations constructors serial)
+  inheritTypeInstances (M.unions (map typeInstanceCatalog providers)) <$> replaceClosed specialized (NativeCore closed p js compatibility declarations constructors serial notes typeInstances)
 
 specializeNativePrograms :: Ord key => CallbackMode -> M.Map key (S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
 specializeNativePrograms=specializeNativeProgramsWithDecisions False
 specializeNativeProgramsWithDecisions :: Ord key => Bool -> CallbackMode -> M.Map key (S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
 specializeNativeProgramsWithDecisions reporting mode inputs=do
   changed<-specializeProgramsWithDecisions reporting mode (M.map (\(elided,core)->(elided,nativeClosed core)) inputs)
-  M.traverseWithKey (\key (_,core)->replaceClosed (changed M.! key) core) inputs
+  let available=M.unions [typeInstanceCatalog c | (_,c)<-M.elems inputs]
+  M.traverseWithKey (\key (_,core)->inheritTypeInstances available
+    <$> replaceClosed (changed M.! key) core) inputs
 
 inlineNativePrograms :: Ord key => Int -> Int -> Int -> M.Map key (S.Set String,S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
 inlineNativePrograms=inlineNativeProgramsWithDecisions False
 inlineNativeProgramsWithDecisions :: Ord key => Bool -> Int -> Int -> Int -> M.Map key (S.Set String,S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
 inlineNativeProgramsWithDecisions reporting rounds limit loopLimit inputs=do
   changed<-inlineProgramsWithDecisions reporting rounds limit loopLimit (M.map (\(forbidden,elided,core)->(forbidden,elided,nativeClosed core)) inputs)
-  M.traverseWithKey (\key (_,_,core)->replaceClosed (changed M.! key) core) inputs
+  let available=M.unions [typeInstanceCatalog c | (_,_,c)<-M.elems inputs]
+  M.traverseWithKey (\key (_,_,core)->inheritTypeInstances available
+    <$> replaceClosed (changed M.! key) core) inputs
 
 planNativeVectorReads :: S.Set String -> NativeCore -> Either String NativeCore
 planNativeVectorReads elided input=planVectorReads elided (nativeClosed input) >>= (`replaceClosed` input)
@@ -111,9 +158,10 @@ fuseListNativePrograms=fuseListNativeProgramsWithHelpers False False . M.map (\(
 fuseListNativeProgramsWithHelpers :: Ord key => Bool -> Bool -> M.Map key (S.Set String,S.Set String,NativeCore) -> Either String (M.Map key (NativeCore,[FusionNote]))
 fuseListNativeProgramsWithHelpers reporting helpers inputs=do
   changed<-fuseListProgramsWithHelpers reporting helpers (M.map (\(forbidden,elided,core)->(forbidden,elided,nativeClosed core)) inputs)
+  let available=M.unions [typeInstanceCatalog c | (_,_,c)<-M.elems inputs]
   M.traverseWithKey (\key (_,_,core)->do
     let (closed,notes)=changed M.! key
-    result<-replaceClosed closed core
+    result<-inheritTypeInstances available <$> replaceClosed closed core
     pure (result,notes)) inputs
 
 trmcNativePrograms :: Ord key => M.Map key (S.Set String,NativeCore) -> Either String (M.Map key (NativeCore,(Int,Int)))
@@ -127,13 +175,14 @@ trmcNativePrograms inputs=do
 fuseNativePrograms :: Ord key => M.Map key (S.Set String,NativeCore) -> Either String (M.Map key (NativeCore,[FusionNote]))
 fuseNativePrograms inputs=do
   changed<-fusePrograms (M.map (\(elided,core)->(elided,nativeClosed core)) inputs)
+  let available=M.unions [typeInstanceCatalog c | (_,c)<-M.elems inputs]
   M.traverseWithKey (\key (_,core)->do
     let (closed,notes)=changed M.! key
-    result<-replaceClosed closed core
+    result<-inheritTypeInstances available <$> replaceClosed closed core
     pure (result,notes)) inputs
 
 replaceClosed :: ClosedProgram -> NativeCore -> Either String NativeCore
-replaceClosed specialized (NativeCore closed p js compatibility declarations constructors serial)=do
+replaceClosed specialized (NativeCore closed p js compatibility declarations constructors serial notes typeInstances)=do
   let checkedNames=M.keysSet (closedDefinitions closed)<>
         S.fromList [name | f<-M.elems (closedDefinitions closed),T.CodeId name<-M.keys (closedCode f)]
       newDefinitions=closedDefinitions specialized
@@ -150,7 +199,7 @@ replaceClosed specialized (NativeCore closed p js compatibility declarations con
         <> (js S.\\ checkedNames)
   unless (S.null (M.keysSet legacy `S.intersection` M.keysSet checkedAfter))
     (Left "native Core: callback clone collides with compatibility definition")
-  pure (NativeCore specialized (checkedAfter `M.union` legacy) joins compatibility declarations constructors serial)
+  pure (NativeCore specialized (checkedAfter `M.union` legacy) joins compatibility declarations constructors serial notes typeInstances)
 
 eraseClosed :: ClosedProgram -> Either String Prog
 eraseClosed closed=eraseDefinitions closed (M.keys (closedDefinitions closed))
@@ -158,7 +207,17 @@ eraseClosed closed=eraseDefinitions closed (M.keys (closedDefinitions closed))
 -- Erase only the named owners and their code. Each definition's fresh supply
 -- starts at zero, so partial erasure yields the same entries as a full one.
 eraseDefinitions :: ClosedProgram -> [String] -> Either String Prog
-eraseDefinitions closed owners=do
+eraseDefinitions=eraseDefinitionsWith (\_ -> id)
+
+-- Re-erase the retained checked owners with a boundary-specific annotation;
+-- compatibility owners keep their existing projection and never borrow it.
+annotatedProgram :: (T.Expr -> Core -> Core) -> NativeCore -> Either String Prog
+annotatedProgram annotation native=do
+  let closed=nativeClosed native
+  checked<-eraseDefinitionsWith annotation closed (M.keys (closedDefinitions closed))
+  pure (checked `M.union` M.withoutKeys (nativeProgram native) (M.keysSet checked))
+
+eraseDefinitionsWith annotation closed owners=do
   -- ClosedProgram's producers already verify every changed graph. Erasure
   -- checks each expression/interface through eraseFunctionWith below.
   outputs<-mapM one functions
@@ -182,7 +241,7 @@ eraseDefinitions closed owners=do
           -- Closed Core contains explicit joins. Erasure cannot secretly
           -- manufacture another untyped function or invoke lambda lifting.
           layout=Layout fresh constructor (shapeLayouts layouts) (\_ _ _->lift (Left "native Core: erasure manufactured an implicit join"))
-      body<-evalStateT (eraseFunctionWith (closedContracts owner) types layout fn) 0 >>= id
+      body<-evalStateT (eraseFunctionAnnotated annotation (closedContracts owner) types layout fn) 0 >>= id
       pure (name,body)
 
 noLambda e=case e of

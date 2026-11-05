@@ -17,6 +17,7 @@
 module Codegen.Target.X64
   ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, placement, allocConfig, fuelSaveWrapper, allocSaveWrapper ) where
 
+import Compiler.DataLayout (storedListTid)
 import qualified Codegen.Calling as Calling
 import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
 import qualified Codegen.Call as Call
@@ -24,6 +25,7 @@ import qualified Codegen.Protocol as Protocol
 import Codegen.Allocate
 import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
 import Codegen.Frame
+import qualified Codegen.Stack as Stack
 import Codegen.IR
 import Codegen.Place
 import Codegen.Policy
@@ -39,7 +41,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 31 -- shared refill tails keyed by placed destination and raw size
+x64SelectionRev = 32 -- private products through eight volatile result words
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -99,7 +101,7 @@ r :: String -> Phys
 r = Phys
 
 x64RegisterFile :: RegisterFile
-x64RegisterFile = RegisterFile classOf (map r ["rsp", "rbp", "r10", "r11"])
+x64RegisterFile = RegisterFile classOf (map r ["rsp", "rbp", "r11"])
   where
     -- built once: the allocator asks for every operand
     classOf (Phys p) = M.lookup p x64RegisterClasses
@@ -116,7 +118,8 @@ scratchPool = map r ["r8", "r9", "rsi", "rdi", "rcx", "rax", "rdx"]
 -- M3: the budget (docs/2026-10-19-REGISTER-ALLOCATION.md 3.3: s1..s5, what
 -- ctx_x64.S saves), the caller-saved pool, and the never-allocated scratch
 -- (r10 and r11 are the expansions' own scratch inside the entry sequence
--- and the epilogue; between instructions they are free)
+-- and the epilogue; between instructions they are free). r10 may be fixed
+-- for the eighth product result, but never belongs to the allocation pool.
 calleeBudget = map r ["rbx", "r12", "r13", "r14", "r15"]
 callerPool = map r ["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9"]
 allocScratch = map r ["r10", "r11"]
@@ -230,11 +233,11 @@ emitCall sym convention args res = do
     ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
   emitI selected
 
--- a call that answers two words in rax and rdx
-emitCall2 :: CodeSymbol -> CallConvention -> [VReg] -> VReg -> VReg -> Se ()
-emitCall2 sym convention args r1 r2 = do
+-- A private multi-word result, with the complete bank checked by Calling.
+emitCallProduct :: CodeSymbol -> CallConvention -> [VReg] -> [VReg] -> Se ()
+emitCallProduct sym convention args results = do
   stageArgs convention args
-  selected <- either refuse pure (Calling.selectPairTransfer Calling.X86_64 convention sym args r1 r2
+  selected <- either refuse pure (Calling.selectProductTransfer Calling.X86_64 convention sym args results
     ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
   emitI selected
 
@@ -245,9 +248,12 @@ trapCall s = do
     ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
   emitI selected
 
-ret2 :: VReg -> VReg -> SInstr
-ret2 a b = (plain (O.X64 O.Ret) [] [fix a (r "rax"), fix b (r "rdx")])
-  {siImplicitDefs = map r ["r11", "rbp", "rsp"], siControl = Return}
+retProduct :: [VReg] -> Se ()
+retProduct values = do
+  places <- either refuse pure (Calling.resultPlaces Calling.X86_64 (FprCall NoFuel) (ProductResult (length values)))
+  emitI ((plain (O.X64 O.Ret) [] (zipWith fix values places))
+    {siImplicitDefs = map r ["r11", "rbp", "rsp"], siControl = Return})
+
 ret :: VReg -> SInstr
 ret v = (plain (O.X64 O.Ret) [] [fix v (r "rax")])
   {siImplicitDefs = map r ["r11", "rbp", "rsp"], siControl = Return}
@@ -316,12 +322,9 @@ selectBlock cfg fn tyMap b = do
       when stack (refuse "a stack check outside the entry block")
       -- an inlined callee's tick ($fuel) at the start of a non-entry block
       forM_ entryOps $ \_ -> freshL "tick" >>= emitI . entrySeq Protocol.FuelOnly
-  let run (Instr d1 (OCall2 c as) : Instr d2 OSecond : more) = do
-        -- the pair call: one transfer answers both words, rax and rdx
-        when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
-        case (d1, d2) of
-          (Just (v1, _), Just (v2, _)) -> emitCall2 (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (vreg v1) (vreg v2)
-          _ -> refuse "internal: a pair call without both definitions"
+  let run (Instr d (OCallProduct c as) : following) = do
+        (results, more) <- either (refuse) pure (productCallResults c d following)
+        emitCallProduct (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (map vreg results)
         run more
       run (i : more) = selectInstr cfg tyMap i >> run more
       run [] = pure ()
@@ -367,24 +370,10 @@ selectInstr cfg _ (Instr d op) = case op of
   OString text -> def $ \rd -> do
     modify (\st -> st {selStrings = S.insert text (selStrings st)})
     emitI (la rd (StaticObject (stringLabel text)))
-  OMake tid variant fields -> def $ \rd -> do
-    let raw = 8 + 8 * fromIntegral (length fields)
-    case bumpCellFor (cfgPolicy cfg) raw of
-      -- the inline bump (docs/2026-11-03-INLINE-BUMP-ALLOC.md); a loaded QOS
-      -- app (the borrowed hart cell) keeps the call
-      Just _ | bumpAllocates (cfgPolicy cfg) && cfgHart cfg /= HartBorrow -> do
-        l <- freshL "bump"
-        emitI (Protocol.selectProtocol Calling.X86_64 ((plain (O.Common O.BumpAlloc) [any' rd] [OI raw]) {siAnnotation = EntryLabels l}))
-      _ -> do
-        size <- freshV False
-        emitI (li size raw)
-        emitCall (CodeSymbol "fpr_alloc") Calling.RuntimeCall [size] (Just rd)
-    forM_ [(0, tid), (4, variant)] $ \(offset, value) -> do
-      header <- freshV False
-      emitI (li header (fromIntegral value))
-      emitI (plain (O.X64 O.StoreHeader) [] [any' rd, any' header, OI offset])
-    forM_ (zip [0..] fields) $ \(index, value) ->
-      emitI (plain (O.X64 O.StoreField) [] [any' rd, any' (vreg value), OI (8 + 8 * index)])
+  OMake tid variant fields -> makeCell tid (Left variant) fields
+  OMakeSpine ordinal fields
+    | polProfile (cfgPolicy cfg)==HostedBase -> makeCell storedListTid (Right ordinal) fields
+    | otherwise -> refuse "private stored lists require hosted Base"
   OReuse _ _ root fields -> def $ \rd -> do
     forM_ (zip [0..] fields) $ \(index, value) ->
       emitI (plain (O.X64 O.StoreField) [] [any' (vreg root), any' (vreg value), OI (8 + 8 * index)])
@@ -523,12 +512,40 @@ selectInstr cfg _ (Instr d op) = case op of
     emitCall (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a, vreg b] (Just res)
     emitI (ldrsw r res 4)
     emitL done
-  OCall2 _ _ -> refuse "internal: a pair call that selection did not fuse with its second word"
-  OSecond -> refuse "internal: a second pair word without its call"
+  OCallProduct _ _ -> refuse "internal: a product call outside its result packet"
+  OResult _ -> refuse "internal: a product word without its call"
   OCall c as -> do
     when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
     def (\r -> emitCall (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (Just r))
   where
+    makeCell tid variant fields = def $ \rd -> do
+      let literal n = do r <- freshV False; emitI (li r (fromIntegral n)); pure r
+          storeHeader offset h = emitI (plain (O.X64 O.StoreHeader) [] [any' rd, any' h, OI offset])
+          raw = 8 + 8 * fromIntegral (length fields)
+      case bumpCellFor (cfgPolicy cfg) raw of
+        -- the inline bump (docs/2026-11-03-INLINE-BUMP-ALLOC.md); a loaded QOS
+        -- app (the borrowed hart cell) keeps the call
+        Just _ | bumpAllocates (cfgPolicy cfg) && cfgHart cfg /= HartBorrow -> do
+          l <- freshL "bump"
+          emitI (Protocol.selectProtocol Calling.X86_64 ((plain (O.Common O.BumpAlloc) [any' rd] [OI raw]) {siAnnotation = EntryLabels l}))
+        _ -> do
+          size <- freshV False
+          emitI (li size raw)
+          emitCall (CodeSymbol "fpr_alloc") Calling.RuntimeCall [size] (Just rd)
+      storeHeader 0 =<< literal tid
+      header <- case variant of
+        Left v -> literal v
+        Right v -> do
+          shifted <- freshV False
+          emitI (rri O.ShiftLeftImmediate shifted (vreg v) 3)
+          if length fields==2 then pure shifted else do
+            extra <- literal (length fields-2)
+            encoded <- freshV False
+            emitI (rrr O.Add encoded shifted extra)
+            pure encoded
+      storeHeader 4 header
+      forM_ (zip [0..] fields) $ \(index, value) ->
+        emitI (plain (O.X64 O.StoreField) [] [any' rd, any' (vreg value), OI (8 + 8 * index)])
     def k = case d of
       Just (v, _) -> k (vreg v)
       Nothing -> refuse ("internal: " ++ take 20 (show op) ++ " without a definition")
@@ -669,7 +686,7 @@ parallelMoves = go . filter (uncurry (/=))
 selectTerm :: X64Config -> Fn -> Block -> Se ()
 selectTerm cfg fn b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
-  TRet2 a b -> emitI (ret2 (vreg a) (vreg b))
+  TRetProduct vs -> retProduct (map vreg vs)
   TBr target as
     | target == fnEntry fn -> -- a self tail transfer re-enters through the function symbol
         emitTail (CodeSymbol (functionSymbol (fnName fn))) (FprCall TicksFuel) (map vreg as)
@@ -780,7 +797,10 @@ emitFnX64WithSymbols symbols cfg fn = do
                   ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
         ++ visibilityLines (x64Format (cfgHart cfg)) (if x64Format (cfgHart cfg)==MachO then WeakDefinitionDirective else WeakDirective) (visibilityFor (cfgWeak cfg) symbols name) sym ++ [sym ++ ":"]
   checkForms name body
-  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ refillCode ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
+  let stack = Stack.selectedFrame Stack.StackReturnAddress ly (CodeSymbol (functionSymbol name))
+        (["interposable-entry:"++functionSymbol name | visibilityFor (cfgWeak cfg) symbols name == WeakSymbol]
+          ++ ["segmented-stack-reservation" | large] ++ ["darwin-tlv-boundary" | cfgHart cfg == HartTlvMachO]) body
+  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ refillCode ++ [reportLine name report, ""]) report stack (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
   where
     tokOf _ (ILabel (Label l)) _ = [TLabel l]
     tokOf pools (I i) ls = [TIns
@@ -959,8 +979,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       (O.X64 O.ApplyN,[_],[OI n]) -> ["movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
         ++ call (Call.runtimeName Call.ApplyEntry) ++ ["addq $" ++ show (16 * (n + 1)) ++ ", %rsp"]
       (O.X64 O.Panic,[],[OAddr s]) -> ("leaq " ++ gsym hart (addressName s) ++ "(%rip), %rdi") : call (Call.runtimeName Call.PanicEntry)
-      (O.X64 O.Ret,[],[_]) -> epilogue ++ ["ret"]
-      (O.X64 O.Ret,[],[_,_]) -> epilogue ++ ["ret"]
+      (O.X64 O.Ret,[],values) | not (null values),length values<=8 -> epilogue ++ ["ret"]
       (O.Common O.TailJump,[],OCode s:_) -> epilogue ++ ["jmp " ++ gsym hart (codeName s)]
       (O.Common O.EntryCheckTick,_,_) -> hartRead ++ stackCheck ++ tick
       (O.Common O.EntryCheck,_,_) -> hartRead ++ stackCheck

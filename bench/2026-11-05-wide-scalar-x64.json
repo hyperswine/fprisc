@@ -1,0 +1,683 @@
+{
+  "compiler_sha256": "0a9fa3eb474200e538632046ab3e51273dc33816c766c45e41818feacbfe7ea5",
+  "source_sha256": "fbcd749593f53cf24c7cfc301c0e208cdc14638b73d0a1d05619a7c8e77b6dff",
+  "target": "macos-x86_64",
+  "rows": [
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "w6",
+      "stdout": "122\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "w7",
+      "stdout": "327\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "w8",
+      "stdout": "614\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "w9",
+      "stdout": "606\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "w16",
+      "stdout": "4156\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "w63",
+      "stdout": "324896\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "w64",
+      "stdout": "288272\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "guard",
+      "stdout": "777\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "bool",
+      "stdout": "454496\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "dynamic",
+      "stdout": "282608\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "actors",
+      "stdout": "286544 280160 276336\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "overflow",
+      "stdout": "71\n4611686018427387903\n",
+      "stderr": "[ERR] Int overflow: 63 * 4611686018427387903 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: 63 * 4611686018427387903 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n",
+      "exit": 1,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "w6",
+      "stdout": "122\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "w7",
+      "stdout": "327\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "w8",
+      "stdout": "614\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "w9",
+      "stdout": "606\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "w16",
+      "stdout": "4156\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "w63",
+      "stdout": "324896\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "w64",
+      "stdout": "288272\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "guard",
+      "stdout": "777\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "bool",
+      "stdout": "454496\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "dynamic",
+      "stdout": "282608\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "actors",
+      "stdout": "286544 280160 276336\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "overflow",
+      "stdout": "71\n4611686018427387903\n",
+      "stderr": "[ERR] Int overflow: 63 * 4611686018427387903 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: 63 * 4611686018427387903 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n",
+      "exit": 1,
+      "emitted": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "case": "observed-actor-fuel",
+      "actor_mask": 28,
+      "stdout": "286544 280160 276336\n"
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "case": "observed-actor-fuel",
+      "actor_mask": 28,
+      "stdout": "286544 280160 276336\n"
+    },
+    {
+      "case": "separate-module",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "282608\n"
+    },
+    {
+      "case": "separate-module",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "282608\n"
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "w6",
+      "stdout": "122\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "w7",
+      "stdout": "327\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "w8",
+      "stdout": "614\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "w9",
+      "stdout": "606\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "w16",
+      "stdout": "4156\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "w63",
+      "stdout": "324896\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "w64",
+      "stdout": "288272\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "guard",
+      "stdout": "777\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "bool",
+      "stdout": "454496\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "dynamic",
+      "stdout": "282608\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "actors",
+      "stdout": "286544 280160 276336\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "overflow",
+      "stdout": "71\n4611686018427387903\n",
+      "stderr": "[ERR] Int overflow: 63 * 4611686018427387903 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: 63 * 4611686018427387903 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n",
+      "exit": 1,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "w6",
+      "stdout": "122\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "w7",
+      "stdout": "327\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "w8",
+      "stdout": "614\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "w9",
+      "stdout": "606\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "w16",
+      "stdout": "4156\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "w63",
+      "stdout": "324896\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "w64",
+      "stdout": "288272\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "guard",
+      "stdout": "777\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "bool",
+      "stdout": "454496\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "dynamic",
+      "stdout": "282608\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "actors",
+      "stdout": "286544 280160 276336\n",
+      "stderr": "",
+      "exit": 0,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "overflow",
+      "stdout": "71\n4611686018427387903\n",
+      "stderr": "[ERR] Int overflow: 63 * 4611686018427387903 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: 63 * 4611686018427387903 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n",
+      "exit": 1,
+      "emitted": [
+        6,
+        7,
+        8,
+        9,
+        16,
+        63,
+        64
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "case": "observed-actor-fuel",
+      "actor_mask": 28,
+      "stdout": "286544 280160 276336\n"
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "case": "observed-actor-fuel",
+      "actor_mask": 28,
+      "stdout": "286544 280160 276336\n"
+    },
+    {
+      "case": "separate-module",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "282608\n"
+    },
+    {
+      "case": "separate-module",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "282608\n"
+    }
+  ]
+}

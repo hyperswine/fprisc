@@ -958,6 +958,15 @@ void fpr_vec_release(V v); /* vec.c: the universal vector free */
  * vector the receiver GREW reallocated its column bases into the
  * receiver's pool -- fpr_vec_release frees those (and no-ops on the
  * slab pieces).  Runs only on ownerless message slabs at final drop. */
+/* Both physical spines are traversed iteratively. The private cell's
+ * final field is its tail; every preceding slot is a tagged value. */
+static inline unsigned spine_payloads(V value) {
+  hdr_t *h = (hdr_t *)value;
+  if (h->tid == T_STORED_LIST) return 1 + (h->var & 7);
+  return h->tid == T_LIST && h->var == 1;
+}
+static inline V *spine_slots(V value) { return (V *)((char *)value + sizeof(hdr_t)); }
+
 static void dc_release(V v) {
   if (ISINT(v) || !v || !fpr_in_heap(v)) return;
   hdr_t *h = (hdr_t *)v;
@@ -970,12 +979,12 @@ static void dc_release(V v) {
       for (uw i = 0; i < p->nargs; i++) dc_release((V)p->args[i]);
       return;
     }
-    case T_LIST: {
+    case T_STORED_LIST: case T_LIST: {
       V c = v;
-      while (!ISINT(c) && fpr_in_heap(c) && TID(c) == T_LIST &&
-             ((hdr_t *)c)->var == 1) {
-        dc_release(*(V *)((char *)c + 8));
-        c = *(V *)((char *)c + 8 + sizeof(uw));
+      unsigned heads;
+      while (!ISINT(c) && fpr_in_heap(c) && (heads = spine_payloads(c))) {
+        for (unsigned i=0; i<heads; ++i) dc_release(spine_slots(c)[i]);
+        c = spine_slots(c)[heads];
       }
       return;
     }
@@ -1051,7 +1060,7 @@ static uw img_static_raw(V v, uw pid) {
       (void)pid;
       fpr_actor_fail("send: a function of another process cannot leave it "
                      "(its code goes when that process ends)");
-    case T_TUP2: case T_TUP3: case T_ATOM: case T_REGISTER: case T_BITS:
+    case T_STORED_LIST: case T_TUP2: case T_TUP3: case T_ATOM: case T_REGISTER: case T_BITS:
     case T_ACTOR: case T_VEC: case T_SSTR:
       fpr_actor_fail("send: a static of an unexpected kind in another process's image");
     default:
@@ -1114,14 +1123,14 @@ static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
       for (uw i = 0; i < p->nargs; i++) n += dc_size_in((V)p->args[i], retain, immutable);
       return n;
     }
-    case T_LIST: {
+    case T_STORED_LIST: case T_LIST: {
       uw n = 0;
       V c = v;
-      while (!ISINT(c) && fpr_in_heap(c) && TID(c) == T_LIST &&
-             ((hdr_t *)c)->var == 1 && !dc_retained(c, retain)) {
+      unsigned heads;
+      while (!ISINT(c) && fpr_in_heap(c) && (heads = spine_payloads(c)) && !dc_retained(c, retain)) {
         n += PREHEADER(c);
-        n += dc_size_in(*(V *)((char *)c + 8), retain, immutable); /* head */
-        c = *(V *)((char *)c + 8 + sizeof(uw));
+        for (unsigned i=0; i<heads; ++i) n += dc_size_in(spine_slots(c)[i], retain, immutable);
+        c = spine_slots(c)[heads];
       }
       /* the tail: the static nil (not in the heap: 0); a nil a primitive built
        * on the heap (Sys.memInfo, growLog, actInfo...: its cell and nothing
@@ -1195,12 +1204,13 @@ static int dc_budget(V v, uw *left, unsigned depth) {
       for (uw i = 0; i < p->nargs; i++) if (!dc_budget((V)p->args[i], left, depth + 1)) return 0;
       return 1;
     }
-    case T_LIST: {
+    case T_STORED_LIST: case T_LIST: {
       V c = v;
-      while (!ISINT(c) && fpr_in_heap(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1) {
-        if (!budget_take(left, PREHEADER(c)) ||
-            !dc_budget(*(V *)((char *)c + 8), left, depth + 1)) return 0;
-        c = *(V *)((char *)c + 8 + sizeof(uw));
+      unsigned heads;
+      while (!ISINT(c) && fpr_in_heap(c) && (heads = spine_payloads(c))) {
+        if (!budget_take(left, PREHEADER(c))) return 0;
+        for (unsigned i=0; i<heads; ++i) if (!dc_budget(spine_slots(c)[i], left, depth + 1)) return 0;
+        c = spine_slots(c)[heads];
       }
       if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST)
         return budget_take(left, PREHEADER(c));
@@ -1330,19 +1340,21 @@ static V dc_dup(V v, dctx_t *c) {
       }
       return n;
     }
-    case T_LIST: {
-      if (h->var != 1) return dc_cell(v, c, total); /* heap nil */
+    case T_STORED_LIST: case T_LIST: {
+      if (!spine_payloads(v)) return dc_cell(v, c, total); /* heap nil */
       V first = 0, *patch = &first;
       V cur = v;
-      while (!ISINT(cur) && fpr_in_heap(cur) && TID(cur) == T_LIST &&
-             ((hdr_t *)cur)->var == 1 && !(c && dc_retained(cur, c->retain))) {
+      unsigned heads;
+      while (!ISINT(cur) && fpr_in_heap(cur) && (heads = spine_payloads(cur)) && !(c && dc_retained(cur, c->retain))) {
         V n = dc_cell(cur, c, PREHEADER(cur));
         if (c->overflow) return 0;
         *patch = n;
-        *(V *)((char *)n + 8) = dc_dup(*(V *)((char *)cur + 8), c);
-        if (c->overflow) return 0;
-        patch = (V *)((char *)n + 8 + sizeof(uw));
-        cur = *(V *)((char *)cur + 8 + sizeof(uw));
+        for (unsigned i=0; i<heads; ++i) {
+          spine_slots(n)[i] = dc_dup(spine_slots(cur)[i], c);
+          if (c->overflow) return 0;
+        }
+        patch = &spine_slots(n)[heads];
+        cur = spine_slots(cur)[heads];
       }
       *patch = dc_dup(cur, c);
       return first;
@@ -1583,6 +1595,26 @@ V fpr_msg_copy_fresh(V v) { return msg_copy_in(v, 1, fpr_current_pid()); }
  * kept vector is the keeper's own; nothing outlives its slab by
  * reference).  This is the one retention annotation the turn-scoped
  * model needs. */
+static V kp_dup(V v);
+/* Keep the ordinary one-head loop constant-width. For private cells the
+ * encoded width determines how many payloads precede the tail. */
+static inline __attribute__((always_inline)) V keep_spine(V v, int packed) {
+  V first = 0, *patch = &first;
+  V cur = v;
+  unsigned heads;
+  while (!ISINT(cur) && fpr_in_heap(cur) && (heads = packed ? spine_payloads(cur) : (TID(cur) == T_LIST && ((hdr_t *)cur)->var == 1))) {
+    uw t = PREHEADER(cur);
+    V n = fpr_alloc(t - FPR_MANAGED_PREFIX);
+    __builtin_memcpy((void *)n, (void *)cur, t - FPR_MANAGED_PREFIX);
+    *patch = n;
+    for (unsigned i=0; i<heads; ++i) spine_slots(n)[i] = kp_dup(spine_slots(cur)[i]);
+    patch = &spine_slots(n)[heads];
+    cur = spine_slots(cur)[heads];
+  }
+  *patch = kp_dup(cur);
+  return first;
+}
+
 static V kp_dup(V v) {
   if (ISINT(v) || !v || !fpr_in_heap(v)) return v;
   uw total = PREHEADER(v);
@@ -1640,27 +1672,16 @@ static V kp_dup(V v) {
       for (uw i = 0; i < p->nargs; i++) p->args[i] = (uw)kp_dup((V)p->args[i]);
       return n;
     }
-    case T_LIST: {
-      if (h->var != 1) {
+    case T_LIST:
+      if (h->var == 1) return keep_spine(v, 0);
+      /* Heap Nil has no fields. */
+      {
         V n = fpr_alloc(total - FPR_MANAGED_PREFIX);
         __builtin_memcpy((void *)n, (void *)v, total - FPR_MANAGED_PREFIX);
         return n;
       }
-      V first = 0, *patch = &first;
-      V cur = v;
-      while (!ISINT(cur) && fpr_in_heap(cur) && TID(cur) == T_LIST &&
-             ((hdr_t *)cur)->var == 1) {
-        uw t = PREHEADER(cur);
-        V n = fpr_alloc(t - FPR_MANAGED_PREFIX);
-        __builtin_memcpy((void *)n, (void *)cur, t - FPR_MANAGED_PREFIX);
-        *patch = n;
-        *(V *)((char *)n + 8) = kp_dup(*(V *)((char *)cur + 8));
-        patch = (V *)((char *)n + 8 + sizeof(uw));
-        cur = *(V *)((char *)cur + 8 + sizeof(uw));
-      }
-      *patch = kp_dup(cur);
-      return first;
-    }
+    case T_STORED_LIST:
+      return keep_spine(v, 1);
     default: {
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V n = fpr_alloc(total - FPR_MANAGED_PREFIX);
@@ -1703,11 +1724,13 @@ static int kp_reaches(V v, uw *left) {
         for (uw i = 0; i < pp->nargs; i++) if (kp_reaches((V)pp->args[i], left)) return 1;
         return 0;
       }
-      case T_LIST:
-        if (h->var != 1) return 0;
-        if (kp_reaches(*(V *)((char *)v + 8), left)) return 1;
-        v = *(V *)((char *)v + 8 + sizeof(uw)); /* the spine iteratively, as kp_dup */
+      case T_STORED_LIST: case T_LIST: {
+        unsigned heads = spine_payloads(v);
+        if (!heads) return 0;
+        for (unsigned i=0; i<heads; ++i) if (kp_reaches(spine_slots(v)[i], left)) return 1;
+        v = spine_slots(v)[heads];
         continue;
+      }
       default: {
         uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
         V *f = (V *)((char *)v + 8);
@@ -1751,12 +1774,12 @@ static int has_vec(V v) {
         if (has_vec((V)p->args[i])) return 1;
       return 0;
     }
-    case T_LIST: {
+    case T_STORED_LIST: case T_LIST: {
       V c = v;
-      while (!ISINT(c) && fpr_in_heap(c) && TID(c) == T_LIST &&
-             ((hdr_t *)c)->var == 1) {
-        if (has_vec(*(V *)((char *)c + 8))) return 1;
-        c = *(V *)((char *)c + 8 + sizeof(uw));
+      unsigned heads;
+      while (!ISINT(c) && fpr_in_heap(c) && (heads = spine_payloads(c))) {
+        for (unsigned i=0; i<heads; ++i) if (has_vec(spine_slots(c)[i])) return 1;
+        c = spine_slots(c)[heads];
       }
       /* the tail: the static nil (not in the heap), a nil ON the heap -- a
        * primitive's, or another process's nil, copied with the message it
@@ -1794,12 +1817,12 @@ static void vec_release_in(V v) {
       for (uw i = 0; i < p->nargs; i++) vec_release_in((V)p->args[i]);
       return;
     }
-    case T_LIST: {
+    case T_STORED_LIST: case T_LIST: {
       V c = v;
-      while (!ISINT(c) && fpr_in_heap(c) && TID(c) == T_LIST &&
-             ((hdr_t *)c)->var == 1) {
-        vec_release_in(*(V *)((char *)c + 8));
-        c = *(V *)((char *)c + 8 + sizeof(uw));
+      unsigned heads;
+      while (!ISINT(c) && fpr_in_heap(c) && (heads = spine_payloads(c))) {
+        for (unsigned i=0; i<heads; ++i) vec_release_in(spine_slots(c)[i]);
+        c = spine_slots(c)[heads];
       }
       if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST) return;
       vec_release_in(c);
@@ -2253,6 +2276,15 @@ static V g_call_pend(V u) {
   e->seq = 0; e->pool = (struct fpr_pool *)pool; e->mark = pool->allocated; e->scope = 0;
   return TAG((sw)(ps->n - 1));
 }
+/* A private multiword result is already in registers. Materialize a
+ * copy root only when this pending call actually opened a region. */
+static V g_call_active(V tok) {
+  if (fpr_plane_memory) return (V)&fpr_false;
+  fpr_pends_t *ps = pends_of(fpr_hart());
+  if (!ps->n || ps->n - 1 != (uw)UNTAG(tok)) fpr_cpanic("call region: left out of order");
+  return ps->v[ps->n - 1].scope ? (V)&fpr_true : (V)&fpr_false;
+}
+FPR_FN(fpr_g__x24callActive, g_call_active, 1);
 static V g_call_leave(V tok, V r) {
   if (fpr_plane_memory) return r;
   fpr_hart_t *h = fpr_hart();
@@ -3614,10 +3646,17 @@ V fpr_prim_fn__x3e_x3d(V a, V b) { return BOOL(UNTAG(a) >= UNTAG(b)); }
 #define VEQ_INLINE 32 /* pending pairs on the C stack before the heap block */
 typedef struct { V a, b; } veq_pair_t;
 static uint64_t u64(V);
-#if UINTPTR_MAX <= 0xFFFFFFFFu
-static double dbits(V);
-static float fbits(V);
-#endif
+/* Uniform boundaries use boxed float leaves on either word size. Ordinary
+ * RV64 float primitives still use raw bits, so their dbits/fbits helpers must
+ * not be used to interpret one of these managed objects. */
+static double boxed_dbits(V v) {
+  union { uint64_t u; double d; } c = {((fpr_num64_t *)v)->val};
+  return c.d;
+}
+static float boxed_fbits(V v) {
+  union { uint32_t u; float f; } c = {(uint32_t)((bits_t *)v)->val};
+  return c.f;
+}
 #ifdef FPR_BUILTIN_RAW
 extern uw fpr_builtin_field_count(V);
 extern char fpr_builtin_field_kind(V,uw);
@@ -3625,14 +3664,12 @@ extern char fpr_builtin_field_kind(V,uw);
 /* one pair, without descending: 0 differ, 1 equal, 2 compare the fields */
 static int veq_shallow(V a, V b) {
   if (ISINT(a) || ISINT(b)) return a == b;
-#if UINTPTR_MAX <= 0xFFFFFFFFu
   /* IEEE equality also applies when both references name the same NaN. */
   if (a && b && TID(a) == T_BITS && TID(b) == T_BITS &&
       ((hdr_t *)a)->var == ((hdr_t *)b)->var) {
-    if (((hdr_t *)a)->var == 5) return dbits(a) == dbits(b);
-    if (((hdr_t *)a)->var == 6) return fbits(a) == fbits(b);
+    if (((hdr_t *)a)->var == 5) return boxed_dbits(a) == boxed_dbits(b);
+    if (((hdr_t *)a)->var == 6) return boxed_fbits(a) == boxed_fbits(b);
   }
-#endif
   if (a == b) {
 #ifdef FPR_BUILTIN_RAW
     /* A shared ADT may contain NaN, so identity cannot skip numeric equality. */
@@ -3692,7 +3729,9 @@ static int veq(V a0, V b0) {
     if (nf != fpr_builtin_field_count(b)) { eq = 0; break; }
 #else
     uw nf;
-    if (((hdr_t *)a)->tid == T_LIST) {
+    if (TID(a) == T_STORED_LIST) {
+      nf = spine_payloads(a) + 1;
+    } else if (TID(a) == T_LIST) {
       /* Cons has exactly two fields. A coalescing allocator can give equal
        * lists different capacities when a free block is too small to split;
        * capacity and zero padding are not part of a list's value. */
@@ -3871,13 +3910,11 @@ static void render(V v) {
     case T_BITS:
       if (h->var == 4) rdec64((int64_t)u64(v));
       else if (h->var == 7) rdec64((int32_t)(uint32_t)((bits_t *)v)->val);
-#if UINTPTR_MAX <= 0xFFFFFFFFu
       else if (h->var == 5 || h->var == 6) {
         char b[40];
-        uw n = dtoa(b, h->var == 5 ? dbits(v) : (double)fbits(v), h->var == 5 ? 15 : 7);
+        uw n = dtoa(b, h->var == 5 ? boxed_dbits(v) : (double)boxed_fbits(v), h->var == 5 ? 15 : 7);
         for (uw i = 0; i < n; i++) remit(b[i]);
       }
-#endif
       else rdec((sw)((bits_t *)v)->val);
       break;
     case T_PAP: remits("<fn>"); break;

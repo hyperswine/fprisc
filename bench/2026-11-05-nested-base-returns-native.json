@@ -1,0 +1,2388 @@
+{
+  "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+  "test_sha256": "34575160e1a855edb531a864585db17b528dce12538eedb012d371e1b641220a",
+  "source_sha256": "a5d9c3ac3e874b95a71cdab079d2a6cbbf264e80eb3fa0c070f98ea431d542f4",
+  "target": "host",
+  "rows": [
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 3002
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2002
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 6
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 826
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 406
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 3002
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2002
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 6
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 826
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 406
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 4
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 340
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 163
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 4
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 340
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 163
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": []
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 3002
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2002
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 6
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 826
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 406
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 3002
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2002
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 6
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 826
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 406
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 4
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 340
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 163
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "pairs",
+      "stdout": "2008000\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "cells",
+      "stdout": "500500\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "eight",
+      "stdout": "25\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "nine",
+      "stdout": "39\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "inner",
+      "stdout": "(7, 8)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 4
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "outer",
+      "stdout": "((7, 8), (9, 10))\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 5
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "actor",
+      "stdout": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 340
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "closure",
+      "stdout": "19790\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 163
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "effect",
+      "stdout": "1\n3\n5\n4\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "endpoint",
+      "stdout": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+      "exit": 0,
+      "diagnostics": [],
+      "allocations": 2
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "division",
+      "stdout": "1\n4611686018427387903\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] division by zero",
+        "",
+        "*** FPRISC PANIC [actor 0]: division by zero ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "overflow",
+      "stdout": "1\n4611686018427387903\n10\n",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "case": "underflow",
+      "stdout": "",
+      "exit": 1,
+      "diagnostics": [
+        "[ERR] Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 0 - -4611686018427387904 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "case": "module",
+      "enabled": false,
+      "harts": 1,
+      "private": false,
+      "stdout": "((7, 8), (9, 10))\n34\n154\n"
+    },
+    {
+      "case": "module",
+      "enabled": false,
+      "harts": 4,
+      "private": false,
+      "stdout": "((7, 8), (9, 10))\n34\n154\n"
+    },
+    {
+      "case": "module",
+      "enabled": true,
+      "harts": 1,
+      "private": true,
+      "stdout": "((7, 8), (9, 10))\n34\n154\n"
+    },
+    {
+      "case": "module",
+      "enabled": true,
+      "harts": 4,
+      "private": true,
+      "stdout": "((7, 8), (9, 10))\n34\n154\n"
+    }
+  ]
+}

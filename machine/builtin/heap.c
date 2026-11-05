@@ -129,20 +129,42 @@ static void mark_live(V v, int live) {
   if (live) live_map[bit >> 3] |= mask;
   else live_map[bit >> 3] &= (unsigned char)~mask;
 }
-void fpr_builtin_heap_init(void *start, void *end) {
+int fpr_builtin_heap_plan_range(void *start, void *end, fpr_builtin_heap_plan *out) {
   uw lo = (uw)start, hi = (uw)end & ~(uw)15;
-  if (lo > UINTPTR_MAX - 15) fpr_cpanic("Builtin: heap too small");
-  low = (lo + 15) & ~(uw)15;
-  if (hi <= low) fpr_cpanic("Builtin: heap too small");
+  if (lo > UINTPTR_MAX - 15) return FPR_BUILTIN_HEAP_PLAN_TOO_SMALL;
+  lo = (lo + 15) & ~(uw)15;
+  if (hi <= lo) return FPR_BUILTIN_HEAP_PLAN_TOO_SMALL;
 #ifdef FPR_BUILTIN_HEAP_MAX_BYTES
-  if (hi - low > (uw)FPR_BUILTIN_HEAP_MAX_BYTES)
-    fpr_cpanic("Builtin: configured heap exceeds maximum");
+  if (hi - lo > (uw)FPR_BUILTIN_HEAP_MAX_BYTES)
+    return FPR_BUILTIN_HEAP_PLAN_EXCEEDS_MAX;
 #endif
   /* One bit per 16-byte slot; rounding applies to the bitmap, not the payload. */
-  uw map_bytes = ((((hi - low) >> 4) + 7) >> 3);
+  uw map_bytes = ((((hi - lo) >> 4) + 7) >> 3);
   map_bytes = (map_bytes + 15) & ~(uw)15;
-  if (hi - low < map_bytes + PREFIX + 16) fpr_cpanic("Builtin: heap too small");
-  high = hi - map_bytes; live_map = (unsigned char *)high;
+  if (hi - lo < map_bytes + PREFIX + 16) return FPR_BUILTIN_HEAP_PLAN_TOO_SMALL;
+  *out = (fpr_builtin_heap_plan){lo, hi-map_bytes, map_bytes, PREFIX, PREFIX+16};
+  return FPR_BUILTIN_HEAP_PLAN_OK;
+}
+/* Keep the allocator and its query on one checked arithmetic path. Inlining
+ * this helper preserves the ordinary allocation hot path and panic contract. */
+static inline int request_size(uw bytes, uw *size) {
+  if (bytes > UINTPTR_MAX - PREFIX - 15) return 0;
+  uw block_bytes = PREFIX + ((bytes + 15) & ~(uw)15);
+  if (block_bytes == PREFIX) block_bytes += 16;
+  *size = block_bytes;
+  return 1;
+}
+int fpr_builtin_heap_request_size(uw bytes, uw *size) {
+  return request_size(bytes, size);
+}
+void fpr_builtin_heap_init(void *start, void *end) {
+  fpr_builtin_heap_plan plan;
+  int result = fpr_builtin_heap_plan_range(start, end, &plan);
+  if (result == FPR_BUILTIN_HEAP_PLAN_EXCEEDS_MAX)
+    fpr_cpanic("Builtin: configured heap exceeds maximum");
+  if (result != FPR_BUILTIN_HEAP_PLAN_OK) fpr_cpanic("Builtin: heap too small");
+  low = plan.block_start; high = plan.block_end;
+  uw map_bytes = plan.bitmap_bytes; live_map = (unsigned char *)high;
   zero_words((V)live_map, map_bytes);
   for (unsigned f = 0; f < CLASS_ROWS; f++) {
     submap[f] = 0;
@@ -261,9 +283,8 @@ static void free_list(block *b) {
   }
 }
 static V alloc_impl(V bytes, int bulk) {
-  if (bytes > UINTPTR_MAX - PREFIX - 15) fpr_cpanic("Builtin: allocation overflow");
-  uw size = PREFIX + ((bytes + 15) & ~(uw)15);
-  if (size == PREFIX) size += 16;
+  uw size;
+  if (!request_size(bytes, &size)) fpr_cpanic("Builtin: allocation overflow");
 #ifdef FPR_BUILTIN_ARC
   (void)bulk; /* ARC builds open no regions: every block is untracked */
 #else
@@ -330,9 +351,9 @@ static V realloc_impl(V v, V bytes, int bulk) {
   if (meta(b)[1] != 1) fpr_cpanic("Builtin: realloc of shared allocation");
   if (!bytes) { fpr_free(v); return 0; }
   if (bytes <= b->size - PREFIX) return v;
-  if (bytes > UINTPTR_MAX - PREFIX - 15) fpr_cpanic("Builtin: allocation overflow");
   uw old_capacity = b->size - PREFIX;
-  uw size = PREFIX + ((bytes + 15) & ~(uw)15);
+  uw size;
+  if (!request_size(bytes, &size)) fpr_cpanic("Builtin: allocation overflow");
   if (b->next && !b->next->used && b->size + b->next->size >= size) {
 #if defined(FPR_BUILTIN_HEAP_STATS)
     uw old_size = b->size;

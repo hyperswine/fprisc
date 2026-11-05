@@ -1,0 +1,54 @@
+{
+  "metric": "native-stack-v1",
+  "scope": "closed generated builtin call graph; excludes image/runtime admission",
+  "compiler_sha256": "992923f0c9f8c9332c74651acc0401cbda545b6a270e1502130e75e094f144f0",
+  "integration": {
+    "arc_reference_boundary": "unproved",
+    "status": "source-emission-pass",
+    "assembly_sha256": "4dec0dfcb29cad0d7b23ced5ec4760c0639e53ebab459a041706746f9375a431",
+    "baseline_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+    "unchanged_instructions_and_data": true
+  },
+  "targets": [
+    {
+      "target": "rv32",
+      "status": "emulator-pass",
+      "predicted_bytes": {
+        "spills": 144,
+        "leaf": 16,
+        "middle": 32,
+        "root": 48,
+        "tail": 32
+      },
+      "observed_bytes": {
+        "spills": 144,
+        "leaf": 16,
+        "middle": 32,
+        "root": 48,
+        "tail": 32
+      },
+      "assembly_sha256": "df8ab914aaa3d1c09c76a68017e03292f3db2c1e6a9a86d41de54ab05de067a2",
+      "image_sha256": "1913b711d61abc9d00ff64361ad67a62b51f29a342e18fcc26c2c07121c1455c"
+    },
+    {
+      "target": "rv64",
+      "status": "emulator-pass",
+      "predicted_bytes": {
+        "spills": 272,
+        "leaf": 16,
+        "middle": 32,
+        "root": 48,
+        "tail": 32
+      },
+      "observed_bytes": {
+        "spills": 272,
+        "leaf": 16,
+        "middle": 32,
+        "root": 48,
+        "tail": 32
+      },
+      "assembly_sha256": "6fa8ffa6444f9de52504c10f6e7e2e68e3d93b72086d7a3c014ef9b2eceb1bd9",
+      "image_sha256": "4a26e5232e9275db397c789aad7c5dbfb1f2011a030883617daebf3e18e44cf2"
+    }
+  ]
+}

@@ -4,11 +4,13 @@
 module Frontend.Desugar.Typed
   (CheckedPlans,prepareChecked,checkedNames,checkedDeclines,checkedCallArities,
    CheckedUnit,selectCheckedUnit,checkedUnitTops,checkedUnitNames,
-   SpecializedSource,specializeCheckedSource,specializedTops,
+   SpecializedSource,specializeCheckedSource,specializedTops,checkedTransportCatalog,
    SourceSelection,selectionProgram,selectionCompatibility,selectionConstructors,Compatibility,
    compatibilityClauses,compatibilityReason,compatibilityDeclaration,selectUnit,selectSpecialized,selectClauses) where
 import Core.Identity
 import qualified Core.Calling as Calling
+import Core.Typed.Parametric (Catalog(..))
+import Core.Typed.Instantiate (constructorFunction)
 import qualified Core.Typed.Syntax as T
 import qualified Core.Typed.Program as Program
 import Core.Primitives (primArities)
@@ -50,16 +52,26 @@ data CheckedPlans = Plans
     planSignatures :: Struct.Sigs, planStructures :: Struct.Structs,
     planAssumptions :: M.Map ExprId Program.RecursiveAssumption,
     planDeclarations :: M.Map String Calling.Calling }
-data SpecializedSource=SpecializedSource CheckedPlans [STop] Specialize.Specialized
+data SpecializedSource=SpecializedSource CheckedPlans [STop] Specialize.Specialized (M.Map String T.Function)
 specializeCheckedSource :: CheckedPlans -> Either [String] SpecializedSource
 specializeCheckedSource plans=case Struct.specialize (planSignatures plans) (planStructures plans) (planSource plans) of
   ([],tops)->do
     let templates=M.fromList [(name,f) | group@(name,_)<-sourceGroups (Struct.erasePSig (planSource plans)),Just f<-[typedFunction plans group]]
     typed<-either (Left . (:[])) Right (Specialize.specialize (planNamespace plans) (planSpecialization plans) templates)
-    Right (SpecializedSource plans (Struct.erasePSig tops) typed)
+    Right (SpecializedSource plans (Struct.erasePSig tops) typed templates)
   (errors,_)->Left errors
 specializedTops :: SpecializedSource -> [STop]
-specializedTops (SpecializedSource _ tops _)=tops
+specializedTops (SpecializedSource _ tops _ _)=tops
+-- The actual checked source of separately emitted imports, prior to layout or
+-- callback specialization. Neither signatures nor an absent fallback body
+-- certify what a library does with its abstract argument.
+checkedTransportCatalog :: SpecializedSource -> Catalog
+checkedTransportCatalog (SpecializedSource plans _ _ bodies)=Catalog bodies (Specialize.globalSchemes (planSpecialization plans)) (M.withoutKeys constructors bound)
+  where
+    tops=planSource plans
+    T.TypeContext _ constructors=planTypes plans
+    bound=S.fromList ([n | TBind n _ _ _<-tops]++[n | TSig n _ _<-tops])
+
 -- An owned projection of one checking run, including the exact elaborated
 -- clauses its plans describe. Clients cannot pair it with rewritten bodies.
 data CheckedUnit = CheckedUnit CheckedPlans [STop] (S.Set String)
@@ -386,7 +398,7 @@ selectClauses constructors plans tops=do
   assemble constructors plans (Specialize.globalSchemes (planSpecialization plans)) (callingArities plans) typed fallback
 
 selectSpecialized :: S.Set String -> SpecializedSource -> S.Set String -> Either String SourceSelection
-selectSpecialized constructors (SpecializedSource checked legacy specialized) selected=do
+selectSpecialized constructors (SpecializedSource checked legacy specialized _) selected=do
   let original=S.fromList [n | TBind n _ _ _<-planSource checked]
       legacyGroups=M.fromList (sourceGroups legacy)
       available=M.keysSet legacyGroups
@@ -431,18 +443,8 @@ assemble constructors plans schemas arities typed compatibility=do
   unless (S.null (M.keysSet functions `S.intersection` M.keysSet compatibility)) (Left "typed source: checked/compatibility owner collision")
   pure (SourceSelection input compatibility (M.keysSet generated))
 
-constructorDefinition plans name=do
-  let Namespace ns=planNamespace plans
-      T.TypeContext linears schemas=planTypes plans
-  Forall _ _ signature<-maybe (Left ("typed source: missing constructor schema "++name)) Right (M.lookup name schemas)
-  let peel (TFn a b)=let (as,r)=peel b in (a:as,r)
-      peel t=([],t)
-      (fields,result)=peel signature
-      ps=[T.Binder (BinderId (Namespace (ns++"/constructor/"++name)) i) ("x"++show (i+1)) (Forall [] [] ty) (linShapeT linears ty)
-        | (i,ty)<-zip [0..] fields]
-      value b=T.Expr (T.binderType b) (T.binderShape b) T.Generated Nothing (T.Var (T.Local (T.binderId b)))
-      body=T.Expr result (linShapeT linears result) T.Generated Nothing (T.Construct name (map value ps))
-  pure (T.Function name ps body)
+constructorDefinition plans name=maybe (Left ("typed source: missing constructor schema "++name)) Right
+  (constructorFunction (planNamespace plans) (planTypes plans) name)
 
 typedFunction :: CheckedPlans -> (String,[([SPat],[SGuard],SExpr)]) -> Maybe T.Function
 typedFunction checked group@(name,clauses)=case M.lookup name (planEntries checked) of

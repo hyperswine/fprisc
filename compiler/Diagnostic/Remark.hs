@@ -27,6 +27,7 @@ data Heat=Cold | RecursiveGroup | ReceiveLoop deriving (Eq,Ord,Show)
 data EffectCause=UnknownFunction | Primitive | Partial | UnknownCall
   | FunctionValue | Recursive | Failure | Unsupported deriving (Eq,Ord,Show)
 data Reason=InlineAttempt String D.InlineReason | CallbackAttempt String D.CallbackReason
+  | TypeSpecializationFallback String | TypeSpecializationInstance String
   | CompatibilityLowering String
   | CallbackEffect String EffectCause String | CaptureEffect | CaptureBudget
   | LoopRegionPlaced | ReceiveRegionPlaced | ReceiveTrampolinePlaced
@@ -35,6 +36,8 @@ data Remark=Remark {owner :: String,heat :: Heat,reason :: Reason} deriving (Eq,
 kind :: Remark -> RemarkKind
 kind r=case reason r of
   InlineAttempt {}->InlineRemark;CallbackAttempt {}->CallbackRemark
+  TypeSpecializationInstance {}->TypeSpecRemark
+  TypeSpecializationFallback {}->TypeSpecRemark
   CompatibilityLowering _->PathRemark
   CallbackEffect {}->FusionRemark;CaptureEffect->FusionRemark;CaptureBudget->FusionRemark
   _->RegionRemark
@@ -43,10 +46,12 @@ kindName FusionRemark="not-fused"
 kindName RegionRemark="region"
 kindName InlineRemark="inline"
 kindName CallbackRemark="generic-call"
-pass r=case kind r of PathRemark->"typed-lowering";FusionRemark->"typed-fusion";RegionRemark->"regions";InlineRemark->"typed-inline-attempt";CallbackRemark->"typed-callback-attempt"
+kindName TypeSpecRemark="type-spec"
+pass r=case kind r of PathRemark->"typed-lowering";FusionRemark->"typed-fusion";RegionRemark->"regions";InlineRemark->"typed-inline-attempt";CallbackRemark->"typed-callback-attempt";TypeSpecRemark->"typed-monomorphization"
 applied r=case reason r of
   InlineAttempt _ D.Inlined->True
   CallbackAttempt _ D.Specialized->True
+  TypeSpecializationInstance {}->True
   _->kind r==RegionRemark
 selected :: Mode -> Remark -> Bool
 selected Off _=False
@@ -55,6 +60,8 @@ selected _ _=True
 message r=case reason r of
   InlineAttempt target why->"inline attempt for `"++target++"`: "++inlineMessage why
   CallbackAttempt target why->"callback specialization attempt for `"++target++"`: "++callbackMessage why
+  TypeSpecializationInstance name->"checked private instance "++name
+  TypeSpecializationFallback detail->detail
   CompatibilityLowering detail->"compatibility lowering: "++detail
   CallbackEffect callback _ detail->"callback `"++callback++"` prevents fusion: "++detail
   CaptureEffect->"passes not fused: capture evaluation can have effects or fail"
@@ -89,6 +96,8 @@ reasonJSON r=object $ ("tag",string tag):fields
     (tag,fields)=case r of
       InlineAttempt target why->let (tag,fields)=inlineReason why in (tag,("callee",string target):fields)
       CallbackAttempt target why->let (tag,fields)=callbackReason why in (tag,("callee",string target):fields)
+      TypeSpecializationInstance name->("TypeSpecializationInstance",[("instance",string name)])
+      TypeSpecializationFallback detail->("TypeSpecializationFallback",[("detail",string detail)])
       CompatibilityLowering detail->("CompatibilityLowering",[("detail",string detail)])
       CallbackEffect name cause detail->("CallbackEffect",[("callback",string name),
         ("cause",object [("tag",string (show cause)),("detail",string detail)])])

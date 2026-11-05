@@ -1,0 +1,210 @@
+{
+  "schema": "heap-budget-validation-v1",
+  "codegen_revision": 180,
+  "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+  "sources": {
+    "compiler/Codegen.hs": "5bc33cd6fe4305db4495f6266aa3645278768d4251cb1b0cb704c45b97fe4182",
+    "compiler/Codegen/Heap.hs": "573449f82431cf4121489fca9542ba603289f7ed097309df0dad451662bdade3",
+    "compiler/Codegen/Stack.hs": "1e83a64a1af4ce2ed4a68827b7f95738e2be21e8105a910bf3561a3adcb6c49f",
+    "compiler/Codegen/Target/RV/Export.hs": "ff700c67f29d58688b7df0735572b85cbd2530b04879941feb25e4bd503085de",
+    "compiler/Compile.hs": "f996ef7fa2916da8d9ee5375354b15267954a5c1402ce87f794a3cda47ecc20a",
+    "compiler/Compiler/CommandLine.hs": "502ddd7024cef0cb58fb372349cc45c43181c19fea69fe289c876ac13c1c96dd",
+    "compiler/Main.hs": "98033d02072626f81aa2aef0f2462b1d90a5fe991216de454d978f2851e92b00",
+    "fp-risc.cabal": "c7a79ef219f6d1a3ddab5efdc46e74e30322b6ad52213bce32bb97f8d3688ef3",
+    "machine/builtin/heap.c": "409d7d0738af7b3184bc08b1a5921085f3f88779aa8d3636de8931dcab3991aa",
+    "machine/builtin/arc.c": "466a581d76d2cb1b76a780b5069f89626c7b540312ec661337482d3dd7291f31",
+    "machine/builtin/builtin.h": "fb7099bfda0f5c6b671ddba5a981970d58aafe7036b843492d18dbb16ba1ed57",
+    "tests/HeapBounds.hs": "dc95624e7bc685976bcaec2ddb4148203cb0704b20311b0ff140083e7fc6329a",
+    "tests/CompilerOptions.hs": "5f5ede4fdd36ca41c1790037759fb641f24b6eb40636387eea1de7a0eac37ffb",
+    "tests/check_heap_budget.py": "e0bcbd95218fc9b5107f4291d571c954f81d848c42e5aadfeaa2251d6272aa25",
+    "tests/builtin_heap_geometry.c": "0272b0f95b0f5483dd36a830bb3d3454c05f377d5eb9e146ac82dea1356c3e07",
+    "tests/check_builtin_heap_geometry.py": "790f0b732afacfda44044f214efc5e387e01331284bf88a393fa8ed0c892d597",
+    "tests/check_native_stack.py": "f98b1eb329b56343eea88f635132dccb8cad0fd3a20f81b5e4c92a1f392447e1",
+    "tests/check_callback_stack.py": "d1e00957b34859527c9e945752885a6136e87258ce7f6f98c08a7a56b6558f60",
+    "tests/check_list_materialize.py": "c11804f6cdadb7c6f23d8c704649f7c9c0ed9649d7a8d2b911dc44f12f020156",
+    "tests/check_registry.py": "b0baad774ceefd14c96d6f71d0ae5940cbfec1b7de9d9b43c4255b3f4c01e346",
+    "tests/test_check_registry.py": "38c339e9f4f17faddfb26c01ec4a0d83e9747b88eda5059392ba4e91b4e20efe",
+    "tests/check_compile_budget.py": "2ecb43e7bc87c3cc5a4a77675c3768d96a9ac77ddab77a0947ff18a72ba973fb",
+    "tests/compile_budget.json": "1030bccbc557ddea3cd2ae9e0dd82d3791044bfbf0faacc67cae465099257a69",
+    "tests/check_type_spec_cost.py": "aac8ce91c99984bc2f9eb31c91c376504fc2d523cc6771d286546cc05993be7f",
+    "tests/type_spec_cost_budget.json": "30cc5450eb143199cef5966239aab4263b8d0111d6fbfc92686d1d525f0228ee",
+    "docs/2026-11-05-CALLBACK-HEAP-BUDGETS.md": "cb5a89280d41ea16dd812447568a1362793379b50467918502a47e86c2e05e0c",
+    "docs/2026-11-05-NATIVE-STACK-ACCOUNTING.md": "ce380761052320b91859f0fc3d37dd12d12cf0d99aaafc1e531a5efc5a9362f7",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "e724d5f3475219c131fc4e6e1508b0f132cef1aeefa2acd7a6c60423d5dbf0e9",
+    "bench/2026-11-05-heap-budget.json": "a786b6e76562fa1c20fb9ecfa368a08e9caabe9523f6f5b1dbb3e635be4d93d3",
+    "bench/2026-11-05-heap-budget-specialization-cost.json": "3550f31770ec5e2398ce077872729845011951d84d7af958cf732a205aa96d9d",
+    "bench/2026-11-05-heap-budget-native-stack.json": "eae271a813277fd7579e4748ca08f4cbb614e2618719346785eddf49695b4cc9",
+    "bench/2026-11-05-heap-budget-callback-stack.json": "87b232fdf29a7ffe1247adb4b31205e03f98b473f2b77d658f2085b1264f2970",
+    "bench/2026-11-05-heap-budget-geometry.json": "5176baac6f3622517d188d91863d6247b744821bc022c3b220bc8dbdd197319b"
+  },
+  "checks": [
+    {
+      "name": "Haskell",
+      "command": "cabal test all --test-show-details=direct",
+      "status": "PASS",
+      "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+      "log_sha256": "a3e63427b8a73c4a40c10a01e586742fbd171f58198e8fafe118e2d5d0ed51b4",
+      "output_tail": [
+        "final argument: OK",
+        "else owns trailing operator: OK",
+        "else owns trailing pipeline: OK",
+        "non-final case arm: OK",
+        "parentheses end conditional before pipeline: OK",
+        "parentheses end conditional before next argument: OK",
+        "Test suite if-precedence-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/if-precedence-check/test/fp-risc-0.13.1-if-precedence-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ],
+      "suites_passed": 41
+    },
+    {
+      "name": "compiler-budget",
+      "command": "python3 tests/check_compile_budget.py --require-baseline",
+      "status": "PASS",
+      "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+      "log_sha256": "4c28dadfdc6ff9b18453b580ea5df95333b9a7cd9c16c36876896b7c853d3ba7",
+      "output_tail": [
+        "hello: 1.59 GB allocated, 45 MB peak live, 0.8 s (+8.3% allocation, +5.3% peak vs baseline)",
+        "std-live: 32.68 GB allocated, 428 MB peak live, 18.4 s (+9.2% allocation, +6.2% peak vs baseline)",
+        "pos1: 68.98 GB allocated, 720 MB peak live, 40.7 s (+6.4% allocation, -13.7% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "C2-cost",
+      "command": "python3 tests/check_type_spec_cost.py --sizes 16 32 64 128 256 --require-baseline --record bench/2026-11-05-heap-budget-specialization-cost.json",
+      "status": "PASS",
+      "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+      "log_sha256": "22977f465fbac09ab26ad07ce0d111d318f3f9a7d9247c0e53a93da525d89289",
+      "output_tail": [
+        "16 helpers: same 10520 code bytes/48 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 16952 code bytes/80 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30136 code bytes/144 functions; compiler allocation 1.001x explicit twins",
+        "128 helpers: same 56504 code bytes/272 functions; compiler allocation 1.001x explicit twins",
+        "256 helpers: same 109240 code bytes/528 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "heap-admission",
+      "command": "python3 tests/check_heap_budget.py --require-execution --record bench/2026-11-05-heap-budget.json",
+      "status": "PASS",
+      "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+      "log_sha256": "87beec7f823ee7f46a5d17a56029bf23639c9475251a1d23c8100a3c46c6f7e1",
+      "output_tail": [
+        "Heap admission: conversion requests, exact/short limits, zero-allocation raw entry and unknown-boundary refusals PASS",
+        "RV64 plain/measured: 256 allocated callbacks per mode, fixed-arena guards and complete reclamation PASS"
+      ]
+    },
+    {
+      "name": "allocator-geometry",
+      "command": "python3 tests/check_builtin_heap_geometry.py --require-execution --record bench/2026-11-05-heap-budget-geometry.json",
+      "status": "PASS",
+      "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+      "log_sha256": "dce1373ad97a2edc98e291699a758c0dd3e6a68eec0d8ff940f0de90d76b68c0",
+      "output_tail": [
+        "Host ASan/UBSan: geometry, observed blocks, exact/short fixed arena PASS",
+        "RV32 QEMU: geometry, observed blocks, exact/short fixed arena PASS",
+        "RV64 QEMU: geometry, observed blocks, exact/short fixed arena PASS"
+      ]
+    },
+    {
+      "name": "native-stack",
+      "command": "python3 tests/check_native_stack.py --require-execution --record bench/2026-11-05-heap-budget-native-stack.json",
+      "status": "PASS",
+      "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+      "log_sha256": "0a0c86f8670a8220bd53ab9559c1ecfff7fae996b207c136cdf1d39b74dafb7e",
+      "output_tail": [
+        "Running 1 test suites...",
+        "Test suite NativeStack: RUNNING...",
+        "native stack: graph oracle and four target layouts passed",
+        "Test suite NativeStack: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/NativeStack/test/fp-risc-0.13.1-NativeStack.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "",
+        "rv32: physical stack bounds match all five executed probes",
+        "rv64: physical stack bounds match all five executed probes"
+      ]
+    },
+    {
+      "name": "callback-stack",
+      "command": "python3 tests/check_callback_stack.py --require-execution --record bench/2026-11-05-heap-budget-callback-stack.json",
+      "status": "PASS",
+      "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+      "log_sha256": "4feb6f4cbd124cd16fca3a25fda5408dd2857227bf741ce88fbb64328dbed1c8",
+      "output_tail": [
+        "Callback admission: exact/short budgets, wrapper storage, runtime paths and recursive refusals PASS",
+        "RV64 plain: 192 admitted callbacks on a guarded fixed stack without an allocator PASS",
+        "RV64 measured: 192 admitted callbacks on a guarded fixed stack without an allocator PASS"
+      ]
+    },
+    {
+      "name": "materializing-pipelines",
+      "command": "python3 tests/check_list_materialize.py",
+      "status": "PASS",
+      "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "output_tail": [
+        "Materializing pipeline: mapped-once-effects PASS",
+        "Materializing pipeline: capture-before-range PASS",
+        "Materializing pipeline: max-singleton PASS",
+        "Materializing pipeline: max-pair PASS",
+        "Materializing pipeline: min-singleton-rejected PASS",
+        "Materializing pipeline: min-range-before-effects PASS",
+        "Materializing pipeline: near-min PASS",
+        "Materializing pipeline: map-overflow PASS",
+        "Materializing pipeline: division-before-overflow PASS",
+        "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": "python3 tests/test_check_registry.py",
+      "status": "PASS",
+      "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+      "log_sha256": "f62e03f05b7381b6f0bc0d746438bee0b9d7b7042f326019ba6a24fd997b61fa",
+      "output_tail": [
+        "..check_ci: tests/check_rv64_linux.py::typed-runtime",
+        "check_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s",
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.078s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "stack_solver_unchanged_from_codegen_179": true,
+  "stack_report_cached_units_refreshed": 1,
+  "rejected_intermediate_cost_probes": [
+    {
+      "log_name": "fpr-heap-budget-compile-cost-initial.log",
+      "log_sha256": "80fca36053e6e20aa452babe88692b2bcc4a4a0f0f626f1a8bc44584936d7e55"
+    },
+    {
+      "log_name": "fpr-heap-budget-compile-cost-strict.log",
+      "log_sha256": "66222a220bfd3cea870e8c20a14b2ce34a5271a58d50351a1ac879b8ddf9e77e"
+    },
+    {
+      "log_name": "fpr-heap-budget-compile-cost-edges.log",
+      "log_sha256": "d23d523be04a214062b828e7eb7ad1d37f9f51c85180505ed716388761773f3a"
+    },
+    {
+      "log_name": "fpr-heap-budget-std-memory.log",
+      "log_sha256": "8d6a5ab76168b1836a2f4a2def5502d9538b7fde147d78a0f1eb3526ee14c778"
+    }
+  ],
+  "cost_resolution": "Ordinary compilation does not compute unused stack reports; --stack-report opts in and C exports/admission enable them automatically. Rejected strict-stack alternatives were reverted. Baselines and gates unchanged.",
+  "qualification_limits": [
+    "One invocation on a fresh 16-byte-aligned exclusively used builtin RV64 C heap; caller must initialize and provision the admitted capacity.",
+    "Conservative cumulative requests and requested bytes; not tight peak-live storage. Allocating cycles, arbitrary runtime calls, reallocations and regions remain unproved.",
+    "Callback instructions are unchanged by heap admission; cached explicit stack reports preserve unit identities and instructions.",
+    "Runtime C stack, caller/startup/interrupt storage, concurrent entry composition and exact linked-runtime identity remain outside this admission.",
+    "Host and QEMU validation only; not remote CI, physical-board evidence or a scheduling/WCET proof.",
+    "Cost checks overlapped with other validation. Allocation/residency and code parity are evidence; wall times are not isolated throughput benchmarks."
+  ]
+}

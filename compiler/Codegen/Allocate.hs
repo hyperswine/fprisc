@@ -182,8 +182,14 @@ allocateFn cfg fn = do
       -- in: the cost is the number of reserving instructions a range spans,
       -- never the total size of the live sets.
       reserving = [(p, i, r) | (p, i) <- instrs, let r = reservedAt i, not (S.null r)]
-      groups = M.toList (M.fromListWith (flip (++)) [(r, [(p, i)]) | (p, i, r) <- reserving])
-      within iv = takeWhile ((<= ivEnd iv) . fst) . dropWhile ((< ivStart iv) . fst)
+      groups = M.toList (M.fromListWith IM.union [(r, IM.singleton p i) | (p, i, r) <- reserving])
+      -- Index by position: dropping the entire prefix for every live range
+      -- was quadratic even for disjoint, short-lived values. Keep precisely
+      -- the same ascending instruction order and inclusive endpoints.
+      within iv positions =
+        let (_, at, above) = IM.splitLookup (ivStart iv) positions
+            suffix = maybe id (\i -> ((ivStart iv, i) :)) at (IM.toAscList above)
+        in takeWhile ((<= ivEnd iv) . fst) suffix
       forbidden v iv = S.unions [collect r (within iv ps) S.empty | (r, ps) <- groups]
         where
           collect _ [] acc = acc
@@ -192,8 +198,8 @@ allocateFn cfg fn = do
             | otherwise = collect r rest (S.union acc (forbiddenAt v p i))
       -- calls that preserve every allocatable register (the fuel tick's
       -- saving wrapper) do not force a value into the preserved budget
-      callPositions = [(p, i) | (p, i) <- instrs, not (all callPreserves (siCalls i))]
-      clobberPositions = [(p, i) | (p, i) <- instrs, not (null (siClobbers i))]
+      callPositions = IM.fromAscList [(p, i) | (p, i) <- instrs, not (all callPreserves (siCalls i))]
+      clobberPositions = IM.fromAscList [(p, i) | (p, i) <- instrs, not (null (siClobbers i))]
       crossesCallV v = case M.lookup v ivs of
         Just iv -> any (\(p, _) -> crosses v p) (within iv callPositions)
         Nothing -> False
@@ -518,7 +524,10 @@ resolveCopies cfg here raw = do
             [] ->
               -- every destination is a source: a cycle (sources are all registers)
               let (_, s) = head pending
-                  used = S.fromList ([d' | (d', _) <- pending] ++ sources)
+                  -- A completed destination still holds a result. This also
+                  -- includes identity copies removed above: using one as
+                  -- cycle scratch would destroy that already-placed value.
+                  used = S.fromList ([d' | (PR d', _) <- raw] ++ sources)
                in case [t | t <- acScratch cfg, S.notMember t used, case s of PR sr -> acClassOf cfg t == acClassOf cfg sr; _ -> False] of
                     (t : _) -> case s of
                       PR sr ->

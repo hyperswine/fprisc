@@ -1,0 +1,424 @@
+{
+  "schema": "open-rows-v1",
+  "compiler_sha256": "64f733497a6f6703ed10de2aa815e59817d4d42acd23419d1ce2c0aa8e84c722",
+  "test_sha256": "30a5d09ea46327c86b1d00c2a464511d1a9ce232d27778e1931b8da047405761",
+  "records": [
+    {
+      "rollback": false,
+      "abi": "soft",
+      "allocator": "c",
+      "case": 0,
+      "output": "OPEN_ROWS_PASS\n"
+    },
+    {
+      "rollback": false,
+      "abi": "soft",
+      "allocator": "c",
+      "case": 1,
+      "output": "Builtin panic: Builtin: uniform scalar representation mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "soft",
+      "allocator": "c",
+      "case": 2,
+      "output": "Builtin panic: Builtin: uniform field representation mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "soft",
+      "allocator": "c",
+      "case": 3,
+      "output": "Builtin panic: Builtin: uniform tag test descriptor mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "soft",
+      "allocator": "fpr",
+      "case": 0,
+      "output": "OPEN_ROWS_PASS\n"
+    },
+    {
+      "rollback": false,
+      "abi": "soft",
+      "allocator": "fpr",
+      "case": 1,
+      "output": "Builtin panic: Builtin: uniform scalar representation mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "soft",
+      "allocator": "fpr",
+      "case": 2,
+      "output": "Builtin panic: Builtin: uniform field representation mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "soft",
+      "allocator": "fpr",
+      "case": 3,
+      "output": "Builtin panic: Builtin: uniform tag test descriptor mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "hard",
+      "allocator": "c",
+      "case": 0,
+      "output": "OPEN_ROWS_PASS\n"
+    },
+    {
+      "rollback": false,
+      "abi": "hard",
+      "allocator": "c",
+      "case": 1,
+      "output": "Builtin panic: Builtin: uniform scalar representation mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "hard",
+      "allocator": "c",
+      "case": 2,
+      "output": "Builtin panic: Builtin: uniform field representation mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "hard",
+      "allocator": "c",
+      "case": 3,
+      "output": "Builtin panic: Builtin: uniform tag test descriptor mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "hard",
+      "allocator": "fpr",
+      "case": 0,
+      "output": "OPEN_ROWS_PASS\n"
+    },
+    {
+      "rollback": false,
+      "abi": "hard",
+      "allocator": "fpr",
+      "case": 1,
+      "output": "Builtin panic: Builtin: uniform scalar representation mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "hard",
+      "allocator": "fpr",
+      "case": 2,
+      "output": "Builtin panic: Builtin: uniform field representation mismatch\n"
+    },
+    {
+      "rollback": false,
+      "abi": "hard",
+      "allocator": "fpr",
+      "case": 3,
+      "output": "Builtin panic: Builtin: uniform tag test descriptor mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "soft",
+      "allocator": "c",
+      "case": 0,
+      "output": "OPEN_ROWS_PASS\n"
+    },
+    {
+      "rollback": true,
+      "abi": "soft",
+      "allocator": "c",
+      "case": 1,
+      "output": "Builtin panic: Builtin: uniform scalar representation mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "soft",
+      "allocator": "c",
+      "case": 2,
+      "output": "Builtin panic: Builtin: uniform field representation mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "soft",
+      "allocator": "c",
+      "case": 3,
+      "output": "Builtin panic: Builtin: uniform tag test descriptor mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "soft",
+      "allocator": "fpr",
+      "case": 0,
+      "output": "OPEN_ROWS_PASS\n"
+    },
+    {
+      "rollback": true,
+      "abi": "soft",
+      "allocator": "fpr",
+      "case": 1,
+      "output": "Builtin panic: Builtin: uniform scalar representation mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "soft",
+      "allocator": "fpr",
+      "case": 2,
+      "output": "Builtin panic: Builtin: uniform field representation mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "soft",
+      "allocator": "fpr",
+      "case": 3,
+      "output": "Builtin panic: Builtin: uniform tag test descriptor mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "hard",
+      "allocator": "c",
+      "case": 0,
+      "output": "OPEN_ROWS_PASS\n"
+    },
+    {
+      "rollback": true,
+      "abi": "hard",
+      "allocator": "c",
+      "case": 1,
+      "output": "Builtin panic: Builtin: uniform scalar representation mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "hard",
+      "allocator": "c",
+      "case": 2,
+      "output": "Builtin panic: Builtin: uniform field representation mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "hard",
+      "allocator": "c",
+      "case": 3,
+      "output": "Builtin panic: Builtin: uniform tag test descriptor mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "hard",
+      "allocator": "fpr",
+      "case": 0,
+      "output": "OPEN_ROWS_PASS\n"
+    },
+    {
+      "rollback": true,
+      "abi": "hard",
+      "allocator": "fpr",
+      "case": 1,
+      "output": "Builtin panic: Builtin: uniform scalar representation mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "hard",
+      "allocator": "fpr",
+      "case": 2,
+      "output": "Builtin panic: Builtin: uniform field representation mismatch\n"
+    },
+    {
+      "rollback": true,
+      "abi": "hard",
+      "allocator": "fpr",
+      "case": 3,
+      "output": "Builtin panic: Builtin: uniform tag test descriptor mismatch\n"
+    }
+  ],
+  "effects": {
+    "False": {
+      "ordered": {
+        "status": 0,
+        "output": "1\n2\n3\n4\n5\n6\n1\n3\n"
+      },
+      "unused": {
+        "status": 1,
+        "output": "1\n0\nBuiltin panic: division by zero\n"
+      },
+      "nested-unused": {
+        "status": 1,
+        "output": "1\n2\n0\nBuiltin panic: division by zero\n"
+      },
+      "branch": {
+        "status": 0,
+        "output": "7\n7\n"
+      },
+      "generic": {
+        "status": 0,
+        "output": "7\n9\ntext\n"
+      },
+      "tag-fallthrough": {
+        "status": 0,
+        "output": "99\n99\n1\n0\n1\n2\n0\n"
+      },
+      "maximum": {
+        "status": 1,
+        "output": "1\n4611686018427387903\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "minimum": {
+        "status": 1,
+        "output": "1\n-4611686018427387904\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      }
+    },
+    "True": {
+      "ordered": {
+        "status": 0,
+        "output": "1\n2\n3\n4\n5\n6\n1\n3\n"
+      },
+      "unused": {
+        "status": 1,
+        "output": "1\n0\nBuiltin panic: division by zero\n"
+      },
+      "nested-unused": {
+        "status": 1,
+        "output": "1\n2\n0\nBuiltin panic: division by zero\n"
+      },
+      "branch": {
+        "status": 0,
+        "output": "7\n7\n"
+      },
+      "generic": {
+        "status": 0,
+        "output": "7\n9\ntext\n"
+      },
+      "tag-fallthrough": {
+        "status": 0,
+        "output": "99\n99\n1\n0\n1\n2\n0\n"
+      },
+      "maximum": {
+        "status": 1,
+        "output": "1\n4611686018427387903\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "minimum": {
+        "status": 1,
+        "output": "1\n-4611686018427387904\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      }
+    }
+  },
+  "baseline": {
+    "compiler_sha256": "65a4d73bbe265de4ee4cbe723d54bf64292b35491728263962a1d0e44535d6b6",
+    "public_refusal": "use: Lib resolves to \"rows.fpr#2fa608016d25938a\"  (pin it to freeze this exact code)\nexport get: not a C-representable type: TRecT [(\"x\",TCon \"Word\" [])] (Just \"r\") (Int, Word, Addr, Bool, Unit, F64, F32 cross the boundary)\n",
+    "internal_refusal": "automatic ARC: incompatible representations Data 234705031 and Data 93280874; specialize the function or data type for each representation\n  while lowering get\n  while lowering main\n"
+  },
+  "raw_refusals": {
+    "False": "use: Lib resolves to \"rows.fpr#2fa608016d25938a\"  (pin it to freeze this exact code)\nexport get: not a C-representable type: TRecT [(\"x\",TCon \"Word\" [])] (Just \"r\") (Int, Word, Addr, Bool, Unit, F64, F32 cross the boundary)\n",
+    "True": "use: Lib resolves to \"rows.fpr#2fa608016d25938a\"  (pin it to freeze this exact code)\nexport get: not a C-representable type: TRecT [(\"x\",TCon \"Word\" [])] (Just \"r\") (Int, Word, Addr, Bool, Unit, F64, F32 cross the boundary)\n"
+  },
+  "native_base": {
+    "ordered": [
+      {
+        "harts": 1,
+        "status": 0,
+        "stdout": "1\n2\n3\n4\n5\n6\n1\n3\n",
+        "stderr": ""
+      },
+      {
+        "harts": 4,
+        "status": 0,
+        "stdout": "1\n2\n3\n4\n5\n6\n1\n3\n",
+        "stderr": ""
+      }
+    ],
+    "unused": [
+      {
+        "harts": 1,
+        "status": 1,
+        "stdout": "1\n0\n",
+        "stderr": "[ERR] division by zero\n\n*** FPRISC PANIC [actor 0]: division by zero ***\n"
+      },
+      {
+        "harts": 4,
+        "status": 1,
+        "stdout": "1\n0\n",
+        "stderr": "[ERR] division by zero\n\n*** FPRISC PANIC [actor 0]: division by zero ***\n"
+      }
+    ],
+    "nested-unused": [
+      {
+        "harts": 1,
+        "status": 1,
+        "stdout": "1\n2\n0\n",
+        "stderr": "[ERR] division by zero\n\n*** FPRISC PANIC [actor 0]: division by zero ***\n"
+      },
+      {
+        "harts": 4,
+        "status": 1,
+        "stdout": "1\n2\n0\n",
+        "stderr": "[ERR] division by zero\n\n*** FPRISC PANIC [actor 0]: division by zero ***\n"
+      }
+    ],
+    "branch": [
+      {
+        "harts": 1,
+        "status": 0,
+        "stdout": "7\n7\n",
+        "stderr": ""
+      },
+      {
+        "harts": 4,
+        "status": 0,
+        "stdout": "7\n7\n",
+        "stderr": ""
+      }
+    ],
+    "generic": [
+      {
+        "harts": 1,
+        "status": 0,
+        "stdout": "7\n9\ntext\n",
+        "stderr": ""
+      },
+      {
+        "harts": 4,
+        "status": 0,
+        "stdout": "7\n9\ntext\n",
+        "stderr": ""
+      }
+    ],
+    "tag-fallthrough": [
+      {
+        "harts": 1,
+        "status": 0,
+        "stdout": "99\n99\n1\n0\n1\n2\n0\n",
+        "stderr": ""
+      },
+      {
+        "harts": 4,
+        "status": 0,
+        "stdout": "99\n99\n1\n0\n1\n2\n0\n",
+        "stderr": ""
+      }
+    ],
+    "maximum": [
+      {
+        "harts": 1,
+        "status": 1,
+        "stdout": "1\n4611686018427387903\n",
+        "stderr": "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n"
+      },
+      {
+        "harts": 4,
+        "status": 1,
+        "stdout": "1\n4611686018427387903\n",
+        "stderr": "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n"
+      }
+    ],
+    "minimum": [
+      {
+        "harts": 1,
+        "status": 1,
+        "stdout": "1\n-4611686018427387904\n",
+        "stderr": "[ERR] Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n"
+      },
+      {
+        "harts": 4,
+        "status": 1,
+        "stdout": "1\n-4611686018427387904\n",
+        "stderr": "[ERR] Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n"
+      }
+    ]
+  }
+}

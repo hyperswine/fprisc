@@ -1,0 +1,103 @@
+{
+  "schema": "linked-stack-completion-v1",
+  "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+  "codegen_revision": 180,
+  "compiler_unchanged_from": "bench/2026-11-05-heap-budget-validation.json",
+  "checks": [
+    {
+      "name": "linked-stack",
+      "command": "python3 tests/check_linked_stack.py --require-execution --record bench/2026-11-05-linked-stack.json",
+      "status": "PASS",
+      "log_sha256": "a285ffee19f149499fa6f852b210b5826fc1b5aea64c4c28866b06c128b28f79",
+      "output_tail": [
+        "test_independent_acyclic_graph_oracle (__main__.LinkedStackTests.test_independent_acyclic_graph_oracle) ... ok",
+        "test_loaded_runtime_changes_the_bound (__main__.LinkedStackTests.test_loaded_runtime_changes_the_bound) ... ok",
+        "test_unknown_dynamic_and_invalid_control (__main__.LinkedStackTests.test_unknown_dynamic_and_invalid_control) ... ok",
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 7 tests in 0.215s",
+        "",
+        "OK",
+        "Heap admission: conversion requests, exact/short limits, zero-allocation raw entry and unknown-boundary refusals PASS",
+        "Linked stack: exact/short budgets and unmodified instruction-step observations PASS {'identity': 208, 'wide': 384, 'choose': 240}",
+        "Linked stack: exact/short budgets and unmodified instruction-step observations PASS {'identity': 208, 'wide': 384, 'choose': 240}",
+        "RV64 plain/measured: 8 allocated callbacks per mode, fixed-arena guards and complete reclamation PASS",
+        "Callback admission: exact/short budgets, wrapper storage, runtime paths and recursive refusals PASS",
+        "RV64 plain: 192 admitted callbacks on a guarded fixed stack without an allocator PASS",
+        "RV64 measured: 192 admitted callbacks on a guarded fixed stack without an allocator PASS"
+      ]
+    },
+    {
+      "name": "image-publication",
+      "command": "python3 tests/check_target_image.py --record bench/2026-11-05-linked-stack-image-gate.json",
+      "status": "PASS",
+      "log_sha256": "ceea9465ef0b2c776c461d032b8156efcdd6ccb0a45bf5650c761d48cb0f7104",
+      "output_tail": [
+        "............",
+        "----------------------------------------------------------------------",
+        "Ran 12 tests in 0.001s",
+        "",
+        "OK",
+        "virt/bram ARC=0: linked image admitted; rejected replacements preserved all prior artifacts",
+        "virt/bram ARC=1: linked image admitted; rejected replacements preserved all prior artifacts",
+        "tangnano20k/bram ARC=0: linked image admitted; rejected replacements preserved all prior artifacts",
+        "tangnano20k/sdram ARC=0: linked image admitted; rejected replacements preserved all prior artifacts"
+      ]
+    },
+    {
+      "name": "default-heap-regression",
+      "command": "python3 tests/check_heap_budget.py --require-execution",
+      "status": "PASS",
+      "log_sha256": "87beec7f823ee7f46a5d17a56029bf23639c9475251a1d23c8100a3c46c6f7e1",
+      "output_tail": [
+        "Heap admission: conversion requests, exact/short limits, zero-allocation raw entry and unknown-boundary refusals PASS",
+        "RV64 plain/measured: 256 allocated callbacks per mode, fixed-arena guards and complete reclamation PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": "python3 tests/test_check_registry.py",
+      "status": "PASS",
+      "log_sha256": "f9532db305fbad8d0ac761d00fda062aaf59710672b1d317b8261e3a7e9277cc",
+      "output_tail": [
+        "..check_ci: tests/check_rv64_linux.py::typed-runtime",
+        "check_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s",
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.067s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "sources": {
+    "Makefile": "d11eac81a4387f89a4901a13052f32a73738492a73de40bc9bded99f7f9155a5",
+    "tools/check_linked_stack.py": "2f2020e22c2c4e471caf7a2dd98980d092fec45a5abadb91667b577ed127913c",
+    "tools/check_target_image.py": "7628c6cd610bf74a66452b9ecdffc318eed539159050042e901a4b58ca681195",
+    "tests/check_linked_stack.py": "fd36bc80f96bd85c9c63a366eafd00277d3b091b142d67b075a728c9cb85e38e",
+    "tests/linked_stack_probe.py": "fa278459f273236351ce7757c832878ce6ec4aea56ac8dda8bf149e658c3cf8a",
+    "tests/check_heap_budget.py": "b7174b085fd91a0904c63b38ad47339a10d1c4efe52535909fd14c936f9f242b",
+    "tests/check_callback_stack.py": "e4c60f16ba51c752d1be01efebff545e0aff91e852da2d55e6357c97cd568d76",
+    "tests/check_target_image.py": "79a77205e0ffc606e75041cbf32e6d49ae45ee68cf6e4125a42d32a9d0d74ae4",
+    "tests/check_registry.py": "6f70843acb558327282e97966d8154167c252f034d60de29dafbbb9cf43630f7",
+    "tests/test_check_registry.py": "802775bb6b232e2495af9f9a182532388a26397f3af1e36ae3e7c17628b13290",
+    "docs/2026-11-05-LINKED-STACK-ADMISSION.md": "2b6b123b388bc234dbdf2885b6038e964907c491cc2b6421b245973b66bcf3f4",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "3d5414bb71794c5f7db38edb97fa3b2fa05d9d3b6723847bc6b1410eea36f313",
+    "docs/2026-11-05-CALLBACK-HEAP-BUDGETS.md": "e04cbcd9f96a71b0c51f50fde1caec41acee56f09c73f51c80743ba8c5798008",
+    "docs/2026-11-05-LOAD-SEGMENT-ADMISSION.md": "b7fcde4f83e761d58e786d9e3ae95a7f8e4738a765a7e40bf07d0b91483023b6",
+    "docs/2026-09-18-BAREMETAL-BUILTIN.md": "6efef107a676e1d888bfd64d7f9935e39d0b4f5476d5983afb38b6ac36422d77",
+    "bench/2026-11-05-linked-stack.json": "d59aade2f7fca4a046c116431aa0e8d3ebbef714f3a5cd801c24b62450cb8996",
+    "bench/2026-11-05-linked-stack-image-gate.json": "860f98dc6f99706949bc74e5e5490c5b96f31f11baed99a3ff595fc4a587c4c8"
+  },
+  "scope": [
+    "Per-entry synchronous RV64 IM stack-pointer bound from final executable bytes; valid memory and ordinary callee-saved/return ABI are required.",
+    "Panic paths count; ordinary/nonreturning calls and tail/zero-retaining cycles are composed; dynamic SP, unresolved control and retaining cycles refuse.",
+    "Plain and heap-counter images: eight callbacks each, unmodified instruction-step traces. Separate raw harness: 192 callbacks per mode, compiler/linked/executed bounds agree.",
+    "Virt manual/ARC optional build enforcement and previous-output preservation verified. Tang BRAM/SDRAM image-fit checks preserved; no new Tang hardware execution.",
+    "Default heap regression still executes 256 callbacks per mode. No generated compiler code changed; compiler cost gates were not rerun.",
+    "Heap contract/runtime binding, actual arenas and caller/startup/interrupt/concurrent storage composition remain incomplete; no hardware/WCET/remote CI claim."
+  ]
+}

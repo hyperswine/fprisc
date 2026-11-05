@@ -1,0 +1,454 @@
+{
+  "schema": "base-product-validation-v1",
+  "codegen_revision": 187,
+  "compiler_sha256": "7ae1cacc4cc19598704c1fa6e9e4af39c2184f733ad3fd85ce75b1adb58a44fc",
+  "checks": [
+    {
+      "name": "products",
+      "command": [
+        "python3",
+        "tests/check_base_products.py",
+        "--record",
+        "bench/2026-11-05-base-products.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 49.44,
+      "log_sha256": "c09252fb1477f44396a7573f3b3b25d4633f504c0356c57a7e7f2442cf3fb659",
+      "output_tail": [
+        "cell: {'default': 0, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "explicit: {'default': 0, 'boxed': 0}, normal regions and 1/4 harts PASS",
+        "tuple2: {'default': 0, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "tuple4: {'default': 0, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "tuple8: {'default': 0, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "closed-record: {'default': 0, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "generic-string: {'default': 0, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "generic-list: {'default': 2, 'boxed': 1002}, normal regions and 1/4 harts PASS",
+        "dynamic-message-fallback: {'default': 1, 'boxed': 2}, normal regions and 1/4 harts PASS",
+        "separate-module: {'default': 2, 'boxed': 2}, normal regions and 1/4 harts PASS",
+        "module-owned-loop: {'default': 0, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "partial-application: {'default': 0, 'boxed': 2}, normal regions and 1/4 harts PASS",
+        "effects: exact four-mode effect/trap differential PASS",
+        "unused-strict: exact four-mode effect/trap differential PASS",
+        "maximum: exact four-mode effect/trap differential PASS",
+        "minimum: exact four-mode effect/trap differential PASS",
+        "bounds: exact four-mode effect/trap differential PASS"
+      ]
+    },
+    {
+      "name": "compile-cost",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 57.76,
+      "log_sha256": "f5eb385460a0bd7bbef47287c44765df88fda98f5fad5e6e9c49cd1bc1a92dc7",
+      "output_tail": [
+        "hello: 1.60 GB allocated, 27 MB peak live, 0.7 s (+9.5% allocation, -37.7% peak vs baseline)",
+        "std-live: 32.76 GB allocated, 502 MB peak live, 18.2 s (+9.5% allocation, +24.5% peak vs baseline)",
+        "pos1: 67.40 GB allocated, 762 MB peak live, 38.8 s (+4.0% allocation, -8.6% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "base-wrappers",
+      "command": [
+        "python3",
+        "tests/check_base_wrappers.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 39.02,
+      "log_sha256": "6be7dedc4073bb1f4d8266348bd32c0d5697c9d69fade54cfd42f9a68ec157e8",
+      "output_tail": [
+        "Wrapper: [1001, 0] allocations, 1/4 harts PASS",
+        "Explicit: [0, 0] allocations, 1/4 harts PASS",
+        "returned: [1001, 1] allocations, boundary/value checks PASS",
+        "string: [1001, 0] allocations, boundary/value checks PASS",
+        "heap-list: [1003, 2] allocations, boundary/value checks PASS",
+        "nested: [2002, 0] allocations, boundary/value checks PASS",
+        "record: [1001, 0] allocations, boundary/value checks PASS",
+        "boolean: [1001, 0] allocations, boundary/value checks PASS",
+        "float: [1002, 1] allocations, boundary/value checks PASS",
+        "other-variant: [1, 1] allocations, boundary/value checks PASS",
+        "maximum: exact ordered effect/failure differential PASS",
+        "minimum: exact ordered effect/failure differential PASS",
+        "division: exact ordered effect/failure differential PASS",
+        "Unused strict seed and separate-module tagged entry PASS"
+      ]
+    },
+    {
+      "name": "workers",
+      "command": [
+        "python3",
+        "tests/check_workers.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 26.79,
+      "log_sha256": "f14d6a0eceb7c92cf59dccd97cbc05bf8f6966a7396184ff2e228f6b572f90de",
+      "output_tail": [
+        "Build profile: -w ghc-9.8.2 -O1",
+        "In order, the following will be built (use -v for more details):",
+        " - fp-risc-0.13.1 (test:WorkersCheck) (first run)",
+        "Preprocessing test suite 'WorkersCheck' for fp-risc-0.13.1...",
+        "Building test suite 'WorkersCheck' for fp-risc-0.13.1...",
+        "Running 1 test suites...",
+        "Test suite WorkersCheck: RUNNING...",
+        "Workers Core: admission, public arity, shadowing, escaping values, unknown kinds, vector tier and clone budget PASS",
+        "Test suite WorkersCheck: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/WorkersCheck/test/fp-risc-0.13.1-WorkersCheck.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Workers: native 1/4-worker differential, independent switches/inliner, warm caches, dynamic entry and exact failure reasons PASS",
+        "{\"allocations\": {\"0:0:0:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:pair-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:record-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:1:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:1:pair-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:1:record-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:1:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:1:0:combined-cost\": {\"alloc_bytes\": 320224, \"alloc_requests\": 10003, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:1:0:pair-cost\": {\"alloc_bytes\": 320288, \"alloc_requests\": 10005, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:1:0:record-cost\": {\"alloc_bytes\": 320288, \"alloc_requests\": 10005, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:1:0:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:1:1:combined-cost\": {\"alloc_bytes\": 320224, \"alloc_requests\": 10003, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:1:1:pair-cost\": {\"alloc_bytes\": 320288, \"alloc_requests\": 10005, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:1:1:record-cost\": {\"alloc_bytes\": 320288, \"alloc_requests\": 10005, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:1:1:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:0:0:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:0:0:pair-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:0:0:record-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:0:0:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:0:1:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:0:1:pair-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:0:1:record-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:0:1:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:1:0:combined-cost\": {\"alloc_bytes\": 320224, \"alloc_requests\": 10003, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:1:0:pair-cost\": {\"alloc_bytes\": 320288, \"alloc_requests\": 10005, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:1:0:record-cost\": {\"alloc_bytes\": 320288, \"alloc_requests\": 10005, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:1:0:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:1:1:combined-cost\": {\"alloc_bytes\": 320224, \"alloc_requests\": 10003, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:1:1:pair-cost\": {\"alloc_bytes\": 320288, \"alloc_requests\": 10005, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:1:1:record-cost\": {\"alloc_bytes\": 320288, \"alloc_requests\": 10005, \"buddy_allocs\": 4, \"buddy_frees\": 2, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"1:1:1:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}}, \"panic_reasons\": {\"add-overflow\": \"Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\", \"bad-pair\": \"no matching clause for pairSum\", \"div-overflow\": \"Int overflow: -4611686018427387904 / -1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\", \"division-zero\": \"division by zero\", \"field-panic\": \"field panic\", \"mul-overflow\": \"Int overflow: 1099511627776 * 1099511627776 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\", \"sub-overflow\": \"Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\"}}",
+        "Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS",
+        "Workers: optimized shared module called by general-ABI host PASS"
+      ]
+    },
+    {
+      "name": "tuple-scalars",
+      "command": [
+        "python3",
+        "tests/check_tuple_scalars.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 13.99,
+      "log_sha256": "acbd309c01c242f3d54b02b53db593d35156a90dedecd4d30bc3da09c91275a5",
+      "output_tail": [
+        "Tuple scalar replacement: tuple-step 1002 -> 1 requests PASS",
+        "Tuple scalar replacement: let-bound-step 1002 -> 1 requests PASS",
+        "Tuple scalar replacement: conditional-forward 502 -> 1 requests PASS",
+        "Tuple scalar replacement: record-step 1002 -> 1 requests PASS",
+        "Tuple scalar replacement: two-tuples 1003 -> 1 requests PASS",
+        "Tuple scalar replacement: escape-whole 105 -> 4 requests PASS",
+        "Tuple scalar replacement: tests/bench/unbox/tuple_loop.fpr 2 requests PASS",
+        "Tuple scalar replacement rollback PASS"
+      ]
+    },
+    {
+      "name": "wide-workers",
+      "command": [
+        "python3",
+        "tests/check_wide_workers.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 44.28,
+      "log_sha256": "42f9d4cb6842c902e796ef573f290dcc1745d3791773141d55054f6c8f1b92dd",
+      "output_tail": [
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=0 fields-disabled=0 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=0 fields-disabled=0 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=0 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=1 fields-disabled=0 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers optimized shared module called by general ABI host: PASS",
+        "wide workers native differential, allocation, effects, actor ownership, stack, 64-argument boundary and four-target emission: PASS",
+        "{\"0:0:0\": {\"record16:1\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}}, \"0:0:1\": {\"record16:1\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}}, \"0:1:0\": {\"record16:1\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}}, \"0:1:1\": {\"record16:1\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}}, \"1:0:0\": {\"record16:1\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}}, \"1:0:1\": {\"record16:1\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 80, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}}, \"1:1:0\": {\"record16:1\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}}, \"1:1:1\": {\"record16:1\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 1440736, \"alloc_requests\": 10005, \"buddy_allocs\": 7, \"buddy_frees\": 5, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 480352, \"alloc_requests\": 10005, \"buddy_allocs\": 5, \"buddy_frees\": 3, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5282272, \"alloc_requests\": 10005, \"buddy_allocs\": 14, \"buddy_frees\": 12, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 800480, \"alloc_requests\": 10005, \"buddy_allocs\": 6, \"buddy_frees\": 4, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}}}"
+      ]
+    },
+    {
+      "name": "reset-reuse",
+      "command": [
+        "python3",
+        "tests/check_reset_reuse.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 6.73,
+      "log_sha256": "85c04142a6d2647a7eac4573bff3713b24e05c6ad6d9138c82703cfb4d063a89",
+      "output_tail": [
+        "reset barriers: inline-disabled=0 reuse-disabled=0: imported CAF/helper, callback and foreign entry PASS",
+        "reset barriers: inline-disabled=0 reuse-disabled=1: imported CAF/helper, callback and foreign entry PASS",
+        "reset barriers: inline-disabled=1 reuse-disabled=0: imported CAF/helper, callback and foreign entry PASS",
+        "reset barriers: inline-disabled=1 reuse-disabled=1: imported CAF/helper, callback and foreign entry PASS"
+      ]
+    },
+    {
+      "name": "open-rows",
+      "command": [
+        "python3",
+        "tests/check_open_rows.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 85.4,
+      "log_sha256": "f6dc2239313f1246b07bcc6b089c679192db5693c9db0a16b98ed1a9fa1df23f",
+      "output_tail": [
+        "rollback=False, hard, fpr, case 3: open-row boundaries PASS",
+        "rollback=True, host=False: generic payloads, nested effects, unused fields, dead branch and overflow endpoints PASS",
+        "rollback=True, soft, c, case 0: open-row boundaries PASS",
+        "rollback=True, soft, c, case 1: open-row boundaries PASS",
+        "rollback=True, soft, c, case 2: open-row boundaries PASS",
+        "rollback=True, soft, c, case 3: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 0: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 1: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 2: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 3: open-row boundaries PASS",
+        "rollback=True, hard, c, case 0: open-row boundaries PASS",
+        "rollback=True, hard, c, case 1: open-row boundaries PASS",
+        "rollback=True, hard, c, case 2: open-row boundaries PASS",
+        "rollback=True, hard, c, case 3: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 0: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 1: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 2: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 3: open-row boundaries PASS"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--require-baseline",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256",
+        "--record",
+        "bench/2026-11-05-base-products-cost.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 3.33,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "output_tail": [
+        "16 helpers: same 10832 code bytes/55 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 0.15,
+      "log_sha256": "ef0a68c3451623f4c21fe31cf5aef508392e621d3c1419c26c8ba5524e4cfd81",
+      "output_tail": [
+        "..check_ci: tests/check_rv64_linux.py::typed-runtime",
+        "check_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s",
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.065s",
+        "",
+        "OK"
+      ]
+    },
+    {
+      "name": "list-materialize",
+      "command": [
+        "python3",
+        "tests/check_list_materialize.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 77.12,
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "output_tail": [
+        "Materializing pipeline: filter PASS",
+        "Materializing pipeline: map-filter PASS",
+        "Materializing pipeline: filter-map PASS",
+        "Materializing pipeline: empty PASS",
+        "Materializing pipeline: filtered-all PASS",
+        "Materializing pipeline: predicate-effects PASS",
+        "Materializing pipeline: map-effects PASS",
+        "Materializing pipeline: division-order PASS",
+        "Materializing pipeline: mapped-once-effects PASS",
+        "Materializing pipeline: capture-before-range PASS",
+        "Materializing pipeline: max-singleton PASS",
+        "Materializing pipeline: max-pair PASS",
+        "Materializing pipeline: min-singleton-rejected PASS",
+        "Materializing pipeline: min-range-before-effects PASS",
+        "Materializing pipeline: near-min PASS",
+        "Materializing pipeline: map-overflow PASS",
+        "Materializing pipeline: division-before-overflow PASS",
+        "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+      ]
+    },
+    {
+      "name": "scheduling",
+      "command": [
+        "python3",
+        "tests/check_scheduler_latency.py",
+        "--rounds",
+        "256",
+        "--repetitions",
+        "3",
+        "--record",
+        "bench/2026-11-05-base-products-scheduling.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 51.29,
+      "log_sha256": "3ccecca3665c2481cee242c442d1ffe42f71118a0ac645ada4df499149ff1871",
+      "output_tail": [
+        "product-default, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "product-boxed, 1 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "product-boxed, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "product-boxed, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-default, 1 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-default, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-default, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unfused, 1 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unfused, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unfused, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unbatched, 1 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unbatched, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unbatched, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 1 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "Unbounded runtime C negative control: watchdog detected starvation, killed/reaped on 1/4 harts PASS",
+        "Scheduler latency qualification: 99 configurations PASS; no WCET claim"
+      ]
+    },
+    {
+      "name": "throughput",
+      "command": [
+        "python3",
+        "tools/bench_base_products.py",
+        "--baseline-compiler",
+        "/tmp/fpr-before-base-parameters-187",
+        "--record",
+        "bench/2026-11-05-base-products-throughput.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 27.52,
+      "log_sha256": "c423f98e0ceab37af87f1baa55f981291a75d5c62c5bbf9f903b78399f8e5fa8",
+      "output_tail": [
+        "before: 20009766 allocations; 0.198054s",
+        "after: 0 allocations; 0.187472s",
+        "explicit: 0 allocations; 0.187259s",
+        "rollback: 20009766 allocations; 0.198002s"
+      ]
+    },
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "log_sha256": "582dcb33eceb85ca11de0cc5c171e0125df7cda294c1fe1f49996149e49bb3da",
+      "output_tail": [
+        "nested conditional: OK",
+        "nearest else: OK",
+        "operator RHS: OK",
+        "final argument: OK",
+        "else owns trailing operator: OK",
+        "else owns trailing pipeline: OK",
+        "non-final case arm: OK",
+        "parentheses end conditional before pipeline: OK",
+        "parentheses end conditional before next argument: OK",
+        "Test suite if-precedence-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/if-precedence-check/test/fp-risc-0.13.1-if-precedence-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Typed units: owned checked projections, missing-owner refusals, recursive composition and precise lowered-input/call cache dependencies passed",
+        "Test suite TypedUnits: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/TypedUnits/test/fp-risc-0.13.1-TypedUnits.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ],
+      "suites": 41
+    },
+    {
+      "name": "saved-baseline",
+      "command": [
+        "python3",
+        "tests/check_base_products.py",
+        "--compiler",
+        "/tmp/fpr-before-base-parameters-187",
+        "--old",
+        "--record",
+        "bench/2026-11-05-base-products-before.json"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "log_sha256": "c01ad882016c0b617ad2092b51ad6ef65b1682152d7093b4d1f511898e125f4b",
+      "output_tail": [
+        "cell: {'default': 1000, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "explicit: {'default': 0, 'boxed': 0}, normal regions and 1/4 harts PASS",
+        "tuple2: {'default': 1000, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "tuple4: {'default': 1000, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "tuple8: {'default': 1000, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "closed-record: {'default': 1000, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "generic-string: {'default': 1000, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "generic-list: {'default': 1002, 'boxed': 1002}, normal regions and 1/4 harts PASS",
+        "dynamic-message-fallback: {'default': 2, 'boxed': 2}, normal regions and 1/4 harts PASS",
+        "separate-module: {'default': 2, 'boxed': 2}, normal regions and 1/4 harts PASS",
+        "module-owned-loop: {'default': 1000, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "partial-application: {'default': 2, 'boxed': 2}, normal regions and 1/4 harts PASS",
+        "effects: exact four-mode effect/trap differential PASS",
+        "unused-strict: exact four-mode effect/trap differential PASS",
+        "maximum: exact four-mode effect/trap differential PASS",
+        "minimum: exact four-mode effect/trap differential PASS",
+        "bounds: exact four-mode effect/trap differential PASS"
+      ]
+    }
+  ],
+  "host": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "qualification_scope": "Checked immediate Base product-parameter shapes and guarded nonrecursive helper workers. Native arm64, independent machine-IR oracles and existing target emission/ABI regressions. Sampled host latency is not physical target WCET or general arena admission.",
+  "input_sha256": {
+    "compiler/Core/Opt/ProductParameters.hs": "24203312dd73c305dde0864ea353cbdbbb8a203c677c05331a05cf262d90b5d5",
+    "compiler/Core/Opt/Pipeline.hs": "0ab18bbf162363d1e1b7755e12cb03dd18ccd5fb605b15b93b72ae2598dc1f57",
+    "compiler/Core/CacheIdentity.hs": "0eaff9168f5f919f2cec404d34eac8053e1b71fa262f0ebcb1549acbf3572960",
+    "compiler/Compiler/Native/Regions.hs": "9c4efe868347ae2bb8fad46c789a65811b89ab2342eae26a08dfa6bfd3d313ab",
+    "compiler/Mono.hs": "b2f0310d712a516477f6f3d546de67d314680c9be805b33565f4324be6c7cd2e",
+    "compiler/Workers.hs": "4313129d3507479cef26292e99b54b8f9008ede83dd166590d06021da4b1fea3",
+    "compiler/Codegen.hs": "cd4b16b9dc01e9885710aced4b05c7f567ce9681081d94ee3819bea19152cd28",
+    "compiler/Compile.hs": "e7aec5769d48a9f9d420ec174339b2aa061c91d0b8e0d8f4c0a520465c9f285d",
+    "fp-risc.cabal": "16324d29b973bc7d2b094b08c46e45af8de970b4da1aee7005312b73dc038b16",
+    "tests/RegionInterfaces.hs": "597759087b2e3ee9722c561d9584f22e8df937c19606fdedd58ec92f812cd147",
+    "tests/WorkersCheck.hs": "178dfbe402a6be2181f839d9c5a279ddfb059781e614be40133724c95b782a5d",
+    "tests/check_base_products.py": "058e3b98ac59d79ed75440e84f432956c1b9c3475cd94f9b11621867eb056be0",
+    "tests/check_base_wrappers.py": "ca13950a2716e46f81a3b208dd03385f84aa59576999a6d391ef053706cc8c3a",
+    "tests/check_workers.py": "46abb30db54697ae45a1b62c02246007a3a9a907d35f1bb7f1dc72ea6d74727c",
+    "tests/check_tuple_scalars.py": "237d3d68fe0740acc3da5784e0a0761f9b41530d981325fc5168832f2b354f30",
+    "tests/check_wide_workers.py": "5e80f1564a731a95a66672a8d9cb429298bbc92d3b516b3e5d977dddaf235a23",
+    "tests/check_reset_reuse.py": "dc7732e2ed884def9c2e589327de3170c4b7b73281d18d1f564e77731d5c5da6",
+    "tests/check_open_rows.py": "30a5d09ea46327c86b1d00c2a464511d1a9ce232d27778e1931b8da047405761",
+    "tests/check_type_spec_cost.py": "aac8ce91c99984bc2f9eb31c91c376504fc2d523cc6771d286546cc05993be7f",
+    "tests/type_spec_cost_budget.json": "30cc5450eb143199cef5966239aab4263b8d0111d6fbfc92686d1d525f0228ee",
+    "tests/check_compile_budget.py": "2ecb43e7bc87c3cc5a4a77675c3768d96a9ac77ddab77a0947ff18a72ba973fb",
+    "tests/compile_budget.json": "1030bccbc557ddea3cd2ae9e0dd82d3791044bfbf0faacc67cae465099257a69",
+    "tests/check_registry.py": "b6207624f8866c8399cc696b010cf21fc4cd439a667324cf54614c3fe1e673e8",
+    "tests/test_check_registry.py": "54990472b77af2ca530e7b7130fe70b89ea4017854c4bb7c4d8bbbe30b778db3",
+    "tests/check_list_materialize.py": "c11804f6cdadb7c6f23d8c704649f7c9c0ed9649d7a8d2b911dc44f12f020156",
+    "tests/check_scheduler_latency.py": "53064f2434f1875e95ccce37704d52c9b87472782c6a0bc5ea77bbb669a76860",
+    "tests/base/scheduler_probe.c": "b7e1cea336f63acb8efcbbc7044a1390b6460e40a7f14ae6bc9a737340c0d517",
+    "tools/bench_base_products.py": "c7fa6f72e3dc78ea4a7c7f4873a843b79e31a40a1219934dce2567278bdbce85",
+    "bench/2026-11-05-base-products-before.json": "a012ccc2d213081e20ac53eaab9d23d7795d1c2f110ab93a40fae3b332bf6a72",
+    "bench/2026-11-05-base-products.json": "c84e8f481fc90b3501c34dc17c5b38de24b8b483edd026c3522b564831bea9cf",
+    "bench/2026-11-05-base-products-cost.json": "a44fc9e45e81c51ae055267c7d8087e54b1d5611fb8fed78bcb93297e1780e3f",
+    "bench/2026-11-05-base-products-scheduling.json": "072899809def3e20c1ba8f3cf9f60a8a08350d6fcdbdb91c5cfe1e3ef07bd8c2",
+    "bench/2026-11-05-base-products-throughput.json": "9562aa852cafc129af7df8afe34184ff31bc1e27c2b8dc1788794f97e9d6a81c",
+    "docs/2026-11-05-BASE-PRODUCT-PARAMETERS.md": "6d11e07907397f45b01b708f77eaa308d369d58e2309f0015cc0e2b9c4f4081d",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "4f9a21867f00a5842fd5cb2ca8af5a3949ab572b043cb0bf39036c0c5220a317",
+    "docs/2026-11-05-BASE-WRAPPERS.md": "94a82662d11a2ab1d3671fb961b2df6dd34883aa079d8ba0c51c1971ae0bd411"
+  }
+}

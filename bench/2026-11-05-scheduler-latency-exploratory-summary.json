@@ -1,0 +1,85 @@
+{
+  "schema": "scheduler-latency-exploratory-summary-v1",
+  "description": "Inspected summary of the first successful 1000-round/3-repetition run. The complete record was overwritten by the final rerun after tightening probe-close admission; these previously inspected values are retained to avoid hiding host outliers.",
+  "raw_samples_retained": false,
+  "configurations": 81,
+  "ordinary_reply_samples": 243000,
+  "compiler_sha256": "c2ff2cb7d8deab515b69ebb1701b7e4d8fbf4d1e04806e8cc4ead30debdc75ff",
+  "probe_revision": "Before atomic closed-bit admission; all other workload and ordinary-runtime code identical to final run.",
+  "deadline_us": 1000,
+  "deadline_exceedances": 8,
+  "largest_sample": {
+    "us": 2651,
+    "shape": "copy",
+    "variant": "default",
+    "harts": 4,
+    "route": "remote",
+    "competitors": 1
+  },
+  "one_hart_eight_competitors": [
+    {
+      "shape": "scalar",
+      "variant": "default",
+      "p50_us": 10,
+      "p99_us": 13,
+      "max_us": 46
+    },
+    {
+      "shape": "wrapper",
+      "variant": "default",
+      "p50_us": 10,
+      "p99_us": 10,
+      "max_us": 48
+    },
+    {
+      "shape": "wrapper",
+      "variant": "boxed",
+      "p50_us": 22,
+      "p99_us": 61,
+      "max_us": 109
+    },
+    {
+      "shape": "product",
+      "variant": "default",
+      "p50_us": 16,
+      "p99_us": 21,
+      "max_us": 66
+    },
+    {
+      "shape": "product",
+      "variant": "boxed",
+      "p50_us": 35,
+      "p99_us": 43,
+      "max_us": 100
+    },
+    {
+      "shape": "list",
+      "variant": "default",
+      "p50_us": 10,
+      "p99_us": 11,
+      "max_us": 43
+    },
+    {
+      "shape": "list",
+      "variant": "unfused",
+      "p50_us": 18,
+      "p99_us": 31,
+      "max_us": 63
+    },
+    {
+      "shape": "list",
+      "variant": "unbatched",
+      "p50_us": 5,
+      "p99_us": 7,
+      "max_us": 32
+    },
+    {
+      "shape": "copy",
+      "variant": "default",
+      "p50_us": 151,
+      "p99_us": 245,
+      "max_us": 365
+    }
+  ],
+  "limitation": "Summary evidence only. No raw earlier samples, per-configuration exceedance counts or guaranteed time bounds are claimed."
+}

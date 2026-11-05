@@ -1,0 +1,269 @@
+{
+  "schema": 1,
+  "compiler_sha256": "65a4d73bbe265de4ee4cbe723d54bf64292b35491728263962a1d0e44535d6b6",
+  "runtime_compiler_sha256": "65a4d73bbe265de4ee4cbe723d54bf64292b35491728263962a1d0e44535d6b6",
+  "test_sha256": "6654b8d7e85e989f32a84dea4cd5f3562c349eb7aef7a2b58f1d0966be51c14d",
+  "quick": false,
+  "records": [
+    {
+      "mode": "packets",
+      "abi": "soft",
+      "allocator": "c",
+      "owned_allocations": 0,
+      "nested_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nnested 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "packets",
+      "abi": "soft",
+      "allocator": "fpr",
+      "owned_allocations": 0,
+      "nested_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nnested 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "packets",
+      "abi": "hard",
+      "allocator": "c",
+      "owned_allocations": 0,
+      "nested_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nnested 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "packets",
+      "abi": "hard",
+      "allocator": "fpr",
+      "owned_allocations": 0,
+      "nested_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nnested 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "no-type-spec",
+      "abi": "soft",
+      "allocator": "c",
+      "owned_allocations": 0,
+      "nested_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nnested 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "no-type-spec",
+      "abi": "soft",
+      "allocator": "fpr",
+      "owned_allocations": 0,
+      "nested_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nnested 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "no-type-spec",
+      "abi": "hard",
+      "allocator": "c",
+      "owned_allocations": 0,
+      "nested_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nnested 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "no-type-spec",
+      "abi": "hard",
+      "allocator": "fpr",
+      "owned_allocations": 0,
+      "nested_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nnested 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "boxed",
+      "abi": "soft",
+      "allocator": "c",
+      "owned_allocations": 1001,
+      "nested_allocations": 2002,
+      "explicit_allocations": 0,
+      "output": "owned 1001 plain 0\nnested 2002 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "boxed",
+      "abi": "soft",
+      "allocator": "fpr",
+      "owned_allocations": 1001,
+      "nested_allocations": 2002,
+      "explicit_allocations": 0,
+      "output": "owned 1001 plain 0\nnested 2002 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "boxed",
+      "abi": "hard",
+      "allocator": "c",
+      "owned_allocations": 1001,
+      "nested_allocations": 2002,
+      "explicit_allocations": 0,
+      "output": "owned 1001 plain 0\nnested 2002 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "boxed",
+      "abi": "hard",
+      "allocator": "fpr",
+      "owned_allocations": 1001,
+      "nested_allocations": 2002,
+      "explicit_allocations": 0,
+      "output": "owned 1001 plain 0\nnested 2002 plain 0\nOWNED_PRODUCTS_PASS\n"
+    }
+  ],
+  "effects": {
+    "packets": {
+      "ordered": {
+        "status": 0,
+        "output": "1\n2\n99\n5\n"
+      },
+      "division": {
+        "status": 1,
+        "output": "1\n2\nBuiltin panic: division by zero\n"
+      },
+      "unused": {
+        "status": 1,
+        "output": "Builtin panic: division by zero\n"
+      },
+      "branch": {
+        "status": 0,
+        "output": "4\n5\n"
+      },
+      "maximum": {
+        "status": 1,
+        "output": "4611686018427387903\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "minimum": {
+        "status": 1,
+        "output": "-4611686018427387904\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "nested-ordered": {
+        "status": 0,
+        "output": "1\n2\n3\n"
+      },
+      "nested-failure": {
+        "status": 1,
+        "output": "1\n2\nBuiltin panic: division by zero\n"
+      },
+      "nested-unused": {
+        "status": 1,
+        "output": "1\nBuiltin panic: division by zero\n"
+      },
+      "nested-branch": {
+        "status": 0,
+        "output": "4\n5\n6\n"
+      },
+      "nested-maximum": {
+        "status": 1,
+        "output": "4611686018427387903\n2\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "nested-minimum": {
+        "status": 1,
+        "output": "-4611686018427387904\n2\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      }
+    },
+    "no-type-spec": {
+      "ordered": {
+        "status": 0,
+        "output": "1\n2\n99\n5\n"
+      },
+      "division": {
+        "status": 1,
+        "output": "1\n2\nBuiltin panic: division by zero\n"
+      },
+      "unused": {
+        "status": 1,
+        "output": "Builtin panic: division by zero\n"
+      },
+      "branch": {
+        "status": 0,
+        "output": "4\n5\n"
+      },
+      "maximum": {
+        "status": 1,
+        "output": "4611686018427387903\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "minimum": {
+        "status": 1,
+        "output": "-4611686018427387904\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "nested-ordered": {
+        "status": 0,
+        "output": "1\n2\n3\n"
+      },
+      "nested-failure": {
+        "status": 1,
+        "output": "1\n2\nBuiltin panic: division by zero\n"
+      },
+      "nested-unused": {
+        "status": 1,
+        "output": "1\nBuiltin panic: division by zero\n"
+      },
+      "nested-branch": {
+        "status": 0,
+        "output": "4\n5\n6\n"
+      },
+      "nested-maximum": {
+        "status": 1,
+        "output": "4611686018427387903\n2\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "nested-minimum": {
+        "status": 1,
+        "output": "-4611686018427387904\n2\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      }
+    },
+    "boxed": {
+      "ordered": {
+        "status": 0,
+        "output": "1\n2\n99\n5\n"
+      },
+      "division": {
+        "status": 1,
+        "output": "1\n2\nBuiltin panic: division by zero\n"
+      },
+      "unused": {
+        "status": 1,
+        "output": "Builtin panic: division by zero\n"
+      },
+      "branch": {
+        "status": 0,
+        "output": "4\n5\n"
+      },
+      "maximum": {
+        "status": 1,
+        "output": "4611686018427387903\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "minimum": {
+        "status": 1,
+        "output": "-4611686018427387904\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "nested-ordered": {
+        "status": 0,
+        "output": "1\n2\n3\n"
+      },
+      "nested-failure": {
+        "status": 1,
+        "output": "1\n2\nBuiltin panic: division by zero\n"
+      },
+      "nested-unused": {
+        "status": 1,
+        "output": "1\nBuiltin panic: division by zero\n"
+      },
+      "nested-branch": {
+        "status": 0,
+        "output": "4\n5\n6\n"
+      },
+      "nested-maximum": {
+        "status": 1,
+        "output": "4611686018427387903\n2\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "nested-minimum": {
+        "status": 1,
+        "output": "-4611686018427387904\n2\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      }
+    }
+  }
+}

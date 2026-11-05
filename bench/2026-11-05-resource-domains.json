@@ -1,0 +1,254 @@
+{
+  "schema": "resource-domains-v1",
+  "compiler_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+  "baseline_sha256": "18afe2b7318a4ce93a2d7c405f283bc4c06980e28523468c36a5875dd6444f97",
+  "sources": {
+    "compiler/Cost.hs": "284c86d7d7bc2e52a35efcd3a29626ce7aa620701538cab9394246b4873493cd",
+    "compiler/Compile.hs": "48492752c1d45169a86d26344998f7241ddb0995b69d29b7a44955a133d7bca8",
+    "tests/ResourceCosts.hs": "6a185949270371d05f663a7619b52055dcc1cbc44ac2061b9f2e27f2658daed0",
+    "tests/check_resource_domains.py": "62aa1fb0d1b99b5ad94e9943eb6c9ea049d00faa8dea214a21857f2e649a87bc",
+    "tests/base/resource_cost_probe.c": "8632a5df396492c21b9d1798bbfea3bc3ba03f6481e7b79a375d858e60b3fadf"
+  },
+  "rows": [
+    {
+      "case": "signed-budget",
+      "result": "refused",
+      "diagnostics": [
+        "count: declared work <= 5\u00b7n + 5   derived 5\u00b7(max(0, n) + 1)   UNPROVED (opaque: signed input domain or unsupported resource inequality)",
+        "* count: declared work <= 5\u00b7n + 5   derived 5\u00b7(max(0, n) + 1)   UNPROVED (opaque: signed input domain or unsupported resource inequality)"
+      ]
+    },
+    {
+      "case": "signed-budget",
+      "result": "incorrectly-accepted-by-baseline",
+      "diagnostics": [
+        "count: declared work <= 5\u00b7n + 5   derived 5\u00b7(n + 1)   PROVEN"
+      ]
+    },
+    {
+      "case": "max-budget",
+      "result": "refused",
+      "diagnostics": [
+        "count: declared work <= max(6\u00b7len xs, 6)   derived 6\u00b7(len xs + 1)   OVER (constant: derived 6, declared 0)",
+        "* count: declared work <= max(6\u00b7len xs, 6)   derived 6\u00b7(len xs + 1)   OVER (constant: derived 6, declared 0)"
+      ]
+    },
+    {
+      "case": "max-budget",
+      "result": "incorrectly-accepted-by-baseline",
+      "diagnostics": [
+        "count: declared work <= max(6\u00b7len xs, 6)   derived 6\u00b7(len xs + 1)   PROVEN"
+      ]
+    },
+    {
+      "case": "negative-declared-term",
+      "result": "refused",
+      "diagnostics": [
+        "identity: declared work <= (-1)\u00b7n + 1   derived 0   UNPROVED (opaque: signed input domain or unsupported resource inequality)",
+        "* identity: declared work <= (-1)\u00b7n + 1   derived 0   UNPROVED (opaque: signed input domain or unsupported resource inequality)"
+      ]
+    },
+    {
+      "case": "negative-declared-term",
+      "result": "incorrectly-accepted-by-baseline",
+      "diagnostics": [
+        "identity: declared work <= (-1)\u00b7n + 1   derived 0   PROVEN"
+      ]
+    },
+    {
+      "case": "unknown-span",
+      "result": "refused",
+      "diagnostics": [
+        "make: declared alloc <= 16   derived 16\u00b7(max(0, \u03c9(?) + (-1)\u00b7\u03c9(?)) + 1)   UNPROVED (opaque: unknown signed value: ?)",
+        "* make: declared alloc <= 16   derived 16\u00b7(max(0, \u03c9(?) + (-1)\u00b7\u03c9(?)) + 1)   UNPROVED (opaque: unknown signed value: ?)"
+      ]
+    },
+    {
+      "case": "unknown-span",
+      "result": "incorrectly-accepted-by-baseline",
+      "diagnostics": [
+        "make: declared alloc <= 16   derived 16   PROVEN"
+      ]
+    },
+    {
+      "case": "unknown-span",
+      "mode": "baseline-bounded-execution",
+      "declared_bytes": 16,
+      "observed_retained_requested_bytes": 96
+    },
+    {
+      "case": "count-negative",
+      "harts": 1,
+      "stdout": "0\n",
+      "known_work": 7
+    },
+    {
+      "case": "count-negative",
+      "harts": 4,
+      "stdout": "0\n",
+      "known_work": 7
+    },
+    {
+      "case": "count-negative",
+      "mode": "baseline",
+      "stdout": "0\n",
+      "work": "\u03c9(print) + (-3)"
+    },
+    {
+      "case": "count-min",
+      "harts": 1,
+      "stdout": "0\n",
+      "known_work": 9
+    },
+    {
+      "case": "count-min",
+      "harts": 4,
+      "stdout": "0\n",
+      "known_work": 9
+    },
+    {
+      "case": "count-min",
+      "mode": "baseline",
+      "stdout": "0\n",
+      "work": "\u03c9(print) + (-23058430092136939511)"
+    },
+    {
+      "case": "count-zero",
+      "harts": 1,
+      "stdout": "0\n",
+      "known_work": 7
+    },
+    {
+      "case": "count-zero",
+      "harts": 4,
+      "stdout": "0\n",
+      "known_work": 7
+    },
+    {
+      "case": "count-zero",
+      "mode": "baseline",
+      "stdout": "0\n",
+      "work": "\u03c9(print) + 7"
+    },
+    {
+      "case": "count-positive",
+      "harts": 1,
+      "stdout": "5\n",
+      "known_work": 32
+    },
+    {
+      "case": "count-positive",
+      "harts": 4,
+      "stdout": "5\n",
+      "known_work": 32
+    },
+    {
+      "case": "count-positive",
+      "mode": "baseline",
+      "stdout": "5\n",
+      "work": "\u03c9(print) + 32"
+    },
+    {
+      "case": "negative-span",
+      "harts": 1,
+      "stdout": "7\n",
+      "known_work": 6
+    },
+    {
+      "case": "negative-span",
+      "harts": 4,
+      "stdout": "7\n",
+      "known_work": 6
+    },
+    {
+      "case": "negative-span",
+      "mode": "baseline",
+      "stdout": "7\n",
+      "work": "\u03c9(print) + (-74)"
+    },
+    {
+      "case": "unknown-span-observed",
+      "harts": 1,
+      "stdout": "96\n",
+      "allocation": "16\u00b7(max(0, \u03c9(?) + (-1)\u00b7\u03c9(?)) + 1)"
+    },
+    {
+      "case": "unknown-span-observed",
+      "harts": 4,
+      "stdout": "96\n",
+      "allocation": "16\u00b7(max(0, \u03c9(?) + (-1)\u00b7\u03c9(?)) + 1)"
+    },
+    {
+      "case": "signed-clamped",
+      "result": "accepted"
+    },
+    {
+      "case": "direct-positive",
+      "harts": 1,
+      "result": "success"
+    },
+    {
+      "case": "direct-positive",
+      "harts": 4,
+      "result": "success"
+    },
+    {
+      "case": "direct-negative",
+      "harts": 1,
+      "result": "precondition-failure"
+    },
+    {
+      "case": "direct-negative",
+      "harts": 4,
+      "result": "precondition-failure"
+    },
+    {
+      "case": "partial-positive",
+      "harts": 1,
+      "result": "success"
+    },
+    {
+      "case": "partial-positive",
+      "harts": 4,
+      "result": "success"
+    },
+    {
+      "case": "partial-negative",
+      "harts": 1,
+      "result": "precondition-failure"
+    },
+    {
+      "case": "partial-negative",
+      "harts": 4,
+      "result": "precondition-failure"
+    },
+    {
+      "case": "escaped-positive",
+      "harts": 1,
+      "result": "success"
+    },
+    {
+      "case": "escaped-positive",
+      "harts": 4,
+      "result": "success"
+    },
+    {
+      "case": "escaped-negative",
+      "harts": 1,
+      "result": "precondition-failure"
+    },
+    {
+      "case": "escaped-negative",
+      "harts": 4,
+      "result": "precondition-failure"
+    },
+    {
+      "case": "domain-not-natural",
+      "result": "refused"
+    }
+  ],
+  "limitations": [
+    "Source work/requested-object equations only, not physical arena or timing admission.",
+    "Result-size declarations remain assumptions."
+  ]
+}

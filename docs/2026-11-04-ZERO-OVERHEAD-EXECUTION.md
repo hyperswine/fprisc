@@ -1,5 +1,10 @@
 # Zero-overhead roadmap execution
 
+Continuation: [roadmap completion](2026-11-04-ZERO-OVERHEAD-COMPLETION.md)
+closes the materializing-pipeline gap recorded below and tracks the remaining
+C2, aggregate, latency and static-arena work. This report retains the earlier
+codegen-162 milestone's measurements and qualification scope.
+
 The agreed goal is to complete these five priorities in order. This record
 tracks implementation and evidence; an item is complete only when its checks
 pass, not when a gate is widened or a rewrite appears in remarks.

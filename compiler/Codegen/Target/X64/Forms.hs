@@ -67,8 +67,8 @@ checkForms owner items=do
             O.LoadField->one [word,immediate]
             O.StoreField->none [word,word,immediate]
             O.StoreHeader->none [word,word,immediate]
-            O.Call->length ds<=2 && all word ds && transfer us
-            O.Ret->none [word] || none [word,word]
+            O.Call->length ds<=8 && all word ds && transfer us
+            O.Ret->null ds && not (null us) && length us<=8 && all word us
             O.Push->none [word]
             O.ApplyN->one [immediate]
             O.Panic->none [symbol]
@@ -122,12 +122,13 @@ checkForms owner items=do
       O.X64 O.ShiftLeft->tied ds us && fixed "rcx" (last us)
       O.X64 O.ShiftRight->tied ds us && fixed "rcx" (last us)
       O.X64 (O.Select _)->tied ds us
-      O.X64 O.Call->(case ds of [a]->fixed "rax" a;[a,b]->fixed "rax" a && fixed "rdx" b;_->True) && arguments (drop 1 us)
+      O.X64 O.Call->results ds && arguments (drop 1 us)
       O.Common O.TailJump->arguments (drop 1 us)
-      O.X64 O.Ret->(case us of [a]->fixed "rax" a;[a,b]->fixed "rax" a && fixed "rdx" b;_->False)
+      O.X64 O.Ret->results us
       O.X64 x | x `elem` [O.Add,O.Subtract,O.Multiply,O.And,O.Or,O.Xor,O.ShiftLeftImmediate,
           O.ShiftRightArithmeticImmediate,O.OrImmediate,O.AndImmediate,O.XorImmediate,O.SignExtend63]->tied ds us
       _->True
+    results values=and (zipWith (\(Phys p) v->fixed p v) (Calling.productRegisters Calling.X86_64) values)
     calls op us cs=callMetadata op (case op of O.X64 O.Call->DirectCall;_->NoCall) us cs
     control op us=case Protocol.embedded op of
       Just protocol->Protocol.protocolControl protocol

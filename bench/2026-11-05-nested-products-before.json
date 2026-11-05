@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "compiler_sha256": "f78d082e4c6564c0cf7f4dbd0442d4dc2125c38729377a83de29818a3790207c",
+  "runtime_compiler_sha256": "65a4d73bbe265de4ee4cbe723d54bf64292b35491728263962a1d0e44535d6b6",
+  "test_sha256": "6654b8d7e85e989f32a84dea4cd5f3562c349eb7aef7a2b58f1d0966be51c14d",
+  "quick": true,
+  "records": [
+    {
+      "mode": "packets",
+      "abi": "soft",
+      "allocator": "c",
+      "owned_allocations": 0,
+      "nested_allocations": 1001,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nnested 1001 plain 0\nOWNED_PRODUCTS_PASS\n"
+    }
+  ],
+  "effects": {}
+}

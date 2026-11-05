@@ -1,0 +1,642 @@
+{
+ "revision": "22e1e5537370f48ed1c7bd8f3435aa4a0b74836c",
+ "dirty": true,
+ "compiler_sha256": "beee3b479a23d29a41febb80c29176897bb192ace9599a98721edc1375741192",
+ "host": "macOS-27.2-arm64-arm-64bit-Mach-O",
+ "machine": "arm64",
+ "target": "hosted arm64 darwin (fpr build default target)",
+ "flags": {
+  "default": "no FPR_* variables except FPR_HARTS=1",
+  "allocation probe": "FPR_COST_PROBE=1 build, FPR_COST_REPORT=1 run"
+ },
+ "alloc_elements": 1000,
+ "time_elements": 1000000,
+ "samples": null,
+ "measurement": "wall time per process including startup; rounds run every spelling of a family once in a rotated order; one warmup round discarded. Compile cold = fresh XDG cache; warm = identical rebuild in the same cache. Compiler allocation is GHC +RTS -t.",
+ "results": [
+  {
+   "family": "sum-map-filter",
+   "spelling": "direct",
+   "alloc_stdout": "375750\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 0,
+    "alloc_bytes": 0,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 14,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nmain = print (List.sum (List.map (fn x -> x * 3) (List.filter (fn x -> x <= 500000) (List.range 1 1000000)))).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2761245088,
+    "max_bytes_used": 35418304,
+    "compile_wall_seconds": 2.656
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1669906208,
+    "max_bytes_used": 17794904,
+    "compile_wall_seconds": 1.595
+   },
+   "build_cold_seconds": 7.065,
+   "build_warm_seconds": 1.557,
+   "text_bytes": 351420,
+   "executable_bytes": 615448,
+   "stdout": "375000750000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 0,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "sum-map-filter",
+   "spelling": "let",
+   "alloc_stdout": "375750\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 0,
+    "alloc_bytes": 0,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 14,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nmain =\n  xs = List.range 1 1000000;\n  ys = List.filter (fn x -> x <= 500000) xs;\n  zs = List.map (fn x -> x * 3) ys;\n  print (List.sum zs).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2761936096,
+    "max_bytes_used": 35415312,
+    "compile_wall_seconds": 2.668
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1670606496,
+    "max_bytes_used": 17729496,
+    "compile_wall_seconds": 1.547
+   },
+   "build_cold_seconds": 7.025,
+   "build_warm_seconds": 1.588,
+   "text_bytes": 351420,
+   "executable_bytes": 615440,
+   "stdout": "375000750000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 0,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "sum-map-filter",
+   "spelling": "helper",
+   "alloc_stdout": "375750\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 0,
+    "alloc_bytes": 0,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 14,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nsmall : List Int -> List Int .\nsmall xs = List.filter (fn x -> x <= 500000) xs.\ntriple : List Int -> List Int .\ntriple xs = List.map (fn x -> x * 3) xs.\nmain = print (List.sum (triple (small (List.range 1 1000000)))).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2796913384,
+    "max_bytes_used": 35687176,
+    "compile_wall_seconds": 2.766
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1705637776,
+    "max_bytes_used": 18651952,
+    "compile_wall_seconds": 1.858
+   },
+   "build_cold_seconds": 8.342,
+   "build_warm_seconds": 1.906,
+   "text_bytes": 354332,
+   "executable_bytes": 616296,
+   "stdout": "375000750000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 0,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "sum-map-filter",
+   "spelling": "loop",
+   "alloc_stdout": "375750\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 0,
+    "alloc_bytes": 0,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 14,
+    "buddy_frees": 0
+   },
+   "source": "go : unsafe Int -> Int -> Int -> Int .\ngo i n acc = if i > n then acc else go (i + 1) n (if i <= 500000 then acc + i * 3 else acc).\nmain = print (go 1 1000000 0).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 1594974728,
+    "max_bytes_used": 44132360,
+    "compile_wall_seconds": 1.668
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 865102576,
+    "max_bytes_used": 7678208,
+    "compile_wall_seconds": 0.75
+   },
+   "build_cold_seconds": 6.694,
+   "build_warm_seconds": 1.065,
+   "text_bytes": 299164,
+   "executable_bytes": 489872,
+   "stdout": "375000750000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 0,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "count-filter",
+   "spelling": "direct",
+   "alloc_stdout": "500\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 0,
+    "alloc_bytes": 0,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 14,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nmain = print (List.length (List.filter (fn x -> x > 500000) (List.range 1 1000000))).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2750246240,
+    "max_bytes_used": 35311056,
+    "compile_wall_seconds": 2.857
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1658901792,
+    "max_bytes_used": 17705368,
+    "compile_wall_seconds": 1.432
+   },
+   "build_cold_seconds": 7.61,
+   "build_warm_seconds": 1.67,
+   "text_bytes": 350380,
+   "executable_bytes": 615136,
+   "stdout": "500000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 0,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "count-filter",
+   "spelling": "let",
+   "alloc_stdout": "500\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 0,
+    "alloc_bytes": 0,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 14,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nmain =\n  xs = List.range 1 1000000;\n  big = List.filter (fn x -> x > 500000) xs;\n  print (List.length big).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2750693504,
+    "max_bytes_used": 35298784,
+    "compile_wall_seconds": 2.715
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1659351096,
+    "max_bytes_used": 17703064,
+    "compile_wall_seconds": 1.523
+   },
+   "build_cold_seconds": 8.35,
+   "build_warm_seconds": 2.211,
+   "text_bytes": 350380,
+   "executable_bytes": 615136,
+   "stdout": "500000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 0,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "count-filter",
+   "spelling": "helper",
+   "alloc_stdout": "500\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 0,
+    "alloc_bytes": 0,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 14,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nbig : List Int -> List Int .\nbig xs = List.filter (fn x -> x > 500000) xs.\nmain = print (List.length (big (List.range 1 1000000))).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2767437472,
+    "max_bytes_used": 35436760,
+    "compile_wall_seconds": 3.703
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1676121264,
+    "max_bytes_used": 17741720,
+    "compile_wall_seconds": 1.807
+   },
+   "build_cold_seconds": 10.015,
+   "build_warm_seconds": 2.687,
+   "text_bytes": 351772,
+   "executable_bytes": 615584,
+   "stdout": "500000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 0,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "count-filter",
+   "spelling": "loop",
+   "alloc_stdout": "500\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 0,
+    "alloc_bytes": 0,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 14,
+    "buddy_frees": 0
+   },
+   "source": "go : unsafe Int -> Int -> Int -> Int .\ngo i n c = if i > n then c else go (i + 1) n (if i > 500000 then c + 1 else c).\nmain = print (go 1 1000000 0).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 1592952464,
+    "max_bytes_used": 44128784,
+    "compile_wall_seconds": 2.431
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 863074408,
+    "max_bytes_used": 7665960,
+    "compile_wall_seconds": 0.83
+   },
+   "build_cold_seconds": 7.22,
+   "build_warm_seconds": 1.408,
+   "text_bytes": 298972,
+   "executable_bytes": 489872,
+   "stdout": "500000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 0,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "sum-count-pair",
+   "spelling": "direct",
+   "alloc_stdout": "125250 500\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 5,
+    "alloc_bytes": 176,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 15,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nmain = case List.fold (fn p x -> case p of (s, c) -> (s + x, c + 1)) (0, 0) (List.filter (fn x -> x <= 500000) (List.range 1 1000000)) of (s, c) -> print \"{s} {c}\".\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2772512688,
+    "max_bytes_used": 35465536,
+    "compile_wall_seconds": 2.699
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1681204952,
+    "max_bytes_used": 17775560,
+    "compile_wall_seconds": 1.277
+   },
+   "build_cold_seconds": 6.511,
+   "build_warm_seconds": 1.61,
+   "text_bytes": 352572,
+   "executable_bytes": 615432,
+   "stdout": "125000250000 500000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 5,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "sum-count-pair",
+   "spelling": "let",
+   "alloc_stdout": "125250 500\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 5,
+    "alloc_bytes": 176,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 15,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nmain =\n  xs = List.filter (fn x -> x <= 500000) (List.range 1 1000000);\n  p = List.fold (fn p x -> case p of (s, c) -> (s + x, c + 1)) (0, 0) xs;\n  case p of (s, c) -> print \"{s} {c}\".\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2773209664,
+    "max_bytes_used": 35456064,
+    "compile_wall_seconds": 2.755
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1681904312,
+    "max_bytes_used": 17773928,
+    "compile_wall_seconds": 1.286
+   },
+   "build_cold_seconds": 6.471,
+   "build_warm_seconds": 1.584,
+   "text_bytes": 352572,
+   "executable_bytes": 615424,
+   "stdout": "125000250000 500000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 5,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "sum-count-pair",
+   "spelling": "helper",
+   "alloc_stdout": "125250 500\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 5,
+    "alloc_bytes": 176,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 15,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nstep : (Int, Int) -> Int -> (Int, Int) .\nstep p x = case p of (s, c) -> (s + x, c + 1).\nstats : Int -> (Int, Int) .\nstats n = List.fold step (0, 0) (List.filter (fn x -> x <= 500000) (List.range 1 n)).\nmain = case stats 1000000 of (s, c) -> print \"{s} {c}\".\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2774439200,
+    "max_bytes_used": 35505056,
+    "compile_wall_seconds": 2.289
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1683180416,
+    "max_bytes_used": 17839240,
+    "compile_wall_seconds": 1.34
+   },
+   "build_cold_seconds": 6.513,
+   "build_warm_seconds": 1.428,
+   "text_bytes": 352428,
+   "executable_bytes": 615496,
+   "stdout": "125000250000 500000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 5,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "sum-count-pair",
+   "spelling": "loop",
+   "alloc_stdout": "125250 500\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 5,
+    "alloc_bytes": 176,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 15,
+    "buddy_frees": 0
+   },
+   "source": "go : unsafe Int -> Int -> Int -> Int -> (Int, Int) .\ngo i n s c = if i > n then (s, c) else if i <= 500000 then go (i + 1) n (s + i) (c + 1) else go (i + 1) n s c.\nmain = case go 1 1000000 0 0 of (s, c) -> print \"{s} {c}\".\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 1594833136,
+    "max_bytes_used": 44188160,
+    "compile_wall_seconds": 1.142
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 864982960,
+    "max_bytes_used": 7676288,
+    "compile_wall_seconds": 0.581
+   },
+   "build_cold_seconds": 5.19,
+   "build_warm_seconds": 0.804,
+   "text_bytes": 299036,
+   "executable_bytes": 489856,
+   "stdout": "125000250000 500000\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 5,
+   "alloc_minus_loop": 0
+  },
+  {
+   "family": "materialize",
+   "spelling": "direct",
+   "alloc_stdout": "(250500, 500)\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 501,
+    "alloc_bytes": 16032,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 15,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nmain = print ((fn ys -> (List.sum ys, List.length ys)) (List.map (fn x -> x * 2) (List.filter (fn x -> x <= 500000) (List.range 1 1000000)))).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2754780840,
+    "max_bytes_used": 35402168,
+    "compile_wall_seconds": 2.122
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1663456152,
+    "max_bytes_used": 17740760,
+    "compile_wall_seconds": 1.397
+   },
+   "build_cold_seconds": 6.673,
+   "build_warm_seconds": 1.354,
+   "text_bytes": 351100,
+   "executable_bytes": 615376,
+   "stdout": "(250000500000, 500000)\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 501,
+   "alloc_minus_loop": -500
+  },
+  {
+   "family": "materialize",
+   "spelling": "let",
+   "alloc_stdout": "(250500, 500)\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 501,
+    "alloc_bytes": 16032,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 15,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\nmain =\n  ys = List.map (fn x -> x * 2) (List.filter (fn x -> x <= 500000) (List.range 1 1000000));\n  print (List.sum ys, List.length ys).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2750964272,
+    "max_bytes_used": 35355728,
+    "compile_wall_seconds": 2.089
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1659650552,
+    "max_bytes_used": 17717552,
+    "compile_wall_seconds": 1.383
+   },
+   "build_cold_seconds": 6.944,
+   "build_warm_seconds": 1.329,
+   "text_bytes": 350764,
+   "executable_bytes": 615248,
+   "stdout": "(250000500000, 500000)\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 501,
+   "alloc_minus_loop": -500
+  },
+  {
+   "family": "materialize",
+   "spelling": "helper",
+   "alloc_stdout": "(250500, 500)\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 501,
+    "alloc_bytes": 16032,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 15,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\ndoubled : Int -> List Int .\ndoubled n = List.map (fn x -> x * 2) (List.filter (fn x -> x <= 500000) (List.range 1 n)).\nmain =\n  ys = doubled 1000000;\n  print (List.sum ys, List.length ys).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2768702728,
+    "max_bytes_used": 35504640,
+    "compile_wall_seconds": 2.345
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1677388840,
+    "max_bytes_used": 17824392,
+    "compile_wall_seconds": 1.207
+   },
+   "build_cold_seconds": 6.607,
+   "build_warm_seconds": 1.572,
+   "text_bytes": 352028,
+   "executable_bytes": 615744,
+   "stdout": "(250000500000, 500000)\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 501,
+   "alloc_minus_loop": -500
+  },
+  {
+   "family": "materialize",
+   "spelling": "loop",
+   "alloc_stdout": "(250500, 500)\n",
+   "alloc_rc": 0,
+   "ledger": {
+    "alloc_requests": 1001,
+    "alloc_bytes": 32032,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "turns": 0,
+    "state_copies": 0,
+    "state_bytes": 0,
+    "receives": 0,
+    "buddy_allocs": 15,
+    "buddy_frees": 0
+   },
+   "source": "List = use \"std/list\".\ngo : unsafe Int -> Int -> List Int -> List Int .\ngo i n acc = if i > n then List.reverse acc else go (i + 1) n (if i <= 500000 then i * 2 :: acc else acc).\nmain =\n  ys = go 1 1000000 Nil;\n  print (List.sum ys, List.length ys).\n",
+   "compile_cold": {
+    "compiler_allocated_bytes": 2735150416,
+    "max_bytes_used": 35303240,
+    "compile_wall_seconds": 2.22
+   },
+   "compile_warm": {
+    "compiler_allocated_bytes": 1643846392,
+    "max_bytes_used": 17710136,
+    "compile_wall_seconds": 1.168
+   },
+   "build_cold_seconds": 6.368,
+   "build_warm_seconds": 1.362,
+   "text_bytes": 349820,
+   "executable_bytes": 614688,
+   "stdout": "(250000500000, 500000)\n",
+   "rc": 0,
+   "stderr": "",
+   "alloc_expected": 1001,
+   "alloc_minus_loop": 0
+  }
+ ]
+}

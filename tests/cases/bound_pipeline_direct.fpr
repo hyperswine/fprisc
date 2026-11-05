@@ -1,0 +1,11 @@
+# A composable higher-order pipeline without a changing per-step payload.
+# The old std map fixture is retained separately: its growing reverse
+# accumulator needs a recurrence proof beyond depth * initial body cost.
+L = use "std/list".
+double : Int -> Int | work double <= 1.
+double x = x * 2.
+mapDirect : (a -> b) -> (xs : List a | measure xs) -> List b | size mapDirect <= len xs.
+mapDirect f xs = case xs of [] -> [] | h :: rest -> f h :: mapDirect f rest.
+total : (xs : List Int) -> Int | work total <= 16 * len xs + 22.
+total xs = L.sum (mapDirect double xs).
+main = print (total (L.range 1 10)).

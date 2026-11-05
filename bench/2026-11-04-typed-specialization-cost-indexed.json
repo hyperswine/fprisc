@@ -1,0 +1,94 @@
+{
+  "compiler_sha256": "24a2cd19d3566a7315fb69bea00394f35fa3653cde9ccc44f090fb710b0ed7ce",
+  "environment": "ghc-9.8.2 aarch64-apple-darwin",
+  "target": "rv64imafdc_zicsr/lp64",
+  "cold_cache": true,
+  "allocation_margin": 0.1,
+  "rows": [
+    {
+      "helpers": 16,
+      "generic": {
+        "allocated_bytes": 166123344,
+        "max_bytes_used": 5139872,
+        "wall_seconds": 0.9674,
+        "text_bytes": 14092,
+        "functions": 48
+      },
+      "explicit": {
+        "allocated_bytes": 165211808,
+        "max_bytes_used": 4777160,
+        "wall_seconds": 0.0702,
+        "text_bytes": 14092,
+        "functions": 48
+      }
+    },
+    {
+      "helpers": 32,
+      "generic": {
+        "allocated_bytes": 320429224,
+        "max_bytes_used": 9328576,
+        "wall_seconds": 0.1271,
+        "text_bytes": 24244,
+        "functions": 80
+      },
+      "explicit": {
+        "allocated_bytes": 318856536,
+        "max_bytes_used": 8714152,
+        "wall_seconds": 0.1231,
+        "text_bytes": 24244,
+        "functions": 80
+      }
+    },
+    {
+      "helpers": 64,
+      "generic": {
+        "allocated_bytes": 686338256,
+        "max_bytes_used": 19749712,
+        "wall_seconds": 0.2595,
+        "text_bytes": 44852,
+        "functions": 144
+      },
+      "explicit": {
+        "allocated_bytes": 682877512,
+        "max_bytes_used": 18784656,
+        "wall_seconds": 0.2664,
+        "text_bytes": 44852,
+        "functions": 144
+      }
+    },
+    {
+      "helpers": 128,
+      "generic": {
+        "allocated_bytes": 1661490080,
+        "max_bytes_used": 57331056,
+        "wall_seconds": 0.7019,
+        "text_bytes": 86568,
+        "functions": 272
+      },
+      "explicit": {
+        "allocated_bytes": 1654609080,
+        "max_bytes_used": 71087072,
+        "wall_seconds": 0.6951,
+        "text_bytes": 86568,
+        "functions": 272
+      }
+    },
+    {
+      "helpers": 256,
+      "generic": {
+        "allocated_bytes": 4597998800,
+        "max_bytes_used": 315462472,
+        "wall_seconds": 1.8868,
+        "text_bytes": 183144,
+        "functions": 528
+      },
+      "explicit": {
+        "allocated_bytes": 4583688264,
+        "max_bytes_used": 298296280,
+        "wall_seconds": 4.6118,
+        "text_bytes": 183144,
+        "functions": 528
+      }
+    }
+  ]
+}

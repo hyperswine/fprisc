@@ -1,0 +1,261 @@
+{
+  "compiler_sha256": "b84f85a4a0aed7cff7a2bacd76dc7c77c67d0d0860add9c2e5cae676bb973487",
+  "test_sha256": "87ba6c44d94ff67032a73268593060cda9f019edcbbb440c1bc5674108ddaf53",
+  "target": "macos-x86_64",
+  "allocations": [
+    {
+      "width": 1,
+      "enabled": false,
+      "harts": 1,
+      "allocations": 1000,
+      "stdout": "500500\n"
+    },
+    {
+      "width": 1,
+      "enabled": false,
+      "harts": 4,
+      "allocations": 1000,
+      "stdout": "500500\n"
+    },
+    {
+      "width": 1,
+      "enabled": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "500500\n"
+    },
+    {
+      "width": 1,
+      "enabled": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "500500\n"
+    },
+    {
+      "width": 2,
+      "enabled": false,
+      "harts": 1,
+      "allocations": 1000,
+      "stdout": "1503500\n"
+    },
+    {
+      "width": 2,
+      "enabled": false,
+      "harts": 4,
+      "allocations": 1000,
+      "stdout": "1503500\n"
+    },
+    {
+      "width": 2,
+      "enabled": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "1503500\n"
+    },
+    {
+      "width": 2,
+      "enabled": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "1503500\n"
+    },
+    {
+      "width": 3,
+      "enabled": false,
+      "harts": 1,
+      "allocations": 1000,
+      "stdout": "3011000\n"
+    },
+    {
+      "width": 3,
+      "enabled": false,
+      "harts": 4,
+      "allocations": 1000,
+      "stdout": "3011000\n"
+    },
+    {
+      "width": 3,
+      "enabled": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "3011000\n"
+    },
+    {
+      "width": 3,
+      "enabled": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "3011000\n"
+    },
+    {
+      "width": 4,
+      "enabled": false,
+      "harts": 1,
+      "allocations": 1000,
+      "stdout": "5025000\n"
+    },
+    {
+      "width": 4,
+      "enabled": false,
+      "harts": 4,
+      "allocations": 1000,
+      "stdout": "5025000\n"
+    },
+    {
+      "width": 4,
+      "enabled": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "5025000\n"
+    },
+    {
+      "width": 4,
+      "enabled": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "5025000\n"
+    },
+    {
+      "width": 5,
+      "enabled": false,
+      "harts": 1,
+      "allocations": 1000,
+      "stdout": "7547500\n"
+    },
+    {
+      "width": 5,
+      "enabled": false,
+      "harts": 4,
+      "allocations": 1000,
+      "stdout": "7547500\n"
+    },
+    {
+      "width": 5,
+      "enabled": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "7547500\n"
+    },
+    {
+      "width": 5,
+      "enabled": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "7547500\n"
+    },
+    {
+      "width": 6,
+      "enabled": false,
+      "harts": 1,
+      "allocations": 1000,
+      "stdout": "10580500\n"
+    },
+    {
+      "width": 6,
+      "enabled": false,
+      "harts": 4,
+      "allocations": 1000,
+      "stdout": "10580500\n"
+    },
+    {
+      "width": 6,
+      "enabled": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "10580500\n"
+    },
+    {
+      "width": 6,
+      "enabled": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "10580500\n"
+    },
+    {
+      "width": 7,
+      "enabled": false,
+      "harts": 1,
+      "allocations": 1000,
+      "stdout": "14126000\n"
+    },
+    {
+      "width": 7,
+      "enabled": false,
+      "harts": 4,
+      "allocations": 1000,
+      "stdout": "14126000\n"
+    },
+    {
+      "width": 7,
+      "enabled": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "14126000\n"
+    },
+    {
+      "width": 7,
+      "enabled": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "14126000\n"
+    },
+    {
+      "width": 8,
+      "enabled": false,
+      "harts": 1,
+      "allocations": 1000,
+      "stdout": "18186000\n"
+    },
+    {
+      "width": 8,
+      "enabled": false,
+      "harts": 4,
+      "allocations": 1000,
+      "stdout": "18186000\n"
+    },
+    {
+      "width": 8,
+      "enabled": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "18186000\n"
+    },
+    {
+      "width": 8,
+      "enabled": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "18186000\n"
+    },
+    {
+      "width": 9,
+      "enabled": false,
+      "harts": 1,
+      "allocations": 1000,
+      "stdout": "22762500\n"
+    },
+    {
+      "width": 9,
+      "enabled": false,
+      "harts": 4,
+      "allocations": 1000,
+      "stdout": "22762500\n"
+    },
+    {
+      "width": 9,
+      "enabled": true,
+      "harts": 1,
+      "allocations": 1000,
+      "stdout": "22762500\n"
+    },
+    {
+      "width": 9,
+      "enabled": true,
+      "harts": 4,
+      "allocations": 1000,
+      "stdout": "22762500\n"
+    }
+  ],
+  "pressure_fields": 96,
+  "effect_and_boundary_checks": "PASS"
+}

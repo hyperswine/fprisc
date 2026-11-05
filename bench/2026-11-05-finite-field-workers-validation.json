@@ -1,0 +1,552 @@
+{
+  "schema": "finite-field-workers-validation-v1",
+  "codegen_revision": 191,
+  "compiler_sha256": "b6c993bc5b43d1bdf6235af51daf49a6f27df00e0b9307713912b42bf741358e",
+  "checks": [
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 15.69,
+      "log_sha256": "e9eb9cb3e6212d5514677c974f38efecb63000b7b9d496dd33610fa470935733",
+      "output_tail": [
+        "Typed IR verifier: a well-formed function accepted, 24 malformations refused by name PASS",
+        "Typed IR bit operations and shifts: lowered as declared HAL names, bits.c semantics, exact trap text and order PASS",
+        "Typed IR dead arms, nullary definitions, function/HAL/primitive values, whole-program lookups: lowered, verified, evaluated with the legacy trap text PASS",
+        "Typed IR generic application: local, partial, over-saturated and computed heads through the runtime's apply, traps by name PASS",
+        "Typed IR HAL application: partial and opaque-arity calls use verified function-object application PASS",
+        "Typed IR simplification: conversion pairs folded, Bool joins threaded, pure operations shared per block, dead pure definitions dropped; evaluator results, traps and events unchanged on every fixture PASS",
+        "Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS",
+        "Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS",
+        "Test suite TypedIR: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/TypedIR/test/fp-risc-0.13.1-TypedIR.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ],
+      "suites": 41
+    },
+    {
+      "name": "saved-baseline",
+      "command": [
+        "python3",
+        "tests/check_finite_field_workers.py",
+        "--compiler",
+        "/tmp/fpr-before-finite-field-workers-189",
+        "--old",
+        "--record",
+        "bench/2026-11-05-finite-field-workers-before.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 128.98,
+      "log_sha256": "c50b68d043ddc4b9d93d48638217b4c625533ae69b2a824cce6cb767e7635fbf",
+      "output_tail": [
+        "returns-8: {'default': 4000, 'boxed': 8000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "helpers-129: {'default': 1, 'boxed': 129, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "body-256: {'default': 1000, 'boxed': 1000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "body-2048: {'default': 1000, 'boxed': 1000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "let-order: exact four-mode effects/traps PASS",
+        "max-success: exact four-mode effects/traps PASS",
+        "min-success: exact four-mode effects/traps PASS",
+        "overflow: exact four-mode effects/traps PASS",
+        "minimum-underflow: exact four-mode effects/traps PASS",
+        "division-first: exact four-mode effects/traps PASS",
+        "wide-argument-order: exact four-mode effects/traps PASS",
+        "Deep dynamic payload retains the original inner fallback PASS"
+      ]
+    },
+    {
+      "name": "finite-fields",
+      "command": [
+        "python3",
+        "tests/check_finite_field_workers.py",
+        "--record",
+        "bench/2026-11-05-finite-field-workers.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 166.35,
+      "log_sha256": "b401f6df0e37cf4215e2b083477fb5644fd487ef64719250da2609b235b65f02",
+      "output_tail": [
+        "returns-8: {'default': 0, 'boxed': 8000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "helpers-129: {'default': 0, 'boxed': 129, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "body-256: {'default': 0, 'boxed': 1000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "body-2048: {'default': 0, 'boxed': 1000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "let-order: exact four-mode effects/traps PASS",
+        "max-success: exact four-mode effects/traps PASS",
+        "min-success: exact four-mode effects/traps PASS",
+        "overflow: exact four-mode effects/traps PASS",
+        "minimum-underflow: exact four-mode effects/traps PASS",
+        "division-first: exact four-mode effects/traps PASS",
+        "wide-argument-order: exact four-mode effects/traps PASS",
+        "Deep dynamic payload retains the original inner fallback PASS"
+      ]
+    },
+    {
+      "name": "product-trees",
+      "command": [
+        "python3",
+        "tests/check_base_product_trees.py",
+        "--record",
+        "bench/2026-11-05-finite-field-workers-products.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 57.13,
+      "log_sha256": "94096ac0fee7627560870d461ded84257d7ca230cd818a5246cc40a21e09fa98",
+      "output_tail": [
+        "depth-limit: {'default': 0, 'boxed': 5000}, normal regions and 1/4 harts PASS",
+        "generic-string: {'default': 0, 'boxed': 2000}, normal regions and 1/4 harts PASS",
+        "generic-list: {'default': 2, 'boxed': 2002}, normal regions and 1/4 harts PASS",
+        "owning-module: {'default': 0, 'boxed': 4000}, normal regions and 1/4 harts PASS",
+        "Wrong inner actor payload preserves the original fallback PASS",
+        "multiple-effects: exact four-mode effects/traps PASS",
+        "nested-effects: exact four-mode effects/traps PASS",
+        "let-before-call: exact four-mode effects/traps PASS",
+        "later-argument-trap: exact four-mode effects/traps PASS",
+        "first-trap: exact four-mode effects/traps PASS",
+        "minimum: exact four-mode effects/traps PASS",
+        "bounds: exact four-mode effects/traps PASS"
+      ]
+    },
+    {
+      "name": "products",
+      "command": [
+        "python3",
+        "tests/check_base_products.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 56.18,
+      "log_sha256": "c09252fb1477f44396a7573f3b3b25d4633f504c0356c57a7e7f2442cf3fb659",
+      "output_tail": [
+        "closed-record: {'default': 0, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "generic-string: {'default': 0, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "generic-list: {'default': 2, 'boxed': 1002}, normal regions and 1/4 harts PASS",
+        "dynamic-message-fallback: {'default': 1, 'boxed': 2}, normal regions and 1/4 harts PASS",
+        "separate-module: {'default': 2, 'boxed': 2}, normal regions and 1/4 harts PASS",
+        "module-owned-loop: {'default': 0, 'boxed': 1000}, normal regions and 1/4 harts PASS",
+        "partial-application: {'default': 0, 'boxed': 2}, normal regions and 1/4 harts PASS",
+        "effects: exact four-mode effect/trap differential PASS",
+        "unused-strict: exact four-mode effect/trap differential PASS",
+        "maximum: exact four-mode effect/trap differential PASS",
+        "minimum: exact four-mode effect/trap differential PASS",
+        "bounds: exact four-mode effect/trap differential PASS"
+      ]
+    },
+    {
+      "name": "base-wrappers",
+      "command": [
+        "python3",
+        "tests/check_base_wrappers.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 39.5,
+      "log_sha256": "6be7dedc4073bb1f4d8266348bd32c0d5697c9d69fade54cfd42f9a68ec157e8",
+      "output_tail": [
+        "returned: [1001, 1] allocations, boundary/value checks PASS",
+        "string: [1001, 0] allocations, boundary/value checks PASS",
+        "heap-list: [1003, 2] allocations, boundary/value checks PASS",
+        "nested: [2002, 0] allocations, boundary/value checks PASS",
+        "record: [1001, 0] allocations, boundary/value checks PASS",
+        "boolean: [1001, 0] allocations, boundary/value checks PASS",
+        "float: [1002, 1] allocations, boundary/value checks PASS",
+        "other-variant: [1, 1] allocations, boundary/value checks PASS",
+        "maximum: exact ordered effect/failure differential PASS",
+        "minimum: exact ordered effect/failure differential PASS",
+        "division: exact ordered effect/failure differential PASS",
+        "Unused strict seed and separate-module tagged entry PASS"
+      ]
+    },
+    {
+      "name": "workers",
+      "command": [
+        "python3",
+        "tests/check_workers.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 27.04,
+      "log_sha256": "f14d6a0eceb7c92cf59dccd97cbc05bf8f6966a7396184ff2e228f6b572f90de",
+      "output_tail": [
+        "Building test suite 'WorkersCheck' for fp-risc-0.13.1...",
+        "Running 1 test suites...",
+        "Test suite WorkersCheck: RUNNING...",
+        "Workers Core: admission, public arity, shadowing, escaping values, unknown kinds, vector tier and clone budget PASS",
+        "Test suite WorkersCheck: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/WorkersCheck/test/fp-risc-0.13.1-WorkersCheck.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Workers: native 1/4-worker differential, independent switches/inliner, warm caches, dynamic entry and exact failure reasons PASS",
+        "{\"allocations\": {\"0:0:0:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:pair-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:record-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:1:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:1:pair-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turn",
+        "Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS",
+        "Workers: optimized shared module called by general-ABI host PASS"
+      ]
+    },
+    {
+      "name": "tuple-scalars",
+      "command": [
+        "python3",
+        "tests/check_tuple_scalars.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 14.21,
+      "log_sha256": "acbd309c01c242f3d54b02b53db593d35156a90dedecd4d30bc3da09c91275a5",
+      "output_tail": [
+        "Tuple scalar replacement: tuple-step 1002 -> 1 requests PASS",
+        "Tuple scalar replacement: let-bound-step 1002 -> 1 requests PASS",
+        "Tuple scalar replacement: conditional-forward 502 -> 1 requests PASS",
+        "Tuple scalar replacement: record-step 1002 -> 1 requests PASS",
+        "Tuple scalar replacement: two-tuples 1003 -> 1 requests PASS",
+        "Tuple scalar replacement: escape-whole 105 -> 4 requests PASS",
+        "Tuple scalar replacement: tests/bench/unbox/tuple_loop.fpr 2 requests PASS",
+        "Tuple scalar replacement rollback PASS"
+      ]
+    },
+    {
+      "name": "wide-workers",
+      "command": [
+        "python3",
+        "tests/check_wide_workers.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 44.67,
+      "log_sha256": "42f9d4cb6842c902e796ef573f290dcc1745d3791773141d55054f6c8f1b92dd",
+      "output_tail": [
+        "wide workers inline-disabled=0 fields-disabled=0 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=0 fields-disabled=0 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=0 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=1 fields-disabled=0 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers optimized shared module called by general ABI host: PASS",
+        "wide workers native differential, allocation, effects, actor ownership, stack, 64-argument boundary and four-target emission: PASS",
+        "{\"0:0:0\": {\"record16:1\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 144, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 528, \"all"
+      ]
+    },
+    {
+      "name": "reset-reuse",
+      "command": [
+        "python3",
+        "tests/check_reset_reuse.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 6.79,
+      "log_sha256": "85c04142a6d2647a7eac4573bff3713b24e05c6ad6d9138c82703cfb4d063a89",
+      "output_tail": [
+        "reset barriers: inline-disabled=0 reuse-disabled=0: imported CAF/helper, callback and foreign entry PASS",
+        "reset barriers: inline-disabled=0 reuse-disabled=1: imported CAF/helper, callback and foreign entry PASS",
+        "reset barriers: inline-disabled=1 reuse-disabled=0: imported CAF/helper, callback and foreign entry PASS",
+        "reset barriers: inline-disabled=1 reuse-disabled=1: imported CAF/helper, callback and foreign entry PASS"
+      ]
+    },
+    {
+      "name": "open-rows",
+      "command": [
+        "python3",
+        "tests/check_open_rows.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 86.75,
+      "log_sha256": "f6dc2239313f1246b07bcc6b089c679192db5693c9db0a16b98ed1a9fa1df23f",
+      "output_tail": [
+        "rollback=True, soft, fpr, case 0: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 1: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 2: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 3: open-row boundaries PASS",
+        "rollback=True, hard, c, case 0: open-row boundaries PASS",
+        "rollback=True, hard, c, case 1: open-row boundaries PASS",
+        "rollback=True, hard, c, case 2: open-row boundaries PASS",
+        "rollback=True, hard, c, case 3: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 0: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 1: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 2: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 3: open-row boundaries PASS"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--require-baseline",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256",
+        "--record",
+        "bench/2026-11-05-finite-field-workers-cost.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 3.36,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "output_tail": [
+        "16 helpers: same 10832 code bytes/55 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 0.19,
+      "log_sha256": "cf1f253a484c7ab17d1fd637a81eef4a7c7678b17898a7ff189eaeb44e8e9e67",
+      "output_tail": [
+        "..check_ci: tests/check_rv64_linux.py::typed-runtime",
+        "check_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s",
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.082s",
+        "",
+        "OK"
+      ]
+    },
+    {
+      "name": "list-materialize",
+      "command": [
+        "python3",
+        "tests/check_list_materialize.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 78.45,
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "output_tail": [
+        "Materializing pipeline: map-effects PASS",
+        "Materializing pipeline: division-order PASS",
+        "Materializing pipeline: mapped-once-effects PASS",
+        "Materializing pipeline: capture-before-range PASS",
+        "Materializing pipeline: max-singleton PASS",
+        "Materializing pipeline: max-pair PASS",
+        "Materializing pipeline: min-singleton-rejected PASS",
+        "Materializing pipeline: min-range-before-effects PASS",
+        "Materializing pipeline: near-min PASS",
+        "Materializing pipeline: map-overflow PASS",
+        "Materializing pipeline: division-before-overflow PASS",
+        "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+      ]
+    },
+    {
+      "name": "compile-cost",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 57.94,
+      "log_sha256": "bf3d13f43586c48c31b1948be905f862e66cf611bd9d4ebe8a22d8cbf19dd479",
+      "output_tail": [
+        "hello: 1.61 GB allocated, 27 MB peak live, 0.7 s (+9.8% allocation, -37.6% peak vs baseline)",
+        "std-live: 32.80 GB allocated, 350 MB peak live, 18.1 s (+9.6% allocation, -13.1% peak vs baseline)",
+        "pos1: 67.51 GB allocated, 501 MB peak live, 39.0 s (+4.2% allocation, -39.9% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "helper-scaling",
+      "command": [
+        "python3",
+        "tools/bench_field_worker_scaling.py",
+        "--baseline-compiler",
+        "/tmp/fpr-before-finite-field-workers-189",
+        "--record",
+        "bench/2026-11-05-finite-field-workers-helper-cost.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 38.89,
+      "log_sha256": "4aa6f276cfd598d3b9a66a934732d7bc18fe2a98ee4b3b0a88f6be123d2072a2",
+      "output_tail": [
+        "16 helpers: {'before': (34, 16, 55644, 2.528), 'after': (34, 16, 55644, 2.545), 'explicit': (18, 0, 27688, 2.157)}",
+        "32 helpers: {'before': (66, 32, 110940, 3.568), 'after': (66, 32, 110940, 3.6), 'explicit': (34, 0, 54952, 2.821)}",
+        "64 helpers: {'before': (130, 64, 221660, 5.655), 'after': (130, 64, 221660, 5.717), 'explicit': (66, 0, 109544, 4.151)}",
+        "128 helpers: {'before': (258, 128, 443100, 9.865), 'after': (258, 128, 443100, 9.993), 'explicit': (130, 0, 218728, 6.83)}",
+        "256 helpers: {'before': (386, 128, 686608, 15.745), 'after': (514, 256, 885980, 18.676), 'explicit': (258, 0, 437096, 12.238)}",
+        "Finite field-worker scaling: complete coverage and expected function growth PASS"
+      ]
+    },
+    {
+      "name": "parameter-cost",
+      "command": [
+        "python3",
+        "tools/bench_field_worker_scaling.py",
+        "--family",
+        "parameters",
+        "--baseline-compiler",
+        "/tmp/fpr-before-finite-field-workers-189",
+        "--record",
+        "bench/2026-11-05-finite-field-workers-parameter-cost.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 28.85,
+      "log_sha256": "7fe98e2edb6880607e51f40a2344c40a596ad8b0e407303b51266fe646f9b232",
+      "output_tail": [
+        "8 helpers: {'before': (10, 4, 13936, 1.718), 'after': (7, 1, 6420, 1.666), 'explicit': (6, 0, 3368, 1.562)}",
+        "16 helpers: {'before': (10, 4, 21384, 1.855), 'after': (7, 1, 9108, 1.859), 'explicit': (6, 0, 4128, 1.579)}",
+        "32 helpers: {'before': (10, 4, 37468, 2.247), 'after': (7, 1, 14780, 2.651), 'explicit': (6, 0, 5648, 1.608)}",
+        "64 helpers: {'before': (10, 4, 69788, 3.668), 'after': (7, 1, 26184, 6.816), 'explicit': (6, 0, 8692, 1.698)}",
+        "Finite field-worker scaling: complete coverage and expected function growth PASS"
+      ]
+    },
+    {
+      "name": "scheduling",
+      "command": [
+        "python3",
+        "tests/check_scheduler_latency.py",
+        "--rounds",
+        "256",
+        "--repetitions",
+        "3",
+        "--record",
+        "bench/2026-11-05-finite-field-workers-scheduling.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 70.16,
+      "log_sha256": "e18d3651b6137bf588a65edf38231fa6cd78385eece9d72d7636fe3e82dab8e5",
+      "output_tail": [
+        "list-default, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unfused, 1 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unfused, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unfused, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unbatched, 1 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unbatched, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "list-unbatched, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 1 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "Unbounded runtime C negative control: watchdog detected starvation, killed/reaped on 1/4 harts PASS",
+        "Scheduler latency qualification: 153 configurations PASS; no WCET claim"
+      ]
+    },
+    {
+      "name": "throughput",
+      "command": [
+        "python3",
+        "tools/bench_base_products.py",
+        "--finite-kind",
+        "parameters",
+        "--amount",
+        "16",
+        "--baseline-compiler",
+        "/tmp/fpr-before-finite-field-workers-189",
+        "--record",
+        "bench/2026-11-05-finite-field-workers-throughput.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 47.12,
+      "log_sha256": "78522b5af6011114844cb692face869f059a26f337164c60550df2df0bb3c90f",
+      "output_tail": [
+        "before: 240116960 allocations; 0.600595s",
+        "after: 0 allocations; 0.267810s",
+        "explicit: 0 allocations; 0.268026s",
+        "rollback: 320156251 allocations; 0.776106s"
+      ]
+    },
+    {
+      "name": "copy-latency",
+      "command": [
+        "python3",
+        "/tmp/check_field_copy_latency_191.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "script_sha256": "789fdbe4f32e1f2f5b9b871ef75ba0eb3000b87c4ab25e40703010903dd68435",
+      "output_tail": [
+        "before {'count': 13312, 'p50_us': 139, 'p95_us': 168, 'p99_us': 218, 'max_us': 427, 'deadline_us': 1000, 'deadline_exceedances': 0}",
+        "after {'count': 13312, 'p50_us': 139, 'p95_us': 179, 'p99_us': 230, 'max_us': 11781, 'deadline_us': 1000, 'deadline_exceedances': 12}",
+        "Focused saved/current copy-latency comparison PASS"
+      ]
+    },
+    {
+      "name": "copy-code",
+      "command": [
+        "python3",
+        "/tmp/record_copy_code_191.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "script_sha256": "042abe40f357d497549a3b40e788ee24716961ee070378db9ddd45bb4090d111",
+      "output_tail": [
+        "Eight file-backed sections: only compiler identity metadata differs"
+      ]
+    }
+  ],
+  "host": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "qualification_scope": "Finite Base field expansion, explicit parent/worker lineage, unique-guard coalescing during each round and retained conditional entry fuel. Native arm64 allocation/throughput, independent IR fallback/fuel oracles, RV64 emitted-code scaling and host scheduler sampling. Copy outliers remain recorded; rebuilt workload instructions differ only in the module-loader compiler-version check. Physical latency and general arena admission remain unqualified. High-arity compiler cost is explicitly reported.",
+  "input_sha256": {
+    "compiler/Core/Opt/ProductParameters.hs": "fad5b5bbffa913da2c71594815a45f916e9af67e830ff94179c16248efedcb0e",
+    "compiler/Core/Opt/Pipeline.hs": "0ab18bbf162363d1e1b7755e12cb03dd18ccd5fb605b15b93b72ae2598dc1f57",
+    "compiler/Core/CacheIdentity.hs": "6b1fef2ba38b029dc898af9a78f8efe40417c8363acf99f47690093838b62860",
+    "compiler/Workers.hs": "174c0b0a4e773f60ca2b0a05dc4a9d4b069a376d2f95d88b90e75c76a070221c",
+    "compiler/Codegen.hs": "f8bc8b97cc15f96aa26096dc482afb01d05124429901023759f1a5bab406c102",
+    "compiler/Compile.hs": "512aed81c882bb0e238d0f7f1bd1b5144d091eff7072a8d9290a7694feedc35b",
+    "compiler/Core/Opt/PairReturns.hs": "cd980cd766265728b505644db4277defdbd5cf6dbbcfa8aaee6f9745ea8c1756",
+    "tests/RegionInterfaces.hs": "2aecedb74b2807357d8b9c0c3b9f60bbe94326b1ca1b26b1bd83ab9eeee50e60",
+    "tests/WorkersCheck.hs": "05e8f9744c672454c15e03160b28fa66f5f951d74d0b851fc61c9cc1e9785386",
+    "tests/check_finite_field_workers.py": "5f87bb9755bd227c522709086d2c4f77d36060bb8ad204beb5a00f6699863168",
+    "tests/check_base_product_trees.py": "2a008c474ef386530c25f8a21ff8ed25fdf8b20c14edcd01de358dc450d40150",
+    "tests/check_base_products.py": "058e3b98ac59d79ed75440e84f432956c1b9c3475cd94f9b11621867eb056be0",
+    "tests/check_base_wrappers.py": "ca13950a2716e46f81a3b208dd03385f84aa59576999a6d391ef053706cc8c3a",
+    "tests/check_workers.py": "46abb30db54697ae45a1b62c02246007a3a9a907d35f1bb7f1dc72ea6d74727c",
+    "tests/check_tuple_scalars.py": "237d3d68fe0740acc3da5784e0a0761f9b41530d981325fc5168832f2b354f30",
+    "tests/check_wide_workers.py": "5e80f1564a731a95a66672a8d9cb429298bbc92d3b516b3e5d977dddaf235a23",
+    "tests/check_reset_reuse.py": "dc7732e2ed884def9c2e589327de3170c4b7b73281d18d1f564e77731d5c5da6",
+    "tests/check_open_rows.py": "30a5d09ea46327c86b1d00c2a464511d1a9ce232d27778e1931b8da047405761",
+    "tests/check_type_spec_cost.py": "aac8ce91c99984bc2f9eb31c91c376504fc2d523cc6771d286546cc05993be7f",
+    "tests/type_spec_cost_budget.json": "30cc5450eb143199cef5966239aab4263b8d0111d6fbfc92686d1d525f0228ee",
+    "tests/check_compile_budget.py": "2ecb43e7bc87c3cc5a4a77675c3768d96a9ac77ddab77a0947ff18a72ba973fb",
+    "tests/compile_budget.json": "1030bccbc557ddea3cd2ae9e0dd82d3791044bfbf0faacc67cae465099257a69",
+    "tests/check_registry.py": "bbf6f41d65e02c96ba076fe0d7e630b6a2fbbc106981c617662720e2b6ee2784",
+    "tests/test_check_registry.py": "c0481140c5a0ee0971d9873886a9664713c5052f3ed94dc7e54ad7955d6313e9",
+    "tests/check_list_materialize.py": "c11804f6cdadb7c6f23d8c704649f7c9c0ed9649d7a8d2b911dc44f12f020156",
+    "tests/check_scheduler_latency.py": "681533e480fe4fee2af9862f68586a6d66d7ea3b189fc5e54fd9fc68032bf482",
+    "tests/base/scheduler_probe.c": "6a8b88b0946b5250ac929bbf1b87af6418db521b5d0ca04045e3a5b10a42b574",
+    "tools/bench_base_products.py": "0f3b9759d620f9d97e7f569f637378cb8bd7ef08d46e5f45885cc55ff5c65dc1",
+    "tools/bench_field_worker_scaling.py": "40213879ab1102f7cc880034e3b4dccfc6f265c723c6a83ac397835cef3c48dc",
+    "bench/2026-11-05-finite-field-workers-before.json": "e01fc1ddc4184b04d11840a8e5a00c188782b6b6b1a3cde9baf01db2b15018b0",
+    "bench/2026-11-05-finite-field-workers.json": "87ce2ed02957a8cdda23a0b8f5cfe3f04bc0d28e8d24e0d70c0e07dbedb13296",
+    "bench/2026-11-05-finite-field-workers-products.json": "73d24bed8c5703187a9116cd327a0523f3a476e104eb2da1d6703c1be7aa9f81",
+    "bench/2026-11-05-finite-field-workers-cost.json": "fbd00dc7642d9f989a1b74c1a714987aba6da028c973958ab85829d8014c1877",
+    "bench/2026-11-05-finite-field-workers-helper-cost.json": "e90f4ec79408fd54555993c71068b79cbba271dee9a7fe40fea20d8d8ac8f9ae",
+    "bench/2026-11-05-finite-field-workers-parameter-cost.json": "141e5a1c0e5ea7fa00e1adf17ef159b49b4ad58a5dbceffc74482d49e458620f",
+    "bench/2026-11-05-finite-field-workers-scheduling.json": "1a48954db974e52e104a4fbff79dba24fb8de10259c9b7df1e210acdc7f55334",
+    "bench/2026-11-05-finite-field-workers-throughput.json": "b60b988b17aa6f9c38ca4c1d44b09202b7b14e40270b14ca8ee954861b0af12f",
+    "bench/2026-11-05-finite-field-workers-copy-latency.json": "d50a7b9be906d507ed03490a110434d433546871dfc03692e187bac914ffa2fb",
+    "bench/2026-11-05-finite-field-workers-copy-code.json": "9df43380e2ffeb70545bb17ab36e184db09453d92d5d81eda983ca82d6bf1e5e",
+    "docs/2026-11-05-FINITE-BASE-FIELD-WORKERS.md": "9854ccaa815c31ecdd33322fa9f15a2d0db3c294b6c9f68d549ab21e4d53afc7",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "b6f6a570fe33f4018c8be6f6c1830efbce2951734f35cd3cc6a42924c4c24c41",
+    "docs/2026-11-05-BASE-PRODUCT-TREES.md": "69623676182aba8e01ac1575559e0274667f1b9c399a4696345ebcec370c5547"
+  }
+}

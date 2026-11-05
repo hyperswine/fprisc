@@ -78,3 +78,11 @@ returns one word, so what remains is the second `asr`/move, not memory.
 - Not done: RawWord fields (the other prerequisite, see
   [the experiment](2026-11-03-PAIR-RAWWORD-EXPERIMENT.md)), and the builtin
   profile.
+
+## Wider return follow-up
+
+Codegen 170 generalizes this pair mechanism to ordered product packets and
+up to eight private return registers on AArch64/RV64. See
+[the qualified contract and limits](2026-11-05-PRODUCT-RETURNS.md). The descriptions
+of `TPair`, `OCall2`, `OSecond` and `TRet2` above describe the original milestone;
+current IR uses `TProduct`, `OCallProduct`, `OResult` and `TRetProduct`.

@@ -1,0 +1,128 @@
+{
+  "schema": "native-stack-validation-v1",
+  "codegen_revision": 178,
+  "compiler_sha256": "992923f0c9f8c9332c74651acc0401cbda545b6a270e1502130e75e094f144f0",
+  "sources": {
+    "compiler/Codegen/Stack.hs": "17b44b982842cc4613700a1c32b54a35a24a231a7b9387c814329d8545a8b228",
+    "compiler/Codegen/Target/Common.hs": "6d6f559de1a22a9bf2ae39be43289e0cbaa27fb4ecd5f5fc4a3647f37112eaac",
+    "compiler/Codegen/Target/A64.hs": "96365fa0433ac9ace5074a3cacc71f9bd3f743d2bc3c06813004a9542af58a4a",
+    "compiler/Codegen/Target/X64.hs": "6bc367f954d5b3f209042b77b79fecd5bc109ce2b77d62dc70b309d5b984b3be",
+    "compiler/Codegen/Target/RV.hs": "45a7284421fcdf1c81aefc2a114a3c3c726158dd747f41315ff248d7109beb60",
+    "compiler/Codegen.hs": "4f5450b897ee7cdffe36da9a50e2eae558192712abc5188523445d94e99974d9",
+    "fp-risc.cabal": "01a487e75d19f419367a7005446fa03b731e01988c0466b945258b25f9a2c66b",
+    "tests/NativeStack.hs": "bb32264ba7b405ba90a41db964f383a14a9ebb8965c53f803d12cc4236cc425d",
+    "tests/check_native_stack.py": "94d6b3fbba0d23cb83c6165f54102ca04501ccdb326cceac4e691b341b840148",
+    "tests/check_registry.py": "e5e63733fd1a401328c77ba3573ee292d2e3ff51cbebfcd9bb7836b2622e47a9",
+    "tests/test_check_registry.py": "eebbece8b1e64b24a2b2c4b628252e751800d0a494ccd1d262cf1e3478aaa7ff",
+    "docs/2026-11-05-NATIVE-STACK-ACCOUNTING.md": "868ed5fb5a7a981633e4b70907d0018dea30d5c497e4d9a5cfa510dfc5492fcf",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "b22d14a4f58888f3014e652d0f971af1e310858cdd91a773a1b794447c2b0fb8",
+    "bench/2026-11-05-native-stack.json": "af6dd2d64a8bb8a90d58bff43629b9ed0bf617098848e0a3a7d19cde808ab609",
+    "bench/2026-11-05-native-stack-specialization-cost.json": "c426536624d88bb4571b9064bffff7e53bd153438aacb969ac23618e2d1a4e03"
+  },
+  "checks": [
+    {
+      "name": "Haskell",
+      "command": "cabal test all --test-show-details=direct",
+      "status": "PASS",
+      "compiler_sha256": "992923f0c9f8c9332c74651acc0401cbda545b6a270e1502130e75e094f144f0",
+      "log_sha256": "e5dc1c33b48a5756ce365ae534690a67c31503539301f717e2f6b3ce98348406",
+      "output_tail": [
+        "Typed vector reads: scoped tuple plans, operation/type/ownership refusals, stable identities, closed code, idempotence and independently evaluated handle shadowing passed",
+        "Typed normalization: checked types/identities, aliases/let sinking, strict CAFs/traps/fuel/allocations, captures, staged matches, vector snapshots and display-shadowing refusals passed",
+        "Typed fusion: checked map/filter/captured composites, stable code homes, strict effect/division refusals, independent lane answers and fixed points passed",
+        "Typed programs: owned schemas/physical arities, cross-definition identities, explicit compatibility, stable private code and independent native-IR answers passed",
+        "Test suite TypedProgram: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/TypedProgram/test/fp-risc-0.13.1-TypedProgram.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ],
+      "suites_passed": 40
+    },
+    {
+      "name": "native-stack",
+      "command": "python3 tests/check_native_stack.py --require-execution --baseline /tmp/fpr-before-native-stack-178 --record bench/2026-11-05-native-stack.json",
+      "status": "PASS",
+      "compiler_sha256": "992923f0c9f8c9332c74651acc0401cbda545b6a270e1502130e75e094f144f0",
+      "log_sha256": "0a0c86f8670a8220bd53ab9559c1ecfff7fae996b207c136cdf1d39b74dafb7e",
+      "output_tail": [
+        "native stack: graph oracle and four target layouts passed",
+        "Test suite NativeStack: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/NativeStack/test/fp-risc-0.13.1-NativeStack.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "",
+        "rv32: physical stack bounds match all five executed probes",
+        "rv64: physical stack bounds match all five executed probes"
+      ]
+    },
+    {
+      "name": "compiler-budget",
+      "command": "python3 tests/check_compile_budget.py --require-baseline",
+      "status": "PASS",
+      "compiler_sha256": "992923f0c9f8c9332c74651acc0401cbda545b6a270e1502130e75e094f144f0",
+      "log_sha256": "7749f87353bd1bb80b81913092d30b74ce8f532580b54639cfc2646132c146b9",
+      "output_tail": [
+        "hello: 1.61 GB allocated, 45 MB peak live, 0.8 s (+9.9% allocation, +5.4% peak vs baseline)",
+        "std-live: 32.91 GB allocated, 499 MB peak live, 18.6 s (+10.0% allocation, +23.9% peak vs baseline)",
+        "pos1: 69.40 GB allocated, 717 MB peak live, 40.8 s (+7.1% allocation, -14.0% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "C2-cost",
+      "command": "python3 tests/check_type_spec_cost.py --sizes 16 32 64 128 256 --require-baseline --record bench/2026-11-05-native-stack-specialization-cost.json",
+      "status": "PASS",
+      "compiler_sha256": "992923f0c9f8c9332c74651acc0401cbda545b6a270e1502130e75e094f144f0",
+      "log_sha256": "58c01bea9d2fb9d4b3f0f92ccaca455afde0185a4a1cb0a31692b6f071bcf87f",
+      "output_tail": [
+        "16 helpers: same 10520 code bytes/48 functions; compiler allocation 1.004x explicit twins",
+        "32 helpers: same 16952 code bytes/80 functions; compiler allocation 1.004x explicit twins",
+        "64 helpers: same 30136 code bytes/144 functions; compiler allocation 1.004x explicit twins",
+        "128 helpers: same 56504 code bytes/272 functions; compiler allocation 1.004x explicit twins",
+        "256 helpers: same 109240 code bytes/528 functions; compiler allocation 1.005x explicit twins"
+      ]
+    },
+    {
+      "name": "materializing-pipelines",
+      "command": "python3 tests/check_list_materialize.py",
+      "status": "PASS",
+      "compiler_sha256": "992923f0c9f8c9332c74651acc0401cbda545b6a270e1502130e75e094f144f0",
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "output_tail": [
+        "Materializing pipeline: max-singleton PASS",
+        "Materializing pipeline: max-pair PASS",
+        "Materializing pipeline: min-singleton-rejected PASS",
+        "Materializing pipeline: min-range-before-effects PASS",
+        "Materializing pipeline: near-min PASS",
+        "Materializing pipeline: map-overflow PASS",
+        "Materializing pipeline: division-before-overflow PASS",
+        "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+      ]
+    },
+    {
+      "name": "check-registry",
+      "command": "python3 tests/test_check_registry.py",
+      "status": "PASS",
+      "compiler_sha256": "992923f0c9f8c9332c74651acc0401cbda545b6a270e1502130e75e094f144f0",
+      "log_sha256": "c7d41ced07b506fae1f1603768eb583e71097240e880ed53d551f89916a0156e",
+      "output_tail": [
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.085s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "qualification_limits": [
+    "Closed selected generated-unit stack bounds; no linked-image admission",
+    "AArch64/x86-64 layout and call tests; full hosted runtime stack remains unproved",
+    "RV32/RV64 independent stack high-water execution in QEMU; no physical-board evidence",
+    "No heap/peak-live arena admission, interrupt nesting bound, scheduling latency or WCET claim",
+    "Compilation budgets unchanged; std-live remains near its ceiling",
+    "Working-tree validation; no remote CI or publication claim"
+  ]
+}

@@ -57,6 +57,7 @@
  * another hart is advisory: it lands at that actor's next safepoint.
  */
 #include "fpr.h"
+#include "sched_probe.h"
 
 /* An actor's FIRST stack: exactly one 128 KiB buddy block.  It was 256 KiB,
  * which the buddy rounded (with its header) to a 512 KiB block -- reasonable
@@ -1707,7 +1708,9 @@ static void hart_loop(fpr_hart_t *h) {
         fpr_instruction_fence();
         code_seen = code_now;
       }
+      FPR_SCHED_EVENT(FPR_SCHED_DISPATCH, h->id, n->id);
       fpr_ctx_switch(h->sched_ctx, n->ctx);
+      FPR_SCHED_EVENT(FPR_SCHED_RETURN, h->id, n->id);
       hal_actor_stack(0); /* the hart loop may free that stack (reap): nothing watched here */
       __atomic_store_n(&n->running, 0, __ATOMIC_RELEASE); /* saved: it may run elsewhere now */
       if (fpr_hart() != h) hart_reg_lost(h, n);
@@ -1793,6 +1796,7 @@ void fpr_fuel_exhausted(void) {
   { extern void fpr_bump_check(fpr_hart_t *); fpr_bump_check(h); }
 #endif
   h->fuel_preempts++;
+  FPR_SCHED_EVENT(FPR_SCHED_FUEL, h->id, h->current->id);
   h->fuel = FUEL_QUANTUM;
   TR(h->current, 14);
   enq(h, h->current); /* still runnable: back of our own queue */

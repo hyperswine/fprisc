@@ -14,4 +14,4 @@ for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarc
         break
 sys.path.insert(0, str(ROOT / 'tests'))
 from haskell_units import run_units
-run_units(['CorePipeline'], env, timeout=180)
+run_units(['CorePipeline', 'RepresentationSpecialization'], env, timeout=180)

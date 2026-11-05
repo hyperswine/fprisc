@@ -5,7 +5,7 @@ module Codegen.Export.Plan
   (FloatABI(..), CKind(..), Signature(..), CExportSymbol(..), FprEntrySymbol(..),
    CSource(..), NativeLocation(..), ArgumentConversion(..), ResultConversion(..),
    ArgumentPlan(..), AdapterFrame(..), AdapterPlan(..), CheckedAdapter,
-   adapterPlan, checkExportArity, planAdapter, checkAdapter) where
+   adapterPlan, checkExportArity, planAdapter, planUniformAdapter, checkAdapter) where
 
 import qualified Codegen.Calling as Calling
 import Codegen.Selected (Phys)
@@ -16,14 +16,14 @@ import qualified Data.Set as S
 
 data FloatABI = SoftFloat | HardFloat deriving (Eq,Ord,Show)
 -- Keep the established diagnostic/comment spellings.
-data CKind = KInt | KWord | KAddr | KBool | KUnit | KF64 | KF32 deriving (Eq,Ord,Show)
+data CKind = KInt | KWord | KAddr | KBool | KUnit | KF64 | KF32 | KValue deriving (Eq,Ord,Show)
 data Signature = Signature {signatureParams :: [CKind], signatureResult :: CKind} deriving (Eq,Show)
 newtype CExportSymbol = CExportSymbol String deriving (Eq,Show)
 newtype FprEntrySymbol = FprEntrySymbol String deriving (Eq,Show)
 data CSource = IntegerArgument Int | FloatArgument Int | StackWord Int deriving (Eq,Ord,Show)
 data NativeLocation = NativeRegister Phys | NativeCell Int deriving (Eq,Ord,Show)
-data ArgumentConversion = WordIdentity | TagInt | BoxBool | BoxUnit | F64Bits | F32Bits deriving (Eq,Ord,Show)
-data ResultConversion = ReturnWord | UntagInt | UnboxBool | ReturnF64 | ReturnF32 deriving (Eq,Ord,Show)
+data ArgumentConversion = WordIdentity | TagInt | BoxBool | BoxUnit | F64Bits | F32Bits | BoxRaw CKind deriving (Eq,Ord,Show)
+data ResultConversion = ReturnWord | UntagInt | UnboxBool | ReturnF64 | ReturnF32 | UnboxRaw CKind ResultConversion deriving (Eq,Ord,Show)
 data ArgumentPlan = ArgumentPlan
   { argumentPosition :: Int, argumentKind :: CKind, argumentSource :: CSource,
     argumentDestination :: NativeLocation, argumentConversion :: ArgumentConversion
@@ -33,7 +33,7 @@ data AdapterPlan = AdapterPlan
   { adapterPublic :: CExportSymbol, adapterEntry :: FprEntrySymbol,
     adapterABI :: FloatABI, adapterSignature :: Signature,
     adapterFrame :: AdapterFrame, adapterArguments :: [ArgumentPlan],
-    adapterResult :: ResultConversion
+    adapterResult :: ResultConversion, adapterUniform :: Bool
   } deriving (Eq,Show)
 newtype CheckedAdapter = CheckedAdapter AdapterPlan deriving (Eq,Show)
 adapterPlan :: CheckedAdapter -> AdapterPlan
@@ -68,16 +68,19 @@ nativeLocations count=do
     native (Calling.HartArgument j)=Right (NativeCell j)
     native (Calling.NamedArgument _)=Left "RV64 export: another target's private argument cell"
 
-conversion :: CKind -> CSource -> ArgumentConversion
-conversion k source=case (k,source) of
+rawKind k=k `elem` [KWord,KAddr,KF64,KF32]
+conversion :: Bool -> CKind -> CSource -> ArgumentConversion
+conversion True k _ | rawKind k=BoxRaw k
+conversion _ k source=case (k,source) of
   (KF64,FloatArgument _)->F64Bits
   (KF32,FloatArgument _)->F32Bits
   (KInt,_)->TagInt
   (KBool,_)->BoxBool
   (KUnit,_)->BoxUnit
   _->WordIdentity
-resultConversion :: FloatABI -> CKind -> ResultConversion
-resultConversion abi k=case k of
+resultConversion :: Bool -> FloatABI -> CKind -> ResultConversion
+resultConversion True abi k | rawKind k=UnboxRaw k (resultConversion False abi k)
+resultConversion _ abi k=case k of
   KInt->UntagInt
   KBool->UnboxBool
   KF64 | abi==HardFloat->ReturnF64
@@ -85,16 +88,23 @@ resultConversion abi k=case k of
   _->ReturnWord
 
 planAdapter :: FloatABI -> CExportSymbol -> FprEntrySymbol -> Signature -> Either String CheckedAdapter
-planAdapter abi public entry sig=do
+planAdapter=planAdapterWith False
+
+planUniformAdapter :: FloatABI -> CExportSymbol -> FprEntrySymbol -> Signature -> Either String CheckedAdapter
+planUniformAdapter=planAdapterWith True
+
+planAdapterWith wantUniform abi public entry sig=do
   let ks=signatureParams sig
+      uniform=wantUniform && any rawKind (signatureResult sig:ks)
   checkExportArity abi (length ks) (length ks)
   destinations<-nativeLocations (length ks)
-  let args=zipWith3 (\i k (source,destination)->ArgumentPlan i k source destination (conversion k source))
+  let args=zipWith3 (\i k (source,destination)->ArgumentPlan i k source destination (conversion uniform k source))
         [0..] ks (zip (cSources abi ks) destinations)
       -- Copy wide C stack arguments before any register moves; read the
       -- register bank from high positions down to avoid overwriting inputs.
-      schedule=[a | a<-args,argumentPosition a>=8]++reverse [a | a<-args,argumentPosition a<8]
-  checkAdapter (AdapterPlan public entry abi sig (AdapterFrame 16 8) schedule (resultConversion abi (signatureResult sig)))
+      schedule=if uniform then args else [a | a<-args,argumentPosition a>=8]++reverse [a | a<-args,argumentPosition a<8]
+      bytes=if uniform then ((16+8*length ks+15) `div` 16)*16 else 16
+  checkAdapter (AdapterPlan public entry abi sig (AdapterFrame bytes 8) schedule (resultConversion uniform abi (signatureResult sig)) uniform)
 
 -- This boundary also accepts plans rewritten by a future pass. It checks
 -- signature coverage, ABI placement and conversion types, then simulates
@@ -105,12 +115,15 @@ checkAdapter plan=do
       args=adapterArguments plan
       count=length kinds
       abi=adapterABI plan
+      uniform=adapterUniform plan
       AdapterFrame bytes ret=adapterFrame plan
       require why yes=unless yes (Left ("C export plan: "++why))
   checkExportArity abi count count
   require "frame is not aligned or return address is outside the frame"
     (bytes>=16 && bytes<=2032 && bytes `mod` 16==0 && ret>=0 && ret `mod` 8==0 && ret<=bytes-8)
   require "missing or duplicate argument position" (sort (map argumentPosition args)==[0..count-1])
+  when uniform $ require "uniform argument staging overlaps frame or saved return"
+    (bytes>=16+8*count && ret<16)
   destinations<-nativeLocations count
   let expected=M.fromList (zip [0..] (zip3 kinds (cSources abi kinds) destinations))
   mapM_ (\arg->case M.lookup (argumentPosition arg) expected of
@@ -122,12 +135,12 @@ checkAdapter plan=do
       case source of
         StackWord n->require "incoming C stack word exceeds the RV load immediate" (bytes+8*n<=2047)
         _->pure ()
-      require "argument conversion disagrees with its representation" (argumentConversion arg==conversion kind source)) args
-  require "result conversion disagrees with its representation" (adapterResult plan==resultConversion abi result)
+      require "argument conversion disagrees with its representation" (argumentConversion arg==conversion uniform kind source)) args
+  require "result conversion disagrees with its representation" (adapterResult plan==resultConversion uniform abi result)
   _<-foldM (\destroyed arg->do
     case argumentSource arg of
       IntegerArgument n | argumentConversion arg/=BoxUnit->
-        require "argument schedule reads an overwritten C register" (S.notMember n destroyed)
+        require "argument schedule reads an overwritten C register" (uniform || S.notMember n destroyed)
       _->pure ()
     -- Register destinations are a_i by source position, checked above.
     pure (case argumentDestination arg of NativeRegister _->S.insert (argumentPosition arg) destroyed;NativeCell _->destroyed)) S.empty args

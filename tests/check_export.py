@@ -29,18 +29,21 @@ with tempfile.TemporaryDirectory(prefix='fpr-export-') as temp:
     assert '.weak fpr_fn_Cons' in asm or '.weak fpr_fn_True' in asm, 'library stubs must be weak'
     assert 'la a0, _heap_state' in asm, 'Addr.symbol should be one la'
     print('Library unit: qualified names, weak shared stubs, C entries with the declared contract: PASS')
-    # a refused export: no signature / a managed type / a non-literal symbol
+    # Signature admission, the new hidden-field ARC boundary, raw refusal,
+    # and a non-literal symbol.
     bad = tmp / 'bad.fpr'
     bad.write_text('nosig x = x.\n')
     r = run(['./fprc', '--profile=bare-metal-builtin', '--arc', '--lib', '--export=nosig', bad, tmp / 'bad.s'], 1)
     assert 'no declared signature' in r, r
     bad.write_text('L = Type (L a).\nf : Int -> L .\nf n = L n.\n')
-    r = run(['./fprc', '--profile=bare-metal-builtin', '--arc', '--lib', '--export=f', bad, tmp / 'bad.s'], 1)
+    r = run(['./fprc', '--profile=bare-metal-builtin', '--arc', '--lib', '--export=f', bad, tmp / 'hidden.s'])
+    assert 'KInt -> KValue' in r, r
+    r = run(['./fprc', '--profile=bare-metal-builtin', '--arc', '--raw', '--lib', '--export=f', bad, tmp / 'bad.s'], 1)
     assert 'not a C-representable type' in r, r
     bad.write_text('g s = Addr.symbol s.\nmain = g "x".\n')
     r = run(['./fprc', '--profile=bare-metal-builtin', '--arc', bad, tmp / 'bad.s'], 1)
     assert 'string literal' in r, r
-    print('Refusals: unsigned export, managed type at the boundary, computed symbol name: PASS')
+    print('Hidden-field ARC export admitted; unsigned/raw-managed exports and computed symbol names refused: PASS')
     # 2. two units + the C probe in one image
     image = tmp / 'export.elf'
     run(['make', 'bare-metal-builtin', 'ARC=1', 'ARC_CHECK=1', 'PROG=tests/builtin_export_main.fpr',

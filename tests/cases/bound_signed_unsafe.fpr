@@ -1,0 +1,5 @@
+# Refused: a measure does not imply a nonnegative input domain.
+count : (n : Int | measure n) -> Int -> Int | work count <= 5 * n + 5 | alloc count <= 0 .
+count n acc | n <= 0 = acc.
+count n acc = count (n - 1) (acc + 1).
+main = print (count 10 0).

@@ -1,0 +1,184 @@
+{
+  "schema": 1,
+  "compiler_sha256": "8591f084d6324b8c1b8bb4b6f8d41cadb50ca8290085778ea29930fcbc8fd78a",
+  "test_sha256": "219c2e1798c6150f15c066d6fae4021152a9ec5b02813ac1c96b825d680dde27",
+  "quick": false,
+  "records": [
+    {
+      "mode": "packets",
+      "abi": "soft",
+      "allocator": "c",
+      "owned_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "packets",
+      "abi": "soft",
+      "allocator": "fpr",
+      "owned_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "packets",
+      "abi": "hard",
+      "allocator": "c",
+      "owned_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "packets",
+      "abi": "hard",
+      "allocator": "fpr",
+      "owned_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "no-type-spec",
+      "abi": "soft",
+      "allocator": "c",
+      "owned_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "no-type-spec",
+      "abi": "soft",
+      "allocator": "fpr",
+      "owned_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "no-type-spec",
+      "abi": "hard",
+      "allocator": "c",
+      "owned_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "no-type-spec",
+      "abi": "hard",
+      "allocator": "fpr",
+      "owned_allocations": 0,
+      "explicit_allocations": 0,
+      "output": "owned 0 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "boxed",
+      "abi": "soft",
+      "allocator": "c",
+      "owned_allocations": 1001,
+      "explicit_allocations": 0,
+      "output": "owned 1001 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "boxed",
+      "abi": "soft",
+      "allocator": "fpr",
+      "owned_allocations": 1001,
+      "explicit_allocations": 0,
+      "output": "owned 1001 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "boxed",
+      "abi": "hard",
+      "allocator": "c",
+      "owned_allocations": 1001,
+      "explicit_allocations": 0,
+      "output": "owned 1001 plain 0\nOWNED_PRODUCTS_PASS\n"
+    },
+    {
+      "mode": "boxed",
+      "abi": "hard",
+      "allocator": "fpr",
+      "owned_allocations": 1001,
+      "explicit_allocations": 0,
+      "output": "owned 1001 plain 0\nOWNED_PRODUCTS_PASS\n"
+    }
+  ],
+  "effects": {
+    "packets": {
+      "ordered": {
+        "status": 0,
+        "output": "1\n2\n99\n5\n"
+      },
+      "division": {
+        "status": 1,
+        "output": "1\n2\nBuiltin panic: division by zero\n"
+      },
+      "unused": {
+        "status": 1,
+        "output": "Builtin panic: division by zero\n"
+      },
+      "branch": {
+        "status": 0,
+        "output": "4\n5\n"
+      },
+      "maximum": {
+        "status": 1,
+        "output": "4611686018427387903\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "minimum": {
+        "status": 1,
+        "output": "-4611686018427387904\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      }
+    },
+    "no-type-spec": {
+      "ordered": {
+        "status": 0,
+        "output": "1\n2\n99\n5\n"
+      },
+      "division": {
+        "status": 1,
+        "output": "1\n2\nBuiltin panic: division by zero\n"
+      },
+      "unused": {
+        "status": 1,
+        "output": "Builtin panic: division by zero\n"
+      },
+      "branch": {
+        "status": 0,
+        "output": "4\n5\n"
+      },
+      "maximum": {
+        "status": 1,
+        "output": "4611686018427387903\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "minimum": {
+        "status": 1,
+        "output": "-4611686018427387904\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      }
+    },
+    "boxed": {
+      "ordered": {
+        "status": 0,
+        "output": "1\n2\n99\n5\n"
+      },
+      "division": {
+        "status": 1,
+        "output": "1\n2\nBuiltin panic: division by zero\n"
+      },
+      "unused": {
+        "status": 1,
+        "output": "Builtin panic: division by zero\n"
+      },
+      "branch": {
+        "status": 0,
+        "output": "4\n5\n"
+      },
+      "maximum": {
+        "status": 1,
+        "output": "4611686018427387903\nBuiltin panic: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      },
+      "minimum": {
+        "status": 1,
+        "output": "-4611686018427387904\nBuiltin panic: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n"
+      }
+    }
+  }
+}

@@ -1,0 +1,182 @@
+{
+  "revision": 204,
+  "compiler_sha256": "2ff2e87abdcc393b415ea7baac4f8f3668aa4999b6dd2c500bb07f7ae1d867b0",
+  "baseline_compiler_sha256": "76bc1d0df2ed030fae71133b4b772d50989cd0600b7aeded49229504bce66eb3",
+  "checks": {
+    "arm": {
+      "log_sha256": "4538b66994ad56f33fc1e9910c133131c001f459c4a694084e03eeb5916f1ac0",
+      "last": "80 imported constructor, adapter, public observation, ownership and home checks passed"
+    },
+    "x86": {
+      "log_sha256": "4538b66994ad56f33fc1e9910c133131c001f459c4a694084e03eeb5916f1ac0",
+      "last": "80 imported constructor, adapter, public observation, ownership and home checks passed"
+    },
+    "rv": {
+      "log_sha256": "e5e2a9648b252e1e4edb9439e6490573f67080bb7ac4e408d279ca11fcc474a4",
+      "last": "RV64 Linux userspace 48 cases PASS"
+    },
+    "scale": {
+      "log_sha256": "1310bb5bfb5b6511db442148e4bee1504e1090c4b985032e60cb7e63841d6d0d",
+      "last": "256 rollback 6934052240 255716 0"
+    },
+    "budget": {
+      "log_sha256": "69cd17a32a83e6eb5b82a152fd98705a5c9cd6428afaaf08917436a13c20cc4a",
+      "last": "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+    },
+    "haskell": {
+      "log_sha256": "d0dfcc1ca7a4440b8bcff75c294510aa98743d4e527d325aba738e4d9b232bff",
+      "last": "1 of 1 test suites (1 of 1 test cases) passed."
+    },
+    "local": {
+      "log_sha256": "0c42bd5dfc27c4dd44509c4adcd96d5fb74db629b440e9ca1a70038e95c9a7e2",
+      "last": "96 parametric carrier allocation, fallback, trap and cache checks passed"
+    },
+    "materialize": {
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "last": "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+    },
+    "tree": {
+      "log_sha256": "6b3f5b622aa1cb98ff1e3c4f1c789539d9f714f79fe62c162e7859712cac9506",
+      "last": "152 aggregate storage allocation, shared-child, public-boundary and trap checks passed"
+    },
+    "list": {
+      "log_sha256": "fd2a1c2c0d5a1cb7ec069cea075e08db73d8eede9e84d0cce97f5abc47ae3c00",
+      "last": "178 persistent storage allocation, effects, trap, escape, module and walker cases passed"
+    },
+    "registry": {
+      "log_sha256": "b33a6b1ba5bf9cc327c871c48fd3c344bc4a97ebd57c494df443cc7fe6372ad3",
+      "last": "OK"
+    },
+    "c2": {
+      "log_sha256": "dcc0d610cad7d8ebbbd42d3e8abe1dc240df1108562fdb8a8bb12a5affd9089e",
+      "last": "Specialization on/off preserves printed prefixes and overflow/division failures: PASS"
+    },
+    "c2-cost": {
+      "log_sha256": "cc2ed8fdb2348997ad0a220c63aedb0e3c6d728bcec026011cbe0d00a2a3a104",
+      "last": "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.007x explicit twins"
+    },
+    "linked-final": {
+      "log_sha256": "369d7d3ee32be468d8469d3d7a62ba22da677efd749f34a0cf38e8e0dd0bcb82",
+      "last": "RV64 measured: 192 admitted callbacks on a guarded fixed stack without an allocator PASS"
+    },
+    "work-single-final": {
+      "log_sha256": "1440e4ece55767e2110645f6978456cc765874ae0d0bb04a464954c24d92782e",
+      "last": "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+    },
+    "work-sequence-final": {
+      "log_sha256": "f33d039b074a768680debaec3ed000fd26f0696ab0505f797972c6bc474aef23",
+      "last": "Typed scalar handoffs, short arenas, late unproved entry, pre-reset leak and publication preservation PASS"
+    },
+    "sched": {
+      "log_sha256": "e72c55f9af09281976bb272682cf913345ae6e8313766a2a5005a60759393de7",
+      "last": "Scheduler latency qualification: 351 configurations PASS; no WCET claim"
+    },
+    "perf": {
+      "log_sha256": "473cf1eb352680f00b3f180666f10e6abdf9dc4d6f39c07ad3b597ba90430fe3",
+      "last": "imported-constructor rollback 1525201 0.021627957990858704"
+    }
+  },
+  "physical": [
+    {
+      "label": "first",
+      "rows": 166,
+      "record": "2026-11-05-imported-carrier-pi-first.json.gz",
+      "sha256": "828e879e8934b16cd09924f5e9db893d93529fd07729d2a3206010d62a5f3226",
+      "uncompressed_sha256": "29517c8ec1fa71ebf7caf00d1b35ebd633c7fa77463766157cb95b4910434af5",
+      "bundle_sha256": "55b4cf8363162b83d22ee448c939fc2c33de951cc404e00d00876418f281ef42",
+      "samples": {
+        "default": {
+          "count": 6912,
+          "median_us": 200.0,
+          "p99_us": 1228,
+          "max_us": 1986,
+          "over_1ms": 233
+        },
+        "boxed": {
+          "count": 6912,
+          "median_us": 206.0,
+          "p99_us": 1283,
+          "max_us": 2357,
+          "over_1ms": 263
+        }
+      },
+      "production": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+      "watchdogs": 2
+    },
+    {
+      "label": "final",
+      "rows": 166,
+      "record": "2026-11-05-imported-carrier-pi-final.json.gz",
+      "sha256": "a034e6be1ab6f256137cf834ff913bf0b5b978391795a45e7db5e815bfcb5163",
+      "uncompressed_sha256": "420dbac445d66edbca01f5474f7c2ce6b5036fe99a6890c861455f5b53a54c57",
+      "bundle_sha256": "01614c6f8070ced46b89ab9c3cb51e7e2547a840ea31dff64a2088603465f322",
+      "samples": {
+        "default": {
+          "count": 6912,
+          "median_us": 199.0,
+          "p99_us": 1251,
+          "max_us": 2053,
+          "over_1ms": 252
+        },
+        "boxed": {
+          "count": 6912,
+          "median_us": 205.0,
+          "p99_us": 1336,
+          "max_us": 1956,
+          "over_1ms": 268
+        }
+      },
+      "production": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+      "watchdogs": 2
+    }
+  ],
+  "pi_adapter": {
+    "binary": "import-api-0-1-1",
+    "sha256": "2eab1fbfc38c09a943aba27dddb9fcbeb514ee88a35125efff53137c327c69cf",
+    "symbol": "fpr_fn__x24carrier_x2e23_x2eMeters_x402c056ba2c32382f3_x2epack_x402c056ba2c32382f3_x2e_x24at_x2eroot_x2e7253c69ac2875277",
+    "instructions": [
+      "108eda8: d10083ff     \tsub\tsp, sp, #0x20",
+      "108edac: a9017bfd     \tstp\tx29, x30, [sp, #0x10]",
+      "108edb0: 910083fd     \tadd\tx29, sp, #0x20",
+      "108edb4: f81e83b3     \tstur\tx19, [x29, #-0x18]",
+      "108edb8: aa0003f3     \tmov\tx19, x0",
+      "108edbc: aa1c03e9     \tmov\tx9, x28",
+      "108edc0: 910003ea     \tmov\tx10, sp",
+      "108edc4: f940e52b     \tldr\tx11, [x9, #0x1c8]",
+      "108edc8: cb0b014a     \tsub\tx10, x10, x11",
+      "108edcc: f940e92b     \tldr\tx11, [x9, #0x1d0]",
+      "108edd0: eb0b015f     \tcmp\tx10, x11",
+      "108edd4: 540000a3     \tb.lo\t0x108ede8 <fpr_fn__x24carrier_x2e23_x2eMeters_x402c056ba2c32382f3_x2epack_x402c056ba2c32382f3_x2e_x24at_x2eroot_x2e7253c69ac2875277+0x40>",
+      "108edd8: 97ffaed4     \tbl\t0x107a928 <fpr_stack_grow>",
+      "108eddc: b4000040     \tcbz\tx0, 0x108ede4 <fpr_fn__x24carrier_x2e23_x2eMeters_x402c056ba2c32382f3_x2epack_x402c056ba2c32382f3_x2e_x24at_x2eroot_x2e7253c69ac2875277+0x3c>",
+      "108ede0: 9100001f     \tmov\tsp, x0",
+      "108ede4: aa1c03e9     \tmov\tx9, x28",
+      "108ede8: f840012a     \tldur\tx10, [x9]",
+      "108edec: d100054a     \tsub\tx10, x10, #0x1",
+      "108edf0: f800012a     \tstur\tx10, [x9]",
+      "108edf4: f100015f     \tcmp\tx10, #0x0",
+      "108edf8: 5400004c     \tb.gt\t0x108ee00 <fpr_fn__x24carrier_x2e23_x2eMeters_x402c056ba2c32382f3_x2epack_x402c056ba2c32382f3_x2e_x24at_x2eroot_x2e7253c69ac2875277+0x58>",
+      "108edfc: 94000128     \tbl\t0x108f29c <fpr_fuel_save_local>",
+      "108ee00: aa1303e0     \tmov\tx0, x19",
+      "108ee04: f85e83b3     \tldur\tx19, [x29, #-0x18]",
+      "108ee08: aa1d03e9     \tmov\tx9, x29",
+      "108ee0c: a97f793d     \tldp\tx29, x30, [x9, #-0x10]",
+      "108ee10: 9100013f     \tmov\tsp, x9",
+      "108ee14: 17ffff69     \tb\t0x108ebb8 <fpr_fn__x24carrier_x2e23_x2eMeters_x402c056ba2c32382f3_x2eMeters_x402c056ba2c32382f3_x2e_x24at_x2eroot_x2e7253c69ac2875277>"
+    ],
+    "stack_growth_call_index": 12,
+    "fuel_slow_call_index": 21
+  },
+  "artifacts": {
+    "2026-11-05-map-imported-wrapper-before.json": "5dbd6c662e6848ffd6bced1839dcc135d50ff9026aab1e46023b5df077d54c2a",
+    "2026-11-05-map-imported-wrapper-after.json": "504d5049109c856430e71981c4cdefc0bd650713a19d6477cb8aa03d4f2bc0d8",
+    "2026-11-05-linked-callback-single.json": "22ad2139d38bb890e05f73a86d3351cda54b59daa4c6a2ca8e81d7392093d51d",
+    "2026-11-05-linked-callback-work.json": "3e964092da1f6e0b62be17fd0d4057261c4c2e3d4a88a5b80b9b232e8cbadeca",
+    "2026-11-05-imported-carrier-native.json": "626ae7b2fad5715f60f01840dae4ed8f005329c899eee5183c3326bf8655e033",
+    "2026-11-05-imported-carrier-x64.json": "d88b0fd551a761317bca08580823811c5ca165ee81a629891fe2703183da215a",
+    "2026-11-05-imported-carrier-rv64.json": "a41e2710d70435c1d819218db60cede91b422b75c61e9a661596eaecd52c6624",
+    "2026-11-05-imported-carrier-scaling.json": "f470dd9f5d90222484d7e902a9d5eaa477213d492118adf02542c164d2a85916",
+    "2026-11-05-imported-carrier-scheduling.json": "6c32ad64eda3a9323782d842bcde279728a976af61df742208cc7d653e955d29",
+    "2026-11-05-imported-carrier-throughput.json": "80c99834dea8c29eb79fcd3841fde3cd64bac2e8935abe2a0b20674c651c3a1b"
+  }
+}

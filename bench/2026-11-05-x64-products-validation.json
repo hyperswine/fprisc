@@ -1,0 +1,350 @@
+{
+  "compiler_sha256": "f78d082e4c6564c0cf7f4dbd0442d4dc2125c38729377a83de29818a3790207c",
+  "checks": [
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 16.19,
+      "log_sha256": "dec4b4900b8f9aabc27654b422bf722c4a048406c3ca14a60c492f9d17c33a6f",
+      "output_tail": [
+        "non-final case arm: OK",
+        "parentheses end conditional before pipeline: OK",
+        "parentheses end conditional before next argument: OK",
+        "Test suite if-precedence-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/if-precedence-check/test/fp-risc-0.13.1-if-precedence-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "module search path: OK",
+        "Test suite module-path-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/module-path-check/test/fp-risc-0.13.1-module-path-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ]
+    },
+    {
+      "name": "copy-negative",
+      "command": [
+        "cabal",
+        "exec",
+        "--",
+        "runghc",
+        "-w",
+        "-i/tmp/fpr-copy-mutant:compiler",
+        "tests/AllocIR.hs"
+      ],
+      "status": "PASS",
+      "returncode": 1,
+      "expected_returncode": 1,
+      "seconds": 2.3,
+      "log_sha256": "73762499fbb00a429a8678110698fb7927bb3fa3e148394e2020d40f7c71eed2",
+      "output_tail": [
+        "AllocIR.hs: FAIL: parallel copies preserve every completed or identity result",
+        "CallStack (from HasCallStack):",
+        "  error, called at tests/AllocIR.hs:35:30 in main:Main"
+      ]
+    },
+    {
+      "name": "native-source",
+      "command": [
+        "python3",
+        "tests/check_product_returns.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 29.34,
+      "log_sha256": "127fc10416da6e1afcab4409465ab51176b6c908d5fd6eac573485c9bf8518ff",
+      "output_tail": [
+        "Product returns: 9 fields, allocations 1000 -> 1000, 1/4 harts PASS",
+        "Product returns: 96 held fields across calls/effects PASS",
+        "Product returns: ordered exact effect/trap differential PASS",
+        "Product returns: overflow exact effect/trap differential PASS",
+        "Product returns: division exact effect/trap differential PASS",
+        "Product returns: division-unused exact effect/trap differential PASS",
+        "Product returns: min-success exact effect/trap differential PASS",
+        "Product returns: eight-field mutual tail calls PASS",
+        "Product returns: tagged escape and heap-valued fields PASS",
+        "Product returns: a64mac width admission and register emission PASS",
+        "Product returns: rv64 width admission and register emission PASS",
+        "Product returns: x64 width admission and register emission PASS"
+      ]
+    },
+    {
+      "name": "rv-oracle",
+      "command": [
+        "python3",
+        "tests/check_product_returns_rv.py",
+        "--require-execution"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 3.88,
+      "log_sha256": "97926d533e6e236891e4a1891906ab30c101b05ef274235f6f8f012e9c20ac65",
+      "output_tail": [
+        "Product returns RV64: 2 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 3 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 4 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 5 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 6 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 7 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 8 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS"
+      ]
+    },
+    {
+      "name": "x64-regression",
+      "command": [
+        "python3",
+        "tests/check_x64_local.py",
+        "--require-execution"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 28.66,
+      "log_sha256": "b78d002f6ec52269bb7aaf4c86dd9c7655fe02c03358848b2652c79684763deb",
+      "output_tail": [
+        "qx64: TYPED_KERNEL_PASS 500 mixed Int/F64 record cases: captured map, stable filter, captured fold, empty, hostile yields",
+        "x64: 3 typed kernel CFGs; no legacy assembly PASS",
+        "x64: TYPED_KERNEL_PASS 700 F32 cases: map, filter, fold, empty columns, guard fallbacks, hostile yields",
+        "qx64: 3 typed kernel CFGs; no legacy assembly PASS",
+        "qx64: TYPED_KERNEL_PASS 700 F32 cases: map, filter, fold, empty columns, guard fallbacks, hostile yields",
+        "x64: 1 typed kernel CFGs; no legacy assembly PASS",
+        "x64: TYPED_KERNEL_PASS 100 pair-sum folds: the GPU hook's answer once, the CPU strip otherwise, guard fallback",
+        "qx64: 1 typed kernel CFGs; no legacy assembly PASS",
+        "qx64: TYPED_KERNEL_PASS 100 pair-sum folds: the GPU hook's answer once, the CPU strip otherwise, guard fallback",
+        "check_x64_vectors.py: 12.38s",
+        "Local x64 suite (Rosetta x86-64): PASS in 28.62s including build check",
+        "Evidence: adapted generated instructions and C oracles; not Linux TLS, actor scheduling or native x86 performance."
+      ]
+    },
+    {
+      "name": "compile-cost",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 59.75,
+      "log_sha256": "41ff20d3baf43c59c129f5503d43a5ced662c79709649fa92c0ce3c03464f3c8",
+      "output_tail": [
+        "hello: 1.59 GB allocated, 45 MB peak live, 0.7 s (+8.3% allocation, +5.3% peak vs baseline)",
+        "std-live: 32.68 GB allocated, 433 MB peak live, 18.6 s (+9.2% allocation, +7.4% peak vs baseline)",
+        "pos1: 68.98 GB allocated, 720 MB peak live, 40.4 s (+6.4% allocation, -13.7% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256",
+        "--require-baseline",
+        "--record",
+        "bench/2026-11-05-x64-products-cost.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 3.36,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "output_tail": [
+        "16 helpers: same 10832 code bytes/55 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "static-arenas",
+      "command": [
+        "python3",
+        "tests/check_static_arena.py",
+        "--require-execution",
+        "--record",
+        "bench/2026-11-05-x64-products-arenas.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 22.78,
+      "log_sha256": "e2a076a06b29540c172724833ac26bf85dfaee47616d5944f43fe2636482785d",
+      "output_tail": [
+        "identity: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "wide: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "arity-limit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-yes: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-no: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-low: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-high: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "bool: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "unit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "mixed: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "expected_returncode": 0,
+      "seconds": 0.14,
+      "log_sha256": "0c37e13a2c903e17753f0300114132253e47ad32185d0a8afddb67d7acc18a49",
+      "output_tail": [
+        "..check_ci: tests/check_rv64_linux.py::typed-runtime",
+        "check_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s",
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.069s",
+        "",
+        "OK"
+      ]
+    },
+    {
+      "name": "oracle",
+      "command": [
+        "python3",
+        "tests/check_product_returns_x64.py",
+        "--require-execution",
+        "--record",
+        "bench/2026-11-05-x64-products-oracle.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "log_sha256": "6324d15b4f4f55068db08951c89423e73171a00884604f955549f795cdd59e05",
+      "output_tail": [
+        "x64 product returns: 2 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 3 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 4 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 5 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 6 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 7 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 8 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 8 fields, repeated=True, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 real runtime: eight-field recursive results, three actors, observed fuel exhaustion and 1/4 harts PASS"
+      ]
+    },
+    {
+      "name": "source",
+      "command": [
+        "python3",
+        "tests/check_product_returns.py",
+        "--target=macos-x86_64",
+        "--record",
+        "bench/2026-11-05-x64-products.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 31.12,
+      "log_sha256": "127fc10416da6e1afcab4409465ab51176b6c908d5fd6eac573485c9bf8518ff",
+      "output_tail": [
+        "Product returns: 7 fields, allocations 1000 -> 0, 1/4 harts PASS",
+        "Product returns: 8 fields, allocations 1000 -> 0, 1/4 harts PASS",
+        "Product returns: 9 fields, allocations 1000 -> 1000, 1/4 harts PASS",
+        "Product returns: 96 held fields across calls/effects PASS",
+        "Product returns: ordered exact effect/trap differential PASS",
+        "Product returns: overflow exact effect/trap differential PASS",
+        "Product returns: division exact effect/trap differential PASS",
+        "Product returns: division-unused exact effect/trap differential PASS",
+        "Product returns: min-success exact effect/trap differential PASS",
+        "Product returns: eight-field mutual tail calls PASS",
+        "Product returns: tagged escape and heap-valued fields PASS",
+        "Product returns: a64mac width admission and register emission PASS",
+        "Product returns: rv64 width admission and register emission PASS",
+        "Product returns: x64 width admission and register emission PASS"
+      ]
+    },
+    {
+      "name": "benchmark",
+      "command": [
+        "python3",
+        "tools/bench_product_returns.py",
+        "--target=macos-x86_64",
+        "--count",
+        "5000000",
+        "--samples",
+        "13",
+        "--record",
+        "bench/2026-11-05-x64-products-benchmark.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 24.12,
+      "log_sha256": "9fca86f08a0889027e2fcfe4c1bd20f29e5bd6efed8ab98f874b8022f3d5081a",
+      "output_tail": [
+        "{\"width\": 3, \"count\": 5000000, \"median_ms\": {\"on\": 78.42925, \"off\": 101.788208}, \"wins\": 13}",
+        "{\"width\": 4, \"count\": 5000000, \"median_ms\": {\"on\": 84.758416, \"off\": 107.157083}, \"wins\": 12}",
+        "{\"width\": 8, \"count\": 5000000, \"median_ms\": {\"on\": 110.504458, \"off\": 137.213792}, \"wins\": 13}"
+      ]
+    }
+  ],
+  "schema": "x64-product-validation-v1",
+  "codegen_revision": 183,
+  "x64_selection_revision": 32,
+  "haskell_suites": 41,
+  "inputs_sha256": {
+    "compiler/Codegen.hs": "74910ace0a30c1415b8d0656c3b565592c2e97978a4096cbde679d0cea2ef716",
+    "compiler/Codegen/Allocate.hs": "0b099e6843726bef45bfcc9d72e93b72172e8961aa6488f8d80aeb6b1dce3c49",
+    "compiler/Codegen/Calling.hs": "1cb8aaf67be222d56e782e925b3a0aab3e7c20af3df2e55e8f61c0190ae22ba5",
+    "compiler/Codegen/Target/X64.hs": "1a17ee8ce9737dd748a64d608fc6aed2c5960286ba4894bd4b81420a389c18f1",
+    "compiler/Codegen/Target/X64/Forms.hs": "40205b147e0e0e6db069381f65726872b199c04d56dab33b8d34c24602a33f02",
+    "tests/AllocIR.hs": "2d38a2060de11439cba2f6313bff6aba292bedacee7d5f672dcd4c9919936457",
+    "tests/SelectedIR.hs": "4bc98c9a2dc39c15f16574613f40f8dbee06aed508f8688d087525d56c8bf765",
+    "tests/check_product_returns.py": "327a2a3115e76f1469f2da01e3e2bf8252f52014056baf04d0416310d35b069a",
+    "tests/check_product_returns_x64.py": "abe8997bc9cd8726865e6abc395bc05316b4e06d3b866d3926b5fb57cce36fcf",
+    "tests/check_product_returns_rv.py": "d513264b3606eac9ad39a965738f81692f32b3b96a1d3a74c6b3ea6febef4285",
+    "tests/typed_ir/product_return_oracle.c": "6f6c2829b441d7d0bccc386be0f8da5e9a05a79e1b1c2352e78e01efffea1747",
+    "tests/fuel_wrapper.py": "1fd8ddc8539442c89240809c9640ecdd4ca37911009703254cfa7ba9399d7250",
+    "tests/x64_probe.py": "c22c91d6c6662dcacbb1b47f4aa9bbe7980f1d14e47c070885e39b490b635c16",
+    "tests/check_x64_local.py": "a166b9e6edf24730685a7ff1ac3d61966c75f6ee2b74aa3ff9592cfd113ba755",
+    "tests/check_registry.py": "1da2c23ceca858779c1084596382498dcf38c07cdf8a50bfe24014e24b31d97a",
+    "tests/test_check_registry.py": "02a2c901e8a2b699852587638b503be1222c9c7b7bdf3c3eeb525c27ec1aaf00",
+    "tests/check_compile_budget.py": "2ecb43e7bc87c3cc5a4a77675c3768d96a9ac77ddab77a0947ff18a72ba973fb",
+    "tests/compile_budget.json": "1030bccbc557ddea3cd2ae9e0dd82d3791044bfbf0faacc67cae465099257a69",
+    "tests/check_type_spec_cost.py": "aac8ce91c99984bc2f9eb31c91c376504fc2d523cc6771d286546cc05993be7f",
+    "tests/type_spec_cost_budget.json": "30cc5450eb143199cef5966239aab4263b8d0111d6fbfc92686d1d525f0228ee",
+    "tools/bench_product_returns.py": "cf362ac330cf7dde93d945cd00a526ddbfb8ef52cb6ee78a1f5b302b045723d4",
+    "machine/builtin/contracts/rv64-c-heap-v1.json": "e2a0cd0eedaa851a7ba1745b16eea2d3f49f554b3c67d95223dd4fc2081096ab",
+    "fp-risc.cabal": "eaa07756c5a878e3894a65f6a28d12860301f905594e8533e8993dc18eb86333",
+    "docs/2026-11-05-X64-PRODUCT-RETURNS.md": "18fab58e98fbbd394eddbf3b6d7c6f62ce2e68f392fe67de2f0b857602056aa7",
+    "docs/2026-11-05-PRODUCT-RETURNS.md": "9ecf36dedd07ec1aabe1a90abfc1f5f6257a40fb3abadf49a151dd7aa734f1ff",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "b761b63920df4e7fa9023aec0d2c4028350baa3ccc2746f5b51df127313d3a8e",
+    "bench/2026-11-05-x64-products.json": "1156e6024ffe86977e3adb6f8c8d0c8c0d83f73cb400a30f44d5a020c881b363",
+    "bench/2026-11-05-x64-products-oracle.json": "27308caec4736a82022cee0c9829a11370d64cf7866e0fc33218de2641cb276f",
+    "bench/2026-11-05-x64-products-benchmark.json": "380115b1f7df120e681c12daf2fe48a6ed428e709a1cb1d39183e046539bd2e1",
+    "bench/2026-11-05-x64-products-cost.json": "189ee62aa123fe6186d251d72e28f9dc123fdc94970721c22955a4690f203253",
+    "bench/2026-11-05-x64-products-arenas.json": "f73bc869fd4358144a1619e75bbc77350e1005390cd8fa49322cff4aa59e1a5c"
+  },
+  "copy_negative_control": {
+    "source_sha256": "1e88991fe7ee38322e4205ffb5fc9259c660da305ff48476cd2abd1dd5ff449c",
+    "mutation": "Use pending destinations only, restoring the old parallel-copy scratch selection",
+    "expected_failure": "parallel copies preserve every completed or identity result"
+  },
+  "baseline_compiler_sha256": "2e6202383467f29e37a0de47caff82ba04b427bee6c08caa18c56ef90b6f7f4f",
+  "scope": "Local macOS arm64, x86-64 Rosetta backend/real-runtime execution, RV64 QEMU. Benchmark uses the rollback switch in the final compiler. No new remote CI, native Intel throughput, physical-board or WCET claim."
+}

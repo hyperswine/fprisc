@@ -1,0 +1,97 @@
+{
+  "contract_sha256": "18dcac399fd4b17cf874f558032ef23ce6a4d1323169c35326a98926af5570d7",
+  "compilations": [
+    {
+      "revision": "199",
+      "compiler_sha256": "c3f31da0185ea59ca7b084520bb99e01b505326a16c96760453b7fa4f4aef5e9",
+      "machine_code_and_relocations_sha256": "763d6356f34c1e5fe3be2b4a69a21bf9c013d511b0340a9f5e981e22996a2c4c",
+      "resource_reports": [
+        "# native-stack-v1: fpr_fn__x24arc_x2emainManaged local=16 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24arc_x2emainManaged",
+        "# native-stack-v1: fpr_fn__x24uniform_x2eraw_x2echoose_x4053095893c799aac0 local=16 peak=16",
+        "# native-stack-v1: fpr_fn__x24uniform_x2eraw_x2eidentity_x4053095893c799aac0 local=16 peak=16",
+        "# native-stack-v1: fpr_fn__x24uniform_x2eraw_x2ewide_x4053095893c799aac0 local=16 peak=16",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret2_x2e_x24product_x2eTup2 local=48 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret2_x2e_x24product_x2eTup2,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret3_x2e_x24product_x2eTup3 local=64 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret3_x2e_x24product_x2eTup3,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret4_x2e_x24product_x2eTup4 local=80 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret4_x2e_x24product_x2eTup4,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret5_x2e_x24product_x2eTup5 local=96 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret5_x2e_x24product_x2eTup5,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret6_x2e_x24product_x2eTup6 local=112 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret6_x2e_x24product_x2eTup6,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret7_x2e_x24product_x2eTup7 local=128 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret7_x2e_x24product_x2eTup7,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret8_x2e_x24product_x2eTup8 local=144 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret8_x2e_x24product_x2eTup8,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn_Cons local=64 peak=UNPROVED reasons=interposable-entry:fpr_fn_Cons,runtime:fpr_builtin_alloc_adt,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2esetLayout",
+        "# native-stack-v1: fpr_fn_Err local=48 peak=UNPROVED reasons=interposable-entry:fpr_fn_Err,runtime:fpr_builtin_alloc_adt,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2esetLayout",
+        "# native-stack-v1: fpr_fn_False local=16 peak=UNPROVED reasons=interposable-entry:fpr_fn_False",
+        "# native-stack-v1: fpr_fn_Nil local=16 peak=UNPROVED reasons=interposable-entry:fpr_fn_Nil",
+        "# native-stack-v1: fpr_fn_Ok local=48 peak=UNPROVED reasons=interposable-entry:fpr_fn_Ok,runtime:fpr_builtin_alloc_adt,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2esetLayout",
+        "# native-stack-v1: fpr_fn_True local=16 peak=UNPROVED reasons=interposable-entry:fpr_fn_True",
+        "# native-stack-v1: fpr_fn_Tup2 local=32 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup3 local=48 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup4 local=48 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup5 local=64 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup6 local=64 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup7 local=80 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup8 local=80 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Unit local=16 peak=UNPROVED reasons=interposable-entry:fpr_fn_Unit",
+        "# native-stack-v1: fpr_fn_choose_x4053095893c799aac0 local=48 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-stack-v1: fpr_fn_identity_x4053095893c799aac0 local=32 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-stack-v1: fpr_fn_wide_x4053095893c799aac0 local=128 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-stack-v1: identity local=32 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-stack-v1: wide local=112 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-stack-v1: choose local=48 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-heap-budget-v1: identity requests=2 requested=48 arena=416 limit=100000 scope=fresh-aligned-builtin-rv64-c-heap",
+        "# native-heap-budget-v1: wide requests=13 requested=312 arena=2640 limit=100000 scope=fresh-aligned-builtin-rv64-c-heap",
+        "# native-heap-budget-v1: choose requests=3 requested=72 arena=624 limit=100000 scope=fresh-aligned-builtin-rv64-c-heap"
+      ]
+    },
+    {
+      "revision": "201",
+      "compiler_sha256": "59e53da796bf8298bf80db0d78918ee987e2e089e9012d1828e481abfa129ae2",
+      "machine_code_and_relocations_sha256": "763d6356f34c1e5fe3be2b4a69a21bf9c013d511b0340a9f5e981e22996a2c4c",
+      "resource_reports": [
+        "# native-stack-v1: fpr_fn__x24arc_x2emainManaged local=16 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24arc_x2emainManaged",
+        "# native-stack-v1: fpr_fn__x24uniform_x2eraw_x2echoose_x4053095893c799aac0 local=16 peak=16",
+        "# native-stack-v1: fpr_fn__x24uniform_x2eraw_x2eidentity_x4053095893c799aac0 local=16 peak=16",
+        "# native-stack-v1: fpr_fn__x24uniform_x2eraw_x2ewide_x4053095893c799aac0 local=16 peak=16",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret2_x2e_x24product_x2eTup2 local=48 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret2_x2e_x24product_x2eTup2,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret3_x2e_x24product_x2eTup3 local=64 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret3_x2e_x24product_x2eTup3,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret4_x2e_x24product_x2eTup4 local=80 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret4_x2e_x24product_x2eTup4,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret5_x2e_x24product_x2eTup5 local=96 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret5_x2e_x24product_x2eTup5,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret6_x2e_x24product_x2eTup6 local=112 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret6_x2e_x24product_x2eTup6,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret7_x2e_x24product_x2eTup7 local=128 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret7_x2e_x24product_x2eTup7,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn__x24worker_x2eret8_x2e_x24product_x2eTup8 local=144 peak=UNPROVED reasons=interposable-entry:fpr_fn__x24worker_x2eret8_x2e_x24product_x2eTup8,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain",
+        "# native-stack-v1: fpr_fn_Cons local=64 peak=UNPROVED reasons=interposable-entry:fpr_fn_Cons,runtime:fpr_builtin_alloc_adt,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2esetLayout",
+        "# native-stack-v1: fpr_fn_Err local=48 peak=UNPROVED reasons=interposable-entry:fpr_fn_Err,runtime:fpr_builtin_alloc_adt,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2esetLayout",
+        "# native-stack-v1: fpr_fn_False local=16 peak=UNPROVED reasons=interposable-entry:fpr_fn_False",
+        "# native-stack-v1: fpr_fn_Nil local=16 peak=UNPROVED reasons=interposable-entry:fpr_fn_Nil",
+        "# native-stack-v1: fpr_fn_Ok local=48 peak=UNPROVED reasons=interposable-entry:fpr_fn_Ok,runtime:fpr_builtin_alloc_adt,runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2esetLayout",
+        "# native-stack-v1: fpr_fn_True local=16 peak=UNPROVED reasons=interposable-entry:fpr_fn_True",
+        "# native-stack-v1: fpr_fn_Tup2 local=32 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup3 local=48 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup4 local=48 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup5 local=64 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup6 local=64 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup7 local=80 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Tup8 local=80 peak=UNPROVED reasons=runtime:fpr_builtin_alloc_adt",
+        "# native-stack-v1: fpr_fn_Unit local=16 peak=UNPROVED reasons=interposable-entry:fpr_fn_Unit",
+        "# native-stack-v1: fpr_fn_choose_x4053095893c799aac0 local=48 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-stack-v1: fpr_fn_identity_x4053095893c799aac0 local=32 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-stack-v1: fpr_fn_wide_x4053095893c799aac0 local=128 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2erelease,runtime:fpr_fn__x24arc_x2eretain,runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-stack-v1: identity local=32 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-stack-v1: wide local=112 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-stack-v1: choose local=48 peak=UNPROVED reasons=runtime:fpr_fn__x24arc_x2euniformBoxWord,runtime:fpr_fn__x24arc_x2euniformUnboxWord",
+        "# native-heap-budget-v1: identity requests=2 requested=48 arena=416 limit=100000 scope=fresh-aligned-builtin-rv64-c-heap",
+        "# native-heap-budget-v1: wide requests=13 requested=312 arena=2640 limit=100000 scope=fresh-aligned-builtin-rv64-c-heap",
+        "# native-heap-budget-v1: choose requests=3 requested=72 arena=624 limit=100000 scope=fresh-aligned-builtin-rv64-c-heap"
+      ]
+    }
+  ],
+  "reviewed_sources": {
+    "compiler/Codegen/Target/RV.hs": {
+      "previous": "2bc838873a542560c56a409a56e1611bcdaee2264150aa497066d4e4df102951",
+      "current": "573a962feaf5d03865771ddf73b17cb682de7191bc61ce08a393188888533f8e"
+    },
+    "runtime/fpr.h": {
+      "previous": "2f88cf32a2e3e99b0c68d0fee3569d803e96cb8846cc1916ecb697d0895cf85d",
+      "current": "39abcf1d9507edbd91964ea98e198a4f06e1792139706db3d1efaae67e3c81cf"
+    }
+  }
+}

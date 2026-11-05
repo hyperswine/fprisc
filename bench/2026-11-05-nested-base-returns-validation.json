@@ -1,0 +1,272 @@
+{
+  "revision": 197,
+  "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+  "checks": [
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "exit": 0,
+      "seconds": 23.48,
+      "log_sha256": "549cf065c481952e4c9cb9d537ddf8b043e81e87e19957f980ddb3f5f0012fc9",
+      "tail": [
+        "Test suite module-path-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/module-path-check/test/fp-risc-0.13.1-module-path-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ]
+    },
+    {
+      "name": "native",
+      "command": [
+        "python3",
+        "tests/check_nested_base_returns.py",
+        "--record",
+        "bench/2026-11-05-nested-base-returns-native.json"
+      ],
+      "exit": 0,
+      "seconds": 28.2,
+      "log_sha256": "3a8eae91ec6f523946b3112590570ad78c0da882c5e2d9cce21825c2ee0c588d",
+      "tail": [
+        "Nested returns True False False 1/4 workers PASS",
+        "Nested returns True False True 1/4 workers PASS",
+        "Nested returns True True False 1/4 workers PASS",
+        "Nested returns True True True 1/4 workers PASS"
+      ]
+    },
+    {
+      "name": "baseline",
+      "command": [
+        "python3",
+        "tests/check_nested_base_returns.py",
+        "--before",
+        "--compiler",
+        "/tmp/fpr-before-nested-returns-197",
+        "--record",
+        "bench/2026-11-05-nested-base-returns-before.json"
+      ],
+      "exit": 0,
+      "seconds": 29.54,
+      "log_sha256": "3a8eae91ec6f523946b3112590570ad78c0da882c5e2d9cce21825c2ee0c588d",
+      "tail": [
+        "Nested returns True False False 1/4 workers PASS",
+        "Nested returns True False True 1/4 workers PASS",
+        "Nested returns True True False 1/4 workers PASS",
+        "Nested returns True True True 1/4 workers PASS"
+      ]
+    },
+    {
+      "name": "x64",
+      "command": [
+        "python3",
+        "tests/check_nested_base_returns.py",
+        "--target",
+        "macos-x86_64",
+        "--record",
+        "bench/2026-11-05-nested-base-returns-x64.json"
+      ],
+      "exit": 0,
+      "seconds": 24.15,
+      "log_sha256": "3a8eae91ec6f523946b3112590570ad78c0da882c5e2d9cce21825c2ee0c588d",
+      "tail": [
+        "Nested returns True False False 1/4 workers PASS",
+        "Nested returns True False True 1/4 workers PASS",
+        "Nested returns True True False 1/4 workers PASS",
+        "Nested returns True True True 1/4 workers PASS"
+      ]
+    },
+    {
+      "name": "rv64",
+      "command": [
+        "python3",
+        "tests/check_nested_returns_rv.py",
+        "--require-execution"
+      ],
+      "exit": 0,
+      "seconds": 1.98,
+      "log_sha256": "0a5d8c277730de4ee3ceb989a8f2e1026a43168b2b0c9186e4c17b883413ff32",
+      "tail": [
+        "1 product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "4 product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "8 product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS"
+      ]
+    },
+    {
+      "name": "shallow",
+      "command": [
+        "python3",
+        "tests/check_product_returns.py"
+      ],
+      "exit": 0,
+      "seconds": 65.43,
+      "log_sha256": "964790cf20960a29e4fd66145bead7acb883ddf86c6a0c1faceeb1f7b3145a04",
+      "tail": [
+        "Product returns: tagged escape and heap-valued fields PASS",
+        "Product returns: a64mac width admission and register emission PASS",
+        "Product returns: rv64 width admission and register emission PASS",
+        "Product returns: x64 width admission and register emission PASS"
+      ]
+    },
+    {
+      "name": "lifetime",
+      "command": [
+        "python3",
+        "tests/check_unary_return_lifetimes.py"
+      ],
+      "exit": 0,
+      "seconds": 14.69,
+      "log_sha256": "829a4e1c8145906887fc9fa06bfe17b865461659e5f550dd8f3852aebfaf34c7",
+      "tail": [
+        "Unary payload lifetime: False False {} 1/4 harts PASS",
+        "Unary payload lifetime: False True {False: 25157, True: 16772} 1/4 harts PASS",
+        "Unary payload lifetime: True False {} 1/4 harts PASS",
+        "Unary payload lifetime: True True {False: 16772, True: 8388} 1/4 harts PASS"
+      ]
+    },
+    {
+      "name": "scalar",
+      "command": [
+        "python3",
+        "tests/check_wide_scalar_workers.py"
+      ],
+      "exit": 0,
+      "seconds": 23.49,
+      "log_sha256": "9317b1ae5a7e1bf3d2167661bf24078780ead660f4fe6f4165510d8ad120a3c7",
+      "tail": [
+        "Wide scalar ABI: [] direct, dynamic, actors and overflow on 1/4 workers PASS",
+        "Wide scalar ABI: [6, 7, 8, 9, 16, 63, 64] direct, dynamic, actors and overflow on 1/4 workers PASS"
+      ]
+    },
+    {
+      "name": "c2-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--require-baseline",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256"
+      ],
+      "exit": 0,
+      "seconds": 3.33,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "tail": [
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "static-arena",
+      "command": [
+        "python3",
+        "tests/check_static_arena.py"
+      ],
+      "exit": 0,
+      "seconds": 27.95,
+      "log_sha256": "1440e4ece55767e2110645f6978456cc765874ae0d0bb04a464954c24d92782e",
+      "tail": [
+        "nested-zero: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-wrap: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-long: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "exit": 0,
+      "seconds": 0.14,
+      "log_sha256": "f9532db305fbad8d0ac761d00fda062aaf59710672b1d317b8261e3a7e9277cc",
+      "tail": [
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.067s",
+        "",
+        "OK"
+      ]
+    },
+    {
+      "name": "scheduler",
+      "command": [
+        "python3",
+        "tests/check_scheduler_latency.py",
+        "--rounds",
+        "256",
+        "--repetitions",
+        "3",
+        "--record",
+        "bench/2026-11-05-nested-base-returns-scheduling.json"
+      ],
+      "exit": 0,
+      "seconds": 106.82,
+      "log_sha256": "e512e2d88fcfd2e77a06792ee84865cf914c159472eb2f74376b4d944745380f",
+      "tail": [
+        "copy-default, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "Unbounded runtime C negative control: watchdog detected starvation, killed/reaped on 1/4 harts PASS",
+        "Scheduler latency qualification: 243 configurations PASS; no WCET claim"
+      ]
+    }
+  ],
+  "status": "PASS",
+  "source_sha256": {
+    "compiler/Core/Opt/NestedReturns.hs": "7bf35dd60bbcdf8e7065a75f253136a957e6990ce5ea9b70e5b1772168215219",
+    "compiler/Core/Opt/PairReturns.hs": "54b3b6d17ac846b31ed50fe5bd0e503796d108dab79de810b404882cb5724cc0",
+    "compiler/Codegen.hs": "e0d79c6ca7942aeab622205e333af94e1fa4b49becaa168dea25f353cc537d14",
+    "fp-risc.cabal": "387a7ba7fea124466561091de2a87112c0d7058f75f48e51033ed0d3b9f8808c",
+    "tests/CorePipeline.hs": "84a159bcdfa338283e47ef59e36e403143c6a3b5b801ba7462422b1dbd515cfe",
+    "tests/check_nested_base_returns.py": "34575160e1a855edb531a864585db17b528dce12538eedb012d371e1b641220a",
+    "tests/check_nested_returns_rv.py": "f5eac43aff1a1fe27f068ef89e7042709e2adf87f4522ec9f4b813caf876c192",
+    "tests/product_return_probe.py": "c51cb14ed8d431377dded162523a1c88f2d7d8288892954b875c7ab059083c54",
+    "tests/typed_ir/product_return_oracle.c": "6f6c2829b441d7d0bccc386be0f8da5e9a05a79e1b1c2352e78e01efffea1747",
+    "tests/typed_ir/kernel_crt.S": "9bc4e80fbc6eed8d05c2b7806a8af56ad539f938e2df4efd83dbc798f2198edf",
+    "tools/bench_nested_base_returns.py": "41d0f857fcb1827aa890bdd71dbcae67c52eb6e2637f78636259140243d8ca12",
+    "tools/bench_hosted_worker_admission.py": "c62c85cc67216558f8365c0b89f635f1677d3a6555be7f95fa60331f72e3a462",
+    "tests/check_scheduler_latency.py": "95e1f05f56dd24ca6c12c2f11262d0f2b908add3943755fcca1d19879159b8bd",
+    "docs/2026-11-05-NESTED-BASE-RETURNS.md": "3bcbf8e13b9df2ba0b5c308572f34db96bfccf4c3c5395f3d9901da6994b48a6"
+  },
+  "comparison_compiler_sha256": "0a9fa3eb474200e538632046ab3e51273dc33816c766c45e41818feacbfe7ea5",
+  "records_sha256": {
+    "bench/2026-11-05-nested-base-results-after.json": "05ef570e4606b9dac5bf73b3dfec450db6f014f56f78361bb6473c616d120592",
+    "bench/2026-11-05-nested-base-results-before.json": "b778794061d60e1b0ffb95b1cc9f4fe4423463fe84972f0b64a80d45bdd179f6",
+    "bench/2026-11-05-nested-base-returns-before.json": "0f57dfdfa012a90def5a0f70ab3cce2a41df16f1e5ea39a3182d7268eefeb0ed",
+    "bench/2026-11-05-nested-base-returns-native.json": "f394f8266148ccaabbb05bfca963e0fb65136995f8bd62400d567c9ec9bc28db",
+    "bench/2026-11-05-nested-base-returns-scheduling.json": "ec0e776fa010dcbbe0a3ca50c98ac1835b64de6777531189a0adc4987d82ed6e",
+    "bench/2026-11-05-nested-base-returns-throughput.json": "3b74fb4bf7e8e3ef621fc058608f0f9f7d40913d5996914fab90a3b9b555201f",
+    "bench/2026-11-05-nested-base-returns-x64.json": "c379f1250422747626e9824633c7b367d65bb5d66e47573d5e0ed54cccd029b6"
+  },
+  "additional_checks": [
+    {
+      "name": "absolute compiler gates",
+      "log_sha256": "97777c33e21a63b644b29f8a89cc0428a7d1d0a32b14bcd3cea3ace9d11939fc",
+      "tail": [
+        "hello: 1.61 GB allocated, 27 MB peak live, 0.7 s (+9.7% allocation, -37.6% peak vs baseline)",
+        "std-live: 32.88 GB allocated, 354 MB peak live, 18.1 s (+9.9% allocation, -12.2% peak vs baseline)",
+        "pos1: 67.62 GB allocated, 502 MB peak live, 38.7 s (+4.3% allocation, -39.8% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "isolated throughput and compile cost",
+      "log_sha256": "a3c0a53cc7496f9b0b20c5ccc5661c52a95b41125b0f6d603ab4c3b53f47836a",
+      "tail": [
+        "nested8 before 10007321 0.05979224998736754",
+        "nested8 after 0 0.047783208021428436",
+        "nested8 explicit 0 0.04781233298126608",
+        "nested8 rollback 15009766 0.07047387503553182"
+      ]
+    }
+  ],
+  "physical_qualification_sha256": "15c38119aa281dc9c5049c125177e2c9790b57d462ce2fca8b315e9b3ca270e0"
+}

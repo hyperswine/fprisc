@@ -1,9 +1,14 @@
 import FPRISC (Core(..))
 import Workers
+import qualified Codegen.Eval as Eval
+import qualified Codegen.Lower as Lower
+import Codegen.Policy (m2Policy)
 import qualified Data.Map.Strict as M
 import Control.Monad (unless)
 app n = foldl CApp (CVar n)
 check n p = unless p (error n)
+answer p name args=let (ir,_)=Lower.lowerProgram m2Policy M.empty p p M.empty M.empty
+                   in Eval.ocResult (Eval.evalProgram ir name args)
 main = do
   let v=CVar; pair a b=CMk 4 0 [a,b]
       loop=( ["n","p"], CIf (CTagEq 4 0 (v "p"))
@@ -61,12 +66,33 @@ main = do
     check "all direct fields in original order"
       (snd (transformed M.! "entry")==app "$worker.fields.wide" (CInt 10:map CInt [1..fromIntegral width]))
     check "all wider projections reduced" (not (hasProj body)))
-    [(width,guarded) | width<-[3,4,8,16,63], guarded<-[False,True]]
+    [(width,guarded) | width<-[1,3,4,8,16,63], guarded<-[False,True]]
+  let single=wide 1 True
+      singleOut=fst (workerize True False single)
+      valid=Eval.RObj 42 0 [Eval.RInt 29]
+  check "one-field private path executes the same returned wrapper under independent evaluation"
+    (answer singleOut "wide" [Eval.RInt 7,valid]==Right valid
+      && answer single "wide" [Eval.RInt 7,valid]==Right valid)
+  mapM_ (\other->check "one-field dynamic entry preserves nominal/variant fallback failures"
+    (answer singleOut "wide" [Eval.RInt 7,other]==answer single "wide" [Eval.RInt 7,other]
+      && case answer singleOut "wide" [Eval.RInt 7,other] of Left _->True;_->False))
+    [Eval.RObj 43 0 [Eval.RInt 29],Eval.RObj 42 1 [Eval.RInt 29]]
   check "expanded arity over native limit declines"
     (not (M.member "$worker.fields.wide" (fst (workerize True False (wide 64 True)))))
   let badProj=M.adjust (\(ps,b)->(ps,CLet "bad" (CProj 3 (v "p")) b)) "wide" (wide 3 True)
   check "out of bounds wider projection declines"
     (not (M.member "$worker.fields.wide" (fst (workerize True False badProj))))
+  let badSingle=M.adjust (\(ps,b)->(ps,CLet "bad" (CProj 1 (v "p")) b)) "wide" (wide 1 True)
+  check "one-field worker cannot admit a second projection"
+    (not (M.member "$worker.fields.wide" (fst (workerize True False badSingle))))
+  let singleSeed=M.insert "entry" ([],CLet "seed" (CMk 42 0 [app "effect" [CInt 7]])
+        (CLet "between" (app "after" [CInt 0]) (app "wide" [CInt 10,v "seed"]))) (wide 1 True)
+      singleSeedOut=fst (workerize True False singleSeed)
+  check "one-field let seed evaluates its payload before intervening effects"
+    (case snd (singleSeedOut M.! "entry") of
+      CLet field (CApp (CVar "effect") (CInt 7)) (CLet "between" effect rest)->
+        effect==app "after" [CInt 0] && rest==app "$worker.fields.wide" [CInt 10,v field]
+      _->False)
   let rebound=M.adjust (\(ps,b)->(ps,CLet "wide" (v "unknown") b)) "wide" (wide 3 True)
   check "shadowed recursion declines"
     (not (M.member "$worker.fields.wide" (fst (workerize True False rebound))))
@@ -86,10 +112,35 @@ main = do
   let mixed=M.insert "other" ([],CMk 42 0 [CInt 1,CInt 2]) (wide 3 True)
   check "inconsistent wider constructor width declines"
     (not (M.member "$worker.fields.wide" (fst (workerize True False mixed))))
-  let forwarding=M.adjust (\(ps,b)->(ps,foldr (\k rest -> CLet ("forward"++show k)
-        (app "wide" [CInt 0,v "p"]) rest) b [1..20])) "wide" (wide 63 True)
-  check "expanded forwarding respects clone body budget"
-    (not (M.member "$worker.fields.wide" (fst (workerize True False forwarding))))
+  let forwarding=M.insert "forward" (["n","p"],foldr (\k rest -> CLet ("forward"++show k)
+        (app "wide" [CInt 0,v "p"]) rest) (app "wide" [v "n",v "p"]) [1..20]) (wide 63 True)
+      forwardingOut=fst (workerize True False forwarding)
+      wideValue=Eval.RObj 42 0 (map Eval.RInt [1..63])
+  check "large expanded forwarding uses the target arity rather than a Core-node cap"
+    (M.member "$worker.fields.forward" forwardingOut && length (fst (forwardingOut M.! "$worker.fields.forward"))==64)
+  check "large expanded forwarding preserves an independently specified answer"
+    (answer forwardingOut "forward" [Eval.RInt 2,wideValue]==Right wideValue
+      && answer forwarding "forward" [Eval.RInt 2,wideValue]==Right wideValue)
+  let bridges=M.fromList [("bridge"++show i,(["n","p"],app
+        (if i==9 then "loop" else "bridge"++show (i+1)) [v "n",v "p"])) | i<-[0..9]]
+      bridged=M.union bridges p
+      bridgedOut=fst (workerize True False bridged)
+      pairValue=Eval.RObj 4 0 [Eval.RInt 7,Eval.RInt 9]
+  check "finite forwarding closure crosses more than three links"
+    (all (\i->M.member ("$worker.fields.bridge"++show i) bridgedOut) [0..9])
+  check "long forwarding chain preserves the tagged answer and mismatch trap"
+    (answer bridgedOut "bridge0" [Eval.RInt 3,pairValue]==Right pairValue
+      && answer bridgedOut "bridge0" [Eval.RInt 3,Eval.RInt 1]==answer bridged "bridge0" [Eval.RInt 3,Eval.RInt 1])
+  let cycles=M.fromList [("a",(["p"],app "b" [v "p"])),("b",(["p"],app "a" [v "p"]))]
+  check "unseeded forwarding cycle terminates without inventing a shape"
+    (fst (workerize True False cycles)==cycles)
+  let fieldMany=M.fromList [(name,(["n","p"],CIf (CTagEq 42 0 (v "p"))
+        (CIf (app "==" [v "n",CInt 0]) (CProj 0 (v "p"))
+          (app name [app "-" [v "n",CInt 1],CMk 42 0 [CProj 0 (v "p")]])) (CErr "shape"))) |
+        i<-[1..160],let name="field"++show i]
+      fieldManyOut=fst (workerize True False fieldMany)
+  check "finite independent field plans are not truncated at 128 helpers"
+    (M.size fieldManyOut==2*M.size fieldMany)
   let scalar=( ["n","a"],CIf (app "==" [v "n",CInt 0]) (v "a") (app "sum" [app "-" [v "n",CInt 1],app "+" [v "a",v "n"]]))
       sums=M.fromList [("sum",scalar)]
   check "recursive scalar selected" (M.member "$worker.scalar.sum" (fst (workerize False True sums)))
@@ -100,7 +151,32 @@ main = do
   let helper=M.fromList [("sum",(["n","a"],app "+" [v "n",v "a"]))]
   check "one-off helper declines" (fst (workerize False True helper)==helper)
   let many=M.fromList [("f"++show n,(["x"],CIf (app "==" [v "x",CInt 0]) (CInt 0) (app ("f"++show n) [app "-" [v "x",CInt 1]]))) | n<-[1..300]]
-  check "clone count bounded" (M.size (fst (workerize False True many))==M.size many+128)
+  check "one private scalar worker per eligible loop beyond the former count limit"
+    (M.size (fst (workerize False True many))==2*M.size many)
+  let scalarArity width = let ps="n":["a"++show i | i<-[1..width-1::Int]]
+                              sumArgs=foldr (\x rest -> app "+" [v x,rest]) (CInt 0) (tail ps)
+                              body=CIf (app "==" [v "n",CInt 0]) sumArgs
+                                (app "wideScalar" (app "-" [v "n",CInt 1]:map v (tail ps)))
+                          in M.singleton "wideScalar" (ps,body)
+  mapM_ (\width -> check "native arity controls raw scalar worker admission"
+    (M.member "$worker.scalar.wideScalar" (fst (workerize False True (scalarArity width))) == (width<=64))) [8,9,64,65]
+  let longScalar=foldr (\i b->CLet ("v"++show i) (app "+" [v "n",CInt i]) b)
+        (snd scalar) [1..300]
+      longProg=M.singleton "sum" (["n","a"],longScalar)
+      collision=M.insert "$worker.scalar.sum" (["n"],v "n") sums
+      capture=M.singleton "sum" (["n","a"],CLet "$worker.scalar.sum" (CInt 0) (snd scalar))
+  check "large recursive scalar body is admitted" (M.member "$worker.scalar.sum" (fst (workerize False True longProg)))
+  check "existing scalar worker name cannot alias a new clone" (fst (workerize False True collision)==collision)
+  check "private scalar callee cannot be captured by a lexical binding" (fst (workerize False True capture)==capture)
+  let generic=M.fromList [("identity",(["x"],v "x")),("plusOne",(["n"],app "+" [v "n",CInt 1])),
+        ("again",(["n"],CIf (app "==" [v "n",CInt 0]) (app "plusOne" [v "n"])
+          (app "again" [app "identity" [app "-" [v "n",CInt 1]]])))]
+  check "a caller cannot pin an unconstrained callee or leave an orphan twin"
+    (fst (workerize False True generic)==generic)
+  let conflict=M.fromList [("a",(["n"],CIf (app "==" [v "n",CInt 0]) (CInt 1) (app "b" [v "n"]))),
+        ("b",(["n"],CIf (app "a" [v "n"]) (CInt 1) (CInt 0)))]
+  check "contradictory return constraints refuse the entire recursive component"
+    (fst (workerize False True conflict)==conflict)
   -- A2: constructor-tree recursive arguments (inlined step helper, let-bound
   -- next state, conditional branch forwarding parameter, multi-tuple loops)
   -- unbox to scalar workers when tupleScalars is enabled, and decline when

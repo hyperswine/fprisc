@@ -266,17 +266,71 @@ stubs every unit carries (`Cons`, `Tup2`, ...) are emitted `.weak` so
 the program's copies win at link.  A library unit and a program unit are
 linked into one image with `BUILTIN_EXTRA=`.
 
+For admitted subsets, `--stack-budget=BYTES` checks generated callback frames
+and `--heap-budget=BYTES` checks fresh builtin C-heap capacity before assembly
+is published. These are separate contracts: see the
+[stack](2026-11-05-CALLBACK-STACK-BUDGETS.md) and
+[heap](2026-11-05-CALLBACK-HEAP-BUDGETS.md) qualification limits.
+After linking, `BUILTIN_STACK_ENTRIES="c_symbol:BYTES ..."` optionally checks
+the actual native/C runtime stack graph before publishing the builtin image.
+This [linked-code gate](2026-11-05-LINKED-STACK-ADMISSION.md) currently supports
+mixed RV64 IMC integer paths and refuses unsupported or unresolved instructions.
+This standalone gate does not compose startup, caller, interrupt and heap
+storage. For one fresh scalar callback, the separate
+[controlled activation builder](2026-11-05-STATIC-ACTIVATION-ARENAS.md) now binds
+the audited C runtime, reserves non-overlapping heap/stack regions and proves
+the linked startup/caller/runtime path before publishing an image. General
+application and interrupt/concurrency composition remains unfinished.
+The admitted subset includes [pure scalar computational loops](2026-11-05-SCALAR-ARENA-ADMISSION.md)
+whose body allocates nothing; guarded failure paths and allocating loops still
+need separate resource proofs.
+
 `--export=name[:c_symbol],...` emits a C entry per name.  An export is a
 contract, so the function **must carry a declared signature**, and every
-type in it must cross the boundary: `Int`, `Word`, `Addr`, `Bool`,
-`Unit`, `F64`, `F32`.  A managed type, a missing signature, or more than
-eight parameters is refused by name.  The entry is a trampoline and
-nothing else: raw words pass through, an `Int` is tagged on the way in
-and untagged on the way out, a `Bool` becomes the immortal `True`/`False`
-object and comes back as 0/1, a `Unit` parameter is supplied.  Under this
-link's `-mabi=lp64` (soft float) a `double` is its bits in an integer
-register, which is FP-RISC's own convention, so floats pass untouched;
-`--float-abi=hard` emits the `fa0..` moves for an lp64d link.
+type in it must cross the boundary. Scalar C types remain `Int`, `Word`,
+`Addr`, `Bool`, `Unit`, `F64`, `F32`. `Int` is tagged on entry and untagged
+on return; `Bool` maps to the immortal `True`/`False` objects and C 0/1;
+a `Unit` argument is supplied. Soft-float lp64 supports up to 64 arguments,
+including C stack arguments and FP-RISC hart cells. Hard-float lp64d supports
+up to eight total arguments and uses the separate `fa0..` bank.
+
+From codegen 165/arcRev 14, ordinary `--arc` also accepts String and closed
+checked aggregates: parameterized nominal types, lists, tuples and records.
+These appear as `KValue` in the export description and use **owned tagged
+FP-RISC values** (`V`/`uintptr_t`) in C. They are not C structs or C strings.
+An argument consumes one owned reference; a result supplies one. Retain an
+input before calling if it must remain live, and release the result after use.
+From codegen 166/arcRev 15, declared generic type variables and parametric
+aggregate interfaces also use this tagged contract. For example, `identity :
+a -> a` accepts and returns an owned `V`; it does not receive raw C scalar bits.
+From codegen 167/arcRev 16, hidden-field nominal interfaces such as
+`Hidden = Type (Hidden a)` also have a fixed tagged field contract. Construction
+promotes the payload, and extraction checks its requested representation.
+From codegen 168/arcRev 17, a closed checked single-constructor scalar wrapper
+can use its payload register internally, including nested wrappers. Its public
+and generic representation remains the nominal tagged constructor, with checked
+boxing/unboxing at the boundary. Such conversions can rebuild wrapper identity
+and allocate even when the private worker allocates nothing. String, recursive,
+unknown and wider payloads remain boxed. Nominal printing and floating-point
+equality are preserved.
+From codegen 169/arcRev 18, closed local aggregate expressions also carry checked
+layout evidence into ARC. Wrapper allocation removal no longer depends on the
+aggregate appearing in a function interface; closed locals inside generic
+functions can use scalar storage too. Raw units only accept the closed local
+evidence and retain their allocation-free contract.
+Open record rows still lack complete field authority and are not admitted as
+generic C boundaries. These APIs continue to require valid owned tagged FP-RISC
+values from C, including their field metadata; they are not arbitrary C pointers.
+
+Ordinary ARC public FP-RISC entries retain a tagged signature. C adapters box
+raw scalar arguments and unbox raw scalar results; aggregate wrappers convert
+checked raw field graphs and preserve internal sharing. These foreign
+conversions can allocate. Already-tagged aggregates whose internal layout needs no conversion retain
+identity without copying, while checked internal calls bypass wrappers through private workers.
+Explicit `--raw` units retain the original allocation-free scalar convention
+and do not admit managed aggregate C exports. This exception keeps allocator
+bootstrap calls allocation-free. See the
+[boundary implementation and validation](2026-11-04-ZERO-OVERHEAD-COMPLETION.md#closed-aggregate-uniform-exports-codegen-165-arcrev-14).
 
 `Addr.symbol "name"` is the address of a linker symbol -- the profile's
 `extern char name[]`.  The argument must be a string literal; it compiles

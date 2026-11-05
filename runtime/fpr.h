@@ -34,6 +34,9 @@ enum {
   /* runtime-internal typeids, far above user types (10+) and shapes (100+) */
   T_STR = 9000, T_PAP = 9001, T_DEVICE = 9002, T_REGISTER = 9003, T_BITS = 9004,
   T_ACTOR = 9005, T_VEC = 9006, T_SSTR = 9007,
+  /* Hosted private list: 1..8 tagged payload slots, then a tail. The
+   * nominal alternative occupies the upper bits of var. Nil stays Nil. */
+  T_STORED_LIST = 9008,
 };
 
 typedef struct { volatile uw v; } fpr_lock_t; /* the spinlock (actors.c fpr_lock); declared here for the hart's backlog lock */

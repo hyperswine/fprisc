@@ -1,7 +1,7 @@
 -- Apply a checked type instantiation and clone every introduced term identity.
 -- Quantified local schemes retain scope, and ownership shapes follow the
 -- instantiated types rather than copying a now-stale unrestricted annotation.
-module Core.Typed.Instantiate (instantiateFunction,substituteFunction,functionVariables) where
+module Core.Typed.Instantiate (constructorFunction,instantiateFunction,substituteFunction,functionVariables) where
 import Core.Typed.Syntax
 import Core.Typed.Walk
 import Core.Identity
@@ -12,6 +12,20 @@ import qualified Data.Set as S
 import Data.Functor.Const (Const(..))
 import Type.Syntax (Type(..),Row(..),Scheme(..))
 import Control.Monad.Identity
+
+-- The owning unit and any private instantiation must agree on constructor
+-- arity, field order, ownership shapes and evaluation at the function entry.
+constructorFunction :: Namespace -> TypeContext -> String -> Maybe Function
+constructorFunction (Namespace ns) (TypeContext linears schemas) name=do
+  Forall _ _ signature<-M.lookup name schemas
+  let peel (TFn a b)=let (as,r)=peel b in (a:as,r)
+      peel t=([],t)
+      (fields,result)=peel signature
+      ps=[Binder (BinderId (Namespace (ns++"/constructor/"++name)) i) ("x"++show (i+1))
+            (Forall [] [] ty) (linShapeT linears ty) | (i,ty)<-zip [0..] fields]
+      value b=Expr (binderType b) (binderShape b) Generated Nothing (Var (Local (binderId b)))
+      body=Expr result (linShapeT linears result) Generated Nothing (Construct name (map value ps))
+  pure (Function name ps body)
 
 instantiateFunction :: Namespace -> TypeContext -> Substitution -> Function -> Function
 instantiateFunction namespace types sub input=substituteFunction types sub input'

@@ -58,4 +58,12 @@ main=do
   require (oBase cross && oX64 cross && oX64Mac cross && oTargetFlag cross) "explicit hosted cross target replaced"
   require (tgtName (oTarget explicit)=="rv64") "host resolution swallowed an explicit target before its diagnostic"
   require (oExports (parseCompileArguments ["--export=f,g:c,,"])==[("f","f"),("g","c")]) "export syntax changed"
+  forM_ ["32","0","-1","bad",""] $ \value->do
+    let args=parseCompileArguments ["--stack-budget="++value,"module.fpr","out.s"]
+    require (oStackBudget args==Just value && oFiles args==["module.fpr","out.s"]) "stack budget must be retained for explicit validation, never an input file"
+  require (oStackReport (parseCompileArguments ["--stack-report","module.fpr","out.s"])) "explicit stack report flag"
+  require (not (oStackReport (parseCompileArguments ["module.fpr","out.s"]))) "ordinary compile forces a stack report"
+  forM_ ["256","0","-1","bad","","18446744073709551616"] $ \value->do
+    let args=parseCompileArguments ["--heap-budget="++value,"module.fpr","out.s"]
+    require (oHeapBudget args==Just value && oFiles args==["module.fpr","out.s"]) "heap budget must be retained for explicit validation"
   putStrLn "Compiler options: canonical aliases, refusal boundaries, codegen/cache controls, diagnostic independence and CLI precedence passed"

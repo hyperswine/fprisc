@@ -1,0 +1,129 @@
+{
+  "compiler_sha256": "d2f5c23cb14f985ce548500b3b38c6db63396731896d901c1e8d0b62e32c076c",
+  "test_sha256": "cbec8f66dd78b4873011ab8da5f9f70221625ae571b839527e7d8bc643f1dc0a",
+  "source_sha256": "394b65e1ce60212a26f16f9447c4d922817ca4fc4fee74df46f1c9d81c31d743",
+  "target": "macos-x86_64",
+  "old": false,
+  "rows": [
+    {
+      "normal_inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "stdout": "1374656\n([7, 8], [7, 8])\n"
+    },
+    {
+      "normal_inline": false,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "stdout": "1374656\n([7, 8], [7, 8])\n"
+    },
+    {
+      "normal_inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "stdout": "1374656\n([7, 8], [7, 8])\n"
+    },
+    {
+      "normal_inline": false,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "stdout": "1374656\n([7, 8], [7, 8])\n"
+    },
+    {
+      "normal_inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "stdout": "1374656\n([7, 8], [7, 8])\n",
+      "allocations": 25157
+    },
+    {
+      "normal_inline": false,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "stdout": "1374656\n([7, 8], [7, 8])\n",
+      "allocations": 25157
+    },
+    {
+      "normal_inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "stdout": "1374656\n([7, 8], [7, 8])\n",
+      "allocations": 16772
+    },
+    {
+      "normal_inline": false,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "stdout": "1374656\n([7, 8], [7, 8])\n",
+      "allocations": 16772
+    },
+    {
+      "normal_inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 1,
+      "stdout": "1374656\n([7, 8], [7, 8])\n"
+    },
+    {
+      "normal_inline": true,
+      "isolated": false,
+      "enabled": false,
+      "harts": 4,
+      "stdout": "1374656\n([7, 8], [7, 8])\n"
+    },
+    {
+      "normal_inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 1,
+      "stdout": "1374656\n([7, 8], [7, 8])\n"
+    },
+    {
+      "normal_inline": true,
+      "isolated": false,
+      "enabled": true,
+      "harts": 4,
+      "stdout": "1374656\n([7, 8], [7, 8])\n"
+    },
+    {
+      "normal_inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 1,
+      "stdout": "1374656\n([7, 8], [7, 8])\n",
+      "allocations": 16772
+    },
+    {
+      "normal_inline": true,
+      "isolated": true,
+      "enabled": false,
+      "harts": 4,
+      "stdout": "1374656\n([7, 8], [7, 8])\n",
+      "allocations": 16772
+    },
+    {
+      "normal_inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 1,
+      "stdout": "1374656\n([7, 8], [7, 8])\n",
+      "allocations": 8388
+    },
+    {
+      "normal_inline": true,
+      "isolated": true,
+      "enabled": true,
+      "harts": 4,
+      "stdout": "1374656\n([7, 8], [7, 8])\n",
+      "allocations": 8388
+    }
+  ]
+}

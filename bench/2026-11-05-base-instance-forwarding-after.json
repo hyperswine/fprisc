@@ -1,0 +1,222 @@
+{
+  "revision": 198,
+  "compiler_sha256": "bd1658ed548107f528ece6a42a746ab51f56d1e95b584a29d4673fe22038dc80",
+  "rows": [
+    {
+      "explicit": false,
+      "inline": true,
+      "type_specialization": true,
+      "harts": 1,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nfoldCell n a = if n <= 0 then a else case walk 3 (Cell n) of Cell x -> foldCell (n - 1) (a + x).\nfoldPair n a = if n <= 0 then a else case walk 3 (n,n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "3a3803d929a3acb1b6ac513ff203c3fe4d124cf5ad744538aa08f44f2e4bb456",
+      "stdout": "1502511\n",
+      "private_instances": [
+        "walk$typespec$type$fc3_Intfc4_Unitc4_Unit"
+      ],
+      "workers": []
+    },
+    {
+      "explicit": false,
+      "inline": true,
+      "type_specialization": true,
+      "harts": 4,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nfoldCell n a = if n <= 0 then a else case walk 3 (Cell n) of Cell x -> foldCell (n - 1) (a + x).\nfoldPair n a = if n <= 0 then a else case walk 3 (n,n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "3a3803d929a3acb1b6ac513ff203c3fe4d124cf5ad744538aa08f44f2e4bb456",
+      "stdout": "1502511\n",
+      "private_instances": [
+        "walk$typespec$type$fc3_Intfc4_Unitc4_Unit"
+      ],
+      "workers": []
+    },
+    {
+      "explicit": false,
+      "inline": true,
+      "type_specialization": false,
+      "harts": 1,
+      "allocations": 2000,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nfoldCell n a = if n <= 0 then a else case walk 3 (Cell n) of Cell x -> foldCell (n - 1) (a + x).\nfoldPair n a = if n <= 0 then a else case walk 3 (n,n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "3a3803d929a3acb1b6ac513ff203c3fe4d124cf5ad744538aa08f44f2e4bb456",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": []
+    },
+    {
+      "explicit": false,
+      "inline": true,
+      "type_specialization": false,
+      "harts": 4,
+      "allocations": 2000,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nfoldCell n a = if n <= 0 then a else case walk 3 (Cell n) of Cell x -> foldCell (n - 1) (a + x).\nfoldPair n a = if n <= 0 then a else case walk 3 (n,n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "3a3803d929a3acb1b6ac513ff203c3fe4d124cf5ad744538aa08f44f2e4bb456",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": []
+    },
+    {
+      "explicit": false,
+      "inline": false,
+      "type_specialization": true,
+      "harts": 1,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nfoldCell n a = if n <= 0 then a else case walk 3 (Cell n) of Cell x -> foldCell (n - 1) (a + x).\nfoldPair n a = if n <= 0 then a else case walk 3 (n,n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "3a3803d929a3acb1b6ac513ff203c3fe4d124cf5ad744538aa08f44f2e4bb456",
+      "stdout": "1502511\n",
+      "private_instances": [
+        "walk$typespec$type$fc3_Intfc4_Unitc4_Unit"
+      ],
+      "workers": []
+    },
+    {
+      "explicit": false,
+      "inline": false,
+      "type_specialization": true,
+      "harts": 4,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nfoldCell n a = if n <= 0 then a else case walk 3 (Cell n) of Cell x -> foldCell (n - 1) (a + x).\nfoldPair n a = if n <= 0 then a else case walk 3 (n,n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "3a3803d929a3acb1b6ac513ff203c3fe4d124cf5ad744538aa08f44f2e4bb456",
+      "stdout": "1502511\n",
+      "private_instances": [
+        "walk$typespec$type$fc3_Intfc4_Unitc4_Unit"
+      ],
+      "workers": []
+    },
+    {
+      "explicit": false,
+      "inline": false,
+      "type_specialization": false,
+      "harts": 1,
+      "allocations": 2000,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nfoldCell n a = if n <= 0 then a else case walk 3 (Cell n) of Cell x -> foldCell (n - 1) (a + x).\nfoldPair n a = if n <= 0 then a else case walk 3 (n,n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "3a3803d929a3acb1b6ac513ff203c3fe4d124cf5ad744538aa08f44f2e4bb456",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": []
+    },
+    {
+      "explicit": false,
+      "inline": false,
+      "type_specialization": false,
+      "harts": 4,
+      "allocations": 2000,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nfoldCell n a = if n <= 0 then a else case walk 3 (Cell n) of Cell x -> foldCell (n - 1) (a + x).\nfoldPair n a = if n <= 0 then a else case walk 3 (n,n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "3a3803d929a3acb1b6ac513ff203c3fe4d124cf5ad744538aa08f44f2e4bb456",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": []
+    },
+    {
+      "explicit": true,
+      "inline": true,
+      "type_specialization": true,
+      "harts": 1,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nflatWalk n x y = if n <= 0 then (x,y) else flatWalk (n - 1) x y.\nfoldCell n a = if n <= 0 then a else foldCell (n - 1) (a + walk 3 n).\nfoldPair n a = if n <= 0 then a else case flatWalk 3 n (n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "8751ef58314d0f19693dfd23f71696c5c9ab8d82cc7f459987f59014b112df61",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": [
+        "$worker.ret2.flatWalk"
+      ]
+    },
+    {
+      "explicit": true,
+      "inline": true,
+      "type_specialization": true,
+      "harts": 4,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nflatWalk n x y = if n <= 0 then (x,y) else flatWalk (n - 1) x y.\nfoldCell n a = if n <= 0 then a else foldCell (n - 1) (a + walk 3 n).\nfoldPair n a = if n <= 0 then a else case flatWalk 3 n (n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "8751ef58314d0f19693dfd23f71696c5c9ab8d82cc7f459987f59014b112df61",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": [
+        "$worker.ret2.flatWalk"
+      ]
+    },
+    {
+      "explicit": true,
+      "inline": true,
+      "type_specialization": false,
+      "harts": 1,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nflatWalk n x y = if n <= 0 then (x,y) else flatWalk (n - 1) x y.\nfoldCell n a = if n <= 0 then a else foldCell (n - 1) (a + walk 3 n).\nfoldPair n a = if n <= 0 then a else case flatWalk 3 n (n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "8751ef58314d0f19693dfd23f71696c5c9ab8d82cc7f459987f59014b112df61",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": [
+        "$worker.ret2.flatWalk"
+      ]
+    },
+    {
+      "explicit": true,
+      "inline": true,
+      "type_specialization": false,
+      "harts": 4,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nflatWalk n x y = if n <= 0 then (x,y) else flatWalk (n - 1) x y.\nfoldCell n a = if n <= 0 then a else foldCell (n - 1) (a + walk 3 n).\nfoldPair n a = if n <= 0 then a else case flatWalk 3 n (n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "8751ef58314d0f19693dfd23f71696c5c9ab8d82cc7f459987f59014b112df61",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": [
+        "$worker.ret2.flatWalk"
+      ]
+    },
+    {
+      "explicit": true,
+      "inline": false,
+      "type_specialization": true,
+      "harts": 1,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nflatWalk n x y = if n <= 0 then (x,y) else flatWalk (n - 1) x y.\nfoldCell n a = if n <= 0 then a else foldCell (n - 1) (a + walk 3 n).\nfoldPair n a = if n <= 0 then a else case flatWalk 3 n (n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "8751ef58314d0f19693dfd23f71696c5c9ab8d82cc7f459987f59014b112df61",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": [
+        "$worker.ret2.flatWalk"
+      ]
+    },
+    {
+      "explicit": true,
+      "inline": false,
+      "type_specialization": true,
+      "harts": 4,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nflatWalk n x y = if n <= 0 then (x,y) else flatWalk (n - 1) x y.\nfoldCell n a = if n <= 0 then a else foldCell (n - 1) (a + walk 3 n).\nfoldPair n a = if n <= 0 then a else case flatWalk 3 n (n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "8751ef58314d0f19693dfd23f71696c5c9ab8d82cc7f459987f59014b112df61",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": [
+        "$worker.ret2.flatWalk"
+      ]
+    },
+    {
+      "explicit": true,
+      "inline": false,
+      "type_specialization": false,
+      "harts": 1,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nflatWalk n x y = if n <= 0 then (x,y) else flatWalk (n - 1) x y.\nfoldCell n a = if n <= 0 then a else foldCell (n - 1) (a + walk 3 n).\nfoldPair n a = if n <= 0 then a else case flatWalk 3 n (n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "8751ef58314d0f19693dfd23f71696c5c9ab8d82cc7f459987f59014b112df61",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": [
+        "$worker.ret2.flatWalk"
+      ]
+    },
+    {
+      "explicit": true,
+      "inline": false,
+      "type_specialization": false,
+      "harts": 4,
+      "allocations": 0,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nwalk n x = if n <= 0 then x else walk (n - 1) x.\nflatWalk n x y = if n <= 0 then (x,y) else flatWalk (n - 1) x y.\nfoldCell n a = if n <= 0 then a else foldCell (n - 1) (a + walk 3 n).\nfoldPair n a = if n <= 0 then a else case flatWalk 3 n (n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).\nmain = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).\n",
+      "source_sha256": "8751ef58314d0f19693dfd23f71696c5c9ab8d82cc7f459987f59014b112df61",
+      "stdout": "1502511\n",
+      "private_instances": [],
+      "workers": [
+        "$worker.ret2.flatWalk"
+      ]
+    }
+  ]
+}

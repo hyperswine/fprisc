@@ -1,0 +1,134 @@
+{
+  "schema": "target-load-segments-validation-v1",
+  "unit_tests_passed": 12,
+  "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+  "tool_sha256": "034e60158598d9f67bc01c05c669ed79636c3e719a55771b99ec09d20f7461be",
+  "test_sha256": "b654b369d8df2323e6192e1b7947c834de9b36cd606b5c2d4db965ef6e8646d7",
+  "images": [
+    {
+      "board": "virt",
+      "ram": "bram",
+      "arc": 0,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv64-virt-128m",
+        "elf_class_bits": 64,
+        "image_sha256": "169fa324ddd109e1e96b039a52c4113bf3c81f725347b97696887659af99b8bc",
+        "manifest_sha256": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+        "image_bytes": 7616,
+        "image_limit_bytes": 134217728,
+        "static_memory_bytes": 152032,
+        "remaining_ram_bytes": 134065696,
+        "min_free_bytes": 65536
+      },
+      "execution": "qemu-pass",
+      "refused_replacements_preserved_artifacts": true
+    },
+    {
+      "board": "virt",
+      "ram": "bram",
+      "arc": 1,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv64-virt-128m",
+        "elf_class_bits": 64,
+        "image_sha256": "57128d3db55d761e36b6f49f0761252105fd1e80cc16ab40cb8076c0d50136dc",
+        "manifest_sha256": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+        "image_bytes": 12104,
+        "image_limit_bytes": 134217728,
+        "static_memory_bytes": 152464,
+        "remaining_ram_bytes": 134065264,
+        "min_free_bytes": 65536
+      },
+      "execution": "qemu-pass",
+      "refused_replacements_preserved_artifacts": true
+    },
+    {
+      "board": "tangnano20k",
+      "ram": "bram",
+      "arc": 0,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv32-tangnano20k-bram",
+        "elf_class_bits": 32,
+        "image_sha256": "b81b79a068520e2f9e2359e5642794730f084db19d2c6d890c0097abaf006513",
+        "manifest_sha256": "e1ef73bfd4308f5ac9badcc720a69b72141e54135a65602afec88c1bf442c28f",
+        "image_bytes": 17964,
+        "image_limit_bytes": 65536,
+        "static_memory_bytes": 22896,
+        "remaining_ram_bytes": 42640,
+        "min_free_bytes": 12288
+      },
+      "execution": "not-executed",
+      "refused_replacements_preserved_artifacts": true
+    },
+    {
+      "board": "tangnano20k",
+      "ram": "sdram",
+      "arc": 0,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv32-tangnano20k-sdram",
+        "elf_class_bits": 32,
+        "image_sha256": "056358ddac7f44eb835de1e3b92a5050a9e48f2333df6f20fc5115f9721b4807",
+        "manifest_sha256": "2916febd5659e8b39a31aaf37260f76779c6d07c4afc291c529154d89cd64acb",
+        "image_bytes": 17964,
+        "image_limit_bytes": 65536,
+        "static_memory_bytes": 23120,
+        "remaining_ram_bytes": 8365488,
+        "min_free_bytes": 69632
+      },
+      "execution": "not-executed",
+      "refused_replacements_preserved_artifacts": true
+    }
+  ],
+  "callback_evidence": "bench/2026-11-05-loader-callback-stack.json",
+  "sources": {
+    "tools/check_target_image.py": "034e60158598d9f67bc01c05c669ed79636c3e719a55771b99ec09d20f7461be",
+    "tests/check_target_image.py": "b654b369d8df2323e6192e1b7947c834de9b36cd606b5c2d4db965ef6e8646d7",
+    "tests/check_callback_stack.py": "d1e00957b34859527c9e945752885a6136e87258ce7f6f98c08a7a56b6558f60",
+    "bench/2026-11-05-loader-callback-stack.json": "004ee0390fea0869a65120245e2f8eec6d7afa1bcf9ff4d4c96a3d49a033df50",
+    "docs/2026-11-05-LOAD-SEGMENT-ADMISSION.md": "0cde0a8d84a6a4fd4b2a536b9aceb23f42842c9570b21f79cbe8525e35e01b2c",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "536218c8a4ecbc913c623744255fc12ee049e7d7012cbaa270021df86d64263d"
+  },
+  "reproduced_previous_undercount": {
+    "declared_load_memory_bytes": 8193,
+    "target_ram_bytes": 8192,
+    "previous_reported_static_memory_bytes": 256,
+    "previous_tool_sha256": "6677dfa196b1f58d20a6f2d3c3f647da6fe85e2721302f3feb56cb6d5e837694",
+    "current_status": "refused: load segment 0 lies outside target RAM"
+  },
+  "checks": [
+    {
+      "command": "python3 tests/check_target_image.py --record bench/2026-11-05-load-segment-admission.json",
+      "status": "PASS",
+      "log_sha256": "ceea9465ef0b2c776c461d032b8156efcdd6ccb0a45bf5650c761d48cb0f7104",
+      "output_tail": [
+        "............",
+        "----------------------------------------------------------------------",
+        "Ran 12 tests in 0.001s",
+        "",
+        "OK",
+        "virt/bram ARC=0: linked image admitted; rejected replacements preserved all prior artifacts",
+        "virt/bram ARC=1: linked image admitted; rejected replacements preserved all prior artifacts",
+        "tangnano20k/bram ARC=0: linked image admitted; rejected replacements preserved all prior artifacts",
+        "tangnano20k/sdram ARC=0: linked image admitted; rejected replacements preserved all prior artifacts"
+      ]
+    },
+    {
+      "command": "python3 tests/check_callback_stack.py --require-execution --record bench/2026-11-05-loader-callback-stack.json",
+      "status": "PASS",
+      "log_sha256": "4feb6f4cbd124cd16fca3a25fda5408dd2857227bf741ce88fbb64328dbed1c8",
+      "output_tail": [
+        "Callback admission: exact/short budgets, wrapper storage, runtime paths and recursive refusals PASS",
+        "RV64 plain: 192 admitted callbacks on a guarded fixed stack without an allocator PASS",
+        "RV64 measured: 192 admitted callbacks on a guarded fixed stack without an allocator PASS"
+      ]
+    }
+  ],
+  "qualification_limits": [
+    "Target image/storage accounting, not dynamic heap/stack or WCET admission",
+    "Virt and callback execution in QEMU; Tang build-only; no physical-device or remote CI evidence",
+    "No compiler source change; codegen179 compiler cost validation retained"
+  ]
+}

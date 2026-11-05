@@ -1,0 +1,6 @@
+Meters = Type (Meters Int).
+pack x = Meters x.
+value (Meters x) = x.
+packChecked n d = _ = print n; Meters (n + (10 / d)).
+readChecked (Meters n) = _ = print n; n.
+observe v = _ = print v; value v.

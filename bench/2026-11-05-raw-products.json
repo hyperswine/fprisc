@@ -1,0 +1,80 @@
+{
+  "compiler_codegen": 172,
+  "arc_revision": 20,
+  "compiler_sha256": "3900ed99835631ec8c92d0a20d05cda805809103d34d287dacd2ca9996297636",
+  "suite": "tests/check_raw_products.py",
+  "suite_sha256": "9230942d0555e9ad66c0eb5052b97cadf6f8c3fdd51580d8105c0fd5ac929b6f",
+  "evidence_kind": "local RV64 QEMU; no physical board or timing qualification",
+  "raw_library": {
+    "configurations": 4,
+    "input_cycles_per_configuration": 256,
+    "float_abis": [
+      "soft",
+      "hard"
+    ],
+    "type_specialization": [
+      "enabled",
+      "disabled"
+    ],
+    "linked_runtime": "minimal startup, static panic and raw memory-write oracle shims; no allocator or retain/release implementation"
+  },
+  "interrupts": {
+    "configurations": 4,
+    "delivered_and_resumed_per_configuration": 1001,
+    "allocators": [
+      "c",
+      "fpr"
+    ],
+    "handler_allocation_requests": 0,
+    "live_allocations_preserved": true,
+    "full_register_state_probe": true
+  },
+  "failure_tests": {
+    "programs": 10,
+    "memory_trace_before_failure": "0x12",
+    "failures": [
+      "maximum Int overflow",
+      "minimum Int overflow",
+      "division by zero",
+      "invalid shift",
+      "unaligned read"
+    ]
+  },
+  "refusal_cases_per_type_specialization_mode": 6,
+  "haskell_suites_passed": 39,
+  "regression_output": [
+    "START arc",
+    "PASS arc",
+    "START scalar",
+    "PASS scalar",
+    "START builtin-products",
+    "PASS builtin-products",
+    "START registry",
+    "PASS registry",
+    "START budget",
+    "PASS budget",
+    "START specialization-cost",
+    "PASS specialization-cost"
+  ],
+  "compile_budget_output": [
+    "hello: 1.59 GB allocated, 44 MB peak live, 0.7 s (+8.2% allocation, +4.1% peak vs baseline)",
+    "std-live: 32.73 GB allocated, 434 MB peak live, 17.9 s (+9.4% allocation, +7.8% peak vs baseline)",
+    "pos1: 70.33 GB allocated, 708 MB peak live, 40.3 s (+8.5% allocation, -15.0% peak vs baseline)",
+    "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+  ],
+  "specialization_cost_record": "2026-11-05-raw-product-specialization-cost.json",
+  "execution_output": [
+    "Expanded register ABI, boxed export, incompatible generic representations, heap storage and product rollback: refused before emission PASS",
+    "type-spec rollback=False: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+    "soft, type-spec rollback=False: eight-word recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+    "hard, type-spec rollback=False: eight-word recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+    "c, type-spec rollback=False: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+    "fpr, type-spec rollback=False: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+    "Expanded register ABI, boxed export, incompatible generic representations, heap storage and product rollback: refused before emission PASS",
+    "type-spec rollback=True: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+    "soft, type-spec rollback=True: eight-word recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+    "hard, type-spec rollback=True: eight-word recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+    "c, type-spec rollback=True: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+    "fpr, type-spec rollback=True: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS"
+  ]
+}

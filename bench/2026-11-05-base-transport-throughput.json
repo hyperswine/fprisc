@@ -1,0 +1,195 @@
+{
+  "count": 1000000,
+  "before_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+  "after_sha256": "bd1658ed548107f528ece6a42a746ab51f56d1e95b584a29d4673fe22038dc80",
+  "costs": [
+    {
+      "form": "before",
+      "size": 1000000,
+      "allocated_bytes": 1532923368,
+      "peak_bytes": 33763384,
+      "seconds": 1.2572891659801826,
+      "text_bytes": 3040,
+      "disassembly_sha256": "56b283d844b3a5598f8dfb0c0cb240f8eacba1f6b6029e1c59d26d56a1e55c0d",
+      "source_sha256": "5be2ec4555b0452e618be143ce314e471abf999b9d7d881aed3aedcbf9de4d66"
+    },
+    {
+      "form": "after",
+      "size": 1000000,
+      "allocated_bytes": 1539777520,
+      "peak_bytes": 44446768,
+      "seconds": 2.177461708022747,
+      "text_bytes": 2868,
+      "disassembly_sha256": "d0c1699f9f543631bef4405ae9bf8dd409e3c69eafeccd41c251e6b940a293a2",
+      "source_sha256": "5be2ec4555b0452e618be143ce314e471abf999b9d7d881aed3aedcbf9de4d66"
+    },
+    {
+      "form": "explicit",
+      "size": 1000000,
+      "allocated_bytes": 1535702976,
+      "peak_bytes": 33602480,
+      "seconds": 1.2495761250029318,
+      "text_bytes": 3212,
+      "disassembly_sha256": "a73b18d6319016b4c497e2bcbf1671490f5a93127c5e33397cea5f22d27133e2",
+      "source_sha256": "2ee522273a7da53f8fd497b989f8f840dd76424d09fe8be4db3e5f01fe9ad1fa"
+    },
+    {
+      "form": "rollback",
+      "size": 1000000,
+      "allocated_bytes": 1535049224,
+      "peak_bytes": 45360432,
+      "seconds": 1.252249541983474,
+      "text_bytes": 3040,
+      "disassembly_sha256": "56b283d844b3a5598f8dfb0c0cb240f8eacba1f6b6029e1c59d26d56a1e55c0d",
+      "source_sha256": "5be2ec4555b0452e618be143ce314e471abf999b9d7d881aed3aedcbf9de4d66"
+    }
+  ],
+  "throughput": [
+    {
+      "family": "wrapper-and-pair",
+      "root_workers": [],
+      "form": "before",
+      "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+      "source_sha256": "5be2ec4555b0452e618be143ce314e471abf999b9d7d881aed3aedcbf9de4d66",
+      "cost": {
+        "alloc_requests": 2000978,
+        "alloc_bytes": 64031552,
+        "copies": 975,
+        "copy_bytes": 31168,
+        "message_slabs": 4,
+        "turns": 0,
+        "state_copies": 974,
+        "state_bytes": 31168,
+        "receives": 0,
+        "buddy_allocs": 24,
+        "buddy_frees": 8
+      },
+      "samples_seconds": [
+        0.026790208008605987,
+        0.019723291974514723,
+        0.018380624998826534,
+        0.018357207998633385,
+        0.01853441697312519,
+        0.018598959024529904,
+        0.01919345901114866,
+        0.017634499992709607,
+        0.01956512499600649,
+        0.016691541008185595,
+        0.016580124967731535,
+        0.016537540999706835,
+        0.016775417025201023
+      ],
+      "median_seconds": 0.018380624998826534
+    },
+    {
+      "family": "wrapper-and-pair",
+      "root_workers": [],
+      "form": "after",
+      "compiler_sha256": "bd1658ed548107f528ece6a42a746ab51f56d1e95b584a29d4673fe22038dc80",
+      "source_sha256": "5be2ec4555b0452e618be143ce314e471abf999b9d7d881aed3aedcbf9de4d66",
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.018976000021211803,
+        0.016706291993614286,
+        0.017000334046315402,
+        0.015761291957460344,
+        0.01714420795906335,
+        0.017165749974083155,
+        0.015149792016018182,
+        0.015540375025011599,
+        0.01598575001116842,
+        0.014834457950200886,
+        0.015446000033989549,
+        0.015156292007304728,
+        0.01508687500609085
+      ],
+      "median_seconds": 0.015761291957460344
+    },
+    {
+      "family": "wrapper-and-pair",
+      "root_workers": [
+        "$worker.ret2.flatWalk"
+      ],
+      "form": "explicit",
+      "compiler_sha256": "bd1658ed548107f528ece6a42a746ab51f56d1e95b584a29d4673fe22038dc80",
+      "source_sha256": "2ee522273a7da53f8fd497b989f8f840dd76424d09fe8be4db3e5f01fe9ad1fa",
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.02581045898841694,
+        0.023809957958292216,
+        0.01794412499293685,
+        0.01721499999985099,
+        0.01610633300151676,
+        0.01636779197724536,
+        0.014841249969322234,
+        0.015975666989106685,
+        0.01602216699393466,
+        0.014964249974582344,
+        0.016059292014688253,
+        0.016990625008475035,
+        0.015954957983922213
+      ],
+      "median_seconds": 0.01610633300151676
+    },
+    {
+      "family": "wrapper-and-pair",
+      "root_workers": [],
+      "form": "rollback",
+      "compiler_sha256": "bd1658ed548107f528ece6a42a746ab51f56d1e95b584a29d4673fe22038dc80",
+      "source_sha256": "5be2ec4555b0452e618be143ce314e471abf999b9d7d881aed3aedcbf9de4d66",
+      "cost": {
+        "alloc_requests": 2000978,
+        "alloc_bytes": 64031552,
+        "copies": 975,
+        "copy_bytes": 31168,
+        "message_slabs": 4,
+        "turns": 0,
+        "state_copies": 974,
+        "state_bytes": 31168,
+        "receives": 0,
+        "buddy_allocs": 24,
+        "buddy_frees": 8
+      },
+      "samples_seconds": [
+        0.02198708400828764,
+        0.020390457997564226,
+        0.01781887502875179,
+        0.018024666991550475,
+        0.016839791962411255,
+        0.018115749990101904,
+        0.019544542010407895,
+        0.01670666702557355,
+        0.017303832981269807,
+        0.01663683296646923,
+        0.016536790993995965,
+        0.01663279195781797,
+        0.016352041973732412
+      ],
+      "median_seconds": 0.017303832981269807
+    }
+  ]
+}

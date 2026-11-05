@@ -1,0 +1,193 @@
+{
+  "schema": "verified-result-size-validation-v1",
+  "codegen_revision": 177,
+  "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+  "sources": {
+    "compiler/Resource/ResultSize.hs": "e911e5c51cdc05ba753c83082f3aece9826598df3007ea1ff3d3026f7242340d",
+    "compiler/Cost.hs": "190c5a83af0d5da160642253a0414fc1c3488848ff1e87e5656851e86b8233c7",
+    "compiler/Compile.hs": "7f216aee422f410d37162c9e4d9dc79d320b2d35ee1191ac165e0ab27c0a04b7",
+    "compiler/Codegen.hs": "dae8a3ffd728ab5dfe1bbaf4334ffed9af526e5bcd52812bfb0db593d6acf91e",
+    "fp-risc.cabal": "c8de8b16ec241565fffeceab0f38c54d34e5f65686d8879076535f6e3fab7673",
+    "std/list.fpr": "e1fdcf99dfa0367686f81482cec2f68f667adc511aea162d5e0ba169a726d19c",
+    "tests/ResourceCosts.hs": "d43e7cb180d430a7cedf62348e5597e161599580a5c6456589634328acdbc96d",
+    "tests/TypedProgram.hs": "7a7846d1c3f1c9051f93bb4e4151611546d129ab1ea4bc480470c3c876186126",
+    "tests/check_result_sizes.py": "70853e4dfa2ff7dfa21bdf2e1c2901a00d9460d3ffa58bf6ba59efa21328fc2f",
+    "tests/check_registry.py": "d01b46ab5468feb4b427f0b314f27f80aadc0585567c0282700149ca8d2b895b",
+    "tests/test_check_registry.py": "6b8efdf6413bad4af2af9eab4f30b7d945ea046f32ac15451e816a0ce3ca2e41",
+    "docs/2026-11-05-VERIFIED-RESULT-SIZES.md": "d7a5d053d105484a4545dda1f5bbab024b851b21faff0dfb0584571ba478ab17",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "2d0a1f090ac8cd6a9246a1ec460a0cac6c45f592765501ce110510d605f76ddb",
+    "docs/2026-11-05-RESOURCE-EQUATION-PREREQUISITES.md": "0a9b5c90e9c9b48b2971f839244cd3dd4948d73f921e78935613cddeac49d168",
+    "docs/2026-11-05-SIGNED-RESOURCE-DOMAINS.md": "f0137cc0f58dfff052f56ea21084f3da0e24f201a7528e52c688e7ab60894dca",
+    "docs/2026-10-02-RESOURCE-BOUNDS.md": "63a0717dd3d9d077b0f186a70f4fd36face74690fa224cb4c5d1c9204421f22d",
+    "bench/2026-11-05-result-sizes.json": "06e6dfd751b94035c780b38444a2c28e424d9d4710413ad4e312db42719c4634",
+    "bench/2026-11-05-result-size-specialization-cost.json": "ff46df28307e2636430294cf9b0d24459929ff63f8296ad7a56d5a74bd25bb1b"
+  },
+  "checks": [
+    {
+      "name": "Haskell",
+      "command": "cabal test all --test-show-details=direct",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "527878c38f0fceb44d1852d4394f614b54598ee5a339c5784cfce947db822701",
+      "output_tail": [
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Running 1 test suites...",
+        "Test suite module-path-check: RUNNING...",
+        "module search path: OK",
+        "Test suite module-path-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/module-path-check/test/fp-risc-0.13.1-module-path-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ],
+      "suites_passed": 39
+    },
+    {
+      "name": "native-result-sizes",
+      "command": "python3 tests/check_result_sizes.py --baseline /tmp/fpr-resource-before-177 --record bench/2026-11-05-result-sizes.json",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "031ec2e40602fee6b5ff166b154973c55883df01ac478bf4d674357ba7215152",
+      "output_tail": [
+        "Forged size annotation and false recursive size invariant refused PASS",
+        "Actual substring upper bounds compose independently of annotation text on 1/4 harts PASS",
+        "Standard list size proofs, explicit unsupported lemmas and signed endpoints PASS",
+        "UTF-8 and raw byte payload lengths preserve native outputs PASS",
+        "Partial-correctness size lemmas preserve endpoint overflow and its effect prefix PASS"
+      ]
+    },
+    {
+      "name": "source-costs",
+      "command": "FPR_HOME=$PWD XDG_CACHE_HOME=/tmp/fpr-result-size-cost-cache python3 tests/check_cost.py",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "520d4fdfb09b6f503a49b8de25da445449bb9a5d890d9ba65106e0e30db62185",
+      "output_tail": [
+        "Cost: linear measured recursion and invariant callbacks compose; branching/growing recursive costs stay unproved; full PAP capacity is charged; declared bounds and manifest judgements (fixture: 2.93 \u00b5s within 5 \u00b5s, over 1 \u00b5s), scoped live/loop costs and Todo reporting (27.0s) PASS"
+      ]
+    },
+    {
+      "name": "signed-domains",
+      "command": "python3 tests/check_resource_domains.py",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "6f1f6279205345a66c7ad19747b9361991ee0930da71ac6c265c71de569bdea0",
+      "output_tail": [
+        "Signed, max, negative-term and unknown-span budget regressions PASS",
+        "Negative inputs, minimum Int, negative span and ordinary outputs on 1/4 harts PASS",
+        "Explicit clamps and direct/partial/escaped precondition boundaries PASS"
+      ]
+    },
+    {
+      "name": "previous-resource-regressions",
+      "command": "python3 tests/check_resource_admission.py",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "ff45ea9dd68596471bf91379215e39920ee0e9c8ccb4be4b341443708877a639",
+      "output_tail": [
+        "branching: undersized contract refused; independent native observations on 1/4 harts PASS",
+        "partial: undersized contract refused; independent native observations on 1/4 harts PASS",
+        "growing: undersized contract refused; independent native observations on 1/4 harts PASS",
+        "Correct PAP capacity and exclusive linear recursion contracts PASS"
+      ]
+    },
+    {
+      "name": "compiler-budget",
+      "command": "python3 tests/check_compile_budget.py --require-baseline",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "2a99c13195d93fb6d9a34975102e40f4969869347a2d82235d71726be44e892c",
+      "output_tail": [
+        "hello: 1.59 GB allocated, 44 MB peak live, 3.2 s (+8.3% allocation, +4.1% peak vs baseline)",
+        "std-live: 32.68 GB allocated, 433 MB peak live, 25.1 s (+9.2% allocation, +7.4% peak vs baseline)",
+        "pos1: 68.98 GB allocated, 720 MB peak live, 40.2 s (+6.4% allocation, -13.6% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": "python3 tests/check_type_spec_cost.py --sizes 16 32 64 128 256 --require-baseline --record bench/2026-11-05-result-size-specialization-cost.json",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "90b74c371341467f0bd7c1ac1146c44297cb24478552f9073ba7429d33954960",
+      "output_tail": [
+        "16 helpers: same 10520 code bytes/48 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 16952 code bytes/80 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30136 code bytes/144 functions; compiler allocation 1.001x explicit twins",
+        "128 helpers: same 56504 code bytes/272 functions; compiler allocation 1.001x explicit twins",
+        "256 helpers: same 109240 code bytes/528 functions; compiler allocation 1.002x explicit twins"
+      ]
+    },
+    {
+      "name": "region-lifetimes",
+      "command": "python3 tests/check_base.py -j 2 --only regionnest --only turnroots --only loopwith --timings-json /tmp/fpr-result-size-regions.json",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "26ea296b8713e14c58ff51c8a11cdd63aef8ddedb5eceba58d801f4f7d2b67e2",
+      "output_tail": [
+        "A message dies with its turn: a serve store keeps 5,000 requests' keys and values without keep, an arena and a poolReset release their received roots, on one and four harts: PASS",
+        "Loop regions reset per slab, call regions open when a call has used a slab, a builder's region is adopted whole, and an arena copying out under a pending call region keeps the chain: PASS",
+        "Sys.loopWith: 1,000 and 20,000 steps of a double-buffered frame loop grow the caller pool by the same 256 B; a moved vector and a Vector in the state are refused: PASS",
+        "check_base: 3 jobs in 8 s on 2 worker(s)"
+      ]
+    },
+    {
+      "name": "list-fusion",
+      "command": "python3 tests/check_list_fusion.py",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "b9a5136c529bc6b8931f474836d5c489a7b38c1da49225ecd69cabe7a2be8108",
+      "output_tail": [
+        "List fusion allocation: let-length-map 4000 -> 0 requests PASS",
+        "List fusion allocation: let-length-filter 1500 -> 0 requests PASS",
+        "List fusion declined allocation: let-multi-use unchanged at 1000 requests PASS",
+        "List fusion declined allocation: let-unsafe-seed unchanged at 1000 requests PASS",
+        "List fusion: same-named user combinators remain untouched PASS",
+        "List fusion: trapping callback declines with a remark; output/trap behavior matches PASS",
+        "List fusion: fold over ranges ending at maxInt / starting at minInt matches unfused PASS",
+        "List fusion: let-float never crosses trapping work (trap identity kept) PASS"
+      ]
+    },
+    {
+      "name": "materializing-pipelines",
+      "command": "python3 tests/check_list_materialize.py",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "output_tail": [
+        "Materializing pipeline: max-singleton PASS",
+        "Materializing pipeline: max-pair PASS",
+        "Materializing pipeline: min-singleton-rejected PASS",
+        "Materializing pipeline: min-range-before-effects PASS",
+        "Materializing pipeline: near-min PASS",
+        "Materializing pipeline: map-overflow PASS",
+        "Materializing pipeline: division-before-overflow PASS",
+        "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": "python3 tests/test_check_registry.py",
+      "status": "PASS",
+      "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+      "log_sha256": "f62e03f05b7381b6f0bc0d746438bee0b9d7b7042f326019ba6a24fd997b61fa",
+      "output_tail": [
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.078s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "limits": [
+    "Local checks only; no new remote CI or physical-board completion claim.",
+    "Partial-correctness size lemmas bound successful results, not termination or intermediate allocation.",
+    "Unsupported size annotations remain advisory and are never used as assumptions.",
+    "Nested-container totals, unknown callback sizes and richer mutually recursive invariant families remain unsupported.",
+    "No physical peak-live/native stack/static-arena or hardware timing certificate.",
+    "Concurrent compilation wall times are not throughput benchmarks."
+  ]
+}

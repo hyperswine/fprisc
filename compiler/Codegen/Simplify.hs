@@ -137,7 +137,21 @@ foldConversions fn =
         ]
       fn' = substitute sub fn
       -- the folded definitions themselves are now unused and pure: dropDeadPure takes them
-   in fn'
+      -- Product erasure can leave `truth True` guarding an impossible panic.
+      -- Fold only the language's immutable Bool constructors, then remove
+      -- blocks unreachable from the entry. Prefix effects/traps stay in place.
+      -- Reuse the definition table above; most functions need no CFG rebuild.
+      bool v = case M.lookup v defs of
+        Just (OTruth w)->case M.lookup w defs of
+          Just (ONullary 1 0)->Just False
+          Just (ONullary 1 1)->Just True
+          _->Nothing
+        _->Nothing
+      changed = M.fromList [(bId b,if yes then TBr t as else TBr e bs)
+                          | b<-fnBlocks fn',TCondBr p t as e bs<-[bTerm b],Just yes<-[bool p]]
+      branched=fn' {fnBlocks=[b {bTerm=M.findWithDefault (bTerm b) (bId b) changed} | b<-fnBlocks fn']}
+      live=reachable (analyze branched)
+   in if M.null changed then fn' else branched {fnBlocks=filter ((`S.member` live) . bId) (fnBlocks branched)}
 
 -- ---- pass 2: branch on the comparison ---------------------------------------
 

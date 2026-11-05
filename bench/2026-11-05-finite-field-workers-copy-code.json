@@ -1,0 +1,83 @@
+{
+  "compiler_sha256": "b6c993bc5b43d1bdf6235af51daf49a6f27df00e0b9307713912b42bf741358e",
+  "baseline_compiler_sha256": "745b6f730140c59438d585967c354c366e6cc5eedc91cf48f783b10f525cd04d",
+  "source_sha256": "c608d257ba43b657442b1a1ed5d41ae92a29cafa14ba579ae1ec8e16d9578180",
+  "probe_sha256": "6a8b88b0946b5250ac929bbf1b87af6418db521b5d0ca04045e3a5b10a42b574",
+  "harness_sha256": "681533e480fe4fee2af9862f68586a6d66d7ea3b189fc5e54fd9fc68032bf482",
+  "build": "Same copy source and runtime, separate empty caches, --harts 4 --with tests/base/scheduler_probe.c --keep",
+  "binary_sha256": {
+    "before": "0639da971831b92bd2c539cf5b205c174cb51ca10eaef8c4c23082a08a26948d",
+    "after": "e6866900e149256e2e5ad91a07dbe43b1fcf3e17438264b88ae3bc7d09152c71"
+  },
+  "sections": [
+    {
+      "section": "__TEXT,__text",
+      "address": 4294968896,
+      "bytes": 362844,
+      "before_sha256": "67ff40c02b34c8019e580f0f9bb489bb46143c9973e7c8b753f2b95dc1cf1396",
+      "after_sha256": "6aca60b807a63d583c4b8999fa721bca8ebafdc3b8adbce50bf4783f68c2c48d",
+      "differing_bytes": 1,
+      "difference": "Module attach compatibility check: cmp x8, #188 -> cmp x8, #191",
+      "instruction_address": 4295155616
+    },
+    {
+      "section": "__TEXT,__stubs",
+      "address": 4295331740,
+      "bytes": 1548,
+      "before_sha256": "b795f7328d4aa925d2247c8c6d19dd76cc1676dc9ab40d931bbda8e47b44b122",
+      "after_sha256": "b795f7328d4aa925d2247c8c6d19dd76cc1676dc9ab40d931bbda8e47b44b122"
+    },
+    {
+      "section": "__TEXT,__const",
+      "address": 4295333296,
+      "bytes": 7128,
+      "before_sha256": "1d9fb2b984dc7c713d36b525a0e1243dcf2e039bbad1652284f9c57e921ad54b",
+      "after_sha256": "1d9fb2b984dc7c713d36b525a0e1243dcf2e039bbad1652284f9c57e921ad54b"
+    },
+    {
+      "section": "__TEXT,__cstring",
+      "address": 4295340424,
+      "bytes": 13456,
+      "before_sha256": "a6afb045965b0f0bd75470fdc607ccb2f85752fe4c1b91a10d5e2ba3bae86251",
+      "after_sha256": "a6afb045965b0f0bd75470fdc607ccb2f85752fe4c1b91a10d5e2ba3bae86251"
+    },
+    {
+      "section": "__TEXT,__unwind_info",
+      "address": 4295353880,
+      "bytes": 4296,
+      "before_sha256": "427954f87b7c29568ce6b377eb752659d85ca692a205db6cfd1fe98e3a8a6e7e",
+      "after_sha256": "427954f87b7c29568ce6b377eb752659d85ca692a205db6cfd1fe98e3a8a6e7e"
+    },
+    {
+      "section": "__DATA_CONST,__const",
+      "address": 4295360512,
+      "bytes": 61144,
+      "before_sha256": "71794e9a228bffeaa2ea3f69769e3b741605cea9867e118e56475fc4e2ae1c6b",
+      "after_sha256": "03c2f03ddc8a0560956876511edc232cf69ca489211c6068efc3e0c36a130d43",
+      "difference": "Interface identity revision g188 -> g191 only",
+      "identity_count": 66
+    },
+    {
+      "section": "__DATA_CONST,__got",
+      "address": 4295421656,
+      "bytes": 1064,
+      "before_sha256": "ebaf89df758ed396291fee5a0a539495f025707b53a35636bc89f0d7bfa893ae",
+      "after_sha256": "ebaf89df758ed396291fee5a0a539495f025707b53a35636bc89f0d7bfa893ae"
+    },
+    {
+      "section": "__DATA,__data",
+      "address": 4295426048,
+      "bytes": 536,
+      "before_sha256": "4f69e2032b71dcf26d5f899bc838b6ecf0a8610af0e81a61d2db213beaaaabb1",
+      "after_sha256": "4f69e2032b71dcf26d5f899bc838b6ecf0a8610af0e81a61d2db213beaaaabb1"
+    }
+  ],
+  "disassembly_differences": [
+    {
+      "before": "000000010002dfa0\tcmp\tx8, #0xbc",
+      "after": "000000010002dfa0\tcmp\tx8, #0xbf"
+    }
+  ],
+  "scope": "Rebuilt binaries, not retained original timed executables. All file-backed section addresses/sizes match. All executable code matches except unused module attach revision check; all remaining section differences are interface version strings. This weakens compiler code-change attribution, but cannot identify the source of host timing outliers or establish WCET.",
+  "analysis_source": "import hashlib,json,struct,subprocess\nfrom pathlib import Path\nroot=Path('/Users/jasonqin/Documents/GitHub/fprisc');p=Path('/tmp/fpr-copy-code-191');sha=lambda b:hashlib.sha256(b).hexdigest()\ndef sections(file):\n b=file.read_bytes();assert struct.unpack_from('<I',b)[0]==0xfeedfacf\n n=struct.unpack_from('<I',b,16)[0];o=32;out={}\n for _ in range(n):\n  cmd,size=struct.unpack_from('<II',b,o)\n  if cmd==0x19:\n   for i in range(struct.unpack_from('<I',b,o+64)[0]):\n    x=o+72+i*80;name=b[x:x+16].split(b'\\0')[0].decode();seg=b[x+16:x+32].split(b'\\0')[0].decode();addr,sz,off=struct.unpack_from('<QQI',b,x+32);flags=struct.unpack_from('<I',b,x+64)[0]\n    if (flags&255) not in (1,12,18):out[seg+','+name]=(addr,b[off:off+sz])\n  o+=size\n return out\na,b=(sections(p/n/'copy') for n in ['before','after'])\nassert a.keys()==b.keys()\nrows=[]\nfor name in a:\n (address,x),(other,y)=a[name],b[name];assert address==other and len(x)==len(y)\n row=dict(section=name,address=address,bytes=len(x),before_sha256=sha(x),after_sha256=sha(y))\n if x!=y:\n  if name=='__DATA_CONST,__const':\n   assert x.replace(b'fpr-interface-1/g188/',b'fpr-interface-1/g191/')==y\n   row['difference']='Interface identity revision g188 -> g191 only'\n   row['identity_count']=x.count(b'fpr-interface-1/g188/')\n  else:\n   assert name=='__TEXT,__text'\n   differing=[i for i,(v,w) in enumerate(zip(x,y)) if v!=w];assert len(differing)==1\n   row.update(differing_bytes=1,difference='Module attach compatibility check: cmp x8, #188 -> cmp x8, #191',instruction_address=address+(differing[0]//4)*4)\n rows.append(row)\na=(p/'before-disasm.txt').read_text().splitlines();b=(p/'after-disasm.txt').read_text().splitlines();assert len(a)==len(b)\ndifferences=[dict(before=x,after=y) for x,y in zip(a,b) if x!=y];assert len(differences)==1\nassert 'cmp\\tx8, #0xbc' in differences[0]['before'] and 'cmp\\tx8, #0xbf' in differences[0]['after']\nrecord=dict(compiler_sha256=sha((root/'fpr').read_bytes()),baseline_compiler_sha256=sha(Path('/tmp/fpr-before-finite-field-workers-189').read_bytes()),source_sha256=sha((p/'copy.fpr').read_bytes()),probe_sha256=sha((root/'tests/base/scheduler_probe.c').read_bytes()),harness_sha256=sha((root/'tests/check_scheduler_latency.py').read_bytes()),build='Same copy source and runtime, separate empty caches, --harts 4 --with tests/base/scheduler_probe.c --keep',binary_sha256={n:sha((p/n/'copy').read_bytes()) for n in ['before','after']},sections=rows,disassembly_differences=differences,scope='Rebuilt binaries, not retained original timed executables. All file-backed section addresses/sizes match. All executable code matches except unused module attach revision check; all remaining section differences are interface version strings. This weakens compiler code-change attribution, but cannot identify the source of host timing outliers or establish WCET.',analysis_source=Path(__file__).read_text())\n(root/'bench/2026-11-05-finite-field-workers-copy-code.json').write_text(json.dumps(record,indent=2)+'\\n')\nr=root/'bench/2026-11-05-finite-field-workers-copy-latency.json';d=json.loads(r.read_text());d['measurement_script']=Path('/tmp/check_field_copy_latency_191.py').read_text();r.write_text(json.dumps(d,indent=2)+'\\n')\nprint('Copy code comparison PASS:',len(rows),'file-backed sections; only compiler identity metadata differs')\n"
+}

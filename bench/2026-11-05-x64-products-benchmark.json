@@ -1,0 +1,224 @@
+{
+  "compiler_sha256": "f78d082e4c6564c0cf7f4dbd0442d4dc2125c38729377a83de29818a3790207c",
+  "head": "22e1e5537370f48ed1c7bd8f3435aa4a0b74836c",
+  "working_tree": "uncommitted",
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "target": "macos-x86_64",
+  "controls": {
+    "harts": 1,
+    "optimizer": "default",
+    "rollback": "FPR_NO_PAIR_RETURNS=1",
+    "timing": "uninstrumented process wall time, alternating order",
+    "allocations": "separate FPR_COST_PROBE binaries; includes region adapters"
+  },
+  "samples": 13,
+  "rows": [
+    {
+      "width": 3,
+      "count": 5000000,
+      "allocation_ledgers": {
+        "off": {
+          "alloc_requests": 5003661,
+          "alloc_bytes": 240117280,
+          "copies": 3660,
+          "copy_bytes": 117088,
+          "message_slabs": 2,
+          "turns": 0,
+          "state_copies": 3659,
+          "state_bytes": 117088,
+          "receives": 0,
+          "buddy_allocs": 20,
+          "buddy_frees": 4
+        },
+        "on": {
+          "alloc_requests": 0,
+          "alloc_bytes": 0,
+          "copies": 1,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "state_copies": 0,
+          "state_bytes": 0,
+          "receives": 0,
+          "buddy_allocs": 14,
+          "buddy_frees": 0
+        }
+      },
+      "milliseconds": {
+        "on": [
+          77.956875,
+          78.188666,
+          78.101083,
+          87.975917,
+          78.14725,
+          77.977042,
+          79.367291,
+          79.391542,
+          78.614416,
+          78.662667,
+          78.618459,
+          78.42925,
+          78.425541
+        ],
+        "off": [
+          101.024875,
+          113.2575,
+          101.739167,
+          100.725041,
+          101.656041,
+          107.361834,
+          117.419542,
+          101.799083,
+          115.345084,
+          101.292416,
+          114.380709,
+          101.373583,
+          101.788208
+        ]
+      },
+      "median_ms": {
+        "on": 78.42925,
+        "off": 101.788208
+      },
+      "wins": 13
+    },
+    {
+      "width": 4,
+      "count": 5000000,
+      "allocation_ledgers": {
+        "off": {
+          "alloc_requests": 5003661,
+          "alloc_bytes": 240117280,
+          "copies": 3660,
+          "copy_bytes": 117088,
+          "message_slabs": 2,
+          "turns": 0,
+          "state_copies": 3659,
+          "state_bytes": 117088,
+          "receives": 0,
+          "buddy_allocs": 20,
+          "buddy_frees": 4
+        },
+        "on": {
+          "alloc_requests": 0,
+          "alloc_bytes": 0,
+          "copies": 1,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "state_copies": 0,
+          "state_bytes": 0,
+          "receives": 0,
+          "buddy_allocs": 14,
+          "buddy_frees": 0
+        }
+      },
+      "milliseconds": {
+        "on": [
+          85.205375,
+          85.518917,
+          84.758416,
+          84.521625,
+          84.411333,
+          84.531375,
+          115.908375,
+          85.199791,
+          84.896709,
+          84.537042,
+          84.798958,
+          84.379667,
+          84.14975
+        ],
+        "off": [
+          107.488583,
+          107.157083,
+          107.075166,
+          106.920875,
+          120.819,
+          107.040333,
+          109.679792,
+          107.269791,
+          107.349708,
+          106.799917,
+          119.896333,
+          106.490792,
+          105.742875
+        ]
+      },
+      "median_ms": {
+        "on": 84.758416,
+        "off": 107.157083
+      },
+      "wins": 12
+    },
+    {
+      "width": 8,
+      "count": 5000000,
+      "allocation_ledgers": {
+        "off": {
+          "alloc_requests": 5006098,
+          "alloc_bytes": 400195264,
+          "copies": 6097,
+          "copy_bytes": 195072,
+          "message_slabs": 2,
+          "turns": 0,
+          "state_copies": 6096,
+          "state_bytes": 195072,
+          "receives": 0,
+          "buddy_allocs": 20,
+          "buddy_frees": 4
+        },
+        "on": {
+          "alloc_requests": 0,
+          "alloc_bytes": 0,
+          "copies": 1,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "state_copies": 0,
+          "state_bytes": 0,
+          "receives": 0,
+          "buddy_allocs": 14,
+          "buddy_frees": 0
+        }
+      },
+      "milliseconds": {
+        "on": [
+          121.749917,
+          112.173667,
+          111.041,
+          110.504458,
+          110.847333,
+          110.285042,
+          109.552667,
+          121.936959,
+          121.169709,
+          107.48,
+          106.949,
+          106.83775,
+          107.0835
+        ],
+        "off": [
+          139.074625,
+          138.156083,
+          149.496667,
+          136.498667,
+          137.564458,
+          136.643166,
+          147.821625,
+          149.15475,
+          137.213792,
+          133.816375,
+          132.698916,
+          132.353541,
+          132.171458
+        ]
+      },
+      "median_ms": {
+        "on": 110.504458,
+        "off": 137.213792
+      },
+      "wins": 13
+    }
+  ]
+}

@@ -1,0 +1,3037 @@
+{
+  "schema": "linked-stack-validation-v2",
+  "unit_tests": 12,
+  "acyclic_graphs": 216,
+  "graph_encodings": [
+    "RV64IM",
+    "RV64IMC"
+  ],
+  "compressed_encodings_checked": 49152,
+  "compressed_encodings_supported": 38550,
+  "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+  "execution": {
+    "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+    "refusals": [
+      {
+        "case": "one-byte-short",
+        "reason": "error: heap budget wide: needs 2640 bytes, limit 2639"
+      },
+      {
+        "case": "admitted",
+        "reason": "error: heap budget wide: needs 2640 bytes, limit 2639"
+      },
+      {
+        "case": "invalid-0",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-1",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-2",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-3",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-4",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-5",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "check-only",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "no-entries",
+        "reason": "error: --heap-budget requires builtin RV64 --arc --lib with explicit --export entries"
+      },
+      {
+        "case": "rv32",
+        "reason": "profile builtin RV32 currently supports manual ownership only; --arc/--raw/--export require RV64"
+      },
+      {
+        "case": "duplicates",
+        "reason": "error: heap budget has duplicate public callback entries"
+      },
+      {
+        "case": "foreign",
+        "reason": "error: heap budget speak: UNPROVED [\"runtime:fpr_fn__x24arc_x2eprint\"]"
+      },
+      {
+        "case": "overflow",
+        "reason": "error: heap budget plus: UNPROVED [\"runtime:fpr_fn__x24arc_x2eadd\"]"
+      }
+    ],
+    "stack_report_refresh_preserves_code_and_unit_identities": true,
+    "stack_report_refreshed_units": 1,
+    "unchanged_instructions_and_data": true,
+    "cached_short_budget_preserves_existing_output": true,
+    "bounds": {
+      "identity": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "arena_bytes": 416
+      },
+      "wide": {
+        "requests": 13,
+        "requested_bytes": 312,
+        "arena_bytes": 2640
+      },
+      "choose": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "arena_bytes": 624
+      }
+    },
+    "maximum_arena_bytes": 2640,
+    "execution": {
+      "status": "RV64-QEMU-PASS",
+      "rvc": false,
+      "calls_per_mode": 4,
+      "images": {
+        "plain": {
+          "admission": {
+            "schema": 2,
+            "target": "qemu-rv64-heap-budget-test",
+            "elf_class_bits": 64,
+            "image_sha256": "4227e63fc716d8530a65e2dbe2b3a22405b74199dc0bf3ef4554ae56675a6d13",
+            "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+            "image_bytes": 6424,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 14336,
+            "remaining_ram_bytes": 8374272,
+            "min_free_bytes": 65536
+          },
+          "output": "identity 0\nwide 0\nchoose 0\nHEAP_BUDGET_FIXED_ARENAS_PASS\n",
+          "linked_stack": {
+            "proof": {
+              "schema": "linked-rv64-stack-v2",
+              "image": {
+                "schema": 2,
+                "target": "qemu-rv64-heap-budget-test",
+                "elf_class_bits": 64,
+                "image_sha256": "4227e63fc716d8530a65e2dbe2b3a22405b74199dc0bf3ef4554ae56675a6d13",
+                "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+                "image_bytes": 6424,
+                "image_limit_bytes": 8323072,
+                "static_memory_bytes": 14336,
+                "remaining_ram_bytes": 8374272,
+                "min_free_bytes": 65536
+              },
+              "entries": [
+                {
+                  "symbol": "identity",
+                  "address": 2147485052,
+                  "peak_bytes": 224,
+                  "limit_bytes": 224
+                },
+                {
+                  "symbol": "wide",
+                  "address": 2147485104,
+                  "peak_bytes": 400,
+                  "limit_bytes": 400
+                },
+                {
+                  "symbol": "choose",
+                  "address": 2147485436,
+                  "peak_bytes": 256,
+                  "limit_bytes": 256
+                }
+              ],
+              "functions": [
+                {
+                  "symbol": "fpr_fn_choose_x4053095893c799aac0",
+                  "address": 2147483692,
+                  "local_bytes": 48,
+                  "peak_bytes": 208,
+                  "instructions": 80,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147488808,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147489388,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147489392,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147489492,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 48
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn_identity_x4053095893c799aac0",
+                  "address": 2147483944,
+                  "local_bytes": 32,
+                  "peak_bytes": 192,
+                  "instructions": 49,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147488808,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147489388,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147489392,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147489492,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn_wide_x4053095893c799aac0",
+                  "address": 2147484072,
+                  "local_bytes": 128,
+                  "peak_bytes": 288,
+                  "instructions": 262,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147488808,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147489388,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 128
+                    },
+                    {
+                      "address": 2147489392,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 128
+                    },
+                    {
+                      "address": 2147489492,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 128
+                    }
+                  ]
+                },
+                {
+                  "symbol": "identity",
+                  "address": 2147485052,
+                  "local_bytes": 32,
+                  "peak_bytes": 224,
+                  "instructions": 13,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147483944,
+                      "symbol": "fpr_fn_identity_x4053095893c799aac0",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147489424,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147489492,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "wide",
+                  "address": 2147485104,
+                  "local_bytes": 112,
+                  "peak_bytes": 400,
+                  "instructions": 83,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147484072,
+                      "symbol": "fpr_fn_wide_x4053095893c799aac0",
+                      "retained_bytes": 112
+                    },
+                    {
+                      "address": 2147489424,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 112
+                    },
+                    {
+                      "address": 2147489492,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 112
+                    }
+                  ]
+                },
+                {
+                  "symbol": "choose",
+                  "address": 2147485436,
+                  "local_bytes": 48,
+                  "peak_bytes": 256,
+                  "instructions": 30,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147483692,
+                      "symbol": "fpr_fn_choose_x4053095893c799aac0",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147489424,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147489492,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 48
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000774",
+                  "address": 2147485556,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 13,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "fpr_cpanic",
+                  "address": 2147485680,
+                  "local_bytes": 16,
+                  "peak_bytes": 16,
+                  "instructions": 11,
+                  "compressed_instructions": 0,
+                  "may_return": false,
+                  "calls": [
+                    {
+                      "address": 2147485556,
+                      "symbol": "0x80000774",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000b34",
+                  "address": 2147486516,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 24,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "0x80000b94",
+                  "address": 2147486612,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 51,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "0x80000d64",
+                  "address": 2147487076,
+                  "local_bytes": 32,
+                  "peak_bytes": 32,
+                  "instructions": 86,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147486516,
+                      "symbol": "0x80000b34",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000db8",
+                  "address": 2147487160,
+                  "local_bytes": 64,
+                  "peak_bytes": 96,
+                  "instructions": 163,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147486516,
+                      "symbol": "0x80000b34",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147486612,
+                      "symbol": "0x80000b94",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147487076,
+                      "symbol": "0x80000d64",
+                      "retained_bytes": 64
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x800010f0",
+                  "address": 2147487984,
+                  "local_bytes": 16,
+                  "peak_bytes": 32,
+                  "instructions": 42,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_free",
+                  "address": 2147488516,
+                  "local_bytes": 32,
+                  "peak_bytes": 48,
+                  "instructions": 153,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147486516,
+                      "symbol": "0x80000b34",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147486612,
+                      "symbol": "0x80000b94",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147487984,
+                      "symbol": "0x800010f0",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_builtin_alloc_adt",
+                  "address": 2147488808,
+                  "local_bytes": 32,
+                  "peak_bytes": 128,
+                  "instructions": 23,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147487160,
+                      "symbol": "0x80000db8",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147487984,
+                      "symbol": "0x800010f0",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_builtin_release",
+                  "address": 2147488948,
+                  "local_bytes": 96,
+                  "peak_bytes": 144,
+                  "instructions": 110,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 96
+                    },
+                    {
+                      "address": 2147487984,
+                      "symbol": "0x800010f0",
+                      "retained_bytes": 96
+                    },
+                    {
+                      "address": 2147488516,
+                      "symbol": "fpr_free",
+                      "retained_bytes": 96
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2eretain",
+                  "address": 2147489388,
+                  "local_bytes": 16,
+                  "peak_bytes": 48,
+                  "instructions": 29,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147487984,
+                      "symbol": "0x800010f0",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2erelease",
+                  "address": 2147489392,
+                  "local_bytes": 16,
+                  "peak_bytes": 160,
+                  "instructions": 8,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147488948,
+                      "symbol": "fpr_builtin_release",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                  "address": 2147489424,
+                  "local_bytes": 16,
+                  "peak_bytes": 144,
+                  "instructions": 17,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147488808,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                  "address": 2147489492,
+                  "local_bytes": 16,
+                  "peak_bytes": 160,
+                  "instructions": 26,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147488948,
+                      "symbol": "fpr_builtin_release",
+                      "retained_bytes": 16
+                    }
+                  ]
+                }
+              ],
+              "scope": "ordinary ABI entry SP; synchronous RV64 IMC integer code; no asynchronous traps, startup or stack switching",
+              "assumptions": [
+                "Valid memory accesses and RV64 integer callee-saved register/return ABI, shared by the FPR native frame convention.",
+                "No asynchronous interrupt, fault-handler stack, stack switching or concurrent mutation of executable bytes."
+              ]
+            },
+            "execution": "RV64-QEMU-instruction-step-pass",
+            "observed_peak_bytes": {
+              "identity": 208,
+              "wide": 384,
+              "choose": 240
+            },
+            "invocations": {
+              "identity": 1,
+              "wide": 1,
+              "choose": 2
+            },
+            "observed_instruction_steps": 18403,
+            "trace_scope": "all executable sections, independent of predicted CFG",
+            "trace_sha256": "b4ad3e3e180db7d0c283f2a995292684acfda55803b949c76a54eef3b65a8d71",
+            "trace_bytes": 202169238
+          }
+        },
+        "measured": {
+          "admission": {
+            "schema": 2,
+            "target": "qemu-rv64-heap-budget-test",
+            "elf_class_bits": 64,
+            "image_sha256": "5ec17406c384804b4ede8aa1488a87c4ef62f0e469736f733298cb870e93b99d",
+            "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+            "image_bytes": 6696,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 14656,
+            "remaining_ram_bytes": 8373952,
+            "min_free_bytes": 65536
+          },
+          "output": "identity 112\nwide 1344\nchoose 224\nHEAP_BUDGET_FIXED_ARENAS_PASS\n",
+          "linked_stack": {
+            "proof": {
+              "schema": "linked-rv64-stack-v2",
+              "image": {
+                "schema": 2,
+                "target": "qemu-rv64-heap-budget-test",
+                "elf_class_bits": 64,
+                "image_sha256": "5ec17406c384804b4ede8aa1488a87c4ef62f0e469736f733298cb870e93b99d",
+                "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+                "image_bytes": 6696,
+                "image_limit_bytes": 8323072,
+                "static_memory_bytes": 14656,
+                "remaining_ram_bytes": 8373952,
+                "min_free_bytes": 65536
+              },
+              "entries": [
+                {
+                  "symbol": "identity",
+                  "address": 2147485052,
+                  "peak_bytes": 224,
+                  "limit_bytes": 224
+                },
+                {
+                  "symbol": "wide",
+                  "address": 2147485104,
+                  "peak_bytes": 400,
+                  "limit_bytes": 400
+                },
+                {
+                  "symbol": "choose",
+                  "address": 2147485436,
+                  "peak_bytes": 256,
+                  "limit_bytes": 256
+                }
+              ],
+              "functions": [
+                {
+                  "symbol": "fpr_fn_choose_x4053095893c799aac0",
+                  "address": 2147483692,
+                  "local_bytes": 48,
+                  "peak_bytes": 208,
+                  "instructions": 80,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147489056,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147489660,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147489664,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147489764,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 48
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn_identity_x4053095893c799aac0",
+                  "address": 2147483944,
+                  "local_bytes": 32,
+                  "peak_bytes": 192,
+                  "instructions": 49,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147489056,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147489660,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147489664,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147489764,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn_wide_x4053095893c799aac0",
+                  "address": 2147484072,
+                  "local_bytes": 128,
+                  "peak_bytes": 288,
+                  "instructions": 262,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147489056,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147489660,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 128
+                    },
+                    {
+                      "address": 2147489664,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 128
+                    },
+                    {
+                      "address": 2147489764,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 128
+                    }
+                  ]
+                },
+                {
+                  "symbol": "identity",
+                  "address": 2147485052,
+                  "local_bytes": 32,
+                  "peak_bytes": 224,
+                  "instructions": 13,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147483944,
+                      "symbol": "fpr_fn_identity_x4053095893c799aac0",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147489696,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147489764,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "wide",
+                  "address": 2147485104,
+                  "local_bytes": 112,
+                  "peak_bytes": 400,
+                  "instructions": 83,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147484072,
+                      "symbol": "fpr_fn_wide_x4053095893c799aac0",
+                      "retained_bytes": 112
+                    },
+                    {
+                      "address": 2147489696,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 112
+                    },
+                    {
+                      "address": 2147489764,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 112
+                    }
+                  ]
+                },
+                {
+                  "symbol": "choose",
+                  "address": 2147485436,
+                  "local_bytes": 48,
+                  "peak_bytes": 256,
+                  "instructions": 30,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147483692,
+                      "symbol": "fpr_fn_choose_x4053095893c799aac0",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147489696,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147489764,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 48
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000774",
+                  "address": 2147485556,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 13,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "fpr_cpanic",
+                  "address": 2147485680,
+                  "local_bytes": 16,
+                  "peak_bytes": 16,
+                  "instructions": 11,
+                  "compressed_instructions": 0,
+                  "may_return": false,
+                  "calls": [
+                    {
+                      "address": 2147485556,
+                      "symbol": "0x80000774",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000ba8",
+                  "address": 2147486632,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 24,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "0x80000c08",
+                  "address": 2147486728,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 51,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "0x80000dd8",
+                  "address": 2147487192,
+                  "local_bytes": 32,
+                  "peak_bytes": 32,
+                  "instructions": 86,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147486632,
+                      "symbol": "0x80000ba8",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000e2c",
+                  "address": 2147487276,
+                  "local_bytes": 64,
+                  "peak_bytes": 96,
+                  "instructions": 180,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147486632,
+                      "symbol": "0x80000ba8",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147486728,
+                      "symbol": "0x80000c08",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147487192,
+                      "symbol": "0x80000dd8",
+                      "retained_bytes": 64
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x800011a8",
+                  "address": 2147488168,
+                  "local_bytes": 16,
+                  "peak_bytes": 32,
+                  "instructions": 42,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80001250",
+                  "address": 2147488336,
+                  "local_bytes": 32,
+                  "peak_bytes": 48,
+                  "instructions": 157,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147486632,
+                      "symbol": "0x80000ba8",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147486728,
+                      "symbol": "0x80000c08",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147488168,
+                      "symbol": "0x800011a8",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_builtin_alloc_adt",
+                  "address": 2147489056,
+                  "local_bytes": 32,
+                  "peak_bytes": 128,
+                  "instructions": 23,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147487276,
+                      "symbol": "0x80000e2c",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147488168,
+                      "symbol": "0x800011a8",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_builtin_release",
+                  "address": 2147489220,
+                  "local_bytes": 96,
+                  "peak_bytes": 144,
+                  "instructions": 110,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 96
+                    },
+                    {
+                      "address": 2147488168,
+                      "symbol": "0x800011a8",
+                      "retained_bytes": 96
+                    },
+                    {
+                      "address": 2147488336,
+                      "symbol": "0x80001250",
+                      "retained_bytes": 96
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2eretain",
+                  "address": 2147489660,
+                  "local_bytes": 16,
+                  "peak_bytes": 48,
+                  "instructions": 29,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147488168,
+                      "symbol": "0x800011a8",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2erelease",
+                  "address": 2147489664,
+                  "local_bytes": 16,
+                  "peak_bytes": 160,
+                  "instructions": 8,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147489220,
+                      "symbol": "fpr_builtin_release",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                  "address": 2147489696,
+                  "local_bytes": 16,
+                  "peak_bytes": 144,
+                  "instructions": 17,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147489056,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                  "address": 2147489764,
+                  "local_bytes": 16,
+                  "peak_bytes": 160,
+                  "instructions": 26,
+                  "compressed_instructions": 0,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485680,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147489220,
+                      "symbol": "fpr_builtin_release",
+                      "retained_bytes": 16
+                    }
+                  ]
+                }
+              ],
+              "scope": "ordinary ABI entry SP; synchronous RV64 IMC integer code; no asynchronous traps, startup or stack switching",
+              "assumptions": [
+                "Valid memory accesses and RV64 integer callee-saved register/return ABI, shared by the FPR native frame convention.",
+                "No asynchronous interrupt, fault-handler stack, stack switching or concurrent mutation of executable bytes."
+              ]
+            },
+            "execution": "RV64-QEMU-instruction-step-pass",
+            "observed_peak_bytes": {
+              "identity": 208,
+              "wide": 384,
+              "choose": 240
+            },
+            "invocations": {
+              "identity": 1,
+              "wide": 1,
+              "choose": 2
+            },
+            "observed_instruction_steps": 18861,
+            "trace_scope": "all executable sections, independent of predicted CFG",
+            "trace_sha256": "389d5775af2b03fa845237ac715dc49962f813a05e95035538a3fa035e96661c",
+            "trace_bytes": 208002948
+          }
+        }
+      },
+      "target_manifest": {
+        "schema": 1,
+        "target": "qemu-rv64-heap-budget-test",
+        "elf_class_bits": 64,
+        "ram_origin": 2147483648,
+        "ram_bytes": 8388608,
+        "max_image_bytes": 8323072,
+        "min_free_bytes": 65536
+      },
+      "assembly_sha256": "6bae548361f4e647d781b21e26cd0c6bd066113603eab7475beb05e407a785ba"
+    }
+  },
+  "sources": {
+    "tools/check_linked_stack.py": "b8bad483f8ad3ef4305e456cca64e1443c7a22eed2d236c245ad407d8b4c4e12",
+    "tools/riscv_compressed.py": "d7f6edd0808e6beba607018ec8e02d905e7e4121a2d8d1c6e14db5107223590e",
+    "tools/check_target_image.py": "72ba9f2776137ac988f2bcc3fe65bb41b36100c29cbe1cd4c8616f7c9700d4ee",
+    "tests/check_linked_stack.py": "43ae0ee1f7c16afa3639e54368b8cbd5de58de160df3433b956696fb2fe1821f",
+    "tests/linked_stack_probe.py": "2d166ff189f4a1777e17b27107420b1926412d04454ea22eec3576865b670185",
+    "tests/check_heap_budget.py": "664a0f12e0cba4a8e0ddb4cbbb5c81bd45c089b648b32e32f6511a796ef08bfb",
+    "tests/check_callback_stack.py": "1ba24dc2da242525aef91a28bd4d11f763dcb6e2ace4f9eefe9d570235f1c28a",
+    "machine/builtin/heap.c": "409d7d0738af7b3184bc08b1a5921085f3f88779aa8d3636de8931dcab3991aa",
+    "machine/builtin/arc.c": "466a581d76d2cb1b76a780b5069f89626c7b540312ec661337482d3dd7291f31"
+  },
+  "native_stack_parity": {
+    "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+    "refusals": [
+      {
+        "case": "short",
+        "reason": "error: stack budget twice: needs 80 bytes, limit 79"
+      },
+      {
+        "case": "wrapper-short",
+        "reason": "error: stack budget run: needs 32 bytes, limit 16"
+      },
+      {
+        "case": "invalid-2",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-3",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-4",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-5",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-6",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "check-only",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "no-entries",
+        "reason": "error: --stack-budget requires builtin RV64 --arc --lib with explicit --export entries"
+      },
+      {
+        "case": "duplicates",
+        "reason": "error: stack budget has duplicate public callback entries"
+      },
+      {
+        "case": "retaining-recursion",
+        "reason": "error: stack budget recur: UNPROVED (recursive-stack:fpr_fn_recur_x4085e4deb060d7e9e2)"
+      },
+      {
+        "case": "uniform-conversion",
+        "reason": "error: stack budget identity: UNPROVED (runtime:fpr_fn__x24arc_x2euniformBoxWord, runtime:fpr_fn__x24arc_x2euniformUnboxWord)"
+      },
+      {
+        "case": "runtime-write",
+        "reason": "error: stack budget write: UNPROVED (runtime:fpr_fn__x24arc_x2ememwriteWord)"
+      },
+      {
+        "case": "overflow-path",
+        "reason": "error: stack budget plus: UNPROVED (runtime:fpr_fn__x24arc_x2eadd)"
+      }
+    ],
+    "predicted_bytes": {
+      "run": 32,
+      "twice": 80,
+      "product": 32
+    },
+    "stack_capacity_bytes": 80,
+    "observed_bytes": {
+      "run": 32,
+      "twice": 80,
+      "product": 32
+    },
+    "execution": "rv64-qemu-pass",
+    "rvc": false,
+    "invocations_per_mode": 192,
+    "guard_bytes_each_side": 16,
+    "allocator_symbols_absent": true,
+    "assembly_sha256": "348216f45870aa0fb0e96a4f0fa7fdd0991ca9c296e1a057e32536c59dd2558e",
+    "target_manifest": {
+      "schema": 1,
+      "target": "qemu-virt-rv64-8m-callback-test",
+      "elf_class_bits": 64,
+      "ram_origin": 2147483648,
+      "ram_bytes": 8388608,
+      "max_image_bytes": 8323072,
+      "min_free_bytes": 65536
+    },
+    "images": {
+      "plain": {
+        "schema": 2,
+        "target": "qemu-virt-rv64-8m-callback-test",
+        "elf_class_bits": 64,
+        "image_sha256": "64a571c3b216156f44a19ded6f0c9695bc333f242d02d86b3f36842915287f37",
+        "manifest_sha256": "d2e6a9d4b3d1938dbe80cc7cc3d03053aa143c6a0e0b6635c6a10e629203f896",
+        "image_bytes": 1528,
+        "image_limit_bytes": 8323072,
+        "static_memory_bytes": 1672,
+        "remaining_ram_bytes": 8386936,
+        "min_free_bytes": 65536,
+        "linked_stack": {
+          "schema": "linked-rv64-stack-v2",
+          "image": {
+            "schema": 2,
+            "target": "qemu-virt-rv64-8m-callback-test",
+            "elf_class_bits": 64,
+            "image_sha256": "64a571c3b216156f44a19ded6f0c9695bc333f242d02d86b3f36842915287f37",
+            "manifest_sha256": "d2e6a9d4b3d1938dbe80cc7cc3d03053aa143c6a0e0b6635c6a10e629203f896",
+            "image_bytes": 1528,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 1672,
+            "remaining_ram_bytes": 8386936,
+            "min_free_bytes": 65536
+          },
+          "entries": [
+            {
+              "symbol": "run",
+              "address": 2147484172,
+              "peak_bytes": 32,
+              "limit_bytes": 32
+            },
+            {
+              "symbol": "twice",
+              "address": 2147484196,
+              "peak_bytes": 80,
+              "limit_bytes": 80
+            },
+            {
+              "symbol": "product",
+              "address": 2147484220,
+              "peak_bytes": 32,
+              "limit_bytes": 32
+            }
+          ],
+          "functions": [
+            {
+              "symbol": "fpr_fn_loop_x400db0125f585b7f4e",
+              "address": 2147483776,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 35,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_product_x400db0125f585b7f4e",
+              "address": 2147483916,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 15,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_run_x400db0125f585b7f4e",
+              "address": 2147483976,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 52,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_twice_x400db0125f585b7f4e",
+              "address": 2147484044,
+              "local_bytes": 48,
+              "peak_bytes": 64,
+              "instructions": 32,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483776,
+                  "symbol": "fpr_fn_loop_x400db0125f585b7f4e",
+                  "retained_bytes": 48
+                }
+              ]
+            },
+            {
+              "symbol": "run",
+              "address": 2147484172,
+              "local_bytes": 16,
+              "peak_bytes": 32,
+              "instructions": 6,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483976,
+                  "symbol": "fpr_fn_run_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            },
+            {
+              "symbol": "twice",
+              "address": 2147484196,
+              "local_bytes": 16,
+              "peak_bytes": 80,
+              "instructions": 6,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147484044,
+                  "symbol": "fpr_fn_twice_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            },
+            {
+              "symbol": "product",
+              "address": 2147484220,
+              "local_bytes": 16,
+              "peak_bytes": 32,
+              "instructions": 6,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483916,
+                  "symbol": "fpr_fn_product_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            }
+          ],
+          "scope": "ordinary ABI entry SP; synchronous RV64 IMC integer code; no asynchronous traps, startup or stack switching",
+          "assumptions": [
+            "Valid memory accesses and RV64 integer callee-saved register/return ABI, shared by the FPR native frame convention.",
+            "No asynchronous interrupt, fault-handler stack, stack switching or concurrent mutation of executable bytes."
+          ]
+        }
+      },
+      "measured": {
+        "schema": 2,
+        "target": "qemu-virt-rv64-8m-callback-test",
+        "elf_class_bits": 64,
+        "image_sha256": "99609fe8dc0e8ac16684ec0d28b725bfda7dbe0e9529478efc04bf99e70b5112",
+        "manifest_sha256": "d2e6a9d4b3d1938dbe80cc7cc3d03053aa143c6a0e0b6635c6a10e629203f896",
+        "image_bytes": 1752,
+        "image_limit_bytes": 8323072,
+        "static_memory_bytes": 1896,
+        "remaining_ram_bytes": 8386712,
+        "min_free_bytes": 65536,
+        "linked_stack": {
+          "schema": "linked-rv64-stack-v2",
+          "image": {
+            "schema": 2,
+            "target": "qemu-virt-rv64-8m-callback-test",
+            "elf_class_bits": 64,
+            "image_sha256": "99609fe8dc0e8ac16684ec0d28b725bfda7dbe0e9529478efc04bf99e70b5112",
+            "manifest_sha256": "d2e6a9d4b3d1938dbe80cc7cc3d03053aa143c6a0e0b6635c6a10e629203f896",
+            "image_bytes": 1752,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 1896,
+            "remaining_ram_bytes": 8386712,
+            "min_free_bytes": 65536
+          },
+          "entries": [
+            {
+              "symbol": "run",
+              "address": 2147484252,
+              "peak_bytes": 32,
+              "limit_bytes": 32
+            },
+            {
+              "symbol": "twice",
+              "address": 2147484296,
+              "peak_bytes": 80,
+              "limit_bytes": 80
+            },
+            {
+              "symbol": "product",
+              "address": 2147484340,
+              "peak_bytes": 32,
+              "limit_bytes": 32
+            }
+          ],
+          "functions": [
+            {
+              "symbol": "fpr_fn_loop_x400db0125f585b7f4e",
+              "address": 2147483776,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 40,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_product_x400db0125f585b7f4e",
+              "address": 2147483936,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 20,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_run_x400db0125f585b7f4e",
+              "address": 2147484016,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 62,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_twice_x400db0125f585b7f4e",
+              "address": 2147484104,
+              "local_bytes": 48,
+              "peak_bytes": 64,
+              "instructions": 37,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483776,
+                  "symbol": "fpr_fn_loop_x400db0125f585b7f4e",
+                  "retained_bytes": 48
+                }
+              ]
+            },
+            {
+              "symbol": "run",
+              "address": 2147484252,
+              "local_bytes": 16,
+              "peak_bytes": 32,
+              "instructions": 11,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147484016,
+                  "symbol": "fpr_fn_run_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            },
+            {
+              "symbol": "twice",
+              "address": 2147484296,
+              "local_bytes": 16,
+              "peak_bytes": 80,
+              "instructions": 11,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147484104,
+                  "symbol": "fpr_fn_twice_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            },
+            {
+              "symbol": "product",
+              "address": 2147484340,
+              "local_bytes": 16,
+              "peak_bytes": 32,
+              "instructions": 11,
+              "compressed_instructions": 0,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483936,
+                  "symbol": "fpr_fn_product_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            }
+          ],
+          "scope": "ordinary ABI entry SP; synchronous RV64 IMC integer code; no asynchronous traps, startup or stack switching",
+          "assumptions": [
+            "Valid memory accesses and RV64 integer callee-saved register/return ABI, shared by the FPR native frame convention.",
+            "No asynchronous interrupt, fault-handler stack, stack switching or concurrent mutation of executable bytes."
+          ]
+        }
+      }
+    }
+  },
+  "compressed_execution": {
+    "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+    "refusals": [
+      {
+        "case": "one-byte-short",
+        "reason": "error: heap budget wide: needs 2640 bytes, limit 2639"
+      },
+      {
+        "case": "admitted",
+        "reason": "error: heap budget wide: needs 2640 bytes, limit 2639"
+      },
+      {
+        "case": "invalid-0",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-1",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-2",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-3",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-4",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-5",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "check-only",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "no-entries",
+        "reason": "error: --heap-budget requires builtin RV64 --arc --lib with explicit --export entries"
+      },
+      {
+        "case": "rv32",
+        "reason": "profile builtin RV32 currently supports manual ownership only; --arc/--raw/--export require RV64"
+      },
+      {
+        "case": "duplicates",
+        "reason": "error: heap budget has duplicate public callback entries"
+      },
+      {
+        "case": "foreign",
+        "reason": "error: heap budget speak: UNPROVED [\"runtime:fpr_fn__x24arc_x2eprint\"]"
+      },
+      {
+        "case": "overflow",
+        "reason": "error: heap budget plus: UNPROVED [\"runtime:fpr_fn__x24arc_x2eadd\"]"
+      }
+    ],
+    "stack_report_refresh_preserves_code_and_unit_identities": true,
+    "stack_report_refreshed_units": 1,
+    "unchanged_instructions_and_data": true,
+    "cached_short_budget_preserves_existing_output": true,
+    "bounds": {
+      "identity": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "arena_bytes": 416
+      },
+      "wide": {
+        "requests": 13,
+        "requested_bytes": 312,
+        "arena_bytes": 2640
+      },
+      "choose": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "arena_bytes": 624
+      }
+    },
+    "maximum_arena_bytes": 2640,
+    "execution": {
+      "status": "RV64-QEMU-PASS",
+      "rvc": true,
+      "calls_per_mode": 4,
+      "images": {
+        "plain": {
+          "admission": {
+            "schema": 2,
+            "target": "qemu-rv64-heap-budget-test",
+            "elf_class_bits": 64,
+            "image_sha256": "020cd723d2fdcc5d1223521ab748c904985a8ecde183f04e659ee02213b7d44f",
+            "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+            "image_bytes": 4784,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 12688,
+            "remaining_ram_bytes": 8375920,
+            "min_free_bytes": 65536
+          },
+          "output": "identity 0\nwide 0\nchoose 0\nHEAP_BUDGET_FIXED_ARENAS_PASS\n",
+          "linked_stack": {
+            "proof": {
+              "schema": "linked-rv64-stack-v2",
+              "image": {
+                "schema": 2,
+                "target": "qemu-rv64-heap-budget-test",
+                "elf_class_bits": 64,
+                "image_sha256": "020cd723d2fdcc5d1223521ab748c904985a8ecde183f04e659ee02213b7d44f",
+                "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+                "image_bytes": 4784,
+                "image_limit_bytes": 8323072,
+                "static_memory_bytes": 12688,
+                "remaining_ram_bytes": 8375920,
+                "min_free_bytes": 65536
+              },
+              "entries": [
+                {
+                  "symbol": "identity",
+                  "address": 2147484760,
+                  "peak_bytes": 224,
+                  "limit_bytes": 224
+                },
+                {
+                  "symbol": "wide",
+                  "address": 2147484796,
+                  "peak_bytes": 400,
+                  "limit_bytes": 400
+                },
+                {
+                  "symbol": "choose",
+                  "address": 2147485000,
+                  "peak_bytes": 256,
+                  "limit_bytes": 256
+                }
+              ],
+              "functions": [
+                {
+                  "symbol": "fpr_fn_choose_x4053095893c799aac0",
+                  "address": 2147483688,
+                  "local_bytes": 48,
+                  "peak_bytes": 208,
+                  "instructions": 80,
+                  "compressed_instructions": 47,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147487416,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147487820,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147487822,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147487886,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 48
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn_identity_x4053095893c799aac0",
+                  "address": 2147483876,
+                  "local_bytes": 32,
+                  "peak_bytes": 192,
+                  "instructions": 49,
+                  "compressed_instructions": 29,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147487416,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147487820,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147487822,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147487886,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn_wide_x4053095893c799aac0",
+                  "address": 2147483976,
+                  "local_bytes": 128,
+                  "peak_bytes": 288,
+                  "instructions": 262,
+                  "compressed_instructions": 113,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147487416,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147487820,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 128
+                    },
+                    {
+                      "address": 2147487822,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 128
+                    },
+                    {
+                      "address": 2147487886,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 128
+                    }
+                  ]
+                },
+                {
+                  "symbol": "identity",
+                  "address": 2147484760,
+                  "local_bytes": 32,
+                  "peak_bytes": 224,
+                  "instructions": 13,
+                  "compressed_instructions": 10,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147483876,
+                      "symbol": "fpr_fn_identity_x4053095893c799aac0",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147487844,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147487886,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "wide",
+                  "address": 2147484796,
+                  "local_bytes": 112,
+                  "peak_bytes": 400,
+                  "instructions": 83,
+                  "compressed_instructions": 65,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147483976,
+                      "symbol": "fpr_fn_wide_x4053095893c799aac0",
+                      "retained_bytes": 112
+                    },
+                    {
+                      "address": 2147487844,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 112
+                    },
+                    {
+                      "address": 2147487886,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 112
+                    }
+                  ]
+                },
+                {
+                  "symbol": "choose",
+                  "address": 2147485000,
+                  "local_bytes": 48,
+                  "peak_bytes": 256,
+                  "instructions": 30,
+                  "compressed_instructions": 22,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147483688,
+                      "symbol": "fpr_fn_choose_x4053095893c799aac0",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147487844,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147487886,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 48
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000596",
+                  "address": 2147485078,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 13,
+                  "compressed_instructions": 6,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "fpr_cpanic",
+                  "address": 2147485170,
+                  "local_bytes": 16,
+                  "peak_bytes": 16,
+                  "instructions": 11,
+                  "compressed_instructions": 5,
+                  "may_return": false,
+                  "calls": [
+                    {
+                      "address": 2147485078,
+                      "symbol": "0x80000596",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x8000084c",
+                  "address": 2147485772,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 24,
+                  "compressed_instructions": 17,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "0x8000088a",
+                  "address": 2147485834,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 51,
+                  "compressed_instructions": 32,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "0x800009ca",
+                  "address": 2147486154,
+                  "local_bytes": 32,
+                  "peak_bytes": 32,
+                  "instructions": 86,
+                  "compressed_instructions": 52,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485772,
+                      "symbol": "0x8000084c",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000a06",
+                  "address": 2147486214,
+                  "local_bytes": 64,
+                  "peak_bytes": 96,
+                  "instructions": 163,
+                  "compressed_instructions": 90,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147485772,
+                      "symbol": "0x8000084c",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147485834,
+                      "symbol": "0x8000088a",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147486154,
+                      "symbol": "0x800009ca",
+                      "retained_bytes": 64
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000c3a",
+                  "address": 2147486778,
+                  "local_bytes": 16,
+                  "peak_bytes": 32,
+                  "instructions": 42,
+                  "compressed_instructions": 14,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_free",
+                  "address": 2147487208,
+                  "local_bytes": 32,
+                  "peak_bytes": 48,
+                  "instructions": 153,
+                  "compressed_instructions": 107,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147485772,
+                      "symbol": "0x8000084c",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147485834,
+                      "symbol": "0x8000088a",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147486778,
+                      "symbol": "0x80000c3a",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_builtin_alloc_adt",
+                  "address": 2147487416,
+                  "local_bytes": 32,
+                  "peak_bytes": 128,
+                  "instructions": 23,
+                  "compressed_instructions": 15,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147486214,
+                      "symbol": "0x80000a06",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147486778,
+                      "symbol": "0x80000c3a",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_builtin_release",
+                  "address": 2147487520,
+                  "local_bytes": 96,
+                  "peak_bytes": 144,
+                  "instructions": 110,
+                  "compressed_instructions": 70,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 96
+                    },
+                    {
+                      "address": 2147486778,
+                      "symbol": "0x80000c3a",
+                      "retained_bytes": 96
+                    },
+                    {
+                      "address": 2147487208,
+                      "symbol": "fpr_free",
+                      "retained_bytes": 96
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2eretain",
+                  "address": 2147487820,
+                  "local_bytes": 16,
+                  "peak_bytes": 48,
+                  "instructions": 29,
+                  "compressed_instructions": 16,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147486778,
+                      "symbol": "0x80000c3a",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2erelease",
+                  "address": 2147487822,
+                  "local_bytes": 16,
+                  "peak_bytes": 160,
+                  "instructions": 8,
+                  "compressed_instructions": 5,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147487520,
+                      "symbol": "fpr_builtin_release",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                  "address": 2147487844,
+                  "local_bytes": 16,
+                  "peak_bytes": 144,
+                  "instructions": 17,
+                  "compressed_instructions": 13,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147487416,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                  "address": 2147487886,
+                  "local_bytes": 16,
+                  "peak_bytes": 160,
+                  "instructions": 26,
+                  "compressed_instructions": 16,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147487520,
+                      "symbol": "fpr_builtin_release",
+                      "retained_bytes": 16
+                    }
+                  ]
+                }
+              ],
+              "scope": "ordinary ABI entry SP; synchronous RV64 IMC integer code; no asynchronous traps, startup or stack switching",
+              "assumptions": [
+                "Valid memory accesses and RV64 integer callee-saved register/return ABI, shared by the FPR native frame convention.",
+                "No asynchronous interrupt, fault-handler stack, stack switching or concurrent mutation of executable bytes."
+              ]
+            },
+            "execution": "RV64-QEMU-instruction-step-pass",
+            "observed_peak_bytes": {
+              "identity": 208,
+              "wide": 384,
+              "choose": 240
+            },
+            "invocations": {
+              "identity": 1,
+              "wide": 1,
+              "choose": 2
+            },
+            "observed_instruction_steps": 18403,
+            "trace_scope": "all executable sections, independent of predicted CFG",
+            "trace_sha256": "a67948fcdf0b2ea65188551109f9d35c7d80dbfac50b96e05a40953e3b14e22f",
+            "trace_bytes": 202169238
+          }
+        },
+        "measured": {
+          "admission": {
+            "schema": 2,
+            "target": "qemu-rv64-heap-budget-test",
+            "elf_class_bits": 64,
+            "image_sha256": "f61517e9c3d09ab717dc8fb5952319b0ee249454c5d2bc810d7689acc28a480a",
+            "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+            "image_bytes": 4992,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 12944,
+            "remaining_ram_bytes": 8375664,
+            "min_free_bytes": 65536
+          },
+          "output": "identity 112\nwide 1344\nchoose 224\nHEAP_BUDGET_FIXED_ARENAS_PASS\n",
+          "linked_stack": {
+            "proof": {
+              "schema": "linked-rv64-stack-v2",
+              "image": {
+                "schema": 2,
+                "target": "qemu-rv64-heap-budget-test",
+                "elf_class_bits": 64,
+                "image_sha256": "f61517e9c3d09ab717dc8fb5952319b0ee249454c5d2bc810d7689acc28a480a",
+                "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+                "image_bytes": 4992,
+                "image_limit_bytes": 8323072,
+                "static_memory_bytes": 12944,
+                "remaining_ram_bytes": 8375664,
+                "min_free_bytes": 65536
+              },
+              "entries": [
+                {
+                  "symbol": "identity",
+                  "address": 2147484760,
+                  "peak_bytes": 224,
+                  "limit_bytes": 224
+                },
+                {
+                  "symbol": "wide",
+                  "address": 2147484796,
+                  "peak_bytes": 400,
+                  "limit_bytes": 400
+                },
+                {
+                  "symbol": "choose",
+                  "address": 2147485000,
+                  "peak_bytes": 256,
+                  "limit_bytes": 256
+                }
+              ],
+              "functions": [
+                {
+                  "symbol": "fpr_fn_choose_x4053095893c799aac0",
+                  "address": 2147483688,
+                  "local_bytes": 48,
+                  "peak_bytes": 208,
+                  "instructions": 80,
+                  "compressed_instructions": 47,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147487614,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147488026,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147488028,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147488092,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 48
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn_identity_x4053095893c799aac0",
+                  "address": 2147483876,
+                  "local_bytes": 32,
+                  "peak_bytes": 192,
+                  "instructions": 49,
+                  "compressed_instructions": 29,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147487614,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147488026,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147488028,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147488092,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn_wide_x4053095893c799aac0",
+                  "address": 2147483976,
+                  "local_bytes": 128,
+                  "peak_bytes": 288,
+                  "instructions": 262,
+                  "compressed_instructions": 113,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147487614,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147488026,
+                      "symbol": "fpr_fn__x24arc_x2eretain",
+                      "retained_bytes": 128
+                    },
+                    {
+                      "address": 2147488028,
+                      "symbol": "fpr_fn__x24arc_x2erelease",
+                      "retained_bytes": 128
+                    },
+                    {
+                      "address": 2147488092,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 128
+                    }
+                  ]
+                },
+                {
+                  "symbol": "identity",
+                  "address": 2147484760,
+                  "local_bytes": 32,
+                  "peak_bytes": 224,
+                  "instructions": 13,
+                  "compressed_instructions": 10,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147483876,
+                      "symbol": "fpr_fn_identity_x4053095893c799aac0",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147488050,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147488092,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "wide",
+                  "address": 2147484796,
+                  "local_bytes": 112,
+                  "peak_bytes": 400,
+                  "instructions": 83,
+                  "compressed_instructions": 65,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147483976,
+                      "symbol": "fpr_fn_wide_x4053095893c799aac0",
+                      "retained_bytes": 112
+                    },
+                    {
+                      "address": 2147488050,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 112
+                    },
+                    {
+                      "address": 2147488092,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 112
+                    }
+                  ]
+                },
+                {
+                  "symbol": "choose",
+                  "address": 2147485000,
+                  "local_bytes": 48,
+                  "peak_bytes": 256,
+                  "instructions": 30,
+                  "compressed_instructions": 22,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147483688,
+                      "symbol": "fpr_fn_choose_x4053095893c799aac0",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147488050,
+                      "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                      "retained_bytes": 48
+                    },
+                    {
+                      "address": 2147488092,
+                      "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                      "retained_bytes": 48
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000596",
+                  "address": 2147485078,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 13,
+                  "compressed_instructions": 6,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "fpr_cpanic",
+                  "address": 2147485170,
+                  "local_bytes": 16,
+                  "peak_bytes": 16,
+                  "instructions": 11,
+                  "compressed_instructions": 5,
+                  "may_return": false,
+                  "calls": [
+                    {
+                      "address": 2147485078,
+                      "symbol": "0x80000596",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000892",
+                  "address": 2147485842,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 24,
+                  "compressed_instructions": 17,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "0x800008d0",
+                  "address": 2147485904,
+                  "local_bytes": 0,
+                  "peak_bytes": 0,
+                  "instructions": 51,
+                  "compressed_instructions": 32,
+                  "may_return": true,
+                  "calls": []
+                },
+                {
+                  "symbol": "0x80000a10",
+                  "address": 2147486224,
+                  "local_bytes": 32,
+                  "peak_bytes": 32,
+                  "instructions": 86,
+                  "compressed_instructions": 52,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485842,
+                      "symbol": "0x80000892",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000a4c",
+                  "address": 2147486284,
+                  "local_bytes": 64,
+                  "peak_bytes": 96,
+                  "instructions": 180,
+                  "compressed_instructions": 96,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147485842,
+                      "symbol": "0x80000892",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147485904,
+                      "symbol": "0x800008d0",
+                      "retained_bytes": 64
+                    },
+                    {
+                      "address": 2147486224,
+                      "symbol": "0x80000a10",
+                      "retained_bytes": 64
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000cb8",
+                  "address": 2147486904,
+                  "local_bytes": 16,
+                  "peak_bytes": 32,
+                  "instructions": 42,
+                  "compressed_instructions": 14,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "0x80000d44",
+                  "address": 2147487044,
+                  "local_bytes": 32,
+                  "peak_bytes": 48,
+                  "instructions": 157,
+                  "compressed_instructions": 103,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147485842,
+                      "symbol": "0x80000892",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147485904,
+                      "symbol": "0x800008d0",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147486904,
+                      "symbol": "0x80000cb8",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_builtin_alloc_adt",
+                  "address": 2147487614,
+                  "local_bytes": 32,
+                  "peak_bytes": 128,
+                  "instructions": 23,
+                  "compressed_instructions": 15,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147486284,
+                      "symbol": "0x80000a4c",
+                      "retained_bytes": 32
+                    },
+                    {
+                      "address": 2147486904,
+                      "symbol": "0x80000cb8",
+                      "retained_bytes": 32
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_builtin_release",
+                  "address": 2147487726,
+                  "local_bytes": 96,
+                  "peak_bytes": 144,
+                  "instructions": 110,
+                  "compressed_instructions": 70,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 96
+                    },
+                    {
+                      "address": 2147486904,
+                      "symbol": "0x80000cb8",
+                      "retained_bytes": 96
+                    },
+                    {
+                      "address": 2147487044,
+                      "symbol": "0x80000d44",
+                      "retained_bytes": 96
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2eretain",
+                  "address": 2147488026,
+                  "local_bytes": 16,
+                  "peak_bytes": 48,
+                  "instructions": 29,
+                  "compressed_instructions": 16,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147486904,
+                      "symbol": "0x80000cb8",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2erelease",
+                  "address": 2147488028,
+                  "local_bytes": 16,
+                  "peak_bytes": 160,
+                  "instructions": 8,
+                  "compressed_instructions": 5,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147487726,
+                      "symbol": "fpr_builtin_release",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2euniformBoxWord",
+                  "address": 2147488050,
+                  "local_bytes": 16,
+                  "peak_bytes": 144,
+                  "instructions": 17,
+                  "compressed_instructions": 13,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147487614,
+                      "symbol": "fpr_builtin_alloc_adt",
+                      "retained_bytes": 16
+                    }
+                  ]
+                },
+                {
+                  "symbol": "fpr_fn__x24arc_x2euniformUnboxWord",
+                  "address": 2147488092,
+                  "local_bytes": 16,
+                  "peak_bytes": 160,
+                  "instructions": 26,
+                  "compressed_instructions": 16,
+                  "may_return": true,
+                  "calls": [
+                    {
+                      "address": 2147485170,
+                      "symbol": "fpr_cpanic",
+                      "retained_bytes": 16
+                    },
+                    {
+                      "address": 2147487726,
+                      "symbol": "fpr_builtin_release",
+                      "retained_bytes": 16
+                    }
+                  ]
+                }
+              ],
+              "scope": "ordinary ABI entry SP; synchronous RV64 IMC integer code; no asynchronous traps, startup or stack switching",
+              "assumptions": [
+                "Valid memory accesses and RV64 integer callee-saved register/return ABI, shared by the FPR native frame convention.",
+                "No asynchronous interrupt, fault-handler stack, stack switching or concurrent mutation of executable bytes."
+              ]
+            },
+            "execution": "RV64-QEMU-instruction-step-pass",
+            "observed_peak_bytes": {
+              "identity": 208,
+              "wide": 384,
+              "choose": 240
+            },
+            "invocations": {
+              "identity": 1,
+              "wide": 1,
+              "choose": 2
+            },
+            "observed_instruction_steps": 18861,
+            "trace_scope": "all executable sections, independent of predicted CFG",
+            "trace_sha256": "6c7ebd932e430f230fb7b6dea7f24c7334e6a34821a54316d65cec361782a9a3",
+            "trace_bytes": 208002948
+          }
+        }
+      },
+      "target_manifest": {
+        "schema": 1,
+        "target": "qemu-rv64-heap-budget-test",
+        "elf_class_bits": 64,
+        "ram_origin": 2147483648,
+        "ram_bytes": 8388608,
+        "max_image_bytes": 8323072,
+        "min_free_bytes": 65536
+      },
+      "assembly_sha256": "6bae548361f4e647d781b21e26cd0c6bd066113603eab7475beb05e407a785ba"
+    }
+  },
+  "compressed_native_stack_parity": {
+    "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+    "refusals": [
+      {
+        "case": "short",
+        "reason": "error: stack budget twice: needs 80 bytes, limit 79"
+      },
+      {
+        "case": "wrapper-short",
+        "reason": "error: stack budget run: needs 32 bytes, limit 16"
+      },
+      {
+        "case": "invalid-2",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-3",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-4",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-5",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-6",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "check-only",
+        "reason": "error: --stack-budget needs a positive decimal byte count and native compilation"
+      },
+      {
+        "case": "no-entries",
+        "reason": "error: --stack-budget requires builtin RV64 --arc --lib with explicit --export entries"
+      },
+      {
+        "case": "duplicates",
+        "reason": "error: stack budget has duplicate public callback entries"
+      },
+      {
+        "case": "retaining-recursion",
+        "reason": "error: stack budget recur: UNPROVED (recursive-stack:fpr_fn_recur_x4085e4deb060d7e9e2)"
+      },
+      {
+        "case": "uniform-conversion",
+        "reason": "error: stack budget identity: UNPROVED (runtime:fpr_fn__x24arc_x2euniformBoxWord, runtime:fpr_fn__x24arc_x2euniformUnboxWord)"
+      },
+      {
+        "case": "runtime-write",
+        "reason": "error: stack budget write: UNPROVED (runtime:fpr_fn__x24arc_x2ememwriteWord)"
+      },
+      {
+        "case": "overflow-path",
+        "reason": "error: stack budget plus: UNPROVED (runtime:fpr_fn__x24arc_x2eadd)"
+      }
+    ],
+    "predicted_bytes": {
+      "run": 32,
+      "twice": 80,
+      "product": 32
+    },
+    "stack_capacity_bytes": 80,
+    "observed_bytes": {
+      "run": 32,
+      "twice": 80,
+      "product": 32
+    },
+    "execution": "rv64-qemu-pass",
+    "rvc": true,
+    "invocations_per_mode": 192,
+    "guard_bytes_each_side": 16,
+    "allocator_symbols_absent": true,
+    "assembly_sha256": "348216f45870aa0fb0e96a4f0fa7fdd0991ca9c296e1a057e32536c59dd2558e",
+    "target_manifest": {
+      "schema": 1,
+      "target": "qemu-virt-rv64-8m-callback-test",
+      "elf_class_bits": 64,
+      "ram_origin": 2147483648,
+      "ram_bytes": 8388608,
+      "max_image_bytes": 8323072,
+      "min_free_bytes": 65536
+    },
+    "images": {
+      "plain": {
+        "schema": 2,
+        "target": "qemu-virt-rv64-8m-callback-test",
+        "elf_class_bits": 64,
+        "image_sha256": "5f87261d0a1131b39d8c10bcfad76d93ca74dbe0f054fa09d624c1de757f5cf9",
+        "manifest_sha256": "d2e6a9d4b3d1938dbe80cc7cc3d03053aa143c6a0e0b6635c6a10e629203f896",
+        "image_bytes": 1152,
+        "image_limit_bytes": 8323072,
+        "static_memory_bytes": 1288,
+        "remaining_ram_bytes": 8387320,
+        "min_free_bytes": 65536,
+        "linked_stack": {
+          "schema": "linked-rv64-stack-v2",
+          "image": {
+            "schema": 2,
+            "target": "qemu-virt-rv64-8m-callback-test",
+            "elf_class_bits": 64,
+            "image_sha256": "5f87261d0a1131b39d8c10bcfad76d93ca74dbe0f054fa09d624c1de757f5cf9",
+            "manifest_sha256": "d2e6a9d4b3d1938dbe80cc7cc3d03053aa143c6a0e0b6635c6a10e629203f896",
+            "image_bytes": 1152,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 1288,
+            "remaining_ram_bytes": 8387320,
+            "min_free_bytes": 65536
+          },
+          "entries": [
+            {
+              "symbol": "run",
+              "address": 2147484024,
+              "peak_bytes": 32,
+              "limit_bytes": 32
+            },
+            {
+              "symbol": "twice",
+              "address": 2147484040,
+              "peak_bytes": 80,
+              "limit_bytes": 80
+            },
+            {
+              "symbol": "product",
+              "address": 2147484056,
+              "peak_bytes": 32,
+              "limit_bytes": 32
+            }
+          ],
+          "functions": [
+            {
+              "symbol": "fpr_fn_loop_x400db0125f585b7f4e",
+              "address": 2147483744,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 35,
+              "compressed_instructions": 24,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_product_x400db0125f585b7f4e",
+              "address": 2147483840,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 15,
+              "compressed_instructions": 12,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_run_x400db0125f585b7f4e",
+              "address": 2147483880,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 52,
+              "compressed_instructions": 37,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_twice_x400db0125f585b7f4e",
+              "address": 2147483924,
+              "local_bytes": 48,
+              "peak_bytes": 64,
+              "instructions": 32,
+              "compressed_instructions": 16,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483744,
+                  "symbol": "fpr_fn_loop_x400db0125f585b7f4e",
+                  "retained_bytes": 48
+                }
+              ]
+            },
+            {
+              "symbol": "run",
+              "address": 2147484024,
+              "local_bytes": 16,
+              "peak_bytes": 32,
+              "instructions": 6,
+              "compressed_instructions": 5,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483880,
+                  "symbol": "fpr_fn_run_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            },
+            {
+              "symbol": "twice",
+              "address": 2147484040,
+              "local_bytes": 16,
+              "peak_bytes": 80,
+              "instructions": 6,
+              "compressed_instructions": 5,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483924,
+                  "symbol": "fpr_fn_twice_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            },
+            {
+              "symbol": "product",
+              "address": 2147484056,
+              "local_bytes": 16,
+              "peak_bytes": 32,
+              "instructions": 6,
+              "compressed_instructions": 5,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483840,
+                  "symbol": "fpr_fn_product_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            }
+          ],
+          "scope": "ordinary ABI entry SP; synchronous RV64 IMC integer code; no asynchronous traps, startup or stack switching",
+          "assumptions": [
+            "Valid memory accesses and RV64 integer callee-saved register/return ABI, shared by the FPR native frame convention.",
+            "No asynchronous interrupt, fault-handler stack, stack switching or concurrent mutation of executable bytes."
+          ]
+        }
+      },
+      "measured": {
+        "schema": 2,
+        "target": "qemu-virt-rv64-8m-callback-test",
+        "elf_class_bits": 64,
+        "image_sha256": "c227c366b07ed9154e5677011da2de9442ea30034e0dac63984a83933e301cf8",
+        "manifest_sha256": "d2e6a9d4b3d1938dbe80cc7cc3d03053aa143c6a0e0b6635c6a10e629203f896",
+        "image_bytes": 1360,
+        "image_limit_bytes": 8323072,
+        "static_memory_bytes": 1496,
+        "remaining_ram_bytes": 8387112,
+        "min_free_bytes": 65536,
+        "linked_stack": {
+          "schema": "linked-rv64-stack-v2",
+          "image": {
+            "schema": 2,
+            "target": "qemu-virt-rv64-8m-callback-test",
+            "elf_class_bits": 64,
+            "image_sha256": "c227c366b07ed9154e5677011da2de9442ea30034e0dac63984a83933e301cf8",
+            "manifest_sha256": "d2e6a9d4b3d1938dbe80cc7cc3d03053aa143c6a0e0b6635c6a10e629203f896",
+            "image_bytes": 1360,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 1496,
+            "remaining_ram_bytes": 8387112,
+            "min_free_bytes": 65536
+          },
+          "entries": [
+            {
+              "symbol": "run",
+              "address": 2147484104,
+              "peak_bytes": 32,
+              "limit_bytes": 32
+            },
+            {
+              "symbol": "twice",
+              "address": 2147484140,
+              "peak_bytes": 80,
+              "limit_bytes": 80
+            },
+            {
+              "symbol": "product",
+              "address": 2147484176,
+              "peak_bytes": 32,
+              "limit_bytes": 32
+            }
+          ],
+          "functions": [
+            {
+              "symbol": "fpr_fn_loop_x400db0125f585b7f4e",
+              "address": 2147483744,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 40,
+              "compressed_instructions": 24,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_product_x400db0125f585b7f4e",
+              "address": 2147483860,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 20,
+              "compressed_instructions": 12,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_run_x400db0125f585b7f4e",
+              "address": 2147483920,
+              "local_bytes": 16,
+              "peak_bytes": 16,
+              "instructions": 62,
+              "compressed_instructions": 37,
+              "may_return": true,
+              "calls": []
+            },
+            {
+              "symbol": "fpr_fn_twice_x400db0125f585b7f4e",
+              "address": 2147483984,
+              "local_bytes": 48,
+              "peak_bytes": 64,
+              "instructions": 37,
+              "compressed_instructions": 16,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483744,
+                  "symbol": "fpr_fn_loop_x400db0125f585b7f4e",
+                  "retained_bytes": 48
+                }
+              ]
+            },
+            {
+              "symbol": "run",
+              "address": 2147484104,
+              "local_bytes": 16,
+              "peak_bytes": 32,
+              "instructions": 11,
+              "compressed_instructions": 5,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483920,
+                  "symbol": "fpr_fn_run_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            },
+            {
+              "symbol": "twice",
+              "address": 2147484140,
+              "local_bytes": 16,
+              "peak_bytes": 80,
+              "instructions": 11,
+              "compressed_instructions": 5,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483984,
+                  "symbol": "fpr_fn_twice_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            },
+            {
+              "symbol": "product",
+              "address": 2147484176,
+              "local_bytes": 16,
+              "peak_bytes": 32,
+              "instructions": 11,
+              "compressed_instructions": 5,
+              "may_return": true,
+              "calls": [
+                {
+                  "address": 2147483860,
+                  "symbol": "fpr_fn_product_x400db0125f585b7f4e",
+                  "retained_bytes": 16
+                }
+              ]
+            }
+          ],
+          "scope": "ordinary ABI entry SP; synchronous RV64 IMC integer code; no asynchronous traps, startup or stack switching",
+          "assumptions": [
+            "Valid memory accesses and RV64 integer callee-saved register/return ABI, shared by the FPR native frame convention.",
+            "No asynchronous interrupt, fault-handler stack, stack switching or concurrent mutation of executable bytes."
+          ]
+        }
+      }
+    }
+  }
+}

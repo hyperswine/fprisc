@@ -1,0 +1,46 @@
+{
+  "target": "RV64 QEMU virt, lp64, C allocator, ARC_CHECK=1",
+  "iterations": 10000,
+  "measurement": "fpr_builtin_alloc_adt requests through private checked workers; no external boundary boxes in measured region",
+  "timing_claim": null,
+  "source_sha256": "763f45cf081badcff6667f3c324e0c001bb1b5e7a7db45ed561b83601677566f",
+  "rows": [
+    {
+      "codegen_revision": 167,
+      "rollback": false,
+      "compiler_sha256": "cf1533c40b33383c9629ed663db569b1f61152c0ff44fca3afa6896be498f4c9",
+      "wrapped_allocations": 10001,
+      "explicit_allocations": 0,
+      "result": 10001,
+      "live_allocation_delta": 0
+    },
+    {
+      "codegen_revision": 167,
+      "rollback": true,
+      "compiler_sha256": "cf1533c40b33383c9629ed663db569b1f61152c0ff44fca3afa6896be498f4c9",
+      "wrapped_allocations": 40004,
+      "explicit_allocations": 0,
+      "result": 10001,
+      "live_allocation_delta": 0
+    },
+    {
+      "codegen_revision": 168,
+      "rollback": false,
+      "compiler_sha256": "5849113433915b766d0eef8a67bb8843a1bec06e2e1395f45f3d9facc61ee002",
+      "wrapped_allocations": 0,
+      "explicit_allocations": 0,
+      "result": 10001,
+      "live_allocation_delta": 0
+    },
+    {
+      "codegen_revision": 168,
+      "rollback": true,
+      "compiler_sha256": "5849113433915b766d0eef8a67bb8843a1bec06e2e1395f45f3d9facc61ee002",
+      "wrapped_allocations": 0,
+      "explicit_allocations": 0,
+      "result": 10001,
+      "live_allocation_delta": 0
+    }
+  ],
+  "reproduction": "tests/check_scalar_wrappers.py qualifies the current zero-allocation loop in both allocators and float ABIs with specialization enabled/disabled; baseline emitted with codegen167 using the same SOURCE and runWrapped/runExplicit exports"
+}

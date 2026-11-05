@@ -27,6 +27,16 @@ def base(path, timeout, alone=False, lock=None):
 
 
 base('tests/test_check_registry.py', 60)
+base('tests/check_target_image.py', 300)
+base('tests/check_type_specialization.py', 600)
+base('tests/check_uniform_aggregate.py', 600)
+base('tests/check_hidden_fields.py', 900)
+base('tests/check_scalar_wrappers.py', 600)
+base('tests/check_builtin_products.py', 600)
+base('tests/check_owned_products.py', 600)
+base('tests/check_open_rows.py', 600)
+base('tests/check_raw_products.py', 600)
+base('tests/check_type_spec_cost.py', 300)
 base('tests/check_core_pipeline.py', 240, lock='cabal')
 base('tests/check_reset_reuse.py', 240)
 base('tests/check_vector_fast.py', 300)
@@ -35,6 +45,19 @@ base('tests/check_string_scan.py', 600)
 base('tests/check_interval.py', 300)
 base('tests/check_early_loops.py', 600)
 base('tests/check_scheduler_locality.py', 240)
+base('tests/check_scheduler_latency.py', 600)
+base('tests/check_resource_admission.py', 600)
+base('tests/check_resource_domains.py', 600)
+base('tests/check_result_sizes.py', 600)
+base('tests/check_native_stack.py', 600, lock='cabal')
+base('tests/check_callback_stack.py', 600)
+base('tests/check_builtin_heap_geometry.py', 300)
+base('tests/check_heap_budget.py', 600)
+base('tests/check_linked_stack.py', 600)
+base('tests/test_aarch64_fuel.py', 60)
+base('tests/check_static_arena.py', 600)
+base('tests/check_static_sequence.py', 600)
+base('tests/check_scalar_admission.py', 600)
 base('tests/check_state_generations.py', 300)
 base('tests/check_alloc_fast.py', 300)
 base('tests/check_channel_alignment.py', 300)
@@ -122,6 +145,7 @@ base('tests/check_pagination.py', 300)
 base('tests/check_typed_vectors.py', 300)
 base('tests/check_list_fusion.py', 300)
 base('tests/check_list_helpers.py', 600)
+base('tests/check_list_materialize.py', 600)
 base('tests/check_fold_scalars.py', 600)
 base('tests/check_abstraction_equivalence.py', 1200)  # 16 spellings, cold+warm compiles, paired timing
 base('tests/check_case_known.py', 300)
@@ -134,6 +158,25 @@ BASE.append(Check('tests/check_layout_table.py:compact', 'tests/check_layout_tab
 BASE.append(Check('tests/check_bump_refills.py:compact', 'tests/check_bump_refills.py', 600, args=('--compact',)))
 base('tests/check_tick_batch.py', 300)
 base('tests/check_ret2.py', 600)
+base('tests/check_product_returns.py', 900)
+base('tests/check_unary_return_lifetimes.py', 600)
+base('tests/check_hosted_worker_admission.py', 600)
+base('tests/check_wide_scalar_workers.py', 600)
+base('tests/check_wide_scalar_rv.py', 600)
+base('tests/check_nested_base_returns.py', 600)
+base('tests/check_base_transport.py', 600)
+base('tests/check_base_variant_returns.py', 600)
+base('tests/check_base_stored_lists.py', 600)
+base('tests/check_base_stored_fields.py', 600)
+base('tests/check_base_carrier.py', 600)
+base('tests/check_imported_carriers.py', 600)
+base('tests/check_nested_returns_rv.py', 600)
+base('tests/check_product_returns_x64.py', 600)
+base('tests/check_base_wrappers.py', 600)
+base('tests/check_base_products.py', 600)
+base('tests/check_base_product_trees.py', 600)
+base('tests/check_finite_field_workers.py', 600)
+base('tests/check_product_returns_rv.py', 600)
 base('tests/check_tuple_scalars.py', 300)
 base('tests/check_typed_case.py', 300)
 base('tests/check_bump_alloc.py', 900)
@@ -180,6 +223,7 @@ GROUPS = {
         ci('tests/check_typed_ir_a64_frames.py'),
         ci('tests/check_typed_ir_x64.py', required=True),
         ci('tests/check_typed_ir_x64_frames.py'),
+        ci('tests/check_product_returns_x64.py', required=True),
         ci('tests/check_typed_ir_x64.py', required=True,
            args=('--entry-optimizations',), variant='entry-optimizations'),
         ci('tests/check_typed_ir_aggregates.py'),
@@ -188,6 +232,15 @@ GROUPS = {
         ci('tests/check_typed_ir_bench.py'),
     ),
     'riscv': (
+        ci('tests/check_native_stack.py', required=True),
+        ci('tests/check_callback_stack.py', required=True),
+        ci('tests/check_builtin_heap_geometry.py', required=True),
+        ci('tests/check_heap_budget.py', required=True),
+        ci('tests/check_linked_stack.py', required=True),
+        ci('tests/test_aarch64_fuel.py'),
+        ci('tests/check_static_arena.py', required=True),
+        ci('tests/check_static_sequence.py', required=True),
+        ci('tests/check_scalar_admission.py', required=True),
         ci('tests/check_typed_ir_rv.py', required=True, args=('--width', '32'), variant='rv32'),
         ci('tests/check_typed_ir_rv.py', required=True, args=('--width', '64'), variant='rv64'),
         ci('tests/check_typed_ir_rv_module.py', required=True),
@@ -198,7 +251,16 @@ GROUPS = {
         ci('tests/check_typed_ir_esp.py', required=True),
         ci('tests/check_typed_ir_builtin.py', required=True),
         ci('tests/check_typed_ir_arc.py', required=True),
+        ci('tests/check_uniform_aggregate.py'),
+        ci('tests/check_hidden_fields.py'),
+        ci('tests/check_scalar_wrappers.py'),
+        ci('tests/check_builtin_products.py'),
+        ci('tests/check_owned_products.py'),
+        ci('tests/check_owned_products.py', args=('--quick', '--normal-inline'), variant='normal-inline'),
+        ci('tests/check_open_rows.py'),
+        ci('tests/check_raw_products.py'),
         ci('tests/check_self_loop_rv64.py'),
+        ci('tests/check_product_returns_rv.py', required=True),
     ),
     'rv64-typed': (
         ci('tests/check_rv64_linux.py', args=('--typed-ir', '--cc', 'riscv64-linux-gnu-gcc',
@@ -211,6 +273,27 @@ GROUPS = {
         # environment invocation too; those are different configurations.
         ci('tests/check_raw.py'),
         ci('tests/check_pair_raw.py'),
+        ci('tests/check_product_returns.py'),
+        ci('tests/check_unary_return_lifetimes.py'),
+        ci('tests/check_hosted_worker_admission.py'),
+        ci('tests/check_wide_scalar_workers.py'),
+        ci('tests/check_wide_scalar_rv.py', required=True),
+        ci('tests/check_nested_base_returns.py'),
+        ci('tests/check_base_transport.py'),
+        ci('tests/check_base_variant_returns.py'),
+        ci('tests/check_base_stored_lists.py'),
+        ci('tests/check_base_stored_fields.py'),
+        ci('tests/check_base_carrier.py'),
+        ci('tests/check_imported_carriers.py'),
+        ci('tests/check_nested_returns_rv.py', required=True),
+        ci('tests/check_base_wrappers.py'),
+        ci('tests/check_base_products.py'),
+        ci('tests/check_base_product_trees.py'),
+        ci('tests/check_finite_field_workers.py'),
+        ci('tests/check_scheduler_latency.py'),
+        ci('tests/check_resource_admission.py'),
+        ci('tests/check_resource_domains.py'),
+        ci('tests/check_result_sizes.py'),
         ci('tests/check_self_loops.py'),
         ci('tests/check_workers.py'),
         ci('tests/check_registers.py'),

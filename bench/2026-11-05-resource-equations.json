@@ -1,0 +1,107 @@
+{
+  "schema": "resource-equation-soundness-v1",
+  "compiler_sha256": "18afe2b7318a4ce93a2d7c405f283bc4c06980e28523468c36a5875dd6444f97",
+  "baseline_sha256": "c2ff2cb7d8deab515b69ebb1701b7e4d8fbf4d1e04806e8cc4ead30debdc75ff",
+  "sources": {
+    "compiler/Cost.hs": "2c25dc043048a4ac131e456be032e656c8d21c08b07bc5a19561d1ae44e60e66",
+    "tests/ResourceCosts.hs": "e389db2af001ddc73e64a03a5c9d04aa5b88e7d33b776eb1a5f7b6ed1642bc4d",
+    "tests/check_resource_admission.py": "db8b7e08396140d2710303a4ea5f9109520e7bf571a2ff47a7840aaa9fdde363",
+    "tests/base/resource_cost_probe.c": "6cc67af0e1e1d426913f8e3005b42813bb1858603851898a776522596a937a7b"
+  },
+  "rows": [
+    {
+      "case": "branching",
+      "mode": "undersized-contract",
+      "result": "refused",
+      "diagnostic": "UNPROVED"
+    },
+    {
+      "case": "branching",
+      "mode": "baseline-undersized-contract",
+      "result": "incorrectly-accepted"
+    },
+    {
+      "case": "branching",
+      "mode": "native-observation",
+      "harts": 1,
+      "stdout": "744\n",
+      "allocations": 31,
+      "physical_bytes": 992
+    },
+    {
+      "case": "branching",
+      "mode": "native-observation",
+      "harts": 4,
+      "stdout": "744\n",
+      "allocations": 31,
+      "physical_bytes": 992
+    },
+    {
+      "case": "partial",
+      "mode": "undersized-contract",
+      "result": "refused",
+      "diagnostic": "OVER"
+    },
+    {
+      "case": "partial",
+      "mode": "baseline-undersized-contract",
+      "result": "incorrectly-accepted"
+    },
+    {
+      "case": "partial",
+      "mode": "native-observation",
+      "harts": 1,
+      "stdout": "56\n",
+      "allocations": 1,
+      "physical_bytes": 64
+    },
+    {
+      "case": "partial",
+      "mode": "native-observation",
+      "harts": 4,
+      "stdout": "56\n",
+      "allocations": 1,
+      "physical_bytes": 64
+    },
+    {
+      "case": "growing",
+      "mode": "undersized-contract",
+      "result": "refused",
+      "diagnostic": "UNPROVED"
+    },
+    {
+      "case": "growing",
+      "mode": "baseline-undersized-contract",
+      "result": "incorrectly-accepted"
+    },
+    {
+      "case": "growing",
+      "mode": "native-observation",
+      "harts": 1,
+      "stdout": "32\n",
+      "allocations": 5,
+      "physical_bytes": 208
+    },
+    {
+      "case": "growing",
+      "mode": "native-observation",
+      "harts": 4,
+      "stdout": "32\n",
+      "allocations": 5,
+      "physical_bytes": 208
+    },
+    {
+      "case": "correct-PAP-capacity",
+      "result": "accepted"
+    },
+    {
+      "case": "exclusive-linear-recursion",
+      "result": "accepted"
+    }
+  ],
+  "limitations": [
+    "Requested-object equations, not physical arena admission.",
+    "Native observations use normal compact cells, with call/loop regions disabled to isolate objects.",
+    "No claim about target WCET, stack fit, or complete runtime storage."
+  ]
+}

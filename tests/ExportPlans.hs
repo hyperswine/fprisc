@@ -61,6 +61,21 @@ checkExports=do
   let soft=adapterPlan (build SoftFloat [KInt,KBool,KWord] KWord)
   check "a safe alternative schedule is admitted by dataflow, not list equality"
     (case checkAdapter soft {adapterArguments=reverse (adapterArguments soft)} of Right _->True;_->False)
+  let uniform=adapterPlan (right (planUniformAdapter HardFloat (CExportSymbol "boxed")
+        (FprEntrySymbol "entry") (Signature mixed KF32)))
+  check "uniform export stages every input before allocating conversions"
+    (adapterUniform uniform && frameBytes (adapterFrame uniform)==80
+      && map argumentPosition (adapterArguments uniform)==[0..7]
+      && map argumentConversion (adapterArguments uniform)==
+        [BoxRaw KF64,TagInt,BoxRaw KF32,BoxBool,BoxRaw KWord,BoxUnit,BoxRaw KAddr,BoxRaw KF64]
+      && adapterResult uniform==UnboxRaw KF32 ReturnF32)
+  refused "uniform frame cannot overlap staged arguments" "staging overlaps"
+    (checkAdapter uniform {adapterFrame=AdapterFrame 16 8})
+  refused "uniform result cannot skip unboxing" "result conversion"
+    (checkAdapter uniform {adapterResult=ReturnF32})
+  check "already tagged scalar exports keep the direct adapter"
+    (not (adapterUniform (adapterPlan (right (planUniformAdapter SoftFloat
+      (CExportSymbol "ints") (FprEntrySymbol "entry") (Signature [KInt,KBool,KUnit] KInt))))))
   let int=TCon "Int" [];decl=TSig "f@unit" ([int],int) []
       prepare req ds arities=Exports.prepareExports SoftFloat req ds arities (const "fpr_fn_checked")
       sourceFailure label needle answer=case answer of
@@ -71,6 +86,15 @@ checkExports=do
   sourceFailure "missing native function" "no such function" (prepare [("f","public")] [decl] M.empty)
   sourceFailure "physical arity must match declared count" "signature has 1 parameters, the function 2" (prepare [("f","public")] [decl] (M.singleton "f@unit" 2))
   sourceFailure "managed types cannot cross this boundary" "not a C-representable type" (prepare [("f","public")] [TSig "f@unit" ([TCon "List" [int]],int) []] (M.singleton "f@unit" 1))
+  let aggregateDecl=TSig "f@unit" ([TCon "List" [int]],TCon "List" [int]) []
+      aggregateRep=Just (Rep.LayoutRep "list-int")
+      checked=M.singleton "f@unit" (Rep.ClosedSignature [aggregateRep] aggregateRep)
+      aggregatePlan=Exports.prepareUniformExportsWith checked SoftFloat [("f","public")]
+        [aggregateDecl] (M.singleton "f@unit" 1) (const "entry")
+  check "closed checked aggregates cross as owned tagged C values"
+    (case aggregatePlan of Right [entry]->adapterSignature (adapterPlan (Exports.exportAdapter entry))==Signature [KValue] KValue;_->False)
+  sourceFailure "missing aggregate evidence cannot invent a uniform contract" "not a C-representable type"
+    (Exports.prepareUniformExports SoftFloat [("f","public")] [aggregateDecl] (M.singleton "f@unit" 1) (const "entry"))
   sourceFailure "a function result is not an additional physical parameter" "not a C-representable type" (prepare [("f","public")] [TSig "f@unit" ([int],TArrT int int) []] (M.singleton "f@unit" 1))
   case prepare [("f","public")] [decl] (M.singleton "f@unit" 1) of
     Right [entry]->do

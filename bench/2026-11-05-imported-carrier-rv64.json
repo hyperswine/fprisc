@@ -1,0 +1,435 @@
+{
+  "status": "PASS",
+  "compiler_sha256": "2ff2e87abdcc393b415ea7baac4f8f3668aa4999b6dd2c500bb07f7ae1d867b0",
+  "kernel_sha256": "fa5212db039b1e62b14eac585ba5f31c01d7a0017f92ced73ce6f089e1273465",
+  "binaries": {
+    "api0": "ce9fc0ea7e43bce4517f11408d6d749c134d54ce815c1abe66f79f5c4a177f6c",
+    "api1": "c46b27249faa9b5e3ad4fa46821b5eda5e12fee10ae2184365a404c798a50892",
+    "constructor0": "bc8772589bb9ab5e065462827367d7dae9f9340d4876b26d27bac6e3abe6258d",
+    "constructor1": "8d58c856febfd0d0c69bbab18d244286a5c2b52d1646643d2cb891bdc8877d84",
+    "explicit0": "285e02779aedc05308f9f8d2bdc6cb9b6e8ccc80b268d9b0e0f82f7cf0a059e3",
+    "explicit1": "39c8fb4e778344093707a3bafce398da397c866f3553a69fbead402950efa24c",
+    "control0": "070fdea43a79741d3d997240c51872f69329dcd6440cb9a0745445f3eefda31f",
+    "control1": "dbde3435b737037b2e9f3f38f8181fec7247de72967487c6054d512cbe4da03b",
+    "region0": "dc446f399696f695bff4ca449589e44b22ee6228f5070ea36d5c33533741230c",
+    "region1": "b0f85e5dea5ca2e050ec93c6c0c69d1dada4b4da1c09a48dee61a39036fc0ee2"
+  },
+  "sources": {
+    "api": "b3791a29c1a984ed65050e49127f6b42200022bb819e505ee191ef734938b2eb",
+    "constructor": "259f4cc1939ac4307964f010a4fd0913f2a3b5b340ac1ff9812f5c6eac82582c",
+    "explicit": "6bc9a9f989de66ab517611c6070915f73b458a3f18544d7db74875199fa6fe88",
+    "control": "b8af8979375d642b9006497d195873f1a09123ccf1cbc81c47f34c8e774e7d2d",
+    "region": "98f6cb93c74d5ee2c73244d7c9ef3b77d5347f8a1f181170f822c5f5a7b565c6"
+  },
+  "console_sha256": "3e0943924f987309a3e87e8a9f867d26b3613bdac79ef503f2af5598dc36900f",
+  "rows": [
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "api0",
+      "allocations": 6136,
+      "bytes": 368112
+    },
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "api0",
+      "allocations": 6136,
+      "bytes": 368112
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "api1",
+      "allocations": 5624,
+      "bytes": 351728
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "api1",
+      "allocations": 5624,
+      "bytes": 351728
+    },
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "constructor0",
+      "allocations": 6136,
+      "bytes": 368112
+    },
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "constructor0",
+      "allocations": 6136,
+      "bytes": 368112
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "constructor1",
+      "allocations": 5624,
+      "bytes": 351728
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "constructor1",
+      "allocations": 5624,
+      "bytes": 351728
+    },
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "explicit0",
+      "allocations": 5624,
+      "bytes": 351728
+    },
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "explicit0",
+      "allocations": 5624,
+      "bytes": 351728
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "explicit1",
+      "allocations": 5624,
+      "bytes": 351728
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "262656\n",
+      "trap": null,
+      "binary": "explicit1",
+      "allocations": 5624,
+      "bytes": 351728
+    },
+    {
+      "case": "effects",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "3\n2\n1\n6\n7\n8\n21\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "divide",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "3\n",
+      "trap": "division by zero",
+      "binary": "control0"
+    },
+    {
+      "case": "observes",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "Meters 1\nMeters 2\n3\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "max",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "min",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "overflow",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "actor",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "Meters 2\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "ordinary",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "12\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "effects",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "3\n2\n1\n6\n7\n8\n21\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "divide",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "3\n",
+      "trap": "division by zero",
+      "binary": "control0"
+    },
+    {
+      "case": "observes",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "Meters 1\nMeters 2\n3\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "max",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "min",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "overflow",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "actor",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "Meters 2\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "ordinary",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "12\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "effects",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "3\n2\n1\n6\n7\n8\n21\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "divide",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "3\n",
+      "trap": "division by zero",
+      "binary": "control1"
+    },
+    {
+      "case": "observes",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "Meters 1\nMeters 2\n3\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "max",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "min",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "overflow",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "actor",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "Meters 2\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "ordinary",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "12\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "effects",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "3\n2\n1\n6\n7\n8\n21\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "divide",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "3\n",
+      "trap": "division by zero",
+      "binary": "control1"
+    },
+    {
+      "case": "observes",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "Meters 1\nMeters 2\n3\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "max",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "min",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "overflow",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "actor",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "Meters 2\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "ordinary",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "12\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "arena-copy",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "1\n",
+      "trap": null,
+      "binary": "region0"
+    },
+    {
+      "case": "arena-copy",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "1\n",
+      "trap": null,
+      "binary": "region0"
+    },
+    {
+      "case": "arena-copy",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "1\n",
+      "trap": null,
+      "binary": "region1"
+    },
+    {
+      "case": "arena-copy",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "1\n",
+      "trap": null,
+      "binary": "region1"
+    }
+  ]
+}

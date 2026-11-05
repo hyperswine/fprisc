@@ -24,7 +24,7 @@ import qualified Codegen.Calling as Calling
 import Codegen.Selected
 import qualified Codegen.Opcode as Opcode
 import qualified Codegen.Annotation as Annotation
-import Control.Monad (unless, forM_)
+import Control.Monad (unless, forM_, replicateM)
 import Data.List (isInfixOf, sort)
 import qualified Data.IntMap.Strict as IM
 import qualified Data.IntSet as IS
@@ -263,6 +263,18 @@ main = do
   chain <- moves [(PR c2, PR a0), (PR a0, PR a1)]
   check "a chain is ordered without a scratch register" (length chain == 2 && M.toList (M.restrictKeys (foldl apply start chain) (S.fromList [a0, c2])) == [(a0, "B"), (c2, "A")])
   refused "two copies into one register" "two copies into one place" (resolveCopies plainCfg "copies" [(PR a0, PR a1), (PR a0, PR c1)])
+  -- A private wide result can occupy a scratch register. Compare all 256
+  -- simultaneous assignments against an independent snapshot oracle; this
+  -- includes identity and already-completed scratch destinations followed
+  -- by cycles among the remaining registers.
+  let bank=[a0,a1,c1,t1]
+      original=M.fromList (zip bank ["A","B","C","T"])
+  forM_ (replicateM 4 bank) $ \sources -> do
+    placed<-moves (zip (map PR bank) (map PR sources))
+    let actual=foldl apply original placed
+        expected=M.fromList (zip bank [original M.! p | p<-sources])
+    check "parallel copies preserve every completed or identity result"
+      (M.restrictKeys actual (S.fromList bank)==expected)
   -- tied definitions: a copy unless the use dies there
   let tiedLive = fn [v 0, v 1] [I (addTied 2 0 1), I (add 3 2 0), I (ret 3)]
       tiedDies = fn [v 0, v 1] [I (addTied 2 0 1), I (add 3 2 1), I (ret 3)]

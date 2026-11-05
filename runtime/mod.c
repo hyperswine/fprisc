@@ -68,6 +68,7 @@ static int layout_add(const uw *table) {
     const uw *r=table+1+3*i;
     if (r[0]>UINT32_MAX || r[0]==(uw)-1 || r[1]>UINT32_MAX ||
         r[2]>((uw)-1-8-FPR_MANAGED_PREFIX-15)/sizeof(V)) return -1;
+    if (r[0]==T_STORED_LIST && r[2]!=2+(r[1]&7)) return -1;
     if (r[0]>T_TUPN && r[0]<T_TUPN_END && (r[1] || r[2]!=r[0]-T_TUPN)) return -1;
     layout_slot *found=old?layout_find(old,r[0],r[1]):0;
     if (found && found->tid_plus_one) {
@@ -120,6 +121,7 @@ int fpr_layout_register(const uw *table) {
   return result;
 }
 uw fpr_layout_fields(uw tid, uw variant) {
+  if (tid==T_STORED_LIST) return 2+(variant&7);
   /* Wide tuples encode their arity in the reserved type-id range. They
    * are synthesized during erasure and need no image-owned table row. */
   if (tid>T_TUPN && tid<T_TUPN_END) {

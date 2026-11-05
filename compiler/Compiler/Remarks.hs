@@ -17,7 +17,7 @@ import qualified Data.Set as Set
 import System.IO (hPutStrLn,stderr)
 
 collect :: [N.NativeCore] -> [Regions.Result] -> [F.FusionNote] -> [R.Remark]
-collect natives regions fusion=Set.toAscList (Set.fromList (paths++fusions++boundaries++attempts))
+collect natives regions fusion=Set.toAscList (Set.fromList (paths++fusions++boundaries++attempts++typeSpecialization))
   where
     program=M.unions (map N.nativeProgram natives)
     homes=M.unions [M.map N.checkedOwner (N.nativeDefinitions native) | native<-natives]
@@ -33,6 +33,10 @@ collect natives regions fusion=Set.toAscList (Set.fromList (paths++fusions++boun
       D.InlineDecision n target why->R.Remark n (heat n) (R.InlineAttempt target why)
       D.CallbackDecision n target why->R.Remark n (heat n) (R.CallbackAttempt target why)
       | native<-natives,decision<-closedDecisions (N.nativeClosed native)]
+    typeSpecialization=[R.Remark n (heat n) (R.TypeSpecializationFallback why)
+      | native<-natives,(n,why)<-N.nativeTypeSpecNotes native]
+      ++[R.Remark owner (heat owner) (R.TypeSpecializationInstance name)
+        | native<-natives,(name,owner)<-M.toList (N.nativeTypeInstances native)]
     paths=[R.Remark n (heat n) (R.CompatibilityLowering why) | native<-natives,(n,why)<-M.toList (N.nativeCompatibility native)]
     fusions=map fusionRemark fusion
     fusionRemark (F.FusionNote n _ _ _ why)=R.Remark n (heat n) (refusal why)

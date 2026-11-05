@@ -32,6 +32,7 @@ dumpFn fn =
       OString s -> "string " ++ show s
       OBoxedFloat width bits -> "boxed-float" ++ show (widthBits width) ++ " " ++ show bits
       OMake t c fs -> "make " ++ show t ++ ":" ++ show c ++ args fs
+      OMakeSpine v fs -> "make-spine " ++ value v ++ args fs
       OReuse t c r fs -> "reuse " ++ value r ++ " as " ++ show t ++ ":" ++ show c ++ args fs
       OAddress v -> "address " ++ value v
       OIndex a i -> "index " ++ value a ++ " " ++ value i
@@ -71,8 +72,8 @@ dumpFn fn =
       OFloat32Bin o a b -> "fbin32 " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
       OFloat32Cmp o a b -> "fcmp32 " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OCall c as -> "call " ++ callee c ++ args as
-      OCall2 c as -> "call2 " ++ callee c ++ args as
-      OSecond -> "second"
+      OCallProduct c as -> "callproduct " ++ callee c ++ args as
+      OResult i -> "result " ++ show i
       OSafepoint -> "safepoint"
       OSafepointN n -> "safepoint x" ++ show n
       OSimdPair int e caps a -> "simd.pair " ++ (if int then "int " else "f64 ") ++ simdText e ++ " captures=[" ++ unwords (map value caps) ++ "] " ++ value a
@@ -82,7 +83,7 @@ dumpFn fn =
       OStackCheck -> "stackcheck"
     term = \case
       TRet v -> "ret " ++ value v
-      TRet2 a b -> "ret2 " ++ value a ++ " " ++ value b
+      TRetProduct vs -> "retproduct " ++ unwords (map value vs)
       TBr b as -> "br " ++ block b ++ args as
       TCondBr c t as e bs -> "condbr " ++ value c ++ " -> " ++ block t ++ args as ++ " | " ++ block e ++ args bs
       TTailCall c as -> "tailcall " ++ callee c ++ args as
@@ -100,7 +101,7 @@ dumpFn fn =
       TPred -> "pred"
       TAddr -> "addr"
       TF64 -> "f64"
-      TPair -> "pair"
+      TProduct n -> "product" ++ show n
 
 simdText :: SimdExpr -> String
 simdText = \case

@@ -1,0 +1,404 @@
+{
+  "schema": "nested-product-validation-v1",
+  "codegen_revision": 184,
+  "arc_revision": 22,
+  "compiler_sha256": "65a4d73bbe265de4ee4cbe723d54bf64292b35491728263962a1d0e44535d6b6",
+  "checks": [
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 17.04,
+      "log_sha256": "7aedaf2c70089c5c0093ea3e32e805c9febb02583b0a1b467e706f9b839dc156",
+      "output_tail": [
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Test suite if-precedence-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/if-precedence-check/test/fp-risc-0.13.1-if-precedence-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Result sizes: typed list patterns, accumulator/direct induction, signed repeat/range, UTF-8 bytes and false-invariant refusals passed",
+        "Typed inlining: checked instantiation, strict arguments/traps, fuel, fresh identities, polymorphic captures, hygiene and imported code homes passed",
+        "Typed vector reads: scoped tuple plans, operation/type/ownership refusals, stable identities, closed code, idempotence and independently evaluated handle shadowing passed",
+        "Typed normalization: checked types/identities, aliases/let sinking, strict CAFs/traps/fuel/allocations, captures, staged matches, vector snapshots and display-shadowing refusals passed",
+        "Typed fusion: checked map/filter/captured composites, stable code homes, strict effect/division refusals, independent lane answers and fixed points passed",
+        "Typed programs: owned schemas/physical arities, cross-definition identities, explicit compatibility, stable private code and independent native-IR answers passed",
+        "Test suite TypedProgram: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/TypedProgram/test/fp-risc-0.13.1-TypedProgram.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ]
+    },
+    {
+      "name": "baseline",
+      "command": [
+        "python3",
+        "tests/check_owned_products.py",
+        "--quick",
+        "--compiler",
+        "/tmp/fpr-before-nested-products-184",
+        "--nested-boxes",
+        "1",
+        "--output",
+        "bench/2026-11-05-nested-products-before.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 2.21,
+      "log_sha256": "1126dd6df09417b56b3fbb962d29cc3cad18b6e8b7315d68755eafd2c52d8afc",
+      "output_tail": [
+        "packets, soft, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS"
+      ]
+    },
+    {
+      "name": "owned",
+      "command": [
+        "python3",
+        "tests/check_owned_products.py",
+        "--output",
+        "bench/2026-11-05-nested-products-owned.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 80.53,
+      "log_sha256": "c84abf65cf71d5a4bef1a93ba5a9598ff7b043374ce04cb2be8c26ab502bd917",
+      "output_tail": [
+        "packets: effects, strict unused fields, dead arms and integer endpoints PASS",
+        "packets, soft, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "packets, soft, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "packets, hard, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "packets, hard, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec: effects, strict unused fields, dead arms and integer endpoints PASS",
+        "no-type-spec, soft, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec, soft, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec, hard, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec, hard, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed: effects, strict unused fields, dead arms and integer endpoints PASS",
+        "boxed, soft, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed, soft, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed, hard, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed, hard, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS"
+      ]
+    },
+    {
+      "name": "builtin",
+      "command": [
+        "python3",
+        "tests/check_builtin_products.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 50.46,
+      "log_sha256": "d30b30050dd7b276a51188946b70f4f206455c4d3cfd7179fb0a86f214a2275e",
+      "output_tail": [
+        "False-False: strict effects, dead-arm choice, unused-field traps and integer limits PASS",
+        "c, soft, boxed=False, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "fpr, soft, boxed=False, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "c, hard, boxed=False, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "fpr, hard, boxed=False, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "False-True: strict effects, dead-arm choice, unused-field traps and integer limits PASS",
+        "c, soft, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "fpr, soft, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "c, hard, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "fpr, hard, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "True-False: strict effects, dead-arm choice, unused-field traps and integer limits PASS",
+        "c, soft, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0",
+        "fpr, soft, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0",
+        "c, hard, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0",
+        "fpr, hard, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0"
+      ]
+    },
+    {
+      "name": "uniform",
+      "command": [
+        "python3",
+        "tests/check_uniform_aggregate.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 78.36,
+      "log_sha256": "a57414b18e52ab65c0ea0b54cb7b71e2eed49121eafe08fe6463963bda54fbe5",
+      "output_tail": [
+        "Production aggregate converters: 6000-node sharing/roundtrip and refusals under ASan/UBSan: PASS",
+        "c allocator, rollback=False: generated list/record/tuple/string boundaries, sharing and zero leaks: PASS",
+        "fpr allocator, rollback=False: generated list/record/tuple/string boundaries, sharing and zero leaks: PASS",
+        "c allocator, rollback=True: generated list/record/tuple/string boundaries, sharing and zero leaks: PASS",
+        "fpr allocator, rollback=True: generated list/record/tuple/string boundaries, sharing and zero leaks: PASS",
+        "c allocator: aggregate case 0: PASS",
+        "c allocator: aggregate case 1: PASS",
+        "c allocator: aggregate case 2: PASS",
+        "c allocator: aggregate case 3: PASS",
+        "c allocator: aggregate case 4: PASS",
+        "fpr allocator: aggregate case 0: PASS",
+        "fpr allocator: aggregate case 1: PASS",
+        "fpr allocator: aggregate case 2: PASS",
+        "fpr allocator: aggregate case 3: PASS",
+        "fpr allocator: aggregate case 4: PASS"
+      ]
+    },
+    {
+      "name": "hidden",
+      "command": [
+        "python3",
+        "tests/check_hidden_fields.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 60.08,
+      "log_sha256": "11ae64fc281987efe8ceba381b83ac854ee7e9d55ed610231c2525305ab6d627",
+      "output_tail": [
+        "c, rollback=True, hidden field case 2: PASS",
+        "c, rollback=True, hidden field case 3: PASS",
+        "c, rollback=True, hidden field case 4: PASS",
+        "c, rollback=True, hidden field case 5: PASS",
+        "c, rollback=True, hidden field case 6: PASS",
+        "fpr, rollback=True, hidden field case 0: PASS",
+        "fpr, rollback=True, hidden field case 1: PASS",
+        "fpr, rollback=True, hidden field case 2: PASS",
+        "fpr, rollback=True, hidden field case 3: PASS",
+        "fpr, rollback=True, hidden field case 4: PASS",
+        "fpr, rollback=True, hidden field case 5: PASS",
+        "fpr, rollback=True, hidden field case 6: PASS",
+        "rollback=True, construct-effects: ordered effects and named failure PASS",
+        "rollback=True, construct-trap: ordered effects and named failure PASS",
+        "rollback=True, argument-effects: ordered effects and named failure PASS"
+      ]
+    },
+    {
+      "name": "scalar-wrappers",
+      "command": [
+        "python3",
+        "tests/check_scalar_wrappers.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 44.23,
+      "log_sha256": "3e1edf9e1f7c365202e1ea0004f6330d4edf1448aa10afdbadb217e59f2be62d",
+      "output_tail": [
+        "local-only layouts: raw=False, rollback=False, fpr: zero allocations and exact values PASS",
+        "local-only layouts: raw=False, rollback=True, c: zero allocations and exact values PASS",
+        "local-only layouts: raw=False, rollback=True, fpr: zero allocations and exact values PASS",
+        "local-only layouts: raw=True, rollback=False, c: zero allocations and exact values PASS",
+        "local-only layouts: raw=True, rollback=True, c: zero allocations and exact values PASS",
+        "rollback=False: argument effects, integer-limit/division failures and pattern scrutinee execution PASS",
+        "c, soft, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, soft, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "c, hard, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, hard, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "rollback=True: argument effects, integer-limit/division failures and pattern scrutinee execution PASS",
+        "c, soft, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, soft, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "c, hard, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, hard, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS"
+      ]
+    },
+    {
+      "name": "heap",
+      "command": [
+        "python3",
+        "tests/check_heap_budget.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 1.58,
+      "log_sha256": "87beec7f823ee7f46a5d17a56029bf23639c9475251a1d23c8100a3c46c6f7e1",
+      "output_tail": [
+        "Heap admission: conversion requests, exact/short limits, zero-allocation raw entry and unknown-boundary refusals PASS",
+        "RV64 plain/measured: 256 allocated callbacks per mode, fixed-arena guards and complete reclamation PASS"
+      ]
+    },
+    {
+      "name": "compile-cost",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 63.86,
+      "log_sha256": "64201421a8add31e03166b9effcd83710f7159a5cd78baf8cf673305c2a428d4",
+      "output_tail": [
+        "hello: 1.59 GB allocated, 45 MB peak live, 0.8 s (+8.3% allocation, +5.3% peak vs baseline)",
+        "std-live: 32.68 GB allocated, 433 MB peak live, 18.7 s (+9.2% allocation, +7.4% peak vs baseline)",
+        "pos1: 68.98 GB allocated, 720 MB peak live, 44.3 s (+6.4% allocation, -13.7% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256",
+        "--require-baseline",
+        "--record",
+        "bench/2026-11-05-nested-products-cost.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 3.63,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "output_tail": [
+        "16 helpers: same 10832 code bytes/55 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 0.16,
+      "log_sha256": "30b4a5543e1f0f401158dd78ca7700bd7f21447f251d2c4614a3fa4d980d4a02",
+      "output_tail": [
+        "..check_ci: tests/check_rv64_linux.py::typed-runtime",
+        "check_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s",
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.075s",
+        "",
+        "OK"
+      ]
+    },
+    {
+      "name": "raw",
+      "command": [
+        "python3",
+        "tests/check_raw_products.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "log_sha256": "27207ad7e9da0a47f3c3684a66fa9bb203cee657c1aca7bee77a73aed812c446",
+      "output_tail": [
+        "Expanded register ABI, boxed export, incompatible generic representations, heap storage and product rollback: refused before emission PASS",
+        "type-spec rollback=False, nested=False: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+        "type-spec rollback=False, nested=True: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+        "soft, type-spec rollback=False: flat/nested eight-word products, recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "hard, type-spec rollback=False: flat/nested eight-word products, recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "c, type-spec rollback=False: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "fpr, type-spec rollback=False: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "Expanded register ABI, boxed export, incompatible generic representations, heap storage and product rollback: refused before emission PASS",
+        "type-spec rollback=True, nested=False: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+        "type-spec rollback=True, nested=True: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+        "soft, type-spec rollback=True: flat/nested eight-word products, recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "hard, type-spec rollback=True: flat/nested eight-word products, recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "c, type-spec rollback=True: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "fpr, type-spec rollback=True: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS"
+      ]
+    },
+    {
+      "name": "work",
+      "command": [
+        "python3",
+        "tools/bench_owned_products.py",
+        "--nested",
+        "--baseline-compiler",
+        "/tmp/fpr-before-nested-products-184",
+        "--record",
+        "bench/2026-11-05-nested-products-work.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "log_sha256": "903a3f96a45cbf953c1c2a9186b03d05af451d3bef2d4edd4d382f2f8985696b",
+      "output_tail": [
+        "before {'100': {'plain': [67231, 67231, 67231], 'owned': [135019, 135019, 135019]}, '1000': {'plain': [654964, 654964, 654964], 'owned': [1325752, 1325752, 1325752]}, '10000': {'plain': [6531997, 6531997, 6531997], 'owned': [13232785, 13232785, 13232785]}}",
+        "after {'100': {'plain': [67231, 67231, 67231], 'owned': [37736, 37736, 37736]}, '1000': {'plain': [654964, 654964, 654964], 'owned': [362669, 362669, 362669]}, '10000': {'plain': [6531997, 6531997, 6531997], 'owned': [3611702, 3611702, 3611702]}}",
+        "rollback {'100': {'plain': [67233, 67233, 67233], 'owned': [405694, 405694, 405694]}, '1000': {'plain': [654966, 654966, 654966], 'owned': [4008427, 4008427, 4008427]}, '10000': {'plain': [6531999, 6531999, 6531999], 'owned': [40035460, 40035460, 40035460]}}"
+      ]
+    },
+    {
+      "name": "arenas",
+      "command": [
+        "python3",
+        "tests/check_static_arena.py",
+        "--require-execution",
+        "--nested-baseline-compiler",
+        "/tmp/fpr-before-nested-products-184",
+        "--record",
+        "bench/2026-11-05-nested-products-arenas.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "log_sha256": "9a28d55366482e89fdd12d8d73e53a2d0756a234e27865ec096ff44a5556b4b7",
+      "output_tail": [
+        "Saved compiler: nested loop refuses admission for its allocating cycle PASS",
+        "identity: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "wide: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "arity-limit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-yes: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-no: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-low: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-high: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "bool: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "unit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "mixed: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-zero: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-wrap: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-long: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+      ]
+    }
+  ],
+  "haskell_suites": 41,
+  "baseline_compiler_sha256": "f78d082e4c6564c0cf7f4dbd0442d4dc2125c38729377a83de29818a3790207c",
+  "inputs_sha256": {
+    "compiler/Codegen.hs": "2811f977bddda31eb3d6a45b739d9cd8ba89a5d552a0166f1a600e3c1ca82009",
+    "compiler/Arc.hs": "caedaf286e43229e371ee9dc4a61d9a3ab098fb23b730a4e078dbdb57758c8b0",
+    "compiler/Arc/Products.hs": "12bcced7d1aec5557c0f9d34cb59bbabd36248f6847b94988584c3eee3d92a83",
+    "compiler/Representation.hs": "18189be2aff6ce76a25127e994aa0f9aec677134f3e41aec39a157737efc5ae6",
+    "compiler/Representation/Types.hs": "8d08b2c0b983c45f3ba073c6a8b790690906e8f5116a0fd7bc8506397ad3d570",
+    "compiler/Interrupt.hs": "55b3c004980e20bc829fedf46b74f0bb2ea7ffa0e72e712a972adcda85a688f9",
+    "compiler/Core/ProductABI.hs": "968536fc2d27c2e594f4753d120f52b352ffadb9f9ca0473770286fdfc36e445",
+    "compiler/Codegen/Calling.hs": "1cb8aaf67be222d56e782e925b3a0aab3e7c20af3df2e55e8f61c0190ae22ba5",
+    "tests/RepresentationSpecialization.hs": "552a410562127fb64bd356d3dc81c6f9fa4cc2640c17702a9e6cbeab52e0fd1b",
+    "tests/check_owned_products.py": "6654b8d7e85e989f32a84dea4cd5f3562c349eb7aef7a2b58f1d0966be51c14d",
+    "tests/check_raw_products.py": "23689cc74bf0116ec4fab3a328d6ef8b6f92f3ccaa4dd5180f135a184c44fb25",
+    "tests/check_builtin_products.py": "f814880ccef91b147efaa3f86bcc8bdda3c2e8b5b96fa2bd0620d2e4ef5bcc0b",
+    "tests/check_uniform_aggregate.py": "e1127e84cfba7ba5a0947fb168594e03d99bb656894a439e56a337d2e7fc2694",
+    "tests/check_hidden_fields.py": "010baaf50a779d20211d768b72f149ac0326d49c2e79eb09f91842a349427682",
+    "tests/check_scalar_wrappers.py": "0528558add468ebfe3db6bd48c937e28115991378f3f7481e5ffb7a345444a2b",
+    "tests/check_heap_budget.py": "664a0f12e0cba4a8e0ddb4cbbb5c81bd45c089b648b32e32f6511a796ef08bfb",
+    "tests/check_static_arena.py": "5ef0ce641b3befeba6a11a9c32c5f8d6698937cb37f84d39c7897b294a7b8342",
+    "tests/check_compile_budget.py": "2ecb43e7bc87c3cc5a4a77675c3768d96a9ac77ddab77a0947ff18a72ba973fb",
+    "tests/compile_budget.json": "1030bccbc557ddea3cd2ae9e0dd82d3791044bfbf0faacc67cae465099257a69",
+    "tests/check_type_spec_cost.py": "aac8ce91c99984bc2f9eb31c91c376504fc2d523cc6771d286546cc05993be7f",
+    "tests/type_spec_cost_budget.json": "30cc5450eb143199cef5966239aab4263b8d0111d6fbfc92686d1d525f0228ee",
+    "tests/check_registry.py": "1da2c23ceca858779c1084596382498dcf38c07cdf8a50bfe24014e24b31d97a",
+    "tests/test_check_registry.py": "02a2c901e8a2b699852587638b503be1222c9c7b7bdf3c3eeb525c27ec1aaf00",
+    "tools/bench_owned_products.py": "ffc590c7dc173957254d0ca14762382e2abd12c1f4233c297347e3e04e4026de",
+    "tools/build_static_arena.py": "883e4132858fff42128583987ce796526c48e0c85f3765ccabd09498c79e34d5",
+    "tools/static_arena_runtime.py": "71fdce0309c5a2b628312254a4a8d6212acafa1585b6b944f5d401944c6adf97",
+    "tools/check_linked_stack.py": "b8bad483f8ad3ef4305e456cca64e1443c7a22eed2d236c245ad407d8b4c4e12",
+    "machine/builtin/contracts/rv64-c-heap-v1.json": "e2a0cd0eedaa851a7ba1745b16eea2d3f49f554b3c67d95223dd4fc2081096ab",
+    "fp-risc.cabal": "eaa07756c5a878e3894a65f6a28d12860301f905594e8533e8993dc18eb86333",
+    "docs/2026-11-05-NESTED-PRODUCT-PACKETS.md": "a460010543be9bb474a42fa86b86cb26eed963d8a52f9cdc007495d656a26519",
+    "docs/2026-11-05-OWNED-PRODUCT-PACKETS.md": "921b7bbabcc58b7cc8cb9b1a44834e34750e83ba04360760a0b04b92a3d71d02",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "bc9d968c7e5d31d51a8a41fc51950779353a83e357e1bb9126b0decd26c019e4",
+    "bench/2026-11-05-nested-products-before.json": "b342feec2fedfa06832e33eb145161a9ae5c79dd6cf6004675d56a89b23f6fb4",
+    "bench/2026-11-05-nested-products-owned.json": "d362ffdc4c9d9f348abf3cf7f8147ee98b66227465596a087b0783d95ace6cab",
+    "bench/2026-11-05-nested-products-work.json": "aa9fca479980bcd9d49e29cbadf1683f6b23b2ae4ce75b7672692b34c6891252",
+    "bench/2026-11-05-nested-products-arenas.json": "0bdddb41279fe32b48c11756746565ac11a7302fee82fd3c8f81d07423c7bb8f",
+    "bench/2026-11-05-nested-products-cost.json": "40e0fee597733cabe63cdc3a77a02efb8bbba12cbcd73e52ab684bbafaca95ee"
+  },
+  "scope": "Local macOS arm64 Haskell/compiler checks and RV64 QEMU execution. Saved codegen-183 library versus current library with a shared current runtime; ARC checks and allocation counters are disabled for the work benchmark. Controlled single-activation arena recipe only. No new remote CI, physical-board timing, hosted Base aggregate storage or WCET claim."
+}

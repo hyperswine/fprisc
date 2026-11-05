@@ -1,0 +1,38 @@
+{
+  "status": "PASS",
+  "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+  "source_sha256": {
+    "tools/build_static_arena.py": "1dbd918271cb65b4ade28175c32dcf597ac52a953711f1231bd2788e082ee12c",
+    "tools/static_arena_runtime.py": "b247ed2e499e35f617c5608450d8e665fc4086698036742776519bde53117cec",
+    "tools/static_arena_sequence.py": "31a144b7259e280615c1530995f26331750055f03b42418a720fcddf3ea6ebad",
+    "tests/check_static_sequence.py": "414438cd7a9a33384be98fa7e162324adcc204dd9e3b40013ac0f913752a1d2d",
+    "tests/check_static_arena.py": "5ef0ce641b3befeba6a11a9c32c5f8d6698937cb37f84d39c7897b294a7b8342",
+    "examples/static-arena/word-state.fpr": "8b2950b91217b7321dd714e38cc3f23a4655dfcc8beb6b9aa8a713aa8126fd32",
+    "examples/static-arena/word-state.json": "12d498f00d5c6e303c5f4ec8051d0480e5ebd19981f841d43835a1f95a0425f0",
+    "docs/2026-11-05-STATIC-APPLICATION-SEQUENCES.md": "fb8f3c26f0d85021ad7bf033f113db0d5a4f2206b5c8a09b3c2186334282931c"
+  },
+  "record_sha256": "264d59d9a3059bf5230d21923523ce2223a3a21cfea183d2a29edb64a92e805a",
+  "checks": [
+    {
+      "name": "sequence",
+      "log_sha256": "9eb362eb91044a69b6493c693f2992406fdfb7d1b13f48887d2714610c359a70",
+      "last_line": "Typed scalar handoffs, short arenas, late unproved entry, pre-reset leak and publication preservation PASS"
+    },
+    {
+      "name": "legacy single activation",
+      "log_sha256": "1440e4ece55767e2110645f6978456cc765874ae0d0bb04a464954c24d92782e",
+      "last_line": "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+    },
+    {
+      "name": "CLI at exact limits",
+      "log_sha256": "f7f90440baa7809868335ece94856a1a9bc72a486d5f8104c70bc94a862c38d2",
+      "last_line": "static sequence admitted: heap 624/624, linked startup/caller/runtime stack 448/448"
+    },
+    {
+      "name": "registry",
+      "log_sha256": "8d9553645cdd8c621e77f571d7b3ed4a548c709cb2e8ed9bdba550b036bd6843",
+      "last_line": "OK"
+    }
+  ],
+  "scope": "Local compiler and RV64 QEMU controlled image; physical Pi uses the separate hosted runtime."
+}

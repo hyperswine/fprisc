@@ -27,11 +27,11 @@ import qualified Data.Set as S
 
 data Kind
   = KFold | KMap | KFilter | KMapFilter | KFilterMapped
-  | KMapRange | KLengthRange | KRange | KSum | KProduct | KLength
+  | KMapRange | KBuildRange | KLengthRange | KRange | KSum | KProduct | KLength
   deriving (Eq,Show)
 data Composition
   = FoldMap | FoldFilter | MapMap | FilterFilter
-  | MapFilter | FilterMap | LengthMap | LengthFilter | MapRange
+  | MapFilter | FilterMap | LengthMap | LengthFilter | MapRange | FilterRange
   deriving (Eq,Show)
 -- old, combinator, head, arguments (fold: [f,z,xs]; map/filter: [f,xs];
 -- mapFilter/filterMapped: [f,g,xs]; sum/product/length: [xs]; range: [a,b]),
@@ -247,6 +247,7 @@ fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linea
       "fold"->Just KFold;"map"->Just KMap;"filter"->Just KFilter
       "mapFilter"->Just KMapFilter;"filterMapped"->Just KFilterMapped
       "mapRange"->Just KMapRange;"lengthRange"->Just KLengthRange
+      "buildRange"->Just KBuildRange
       "sum"->Just KSum;"product"->Just KProduct;"length"->Just KLength
       "range"->Just KRange
       _->Nothing
@@ -471,6 +472,25 @@ fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linea
               modify (\(Build n cs ns v _)->Build n cs ns v True)
               pure (Just (foldr (bind old) call prefixes))
       _->pure Nothing
+    fuseRange scope (Site old kind head' args prefix)
+      | kind `elem` [KFilter,KMapFilter,KFilterMapped]
+      , not (null args)
+      , Just (Site _ KRange rh [a,b] innerPrefix)<-site (last args)=do
+          outerOk<-verified (globalName head') kind
+          rangeOk<-verified (globalName rh) KRange
+          let brName="buildRange@"++moduleHash (globalName rh)
+          buildOk<-verified brName KBuildRange
+          if not (outerOk&&rangeOk&&buildOk) then pure Nothing else do
+            let prefixes=prefix++innerPrefix
+                scope'=foldl (\s (binder,_) -> M.insert (binderId binder) binder s) scope prefixes
+            checked<-case (kind,init args) of
+              (KFilter,[p])->fmap (fmap (:[])) (checkSingle scope' (globalName head') p FilterRange)
+              (KMapFilter,[f,p])->fmap (fmap (\(x,y)->[x,y])) (checkTwo scope' f p MapFilter)
+              (KFilterMapped,[p,f])->fmap (fmap (\(x,y)->[x,y])) (checkTwo scope' p f FilterMap)
+              _->pure Nothing
+            case checked of
+              Nothing->pure Nothing
+              Just callbacks->Just <$> rangeBuilder old kind brName a b callbacks prefixes
     fuseRange _ _=pure Nothing
     -- length after map never calls the callback. The Int-overflow relaxation
     -- lets fusion move where an overflow traps, never drop it, so that rule
@@ -547,6 +567,53 @@ fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linea
     compositionName LengthMap="length after map"
     compositionName LengthFilter="length after filter"
     compositionName MapRange="map after range"
+    compositionName FilterRange="filter after range"
+    -- The synthesized step owns no mutable cursor: it either constructs a
+    -- fresh cons or passes the accumulator through. Each mapped value is
+    -- evaluated once, including when both the predicate and result use it.
+    rangeBuilder old kind buildName lo hi callbacks prefixes=do
+      let values=concat [cs | Callback _ _ cs _ _<-callbacks]
+          count=length values
+          intTy=TC "Int"
+          listTy=exprType old
+      (label,ns)<-fresh (2*count+length prefixes+3)
+      let spelling i=targetName (CodeTarget label)++".$"++show i
+          make i scheme=Binder (BinderId ns i) (spelling i) scheme
+            (linShapeT linears (case scheme of Forall _ _ ty->ty))
+          caps=zipWith (\i (_,scheme)->make i scheme) [0..] values
+          lane=make count (Forall [] [] intTy)
+          acc=make (count+1) (Forall [] [] listTy)
+          x=local old lane
+          z=local old acc
+          cons y=gen old listTy (Construct "Cons" [y,z])
+          choose test y=gen old listTy (If test (cons y) z)
+          call cb cs=invoke old cb cs
+          body=case callbacks of
+            [p]->choose (call p caps [x]) x
+            [first@(Callback _ _ firstCaps _ _),second]->
+              let (cs1,cs2)=splitAt (length firstCaps) caps
+              in case kind of
+                KMapFilter->choose (call second cs2 [x]) (call first cs1 [x])
+                KFilterMapped->
+                  let y=call second cs2 [x]
+                      mapped=make (count+2) (Forall [] [] (exprType y))
+                  in bind old (mapped,y) (choose (call first cs1 [local old mapped]) (local old mapped))
+                _->error "list fusion: unexpected range builder"
+            _->error "list fusion: unexpected range callbacks"
+          code=CodeFunction label ClosureCode caps [lane,acc] body
+          stage (i,(value,scheme))=case exprNode (unNote value) of
+            Var (Local uid)->(uid,[])
+            _->let binder=make (count+3+i) scheme
+               in (binderId binder,[(binder,value)])
+          staged=map stage (zip [0..] values)
+          stepTy=TFn intTy (TFn listTy listTy)
+          closure=gen old stepTy (ClosureValue label (map fst staged))
+          ty=TFn stepTy (TFn intTy (TFn intTy listTy))
+          scheme=M.findWithDefault (Forall [] [] ty) buildName (catalogSchemas snapshot)
+          head'=gen old ty (Var (Global buildName scheme))
+          result=foldl (apply old) head' [closure,lo,hi]
+      modify (\(Build n cs notes v _)->Build n (M.insert label code cs) notes v True)
+      pure (foldr (bind old) result (prefixes++concatMap snd staged))
     lengthFilter old foldName innerSrc b@(Callback _ _ bc _ _) prefixes=do
       let count=length bc
       (label,ns)<-fresh (2*count+length prefixes+2)
@@ -673,6 +740,17 @@ fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linea
               workerShape (globalName h) "mapRangeGo" mapRangeWorker
             _->False
           _->False
+        KBuildRange | strictLets body->case ps of
+          [f,a,b]->case spine (strip body') [] of
+            (h,[vf,va,vb,vnil])|isLocalOf f vf,isLocalOf a va,isLocalOf b vb,isNil vnil->
+              case M.lookup (RootTarget (globalName h)) (catalogTemplates snapshot) of
+                Just (Template [] params worker _ EntryCode)
+                  | baseName (globalName h)=="buildRangeGo",strictLets worker->
+                    maybe False (uncurry (buildRangeWorker (globalName h))) (functionClause params worker)
+                _->False
+            _->False
+          _->False
+        KBuildRange->False
         KLengthRange->case ps of
           [a,b]->case spine (strip body') [] of
             (h,[va,vb,vzero])|isLocalOf a va,isLocalOf b vb,isIntLiteral vzero->
@@ -695,6 +773,12 @@ fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linea
         KProduct->sumProduct ps body'
       Nothing->False
     checkShape _ _=False
+    -- Catalog recognition may ignore harmless clause aliases/ticks, but a
+    -- replacement target must not hide an overflowing let in those prefixes.
+    -- The generated builder's argument order and body are otherwise exact.
+    strictLets e=(case exprNode e of
+      Let _ rhs _->Safety.unsafeExpressionStrict safety rhs==Nothing
+      _->True) && all strictLets (children e)
     -- A checked function retains its FunctionMatch clause. Validate that it
     -- only rebinds the entry parameters, then match the body against those
     -- bound identities rather than the outer entry binders.
@@ -793,6 +877,20 @@ fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linea
           _->False
       _->False
     mapRangeWorker _ _=False
+    buildRangeWorker name [f,a,b,acc] body=case boolCase body of
+      Just (test,done,next)|isLocalOf acc done->case spine (strip test) [] of
+        (lt,[vb,va])|globalName lt=="<",isLocalOf b vb,isLocalOf a va->
+          case spine (strip next) [] of
+            (self,[vf,va',dec,step])|globalName self==name,isLocalOf f vf,isLocalOf a va'->
+              case (spine (strip dec) [],spine (strip step) []) of
+                ((sub,[vb',one]),(fun,[vb'',vz]))
+                  |globalName sub=="-",isLocalOf b vb',IntValue 1<-exprNode (unNote one),
+                   isLocalOf f fun,isLocalOf b vb'',isLocalOf acc vz->True
+                _->False
+            _->False
+        _->False
+      _->False
+    buildRangeWorker _ _ _=False
     -- lengthRangeGo a b n = case b < a of True -> n | False -> lengthRangeGo a (b-1) (n+1)
     lengthRangeWorker [a,b,n] body=case boolCase body of
       Just (test,thenExpr,elseExpr)|isLocalOf n thenExpr->

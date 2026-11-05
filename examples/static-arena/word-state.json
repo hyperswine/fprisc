@@ -1,0 +1,9 @@
+{
+  "schema": "static-builtin-sequence-v1",
+  "steps": [
+    {"entry": "seed", "arguments": [7]},
+    {"entry": "advance", "arguments": [{"previous": true}, 3]},
+    {"entry": "advance", "arguments": [{"previous": true}, 18446744073709551615]},
+    {"entry": "choose", "arguments": [1, {"previous": true}, 0]}
+  ]
+}

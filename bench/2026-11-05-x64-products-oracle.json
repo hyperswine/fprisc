@@ -1,0 +1,90 @@
+{
+  "compiler_sha256": "f78d082e4c6564c0cf7f4dbd0442d4dc2125c38729377a83de29818a3790207c",
+  "test_sha256": "abe8997bc9cd8726865e6abc395bc05316b4e06d3b866d3926b5fb57cce36fcf",
+  "runner": "Rosetta x86-64",
+  "rows": [
+    {
+      "width": 2,
+      "repeated_fields": false,
+      "cases": 2100,
+      "assembly_sha256": "e1eab29e51bb056f0cca6c9cfd3bbfd985115a0dac3e0816e352fea3f006d623",
+      "executable_sha256": "8a5163aca8629e5f63a2a1c78cb028aeab29a06d27f8ea03486afb30437990eb"
+    },
+    {
+      "width": 3,
+      "repeated_fields": false,
+      "cases": 2100,
+      "assembly_sha256": "b002e7d241b2655017b3c9ae21d358243727b4eb168f016426a36c8d4e225eaa",
+      "executable_sha256": "7c91b8ac4b2ef6e7ed146fbd298c559619c5bc830775c8d8c4e04ee6a40c48c7"
+    },
+    {
+      "width": 4,
+      "repeated_fields": false,
+      "cases": 2100,
+      "assembly_sha256": "a2515dbe3e33bf68da59387bdc9af6163d402e6efc0e80b4ff281e9b6494a5e4",
+      "executable_sha256": "9dde14fca6c023e4903b413eb594aa09b4ad4b27b743a9d8c5231963273c2ee6"
+    },
+    {
+      "width": 5,
+      "repeated_fields": false,
+      "cases": 2100,
+      "assembly_sha256": "562a845447e00f9e193bdabf35fc40658a3cf8fd70ba568bbc1ed375e68b2cce",
+      "executable_sha256": "c28896015f2cfb1f985cb5c8a8b08642e907ac0abc3ca7f956c8352831fa0a5f"
+    },
+    {
+      "width": 6,
+      "repeated_fields": false,
+      "cases": 2100,
+      "assembly_sha256": "7b5eb30fbd219fe90d7f115a78e0bbb969d70efaecea5844bea278d8242541b0",
+      "executable_sha256": "ac6493c70fe7af857b4d89a244262c4be4c73cddbcb029d5613114c4812c0fd4"
+    },
+    {
+      "width": 7,
+      "repeated_fields": false,
+      "cases": 2100,
+      "assembly_sha256": "e7335db8c7e3409700b2acf87e2e911175bc42f272dc49af51bcdde98879dec2",
+      "executable_sha256": "e784c3d0049b83c774712e64a3814c325e5bd22a59d52437fb0d02b7a86eb28f"
+    },
+    {
+      "width": 8,
+      "repeated_fields": false,
+      "cases": 2100,
+      "assembly_sha256": "f09adbdb6a051ff62980757f8125d6a3e929badf598dfd951c3136df7fee9e18",
+      "executable_sha256": "4c331b7f5c3465a78dfa6521dfb98ac78541a59ba033fb2d1780a2df94692393"
+    },
+    {
+      "width": 8,
+      "repeated_fields": true,
+      "cases": 2100,
+      "assembly_sha256": "b8b3354e1d64317221ea8c7b21e8d269c96eb568a6cd518a6c0e24a3bc96d3cf",
+      "executable_sha256": "f61a2f09369ef5111a2253c93e002ed6ef7d70a59d5b07be88c88ac89fe71ae9"
+    }
+  ],
+  "actors": [
+    {
+      "enabled": false,
+      "harts": 1,
+      "fuel_events": 150,
+      "stdout": "1801803600 1801803600 1801803600\n"
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "fuel_events": 150,
+      "stdout": "1801803600 1801803600 1801803600\n"
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "fuel_events": 150,
+      "stdout": "1801803600 1801803600 1801803600\n"
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "fuel_events": 150,
+      "stdout": "1801803600 1801803600 1801803600\n"
+    }
+  ],
+  "scope": "Independent C oracle with adapted TLS and no allocator; separate real-runtime recursive actor results with scheduler observation. Not physical timing/WCET."
+}

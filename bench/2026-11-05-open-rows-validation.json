@@ -1,0 +1,440 @@
+{
+  "schema": "open-row-validation-v1",
+  "codegen_revision": 185,
+  "arc_revision": 23,
+  "compiler_sha256": "64f733497a6f6703ed10de2aa815e59817d4d42acd23419d1ce2c0aa8e84c722",
+  "checks": [
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "suites": 41,
+      "log_sha256": "c2b2e45f6456d3edf489df499ca34c6dbf76069fb3d2c22c31a9bad61c7e3a94",
+      "output_tail": [
+        "Running 1 test suites...",
+        "Test suite TypedProgram: RUNNING...",
+        "Result sizes: typed list patterns, accumulator/direct induction, signed repeat/range, UTF-8 bytes and false-invariant refusals passed",
+        "Typed inlining: checked instantiation, strict arguments/traps, fuel, fresh identities, polymorphic captures, hygiene and imported code homes passed",
+        "Typed vector reads: scoped tuple plans, operation/type/ownership refusals, stable identities, closed code, idempotence and independently evaluated handle shadowing passed",
+        "Typed normalization: checked types/identities, aliases/let sinking, strict CAFs/traps/fuel/allocations, captures, staged matches, vector snapshots and display-shadowing refusals passed",
+        "Typed fusion: checked map/filter/captured composites, stable code homes, strict effect/division refusals, independent lane answers and fixed points passed",
+        "Typed programs: owned schemas/physical arities, cross-definition identities, explicit compatibility, stable private code and independent native-IR answers passed",
+        "Test suite TypedProgram: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/TypedProgram/test/fp-risc-0.13.1-TypedProgram.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ]
+    },
+    {
+      "name": "open-rows",
+      "command": [
+        "python3",
+        "tests/check_open_rows.py",
+        "--baseline-compiler",
+        "/tmp/fpr-before-open-rows-185",
+        "--record",
+        "bench/2026-11-05-open-rows.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 92.45,
+      "log_sha256": "f6dc2239313f1246b07bcc6b089c679192db5693c9db0a16b98ed1a9fa1df23f",
+      "output_tail": [
+        "rollback=False, hard, fpr, case 3: open-row boundaries PASS",
+        "rollback=True, host=False: generic payloads, nested effects, unused fields, dead branch and overflow endpoints PASS",
+        "rollback=True, soft, c, case 0: open-row boundaries PASS",
+        "rollback=True, soft, c, case 1: open-row boundaries PASS",
+        "rollback=True, soft, c, case 2: open-row boundaries PASS",
+        "rollback=True, soft, c, case 3: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 0: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 1: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 2: open-row boundaries PASS",
+        "rollback=True, soft, fpr, case 3: open-row boundaries PASS",
+        "rollback=True, hard, c, case 0: open-row boundaries PASS",
+        "rollback=True, hard, c, case 1: open-row boundaries PASS",
+        "rollback=True, hard, c, case 2: open-row boundaries PASS",
+        "rollback=True, hard, c, case 3: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 0: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 1: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 2: open-row boundaries PASS",
+        "rollback=True, hard, fpr, case 3: open-row boundaries PASS"
+      ]
+    },
+    {
+      "name": "type-specialization",
+      "command": [
+        "python3",
+        "tests/check_type_specialization.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 41.76,
+      "log_sha256": "dcc0d610cad7d8ebbbd42d3e8abe1dc240df1108562fdb8a8bb12a5affd9089e",
+      "output_tail": [
+        "Source call order, repeated instances and observable effects: PASS",
+        "Uncalled List Word projection uses checked field evidence without a constructed cell: PASS",
+        "Nested List Int/List Word, shared reads, length-independent instances and zero live allocation: PASS",
+        "Immortal Unit/Bool, shared heap fields, 1000 allocation cycles and effect order: PASS",
+        "Parameterized nominal types, scalar variant payloads, tuples/records and 1000 leak-free cycles: PASS",
+        "Expanding polymorphic recursion uses a bounded clone plus real tagged fallback, with remarks and zero leaks: PASS",
+        "Generic and specialized F64/F32/Word print and str agree without leaks: PASS",
+        "Raw/generic branch joins convert only the selected arm and preserve effects without leaks: PASS",
+        "Specialization on/off preserves printed prefixes and overflow/division failures: PASS"
+      ]
+    },
+    {
+      "name": "uniform",
+      "command": [
+        "python3",
+        "tests/check_uniform_aggregate.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 151.9,
+      "log_sha256": "a57414b18e52ab65c0ea0b54cb7b71e2eed49121eafe08fe6463963bda54fbe5",
+      "output_tail": [
+        "Production aggregate converters: 6000-node sharing/roundtrip and refusals under ASan/UBSan: PASS",
+        "c allocator, rollback=False: generated list/record/tuple/string boundaries, sharing and zero leaks: PASS",
+        "fpr allocator, rollback=False: generated list/record/tuple/string boundaries, sharing and zero leaks: PASS",
+        "c allocator, rollback=True: generated list/record/tuple/string boundaries, sharing and zero leaks: PASS",
+        "fpr allocator, rollback=True: generated list/record/tuple/string boundaries, sharing and zero leaks: PASS",
+        "c allocator: aggregate case 0: PASS",
+        "c allocator: aggregate case 1: PASS",
+        "c allocator: aggregate case 2: PASS",
+        "c allocator: aggregate case 3: PASS",
+        "c allocator: aggregate case 4: PASS",
+        "fpr allocator: aggregate case 0: PASS",
+        "fpr allocator: aggregate case 1: PASS",
+        "fpr allocator: aggregate case 2: PASS",
+        "fpr allocator: aggregate case 3: PASS",
+        "fpr allocator: aggregate case 4: PASS"
+      ]
+    },
+    {
+      "name": "hidden",
+      "command": [
+        "python3",
+        "tests/check_hidden_fields.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 63.91,
+      "log_sha256": "11ae64fc281987efe8ceba381b83ac854ee7e9d55ed610231c2525305ab6d627",
+      "output_tail": [
+        "rollback=False, argument-effects: ordered effects and named failure PASS",
+        "c, rollback=True, hidden field case 0: PASS",
+        "c, rollback=True, hidden field case 1: PASS",
+        "c, rollback=True, hidden field case 2: PASS",
+        "c, rollback=True, hidden field case 3: PASS",
+        "c, rollback=True, hidden field case 4: PASS",
+        "c, rollback=True, hidden field case 5: PASS",
+        "c, rollback=True, hidden field case 6: PASS",
+        "fpr, rollback=True, hidden field case 0: PASS",
+        "fpr, rollback=True, hidden field case 1: PASS",
+        "fpr, rollback=True, hidden field case 2: PASS",
+        "fpr, rollback=True, hidden field case 3: PASS",
+        "fpr, rollback=True, hidden field case 4: PASS",
+        "fpr, rollback=True, hidden field case 5: PASS",
+        "fpr, rollback=True, hidden field case 6: PASS",
+        "rollback=True, construct-effects: ordered effects and named failure PASS",
+        "rollback=True, construct-trap: ordered effects and named failure PASS",
+        "rollback=True, argument-effects: ordered effects and named failure PASS"
+      ]
+    },
+    {
+      "name": "scalar-wrappers",
+      "command": [
+        "python3",
+        "tests/check_scalar_wrappers.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 48.46,
+      "log_sha256": "3e1edf9e1f7c365202e1ea0004f6330d4edf1448aa10afdbadb217e59f2be62d",
+      "output_tail": [
+        "6000 nested scalar wrappers: iterative boxing/unboxing and malformed storage rejection under ASan/UBSan PASS",
+        "local-only layouts: raw=False, rollback=False, c: zero allocations and exact values PASS",
+        "local-only layouts: raw=False, rollback=False, fpr: zero allocations and exact values PASS",
+        "local-only layouts: raw=False, rollback=True, c: zero allocations and exact values PASS",
+        "local-only layouts: raw=False, rollback=True, fpr: zero allocations and exact values PASS",
+        "local-only layouts: raw=True, rollback=False, c: zero allocations and exact values PASS",
+        "local-only layouts: raw=True, rollback=True, c: zero allocations and exact values PASS",
+        "rollback=False: argument effects, integer-limit/division failures and pattern scrutinee execution PASS",
+        "c, soft, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, soft, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "c, hard, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, hard, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "rollback=True: argument effects, integer-limit/division failures and pattern scrutinee execution PASS",
+        "c, soft, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, soft, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "c, hard, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, hard, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS"
+      ]
+    },
+    {
+      "name": "owned",
+      "command": [
+        "python3",
+        "tests/check_owned_products.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 81.4,
+      "log_sha256": "c84abf65cf71d5a4bef1a93ba5a9598ff7b043374ce04cb2be8c26ab502bd917",
+      "output_tail": [
+        "packets: effects, strict unused fields, dead arms and integer endpoints PASS",
+        "packets, soft, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "packets, soft, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "packets, hard, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "packets, hard, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec: effects, strict unused fields, dead arms and integer endpoints PASS",
+        "no-type-spec, soft, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec, soft, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec, hard, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec, hard, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed: effects, strict unused fields, dead arms and integer endpoints PASS",
+        "boxed, soft, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed, soft, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed, hard, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed, hard, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS"
+      ]
+    },
+    {
+      "name": "raw",
+      "command": [
+        "python3",
+        "tests/check_raw_products.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 43.71,
+      "log_sha256": "27207ad7e9da0a47f3c3684a66fa9bb203cee657c1aca7bee77a73aed812c446",
+      "output_tail": [
+        "Expanded register ABI, boxed export, incompatible generic representations, heap storage and product rollback: refused before emission PASS",
+        "type-spec rollback=False, nested=False: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+        "type-spec rollback=False, nested=True: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+        "soft, type-spec rollback=False: flat/nested eight-word products, recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "hard, type-spec rollback=False: flat/nested eight-word products, recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "c, type-spec rollback=False: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "fpr, type-spec rollback=False: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "Expanded register ABI, boxed export, incompatible generic representations, heap storage and product rollback: refused before emission PASS",
+        "type-spec rollback=True, nested=False: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+        "type-spec rollback=True, nested=True: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+        "soft, type-spec rollback=True: flat/nested eight-word products, recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "hard, type-spec rollback=True: flat/nested eight-word products, recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "c, type-spec rollback=True: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "fpr, type-spec rollback=True: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS"
+      ]
+    },
+    {
+      "name": "typed-core",
+      "command": [
+        "python3",
+        "tests/check_typed_core.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 98.35,
+      "log_sha256": "cf1a18994fa1342d302c5d95eef1caea278c42e185434a4ce5b4086867fca435",
+      "output_tail": [
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/TypedProgram/test/fp-risc-0.13.1-TypedProgram.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Running 1 test suites...",
+        "Test suite TypedUnits: RUNNING...",
+        "Typed units: owned checked projections, missing-owner refusals, recursive composition and precise lowered-input/call cache dependencies passed",
+        "Test suite TypedUnits: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/TypedUnits/test/fp-risc-0.13.1-TypedUnits.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Typed callbacks: native identity/effects in all optimizer modes, one/four harts, imports and A64/x64/RV32/RV64 emission passed",
+        "Private imports: home code/PAP identity, captures/effects, warm cache independence, read-only map/pipeline plans, native visibility and available object assemblers passed",
+        "Typed staging: exact effects/traps in all specialization/inlining cache modes, one/four harts, imported physical entries and x64/RV32/RV64 emission passed",
+        "Typed units: transitive F64/recursive imports on one/four harts; warm Float/Int/context/flat-curried arity transitions, unrelated-root/cost-transition reuse and x64/RV32/RV64 emission passed",
+        "Typed Core native contracts: dictionaries, captures, recursive locals, record updates and layout-dependent closure identity on one/four harts passed",
+        "Typed recursive locals: x64/RV32/RV64 native emission passed (execution is host-native only)",
+        "Typed traps: exact native effects/delays and named-hole refusal on one/four harts; x64/RV32/RV64 emission passed",
+        "Typed structures: native one/four-hart answers and closure identity; x64/RV32/RV64 emission passed",
+        "Typed calls: native one/four-hart effects, stored partials, polymorphic calls and code identity; x64/RV32/RV64 emission passed"
+      ]
+    },
+    {
+      "name": "heap-geometry",
+      "command": [
+        "python3",
+        "tests/check_builtin_heap_geometry.py",
+        "--require-execution"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 4.62,
+      "log_sha256": "dce1373ad97a2edc98e291699a758c0dd3e6a68eec0d8ff940f0de90d76b68c0",
+      "output_tail": [
+        "Host ASan/UBSan: geometry, observed blocks, exact/short fixed arena PASS",
+        "RV32 QEMU: geometry, observed blocks, exact/short fixed arena PASS",
+        "RV64 QEMU: geometry, observed blocks, exact/short fixed arena PASS"
+      ]
+    },
+    {
+      "name": "heap",
+      "command": [
+        "python3",
+        "tests/check_heap_budget.py",
+        "--require-execution"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 1.69,
+      "log_sha256": "87beec7f823ee7f46a5d17a56029bf23639c9475251a1d23c8100a3c46c6f7e1",
+      "output_tail": [
+        "Heap admission: conversion requests, exact/short limits, zero-allocation raw entry and unknown-boundary refusals PASS",
+        "RV64 plain/measured: 256 allocated callbacks per mode, fixed-arena guards and complete reclamation PASS"
+      ]
+    },
+    {
+      "name": "arenas",
+      "command": [
+        "python3",
+        "tests/check_static_arena.py",
+        "--require-execution",
+        "--record",
+        "bench/2026-11-05-open-rows-arenas.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 30.33,
+      "log_sha256": "1440e4ece55767e2110645f6978456cc765874ae0d0bb04a464954c24d92782e",
+      "output_tail": [
+        "identity: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "wide: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "arity-limit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-yes: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-no: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-low: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-high: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "bool: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "unit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "mixed: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-zero: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-wrap: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-long: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+      ]
+    },
+    {
+      "name": "compile-cost",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 63.59,
+      "log_sha256": "0d891bf666faca9c3621d214e8e3926be2f41e96fe29771547d301a7b8ccb478",
+      "output_tail": [
+        "hello: 1.60 GB allocated, 27 MB peak live, 0.8 s (+9.4% allocation, -37.7% peak vs baseline)",
+        "std-live: 32.64 GB allocated, 420 MB peak live, 20.1 s (+9.1% allocation, +4.3% peak vs baseline)",
+        "pos1: 67.14 GB allocated, 739 MB peak live, 42.6 s (+3.6% allocation, -11.4% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--require-baseline",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256",
+        "--record",
+        "bench/2026-11-05-open-rows-cost.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 3.66,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "output_tail": [
+        "16 helpers: same 10832 code bytes/55 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 0.17,
+      "log_sha256": "d36fd19d4d7d34d22ef6c902c769e546d1f6f50bcbe68252a7168d862b25b1f4",
+      "output_tail": [
+        "..check_ci: tests/check_rv64_linux.py::typed-runtime",
+        "check_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s",
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.081s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "host": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "additional_evidence": [
+    "bench/2026-11-05-open-rows-bool-pattern.json"
+  ],
+  "qualification_scope": "Local Haskell, native macOS arm64 Base, RV64 QEMU, host ASan/UBSan; not physical-board timing or remote CI. Open rows require compiled nominal shapes. No open-row allocation or throughput improvement claimed; static-arena admission is unchanged.",
+  "input_sha256": {
+    "compiler/Compiler/Native/TypeLayout.hs": "4e45061dd75d04f5861cf999ed2b64d9174c4f70ae916cd85c1d57e502111f89",
+    "compiler/Compiler/Native/Representation.hs": "167fe2392b65a89cffcddb519fa1e24f6e12410eb308c1bfa3fa95c493414283",
+    "compiler/Representation.hs": "dfa075c85a83e30a1f350bf26ee4137c52efde0cf9173e3f0888e64db160dc2f",
+    "compiler/Representation/Types.hs": "8d08b2c0b983c45f3ba073c6a8b790690906e8f5116a0fd7bc8506397ad3d570",
+    "compiler/Core/Typed/Layout.hs": "cd7ea41080f391040c115293402bb3d30dd702292351ba59b6d210b60ef24746",
+    "compiler/Core/Typed/Erase.hs": "ac119770a6f97a0fcd8261df398d0701b1b6e37e3092ff4809551274b63bad9b",
+    "compiler/Arc.hs": "32e94c4b2282f5178dc4da43a8b89906030a30249f7ddbe0aff4d215fa492ed1",
+    "compiler/Codegen.hs": "594306fb1314b2c43a370ab21bb84d3ee3ceb93c8cc50400bc03419bef162b54",
+    "compiler/Codegen/Lower.hs": "3510c6cc7a8ca9bc2e219f5b659ec595dff2c95482c67e558095c06ded702dcd",
+    "machine/builtin/uniform.inc": "2fef8ab1fb1dbc447bf36c655b0896e07f25390bdda435e3a7e0eccfa1b42e8a",
+    "machine/builtin/contracts/rv64-c-heap-v1.json": "23eef7ec0b79a6cbe5a61d178e91a84605af37dfdbb401d70e580925ecd029ac",
+    "tests/RepresentationSpecialization.hs": "b15f2ef00f0654d6f44a25c12c66cd0af16bfc535db2fe7f2b64792803a25096",
+    "tests/TypedProgram.hs": "9909d56f5763b48f490831e8d63578e054ddd052420d6a94bcc7689c0439ad8d",
+    "tests/TypedIR.hs": "caae0ed458aa231906f03bb2c9b43f9ed680a86624e688cf77565c0e7cab3096",
+    "tests/check_open_rows.py": "30a5d09ea46327c86b1d00c2a464511d1a9ce232d27778e1931b8da047405761",
+    "tests/check_type_specialization.py": "b97214c4ff07413c31edb6a1576dccf237fd2aff7e5cb947352d1638deba1197",
+    "tests/check_hidden_fields.py": "a4f1df0b3c8e0c8684ce6e094b280832ddec72494fd26ad2ea7feb40ba59fc51",
+    "tests/check_scalar_wrappers.py": "822a73706718e40267bbb970cf9878333b193ea0028a70a0f7c65cb237e3d61a",
+    "tests/check_uniform_aggregate.py": "4f392b5212067b3ee50d3e9eda4bbc9d600839e295e63dfc2b9858df5cdb56e7",
+    "tests/check_owned_products.py": "6654b8d7e85e989f32a84dea4cd5f3562c349eb7aef7a2b58f1d0966be51c14d",
+    "tests/check_raw_products.py": "23689cc74bf0116ec4fab3a328d6ef8b6f92f3ccaa4dd5180f135a184c44fb25",
+    "tests/check_typed_core.py": "7c5af711279ed34040540f14810b867c8fc3857731ff1a05786f5c201b74a257",
+    "tests/check_builtin_heap_geometry.py": "790f0b732afacfda44044f214efc5e387e01331284bf88a393fa8ed0c892d597",
+    "tests/check_heap_budget.py": "664a0f12e0cba4a8e0ddb4cbbb5c81bd45c089b648b32e32f6511a796ef08bfb",
+    "tests/check_static_arena.py": "5ef0ce641b3befeba6a11a9c32c5f8d6698937cb37f84d39c7897b294a7b8342",
+    "tests/check_compile_budget.py": "2ecb43e7bc87c3cc5a4a77675c3768d96a9ac77ddab77a0947ff18a72ba973fb",
+    "tests/check_type_spec_cost.py": "aac8ce91c99984bc2f9eb31c91c376504fc2d523cc6771d286546cc05993be7f",
+    "tests/type_spec_cost_budget.json": "30cc5450eb143199cef5966239aab4263b8d0111d6fbfc92686d1d525f0228ee",
+    "tests/check_registry.py": "df58fb0de5b92ad6fb758e51e33564d2e201e32d4fc8701c6842cae75c3396ab",
+    "tests/test_check_registry.py": "85f6099b1990ccde967b2aca0489908f033063400ed427e3260f82155c8e70e4",
+    "bench/2026-11-05-open-rows.json": "eb1cd88f6d2ebb42b33dff448e7142b434155ab1c1d833312e4668f1dbc2f477",
+    "bench/2026-11-05-open-rows-bool-pattern.json": "e3f683a8e2901688e74855152216d10fee48aa56f76bd1c52b7b00d3f29f24b1",
+    "bench/2026-11-05-open-rows-arenas.json": "9cb4976e2da9e45384d08944f8d6c64f77878adae184f08b9b97fbc91c838afc",
+    "bench/2026-11-05-open-rows-cost.json": "9080548a8c0559b419acc133d9e083f9f963c0a2c19e03814e0d0a1668b28578",
+    "docs/2026-11-05-OPEN-RECORD-BOUNDARIES.md": "3a7654cf2c90b5ef179ac98a7f3e5299745d95e934039a2fb63b22f0805210fc"
+  }
+}

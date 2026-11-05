@@ -1,0 +1,579 @@
+{
+  "count": 5000000,
+  "tool_sha256": "41d0f857fcb1827aa890bdd71dbcae67c52eb6e2637f78636259140243d8ca12",
+  "harness_sha256": "c62c85cc67216558f8365c0b89f635f1677d3a6555be7f95fa60331f72e3a462",
+  "costs": [
+    {
+      "form": "before",
+      "size": 1,
+      "allocated_bytes": 1519899320,
+      "peak_bytes": 30924304,
+      "seconds": 0.6866088329697959,
+      "text_bytes": 2224,
+      "disassembly_sha256": "c3ff05e2f1ae0b1803817118b93e707cf2eae7e96bf8807120ea44f11ae6c172",
+      "source_sha256": "8210cdc3ba0793c10fabb259f79306ef86d9e058641b0fa6189b0ce70df5b039"
+    },
+    {
+      "form": "after",
+      "size": 1,
+      "allocated_bytes": 1519261064,
+      "peak_bytes": 30913264,
+      "seconds": 0.6881487090140581,
+      "text_bytes": 2056,
+      "disassembly_sha256": "e5dfd17b1b111b6525efa5c73f947a0895bf3a0829967785af927e8d320fed29",
+      "source_sha256": "8210cdc3ba0793c10fabb259f79306ef86d9e058641b0fa6189b0ce70df5b039"
+    },
+    {
+      "form": "explicit",
+      "size": 1,
+      "allocated_bytes": 1514029272,
+      "peak_bytes": 30982008,
+      "seconds": 0.6786945409839973,
+      "text_bytes": 1628,
+      "disassembly_sha256": "c49eb52bf141d913a41931e0c5bedfd0415e7fe78d457e23c65b14920fa1517a",
+      "source_sha256": "9fa56a149adad691fcdbb50d6734bf69f73a3ad1ccbcf8cb500bd64e47204995"
+    },
+    {
+      "form": "rollback",
+      "size": 1,
+      "allocated_bytes": 1519177552,
+      "peak_bytes": 37395016,
+      "seconds": 0.6765180420479737,
+      "text_bytes": 1960,
+      "disassembly_sha256": "0308c78e90c6aa2d8555aad5ccf5fa0b05069e18cc90379b66496ad9ce0b4bc0",
+      "source_sha256": "8210cdc3ba0793c10fabb259f79306ef86d9e058641b0fa6189b0ce70df5b039"
+    },
+    {
+      "form": "before",
+      "size": 4,
+      "allocated_bytes": 1532529592,
+      "peak_bytes": 33805320,
+      "seconds": 0.6942178750177845,
+      "text_bytes": 3180,
+      "disassembly_sha256": "7970feeda50acc03075af435df5765c0991e74f23dd652f0408092c5c9ecb8cb",
+      "source_sha256": "884423ce34b9c7fccdb889475b8abaa071c4308b19a45849f60344b03dfb2c96"
+    },
+    {
+      "form": "after",
+      "size": 4,
+      "allocated_bytes": 1530629560,
+      "peak_bytes": 33793648,
+      "seconds": 0.6879824580391869,
+      "text_bytes": 2844,
+      "disassembly_sha256": "850fc7ac4c0eaf97ae30ed5f6e2cd785a72324dc21979370b98c6f0fe263a280",
+      "source_sha256": "884423ce34b9c7fccdb889475b8abaa071c4308b19a45849f60344b03dfb2c96"
+    },
+    {
+      "form": "explicit",
+      "size": 4,
+      "allocated_bytes": 1527333216,
+      "peak_bytes": 30831488,
+      "seconds": 0.6839425420039333,
+      "text_bytes": 2628,
+      "disassembly_sha256": "e0721c7528d5ca02966daf122589d0956460e86fb1b506799db6cbab1c39edcf",
+      "source_sha256": "c7e372276eb0386b139a1046a7c6c6a6209ae1b3c096df67c9bca16edcd0ee73"
+    },
+    {
+      "form": "rollback",
+      "size": 4,
+      "allocated_bytes": 1529778152,
+      "peak_bytes": 41489744,
+      "seconds": 0.6826270000310615,
+      "text_bytes": 2592,
+      "disassembly_sha256": "dbd052e54be6041790ca33992ea3b9da4c74fdffd2083c47cd2d55ca7ba27948",
+      "source_sha256": "884423ce34b9c7fccdb889475b8abaa071c4308b19a45849f60344b03dfb2c96"
+    },
+    {
+      "form": "before",
+      "size": 8,
+      "allocated_bytes": 1548843400,
+      "peak_bytes": 33636656,
+      "seconds": 0.6931879160110839,
+      "text_bytes": 4272,
+      "disassembly_sha256": "60b7abbae459b64673f44f50429c0c8ebd18956b7224fea98c9c34c318b1bc5f",
+      "source_sha256": "cae341be4ba71498377bcd4c15129e836bda1c0e81eeebf62f7fd789672d8f25"
+    },
+    {
+      "form": "after",
+      "size": 8,
+      "allocated_bytes": 1546887552,
+      "peak_bytes": 33648944,
+      "seconds": 0.7105362919974141,
+      "text_bytes": 3932,
+      "disassembly_sha256": "0e5b5a4ed02ee721b4097d18a7a34caa8f4a7ba1bcdd8d5b6a9d041445e72d81",
+      "source_sha256": "cae341be4ba71498377bcd4c15129e836bda1c0e81eeebf62f7fd789672d8f25"
+    },
+    {
+      "form": "explicit",
+      "size": 8,
+      "allocated_bytes": 1543089072,
+      "peak_bytes": 33743768,
+      "seconds": 0.6808045410434715,
+      "text_bytes": 3720,
+      "disassembly_sha256": "b9edd1d2d132edf6ff87eb9a7c4ecc3532f3c7ac362aca5b877238b9a7b24186",
+      "source_sha256": "a51e4d573649b33e872c11151519e4a92bff758092ea4b15cafddc13ea31afb9"
+    },
+    {
+      "form": "rollback",
+      "size": 8,
+      "allocated_bytes": 1543545472,
+      "peak_bytes": 45256816,
+      "seconds": 0.7521011249627918,
+      "text_bytes": 3396,
+      "disassembly_sha256": "04f15ec221523ba47cbd03f67c46a7a022b29fe1c24e98ff2d3e11b8122a7d7b",
+      "source_sha256": "cae341be4ba71498377bcd4c15129e836bda1c0e81eeebf62f7fd789672d8f25"
+    }
+  ],
+  "throughput": [
+    {
+      "family": "nested1",
+      "root_workers": [
+        "$worker.ret1.make"
+      ],
+      "form": "before",
+      "compiler_sha256": "0a9fa3eb474200e538632046ab3e51273dc33816c766c45e41818feacbfe7ea5",
+      "source_sha256": "8210cdc3ba0793c10fabb259f79306ef86d9e058641b0fa6189b0ce70df5b039",
+      "cost": {
+        "alloc_requests": 5002442,
+        "alloc_bytes": 160078272,
+        "copies": 2441,
+        "copy_bytes": 78080,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 2440,
+        "state_bytes": 78080,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.021890124946366996,
+        0.02078625001013279,
+        0.019474750035442412,
+        0.02080741699319333,
+        0.020121084002312273,
+        0.020717333012726158,
+        0.02061916602542624,
+        0.02114416699623689,
+        0.020894167013466358,
+        0.02179162501124665,
+        0.020907500002067536,
+        0.020921582996379584,
+        0.019698292016983032
+      ],
+      "median_seconds": 0.02080741699319333
+    },
+    {
+      "family": "nested1",
+      "root_workers": [
+        "$worker.ret1.$nested.result.make"
+      ],
+      "form": "after",
+      "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+      "source_sha256": "8210cdc3ba0793c10fabb259f79306ef86d9e058641b0fa6189b0ce70df5b039",
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.01844233402516693,
+        0.018258208001498133,
+        0.018085041956510395,
+        0.018503458006307483,
+        0.018033583008218557,
+        0.018417334009427577,
+        0.017509291996248066,
+        0.01766333298292011,
+        0.018168042006436735,
+        0.018519749981351197,
+        0.01827624998986721,
+        0.01826174999587238,
+        0.018019917013589293
+      ],
+      "median_seconds": 0.018258208001498133
+    },
+    {
+      "family": "nested1",
+      "root_workers": [
+        "$worker.scalar.make"
+      ],
+      "form": "explicit",
+      "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+      "source_sha256": "9fa56a149adad691fcdbb50d6734bf69f73a3ad1ccbcf8cb500bd64e47204995",
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.022200417006388307,
+        0.023452040972188115,
+        0.023443166981451213,
+        0.022807333036325872,
+        0.023429916996974498,
+        0.02247675001854077,
+        0.023635416000615805,
+        0.023168625019025058,
+        0.02275375003227964,
+        0.022510957962367684,
+        0.023293750011362135,
+        0.023349500028416514,
+        0.02348054200410843
+      ],
+      "median_seconds": 0.023293750011362135
+    },
+    {
+      "family": "nested1",
+      "root_workers": [],
+      "form": "rollback",
+      "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+      "source_sha256": "8210cdc3ba0793c10fabb259f79306ef86d9e058641b0fa6189b0ce70df5b039",
+      "cost": {
+        "alloc_requests": 10004883,
+        "alloc_bytes": 320156384,
+        "copies": 4882,
+        "copy_bytes": 156192,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 4881,
+        "state_bytes": 156192,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.025052416953258216,
+        0.023582041962072253,
+        0.025044541980605572,
+        0.025334083999041468,
+        0.025318083993624896,
+        0.024959292029961944,
+        0.02391079196240753,
+        0.02505191700765863,
+        0.024850709014572203,
+        0.025044624984730035,
+        0.024776124977506697,
+        0.024769208044745028,
+        0.0247009169543162
+      ],
+      "median_seconds": 0.024959292029961944
+    },
+    {
+      "family": "nested4",
+      "root_workers": [
+        "$worker.ret2.make"
+      ],
+      "form": "before",
+      "compiler_sha256": "0a9fa3eb474200e538632046ab3e51273dc33816c766c45e41818feacbfe7ea5",
+      "source_sha256": "884423ce34b9c7fccdb889475b8abaa071c4308b19a45849f60344b03dfb2c96",
+      "cost": {
+        "alloc_requests": 10004883,
+        "alloc_bytes": 320156384,
+        "copies": 4882,
+        "copy_bytes": 156192,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 4881,
+        "state_bytes": 156192,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.03860608296236023,
+        0.03835624997736886,
+        0.03935983299743384,
+        0.03973316599149257,
+        0.038943500025197864,
+        0.04226429195841774,
+        0.03953058400657028,
+        0.038914875010959804,
+        0.038884582987520844,
+        0.03893566597253084,
+        0.038549707969650626,
+        0.03894833300728351,
+        0.038583791989367455
+      ],
+      "median_seconds": 0.03893566597253084
+    },
+    {
+      "family": "nested4",
+      "root_workers": [
+        "$worker.ret4.$nested.result.make"
+      ],
+      "form": "after",
+      "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+      "source_sha256": "884423ce34b9c7fccdb889475b8abaa071c4308b19a45849f60344b03dfb2c96",
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.0456538749858737,
+        0.030643332982435822,
+        0.031055625004228204,
+        0.031034083978738636,
+        0.030976083013229072,
+        0.03122574998997152,
+        0.030891750007867813,
+        0.03097370796604082,
+        0.03197620896389708,
+        0.030735749984160066,
+        0.03486050001811236,
+        0.030335457995533943,
+        0.031091167009435594
+      ],
+      "median_seconds": 0.031034083978738636
+    },
+    {
+      "family": "nested4",
+      "root_workers": [
+        "$worker.ret4.make"
+      ],
+      "form": "explicit",
+      "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+      "source_sha256": "c7e372276eb0386b139a1046a7c6c6a6209ae1b3c096df67c9bca16edcd0ee73",
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.0339414170011878,
+        0.033196625008713454,
+        0.03147937497124076,
+        0.0336350419675,
+        0.03350487496936694,
+        0.03249137499369681,
+        0.03351637499872595,
+        0.03340837504947558,
+        0.03349800000432879,
+        0.03219304099911824,
+        0.0373435000074096,
+        0.030993959051556885,
+        0.030135832959786057
+      ],
+      "median_seconds": 0.03340837504947558
+    },
+    {
+      "family": "nested4",
+      "root_workers": [],
+      "form": "rollback",
+      "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+      "source_sha256": "884423ce34b9c7fccdb889475b8abaa071c4308b19a45849f60344b03dfb2c96",
+      "cost": {
+        "alloc_requests": 15007321,
+        "alloc_bytes": 480234400,
+        "copies": 7320,
+        "copy_bytes": 234208,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 7319,
+        "state_bytes": 234208,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.044268791971262544,
+        0.0451859999448061,
+        0.04509075003443286,
+        0.04500879201805219,
+        0.04462391702691093,
+        0.045111667015589774,
+        0.04433295800117776,
+        0.044413791969418526,
+        0.0449685410130769,
+        0.044990291993599385,
+        0.0507583330036141,
+        0.04539091698825359,
+        0.046334374987054616
+      ],
+      "median_seconds": 0.04500879201805219
+    },
+    {
+      "family": "nested8",
+      "root_workers": [
+        "$worker.ret2.make"
+      ],
+      "form": "before",
+      "compiler_sha256": "0a9fa3eb474200e538632046ab3e51273dc33816c766c45e41818feacbfe7ea5",
+      "source_sha256": "cae341be4ba71498377bcd4c15129e836bda1c0e81eeebf62f7fd789672d8f25",
+      "cost": {
+        "alloc_requests": 10007321,
+        "alloc_bytes": 480234400,
+        "copies": 7320,
+        "copy_bytes": 234208,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 7319,
+        "state_bytes": 234208,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.06284883304033428,
+        0.06121783301932737,
+        0.05724483396625146,
+        0.055874790996313095,
+        0.06044124998152256,
+        0.05839295900659636,
+        0.05979224998736754,
+        0.0555175410117954,
+        0.06276679103029892,
+        0.06163524999283254,
+        0.06469224998727441,
+        0.05673891701735556,
+        0.05858566699316725
+      ],
+      "median_seconds": 0.05979224998736754
+    },
+    {
+      "family": "nested8",
+      "root_workers": [
+        "$worker.ret8.$nested.result.make"
+      ],
+      "form": "after",
+      "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+      "source_sha256": "cae341be4ba71498377bcd4c15129e836bda1c0e81eeebf62f7fd789672d8f25",
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.047783208021428436,
+        0.04723679204471409,
+        0.04775266698561609,
+        0.05101079196901992,
+        0.04802833398571238,
+        0.0477085419697687,
+        0.04738387500401586,
+        0.049082209006883204,
+        0.04735133296344429,
+        0.047952292021363974,
+        0.04758483299519867,
+        0.048296541965100914,
+        0.0486351249855943
+      ],
+      "median_seconds": 0.047783208021428436
+    },
+    {
+      "family": "nested8",
+      "root_workers": [
+        "$worker.ret8.make"
+      ],
+      "form": "explicit",
+      "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+      "source_sha256": "a51e4d573649b33e872c11151519e4a92bff758092ea4b15cafddc13ea31afb9",
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.04918937501497567,
+        0.04781233298126608,
+        0.04781566601013765,
+        0.04774050001287833,
+        0.04821554204681888,
+        0.047626833023969084,
+        0.048018708010204136,
+        0.048920500034000725,
+        0.04732866701669991,
+        0.047231542004738,
+        0.047442209033761173,
+        0.04799133399501443,
+        0.04753191699273884
+      ],
+      "median_seconds": 0.04781233298126608
+    },
+    {
+      "family": "nested8",
+      "root_workers": [],
+      "form": "rollback",
+      "compiler_sha256": "170aeb6e8f826bfd03818a1172f2f23b2a5c069aaa33d6c4f8311bbb4595f130",
+      "source_sha256": "cae341be4ba71498377bcd4c15129e836bda1c0e81eeebf62f7fd789672d8f25",
+      "cost": {
+        "alloc_requests": 15009766,
+        "alloc_bytes": 640312640,
+        "copies": 9765,
+        "copy_bytes": 312448,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 9764,
+        "state_bytes": 312448,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.07043349999003112,
+        0.07071550004184246,
+        0.07043329201405868,
+        0.07087633304763585,
+        0.07005433400627226,
+        0.07056362502044067,
+        0.07382129202596843,
+        0.07131604198366404,
+        0.07059195800684392,
+        0.06969583302270621,
+        0.07034575002035126,
+        0.07015391701133922,
+        0.07047387503553182
+      ],
+      "median_seconds": 0.07047387503553182
+    }
+  ]
+}

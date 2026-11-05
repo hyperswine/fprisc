@@ -21,7 +21,7 @@ singleton : a -> List a .
 singleton x = x :: Nil.
 
 # from `a` up to and including `b`; empty when a > b
-range : (a : Int) -> (b : Int) -> List Int | size range <= b - a + 1 .
+range : (a : Int) -> (b : Int) -> List Int | size range <= max 0 (b - a + 1) .
 range a b = rangeGo a b Nil.
 rangeGo : (a : Int) -> (b : Int | measure (b - a)) -> List Int -> List Int .
 rangeGo a b acc = case b < a of True -> acc | False -> rangeGo a (b - 1) (b :: acc).
@@ -46,12 +46,22 @@ foldRangeGo f z a b = case a < b of True -> foldRangeGo f (f z a) (a + 1) b | Fa
 # It calls f from b down to a. Fusion admits only callbacks whose one trap is
 # Int overflow, so the order shows only in WHICH element overflows (the
 # documented relaxation; tests/check_list_fusion.py pins it).
-mapRange : (Int -> a) -> (a : Int) -> (b : Int) -> List a | size mapRange <= b - a + 1 .
+mapRange : (Int -> a) -> (a : Int) -> (b : Int) -> List a | size mapRange <= max 0 (b - a + 1) .
 mapRange f a b = mapRangeGo f a b Nil.
 mapRangeGo : (Int -> a) -> (a : Int) -> (b : Int | measure (b - a)) -> List a -> List a .
 mapRangeGo f a b acc = case b < a of True -> acc | False -> mapRangeGo f a (b - 1) (f b :: acc).
 
-repeat : (n : Int) -> a -> List a | size repeat <= n .
+# Materializing fusion target. The compiler supplies a checked, pure step
+# which either conses one result or returns acc unchanged. Descending input
+# gives ascending output without an input range or a reverse pass. As in
+# rangeGo, b - 1 is evaluated before the step, preserving endpoint underflow.
+# Effectful/dividing callbacks are not admitted to this reordered traversal.
+buildRange : (Int -> List a -> List a) -> Int -> Int -> List a .
+buildRange step a b = buildRangeGo step a b Nil.
+buildRangeGo : (Int -> List a -> List a) -> (a : Int) -> (b : Int | measure (b - a)) -> List a -> List a .
+buildRangeGo step a b acc = case b < a of True -> acc | False -> buildRangeGo step a (b - 1) (step b acc).
+
+repeat : (n : Int) -> a -> List a | size repeat <= max 0 n .
 repeat n x = repeatGo n x Nil.
 repeatGo : (n : Int | measure n) -> a -> List a -> List a .
 repeatGo n x acc = case n <= 0 of True -> acc | False -> repeatGo (n - 1) x (x :: acc).

@@ -1,0 +1,67 @@
+{
+  "compiler_codegen": 171,
+  "arc_revision": 19,
+  "compiler_sha256": "8888f64f269e423382a9f40811bf5d6205adbdf481704af1434e8a8a5fff7bdd",
+  "suite": "tests/check_builtin_products.py",
+  "suite_sha256": "f814880ccef91b147efaa3f86bcc8bdda3c2e8b5b96fa2bd0620d2e4ef5bcc0b",
+  "evidence_kind": "local RV64 QEMU execution; allocator interception and live ownership checks; not physical timing",
+  "controls": {
+    "FPR_NO_INLINE": "1",
+    "ARC_CHECK": 1
+  },
+  "loop_steps": 10000,
+  "expected_result": 20002,
+  "allocation_requests": {
+    "product_abi_rollback": 10001,
+    "checked_products": 0,
+    "checked_products_type_spec_rollback": 0,
+    "explicit_scalar_loop": 0
+  },
+  "allocators": [
+    "c",
+    "fpr"
+  ],
+  "float_abis": [
+    "soft",
+    "hard"
+  ],
+  "configurations": 12,
+  "effect_programs_per_mode": 6,
+  "effect_modes": 3,
+  "haskell_suites_passed": 39,
+  "execution_output": [
+    "False-False: strict effects, dead-arm choice, unused-field traps and integer limits PASS",
+    "c, soft, boxed=False, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+    "fpr, soft, boxed=False, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+    "c, hard, boxed=False, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+    "fpr, hard, boxed=False, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+    "False-True: strict effects, dead-arm choice, unused-field traps and integer limits PASS",
+    "c, soft, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+    "fpr, soft, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+    "c, hard, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+    "fpr, hard, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+    "True-False: strict effects, dead-arm choice, unused-field traps and integer limits PASS",
+    "c, soft, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0",
+    "fpr, soft, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0",
+    "c, hard, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0",
+    "fpr, hard, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0"
+  ],
+  "regressions": [
+    "all 39 Haskell suites",
+    "strict typed ARC required execution",
+    "scalar wrappers",
+    "uniform aggregates",
+    "hidden fields",
+    "native hosted product returns",
+    "RV64 product returns required execution",
+    "legacy pair/actor returns",
+    "check registry"
+  ],
+  "compile_budget_output": [
+    "hello: 1.59 GB allocated, 44 MB peak live, 0.7 s (+8.2% allocation, +4.1% peak vs baseline)",
+    "std-live: 32.73 GB allocated, 434 MB peak live, 17.9 s (+9.4% allocation, +7.8% peak vs baseline)",
+    "pos1: 70.33 GB allocated, 708 MB peak live, 40.2 s (+8.5% allocation, -15.0% peak vs baseline)",
+    "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+  ],
+  "c2_compile_cost_record": "2026-11-05-builtin-product-specialization-cost.json"
+}

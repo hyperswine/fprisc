@@ -91,11 +91,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-raw-') as temp:
                     'print (str (len [1, 2] + len [Word.fromInt 3, Word.fromInt 4])).\n')
     build(poly)
     assert '4' in boot()
-    env_nospec = dict(os.environ, FPR_NO_TYPE_SPEC='1')
-    p_nospec = subprocess.run(['./fprc', '--profile=bare-metal-builtin', '--arc', str(poly), str(tmp/'nospec.s')],
-                              capture_output=True, text=True, env=env_nospec, timeout=60)
-    assert p_nospec.returncode == 1 and 'incompatible representations' in p_nospec.stdout + p_nospec.stderr
-    print('Representation-polymorphic functions and containers specialize under C2 (and roll back under FPR_NO_TYPE_SPEC=1): PASS')
+    build(poly, 'FPR_NO_TYPE_SPEC=1')
+    assert '4' in boot()
+    print('Representation-polymorphic functions and containers execute with C2 and tagged fallback under FPR_NO_TYPE_SPEC=1: PASS')
 
     source = tmp/'bad-representation.fpr'
     source.write_text('same c x y = case c of True -> x | False -> y.\n'
@@ -118,6 +116,24 @@ with tempfile.TemporaryDirectory(prefix='fpr-raw-') as temp:
     build(source)
     boot()
     run(['./fprc', '--profile=bare-metal-builtin', source, tmp/'manual.s'], 1)
+
+    source = tmp/'wrong-handler-type.fpr'
+    source.write_text('machineInterrupt : Int -> Word -> Word -> Unit.\n'
+                      'machineInterrupt c p v = Unit.\nmain = Unit.\n')
+    output = run(['./fprc', '--profile=bare-metal-builtin', '--arc', source, tmp/'wrong-handler-type.s'], 1)
+    assert 'incompatible representations' in output, output
+    print('Interrupt root ABI fills unused slots but rejects conflicting concrete declarations: PASS')
+
+    source = tmp/'generic-handler.fpr'
+    source.write_text('identity x = x.\n'
+                      'machineInterrupt c p v = Mem.writeWord (Addr.fromWord p) (identity c).\n'
+                      'main = Unit.\n')
+    run(['./fprc', '--profile=bare-metal-builtin', '--arc', source, tmp/'generic-handler.s'])
+    result = subprocess.run(['./fprc', '--profile=bare-metal-builtin', '--arc', str(source), str(tmp/'generic-handler-off.s')],
+                            capture_output=True, text=True, env=dict(os.environ, FPR_NO_TYPE_SPEC='1'), timeout=60)
+    assert result.returncode == 1 and 'interrupt contract' in result.stdout + result.stderr
+    assert '$uniform.' in result.stdout + result.stderr
+    print('Interrupt fallback that would allocate a box is refused before emission: PASS')
 
     failures = {
         'allocation': 'Mem.alloc 8',

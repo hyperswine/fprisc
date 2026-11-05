@@ -95,9 +95,8 @@ def families(n):
 #  - fused direct/let-bound pipelines and the scalar loops allocate nothing
 #    (the same gates as tests/check_list_fusion.py);
 #  - sum-count-pair's loop: 4 requests for "{s} {c}" plus the one final pair;
-#  - materialize: map after filter over a range is the producer composition
-#    tests/check_list_fusion.py pins at 1501; the loop conses 500 then reverses.
-# Known gaps, reported and not gated (docs/2026-11-03-DEFAULT-BUILD-GATES.md):
+#  - materialize: descending range builders allocate just 500 result cells;
+#    the explicit loop still conses 500 then reverses. Both allocate a result pair.
 # Helper-wrapped scalar pipelines now share the zero-allocation gate.
 # Tuple folds now share the scalar loop's boundary-only allocation gate.
 EXPECT = {
@@ -105,7 +104,8 @@ EXPECT = {
     ('count-filter', 'helper'): 0, ('count-filter', 'direct'): 0, ('count-filter', 'let'): 0, ('count-filter', 'loop'): 0,
     ('sum-count-pair', 'direct'): 5, ('sum-count-pair', 'let'): 5,
     ('sum-count-pair', 'helper'): 5, ('sum-count-pair', 'loop'): 5,
-    ('materialize', 'direct'): 1501, ('materialize', 'let'): 1501, ('materialize', 'loop'): 1001,
+    ('materialize', 'direct'): 501, ('materialize', 'let'): 501,
+    ('materialize', 'helper'): 501, ('materialize', 'loop'): 1001,
 }
 
 
@@ -148,6 +148,7 @@ def main():
     ap.add_argument('--record', type=Path)
     ap.add_argument('--samples', type=int, default=5)
     ap.add_argument('--quick', action='store_true')
+    ap.add_argument('--family', choices=tuple(families(ALLOC_N)), help='measure one family in isolation')
     args = ap.parse_args()
     started = time.time()
     revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
@@ -162,6 +163,9 @@ def main():
         base.pop('GHCRTS', None)
         alloc_fams = families(ALLOC_N)
         time_fams = families(TIME_N)
+        if args.family:
+            alloc_fams = {args.family: alloc_fams[args.family]}
+            time_fams = {args.family: time_fams[args.family]}
         tasks = []
         for fam, (_, spells) in alloc_fams.items():
             for sp in SPELLINGS:
@@ -246,7 +250,7 @@ def main():
         med = f'{row["median_seconds"] * 1000:9.2f}' if 'median_seconds' in row else '        -'
         loop = rows[(fam, 'loop')]['ledger']
         row['alloc_minus_loop'] = gap = req - loop['alloc_requests'] if req is not None and loop else None
-        print(f'{fam:16} {sp:8} {str(req):>10} {gate:>6} {("+" + str(gap)) if gap else "0":>8} {str(row["text_bytes"]):>8} '
+        print(f'{fam:16} {sp:8} {str(req):>10} {gate:>6} {format(gap, "+d") if gap else "0":>8} {str(row["text_bytes"]):>8} '
               f'{row["compile_cold"]["compiler_allocated_bytes"] / 1e6:10.1f} {row["compile_warm"]["compiler_allocated_bytes"] / 1e6:10.1f} '
               f'{row["build_cold_seconds"]:12.2f} {row["build_warm_seconds"]:12.2f} {med}', flush=True)
     for row in rows.values():
@@ -269,7 +273,7 @@ def main():
         print('abstraction equivalence FAILED:\n  ' + '\n  '.join(failures))
         sys.exit(1)
     print(f'abstraction equivalence: {len(alloc_fams)} families x {len(SPELLINGS)} spellings, output identical, '
-          f'{len(EXPECT)} allocation gates PASS ({time.time() - started:.0f} s)')
+          f'{sum(key in EXPECT for key in rows)} allocation gates PASS ({time.time() - started:.0f} s)')
 
 
 if __name__ == '__main__':

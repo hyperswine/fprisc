@@ -10,6 +10,7 @@
 -- a coverage gap or a compiler bug, never a program behaviour.
 module Codegen.Eval (RV (..), Event (..), Failure (..), Outcome (..), evalProgram, evalProgramWidth, rvInt, rvBool, rvUnit) where
 
+import Compiler.DataLayout (storedListTid,storedListVariant)
 import Codegen.IR
 import Codegen.Target.Common (utf8Bytes)
 import Control.Monad (foldM, when, unless, replicateM_)
@@ -45,7 +46,7 @@ data Failure = Trap String | Stuck String deriving (Eq, Show)
 
 data Outcome = Outcome {ocResult :: Either Failure RV, ocEvents :: [Event]} deriving (Eq, Show)
 
-data Val = VVal RV | VInt Integer | VPred Bool | VAddr RV Integer | VPair Val Val deriving (Eq, Ord, Show)
+data Val = VVal RV | VInt Integer | VPred Bool | VAddr RV Integer | VProduct [Val] deriving (Eq, Ord, Show)
 
 type E = ExceptT Failure (State [Event])
 
@@ -64,7 +65,7 @@ evalProgram = evalProgramWidth W64
 evalProgramWidth :: Width -> Program -> Name -> [RV] -> Outcome
 evalProgramWidth width program name args =
   let (r, evs) = runState (runExceptT (callFn width program name (map VVal args))) []
-   in Outcome (fmap (\case VVal v -> v; VInt n -> RInt n; VPred b -> rvBool b; VAddr {} -> RSym "<address>"; VPair {} -> RSym "<pair>") r) (reverse evs)
+   in Outcome (fmap (\case VVal v -> v; VInt n -> RInt n; VPred b -> rvBool b; VAddr {} -> RSym "<address>"; VProduct {} -> RSym "<product>") r) (reverse evs)
 
 callFn :: Width -> Program -> Name -> [Val] -> E Val
 callFn width program name args = do
@@ -79,7 +80,7 @@ callFn width program name args = do
         env <- foldM instr (M.union (M.fromList (zip (map fst (bParams b)) ins)) outer) (bInstrs b)
         case bTerm b of
           TRet v -> look env v
-          TRet2 a b -> VPair <$> look env a <*> look env b
+          TRetProduct vs -> VProduct <$> mapM (look env) vs
           TBr t as -> mapM (look env) as >>= \as' -> run t as' env
           TCondBr c t as e bs -> do
             p <- look env c >>= \case VPred p -> pure p; x -> stuck ("condbr on " ++ show x)
@@ -89,16 +90,16 @@ callFn width program name args = do
             case calleeKind c of Generated s -> stuck ("a tail call of the vector kernel " ++ s ++ ": the evaluator models no kernel"); _ -> pure ()
             mapM (look env) as >>= callFn width program (calleeName c)
           TUnreachable msg -> trap msg
-      -- the second word of a pair call waits in a slot no value uses, for the OSecond right after it
-      pairSlot = VId (-1)
-      instr env (Instr (Just (v, _)) (OCall2 c as)) = do
+      -- Private result slots cannot collide with verified SSA identities.
+      resultSlot i = VId (-i)
+      instr env (Instr (Just (v, _)) (OCallProduct c as)) = do
         args' <- mapM (look env) as
         when (isForeign c) (stuck ("a foreign call to " ++ calleeName c ++ ": the evaluator models no C"))
         callFn width program (calleeName c) args' >>= \case
-          VPair a b -> pure (M.insert pairSlot b (M.insert v a env))
-          x -> stuck ("a pair call answered " ++ show x)
-      instr env (Instr (Just (v, _)) OSecond) =
-        maybe (stuck "a second word without a pair call") (\x -> pure (M.insert v x (M.delete pairSlot env))) (M.lookup pairSlot env)
+          VProduct (a:bs) -> pure (M.union (M.fromList (zip (map resultSlot [1..]) bs)) (M.insert v a env))
+          x -> stuck ("a product call answered " ++ show x)
+      instr env (Instr (Just (v, _)) (OResult i)) =
+        maybe (stuck "a product word without a product call") (\x -> pure (M.insert v x (M.delete (resultSlot i) env))) (M.lookup (resultSlot i) env)
       instr env (Instr Nothing (OSetField n objV valV)) = do
         target <- val env objV
         newField <- val env valV
@@ -152,6 +153,12 @@ callFn width program name args = do
           fs <- mapM (val env) fields
           event (EvAllocate (fnName fn) tid variant fs)
           pure (Just (VVal (RObj tid variant fs)))
+        OMakeSpine ordinal fields -> do
+          tag <- int env ordinal
+          fs <- mapM (val env) fields
+          let variant=storedListVariant (length fs-1) (fromInteger (tag .&. 0x1fffffff))
+          event (EvAllocate (fnName fn) storedListTid variant fs)
+          pure (Just (VVal (RObj storedListTid variant fs)))
         -- value semantics: the reused object is the new value (the old one
         -- is consumed; no program can observe the difference)
         OReuse tid variant root fields -> do
@@ -256,8 +263,8 @@ callFn width program name args = do
               case calleeKind c of Generated s -> stuck ("a call of the vector kernel " ++ s ++ ": the evaluator models no kernel"); _ -> pure ()
               r <- callFn width program (calleeName c) args'
               pure (Just r)
-        OCall2 _ _ -> stuck "internal: a pair call outside its definition"
-        OSecond -> stuck "internal: a second word outside its definition"
+        OCallProduct _ _ -> stuck "internal: a product call outside its definition"
+        OResult _ -> stuck "internal: a product word outside its definition"
         OSafepoint -> event (EvSafepoint (fnName fn)) >> pure Nothing
         OSafepointN n -> replicateM_ n (event (EvSafepoint (fnName fn))) >> pure Nothing
         OSimdPair {} -> stuck "a NEON pair over unmanaged memory is outside the Core evaluator"

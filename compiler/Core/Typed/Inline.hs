@@ -48,7 +48,7 @@ planListHelpers=planInliningSelected wanted
         (h,_:_) | Var (Global n _)<-exprNode h->listCombinator n
         _->False
 
-listCombinator n=takeWhile (/='@') n `elem` ["map","filter","fold","sum","product","length","range","mapFilter","filterMapped","mapRange","foldRange","lengthRange"]
+listCombinator n=takeWhile (/='@') n `elem` ["map","filter","fold","sum","product","length","range","mapFilter","filterMapped","mapRange","buildRange","foldRange","lengthRange"]
 
 -- The preliminary helper pass has few candidates. Avoid importing/rechecking
 -- a code library or running hygiene for owners that cannot call any of them.

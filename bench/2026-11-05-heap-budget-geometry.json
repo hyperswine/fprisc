@@ -1,0 +1,49 @@
+{
+  "schema": "builtin-heap-geometry-v1",
+  "sources": {
+    "machine/builtin/heap.c": "409d7d0738af7b3184bc08b1a5921085f3f88779aa8d3636de8931dcab3991aa",
+    "machine/builtin/builtin.h": "fb7099bfda0f5c6b671ddba5a981970d58aafe7036b843492d18dbb16ba1ed57",
+    "tests/builtin_heap_geometry.c": "0272b0f95b0f5483dd36a830bb3d3454c05f377d5eb9e146ac82dea1356c3e07",
+    "tests/check_builtin_heap_geometry.py": "790f0b732afacfda44044f214efc5e387e01331284bf88a393fa8ed0c892d597",
+    "tests/check_builtin_heap_index.py": "bb76813103c9befae28ec181bebfabac3c85b4a65f8508dd346f6c1133ed2b5d"
+  },
+  "checks": [
+    {
+      "target": "host-asan-ubsan",
+      "status": "PASS",
+      "output": "GEOMETRY alignment, bitmap, overflow and dry-run purity PASS\nGEOMETRY 4097 executed request sizes, split tails and retained realloc capacity PASS\nGEOMETRY exact fixed arena with seven simultaneous allocations PASS\nBUILTIN HEAP GEOMETRY HOLDS\n",
+      "short_arena": "SHORT ARENA REFUSED WITHOUT LOST PAYLOADS\nBuiltin: out of memory\n"
+    },
+    {
+      "target": "host-asan-ubsan-64k",
+      "status": "PASS",
+      "output": "GEOMETRY alignment, bitmap, overflow and dry-run purity PASS\nGEOMETRY 4097 executed request sizes, split tails and retained realloc capacity PASS\nGEOMETRY exact fixed arena with seven simultaneous allocations PASS\nBUILTIN HEAP GEOMETRY HOLDS\n"
+    },
+    {
+      "target": "rv32",
+      "status": "PASS",
+      "configured_maximum_bytes": 65536,
+      "image_sha256": {
+        "exact": "c218181af1e42233bf72d288d6ba9cdc1833911c397d9ef7f7ea5f9d7f6df93e",
+        "short": "598eebce5e608c6e1436bc65ac4c987f667df1a82b7b19c8ce0435dbd60998eb"
+      },
+      "output": {
+        "exact": "GEOMETRY alignment, bitmap, overflow and dry-run purity PASS\nGEOMETRY 4097 executed request sizes, split tails and retained realloc capacity PASS\nGEOMETRY exact fixed arena with seven simultaneous allocations PASS\nBUILTIN HEAP GEOMETRY HOLDS\n",
+        "short": "SHORT ARENA REFUSED WITHOUT LOST PAYLOADS\nBuiltin: out of memory\n"
+      }
+    },
+    {
+      "target": "rv64",
+      "status": "PASS",
+      "configured_maximum_bytes": 65536,
+      "image_sha256": {
+        "exact": "4ccd4096c912d1f60227289b20965e08b77dd76ce595194e0e23a82456d09c9a",
+        "short": "29cae572619411a7976a5688c098d9a4fab10f9a6c55cf015a154b79250e09ea"
+      },
+      "output": {
+        "exact": "GEOMETRY alignment, bitmap, overflow and dry-run purity PASS\nGEOMETRY 4097 executed request sizes, split tails and retained realloc capacity PASS\nGEOMETRY exact fixed arena with seven simultaneous allocations PASS\nBUILTIN HEAP GEOMETRY HOLDS\n",
+        "short": "SHORT ARENA REFUSED WITHOUT LOST PAYLOADS\nBuiltin: out of memory\n"
+      }
+    }
+  ]
+}

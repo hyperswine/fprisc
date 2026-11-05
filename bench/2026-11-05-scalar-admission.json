@@ -1,0 +1,1637 @@
+{
+  "schema": "scalar-admission-v1",
+  "compiler_sha256": "2e6202383467f29e37a0de47caff82ba04b427bee6c08caa18c56ef90b6f7f4f",
+  "test_sha256": "08e7345c59d0713640b94e78dc874fc5137b0fa0566b35a22cbade22184b169a",
+  "source_sha256": "c3f2700e14c9f2b99e8212e3860dcf341b4eaf7b8dae2f1d26dd2c66560ee955",
+  "cases": [
+    {
+      "entry": "addWords",
+      "arguments": [
+        0,
+        18446744073709551615
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484076,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "5f947838d088d22a6444c1c38ca8ba8784e7cd9aeaaa9048a0333d378ce93761"
+    },
+    {
+      "entry": "subWords",
+      "arguments": [
+        0,
+        18446744073709551615
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "049911da5f65eee8b5d2497082d630696c3a647d5af92b4701720a4ceff68282"
+    },
+    {
+      "entry": "andWords",
+      "arguments": [
+        0,
+        18446744073709551615
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "e94c52c7b545ad3d72d16e95efd4b99069e17616a4a1033a636a65b02bb2822d"
+    },
+    {
+      "entry": "orWords",
+      "arguments": [
+        0,
+        18446744073709551615
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "7a0c7275b5d50d57082ad7b82c93d76adacad2089b603356ef333abd72c32078"
+    },
+    {
+      "entry": "xorWords",
+      "arguments": [
+        0,
+        18446744073709551615
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "957d5a766f63903e4eb2dce0c19e50d8e1c731c7d8488c83a3a7b52db9a7851e"
+    },
+    {
+      "entry": "addWords",
+      "arguments": [
+        18446744073709551615,
+        1
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484076,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "9b0925f4205a137ae2a2b99a1cdef9918be0f8a3158f6e828e201c9c9e1b92cc"
+    },
+    {
+      "entry": "subWords",
+      "arguments": [
+        18446744073709551615,
+        1
+      ],
+      "result_bits": 18446744073709551614,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "f844f5231800ada0cefdde2b4eecc983bfb51fc245fa17164e41a32c36c4984e"
+    },
+    {
+      "entry": "andWords",
+      "arguments": [
+        18446744073709551615,
+        1
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "acaeb76136202ecda07dc8bee17383da78558052b6c1c055a4305871a7a1220b"
+    },
+    {
+      "entry": "orWords",
+      "arguments": [
+        18446744073709551615,
+        1
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "32d071e93eb8dd2f92711005348e45a30e16a292956ff7eb7f1f2fb0728d0bd0"
+    },
+    {
+      "entry": "xorWords",
+      "arguments": [
+        18446744073709551615,
+        1
+      ],
+      "result_bits": 18446744073709551614,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "490c4fa9e5418a83bf6c42e8fe15bef41687ec8479686150680694c74c0a3509"
+    },
+    {
+      "entry": "addWords",
+      "arguments": [
+        9223372036854775808,
+        9223372036854775809
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484076,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "edeb1bc3e7846c5a2716407edd41f8eac0b443786afd514c3bbf663bfb181417"
+    },
+    {
+      "entry": "subWords",
+      "arguments": [
+        9223372036854775808,
+        9223372036854775809
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "51d4ce6347c023a599aa2a21d00acff56b64007a9ef7fe3e5c3804f1568f560a"
+    },
+    {
+      "entry": "andWords",
+      "arguments": [
+        9223372036854775808,
+        9223372036854775809
+      ],
+      "result_bits": 9223372036854775808,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "703b58be6eaabb883db8a3ca95c108c22dafcc7643d64f0e0e37e51dc29511ed"
+    },
+    {
+      "entry": "orWords",
+      "arguments": [
+        9223372036854775808,
+        9223372036854775809
+      ],
+      "result_bits": 9223372036854775809,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "2ccc85cd990af98209e840de2789b48beb5ca953f46e630af427751186b76459"
+    },
+    {
+      "entry": "xorWords",
+      "arguments": [
+        9223372036854775808,
+        9223372036854775809
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "4f2c4633d8f6e5f5f621d7ec5987cff36ae9f4d080c3c1f26c0c81b6cc313494"
+    },
+    {
+      "entry": "addWords",
+      "arguments": [
+        12297829382473034410,
+        6148914691236517205
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484076,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "dcf399133435702e93612bc9749962b151464b95b9f911c95320e4344cd1ab6e"
+    },
+    {
+      "entry": "subWords",
+      "arguments": [
+        12297829382473034410,
+        6148914691236517205
+      ],
+      "result_bits": 6148914691236517205,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "b5354699a619708884d8a191117cae4b7589cb640806f72cbc72f5f03556a358"
+    },
+    {
+      "entry": "andWords",
+      "arguments": [
+        12297829382473034410,
+        6148914691236517205
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "47ff61426a571169818fc159478cab7c80a0676f6e4df622cd4abf12387ed97f"
+    },
+    {
+      "entry": "orWords",
+      "arguments": [
+        12297829382473034410,
+        6148914691236517205
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "e729e740289133c1c17797ce1d64e4a7b7c4815c381c2f0a9e60ed00e327864a"
+    },
+    {
+      "entry": "xorWords",
+      "arguments": [
+        12297829382473034410,
+        6148914691236517205
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484080,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "1614490856a79627b856341241efaf6665fb40b3f7a48a41228991824b40fe02"
+    },
+    {
+      "entry": "toInteger",
+      "arguments": [
+        0
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "4a3977333d7fc1cfbd02a2de4f032ea786fc470ba9d011ae30ae79c99220dfa7"
+    },
+    {
+      "entry": "notWord",
+      "arguments": [
+        0
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "a8549680a35bf1c75e0d64337f038e6e5548e865882f7eb1843d21652a4e22e6"
+    },
+    {
+      "entry": "addressRoundTrip",
+      "arguments": [
+        0
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "942ae7923f461224d462696f58c2db24b5d297c9ca58dbbfdb376c23558b3f96"
+    },
+    {
+      "entry": "toInteger",
+      "arguments": [
+        1
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "1c25288e2e49a53c9dd0088672be6ae1ac7ee393b45b7d5e60577c7a9f73cb26"
+    },
+    {
+      "entry": "notWord",
+      "arguments": [
+        1
+      ],
+      "result_bits": 18446744073709551614,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "030507edb8f6c931c21264db4e62fe016a875e2fe9c7ee4a419ee9c9683c29a4"
+    },
+    {
+      "entry": "addressRoundTrip",
+      "arguments": [
+        1
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "2e2e81a2ccab433baeb1fd0a04a865fec0629fe3635bef9992021b554c95bdef"
+    },
+    {
+      "entry": "toInteger",
+      "arguments": [
+        4611686018427387903
+      ],
+      "result_bits": 4611686018427387903,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "26ff1e002fc8df13d0e28cd557cdca6cf03a09bfe652f5a17f4309a6775dd7f9"
+    },
+    {
+      "entry": "notWord",
+      "arguments": [
+        4611686018427387903
+      ],
+      "result_bits": 13835058055282163712,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "05ba0681de8d84cfec0c3c39b06089335eec33e0d04850ff92217474fa1ecb57"
+    },
+    {
+      "entry": "addressRoundTrip",
+      "arguments": [
+        4611686018427387903
+      ],
+      "result_bits": 4611686018427387903,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "6903100a1b1a847f464b7ffeeb39edfa09b0ec75666e8fcc8e020764283d8730"
+    },
+    {
+      "entry": "toInteger",
+      "arguments": [
+        4611686018427387904
+      ],
+      "result_bits": 13835058055282163712,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "6a46506d0ac69451537cbb9f90b6f2ab25d1c310144c4891b5f4e77027520f42"
+    },
+    {
+      "entry": "notWord",
+      "arguments": [
+        4611686018427387904
+      ],
+      "result_bits": 13835058055282163711,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "3cbfa4661f2c58a10fe1bb4e599341cbf37980d1b6d822a18980cdee0c0d781c"
+    },
+    {
+      "entry": "addressRoundTrip",
+      "arguments": [
+        4611686018427387904
+      ],
+      "result_bits": 4611686018427387904,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "75527073e6944c325c915c29d041acb13c3663b59f3b7ad9e859b1a82710d5d6"
+    },
+    {
+      "entry": "toInteger",
+      "arguments": [
+        9223372036854775807
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "716c3aee9f90c8389f277e507de9b97cec42f5610eaa3925178c4b1e055bb25c"
+    },
+    {
+      "entry": "notWord",
+      "arguments": [
+        9223372036854775807
+      ],
+      "result_bits": 9223372036854775808,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "4a066c5a7d07f8517c27a1458b623d6392d15d2a69f0dc4fe570bc45305f8c81"
+    },
+    {
+      "entry": "addressRoundTrip",
+      "arguments": [
+        9223372036854775807
+      ],
+      "result_bits": 9223372036854775807,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "825f0493c73092d471af8132da9ce7955cb199a9f880697a15164656d1d2a232"
+    },
+    {
+      "entry": "toInteger",
+      "arguments": [
+        9223372036854775808
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "56324eedd3f8833225e4e92be150be614bff837d671ca181b8086e0fedd1b123"
+    },
+    {
+      "entry": "notWord",
+      "arguments": [
+        9223372036854775808
+      ],
+      "result_bits": 9223372036854775807,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "aed69ff561b1ed49e2c05be38b3c7d780fe7cdcb740069500bc709186e67733c"
+    },
+    {
+      "entry": "addressRoundTrip",
+      "arguments": [
+        9223372036854775808
+      ],
+      "result_bits": 9223372036854775808,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "43d1d49304170b697cdcb0738ca863b1a0881c97a10f8f6823f4e344284a7c5b"
+    },
+    {
+      "entry": "toInteger",
+      "arguments": [
+        18446744073709551615
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "1b31bb552f20ddc69c9b230b619a883f758846cceb4bbea8b5dafca01afa3941"
+    },
+    {
+      "entry": "notWord",
+      "arguments": [
+        18446744073709551615
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "8d4c0602decc1bd5d981245e6491742ca97d82d6b8612decf548571682465443"
+    },
+    {
+      "entry": "addressRoundTrip",
+      "arguments": [
+        18446744073709551615
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484004,
+        "peak_bytes": 352,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "0a9c9776d0a8538f43cc1cdbd60458352186f75a63c94e545fc17a993cebbbc5"
+    },
+    {
+      "entry": "fromInteger",
+      "arguments": [
+        -4611686018427387904
+      ],
+      "result_bits": 13835058055282163712,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484116,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "07b1ef557b6dec7013bfd13acee34e0b78c2037bd62f9c784545d4793d74c667"
+    },
+    {
+      "entry": "fromInteger",
+      "arguments": [
+        -1
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484116,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "dac819701ef001ae159186602306bcaa3e2bdf5f923aa70254b41f6c91eccd64"
+    },
+    {
+      "entry": "fromInteger",
+      "arguments": [
+        0
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484116,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "04a5c17a87691ced497fddc8c578939ccf8fe631ec80824e38156d345bda096a"
+    },
+    {
+      "entry": "fromInteger",
+      "arguments": [
+        4611686018427387903
+      ],
+      "result_bits": 4611686018427387903,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484116,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "d4795923919cf93ee375b4917c1324bcf29da6cf85ad263668383a98372b6ea9"
+    },
+    {
+      "entry": "less",
+      "arguments": [
+        -4611686018427387904,
+        4611686018427387903
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484192,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "439a92f79bf60658910995902e4da6c4c67d8edd589281666de08086ad4fccfe"
+    },
+    {
+      "entry": "greater",
+      "arguments": [
+        -4611686018427387904,
+        4611686018427387903
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484192,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "939026fa21ff1f1cd441a66ac6a77147db6c8587c80459efa56af2c8c956c248"
+    },
+    {
+      "entry": "lessEqual",
+      "arguments": [
+        -4611686018427387904,
+        4611686018427387903
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484196,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "0426c7553e77642f695d33fb97792895e2d15afc4ed2cbe9dd5f36d7a390f758"
+    },
+    {
+      "entry": "greaterEqual",
+      "arguments": [
+        -4611686018427387904,
+        4611686018427387903
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484196,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "43af2de0b2c62e6b007b397770b90e2e49fbc78c83ac9eff8db3726f4932cdef"
+    },
+    {
+      "entry": "less",
+      "arguments": [
+        4611686018427387903,
+        -4611686018427387904
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484192,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "791d1adb5fd723852daaecb1fb30439e2ce6e46619f4044917c4b61e16f5f8a7"
+    },
+    {
+      "entry": "greater",
+      "arguments": [
+        4611686018427387903,
+        -4611686018427387904
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484192,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "1b54cab1855548a355f930360676bf850e77ccd47bbfadf8a88d8d281559d631"
+    },
+    {
+      "entry": "lessEqual",
+      "arguments": [
+        4611686018427387903,
+        -4611686018427387904
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484196,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "d8dbdd46b5defb3260040695593fcf03241f2a8b6e08f9b6478da75ef78926f7"
+    },
+    {
+      "entry": "greaterEqual",
+      "arguments": [
+        4611686018427387903,
+        -4611686018427387904
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484196,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "f3598b240f8c1c8e013e709aa71c2ed12818acf7429658591f7616de2f9ebbfc"
+    },
+    {
+      "entry": "less",
+      "arguments": [
+        0,
+        0
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484192,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "8f6387a30c5eb691237c5d0c9fd99f5a855491d73ea717ccb02078df096f8cd7"
+    },
+    {
+      "entry": "greater",
+      "arguments": [
+        0,
+        0
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484192,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "f4cbca8e379b565fabc4aa8cd9cfaf7ddfe368afa69fb4593b4ce18679110ba8"
+    },
+    {
+      "entry": "lessEqual",
+      "arguments": [
+        0,
+        0
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484196,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "90501c5b0ac2bbe7692e05fda1114027842a4039bb01c67c729040458b14487c"
+    },
+    {
+      "entry": "greaterEqual",
+      "arguments": [
+        0,
+        0
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484196,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "d1a893589006a09edb2d6d10ee982d60f0614f707264b5efea2f0e3944df786d"
+    },
+    {
+      "entry": "wordEqual",
+      "arguments": [
+        18446744073709551615,
+        18446744073709551615
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484108,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "dfca55c1d4fe68b124d06be3d9414204bc596ff19d44f4a17b01505d01c05764"
+    },
+    {
+      "entry": "rawEqual",
+      "arguments": [
+        18446744073709551615,
+        18446744073709551615
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484108,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "cd6cc5a3d652e3e730be10029901529c31eaee04d853b38ddb15a2699a04abdf"
+    },
+    {
+      "entry": "addressEqual",
+      "arguments": [
+        18446744073709551615,
+        18446744073709551615
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484112,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "bee2024c2bd576765d9519811b7d218f48d583fc3d30859b7e4524d5afa19d15"
+    },
+    {
+      "entry": "rawDifferent",
+      "arguments": [
+        18446744073709551615,
+        18446744073709551615
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484108,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "459bfb499537389cdc0d03e5fad72dfbc3d7bfc194851a56f5b219961c8e26b1"
+    },
+    {
+      "entry": "wordEqual",
+      "arguments": [
+        18446744073709551615,
+        0
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484108,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "002e36f0b365d4ece018b651b9a661c2b30f9f31ed7f5456c385366988a3e781"
+    },
+    {
+      "entry": "rawEqual",
+      "arguments": [
+        18446744073709551615,
+        0
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484108,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "52fe43c3e88ceb45714dcc54e12c6fb2331ebc0764de46679255f21d8b781c44"
+    },
+    {
+      "entry": "addressEqual",
+      "arguments": [
+        18446744073709551615,
+        0
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484112,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "e188273858945c202e00a20909ae466b7156385b82009c8db054c782abb24bac"
+    },
+    {
+      "entry": "rawDifferent",
+      "arguments": [
+        18446744073709551615,
+        0
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484108,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "76f1d8e067f0790cbda36925a66dd0fc6f5202e0d752308871e076247210eed8"
+    },
+    {
+      "entry": "wordEqual",
+      "arguments": [
+        0,
+        0
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484108,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "ad429efb1558bd0f3fa577de0b60da9ff9ca841b9b7731529ad384fe27d619f3"
+    },
+    {
+      "entry": "rawEqual",
+      "arguments": [
+        0,
+        0
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484108,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "b93019374099aa9a7c22755c13f338fdda9f1a8d903e833cd15b6ceb6a818a17"
+    },
+    {
+      "entry": "addressEqual",
+      "arguments": [
+        0,
+        0
+      ],
+      "result_bits": 1,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484112,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "d718f6304452086be4a6de67ebdb84ff5ae6b50cf2ac32a9c7e48b307ecc47d6"
+    },
+    {
+      "entry": "rawDifferent",
+      "arguments": [
+        0,
+        0
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484108,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "5e5ca798d77d9fb65ec34b1e1c362e50818b6cd4373877e0791824924225ae18"
+    },
+    {
+      "entry": "wordWidth",
+      "arguments": [
+        0
+      ],
+      "result_bits": 64,
+      "heap": {
+        "requests": 0,
+        "requested_bytes": 0,
+        "required_arena_bytes": 0,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147483924,
+        "peak_bytes": 160,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "ff2eb1c616cec3f34879b5aebba60fe5189d0b50911854c98d1026ef04f60180"
+    },
+    {
+      "entry": "addressNull",
+      "arguments": [
+        0
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 1,
+        "requested_bytes": 24,
+        "required_arena_bytes": 224,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147483936,
+        "peak_bytes": 320,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "ee88df80cd373e9a098e82091ae5e71db3b0cda4a60baa09da8230e1cb69fa0d"
+    },
+    {
+      "entry": "addressOffset",
+      "arguments": [
+        0,
+        -1
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484192,
+        "peak_bytes": 384,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "71d45cd8c78eb205268f9972ae6ba02b0981f5f34bfb589add638519226f8e82"
+    },
+    {
+      "entry": "addressOffset",
+      "arguments": [
+        18446744073709551615,
+        1
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "required_arena_bytes": 416,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484192,
+        "peak_bytes": 384,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "403f4e45200e987ce6ccd428d9bb362c3271d088954e3ad7fea0d96861c7b71d"
+    },
+    {
+      "entry": "runLoop",
+      "arguments": [
+        0,
+        18446744073709551615
+      ],
+      "result_bits": 18446744073709551615,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484180,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "e62ada2e3fea2af806e427aa578c72d18d72cc6a9e1291f35511c833c017df9b",
+      "exact_arena": {
+        "heap": {
+          "requests": 3,
+          "requested_bytes": 72,
+          "required_arena_bytes": 624,
+          "reserved_bytes": 624
+        },
+        "stack": {
+          "symbol": "fpr_static_run",
+          "address": 2147484180,
+          "peak_bytes": 368,
+          "limit_bytes": 368
+        },
+        "image_sha256": "be91eb508cfe85688cbdb5e8ad02533902a4543419854c65e0c351a3c5e02b4b"
+      }
+    },
+    {
+      "entry": "runLoop",
+      "arguments": [
+        10000,
+        18446744073709541616
+      ],
+      "result_bits": 0,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484180,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "17bc2b1a8d5bce53ce7e2cd7492fc216dc848248a27563372759fa381faf4f37",
+      "exact_arena": {
+        "heap": {
+          "requests": 3,
+          "requested_bytes": 72,
+          "required_arena_bytes": 624,
+          "reserved_bytes": 624
+        },
+        "stack": {
+          "symbol": "fpr_static_run",
+          "address": 2147484180,
+          "peak_bytes": 368,
+          "limit_bytes": 368
+        },
+        "image_sha256": "9c1e4cc5f52ac73908d27b0510e65540839d9c8cd6bc95d08d9c482a8609ae7d"
+      }
+    },
+    {
+      "entry": "runLoop",
+      "arguments": [
+        100000,
+        7
+      ],
+      "result_bits": 100007,
+      "heap": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "required_arena_bytes": 624,
+        "reserved_bytes": 4096
+      },
+      "stack": {
+        "symbol": "fpr_static_run",
+        "address": 2147484180,
+        "peak_bytes": 368,
+        "limit_bytes": 4096
+      },
+      "image_sha256": "06263590fc4ab3a39453346a170d1ebba0c36cf52a4955070f3ca720bf75688d",
+      "exact_arena": {
+        "heap": {
+          "requests": 3,
+          "requested_bytes": 72,
+          "required_arena_bytes": 624,
+          "reserved_bytes": 624
+        },
+        "stack": {
+          "symbol": "fpr_static_run",
+          "address": 2147484180,
+          "peak_bytes": 368,
+          "limit_bytes": 368
+        },
+        "image_sha256": "4aca6ae596411c6370114ff27b7cab9c4e812abcc99721c0087eae5c66974d8e"
+      }
+    }
+  ],
+  "refusals": [
+    {
+      "entry": "badShift",
+      "output": "use: Lib resolves to \"scalar.fpr#2702b6f58f32dfda\"  (pin it to freeze this exact code)\nexport badShift : KWord KInt -> KWord  (badShift@2702b6f58f32dfda)\nerror: heap budget badShift: UNPROVED [\"runtime:fpr_fn__x24arc_x2ewordshl\"]\n"
+    },
+    {
+      "entry": "badAdd",
+      "output": "use: Lib resolves to \"scalar.fpr#2702b6f58f32dfda\"  (pin it to freeze this exact code)\nexport badAdd : KInt KInt -> KInt  (badAdd@2702b6f58f32dfda)\nerror: heap budget badAdd: UNPROVED [\"runtime:fpr_fn__x24arc_x2eadd\"]\n"
+    }
+  ],
+  "admission_preserves_instructions_and_data": true,
+  "baseline_compiler_sha256": "8591f084d6324b8c1b8bb4b6f8d41cadb50ca8290085778ea29930fcbc8fd78a",
+  "baseline_code_identical": true,
+  "baseline_heap_refusal": "use: Lib resolves to \"scalar.fpr#2702b6f58f32dfda\"  (pin it to freeze this exact code)\nexport addWords : KWord KWord -> KWord  (addWords@2702b6f58f32dfda)\nexport subWords : KWord KWord -> KWord  (subWords@2702b6f58f32dfda)\nexport andWords : KWord KWord -> KWord  (andWords@2702b6f58f32dfda)\nexport orWords : KWord KWord -> KWord  (orWords@2702b6f58f32dfda)\nexport xorWords : KWord KWord -> KWord  (xorWords@2702b6f58f32dfda)\nexport notWord : KWord -> KWord  (notWord@2702b6f58f32dfda)\nexport fromInteger : KInt -> KWord  (fromInteger@2702b6f58f32dfda)\nexport toInteger : KWord -> KInt  (toInteger@2702b6f58f32dfda)\nexport wordWidth : KUnit -> KInt  (wordWidth@2702b6f58f32dfda)\nexport wordEqual : KWord KWord -> KBool  (wordEqual@2702b6f58f32dfda)\nexport rawEqual : KWord KWord -> KBool  (rawEqual@2702b6f58f32dfda)\nexport rawDifferent : KWord KWord -> KBool  (rawDifferent@2702b6f58f32dfda)\nexport less : KInt KInt -> KBool  (less@2702b6f58f32dfda)\nexport greater : KInt KInt -> KBool  (greater@2702b6f58f32dfda)\nexport lessEqual : KInt KInt -> KBool  (lessEqual@2702b6f58f32dfda)\nexport greaterEqual : KInt KInt -> KBool  (greaterEqual@2702b6f58f32dfda)\nexport addressRoundTrip : KWord -> KWord  (addressRoundTrip@2702b6f58f32dfda)\nexport addressOffset : KWord KInt -> KWord  (addressOffset@2702b6f58f32dfda)\nexport addressNull : KUnit -> KWord  (addressNull@2702b6f58f32dfda)\nexport addressEqual : KWord KWord -> KBool  (addressEqual@2702b6f58f32dfda)\nexport runLoop : KWord KWord -> KWord  (runLoop@2702b6f58f32dfda)\nerror: heap budget addWords: UNPROVED [\"runtime:fpr_fn__x24arc_x2ewordadd\"]\n",
+  "execution": "RV64-QEMU-PASS"
+}

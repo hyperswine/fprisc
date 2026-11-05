@@ -1,0 +1,57 @@
+{
+  "compiler_sha256": "db0ab8a1cd16986543d8f8a3f45af3860b2680cbd45e77eaedabf0a0a3480c84",
+  "allocation_margin": 0.1,
+  "rows": [
+    {
+      "helpers": 16,
+      "generic": {
+        "allocated_bytes": 295382616,
+        "max_bytes_used": 1704680,
+        "wall_seconds": 0.1314,
+        "text_bytes": 14092,
+        "functions": 48
+      },
+      "explicit": {
+        "allocated_bytes": 294471048,
+        "max_bytes_used": 1766560,
+        "wall_seconds": 0.1258,
+        "text_bytes": 14092,
+        "functions": 48
+      }
+    },
+    {
+      "helpers": 32,
+      "generic": {
+        "allocated_bytes": 1304356184,
+        "max_bytes_used": 10986744,
+        "wall_seconds": 0.5641,
+        "text_bytes": 24244,
+        "functions": 80
+      },
+      "explicit": {
+        "allocated_bytes": 1302784608,
+        "max_bytes_used": 8481264,
+        "wall_seconds": 0.5752,
+        "text_bytes": 24244,
+        "functions": 80
+      }
+    },
+    {
+      "helpers": 64,
+      "generic": {
+        "allocated_bytes": 9306225512,
+        "max_bytes_used": 29513312,
+        "wall_seconds": 3.9893,
+        "text_bytes": 44852,
+        "functions": 144
+      },
+      "explicit": {
+        "allocated_bytes": 9302765232,
+        "max_bytes_used": 32443976,
+        "wall_seconds": 3.9558,
+        "text_bytes": 44852,
+        "functions": 144
+      }
+    }
+  ]
+}

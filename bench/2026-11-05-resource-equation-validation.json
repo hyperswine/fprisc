@@ -1,0 +1,157 @@
+{
+  "schema": "resource-equation-validation-v1",
+  "codegen_revision": 175,
+  "compiler_sha256": "18afe2b7318a4ce93a2d7c405f283bc4c06980e28523468c36a5875dd6444f97",
+  "sources": {
+    "compiler/Cost.hs": "2c25dc043048a4ac131e456be032e656c8d21c08b07bc5a19561d1ae44e60e66",
+    "compiler/Codegen.hs": "83172079d4c0aae203d36ea7570ee6a4ace6834d9aa99467821191ac736a0d27",
+    "compiler/Safety.hs": "e581d9ad868c8dcecdb0430ae0c0c620c8b87b5cca7503af51113c00f505faec",
+    "tests/ResourceCosts.hs": "e389db2af001ddc73e64a03a5c9d04aa5b88e7d33b776eb1a5f7b6ed1642bc4d",
+    "tests/TypedProgram.hs": "90f6e54d0bc5742143c78ee9e8ed283279d0323f480f9cffed473adfef537986",
+    "fp-risc.cabal": "b316fdefd22d630d476a13e0ef940b7f21e9849b770f6a172082a98dbe7ffa3c",
+    "tests/check_resource_admission.py": "db8b7e08396140d2710303a4ea5f9109520e7bf571a2ff47a7840aaa9fdde363",
+    "tests/base/resource_cost_probe.c": "6cc67af0e1e1d426913f8e3005b42813bb1858603851898a776522596a937a7b",
+    "tests/check_cost.py": "9238dd0331996315a75cc78f6bcb62ff71b550f512875f409017dbcd45f78f3c",
+    "tests/cases/bound_pipeline.fpr": "24a874dd64db367c9cff5517a2f2d3b4976b04a0c10e7c8f3cc16c505721d0a7",
+    "tests/cases/bound_pipeline_direct.fpr": "3f3399ab7c49a0f4ba18f9f878dc868af4aa9b83c5489a19875e1d514cd20111",
+    "tests/check_registry.py": "a71765a5509aeb5168c9784f16927a3fd3604a127273ffc77751b572c541381a",
+    "tests/test_check_registry.py": "f056edc97f954ca46221cda72e02e53950fe2c3f227375cd07a3384cf5936083",
+    "docs/2026-11-05-RESOURCE-EQUATION-PREREQUISITES.md": "df109434931888f3846d7aa764c9636236f4938635e7468471628c92b9275011",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "a70d3358248342cb523c238de7f231f9d093a9776d039d52421dc5fcd0f3780b",
+    "docs/2026-10-02-RESOURCE-BOUNDS.md": "61de70c2aaa689d375ec2278986d0b49911fe6e243d12a263ea20ba83c9bb088",
+    "bench/2026-11-05-resource-equations.json": "0b895217a32faee76870e2f502c37286440726b360e96513730affdfef6edc29",
+    "bench/2026-11-05-resource-equation-specialization-cost.json": "c028bdf5b952e373a033bb78d5f9f5fdd14f127b4ee60f7eae51db27c22d1216"
+  },
+  "checks": [
+    {
+      "name": "Haskell",
+      "command": "cabal test all --test-show-details=direct",
+      "status": "PASS",
+      "compiler_sha256": "18afe2b7318a4ce93a2d7c405f283bc4c06980e28523468c36a5875dd6444f97",
+      "log_sha256": "6e4ed7bec98aba83e9cffb9340ef43d17df5b7b263721528c200f55e3bd3e7e2",
+      "output_tail": [
+        "parentheses end conditional before pipeline: OK",
+        "parentheses end conditional before next argument: OK",
+        "Test suite if-precedence-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/if-precedence-check/test/fp-risc-0.13.1-if-precedence-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ]
+    },
+    {
+      "name": "native",
+      "command": "python3 tests/check_resource_admission.py --baseline /tmp/fpr-resource-before-175 --record bench/2026-11-05-resource-equations.json",
+      "status": "PASS",
+      "compiler_sha256": "18afe2b7318a4ce93a2d7c405f283bc4c06980e28523468c36a5875dd6444f97",
+      "log_sha256": "ff45ea9dd68596471bf91379215e39920ee0e9c8ccb4be4b341443708877a639",
+      "output_tail": [
+        "branching: undersized contract refused; independent native observations on 1/4 harts PASS",
+        "partial: undersized contract refused; independent native observations on 1/4 harts PASS",
+        "growing: undersized contract refused; independent native observations on 1/4 harts PASS",
+        "Correct PAP capacity and exclusive linear recursion contracts PASS"
+      ]
+    },
+    {
+      "name": "source-costs",
+      "command": "FPR_HOME=$PWD XDG_CACHE_HOME=/tmp/fpr-resource-cost-cache python3 tests/check_cost.py",
+      "status": "PASS",
+      "compiler_sha256": "18afe2b7318a4ce93a2d7c405f283bc4c06980e28523468c36a5875dd6444f97",
+      "log_sha256": "f9444ab2597c7bdc0493c8161ebf5701c37b6b67b470e0bda9aad777fa8f2994",
+      "output_tail": [
+        "Cost: linear measured recursion and invariant callbacks compose; branching/growing recursive costs stay unproved; full PAP capacity is charged; declared bounds and manifest judgements (fixture: 2.93 \u00b5s within 5 \u00b5s, over 1 \u00b5s), scoped live/loop costs and Todo reporting (12.4s) PASS"
+      ]
+    },
+    {
+      "name": "compiler-budget",
+      "command": "python3 tests/check_compile_budget.py --require-baseline",
+      "status": "PASS",
+      "compiler_sha256": "18afe2b7318a4ce93a2d7c405f283bc4c06980e28523468c36a5875dd6444f97",
+      "log_sha256": "90860e03e96444574834be803fadb3d3b097b8e5841ac7861c483fd5841e9964",
+      "output_tail": [
+        "hello: 1.59 GB allocated, 44 MB peak live, 0.9 s (+8.3% allocation, +4.1% peak vs baseline)",
+        "std-live: 32.66 GB allocated, 420 MB peak live, 30.0 s (+9.2% allocation, +4.2% peak vs baseline)",
+        "pos1: 68.92 GB allocated, 705 MB peak live, 40.1 s (+6.3% allocation, -15.5% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "C2-budget",
+      "command": "python3 tests/check_type_spec_cost.py --require-baseline --sizes 16 32 64 128 256 --record bench/2026-11-05-resource-equation-specialization-cost.json",
+      "status": "PASS",
+      "compiler_sha256": "18afe2b7318a4ce93a2d7c405f283bc4c06980e28523468c36a5875dd6444f97",
+      "log_sha256": "90b74c371341467f0bd7c1ac1146c44297cb24478552f9073ba7429d33954960",
+      "output_tail": [
+        "16 helpers: same 10520 code bytes/48 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 16952 code bytes/80 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30136 code bytes/144 functions; compiler allocation 1.001x explicit twins",
+        "128 helpers: same 56504 code bytes/272 functions; compiler allocation 1.001x explicit twins",
+        "256 helpers: same 109240 code bytes/528 functions; compiler allocation 1.002x explicit twins"
+      ]
+    },
+    {
+      "name": "regions",
+      "command": "FPR_HOME=$PWD XDG_CACHE_HOME=/tmp/fpr-resource-regions-cache python3 tests/check_base.py -j 2 --only regionnest --only turnroots --only loopwith --timings-json /tmp/fpr-resource-regions.json",
+      "status": "PASS",
+      "compiler_sha256": "81b772855fb51797a91b84d21ce4ce145fc4897044bc791b8559eb0e29840cc2",
+      "log_sha256": "2fe644a530c4610d71262fbdfff1350b89e8c54330d640de524121d5bee91086",
+      "output_tail": [
+        "A message dies with its turn: a serve store keeps 5,000 requests' keys and values without keep, an arena and a poolReset release their received roots, on one and four harts: PASS",
+        "Loop regions reset per slab, call regions open when a call has used a slab, a builder's region is adopted whole, and an arena copying out under a pending call region keeps the chain: PASS",
+        "Sys.loopWith: 1,000 and 20,000 steps of a double-buffered frame loop grow the caller pool by the same 256 B; a moved vector and a Vector in the state are refused: PASS",
+        "check_base: 3 jobs in 7 s on 2 worker(s)"
+      ]
+    },
+    {
+      "name": "wrappers",
+      "command": "python3 tests/check_base_wrappers.py",
+      "status": "PASS",
+      "compiler_sha256": "81b772855fb51797a91b84d21ce4ce145fc4897044bc791b8559eb0e29840cc2",
+      "log_sha256": "6be7dedc4073bb1f4d8266348bd32c0d5697c9d69fade54cfd42f9a68ec157e8",
+      "output_tail": [
+        "float: [1002, 1] allocations, boundary/value checks PASS",
+        "other-variant: [1, 1] allocations, boundary/value checks PASS",
+        "maximum: exact ordered effect/failure differential PASS",
+        "minimum: exact ordered effect/failure differential PASS",
+        "division: exact ordered effect/failure differential PASS",
+        "Unused strict seed and separate-module tagged entry PASS"
+      ]
+    },
+    {
+      "name": "materialize",
+      "command": "python3 tests/check_list_materialize.py",
+      "status": "PASS",
+      "compiler_sha256": "81b772855fb51797a91b84d21ce4ce145fc4897044bc791b8559eb0e29840cc2",
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "output_tail": [
+        "Materializing pipeline: min-singleton-rejected PASS",
+        "Materializing pipeline: min-range-before-effects PASS",
+        "Materializing pipeline: near-min PASS",
+        "Materializing pipeline: map-overflow PASS",
+        "Materializing pipeline: division-before-overflow PASS",
+        "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": "python3 -m unittest discover -s tests -p test_check_registry.py",
+      "status": "PASS",
+      "compiler_sha256": null,
+      "log_sha256": "fae3e339e789ba88605ed3dc62499df3b18cf627eaa044b353d42d9a0be28b7b",
+      "output_tail": [
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.110s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "build_note": "Region/wrapper/materializing checks ran on the initial codegen-175 binary. Only explanatory Cost.hs comments changed before the final rebuild; final Haskell, native observations, source cost reports and both cost gates were rerun.",
+  "limits": [
+    "This is requested-object resource equation validation, not physical arena admission.",
+    "Nonnegative caller domains and declared result-size assumptions still need admission proofs.",
+    "Branching and changing-accumulator recurrences remain explicitly unproved.",
+    "No new physical target, stack bound, runtime time bound or hardware WCET evidence."
+  ]
+}

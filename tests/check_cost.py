@@ -36,12 +36,12 @@ def line(report, fn, kind):
     return m.group(1).strip()
 
 r = cost(ROOT / 'tests' / 'measure.fpr')
-assert line(r, 'fact', 'work') == '5·(n + 1)', line(r, 'fact', 'work')
+assert line(r, 'fact', 'work') == '5·(max(0, n) + 1)', line(r, 'fact', 'work')
 assert line(r, 'lsum', 'work') == '6·(len l + 1)', line(r, 'lsum', 'work')
-assert line(r, 'sumTo', 'work') == '6·((-1)·i + lim + 1)', line(r, 'sumTo', 'work')
+assert line(r, 'sumTo', 'work') == '6·(max(0, (-1)·i + lim) + 1)', line(r, 'sumTo', 'work')
 assert line(r, 'fact', 'alloc') == '0'
 r = cost(CASES / 'measure_mutual_ok.fpr')
-assert line(r, 'ping', 'work') == '5·(n + 1)' and line(r, 'pong', 'work') == '5·(n + 1)', r
+assert line(r, 'ping', 'work') == '5·(max(0, n) + 1)' and line(r, 'pong', 'work') == '5·(max(0, n) + 1)', r
 r = cost(CASES / 'cost_ho.fpr')
 assert line(r, 'apply', 'work') == 'work f + 1', line(r, 'apply', 'work')
 assert line(r, 'twice', 'work') == '2·work f + 2', line(r, 'twice', 'work')
@@ -57,21 +57,26 @@ def build(name, *needles, ok=True):
     for n in needles:
         assert n in out, f'{name}: expected {n!r} in\n{out}'
 build('bound_ok.fpr')
+build('bound_signed_unsafe.fpr', 'UNPROVED', 'signed input domain', ok=False)
 build('bound_caller.fpr')
-build('bound_over.fpr', 'OVER (n: derived 5, declared 4)', ok=False)
-build('bound_unused_over.fpr', 'OVER (n: derived 5, declared 4)', ok=False)
+build('bound_over.fpr', 'OVER (max(0, n): derived 5, declared 4)', ok=False)
+build('bound_unused_over.fpr', 'OVER (max(0, n): derived 5, declared 4)', ok=False)
 build('bound_free_name.fpr', 'the bound names `omega`, which is not a parameter of count', ok=False)
 build('bound_unproved.fpr', 'UNPROVED (opaque: print)', ok=False)
 r = cost(CASES / 'bound_caller.fpr')
 assert line(r, 'g', 'work') == '12', line(r, 'g', 'work')  # inc's DECLARED 10, not its derived 1
 assert 'inc: declared work <= 10   derived 1   PROVEN' in r, r
 r = cost(CASES / 'bound_ok.fpr')
-assert 'count: declared work <= 5·n + 5   derived 5·(n + 1)   PROVEN' in r, r
-# declared result sizes let a pipeline close: range (b - a + 1) -> map (len xs) -> sum
-r = cost(CASES / 'bound_pipeline.fpr')
-assert line(r, 'total', 'work') == '19·(len xs + 1) + 8', line(r, 'total', 'work')
-assert line(r, 'main', 'work') == 'ω(print) + 292', line(r, 'main', 'work')
-assert 'total: declared work <= 19·len xs + 27   derived 19·(len xs + 1) + 8   PROVEN' in r, r
+assert 'count: declared work <= 5·max(0, n) + 5   derived 5·(max(0, n) + 1)   PROVEN' in r, r
+# The original std-map proof priced its growing reverse accumulator at the
+# initial length. Keep that source as a refusal regression; it needs a real
+# recurrence proof. A direct measured map keeps the independent composition,
+# callback, declared-size and manifest checks below meaningful.
+build('bound_pipeline.fpr', 'UNPROVED', 'varying-recursive-parameter', ok=False)
+r = cost(CASES / 'bound_pipeline_direct.fpr')
+assert line(r, 'total', 'work') == '16·(len xs + 1) + 6', line(r, 'total', 'work')
+assert line(r, 'main', 'work') == 'ω(print) + 257', line(r, 'main', 'work')
+assert 'total: declared work <= 16·len xs + 22   derived 16·(len xs + 1) + 6   PROVEN' in r, r
 
 # stage 3: a target manifest prices ops and primitives, binds coefficients,
 # and judges budgeted functions; every number is printed beside the target's name
@@ -83,12 +88,12 @@ def judged(name, manifest, *needles, ok=True):
     assert (p.returncode == 0) == ok, f'{name} with {manifest}: expected {"accepted" if ok else "refused"}:\n{out}'
     for n in needles:
         assert n in out, f'{name} with {manifest}: expected {n!r} in\n{out}'
-judged('bound_pipeline.fpr', 'host.fprt', 'target host-test:', '1.3 ns/op', 'main      work 2292 ops → 2.98 µs   PROVEN within budget 5 µs',
-       'total     work <= 19·(len xs + 1) + 8   (parametric; × 1.3 ns)')
-judged('bound_pipeline.fpr', 'host-tight.fprt', 'main      work 2292 ops → 2.98 µs   OVER budget 1 µs', ok=False)
+judged('bound_pipeline_direct.fpr', 'host.fprt', 'target host-test:', '1.3 ns/op', 'main       work 2257 ops → 2.93 µs   PROVEN within budget 5 µs',
+       'total      work <= 16·(len xs + 1) + 6   (parametric; × 1.3 ns)')
+judged('bound_pipeline_direct.fpr', 'host-tight.fprt', 'main       work 2257 ops → 2.93 µs   OVER budget 1 µs', ok=False)
 build('bound_coef.fpr', 'a named coefficient needs a target manifest', ok=False)
-judged('bound_coef.fpr', 'host.fprt', 'count: declared work <= 5·n + 5   derived 5·(n + 1)   PROVEN')
-judged('bound_coef.fpr', 'host-omega4.fprt', 'OVER (n: derived 5, declared 4)', ok=False)
+judged('bound_coef.fpr', 'host.fprt', 'count: declared work <= 5·max(0, n) + 5   derived 5·(max(0, n) + 1)   PROVEN')
+judged('bound_coef.fpr', 'host-omega4.fprt', 'OVER (max(0, n): derived 5, declared 4)', ok=False)
 bad = Path('/tmp/fpr-bad-manifest.fprt'); bad.write_text('name x\nns_per_op fast\n')
 p = subprocess.run(['./fpr', 'build', str(CASES / 'bound_ok.fpr'), f'--manifest={bad}', '-o', '/tmp/fpr-cost-probe'], capture_output=True, text=True, timeout=300)
 assert p.returncode != 0 and 'not a number: fast' in p.stdout + p.stderr, p.stdout + p.stderr
@@ -96,8 +101,10 @@ assert p.returncode != 0 and 'not a number: fast' in p.stdout + p.stderr, p.stdo
 # stage 4: live is alloc under the pool model, credited back inside an arena;
 # a persistent loop reports one step's cost
 r = cost(CASES / 'live_bounds.fpr')
-assert 'build: declared live <= 24·n + 24   derived 24·(n + 1)   PROVEN' in r, r
-assert re.search(r'^  scratch\s+work  <= .*\n\s+alloc <= ω\(\?len\) \+ 48 bytes\n\s+live  <= ω\(\?len\) \+ 24·\(ω\(\?\) \+ 1\) \+ 64 bytes', r, re.M), r
+assert 'build: declared live <= 24·max(0, n) + 24   derived 24·(max(0, n) + 1)   PROVEN' in r, r
+# The lifted two-argument closure reserves 32 + 2*8 = 48 requested bytes,
+# rather than the old 24-byte estimate for one supplied capture.
+assert re.search(r'^  scratch\s+work  <= .*\n\s+alloc <= ω\(\?len\) \+ 72 bytes\n\s+live  <= ω\(\?len\) \+ 24·\(max\(0, ω\(\?\)\) \+ 1\) \+ 88 bytes', r, re.M), r
 r = cost(ROOT / 'tests' / 'base' / 'loopwith.fpr')
 assert re.search(r'^  run\s+work  <= .*ω\(loop:Sys\.loopWith\)', r, re.M), r
 # lenL walks a list and allocates nothing: unmeasured recursion whose bodies
@@ -112,11 +119,13 @@ r = cost(ROOT / 'examples' / 'todo.fpr', timeout=120)
 dt = time.time() - t0
 assert dt < 60, f'todo cost report took {dt:.0f}s'
 assert re.search(r'^  updateWith\s+work  <= max\(', r, re.M), r
-# std/list's loops carry measures: view's per-item cost is (len items + 1) x the row
-assert re.search(r'^  view\s+work  <= .*\(len m\.#2 \+ 1\)·\(', r, re.M), r
+# The per-item depth remains visible, while std-map's growing reverse
+# accumulator is explicitly unproved instead of priced at its initial size.
+assert re.search(r'^  view\s+work  <= .*\(len m\.#2 \+ 1\)·max\(', r, re.M), r
+assert 'varying-recursive-parameter:' in line(r, 'view', 'work'), r
 # Todo's UTF-8 helper now declares measure k; preserve that recurrence rather
 # than the older opaque-helper expectation. Rendered string lengths stay opaque.
-assert line(r, 'dropGo', 'work') == '(k + 1)·(len s + 15)', r
-assert line(r, 'dropLastChar', 'work') == '(ω(?) + 1)·(len s + 15) + 2', r
+assert line(r, 'dropGo', 'work') == '(max(0, k) + 1)·(len s + 15)', r
+assert line(r, 'dropLastChar', 'work') == '(max(0, ω(?)) + 1)·(len s + 15) + 2', r
 assert 'ω(?len)' in r and 'ω(str)' in r, r
-print(f'Cost: measured, structural and mutual recursion close to (measure/step + 1)·body; `work f` is a variable until the argument is supplied; an unmeasured helper is ω(name) under `opaque`; a declared bound is PROVEN, OVER naming the coefficient, or UNPROVED naming the ω, callers compose on the declaration; a manifest prices ops and print, binds omega, and judges main against its budget (PROVEN 2.98 µs ≤ 5 µs, OVER against 1 µs); live is alloc, credited inside an arena, and a loopWith reports one step; todo.fpr reports in {dt:.1f}s: PASS')
+print(f'Cost: linear measured recursion and invariant callbacks compose; branching/growing recursive costs stay unproved; full PAP capacity is charged; declared bounds and manifest judgements (fixture: 2.93 µs within 5 µs, over 1 µs), scoped live/loop costs and Todo reporting ({dt:.1f}s) PASS')

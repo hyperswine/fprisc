@@ -2,9 +2,9 @@
 -- equations reach region placement together. Erased helper rewriting remains
 -- explicit; no consumer re-infers types from its generated bodies.
 module Compiler.Native.Regions
-  (Program,prepare,programNative,programCore,programInterfaces,Context,context,
+  (Program,prepare,programNative,programCore,programInterfaces,Context,context,typeInstanceMeasures,
    Options(..),Analysis,analysisProgram,analysisCosts,Result,place,placePrograms,bypass,
-   resultProgram,resultNotes,resultGenerated,resultAnalysis,resultTyped,resultGroups) where
+   resultProgram,resultNotes,resultGenerated,resultAnalysis,resultTyped,resultGroups,resultProductParameters) where
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Regions.Typed as Typed
 import qualified Core.Typed.Syntax as T
@@ -18,12 +18,14 @@ import Core.Region.Interface
 import qualified Core.Region.CallSites as Sites
 import qualified Core.Region.Types as Region
 import Core.Opt.Representation (eraseLayoutCasts)
+import Core.Opt.ProductParameters
 import Core.Analysis.Scope (qualifyPrivate,programNames)
 import Core.Analysis.Alpha (sameFunction)
 import qualified ReceiveTurns as Turns
 import qualified Cost
-import Safety (Measure)
+import Safety (Measure(..))
 import Control.Monad (unless,foldM,forM_)
+import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -59,6 +61,25 @@ data Context=Context Program (M.Map Name Measure) Analysis
 context :: M.Map Name Measure -> Program -> Context
 context measures source=let p=analysis "$region.context." S.empty source
                        in Context source measures (derive measures p)
+-- Type instances substitute annotations and rename calls without changing
+-- parameter positions or source descent. Use the transformation's explicit
+-- origin map, never a name suffix, to carry verified measures into costing.
+-- This is explicit preparation for a consumer that enabled instantiation.
+-- Ordinary Base callers must not force an unused whole-program checked view
+-- merely to discover that no type-instance measures need to be added.
+typeInstanceMeasures :: M.Map Name Measure -> [Program] -> M.Map Name Measure
+typeInstanceMeasures measures programs
+  -- With no verified measures there is nothing to inherit. In particular,
+  -- do not force a lazy whole-program context merely to discover no clones.
+  | M.null measures=measures
+  | otherwise=foldl' addProgram measures programs
+  where
+    addProgram known p=M.foldlWithKey' (inherit p) known (Native.nativeTypeInstances (programNative p))
+    inherit p known name origin
+      | M.notMember name known,Just m<-M.lookup origin measures,
+        Just (ps,_)<-M.lookup name (programCore p),length ps==length (mParams m)=
+          M.insert name (m {mFn=name}) known
+      | otherwise=known
 derive measures p=Analysis p (Cost.costProgram measures M.empty p)
 -- receiveLoops: receive loops take the loop form (False for a QOS process
 -- image, whose plane memory reclaims per turn through $receiveLoop)
@@ -67,6 +88,13 @@ data Result=Bypassed Program | Placed Program Analysis Turns.Rewrite Typed.Progr
 resultProgram :: Result -> C.Prog
 resultProgram (Bypassed p)=programCore p
 resultProgram (Placed _ _ r _)=Turns.rewriteProgram r
+resultProductParameters :: Result -> ProductParameters
+resultProductParameters result=case result of
+  Bypassed p->fromProgram p
+  Placed p _ _ _->fromProgram p
+  where
+    fromProgram (Program native _ layouts _ interfaces _ _ _)=
+      checkedProductParameters layouts (programTypes (closedInput (Native.nativeClosed native))) interfaces
 resultNotes :: Result -> [String]
 resultNotes (Bypassed _)=[]
 resultNotes (Placed _ _ r _)=Turns.rewriteNotes r

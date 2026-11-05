@@ -1,0 +1,667 @@
+{
+  "compiler_sha256": "c2ff2cb7d8deab515b69ebb1701b7e4d8fbf4d1e04806e8cc4ead30debdc75ff",
+  "test_sha256": "ca13950a2716e46f81a3b208dd03385f84aa59576999a6d391ef053706cc8c3a",
+  "cases": [
+    {
+      "case": "wrapper",
+      "on": false,
+      "harts": 1,
+      "allocations": 1001,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "wrapper",
+      "on": false,
+      "harts": 4,
+      "allocations": 1001,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "wrapper",
+      "on": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "wrapper",
+      "on": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "explicit",
+      "on": false,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "explicit",
+      "on": false,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "explicit",
+      "on": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "explicit",
+      "on": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "returned",
+      "on": false,
+      "harts": 1,
+      "allocations": 1001,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "returned",
+      "on": false,
+      "harts": 4,
+      "allocations": 1001,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "returned",
+      "on": true,
+      "harts": 1,
+      "allocations": 1,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "returned",
+      "on": true,
+      "harts": 4,
+      "allocations": 1,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "returned",
+      "on": false,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "returned",
+      "on": false,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "returned",
+      "on": true,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "returned",
+      "on": true,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "string",
+      "on": false,
+      "harts": 1,
+      "allocations": 1001,
+      "stdout": "kept\n"
+    },
+    {
+      "case": "string",
+      "on": false,
+      "harts": 4,
+      "allocations": 1001,
+      "stdout": "kept\n"
+    },
+    {
+      "case": "string",
+      "on": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "kept\n"
+    },
+    {
+      "case": "string",
+      "on": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "kept\n"
+    },
+    {
+      "case": "string",
+      "on": false,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "kept\n"
+    },
+    {
+      "case": "string",
+      "on": false,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "kept\n"
+    },
+    {
+      "case": "string",
+      "on": true,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "kept\n"
+    },
+    {
+      "case": "string",
+      "on": true,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "kept\n"
+    },
+    {
+      "case": "heap-list",
+      "on": false,
+      "harts": 1,
+      "allocations": 1003,
+      "stdout": "[7, 8]\n"
+    },
+    {
+      "case": "heap-list",
+      "on": false,
+      "harts": 4,
+      "allocations": 1003,
+      "stdout": "[7, 8]\n"
+    },
+    {
+      "case": "heap-list",
+      "on": true,
+      "harts": 1,
+      "allocations": 2,
+      "stdout": "[7, 8]\n"
+    },
+    {
+      "case": "heap-list",
+      "on": true,
+      "harts": 4,
+      "allocations": 2,
+      "stdout": "[7, 8]\n"
+    },
+    {
+      "case": "heap-list",
+      "on": false,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "[7, 8]\n"
+    },
+    {
+      "case": "heap-list",
+      "on": false,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "[7, 8]\n"
+    },
+    {
+      "case": "heap-list",
+      "on": true,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "[7, 8]\n"
+    },
+    {
+      "case": "heap-list",
+      "on": true,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "[7, 8]\n"
+    },
+    {
+      "case": "nested",
+      "on": false,
+      "harts": 1,
+      "allocations": 2002,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "nested",
+      "on": false,
+      "harts": 4,
+      "allocations": 2002,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "nested",
+      "on": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "nested",
+      "on": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "nested",
+      "on": false,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "nested",
+      "on": false,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "nested",
+      "on": true,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "nested",
+      "on": true,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "record",
+      "on": false,
+      "harts": 1,
+      "allocations": 1001,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "record",
+      "on": false,
+      "harts": 4,
+      "allocations": 1001,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "record",
+      "on": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "record",
+      "on": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "record",
+      "on": false,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "record",
+      "on": false,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "record",
+      "on": true,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "record",
+      "on": true,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "1000\n"
+    },
+    {
+      "case": "boolean",
+      "on": false,
+      "harts": 1,
+      "allocations": 1001,
+      "stdout": "True\n"
+    },
+    {
+      "case": "boolean",
+      "on": false,
+      "harts": 4,
+      "allocations": 1001,
+      "stdout": "True\n"
+    },
+    {
+      "case": "boolean",
+      "on": true,
+      "harts": 1,
+      "allocations": 0,
+      "stdout": "True\n"
+    },
+    {
+      "case": "boolean",
+      "on": true,
+      "harts": 4,
+      "allocations": 0,
+      "stdout": "True\n"
+    },
+    {
+      "case": "boolean",
+      "on": false,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "True\n"
+    },
+    {
+      "case": "boolean",
+      "on": false,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "True\n"
+    },
+    {
+      "case": "boolean",
+      "on": true,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "True\n"
+    },
+    {
+      "case": "boolean",
+      "on": true,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "True\n"
+    },
+    {
+      "case": "float",
+      "on": false,
+      "harts": 1,
+      "allocations": 1002,
+      "stdout": "1001.5\n"
+    },
+    {
+      "case": "float",
+      "on": false,
+      "harts": 4,
+      "allocations": 1002,
+      "stdout": "1001.5\n"
+    },
+    {
+      "case": "float",
+      "on": true,
+      "harts": 1,
+      "allocations": 1,
+      "stdout": "1001.5\n"
+    },
+    {
+      "case": "float",
+      "on": true,
+      "harts": 4,
+      "allocations": 1,
+      "stdout": "1001.5\n"
+    },
+    {
+      "case": "float",
+      "on": false,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "1001.5\n"
+    },
+    {
+      "case": "float",
+      "on": false,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "1001.5\n"
+    },
+    {
+      "case": "float",
+      "on": true,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "1001.5\n"
+    },
+    {
+      "case": "float",
+      "on": true,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "1001.5\n"
+    },
+    {
+      "case": "other-variant",
+      "on": false,
+      "harts": 1,
+      "allocations": 1,
+      "stdout": "109\n"
+    },
+    {
+      "case": "other-variant",
+      "on": false,
+      "harts": 4,
+      "allocations": 1,
+      "stdout": "109\n"
+    },
+    {
+      "case": "other-variant",
+      "on": true,
+      "harts": 1,
+      "allocations": 1,
+      "stdout": "109\n"
+    },
+    {
+      "case": "other-variant",
+      "on": true,
+      "harts": 4,
+      "allocations": 1,
+      "stdout": "109\n"
+    },
+    {
+      "case": "other-variant",
+      "on": false,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "109\n"
+    },
+    {
+      "case": "other-variant",
+      "on": false,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "109\n"
+    },
+    {
+      "case": "other-variant",
+      "on": true,
+      "harts": 1,
+      "regions": "default",
+      "stdout": "109\n"
+    },
+    {
+      "case": "other-variant",
+      "on": true,
+      "harts": 4,
+      "regions": "default",
+      "stdout": "109\n"
+    },
+    {
+      "case": "integer-limits",
+      "on": false,
+      "stdout": "4611686018427387903\n-4611686018427387904\n"
+    },
+    {
+      "case": "integer-limits",
+      "on": true,
+      "stdout": "4611686018427387903\n-4611686018427387904\n"
+    },
+    {
+      "case": "maximum",
+      "identical_outcomes": true,
+      "stdout": "seed\ncounter\nfield\n",
+      "stderr": "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n"
+    },
+    {
+      "case": "minimum",
+      "identical_outcomes": true,
+      "stdout": "seed\ncounter\nfield\n",
+      "stderr": "[ERR] Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n"
+    },
+    {
+      "case": "division",
+      "identical_outcomes": true,
+      "stdout": "seed\ncounter\nfield\n",
+      "stderr": "[ERR] division by zero\n\n*** FPRISC PANIC [actor 0]: division by zero ***\n"
+    },
+    {
+      "case": "unused-seed",
+      "identical_outcomes": true,
+      "stdout": "seed\n",
+      "stderr": "[ERR] division by zero\n\n*** FPRISC PANIC [actor 0]: division by zero ***\n"
+    },
+    {
+      "case": "module",
+      "on": false,
+      "harts": 1,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "module",
+      "on": false,
+      "harts": 4,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "module",
+      "on": true,
+      "harts": 1,
+      "stdout": "1000\n"
+    },
+    {
+      "case": "module",
+      "on": true,
+      "harts": 4,
+      "stdout": "1000\n"
+    }
+  ],
+  "benchmark_count": 50000000,
+  "benchmarks": [
+    {
+      "form": "boxed",
+      "ledger": {
+        "alloc_requests": 50000003,
+        "alloc_bytes": 1600000224,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 3072,
+        "buddy_frees": 3055
+      },
+      "samples_seconds": [
+        0.17493266699602827,
+        0.2264368329779245,
+        0.18977179200737737,
+        0.1963080830173567,
+        0.18668579100631177,
+        0.19477533400640823,
+        0.18351754199829884,
+        0.19185345899313688,
+        0.20787612500134856,
+        0.2777907499985304,
+        0.22298416701960377,
+        0.28226933398400433,
+        0.23009237501537427
+      ],
+      "median_seconds": 0.1963080830173567
+    },
+    {
+      "form": "worker",
+      "ledger": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.04397129098651931,
+        0.04786533399601467,
+        0.04444179101847112,
+        0.04411387498839758,
+        0.04743941698689014,
+        0.04447875000187196,
+        0.04467287499574013,
+        0.04441770899575204,
+        0.044857958011562005,
+        0.046407667017774656,
+        0.047288207977544516,
+        0.04647475000820123,
+        0.0456631249981001
+      ],
+      "median_seconds": 0.044857958011562005
+    },
+    {
+      "form": "explicit",
+      "ledger": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.043667791003827006,
+        0.04924254197976552,
+        0.04460641701007262,
+        0.044676999998046085,
+        0.04491033300291747,
+        0.04487225000048056,
+        0.044217416987521574,
+        0.04435537499375641,
+        0.04527333300211467,
+        0.045258083002408966,
+        0.046215000009397045,
+        0.04559658298967406,
+        0.04573775001335889
+      ],
+      "median_seconds": 0.04491033300291747
+    }
+  ]
+}

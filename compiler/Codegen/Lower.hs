@@ -30,7 +30,9 @@ import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
 import KernelKinds (Kind (..))
 import Workers (ScalarSignatures)
-import Core.Opt.PairReturns (pairWorker)
+import Core.Opt.PairReturns (productWorkerWidth)
+import Core.ProductABI (ProductMarker(..),productMarker,storedNodeName)
+import Compiler.DataLayout (storedListTid)
 import Core.Syntax (Core (..), Prog)
 
 type Reason = String
@@ -229,7 +231,7 @@ scalarPrefix = "$scalar."
 -- So OVariantTest still rejects an Int and checks the type_id; it only
 -- compares type_id and variant as one 64-bit header word.
 isStaticNominalTid :: Int -> Bool
-isStaticNominalTid t = t == 2 || t == 3 || (t >= 0x20000000 && t < 0x7F000000)
+isStaticNominalTid t = t == storedListTid || t == 2 || t == 3 || (t >= 0x20000000 && t < 0x7F000000)
 
 -- The producer's ordered signatures survive normalization and reuse.
 -- Unsupported kinds remain absent, causing explicit worker fallback.
@@ -262,7 +264,7 @@ lowerFn policy sigs prog ext hal name (params, body)
       either (const (Left "internal: uncaught terminated function")) (Right . formSelfLoop policy) result
   where
     (ptys, rty0) = M.findWithDefault (map (const TVal) params, TVal) name sigs
-    rty = if pairWorker name then TPair else rty0
+    rty = maybe rty0 TProduct (productWorkerWidth name)
     go = do
       pvs <- mapM (const fresh) params
       entry <- freshB
@@ -279,9 +281,9 @@ lowerFn policy sigs prog ext hal name (params, body)
       blocks <- gets (reverse . stDone)
       pure Fn {fnName = name, fnSourceParams = params, fnResult = rty, fnEntry = entry, fnBlocks = blocks}
 
--- the environment name of a pair call's second word
-pairSecond :: Name -> Name
-pairSecond x = x ++ "$ret2"
+-- Private names for product components, inaccessible from source identifiers.
+productField :: Name -> Int -> Name
+productField x i = x ++ "$result" ++ show i
 
 -- the convention of a known callee
 calleeOf :: Cx -> Name -> Int -> Maybe Callee
@@ -291,7 +293,7 @@ calleeOf cx h n
   | Just (pts, _) <- M.lookup h (cxSigs cx), length pts /= n = Nothing
   | Just (ps, _) <- M.lookup h (cxProg cx), length ps == n =
       let (pts, r) = M.findWithDefault (map (const TVal) ps, TVal) h (cxSigs cx)
-       in Just (Callee h Local pts (if pairWorker h then TPair else r))
+       in Just (Callee h Local pts (maybe r TProduct (productWorkerWidth h)))
   -- Ownership lowering introduces a closed set of consuming C adapters.
   -- Local source definitions still win; these calls have runtime costs,
   -- and never become generated-code fuel boundaries.
@@ -377,11 +379,10 @@ lowerTail cx env expr = ended (go expr) >> pure ()
       M.notMember h env, Just c <- calleeOf cx h 0 ->
       if h == cxSelf cx then close (TBr (cxEntry cx) [])
       else close (TTailCall c [])
-    -- a pair worker answers its constructor's two words in two registers
-    CMk _ _ [a, b] | cxResult cx == TPair -> do
-      x <- lowerVal cx env a >>= asVal
-      y <- lowerVal cx env b >>= asVal
-      close (TRet2 x y)
+    -- a private worker answers every constructor field in result order
+    CMk _ _ fields | TProduct n <- cxResult cx, length fields == n -> do
+      vs <- mapM (\e -> lowerVal cx env e >>= asVal) fields
+      close (TRetProduct vs)
     e
       | (CVar h, args@(_ : _)) <- spineOf e,
         M.notMember h env,
@@ -397,6 +398,7 @@ lowerTail cx env expr = ended (go expr) >> pure ()
               when (calleeResult c /= cxResult cx) $ refuse ("a tail call to " ++ h ++ " answers " ++ show (calleeResult c) ++ ", this function " ++ show (cxResult cx))
               as' <- mapM (uncurry coerce) (zip as (calleeParams c))
               close (TTailCall c as')
+      | TProduct n <- cxResult cx -> lowerProduct cx env n e >>= close . TRetProduct
       | otherwise -> do
           r <- lowerVal cx env e
           v <- coerce r (cxResult cx)
@@ -406,21 +408,89 @@ lowerTail cx env expr = ended (go expr) >> pure ()
 lowerBind :: Cx -> Env -> Name -> Core -> L Env
 lowerBind cx env x a = case a of
   CVar y | Just b <- M.lookup y env ->
-    pure $ case M.lookup (pairSecond y) env of
-      Just second -> M.insert x b (M.insert (pairSecond x) second env)
-      Nothing -> M.insert x b env
-  -- the call of a pair worker: both answer words are bound at once, the
-  -- second right behind the call, under the name only a projection reads
-  CApp _ _
-    | (CVar h, args) <- spineOf a, M.notMember h env, pairWorker h, Just c <- calleeOf cx h (length args) -> do
-        as <- mapM (lowerVal cx env) args
-        as' <- mapM (uncurry coerce) (zip as (calleeParams c))
-        first <- emit TVal (OCall2 c as')
-        second <- emit TVal OSecond
-        pure (M.insert x (first, TPair) (M.insert (pairSecond x) (second, TVal) env))
+    pure $ case snd b of
+      TProduct n -> M.union (M.fromList
+        [(productField x i, value) | i <- [0..n-1], Just value <- [M.lookup (productField y i) env]]) (M.insert x b env)
+      _ -> M.insert x b env
+  -- Calls, explicit packs and product joins carry a checked private width.
+  _ | Just n <- productWidth cx env a -> do
+        fields <- lowerProduct cx env n a
+        case fields of
+          first:_ -> pure (M.union (M.fromList (zipWith (\i v -> (productField x i, (v, TVal))) [0..] fields))
+            (M.insert x (first, TProduct n) env))
+          _ -> refuse "internal: empty product packet"
   _ -> do
     r <- lowerVal cx env a
     pure (M.insert x r env)
+
+-- Product values exist only in the environment as separately defined words.
+-- A join carries all fields as block arguments; it never allocates a cell.
+productWidth :: Cx -> Env -> Core -> Maybe Int
+productWidth cx env (CVar x) | Just (_,TProduct n)<-M.lookup x env = Just n
+productWidth cx env (CLet x a b) =
+  let ty=maybe TVal TProduct (productWidth cx env a)
+  in productWidth cx (M.insert x (VId (-1),ty) env) b
+productWidth cx env (CIf _ a b) = case (productWidth cx env a,productWidth cx env b) of
+  (Just n,Just m) | n==m -> Just n
+  (Just n,Nothing) | traps b -> Just n
+  (Nothing,Just n) | traps a -> Just n
+  _ -> Nothing
+  where
+    traps (CErr _) = True
+    traps (CLet _ _ b) = traps b
+    traps (CIf _ a b) = traps a && traps b
+    traps _ = False
+productWidth cx env expr = case spineOf expr of
+  (CVar h,args) | M.notMember h env -> case productMarker h of
+    Just (PackWords n) | length args==n -> Just n
+    Just (JoinWords n) | length args==1 -> Just n
+    Just _ -> Nothing
+    Nothing | Just n <- productWorkerWidth h, Just c <- calleeOf cx h (length args), calleeResult c==TProduct n -> Just n
+    Nothing -> Nothing
+  _ -> Nothing
+
+lowerProduct :: Cx -> Env -> Int -> Core -> L [VId]
+lowerProduct cx env width expr = case expr of
+  CVar x | Just (_,TProduct n) <- M.lookup x env, n==width ->
+    mapM (\i -> maybe (refuse "internal: incomplete product binding") (pure . fst) (M.lookup (productField x i) env)) [0..width-1]
+  CLet x a b -> lowerBind cx env x a >>= \env' -> lowerProduct cx env' width b
+  CErr msg -> close (TUnreachable msg) >> throwError ()
+  CMk _ _ fields | length fields==width -> mapM (\e -> lowerVal cx env e >>= asVal) fields
+  CIf c t f -> do
+    predicate <- lowerCond cx env c
+    (yes,_) <- newBlock []
+    (no,_) <- newBlock []
+    close (TCondBr predicate yes [] no [])
+    open yes []
+    a <- ended (lowerProduct cx env width t)
+    sa <- traverse (const suspend) a
+    open no []
+    b <- ended (lowerProduct cx env width f)
+    sb <- traverse (const suspend) b
+    case (a,b,sa,sb) of
+      (Just vs,Nothing,Just block,_) -> resume block >> pure vs
+      (Nothing,Just vs,_,Just block) -> resume block >> pure vs
+      (Just vs,Just ws,Just ba,Just bb) -> do
+        (join,values) <- newBlock (replicate width TVal)
+        resume ba >> close (TBr join vs)
+        resume bb >> close (TBr join ws)
+        open join (zip values (repeat TVal))
+        pure values
+      (Nothing,Nothing,_,_) -> throwError ()
+      _ -> refuse "internal: inconsistent product branch termination"
+  _ -> case spineOf expr of
+    (CVar h,args) | M.notMember h env -> case productMarker h of
+      Just (PackWords n) | n==width, length args==width -> mapM (\e -> lowerVal cx env e >>= asVal) args
+      Just (JoinWords n) | n==width, [body]<-args -> lowerProduct cx env width body
+      Just _ -> refuse "private product marker has an inconsistent width"
+      Nothing | Just c <- calleeOf cx h (length args), calleeResult c==TProduct width -> do
+        values <- mapM (lowerVal cx env) args
+        passed <- mapM (uncurry coerce) (zip values (calleeParams c))
+        first <- emit TVal (OCallProduct c passed)
+        rest <- mapM (emit TVal . OResult) [1..width-1]
+        pure (first:rest)
+      _ -> refuse "a product value requires a private product entry"
+    _ -> refuse "unsupported private product value"
 
 -- an arm of a branch in value position: a dead arm (CErr, after its lets)
 -- closes the block with the unreachable terminator and yields no value
@@ -430,8 +500,6 @@ lowerArm cx env e = ended (lowerVal cx env e)
 -- condition position: a predicate
 lowerCond :: Cx -> Env -> Core -> L VId
 lowerCond cx env = \case
-  CTagEq 1 1 c -> lowerCond cx env c
-  CTagEq 1 0 c -> lowerCond cx env c >>= \p -> emit TPred (ONot p)
   CLet x a b -> lowerBind cx env x a >>= \env' -> lowerCond cx env' b
   e -> lowerVal cx env e >>= asPred
 
@@ -473,19 +541,30 @@ lowerVal cx env = \case
         v <- emit TVal (OReuse tid variant r fields)
         pure (v, TVal)
   CProj index (CVar x)
-    | Just (first, TPair) <- M.lookup x env, Just second <- M.lookup (pairSecond x) env ->
-        case index of
-          0 -> pure (first, TVal)
-          1 -> pure second
-          _ -> refuse "internal: a projection past the two words of a pair"
+    | Just (_, TProduct n) <- M.lookup x env ->
+        case M.lookup (productField x index) env of
+          Just value | index >= 0 && index < n -> pure value
+          _ -> refuse "internal: projection outside the product result"
+  CProj index obj | Just n <- productWidth cx env obj -> do
+    when (index<0 || index>=n) (refuse "internal: projection outside the product result")
+    fields <- lowerProduct cx env n obj
+    pure (fields!!index,TVal)
   CProj index obj -> do
     value <- lowerVal cx env obj >>= asVal
     v <- emit TVal (OField index value)
     pure (v, TVal)
   CLam _ _ -> refuse "a lambda"
   CErr msg -> close (TUnreachable msg) >> throwError ()
-  CTagEq 1 1 c -> (\p -> (p, TPred)) <$> lowerCond cx env c
-  CTagEq 1 0 c -> (\p -> (p, TPred)) <$> lowerCond cx env (CTagEq 1 0 c)
+  CTagEq 1 variant c -> do
+    value@(x,ty) <- lowerVal cx env c
+    -- A pattern can inspect a hidden/received payload of another type. Only
+    -- a real predicate proves Bool; a tagged value needs the nominal test,
+    -- including the Int guard. OTruth alone can dereference an immediate.
+    p <- case (ty,variant) of
+      (TPred,1) -> pure x
+      (TPred,0) -> emit TPred (ONot x)
+      _ -> asVal value >>= emit TPred . OTagTest 1 variant
+    pure (p,TPred)
   CTagEq t v c -> do
     x <- lowerVal cx env c >>= asVal
     let op = if polTypedCase (cxPolicy cx) && isStaticNominalTid t
@@ -527,6 +606,13 @@ lowerVal cx env = \case
     (CVar h, args)
       -- a local head: the generic application through the runtime
       | Just r <- M.lookup h env -> applyGeneric r args
+      | h==storedNodeName, M.notMember h (cxProg cx), ordinal:fields<-args -> do
+          when (polProfile (cxPolicy cx)/=HostedBase || length fields<2 || length fields>9)
+            (refuse "unsupported private list node layout or profile")
+          tag<-lowerVal cx env ordinal >>= asInt
+          fs<-mapM (\x->lowerVal cx env x >>= asVal) fields
+          value<-emit TVal (OMakeSpine tag fs)
+          pure (value,TVal)
       | workerPrefix `isPrefixOf` h, M.notMember h (cxSigs cx) ->
           refuse ("call to scalar worker `" ++ h ++ "` without representation metadata")
       | Just (pts, _) <- M.lookup h (cxSigs cx), length pts /= length args ->
@@ -656,7 +742,7 @@ lowerVal cx env = \case
           pure (p, TPred)
       -- a saturated known call
       | M.notMember h env, Just c <- calleeOf cx h (length args) -> do
-          when (calleeResult c == TPair) (refuse ("a pair worker call " ++ h ++ " outside a let binding"))
+          when (case calleeResult c of TProduct _ -> True; _ -> False) (refuse ("a product worker call " ++ h ++ " outside a let binding"))
           as <- mapM (lowerVal cx env) args
           as' <- mapM (uncurry coerce) (zip as (calleeParams c))
           v <- emit (calleeResult c) (OCall c as')

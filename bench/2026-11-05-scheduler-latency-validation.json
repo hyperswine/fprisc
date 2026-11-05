@@ -1,0 +1,99 @@
+{
+  "schema": "scheduler-latency-validation-v1",
+  "compiler_sha256": "c2ff2cb7d8deab515b69ebb1701b7e4d8fbf4d1e04806e8cc4ead30debdc75ff",
+  "codegen_revision": 174,
+  "sources": {
+    "runtime/actors.c": "d44005419a3dd44aecd50b39e165db3c2953d965e6650bff062003236505ca3e",
+    "runtime/sched_probe.h": "94441412dcf75fc2b2fb2455f27e2aa894cc0977d9336d4fbeb55b89b01c64ff",
+    "tests/base/scheduler_probe.c": "b7e1cea336f63acb8efcbbc7044a1390b6460e40a7f14ae6bc9a737340c0d517",
+    "tests/check_scheduler_latency.py": "252b3219afda22425bbab3e174c38f54649bb9202f60086f4c8daf7767acdd25",
+    "tests/check_registry.py": "b4584efd53a3593129656aa4ef56c2b06058e59774a5326ddbbbad0bab00186c",
+    "tests/test_check_registry.py": "2c9f2c9fa56fa925cdd2823f70683b1049b0d9ddf5d4033a005479d5db9d5a0a",
+    "docs/2026-11-05-SCHEDULER-LATENCY.md": "231290e116e6aa93e0fafb1191ff00b620fbd245d4b36193c124311297262b6c",
+    "docs/2026-10-02-SCHED-MODEL.md": "2c177cd37a558ba796817aaa047e152617f7699cefd6682b683b4ba82e554ae7",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "e8a1fc3b94bcd9338bb12da168cebac1bd6a79eb4dfdf7b1a5f2c8598a8a5c64",
+    "bench/2026-11-05-scheduler-latency.json": "0f3e3f121d09f56f391e1941d888d7bdc9b8571130cced917f1123e83f1c505b",
+    "bench/2026-11-05-scheduler-latency-exploratory-summary.json": "668bba2e54d6d1d37f4c65241ccd54b95a3482d3cc1b58610e2f4006bbdcaee7"
+  },
+  "checks": [
+    {
+      "name": "qualified",
+      "command": "python3 tests/check_scheduler_latency.py --rounds 1000 --repetitions 3 --record bench/2026-11-05-scheduler-latency.json",
+      "status": "PASS",
+      "log_sha256": "6c633176ba03eb73287848f15372c3d0407c2b232aef3327518115b0ae0c918d",
+      "output_tail": [
+        "list-unbatched, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 1 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "Unbounded runtime C negative control: watchdog detected starvation, killed/reaped on 1/4 harts PASS",
+        "Scheduler latency qualification: 81 configurations PASS; no WCET claim"
+      ]
+    },
+    {
+      "name": "default",
+      "command": "python3 tests/check_scheduler_latency.py",
+      "status": "PASS",
+      "log_sha256": "6c633176ba03eb73287848f15372c3d0407c2b232aef3327518115b0ae0c918d",
+      "output_tail": [
+        "list-unbatched, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 1 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 4 harts local: 0/1/8 competitors, fuel/progress/latency PASS",
+        "copy-default, 4 harts remote: 0/1/8 competitors, fuel/progress/latency PASS",
+        "Unbounded runtime C negative control: watchdog detected starvation, killed/reaped on 1/4 harts PASS",
+        "Scheduler latency qualification: 81 configurations PASS; no WCET claim"
+      ]
+    },
+    {
+      "name": "locality",
+      "command": "python3 tests/check_scheduler_locality.py",
+      "status": "PASS",
+      "log_sha256": "e91d88e7b2873b58a042d736e2cf4969b28651399ea3e49b69d6d7cc13582636",
+      "output_tail": [
+        "scheduler locality: bounded hints, FIFO, aging, priority, stale wakes, pinning and late-wake migration PASS",
+        "scheduler locality: contended request/reply completes with pinned competitors on one/four harts PASS"
+      ]
+    },
+    {
+      "name": "ticks",
+      "command": "python3 tests/check_tick_batch.py",
+      "status": "PASS",
+      "log_sha256": "8f66335d6835e7a9ffd3b15bb603607b991806bb97eee1777c0c1c77fdbd05a6",
+      "output_tail": [
+        "Tick batching: unbox benchmarks identical on and off PASS",
+        "Tick batching: fused list_sum worker has 1 tick on RV64 (3 unbatched) PASS",
+        "Tick batching: non-worker fused list_filter loop has 1 tick on RV64 (6 unbatched) PASS",
+        "Tick batching: a spinning batched worker is still preempted (1/4 harts) PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": "python3 -m unittest discover -s tests -p test_check_registry.py",
+      "status": "PASS",
+      "log_sha256": "1a2898aeb4403ce9c70039f600698887eb7105982ad66fd2be91b62a2dd75246",
+      "output_tail": [
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.104s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "scope": "Native macOS arm64 execution, one/four harts; RV64 complete emission-report audit. Ordinary runtime has no scheduler probe hooks.",
+  "qualification": {
+    "configurations": 81,
+    "instrumented_runs": 81,
+    "ordinary_runs": 243,
+    "ordinary_replies": 243000,
+    "negative_controls": 2,
+    "default_ci_also_passed": true
+  },
+  "limitations": [
+    "No interprocedural instruction bound or runtime C time bound.",
+    "No hardware WCET, static-arena admission or new physical-board execution.",
+    "Haskell/compiler allocation gates were not rerun: this milestone changes optional runtime instrumentation and test/documentation only.",
+    "Earlier latency outliers are preserved as inspected summary evidence; their overwritten raw samples are not claimed."
+  ]
+}

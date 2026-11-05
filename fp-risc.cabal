@@ -47,7 +47,11 @@ library
       Publish
       Representation
       Representation.Types
+      Arc.Uniform
+      Arc.Products
+      Core.ProductABI
       Compiler.Native.Representation
+      Compiler.Native.TypeLayout
       Interrupt
       Core.Syntax
       Core.CacheIdentity
@@ -60,8 +64,12 @@ library
       Core.Opt.Vector
       Core.Opt.Vector.Plan
       Core.Opt.Pipeline
+      Core.Opt.ProductParameters
       Core.Opt.Ticks
       Core.Opt.PairReturns
+      Core.Opt.StoredLists
+      Core.Opt.VariantReturns
+      Core.Opt.NestedReturns
       Codegen
       Codegen.Kernel
       Codegen.Kernel.Plan
@@ -94,10 +102,13 @@ library
       Codegen.Liveness
       Codegen.Allocate
       Codegen.Bounds
+      Codegen.Heap
+      Codegen.Stack
       Codegen.Target.Common
       Codegen.Target.Forms
       Codegen.Target.A64.Forms
       Codegen.Target.RV.Forms
+      Codegen.Target.RV.ScalarAdapters
       Codegen.Target.X64
       Codegen.Target.X64.Forms
       Codegen.Target.RV
@@ -194,6 +205,10 @@ library
       Core.Typed.ListFusion
       Core.FusionPolicy
       Core.Typed.Specialize
+      Core.Typed.BaseTransport
+      Core.Typed.Parametric
+      Core.Typed.Carrier
+      Core.Typed.Monomorphize
       Compiler.VectorLayout
       Compiler.VectorABI
       Codegen.VectorRead
@@ -213,6 +228,7 @@ library
       Precond
       Safety
       Cost
+      Resource.ResultSize
       Manifest
       StdBridge
       StdCheck
@@ -350,6 +366,11 @@ test-suite CorePipeline
   main-is:            CorePipeline.hs
   other-modules:      ExportPlans
 
+test-suite RepresentationSpecialization
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            RepresentationSpecialization.hs
+
 test-suite Diagnostics
   import:             unit-test
   type:               exitcode-stdio-1.0
@@ -389,6 +410,16 @@ test-suite SelectedIR
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            SelectedIR.hs
+
+test-suite HeapBounds
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            HeapBounds.hs
+
+test-suite NativeStack
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            NativeStack.hs
 
 test-suite Specialization
   import:             unit-test
@@ -474,7 +505,7 @@ test-suite TypedProgram
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            TypedProgram.hs
-  other-modules:      TypedFusion, TypedInline, TypedNormalize, TypedVectorRead
+  other-modules:      TypedFusion, TypedInline, TypedNormalize, TypedVectorRead, ResourceCosts
 
 test-suite TypedStaging
   import:             unit-test

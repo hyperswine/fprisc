@@ -1,0 +1,130 @@
+{
+  "revision": 203,
+  "compiler_sha256": "76bc1d0df2ed030fae71133b4b772d50989cd0600b7aeded49229504bce66eb3",
+  "before_sha256": "035fd0859d7b74e99515b971b640c4f9f360e57b0dc218508335603ebba9463d",
+  "haskell_suites": 41,
+  "checks": {
+    "haskell-final": {
+      "log_sha256": "57d6dff87f306fe2b0b098860f47b4b4baaf3ebb9771f6a896f656ad22329090",
+      "last_line": "1 of 1 test suites (1 of 1 test cases) passed."
+    },
+    "arm": {
+      "log_sha256": "0c42bd5dfc27c4dd44509c4adcd96d5fb74db629b440e9ca1a70038e95c9a7e2",
+      "last_line": "96 parametric carrier allocation, fallback, trap and cache checks passed"
+    },
+    "x86": {
+      "log_sha256": "0c42bd5dfc27c4dd44509c4adcd96d5fb74db629b440e9ca1a70038e95c9a7e2",
+      "last_line": "96 parametric carrier allocation, fallback, trap and cache checks passed"
+    },
+    "rv-clean": {
+      "log_sha256": "b373b07aa9dc728889530552a37ff9ac2e0d7bd2a2a29588bb4db25fc7fc1195",
+      "last_line": "RV64 Linux userspace 44 cases PASS"
+    },
+    "budget-qualified": {
+      "log_sha256": "b41d3008b193abce0c1e80a5492b031158104733f0146b92603be06dfeeab356",
+      "last_line": "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+    },
+    "scale-qualified": {
+      "log_sha256": "226598bf70cfb6024fc8c727323b44785a47884c137833f68489c3b897cb6640",
+      "last_line": "256 rollback 7146504928 266252 0"
+    },
+    "perf-qualified": {
+      "log_sha256": "386ff9cf896557e5306670e1f10afbf4a2f0a3d2ec0165b8748dc433ac080ce2",
+      "last_line": "map rollback 1525201 0.022280875011347234"
+    },
+    "sched-qualified": {
+      "log_sha256": "29065c5ca11b413c068dacb3534aa8cc8f07dcab644f58c4e09f5a7bfef90abe",
+      "last_line": "Scheduler latency qualification: 333 configurations PASS; no WCET claim"
+    },
+    "arena-final": {
+      "log_sha256": "1440e4ece55767e2110645f6978456cc765874ae0d0bb04a464954c24d92782e",
+      "last_line": "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+    },
+    "sequence-final": {
+      "log_sha256": "9eb362eb91044a69b6493c693f2992406fdfb7d1b13f48887d2714610c359a70",
+      "last_line": "Typed scalar handoffs, short arenas, late unproved entry, pre-reset leak and publication preservation PASS"
+    },
+    "materialize-final": {
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "last_line": "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+    },
+    "fields-final": {
+      "log_sha256": "6b3f5b622aa1cb98ff1e3c4f1c789539d9f714f79fe62c162e7859712cac9506",
+      "last_line": "152 aggregate storage allocation, shared-child, public-boundary and trap checks passed"
+    },
+    "lists-final": {
+      "log_sha256": "fd2a1c2c0d5a1cb7ec069cea075e08db73d8eede9e84d0cce97f5abc47ae3c00",
+      "last_line": "178 persistent storage allocation, effects, trap, escape, module and walker cases passed"
+    },
+    "registry": {
+      "log_sha256": "fae3e339e789ba88605ed3dc62499df3b18cf627eaa044b353d42d9a0be28b7b",
+      "last_line": "OK"
+    }
+  },
+  "physical": [
+    {
+      "name": "interim",
+      "cases": 150,
+      "compiler_sha256": "660f65dc732778e4573fd018be7929c0f5226e0cfa25915dac950296614d6b73",
+      "bundle_sha256": "a8857a926ced1287b31531fb301a9cbabfe8bd5ea5a19b64e977a1f75955af14",
+      "record": "2026-11-05-map-carrier-pi-interim.json.gz",
+      "sha256": "f1e15ff576de8ef701f9529cd2cc05180f40b20241dfb08740d235a3a8b2c68d",
+      "uncompressed_sha256": "c7a925cf4cf898515ccd14b2eb4edd1c9b343e79133b7bab4354f6c750b9a95a",
+      "production": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+      "watchdogs": 2,
+      "samples": {
+        "default": {
+          "count": 6912,
+          "median_us": 201.0,
+          "p99_us": 1247,
+          "maximum_us": 2067,
+          "over_1ms": 238
+        },
+        "boxed": {
+          "count": 6912,
+          "median_us": 206.0,
+          "p99_us": 1276,
+          "maximum_us": 2495,
+          "over_1ms": 288
+        }
+      }
+    },
+    {
+      "name": "qualified",
+      "cases": 158,
+      "compiler_sha256": "76bc1d0df2ed030fae71133b4b772d50989cd0600b7aeded49229504bce66eb3",
+      "bundle_sha256": "7e053de7e69dd28558703ce8279b26e6bbe675aac2ca086c837e7fc4226dda00",
+      "record": "2026-11-05-map-carrier-pi-qualified.json.gz",
+      "sha256": "cab920d33316ef7cb36630a3468181a3cea665e0972d68206f8df6def5604d3a",
+      "uncompressed_sha256": "8c17d37e4b97fbaf75fae2d33b070b733798d47fd34a911295b59af60f759ef2",
+      "production": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+      "watchdogs": 2,
+      "samples": {
+        "default": {
+          "count": 6912,
+          "median_us": 201.0,
+          "p99_us": 1243,
+          "maximum_us": 2105,
+          "over_1ms": 276
+        },
+        "boxed": {
+          "count": 6912,
+          "median_us": 205.0,
+          "p99_us": 1268,
+          "maximum_us": 2056,
+          "over_1ms": 263
+        }
+      }
+    }
+  ],
+  "artifacts": {
+    "2026-11-05-std-map-storage-before.json": "05f696993ec4008cadd159fd1e2112d91a7918284a98ff188b872cd05bf8062f",
+    "2026-11-05-map-imported-wrapper-before.json": "5dbd6c662e6848ffd6bced1839dcc135d50ff9026aab1e46023b5df077d54c2a",
+    "2026-11-05-map-carrier-native.json": "0e27d1ce99ca5ff9fb35afc4b05a208939972b81ca694d9b01282a317bb5b88d",
+    "2026-11-05-map-carrier-x64.json": "d8c23b3e0f8783c136e84d3ed336daf8a452e9da42ee1cf65df87316084316ec",
+    "2026-11-05-map-carrier-rv64.json": "33eda48a7cf129ec748c74573460a262c994441cffa529b8a2e9ab4b38e1a272",
+    "2026-11-05-map-carrier-scaling.json": "3b86589bf03bcb3c538c9c7d30698ac7ea8fcd87cd01d402c7075dd075a0ff55",
+    "2026-11-05-map-carrier-throughput.json": "e13b6d45770ee609fd7fba0af440e4ade22baccb24afd60f0284f39c5ea7b58b",
+    "2026-11-05-map-carrier-scheduling.json": "ee63ec73194b0befab955d05886bc6530fea36ed29aad10fa59a1a564095087f"
+  }
+}

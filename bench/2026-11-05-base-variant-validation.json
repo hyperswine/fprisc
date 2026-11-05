@@ -1,0 +1,146 @@
+{
+  "revision": 199,
+  "compiler_sha256": "c3f31da0185ea59ca7b084520bb99e01b505326a16c96760453b7fa4f4aef5e9",
+  "checks": {
+    "haskell": {
+      "log_sha256": "000c7d3ac78f7ac83bc64abedf4fcc63f5a4fdcfc76a20ccb1f958ee614703f2",
+      "last": "1 of 1 test suites (1 of 1 test cases) passed."
+    },
+    "budget2": {
+      "log_sha256": "08b5ce9e5feb11401beca0508126e6a120bdba902f172643e630104b1d6f920b",
+      "last": "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+    },
+    "native-final": {
+      "log_sha256": "d90b1295b5671dd8b5734a0b409d1c80f70ee880352475eb3f312f57746d572e",
+      "last": "280 variant return allocation, boundary, cache, and semantic checks passed"
+    },
+    "x64-final": {
+      "log_sha256": "d90b1295b5671dd8b5734a0b409d1c80f70ee880352475eb3f312f57746d572e",
+      "last": "280 variant return allocation, boundary, cache, and semantic checks passed"
+    },
+    "rv-final": {
+      "log_sha256": "bb51d2de7f23653532b55d1dab295b38965d27725583be1b4bad215b69fa94dc",
+      "last": "RV64 Linux userspace 72 cases PASS"
+    },
+    "products": {
+      "log_sha256": "964790cf20960a29e4fd66145bead7acb883ddf86c6a0c1faceeb1f7b3145a04",
+      "last": "Product returns: x64 width admission and register emission PASS"
+    },
+    "nested": {
+      "log_sha256": "3a8eae91ec6f523946b3112590570ad78c0da882c5e2d9cce21825c2ee0c588d",
+      "last": "Nested returns True True True 1/4 workers PASS"
+    },
+    "transport": {
+      "log_sha256": "0f24a37b34ac5929f35863b94fb03cbc1e2268e44ba8eab009dcbdfa3ab9e735",
+      "last": "Base forwarding passed allocation, evaluation order, heap payload, fallback, warm cache and module checks"
+    },
+    "static": {
+      "log_sha256": "9eb362eb91044a69b6493c693f2992406fdfb7d1b13f48887d2714610c359a70",
+      "last": "Typed scalar handoffs, short arenas, late unproved entry, pre-reset leak and publication preservation PASS"
+    },
+    "registry": {
+      "log_sha256": "25aacf29195a2b32a6f7390049643fe5ce83f7347dfa27f1ab3c89290cf8d31b",
+      "last": "OK"
+    },
+    "host-sched": {
+      "log_sha256": "3d45ef2184e48b17bc074524dcfd6854296b4bc06b65a69ce8030c9ec400f6b6",
+      "last": "Scheduler latency qualification: 279 configurations PASS; no WCET claim"
+    },
+    "materialize": {
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "last": "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+    },
+    "bench": {
+      "log_sha256": "d194976c04352f7d7a737cfd44f19abf2670a1ec35227c9de75265cb19fdac70",
+      "last": "scalar-variant rollback 5002442 0.03726116701727733"
+    },
+    "scale-final": {
+      "log_sha256": "a4c706d23f16912067813f1bfa61c6707eb790918567992e0614e86fdcb10296",
+      "last": "256 rollback 4005660256 153240 0"
+    }
+  },
+  "haskell_suites": 41,
+  "host_configs": 279,
+  "physical": [
+    {
+      "label": "initial",
+      "cases": 186,
+      "record": "2026-11-05-base-variant-pi-initial.json.gz",
+      "sha256": "261686687b9a0973bcb72709274106198a7fb575e77729f3cce1edd8efdfeeec",
+      "uncompressed_sha256": "7028dd6f03ac776022a6d4cb387d2584b4ceb58147e3a24f5678fceb4f31977f",
+      "bundle_sha256": "42635866d749789feefa8229977b5a9d9f72bf56358f8f460bedb1d6b133b0a3",
+      "device": "Raspberry Pi 4 Model B Rev 1.4\u0000Linux qosp 6.6.28-v8 #3 SMP PREEMPT Sun Sep 20 13:26:50 UTC 2026 aarch64 GNU/Linux\npowersave\n600000\n54530\n",
+      "production": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+      "allocations": {
+        "true": [
+          0
+        ],
+        "false": [
+          1000
+        ]
+      },
+      "watchdogs": 2,
+      "samples": {
+        "default": {
+          "count": 6912,
+          "p50_us": 171,
+          "p99_us": 1331,
+          "max_us": 2223,
+          "over_1ms": 352
+        },
+        "boxed": {
+          "count": 6912,
+          "p50_us": 193,
+          "p99_us": 1336,
+          "max_us": 4730,
+          "over_1ms": 336
+        }
+      }
+    },
+    {
+      "label": "final",
+      "cases": 218,
+      "record": "2026-11-05-base-variant-pi-final.json.gz",
+      "sha256": "2386225d615582c843cae03c4c192e9252cab5ad27968a85e510ca03163e4117",
+      "uncompressed_sha256": "c2894caa8067ec821fab31dbe2e0ca1aa17312c24f07f94ccdfd796501184ae7",
+      "bundle_sha256": "118fcc8408dd2d9aaaf9f39d13043eeba1b128820aac1f55cce083c2412afb20",
+      "device": "Raspberry Pi 4 Model B Rev 1.4\u0000Linux qosp 6.6.28-v8 #3 SMP PREEMPT Sun Sep 20 13:26:50 UTC 2026 aarch64 GNU/Linux\npowersave\n600000\n53556\n",
+      "production": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+      "allocations": {
+        "true": [
+          0
+        ],
+        "false": [
+          1000
+        ]
+      },
+      "watchdogs": 2,
+      "samples": {
+        "default": {
+          "count": 6912,
+          "p50_us": 171,
+          "p99_us": 1391,
+          "max_us": 2153,
+          "over_1ms": 371
+        },
+        "boxed": {
+          "count": 6912,
+          "p50_us": 194,
+          "p99_us": 1334,
+          "max_us": 2419,
+          "over_1ms": 344
+        }
+      }
+    }
+  ],
+  "artifacts": {
+    "2026-11-05-base-variant-throughput.json": "b3b003c1d030c3092f0ce900b2276135a6e98dadab28fb077064ae8e39dd5f25",
+    "2026-11-05-base-variant-native.json": "47b0f58d0698063597d2a195e1e2fb18e6b071b80762086a80ee8eb76c8bc385",
+    "2026-11-05-base-variant-x64.json": "47b0f58d0698063597d2a195e1e2fb18e6b071b80762086a80ee8eb76c8bc385",
+    "2026-11-05-base-variant-rv64.json": "9bdc9eb22d6e948ac833abf6a7c5f09cf3348e1ba77aadd0c031776925e18ea4",
+    "2026-11-05-base-variant-scheduling.json": "11c1b1a10af4b9927fd126100821845d705f464547db724f06f4b16b6b9e209d",
+    "2026-11-05-base-persistent-storage-before.json": "88974fdd7f7da71d697bf07b42b72994ff6fb63552d80f29c48e8f24e7b9f913",
+    "2026-11-05-base-scalar-variant-before.json": "75d5feaaeaedf0beb097c297aa2936acc1d587acd79b1cea2852cd1cf7b0b1b5",
+    "2026-11-05-base-variant-scaling.json": "c7d2afa4763ed2338dba3e1d2717d9e9a540e13c7f07f4f9af26e776cd9fea9a"
+  }
+}

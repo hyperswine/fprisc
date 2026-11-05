@@ -1,0 +1,113 @@
+{
+  "compiler_sha256": "76bc1d0df2ed030fae71133b4b772d50989cd0600b7aeded49229504bce66eb3",
+  "rows": [
+    {
+      "form": "carrier",
+      "size": 16,
+      "allocated_bytes": 2184470592,
+      "peak_bytes": 31197688,
+      "seconds": 0.9770123340422288,
+      "text_bytes": 23352,
+      "disassembly_sha256": "a090775363caeb43771fb5b2b359722420ca35aea1b53d1765d567724b9883ae",
+      "source_sha256": "08fd391de7a14482bf2c8570b48038c8553c51cf48bcc9d83420bd0009c62bad",
+      "carrier_producers": 16,
+      "carrier_readers": 16
+    },
+    {
+      "form": "explicit",
+      "size": 16,
+      "allocated_bytes": 2066133288,
+      "peak_bytes": 29951320,
+      "seconds": 0.9160672920406796,
+      "text_bytes": 16108,
+      "disassembly_sha256": "26d96879c2bcfabe2dfa39c579641680e467af66c255812830727108905b1015",
+      "source_sha256": "4b534ead380da914759cf60447e6e0c633dd61645c8619973bc0055b57123906",
+      "carrier_producers": 0,
+      "carrier_readers": 0
+    },
+    {
+      "form": "rollback",
+      "size": 16,
+      "allocated_bytes": 2092548672,
+      "peak_bytes": 30626600,
+      "seconds": 0.9291803329833783,
+      "text_bytes": 17132,
+      "disassembly_sha256": "e7fdcb3c2d1d5c7b606b6b89069811d73cece180c105ac7d89a6e5eb57091f0d",
+      "source_sha256": "08fd391de7a14482bf2c8570b48038c8553c51cf48bcc9d83420bd0009c62bad",
+      "carrier_producers": 0,
+      "carrier_readers": 0
+    },
+    {
+      "form": "carrier",
+      "size": 64,
+      "allocated_bytes": 3416149088,
+      "peak_bytes": 57676672,
+      "seconds": 1.5937703339732252,
+      "text_bytes": 91512,
+      "disassembly_sha256": "d0a0023c2e377aed89bc4d3f22d166cb8ab20cd38ac15f6b68481bdffbb34e11",
+      "source_sha256": "d7375d09e48add800fff7825a5f466e5410ab3bef3b9f5ad1f850f6519ba767d",
+      "carrier_producers": 64,
+      "carrier_readers": 64
+    },
+    {
+      "form": "explicit",
+      "size": 64,
+      "allocated_bytes": 2938527104,
+      "peak_bytes": 48256616,
+      "seconds": 1.310327999992296,
+      "text_bytes": 62860,
+      "disassembly_sha256": "defa80a3dcf4896cecc235e005c777e18a9e8bb396d7d768267d912f2023d05a",
+      "source_sha256": "348630f9a1957c35bd02155ff706f64e9cc3d3041d330513cc68f1967d2a5495",
+      "carrier_producers": 0,
+      "carrier_readers": 0
+    },
+    {
+      "form": "rollback",
+      "size": 64,
+      "allocated_bytes": 3037812848,
+      "peak_bytes": 40322960,
+      "seconds": 1.3468197910115123,
+      "text_bytes": 66956,
+      "disassembly_sha256": "a9688bcbb97c9d1d813fc0d6daaefc2f11b9f438c2ed641acfb401cedeede1ea",
+      "source_sha256": "d7375d09e48add800fff7825a5f466e5410ab3bef3b9f5ad1f850f6519ba767d",
+      "carrier_producers": 0,
+      "carrier_readers": 0
+    },
+    {
+      "form": "carrier",
+      "size": 256,
+      "allocated_bytes": 8795236408,
+      "peak_bytes": 217072744,
+      "seconds": 4.698817417025566,
+      "text_bytes": 364152,
+      "disassembly_sha256": "b50f11f6199e1f8d6144b174068569e5395d450d703354c69cf175e5a63ff7d3",
+      "source_sha256": "6bacc37b1d7fed4de9a009ca0a19d4b987393f61a8071af84353ea56a1b08c68",
+      "carrier_producers": 256,
+      "carrier_readers": 256
+    },
+    {
+      "form": "explicit",
+      "size": 256,
+      "allocated_bytes": 6754107864,
+      "peak_bytes": 104279136,
+      "seconds": 3.120139582955744,
+      "text_bytes": 249868,
+      "disassembly_sha256": "c62a941bbd693d0be360970216201f2d6f8a1cc96e97463f0f4c8381ccb60e19",
+      "source_sha256": "ed72512d1c1504cdb972f96966bac0388c24f4d5ddf326ac7806188e6b095e43",
+      "carrier_producers": 0,
+      "carrier_readers": 0
+    },
+    {
+      "form": "rollback",
+      "size": 256,
+      "allocated_bytes": 7146504928,
+      "peak_bytes": 105888864,
+      "seconds": 3.28552504099207,
+      "text_bytes": 266252,
+      "disassembly_sha256": "bc74fe672c5ce54959f9badb814d4b1222a002c898dea0e9e9221c67634a1a2e",
+      "source_sha256": "6bacc37b1d7fed4de9a009ca0a19d4b987393f61a8071af84353ea56a1b08c68",
+      "carrier_producers": 0,
+      "carrier_readers": 0
+    }
+  ]
+}

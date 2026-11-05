@@ -3,8 +3,9 @@
 -- from a checked import context. Keep reachable elided constructor stubs (the
 -- inliner can read them), and external call arities used by this program.
 -- Unrelated root declarations must not invalidate unchanged unit code.
-module Core.CacheIdentity (CallArities(..),coreCacheIdentity,coreCacheIdentityWithResetters) where
+module Core.CacheIdentity (CallArities(..),coreCacheIdentity,coreCacheIdentityWithResetters,coreCacheIdentityWithProducts) where
 import Core.Syntax (Prog,Name,freeVars)
+import Core.Opt.ProductParameters
 import Data.Binary (encode)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as M
@@ -22,7 +23,12 @@ coreCacheIdentity=coreCacheIdentityWithResetters S.empty
 -- Reset effects are optimization input just like imported physical arities.
 -- Hash only referenced external effects, retaining unrelated-root reuse.
 coreCacheIdentityWithResetters :: S.Set Name -> S.Set Name -> CallArities -> Prog -> String
-coreCacheIdentityWithResetters resetters elided (CallArities globals primitives) program = "core2-"++replicate (16-length hex) '0'++hex
+coreCacheIdentityWithResetters=coreCacheIdentityWithProducts emptyProductParameters
+
+-- Checked parameter layouts can differ even when erased projections coincide
+-- (for example a closed record versus an open row in a one-shape catalog).
+coreCacheIdentityWithProducts :: ProductParameters -> S.Set Name -> S.Set Name -> CallArities -> Prog -> String
+coreCacheIdentityWithProducts products resetters elided (CallArities globals primitives) program = "core4-"++replicate (16-length hex) '0'++hex
   where
     references p=S.unions [S.fromList (freeVars body) S.\\ S.fromList ps | (ps,body)<-M.elems p]
     needed p=let extra=M.restrictKeys program (references p S.\\ M.keysSet p)
@@ -30,6 +36,6 @@ coreCacheIdentityWithResetters resetters elided (CallArities globals primitives)
     relevant=needed (M.withoutKeys program elided)
     external=references relevant S.\\ M.keysSet relevant
     bytes=encode (relevant,M.restrictKeys globals external,M.restrictKeys primitives external,
-      S.toAscList (resetters `S.intersection` external))
+      S.toAscList (resetters `S.intersection` external),productParameterKey relevant products)
     hash=BL.foldl' (\h byte->(h `xor` fromIntegral byte)*1099511628211) 14695981039346656037 bytes :: Word64
     hex=showHex hash ""

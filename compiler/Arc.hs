@@ -10,17 +10,26 @@ module Arc
     lowerRawWith,
     lowerArcWithOptions,
     lowerRawWithOptions,
+    lowerArcWithLayouts,
+    lowerArcWithEvidence,
+    lowerArcWithProductEvidence,
+    lowerRawWithEvidence,
+    lowerRawWithProductEvidence,
+    lowerRawWithLayouts,
     arcExterns,
     arcRev,
     primitiveContracts,
   ) where
 
 import Control.Monad.State.Strict
+import Control.Monad (unless)
 import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Interrupt (checkInterrupt, checkRawUnit)
-import Representation (representWithOptions)
+import Interrupt (checkInterruptWithProducts, checkRawUnitWithProducts, checkLoweredProducts, rawRoots)
+import Representation (representWithProductEvidence)
+import qualified Arc.Products as Products
+import qualified Arc.Uniform as Uniform
 import Representation.Types
 import Core.Syntax (Core(..), Prog)
 
@@ -34,6 +43,13 @@ primitiveContracts =
    ("strcat",2,"strcat"),("String.len",1,"strlen"),("error",1,"error"),
    ("intMax",1,"intMax"),("intMin",1,"intMin"),
    ("$trmc.setTail",2,"trmcSetTail")]
+  ++ [("$uniform."++direction++kind,1,"uniform"++capital++kind)
+      | (direction,capital)<-[("box","Box"),("unbox","Unbox")],kind<-["Word","Addr","F64","F32"]]
+  ++ [("$uniform."++direction++kind,arity,"uniform"++capital++kind)
+      | (direction,capital)<-[("box","Box"),("unbox","Unbox")],(kind,arity)<-[("Aggregate",3),("Managed",1)]]
+  ++ [("$uniform.unbox"++kind,arity,"uniformUnbox"++kind)
+      | (kind,arity)<-[("Tagged",1),("Text",1),("Data",2)]]
+  ++ [("$uniform.project",2,"uniformProject"),("$uniform.tagEq",3,"uniformTagEq")]
   ++ [("Word." ++ n,a,"word" ++ n) | (n,a) <-
        [("fromInt",1),("toInt",1),("bits",1),("and",2),("or",2),("xor",2),
         ("add",2),("sub",2),("not",1),("shl",2),("shr",2),("mask",2),("eq",2),("bitSet",2),("bitClear",2),("bitTest",2)]]
@@ -105,11 +121,12 @@ primitiveContracts =
 
 arcExterns :: M.Map String Int
 arcExterns = M.fromList $ [("$arc.retain",1),("$arc.release",1),("$arc.setLayout",2),("$arc.rawEq",2),("$arc.rawNe",2),("$arc.wordStr",1),("$arc.wordPrint",1)] ++
+  [("$arc.F64print",1),("$arc.F32print",1)] ++
   [("$arc." ++ adapter,arity) | (_,arity,adapter) <- primitiveContracts]
 
 -- Bump when ownership lowering or its runtime ABI changes: keys unit caches.
 arcRev :: Int
-arcRev = 8
+arcRev = 24
 
 type G = StateT Int (Either String)
 type Env = M.Map String String
@@ -140,10 +157,24 @@ lowerArcWith declarations external input =
   fst <$> lowerArcWithOptions True S.empty declarations external input
 
 lowerArcWithOptions :: Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String, String)])
-lowerArcWithOptions typeSpec pinned declarations _external input = do
-  (prog,ann,paramKinds,decls) <- representWithOptions typeSpec pinned declarations input
-  checkInterrupt prog
-  result <- lowerRepresented True prog ann paramKinds
+lowerArcWithOptions = lowerArcWithLayouts M.empty
+
+lowerArcWithLayouts :: LayoutTable -> Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String, String)])
+lowerArcWithLayouts=lowerArcWithEvidence M.empty
+
+lowerArcWithEvidence :: M.Map String Rep -> LayoutTable -> Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String,String)])
+lowerArcWithEvidence=lowerArcWithProductEvidence 0
+
+lowerArcWithProductEvidence :: Int -> M.Map String Rep -> LayoutTable -> Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String,String)])
+lowerArcWithProductEvidence capacity evidence layouts typeSpec pinned declarations _external input = do
+  (uniformDeclarations,uniformInput) <- Uniform.entriesWithLayouts layouts pinned declarations (exposeConstructors capacity evidence layouts input)
+  ((prog,ann,paramKinds,immortals,immortalArgs,scalars,decls),products) <- representWithProductEvidence capacity evidence layouts typeSpec pinned uniformDeclarations uniformInput
+  checkInterruptWithProducts scalars (productValues products) prog
+  result <- if M.null (productValues products)
+    then lowerRepresented True prog ann paramKinds immortals immortalArgs scalars
+    else Products.lowerProducts True pinned prog ann paramKinds immortals immortalArgs scalars products primitiveContracts
+  unless (M.null (productValues products) || M.notMember "machineInterrupt" result) $
+    checkLoweredProducts True primitiveContracts ["machineInterrupt"] result
   let managed = maybe True ((== Managed) . (ann M.!)) (snd <$> M.lookup "main" prog)
   pure (M.insert "$arc.mainManaged" ([],CInt (if managed then 1 else 0)) result, decls)
 
@@ -159,18 +190,64 @@ lowerRawWith declarations external input =
   fst <$> lowerRawWithOptions True S.empty declarations external input
 
 lowerRawWithOptions :: Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String, String)])
-lowerRawWithOptions typeSpec pinned declarations _external input = do
-  (prog,ann,paramKinds,decls) <- representWithOptions typeSpec pinned declarations input
-  checkRawUnit prog
-  result <- lowerRepresented False prog ann paramKinds
+lowerRawWithOptions = lowerRawWithLayouts M.empty
+
+lowerRawWithLayouts :: LayoutTable -> Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String, String)])
+lowerRawWithLayouts=lowerRawWithEvidence M.empty
+
+lowerRawWithEvidence :: M.Map String Rep -> LayoutTable -> Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String,String)])
+lowerRawWithEvidence=lowerRawWithProductEvidence 0
+
+lowerRawWithProductEvidence :: Int -> M.Map String Rep -> LayoutTable -> Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String,String)])
+lowerRawWithProductEvidence capacity evidence layouts typeSpec pinned declarations _external input = do
+  ((prog,ann,paramKinds,_,_,scalars,decls),products) <- representWithProductEvidence capacity evidence layouts typeSpec pinned declarations (exposeConstructors capacity evidence layouts input)
+  checkRawUnitWithProducts scalars (productValues products) pinned prog
+  result <- if M.null (productValues products)
+    then lowerRepresented False prog ann paramKinds S.empty M.empty scalars
+    else do
+      lowered <- Products.lowerProducts False pinned prog ann paramKinds S.empty M.empty scalars products primitiveContracts
+      checkLoweredProducts False primitiveContracts
+        (map (Products.productEntryName pinned products) (rawRoots pinned prog)) lowered
+      pure lowered
   pure (M.insert "$arc.mainManaged" ([],CInt 0) result, decls)
 
-lowerRepresented :: Bool -> Prog -> M.Map Core Kind -> M.Map String [Kind] -> Either String Prog
-lowerRepresented instrument prog ann paramKinds = evalStateT (M.traverseWithKey lower prog) 0
+-- Only the builtin pipeline, after scheduling decisions, may expose these
+-- exact constructor bodies. No effect, entry tick or boundary adapter is
+-- copied or dropped. The checked definition establishes eligible nominal ids;
+-- the solver still selects each instantiated layout (including boxed ones).
+exposeScalarConstructors :: M.Map String Rep -> LayoutTable -> Prog -> Prog
+exposeScalarConstructors=exposeConstructors 0
+
+exposeConstructors :: Int -> M.Map String Rep -> LayoutTable -> Prog -> Prog
+exposeConstructors capacity evidence layouts input=M.map (\(ps,b)->(ps,walk (S.fromList ps) b)) input
+  where
+    eligible=S.fromList ([(tid,v) | ScalarLayoutDef tid v _<-M.elems layouts]
+      ++ [(tid,v) | shape<-M.elems (productLayouts capacity layouts),let (tid,v,_)=productParts shape])
+    stubs=M.mapMaybe (\(ps,b)->case strip b of
+      CMk tid v fs | S.member (tid,v) eligible,map strip fs==map CVar ps->Just (tid,v,length ps)
+      _->Nothing) input
+    strip (CApp (CVar marker) value) | M.member marker evidence=strip value
+    strip value=value
+    walk bound e=case e of
+      CApp {}->case spine e of
+        (CVar n,args) | S.notMember n bound,Just (tid,v,arity)<-M.lookup n stubs,arity==length args->
+          CMk tid v (map (walk bound) args)
+        _->case e of CApp f x->CApp (walk bound f) (walk bound x);_->e
+      CLet n a b->CLet n (walk bound a) (walk (S.insert n bound) b)
+      CIf c a b->CIf (walk bound c) (walk bound a) (walk bound b)
+      CMk t v fs->CMk t v (map (walk bound) fs)
+      CProj i x->CProj i (walk bound x)
+      CTagEq t v x->CTagEq t v (walk bound x)
+      CLam ps b->CLam ps (walk (bound `S.union` S.fromList ps) b)
+      _->e
+
+lowerRepresented :: Bool -> Prog -> M.Map Core Kind -> M.Map String [Kind] -> S.Set Core -> M.Map String [Bool] -> M.Map Core (Int,Int) -> Either String Prog
+lowerRepresented instrument prog ann paramKinds immortals immortalArgs scalars = evalStateT (M.traverseWithKey lower prog) 0
   where
     managed e = instrument && ann M.! e == Managed
+    owned e = managed e && S.notMember e immortals
     rel ns body = if instrument then release ns body else pure body
-    ownersFor n ps = [p | (p,k) <- zip ps (paramKinds M.! n), k == Managed]
+    ownersFor n ps = [p | (p,k,immortal) <- zip3 ps (paramKinds M.! n) (M.findWithDefault (repeat False) n immortalArgs), k == Managed, not immortal]
     arities = M.map (length . fst) prog
     prims = M.fromList [(n,(a,"$arc."++adapter)) | (n,a,adapter) <- primitiveContracts]
     lower name (ps,body) = do
@@ -194,7 +271,7 @@ lowerRepresented instrument prog ann paramKinds = evalStateT (M.traverseWithKey 
               (op,[a]) | op `elem` ["str","print"], not (managed a) ->
                 if M.lookup a ann `elem` [Just RawWord,Just RawAddr]
                   then pure (if op == "str" then "$arc.wordStr" else "$arc.wordPrint")
-                  else failArc "use F32.str or F64.str to render a raw float"
+                  else pure ("$arc." ++ (if M.lookup a ann==Just RawF64 then "F64" else "F32") ++ op)
               _ -> pure adapter
             _ -> failArc ("unsupported primitive or application: " ++ n)
       _ -> failArc "indirect calls and partial applications are not supported yet"
@@ -203,7 +280,7 @@ lowerRepresented instrument prog ann paramKinds = evalStateT (M.traverseWithKey 
     -- Non-tail evaluation supplies exactly one owned value to its continuation.
     eval env expr k = case expr of
       CVar n -> case M.lookup n env of
-        Just owner -> if managed expr then bind (call "$arc.retain" [CVar owner]) k else k (CVar owner)
+        Just owner -> if owned expr then bind (call "$arc.retain" [CVar owner]) k else k (CVar owner)
         Nothing | "$sym." `isPrefixOf` n -> k expr -- a link-time address: raw, never owned
         Nothing -> case M.lookup n arities of
           Just 0 -> bind (CVar n) k
@@ -214,35 +291,41 @@ lowerRepresented instrument prog ann paramKinds = evalStateT (M.traverseWithKey 
         owner <- fresh
         body <- eval (M.insert x owner env) b $ \result -> do
           rest <- k result
-          rel [owner | managed a] rest
+          rel [owner | owned a] rest
         pure (CLet owner v body)
       CIf c t f -> eval env c $ \cv -> do
-        yes <- eval env t pure >>= releaseValue cv
-        no <- eval env f pure >>= releaseValue cv
+        yes <- eval env t pure >>= releaseValue c cv
+        no <- eval env f pure >>= releaseValue c cv
         bind (CIf cv yes no) k
+      CMk tid variant [field] | Just shape<-M.lookup expr scalars ->
+        if shape==(tid,variant) then eval env field k else failArc "scalar constructor disagrees with checked layout"
       CMk tid variant fields -> argsE env fields $ \vs -> bind (CMk tid variant vs) $ \v ->
         if null fields || not instrument then k v else bind (call "$arc.setLayout" [v,CStr [kindTag (ann M.! f) | f <- fields]]) (const (k v))
+      CProj i obj | M.member obj scalars ->
+        if i==0 then eval env obj k else failArc "scalar projection exceeds checked layout"
       CProj i obj -> eval env obj $ \v ->
-        bind (if managed expr then call "$arc.retain" [CProj i v] else CProj i v) $ \r -> k r >>= releaseValue v
+        bind (if owned expr then call "$arc.retain" [CProj i v] else CProj i v) $ \r -> k r >>= releaseValue obj v
+      CTagEq tid variant obj | Just shape<-M.lookup obj scalars ->
+        eval env obj (const (k (CMk 1 (if shape==(tid,variant) then 1 else 0) [])))
       CTagEq tid variant obj -> eval env obj $ \v ->
-        bind (CTagEq tid variant v) $ \r -> k r >>= releaseValue v
+        bind (CTagEq tid variant v) $ \r -> k r >>= releaseValue obj v
       CApp {} -> let (f,as) = spine expr in do
         n <- target env f as
         argsE env as $ \vs -> bind (call n vs) k
       CErr _ -> pure expr -- panic terminates the whole standalone execution
       CLam {} -> failArc "lambda survived lifting"
-    releaseValue (CVar n) body = rel [n] body
-    releaseValue _ body = pure body -- immediate or immortal literal
+    releaseValue original (CVar n) body = rel [n | owned original] body
+    releaseValue _ _ body = pure body -- immediate or immortal literal
     -- Keep direct saturated calls in tail position after all owners are dropped.
     tailE env owners expr = case expr of
       CVar n | M.notMember n env, Just 0 <- M.lookup n arities -> rel owners (CVar n)
       CLet x a b -> eval env a $ \v -> do
         owner <- fresh
-        body <- tailE (M.insert x owner env) (if managed a then owner:owners else owners) b
+        body <- tailE (M.insert x owner env) (if owned a then owner:owners else owners) b
         pure (CLet owner v body)
       CIf c t f -> eval env c $ \cv -> do
-        yes <- tailE env owners t >>= releaseValue cv
-        no <- tailE env owners f >>= releaseValue cv
+        yes <- tailE env owners t >>= releaseValue c cv
+        no <- tailE env owners f >>= releaseValue c cv
         pure (CIf cv yes no)
       CApp {} -> let (f,as) = spine expr in do
         n <- target env f as

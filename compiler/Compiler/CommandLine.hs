@@ -37,6 +37,9 @@ data CompileArguments = CompileArguments
     oEditorJSON :: Bool, -- versioned editor report, never executes or emits code
     oCheckOnly :: Bool, -- check libraries/modules without an executable entry point
     oManifest :: Maybe FilePath, -- --manifest=FILE: judge the root functions against a target manifest (Manifest.hs)
+    oStackReport :: Bool, -- --stack-report: emit physical native stack facts
+    oHeapBudget :: Maybe String, -- --heap-budget=BYTES: builtin C heap admission
+    oStackBudget :: Maybe String, -- --stack-budget=BYTES: checked public C-entry stack admission
     oRemarks :: Maybe String -- advisory reporting; validated separately, never a codegen/cache option
   }
 
@@ -51,7 +54,7 @@ parseCompileArguments = resolveHost . foldl step defaults
         oQosApp=False, oQosSingle=False, oPlugin=False, oRvv=False,
         oStdCheck=False, oSol=False, oPrelude=Nothing, oNoSafety=False,
         oFiles=[], oForeign=[], oNoInline=False, oCost=False,
-        oEditorJSON=False, oCheckOnly=False, oManifest=Nothing, oRemarks=Nothing }
+        oEditorJSON=False, oCheckOnly=False, oManifest=Nothing, oStackBudget=Nothing, oHeapBudget=Nothing, oStackReport=False, oRemarks=Nothing }
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
     -- qos-native -> rv64 .qa is built by tools, so the alias maps the
@@ -62,6 +65,7 @@ parseCompileArguments = resolveHost . foldl step defaults
     -- and qos-native are rv64 (QEMU virt, the board); qos-portable is
     -- an x86-64 QOS app image; posix is an executable for the host this
     -- compiler was built on; native selection uses that host's ISA.
+    step o "--stack-report" = o {oStackReport=True}
     step o "--system=bare-metal" = o {oTarget = rv64, oSystem = Just "bare-metal"}
     step o "--system=qos-native" = o {oTarget = rv64, oSystem = Just "qos-native"}
     step o "--system=qos-portable" = o {oTarget = rv64, oX64 = if oTargetFlag o then oX64 o else True, oQosApp = True, oSystem = Just "qos-portable"}
@@ -113,6 +117,8 @@ parseCompileArguments = resolveHost . foldl step defaults
     step o a
       | "--prelude=" `isPrefixOf` a = o {oPrelude = Just (drop (length "--prelude=") a)}
       | "--manifest=" `isPrefixOf` a = o {oManifest = Just (drop (length "--manifest=") a), oCost = True}
+      | "--heap-budget=" `isPrefixOf` a = o {oHeapBudget = Just (drop (length "--heap-budget=") a)}
+      | "--stack-budget=" `isPrefixOf` a = o {oStackBudget = Just (drop (length "--stack-budget=") a)}
       | "--foreign=" `isPrefixOf` a = o {oForeign = oForeign o ++ [drop (length "--foreign=") a]}
       | "--host=" `isPrefixOf` a = let h = drop (length "--host=") a in o {oHost = if h == "unix" then Nothing else Just h}
       | "--export=" `isPrefixOf` a = o {oExports = oExports o ++ exportSpecs (drop (length "--export=") a)}

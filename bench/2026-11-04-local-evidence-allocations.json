@@ -1,0 +1,48 @@
+{
+  "target": "RV64 QEMU virt, lp64, C allocator, ARC_CHECK=1",
+  "cycles": 256,
+  "calls_per_cycle": 7,
+  "workloads": [
+    "local Word wrapper",
+    "local F64 wrapper",
+    "local scalar record",
+    "nested local wrappers",
+    "branch true",
+    "branch false",
+    "closed wrapper in a generic body"
+  ],
+  "measurement": "ADT requests inside checked private workers; every call checks values and complete run checks zero live-allocation drift",
+  "timing_claim": null,
+  "source_sha256": "c16a4bc1dff7eb4fab443f48454e33c22a30b25ce8390bbeec9099d54136b92c",
+  "rows": [
+    {
+      "codegen_revision": 168,
+      "rollback": false,
+      "compiler_sha256": "5849113433915b766d0eef8a67bb8843a1bec06e2e1395f45f3d9facc61ee002",
+      "allocations": 2048,
+      "live_allocation_delta": 0
+    },
+    {
+      "codegen_revision": 168,
+      "rollback": true,
+      "compiler_sha256": "5849113433915b766d0eef8a67bb8843a1bec06e2e1395f45f3d9facc61ee002",
+      "allocations": 3584,
+      "live_allocation_delta": 0
+    },
+    {
+      "codegen_revision": 169,
+      "rollback": false,
+      "compiler_sha256": "daeb4d13f0f349e9b59a2c3b169bc6aebb9892aaa38b51318a3b6c5934f87454",
+      "allocations": 0,
+      "live_allocation_delta": 0
+    },
+    {
+      "codegen_revision": 169,
+      "rollback": true,
+      "compiler_sha256": "daeb4d13f0f349e9b59a2c3b169bc6aebb9892aaa38b51318a3b6c5934f87454",
+      "allocations": 0,
+      "live_allocation_delta": 0
+    }
+  ],
+  "reproduction": "tests/check_scalar_wrappers.py LOCAL_SOURCE and LOCAL_PROBE; compiled as a library exporting all declared functions, before/after with FPR_NO_TYPE_SPEC unset or 1"
+}

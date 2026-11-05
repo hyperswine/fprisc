@@ -1,0 +1,7 @@
+profile builtin.
+seed : Word -> Word.
+seed n = n.
+advance : Word -> Word -> Word.
+advance state n = Word.add state n.
+choose : Bool -> Word -> Word -> Word.
+choose b x y = if b then x else y.

@@ -1,0 +1,24 @@
+{
+  "schema": "owned-wrapper-public-v1",
+  "source": "profile builtin.\nHidden = Type (Hidden a).\nmakeWord : Word -> Hidden.\nmakeWord x = Hidden x.\nreadWord : Hidden -> Word.\nreadWord h = case h of Hidden x -> x.\nmakeInt : Int -> Hidden.\nmakeInt x = Hidden x.\nreadInt : Hidden -> Int.\nreadInt h = case h of Hidden x -> x.\nmakeText : String -> Hidden.\nmakeText x = Hidden x.\nreadText : Hidden -> String.\nreadText h = case h of Hidden x -> x.\nmakeInts : Int -> Hidden.\nmakeInts n = Hidden [n,n + 1].\nreadInts : Hidden -> List Int.\nreadInts h = case h of Hidden x -> x.\nmakeWords : Word -> Hidden.\nmakeWords n = Hidden [n,n].\nreadWords : Hidden -> List Word.\nreadWords h = case h of Hidden x -> x.\nfirstWord : Hidden -> Word.\nfirstWord h = case h of Hidden (x :: _) -> x | _ -> Word.fromInt 0.\nmakeFlag : Bool -> Hidden.\nmakeFlag x = Hidden x.\nreadFlag : Hidden -> Bool.\nreadFlag h = case h of Hidden x -> if x then True else False.\nmakeNested : Word -> Hidden.\nmakeNested x = Hidden (Hidden x).\nreadNested : Hidden -> Word.\nreadNested h = case h of Hidden (Hidden x) -> x.\n",
+  "probe": "#define TEST_CASE 0\n\n#include \"builtin.h\"\nextern V __real_fpr_fn_main(void);\nextern V makeWord(uw),makeInt(intptr_t),makeText(V),makeInts(intptr_t),makeWords(uw),makeFlag(int),makeNested(uw);\nextern uw readWord(V),firstWord(V),readNested(V);\nextern intptr_t readInt(V);\nextern int readFlag(V);\nextern V readText(V),readInts(V),readWords(V);\nextern V raw_make_word(uw) __asm__(\"RAW_MAKE_WORD\");\nextern V __real_fpr_builtin_alloc_adt(V,uw);\nstatic uw requests;\nV __wrap_fpr_builtin_alloc_adt(V bytes,uw fields){requests++;return __real_fpr_builtin_alloc_adt(bytes,fields);}\n#define check(b) do{if(!(b))fpr_cpanic(\"hidden-field oracle: \" #b);}while(0)\nstatic V field(V p,uw i){check(fpr_builtin_field_kind(p,i)=='t');return ((V*)(p+8))[i];}\nV __wrap_fpr_fn_main(void) {\n uw before=fpr_builtin_live_allocations();\n #if TEST_CASE == 1\n readInt(makeWord(7));\n #elif TEST_CASE == 2\n readWord(makeInt(7));\n #elif TEST_CASE == 3\n readText(makeInt(7));\n #elif TEST_CASE == 4\n readInts(makeWords(7));\n #elif TEST_CASE == 5\n readWords(makeInts(7));\n #elif TEST_CASE == 6\n readFlag(makeWord(7));\n #else\n for(uw n=1;n<=128;n++) {\n  uw counted=requests;\n  V h=makeWord(n);\n  check(requests==counted+3); /* public scalar bridge, payload box and nominal Hidden */\n  V payload=field(h,0);\n  check(TID(payload)==T_BITS && ((bits_t*)payload)->var==2 && ((bits_t*)payload)->val==n);\n  check(readWord(fpr_builtin_retain(h))==n);fpr_builtin_release(h);\n  check(readInt(makeInt(n))==(intptr_t)n);\n  V text=(V)fpr_mkstr((const uint8_t*)\"abc\",3);\n  h=makeText(fpr_builtin_retain(text));\n  V copy=readText(h);check(copy==text);fpr_builtin_release(copy);fpr_builtin_release(text);\n  h=makeInts(n);payload=field(h,0);copy=readInts(fpr_builtin_retain(h));\n  check(copy==payload && UNTAG(field(copy,0))==(intptr_t)n);\n  check(UNTAG(field(field(copy,1),0))==(intptr_t)n+1);\n  fpr_builtin_release(copy);fpr_builtin_release(h);\n  h=makeWords(n);check(firstWord(fpr_builtin_retain(h))==n);\n  copy=readWords(h);check(((bits_t*)field(copy,0))->val==n);fpr_builtin_release(copy);\n  check(readFlag(makeFlag(1))==1 && readFlag(makeFlag(0))==0);\n  check(readNested(makeNested(n))==n);\n  check(fpr_builtin_live_allocations()==before);\n }\n volatile unsigned char*uart=(void*)0x10000000;\n const char*s=\"HIDDEN_FIELDS_PASS\\n\";\n for(;*s;s++){while(!(uart[5]&32)){}uart[0]=*s;}\n #endif\n return __real_fpr_fn_main();\n}\n",
+  "public_constructor_requests_per_factory_call": 3,
+  "inputs": 128,
+  "runtime_compiler_sha256": "9bedde8f2bf032e43f035228a8fc34643d740f27c197d5f5f85c66f5ee1e0c61",
+  "records": [
+    {
+      "mode": "before",
+      "compiler_sha256": "64f733497a6f6703ed10de2aa815e59817d4d42acd23419d1ce2c0aa8e84c722",
+      "assembly_sha256": "434bf4fb5d4963190f27ddd5ac6ea64bfe219fe208ccfdd0c78129df7bccedfe",
+      "image_sha256": "4f46b5e6ac8b2eb29961368f10567a54cb899f2a01bfac0f9ffaf4e12e21733f",
+      "output": "HIDDEN_FIELDS_PASS\n"
+    },
+    {
+      "mode": "after",
+      "compiler_sha256": "9bedde8f2bf032e43f035228a8fc34643d740f27c197d5f5f85c66f5ee1e0c61",
+      "assembly_sha256": "e7728349b01795042914ab5ef9c389396a2aa4674ccb2a0c47722355bc116cf6",
+      "image_sha256": "201551999e583cf87fa08b24714b2069d780a70fa23ff77a4ce5d3f36a16c591",
+      "output": "HIDDEN_FIELDS_PASS\n"
+    }
+  ]
+}

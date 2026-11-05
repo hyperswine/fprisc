@@ -1,0 +1,124 @@
+{
+  "revision": 201,
+  "compiler_sha256": "59e53da796bf8298bf80db0d78918ee987e2e089e9012d1828e481abfa129ae2",
+  "checks": {
+    "haskell": {
+      "log_sha256": "e7c05a451e2a43e85fcf68b3abeecb7f2552ba9d8efd7b9bc158ee5023d15999",
+      "last": "1 of 1 test suites (1 of 1 test cases) passed."
+    },
+    "native": {
+      "log_sha256": "fd2a1c2c0d5a1cb7ec069cea075e08db73d8eede9e84d0cce97f5abc47ae3c00",
+      "last": "178 persistent storage allocation, effects, trap, escape, module and walker cases passed"
+    },
+    "x64": {
+      "log_sha256": "fd2a1c2c0d5a1cb7ec069cea075e08db73d8eede9e84d0cce97f5abc47ae3c00",
+      "last": "178 persistent storage allocation, effects, trap, escape, module and walker cases passed"
+    },
+    "rv": {
+      "log_sha256": "ad687192bce28a046fad442eccce8d18a88af4501e9a247c404743428a20a6c0",
+      "last": "RV64 Linux userspace 72 cases PASS"
+    },
+    "arc": {
+      "log_sha256": "dcc0d610cad7d8ebbbd42d3e8abe1dc240df1108562fdb8a8bb12a5affd9089e",
+      "last": "Specialization on/off preserves printed prefixes and overflow/division failures: PASS"
+    },
+    "geometry": {
+      "log_sha256": "dce1373ad97a2edc98e291699a758c0dd3e6a68eec0d8ff940f0de90d76b68c0",
+      "last": "RV64 QEMU: geometry, observed blocks, exact/short fixed arena PASS"
+    },
+    "heap-proof": {
+      "log_sha256": "9ee7b141cc7f1a430c855b42db9a09173d39a78b6b36cdef15c972d6d6011331",
+      "last": "RV64 plain/measured: 4 allocated callbacks per mode, fixed-arena guards and complete reclamation PASS"
+    },
+    "arena-final": {
+      "log_sha256": "1440e4ece55767e2110645f6978456cc765874ae0d0bb04a464954c24d92782e",
+      "last": "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+    },
+    "static-final": {
+      "log_sha256": "9eb362eb91044a69b6493c693f2992406fdfb7d1b13f48887d2714610c359a70",
+      "last": "Typed scalar handoffs, short arenas, late unproved entry, pre-reset leak and publication preservation PASS"
+    },
+    "compact": {
+      "log_sha256": "233184fb91c9a450139496bbb465260c3aebaa91c99d680cd52241a63f2b05b3",
+      "last": "compact=1: independent extents, all object classes, mixed bucket/big reuse, padding, raw realloc and alignment on 1/4 harts PASS"
+    },
+    "layout-modules": {
+      "log_sha256": "23c443e4f2022d30ff9fa3cc929079f5a7b89138c778c243f7002706f64d1fda",
+      "last": "Dynamic constructor layouts: module message round trip, detached metadata lifetime, conflict/overflow refusal and concurrent index growth PASS"
+    },
+    "layout": {
+      "log_sha256": "4942b2d068e3bb4433457ed35a49ec4e23cb919ecd825eabc42aed5f5c0f8763",
+      "last": "Free: no accessor call remains, and each function is no larger than its hand-written twin: PASS"
+    },
+    "variants": {
+      "log_sha256": "d90b1295b5671dd8b5734a0b409d1c80f70ee880352475eb3f312f57746d572e",
+      "last": "280 variant return allocation, boundary, cache, and semantic checks passed"
+    },
+    "registry": {
+      "log_sha256": "c89bae3fe00374ffa08eceaed8214537d6e34f174f6b2bddda2c48cb67394246",
+      "last": "OK"
+    },
+    "materialize": {
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "last": "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+    },
+    "host-sched": {
+      "log_sha256": "81192d865910c2951633fc6993d9a5b5371a46451df29e55f038b7a2aca29fe5",
+      "last": "Scheduler latency qualification: 297 configurations PASS; no WCET claim"
+    },
+    "image": {
+      "log_sha256": "ceea9465ef0b2c776c461d032b8156efcdd6ccb0a45bf5650c761d48cb0f7104",
+      "last": "tangnano20k/sdram ARC=0: linked image admitted; rejected replacements preserved all prior artifacts"
+    },
+    "final-budget": {
+      "log_sha256": "5c9cf430b1a468c4d8227e0be8ea7f8cca27c1cf7519286197204248e529f161",
+      "last": "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+    },
+    "c2-cost": {
+      "log_sha256": "cc2ed8fdb2348997ad0a220c63aedb0e3c6d728bcec026011cbe0d00a2a3a104",
+      "last": "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.007x explicit twins"
+    }
+  },
+  "physical": {
+    "cases": 210,
+    "record": "2026-11-05-storage-pi.json.gz",
+    "sha256": "4331cf1767496bd6f9b6c5d538d533dea40333498d6345f845d6c74c8e315b01",
+    "uncompressed_sha256": "b0b31e87546404d24b53a5f7b474dc659c3bf2c214268c91ea4c530ab51928e6",
+    "bundle_sha256": "c640d9dc674067620d17b5606d6e5fbc48099765ad92ef6150ccdfcc38222a3f",
+    "production": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+    "scope": "Physical Linux ARM64 runtime alongside installed QOS; no deployment or hard realtime admission",
+    "samples": {
+      "default": {
+        "count": 6912,
+        "median_us": 191,
+        "p99_us": 1679,
+        "max_us": 3031,
+        "over_1ms": 555
+      },
+      "boxed": {
+        "count": 6912,
+        "median_us": 191,
+        "p99_us": 2354,
+        "max_us": 3957,
+        "over_1ms": 757
+      }
+    },
+    "watchdogs_passed": 2
+  },
+  "artifacts": {
+    "2026-11-05-storage-scaling.json": "52d068b6ab4a0cc870981c3c6c04b1c5f887cc76e64444fa787924a19388dfc3",
+    "2026-11-05-storage-scheduling.json": "36628481f0b26b8bcc1cf8aaa0f5ebe11d16fec7f955f56d194a6c4c4eb06ffc",
+    "2026-11-05-storage-throughput.json": "7eccf518d3e80250130842d30d1bbc4df272c53d62be8b6790cfee90613b0123",
+    "2026-11-05-storage-header-throughput.json": "65ad423b3965879887ae10a6d51740dc4e8346ef3aa065ad562de1ffd41d53cb",
+    "2026-11-05-storage-initial-throughput.json": "fdb5081ee2d1fb6d3ebdb389af684581a5c144d43306dc17a2a8d73a9492049f",
+    "2026-11-05-storage-native.json": "b5a5c897a205f2ed5b9720687042169baea80d3d9b02bddcf29fd348937b165c",
+    "2026-11-05-storage-x64.json": "1e93243722852b971c4e3b498ee152c73924c74ad96786fbfce6b9fe1a0ddde3",
+    "2026-11-05-storage-rv64.json": "3ddbb5a196fe9332a876de1104d1b333decf06be91ffcfbf69f4882268ef2044",
+    "2026-11-05-storage-contract-recheck.json": "27f33cc86d3c00e4c4b4c5a1b7ea2298c4d181b4659472725f11014aedb57cb1",
+    "2026-11-05-base-persistent-storage-before.json": "88974fdd7f7da71d697bf07b42b72994ff6fb63552d80f29c48e8f24e7b9f913",
+    "2026-11-05-base-persistent-storage-after.json": "3202492f65537a0428c4ba9d295c395b8591bd2a0842bbb44ac0132aafdddfeb",
+    "2026-11-05-base-tree-storage-before.json": "e9c8ecc78b4f5bfccbc6ff5c5cecec954221682551202016a7613274372da6a8",
+    "2026-11-05-storage-static-arena.json": "996ed8676fe6469db38cdb6db3fb301ba0828b25af32988c9c38c5daabbcf4d2",
+    "2026-11-05-storage-static-sequences.json": "7e34026b253adca67234dacc87e1476001e77de01fe76409742fc8080542eed8"
+  }
+}

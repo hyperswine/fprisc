@@ -2,7 +2,7 @@
 # a boundary, so live is alloc -- here 24 bytes per cons cell per step --
 # unless the work runs inside Sys.arena, whose cells are torn down and only
 # the result copied out
-build : (n : Int | measure n) -> List Int -> List Int | live build <= 24 * n + 24 .
+build : (n : Int | measure n) -> List Int -> List Int | live build <= 24 * max 0 n + 24 .
 build n acc | n <= 0 = acc.
 build n acc = build (n - 1) (n :: acc).
 scratch : Int -> Int .

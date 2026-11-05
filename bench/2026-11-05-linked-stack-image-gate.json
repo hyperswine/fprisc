@@ -1,0 +1,189 @@
+{
+  "schema": "target-load-segments-validation-v1",
+  "unit_tests_passed": 12,
+  "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+  "tool_sha256": "7628c6cd610bf74a66452b9ecdffc318eed539159050042e901a4b58ca681195",
+  "test_sha256": "79a77205e0ffc606e75041cbf32e6d49ae45ee68cf6e4125a42d32a9d0d74ae4",
+  "images": [
+    {
+      "board": "virt",
+      "ram": "bram",
+      "arc": 0,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv64-virt-128m",
+        "elf_class_bits": 64,
+        "image_sha256": "62170fb8eeb1702bf005533dc099d74a9f61a1622d6f88e80651bbf1ef3c5e58",
+        "manifest_sha256": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+        "image_bytes": 7608,
+        "image_limit_bytes": 134217728,
+        "static_memory_bytes": 152032,
+        "remaining_ram_bytes": 134065696,
+        "min_free_bytes": 65536
+      },
+      "optional_linked_stack_admission": {
+        "schema": 3,
+        "target": "builtin-rv64-virt-128m",
+        "elf_class_bits": 64,
+        "image_sha256": "cdcf2f7ac7faf1835f3816ce05049c6ba12eee6a85aa322921017543495c0934",
+        "manifest_sha256": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+        "image_bytes": 7624,
+        "image_limit_bytes": 134217728,
+        "static_memory_bytes": 152048,
+        "remaining_ram_bytes": 134065680,
+        "min_free_bytes": 65536,
+        "linked_stack": {
+          "schema": "linked-rv64-stack-v1",
+          "image": {
+            "schema": 2,
+            "target": "builtin-rv64-virt-128m",
+            "elf_class_bits": 64,
+            "image_sha256": "cdcf2f7ac7faf1835f3816ce05049c6ba12eee6a85aa322921017543495c0934",
+            "manifest_sha256": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+            "image_bytes": 7624,
+            "image_limit_bytes": 134217728,
+            "static_memory_bytes": 152048,
+            "remaining_ram_bytes": 134065680,
+            "min_free_bytes": 65536
+          },
+          "entries": [
+            {
+              "symbol": "resource_probe",
+              "address": 2147489916,
+              "peak_bytes": 48,
+              "limit_bytes": 48
+            }
+          ],
+          "functions": [
+            {
+              "symbol": "resource_probe",
+              "address": 2147489916,
+              "local_bytes": 48,
+              "peak_bytes": 48,
+              "instructions": 5,
+              "may_return": true,
+              "calls": []
+            }
+          ],
+          "scope": "ordinary ABI entry SP; synchronous RV64 IM code; no asynchronous traps, startup or stack switching",
+          "assumptions": [
+            "Valid memory accesses and RV64 integer callee-saved register/return ABI, shared by the FPR native frame convention.",
+            "No asynchronous interrupt, fault-handler stack, stack switching or concurrent mutation of executable bytes."
+          ]
+        }
+      },
+      "execution": "qemu-pass",
+      "refused_replacements_preserved_artifacts": true
+    },
+    {
+      "board": "virt",
+      "ram": "bram",
+      "arc": 1,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv64-virt-128m",
+        "elf_class_bits": 64,
+        "image_sha256": "9b4813fb69dbb22f4c736f78677044ac52ca3561ba7852412f98ea03aadb173c",
+        "manifest_sha256": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+        "image_bytes": 12104,
+        "image_limit_bytes": 134217728,
+        "static_memory_bytes": 152464,
+        "remaining_ram_bytes": 134065264,
+        "min_free_bytes": 65536
+      },
+      "optional_linked_stack_admission": {
+        "schema": 3,
+        "target": "builtin-rv64-virt-128m",
+        "elf_class_bits": 64,
+        "image_sha256": "63404f1bae813bf9d2d26fe5773bd55b02c2a96a1bbe9fa62cdbe4c1d2392c3a",
+        "manifest_sha256": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+        "image_bytes": 12128,
+        "image_limit_bytes": 134217728,
+        "static_memory_bytes": 152480,
+        "remaining_ram_bytes": 134065248,
+        "min_free_bytes": 65536,
+        "linked_stack": {
+          "schema": "linked-rv64-stack-v1",
+          "image": {
+            "schema": 2,
+            "target": "builtin-rv64-virt-128m",
+            "elf_class_bits": 64,
+            "image_sha256": "63404f1bae813bf9d2d26fe5773bd55b02c2a96a1bbe9fa62cdbe4c1d2392c3a",
+            "manifest_sha256": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+            "image_bytes": 12128,
+            "image_limit_bytes": 134217728,
+            "static_memory_bytes": 152480,
+            "remaining_ram_bytes": 134065248,
+            "min_free_bytes": 65536
+          },
+          "entries": [
+            {
+              "symbol": "resource_probe",
+              "address": 2147493952,
+              "peak_bytes": 48,
+              "limit_bytes": 48
+            }
+          ],
+          "functions": [
+            {
+              "symbol": "resource_probe",
+              "address": 2147493952,
+              "local_bytes": 48,
+              "peak_bytes": 48,
+              "instructions": 5,
+              "may_return": true,
+              "calls": []
+            }
+          ],
+          "scope": "ordinary ABI entry SP; synchronous RV64 IM code; no asynchronous traps, startup or stack switching",
+          "assumptions": [
+            "Valid memory accesses and RV64 integer callee-saved register/return ABI, shared by the FPR native frame convention.",
+            "No asynchronous interrupt, fault-handler stack, stack switching or concurrent mutation of executable bytes."
+          ]
+        }
+      },
+      "execution": "qemu-pass",
+      "refused_replacements_preserved_artifacts": true
+    },
+    {
+      "board": "tangnano20k",
+      "ram": "bram",
+      "arc": 0,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv32-tangnano20k-bram",
+        "elf_class_bits": 32,
+        "image_sha256": "a2bde6374c3f0466b04b7424ad5c93e77fbde82b4742fc389c65c246160f3755",
+        "manifest_sha256": "e1ef73bfd4308f5ac9badcc720a69b72141e54135a65602afec88c1bf442c28f",
+        "image_bytes": 18044,
+        "image_limit_bytes": 65536,
+        "static_memory_bytes": 22976,
+        "remaining_ram_bytes": 42560,
+        "min_free_bytes": 12288
+      },
+      "optional_linked_stack_admission": null,
+      "execution": "not-executed",
+      "refused_replacements_preserved_artifacts": true
+    },
+    {
+      "board": "tangnano20k",
+      "ram": "sdram",
+      "arc": 0,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv32-tangnano20k-sdram",
+        "elf_class_bits": 32,
+        "image_sha256": "89af2eb5ffc70c5e50a68036eec0a9e0f611cb813a211f4e79083f8e39894c8a",
+        "manifest_sha256": "2916febd5659e8b39a31aaf37260f76779c6d07c4afc291c529154d89cd64acb",
+        "image_bytes": 18044,
+        "image_limit_bytes": 65536,
+        "static_memory_bytes": 23200,
+        "remaining_ram_bytes": 8365408,
+        "min_free_bytes": 69632
+      },
+      "optional_linked_stack_admission": null,
+      "execution": "not-executed",
+      "refused_replacements_preserved_artifacts": true
+    }
+  ]
+}

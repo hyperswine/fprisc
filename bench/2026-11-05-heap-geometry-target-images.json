@@ -1,0 +1,85 @@
+{
+  "schema": "target-load-segments-validation-v1",
+  "unit_tests_passed": 12,
+  "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+  "tool_sha256": "034e60158598d9f67bc01c05c669ed79636c3e719a55771b99ec09d20f7461be",
+  "test_sha256": "b654b369d8df2323e6192e1b7947c834de9b36cd606b5c2d4db965ef6e8646d7",
+  "images": [
+    {
+      "board": "virt",
+      "ram": "bram",
+      "arc": 0,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv64-virt-128m",
+        "elf_class_bits": 64,
+        "image_sha256": "9d90ef41f9ada3a8e4bb249941e2853443aa04c96beca4de55e53d578f0d6026",
+        "manifest_sha256": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+        "image_bytes": 7608,
+        "image_limit_bytes": 134217728,
+        "static_memory_bytes": 152032,
+        "remaining_ram_bytes": 134065696,
+        "min_free_bytes": 65536
+      },
+      "execution": "qemu-pass",
+      "refused_replacements_preserved_artifacts": true
+    },
+    {
+      "board": "virt",
+      "ram": "bram",
+      "arc": 1,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv64-virt-128m",
+        "elf_class_bits": 64,
+        "image_sha256": "37e537c3e86e0e8c852b715eb310e910e4dde5368edb02718091214ea8c9c40b",
+        "manifest_sha256": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+        "image_bytes": 12104,
+        "image_limit_bytes": 134217728,
+        "static_memory_bytes": 152464,
+        "remaining_ram_bytes": 134065264,
+        "min_free_bytes": 65536
+      },
+      "execution": "qemu-pass",
+      "refused_replacements_preserved_artifacts": true
+    },
+    {
+      "board": "tangnano20k",
+      "ram": "bram",
+      "arc": 0,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv32-tangnano20k-bram",
+        "elf_class_bits": 32,
+        "image_sha256": "eaa64140843d222d830dd7c91c70299761759495c01037542430ddf2433283b3",
+        "manifest_sha256": "e1ef73bfd4308f5ac9badcc720a69b72141e54135a65602afec88c1bf442c28f",
+        "image_bytes": 18044,
+        "image_limit_bytes": 65536,
+        "static_memory_bytes": 22976,
+        "remaining_ram_bytes": 42560,
+        "min_free_bytes": 12288
+      },
+      "execution": "not-executed",
+      "refused_replacements_preserved_artifacts": true
+    },
+    {
+      "board": "tangnano20k",
+      "ram": "sdram",
+      "arc": 0,
+      "admission": {
+        "schema": 2,
+        "target": "builtin-rv32-tangnano20k-sdram",
+        "elf_class_bits": 32,
+        "image_sha256": "93d5a54fe8e1b520a154b5a5b7f3896f12fc1b47dc4c52f10c65100a6d97fdda",
+        "manifest_sha256": "2916febd5659e8b39a31aaf37260f76779c6d07c4afc291c529154d89cd64acb",
+        "image_bytes": 18044,
+        "image_limit_bytes": 65536,
+        "static_memory_bytes": 23200,
+        "remaining_ram_bytes": 8365408,
+        "min_free_bytes": 69632
+      },
+      "execution": "not-executed",
+      "refused_replacements_preserved_artifacts": true
+    }
+  ]
+}

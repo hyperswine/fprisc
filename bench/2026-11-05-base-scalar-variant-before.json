@@ -1,0 +1,78 @@
+{
+  "revision": 198,
+  "compiler_sha256": "bd1658ed548107f528ece6a42a746ab51f56d1e95b584a29d4673fe22038dc80",
+  "rows": [
+    {
+      "explicit": false,
+      "inline": true,
+      "harts": 1,
+      "allocations": 1000,
+      "source": "unsafe base.\nChoice = Type (LeftCell Int | RightCell Int).\nchoose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then LeftCell n else RightCell (n + 1).\nfold n acc = if n <= 0 then acc else case choose n of LeftCell x -> fold (n - 1) (acc + x) | RightCell x -> fold (n - 1) (acc - x).\nmain = print (fold 1000 0).\n",
+      "source_sha256": "14818b12c17901b017b8dcbdae70655800fd9d4d7e035f55ffdfcdf94a59af74",
+      "stdout": "0\n"
+    },
+    {
+      "explicit": false,
+      "inline": true,
+      "harts": 4,
+      "allocations": 1000,
+      "source": "unsafe base.\nChoice = Type (LeftCell Int | RightCell Int).\nchoose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then LeftCell n else RightCell (n + 1).\nfold n acc = if n <= 0 then acc else case choose n of LeftCell x -> fold (n - 1) (acc + x) | RightCell x -> fold (n - 1) (acc - x).\nmain = print (fold 1000 0).\n",
+      "source_sha256": "14818b12c17901b017b8dcbdae70655800fd9d4d7e035f55ffdfcdf94a59af74",
+      "stdout": "0\n"
+    },
+    {
+      "explicit": false,
+      "inline": false,
+      "harts": 1,
+      "allocations": 1000,
+      "source": "unsafe base.\nChoice = Type (LeftCell Int | RightCell Int).\nchoose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then LeftCell n else RightCell (n + 1).\nfold n acc = if n <= 0 then acc else case choose n of LeftCell x -> fold (n - 1) (acc + x) | RightCell x -> fold (n - 1) (acc - x).\nmain = print (fold 1000 0).\n",
+      "source_sha256": "14818b12c17901b017b8dcbdae70655800fd9d4d7e035f55ffdfcdf94a59af74",
+      "stdout": "0\n"
+    },
+    {
+      "explicit": false,
+      "inline": false,
+      "harts": 4,
+      "allocations": 1000,
+      "source": "unsafe base.\nChoice = Type (LeftCell Int | RightCell Int).\nchoose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then LeftCell n else RightCell (n + 1).\nfold n acc = if n <= 0 then acc else case choose n of LeftCell x -> fold (n - 1) (acc + x) | RightCell x -> fold (n - 1) (acc - x).\nmain = print (fold 1000 0).\n",
+      "source_sha256": "14818b12c17901b017b8dcbdae70655800fd9d4d7e035f55ffdfcdf94a59af74",
+      "stdout": "0\n"
+    },
+    {
+      "explicit": true,
+      "inline": true,
+      "harts": 1,
+      "allocations": 0,
+      "source": "unsafe base.\nChoice = Type (LeftCell Int | RightCell Int).\nchoose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then (True,n) else (False,n + 1).\nfold n acc = if n <= 0 then acc else case choose n of (side,x) -> if side then fold (n - 1) (acc + x) else fold (n - 1) (acc - x).\nmain = print (fold 1000 0).\n",
+      "source_sha256": "62a8e7262a9f6084cdd918455cb445ac5e3776f01bd2ebd9103bee46b379d0b4",
+      "stdout": "0\n"
+    },
+    {
+      "explicit": true,
+      "inline": true,
+      "harts": 4,
+      "allocations": 0,
+      "source": "unsafe base.\nChoice = Type (LeftCell Int | RightCell Int).\nchoose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then (True,n) else (False,n + 1).\nfold n acc = if n <= 0 then acc else case choose n of (side,x) -> if side then fold (n - 1) (acc + x) else fold (n - 1) (acc - x).\nmain = print (fold 1000 0).\n",
+      "source_sha256": "62a8e7262a9f6084cdd918455cb445ac5e3776f01bd2ebd9103bee46b379d0b4",
+      "stdout": "0\n"
+    },
+    {
+      "explicit": true,
+      "inline": false,
+      "harts": 1,
+      "allocations": 0,
+      "source": "unsafe base.\nChoice = Type (LeftCell Int | RightCell Int).\nchoose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then (True,n) else (False,n + 1).\nfold n acc = if n <= 0 then acc else case choose n of (side,x) -> if side then fold (n - 1) (acc + x) else fold (n - 1) (acc - x).\nmain = print (fold 1000 0).\n",
+      "source_sha256": "62a8e7262a9f6084cdd918455cb445ac5e3776f01bd2ebd9103bee46b379d0b4",
+      "stdout": "0\n"
+    },
+    {
+      "explicit": true,
+      "inline": false,
+      "harts": 4,
+      "allocations": 0,
+      "source": "unsafe base.\nChoice = Type (LeftCell Int | RightCell Int).\nchoose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then (True,n) else (False,n + 1).\nfold n acc = if n <= 0 then acc else case choose n of (side,x) -> if side then fold (n - 1) (acc + x) else fold (n - 1) (acc - x).\nmain = print (fold 1000 0).\n",
+      "source_sha256": "62a8e7262a9f6084cdd918455cb445ac5e3776f01bd2ebd9103bee46b379d0b4",
+      "stdout": "0\n"
+    }
+  ]
+}

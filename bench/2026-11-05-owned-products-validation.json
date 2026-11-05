@@ -1,0 +1,275 @@
+{
+  "schema": "owned-product-validation-v1",
+  "compiler_sha256": "8591f084d6324b8c1b8bb4b6f8d41cadb50ca8290085778ea29930fcbc8fd78a",
+  "checks": [
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "status": "PASS",
+      "seconds": 15.06,
+      "log_sha256": "5085aafa990173540c118b289afc077caee9706a6b64ac654235516f55b62a98",
+      "output_tail": [
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/TypedUnits/test/fp-risc-0.13.1-TypedUnits.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "module search path: OK",
+        "Test suite module-path-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/module-path-check/test/fp-risc-0.13.1-module-path-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ]
+    },
+    {
+      "name": "builtin-products",
+      "command": [
+        "python3",
+        "tests/check_builtin_products.py"
+      ],
+      "status": "PASS",
+      "seconds": 50.38,
+      "log_sha256": "d30b30050dd7b276a51188946b70f4f206455c4d3cfd7179fb0a86f214a2275e",
+      "output_tail": [
+        "fpr, soft, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "c, hard, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "fpr, hard, boxed=False, type-spec rollback=True: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=0, explicit=0",
+        "True-False: strict effects, dead-arm choice, unused-field traps and integer limits PASS",
+        "c, soft, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0",
+        "fpr, soft, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0",
+        "c, hard, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0",
+        "fpr, hard, boxed=True, type-spec rollback=False: packets, joins, public/generic/heap boundaries, exact bits and ARC PASS; loop allocations=10001, explicit=0"
+      ]
+    },
+    {
+      "name": "raw-products",
+      "command": [
+        "python3",
+        "tests/check_raw_products.py"
+      ],
+      "status": "PASS",
+      "seconds": 23.78,
+      "log_sha256": "d371b3262554e556f936cd1a8071d15f7f1bde2a6ebcfcd85fe0ad890f563498",
+      "output_tail": [
+        "c, type-spec rollback=False: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "fpr, type-spec rollback=False: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "Expanded register ABI, boxed export, incompatible generic representations, heap storage and product rollback: refused before emission PASS",
+        "type-spec rollback=True: unused product fields preserve memory-effect order and overflow/division/shift/alignment failures PASS",
+        "soft, type-spec rollback=True: eight-word recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "hard, type-spec rollback=True: eight-word recursion/joins, IEEE bits and memory effects, no allocator/ARC linked PASS",
+        "c, type-spec rollback=True: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS",
+        "fpr, type-spec rollback=True: 1,001 resumed product interrupts; GPR/FPR/fcsr restored and zero handler allocations PASS"
+      ]
+    },
+    {
+      "name": "uniform-aggregate",
+      "command": [
+        "python3",
+        "tests/check_uniform_aggregate.py"
+      ],
+      "status": "PASS",
+      "seconds": 78.04,
+      "log_sha256": "a57414b18e52ab65c0ea0b54cb7b71e2eed49121eafe08fe6463963bda54fbe5",
+      "output_tail": [
+        "c allocator: aggregate case 2: PASS",
+        "c allocator: aggregate case 3: PASS",
+        "c allocator: aggregate case 4: PASS",
+        "fpr allocator: aggregate case 0: PASS",
+        "fpr allocator: aggregate case 1: PASS",
+        "fpr allocator: aggregate case 2: PASS",
+        "fpr allocator: aggregate case 3: PASS",
+        "fpr allocator: aggregate case 4: PASS"
+      ]
+    },
+    {
+      "name": "hidden-fields",
+      "command": [
+        "python3",
+        "tests/check_hidden_fields.py"
+      ],
+      "status": "PASS",
+      "seconds": 60.13,
+      "log_sha256": "11ae64fc281987efe8ceba381b83ac854ee7e9d55ed610231c2525305ab6d627",
+      "output_tail": [
+        "fpr, rollback=True, hidden field case 2: PASS",
+        "fpr, rollback=True, hidden field case 3: PASS",
+        "fpr, rollback=True, hidden field case 4: PASS",
+        "fpr, rollback=True, hidden field case 5: PASS",
+        "fpr, rollback=True, hidden field case 6: PASS",
+        "rollback=True, construct-effects: ordered effects and named failure PASS",
+        "rollback=True, construct-trap: ordered effects and named failure PASS",
+        "rollback=True, argument-effects: ordered effects and named failure PASS"
+      ]
+    },
+    {
+      "name": "scalar-wrappers",
+      "command": [
+        "python3",
+        "tests/check_scalar_wrappers.py"
+      ],
+      "status": "PASS",
+      "seconds": 44.59,
+      "log_sha256": "3e1edf9e1f7c365202e1ea0004f6330d4edf1448aa10afdbadb217e59f2be62d",
+      "output_tail": [
+        "fpr, soft, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "c, hard, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, hard, rollback=False: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "rollback=True: argument effects, integer-limit/division failures and pattern scrutinee execution PASS",
+        "c, soft, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, soft, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "c, hard, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS",
+        "fpr, hard, rollback=True: scalar kinds, nested/product fields, generic round trip, exact bits and ownership PASS"
+      ]
+    },
+    {
+      "name": "heap-budget",
+      "command": [
+        "python3",
+        "tests/check_heap_budget.py"
+      ],
+      "status": "PASS",
+      "seconds": 1.52,
+      "log_sha256": "87beec7f823ee7f46a5d17a56029bf23639c9475251a1d23c8100a3c46c6f7e1",
+      "output_tail": [
+        "Heap admission: conversion requests, exact/short limits, zero-allocation raw entry and unknown-boundary refusals PASS",
+        "RV64 plain/measured: 256 allocated callbacks per mode, fixed-arena guards and complete reclamation PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "status": "PASS",
+      "seconds": 0.15,
+      "log_sha256": "e7045ff3fb8cda87d146dc360b75faa0016c779abbd3283217d84810a779a0b8",
+      "output_tail": [
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.066s",
+        "",
+        "OK"
+      ]
+    },
+    {
+      "name": "compile-budget",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "status": "PASS",
+      "seconds": 61.05,
+      "log_sha256": "aca09cac4057a1233a2400493156260ad4dc921bdd9b1b04fca9348294b75eb4",
+      "output_tail": [
+        "hello: 1.59 GB allocated, 45 MB peak live, 0.7 s (+8.3% allocation, +5.3% peak vs baseline)",
+        "std-live: 32.68 GB allocated, 428 MB peak live, 19.0 s (+9.2% allocation, +6.2% peak vs baseline)",
+        "pos1: 68.97 GB allocated, 720 MB peak live, 41.3 s (+6.4% allocation, -13.6% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "type-spec-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256",
+        "--require-baseline",
+        "--record",
+        "bench/2026-11-05-owned-products-cost.json"
+      ],
+      "status": "PASS",
+      "seconds": 3.35,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "output_tail": [
+        "16 helpers: same 10832 code bytes/55 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "owned-products",
+      "command": [
+        "python3",
+        "tests/check_owned_products.py",
+        "--output",
+        "bench/2026-11-05-owned-products.json"
+      ],
+      "status": "PASS",
+      "log_sha256": "c84abf65cf71d5a4bef1a93ba5a9598ff7b043374ce04cb2be8c26ab502bd917",
+      "output_tail": [
+        "packets: effects, strict unused fields, dead arms and integer endpoints PASS",
+        "packets, soft, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "packets, soft, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "packets, hard, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "packets, hard, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec: effects, strict unused fields, dead arms and integer endpoints PASS",
+        "no-type-spec, soft, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec, soft, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec, hard, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "no-type-spec, hard, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed: effects, strict unused fields, dead arms and integer endpoints PASS",
+        "boxed, soft, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed, soft, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed, hard, c: aliases, nested/heap/public boundaries, wide fallback and ARC PASS",
+        "boxed, hard, fpr: aliases, nested/heap/public boundaries, wide fallback and ARC PASS"
+      ]
+    },
+    {
+      "name": "paired-guest-work",
+      "command": [
+        "python3",
+        "tools/bench_owned_products.py",
+        "--baseline-compiler",
+        "/tmp/fpr-before-owned-products-181",
+        "--record",
+        "bench/2026-11-05-owned-products-work.json"
+      ],
+      "status": "PASS",
+      "log_sha256": "3bc970e9213a914fa6b88234c06421a44aae36f1bef6199693421727996a9704",
+      "output_tail": [
+        "before {'100': {'plain': [37108, 37108, 37108], 'owned': [194381, 194381, 194381]}, '1000': {'plain': [359341, 359341, 359341], 'owned': [1917014, 1917014, 1917014]}, '10000': {'plain': [3581374, 3581374, 3581374], 'owned': [19143047, 19143047, 19143047]}}",
+        "after {'100': {'plain': [37108, 37108, 37108], 'owned': [22361, 22361, 22361]}, '1000': {'plain': [359341, 359341, 359341], 'owned': [213194, 213194, 213194]}, '10000': {'plain': [3581374, 3581374, 3581374], 'owned': [2121227, 2121227, 2121227]}}",
+        "rollback {'100': {'plain': [37108, 37108, 37108], 'owned': [194381, 194381, 194381]}, '1000': {'plain': [359341, 359341, 359341], 'owned': [1917014, 1917014, 1917014]}, '10000': {'plain': [3581374, 3581374, 3581374], 'owned': [19143047, 19143047, 19143047]}}"
+      ]
+    }
+  ],
+  "codegen_revision": 181,
+  "arc_revision": 21,
+  "scope": "Local host and RV64 QEMU; no new remote CI, board timing or WCET claim",
+  "haskell_suites": 44,
+  "inputs_sha256": {
+    "compiler/Arc.hs": "9965a5b6f0f5959e20113ed4a58178d8d69ba728ca2ebd8210088dea0c79cff6",
+    "compiler/Arc/Products.hs": "3a4c4690b76d509d4bdf4354129f4ff9cfb6a60c8cd13ddc197369c3ac45770d",
+    "compiler/Representation/Types.hs": "b78f23495cdfc99e6b1ef0bce5f4cba43377272d4b55ce32e79028d62d8c35c5",
+    "compiler/Representation.hs": "dc0e8742990d25da69c686a11def62f9e63f33136a37456907843a85b3313fec",
+    "compiler/Interrupt.hs": "5fb00ed9866372317a7e7a64040c579bdc039d00a73499e9e8e4b114efb2e8b1",
+    "compiler/Codegen.hs": "b93262d0ba06787ac21d9fccb92de5695aa7a9f259417b4cd03bb137bb86ecb4",
+    "tests/RepresentationSpecialization.hs": "0110a58da6398d10bf78aafa97b80de3261617468fa931d3f516d88c137d8114",
+    "tests/check_owned_products.py": "219c2e1798c6150f15c066d6fae4021152a9ec5b02813ac1c96b825d680dde27",
+    "tools/bench_owned_products.py": "d79623bc42feadde3d1428a2e05fa472d21dfc98b3e6e2f96a987cfe886dc2a3",
+    "tests/check_registry.py": "8a57ac98310b393aebdc0b66de70783b549eef6f8a1b6ac32b6c5ee51eed78e3",
+    "tests/test_check_registry.py": "f4b56f5c8706cc15a6c6cf0cc8fc158fb5723e761f907a1ccbc773b3627b01ea",
+    "tests/compile_budget.json": "1030bccbc557ddea3cd2ae9e0dd82d3791044bfbf0faacc67cae465099257a69",
+    "tests/type_spec_cost_budget.json": "30cc5450eb143199cef5966239aab4263b8d0111d6fbfc92686d1d525f0228ee",
+    "docs/2026-11-05-OWNED-PRODUCT-PACKETS.md": "fe43dd4dcdf7debf4b05ee790042d45c9729aaccb4a47fc77cff61be32848a8c",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "eac0588aebdf11816d1bb2c143152a7c78babae2c4af155236d1e082a331cfe0",
+    "bench/2026-11-05-owned-products.json": "86e22b7de964bccbe47c3348315081b348c2716ad3ee9f6639fb77066407dbf1",
+    "bench/2026-11-05-owned-products-work.json": "23185569431f22b92a56c3c4f1c09d98662d3ef2d18ecf38cc90f07c61495938",
+    "bench/2026-11-05-owned-products-cost.json": "38b9f8a3408f94966a05277129c4f45d2d90930b622590e6a17b66ee57b4d254"
+  }
+}

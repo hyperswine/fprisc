@@ -1,0 +1,342 @@
+{
+  "revision": 199,
+  "compiler_sha256": "c3f31da0185ea59ca7b084520bb99e01b505326a16c96760453b7fa4f4aef5e9",
+  "rows": [
+    {
+      "form": "scalar-wrapper",
+      "inline": true,
+      "harts": 1,
+      "stdout": "500511\n500517\n",
+      "cost": {
+        "alloc_requests": 2000,
+        "alloc_bytes": 64000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else Meters n :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | m :: rest -> case m of Meters v -> total rest (acc+v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "1dbf54537a62237d304e953588384200fd17f8d60cdcee1e70705ec44f991c74"
+    },
+    {
+      "form": "scalar-wrapper",
+      "inline": true,
+      "harts": 4,
+      "stdout": "500511\n500517\n",
+      "cost": {
+        "alloc_requests": 2000,
+        "alloc_bytes": 64000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else Meters n :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | m :: rest -> case m of Meters v -> total rest (acc+v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "1dbf54537a62237d304e953588384200fd17f8d60cdcee1e70705ec44f991c74"
+    },
+    {
+      "form": "scalar-wrapper",
+      "inline": false,
+      "harts": 1,
+      "stdout": "500511\n500517\n",
+      "cost": {
+        "alloc_requests": 2000,
+        "alloc_bytes": 64000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else Meters n :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | m :: rest -> case m of Meters v -> total rest (acc+v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "1dbf54537a62237d304e953588384200fd17f8d60cdcee1e70705ec44f991c74"
+    },
+    {
+      "form": "scalar-wrapper",
+      "inline": false,
+      "harts": 4,
+      "stdout": "500511\n500517\n",
+      "cost": {
+        "alloc_requests": 2000,
+        "alloc_bytes": 64000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else Meters n :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | m :: rest -> case m of Meters v -> total rest (acc+v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "1dbf54537a62237d304e953588384200fd17f8d60cdcee1e70705ec44f991c74"
+    },
+    {
+      "form": "scalar-explicit",
+      "inline": true,
+      "harts": 1,
+      "stdout": "500511\n500517\n",
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else n :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | v :: rest -> total rest (acc+v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "ccb9d27557597da83b70ee4c5e15c7780bc19b129d3962a695d30b571ec51498"
+    },
+    {
+      "form": "scalar-explicit",
+      "inline": true,
+      "harts": 4,
+      "stdout": "500511\n500517\n",
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else n :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | v :: rest -> total rest (acc+v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "ccb9d27557597da83b70ee4c5e15c7780bc19b129d3962a695d30b571ec51498"
+    },
+    {
+      "form": "scalar-explicit",
+      "inline": false,
+      "harts": 1,
+      "stdout": "500511\n500517\n",
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else n :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | v :: rest -> total rest (acc+v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "ccb9d27557597da83b70ee4c5e15c7780bc19b129d3962a695d30b571ec51498"
+    },
+    {
+      "form": "scalar-explicit",
+      "inline": false,
+      "harts": 4,
+      "stdout": "500511\n500517\n",
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else n :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | v :: rest -> total rest (acc+v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "ccb9d27557597da83b70ee4c5e15c7780bc19b129d3962a695d30b571ec51498"
+    },
+    {
+      "form": "variant-list",
+      "inline": true,
+      "harts": 1,
+      "stdout": "511\n517\n",
+      "cost": {
+        "alloc_requests": 2000,
+        "alloc_bytes": 64000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else (if n % 2 == 0 then Plus n else Minus n) :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | m :: rest -> case m of Plus v -> total rest (acc+v) | Minus v -> total rest (acc - v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "eda882c8f2618ebb22800ce2f91d584877ce35247a208ffcbdf78d0acdbeef1c"
+    },
+    {
+      "form": "variant-list",
+      "inline": true,
+      "harts": 4,
+      "stdout": "511\n517\n",
+      "cost": {
+        "alloc_requests": 2000,
+        "alloc_bytes": 64000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else (if n % 2 == 0 then Plus n else Minus n) :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | m :: rest -> case m of Plus v -> total rest (acc+v) | Minus v -> total rest (acc - v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "eda882c8f2618ebb22800ce2f91d584877ce35247a208ffcbdf78d0acdbeef1c"
+    },
+    {
+      "form": "variant-list",
+      "inline": false,
+      "harts": 1,
+      "stdout": "511\n517\n",
+      "cost": {
+        "alloc_requests": 2000,
+        "alloc_bytes": 64000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else (if n % 2 == 0 then Plus n else Minus n) :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | m :: rest -> case m of Plus v -> total rest (acc+v) | Minus v -> total rest (acc - v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "eda882c8f2618ebb22800ce2f91d584877ce35247a208ffcbdf78d0acdbeef1c"
+    },
+    {
+      "form": "variant-list",
+      "inline": false,
+      "harts": 4,
+      "stdout": "511\n517\n",
+      "cost": {
+        "alloc_requests": 2000,
+        "alloc_bytes": 64000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then [] else (if n % 2 == 0 then Plus n else Minus n) :: build (n - 1).\ntotal xs acc = case xs of [] -> acc | m :: rest -> case m of Plus v -> total rest (acc+v) | Minus v -> total rest (acc - v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "eda882c8f2618ebb22800ce2f91d584877ce35247a208ffcbdf78d0acdbeef1c"
+    },
+    {
+      "form": "variant-explicit",
+      "inline": true,
+      "harts": 1,
+      "stdout": "511\n517\n",
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then End else if n % 2 == 0 then RowPlus n (build (n - 1)) else RowMinus n (build (n - 1)).\ntotal xs acc = case xs of End -> acc | RowPlus v rest -> total rest (acc+v) | RowMinus v rest -> total rest (acc - v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "5387df678b360a1eba7d717de174cd6039588d26a60a58acedf1d7a51fe06d9b"
+    },
+    {
+      "form": "variant-explicit",
+      "inline": true,
+      "harts": 4,
+      "stdout": "511\n517\n",
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then End else if n % 2 == 0 then RowPlus n (build (n - 1)) else RowMinus n (build (n - 1)).\ntotal xs acc = case xs of End -> acc | RowPlus v rest -> total rest (acc+v) | RowMinus v rest -> total rest (acc - v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "5387df678b360a1eba7d717de174cd6039588d26a60a58acedf1d7a51fe06d9b"
+    },
+    {
+      "form": "variant-explicit",
+      "inline": false,
+      "harts": 1,
+      "stdout": "511\n517\n",
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then End else if n % 2 == 0 then RowPlus n (build (n - 1)) else RowMinus n (build (n - 1)).\ntotal xs acc = case xs of End -> acc | RowPlus v rest -> total rest (acc+v) | RowMinus v rest -> total rest (acc - v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "5387df678b360a1eba7d717de174cd6039588d26a60a58acedf1d7a51fe06d9b"
+    },
+    {
+      "form": "variant-explicit",
+      "inline": false,
+      "harts": 4,
+      "stdout": "511\n517\n",
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "source": "unsafe base.\nMeters = Type (Meters Int).\nChoice = Type (Plus Int | Minus Int).\nRows = Type (End | RowPlus Int Rows | RowMinus Int Rows).\nbuild n = if n <= 0 then End else if n % 2 == 0 then RowPlus n (build (n - 1)) else RowMinus n (build (n - 1)).\ntotal xs acc = case xs of End -> acc | RowPlus v rest -> total rest (acc+v) | RowMinus v rest -> total rest (acc - v).\nmain = xs = build 1000; _ = print (total xs 11); print (total xs 17).\n",
+      "source_sha256": "5387df678b360a1eba7d717de174cd6039588d26a60a58acedf1d7a51fe06d9b"
+    }
+  ]
+}

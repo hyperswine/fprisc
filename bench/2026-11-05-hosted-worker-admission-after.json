@@ -1,0 +1,147 @@
+{
+  "compiler_sha256": "76c95e3f2a6744d499aa28caf0cf025ce20cdc9a0c73f4ea20a175a81a1dfdd9",
+  "before": false,
+  "fixture_sha256": "748a5b010692853ed2f9f0a1b65722b203c46f0182955b019d39637733034df4",
+  "rows": [
+    {
+      "enabled": false,
+      "harts": 1,
+      "mode": "normal",
+      "scalar_workers": 0,
+      "payload_worker": false,
+      "stdout": "800500\n272\n",
+      "exit": 0,
+      "diagnostic": [],
+      "allocations": 1000
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "mode": "escape",
+      "scalar_workers": 0,
+      "payload_worker": false,
+      "stdout": "Cell 307\n",
+      "exit": 0,
+      "diagnostic": []
+    },
+    {
+      "enabled": false,
+      "harts": 1,
+      "mode": "overflow",
+      "scalar_workers": 0,
+      "payload_worker": false,
+      "stdout": "71\n",
+      "exit": 1,
+      "diagnostic": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "mode": "normal",
+      "scalar_workers": 0,
+      "payload_worker": false,
+      "stdout": "800500\n272\n",
+      "exit": 0,
+      "diagnostic": [],
+      "allocations": 1000
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "mode": "escape",
+      "scalar_workers": 0,
+      "payload_worker": false,
+      "stdout": "Cell 307\n",
+      "exit": 0,
+      "diagnostic": []
+    },
+    {
+      "enabled": false,
+      "harts": 4,
+      "mode": "overflow",
+      "scalar_workers": 0,
+      "payload_worker": false,
+      "stdout": "71\n",
+      "exit": 1,
+      "diagnostic": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "mode": "normal",
+      "scalar_workers": 131,
+      "payload_worker": true,
+      "stdout": "800500\n272\n",
+      "exit": 0,
+      "diagnostic": [],
+      "allocations": 0
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "mode": "escape",
+      "scalar_workers": 131,
+      "payload_worker": true,
+      "stdout": "Cell 307\n",
+      "exit": 0,
+      "diagnostic": []
+    },
+    {
+      "enabled": true,
+      "harts": 1,
+      "mode": "overflow",
+      "scalar_workers": 131,
+      "payload_worker": true,
+      "stdout": "71\n",
+      "exit": 1,
+      "diagnostic": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "mode": "normal",
+      "scalar_workers": 131,
+      "payload_worker": true,
+      "stdout": "800500\n272\n",
+      "exit": 0,
+      "diagnostic": [],
+      "allocations": 0
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "mode": "escape",
+      "scalar_workers": 131,
+      "payload_worker": true,
+      "stdout": "Cell 307\n",
+      "exit": 0,
+      "diagnostic": []
+    },
+    {
+      "enabled": true,
+      "harts": 4,
+      "mode": "overflow",
+      "scalar_workers": 131,
+      "payload_worker": true,
+      "stdout": "71\n",
+      "exit": 1,
+      "diagnostic": [
+        "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "",
+        "*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "compiler_sha256": "b7a94a303c588e2176ad71e9b4236eabe467dc294e9255bf166566e5b8ebf035",
+  "baseline_compiler_sha256": "b6c993bc5b43d1bdf6235af51daf49a6f27df00e0b9307713912b42bf741358e",
+  "fixture_sha256": "5f87bb9755bd227c522709086d2c4f77d36060bb8ad204beb5a00f6699863168",
+  "normalization": "Only the distinct cache root prefix; shared source path and output comments unchanged",
+  "rows": [
+    {
+      "kind": "depth",
+      "amount": 5,
+      "source_sha256": "0b6964b0525d82905cf0d33f3481b82a967ae71fbdf61b318a2f3642d8d989bb",
+      "assembly_sha256": "ac3e898b223711b8ad8c56b95914afa1b75b340ecb95d0e71ec41663432f461c",
+      "assembly_equal": true,
+      "stderr_equal": true
+    },
+    {
+      "kind": "depth",
+      "amount": 8,
+      "source_sha256": "8f05f879e7a554c6e2e88ebd92f551b9f299e9eb9dcd53b2d64a063e4022618d",
+      "assembly_sha256": "1512f655a198e94631c00201192d42117cc221456ef9d5d7e96ea5e12bb6c059",
+      "assembly_equal": true,
+      "stderr_equal": true
+    },
+    {
+      "kind": "depth",
+      "amount": 16,
+      "source_sha256": "b80570fbb8dd527c9e4163cbec282ec8e8eb580e2fc5b258b66ccb4d229f9132",
+      "assembly_sha256": "dd14df60c8ec14d3a4e2c6d7467828b4831c9fca801064e84bd15b28605656fb",
+      "assembly_equal": true,
+      "stderr_equal": true
+    },
+    {
+      "kind": "parameters",
+      "amount": 8,
+      "source_sha256": "e7291506cd5b1808a47939782ceb4562b44cf7fe5fb5441b4cf7ac58fdbed8af",
+      "assembly_sha256": "aae11c5b9eb5628993a5b89dd41303c7164d5329819e3262cafe230d254a765b",
+      "assembly_equal": true,
+      "stderr_equal": true
+    },
+    {
+      "kind": "parameters",
+      "amount": 16,
+      "source_sha256": "28fe98d0d7dd6867ff70960102c7eb13dcb1e0e849656b85638c72f27247bde1",
+      "assembly_sha256": "c6835d2d4c0951ebeed55123202a30d42463d8079a3109c4a2bfae1394e6c3f9",
+      "assembly_equal": true,
+      "stderr_equal": true
+    },
+    {
+      "kind": "parameters",
+      "amount": 32,
+      "source_sha256": "c8536ee251fef882ce5e05e860925526eea67efe4adbb25a20ed33944faadc34",
+      "assembly_sha256": "eedd8ae6a8a0c203af70d87f0465c260b03961e6245a640356af5b8053632628",
+      "assembly_equal": true,
+      "stderr_equal": true
+    },
+    {
+      "kind": "parameters",
+      "amount": 64,
+      "source_sha256": "81c0db562eff1129aabdc2f5bbe46605d7589f86586d70edb855d9e25041417b",
+      "assembly_sha256": "b2cfb2dd0f98f03d79203249ff036d48617017e9474fdb29db16514729dc43ab",
+      "assembly_equal": true,
+      "stderr_equal": true
+    },
+    {
+      "kind": "returns",
+      "amount": 8,
+      "source_sha256": "509d94c2d26666e87cc210e45b8b374645e7bb8cfd7e0430e07f58bb5647346a",
+      "assembly_sha256": "9828cbc0870a6333fe70ff0c006da173bf1bf3ca901a19cdb14ba210727fdb31",
+      "assembly_equal": true,
+      "stderr_equal": true
+    },
+    {
+      "kind": "helpers",
+      "amount": 129,
+      "source_sha256": "2d777981a5a890353a7c1d6adbc124d4a9ef40cebec321055ada4c274f8cba98",
+      "assembly_sha256": "daca9e2f2576e4378de95715ef528c1a522b043bd1e9d7f1f98b9763a5fb02ab",
+      "assembly_equal": true,
+      "stderr_equal": true
+    },
+    {
+      "kind": "body",
+      "amount": 256,
+      "source_sha256": "9c32cf8cba36b85095e571d77fb66381b4ec0e91d044b7e3b4f5e5312819b135",
+      "assembly_sha256": "366512cb9c2b6cc87464eb3f4e9e693e750eedd980e6e3b4684237e729474c6c",
+      "assembly_equal": true,
+      "stderr_equal": true
+    },
+    {
+      "kind": "body",
+      "amount": 2048,
+      "source_sha256": "9be2f4bc913cc505123faf2eed1b3ddd1936352f52164c3001c492f747529a51",
+      "assembly_sha256": "501fd41c3f402245d53fb670c8bd89ec966b09eaa482ae7246367ce8efc732d5",
+      "assembly_equal": true,
+      "stderr_equal": true
+    }
+  ],
+  "script": "import hashlib,json,os,subprocess,sys,tempfile\nfrom pathlib import Path\nroot=Path('/Users/jasonqin/Documents/GitHub/fprisc');sys.path.insert(0,str(root/'tests'))\nfrom check_finite_field_workers import fixture\nsha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()\ncases=[('depth',5),('depth',8),('depth',16),('parameters',8),('parameters',16),('parameters',32),('parameters',64),('returns',8),('helpers',129),('body',256),('body',2048)]\nrows=[]\nwith tempfile.TemporaryDirectory(prefix='field-prefilter-code-') as directory:\n t=Path(directory)\n for kind,amount in cases:\n  source=t/'main.fpr';source.write_text(fixture(kind,amount)[0]);forms={}\n  for label,compiler in [('before',Path('/tmp/fpr-qualified-finite-191')),('after',root/'fpr')]:\n   cache=t/(label+'-cache');asm=t/(label+'.s')\n   env={k:v for k,v in os.environ.items() if not k.startswith('FPR_')};env.update(FPR_HOME=str(root),XDG_CACHE_HOME=str(cache))\n   p=subprocess.run([compiler,'compile','--system=posix','--target=rv64',source,asm],cwd=root,env=env,text=True,capture_output=True,timeout=240)\n   assert p.returncode==0,(label,p.stdout,p.stderr)\n   forms[label]=dict(asm=asm.read_text().replace(str(cache),'<CACHE>'),stderr=p.stderr)\n  assert forms['before']==forms['after'],(kind,amount)\n  rows.append(dict(kind=kind,amount=amount,source_sha256=sha(source),assembly_sha256=hashlib.sha256(forms['after']['asm'].encode()).hexdigest(),assembly_equal=True,stderr_equal=True))\n  print(kind,amount,'exact normalized assembly and diagnostics PASS',flush=True)\nrecord=dict(compiler_sha256=sha(root/'fpr'),baseline_compiler_sha256=sha(Path('/tmp/fpr-qualified-finite-191')),fixture_sha256=sha(root/'tests/check_finite_field_workers.py'),normalization='Only the distinct cache root prefix; shared source path and output comments unchanged',rows=rows,script=Path(__file__).read_text())\n(root/'bench/2026-11-05-field-shape-prefilter-code.json').write_text(json.dumps(record,indent=2)+'\\n')\n"
+}

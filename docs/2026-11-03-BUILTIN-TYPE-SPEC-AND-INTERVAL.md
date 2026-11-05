@@ -1,5 +1,13 @@
 # Type specialization on `builtin` (C2) and interval/sharing upgrades
 
+The [4 November continuation](2026-11-04-ZERO-OVERHEAD-COMPLETION.md#c2-admission-milestone-arcrev-9)
+replaces this snapshot's Core-node cloning caps with recursive-graph and
+selected-target image admission, and tightens checked boundary/result evidence.
+Type-derived field graphs, scalar/aggregate tagged export conversions and
+generic tagged fallback are implemented there. Hidden-field storage and checked
+extraction are also implemented; deterministic unboxed storage selection remains
+unfinished.
+
 Date: 3 November 2026. Kind: implementation record. Applies to: `compiler/Representation.hs`, `compiler/Arc.hs`, `compiler/Compile.hs`, `compiler/Compiler/Options.hs`, `compiler/Codegen/Interval.hs`, and `compiler/Codegen/Simplify.hs`.
 
 ## Summary

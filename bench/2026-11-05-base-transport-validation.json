@@ -1,0 +1,138 @@
+{
+  "revision": 198,
+  "compiler_sha256": "bd1658ed548107f528ece6a42a746ab51f56d1e95b584a29d4673fe22038dc80",
+  "checks": {
+    "all-haskell": {
+      "log_sha256": "0cd4d8cc0bd150a881f79c2f20ed5fab702b4b132f500ccfbe52cd5c2cbd298b",
+      "last": "1 of 1 test suites (1 of 1 test cases) passed."
+    },
+    "native": {
+      "log_sha256": "0f24a37b34ac5929f35863b94fb03cbc1e2268e44ba8eab009dcbdfa3ab9e735",
+      "last": "Base forwarding passed allocation, evaluation order, heap payload, fallback, warm cache and module checks"
+    },
+    "x64": {
+      "log_sha256": "0f24a37b34ac5929f35863b94fb03cbc1e2268e44ba8eab009dcbdfa3ab9e735",
+      "last": "Base forwarding passed allocation, evaluation order, heap payload, fallback, warm cache and module checks"
+    },
+    "arc": {
+      "log_sha256": "dcc0d610cad7d8ebbbd42d3e8abe1dc240df1108562fdb8a8bb12a5affd9089e",
+      "last": "Specialization on/off preserves printed prefixes and overflow/division failures: PASS"
+    },
+    "cost": {
+      "log_sha256": "1878b29f2f53f0a2243f8f4a098b55008df6adf5bb2cd7681a4195a5849f91f3",
+      "last": "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+    },
+    "c2-scaling": {
+      "log_sha256": "cc2ed8fdb2348997ad0a220c63aedb0e3c6d728bcec026011cbe0d00a2a3a104",
+      "last": "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.007x explicit twins"
+    },
+    "registry": {
+      "log_sha256": "6a175a32f4405348f2da42f88c9ef6e7880c2ebd2a0ede213efb1c0001d96b71",
+      "last": "OK"
+    },
+    "remarks": {
+      "log_sha256": "b63269f9a87566435b6e046cdada2d745f6ae05f6dc0eb4e84435d1583ce0f7f",
+      "last": "remarks build: native execution and flag forwarding PASS"
+    },
+    "rv64-linux": {
+      "log_sha256": "b4e14a077bd375d8dbf107c531b76fe496629a98f996b5c3ec92075bda3db98a",
+      "last": "RV64 Linux userspace 28 cases PASS"
+    },
+    "scheduler": {
+      "log_sha256": "0c4d868ef7072b39e2e2dddba507188594f5f4333b83e9d23d72f6e9eb296122",
+      "last": "Scheduler latency qualification: 261 configurations PASS; no WCET claim"
+    }
+  },
+  "haskell_suites": 41,
+  "host_configs": 261,
+  "physical": {
+    "gcc": {
+      "raw": "2026-11-05-base-transport-pi-gcc.json.gz",
+      "raw_sha256": "e9c557a0a69ff4076e719c9d46f5e0e8625209d395c88451212bf44c602ca776",
+      "raw_uncompressed_sha256": "e33ffd5a9a27c5624fd7110cb1b4972edc782b353649367094e8871b8df7d962",
+      "toolchain": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+      "board": "Raspberry Pi 4 Model B Rev 1.4",
+      "service": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+      "cases": 130,
+      "watchdogs": 2,
+      "replies": {
+        "default": {
+          "count": 6912,
+          "p50_us": 75,
+          "p99_us": 467,
+          "max_us": 1164,
+          "over_1ms": 1
+        },
+        "boxed": {
+          "count": 6912,
+          "p50_us": 98,
+          "p99_us": 601,
+          "max_us": 1383,
+          "over_1ms": 4
+        }
+      },
+      "allocations": {
+        "True": [
+          0
+        ],
+        "False": [
+          2000
+        ]
+      }
+    },
+    "zig-reserved": {
+      "raw": "2026-11-05-base-transport-pi-zig-reserved.json.gz",
+      "raw_sha256": "452b27828faac47f5047abcd97197dad08194ca720035ed2d22114dd20def80c",
+      "raw_uncompressed_sha256": "639e1b0f7b89549f0a488d0cf6626b2781466f807668916a3176382133121b46",
+      "toolchain": "Homebrew clang version 22.1.8",
+      "board": "Raspberry Pi 4 Model B Rev 1.4",
+      "service": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+      "cases": 130,
+      "watchdogs": 2,
+      "replies": {
+        "default": {
+          "count": 6912,
+          "p50_us": 72,
+          "p99_us": 561,
+          "max_us": 1231,
+          "over_1ms": 5
+        },
+        "boxed": {
+          "count": 6912,
+          "p50_us": 98,
+          "p99_us": 689,
+          "max_us": 1540,
+          "over_1ms": 6
+        }
+      },
+      "allocations": {
+        "True": [
+          0
+        ],
+        "False": [
+          2000
+        ]
+      }
+    }
+  },
+  "failed_cross_build": {
+    "compiler": "bd1658ed548107f528ece6a42a746ab51f56d1e95b584a29d4673fe22038dc80",
+    "scope": "Initial Zig ARM64 cross build, before explicit +reserve_x27+reserve_x28 CPU features",
+    "bundle_sha256": "62a156f656eec5824cd4b138bdc2270da2a34574c17ae2486e034ad16c7233c3",
+    "signal": 11,
+    "fault": "xpush in runtime/actors.c",
+    "disassembly": "spills or reassigns x28 in compiled actor/runtime C",
+    "refusal": "Linux ARM64 C compiler used reserved x27/x28; check the cross compiler target features",
+    "failed_asm_sha256": "e23cee803f8199972c20d474ad3bd96e9d4ea19a339d95ef125f273b126eeeae",
+    "gcc_asm_sha256": "feadf65a8965b90de20f5b92e76b0a8c3e7cee4815230eeac069fc3c0065b5a2",
+    "corrected_asm_sha256": "e7789a1cc9961a43fa10dc490915b4579019fdcfb0cc58f0d9ac0ef75f0a2ad9"
+  },
+  "artifacts": {
+    "2026-11-05-base-instance-forwarding-before.json": "69ac910df59ba64f47f76c001ae1460490d867de8fe56a0ee3b569a1b30203f6",
+    "2026-11-05-base-instance-forwarding-after.json": "e74c153f2a2f4058b1d1ce995f3fc5017ef901ca57cffd48895f413c04e84654",
+    "2026-11-05-base-transport-throughput.json": "1c29243061c369ab4779fa824a2d2878c0e7bcbbfd5a3cf53ae069eaa2934a20",
+    "2026-11-05-base-transport-rv64.json": "d147947b09b047c6f9361e09ab7adcffbcdd8d7f30f305baf1bc3f2d8721a6ac",
+    "2026-11-05-base-transport-scheduling.json": "385d0a67d742f182c71313f8ed37c68374ec664a0cd6db40640d571eabf9d011",
+    "2026-11-05-base-scalar-variant-before.json": "75d5feaaeaedf0beb097c297aa2936acc1d587acd79b1cea2852cd1cf7b0b1b5"
+  }
+}

@@ -72,6 +72,12 @@ main = do
   -- Column memory is representation-checked and cannot be CSE'd across a
   -- store/call. A load cannot consume an arbitrary tagged value directly.
   let memTypes v = Right (if v == VId 0 then TAddr else TInt)
+  let spineTypes v=Right (if v==VId 0 then TInt else TVal)
+      spine width=OMakeSpine (VId 0) (replicate width (VId 1))
+  check "stored spine verifies every supported physical width" (all (\n->opSignature spineTypes (spine n)==Right (Just TVal)) [2..9])
+  check "stored spine refuses missing tail, oversize, wrong ordinal and raw payload"
+    (all (either (const True) (const False) . opSignature spineTypes)
+      [spine 0,spine 1,spine 10,OMakeSpine (VId 1) [VId 1,VId 1],OMakeSpine (VId 0) [VId 0,VId 1]])
   check "word load signature" (opSignature memTypes (OLoad TInt (VId 0) 8) == Right (Just TInt))
   check "address load signature" (opSignature memTypes (OLoad TAddr (VId 0) 0) == Right (Just TAddr))
   check "store signature" (opSignature memTypes (OStore TInt (VId 0) 8 (VId 1)) == Right Nothing)
@@ -416,6 +422,29 @@ main = do
   _ <- differential "generic applications" irA [("partial", [RInt 3]), ("over", [RInt 5]), ("computed", [RInt 4]), ("applyInt", [RInt 3])]
   -- the folds and the threading on hand-written shapes: tag/untag pairs
   -- from a worker boundary, a materialised Bool tested by a branch
+  let constantBranch n variant overflowPrefix = Fn n ["x"] TVal (BId 0)
+        [Block (BId 0) [(VId 0,TVal)]
+          ([Instr Nothing OStackCheck,Instr Nothing OSafepoint,
+            Instr (Just (VId 1,TVal)) (ONullary 1 variant),
+            Instr (Just (VId 2,TPred)) (OTruth (VId 1)),
+            Instr (Just (VId 3,TVal)) (OMake 7001 0 [VId 0])]
+           ++if overflowPrefix then [Instr (Just (VId 4,TInt)) (OUntag (VId 0)),Instr (Just (VId 5,TInt)) (OConstInt 1),
+              Instr (Just (VId 6,TInt)) (OArith Add (VId 4) (VId 5))] else [])
+          (TCondBr (VId 2) (BId 1) [] (BId 2) []),
+         Block (BId 1) [] [] (TRet (VId 0)),Block (BId 2) [] [] (TUnreachable "selected panic")]
+      constants=M.fromList [(n,constantBranch n v prefix) | (n,v,prefix)<-[
+        ("knownTrue",1,False),("knownFalse",0,False),("prefixOverflow",1,True)]]
+  (constantIR,_)<-differential "constant Bool branches preserve effects and prefix overflow" constants
+    [(n,[RInt v]) | n<-M.keys constants,v<-[intMin,-1,0,intMax]]
+  forM_ [(n,v) | n<-M.keys constants,v<-[intMin,-1,0,intMax]] $ \(n,v)->do
+    let result=evalProgram constantIR n [RInt v]
+    check "constant branch oracle reaches real success/failure, not an evaluator gap"
+      (case ocResult result of Left (Stuck _)->False;_->True)
+    check "prefix allocation remains observable before branch or overflow"
+      (any (\e->case e of EvAllocate _ 7001 0 [RInt x]->x==v;_->False) (ocEvents result))
+  check "known Bool guards remove only unreachable arms"
+    (all ((==2) . length . fnBlocks) (M.elems constantIR)
+     && all (not . any (\b->case bTerm b of TCondBr {}->True;_->False) . fnBlocks) (M.elems constantIR))
   let pairFn = Fn "pair" ["n"] TVal (BId 0)
         [ Block (BId 0) [(VId 0, TVal)]
             [ Instr Nothing OStackCheck, Instr Nothing OSafepoint,
@@ -569,6 +598,15 @@ main = do
   check "OVariantTest rejects an Int and another type's object like OTagTest"
     (and [evalProgram caseOn "listCase" [x] == evalProgram caseOff "listCase" [x]
          | x <- [RInt 7, RObj 4 0 [RInt 1, RInt 2]]])
+  let boolCases=M.fromList [(name,(["value"],CTagEq 1 variant (var "value")))
+                           | (name,variant)<-[("isTrue",1),("isFalse",0)]]
+      (boolIR,boolFailures)=lowerProgram m2Policy M.empty boolCases boolCases M.empty M.empty
+  check "Boolean nominal tests lower and verify"
+    (null boolFailures && verifyProgram boolIR==Right ())
+  forM_ [("isTrue",1),("isFalse",0)] $ \(name,variant)->
+    forM_ [RInt 7,RInt 0,RObj 2 0 [],RObj 2 1 [],rvBool True,rvBool False] $ \value->
+      check "Boolean patterns reject immediates and other nominal types"
+        (ocResult (evalProgram boolIR name [value])==Right (rvBool (value==RObj 1 variant [])))
   -- Pair return alias lowering & dumpFn formatting, plus B2 TRMC OSetField lowering & evaluation
   let pairWorkerDef = (["n"], CMk 4 0 [var "n", app "+" [var "n", CInt 10]])
       pairCallerDef = (["n"], CLet "p" (app "$worker.ret2.mkp" [var "n"])
@@ -578,10 +616,54 @@ main = do
       (pairIr, pairFail) = lowerProgram m2Policy M.empty pairProg pairProg M.empty M.empty
   check "pair worker and aliased pair caller lower and verify"
     (null pairFail && verifyProgram pairIr == Right ())
-  check "dumpFn formats TPair result"
-    ("-> pair " `isInfixOf` dumpFn (pairIr M.! "$worker.ret2.mkp"))
+  check "dumpFn formats private product result"
+    ("-> product2 " `isInfixOf` dumpFn (pairIr M.! "$worker.ret2.mkp"))
   check "aliased pair projection evaluates both registers"
     (ocResult (evalProgram pairIr "caller" [RInt 16]) == Right (RInt 42))
+  forM_ [2..8] $ \n -> do
+    let name = "$worker.ret" ++ show n ++ ".wide"
+        fields = [app "+" [var "n", CInt (toInteger i)] | i <- [0..n-1]]
+        worker = (["n"], CMk 4 0 fields)
+        caller = (["n"], CLet "p" (app name [var "n"])
+          (CLet "alias" (var "p") (foldl1 (\a b -> app "+" [a,b]) [CProj i (var "alias") | i <- [0..n-1]])))
+        program = M.fromList [(name,worker),("reader",caller)]
+        (ir, failures) = lowerProgram m2Policy M.empty program program M.empty M.empty
+        expected = toInteger (n * 16 + n * (n-1) `div` 2)
+        broken edit = M.adjust (\f -> f {fnBlocks=map (\b -> b {bInstrs=edit (bInstrs b)}) (fnBlocks f)}) "reader" ir
+        missing = filter (\(Instr _ op) -> op /= OResult (n-1))
+        interrupted xs = concatMap (\i@(Instr _ op) -> if op == OResult 1 then [Instr Nothing OSafepoint,i] else [i]) xs
+        duplicate = map (\i@(Instr d op) -> if op == OResult 1 then Instr d (OResult 0) else i)
+    check "wide product lowering and aliases verify" (null failures && verifyProgram ir == Right ())
+    check "wide result evaluator agrees with the independent sum" (ocResult (evalProgram ir "reader" [RInt 16]) == Right (RInt expected))
+    forM_ [missing, interrupted, duplicate] $ \edit ->
+      check "malformed product packets are refused" (case verifyProgram (broken edit) of Left _ -> True; _ -> False)
+  let productZero = "$worker.ret3.zero"
+      productJoin = M.fromList
+        [(productZero,([],app "$product.pack3" [CInt 4,CInt 5,CInt 6])),
+         ("joinReader",(["flag"],CLet "p" (app "$product.value3"
+            [CIf (CTagEq 1 1 (var "flag")) (app "$product.pack3" [CInt 1,CInt 2,CInt 3]) (var productZero)])
+            (app "+" [CProj 0 (var "p"),CProj 2 (var "p")])))]
+      (joinedIr,joinFailures) = lowerProgram m2Policy M.empty productJoin productJoin M.empty M.empty
+  check "explicit product joins and nullary producers lower without allocation"
+    (null joinFailures && verifyProgram joinedIr==Right ())
+  forM_ [(RObj 1 1 [],4),(RObj 1 0 [],10)] $ \(flag,want) -> do
+    let answer=evalProgram joinedIr "joinReader" [flag]
+    check "product join retains every field and its branch" (ocResult answer==Right (RInt want))
+    check "product join allocates no constructor" (null [() | EvAllocate {} <- ocEvents answer])
+  let nestedProduct = M.singleton "nestedReader" (["flag"],CLet "p"
+        (CLet "x" (CInt 9) (CIf (CTagEq 1 1 (var "flag"))
+          (app "$product.pack2" [var "x",CInt 3]) (CErr "product dead arm"))) (CProj 0 (var "p")))
+      (nestedIr,nestedFailures)=lowerProgram m2Policy M.empty nestedProduct nestedProduct M.empty M.empty
+  check "inlined product lets and trapping joins retain their packet type"
+    (null nestedFailures && verifyProgram nestedIr==Right ()
+      && ocResult (evalProgram nestedIr "nestedReader" [RObj 1 1 []])==Right (RInt 9))
+  let spineCore=M.singleton "cell" (["ordinal"],app "$storage.makeNode" [var "ordinal",CInt 3,CInt 7,CMk 2 0 []])
+      (spineIR,refusedSpine)=lowerProgram m2Policy M.empty spineCore spineCore M.empty M.empty
+  check "dynamic spine header binds the field count independently of the ordinal"
+    (null refusedSpine && verifyProgramWidth W64 spineIR==Right () && either (const True) (const False) (verifyProgramWidth W32 spineIR)
+      && all (\n->let outcome=evalProgram spineIR "cell" [RInt n]
+                   in ocResult outcome==Right (RObj 9008 (fromInteger (8*n+1)) [RInt 3,RInt 7,RObj 2 0 []])
+                      && length [()|EvAllocate {}<-ocEvents outcome]==1) [0,1,2,127,65535])
   let trmcWorkerDef = (["xs", "root", "last"],
         CIf (CTagEq 2 0 (var "xs")) (var "root")
           (CLet "hd" (app "+" [CProj 0 (var "xs"), CInt 1])

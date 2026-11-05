@@ -1,0 +1,127 @@
+{
+  "profiled_compiler_sha256": "66c06b59a078fbb79b0be66747a8f0fd91550ddc17fde36da66570da8bb25020",
+  "instrumentation": "GHC late cost centres, before vector occurrence fix; profiling timings are not benchmark timings",
+  "cases": [
+    {
+      "case": "generic64",
+      "source_sha256": "9e208a5ee63d0a20d6f13dcc34cc4a630721f7add613573c40e4cb350c580f2f",
+      "profile_sha256": "fcd7a331f490dd8905f6e387fdc36b7dcacf9e627c476c5aabb309ec377c46d6",
+      "total_allocation": 8344648136,
+      "hotspots": [
+        {
+          "path": [
+            "Codegen.$wemitCheckedProgramWithImports",
+            "Core.Opt.Pipeline.optimizeCoreWithCheckedImports",
+            "Core.Opt.Fusion.$wfuseCompatibilityWithImports",
+            "Core.Opt.Fusion.$wfuseVecFixWithImports",
+            "Core.Opt.Vector.nestPipelinesWithImports",
+            "Core.Syntax.freeVars"
+          ],
+          "inherited_time_percent": 47.1,
+          "inherited_allocation_percent": 45.9
+        },
+        {
+          "path": [
+            "Compiler.Editor.run1",
+            "Codegen.$wemitCheckedProgramWithImports",
+            "Core.Opt.Pipeline.optimizeCoreWithCheckedImports",
+            "Core.Opt.Fusion.$wfuseCompatibilityWithImports",
+            "Core.Opt.Vector.nestPipelinesWithImports",
+            "Core.Syntax.freeVars"
+          ],
+          "inherited_time_percent": 47.0,
+          "inherited_allocation_percent": 45.9
+        }
+      ]
+    },
+    {
+      "case": "explicit64",
+      "source_sha256": "168263adc34a78ac70e9fcc14a98df5ceca403bf25cf86e97ce3347b01d22cfb",
+      "profile_sha256": "04674a4c6728831993ae07056f01c01a2512838af3d6d5c8e9ed5466b69884d9",
+      "total_allocation": 8341260304,
+      "hotspots": [
+        {
+          "path": [
+            "Codegen.$wemitCheckedProgramWithImports",
+            "Core.Opt.Pipeline.optimizeCoreWithCheckedImports",
+            "Core.Opt.Fusion.$wfuseCompatibilityWithImports",
+            "Core.Opt.Fusion.$wfuseVecFixWithImports",
+            "Core.Opt.Vector.nestPipelinesWithImports",
+            "Core.Syntax.freeVars"
+          ],
+          "inherited_time_percent": 46.7,
+          "inherited_allocation_percent": 45.9
+        },
+        {
+          "path": [
+            "Compiler.Editor.run1",
+            "Codegen.$wemitCheckedProgramWithImports",
+            "Core.Opt.Pipeline.optimizeCoreWithCheckedImports",
+            "Core.Opt.Fusion.$wfuseCompatibilityWithImports",
+            "Core.Opt.Vector.nestPipelinesWithImports",
+            "Core.Syntax.freeVars"
+          ],
+          "inherited_time_percent": 46.8,
+          "inherited_allocation_percent": 45.9
+        }
+      ]
+    }
+  ],
+  "followup_profiles": [
+    {
+      "stage": "after vector occurrence fix, before native query indexes",
+      "profile_sha256": "4f5e4a8885e501667a80fa45af3e4f340ec85b69358459a26c715bef08b8c107",
+      "total_allocation": 1701274768,
+      "self_cost_centres": [
+        "$wanalyse               Codegen.Bounds     compiler/Codegen/Bounds.hs:60:1-7         14.1   15.3",
+        "within                  Codegen.Allocate   compiler/Codegen/Allocate.hs:186:7-12     10.6    0.2",
+        "allocateFn              Codegen.Allocate   compiler/Codegen/Allocate.hs:119:1-10      5.4    4.1",
+        "$sfromListWithKey_$sgo1 Codegen.Selected   <no location info>                         4.6   12.2",
+        "instrLiveSets           Codegen.Liveness   compiler/Codegen/Liveness.hs:189:1-13      3.1    4.1",
+        "$wanalyseLiveness       Codegen.Liveness   compiler/Codegen/Liveness.hs:125:1-15      2.8    7.8",
+        "run1                    Compiler.Editor    <no location info>                         2.4    6.2",
+        "rebinds                 Core.Opt.Normalize compiler/Core/Opt/Normalize.hs:104:5-11    2.4    0.0",
+        "mapChildrenM            Core.Typed.Walk    compiler/Core/Typed/Walk.hs:11:1-12        2.0    3.9",
+        "lvl27                   Codegen.Liveness   <no location info>                         1.8    0.0",
+        "go10                    Codegen.Target.RV  <no location info>                         1.4    0.0",
+        "lvl105                  Codegen.Allocate   <no location info>                         1.4    3.9"
+      ]
+    },
+    {
+      "stage": "standard Base workload, before scoped free-variable traversal",
+      "profile_sha256": "ab19e5843d78652a2aee9a1dd7d86530f1546400fca2df2e814a5dedafd09ce9",
+      "total_allocation": 33478145280,
+      "self_cost_centres": [
+        "mapChildrenM                 Core.Typed.Walk             compiler/Core/Typed/Walk.hs:11:1-12        6.0   13.5",
+        "go1                          Compiler.Native.Core        <no location info>                         3.7    0.2",
+        "freeVars                     Core.Syntax                 compiler/Core/Syntax.hs:46:1-8             3.0    2.7",
+        "run1                         Compiler.Editor             <no location info>                         2.2    6.5",
+        "allocateFn                   Codegen.Allocate            compiler/Codegen/Allocate.hs:119:1-10      2.2    2.4",
+        "$fEqType_$c==                Type.Syntax                 compiler/Type/Syntax.hs:21:13-14           2.0    0.0",
+        "$w$sgo4                      Compiler.Native.Linked      <no location info>                         1.9    0.4",
+        "mentions                     Workers                     compiler/Workers.hs:70:1-8                 1.7    0.0",
+        "eraseWith                    Core.Typed.Erase            compiler/Core/Typed/Erase.hs:44:1-9        1.7    2.9",
+        "$s$wsplitMember1             ReceiveTurns                <no location info>                         1.6    2.4",
+        "$w$sgo4                      Core.Typed.Pipeline         <no location info>                         1.6    0.4",
+        "subst                        Workers                     compiler/Workers.hs:45:1-5                 1.4    0.1"
+      ]
+    }
+  ],
+  "final_compiler_sha256": "c149e1f4126adff0f04bc5d00660a936e98490d5982f80fbafda92fe716e7280",
+  "final_compiler_revision": {
+    "codegen": 163,
+    "arc": 11
+  },
+  "generated_128_helper_main": {
+    "before_ownership": {
+      "frame_bytes": 2080,
+      "spilled_values": 615,
+      "spill_slots": 247
+    },
+    "after_ownership": {
+      "frame_bytes": 48,
+      "spilled_values": 0,
+      "spill_slots": 0
+    }
+  }
+}

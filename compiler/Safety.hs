@@ -399,7 +399,7 @@ callGraphOf tops = CallGraph bindNames clausesOf callsOf sccs
 -- failure is a loud error: the user claimed a measure.
 
 data MeasureKind
-  = MStructural Name -- descent on a pattern-matched parameter: at most len(param) calls
+  = MStructural Name -- descent bounds depth by len(param); fanout needs a separate cost proof
   | MLinear (M.Map Name Integer) Integer -- coefficients over the parameters, plus a constant; >= 0 wherever a call happens
   deriving (Eq, Show)
 

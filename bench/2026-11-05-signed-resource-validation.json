@@ -1,0 +1,161 @@
+{
+  "schema": "signed-resource-validation-v1",
+  "codegen_revision": 176,
+  "compiler_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+  "sources": {
+    "compiler/Cost.hs": "284c86d7d7bc2e52a35efcd3a29626ce7aa620701538cab9394246b4873493cd",
+    "compiler/Compile.hs": "48492752c1d45169a86d26344998f7241ddb0995b69d29b7a44955a133d7bca8",
+    "compiler/Codegen.hs": "b35bb28f7c115ed5c356bf5a9e613c3bc9d02d541355d8b2d9e2ad3e29ee98d1",
+    "tests/ResourceCosts.hs": "6a185949270371d05f663a7619b52055dcc1cbc44ac2061b9f2e27f2658daed0",
+    "tests/check_resource_domains.py": "62aa1fb0d1b99b5ad94e9943eb6c9ea049d00faa8dea214a21857f2e649a87bc",
+    "tests/check_resource_admission.py": "826b5f0f8ab70142ef45b4b4d5438da6ca1f4d8a891efeca20722ea243991938",
+    "tests/base/resource_cost_probe.c": "8632a5df396492c21b9d1798bbfea3bc3ba03f6481e7b79a375d858e60b3fadf",
+    "tests/check_cost.py": "208c8d9ca86a0dacadfed1961b843e0221373f6ddac9ad300db9b3908489a235",
+    "tests/check_registry.py": "a7682ef2abd94db0b25f30186f0e695cb446001027e4595735a933430533d11a",
+    "tests/test_check_registry.py": "ed01f8dc710ca7b126ff9b73f1ca8621a80303e4515316a90e00d9e399f414a7",
+    "tests/cases/bound_ok.fpr": "8267b40f1fbcde449a69f77e26d337c78580e5d6c4f9e3e1ec377fc7f5ee6822",
+    "tests/cases/bound_signed_unsafe.fpr": "91cb0695c0dbf9c0d80ddb0fef425847ef8cafbd1b2b5d0acafa264a54d68dae",
+    "tests/cases/bound_over.fpr": "e7425ffca5eeec9c6d86ca1530bd4f23dd01cf516a3a7393d8183f6506672943",
+    "tests/cases/bound_unused_over.fpr": "ecd5d8e83f9a95fd341dfb244a932dcb5951e68bf038193f4355fdf177dcd8d3",
+    "tests/cases/bound_coef.fpr": "4afbbc9739687f3b0121b23c7afdac9620bc0cd8376074935c0a06c4530a22ab",
+    "tests/cases/live_bounds.fpr": "2a60aa76b9269fcfd336a750e8136021dd0224991c5e539e9b5d767406b586d9",
+    "docs/2026-11-05-SIGNED-RESOURCE-DOMAINS.md": "aeb684a76c0e40f93f7e9fe7ad2e64e8631e8dbb6acd3e38fab8db0dbb6a367b",
+    "docs/2026-11-05-RESOURCE-EQUATION-PREREQUISITES.md": "b6299a15b0a58b40f12d733519a5888f06b4298cd625cf6ac34b5166d885c9d4",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "58f5bb7254d63b252dc80f46d65ce7292688b4c18eeb33317cb0ddc2554e3713",
+    "docs/2026-10-02-RESOURCE-BOUNDS.md": "372793dfa202318bc365071dba519ba6ece12502d6b4cd370a4c313e49b9ccf6",
+    "bench/2026-11-05-resource-domains.json": "c202b86cc6546bf12265e7fd1240c47742e1b970a5a65cd9ee78fc763b050d1d",
+    "bench/2026-11-05-signed-resource-specialization-cost.json": "b689f32edf7c4de78206bca6966a235297f160ffd65ca2960a242f74f35186f7"
+  },
+  "checks": [
+    {
+      "name": "Haskell",
+      "command": "cabal test all --test-show-details=direct",
+      "status": "PASS",
+      "compiler_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+      "log_sha256": "c9d02144fb53eddc682b263388f71dd7684476e2011ef8e17c70b04da88a2123",
+      "output_tail": [
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/AllocIR/test/fp-risc-0.13.1-AllocIR.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Interval discharge: guarded-counter proofs, step chains, join intersection, loop induction, producer bounds, the path ladder, cross-block sharing and evaluator differential PASS",
+        "Test suite Interval: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/Interval/test/fp-risc-0.13.1-Interval.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ],
+      "suites_passed": 39
+    },
+    {
+      "name": "signed-domains",
+      "command": "python3 tests/check_resource_domains.py --baseline /tmp/fpr-resource-before-176 --record bench/2026-11-05-resource-domains.json",
+      "status": "PASS",
+      "compiler_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+      "log_sha256": "6f1f6279205345a66c7ad19747b9361991ee0930da71ac6c265c71de569bdea0",
+      "output_tail": [
+        "Signed, max, negative-term and unknown-span budget regressions PASS",
+        "Negative inputs, minimum Int, negative span and ordinary outputs on 1/4 harts PASS",
+        "Explicit clamps and direct/partial/escaped precondition boundaries PASS"
+      ]
+    },
+    {
+      "name": "previous-resource-regressions",
+      "command": "python3 tests/check_resource_admission.py",
+      "status": "PASS",
+      "compiler_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+      "log_sha256": "ff45ea9dd68596471bf91379215e39920ee0e9c8ccb4be4b341443708877a639",
+      "output_tail": [
+        "branching: undersized contract refused; independent native observations on 1/4 harts PASS",
+        "partial: undersized contract refused; independent native observations on 1/4 harts PASS",
+        "growing: undersized contract refused; independent native observations on 1/4 harts PASS",
+        "Correct PAP capacity and exclusive linear recursion contracts PASS"
+      ]
+    },
+    {
+      "name": "source-costs",
+      "command": "FPR_HOME=$PWD XDG_CACHE_HOME=/tmp/fpr-signed-cost-cache python3 tests/check_cost.py",
+      "status": "PASS",
+      "compiler_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+      "log_sha256": "1bd79af0058d7941224c0e31f92f4589e82cf38462730037087fc0a83564af99",
+      "output_tail": [
+        "Cost: linear measured recursion and invariant callbacks compose; branching/growing recursive costs stay unproved; full PAP capacity is charged; declared bounds and manifest judgements (fixture: 2.93 \u00b5s within 5 \u00b5s, over 1 \u00b5s), scoped live/loop costs and Todo reporting (15.1s) PASS"
+      ]
+    },
+    {
+      "name": "compiler-budget",
+      "command": "python3 tests/check_compile_budget.py --require-baseline",
+      "status": "PASS",
+      "compiler_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+      "log_sha256": "c5563ea5874ebe13c53a2090adfecf5d96c2e400c720ae01984619c626999d67",
+      "output_tail": [
+        "hello: 1.59 GB allocated, 44 MB peak live, 0.8 s (+8.3% allocation, +4.1% peak vs baseline)",
+        "std-live: 32.69 GB allocated, 428 MB peak live, 21.1 s (+9.2% allocation, +6.2% peak vs baseline)",
+        "pos1: 68.96 GB allocated, 722 MB peak live, 48.2 s (+6.4% allocation, -13.4% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": "python3 tests/check_type_spec_cost.py --sizes 16 32 64 128 256 --require-baseline --record bench/2026-11-05-signed-resource-specialization-cost.json",
+      "status": "PASS",
+      "compiler_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+      "log_sha256": "90b74c371341467f0bd7c1ac1146c44297cb24478552f9073ba7429d33954960",
+      "output_tail": [
+        "16 helpers: same 10520 code bytes/48 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 16952 code bytes/80 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30136 code bytes/144 functions; compiler allocation 1.001x explicit twins",
+        "128 helpers: same 56504 code bytes/272 functions; compiler allocation 1.001x explicit twins",
+        "256 helpers: same 109240 code bytes/528 functions; compiler allocation 1.002x explicit twins"
+      ]
+    },
+    {
+      "name": "region-lifetimes",
+      "command": "python3 tests/check_base.py -j 2 --only regionnest --only turnroots --only loopwith --timings-json /tmp/fpr-signed-regions.json",
+      "status": "PASS",
+      "compiler_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+      "log_sha256": "26ea296b8713e14c58ff51c8a11cdd63aef8ddedb5eceba58d801f4f7d2b67e2",
+      "output_tail": [
+        "A message dies with its turn: a serve store keeps 5,000 requests' keys and values without keep, an arena and a poolReset release their received roots, on one and four harts: PASS",
+        "Loop regions reset per slab, call regions open when a call has used a slab, a builder's region is adopted whole, and an arena copying out under a pending call region keeps the chain: PASS",
+        "Sys.loopWith: 1,000 and 20,000 steps of a double-buffered frame loop grow the caller pool by the same 256 B; a moved vector and a Vector in the state are refused: PASS",
+        "check_base: 3 jobs in 8 s on 2 worker(s)"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": "python3 tests/test_check_registry.py",
+      "status": "PASS",
+      "compiler_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+      "log_sha256": "2260730edc3cc94800c95dd8c6c9e7a1e5991e172b5b665c22239ca8ecdc13cc",
+      "output_tail": [
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.097s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "rejected_experiment": {
+    "name": "uncompacted-unknown-value-terms",
+    "compiler_sha256": "14ba60f1e8e1d667684f996bab9966462d3d19b2e449064595d9ac406e0b33c5",
+    "log_sha256": "0b1c496d91f45e2e64c7a06d5ff090c24698c04446801362a43c4e6da7c91050",
+    "output": [
+      "hello: 1.59 GB allocated, 44 MB peak live, 1.0 s (+8.3% allocation, +4.1% peak vs baseline)",
+      "std-live: 33.16 GB allocated, 430 MB peak live, 24.1 s (+10.8% allocation, +6.8% peak vs baseline)",
+      "pos1: 69.65 GB allocated, 709 MB peak live, 44.4 s (+7.5% allocation, -14.9% peak vs baseline)",
+      "compile budget FAILED:",
+      "  std-live: allocation +10.8% is over the 10% margin"
+    ],
+    "resolution": "Keep opposite-sign unknown terms separate; compact same-sign terms; scan only negative coefficients. Baselines unchanged."
+  },
+  "limits": [
+    "Local host checks; no new physical-board or CI completion claim.",
+    "Source work and requested-object bounds, not final physical peak-live/stack admission.",
+    "Result-size declarations remain assumptions; changing recursive payloads remain unproved.",
+    "No hardware WCET claim or new application speedup measurement.",
+    "Concurrent validation wall times are not compiler throughput benchmarks."
+  ]
+}

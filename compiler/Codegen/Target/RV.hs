@@ -6,6 +6,7 @@
 module Codegen.Target.RV
   ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV, emitFnRVWithSymbols, fuelSaveWrapper, allocSaveWrapper ) where
 
+import Compiler.DataLayout (storedListTid)
 import qualified Codegen.Calling as Calling
 import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
 import qualified Codegen.Call as Call
@@ -13,6 +14,7 @@ import qualified Codegen.Protocol as Protocol
 import Codegen.Allocate
 import Codegen.Bounds
 import Codegen.Frame
+import qualified Codegen.Stack as Stack
 import Codegen.IR
 import Codegen.Policy
 import Codegen.Selected hiding (plain)
@@ -20,6 +22,7 @@ import Codegen.Annotation (EntryPoint(..),entryLabel)
 import qualified Codegen.Opcode as O
 import qualified Codegen.Opcode.RV as R
 import Codegen.Target.RV.Forms (checkForms)
+import qualified Codegen.Target.RV.ScalarAdapters as Scalar
 import Codegen.Target.Common
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
@@ -127,11 +130,11 @@ call sym convention vs result tailCall = do
     ((plain (if tailCall then O.Common O.TailJump else O.RV R.Call) [] [])
       {siImplicitDefs=if tailCall then map p ["sp","s0","ra","t3"] else []}))
   emit selected
--- a call that answers two words in a0 and a1
-call2 :: CodeSymbol -> CallConvention -> [VReg] -> VReg -> VReg -> S ()
-call2 sym convention vs r1 r2 = do
+-- A private product call answers in the declared result register bank.
+callProduct :: CodeSymbol -> CallConvention -> [VReg] -> [VReg] -> S ()
+callProduct sym convention vs results = do
   stage convention vs
-  selected <- lift (Calling.selectPairTransfer Calling.RiscV convention sym vs r1 r2 (plain (O.RV R.Call) [] []))
+  selected <- lift (Calling.selectProductTransfer Calling.RiscV convention sym vs results (plain (O.RV R.Call) [] []))
   emit selected
 -- a call into a noreturn runtime trap: it ends the path (Calling.NeverReturns)
 trapCall :: String -> S ()
@@ -227,16 +230,36 @@ select cfg fn = do
       else forM_ prefix $ \(Instr _ op) -> case op of
         OSafepoint -> if polFuel (cfgPolicy cfg) then entry Protocol.FuelOnly else lift (Left "a no-fuel profile contains a safepoint")
         _ -> lift (Left "RV64: non-entry stack check")
-      let run (Instr d1 (OCall2 c vs) : Instr d2 OSecond : more) = do
-            -- the pair call: one transfer answers both words, a0 and a1
-            case (d1, d2) of
-              (Just (v1, _), Just (v2, _)) -> call2 (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) (vreg v1) (vreg v2)
-              _ -> lift (Left "internal: a pair call without both definitions")
+      let run (Instr d (OCallProduct c as) : following) = do
+            (results, more) <- either (lift . Left) pure (productCallResults c d following)
+            callProduct (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (map vreg results)
             run more
           run (i : more) = instruction i >> run more
           run [] = pure ()
       run rest
       terminator b
+    makeCell dest tid variant fields = do
+      let raw=8+w*fromIntegral (length fields)
+      case bumpCellFor (cfgPolicy cfg) raw of
+        Just _ | bumpAllocates (cfgPolicy cfg),cfgWidth cfg==W64,cfgHart cfg `elem` [HartTls,HartTlsIe] -> do
+          l<-freshLabel
+          emit (Protocol.selectProtocol Calling.RiscV ((plain (O.Common O.BumpAlloc) [anyV dest] [OI raw]) {siAnnotation=EntryLabels l}))
+        _ -> do
+          size<-fresh;li size raw
+          if polProfile (cfgPolicy cfg)==BuiltinArc then do
+            count<-fresh;li count (fromIntegral (length fields))
+            call (CodeSymbol "fpr_builtin_alloc_adt") Calling.RuntimeCall [size,count] (Just dest) False
+          else call (CodeSymbol "fpr_alloc") Calling.RuntimeCall [size] (Just dest) False
+      hdr<-fresh;li hdr (fromIntegral tid);storeAt R.Store32 dest hdr 0
+      hdrVariant<-fresh
+      case variant of
+        Left n->li hdrVariant (fromIntegral n)
+        Right ordinal | length fields==2->ri R.ShiftLeftImmediate hdrVariant (vreg ordinal) 3
+                      | otherwise->do
+                          shifted<-fresh;ri R.ShiftLeftImmediate shifted (vreg ordinal) 3
+                          ri R.OrImmediate hdrVariant shifted (fromIntegral (length fields-2))
+      storeAt R.Store32 dest hdrVariant 4
+      forM_ (zip [0..] fields) $ \(n,v)->storeAt stWord dest (vreg v) (8+w*n)
     instruction (Instr result op) = case op of
       OStore _ a n v -> storeAt stWord (vreg a) (vreg v) (fromIntegral n)
       OSetField index obj val -> storeAt stWord (vreg obj) (vreg val) (8 + w * fromIntegral index)
@@ -315,24 +338,10 @@ select cfg fn = do
             loadAt R.Load32 actual (vreg v) 4; li want (fromIntegral variant); rr (R.Compare Eq) d actual want
         jump done
         mark miss; li d 0; mark done
-      OMake t variant fs
-        -- the inline bump (docs/2026-11-03-INLINE-BUMP-ALLOC.md): hosted
-        -- Linux RV64 reads its own hart through TLS; bare-metal tp images
-        -- (the QOS kernel and its plane processes) keep the call
-        | Just _ <- bumpCellFor (cfgPolicy cfg) raw, bumpAllocates (cfgPolicy cfg), cfgWidth cfg == W64, cfgHart cfg `elem` [HartTls, HartTlsIe] -> do
-            l <- freshLabel
-            emit (Protocol.selectProtocol Calling.RiscV ((plain (O.Common O.BumpAlloc) [anyV d] [OI raw]) {siAnnotation=EntryLabels l}))
-            forM_ [(0,t),(4,variant)] $ \(off,n) -> do h <- fresh; li h (fromIntegral n); storeAt R.Store32 d h off
-            forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord d (vreg v) (8+w*n)
-        where raw = 8 + w * fromIntegral (length fs)
-      OMake t variant fs -> do
-        size <- fresh; li size (8 + w * fromIntegral (length fs))
-        if polProfile (cfgPolicy cfg) == BuiltinArc then do
-          fields <- fresh; li fields (fromIntegral (length fs))
-          call (CodeSymbol "fpr_builtin_alloc_adt") Calling.RuntimeCall [size,fields] (Just d) False
-        else call (CodeSymbol "fpr_alloc") Calling.RuntimeCall [size] (Just d) False
-        forM_ [(0,t),(4,variant)] $ \(off,n) -> do h <- fresh; li h (fromIntegral n); storeAt R.Store32 d h off
-        forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord d (vreg v) (8+w*n)
+      OMake tid variant fields -> makeCell d tid (Left variant) fields
+      OMakeSpine ordinal fields
+        | polProfile (cfgPolicy cfg)==HostedBase && cfgWidth cfg==W64 -> makeCell d storedListTid (Right ordinal) fields
+        | otherwise -> lift (Left "private stored lists require hosted RV64 Base")
       OReuse _ _ root fs -> do
         forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord (vreg root) (vreg v) (8+w*n)
         emit (plain (O.RV R.Move) [anyV d] [anyV (vreg root)])
@@ -392,8 +401,8 @@ select cfg fn = do
       OCall c vs -> do
         inlined <- rawAdapter c (map vreg vs) d
         unless inlined (call (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) (Just d) False)
-      OCall2 _ _ -> lift (Left "internal: a pair call that selection did not fuse with its second word")
-      OSecond -> lift (Left "internal: a second pair word without its call")
+      OCallProduct _ _ -> lift (Left "internal: a product call outside its result packet")
+      OResult _ -> lift (Left "internal: a product word without its call")
       OApply f vs -> do
         forM_ (f:vs) $ \v -> emit (Protocol.selectProtocol Calling.RiscV (plain (O.RV R.Push) [] [anyV (vreg v)]))
         emit (Protocol.selectProtocol Calling.RiscV
@@ -403,7 +412,9 @@ select cfg fn = do
     edge bid vs = parallel (zip (targetParams bid) (map vreg vs)) >> jump (label bid)
     terminator b = case bTerm b of
       TRet v -> emit ((plain (O.RV R.Ret) [] [fixed (vreg v) (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
-      TRet2 a b -> emit ((plain (O.RV R.Ret) [] [fixed (vreg a) (p "a0"), fixed (vreg b) (p "a1")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
+      TRetProduct vs -> do
+        places <- lift (Calling.resultPlaces Calling.RiscV (FprCall NoFuel) (ProductResult (length vs)))
+        emit ((plain (O.RV R.Ret) [] (zipWith fixed (map vreg vs) places)) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
       TBr bid vs | bid == fnEntry fn -> call (CodeSymbol (functionSymbol (fnName fn))) (Calling.nativeCall (cfgPolicy cfg)) (map vreg vs) Nothing True
                  | otherwise -> edge bid vs
       TCondBr v yes ys no ns -> do l <- freshLabel; branch (vreg v) l; edge no ns; mark l; edge yes ys
@@ -424,6 +435,7 @@ select cfg fn = do
     -- need no retain/release, exactly as both builtin heaps specify.
     rawAdapter c vs d
       | polProfile (cfgPolicy cfg) /= BuiltinArc || not (isForeign c) = pure False
+      | cfgWidth cfg==W64,Just adapter<-Scalar.scalarAdapter c (length vs) = scalar adapter vs >> pure True
       | otherwise = case (calleeName c,vs) of
           (n,[a]) | n `elem` ["$arc.retain","$arc.release"] -> yes (guarded (\slow -> do
             bit <- fresh; ri R.AndImmediate bit a 1; bad <- fresh; ri R.XorImmediate bad bit 1; branch bad slow) $
@@ -439,21 +451,10 @@ select cfg fn = do
                 bad <- fresh; rr (R.Compare Ne) bad hi sign; branch bad slow
               fit <- fresh; ri R.ShiftLeftImmediate fit result 1; ri R.ShiftRightArithmeticImmediate fit fit 1
               bad <- fresh; rr (R.Compare Ne) bad fit result; branch bad slow) (tagged result d))
-          (n,[a,b]) | Just op <- M.lookup n intCompare -> yes (do t <- fresh; rr op t a b; bool t)
           (n,[a,b]) | n `elem` ["$arc.eq","$arc.ne"] -> yes (guarded (\slow -> do
             both <- fresh; ri R.AndImmediate both a 1; bit <- fresh; ri R.AndImmediate bit b 1
             rr R.And both both bit; bad <- fresh; ri R.XorImmediate bad both 1; branch bad slow) $ do
               t <- fresh; rr (R.Compare (if n=="$arc.eq" then Eq else Ne)) t a b; bool t)
-          (n,[a,b]) | Just op <- M.lookup n wordBinary -> yes (rr op d a b)
-          ("$arc.wordnot",[a]) -> yes (ri R.XorImmediate d a (-1))
-          ("$arc.wordfromInt",[a]) -> yes (ri R.ShiftRightArithmeticImmediate d a 1)
-          ("$arc.wordtoInt",[a]) -> yes (tagged a d)
-          ("$arc.wordbits",[_]) -> yes (li d 129)
-          (n,[a]) | n `elem` ["$arc.addrfromWord","$arc.addrtoWord"] -> yes (emit (plain (O.RV R.Move) [anyV d] [anyV a]))
-          ("$arc.addrnull",[_]) -> yes (li d 0)
-          ("$arc.addradd",[a,b]) -> yes (do t <- fresh; ri R.ShiftRightArithmeticImmediate t b 1; rr R.Add d a t)
-          (n,[a,b]) | n `elem` ["$arc.wordeq","$arc.addreq","$arc.rawEq","$arc.rawNe"] -> yes (do
-            t <- fresh; rr (R.Compare (if n == "$arc.rawNe" then Ne else Eq)) t a b; bool t)
           (n,[a,b]) | n `elem` ["$arc.wordshl","$arc.wordshr","$arc.wordbitSet","$arc.wordbitClear","$arc.wordbitTest"] -> yes (do
             count <- fresh; ri R.ShiftRightArithmeticImmediate count b 1
             guarded (\slow -> do limit <- fresh; li limit 64; valid <- fresh; rr R.LessUnsigned valid count limit; bad <- fresh; ri R.XorImmediate bad valid 1; branch bad slow) $ case n of
@@ -470,6 +471,17 @@ select cfg fn = do
           ("$arc.memfence",[_]) -> yes (emit (plain (O.RV R.Fence) [] []) >> address d (StaticObject "fpr_unit"))
           _ -> pure False
       where
+        scalar adapter args = case (adapter,args) of
+          (Scalar.Binary op,[a,b])->rr (case op of Scalar.WordAdd->R.Add;Scalar.WordSub->R.Subtract;Scalar.WordAnd->R.And;Scalar.WordOr->R.Or;Scalar.WordXor->R.Xor) d a b
+          (Scalar.WordNot,[a])->ri R.XorImmediate d a (-1)
+          (Scalar.WordFromInt,[a])->ri R.ShiftRightArithmeticImmediate d a 1
+          (Scalar.WordToInt,[a])->tagged a d
+          (Scalar.WordBits,[_])->li d 129
+          (Scalar.Compare op,[a,b])->do t<-fresh;rr (R.Compare op) t a b;bool t
+          (Scalar.AddressIdentity,[a])->emit (plain (O.RV R.Move) [anyV d] [anyV a])
+          (Scalar.AddressNull,[_])->li d 0
+          (Scalar.AddressAdd,[a,b])->do t<-fresh;ri R.ShiftRightArithmeticImmediate t b 1;rr R.Add d a t
+          _->lift (Left "compiler error: checked scalar adapter arity")
         yes action = action >> pure True
         tagged a result = do t <- fresh; ri R.ShiftLeftImmediate t a 1; ri R.OrImmediate result t 1
         bool t = do yesLabel <- freshLabel; done <- freshLabel; branch t yesLabel
@@ -484,8 +496,6 @@ select cfg fn = do
         memoryGuard a mask body = guarded (aligned a mask) body
         aligned a mask slow = when (mask /= 0) $ do t <- fresh; ri R.AndImmediate t a mask; branch t slow
         intBinary = M.fromList [("$arc."++n,op) | (n,op)<-[("add",R.Add),("sub",R.Subtract),("mul",R.Multiply),("div",R.Divide)]]
-        intCompare = M.fromList [("$arc."++O.comparisonName c,R.Compare c) | c<-[Lt,Gt,Le,Ge]]
-        wordBinary = M.fromList [("$arc.word"++n,op) | (n,op)<-[("add",R.Add),("sub",R.Subtract),("and",R.And),("or",R.Or),("xor",R.Xor)]]
         reads = M.fromList [("$arc.memread"++n,(op,mask,small)) | (n,op,mask,small)<-[("8",R.LoadByte,0,True),("16",R.LoadHalf,1,True),("32",R.LoadUnsigned32,3,False),("Word",R.Load64,7,False)]]
         writes = M.fromList [("$arc.memwrite"++n,(op,mask,small)) | (n,op,mask,small)<-[("8",R.StoreByte,0,True),("16",R.StoreHalf,1,True),("32",R.Store32,3,False),("Word",R.Store64,7,False)]]
 
@@ -577,7 +587,10 @@ emitFnRVWithSymbols symbols cfg fn = do
           ++ visibilityLines ELF WeakDirective (visibilityFor (cfgWeak cfg) symbols name) (functionSymbol name)
           ++ [functionSymbol name ++ ":"]
   checkForms regFile name body
-  pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ refillCode ++ [reportLine name report, ""]) report (S.toList (nulls st)) (S.toList (strings st)) (S.toList (boxedFloats st)) (usesTick body) (usesBump body))
+  let stack = Stack.selectedFrame Stack.LinkRegister ly (CodeSymbol (functionSymbol name))
+        (["interposable-entry:"++functionSymbol name | visibilityFor (cfgWeak cfg) symbols name == WeakSymbol]
+          ++ ["segmented-stack-reservation" | large]) body
+  pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ refillCode ++ [reportLine name report, ""]) report stack (S.toList (nulls st)) (S.toList (strings st)) (S.toList (boxedFloats st)) (usesTick body) (usesBump body))
   where
     token _ (ILabel (Label l),_) = [TLabel l]
     token pools (I i,ls) = [TIns (instructionCost ls + (case bumpRefill pools i of Just _ -> 7; Nothing -> 0))
@@ -722,8 +735,7 @@ render cfg fn ly large restores pools (I i) = map (\s -> if last s == ':' then s
       (O.Common O.JumpLoop,[],[OL l']) -> ["j " ++ local fn l']
       (O.RV R.Call,_,OCode sym:_) -> ["call " ++ codeName sym]
       (O.Common O.TailJump,[],OCode sym:_) -> epilogue ++ ["tail " ++ codeName sym]
-      (O.RV R.Ret,[],[_]) -> epilogue ++ ["ret"]
-      (O.RV R.Ret,[],[_,_]) -> epilogue ++ ["ret"]
+      (O.RV R.Ret,[],values) | not (null values) && length values <= 8 -> epilogue ++ ["ret"]
       (O.RV R.Push,[],[v]) -> ["addi sp, sp, -16", stWord ++ " " ++ r v ++ ", 0(sp)"]
       (O.RV R.ApplyN,[_],[n]) -> ["mv a2, sp", "li a1, " ++ show (num n)] ++ memory ld "a0" "sp" (16*num n) ++ [("call " ++ Call.runtimeName Call.ApplyEntry)] ++ adjust "sp" "sp" (16*(num n+1))
       (O.RV R.Panic,[],[OAddr sym]) -> ["la a0, " ++ addressName sym, ("call " ++ Call.runtimeName Call.PanicEntry)]

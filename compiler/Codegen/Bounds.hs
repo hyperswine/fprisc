@@ -63,10 +63,11 @@ analyse toks
   where
     ccalls = sum [tCCalls t | t@TIns {} <- toks]
     labels = [l | TLabel l <- toks]
+    labelSet = S.fromList labels
     targets = concat [case tFlow t of FCond ls -> ls; FJump l -> [l]; _ -> [] | t@TIns {} <- toks]
-    invalid = length labels /= S.size (S.fromList labels)
-      || "%entry" `elem` labels
-      || any (`notElem` labels) targets
+    invalid = length labels /= S.size labelSet
+      || S.member "%entry" labelSet
+      || any (`S.notMember` labelSet) targets
       || any (\t -> tCost t < 0 || tCCalls t < 0) [t | t@TIns {} <- toks]
     -- A conditional transfer ends a basic block even without an explicit
     -- source label afterward. Otherwise a later reset can incorrectly cut

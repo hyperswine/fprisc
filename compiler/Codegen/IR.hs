@@ -26,7 +26,7 @@
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
     ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), simdCaptures, simdRegisters, ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign, calleeConvention,
-    Op (..), headerWord, Instr (..), Term (..), Block (..), Fn (..), Program,
+    productCallResults, Op (..), headerWord, Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
   ) where
@@ -54,7 +54,7 @@ data Ty
   | TPred -- a predicate, 0 or 1
   | TAddr -- an unmanaged address
   | TF64 -- an IEEE binary64 value
-  | TPair -- two tagged words answered in two registers: only a private pair worker's result (Core.Opt.PairReturns)
+  | TProduct Int -- private result of n tagged words, never a first-class SSA operand
   deriving (Eq, Ord, Show)
 
 data ArithOp = Add | Sub | Mul | Div deriving (Eq, Ord, Show, Enum, Bounded)
@@ -176,6 +176,7 @@ data Op
   | OString String -- immortal byte-string object, same encoding as the source literal
   | OBoxedFloat Width Integer -- TVal: an immortal RV32 numeric leaf; IEEE width and unsigned bits (not an Int payload)
   | OMake Int Int [VId] -- allocate an immutable constructor with tagged fields
+  | OMakeSpine VId [VId] -- private cell: raw variant ordinal, tagged payloads and tail
   | OReuse Int Int VId [VId] -- overwrite the fields of a constructor the program owns uniquely (Reuse.reuseFresh proved it), answer it; every field is evaluated before the first store
   | OAddress VId -- TVal -> TAddr; internal lowering, after the object/representation guard
   | OIndex VId VId -- TAddr, TInt -> TAddr; address + index * target word bytes
@@ -222,8 +223,8 @@ data Op
   | ORvvLanes VId VId -- TAddr, TInt n -> TPred: RISC-V V: vl = n, the n Int lanes at the address loaded into the vector unit, true when every lane is within rvvLaneBound; the lanes stay loaded for ORvvSumLoaded, which follows with no other vector operation between
   | ORvvSumLoaded VId -- TInt acc -> TInt: acc plus the lanes ORvvLanes loaded (vredsum), unchecked: the builder proved the bound
   | OCall Callee [VId] -- calleeParams -> calleeResult; clobbers every caller-saved register; any effect
-  | OCall2 Callee [VId] -- a call to a pair worker (calleeResult TPair): defines the first word, TVal; the second is read by the OSecond that follows it
-  | OSecond -- :: TVal; the second word of the OCall2 just before it, in the register the callee answered it in; nothing may sit between the two
+  | OCallProduct Callee [VId] -- private product call: first TVal, followed by n-1 ordered OResult definitions
+  | OResult Int -- :: TVal; ordered result 1..n-1, immediately following OCallProduct
   | OSafepoint -- the fuel tick: a runtime call that may deschedule the actor
   | OStackCheck -- the entry headroom check: a runtime call that may move sp to a new segment
   | OHartCell Int -- :: TInt; the raw word of the hart block at W*(1+j), the spill cells' addressing: j = 58 is the
@@ -233,12 +234,28 @@ data Op
                     -- back edge, true on the hot path so the hot body is the branch's fall-through
   deriving (Eq, Ord, Show)
 
+-- Validate the complete result packet before either verification or selection.
+-- No instruction (including a safepoint), missing field, or reordered field can
+-- separate the results of one transfer. All values are defined even when unused.
+productCallResults :: Callee -> Maybe (VId, Ty) -> [Instr] -> Either String ([VId], [Instr])
+productCallResults c first rest = case (calleeResult c, first) of
+  (TProduct n, Just (v, TVal)) | n >= 2 && n <= 8 -> do
+    (vs, more) <- fields [1..n-1] rest
+    pure (v:vs, more)
+  _ -> Left "product call: invalid result signature or first definition"
+  where
+    fields [] xs = Right ([], xs)
+    fields (i:is) (Instr (Just (v, TVal)) (OResult j):xs) | i == j = do
+      (vs, more) <- fields is xs
+      pure (v:vs, more)
+    fields _ _ = Left "product call: missing, reordered, or interrupted result packet"
+
 -- an instruction defines at most one value
 data Instr = Instr (Maybe (VId, Ty)) Op deriving (Eq, Ord, Show)
 
 data Term
   = TRet VId -- the function's result, TVal
-  | TRet2 VId VId -- a pair worker's two tagged words, answered in two registers
+  | TRetProduct [VId] -- private result words, in source field order
   | TBr BId [VId] -- a jump with block arguments; to the entry block it is a self tail call
   | TCondBr VId BId [VId] BId [VId] -- predicate, then-target, else-target
   | TTailCall Callee [VId] -- parallel argument assignment, frame teardown, transfer
@@ -284,6 +301,7 @@ opEffect = \case
   ONullary _ _ -> Pure
   OString _ -> Pure
   OBoxedFloat _ _ -> Pure
+  OMakeSpine _ _ -> RuntimeCall
   OMake _ _ _ -> RuntimeCall
   OReuse _ _ _ _ -> Writes
   OAddress _ -> Pure
@@ -324,8 +342,8 @@ opEffect = \case
   OFloat32Bin _ _ _ -> Pure
   OFloat32Cmp _ _ _ -> Pure
   OCall _ _ -> AnyEffect
-  OCall2 _ _ -> AnyEffect
-  OSecond -> AnyEffect -- never merged, moved or dropped away from its call
+  OCallProduct _ _ -> AnyEffect
+  OResult _ -> AnyEffect -- never merged, moved or dropped away from its call
   OSafepoint -> RuntimeCall
   OStackCheck -> RuntimeCall
   OSafepointN _ -> RuntimeCall
@@ -344,6 +362,7 @@ opUses = \case
   ONullary _ _ -> []
   OString _ -> []
   OBoxedFloat _ _ -> []
+  OMakeSpine v fs -> v:fs
   OMake _ _ fs -> fs
   OReuse _ _ r fs -> r : fs
   OAddress v -> [v]
@@ -384,8 +403,8 @@ opUses = \case
   OFloat32Bin _ a b -> [a, b]
   OFloat32Cmp _ a b -> [a, b]
   OCall _ as -> as
-  OCall2 _ as -> as
-  OSecond -> []
+  OCallProduct _ as -> as
+  OResult _ -> []
   OSafepoint -> []
   OStackCheck -> []
   OSafepointN _ -> []
@@ -397,7 +416,7 @@ opUses = \case
 termUses :: Term -> [VId]
 termUses = \case
   TRet v -> [v]
-  TRet2 a b -> [a, b]
+  TRetProduct vs -> vs
   TBr _ as -> as
   TCondBr c _ as _ bs -> c : as ++ bs
   TTailCall _ as -> as
@@ -413,6 +432,7 @@ mapOpUses f = \case
   ONullary t v -> ONullary t v
   OString s -> OString s
   OBoxedFloat width bits -> OBoxedFloat width bits
+  OMakeSpine v fs -> OMakeSpine (f v) (map f fs)
   OMake t v fs -> OMake t v (map f fs)
   OReuse t v r fs -> OReuse t v (f r) (map f fs)
   OAddress v -> OAddress (f v)
@@ -453,8 +473,8 @@ mapOpUses f = \case
   OFloat32Bin o a b -> OFloat32Bin o (f a) (f b)
   OFloat32Cmp o a b -> OFloat32Cmp o (f a) (f b)
   OCall c as -> OCall c (map f as)
-  OCall2 c as -> OCall2 c (map f as)
-  OSecond -> OSecond
+  OCallProduct c as -> OCallProduct c (map f as)
+  OResult n -> OResult n
   OSafepoint -> OSafepoint
   OStackCheck -> OStackCheck
   OSafepointN n -> OSafepointN n
@@ -466,7 +486,7 @@ mapOpUses f = \case
 mapTermUses :: (VId -> VId) -> Term -> Term
 mapTermUses f = \case
   TRet v -> TRet (f v)
-  TRet2 a b -> TRet2 (f a) (f b)
+  TRetProduct vs -> TRetProduct (map f vs)
   TBr b as -> TBr b (map f as)
   TCondBr c t as e bs -> TCondBr (f c) t (map f as) e (map f bs)
   TTailCall c as -> TTailCall c (map f as)
@@ -475,7 +495,7 @@ mapTermUses f = \case
 termSuccs :: Term -> [(BId, [VId])]
 termSuccs = \case
   TRet _ -> []
-  TRet2 _ _ -> []
+  TRetProduct _ -> []
   TBr b as -> [(b, as)]
   TCondBr _ t as e bs -> [(t, as), (e, bs)]
   TTailCall _ _ -> []

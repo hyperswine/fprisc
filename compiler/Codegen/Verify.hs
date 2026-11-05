@@ -31,6 +31,11 @@ opSignature tyOf = \case
     when (null fields) (Left "an empty constructor uses nullary")
     mapM_ (`expect` TVal) fields
     pure (Just TVal)
+  OMakeSpine variant fields -> do
+    unless (length fields>=2 && length fields<=9) (Left "stored list requires 1..8 payload slots and a tail")
+    expect variant TInt
+    mapM_ (`expect` TVal) fields
+    pure (Just TVal)
   OReuse tid variant root fields -> do
     when (tid < 0 || variant < 0) (Left "constructor header is outside signed 32-bit layout")
     when (null fields) (Left "a reuse of a nullary constructor")
@@ -112,16 +117,19 @@ opSignature tyOf = \case
       Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments for " ++ show (length (calleeParams c)) ++ " parameters")
     when (length as > arityCeiling) $ Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments is above the ceiling of " ++ show arityCeiling)
     mapM_ (uncurry expect) (zip as (calleeParams c))
-    when (calleeResult c == TPair) (Left ("call " ++ calleeName c ++ ": a pair answer needs a pair call"))
+    when (case calleeResult c of TProduct _ -> True; _ -> False) (Left ("call " ++ calleeName c ++ ": a product answer needs a product call"))
     pure (Just (calleeResult c))
-  OCall2 c as -> do
+  OCallProduct c as -> do
+    when (isForeign c) (Left "product call: foreign entries require a tagged adapter")
     when (length as /= length (calleeParams c)) $
       Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments for " ++ show (length (calleeParams c)) ++ " parameters")
     when (length as > arityCeiling) $ Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments is above the ceiling of " ++ show arityCeiling)
     mapM_ (uncurry expect) (zip as (calleeParams c))
-    unless (calleeResult c == TPair) (Left ("pair call " ++ calleeName c ++ " answers " ++ show (calleeResult c)))
+    unless (case calleeResult c of TProduct _ -> True; _ -> False) (Left ("product call " ++ calleeName c ++ " answers " ++ show (calleeResult c)))
     pure (Just TVal)
-  OSecond -> pure (Just TVal)
+  OResult i -> do
+    unless (i >= 1 && i < 8) (Left "product result index outside supported range")
+    pure (Just TVal)
   OSafepoint -> pure Nothing
   OSafepointN n -> do
     unless (n >= 1) (Left "a counted safepoint charges at least one tick")
@@ -155,6 +163,9 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
   let blocks = fnBlocks fn
       ids = map bId blocks
   when (null blocks) (Left "no blocks")
+  case fnResult fn of
+    TProduct n -> unless (n >= 2 && n <= 8) (Left "unsupported product result width")
+    _ -> pure ()
   when (length (S.fromList ids) /= length ids) (Left "duplicate block id")
   let byId = M.fromList [(bId b, b) | b <- blocks]
   entry <- maybe (Left "entry block missing") Right (M.lookup (fnEntry fn) byId)
@@ -163,6 +174,9 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
   let defs = concatMap blockDefs blocks
       defIds = map fst defs
   when (length (S.fromList defIds) /= length defIds) (Left "a value is defined twice")
+  when (any (\(VId i) -> i < 0) defIds) (Left "negative SSA identity is reserved")
+  when (any (\(_, t) -> case t of TProduct _ -> True; _ -> False) defs)
+    (Left "product result type cannot be an SSA operand")
   let tyMap = M.fromList defs
       tyOf v = maybe (Left (show v ++ " is never defined")) Right (M.lookup v tyMap)
   -- operation signatures and declared result types
@@ -180,13 +194,15 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
       TRet v -> do
         t <- tyOf v
         unless (t == fnResult fn) (Left (here ++ "returns " ++ show t ++ ", " ++ show (fnResult fn) ++ " needed"))
-      TRet2 a b -> do
-        unless (fnResult fn == TPair) (Left (here ++ "returns a pair from a function answering " ++ show (fnResult fn)))
-        forM_ [a, b] $ \v -> tyOf v >>= \t -> unless (t == TVal) (Left (here ++ "returns " ++ show v ++ " as " ++ show t ++ " in a pair"))
+      TRetProduct vs -> do
+        unless (length vs >= 2 && length vs <= 8 && fnResult fn == TProduct (length vs)) (Left (here ++ "returns a product from a function answering " ++ show (fnResult fn)))
+        forM_ vs $ \v -> tyOf v >>= \t -> unless (t == TVal) (Left (here ++ "returns " ++ show v ++ " as " ++ show t ++ " in a product"))
       TCondBr c _ _ _ _ -> do
         t <- tyOf c
         unless (t == TPred) (Left (here ++ "branches on " ++ show t ++ ", TPred needed"))
       TTailCall c as -> do
+        when (isForeign c && case calleeResult c of TProduct _ -> True; _ -> False)
+          (Left "product tail call: foreign entries require a tagged adapter")
         when (length as /= length (calleeParams c)) (Left (here ++ "tail call " ++ calleeName c ++ ": wrong arity"))
         when (length as > arityCeiling) (Left (here ++ "tail call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments is above the ceiling of " ++ show arityCeiling))
         when (calleeResult c /= fnResult fn) (Left (here ++ "tail call " ++ calleeName c ++ " answers " ++ show (calleeResult c) ++ ", this function " ++ show (fnResult fn)))
@@ -201,13 +217,13 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
       forM_ (zip args (bParams tb)) $ \(a, (_, t)) -> do
         t' <- tyOf a
         unless (t' == t) (Left (here ++ "jump argument " ++ show a ++ " is " ++ show t' ++ ", " ++ show t ++ " needed"))
-  -- the second word is read right after its call and nowhere else
+  -- Product definitions are one indivisible, ordered result packet.
   forM_ blocks $ \b -> do
-    let pairs = zip (Nothing : map (\(Instr _ op) -> Just op) (bInstrs b)) (bInstrs b)
-    forM_ pairs $ \(before, Instr _ op) -> case (op, before) of
-      (OSecond, Just (OCall2 _ _)) -> pure ()
-      (OSecond, _) -> Left (show (bId b) ++ ": a second word that does not follow its pair call")
-      _ -> pure ()
+    let packets [] = pure ()
+        packets (Instr d (OCallProduct c _):xs) = productCallResults c d xs >>= packets . snd
+        packets (Instr _ (OResult _):_) = Left (show (bId b) ++ ": product result outside its call packet")
+        packets (_:xs) = packets xs
+    packets (bInstrs b)
   -- reachability and dominance
   let flow = analyze fn
   forM_ blocks $ \b -> unless (S.member (bId b) (reachable flow)) (Left (show (bId b) ++ " is unreachable"))
@@ -227,7 +243,7 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
     go (S.fromList (map fst (bParams b))) (bInstrs b)
   -- a known local callee that is in the program must agree on its convention
   forM_ blocks $ \b -> do
-    let callees = [c | Instr _ (OCall c _) <- bInstrs b] ++ [c | Instr _ (OCall2 c _) <- bInstrs b] ++ [c | TTailCall c _ <- [bTerm b]]
+    let callees = [c | Instr _ (OCall c _) <- bInstrs b] ++ [c | Instr _ (OCallProduct c _) <- bInstrs b] ++ [c | TTailCall c _ <- [bTerm b]]
     forM_ callees $ \c -> case M.lookup (calleeName c) program of
       Just f | calleeKind c == Local, (entryOf : _) <- [x | x <- fnBlocks f, bId x == fnEntry f] -> do
         let ps = map snd (bParams entryOf)
@@ -251,6 +267,7 @@ verifyProgramWidth width program = do
       OLoad _ _ n -> aligned n
       OStore _ _ n _ -> aligned n
       OConstInt n -> unless (intFitsWidth width n) (Left ("verify " ++ fnName fn ++ ": literal exceeds " ++ show width ++ " Int range"))
+      OMakeSpine {} -> unless (width == W64) (Left "private stored lists require the 64-bit word policy")
       OBoxedFloat _ _ -> unless (width == W32) (Left "boxed float constants require the 32-bit word policy")
       _ -> pure ()
   where

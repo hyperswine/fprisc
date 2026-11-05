@@ -1,0 +1,249 @@
+{
+  "compiler_sha256": "b52c3cf693d18d30fd7b1134433a11573cf099a32eec5c150e5bc02dd6b55633",
+  "revision": 195,
+  "checks": [
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "exit": 0,
+      "seconds": 22.13,
+      "log_sha256": "ddabb2f0fb5a861659ef17c110c67a8bd4a0376890db86b10c1237a7c83431b3",
+      "tail": [
+        "Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS",
+        "Test suite TypedIR: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/TypedIR/test/fp-risc-0.13.1-TypedIR.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ]
+    },
+    {
+      "name": "compile-budget",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "exit": 0,
+      "seconds": 69.29,
+      "log_sha256": "63b189b09898eb7fec3df7cca889f822c64c747c6f22fe3ced99fd206ea7d2b5",
+      "tail": [
+        "hello: 1.61 GB allocated, 27 MB peak live, 1.1 s (+9.7% allocation, -37.6% peak vs baseline)",
+        "std-live: 32.87 GB allocated, 355 MB peak live, 22.9 s (+9.9% allocation, -11.9% peak vs baseline)",
+        "pos1: 67.58 GB allocated, 499 MB peak live, 44.3 s (+4.3% allocation, -40.2% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "admission",
+      "command": [
+        "python3",
+        "tests/check_hosted_worker_admission.py",
+        "--record",
+        "bench/2026-11-05-hosted-worker-components-after.json"
+      ],
+      "exit": 0,
+      "seconds": 8.68,
+      "log_sha256": "f90e69dca58fbeff8ee42e91d1b7c49f858d9632d8640d6558fb625bef3dd25a",
+      "tail": [
+        "Large return body and recursive scalar group: emission, allocations, escape and ordered overflow PASS"
+      ]
+    },
+    {
+      "name": "workers",
+      "command": [
+        "python3",
+        "tests/check_workers.py"
+      ],
+      "exit": 0,
+      "seconds": 29.32,
+      "log_sha256": "f14d6a0eceb7c92cf59dccd97cbc05bf8f6966a7396184ff2e228f6b572f90de",
+      "tail": [
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Workers: native 1/4-worker differential, independent switches/inliner, warm caches, dynamic entry and exact failure reasons PASS",
+        "{\"allocations\": {\"0:0:0:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:pair-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0,",
+        "Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS",
+        "Workers: optimized shared module called by general-ABI host PASS"
+      ]
+    },
+    {
+      "name": "returns",
+      "command": [
+        "python3",
+        "tests/check_product_returns.py"
+      ],
+      "exit": 0,
+      "seconds": 68.52,
+      "log_sha256": "964790cf20960a29e4fd66145bead7acb883ddf86c6a0c1faceeb1f7b3145a04",
+      "tail": [
+        "Product returns: eight-field mutual tail calls PASS",
+        "Product returns: tagged escape and heap-valued fields PASS",
+        "Product returns: a64mac width admission and register emission PASS",
+        "Product returns: rv64 width admission and register emission PASS",
+        "Product returns: x64 width admission and register emission PASS"
+      ]
+    },
+    {
+      "name": "lifetimes",
+      "command": [
+        "python3",
+        "tests/check_unary_return_lifetimes.py"
+      ],
+      "exit": 0,
+      "seconds": 15.01,
+      "log_sha256": "829a4e1c8145906887fc9fa06bfe17b865461659e5f550dd8f3852aebfaf34c7",
+      "tail": [
+        "Unary payload lifetime: False False {} 1/4 harts PASS",
+        "Unary payload lifetime: False True {False: 25157, True: 16772} 1/4 harts PASS",
+        "Unary payload lifetime: True False {} 1/4 harts PASS",
+        "Unary payload lifetime: True True {False: 16772, True: 8388} 1/4 harts PASS"
+      ]
+    },
+    {
+      "name": "x64-native",
+      "command": [
+        "python3",
+        "tests/check_product_returns.py",
+        "--target",
+        "macos-x86_64"
+      ],
+      "exit": 0,
+      "seconds": 75.52,
+      "log_sha256": "964790cf20960a29e4fd66145bead7acb883ddf86c6a0c1faceeb1f7b3145a04",
+      "tail": [
+        "Product returns: eight-field mutual tail calls PASS",
+        "Product returns: tagged escape and heap-valued fields PASS",
+        "Product returns: a64mac width admission and register emission PASS",
+        "Product returns: rv64 width admission and register emission PASS",
+        "Product returns: x64 width admission and register emission PASS"
+      ]
+    },
+    {
+      "name": "rv64",
+      "command": [
+        "python3",
+        "tests/check_product_returns_rv.py",
+        "--require-execution"
+      ],
+      "exit": 0,
+      "seconds": 4.47,
+      "log_sha256": "8734d5f1f06f317ed097bbd05e29aece5e92ea3d1ec99df529521ef64ddbc758",
+      "tail": [
+        "Product returns RV64: 4 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 5 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 6 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 7 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 8 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS"
+      ]
+    },
+    {
+      "name": "x64",
+      "command": [
+        "python3",
+        "tests/check_product_returns_x64.py",
+        "--require-execution"
+      ],
+      "exit": 0,
+      "seconds": 11.42,
+      "log_sha256": "ea82d6e37bee76c02c7b2d925aaa92dbbe88cdf6a55156c4b67dcd57c08d0284",
+      "tail": [
+        "x64 product returns: 6 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 7 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 8 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 8 fields, repeated=True, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 real runtime: eight-field recursive results, three actors, observed fuel exhaustion and 1/4 harts PASS"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--require-baseline",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256"
+      ],
+      "exit": 0,
+      "seconds": 3.36,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "tail": [
+        "16 helpers: same 10832 code bytes/55 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "static-arena",
+      "command": [
+        "python3",
+        "tests/check_static_arena.py"
+      ],
+      "exit": 0,
+      "seconds": 32.53,
+      "log_sha256": "1440e4ece55767e2110645f6978456cc765874ae0d0bb04a464954c24d92782e",
+      "tail": [
+        "mixed: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-zero: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-wrap: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-long: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+      ]
+    }
+  ],
+  "additional_checks": [
+    {
+      "name": "final native admission (strict stdout)",
+      "sha256": "f90e69dca58fbeff8ee42e91d1b7c49f858d9632d8640d6558fb625bef3dd25a",
+      "last_line": "Large return body and recursive scalar group: emission, allocations, escape and ordered overflow PASS"
+    },
+    {
+      "name": "207 configuration scheduling",
+      "sha256": "942f576572ad03890d182ec320f0d68d596c0c1ed5ed581816d1b3a48db7df54",
+      "last_line": "Scheduler latency qualification: 207 configurations PASS; no WCET claim"
+    },
+    {
+      "name": "compiler and uninstrumented throughput",
+      "sha256": "f4127d71a93d82e415fa4556b66caae90088dc8abe1836aa96709c9e813c3f9c",
+      "last_line": "wide-return rollback 500245 0.04783570801373571"
+    },
+    {
+      "name": "registry",
+      "sha256": "984237d1492fed0c50862b902290da9adf9af98df0ab3458cee4f12e297569dd",
+      "last_line": "OK"
+    }
+  ],
+  "inputs_sha256": {
+    "compiler/Workers.hs": "2d1d7afaa80be2638290d3acf49c5ceb94c7bf47f3416b2726971599b00f2e15",
+    "compiler/Core/Opt/PairReturns.hs": "b7ca63bb64c934fe0b0b2834058d5fa51ed6ef30828d4216bdc02d5e0adee2d8",
+    "compiler/KernelKinds.hs": "36cfeb5006e0f7b4c70a94d4478f511e2d5cd43acf0c252168cad497e82a8dd9",
+    "compiler/Codegen.hs": "cd841d0325945e556bd7443d9974a2b646db7f81b1fb1e672a59a32c35c47dc1",
+    "tests/CorePipeline.hs": "b4f7f4b0dbb1abde8325d3947516cb8425cd8ec1801cd858ca62b3d44dd8dd37",
+    "tests/WorkersCheck.hs": "da534dd30cb5511e57fbafbd686fe5b7eaa3f3673dac794e3e38d490966aea48",
+    "tests/check_hosted_worker_admission.py": "38fa190313c053d8ff32d2440358ad60a61c876ada140b96a9987a4cd4a4dbe1",
+    "tests/check_scheduler_latency.py": "3d659d39482c5ccf391d06d0937023e44350c4664f4064b473e573b043e9e031",
+    "tests/check_registry.py": "5d1281455276eedaa9350dcd633a69c09c0af231d4e062ec4d71a30f6a6341d0",
+    "tests/test_check_registry.py": "6436b4681815cb3801e8e59487fba4045f38bb608efdfd50098f96e07a3c89e8",
+    "tools/bench_hosted_worker_admission.py": "5d2d22013768beb7a98ec0a3529423a96c182a99cc354bc1c9833913246c3ed5",
+    "docs/2026-11-05-HOSTED-WORKER-ADMISSION.md": "82c8977e11f05dcb123dc84a9b5a6cd2c806337b3a0fc2242c3fd2bbd75d246d"
+  },
+  "records_sha256": {
+    "bench/2026-11-05-hosted-worker-admission-after.json": "669bf1ac1f7112f1ee15be56fd8a29205777568ff914986afd116b94987cbb45",
+    "bench/2026-11-05-hosted-worker-admission-before.json": "7c52ff7d043276cd6aa33d3ea50d66b805391d1089c82797dbfbfd955f1aff00",
+    "bench/2026-11-05-hosted-worker-admission-validation.json": "a06d888b94e9899c27c295528590b2ec434796ec85703e28bc4039b639dfea9c",
+    "bench/2026-11-05-hosted-worker-components-after.json": "68bd4222ef7988ae01267a98e2837e38c9172960ecb766d5934362267dbdf45a",
+    "bench/2026-11-05-hosted-worker-components-cost.json": "5f5d68480a08ecb56b293e3e9d0d808d4a53d018ae4200c1c623b6d8196602c7",
+    "bench/2026-11-05-hosted-worker-components-scheduling.json": "057410131eef958b3c4817f498e23dc7ecf1f443a761d663916a6f5a78dec3d8",
+    "bench/2026-11-05-hosted-worker-cost.json": "ca77e56bc081d82731ca5e51f2aa4a8bb36e5730ca946e55e7ce80270c630e91"
+  },
+  "status": "PASS"
+}

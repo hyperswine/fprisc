@@ -8,7 +8,7 @@ import GHC.Generics (Generic)
 import Control.DeepSeq (NFData)
 import Source.Span
 data Severity = Error | Warning | Note deriving (Eq,Ord,Show,Generic)
-data RemarkKind = PathRemark | FusionRemark | RegionRemark | InlineRemark | CallbackRemark deriving (Eq,Ord,Show,Generic)
+data RemarkKind = PathRemark | FusionRemark | RegionRemark | InlineRemark | CallbackRemark | TypeSpecRemark deriving (Eq,Ord,Show,Generic)
 data DiagnosticCode = InferenceError | TypeMismatch | UnboundName | CoverageError
   | SignatureGenerality | SafetyError | MeasureError | LinearityError | OptimizationRemark RemarkKind deriving (Eq,Ord,Show,Generic)
 data DefinitionStyle = ContextPrefix | MentionedInMessage deriving (Eq,Ord,Show,Generic)

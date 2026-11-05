@@ -1,0 +1,303 @@
+{
+  "schema": "verified-result-sizes-v1",
+  "compiler_sha256": "7ac197ce85f973ed1209d2db469a9a8094a6e6ac90ba612b7390529d12861cb5",
+  "baseline_sha256": "a8fd59b2b4d1134ab325e5f1b48fca1a60d8b257fb4b4748d259cec32d85b8e3",
+  "sources": {
+    "compiler/Cost.hs": "190c5a83af0d5da160642253a0414fc1c3488848ff1e87e5656851e86b8233c7",
+    "compiler/Resource/ResultSize.hs": "e911e5c51cdc05ba753c83082f3aece9826598df3007ea1ff3d3026f7242340d",
+    "compiler/Compile.hs": "7f216aee422f410d37162c9e4d9dc79d320b2d35ee1191ac165e0ab27c0a04b7",
+    "std/list.fpr": "e1fdcf99dfa0367686f81482cec2f68f667adc511aea162d5e0ba169a726d19c",
+    "tests/ResourceCosts.hs": "d43e7cb180d430a7cedf62348e5597e161599580a5c6456589634328acdbc96d",
+    "tests/TypedProgram.hs": "7a7846d1c3f1c9051f93bb4e4151611546d129ab1ea4bc480470c3c876186126",
+    "tests/check_result_sizes.py": "70853e4dfa2ff7dfa21bdf2e1c2901a00d9460d3ffa58bf6ba59efa21328fc2f"
+  },
+  "rows": [
+    {
+      "case": "forged-string-size",
+      "result": "refused",
+      "diagnostics": [
+        "combine: declared alloc <= 64   derived 80   OVER (constant: derived 80, declared 64)",
+        "make: declared size <= 0   verified size <= 8   OVER (constant: derived 8, declared 0)",
+        "* combine: declared alloc <= 64   derived 80   OVER (constant: derived 80, declared 64)"
+      ]
+    },
+    {
+      "case": "forged-string-size",
+      "result": "incorrectly-accepted-by-baseline",
+      "diagnostics": [
+        "combine: declared alloc <= 64   derived 64   PROVEN"
+      ]
+    },
+    {
+      "case": "baseline-underbudget-execution",
+      "harts": 1,
+      "stdout": "16\n",
+      "allocation_counters": {
+        "alloc_requests": 3,
+        "alloc_bytes": 112,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "case": "baseline-underbudget-execution",
+      "harts": 4,
+      "stdout": "16\n",
+      "allocation_counters": {
+        "alloc_requests": 3,
+        "alloc_bytes": 112,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "case": "false-recursive-invariant",
+      "result": "refused",
+      "diagnostics": [
+        "combine: declared alloc <= 72\u00b7len xs + 72   derived 48\u00b7(len xs + 1) + 24\u00b7(\u03c9(?len) + 1)   UNPROVED (opaque: ?len)",
+        "duplicate: declared size <= len xs   UNPROVED (no result-size lemma; annotation is not used)",
+        "* combine: declared alloc <= 72\u00b7len xs + 72   derived 48\u00b7(len xs + 1) + 24\u00b7(\u03c9(?len) + 1)   UNPROVED (opaque: ?len)"
+      ]
+    },
+    {
+      "case": "false-recursive-invariant",
+      "result": "incorrectly-accepted-by-baseline",
+      "diagnostics": [
+        "combine: declared alloc <= 72\u00b7len xs + 72   derived 72\u00b7(len xs + 1)   PROVEN"
+      ]
+    },
+    {
+      "case": "false-annotation",
+      "harts": 1,
+      "stdout": "16\n",
+      "allocation_counters": {
+        "alloc_requests": 3,
+        "alloc_bytes": 112,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "case": "false-annotation",
+      "harts": 4,
+      "stdout": "16\n",
+      "allocation_counters": {
+        "alloc_requests": 3,
+        "alloc_bytes": 112,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "case": "false-annotation",
+      "diagnostics": [
+        "combine: declared alloc <= 80   derived 80   PROVEN",
+        "make: declared size <= 0   verified size <= 8   OVER (constant: derived 8, declared 0)"
+      ]
+    },
+    {
+      "case": "correct-annotation",
+      "harts": 1,
+      "stdout": "16\n",
+      "allocation_counters": {
+        "alloc_requests": 3,
+        "alloc_bytes": 112,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "case": "correct-annotation",
+      "harts": 4,
+      "stdout": "16\n",
+      "allocation_counters": {
+        "alloc_requests": 3,
+        "alloc_bytes": 112,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "case": "correct-annotation",
+      "diagnostics": [
+        "combine: declared alloc <= 80   derived 80   PROVEN",
+        "make: declared size <= 8   verified size <= 8   PROVEN"
+      ]
+    },
+    {
+      "case": "library-size-proof",
+      "name": "range",
+      "diagnostic": "range@3a073ebe861d50fd: declared size <= max(0, (-1)\u00b7a + b + 1)   verified size <= max(0, (-1)\u00b7a + b + 1)   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "repeat",
+      "diagnostic": "repeat@3a073ebe861d50fd: declared size <= max(0, n)   verified size <= max(0, n)   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "reverse",
+      "diagnostic": "reverse@3a073ebe861d50fd: declared size <= len xs   verified size <= len xs   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "append",
+      "diagnostic": "append@3a073ebe861d50fd: declared size <= len xs + len ys   verified size <= len xs + len ys   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "map",
+      "diagnostic": "map@3a073ebe861d50fd: declared size <= len xs   verified size <= len xs   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "indexedMap",
+      "diagnostic": "indexedMap@3a073ebe861d50fd: declared size <= len xs   verified size <= len xs   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "filter",
+      "diagnostic": "filter@3a073ebe861d50fd: declared size <= len xs   verified size <= len xs   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "filterMap",
+      "diagnostic": "filterMap@3a073ebe861d50fd: declared size <= len xs   verified size <= len xs   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "take",
+      "diagnostic": "take@3a073ebe861d50fd: declared size <= len xs   verified size <= len xs   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "drop",
+      "diagnostic": "drop@3a073ebe861d50fd: declared size <= len xs   verified size <= len xs   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "zip",
+      "diagnostic": "zip@3a073ebe861d50fd: declared size <= len xs   verified size <= len xs   PROVEN"
+    },
+    {
+      "case": "library-size-proof",
+      "name": "zipWith",
+      "diagnostic": "zipWith@3a073ebe861d50fd: declared size <= len xs   verified size <= len xs   PROVEN"
+    },
+    {
+      "case": "unsupported-library-size",
+      "name": "unique",
+      "diagnostic": "unique@3a073ebe861d50fd: declared size <= len xs   UNPROVED (no result-size lemma; annotation is not used)"
+    },
+    {
+      "case": "unsupported-library-size",
+      "name": "sortWith",
+      "diagnostic": "sortWith@3a073ebe861d50fd: declared size <= len xs   UNPROVED (no result-size lemma; annotation is not used)"
+    },
+    {
+      "case": "library",
+      "harts": 1,
+      "stdout": "0\n0\n1\n3\n2\n5\n"
+    },
+    {
+      "case": "library",
+      "harts": 4,
+      "stdout": "0\n0\n1\n3\n2\n5\n"
+    },
+    {
+      "case": "byte-string",
+      "harts": 1,
+      "stdout": "10\n"
+    },
+    {
+      "case": "byte-string",
+      "harts": 4,
+      "stdout": "10\n"
+    },
+    {
+      "case": "byte-string-baseline",
+      "harts": 1,
+      "stdout": "10\n"
+    },
+    {
+      "case": "byte-string-baseline",
+      "harts": 4,
+      "stdout": "10\n"
+    },
+    {
+      "case": "minimum-range-trap",
+      "compiler": "current",
+      "harts": 1,
+      "stdout": "before\n",
+      "result": "overflow"
+    },
+    {
+      "case": "minimum-range-trap",
+      "compiler": "current",
+      "harts": 4,
+      "stdout": "before\n",
+      "result": "overflow"
+    },
+    {
+      "case": "minimum-range-trap",
+      "compiler": "baseline",
+      "harts": 1,
+      "stdout": "before\n",
+      "result": "overflow"
+    },
+    {
+      "case": "minimum-range-trap",
+      "compiler": "baseline",
+      "harts": 4,
+      "stdout": "before\n",
+      "result": "overflow"
+    }
+  ],
+  "limits": [
+    "Result-size lemmas bound successful returns; they do not prove termination or total work.",
+    "Unproved annotations are not used; nested-container totals and unknown callback sizes remain unsupported.",
+    "Source requested-byte bounds are not physical arena/stack admission or hardware timing."
+  ]
+}

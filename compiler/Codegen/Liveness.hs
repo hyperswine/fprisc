@@ -141,8 +141,11 @@ analyseLiveness items = Liveness instrs blocks intervals live
     byIndexOuts = IM.fromList (zip [0 ..] [out | (_, _, out) <- sets])
     blockIn b = setAt (sbFirst b)
     blockOut b = outAt (sbLast b)
-    defPositions = M.fromListWith (flip (++)) [(v, [p]) | (p, i) <- instrs, v <- instrDefs i]
-    usePositions = M.fromListWith (flip (++)) [(v, [p]) | (p, i) <- instrs, v <- instrUses i]
+    -- Prepend positions, then reverse once per value. Appending each new
+    -- singleton copied an increasingly long history for frequently used
+    -- values in straight-line blocks.
+    defPositions = M.map reverse (M.fromListWith (++) [(v, [p]) | (p, i) <- instrs, v <- instrDefs i])
+    usePositions = M.map reverse (M.fromListWith (++) [(v, [p]) | (p, i) <- instrs, v <- instrUses i])
     entries = M.fromListWith min (concatMap firstOf blocks)
     exits = M.fromListWith max (concatMap lastOf blocks)
     intervals =

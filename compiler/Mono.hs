@@ -2,10 +2,11 @@
 {-# LANGUAGE TupleSections #-}
 -- Function-argument specialization on lifted Core. Unknown/escaping functions
 -- retain the open-world callable ABI. Budgets always fall back to original calls.
-module Mono (specializeFunctions,specializeFunctionsWithImports,specializeCompatibility, qualifyAux, references) where
+module Mono (specializeFunctions,specializeFunctionsWithImports,specializeCompatibility,specializeCompatibilityWithProducts, qualifyAux, references) where
 
 import Core.Syntax (Core(..), Name, Prog, freeVars)
 import Core.Analysis.Scope (qualifyPrivate)
+import Core.Opt.ProductParameters
 import Data.Graph (SCC(..), stronglyConnComp)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
@@ -32,7 +33,12 @@ specializeFunctionsWithImports=specializeCompatibility S.empty
 -- Checked source/private bodies have already been specialized before region
 -- placement. The erased fallback may only clone compatibility/helper targets.
 specializeCompatibility :: S.Set Name -> S.Set Name -> String -> M.Map Name Int -> Prog -> Prog -> Prog
-specializeCompatibility checked importedCode namespace arities external input = includeAux result
+specializeCompatibility checked importedCode namespace arities external input =
+  fst (specializeCompatibilityWithProducts emptyProductParameters checked importedCode namespace arities external input)
+
+specializeCompatibilityWithProducts :: ProductParameters -> S.Set Name -> S.Set Name -> String -> M.Map Name Int -> Prog -> Prog -> (Prog,ProductParameters)
+specializeCompatibilityWithProducts products checked importedCode namespace arities external input =
+  (includeAux result,renameProductParameters (M.intersectionWith (\(ps,_) (qs,_)->(ps,qs)) input localInput) products)
   where
     -- Global callback identities must stay global even if the caller later
     -- shadows their spelling after binding an alias to the function value.

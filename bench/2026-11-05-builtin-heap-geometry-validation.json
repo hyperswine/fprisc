@@ -1,0 +1,133 @@
+{
+  "schema": "builtin-heap-geometry-validation-v1",
+  "compiler_codegen_revision": 179,
+  "compiler_sha256": "2df86ccc075c191a525185cc93726d814b98fd187819ce5eaacd9cab2c4e4e13",
+  "baseline_revision": "22e1e5537370f48ed1c7bd8f3435aa4a0b74836c",
+  "sources": {
+    "machine/builtin/heap.c": "409d7d0738af7b3184bc08b1a5921085f3f88779aa8d3636de8931dcab3991aa",
+    "machine/builtin/builtin.h": "fb7099bfda0f5c6b671ddba5a981970d58aafe7036b843492d18dbb16ba1ed57",
+    "runtime/fpr.h": "2f88cf32a2e3e99b0c68d0fee3569d803e96cb8846cc1916ecb697d0895cf85d",
+    "tests/builtin_heap_geometry.c": "83047be732f312cb1c9367afeb689736dc18765975b20125c0e49d67288b8f13",
+    "tests/check_builtin_heap_geometry.py": "790f0b732afacfda44044f214efc5e387e01331284bf88a393fa8ed0c892d597",
+    "tests/builtin_heap_index.c": "67cb14ad2af178ed8ffddd1e6c0403e170b9488a5b944f0ea390f9b478cef51c",
+    "tests/check_builtin_heap_index.py": "bb76813103c9befae28ec181bebfabac3c85b4a65f8508dd346f6c1133ed2b5d",
+    "tests/check_registry.py": "18d57ba519cbe3c79908ca8253850404e956cb7f5bd6ac9a65c37d6bb74a1ea4",
+    "tests/test_check_registry.py": "6224cc7f59ff705e319d83203d7ce4a330de31be253c6696a489b3a35b48cbcc",
+    "tools/bench_builtin_heap.py": "695a8a7709074ec05a47f91574a6bb8265c0e151dc264179e792539cac97f756",
+    "bench/2026-11-05-builtin-heap-geometry.json": "bd4ed905e28d93781bf7de476480932042f13622ee00ed06a76fc6f1827b3ce8",
+    "bench/2026-11-05-builtin-heap-geometry-cost.json": "d9a51714695e7ff62663d65a48b418c2f972da39ce05a883d97654d9b58641f9",
+    "bench/2026-11-05-heap-geometry-target-images.json": "8f8b44fde459671e7b58c5c82eea0106fcc01e23038f390cedcab6ac10ebfd63",
+    "docs/2026-11-05-BUILTIN-HEAP-GEOMETRY.md": "e82a10cc263fd390a4fd8faef5841e012d535bad099687aba366cb9e8f6065dc",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "3f2d906f8cc888535967896e502297257d3a84d5887366fa74f7902bc0d5cbbe"
+  },
+  "checks": [
+    {
+      "name": "geometry",
+      "command": "python3 tests/check_builtin_heap_geometry.py --require-execution --record bench/2026-11-05-builtin-heap-geometry.json",
+      "status": "PASS",
+      "log_sha256": "dce1373ad97a2edc98e291699a758c0dd3e6a68eec0d8ff940f0de90d76b68c0",
+      "output_tail": [
+        "Host ASan/UBSan: geometry, observed blocks, exact/short fixed arena PASS",
+        "RV32 QEMU: geometry, observed blocks, exact/short fixed arena PASS",
+        "RV64 QEMU: geometry, observed blocks, exact/short fixed arena PASS"
+      ]
+    },
+    {
+      "name": "heap-regression",
+      "command": "python3 tests/check_builtin_heap_index.py --baseline-ref HEAD",
+      "status": "PASS",
+      "log_sha256": "9d0c9d4bd62657c069eaea0cda1ec983facb334d24130eb996aaf0f4961dde16",
+      "output_tail": [
+        "INDEXED BUILTIN HEAP HOLDS",
+        "qemu-system-riscv32: warning: icount sleep disabled and no active timers",
+        "RV64IM QEMU: HEAP WORK nodes=512 allocations=512 lookups=1538 cycles=464659",
+        "HEAP WORK nodes=2048 allocations=2048 lookups=6146 cycles=1857811",
+        "HEAP WORK nodes=8192 allocations=8192 lookups=24578 cycles=7415793",
+        "INDEXED BUILTIN HEAP HOLDS",
+        "qemu-system-riscv64: warning: icount sleep disabled and no active timers",
+        "RV64 explicit refusals: 21 passed",
+        "RV64 bounded 64 KiB/8 MiB heaps, oversized refusal and complete bounded contracts: passed",
+        "RV64 baseline QEMU: HEAP WORK nodes=512 cycles=454400",
+        "HEAP WORK nodes=2048 cycles=1816832",
+        "HEAP WORK nodes=8192 cycles=7251934",
+        "INDEXED BUILTIN HEAP HOLDS",
+        "qemu-system-riscv64: warning: icount sleep disabled and no active timers"
+      ]
+    },
+    {
+      "name": "controlled-cost",
+      "command": "python3 tools/bench_builtin_heap.py --baseline-ref HEAD --record bench/2026-11-05-builtin-heap-geometry-cost.json",
+      "status": "PASS",
+      "log_sha256": "c75117452e919dee7ef04bb94a0173edc0506e25795e70b7a346818401b478e0",
+      "output_tail": [
+        "RV32: after/before guest instruction counts {'512': 1.0, '2048': 1.0, '8192': 1.0}",
+        "RV64: after/before guest instruction counts {'512': 1.0, '2048': 1.0, '8192': 1.0}"
+      ]
+    },
+    {
+      "name": "image",
+      "command": "python3 tests/check_target_image.py --record bench/2026-11-05-heap-geometry-target-images.json",
+      "status": "PASS",
+      "log_sha256": "ceea9465ef0b2c776c461d032b8156efcdd6ccb0a45bf5650c761d48cb0f7104",
+      "output_tail": [
+        "............",
+        "----------------------------------------------------------------------",
+        "Ran 12 tests in 0.001s",
+        "",
+        "OK",
+        "virt/bram ARC=0: linked image admitted; rejected replacements preserved all prior artifacts",
+        "virt/bram ARC=1: linked image admitted; rejected replacements preserved all prior artifacts",
+        "tangnano20k/bram ARC=0: linked image admitted; rejected replacements preserved all prior artifacts",
+        "tangnano20k/sdram ARC=0: linked image admitted; rejected replacements preserved all prior artifacts"
+      ]
+    },
+    {
+      "name": "arc",
+      "command": "python3 tests/check_typed_ir_arc.py --require-execution",
+      "status": "PASS",
+      "log_sha256": "deedc25a04038e1c31308b1c03d074ae9a7adce4253ae8414e312ac0621d2194",
+      "output_tail": [
+        "Offsets, natural alignment, U8/U16/U32, a pinned field, null/eq/index; no accessor in the image: PASS",
+        "Nominal: an Addr is not a Node, a Task is not a Node, a setter takes its field's type: PASS",
+        "Refused by name: a misaligned pin, a field declared twice, a field that collides with a helper: PASS",
+        "Free: no accessor call remains, and each function is no larger than its hand-written twin: PASS",
+        "Library unit: qualified names, weak shared stubs, C entries with the declared contract: PASS",
+        "Hidden-field ARC export admitted; unsigned/raw-managed exports and computed symbol names refused: PASS",
+        "C -> FP-RISC across every boundary type, a library beside a program, Addr.symbol resolved by the linker: PASS",
+        "C export adapters lp64: 2176 independent C calls, all boundary types, IEEE bits, arguments through 64 and hart cells, 128 nullary/tagged/shared/raw-worker probes, exact boundary allocations and no leaks PASS",
+        "Tagged/public versus raw/private preserves printed prefixes and overflow/division/alignment failures; wrong scalar kind refuses before effects: PASS",
+        "C export adapters lp64d: 1024 independent C calls, all boundary types, IEEE bits, separate integer/FP banks, 128 nullary/tagged/shared/raw-worker probes, exact boundary allocations and no leaks PASS",
+        "The allocator in FP-RISC: 10,000 ARC cycles, raw fields, machine primitives, a 6,000-node release, exhaustion refused by name: PASS",
+        "Raw byte library without ARC runtime/adapters: 2048 value/address cases and neighbor canaries PASS",
+        "Negative control: missing constructor field metadata fails the real ownership runtime PASS",
+        "Independent Python word/Int oracle: 879 checks, every shift/bit index, wrapping, high bits and checked arithmetic PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": "python3 tests/test_check_registry.py",
+      "status": "PASS",
+      "log_sha256": "c9adb9a47a3f663c3da512a2d05b8b1dcd4ce33edd20a124f7f9fc75083cd923",
+      "output_tail": [
+        "..check_ci: tests/check_rv64_linux.py::typed-runtime",
+        "check_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s",
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.087s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "qualification_limits": [
+    "Allocator geometry and observed capacity; not compiler proof of a whole program allocation budget",
+    "Request-size query returns a minimum block size; split tails, realloc retention and fragmentation remain explicit admission obligations",
+    "Host sanitizer and RV32/RV64 QEMU execution; no physical-device or remote CI evidence",
+    "Controlled cost is allocation/release guest instruction count, with initialization and printing excluded; no hardware WCET or wall-time claim",
+    "Compiler sources, codegen revision and cost budgets unchanged; no new Haskell/compiler-cost run needed for this runtime-only change",
+    "Working-tree milestone; no commit/push/deployment performed"
+  ]
+}

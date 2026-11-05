@@ -3,6 +3,23 @@
 #include "fpr.h"
 /* Initialize once, before allocations; [start,end) is caller-owned RAM. */
 void fpr_builtin_heap_init(void *start, void *end);
+/* Pure, allocation-free geometry queries for caller-owned RAM. They neither
+ * initialize nor inspect the current heap. Outputs are unchanged on refusal.
+ * A plan validates address arithmetic, not whether the RAM is mapped/owned.
+ * Prefix includes allocator metadata and the public 16-byte object prefix.
+ * A request size is the MINIMUM physical block size: splitting can consume
+ * up to block_prefix_bytes extra bytes as an unusable tail. Reallocation can
+ * retain still larger capacity, so this is not a realloc/peak-live bound. */
+typedef struct {
+  uw block_start, block_end, bitmap_bytes, block_prefix_bytes, minimum_block_bytes;
+} fpr_builtin_heap_plan;
+enum {
+  FPR_BUILTIN_HEAP_PLAN_OK = 0,
+  FPR_BUILTIN_HEAP_PLAN_TOO_SMALL = 1,
+  FPR_BUILTIN_HEAP_PLAN_EXCEEDS_MAX = 2
+};
+int fpr_builtin_heap_plan_range(void *start, void *end, fpr_builtin_heap_plan *out);
+int fpr_builtin_heap_request_size(uw requested_bytes, uw *minimum_block_bytes);
 V fpr_builtin_alloc_adt(V bytes, uw fields);
 uw fpr_builtin_live_allocations(void);
 typedef struct {

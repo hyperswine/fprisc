@@ -1,0 +1,54 @@
+{
+  "ghc-9.8.2 aarch64-apple-darwin": {
+    "16": {
+      "generic": {
+        "allocated_bytes": 129910128,
+        "max_bytes_used": 86088
+      },
+      "explicit": {
+        "allocated_bytes": 129951800,
+        "max_bytes_used": 85296
+      }
+    },
+    "32": {
+      "generic": {
+        "allocated_bytes": 230541312,
+        "max_bytes_used": 5714520
+      },
+      "explicit": {
+        "allocated_bytes": 230862864,
+        "max_bytes_used": 5024296
+      }
+    },
+    "64": {
+      "generic": {
+        "allocated_bytes": 437887720,
+        "max_bytes_used": 12189496
+      },
+      "explicit": {
+        "allocated_bytes": 438460592,
+        "max_bytes_used": 11155032
+      }
+    },
+    "128": {
+      "generic": {
+        "allocated_bytes": 886415392,
+        "max_bytes_used": 23432744
+      },
+      "explicit": {
+        "allocated_bytes": 887144296,
+        "max_bytes_used": 22131424
+      }
+    },
+    "256": {
+      "generic": {
+        "allocated_bytes": 1894006968,
+        "max_bytes_used": 73270384
+      },
+      "explicit": {
+        "allocated_bytes": 1894785200,
+        "max_bytes_used": 41333432
+      }
+    }
+  }
+}

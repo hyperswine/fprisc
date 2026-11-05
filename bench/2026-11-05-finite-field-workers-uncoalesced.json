@@ -1,0 +1,1206 @@
+{
+  "compiler_sha256": "5eaf7eb17d00365788e8b0f5a0894dd9aabfdb4be95b58fcd5f31a53e0cf2354",
+  "test_sha256": "48438e196f08797dc83a3e9da8d1a84e8469ce8096cdf8f8ff2134845d57e8af",
+  "old": false,
+  "rows": [
+    {
+      "case": "depth-5",
+      "mode": "default",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-5",
+      "mode": "default",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-5",
+      "mode": "boxed",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 5000,
+        "alloc_bytes": 160000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 16,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-5",
+      "mode": "boxed",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 5000,
+        "alloc_bytes": 160000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 16,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-5",
+      "mode": "explicit",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-5",
+      "mode": "explicit",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-8",
+      "mode": "default",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-8",
+      "mode": "default",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-8",
+      "mode": "boxed",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 8000,
+        "alloc_bytes": 256000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-8",
+      "mode": "boxed",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 8000,
+        "alloc_bytes": 256000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-8",
+      "mode": "explicit",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-8",
+      "mode": "explicit",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-16",
+      "mode": "default",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-16",
+      "mode": "default",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-16",
+      "mode": "boxed",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 16000,
+        "alloc_bytes": 512000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 18,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-16",
+      "mode": "boxed",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 16000,
+        "alloc_bytes": 512000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 18,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-16",
+      "mode": "explicit",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "depth-16",
+      "mode": "explicit",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-8",
+      "mode": "default",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-8",
+      "mode": "default",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-8",
+      "mode": "boxed",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 8000,
+        "alloc_bytes": 256000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-8",
+      "mode": "boxed",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 8000,
+        "alloc_bytes": 256000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-8",
+      "mode": "explicit",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-8",
+      "mode": "explicit",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-16",
+      "mode": "default",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-16",
+      "mode": "default",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-16",
+      "mode": "boxed",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 16000,
+        "alloc_bytes": 512000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 18,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-16",
+      "mode": "boxed",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 16000,
+        "alloc_bytes": 512000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 18,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-16",
+      "mode": "explicit",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-16",
+      "mode": "explicit",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-32",
+      "mode": "default",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-32",
+      "mode": "default",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-32",
+      "mode": "boxed",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 32000,
+        "alloc_bytes": 1024000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 19,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-32",
+      "mode": "boxed",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 32000,
+        "alloc_bytes": 1024000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 19,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-32",
+      "mode": "explicit",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-32",
+      "mode": "explicit",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-64",
+      "mode": "default",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-64",
+      "mode": "default",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-64",
+      "mode": "boxed",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 64000,
+        "alloc_bytes": 2048000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 21,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-64",
+      "mode": "boxed",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 64000,
+        "alloc_bytes": 2048000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 21,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-64",
+      "mode": "explicit",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "parameters-64",
+      "mode": "explicit",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "32000\n"
+    },
+    {
+      "case": "helpers-129",
+      "mode": "default",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "12384\n"
+    },
+    {
+      "case": "helpers-129",
+      "mode": "default",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "12384\n"
+    },
+    {
+      "case": "helpers-129",
+      "mode": "boxed",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 129,
+        "alloc_bytes": 4128,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "stdout": "12384\n"
+    },
+    {
+      "case": "helpers-129",
+      "mode": "boxed",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 129,
+        "alloc_bytes": 4128,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "stdout": "12384\n"
+    },
+    {
+      "case": "helpers-129",
+      "mode": "explicit",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "12384\n"
+    },
+    {
+      "case": "helpers-129",
+      "mode": "explicit",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "12384\n"
+    },
+    {
+      "case": "body-256",
+      "mode": "default",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "256000\n"
+    },
+    {
+      "case": "body-256",
+      "mode": "default",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "256000\n"
+    },
+    {
+      "case": "body-256",
+      "mode": "boxed",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "stdout": "256000\n"
+    },
+    {
+      "case": "body-256",
+      "mode": "boxed",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "stdout": "256000\n"
+    },
+    {
+      "case": "body-256",
+      "mode": "explicit",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "256000\n"
+    },
+    {
+      "case": "body-256",
+      "mode": "explicit",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "256000\n"
+    },
+    {
+      "case": "body-2048",
+      "mode": "default",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "2048000\n"
+    },
+    {
+      "case": "body-2048",
+      "mode": "default",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "2048000\n"
+    },
+    {
+      "case": "body-2048",
+      "mode": "boxed",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "stdout": "2048000\n"
+    },
+    {
+      "case": "body-2048",
+      "mode": "boxed",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 1000,
+        "alloc_bytes": 32000,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      },
+      "stdout": "2048000\n"
+    },
+    {
+      "case": "body-2048",
+      "mode": "explicit",
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "2048000\n"
+    },
+    {
+      "case": "body-2048",
+      "mode": "explicit",
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "stdout": "2048000\n"
+    },
+    {
+      "case": "let-order",
+      "modes": 4,
+      "returncode": 0,
+      "stdout": "payload\nbetween\n39\n",
+      "stderr": ""
+    },
+    {
+      "case": "max-success",
+      "modes": 4,
+      "returncode": 0,
+      "stdout": "4611686018427387903\n",
+      "stderr": ""
+    },
+    {
+      "case": "min-success",
+      "modes": 4,
+      "returncode": 0,
+      "stdout": "-4611686018427387872\n",
+      "stderr": ""
+    },
+    {
+      "case": "overflow",
+      "modes": 4,
+      "returncode": 1,
+      "stdout": "before\n",
+      "stderr": "[ERR] Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\n\n*** FPRISC PANIC [actor 0]: Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps ***\n"
+    },
+    {
+      "case": "division-first",
+      "modes": 4,
+      "returncode": 1,
+      "stdout": "before\n",
+      "stderr": "[ERR] division by zero\n\n*** FPRISC PANIC [actor 0]: division by zero ***\n"
+    },
+    {
+      "case": "inner-message-fallback",
+      "mode": "default",
+      "harts": 1,
+      "stdout": "39\n85\n"
+    },
+    {
+      "case": "inner-message-fallback",
+      "mode": "default",
+      "harts": 4,
+      "stdout": "39\n85\n"
+    },
+    {
+      "case": "inner-message-fallback",
+      "mode": "boxed",
+      "harts": 1,
+      "stdout": "39\n85\n"
+    },
+    {
+      "case": "inner-message-fallback",
+      "mode": "boxed",
+      "harts": 4,
+      "stdout": "39\n85\n"
+    }
+  ]
+}

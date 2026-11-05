@@ -1,0 +1,113 @@
+{
+  "compiler_sha256": "59e53da796bf8298bf80db0d78918ee987e2e089e9012d1828e481abfa129ae2",
+  "rows": [
+    {
+      "form": "storage",
+      "size": 16,
+      "allocated_bytes": 1431741456,
+      "peak_bytes": 39121864,
+      "seconds": 0.6746484999894165,
+      "text_bytes": 19488,
+      "disassembly_sha256": "d1cd68c25849c623e8fd9b0b4acc444ddbed5073299edfb9de19dbd0483b8365",
+      "source_sha256": "b9673afe4f570cc74158d8e674e3f7bbe7de870fdb581ffcccb8509767accb16",
+      "storage_producers": 16,
+      "storage_readers": 16
+    },
+    {
+      "form": "explicit",
+      "size": 16,
+      "allocated_bytes": 1360957760,
+      "peak_bytes": 25289720,
+      "seconds": 0.61247574997833,
+      "text_bytes": 10796,
+      "disassembly_sha256": "caca384998edc71e0af65a474c04757b7cf0f3ba17db37748b234559e479d4bc",
+      "source_sha256": "54303c0b2f730df087c5f404ff99c0807fc1af16912a526ac45c36224278b1ef",
+      "storage_producers": 0,
+      "storage_readers": 0
+    },
+    {
+      "form": "rollback",
+      "size": 16,
+      "allocated_bytes": 1385011416,
+      "peak_bytes": 41463632,
+      "seconds": 0.6258895840146579,
+      "text_bytes": 11980,
+      "disassembly_sha256": "d9408b966e0fa885aa31bcf85bd10362e1abfa7ca44b6ba70d7c317f02e38857",
+      "source_sha256": "b9673afe4f570cc74158d8e674e3f7bbe7de870fdb581ffcccb8509767accb16",
+      "storage_producers": 0,
+      "storage_readers": 0
+    },
+    {
+      "form": "storage",
+      "size": 64,
+      "allocated_bytes": 2207474752,
+      "peak_bytes": 43058040,
+      "seconds": 0.9598890420165844,
+      "text_bytes": 75360,
+      "disassembly_sha256": "b49cf7465ebacdff2bf4ac150bf5822eeb546e47fc095e45d7bca416c9dc4d12",
+      "source_sha256": "c8a0da948f2364d0264ef3a6b208fae34103396b5390b8d114bea22b63532a81",
+      "storage_producers": 64,
+      "storage_readers": 64
+    },
+    {
+      "form": "explicit",
+      "size": 64,
+      "allocated_bytes": 1927904976,
+      "peak_bytes": 46323968,
+      "seconds": 0.8763004160136916,
+      "text_bytes": 41612,
+      "disassembly_sha256": "fb5e87f96a580a8f5a6c3afc1123c46e20284115222764dea90b163dd3a96612",
+      "source_sha256": "e0e7fb2c4d2120c4ce33e3c8e5e49898ad0caf0f154a3293ca61e714007391c7",
+      "storage_producers": 0,
+      "storage_readers": 0
+    },
+    {
+      "form": "rollback",
+      "size": 64,
+      "allocated_bytes": 2018722528,
+      "peak_bytes": 41619112,
+      "seconds": 0.8513607089989819,
+      "text_bytes": 46348,
+      "disassembly_sha256": "a67a923b9a3429385a214b4eaf5091c6c8a9ddf803d997ebf79113d47dab154c",
+      "source_sha256": "c8a0da948f2364d0264ef3a6b208fae34103396b5390b8d114bea22b63532a81",
+      "storage_producers": 0,
+      "storage_readers": 0
+    },
+    {
+      "form": "storage",
+      "size": 256,
+      "allocated_bytes": 5531635528,
+      "peak_bytes": 104849272,
+      "seconds": 2.3199741669814102,
+      "text_bytes": 298848,
+      "disassembly_sha256": "ba8e9d698ebfed912e5869583d5b56be284a0c47881d67d1d663195fd0bbf559",
+      "source_sha256": "0a5a39b8e6e21d3ffe37ff36f8cb8c92326832c2030b76b146186c499fee97a0",
+      "storage_producers": 256,
+      "storage_readers": 256
+    },
+    {
+      "form": "explicit",
+      "size": 256,
+      "allocated_bytes": 4413293952,
+      "peak_bytes": 71361560,
+      "seconds": 1.8633392079500481,
+      "text_bytes": 164876,
+      "disassembly_sha256": "1ffe80bad08d5eaef6391197d44fa8f09a71c7f87c276e4258c5fb9e235e487f",
+      "source_sha256": "e632eda6b6699148b430841592ee0feca309049d7209af3a595af0da1a2ff719",
+      "storage_producers": 0,
+      "storage_readers": 0
+    },
+    {
+      "form": "rollback",
+      "size": 256,
+      "allocated_bytes": 4773408024,
+      "peak_bytes": 82430296,
+      "seconds": 2.062911041022744,
+      "text_bytes": 183820,
+      "disassembly_sha256": "ae74f20095324f8222c5570363166e4f19fe325038b6e5bfa082731698f1e5ae",
+      "source_sha256": "0a5a39b8e6e21d3ffe37ff36f8cb8c92326832c2030b76b146186c499fee97a0",
+      "storage_producers": 0,
+      "storage_readers": 0
+    }
+  ]
+}

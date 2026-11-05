@@ -1,0 +1,124 @@
+{
+  "schema": "builtin-heap-cost-v1",
+  "baseline_revision": "22e1e5537370f48ed1c7bd8f3435aa4a0b74836c",
+  "baseline_heap_sha256": "4574011c7c362e68fd97ad712b113fa945936870623acacd8b455d61ce77e423",
+  "heap_sha256": "409d7d0738af7b3184bc08b1a5921085f3f88779aa8d3636de8931dcab3991aa",
+  "fixture_sha256": "67cb14ad2af178ed8ffddd1e6c0403e170b9488a5b944f0ea390f9b478cef51c",
+  "tool_sha256": "695a8a7709074ec05a47f91574a6bb8265c0e151dc264179e792539cac97f756",
+  "compiler": "riscv64-unknown-elf-gcc (g04696df09) 14.2.0",
+  "flags": [
+    "-std=c11",
+    "-Iruntime",
+    "-Imachine/builtin",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-Wno-unused-function",
+    "-mcmodel=medany",
+    "-Os",
+    "-ffreestanding",
+    "-fno-builtin",
+    "-nostdlib",
+    "-nostartfiles",
+    "-DFPR_BUILTIN",
+    "-DFPR_BUILTIN_ARC",
+    "-DHEAP_FREESTANDING",
+    "-DHEAP_WORK_ONLY",
+    "-ffunction-sections",
+    "-fdata-sections",
+    "-Wl,--gc-sections"
+  ],
+  "measure": "deterministic guest instruction counts; no statistics/lookup counters; not hardware cycles or wall time",
+  "records": [
+    {
+      "target": "rv32",
+      "architecture_flags": [
+        "-march=rv32im_zicsr",
+        "-mabi=ilp32"
+      ],
+      "qemu_command": [
+        "qemu-system-riscv32",
+        "-machine",
+        "virt",
+        "-smp",
+        "1",
+        "-m",
+        "16M",
+        "-nographic",
+        "-bios",
+        "none",
+        "-icount",
+        "shift=0,sleep=off"
+      ],
+      "qemu_version": "QEMU emulator version 11.1.3",
+      "samples": {
+        "before": {
+          "guest_instruction_counts": {
+            "512": 424700,
+            "2048": 1698044,
+            "8192": 6782718
+          },
+          "image_sha256": "1a5c7cf2ac8761e038f67d2609b7972092b93c1665877d9ba5bce426b648aa4d"
+        },
+        "after": {
+          "guest_instruction_counts": {
+            "512": 424700,
+            "2048": 1698044,
+            "8192": 6782718
+          },
+          "image_sha256": "fef130c33f1f6306a3173a6b5f25b798b3d001aefdd84714533912edf873c65e"
+        }
+      },
+      "ratios": {
+        "512": 1.0,
+        "2048": 1.0,
+        "8192": 1.0
+      }
+    },
+    {
+      "target": "rv64",
+      "architecture_flags": [
+        "-march=rv64im_zicsr",
+        "-mabi=lp64"
+      ],
+      "qemu_command": [
+        "qemu-system-riscv64",
+        "-machine",
+        "virt",
+        "-smp",
+        "1",
+        "-m",
+        "16M",
+        "-nographic",
+        "-bios",
+        "none",
+        "-icount",
+        "shift=0,sleep=off"
+      ],
+      "qemu_version": "QEMU emulator version 11.1.3",
+      "samples": {
+        "before": {
+          "guest_instruction_counts": {
+            "512": 454400,
+            "2048": 1816832,
+            "8192": 7251934
+          },
+          "image_sha256": "450c7a453f77f4e65ad3f818774efc698b5c91826033b85b6b5f1635e8e8bdf5"
+        },
+        "after": {
+          "guest_instruction_counts": {
+            "512": 454400,
+            "2048": 1816832,
+            "8192": 7251934
+          },
+          "image_sha256": "6e69b0b9c709c65f018cde310999285d4269a12118a712ea13d59f67e760cd65"
+        }
+      },
+      "ratios": {
+        "512": 1.0,
+        "2048": 1.0,
+        "8192": 1.0
+      }
+    }
+  ]
+}

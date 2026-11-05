@@ -8,6 +8,7 @@ module Codegen.Target.Common
     SymbolPolicy,symbolPolicy,publicSymbols,symbolNames,
     Visibility(..),WeakSpelling(..),visibilityFor,visibilityLines ) where
 import Codegen.Bounds (Report)
+import qualified Codegen.Stack as Stack
 import Codegen.IR (Name)
 import qualified Codegen.IR as IR
 import Codegen.Frame
@@ -120,6 +121,7 @@ data NativeFn = NativeFn
   { nfName :: String,
     nfLines :: [String], -- the assembly, header comment through the bound line
     nfReport :: Report,
+    nfStack :: Stack.Frame, -- physical layout and selected call boundaries
     nfNullaries :: [(Int, Int)], -- the unit-local nullary objects referenced
     nfStrings :: [String], -- the string literals referenced (an unreachable arm's reason); the unit emits one object per distinct text, `stringLabel`
     nfBoxedFloats :: [(IR.Width,Integer)], -- RV32 immutable numeric leaves, emitted once per IEEE width/bit pattern

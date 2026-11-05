@@ -1,0 +1,212 @@
+{
+  "host": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "count": 20000000,
+  "samples": 13,
+  "tool_sha256": "4a95cdb00c3ebbbb8f9f073e47721209fa01e3f8945a7b8c570788156fe3842e",
+  "fixture_sha256": "058e3b98ac59d79ed75440e84f432956c1b9c3475cd94f9b11621867eb056be0",
+  "tree_fixture_sha256": "2a008c474ef386530c25f8a21ff8ed25fdf8b20c14edcd01de358dc450d40150",
+  "shape": "single",
+  "finite_fixture_sha256": "5f87bb9755bd227c522709086d2c4f77d36060bb8ad204beb5a00f6699863168",
+  "finite_kind": null,
+  "amount": 8,
+  "return_fixture_sha256": "c34701dd02b465ccefe11fa87f2919b6d902f8d7179e8feb4d14560da80c04fc",
+  "unary_return": true,
+  "compiler_sha256": "d2f5c23cb14f985ce548500b3b38c6db63396731896d901c1e8d0b62e32c076c",
+  "runtime_sha256": {
+    "runtime/runtime.c": "34577e61f4c13acc1013574d91bfd6405ff8cc749fad8183f25e04396cb35c85",
+    "runtime/actors.c": "d44005419a3dd44aecd50b39e165db3c2953d965e6650bff062003236505ca3e",
+    "runtime/i32.h": "1aebe94f294c233df1c6b376a48d0c2189b1a1f9842d09c43315162f527be6e6",
+    "runtime/buddy.c": "8c8fecc5399a4ce1eea346bd2d83a95b2f530a1416343bf44b69f778b6c2d4f7",
+    "runtime/mod.c": "16cf103b2484e8d3e881a9b3e2a87353904f07d6c05dedae7427ec02704bd90b",
+    "runtime/vec_layout.h": "c58dc8eb8e6af7bba31d78ac8ddb0ad3878be8ff8769165c599925d72b3dfbc9",
+    "runtime/sched_probe.h": "94441412dcf75fc2b2fb2455f27e2aa894cc0977d9336d4fbeb55b89b01c64ff",
+    "runtime/bits.c": "70b29db5f31d7f92c6c418c9470ef6e622a88f9108a16359b89aef771bb68111",
+    "runtime/vec.c": "d31611331518bb9b553da791a3864fe6525fd26c2daa7a504fe4f2f665e3210e",
+    "runtime/i32.c": "a9d59f4c8c7713e61e275410c234c519aae5b2e2fb9498dfcf56bfe27aeceee4",
+    "runtime/sstr.c": "6235f9af5d7e1caf19021e5c3e767fa20aa7b05539a3b4c0ff58328a6e5c500b",
+    "runtime/fpr.h": "2f88cf32a2e3e99b0c68d0fee3569d803e96cb8846cc1916ecb697d0895cf85d"
+  },
+  "inlining": "normal",
+  "regions": "normal",
+  "timing": "uninstrumented alternating native subprocess wall time",
+  "results": [
+    {
+      "form": "before",
+      "compiler_sha256": "b7a94a303c588e2176ad71e9b4236eabe467dc294e9255bf166566e5b8ebf035",
+      "source_sha256": "2b76ea965a7d45770a07b58dee40ce22f97b3943af4067c5d0186a25813b848a",
+      "switches": {},
+      "cost": {
+        "alloc_requests": 20009766,
+        "alloc_bytes": 640312640,
+        "copies": 9765,
+        "copy_bytes": 312448,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 9764,
+        "state_bytes": 312448,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "compile_cost": {
+        "allocated_bytes": 1516489032,
+        "max_bytes_used": 30934544,
+        "wall_seconds": 1.1766199999838136,
+        "root_text_bytes": 1788,
+        "root_functions": 6,
+        "target": "rv64imafdc_zicsr/lp64",
+        "scope": "Cold whole compiler; root-unit text only"
+      },
+      "samples_seconds": [
+        0.08909299998776987,
+        0.08457083400571719,
+        0.08018354198429734,
+        0.08981691702501848,
+        0.08656870800768957,
+        0.09140916599426419,
+        0.09181424998678267,
+        0.08713587501551956,
+        0.08070745901204646,
+        0.08307079196674749,
+        0.08749020798131824,
+        0.08991020801477134,
+        0.08923570899059996
+      ],
+      "median_seconds": 0.08749020798131824
+    },
+    {
+      "form": "after",
+      "compiler_sha256": "d2f5c23cb14f985ce548500b3b38c6db63396731896d901c1e8d0b62e32c076c",
+      "source_sha256": "2b76ea965a7d45770a07b58dee40ce22f97b3943af4067c5d0186a25813b848a",
+      "switches": {},
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "compile_cost": {
+        "allocated_bytes": 1517337528,
+        "max_bytes_used": 30927744,
+        "wall_seconds": 1.1586837919894606,
+        "root_text_bytes": 1936,
+        "root_functions": 7,
+        "target": "rv64imafdc_zicsr/lp64",
+        "scope": "Cold whole compiler; root-unit text only"
+      },
+      "samples_seconds": [
+        0.07830345805268735,
+        0.07583466696087271,
+        0.06700587505474687,
+        0.0760905840434134,
+        0.07870600000023842,
+        0.06901674997061491,
+        0.07089320803061128,
+        0.06704329198691994,
+        0.08965058298781514,
+        0.06898016599006951,
+        0.0716895840014331,
+        0.07053349999478087,
+        0.07096287503372878
+      ],
+      "median_seconds": 0.07096287503372878
+    },
+    {
+      "form": "explicit",
+      "compiler_sha256": "d2f5c23cb14f985ce548500b3b38c6db63396731896d901c1e8d0b62e32c076c",
+      "source_sha256": "2792fbf94a480774e53f60c551a62c191d647fb8b986a67e373c337f23554d45",
+      "switches": {},
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "compile_cost": {
+        "allocated_bytes": 1514133808,
+        "max_bytes_used": 30963552,
+        "wall_seconds": 1.0891840419499204,
+        "root_text_bytes": 1628,
+        "root_functions": 6,
+        "target": "rv64imafdc_zicsr/lp64",
+        "scope": "Cold whole compiler; root-unit text only"
+      },
+      "samples_seconds": [
+        0.10132791596697643,
+        0.10370970796793699,
+        0.09907558298436925,
+        0.10310491599375382,
+        0.10018224996747449,
+        0.08917416603071615,
+        0.09446145803667605,
+        0.0962403750163503,
+        0.09367933397879824,
+        0.09629033401142806,
+        0.09903337497962639,
+        0.10385983297601342,
+        0.09828870801720768
+      ],
+      "median_seconds": 0.09903337497962639
+    },
+    {
+      "form": "rollback",
+      "compiler_sha256": "d2f5c23cb14f985ce548500b3b38c6db63396731896d901c1e8d0b62e32c076c",
+      "source_sha256": "2b76ea965a7d45770a07b58dee40ce22f97b3943af4067c5d0186a25813b848a",
+      "switches": {
+        "FPR_NO_PAIR_RETURNS": "1"
+      },
+      "cost": {
+        "alloc_requests": 20009766,
+        "alloc_bytes": 640312640,
+        "copies": 9765,
+        "copy_bytes": 312448,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 9764,
+        "state_bytes": 312448,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "compile_cost": {
+        "allocated_bytes": 1516489744,
+        "max_bytes_used": 36347640,
+        "wall_seconds": 1.1942570409737527,
+        "root_text_bytes": 1788,
+        "root_functions": 6,
+        "target": "rv64imafdc_zicsr/lp64",
+        "scope": "Cold whole compiler; root-unit text only"
+      },
+      "samples_seconds": [
+        0.09447449998697266,
+        0.09047620801720768,
+        0.09159983397694305,
+        0.08784379198914394,
+        0.09080566698685288,
+        0.08866808301536366,
+        0.08629725000355393,
+        0.09265562501968816,
+        0.09040262503549457,
+        0.09562808403279632,
+        0.09248658403521404,
+        0.09239612496457994,
+        0.0859454579767771
+      ],
+      "median_seconds": 0.09080566698685288
+    }
+  ]
+}

@@ -1,0 +1,246 @@
+{
+  "status": "PASS",
+  "compiler_sha256": "bd1658ed548107f528ece6a42a746ab51f56d1e95b584a29d4673fe22038dc80",
+  "kernel_sha256": "fa5212db039b1e62b14eac585ba5f31c01d7a0017f92ced73ce6f089e1273465",
+  "binaries": {
+    "alloc0": "1bed02db860a3930e97d79f52d555891168e6fae4d2ed434eae702832b3e87ab",
+    "alloc1": "f24f92acef9612cd43e95ff9ed8194c40e93a961dedb64af9f5752ae60b34e1c",
+    "control0": "6961827c301c2d1ac69e8b85decab85a94ee0bd267cb50cbbc1d7a404e2d8447",
+    "control1": "51169b235b2041f94703f11dc57672dcb6573c4015386fc3177f95220e2620ea"
+  },
+  "sources": {
+    "alloc": "b7342cb9ba9a92a3c74c2da7d8125bab4e1a01f3f406ad40bd1dd916b724cd0d",
+    "control": "bdbddc9023edc4cfeff863b4eb5bb8630bd87373b99acac7bf03697b48dbf35e"
+  },
+  "console_sha256": "ffd69a16c946516ad53b0ed41e730c47a9c26a2624cd07f95b2c94c720df7008",
+  "rows": [
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "1502511\n",
+      "trap": null,
+      "binary": "alloc0",
+      "allocations": 2000
+    },
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "1502511\n",
+      "trap": null,
+      "binary": "alloc0",
+      "allocations": 2000
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "1502511\n",
+      "trap": null,
+      "binary": "alloc1",
+      "allocations": 0
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "1502511\n",
+      "trap": null,
+      "binary": "alloc1",
+      "allocations": 0
+    },
+    {
+      "case": "ok",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "2\n11\n7\n22\n2\n1\n0\n11\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "division",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "2\n11\n",
+      "trap": "division",
+      "binary": "control0"
+    },
+    {
+      "case": "overflow",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "2\n11\n10\n",
+      "trap": "overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "observe",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "(4, 5)\n(4, 5)\n9\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "other",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "10\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "actor",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "([2, 1], [3, 2, 1], [4, 3, 2, 1])\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "ok",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "2\n11\n7\n22\n2\n1\n0\n11\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "division",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "2\n11\n",
+      "trap": "division",
+      "binary": "control0"
+    },
+    {
+      "case": "overflow",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "2\n11\n10\n",
+      "trap": "overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "observe",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "(4, 5)\n(4, 5)\n9\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "other",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "10\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "actor",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "([2, 1], [3, 2, 1], [4, 3, 2, 1])\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "ok",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "2\n11\n7\n22\n2\n1\n0\n11\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "division",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "2\n11\n",
+      "trap": "division",
+      "binary": "control1"
+    },
+    {
+      "case": "overflow",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "2\n11\n10\n",
+      "trap": "overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "observe",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "(4, 5)\n(4, 5)\n9\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "other",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "10\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "actor",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "([2, 1], [3, 2, 1], [4, 3, 2, 1])\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "ok",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "2\n11\n7\n22\n2\n1\n0\n11\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "division",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "2\n11\n",
+      "trap": "division",
+      "binary": "control1"
+    },
+    {
+      "case": "overflow",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "2\n11\n10\n",
+      "trap": "overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "observe",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "(4, 5)\n(4, 5)\n9\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "other",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "10\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "actor",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "([2, 1], [3, 2, 1], [4, 3, 2, 1])\n",
+      "trap": null,
+      "binary": "control1"
+    }
+  ]
+}

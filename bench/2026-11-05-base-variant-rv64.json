@@ -1,0 +1,601 @@
+{
+  "status": "PASS",
+  "compiler_sha256": "c3f31da0185ea59ca7b084520bb99e01b505326a16c96760453b7fa4f4aef5e9",
+  "kernel_sha256": "fa5212db039b1e62b14eac585ba5f31c01d7a0017f92ced73ce6f089e1273465",
+  "binaries": {
+    "alloc0": "4616b36922af49affd51e8d5b7fea86dae1bbb385f5c843a00e5ba6e0e17f62a",
+    "alloc1": "500239cb24fcd982e51b6255a627957c7b2335544a96f40866aac043236be36e",
+    "control0": "18be7492b99bd1d9ef70ba6615566022b535f345809227b4d26855bf6b7ebf2a",
+    "control1": "0cc1142169d6b4084eb497d44bf782ec2394eceb8ae0111d8600227f6dd8e6d3",
+    "active0": "1cf886140dfd81319a850e06fced30133d82b1ee02ea60775f2aaf2cf6574477",
+    "active1": "7db6527e8909411e17413e776c8f770494376ff2e4e865a73fa6c62c0bdb0fed"
+  },
+  "sources": {
+    "alloc": "c706e45458ea567780e6101cb478ff25e998cfb0b1b1651b2fd6fb266f095ea9",
+    "control": "d99a5f8ea5f67158be3ffa0a5202c4f624684da49223f73fc8faf846eea9dda8",
+    "active": "e320c69c8178f304d19cf3140a859142bf33005216ee63121dd9040613730374"
+  },
+  "console_sha256": "48a66bc7a40b594a370b12324e3970d86abe69fef357f0d719c88463fefa5c75",
+  "rows": [
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "alloc0",
+      "allocations": 1000
+    },
+    {
+      "case": "allocation",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "alloc0",
+      "allocations": 1000
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "alloc1",
+      "allocations": 0
+    },
+    {
+      "case": "allocation",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "alloc1",
+      "allocations": 0
+    },
+    {
+      "case": "empty",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "single",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "9\n10\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "double",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "5\n8\n7\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "mutual",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "2\n8\n4\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "other",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "7\n7\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "division",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "",
+      "trap": "division by zero",
+      "binary": "control0"
+    },
+    {
+      "case": "overflow",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "",
+      "trap": "Int overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "width",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "12\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "unused-overflow",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "unused-division",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "7\n8\n",
+      "trap": "division by zero",
+      "binary": "control0"
+    },
+    {
+      "case": "max-success",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "4611686018427387902\n4611686018427387903\n10\n4611686018427387902\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "min-success",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "-4611686018427387904\n-4611686018427387903\n5\n-4611686018427387904\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "wide-fallback",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "6\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "mixed",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "5\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "escape",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "5\n8\nDouble 5 True\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "actor",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "Wide 4 5 4 4 4 4 6\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "empty",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "single",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "9\n10\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "double",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "5\n8\n7\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "mutual",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "2\n8\n4\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "other",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "7\n7\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "division",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "",
+      "trap": "division by zero",
+      "binary": "control0"
+    },
+    {
+      "case": "overflow",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "",
+      "trap": "Int overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "width",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "12\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "unused-overflow",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "binary": "control0"
+    },
+    {
+      "case": "unused-division",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "7\n8\n",
+      "trap": "division by zero",
+      "binary": "control0"
+    },
+    {
+      "case": "max-success",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "4611686018427387902\n4611686018427387903\n10\n4611686018427387902\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "min-success",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "-4611686018427387904\n-4611686018427387903\n5\n-4611686018427387904\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "wide-fallback",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "6\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "mixed",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "5\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "escape",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "5\n8\nDouble 5 True\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "actor",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "Wide 4 5 4 4 4 4 6\n",
+      "trap": null,
+      "binary": "control0"
+    },
+    {
+      "case": "empty",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "single",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "9\n10\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "double",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "5\n8\n7\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "mutual",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "2\n8\n4\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "other",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "7\n7\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "division",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "",
+      "trap": "division by zero",
+      "binary": "control1"
+    },
+    {
+      "case": "overflow",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "",
+      "trap": "Int overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "width",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "12\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "unused-overflow",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "unused-division",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "7\n8\n",
+      "trap": "division by zero",
+      "binary": "control1"
+    },
+    {
+      "case": "max-success",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "4611686018427387902\n4611686018427387903\n10\n4611686018427387902\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "min-success",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "-4611686018427387904\n-4611686018427387903\n5\n-4611686018427387904\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "wide-fallback",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "6\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "mixed",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "5\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "escape",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "5\n8\nDouble 5 True\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "actor",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "Wide 4 5 4 4 4 4 6\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "empty",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "0\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "single",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "9\n10\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "double",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "5\n8\n7\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "mutual",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "2\n8\n4\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "other",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "7\n7\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "division",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "",
+      "trap": "division by zero",
+      "binary": "control1"
+    },
+    {
+      "case": "overflow",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "",
+      "trap": "Int overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "width",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "12\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "unused-overflow",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "binary": "control1"
+    },
+    {
+      "case": "unused-division",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "7\n8\n",
+      "trap": "division by zero",
+      "binary": "control1"
+    },
+    {
+      "case": "max-success",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "4611686018427387902\n4611686018427387903\n10\n4611686018427387902\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "min-success",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "-4611686018427387904\n-4611686018427387903\n5\n-4611686018427387904\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "wide-fallback",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "6\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "mixed",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "5\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "escape",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "5\n8\nDouble 5 True\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "actor",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "Wide 4 5 4 4 4 4 6\n",
+      "trap": null,
+      "binary": "control1"
+    },
+    {
+      "case": "active-region",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "1\n",
+      "trap": null,
+      "binary": "active0"
+    },
+    {
+      "case": "active-region",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "1\n",
+      "trap": null,
+      "binary": "active0"
+    },
+    {
+      "case": "active-region",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "1\n",
+      "trap": null,
+      "binary": "active1"
+    },
+    {
+      "case": "active-region",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "1\n",
+      "trap": null,
+      "binary": "active1"
+    }
+  ]
+}

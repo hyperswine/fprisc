@@ -1,0 +1,355 @@
+{
+  "schema": "unary-returns-validation-v1",
+  "codegen_revision": 192,
+  "compiler_sha256": "b84f85a4a0aed7cff7a2bacd76dc7c77c67d0d0860add9c2e5cae676bb973487",
+  "checks": [
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 15.3,
+      "log_sha256": "d67995bc2e0f632bc7e7de5395eb3bb96e582ae7f65ac104b6ed2dea3ec0503c",
+      "output_tail": [
+        "nearest else: OK",
+        "operator RHS: OK",
+        "final argument: OK",
+        "else owns trailing operator: OK",
+        "else owns trailing pipeline: OK",
+        "non-final case arm: OK",
+        "parentheses end conditional before pipeline: OK",
+        "parentheses end conditional before next argument: OK",
+        "Test suite if-precedence-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/if-precedence-check/test/fp-risc-0.13.1-if-precedence-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ]
+    },
+    {
+      "name": "native",
+      "command": [
+        "python3",
+        "tests/check_product_returns.py",
+        "--record",
+        "bench/2026-11-05-unary-returns.json"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 45.59,
+      "log_sha256": "76d0299ae78059789e746271c171a5c7a59823c4703fab006f8ddb9971f7fc6c",
+      "output_tail": [
+        "Unary returns: actor transport, unknown callbacks and mixed constructors PASS",
+        "Product returns: 96 held fields across calls/effects PASS",
+        "Product returns: ordered exact effect/trap differential PASS",
+        "Product returns: overflow exact effect/trap differential PASS",
+        "Product returns: division exact effect/trap differential PASS",
+        "Product returns: division-unused exact effect/trap differential PASS",
+        "Product returns: min-success exact effect/trap differential PASS",
+        "Product returns: eight-field mutual tail calls PASS",
+        "Product returns: tagged escape and heap-valued fields PASS",
+        "Product returns: a64mac width admission and register emission PASS",
+        "Product returns: rv64 width admission and register emission PASS",
+        "Product returns: x64 width admission and register emission PASS"
+      ]
+    },
+    {
+      "name": "baseline",
+      "command": [
+        "python3",
+        "tests/check_product_returns.py",
+        "--compiler",
+        "/tmp/fpr-before-unary-returns-192",
+        "--expect-unary-boxed",
+        "--record",
+        "bench/2026-11-05-unary-returns-before.json"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 58.52,
+      "log_sha256": "50b3e29d562a2eea9e636035cf5188ea4856aeab859cb685ba012494aab106f5",
+      "output_tail": [
+        "Unary returns: actor transport, unknown callbacks and mixed constructors PASS",
+        "Product returns: 96 held fields across calls/effects PASS",
+        "Product returns: ordered exact effect/trap differential PASS",
+        "Product returns: overflow exact effect/trap differential PASS",
+        "Product returns: division exact effect/trap differential PASS",
+        "Product returns: division-unused exact effect/trap differential PASS",
+        "Product returns: min-success exact effect/trap differential PASS",
+        "Product returns: eight-field mutual tail calls PASS",
+        "Product returns: tagged escape and heap-valued fields PASS",
+        "Product returns: a64mac width admission and register emission PASS",
+        "Product returns: rv64 width admission and register emission PASS",
+        "Product returns: x64 width admission and register emission PASS"
+      ]
+    },
+    {
+      "name": "rv64",
+      "command": [
+        "python3",
+        "tests/check_product_returns_rv.py",
+        "--require-execution"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 4.34,
+      "log_sha256": "8734d5f1f06f317ed097bbd05e29aece5e92ea3d1ec99df529521ef64ddbc758",
+      "output_tail": [
+        "Product returns RV64: 1 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 2 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 3 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 4 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 5 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 6 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 7 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "Product returns RV64: 8 fields, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS"
+      ]
+    },
+    {
+      "name": "x64",
+      "command": [
+        "python3",
+        "tests/check_product_returns_x64.py",
+        "--require-execution",
+        "--record",
+        "bench/2026-11-05-unary-returns-x64.json"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 15.06,
+      "log_sha256": "ea82d6e37bee76c02c7b2d925aaa92dbbe88cdf6a55156c4b67dcd57c08d0284",
+      "output_tail": [
+        "x64 product returns: 1 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 2 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 3 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 4 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 5 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 6 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 7 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 8 fields, repeated=False, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 product returns: 8 fields, repeated=True, product return: 2100 C-reference results with volatile-register clobbering fuel resets PASS",
+        "x64 real runtime: eight-field recursive results, three actors, observed fuel exhaustion and 1/4 harts PASS"
+      ]
+    },
+    {
+      "name": "x64-native",
+      "command": [
+        "python3",
+        "tests/check_product_returns.py",
+        "--target",
+        "macos-x86_64",
+        "--record",
+        "bench/2026-11-05-unary-returns-x64-native.json"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 67.39,
+      "log_sha256": "76d0299ae78059789e746271c171a5c7a59823c4703fab006f8ddb9971f7fc6c",
+      "output_tail": [
+        "Unary returns: actor transport, unknown callbacks and mixed constructors PASS",
+        "Product returns: 96 held fields across calls/effects PASS",
+        "Product returns: ordered exact effect/trap differential PASS",
+        "Product returns: overflow exact effect/trap differential PASS",
+        "Product returns: division exact effect/trap differential PASS",
+        "Product returns: division-unused exact effect/trap differential PASS",
+        "Product returns: min-success exact effect/trap differential PASS",
+        "Product returns: eight-field mutual tail calls PASS",
+        "Product returns: tagged escape and heap-valued fields PASS",
+        "Product returns: a64mac width admission and register emission PASS",
+        "Product returns: rv64 width admission and register emission PASS",
+        "Product returns: x64 width admission and register emission PASS"
+      ]
+    },
+    {
+      "name": "finite-fields",
+      "command": [
+        "python3",
+        "tests/check_finite_field_workers.py",
+        "--record",
+        "bench/2026-11-05-unary-returns-fields.json"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 166.99,
+      "log_sha256": "b401f6df0e37cf4215e2b083477fb5644fd487ef64719250da2609b235b65f02",
+      "output_tail": [
+        "returns-8: {'default': 0, 'boxed': 8000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "helpers-129: {'default': 0, 'boxed': 129, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "body-256: {'default': 0, 'boxed': 1000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "body-2048: {'default': 0, 'boxed': 1000, 'explicit': 0}, normal regions and 1/4 harts PASS",
+        "let-order: exact four-mode effects/traps PASS",
+        "max-success: exact four-mode effects/traps PASS",
+        "min-success: exact four-mode effects/traps PASS",
+        "overflow: exact four-mode effects/traps PASS",
+        "minimum-underflow: exact four-mode effects/traps PASS",
+        "division-first: exact four-mode effects/traps PASS",
+        "wide-argument-order: exact four-mode effects/traps PASS",
+        "Deep dynamic payload retains the original inner fallback PASS"
+      ]
+    },
+    {
+      "name": "base-wrappers",
+      "command": [
+        "python3",
+        "tests/check_base_wrappers.py"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 56.68,
+      "log_sha256": "6be7dedc4073bb1f4d8266348bd32c0d5697c9d69fade54cfd42f9a68ec157e8",
+      "output_tail": [
+        "returned: [1001, 1] allocations, boundary/value checks PASS",
+        "string: [1001, 0] allocations, boundary/value checks PASS",
+        "heap-list: [1003, 2] allocations, boundary/value checks PASS",
+        "nested: [2002, 0] allocations, boundary/value checks PASS",
+        "record: [1001, 0] allocations, boundary/value checks PASS",
+        "boolean: [1001, 0] allocations, boundary/value checks PASS",
+        "float: [1002, 1] allocations, boundary/value checks PASS",
+        "other-variant: [1, 1] allocations, boundary/value checks PASS",
+        "maximum: exact ordered effect/failure differential PASS",
+        "minimum: exact ordered effect/failure differential PASS",
+        "division: exact ordered effect/failure differential PASS",
+        "Unused strict seed and separate-module tagged entry PASS"
+      ]
+    },
+    {
+      "name": "workers",
+      "command": [
+        "python3",
+        "tests/check_workers.py"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 43.7,
+      "log_sha256": "f14d6a0eceb7c92cf59dccd97cbc05bf8f6966a7396184ff2e228f6b572f90de",
+      "output_tail": [
+        "Building test suite 'WorkersCheck' for fp-risc-0.13.1...",
+        "Running 1 test suites...",
+        "Test suite WorkersCheck: RUNNING...",
+        "Workers Core: admission, public arity, shadowing, escaping values, unknown kinds, vector tier and clone budget PASS",
+        "Test suite WorkersCheck: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/WorkersCheck/test/fp-risc-0.13.1-WorkersCheck.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Workers: native 1/4-worker differential, independent switches/inliner, warm caches, dynamic entry and exact failure reasons PASS",
+        "{\"allocations\": {\"0:0:0:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:pair-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:record-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:0:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:1:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:1:pair-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:1:record-cost\": {\"alloc_bytes\": 32, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\": 0}, \"0:0:1:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"state_bytes\": 0, \"state_copies\": 0, \"turns\":",
+        "Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS",
+        "Workers: optimized shared module called by general-ABI host PASS"
+      ]
+    },
+    {
+      "name": "reset-reuse",
+      "command": [
+        "python3",
+        "tests/check_reset_reuse.py"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 10.55,
+      "log_sha256": "85c04142a6d2647a7eac4573bff3713b24e05c6ad6d9138c82703cfb4d063a89",
+      "output_tail": [
+        "reset barriers: inline-disabled=0 reuse-disabled=0: imported CAF/helper, callback and foreign entry PASS",
+        "reset barriers: inline-disabled=0 reuse-disabled=1: imported CAF/helper, callback and foreign entry PASS",
+        "reset barriers: inline-disabled=1 reuse-disabled=0: imported CAF/helper, callback and foreign entry PASS",
+        "reset barriers: inline-disabled=1 reuse-disabled=1: imported CAF/helper, callback and foreign entry PASS"
+      ]
+    },
+    {
+      "name": "compile-cost",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 102.95,
+      "log_sha256": "69bc9f50e64e7fe2edee3bd760b933dea98ce49634626660447ad3246af23c0f",
+      "output_tail": [
+        "hello: 1.61 GB allocated, 27 MB peak live, 1.4 s (+9.7% allocation, -37.6% peak vs baseline)",
+        "std-live: 32.82 GB allocated, 353 MB peak live, 32.3 s (+9.7% allocation, -12.3% peak vs baseline)",
+        "pos1: 67.56 GB allocated, 482 MB peak live, 69.1 s (+4.2% allocation, -42.2% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--require-baseline",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256",
+        "--record",
+        "bench/2026-11-05-unary-returns-cost.json"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 4.12,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "output_tail": [
+        "16 helpers: same 10832 code bytes/55 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "static-arena",
+      "command": [
+        "python3",
+        "tests/check_static_arena.py"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 43.33,
+      "log_sha256": "1440e4ece55767e2110645f6978456cc765874ae0d0bb04a464954c24d92782e",
+      "output_tail": [
+        "arity-limit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-yes: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-no: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-low: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-high: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "bool: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "unit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "mixed: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-zero: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-wrap: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "nested-long: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+      ]
+    },
+    {
+      "name": "throughput",
+      "command": [
+        "python3",
+        "tools/bench_base_products.py",
+        "--unary-return",
+        "--compile-cost",
+        "--baseline-compiler",
+        "/tmp/fpr-before-unary-returns-192",
+        "--record",
+        "bench/2026-11-05-unary-returns-throughput.json"
+      ],
+      "returncode": 0,
+      "status": "PASS",
+      "seconds": 36.79,
+      "log_sha256": "cc32e3d513e540c8a92de35dc0ee7922030d84e04fcb264438edce1c49df57dd",
+      "output_tail": [
+        "before: 20009766 allocations; 0.082363s",
+        "after: 0 allocations; 0.070635s",
+        "explicit: 0 allocations; 0.093437s",
+        "rollback: 20009766 allocations; 0.084228s"
+      ]
+    }
+  ]
+}

@@ -105,17 +105,17 @@ fuseVec round' imports prog = (M.union extras (M.map (\(ps,b) -> (ps,rewrite b))
         _ -> e
     seeLet (CLet x ve b) | Just ((op,_,_),_) <- opAt ve =
       let next m = case opAt m of
-            Just ((op',_,caps),CVar v) -> op == op' && v == x && all (not . elem x . freeVars) caps &&
+            Just ((op',_,caps),CVar v) -> op == op' && v == x && all (not . occurs x) caps &&
               case fusedAt (plug m) of Just _ -> True; Nothing -> False
             _ -> False
           plug m = case spineOf m of (CVar h,[fe,_]) -> apps (CVar h) [fe,ve]; _ -> m
        in case b of
             _ | next b -> seeLet (plug b)
-            CLet y inner rest | next inner, x `notElem` freeVars rest -> seeLet (CLet y (plug inner) rest)
+            CLet y inner rest | next inner, not (occurs x rest) -> seeLet (CLet y (plug inner) rest)
             _ -> CLet x ve b
     seeLet e = e
     letCandidates (CLet x ve b) | Just ((op,_,_),_) <- opAt ve =
-      [apps (CVar op) [fe,ve] | m <- b : (case b of CLet _ inner rest | x `notElem` freeVars rest -> [inner]; _ -> []),
+      [apps (CVar op) [fe,ve] | m <- b : (case b of CLet _ inner rest | not (occurs x rest) -> [inner]; _ -> []),
          (CVar op',[fe,CVar v]) <- [spineOf m], op == op', v == x]
     letCandidates _ = []
 

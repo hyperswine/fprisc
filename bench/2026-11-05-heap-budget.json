@@ -1,0 +1,129 @@
+{
+  "compiler_sha256": "82094d49d2a7440cdd1ae5ebffb2427261c71a6da08bb2fadc7b672adcff208f",
+  "refusals": [
+    {
+      "case": "one-byte-short",
+      "reason": "error: heap budget wide: needs 2640 bytes, limit 2639"
+    },
+    {
+      "case": "admitted",
+      "reason": "error: heap budget wide: needs 2640 bytes, limit 2639"
+    },
+    {
+      "case": "invalid-0",
+      "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+    },
+    {
+      "case": "invalid-1",
+      "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+    },
+    {
+      "case": "invalid-2",
+      "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+    },
+    {
+      "case": "invalid-3",
+      "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+    },
+    {
+      "case": "invalid-4",
+      "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+    },
+    {
+      "case": "invalid-5",
+      "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+    },
+    {
+      "case": "check-only",
+      "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+    },
+    {
+      "case": "no-entries",
+      "reason": "error: --heap-budget requires builtin RV64 --arc --lib with explicit --export entries"
+    },
+    {
+      "case": "rv32",
+      "reason": "profile builtin RV32 currently supports manual ownership only; --arc/--raw/--export require RV64"
+    },
+    {
+      "case": "duplicates",
+      "reason": "error: heap budget has duplicate public callback entries"
+    },
+    {
+      "case": "foreign",
+      "reason": "error: heap budget speak: UNPROVED [\"runtime:fpr_fn__x24arc_x2eprint\"]"
+    },
+    {
+      "case": "overflow",
+      "reason": "error: heap budget plus: UNPROVED [\"runtime:fpr_fn__x24arc_x2eadd\"]"
+    }
+  ],
+  "stack_report_refresh_preserves_code_and_unit_identities": true,
+  "stack_report_refreshed_units": 1,
+  "unchanged_instructions_and_data": true,
+  "cached_short_budget_preserves_existing_output": true,
+  "bounds": {
+    "identity": {
+      "requests": 2,
+      "requested_bytes": 48,
+      "arena_bytes": 416
+    },
+    "wide": {
+      "requests": 13,
+      "requested_bytes": 312,
+      "arena_bytes": 2640
+    },
+    "choose": {
+      "requests": 3,
+      "requested_bytes": 72,
+      "arena_bytes": 624
+    }
+  },
+  "maximum_arena_bytes": 2640,
+  "execution": {
+    "status": "RV64-QEMU-PASS",
+    "calls_per_mode": 256,
+    "images": {
+      "plain": {
+        "admission": {
+          "schema": 2,
+          "target": "qemu-rv64-heap-budget-test",
+          "elf_class_bits": 64,
+          "image_sha256": "a22593e29809b24329d9a626d505bb72723c4adf245e59822dc2c7968a186e04",
+          "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+          "image_bytes": 6424,
+          "image_limit_bytes": 8323072,
+          "static_memory_bytes": 14336,
+          "remaining_ram_bytes": 8374272,
+          "min_free_bytes": 65536
+        },
+        "output": "identity 0\nwide 0\nchoose 0\nHEAP_BUDGET_FIXED_ARENAS_PASS\n"
+      },
+      "measured": {
+        "admission": {
+          "schema": 2,
+          "target": "qemu-rv64-heap-budget-test",
+          "elf_class_bits": 64,
+          "image_sha256": "aa44be6a47fa20eb88b3f8fe6aaaa92ab8f9f1abad2819a34ca932454bd08028",
+          "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+          "image_bytes": 6720,
+          "image_limit_bytes": 8323072,
+          "static_memory_bytes": 14672,
+          "remaining_ram_bytes": 8373936,
+          "min_free_bytes": 65536
+        },
+        "output": "identity 112\nwide 1344\nchoose 224\nHEAP_BUDGET_FIXED_ARENAS_PASS\n"
+      }
+    },
+    "target_manifest": {
+      "schema": 1,
+      "target": "qemu-rv64-heap-budget-test",
+      "elf_class_bits": 64,
+      "ram_origin": 2147483648,
+      "ram_bytes": 8388608,
+      "max_image_bytes": 8323072,
+      "min_free_bytes": 65536
+    },
+    "assembly_sha256": "6bae548361f4e647d781b21e26cd0c6bd066113603eab7475beb05e407a785ba"
+  }
+}

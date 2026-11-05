@@ -1,0 +1,94 @@
+{
+  "compiler_sha256": "391c4e6534123af31770de0cce54cb215e01990804907a300e1ac3f181af8abe",
+  "environment": "ghc-9.8.2 aarch64-apple-darwin",
+  "target": "rv64imafdc_zicsr/lp64",
+  "cold_cache": true,
+  "allocation_margin": 0.1,
+  "rows": [
+    {
+      "helpers": 16,
+      "generic": {
+        "allocated_bytes": 130018960,
+        "max_bytes_used": 86088,
+        "wall_seconds": 0.0554,
+        "text_bytes": 10520,
+        "functions": 48
+      },
+      "explicit": {
+        "allocated_bytes": 130060064,
+        "max_bytes_used": 85296,
+        "wall_seconds": 0.0594,
+        "text_bytes": 10520,
+        "functions": 48
+      }
+    },
+    {
+      "helpers": 32,
+      "generic": {
+        "allocated_bytes": 230684120,
+        "max_bytes_used": 5679424,
+        "wall_seconds": 0.09,
+        "text_bytes": 16952,
+        "functions": 80
+      },
+      "explicit": {
+        "allocated_bytes": 231004496,
+        "max_bytes_used": 5029000,
+        "wall_seconds": 0.09,
+        "text_bytes": 16952,
+        "functions": 80
+      }
+    },
+    {
+      "helpers": 64,
+      "generic": {
+        "allocated_bytes": 438097432,
+        "max_bytes_used": 12206272,
+        "wall_seconds": 0.1645,
+        "text_bytes": 30136,
+        "functions": 144
+      },
+      "explicit": {
+        "allocated_bytes": 438670688,
+        "max_bytes_used": 11149744,
+        "wall_seconds": 0.1654,
+        "text_bytes": 30136,
+        "functions": 144
+      }
+    },
+    {
+      "helpers": 128,
+      "generic": {
+        "allocated_bytes": 886755248,
+        "max_bytes_used": 24589968,
+        "wall_seconds": 0.3266,
+        "text_bytes": 56504,
+        "functions": 272
+      },
+      "explicit": {
+        "allocated_bytes": 887494408,
+        "max_bytes_used": 22082432,
+        "wall_seconds": 0.3614,
+        "text_bytes": 56504,
+        "functions": 272
+      }
+    },
+    {
+      "helpers": 256,
+      "generic": {
+        "allocated_bytes": 1894612016,
+        "max_bytes_used": 73239712,
+        "wall_seconds": 0.7464,
+        "text_bytes": 109240,
+        "functions": 528
+      },
+      "explicit": {
+        "allocated_bytes": 1895400704,
+        "max_bytes_used": 41336552,
+        "wall_seconds": 0.7039,
+        "text_bytes": 109240,
+        "functions": 528
+      }
+    }
+  ]
+}

@@ -1,11 +1,12 @@
 import ExportPlans (checkExports)
 import Core.Syntax
 import Core.Opt.Pipeline
+import Core.Opt.PairReturns (productWorkerWidth,productReturnProgramWithVariants)
 import Core.Opt.Vector (vecSpec, pipelinePlan)
 import Core.Opt.Vector.Plan
 import Core.Primitives
 import KernelKinds (Kind(..))
-import Control.Monad (unless)
+import Control.Monad (unless, forM_)
 import Data.List (isInfixOf,isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -19,7 +20,7 @@ app n = foldl CApp (CVar n)
 right = either error id
 failed (Left _) = True
 failed _ = False
-none = OptimizationOptions False False False False False False False False False S.empty
+none = OptimizationOptions False False False False False False False 2 False False S.empty
 
 main = do
   checkExports
@@ -93,6 +94,98 @@ main = do
   check "pair returns do not misclassify shadowed local calls" (not (M.member "$worker.ret2.shadowPair" pairOn))
   check "pair returns report their decision" (any ("# pair returns:" `isInfixOf`) (optimizationNotes pairOnResult))
   check "pair returns rollback keeps the word ABI" (not (M.member "$worker.ret2.pairf" (optimizedProgram (right (optimizeCore none S.empty pairInput)))))
+  let sumLayout=(887,M.fromList [(0,0),(1,1),(2,2)])
+      sumFacts=M.singleton "produce" sumLayout
+      payload=v "payload"
+      choose=(["n"],CIf (v "n") (CMk 887 0 []) (CMk 887 2 [CInt 4,CInt 5]))
+      guarded=CIf (CTagEq 887 2 payload) (CProj 1 payload) (CInt 14)
+      readSum params expr=(params,CLet "payload" (app "produce" [CInt 1]) expr)
+      variantEntry="$worker.ret3.$variant.produce"
+      inputs=M.fromList [("produce",choose),("good",readSum [] guarded),
+        ("badField",readSum [] (CProj 0 payload)),("capture",readSum [] (CLam ["z"] guarded)),
+        ("escape",readSum [] payload),("privateShadow",readSum [variantEntry] guarded),
+        ("eqShadow",readSum ["=="] guarded),("calleeShadow",readSum ["produce"] guarded)]
+      transformed facts program=let (p,_,_)=productReturnProgramWithVariants facts 8 program M.empty in p
+      resultSums=transformed sumFacts inputs
+  check "variant reader retains a discriminant and admits dominated fields"
+    (M.member variantEntry resultSums && M.lookup "good" inputs/=M.lookup "good" resultSums)
+  forM_ ["badField","capture","escape","privateShadow","eqShadow","calleeShadow"] $ \name->
+    check ("variant fallback at "++name) (M.lookup name inputs==M.lookup name resultSums)
+  check "ordinary sum calls and colliding private names retain the public ABI"
+    (M.lookup "produce" resultSums==Just choose
+      && let collision=M.insert variantEntry ([],CInt 99) inputs in transformed sumFacts collision==collision)
+  check "source constructor observations alone cannot choose a smaller sum layout"
+    (transformed M.empty inputs==inputs)
+  check "unary return workers retain the ordinary tagged-value convention"
+    (productWorkerWidth "$worker.ret1.product" == Nothing)
+  forM_ [1..9] $ \n -> do
+    let shape = CMk 4 0 [app "+" [v "n", CInt (toInteger i)] | i <- [0..n-1]]
+        source = M.fromList [("product",(["n"],shape)),
+          ("reader",(["n"],CLet "p" (app "product" [v "n"]) (CProj (n-1) (v "p")))),
+          ("escape",(["n"],CLet "p" (app "product" [v "n"]) (v "p")))]
+    forM_ [1,2,8] $ \width -> do
+      let output = optimizedProgram (right (optimizeCore (none {optPairReturns=True,optProductWidth=width}) S.empty source))
+          twin = "$worker.ret" ++ show n ++ ".product"
+      check "target width controls product admission" (M.member twin output == (n <= width))
+      check "escaping products retain their tagged call" (output M.! "escape" == source M.! "escape")
+      check "original product entry stays available" (output M.! "product" == source M.! "product")
+      if n==1 then do
+        check "unary worker returns its evaluated payload"
+          (M.lookup twin output == Just (["n"],app "+" [v "n",CInt 0]))
+        check "unary reader uses the returned value without projecting it"
+          (M.lookup "reader" output == Just (["n"],CLet "p" (app twin [v "n"]) (v "p")))
+      else pure ()
+  let unary=(["n"],CMk 999 0 [v "n"])
+      prefixed=(["n"],CLet "box" (CLet "arg" (app "print" [v "n"]) (app "unary" [v "arg"]))
+        (CProj 0 (v "box")))
+      capture=(["arg"],CLet "box" (CLet "arg" (CInt 7) (app "unary" [v "arg"]))
+        (app "+" [CProj 0 (v "box"),v "arg"]))
+      shadow=(["n"],CLet "box" (CLet "unary" (v "n") (app "unary" [CInt 7])) (CProj 0 (v "box")))
+      privateShadow=(["n"],CLet "box" (CLet "$worker.ret1.unary" (v "n") (app "unary" [CInt 7])) (CProj 0 (v "box")))
+      unaryInput=M.fromList [("unary",unary),("prefixed",prefixed),("capture",capture),("shadow",shadow),("privateShadow",privateShadow)]
+      unaryOutput=optimizedProgram (right (optimizeCore (none {optPairReturns=True}) S.empty unaryInput))
+  check "strict producer prefixes keep effects before the payload call"
+    (unaryOutput M.! "prefixed" == (["n"],CLet "arg" (app "print" [v "n"])
+      (CLet "box" (app "$worker.ret1.unary" [v "arg"]) (v "box"))))
+  check "producer prefix cannot capture a consumer's outer variable" (unaryOutput M.! "capture"==capture)
+  check "producer prefix shadowing cannot supply a known return shape" (unaryOutput M.! "shadow"==shadow)
+  check "producer prefix cannot capture the new worker reference" (unaryOutput M.! "privateShadow"==privateShadow)
+  let returnOpt p = optimizedProgram (right (optimizeCore (none {optPairReturns=True}) S.empty p))
+      longResult=foldr (\i b -> CLet ("v"++show i) (app "+" [v "n",CInt i]) b) (snd unary) [1..300]
+      reader f=(["n"],CLet "r" (app f [v "n"]) (CProj 0 (v "r")))
+      chain=[("h"++show i,(["n"],app ("h"++show (i+1)) [v "n"])) | i<-[0..159::Int]]
+      longGraph=M.fromList (("reader",reader "h0"):("h160",(["n"],longResult)):chain)
+      longOutput=returnOpt longGraph
+  check "large result and every reachable forwarding worker are admitted"
+    (all (\i -> M.member ("$worker.ret1.h"++show i) longOutput) [0..160::Int])
+  let collision=M.insert "$worker.ret1.unary" (["x"],CInt 0) (M.fromList [("unary",unary),("reader",reader "unary")])
+      captureTail=M.fromList [("unary",unary),("reader",reader "outer"),
+        ("outer",(["n"],CLet "$worker.ret1.unary" (CInt 1) (app "unary" [v "n"])))]
+  check "existing private return name preserves original calls" (returnOpt collision==collision)
+  check "tail worker cannot capture a lexical binding" (returnOpt captureTail==captureTail)
+  let pair a b = CMk 4 0 [a,b]
+      makeTree=( ["x"],pair (pair (v "x") (CInt 2)) (pair (CInt 3) (CInt 4)))
+      treeReader=(["x"],CLet "result" (app "tree" [v "x"])
+        (CLet "l" (CProj 0 (v "result")) (CLet "alias" (v "l")
+          (CIf (CTagEq 4 0 (v "alias")) (app "+" [CProj 1 (v "alias"),CProj 0 (CProj 1 (v "result"))]) (CErr "bad")))))
+      treeProg=M.fromList [("tree",makeTree),("reader",treeReader)]
+      treeOpt w p=optimizedProgram (right (optimizeCore (none {optPairReturns=True,optProductWidth=w}) S.empty p))
+      deepEntry="$worker.ret4.$nested.result.tree"
+      flat=treeOpt 4 treeProg
+      innerEscape=(["x"],CLet "result" (app "tree" [v "x"]) (CProj 0 (v "result")))
+      tagMismatch=(["x"],CLet "result" (app "tree" [v "x"]) (CIf (CTagEq 999 0 (CProj 0 (v "result"))) (CInt 1) (CInt 0)))
+      captureTree=(["x"],CLet "result" (app "tree" [v "x"]) (CLam [] (CProj 0 (CProj 0 (v "result")))))
+  check "nested packet follows aliases and maps projections to flat words"
+    (M.lookup "reader" flat == Just (["x"],CLet "result" (app deepEntry [v "x"]) (app "+" [CProj 1 (v "result"),CProj 2 (v "result")])))
+  check "nested packet retains public entry" (flat M.! "tree"==makeTree)
+  check "flattened width must fit the target" (M.notMember deepEntry (treeOpt 2 treeProg))
+  mapM_ (\reader -> check "inner escape, capture or foreign tag cannot use a flat packet"
+    (M.notMember deepEntry (treeOpt 4 (M.insert "reader" reader treeProg)))) [innerEscape,captureTree,tagMismatch]
+  let collided=M.insert deepEntry (["x"],v "x") treeProg
+      conflict=(["x"],CLet "inner" (pair (CInt 1) (CInt 2)) (CLet "effect" (app "print" [v "inner"]) (pair (v "inner") (pair (v "x") (v "x")))))
+  check "existing private symbol cannot be replaced" (treeOpt 4 collided M.! deepEntry==collided M.! deepEntry)
+  check "strict let cannot be both a packet and an ordinary effect argument"
+    (M.notMember deepEntry (treeOpt 4 (M.insert "tree" conflict treeProg)))
   let nested=app "Vec.map" [v "inc",app "Vec.map" [v "double",v "xs"]]
       fusionInput=M.fromList [("inc",(["x"],app "+" [v "x",CInt 1])),
                              ("double",(["x"],app "*" [v "x",CInt 2])),
@@ -131,4 +224,28 @@ main = do
   check "Core Binary roundtrip" ((decode bytes :: [Core])==nodes)
   check "lexical shadowing" (freeVars (CLet "x" (v "outside") (CLam ["outside"] (v "x")))==["outside"])
   check "occurs respects lambda binder" (not (occurs "x" (CLam ["x"] (v "x"))))
+  let reference e=case e of
+        CVar n->[n]
+        CApp a b->reference a++reference b
+        CLam ps b->filter (`notElem` ps) (reference b)
+        CLet n a b->reference a++filter (/=n) (reference b)
+        CIf c t f->reference c++reference t++reference f
+        CMk _ _ fs->concatMap reference fs
+        CTagEq _ _ x->reference x
+        CProj _ x->reference x
+        _->[]
+      generated 0 n=CVar (["x","y","z"]!!(n `mod` 3))
+      generated depth n=let { a=generated (depth-1) (n*5+1); b=generated (depth-1) (n*7+3);
+                             name=["x","y","z"]!!(n `mod` 3) }
+                       in case n `mod` 8 of
+                         0->CLet name a b
+                         1->CLam [name,"x"] a
+                         2->CApp a b
+                         3->CIf a b (CVar name)
+                         4->CMk 9 0 [a,b,CVar name]
+                         5->CTagEq 9 0 a
+                         6->CProj 0 a
+                         _->CVar name
+  check "free occurrences preserve order, duplicates and lexical scope"
+    (all (\e->freeVars e==reference e) (nodes++[generated 6 n | n<-[0..255]]))
   putStrLn "Core pipeline: ABI checks, pass ordering, typed vector plans and Binary compatibility passed"

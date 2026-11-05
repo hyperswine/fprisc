@@ -1,0 +1,174 @@
+{
+  "revision": 202,
+  "compiler_sha256": "035fd0859d7b74e99515b971b640c4f9f360e57b0dc218508335603ebba9463d",
+  "rows": [
+    {
+      "explicit": false,
+      "inline": true,
+      "harts": 1,
+      "stdout": "-2\n5\n",
+      "source": "unsafe base.\nValue = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nFlat = Type (End | AddTree Flat Int Flat | SubTree Flat Int Flat).\nmake d n = if d <= 0 then Leaf else left = make (d - 1) (n+1); right = make (d - 1) (n+2); v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.\nscore t = case t of Leaf -> 0 | Branch l v r -> case v of Plus x -> score l + x + score r | Minus x -> score l - x + score r.\nmain = t = make 10 1; _ = print (score t); print (score t + 7).\n",
+      "source_sha256": "001409ae6a2c5fc81137e7375dc9b38b8e39c0ed1647ec1b61262a191924281f",
+      "cost": {
+        "alloc_requests": 1023,
+        "alloc_bytes": 49104,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "explicit": false,
+      "inline": true,
+      "harts": 4,
+      "stdout": "-2\n5\n",
+      "source": "unsafe base.\nValue = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nFlat = Type (End | AddTree Flat Int Flat | SubTree Flat Int Flat).\nmake d n = if d <= 0 then Leaf else left = make (d - 1) (n+1); right = make (d - 1) (n+2); v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.\nscore t = case t of Leaf -> 0 | Branch l v r -> case v of Plus x -> score l + x + score r | Minus x -> score l - x + score r.\nmain = t = make 10 1; _ = print (score t); print (score t + 7).\n",
+      "source_sha256": "001409ae6a2c5fc81137e7375dc9b38b8e39c0ed1647ec1b61262a191924281f",
+      "cost": {
+        "alloc_requests": 1023,
+        "alloc_bytes": 49104,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "explicit": false,
+      "inline": false,
+      "harts": 1,
+      "stdout": "-2\n5\n",
+      "source": "unsafe base.\nValue = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nFlat = Type (End | AddTree Flat Int Flat | SubTree Flat Int Flat).\nmake d n = if d <= 0 then Leaf else left = make (d - 1) (n+1); right = make (d - 1) (n+2); v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.\nscore t = case t of Leaf -> 0 | Branch l v r -> case v of Plus x -> score l + x + score r | Minus x -> score l - x + score r.\nmain = t = make 10 1; _ = print (score t); print (score t + 7).\n",
+      "source_sha256": "001409ae6a2c5fc81137e7375dc9b38b8e39c0ed1647ec1b61262a191924281f",
+      "cost": {
+        "alloc_requests": 1023,
+        "alloc_bytes": 49104,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "explicit": false,
+      "inline": false,
+      "harts": 4,
+      "stdout": "-2\n5\n",
+      "source": "unsafe base.\nValue = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nFlat = Type (End | AddTree Flat Int Flat | SubTree Flat Int Flat).\nmake d n = if d <= 0 then Leaf else left = make (d - 1) (n+1); right = make (d - 1) (n+2); v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.\nscore t = case t of Leaf -> 0 | Branch l v r -> case v of Plus x -> score l + x + score r | Minus x -> score l - x + score r.\nmain = t = make 10 1; _ = print (score t); print (score t + 7).\n",
+      "source_sha256": "001409ae6a2c5fc81137e7375dc9b38b8e39c0ed1647ec1b61262a191924281f",
+      "cost": {
+        "alloc_requests": 1023,
+        "alloc_bytes": 49104,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "explicit": true,
+      "inline": true,
+      "harts": 1,
+      "stdout": "-2\n5\n",
+      "source": "unsafe base.\nValue = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nFlat = Type (End | AddTree Flat Int Flat | SubTree Flat Int Flat).\nmake d n = if d <= 0 then End else left = make (d - 1) (n+1); right = make (d - 1) (n+2); if n % 2 == 0 then AddTree left n right else SubTree left n right.\nscore t = case t of End -> 0 | AddTree l v r -> score l + v + score r | SubTree l v r -> score l - v + score r.\nmain = t = make 10 1; _ = print (score t); print (score t + 7).\n",
+      "source_sha256": "700f5ff61793f64b77437055e3c3659ae9f1a19a6064c1d6f143a0fb5121daf4",
+      "cost": {
+        "alloc_requests": 1023,
+        "alloc_bytes": 49104,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "explicit": true,
+      "inline": true,
+      "harts": 4,
+      "stdout": "-2\n5\n",
+      "source": "unsafe base.\nValue = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nFlat = Type (End | AddTree Flat Int Flat | SubTree Flat Int Flat).\nmake d n = if d <= 0 then End else left = make (d - 1) (n+1); right = make (d - 1) (n+2); if n % 2 == 0 then AddTree left n right else SubTree left n right.\nscore t = case t of End -> 0 | AddTree l v r -> score l + v + score r | SubTree l v r -> score l - v + score r.\nmain = t = make 10 1; _ = print (score t); print (score t + 7).\n",
+      "source_sha256": "700f5ff61793f64b77437055e3c3659ae9f1a19a6064c1d6f143a0fb5121daf4",
+      "cost": {
+        "alloc_requests": 1023,
+        "alloc_bytes": 49104,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "explicit": true,
+      "inline": false,
+      "harts": 1,
+      "stdout": "-2\n5\n",
+      "source": "unsafe base.\nValue = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nFlat = Type (End | AddTree Flat Int Flat | SubTree Flat Int Flat).\nmake d n = if d <= 0 then End else left = make (d - 1) (n+1); right = make (d - 1) (n+2); if n % 2 == 0 then AddTree left n right else SubTree left n right.\nscore t = case t of End -> 0 | AddTree l v r -> score l + v + score r | SubTree l v r -> score l - v + score r.\nmain = t = make 10 1; _ = print (score t); print (score t + 7).\n",
+      "source_sha256": "700f5ff61793f64b77437055e3c3659ae9f1a19a6064c1d6f143a0fb5121daf4",
+      "cost": {
+        "alloc_requests": 1023,
+        "alloc_bytes": 49104,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    },
+    {
+      "explicit": true,
+      "inline": false,
+      "harts": 4,
+      "stdout": "-2\n5\n",
+      "source": "unsafe base.\nValue = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nFlat = Type (End | AddTree Flat Int Flat | SubTree Flat Int Flat).\nmake d n = if d <= 0 then End else left = make (d - 1) (n+1); right = make (d - 1) (n+2); if n % 2 == 0 then AddTree left n right else SubTree left n right.\nscore t = case t of End -> 0 | AddTree l v r -> score l + v + score r | SubTree l v r -> score l - v + score r.\nmain = t = make 10 1; _ = print (score t); print (score t + 7).\n",
+      "source_sha256": "700f5ff61793f64b77437055e3c3659ae9f1a19a6064c1d6f143a0fb5121daf4",
+      "cost": {
+        "alloc_requests": 1023,
+        "alloc_bytes": 49104,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 15,
+        "buddy_frees": 0
+      }
+    }
+  ]
+}

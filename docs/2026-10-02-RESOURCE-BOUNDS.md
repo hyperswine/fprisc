@@ -1,6 +1,13 @@
 # Resource bounds in signatures: what exists, what is missing, a staged plan
 
-Date: 2026-10-02. Kind: proposal. Nothing here is implemented.
+Date: 2026-10-02. Kind: historical proposal; the sections below describe the
+state and plan at that date. Source cost equations, signature checks and
+manifest reporting have since been implemented. The
+[codegen-175 audit](2026-11-05-RESOURCE-EQUATION-PREREQUISITES.md),
+[codegen-176 signed domains](2026-11-05-SIGNED-RESOURCE-DOMAINS.md), and
+[codegen-177 result sizes](2026-11-05-VERIFIED-RESULT-SIZES.md) record current
+proof limitations and corrections. Source requested-byte estimates and
+manifest assumptions do not establish physical arena fit or hardware WCET.
 Follows item 4 of [2026-10-02-TOOLING-SEMANTICS-AUDIT.md](2026-10-02-TOOLING-SEMANTICS-AUDIT.md).
 
 ## The goal, restated as checkable claims

@@ -1,0 +1,82 @@
+[
+  {
+    "compiler_sha256": "d2f5c23cb14f985ce548500b3b38c6db63396731896d901c1e8d0b62e32c076c",
+    "n": 16,
+    "workers": 16,
+    "root_text_bytes": 9108,
+    "rts_allocation": 1290939360,
+    "seconds": 0.6
+  },
+  {
+    "compiler_sha256": "d2f5c23cb14f985ce548500b3b38c6db63396731896d901c1e8d0b62e32c076c",
+    "n": 32,
+    "workers": 32,
+    "root_text_bytes": 18004,
+    "rts_allocation": 1408929312,
+    "seconds": 0.603
+  },
+  {
+    "compiler_sha256": "d2f5c23cb14f985ce548500b3b38c6db63396731896d901c1e8d0b62e32c076c",
+    "n": 64,
+    "workers": 64,
+    "root_text_bytes": 35796,
+    "rts_allocation": 1654555488,
+    "seconds": 0.791
+  },
+  {
+    "compiler_sha256": "d2f5c23cb14f985ce548500b3b38c6db63396731896d901c1e8d0b62e32c076c",
+    "n": 128,
+    "workers": 128,
+    "root_text_bytes": 71380,
+    "rts_allocation": 2186842720,
+    "seconds": 0.963
+  },
+  {
+    "compiler_sha256": "d2f5c23cb14f985ce548500b3b38c6db63396731896d901c1e8d0b62e32c076c",
+    "n": 256,
+    "workers": 0,
+    "root_text_bytes": 61652,
+    "rts_allocation": 2684415304,
+    "seconds": 1.293
+  },
+  {
+    "compiler_sha256": "76c95e3f2a6744d499aa28caf0cf025ce20cdc9a0c73f4ea20a175a81a1dfdd9",
+    "n": 16,
+    "workers": 16,
+    "root_text_bytes": 9108,
+    "rts_allocation": 1289404624,
+    "seconds": 0.564
+  },
+  {
+    "compiler_sha256": "76c95e3f2a6744d499aa28caf0cf025ce20cdc9a0c73f4ea20a175a81a1dfdd9",
+    "n": 32,
+    "workers": 32,
+    "root_text_bytes": 18004,
+    "rts_allocation": 1406609424,
+    "seconds": 0.624
+  },
+  {
+    "compiler_sha256": "76c95e3f2a6744d499aa28caf0cf025ce20cdc9a0c73f4ea20a175a81a1dfdd9",
+    "n": 64,
+    "workers": 64,
+    "root_text_bytes": 35796,
+    "rts_allocation": 1650745856,
+    "seconds": 0.736
+  },
+  {
+    "compiler_sha256": "76c95e3f2a6744d499aa28caf0cf025ce20cdc9a0c73f4ea20a175a81a1dfdd9",
+    "n": 128,
+    "workers": 128,
+    "root_text_bytes": 71380,
+    "rts_allocation": 2179947856,
+    "seconds": 0.921
+  },
+  {
+    "compiler_sha256": "76c95e3f2a6744d499aa28caf0cf025ce20cdc9a0c73f4ea20a175a81a1dfdd9",
+    "n": 256,
+    "workers": 256,
+    "root_text_bytes": 142548,
+    "rts_allocation": 3407508704,
+    "seconds": 1.604
+  }
+]

@@ -1,0 +1,731 @@
+{
+  "compiler_sha256": "2ff2e87abdcc393b415ea7baac4f8f3668aa4999b6dd2c500bb07f7ae1d867b0",
+  "rows": [
+    {
+      "case": "explicit",
+      "harts": 1,
+      "binary_sha256": "525ee00e90e02f2b6f6e9495ef093973e85e384763869d0d1db8960e85a1aa97",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": false,
+      "allocations": 5624,
+      "allocated_bytes": 351728
+    },
+    {
+      "case": "explicit",
+      "harts": 4,
+      "binary_sha256": "525ee00e90e02f2b6f6e9495ef093973e85e384763869d0d1db8960e85a1aa97",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": false,
+      "allocations": 5624,
+      "allocated_bytes": 351728
+    },
+    {
+      "case": "constructor",
+      "harts": 1,
+      "binary_sha256": "9ca055d2f6c9770e9b6941802bcb10a76e0a9a81b66db38a927197f445211c4e",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": false,
+      "allocations": 6136,
+      "allocated_bytes": 368112
+    },
+    {
+      "case": "constructor",
+      "harts": 4,
+      "binary_sha256": "9ca055d2f6c9770e9b6941802bcb10a76e0a9a81b66db38a927197f445211c4e",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": false,
+      "allocations": 6136,
+      "allocated_bytes": 368112
+    },
+    {
+      "case": "api",
+      "harts": 1,
+      "binary_sha256": "63c2a07d14a5d6d96d1c2d9ba7c02c07e054a84a7c94d768aad8c2c344c0e17c",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": false,
+      "allocations": 6136,
+      "allocated_bytes": 368112
+    },
+    {
+      "case": "api",
+      "harts": 4,
+      "binary_sha256": "63c2a07d14a5d6d96d1c2d9ba7c02c07e054a84a7c94d768aad8c2c344c0e17c",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": false,
+      "allocations": 6136,
+      "allocated_bytes": 368112
+    },
+    {
+      "case": "explicit",
+      "harts": 1,
+      "binary_sha256": "525ee00e90e02f2b6f6e9495ef093973e85e384763869d0d1db8960e85a1aa97",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": true,
+      "allocations": 5624,
+      "allocated_bytes": 351728
+    },
+    {
+      "case": "explicit",
+      "harts": 4,
+      "binary_sha256": "525ee00e90e02f2b6f6e9495ef093973e85e384763869d0d1db8960e85a1aa97",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": true,
+      "allocations": 5624,
+      "allocated_bytes": 351728
+    },
+    {
+      "case": "constructor",
+      "harts": 1,
+      "binary_sha256": "82e5a460d66b2a94ac77d669ef03c5e9c4c7d48c547a352a747dc2212a893b9e",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": true,
+      "allocations": 5624,
+      "allocated_bytes": 351728
+    },
+    {
+      "case": "constructor",
+      "harts": 4,
+      "binary_sha256": "82e5a460d66b2a94ac77d669ef03c5e9c4c7d48c547a352a747dc2212a893b9e",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": true,
+      "allocations": 5624,
+      "allocated_bytes": 351728
+    },
+    {
+      "case": "api",
+      "harts": 1,
+      "binary_sha256": "aee5cb2a43e4bb4214e2936eb799628d72a3095d4b1bb87f3ad0abdb2e5d0934",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": true,
+      "allocations": 5624,
+      "allocated_bytes": 351728
+    },
+    {
+      "case": "api",
+      "harts": 4,
+      "binary_sha256": "aee5cb2a43e4bb4214e2936eb799628d72a3095d4b1bb87f3ad0abdb2e5d0934",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": false,
+      "enabled": true,
+      "allocations": 5624,
+      "allocated_bytes": 351728
+    },
+    {
+      "case": "explicit",
+      "harts": 1,
+      "binary_sha256": "46b4ecedf2c4188c8b31a0b2ff1f9a0712b50164264a115eed18f0b9d8230a6f",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": false,
+      "allocations": 5625,
+      "allocated_bytes": 343584
+    },
+    {
+      "case": "explicit",
+      "harts": 4,
+      "binary_sha256": "46b4ecedf2c4188c8b31a0b2ff1f9a0712b50164264a115eed18f0b9d8230a6f",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": false,
+      "allocations": 5625,
+      "allocated_bytes": 343584
+    },
+    {
+      "case": "constructor",
+      "harts": 1,
+      "binary_sha256": "c8d298ed707acda40117b4326c209f0cf6209bfa535060396ac2a29ec3164c02",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": false,
+      "allocations": 6137,
+      "allocated_bytes": 359968
+    },
+    {
+      "case": "constructor",
+      "harts": 4,
+      "binary_sha256": "c8d298ed707acda40117b4326c209f0cf6209bfa535060396ac2a29ec3164c02",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": false,
+      "allocations": 6137,
+      "allocated_bytes": 359968
+    },
+    {
+      "case": "api",
+      "harts": 1,
+      "binary_sha256": "822bd8ab2500aac747c1ff0f3b5cf3d8e1ce40cf44d75d8195ea2fca3ca44d0a",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": false,
+      "allocations": 6137,
+      "allocated_bytes": 359968
+    },
+    {
+      "case": "api",
+      "harts": 4,
+      "binary_sha256": "822bd8ab2500aac747c1ff0f3b5cf3d8e1ce40cf44d75d8195ea2fca3ca44d0a",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": false,
+      "allocations": 6137,
+      "allocated_bytes": 359968
+    },
+    {
+      "case": "explicit",
+      "harts": 1,
+      "binary_sha256": "46b4ecedf2c4188c8b31a0b2ff1f9a0712b50164264a115eed18f0b9d8230a6f",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": true,
+      "allocations": 5625,
+      "allocated_bytes": 343584
+    },
+    {
+      "case": "explicit",
+      "harts": 4,
+      "binary_sha256": "46b4ecedf2c4188c8b31a0b2ff1f9a0712b50164264a115eed18f0b9d8230a6f",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": true,
+      "allocations": 5625,
+      "allocated_bytes": 343584
+    },
+    {
+      "case": "constructor",
+      "harts": 1,
+      "binary_sha256": "bf019b65a575028983396cb5aa5862453e809b43f25c4e7d77163e7feaedc779",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": true,
+      "allocations": 5625,
+      "allocated_bytes": 343584
+    },
+    {
+      "case": "constructor",
+      "harts": 4,
+      "binary_sha256": "bf019b65a575028983396cb5aa5862453e809b43f25c4e7d77163e7feaedc779",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": true,
+      "allocations": 5625,
+      "allocated_bytes": 343584
+    },
+    {
+      "case": "api",
+      "harts": 1,
+      "binary_sha256": "1a46a264aac01e2db361aabd6772c9427c92075e8450d038cf42d0ecca5c0867",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": true,
+      "allocations": 5625,
+      "allocated_bytes": 343584
+    },
+    {
+      "case": "api",
+      "harts": 4,
+      "binary_sha256": "1a46a264aac01e2db361aabd6772c9427c92075e8450d038cf42d0ecca5c0867",
+      "stdout": "262656\n",
+      "trap": null,
+      "inline": true,
+      "enabled": true,
+      "allocations": 5625,
+      "allocated_bytes": 343584
+    },
+    {
+      "case": "effects",
+      "harts": 1,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "3\n2\n1\n6\n7\n8\n21\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "effects",
+      "harts": 4,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "3\n2\n1\n6\n7\n8\n21\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "divide",
+      "harts": 1,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "3\n",
+      "trap": "division by zero",
+      "enabled": false
+    },
+    {
+      "case": "divide",
+      "harts": 4,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "3\n",
+      "trap": "division by zero",
+      "enabled": false
+    },
+    {
+      "case": "observes",
+      "harts": 1,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "Meters 1\nMeters 2\n3\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "observes",
+      "harts": 4,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "Meters 1\nMeters 2\n3\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "max",
+      "harts": 1,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "max",
+      "harts": 4,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "min",
+      "harts": 1,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "min",
+      "harts": 4,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "overflow",
+      "harts": 1,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "enabled": false
+    },
+    {
+      "case": "overflow",
+      "harts": 4,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "enabled": false
+    },
+    {
+      "case": "actor",
+      "harts": 1,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "Meters 2\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "actor",
+      "harts": 4,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "Meters 2\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "ordinary",
+      "harts": 1,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "12\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "ordinary",
+      "harts": 4,
+      "binary_sha256": "73dbae0720eab80fa32d486c68a03ba15b145c0ff1bb0a74d6a3bd6ad1e4790a",
+      "stdout": "12\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "arena",
+      "harts": 1,
+      "binary_sha256": "9ef4df953257b4025af53a19fe45f0a654980d9dfdd642b2a82f9932141b9edb",
+      "stdout": "1\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "arena",
+      "harts": 4,
+      "binary_sha256": "9ef4df953257b4025af53a19fe45f0a654980d9dfdd642b2a82f9932141b9edb",
+      "stdout": "1\n",
+      "trap": null,
+      "enabled": false
+    },
+    {
+      "case": "effects",
+      "harts": 1,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "3\n2\n1\n6\n7\n8\n21\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "effects",
+      "harts": 4,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "3\n2\n1\n6\n7\n8\n21\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "divide",
+      "harts": 1,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "3\n",
+      "trap": "division by zero",
+      "enabled": true
+    },
+    {
+      "case": "divide",
+      "harts": 4,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "3\n",
+      "trap": "division by zero",
+      "enabled": true
+    },
+    {
+      "case": "observes",
+      "harts": 1,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "Meters 1\nMeters 2\n3\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "observes",
+      "harts": 4,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "Meters 1\nMeters 2\n3\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "max",
+      "harts": 1,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "max",
+      "harts": 4,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "4611686018427387903\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "min",
+      "harts": 1,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "min",
+      "harts": 4,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "-4611686018427387904\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "overflow",
+      "harts": 1,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "enabled": true
+    },
+    {
+      "case": "overflow",
+      "harts": 4,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "4611686018427387903\n",
+      "trap": "Int overflow",
+      "enabled": true
+    },
+    {
+      "case": "actor",
+      "harts": 1,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "Meters 2\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "actor",
+      "harts": 4,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "Meters 2\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "ordinary",
+      "harts": 1,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "12\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "ordinary",
+      "harts": 4,
+      "binary_sha256": "7734ded302908c27065c40e9f80bce7c558ac0d5dea21796e299cbdc7b9637c5",
+      "stdout": "12\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "arena",
+      "harts": 1,
+      "binary_sha256": "cfd368ca8a5c3130dc09f24fd8ce2f2368fc292c6080f25c51420a262a674ee2",
+      "stdout": "1\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "arena",
+      "harts": 4,
+      "binary_sha256": "cfd368ca8a5c3130dc09f24fd8ce2f2368fc292c6080f25c51420a262a674ee2",
+      "stdout": "1\n",
+      "trap": null,
+      "enabled": true
+    },
+    {
+      "case": "three-units",
+      "harts": 1,
+      "binary_sha256": "44d7b224d4229f6cf0a79eaae262d012374f4ef506e198c46e8506abbe1d6e91",
+      "stdout": "39\n",
+      "trap": null,
+      "mode": "enabled",
+      "homes": [
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.root.18e3b4647c7df57e",
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.unit.48491bf2930f3e4d",
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.unit.ccf29c0d154bae5e"
+      ]
+    },
+    {
+      "case": "three-units",
+      "harts": 4,
+      "binary_sha256": "44d7b224d4229f6cf0a79eaae262d012374f4ef506e198c46e8506abbe1d6e91",
+      "stdout": "39\n",
+      "trap": null,
+      "mode": "enabled",
+      "homes": [
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.root.18e3b4647c7df57e",
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.unit.48491bf2930f3e4d",
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.unit.ccf29c0d154bae5e"
+      ]
+    },
+    {
+      "case": "three-units",
+      "harts": 1,
+      "binary_sha256": "ec8a3671e0b2a01e81841e17875eabbd652bcdc16297de0ca7c8911e58558726",
+      "stdout": "39\n",
+      "trap": null,
+      "mode": "rollback",
+      "homes": []
+    },
+    {
+      "case": "three-units",
+      "harts": 4,
+      "binary_sha256": "ec8a3671e0b2a01e81841e17875eabbd652bcdc16297de0ca7c8911e58558726",
+      "stdout": "39\n",
+      "trap": null,
+      "mode": "rollback",
+      "homes": []
+    },
+    {
+      "case": "three-units",
+      "harts": 1,
+      "binary_sha256": "44d7b224d4229f6cf0a79eaae262d012374f4ef506e198c46e8506abbe1d6e91",
+      "stdout": "39\n",
+      "trap": null,
+      "mode": "restored",
+      "homes": [
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.root.18e3b4647c7df57e",
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.unit.48491bf2930f3e4d",
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.unit.ccf29c0d154bae5e"
+      ]
+    },
+    {
+      "case": "three-units",
+      "harts": 4,
+      "binary_sha256": "44d7b224d4229f6cf0a79eaae262d012374f4ef506e198c46e8506abbe1d6e91",
+      "stdout": "39\n",
+      "trap": null,
+      "mode": "restored",
+      "homes": [
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.root.18e3b4647c7df57e",
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.unit.48491bf2930f3e4d",
+        "$carrier.23.Meters@2c056ba2c32382f3.pack@2c056ba2c32382f3.$at.unit.ccf29c0d154bae5e"
+      ]
+    },
+    {
+      "case": "edited",
+      "harts": 1,
+      "binary_sha256": "a6b8710b7db103c3be6576206d0c6e45cb9de32fa693c832471b2a614af37902",
+      "stdout": "6\n",
+      "trap": null,
+      "observes": false
+    },
+    {
+      "case": "edited",
+      "harts": 4,
+      "binary_sha256": "a6b8710b7db103c3be6576206d0c6e45cb9de32fa693c832471b2a614af37902",
+      "stdout": "6\n",
+      "trap": null,
+      "observes": false
+    },
+    {
+      "case": "edited",
+      "harts": 1,
+      "binary_sha256": "e8f9649d1abc7fa2244faee0a5594a76df21fc82a65d29f103a8aa2a97bfb9c2",
+      "stdout": "Meters 1\nMeters 2\nMeters 1\nMeters 2\n6\n",
+      "trap": null,
+      "observes": true
+    },
+    {
+      "case": "edited",
+      "harts": 4,
+      "binary_sha256": "e8f9649d1abc7fa2244faee0a5594a76df21fc82a65d29f103a8aa2a97bfb9c2",
+      "stdout": "Meters 1\nMeters 2\nMeters 1\nMeters 2\n6\n",
+      "trap": null,
+      "observes": true
+    },
+    {
+      "case": "edited",
+      "harts": 1,
+      "binary_sha256": "a6b8710b7db103c3be6576206d0c6e45cb9de32fa693c832471b2a614af37902",
+      "stdout": "6\n",
+      "trap": null,
+      "observes": false
+    },
+    {
+      "case": "edited",
+      "harts": 4,
+      "binary_sha256": "a6b8710b7db103c3be6576206d0c6e45cb9de32fa693c832471b2a614af37902",
+      "stdout": "6\n",
+      "trap": null,
+      "observes": false
+    },
+    {
+      "case": "foreign",
+      "harts": 1,
+      "binary_sha256": "5cb12b8599a1e15fd2c9eaf1eb38777f65cb4b51108d4365cc497b7bc57a85d4",
+      "stdout": "6\n",
+      "trap": null
+    },
+    {
+      "case": "foreign",
+      "harts": 4,
+      "binary_sha256": "5cb12b8599a1e15fd2c9eaf1eb38777f65cb4b51108d4365cc497b7bc57a85d4",
+      "stdout": "6\n",
+      "trap": null
+    },
+    {
+      "case": "dynamic-module",
+      "harts": 1,
+      "binary_sha256": "812b1f2e01be0a4054ae45696df73d6041ad921cf4305fd4066e0e9a99423090",
+      "stdout": "6\n",
+      "trap": null
+    },
+    {
+      "case": "dynamic-module",
+      "harts": 4,
+      "binary_sha256": "812b1f2e01be0a4054ae45696df73d6041ad921cf4305fd4066e0e9a99423090",
+      "stdout": "6\n",
+      "trap": null
+    },
+    {
+      "case": "public-bound",
+      "limit": 55,
+      "enabled": true,
+      "derived": 56,
+      "exit": 1
+    },
+    {
+      "case": "public-bound",
+      "limit": 55,
+      "enabled": false,
+      "derived": 56,
+      "exit": 1
+    },
+    {
+      "case": "public-bound",
+      "limit": 56,
+      "enabled": true,
+      "derived": 56,
+      "exit": 0
+    },
+    {
+      "case": "public-bound",
+      "limit": 56,
+      "enabled": false,
+      "derived": 56,
+      "exit": 0
+    }
+  ]
+}

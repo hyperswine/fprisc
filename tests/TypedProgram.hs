@@ -4,6 +4,7 @@ import TypedVectorRead (checkVectorReads)
 import TypedNormalize (checkNormalization)
 import TypedFusion (checkFusion)
 import qualified Core.Typed.Program as P
+import qualified Core.Typed.Erase as Erase
 import Core.Typed.Pipeline
 import Core.Typed.Callback
 import Core.Typed.Close
@@ -21,19 +22,27 @@ import Compiler.DataLayout
 import Frontend.Desugar.Typed
 import Frontend.Desugar (collectCons,collectShapes,DEnv(..))
 import qualified Frontend.Desugar.Checked as Compat
-import Control.Monad.State.Strict (evalState)
+import Control.Monad.State.Strict (evalState,get,put)
 import Frontend.Parser (program)
 import Frontend.Syntax
 import Struct (sigTable,structTable,expandStructs)
 import Infer
 import Infer.Result
+import qualified Compiler.Native.Representation as NativeRep
+import qualified Representation.Types as Rep
+import qualified Arc
 import Type.Syntax
 import Ownership.TypeShape (linShapeT)
 import qualified Codegen.Lower as Lower
 import qualified Codegen.Eval as Eval
+import qualified Cost
+import ResourceCosts (checkResourceCosts)
+import qualified Resource.ResultSize as Sizes
+import qualified Safety
 import Codegen.Policy (m2Policy)
 import Control.Monad (unless)
 import Data.List (isInfixOf)
+import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Text.Megaparsec (parse,errorBundlePretty)
@@ -61,7 +70,229 @@ compile ns source names=
 answer p name args=let (ir,_)=Lower.lowerProgram m2Policy M.empty p p M.empty M.empty
                    in Eval.ocResult (Eval.evalProgram ir name args)
 
+checkTypeInstanceContracts=do
+  let keeping admitted ns src names=
+        let (selection,plain)=compile ns src names
+        in right (Native.compileSelectionTypeSpecializedKeepingEntries admitted S.empty PreserveCallbacks
+          (closedLayouts (Native.nativeClosed plain)) selection)
+      scalarSource="identity x = x. integer : Int -> Int. integer x = identity x. boolean : Bool -> Bool. boolean x = identity x."
+      scalarNames=S.fromList ["identity","integer","boolean"]
+      (_,plain)=compile "admission" scalarSource scalarNames
+      declined=keeping (const False) "admission" scalarSource scalarNames
+      selected=keeping (==TFn int int) "admission" scalarSource scalarNames
+  check "representation admission can retain the exact generic program without clones"
+    (Native.nativeProgram declined==Native.nativeProgram plain && M.null (Native.nativeTypeInstances declined))
+  check "representation admission selects complete types independently and keeps other callers generic"
+    (M.elems (Native.nativeTypeInstances selected)==["identity"]
+      && answer (Native.nativeProgram selected) "integer" [Eval.RInt 17]==Right (Eval.RInt 17)
+      && answer (Native.nativeProgram selected) "boolean" [Eval.RObj 1 1 []]==Right (Eval.RObj 1 1 []))
+  let source identity=identity++" inc x = x + 1. produce : (Int -> Int) -> Int -> Int. produce f x = identity (f x). caller n = produce inc n."
+      src=source "identity x = x."
+      providerNames=S.fromList ["identity","produce"]
+      consumerNames=S.fromList ["inc","caller"]
+      provider=keeping (const True) "type-instance-import" src providerNames
+      consumer=keeping (const True) "type-instance-import" src consumerNames
+      home=Linked.DependencyArtifact "type-instance-home"
+      makeHome core=right (Linked.artifact home providerNames (Native.nativeConstructors core) core)
+      rootNames=consumerNames<>Native.nativeConstructors consumer
+      root=right (Linked.artifact Linked.RootArtifact rootNames S.empty consumer)
+      firstLinked=right (Linked.linkArtifacts [root,makeHome provider])
+      linked=either (error . ("type-instance callback link: "++)) id (Linked.specializeLinked SpecializeCallbacks firstLinked)
+      rootArtifact=Linked.linkedArtifacts linked M.! Linked.RootArtifact
+      rootCore=Linked.artifactCore rootArtifact
+      instanceName=head (M.keys (Native.nativeTypeInstances provider))
+      declarations=right (Imports.codeDeclarations linked)
+      prepared=right (Imports.prepareEmission declarations Linked.RootArtifact consumerNames (Native.nativeProgram rootCore))
+      homeProgram=M.withoutKeys (Native.nativeProgram provider) (Native.nativeConstructors provider)
+      homeReady=right (Imports.prepareEmission declarations home providerNames homeProgram)
+      rejects needle (Left why)=needle `isInfixOf` why
+      rejects _ _=False
+  check "callback clones keep a private type instance at its home with its checked import contract"
+    (case M.lookup instanceName (Imports.readyImports prepared) of
+      Just d->Imports.declarationHome d==home && Imports.declarationSource d=="identity"
+        && Imports.declarationArity d==1
+        && M.lookup instanceName (Native.nativeTypeInstances rootCore)==Just "identity"
+        && instanceName `M.notMember` Imports.readyProgram prepared
+      _->False)
+  check "private typed instances have hidden home visibility and execute through copied callbacks"
+    (visibilityFor True (Imports.readySymbols homeReady) instanceName==HiddenSymbol
+      && answer (Imports.readyProgram prepared `M.union` homeProgram) "caller" [Eval.RInt 41]==Right (Eval.RInt 42))
+  check "emission refuses missing, copied and wrong-arity type instances"
+    (rejects "home private definition is absent" (Imports.prepareEmission declarations home providerNames (M.delete instanceName homeProgram))
+      && rejects "copied away from its home" (Imports.prepareEmission declarations Linked.RootArtifact consumerNames
+          (M.insert instanceName (homeProgram M.! instanceName) (Native.nativeProgram rootCore)))
+      && rejects "private physical arity changed" (Imports.prepareEmission declarations home providerNames
+          (M.adjust (\(ps,b)->(drop 1 ps,b)) instanceName homeProgram)))
+  let (_,withoutInstance)=compile "type-instance-import" src providerNames
+      changedArity=keeping (const True) "type-instance-import" (source "identity = fn x -> x.") providerNames
+  check "a copied type-instance reference cannot silently become a runtime external when its home disappears"
+    (rejects "type instance has no unique emitting home" (Linked.linkArtifacts [rootArtifact,makeHome withoutInstance]))
+  check "the same complete type does not excuse a changed physical home arity"
+    (rejects "imported type-instance arity disagrees" (Linked.linkArtifacts [rootArtifact,makeHome changedArity]))
+  let measuredSource="down : (n : Int | measure n) -> a -> a. down n x = if n <= 0 then x else down (n - 1) x. run : Int -> Int. run n = down n 7."
+      (_,measuredTops)=prepare "type-measure" measuredSource
+      (measures,errors)=Safety.measureCheck measuredTops
+      measured=keeping (const True) "type-measure" measuredSource (S.fromList ["down","run"])
+      program=right (Regions.prepare measured)
+      result ms=right (Regions.place (Regions.Options False False False)
+        (Regions.context (Regions.typeInstanceMeasures ms [program]) program) program)
+      view ms=case Regions.resultAnalysis (result ms) of Just a->a;_->error "missing region cost view"
+      derived=view measures
+      independent=measures `M.union` M.fromList
+        [(n,m {Safety.mFn=n}) | (n,origin)<-M.toList (Native.nativeTypeInstances measured),Just m<-[M.lookup origin measures]]
+      expected=Cost.costProgram independent M.empty (Regions.analysisProgram derived)
+      instanceOfDown=head [n | (n,"down")<-M.toList (Native.nativeTypeInstances measured)]
+      work ms=Cost.ceWork (fst (Regions.analysisCosts (view ms) M.! instanceOfDown))
+  check "verified source descent survives typed instantiation in region costing"
+    (null errors && not (M.null measures) && Regions.analysisCosts derived==expected
+      && not (Cost.hasOmega (work measures)) && Cost.hasOmega (work M.empty))
+  let batch=right (Regions.placePrograms (Regions.Options False False False)
+        (Regions.typeInstanceMeasures measures [program]) (M.singleton (0::Int) program))
+  check "batch region placement uses the same inherited verified measure"
+    (case Regions.resultAnalysis (batch M.! 0) of Just a->Regions.analysisCosts a==expected;_->False)
+
+checkResultSizes=do
+  let source=unlines
+        [ "rev : (xs : List a | measure xs) -> List a -> List a."
+        , "rev xs acc = case xs of [] -> acc | x :: r -> rev r (x :: acc)."
+        , "reverse xs = rev xs []."
+        , "mapGo : (a -> b) -> (xs : List a | measure xs) -> List b -> List b."
+        , "mapGo f xs acc = case xs of [] -> reverse acc | x :: r -> mapGo f r (f x :: acc)."
+        , "map f xs = mapGo f xs []."
+        , "direct : (a -> b) -> (xs : List a | measure xs) -> List b."
+        , "direct f xs = case xs of [] -> [] | x :: r -> f x :: direct f r."
+        , "repeatGo : (n : Int | measure n) -> a -> List a -> List a."
+        , "repeatGo n x acc = if n <= 0 then acc else repeatGo (n - 1) x (x :: acc)."
+        , "repeat n x = repeatGo n x []."
+        , "rangeGo : (a : Int) -> (b : Int | measure (b - a)) -> List Int -> List Int."
+        , "rangeGo a b acc = if b < a then acc else rangeGo a (b - 1) (b :: acc)."
+        , "range a b = rangeGo a b []."
+        , "duplicate : (xs : List a | measure xs) -> List a."
+        , "duplicate xs = case xs of [] -> [] | x :: r -> x :: x :: duplicate r."
+        , "inner : List (List Int) -> List Int."
+        , "inner xs = case xs of [] -> [] | x :: _ -> x."
+        , "unicode = \"éλ🙂\"."
+        , "cat x = strcat x \"éλ🙂\"."
+        ]
+      names=S.fromList ["rev","reverse","mapGo","map","direct","repeatGo","repeat","rangeGo","range","duplicate","inner","unicode","cat"]
+      (_,native)=compile "result-sizes" source names
+      (_,tops)=prepare "result-sizes" source
+      (measures,errors)=Safety.measureCheck tops
+      defs=M.map Native.checkedFunction (Native.nativeDefinitions native)
+      prog=Native.nativeProgram native
+      firstParam n=T.binderName (head (T.functionParameters (defs M.! n)))
+      badCandidate=M.singleton "duplicate" (Cost.CLen (firstParam "duplicate"))
+      bounds=Sizes.verifiedBounds (Sizes.proveSizes measures badCandidate native)
+      at name values lengths=do
+        bound<-M.lookup name bounds
+        (ps,_)<-M.lookup name prog
+        Cost.evalConst (Cost.substituteCost (M.fromList (zip ps (map Cost.CN values)))
+          (M.fromList (zip ps (map Cost.CN lengths))) bound)
+      require name=check ("missing result size: "++name++"; "++show bounds) (M.member name bounds)
+  check "result-size fixture measures verified" (null errors)
+  mapM_ require ["rev","reverse","mapGo","map","direct","repeatGo","repeat","rangeGo","range","unicode","cat"]
+  check "accumulator and direct maps preserve structural size"
+    (at "rev" [] [4,3]==Just 7 && at "map" [] [0,4]==Just 4 && at "direct" [] [0,4]==Just 4)
+  check "repeat size clamps negative inputs and retains accumulator size"
+    (at "repeatGo" [-4,0,0] [0,0,3]==Just 3 && at "repeat" [5,0] []==Just 5)
+  check "inclusive range size preserves empty and singleton endpoints"
+    (at "range" [4,2] []==Just 0 && at "range" [3,3] []==Just 1 && at "range" [2,6] []==Just 5)
+  check "candidate invariant is not assumed for a doubling traversal"
+    (M.notMember "duplicate" bounds)
+  check "outer list length cannot bound its unknown element list"
+    (M.notMember "inner" bounds)
+  check "String sizes count UTF-8 bytes"
+    (at "unicode" [] []==Just 8 && at "cat" [] [5]==Just 13)
+  let twice=M.singleton "duplicate" (Cost.CMul [Cost.CN 2,Cost.CLen (firstParam "duplicate")])
+      twiceBounds=Sizes.verifiedBounds (Sizes.proveSizes measures twice native)
+  check "independently preserved non-unit slope can be proved"
+    (M.member "duplicate" twiceBounds)
+  putStrLn "Result sizes: typed list patterns, accumulator/direct induction, signed repeat/range, UTF-8 bytes and false-invariant refusals passed"
+
+checkRecordUpdateLayouts=do
+  let source="set : Int -> {x : Int} -> {x : Int}. set n p = {p | x = n}. "
+        ++"nested : Int -> {inner : {x : Int}} -> {inner : {x : Int}}. nested n p = {p | inner.x = n}. "
+        ++"openSet : Int -> {x : Int | r} -> {x : Int | r}. openSet n p = {p | x = n}. "
+        ++"other = {inner={tag=3,x=2},keep=4}. run n = a=set n {x=1}; b=nested n {inner={x=2}}; a.x+b.inner.x. "
+        ++"runOpen n = a=openSet n {x=1}; b=openSet n {tag=4,x=2}; a.x+b.x."
+      (_,native)=compile "record-update-layouts" source (S.fromList ["set","nested","openSet","other","run","runOpen"])
+      plans e=(case T.exprNode e of T.PlannedUpdate _ p->widths p;_->[])
+        ++getConst (mapChildrenM (Const . plans) e)
+      widths (T.UpdatePlan _ alternatives)=length alternatives:
+        concat [widths child | T.UpdateBranch _ fields<-alternatives,(_,T.NestedUpdate child)<-fields]
+      selected name=plans (T.functionBody (Native.checkedFunction (Native.nativeDefinitions native M.! name)))
+  check "closed record updates choose their checked shape, including nested fields"
+    (selected "set"==[1] && selected "nested"==[1,1])
+  check "open record updates retain every extending shape"
+    (selected "openSet"==[2])
+  check "checked update planning preserves independently evaluated values"
+    (answer (Native.nativeProgram native) "run" [Eval.RInt 17]==Right (Eval.RInt 34))
+  let inlined=right (Native.inlineNativePrograms 3 24 64 (M.singleton () (S.empty,S.empty,native))) M.! ()
+  check "inlined open-row updates retain coverage after their types close"
+    (answer (Native.nativeProgram inlined) "runOpen" [Eval.RInt 17]==Right (Eval.RInt 34))
+  let physical=closedLayouts (Native.nativeClosed native)
+      types=P.programTypes (closedInput (Native.nativeClosed native))
+      fresh prefix=do n<-get;put (n+1);pure (prefix++show (n::Int))
+      layout=Erase.Layout fresh (`M.lookup` constructorLayouts physical) (shapeLayouts physical) (\_ _ _->pure ())
+      modifyPlan change e=let child=runIdentity (mapChildrenM (pure . modifyPlan change) e) in
+        child {T.exprNode=case T.exprNode child of
+          T.PlannedUpdate base plan->T.PlannedUpdate base (change plan)
+          node->node}
+      refusedPlan name change=
+        let fn=Native.checkedFunction (Native.nativeDefinitions native M.! name)
+            corrupted=fn {T.functionBody=modifyPlan change (T.functionBody fn)}
+        in case evalState (Erase.eraseFunction types layout corrupted) 0 of
+          Left why->"stale record update plan" `isInfixOf` why
+          _->False
+  check "erasure refuses a missing admissible row shape or foreign nominal layout"
+    (refusedPlan "openSet" (\(T.UpdatePlan roots branches)->T.UpdatePlan roots (drop 1 branches))
+      && refusedPlan "set" (\(T.UpdatePlan roots branches)->T.UpdatePlan roots
+        [T.UpdateBranch (tid+1) fields | T.UpdateBranch tid fields<-branches]))
+
 main=do
+  checkRecordUpdateLayouts
+  checkResourceCosts
+  checkResultSizes
+  checkTypeInstanceContracts
+  let (baseSelection,basePlain)=compile "base-type-specialization"
+        "identity x = x. integer : Int -> Int. integer n = identity n. boolean : Bool -> Bool. boolean b = identity b."
+        (S.fromList ["identity","integer","boolean"])
+      specialized=right (Native.compileSelectionTypeSpecializedKeepingEntries (const True) S.empty PreserveCallbacks
+        (closedLayouts (Native.nativeClosed basePlain)) baseSelection)
+      original=Native.nativeProgram basePlain
+      result=Native.nativeProgram specialized
+      instances=[n | n<-M.keys result,"identity$typespec$type$" `isInfixOf` n]
+  check "Base type specialization retains every original entry and arity"
+    (all (\(n,(ps,_))->fmap (length . fst) (M.lookup n result)==Just (length ps)) (M.toList original))
+  check "Base private instances have stable complete type identities"
+    (S.fromList instances==S.fromList ["identity$typespec$type$fc3_Intc3_Int","identity$typespec$type$fc4_Boolc4_Bool"])
+  check "retained and instantiated Base calls preserve scalar results"
+    (answer result "integer" [Eval.RInt 71]==Right (Eval.RInt 71)
+      && answer result "boolean" [Eval.RObj 1 1 []]==Right (Eval.RObj 1 1 [])
+      && answer result "identity" [Eval.RInt 89]==Right (Eval.RInt 89))
+  let (_,localNative)=compile "local-layout" "Cell a = Type (Cell a). probe : Int -> Int. probe n = box = Cell n; case box of Cell x -> x." (S.singleton "probe")
+  mapM_ (\uniform->do
+    let (signatures,layouts,evidence,annotated)=right (NativeRep.prepareFor uniform localNative)
+        clear e=case e of
+          CApp (CVar n) x | M.member n evidence->clear x
+          CApp a b->CApp (clear a) (clear b)
+          CLet n a b->CLet n (clear a) (clear b)
+          CIf c a b->CIf (clear c) (clear a) (clear b)
+          CMk t v xs->CMk t v (map clear xs)
+          CProj i x->CProj i (clear x)
+          CTagEq t v x->CTagEq t v (clear x)
+          CLam ps b->CLam ps (clear b)
+          _->e
+    check "local checked evidence preserves the exact ordinary erasure"
+      (M.map (\(ps,b)->(ps,clear b)) annotated==Native.nativeProgram localNative)
+    check "a local-only closed wrapper gets scalar authority"
+      (any (\d->case d of Rep.ScalarLayoutDef _ _ (Rep.ScalarRep Rep.Managed)->True;_->False) (M.elems layouts))
+    mapM_ (\enabled->do
+      let (lowered,_)=right ((if uniform then Arc.lowerArcWithEvidence else Arc.lowerRawWithEvidence)
+            evidence layouts enabled S.empty signatures M.empty annotated)
+          body=show (lowered M.! "probe")
+      check "local wrapper construction/projection erases under rollback and raw lowering"
+        (not ("CProj" `isInfixOf` body || "$arc.setLayout" `isInfixOf` body || "$representation.local" `isInfixOf` body))) [False,True]) [False,True]
   checkInlining compile
   checkVectorReads compile
   checkNormalization compile

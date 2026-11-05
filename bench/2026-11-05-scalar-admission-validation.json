@@ -1,0 +1,380 @@
+{
+  "compiler_sha256": "2e6202383467f29e37a0de47caff82ba04b427bee6c08caa18c56ef90b6f7f4f",
+  "checks": [
+    {
+      "name": "compile-cost",
+      "command": [
+        "python3",
+        "tests/check_compile_budget.py",
+        "--require-baseline"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 66.56,
+      "log_sha256": "c394c823558a53155289e76498609969d63deee3f3a75a6b07c8bf377aa0e333",
+      "output_tail": [
+        "hello: 1.59 GB allocated, 45 MB peak live, 0.7 s (+8.3% allocation, +5.3% peak vs baseline)",
+        "std-live: 32.68 GB allocated, 428 MB peak live, 20.7 s (+9.2% allocation, +6.2% peak vs baseline)",
+        "pos1: 68.97 GB allocated, 720 MB peak live, 45.0 s (+6.4% allocation, -13.7% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ]
+    },
+    {
+      "name": "specialization-cost",
+      "command": [
+        "python3",
+        "tests/check_type_spec_cost.py",
+        "--sizes",
+        "16",
+        "32",
+        "64",
+        "128",
+        "256",
+        "--require-baseline",
+        "--record",
+        "bench/2026-11-05-scalar-admission-cost.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 3.7,
+      "log_sha256": "c6c4806d98ec380f297444b9b633aef52024eec3b1a6f8318248334c68250a8c",
+      "output_tail": [
+        "16 helpers: same 10832 code bytes/55 functions; compiler allocation 1.001x explicit twins",
+        "32 helpers: same 17264 code bytes/87 functions; compiler allocation 1.001x explicit twins",
+        "64 helpers: same 30448 code bytes/151 functions; compiler allocation 1.000x explicit twins",
+        "128 helpers: same 56816 code bytes/279 functions; compiler allocation 1.000x explicit twins",
+        "256 helpers: same 109552 code bytes/535 functions; compiler allocation 1.001x explicit twins"
+      ]
+    },
+    {
+      "name": "scalar-execution",
+      "command": [
+        "python3",
+        "tests/check_scalar_admission.py",
+        "--baseline-compiler",
+        "/tmp/fpr-before-scalar-admission-182",
+        "--require-execution",
+        "--record",
+        "bench/2026-11-05-scalar-admission.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 45.13,
+      "log_sha256": "05e298a68b5aac97e89652eae4739b5309004a9193ad88acf9cc0aca2dbe4644",
+      "output_tail": [
+        "Scalar admission: ordinary/admitted instructions identical; guarded shift/overflow fallbacks still refuse",
+        "76 scalar/loop executions: wraparound, conversions, comparison endpoints, pointer-bit arithmetic and fixed loop arenas PASS"
+      ]
+    },
+    {
+      "name": "static-arenas",
+      "command": [
+        "python3",
+        "tests/check_static_arena.py",
+        "--require-execution",
+        "--record",
+        "bench/2026-11-05-scalar-admission-arenas.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 23.92,
+      "log_sha256": "e2a076a06b29540c172724833ac26bf85dfaee47616d5944f43fe2636482785d",
+      "output_tail": [
+        "identity: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "wide: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "arity-limit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-yes: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "choose-no: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-low: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "int-high: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "bool: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "unit: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "mixed: exact fixed heap/stack, complete reclamation, guards and short-stack refusal PASS",
+        "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+      ]
+    },
+    {
+      "name": "heap-regression",
+      "command": [
+        "python3",
+        "tests/check_heap_budget.py",
+        "--require-execution",
+        "--record",
+        "/tmp/fpr-scalar-admission-heap.json"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "seconds": 1.57,
+      "log_sha256": "87beec7f823ee7f46a5d17a56029bf23639c9475251a1d23c8100a3c46c6f7e1",
+      "output_tail": [
+        "Heap admission: conversion requests, exact/short limits, zero-allocation raw entry and unknown-boundary refusals PASS",
+        "RV64 plain/measured: 256 allocated callbacks per mode, fixed-arena guards and complete reclamation PASS"
+      ]
+    },
+    {
+      "name": "build",
+      "command": [
+        "make",
+        "fpr",
+        "fprc"
+      ],
+      "status": "PASS",
+      "log_sha256": "c46ef227a71d7e87eedc2b08f755d0fae47d633732d0b90bc1a3c17dcb93a8bd",
+      "output_tail": [
+        "Build profile: -w ghc-9.8.2 -O1",
+        "In order, the following will be built (use -v for more details):",
+        " - fp-risc-0.13.1 (exe:fpr) (configuration changed)",
+        "Configuring executable 'fpr' for fp-risc-0.13.1...",
+        "Preprocessing executable 'fpr' for fp-risc-0.13.1...",
+        "Building executable 'fpr' for fp-risc-0.13.1...",
+        "[2 of 2] Linking dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/x/fpr/build/fpr/fpr [Library changed]",
+        "ld: warning: -U option is redundant when using -undefined dynamic_lookup",
+        "ln -sf fpr fprc",
+        "make: Nothing to be done for `fprc'."
+      ]
+    },
+    {
+      "name": "all-haskell",
+      "command": [
+        "cabal",
+        "test",
+        "all",
+        "--test-show-details=direct"
+      ],
+      "status": "PASS",
+      "log_sha256": "65d29c1b02a0a7e688a56abc3a550873eb6517a2ebc8122a2b7743dba84f144a",
+      "output_tail": [
+        "parentheses end conditional before next argument: OK",
+        "Test suite if-precedence-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/if-precedence-check/test/fp-risc-0.13.1-if-precedence-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed.",
+        "Running 1 test suites...",
+        "Test suite module-path-check: RUNNING...",
+        "module search path: OK",
+        "Test suite module-path-check: PASS",
+        "Test suite logged to:",
+        "/Users/jasonqin/Documents/GitHub/fprisc/./dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.13.1/t/module-path-check/test/fp-risc-0.13.1-module-path-check.log",
+        "1 of 1 test suites (1 of 1 test cases) passed."
+      ]
+    },
+    {
+      "name": "arc-raw-execution",
+      "command": [
+        "python3",
+        "tests/check_typed_ir_arc.py",
+        "--require-execution"
+      ],
+      "status": "PASS",
+      "log_sha256": "deedc25a04038e1c31308b1c03d074ae9a7adce4253ae8414e312ac0621d2194",
+      "output_tail": [
+        "Refused by name: a misaligned pin, a field declared twice, a field that collides with a helper: PASS",
+        "Free: no accessor call remains, and each function is no larger than its hand-written twin: PASS",
+        "Library unit: qualified names, weak shared stubs, C entries with the declared contract: PASS",
+        "Hidden-field ARC export admitted; unsigned/raw-managed exports and computed symbol names refused: PASS",
+        "C -> FP-RISC across every boundary type, a library beside a program, Addr.symbol resolved by the linker: PASS",
+        "C export adapters lp64: 2176 independent C calls, all boundary types, IEEE bits, arguments through 64 and hart cells, 128 nullary/tagged/shared/raw-worker probes, exact boundary allocations and no leaks PASS",
+        "Tagged/public versus raw/private preserves printed prefixes and overflow/division/alignment failures; wrong scalar kind refuses before effects: PASS",
+        "C export adapters lp64d: 1024 independent C calls, all boundary types, IEEE bits, separate integer/FP banks, 128 nullary/tagged/shared/raw-worker probes, exact boundary allocations and no leaks PASS",
+        "The allocator in FP-RISC: 10,000 ARC cycles, raw fields, machine primitives, a 6,000-node release, exhaustion refused by name: PASS",
+        "Raw byte library without ARC runtime/adapters: 2048 value/address cases and neighbor canaries PASS",
+        "Negative control: missing constructor field metadata fails the real ownership runtime PASS",
+        "Independent Python word/Int oracle: 879 checks, every shift/bit index, wrapping, high bits and checked arithmetic PASS"
+      ]
+    },
+    {
+      "name": "registry",
+      "command": [
+        "python3",
+        "tests/test_check_registry.py"
+      ],
+      "status": "PASS",
+      "log_sha256": "06f90aa60017fbf3cb2e317755cd7ed9042c3419c725c8bd0089ee14a993fb04",
+      "output_tail": [
+        "..check_ci: tests/check_rv64_linux.py::typed-runtime",
+        "check_ci: tests/check_rv64_linux.py::typed-runtime: 0.0 s",
+        "..check_ci: tests/check_native_data.py",
+        "check_ci: tests/check_native_data.py: 0.0 s",
+        "check_ci: tests/check_native_required.py",
+        "....",
+        "----------------------------------------------------------------------",
+        "Ran 8 tests in 0.072s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "schema": "scalar-admission-validation-v1",
+  "codegen_revision": 182,
+  "haskell_suites": 41,
+  "inputs_sha256": {
+    "compiler/Codegen.hs": "b6e11b0828c8c0e2cb951d01c70eed099f79dab7c8f325cff8b1abd5763d09da",
+    "compiler/Codegen/Heap.hs": "8bf53d0d14b14ab5d05b3cd8ca21d27d56e78b56b18628bda37523e5f3c9a512",
+    "compiler/Codegen/Target/RV.hs": "2bc838873a542560c56a409a56e1611bcdaee2264150aa497066d4e4df102951",
+    "compiler/Codegen/Target/RV/ScalarAdapters.hs": "16788aae839e40c15c1e038c6fb4bdc360677e37877e72d7d1cdff6af7f35092",
+    "fp-risc.cabal": "eaa07756c5a878e3894a65f6a28d12860301f905594e8533e8993dc18eb86333",
+    "tests/HeapBounds.hs": "64c99cc365e8eeaa7e3ec54e289cb2641f50e87132182f0f65c9151bf4e2f489",
+    "tests/check_scalar_admission.py": "08e7345c59d0713640b94e78dc874fc5137b0fa0566b35a22cbade22184b169a",
+    "tests/check_registry.py": "146e5f59cd70e8393382dbca38ce7bc1361464f042dfb28889892ab2c4b2562e",
+    "tests/test_check_registry.py": "9039c47c7653b061f4743b6a013d760688d5abff85e0c35c13d12fc1c7372d7e",
+    "tests/check_typed_ir_arc.py": "b84c7e6337f3e8a4c5325a53dd346e493dbf85f1f82c84660eae5a399e50c945",
+    "tests/check_static_arena.py": "563734cec553d62dd17e554be58393c2f399fa124d4c08019ec69cd0aad195fb",
+    "tests/check_heap_budget.py": "664a0f12e0cba4a8e0ddb4cbbb5c81bd45c089b648b32e32f6511a796ef08bfb",
+    "tests/check_compile_budget.py": "2ecb43e7bc87c3cc5a4a77675c3768d96a9ac77ddab77a0947ff18a72ba973fb",
+    "tests/compile_budget.json": "1030bccbc557ddea3cd2ae9e0dd82d3791044bfbf0faacc67cae465099257a69",
+    "tests/check_type_spec_cost.py": "aac8ce91c99984bc2f9eb31c91c376504fc2d523cc6771d286546cc05993be7f",
+    "tests/type_spec_cost_budget.json": "30cc5450eb143199cef5966239aab4263b8d0111d6fbfc92686d1d525f0228ee",
+    "tools/build_static_arena.py": "883e4132858fff42128583987ce796526c48e0c85f3765ccabd09498c79e34d5",
+    "tools/static_arena_runtime.py": "71fdce0309c5a2b628312254a4a8d6212acafa1585b6b944f5d401944c6adf97",
+    "tools/check_linked_stack.py": "b8bad483f8ad3ef4305e456cca64e1443c7a22eed2d236c245ad407d8b4c4e12",
+    "tools/riscv_compressed.py": "d7f6edd0808e6beba607018ec8e02d905e7e4121a2d8d1c6e14db5107223590e",
+    "tools/check_target_image.py": "72ba9f2776137ac988f2bcc3fe65bb41b36100c29cbe1cd4c8616f7c9700d4ee",
+    "machine/builtin/contracts/rv64-c-heap-v1.json": "7f9d850ff0e951154746507b28e0669fc8726d8cf07b7722416ef6eb5c8c2d76",
+    "machine/builtin/targets/virt.json": "da950f01503b79a69698f26759520811ce0d6075fa3374997090b497c4217d9e",
+    "docs/2026-11-05-SCALAR-ARENA-ADMISSION.md": "bced7ce03e1abb24879d5a683f9e16a927090e9c61c35938b8df53b8398c3e87",
+    "docs/2026-11-05-STATIC-ACTIVATION-ARENAS.md": "28c75ac9426d953fdf116f157c32ef142343b1333736853caba2d174119c4f87",
+    "docs/2026-11-05-CALLBACK-HEAP-BUDGETS.md": "a3d4fc0a10d69bc4c1d7c59d95e942a082020ba62dfa413593990d2d42ae5d3e",
+    "docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md": "675b62b5ab26c3b2ebff87407fb85316806bbcaf4f4adcdcaa9be69a0d5122c8",
+    "docs/2026-11-05-OWNED-PRODUCT-PACKETS.md": "f7076fb4301a5c1f330bc2283e06df4d8bea29a1f1ca5f4954b9b41ea99e2717",
+    "docs/2026-09-18-BAREMETAL-BUILTIN.md": "f91435b5bba431a9ccf0537c9beb13c58168828340fb3524207464b30baa1381",
+    "bench/2026-11-05-scalar-admission.json": "c908352d14cdfbf6395f718a275abe073ec406ae93ed317754035d4eab546f1c",
+    "bench/2026-11-05-scalar-admission-cost.json": "eb0e1fec199b3dccb2ef147fcbde14245a7d89b70d3c62b32c962af3a74ef94e",
+    "bench/2026-11-05-scalar-admission-arenas.json": "2fec21fdd91e49fe05c17530e87b2d87a0d26c15fbbf0fabb0551f022083acee"
+  },
+  "heap_regression": {
+    "compiler_sha256": "2e6202383467f29e37a0de47caff82ba04b427bee6c08caa18c56ef90b6f7f4f",
+    "refusals": [
+      {
+        "case": "one-byte-short",
+        "reason": "error: heap budget wide: needs 2640 bytes, limit 2639"
+      },
+      {
+        "case": "admitted",
+        "reason": "error: heap budget wide: needs 2640 bytes, limit 2639"
+      },
+      {
+        "case": "invalid-0",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-1",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-2",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-3",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-4",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "invalid-5",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "check-only",
+        "reason": "error: --heap-budget needs a positive RV64 decimal byte count and native compilation"
+      },
+      {
+        "case": "no-entries",
+        "reason": "error: --heap-budget requires builtin RV64 --arc --lib with explicit --export entries"
+      },
+      {
+        "case": "rv32",
+        "reason": "profile builtin RV32 currently supports manual ownership only; --arc/--raw/--export require RV64"
+      },
+      {
+        "case": "duplicates",
+        "reason": "error: heap budget has duplicate public callback entries"
+      },
+      {
+        "case": "foreign",
+        "reason": "error: heap budget speak: UNPROVED [\"runtime:fpr_fn__x24arc_x2eprint\"]"
+      },
+      {
+        "case": "overflow",
+        "reason": "error: heap budget plus: UNPROVED [\"runtime:fpr_fn__x24arc_x2eadd\"]"
+      }
+    ],
+    "stack_report_refresh_preserves_code_and_unit_identities": true,
+    "stack_report_refreshed_units": 1,
+    "unchanged_instructions_and_data": true,
+    "cached_short_budget_preserves_existing_output": true,
+    "bounds": {
+      "identity": {
+        "requests": 2,
+        "requested_bytes": 48,
+        "arena_bytes": 416
+      },
+      "wide": {
+        "requests": 13,
+        "requested_bytes": 312,
+        "arena_bytes": 2640
+      },
+      "choose": {
+        "requests": 3,
+        "requested_bytes": 72,
+        "arena_bytes": 624
+      }
+    },
+    "maximum_arena_bytes": 2640,
+    "execution": {
+      "status": "RV64-QEMU-PASS",
+      "rvc": false,
+      "calls_per_mode": 256,
+      "images": {
+        "plain": {
+          "admission": {
+            "schema": 2,
+            "target": "qemu-rv64-heap-budget-test",
+            "elf_class_bits": 64,
+            "image_sha256": "a098cfa74d150b36e3f428b444553121b365631f7609400004d5efd69373d7aa",
+            "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+            "image_bytes": 6424,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 14336,
+            "remaining_ram_bytes": 8374272,
+            "min_free_bytes": 65536
+          },
+          "output": "identity 0\nwide 0\nchoose 0\nHEAP_BUDGET_FIXED_ARENAS_PASS\n"
+        },
+        "measured": {
+          "admission": {
+            "schema": 2,
+            "target": "qemu-rv64-heap-budget-test",
+            "elf_class_bits": 64,
+            "image_sha256": "7855ae9b72a6a4c88f8c3cdc8b705b648404dad36371054f2a1b8d5d9f8a35ba",
+            "manifest_sha256": "1e136c36c82ee322c994996888ead8d57a2623b84a75f796e7bcc610fa2d817c",
+            "image_bytes": 6720,
+            "image_limit_bytes": 8323072,
+            "static_memory_bytes": 14672,
+            "remaining_ram_bytes": 8373936,
+            "min_free_bytes": 65536
+          },
+          "output": "identity 112\nwide 1344\nchoose 224\nHEAP_BUDGET_FIXED_ARENAS_PASS\n"
+        }
+      },
+      "target_manifest": {
+        "schema": 1,
+        "target": "qemu-rv64-heap-budget-test",
+        "elf_class_bits": 64,
+        "ram_origin": 2147483648,
+        "ram_bytes": 8388608,
+        "max_image_bytes": 8323072,
+        "min_free_bytes": 65536
+      },
+      "assembly_sha256": "2a308b2f2db8ccc323fb307abd9dfcd9da73a13dcac6bb48de776fa2232bd961"
+    }
+  },
+  "historical_suite_count_correction": {
+    "previous_reported": 44,
+    "corrected": 41,
+    "existing_owned_product_manifest_log_sha256": "5085aafa990173540c118b289afc077caee9706a6b64ac654235516f55b62a98"
+  },
+  "scope": "Local macOS arm64 compiler checks and RV64 QEMU execution; unchanged emitted scalar instructions. No remote CI, physical-board, runtime-speedup, general-application or WCET claim."
+}

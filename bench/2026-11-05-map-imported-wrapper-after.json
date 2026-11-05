@@ -1,0 +1,246 @@
+{
+  "compiler_sha256": "2ff2e87abdcc393b415ea7baac4f8f3668aa4999b6dd2c500bb07f7ae1d867b0",
+  "module_source": "Meters = Type (Meters Int).\npack x = Meters x.\nvalue (Meters x) = x.\n",
+  "rows": [
+    {
+      "form": "explicit",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n n m).\naddValue a key value = a + value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": true,
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 5625,
+        "alloc_bytes": 343584,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "explicit",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n n m).\naddValue a key value = a + value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": true,
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 5625,
+        "alloc_bytes": 343584,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "explicit",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n n m).\naddValue a key value = a + value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": false,
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 5624,
+        "alloc_bytes": 351728,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "explicit",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n n m).\naddValue a key value = a + value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": false,
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 5624,
+        "alloc_bytes": 351728,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "constructor",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.Meters n) m).\naddValue a key value = case value of M.Meters x -> a + x.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": true,
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 5625,
+        "alloc_bytes": 343584,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "constructor",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.Meters n) m).\naddValue a key value = case value of M.Meters x -> a + x.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": true,
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 5625,
+        "alloc_bytes": 343584,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "constructor",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.Meters n) m).\naddValue a key value = case value of M.Meters x -> a + x.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": false,
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 5624,
+        "alloc_bytes": 351728,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "constructor",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.Meters n) m).\naddValue a key value = case value of M.Meters x -> a + x.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": false,
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 5624,
+        "alloc_bytes": 351728,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "api",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.pack n) m).\naddValue a key value = a + M.value value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": true,
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 5625,
+        "alloc_bytes": 343584,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "api",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.pack n) m).\naddValue a key value = a + M.value value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": true,
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 5625,
+        "alloc_bytes": 343584,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "api",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.pack n) m).\naddValue a key value = a + M.value value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": false,
+      "harts": 1,
+      "cost": {
+        "alloc_requests": 5624,
+        "alloc_bytes": 351728,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    },
+    {
+      "form": "api",
+      "source": "unsafe base.\nMap = use \"std/map\".\nM = use \"meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.pack n) m).\naddValue a key value = a + M.value value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\nmain = print (check 512).\n",
+      "inline": false,
+      "harts": 4,
+      "cost": {
+        "alloc_requests": 5624,
+        "alloc_bytes": 351728,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 17,
+        "buddy_frees": 0
+      },
+      "stdout": "262656\n"
+    }
+  ]
+}

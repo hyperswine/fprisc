@@ -1,0 +1,136 @@
+{
+  "revision": 202,
+  "compiler_sha256": "035fd0859d7b74e99515b971b640c4f9f360e57b0dc218508335603ebba9463d",
+  "baseline_compiler_sha256": "59e53da796bf8298bf80db0d78918ee987e2e089e9012d1828e481abfa129ae2",
+  "haskell_suites": 41,
+  "physical": [
+    {
+      "cases": 186,
+      "record": "2026-11-05-tree-storage-physical.json.gz",
+      "compressed_sha256": "6fda301ce84d2b01789aaac226a10be021d684265b27141d6eda251520f0e33a",
+      "uncompressed_sha256": "7b589ec2c8fa3b52835f213449c18a86e19434f53fc662f458149e31a9a0e5ee",
+      "bundle_sha256": "105991591dc4012a139dba53bdc63bcc6faa688453db24e7cbae3f99a2abf480",
+      "production": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+      "watchdogs": 2,
+      "samples": {
+        "default": {
+          "n": 6912,
+          "median_us": 206.0,
+          "p99_us": 1321,
+          "maximum_us": 2298,
+          "over_1ms": 303
+        },
+        "boxed": {
+          "n": 6912,
+          "median_us": 209.0,
+          "p99_us": 1589,
+          "maximum_us": 2451,
+          "over_1ms": 603
+        }
+      }
+    },
+    {
+      "cases": 218,
+      "record": "2026-11-05-tree-storage-physical-final.json.gz",
+      "compressed_sha256": "81c99bb88c20358b43eb93fe688e59cd62bf1359efffa6a932f25fa38178fd2a",
+      "uncompressed_sha256": "fd62952432b5f643f91245cbf80651b800fb8137a80b9544ef0783e464e8f71f",
+      "bundle_sha256": "93ffccfb9001da00b880a54c7c8a15bf8e51892dce9f5fbb093004f6ba75b351",
+      "production": "running pid=17227 restarts=0\npid=17227\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /usr/bin/qosp\nb2ae9b56100fd4f707df81c6b98eefe16a55922ffb07580267c4e514cc50fde2  /proc/17227/exe\n",
+      "watchdogs": 2,
+      "samples": {
+        "default": {
+          "n": 6912,
+          "median_us": 206.0,
+          "p99_us": 1455,
+          "maximum_us": 2443,
+          "over_1ms": 348
+        },
+        "boxed": {
+          "n": 6912,
+          "median_us": 210.0,
+          "p99_us": 1618,
+          "maximum_us": 5631,
+          "over_1ms": 572
+        }
+      }
+    }
+  ],
+  "checks": {
+    "budget": {
+      "log_sha256": "8f82b431a9a855b204a71dc29a46fb844669bd4beffacc02c78b3d88caae0326",
+      "last_line": "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+    },
+    "haskell": {
+      "log_sha256": "ceea66c56ddd9725c3582fb2af716a76215c2ede00727abc005038f03f194186",
+      "last_line": "1 of 1 test suites (1 of 1 test cases) passed."
+    },
+    "native-final": {
+      "log_sha256": "6b3f5b622aa1cb98ff1e3c4f1c789539d9f714f79fe62c162e7859712cac9506",
+      "last_line": "152 aggregate storage allocation, shared-child, public-boundary and trap checks passed"
+    },
+    "x64-final": {
+      "log_sha256": "6b3f5b622aa1cb98ff1e3c4f1c789539d9f714f79fe62c162e7859712cac9506",
+      "last_line": "152 aggregate storage allocation, shared-child, public-boundary and trap checks passed"
+    },
+    "rv": {
+      "log_sha256": "7360d7b3d7eea488a65498645961764befbc29307afdb670e6e68e29ef3bde1f",
+      "last_line": "RV64 Linux userspace 72 cases PASS"
+    },
+    "boundary": {
+      "log_sha256": "f4acf231211e932539e73c0d6d5665e3453dbaccd788ffcdfb3fb6ba21fcb9f5",
+      "last_line": "16 warm module and rollback calls passed"
+    },
+    "sched": {
+      "log_sha256": "e2635125a1e4ec3b7d95e3d507227f6a4ceb7a2df8575d628698409b782a3228",
+      "last_line": "Scheduler latency qualification: 315 configurations PASS; no WCET claim"
+    },
+    "arena": {
+      "log_sha256": "1440e4ece55767e2110645f6978456cc765874ae0d0bb04a464954c24d92782e",
+      "last_line": "Runtime identity, signature domains, metadata corruption, failed execution and publication preservation PASS"
+    },
+    "sequence": {
+      "log_sha256": "9eb362eb91044a69b6493c693f2992406fdfb7d1b13f48887d2714610c359a70",
+      "last_line": "Typed scalar handoffs, short arenas, late unproved entry, pre-reset leak and publication preservation PASS"
+    },
+    "lists": {
+      "log_sha256": "fd2a1c2c0d5a1cb7ec069cea075e08db73d8eede9e84d0cce97f5abc47ae3c00",
+      "last_line": "178 persistent storage allocation, effects, trap, escape, module and walker cases passed"
+    },
+    "variant": {
+      "log_sha256": "d90b1295b5671dd8b5734a0b409d1c80f70ee880352475eb3f312f57746d572e",
+      "last_line": "280 variant return allocation, boundary, cache, and semantic checks passed"
+    },
+    "materialize": {
+      "log_sha256": "ba10426364e942261cb64975ae8c96532a64c0bda460dafc8b6ef49788ab233c",
+      "last_line": "Materializing pipeline: imported capture allocation and malformed target refusal PASS"
+    },
+    "registry": {
+      "log_sha256": "a7066ad647e2d25d191ed234a88a30ef3c385f30d2770d5bc1c9c6315724fc61",
+      "last_line": "OK"
+    },
+    "scaling": {
+      "log_sha256": "b308fde50b6c69a85051b17ade4d951bdfc093711072b0b5eb4198a56fdf8fd1",
+      "last_line": "256 rollback 7106866824 320088 0"
+    },
+    "perf": {
+      "log_sha256": "6837288bf24d03295a94fa3672db1262dfb18df3ef2b7b496c73edc88e807d1d",
+      "last_line": "tree rollback 1637601 0.01566645799903199"
+    },
+    "map": {
+      "log_sha256": "1d6afd2e61b2d766478b4c15a7cd0f4cd5d6e2ad5ce83405c5c2ecd2499fb8f4",
+      "last_line": "False False 4 512 5626 351792"
+    }
+  },
+  "artifacts": {
+    "2026-11-05-tree-storage-native.json": "9e924b6fb2b3500ec811d8d152ef41187cdd69e194a1e57a382642feedb89a65",
+    "2026-11-05-tree-storage-x64.json": "c17dfc1624c03888739e9feb4cbd4336c3c0fcdf1ec6aee0cf51ef2438ec9547",
+    "2026-11-05-tree-storage-rv64.json": "38969c124af1838c013d720c24d437d6fdc37a03a120fc264e71381a3677fa83",
+    "2026-11-05-tree-storage-scaling.json": "6030e7fa32650fc4a785b2338737de94007de6ad62191966473d861028ce8cca",
+    "2026-11-05-tree-storage-throughput.json": "b2485a2f4735ffcd37509b2a37b51032ff20d3791765ea9a9f296e62809934cf",
+    "2026-11-05-base-tree-storage-after.json": "7de72a96028c57f576a33ebd89e1deac7ca3d102d194a5155c62b3c91cb596b8",
+    "2026-11-05-tree-storage-scheduling.json": "9b75b0299cfe0838068d74754ac5fed7c9eeee34d77f9b89bff8442ac8f958b2",
+    "2026-11-05-tree-storage-boundaries.json": "6b6ead392550bc1d152706222651ea545b95f330b572893328ceffcd30304778",
+    "2026-11-05-std-map-storage-before.json": "05f696993ec4008cadd159fd1e2112d91a7918284a98ff188b872cd05bf8062f",
+    "2026-11-05-base-tree-storage-before.json": "e9c8ecc78b4f5bfccbc6ff5c5cecec954221682551202016a7613274372da6a8"
+  }
+}

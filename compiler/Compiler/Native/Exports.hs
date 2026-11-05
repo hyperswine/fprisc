@@ -2,9 +2,10 @@
 -- The ordinary unit checker has already accepted these declarations. This
 -- owner projects their boundary types once and produces checked adapter plans.
 module Compiler.Native.Exports
-  (PreparedExport, ExportError(..), prepareExports, exportDescription, exportAdapter) where
+  (PreparedExport, ExportError(..), prepareExports, prepareUniformExports, prepareUniformExportsWith, exportDescription, exportAdapter) where
 import Frontend.Syntax (STop(..),Ty(..))
 import Codegen.Export.Plan
+import Representation.Types (CallSignature,Rep(..),signatureParts)
 import qualified Data.Map.Strict as M
 
 data ExportError = ExportError {exportSource :: String, exportMessage :: String} deriving (Eq,Show)
@@ -17,7 +18,14 @@ exportDescription (PreparedExport name checked)=
   in "export "++public++" : "++unwords (map show (signatureParams sig))++" -> "++show (signatureResult sig)++"  ("++name++")"
 
 prepareExports :: FloatABI -> [(String,String)] -> [STop] -> M.Map String Int -> (String -> String) -> Either ExportError [PreparedExport]
-prepareExports abi requests declarations arities target=traverse one requests
+prepareExports=prepareWith planAdapter M.empty
+prepareUniformExports :: FloatABI -> [(String,String)] -> [STop] -> M.Map String Int -> (String -> String) -> Either ExportError [PreparedExport]
+prepareUniformExports=prepareUniformExportsWith M.empty
+-- Checked aggregates and explicit uniform variables cross as owned tagged C
+-- values. Hidden fields and open rows still need complete layout authority.
+prepareUniformExportsWith :: M.Map String CallSignature -> FloatABI -> [(String,String)] -> [STop] -> M.Map String Int -> (String -> String) -> Either ExportError [PreparedExport]
+prepareUniformExportsWith=prepareWith planUniformAdapter
+prepareWith planner checked abi requests declarations arities target=traverse one requests
   where
     baseName=takeWhile (/='@')
     signatures=M.fromListWith (++) [(baseName q,[(q,as,r)]) | TSig q (as,r) _<-declarations]
@@ -30,9 +38,17 @@ prepareExports abi requests declarations arities target=traverse one requests
         Nothing->bad "no declared signature (an export is a contract: write `name : A -> B .`)"
       actual<-maybe (bad "no such function in this unit") Right (M.lookup q arities)
       admit (checkExportArity abi (length as) actual)
-      kinds<-admit (traverse ckindOf as)
-      result<-admit (ckindOf r)
-      checked<-admit (planAdapter abi (CExportSymbol public) (FprEntrySymbol (target q)) (Signature kinds result))
+      let (params,resultRep)=maybe ([],Nothing) signatureParts (M.lookup q checked)
+          kind ty known=case ckindOf ty of
+            Right scalar->Right scalar
+            Left why->case known of
+              Just UniformRep->Right KValue
+              Just TextRep->Right KValue
+              Just LayoutRep {}->Right KValue
+              _->Left why
+      kinds<-admit (sequence (zipWith kind as (params++repeat Nothing)))
+      result<-admit (kind r resultRep)
+      checked<-admit (planner abi (CExportSymbol public) (FprEntrySymbol (target q)) (Signature kinds result))
       pure (PreparedExport q checked)
 
 ckindOf :: Ty -> Either String CKind

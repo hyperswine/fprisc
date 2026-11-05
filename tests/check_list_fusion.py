@@ -111,10 +111,10 @@ main =
                 'Some 2\n', (2001,), (1001,)),
             'map-filter': (
                 'main = print (List.head (List.map (fn x -> x * 2) (List.filter (fn x -> x <= 500) (List.range 1 1000)))).\n',
-                'Some 2\n', (2001,), (1501,)),
+                'Some 2\n', (2001,), (501,)),
             'filter-map': (
                 'main = print (List.head (List.filter (fn y -> y <= 1000) (List.map (fn x -> x * 2) (List.range 1 1000)))).\n',
-                'Some 2\n', (2501,), (1501,)),
+                'Some 2\n', (2501,), (501,)),
         }
         for name, (body, expected_output, unfused_requests, fused_requests) in producer_cases.items():
             path = source(name, 'List = use "std/list".\n' + body)

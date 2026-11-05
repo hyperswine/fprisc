@@ -149,7 +149,10 @@ main =
         arc_source=tmp/'arc.fpr'
         arc_source.write_text('profile builtin.\nloop n (a,b,c,d) = if n == 0 then (a,b,c,d) else loop (n - 1) (a+1,b+2,c+3,d+4).\nmain = loop 100 (0,0,0,0).\n')
         command([ROOT/'fpr','compile','--arc',arc_source,arc],enabled)
-        assert '# fn $worker.' not in arc.read_text()
+        # ARC now has its own checked product workers. Base field/scalar
+        # conventions must still be absent from this separate ownership path.
+        assert '# fn $worker.fields.' not in arc.read_text()
+        assert '# fn $worker.scalar.' not in arc.read_text()
         print('wide workers native differential, allocation, effects, actor ownership, stack, 64-argument boundary and four-target emission: PASS')
         print(json.dumps(results,sort_keys=True))
 

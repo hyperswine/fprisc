@@ -1,0 +1,226 @@
+{
+  "repeats": 800,
+  "before_runtime": {
+    "actors.c": "d44005419a3dd44aecd50b39e165db3c2953d965e6650bff062003236505ca3e",
+    "bits.c": "70b29db5f31d7f92c6c418c9470ef6e622a88f9108a16359b89aef771bb68111",
+    "buddy.c": "8c8fecc5399a4ce1eea346bd2d83a95b2f530a1416343bf44b69f778b6c2d4f7",
+    "fpr.h": "39abcf1d9507edbd91964ea98e198a4f06e1792139706db3d1efaae67e3c81cf",
+    "i32.c": "a9d59f4c8c7713e61e275410c234c519aae5b2e2fb9498dfcf56bfe27aeceee4",
+    "i32.h": "1aebe94f294c233df1c6b376a48d0c2189b1a1f9842d09c43315162f527be6e6",
+    "mod.c": "5b1f14776438e21dc3cc0c15a45e4797725d05b154bf77edae03458ff57aae0d",
+    "runtime.c": "b069d99605b249bfba398e0956431ea846a12320389613b633c75fa5b349b651",
+    "sched_probe.h": "94441412dcf75fc2b2fb2455f27e2aa894cc0977d9336d4fbeb55b89b01c64ff",
+    "sstr.c": "6235f9af5d7e1caf19021e5c3e767fa20aa7b05539a3b4c0ff58328a6e5c500b",
+    "vec.c": "d31611331518bb9b553da791a3864fe6525fd26c2daa7a504fe4f2f665e3210e",
+    "vec_layout.h": "c58dc8eb8e6af7bba31d78ac8ddb0ad3878be8ff8769165c599925d72b3dfbc9"
+  },
+  "current_runtime": {
+    "actors.c": "d44005419a3dd44aecd50b39e165db3c2953d965e6650bff062003236505ca3e",
+    "bits.c": "70b29db5f31d7f92c6c418c9470ef6e622a88f9108a16359b89aef771bb68111",
+    "buddy.c": "8c8fecc5399a4ce1eea346bd2d83a95b2f530a1416343bf44b69f778b6c2d4f7",
+    "fpr.h": "39abcf1d9507edbd91964ea98e198a4f06e1792139706db3d1efaae67e3c81cf",
+    "i32.c": "a9d59f4c8c7713e61e275410c234c519aae5b2e2fb9498dfcf56bfe27aeceee4",
+    "i32.h": "1aebe94f294c233df1c6b376a48d0c2189b1a1f9842d09c43315162f527be6e6",
+    "mod.c": "5b1f14776438e21dc3cc0c15a45e4797725d05b154bf77edae03458ff57aae0d",
+    "runtime.c": "b069d99605b249bfba398e0956431ea846a12320389613b633c75fa5b349b651",
+    "sched_probe.h": "94441412dcf75fc2b2fb2455f27e2aa894cc0977d9336d4fbeb55b89b01c64ff",
+    "sstr.c": "6235f9af5d7e1caf19021e5c3e767fa20aa7b05539a3b4c0ff58328a6e5c500b",
+    "vec.c": "d31611331518bb9b553da791a3864fe6525fd26c2daa7a504fe4f2f665e3210e",
+    "vec_layout.h": "c58dc8eb8e6af7bba31d78ac8ddb0ad3878be8ff8769165c599925d72b3dfbc9"
+  },
+  "compile_cost": [
+    {
+      "family": "tree",
+      "form": "before",
+      "size": 800,
+      "allocated_bytes": 1549429248,
+      "peak_bytes": 44563136,
+      "seconds": 1.5384143749834038,
+      "text_bytes": 3964,
+      "disassembly_sha256": "5780885b7586a4b6bfec1e3217cff4778cc30a99184dce32e9afd82dcfaa9d7e",
+      "source_sha256": "fff81b44cdbbc137be5d04da8fc6a7f93dde24eccd9912d701c137e68de0265c"
+    },
+    {
+      "family": "tree",
+      "form": "after",
+      "size": 800,
+      "allocated_bytes": 1559196488,
+      "peak_bytes": 44560024,
+      "seconds": 0.7013345410232432,
+      "text_bytes": 5176,
+      "disassembly_sha256": "74d40ce2dd58b3db242a8e8e17fa64acb1d1eeeaffe9457cccc187e1b68ffa44",
+      "source_sha256": "fff81b44cdbbc137be5d04da8fc6a7f93dde24eccd9912d701c137e68de0265c"
+    },
+    {
+      "family": "tree",
+      "form": "explicit",
+      "size": 800,
+      "allocated_bytes": 1552640512,
+      "peak_bytes": 44546888,
+      "seconds": 0.7268831670517102,
+      "text_bytes": 4508,
+      "disassembly_sha256": "6697c4d6fbbf241e31dee597b3eac0729c59b16e397c986d7d39a396e7f3d631",
+      "source_sha256": "864e3bb4410b69017c143f28a7ccf863e9282737dfb11cff0068f86d9073700c"
+    },
+    {
+      "family": "tree",
+      "form": "rollback",
+      "size": 800,
+      "allocated_bytes": 1551489560,
+      "peak_bytes": 45460264,
+      "seconds": 0.7056977500324138,
+      "text_bytes": 3964,
+      "disassembly_sha256": "5780885b7586a4b6bfec1e3217cff4778cc30a99184dce32e9afd82dcfaa9d7e",
+      "source_sha256": "fff81b44cdbbc137be5d04da8fc6a7f93dde24eccd9912d701c137e68de0265c"
+    }
+  ],
+  "throughput": [
+    {
+      "family": "tree",
+      "root_workers": [],
+      "form": "before",
+      "compiler_sha256": "59e53da796bf8298bf80db0d78918ee987e2e089e9012d1828e481abfa129ae2",
+      "source_sha256": "fff81b44cdbbc137be5d04da8fc6a7f93dde24eccd9912d701c137e68de0265c",
+      "cost": {
+        "alloc_requests": 1637601,
+        "alloc_bytes": 65497760,
+        "copies": 800,
+        "copy_bytes": 25568,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 799,
+        "state_bytes": 25568,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.01695479196496308,
+        0.01563170802546665,
+        0.015773666033055633,
+        0.015700791031122208,
+        0.016016334004234523,
+        0.01554629096062854,
+        0.015360207995399833,
+        0.01581362501019612,
+        0.015576457954011858,
+        0.015671333007048815,
+        0.015661582991015166,
+        0.015802917012479156,
+        0.015486208023503423
+      ],
+      "median_seconds": 0.015671333007048815
+    },
+    {
+      "family": "tree",
+      "root_workers": [
+        "$worker.storage.aggregate.make",
+        "$worker.storage.read.score"
+      ],
+      "form": "after",
+      "compiler_sha256": "035fd0859d7b74e99515b971b640c4f9f360e57b0dc218508335603ebba9463d",
+      "source_sha256": "fff81b44cdbbc137be5d04da8fc6a7f93dde24eccd9912d701c137e68de0265c",
+      "cost": {
+        "alloc_requests": 818801,
+        "alloc_bytes": 39296160,
+        "copies": 400,
+        "copy_bytes": 12768,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 399,
+        "state_bytes": 12768,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.01576129102613777,
+        0.015466417011339217,
+        0.015453375002834946,
+        0.01518666697666049,
+        0.015736915986053646,
+        0.015346834028605372,
+        0.015382291981950402,
+        0.015398375049699098,
+        0.015185625001322478,
+        0.015658667020034045,
+        0.015389625041279942,
+        0.015144166012760252,
+        0.015227916999720037
+      ],
+      "median_seconds": 0.015389625041279942
+    },
+    {
+      "family": "tree",
+      "root_workers": [],
+      "form": "explicit",
+      "compiler_sha256": "035fd0859d7b74e99515b971b640c4f9f360e57b0dc218508335603ebba9463d",
+      "source_sha256": "864e3bb4410b69017c143f28a7ccf863e9282737dfb11cff0068f86d9073700c",
+      "cost": {
+        "alloc_requests": 818801,
+        "alloc_bytes": 39296160,
+        "copies": 400,
+        "copy_bytes": 12768,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 399,
+        "state_bytes": 12768,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.014602707989979535,
+        0.014800792036112398,
+        0.015218583983369172,
+        0.015154207998421043,
+        0.015615624957717955,
+        0.015321125043556094,
+        0.015065832994878292,
+        0.015239916974678636,
+        0.014522500045131892,
+        0.01486962498165667,
+        0.014726167020853609,
+        0.01515637501142919,
+        0.014697416976559907
+      ],
+      "median_seconds": 0.015065832994878292
+    },
+    {
+      "family": "tree",
+      "root_workers": [],
+      "form": "rollback",
+      "compiler_sha256": "035fd0859d7b74e99515b971b640c4f9f360e57b0dc218508335603ebba9463d",
+      "source_sha256": "fff81b44cdbbc137be5d04da8fc6a7f93dde24eccd9912d701c137e68de0265c",
+      "cost": {
+        "alloc_requests": 1637601,
+        "alloc_bytes": 65497760,
+        "copies": 800,
+        "copy_bytes": 25568,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 799,
+        "state_bytes": 25568,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.015273625031113625,
+        0.015874666976742446,
+        0.01564370800042525,
+        0.01566720800474286,
+        0.016597374982666224,
+        0.015940082957968116,
+        0.015644458995666355,
+        0.016028417041525245,
+        0.01566645799903199,
+        0.016027540958020836,
+        0.015547958028037101,
+        0.015551124990452081,
+        0.015385791950393468
+      ],
+      "median_seconds": 0.01566645799903199
+    }
+  ]
+}

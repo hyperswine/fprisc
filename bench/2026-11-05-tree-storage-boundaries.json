@@ -1,0 +1,151 @@
+{
+  "compiler_sha256": "035fd0859d7b74e99515b971b640c4f9f360e57b0dc218508335603ebba9463d",
+  "module_source": "unsafe base.\nValue = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nmake d n = if d <= 0 then Leaf else\n  left = make (d - 1) (n+1); right = make (d - 1) (n+2);\n  v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.\nscore t = case t of Leaf -> 0 | Branch l v r -> case v of\n  Plus x -> score l + x + score r | Minus x -> score l - x + score r.\nsumTwice d = t = make d 1; a = score t; a + score t.\n",
+  "client_source": "unsafe base. N = use \"std/native\". R = use \"std/reload\".\nunwrap r = case r of Ok x -> x | Err e -> error e.\nmain = _ = unwrap (N.attach \"/tmp/fpr-tree-202/boundaries/macos-x86_64.dylib\"); make = R.bindAt 0 \"make\"; read = R.bindAt 0 \"score\"; twice = R.bindAt 0 \"sumTwice\";\n  tree = keep (make 3 1); _ = print (read tree); print (twice 3).\n",
+  "rows": [
+    {
+      "target": "native",
+      "mode": "enabled",
+      "harts": 1,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": true,
+      "owner_sha256": "3a473f8b9e8467184c0a2a9ba2451501e1026c70010e62a549c1c1f9d4c40e9a",
+      "client_sha256": "7175d9c4c4edcc8be9aab00956e766212586137003ad5332ad2a0b79735d5cac"
+    },
+    {
+      "target": "native",
+      "mode": "enabled",
+      "harts": 4,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": true,
+      "owner_sha256": "3a473f8b9e8467184c0a2a9ba2451501e1026c70010e62a549c1c1f9d4c40e9a",
+      "client_sha256": "7175d9c4c4edcc8be9aab00956e766212586137003ad5332ad2a0b79735d5cac"
+    },
+    {
+      "target": "native",
+      "mode": "no-type",
+      "harts": 1,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": false,
+      "owner_sha256": "3c780dcd22d60bbfb86b61438284cd41e354aa4501e77c46becf7c8a380b7cdb",
+      "client_sha256": "7175d9c4c4edcc8be9aab00956e766212586137003ad5332ad2a0b79735d5cac"
+    },
+    {
+      "target": "native",
+      "mode": "no-type",
+      "harts": 4,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": false,
+      "owner_sha256": "3c780dcd22d60bbfb86b61438284cd41e354aa4501e77c46becf7c8a380b7cdb",
+      "client_sha256": "7175d9c4c4edcc8be9aab00956e766212586137003ad5332ad2a0b79735d5cac"
+    },
+    {
+      "target": "native",
+      "mode": "no-pair",
+      "harts": 1,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": false,
+      "owner_sha256": "3c780dcd22d60bbfb86b61438284cd41e354aa4501e77c46becf7c8a380b7cdb",
+      "client_sha256": "7175d9c4c4edcc8be9aab00956e766212586137003ad5332ad2a0b79735d5cac"
+    },
+    {
+      "target": "native",
+      "mode": "no-pair",
+      "harts": 4,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": false,
+      "owner_sha256": "3c780dcd22d60bbfb86b61438284cd41e354aa4501e77c46becf7c8a380b7cdb",
+      "client_sha256": "7175d9c4c4edcc8be9aab00956e766212586137003ad5332ad2a0b79735d5cac"
+    },
+    {
+      "target": "native",
+      "mode": "restored",
+      "harts": 1,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": true,
+      "owner_sha256": "3a473f8b9e8467184c0a2a9ba2451501e1026c70010e62a549c1c1f9d4c40e9a",
+      "client_sha256": "7175d9c4c4edcc8be9aab00956e766212586137003ad5332ad2a0b79735d5cac"
+    },
+    {
+      "target": "native",
+      "mode": "restored",
+      "harts": 4,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": true,
+      "owner_sha256": "3a473f8b9e8467184c0a2a9ba2451501e1026c70010e62a549c1c1f9d4c40e9a",
+      "client_sha256": "7175d9c4c4edcc8be9aab00956e766212586137003ad5332ad2a0b79735d5cac"
+    },
+    {
+      "target": "macos-x86_64",
+      "mode": "enabled",
+      "harts": 1,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": true,
+      "owner_sha256": "8fd03b1b961051409104cca785c32b67f3273631809d1837f4e5e7f5e8b7f90f",
+      "client_sha256": "fd4ff99b093f611dcec944e5f81ebb042b3970d7780bbb194a81dab4a30ded37"
+    },
+    {
+      "target": "macos-x86_64",
+      "mode": "enabled",
+      "harts": 4,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": true,
+      "owner_sha256": "8fd03b1b961051409104cca785c32b67f3273631809d1837f4e5e7f5e8b7f90f",
+      "client_sha256": "fd4ff99b093f611dcec944e5f81ebb042b3970d7780bbb194a81dab4a30ded37"
+    },
+    {
+      "target": "macos-x86_64",
+      "mode": "no-type",
+      "harts": 1,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": false,
+      "owner_sha256": "e57ac046868e01ca7cb7289c3530183ea93238d8a1cf8fc9a4b22cbbdb22c0cc",
+      "client_sha256": "fd4ff99b093f611dcec944e5f81ebb042b3970d7780bbb194a81dab4a30ded37"
+    },
+    {
+      "target": "macos-x86_64",
+      "mode": "no-type",
+      "harts": 4,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": false,
+      "owner_sha256": "e57ac046868e01ca7cb7289c3530183ea93238d8a1cf8fc9a4b22cbbdb22c0cc",
+      "client_sha256": "fd4ff99b093f611dcec944e5f81ebb042b3970d7780bbb194a81dab4a30ded37"
+    },
+    {
+      "target": "macos-x86_64",
+      "mode": "no-pair",
+      "harts": 1,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": false,
+      "owner_sha256": "e57ac046868e01ca7cb7289c3530183ea93238d8a1cf8fc9a4b22cbbdb22c0cc",
+      "client_sha256": "fd4ff99b093f611dcec944e5f81ebb042b3970d7780bbb194a81dab4a30ded37"
+    },
+    {
+      "target": "macos-x86_64",
+      "mode": "no-pair",
+      "harts": 4,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": false,
+      "owner_sha256": "e57ac046868e01ca7cb7289c3530183ea93238d8a1cf8fc9a4b22cbbdb22c0cc",
+      "client_sha256": "fd4ff99b093f611dcec944e5f81ebb042b3970d7780bbb194a81dab4a30ded37"
+    },
+    {
+      "target": "macos-x86_64",
+      "mode": "restored",
+      "harts": 1,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": true,
+      "owner_sha256": "8fd03b1b961051409104cca785c32b67f3273631809d1837f4e5e7f5e8b7f90f",
+      "client_sha256": "fd4ff99b093f611dcec944e5f81ebb042b3970d7780bbb194a81dab4a30ded37"
+    },
+    {
+      "target": "macos-x86_64",
+      "mode": "restored",
+      "harts": 4,
+      "stdout": "-2\n-4\n",
+      "owner_private_worker": true,
+      "owner_sha256": "8fd03b1b961051409104cca785c32b67f3273631809d1837f4e5e7f5e8b7f90f",
+      "client_sha256": "fd4ff99b093f611dcec944e5f81ebb042b3970d7780bbb194a81dab4a30ded37"
+    }
+  ]
+}

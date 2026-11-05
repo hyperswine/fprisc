@@ -87,8 +87,11 @@ In time, the same bound reads
 and holds only under assumptions the runtime does not enforce:
 
 1. `T_slot`, the longest time one admitted actor holds the hart, is
-   bounded. A slice is `FUEL_QUANTUM` function entries, each of bounded IR
-   length (`Codegen.wcetAnnotate`), plus any C entry the slice makes. C
+   bounded. A slice consumes `FUEL_QUANTUM` surviving fuel checks; tick
+   batching can remove checks from inlined callees. The current
+   `native-insns-v1` reports bound selected per-function instruction segments,
+   not a whole slice. Call/return composition and every C entry must also be
+   accounted for before deriving a slot bound. C
    entries never preempt: a deep message copy, a device wait that spins,
    a graphics present under vsync or a host system call extend `T_slot`
    by their own duration. The bound is conditional on every such call
@@ -104,9 +107,12 @@ and holds only under assumptions the runtime does not enforce:
    (`DETECT_TICKS`) and the memory actor's `prio` admissions are charged
    to the hart they run on and are not in the formula.
 
-No measurement in this repository establishes a numeric `T_slot` for any
-target. `docs/2026-10-01-RUNTIME-COSTS.json` records per-operation costs
-on one host, which is the start of such a manifest, not a bound.
+No qualification in this repository establishes a numeric maximum `T_slot`
+for any target. The [competing-actor qualification](2026-11-05-SCHEDULER-LATENCY.md)
+now records native-host slot samples, independently measured request/reply
+latency and an unbounded-C starvation control. Sampled maxima do not establish
+a time bound. `docs/2026-10-01-RUNTIME-COSTS.json` records per-operation costs
+on one host, which is the start of a target cost manifest, not a bound.
 
 ## The decision on stealing (2026-10-02, later)
 

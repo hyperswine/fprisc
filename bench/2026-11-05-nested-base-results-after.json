@@ -1,0 +1,114 @@
+{
+  "compiler_sha256": "66df5047642384d7dfb619e389970a89b06df8592f327cb885c63adb579d43c4",
+  "codegen_revision": 197,
+  "rows": [
+    {
+      "shape": "nested-unary",
+      "inline": true,
+      "enabled": true,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nproduce n = if n < 0 then produce (0 - n) else Cell (Cell n).\nloop n a = if n <= 0 then a else (case produce n of Cell inner -> case inner of Cell x -> loop (n - 1) (a + x)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "ed68d07da9af8b4a9a74245a9d0f4d2d970b33de870de2b5ee253ff8fb62c059",
+      "stdout": "500500\n",
+      "alloc_requests": 0
+    },
+    {
+      "shape": "nested-unary",
+      "inline": true,
+      "enabled": false,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nproduce n = if n < 0 then produce (0 - n) else Cell (Cell n).\nloop n a = if n <= 0 then a else (case produce n of Cell inner -> case inner of Cell x -> loop (n - 1) (a + x)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "ed68d07da9af8b4a9a74245a9d0f4d2d970b33de870de2b5ee253ff8fb62c059",
+      "stdout": "500500\n",
+      "alloc_requests": 2000
+    },
+    {
+      "shape": "nested-unary",
+      "inline": false,
+      "enabled": true,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nproduce n = if n < 0 then produce (0 - n) else Cell (Cell n).\nloop n a = if n <= 0 then a else (case produce n of Cell inner -> case inner of Cell x -> loop (n - 1) (a + x)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "ed68d07da9af8b4a9a74245a9d0f4d2d970b33de870de2b5ee253ff8fb62c059",
+      "stdout": "500500\n",
+      "alloc_requests": 0
+    },
+    {
+      "shape": "nested-unary",
+      "inline": false,
+      "enabled": false,
+      "source": "unsafe base.\nCell a = Type (Cell a).\nproduce n = if n < 0 then produce (0 - n) else Cell (Cell n).\nloop n a = if n <= 0 then a else (case produce n of Cell inner -> case inner of Cell x -> loop (n - 1) (a + x)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "ed68d07da9af8b4a9a74245a9d0f4d2d970b33de870de2b5ee253ff8fb62c059",
+      "stdout": "500500\n",
+      "alloc_requests": 2000
+    },
+    {
+      "shape": "nested-pairs",
+      "inline": true,
+      "enabled": true,
+      "source": "unsafe base.\nproduce n = if n < 0 then produce (0 - n) else ((n,n + 1),(n + 2,n + 3)).\nloop n a = if n <= 0 then a else (case produce n of (left,right) -> case left of (w,x) -> case right of (y,z) -> loop (n - 1) (a + w + x + y + z)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "e78b0b97ab98a7fff6d2ea2f8d26aaa600d6bf07279b6162dff628095e25bcdd",
+      "stdout": "2008000\n",
+      "alloc_requests": 0
+    },
+    {
+      "shape": "nested-pairs",
+      "inline": true,
+      "enabled": false,
+      "source": "unsafe base.\nproduce n = if n < 0 then produce (0 - n) else ((n,n + 1),(n + 2,n + 3)).\nloop n a = if n <= 0 then a else (case produce n of (left,right) -> case left of (w,x) -> case right of (y,z) -> loop (n - 1) (a + w + x + y + z)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "e78b0b97ab98a7fff6d2ea2f8d26aaa600d6bf07279b6162dff628095e25bcdd",
+      "stdout": "2008000\n",
+      "alloc_requests": 3000
+    },
+    {
+      "shape": "nested-pairs",
+      "inline": false,
+      "enabled": true,
+      "source": "unsafe base.\nproduce n = if n < 0 then produce (0 - n) else ((n,n + 1),(n + 2,n + 3)).\nloop n a = if n <= 0 then a else (case produce n of (left,right) -> case left of (w,x) -> case right of (y,z) -> loop (n - 1) (a + w + x + y + z)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "e78b0b97ab98a7fff6d2ea2f8d26aaa600d6bf07279b6162dff628095e25bcdd",
+      "stdout": "2008000\n",
+      "alloc_requests": 0
+    },
+    {
+      "shape": "nested-pairs",
+      "inline": false,
+      "enabled": false,
+      "source": "unsafe base.\nproduce n = if n < 0 then produce (0 - n) else ((n,n + 1),(n + 2,n + 3)).\nloop n a = if n <= 0 then a else (case produce n of (left,right) -> case left of (w,x) -> case right of (y,z) -> loop (n - 1) (a + w + x + y + z)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "e78b0b97ab98a7fff6d2ea2f8d26aaa600d6bf07279b6162dff628095e25bcdd",
+      "stdout": "2008000\n",
+      "alloc_requests": 3000
+    },
+    {
+      "shape": "flat-four",
+      "inline": true,
+      "enabled": true,
+      "source": "unsafe base.\nproduce n = if n < 0 then produce (0 - n) else (n,n + 1,n + 2,n + 3).\nloop n a = if n <= 0 then a else (case produce n of (w,x,y,z) -> loop (n - 1) (a + w + x + y + z)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "874f50021fa3aa934f87b66bc03fb951bdbe6b16aa6dcc2ac13485aa7425641b",
+      "stdout": "2008000\n",
+      "alloc_requests": 0
+    },
+    {
+      "shape": "flat-four",
+      "inline": true,
+      "enabled": false,
+      "source": "unsafe base.\nproduce n = if n < 0 then produce (0 - n) else (n,n + 1,n + 2,n + 3).\nloop n a = if n <= 0 then a else (case produce n of (w,x,y,z) -> loop (n - 1) (a + w + x + y + z)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "874f50021fa3aa934f87b66bc03fb951bdbe6b16aa6dcc2ac13485aa7425641b",
+      "stdout": "2008000\n",
+      "alloc_requests": 1000
+    },
+    {
+      "shape": "flat-four",
+      "inline": false,
+      "enabled": true,
+      "source": "unsafe base.\nproduce n = if n < 0 then produce (0 - n) else (n,n + 1,n + 2,n + 3).\nloop n a = if n <= 0 then a else (case produce n of (w,x,y,z) -> loop (n - 1) (a + w + x + y + z)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "874f50021fa3aa934f87b66bc03fb951bdbe6b16aa6dcc2ac13485aa7425641b",
+      "stdout": "2008000\n",
+      "alloc_requests": 0
+    },
+    {
+      "shape": "flat-four",
+      "inline": false,
+      "enabled": false,
+      "source": "unsafe base.\nproduce n = if n < 0 then produce (0 - n) else (n,n + 1,n + 2,n + 3).\nloop n a = if n <= 0 then a else (case produce n of (w,x,y,z) -> loop (n - 1) (a + w + x + y + z)).\nmain = print (loop 1000 0).\n",
+      "source_sha256": "874f50021fa3aa934f87b66bc03fb951bdbe6b16aa6dcc2ac13485aa7425641b",
+      "stdout": "2008000\n",
+      "alloc_requests": 1000
+    }
+  ]
+}

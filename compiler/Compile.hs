@@ -3,17 +3,21 @@ module Compile (compileMain, checkedInterface, parseFile) where
 import Data.List (sortBy)
 import Data.Maybe (fromMaybe,isJust)
 import System.IO (hClose, hPutStr, hPutStrLn, openTempFile, stderr)
-import Arc (lowerArcWithOptions, lowerRawWithOptions, arcExterns, arcRev)
+import Core.Opt.Representation (eraseLayoutCasts)
+import Arc (lowerArcWithProductEvidence, lowerRawWithProductEvidence, arcExterns, arcRev)
 import qualified Compiler.Native.Representation as NativeRep
 import Core.Typed.Callback (CallbackMode(..))
 import qualified Compiler.Native.Exports as Exports
 import Codegen.Export.Plan (FloatABI(..))
-import Codegen.Target.RV.Export (renderAdapter)
+import Codegen.Target.RV.Export (renderAdapter,adapterStack,adapterHeap)
+import qualified Codegen.Stack as Stack
+import qualified Codegen.Heap as Heap
+import Codegen.Selected (CodeSymbol(..))
 import qualified Compiler.Native.Core as NativeCore
 import qualified Compiler.Native.Linked as Linked
 import qualified Compiler.Native.Imports as NativeImports
 import Compiler.DataLayout (Layouts(..))
-import Mono (specializeCompatibility, qualifyAux)
+import Mono (specializeCompatibilityWithProducts, qualifyAux)
 import Inline (inlineSmall, inlineCompatibilityWithImports, vecPeekCompatibility)
 import qualified Compiler.Native.Regions as Regions
 import qualified Compiler.Native.Regions.Typed as TypedRegions
@@ -22,7 +26,7 @@ import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
-import Codegen (Target, codegenRev, emitCheckedProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtTickBatch, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative)
+import Codegen (Target, codegenRev, productBackendWidth, emitProductProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtTickBatch, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth, registerBudget)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -38,7 +42,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Core.Syntax
 import Reuse (poolResetters)
-import Core.CacheIdentity (CallArities(..),coreCacheIdentityWithResetters)
+import Core.Opt.ProductParameters (withoutVariantResults)
+import Core.CacheIdentity (CallArities(..),coreCacheIdentityWithProducts)
 import qualified Compiler.Options as Options
 import Compiler.CommandLine
 import Core.Identity (Namespace(..))
@@ -61,13 +66,15 @@ import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
 import Infer.Result
-import Frontend.Desugar.Typed (prepareChecked,selectCheckedUnit,checkedCallArities,specializeCheckedSource,specializedTops,selectUnit,selectSpecialized)
+import Frontend.Desugar.Typed (prepareChecked,selectCheckedUnit,checkedCallArities,specializeCheckedSource,specializedTops,checkedTransportCatalog,selectUnit,selectSpecialized)
 import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTopsInterfaces)
 import Safety (measureCheck, checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import qualified Cost
+import qualified Resource.ResultSize as ResultSize
 import Manifest (Manifest (..), readManifest, renderNs)
 import Struct (expandStructs, sigTable, structTable)
 import Modules (LoadResult (..), ModExport (..), hashAST, loadProgram)
+import qualified Precond
 import Precond (PreNote (..), PreStatus (..), applyPreconds, checkedName, preTable, renderNote, validatePre, validatePreUses)
 import Home (underHome)
 import System.Directory (createDirectoryIfMissing, doesFileExist, renameFile)
@@ -208,6 +215,18 @@ compileWithReport accepted report = do
   args <- getArgs
   let opts0 = parseCompileArguments args
       checkOnly = oCheckOnly opts0
+  stackBudget <- case oStackBudget opts0 of
+    Nothing->pure Nothing
+    Just raw->case reads raw of
+      [(n,"")] | not (null raw), all (`elem` ['0'..'9']) raw, n>0,
+                  not (checkOnly || oStdCheck opts0)->pure (Just n)
+      _->hPutStrLn stderr "error: --stack-budget needs a positive decimal byte count and native compilation" >> exitFailure
+  heapBudget <- case oHeapBudget opts0 of
+    Nothing->pure Nothing
+    Just raw->case reads raw of
+      [(n,"")] | not (null raw), all (`elem` ['0'..'9']) raw, n>0, n<2^(64::Int),
+                  not (checkOnly || oStdCheck opts0)->pure (Just n)
+      _->hPutStrLn stderr "error: --heap-budget needs a positive RV64 decimal byte count and native compilation" >> exitFailure
   -- --stdcheck: parse the single file and run the std proof pass
   -- (StdBridge lowers the checkable fragment into StdCheck's interval /
   -- measure / WCET engine); no code is generated.
@@ -284,6 +303,12 @@ compileWithReport accepted report = do
   when (oArc opts && oPlugin opts) $ do
     hPutStrLn stderr "--arc does not yet support plugin/foreign ownership boundaries"
     exitFailure
+  when (isJust stackBudget && not (oBuiltin opts && oArc opts && oLib opts && not (null (oExports opts))
+                                  && tgtName (oTarget opts)=="rv64" && not (oA64 opts || oX64 opts || oQosApp opts || oRvv opts))) $
+    refuse "--stack-budget requires builtin RV64 --arc --lib with explicit --export entries"
+  when (isJust heapBudget && not (oBuiltin opts && oArc opts && oLib opts && not (null (oExports opts))
+                                  && tgtName (oTarget opts)=="rv64" && not (oA64 opts || oX64 opts || oQosApp opts || oRvv opts))) $
+    refuse "--heap-budget requires builtin RV64 --arc --lib with explicit --export entries"
   -- --prelude=FILE as given; no flag = the prelude beside the binary
   -- (core/prelude.fpr under Home.fprHome), so `fpr compile x.fpr x.s`
   -- means the same thing from any directory; --prelude= (empty) = none
@@ -553,15 +578,35 @@ compileWithReport accepted report = do
           unitElided h = allCons `S.difference` unitConsOf h
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
           nativeLayouts=Layouts consAll shapes
-          compileSelected mode selected=either error id (selected >>= NativeCore.compileSelection mode nativeLayouts)
+          exportEntries=map fst (oExports opts)
+            ++ [q | TSig q _ _<-finalTops,takeWhile (/='@') q `elem` map fst (oExports opts)]
+          -- C adapters enter through the precondition checker when one
+          -- exists. It needs the same tagged boundary as the source entry;
+          -- otherwise the adapter would pass boxes to a raw checked worker.
+          pinnedTypeSpec=S.fromList ("main" : "machineInterrupt" : exportEntries
+            ++ [checkedName q 0 | q<-exportEntries,M.member q preTab])
+          compileSelected home=compileWithCatalog (fmap ((,) home) carrierCatalog)
+          compileWithCatalog catalog mode selected=either error id (selected >>= specializeSelection catalog mode nativeLayouts)
+          carrierCatalog
+            | not (oPlugin opts || oLib opts || oQosApp opts) && Options.cgPairReturns codegen
+              && Backend.tgtW (oTarget opts)==8=Just (checkedTransportCatalog specialized)
+            | otherwise=Nothing
+          specializeSelection catalog
+            | not (Options.cgTypeSpec codegen) = NativeCore.compileSelection
+            | oArc opts = NativeCore.compileSelectionTypeSpecialized pinnedTypeSpec
+            | oBase opts && not (oSol opts) = NativeCore.compileSelectionBase catalog (remarkMode/=Remark.Off) pinnedTypeSpec
+            | otherwise = NativeCore.compileSelection
           prepareRegions result=either error id (Regions.prepare result)
           selectRoot uts=selectSpecialized rootCons specialized (bindNames uts)
           -- The whole-program raw view (cost bounds, region context) still
           -- carries every constructor stub: the analyzer costs constructor
           -- calls from their bodies.
-          compileRaw uts=prepareRegions (compileSelected PreserveCallbacks (selectSpecialized allCons specialized (bindNames uts)))
+          -- Merging units makes private helpers visible that separate emission
+          -- may have to decline. Public cost contracts must cover that tagged
+          -- execution as well, including its original constructor allocation.
+          compileRaw uts=prepareRegions (compileWithCatalog Nothing PreserveCallbacks (selectSpecialized allCons specialized (bindNames uts)))
           callbackMode=if Options.cgSpecialize codegen && not (oArc opts) then SpecializeCallbacks else PreserveCallbacks
-          nativeUnit cons unit=compileSelected PreserveCallbacks (selectUnit cons unit)
+          nativeUnit home cons unit=compileSelected home PreserveCallbacks (selectUnit cons unit)
           regionContext=Regions.context (fst (measureCheck tops)) (compileRaw finalTops)
           runTurnsWith regions input=if oBuiltin opts || oArc opts || not (Options.cgReceiveTurns codegen)
             then Regions.bypass input
@@ -625,7 +670,8 @@ compileWithReport accepted report = do
             Left err -> putStrLn ("=== MANIFEST: ERROR ===\n  * " ++ err) >> exitFailure
             Right m -> pure (Just m)
       when (oCost opts || declaredAny) $ do
-        let costProg = fst (turnPassWith False (compileRaw finalTops))
+        let costInput = compileRaw finalTops
+            costProg = fst (turnPassWith False costInput)
             (measTable, _) = measureCheck tops
             surface = M.fromList [(n, [case p of PVar v -> v; PSig v _ -> v; _ -> "arg" ++ show i | (i, p) <- zip [1 :: Int ..] ps]) | TBind n ps _ _ <- firstClauses finalTops]
             firstClauses ts = M.elems (M.fromListWith (\_ old -> old) [(n, t) | t@(TBind n _ _ _) <- ts])
@@ -634,14 +680,26 @@ compileWithReport accepted report = do
             (declared0, declErrs) = Cost.declaredBounds (M.keysSet coefs) surface costProg finalTops
             -- the manifest binds the coefficients; without one a bound that
             -- uses them stays symbolic and cannot be judged
-            declared = M.map (\d -> d {Cost.dWork = Cost.substCoefs coefs <$> Cost.dWork d, Cost.dAlloc = Cost.substCoefs coefs <$> Cost.dAlloc d, Cost.dLive = Cost.substCoefs coefs <$> Cost.dLive d}) declared0
+            declared = M.map (\d -> d {Cost.dWork = Cost.substCoefs coefs <$> Cost.dWork d, Cost.dAlloc = Cost.substCoefs coefs <$> Cost.dAlloc d, Cost.dLive = Cost.substCoefs coefs <$> Cost.dLive d, Cost.dSize = Cost.substCoefs coefs <$> Cost.dSize d}) declared0
             -- Implicit checks must verify every declared contract, including
             -- unused imports, but need no equations for unrelated functions.
             -- Reports and target judgements retain the whole-program view.
             contractRoots = M.keysSet (M.filter (\d -> Cost.dWork d /= Nothing || Cost.dAlloc d /= Nothing || Cost.dLive d /= Nothing) declared)
-            eqs = if oCost opts || isJust manifest
-              then Cost.costProgram measTable declared costProg
-              else Cost.costProgramFor contractRoots measTable declared costProg
+            sizeDefinitions = M.map NativeCore.checkedFunction
+              (NativeCore.nativeDefinitions (Regions.programNative costInput))
+            sizeCandidates = M.mapMaybeWithKey (\n d -> do
+              bound <- Cost.dSize d
+              fn <- M.lookup n sizeDefinitions
+              (ps,_) <- M.lookup n costProg
+              let qs = map TCore.binderName (TCore.functionParameters fn)
+              if length ps /= length qs then Nothing else Just
+                (Cost.substituteCost (M.fromList (zip ps (map Cost.CP qs)))
+                  (M.fromList (zip ps (map Cost.CLen qs))) bound)) declared
+            sizeProofs = ResultSize.proveSizes measTable sizeCandidates (Regions.programNative costInput)
+            verifiedSizes = ResultSize.verifiedBounds sizeProofs
+            eqs = Cost.costProgramForWithSizes verifiedSizes
+              (if oCost opts || isJust manifest then M.keysSet costProg else contractRoots)
+              measTable declared costProg
             rootNames = [n | n <- S.toList rootBinds, M.member n costProg]
             priceW g = fst <$> M.lookup g prims
             priceA g = snd <$> M.lookup g prims
@@ -653,9 +711,17 @@ compileWithReport accepted report = do
                   (kind, derivedC, Just declC, price) <- [("work", w, Cost.dWork d, priceW), ("alloc", a, Cost.dAlloc d, priceA), ("live", l, Cost.dLive d, priceA)],
                   let derivedC' = Cost.resolvePrims price derivedC
                       verdict = case Cost.coefsIn declC of
-                        [] -> Cost.checkBoundsWith (renamerFor n) derivedC' declC
+                        [] -> Cost.checkBoundsUnderWith (nonnegativeInputs n) (renamerFor n) derivedC' declC
                         ks -> Cost.Unproved ["coefficient " ++ k ++ " (bind it in a manifest: --manifest=FILE)" | k <- ks]
               ]
+            -- These are the original signature predicates, already enforced
+            -- by applyPreconds at direct, escaped and partial call boundaries.
+            -- A termination measure alone is NOT an input-domain predicate.
+            nonnegativeInputs n = S.fromList
+              [p | (p, Just (v, predicate)) <- zip
+                    (fst (M.findWithDefault ([], CErr "") n costProg))
+                    (M.findWithDefault [] n preTab),
+                   Precond.entails (Precond.conjuncts predicate) (SBin ">=" (SVar v) (SInt 0))]
             renamerFor n =
               let ren = M.fromList (zip (fst (M.findWithDefault ([], CErr "") n costProg)) (M.findWithDefault [] n surface))
                   r p = M.findWithDefault p p ren
@@ -676,8 +742,12 @@ compileWithReport accepted report = do
             mapM_ (putStrLn . ("  " ++) . renderV) verdicts
           let sizes = [(n, sz) | (n, d) <- M.toList declared, Just sz <- [Cost.dSize d]]
           unless (null sizes) $ do
-            putStrLn "assumed result sizes (declared, not verified by this pass):"
-            mapM_ (\(n, sz) -> putStrLn ("  " ++ n ++ ": size <= " ++ Cost.prettyIn surface costProg n sz)) sizes
+            putStrLn "result size candidates (callers use independently verified bounds only):"
+            mapM_ (\(n, sz) -> putStrLn ("  " ++ n ++ ": declared size <= " ++ Cost.prettyIn surface costProg n sz
+              ++ case M.lookup n verifiedSizes of
+                Nothing -> "   UNPROVED (no result-size lemma; annotation is not used)"
+                Just actual -> "   verified size <= " ++ Cost.prettyIn surface costProg n actual ++ "   "
+                  ++ Cost.renderVerdict (Cost.checkBoundsUnderWith (nonnegativeInputs n) (renamerFor n) actual sz))) sizes
         -- ---- the judgement against a target (stage 3) ----
         let orDash x = if null x then "-" else x
         budgetFails <- case manifest of
@@ -775,10 +845,10 @@ compileWithReport accepted report = do
               [ M.fromList [(n, length as) | TSig n (as, _) _ <- preludeE' ++ concatMap snd units' ++ root'],
                 M.map (\(Forall _ _ t) -> arrows t) builtinEnv,
                 -- pair-free reads planned by Core.Typed.VectorRead (vec.c)
-                M.fromList (VectorRead.peekArities++[("$receiveLoop", 2), ("$regionSeq", 1), ("$regionOpen", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$receiveReady", 2), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2)]) ]
+                M.fromList ([("$callActive",1) | oBase opts]++VectorRead.peekArities++[("$receiveLoop", 2), ("$regionSeq", 1), ("$regionOpen", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$receiveReady", 2), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2)]) ]
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
-          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = (Options.cgFloatInline codegen), tgtSimd=(oA64 opts || oX64 opts) && (Options.cgSimd codegen), tgtFusion=(Options.cgFusion codegen),
+          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHeapProof = isJust heapBudget, tgtStackReport = oStackReport opts || isJust stackBudget || not (null (oExports opts)), tgtHal = halAr, tgtFloatInline = (Options.cgFloatInline codegen), tgtSimd=(oA64 opts || oX64 opts) && (Options.cgSimd codegen), tgtFusion=(Options.cgFusion codegen),
                                tgtScalarFast = True, tgtIndexedMemory = (Options.cgIndexedMemory codegen), tgtScalarWorkers = (Options.cgScalarWorkers codegen), tgtTickBatch = (Options.cgTickBatch codegen), tgtPairReturns = (Options.cgPairReturns codegen), tgtFieldWorkers = (Options.cgFieldWorkers codegen), tgtTupleScalars = (Options.cgTupleScalars codegen), tgtPipelineInline = (Options.cgPipelineInline codegen), tgtReuse = (Options.cgReuse codegen), tgtTypedIr = (Options.diagTypedIr diagnostic), tgtPolicy = irPolicy, tgtNative = nativeMode}
           a64 = oA64 opts
           a64mac = oA64Mac opts
@@ -886,11 +956,12 @@ compileWithReport accepted report = do
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit
-          arcSignatures=NativeRep.signatures (Linked.artifactCore (artifactOf Linked.RootArtifact))
-          pinnedTypeSpec=S.fromList ("main" : "machineInterrupt" : map fst (oExports opts))
+          arcPrepared=NativeRep.prepareFor (not (oRaw opts)) (Linked.artifactCore (artifactOf Linked.RootArtifact))
+          arcSignatures=fmap (\(signatures,layouts,_,_)->(signatures,layouts)) arcPrepared
           own=ownWith M.empty
           ownWith imports prog = if oArc opts then do
-                       (lowered, declined) <- either (\e -> hPutStrLn stderr e >> exitFailure) (\(p, d) -> pure (inlineSmall 3 24 p, d)) ((if oRaw opts then lowerRawWithOptions else lowerArcWithOptions) (Options.cgTypeSpec codegen) pinnedTypeSpec (M.restrictKeys arcSignatures (M.keysSet prog)) sourceExt prog)
+                       (signatures, layouts, evidence, _) <- either (\e -> hPutStrLn stderr e >> exitFailure) pure arcPrepared
+                       (lowered, declined) <- either (\e -> hPutStrLn stderr e >> exitFailure) (\(p, d) -> pure (inlineSmall 3 24 p, d)) (((if oRaw opts then lowerRawWithProductEvidence else lowerArcWithProductEvidence) (if Options.cgPairReturns codegen then productBackendWidth (nativeMode >>= nmBackend) else 0)) evidence layouts (Options.cgTypeSpec codegen) pinnedTypeSpec (M.restrictKeys signatures (M.keysSet prog)) sourceExt prog)
                        when (remarkMode /= Remark.Off) $
                          forM_ declined $ \(fn, why) ->
                            hPutStrLn stderr ("remark[type-spec] " ++ fn ++ ": " ++ why)
@@ -910,7 +981,8 @@ compileWithReport accepted report = do
                        pure inl
           pureOutside g = maybe False (> 0) (M.lookup g extFor) || maybe False (> 0) (M.lookup g halAr) || g `elem` corePrimNames
           corePrimNames = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "str", "String.len"]
-          mono ns ext p = if (not (Options.cgSpecialize codegen)) || oArc opts then p else specializeCompatibility checkedCallbackTargets importedPrivateNames ns halAr ext p
+          resultProducts placed=(if Options.cgTypeSpec codegen && oBase opts then id else withoutVariantResults) (Regions.resultProductParameters placed)
+          mono products ns ext p = if (not (Options.cgSpecialize codegen)) || oArc opts then (p,products) else specializeCompatibilityWithProducts products checkedCallbackTargets importedPrivateNames ns halAr ext p
           checkedCallbackTargets=typedRegionNames `S.union` S.fromList [name | (_,Linked.SymbolOwner _ definition)<-M.toList (Linked.linkedSymbols linked),
             name<-case definition of Linked.SourceDefinition n _ _->[n];Linked.PrivateDefinition _ (TCore.CodeId n) _->[n];_->[]]
           typedRegionNames=S.unions [M.keysSet (TypedRegions.programFunctions p) | p<-M.elems typedRegionPrograms]
@@ -923,15 +995,15 @@ compileWithReport accepted report = do
                   S.member n rootLoweredNames
                     || (not (S.member n unitNames) && not (S.member n preludeNames))
             ]
-          rootNative=compileSelected PreserveCallbacks (selectRoot (if oArc opts then finalTops else rootProgTops))
+          rootNative=compileSelected ("root."++rootHash) PreserveCallbacks (selectRoot (if oArc opts then finalTops else rootProgTops))
           artifactResults=
             Linked.artifact Linked.RootArtifact
               (if oArc opts then M.keysSet (NativeCore.nativeProgram rootNative) else bindNames root'' `S.union` rootCons)
               (if oArc opts then S.empty else rootElided) rootNative
             : [Linked.artifact (Linked.PreludeArtifact preludeHash) (bindNames preludeE' `S.union` preludeCons)
-                preludeElided (nativeUnit preludeCons preludeChecked) | preludeEmitted]
+                preludeElided (nativeUnit ("prelude."++preludeHash) preludeCons preludeChecked) | preludeEmitted]
             ++ [Linked.artifact (Linked.DependencyArtifact h) (bindNames uts `S.union` unitConsOf h)
-                (unitElided h) (nativeUnit (unitConsOf h) unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
+                (unitElided h) (nativeUnit ("unit."++h) (unitConsOf h) unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
           linkedResult=do
             base<-sequence artifactResults >>= Linked.linkArtifacts
             (listed,listNotes)<-if oArc opts || oBuiltin opts || not (Options.cgListFuse codegen) then pure (base,[]) else
@@ -975,7 +1047,8 @@ compileWithReport accepted report = do
             (NativeImports.prepareEmissionWithImports templates declarations key exports prog)
           importedPrivateNames=S.unions [NativeImports.preservedCode declarations key
             | key<-M.keys (Linked.linkedArtifacts linked),key/=Linked.RootArtifact]
-          rootProgRaw=Regions.resultProgram (artifactRegions Linked.RootArtifact)
+          rootProgRaw=if oArc opts then either error (\(_,_,_,p)->eraseLayoutCasts p) arcPrepared
+            else Regions.resultProgram (artifactRegions Linked.RootArtifact)
           -- every function of the linked program that may reset the pool, by
           -- the names unit Core calls them: constructor reuse never spans one
           linkedTgt=tgt {tgtPoolResetters=poolResetters (M.unions
@@ -1008,22 +1081,27 @@ compileWithReport accepted report = do
                 exps=Linked.artifactExports artifact
                 elide=Linked.artifactElided artifact
                 unitProgram=Regions.resultProgram placed
-                path=pathBase++"-c"++coreCacheIdentityWithResetters (tgtPoolResetters linkedTgt) elide (CallArities ext halAr) unitProgram++"-"++tag++".s"
+                unitProducts=resultProducts placed
+                path=pathBase++"-c"++coreCacheIdentityWithProducts unitProducts (tgtPoolResetters linkedTgt) elide (CallArities ext halAr) unitProgram++"-"++tag++".s"
             reportTurns placed
             checkBuiltinWidth unitProgram
-            cached <- doesFileExist path
+            -- Reports are requested evidence, not cached proof authority.
+            -- Reuse the same unit identity so a diagnostic flag cannot change
+            -- private clone names; refresh its comments when explicitly asked.
+            cached <- if oStackReport opts then pure False else doesFileExist path
             if cached
               then do
                 when (Options.diagApply diagnostic) (readFile path >>= applyReport (takeFileName path))
                 pure (path, "cached")
               else do
-                prog <- own (mono (takeFileName path) M.empty unitProgram)
+                let (specialized,productParameters)=mono unitProducts (takeFileName path) M.empty unitProgram
+                prog <- own specialized
                 prepared<-ready M.empty (Linked.artifactId artifact) exps (prog `M.union` erasedConstructorStubs prog)
                 -- FORCE before the write: an `error` raised while the
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
                 -- compiled unit (the bbspi arity>8 incident)
-                let emission = emitCheckedProgramWithImports (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates prepared) linkedTgt rvv spec []
+                let emission = emitProductProgramWithImports productParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates prepared) linkedTgt rvv spec []
                       (NativeImports.importArities prepared `M.union` M.union (if oArc opts then arcExterns else M.empty) ext)
                       (NativeImports.readySymbols prepared) elide (NativeImports.readyProgram prepared)
                     vnotes = emNotes emission
@@ -1044,11 +1122,18 @@ compileWithReport accepted report = do
                 writeWhole path (T.unpack packed)
                 nativeSummary (Options.diagNativeInsns diagnostic) ("unit " ++ takeFileName path) (T.unpack packed)
                 applyReport (takeFileName path) (T.unpack packed)
-                pure (path, show (M.size prog) ++ " supercombinators")
+                -- The summary is printed only after EVERY unit is emitted.
+                -- Do not let its unevaluated size retain each unit's full
+                -- compatibility-specialized Core until that final report.
+                let count=M.size prog
+                count `seq` pure (path, show count ++ " supercombinators")
       -- Validate the complete linked ownership/interface product before any
       -- artifact is reused or emitted. Later legacy passes consume projections;
       -- they do not replace the retained checked inputs with inferred evidence.
       either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) linkedResult
+      -- Validate local layout evidence before any projection can force its
+      -- pure Either result (including width and export checks).
+      when (oArc opts) $ either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) arcPrepared
       -- These facts are retained before the emission cache, so report them
       -- from this invocation's source context on cold AND warm builds.
       when (remarkMode `elem` [Remark.Hot,Remark.All]) (mapM_ (hPutStrLn stderr) trmcNotes)
@@ -1134,19 +1219,31 @@ compileWithReport accepted report = do
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
       let borrowed=M.restrictKeys importedSym importedPrivateNames
-      rootProg <- ownWith borrowed (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
+      -- Admit the source C contract before ownership lowering rewrites its
+      -- native entry. Invalid declarations keep their source diagnostics;
+      -- generated uniform wrappers preserve this checked physical arity.
+      boundarySignatures <- if oArc opts && not (oRaw opts)
+        then either (\e -> hPutStrLn stderr e >> exitFailure) (pure . fst) arcSignatures
+        else pure M.empty
+      exports <- case (if oArc opts && not (oRaw opts) then Exports.prepareUniformExportsWith boundarySignatures else Exports.prepareExports) (if oHardFloat opts then HardFloat else SoftFloat)
+        (oExports opts) tops0RL (M.map (length . fst) rootProgSym) (functionSymbol . checkedTarget) of
+          Left err -> hPutStrLn stderr ("export " ++ Exports.exportSource err ++ ": " ++ Exports.exportMessage err) >> exitFailure
+          Right checked -> pure checked
+      let (rootSpecialized,rootProductParameters)=mono (resultProducts (artifactRegions Linked.RootArtifact)) ("root" ++ take 12 rootHash) importedSym rootProgSym
+      rootProg <- ownWith borrowed rootSpecialized
       rootReady<-ready borrowed Linked.RootArtifact
         (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact)) (rootProg `M.union` erasedConstructorStubs rootProg)
-      let rootEmission = emitCheckedProgramWithImports (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) linkedTgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
+      let rootEmission = emitProductProgramWithImports rootProductParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) linkedTgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
                                      (NativeImports.readySymbols rootReady)
                                      (Linked.artifactElided (artifactOf Linked.RootArtifact)) (NativeImports.readyProgram rootReady)
           rootVNotes = emNotes rootEmission
+          adapterFrames = map (adapterStack . Exports.exportAdapter) exports
+          callbackFrames = emStackFrames rootEmission ++ adapterFrames
+          callbackBounds = Stack.analyse callbackFrames
+          callbackNotes = [Stack.reportLine f b | f<-adapterFrames,
+                           Just b<-[M.lookup (Stack.frameSymbol f) callbackBounds]]
       -- Declaration admission produces checked plans; rendering only consumes
       -- their explicit sources, conversions, destinations and schedule.
-      exports <- case Exports.prepareExports (if oHardFloat opts then HardFloat else SoftFloat)
-        (oExports opts) tops0RL (M.map (length . fst) rootProg) (functionSymbol . checkedTarget) of
-          Left err -> hPutStrLn stderr ("export " ++ Exports.exportSource err ++ ": " ++ Exports.exportMessage err) >> exitFailure
-          Right checked -> pure checked
       tramps <- forM exports $ \entry -> do
         putStrLn (Exports.exportDescription entry)
         pure (renderAdapter (Exports.exportAdapter entry))
@@ -1193,12 +1290,31 @@ compileWithReport accepted report = do
                   ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var, "    " ++ dir ++ " " ++ show ar ]
                             | ((tid, var), ar) <- layoutRows ]
       let rootAsm = moduleFinal (unlines (["# typed IR: no translation"] ++ emNative rootEmission ++ emData rootEmission
-                                   ++ dataSyntax directFormat (lines conTab ++ lines layoutTab))) ++ unlines (concat tramps)
+                                   ++ dataSyntax directFormat (lines conTab ++ lines layoutTab))) ++ unlines (concat tramps ++ callbackNotes)
           directFormat = if a64mac || x64mac then MachO else ELF
       directCheck "root" rootEmission
+      admitted <- case stackBudget of
+        Nothing->pure []
+        Just limit->either (\why->hPutStrLn stderr ("error: "++why) >> exitFailure) pure
+          (Stack.admit limit (map Stack.frameSymbol adapterFrames) callbackFrames)
+      heapAdmitted <- case heapBudget of
+        Nothing->pure []
+        Just limit->either (\why->hPutStrLn stderr ("error: "++why) >> exitFailure) pure
+          (Heap.admit limit (map Stack.frameSymbol adapterFrames)
+            (emHeapEquations rootEmission ++ map (adapterHeap . Exports.exportAdapter) exports))
       mapM_ putStrLn rootVNotes
       applyReport "root" rootAsm
-      writeFile out rootAsm
+      let admissionNotes = ["# native-stack-budget-v1: "++codeName entry++" peak="++show bytes++" limit="++show limit++" scope=c-entry-closed-unit"
+                           | Just limit<-[stackBudget],(entry,bytes)<-admitted]
+                ++ ["# native-heap-budget-v1: "++codeName entry++" requests="++show (Heap.requests d)
+                    ++" requested="++show (Heap.requestedBytes d)++" arena="++show bytes++" limit="++show limit
+                    ++" scope=fresh-aligned-builtin-rv64-c-heap"
+                   | Just limit<-[heapBudget],(entry,d,bytes)<-heapAdmitted]
+          -- Do not copy the entire assembly String merely to append an empty
+          -- admission report on ordinary compilations (the common path).
+          admittedAsm = if null admissionNotes then rootAsm else rootAsm++unlines admissionNotes
+      writeFile out admittedAsm
+      mapM_ (putStrLn . drop 2) admissionNotes
       nativeSummary (Options.diagNativeInsns diagnostic) "root" rootAsm
       -- the link list: everything the root's image needs beyond out itself
       writeFile (out ++ ".units") (unlines (map fst (preludeOut ++ unitOuts)))

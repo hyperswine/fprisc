@@ -1,0 +1,971 @@
+{
+  "compiler_sha256": "76bc1d0df2ed030fae71133b4b772d50989cd0600b7aeded49229504bce66eb3",
+  "rows": [
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "explicit",
+      "inline": true,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "9fe6c44ac7c75072c1a1301f6adb57518cefec13370d571f3f5ceb1998ba35b1",
+      "allocations": 1147,
+      "allocated_bytes": 69280
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "explicit",
+      "inline": true,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "9fe6c44ac7c75072c1a1301f6adb57518cefec13370d571f3f5ceb1998ba35b1",
+      "allocations": 1147,
+      "allocated_bytes": 69280
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "explicit",
+      "inline": true,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "9fe6c44ac7c75072c1a1301f6adb57518cefec13370d571f3f5ceb1998ba35b1",
+      "allocations": 5627,
+      "allocated_bytes": 343648
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "explicit",
+      "inline": true,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "9fe6c44ac7c75072c1a1301f6adb57518cefec13370d571f3f5ceb1998ba35b1",
+      "allocations": 5627,
+      "allocated_bytes": 343648
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "enabled",
+      "inline": true,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "c9bcad251c9ca346a8434fd7c16e4012d7b29cd7f95904242b087ca03d6f9b36",
+      "allocations": 1147,
+      "allocated_bytes": 69280
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "enabled",
+      "inline": true,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "c9bcad251c9ca346a8434fd7c16e4012d7b29cd7f95904242b087ca03d6f9b36",
+      "allocations": 1147,
+      "allocated_bytes": 69280
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "enabled",
+      "inline": true,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "c9bcad251c9ca346a8434fd7c16e4012d7b29cd7f95904242b087ca03d6f9b36",
+      "allocations": 5627,
+      "allocated_bytes": 343648
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "enabled",
+      "inline": true,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "c9bcad251c9ca346a8434fd7c16e4012d7b29cd7f95904242b087ca03d6f9b36",
+      "allocations": 5627,
+      "allocated_bytes": 343648
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "rollback",
+      "inline": true,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "3873b68bf29981b717e4073780b7ff61be141c0d87a6ec56eecf335a5bcc1be1",
+      "allocations": 1275,
+      "allocated_bytes": 73376
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "rollback",
+      "inline": true,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "3873b68bf29981b717e4073780b7ff61be141c0d87a6ec56eecf335a5bcc1be1",
+      "allocations": 1275,
+      "allocated_bytes": 73376
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "rollback",
+      "inline": true,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "3873b68bf29981b717e4073780b7ff61be141c0d87a6ec56eecf335a5bcc1be1",
+      "allocations": 6139,
+      "allocated_bytes": 360032
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "rollback",
+      "inline": true,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "3873b68bf29981b717e4073780b7ff61be141c0d87a6ec56eecf335a5bcc1be1",
+      "allocations": 6139,
+      "allocated_bytes": 360032
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "explicit-pair",
+      "inline": true,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "609ca47459d7b0bd53f9fc04eb29a2d73c2dc3df17d510837c8f99923afdf35d",
+      "allocations": 1916,
+      "allocated_bytes": 93888
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "explicit-pair",
+      "inline": true,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "609ca47459d7b0bd53f9fc04eb29a2d73c2dc3df17d510837c8f99923afdf35d",
+      "allocations": 1916,
+      "allocated_bytes": 93888
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "explicit-pair",
+      "inline": true,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "609ca47459d7b0bd53f9fc04eb29a2d73c2dc3df17d510837c8f99923afdf35d",
+      "allocations": 9724,
+      "allocated_bytes": 474752
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "explicit-pair",
+      "inline": true,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "609ca47459d7b0bd53f9fc04eb29a2d73c2dc3df17d510837c8f99923afdf35d",
+      "allocations": 9724,
+      "allocated_bytes": 474752
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "pair-rollback",
+      "inline": true,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "51e7deef12ffc74229aab515cbf4dff18d720757646db1655e1d95ff407d4c8a",
+      "allocations": 2044,
+      "allocated_bytes": 97984
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "pair-rollback",
+      "inline": true,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "51e7deef12ffc74229aab515cbf4dff18d720757646db1655e1d95ff407d4c8a",
+      "allocations": 2044,
+      "allocated_bytes": 97984
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "pair-rollback",
+      "inline": true,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "51e7deef12ffc74229aab515cbf4dff18d720757646db1655e1d95ff407d4c8a",
+      "allocations": 10236,
+      "allocated_bytes": 491136
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "pair-rollback",
+      "inline": true,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "51e7deef12ffc74229aab515cbf4dff18d720757646db1655e1d95ff407d4c8a",
+      "allocations": 10236,
+      "allocated_bytes": 491136
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "restored",
+      "inline": true,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "c9bcad251c9ca346a8434fd7c16e4012d7b29cd7f95904242b087ca03d6f9b36",
+      "allocations": 1147,
+      "allocated_bytes": 69280
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "restored",
+      "inline": true,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "c9bcad251c9ca346a8434fd7c16e4012d7b29cd7f95904242b087ca03d6f9b36",
+      "allocations": 1147,
+      "allocated_bytes": 69280
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "restored",
+      "inline": true,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "c9bcad251c9ca346a8434fd7c16e4012d7b29cd7f95904242b087ca03d6f9b36",
+      "allocations": 5627,
+      "allocated_bytes": 343648
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "restored",
+      "inline": true,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "c9bcad251c9ca346a8434fd7c16e4012d7b29cd7f95904242b087ca03d6f9b36",
+      "allocations": 5627,
+      "allocated_bytes": 343648
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "explicit",
+      "inline": false,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "865694eb9fdb486f8159989d12f8878347fa48458cfa98b084ebb0186da99bfe",
+      "allocations": 1146,
+      "allocated_bytes": 71280
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "explicit",
+      "inline": false,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "865694eb9fdb486f8159989d12f8878347fa48458cfa98b084ebb0186da99bfe",
+      "allocations": 1146,
+      "allocated_bytes": 71280
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "explicit",
+      "inline": false,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "865694eb9fdb486f8159989d12f8878347fa48458cfa98b084ebb0186da99bfe",
+      "allocations": 5626,
+      "allocated_bytes": 351792
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "explicit",
+      "inline": false,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "865694eb9fdb486f8159989d12f8878347fa48458cfa98b084ebb0186da99bfe",
+      "allocations": 5626,
+      "allocated_bytes": 351792
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "enabled",
+      "inline": false,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "af2ed163367f0fd841c48dd871acefd93ee9e57cdc6f8440631b6fdfd20ab591",
+      "allocations": 1146,
+      "allocated_bytes": 71280
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "enabled",
+      "inline": false,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "af2ed163367f0fd841c48dd871acefd93ee9e57cdc6f8440631b6fdfd20ab591",
+      "allocations": 1146,
+      "allocated_bytes": 71280
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "enabled",
+      "inline": false,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "af2ed163367f0fd841c48dd871acefd93ee9e57cdc6f8440631b6fdfd20ab591",
+      "allocations": 5626,
+      "allocated_bytes": 351792
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "enabled",
+      "inline": false,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "af2ed163367f0fd841c48dd871acefd93ee9e57cdc6f8440631b6fdfd20ab591",
+      "allocations": 5626,
+      "allocated_bytes": 351792
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "rollback",
+      "inline": false,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "8dc01aaebb23e0e537d2bd4985dd4fcd826f7aeb472f3f139463ee79b45b88e4",
+      "allocations": 1274,
+      "allocated_bytes": 75376
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "rollback",
+      "inline": false,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "8dc01aaebb23e0e537d2bd4985dd4fcd826f7aeb472f3f139463ee79b45b88e4",
+      "allocations": 1274,
+      "allocated_bytes": 75376
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "rollback",
+      "inline": false,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "8dc01aaebb23e0e537d2bd4985dd4fcd826f7aeb472f3f139463ee79b45b88e4",
+      "allocations": 6138,
+      "allocated_bytes": 368176
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "rollback",
+      "inline": false,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "8dc01aaebb23e0e537d2bd4985dd4fcd826f7aeb472f3f139463ee79b45b88e4",
+      "allocations": 6138,
+      "allocated_bytes": 368176
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "explicit-pair",
+      "inline": false,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "159ad57ed11adeed7ed0e1d58eb50e38095094e4eebdd8a1212b23d1b8f2143c",
+      "allocations": 2043,
+      "allocated_bytes": 99984
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "explicit-pair",
+      "inline": false,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "159ad57ed11adeed7ed0e1d58eb50e38095094e4eebdd8a1212b23d1b8f2143c",
+      "allocations": 2043,
+      "allocated_bytes": 99984
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "explicit-pair",
+      "inline": false,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "159ad57ed11adeed7ed0e1d58eb50e38095094e4eebdd8a1212b23d1b8f2143c",
+      "allocations": 10235,
+      "allocated_bytes": 499280
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "explicit-pair",
+      "inline": false,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "159ad57ed11adeed7ed0e1d58eb50e38095094e4eebdd8a1212b23d1b8f2143c",
+      "allocations": 10235,
+      "allocated_bytes": 499280
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "pair-rollback",
+      "inline": false,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "4f84de91079c5f091466fa92d7732619bafe82e3557406ce4e1a2b465f9fcb56",
+      "allocations": 2171,
+      "allocated_bytes": 104080
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "pair-rollback",
+      "inline": false,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "4f84de91079c5f091466fa92d7732619bafe82e3557406ce4e1a2b465f9fcb56",
+      "allocations": 2171,
+      "allocated_bytes": 104080
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "pair-rollback",
+      "inline": false,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "4f84de91079c5f091466fa92d7732619bafe82e3557406ce4e1a2b465f9fcb56",
+      "allocations": 10747,
+      "allocated_bytes": 515664
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "pair-rollback",
+      "inline": false,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "4f84de91079c5f091466fa92d7732619bafe82e3557406ce4e1a2b465f9fcb56",
+      "allocations": 10747,
+      "allocated_bytes": 515664
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "restored",
+      "inline": false,
+      "harts": 1,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "af2ed163367f0fd841c48dd871acefd93ee9e57cdc6f8440631b6fdfd20ab591",
+      "allocations": 1146,
+      "allocated_bytes": 71280
+    },
+    {
+      "case": "allocation",
+      "count": 128,
+      "form": "restored",
+      "inline": false,
+      "harts": 4,
+      "stdout": "16512\n",
+      "exit": 0,
+      "binary_sha256": "af2ed163367f0fd841c48dd871acefd93ee9e57cdc6f8440631b6fdfd20ab591",
+      "allocations": 1146,
+      "allocated_bytes": 71280
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "restored",
+      "inline": false,
+      "harts": 1,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "af2ed163367f0fd841c48dd871acefd93ee9e57cdc6f8440631b6fdfd20ab591",
+      "allocations": 5626,
+      "allocated_bytes": 351792
+    },
+    {
+      "case": "allocation",
+      "count": 512,
+      "form": "restored",
+      "inline": false,
+      "harts": 4,
+      "stdout": "262656\n",
+      "exit": 0,
+      "binary_sha256": "af2ed163367f0fd841c48dd871acefd93ee9e57cdc6f8440631b6fdfd20ab591",
+      "allocations": 5626,
+      "allocated_bytes": 351792
+    },
+    {
+      "case": "order",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "Meters 1\nMeters 2\nMeters 3\n3\n",
+      "exit": 0,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2"
+    },
+    {
+      "case": "order",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "Meters 1\nMeters 2\nMeters 3\n3\n",
+      "exit": 0,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2"
+    },
+    {
+      "case": "trap",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "1\n2\n",
+      "exit": 1,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2",
+      "diagnostic": "[ERR] division by zero"
+    },
+    {
+      "case": "trap",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "1\n2\n",
+      "exit": 1,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2",
+      "diagnostic": "[ERR] division by zero"
+    },
+    {
+      "case": "overflow",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "",
+      "exit": 1,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2",
+      "diagnostic": "[ERR] Int overflow: 4611686018427387902 + 2 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps"
+    },
+    {
+      "case": "overflow",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "",
+      "exit": 1,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2",
+      "diagnostic": "[ERR] Int overflow: 4611686018427387902 + 2 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps"
+    },
+    {
+      "case": "max",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "4611686018427387903\n4611686018427387903\n",
+      "exit": 0,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2"
+    },
+    {
+      "case": "max",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "4611686018427387903\n4611686018427387903\n",
+      "exit": 0,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2"
+    },
+    {
+      "case": "min",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "-4611686018427387903\n-4611686018427387903\n",
+      "exit": 0,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2"
+    },
+    {
+      "case": "min",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "-4611686018427387903\n-4611686018427387903\n",
+      "exit": 0,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2"
+    },
+    {
+      "case": "partial",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "",
+      "exit": 1,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2",
+      "diagnostic": "[ERR] no matching meter"
+    },
+    {
+      "case": "partial",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "",
+      "exit": 1,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2",
+      "diagnostic": "[ERR] no matching meter"
+    },
+    {
+      "case": "actor",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "Meters 3\n",
+      "exit": 0,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2"
+    },
+    {
+      "case": "actor",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "Meters 3\n",
+      "exit": 0,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2"
+    },
+    {
+      "case": "ordinary",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "12\n",
+      "exit": 0,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2"
+    },
+    {
+      "case": "ordinary",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "12\n",
+      "exit": 0,
+      "binary_sha256": "d6551d4b29d8f74e68afd60c28429e6a247689738fe23c6b3536853fae5cf4a2"
+    },
+    {
+      "case": "order",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "Meters 1\nMeters 2\nMeters 3\n3\n",
+      "exit": 0,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a"
+    },
+    {
+      "case": "order",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "Meters 1\nMeters 2\nMeters 3\n3\n",
+      "exit": 0,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a"
+    },
+    {
+      "case": "trap",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "1\n2\n",
+      "exit": 1,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a",
+      "diagnostic": "[ERR] division by zero"
+    },
+    {
+      "case": "trap",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "1\n2\n",
+      "exit": 1,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a",
+      "diagnostic": "[ERR] division by zero"
+    },
+    {
+      "case": "overflow",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "",
+      "exit": 1,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a",
+      "diagnostic": "[ERR] Int overflow: 4611686018427387902 + 2 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps"
+    },
+    {
+      "case": "overflow",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "",
+      "exit": 1,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a",
+      "diagnostic": "[ERR] Int overflow: 4611686018427387902 + 2 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps"
+    },
+    {
+      "case": "max",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "4611686018427387903\n4611686018427387903\n",
+      "exit": 0,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a"
+    },
+    {
+      "case": "max",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "4611686018427387903\n4611686018427387903\n",
+      "exit": 0,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a"
+    },
+    {
+      "case": "min",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "-4611686018427387903\n-4611686018427387903\n",
+      "exit": 0,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a"
+    },
+    {
+      "case": "min",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "-4611686018427387903\n-4611686018427387903\n",
+      "exit": 0,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a"
+    },
+    {
+      "case": "partial",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "",
+      "exit": 1,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a",
+      "diagnostic": "[ERR] no matching meter"
+    },
+    {
+      "case": "partial",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "",
+      "exit": 1,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a",
+      "diagnostic": "[ERR] no matching meter"
+    },
+    {
+      "case": "actor",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "Meters 3\n",
+      "exit": 0,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a"
+    },
+    {
+      "case": "actor",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "Meters 3\n",
+      "exit": 0,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a"
+    },
+    {
+      "case": "ordinary",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "12\n",
+      "exit": 0,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a"
+    },
+    {
+      "case": "ordinary",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "12\n",
+      "exit": 0,
+      "binary_sha256": "a7da213ca5221f490f62c82f8c03d05d326ea0f335d6489846d00419564ecd8a"
+    },
+    {
+      "case": "arena-copy",
+      "enabled": true,
+      "harts": 1,
+      "stdout": "1\n",
+      "exit": 0,
+      "binary_sha256": "26d290edd7617bb60fd1708a4d686aeb7882913adaf05925eaf70c111e8c0604"
+    },
+    {
+      "case": "arena-copy",
+      "enabled": true,
+      "harts": 4,
+      "stdout": "1\n",
+      "exit": 0,
+      "binary_sha256": "26d290edd7617bb60fd1708a4d686aeb7882913adaf05925eaf70c111e8c0604"
+    },
+    {
+      "case": "arena-copy",
+      "enabled": false,
+      "harts": 1,
+      "stdout": "1\n",
+      "exit": 0,
+      "binary_sha256": "b411e46d1b3522cc8d44874126b57769773501859e8747c7bc5f65dc41fb0c68"
+    },
+    {
+      "case": "arena-copy",
+      "enabled": false,
+      "harts": 4,
+      "stdout": "1\n",
+      "exit": 0,
+      "binary_sha256": "b411e46d1b3522cc8d44874126b57769773501859e8747c7bc5f65dc41fb0c68"
+    },
+    {
+      "case": "module",
+      "harts": 1,
+      "stdout": "6\n",
+      "exit": 0,
+      "binary_sha256": "29a4af46f3464b19b8db89e8eb2aa58fb58ffc11e7dc2c1d36b073e2bd0ef5a8"
+    },
+    {
+      "case": "module",
+      "harts": 4,
+      "stdout": "6\n",
+      "exit": 0,
+      "binary_sha256": "29a4af46f3464b19b8db89e8eb2aa58fb58ffc11e7dc2c1d36b073e2bd0ef5a8"
+    },
+    {
+      "case": "library",
+      "observes": false,
+      "harts": 1,
+      "stdout": "8\n",
+      "exit": 0,
+      "binary_sha256": "636710040003994a4b905894f79bfc58f673b655fd053bab203cdab0bdd9753d"
+    },
+    {
+      "case": "library",
+      "observes": false,
+      "harts": 4,
+      "stdout": "8\n",
+      "exit": 0,
+      "binary_sha256": "636710040003994a4b905894f79bfc58f673b655fd053bab203cdab0bdd9753d"
+    },
+    {
+      "case": "library",
+      "observes": true,
+      "harts": 1,
+      "stdout": "W 7\n8\n",
+      "exit": 0,
+      "binary_sha256": "e42018f51ff7cbf71aa6bcd098cd9248422ccd15f5f053b4831497f334d80bd7"
+    },
+    {
+      "case": "library",
+      "observes": true,
+      "harts": 4,
+      "stdout": "W 7\n8\n",
+      "exit": 0,
+      "binary_sha256": "e42018f51ff7cbf71aa6bcd098cd9248422ccd15f5f053b4831497f334d80bd7"
+    },
+    {
+      "case": "library",
+      "observes": false,
+      "harts": 1,
+      "stdout": "8\n",
+      "exit": 0,
+      "binary_sha256": "636710040003994a4b905894f79bfc58f673b655fd053bab203cdab0bdd9753d"
+    },
+    {
+      "case": "library",
+      "observes": false,
+      "harts": 4,
+      "stdout": "8\n",
+      "exit": 0,
+      "binary_sha256": "636710040003994a4b905894f79bfc58f673b655fd053bab203cdab0bdd9753d"
+    },
+    {
+      "case": "public-bound",
+      "limit": 55,
+      "enabled": true,
+      "derived": 56,
+      "exit": 1
+    },
+    {
+      "case": "public-bound",
+      "limit": 55,
+      "enabled": false,
+      "derived": 56,
+      "exit": 1
+    },
+    {
+      "case": "public-bound",
+      "limit": 56,
+      "enabled": true,
+      "derived": 56,
+      "exit": 0
+    },
+    {
+      "case": "public-bound",
+      "limit": 56,
+      "enabled": false,
+      "derived": 56,
+      "exit": 0
+    }
+  ]
+}

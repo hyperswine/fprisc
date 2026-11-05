@@ -20,6 +20,9 @@ V fpr_fn__x24arc_x2erawNe(V a,V b) { return a!=b?(V)&fpr_true:(V)&fpr_false; }
 extern V fpr_prim_fn_str(V), fpr_prim_fn_print(V);
 V fpr_fn__x24arc_x2ewordStr(V a) { bits_t b={T_BITS,2,64,a}; return fpr_prim_fn_str((V)&b); }
 V fpr_fn__x24arc_x2ewordPrint(V a) { bits_t b={T_BITS,2,64,a}; return fpr_prim_fn_print((V)&b); }
+V fpr_fn__x24arc_x2eF64print(V a) { bits_t b={T_BITS,5,64,a}; return fpr_prim_fn_print((V)&b); }
+V fpr_fn__x24arc_x2eF32print(V a) { bits_t b={T_BITS,6,32,(uw)(uint32_t)a}; return fpr_prim_fn_print((V)&b); }
+#include "uniform.inc"
 #define FINISH1(r,a) do { if((r)==(a))fpr_builtin_retain(r); fpr_builtin_release(a); return r; } while(0)
 #define FINISH2(r,a,b) do { if((r)==(a)||(r)==(b))fpr_builtin_retain(r); fpr_builtin_release(a); fpr_builtin_release(b); return r; } while(0)
 #define PRIM1(name,sym) extern V sym(V); V fpr_fn__x24arc_x2e##name(V a){V r=sym(a);FINISH1(r,a);}

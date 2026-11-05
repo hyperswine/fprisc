@@ -1,0 +1,171 @@
+{
+  "host": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "count": 20000000,
+  "samples": 13,
+  "tool_sha256": "900e9425d24ad32d871453d7275d9f81fd24b45d04c57129414e01de31ed7c9e",
+  "fixture_sha256": "058e3b98ac59d79ed75440e84f432956c1b9c3475cd94f9b11621867eb056be0",
+  "tree_fixture_sha256": "0908e79fa35df7f3061dd3025925d0d65e5cb832e20a5a025cbe1c6da6c473ca",
+  "shape": "mixed",
+  "compiler_sha256": "745b6f730140c59438d585967c354c366e6cc5eedc91cf48f783b10f525cd04d",
+  "runtime_sha256": {
+    "runtime/runtime.c": "34577e61f4c13acc1013574d91bfd6405ff8cc749fad8183f25e04396cb35c85",
+    "runtime/actors.c": "d44005419a3dd44aecd50b39e165db3c2953d965e6650bff062003236505ca3e",
+    "runtime/i32.h": "1aebe94f294c233df1c6b376a48d0c2189b1a1f9842d09c43315162f527be6e6",
+    "runtime/buddy.c": "8c8fecc5399a4ce1eea346bd2d83a95b2f530a1416343bf44b69f778b6c2d4f7",
+    "runtime/mod.c": "16cf103b2484e8d3e881a9b3e2a87353904f07d6c05dedae7427ec02704bd90b",
+    "runtime/vec_layout.h": "c58dc8eb8e6af7bba31d78ac8ddb0ad3878be8ff8769165c599925d72b3dfbc9",
+    "runtime/sched_probe.h": "94441412dcf75fc2b2fb2455f27e2aa894cc0977d9336d4fbeb55b89b01c64ff",
+    "runtime/bits.c": "70b29db5f31d7f92c6c418c9470ef6e622a88f9108a16359b89aef771bb68111",
+    "runtime/vec.c": "d31611331518bb9b553da791a3864fe6525fd26c2daa7a504fe4f2f665e3210e",
+    "runtime/i32.c": "a9d59f4c8c7713e61e275410c234c519aae5b2e2fb9498dfcf56bfe27aeceee4",
+    "runtime/sstr.c": "6235f9af5d7e1caf19021e5c3e767fa20aa7b05539a3b4c0ff58328a6e5c500b",
+    "runtime/fpr.h": "2f88cf32a2e3e99b0c68d0fee3569d803e96cb8846cc1916ecb697d0895cf85d"
+  },
+  "inlining": "normal",
+  "regions": "normal",
+  "timing": "uninstrumented alternating native subprocess wall time",
+  "results": [
+    {
+      "form": "before",
+      "compiler_sha256": "7ae1cacc4cc19598704c1fa6e9e4af39c2184f733ad3fd85ce75b1adb58a44fc",
+      "source_sha256": "6751075727b314c20ab75d408f42d19bc1be9279f9e78ba504926dceeb891652",
+      "switches": {},
+      "cost": {
+        "alloc_requests": 60029283,
+        "alloc_bytes": 1920937184,
+        "copies": 29282,
+        "copy_bytes": 936992,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 29281,
+        "state_bytes": 936992,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.2228599590016529,
+        0.22316420800052583,
+        0.2225902919890359,
+        0.22225487499963492,
+        0.2207671250216663,
+        0.22234191701863892,
+        0.22331516700796783,
+        0.22147733299061656,
+        0.221314499998698,
+        0.22043874999508262,
+        0.22068470899830572,
+        0.2293177499959711,
+        0.22909791700658388
+      ],
+      "median_seconds": 0.22234191701863892
+    },
+    {
+      "form": "after",
+      "compiler_sha256": "745b6f730140c59438d585967c354c366e6cc5eedc91cf48f783b10f525cd04d",
+      "source_sha256": "6751075727b314c20ab75d408f42d19bc1be9279f9e78ba504926dceeb891652",
+      "switches": {},
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.19331233299453743,
+        0.19304633300635032,
+        0.19239237500005402,
+        0.1925635829975363,
+        0.19275870799901895,
+        0.1933100410096813,
+        0.20687058300245553,
+        0.19258320797234774,
+        0.19311741599813104,
+        0.19263854098971933,
+        0.19343966699671,
+        0.1934188750165049,
+        0.20888454199302942
+      ],
+      "median_seconds": 0.19311741599813104
+    },
+    {
+      "form": "explicit",
+      "compiler_sha256": "745b6f730140c59438d585967c354c366e6cc5eedc91cf48f783b10f525cd04d",
+      "source_sha256": "3e883cc44979ff16c5603c0d48906cdaa405da4cf0f7469acc8c2f9c66e9c684",
+      "switches": {},
+      "cost": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 1,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0,
+        "state_copies": 0,
+        "state_bytes": 0,
+        "receives": 0,
+        "buddy_allocs": 14,
+        "buddy_frees": 0
+      },
+      "samples_seconds": [
+        0.19411562499590218,
+        0.19272854199516587,
+        0.19250279199332,
+        0.19236300000920892,
+        0.19313566701021045,
+        0.19326283398550004,
+        0.19374691697885282,
+        0.19299687500461005,
+        0.1926632919930853,
+        0.19297283299965784,
+        0.19303662498714402,
+        0.1929039589886088,
+        0.19613179200678132
+      ],
+      "median_seconds": 0.19299687500461005
+    },
+    {
+      "form": "rollback",
+      "compiler_sha256": "745b6f730140c59438d585967c354c366e6cc5eedc91cf48f783b10f525cd04d",
+      "source_sha256": "6751075727b314c20ab75d408f42d19bc1be9279f9e78ba504926dceeb891652",
+      "switches": {
+        "FPR_NO_FIELD_WORKERS": "1"
+      },
+      "cost": {
+        "alloc_requests": 80039063,
+        "alloc_bytes": 2561250144,
+        "copies": 39062,
+        "copy_bytes": 1249952,
+        "message_slabs": 2,
+        "turns": 0,
+        "state_copies": 39061,
+        "state_bytes": 1249952,
+        "receives": 0,
+        "buddy_allocs": 20,
+        "buddy_frees": 4
+      },
+      "samples_seconds": [
+        0.24368029198376462,
+        0.24329550002585165,
+        0.24316129100043327,
+        0.24464529199758545,
+        0.2449849589902442,
+        0.24275783300981857,
+        0.2451632080192212,
+        0.24298970800009556,
+        0.24383033302729018,
+        0.24440024999785237,
+        0.24477029099944048,
+        0.2439150830032304,
+        0.2438237919996027
+      ],
+      "median_seconds": 0.24383033302729018
+    }
+  ]
+}

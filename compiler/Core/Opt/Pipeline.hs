@@ -3,14 +3,16 @@
 -- signatures from another stage. This is a structural check, not Core typing.
 module Core.Opt.Pipeline
   (OptimizationOptions(..), CorePass(..), PassReport(..), OptimizedCore,
-   optimizeCore,optimizeCoreWithImports,optimizeCoreWithCheckedImports, optimizedProgram, optimizedSignatures, optimizationNotes,
+   optimizeCore,optimizeCoreWithImports,optimizeCoreWithCheckedImports,optimizeCoreWithProducts, optimizedProgram, optimizedSignatures, optimizationNotes,
    optimizationReports, verifyPassResult) where
 import Core.Syntax
 import Core.Opt.Fusion (fuseCompatibilityWithImports)
 import Core.Opt.Normalize (normIn)
 import Core.Opt.Ticks (batchProgramTicks)
-import Core.Opt.PairReturns (pairReturnProgram)
-import Workers (ScalarSignatures, workerizeWithOptions, internalWorker)
+import Core.Opt.PairReturns (productReturnProgramWithVariants)
+import Workers (ScalarSignatures, workerizeWithProducts, internalWorker)
+import Core.Opt.StoredLists (storeLists)
+import Core.Opt.ProductParameters
 import Reuse (reuseProgram, poolResetters)
 import Control.Monad (foldM, unless)
 import qualified Data.Map.Strict as M
@@ -18,7 +20,7 @@ import qualified Data.Set as S
 
 data OptimizationOptions = OptimizationOptions
   { optFusion :: Bool, optWorkers :: Bool, optFieldWorkers :: Bool, optTupleScalars :: Bool,
-    optScalarWorkers :: Bool, optTickBatch :: Bool, optPairReturns :: Bool, optNormalize :: Bool, optReuse :: Bool,
+    optScalarWorkers :: Bool, optTickBatch :: Bool, optPairReturns :: Bool, optProductWidth :: Int, optNormalize :: Bool, optReuse :: Bool,
     -- known pool resetters beyond this program and its imports (the linked
     -- program's, Reuse.poolResetters): reuse never spans a call to one
     optPoolResetters :: S.Set Name }
@@ -52,7 +54,9 @@ optimizeCore=optimizeCoreWithImports M.empty
 optimizeCoreWithImports :: Prog -> OptimizationOptions -> S.Set Name -> Prog -> Either String OptimizedCore
 optimizeCoreWithImports=optimizeCoreWithCheckedImports S.empty
 optimizeCoreWithCheckedImports :: S.Set Name -> Prog -> OptimizationOptions -> S.Set Name -> Prog -> Either String OptimizedCore
-optimizeCoreWithCheckedImports checked imports opts elide input = do
+optimizeCoreWithCheckedImports=optimizeCoreWithProducts emptyProductParameters
+optimizeCoreWithProducts :: ProductParameters -> S.Set Name -> Prog -> OptimizationOptions -> S.Set Name -> Prog -> Either String OptimizedCore
+optimizeCoreWithProducts products checked imports opts elide input = do
   verifyPassResult input input M.empty
   foldM run (OptimizedCore input M.empty [])
     [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BatchTicks, PairReturns]
@@ -64,7 +68,7 @@ optimizeCoreWithCheckedImports checked imports opts elide input = do
                            in (p,optimizedSignatures state,ns,optFusion opts)
             MakeWorkers -> let fields = optWorkers opts && optFieldWorkers opts
                                scalars = optWorkers opts && optScalarWorkers opts
-                               (p,ns,ss) = workerizeWithOptions fields (optTupleScalars opts) scalars (optTickBatch opts) before
+                               (p,ns,ss) = workerizeWithProducts products fields (optTupleScalars opts) scalars (optTickBatch opts) before
                            in (p,ss,ns,fields || scalars)
             NormalizeForReuse ->
               let enabled = optReuse opts && optNormalize opts
@@ -76,8 +80,13 @@ optimizeCoreWithCheckedImports checked imports opts elide input = do
             BatchTicks -> let (p,ns) = if optTickBatch opts then batchProgramTicks before else (before,[])
                           in (p,optimizedSignatures state,ns,optTickBatch opts)
             -- after every pass that reads call results: the twins are the last functions made
-            PairReturns -> let (p,ss,ns) = if optPairReturns opts then pairReturnProgram before (optimizedSignatures state) else (before,optimizedSignatures state,[])
-                           in (p,ss,ns,optPairReturns opts)
+            PairReturns
+              | optPairReturns opts ->
+                  let width=optProductWidth opts
+                      (stored,notes)=storeLists products width before
+                      (out,ss,ns)=productReturnProgramWithVariants (variantResults before products) width stored (optimizedSignatures state)
+                  in (out,ss,notes++ns,True)
+              | otherwise -> (before,optimizedSignatures state,[],False)
       case verifyPassResult before after sigs of
         Left err -> Left (show pass ++ ": " ++ err)
         Right () -> Right (OptimizedCore after sigs

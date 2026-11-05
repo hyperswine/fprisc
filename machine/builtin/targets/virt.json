@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "target": "builtin-rv64-virt-128m",
+  "elf_class_bits": 64,
+  "ram_origin": 2147483648,
+  "ram_bytes": 134217728,
+  "max_image_bytes": 134217728,
+  "min_free_bytes": 65536
+}

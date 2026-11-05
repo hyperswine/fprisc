@@ -1,0 +1,141 @@
+{
+  "milestone": "Checked separate-unit type-instance contracts; Base activation remains disabled",
+  "codegen_rev": 173,
+  "arc_rev": 20,
+  "compiler_sha256": "9a179856faf11f2b88bd63c90df28cb31b623a5582124faf74177d8eb8802873",
+  "environment": "ghc-9.8.2 aarch64-apple-darwin",
+  "scope": [
+    "retained original entries and arities",
+    "complete-type admission with unchanged generic fallback",
+    "private instance origin, scheme, arity and home declarations",
+    "missing-home, stale-arity and copied-definition refusals",
+    "explicit verified recursion-measure preparation"
+  ],
+  "base_default_activation": false,
+  "checks": {
+    "haskell": {
+      "command": "cabal test all --test-show-details=direct",
+      "passed_suites": [
+        "WorkersCheck",
+        "if-precedence-check",
+        "module-path-check",
+        "TypedTrmc",
+        "TypedStaging",
+        "TypedUnits",
+        "TypedTraps",
+        "TypedLayouts",
+        "TypedStructs",
+        "StringScan",
+        "TypedCallbacks",
+        "TypedIR",
+        "TypedCalls",
+        "TypedCore",
+        "Specialization",
+        "StringRead",
+        "SourceGroups",
+        "SolReplIncremental",
+        "TypedProgram",
+        "ReuseCheck",
+        "RepresentationSpecialization",
+        "ScalarVectorRead",
+        "NullaryConstants",
+        "LoopOptimize",
+        "ProjectWorkflow",
+        "NativeData",
+        "LoopForm",
+        "KernelIR",
+        "InferenceEvidence",
+        "GeneralizeClosed",
+        "RegionInterfaces",
+        "SelectedIR",
+        "Diagnostics",
+        "CorePipeline",
+        "DefaultingWorklist",
+        "CompilerOptions",
+        "CaseGrowth",
+        "AllocIR",
+        "Interval"
+      ]
+    },
+    "compile_budget": {
+      "command": "python3 tests/check_compile_budget.py --require-baseline",
+      "status": "pass",
+      "reported_output": [
+        "hello: 1.59 GB allocated, 44 MB peak live, 0.8 s (+8.2% allocation, +4.1% peak vs baseline)",
+        "std-live: 32.74 GB allocated, 434 MB peak live, 18.8 s (+9.4% allocation, +7.8% peak vs baseline)",
+        "pos1: 70.33 GB allocated, 719 MB peak live, 40.5 s (+8.5% allocation, -13.8% peak vs baseline)",
+        "compile budget: ghc-9.8.2 aarch64-apple-darwin within budget"
+      ],
+      "baselines_changed": false
+    },
+    "rv64_specialization": {
+      "command": "python3 tests/check_type_specialization.py",
+      "status": "pass",
+      "output": [
+        "Source call order, repeated instances and observable effects: PASS",
+        "Uncalled List Word projection uses checked field evidence without a constructed cell: PASS",
+        "Nested List Int/List Word, shared reads, length-independent instances and zero live allocation: PASS",
+        "Immortal Unit/Bool, shared heap fields, 1000 allocation cycles and effect order: PASS",
+        "Parameterized nominal types, scalar variant payloads, tuples/records and 1000 leak-free cycles: PASS",
+        "Expanding polymorphic recursion uses a bounded clone plus real tagged fallback, with remarks and zero leaks: PASS",
+        "Generic and specialized F64/F32/Word print and str agree without leaks: PASS",
+        "Raw/generic branch joins convert only the selected arm and preserve effects without leaks: PASS",
+        "Specialization on/off preserves printed prefixes and overflow/division failures: PASS"
+      ]
+    },
+    "c2_cost": {
+      "command": "python3 tests/check_type_spec_cost.py --sizes 16 32 64 128 256 --require-baseline --record bench/2026-11-05-type-instance-specialization-cost.json",
+      "status": "pass",
+      "record": "2026-11-05-type-instance-specialization-cost.json"
+    }
+  },
+  "rejected_experiments": [
+    {
+      "label": "eager retained-entry Base activation",
+      "compiler_sha256": "762688e6d19edd3c276580a25febe1015ea253a32419f81afeb20807206ca54a",
+      "budget_output": [
+        "hello: 1.76 GB allocated, 50 MB peak live, 0.8 s (+20.1% allocation, +18.1% peak vs baseline)",
+        "std-live: 37.70 GB allocated, 436 MB peak live, 22.0 s (+26.0% allocation, +8.3% peak vs baseline)",
+        "pos1: 80.62 GB allocated, 890 MB peak live, 47.6 s (+24.4% allocation, +6.8% peak vs baseline)",
+        "compile budget FAILED:",
+        "  hello: allocation +20.1% is over the 10% margin",
+        "  std-live: allocation +26.0% is over the 10% margin",
+        "  pos1: allocation +24.4% is over the 10% margin"
+      ],
+      "disposition": "activation removed"
+    },
+    {
+      "label": "automatic measure provenance on ordinary Base path",
+      "compiler_sha256": "f23220b58399fb68c0cf126b3b027836e9d736477d5edf07ca56adda5f780762",
+      "budget_output": [
+        "hello: 1.59 GB allocated, 44 MB peak live, 0.8 s (+8.2% allocation, +4.1% peak vs baseline)",
+        "std-live: 34.53 GB allocated, 434 MB peak live, 19.2 s (+15.4% allocation, +7.8% peak vs baseline)",
+        "pos1: 74.62 GB allocated, 711 MB peak live, 42.3 s (+15.1% allocation, -14.7% peak vs baseline)",
+        "compile budget FAILED:",
+        "  std-live: allocation +15.4% is over the 10% margin",
+        "  pos1: allocation +15.1% is over the 10% margin"
+      ],
+      "disposition": "explicit preparation API; ordinary analysis path restored"
+    }
+  ],
+  "qualification_limits": [
+    "No new Base allocation-removal result",
+    "No production Base representation-admission policy yet",
+    "No new physical board or scheduling-latency qualification",
+    "No static-arena or WCET qualification",
+    "Wall times are observations, not speedup claims; cost checks ran alongside independent validation"
+  ],
+  "source_sha256": {
+    "compiler/Codegen.hs": "b2fce801873dbc0cbbbf8f41ee1f07e8db4fa969a83ff4e0f76172f5d57021b4",
+    "compiler/Compile.hs": "cf9ae93f17465ec2a6b0d39f596217c5c724803b5783e21973e8f7dbfafc2787",
+    "compiler/Core/Typed/Monomorphize.hs": "7ac44e86a59df428ba859bab2acdba09d99c1da62d1fdfc3d8e978f1b9384c2c",
+    "compiler/Compiler/Native/Core.hs": "cacbb78d63123a8ab2bdaa145caa9d883b73ec69d361e4210ce6e0ffc595f6f2",
+    "compiler/Compiler/Native/Linked.hs": "69e74c17d33ceda5f747ea8bb68697f95a5b295fae1ca54da3cca2ecf8b9db21",
+    "compiler/Compiler/Native/Imports.hs": "75fb2c02d75d0a13a3ef2307c8f9d09d2e422a8040a4cc52f0df69bfe802c12a",
+    "compiler/Compiler/Native/Regions.hs": "4b73f67bf15f11a4a4594ec0a6e68b76780a0e66dbc6b7ce0691d3023c17d3f7",
+    "tests/TypedProgram.hs": "148259c138427aa7ab75765f4cc415a470ebf602cb5f496f652bd065ef71c18f",
+    "tests/check_type_specialization.py": "b97214c4ff07413c31edb6a1576dccf237fd2aff7e5cb947352d1638deba1197",
+    "tests/check_compile_budget.py": "2ecb43e7bc87c3cc5a4a77675c3768d96a9ac77ddab77a0947ff18a72ba973fb",
+    "tests/check_type_spec_cost.py": "aac8ce91c99984bc2f9eb31c91c376504fc2d523cc6771d286546cc05993be7f"
+  }
+}
