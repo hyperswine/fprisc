@@ -3,6 +3,10 @@
 Date: 6 November 2026. Kind: design proposal with measurements. It changes no
 compiler behaviour. Base: main `95e2fbc`, codegen 204.
 
+Review update: contracts and work order below were expanded on 6 November.
+The original measurements and their baseline identities are preserved; no new
+performance result or implementation is claimed by this revision.
+
 It follows the [completed zero-overhead roadmap](2026-11-04-ZERO-OVERHEAD-COMPLETION.md)
 and today's [performance record](2026-11-06-PERFORMANCE-AT-E138E65.md). The
 roadmap removed most boxing and allocation: fused list pipelines match hand
@@ -20,30 +24,32 @@ hand-written variant, relinking with the build's own link line, and timing
 `bench/2026-11-06-fixed-costs.json`; arm64 macOS, fastest of 11 interleaved
 runs, process startup included: 5.1 ms for fpr, 2.5 ms for C).
 
-- **Call-heavy code can match C carrying the same checks.** `fib 40` goes from
+- **Call-heavy code approaches this checked-add C reference.** `fib 40` goes from
   469 ms to 253 ms with the fuel tick and the overflow check both kept. C `-O2`
-  is 198 ms; C with a checked add is 244 ms.
+  is 198 ms; C with a checked add is 244 ms. The C reference does not carry
+  the full FP-RISC runtime contract.
 - **A byte loop can come within 1.3x of scalar C.** `byteloop` goes from 70 ms
   to 18 ms; scalar C is 13.6 ms and vectorized C is 4.8 ms.
 - **Recursive data improves by a third from the same changes**, 133 ms to 88 ms
-  on `tree_sum`, and the rest (C is 33 ms) sits in the allocation path, which
-  hand edits could not safely isolate.
+  on `tree_sum`. Allocation is a candidate for the remaining gap (C is 33 ms),
+  but hand edits could not safely isolate it.
 - **Three ideas measured as not worth doing now**: overflow checks on the
   flags, trusting static types in constructor tests, and removing the stack
   check. The first answer I gave on this question listed all three; the
   measurements below withdraw them.
 
-**Recommendation.** Five steps, in this order, each behind a rollback flag and
-a differential gate as before:
+**Recommendation.** Start with instruction selection and frames, then folding
+and sharing checked operations. Qualify loop modes individually before testing
+combinations. Keep register fuel as a separate, coordinated runtime/QOS ABI
+change. Investigate allocation independently; defer chunked fuel until its
+execution-boundary proof exists. Each implementation retains a rollback flag
+and a differential gate.
 
-1. Instruction selection and frames.
-2. Folding and sharing of checked operations.
-3. Loop-invariant checks, starting by promoting two modes that already exist.
-4. The fuel counter: per-chunk in counted loops, in a register on AArch64.
-5. The allocation fast path, as an investigation first.
-
-No step changes `Int`, evaluation order, trap order, preemption points or the
-source language.
+Preserving `Int`, evaluation order, trap order and existing preemption points
+is a requirement, not a result of these experiments. Register fuel can retain
+tick locations; chunk charging needs the separate contract below before it can
+make that claim. The joint order is recorded in the
+[amended QOS proposal](../../qos/docs/2026-11-06-ZERO-OVERHEAD-OS-AMENDED.md#joint-order-of-work).
 
 ## Evidence
 
@@ -90,7 +96,7 @@ The same shapes appear elsewhere, with larger effects:
 `Codegen.Simplify`, `LoopOptimize` and `Interval` are 779 lines together.
 That is the size of the scalar optimizer the typed IR has today.
 
-### Measured ceilings
+### Hand-written experimental targets
 
 Each row applies one more change to the row above it. Indented rows are
 alternatives, not steps.
@@ -131,11 +137,13 @@ alternatives, not steps.
 Reading the tables:
 
 - **Selection and frames are worth 20 to 28% on call-heavy code** and need no
-  new analysis.
-- **The fuel counter costs a quarter of `fib` in memory and nothing in a
-  register.** In a loop the memory form costs nothing extra on this machine
-  (22.6 against 22.7), but charging per chunk removes a fifth of the loop.
-- **A polled flag is no faster than a counted register.** There is no speed
+  new analysis for the basic selection changes; frame placement still needs
+  stack-check and unwind validation.
+- **Register fuel substantially improves this `fib` variant.** In the loop,
+  memory/register timings are indistinguishable here (22.6 against 22.7 ms).
+  Chunk charging improves that hand-written variant, without yet establishing
+  execution/yield equivalence.
+- **A polled flag shows no established advantage over counted register fuel.** There is no speed
   reason to give up counted, reproducible preemption.
 - **Overflow on the flags did not help.** It is neutral on `byteloop` and 18%
   slower on `fib` in one frame shape. Forcing code alignment did not remove
@@ -200,40 +208,82 @@ the per-target oracles already compare selected code with the IR.
 
 This is the one place where today's rule ("never moved, merged or removed")
 needs a stated exception: removal of a check that provably cannot fire, and
-reuse of a dominating identical result. Neither moves a trap.
+reuse of a dominating identical result. The first operation must have
+successfully executed on every path reaching the replacement, with identical
+immutable SSA operands and the same arithmetic semantics. The first possible
+trap stays in place. This exception does not authorize sharing mutable loads,
+allocation, runtime calls or fuel ticks.
+
+Acceptance: differential results and first-trap/effect traces at signed extrema,
+negative division/remainder inputs, zero divisors and intervening effects;
+verify dominating-path and non-dominating-path cases. Record register pressure,
+spills, code size and compile time so extending a value's live range does not
+silently trade checks for memory traffic.
 
 ### 3. Loop-invariant checks
 
-- Qualify `LOOP_MOTION` and `STRING_SCAN` for the default build. They are
-  measured above and already written.
+- Qualify `LOOP_MOTION` and `STRING_SCAN` individually, then in combination.
+  Measure each of the other five modes separately before promoting it; the
+  all-seven experiment does not attribute gains or establish individual safety.
 - Hoist a type test on a value the loop does not change to the loop entry.
-  The test still runs once, so a mistyped received value still takes the slow
-  path.
+  Guard it with the original nonempty-loop condition, or version the loop
+  with an unchanged slow path. A zero-iteration loop must not gain a type or
+  bounds trap. Earlier effects and competing traps keep their original order.
 - Discharge the index bounds from `i < n` and `n <= strlen s`.
   `Codegen.Interval` already works in difference constraints and has
   `OStrLen` producer bounds; what is missing is carrying the fact from the
   call site (`sumB s 0 (strlen s) 0`) into the callee, or a loop version
   guarded by one entry test of `n` against the length.
 
-Target: `byteloop` at the hoisted figure, 23 ms.
+Target: the hand-hoisted `byteloop` figure, 23 ms, as an experimental target.
+Gate zero/one/many iterations, negative and excessive limits, malformed received
+values, overflow at bounds and effect/trap ordering. Check spills and
+`native-insns`/`segmax` bounds on each target as well as output equivalence.
 
-### 4. The fuel counter
+### 4. Register fuel: a separate ABI change
 
-- **Counted loops charge per chunk.** A self-loop with a known step takes
-  `c = min(iterations left, fuel left)`, subtracts `c` once and runs `c`
-  iterations without a tick. Preemption then happens on exactly the tick it
-  does today, and no new constant appears (my experiment used 1,024 as a
-  stand-in). `OSafepointN` already expresses a counted charge for the vector
-  kernels.
-- **AArch64 keeps the counter in x27.** The runtime's C is already built with
-  `-ffixed-x27` and the context switch already saves it. Generated code loses
-  one of nine callee-saved registers. A tick becomes `subs; b.le`.
-- **Other targets keep the memory cell for now.** x86-64 has five callee-saved
-  registers and reaches the hart through thread-local storage; RV64 could
-  give up one `s` register. Both need their own measurement.
-- **Not proposed: dropping the tick from bounded non-recursive functions.**
-  It would make the `native-insns` bound interprocedural and needs its own
-  page.
+AArch64 may keep the counter in x27, retaining every existing tick location.
+The runtime's C is already built with `-ffixed-x27` and the context switch saves
+it, but those facts alone do not establish a complete fuel convention.
+
+Before implementation, specify:
+
+- Which copy is authoritative while generated code, runtime C and the scheduler
+  execute; every entry/exit that loads or synchronizes the hart memory cell.
+- Initial fuel, exhaustion handling, refill, yield/resume, stack growth, actor
+  migration, traps and teardown, including nested runtime-to-generated calls.
+- The convention at QOS app, loader, shared-plane and native code boundaries;
+  version or reject incompatible compiler/runtime/app combinations.
+- Register allocation and spill costs from losing one callee-saved register.
+
+Gate fuel values around zero and one, repeated yields, mixed generated/runtime
+calls and migration between harts. Compare exact tick and observable-effect
+traces with memory fuel; re-qualify QOS's ratchet and Pi fuel window. Benchmark
+call-heavy and register-heavy programs. Land this independently of loop
+chunking. x86-64 and RV64 retain memory fuel pending their own measurements.
+
+### 4b. Chunked fuel: deferred proof and experiment
+
+`c = min(iterations left, fuel left)` followed by an upfront subtraction does
+not by itself preserve preemption boundaries: exhaustion may yield before work
+that previously preceded the yield. `OSafepointN` supports existing bounded
+kernels; its presence is not a proof for arbitrary scalar loops.
+
+Start only with callback-free counted loops. State the original tick position,
+ticks per iteration, chunk entry/exit state, early-exit behavior, overflow and
+other traps, and all observable operations. Define how partial chunks and fuel
+exhaustion reproduce the original sequence of work and yields. Reject the
+transformation when that equivalence cannot be shown; a deliberately relaxed
+preemption profile would require a separate proposal.
+
+Gate remaining iterations and fuel at 0, 1, c-1, c and c+1, trap/exit at every
+position, nested ticks, and a competing runnable actor. Compare effect and
+scheduler traces, not only final output. Preserve the instruction bound between
+safepoints and re-qualify the QOS/Pi budget. The 18 ms assembly row is a timing
+experiment, not evidence that this contract has been met.
+
+Dropping ticks from bounded non-recursive functions is also deferred; it would
+make the `native-insns` bound interprocedural.
 
 ### 5. The allocation fast path
 
@@ -243,7 +293,17 @@ region close: the hart allocation clock, the per-bucket byte count and the
 second window test. The per-object slab link is what the earlier roadmap
 called header-free region cells (C1 piece 3). The evidence so far is the
 instruction count and the 88 ms against 33 ms left on `tree_sum`; nothing
-here is measured in isolation.
+here is measured in isolation. The residual gap does not attribute its cost
+solely to allocation.
+
+Before changing a store, map it to allocation limits, profiling, slab lifetime,
+ARC and failure rollback. Measure stores/cells, refill frequency, bytes reserved
+and live, plus time, in allocation-only and traversal-only workloads. Proposed
+amortization must preserve the point at which caps refuse allocation, exact
+account reconciliation on refill/close, and cleanup after traps or actor death.
+Gate cap-edge allocations, failed refill, cancellation and teardown with no
+leak, undercharge or double release. Compare object density/cache effects
+separately from bookkeeping instruction changes.
 
 ### Not proposed
 
@@ -259,18 +319,33 @@ here is measured in isolation.
 
 ## Plan
 
-| Step | Work | Gate | Measured ceiling |
+| Step | Work | Gate | Experimental target |
 | --- | --- | --- | --- |
-| 1 | Selection and frames, A64 then x86-64 and RV64 | `fib` worker at 30 instructions per call or fewer, from 38; `segmax` not larger on any corpus function | `fib` 0.72 |
-| 2 | Checked-operation folding and sharing | `option_loop` has no `sdiv` and no check on a literal; `build` multiplies once; random differential with trapping operands | `tree_sum` 0.66 with step 1 |
-| 3 | Promote `LOOP_MOTION` and `STRING_SCAN`; hoist type tests; bounds from the call site | `byteloop` and `string_scan` loops free of type tests; out-of-range and mistyped inputs still trap as before | `byteloop` 0.33 |
-| 4 | Chunked fuel in counted loops; x27 on A64 | preemption tick-for-tick identical on the scheduler fixtures; QOS ratchet and the Pi fuel window re-qualified | `fib` 0.54, `byteloop` 0.26 |
-| 5 | Allocation path investigation | a per-store account of the fast path, then a proposal | not measured |
+| 0 | Repeatable baseline and matched references | Medians, variability, build identity and measurement boundaries recorded | No new result claimed |
+| 1 | Selection and frames, A64 then x86-64 and RV64 | `fib` worker <=30 instructions from 38; no corpus `segmax` growth; target oracles and stack/unwind checks | `fib` 0.72 |
+| 2 | Checked-operation folding and sharing | No redundant literal checks/`sdiv` in `option_loop`; one multiply in `build`; first-trap/effect differential and spill checks | `tree_sum` 0.66 includes other changes |
+| 3 | Individual loop-mode qualification, then combinations | Zero-trip behavior, malformed inputs, bounds and effect order preserved; pressure and instruction bounds recorded | `byteloop` 0.33 |
+| 4 | x27 register fuel, coordinated with QOS | ABI boundary audit; tick-for-tick traces; migration, runtime calls, QOS ratchet and Pi window | `fib` 0.54 mixes register fuel and selection |
+| 5 | Allocation-path investigation | Per-store purpose, cap/refusal/lifetime requirements and isolated measurements before redesign | Not isolated |
+| Later | Chunked fuel under section 4b's contract | Proof of execution/yield boundaries, adversarial traces and instruction bounds | `byteloop` 0.26 is not a qualified result |
 
-Each step keeps its `FPR_NO_<NAME>` flag, joins the default-build
-differential, and states its compile-budget delta. Steps 1 and 2 are
-independent and can run in parallel; step 3 depends on 2 for the folded
-bounds; step 4 touches the runtime contract and should land alone.
+Each implementation keeps its `FPR_NO_<NAME>` flag, joins the default-build
+differential, and states its compile-budget delta. Steps 1 and 2 can be developed
+independently; step 3 uses step 2 where bounds need folding. Register fuel lands
+alone. Allocation investigation can proceed independently without authorizing
+accounting changes.
+
+### Measurement gate shared with QOS
+
+Repeat warmed, interleaved baseline/variant runs; publish medians and variability
+alongside minima, run counts, hardware, compiler/runtime commits and flags.
+Separate process startup from steady-state work. Keep scalar/vectorized and
+checked-add C references labelled with the contracts they actually implement.
+Measure code size, spills, compile time and instruction bounds as well as wall
+time. Set regression tolerances from baseline variability before promotion.
+Preserve the current tables as historical experiments; add new evidence rather
+than rewriting their numbers. The joint QOS gate adds latency distributions,
+contention, CPU use, copy/allocation counts and pin-versus-sibling comparisons.
 
 Filter fusion and byte or string folds that fuse like `List` remain as listed
 in today's performance record. They are the route to the vectorized figure
@@ -283,8 +358,8 @@ and are not repeated here.
 2. May a check that provably cannot fire be removed, and a dominated
    identical checked operation be reused? Both keep trap order, but they
    amend a rule the simplifier states today.
-3. Should the seven opt-in modes be qualified as a group or one at a time?
-   I measured them only as a group.
+3. Which individual modes and combinations pass the new qualification matrix?
+   The existing measurement covers only the all-seven combination.
 4. Is the x86 box available for the same experiment? Its `fib` is 5.3x C
    against 2.4x here, and the memory fuel tick is the first thing to test.
 
@@ -293,7 +368,8 @@ and are not repeated here.
 - One machine: arm64 macOS on Apple silicon. Nothing here is measured on
   x86-64 or RISC-V, on QOS or on a board.
 - The variants are hand-written assembly, not compiler output. They show a
-  ceiling, not a result.
+  timing target for those variants, not a demonstrated compiler ceiling or
+  qualified implementation result.
 - The register-fuel variants reseed the counter instead of yielding, which is
   valid only for one actor. Trap paths are a breakpoint, never reached by
   these inputs.
@@ -301,6 +377,61 @@ and are not repeated here.
 - The `tree_sum` builder variant uses flag-based tagged arithmetic for
   brevity, so its 88 ms mixes folding, sharing and selection.
 - Each variant was checked only for identical output on the benchmark input.
+
+## Addendum: second review, 6 November
+
+Five adjustments from a further review. No new performance result is claimed
+here; the one mechanism check added below is marked with its status.
+
+1. **A candidate answer to the SHRINK_WRAP question.** The likely reason
+   shrink-wrapping did not change `fib`: the entry checks force the frame
+   before the first branch. The stack check compares `sp` against the hart
+   limit and needs no frame, but the fuel tick's slow path
+   (`fpr_fuel_save_local`) and `fpr_stack_grow` are calls that assume one
+   exists, so the prologue builds the frame ahead of `n < 2`. The cheap
+   experiment: make the slow paths self-framing (build a minimal frame only
+   when taken; the performance plan's step 6 already has them saving their
+   own live scratch), then re-measure SHRINK_WRAP. If the mechanism holds,
+   frameless early-exit becomes a selection rule rather than a placement
+   question. Status, 6 November: **verified against the emitted A64 `fib`**
+   - the frame (`sub sp` / `stp x29,x30` / `stp x20,x19`) precedes every
+   branch, and both entry slow paths are calls; `fpr_stack_grow` may also
+   relocate the stack (`mov sp, x0` after the call), so a self-framing slow
+   path must adopt the returned `sp` before building its frame, and the
+   `sp`-restore precondition in point 2 is not optional.
+2. **Pre/post-indexed `sp` restore needs its precondition stated.** The
+   [fib gap record](2026-10-20-FIB-GAP-TO-C.md) already documents why
+   epilogues rebuild `sp` from the frame pointer: with segmented growable
+   stacks, a callee's growth can relocate the segment and stale register
+   `sp` values. The rule is only sound when no growth can have occurred
+   since the prologue - provable for leaf functions, and trackable in
+   general (no stack-growth point dominates the return path). Backends
+   should not implement it unconditionally.
+3. **x27 fuel is missing one boundary in its checklist: the Sol JIT.**
+   `Sol/HandJIT.hs` emits raw A64/x64 for recursion-scheme kernels. If x27
+   becomes the authoritative counter, JIT-generated code must preserve and
+   honor it, or the convention must exchange it for the memory cell around
+   JIT kernel entry/exit. Add it to section 4's specification list.
+4. **Replicate the `fib` ladder on x86 before locking the step order.** The
+   order above is M4-derived. x86-64 has five callee-saved registers and a
+   5.3x `fib` gap against 2.4x here, so the fuel and frame shares are
+   probably larger there; one hour on the shared x86 box (the same host as
+   the performance record) could reorder steps 1, 2 and 4. Treat that
+   replication as a gate on the order, not a footnote (open question 4).
+5. **Filter fusion belongs in the joint order.** The
+   [performance record](2026-11-06-PERFORMANCE-AT-E138E65.md) ranks it
+   first among list gaps (202 ms against 24 for fused `map`) and this page
+   deliberately does not repeat it, but the QOS joint order's FP-RISC
+   column should name it: it is independent, semantics-preserving, uses the
+   landed fusion machinery, and can proceed in parallel with stages 1-3.
+
+Two step-2 notes. The sharing rule should state its inversion explicitly:
+for a two- or three-instruction check, recomputing at the use is often
+better than keeping the value live; the spill recording covers the cost,
+the policy does not. And the first slice of step 2 is best chosen by shape
+frequency: the literal-divisor checks in `option_loop` (`x % 2` as two
+`sdiv` plus fit tests plus a second division) are the most frequent shape
+in the corpus and the cheapest to fold.
 
 ## Reproduce
 
