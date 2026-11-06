@@ -230,6 +230,8 @@ void fpr_bkt_put(void **b);
  * languages is the next step, not this one. */
 #if defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
 #define FPR_NATIVE_ABI 9u /* hosted A64 context and hart layout include d8..d15; the acb's received-root list; the hart's region clock (cell 58) and the acb's pending call regions (REGIONS-LOOPS-CALLS) */
+#elif defined(FPR_POSIX) && defined(__aarch64__)
+#define FPR_NATIVE_ABI 11u /* QOS A64 apps: v8 plus d8..d15 in the context (docs/2026-11-06-QOSAPP-A64-FP-CONTEXT.md) */
 #else
 #define FPR_NATIVE_ABI 8u /* QOS and other hosted layouts: v6 plus the acb's received-root list (REGIONS-STAGE1), the hart's region clock and the acb's pending call regions (REGIONS-LOOPS-CALLS) */
 #endif
@@ -237,6 +239,8 @@ void fpr_bkt_put(void **b);
 #undef FPR_NATIVE_ABI
 #if defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
 #define FPR_NATIVE_ABI 10u
+#elif defined(FPR_POSIX) && defined(__aarch64__)
+#define FPR_NATIVE_ABI 12u /* QOS A64 apps: compact v9 plus d8..d15 in the context */
 #else
 #define FPR_NATIVE_ABI 9u
 #endif
@@ -444,8 +448,8 @@ extern void (*fpr_buddy_uncharge)(uw tag, uw bytes); /* a charged block went hom
 #ifndef FPR_CTX_WORDS
 #if defined(FPR_POSIX) && defined(__riscv) && __riscv_xlen == 64
 #define FPR_CTX_WORDS 29 /* integer state, fs0..fs11, fcsr */
-#elif defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
-#define FPR_CTX_WORDS 24 /* hosted integer state plus d8..d15 */
+#elif defined(FPR_POSIX) && defined(__aarch64__)
+#define FPR_CTX_WORDS 24 /* integer state plus d8..d15 (AAPCS64 callee-saved; QOS apps too) */
 #else
 #define FPR_CTX_WORDS 16
 #endif

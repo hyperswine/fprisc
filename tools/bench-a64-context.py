@@ -3,7 +3,9 @@
 
 Measures direct hot-context switches, excluding scheduler/GC and hart-layout
 cache effects. Both variants use identical 24-word storage to isolate the
-save/restore instructions. The integer variant uses FPR_QOSAPP's old sequence.
+save/restore instructions. The integer variant is the old integer-only sequence
+(FPR_CTX_A64_BENCH_INTEGER, a measurement switch no build uses; QOS apps
+saved only integers until 2026-11-06).
 """
 import argparse
 import json
@@ -47,7 +49,7 @@ def main():
     out=args.output.resolve();out.mkdir(parents=True,exist_ok=False)
     source=out/'bench.c';source.write_text(SOURCE)
     for variant in ('integer','fp'):
-        subprocess.run(['clang','-O2','-ffixed-x28',*(['-DFPR_QOSAPP'] if variant=='integer' else []),str(source),str(ROOT/'machine/unix/ctx_a64.S'),'-o',str(out/variant)],check=True)
+        subprocess.run(['clang','-O2','-ffixed-x28',*(['-DFPR_CTX_A64_BENCH_INTEGER'] if variant=='integer' else []),str(source),str(ROOT/'machine/unix/ctx_a64.S'),'-o',str(out/variant)],check=True)
     rng=random.Random(7208);rows=[]
     for n in range(args.runs):
         variants=['integer','fp'];rng.shuffle(variants);row={}
