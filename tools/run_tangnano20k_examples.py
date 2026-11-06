@@ -37,18 +37,22 @@ FPGA_CONFIG = dict(xlen=32, compressed=True, cpu_mhz=48, memory_mhz=48,
                    ram_bytes=8388608, cache_bytes=65536, cache_ways=1,
                    cache_line_bits=12, phase_degrees=135,
                    placement=2, write_update=True)
-# simple-risc's fprisc-72 (boards/tangnano20k/sdram/preset_manifest.py).
+# simple-risc's fprisc-72 (boards/tangnano20k/sdram/preset_manifest.py);
+# placement 3 with fprisc-81's floorplan since the three-clock cache port.
 FPGA_CONFIG_72 = dict(xlen=32, compressed=True, cpu_mhz=72, memory_mhz=48,
                       ram_bytes=8388608, cache_bytes=65536, cache_ways=2,
                       cache_line_bits=11, phase_degrees=135,
-                      placement=0, write_update=True, placer_target_mhz=79,
-                      map_option=3, route_option=1, route_maxfan=8)
-# simple-risc's fprisc-81: the fprisc-72 shape at CPU 81 MHz, placement 1.
+                      placement=3, write_update=True, placer_target_mhz=79,
+                      map_option=3, route_option=1, route_maxfan=8,
+                      floorplan='fprisc-81.plan')
+# simple-risc's fprisc-81: the fprisc-72 shape at CPU 81 MHz, placement 3
+# with the fprisc-81.plan floorplan (the three-clock cache port, 2026-11-06).
 FPGA_CONFIG_81 = dict(xlen=32, compressed=True, cpu_mhz=81, memory_mhz=48,
                       ram_bytes=8388608, cache_bytes=65536, cache_ways=2,
                       cache_line_bits=11, phase_degrees=135,
-                      placement=1, write_update=True, placer_target_mhz=89,
-                      map_option=3, route_option=1, route_maxfan=8)
+                      placement=3, write_update=True, placer_target_mhz=89,
+                      map_option=3, route_option=1, route_maxfan=8,
+                      floorplan='fprisc-81.plan')
 PRESETS = {'fprisc-48': FPGA_CONFIG, 'fprisc-72': FPGA_CONFIG_72,
            'fprisc-81': FPGA_CONFIG_81}
 
