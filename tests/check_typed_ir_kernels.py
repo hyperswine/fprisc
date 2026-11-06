@@ -154,6 +154,10 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
         print(f'{target}: {kernel_count} typed kernel CFGs; no legacy assembly PASS',flush=True)
         if target=='a64': continue # actual A64 runtime on the matching host above
         body='\n'.join(b for _,b in chosen);body+=fuel_wrapper(text,body)
+        # Same pool retention as check_typed_ir_rv / check_typed_ir_esp: oracle
+        # assembly is a subset of functions, so keep the unit's string objects.
+        strings=re.findall(r'(?ms)^    \.balign [48]\n\.Ltirstr[^:\n]*:\n    \.long 9000\n.*?(?=^$)',text)
+        rodata=('\n.section .rodata\n'+'\n'.join(strings)) if strings else ''
         objects=set(re.findall(r'\bfpr_obj_[A-Za-z0-9_]+',body))
         oracle=tmp/(target+'.c')
         oracle.write_text((borrowed_oracle(oracle_source) if target == 'qx64' else oracle_source)+'\n'+'\n'.join(f'char {o}[40];' for o in sorted(objects)))
@@ -163,7 +167,7 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
                 assert not args.require_execution,'x64 execution unavailable'
                 print('x64 execution SKIP');continue
             mac,runner,label=available
-            asm.write_text('.text\n'+adapt(body,mac,borrowed=target=='qx64'))
+            asm.write_text('.text\n'+adapt(body,mac,borrowed=target=='qx64')+rodata)
             exe=tmp/'x64-oracle';link([asm,oracle],exe,mac,env)
             output=run([*runner,exe],env)
         else:
@@ -172,7 +176,7 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
             if missing:
                 assert not args.require_execution,missing
                 print(target+' execution SKIP: '+', '.join(missing));continue
-            asm.write_text('.text\n'+body)
+            asm.write_text('.text\n'+body+rodata)
             crt=tmp/(target+'-crt.S');crt.write_text((FIX/'kernel_crt.S').read_text().replace('sd ra','sw ra').replace('ld ra','lw ra') if width=='32' else (FIX/'kernel_crt.S').read_text())
             exe=tmp/(target+'.elf')
             run(['riscv64-unknown-elf-gcc','-march=rv'+width+('imafd_zicsr_zifencei' if floating else 'im_zicsr_zifencei'),'-mabi='+('lp64' if width=='64' else 'ilp32'),
