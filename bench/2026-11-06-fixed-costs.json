@@ -1,0 +1,206 @@
+{
+ "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+ "runs": 11,
+ "commit": "95e2fbc",
+ "cc": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+ "ms": {
+  "fib": [
+   {
+    "variant": "as emitted",
+    "min": 469.4,
+    "median": 499.4
+   },
+   {
+    "variant": "clean selection and frame",
+    "min": 337.6,
+    "median": 386.4
+   },
+   {
+    "variant": "+ no stack check",
+    "min": 339.4,
+    "median": 353.9
+   },
+   {
+    "variant": "+ fuel counter in x27",
+    "min": 255.5,
+    "median": 263.8
+   },
+   {
+    "variant": "  (fuel as a polled flag instead)",
+    "min": 246.5,
+    "median": 265.2
+   },
+   {
+    "variant": "+ overflow on flags (shifted Int)",
+    "min": 302.5,
+    "median": 315.0
+   },
+   {
+    "variant": "+ frameless leaf path",
+    "min": 253.0,
+    "median": 266.3
+   },
+   {
+    "variant": "  (no fuel at all)",
+    "min": 238.1,
+    "median": 258.0
+   },
+   {
+    "variant": "C -O2",
+    "min": 198.4,
+    "median": 209.0
+   },
+   {
+    "variant": "C -O1, checked add, not inlined",
+    "min": 243.6,
+    "median": 258.1
+   }
+  ],
+  "byteloop": [
+   {
+    "variant": "as emitted",
+    "min": 69.9,
+    "median": 77.7
+   },
+   {
+    "variant": "type test and bounds hoisted",
+    "min": 23.1,
+    "median": 24.9
+   },
+   {
+    "variant": "+ overflow on flags (shifted Int)",
+    "min": 22.6,
+    "median": 25.2
+   },
+   {
+    "variant": "+ fuel counter in x27",
+    "min": 22.7,
+    "median": 25.0
+   },
+   {
+    "variant": "+ fuel charged per 1,024-iteration chunk",
+    "min": 18.0,
+    "median": 20.9
+   },
+   {
+    "variant": "+ overflow checked per chunk",
+    "min": 18.1,
+    "median": 19.0
+   },
+   {
+    "variant": "C -O2, scalar",
+    "min": 13.6,
+    "median": 14.5
+   },
+   {
+    "variant": "C -O2, vectorized",
+    "min": 4.8,
+    "median": 5.5
+   }
+  ],
+  "tree_sum": [
+   {
+    "variant": "as emitted",
+    "min": 133.0,
+    "median": 138.7
+   },
+   {
+    "variant": "walk: clean selection and frame",
+    "min": 106.0,
+    "median": 114.9
+   },
+   {
+    "variant": "walk: + Leaf test trusts the static type",
+    "min": 108.1,
+    "median": 112.8
+   },
+   {
+    "variant": "walk: + no stack check, fuel counter in x27",
+    "min": 103.9,
+    "median": 113.8
+   },
+   {
+    "variant": "+ build: checks folded and shared, clean selection",
+    "min": 88.4,
+    "median": 103.9
+   },
+   {
+    "variant": "C -O2, bump allocator reset per round",
+    "min": 33.1,
+    "median": 35.6
+   }
+  ],
+  "optin:fib": [
+   {
+    "variant": "default",
+    "min": 48.1,
+    "median": 50.0
+   },
+   {
+    "variant": "all opt-in modes",
+    "min": 47.0,
+    "median": 51.4
+   }
+  ],
+  "optin:byteloop": [
+   {
+    "variant": "default",
+    "min": 70.5,
+    "median": 78.3
+   },
+   {
+    "variant": "all opt-in modes",
+    "min": 52.3,
+    "median": 56.8
+   }
+  ],
+  "optin:option_loop": [
+   {
+    "variant": "default",
+    "min": 49.2,
+    "median": 54.6
+   },
+   {
+    "variant": "all opt-in modes",
+    "min": 48.7,
+    "median": 54.4
+   }
+  ],
+  "optin:tree_sum": [
+   {
+    "variant": "default",
+    "min": 125.4,
+    "median": 144.8
+   },
+   {
+    "variant": "all opt-in modes",
+    "min": 124.7,
+    "median": 135.8
+   }
+  ],
+  "optin:string_scan": [
+   {
+    "variant": "default",
+    "min": 43.1,
+    "median": 48.3
+   },
+   {
+    "variant": "all opt-in modes",
+    "min": 31.3,
+    "median": 34.0
+   }
+  ],
+  "startup": [
+   {
+    "variant": "fpr",
+    "min": 5.1,
+    "median": 6.1
+   },
+   {
+    "variant": "C",
+    "min": 2.5,
+    "median": 3.0
+   }
+  ]
+ }
+}
