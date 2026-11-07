@@ -17,8 +17,8 @@
    },
    "compile": {
     "allocated_bytes": 2822083144,
-    "max_residency_bytes": 30303784,
-    "seconds": 1.438
+    "max_residency_bytes": 30303448,
+    "seconds": 1.232
    },
    "cost": {
     "alloc_bytes": 4000320,
@@ -4073,8 +4073,8 @@
    },
    "source": "tests/bench/byteloop.fpr",
    "timing": {
-    "median_s": 0.0735,
-    "min_s": 0.0728,
+    "median_s": 0.0628,
+    "min_s": 0.0614,
     "runs": 5
    },
    "units": {
@@ -4105,9 +4105,9 @@
     "supercombinators": 2
    },
    "compile": {
-    "allocated_bytes": 1776981112,
-    "max_residency_bytes": 38006104,
-    "seconds": 1.131
+    "allocated_bytes": 1776978672,
+    "max_residency_bytes": 37954144,
+    "seconds": 0.876
    },
    "cost": {
     "alloc_bytes": 0,
@@ -7203,8 +7203,8 @@
    },
    "source": "tests/pipeline/divide_by_zero.fpr",
    "timing": {
-    "median_s": 0.0062,
-    "min_s": 0.0058,
+    "median_s": 0.0049,
+    "min_s": 0.0047,
     "runs": 5
    },
    "units": {
@@ -7230,9 +7230,9 @@
     "supercombinators": 2
    },
    "compile": {
-    "allocated_bytes": 1783051976,
-    "max_residency_bytes": 42671648,
-    "seconds": 1.098
+    "allocated_bytes": 1783043440,
+    "max_residency_bytes": 42671616,
+    "seconds": 0.807
    },
    "cost": {
     "alloc_bytes": 80,
@@ -10340,8 +10340,8 @@
    },
    "source": "tests/bench/fib.fpr",
    "timing": {
-    "median_s": 0.049,
-    "min_s": 0.0469,
+    "median_s": 0.0409,
+    "min_s": 0.0403,
     "runs": 5
    },
    "units": {
@@ -10350,6 +10350,4733 @@
      "b24e1491f7e92076"
     ],
     "count": 1
+   }
+  },
+  "fusion_overflow_order": {
+   "behaviour": {
+    "exit": 1,
+    "stderr_fragments": [
+     "Int overflow"
+    ],
+    "stdout_lines": 1,
+    "stdout_sha256": "9160d4be34c8695bd172a76c7c7966587ea5a4d991ad22c87b2b91af54aa9ebb"
+   },
+   "category": "defined-failure",
+   "code": {
+    "asm_bytes": 149433,
+    "asm_instruction_lines": 326,
+    "linked_text_bytes": 356400,
+    "supercombinators": 5
+   },
+   "compile": {
+    "allocated_bytes": 3075606688,
+    "max_residency_bytes": 32491832,
+    "seconds": 1.581
+   },
+   "cost": {
+    "alloc_bytes": 96,
+    "alloc_requests": 3,
+    "buddy_allocs": 15,
+    "buddy_frees": 0,
+    "copies": 1,
+    "copy_bytes": 0,
+    "message_slabs": 0,
+    "receives": 0,
+    "state_bytes": 0,
+    "state_copies": 0,
+    "turns": 0
+   },
+   "coverage": {
+    "complete": true,
+    "units": [
+     {
+      "functions": 301,
+      "native": 301
+     },
+     {
+      "functions": 129,
+      "native": 129
+     },
+     {
+      "functions": 13,
+      "native": 13
+     },
+     {
+      "functions": 12,
+      "native": 12
+     },
+     {
+      "functions": 5,
+      "native": 5
+     }
+    ]
+   },
+   "functions": {
+    "$loop.cycle.$typed.mono.modCompatRow.1": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 31,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.$typed.mono.modFindAt.1": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.$typed.mono.modFindDown.1": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.$typed.mono.modHasFrom.1": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.$typed.mono.modResolveFrom.1": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 31,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.irqHandTo": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.irqReply": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.irqRoute": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.irqSendSure": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.logGo": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.logPutTo": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.logReply": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.modCompatRows": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 53,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.modHasFrom": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.strIndexGo": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.$typed.mono.modCompatRow.1": {
+     "ccalls": 7,
+     "exittail": 68,
+     "frame": null,
+     "loops": 1,
+     "segmax": 72,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.$typed.mono.modFindAt.1": {
+     "ccalls": 6,
+     "exittail": 62,
+     "frame": null,
+     "loops": 1,
+     "segmax": 67,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.$typed.mono.modFindDown.1": {
+     "ccalls": 3,
+     "exittail": 30,
+     "frame": null,
+     "loops": 1,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.$typed.mono.modHasFrom.1": {
+     "ccalls": 3,
+     "exittail": 30,
+     "frame": null,
+     "loops": 1,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.$typed.mono.modResolveFrom.1": {
+     "ccalls": 5,
+     "exittail": 58,
+     "frame": null,
+     "loops": 1,
+     "segmax": 63,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqBindNow": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqHandTo": {
+     "ccalls": 4,
+     "exittail": 36,
+     "frame": null,
+     "loops": 1,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqReply": {
+     "ccalls": 4,
+     "exittail": 36,
+     "frame": null,
+     "loops": 1,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqRoute": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 43,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqRouteReq": {
+     "ccalls": 5,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 43,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqRouteSrc": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqSendSure": {
+     "ccalls": 5,
+     "exittail": 36,
+     "frame": null,
+     "loops": 1,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqUnbindDone": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqUnbindNow": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 44,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.logGo": {
+     "ccalls": 3,
+     "exittail": 26,
+     "frame": null,
+     "loops": 1,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.logPutTo": {
+     "ccalls": 8,
+     "exittail": 77,
+     "frame": null,
+     "loops": 1,
+     "segmax": 78,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.logReply": {
+     "ccalls": 4,
+     "exittail": 36,
+     "frame": null,
+     "loops": 1,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.modCompatMatch": {
+     "ccalls": 15,
+     "exittail": 97,
+     "frame": null,
+     "loops": 0,
+     "segmax": 97,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.modCompatRow": {
+     "ccalls": 5,
+     "exittail": 55,
+     "frame": null,
+     "loops": 0,
+     "segmax": 55,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.modCompatRows": {
+     "ccalls": 7,
+     "exittail": 64,
+     "frame": null,
+     "loops": 1,
+     "segmax": 64,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.modHasFrom": {
+     "ccalls": 2,
+     "exittail": 20,
+     "frame": null,
+     "loops": 1,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.strIndexGo": {
+     "ccalls": 4,
+     "exittail": 45,
+     "frame": null,
+     "loops": 1,
+     "segmax": 45,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.listfusion.0.4.main": {
+     "ccalls": 3,
+     "exittail": 18,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.indexed@3a073ebe861d50fd.0": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.indexed@3a073ebe861d50fd.1": {
+     "ccalls": 7,
+     "exittail": 24,
+     "frame": null,
+     "loops": 1,
+     "segmax": 102,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.main.0": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.main.1": {
+     "ccalls": 3,
+     "exittail": 14,
+     "frame": null,
+     "loops": 1,
+     "segmax": 54,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modCompatRow.0": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modCompatRow.1": {
+     "ccalls": 3,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindAt.0": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindAt.1": {
+     "ccalls": 3,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindAt.2": {
+     "ccalls": 5,
+     "exittail": 48,
+     "frame": null,
+     "loops": 0,
+     "segmax": 48,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindDown.0": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindDown.1": {
+     "ccalls": 3,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindDown.2": {
+     "ccalls": 3,
+     "exittail": 48,
+     "frame": null,
+     "loops": 0,
+     "segmax": 48,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modHasFrom.0": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modHasFrom.1": {
+     "ccalls": 3,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modResolveFrom.0": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modResolveFrom.1": {
+     "ccalls": 3,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modResolveFrom.2": {
+     "ccalls": 3,
+     "exittail": 49,
+     "frame": null,
+     "loops": 0,
+     "segmax": 49,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.product@3a073ebe861d50fd.0": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.product@3a073ebe861d50fd.1": {
+     "ccalls": 2,
+     "exittail": 14,
+     "frame": null,
+     "loops": 1,
+     "segmax": 43,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.sortWith@3a073ebe861d50fd.0": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.sortWith@3a073ebe861d50fd.1": {
+     "ccalls": 5,
+     "exittail": 23,
+     "frame": null,
+     "loops": 1,
+     "segmax": 90,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.sum@3a073ebe861d50fd.0": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.sum@3a073ebe861d50fd.1": {
+     "ccalls": 2,
+     "exittail": 14,
+     "frame": null,
+     "loops": 1,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.unique@3a073ebe861d50fd.0": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.unique@3a073ebe861d50fd.1": {
+     "ccalls": 5,
+     "exittail": 16,
+     "frame": null,
+     "loops": 1,
+     "segmax": 55,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.unzip@3a073ebe861d50fd.0": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.unzip@3a073ebe861d50fd.1": {
+     "ccalls": 5,
+     "exittail": 33,
+     "frame": null,
+     "loops": 1,
+     "segmax": 71,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.unzip@3a073ebe861d50fd.2": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.unzip@3a073ebe861d50fd.3": {
+     "ccalls": 5,
+     "exittail": 33,
+     "frame": null,
+     "loops": 1,
+     "segmax": 71,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.zip@3a073ebe861d50fd.0": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.zip@3a073ebe861d50fd.1": {
+     "ccalls": 5,
+     "exittail": 34,
+     "frame": null,
+     "loops": 1,
+     "segmax": 99,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_join_0.23.filter@713caadbf4579bf1": {
+     "ccalls": 2,
+     "exittail": 17,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_join_0.25.mergeAll@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_join_0.27.mergePairs@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_join_0.4.zipV": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_join_0.7.wireCon": {
+     "ccalls": 4,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 50,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_join_1.27.mergePairs@3a073ebe861d50fd": {
+     "ccalls": 4,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.10.modHasFrom": {
+     "ccalls": 3,
+     "exittail": 21,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.11.loggerStart": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.11.modFindDown": {
+     "ccalls": 3,
+     "exittail": 21,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.12.modCompatRow": {
+     "ccalls": 7,
+     "exittail": 41,
+     "frame": null,
+     "loops": 0,
+     "segmax": 41,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.14.irqRouterStart": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.14.modResolveFrom": {
+     "ccalls": 5,
+     "exittail": 31,
+     "frame": null,
+     "loops": 0,
+     "segmax": 31,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.20.all@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 19,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.20.sum@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 19,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.20.zip@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.22.count@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 41,
+     "frame": null,
+     "loops": 0,
+     "segmax": 41,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.22.foldr@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 17,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.22.unzip@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 18,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.23.member@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 18,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.23.unique@3a073ebe861d50fd": {
+     "ccalls": 5,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.24.indexed@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.24.maximum@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 28,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.24.minimum@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 27,
+     "frame": null,
+     "loops": 0,
+     "segmax": 27,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.24.product@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 29,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.26.partition@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 19,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.28.intersperse@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.4.main": {
+     "ccalls": 2,
+     "exittail": 29,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.9.modFindAt": {
+     "ccalls": 6,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_1.11.modFindDown": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_1.14.modResolveFrom": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_1.22.unzip@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 18,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_1.9.modFindAt": {
+     "ccalls": 3,
+     "exittail": 45,
+     "frame": null,
+     "loops": 0,
+     "segmax": 45,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.fields.logStaged": {
+     "ccalls": 10,
+     "exittail": 22,
+     "frame": null,
+     "loops": 0,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 1,
+     "spills": 1
+    },
+    "$worker.fields.logStagedGo": {
+     "ccalls": 5,
+     "exittail": 54,
+     "frame": null,
+     "loops": 1,
+     "segmax": 54,
+     "shallow": "no",
+     "slots": 2,
+     "spills": 2
+    },
+    "$worker.fields.logStep": {
+     "ccalls": 10,
+     "exittail": 46,
+     "frame": null,
+     "loops": 0,
+     "segmax": 46,
+     "shallow": "no",
+     "slots": 5,
+     "spills": 5
+    },
+    "$worker.scalar.lengthRangeGo@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 11,
+     "frame": null,
+     "loops": 1,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.20.zip@3a073ebe861d50fd.0": {
+     "ccalls": 3,
+     "exittail": 25,
+     "frame": null,
+     "loops": 1,
+     "segmax": 94,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.21.twGo@3a073ebe861d50fd.0": {
+     "ccalls": 3,
+     "exittail": 39,
+     "frame": null,
+     "loops": 1,
+     "segmax": 73,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.22.mapGo@3a073ebe861d50fd.0": {
+     "ccalls": 3,
+     "exittail": 16,
+     "frame": null,
+     "loops": 1,
+     "segmax": 62,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.22.merge@3a073ebe861d50fd.0": {
+     "ccalls": 4,
+     "exittail": 29,
+     "frame": null,
+     "loops": 2,
+     "segmax": 83,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.22.unzip@3a073ebe861d50fd.0": {
+     "ccalls": 3,
+     "exittail": 25,
+     "frame": null,
+     "loops": 1,
+     "segmax": 66,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.22.unzip@3a073ebe861d50fd.26": {
+     "ccalls": 3,
+     "exittail": 25,
+     "frame": null,
+     "loops": 1,
+     "segmax": 66,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.22.zipGo@3a073ebe861d50fd.0": {
+     "ccalls": 3,
+     "exittail": 26,
+     "frame": null,
+     "loops": 1,
+     "segmax": 74,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.23.append@3a073ebe861d50fd.0": {
+     "ccalls": 2,
+     "exittail": 16,
+     "frame": null,
+     "loops": 1,
+     "segmax": 53,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.23.fmapGo@3a073ebe861d50fd.0": {
+     "ccalls": 3,
+     "exittail": 16,
+     "frame": null,
+     "loops": 2,
+     "segmax": 73,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.23.imapGo@3a073ebe861d50fd.0": {
+     "ccalls": 4,
+     "exittail": 17,
+     "frame": null,
+     "loops": 1,
+     "segmax": 78,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.23.takeGo@3a073ebe861d50fd.0": {
+     "ccalls": 2,
+     "exittail": 20,
+     "frame": null,
+     "loops": 1,
+     "segmax": 64,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.24.indexed@3a073ebe861d50fd.0": {
+     "ccalls": 4,
+     "exittail": 16,
+     "frame": null,
+     "loops": 1,
+     "segmax": 97,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.25.concatGo@3a073ebe861d50fd.0": {
+     "ccalls": 2,
+     "exittail": 16,
+     "frame": null,
+     "loops": 1,
+     "segmax": 53,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.25.filterGo@3a073ebe861d50fd.0": {
+     "ccalls": 3,
+     "exittail": 16,
+     "frame": null,
+     "loops": 2,
+     "segmax": 74,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.25.sortWith@3a073ebe861d50fd.0": {
+     "ccalls": 3,
+     "exittail": 15,
+     "frame": null,
+     "loops": 1,
+     "segmax": 83,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.28.mapFilterGo@3a073ebe861d50fd.0": {
+     "ccalls": 4,
+     "exittail": 17,
+     "frame": null,
+     "loops": 2,
+     "segmax": 83,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.trmc.$trmc.31.filterMappedGo@3a073ebe861d50fd.0": {
+     "ccalls": 4,
+     "exittail": 16,
+     "frame": null,
+     "loops": 2,
+     "segmax": 84,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor": {
+     "ccalls": 2,
+     "exittail": 55,
+     "frame": null,
+     "loops": 0,
+     "segmax": 55,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.recv": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.recvRes": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.self": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.send": {
+     "ccalls": 2,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.spawn": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.spawnOn": {
+     "ccalls": 2,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.yield": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Cons": {
+     "ccalls": 2,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Equal@fc1c68b60a309b32": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Err": {
+     "ccalls": 2,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "False": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Greater@fc1c68b60a309b32": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Handle": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int": {
+     "ccalls": 2,
+     "exittail": 57,
+     "frame": null,
+     "loops": 0,
+     "segmax": 57,
+     "shallow": "no",
+     "slots": 4,
+     "spills": 4
+    },
+    "Int.*": {
+     "ccalls": 2,
+     "exittail": 29,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.+": {
+     "ccalls": 2,
+     "exittail": 19,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.-": {
+     "ccalls": 2,
+     "exittail": 19,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int./": {
+     "ccalls": 2,
+     "exittail": 20,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.<": {
+     "ccalls": 1,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.<=": {
+     "ccalls": 1,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.==": {
+     "ccalls": 2,
+     "exittail": 18,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.abs": {
+     "ccalls": 2,
+     "exittail": 24,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.max": {
+     "ccalls": 1,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.min": {
+     "ccalls": 1,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.mod": {
+     "ccalls": 4,
+     "exittail": 50,
+     "frame": null,
+     "loops": 0,
+     "segmax": 50,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.neg": {
+     "ccalls": 2,
+     "exittail": 19,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.pow": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.zero": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Less@fc1c68b60a309b32": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List": {
+     "ccalls": 2,
+     "exittail": 46,
+     "frame": null,
+     "loops": 0,
+     "segmax": 46,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.+": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.-": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.drop": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.fold": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.len": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.map": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.take": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.zero": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "LogState": {
+     "ccalls": 2,
+     "exittail": 42,
+     "frame": null,
+     "loops": 0,
+     "segmax": 42,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod": {
+     "ccalls": 2,
+     "exittail": 49,
+     "frame": null,
+     "loops": 0,
+     "segmax": 49,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod.compatAt": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod.find": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod.findAt": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod.has": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod.resolve": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Nil": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "None@713caadbf4579bf1": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Ok": {
+     "ccalls": 2,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr": {
+     "ccalls": 2,
+     "exittail": 59,
+     "frame": null,
+     "loops": 0,
+     "segmax": 59,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.at": {
+     "ccalls": 2,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.cap": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.clear": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.fromStr": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.len": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.new": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.push": {
+     "ccalls": 2,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.put": {
+     "ccalls": 2,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.toStr": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SString": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Some@713caadbf4579bf1": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str": {
+     "ccalls": 2,
+     "exittail": 46,
+     "frame": null,
+     "loops": 0,
+     "segmax": 46,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.+": {
+     "ccalls": 2,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.-": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.==": {
+     "ccalls": 2,
+     "exittail": 18,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.at": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.fromCode": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.len": {
+     "ccalls": 2,
+     "exittail": 25,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.parse": {
+     "ccalls": 3,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.zero": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys": {
+     "ccalls": 2,
+     "exittail": 51,
+     "frame": null,
+     "loops": 0,
+     "segmax": 51,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.irqBind": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.irqUnbind": {
+     "ccalls": 3,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.logAt": {
+     "ccalls": 6,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.logKeep": {
+     "ccalls": 3,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.logSeq": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.logSnap": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "True": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup2": {
+     "ccalls": 2,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup3": {
+     "ccalls": 2,
+     "exittail": 38,
+     "frame": null,
+     "loops": 0,
+     "segmax": 38,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup4": {
+     "ccalls": 2,
+     "exittail": 38,
+     "frame": null,
+     "loops": 0,
+     "segmax": 38,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup5": {
+     "ccalls": 2,
+     "exittail": 41,
+     "frame": null,
+     "loops": 0,
+     "segmax": 41,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup6": {
+     "ccalls": 2,
+     "exittail": 41,
+     "frame": null,
+     "loops": 0,
+     "segmax": 41,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup7": {
+     "ccalls": 2,
+     "exittail": 44,
+     "frame": null,
+     "loops": 0,
+     "segmax": 44,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup8": {
+     "ccalls": 2,
+     "exittail": 44,
+     "frame": null,
+     "loops": 0,
+     "segmax": 44,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Unit": {
+     "ccalls": 1,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList": {
+     "ccalls": 2,
+     "exittail": 70,
+     "frame": null,
+     "loops": 0,
+     "segmax": 70,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.filter": {
+     "ccalls": 2,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.fold": {
+     "ccalls": 2,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.free": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.fromList": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.get": {
+     "ccalls": 2,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.len": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.map": {
+     "ccalls": 2,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.new": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 20,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.push": {
+     "ccalls": 2,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.set": {
+     "ccalls": 2,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.split": {
+     "ccalls": 2,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.toList": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Vector": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WBool": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WCon": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WInt": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WList": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WRec": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WStr": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "all@3a073ebe861d50fd": {
+     "ccalls": 4,
+     "exittail": 20,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "and": {
+     "ccalls": 1,
+     "exittail": 19,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "andThen@713caadbf4579bf1": {
+     "ccalls": 3,
+     "exittail": 34,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "any@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "anyGo@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 38,
+     "frame": null,
+     "loops": 1,
+     "segmax": 39,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "append@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 14,
+     "frame": null,
+     "loops": 0,
+     "segmax": 49,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "ask": {
+     "ccalls": 4,
+     "exittail": 40,
+     "frame": null,
+     "loops": 0,
+     "segmax": 40,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "buildRange@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "buildRangeGo@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 13,
+     "frame": null,
+     "loops": 1,
+     "segmax": 40,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "by@fc1c68b60a309b32": {
+     "ccalls": 4,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "closeHandle": {
+     "ccalls": 2,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "concat@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "concatGo@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 14,
+     "frame": null,
+     "loops": 1,
+     "segmax": 55,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "concatMap@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "count@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "drop@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "dropGo@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 20,
+     "frame": null,
+     "loops": 1,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "dropWhile@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "dwGo@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 38,
+     "frame": null,
+     "loops": 1,
+     "segmax": 40,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "each@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "eachGo@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 16,
+     "frame": null,
+     "loops": 1,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "filter@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "filter@713caadbf4579bf1": {
+     "ccalls": 5,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 38,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "filterGo@3a073ebe861d50fd": {
+     "ccalls": 4,
+     "exittail": 25,
+     "frame": null,
+     "loops": 2,
+     "segmax": 81,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "filterMap@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "filterMapped@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "filterMappedGo@3a073ebe861d50fd": {
+     "ccalls": 5,
+     "exittail": 25,
+     "frame": null,
+     "loops": 2,
+     "segmax": 92,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "find@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "findGo@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 68,
+     "frame": null,
+     "loops": 1,
+     "segmax": 68,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "fmapGo@3a073ebe861d50fd": {
+     "ccalls": 4,
+     "exittail": 24,
+     "frame": null,
+     "loops": 2,
+     "segmax": 79,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "fold@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "foldGo@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 15,
+     "frame": null,
+     "loops": 1,
+     "segmax": 31,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "foldRange@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "foldRangeGo@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 22,
+     "frame": null,
+     "loops": 1,
+     "segmax": 31,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "foldr@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "fromInt@fc1c68b60a309b32": {
+     "ccalls": 2,
+     "exittail": 22,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "fromResult@713caadbf4579bf1": {
+     "ccalls": 3,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "fromTo": {
+     "ccalls": 3,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "fstV": {
+     "ccalls": 3,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "get@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "groupBy@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 16,
+     "frame": null,
+     "loops": 0,
+     "segmax": 39,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "groupGo@3a073ebe861d50fd": {
+     "ccalls": 10,
+     "exittail": 0,
+     "frame": null,
+     "loops": 2,
+     "segmax": 72,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "head@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "imapGo@3a073ebe861d50fd": {
+     "ccalls": 7,
+     "exittail": 25,
+     "frame": null,
+     "loops": 1,
+     "segmax": 85,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "indexed@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "indexedMap@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "int@fc1c68b60a309b32": {
+     "ccalls": 2,
+     "exittail": 20,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "intPow": {
+     "ccalls": 9,
+     "exittail": 29,
+     "frame": null,
+     "loops": 0,
+     "segmax": 79,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "intSq": {
+     "ccalls": 2,
+     "exittail": 28,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "intersperse@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqAsk": {
+     "ccalls": 7,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 47,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqBindNow": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqCount": {
+     "ccalls": 4,
+     "exittail": 24,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqHand": {
+     "ccalls": 2,
+     "exittail": 18,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqHandTo": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqOwner": {
+     "ccalls": 3,
+     "exittail": 39,
+     "frame": null,
+     "loops": 1,
+     "segmax": 40,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRemove": {
+     "ccalls": 5,
+     "exittail": 41,
+     "frame": null,
+     "loops": 0,
+     "segmax": 66,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqReply": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRoute": {
+     "ccalls": 4,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouteReq": {
+     "ccalls": 7,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 40,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouteSrc": {
+     "ccalls": 5,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouteStart": {
+     "ccalls": 3,
+     "exittail": 20,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouterHave": {
+     "ccalls": 4,
+     "exittail": 17,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouterOf": {
+     "ccalls": 5,
+     "exittail": 17,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouterStart": {
+     "ccalls": 5,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 41,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqSendSure": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqSet": {
+     "ccalls": 5,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 38,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqStillBound": {
+     "ccalls": 2,
+     "exittail": 23,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqUnbindDone": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqUnbindNow": {
+     "ccalls": 5,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 44,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqUnbound": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "isEmpty@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "isLess@fc1c68b60a309b32": {
+     "ccalls": 1,
+     "exittail": 16,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "isNone@713caadbf4579bf1": {
+     "ccalls": 2,
+     "exittail": 26,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "isSome@713caadbf4579bf1": {
+     "ccalls": 2,
+     "exittail": 26,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "last@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "length@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "lengthGo@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 14,
+     "frame": null,
+     "loops": 1,
+     "segmax": 32,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "lengthRange@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "lengthRangeGo@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 25,
+     "frame": null,
+     "loops": 1,
+     "segmax": 55,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listAppend": {
+     "ccalls": 2,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listDrop": {
+     "ccalls": 1,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listDropGo": {
+     "ccalls": 2,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listFold": {
+     "ccalls": 2,
+     "exittail": 15,
+     "frame": null,
+     "loops": 1,
+     "segmax": 31,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listLen": {
+     "ccalls": 2,
+     "exittail": 18,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listMap": {
+     "ccalls": 3,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listPrefEq": {
+     "ccalls": 1,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listPrefEqAt": {
+     "ccalls": 1,
+     "exittail": 16,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listPrefEqCmp": {
+     "ccalls": 2,
+     "exittail": 16,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listSub": {
+     "ccalls": 1,
+     "exittail": 13,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listSubGo": {
+     "ccalls": 5,
+     "exittail": 23,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listTake": {
+     "ccalls": 1,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listTakeGo": {
+     "ccalls": 3,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "log": {
+     "ccalls": 6,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logAnswer": {
+     "ccalls": 4,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logAsk": {
+     "ccalls": 15,
+     "exittail": 83,
+     "frame": null,
+     "loops": 1,
+     "segmax": 85,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logDo": {
+     "ccalls": 14,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logEcho": {
+     "ccalls": 7,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 88,
+     "shallow": "no",
+     "slots": 3,
+     "spills": 3
+    },
+    "logEchoAt": {
+     "ccalls": 13,
+     "exittail": 49,
+     "frame": null,
+     "loops": 0,
+     "segmax": 55,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logErr": {
+     "ccalls": 6,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logGo": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logKeepLine": {
+     "ccalls": 5,
+     "exittail": 45,
+     "frame": null,
+     "loops": 0,
+     "segmax": 45,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logLinesOf": {
+     "ccalls": 5,
+     "exittail": 22,
+     "frame": null,
+     "loops": 0,
+     "segmax": 27,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logPrefix": {
+     "ccalls": 4,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logPut": {
+     "ccalls": 8,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logPutDone": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logPutTo": {
+     "ccalls": 4,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 27,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logReply": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logRingAt": {
+     "ccalls": 4,
+     "exittail": 49,
+     "frame": null,
+     "loops": 1,
+     "segmax": 49,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logRingPut": {
+     "ccalls": 10,
+     "exittail": 68,
+     "frame": null,
+     "loops": 0,
+     "segmax": 83,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logSeqOf": {
+     "ccalls": 5,
+     "exittail": 39,
+     "frame": null,
+     "loops": 0,
+     "segmax": 45,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logServe": {
+     "ccalls": 6,
+     "exittail": 39,
+     "frame": null,
+     "loops": 0,
+     "segmax": 39,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logSetKeep": {
+     "ccalls": 5,
+     "exittail": 44,
+     "frame": null,
+     "loops": 0,
+     "segmax": 44,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logSev": {
+     "ccalls": 1,
+     "exittail": 17,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logStaged": {
+     "ccalls": 10,
+     "exittail": 24,
+     "frame": null,
+     "loops": 0,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logStagedGo": {
+     "ccalls": 5,
+     "exittail": 33,
+     "frame": null,
+     "loops": 0,
+     "segmax": 40,
+     "shallow": "no",
+     "slots": 1,
+     "spills": 1
+    },
+    "logStart": {
+     "ccalls": 13,
+     "exittail": 38,
+     "frame": null,
+     "loops": 0,
+     "segmax": 139,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logStep": {
+     "ccalls": 10,
+     "exittail": 45,
+     "frame": null,
+     "loops": 0,
+     "segmax": 45,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logSuppressed": {
+     "ccalls": 6,
+     "exittail": 25,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logTrim": {
+     "ccalls": 4,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logWarn": {
+     "ccalls": 6,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "loggerHave": {
+     "ccalls": 4,
+     "exittail": 17,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "loggerOf": {
+     "ccalls": 5,
+     "exittail": 17,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "loggerStart": {
+     "ccalls": 5,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 41,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "main": {
+     "ccalls": 4,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 21,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "map@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "map@713caadbf4579bf1": {
+     "ccalls": 4,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapFilter@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapFilterGo@3a073ebe861d50fd": {
+     "ccalls": 6,
+     "exittail": 25,
+     "frame": null,
+     "loops": 2,
+     "segmax": 91,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapFstV": {
+     "ccalls": 5,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 67,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapGo@3a073ebe861d50fd": {
+     "ccalls": 5,
+     "exittail": 24,
+     "frame": null,
+     "loops": 1,
+     "segmax": 68,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapRange@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapRangeGo@3a073ebe861d50fd": {
+     "ccalls": 4,
+     "exittail": 13,
+     "frame": null,
+     "loops": 1,
+     "segmax": 68,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapSndV": {
+     "ccalls": 5,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 67,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapV": {
+     "ccalls": 3,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "max@fc1c68b60a309b32": {
+     "ccalls": 2,
+     "exittail": 28,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "maximum@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 38,
+     "frame": null,
+     "loops": 0,
+     "segmax": 38,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "member@3a073ebe861d50fd": {
+     "ccalls": 4,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "merge@3a073ebe861d50fd": {
+     "ccalls": 6,
+     "exittail": 35,
+     "frame": null,
+     "loops": 2,
+     "segmax": 92,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mergeAll@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 23,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mergePairs@3a073ebe861d50fd": {
+     "ccalls": 8,
+     "exittail": 41,
+     "frame": null,
+     "loops": 1,
+     "segmax": 68,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "min@fc1c68b60a309b32": {
+     "ccalls": 2,
+     "exittail": 27,
+     "frame": null,
+     "loops": 0,
+     "segmax": 27,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "minimum@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 38,
+     "frame": null,
+     "loops": 0,
+     "segmax": 38,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modCompatAt": {
+     "ccalls": 5,
+     "exittail": 123,
+     "frame": null,
+     "loops": 0,
+     "segmax": 123,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modCompatMatch": {
+     "ccalls": 15,
+     "exittail": 96,
+     "frame": null,
+     "loops": 0,
+     "segmax": 96,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modCompatRow": {
+     "ccalls": 5,
+     "exittail": 54,
+     "frame": null,
+     "loops": 0,
+     "segmax": 54,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modCompatRows": {
+     "ccalls": 3,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modFind": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modFindAt": {
+     "ccalls": 5,
+     "exittail": 45,
+     "frame": null,
+     "loops": 0,
+     "segmax": 45,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modFindDown": {
+     "ccalls": 4,
+     "exittail": 45,
+     "frame": null,
+     "loops": 0,
+     "segmax": 45,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modHas": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modHasFrom": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modHit": {
+     "ccalls": 4,
+     "exittail": 48,
+     "frame": null,
+     "loops": 0,
+     "segmax": 48,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modMiss": {
+     "ccalls": 3,
+     "exittail": 45,
+     "frame": null,
+     "loops": 0,
+     "segmax": 45,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modResolve": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modResolveFrom": {
+     "ccalls": 4,
+     "exittail": 46,
+     "frame": null,
+     "loops": 0,
+     "segmax": 46,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modRow": {
+     "ccalls": 2,
+     "exittail": 33,
+     "frame": null,
+     "loops": 1,
+     "segmax": 40,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modRowIn": {
+     "ccalls": 4,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "newHandle": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "not": {
+     "ccalls": 1,
+     "exittail": 19,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "or": {
+     "ccalls": 1,
+     "exittail": 19,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "orElse@713caadbf4579bf1": {
+     "ccalls": 3,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "par2": {
+     "ccalls": 20,
+     "exittail": 137,
+     "frame": null,
+     "loops": 0,
+     "segmax": 137,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "parWorker": {
+     "ccalls": 6,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "parseDigit": {
+     "ccalls": 9,
+     "exittail": 95,
+     "frame": null,
+     "loops": 0,
+     "segmax": 155,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "parseDigits": {
+     "ccalls": 3,
+     "exittail": 29,
+     "frame": null,
+     "loops": 0,
+     "segmax": 61,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "parseInt": {
+     "ccalls": 8,
+     "exittail": 31,
+     "frame": null,
+     "loops": 0,
+     "segmax": 66,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "partition@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "product@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "range@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "rangeGo@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 1,
+     "segmax": 59,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "repeat@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "repeatGo@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 12,
+     "frame": null,
+     "loops": 1,
+     "segmax": 50,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "revOnto@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 14,
+     "frame": null,
+     "loops": 1,
+     "segmax": 50,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "reverse@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "reverse@fc1c68b60a309b32": {
+     "ccalls": 2,
+     "exittail": 17,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "serve": {
+     "ccalls": 4,
+     "exittail": 24,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "serveTurn": {
+     "ccalls": 7,
+     "exittail": 81,
+     "frame": null,
+     "loops": 0,
+     "segmax": 81,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "singleton@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sndV": {
+     "ccalls": 3,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sortBy@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sortWith@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strCmp": {
+     "ccalls": 5,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 51,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strCmpAt": {
+     "ccalls": 3,
+     "exittail": 26,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strCmpGo": {
+     "ccalls": 4,
+     "exittail": 52,
+     "frame": null,
+     "loops": 0,
+     "segmax": 101,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strIndexFrom": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strIndexGo": {
+     "ccalls": 3,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strIndexOf": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strMatchAt": {
+     "ccalls": 4,
+     "exittail": 88,
+     "frame": null,
+     "loops": 1,
+     "segmax": 93,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strSub": {
+     "ccalls": 5,
+     "exittail": 49,
+     "frame": null,
+     "loops": 0,
+     "segmax": 53,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strSubGo": {
+     "ccalls": 7,
+     "exittail": 23,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strSufEq": {
+     "ccalls": 2,
+     "exittail": 30,
+     "frame": null,
+     "loops": 0,
+     "segmax": 32,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strSufEqAt": {
+     "ccalls": 5,
+     "exittail": 83,
+     "frame": null,
+     "loops": 0,
+     "segmax": 98,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strTake": {
+     "ccalls": 3,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strTakeGo": {
+     "ccalls": 4,
+     "exittail": 13,
+     "frame": null,
+     "loops": 1,
+     "segmax": 53,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "string@fc1c68b60a309b32": {
+     "ccalls": 6,
+     "exittail": 24,
+     "frame": null,
+     "loops": 0,
+     "segmax": 51,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sum@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sumV": {
+     "ccalls": 2,
+     "exittail": 18,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sysIrqBind": {
+     "ccalls": 8,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 42,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sysIrqUnbind": {
+     "ccalls": 5,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sysLogKeep": {
+     "ccalls": 2,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sysLogSeq": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sysLogSnap": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "tail@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "take@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "takeGo@3a073ebe861d50fd": {
+     "ccalls": 3,
+     "exittail": 29,
+     "frame": null,
+     "loops": 1,
+     "segmax": 69,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "takeWhile@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "thenBy@fc1c68b60a309b32": {
+     "ccalls": 3,
+     "exittail": 38,
+     "frame": null,
+     "loops": 0,
+     "segmax": 38,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "toList@713caadbf4579bf1": {
+     "ccalls": 3,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "toResult@713caadbf4579bf1": {
+     "ccalls": 4,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "twGo@3a073ebe861d50fd": {
+     "ccalls": 4,
+     "exittail": 47,
+     "frame": null,
+     "loops": 1,
+     "segmax": 80,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "unique@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "unzip@3a073ebe861d50fd": {
+     "ccalls": 2,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "vListFromList": {
+     "ccalls": 2,
+     "exittail": 6,
+     "frame": null,
+     "loops": 0,
+     "segmax": 22,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireAnd": {
+     "ccalls": 3,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireAt": {
+     "ccalls": 5,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireCon": {
+     "ccalls": 14,
+     "exittail": 39,
+     "frame": null,
+     "loops": 0,
+     "segmax": 86,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireDigits": {
+     "ccalls": 21,
+     "exittail": 218,
+     "frame": null,
+     "loops": 1,
+     "segmax": 263,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireField": {
+     "ccalls": 5,
+     "exittail": 68,
+     "frame": null,
+     "loops": 1,
+     "segmax": 68,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireInt": {
+     "ccalls": 10,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 90,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireListGo": {
+     "ccalls": 9,
+     "exittail": 76,
+     "frame": null,
+     "loops": 1,
+     "segmax": 82,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireMap": {
+     "ccalls": 3,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireRev": {
+     "ccalls": 2,
+     "exittail": 14,
+     "frame": null,
+     "loops": 1,
+     "segmax": 50,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireToBool": {
+     "ccalls": 10,
+     "exittail": 39,
+     "frame": null,
+     "loops": 0,
+     "segmax": 102,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireToInt": {
+     "ccalls": 5,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireToList": {
+     "ccalls": 2,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireToStr": {
+     "ccalls": 5,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "withDefault@713caadbf4579bf1": {
+     "ccalls": 2,
+     "exittail": 25,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "zip@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 23,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "zipGo@3a073ebe861d50fd": {
+     "ccalls": 5,
+     "exittail": 34,
+     "frame": null,
+     "loops": 1,
+     "segmax": 81,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "zipV": {
+     "ccalls": 4,
+     "exittail": 71,
+     "frame": null,
+     "loops": 0,
+     "segmax": 98,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "zipWith@3a073ebe861d50fd": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 25,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    }
+   },
+   "negative_fixtures": [
+    "tests/pipeline/check_policy_decisions.py",
+    "tests/reliability/list_fusion_random.py"
+   ],
+   "positive_for": [
+    "typed.listfusion"
+   ],
+   "preconditions": {
+    "builtin_traps": 2,
+    "discharged": 4,
+    "obligations": 6,
+    "runtime_checked": 0
+   },
+   "private_consuming_workers": [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "private_workers": [
+    {
+     "fields": 3,
+     "scalar": 0
+    },
+    {
+     "fields": 0,
+     "scalar": 1
+    },
+    {
+     "fields": 0,
+     "scalar": 0
+    },
+    {
+     "fields": 0,
+     "scalar": 0
+    },
+    {
+     "fields": 0,
+     "scalar": 0
+    }
+   ],
+   "remarks": {
+    "regions:region:applied": 20,
+    "typed-callback-attempt:generic-call:applied": 29,
+    "typed-callback-attempt:generic-call:declined": 214,
+    "typed-inline-attempt:inline:applied": 196,
+    "typed-inline-attempt:inline:declined": 302
+   },
+   "source": "tests/pipeline/fusion_overflow_order.fpr",
+   "timing": {
+    "median_s": 0.005,
+    "min_s": 0.0049,
+    "runs": 5
+   },
+   "units": {
+    "codegen_revision": 204,
+    "core_identities": [
+     "6f15975cb6065b88",
+     "8dd530b3044a7bcd",
+     "9a4e96492f77dab6",
+     "b24e1491f7e92076"
+    ],
+    "count": 4
    }
   },
   "helpers": {
@@ -10367,9 +15094,9 @@
     "supercombinators": 9
    },
    "compile": {
-    "allocated_bytes": 1835145520,
+    "allocated_bytes": 1835145712,
     "max_residency_bytes": 25089536,
-    "seconds": 1.111
+    "seconds": 0.855
    },
    "cost": {
     "alloc_bytes": 96,
@@ -13536,8 +18263,8 @@
    },
    "source": "tests/bench/helpers.fpr",
    "timing": {
-    "median_s": 0.0911,
-    "min_s": 0.0868,
+    "median_s": 0.0744,
+    "min_s": 0.0738,
     "runs": 5
    },
    "units": {
@@ -13565,7 +18292,7 @@
    "compile": {
     "allocated_bytes": 1807209872,
     "max_residency_bytes": 43917888,
-    "seconds": 0.966
+    "seconds": 0.839
    },
    "cost": {
     "alloc_bytes": 112,
@@ -16722,8 +21449,8 @@
    },
    "source": "tests/pipeline/imported_wrappers.fpr",
    "timing": {
-    "median_s": 0.0166,
-    "min_s": 0.0165,
+    "median_s": 0.0175,
+    "min_s": 0.0143,
     "runs": 5
    },
    "units": {
@@ -16750,9 +21477,9 @@
     "supercombinators": 8
    },
    "compile": {
-    "allocated_bytes": 3101701976,
-    "max_residency_bytes": 32630152,
-    "seconds": 1.791
+    "allocated_bytes": 3101701944,
+    "max_residency_bytes": 32630080,
+    "seconds": 1.484
    },
    "cost": {
     "alloc_bytes": 960000912,
@@ -21476,8 +26203,8 @@
    },
    "source": "tests/bench/unbox/list_filter.fpr",
    "timing": {
-    "median_s": 0.1216,
-    "min_s": 0.1185,
+    "median_s": 0.1013,
+    "min_s": 0.0982,
     "runs": 5
    },
    "units": {
@@ -21508,7 +26235,7 @@
    "compile": {
     "allocated_bytes": 3083077344,
     "max_residency_bytes": 32540032,
-    "seconds": 2.153
+    "seconds": 1.461
    },
    "cost": {
     "alloc_bytes": 32000288,
@@ -26222,8 +30949,8 @@
    },
    "source": "tests/bench/unbox/list_fold.fpr",
    "timing": {
-    "median_s": 0.0401,
-    "min_s": 0.0389,
+    "median_s": 0.0423,
+    "min_s": 0.0368,
     "runs": 5
    },
    "units": {
@@ -26254,7 +30981,7 @@
    "compile": {
     "allocated_bytes": 3073296032,
     "max_residency_bytes": 32508936,
-    "seconds": 1.706
+    "seconds": 1.511
    },
    "cost": {
     "alloc_bytes": 672001072,
@@ -30938,8 +35665,8 @@
    },
    "source": "tests/bench/unbox/list_length_rev.fpr",
    "timing": {
-    "median_s": 0.0743,
-    "min_s": 0.0738,
+    "median_s": 0.0665,
+    "min_s": 0.0654,
     "runs": 5
    },
    "units": {
@@ -30970,7 +35697,7 @@
    "compile": {
     "allocated_bytes": 3101407504,
     "max_residency_bytes": 32606392,
-    "seconds": 1.791
+    "seconds": 1.465
    },
    "cost": {
     "alloc_bytes": 96,
@@ -35704,8 +40431,8 @@
    },
    "source": "tests/bench/unbox/list_map.fpr",
    "timing": {
-    "median_s": 0.0237,
-    "min_s": 0.0224,
+    "median_s": 0.021,
+    "min_s": 0.0177,
     "runs": 5
    },
    "units": {
@@ -35734,9 +40461,9 @@
     "supercombinators": 3
    },
    "compile": {
-    "allocated_bytes": 2050545752,
+    "allocated_bytes": 2050545608,
     "max_residency_bytes": 39315504,
-    "seconds": 1.126
+    "seconds": 0.928
    },
    "cost": {
     "alloc_bytes": 112,
@@ -38992,8 +43719,8 @@
    },
    "source": "tests/bench/unbox/option_loop.fpr",
    "timing": {
-    "median_s": 0.0539,
-    "min_s": 0.0491,
+    "median_s": 0.0441,
+    "min_s": 0.0394,
     "runs": 5
    },
    "units": {
@@ -39020,9 +43747,9 @@
     "supercombinators": 5
    },
    "compile": {
-    "allocated_bytes": 1801836208,
-    "max_residency_bytes": 43547664,
-    "seconds": 1.099
+    "allocated_bytes": 1801836080,
+    "max_residency_bytes": 43547520,
+    "seconds": 0.821
    },
    "cost": {
     "alloc_bytes": 96,
@@ -42159,8 +46886,8 @@
    },
    "source": "tests/bench/unbox/pair_ret.fpr",
    "timing": {
-    "median_s": 0.1416,
-    "min_s": 0.1382,
+    "median_s": 0.1143,
+    "min_s": 0.1139,
     "runs": 5
    },
    "units": {
@@ -42186,21 +46913,21 @@
     "supercombinators": 7
    },
    "compile": {
-    "allocated_bytes": 1806685968,
-    "max_residency_bytes": 43583944,
-    "seconds": 1.075
+    "allocated_bytes": 1806676928,
+    "max_residency_bytes": 43585024,
+    "seconds": 0.84
    },
    "cost": {
-    "alloc_bytes": 32030368,
-    "alloc_requests": 1000940,
+    "alloc_bytes": 32035232,
+    "alloc_requests": 1001092,
     "buddy_allocs": 266,
     "buddy_frees": 248,
-    "copies": 3000714,
-    "copy_bytes": 32029952,
+    "copies": 3001079,
+    "copy_bytes": 32034816,
     "message_slabs": 247,
     "receives": 2000000,
-    "state_bytes": 29952,
-    "state_copies": 1000712,
+    "state_bytes": 34816,
+    "state_copies": 1001077,
     "turns": 0
    },
    "coverage": {
@@ -45335,8 +50062,8 @@
    },
    "source": "tests/bench/pingpong.fpr",
    "timing": {
-    "median_s": 0.1823,
-    "min_s": 0.1809,
+    "median_s": 0.2763,
+    "min_s": 0.1738,
     "runs": 5
    },
    "units": {
@@ -45362,9 +50089,9 @@
     "supercombinators": 5
    },
    "compile": {
-    "allocated_bytes": 1798537400,
+    "allocated_bytes": 1798537232,
     "max_residency_bytes": 43557456,
-    "seconds": 1.083
+    "seconds": 0.841
    },
    "cost": {
     "alloc_bytes": 112,
@@ -48501,8 +53228,8 @@
    },
    "source": "tests/bench/specialization.fpr",
    "timing": {
-    "median_s": 0.007,
-    "min_s": 0.0067,
+    "median_s": 0.0091,
+    "min_s": 0.007,
     "runs": 5
    },
    "units": {
@@ -48528,9 +53255,9 @@
     "supercombinators": 3
    },
    "compile": {
-    "allocated_bytes": 1796913000,
+    "allocated_bytes": 1796915128,
     "max_residency_bytes": 43535664,
-    "seconds": 1.089
+    "seconds": 0.882
    },
    "cost": {
     "alloc_bytes": 323392976,
@@ -51636,8 +56363,8 @@
    },
    "source": "tests/bench/strbuild.fpr",
    "timing": {
-    "median_s": 0.0859,
-    "min_s": 0.0833,
+    "median_s": 0.0752,
+    "min_s": 0.0728,
     "runs": 5
    },
    "units": {
@@ -51663,9 +56390,9 @@
     "supercombinators": 6
    },
    "compile": {
-    "allocated_bytes": 1811797048,
+    "allocated_bytes": 1811798520,
     "max_residency_bytes": 43607320,
-    "seconds": 1.016
+    "seconds": 0.827
    },
    "cost": {
     "alloc_bytes": 5243184,
@@ -54801,8 +59528,8 @@
    },
    "source": "tests/bench/unbox/string_scan.fpr",
    "timing": {
-    "median_s": 0.0438,
-    "min_s": 0.042,
+    "median_s": 0.0369,
+    "min_s": 0.0362,
     "runs": 5
    },
    "units": {
@@ -54830,7 +59557,7 @@
    "compile": {
     "allocated_bytes": 1809246816,
     "max_residency_bytes": 43594720,
-    "seconds": 1.068
+    "seconds": 0.84
    },
    "cost": {
     "alloc_bytes": 503316576,
@@ -57988,8 +62715,8 @@
    },
    "source": "tests/bench/unbox/tree_sum.fpr",
    "timing": {
-    "median_s": 0.119,
-    "min_s": 0.1146,
+    "median_s": 0.106,
+    "min_s": 0.1029,
     "runs": 5
    },
    "units": {
@@ -58015,9 +62742,9 @@
     "supercombinators": 3
    },
    "compile": {
-    "allocated_bytes": 1810974816,
-    "max_residency_bytes": 43572888,
-    "seconds": 0.944
+    "allocated_bytes": 1810985696,
+    "max_residency_bytes": 43572008,
+    "seconds": 0.831
    },
    "cost": {
     "alloc_bytes": 80,
@@ -61144,8 +65871,8 @@
    },
    "source": "tests/bench/unbox/tuple_loop.fpr",
    "timing": {
-    "median_s": 0.0738,
-    "min_s": 0.073,
+    "median_s": 0.064,
+    "min_s": 0.0637,
     "runs": 5
    },
    "units": {
@@ -61171,9 +65898,9 @@
     "supercombinators": 8
    },
    "compile": {
-    "allocated_bytes": 1828820176,
-    "max_residency_bytes": 43684712,
-    "seconds": 0.989
+    "allocated_bytes": 1828820992,
+    "max_residency_bytes": 43692560,
+    "seconds": 0.901
    },
    "cost": {
     "alloc_bytes": 16777680,
@@ -64350,8 +69077,8 @@
    },
    "source": "tests/bench/vecread.fpr",
    "timing": {
-    "median_s": 0.2195,
-    "min_s": 0.2143,
+    "median_s": 0.2033,
+    "min_s": 0.1972,
     "runs": 5
    },
    "units": {
@@ -64377,21 +69104,21 @@
     "supercombinators": 7
    },
    "compile": {
-    "allocated_bytes": 1806990704,
-    "max_residency_bytes": 43587888,
-    "seconds": 1.192
+    "allocated_bytes": 1806993728,
+    "max_residency_bytes": 43586856,
+    "seconds": 0.858
    },
    "cost": {
     "alloc_bytes": 32016032,
     "alloc_requests": 1000492,
     "buddy_allocs": 266,
     "buddy_frees": 248,
-    "copies": 3000340,
+    "copies": 3000446,
     "copy_bytes": 32015616,
     "message_slabs": 247,
     "receives": 2000000,
     "state_bytes": 15616,
-    "state_copies": 1000338,
+    "state_copies": 1000444,
     "turns": 0
    },
    "coverage": {
@@ -67526,8 +72253,8 @@
    },
    "source": "tests/bench/xpingpong.fpr",
    "timing": {
-    "median_s": 0.3724,
-    "min_s": 0.3622,
+    "median_s": 0.3388,
+    "min_s": 0.3356,
     "runs": 5
    },
    "units": {
@@ -67539,9 +72266,9 @@
    }
   }
  },
- "git_commit": "d308c1b23cc3914a01564e040d465a19d1d7dce1",
+ "git_commit": "3004f4d6fd95c2ed53ab32cb4dbc5c986f26f174",
  "host": "Darwin-arm64-macm4",
- "recorded_at": "2026-11-08T00:14:37+1100",
+ "recorded_at": "2026-11-08T00:34:03+1100",
  "schema": 1,
  "system": "posix",
  "target": null,

@@ -104,8 +104,11 @@ checks every C/GHC reference (same answers, SIMD, checked vs unchecked,
 optimized out, fused) and names which ratio may be an acceptance target. RV64
 compile facts are recorded in `bench/pipeline-baseline-rv64.json`; RV64
 execution, the Pi 4B and the Tang Nano stay unverified, reported and never
-passed. The semantic policy's four open decisions stay open by design: each
-must be settled in the policy before the first change that depends on it.
+passed. The semantic policy's four open decisions were settled the same day
+(policy, "Decisions (8 November 2026)"): one narrow fusion relaxation, a
+scheduling contract rather than an exact yield trace, resource failure
+reported earlier only within limits, and validation as an explicit SSA
+operation. `tests/pipeline/check_policy_decisions.py` runs D1 and D2.
 
 **P0 artifacts (as first written on 7 November).** The
 [pass inventory](2026-11-07-PIPELINE-PASS-INVENTORY.md) covers the stage order,

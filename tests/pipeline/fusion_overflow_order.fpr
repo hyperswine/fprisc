@@ -1,0 +1,9 @@
+# corpus: the one listed relaxation (semantic policy, Decision 1). Fused, the
+# sum overflows on the second element (3e18 + 3e18); unfused, the map
+# overflows on the third (3e18 * 2) before the sum runs. Both builds trap with
+# Int overflow after the same output; only which overflow is reported may
+# differ. tests/pipeline/check_policy_decisions.py runs both builds.
+List = use "std/list".
+main =
+  _ = print "before";
+  print "{List.sum (List.map (fn x -> x * 2) [1500000000000000000, 1500000000000000000, 3000000000000000000])}".

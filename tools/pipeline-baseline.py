@@ -348,6 +348,11 @@ def compare(baseline, fresh, slack, same_compiler, subset):
             failures.append(f'{name}: behaviour changed: {old["behaviour"]} -> {new["behaviour"]}')
         if new['coverage']['complete'] is False:
             failures.append(f'{name}: a unit lowered fewer functions natively than it emitted: {new["coverage"]["units"]}')
+        # semantic policy Decision 2: the scheduling contract is a finite
+        # instruction bound between safepoints in every native function
+        unbounded = [fn for fn, facts in new['functions'].items() if facts.get('segmax') is None]
+        if unbounded:
+            failures.append(f'{name}: no finite segmax (UNBOUNDED between safepoints): {", ".join(unbounded[:5])}')
         if old['remarks'] != new['remarks']:
             drift.append(f'{name}: remark stream changed')
         if old['coverage']['units'] != new['coverage']['units']:

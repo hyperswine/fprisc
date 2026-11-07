@@ -164,6 +164,18 @@
       },
       "positive_for": ["frontend.precond", "lower"],
       "negative_fixtures": ["tests/check_resource_domains.py"]
+    },
+    {
+      "id": "fusion_overflow_order",
+      "category": "defined-failure",
+      "source": "tests/pipeline/fusion_overflow_order.fpr",
+      "expect": {
+        "stdout": "before\n",
+        "exit": 1,
+        "stderr_contains": ["Int overflow"]
+      },
+      "positive_for": ["typed.listfusion"],
+      "negative_fixtures": ["tests/pipeline/check_policy_decisions.py", "tests/reliability/list_fusion_random.py"]
     }
   ]
 }

@@ -113,8 +113,10 @@ operation is. `Core.Typed.CaseKnown` keeps evaluation and trap order while
 moving alternatives. `Codegen.Placement` keeps the evaluator oracle and the
 backends seeing the same ticks.
 
-**The one listed relaxation.** Fusion may reorder `Int` `+` `-` `*`, so an
-overflow that would have trapped early may trap later or not at all:
+**The one listed relaxation.** Fusion may reorder `Int` `+` `-` `*`, so a
+different `Int` overflow may be the one reported. It may not change whether
+the program traps or what it printed first (Decision 1 below; the 7 November
+wording "may trap later or not at all" was looser than what is enforced):
 `Core.FusionPolicy.safePrimitives` is every unsigned/Int primitive except `/`,
 and `trapFreePrimitives` names what cannot trap at all. Division is excluded
 because its trap is the runtime's own.
@@ -210,21 +212,126 @@ default inside a pass, and no pass may branch on `tgtW` to decide ownership.
 6. Land a positive fixture and a negative control in `tests/pipeline/corpus.json`
    or in a `tests/check_*.py`, with the observable behaviour it promises.
 
-## Open decisions
+## Decisions (8 November 2026)
 
-These are genuinely undecided; a change that depends on one must resolve it
-here first rather than choosing locally.
+These were the four open decisions of 7 November, settled by the project
+owner. `tests/pipeline/check_policy_decisions.py` runs the executable ones.
+Changing one is an amendment here, with its fixture.
 
-1. **Fusion overflow relaxation by profile.** The relaxation is currently one
-   constant for every profile. Whether `QosApp`/`Builtin` admission may lean on
-   trap order that hosted profiles relax is unresolved.
-2. **Yield-trace strength.** Whether any profile requires an exact yield trace
-   across inlining and specialization, or a scheduling contract (bounded work,
-   at least one tick per cycle) is enough. `Codegen.Placement` argues the
-   latter for the batched tick; no profile currently asserts the former.
-3. **Allocation capacity vs trap order.** Allocation failure is not in
-   `safePrimitives`, but nothing states whether a region-room or pool-refill
-   failure must precede or follow the trap of an expression it is moved across.
-4. **Validation provenance carrier.** Which SSA metadata carries
-   `Validated(at)` and how it is invalidated by allocation, safepoints and
-   aliasing writes; P2/P3 decide the encoding, this rule fixes its meaning.
+### Decision 1 — One fusion relaxation for every profile, and it is narrow
+
+**Decided.** The relaxation stays one constant for every profile. Its content
+is narrowed to what `tests/reliability/list_fusion_random.py` already enforces:
+a fused pipeline traps **if and only if** the unfused program traps, with the
+same exit status and the same output up to the trap. Only *which* `Int`
+overflow is reported may differ. Fusion never adds a trap, never removes one,
+and never changes a non-trapping result. `/`, allocation capacity and external
+calls are outside it.
+
+**Why.** A per-profile split adds a policy bit, a cache-identity entry and a
+second behaviour to test, and the same source would fail differently on a
+desktop than in a QOS app. Since whether a program fails is already identical,
+a defined-failure or admission contract that cares whether a program can fail
+holds in every profile. Strict order everywhere would refuse almost all `Int`
+fusion (`x + 1` can overflow) unless intervals prove otherwise.
+
+**Revisit when** a contract needs to name exactly which trap is reported. That
+is an amendment adding a `Policy` bit for the profiles concerned.
+
+**Fixtures.** Corpus entry `fusion_overflow_order`: fused, the sum overflows
+first; unfused, the map does; both print `before` and trap with
+`Int overflow`. `check_policy_decisions.py` (D1) builds it both ways. The
+random differential (`LFR_STRICT=1` makes the relaxation fail) covers the
+general case.
+
+### Decision 2 — A scheduling contract, not an exact yield trace
+
+**Decided.** No profile promises an exact yield trace. Every profile promises
+the scheduling contract:
+
+1. every cycle (natural loop or recursion) passes a tick;
+2. every native function has a finite bound on instructions between
+   consecutive safepoints, computed by `Codegen.Bounds` (`native-insns-v1`
+   `segmax`).
+
+A transformation may move, batch or remove ticks only while both still hold.
+
+**No pipeline constant K.** The bound is a measured per-function number, not a
+policy limit (the no-arbitrary-bounds rule, [bounds register](2026-09-19-BOUNDS.md)). The baseline records it for
+every function. An `UNBOUNDED` function fails `tools/pipeline-baseline.py`
+and `check_policy_decisions.py` (D2), and growth is drift that a phase exit
+must explain. A budget comes from where it is needed: QOS response-time
+admission (resource roadmap Q-phase) derives the bound it can accept from the
+deadline it must meet, and refuses what exceeds it. Work inside runtime and C
+calls (`ccalls`, stack growth) is not in `segmax`. It is bounded separately by
+the resource contracts and not assumed here.
+
+**Why.** No profile asserts an exact trace today, actors already interleave
+nondeterministically across harts, and an exact trace would forbid the landed
+tick batching as well as inlining, unrolling and vectorization. A bound between
+safepoints is the quantity QOS admission consumes. Reproducible tick placement
+remains available with `FPR_NO_TICK_BATCH=1`.
+
+**Fixtures.** All 13,108 functions recorded on 8 November (host and RV64) have
+a finite `segmax`. `tests/check_tick_batch.py` and `tests/Placement.hs` pin
+"every cycle ticks".
+
+### Decision 3 — Resource failure may be reported earlier, within limits
+
+**Decided.** A region-room, pool-refill or allocation-capacity check may be
+moved earlier, or merged into one reservation, past computation that can trap.
+The result may be that the allocation failure is reported instead of the
+trap. All of these must hold:
+
+1. it moves past no observable effect: no output, send, receive, foreign or
+   runtime call with effects, spawn or tick lies between the new and the
+   original position, so no output is lost and no message is sent that would
+   not have been;
+2. it reserves only allocations that happen on every path from the new
+   position (or the maximum over paths, refilled on the others), so no
+   program that succeeded before can fail;
+3. it never reserves more than the original program would have used at that
+   point.
+
+Moving a check later than its allocation is never allowed.
+
+**Why.** Strict ordering would forbid hoisting or merging past any `Int`
+arithmetic, which is most of P6's allocation-path work. Unlimited freedom
+could lose printed output or fail programs that used to succeed. Within these
+limits, the only observable change is which failure is reported, the same
+kind of difference Decision 1 allows. An admitted program has a proven memory
+bound, so its reservation cannot fail. The rule matters only for hosted
+programs without one.
+
+**Fixtures.** None executable yet: no merged reservation exists. P6's first
+slice that hoists or merges a capacity check must add a corpus entry that
+prints before the moved check and traps between the new and old positions,
+showing the output is kept, plus a conditional-allocation case that must not
+fail.
+
+### Decision 4 — Validation is an explicit SSA operation
+
+**Decided.** `Validated(at)` is carried by an explicit operation that consumes
+a value and produces a new SSA value of the validated representation (a
+refinement, like a pi node), dominated by the check that justifies it. Uses
+that rely on the validation use the new name, so dominance gives the fact's
+scope. `ImportedContract(unit, hash)` facts become function-entry facts of the
+same form. The fact is invalidated only where the validated object can change:
+
+- reuse or reclamation of its storage (`$reuse.fresh`, region or pool reset);
+- in-place writes to it (TRMC cell writes);
+- safepoints, on a profile where an object can move or be reused across one.
+
+FP-RISC values are immutable, so nothing else invalidates it.
+
+**Why.** A side table keyed by SSA value must be carried by every pass that
+copies or rewrites values. One forgotten case leaves a stale fact, the class of
+bug the 4 November typed-case fix was (a `receive`d value trusted by its static
+type). An explicit operation is left alone by passes that do not understand it,
+and `Codegen.Verify` can check it. Recomputing on demand cannot express facts
+that come from outside the function.
+
+**Fixtures.** Today `tests/check_typed_case.py`'s received-value cases (tuple,
+`Int` and list values that must fall through) are the negative control. P2's
+bridge adds the operation, its verifier rule and a stale-fact negative: a
+validated value reused after a reset must be re-checked.
