@@ -272,6 +272,9 @@ the raw `-O2` numbers.
    [reference audit](2026-11-08-PIPELINE-REFERENCE-AUDIT.md). P0 is complete.
 2. P2 full-signature bridge with `KernelKinds` as an agreement checker — next
    (the roadmap's amended order); it must add its inputs to the identity
-   described above.
+   described above. Slice 1 landed 8 November
+   ([record](2026-11-08-P2-SIGNATURE-BRIDGE.md)): checked kinds carried beside
+   `KernelKinds` and compared, with no code change. Slice 2 makes them the
+   worker authority and adds them to cache identity.
 3. P6 composed-work report from `Codegen.Placement`, in parallel.
 4. P1 checked summary schema with its first range/result-size consumer.
