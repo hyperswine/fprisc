@@ -4,6 +4,7 @@
 -- step, not an eager tree of every instantiated recursive type.
 module Core.Opt.ProductParameters
   (ProductParameters,emptyProductParameters,checkedProductParameters,parameterProduct,
+   CheckedKinds,checkedKinds,rawKind,
    VariantLayout,StorageLayout(..),StorageField(..),storagePlans,storageLists,variantResults,withoutVariantResults,renameProductParameters,expandProductParameter,productParameterKey) where
 import Compiler.DataLayout
 import Core.Syntax (Prog)
@@ -13,6 +14,7 @@ import Ownership.TypeShape (linShapeT)
 import Type.Substitution (variables)
 import Core.Region.Interface
 import Type.Syntax
+import KernelKinds (Kind(..))
 import Control.DeepSeq (deepseq)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -32,18 +34,42 @@ data StorageLayout = ListStorage VariantLayout
                    deriving (Eq,Ord,Show)
 type Entries a=M.Map String ([String],a)
 type ResultTable=M.Map String ([String],VariantLayout)
+-- Raw-word kinds of each checked function's parameters and result, from its
+-- checked interface (P2 signature bridge, docs/2026-11-08-P2-SIGNATURE-BRIDGE.md).
+-- Nothing: the checked type is not a raw word (a variable, a nominal type, a
+-- String, ...). Keyed like the other entries, so a renamed or re-parameterized
+-- function never reads another body's kinds.
+type CheckedKinds=M.Map String ([Maybe Kind],Maybe Kind)
 data ProductParameters=ProductParameters Layouts (M.Map String Definition)
   (M.Map String ([String],M.Map Int Type)) ResultTable (Entries StorageLayout) (Entries (Int,StorageLayout))
+  (Entries ([Maybe Kind],Maybe Kind))
 emptyProductParameters :: ProductParameters
-emptyProductParameters=ProductParameters (Layouts M.empty M.empty) M.empty M.empty M.empty M.empty M.empty
+emptyProductParameters=ProductParameters (Layouts M.empty M.empty) M.empty M.empty M.empty M.empty M.empty M.empty
+
+-- The raw-word ABI kind a checked type denotes, if any.
+rawKind :: Type -> Maybe Kind
+rawKind ty=case ty of
+  TC "Int"->Just KI
+  TC "F64"->Just KD
+  TC "F32"->Just KS
+  TC "Bool"->Just KB
+  _->Nothing
+
+-- The checked kinds of the functions whose parameters still match.
+checkedKinds :: Prog -> ProductParameters -> CheckedKinds
+checkedKinds program (ProductParameters _ _ _ _ _ _ kinds)=matching program kinds
 
 checkedProductParameters :: Layouts -> TypeContext -> M.Map String Interface -> ProductParameters
 checkedProductParameters layouts (TypeContext linears constructors) interfaces=
   -- A module must not retain the whole linked constructor/type catalog just
   -- because one of its entries has a product parameter. Force canonical
   -- field types before releasing the original declaration/substitution thunks.
-  table `deepseq` ProductParameters localLayouts localModel table results producers readers
+  table `deepseq` forced kinds `seq` ProductParameters localLayouts localModel table results producers readers kinds
   where
+    -- every entry is a small constant; force them so the interfaces are not retained
+    kinds=M.mapMaybe (\face->fmap (\bs->(map binderName bs,(map rawKind (interfaceArguments face),rawKind (interfaceResult face))))
+                                   (interfaceParameters face)) interfaces
+    forced=M.foldr (\(ps,(as,r)) acc->length ps `seq` foldr seq (r `seq` acc) as) ()
     choices=M.fromListWith S.union [(owner,S.singleton definition) |
       (name,Forall _ _ ty)<-M.toList constructors,
       let (fields,result)=arrows ty,(TC owner,args)<-[spine result],
@@ -188,12 +214,12 @@ immediate layouts model ty=case ty of
     _->Nothing
 
 parameterProduct :: ProductParameters -> String -> [String] -> Int -> Maybe Shape
-parameterProduct (ProductParameters layouts model table _ _ _) name params index=do
+parameterProduct (ProductParameters layouts model table _ _ _ _) name params index=do
   (checked,types)<-M.lookup name table
   if params/=checked then Nothing else M.lookup index types >>= fmap fst . immediate layouts model
 
 variantResults :: Prog -> ProductParameters -> M.Map String VariantLayout
-variantResults program (ProductParameters _ _ _ results _ _)=matching program results
+variantResults program (ProductParameters _ _ _ results _ _ _)=matching program results
 
 matching :: Prog -> Entries a -> M.Map String a
 matching program=M.mapMaybeWithKey select
@@ -210,17 +236,17 @@ storageLists program facts=(M.mapMaybe onlyList ps,M.mapMaybe getReader rs)
     getReader (i,layout)=fmap ((,) i) (onlyList layout)
 
 storagePlans :: Prog -> ProductParameters -> (M.Map String StorageLayout,M.Map String (Int,StorageLayout))
-storagePlans program (ProductParameters _ _ _ _ producers readers)=
+storagePlans program (ProductParameters _ _ _ _ producers readers _)=
   let owned=matching program producers in (owned,if M.null owned then M.empty else matching program readers)
 
 withoutVariantResults :: ProductParameters -> ProductParameters
-withoutVariantResults (ProductParameters layouts model table _ _ _)=ProductParameters layouts model table M.empty M.empty M.empty
+withoutVariantResults (ProductParameters layouts model table _ _ _ kinds)=ProductParameters layouts model table M.empty M.empty M.empty kinds
 
 -- Only the pass performing alpha-renaming may transport original interfaces.
 renameProductParameters :: M.Map String ([String],[String]) -> ProductParameters -> ProductParameters
-renameProductParameters renames (ProductParameters layouts model table results producers readers)=
+renameProductParameters renames (ProductParameters layouts model table results producers readers kinds)=
   ProductParameters layouts model (M.mapMaybeWithKey rename table) (M.mapMaybeWithKey rename results)
-    (M.mapMaybeWithKey rename producers) (M.mapMaybeWithKey rename readers)
+    (M.mapMaybeWithKey rename producers) (M.mapMaybeWithKey rename readers) (M.mapMaybeWithKey rename kinds)
   where
     rename name (ps,types)=do
       (old,new)<-M.lookup name renames
@@ -232,7 +258,7 @@ renameProductParameters renames (ProductParameters layouts model table results p
 -- selected constructor's field types. Heuristic steps without checked shape
 -- evidence may transport untouched parameters, but cannot invent field types.
 expandProductParameter :: String -> [String] -> String -> [String] -> Int -> Shape -> ProductParameters -> ProductParameters
-expandProductParameter source old target new index shape@(_,_,width) evidence@(ProductParameters layouts model table results producers readers)=
+expandProductParameter source old target new index shape@(_,_,width) evidence@(ProductParameters layouts model table results producers readers kinds)=
   case M.lookup source table of
     Just (checked,types)
       | checked==old,index>=0,index<length old,width>0,
@@ -249,7 +275,7 @@ expandProductParameter source old target new index shape@(_,_,width) evidence@(P
           in case selected of
             Just (actual,_) | actual/=shape->evidence
             _ | M.null next->evidence
-              | otherwise->ProductParameters layouts model (M.insert target (new,next) table) results producers readers
+              | otherwise->ProductParameters layouts model (M.insert target (new,next) table) results producers readers kinds
     _->evidence
 
 -- Hash all latent representation dependencies, not an eagerly instantiated
@@ -257,7 +283,7 @@ expandProductParameter source old target new index shape@(_,_,width) evidence@(P
 -- expanding recursive fields keep a finite key. Unknown variables normalize
 -- identically; unrelated root declarations do not invalidate this artifact.
 productParameterKey :: Prog -> ProductParameters -> String
-productParameterKey program facts@(ProductParameters layouts model table _ _ _)=show (selected,definitions,records,tuples,variantResults program facts,storagePlans program facts)
+productParameterKey program facts@(ProductParameters layouts model table _ _ _ _)=show (selected,definitions,records,tuples,variantResults program facts,storagePlans program facts)
   where
     selected=M.mapMaybeWithKey (\name (ps,types)->case M.lookup name program of
       Just (qs,_) | ps==qs->Just (M.map (mapVariables (const (TV (-1)))) types)
