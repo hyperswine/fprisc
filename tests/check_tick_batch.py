@@ -2,8 +2,9 @@
 """Batched fuel ticks in self-looping functions (FPR_NO_TICK_BATCH=1 rolls back).
 
 A function that calls itself keeps one entry tick per iteration; the entry
-ticks of callees inlined into its body are dropped (Core.Opt.Ticks; scalar
-workers use the same rule via Workers.batchTicks). Checks: identical output
+ticks of callees inlined into its body are dropped after lowering
+(Codegen.Placement, since 2026-11-07; before that Core.Opt.Ticks on erased
+Core, with the scalar workers applying the same rule). Checks: identical output
 with batching on and off on the unbox benchmarks; the fused list_sum scalar
 worker and the non-worker fused list_filter loop emit one tick on RV64 batched
 and more unbatched; and a child spinning in a batched worker is still

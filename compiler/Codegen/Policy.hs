@@ -31,6 +31,7 @@ data StackPolicy
 data Policy = Policy
   { polProfile :: Profile,
     polFuel :: Bool, -- the entry fuel tick and every inlined `$fuel` tick are emitted
+    polTickBatch :: Bool, -- a recursive function with a bounded body drops its inlined callees' ticks (Codegen.Placement; FPR_NO_TICK_BATCH=1 keeps every tick)
     polStackCheck :: StackPolicy,
     polFloatInline :: Bool, -- F64 + - * / and comparisons inline on the 64-bit word (FPR_NO_F64_INLINE=1 keeps the runtime calls, for differential checks)
     polLoopMotion :: Bool, -- move total register invariants to existing loop preheaders
@@ -64,7 +65,7 @@ registerBudget = \case
   _ -> Nothing
 
 m2Policy :: Policy
-m2Policy = Policy HostedBase True StackCheckEveryEntry True False False False True True True True True True Nothing
+m2Policy = Policy HostedBase True True StackCheckEveryEntry True False False False True True True True True True Nothing
 
 profileName :: Profile -> String
 profileName = \case

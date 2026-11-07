@@ -117,7 +117,7 @@ main=do
       productProg=M.insert "main" ([],CApp (CVar "getCell") (CMk cellTid cellVariant [CInt 7])) (R.programCore productsInput)
       shape name=parameterProduct products name (fst (productProg M.! name)) 0
       Just (cellTid,cellVariant,1)=shape "getCell"
-      optimize facts p=let (q,_,_)=workerizeWithProducts facts True True False False p in q
+      optimize facts p=let (q,_,_)=workerizeWithProducts facts True True False p in q
       productOut=optimize products productProg
       evaluate p argument=let (ir,_)=Lower.lowerProgram m2Policy M.empty p p M.empty M.empty
         in Eval.ocResult (Eval.evalProgram ir "getCell" [argument])

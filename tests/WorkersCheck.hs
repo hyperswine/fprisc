@@ -23,7 +23,7 @@ main = do
   let escape=M.insert "loop" (["n","p"],CIf (app "==" [v "n",CInt 0]) (v "p") (snd loop)) p
   check "whole value returned at exit gets a scalar worker"
     (M.member "$worker.fields.loop" (fst (workerize True False escape)))
-  let (escapeOff,_,_)=workerizeWithOptions True False False False escape
+  let (escapeOff,_,_)=workerizeWithOptions True False False escape
   check "whole return scalarization respects tuple opt-out"
     (not (M.member "$worker.fields.loop" escapeOff))
   let forward=(["n","p"],CIf (app "<" [v "n",CInt 0]) (v "p") (app "loop" [v "n",v "p"]))
@@ -192,8 +192,8 @@ main = do
           (CIf (CTagEq 4 0 (v "p")) (CProj 0 (v "p")) (CErr "shape"))
           (app "loop" [app "-" [v "n",CInt 1],stepArg]))
       stepProg=M.fromList [("loop",stepLoop),("main",([],app "loop" [CInt 10,pair (CInt 0) (CInt 1)]))]
-      (stepOn,_,stepSigsOn)=workerizeWithOptions True True True True stepProg
-      (stepOff,_,stepSigsOff)=workerizeWithOptions True False True True stepProg
+      (stepOn,_,stepSigsOn)=workerizeWithOptions True True True stepProg
+      (stepOff,_,stepSigsOff)=workerizeWithOptions True False True stepProg
   check "inlined step tuple loop unboxes to field and scalar workers"
     (M.member "$worker.fields.loop" stepOn && M.member "$worker.scalar.$worker.fields.loop" stepSigsOn)
   check "FPR_NO_TUPLE_SCALARS disables constructor-tree field worker"
@@ -203,7 +203,7 @@ main = do
           (CIf (CTagEq 4 0 (v "p")) (CProj 0 (v "p")) (CErr "shape"))
           (CLet "next" stepArg (app "loop" [app "-" [v "n",CInt 1],v "next"])))
       letProg=M.fromList [("loop",letLoop)]
-      (letOn,_,letSigsOn)=workerizeWithOptions True True True True letProg
+      (letOn,_,letSigsOn)=workerizeWithOptions True True True letProg
   check "let-bound next-state tuple unboxes to field and scalar workers"
     (M.member "$worker.fields.loop" letOn && M.member "$worker.scalar.$worker.fields.loop" letSigsOn)
   let branchLoop=(["n","p"],
@@ -211,7 +211,7 @@ main = do
           (CIf (CTagEq 4 0 (v "p")) (CProj 0 (v "p")) (CErr "shape"))
           (app "loop" [app "-" [v "n",CInt 1],
             CIf (app ">" [v "n",CInt 5]) stepArg (v "p")]))
-      (branchOn,_,branchSigsOn)=workerizeWithOptions True True True True (M.fromList [("loop",branchLoop)])
+      (branchOn,_,branchSigsOn)=workerizeWithOptions True True True (M.fromList [("loop",branchLoop)])
   check "conditional branch forwarding tuple parameter unboxes"
     (M.member "$worker.fields.loop" branchOn && M.member "$worker.scalar.$worker.fields.loop" branchSigsOn)
   let twoTupleLoop=(["n","p","q"],
@@ -225,7 +225,7 @@ main = do
             [ app "-" [v "n",CInt 1]
             , CIf (CTagEq 4 0 (v "p")) (pair (CProj 1 (v "p")) (app "+" [CProj 0 (v "p"),CProj 1 (v "p")])) (CErr "shape")
             , CIf (CTagEq 4 0 (v "q")) (pair (CProj 1 (v "q")) (app "+" [CProj 0 (v "q"),CInt 1])) (CErr "shape") ]))
-      (twoOn,_,twoSigsOn)=workerizeWithOptions True True True True (M.fromList [("loop2",twoTupleLoop)])
+      (twoOn,_,twoSigsOn)=workerizeWithOptions True True True (M.fromList [("loop2",twoTupleLoop)])
   check "multi-tuple loop unboxes both tuple parameters to scalar worker"
     (M.member "$worker.fields.$worker.fields.loop2" twoOn
       && M.member "$worker.scalar.$worker.fields.$worker.fields.loop2" twoSigsOn)

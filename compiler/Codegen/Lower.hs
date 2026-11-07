@@ -17,6 +17,7 @@ module Codegen.Lower (lowerFn, lowerProgram, Reason, Prim (..)) where
 
 import Codegen.IR
 import Codegen.LoopForm (formSelfLoop)
+import Codegen.Placement (placeTicks)
 import Core.Primitives (entryTickName)
 import Codegen.Policy
 import qualified Codegen.VectorRead as ScalarVector
@@ -261,7 +262,7 @@ lowerFn policy sigs prog ext hal name (params, body)
   | length ptys /= length params = Left "worker representation metadata has the wrong arity"
   | otherwise = do
       result <- evalStateT (runExceptT go) (St 0 0 Nothing [])
-      either (const (Left "internal: uncaught terminated function")) (Right . formSelfLoop policy) result
+      either (const (Left "internal: uncaught terminated function")) (Right . placeTicks policy . formSelfLoop policy) result
   where
     (ptys, rty0) = M.findWithDefault (map (const TVal) params, TVal) name sigs
     rty = maybe rty0 TProduct (productWorkerWidth name)

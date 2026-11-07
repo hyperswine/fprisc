@@ -8,7 +8,6 @@ module Core.Opt.Pipeline
 import Core.Syntax
 import Core.Opt.Fusion (fuseCompatibilityWithImports)
 import Core.Opt.Normalize (normIn)
-import Core.Opt.Ticks (batchProgramTicks)
 import Core.Opt.PairReturns (productReturnProgramWithVariants)
 import Workers (ScalarSignatures, workerizeWithProducts, internalWorker)
 import Core.Opt.StoredLists (storeLists)
@@ -20,13 +19,13 @@ import qualified Data.Set as S
 
 data OptimizationOptions = OptimizationOptions
   { optFusion :: Bool, optWorkers :: Bool, optFieldWorkers :: Bool, optTupleScalars :: Bool,
-    optScalarWorkers :: Bool, optTickBatch :: Bool, optPairReturns :: Bool, optProductWidth :: Int, optNormalize :: Bool, optReuse :: Bool,
+    optScalarWorkers :: Bool, optPairReturns :: Bool, optProductWidth :: Int, optNormalize :: Bool, optReuse :: Bool,
     -- known pool resetters beyond this program and its imports (the linked
     -- program's, Reuse.poolResetters): reuse never spans a call to one
     optPoolResetters :: S.Set Name }
   deriving (Eq, Show)
 
-data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | BatchTicks | PairReturns
+data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | PairReturns
   deriving (Eq, Show)
 
 data PassReport = PassReport
@@ -59,7 +58,7 @@ optimizeCoreWithProducts :: ProductParameters -> S.Set Name -> Prog -> Optimizat
 optimizeCoreWithProducts products checked imports opts elide input = do
   verifyPassResult input input M.empty
   foldM run (OptimizedCore input M.empty [])
-    [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BatchTicks, PairReturns]
+    [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, PairReturns]
   where
     run state pass = do
       let before = optimizedProgram state
@@ -68,7 +67,7 @@ optimizeCoreWithProducts products checked imports opts elide input = do
                            in (p,optimizedSignatures state,ns,optFusion opts)
             MakeWorkers -> let fields = optWorkers opts && optFieldWorkers opts
                                scalars = optWorkers opts && optScalarWorkers opts
-                               (p,ns,ss) = workerizeWithProducts products fields (optTupleScalars opts) scalars (optTickBatch opts) before
+                               (p,ns,ss) = workerizeWithProducts products fields (optTupleScalars opts) scalars before
                            in (p,ss,ns,fields || scalars)
             NormalizeForReuse ->
               let enabled = optReuse opts && optNormalize opts
@@ -76,9 +75,6 @@ optimizeCoreWithProducts products checked imports opts elide input = do
               in (p,optimizedSignatures state,[],enabled)
             ReuseConstructors -> let (p,ns) = if optReuse opts then reuseProgram (optPoolResetters opts `S.union` poolResetters (M.union before imports)) elide before else (before,[])
                                  in (p,optimizedSignatures state,ns,optReuse opts)
-            -- Typed TRMC workers already exist here and get their inlined ticks batched too.
-            BatchTicks -> let (p,ns) = if optTickBatch opts then batchProgramTicks before else (before,[])
-                          in (p,optimizedSignatures state,ns,optTickBatch opts)
             -- after every pass that reads call results: the twins are the last functions made
             PairReturns
               | optPairReturns opts ->

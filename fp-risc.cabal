@@ -65,7 +65,6 @@ library
       Core.Opt.Vector.Plan
       Core.Opt.Pipeline
       Core.Opt.ProductParameters
-      Core.Opt.Ticks
       Core.Opt.PairReturns
       Core.Opt.StoredLists
       Core.Opt.VariantReturns
@@ -218,6 +217,7 @@ library
       Codegen.LoopOptimize
       Codegen.StringScan
       Codegen.LoopForm
+      Codegen.Placement
       Codegen.Pressure
       Compiler.VectorOperation
       Compiler.Trap
@@ -495,6 +495,11 @@ test-suite LoopForm
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            LoopForm.hs
+
+test-suite Placement
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            Placement.hs
 
 test-suite TypedLayouts
   import:             unit-test

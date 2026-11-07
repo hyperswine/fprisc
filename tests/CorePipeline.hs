@@ -20,7 +20,7 @@ app n = foldl CApp (CVar n)
 right = either error id
 failed (Left _) = True
 failed _ = False
-none = OptimizationOptions False False False False False False False 2 False False S.empty
+none = OptimizationOptions False False False False False False 2 False False S.empty
 
 main = do
   checkExports
@@ -37,8 +37,8 @@ main = do
   check "worker ABI retained through normalization and reuse" (M.lookup worker sigs==Just ([KI,KI],KI))
   check "public entry retained" (fst (optimizedProgram result M.! "sum")==["n","a"])
   check "named pass order" (map passName (optimizationReports result)==
-    [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,BatchTicks,PairReturns])
-  check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False,False])
+    [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,PairReturns])
+  check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False])
   check "missing function refused" (failed (verifyPassResult source M.empty M.empty))
   check "entry arity drift refused" (failed (verifyPassResult source (M.singleton "sum" (["n"],CInt 0)) M.empty))
   check "duplicate parameters refused" (failed (optimizeCore none S.empty (M.singleton "f" (["x","x"],v "x"))))
@@ -52,26 +52,7 @@ main = do
   check "reuse opt-out retains Core" (optimizedProgram disabled==aliases)
   check "reuse input is normalized" (snd (optimizedProgram normalized M.! "entry")==v "x")
   check "disabled worker diagnostic retained" (optimizationNotes disabled==["# private workers: fields=0 scalar=0"])
-  -- A self-looping function keeps one tick per iteration: the entry ticks of
-  -- callees inlined into its body are dropped. Non-looping functions and the
-  -- rollback keep theirs.
-  let tick=CApp (CVar entryTickName) (CInt 0)
-      ticked b=CLet "$inlined.tick" tick b
-      loopDef=(["n","a"],CIf (app "==" [v "n",CInt 0]) (v "a")
-        (ticked (app "loop" [app "-" [v "n",CInt 1],CMk 2 1 [ticked (v "n"),v "a"]])))
-      helperDef=(["n"],ticked (app "+" [v "n",CInt 1]))
-      shadowLoopDef=(["shadowLoop","x"],ticked (app "shadowLoop" [v "x"]))
-      tickInput=M.fromList [("loop",loopDef),("helper",helperDef),("shadowLoop",shadowLoopDef)]
-      tickOnResult=right (optimizeCore (none {optTickBatch=True}) S.empty tickInput)
-      tickOn=optimizedProgram tickOnResult
-      tickOff=optimizedProgram (right (optimizeCore none S.empty tickInput))
-      hasTick name p=case M.lookup name p of Just (_,b)->"$fuel" `isInfixOf` show b; Nothing->False
-  check "self-looping function batches inlined entry ticks including inside CMk" (not (hasTick "loop" tickOn))
-  check "non-looping function keeps its inlined entry tick" (hasTick "helper" tickOn)
-  check "shadowed parameter does not trigger self-loop tick batching" (hasTick "shadowLoop" tickOn)
-  check "tick batching rollback keeps inlined entry ticks" (hasTick "loop" tickOff)
-  check "tick batching reports its decision"
-    ("# tick batching: self-loops=1 batched=1" `elem` optimizationNotes tickOnResult)
+  -- Batched fuel ticks are decided after lowering (Codegen.Placement, tests/Placement.hs).
   -- A pair answered to a caller that only decides its shape and reads its
   -- fields is answered in two registers (the $worker.ret2 twin).
   let pairF=(["n"],CIf (app "==" [v "n",CInt 0]) (CMk 4 0 [CInt 0,CInt 0])
