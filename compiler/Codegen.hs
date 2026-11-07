@@ -78,7 +78,6 @@ data Target = Target
     tgtScalarFast :: Bool, -- normalize Core and enable private scalar workers
     tgtIndexedMemory :: Bool, -- fuse private manual Addr.add/access/release
     tgtScalarWorkers :: Bool,
-    tgtTickBatch :: Bool,
     tgtPairReturns :: Bool, -- Core.Opt.PairReturns: a pair answered in two registers
     tgtFieldWorkers :: Bool,
     tgtTupleScalars :: Bool,
@@ -125,7 +124,7 @@ data Emission = Emission
 rv64, rv32 :: Target
 rv64 = Target {tgtW=8,tgtName="rv64",tgtFuel=True,tgtArc=False,tgtWeak=False,tgtHeapProof=False,tgtStackReport=False,
   tgtSimd=False,tgtFusion=True,tgtFloatInline=True,tgtScalarFast=True,tgtIndexedMemory=True,
-  tgtScalarWorkers=True,tgtTickBatch=True,tgtPairReturns=True,tgtFieldWorkers=True,tgtTupleScalars=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
+  tgtScalarWorkers=True,tgtPairReturns=True,tgtFieldWorkers=True,tgtTupleScalars=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
   tgtTypedIr=Nothing,tgtHal=M.empty,tgtPolicy=m2Policy,
   tgtNative=Just (defaultMode (DirectRV (policyWidth m2Policy) RV.HartTp))}
 rv32 = rv64 {tgtW=4,tgtName="rv32",tgtFloatInline=False,
@@ -362,7 +361,6 @@ emitProductProgramWithImports products checked imports tgt rvv spec exports ext 
           optFieldWorkers = tgtFieldWorkers tgt,
           optTupleScalars = tgtTupleScalars tgt,
           optScalarWorkers = tgtScalarWorkers tgt,
-          optTickBatch = tgtTickBatch tgt,
           optPairReturns = tgtPairReturns tgt && tgtW tgt == 8 && not (tgtArc tgt) && polProfile (tgtPolicy tgt) == HostedBase && productBackendWidth (tgtNative tgt >>= nmBackend) >= 2,
           optProductWidth = productBackendWidth (tgtNative tgt >>= nmBackend),
           optNormalize = tgtScalarFast tgt,

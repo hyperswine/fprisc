@@ -555,7 +555,7 @@ main = do
         (CLet "alias" (var "b") (app "==" [var "alias",CMk 1 1 []]))
         (app "boolEq" [app "-" [var "n",CInt 1],var "b"]))
   mapM_ (\def -> do
-    let (p,_,sigs) = workerizeWithSignatures False True True (M.singleton "mixed" def)
+    let (p,_,sigs) = workerizeWithSignatures False True (M.singleton "mixed" def)
         (ir,declined) = lowerProgram m2Policy sigs p p M.empty M.empty
     check "producer preserves mixed parameter order" (M.lookup "$worker.scalar.mixed" sigs == Just ([KI,KB],KI))
     check "mixed worker and wrapper both lower" (null declined && M.size ir == 2)
@@ -563,7 +563,7 @@ main = do
     check "mixed worker true" (ocResult (evalProgram ir "mixed" [RInt 2,rvBool True]) == Right (RInt 1))
     check "mixed worker false" (ocResult (evalProgram ir "mixed" [RInt 2,rvBool False]) == Right (RInt 2)))
     [mixed "z" "a", mixed "a" "z"]
-  let (bp,_,bsigs) = workerizeWithSignatures False True True (M.singleton "boolEq" boolEq)
+  let (bp,_,bsigs) = workerizeWithSignatures False True (M.singleton "boolEq" boolEq)
       (bir,bfail) = lowerProgram m2Policy bsigs bp bp M.empty M.empty
       (_,missing) = lowerProgram m2Policy M.empty bp bp M.empty M.empty
   check "Bool equality signature from producer" (M.lookup "$worker.scalar.boolEq" bsigs == Just ([KI,KB],KB))

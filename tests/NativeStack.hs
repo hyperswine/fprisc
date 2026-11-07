@@ -109,7 +109,7 @@ nativeChecks = do
   let builtin=m2Policy {polProfile=Builtin,polFuel=False,polStackCheck=StackStatic}
       exported=S.fromList (map fnName fixtures)
       targets=
-        [("a64",W64,A.emitFnA64 (A.A64Config MachO A.HartX28 m2Policy exported False False False False False False noTune),0),
+        [("a64",W64,A.emitFnA64 (A.A64Config MachO A.HartX28 m2Policy exported False False False False noTune),0),
          ("x64",W64,X.emitFnX64 (X.X64Config m2Policy exported False False False noTune X.HartTls),8),
          ("rv64",W64,R.emitFnRV (R.RVConfig W64 builtin R.HartTp exported False False),0),
          ("rv32",W32,R.emitFnRV (R.RVConfig W32 builtin {polProfile=Builtin32} R.HartTp exported False False),0)]

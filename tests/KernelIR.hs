@@ -24,7 +24,7 @@ main = do
          ("inc",(["c","x"],app "+" [CVar "x",CVar "c"])),
          ("map",(["c","v"],app "Vec.map" [app "inc" [CVar "c"],CVar "v"]))]
   forM_ [DirectA64 ELF HartX28, DirectX64 ELF, DirectX64 MachO, DirectRV W64 HartTp, DirectRV W32 HartTp] $ \backend -> do
-    let mode = NativeMode WholeUnit StrictOff "kernel-probe" (Just backend) False noTune False True
+    let mode = NativeMode WholeUnit StrictOff "kernel-probe" (Just backend) False noTune False True False
         base = case backend of DirectRV W32 _ -> rv32 {tgtPolicy=m2Policy {polProfile=Rv32}}; _ -> rv64
         target = base {tgtNative=Just mode}
         out = emitProgramWith target False True [] M.empty S.empty S.empty program
