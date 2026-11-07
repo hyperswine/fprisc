@@ -1,6 +1,9 @@
 #!/usr/bin/env -S fpr run
+
 # Same counts, formatting and error behavior as ../wc.fpr.
+
 profile base.
+
 File = use "std/file".
 List = use "std/list".
 String = use "std/string".
@@ -14,7 +17,9 @@ counted path (Err why) = Program.writeError "wc: {path}: {why}".
 counts text = (text |> String.lines |> List.length,
                text |> String.words |> List.length,
                String.length text).
+
 row path (lines, words, bytes) = "{column 8 lines}{column 8 words}{column 9 bytes} {path}".
+
 column : (width : Int | width > 0) -> Int -> String .
 column width n = n |> String.fromInt |> String.padLeft width " ".
 
