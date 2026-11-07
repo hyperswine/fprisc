@@ -11,6 +11,8 @@ the main assertion. On top of that:
 
   - fib's worker (fib : Int -> Int) must agree;
   - across the corpus, agreed must be non-zero for each target;
+  - scalar_pass_through's two pass-through loops are admitted by the checked
+    kinds alone (slice 4: checked_only >= 2);
   - no worker may be unchecked (slice 3: field workers carry their source's
     checked kinds); the note names any unchecked function.
 """
@@ -52,6 +54,9 @@ def main():
                     print(f'FAIL {e["id"]} ({target or "host"}): unchecked workers: {", ".join(names)}')
                     bad += 1
                 grand = [grand[0] + a, grand[1] + g, grand[2] + u, grand[3] + c]
+                if e['id'] == 'scalar_pass_through' and c < 2:
+                    print(f'FAIL scalar_pass_through ({target or "host"}): hold and relay need checked-only workers (checked_only={c})')
+                    bad += 1
                 if e['id'] == 'fib' and a < 1:
                     print(f'FAIL fib ({target or "host"}): its Int -> Int worker did not agree (agreed={a} guarded={g} unchecked={u})')
                     bad += 1

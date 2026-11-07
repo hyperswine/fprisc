@@ -176,6 +176,14 @@
       },
       "positive_for": ["typed.listfusion"],
       "negative_fixtures": ["tests/pipeline/check_policy_decisions.py", "tests/reliability/list_fusion_random.py"]
+    },
+    {
+      "id": "scalar_pass_through",
+      "category": "recursion",
+      "source": "tests/pipeline/scalar_pass_through.fpr",
+      "expect": { "stdout": "30000007 60000000 90000000 False\n", "exit": 0 },
+      "positive_for": ["erased.workers"],
+      "negative_fixtures": ["tests/check_signature_bridge.py", "tests/CorePipeline.hs"]
     }
   ]
 }

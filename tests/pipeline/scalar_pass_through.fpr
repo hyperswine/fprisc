@@ -1,0 +1,12 @@
+# Scalar workers whose signature only the checked types give (P2 bridge
+# slice 4): hold's k and relay's flag are only passed along, so KernelKinds
+# cannot infer them. count and carry use every parameter and are controls.
+count : unsafe Int -> Int -> Int -> Int .
+count i acc k = if i == 0 then acc + k else count (i - 1) (acc + 1) k.
+carry : unsafe Int -> Int -> Bool -> Int .
+carry i acc flag = if i == 0 then (if flag then acc else 0) else carry (i - 1) (acc + 2) flag.
+hold : unsafe Int -> Int -> Int -> Int .
+hold i k acc = if i == 0 then acc else hold (i - 1) k (acc + 3).
+relay : unsafe Int -> Int -> Bool -> Bool .
+relay i acc flag = if i == 0 then flag else relay (i - 1) (acc + 1) flag.
+main = print "{count 30000000 0 7} {carry 30000000 0 True} {hold 30000000 5 0} {relay 30000000 0 False}".

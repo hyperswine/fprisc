@@ -1,6 +1,6 @@
 -- Kinds of the raw-word callback ABI, solved independently for every argument
 -- and result. Conflicts/unsupported Core decline to the ordinary tagged path.
-module KernelKinds (Kind(..), signature, signatureStrict, componentSignatures) where
+module KernelKinds (Kind(..), signature, signatureStrict, componentSignatures, verifyComponent) where
 import Core.Syntax (Core(..), Prog)
 import Control.Monad.State.Strict
 import Control.Monad (guard, zipWithM_)
@@ -105,3 +105,18 @@ componentSignatures prog names imports = evalStateT solve (Solve 0 M.empty known
       pure (M.fromList (zip names kinds))
     concrete (args,result) = (,) <$> traverse kind args <*> kind result
     kind t = resolve t >>= \r -> case r of Known k -> pure k; Var _ -> lift Nothing
+
+-- Check given signatures for one component instead of inferring them: every
+-- member body must type under its own signature, with callees inside the
+-- component and imports fixed. A position the body never constrains (a
+-- parameter only passed along) is accepted, which inference cannot do.
+verifyComponent :: Prog -> M.Map String ([Kind],Kind) -> M.Map String ([Kind],Kind) -> Bool
+verifyComponent prog sigs imports = maybe False (const True) (evalStateT check (Solve 0 M.empty known))
+  where
+    known = M.map (\(args,result) -> (map Known args,Known result)) (M.union sigs imports)
+    check = mapM_ member (M.toList sigs)
+    member (f,(ks,r)) = do
+      (ps,b) <- lift (M.lookup f prog)
+      guard (length ps == length ks)
+      actual <- expr True prog (M.fromList (zip ps (map Known ks))) b
+      unify actual (Known r)

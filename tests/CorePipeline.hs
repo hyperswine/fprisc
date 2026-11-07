@@ -52,14 +52,20 @@ main = do
   check "bridge: a disagreement stops the compile" (case conflict of
     Left (ErrorCall msg) -> "signature bridge" `isInfixOf` msg
     Right _ -> False)
-  -- n is returned and passed along but never constrained: KernelKinds declines
-  -- the loop, the checked Int signature admits it. Slice 2 keeps code shape:
-  -- counted, not admitted.
+  -- n is returned and passed along but never constrained: KernelKinds cannot
+  -- infer the loop, the checked Int signature admits it once KernelKinds
+  -- verifies the body under it (slice 4).
   let carryBody=CIf (app "==" [v "k",CInt 0]) (v "n") (app "carry" [v "n",app "-" [v "k",CInt 1]])
       carry=M.singleton "carry" (["n","k"],carryBody)
       carried=bridge [("carry",([Just KI,Just KI],Just KI))] carry
   check "bridge: a checked-only component is counted" (counts carried==(0,0,0,1))
-  check "bridge: a checked-only component gets no worker yet" (M.null (sigsOf carried))
+  check "bridge: a checked-only component gets its worker" (M.lookup "$worker.scalar.carry" (sigsOf carried)==Just ([KI,KI],KI))
+  check "bridge: a pass-through Bool is admitted" (counts (bridge [("carry",([Just KB,Just KI],Just KB))] carry)==(0,0,0,1))
+  -- n is returned, so a checked Int result with a Bool n cannot be verified
+  unverified <- try (evaluate (checkedOnly (let (_,_,a)=bridge [("carry",([Just KB,Just KI],Just KI))] carry in a)))
+  check "bridge: checked kinds the body contradicts stop the compile" (case unverified of
+    Left (ErrorCall msg) -> "cannot verify" `isInfixOf` msg
+    Right _ -> False)
   check "named pass order" (map passName (optimizationReports result)==
     [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,PairReturns])
   check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False])

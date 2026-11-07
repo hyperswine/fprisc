@@ -7,7 +7,7 @@ import Codegen.IR (arityCeiling)
 import Core.Primitives (scalarPrimitives, entryTickName)
 import Core.Syntax (Core(..), Prog)
 import Core.Opt.ProductParameters
-import KernelKinds (Kind(..), componentSignatures)
+import KernelKinds (Kind(..), componentSignatures, verifyComponent)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (foldl',intercalate,isPrefixOf,sortOn)
@@ -225,9 +225,9 @@ workerizeWithProducts products fields tupleScalars scalars prog =
 --               agree with every checked raw position; the wrapper's runtime
 --               test still selects the general body (semantic policy Rule 2);
 --   unchecked   no checked interface: KernelKinds' solution is used;
---   checkedOnly the checked kinds admit a component KernelKinds declines. Not
---               admitted in this slice, so generated code keeps its shape
---               (the roadmap reviews representation changes separately).
+--   checkedOnly the checked kinds admit a component KernelKinds cannot infer
+--               (a parameter only passed along). Admitted since slice 4 once
+--               KernelKinds verifies every member body under them.
 -- A disagreement on a checked raw position stops the compile.
 -- uncheckedNames lists the unchecked functions, so the bridge note shows which
 -- source functions still rely on KernelKinds alone.
@@ -646,7 +646,13 @@ scalarWorkers checked prog = (M.union wrapped workers,M.mapKeys worker chosen,br
             | sigs == ks -> (M.union sigs known, b { agreed = agreed b + M.size sigs })
             | otherwise -> error ("signature bridge: KernelKinds solved " ++ show ks
                                   ++ " but the checked interfaces say " ++ show sigs)
-          (Just sigs, Nothing) -> (known, b { checkedOnly = checkedOnly b + M.size sigs })
+          -- Slice 4: the checked kinds admit what inference declines (a
+          -- parameter only passed along), once KernelKinds verifies every
+          -- member body under them.
+          (Just sigs, Nothing)
+            | verifyComponent prog sigs imports -> (M.union sigs known, b { checkedOnly = checkedOnly b + M.size sigs })
+            | otherwise -> error ("signature bridge: the checked interfaces say " ++ show sigs
+                                  ++ " but KernelKinds cannot verify the bodies under them")
           (Nothing, Just ks) -> case traverse (uncurry (agreeWith checked)) (M.toList ks) of
             Left err -> error err
             Right _

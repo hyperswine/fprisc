@@ -278,6 +278,8 @@ the raw `-O2` numbers.
    them the scalar worker authority and part of cache identity, with
    `KernelKinds` as the assertion, still with no code change. Slice 3 gave
    the field-pass workers their source's checked kinds: no unchecked worker
-   remains in the corpus or sweep.
+   remains in the corpus or sweep. Slice 4 admits components only the checked
+   kinds can type (pass-through parameters), verified by
+   `KernelKinds.verifyComponent`.
 3. P6 composed-work report from `Codegen.Placement`, in parallel.
 4. P1 checked summary schema with its first range/result-size consumer.

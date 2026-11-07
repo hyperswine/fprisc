@@ -144,12 +144,59 @@ sweep totals depend on cache state. Slice 2's "agreed 36" came from a
 differently warmed cache and is not comparable; the slice 2 column above was
 rerun from 902db56 with a fresh cache, the same way as slice 3.
 
+## Slice 4 (same day): checked kinds admit what inference cannot
+
+`KernelKinds` infers a kind for every position from how the body uses it. A
+parameter that is only passed along (`hold i k acc`, where `k` goes back into
+the recursive call unchanged) gives it nothing to infer from, so it declines
+the whole loop. The checked type says `Int`. Slice 2 counted these components
+as checked-only; slice 4 admits them.
+
+The assertion survives: `KernelKinds.verifyComponent` checks each member body
+under the checked signatures instead of inferring them. A position the body
+never constrains is accepted; a body that contradicts its checked signature
+(a Bool returned where the checked result is `Int`) stops the compile, as a
+disagreement does.
+
+Fixture: `tests/pipeline/scalar_pass_through.fpr` (corpus entry
+`scalar_pass_through`). `hold` passes an `Int` along, `relay` passes a `Bool`
+along and returns it; `count` and `carry` use every parameter and are
+controls. `tests/check_signature_bridge.py` requires checked_only >= 2 on it;
+`tests/CorePipeline.hs` covers admission, a pass-through Bool and the
+unverifiable case.
+
+### Evidence
+
+Reference: 6e1edab (slice 3), built in a separate worktree.
+
+| Check | Result |
+|---|---|
+| Unit suites | 42/42 |
+| Corpus, host and RV64 (21 entries) | agreed 9, checked_only 2, unchecked 0, guarded 0 |
+| Code on the 20 earlier entries vs `bench/pipeline-baseline.json` | identical |
+| Fixture output | identical (`30000007 60000000 90000000 False`) |
+| Overflow in `hold`'s worker | same trap, message and exit 1 |
+| `hold` alone, 3e8 iterations | 0.39 s -> 0.31 s (1.30 -> 1.03 ns per iteration) |
+| `relay` alone, 3e8 iterations | 0.39 s -> 0.31 s |
+| Cold sweep, 145 programs, both compilers | identical counts (agreed 56, checked_only 0) and identical asm size; same 6 compile failures |
+| QOS guishell | agreed 1 |
+| `make pipeline-baseline-check` (re-recorded, host + RV64) | 21 behaviour contracts hold |
+| Policy D1, D2 | PASS |
+
+No existing program in the sweep has a pass-through loop, so the change shows
+only on the fixture today.
+
+Counting method, corrected: each sweep program now compiles with its own
+output path and a fresh cache (`cold-one.sh` pattern: one directory per
+program). The earlier shared-output sweeps reused per-output unit sidecars and
+cache entries, so their totals (36, 16, 20, 44) depended on order and cache
+state and are not comparable to each other or to the 56 above. Assembly
+comparison was unaffected.
+
 ## Next slices
 
 1. ~~The unchecked workers~~: done in slice 3.
-2. **Admit checked-only components** as a separate, measured representation
-   change: corpus fixtures where `KernelKinds` declines, plus code and timing
-   evidence.
+2. ~~Admit checked-only components~~: done in slice 4.
 3. **`Core.Opt.Vector`'s `signature` call**, the other consumer, gets the same
    checked authority.
 4. **Remove `KernelKinds`** once no native path consumes it (the roadmap's P2
