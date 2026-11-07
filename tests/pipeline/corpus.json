@@ -184,6 +184,14 @@
       "expect": { "stdout": "30000007 60000000 90000000 False\n", "exit": 0 },
       "positive_for": ["erased.workers"],
       "negative_fixtures": ["tests/check_signature_bridge.py", "tests/CorePipeline.hs"]
+    },
+    {
+      "id": "vec_callback_kinds",
+      "category": "vector",
+      "source": "tests/pipeline/vec_callback_kinds.fpr",
+      "expect": { "stdout": "empty=0.5 picked=9999900 kept=0.75 total=4999950000\n", "exit": 0 },
+      "positive_for": ["lower"],
+      "negative_fixtures": ["tests/check_signature_bridge.py", "tests/CorePipeline.hs"]
     }
   ]
 }

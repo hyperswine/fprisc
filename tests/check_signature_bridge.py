@@ -13,6 +13,10 @@ the main assertion. On top of that:
   - across the corpus, agreed must be non-zero for each target;
   - scalar_pass_through's two pass-through loops are admitted by the checked
     kinds alone (slice 4: checked_only >= 2);
+  - vec_callback_kinds (host): the F64 callbacks that only move an argument
+    (pick, keepAcc, same) are planned with F64 kinds (kernels fold_pick and
+    wfold_keepAcc_same, control fold_add), read from the
+    `typed-ir-kernel: ... kinds=` notes (slice 5);
   - no worker may be unchecked (slice 3: field workers carry their source's
     checked kinds); the note names any unchecked function.
 """
@@ -41,6 +45,29 @@ def compile_counts(src, target, tmp, tag):
     return totals, names
 
 
+KERNEL = re.compile(r'typed-ir-kernel: fpr_vspec_(\w+) native kinds=(\S+)')
+# fold_pick: an F64 accumulator never read; wfold_keepAcc_same: map same fused
+# into fold keepAcc, neither constrains its argument; fold_add: the control
+VECTOR_KERNELS = ('fold_pick', 'wfold_keepAcc_same', 'fold_add')
+
+
+def check_vector_kinds(tmp):
+    env = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
+    env.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=str(tmp / 'c-vec'))
+    p = subprocess.run([str(ROOT / 'fpr'), 'compile', '--system=posix', 'tests/pipeline/vec_callback_kinds.fpr',
+                        str(tmp / 'vec.s')], cwd=ROOT, env=env, text=True, capture_output=True, timeout=600)
+    kinds = {m.group(1): m.group(2) for m in KERNEL.finditer(p.stdout + p.stderr)}
+    bad = 0
+    for f in VECTOR_KERNELS:
+        k = kinds.get(f)
+        if k is None or 'KI' in k:
+            print(f'FAIL vec_callback_kinds: {f} kernel kinds are {k!r}, expected F64 (KD) throughout')
+            bad += 1
+    if not bad:
+        print('vector callback kinds: ' + ', '.join(f'{f} {kinds[f]}' for f in VECTOR_KERNELS))
+    return bad
+
+
 def main():
     corpus = json.loads((ROOT / 'tests/pipeline/corpus.json').read_text())['entries']
     bad = 0
@@ -66,6 +93,7 @@ def main():
             if grand[0] == 0:
                 print(f'FAIL {name}: no worker signature agreed with a checked interface')
                 bad += 1
+        bad += check_vector_kinds(tmp)
     if bad:
         return 1
     print('signature bridge: KernelKinds agrees with every checked raw-word position: PASS')

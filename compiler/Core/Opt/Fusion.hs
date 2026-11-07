@@ -4,6 +4,7 @@ import Core.Utils
 import Core.Primitives (primArities)
 import Core.Analysis.FusionSafety
 import Core.Opt.Vector (nestPipelinesWithImports)
+import Core.Opt.ProductParameters (CheckedKinds)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (foldl', nub)
@@ -11,11 +12,11 @@ import Data.List (foldl', nub)
 -- Checked source already composed its callbacks before erasure. The remaining
 -- layout pipeline canonicalizer still consumes physical Core; only explicit
 -- compatibility owners may create erased callback composites here.
-fuseCompatibilityWithImports :: S.Set Name -> Prog -> Prog -> (Prog,[String])
-fuseCompatibilityWithImports checked imports source=
-  let planned=nestPipelinesWithImports imports source
+fuseCompatibilityWithImports :: CheckedKinds -> S.Set Name -> Prog -> Prog -> (Prog,[String])
+fuseCompatibilityWithImports kinds checked imports source=
+  let planned=nestPipelinesWithImports kinds imports source
       retained=M.restrictKeys planned checked
-      (changed,notes)=fuseVecFixWithImports (retained `M.union` imports) (M.withoutKeys planned checked)
+      (changed,notes)=fuseVecFixWithImports kinds (retained `M.union` imports) (M.withoutKeys planned checked)
   in (retained `M.union` changed,notes)
 
 -- run fusion to a FIXPOINT: a 3+ chain's outer pair fuses in round 1,
@@ -27,9 +28,9 @@ fuseCompatibilityWithImports checked imports source=
 -- is a backstop, not a budget: a chain of length n needs n-1 rounds
 -- and real programs stop far short of it.
 fuseVecFix :: Prog -> (Prog, [String])
-fuseVecFix=fuseVecFixWithImports M.empty
-fuseVecFixWithImports :: Prog -> Prog -> (Prog,[String])
-fuseVecFixWithImports imports prog = go (0 :: Int) (nestPipelinesWithImports imports prog)
+fuseVecFix=fuseVecFixWithImports M.empty M.empty
+fuseVecFixWithImports :: CheckedKinds -> Prog -> Prog -> (Prog,[String])
+fuseVecFixWithImports kinds imports prog = go (0 :: Int) (nestPipelinesWithImports kinds imports prog)
   where
     go r p
       | r >= 16 = (p, [])

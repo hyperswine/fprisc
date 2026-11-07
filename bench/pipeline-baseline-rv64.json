@@ -1,5 +1,5 @@
 {
- "compiler_sha256": "1c4112ab36ca4518168e9e12731ee5ad66be3ded6046607cb8de1c353fc75b30",
+ "compiler_sha256": "72f30480443b4cf171062bbacfb6327027afecfb96e3c146b61960bbfe03bbe4",
  "entries": {
   "byteloop": {
    "category": "byte-scan",
@@ -10,9 +10,9 @@
     "supercombinators": 5
    },
    "compile": {
-    "allocated_bytes": 2664688368,
-    "max_residency_bytes": 48002568,
-    "seconds": 1.323
+    "allocated_bytes": 2664782072,
+    "max_residency_bytes": 48002904,
+    "seconds": 1.23
    },
    "coverage": {
     "complete": true,
@@ -4073,9 +4073,9 @@
     "supercombinators": 2
    },
    "compile": {
-    "allocated_bytes": 1665259976,
-    "max_residency_bytes": 42177608,
-    "seconds": 0.858
+    "allocated_bytes": 1665327424,
+    "max_residency_bytes": 42182920,
+    "seconds": 0.797
    },
    "coverage": {
     "complete": true,
@@ -7174,9 +7174,9 @@
     "supercombinators": 2
    },
    "compile": {
-    "allocated_bytes": 1670785536,
-    "max_residency_bytes": 42077496,
-    "seconds": 0.857
+    "allocated_bytes": 1670848952,
+    "max_residency_bytes": 42060480,
+    "seconds": 0.806
    },
    "coverage": {
     "complete": true,
@@ -10287,9 +10287,9 @@
     "supercombinators": 5
    },
    "compile": {
-    "allocated_bytes": 2902464024,
-    "max_residency_bytes": 31782840,
-    "seconds": 1.501
+    "allocated_bytes": 2902572744,
+    "max_residency_bytes": 31779784,
+    "seconds": 1.448
    },
    "coverage": {
     "complete": true,
@@ -14988,9 +14988,9 @@
     "supercombinators": 9
    },
    "compile": {
-    "allocated_bytes": 1720079288,
-    "max_residency_bytes": 24348984,
-    "seconds": 0.876
+    "allocated_bytes": 1720154736,
+    "max_residency_bytes": 24346696,
+    "seconds": 0.894
    },
    "coverage": {
     "complete": true,
@@ -18160,9 +18160,9 @@
     "supercombinators": 4
    },
    "compile": {
-    "allocated_bytes": 1693253952,
-    "max_residency_bytes": 42235128,
-    "seconds": 0.864
+    "allocated_bytes": 1693323248,
+    "max_residency_bytes": 42211424,
+    "seconds": 0.847
    },
    "coverage": {
     "complete": true,
@@ -21323,9 +21323,9 @@
     "supercombinators": 8
    },
    "compile": {
-    "allocated_bytes": 2926874504,
-    "max_residency_bytes": 31910912,
-    "seconds": 1.517
+    "allocated_bytes": 2926981248,
+    "max_residency_bytes": 31908504,
+    "seconds": 1.421
    },
    "coverage": {
     "complete": true,
@@ -26055,9 +26055,9 @@
     "supercombinators": 7
    },
    "compile": {
-    "allocated_bytes": 2908988104,
-    "max_residency_bytes": 31804624,
-    "seconds": 1.525
+    "allocated_bytes": 2909151944,
+    "max_residency_bytes": 31818376,
+    "seconds": 1.405
    },
    "coverage": {
     "complete": true,
@@ -30777,9 +30777,9 @@
     "supercombinators": 4
    },
    "compile": {
-    "allocated_bytes": 2900432168,
-    "max_residency_bytes": 31774760,
-    "seconds": 1.477
+    "allocated_bytes": 2900540616,
+    "max_residency_bytes": 31784256,
+    "seconds": 1.463
    },
    "coverage": {
     "complete": true,
@@ -35469,9 +35469,9 @@
     "supercombinators": 8
    },
    "compile": {
-    "allocated_bytes": 2927588280,
-    "max_residency_bytes": 31880712,
-    "seconds": 1.509
+    "allocated_bytes": 2927699288,
+    "max_residency_bytes": 31876200,
+    "seconds": 1.449
    },
    "coverage": {
     "complete": true,
@@ -40211,9 +40211,9 @@
     "supercombinators": 3
    },
    "compile": {
-    "allocated_bytes": 1932101840,
-    "max_residency_bytes": 43104888,
-    "seconds": 0.969
+    "allocated_bytes": 1932173936,
+    "max_residency_bytes": 43095336,
+    "seconds": 0.9
    },
    "coverage": {
     "complete": true,
@@ -43473,9 +43473,9 @@
     "supercombinators": 5
    },
    "compile": {
-    "allocated_bytes": 1687489408,
-    "max_residency_bytes": 41918496,
-    "seconds": 0.858
+    "allocated_bytes": 1687561032,
+    "max_residency_bytes": 41912648,
+    "seconds": 0.793
    },
    "coverage": {
     "complete": true,
@@ -46615,9 +46615,9 @@
     "supercombinators": 7
    },
    "compile": {
-    "allocated_bytes": 1691596736,
-    "max_residency_bytes": 41905120,
-    "seconds": 0.869
+    "allocated_bytes": 1691676256,
+    "max_residency_bytes": 41883304,
+    "seconds": 0.84
    },
    "coverage": {
     "complete": true,
@@ -49767,9 +49767,9 @@
     "supercombinators": 5
    },
    "compile": {
-    "allocated_bytes": 1718469792,
-    "max_residency_bytes": 24165896,
-    "seconds": 0.869
+    "allocated_bytes": 1718537880,
+    "max_residency_bytes": 24188056,
+    "seconds": 0.844
    },
    "coverage": {
     "complete": true,
@@ -52938,9 +52938,9 @@
     "supercombinators": 5
    },
    "compile": {
-    "allocated_bytes": 1685613944,
-    "max_residency_bytes": 41930264,
-    "seconds": 0.853
+    "allocated_bytes": 1685681928,
+    "max_residency_bytes": 41922624,
+    "seconds": 0.833
    },
    "coverage": {
     "complete": true,
@@ -56080,9 +56080,9 @@
     "supercombinators": 3
    },
    "compile": {
-    "allocated_bytes": 1683346104,
-    "max_residency_bytes": 41950000,
-    "seconds": 0.85
+    "allocated_bytes": 1683394784,
+    "max_residency_bytes": 41967848,
+    "seconds": 0.83
    },
    "coverage": {
     "complete": true,
@@ -59191,9 +59191,9 @@
     "supercombinators": 6
    },
    "compile": {
-    "allocated_bytes": 1697972496,
-    "max_residency_bytes": 41824144,
-    "seconds": 0.859
+    "allocated_bytes": 1698044320,
+    "max_residency_bytes": 41835240,
+    "seconds": 0.808
    },
    "coverage": {
     "complete": true,
@@ -62332,9 +62332,9 @@
     "supercombinators": 8
    },
    "compile": {
-    "allocated_bytes": 1694401032,
-    "max_residency_bytes": 41763816,
-    "seconds": 0.846
+    "allocated_bytes": 1694473112,
+    "max_residency_bytes": 41755416,
+    "seconds": 0.823
    },
    "coverage": {
     "complete": true,
@@ -65495,9 +65495,9 @@
     "supercombinators": 3
    },
    "compile": {
-    "allocated_bytes": 1696097400,
-    "max_residency_bytes": 41949384,
-    "seconds": 0.878
+    "allocated_bytes": 1696168136,
+    "max_residency_bytes": 41979160,
+    "seconds": 0.851
    },
    "coverage": {
     "complete": true,
@@ -68618,6 +68618,3217 @@
     "count": 1
    }
   },
+  "vec_callback_kinds": {
+   "category": "vector",
+   "code": {
+    "asm_bytes": 69033,
+    "asm_instruction_lines": 1657,
+    "linked_text_bytes": null,
+    "supercombinators": 13
+   },
+   "compile": {
+    "allocated_bytes": 1736337952,
+    "max_residency_bytes": 24360520,
+    "seconds": 0.905
+   },
+   "coverage": {
+    "complete": true,
+    "units": [
+     {
+      "functions": 301,
+      "native": 301
+     },
+     {
+      "functions": 13,
+      "native": 13
+     }
+    ]
+   },
+   "functions": {
+    "$loop.cycle.$typed.mono.modCompatRow.1": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 39,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.$typed.mono.modFindAt.1": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.$typed.mono.modFindDown.1": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.$typed.mono.modHasFrom.1": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.$typed.mono.modResolveFrom.1": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 39,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.build": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 94,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.irqHandTo": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 42,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.irqReply": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 42,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.irqRoute": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 31,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.irqSendSure": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 42,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.logGo": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 42,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.logPutTo": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 44,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.logReply": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 42,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.modCompatRows": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 90,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.modHasFrom": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.reps": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 94,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.cycle.strIndexGo": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.$typed.mono.modCompatRow.1": {
+     "ccalls": 7,
+     "exittail": 101,
+     "frame": null,
+     "loops": 1,
+     "segmax": 109,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.$typed.mono.modFindAt.1": {
+     "ccalls": 6,
+     "exittail": 94,
+     "frame": null,
+     "loops": 1,
+     "segmax": 103,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.$typed.mono.modFindDown.1": {
+     "ccalls": 3,
+     "exittail": 55,
+     "frame": null,
+     "loops": 1,
+     "segmax": 57,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.$typed.mono.modHasFrom.1": {
+     "ccalls": 3,
+     "exittail": 55,
+     "frame": null,
+     "loops": 1,
+     "segmax": 57,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.$typed.mono.modResolveFrom.1": {
+     "ccalls": 5,
+     "exittail": 89,
+     "frame": null,
+     "loops": 1,
+     "segmax": 98,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.build": {
+     "ccalls": 4,
+     "exittail": 46,
+     "frame": null,
+     "loops": 1,
+     "segmax": 87,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqBindNow": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqHandTo": {
+     "ccalls": 4,
+     "exittail": 58,
+     "frame": null,
+     "loops": 1,
+     "segmax": 59,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqReply": {
+     "ccalls": 4,
+     "exittail": 58,
+     "frame": null,
+     "loops": 1,
+     "segmax": 59,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqRoute": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 92,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqRouteReq": {
+     "ccalls": 5,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 73,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqRouteSrc": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 63,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqSendSure": {
+     "ccalls": 5,
+     "exittail": 59,
+     "frame": null,
+     "loops": 1,
+     "segmax": 59,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqUnbindDone": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.irqUnbindNow": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 77,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.logGo": {
+     "ccalls": 3,
+     "exittail": 50,
+     "frame": null,
+     "loops": 1,
+     "segmax": 51,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.logPutTo": {
+     "ccalls": 8,
+     "exittail": 141,
+     "frame": null,
+     "loops": 1,
+     "segmax": 141,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.logReply": {
+     "ccalls": 4,
+     "exittail": 58,
+     "frame": null,
+     "loops": 1,
+     "segmax": 59,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.modCompatMatch": {
+     "ccalls": 15,
+     "exittail": 136,
+     "frame": null,
+     "loops": 0,
+     "segmax": 136,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.modCompatRow": {
+     "ccalls": 5,
+     "exittail": 90,
+     "frame": null,
+     "loops": 0,
+     "segmax": 90,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.modCompatRows": {
+     "ccalls": 7,
+     "exittail": 120,
+     "frame": null,
+     "loops": 1,
+     "segmax": 120,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.modHasFrom": {
+     "ccalls": 2,
+     "exittail": 37,
+     "frame": null,
+     "loops": 1,
+     "segmax": 43,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.reps": {
+     "ccalls": 5,
+     "exittail": 99,
+     "frame": null,
+     "loops": 1,
+     "segmax": 99,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$loop.in.strIndexGo": {
+     "ccalls": 4,
+     "exittail": 84,
+     "frame": null,
+     "loops": 1,
+     "segmax": 84,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modCompatRow.0": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 32,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modCompatRow.1": {
+     "ccalls": 3,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindAt.0": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindAt.1": {
+     "ccalls": 3,
+     "exittail": 14,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindAt.2": {
+     "ccalls": 5,
+     "exittail": 90,
+     "frame": null,
+     "loops": 0,
+     "segmax": 90,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindDown.0": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindDown.1": {
+     "ccalls": 3,
+     "exittail": 14,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modFindDown.2": {
+     "ccalls": 3,
+     "exittail": 91,
+     "frame": null,
+     "loops": 0,
+     "segmax": 91,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modHasFrom.0": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modHasFrom.1": {
+     "ccalls": 3,
+     "exittail": 14,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modResolveFrom.0": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 32,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modResolveFrom.1": {
+     "ccalls": 3,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed.mono.modResolveFrom.2": {
+     "ccalls": 3,
+     "exittail": 93,
+     "frame": null,
+     "loops": 0,
+     "segmax": 93,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_join_0.4.zipV": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_join_0.7.wireCon": {
+     "ccalls": 4,
+     "exittail": 61,
+     "frame": null,
+     "loops": 0,
+     "segmax": 82,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.10.modHasFrom": {
+     "ccalls": 3,
+     "exittail": 20,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.11.loggerStart": {
+     "ccalls": 3,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.11.modFindDown": {
+     "ccalls": 3,
+     "exittail": 20,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.12.modCompatRow": {
+     "ccalls": 7,
+     "exittail": 43,
+     "frame": null,
+     "loops": 0,
+     "segmax": 43,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.14.irqRouterStart": {
+     "ccalls": 3,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.14.modResolveFrom": {
+     "ccalls": 5,
+     "exittail": 31,
+     "frame": null,
+     "loops": 0,
+     "segmax": 32,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.4.main": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_0.9.modFindAt": {
+     "ccalls": 6,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_1.11.modFindDown": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_1.14.modResolveFrom": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_1.4.main": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$typed_lifted_1.9.modFindAt": {
+     "ccalls": 3,
+     "exittail": 85,
+     "frame": null,
+     "loops": 0,
+     "segmax": 85,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.fields.logStaged": {
+     "ccalls": 10,
+     "exittail": 32,
+     "frame": null,
+     "loops": 0,
+     "segmax": 52,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.fields.logStagedGo": {
+     "ccalls": 5,
+     "exittail": 90,
+     "frame": null,
+     "loops": 1,
+     "segmax": 90,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "$worker.fields.logStep": {
+     "ccalls": 10,
+     "exittail": 78,
+     "frame": null,
+     "loops": 0,
+     "segmax": 78,
+     "shallow": "no",
+     "slots": 3,
+     "spills": 3
+    },
+    "Actor": {
+     "ccalls": 2,
+     "exittail": 81,
+     "frame": null,
+     "loops": 0,
+     "segmax": 81,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.recv": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.recvRes": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.self": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.send": {
+     "ccalls": 2,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.spawn": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.spawnOn": {
+     "ccalls": 2,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Actor.yield": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Cons": {
+     "ccalls": 2,
+     "exittail": 61,
+     "frame": null,
+     "loops": 0,
+     "segmax": 61,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Err": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "False": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Handle": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int": {
+     "ccalls": 2,
+     "exittail": 85,
+     "frame": null,
+     "loops": 0,
+     "segmax": 85,
+     "shallow": "no",
+     "slots": 2,
+     "spills": 2
+    },
+    "Int.*": {
+     "ccalls": 2,
+     "exittail": 29,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.+": {
+     "ccalls": 2,
+     "exittail": 24,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.-": {
+     "ccalls": 2,
+     "exittail": 24,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int./": {
+     "ccalls": 2,
+     "exittail": 35,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.<": {
+     "ccalls": 1,
+     "exittail": 14,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.<=": {
+     "ccalls": 1,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.==": {
+     "ccalls": 2,
+     "exittail": 16,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.abs": {
+     "ccalls": 2,
+     "exittail": 42,
+     "frame": null,
+     "loops": 0,
+     "segmax": 42,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.max": {
+     "ccalls": 1,
+     "exittail": 13,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.min": {
+     "ccalls": 1,
+     "exittail": 13,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.mod": {
+     "ccalls": 4,
+     "exittail": 66,
+     "frame": null,
+     "loops": 0,
+     "segmax": 66,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.neg": {
+     "ccalls": 2,
+     "exittail": 30,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.pow": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Int.zero": {
+     "ccalls": 1,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List": {
+     "ccalls": 2,
+     "exittail": 73,
+     "frame": null,
+     "loops": 0,
+     "segmax": 73,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.+": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.-": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.drop": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.fold": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.len": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.map": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.take": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "List.zero": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "LogState": {
+     "ccalls": 2,
+     "exittail": 69,
+     "frame": null,
+     "loops": 0,
+     "segmax": 69,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod": {
+     "ccalls": 2,
+     "exittail": 74,
+     "frame": null,
+     "loops": 0,
+     "segmax": 74,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod.compatAt": {
+     "ccalls": 3,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod.find": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 44,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod.findAt": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod.has": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Mod.resolve": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Nil": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Ok": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr": {
+     "ccalls": 2,
+     "exittail": 85,
+     "frame": null,
+     "loops": 0,
+     "segmax": 85,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.at": {
+     "ccalls": 2,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.cap": {
+     "ccalls": 1,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.clear": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.fromStr": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.len": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.new": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.push": {
+     "ccalls": 2,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.put": {
+     "ccalls": 2,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SStr.toStr": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "SString": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str": {
+     "ccalls": 2,
+     "exittail": 73,
+     "frame": null,
+     "loops": 0,
+     "segmax": 73,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.+": {
+     "ccalls": 2,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.-": {
+     "ccalls": 3,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.==": {
+     "ccalls": 2,
+     "exittail": 16,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.at": {
+     "ccalls": 2,
+     "exittail": 64,
+     "frame": null,
+     "loops": 0,
+     "segmax": 64,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.fromCode": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.len": {
+     "ccalls": 2,
+     "exittail": 44,
+     "frame": null,
+     "loops": 0,
+     "segmax": 44,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.parse": {
+     "ccalls": 3,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 27,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Str.zero": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys": {
+     "ccalls": 2,
+     "exittail": 76,
+     "frame": null,
+     "loops": 0,
+     "segmax": 76,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.irqBind": {
+     "ccalls": 3,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.irqUnbind": {
+     "ccalls": 3,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 27,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.logAt": {
+     "ccalls": 6,
+     "exittail": 13,
+     "frame": null,
+     "loops": 0,
+     "segmax": 31,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.logKeep": {
+     "ccalls": 3,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 27,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.logSeq": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Sys.logSnap": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "True": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup2": {
+     "ccalls": 2,
+     "exittail": 61,
+     "frame": null,
+     "loops": 0,
+     "segmax": 61,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup3": {
+     "ccalls": 2,
+     "exittail": 64,
+     "frame": null,
+     "loops": 0,
+     "segmax": 64,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup4": {
+     "ccalls": 2,
+     "exittail": 65,
+     "frame": null,
+     "loops": 0,
+     "segmax": 65,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup5": {
+     "ccalls": 2,
+     "exittail": 68,
+     "frame": null,
+     "loops": 0,
+     "segmax": 68,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup6": {
+     "ccalls": 2,
+     "exittail": 69,
+     "frame": null,
+     "loops": 0,
+     "segmax": 69,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup7": {
+     "ccalls": 2,
+     "exittail": 72,
+     "frame": null,
+     "loops": 0,
+     "segmax": 72,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Tup8": {
+     "ccalls": 2,
+     "exittail": 73,
+     "frame": null,
+     "loops": 0,
+     "segmax": 73,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Unit": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList": {
+     "ccalls": 2,
+     "exittail": 100,
+     "frame": null,
+     "loops": 0,
+     "segmax": 100,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.filter": {
+     "ccalls": 2,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.fold": {
+     "ccalls": 2,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.free": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.fromList": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.get": {
+     "ccalls": 2,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.len": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.map": {
+     "ccalls": 2,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.new": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 24,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.push": {
+     "ccalls": 2,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.set": {
+     "ccalls": 2,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.split": {
+     "ccalls": 2,
+     "exittail": 10,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "VList.toList": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "Vector": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WBool": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WCon": {
+     "ccalls": 2,
+     "exittail": 61,
+     "frame": null,
+     "loops": 0,
+     "segmax": 61,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WInt": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WList": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WRec": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "WStr": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "add": {
+     "ccalls": 1,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "and": {
+     "ccalls": 1,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "ask": {
+     "ccalls": 4,
+     "exittail": 68,
+     "frame": null,
+     "loops": 0,
+     "segmax": 68,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "build": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "closeHandle": {
+     "ccalls": 2,
+     "exittail": 23,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "fromTo": {
+     "ccalls": 3,
+     "exittail": 62,
+     "frame": null,
+     "loops": 0,
+     "segmax": 62,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "fstV": {
+     "ccalls": 3,
+     "exittail": 62,
+     "frame": null,
+     "loops": 0,
+     "segmax": 62,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "intPow": {
+     "ccalls": 9,
+     "exittail": 47,
+     "frame": null,
+     "loops": 0,
+     "segmax": 142,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "intSq": {
+     "ccalls": 2,
+     "exittail": 30,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqAsk": {
+     "ccalls": 7,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 80,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqBindNow": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 32,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqCount": {
+     "ccalls": 4,
+     "exittail": 49,
+     "frame": null,
+     "loops": 0,
+     "segmax": 68,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqHand": {
+     "ccalls": 2,
+     "exittail": 26,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqHandTo": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqOwner": {
+     "ccalls": 3,
+     "exittail": 65,
+     "frame": null,
+     "loops": 1,
+     "segmax": 66,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRemove": {
+     "ccalls": 5,
+     "exittail": 67,
+     "frame": null,
+     "loops": 0,
+     "segmax": 114,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqReply": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRoute": {
+     "ccalls": 4,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouteReq": {
+     "ccalls": 7,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 71,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouteSrc": {
+     "ccalls": 5,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 67,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouteStart": {
+     "ccalls": 3,
+     "exittail": 28,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouterHave": {
+     "ccalls": 4,
+     "exittail": 25,
+     "frame": null,
+     "loops": 0,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouterOf": {
+     "ccalls": 5,
+     "exittail": 25,
+     "frame": null,
+     "loops": 0,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqRouterStart": {
+     "ccalls": 5,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 91,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqSendSure": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqSet": {
+     "ccalls": 5,
+     "exittail": 64,
+     "frame": null,
+     "loops": 0,
+     "segmax": 71,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqStillBound": {
+     "ccalls": 2,
+     "exittail": 48,
+     "frame": null,
+     "loops": 0,
+     "segmax": 48,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqUnbindDone": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqUnbindNow": {
+     "ccalls": 5,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 77,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "irqUnbound": {
+     "ccalls": 3,
+     "exittail": 22,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "keepAcc": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listAppend": {
+     "ccalls": 2,
+     "exittail": 63,
+     "frame": null,
+     "loops": 0,
+     "segmax": 63,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listDrop": {
+     "ccalls": 1,
+     "exittail": 21,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listDropGo": {
+     "ccalls": 2,
+     "exittail": 25,
+     "frame": null,
+     "loops": 0,
+     "segmax": 50,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listFold": {
+     "ccalls": 2,
+     "exittail": 26,
+     "frame": null,
+     "loops": 1,
+     "segmax": 49,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listLen": {
+     "ccalls": 2,
+     "exittail": 32,
+     "frame": null,
+     "loops": 0,
+     "segmax": 32,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listMap": {
+     "ccalls": 3,
+     "exittail": 63,
+     "frame": null,
+     "loops": 0,
+     "segmax": 63,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listPrefEq": {
+     "ccalls": 1,
+     "exittail": 25,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listPrefEqAt": {
+     "ccalls": 1,
+     "exittail": 26,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listPrefEqCmp": {
+     "ccalls": 2,
+     "exittail": 18,
+     "frame": null,
+     "loops": 0,
+     "segmax": 32,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listSub": {
+     "ccalls": 1,
+     "exittail": 14,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listSubGo": {
+     "ccalls": 5,
+     "exittail": 43,
+     "frame": null,
+     "loops": 0,
+     "segmax": 61,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listTake": {
+     "ccalls": 1,
+     "exittail": 22,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "listTakeGo": {
+     "ccalls": 3,
+     "exittail": 63,
+     "frame": null,
+     "loops": 0,
+     "segmax": 63,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "log": {
+     "ccalls": 6,
+     "exittail": 13,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logAnswer": {
+     "ccalls": 4,
+     "exittail": 20,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logAsk": {
+     "ccalls": 15,
+     "exittail": 131,
+     "frame": null,
+     "loops": 1,
+     "segmax": 131,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logDo": {
+     "ccalls": 14,
+     "exittail": 16,
+     "frame": null,
+     "loops": 0,
+     "segmax": 64,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logEcho": {
+     "ccalls": 7,
+     "exittail": 20,
+     "frame": null,
+     "loops": 0,
+     "segmax": 156,
+     "shallow": "no",
+     "slots": 1,
+     "spills": 1
+    },
+    "logEchoAt": {
+     "ccalls": 13,
+     "exittail": 85,
+     "frame": null,
+     "loops": 0,
+     "segmax": 86,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logErr": {
+     "ccalls": 6,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logGo": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logKeepLine": {
+     "ccalls": 5,
+     "exittail": 73,
+     "frame": null,
+     "loops": 0,
+     "segmax": 73,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logLinesOf": {
+     "ccalls": 5,
+     "exittail": 41,
+     "frame": null,
+     "loops": 0,
+     "segmax": 57,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logPrefix": {
+     "ccalls": 4,
+     "exittail": 56,
+     "frame": null,
+     "loops": 0,
+     "segmax": 56,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logPut": {
+     "ccalls": 8,
+     "exittail": 14,
+     "frame": null,
+     "loops": 0,
+     "segmax": 32,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logPutDone": {
+     "ccalls": 1,
+     "exittail": 9,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logPutTo": {
+     "ccalls": 4,
+     "exittail": 13,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logReply": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logRingAt": {
+     "ccalls": 4,
+     "exittail": 91,
+     "frame": null,
+     "loops": 1,
+     "segmax": 91,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logRingPut": {
+     "ccalls": 10,
+     "exittail": 120,
+     "frame": null,
+     "loops": 0,
+     "segmax": 148,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logSeqOf": {
+     "ccalls": 5,
+     "exittail": 74,
+     "frame": null,
+     "loops": 0,
+     "segmax": 88,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logServe": {
+     "ccalls": 6,
+     "exittail": 75,
+     "frame": null,
+     "loops": 0,
+     "segmax": 75,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logSetKeep": {
+     "ccalls": 5,
+     "exittail": 71,
+     "frame": null,
+     "loops": 0,
+     "segmax": 71,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logSev": {
+     "ccalls": 1,
+     "exittail": 39,
+     "frame": null,
+     "loops": 0,
+     "segmax": 39,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logStaged": {
+     "ccalls": 10,
+     "exittail": 48,
+     "frame": null,
+     "loops": 0,
+     "segmax": 65,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logStagedGo": {
+     "ccalls": 5,
+     "exittail": 65,
+     "frame": null,
+     "loops": 0,
+     "segmax": 73,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logStart": {
+     "ccalls": 13,
+     "exittail": 68,
+     "frame": null,
+     "loops": 0,
+     "segmax": 249,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logStep": {
+     "ccalls": 10,
+     "exittail": 75,
+     "frame": null,
+     "loops": 0,
+     "segmax": 75,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logSuppressed": {
+     "ccalls": 6,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logTrim": {
+     "ccalls": 4,
+     "exittail": 64,
+     "frame": null,
+     "loops": 0,
+     "segmax": 64,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "logWarn": {
+     "ccalls": 6,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 29,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "loggerHave": {
+     "ccalls": 4,
+     "exittail": 25,
+     "frame": null,
+     "loops": 0,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "loggerOf": {
+     "ccalls": 5,
+     "exittail": 25,
+     "frame": null,
+     "loops": 0,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "loggerStart": {
+     "ccalls": 5,
+     "exittail": 11,
+     "frame": null,
+     "loops": 0,
+     "segmax": 91,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "main": {
+     "ccalls": 25,
+     "exittail": 96,
+     "frame": null,
+     "loops": 0,
+     "segmax": 96,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapFstV": {
+     "ccalls": 5,
+     "exittail": 64,
+     "frame": null,
+     "loops": 0,
+     "segmax": 124,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapSndV": {
+     "ccalls": 5,
+     "exittail": 64,
+     "frame": null,
+     "loops": 0,
+     "segmax": 124,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "mapV": {
+     "ccalls": 3,
+     "exittail": 63,
+     "frame": null,
+     "loops": 0,
+     "segmax": 63,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modCompatAt": {
+     "ccalls": 5,
+     "exittail": 228,
+     "frame": null,
+     "loops": 0,
+     "segmax": 228,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modCompatMatch": {
+     "ccalls": 15,
+     "exittail": 134,
+     "frame": null,
+     "loops": 0,
+     "segmax": 134,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modCompatRow": {
+     "ccalls": 5,
+     "exittail": 88,
+     "frame": null,
+     "loops": 0,
+     "segmax": 88,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modCompatRows": {
+     "ccalls": 3,
+     "exittail": 14,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modFind": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 44,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modFindAt": {
+     "ccalls": 5,
+     "exittail": 86,
+     "frame": null,
+     "loops": 0,
+     "segmax": 86,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modFindDown": {
+     "ccalls": 4,
+     "exittail": 86,
+     "frame": null,
+     "loops": 0,
+     "segmax": 86,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modHas": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 33,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modHasFrom": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modHit": {
+     "ccalls": 4,
+     "exittail": 90,
+     "frame": null,
+     "loops": 0,
+     "segmax": 90,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modMiss": {
+     "ccalls": 3,
+     "exittail": 85,
+     "frame": null,
+     "loops": 0,
+     "segmax": 85,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modResolve": {
+     "ccalls": 2,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 35,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modResolveFrom": {
+     "ccalls": 4,
+     "exittail": 88,
+     "frame": null,
+     "loops": 0,
+     "segmax": 88,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modRow": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 1,
+     "segmax": 74,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "modRowIn": {
+     "ccalls": 4,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "newHandle": {
+     "ccalls": 2,
+     "exittail": 60,
+     "frame": null,
+     "loops": 0,
+     "segmax": 60,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "not": {
+     "ccalls": 1,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "or": {
+     "ccalls": 1,
+     "exittail": 37,
+     "frame": null,
+     "loops": 0,
+     "segmax": 37,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "par2": {
+     "ccalls": 20,
+     "exittail": 238,
+     "frame": null,
+     "loops": 0,
+     "segmax": 238,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "parWorker": {
+     "ccalls": 6,
+     "exittail": 62,
+     "frame": null,
+     "loops": 0,
+     "segmax": 62,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "parseDigit": {
+     "ccalls": 9,
+     "exittail": 175,
+     "frame": null,
+     "loops": 0,
+     "segmax": 264,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "parseDigits": {
+     "ccalls": 3,
+     "exittail": 50,
+     "frame": null,
+     "loops": 0,
+     "segmax": 109,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "parseInt": {
+     "ccalls": 8,
+     "exittail": 67,
+     "frame": null,
+     "loops": 0,
+     "segmax": 141,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "pick": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "reps": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 34,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "same": {
+     "ccalls": 1,
+     "exittail": 7,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "serve": {
+     "ccalls": 4,
+     "exittail": 36,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "serveTurn": {
+     "ccalls": 7,
+     "exittail": 150,
+     "frame": null,
+     "loops": 0,
+     "segmax": 150,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sndV": {
+     "ccalls": 3,
+     "exittail": 62,
+     "frame": null,
+     "loops": 0,
+     "segmax": 62,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strCmp": {
+     "ccalls": 5,
+     "exittail": 13,
+     "frame": null,
+     "loops": 0,
+     "segmax": 96,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strCmpAt": {
+     "ccalls": 3,
+     "exittail": 43,
+     "frame": null,
+     "loops": 0,
+     "segmax": 48,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strCmpGo": {
+     "ccalls": 4,
+     "exittail": 84,
+     "frame": null,
+     "loops": 0,
+     "segmax": 173,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strIndexFrom": {
+     "ccalls": 3,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 114,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strIndexGo": {
+     "ccalls": 3,
+     "exittail": 14,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strIndexOf": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strMatchAt": {
+     "ccalls": 4,
+     "exittail": 149,
+     "frame": null,
+     "loops": 1,
+     "segmax": 159,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strSub": {
+     "ccalls": 5,
+     "exittail": 88,
+     "frame": null,
+     "loops": 0,
+     "segmax": 98,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strSubGo": {
+     "ccalls": 7,
+     "exittail": 44,
+     "frame": null,
+     "loops": 0,
+     "segmax": 56,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strSufEq": {
+     "ccalls": 2,
+     "exittail": 52,
+     "frame": null,
+     "loops": 0,
+     "segmax": 55,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strSufEqAt": {
+     "ccalls": 5,
+     "exittail": 142,
+     "frame": null,
+     "loops": 0,
+     "segmax": 168,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strTake": {
+     "ccalls": 3,
+     "exittail": 12,
+     "frame": null,
+     "loops": 0,
+     "segmax": 30,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "strTakeGo": {
+     "ccalls": 4,
+     "exittail": 17,
+     "frame": null,
+     "loops": 1,
+     "segmax": 91,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sumV": {
+     "ccalls": 2,
+     "exittail": 32,
+     "frame": null,
+     "loops": 0,
+     "segmax": 32,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sysIrqBind": {
+     "ccalls": 8,
+     "exittail": 15,
+     "frame": null,
+     "loops": 0,
+     "segmax": 76,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sysIrqUnbind": {
+     "ccalls": 5,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 59,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sysLogKeep": {
+     "ccalls": 2,
+     "exittail": 22,
+     "frame": null,
+     "loops": 0,
+     "segmax": 36,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sysLogSeq": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 28,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "sysLogSnap": {
+     "ccalls": 1,
+     "exittail": 0,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "vListFromList": {
+     "ccalls": 2,
+     "exittail": 8,
+     "frame": null,
+     "loops": 0,
+     "segmax": 26,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireAnd": {
+     "ccalls": 3,
+     "exittail": 62,
+     "frame": null,
+     "loops": 0,
+     "segmax": 62,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireAt": {
+     "ccalls": 5,
+     "exittail": 62,
+     "frame": null,
+     "loops": 0,
+     "segmax": 62,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireCon": {
+     "ccalls": 14,
+     "exittail": 61,
+     "frame": null,
+     "loops": 0,
+     "segmax": 131,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireDigits": {
+     "ccalls": 21,
+     "exittail": 401,
+     "frame": null,
+     "loops": 1,
+     "segmax": 476,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireField": {
+     "ccalls": 5,
+     "exittail": 118,
+     "frame": null,
+     "loops": 1,
+     "segmax": 118,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireInt": {
+     "ccalls": 10,
+     "exittail": 63,
+     "frame": null,
+     "loops": 0,
+     "segmax": 191,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireListGo": {
+     "ccalls": 9,
+     "exittail": 130,
+     "frame": null,
+     "loops": 1,
+     "segmax": 142,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireMap": {
+     "ccalls": 3,
+     "exittail": 63,
+     "frame": null,
+     "loops": 0,
+     "segmax": 63,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireRev": {
+     "ccalls": 2,
+     "exittail": 24,
+     "frame": null,
+     "loops": 1,
+     "segmax": 84,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireToBool": {
+     "ccalls": 10,
+     "exittail": 59,
+     "frame": null,
+     "loops": 0,
+     "segmax": 138,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireToInt": {
+     "ccalls": 5,
+     "exittail": 62,
+     "frame": null,
+     "loops": 0,
+     "segmax": 62,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireToList": {
+     "ccalls": 2,
+     "exittail": 62,
+     "frame": null,
+     "loops": 0,
+     "segmax": 62,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "wireToStr": {
+     "ccalls": 5,
+     "exittail": 61,
+     "frame": null,
+     "loops": 0,
+     "segmax": 61,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    },
+    "zipV": {
+     "ccalls": 4,
+     "exittail": 127,
+     "frame": null,
+     "loops": 0,
+     "segmax": 180,
+     "shallow": "no",
+     "slots": 0,
+     "spills": 0
+    }
+   },
+   "negative_fixtures": [
+    "tests/check_signature_bridge.py",
+    "tests/CorePipeline.hs"
+   ],
+   "positive_for": [
+    "lower"
+   ],
+   "preconditions": {
+    "builtin_traps": 2,
+    "discharged": 4,
+    "obligations": 6,
+    "runtime_checked": 0
+   },
+   "private_consuming_workers": [
+    0,
+    0
+   ],
+   "private_workers": [
+    {
+     "fields": 3,
+     "scalar": 0
+    },
+    {
+     "fields": 0,
+     "scalar": 0
+    }
+   ],
+   "remarks": {
+    "regions:region:applied": 22,
+    "typed-callback-attempt:generic-call:applied": 13,
+    "typed-callback-attempt:generic-call:declined": 119,
+    "typed-inline-attempt:inline:applied": 91,
+    "typed-inline-attempt:inline:declined": 199
+   },
+   "source": "tests/pipeline/vec_callback_kinds.fpr",
+   "units": {
+    "codegen_revision": 204,
+    "core_identities": [
+     "ec15f5fc4412a0c7"
+    ],
+    "count": 1
+   }
+  },
   "vecread": {
    "category": "vector-reads",
    "code": {
@@ -68627,9 +71838,9 @@
     "supercombinators": 8
    },
    "compile": {
-    "allocated_bytes": 1714056528,
-    "max_residency_bytes": 24161448,
-    "seconds": 0.865
+    "allocated_bytes": 1714126200,
+    "max_residency_bytes": 24161608,
+    "seconds": 0.808
    },
    "coverage": {
     "complete": true,
@@ -71809,9 +75020,9 @@
     "supercombinators": 7
    },
    "compile": {
-    "allocated_bytes": 1691899000,
-    "max_residency_bytes": 41875344,
-    "seconds": 0.848
+    "allocated_bytes": 1691971664,
+    "max_residency_bytes": 41866952,
+    "seconds": 0.84
    },
    "coverage": {
     "complete": true,
@@ -74953,9 +78164,9 @@
    }
   }
  },
- "git_commit": "6e1edabda2e49036f0b58cc2c488bc6554ec9a54",
+ "git_commit": "b5c218c3d4fd632302687508a2608ac862df0945",
  "host": "Darwin-arm64-macm4",
- "recorded_at": "2026-11-08T05:59:08+1100",
+ "recorded_at": "2026-11-08T07:01:31+1100",
  "schema": 1,
  "system": "posix",
  "target": "rv64",

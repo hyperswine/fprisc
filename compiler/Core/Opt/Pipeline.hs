@@ -63,7 +63,7 @@ optimizeCoreWithProducts products checked imports opts elide input = do
     run state pass = do
       let before = optimizedProgram state
           (after,sigs,notes,enabled) = case pass of
-            FuseVectors -> let (p,ns) = if optFusion opts then fuseCompatibilityWithImports checked imports before else (before,[])
+            FuseVectors -> let (p,ns) = if optFusion opts then fuseCompatibilityWithImports (checkedKinds (M.union before imports) products) checked imports before else (before,[])
                            in (p,optimizedSignatures state,ns,optFusion opts)
             MakeWorkers -> let fields = optWorkers opts && optFieldWorkers opts
                                scalars = optWorkers opts && optScalarWorkers opts

@@ -6,7 +6,8 @@ import Core.Utils
 import Core.Primitives
 import Core.Analysis.FusionSafety
 import Core.Opt.Vector.Plan
-import KernelKinds (Kind(..), signature)
+import KernelKinds (Kind(..), signature, signatureStrict, verifyComponent)
+import Core.Opt.ProductParameters (CheckedKinds)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Graph (SCC(..), stronglyConnComp)
@@ -20,8 +21,8 @@ spillCells = 56
 -- A bounded, same-element-kind scalar pipeline. Entry arguments are flattened
 -- outermost-first, just like source evaluation; stages execute innermost-first.
 -- Captures and seed must already be values, so let nesting cannot move effects.
-pipelinePlan :: Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan,[Core])
-pipelinePlan prog local expr = do
+pipelinePlan :: CheckedKinds -> Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan,[Core])
+pipelinePlan checked prog local expr = do
   (stages,args,kinds,acc,vector) <- collect True 0 expr
   -- Start with genuinely mixed, filtering pipelines. Keep map-only chains
   -- (including map/fold) on their existing SIMD/worker paths.
@@ -52,7 +53,7 @@ pipelinePlan prog local expr = do
       (ps,b) <- M.lookup f prog
       if local f || length ps/=length caps+count || length ps>8 || not (all value caps)
         then Nothing else Just ()
-      sig <- signature prog ps b
+      sig <- callbackKinds checked prog f ps b
       pure (f,caps,sig)
     collect top offset e = case spineOf e of
       (CVar op,[fe,z,v]) | top, op=="Vec.fold", primitive op -> do
@@ -82,9 +83,9 @@ pipelinePlan prog local expr = do
 -- pipeline proves that moved captures/seed are already values. Bindings remain
 -- lexical, and a retained intermediate prevents this rewrite.
 nestPipelines :: Prog -> Prog
-nestPipelines=nestPipelinesWithImports M.empty
-nestPipelinesWithImports :: Prog -> Prog -> Prog
-nestPipelinesWithImports imports prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b)) prog
+nestPipelines=nestPipelinesWithImports M.empty M.empty
+nestPipelinesWithImports :: CheckedKinds -> Prog -> Prog -> Prog
+nestPipelinesWithImports checked imports prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b)) prog
   where
     go bound e = join bound $ case e of
       CLet n a b -> CLet n (go bound a) (go (S.insert n bound) b)
@@ -103,7 +104,7 @@ nestPipelinesWithImports imports prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b
             _ -> Nothing
           plug consumer = do
             candidate <- replace consumer
-            _ <- pipelinePlan (prog `M.union` imports) (`S.member` bound) candidate
+            _ <- pipelinePlan checked (prog `M.union` imports) (`S.member` bound) candidate
             pure candidate
       in case body of
         -- Reject non-pipelines before inspecting the suffix. Checking free
@@ -115,13 +116,32 @@ nestPipelinesWithImports imports prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b
         _ -> e
     join _ e = e
 
-vecSpec :: Bool -> Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan, [Core])
-vecSpec fusion prog isLocal e = do
-  (p,args) <- case if fusion then pipelinePlan prog isLocal e else Nothing of
+vecSpec :: Bool -> CheckedKinds -> Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan, [Core])
+vecSpec fusion checked prog isLocal e = do
+  (p,args) <- case if fusion then pipelinePlan checked prog isLocal e else Nothing of
     Just plan -> Just plan
     Nothing -> vecSpecRaw fusion prog isLocal e
-  typed <- typePlan prog p
+  typed <- typePlan checked prog p
   pure (typed,args)
+
+-- P2 signature bridge, slice 5: a named callback's raw-word kinds come from
+-- its checked interface once KernelKinds verifies the body under them. The
+-- lenient solver defaults every unconstrained position to Int, so an F64
+-- callback that only moves its argument (`pick acc x = x`) was planned as Int
+-- and its kernel always fell back at the runtime kind guard. A callback with
+-- no complete checked interface (a lambda, a record-map field, a type
+-- variable) keeps the lenient solution. A checked signature that strict
+-- inference contradicts stops the compile.
+callbackKinds :: CheckedKinds -> Prog -> String -> [String] -> Core -> Maybe ([Kind],Kind)
+callbackKinds checked prog f ps b = case M.lookup f checked of
+  Just (cks,cr) | Just ks <- sequence cks, Just r <- cr, length ks == length ps ->
+    if verifyComponent prog (M.singleton f (ks,r)) M.empty then Just (ks,r)
+    else case signatureStrict prog ps b of
+      Just inferred | inferred /= (ks,r) ->
+        error ("signature bridge: vector callback " ++ f ++ " is checked as " ++ show (ks,r)
+               ++ " but KernelKinds infers " ++ show inferred)
+      _ -> signature prog ps b
+  _ -> signature prog ps b
 
 -- The soft-float switch covers column kernels as well as scalar primitives.
 -- A comparison can return Bool/Int while still consuming floats; record maps
@@ -137,8 +157,8 @@ specUsesFloat prog p =
 
 -- Each raw argument has its own kind. Record maps retain their field plans;
 -- mapAs retains the ordinary tagged callback ABI, rather than guessing kinds.
-typePlan :: Prog -> SpecPlan -> Maybe SpecPlan
-typePlan prog p
+typePlan :: CheckedKinds -> Prog -> SpecPlan -> Maybe SpecPlan
+typePlan checked prog p
   | Just _ <- pipelineOf p = Just p
   | Just mp <- spMv p = do
       sigs <- mapM (\(_, (ps,b)) -> signature prog ps b) (mvFields mp)
@@ -150,10 +170,10 @@ typePlan prog p
       pure p {spMv=Just mp {mvKinds=Just sigs}}
   | LayoutMap _ <- spOp p = Just p
   | otherwise = do
-      (ps,b) <- case spSoa p of
-        Just (_,ps,b,_) -> Just (ps,b)
-        Nothing -> M.lookup (spFn p) prog
-      sig@(ks,out) <- signature prog ps b
+      sig@(ks,out) <- case spSoa p of
+        Just (_,ps,b,_) -> signature prog ps b
+        Nothing -> do (ps,b) <- M.lookup (spFn p) prog
+                      callbackKinds checked prog (spFn p) ps b
       let foldOp = spOp p == ScalarOp Fold || wfoldG p /= Nothing
           args = drop (spCaps p) ks
       pure () -- Bool captures have a checked boxed-to-raw entry path

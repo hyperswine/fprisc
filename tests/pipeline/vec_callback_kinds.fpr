@@ -1,0 +1,28 @@
+profile base.
+# P2 bridge slice 5: vector callbacks whose kinds only the checked types give.
+# pick, same and keepAcc only move an argument, so the lenient solver guessed
+# Int and the F64 kernels fell back at their runtime kind guard every call.
+# add uses every argument and is the control.
+pick : F64 -> F64 -> F64.
+pick acc x = x.
+keepAcc : F64 -> F64 -> F64.
+keepAcc acc x = acc.
+same : F64 -> F64.
+same x = x.
+add : F64 -> F64 -> F64.
+add acc x = acc + x.
+build : unsafe Int -> F64 -> Vector F64 -> Vector F64.
+build n x v = if n == 0 then v else build (n - 1) (x + 1.0) (Vec.push x v).
+reps : unsafe Int -> F64 -> Vector F64 -> (F64, Vector F64).
+reps k acc v = if k == 0 then (acc, v) else
+  (case Vec.fold pick 0.5 v of (r, v2) -> reps (k - 1) (acc + r) v2).
+main =
+  empty = Vec.new Unit;
+  (e, empty2) = Vec.fold pick 0.5 empty;
+  _ = Vec.free empty2;
+  v = build 100000 0.0 (Vec.new Unit);
+  (picked, v2) = reps 100 0.0 v;
+  (kept, v3) = Vec.fold keepAcc 0.75 (Vec.map same v2);
+  (total, v4) = Vec.fold add 0.0 v3;
+  _ = Vec.free v4;
+  print "empty={e} picked={picked} kept={kept} total={total}".

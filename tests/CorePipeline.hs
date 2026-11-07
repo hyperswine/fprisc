@@ -209,19 +209,35 @@ main = do
   let callbacks=M.fromList [("inc",(["x"],app "+" [v "x",CInt 1])),
                             ("pos",(["x"],app ">" [v "x",CInt 0]))]
       expr=app "Vec.map" [v "inc",app "Vec.filter" [v "pos",v "xs"]]
-      (plan,args)=maybe (error "pipeline admission") id (pipelinePlan callbacks (=="xs") expr)
+      (plan,args)=maybe (error "pipeline admission") id (pipelinePlan M.empty callbacks (=="xs") expr)
       expected="pipeline@PipePlan {pipeStages = [(\"filter\",\"pos\",[]),(\"map\",\"inc\",[])], pipeElement = KI, pipeAccumulator = Nothing}"
   check "typed pipeline stages" (case spOp plan of
     FusedPipeline p -> pipeStages p==[(Filter,"pos",[]),(Map,"inc",[])]
     _ -> False)
   check "entry vector order" (args==[v "xs"])
   check "existing symbol serialization" (operationKey (spOp plan)==expected)
-  check "shadowed primitive declines" (case pipelinePlan callbacks (`elem` ["xs","Vec.map"]) expr of Nothing->True; _->False)
+  check "shadowed primitive declines" (case pipelinePlan M.empty callbacks (`elem` ["xs","Vec.map"]) expr of Nothing->True; _->False)
   check "layout payload survives punctuation" (operationKey (LayoutMap "a@b")=="mapAs@a@b")
   let layoutExpr=app "Vec.mapAs" [CStr "a@b",v "inc",v "xs"]
-  check "layout plan has typed payload" (case vecSpec False callbacks (=="xs") layoutExpr of
+  check "layout plan has typed payload" (case vecSpec False M.empty callbacks (=="xs") layoutExpr of
     Just (p,_) -> spOp p==LayoutMap "a@b"
     _ -> False)
+  -- P2 bridge slice 5: a callback that only moves its argument gives the
+  -- lenient solver nothing, so it guessed Int; the checked F64 kinds win.
+  let pickProg=M.fromList [("pick",(["acc","x"],v "x"))]
+      foldExpr=app "Vec.fold" [v "pick",CInt 0,v "xs"]
+      kindsWith ck=fmap (spKinds . fst) (vecSpec False (M.fromList ck) pickProg (=="xs") foldExpr)
+  check "vector callback: lenient kinds guess Int" (kindsWith []==Just (Just ([KI,KI],KI)))
+  check "vector callback: checked F64 kinds are the authority"
+    (kindsWith [("pick",([Just KD,Just KD],Just KD))]==Just (Just ([KD,KD],KD)))
+  check "vector callback: an incomplete checked signature keeps the lenient kinds"
+    (kindsWith [("pick",([Nothing,Just KD],Just KD))]==Just (Just ([KI,KI],KI)))
+  contradiction <- try (evaluate (kindsWith [("plus1",([Just KD],Just KD))] `seq`
+    fmap (spKinds . fst) (vecSpec False (M.fromList [("inc",([Just KD],Just KD))]) callbacks (=="xs")
+      (app "Vec.map" [v "inc",v "xs"]))))
+  check "vector callback: checked kinds strict inference contradicts stop the compile" (case contradiction of
+    Left (ErrorCall msg) -> "signature bridge" `isInfixOf` msg
+    Right _ -> False)
   check "float primitive inventory" ("F32.+" `elem` fPrimsOf Float32 && "F64.+" `notElem` fPrimsOf Float32)
   -- A checked-in byte oracle made from the previous FPRISC.Core definition.
   -- Every constructor appears, including Unicode and multi-byte integers.

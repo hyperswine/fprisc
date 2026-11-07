@@ -231,8 +231,8 @@ emitNative tgt nm symbols backend = case backend of
   DirectX64 fmt -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls))
   where exps=symbolNames symbols
 
-nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation])
-nativeSelect tgt spec nm sigs ext exps prog emitted =
+nativeSelect :: Target -> Bool -> NativeMode -> CheckedKinds -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation])
+nativeSelect tgt spec nm vkinds sigs ext exps prog emitted =
   case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
@@ -304,7 +304,7 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
     kernelName sym = "$vkernel:" ++ sym
     -- every site, innermost arguments first, in source evaluation order
     kernelSites bound e
-      | Just (plan, args) <- vecSpec (tgtFusion tgt) prog (`S.member` bound) e,
+      | Just (plan, args) <- vecSpec (tgtFusion tgt) vkinds prog (`S.member` bound) e,
         (tgtW tgt == 8 && tgtFloatInline tgt) || not (specUsesFloat prog plan) =
           let sym = specSymbol plan
               (args', ks) = unzip (map (kernelSites bound) args)
@@ -372,7 +372,9 @@ emitProductProgramWithImports products checked imports tgt rvv spec exports ext 
       emitted = M.withoutKeys prog elide
       nm = fromMaybe (error "typed-ir: no native backend selected") (tgtNative tgt)
       context=prog `M.union` imports
-      (requests,nativeFns,failures,notes,heapFacts) = nativeSelect tgt spec nm workerSigs ext symbols context emitted
+      -- checked callback kinds for the vector planner (P2 bridge slice 5)
+      vkinds=checkedKinds context products
+      (requests,nativeFns,failures,notes,heapFacts) = nativeSelect tgt spec nm vkinds workerSigs ext symbols context emitted
       (kernels,kernelFailures,kernelNotes) = emitSpecs tgt rvv ext symbols context requests
       allFns = M.elems nativeFns ++ kernels
       strings = M.elems (M.fromList [(stringLabel str,str) | nf <- allFns,str <- nfStrings nf])
@@ -411,7 +413,7 @@ emitProductProgramWithImports products checked imports tgt rvv spec exports ext 
               (if polProfile (tgtPolicy tgt) `elem` [Builtin,Builtin32,BuiltinArc] then Nothing else Just (".Lfpr_layout_table",if polCompactCells (tgtPolicy tgt) then 8 else 16)) emitted
               (S.fromList (concatMap nfNullaries allFns))
    in Emission
-      { emNotes = optimizationNotes optimized ++ concat [declines tgt spec prog fn b | (fn,(_,b)) <- M.toList emitted]
+      { emNotes = optimizationNotes optimized ++ concat [declines tgt spec vkinds prog fn b | (fn,(_,b)) <- M.toList emitted]
           ++ kernelNotes ++ typedIrNotes (tgtTypedIr tgt) (tgtPolicy tgt) workerSigs ext (foreignEntries tgt) prog emitted ++ notes,
         emNative = nativeText,
         emNativeNames = M.keys nativeFns,
@@ -421,8 +423,8 @@ emitProductProgramWithImports products checked imports tgt rvv spec exports ext 
         emRefusals = failures ++ kernelFailures,
         emData = dat }
 
-declines :: Target -> Bool -> Prog -> String -> Core -> [String]
-declines tgt spec prog owner = goD S.empty
+declines :: Target -> Bool -> CheckedKinds -> Prog -> String -> Core -> [String]
+declines tgt spec vkinds prog owner = goD S.empty
   where
     goD bound e =
       here ++ case e of
@@ -444,7 +446,7 @@ declines tgt spec prog owner = goD S.empty
               (CVar f, caps) <- spineOf fe,
               M.member f prog,
               not (S.member f bound) ->
-                case vecSpec (tgtFusion tgt) prog (`S.member` bound) e of
+                case vecSpec (tgtFusion tgt) vkinds prog (`S.member` bound) e of
                   Nothing ->
                     [ "vec note: " ++ op ++ " over `" ++ f ++ "`" ++ capsNote caps ++ " (in " ++ owner
                         ++ ") runs in the GENERIC apply tier -- " ++ why op f caps
@@ -606,7 +608,10 @@ emitSpecs tgt rvv ext exps prog requested =
       results = [(pair,native pair) | pair <- requested]
       errors = [sym ++ ": " ++ e | ((sym,_),Left e) <- results, "compiler error:" `isPrefixOf` e]
       natives = M.elems (M.fromList [(nfName nf,nf) | (_,Right nfs) <- results, nf <- nfs])
-      notes = ["typed-ir-kernel: " ++ sym ++ either (" refused: " ++) (const " native") result | ((sym,_),result) <- results]
+      -- the planned raw-word kinds, so a test can see which signature won
+      notes = ["typed-ir-kernel: " ++ sym ++ either (" refused: " ++) (const " native") result ++ kindsNote plan
+              | ((sym,plan),result) <- results]
+      kindsNote plan = maybe "" (\(ks,k) -> " kinds=" ++ intercalate "," (map show ks) ++ "->" ++ show k) (spKinds plan)
    in if null errors then (natives,[(sym,reason) | ((sym,_),Left reason) <- results],notes)
       else error ("typed-ir kernel: " ++ intercalate "; " errors)
 

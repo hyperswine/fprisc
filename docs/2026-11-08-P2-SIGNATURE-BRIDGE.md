@@ -193,12 +193,65 @@ cache entries, so their totals (36, 16, 20, 44) depended on order and cache
 state and are not comparable to each other or to the 56 above. Assembly
 comparison was unaffected.
 
+## Slice 5 (same day): vector callbacks take checked kinds
+
+`Core.Opt.Vector` planned callback kinds with the lenient `KernelKinds.signature`,
+which defaults every position the body never constrains to `Int`. A vector
+kernel guards its inputs at run time (vector element tag, `isInt` on
+arguments) and falls back to the general per-element path when the guess is
+wrong. So the guess was safe but slow: an `F64` callback that only moves an
+argument (`pick acc x = x`) took the fallback on every call.
+
+Measured before the change, 200 folds over 1,000,000 `F64` elements:
+`Vec.fold pick` 2.50 s against `Vec.fold add` 0.59 s, although `pick` does
+less work (12.4 against 3.1 ns per element).
+
+The checked kinds now reach the vector planner: `pipelinePlan`, `typePlan`,
+`vecSpec` and the nesting step take `CheckedKinds`, supplied by
+`Core.Opt.Pipeline` (fusion compatibility) and `Codegen` (kernel sites and
+the decline notes) from the same `ProductParameters`. `callbackKinds` uses a
+named callback's checked signature when every position is a raw word and
+`KernelKinds.verifyComponent` accepts the body under it. A callback without a
+complete checked interface (a lambda, a record-map field, a type variable)
+keeps the lenient solution, so nothing that worked before changes. If
+verification fails and strict inference finds a different full signature,
+the compile stops.
+
+The `typed-ir-kernel:` note now ends with the planned kinds
+(`kinds=KD,KD->KD`), so a test can see which signature won without timing.
+
+Fixture: `tests/pipeline/vec_callback_kinds.fpr` (corpus entry
+`vec_callback_kinds`): `fold pick`, the fused `map same` + `fold keepAcc`
+(`wfold_keepAcc_same`), and the `fold add` control.
+`tests/check_signature_bridge.py` requires all three kernels to be planned as
+`F64` on the host; `tests/CorePipeline.hs` covers the lenient guess, the
+checked authority, an incomplete checked signature and a contradiction.
+
+### Evidence
+
+Reference: b5c218c (slice 4), built in a separate worktree.
+
+| Check | Result |
+|---|---|
+| Unit suites | 42/42 |
+| `fold pick`, 200 x 1,000,000 `F64` | 2.50 s -> 0.28 s; `fold add` unchanged (0.59 s) |
+| Fixture | same output; 0.13 s -> 0.02 s |
+| Run differential: 46 programs (all `tests/base/vec*`, all benchmarks, pipeline fixtures), both compilers | identical stdout and exit code |
+| Cold sweep, 145 programs | identical asm size and bridge counts; same 6 compile failures |
+| Corpus bridge, host and RV64 (22 entries) | agreed 9, checked_only 2, no disagreement; vector kernels `KD` |
+| `make pipeline-baseline-check` (re-recorded, host + RV64) | 22 behaviour contracts hold |
+| Policy D1, D2 | PASS |
+| QOS guishell | compiles |
+
+No existing program had a guessed callback, so only the fixture changes.
+
 ## Next slices
 
 1. ~~The unchecked workers~~: done in slice 3.
 2. ~~Admit checked-only components~~: done in slice 4.
-3. **`Core.Opt.Vector`'s `signature` call**, the other consumer, gets the same
-   checked authority.
+3. ~~`Core.Opt.Vector`'s `signature` call~~: done in slice 5 for named
+   callbacks. Lambdas and record-map fields still use the lenient solver;
+   they need checked kinds carried for lifted lambdas.
 4. **Remove `KernelKinds`** once no native path consumes it (the roadmap's P2
    deletion gate). Lowering from the typed program and the validation
    operation of semantic policy Decision 4 follow in later P2 slices.

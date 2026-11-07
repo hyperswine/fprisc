@@ -280,6 +280,7 @@ the raw `-O2` numbers.
    the field-pass workers their source's checked kinds: no unchecked worker
    remains in the corpus or sweep. Slice 4 admits components only the checked
    kinds can type (pass-through parameters), verified by
-   `KernelKinds.verifyComponent`.
+   `KernelKinds.verifyComponent`. Slice 5 gives named vector callbacks the
+   same checked authority.
 3. P6 composed-work report from `Codegen.Placement`, in parallel.
 4. P1 checked summary schema with its first range/result-size consumer.
