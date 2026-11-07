@@ -8,7 +8,7 @@ import Core.Primitives
 import KernelKinds (Kind(..))
 import Control.Monad (unless, forM_)
 import Control.Exception (ErrorCall(..), evaluate, try)
-import Workers (Agreement(..), signatureAgreement)
+import Workers (Agreement(..), scalarWorkersWith)
 import Data.List (isInfixOf,isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -38,17 +38,28 @@ main = do
   check "private worker created" (M.member worker (optimizedProgram result))
   check "worker ABI retained through normalization and reuse" (M.lookup worker sigs==Just ([KI,KI],KI))
   check "public entry retained" (fst (optimizedProgram result M.! "sum")==["n","a"])
-  -- P2 signature bridge: KernelKinds' worker signature against checked kinds
-  let bridge ck=signatureAgreement (M.fromList ck) sigs
-      counts a=(agreed a,guarded a,unchecked a)
-  check "bridge: checked Int signature agrees" (counts (bridge [("sum",([Just KI,Just KI],Just KI))])==(1,0,0))
-  check "bridge: a non-raw checked parameter stays guarded" (counts (bridge [("sum",([Nothing,Just KI],Just KI))])==(0,1,0))
-  check "bridge: no checked interface is unchecked" (counts (bridge [])==(0,0,1))
-  check "bridge: an arity mismatch is unchecked" (counts (bridge [("sum",([Just KI],Just KI))])==(0,0,1))
-  conflict <- try (evaluate (agreed (bridge [("sum",([Just KB,Just KI],Just KI))])))
+  -- P2 signature bridge: checked kinds are the worker authority, KernelKinds the assertion
+  let bridge ck prog=scalarWorkersWith (M.fromList ck) prog
+      counts (_,_,a)=(agreed a,guarded a,unchecked a,checkedOnly a)
+      sigsOf (_,s,_)=s
+      intSum=[("sum",([Just KI,Just KI],Just KI))]
+  check "bridge: checked Int signature is the authority and agrees" (counts (bridge intSum source)==(1,0,0,0))
+  check "bridge: the checked signature is the worker signature" (M.lookup worker (sigsOf (bridge intSum source))==Just ([KI,KI],KI))
+  check "bridge: a non-raw checked parameter stays guarded" (counts (bridge [("sum",([Nothing,Just KI],Just KI))] source)==(0,1,0,0))
+  check "bridge: no checked interface is unchecked" (counts (bridge [] source)==(0,0,1,0))
+  check "bridge: an arity mismatch is not authoritative" (counts (bridge [("sum",([Just KI],Just KI))] source)==(0,1,0,0))
+  conflict <- try (evaluate (agreed (let (_,_,a)=bridge [("sum",([Just KB,Just KI],Just KI))] source in a)))
   check "bridge: a disagreement stops the compile" (case conflict of
     Left (ErrorCall msg) -> "signature bridge" `isInfixOf` msg
     Right _ -> False)
+  -- n is returned and passed along but never constrained: KernelKinds declines
+  -- the loop, the checked Int signature admits it. Slice 2 keeps code shape:
+  -- counted, not admitted.
+  let carryBody=CIf (app "==" [v "k",CInt 0]) (v "n") (app "carry" [v "n",app "-" [v "k",CInt 1]])
+      carry=M.singleton "carry" (["n","k"],carryBody)
+      carried=bridge [("carry",([Just KI,Just KI],Just KI))] carry
+  check "bridge: a checked-only component is counted" (counts carried==(0,0,0,1))
+  check "bridge: a checked-only component gets no worker yet" (M.null (sigsOf carried))
   check "named pass order" (map passName (optimizationReports result)==
     [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,PairReturns])
   check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False])

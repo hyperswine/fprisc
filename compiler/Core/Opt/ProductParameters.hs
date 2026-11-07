@@ -283,7 +283,9 @@ expandProductParameter source old target new index shape@(_,_,width) evidence@(P
 -- expanding recursive fields keep a finite key. Unknown variables normalize
 -- identically; unrelated root declarations do not invalidate this artifact.
 productParameterKey :: Prog -> ProductParameters -> String
-productParameterKey program facts@(ProductParameters layouts model table _ _ _ _)=show (selected,definitions,records,tuples,variantResults program facts,storagePlans program facts)
+-- The checked kinds are the scalar worker authority (P2 bridge slice 2), so
+-- they are optimization input like the layouts.
+productParameterKey program facts@(ProductParameters layouts model table _ _ _ _)=show (selected,definitions,records,tuples,variantResults program facts,storagePlans program facts,checkedKinds program facts)
   where
     selected=M.mapMaybeWithKey (\name (ps,types)->case M.lookup name program of
       Just (qs,_) | ps==qs->Just (M.map (mapVariables (const (TV (-1)))) types)

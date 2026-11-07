@@ -5,7 +5,8 @@ Compiles every corpus entry (tests/pipeline/corpus.json) for the host and for
 RV64 and reads the `# signature bridge:` line each unit prints: how many scalar
 worker signatures solved by KernelKinds agree with the checked interface,
 stay guarded (a checked position that is not a raw word), or have no checked
-interface. A disagreement is a compile error, so every compile succeeding is
+interface, or are admitted by the checked kinds only (counted, not yet
+admitted: slice 2 keeps code shape). A disagreement is a compile error, so every compile succeeding is
 the main assertion. On top of that:
 
   - fib's worker (fib : Int -> Int) must agree;
@@ -15,7 +16,7 @@ import json, os, re, subprocess, sys, tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-NOTE = re.compile(r'# signature bridge: agreed=(\d+) guarded=(\d+) unchecked=(\d+)')
+NOTE = re.compile(r'# signature bridge: agreed=(\d+) guarded=(\d+) unchecked=(\d+) checked_only=(\d+)')
 
 
 def compile_counts(src, target, tmp, tag):
@@ -26,9 +27,9 @@ def compile_counts(src, target, tmp, tag):
     p = subprocess.run(cmd, cwd=ROOT, env=env, text=True, capture_output=True, timeout=600)
     if p.returncode != 0:
         sys.exit(f'FAIL {tag} ({target or "host"}): compile failed\n{p.stdout[-1500:]}{p.stderr[-1500:]}')
-    totals = [0, 0, 0]
+    totals = [0, 0, 0, 0]
     for m in NOTE.finditer(p.stdout):
-        for i in range(3):
+        for i in range(4):
             totals[i] += int(m.group(i + 1))
     return totals
 
@@ -39,16 +40,16 @@ def main():
     with tempfile.TemporaryDirectory(prefix='fpr-bridge-') as d:
         tmp = Path(d)
         for target in (None, 'rv64'):
-            grand = [0, 0, 0]
+            grand = [0, 0, 0, 0]
             for e in corpus:
-                a, g, u = compile_counts(ROOT / e['source'], target, tmp, e['id'])
-                grand = [grand[0] + a, grand[1] + g, grand[2] + u]
+                a, g, u, c = compile_counts(ROOT / e['source'], target, tmp, e['id'])
+                grand = [grand[0] + a, grand[1] + g, grand[2] + u, grand[3] + c]
                 if e['id'] == 'fib' and a < 1:
                     print(f'FAIL fib ({target or "host"}): its Int -> Int worker did not agree (agreed={a} guarded={g} unchecked={u})')
                     bad += 1
             name = target or 'host'
             print(f'signature bridge ({name}): {len(corpus)} corpus entries compiled; '
-                  f'agreed={grand[0]} guarded={grand[1]} unchecked={grand[2]}, no disagreement')
+                  f'agreed={grand[0]} guarded={grand[1]} unchecked={grand[2]} checked_only={grand[3]}, no disagreement')
             if grand[0] == 0:
                 print(f'FAIL {name}: no worker signature agreed with a checked interface')
                 bad += 1

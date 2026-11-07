@@ -274,7 +274,8 @@ the raw `-O2` numbers.
    (the roadmap's amended order); it must add its inputs to the identity
    described above. Slice 1 landed 8 November
    ([record](2026-11-08-P2-SIGNATURE-BRIDGE.md)): checked kinds carried beside
-   `KernelKinds` and compared, with no code change. Slice 2 makes them the
-   worker authority and adds them to cache identity.
+   `KernelKinds` and compared, with no code change. Slice 2 (same day) made
+   them the scalar worker authority and part of cache identity, with
+   `KernelKinds` as the assertion, still with no code change.
 3. P6 composed-work report from `Codegen.Placement`, in parallel.
 4. P1 checked summary schema with its first range/result-size consumer.

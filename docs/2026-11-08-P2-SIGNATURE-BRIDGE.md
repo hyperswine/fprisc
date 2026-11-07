@@ -3,7 +3,7 @@
 Date: 8 November 2026. Kind: implementation record, the first change of
 Phase P2 in the [pipeline refactoring roadmap](2026-11-07-PIPELINE-REFACTORING-ROADMAP.md)
 ("first carry evidence alongside the existing path and check agreement").
-Base: `3004f4d`. Generated code: unchanged.
+Base: `3004f4d` (slice 1), `c31f0cd` (slice 2). Generated code: unchanged by either.
 
 ## What changed
 
@@ -58,16 +58,56 @@ Zero guarded signatures means every scalar worker `KernelKinds` chose in this
 code sits on a function whose checked type is all raw words. Its inference has
 added nothing the checked types did not already say.
 
+## Slice 2 (same day): checked kinds are the worker authority
+
+`Workers.scalarWorkers` now takes each recursive component's signature from
+its members' checked kinds, when every member's checked interface is all raw
+words and matches its arity. `KernelKinds` still solves the same component
+from erased Core, as an assertion. Each component is classified:
+
+| Class | Checked kinds | `KernelKinds` | Worker signature |
+|---|---|---|---|
+| agreed | full and scalar | same solution | the checked one |
+| (error) | full and scalar | a different solution | compile stops |
+| guarded | some member has a non-raw checked position | solved | `KernelKinds`', checked positions must agree |
+| unchecked | no checked interface | solved | `KernelKinds`' |
+| checked_only | full and scalar | declines | none in this slice |
+
+`checked_only` components are counted but not admitted. Admitting them would
+change generated code, and the roadmap reviews representation changes
+separately. The checked kinds now enter cache identity through
+`productParameterKey`, since they decide what is emitted.
+
+The unit tests drive `scalarWorkersWith` directly. They cover:
+- the checked signature as the worker signature;
+- guarded, unchecked and arity-mismatch cases;
+- a forced disagreement that must stop the compile;
+- a checked-only loop: `carry n k` returns `n` unconstrained, so `KernelKinds`
+  declines it while the checked `Int` signature admits it, and it must get no
+  worker.
+
+| Check (slice 2) | Result |
+|---|---|
+| `make unit-tests` | 42 of 42 suites pass |
+| `tests/check_signature_bridge.py` (20 corpus entries, host and RV64) | agreed 6, guarded 0, unchecked 1, checked_only 0, no disagreement |
+| Code facts vs main's recorded baseline (`f594e82`) | 0 differences in behaviour, assembly bytes and lines, per-function facts or private workers, on all 20 entries |
+| 134-program sweep | agreed 36, guarded 0, unchecked 3, checked_only 0, no disagreement |
+| QOS `tests/guishell.fpr` | compiles; agreed 1, no disagreement |
+
+`checked_only` is 0 everywhere, so in this code `KernelKinds` never declined
+something the checked types would admit. Dropping its gate would add no
+workers here. The win would come from programs it cannot solve today.
+
 ## Next slices
 
-1. **Checked kinds as the authority for scalar workers.** Take worker
-   signatures from the checked kinds, keep `KernelKinds` as the assertion, and
-   add the kinds to cache identity. Generated code must stay identical on the
-   corpus and the sweep. The three unchecked workers need a checked origin
-   first, or stay with the old path.
-2. **`Core.Opt.Vector`'s `signature` call**, the other consumer, gets the same
-   agreement check.
-3. **Lowering.** When no native path consumes `KernelKinds` any more, remove it
-   (the roadmap's P2 deletion gate). Lowering from the typed program and the
-   validation operation of semantic policy Decision 4 follow in later P2
-   slices.
+1. **The three unchecked workers.** Find which erased pass makes their source
+   functions (no checked interface) and give them a checked origin, or keep
+   them on `KernelKinds` and record why.
+2. **Admit checked-only components** as a separate, measured representation
+   change: corpus fixtures where `KernelKinds` declines, plus code and timing
+   evidence.
+3. **`Core.Opt.Vector`'s `signature` call**, the other consumer, gets the same
+   checked authority.
+4. **Remove `KernelKinds`** once no native path consumes it (the roadmap's P2
+   deletion gate). Lowering from the typed program and the validation
+   operation of semantic policy Decision 4 follow in later P2 slices.

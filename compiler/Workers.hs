@@ -1,7 +1,7 @@
 -- Private Base worker/wrapper conventions. Public arities and function values
 -- stay general. This pass runs after all source safety/ownership checking.
 module Workers (workerize, workerizeWithSignatures, workerizeWithOptions, workerizeWithProducts, ScalarSignatures, internalWorker, scalarPrimitives,
-               Agreement(..), signatureAgreement) where
+               Agreement(..), scalarWorkersWith) where
 
 import Codegen.IR (arityCeiling)
 import Core.Primitives (scalarPrimitives, entryTickName)
@@ -209,43 +209,49 @@ workerizeWithOptions=workerizeWithProducts emptyProductParameters
 workerizeWithProducts :: ProductParameters -> Bool -> Bool -> Bool -> Prog -> (Prog,[String],ScalarSignatures)
 workerizeWithProducts products fields tupleScalars scalars prog =
   let (p,nf,fieldNotes) = if fields then fieldWorkers products tupleScalars prog else (prog,0,[])
-      (q,sigs) = if scalars then scalarWorkers p else (p,M.empty)
-      bridge = signatureAgreement (checkedKinds p products) sigs
+      (q,sigs,bridge) = if scalars then scalarWorkers (checkedKinds p products) p else (p,M.empty,noAgreement)
   -- forced with the result, so the agreement check runs whether or not the
   -- notes are printed
   in bridge `seq` (q,["# private workers: fields="++show nf++" scalar="++show (M.size sigs)]
         ++ [bridgeNote bridge | scalars] ++ fieldNotes, sigs)
 
--- P2 signature bridge, first slice (docs/2026-11-08-P2-SIGNATURE-BRIDGE.md).
--- The scalar worker signatures are still solved by KernelKinds from erased
--- Core; here each one is compared with the kinds of the function's checked
--- interface. A position the checked type fixes to a raw word must agree: a
--- disagreement is a compiler bug and stops the compile. A position whose
--- checked type is not a raw word (a type variable, say) stays a guarded
--- speculation: the wrapper's runtime test still selects the general body
--- (semantic policy Rule 2). Nothing about the emitted program changes.
-data Agreement = Agreement { agreed :: Int, guarded :: Int, unchecked :: Int }
+-- P2 signature bridge (docs/2026-11-08-P2-SIGNATURE-BRIDGE.md). Slice 2: a
+-- scalar worker's signature comes from its checked interface. KernelKinds
+-- still solves the same component from erased Core, as an assertion:
+--   agreed      the checked kinds give the signature and KernelKinds agrees;
+--   guarded     a member's checked type is not all raw words (a type
+--               variable, say), so KernelKinds' solution is used, and it must
+--               agree with every checked raw position; the wrapper's runtime
+--               test still selects the general body (semantic policy Rule 2);
+--   unchecked   no checked interface: KernelKinds' solution is used;
+--   checkedOnly the checked kinds admit a component KernelKinds declines. Not
+--               admitted in this slice, so generated code keeps its shape
+--               (the roadmap reviews representation changes separately).
+-- A disagreement on a checked raw position stops the compile.
+data Agreement = Agreement { agreed :: !Int, guarded :: !Int, unchecked :: !Int, checkedOnly :: !Int }
 
-signatureAgreement :: CheckedKinds -> ScalarSignatures -> Agreement
-signatureAgreement checked sigs = foldl' one (Agreement 0 0 0) (M.toList sigs)
-  where
-    one acc (name, (ks, r)) =
-      let source = drop (length (prefix ++ "scalar.")) name
-      in case M.lookup source checked of
-        Just (cks, cr) | length cks == length ks ->
-          let positions = zip (cr : cks) (r : ks)
-              wrong = [(c, k) | (Just c, k) <- positions, c /= k]
-          in if not (null wrong)
-               then error ("signature bridge: KernelKinds solved " ++ show (ks, r) ++ " for " ++ source
-                           ++ " but its checked interface says " ++ show (cks, cr))
-               else if all (\(c, _) -> c /= Nothing) positions
-                 then acc { agreed = agreed acc + 1 }
-                 else acc { guarded = guarded acc + 1 }
-        _ -> acc { unchecked = unchecked acc + 1 }
+noAgreement :: Agreement
+noAgreement = Agreement 0 0 0 0
+
+-- Every position the checked interface fixes must match KernelKinds' kind.
+-- Right True: every position is checked. Right False: some are not raw words.
+agreeWith :: CheckedKinds -> String -> ([Kind], Kind) -> Either String Bool
+agreeWith checked name (ks, r) = case M.lookup name checked of
+  Just (cks, cr) | length cks == length ks ->
+    let positions = zip (cr : cks) (r : ks)
+    in if or [c /= k | (Just c, k) <- positions]
+         then Left ("signature bridge: KernelKinds solved " ++ show (ks, r) ++ " for " ++ name
+                    ++ " but its checked interface says " ++ show (cks, cr))
+         else Right (all ((/= Nothing) . fst) positions)
+  _ -> Right False
+
+-- For tests: the scalar worker pass with explicit checked kinds.
+scalarWorkersWith :: CheckedKinds -> Prog -> (Prog,ScalarSignatures,Agreement)
+scalarWorkersWith = scalarWorkers
 
 bridgeNote :: Agreement -> String
 bridgeNote a = "# signature bridge: agreed=" ++ show (agreed a) ++ " guarded=" ++ show (guarded a)
-  ++ " unchecked=" ++ show (unchecked a)
+  ++ " unchecked=" ++ show (unchecked a) ++ " checked_only=" ++ show (checkedOnly a)
 
 -- Successive field plans need not publish a quadratic chain of general
 -- fallback bodies. A generated guard entry used ONLY by its parent can join
@@ -575,8 +581,8 @@ fieldWorkersStep products tupleScalars allowedWorkers input =
     isTrivial (CVar _) = True
     isTrivial _ = False
 
-scalarWorkers :: Prog -> (Prog,ScalarSignatures)
-scalarWorkers prog = (M.union wrapped workers,M.mapKeys worker chosen)
+scalarWorkers :: CheckedKinds -> Prog -> (Prog,ScalarSignatures,Agreement)
+scalarWorkers checked prog = (M.union wrapped workers,M.mapKeys worker chosen,bridge)
   where
     -- The fragment has no allocation, managed projections, unknown callbacks
     -- or foreign calls. Bool values retain the normal immutable ABI.
@@ -625,18 +631,41 @@ scalarWorkers prog = (M.union wrapped workers,M.mapKeys worker chosen)
     -- source has one worker at most. The hosted compiler-cost gate applies
     -- regardless of function names, body size or the number of peers.
     wanted = reachable S.empty loops
-    signatures = foldl' solve M.empty components
-    solve known component
-      | S.disjoint members wanted = known
-      | M.size imports /= S.size external = known
-      | Just sigs <- componentSignatures prog names imports,
-        all scalarKinds (M.elems sigs) = M.union sigs known
-      | otherwise = known
+    (signatures, bridge) = foldl' solve (M.empty, noAgreement) components
+    solve (known, b) component
+      | S.disjoint members wanted = (known, b)
+      | M.size imports /= S.size external = (known, b)
+      | otherwise = case (fromChecked, inferred) of
+          (Just sigs, Just ks)
+            | sigs == ks -> (M.union sigs known, b { agreed = agreed b + M.size sigs })
+            | otherwise -> error ("signature bridge: KernelKinds solved " ++ show ks
+                                  ++ " but the checked interfaces say " ++ show sigs)
+          (Just sigs, Nothing) -> (known, b { checkedOnly = checkedOnly b + M.size sigs })
+          (Nothing, Just ks) -> case traverse (uncurry (agreeWith checked)) (M.toList ks) of
+            Left err -> error err
+            Right _
+              | any (`M.member` checked) names -> (M.union ks known, b { guarded = guarded b + M.size ks })
+              | otherwise -> (M.union ks known, b { unchecked = unchecked b + M.size ks })
+          (Nothing, Nothing) -> (known, b)
       where names = flattenSCC component
             members = S.fromList names
             external = S.unions (map edges names) `S.difference` members
             imports = M.restrictKeys known external
             scalarKinds (ks,r) = KI `elem` ks && all (`elem` [KI,KB]) (r:ks)
+            -- the authority: every member's checked interface is all raw words
+            fromChecked = do
+              sigs <- M.fromList <$> traverse full names
+              if all scalarKinds (M.elems sigs) then Just sigs else Nothing
+            full n = do
+              (cks, cr) <- M.lookup n checked
+              (ps, _) <- M.lookup n prog
+              ks <- sequence cks
+              r <- cr
+              if length ks == length ps then Just (n, (ks, r)) else Nothing
+            -- the assertion: KernelKinds' solution from erased Core
+            inferred = do
+              sigs <- componentSignatures prog names imports
+              if all scalarKinds (M.elems sigs) then Just sigs else Nothing
     chosen = M.restrictKeys signatures (reachable S.empty (filter (`M.member` signatures) loops))
     worker n = prefix++"scalar."++n
     raw (CInt n) = app "$scalar.unbox" [CInt n]
