@@ -7,6 +7,8 @@ import Core.Opt.Vector.Plan
 import Core.Primitives
 import KernelKinds (Kind(..))
 import Control.Monad (unless, forM_)
+import Control.Exception (ErrorCall(..), evaluate, try)
+import Workers (Agreement(..), signatureAgreement)
 import Data.List (isInfixOf,isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -36,6 +38,17 @@ main = do
   check "private worker created" (M.member worker (optimizedProgram result))
   check "worker ABI retained through normalization and reuse" (M.lookup worker sigs==Just ([KI,KI],KI))
   check "public entry retained" (fst (optimizedProgram result M.! "sum")==["n","a"])
+  -- P2 signature bridge: KernelKinds' worker signature against checked kinds
+  let bridge ck=signatureAgreement (M.fromList ck) sigs
+      counts a=(agreed a,guarded a,unchecked a)
+  check "bridge: checked Int signature agrees" (counts (bridge [("sum",([Just KI,Just KI],Just KI))])==(1,0,0))
+  check "bridge: a non-raw checked parameter stays guarded" (counts (bridge [("sum",([Nothing,Just KI],Just KI))])==(0,1,0))
+  check "bridge: no checked interface is unchecked" (counts (bridge [])==(0,0,1))
+  check "bridge: an arity mismatch is unchecked" (counts (bridge [("sum",([Just KI],Just KI))])==(0,0,1))
+  conflict <- try (evaluate (agreed (bridge [("sum",([Just KB,Just KI],Just KI))])))
+  check "bridge: a disagreement stops the compile" (case conflict of
+    Left (ErrorCall msg) -> "signature bridge" `isInfixOf` msg
+    Right _ -> False)
   check "named pass order" (map passName (optimizationReports result)==
     [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,PairReturns])
   check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False])

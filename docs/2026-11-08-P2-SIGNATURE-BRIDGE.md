@@ -1,0 +1,73 @@
+# P2 signature bridge, slice 1: checked kinds beside KernelKinds
+
+Date: 8 November 2026. Kind: implementation record, the first change of
+Phase P2 in the [pipeline refactoring roadmap](2026-11-07-PIPELINE-REFACTORING-ROADMAP.md)
+("first carry evidence alongside the existing path and check agreement").
+Base: `3004f4d`. Generated code: unchanged.
+
+## What changed
+
+`KernelKinds` solves raw-word signatures (`Int`, `F64`, `F32`, `Bool`) from
+erased Core by unification, and `Workers.scalarWorkers` uses them to pick
+private scalar workers. Typed Core already knew those types; P2 removes the
+re-inference in steps. This slice carries the checked answer to the same place
+and compares the two.
+
+- `Core.Opt.ProductParameters` gains a seventh component, the checked kinds:
+  for every function with a checked interface, the raw-word kind of each
+  parameter and the result (`rawKind`: `Int`→`KI`, `F64`→`KD`, `F32`→`KS`,
+  `Bool`→`KB`; anything else is `Nothing`). It is built from the same
+  `M.Map String Interface` that the product evidence already comes from, keyed
+  by parameter names like the other entries. `checkedKinds` returns only the
+  entries whose parameters still match the program, so a renamed or
+  re-parameterized function never reads another body's kinds. `Mono`'s
+  renaming transports the kinds with the rest of the evidence. Entries are
+  forced on construction, so they retain no interface.
+- `Workers.workerizeWithProducts` compares every scalar worker signature
+  `KernelKinds` chose with the checked kinds of its source function
+  (`signatureAgreement`):
+  - **agreed**: every position has a checked raw kind, and they are equal;
+  - **guarded**: equal wherever the checked type is a raw word, and some
+    position's checked type is not one (a type variable, say). The wrapper's
+    runtime test still selects the general body, so this stays an
+    optimization guard (semantic policy Rule 2);
+  - **unchecked**: no checked interface with that arity (a function made by an
+    earlier erased pass);
+  - **a disagreement** on any checked raw position stops the compile with
+    `signature bridge: KernelKinds solved ... but its checked interface says ...`.
+    It is forced with the pass result, so it runs whether or not notes are printed.
+- Each unit prints `# signature bridge: agreed=A guarded=G unchecked=U`
+  beside `# private workers`.
+
+Nothing else reads the checked kinds yet. `productParameterKey` (cache
+identity) is unchanged, because no emitted code depends on them. The slice
+that makes the checked kinds the authority must add them to cache identity.
+
+## Evidence
+
+| Check | Result |
+|---|---|
+| `make unit-tests` | 42 of 42 suites pass. `CorePipeline` adds agree, guarded, unchecked, arity mismatch and a forced disagreement that must stop the compile. |
+| `tests/check_signature_bridge.py` (19 corpus entries, host and RV64) | agreed 6, guarded 0, unchecked 1, no disagreement on either target; `fib`'s `Int -> Int` worker agrees |
+| Sweep: every `examples/`, `tests/bench/` and `tests/base/` program (134) | agreed 36, guarded 0, unchecked 3, no disagreement. Six do not compile with either compiler (library modules and other-target programs). |
+| QOS `tests/guishell.fpr` (qos 5feea4b) | compiles; 53 units, agreed 1, no disagreement |
+| `tools/pipeline-baseline.py --check` | 19 behaviour contracts hold |
+| Code facts, bridge vs `3004f4d` compiler | identical assembly bytes and lines, per-function frame/spill/segment facts and preconditions on all 19 entries. The only difference is pingpong's runtime allocation count (+0.02%), which also varies between two recordings with the same compiler (actor scheduling). |
+
+Zero guarded signatures means every scalar worker `KernelKinds` chose in this
+code sits on a function whose checked type is all raw words. Its inference has
+added nothing the checked types did not already say.
+
+## Next slices
+
+1. **Checked kinds as the authority for scalar workers.** Take worker
+   signatures from the checked kinds, keep `KernelKinds` as the assertion, and
+   add the kinds to cache identity. Generated code must stay identical on the
+   corpus and the sweep. The three unchecked workers need a checked origin
+   first, or stay with the old path.
+2. **`Core.Opt.Vector`'s `signature` call**, the other consumer, gets the same
+   agreement check.
+3. **Lowering.** When no native path consumes `KernelKinds` any more, remove it
+   (the roadmap's P2 deletion gate). Lowering from the typed program and the
+   validation operation of semantic policy Decision 4 follow in later P2
+   slices.

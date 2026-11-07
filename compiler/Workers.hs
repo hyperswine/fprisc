@@ -1,6 +1,7 @@
 -- Private Base worker/wrapper conventions. Public arities and function values
 -- stay general. This pass runs after all source safety/ownership checking.
-module Workers (workerize, workerizeWithSignatures, workerizeWithOptions, workerizeWithProducts, ScalarSignatures, internalWorker, scalarPrimitives) where
+module Workers (workerize, workerizeWithSignatures, workerizeWithOptions, workerizeWithProducts, ScalarSignatures, internalWorker, scalarPrimitives,
+               Agreement(..), signatureAgreement) where
 
 import Codegen.IR (arityCeiling)
 import Core.Primitives (scalarPrimitives, entryTickName)
@@ -209,7 +210,42 @@ workerizeWithProducts :: ProductParameters -> Bool -> Bool -> Bool -> Prog -> (P
 workerizeWithProducts products fields tupleScalars scalars prog =
   let (p,nf,fieldNotes) = if fields then fieldWorkers products tupleScalars prog else (prog,0,[])
       (q,sigs) = if scalars then scalarWorkers p else (p,M.empty)
-  in (q,["# private workers: fields="++show nf++" scalar="++show (M.size sigs)]++fieldNotes,sigs)
+      bridge = signatureAgreement (checkedKinds p products) sigs
+  -- forced with the result, so the agreement check runs whether or not the
+  -- notes are printed
+  in bridge `seq` (q,["# private workers: fields="++show nf++" scalar="++show (M.size sigs)]
+        ++ [bridgeNote bridge | scalars] ++ fieldNotes, sigs)
+
+-- P2 signature bridge, first slice (docs/2026-11-08-P2-SIGNATURE-BRIDGE.md).
+-- The scalar worker signatures are still solved by KernelKinds from erased
+-- Core; here each one is compared with the kinds of the function's checked
+-- interface. A position the checked type fixes to a raw word must agree: a
+-- disagreement is a compiler bug and stops the compile. A position whose
+-- checked type is not a raw word (a type variable, say) stays a guarded
+-- speculation: the wrapper's runtime test still selects the general body
+-- (semantic policy Rule 2). Nothing about the emitted program changes.
+data Agreement = Agreement { agreed :: Int, guarded :: Int, unchecked :: Int }
+
+signatureAgreement :: CheckedKinds -> ScalarSignatures -> Agreement
+signatureAgreement checked sigs = foldl' one (Agreement 0 0 0) (M.toList sigs)
+  where
+    one acc (name, (ks, r)) =
+      let source = drop (length (prefix ++ "scalar.")) name
+      in case M.lookup source checked of
+        Just (cks, cr) | length cks == length ks ->
+          let positions = zip (cr : cks) (r : ks)
+              wrong = [(c, k) | (Just c, k) <- positions, c /= k]
+          in if not (null wrong)
+               then error ("signature bridge: KernelKinds solved " ++ show (ks, r) ++ " for " ++ source
+                           ++ " but its checked interface says " ++ show (cks, cr))
+               else if all (\(c, _) -> c /= Nothing) positions
+                 then acc { agreed = agreed acc + 1 }
+                 else acc { guarded = guarded acc + 1 }
+        _ -> acc { unchecked = unchecked acc + 1 }
+
+bridgeNote :: Agreement -> String
+bridgeNote a = "# signature bridge: agreed=" ++ show (agreed a) ++ " guarded=" ++ show (guarded a)
+  ++ " unchecked=" ++ show (unchecked a)
 
 -- Successive field plans need not publish a quadratic chain of general
 -- fallback bodies. A generated guard entry used ONLY by its parent can join
