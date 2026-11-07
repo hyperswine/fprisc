@@ -4,6 +4,12 @@ Date: 2026-11-07. Kind: proposal, with its first slice implemented in the
 same change. Base: FP-RISC `8af12a2` (the frameless-entry slice, default off);
 measurements on Apple M4, macOS, the `-O1` `./fpr`.
 
+Planning follow-up: the [pipeline refactoring roadmap](2026-11-07-PIPELINE-REFACTORING-ROADMAP.md)
+expands these two changes into staged evidence preservation, representation
+planning and pass-retirement work. It supersedes the ordering of the
+unimplemented architectural slices below; the implemented slice and its
+measurements remain the historical baseline.
+
 The question behind this page (docs/ISSUES.txt, 7 November): are there
 bigger changes that would make the fixed-costs plan
 ([2026-11-06-FIXED-COSTS-PROPOSAL.md](2026-11-06-FIXED-COSTS-PROPOSAL.md))

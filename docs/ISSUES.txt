@@ -25,3 +25,13 @@ Zero overhead is desired.
 Not necessarily C level perf, but not paying for what you don't use.
 
 And most importantly, WCET and correctness and reliability.
+
+------------
+
+Can do what MLton does
+
+Defunctorization: Transform functor applications into first-class modules or inline module definitions to reduce runtime overhead and improve compile-time analysis.
+Defunctionalization: Convert higher-order functions into a finite set of first-order function representations to eliminate runtime closures and enable more aggressive compile-time optimizations.
+Monomorphization: Replace polymorphic functions and data types with specialized versions for each concrete type usage to eliminate runtime type dispatch and improve performance.
+
+But in FP-RISC we have fuel ticks to account for resource usage and ensure predictable execution time.
