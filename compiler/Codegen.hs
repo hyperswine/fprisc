@@ -105,7 +105,8 @@ data NativeMode = NativeMode
     nmForwardParams :: Bool, -- preserve forwarding arguments only on entry slow paths
     nmTune :: Tune, -- the fib experiments (docs/2026-10-22-TYPED-IR-FIB.md)
     nmSplitEntry :: Bool, -- Codegen.Split before selection
-    nmSelfLoops :: Bool -- self tail calls as loops rather than frame re-entry
+    nmSelfLoops :: Bool, -- self tail calls as loops rather than frame re-entry
+    nmFramelessEntry :: Bool -- step 1: entry checks before the frame (A64 first)
   }
   deriving (Show)
 
@@ -132,7 +133,7 @@ rv32 = rv64 {tgtW=4,tgtName="rv32",tgtFloatInline=False,
   tgtNative=Just (defaultMode (DirectRV (policyWidth (m2Policy {polProfile=Rv32})) RV.HartTp))}
 
 defaultMode :: NativeBackend -> NativeMode
-defaultMode backend = NativeMode PerFunction StrictAll "native" (Just backend) False noTune False True
+defaultMode backend = NativeMode PerFunction StrictAll "native" (Just backend) False noTune False True False
 
 -- The typed-IR lowering of M1 (docs/2026-10-20-TYPED-NATIVE-IR-PLAN.md), as a
 -- diagnostic report: which functions lower, why the others
@@ -225,7 +226,7 @@ foreignEntries tgt =
 -- granularity turns one fallback into the unit's.
 emitNative :: Target -> NativeMode -> SymbolPolicy -> NativeBackend -> Fn -> Either String NativeFn
 emitNative tgt nm symbols backend = case backend of
-  DirectA64 fmt hart -> emitFnA64WithSymbols symbols (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
+  DirectA64 fmt hart -> emitFnA64WithSymbols symbols (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmFramelessEntry nm) (nmTune nm))
   DirectQX64 -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) X64.HartBorrow)
   DirectRV width hart -> RV.emitFnRVWithSymbols symbols (RV.RVConfig width (tgtPolicy tgt) hart exps (tgtWeak tgt) (nmSelfLoops nm))
   DirectX64 fmt -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls))
@@ -389,7 +390,9 @@ emitProductProgramWithImports products checked imports tgt rvv spec exports ext 
       fuelWrapper
         | not (any nfTicks allFns) = []
         | otherwise = case nmBackend nm of
-            Just (DirectA64 fmt _) -> A64.fuelSaveWrapper fmt
+            -- the frameless entry's stack-check wrapper rides with the tick
+            -- wrapper: every hosted profile that ticks also checks the stack
+            Just (DirectA64 fmt _) -> A64.fuelSaveWrapper fmt ++ (if nmFramelessEntry nm then A64.stackGrowWrapper fmt else [])
             Just (DirectX64 fmt) -> X64.fuelSaveWrapper (if fmt == MachO then X64.HartTlvMachO else X64.HartTls)
             Just DirectQX64 -> X64.fuelSaveWrapper X64.HartBorrow
             Just (DirectRV width _) -> RV.fuelSaveWrapper width

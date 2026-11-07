@@ -25,7 +25,7 @@ data NativeOptions = NativeOptions
     nativeFpPool :: Bool, nativeLinkPairs :: Bool } deriving (Eq,Show)
 data CodegenOptions = CodegenOptions
   { nativeOptions :: NativeOptions, cgIndexedMemory :: Bool, cgFloatInline :: Bool,
-    cgSimd :: Bool, cgFusion :: Bool, cgListFuse :: Bool, cgCaseKnown :: Bool, cgTypeSpec :: Bool, cgTypedCase :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgStringFast :: Bool, cgInterval :: Bool, cgLoopMotion :: Bool, cgEarlyLoops :: Bool, cgStringScan :: Bool,
+    cgSimd :: Bool, cgFusion :: Bool, cgListFuse :: Bool, cgCaseKnown :: Bool, cgTypeSpec :: Bool, cgTypedCase :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgStringFast :: Bool, cgInterval :: Bool, cgLoopMotion :: Bool, cgEarlyLoops :: Bool, cgFramelessEntry :: Bool, cgStringScan :: Bool,
     cgScalarWorkers :: Bool, cgTrmc :: Bool, cgTickBatch :: Bool, cgPairReturns :: Bool, cgFieldWorkers :: Bool, cgTupleScalars :: Bool, cgPipelineInline :: Bool,
     cgReuse :: Bool, cgSpecialize :: Bool, cgReceiveTurns :: Bool, cgBumpAlloc :: Bool, cgCompactCells :: Bool,
     cgLoopRegions :: Bool, cgCallRegions :: Bool, cgInline :: Bool } deriving (Eq,Show)
@@ -69,6 +69,7 @@ parseCompilerOptions env = do
           cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgListFuse=enabled "LIST_FUSE", cgCaseKnown=enabled "CASE_KNOWN", cgTypeSpec=enabled "TYPE_SPEC", cgTypedCase=enabled "TYPED_CASE", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST", cgStringFast=enabled "STR_FAST", cgInterval=enabled "INTERVAL", cgLoopMotion=yes "FPR_TYPED_IR_LOOP_MOTION",
           cgStringScan=yes "FPR_TYPED_IR_STRING_SCAN",
           cgEarlyLoops=yes "FPR_TYPED_IR_EARLY_LOOPS" && nativeSelfLoops native,
+          cgFramelessEntry=yes "FPR_TYPED_IR_FRAMELESS_ENTRY",
           cgScalarWorkers=enabled "SCALAR_WORKERS", cgTrmc=enabled "TRMC", cgTickBatch=enabled "TICK_BATCH", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
           cgReceiveTurns=enabled "RECEIVE_TURNS", cgBumpAlloc=enabled "BUMP_ALLOC", cgCompactCells=env "FPR_COMPACT_CELLS" /= Just "0", cgLoopRegions=enabled "LOOP_REGIONS",
@@ -124,7 +125,7 @@ nativeOptionFlags fpAvailable n =
     StrictNames names->"-strict"++take 12 (showHex (fnv (intercalate "," names)) "")
 
 optimizationFlags :: CodegenOptions -> String
-optimizationFlags c = flag (not (cgCompactCells c)) "-c16" ++ flag (cgLoopMotion c) "-licm" ++ flag (cgEarlyLoops c) "-earlyloops" ++ flag (cgStringScan c) "-strscan" ++ concat
+optimizationFlags c = flag (not (cgCompactCells c)) "-c16" ++ flag (cgLoopMotion c) "-licm" ++ flag (cgEarlyLoops c) "-earlyloops" ++ flag (cgStringScan c) "-strscan" ++ flag (cgFramelessEntry c) "-frameless" ++ concat
   [flag (not enabled) suffix | (enabled,suffix)<-
     [(cgPipelineInline c,"-nopinline"),(cgReuse c,"-noreuse"),
      (cgScalarWorkers c,"-noscalar"),(cgTrmc c,"-notrmc"),(cgTickBatch c,"-notickbatch"),(cgPairReturns c,"-nopairret"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),

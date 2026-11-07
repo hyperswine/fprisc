@@ -295,7 +295,7 @@ main = do
               Instr (Just (VId 5, TInt)) (OArith Sub (VId 1) (VId 4)),
               Instr (Just (VId 6, TVal)) (OTag (VId 5)) ]
             (TRet (VId 6)) ]
-      cfg = A64Config MachO HartX28 m2Policy (S.singleton "one") False True False noTune
+      cfg = A64Config MachO HartX28 m2Policy (S.singleton "one") False True False False noTune
   refused "A64 cannot consume RV32 policy" "64-bit word policy" (emitFnA64 cfg {cfgPolicy = m2Policy {polProfile = Rv32}} one)
   refused "X64 cannot consume RV32 policy" "64-bit word policy" (X64.emitFnX64 (X64.X64Config (m2Policy {polProfile = Rv32}) S.empty False True False noTune X64.HartTls) one)
   nf <- either (error . ("FAIL: a64: " ++)) pure (emitFnA64 cfg one)
@@ -309,22 +309,22 @@ main = do
   check "the result is tagged straight into x0 before the epilogue" (has "orr x0, x9, #1\n    ldur x19, [x29, #-24]\n")
   check "the epilogue restores sp from the frame pointer" (has "ldur x29, [x29, #-16]\n    mov sp, x9\n    ret")
   check "the bound is finite and named native-insns-v1" (rSegMax (nfReport nf) /= Nothing && has "# native-insns-v1: one segmax=")
-  let elf = A64Config ELF HartTlsElf m2Policy S.empty False True False noTune
+  let elf = A64Config ELF HartTlsElf m2Policy S.empty False True False False noTune
   nfe <- either (error . ("FAIL: a64 elf: " ++)) pure (emitFnA64 elf one)
   check "ELF syntax: no underscore, local-exec TLS" ("bl fpr_stack_grow" `isInfixOf` unlines (nfLines nfe) && "tprel_hi12:fpr_posix_hart" `isInfixOf` unlines (nfLines nfe))
-  let tlv = A64Config MachO HartTlvMachO m2Policy S.empty False True False noTune
+  let tlv = A64Config MachO HartTlvMachO m2Policy S.empty False True False False noTune
   nft <- either (error . ("FAIL: a64 tlv: " ++)) pure (emitFnA64 tlv one)
   check "Mach-O TLV: the descriptor call saves x0 and x30 around it" ("stp x0, x30, [sp]" `isInfixOf` unlines (nfLines nft) && "_fpr_posix_hart@TLVPPAGE" `isInfixOf` unlines (nfLines nft))
   -- a loaded QOS app (docs/2026-10-22-TYPED-IR-QOS.md): its profile is
   -- admitted, and qa64single reads the global hart cell (ELF and Mach-O)
   let qos = m2Policy {polProfile = QosApp}
-  nfq <- either (error . ("FAIL: a64 qos: " ++)) pure (emitFnA64 (A64Config ELF HartX28 qos S.empty False True False noTune) one)
+  nfq <- either (error . ("FAIL: a64 qos: " ++)) pure (emitFnA64 (A64Config ELF HartX28 qos S.empty False True False False noTune) one)
   check "QOS app: x28 is the hart" ("mov x9, x28" `isInfixOf` unlines (nfLines nfq))
-  nfg <- either (error . ("FAIL: a64 qos single: " ++)) pure (emitFnA64 (A64Config ELF HartGlobal qos S.empty False True False noTune) one)
+  nfg <- either (error . ("FAIL: a64 qos single: " ++)) pure (emitFnA64 (A64Config ELF HartGlobal qos S.empty False True False False noTune) one)
   check "QOS single: the global hart cell, ELF" ("adrp x9, fpr_posix_hart\n    ldr x9, [x9, #:lo12:fpr_posix_hart]" `isInfixOf` unlines (nfLines nfg))
-  nfgm <- either (error . ("FAIL: a64 qos single mach-o: " ++)) pure (emitFnA64 (A64Config MachO HartGlobal qos S.empty False True False noTune) one)
+  nfgm <- either (error . ("FAIL: a64 qos single mach-o: " ++)) pure (emitFnA64 (A64Config MachO HartGlobal qos S.empty False True False False noTune) one)
   check "QOS single: the global hart cell, Mach-O" ("adrp x9, _fpr_posix_hart@PAGE\n    ldr x9, [x9, _fpr_posix_hart@PAGEOFF]" `isInfixOf` unlines (nfLines nfgm))
-  refused "a QOS app without fuel is refused" "without fuel" (emitFnA64 (A64Config ELF HartX28 (qos {polFuel = False}) S.empty False True False noTune) one)
+  refused "a QOS app without fuel is refused" "without fuel" (emitFnA64 (A64Config ELF HartX28 (qos {polFuel = False}) S.empty False True False False noTune) one)
   nfx <- either (error . ("FAIL: x64: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False True False noTune X64.HartTls) one)
   nfqx <- either (error . ("FAIL: qx64: " ++)) pure (X64.emitFnX64 (X64.X64Config qos S.empty False True False noTune X64.HartBorrow) one)
   check "QOS x64: borrowed hart, no app TLS" ("movq fpr_g_tlsoff(%rip), %r10\n    movq %fs:0(%r10), %r10" `isInfixOf` unlines (nfLines nfqx) && not ("@tpoff" `isInfixOf` unlines (nfLines nfqx)))
@@ -395,7 +395,7 @@ main = do
       arms = [ I (op "entry" [] []), I (br "leaf"),
                I (op "mv" [s1] [Phys "x0"]), I callS, I (op "mv" [Phys "x0"] [s1]), I ret',
                ILabel (Label "leaf"), I ret' ]
-  case shrinkWrap [s1] arms of
+  case shrinkWrap False [s1] arms of
     Just wrapped -> do
       check "the saves move to the arm that uses the register"
         (take 3 (map fst (notes wrapped)) == ["entry", "bz", "saves.here"])
@@ -403,14 +403,14 @@ main = do
         ([n | (o, n) <- notes wrapped, o == "ret"] == [NoAnnotation, SkipRestores])
     Nothing -> error "FAIL: shrink-wrap declined the two-arm stream"
   check "a register used in the entry block keeps the prologue saves"
-    (shrinkWrap [s1] (I (op "mv" [s1] [Phys "x0"]) : arms) == Nothing)
+    (shrinkWrap False [s1] (I (op "mv" [s1] [Phys "x0"]) : arms) == Nothing)
   check "a save point on a cycle is refused"
-    (shrinkWrap [s1] [ I (op "entry" [] []), I (br "out"), ILabel (Label "loop"), I (op "mv" [s1] [Phys "x0"]), I callS,
+    (shrinkWrap False [s1] [ I (op "entry" [] []), I (br "out"), ILabel (Label "loop"), I (op "mv" [s1] [Phys "x0"]), I callS,
                        I (br "out"), I (jmp "loop"), ILabel (Label "out"), I ret' ] == Nothing)
   check "an exit the save point does not dominate is refused"
-    (shrinkWrap [s1] [ I (op "entry" [] []), I (br "join"), I (op "mv" [s1] [Phys "x0"]), I callS,
+    (shrinkWrap False [s1] [ I (op "entry" [] []), I (br "join"), I (op "mv" [s1] [Phys "x0"]), I callS,
                        ILabel (Label "join"), I ret' ] == Nothing)
-  check "no saved register, no change" (shrinkWrap [] arms == Nothing)
+  check "no saved register, no change" (shrinkWrap False [] arms == Nothing)
   putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, sized A64 frames and explicit profile/x64 limits, shrink-wrap placement and refusals: PASS"
 
 -- The contract checker runs on both sides of allocation. These cases exercise

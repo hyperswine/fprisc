@@ -57,7 +57,7 @@
 module Codegen.Target.A64
   ( A64Config (..), ObjectFormat (..), HartAccess (..), NativeFn (..),
     a64InterfaceRev, a64HostedInterfaceRev, a64SelectionRev, emitFnA64, emitFnA64WithSymbols, a64RegisterFile, mangleName, functionSymbol,
-    placement, allocConfig, fuelSaveWrapper, allocSaveWrapper,
+    placement, allocConfig, fuelSaveWrapper, allocSaveWrapper, stackGrowWrapper,
   ) where
 
 import Compiler.DataLayout (storedListTid)
@@ -117,6 +117,7 @@ data A64Config = A64Config
     cfgWeak :: Bool, -- a library unit: unqualified globals are .weak
     cfgSelfLoops :: Bool, -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
     cfgForwardParams :: Bool,
+    cfgFramelessEntry :: Bool, -- step 1: entry checks before the frame (FPR_TYPED_IR_FRAMELESS_ENTRY)
     cfgTune :: Tune
   }
 
@@ -916,14 +917,42 @@ emitFnA64WithSymbols symbols cfg fn = do
       sym = functionSymbol name
       -- the prologue: the frame, the callee-saved registers this function
       -- uses, then the arrival copies and the entry sequence (the
-      -- parameters are parked before the entry sequence's calls)
+      -- parameters are parked before the entry sequence's calls). Under
+      -- the frameless entry (step 1) the order inverts for arities whose
+      -- arguments all travel in registers and frames that need no
+      -- reservation: the checks run first with the link staged in the
+      -- stack headroom and the arguments preserved by unit-local wrappers,
+      -- and the frame is built by the first save group, so shrink-wrap
+      -- moves frame, saves and arrival copies together.
       pairs = savePairs ly saves
       saveItems = [I ((plain (O.A64 A.Save) [] []) {siAnnotation = SaveGroup k}) | (k, _) <- zip [0 :: Int ..] pairs]
-      wrapped = if tuneShrinkWrap (cfgTune cfg) then shrinkWrap (alSaved alloc) allocatedBody else Nothing
-      body = I ((plain (O.A64 A.Enter) [] []) {siImplicitDefs = [Phys "sp", x 29, x 16]})
-        : case wrapped of
-            Nothing -> saveItems ++ allocatedBody
-            Just items -> concatMap (\it -> case it of I s | siOpcode s == O.Common O.SavesHere -> saveItems; _ -> [it]) items
+      -- only the entry-located checks (a stack check exists nowhere else);
+      -- mid-block inlined-callee ticks (EntryTick/TickN) stay in place
+      isEntryPseudo it = case it of
+        I s -> siOpcode s `elem` map (O.Common . Protocol.entryOpcode) [Protocol.StackAndFuel, Protocol.StackOnly]
+        _ -> False
+      -- the head run the checks may float across: labels, arrival moves and
+      -- the entry pseudos themselves. Anything else (a call, a frame slot,
+      -- a trapping operation) keeps today's frame-first order.
+      floatable it = case it of
+        ILabel _ -> True
+        I s -> isEntryPseudo it || siOpcode s == O.Common O.Params || siOpcode s == O.A64 A.Move
+        _ -> False
+      (headRun, restBody) = span floatable allocatedBody
+      entryPseudos = filter isEntryPseudo headRun
+      frameless = cfgFramelessEntry cfg && not large && null entrySlots
+        && length (sfParams sel) <= 8 && polStackCheck (cfgPolicy cfg) /= StackStatic
+        && not (null entryPseudos) && not (any isEntryPseudo restBody)
+      afterEntry = filter (not . isEntryPseudo) headRun ++ restBody
+      wrapped = if tuneShrinkWrap (cfgTune cfg)
+        then shrinkWrap frameless (alSaved alloc) (if frameless then afterEntry else allocatedBody)
+        else Nothing
+      enterPseudo = I ((plain (O.A64 A.Enter) [] []) {siImplicitDefs = [Phys "sp", x 29, x 16]})
+      body = case wrapped of
+        Nothing | frameless -> entryPseudos ++ (enterPseudo : saveItems ++ afterEntry)
+                | otherwise -> enterPseudo : saveItems ++ allocatedBody
+        Just items -> (if frameless then entryPseudos ++ [enterPseudo] else [enterPseudo])
+          ++ concatMap (\it -> case it of I s | siOpcode s == O.Common O.SavesHere -> saveItems; _ -> [it]) items
       restores = concatMap (uncurry (pairAccess "ldp" "ldr")) pairs
       reserve = if large then reserveFrame cfg name (toInteger (lyBytes ly)) (length (sfParams sel)) else []
       refills = planBumpRefills 4 body
@@ -931,7 +960,7 @@ emitFnA64WithSymbols symbols cfg fn = do
         [[local cfg name label ++ ":", "    mov "++d++", x30", "    mov x16, #"++show raw,
           "    bl "++Call.runtimeName Call.AllocSaveEntry, "    mov x30, "++d,
           "    mov "++d++", x17", "    ret"] | ((d,raw),label)<-M.toList refills]
-      rendered = map (\it -> (it, renderItem cfg ly large name pairs restores refills it)) body
+      rendered = map (\it -> (it, renderItem cfg ly large name frameless pairs restores refills it)) body
       toks = [TIns (length (filter isInstruction reserve)) FNext False
                 (1 + if cfgHart cfg == HartTlvMachO then 3 else 0) | large]
              ++ concatMap (uncurry (tokOf refills)) rendered
@@ -939,6 +968,7 @@ emitFnA64WithSymbols symbols cfg fn = do
       header =
         ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir a64 frame=" ++ show (lyBytes ly)
            ++ (if large then " reserve=yes" else "")
+           ++ (if cfgFramelessEntry cfg then " fless=" ++ show (length entryPseudos) ++ "/" ++ show (length headRun) ++ (if null entrySlots then "" else " fwd") ++ (if frameless then " on" else " off") else "")
            ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ (if wrapped == Nothing then "" else " wrapped=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," (map phys ps)) ++ " " ++ statsLine (alStats alloc)]
           ++ visibilityLines (cfgFormat cfg) WeakDirective (visibilityFor (cfgWeak cfg) symbols name) (gsym cfg sym)
           ++ [gsym cfg sym ++ ":"]
@@ -1019,14 +1049,29 @@ allocSaveWrapper fmt =
 
 fuelSaveWrapper :: ObjectFormat -> [String]
 fuelSaveWrapper fmt =
-  ["    .text", "    .balign 4", fuelSaveSymbol fmt ++ ":",
-   "    stp x29, x30, [sp, #-208]!", "    mov x29, sp"]
+  ["    .text", "    .balign 4", fuelSaveSymbol fmt ++ ":"]
+  ++ ["    stp x29, x30, [sp, #-208]!", "    mov x29, sp"]
   ++ ["    stp x" ++ show r ++ ", x" ++ show (r + 1) ++ ", [sp, #" ++ show (16 + 8 * r) ++ "]" | r <- [0, 2 .. 14 :: Int]]
   ++ ["    stp d" ++ show r ++ ", d" ++ show (r + 1) ++ ", [sp, #" ++ show (144 + 8 * r) ++ "]" | r <- [0, 2 .. 6 :: Int]]
   ++ ["    bl " ++ (case fmt of MachO -> "_"; ELF -> "") ++ Call.runtimeName Call.FuelEntry]
   ++ ["    ldp d" ++ show r ++ ", d" ++ show (r + 1) ++ ", [sp, #" ++ show (144 + 8 * r) ++ "]" | r <- [0, 2 .. 6 :: Int]]
   ++ ["    ldp x" ++ show r ++ ", x" ++ show (r + 1) ++ ", [sp, #" ++ show (16 + 8 * r) ++ "]" | r <- [0, 2 .. 14 :: Int]]
   ++ ["    ldp x29, x30, [sp], #208", "    ret", ""]
+
+-- unit-local, x29-framed: preserves the argument registers around
+-- fpr_stack_grow, so the entry checks can run before the frame exists.
+-- The wrapper keeps the OLD sp (the caller adopts the returned one after
+-- reloading its own state, the reserveFrame discipline) and passes the new
+-- segment through in x0; x16 is the wrapper's scratch for the result.
+stackGrowWrapper :: ObjectFormat -> [String]
+stackGrowWrapper fmt =
+  ["    .text", "    .balign 4", (case fmt of MachO -> "_"; ELF -> "") ++ Call.runtimeName Call.GrowStackSaveEntry ++ ":"]
+  ++ ["    stp x29, x30, [sp, #-48]!", "    mov x29, sp"]
+  ++ ["    stp x" ++ show r ++ ", x" ++ show (r + 1) ++ ", [sp, #" ++ show (16 + 8 * r) ++ "]" | r <- [0, 2 .. 6 :: Int]]
+  ++ ["    bl " ++ (case fmt of MachO -> "_"; ELF -> "") ++ Call.runtimeName Call.GrowStackEntry]
+  ++ ["    mov x16, x0"]
+  ++ ["    ldp x" ++ show r ++ ", x" ++ show (r + 1) ++ ", [sp, #" ++ show (16 + 8 * r) ++ "]" | r <- [0, 2 .. 6 :: Int]]
+  ++ ["    ldp x29, x30, [sp], #48", "    mov x0, x16", "    ret", ""]
 
 gsym :: A64Config -> String -> String
 gsym cfg s = case cfgFormat cfg of
@@ -1071,9 +1116,9 @@ reserveFrame cfg name bytes argc =
     label s = local cfg name (Label ("reserve_"++s))
     slow=label "slow";fast=label "fast";same=label "same";ready=label "ready"
 
-renderItem :: A64Config -> Layout -> Bool -> String -> [([String], Integer)] -> [String] -> BumpRefills -> Item -> [String]
-renderItem cfg _ _ fname _ _ _ (ILabel l) = [local cfg fname l ++ ":"]
-renderItem cfg ly large fname pairs restores pools (I i) = map indent (go (siOpcode i) (siDefs i) (siUses i))
+renderItem :: A64Config -> Layout -> Bool -> String -> Bool -> [([String], Integer)] -> [String] -> BumpRefills -> Item -> [String]
+renderItem cfg _ _ fname _ _ _ _ (ILabel l) = [local cfg fname l ++ ":"]
+renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent (go (siOpcode i) (siDefs i) (siUses i))
   where
     indent l = if last l == ':' then l else "    " ++ l -- a pseudo's internal labels stand in column one
     lbl = local cfg fname
@@ -1088,9 +1133,10 @@ renderItem cfg ly large fname pairs restores pools (I i) = map indent (go (siOpc
       o -> error ("A64 render: not an immediate " ++ show o)
     off ref = M.findWithDefault (error "A64 render: an object without an offset") ref (lyOffset ly)
     go op ds us = case (op, ds, us) of
-      (O.A64 A.Enter, [], []) -> enter
+      (O.A64 A.Enter, [], []) -> if frameless && not (null pairs) then [] else enter
       (O.A64 A.Save, [], []) -> case siAnnotation i of
-        SaveGroup k -> let (regs, lo) = pairs !! k in pairAccess "stp" "str" regs lo
+        SaveGroup k -> (if frameless && k == 0 then enter else [])
+          ++ (let (regs, lo) = pairs !! k in pairAccess "stp" "str" regs lo)
         _ -> error "A64 render: missing checked save-group annotation"
       (O.Common O.Params, _, []) -> [] -- the parameters are where the ABI put them
       (O.A64 A.FrameLoad, [d], [OF ref 0]) -> ldst "ldr" "ldur" (reg d) "x29" (fromIntegral (off ref))
@@ -1136,6 +1182,8 @@ renderItem cfg ly large fname pairs restores pools (I i) = map indent (go (siOpc
         _ -> hartRead ++ ldst "ldr" "ldur" (reg d) "x9" (8 * (1 + j))
       (O.A64 A.SubtractShifted1, [d], [a, b]) -> ["sub " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b ++ ", asr #1"]
       (O.Common O.BumpAlloc, [d], [OI raw]) | Just c <- bumpCellFor (cfgPolicy cfg) raw -> bump (reg d) c
+      (O.Common O.EntryCheckTick, _, _) | frameless -> framelessChecks True
+      (O.Common O.EntryCheck, _, _) | frameless -> framelessChecks False
       (O.Common O.EntryCheckTick, _, _) -> hartRead ++ stackCheck ++ tick
       (O.Common O.EntryCheck, _, _) -> hartRead ++ stackCheck
       (O.Common O.EntryTick, _, _) -> hartRead ++ tick
@@ -1196,13 +1244,51 @@ renderItem cfg ly large fname pairs restores pools (I i) = map indent (go (siOpc
             ++ (if n < 4096 then ["add x29, sp, #" ++ show n] else ["add x29, sp, x16"])
     -- the callee-saved registers come back first (x29-relative, so after a
     -- stack-segment change they still read the frame they were saved in)
-    epilogue = (if siAnnotation i == SkipRestores then [] else restores)
+    -- under the frameless entry, a block marked SkipRestores sits before
+    -- the first save group: no frame was built, the link is still in x30,
+    -- and sp was never moved, so the whole return is one instruction
+    epilogue = if siAnnotation i == SkipRestores && frameless
+      then ["ret"]
+      else (if siAnnotation i == SkipRestores then [] else restores)
       ++ (if linkPaired then ["mov x9, x29", "ldp x29, x30, [x9, #-16]"]
           else ["ldur x30, [x29, #-8]", "mov x9, x29", "ldur x29, [x29, #-16]"])
       ++ ["ldur x9, [x9, #-24]" | large] ++ ["mov sp, x9"]
     parkArgs scaled unscaled = concat
       [ldst scaled unscaled (reg o) "x29" (fromIntegral (lyOffset ly M.! FrameRef (entrySlot n)))
       | (n, o) <- zip [0..] (siDefs i)]
+    -- the frameless entry checks (step 1): the link is staged in the stack
+    -- headroom (FPR_STACK_HEADROOM, 64 KiB below stk_lo), both slow paths go
+    -- through unit-local register-preserving wrappers so the argument
+    -- registers survive without frame slots, and the growth branch reloads
+    -- the link from the OLD sp before adopting the new one, then restages
+    -- it there - reserveFrame's relocation discipline. The check budgets
+    -- the frame the first save group will build plus the staging word.
+    framelessChecks fuel =
+      let n = fromIntegral (lyBytes ly) :: Integer
+       in ["sub sp, sp, #16", "str x30, [sp]"]
+      ++ hartRead
+      ++ [ "mov x10, sp",
+           "sub x10, x10, #" ++ show (n + 16),
+           "ldr x11, [x9, #" ++ show (8 * (1 + 56 :: Int)) ++ "]",
+           "sub x10, x10, x11",
+           "ldr x11, [x9, #" ++ show (8 * (2 + 56 :: Int)) ++ "]",
+           "cmp x10, x11",
+           "b.lo " ++ lbl (entryLabel i SameStack) ]
+      ++ [ "bl " ++ gsym cfg (Call.runtimeName Call.GrowStackSaveEntry),
+           "cbz x0, " ++ lbl (entryLabel i SameStack),
+           "ldr x30, [sp], #16",
+           "mov sp, x0",
+           "sub sp, sp, #16",
+           "str x30, [sp]" ]
+      ++ [ lbl (entryLabel i SameStack) ++ ":" ]
+      ++ hartRead
+      ++ (if fuel then
+            [ "ldur x10, [x9, #0]", "sub x10, x10, #1", "stur x10, [x9, #0]",
+              "cmp x10, #0", "b.gt " ++ lbl (entryLabel i FuelReady),
+              "bl " ++ fuelSaveSymbol (cfgFormat cfg),
+              lbl (entryLabel i FuelReady) ++ ":" ]
+          else [])
+      ++ [ "ldr x30, [sp], #16", lbl (entryLabel i StackReady) ++ ":" ]
     stackCheck =
       [ "mov x10, sp",
         "ldr x11, [x9, #" ++ show (8 * (1 + 56 :: Int)) ++ "]", -- stk_lo

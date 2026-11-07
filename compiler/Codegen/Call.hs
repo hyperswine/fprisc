@@ -19,7 +19,7 @@ callPreserves :: Call -> Bool
 callPreserves event=callEffect event `elem` [PreservingFuel,PreservingRuntime]
 callRuntime :: Call -> Bool
 callRuntime event=callEffect event `elem` [RuntimeC,PreservingRuntime]
-data RuntimeEntry = ApplyEntry | PanicEntry | GrowStackEntry | FuelEntry | FuelSaveEntry | ReserveStackEntry | AllocEntry | AllocSaveEntry deriving (Eq,Ord,Show)
+data RuntimeEntry = ApplyEntry | PanicEntry | GrowStackEntry | FuelEntry | FuelSaveEntry | ReserveStackEntry | AllocEntry | AllocSaveEntry | GrowStackSaveEntry deriving (Eq,Ord,Show)
 runtimeName :: RuntimeEntry -> String
 runtimeName entry=case entry of
   ApplyEntry->"fpr_applyN"
@@ -30,7 +30,8 @@ runtimeName entry=case entry of
   ReserveStackEntry->"fpr_stack_reserve"
   AllocEntry->"fpr_alloc"
   AllocSaveEntry->"fpr_alloc_save_local" -- unit-local: saves every allocatable register around fpr_alloc (the inline bump's refill)
+  GrowStackSaveEntry->"fpr_stack_grow_local" -- unit-local: saves the argument registers around fpr_stack_grow (the frameless entry check)
 runtimeSymbol :: RuntimeEntry -> CodeSymbol
 runtimeSymbol=CodeSymbol . runtimeName
 runtimeEvent :: RuntimeEntry -> Call
-runtimeEvent entry=Call (runtimeSymbol entry) (case entry of FuelEntry->FuelExhaustion;FuelSaveEntry->PreservingFuel;AllocSaveEntry->PreservingRuntime;_->RuntimeC)
+runtimeEvent entry=Call (runtimeSymbol entry) (case entry of FuelEntry->FuelExhaustion;FuelSaveEntry->PreservingFuel;AllocSaveEntry->PreservingRuntime;GrowStackSaveEntry->PreservingRuntime;_->RuntimeC)

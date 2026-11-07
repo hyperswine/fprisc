@@ -254,8 +254,12 @@ dataSyntax MachO = map (locals . line)
 -- changed, so their epilogue skips the restores (`norestore`).  The result
 -- marks the save point with a `saves.here` pseudo for the target to expand;
 -- Nothing means: keep the prologue saves.
-shrinkWrap :: [Phys] -> [Item] -> Maybe [Item]
-shrinkWrap saved items
+-- The carrying flag serves the frameless entry: when the frame (and with
+-- it the saved link and the spill slots) may be placed after the entry
+-- block, any block that calls or touches a frame slot must be dominated
+-- by the placement point, so those blocks count as uses too.
+shrinkWrap :: Bool -> [Phys] -> [Item] -> Maybe [Item]
+shrinkWrap carrying saved items
   | null saved = Nothing
   | otherwise = do
       let uses = [bk | (bk, its) <- zip [0 ..] blocks, namesSaved its]
@@ -277,8 +281,12 @@ shrinkWrap saved items
   where
     savesHere = plainOpcode (Opcode.Common Opcode.SavesHere) [] []
     savedSet = S.fromList saved
-    namesSaved = any (\case I i -> any isSaved (siDefs i ++ siUses i); _ -> False)
+    namesSaved = any (\case
+      I i -> any isSaved (siDefs i ++ siUses i)
+        || carrying && (not (null (siCalls i)) || any isFrameRef (siUses i))
+      _ -> False)
     isSaved = \case OP r -> S.member r savedSet; _ -> False
+    isFrameRef = \case OF {} -> True; _ -> False
     returns = any (\case I i -> siControl i == Return; _ -> False)
     noRestore = \case
       I i | siControl i == Return -> I i {siAnnotation = SkipRestores}
