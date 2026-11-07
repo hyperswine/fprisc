@@ -98,11 +98,55 @@ The unit tests drive `scalarWorkersWith` directly. They cover:
 something the checked types would admit. Dropping its gate would add no
 workers here. The win would come from programs it cannot solve today.
 
+## Slice 3 (same day): field workers carry checked kinds
+
+Slice 2 left 3 unchecked workers in the sweep and 1 in the corpus. All four
+were `$worker.fields.<name>`: functions the field-worker pass creates when it
+splits a tuple or record parameter into its fields. They have no checked
+interface of their own. Two gaps kept their source's facts from reaching them:
+
+- `expandProductParameter` already moved the parameter type table to each new
+  worker, but `fieldWorkers` dropped the updated `ProductParameters`, and
+  `workerizeWithProducts` gave the scalar pass the table from before the field
+  pass. `fieldWorkers` now returns the transported facts and the scalar pass
+  reads them.
+- The table stored every non-product field as the opaque `$base.boxed`, so a
+  field of `(Int, Int)` had no kind. `layoutType` now keeps raw-word types
+  (`Int`, `F64`, `F32`, `Bool`) exact; they are small constants, so the
+  memory reason for the opaque leaf does not apply to them.
+
+`expandProductParameter` now also moves the checked kinds: the new worker keeps
+the source's other positions and result, and each field takes its checked
+field type's kind. A field whose type is not proven (a heuristic step, a type
+variable) stays unknown, which makes the component guarded, not agreed.
+
+The bridge note names any unchecked function (`unchecked_names=`), and
+`tests/check_signature_bridge.py` now fails on any unchecked worker in the
+corpus.
+
+### Evidence
+
+| Check | Slice 2 | Slice 3 |
+|---|---|---|
+| Unit suites | 42/42 | 42/42 |
+| Corpus, host and RV64 | agreed 6, unchecked 1 | agreed 7, unchecked 0 |
+| Code against `bench/pipeline-baseline.json` (20 entries) | identical | identical |
+| Sweep, 145 programs, same cache method | agreed 16, unchecked 4 | agreed 20, unchecked 0 |
+| QOS guishell | agreed 1 | agreed 1 |
+
+Guarded and checked-only stay 0 everywhere; no disagreement. Only the three
+programs holding the field workers (`tests/base/workers.fpr`,
+`tests/bench/workers.fpr`, `tests/bench/unbox/tuple_loop.fpr`) change counts.
+The same 6 programs fail to compile with both compilers, as before.
+
+Counting note: a unit served from the compile cache prints no bridge note, so
+sweep totals depend on cache state. Slice 2's "agreed 36" came from a
+differently warmed cache and is not comparable; the slice 2 column above was
+rerun from 902db56 with a fresh cache, the same way as slice 3.
+
 ## Next slices
 
-1. **The three unchecked workers.** Find which erased pass makes their source
-   functions (no checked interface) and give them a checked origin, or keep
-   them on `KernelKinds` and record why.
+1. ~~The unchecked workers~~: done in slice 3.
 2. **Admit checked-only components** as a separate, measured representation
    change: corpus fixtures where `KernelKinds` declines, plus code and timing
    evidence.

@@ -276,6 +276,8 @@ the raw `-O2` numbers.
    ([record](2026-11-08-P2-SIGNATURE-BRIDGE.md)): checked kinds carried beside
    `KernelKinds` and compared, with no code change. Slice 2 (same day) made
    them the scalar worker authority and part of cache identity, with
-   `KernelKinds` as the assertion, still with no code change.
+   `KernelKinds` as the assertion, still with no code change. Slice 3 gave
+   the field-pass workers their source's checked kinds: no unchecked worker
+   remains in the corpus or sweep.
 3. P6 composed-work report from `Codegen.Placement`, in parallel.
 4. P1 checked summary schema with its first range/result-size consumer.

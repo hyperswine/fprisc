@@ -10,7 +10,7 @@ import Core.Opt.ProductParameters
 import KernelKinds (Kind(..), componentSignatures)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.List (foldl',isPrefixOf,sortOn)
+import Data.List (foldl',intercalate,isPrefixOf,sortOn)
 import Data.Maybe (mapMaybe)
 import Data.Graph (SCC(..), flattenSCC, stronglyConnComp)
 
@@ -208,8 +208,9 @@ workerizeWithOptions=workerizeWithProducts emptyProductParameters
 
 workerizeWithProducts :: ProductParameters -> Bool -> Bool -> Bool -> Prog -> (Prog,[String],ScalarSignatures)
 workerizeWithProducts products fields tupleScalars scalars prog =
-  let (p,nf,fieldNotes) = if fields then fieldWorkers products tupleScalars prog else (prog,0,[])
-      (q,sigs,bridge) = if scalars then scalarWorkers (checkedKinds p products) p else (p,M.empty,noAgreement)
+  let (p,nf,fieldNotes,products') = if fields then fieldWorkers products tupleScalars prog else (prog,0,[],products)
+      -- the field pass carries checked facts to the workers it creates
+      (q,sigs,bridge) = if scalars then scalarWorkers (checkedKinds p products') p else (p,M.empty,noAgreement)
   -- forced with the result, so the agreement check runs whether or not the
   -- notes are printed
   in bridge `seq` (q,["# private workers: fields="++show nf++" scalar="++show (M.size sigs)]
@@ -228,10 +229,13 @@ workerizeWithProducts products fields tupleScalars scalars prog =
 --               admitted in this slice, so generated code keeps its shape
 --               (the roadmap reviews representation changes separately).
 -- A disagreement on a checked raw position stops the compile.
-data Agreement = Agreement { agreed :: !Int, guarded :: !Int, unchecked :: !Int, checkedOnly :: !Int }
+-- uncheckedNames lists the unchecked functions, so the bridge note shows which
+-- source functions still rely on KernelKinds alone.
+data Agreement = Agreement { agreed :: !Int, guarded :: !Int, unchecked :: !Int, checkedOnly :: !Int
+                           , uncheckedNames :: [String] }
 
 noAgreement :: Agreement
-noAgreement = Agreement 0 0 0 0
+noAgreement = Agreement 0 0 0 0 []
 
 -- Every position the checked interface fixes must match KernelKinds' kind.
 -- Right True: every position is checked. Right False: some are not raw words.
@@ -252,6 +256,7 @@ scalarWorkersWith = scalarWorkers
 bridgeNote :: Agreement -> String
 bridgeNote a = "# signature bridge: agreed=" ++ show (agreed a) ++ " guarded=" ++ show (guarded a)
   ++ " unchecked=" ++ show (unchecked a) ++ " checked_only=" ++ show (checkedOnly a)
+  ++ concat [" unchecked_names=" ++ intercalate "," (uncheckedNames a) | not (null (uncheckedNames a))]
 
 -- Successive field plans need not publish a quadratic chain of general
 -- fallback bodies. A generated guard entry used ONLY by its parent can join
@@ -330,9 +335,10 @@ projectionRank ps body = sum [length path | (_,path)<-S.toList (visit initial bo
       _->let here=case e of CProj _ _->maybe S.empty S.singleton (path env e);_->S.empty
          in here `S.union` S.unions (map (visit env) (children e))
 
-fieldWorkers :: ProductParameters -> Bool -> Prog -> (Prog,Int,[String])
+-- Also returns the checked facts transported to the new workers.
+fieldWorkers :: ProductParameters -> Bool -> Prog -> (Prog,Int,[String],ProductParameters)
 fieldWorkers products tupleScalars input
-  | not tupleScalars = let (p,added,_) = fieldWorkersStep products False S.empty input in (p,M.size added,[])
+  | not tupleScalars = let (p,added,evidence) = fieldWorkersStep products False S.empty input in (p,M.size added,[],evidence)
   | otherwise = go products S.empty 0 0 M.empty input
   where
     summary removed=["# private field guards coalesced: "++show removed | removed>0]
@@ -343,12 +349,12 @@ fieldWorkers products tupleScalars input
             Just (ps,body)<-[M.lookup source prog],Just (qs,after)<-[M.lookup worker prog']]
           finite=length transitions==M.size added && all (uncurry (>=)) transitions &&
             sum (map snd transitions)<sum (map fst transitions)
-       in if M.null added then (prog,total,summary removed)
+       in if M.null added then (prog,total,summary removed,evidence)
           else if finite then
             let lineages'=M.union added lineages
                 (compact,discarded)=coalesceFieldGuards lineages' prog'
             in go evidence' (M.keysSet added) (total+M.size added-discarded) (removed+discarded) lineages' compact
-          else (prog,total,summary removed++["# private field workers: declined round without decreasing structural projection-path rank"])
+          else (prog,total,summary removed++["# private field workers: declined round without decreasing structural projection-path rank"],evidence)
 
 fieldWorkersStep :: ProductParameters -> Bool -> S.Set String -> Prog -> (Prog,M.Map String String,ProductParameters)
 fieldWorkersStep products tupleScalars allowedWorkers input =
@@ -645,7 +651,8 @@ scalarWorkers checked prog = (M.union wrapped workers,M.mapKeys worker chosen,br
             Left err -> error err
             Right _
               | any (`M.member` checked) names -> (M.union ks known, b { guarded = guarded b + M.size ks })
-              | otherwise -> (M.union ks known, b { unchecked = unchecked b + M.size ks })
+              | otherwise -> (M.union ks known, b { unchecked = unchecked b + M.size ks
+                                                  , uncheckedNames = uncheckedNames b ++ M.keys ks })
           (Nothing, Nothing) -> (known, b)
       where names = flattenSCC component
             members = S.fromList names

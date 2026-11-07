@@ -149,10 +149,13 @@ checkedProductParameters layouts (TypeContext linears constructors) interfaces=
 -- signatures. A function, sum, open row or runtime container is one opaque
 -- tagged field. Do not retain its potentially large internal type graph.
 -- Variables remain substitutable; a concrete product supplied for one is
--- discovered when the selected worker's fields are instantiated.
+-- discovered when the selected worker's fields are instantiated. A raw-word
+-- type (Int, F64, F32, Bool) is a small constant and stays exact: the scalar
+-- worker signature of a field worker reads it (P2 bridge).
 layoutType :: M.Map String Definition -> Type -> Type
 layoutType model ty=case ty of
   TV _->ty
+  _ | Just _<-rawKind ty->ty
   TTupT ts->TTupT (map go ts)
   TRec row->case closedFields row of
     Just fs->TRec (foldr (\(n,t) rest->RExt n (go t) rest) RNil fs)
@@ -258,8 +261,26 @@ renameProductParameters renames (ProductParameters layouts model table results p
 -- selected constructor's field types. Heuristic steps without checked shape
 -- evidence may transport untouched parameters, but cannot invent field types.
 expandProductParameter :: String -> [String] -> String -> [String] -> Int -> Shape -> ProductParameters -> ProductParameters
-expandProductParameter source old target new index shape@(_,_,width) evidence@(ProductParameters layouts model table results producers readers kinds)=
-  case M.lookup source table of
+expandProductParameter source old target new index shape@(_,_,width) (ProductParameters layouts model table results producers readers kinds0)=
+  -- The checked kinds follow the same step (P2 bridge): the target keeps the
+  -- source's other positions and result, and each field takes its checked
+  -- field type's kind. A field without a proven type stays unknown.
+  let valid=index>=0 && index<length old && width>0 && length new==length old-1+width
+        && S.size (S.fromList new)==length new && take index new==take index old
+        && drop (index+width) new==drop (index+1) old
+      provenFields=do
+        (checked,types)<-M.lookup source table
+        if checked/=old then Nothing else do
+          (actual,ts)<-M.lookup index types >>= immediate layouts model
+          if actual==shape && length ts==width then Just ts else Nothing
+      kinds=case M.lookup source kinds0 of
+        Just (checked,(ks,r)) | valid,checked==old,length ks==length old,M.notMember target kinds0 ->
+          let fieldKinds=maybe (replicate width Nothing) (map rawKind) provenFields
+              ks'=take index ks++fieldKinds++drop (index+1) ks
+          in forcedEntry ks' r `seq` M.insert target (new,(ks',r)) kinds0
+        _->kinds0
+      evidence=ProductParameters layouts model table results producers readers kinds
+  in case M.lookup source table of
     Just (checked,types)
       | checked==old,index>=0,index<length old,width>0,
         length new==length old-1+width,S.size (S.fromList new)==length new,
@@ -277,6 +298,7 @@ expandProductParameter source old target new index shape@(_,_,width) evidence@(P
             _ | M.null next->evidence
               | otherwise->ProductParameters layouts model (M.insert target (new,next) table) results producers readers kinds
     _->evidence
+  where forcedEntry ks r=foldr seq r ks `seq` ()
 
 -- Hash all latent representation dependencies, not an eagerly instantiated
 -- tree. Traverse each referenced nominal DECLARATION once: recursive or

@@ -10,13 +10,15 @@ admitted: slice 2 keeps code shape). A disagreement is a compile error, so every
 the main assertion. On top of that:
 
   - fib's worker (fib : Int -> Int) must agree;
-  - across the corpus, agreed must be non-zero for each target.
+  - across the corpus, agreed must be non-zero for each target;
+  - no worker may be unchecked (slice 3: field workers carry their source's
+    checked kinds); the note names any unchecked function.
 """
 import json, os, re, subprocess, sys, tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-NOTE = re.compile(r'# signature bridge: agreed=(\d+) guarded=(\d+) unchecked=(\d+) checked_only=(\d+)')
+NOTE = re.compile(r'# signature bridge: agreed=(\d+) guarded=(\d+) unchecked=(\d+) checked_only=(\d+)(?: unchecked_names=(\S+))?')
 
 
 def compile_counts(src, target, tmp, tag):
@@ -28,10 +30,13 @@ def compile_counts(src, target, tmp, tag):
     if p.returncode != 0:
         sys.exit(f'FAIL {tag} ({target or "host"}): compile failed\n{p.stdout[-1500:]}{p.stderr[-1500:]}')
     totals = [0, 0, 0, 0]
+    names = []
     for m in NOTE.finditer(p.stdout):
         for i in range(4):
             totals[i] += int(m.group(i + 1))
-    return totals
+        if m.group(5):
+            names += m.group(5).split(',')
+    return totals, names
 
 
 def main():
@@ -42,7 +47,10 @@ def main():
         for target in (None, 'rv64'):
             grand = [0, 0, 0, 0]
             for e in corpus:
-                a, g, u, c = compile_counts(ROOT / e['source'], target, tmp, e['id'])
+                (a, g, u, c), names = compile_counts(ROOT / e['source'], target, tmp, e['id'])
+                if u:
+                    print(f'FAIL {e["id"]} ({target or "host"}): unchecked workers: {", ".join(names)}')
+                    bad += 1
                 grand = [grand[0] + a, grand[1] + g, grand[2] + u, grand[3] + c]
                 if e['id'] == 'fib' and a < 1:
                     print(f'FAIL fib ({target or "host"}): its Int -> Int worker did not agree (agreed={a} guarded={g} unchecked={u})')
