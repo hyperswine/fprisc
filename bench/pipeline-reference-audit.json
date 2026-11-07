@@ -1,0 +1,510 @@
+{
+ "cases": {
+  "byteloop": {
+   "answer": "4020000000",
+   "c": {
+    "byteloop": {
+     "answers": {
+      "O2": "4020000000",
+      "checked": "4020000000",
+      "scalar": "4020000000"
+     },
+     "args": [],
+     "checked_cost": 4.59,
+     "fpr_over_c": {
+      "O2": 27.8,
+      "checked": 6.06,
+      "scalar": 6.25
+     },
+     "optimized_out": false,
+     "source": "tests/bench/c/byteloop.c",
+     "vectorized": true,
+     "work_ms": {
+      "O2": 2.41,
+      "checked": 11.08,
+      "scalar": 10.75
+     }
+    }
+   },
+   "fpr_source": "tests/bench/byteloop.fpr",
+   "fpr_work_ms": 67.14,
+   "problems": []
+  },
+  "fib": {
+   "answer": "9227465",
+   "c": {
+    "fib": {
+     "answers": {
+      "O2": "9227465",
+      "checked": "9227465",
+      "scalar": "9227465"
+     },
+     "args": [],
+     "checked_cost": 1.27,
+     "fpr_over_c": {
+      "O2": 2.41,
+      "checked": 1.9,
+      "scalar": 2.47
+     },
+     "optimized_out": false,
+     "source": "tests/bench/c/fib.c",
+     "vectorized": false,
+     "work_ms": {
+      "O2": 18.28,
+      "checked": 23.2,
+      "scalar": 17.87
+     }
+    }
+   },
+   "fpr_source": "tests/bench/fib.fpr",
+   "fpr_work_ms": 44.11,
+   "problems": []
+  },
+  "list_filter": {
+   "answer": "5000010000000",
+   "c": {
+    "cons_filter": {
+     "answers": {
+      "O2": "5000010000000",
+      "checked": "5000010000000",
+      "scalar": "5000010000000"
+     },
+     "args": [
+      "cons_filter",
+      "1000000",
+      "20"
+     ],
+     "checked_cost": 1.02,
+     "fpr_over_c": {
+      "O2": 2.84,
+      "checked": 2.79,
+      "scalar": 2.73
+     },
+     "optimized_out": false,
+     "source": "tests/bench/unbox/ref.c",
+     "vectorized": false,
+     "work_ms": {
+      "O2": 39.33,
+      "checked": 39.97,
+      "scalar": 40.87
+     }
+    }
+   },
+   "fpr_source": "tests/bench/unbox/list_filter.fpr",
+   "fpr_work_ms": 111.55,
+   "ghc": {
+    "alloc_bytes": 52760,
+    "alloc_bytes_per_element": 0.0,
+    "answer": "5000010000000",
+    "fpr_over_ghc": null,
+    "fused": true,
+    "mode": "filter",
+    "work_ms": 0.2
+   },
+   "problems": []
+  },
+  "list_fold": {
+   "answer": "30000030000000",
+   "c": {
+    "cons_fold": {
+     "answers": {
+      "O2": "30000030000000",
+      "checked": "30000030000000",
+      "scalar": "30000030000000"
+     },
+     "args": [
+      "cons_fold",
+      "1000000",
+      "20"
+     ],
+     "checked_cost": 1.61,
+     "fpr_over_c": {
+      "O2": 4.18,
+      "checked": 2.6,
+      "scalar": 4.04
+     },
+     "optimized_out": false,
+     "source": "tests/bench/unbox/ref.c",
+     "vectorized": false,
+     "work_ms": {
+      "O2": 8.85,
+      "checked": 14.24,
+      "scalar": 9.16
+     }
+    }
+   },
+   "fpr_source": "tests/bench/unbox/list_fold.fpr",
+   "fpr_work_ms": 36.99,
+   "ghc": {
+    "alloc_bytes": 64052752,
+    "alloc_bytes_per_element": 3.2,
+    "answer": "30000030000000",
+    "fpr_over_ghc": 1.54,
+    "fused": false,
+    "mode": "fold",
+    "work_ms": 23.98
+   },
+   "problems": []
+  },
+  "list_length_rev": {
+   "answer": "20000000",
+   "c": {
+    "cons_rev": {
+     "answers": {
+      "O2": "20000000",
+      "checked": "20000000",
+      "scalar": "20000000"
+     },
+     "args": [
+      "cons_rev",
+      "1000000",
+      "20"
+     ],
+     "checked_cost": 1.05,
+     "fpr_over_c": {
+      "O2": 2.86,
+      "checked": 2.72,
+      "scalar": 2.77
+     },
+     "optimized_out": false,
+     "source": "tests/bench/unbox/ref.c",
+     "vectorized": false,
+     "work_ms": {
+      "O2": 27.77,
+      "checked": 29.19,
+      "scalar": 28.63
+     }
+    }
+   },
+   "fpr_source": "tests/bench/unbox/list_length_rev.fpr",
+   "fpr_work_ms": 79.41,
+   "ghc": {
+    "alloc_bytes": 88052600,
+    "alloc_bytes_per_element": 4.4,
+    "answer": "20000000",
+    "fpr_over_ghc": 1.32,
+    "fused": false,
+    "mode": "rev",
+    "work_ms": 60.37
+   },
+   "problems": []
+  },
+  "list_map": {
+   "answer": "10000030000000",
+   "c": {
+    "cons_map": {
+     "answers": {
+      "O2": "10000030000000",
+      "checked": "10000030000000",
+      "scalar": "10000030000000"
+     },
+     "args": [
+      "cons_map",
+      "1000000",
+      "20"
+     ],
+     "checked_cost": 1.13,
+     "fpr_over_c": {
+      "O2": 0.27,
+      "checked": 0.24,
+      "scalar": 0.28
+     },
+     "optimized_out": false,
+     "source": "tests/bench/unbox/ref.c",
+     "vectorized": false,
+     "work_ms": {
+      "O2": 60.17,
+      "checked": 68.25,
+      "scalar": 58.41
+     }
+    }
+   },
+   "fpr_source": "tests/bench/unbox/list_map.fpr",
+   "fpr_work_ms": 16.13,
+   "ghc": {
+    "alloc_bytes": 52648,
+    "alloc_bytes_per_element": 0.0,
+    "answer": "10000030000000",
+    "fpr_over_ghc": null,
+    "fused": true,
+    "mode": "map",
+    "work_ms": 0.49
+   },
+   "problems": []
+  },
+  "list_sum": {
+   "answer": "10000010000000",
+   "c": {
+    "arr_sum": {
+     "answers": {
+      "O2": "10000010000000",
+      "checked": "10000010000000",
+      "scalar": "10000010000000"
+     },
+     "args": [
+      "arr_sum",
+      "1000000",
+      "20"
+     ],
+     "checked_cost": 2.12,
+     "fpr_over_c": {
+      "O2": 4.04,
+      "checked": 1.9,
+      "scalar": 1.39
+     },
+     "optimized_out": false,
+     "source": "tests/bench/unbox/ref.c",
+     "vectorized": true,
+     "work_ms": {
+      "O2": 3.82,
+      "checked": 8.09,
+      "scalar": 11.08
+     }
+    },
+    "cons_sum": {
+     "answers": {
+      "O2": "10000010000000",
+      "checked": "10000010000000",
+      "scalar": "10000010000000"
+     },
+     "args": [
+      "cons_sum",
+      "1000000",
+      "20"
+     ],
+     "checked_cost": 1.0,
+     "fpr_over_c": {
+      "O2": 1.07,
+      "checked": 1.07,
+      "scalar": 0.96
+     },
+     "optimized_out": false,
+     "source": "tests/bench/unbox/ref.c",
+     "vectorized": false,
+     "work_ms": {
+      "O2": 14.38,
+      "checked": 14.41,
+      "scalar": 16.0
+     }
+    }
+   },
+   "fpr_source": "tests/bench/unbox/list_sum.fpr",
+   "fpr_work_ms": 15.4,
+   "ghc": {
+    "alloc_bytes": 52888,
+    "alloc_bytes_per_element": 0.0,
+    "answer": "10000010000000",
+    "fpr_over_ghc": null,
+    "fused": true,
+    "mode": "sum",
+    "work_ms": 0.0
+   },
+   "problems": []
+  },
+  "option_loop": {
+   "answer": "50000015000000",
+   "c": {
+    "option": {
+     "answers": {
+      "O2": "50000015000000",
+      "checked": "50000015000000",
+      "scalar": "50000015000000"
+     },
+     "args": [
+      "option",
+      "20000000",
+      "1"
+     ],
+     "checked_cost": 1.17,
+     "fpr_over_c": {
+      "O2": 12.19,
+      "checked": 10.45,
+      "scalar": 9.85
+     },
+     "optimized_out": false,
+     "source": "tests/bench/unbox/ref.c",
+     "vectorized": false,
+     "work_ms": {
+      "O2": 3.92,
+      "checked": 4.58,
+      "scalar": 4.86
+     }
+    }
+   },
+   "fpr_source": "tests/bench/unbox/option_loop.fpr",
+   "fpr_work_ms": 47.85,
+   "ghc": {
+    "alloc_bytes": 52688,
+    "alloc_bytes_per_element": 0.0,
+    "answer": "50000015000000",
+    "fpr_over_ghc": 5.29,
+    "fused": true,
+    "mode": "option",
+    "work_ms": 9.05
+   },
+   "problems": []
+  },
+  "sha": {
+   "answer": "9bc1b2a288b26af7257a36277ae3816a7d4f16e89c1e7e77d0a5c48bad62b360",
+   "c": {
+    "sha": {
+     "answers": {
+      "O2": "9bc1b2a288b26af7257a36277ae3816a7d4f16e89c1e7e77d0a5c48bad62b360",
+      "checked": "9bc1b2a288b26af7257a36277ae3816a7d4f16e89c1e7e77d0a5c48bad62b360",
+      "scalar": "9bc1b2a288b26af7257a36277ae3816a7d4f16e89c1e7e77d0a5c48bad62b360"
+     },
+     "args": [],
+     "checked_cost": 0.93,
+     "fpr_over_c": {
+      "O2": 20.4,
+      "checked": 21.99,
+      "scalar": 23.66
+     },
+     "optimized_out": false,
+     "source": "tests/bench/c/sha.c",
+     "vectorized": false,
+     "work_ms": {
+      "O2": 2.76,
+      "checked": 2.56,
+      "scalar": 2.38
+     }
+    }
+   },
+   "fpr_source": "tests/bench/sha.fpr",
+   "fpr_work_ms": 56.25,
+   "problems": []
+  },
+  "string_scan": {
+   "answer": "2621440",
+   "c": {
+    "scan": {
+     "answers": {
+      "O2": "2621440",
+      "checked": "2621440",
+      "scalar": "2621440"
+     },
+     "args": [
+      "scan",
+      "1048576",
+      "20"
+     ],
+     "checked_cost": 1.92,
+     "fpr_over_c": {
+      "O2": 11.55,
+      "checked": 6.02,
+      "scalar": 6.66
+     },
+     "optimized_out": false,
+     "source": "tests/bench/unbox/ref.c",
+     "vectorized": true,
+     "work_ms": {
+      "O2": 3.36,
+      "checked": 6.46,
+      "scalar": 5.83
+     }
+    }
+   },
+   "fpr_source": "tests/bench/unbox/string_scan.fpr",
+   "fpr_work_ms": 38.85,
+   "problems": []
+  },
+  "tree_sum": {
+   "answer": "5497552896000",
+   "c": {
+    "tree": {
+     "answers": {
+      "O2": "5497552896000",
+      "checked": "5497552896000",
+      "scalar": "5497552896000"
+     },
+     "args": [
+      "tree",
+      "20",
+      "10"
+     ],
+     "checked_cost": 1.49,
+     "fpr_over_c": {
+      "O2": 4.0,
+      "checked": 2.68,
+      "scalar": 4.07
+     },
+     "optimized_out": false,
+     "source": "tests/bench/unbox/ref.c",
+     "vectorized": false,
+     "work_ms": {
+      "O2": 30.8,
+      "checked": 45.95,
+      "scalar": 30.26
+     }
+    }
+   },
+   "fpr_source": "tests/bench/unbox/tree_sum.fpr",
+   "fpr_work_ms": 123.06,
+   "ghc": {
+    "alloc_bytes": 1006684680,
+    "alloc_bytes_per_element": 96.01,
+    "answer": "5497552896000",
+    "fpr_over_ghc": 1.14,
+    "fused": false,
+    "mode": "tree",
+    "work_ms": 107.97
+   },
+   "problems": []
+  },
+  "tuple_loop": {
+   "answer": "506612",
+   "c": {
+    "tuple": {
+     "answers": {
+      "O2": "506612",
+      "checked": "506612",
+      "scalar": "506612"
+     },
+     "args": [
+      "tuple",
+      "20000000",
+      "1"
+     ],
+     "checked_cost": 1.0,
+     "fpr_over_c": {
+      "O2": 1.19,
+      "checked": 1.19,
+      "scalar": 1.19
+     },
+     "optimized_out": false,
+     "source": "tests/bench/unbox/ref.c",
+     "vectorized": false,
+     "work_ms": {
+      "O2": 57.59,
+      "checked": 57.86,
+      "scalar": 57.77
+     }
+    }
+   },
+   "fpr_source": "tests/bench/unbox/tuple_loop.fpr",
+   "fpr_work_ms": 68.73,
+   "ghc": {
+    "alloc_bytes": 960052328,
+    "alloc_bytes_per_element": 48.0,
+    "answer": "506612",
+    "fpr_over_ghc": 0.69,
+    "fused": false,
+    "mode": "tuple",
+    "work_ms": 99.18
+   },
+   "problems": []
+  }
+ },
+ "cc": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+ "empty_ms": {
+  "c": 3.25,
+  "fpr": 6.47,
+  "hs": 17.6
+ },
+ "ghc": "The Glorious Glasgow Haskell Compilation System, version 9.8.2",
+ "git_commit": "d308c1b23cc3914a01564e040d465a19d1d7dce1",
+ "host": "Darwin-arm64-macm4",
+ "recorded_at": "2026-11-08T00:09:35+1100",
+ "runs": 5,
+ "schema": 1
+}

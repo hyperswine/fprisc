@@ -25,8 +25,10 @@ main = do
     "fold"   -> let xs = [1..n] in length xs `seq` rounds 20 (\i -> foldl' (\a x -> a + x*3) (i-i) xs)
     "rev"    -> let xs = [1..n] in length xs `seq` rounds 20 (\i -> length (reverse (drop (i-i) xs)))
     "option" -> let go 0 !a = a; go i !a = go (i-1) (maybe (a+1) (a+) (half i)) in go (20000000::Int) 0
-    "tuple"  -> let step (a,b) = (b, (a+b) `mod` 1000003)
+    -- strict pair components: the lazy version built a 20M-thunk chain
+    -- (3 s, a space leak, not a tuple cost); see docs/2026-11-08-PIPELINE-REFERENCE-AUDIT.md
+    "tuple"  -> let step (!a,!b) = (b, (a+b) `mod` 1000003)
                     go :: Int -> (Int,Int) -> Int
-                    go 0 (a,_) = a; go i p = go (i-1) (step p) in go 20000000 (0,1)
+                    go 0 (a,_) = a; go i p = let p' = step p in p' `seq` go (i-1) p' in go 20000000 (0,1)
     "tree"   -> rounds 10 (\i -> total (build 20 (i-i+1)))
     _ -> error m

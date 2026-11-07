@@ -220,6 +220,24 @@ fprmeta: fpr
 unit-tests:
 	$(NATIVE_PKG_ENV) cabal test $(if $(UNIT),test:$(UNIT),all) --test-show-details=direct
 
+# ---- P0 pipeline baselines (docs/2026-11-07-PIPELINE-PASS-INVENTORY.md) ----
+# Behavioural contracts plus recorded code/compile metrics for the corpus in
+# tests/pipeline/corpus.json.  A pre-promotion gate, not a per-PR CI job: it
+# builds every entry cold (about three minutes) on this host only.
+pipeline-baseline: fpr
+	python3 tools/pipeline-baseline.py --record
+
+pipeline-baseline-check: fpr
+	python3 tools/pipeline-baseline.py --check
+
+pipeline-baseline-rv64: fpr
+	python3 tools/pipeline-baseline.py --record --target=rv64
+
+# C/GHC reference audit (docs/2026-11-08-PIPELINE-REFERENCE-AUDIT.md): same
+# answers, SIMD, checked vs unchecked; needs cc and, for the GHC rows, ghc.
+pipeline-reference-audit: fpr
+	python3 tests/pipeline/reference_audit.py --record
+
 # ---- the std proof pass ------------------------------------------------
 stdcheck: fprc
 	./fprc --stdcheck $(FILE)
@@ -285,7 +303,7 @@ clean:
 	rm -rf build image.elf app.qa fpr fprc compiler/*.o compiler/*.hi compiler/Sol/*.o compiler/Sol/*.hi compiler/cbits/*.o
 
 FORCE:
-.PHONY: all stdcheck bare-metal bare-metal-run sol clean FORCE
+.PHONY: all stdcheck bare-metal bare-metal-run sol clean FORCE pipeline-baseline pipeline-baseline-check pipeline-baseline-rv64 pipeline-reference-audit
 
 # Unsafe standalone Builtin profile: no actors, devices, QOS or prelude.
 #

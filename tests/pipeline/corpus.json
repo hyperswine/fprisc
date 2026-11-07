@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "description": "P0 reference corpus (docs/2026-11-07-PIPELINE-REFACTORING-ROADMAP.md, Phase P0). Each entry names the roadmap corpus category it covers, the stage it is a positive fixture for (stage ids are the ones in docs/2026-11-07-PIPELINE-PASS-INVENTORY.md) and its observable-behaviour contract. tools/pipeline-baseline.py records and checks the metrics; the contract here is the authority for behaviour.",
+  "defaults": {
+    "system": "posix",
+    "harts": 1,
+    "runs": 5
+  },
+  "entries": [
+    {
+      "id": "fib",
+      "category": "recursion",
+      "source": "tests/bench/fib.fpr",
+      "expect": { "stdout_file": "tests/bench/fib.expected", "exit": 0 },
+      "positive_for": ["typed.inline", "erased.workers", "lower"],
+      "negative_fixtures": ["tests/check_specialization.py", "tests/check_native_required.py"]
+    },
+    {
+      "id": "byteloop",
+      "category": "byte-scan",
+      "source": "tests/bench/byteloop.fpr",
+      "expect": { "stdout_file": "tests/bench/byteloop.expected", "exit": 0 },
+      "positive_for": ["typed.inline", "codegen.loopform", "codegen.interval"],
+      "negative_fixtures": ["tests/check_string_fast.py", "tests/check_string_scan.py"]
+    },
+    {
+      "id": "string_scan",
+      "category": "byte-scan",
+      "source": "tests/bench/unbox/string_scan.fpr",
+      "expect": { "stdout": "string_scan 2621440\n", "exit": 0 },
+      "positive_for": ["codegen.stringscan", "codegen.loopform"],
+      "negative_fixtures": ["tests/check_string_scan.py"]
+    },
+    {
+      "id": "list_map",
+      "category": "filter-map-fold",
+      "source": "tests/bench/unbox/list_map.fpr",
+      "expect": { "stdout": "list_map 10000030000000\n", "exit": 0 },
+      "positive_for": ["typed.listfusion", "typed.inline"],
+      "negative_fixtures": ["tests/check_list_fusion.py", "tests/check_list_materialize.py"]
+    },
+    {
+      "id": "list_filter",
+      "category": "filter-map-fold",
+      "source": "tests/bench/unbox/list_filter.fpr",
+      "expect": { "stdout": "list_filter 5000010000000\n", "exit": 0 },
+      "positive_for": ["typed.listfusion"],
+      "negative_fixtures": ["tests/check_list_fusion.py", "tests/check_list_materialize.py"]
+    },
+    {
+      "id": "list_fold",
+      "category": "materialized-shared-lists",
+      "source": "tests/bench/unbox/list_fold.fpr",
+      "expect": { "stdout": "list_fold 30000030000000\n", "exit": 0 },
+      "positive_for": ["typed.listfusion", "erased.reuse"],
+      "negative_fixtures": ["tests/check_list_materialize.py", "tests/check_reuse.py"]
+    },
+    {
+      "id": "list_length_rev",
+      "category": "materialized-shared-lists",
+      "source": "tests/bench/unbox/list_length_rev.fpr",
+      "expect": { "stdout": "list_length_rev 20000000\n", "exit": 0 },
+      "positive_for": ["typed.trmc", "typed.listfusion"],
+      "negative_fixtures": ["tests/check_trmc.py", "tests/check_list_helpers.py"]
+    },
+    {
+      "id": "option_loop",
+      "category": "option-loops",
+      "source": "tests/bench/unbox/option_loop.fpr",
+      "expect": { "stdout": "option_loop 50000015000000\n", "exit": 0 },
+      "positive_for": ["typed.caseknown", "codegen.simplify"],
+      "negative_fixtures": ["tests/check_typed_case.py", "tests/check_case_known.py"]
+    },
+    {
+      "id": "tuple_loop",
+      "category": "product-loops",
+      "source": "tests/bench/unbox/tuple_loop.fpr",
+      "expect": { "stdout": "tuple_loop 506612\n", "exit": 0 },
+      "positive_for": ["erased.workers", "codegen.allocate"],
+      "negative_fixtures": ["tests/check_tuple_scalars.py", "tests/check_layout.py"]
+    },
+    {
+      "id": "pair_ret",
+      "category": "product-loops",
+      "source": "tests/bench/unbox/pair_ret.fpr",
+      "expect": { "stdout": "pair_ret 9990000000\n", "exit": 0 },
+      "positive_for": ["erased.pairreturns", "codegen.calling"],
+      "negative_fixtures": ["tests/check_product_returns.py", "tests/check_nested_base_returns.py"]
+    },
+    {
+      "id": "tree_sum",
+      "category": "persistent-trees",
+      "source": "tests/bench/unbox/tree_sum.fpr",
+      "expect": { "stdout": "tree_sum 5497552896000\n", "exit": 0 },
+      "positive_for": ["typed.trmc", "erased.reuse", "codegen.allocate"],
+      "negative_fixtures": ["tests/check_base_product_trees.py", "tests/check_persistence.py"]
+    },
+    {
+      "id": "imported_wrappers",
+      "category": "imported-wrappers",
+      "source": "tests/pipeline/imported_wrappers.fpr",
+      "expect": { "stdout": "imported_wrappers 5005000000\n", "exit": 0 },
+      "positive_for": ["erased.workers", "typed.close", "codegen.calling"],
+      "negative_fixtures": ["tests/check_imported_carriers.py", "tests/check_scalar_wrappers.py"]
+    },
+    {
+      "id": "helpers",
+      "category": "higher-order-calls",
+      "source": "tests/bench/helpers.fpr",
+      "expect": { "stdout_file": "tests/bench/helpers.expected", "exit": 0 },
+      "positive_for": ["typed.inline", "typed.specialize"],
+      "negative_fixtures": ["tests/check_higher_order_contracts.py", "tests/check_specialization.py"]
+    },
+    {
+      "id": "specialization",
+      "category": "higher-order-calls",
+      "source": "tests/bench/specialization.fpr",
+      "expect": { "stdout_file": "tests/bench/specialization.expected", "exit": 0 },
+      "positive_for": ["typed.specialize", "erased.specialize"],
+      "negative_fixtures": ["tests/check_typed_callbacks.py", "tests/check_specialization.py"]
+    },
+    {
+      "id": "pingpong",
+      "category": "actor-messages",
+      "source": "tests/bench/pingpong.fpr",
+      "harts": 2,
+      "expect": { "stdout_file": "tests/bench/pingpong.expected", "exit": 0 },
+      "positive_for": ["typed.close", "codegen.placement"],
+      "negative_fixtures": ["tests/check_tick_batch.py", "tests/check_receive_turns.py"]
+    },
+    {
+      "id": "xpingpong",
+      "category": "actor-messages",
+      "source": "tests/bench/xpingpong.fpr",
+      "harts": 2,
+      "expect": { "stdout_file": "tests/bench/xpingpong.expected", "exit": 0 },
+      "positive_for": ["typed.close", "codegen.placement"],
+      "negative_fixtures": ["tests/check_tick_batch.py", "tests/check_scheduler_latency.py"]
+    },
+    {
+      "id": "strbuild",
+      "category": "linear-strings",
+      "source": "tests/bench/strbuild.fpr",
+      "expect": { "stdout_file": "tests/bench/strbuild.expected", "exit": 0 },
+      "positive_for": ["typed.trmc", "erased.reuse"],
+      "negative_fixtures": ["tests/check_linear_strings.py"]
+    },
+    {
+      "id": "vecread",
+      "category": "vector-reads",
+      "source": "tests/bench/vecread.fpr",
+      "expect": { "stdout_file": "tests/bench/vecread.expected", "exit": 0 },
+      "positive_for": ["typed.vectorread", "codegen.vectorread"],
+      "negative_fixtures": ["tests/check_typed_vector_reads.py", "tests/check_vector_pipelines.py"]
+    },
+    {
+      "id": "defined_failure_divide",
+      "category": "defined-failure",
+      "source": "tests/pipeline/divide_by_zero.fpr",
+      "expect": {
+        "stdout": "",
+        "exit": 1,
+        "stderr_contains": ["division by zero"]
+      },
+      "positive_for": ["frontend.precond", "lower"],
+      "negative_fixtures": ["tests/check_resource_domains.py"]
+    }
+  ]
+}

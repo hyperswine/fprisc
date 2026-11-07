@@ -1,0 +1,10 @@
+# corpus: an imported library entry with a private scalar worker loop. The
+# consumer below calls `total` across a unit boundary, so the producer's
+# worker/wrapper convention and the caller's adapter are both exercised.
+unsafe base.
+
+sumTo : Int -> Int -> Int .
+sumTo n acc = if n == 0 then acc else sumTo (n - 1) (acc + n).
+
+total : Int -> Int .
+total n = sumTo n 0.

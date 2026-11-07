@@ -96,6 +96,32 @@ reference fixtures instead of letting each new pass define its own policy.
 **Exit:** each hot overhead and proposed transformation has an owning stage,
 an observable-behavior contract and a meaningful positive/negative fixture.
 
+**P0 complete (8 November).** The exit criterion holds: every overhead and
+proposed change has an owning stage, a behaviour contract and positive/negative
+fixtures (inventory, "Owning stage"), and all 19 corpus contracts pass on
+`d308c1b`. The [reference audit](2026-11-08-PIPELINE-REFERENCE-AUDIT.md)
+checks every C/GHC reference (same answers, SIMD, checked vs unchecked,
+optimized out, fused) and names which ratio may be an acceptance target. RV64
+compile facts are recorded in `bench/pipeline-baseline-rv64.json`; RV64
+execution, the Pi 4B and the Tang Nano stay unverified, reported and never
+passed. The semantic policy's four open decisions stay open by design: each
+must be settled in the policy before the first change that depends on it.
+
+**P0 artifacts (as first written on 7 November).** The
+[pass inventory](2026-11-07-PIPELINE-PASS-INVENTORY.md) covers the stage order,
+per-pass input/output IR, facts, effects, refusal and cache identity, the
+owning-stage map required by the exit criterion, and the live consumers of each
+module P2-P6 retires. The [semantic policy](2026-11-07-PIPELINE-SEMANTIC-POLICY.md)
+is the single policy document the phase asks for, with its undecided items
+listed rather than assumed. `tests/pipeline/corpus.json` holds the 19-entry
+corpus over the categories above, each with its observable-behaviour contract
+and the negative fixtures that must keep refusing; `tools/pipeline-baseline.py`
+records and checks behaviour, allocation counts, code size, spills, native
+segments, compiler allocation/time and timing, and the drift it does not
+explain is printed rather than hidden. C and GHC reference ratios are still
+unaudited, so no ratio is an acceptance target yet, and no target beyond the
+recording host has been recorded.
+
 ## Phase P1 - Shared facts, summaries and invalidation
 
 **Deliver:** checked function summaries and a demand-driven analysis manager.
@@ -173,6 +199,13 @@ emission. Public source contracts continue to describe the public representation
 adapters without deleting their necessary boundary rules. Remove old modules
 only when there are no production consumers and the new plan covers their profiles.
 
+**Gate on every slice, not only at exit:** QOS pairs with a pinned fprisc and
+carries frozen std units, and the most recent pin trials were no-go. A P3 slice
+changes calling conventions, so before it is promoted the QOS check-all must be
+green at a stated pin pair (fprisc commit, qos commit), recorded in the merge
+record. A slice that cannot be paired is not promoted; it waits, it is not
+excused.
+
 **Exit:** producer/consumer pairs share an unboxed convention without independent
 heuristics; crossing public/foreign/actor/arena boundaries generates correct
 adapters; allocation and layout reports agree with emitted storage. Refused
@@ -185,22 +218,27 @@ specialization and normalization. Run interacting transformations to a bounded,
 measured fixed point, with change tracking rather than repeatedly traversing the
 whole program. Preserve complete checked clone identity and provenance.
 
-Introduce an internal iteration representation for recognized collection
-operations: state, step, termination, element production, predicates, accumulators,
-effects, trap policy and materialization requirements. Start with existing
-map/filter/range/fold coverage. Lower to a scalar loop, persistent builder or
-vector kernel according to legality and cost. Shared outputs and effectful
-callbacks may still require materialization or refusal of fusion.
+An internal iteration representation for recognized collection operations
+(state, step, termination, element production, predicates, accumulators,
+effects, trap policy and materialization requirements) is **not part of P4**.
+It is a new IR and a research risk of its own: stream fusion under another
+name. The catalog-template fusion in `Core.Typed.ListFusion` and
+`Core.Typed.Fusion` already covers the direct map/filter/range/fold cases, and
+P4's job is to make that the only implementation. The iteration form gets its
+own dated proposal, admitted only when it names a concrete case the catalog
+cannot express and a corpus fixture for it; until then "equivalent source
+spellings converge" is measured against the catalog, and a spelling the catalog
+misses is a catalog entry first. Shared outputs and effectful callbacks keep
+requiring materialization or refusal of fusion either way.
 
 **Replace/delete:** remove erased `Inline.hs`, `Core/Opt/Fusion.hs`,
 `Core/Opt/Normalize.hs`, `Core/VectorRead.hs` and `Mono.hs` from checked native
-paths, then delete only after compatibility consumers migrate. Replace overlapping
-typed list/vector pattern composition with the iteration form incrementally;
-retain catalog identity checks and semantic safety rules as front-end admission.
+paths, then delete only after compatibility consumers migrate. Retain catalog
+identity checks and semantic safety rules as front-end admission.
 
 **Exit:** existing direct/let/helper/imported fusion cases retain allocation
 results; shared/effectful cases retain correct behavior. Equivalent source
-spellings converge to the same iteration plan. Typed specialization retains
+spellings converge to the same catalog fusion plan. Typed specialization retains
 generic fallbacks and compiler/image budgets. Fusion is not declared complete
 merely because one benchmark no longer allocates.
 
@@ -280,25 +318,40 @@ the resource roadmap, not the completion of this refactor alone.
 ## Dependency and delivery order
 
 ```text
-P0 -> P1 -> P2 -> P3 -> P4
-       |      |      |
-       +------+------+-> P5 -> P6
-              P3/P4/P5/P6 -> P7
+P0 -> P2 -> P3 -> P4
+ |     |
+ |     +-> P1 (with its first consumer) -> P5
+ |
+ +-> P6 (placement growth, in parallel from P0)
+P3/P4/P5/P6 -> P7
 ```
 
-P5's local checked-operation improvements can begin after P1/P2 while P3/P4
-migrate higher-level work. Existing low-risk instruction selection fixes need
-not wait. Shared analyses should be introduced by their first real consumer;
-avoid building an unused framework before the vertical slices work.
+P2's bridge does not depend on P1: it needs the closed program's layouts and
+`KernelKinds` turned into an agreement checker, nothing more. P1's summary
+schema and analysis manager land with their first real consumer (P5's
+range-driven folding, or P3's escape facts), never ahead of one. P6 operates on
+SSA, whose shape P2 and P3 do not change, so the placement pass grows in
+parallel from today; composed work between scheduling boundaries is what the
+fixed-cost proposal and the resource roadmap both need next, and it must not
+wait behind the representation migration. P5's local checked-operation
+improvements can begin after P2 while P3/P4 migrate higher-level work. Existing
+low-risk instruction selection fixes need not wait. Shared analyses are
+introduced by their first real consumer; an unused framework before the
+vertical slices work is a defect, not progress.
 
 First reviewable changes:
 
-1. P0 semantic/pass inventory and fixture identities.
-2. P1 checked summary schema plus one range/result-size consumer.
-3. P2 full-signature bridge, with old reconstruction as an assertion.
-4. P3 scalar representation plan, replacing one worker path end to end.
-5. P5 literal check folding and dominated checked-operation reuse.
-6. P4 typed-only optimization for the first complete corpus, deleting its erased path.
+1. P0 semantic/pass inventory and fixture identities (landed as the P0 artifacts above).
+2. P2 full-signature bridge, with old reconstruction as an assertion.
+3. P6 composed-work report from `Codegen.Placement`: the longest safepoint-free
+   path through a slice across calls and returns, emitted per function beside
+   `native-insns-v1`, with unknown runtime calls reported as unknown.
+4. P1 checked summary schema plus its first range/result-size consumer, in the
+   same change as P5's literal check folding.
+5. P3 scalar representation plan, replacing one worker path end to end, with its
+   QOS pairing gate.
+6. P5 dominated checked-operation reuse.
+7. P4 typed-only optimization for the first complete corpus, deleting its erased path.
 
 Each change names the old production path it removes or the specific removal
 gate it advances. Transition flags select old/new implementations for comparison;
@@ -330,6 +383,15 @@ traces, ownership/lifetime behavior and the chosen scheduler semantics. Include
 negative controls for stale facts, bad adapters, missed ticks and resource
 undercounts. Preserve independent target oracles and linked-image checks.
 
+`tools/pipeline-baseline.py` gates code and allocation metrics only when the
+compiler binary is unchanged, by design; this refactor is nothing but compiler
+changes, so during it the tool prints drift and gates nothing but behaviour.
+The gate is therefore a review step: every phase exit, and every slice that
+changes emitted code, carries in its merge record the tool's drift lines with
+one explanation each (which pass, why the number moved, whether it was
+intended). Unexplained drift blocks promotion. A re-recorded baseline names the
+commit it was recorded at and the explanation it closes.
+
 Publish warmed/interleaved performance medians and variability, compiler
 allocation/time, emitted size, spills, allocation counts and segment bounds.
 Separate process startup, steady-state work and instrumentation overhead.
@@ -347,3 +409,23 @@ This is a multi-month migration. Estimate each vertical slice after P0, and
 re-estimate after the signature bridge and first representation replacement.
 Prioritize removing duplicate authority and demonstrably improving hot code;
 do not use lines deleted as the sole measure of success.
+
+## Amendments, 7 November 2026 (review)
+
+A review of the proposed roadmap against the landed placement slice and the
+resource roadmap changed four things; the text above is already amended.
+
+1. **P1 no longer gates P2.** The bridge needs layouts and `KernelKinds` as a
+   checker, not an analysis manager. P1 lands with its first consumer.
+2. **P6 runs in parallel from P0.** The placement pass is on SSA, which P2 and
+   P3 leave in shape, and composed work between scheduling boundaries is the
+   next input both the fixed-cost proposal and the resource roadmap need.
+3. **The iteration form leaves P4** for a proposal of its own, gated on a case
+   the catalog cannot express.
+4. **Two gates added:** a QOS pairing gate on every P3 slice, and a line-by-line
+   drift explanation at every phase exit, since the baseline tool gates no
+   metric across compiler changes.
+
+A note on the 5,200-line figure: it counted ARC, Representation and Regions as
+investigation scope. The eight modules the inventory names for retirement
+total about 2,900 lines. Neither number is a deletion target.

@@ -1,0 +1,7 @@
+# corpus: a defined failure. The division is not folded away, so the trap is
+# the runtime's own (no compiler-inserted check): stdout stays empty, the
+# process exits non-zero and the actor panics with the division message.
+d : Int -> Int .
+d x = 100 / x.
+
+main = print "divide_by_zero {d 0}".

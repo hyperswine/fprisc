@@ -1,0 +1,8 @@
+# corpus: hot loop over an imported library entry (imported wrapper fixture).
+unsafe base.
+IM = use "tests/pipeline/imported_module".
+
+go : Int -> Int -> Int .
+go k acc = if k == 0 then acc else go (k - 1) (acc + IM.total 1000).
+
+main = print "imported_wrappers {go 10000 0}".
