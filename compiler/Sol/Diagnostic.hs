@@ -1,7 +1,7 @@
 -- Script output belongs to the program; host diagnostics belong to stderr.
-module Sol.Diagnostic (diagnostic, verbose, withBufferedDiagnostics) where
+module Sol.Diagnostic (diagnostic, verbose, withBufferedDiagnostics, tryBufferedDiagnostics) where
 
-import Control.Exception (onException)
+import Control.Exception (SomeException, onException, try)
 import Control.Monad (when)
 import Data.IORef
 import System.Environment (lookupEnv)
@@ -31,6 +31,20 @@ withBufferedDiagnostics action = do
   held <- readIORef diagnosticBuffer
   writeIORef diagnosticBuffer Nothing
   pure (r, maybe [] reverse held)
+
+-- Like withBufferedDiagnostics, but a FAILING action's held diagnostics
+-- come back with the exception: the sliced trial's failure classifier
+-- (Sol.Main compilePreparedSession) reads the error text to decide
+-- whether the full-compile fallback is needed at all.
+tryBufferedDiagnostics :: IO a -> IO (Either (SomeException, [String]) (a, [String]))
+tryBufferedDiagnostics action = do
+  writeIORef diagnosticBuffer (Just [])
+  r <- try action
+  held <- readIORef diagnosticBuffer
+  writeIORef diagnosticBuffer Nothing
+  pure $ case r of
+    Left e -> Left (e, maybe [] reverse held)
+    Right a -> Right (a, maybe [] reverse held)
 
 verbose :: String -> IO ()
 verbose msg = do

@@ -90,6 +90,7 @@ TALLY = {}
 
 HEADER = re.compile(r'^(\S.*?) \(arity \d+, frame \d+ slots\):$')
 NUMBERED = re.compile(r'[_.]\d+$')
+TVAR = re.compile(r'\b[a-z]\d+\b')
 
 
 def canonical(text):
@@ -145,6 +146,15 @@ def canonical(text):
 
 
 def compare(label, a, b, failures, canon=False):
+    # Error diagnostics print fresh-variable names from the compile's
+    # variable supply, and the sliced trial numbers them differently from
+    # the full compile (docs/2026-11-08-SOL-REPL-ERROR-PATH.md): the fast
+    # path reprints the trial's wording. Normalize letter+digits tokens in
+    # stderr on BOTH sides; user-code identifiers never differ between
+    # modes, and program output is stdout, so this can only mask
+    # compiler-generated naming.
+    a = (a[0], a[1], TVAR.sub('<tv>', a[2]))
+    b = (b[0], b[1], TVAR.sub('<tv>', b[2]))
     if canon:
         a = (a[0], canonical(a[1]), a[2])
         b = (b[0], canonical(b[1]), b[2])

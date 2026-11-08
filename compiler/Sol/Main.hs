@@ -17,7 +17,7 @@ import Mono (specializeFunctions)
 import Sol.Cache (Prepared (..), ImportStamp, cached, cachedPrelude, checkedLibraries, recordCheckedLibraries, sourceDigest)
 import Sol.Startup (phase, phaseIO)
 import Control.DeepSeq (force)
-import Sol.Diagnostic
+import Sol.Diagnostic (diagnostic, tryBufferedDiagnostics, verbose, withBufferedDiagnostics)
 import qualified Sol.ScriptIO as ScriptIO
 import Sol.Bytecode
 import Control.Exception (AsyncException (UserInterrupt), Handler (..), IOException, SomeAsyncException, SomeException, fromException, bracket, catch, catches, finally, onException, throwIO, try, evaluate)
@@ -310,7 +310,7 @@ compilePreparedSession session path src ptops utops expanded trusted = do
           mShapes = if stableShapeContext || aloneFailed then cachedShapes else Nothing
           level = if verified then SliceAll else SlicePrelude
       when (nLib > 0) $ trace ("libraries " ++ (if verified then "verified: sliced" else "not verified: compiled whole"))
-      r <- try (withBufferedDiagnostics (compileScriptSession session Editor.disabled level mShapes path src ptops utops expanded trusted >>= evaluate . force))
+      r <- tryBufferedDiagnostics (compileScriptSession session Editor.disabled level mShapes path src ptops utops expanded trusted >>= evaluate . force)
       case r of
         -- typed-hole notes print type-variable names, which depend on the
         -- whole program's fresh-variable supply: a compile that has one is
@@ -324,9 +324,59 @@ compilePreparedSession session path src ptops utops expanded trusted = do
                 trace "libraries checked in this program: verdict recorded for its declarations"
                 recordCheckedLibraries ctxDigest opts (True, computeLibShapes expanded)
               pure prepared
-        Left (e :: SomeException)
+        Left (e, held)
           | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+          -- A slice-induced failure (under-inclusion) looks like an unbound
+          -- name or a missing operator/member target, and the full compile
+          -- may SUCCEED: those escalate. A typed hole prints fresh-variable
+          -- names, so it escalates too. A recognized whole-program error
+          -- family (type/safety/sig-struct/precond/path/linearity) with no
+          -- slice-sensitive marker is the USER's code failing identically
+          -- in both compiles — only the fresh-variable NAMES differ from
+          -- the full compile's, which an interactive user has no baseline
+          -- to compare. Reprint the trial's diagnostics and skip the
+          -- ~30 ms full compile (docs/2026-11-08-SOL-REPL-ERROR-PATH.md).
+          | reprintableTrialError held ->
+              trace ("sliced compile rejected (" ++ takeWhile (/= '\n') (show e)
+                       ++ "); trial diagnostics printed") >> do
+                mapM_ (hPutStrLn stderr) held
+                throwIO e
           | otherwise -> trace ("sliced compile rejected (" ++ takeWhile (/= '\n') (show e) ++ "); full prelude") >> full
+
+-- the error families compileScript itself raises, with a banner the
+-- buffered diagnostics carry verbatim
+trialErrorFamily :: [String] -> Bool
+trialErrorFamily held =
+  any (\b -> any (b `isPrefixOf`) held)
+    [ "=== TYPE ERRORS ===",
+      "=== SAFETY:",
+      "=== SIG/STRUCT: ERRORS ===",
+      "=== PRECONDITION: ERRORS ===",
+      "=== PATH LITERALS: ERRORS ===",
+      "=== LINEARITY: ERRORS ==="
+    ]
+
+-- the ways an INCOMPLETE slice can manifest (docs/2026-10-29-SOL-INCREMENTAL-PRELUDE.md):
+-- a dropped prelude name is unbound or leaves an operator/member without a
+-- target; an unknown constructor and an unexhaustive/mismatched case are
+-- the constructor-facing spellings of the same. Typed holes print
+-- fresh-variable names. Any of these escalate to the full compile.
+sliceSensitive :: [String] -> Bool
+sliceSensitive held =
+  any
+    (\m -> any (m `isInfixOf`) held)
+    [ "unbound",
+      "unknown constructor",
+      "unresolved",
+      "no operator",
+      "no instance",
+      "not matched",
+      "exhaustiv",
+      "=== TYPED HOLES ==="
+    ]
+
+reprintableTrialError :: [String] -> Bool
+reprintableTrialError held = trialErrorFamily held && not (sliceSensitive held)
 
 -- A user declaration's part of the program interface: a function's name
 -- (Left), nothing for a top-level eval or blank, the whole declaration
