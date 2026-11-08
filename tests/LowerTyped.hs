@@ -101,8 +101,11 @@ main = do
   -- outside the class: refused with a reason, never lowered differently
   let s = Function "s" [n] (ex tInt (StringValue "x"))
   check "a string literal is refused" (isLeft (snd (lowerings s (CStr "x"))))
+  let poly = Function "w" [binder 3 "x" (TV 0)] (int 0)
+  check "a polymorphic signature is refused" (isLeft (snd (lowerings poly (CInt 0))))
+  -- slice 3a: a monomorphic signature outside Int and Bool lowers the same
   let wide = Function "w" [binder 3 "x" (TC "String")] (int 0)
-  check "a signature outside Int and Bool is refused" (isLeft (snd (lowerings wide (CInt 0))))
+  check "a String parameter agrees" (agrees wide (CInt 0))
   -- a call region (placement's typed result): the erased token binding
   let callerBody = ex tInt (CallRegion (call tInt "g" [local n]))
       caller = Function "caller" [n] callerBody

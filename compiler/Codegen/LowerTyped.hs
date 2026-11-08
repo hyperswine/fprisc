@@ -3,9 +3,10 @@
 -- of checked functions (P2 typed lowering, slice 1:
 -- docs/2026-11-08-P2-TYPED-LOWERING-SLICE-1.md).
 --
--- The class (S1): a scalar signature (Int and Bool), first-order, calls to
--- known functions and the integer operators, literal/binder/Bool matches
--- with Boolean guards. Everything else is refused with a reason naming the
+-- The class: a monomorphic signature (slice 1 had Int and Bool; slice 3a
+-- admits any monomorphic type, since every value of a public function is a
+-- tagged word), first-order, calls to known functions and the integer
+-- operators, literal/binder/Bool matches with Boolean guards. Everything else is refused with a reason naming the
 -- form, as Codegen.Lower refuses.
 --
 -- Slice 1 runs this beside the erased lowering and requires the same SSA, so
@@ -76,14 +77,19 @@ data Plan = Plan {planLayout :: Layout, planNext :: Int}
 
 lowerFn :: Policy -> Layout -> Prog -> M.Map String Int -> M.Map String Prim -> Function -> Either Reason Fn
 lowerFn policy layout prog ext hal f
-  | not (all scalar (exprType (functionBody f) : map binderType (functionParameters f))) =
-      Left "typed lowering: a signature outside Int and Bool"
+  | any hasVariable (exprType (functionBody f) : map binderType (functionParameters f)) =
+      Left "typed lowering: a polymorphic signature"
   | otherwise = do
       planned <- plan layout (functionBody f)
       lowerEntry policy M.empty prog ext hal (functionName f) (map binderName (functionParameters f)) $ \cx pvs ->
         lowerTail cx (M.fromList (zip (map (KBinder . binderId) (functionParameters f)) pvs)) planned
   where
-    scalar t = t == TC "Int" || t == TC "Bool"
+    hasVariable t = case t of
+      TV _ -> True
+      TAp a b -> hasVariable a || hasVariable b
+      TFn a b -> hasVariable a || hasVariable b
+      TTupT ts -> any hasVariable ts
+      _ -> False
 
 -- Plan the whole body once, before lowering, with one supply of scrutinee
 -- names: the plan is pure, and erasure's fallback duplication lowers the same

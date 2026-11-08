@@ -44,7 +44,7 @@ import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgra
 import KernelKinds (Kind(..))
 import Workers (ScalarSignatures, internalWorker, scalarPrimitives)
 
-import Core.Syntax (Core (..), Prog)
+import Core.Syntax (Core (..), Prog, freeVars)
 import Core.ProductABI (productMarker)
 import Core.Utils
 import Core.Primitives (corePrims, primArities, entryTickName)
@@ -131,7 +131,7 @@ data Emission = Emission
 -- P2 typed lowering, slice 2: what emission did with each typed S1 function
 -- it was given. `tuTyped` were emitted from the typed lowering (the erased
 -- lowering of the same function agreed); the others kept the erased
--- function: the optimizer gave them a scalar worker, region placement
+-- function: the optimizer made them a wrapper around a worker, region placement
 -- rewrote them, the ARC normalization applies, or the erased lowering
 -- refused. `tuDisagree` (name, erased, typed) is a compiler error.
 data TypedUse = TypedUse
@@ -311,7 +311,9 @@ nativeSelect typed placed tgt spec nm vkinds sigs ext exps prog emitted =
       Just e
         | tgtArc tgt -> Left (Left "arc")
         | e {fnSourceParams = []} == t {fnSourceParams = []} -> Right t
-        | M.member ("$worker.scalar." ++ n) prog -> Left (Left "worker")
+        -- the optimizer made it a wrapper around a worker (scalar, field,
+        -- return, storage or consume workers: every one is a `$worker.` name)
+        | Just (_, b) <- M.lookup n eligible, any ("$worker." `isPrefixOf`) (freeVars b) -> Left (Left "worker")
         | S.member n placed -> Left (Left "placed")
         | otherwise -> Left (Right (e, t))
     lowered0 = M.union (M.mapMaybe (either (const Nothing) Just) decisions) erased0

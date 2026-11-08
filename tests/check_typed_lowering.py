@@ -5,7 +5,7 @@ Compiles every corpus entry (tests/pipeline/corpus.json) cold for the host and
 for RV64 and reads the per-unit notes:
 
   # typed lowering census: t1=.. calls=.. forms=.. ... unit=..
-  # typed lowering: s1=.. typed=.. regions=.. scalar_worker=.. placed=.. arc=.. absent=.. refused=.. unit=..
+  # typed lowering: s1=.. typed=.. regions=.. worker=.. placed=.. arc=.. absent=.. refused=.. unit=..
 
 Emission takes each S1 function from the typed lowering where the erased
 lowering of the same function agrees; any other difference stops the
@@ -15,7 +15,7 @@ compile, so every compile succeeding is the main assertion. On top of that:
     refusal means the class definition and Codegen.LowerTyped disagree);
   - regions counts the typed functions lowered from region placement's
     typed result (call regions); they are part of typed;
-  - every S1 function is accounted for: typed + scalar_worker + placed +
+  - every S1 function is accounted for: typed + worker + placed +
     arc + absent = s1;
   - the typed_lower_s1 fixture's root unit has at least 7 S1 functions, at
     least 4 emitted typed, and its code is identical to the build with
@@ -27,8 +27,8 @@ import json, os, re, subprocess, sys, tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-NOTE = re.compile(r'# typed lowering: s1=(\d+) typed=(\d+) regions=(\d+) scalar_worker=(\d+) placed=(\d+) arc=(\d+) absent=(\d+) refused=(\d+)(?: refused_by=(.*?))? unit=(\S+)')
-FIELDS = ('s1', 'typed', 'regions', 'scalar_worker', 'placed', 'arc', 'absent', 'refused')
+NOTE = re.compile(r'# typed lowering: s1=(\d+) typed=(\d+) regions=(\d+) worker=(\d+) placed=(\d+) arc=(\d+) absent=(\d+) refused=(\d+)(?: refused_by=(.*?))? unit=(\S+)')
+FIELDS = ('s1', 'typed', 'regions', 'worker', 'placed', 'arc', 'absent', 'refused')
 CENSUS = re.compile(r'# typed lowering census: (.*) unit=(\S+)')
 FIXTURE_S1 = 7
 FIXTURE_TYPED = 4
@@ -67,7 +67,7 @@ def main():
                     if v['refused']:
                         print(f'FAIL {e["id"]} ({name}): typed lowering refused {v["refused"]} S1 function(s): {m.group(9)}')
                         bad += 1
-                    if sum(v[k] for k in ('typed', 'scalar_worker', 'placed', 'arc', 'absent')) != v['s1']:
+                    if sum(v[k] for k in ('typed', 'worker', 'placed', 'arc', 'absent')) != v['s1']:
                         print(f'FAIL {e["id"]} ({name}) unit {unit}: S1 functions unaccounted for: {v}')
                         bad += 1
                     if e['id'] == 'typed_lower_s1' and m.group(10) == 'root' and (v['s1'] < FIXTURE_S1 or v['typed'] < FIXTURE_TYPED):

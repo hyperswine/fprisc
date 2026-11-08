@@ -8,7 +8,10 @@
 --               literal/binder matches (Match, MatchTail: `if` arrives as
 --               a MatchTail), calls only to other t1 functions
 --   calls       t1 plus calls to any known function (tagged convention);
---               t1 and calls together are slice 1's class S1, exactly what
+--               t1 and calls together are slice 1's class S1
+--   signatures  calls with any monomorphic signature (slice 3a: every value
+--               of a public function is a tagged word, so the signature does
+--               not change the lowering); t1, calls and signatures are what
 --               Codegen.LowerTyped accepts
 --   forms       plus other primitives, join calls, sequences, pattern
 --               bindings, call regions and pattern guards
@@ -28,7 +31,7 @@ import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data Class = T1 | Calls | Forms | Products | Strings | Lists | Closures | Vectors | Polymorphic | Other
+data Class = T1 | Calls | Signatures | Forms | Products | Strings | Lists | Closures | Vectors | Polymorphic | Other
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 newtype Census = Census (M.Map Class Int)
@@ -45,9 +48,10 @@ data Feature = FCall | FForm | FProduct | FString | FList | FClosure | FVector |
 census :: (String -> Bool) -> M.Map String Function -> Census
 census known functions = Census (M.fromListWith (+) [(c, 1) | c <- M.elems (classify known functions)])
 
--- Slice 1's class: t1 and calls.
+-- The typed lowering's class: t1, calls and signatures (slice 1's S1 widened
+-- by slice 3a).
 s1Functions :: (String -> Bool) -> M.Map String Function -> S.Set String
-s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls]) (classify known functions))
+s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures]) (classify known functions))
 
 classify :: (String -> Bool) -> M.Map String Function -> M.Map String Class
 classify known functions = M.mapWithKey (\n _ -> classOf n) functions
@@ -69,6 +73,7 @@ classify known functions = M.mapWithKey (\n _ -> classOf n) functions
         | S.member n t1 -> T1
         | p -> Polymorphic
         | s && fs `S.isSubsetOf` S.fromList [FCall] -> Calls
+        | fs `S.isSubsetOf` S.fromList [FCall] -> Signatures
         | s && fs `S.isSubsetOf` S.fromList [FCall, FForm] -> Forms
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct] -> Products
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct, FString] -> Strings
@@ -116,7 +121,9 @@ bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> pat
       IntValue _ -> S.empty
       BoolValue _ -> S.empty
       BoolTest _ _ -> S.empty
-      Apply _ _ -> S.empty
+      -- applying a local (a function parameter) is the generic apply
+      Apply _ _ | localHead e -> S.singleton FClosure
+                | otherwise -> S.empty
       Let _ _ _ -> S.empty
       If _ _ _ -> S.empty
       Note _ -> S.empty
@@ -156,6 +163,13 @@ bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> pat
       _ -> S.empty
     guardFeatures g = case g of BoolGuard _ -> S.empty; PatternGuard p _ -> S.insert FForm (patternFeatures p)
 
+localHead :: Expr -> Bool
+localHead e = case exprNode e of
+  Apply f _ -> localHead f
+  Note x -> localHead x
+  Var (Local _) -> True
+  _ -> False
+
 patternFeatures :: Pattern -> S.Set Feature
 patternFeatures p = case patNode p of
   Bind _ -> S.empty
@@ -174,5 +188,5 @@ censusNote (Census m) = "# typed lowering census: " ++ intercalate " "
   [label c ++ "=" ++ show (M.findWithDefault 0 c m) | c <- [minBound .. maxBound]]
   where
     label c = case c of
-      T1 -> "t1"; Calls -> "calls"; Forms -> "forms"; Products -> "products"; Strings -> "strings"; Lists -> "lists"
+      T1 -> "t1"; Calls -> "calls"; Signatures -> "signatures"; Forms -> "forms"; Products -> "products"; Strings -> "strings"; Lists -> "lists"
       Closures -> "closures"; Vectors -> "vectors"; Polymorphic -> "polymorphic"; Other -> "other"

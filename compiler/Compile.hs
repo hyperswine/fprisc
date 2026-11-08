@@ -845,7 +845,7 @@ compileWithReport accepted report = do
             unless skip $ do
               putStrLn ("# typed lowering: s1=" ++ show (TypedLowering.loweredS1 lowered) ++ " typed=" ++ n (tuTyped use)
                 ++ " regions=" ++ show (S.size (TypedLowering.loweredPlaced lowered))
-                ++ " scalar_worker=" ++ n (tuWorker use) ++ " placed=" ++ n (tuPlaced use) ++ " arc=" ++ n (tuArc use)
+                ++ " worker=" ++ n (tuWorker use) ++ " placed=" ++ n (tuPlaced use) ++ " arc=" ++ n (tuArc use)
                 ++ " absent=" ++ n (tuAbsent use) ++ " refused=" ++ n (TypedLowering.loweredRefused lowered)
                 ++ concat [" refused_by=" ++ List.intercalate ";" (take 3 [f ++ ":" ++ why | (f, why) <- TypedLowering.loweredRefused lowered])
                           | not (null (TypedLowering.loweredRefused lowered))]
