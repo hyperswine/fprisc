@@ -139,3 +139,82 @@ points).
 
 The stage dump (`FPR_TYPED_LOWER_STAGES_SHOW=NAME`) now prints a function's
 stages whether or not it agreed at the boundary.
+
+## Step 3d-i record: constructors, tuples and atoms (8 November)
+
+Step 3d is split in three, each with its own census feature:
+
+- **3d-i:** constructors, tuples, atoms and their patterns;
+- **3d-ii:** records;
+- **3d-iii:** pattern bindings and pattern guards.
+
+Records need erasure's type-directed field lookup and shape-dispatched
+updates, which is a separate piece of work.
+
+- `TypedCensus` gains the `constructors` rung, with any signature. The
+  feature `FConstruct` covers `Construct`, `TupleValue`, `AtomValue`, and
+  constructor and tuple patterns other than `True`/`False` and the list
+  constructors. Records stay at `products`.
+- The plan builds the new values as erasure does:
+  - `PMk tid variant fields` for constructors and tuples (`TupN`);
+  - `PMk 6 0 [PStr name]` for atoms.
+
+  Constructor and tuple patterns get erasure's variant test and its
+  `matchFields`, with the last field's test innermost (`PProj i scrut`
+  per field). The covered-last-arm shortcut extends to constructors with
+  fields: it skips the tag test and keeps the field matches.
+- The new nodes are lowered by `Codegen.Lower` from their Core form
+  (`VCore`), like the primitives in 3c. The constructor layout includes the
+  wide tuples (`DataLayout.wideTup`), as erasure's does.
+- Fallback joins were the expected risk. A multi-test arm with a
+  non-trivial fallback makes erasure build a join. The closed program
+  already carries its joins explicitly (`MatchTail` with join calls), and
+  native erasure refuses to manufacture one, so none appeared: `LowerTyped`
+  still refuses them and the sweep had no refusal.
+- QOS guishell (reuse is on for QOS profiles) brought two more erased
+  rewrites into view. Each is now its own count in the note:
+  - **`reuse=`:** constructor reuse (`Reuse.hs`) wrote a fresh cell over a
+    uniquely owned one (`$reuse.fresh`, `OReuse` against the typed `OMake`)
+    in `ring`, `rrect` and `strips`. Like workers, this is an optimizer
+    rewrite and keeps the erased function; P4 plans reuse on typed facts.
+  - **`optimized=`:** `normIn` also sinks a pending let into the next let's
+    right-hand side (`serveWith`: a function value bound early, used late).
+    Mirroring every optimizer rewrite is the typed optimizer's job, not
+    this slice's.
+- **The three-way rule.** Every function whose typed and erased native
+  functions differ, and which is not a worker, reuse or placed function, is
+  decided by comparing Core, up to binder names, with literal lets
+  substituted (`Core.Alpha`):
+  - the plan's Core (`LowerTyped.planCore`) against the Core erasure and
+    placement gave (`Regions.resultProgram`): if they differ, the plan is
+    wrong, and that is a disagreement;
+  - the plan's Core against the Core the emission lowered: if they differ,
+    the optimizer reshaped the body, counted as `optimized`;
+  - otherwise the same Core was lowered two ways, and that is a
+    disagreement.
+
+  So a planning bug cannot hide as an optimization. The unit test's
+  typed function for a different body is still a disagreement.
+
+| | step 3c | step 3d-i |
+|---|---|---|
+| class (sweep, 766 units) | 5,703 | 14,978 |
+| emitted typed | 5,529 | 14,625 |
+| of which from call regions | 1,182 | 1,749 |
+| worker wrappers | 100 | 223 |
+| reuse, optimized | - | 0, 0 |
+| placed, not ordinary | 74 | 130 |
+| refused, disagreement | 0 | 0 |
+
+Corpus: 312 class functions, 282 typed. Code is identical to the
+`FPR_NO_TYPED_LOWER=1` build on all 145 compiling sweep programs.
+
+QOS guishell: the first cold run counted 977 class functions, 961 typed,
+before the reuse exemption existed; with it, guishell compiles with no
+disagreement (3 reuse, 1 optimized). Its later counts are smaller because
+some units are cached outside the cache directory the check clears, so
+guishell numbers here are evidence of agreement, not a cold count.
+
+Unit suites (`LowerTyped` adds a constructor match and value), baseline,
+bridge, policy, compiler options and `make stdcheck` pass. Compile budget
++11.1 / +10.9 / +5.1% (hello +0.2 points).

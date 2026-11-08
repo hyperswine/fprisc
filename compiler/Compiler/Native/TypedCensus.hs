@@ -16,10 +16,12 @@
 --               over the uniform tagged representation); t1, calls,
 --               signatures and generic were slices 3a-3b's class
 --   forms       plus other primitives, join calls, sequences and call
---               regions, with any signature (slice 3c: these four rungs are
---               what Codegen.LowerTyped accepts)
---   products    plus constructors, tuples, records, their patterns,
---               pattern bindings and pattern guards
+--               regions, with any signature (slice 3c)
+--   constructors plus constructors, tuples and atoms and their patterns
+--               (slice 3d-i: t1 through constructors are what
+--               Codegen.LowerTyped accepts)
+--   products    plus records, record patterns, pattern bindings and
+--               pattern guards
 --   strings     plus string literals and string patterns
 --   lists       plus list literals and list builders
 --   closures    plus lambdas, closures, code and join calls
@@ -35,7 +37,7 @@ import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data Class = T1 | Calls | Signatures | Generic | Forms | Products | Strings | Lists | Closures | Vectors | Polymorphic | Other
+data Class = T1 | Calls | Signatures | Generic | Forms | Constructors | Products | Strings | Lists | Closures | Vectors | Polymorphic | Other
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 newtype Census = Census (M.Map Class Int)
@@ -44,7 +46,7 @@ newtype Census = Census (M.Map Class Int)
 scalarPrimitives :: S.Set String
 scalarPrimitives = S.fromList ["+","-","*","/","==","!=","<",">","<=",">="]
 
-data Feature = FCall | FForm | FPattern | FProduct | FString | FList | FClosure | FVector | FOther
+data Feature = FCall | FForm | FConstruct | FPattern | FProduct | FString | FList | FClosure | FVector | FOther
   deriving (Eq, Ord, Show)
 
 -- `known`: the names that are functions of the program or its imports; any
@@ -52,10 +54,10 @@ data Feature = FCall | FForm | FPattern | FProduct | FString | FList | FClosure 
 census :: (String -> Bool) -> M.Map String Function -> Census
 census known functions = Census (M.fromListWith (+) [(c, 1) | c <- M.elems (classify known functions)])
 
--- The typed lowering's class: t1, calls, signatures, generic and forms
--- (slice 1's S1 widened by slices 3a-3c).
+-- The typed lowering's class: t1 through constructors (slice 1's S1 widened
+-- by slices 3a-3d).
 s1Functions :: (String -> Bool) -> M.Map String Function -> S.Set String
-s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms]) (classify known functions))
+s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors]) (classify known functions))
 
 classify :: (String -> Bool) -> M.Map String Function -> M.Map String Class
 classify known functions = M.mapWithKey (\n _ -> classOf n) functions
@@ -79,12 +81,13 @@ classify known functions = M.mapWithKey (\n _ -> classOf n) functions
         | s && fs `S.isSubsetOf` S.fromList [FCall] -> Calls
         | fs `S.isSubsetOf` S.fromList [FCall] -> Signatures
         | fs `S.isSubsetOf` S.fromList [FCall, FForm] -> Forms
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct] -> Constructors
         | p -> Polymorphic
-        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FPattern, FProduct] -> Products
-        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FPattern, FProduct, FString] -> Strings
-        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FPattern, FProduct, FString, FList] -> Lists
-        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FPattern, FProduct, FString, FList, FClosure] -> Closures
-        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FPattern, FProduct, FString, FList, FClosure, FVector] -> Vectors
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct] -> Products
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString] -> Strings
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList] -> Lists
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList, FClosure] -> Closures
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList, FClosure, FVector] -> Vectors
         | otherwise -> Other
     -- a call to a known function: a global that is neither an integer
     -- operator nor itself (self recursion keeps t1 candidacy; the fixed point
@@ -140,9 +143,9 @@ bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> pat
       Sequence _ _ -> S.singleton FForm
       LetPattern _ _ _ -> S.singleton FPattern
       StringValue _ -> S.singleton FString
-      Construct _ _ -> S.singleton FProduct
-      AtomValue _ -> S.singleton FProduct
-      TupleValue _ -> S.singleton FProduct
+      Construct _ _ -> S.singleton FConstruct
+      AtomValue _ -> S.singleton FConstruct
+      TupleValue _ -> S.singleton FConstruct
       RecordValue _ -> S.singleton FProduct
       RecordField _ _ -> S.singleton FProduct
       RecordUpdate _ _ -> S.singleton FProduct
@@ -184,8 +187,8 @@ patternFeatures p = case patNode p of
   ConstructorPattern n ps
     | n `elem` ["True", "False"] && null ps -> S.empty
     | n `elem` ["Cons", "Nil"] -> S.insert FList (S.unions (map patternFeatures ps))
-    | otherwise -> S.insert FProduct (S.unions (map patternFeatures ps))
-  TuplePattern ps -> S.insert FProduct (S.unions (map patternFeatures ps))
+    | otherwise -> S.insert FConstruct (S.unions (map patternFeatures ps))
+  TuplePattern ps -> S.insert FConstruct (S.unions (map patternFeatures ps))
   RecordPattern _ -> S.singleton FProduct
 
 censusNote :: Census -> String
@@ -193,5 +196,5 @@ censusNote (Census m) = "# typed lowering census: " ++ intercalate " "
   [label c ++ "=" ++ show (M.findWithDefault 0 c m) | c <- [minBound .. maxBound]]
   where
     label c = case c of
-      T1 -> "t1"; Calls -> "calls"; Signatures -> "signatures"; Generic -> "generic"; Forms -> "forms"; Products -> "products"; Strings -> "strings"; Lists -> "lists"
+      T1 -> "t1"; Calls -> "calls"; Signatures -> "signatures"; Generic -> "generic"; Forms -> "forms"; Constructors -> "constructors"; Products -> "products"; Strings -> "strings"; Lists -> "lists"
       Closures -> "closures"; Vectors -> "vectors"; Polymorphic -> "polymorphic"; Other -> "other"

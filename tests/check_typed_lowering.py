@@ -5,7 +5,7 @@ Compiles every corpus entry (tests/pipeline/corpus.json) cold for the host and
 for RV64 and reads the per-unit notes:
 
   # typed lowering census: t1=.. calls=.. forms=.. ... unit=..
-  # typed lowering: s1=.. typed=.. regions=.. worker=.. placed=.. arc=.. absent=.. refused=.. unit=..
+  # typed lowering: s1=.. typed=.. regions=.. worker=.. reuse=.. optimized=.. placed=.. arc=.. absent=.. refused=.. unit=..
 
 Emission takes each S1 function from the typed lowering where the erased
 lowering of the same function agrees; any other difference stops the
@@ -15,7 +15,7 @@ compile, so every compile succeeding is the main assertion. On top of that:
     refusal means the class definition and Codegen.LowerTyped disagree);
   - regions counts the typed functions lowered from region placement's
     typed result (call regions); they are part of typed;
-  - every S1 function is accounted for: typed + worker + placed +
+  - every S1 function is accounted for: typed + worker + reuse + optimized + placed +
     arc + absent = s1;
   - the typed_lower_s1 fixture's root unit has at least 7 S1 functions, at
     least 4 emitted typed, and its code is identical to the build with
@@ -27,8 +27,8 @@ import json, os, re, subprocess, sys, tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-NOTE = re.compile(r'# typed lowering: s1=(\d+) typed=(\d+) regions=(\d+) worker=(\d+) placed=(\d+) arc=(\d+) absent=(\d+) refused=(\d+)(?: refused_by=(.*?))? unit=(\S+)')
-FIELDS = ('s1', 'typed', 'regions', 'worker', 'placed', 'arc', 'absent', 'refused')
+NOTE = re.compile(r'# typed lowering: s1=(\d+) typed=(\d+) regions=(\d+) worker=(\d+) reuse=(\d+) optimized=(\d+) placed=(\d+) arc=(\d+) absent=(\d+) refused=(\d+)(?: refused_by=(.*?))? unit=(\S+)')
+FIELDS = ('s1', 'typed', 'regions', 'worker', 'reuse', 'optimized', 'placed', 'arc', 'absent', 'refused')
 CENSUS = re.compile(r'# typed lowering census: (.*) unit=(\S+)')
 FIXTURE_S1 = 7
 FIXTURE_TYPED = 4
@@ -61,16 +61,16 @@ def main():
             for e in corpus:
                 out = compile_notes(ROOT / e['source'], target, tmp, e['id'])
                 for m in NOTE.finditer(out):
-                    v = dict(zip(FIELDS, map(int, m.groups()[:8])))
-                    unit = m.group(10) if m.group(10) != 'root' else f'root:{e["id"]}'
+                    v = dict(zip(FIELDS, map(int, m.groups()[:10])))
+                    unit = m.group(12) if m.group(12) != 'root' else f'root:{e["id"]}'
                     units[unit] = v
                     if v['refused']:
-                        print(f'FAIL {e["id"]} ({name}): typed lowering refused {v["refused"]} S1 function(s): {m.group(9)}')
+                        print(f'FAIL {e["id"]} ({name}): typed lowering refused {v["refused"]} S1 function(s): {m.group(11)}')
                         bad += 1
-                    if sum(v[k] for k in ('typed', 'worker', 'placed', 'arc', 'absent')) != v['s1']:
+                    if sum(v[k] for k in ('typed', 'worker', 'reuse', 'optimized', 'placed', 'arc', 'absent')) != v['s1']:
                         print(f'FAIL {e["id"]} ({name}) unit {unit}: S1 functions unaccounted for: {v}')
                         bad += 1
-                    if e['id'] == 'typed_lower_s1' and m.group(10) == 'root' and (v['s1'] < FIXTURE_S1 or v['typed'] < FIXTURE_TYPED):
+                    if e['id'] == 'typed_lower_s1' and m.group(12) == 'root' and (v['s1'] < FIXTURE_S1 or v['typed'] < FIXTURE_TYPED):
                         print(f'FAIL typed_lower_s1 ({name}): {v}, expected s1>={FIXTURE_S1} typed>={FIXTURE_TYPED}')
                         bad += 1
                 if e['id'] == 'typed_lower_s1':

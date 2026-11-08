@@ -79,6 +79,7 @@ library
       Codegen.Eval
       Codegen.Lower
       Codegen.LowerTyped
+      Core.Alpha
       Codegen.Simplify
       Codegen.Split
       Codegen.Policy

@@ -134,13 +134,35 @@ main = do
   check ("a delegated primitive with a substituted literal agrees: " ++ show (erasedMask, typedMask))
     (case (erasedMask, typedMask) of (Right a, Right b) -> a {I.fnSourceParams = []} == b {I.fnSourceParams = []}; _ -> False)
 
+  -- slice 3d-i: a constructor pattern with fields, and a constructor value
+  -- swap p = case p of Pair a b -> Pair b a  (Pair: tid 9, variant 0, arity 2)
+  let pairT = TC "Pair"
+      pv = binder 6 "p" pairT
+      a = binder 7 "a" tInt
+      b2 = binder 8 "b" tInt
+      pairLayout = Typed.Layout (`M.lookup` M.fromList [("Pair", (9, 0, 2)), ("True", (1, 1, 0)), ("False", (1, 0, 0))]) ["Pair", "True", "False"]
+      swapBody = ex pairT (Match CaseMatch [local pv]
+        [Alternative [Pattern pairT "Pair a b" (ConstructorPattern "Pair" [Pattern tInt "a" (Bind a), Pattern tInt "b" (Bind b2)])] []
+          (ex pairT (Construct "Pair" [local b2, local a]))])
+      swap = Function "swap" [pv] swapBody
+      -- erasure: scrutinee let, tag test, fields bound innermost-last
+      swapErased = CLet "s" (CVar "p") (CIf (CTagEq 9 0 (CVar "s"))
+        (CLet "a" (CProj 0 (CVar "s")) (CLet "b" (CProj 1 (CVar "s")) (CMk 9 0 [CVar "b", CVar "a"])))
+        (CErr "case: no matching pattern; arms were [Pair a b]"))
+      swapProg = M.singleton "swap" (["p"], swapErased)
+      erasedSwap = Lower.lowerFn m2Policy M.empty swapProg M.empty M.empty "swap" (["p"], swapErased)
+      typedSwap = Typed.lowerFn m2Policy pairLayout swapProg M.empty M.empty swap
+  check ("a constructor match and value agree: " ++ show (erasedSwap, typedSwap))
+    (case (erasedSwap, typedSwap) of (Right x', Right y') -> x' {I.fnSourceParams = []} == y' {I.fnSourceParams = []}; _ -> False)
+
   -- slice 2: emission takes the typed function where the erased lowering
   -- of the same function agrees, keeps the erased one where it does not
   let mode = NativeMode PerFunction StrictOff "typed-probe" (Just (DirectRV W64 HartTp)) False noTune False True False
       target = rv64 {tgtNative = Just mode}
       prog = M.singleton "pick" (["n"], pickErased)
-      typedOf fn = either error id (Typed.lowerFn (tgtPolicy target) layout prog M.empty (foreignEntries target) fn)
-      emitWith typed = emitTypedProductProgramWithImports typed S.empty emptyProductParameters S.empty M.empty target False True []
+      typedOf fn = (either error id (Typed.lowerFn (tgtPolicy target) layout prog M.empty (foreignEntries target) fn),
+                    either error id (Typed.planCore layout fn))
+      emitWith typed = emitTypedProductProgramWithImports typed S.empty prog emptyProductParameters S.empty M.empty target False True []
         M.empty (publicSymbols S.empty) S.empty prog
       good = emitWith (M.singleton "pick" (typedOf pick))
       plain = emitWith M.empty

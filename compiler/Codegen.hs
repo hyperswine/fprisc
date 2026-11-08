@@ -45,6 +45,7 @@ import KernelKinds (Kind(..))
 import Workers (ScalarSignatures, internalWorker, scalarPrimitives)
 
 import Core.Syntax (Core (..), Prog, freeVars)
+import Core.Alpha (canonical, substituteLiterals)
 import Core.ProductABI (productMarker)
 import Core.Utils
 import Core.Primitives (corePrims, primArities, entryTickName)
@@ -131,12 +132,15 @@ data Emission = Emission
 -- P2 typed lowering, slice 2: what emission did with each typed S1 function
 -- it was given. `tuTyped` were emitted from the typed lowering (the erased
 -- lowering of the same function agreed); the others kept the erased
--- function: the optimizer made them a wrapper around a worker, region placement
+-- function: the optimizer made them a wrapper around a worker or reused a
+-- cell in them, region placement
 -- rewrote them, the ARC normalization applies, or the erased lowering
 -- refused. `tuDisagree` (name, erased, typed) is a compiler error.
 data TypedUse = TypedUse
   { tuTyped :: [String],
     tuWorker :: [String],
+    tuReuse :: [String],
+    tuOptimized :: [String],
     tuPlaced :: [String],
     tuArc :: [String],
     tuAbsent :: [String],
@@ -252,8 +256,8 @@ emitNative tgt nm symbols backend = case backend of
   DirectX64 fmt -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls))
   where exps=symbolNames symbols
 
-nativeSelect :: M.Map String Fn -> S.Set String -> Target -> Bool -> NativeMode -> CheckedKinds -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation], Prog, M.Map String Fn, TypedUse)
-nativeSelect typed placed tgt spec nm vkinds sigs ext exps prog emitted =
+nativeSelect :: M.Map String (Fn, ([String], Core)) -> S.Set String -> Prog -> Target -> Bool -> NativeMode -> CheckedKinds -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation], Prog, M.Map String Fn, TypedUse)
+nativeSelect typed placed reference tgt spec nm vkinds sigs ext exps prog emitted =
   (\(a,b,c,d,e) -> (a,b,c,d,e,eligible,lowered0,typedUse)) $ case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
@@ -306,7 +310,7 @@ nativeSelect typed placed tgt spec nm vkinds sigs ext exps prog emitted =
     -- P2 typed lowering, slice 2: an S1 function is emitted from its typed
     -- lowering; the erased lowering of the same function is the assertion
     decisions = M.mapWithKey decide typed
-    decide n t = case M.lookup n erased0 of
+    decide n (t, planned) = case M.lookup n erased0 of
       Nothing -> Left (Left "absent")
       Just e
         | tgtArc tgt -> Left (Left "arc")
@@ -314,12 +318,24 @@ nativeSelect typed placed tgt spec nm vkinds sigs ext exps prog emitted =
         -- the optimizer made it a wrapper around a worker (scalar, field,
         -- return, storage or consume workers: every one is a `$worker.` name)
         | Just (_, b) <- M.lookup n eligible, any ("$worker." `isPrefixOf`) (freeVars b) -> Left (Left "worker")
+        -- constructor reuse (Reuse.hs) wrote a fresh cell over a uniquely
+        -- owned one (`$reuse.fresh`): P4 plans it on typed facts
+        | Just (_, b) <- M.lookup n eligible, any ("$reuse." `isPrefixOf`) (freeVars b) -> Left (Left "reuse")
         | S.member n placed -> Left (Left "placed")
+        -- the plan stands for other Core than erasure gave this function:
+        -- a planning disagreement
+        | Just source <- M.lookup n reference, comparable source /= comparable planned -> Left (Right (e, t))
+        -- the optimizer reshaped the body (let sinking, inlining, ...): the
+        -- Core lowered is not the Core erasure and the plan agree on. The
+        -- typed optimizer is a separate P2 slice.
+        | Just lowered <- M.lookup n eligible, comparable lowered /= comparable planned -> Left (Left "optimized")
+        -- the same Core lowered two ways: a lowering disagreement
         | otherwise -> Left (Right (e, t))
+    comparable (ps, b) = canonical (ps, substituteLiterals b)
     lowered0 = M.union (M.mapMaybe (either (const Nothing) Just) decisions) erased0
     typedUse = TypedUse
       { tuTyped = [n | (n, Right _) <- M.toList decisions],
-        tuWorker = kept "worker", tuPlaced = kept "placed", tuArc = kept "arc", tuAbsent = kept "absent",
+        tuWorker = kept "worker", tuReuse = kept "reuse", tuOptimized = kept "optimized", tuPlaced = kept "placed", tuArc = kept "arc", tuAbsent = kept "absent",
         tuDisagree = [(n, e, t) | (n, Left (Right (e, t))) <- M.toList decisions] }
     kept why = [n | (n, Left (Left w)) <- M.toList decisions, w == why]
     -- The same Core equivalences the ownership-aware generator uses,
@@ -394,12 +410,14 @@ emitCheckedProgramWithImports :: S.Set String -> Prog -> Target -> Bool -> Bool 
 emitCheckedProgramWithImports=emitProductProgramWithImports emptyProductParameters
 
 emitProductProgramWithImports :: ProductParameters -> S.Set String -> Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
-emitProductProgramWithImports = emitTypedProductProgramWithImports M.empty S.empty
+emitProductProgramWithImports = emitTypedProductProgramWithImports M.empty S.empty M.empty
 
 -- `typed`: typed native functions to emit in place of the erased lowering's
--- where the two agree; `placed`: the names region placement rewrote
-emitTypedProductProgramWithImports :: M.Map String Fn -> S.Set String -> ProductParameters -> S.Set String -> Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
-emitTypedProductProgramWithImports typed placed products checked imports tgt rvv spec exports ext symbols elide prog0 =
+-- where the two agree, each with the Core its plan stands for; `placed`:
+-- the names region placement rewrote; `reference`: the unit's Core before
+-- the emission's optimization (placement's result)
+emitTypedProductProgramWithImports :: M.Map String (Fn, ([String], Core)) -> S.Set String -> Prog -> ProductParameters -> S.Set String -> Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
+emitTypedProductProgramWithImports typed placed reference products checked imports tgt rvv spec exports ext symbols elide prog0 =
   let opts = OptimizationOptions
         { optFusion = tgtFusion tgt,
           optWorkers = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt),
@@ -419,7 +437,7 @@ emitTypedProductProgramWithImports typed placed products checked imports tgt rvv
       context=prog `M.union` imports
       -- checked callback kinds for the vector planner (P2 bridge slice 5)
       vkinds=checkedKinds context products
-      (requests,nativeFns,failures,notes,heapFacts,eligibleBodies,loweredFns,typedUse) = nativeSelect typed placed tgt spec nm vkinds workerSigs ext symbols context emitted
+      (requests,nativeFns,failures,notes,heapFacts,eligibleBodies,loweredFns,typedUse) = nativeSelect typed placed reference tgt spec nm vkinds workerSigs ext symbols context emitted
       (kernels,kernelFailures,kernelNotes) = emitSpecs tgt rvv ext symbols context requests
       allFns = M.elems nativeFns ++ kernels
       strings = M.elems (M.fromList [(stringLabel str,str) | nf <- allFns,str <- nfStrings nf])

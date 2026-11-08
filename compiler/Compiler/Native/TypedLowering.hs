@@ -13,13 +13,14 @@ import qualified Codegen.LowerTyped as Typed
 import Codegen.Policy (Policy)
 import qualified Compiler.Native.Core as Native
 import Compiler.Native.TypedCensus (census, censusNote, s1Functions)
-import Compiler.DataLayout (Layouts (..))
+import Compiler.DataLayout (Layouts (..), wideTup)
 import Core.Typed.Pipeline (closedInput, closedLayouts)
 import Core.Typed.Program (programTypes)
 import Core.Typed.Syntax (TypeContext (..), Function (..))
 import qualified Compiler.Native.Regions.Typed as RT
 import qualified Core.Region.Syntax as R
 import Core.Syntax (Core (..), Prog)
+import Core.Alpha (canonical)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (intercalate)
@@ -78,7 +79,9 @@ data Lowered = Lowered
     loweredRefused :: [(String, String)],
     -- the S1 functions region placement rewrote that were lowered from
     -- placement's typed result
-    loweredPlaced :: S.Set String }
+    loweredPlaced :: S.Set String,
+    -- the Core each typed function's plan stands for
+    loweredCores :: M.Map String ([String], Core) }
 
 -- `regions`: placement's typed result, `placed`: the definitions placement
 -- rewrote. A placed S1 function whose typed region body is an ordinary
@@ -88,6 +91,7 @@ typedFunctions policy ext hal native regions placed emitted =
   Lowered (censusNote (census known functions)) (S.size s1)
     (M.fromList [(n, fn) | (n, Right fn) <- results]) [(n, why) | (n, Left why) <- results]
     (S.fromList [n | (n, Right _) <- results, M.member n fromRegions])
+    (M.fromList [(n, c) | (n, Right _) <- results, Just fn <- [input n], Right c <- [Typed.planCore layout fn]])
   where
     (functions, prog, known, layout) = context ext native emitted
     s1 = s1Functions known functions
@@ -117,7 +121,8 @@ context ext native emitted = (functions, prog, known, layout)
     closed = Native.nativeClosed native
     layouts = closedLayouts closed
     TypeContext _ constructors = programTypes (closedInput closed)
-    layout = Typed.Layout (`M.lookup` constructorLayouts layouts) (M.keys constructors)
+    -- erasure's constructor layout: the declared ones, then the wide tuples
+    layout = Typed.Layout (\n -> maybe (wideTup n) Just (M.lookup n (constructorLayouts layouts))) (M.keys constructors)
 
 data Outcome = AgreedWith ([String], Core) Fn | Refused String | BothRefused | EraseRefused | Disagree String
 
@@ -169,22 +174,3 @@ stagesNote r stages lowered =
       [] -> Nothing
     finals = [(n, (\f -> f {fnSourceParams = []} == fn {fnSourceParams = []}) <$> M.lookup n lowered) | (n, (_, fn)) <- M.toList agreed]
     count p = length [() | (_, f) <- finals, p f]
-
--- binders renamed in binding order, free names kept
-canonical :: ([String], Core) -> ([String], Core)
-canonical (params, body) = (fresh, go (M.fromList (zip params fresh)) (length params) body)
-  where
-    fresh = [binder i | i <- [0 .. length params - 1]]
-    binder i = "%" ++ show (i :: Int)
-    go env k e = case e of
-      CVar n -> CVar (M.findWithDefault n n env)
-      CApp a b -> CApp (go env k a) (go env k b)
-      CLam ps b ->
-        let names = [binder (k + i) | i <- [0 .. length ps - 1]]
-         in CLam names (go (M.union (M.fromList (zip ps names)) env) (k + length ps) b)
-      CLet x a b -> CLet (binder k) (go env k a) (go (M.insert x (binder k) env) (k + 1) b)
-      CIf c t f -> CIf (go env k c) (go env k t) (go env k f)
-      CMk t v fs -> CMk t v (map (go env k) fs)
-      CTagEq t v x -> CTagEq t v (go env k x)
-      CProj i x -> CProj i (go env k x)
-      other -> other

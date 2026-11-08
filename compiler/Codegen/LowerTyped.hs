@@ -15,7 +15,7 @@
 -- (Core.Typed.Erase: scrutinee binding, test order, fallback duplication,
 -- the Bool-coverage shortcut) with typed leaves; where erasure would build
 -- a join or a lambda, this lowering refuses.
-module Codegen.LowerTyped (lowerFn, Layout (..)) where
+module Codegen.LowerTyped (lowerFn, planCore, Layout (..)) where
 
 import Core.Region.Runtime (Hook (..), hookName)
 import qualified Codegen.Lower as Lower
@@ -58,6 +58,9 @@ data TE
   | PErr String
   | PEqInt TE Integer -- erased `(==) scrutinee n`
   | PTag Int Int TE -- erased `CTagEq tid variant scrutinee`
+  | PMk Int Int [TE] -- erased `CMk tid variant fields` (slice 3d)
+  | PProj Int TE -- erased `CProj index value`
+  | PStr String -- erased `CStr s` (an atom's name)
 
 -- every let the plan builds: the optimizer substitutes an Int literal let
 -- at its uses (Core.Opt.Normalize.normIn) before the erased lowering, and
@@ -78,6 +81,8 @@ substitute k v = go
       PLet k' a b -> pLet k' (go a) (if k' == k then b else go b)
       PEqInt a i -> PEqInt (go a) i
       PTag tid var a -> PTag tid var (go a)
+      PMk tid var fs -> PMk tid var (map go fs)
+      PProj i a -> PProj i (go a)
       _ -> t
 
 -- The shapes Codegen.Lower dispatches on, read from a plan node.
@@ -93,12 +98,20 @@ data V
   | VTag Int Int TE
   | VEqInt TE Integer
   | VTick
+  | VCore -- lowered by Codegen.Lower from the node's Core (constructors, projections)
 
 type TEnv = M.Map Key (VId, Ty)
 
 data Plan = Plan {planLayout :: Layout, planNext :: Int}
 
 lowerFn :: Policy -> Layout -> Prog -> M.Map String Int -> M.Map String Prim -> Function -> Either Reason Fn
+-- the Core the plan stands for (parameters and body): what the erased
+-- lowering would be given for the same function before any optimization
+planCore :: Layout -> Function -> Either Reason ([String], Core)
+planCore layout f = do
+  planned <- plan layout (functionBody f)
+  pure (map (keyName . KBinder . binderId) (functionParameters f), toCore planned)
+
 lowerFn policy layout prog ext hal f = do
   planned <- plan layout (functionBody f)
   lowerEntry policy M.empty prog ext hal (functionName f) (map binderName (functionParameters f)) $ \cx pvs ->
@@ -120,6 +133,17 @@ plan layout body = fst <$> go 0 body
       BoolTest b x -> do (x', n1) <- go n x; pure (PTag 1 (if b then 1 else 0) x', n1)
       EntryTick -> pure (PTick, n)
       Fail m -> pure (PErr m, n)
+      -- products (slice 3d), as erasure builds them
+      Construct name xs -> do
+        (tid, var, ar) <- constructor name
+        when (ar /= length xs) (Left "typed lowering: a constructor value layout arity")
+        (xs', n1) <- goList n xs
+        pure (PMk tid var xs', n1)
+      TupleValue xs -> do
+        (tid, var, _) <- constructor ("Tup" ++ show (length xs))
+        (xs', n1) <- goList n xs
+        pure (PMk tid var xs', n1)
+      AtomValue a -> pure (PMk 6 0 [PStr a], n)
       Let p a b -> do
         (a', n1) <- go n a
         (b', n2) <- go n1 b
@@ -193,7 +217,8 @@ plan layout body = fst <$> go 0 body
           certain <- if null rest && not first && all (\(Alternative _ g _) -> null g) alts
             then coveredHead p else pure False
           matched <- if certain then case patNode p of
-              ConstructorPattern _ [] -> pure inner
+              ConstructorPattern _ ps -> matchFields scrut ps inner next
+              TuplePattern ps -> matchFields scrut ps inner next
               _ -> matchPat scrut p inner next
             else matchPat scrut p inner next
           pure (matched, n3)
@@ -228,10 +253,19 @@ plan layout body = fst <$> go 0 body
       Wildcard -> pure ok
       Bind b -> pure (pLet (KBinder (binderId b)) scrut ok)
       IntegerPattern i -> pure (PIf (PEqInt scrut i) ok failed)
-      ConstructorPattern name [] | name `elem` ["True", "False"] -> do
-        (tid, variant, _) <- constructor name
-        pure (PIf (PTag tid variant scrut) ok failed)
+      ConstructorPattern name ps -> do
+        (tid, variant, ar) <- constructor name
+        when (ar /= length ps) (Left "typed lowering: a constructor pattern layout arity")
+        inner <- matchFields scrut ps ok failed
+        pure (PIf (PTag tid variant scrut) inner failed)
+      TuplePattern ps -> do
+        (tid, variant, _) <- constructor ("Tup" ++ show (length ps))
+        inner <- matchFields scrut ps ok failed
+        pure (PIf (PTag tid variant scrut) inner failed)
       _ -> Left ("typed lowering: the pattern " ++ patDisplay p)
+    -- erasure's matchFields: the last field's test innermost
+    matchFields scrut ps ok failed =
+      foldr (\(i, q) rest -> rest >>= \k -> matchPat (PProj i scrut) q k failed) (pure ok) (zip [0 ..] ps)
     constructor name = maybe (Left ("typed lowering: unknown constructor " ++ name)) Right (layoutConstructor layout name)
     tests p = case patNode p of
       IntegerPattern _ -> 1 :: Int
@@ -259,6 +293,9 @@ view = \case
   PErr m -> VErr m
   PEqInt s n -> VEqInt s n
   PTag t v s -> VTag t v s
+  PMk {} -> VCore
+  PProj {} -> VCore
+  PStr _ -> VCore
 
 formName :: Node -> String
 formName = \case
@@ -294,8 +331,11 @@ formName = \case
 -- whole, as the Core the plan mirrors (each plan node is the erased form it
 -- stands for), with the plan's bound values under their own names.
 delegate :: Cx -> TEnv -> String -> [TE] -> L (Lower.Env, Core)
-delegate _ env h args =
-  pure (M.fromList [(keyName k, r) | (k, r) <- M.toList env], foldl CApp (CVar h) (map toCore args))
+delegate _ env h args = pure (coreEnv env, foldl CApp (CVar h) (map toCore args))
+
+-- the plan's bound values under their Core names
+coreEnv :: TEnv -> Lower.Env
+coreEnv env = M.fromList [(keyName k, r) | (k, r) <- M.toList env]
 
 keyName :: Key -> String
 keyName k = case k of
@@ -316,6 +356,9 @@ toCore t = case t of
   PErr m -> CErr m
   PEqInt a i -> CApp (CApp (CVar "==") (toCore a)) (CInt i)
   PTag tid var a -> CTagEq tid var (toCore a)
+  PMk tid var fs -> CMk tid var (map toCore fs)
+  PProj i a -> CProj i (toCore a)
+  PStr str -> CStr str
 
 -- Each function below follows its namesake in Codegen.Lower for the S1 shapes.
 
@@ -323,6 +366,7 @@ lowerTail :: Cx -> TEnv -> TE -> L ()
 lowerTail cx env expr = ended (go expr) >> pure ()
   where
     go te = case view te of
+      VCore -> Lower.lowerTail cx (coreEnv env) (toCore te)
       VLet k a b -> lowerBind cx env k a >>= \env' -> lowerTail cx env' b
       VIf c t f -> do
         p <- lowerCond cx env c
@@ -371,6 +415,7 @@ lowerCond cx env te = case view te of
 
 lowerVal :: Cx -> TEnv -> TE -> L (VId, Ty)
 lowerVal cx env te = case view te of
+  VCore -> Lower.lowerVal cx (coreEnv env) (toCore te)
   VVar k -> maybe (refuse "typed lowering: an unbound local") pure (M.lookup k env)
   VGlobal x -> lowerGlobal cx x
   VInt n -> int n

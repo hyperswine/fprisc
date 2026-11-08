@@ -836,7 +836,8 @@ compileWithReport accepted report = do
             let placedNames = Regions.resultPlacedNames result
                 lowered = TypedLowering.typedFunctions (tgtPolicy linkedTgt) extArities (foreignEntries linkedTgt)
                             (Regions.resultNative result) (Regions.resultTyped result) placedNames emitted
-            pure (lowered, if skip then M.empty else TypedLowering.loweredFns lowered, placedNames `S.difference` TypedLowering.loweredPlaced lowered)
+            pure (lowered, if skip then M.empty else M.intersectionWith (,) (TypedLowering.loweredFns lowered) (TypedLowering.loweredCores lowered),
+                  placedNames `S.difference` TypedLowering.loweredPlaced lowered)
           typedLowering lowered result emitted extArities label stages emission = do
             putStrLn (TypedLowering.loweredCensus lowered ++ " unit=" ++ label)
             let use = emTypedUse emission
@@ -845,7 +846,7 @@ compileWithReport accepted report = do
             unless skip $ do
               putStrLn ("# typed lowering: s1=" ++ show (TypedLowering.loweredS1 lowered) ++ " typed=" ++ n (tuTyped use)
                 ++ " regions=" ++ show (S.size (TypedLowering.loweredPlaced lowered))
-                ++ " worker=" ++ n (tuWorker use) ++ " placed=" ++ n (tuPlaced use) ++ " arc=" ++ n (tuArc use)
+                ++ " worker=" ++ n (tuWorker use) ++ " reuse=" ++ n (tuReuse use) ++ " optimized=" ++ n (tuOptimized use) ++ " placed=" ++ n (tuPlaced use) ++ " arc=" ++ n (tuArc use)
                 ++ " absent=" ++ n (tuAbsent use) ++ " refused=" ++ n (TypedLowering.loweredRefused lowered)
                 ++ concat [" refused_by=" ++ List.intercalate ";" (take 3 [f ++ ":" ++ why | (f, why) <- TypedLowering.loweredRefused lowered])
                           | not (null (TypedLowering.loweredRefused lowered))]
@@ -1151,7 +1152,7 @@ compileWithReport accepted report = do
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
                 -- compiled unit (the bbspi arity>8 incident)
-                let emission = emitTypedProductProgramWithImports typedFns placedNames productParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates prepared) linkedTgt rvv spec []
+                let emission = emitTypedProductProgramWithImports typedFns placedNames unitProgram productParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates prepared) linkedTgt rvv spec []
                       unitExt
                       (NativeImports.readySymbols prepared) elide (NativeImports.readyProgram prepared)
                     vnotes = emNotes emission
@@ -1288,7 +1289,7 @@ compileWithReport accepted report = do
       let rootEmitted = M.keysSet (Regions.resultProgram (artifactRegions Linked.RootArtifact)) `S.difference` Linked.artifactElided (artifactOf Linked.RootArtifact)
           rootExt = NativeImports.importArities rootReady `M.union` extFor
       (rootLowered,rootTypedFns,rootPlacedNames) <- typedInput (artifactRegions Linked.RootArtifact) rootEmitted rootExt
-      let rootEmission = emitTypedProductProgramWithImports rootTypedFns rootPlacedNames rootProductParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) linkedTgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
+      let rootEmission = emitTypedProductProgramWithImports rootTypedFns rootPlacedNames (Regions.resultProgram (artifactRegions Linked.RootArtifact)) rootProductParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) linkedTgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
                                      (NativeImports.readySymbols rootReady)
                                      (Linked.artifactElided (artifactOf Linked.RootArtifact)) (NativeImports.readyProgram rootReady)
           rootVNotes = emNotes rootEmission
