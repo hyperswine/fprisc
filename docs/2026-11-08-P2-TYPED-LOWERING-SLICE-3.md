@@ -415,9 +415,12 @@ the largest step yet: closure-heavy functions are big), still red. hello's
 peak is +11.6%.
 
 The class is now everything but vectors, functions over another unit's
-code, and `other`. The step 0 census counted 34,304 checked definitions,
-so the class now matches nearly all of them; 94.6% of the class is
-emitted typed. The `optimized` exemption grew from 13 to 258: the
+code, and `other`; 94.6% of it is emitted typed. The earlier "share of
+definitions" figures (64%, 73%) divided the sweep's class by the step 0
+census total (34,304), which was counted separately and is not the same
+population as the sweep's deduplicated units, so that ratio is not a
+reliable coverage figure (at this size it would read as nearly 100%). The census note per unit is
+the right measure for coverage. The `optimized` exemption grew from 13 to 258: the
 optimizer reshapes closure-applying bodies (inlining and beta reduction)
 before the erased lowering, so those keep the erased function. Vectors,
 which need the kernel rewrite, are the last rung.
