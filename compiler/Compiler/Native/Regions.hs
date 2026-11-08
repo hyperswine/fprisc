@@ -3,7 +3,7 @@
 -- explicit; no consumer re-infers types from its generated bodies.
 module Compiler.Native.Regions
   (Program,prepare,programNative,programCore,programInterfaces,Context,context,typeInstanceMeasures,
-   Options(..),Analysis,analysisProgram,analysisCosts,Result,place,placePrograms,bypass,
+   Options(..),Analysis,analysisProgram,analysisCosts,Result,resultNative,place,placePrograms,bypass,
    resultProgram,resultNotes,resultGenerated,resultAnalysis,resultTyped,resultGroups,resultProductParameters) where
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Regions.Typed as Typed
@@ -85,6 +85,10 @@ derive measures p=Analysis p (Cost.costProgram measures M.empty p)
 -- image, whose plane memory reclaims per turn through $receiveLoop)
 data Options=Options {loopRegions :: Bool,callRegions :: Bool,receiveLoops :: Bool} deriving (Eq,Show)
 data Result=Bypassed Program | Placed Program Analysis Turns.Rewrite Typed.Program
+-- The typed program the result was placed from (typed lowering census).
+resultNative :: Result -> Native.NativeCore
+resultNative (Bypassed p)=programNative p
+resultNative (Placed p _ _ _)=programNative p
 resultProgram :: Result -> C.Prog
 resultProgram (Bypassed p)=programCore p
 resultProgram (Placed _ _ r _)=Turns.rewriteProgram r

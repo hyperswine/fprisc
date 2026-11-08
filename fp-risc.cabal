@@ -161,6 +161,7 @@ library
       Compiler.Native.Regions
       Compiler.Native.Regions.Typed
       Compiler.Native.Regions.Verify
+      Compiler.Native.TypedCensus
       Core.Calling
       Core.Region.Interface
       Core.Region.Types

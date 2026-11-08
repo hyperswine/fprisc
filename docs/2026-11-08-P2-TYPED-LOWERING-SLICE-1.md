@@ -77,7 +77,7 @@ counts are summed over the corpus (`tests/pipeline/corpus.json`) and the
 The numbers decide whether T1 below is the right first class; if T1 is
 nearly empty, the class widens before step 1 and this page records why.
 
-### Step 1: `Codegen.LowerTyped` for class T1
+### Step 1: `Codegen.LowerTyped` for class T1 (widened to S1 = t1 + calls by the step 0 record below)
 
 T1: first-order functions over `Int` and `Bool`.
 
@@ -162,6 +162,96 @@ and 100% agreement.
 A section on this page, as the bridge record did: census numbers, agreement
 counts, the compile-budget delta, and what refused and why. `docs/README.md`
 and the pass inventory's status list get one line each.
+
+## Step 0 record: the census (8 November)
+
+`Compiler.Native.TypedCensus` classifies every checked definition a unit
+emits (roots and their code functions, from `nativeDefinitions` of the
+unit's Regions result, minus elided names) and `Compile.hs` prints one note
+per compiled unit:
+
+```
+# typed lowering census: t1=.. calls=.. joins=.. products=.. strings=.. lists=.. closures=.. vectors=.. polymorphic=.. other=.. unit=<unit file or root>
+```
+
+Each definition is counted in the narrowest rung of a widening ladder that
+admits it (the module header defines each rung). Two corrections to the
+plan's class list came out of the first run:
+
+- `if` arrives in the closed program as `MatchTail` (a match with a
+  fallback arm), not `If`. Counting `MatchTail` as a closure put `fib` in
+  "closures". It is control flow and is judged by its patterns, like
+  `Match`.
+- Join calls get their own rung (`joins`), after `calls`: the closed program
+  makes join points explicit, and a typed lowering turns join code into
+  blocks, which is separate work from closures.
+
+The unit name lets shared units (prelude, std) be counted once. Method:
+each program compiled cold, its own cache and output directory, 150
+programs (examples, benchmarks, `tests/base`, the corpus); the same 6
+programs fail to compile as before.
+
+| Rung (cumulative, polymorphic and other excluded) | All 34,304 definitions, shared units once | Program code only (root units, 3,675) | Corpus, 22 entries (6,702) |
+|---|---|---|---|
+| t1 | 492 (1.4%) | 109 (3.0%) | 364 (5.4%) |
+| + calls | 2.9% | 4.4% | 10.6% |
+| + joins | 2.9% | 4.4% | 10.6% |
+| + products | 37.8% | 31.3% | 40.8% |
+| + strings | 50.3% | 43.9% | 49.2% |
+| + lists | 56.9% | 51.8% | 52.9% |
+| + closures | 69.4% | 79.7% | 58.2% |
+| + vectors | 69.5% | 80.3% | 58.3% |
+| polymorphic signature | 10,425 (30.4%) | 697 (19.0%) | 2,795 (41.7%) |
+| other | 30 | 28 | 3 |
+
+What the numbers say:
+
+1. **T1 is small but not empty.** 492 definitions, including `fib`, every
+   scalar loop in the corpus and the pass-through loops of
+   `scalar_pass_through`. That is enough for an agreement gate, which is
+   what slice 1 is for; it is not where the coverage is.
+2. **`calls` doubles it for almost nothing.** A scalar function that calls
+   any known function needs only the tagged call convention `Lower` already
+   uses for erased `CVar` heads (`calleeOf`, `TVal` arguments and result).
+   No adapter, no new SSA type.
+3. **Products are the coverage.** Admitting constructors, tuples and
+   records and their patterns takes the ladder from 2.9% to 37.8%. It is the
+   first widening after slice 1.
+4. **No scalar function uses a join call.** `joins` adds nothing at the
+   scalar rungs; join points appear only together with products or later
+   rungs, so they arrive with the products widening.
+5. **A third of definitions keep a type variable after monomorphization.**
+   These are generic functions compiled once over the uniform tagged
+   representation (the prelude's list functions, for example). In SSA
+   every variable position is `TVal`, as it is today, so they need no
+   representation work; they need the same node coverage as everything
+   else. They are counted separately so no later slice mistakes them for
+   specialization failures.
+
+**Decision:** slice 1's class is **t1 + calls** ("S1": scalar signature,
+first-order, calls to any known function through the tagged convention),
+1,003 definitions over the sweep. The census rungs stay in the note so each
+later widening states its gain. The first widening (slice 3) is products,
+with joins and the uniform polymorphic functions alongside.
+
+Census cost: one walk over each emitted typed body per compiled unit; it
+prints only and does not enter the cache identity (a cached unit prints no
+note).
+
+Compile budget (`tests/check_compile_budget.py`, darwin arm64), before
+(8ad39ac) and after:
+
+| Program | Before | After |
+|---|---|---|
+| hello | +10.0% | +10.2% |
+| std-live | +10.3% | +10.4% |
+| pos1 | +4.6% | +4.7% |
+
+The gate was already over its 10% margin on `std-live` before the census
+(the check-placement record noted the darwin budget sitting at the margin on
+7 November). The census adds 0.1-0.2 points. Re-recording the darwin
+baseline is the owner's decision and is not done here. Unit suites 42/42, `pipeline-baseline-check` 22 contracts and no code
+drift, the bridge check and `check_compiler_options.py` unchanged.
 
 ## What slice 1 does not do
 

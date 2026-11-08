@@ -21,6 +21,7 @@ import Mono (specializeCompatibilityWithProducts, qualifyAux)
 import Inline (inlineSmall, inlineCompatibilityWithImports, vecPeekCompatibility)
 import qualified Compiler.Native.Regions as Regions
 import qualified Compiler.Native.Regions.Typed as TypedRegions
+import qualified Compiler.Native.TypedCensus as TypedCensus
 import qualified Core.Typed.Syntax as TCore
 import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
@@ -822,6 +823,9 @@ compileWithReport accepted report = do
               hPutStrLn stderr ("turn-regions: " ++ show (length declined) ++ " self-tail-call group(s) declined (unbounded or unproven state); FPR_RECEIVE_NOTES=1 lists them")
             when (not (Options.cgLoopRegions codegen) && any ("turn-regions (candidate): " `isPrefixOf`) ns) $
               hPutStrLn stderr "turn-regions: the candidates above are not placed (FPR_NO_LOOP_REGIONS=1)"
+          -- P2 typed lowering census (docs/2026-11-08-P2-TYPED-LOWERING-SLICE-1.md)
+          typedCensus result emitted = TypedCensus.censusNote (TypedCensus.census
+            (M.map NativeCore.checkedFunction (M.restrictKeys (NativeCore.nativeDefinitions (Regions.resultNative result)) emitted)))
           checkBuiltinWidth p = do
             when (oArc opts && any (coreHasName i32WidePrimitive . snd) (M.elems p)) $ do
               hPutStrLn stderr "I32 conversions with I64/F32/F64 currently require the manual ABI; --arc/--raw bridge ownership adapters are not implemented"
@@ -1114,6 +1118,7 @@ compileWithReport accepted report = do
                 let packed = T.pack asm
                 T.length packed `seq` directCheck ("unit " ++ takeFileName path) emission
                 mapM_ putStrLn vnotes
+                putStrLn (typedCensus placed (M.keysSet unitProgram `S.difference` elide) ++ " unit=" ++ takeFileName path)
                 -- written beside it and renamed whole: a build running at the
                 -- same time (check_base runs many) finds the unit complete or
                 -- absent, never half-written and taken as cached
@@ -1305,6 +1310,8 @@ compileWithReport accepted report = do
           (Heap.admit limit (map Stack.frameSymbol adapterFrames)
             (emHeapEquations rootEmission ++ map (adapterHeap . Exports.exportAdapter) exports))
       mapM_ putStrLn rootVNotes
+      putStrLn (typedCensus (artifactRegions Linked.RootArtifact)
+        (M.keysSet (Regions.resultProgram (artifactRegions Linked.RootArtifact)) `S.difference` Linked.artifactElided (artifactOf Linked.RootArtifact)) ++ " unit=root")
       applyReport "root" rootAsm
       let admissionNotes = ["# native-stack-budget-v1: "++codeName entry++" peak="++show bytes++" limit="++show limit++" scope=c-entry-closed-unit"
                            | Just limit<-[stackBudget],(entry,bytes)<-admitted]
