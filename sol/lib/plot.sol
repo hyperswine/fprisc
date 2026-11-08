@@ -10,9 +10,11 @@
 #   s1 = P.line "loss" pts;                    # pts = [(x, y)]
 #   s2 = P.series "spring" [("x", ptsX), ("v", ptsV)];
 #   s3 = P.scatter "descent" pts;              # hover a marker: value tooltip
-#   s4 = P.anim "wave" 4 frames;               # frames = [[(x,y)]], same
+#   s4 = P.chart "fit" [("fit", True, pts),    # MIXED series in one chart:
+#                       ("data", False, obs)]  #   (title, asLine, pts)
+#   s5 = P.anim "wave" 4 frames;               # frames = [[(x,y)]], same
 #                                              # length each: polyline morph
-#   s5 = P.animDots "orbit" 6 tracks;          # tracks = [[(x,y) over time]]:
+#   s6 = P.animDots "orbit" 6 tracks;          # tracks = [[(x,y) over time]]:
 #                                              # one moving dot + faint trail
 #   u = writePath @plots/wave.svg s4.
 #
@@ -65,6 +67,12 @@ mergeB a b =
 
 allBounds ptss = bGo (fn a pts -> mergeB a (ptsBounds pts)) (lTailP ptss) (ptsBounds (ptss ! 0)).
 lTailP xs = x :: r = xs; r.
+
+# bounds over possibly-EMPTY series: an empty series renders nothing and
+# contributes nothing; a chart of only-empty series gets degenerate
+# padded axes instead of the head-on-empty panic
+chartBounds ptss | ptss == [] = (-1, 1, -1, 1).
+chartBounds ptss = allBounds ptss.
 
 # data -> pixel (y flips)
 sx bx v = (x1, x2, y1, y2) = bx; pL + (v - x1) * (pR - pL) / (x2 - x1).
@@ -128,13 +136,13 @@ markers bx col pts b =
 
 # one series, line: the title names it, no legend box
 pLine title pts =
-  bx = ptsBounds pts;
+  bx = chartBounds [pts];
   b = axes bx (svgOpen title (BStr.new Unit));
   svgClose (polyline bx (colAt 0) pts b).
 
 # n series: fixed-order slot colors + a legend
 pSeries title named =
-  bx = allBounds (map (fn s -> snd2 s) named);
+  bx = chartBounds (map (fn s -> snd2 s) named);
   b = axes bx (svgOpen title (BStr.new Unit));
   b2 = serGo bx named 0 b;
   svgClose (legend (map (fn s -> fst2 s) named) b2).
@@ -144,7 +152,7 @@ serGo bx named i b =
   serGo bx r (i + 1) (polyline bx (colAt i) pts b).
 
 pScatter title pts =
-  bx = ptsBounds pts;
+  bx = chartBounds [pts];
   b = axes bx (svgOpen title (BStr.new Unit));
   svgClose (markers bx (colAt 0) pts b).
 
@@ -189,10 +197,36 @@ joinSemi xs = x :: r = xs; "{x};{joinSemi r}".
 
 # ---- the public surface ----------------------------------------------------
 
+# one chart, MIXED series: the scatter-plus-fit-lines shape every data
+# workflow wants. Each spec is (title, asLine, pts): asLine True draws a
+# 2px polyline, False draws tooltip markers. Slot colors follow the fixed
+# palette order across kinds, the axes span the union of every series'
+# bounds, and the legend lists every series. Points are whatever the
+# single-series charts take — one element type across the specs, so
+# callers convert exact int columns up front (Numeric.inexact) rather
+# than unify mixed element types.
+pChart title specs =
+  bx = chartBounds (List.filter (fn pts -> not (pts == [])) (map thdS specs));
+  b = axes bx (svgOpen title (BStr.new Unit));
+  b2 = specGo bx specs 0 b;
+  svgClose (legend (map fstS specs) b2).
+
+specGo bx specs i b | specs == [] = b.
+specGo bx specs i b =
+  s :: r = specs; (t, asLine, pts) = s;
+  b2 = case asLine of
+      True -> polyline bx (colAt i) pts b
+    | False -> markers bx (colAt i) pts b;
+  specGo bx r (i + 1) b2.
+
+fstS s = (t, _, pts) = s; t.
+thdS s = (t, _, pts) = s; pts.
+
 P = Struct {
   line     = fn title pts -> pLine title pts,
   series   = fn title named -> pSeries title named,
   scatter  = fn title pts -> pScatter title pts,
+  chart    = fn title specs -> pChart title specs,
   anim     = fn title dur frames -> pAnim title dur frames,
   animDots = fn title dur tracks -> pAnimDots title dur tracks
 }.
