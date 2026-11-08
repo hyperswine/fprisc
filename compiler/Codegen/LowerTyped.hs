@@ -186,6 +186,14 @@ plan layout body = fst <$> go 0 body
         let k = KScrut n1
         (body, n2) <- plannedUpdate (Just (exprType base)) (PRef k) updatePlan (n1 + 1)
         pure (pLet k x body, n2)
+      -- a pattern binding (slice 3d-iii): the value bound to a temporary,
+      -- then the pattern matched against it (erasure's bindPattern)
+      LetPattern p rhs body -> do
+        (v, n1) <- go n rhs
+        let k = KScrut n1
+        (body', n2) <- go (n1 + 1) body
+        matched <- matchPat (PRef k) p body' (PErr ("let pattern: no match; pattern was " ++ patDisplay p))
+        pure (pLet k v matched, n2)
       -- the TRMC tail store: a primitive call
       SetField base 1 value -> do
         (b, n1) <- go n base
@@ -342,7 +350,14 @@ plan layout body = fst <$> go 0 body
         (e', n1) <- go n e
         (inner, n2) <- guards n1 rest ok fallback
         pure (PIf e' inner fallback, n2)
-      PatternGuard _ _ -> Left "typed lowering: a pattern guard"
+      -- a pattern guard (slice 3d-iii): the value bound to a temporary and
+      -- matched, the remaining guards inside
+      PatternGuard p e -> do
+        (e', n1) <- go n e
+        let k = KScrut n1
+        (inner, n2) <- guards (n1 + 1) rest ok fallback
+        matched <- matchPat (PRef k) p inner fallback
+        pure (pLet k e' matched, n2)
     matchPat scrut p ok failed = case patNode p of
       Wildcard -> pure ok
       Bind b -> pure (pLet (KBinder (binderId b)) scrut ok)

@@ -20,9 +20,10 @@
 --   constructors plus constructors, tuples and atoms and their patterns
 --               (slice 3d-i)
 --   records     plus record values, fields, updates and patterns and the
---               TRMC field store (slice 3d-ii: t1 through records are what
+--               TRMC field store (slice 3d-ii)
+--   products    plus pattern bindings and pattern guards, with any signature
+--               (slice 3d-iii: t1 through products are what
 --               Codegen.LowerTyped accepts)
---   products    plus pattern bindings and pattern guards
 --   strings     plus string literals and string patterns
 --   lists       plus list literals and list builders
 --   closures    plus lambdas, closures, code and join calls
@@ -55,10 +56,10 @@ data Feature = FCall | FForm | FConstruct | FPattern | FProduct | FString | FLis
 census :: (String -> Bool) -> M.Map String Function -> Census
 census known functions = Census (M.fromListWith (+) [(c, 1) | c <- M.elems (classify known functions)])
 
--- The typed lowering's class: t1 through records (slice 1's S1 widened
+-- The typed lowering's class: t1 through products (slice 1's S1 widened
 -- by slices 3a-3d).
 s1Functions :: (String -> Bool) -> M.Map String Function -> S.Set String
-s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors, Records]) (classify known functions))
+s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors, Records, Products]) (classify known functions))
 
 classify :: (String -> Bool) -> M.Map String Function -> M.Map String Class
 classify known functions = M.mapWithKey (\n _ -> classOf n) functions
@@ -84,8 +85,8 @@ classify known functions = M.mapWithKey (\n _ -> classOf n) functions
         | fs `S.isSubsetOf` S.fromList [FCall, FForm] -> Forms
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct] -> Constructors
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FProduct] -> Records
-        | p -> Polymorphic
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct] -> Products
+        | p -> Polymorphic
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString] -> Strings
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList] -> Lists
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList, FClosure] -> Closures

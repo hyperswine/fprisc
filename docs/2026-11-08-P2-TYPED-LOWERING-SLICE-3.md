@@ -254,3 +254,36 @@ class functions, 1,239 typed (4 reuse, 1 optimized, 7 worker, 11 placed),
 no disagreement. Code is identical to the `FPR_NO_TYPED_LOWER=1` build on
 all 145 compiling sweep programs. The other checks pass. Compile budget
 unchanged at +11.1 / +10.9 / +5.1%.
+
+## Step 3d-iii record: pattern bindings and pattern guards (8 November)
+
+- `LetPattern p rhs body`: the value bound to a temporary, then the pattern
+  matched against it, with the no-match trap erasure uses (`bindPattern`).
+  A vector read pair is a vectors-rung form and stays out of the class.
+- `PatternGuard p e`: the value bound to a temporary and matched, with the
+  remaining guards inside and the arm's fallback on failure, as erasure's
+  `guards` builds it.
+- The `products` rung (pattern bindings and guards) joins the class with any
+  signature. The class is now t1 through products. Only strings, lists,
+  closures, vectors, polymorphic functions using those, and `other` stay
+  out.
+
+| | step 3d-ii | step 3d-iii |
+|---|---|---|
+| class (sweep, 766 units) | 15,938 | 16,868 |
+| emitted typed | 15,557 | 16,300 |
+| of which from call regions | 1,846 | 2,058 |
+| worker wrappers | 235 | 300 |
+| reuse, optimized | 5, 1 | 11, 6 |
+| placed, not ordinary | 140 | 251 |
+| refused, disagreement | 0 | 0 |
+
+Corpus: 331 class functions, 298 typed. QOS guishell: 1,445, 1,399 typed.
+Code is identical to the `FPR_NO_TYPED_LOWER=1` build on all 145 compiling
+sweep programs. The other checks pass. Compile budget +11.2 / +10.9 /
++5.1%.
+
+Step 3d is done. Against the step 0 census (34,304 checked definitions,
+shared units once), the class covers about half of all definitions, and
+96.6% of the class is emitted typed. Next is step 3e: string literals and
+string patterns.
