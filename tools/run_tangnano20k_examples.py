@@ -53,8 +53,10 @@ FPGA_CONFIG_81 = dict(xlen=32, compressed=False, cpu_mhz=81, memory_mhz=48,
                       placement=3, write_update=True, placer_target_mhz=89,
                       map_option=3, route_option=1, route_maxfan=8,
                       floorplan='fprisc-81.plan')
+# simple-risc's fprisc-84: the fprisc-81 shape at 84 MHz.
+FPGA_CONFIG_84 = dict(FPGA_CONFIG_81, cpu_mhz=84, placer_target_mhz=92)
 PRESETS = {'fprisc-48': FPGA_CONFIG, 'fprisc-72': FPGA_CONFIG_72,
-           'fprisc-81': FPGA_CONFIG_81}
+           'fprisc-81': FPGA_CONFIG_81, 'fprisc-84': FPGA_CONFIG_84}
 
 
 def require(condition, message):

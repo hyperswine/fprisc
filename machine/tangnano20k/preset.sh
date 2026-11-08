@@ -4,7 +4,7 @@ if [[ -n "${FPR_PRESET:-}" ]]; then
   # the same name: the CPU clock (48, 72 or 81 MHz) and, since 2026-11-08,
   # the instruction set: fprisc-81 is the RV32IM core, the others RV32IMC.
   case "$FPR_PRESET" in fprisc-48) fpr_preset_mhz=48; fpr_preset_rvc=1;; fprisc-72) fpr_preset_mhz=72; fpr_preset_rvc=1;;
-    fprisc-81) fpr_preset_mhz=81; fpr_preset_rvc=0;;
+    fprisc-81) fpr_preset_mhz=81; fpr_preset_rvc=0;; fprisc-84) fpr_preset_mhz=84; fpr_preset_rvc=0;;
     *) echo "unknown FPR_PRESET: $FPR_PRESET" >&2; exit 1;; esac
   fpr_preset_setting() {
     if [[ -n "${!1+x}" && "${!1}" != "$2" ]]; then
