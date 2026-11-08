@@ -24,7 +24,7 @@ import Control.Exception (AsyncException (UserInterrupt), Handler (..), IOExcept
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
 import Data.IORef
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 import Data.Char (isSpace)
 import Data.List (intercalate, isInfixOf, isPrefixOf)
 import qualified Data.Map.Strict as M
@@ -58,7 +58,9 @@ import System.IO (hFlush, hGetLine, hIsTerminalDevice, hPutStr, hPutStrLn, putSt
 import System.IO.Error (ioeGetErrorString, isUserError)
 import System.Directory (canonicalizePath, getCurrentDirectory, getTemporaryDirectory)
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import System.FilePath (dropExtension, takeDirectory, takeExtension)
+import qualified System.Console.Haskeline as HL
+import System.Console.Haskeline.Completion (completeWord, simpleCompletion)
+import System.FilePath (dropExtension, takeDirectory, takeExtension, (</>))
 import Text.Megaparsec (errorBundlePretty, parse)
 import Sol.Txn
 import qualified Sol.Gpu as Gpu
@@ -751,15 +753,43 @@ runRepl scriptArgs = do
   let dataFile = tmp ++ "/sol-repl-" ++ show (floor (now * 1000000) :: Integer) ++ ".soldata"
   when tty $
     putStrLn "Sol 0.14.0-dev (scripting API 1) — one command, one transaction. Ctrl-D exits."
+  -- Line editing, history and completion on a terminal (haskeline, GHCi's
+  -- editor). The piped path stays raw hGetLine, so suites drive it
+  -- unchanged. History lives with the other Sol state.
+  (msettings, definedRef, accRef) <-
+    if not tty
+      then pure (Nothing, undefined, undefined) -- never forced: no completion reads them
+      else do
+        definedRef <- newIORef S.empty
+        accRef <- newIORef ""
+        hist <- (</> "repl-history") <$> stateDirectory
+        let preludeNames = S.fromList (concatMap replTopName ptops)
+        pure (Just (replSettings hist definedRef accRef preludeNames), definedRef, accRef)
   let
     loop tty acc accepted buffer evalsDone defined = do
-      when tty (putStr (if null buffer then "sol> " else "...> ") >> hFlush stdout)
-      got <- try (hGetLine stdin) :: IO (Either IOException String)
-      case got of
-        Left _ -> do
+      rd <-
+        if tty
+          then do
+            got <- try (HL.runInputT (maybe HL.defaultSettings id msettings :: HL.Settings IO)
+                          (HL.getInputLine (if null buffer then "sol> " else "...> ")))
+                       :: IO (Either AsyncException (Maybe String))
+            pure $ case got of
+              Left UserInterrupt -> ReplCancel -- Ctrl-C at the prompt: drop the pending command, prompt again
+              Left e -> ReplCrash e
+              Right Nothing -> ReplEof
+              Right (Just l) -> ReplInput l
+          else do
+            got <- try (hGetLine stdin) :: IO (Either IOException String)
+            pure $ case got of
+              Left _ -> ReplEof
+              Right l -> ReplInput l
+      case rd of
+        ReplCrash e -> throwIO e
+        ReplEof -> do
           when tty (putStrLn "")
           exitWith ExitSuccess
-        Right line
+        ReplCancel -> loop tty acc accepted "" evalsDone defined
+        ReplInput line
           | all isSpace line && null buffer -> loop tty acc accepted buffer evalsDone defined
           | otherwise -> do
               let buffer' = if null buffer then line ++ "\n" else buffer ++ line ++ "\n"
@@ -804,7 +834,10 @@ runRepl scriptArgs = do
                           -- compile rejected the line: its diagnostics are
                           -- printed; the accumulated source stays as it was
                           loop tty acc accepted "" evalsDone defined
-                        Right evals' -> loop tty trial tops "" evals' (S.union defined cmdNames)
+                        Right evals' -> do
+                          when (isJust msettings) $
+                            writeIORef accRef trial >> writeIORef definedRef (S.union defined cmdNames)
+                          loop tty trial tops "" evals' (S.union defined cmdNames)
   loop tty "" [] "" 0 S.empty
 
 -- top-level names a command defines (for the no-redefinition rule)
@@ -812,6 +845,33 @@ replTopName :: STop -> [Name]
 replTopName (TBind n _ _ _) = [n]
 replTopName (TType n _ _ _) = [n]
 replTopName _ = []
+
+-- one line read from the REPL input
+data ReplLine = ReplInput String | ReplEof | ReplCancel | ReplCrash AsyncException
+
+replSettings :: FilePath -> IORef (S.Set Name) -> IORef FilePath -> S.Set Name -> HL.Settings IO
+replSettings hist definedRef accRef preludeNames =
+  HL.setComplete (replComplete preludeNames definedRef accRef)
+    HL.defaultSettings {HL.historyFile = Just hist, HL.autoAddHistory = True}
+
+-- completion over everything the session has in scope: the prelude, the
+-- names this session defined, and every `use` alias in the accumulated
+-- program. Words break on everything but '.', so qualified names
+-- (M.fromCsv) complete too.
+replComplete :: S.Set Name -> IORef (S.Set Name) -> IORef FilePath -> HL.CompletionFunc IO
+replComplete preludeNames definedRef accRef =
+  HL.completeWord Nothing " \t(){}[]\",;|>:!@" $ \word -> do
+    defined <- readIORef definedRef
+    acc <- readIORef accRef
+    let sessionNames = case parse program "<completion>" acc of
+          Right ts -> S.fromList (concatMap replScopeName ts)
+          Left _ -> S.empty
+    pure [HL.simpleCompletion n | n <- S.toList (preludeNames <> defined <> sessionNames), word `isPrefixOf` n]
+
+-- a declaration's spelling: definitions and types by name, uses by alias
+replScopeName :: STop -> [Name]
+replScopeName (TUse n _) = [n]
+replScopeName t = replTopName t
 
 -- compile the accumulated program, execute only the new evals, commit.
 -- Panics/interrupts abort the command's transaction but still consume the

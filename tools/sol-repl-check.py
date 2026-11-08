@@ -125,6 +125,65 @@ def main():
         assert per_cmd_session < 50.0, per_cmd_session
         assert per_cmd_session <= per_cmd_process * 1.5, (per_cmd_session, per_cmd_process)
 
+        # ---- interactive (PTY) contract: editing, history, Ctrl-C --------
+        # These need a real terminal: haskeline's full backend only engages
+        # when the child owns a CONTROLLING terminal (pty.fork, not
+        # openpty+Popen — GHCi needs the same). TERM selects the backend.
+        def pty_session(writes):
+            import pty as _pty
+            import select as _select
+            pid, master = _pty.fork()
+            if pid == 0:
+                os.environ['TERM'] = 'xterm-256color'
+                os.environ['SOL_GPU'] = '0'
+                os.environ['SOL_CACHE_DIR'] = str(work / 'pty-cache')
+                os.execvp(str(FPR), [str(FPR), 'sol', '--repl'])
+            buf = bytearray()
+
+            def drain(t=0.8):
+                end = time.monotonic() + t
+                while time.monotonic() < end:
+                    r, _, _ = _select.select([master], [], [], 0.05)
+                    if r:
+                        try:
+                            buf.extend(os.read(master, 65536))
+                        except OSError:
+                            break
+
+            for w in writes:
+                if isinstance(w, float):
+                    drain(w)
+                    continue
+                os.write(master, w)
+                drain(0.45)
+            drain(0.6)
+            try:
+                os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                pass
+            try:
+                os.close(master)
+            except OSError:
+                pass
+            return bytes(buf)
+
+        hist = Path(os.environ.get('HOME', str(work))) / '.local/state/sol/repl-history'
+        if hist.exists():
+            hist.unlink()
+        b1 = pty_session([b'print "h1".\n', 0.5, b'\x04'])
+        assert b'sol> ' in b1 and b1.count(b'h1') >= 2, b1[-300:]
+        assert hist.exists() and hist.stat().st_size > 0, 'history file not written'
+        count += 1
+        b2 = pty_session([b'\x10', 0.4, b'\n', 0.5, b'\x04'])
+        assert b2.count(b'h1') >= 2, b2[-300:]  # Ctrl-P recalled across processes
+        count += 1
+        b3 = pty_session([b'print "tw', 0.3, b'\x03', 0.4, b'print "alive".\n', 0.5, b'\x04'])
+        assert b3.count(b'alive') >= 2, b3[-300:]  # Ctrl-C cancelled the partial line
+        count += 1
+        b4 = pty_session([b'> u = tempD\t', 0.4, b' "p".\n', 0.5, b'\x04'])
+        assert b'tempDir' in b4, b4[-300:]  # Tab completed the prelude name
+        count += 1
+
     print(f'sol repl contract: {count} checks passed')
 
 
