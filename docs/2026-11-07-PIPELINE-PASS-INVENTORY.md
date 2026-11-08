@@ -282,5 +282,8 @@ the raw `-O2` numbers.
    kinds can type (pass-through parameters), verified by
    `KernelKinds.verifyComponent`. Slice 5 gives named vector callbacks the
    same checked authority.
+   Next: [typed lowering slice 1](2026-11-08-P2-TYPED-LOWERING-SLICE-1.md),
+   a lowering from the typed program beside the erased one, compared at the
+   erasure boundary.
 3. P6 composed-work report from `Codegen.Placement`, in parallel.
 4. P1 checked summary schema with its first range/result-size consumer.
