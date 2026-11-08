@@ -16,6 +16,7 @@
 -- a join or a lambda, this lowering refuses.
 module Codegen.LowerTyped (lowerFn, Layout (..)) where
 
+import Core.Region.Runtime (Hook (..), hookName)
 import Codegen.IR
 import Codegen.Lower (Prim, Reason, L, Cx (..), lowerEntry, refuse, ended, newBlock, newBlock1,
   open, suspend, resume, emit, emitDo, close, coerce, asVal, asInt, asPred, unify, calleeOf, isPrimName,
@@ -115,6 +116,13 @@ plan layout body = fst <$> go 0 body
             (args', n1) <- goList n args
             pure (PApp name args', n1)
           _ -> Left "typed lowering: an application whose head is not a known name"
+      -- a call region (placement's typed result): erasure's token binding
+      -- around the call (Core.Typed.Erase); the two operations are lowered
+      -- as foreign calls (regionHooks)
+      CallRegion x -> do
+        (x', n1) <- go (n + 1) x
+        let k = KScrut n
+        pure (PLet k (PApp (hookName CallPending) [PInt 0]) (PApp (hookName CallLeave) [PRef k, x']), n1)
       Match CaseMatch [arg] alts -> do
         (arg', n1) <- go n arg
         let k = KScrut n1
@@ -250,6 +258,11 @@ formName = \case
   SetField {} -> "field store"
   _ -> "node"
 
+-- the call region operations: HAL primitives (Compile's region arities)
+-- that Codegen.Lower lowers as foreign calls through calleeOf
+regionHooks :: [String]
+regionHooks = map hookName [CallPending, CallLeave]
+
 -- Each function below follows its namesake in Codegen.Lower for the S1 shapes.
 
 lowerTail :: Cx -> TEnv -> TE -> L ()
@@ -271,7 +284,7 @@ lowerTail cx env expr = ended (go expr) >> pure ()
           if h == cxSelf cx then close (TBr (cxEntry cx) [])
           else close (TTailCall c [])
       VApp h _
-        | isPrimName cx h, M.notMember h arithOps, M.notMember h cmpOps ->
+        | isPrimName cx h, M.notMember h arithOps, M.notMember h cmpOps, h `notElem` regionHooks ->
             refuse ("typed lowering: the primitive `" ++ h ++ "`")
       VApp h args@(_ : _)
         | Just c <- calleeOf cx h (length args) -> do
@@ -363,7 +376,7 @@ lowerVal cx env te = case view te of
         ra <- lowerVal cx env a
         rb <- lowerVal cx env b
         compareWith o ra rb
-    | isPrimName cx h -> refuse ("typed lowering: the primitive `" ++ h ++ "`")
+    | isPrimName cx h, h `notElem` regionHooks -> refuse ("typed lowering: the primitive `" ++ h ++ "`")
     | Just c <- calleeOf cx h (length args) -> do
         when (case calleeResult c of TProduct _ -> True; _ -> False) (refuse ("a product worker call " ++ h ++ " outside a let binding"))
         as <- mapM (lowerVal cx env) args

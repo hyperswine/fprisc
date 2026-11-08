@@ -4,7 +4,7 @@
 module Compiler.Native.Regions
   (Program,prepare,programNative,programCore,programInterfaces,Context,context,typeInstanceMeasures,
    Options(..),Analysis,analysisProgram,analysisCosts,Result,resultNative,place,placePrograms,bypass,
-   resultProgram,resultNotes,resultGenerated,resultAnalysis,resultTyped,resultGroups,resultProductParameters) where
+   resultProgram,resultPlacedNames,resultNotes,resultGenerated,resultAnalysis,resultTyped,resultGroups,resultProductParameters) where
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Regions.Typed as Typed
 import qualified Core.Typed.Syntax as T
@@ -92,6 +92,11 @@ resultNative (Placed p _ _ _)=programNative p
 resultProgram :: Result -> C.Prog
 resultProgram (Bypassed p)=programCore p
 resultProgram (Placed _ _ r _)=Turns.rewriteProgram r
+-- the definitions region placement rewrote (P2 typed lowering, slice 2:
+-- these keep the erased lowering)
+resultPlacedNames :: Result -> S.Set Name
+resultPlacedNames (Bypassed _)=S.empty
+resultPlacedNames (Placed _ _ r _)=M.keysSet (M.differenceWith (\a b->if a==b then Nothing else Just a) (Turns.rewriteProgram r) (Turns.rewriteInput r))
 resultProductParameters :: Result -> ProductParameters
 resultProductParameters result=case result of
   Bypassed p->fromProgram p

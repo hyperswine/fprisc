@@ -27,7 +27,7 @@ import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
-import Codegen (Target, codegenRev, productBackendWidth, emitProductProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative, foreignEntries)
+import Codegen (Target, codegenRev, productBackendWidth, emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative, foreignEntries)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth, registerBudget)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -827,29 +827,47 @@ compileWithReport accepted report = do
           -- the census, then the agreement of the typed lowering with the
           -- erased one at the erasure boundary (FPR_NO_TYPED_LOWER=1 skips the
           -- agreement); a disagreement stops the compile
-          typedLowering result emitted extArities label stages emission = do
-            let report = TypedLowering.check (tgtPolicy linkedTgt) extArities (foreignEntries linkedTgt)
-                           (Regions.resultNative result) emitted
-            putStrLn (TypedLowering.reportCensus report ++ " unit=" ++ label)
-            -- slice 2 count: where the emitted bodies of the S1 functions change
-            traceStages <- (== Just "1") <$> lookupEnv "FPR_TYPED_LOWER_STAGES"
-            when traceStages $ putStrLn (TypedLowering.stagesNote report
-              (stages ++ [("optimized", emOptimized emission), ("eligible", emEligible emission)])
-              (emLowered emission) ++ " unit=" ++ label)
-            showName <- lookupEnv "FPR_TYPED_LOWER_STAGES_SHOW"
-            forM_ showName $ \n -> when (M.member n (TypedLowering.reportAgreedFns report)) $ do
-              let (def, fn) = TypedLowering.reportAgreedFns report M.! n
-              putStrLn ("# stage boundary " ++ n ++ ": " ++ show def)
-              forM_ (stages ++ [("optimized", emOptimized emission), ("eligible", emEligible emission)]) $ \(l, p) ->
-                putStrLn ("# stage " ++ l ++ " " ++ n ++ ": " ++ maybe "absent" show (M.lookup n p))
-              putStrLn ("# stage typed-fn " ++ n ++ ": " ++ show fn)
-              putStrLn ("# stage lowered-fn " ++ n ++ ": " ++ maybe "absent" show (M.lookup n (emLowered emission)))
+          -- P2 typed lowering (docs/2026-11-08-P2-TYPED-LOWERING-SLICE-1.md):
+          -- slice 2 emits every S1 function from its typed lowering where the
+          -- erased lowering of the same function agrees; a disagreement stops
+          -- the compile. FPR_NO_TYPED_LOWER=1 emits the erased functions.
+          typedInput result emitted extArities = do
+            skip <- (== Just "1") <$> lookupEnv "FPR_NO_TYPED_LOWER"
+            let placedNames = Regions.resultPlacedNames result
+                lowered = TypedLowering.typedFunctions (tgtPolicy linkedTgt) extArities (foreignEntries linkedTgt)
+                            (Regions.resultNative result) (Regions.resultTyped result) placedNames emitted
+            pure (lowered, if skip then M.empty else TypedLowering.loweredFns lowered, placedNames `S.difference` TypedLowering.loweredPlaced lowered)
+          typedLowering lowered result emitted extArities label stages emission = do
+            putStrLn (TypedLowering.loweredCensus lowered ++ " unit=" ++ label)
+            let use = emTypedUse emission
+                n = show . length
             skip <- (== Just "1") <$> lookupEnv "FPR_NO_TYPED_LOWER"
             unless skip $ do
-              putStrLn (TypedLowering.reportNote report ++ " unit=" ++ label)
-              unless (null (TypedLowering.reportDisagreements report)) $ do
-                mapM_ (hPutStrLn stderr . ("typed lowering disagreement: " ++)) (TypedLowering.reportDisagreements report)
+              putStrLn ("# typed lowering: s1=" ++ show (TypedLowering.loweredS1 lowered) ++ " typed=" ++ n (tuTyped use)
+                ++ " regions=" ++ show (S.size (TypedLowering.loweredPlaced lowered))
+                ++ " scalar_worker=" ++ n (tuWorker use) ++ " placed=" ++ n (tuPlaced use) ++ " arc=" ++ n (tuArc use)
+                ++ " absent=" ++ n (tuAbsent use) ++ " refused=" ++ n (TypedLowering.loweredRefused lowered)
+                ++ concat [" refused_by=" ++ List.intercalate ";" (take 3 [f ++ ":" ++ why | (f, why) <- TypedLowering.loweredRefused lowered])
+                          | not (null (TypedLowering.loweredRefused lowered))]
+                ++ " unit=" ++ label)
+              unless (null (tuDisagree use)) $ do
+                mapM_ (\(f, e, t) -> hPutStrLn stderr ("typed lowering disagreement: " ++ f ++ ": " ++ TypedLowering.firstDifference e t)) (tuDisagree use)
                 exitFailure
+            -- slice 2 count: where the emitted bodies of the S1 functions change
+            traceStages <- (== Just "1") <$> lookupEnv "FPR_TYPED_LOWER_STAGES"
+            showName <- lookupEnv "FPR_TYPED_LOWER_STAGES_SHOW"
+            when (traceStages || isJust showName) $ do
+              let report = TypedLowering.check (tgtPolicy linkedTgt) extArities (foreignEntries linkedTgt)
+                             (Regions.resultNative result) emitted
+                  allStages = stages ++ [("optimized", emOptimized emission), ("eligible", emEligible emission)]
+              when traceStages $ putStrLn (TypedLowering.stagesNote report allStages (emLowered emission) ++ " unit=" ++ label)
+              forM_ showName $ \f -> when (M.member f (TypedLowering.reportAgreedFns report)) $ do
+                let (def, fn) = TypedLowering.reportAgreedFns report M.! f
+                putStrLn ("# stage boundary " ++ f ++ ": " ++ show def)
+                forM_ allStages $ \(l, p) ->
+                  putStrLn ("# stage " ++ l ++ " " ++ f ++ ": " ++ maybe "absent" show (M.lookup f p))
+                putStrLn ("# stage typed-fn " ++ f ++ ": " ++ show fn)
+                putStrLn ("# stage lowered-fn " ++ f ++ ": " ++ maybe "absent" show (M.lookup f (emLowered emission)))
           checkBuiltinWidth p = do
             when (oArc opts && any (coreHasName i32WidePrimitive . snd) (M.elems p)) $ do
               hPutStrLn stderr "I32 conversions with I64/F32/F64 currently require the manual ABI; --arc/--raw bridge ownership adapters are not implemented"
@@ -1127,12 +1145,14 @@ compileWithReport accepted report = do
                 let (specialized,productParameters)=mono unitProducts (takeFileName path) M.empty unitProgram
                 prog <- own specialized
                 prepared<-ready M.empty (Linked.artifactId artifact) exps (prog `M.union` erasedConstructorStubs prog)
+                let unitExt = NativeImports.importArities prepared `M.union` M.union (if oArc opts then arcExterns else M.empty) ext
+                (lowered,typedFns,placedNames) <- typedInput placed (M.keysSet unitProgram `S.difference` elide) unitExt
                 -- FORCE before the write: an `error` raised while the
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
                 -- compiled unit (the bbspi arity>8 incident)
-                let emission = emitProductProgramWithImports productParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates prepared) linkedTgt rvv spec []
-                      (NativeImports.importArities prepared `M.union` M.union (if oArc opts then arcExterns else M.empty) ext)
+                let emission = emitTypedProductProgramWithImports typedFns placedNames productParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates prepared) linkedTgt rvv spec []
+                      unitExt
                       (NativeImports.readySymbols prepared) elide (NativeImports.readyProgram prepared)
                     vnotes = emNotes emission
                     asm = moduleFinal (unlines (["# typed IR: no translation"] ++ emNative emission ++ emData emission))
@@ -1142,8 +1162,7 @@ compileWithReport accepted report = do
                 let packed = T.pack asm
                 T.length packed `seq` directCheck ("unit " ++ takeFileName path) emission
                 mapM_ putStrLn vnotes
-                typedLowering placed (M.keysSet unitProgram `S.difference` elide)
-                  (NativeImports.importArities prepared `M.union` M.union (if oArc opts then arcExterns else M.empty) ext) (takeFileName path)
+                typedLowering lowered placed (M.keysSet unitProgram `S.difference` elide) unitExt (takeFileName path)
                   [("placed", unitProgram), ("mono", specialized), ("own", prog), ("ready", NativeImports.readyProgram prepared)] emission
                 -- written beside it and renamed whole: a build running at the
                 -- same time (check_base runs many) finds the unit complete or
@@ -1266,7 +1285,10 @@ compileWithReport accepted report = do
       rootProg <- ownWith borrowed rootSpecialized
       rootReady<-ready borrowed Linked.RootArtifact
         (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact)) (rootProg `M.union` erasedConstructorStubs rootProg)
-      let rootEmission = emitProductProgramWithImports rootProductParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) linkedTgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
+      let rootEmitted = M.keysSet (Regions.resultProgram (artifactRegions Linked.RootArtifact)) `S.difference` Linked.artifactElided (artifactOf Linked.RootArtifact)
+          rootExt = NativeImports.importArities rootReady `M.union` extFor
+      (rootLowered,rootTypedFns,rootPlacedNames) <- typedInput (artifactRegions Linked.RootArtifact) rootEmitted rootExt
+      let rootEmission = emitTypedProductProgramWithImports rootTypedFns rootPlacedNames rootProductParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) linkedTgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
                                      (NativeImports.readySymbols rootReady)
                                      (Linked.artifactElided (artifactOf Linked.RootArtifact)) (NativeImports.readyProgram rootReady)
           rootVNotes = emNotes rootEmission
@@ -1336,9 +1358,7 @@ compileWithReport accepted report = do
           (Heap.admit limit (map Stack.frameSymbol adapterFrames)
             (emHeapEquations rootEmission ++ map (adapterHeap . Exports.exportAdapter) exports))
       mapM_ putStrLn rootVNotes
-      typedLowering (artifactRegions Linked.RootArtifact)
-        (M.keysSet (Regions.resultProgram (artifactRegions Linked.RootArtifact)) `S.difference` Linked.artifactElided (artifactOf Linked.RootArtifact))
-        (NativeImports.importArities rootReady `M.union` extFor) "root"
+      typedLowering rootLowered (artifactRegions Linked.RootArtifact) rootEmitted rootExt "root"
         [("placed", Regions.resultProgram (artifactRegions Linked.RootArtifact)), ("raw", rootProgRaw), ("symbolized", rootProgSym),
          ("mono", rootSpecialized), ("own", rootProg), ("ready", NativeImports.readyProgram rootReady)] rootEmission
       applyReport "root" rootAsm

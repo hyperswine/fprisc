@@ -6,7 +6,7 @@
 -- Static PAPs, constructor constants and module registries have a separate
 -- native data owner. Refusals are diagnostics; no text translator is retained.
 
-module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports,emitCheckedProgramWithImports,emitProductProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, productBackendWidth, foreignEntries) where
+module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports,emitCheckedProgramWithImports,emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, productBackendWidth, foreignEntries) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.
@@ -124,8 +124,23 @@ data Emission = Emission
     -- bodies handed to lowering, and the native functions lowered from them
     emOptimized :: Prog,
     emEligible :: Prog,
-    emLowered :: M.Map String Fn
+    emLowered :: M.Map String Fn,
+    emTypedUse :: TypedUse
   }
+
+-- P2 typed lowering, slice 2: what emission did with each typed S1 function
+-- it was given. `tuTyped` were emitted from the typed lowering (the erased
+-- lowering of the same function agreed); the others kept the erased
+-- function: the optimizer gave them a scalar worker, region placement
+-- rewrote them, the ARC normalization applies, or the erased lowering
+-- refused. `tuDisagree` (name, erased, typed) is a compiler error.
+data TypedUse = TypedUse
+  { tuTyped :: [String],
+    tuWorker :: [String],
+    tuPlaced :: [String],
+    tuArc :: [String],
+    tuAbsent :: [String],
+    tuDisagree :: [(String, Fn, Fn)] }
 
 rv64, rv32 :: Target
 rv64 = Target {tgtW=8,tgtName="rv64",tgtFuel=True,tgtArc=False,tgtWeak=False,tgtHeapProof=False,tgtStackReport=False,
@@ -237,9 +252,9 @@ emitNative tgt nm symbols backend = case backend of
   DirectX64 fmt -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls))
   where exps=symbolNames symbols
 
-nativeSelect :: Target -> Bool -> NativeMode -> CheckedKinds -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation], Prog, M.Map String Fn)
-nativeSelect tgt spec nm vkinds sigs ext exps prog emitted =
-  (\(a,b,c,d,e) -> (a,b,c,d,e,eligible,lowered0)) $ case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
+nativeSelect :: M.Map String Fn -> S.Set String -> Target -> Bool -> NativeMode -> CheckedKinds -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation], Prog, M.Map String Fn, TypedUse)
+nativeSelect typed placed tgt spec nm vkinds sigs ext exps prog emitted =
+  (\(a,b,c,d,e) -> (a,b,c,d,e,eligible,lowered0,typedUse)) $ case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
       Nothing -> ([], M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm) | n <- M.keys emitted], [], [])
@@ -287,7 +302,24 @@ nativeSelect tgt spec nm vkinds sigs ext exps prog emitted =
                               : ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- reasons], []
                           )
   where
-    (lowered0, loweringFailures) = lowerProgram (tgtPolicy tgt) sigs lookupProg eligible ext (M.union kernelPrims (foreignEntries tgt))
+    (erased0, loweringFailures) = lowerProgram (tgtPolicy tgt) sigs lookupProg eligible ext (M.union kernelPrims (foreignEntries tgt))
+    -- P2 typed lowering, slice 2: an S1 function is emitted from its typed
+    -- lowering; the erased lowering of the same function is the assertion
+    decisions = M.mapWithKey decide typed
+    decide n t = case M.lookup n erased0 of
+      Nothing -> Left (Left "absent")
+      Just e
+        | tgtArc tgt -> Left (Left "arc")
+        | e {fnSourceParams = []} == t {fnSourceParams = []} -> Right t
+        | M.member ("$worker.scalar." ++ n) prog -> Left (Left "worker")
+        | S.member n placed -> Left (Left "placed")
+        | otherwise -> Left (Right (e, t))
+    lowered0 = M.union (M.mapMaybe (either (const Nothing) Just) decisions) erased0
+    typedUse = TypedUse
+      { tuTyped = [n | (n, Right _) <- M.toList decisions],
+        tuWorker = kept "worker", tuPlaced = kept "placed", tuArc = kept "arc", tuAbsent = kept "absent",
+        tuDisagree = [(n, e, t) | (n, Left (Right (e, t))) <- M.toList decisions] }
+    kept why = [n | (n, Left (Left w)) <- M.toList decisions, w == why]
     -- The same Core equivalences the ownership-aware generator uses,
     -- before typed lowering. In particular a nullary constructor remains
     -- an immortal object, while effectful nullary definitions remain calls.
@@ -360,7 +392,12 @@ emitCheckedProgramWithImports :: S.Set String -> Prog -> Target -> Bool -> Bool 
 emitCheckedProgramWithImports=emitProductProgramWithImports emptyProductParameters
 
 emitProductProgramWithImports :: ProductParameters -> S.Set String -> Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
-emitProductProgramWithImports products checked imports tgt rvv spec exports ext symbols elide prog0 =
+emitProductProgramWithImports = emitTypedProductProgramWithImports M.empty S.empty
+
+-- `typed`: typed native functions to emit in place of the erased lowering's
+-- where the two agree; `placed`: the names region placement rewrote
+emitTypedProductProgramWithImports :: M.Map String Fn -> S.Set String -> ProductParameters -> S.Set String -> Prog -> Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> SymbolPolicy -> S.Set String -> Prog -> Emission
+emitTypedProductProgramWithImports typed placed products checked imports tgt rvv spec exports ext symbols elide prog0 =
   let opts = OptimizationOptions
         { optFusion = tgtFusion tgt,
           optWorkers = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt),
@@ -380,7 +417,7 @@ emitProductProgramWithImports products checked imports tgt rvv spec exports ext 
       context=prog `M.union` imports
       -- checked callback kinds for the vector planner (P2 bridge slice 5)
       vkinds=checkedKinds context products
-      (requests,nativeFns,failures,notes,heapFacts,eligibleBodies,loweredFns) = nativeSelect tgt spec nm vkinds workerSigs ext symbols context emitted
+      (requests,nativeFns,failures,notes,heapFacts,eligibleBodies,loweredFns,typedUse) = nativeSelect typed placed tgt spec nm vkinds workerSigs ext symbols context emitted
       (kernels,kernelFailures,kernelNotes) = emitSpecs tgt rvv ext symbols context requests
       allFns = M.elems nativeFns ++ kernels
       strings = M.elems (M.fromList [(stringLabel str,str) | nf <- allFns,str <- nfStrings nf])
@@ -430,7 +467,8 @@ emitProductProgramWithImports products checked imports tgt rvv spec exports ext 
         emData = dat,
         emOptimized = prog,
         emEligible = eligibleBodies,
-        emLowered = loweredFns }
+        emLowered = loweredFns,
+        emTypedUse = typedUse }
 
 declines :: Target -> Bool -> CheckedKinds -> Prog -> String -> Core -> [String]
 declines tgt spec vkinds prog owner = goD S.empty

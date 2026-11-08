@@ -1,6 +1,13 @@
 -- P2 typed lowering, slice 1: Codegen.LowerTyped gives the native function
 -- Codegen.Lower gives for the erasure of the same checked function.
 import Codegen.Policy
+import Codegen (emitTypedProductProgramWithImports, Emission (..), TypedUse (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), Target (..), rv64, foreignEntries)
+import Codegen.IR (Width (..))
+import qualified Codegen.IR as I
+import Codegen.Target.RV (RVHart (..))
+import Codegen.Target.Common (noTune, publicSymbols)
+import Core.Opt.ProductParameters (emptyProductParameters)
+import qualified Data.Set as S
 import qualified Codegen.Lower as Lower
 import qualified Codegen.LowerTyped as Typed
 import Core.Identity (BinderId (..), Namespace (..))
@@ -96,4 +103,35 @@ main = do
   check "a string literal is refused" (isLeft (snd (lowerings s (CStr "x"))))
   let wide = Function "w" [binder 3 "x" (TC "String")] (int 0)
   check "a signature outside Int and Bool is refused" (isLeft (snd (lowerings wide (CInt 0))))
-  putStrLn "LowerTyped: fib, a guarded match tail and a covered Bool case agree with the erased lowering; refusals hold"
+  -- a call region (placement's typed result): the erased token binding
+  let callerBody = ex tInt (CallRegion (call tInt "g" [local n]))
+      caller = Function "caller" [n] callerBody
+      callerErased = CLet "tok" (app "$callPend" [CInt 0]) (app "$callLeave" [CVar "tok", app "g" [CVar "n"]])
+      regionProg = M.fromList [("caller", (["n"], callerErased)), ("g", (["n"], CVar "n"))]
+      -- the hooks are HAL primitives in a compile (tgtHal), as here
+      hal = foreignEntries rv64 {tgtHal = M.fromList [("$callPend", 1), ("$callLeave", 2)]}
+      erasedCaller = Lower.lowerFn m2Policy M.empty regionProg M.empty hal "caller" (["n"], callerErased)
+      typedCaller = Typed.lowerFn m2Policy layout regionProg M.empty hal caller
+  check ("a call region agrees: " ++ show (erasedCaller, typedCaller))
+    (case (erasedCaller, typedCaller) of (Right a, Right b) -> a {I.fnSourceParams = []} == b {I.fnSourceParams = []}; _ -> False)
+
+  -- slice 2: emission takes the typed function where the erased lowering
+  -- of the same function agrees, keeps the erased one where it does not
+  let mode = NativeMode PerFunction StrictOff "typed-probe" (Just (DirectRV W64 HartTp)) False noTune False True False
+      target = rv64 {tgtNative = Just mode}
+      prog = M.singleton "pick" (["n"], pickErased)
+      typedOf fn = either error id (Typed.lowerFn (tgtPolicy target) layout prog M.empty (foreignEntries target) fn)
+      emitWith typed = emitTypedProductProgramWithImports typed S.empty emptyProductParameters S.empty M.empty target False True []
+        M.empty (publicSymbols S.empty) S.empty prog
+      good = emitWith (M.singleton "pick" (typedOf pick))
+      plain = emitWith M.empty
+      -- a typed function for a different body under the same name
+      wrong = emitWith (M.singleton "pick" (typedOf (pick {functionBody = ex tInt (MatchTail CaseMatch [local n]
+        [ Alternative [Pattern tInt "0" (IntegerPattern 0)] [] (int 1),
+          Alternative [Pattern tInt "m" (Bind m)] [BoolGuard (call tBool ">" [local m, int 5])] (local m) ]
+        (int 8))})))
+  check "emission takes the agreeing typed function" (tuTyped (emTypedUse good) == ["pick"] && null (tuDisagree (emTypedUse good)))
+  check "the typed function emits the same code" (emNative good == emNative plain)
+  check "a differing typed function is a disagreement and the erased code stays"
+    (map (\(f, _, _) -> f) (tuDisagree (emTypedUse wrong)) == ["pick"] && null (tuTyped (emTypedUse wrong)) && emNative wrong == emNative plain)
+  putStrLn "LowerTyped: fib, a guarded match tail and a covered Bool case agree with the erased lowering; refusals hold; emission takes agreeing typed functions and reports a differing one"

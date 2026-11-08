@@ -4,7 +4,7 @@
 -- erasure with Codegen.Lower and its typed body with Codegen.LowerTyped; the
 -- two native functions must be equal. Nothing the typed lowering produces is
 -- emitted.
-module Compiler.Native.TypedLowering (Report (..), check, reportNote, stagesNote) where
+module Compiler.Native.TypedLowering (Report (..), check, reportNote, stagesNote, Lowered (..), typedFunctions, firstDifference) where
 
 import Codegen.IR (Fn (..), Block (..))
 import Codegen.Lower (Prim)
@@ -16,8 +16,10 @@ import Compiler.Native.TypedCensus (census, censusNote, s1Functions)
 import Compiler.DataLayout (Layouts (..))
 import Core.Typed.Pipeline (closedInput, closedLayouts)
 import Core.Typed.Program (programTypes)
-import Core.Typed.Syntax (TypeContext (..))
-import Core.Syntax (Core (..))
+import Core.Typed.Syntax (TypeContext (..), Function (..))
+import qualified Compiler.Native.Regions.Typed as RT
+import qualified Core.Region.Syntax as R
+import Core.Syntax (Core (..), Prog)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (intercalate)
@@ -42,21 +44,9 @@ check policy ext hal native emitted =
     (M.fromList [(n, (def, fn)) | (n, AgreedWith def fn) <- outcomes])
   where
     definitions = M.restrictKeys (Native.nativeDefinitions native) emitted
-    functions = M.map Native.checkedFunction definitions
-    -- the emission adds a stub for every constructor the program lacks
-    -- (Compile.erasedConstructorStubs); the boundary program gets the same
-    source = Native.nativeProgram native
-    stubs = M.fromList
-      [ (name, if arity == 0 then ([], CMk tid var []) else (params, CMk tid var (map CVar params)))
-      | (name, (tid, var, arity)) <- M.toList (constructorLayouts layouts), M.notMember name source,
-        let params = ["x" ++ show i | i <- [1 .. arity]] ]
-    prog = source `M.union` stubs
-    known n = M.member n prog || M.member n ext
+    (functions, prog, known, layout) = context ext native emitted
     s1 = s1Functions known functions
     closed = Native.nativeClosed native
-    layouts = closedLayouts closed
-    TypeContext _ constructors = programTypes (closedInput closed)
-    layout = Typed.Layout (`M.lookup` constructorLayouts layouts) (M.keys constructors)
     outcomes = [(n, outcome n) | n <- S.toAscList s1]
     count p = length [() | (_, o) <- outcomes, p o]
     isAgreed o = case o of AgreedWith _ _ -> True; _ -> False
@@ -77,6 +67,57 @@ check policy ext hal native emitted =
       def <- maybe (Left "absent") Right (M.lookup n definitions)
       erased <- Native.eraseDefinitions closed [Native.checkedOwner def]
       pure (M.lookup n erased)
+
+-- P2 typed lowering, slice 2: the typed native function of every S1
+-- definition the unit emits. Emission uses each one in place of the erased
+-- lowering's function when the two agree (Codegen.nativeSelect).
+data Lowered = Lowered
+  { loweredCensus :: String,
+    loweredS1 :: Int,
+    loweredFns :: M.Map String Fn,
+    loweredRefused :: [(String, String)],
+    -- the S1 functions region placement rewrote that were lowered from
+    -- placement's typed result
+    loweredPlaced :: S.Set String }
+
+-- `regions`: placement's typed result, `placed`: the definitions placement
+-- rewrote. A placed S1 function whose typed region body is an ordinary
+-- expression is lowered from that body.
+typedFunctions :: Policy -> M.Map String Int -> M.Map String Prim -> Native.NativeCore -> Maybe RT.Program -> S.Set String -> S.Set String -> Lowered
+typedFunctions policy ext hal native regions placed emitted =
+  Lowered (censusNote (census known functions)) (S.size s1)
+    (M.fromList [(n, fn) | (n, Right fn) <- results]) [(n, why) | (n, Left why) <- results]
+    (S.fromList [n | (n, Right _) <- results, M.member n fromRegions])
+  where
+    (functions, prog, known, layout) = context ext native emitted
+    s1 = s1Functions known functions
+    results = [(n, Typed.lowerFn policy layout prog ext hal fn) | n <- S.toAscList s1, Just fn <- [input n]]
+    -- a placed function without an ordinary region body keeps its boundary
+    -- body: emission then keeps the erased function (counted as placed)
+    fromRegions = M.fromList
+      [ (n, (R.functionSource f) {functionBody = body})
+      | n <- S.toList placed, Just f <- [M.lookup n (maybe M.empty RT.programFunctions regions)], R.Ordinary body <- [R.functionBody f] ]
+    input n = maybe (M.lookup n functions) Just (M.lookup n fromRegions)
+
+-- the checked functions the unit emits, the boundary program with the
+-- constructor stubs emission adds (Compile.erasedConstructorStubs), the
+-- known names, and the constructor layout
+context :: M.Map String Int -> Native.NativeCore -> S.Set String -> (M.Map String Function, Prog, String -> Bool, Typed.Layout)
+context ext native emitted = (functions, prog, known, layout)
+  where
+    definitions = M.restrictKeys (Native.nativeDefinitions native) emitted
+    functions = M.map Native.checkedFunction definitions
+    source = Native.nativeProgram native
+    stubs = M.fromList
+      [ (name, if arity == 0 then ([], CMk tid var []) else (params, CMk tid var (map CVar params)))
+      | (name, (tid, var, arity)) <- M.toList (constructorLayouts layouts), M.notMember name source,
+        let params = ["x" ++ show i | i <- [1 .. arity]] ]
+    prog = source `M.union` stubs
+    known n = M.member n prog || M.member n ext
+    closed = Native.nativeClosed native
+    layouts = closedLayouts closed
+    TypeContext _ constructors = programTypes (closedInput closed)
+    layout = Typed.Layout (`M.lookup` constructorLayouts layouts) (M.keys constructors)
 
 data Outcome = AgreedWith ([String], Core) Fn | Refused String | BothRefused | EraseRefused | Disagree String
 

@@ -387,6 +387,69 @@ brings the 20 call-region functions in once `LowerTyped` handles
 and are counted, until workers are planned from types. No erased pass needs
 to move for slice 2.
 
+## Slice 2 record: S1 functions are emitted from the typed lowering (8 November)
+
+The typed lowering's native function is now what emission uses for every S1
+function where the erased lowering of the same function agrees. The erased
+function is the assertion. This is the bridge pattern again.
+
+- `TypedLowering.typedFunctions` lowers each S1 function before emission.
+  `Codegen.emitTypedProductProgramWithImports` takes the map, and
+  `nativeSelect` decides per function:
+  - **typed:** equal to the erased function (source parameter names aside),
+    emitted;
+  - **scalar_worker:** the optimizer made it a dispatch wrapper;
+  - **placed:** region placement rewrote it and its typed region body is not
+    an ordinary expression;
+  - **arc:** the ARC normalization applies;
+  - **absent:** the erased lowering produced nothing.
+
+  Anything else is a disagreement and stops the compile. `FPR_NO_TYPED_LOWER=1`
+  emits the erased functions.
+- Call regions come from placement's typed result
+  (`Regions.resultTyped`, `R.Ordinary` bodies). `LowerTyped` plans
+  `CallRegion` as erasure does: a token bound to `$callPend 0`, then
+  `$callLeave token call`. The two hooks are HAL primitives, lowered as
+  foreign calls. `Regions.resultPlacedNames` names what placement rewrote.
+- The slice-1 check at the erasure boundary is gone from the default
+  compile. It survives only behind the stage trace
+  (`FPR_TYPED_LOWER_STAGES`). The per-owner erasure and second erased
+  lowering it cost are gone.
+- The note is
+  `# typed lowering: s1= typed= regions= scalar_worker= placed= arc= absent= refused= unit=`.
+
+| | sweep (151 programs, 766 units) | QOS guishell | corpus, host and RV64 |
+|---|---|---|---|
+| S1 | 760 | 115 | 56 |
+| emitted typed | 716 (16 from call regions) | 114 (4) | 45 (3) |
+| scalar worker | 40 | 1 | 10 |
+| placed, not ordinary | 4 | 0 | 1 |
+| refused, disagreement | 0 | 0 | 0 |
+
+**Code identity:** each of the 145 sweep programs that compiles was built
+twice, cold, default and `FPR_NO_TYPED_LOWER=1`. The assembly is identical
+apart from comments, in all 145; the same 6 known failures remain.
+`tests/check_typed_lowering.py` checks the same identity for the fixture,
+and that every S1 function is accounted for.
+
+**Mutation test:** swapping integer operands in `LowerTyped` stops the
+fixture's compile with a disagreement (`Int.+`, `Int.*` in the prelude).
+The escape compiles it.
+
+`tests/LowerTyped.hs` adds three cases: a call region agrees; emission takes
+an agreeing typed function and emits the same code; a typed function for a
+different body is a disagreement and the erased code stays. Unit suites,
+baseline (23 contracts, no drift), bridge, policy D1/D2, compiler options
+and `make stdcheck` pass.
+
+Compile budget (darwin, kept red): hello / std-live / pos1 at
++10.4 / +10.6 / +4.8%, against +10.5 / +10.6 / +4.8% after step 1.
+Dropping the boundary check paid for the emission-time lowering.
+
+Still on the erased path: 40 scalar-worker functions (workers from types,
+P3) and 4 placed functions with non-ordinary region bodies (loop and
+receive regions).
+
 ## What slice 1 does not do
 
 - It does not change generated code, delete `KernelKinds`, or move any
