@@ -1,0 +1,25 @@
+# P2 typed lowering, slice 1: functions in class S1 (Int and Bool, first
+# order, calls to known functions). Each must lower the same from its typed
+# body as from its erasure; tests/check_typed_lowering.py requires them all.
+sumTo : unsafe Int -> Int -> Int .
+sumTo n acc = if n == 0 then acc else sumTo (n - 1) (acc + n).
+fact : unsafe Int -> Int .
+fact n = if n < 2 then 1 else n * fact (n - 1).
+grade : Int -> Int .
+grade 0 = 10.
+grade 1 = 20.
+grade n | n > 100 = 30.
+grade n = 40.
+isEven : unsafe Int -> Bool .
+isEven n = if n == 0 then True else isOdd (n - 1).
+isOdd : unsafe Int -> Bool .
+isOdd n = if n == 0 then False else isEven (n - 1).
+pick : Bool -> Int -> Int .
+pick b n = case b of True -> n + 1 | False -> n - 1.
+steps : unsafe Int -> Int .
+steps 0 = 0.
+steps 1 = 1.
+steps n = steps (n - 2) + 1.
+twice : unsafe Int -> Int .
+twice n = fact 3 + grade n.
+main = print "{sumTo 1000 0} {fact 10} {grade 0} {grade 1} {grade 500} {grade 7} {isEven 10} {pick True 4} {pick False 4} {steps 9} {twice 1}".

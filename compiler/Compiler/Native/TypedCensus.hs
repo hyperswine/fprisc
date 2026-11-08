@@ -7,8 +7,11 @@
 --   t1          first-order Int/Bool: scalar signature, scalar primitives,
 --               literal/binder matches (Match, MatchTail: `if` arrives as
 --               a MatchTail), calls only to other t1 functions
---   calls       t1 plus calls to any known function (tagged convention)
---   joins       plus join calls (closed-program join points become blocks)
+--   calls       t1 plus calls to any known function (tagged convention);
+--               t1 and calls together are slice 1's class S1, exactly what
+--               Codegen.LowerTyped accepts
+--   forms       plus other primitives, join calls, sequences, pattern
+--               bindings, call regions and pattern guards
 --   products    plus constructors, tuples, records and their patterns
 --   strings     plus string literals and string patterns
 --   lists       plus list literals and list builders
@@ -16,7 +19,7 @@
 --   vectors     plus vector builds and pair-free reads
 --   polymorphic a type variable in the signature (counted before the rest)
 --   other       anything else (LetRec, layout literals, regions, ...)
-module Compiler.Native.TypedCensus (Census(..), census, censusNote) where
+module Compiler.Native.TypedCensus (Census(..), census, censusNote, s1Functions) where
 import Core.Typed.Syntax
 import Core.Typed.Walk (mapChildrenM)
 import Type.Syntax (Type(..))
@@ -25,20 +28,29 @@ import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data Class = T1 | Calls | Joins | Products | Strings | Lists | Closures | Vectors | Polymorphic | Other
+data Class = T1 | Calls | Forms | Products | Strings | Lists | Closures | Vectors | Polymorphic | Other
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 newtype Census = Census (M.Map Class Int)
 
--- The scalar primitives Codegen.Lower and the worker pass accept by name.
+-- The integer operators Codegen.Lower lowers inline.
 scalarPrimitives :: S.Set String
-scalarPrimitives = S.fromList ["+","-","*","/","%","==","!=","<",">","<=",">=","not","&&","||"]
+scalarPrimitives = S.fromList ["+","-","*","/","==","!=","<",">","<=",">="]
 
-data Feature = FCall | FJoin | FProduct | FString | FList | FClosure | FVector | FOther
+data Feature = FCall | FForm | FProduct | FString | FList | FClosure | FVector | FOther
   deriving (Eq, Ord, Show)
 
-census :: M.Map String Function -> Census
-census functions = Census (M.fromListWith (+) [(classOf n, 1) | n <- M.keys functions])
+-- `known`: the names that are functions of the program or its imports; any
+-- other global is a primitive.
+census :: (String -> Bool) -> M.Map String Function -> Census
+census known functions = Census (M.fromListWith (+) [(c, 1) | c <- M.elems (classify known functions)])
+
+-- Slice 1's class: t1 and calls.
+s1Functions :: (String -> Bool) -> M.Map String Function -> S.Set String
+s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls]) (classify known functions))
+
+classify :: (String -> Bool) -> M.Map String Function -> M.Map String Class
+classify known functions = M.mapWithKey (\n _ -> classOf n) functions
   where
     info = M.map describe functions
     describe f = (scalarSig f, polymorphicSig f, features f, globals (functionBody f))
@@ -57,18 +69,21 @@ census functions = Census (M.fromListWith (+) [(classOf n, 1) | n <- M.keys func
         | S.member n t1 -> T1
         | p -> Polymorphic
         | s && fs `S.isSubsetOf` S.fromList [FCall] -> Calls
-        | s && fs `S.isSubsetOf` S.fromList [FCall, FJoin] -> Joins
-        | fs `S.isSubsetOf` S.fromList [FCall, FJoin, FProduct] -> Products
-        | fs `S.isSubsetOf` S.fromList [FCall, FJoin, FProduct, FString] -> Strings
-        | fs `S.isSubsetOf` S.fromList [FCall, FJoin, FProduct, FString, FList] -> Lists
-        | fs `S.isSubsetOf` S.fromList [FCall, FJoin, FProduct, FString, FList, FClosure] -> Closures
-        | fs `S.isSubsetOf` S.fromList [FCall, FJoin, FProduct, FString, FList, FClosure, FVector] -> Vectors
+        | s && fs `S.isSubsetOf` S.fromList [FCall, FForm] -> Forms
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct] -> Products
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct, FString] -> Strings
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct, FString, FList] -> Lists
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct, FString, FList, FClosure] -> Closures
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct, FString, FList, FClosure, FVector] -> Vectors
         | otherwise -> Other
-    -- a call to a known function: a global that is neither a scalar primitive
-    -- nor itself (self recursion keeps t1 candidacy; the fixed point checks it)
-    features f = S.union (bodyFeatures (functionBody f))
-      (if any (\g -> not (S.member g scalarPrimitives) && g /= functionName f) (S.toList (globals (functionBody f)))
-         then S.singleton FCall else S.empty)
+    -- a call to a known function: a global that is neither an integer
+    -- operator nor itself (self recursion keeps t1 candidacy; the fixed point
+    -- checks it); any other global is a primitive, a form
+    features f = S.unions [bodyFeatures (functionBody f), calls, prims]
+      where
+        others = [g | g <- S.toList (globals (functionBody f)), not (S.member g scalarPrimitives), g /= functionName f]
+        calls = if any known others then S.singleton FCall else S.empty
+        prims = if any (not . known) others then S.singleton FForm else S.empty
 
 scalarType :: Type -> Bool
 scalarType t = t == TC "Int" || t == TC "Bool"
@@ -107,11 +122,11 @@ bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> pat
       Note _ -> S.empty
       EntryTick -> S.empty
       Fail _ -> S.empty
-      CallRegion _ -> S.empty
+      CallRegion _ -> S.singleton FForm
       Match CaseMatch _ _ -> S.empty
       Match (FunctionMatch _) _ _ -> S.empty
-      Sequence _ _ -> S.empty
-      LetPattern _ _ _ -> S.empty
+      Sequence _ _ -> S.singleton FForm
+      LetPattern _ _ _ -> S.singleton FForm
       StringValue _ -> S.singleton FString
       Construct _ _ -> S.singleton FProduct
       AtomValue _ -> S.singleton FProduct
@@ -125,7 +140,7 @@ bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> pat
       ListBuilder _ _ _ -> S.singleton FList
       -- a match with a fallback arm: control flow, judged by its patterns
       MatchTail _ _ _ _ -> S.empty
-      JoinCall _ _ _ -> S.singleton FJoin
+      JoinCall _ _ _ -> S.singleton FForm
       Lambda _ _ -> S.singleton FClosure
       ClosureValue _ _ -> S.singleton FClosure
       CodeCall _ _ _ -> S.singleton FClosure
@@ -139,7 +154,7 @@ bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> pat
       MatchTail _ _ alts _ -> S.unions [S.unions (map patternFeatures ps) | Alternative ps _ _ <- alts]
       LetPattern p _ _ -> patternFeatures p
       _ -> S.empty
-    guardFeatures g = case g of BoolGuard _ -> S.empty; PatternGuard p _ -> patternFeatures p
+    guardFeatures g = case g of BoolGuard _ -> S.empty; PatternGuard p _ -> S.insert FForm (patternFeatures p)
 
 patternFeatures :: Pattern -> S.Set Feature
 patternFeatures p = case patNode p of
@@ -159,5 +174,5 @@ censusNote (Census m) = "# typed lowering census: " ++ intercalate " "
   [label c ++ "=" ++ show (M.findWithDefault 0 c m) | c <- [minBound .. maxBound]]
   where
     label c = case c of
-      T1 -> "t1"; Calls -> "calls"; Joins -> "joins"; Products -> "products"; Strings -> "strings"; Lists -> "lists"
+      T1 -> "t1"; Calls -> "calls"; Forms -> "forms"; Products -> "products"; Strings -> "strings"; Lists -> "lists"
       Closures -> "closures"; Vectors -> "vectors"; Polymorphic -> "polymorphic"; Other -> "other"

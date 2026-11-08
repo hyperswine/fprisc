@@ -6,7 +6,7 @@
 -- Static PAPs, constructor constants and module registries have a separate
 -- native data owner. Refusals are diagnostics; no text translator is retained.
 
-module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports,emitCheckedProgramWithImports,emitProductProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, productBackendWidth) where
+module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports,emitCheckedProgramWithImports,emitProductProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, productBackendWidth, foreignEntries) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.

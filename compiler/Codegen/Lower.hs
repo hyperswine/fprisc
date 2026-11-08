@@ -13,7 +13,13 @@
 -- Evaluation order follows the runtime/evaluator contract: arguments left to right,
 -- each fully evaluated before the next; a branch's arms are their own
 -- blocks; a trap happens where its operation is.
-module Codegen.Lower (lowerFn, lowerProgram, Reason, Prim (..)) where
+module Codegen.Lower
+  ( lowerFn, lowerProgram, Reason, Prim (..),
+    -- shared with Codegen.LowerTyped (P2 typed lowering): the emission state,
+    -- its helpers, the entry sequence and the global-name lowering
+    L, St (..), Cx (..), lowerEntry, refuse, ended, fresh, freshB, newBlock, newBlock1,
+    open, suspend, resume, emit, emitDo, close, coerce, asVal, asInt, asPred, unify,
+    calleeOf, isPrimName, lowerGlobal, nullaryValue, arithOps, cmpOps, isStaticNominalTid ) where
 
 import Codegen.IR
 import Codegen.LoopForm (formSelfLoop)
@@ -255,7 +261,14 @@ lowerProgram policy workerSigs prog emitted ext hal =
    in (M.fromList [(n, f) | (n, Right f) <- results], [(n, r) | (n, Left r) <- results])
 
 lowerFn :: Policy -> M.Map Name ([Ty], Ty) -> Prog -> M.Map String Int -> M.Map String Prim -> Name -> ([Name], Core) -> Either Reason Fn
-lowerFn policy sigs prog ext hal name (params, body)
+lowerFn policy sigs prog ext hal name (params, body) =
+  lowerEntry policy sigs prog ext hal name params (\cx pvs -> lowerTail cx (M.fromList (zip params pvs)) body)
+
+-- The entry sequence every lowering shares: the parameters, the entry block,
+-- the policy's headroom check and fuel tick, then the body in tail position.
+lowerEntry :: Policy -> M.Map Name ([Ty], Ty) -> Prog -> M.Map String Int -> M.Map String Prim -> Name -> [Name]
+           -> (Cx -> [(VId, Ty)] -> L ()) -> Either Reason Fn
+lowerEntry policy sigs prog ext hal name params lowerBody
   | Left why <- validatePolicy policy = Left why
   | length params > arityCeiling = Left ("arity above " ++ show arityCeiling ++ " (eight registers and the hart spill cells)")
   | workerPrefix `isPrefixOf` name, M.notMember name sigs = Left "a scalar worker without representation metadata"
@@ -277,8 +290,7 @@ lowerFn policy sigs prog ext hal name (params, body)
       when (polStackCheck policy /= StackStatic) (emitDo OStackCheck)
       when (polFuel policy) (emitDo OSafepoint)
       let cx = Cx prog ext hal policy name entry ptys rty sigs
-          env = M.fromList (zip params (zip pvs ptys))
-      lowerTail cx env body
+      lowerBody cx (zip pvs ptys)
       blocks <- gets (reverse . stDone)
       pure Fn {fnName = name, fnSourceParams = params, fnResult = rty, fnEntry = entry, fnBlocks = blocks}
 
@@ -504,26 +516,42 @@ lowerCond cx env = \case
   CLet x a b -> lowerBind cx env x a >>= \env' -> lowerCond cx env' b
   e -> lowerVal cx env e >>= asPred
 
--- value position: the natural representation of the expression
-lowerVal :: Cx -> Env -> Core -> L (VId, Ty)
-lowerVal cx env = \case
-  CVar x
-    | Just r <- M.lookup x env -> pure r
-    | polProfile (cxPolicy cx) == BuiltinArc, "$sym." `isPrefixOf` x -> symbolValue (drop 5 x)
-    | Just ([], CMk t v []) <- M.lookup x (cxProg cx) -> nullary t v
+-- a name no local binds: a nullary constructor or definition, a function's
+-- static PAP, or a primitive's object
+lowerGlobal :: Cx -> Name -> L (VId, Ty)
+lowerGlobal cx x
+    | polProfile (cxPolicy cx) == BuiltinArc, "$sym." `isPrefixOf` x = symbolValue (drop 5 x)
+    | Just ([], CMk t v []) <- M.lookup x (cxProg cx) = nullaryValue t v
     -- a nullary definition is evaluated by a call (`fpr_fn_<x>`)
-    | Just ([], _) <- M.lookup x (cxProg cx) -> callValue (Callee x Local [] TVal)
-    | Just 0 <- M.lookup x (cxExt cx) -> callValue (Callee x Imported [] TVal)
+    | Just ([], _) <- M.lookup x (cxProg cx) = callValue (Callee x Local [] TVal)
+    | Just 0 <- M.lookup x (cxExt cx) = callValue (Callee x Imported [] TVal)
     -- a function value is its static PAP (`la a0, fpr_obj_<x>`); a private
     -- worker has none (Codegen.objFor)
-    | M.member x (cxProg cx) || M.member x (cxExt cx) ->
+    | M.member x (cxProg cx) || M.member x (cxExt cx) =
         if workerPrefix `isPrefixOf` x || "$worker." `isPrefixOf` x
           then refuse ("the function value of the private worker `" ++ x ++ "`")
           else (\v -> (v, TVal)) <$> emit TVal (OFunValue x)
     -- a core primitive's object or a declared HAL contract (`la a0,
     -- fpr_prim_obj_<x>` / `la a0, fpr_g_<x>`); other names have no object
-    | Just (Prim _ _ (Just sym)) <- M.lookup x (cxHal cx) -> symbolValue sym
-    | otherwise -> refuse ("the primitive or HAL value `" ++ x ++ "`")
+    | Just (Prim _ _ (Just sym)) <- M.lookup x (cxHal cx) = symbolValue sym
+    | otherwise = refuse ("the primitive or HAL value `" ++ x ++ "`")
+  where
+    callValue c = (\v -> (v, TVal)) <$> emit TVal (OCall c [])
+    symbolValue sym = (\v -> (v, TVal)) <$> emit TVal (OSymbol sym)
+
+nullaryValue :: Int -> Int -> L (VId, Ty)
+nullaryValue t v = (\x -> (x, TVal)) <$> emit TVal (ONullary t v)
+
+-- a primitive name nothing in the program or the imports shadows
+isPrimName :: Cx -> Name -> Bool
+isPrimName cx h = M.notMember h (cxProg cx) && M.notMember h (cxExt cx)
+
+-- value position: the natural representation of the expression
+lowerVal :: Cx -> Env -> Core -> L (VId, Ty)
+lowerVal cx env = \case
+  CVar x
+    | Just r <- M.lookup x env -> pure r
+    | otherwise -> lowerGlobal cx x
   CInt n
     | intFitsWidth (policyWidth (cxPolicy cx)) n -> (\v -> (v, TInt)) <$> emit TInt (OConstInt n)
     | otherwise -> refuse ("the literal " ++ show n ++ " does not fit an Int")

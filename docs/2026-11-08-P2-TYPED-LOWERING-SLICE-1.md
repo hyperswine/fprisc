@@ -253,6 +253,89 @@ The gate was already over its 10% margin on `std-live` before the census
 baseline is the owner's decision and is not done here. Unit suites 42/42, `pipeline-baseline-check` 22 contracts and no code
 drift, the bridge check and `check_compiler_options.py` unchanged.
 
+## Step 1-3 record: the typed lowering agrees (8 November)
+
+### What landed
+
+- **`Codegen.Lower` shares its emission core.** It exports the emission
+  state and helpers, `lowerEntry` (the entry sequence: parameters, entry
+  block, headroom check, fuel tick) and `lowerGlobal` (a name no local binds).
+  The erased path is unchanged; `lowerFn` is `lowerEntry` plus `lowerTail`.
+- **`Codegen.LowerTyped`** lowers a checked `Function` in class S1. It first
+  plans the whole body into a small tree, with one supply of scrutinee
+  names. Each match is planned the way `Core.Typed.Erase` plans it:
+  - the scrutinee is let-bound for `Match` and repeated for `MatchTail`;
+  - patterns are tested in argument order;
+  - each Boolean guard is a branch to the fallback;
+  - the fallback is duplicated into every failing branch;
+  - a last `True`/`False` arm whose sibling an earlier arm covers is not
+    tested.
+
+  Where erasure would build a lambda or a join, it refuses. The lowering
+  then follows `Codegen.Lower` form for form, on the shared core. A
+  primitive other than the integer operators is refused.
+- **`Compiler.Native.TypedLowering.check`** runs per compiled unit, where
+  `Compile.hs` printed the census. For each S1 definition it erases the
+  owner alone (`eraseDefinitions`, now exported), lowers that erasure with
+  `Codegen.Lower`, lowers the typed body with `Codegen.LowerTyped`, and
+  compares the two `Fn`s for equality. The program both lowerings see is
+  the boundary program plus the constructor stubs emission adds
+  (`Compile.erasedConstructorStubs`): `True` and `False` arrive as global
+  constructor names, not Bool literals, and without stubs they were
+  misread as unknown primitives. It prints:
+
+  ```
+  # typed lowering: s1=.. agreed=.. refused=.. both_refused=.. erase_refused=.. unit=..
+  ```
+
+  A disagreement prints `typed lowering disagreement: <fn>: first differing
+  block: ...` and stops the compile. `FPR_NO_TYPED_LOWER=1` keeps the census
+  and skips the second lowering.
+- **The census's S1 is exactly what `LowerTyped` accepts.**
+  - The caller supplies the set of known functions (the program, its
+    constructor stubs, the imports). Any other global is a primitive.
+  - Primitives other than the integer operators, join calls, sequences,
+    pattern bindings, call regions and pattern guards form one rung,
+    `forms`, which replaces the earlier `joins`.
+  - The step 0 totals were taken with the earlier rungs, so S1 there
+    (1,003) and the counts below (760) are not the same measure.
+- **Exact equality, no renumbering.** Both lowerings start from the same
+  fresh state and emit in the same order.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `make unit-tests` | 43/43; new `LowerTyped` suite: `fib`, a match tail with a literal arm, a guarded binder and a fallback, a Bool `case` with a covered last arm, a mutated erasure told apart, two refusals |
+| Mutation in the compiler (integer operands lowered in swapped order) | `fib` stops the compile with its third block named; `FPR_NO_TYPED_LOWER=1` passes; restored compiler clean |
+| `tests/check_typed_lowering.py`, corpus (23 entries), host and RV64 | s1=56 agreed=56 refused=0 on each target (shared units once); fixture `typed_lower_s1` 7 of 7 |
+| Cold sweep, 151 programs | 766 distinct units, s1=760 agreed=760 refused=0 both_refused=0 erase_refused=0; same 6 compile failures |
+| QOS guishell | s1=115 agreed=115 refused=0 |
+| `make pipeline-baseline-check` (re-recorded, host + RV64) | 23 behaviour contracts hold, no metric drift |
+| Bridge check, policy D1 and D2, `check_compiler_options.py`, `make stdcheck` | pass |
+
+Compile budget (darwin arm64; the gate stays red by the owner's decision):
+
+| Program | Before census (8ad39ac) | Census (6d06ebb) | Step 1 |
+|---|---|---|---|
+| hello | +10.0% | +10.2% | +10.5% |
+| std-live | +10.3% | +10.4% | +10.6% |
+| pos1 | +4.6% | +4.7% | +4.8% |
+
+The second lowering of each S1 body and the per-owner erasure cost 0.1-0.3
+points over the census.
+
+### What is next
+
+Slice 2: S1 functions are emitted from the typed lowering, and the erased
+lowering of the same body becomes the assertion. The bridge pattern again.
+Code must stay identical; the agreement above says it will at the boundary.
+The open design point is the input: the emitted body comes after `Mono`,
+ownership and the erased pipeline, not at the boundary. So slice 2 either
+lowers the typed body for S1 functions that no erased pass rewrites, or
+moves the comparison point. Its plan decides which, from the count of S1
+functions each erased pass changes.
+
 ## What slice 1 does not do
 
 - It does not change generated code, delete `KernelKinds`, or move any

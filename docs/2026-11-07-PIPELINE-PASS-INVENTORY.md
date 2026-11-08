@@ -284,6 +284,7 @@ the raw `-O2` numbers.
    same checked authority.
    Next: [typed lowering slice 1](2026-11-08-P2-TYPED-LOWERING-SLICE-1.md),
    a lowering from the typed program beside the erased one, compared at the
-   erasure boundary.
+   erasure boundary. Landed 8 November: 760 of 760 S1 functions agree over the
+   sweep; `Codegen.LowerTyped`, `Compiler.Native.TypedLowering`.
 3. P6 composed-work report from `Codegen.Placement`, in parallel.
 4. P1 checked summary schema with its first range/result-size consumer.

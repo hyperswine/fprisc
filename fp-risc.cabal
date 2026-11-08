@@ -78,6 +78,7 @@ library
       Codegen.Dump
       Codegen.Eval
       Codegen.Lower
+      Codegen.LowerTyped
       Codegen.Simplify
       Codegen.Split
       Codegen.Policy
@@ -162,6 +163,7 @@ library
       Compiler.Native.Regions.Typed
       Compiler.Native.Regions.Verify
       Compiler.Native.TypedCensus
+      Compiler.Native.TypedLowering
       Core.Calling
       Core.Region.Interface
       Core.Region.Types
@@ -366,6 +368,11 @@ test-suite CorePipeline
   type:               exitcode-stdio-1.0
   main-is:            CorePipeline.hs
   other-modules:      ExportPlans
+
+test-suite LowerTyped
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            LowerTyped.hs
 
 test-suite RepresentationSpecialization
   import:             unit-test

@@ -192,6 +192,14 @@
       "expect": { "stdout": "empty=0.5 picked=9999900 kept=0.75 total=4999950000\n", "exit": 0 },
       "positive_for": ["lower"],
       "negative_fixtures": ["tests/check_signature_bridge.py", "tests/CorePipeline.hs"]
+    },
+    {
+      "id": "typed_lower_s1",
+      "category": "recursion",
+      "source": "tests/pipeline/typed_lower_s1.fpr",
+      "expect": { "stdout": "500500 3628800 10 20 30 40 True 5 3 5 26\n", "exit": 0 },
+      "positive_for": ["lower"],
+      "negative_fixtures": ["tests/check_typed_lowering.py", "tests/LowerTyped.hs"]
     }
   ]
 }
