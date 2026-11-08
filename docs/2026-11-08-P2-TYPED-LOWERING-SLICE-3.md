@@ -69,3 +69,26 @@ QOS guishell: 194 class functions, 191 typed (52 from call regions), 1
 worker wrapper, 2 placed. Unit suites, baseline (23 contracts, no drift),
 bridge, policy D1/D2, compiler options and `make stdcheck` pass. Compile
 budget unchanged at +10.4 / +10.6 / +4.8% (kept red).
+
+## Step 3b record: polymorphic signatures (8 November)
+
+- `TypedCensus` gains the `generic` rung: calls-shaped bodies with a type
+  variable in the signature. They were counted under `polymorphic` before;
+  that rung now holds only the polymorphic functions with other features.
+- `LowerTyped` has no signature check left: every value of a public function
+  is a tagged word, whatever its type.
+
+| | step 3a | step 3b |
+|---|---|---|
+| class (sweep, 766 units) | 1,824 | 2,690 |
+| emitted typed | 1,744 | 2,591 |
+| of which from call regions | 554 | 647 |
+| worker wrappers | 71 | 90 |
+| placed, not ordinary | 9 | 9 |
+| refused, disagreement | 0 | 0 |
+
+Corpus: 116 class functions, 104 typed. QOS guishell: 270 class functions,
+266 typed. Code is identical to the `FPR_NO_TYPED_LOWER=1` build on all 145
+compiling sweep programs. The other checks pass. Compile budget +10.6 /
++10.7 / +4.9% (+0.1-0.2 points: the typed lowering now runs on 3.5 times as
+many functions).
