@@ -336,6 +336,57 @@ lowers the typed body for S1 functions that no erased pass rewrites, or
 moves the comparison point. Its plan decides which, from the count of S1
 functions each erased pass changes.
 
+## Slice 2 count: where the emitted S1 bodies change (8 November)
+
+`FPR_TYPED_LOWER_STAGES=1` follows every agreed S1 function from the
+boundary through each later stage: region placement, `mono`, `own`,
+emission preparation, Core optimization and the bodies handed to
+`lowerProgram` (the root also passes `raw` and `symbolized`). It prints the
+first stage whose body differs from the boundary erasure up to binder names,
+and whether the native function `lowerProgram` produced is the typed one.
+`FPR_TYPED_LOWER_STAGES_SHOW=NAME` dumps one function at every stage. Both
+are off by default; the emission exposes its optimized program, the bodies
+it lowered and the lowered functions as lazy fields read only by the trace.
+
+Cold sweep, the same 151 programs and method as step 1 (766 units, the same
+6 known failures):
+
+| | functions |
+|---|---|
+| S1, agreed at the boundary | 760 |
+| body unchanged at every stage | 260 |
+| first changed by region placement | 20 |
+| first changed by Core optimization | 480 |
+| of which given a scalar worker | 40 |
+| **emitted native function identical to the typed one** | **700** |
+| emitted native function differs | 60 |
+
+`mono` only renames binders (`$spec.local.UNIT.NAME.` prefixes), and `own`
+and emission preparation change no S1 body. The optimizer rewrites 480
+bodies (let inlining, mostly), and 440 of those still lower to the same
+native function. The 60 that differ are exactly two groups. Per unit,
+differing = placed + scalar worker, with no remainder:
+
+- **20 call regions.** Placement wraps a call in `$callPend`/`$callLeave`
+  (`loggerHave`, `irqRouterHave`, `Sys.irqUnbind` in the prelude, plus
+  `round`, `go`, `d10`). Placement has a typed result
+  (`Regions.resultTyped`), so the typed lowering can read that.
+- **40 scalar workers.** The optimizer turns `f` into a dispatch wrapper
+  (`$scalar.isInt` test, call `$worker.scalar.f` on unboxed `Int`, else the
+  generic body). Examples: `fact`, `sumTo`, `fib`, `steps`, `lengthRangeGo`.
+  The wrapper and worker are erased-pipeline machinery. A typed lowering
+  that knows the `Int` signature emits the worker's code directly, which is
+  P3 work ("workers planned on typed or SSA facts").
+
+**Decision for slice 2:** move the comparison point to emission. The typed
+lowering's function is compared with the function `lowerProgram` emits, and
+emitted in its place when they agree. Today that covers 700 of 760. The
+typed input moves from the boundary to placement's typed result, which
+brings the 20 call-region functions in once `LowerTyped` handles
+`$callPend`/`$callLeave`. Scalar-worker functions stay on the erased path
+and are counted, until workers are planned from types. No erased pass needs
+to move for slice 2.
+
 ## What slice 1 does not do
 
 - It does not change generated code, delete `KernelKinds`, or move any

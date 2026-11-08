@@ -827,10 +827,23 @@ compileWithReport accepted report = do
           -- the census, then the agreement of the typed lowering with the
           -- erased one at the erasure boundary (FPR_NO_TYPED_LOWER=1 skips the
           -- agreement); a disagreement stops the compile
-          typedLowering result emitted extArities label = do
+          typedLowering result emitted extArities label stages emission = do
             let report = TypedLowering.check (tgtPolicy linkedTgt) extArities (foreignEntries linkedTgt)
                            (Regions.resultNative result) emitted
             putStrLn (TypedLowering.reportCensus report ++ " unit=" ++ label)
+            -- slice 2 count: where the emitted bodies of the S1 functions change
+            traceStages <- (== Just "1") <$> lookupEnv "FPR_TYPED_LOWER_STAGES"
+            when traceStages $ putStrLn (TypedLowering.stagesNote report
+              (stages ++ [("optimized", emOptimized emission), ("eligible", emEligible emission)])
+              (emLowered emission) ++ " unit=" ++ label)
+            showName <- lookupEnv "FPR_TYPED_LOWER_STAGES_SHOW"
+            forM_ showName $ \n -> when (M.member n (TypedLowering.reportAgreedFns report)) $ do
+              let (def, fn) = TypedLowering.reportAgreedFns report M.! n
+              putStrLn ("# stage boundary " ++ n ++ ": " ++ show def)
+              forM_ (stages ++ [("optimized", emOptimized emission), ("eligible", emEligible emission)]) $ \(l, p) ->
+                putStrLn ("# stage " ++ l ++ " " ++ n ++ ": " ++ maybe "absent" show (M.lookup n p))
+              putStrLn ("# stage typed-fn " ++ n ++ ": " ++ show fn)
+              putStrLn ("# stage lowered-fn " ++ n ++ ": " ++ maybe "absent" show (M.lookup n (emLowered emission)))
             skip <- (== Just "1") <$> lookupEnv "FPR_NO_TYPED_LOWER"
             unless skip $ do
               putStrLn (TypedLowering.reportNote report ++ " unit=" ++ label)
@@ -1131,6 +1144,7 @@ compileWithReport accepted report = do
                 mapM_ putStrLn vnotes
                 typedLowering placed (M.keysSet unitProgram `S.difference` elide)
                   (NativeImports.importArities prepared `M.union` M.union (if oArc opts then arcExterns else M.empty) ext) (takeFileName path)
+                  [("placed", unitProgram), ("mono", specialized), ("own", prog), ("ready", NativeImports.readyProgram prepared)] emission
                 -- written beside it and renamed whole: a build running at the
                 -- same time (check_base runs many) finds the unit complete or
                 -- absent, never half-written and taken as cached
@@ -1325,6 +1339,8 @@ compileWithReport accepted report = do
       typedLowering (artifactRegions Linked.RootArtifact)
         (M.keysSet (Regions.resultProgram (artifactRegions Linked.RootArtifact)) `S.difference` Linked.artifactElided (artifactOf Linked.RootArtifact))
         (NativeImports.importArities rootReady `M.union` extFor) "root"
+        [("placed", Regions.resultProgram (artifactRegions Linked.RootArtifact)), ("raw", rootProgRaw), ("symbolized", rootProgSym),
+         ("mono", rootSpecialized), ("own", rootProg), ("ready", NativeImports.readyProgram rootReady)] rootEmission
       applyReport "root" rootAsm
       let admissionNotes = ["# native-stack-budget-v1: "++codeName entry++" peak="++show bytes++" limit="++show limit++" scope=c-entry-closed-unit"
                            | Just limit<-[stackBudget],(entry,bytes)<-admitted]

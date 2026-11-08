@@ -118,7 +118,13 @@ data Emission = Emission
     emStackFrames :: ![Stack.Frame], -- structured authority for callback admission
     emScalarFallbacks :: [(String, String)], -- scalar selection refusals, before kernel diagnostics
     emRefusals :: [(String, String)], -- functions and kernels it did not emit natively, with reasons
-    emData :: [String] -- static objects in the selected target syntax
+    emData :: [String], -- static objects in the selected target syntax
+    -- P2 typed lowering, slice 2 count (lazy; read only by
+    -- FPR_TYPED_LOWER_STAGES): the program after Core optimization, the
+    -- bodies handed to lowering, and the native functions lowered from them
+    emOptimized :: Prog,
+    emEligible :: Prog,
+    emLowered :: M.Map String Fn
   }
 
 rv64, rv32 :: Target
@@ -231,9 +237,9 @@ emitNative tgt nm symbols backend = case backend of
   DirectX64 fmt -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls))
   where exps=symbolNames symbols
 
-nativeSelect :: Target -> Bool -> NativeMode -> CheckedKinds -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation])
+nativeSelect :: Target -> Bool -> NativeMode -> CheckedKinds -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation], Prog, M.Map String Fn)
 nativeSelect tgt spec nm vkinds sigs ext exps prog emitted =
-  case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
+  (\(a,b,c,d,e) -> (a,b,c,d,e,eligible,lowered0)) $ case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
       Nothing -> ([], M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm) | n <- M.keys emitted], [], [])
@@ -374,7 +380,7 @@ emitProductProgramWithImports products checked imports tgt rvv spec exports ext 
       context=prog `M.union` imports
       -- checked callback kinds for the vector planner (P2 bridge slice 5)
       vkinds=checkedKinds context products
-      (requests,nativeFns,failures,notes,heapFacts) = nativeSelect tgt spec nm vkinds workerSigs ext symbols context emitted
+      (requests,nativeFns,failures,notes,heapFacts,eligibleBodies,loweredFns) = nativeSelect tgt spec nm vkinds workerSigs ext symbols context emitted
       (kernels,kernelFailures,kernelNotes) = emitSpecs tgt rvv ext symbols context requests
       allFns = M.elems nativeFns ++ kernels
       strings = M.elems (M.fromList [(stringLabel str,str) | nf <- allFns,str <- nfStrings nf])
@@ -421,7 +427,10 @@ emitProductProgramWithImports products checked imports tgt rvv spec exports ext 
         emStackFrames = if tgtStackReport tgt then map nfStack allFns else [],
         emScalarFallbacks = failures,
         emRefusals = failures ++ kernelFailures,
-        emData = dat }
+        emData = dat,
+        emOptimized = prog,
+        emEligible = eligibleBodies,
+        emLowered = loweredFns }
 
 declines :: Target -> Bool -> CheckedKinds -> Prog -> String -> Core -> [String]
 declines tgt spec vkinds prog owner = goD S.empty

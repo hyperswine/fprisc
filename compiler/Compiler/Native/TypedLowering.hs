@@ -4,7 +4,7 @@
 -- erasure with Codegen.Lower and its typed body with Codegen.LowerTyped; the
 -- two native functions must be equal. Nothing the typed lowering produces is
 -- emitted.
-module Compiler.Native.TypedLowering (Report (..), check, reportNote) where
+module Compiler.Native.TypedLowering (Report (..), check, reportNote, stagesNote) where
 
 import Codegen.IR (Fn (..), Block (..))
 import Codegen.Lower (Prim)
@@ -29,7 +29,9 @@ data Report = Report
     reportRefused :: [(String, String)], -- typed refused what erasure lowered
     reportBothRefused :: Int,
     reportEraseRefused :: Int,
-    reportDisagreements :: [String] }
+    reportDisagreements :: [String],
+    -- the agreed functions: boundary erasure and typed native function
+    reportAgreedFns :: M.Map String (([String], Core), Fn) }
 
 -- `emitted`: the names the unit emits; `ext`: the imported arities the
 -- emission uses.
@@ -37,6 +39,7 @@ check :: Policy -> M.Map String Int -> M.Map String Prim -> Native.NativeCore ->
 check policy ext hal native emitted =
   Report (censusNote (census known functions)) (S.size s1) (count isAgreed)
     [(n, r) | (n, Refused r) <- outcomes] (count isBoth) (count isErase) [d | (_, Disagree d) <- outcomes]
+    (M.fromList [(n, (def, fn)) | (n, AgreedWith def fn) <- outcomes])
   where
     definitions = M.restrictKeys (Native.nativeDefinitions native) emitted
     functions = M.map Native.checkedFunction definitions
@@ -56,14 +59,14 @@ check policy ext hal native emitted =
     layout = Typed.Layout (`M.lookup` constructorLayouts layouts) (M.keys constructors)
     outcomes = [(n, outcome n) | n <- S.toAscList s1]
     count p = length [() | (_, o) <- outcomes, p o]
-    isAgreed o = case o of Agreed -> True; _ -> False
+    isAgreed o = case o of AgreedWith _ _ -> True; _ -> False
     isBoth o = case o of BothRefused -> True; _ -> False
     isErase o = case o of EraseRefused -> True; _ -> False
     outcome n = case (erasedOf n, M.lookup n functions) of
       (Right (Just def), Just fn) ->
         case (Lower.lowerFn policy M.empty prog ext hal n def, Typed.lowerFn policy layout prog ext hal fn) of
           (Right a, Right b)
-            | a == b -> Agreed
+            | a == b -> AgreedWith def b
             | otherwise -> Disagree (n ++ ": " ++ firstDifference a b)
           (Left _, Left _) -> BothRefused
           (Right _, Left why) -> Refused why
@@ -75,7 +78,7 @@ check policy ext hal native emitted =
       erased <- Native.eraseDefinitions closed [Native.checkedOwner def]
       pure (M.lookup n erased)
 
-data Outcome = Agreed | Refused String | BothRefused | EraseRefused | Disagree String
+data Outcome = AgreedWith ([String], Core) Fn | Refused String | BothRefused | EraseRefused | Disagree String
 
 firstDifference :: Fn -> Fn -> String
 firstDifference a b
@@ -90,3 +93,57 @@ reportNote r = "# typed lowering: s1=" ++ show (reportS1 r) ++ " agreed=" ++ sho
   ++ " refused=" ++ show (length (reportRefused r)) ++ " both_refused=" ++ show (reportBothRefused r)
   ++ " erase_refused=" ++ show (reportEraseRefused r)
   ++ concat [" refused_by=" ++ intercalate ";" (take 3 [n ++ ":" ++ why | (n, why) <- reportRefused r]) | not (null (reportRefused r))]
+
+-- P2 typed lowering, slice 2 count (FPR_TYPED_LOWER_STAGES=1): for every
+-- agreed S1 function, the first stage after the boundary whose body differs
+-- from the boundary erasure up to binder names, and whether the native
+-- function the emission lowered is the typed one (source parameter names
+-- aside). `stages` are in pipeline order. A function the optimizer gives a
+-- scalar worker (`$worker.scalar.NAME`) is counted apart: its emitted body
+-- is a dispatch wrapper around the worker.
+stagesNote :: Report -> [(String, M.Map String ([String], Core))] -> M.Map String Fn -> String
+stagesNote r stages lowered =
+  "# typed stages: s1=" ++ show (M.size agreed)
+    ++ " unchanged=" ++ show (length [() | (_, Nothing) <- firsts])
+    ++ concat [" " ++ label ++ "=" ++ show (length here) ++ absent ++ workers
+              | (label, prog) <- stages,
+                let here = [(n, a) | (n, Just (l, a)) <- firsts, l == label], not (null here),
+                let na = length [() | (_, True) <- here],
+                let absent = if na > 0 then "(absent " ++ show na ++ ")" else "",
+                let nw = length [() | (n, False) <- here, M.member ("$worker.scalar." ++ n) prog],
+                let workers = if nw > 0 then "(scalar_worker " ++ show nw ++ ")" else ""]
+    ++ " final_same=" ++ show (count (== Just True)) ++ " final_differs=" ++ show (count (== Just False))
+    ++ " final_absent=" ++ show (count (== Nothing))
+    ++ concat [" changed_at_" ++ label ++ "=" ++ intercalate "," (take 4 ns)
+              | (label, prog) <- stages,
+                let ns = [n | (n, Just (l, _)) <- firsts, l == label, M.notMember ("$worker.scalar." ++ n) prog],
+                not (null ns)]
+    ++ concat [" differs=" ++ intercalate "," (take 6 ns) | let ns = [n | (n, Just False) <- finals], not (null ns)]
+  where
+    agreed = reportAgreedFns r
+    -- Just (stage, absent there)
+    firsts = [(n, firstChange (canonical def) n) | (n, (def, _)) <- M.toList agreed]
+    firstChange def n = case [(label, M.notMember n prog) | (label, prog) <- stages, (canonical <$> M.lookup n prog) /= Just def] of
+      x : _ -> Just x
+      [] -> Nothing
+    finals = [(n, (\f -> f {fnSourceParams = []} == fn {fnSourceParams = []}) <$> M.lookup n lowered) | (n, (_, fn)) <- M.toList agreed]
+    count p = length [() | (_, f) <- finals, p f]
+
+-- binders renamed in binding order, free names kept
+canonical :: ([String], Core) -> ([String], Core)
+canonical (params, body) = (fresh, go (M.fromList (zip params fresh)) (length params) body)
+  where
+    fresh = [binder i | i <- [0 .. length params - 1]]
+    binder i = "%" ++ show (i :: Int)
+    go env k e = case e of
+      CVar n -> CVar (M.findWithDefault n n env)
+      CApp a b -> CApp (go env k a) (go env k b)
+      CLam ps b ->
+        let names = [binder (k + i) | i <- [0 .. length ps - 1]]
+         in CLam names (go (M.union (M.fromList (zip ps names)) env) (k + length ps) b)
+      CLet x a b -> CLet (binder k) (go env k a) (go (M.insert x (binder k) env) (k + 1) b)
+      CIf c t f -> CIf (go env k c) (go env k t) (go env k f)
+      CMk t v fs -> CMk t v (map (go env k) fs)
+      CTagEq t v x -> CTagEq t v (go env k x)
+      CProj i x -> CProj i (go env k x)
+      other -> other
