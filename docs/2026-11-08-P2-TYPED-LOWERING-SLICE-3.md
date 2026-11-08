@@ -336,3 +336,40 @@ left are lists (list literals, builders and list patterns), closures
 (lambdas, closure values, code calls, applying a local, result pipes) and
 vectors. Those need the list builders, the general-apply adapter and the
 kernel rewrite, which slice 3's plan put after strings.
+
+## Step 3f record: lists (9 November)
+
+- A list literal is the plan node `PList xs`, which stands for erasure's
+  `Cons x (Cons y .. Nil)` chain and is lowered by `Codegen.Lower` from that
+  Core. A list builder is planned as its body, as erasure does: its stores
+  are already `SetField` (the TRMC tail store). Cons and Nil patterns were
+  already constructor patterns in the plan; only the census set them apart.
+- The `lists` rung joins the class with any signature, so polymorphic list
+  functions are in. The class is now everything but closures, vectors,
+  polymorphic functions using those, and `other`.
+- No new exemption was needed. Everything matched on the first sweep.
+
+| Sweep (151 programs, 766 units) | after 3e | after 3f |
+|---|---|---|
+| class (S1) | 21,993 | 25,106 |
+| emitted typed | 21,050 | 23,948 |
+| of which call regions | 3,984 | 4,893 |
+| worker wrappers | 427 | 593 |
+| reuse, optimized | 14, 13 | 16, 13 |
+| placed, not ordinary | 489 | 536 |
+| refused, disagreement | 0 | 0 |
+
+Corpus: 432 class functions, 390 typed. QOS guishell: 2,406, 2,311 typed
+(10 reuse, 3 optimized). Code is identical to the `FPR_NO_TYPED_LOWER=1`
+build on all 145 compiling sweep programs. Unit suites (`LowerTyped`: a
+list literal and a list builder), baseline, bridge, policy, compiler
+options and `make stdcheck` pass.
+
+**Compile budget** +11.7 / +11.7 / +5.7% allocation (+0.2 to +0.3 points),
+still red. hello's peak is +13.7%, inside the 25% residency margin.
+
+The class covers about 73% of the step 0 census's checked definitions
+(25,106 of 34,304), and 95.4% of the class is emitted typed. Closures
+(lambdas, closure values, code calls, applying a local, result pipes) and
+vectors are left. They need the general-apply adapter and the kernel
+rewrite.

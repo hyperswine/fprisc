@@ -66,6 +66,7 @@ data TE
   | PProj Int TE -- erased `CProj index value`
   | PStr String -- erased `CStr s` (slice 3d: an atom's name; 3e: a string literal)
   | PStrEq TE String -- erased `(==) scrutinee "s"` (a string pattern)
+  | PList [TE] -- erased `Cons x (Cons y .. Nil)` (slice 3f: a list literal)
 
 -- every let the plan builds: the optimizer substitutes an Int literal let
 -- at its uses (Core.Opt.Normalize.normIn) before the erased lowering, and
@@ -90,6 +91,7 @@ rekey from to = go
       PMk tid var fs -> PMk tid var (map go fs)
       PProj i a -> PProj i (go a)
       PStrEq a str -> PStrEq (go a) str
+      PList xs -> PList (map go xs)
       _ -> t
 
 -- replace a key by a literal throughout a plan
@@ -106,6 +108,7 @@ substitute k v = go
       PMk tid var fs -> PMk tid var (map go fs)
       PProj i a -> PProj i (go a)
       PStrEq a str -> PStrEq (go a) str
+      PList xs -> PList (map go xs)
       _ -> t
 
 -- The shapes Codegen.Lower dispatches on, read from a plan node.
@@ -169,6 +172,12 @@ plan layout body = fst <$> go 0 body
       AtomValue a -> pure (PMk 6 0 [PStr a], n)
       -- a string literal (slice 3e)
       StringValue str -> pure (PStr str, n)
+      -- lists (slice 3f), as erasure builds them: a literal is its Cons
+      -- chain, a builder is its body (the stores are SetField)
+      ListValue xs -> do
+        (xs', n1) <- goList n xs
+        pure (PList xs', n1)
+      ListBuilder _ _ body -> go n body
       -- records (slice 3d-ii), as erasure builds them
       RecordValue fs -> do
         let sorted = sortOn fst fs
@@ -419,6 +428,7 @@ view = \case
   PProj {} -> VCore
   PStr _ -> VCore
   PStrEq {} -> VCore
+  PList _ -> VCore
 
 formName :: Node -> String
 formName = \case
@@ -484,6 +494,7 @@ toCore t = case t of
   PProj i a -> CProj i (toCore a)
   PStr str -> CStr str
   PStrEq a str -> CApp (CApp (CVar "==") (toCore a)) (CStr str)
+  PList xs -> foldr (\x rest -> CApp (CApp (CVar "Cons") (toCore x)) rest) (CVar "Nil") xs
 
 -- Each function below follows its namesake in Codegen.Lower for the S1 shapes.
 

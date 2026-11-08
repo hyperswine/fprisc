@@ -109,6 +109,18 @@ main = do
           Alternative [Pattern (TC "String") "_" Wildcard] [] (int 0) ]))
       isOkErased = CLet "s" (CVar "w") (CIf (app "==" [CVar "s", CStr "ok"]) (CInt 1) (CInt 0))
   check "a string pattern agrees (slice 3e)" (agrees isOk isOkErased)
+  -- slice 3f: a list literal is erased to its Cons chain, a builder to its body
+  let listT = TAp (TC "List") tInt
+      lx = binder 11 "x" tInt
+      lit = Function "lit" [lx] (ex listT (ListValue [local lx, int 1]))
+      litErased = app "Cons" [CVar "x", app "Cons" [CInt 1, CVar "Nil"]]
+      built = Function "lit" [lx] (ex listT (ListBuilder (binderId lx) (binderId lx) (ex listT (ListValue [local lx, int 1]))))
+      listProg = M.fromList [("lit", (["x"], litErased)), ("Cons", (["h", "t"], CMk 3 1 [CVar "h", CVar "t"])), ("Nil", ([], CMk 3 0 []))]
+      erasedLit = Lower.lowerFn m2Policy M.empty listProg M.empty M.empty "lit" (["x"], litErased)
+      typedOfList fn = Typed.lowerFn m2Policy layout listProg M.empty M.empty fn
+      sameFn x y = case (x, y) of (Right x', Right y') -> x' {I.fnSourceParams = []} == y' {I.fnSourceParams = []}; _ -> False
+  check ("a list literal agrees (slice 3f): " ++ show (erasedLit, typedOfList lit)) (sameFn erasedLit (typedOfList lit))
+  check "a list builder agrees with its body (slice 3f)" (sameFn erasedLit (typedOfList built))
   let poly = Function "w" [binder 3 "x" (TV 0)] (int 0)
   check "a polymorphic signature agrees (slice 3b)" (agrees poly (CInt 0))
   -- slice 3a: a monomorphic signature outside Int and Bool lowers the same

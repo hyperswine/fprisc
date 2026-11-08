@@ -60,7 +60,7 @@ census known functions = Census (M.fromListWith (+) [(c, 1) | c <- M.elems (clas
 -- The typed lowering's class: t1 through strings (slice 1's S1 widened
 -- by slices 3a-3d).
 s1Functions :: (String -> Bool) -> M.Map String Function -> S.Set String
-s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors, Records, Products, Strings]) (classify known functions))
+s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors, Records, Products, Strings, Lists]) (classify known functions))
 
 classify :: (String -> Bool) -> M.Map String Function -> M.Map String Class
 classify known functions = M.mapWithKey (\n _ -> classOf n) functions
@@ -88,8 +88,8 @@ classify known functions = M.mapWithKey (\n _ -> classOf n) functions
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FProduct] -> Records
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct] -> Products
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString] -> Strings
-        | p -> Polymorphic
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList] -> Lists
+        | p -> Polymorphic
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList, FClosure] -> Closures
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList, FClosure, FVector] -> Vectors
         | otherwise -> Other
