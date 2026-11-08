@@ -99,8 +99,16 @@ main = do
   check "Bool case with a covered last arm agrees" (agrees flag flagErased)
 
   -- outside the class: refused with a reason, never lowered differently
-  let s = Function "s" [n] (ex tInt (StringValue "x"))
-  check "a string literal is refused" (isLeft (snd (lowerings s (CStr "x"))))
+  check "a lambda is refused" (isLeft (snd (lowerings (Function "l" [n] (ex (TFn tInt tInt) (Lambda [binder 10 "y" tInt] (int 0)))) (CLam ["y"] (CInt 0)))))
+  -- slice 3e: a string literal, and a string pattern (an equality test)
+  let s = Function "s" [n] (ex (TC "String") (StringValue "x"))
+  check "a string literal agrees (slice 3e)" (agrees s (CStr "x"))
+  let w = binder 9 "w" (TC "String")
+      isOk = Function "isOk" [w] (ex tInt (Match CaseMatch [local w]
+        [ Alternative [Pattern (TC "String") "\"ok\"" (StringPattern "ok")] [] (int 1),
+          Alternative [Pattern (TC "String") "_" Wildcard] [] (int 0) ]))
+      isOkErased = CLet "s" (CVar "w") (CIf (app "==" [CVar "s", CStr "ok"]) (CInt 1) (CInt 0))
+  check "a string pattern agrees (slice 3e)" (agrees isOk isOkErased)
   let poly = Function "w" [binder 3 "x" (TV 0)] (int 0)
   check "a polymorphic signature agrees (slice 3b)" (agrees poly (CInt 0))
   -- slice 3a: a monomorphic signature outside Int and Bool lowers the same

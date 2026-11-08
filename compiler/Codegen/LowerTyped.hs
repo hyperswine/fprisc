@@ -64,7 +64,8 @@ data TE
   | PTag Int Int TE -- erased `CTagEq tid variant scrutinee`
   | PMk Int Int [TE] -- erased `CMk tid variant fields` (slice 3d)
   | PProj Int TE -- erased `CProj index value`
-  | PStr String -- erased `CStr s` (an atom's name)
+  | PStr String -- erased `CStr s` (slice 3d: an atom's name; 3e: a string literal)
+  | PStrEq TE String -- erased `(==) scrutinee "s"` (a string pattern)
 
 -- every let the plan builds: the optimizer substitutes an Int literal let
 -- at its uses (Core.Opt.Normalize.normIn) before the erased lowering, and
@@ -88,6 +89,7 @@ rekey from to = go
       PTag tid var a -> PTag tid var (go a)
       PMk tid var fs -> PMk tid var (map go fs)
       PProj i a -> PProj i (go a)
+      PStrEq a str -> PStrEq (go a) str
       _ -> t
 
 -- replace a key by a literal throughout a plan
@@ -103,6 +105,7 @@ substitute k v = go
       PTag tid var a -> PTag tid var (go a)
       PMk tid var fs -> PMk tid var (map go fs)
       PProj i a -> PProj i (go a)
+      PStrEq a str -> PStrEq (go a) str
       _ -> t
 
 -- The shapes Codegen.Lower dispatches on, read from a plan node.
@@ -164,6 +167,8 @@ plan layout body = fst <$> go 0 body
         (xs', n1) <- goList n xs
         pure (PMk tid var xs', n1)
       AtomValue a -> pure (PMk 6 0 [PStr a], n)
+      -- a string literal (slice 3e)
+      StringValue str -> pure (PStr str, n)
       -- records (slice 3d-ii), as erasure builds them
       RecordValue fs -> do
         let sorted = sortOn fst fs
@@ -362,6 +367,7 @@ plan layout body = fst <$> go 0 body
       Wildcard -> pure ok
       Bind b -> pure (pLet (KBinder (binderId b)) scrut ok)
       IntegerPattern i -> pure (PIf (PEqInt scrut i) ok failed)
+      StringPattern str -> pure (PIf (PStrEq scrut str) ok failed)
       ConstructorPattern name ps -> do
         (tid, variant, ar) <- constructor name
         when (ar /= length ps) (Left "typed lowering: a constructor pattern layout arity")
@@ -412,6 +418,7 @@ view = \case
   PMk {} -> VCore
   PProj {} -> VCore
   PStr _ -> VCore
+  PStrEq {} -> VCore
 
 formName :: Node -> String
 formName = \case
@@ -476,6 +483,7 @@ toCore t = case t of
   PMk tid var fs -> CMk tid var (map toCore fs)
   PProj i a -> CProj i (toCore a)
   PStr str -> CStr str
+  PStrEq a str -> CApp (CApp (CVar "==") (toCore a)) (CStr str)
 
 -- Each function below follows its namesake in Codegen.Lower for the S1 shapes.
 

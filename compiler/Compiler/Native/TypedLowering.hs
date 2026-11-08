@@ -22,6 +22,7 @@ import qualified Core.Region.Syntax as R
 import Core.Syntax (Core (..), Prog)
 import Core.Alpha (canonical)
 import qualified Data.Map.Strict as M
+import qualified Data.Map.Lazy as ML
 import qualified Data.Set as S
 import Data.List (intercalate)
 
@@ -91,7 +92,10 @@ typedFunctions policy ext hal native regions placed emitted =
   Lowered (censusNote (census known functions)) (S.size s1)
     (M.fromList [(n, fn) | (n, Right fn) <- results]) [(n, why) | (n, Left why) <- results]
     (S.fromList [n | (n, Right _) <- results, M.member n fromRegions])
-    (M.fromList [(n, c) | (n, Right _) <- results, Just fn <- [input n], Right c <- [Typed.planCore layout fn]])
+    -- lazy: read only for the few functions whose typed and erased native
+    -- functions differ (a plan that lowered also plans)
+    (ML.fromList [(n, either (const ([], CErr "typed lowering: no plan")) id (Typed.planCore layout fn))
+                 | (n, Right _) <- results, Just fn <- [input n]])
   where
     (functions, prog, known, layout) = context ext native emitted
     s1 = s1Functions known functions

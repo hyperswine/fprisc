@@ -40,6 +40,7 @@ import Control.Monad (forM, forM_, unless, when)
 import Data.List (intercalate, isPrefixOf)
 import qualified Data.List as List
 import qualified Data.Map.Strict as M
+import qualified Data.Map.Lazy as ML
 import qualified Data.Set as S
 import Core.Syntax
 import Reuse (poolResetters)
@@ -836,7 +837,7 @@ compileWithReport accepted report = do
             let placedNames = Regions.resultPlacedNames result
                 lowered = TypedLowering.typedFunctions (tgtPolicy linkedTgt) extArities (foreignEntries linkedTgt)
                             (Regions.resultNative result) (Regions.resultTyped result) placedNames emitted
-            pure (lowered, if skip then M.empty else M.intersectionWith (,) (TypedLowering.loweredFns lowered) (TypedLowering.loweredCores lowered),
+            pure (lowered, if skip then M.empty else ML.intersectionWith (,) (TypedLowering.loweredFns lowered) (TypedLowering.loweredCores lowered),
                   placedNames `S.difference` TypedLowering.loweredPlaced lowered)
           typedLowering lowered result emitted extArities label stages emission = do
             putStrLn (TypedLowering.loweredCensus lowered ++ " unit=" ++ label)

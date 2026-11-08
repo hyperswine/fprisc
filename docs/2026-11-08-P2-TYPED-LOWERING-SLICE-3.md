@@ -287,3 +287,52 @@ Step 3d is done. Against the step 0 census (34,304 checked definitions,
 shared units once), the class covers about half of all definitions, and
 96.6% of the class is emitted typed. Next is step 3e: string literals and
 string patterns.
+
+## Step 3e record: strings (8 November)
+
+- String literals are the plan node `PStr`. A string pattern is
+  `PStrEq scrut s`, which stands for erasure's
+  `CIf ((==) scrut "s") ok fail`. Both are lowered by `Codegen.Lower` from
+  their Core form.
+- The `strings` rung joins the class with any signature. The class is now t1
+  through strings: everything but lists, closures, vectors, polymorphic
+  functions using those, and `other`.
+- The plan's Core per function (`loweredCores`) is now built lazily (a lazy
+  map, no pattern forcing it). Only functions whose typed and erased native
+  functions differ read it.
+
+| | step 3d-iii | step 3e |
+|---|---|---|
+| class (sweep, 766 units) | 16,868 | 21,993 |
+| emitted typed | 16,300 | 21,050 |
+| of which from call regions | 2,058 | 3,984 |
+| worker wrappers | 300 | 427 |
+| reuse, optimized | 11, 6 | 14, 13 |
+| placed, not ordinary | 251 | 489 |
+| refused, disagreement | 0 | 0 |
+
+Corpus: 396 class functions, 355 typed. QOS guishell: 2,109, 2,025 typed
+(5 reuse, 2 optimized). Code is identical to the `FPR_NO_TYPED_LOWER=1`
+build on all 145 compiling sweep programs. Unit suites (`LowerTyped`: a
+string literal, a string pattern, a lambda still refused), baseline,
+bridge, policy, compiler options and `make stdcheck` pass.
+
+**Compile budget** +11.5 / +11.4 / +5.4% allocation (+0.3 to +0.5 points),
+still red. hello's peak residency moved from -36.7% to +14.5% against the
+baseline (27 MB to 49 MB). That is GC sampling, not retention: hello runs
+5 major collections, and the peak depends on where one lands.
+
+| hello, peak live | `-A64m` (the default) | `-A32m` |
+|---|---|---|
+| typed lowering | 44.5 MB | 43.2 MB |
+| `FPR_NO_TYPED_LOWER=1` | 24.9 MB | 41.6 MB |
+
+The typed lowering costs about 1.5 MB at the same collection points. The
+25% residency margin is not crossed.
+
+The class covers about 64% of the step 0 census's checked definitions
+(21,993 of 34,304), and 95.7% of the class is emitted typed. The rungs
+left are lists (list literals, builders and list patterns), closures
+(lambdas, closure values, code calls, applying a local, result pipes) and
+vectors. Those need the list builders, the general-apply adapter and the
+kernel rewrite, which slice 3's plan put after strings.
