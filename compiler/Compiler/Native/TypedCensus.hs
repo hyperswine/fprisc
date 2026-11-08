@@ -18,10 +18,11 @@
 --   forms       plus other primitives, join calls, sequences and call
 --               regions, with any signature (slice 3c)
 --   constructors plus constructors, tuples and atoms and their patterns
---               (slice 3d-i: t1 through constructors are what
+--               (slice 3d-i)
+--   records     plus record values, fields, updates and patterns and the
+--               TRMC field store (slice 3d-ii: t1 through records are what
 --               Codegen.LowerTyped accepts)
---   products    plus records, record patterns, pattern bindings and
---               pattern guards
+--   products    plus pattern bindings and pattern guards
 --   strings     plus string literals and string patterns
 --   lists       plus list literals and list builders
 --   closures    plus lambdas, closures, code and join calls
@@ -37,7 +38,7 @@ import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data Class = T1 | Calls | Signatures | Generic | Forms | Constructors | Products | Strings | Lists | Closures | Vectors | Polymorphic | Other
+data Class = T1 | Calls | Signatures | Generic | Forms | Constructors | Records | Products | Strings | Lists | Closures | Vectors | Polymorphic | Other
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 newtype Census = Census (M.Map Class Int)
@@ -54,10 +55,10 @@ data Feature = FCall | FForm | FConstruct | FPattern | FProduct | FString | FLis
 census :: (String -> Bool) -> M.Map String Function -> Census
 census known functions = Census (M.fromListWith (+) [(c, 1) | c <- M.elems (classify known functions)])
 
--- The typed lowering's class: t1 through constructors (slice 1's S1 widened
+-- The typed lowering's class: t1 through records (slice 1's S1 widened
 -- by slices 3a-3d).
 s1Functions :: (String -> Bool) -> M.Map String Function -> S.Set String
-s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors]) (classify known functions))
+s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors, Records]) (classify known functions))
 
 classify :: (String -> Bool) -> M.Map String Function -> M.Map String Class
 classify known functions = M.mapWithKey (\n _ -> classOf n) functions
@@ -82,6 +83,7 @@ classify known functions = M.mapWithKey (\n _ -> classOf n) functions
         | fs `S.isSubsetOf` S.fromList [FCall] -> Signatures
         | fs `S.isSubsetOf` S.fromList [FCall, FForm] -> Forms
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct] -> Constructors
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FProduct] -> Records
         | p -> Polymorphic
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct] -> Products
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString] -> Strings
@@ -196,5 +198,5 @@ censusNote (Census m) = "# typed lowering census: " ++ intercalate " "
   [label c ++ "=" ++ show (M.findWithDefault 0 c m) | c <- [minBound .. maxBound]]
   where
     label c = case c of
-      T1 -> "t1"; Calls -> "calls"; Signatures -> "signatures"; Generic -> "generic"; Forms -> "forms"; Constructors -> "constructors"; Products -> "products"; Strings -> "strings"; Lists -> "lists"
+      T1 -> "t1"; Calls -> "calls"; Signatures -> "signatures"; Generic -> "generic"; Forms -> "forms"; Constructors -> "constructors"; Records -> "records"; Products -> "products"; Strings -> "strings"; Lists -> "lists"
       Closures -> "closures"; Vectors -> "vectors"; Polymorphic -> "polymorphic"; Other -> "other"

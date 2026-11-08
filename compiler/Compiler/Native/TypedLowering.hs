@@ -122,7 +122,7 @@ context ext native emitted = (functions, prog, known, layout)
     layouts = closedLayouts closed
     TypeContext _ constructors = programTypes (closedInput closed)
     -- erasure's constructor layout: the declared ones, then the wide tuples
-    layout = Typed.Layout (\n -> maybe (wideTup n) Just (M.lookup n (constructorLayouts layouts))) (M.keys constructors)
+    layout = Typed.Layout (\n -> maybe (wideTup n) Just (M.lookup n (constructorLayouts layouts))) (M.keys constructors) (shapeLayouts layouts)
 
 data Outcome = AgreedWith ([String], Core) Fn | Refused String | BothRefused | EraseRefused | Disagree String
 

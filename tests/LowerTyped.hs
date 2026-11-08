@@ -48,7 +48,7 @@ app :: String -> [Core] -> Core
 app f = foldl CApp (CVar f)
 
 layout :: Typed.Layout
-layout = Typed.Layout (`M.lookup` M.fromList [("True", (1, 1, 0)), ("False", (1, 0, 0))]) ["True", "False"]
+layout = Typed.Layout (`M.lookup` M.fromList [("True", (1, 1, 0)), ("False", (1, 0, 0))]) ["True", "False"] M.empty
 
 -- lower the typed function and its erasure with the same context
 lowerings :: Function -> Core -> (Either String String, Either String String)
@@ -140,7 +140,7 @@ main = do
       pv = binder 6 "p" pairT
       a = binder 7 "a" tInt
       b2 = binder 8 "b" tInt
-      pairLayout = Typed.Layout (`M.lookup` M.fromList [("Pair", (9, 0, 2)), ("True", (1, 1, 0)), ("False", (1, 0, 0))]) ["Pair", "True", "False"]
+      pairLayout = Typed.Layout (`M.lookup` M.fromList [("Pair", (9, 0, 2)), ("True", (1, 1, 0)), ("False", (1, 0, 0))]) ["Pair", "True", "False"] M.empty
       swapBody = ex pairT (Match CaseMatch [local pv]
         [Alternative [Pattern pairT "Pair a b" (ConstructorPattern "Pair" [Pattern tInt "a" (Bind a), Pattern tInt "b" (Bind b2)])] []
           (ex pairT (Construct "Pair" [local b2, local a]))])

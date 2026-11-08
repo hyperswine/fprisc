@@ -32,18 +32,22 @@ import Core.Typed.Syntax hiding (Local)
 import qualified Core.Typed.Syntax as T
 import Control.Monad (when)
 import Control.Monad.Except (throwError)
-import Data.List (intercalate)
+import Data.List (intercalate, nub, sort, sortOn)
+import Control.Monad (foldM)
+import Core.Typed.Layout (recordShapes, closedRowShape)
+import Type.Relation (fieldType)
 import qualified Data.Map.Strict as M
 
 -- The constructor facts a Bool pattern needs, from the closed program
 -- (the same layout authority erasure reads).
 data Layout = Layout
   { layoutConstructor :: String -> Maybe (Int, Int, Int),
-    layoutConstructors :: [String] }
+    layoutConstructors :: [String],
+    layoutRecords :: M.Map [String] Int } -- record field names (sorted) -> shape id
 
 -- A local the lowering bound: a checked binder, or a scrutinee the match
 -- plan names (erasure's fresh `scrut`).
-data Key = KBinder BinderId | KScrut Int deriving (Eq, Ord, Show)
+data Key = KBinder BinderId | KScrut Int | KField BinderId deriving (Eq, Ord, Show)
 
 -- The planned body: the shapes erasure produces for S1, with typed leaves.
 data TE
@@ -69,6 +73,22 @@ pLet :: Key -> TE -> TE -> TE
 pLet k a b = case a of
   PInt _ -> substitute k a b
   _ -> PLet k a b
+
+-- rename a plan-local key (a record pattern's projection temporary)
+rekey :: Key -> Key -> TE -> TE
+rekey from to = go
+  where
+    k' k = if k == from then to else k
+    go t = case t of
+      PRef k -> PRef (k' k)
+      PApp h as -> PApp h (map go as)
+      PIf a b c -> PIf (go a) (go b) (go c)
+      PLet k a b -> PLet (k' k) (go a) (go b)
+      PEqInt a i -> PEqInt (go a) i
+      PTag tid var a -> PTag tid var (go a)
+      PMk tid var fs -> PMk tid var (map go fs)
+      PProj i a -> PProj i (go a)
+      _ -> t
 
 -- replace a key by a literal throughout a plan
 substitute :: Key -> TE -> TE -> TE
@@ -144,6 +164,33 @@ plan layout body = fst <$> go 0 body
         (xs', n1) <- goList n xs
         pure (PMk tid var xs', n1)
       AtomValue a -> pure (PMk 6 0 [PStr a], n)
+      -- records (slice 3d-ii), as erasure builds them
+      RecordValue fs -> do
+        let sorted = sortOn fst fs
+        tid <- shape (map fst sorted)
+        (vs, n1) <- goList n (map snd sorted)
+        pure (PMk tid (length sorted) vs, n1)
+      RecordField base path -> do
+        (x, n1) <- go n base
+        (value, _, n2) <- foldM (\(v, ty, k) name -> do
+            (f, k') <- project ty v name k
+            pure (f, ty >>= (\t -> fieldType t [name]), k')) (x, Just (exprType base), n1) path
+        pure (value, n2)
+      RecordUpdate base fields -> do
+        (x, n1) <- go n base
+        let k = KScrut n1
+        (body, n2) <- update (PRef k) fields (n1 + 1)
+        pure (pLet k x body, n2)
+      PlannedUpdate base updatePlan -> do
+        (x, n1) <- go n base
+        let k = KScrut n1
+        (body, n2) <- plannedUpdate (Just (exprType base)) (PRef k) updatePlan (n1 + 1)
+        pure (pLet k x body, n2)
+      -- the TRMC tail store: a primitive call
+      SetField base 1 value -> do
+        (b, n1) <- go n base
+        (v, n2) <- go n1 value
+        pure (PApp "$trmc.setTail" [b, v], n2)
       Let p a b -> do
         (a', n1) <- go n a
         (b', n2) <- go n1 b
@@ -196,6 +243,53 @@ plan layout body = fst <$> go 0 body
       Match {} -> Left "typed lowering: a malformed case arity"
       MatchTail {} -> Left "typed lowering: a malformed match tail"
       other -> Left ("typed lowering: the form " ++ formName other)
+    shape fs = maybe (Left ("typed lowering: unknown record " ++ show fs)) Right (M.lookup (sort fs) (layoutRecords layout))
+    -- erasure's projection: one shape with a closed row projects; several
+    -- dispatch on the variant
+    project recordType scrut name n = do
+      let cands = [(tid, length (takeWhile (/= name) (sort fs)), length fs)
+                  | (fs, tid) <- recordShapes (layoutRecords layout) recordType [name]]
+      pure $ case cands of
+        [] -> (PErr ("no record shape has field ." ++ name), n)
+        [(_, idx, _)] | closedRowShape recordType -> (PProj idx scrut, n)
+        many ->
+          let k = KScrut n
+           in (pLet k scrut (foldr (\(tid, idx, ar) rest -> PIf (PTag tid ar (PRef k)) (PProj idx (PRef k)) rest)
+                  (PErr ("no shape with field ." ++ name ++ " matched")) many), n + 1)
+    update scrut assigns n0 = do
+      let roots = nub [head path | (path, _) <- assigns, not (null path)]
+          cands = [(fs, tid) | (fs, tid) <- M.toList (layoutRecords layout), all (`elem` fs) roots]
+      when (null cands) (Left ("typed lowering: no record shape has fields " ++ show roots))
+      (arms, n1) <- foldM (\(acc, n) (fs, tid) -> do
+          (vals, n') <- foldM (\(vs, k) (idx, name) ->
+              case [(path, e) | (path, e) <- assigns, not (null path), head path == name] of
+                [] -> pure (vs ++ [PProj idx scrut], k)
+                [([_], e)] -> do (v, k') <- go k e; pure (vs ++ [v], k')
+                deeper -> do (v, k') <- update (PProj idx scrut) [(drop 1 path, e) | (path, e) <- deeper] k; pure (vs ++ [v], k'))
+            ([], n) (zip [0 ..] (sort fs))
+          pure (acc ++ [(tid, length fs, PMk tid (length fs) vals)], n')) ([], n0) cands
+      pure $ case arms of
+        [(_, _, b)] -> (b, n1)
+        _ -> (foldr (\(tid, ar, b) rest -> PIf (PTag tid ar scrut) b rest) (PErr "record update: no shape matched") arms, n1)
+    plannedUpdate recordType scrut (UpdatePlan roots branches) n0 = do
+      let expected = [(tid, fs) | (fs, tid) <- recordShapes (layoutRecords layout) recordType roots]
+          catalog = [(tid, fs) | (fs, tid) <- recordShapes (layoutRecords layout) Nothing roots]
+          actual = [(tid, map fst fields) | UpdateBranch tid fields <- branches]
+      when (null expected || not (all (`elem` actual) expected) || not (all (`elem` catalog) actual))
+        (Left "typed lowering: a stale record update plan")
+      (arms, n1) <- foldM (\(acc, n) (UpdateBranch tid fields) -> do
+          (vals, n') <- foldM (\(vs, k) (idx, (name, value)) -> case value of
+              KeepField -> pure (vs ++ [PProj idx scrut], k)
+              ReplaceField x -> do (v, k') <- go k x; pure (vs ++ [v], k')
+              NestedUpdate tree -> do
+                (v, k') <- plannedUpdate (recordType >>= (\t -> fieldType t [name])) (PProj idx scrut) tree k
+                pure (vs ++ [v], k'))
+            ([], n) (zip [0 :: Int ..] fields)
+          pure (acc ++ [(tid, length fields, PMk tid (length fields) vals)], n'))
+        ([], n0) [b | b@(UpdateBranch tid fields) <- branches, (tid, map fst fields) `elem` expected]
+      pure $ case arms of
+        [(_, _, b)] | closedRowShape recordType -> (b, n1)
+        _ -> (foldr (\(tid, ar, b) rest -> PIf (PTag tid ar scrut) b rest) (PErr "record update: no shape matched") arms, n1)
     goList n [] = pure ([], n)
     goList n (x : xs) = do
       (x', n1) <- go n x
@@ -262,6 +356,13 @@ plan layout body = fst <$> go 0 body
         (tid, variant, _) <- constructor ("Tup" ++ show (length ps))
         inner <- matchFields scrut ps ok failed
         pure (PIf (PTag tid variant scrut) inner failed)
+      -- each field projected and bound; a dispatching projection's
+      -- temporary is keyed by the field's binder
+      RecordPattern fs -> foldr (\(name, b) rest -> do
+          k <- rest
+          -- KScrut (-1): a placeholder no counter produces
+          x <- either Left (Right . fst) (project (Just (patType p)) scrut name (-1))
+          pure (pLet (KBinder (binderId b)) (rekey (KScrut (-1)) (KField (binderId b)) x) k)) (pure ok) fs
       _ -> Left ("typed lowering: the pattern " ++ patDisplay p)
     -- erasure's matchFields: the last field's test innermost
     matchFields scrut ps ok failed =
@@ -341,6 +442,7 @@ keyName :: Key -> String
 keyName k = case k of
   KBinder (BinderId (Namespace ns) i) -> "%typed.binder." ++ ns ++ "." ++ show i
   KScrut n -> "%typed.scrut." ++ show n
+  KField (BinderId (Namespace ns) i) -> "%typed.field." ++ ns ++ "." ++ show i
 
 -- the erased form a plan node stands for
 toCore :: TE -> Core

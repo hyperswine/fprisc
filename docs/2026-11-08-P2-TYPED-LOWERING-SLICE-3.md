@@ -218,3 +218,39 @@ guishell numbers here are evidence of agreement, not a cold count.
 Unit suites (`LowerTyped` adds a constructor match and value), baseline,
 bridge, policy, compiler options and `make stdcheck` pass. Compile budget
 +11.1 / +10.9 / +5.1% (hello +0.2 points).
+
+## Step 3d-ii record: records (8 November)
+
+- `TypedCensus` gains the `records` rung: record values, fields, updates,
+  record patterns and the TRMC field store (`SetField`). Pattern bindings
+  and pattern guards stay at `products`.
+- The plan mirrors erasure's record code:
+  - values are sorted by field name into their shape (`PMk shape arity`);
+  - a field projects directly when one shape with a closed row has it, and
+    otherwise dispatches on the variant through a scrutinee let
+    (`recordShapes`, `closedRowShape`, `fieldType`, as erasure uses them);
+  - `RecordUpdate` builds one arm per candidate shape, with nested paths
+    recursing;
+  - `PlannedUpdate` checks the plan against the shapes the checked type
+    admits, as erasure does, refusing a stale plan;
+  - record patterns project and bind each field;
+  - `SetField base 1 v` is the primitive `$trmc.setTail`.
+- `Layout` carries the record shapes (`shapeLayouts`). A record pattern's
+  dispatching projection needs a temporary but the pattern matcher has no
+  counter, so the temporary is keyed by the field's binder (`KField`).
+
+| | step 3d-i | step 3d-ii |
+|---|---|---|
+| class (sweep, 766 units) | 14,978 | 15,938 |
+| emitted typed | 14,625 | 15,557 |
+| of which from call regions | 1,749 | 1,846 |
+| worker wrappers | 223 | 235 |
+| reuse, optimized | 0, 0 | 5, 1 |
+| placed, not ordinary | 130 | 140 |
+| refused, disagreement | 0 | 0 |
+
+Corpus: 320 class functions, 290 typed. QOS guishell, cold this run: 1,262
+class functions, 1,239 typed (4 reuse, 1 optimized, 7 worker, 11 placed),
+no disagreement. Code is identical to the `FPR_NO_TYPED_LOWER=1` build on
+all 145 compiling sweep programs. The other checks pass. Compile budget
+unchanged at +11.1 / +10.9 / +5.1%.
