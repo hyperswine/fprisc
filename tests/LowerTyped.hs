@@ -118,6 +118,22 @@ main = do
   check ("a call region agrees: " ++ show (erasedCaller, typedCaller))
     (case (erasedCaller, typedCaller) of (Right a, Right b) -> a {I.fnSourceParams = []} == b {I.fnSourceParams = []}; _ -> False)
 
+  -- slice 3c: a primitive is lowered by Codegen.Lower's own dispatch; a
+  -- literal let is substituted at its use, as the optimizer does before the
+  -- erased lowering. band x (k + 1), k = 1: Lower untags x before it
+  -- evaluates the second argument
+  let x = binder 4 "x" tInt
+      k = binder 5 "k" tInt
+      bitHal = foreignEntries rv64 {tgtHal = M.fromList [("band", 2)]}
+      maskBody = ex tInt (Let k (int 1) (call tInt "band" [local x, call tInt "+" [local k, int 1]]))
+      mask = Function "mask" [x] maskBody
+      maskErased = app "band" [CVar "x", app "+" [CInt 1, CInt 1]]
+      maskProg = M.singleton "mask" (["x"], maskErased)
+      erasedMask = Lower.lowerFn m2Policy M.empty maskProg M.empty bitHal "mask" (["x"], maskErased)
+      typedMask = Typed.lowerFn m2Policy layout maskProg M.empty bitHal mask
+  check ("a delegated primitive with a substituted literal agrees: " ++ show (erasedMask, typedMask))
+    (case (erasedMask, typedMask) of (Right a, Right b) -> a {I.fnSourceParams = []} == b {I.fnSourceParams = []}; _ -> False)
+
   -- slice 2: emission takes the typed function where the erased lowering
   -- of the same function agrees, keeps the erased one where it does not
   let mode = NativeMode PerFunction StrictOff "typed-probe" (Just (DirectRV W64 HartTp)) False noTune False True False

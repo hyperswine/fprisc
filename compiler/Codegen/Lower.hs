@@ -19,7 +19,9 @@ module Codegen.Lower
     -- its helpers, the entry sequence and the global-name lowering
     L, St (..), Cx (..), lowerEntry, refuse, ended, fresh, freshB, newBlock, newBlock1,
     open, suspend, resume, emit, emitDo, close, coerce, asVal, asInt, asPred, unify,
-    calleeOf, isPrimName, lowerGlobal, nullaryValue, arithOps, cmpOps, isStaticNominalTid ) where
+    calleeOf, isPrimName, lowerGlobal, nullaryValue, arithOps, cmpOps, isStaticNominalTid,
+    -- the primitive dispatch, which the typed lowering delegates to
+    Env, lowerVal, lowerTail ) where
 
 import Codegen.IR
 import Codegen.LoopForm (formSelfLoop)

@@ -18,12 +18,14 @@
 module Codegen.LowerTyped (lowerFn, Layout (..)) where
 
 import Core.Region.Runtime (Hook (..), hookName)
+import qualified Codegen.Lower as Lower
 import Codegen.IR
 import Codegen.Lower (Prim, Reason, L, Cx (..), lowerEntry, refuse, ended, newBlock, newBlock1,
   open, suspend, resume, emit, emitDo, close, coerce, asVal, asInt, asPred, unify, calleeOf, isPrimName,
   lowerGlobal, nullaryValue, arithOps, cmpOps, isStaticNominalTid)
 import Codegen.Policy
-import Core.Identity (BinderId)
+import Core.Identity (BinderId (..), Namespace (..))
+import Core.Primitives (entryTickName)
 import Core.Syntax (Core (..), Prog)
 import Type.Syntax (Type (..))
 import Core.Typed.Syntax hiding (Local)
@@ -56,6 +58,27 @@ data TE
   | PErr String
   | PEqInt TE Integer -- erased `(==) scrutinee n`
   | PTag Int Int TE -- erased `CTagEq tid variant scrutinee`
+
+-- every let the plan builds: the optimizer substitutes an Int literal let
+-- at its uses (Core.Opt.Normalize.normIn) before the erased lowering, and
+-- the erased lowering sees the literal where it is used
+pLet :: Key -> TE -> TE -> TE
+pLet k a b = case a of
+  PInt _ -> substitute k a b
+  _ -> PLet k a b
+
+-- replace a key by a literal throughout a plan
+substitute :: Key -> TE -> TE -> TE
+substitute k v = go
+  where
+    go t = case t of
+      PRef k' | k' == k -> v
+      PApp h as -> PApp h (map go as)
+      PIf a b c -> PIf (go a) (go b) (go c)
+      PLet k' a b -> pLet k' (go a) (if k' == k then b else go b)
+      PEqInt a i -> PEqInt (go a) i
+      PTag tid var a -> PTag tid var (go a)
+      _ -> t
 
 -- The shapes Codegen.Lower dispatches on, read from a plan node.
 data V
@@ -100,7 +123,7 @@ plan layout body = fst <$> go 0 body
       Let p a b -> do
         (a', n1) <- go n a
         (b', n2) <- go n1 b
-        pure (PLet (KBinder (binderId p)) a' b', n2)
+        pure (pLet (KBinder (binderId p)) a' b', n2)
       If a b c -> do
         (a', n1) <- go n a
         (b', n2) <- go n1 b
@@ -112,6 +135,16 @@ plan layout body = fst <$> go 0 body
             (args', n1) <- goList n args
             pure (PApp name args', n1)
           _ -> Left "typed lowering: an application whose head is not a known name"
+      -- a sequence: erasure binds the first value to a fresh `seq` name
+      Sequence a b -> do
+        (a', n1) <- go (n + 1) a
+        (b', n2) <- go n1 b
+        pure (pLet (KScrut n) a' b', n2)
+      -- a join call: erasure calls the join's code by its label, captures
+      -- first (a known function of the program)
+      JoinCall (CodeId label) captures args -> do
+        (args', n1) <- goList n args
+        pure (PApp label (map (PRef . KBinder) captures ++ args'), n1)
       -- a call region (placement's typed result): erasure's token binding
       -- around the call (Core.Typed.Erase); the two operations are lowered
       -- as foreign calls (regionHooks)
@@ -124,7 +157,7 @@ plan layout body = fst <$> go 0 body
         let k = KScrut n1
             message = "case: no matching pattern; arms were [" ++ intercalate "," [patDisplay p | Alternative [p] _ _ <- alts] ++ "]"
         (arms, n2) <- caseArms (n1 + 1) True (PErr message) (PRef k) alts
-        pure (PLet k arg' arms, n2)
+        pure (pLet k arg' arms, n2)
       Match (FunctionMatch owner) args alts -> do
         (args', n1) <- goList n args
         functionArms n1 True (PErr ("no matching clause for " ++ owner)) args' alts
@@ -193,7 +226,7 @@ plan layout body = fst <$> go 0 body
       PatternGuard _ _ -> Left "typed lowering: a pattern guard"
     matchPat scrut p ok failed = case patNode p of
       Wildcard -> pure ok
-      Bind b -> pure (PLet (KBinder (binderId b)) scrut ok)
+      Bind b -> pure (pLet (KBinder (binderId b)) scrut ok)
       IntegerPattern i -> pure (PIf (PEqInt scrut i) ok failed)
       ConstructorPattern name [] | name `elem` ["True", "False"] -> do
         (tid, variant, _) <- constructor name
@@ -254,10 +287,35 @@ formName = \case
   SetField {} -> "field store"
   _ -> "node"
 
--- the call region operations: HAL primitives (Compile's region arities)
--- that Codegen.Lower lowers as foreign calls through calleeOf
-regionHooks :: [String]
-regionHooks = map hookName [CallPending, CallLeave]
+-- A primitive application other than the integer operators (slice 3c) is
+-- lowered by Codegen.Lower's own dispatch, so the two cannot drift. Lower
+-- interleaves argument evaluation with its coercions (it untags a local
+-- before it evaluates the next argument), so it is given the application
+-- whole, as the Core the plan mirrors (each plan node is the erased form it
+-- stands for), with the plan's bound values under their own names.
+delegate :: Cx -> TEnv -> String -> [TE] -> L (Lower.Env, Core)
+delegate _ env h args =
+  pure (M.fromList [(keyName k, r) | (k, r) <- M.toList env], foldl CApp (CVar h) (map toCore args))
+
+keyName :: Key -> String
+keyName k = case k of
+  KBinder (BinderId (Namespace ns) i) -> "%typed.binder." ++ ns ++ "." ++ show i
+  KScrut n -> "%typed.scrut." ++ show n
+
+-- the erased form a plan node stands for
+toCore :: TE -> Core
+toCore t = case t of
+  PRef k -> CVar (keyName k)
+  PGlobal g -> CVar g
+  PInt i -> CInt i
+  PBool b -> CMk 1 (if b then 1 else 0) []
+  PApp h as -> foldl CApp (CVar h) (map toCore as)
+  PTick -> CApp (CVar entryTickName) (CInt 0)
+  PIf a b c -> CIf (toCore a) (toCore b) (toCore c)
+  PLet k a b -> CLet (keyName k) (toCore a) (toCore b)
+  PErr m -> CErr m
+  PEqInt a i -> CApp (CApp (CVar "==") (toCore a)) (CInt i)
+  PTag tid var a -> CTagEq tid var (toCore a)
 
 -- Each function below follows its namesake in Codegen.Lower for the S1 shapes.
 
@@ -279,9 +337,10 @@ lowerTail cx env expr = ended (go expr) >> pure ()
         Just c <- calleeOf cx h 0 ->
           if h == cxSelf cx then close (TBr (cxEntry cx) [])
           else close (TTailCall c [])
-      VApp h _
-        | isPrimName cx h, M.notMember h arithOps, M.notMember h cmpOps, h `notElem` regionHooks ->
-            refuse ("typed lowering: the primitive `" ++ h ++ "`")
+      VApp h args
+        | isPrimName cx h, M.notMember h arithOps, M.notMember h cmpOps -> do
+            (env', core) <- delegate cx env h args
+            Lower.lowerTail cx env' core
       VApp h args@(_ : _)
         | Just c <- calleeOf cx h (length args) -> do
             as <- mapM (lowerVal cx env) args
@@ -372,7 +431,9 @@ lowerVal cx env te = case view te of
         ra <- lowerVal cx env a
         rb <- lowerVal cx env b
         compareWith o ra rb
-    | isPrimName cx h, h `notElem` regionHooks -> refuse ("typed lowering: the primitive `" ++ h ++ "`")
+    | isPrimName cx h -> do
+        (env', core) <- delegate cx env h args
+        Lower.lowerVal cx env' core
     | Just c <- calleeOf cx h (length args) -> do
         when (case calleeResult c of TProduct _ -> True; _ -> False) (refuse ("a product worker call " ++ h ++ " outside a let binding"))
         as <- mapM (lowerVal cx env) args

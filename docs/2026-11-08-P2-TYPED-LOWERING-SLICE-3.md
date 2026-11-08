@@ -92,3 +92,50 @@ Corpus: 116 class functions, 104 typed. QOS guishell: 270 class functions,
 compiling sweep programs. The other checks pass. Compile budget +10.6 /
 +10.7 / +4.9% (+0.1-0.2 points: the typed lowering now runs on 3.5 times as
 many functions).
+
+## Step 3c record: forms (8 November)
+
+The `forms` rung now admits any signature: other primitives, sequences,
+join calls and call regions. Pattern bindings and pattern guards move to the
+products rung (census feature `FPattern`), since their patterns are almost
+always constructor patterns.
+
+- **Primitives go to `Codegen.Lower`'s own dispatch.** A primitive
+  application other than the integer operators is handed to
+  `Lower.lowerVal` / `Lower.lowerTail` as the Core the plan mirrors. Each
+  plan node is the erased form it stands for (`toCore`), with the plan's
+  bound values under their own names. The first attempt lowered compound
+  arguments in `LowerTyped` and passed them as names. That broke on
+  `band x ((1 shl n) - 1)` in `std/digest`: `Lower` untags `x` before it
+  evaluates the second argument, an interleaving pre-lowering cannot
+  reproduce. Giving `Lower` the whole application shares the dispatch and
+  its evaluation order exactly. `Lower` now exports `Env`, `lowerVal` and
+  `lowerTail` for this.
+- **Sequences** are planned as erasure binds them (a fresh `seq` let).
+- **Join calls** are calls to the join's code label, captures first: a
+  known function of the program.
+- **Literal lets are substituted at their uses**, through every let the
+  plan builds (`pLet`), including function-match argument bindings and
+  aliases of a literal. The optimizer's `normIn` does this before the
+  erased lowering, so the erased function evaluates the constant where it
+  is used. `log`, `logErr` and `logWarn` in the prelude disagreed on this
+  until the plan did the same.
+
+| | step 3b | step 3c |
+|---|---|---|
+| class (sweep, 766 units) | 2,690 | 5,703 |
+| emitted typed | 2,591 | 5,529 |
+| of which from call regions | 647 | 1,182 |
+| worker wrappers | 90 | 100 |
+| placed, not ordinary | 9 | 74 |
+| refused, disagreement | 0 | 0 |
+
+Corpus: 229 class functions, 208 typed. QOS guishell: 486, 476 typed. Code
+is identical to the `FPR_NO_TYPED_LOWER=1` build on all 145 compiling sweep
+programs. Unit suites 43/43 (`LowerTyped` adds a delegated `band` with a
+substituted literal), baseline, bridge, policy, compiler options and
+`make stdcheck` pass. Compile budget +10.9 / +10.7 / +4.9% (hello +0.3
+points).
+
+The stage dump (`FPR_TYPED_LOWER_STAGES_SHOW=NAME`) now prints a function's
+stages whether or not it agreed at the boundary.

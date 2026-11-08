@@ -861,12 +861,12 @@ compileWithReport accepted report = do
                              (Regions.resultNative result) emitted
                   allStages = stages ++ [("optimized", emOptimized emission), ("eligible", emEligible emission)]
               when traceStages $ putStrLn (TypedLowering.stagesNote report allStages (emLowered emission) ++ " unit=" ++ label)
-              forM_ showName $ \f -> when (M.member f (TypedLowering.reportAgreedFns report)) $ do
-                let (def, fn) = TypedLowering.reportAgreedFns report M.! f
-                putStrLn ("# stage boundary " ++ f ++ ": " ++ show def)
+              forM_ showName $ \f -> when (M.member f (NativeCore.nativeDefinitions (Regions.resultNative result))) $ do
+                forM_ (M.lookup f (TypedLowering.reportAgreedFns report)) $ \(def, _) ->
+                  putStrLn ("# stage boundary " ++ f ++ ": " ++ show def)
                 forM_ allStages $ \(l, p) ->
                   putStrLn ("# stage " ++ l ++ " " ++ f ++ ": " ++ maybe "absent" show (M.lookup f p))
-                putStrLn ("# stage typed-fn " ++ f ++ ": " ++ show fn)
+                putStrLn ("# stage typed-fn " ++ f ++ ": " ++ maybe "absent" show (M.lookup f (TypedLowering.loweredFns lowered)))
                 putStrLn ("# stage lowered-fn " ++ f ++ ": " ++ maybe "absent" show (M.lookup f (emLowered emission)))
           checkBuiltinWidth p = do
             when (oArc opts && any (coreHasName i32WidePrimitive . snd) (M.elems p)) $ do

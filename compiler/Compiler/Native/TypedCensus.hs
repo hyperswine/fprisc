@@ -14,10 +14,12 @@
 --               not change the lowering)
 --   generic     calls with a polymorphic signature (slice 3b: compiled once
 --               over the uniform tagged representation); t1, calls,
---               signatures and generic are what Codegen.LowerTyped accepts
---   forms       plus other primitives, join calls, sequences, pattern
---               bindings, call regions and pattern guards
---   products    plus constructors, tuples, records and their patterns
+--               signatures and generic were slices 3a-3b's class
+--   forms       plus other primitives, join calls, sequences and call
+--               regions, with any signature (slice 3c: these four rungs are
+--               what Codegen.LowerTyped accepts)
+--   products    plus constructors, tuples, records, their patterns,
+--               pattern bindings and pattern guards
 --   strings     plus string literals and string patterns
 --   lists       plus list literals and list builders
 --   closures    plus lambdas, closures, code and join calls
@@ -42,7 +44,7 @@ newtype Census = Census (M.Map Class Int)
 scalarPrimitives :: S.Set String
 scalarPrimitives = S.fromList ["+","-","*","/","==","!=","<",">","<=",">="]
 
-data Feature = FCall | FForm | FProduct | FString | FList | FClosure | FVector | FOther
+data Feature = FCall | FForm | FPattern | FProduct | FString | FList | FClosure | FVector | FOther
   deriving (Eq, Ord, Show)
 
 -- `known`: the names that are functions of the program or its imports; any
@@ -50,10 +52,10 @@ data Feature = FCall | FForm | FProduct | FString | FList | FClosure | FVector |
 census :: (String -> Bool) -> M.Map String Function -> Census
 census known functions = Census (M.fromListWith (+) [(c, 1) | c <- M.elems (classify known functions)])
 
--- The typed lowering's class: t1, calls, signatures and generic (slice 1's
--- S1 widened by slices 3a and 3b).
+-- The typed lowering's class: t1, calls, signatures, generic and forms
+-- (slice 1's S1 widened by slices 3a-3c).
 s1Functions :: (String -> Bool) -> M.Map String Function -> S.Set String
-s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic]) (classify known functions))
+s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms]) (classify known functions))
 
 classify :: (String -> Bool) -> M.Map String Function -> M.Map String Class
 classify known functions = M.mapWithKey (\n _ -> classOf n) functions
@@ -74,15 +76,15 @@ classify known functions = M.mapWithKey (\n _ -> classOf n) functions
       Just (s, p, fs, _)
         | S.member n t1 -> T1
         | p, fs `S.isSubsetOf` S.fromList [FCall] -> Generic
-        | p -> Polymorphic
         | s && fs `S.isSubsetOf` S.fromList [FCall] -> Calls
         | fs `S.isSubsetOf` S.fromList [FCall] -> Signatures
-        | s && fs `S.isSubsetOf` S.fromList [FCall, FForm] -> Forms
-        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct] -> Products
-        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct, FString] -> Strings
-        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct, FString, FList] -> Lists
-        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct, FString, FList, FClosure] -> Closures
-        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FProduct, FString, FList, FClosure, FVector] -> Vectors
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm] -> Forms
+        | p -> Polymorphic
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FPattern, FProduct] -> Products
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FPattern, FProduct, FString] -> Strings
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FPattern, FProduct, FString, FList] -> Lists
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FPattern, FProduct, FString, FList, FClosure] -> Closures
+        | fs `S.isSubsetOf` S.fromList [FCall, FForm, FPattern, FProduct, FString, FList, FClosure, FVector] -> Vectors
         | otherwise -> Other
     -- a call to a known function: a global that is neither an integer
     -- operator nor itself (self recursion keeps t1 candidacy; the fixed point
@@ -136,7 +138,7 @@ bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> pat
       Match CaseMatch _ _ -> S.empty
       Match (FunctionMatch _) _ _ -> S.empty
       Sequence _ _ -> S.singleton FForm
-      LetPattern _ _ _ -> S.singleton FForm
+      LetPattern _ _ _ -> S.singleton FPattern
       StringValue _ -> S.singleton FString
       Construct _ _ -> S.singleton FProduct
       AtomValue _ -> S.singleton FProduct
@@ -164,7 +166,7 @@ bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> pat
       MatchTail _ _ alts _ -> S.unions [S.unions (map patternFeatures ps) | Alternative ps _ _ <- alts]
       LetPattern p _ _ -> patternFeatures p
       _ -> S.empty
-    guardFeatures g = case g of BoolGuard _ -> S.empty; PatternGuard p _ -> S.insert FForm (patternFeatures p)
+    guardFeatures g = case g of BoolGuard _ -> S.empty; PatternGuard p _ -> S.insert FPattern (patternFeatures p)
 
 localHead :: Expr -> Bool
 localHead e = case exprNode e of
