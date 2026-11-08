@@ -1,9 +1,10 @@
 # Sourced by both board build scripts. Unset FPR_PRESET retains legacy defaults.
 if [[ -n "${FPR_PRESET:-}" ]]; then
   # fprisc-48, fprisc-72 and fprisc-81 match simple-risc's SDRAM presets of
-  # the same name (CPU clock 48, 72 or 81 MHz); the runtime clock is all that
-  # differs here.
-  case "$FPR_PRESET" in fprisc-48) fpr_preset_mhz=48;; fprisc-72) fpr_preset_mhz=72;; fprisc-81) fpr_preset_mhz=81;;
+  # the same name: the CPU clock (48, 72 or 81 MHz) and, since 2026-11-08,
+  # the instruction set: fprisc-81 is the RV32IM core, the others RV32IMC.
+  case "$FPR_PRESET" in fprisc-48) fpr_preset_mhz=48; fpr_preset_rvc=1;; fprisc-72) fpr_preset_mhz=72; fpr_preset_rvc=1;;
+    fprisc-81) fpr_preset_mhz=81; fpr_preset_rvc=0;;
     *) echo "unknown FPR_PRESET: $FPR_PRESET" >&2; exit 1;; esac
   fpr_preset_setting() {
     if [[ -n "${!1+x}" && "${!1}" != "$2" ]]; then
@@ -12,8 +13,8 @@ if [[ -n "${FPR_PRESET:-}" ]]; then
     export "$1=$2"
   }
   fpr_preset_setting FPR_XLEN 32
-  fpr_preset_setting FPR_RVC 1
+  fpr_preset_setting FPR_RVC "$fpr_preset_rvc"
   fpr_preset_setting FPR_CPU_MHZ "$fpr_preset_mhz"
   unset -f fpr_preset_setting
-  unset fpr_preset_mhz
+  unset fpr_preset_mhz fpr_preset_rvc
 fi

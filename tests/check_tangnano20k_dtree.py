@@ -233,7 +233,9 @@ def main():
     report = {'reference': expected, 'source_sha256': sha(fixture),
               'classifier_sha256': sha(source_root / 'tests/dtree.fpr'),
               'compiler_sha256': sha(source_root / 'fpr'), 'repeats': args.repeat, 'executions': {}}
-    environment = {**os.environ, 'FPR_RVC': '1', 'FPR_XLEN': str(args.xlen), 'FPR_QEMU': str(int(args.qemu)), 'FPR_CPU_MHZ': str(args.freq_mhz),
+    # The instruction set follows the caller (the runner sets FPR_RVC from its
+    # preset); compressed stays the default for the older callers.
+    environment = {**os.environ, 'FPR_RVC': os.environ.get('FPR_RVC', '1'), 'FPR_XLEN': str(args.xlen), 'FPR_QEMU': str(int(args.qemu)), 'FPR_CPU_MHZ': str(args.freq_mhz),
                    'FPR_SOFTFLOAT_ROOT': os.environ.get('FPR_SOFTFLOAT_ROOT', str(ROOT / 'build/tangnano20k-softfloat'))}
     report['build_options']={key:environment.get(key,'0') for key in
                             ('FPR_XLEN','FPR_RVC','FPR_QEMU','FPR_CPU_MHZ','FPR_HEAP_REPORT')}
@@ -251,7 +253,7 @@ def main():
             (out / 'board-build.log').write_text(output)
             image = out / 'base.bin'
             board = {**board_artifact(out), 'frequency_mhz': args.freq_mhz,
-                     'isa': f'RV{args.xlen}IMC', 'passed': False}
+                     'isa': f'RV{args.xlen}IM' + ('C' if environment['FPR_RVC'] == '1' else ''), 'passed': False}
             report['executions']['qemu' if args.qemu else 'board'] = board
             if args.qemu:
                 from check_tangnano20k_rv32_base import run_image
