@@ -373,3 +373,51 @@ The class covers about 73% of the step 0 census's checked definitions
 (lambdas, closure values, code calls, applying a local, result pipes) and
 vectors are left. They need the general-apply adapter and the kernel
 rewrite.
+
+## Step 3g record: closures (9 November)
+
+- A closure value, a code call, applying a local (any head that is not a
+  known name) and the success arm of a result pipe are the plan node
+  `PCall head args`, which stands for erasure's curried `CApp` spine and is
+  lowered by `Codegen.Lower`'s own application dispatch (known calls,
+  `fpr_applyN` staging for partial and over-saturated ones). For now that
+  dispatch is the general-apply adapter: the typed lowering doesn't build
+  its own. A result pipe is erasure's scrutinee let, `Ok` test and `Err`
+  rebuild. A lambda is `PLam`; `Lower` refuses it as it refuses the erased
+  lambda (closure conversion runs before this point, so none is lowered).
+- The `closures` rung joins the class with any signature.
+- New census rule: a closure or code call over a code label that isn't in
+  the unit (an inlined lambda from another unit, e.g. std/list's `all`
+  inside printer-host) is `other`. Only monomorphization's specialization
+  makes such a body lowerable here, and the erased function comes from that
+  specialized body. The first sweep refused the 2 functions this covers;
+  the rule takes them out of the class.
+
+| Sweep (151 programs, 766 units) | after 3f | after 3g |
+|---|---|---|
+| class (S1) | 25,106 | 34,223 |
+| emitted typed | 23,948 | 32,370 |
+| of which call regions | 4,893 | 7,931 |
+| worker wrappers | 593 | 878 |
+| reuse | 16 | 56 |
+| optimized | 13 | 258 |
+| placed, not ordinary | 536 | 661 |
+| refused, disagreement | 0 | 0 |
+
+Corpus: 575 class functions, 523 typed. QOS guishell: 2,634, 2,525 typed.
+Code is identical to the `FPR_NO_TYPED_LOWER=1` build on all 145 compiling
+sweep programs. All 43 unit suites (`LowerTyped`: applying a local; a
+lambda still refused), baseline, bridge, policy, compiler options and
+`make stdcheck` pass.
+
+**Compile budget** +12.4 / +12.7 / +6.7% allocation (+0.7 to +1.0 points,
+the largest step yet: closure-heavy functions are big), still red. hello's
+peak is +11.6%.
+
+The class is now everything but vectors, functions over another unit's
+code, and `other`. The step 0 census counted 34,304 checked definitions,
+so the class now matches nearly all of them; 94.6% of the class is
+emitted typed. The `optimized` exemption grew from 13 to 258: the
+optimizer reshapes closure-applying bodies (inlining and beta reduction)
+before the erased lowering, so those keep the erased function. Vectors,
+which need the kernel rewrite, are the last rung.

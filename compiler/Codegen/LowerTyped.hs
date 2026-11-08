@@ -67,6 +67,8 @@ data TE
   | PStr String -- erased `CStr s` (slice 3d: an atom's name; 3e: a string literal)
   | PStrEq TE String -- erased `(==) scrutinee "s"` (a string pattern)
   | PList [TE] -- erased `Cons x (Cons y .. Nil)` (slice 3f: a list literal)
+  | PCall TE [TE] -- erased `f a b`: an application Lower dispatches itself (slice 3g: closures, code calls, a local head)
+  | PLam [Key] TE -- erased `\x y -> body` (Lower refuses it, as it refuses the erased lambda)
 
 -- every let the plan builds: the optimizer substitutes an Int literal let
 -- at its uses (Core.Opt.Normalize.normIn) before the erased lowering, and
@@ -92,6 +94,8 @@ rekey from to = go
       PProj i a -> PProj i (go a)
       PStrEq a str -> PStrEq (go a) str
       PList xs -> PList (map go xs)
+      PCall f as -> PCall (go f) (map go as)
+      PLam ks b -> PLam ks (go b)
       _ -> t
 
 -- replace a key by a literal throughout a plan
@@ -109,6 +113,8 @@ substitute k v = go
       PProj i a -> PProj i (go a)
       PStrEq a str -> PStrEq (go a) str
       PList xs -> PList (map go xs)
+      PCall f as -> PCall (go f) (map go as)
+      PLam ks b -> PLam ks (go b)
       _ -> t
 
 -- The shapes Codegen.Lower dispatches on, read from a plan node.
@@ -227,7 +233,31 @@ plan layout body = fst <$> go 0 body
           Var (Global name _) -> do
             (args', n1) <- goList n args
             pure (PApp name args', n1)
-          _ -> Left "typed lowering: an application whose head is not a known name"
+          -- any other head (a local, a closure, a code call's result):
+          -- erasure's curried application, dispatched by Lower
+          _ -> do
+            (h', n1) <- go n h
+            (args', n2) <- goList n1 args
+            pure (PCall h' args', n2)
+      -- closures (slice 3g), as erasure builds them: the code label applied
+      -- to its captures (and, for a code call, its arguments)
+      ClosureValue (CodeId label) captures ->
+        pure (PCall (PGlobal label) (map (PRef . KBinder) captures), n)
+      CodeCall (CodeId label) captures args -> do
+        (args', n1) <- goList n args
+        pure (PCall (PGlobal label) (map (PRef . KBinder) captures ++ args'), n1)
+      Lambda ps b -> do
+        (b', n1) <- go n b
+        pure (PLam (map (KBinder . binderId) ps) b', n1)
+      -- a result pipe: erasure's scrutinee let and Ok test
+      ResultPipe a fn -> do
+        let ks = KScrut n; kok = KScrut (n + 1); kerr = KScrut (n + 2)
+        (x, n1) <- go (n + 3) a
+        (f', n2) <- go n1 fn
+        (tid, var, _) <- constructor "Ok"
+        let success = pLet kok (PProj 0 (PRef ks)) (PCall f' [PRef kok])
+            failure = pLet kerr (PProj 0 (PRef ks)) (PCall (PGlobal "Err") [PRef kerr])
+        pure (pLet ks x (PIf (PTag tid var (PRef ks)) success failure), n2)
       -- a sequence: erasure binds the first value to a fresh `seq` name
       Sequence a b -> do
         (a', n1) <- go (n + 1) a
@@ -429,6 +459,8 @@ view = \case
   PStr _ -> VCore
   PStrEq {} -> VCore
   PList _ -> VCore
+  PCall {} -> VCore
+  PLam {} -> VCore
 
 formName :: Node -> String
 formName = \case
@@ -494,6 +526,8 @@ toCore t = case t of
   PProj i a -> CProj i (toCore a)
   PStr str -> CStr str
   PStrEq a str -> CApp (CApp (CVar "==") (toCore a)) (CStr str)
+  PCall f as -> foldl CApp (toCore f) (map toCore as)
+  PLam ks b -> CLam (map keyName ks) (toCore b)
   PList xs -> foldr (\x rest -> CApp (CApp (CVar "Cons") (toCore x)) rest) (CVar "Nil") xs
 
 -- Each function below follows its namesake in Codegen.Lower for the S1 shapes.

@@ -100,6 +100,11 @@ main = do
 
   -- outside the class: refused with a reason, never lowered differently
   check "a lambda is refused" (isLeft (snd (lowerings (Function "l" [n] (ex (TFn tInt tInt) (Lambda [binder 10 "y" tInt] (int 0)))) (CLam ["y"] (CInt 0)))))
+  -- slice 3g: applying a local is erasure's curried application, which Lower dispatches
+  let fb = binder 12 "f" (TFn tInt tInt)
+      xb = binder 13 "x" tInt
+      apply = Function "ap" [fb, xb] (ex tInt (Apply (local fb) (local xb)))
+  check "applying a local agrees (slice 3g)" (agrees apply (CApp (CVar "f") (CVar "x")))
   -- slice 3e: a string literal, and a string pattern (an equality test)
   let s = Function "s" [n] (ex (TC "String") (StringValue "x"))
   check "a string literal agrees (slice 3e)" (agrees s (CStr "x"))

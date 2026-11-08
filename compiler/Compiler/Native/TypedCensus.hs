@@ -60,7 +60,7 @@ census known functions = Census (M.fromListWith (+) [(c, 1) | c <- M.elems (clas
 -- The typed lowering's class: t1 through strings (slice 1's S1 widened
 -- by slices 3a-3d).
 s1Functions :: (String -> Bool) -> M.Map String Function -> S.Set String
-s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors, Records, Products, Strings, Lists]) (classify known functions))
+s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors, Records, Products, Strings, Lists, Closures]) (classify known functions))
 
 classify :: (String -> Bool) -> M.Map String Function -> M.Map String Class
 classify known functions = M.mapWithKey (\n _ -> classOf n) functions
@@ -89,15 +89,19 @@ classify known functions = M.mapWithKey (\n _ -> classOf n) functions
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct] -> Products
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString] -> Strings
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList] -> Lists
-        | p -> Polymorphic
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList, FClosure] -> Closures
+        | p -> Polymorphic
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList, FClosure, FVector] -> Vectors
         | otherwise -> Other
     -- a call to a known function: a global that is neither an integer
     -- operator nor itself (self recursion keeps t1 candidacy; the fixed point
     -- checks it); any other global is a primitive, a form
-    features f = S.unions [bodyFeatures (functionBody f), calls, prims]
+    features f = S.unions [bodyFeatures (functionBody f), calls, prims, foreignCode]
       where
+        -- a closure or code call over another unit's code (an inlined
+        -- lambda): only monomorphization's specialization makes it
+        -- lowerable here, so it is outside the class
+        foreignCode = if any (not . known) (S.toList (codeLabels (functionBody f))) then S.singleton FOther else S.empty
         others = [g | g <- S.toList (globals (functionBody f)), not (S.member g scalarPrimitives), g /= functionName f]
         calls = if any known others then S.singleton FCall else S.empty
         prims = if any (not . known) others then S.singleton FForm else S.empty
@@ -124,6 +128,13 @@ polymorphicSig = any hasVariable . signatureTypes
 globals :: Expr -> S.Set String
 globals e = here <> getConst (mapChildrenM (Const . globals) e)
   where here = case exprNode e of Var (Global n _) -> S.singleton n; _ -> S.empty
+
+codeLabels :: Expr -> S.Set String
+codeLabels e = here <> getConst (mapChildrenM (Const . codeLabels) e)
+  where here = case exprNode e of
+          ClosureValue (CodeId l) _ -> S.singleton l
+          CodeCall (CodeId l) _ _ -> S.singleton l
+          _ -> S.empty
 
 bodyFeatures :: Expr -> S.Set Feature
 bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> patterns
