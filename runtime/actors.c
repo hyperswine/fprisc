@@ -115,11 +115,18 @@ typedef struct ringv {
   V *slots;
   uw *from;           /* sender tags, the shared ring only; else 0 */
   uw *charge;         /* per-message admission charge for bounded inboxes */
+  char *inl;          /* FPR_INL_CELL bytes per slot: small flat messages
+                       * carried in the ring (fpr_msg_inline_size); 0 = none */
   struct ringv *old;  /* the ring this one replaced (freed at reuse) */
 } ringv_t;
 #define SLOT(rv, k) ((rv)->slots[(k) & ((rv)->cap - 1)])
 #define TAGAT(rv, k) ((rv)->from[(k) & ((rv)->cap - 1)])
 #define CHARGEAT(rv, k) ((rv)->charge[(k) & ((rv)->cap - 1)])
+#define INLAT(rv, k) ((rv)->inl + (uw)((k) & ((rv)->cap - 1)) * FPR_INL_CELL)
+/* a slot-carried message lives in ITS slot's cell of the ring in force:
+ * pushes write it there, the shift in take_at moves it with its slot, and
+ * ring_install moves it into the new ring */
+#define INL_HERE(rv, k, m) ((rv)->inl && (char *)(m) == INLAT(rv, k) + FPR_MANAGED_PREFIX)
 
 /* one SPSC channel: bound to a single sender for the actor's lifetime.
  *
@@ -758,17 +765,22 @@ static void chan_init(chan_t *c, uw *shfrom, int fresh) {
   c->rv0.slots = c->slots0;
   c->rv0.from = shfrom;
   c->rv0.charge = 0;
+  c->rv0.inl = 0;
   c->budget_owner = 0;
   c->rv0.old = 0;
   c->rv = &c->rv0;
 }
 /* a ring of cap slots (plus tags when the channel is the shared one),
  * in one block; 0 when there is no memory */
-static uw ring_block_bytes(uint32_t cap, int tagged, int budgeted) {
-  return sizeof(ringv_t) + (uw)cap * sizeof(V) + (tagged ? (uw)cap * sizeof(uw) : 0) + (budgeted ? (uw)cap * sizeof(uw) : 0);
+static uw ring_block_words(uint32_t cap, int tagged, int budgeted) {
+  return (uw)cap * sizeof(V) + (tagged ? (uw)cap * sizeof(uw) : 0) + (budgeted ? (uw)cap * sizeof(uw) : 0);
 }
-static ringv_t *ring_block_d(uint32_t cap, int tagged, ringv_t *old, int direct, int budgeted) {
-  uw bytes = ring_block_bytes(cap, tagged, budgeted);
+static uw ring_block_bytes(uint32_t cap, int tagged, int budgeted, int inl) {
+  return sizeof(ringv_t) + ring_block_words(cap, tagged, budgeted) + (inl ? 15 + (uw)cap * FPR_INL_CELL : 0);
+}
+static ringv_t *ring_block_di(uint32_t cap, int tagged, ringv_t *old, int direct, int budgeted, int inl) {
+  uw words = ring_block_words(cap, tagged, budgeted);
+  uw bytes = ring_block_bytes(cap, tagged, budgeted, inl);
   ringv_t *nv = (ringv_t *)big_block_d(bytes, direct);
   if (!nv) return 0;
   nv->cap = cap;
@@ -776,8 +788,12 @@ static ringv_t *ring_block_d(uint32_t cap, int tagged, ringv_t *old, int direct,
   nv->slots = (V *)(nv + 1);
   nv->from = tagged ? (uw *)(nv->slots + cap) : 0;
   nv->charge = budgeted ? (uw *)(nv->slots + cap) + (tagged ? cap : 0) : 0;
+  nv->inl = inl ? (char *)(((uw)((char *)nv->slots + words) + 15) & ~(uw)15) : 0;
   nv->old = old;
   return nv;
+}
+static ringv_t *ring_block_d(uint32_t cap, int tagged, ringv_t *old, int direct, int budgeted) {
+  return ring_block_di(cap, tagged, old, direct, budgeted, 0);
 }
 static ringv_t *ring_block(uint32_t cap, int tagged, ringv_t *old) {
   return ring_block_d(cap, tagged, old, 0, 0);
@@ -2545,32 +2561,73 @@ int fpr_actor_receive_ready(uw kind, V peer) {
 
 /* remove the message at logical position k (rh <= k < rt), shifting the
  * head side down one -- all touched slots are consumer-owned (< rt). */
+/* a small message carried in its slot (fpr_msg_inline_size) becomes the
+ * receiver's own value, a local copy, before the slot is freed.  The copy
+ * may allocate, and so park: the slot is still held.  Only the running
+ * actor receives into its own memory; the sender never carries a message
+ * in a slot for any other receiver (the syscall mailbox). */
+static V inline_take(acb_t *a, V m, int *msg) {
+  *msg = 0;
+  fpr_hart_t *h = fpr_hart();
+  if (!h || h->current != a) fpr_cpanic("receive: a slot-carried message taken by an actor that is not running");
+  return fpr_msg_inline_take(m);
+}
 static V take_at(acb_t *a, chan_t *c, uint32_t k) {
   uint32_t rh = c->rh;
   if (k == rh) { /* the head: no shifting, no lock (the caller loaded rt first) */
     ringv_t *rv = __atomic_load_n(&c->rv, __ATOMIC_ACQUIRE);
     V m = SLOT(rv, k);
+    int msg = 1;
+    if (FPR_INL_CELL && INL_HERE(rv, k, m)) m = inline_take(a, m, &msg);
     uw charge = rv->charge ? CHARGEAT(rv, k) : 0;
     __atomic_store_n(&c->rh, rh + 1, __ATOMIC_RELEASE); /* frees a slot */
     if (c->budget_owner) inbox_release(a, charge);
-    fpr_rx_push(a, m); /* the root dies with this turn (fpr.h fpr_rx_t) */
+    if (msg) fpr_rx_push(a, m); /* the root dies with this turn (fpr.h fpr_rx_t) */
     return m;
   }
   /* shifting rewrites consumer-owned slots; a producer growing the
    * ring copies those same slots, so the two exclude each other */
+  uw cell[FPR_INL_CELL ? FPR_INL_CELL / sizeof(uw) : 1];
+  int inl = 0;
   fpr_lock(&a->shlock);
   ringv_t *rv = c->rv;
   V m = SLOT(rv, k);
+  if (FPR_INL_CELL && INL_HERE(rv, k, m)) {
+    /* its cell may be overwritten by the shift below: keep it here */
+    uw total = fpr_msg_inline_total(m);
+    __builtin_memcpy(cell, (char *)m - FPR_MANAGED_PREFIX, total);
+    m = (V)((char *)cell + FPR_MANAGED_PREFIX);
+    inl = 1;
+  }
   uw charge = rv->charge ? CHARGEAT(rv, k) : 0;
   for (uint32_t j = k; j > rh; j--) {
-    SLOT(rv, j) = SLOT(rv, j - 1);
+    V s = SLOT(rv, j - 1);
+    /* a cell lives at its slot's index: it moves with it, or the producer
+     * would reuse it while the message waits one slot up */
+    if (FPR_INL_CELL && INL_HERE(rv, j - 1, s)) {
+      uw total = fpr_msg_inline_total(s);
+      __builtin_memcpy(INLAT(rv, j), INLAT(rv, j - 1), total);
+      s = (V)(INLAT(rv, j) + FPR_MANAGED_PREFIX);
+    }
+    SLOT(rv, j) = s;
     if (rv->from) TAGAT(rv, j) = TAGAT(rv, j - 1);
     if (rv->charge) CHARGEAT(rv, j) = CHARGEAT(rv, j - 1);
   }
-  __atomic_store_n(&c->rh, rh + 1, __ATOMIC_RELEASE);
+  if (!inl) {
+    __atomic_store_n(&c->rh, rh + 1, __ATOMIC_RELEASE);
+    fpr_unlock(&a->shlock);
+    if (c->budget_owner) inbox_release(a, charge);
+    fpr_rx_push(a, m);
+    return m;
+  }
+  /* the head slot is consumed but not yet released: the copy below may
+   * park, and nothing may hold the spinlock across that */
   fpr_unlock(&a->shlock);
+  int msg;
+  m = inline_take(a, m, &msg);
+  __atomic_store_n(&c->rh, rh + 1, __ATOMIC_RELEASE);
   if (c->budget_owner) inbox_release(a, charge);
-  fpr_rx_push(a, m);
+  if (msg) fpr_rx_push(a, m);
   return m;
 }
 
@@ -3018,13 +3075,22 @@ static void ring_install(chan_t *c, ringv_t *nv) {
   ringv_t *ov = c->rv;
   uint32_t rh = __atomic_load_n(&c->rh, __ATOMIC_ACQUIRE), rt = c->rt;
   for (uint32_t k = rh; k != rt; k++) {
-    SLOT(nv, k) = SLOT(ov, k);
+    V m = SLOT(ov, k);
+    if (FPR_INL_CELL && INL_HERE(ov, k, m)) {
+      /* the consumer may be copying the old cell out right now (a head take
+       * holds no lock); the old ring stays readable on the chain, and the
+       * new slot points at a copy in the new ring */
+      if (!nv->inl) fpr_cpanic("ring growth: a slot-carried message and no cell area");
+      __builtin_memcpy(INLAT(nv, k), INLAT(ov, k), fpr_msg_inline_total(m));
+      m = (V)(INLAT(nv, k) + FPR_MANAGED_PREFIX);
+    }
+    SLOT(nv, k) = m;
     if (nv->from) TAGAT(nv, k) = TAGAT(ov, k);
     if (nv->charge) CHARGEAT(nv, k) = CHARGEAT(ov, k);
   }
   nv->old = ov;
   __atomic_store_n(&c->rv, nv, __ATOMIC_RELEASE);
-  fpr_ring_grows++;
+  if (nv->cap > ov->cap) fpr_ring_grows++; /* a cell-area upgrade is not a growth */
 }
 /* place m (already copied and pinned) on channel c of a: 1 queued, 0
  * full.  A Dynamic ring that is full doubles -- and the new block is
@@ -3068,7 +3134,7 @@ static int ring_push(acb_t *a, chan_t *c, uw key, V m, uw charge) {
 #ifdef FPR_ADMISSION_TEST
     if (fpr_admission_test_fail(9)) return 0; /* ring backing unavailable */
 #endif
-    ringv_t *nv = ring_block_d(ncap, shared, 0, a == mem_act, a->inbox_max_messages != 0);
+    ringv_t *nv = ring_block_di(ncap, shared, 0, a == mem_act, a->inbox_max_messages != 0, rv->inl != 0);
     if (!nv) return 0;
     fpr_lock(&a->shlock);
     if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) {
@@ -3086,12 +3152,58 @@ static int ring_push(acb_t *a, chan_t *c, uw key, V m, uw charge) {
     fpr_unlock(&a->shlock);
   }
 }
+static acb_t syscall_mb; /* below: the syscall trampoline's reply mailbox */
+
+/* the small-message path (fpr_msg_inline_size): the cell goes into the
+ * slot's cell area of a dedicated channel.  1 sent; 0 not this path (the
+ * ordinary send follows, and it grows a full ring). */
+/* out of line: an ordinary send pays only SEND_INLINE_MAY's tests */
+#define SEND_INLINE_MAY(a, m) (FPR_INL_CELL && !ISINT(m) && (m) && !(a)->inbox_max_messages)
+__attribute__((noinline)) static int send_inline(acb_t *a, uw key, V m) {
+  if (a == mem_act || a == &syscall_mb || !a->ch) return 0;
+  acb_t *cur = fpr_hart()->current;
+  if (!cur || cur->pid != a->pid) return 0;
+  uw total = fpr_msg_inline_size(m, a->pid);
+  if (!total) return 0;
+  chan_t *c = chan_for(a, key, 1);
+  if (!c || c->sender == SHARED_KEY) return 0;
+  ringv_t *rv = c->rv; /* dedicated: single producer, private rt */
+  if (!rv->inl) {
+    /* the first small message on this channel: a ring of the same size
+     * with a cell area, installed like a growth (the old ring stays on the
+     * chain until the channel block is reused) */
+    ringv_t *nv = ring_block_di(rv->cap, 0, 0, 0, 0, 1);
+    if (!nv) return 0;
+    fpr_lock(&a->shlock);
+    if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD || c->rv != rv) {
+      fpr_unlock(&a->shlock);
+      if (fpr_mem_own) fpr_mem_give(nv);
+      return 0;
+    }
+    ring_install(c, nv);
+    fpr_unlock(&a->shlock);
+    rv = nv;
+  }
+  if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) return 0;
+  uint32_t rt = c->rt;
+  if (rt - c->rh_seen >= rv->cap) c->rh_seen = __atomic_load_n(&c->rh, __ATOMIC_ACQUIRE);
+  if (rt - c->rh_seen >= rv->cap) return 0;
+  SLOT(rv, rt) = fpr_msg_inline_put(INLAT(rv, rt), m, total);
+  __atomic_store_n(&c->rt, rt + 1, __ATOMIC_RELEASE); /* publish */
+  return 1;
+}
+
 V fpr_send_as(uw sender_key, V av, V m) {
   if (fpr_plane_actors) return fpr_plane_actors->send_as(sender_key, av, m);
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap("send: target is not an actor");
   acb_t *a = (acb_t *)av;
   if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD)
     return send_err("dead actor");
+  if (SEND_INLINE_MAY(a, m) && send_inline(a, sender_key, m)) {
+    __atomic_thread_fence(__ATOMIC_SEQ_CST); /* Dekker: publish before flag read */
+    wake(a);
+    return OK_UNIT;
+  }
 #ifdef FPR_COST_PROBE
   fpr_hart_t *ph = fpr_hart();
   uint64_t q0 = FPR_PROBE_NOW();
@@ -3221,6 +3333,12 @@ static V a_send_linear(V av, V m) {
       if (!ISINT(original) && fpr_in_heap(original) && TID(original) == T_VEC) fpr_vec_release(original);
     } else if (sender) sender->send_root = m;
     return bounded_publish(a, m, charge);
+  }
+  /* a built flat value: nothing of the sender's to release (not a Vector) */
+  if (!movable && SEND_INLINE_MAY(a, m) && send_inline(a, (uw)fpr_hart()->current, m)) {
+    __atomic_thread_fence(__ATOMIC_SEQ_CST); /* Dekker: publish before flag read */
+    wake(a);
+    return OK_UNIT;
   }
   chan_t *c = 0;
   if (!movable) {
@@ -3697,10 +3815,10 @@ static V mailbox_bytes(int deferred) {
     ringv_t *rv = c->rv;
     if (deferred) {
       if (rv->cap < a->mbcap)
-        bytes += ring_block_bytes(a->mbcap, i == SHIDX, c->budget_owner != 0);
+        bytes += ring_block_bytes(a->mbcap, i == SHIDX, c->budget_owner != 0, 0);
     } else {
       for (; rv != &c->rv0; rv = rv->old)
-        bytes += ring_block_bytes(rv->cap, rv->from != 0, rv->charge != 0);
+        bytes += ring_block_bytes(rv->cap, rv->from != 0, rv->charge != 0, rv->inl != 0);
     }
   }
   fpr_unlock(&a->shlock);

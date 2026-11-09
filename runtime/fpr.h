@@ -1018,6 +1018,17 @@ void fpr_ctx_fabricate(uw *ctx, void (*entry)(void), uw stack_top16,
                        fpr_hart_t *owner); /* ctx layer (virt/posix) */
 
 V fpr_alloc(V raw_bytes); /* managed object; byte count is untagged */
+/* small flat messages carried in ring slots (runtime.c, actors.c) */
+#if !defined(FPR_INL_CELL) && defined(FPR_BUILTIN)
+#define FPR_INL_CELL 0 /* the builtin profile keeps its own message path */
+#endif
+#ifndef FPR_INL_CELL
+#define FPR_INL_CELL 64 /* bytes per slot cell, preheader included; 0 turns it off */
+#endif
+uw fpr_msg_inline_size(V v, uw pid);
+V fpr_msg_inline_put(char *cell, V v, uw total);
+uw fpr_msg_inline_total(V v);
+V fpr_msg_inline_take(V v);
 /* Opaque bulk storage (a Vector's directory and columns, runtime/vec.c):
  * allocated in the actor's BASE pool whatever region is open, so an owned
  * Vector survives a turn's reset and crosses the boundary by handle; it is

@@ -1771,6 +1771,58 @@ V fpr_msg_copy(V v) { return msg_copy_in(v, !FPR_MSG_PACK, fpr_current_pid()); }
  * decided against it (img_foreign) */
 V fpr_msg_copy_to(V v, uw pid) { return msg_copy_in(v, !FPR_MSG_PACK, pid); }
 V fpr_msg_copy_held_to(V v, uw pid, fpr_slab_t **hold) { return msg_copy_held_in(v, !FPR_MSG_PACK, pid, hold); }
+
+/* ---- small flat messages, carried in the ring (actors.c) -------------
+ * QOS docs/2026-11-09-ACTOR-ROUND-TRIP.md, step 3.  A message that is ONE
+ * heap cell whose every field passes by value -- ints, nil, actor handles,
+ * statics of the receiver's own image: exactly the fields dc_dup returns
+ * unchanged -- needs no message slab, no generic copy and no ARC entry.
+ * The sender copies the cell into its channel slot's cell area; the
+ * receiver copies it into its own memory before it frees the slot, so
+ * what it holds is an ordinary local value.  A cell in a slot carries
+ * &inl_mark as its slab word: never promoted, so a drop of one is the
+ * lock-free no-op (arc_decref_in's pre-check). */
+#if FPR_INL_CELL
+static fpr_slab_t inl_mark;
+uw fpr_msg_inline_size(V v, uw pid) {
+  if (ISINT(v) || !v || !fpr_in_heap(v)) return 0;
+  uw tid = TID(v);
+  if (tid == T_LIST || (tid >= T_STR && tid <= T_STORED_LIST)) return 0;
+  uw total = PREHEADER(v);
+  if (total > FPR_INL_CELL) return 0;
+  fpr_hart_t *h = fpr_hart();
+  uw prior = h ? h->copy_pid : 0;
+  if (h) h->copy_pid = pid;
+  uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
+  V *f = (V *)((char *)v + 8);
+  uw ok = total;
+  for (uw i = 0; i < nf; i++) {
+    V x = f[i];
+    if (ISINT(x) || !x) continue;
+    if (fpr_in_heap(x)) {
+      if (TID(x) == T_ACTOR) continue;
+      ok = 0;
+      break;
+    }
+    if (img_foreign((const void *)x)) { ok = 0; break; }
+  }
+  if (h) h->copy_pid = prior;
+  return ok;
+}
+V fpr_msg_inline_put(char *cell, V v, uw total) {
+  allocation_header(cell, total, &inl_mark, FPR_MANAGED_PREFIX);
+  __builtin_memcpy(cell + FPR_MANAGED_PREFIX, (char *)v, total - FPR_MANAGED_PREFIX);
+  return (V)(cell + FPR_MANAGED_PREFIX);
+}
+uw fpr_msg_inline_total(V v) { return PREHEADER(v); }
+/* the receiver's own copy, in its current pool or region */
+V fpr_msg_inline_take(V v) {
+  uw raw = PREHEADER(v) - FPR_MANAGED_PREFIX;
+  V n = fpr_alloc(raw);
+  __builtin_memcpy((char *)n, (char *)v, raw);
+  return n;
+}
+#endif /* FPR_INL_CELL */
 /* An unpublished actor's entry gets an independent ownerless slab.  Its
  * hold replaces an ARC root reservation: no table growth can panic after
  * admission.  Captures can still escape through the usual ARC rules; the

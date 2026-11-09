@@ -1,0 +1,90 @@
+# small flat messages carried in ring slots (runtime/actors.c send_inline,
+# QOS docs/2026-11-09-ACTOR-ROUND-TRIP.md step 3).  A message that is one
+# cell of by-value fields rides in its channel slot and the receiver copies
+# it out.  This checks what that must not change:
+#   order, with slot-carried and ordinary messages interleaved in one ring
+#     while it grows (cells in replaced rings stay readable);
+#   received values kept across many turns (they are the receiver's own);
+#   a result taken from behind three queued messages (the slot shift);
+#   unread slot-carried messages on an actor that ends.
+unsafe program.
+
+AC = use "../../std/actor".
+Dynamic = AC.Dynamic.
+
+mkTail : Int -> String .
+mkTail i = strcat "x" (if i % 3 == 0 then "yz" else "y").
+
+# every other message carries a built string (ordinary path), the rest a
+# literal (a static: slot-carried); the sender's handle rides along
+burst : Int -> Int -> Int -> Int .
+burst w i n | i > n = 0.
+burst w i n =
+  me = myself 0;
+  m = if i % 2 == 0 then (i, me, "lit") else (i, me, mkTail i);
+  case send w m of
+      Ok u -> burst w (i + 1) n
+    | Err e -> error "inlinemsg: send refused: {e}".
+
+# collect n messages from main into a list (kept across turns; newest first), then check
+collect me main 0 acc = acc.
+collect me main k acc = collect me main (k - 1) (receiveFrom me main :: acc).
+check main ((i, who, s) :: rest) prev bad len =
+  ok = i == prev - 1 and who == main;
+  check main rest i (if ok then bad else bad + 1) (len + strlen s).
+check main Nil prev bad len = (bad, len).
+
+keeper main gate n me =
+  _ = receiveFrom me gate;
+  xs = collect me main n Nil;
+  (bad, len) = check main xs (n + 1) 0 0;
+  _ = AC.sendOrDie main (bad, len);
+  0.
+
+# three tuples queued, then a result: receiveRes takes it from behind them
+shifter main gate me =
+  _ = receiveFrom me gate;
+  r = case receiveRes me of Ok v -> v | Err e -> 0 - 1;
+  (a, b) = receiveFrom me main;
+  (c, d) = receiveFrom me main;
+  (e, f) = receiveFrom me main;
+  _ = AC.sendOrDie main (r, a + b * 10 + c * 100 + d * 1000 + e * 10000 + f * 100000);
+  0.
+
+# reads one of fifty and ends with the rest unread
+gate g = w = receive g; _ = send w 0; 0.
+fill w 0 = 0.
+fill w n = case send w (n, n + 1) of Ok u -> fill w (n - 1) | Err e -> error "inlinemsg: fill refused: {e}".
+deaths 0 = 0.
+deaths n =
+  me = myself 0;
+  g = spawn gate;
+  w = spawn (fn self -> _ = receiveFrom self g; (a, b) = receiveFrom self me; a);
+  _ = fill w 50;
+  _ = send g w;
+  _ = yield me;
+  deaths (n - 1).
+
+lenOf i = if i % 2 == 0 then 3 else (if i % 3 == 0 then 3 else 2).
+lens i n acc = if i > n then acc else lens (i + 1) n (acc + lenOf i).
+
+main =
+  me = myself 0;
+  n = 3000;
+  g1 = spawn gate;
+  k = AC.spawnWith (Dynamic 8) (keeper me g1 n);
+  _ = burst k 1 n;
+  _ = send g1 k;
+  (bad, len) = receiveFrom me k;
+  want = lens 1 n 0;
+  g2 = spawn gate;
+  s = spawn (shifter me g2);
+  _ = send s (1, 2);
+  _ = send s (3, 4);
+  _ = send s (5, 6);
+  _ = send s (Ok 7);
+  _ = send g2 s;
+  (r, digits) = receiveFrom me s;
+  _ = deaths 200;
+  _ = print "inlinemsg: {n} kept in order with {bad} out of place, string bytes {len} of {want}; result {r} taken past three, then {digits}; 200 deaths with 49 unread each";
+  0.
