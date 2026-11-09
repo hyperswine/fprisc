@@ -41,6 +41,7 @@ import Data.List (intercalate, isPrefixOf)
 import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as ML
+import qualified Core.Alpha as Alpha
 import qualified Data.Set as S
 import Core.Syntax
 import Reuse (poolResetters)
@@ -855,6 +856,17 @@ compileWithReport accepted report = do
               unless (null (tuDisagree use)) $ do
                 mapM_ (\(f, e, t) -> hPutStrLn stderr ("typed lowering disagreement: " ++ f ++ ": " ++ TypedLowering.firstDifference e t)) (tuDisagree use)
                 exitFailure
+            -- where the optimizer reshaped an S1 function: the first place the
+            -- plan's Core and the Core the erased lowering was given differ
+            showOptimized <- (== Just "1") <$> lookupEnv "FPR_TYPED_LOWER_OPTIMIZED"
+            when (showOptimized && not skip) $
+              forM_ (tuOptimized use) $ \f ->
+                forM_ ((,) <$> M.lookup f (TypedLowering.loweredCores lowered) <*> M.lookup f (emEligible emission)) $ \(planned, eligible) ->
+                 do
+                  when (Alpha.rewriteKind (snd (comparableCore planned)) (snd (comparableCore eligible)) == "same") $
+                    forM_ ((,) <$> M.lookup f (emLowered emission) <*> M.lookup f (TypedLowering.loweredFns lowered)) $ \(e, t) ->
+                      putStrLn ("# typed lowering optimized-fn " ++ f ++ ": " ++ take 4000 (TypedLowering.firstDifference e t))
+                  putStrLn ("# typed lowering optimized " ++ f ++ ": " ++ Alpha.rewriteKind (snd (comparableCore planned)) (snd (comparableCore eligible)) ++ "; " ++ (let raw (ps, b) = Alpha.canonical (ps, Alpha.substituteLiterals b) in if Alpha.rewriteKind (snd (comparableCore planned)) (snd (comparableCore eligible)) == "same" then Alpha.firstTextDifference (raw planned) (raw eligible) else Alpha.firstTextDifference (comparableCore planned) (comparableCore eligible)))
             -- slice 2 count: where the emitted bodies of the S1 functions change
             traceStages <- (== Just "1") <$> lookupEnv "FPR_TYPED_LOWER_STAGES"
             showName <- lookupEnv "FPR_TYPED_LOWER_STAGES_SHOW"
@@ -870,6 +882,7 @@ compileWithReport accepted report = do
                   putStrLn ("# stage " ++ l ++ " " ++ f ++ ": " ++ maybe "absent" show (M.lookup f p))
                 putStrLn ("# stage typed-fn " ++ f ++ ": " ++ maybe "absent" show (M.lookup f (TypedLowering.loweredFns lowered)))
                 putStrLn ("# stage lowered-fn " ++ f ++ ": " ++ maybe "absent" show (M.lookup f (emLowered emission)))
+          comparableCore (ps, b) = Alpha.canonical (ps, Alpha.diagnosticNormal ps (Alpha.substituteLiterals b))
           checkBuiltinWidth p = do
             when (oArc opts && any (coreHasName i32WidePrimitive . snd) (M.elems p)) $ do
               hPutStrLn stderr "I32 conversions with I64/F32/F64 currently require the manual ABI; --arc/--raw bridge ownership adapters are not implemented"

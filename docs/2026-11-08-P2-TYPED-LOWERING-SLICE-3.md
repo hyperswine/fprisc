@@ -424,3 +424,38 @@ the right measure for coverage. The `optimized` exemption grew from 13 to 258: t
 optimizer reshapes closure-applying bodies (inlining and beta reduction)
 before the erased lowering, so those keep the erased function. Vectors,
 which need the kernel rewrite, are the last rung.
+
+## After 3g: why 258 closure-era functions keep the erased code (9 November)
+
+`FPR_TYPED_LOWER_OPTIMIZED=1` prints, for each function counted as
+`optimized`, what the first difference between the plan's Core and the Core
+the erased lowering was given is (after removing local aliases and floated
+lets, which don't change `Lower`'s code), and for the rest the first
+differing block. Over the 151-program sweep:
+
+| First difference | Functions | Where |
+|---|---|---|
+| a closure bound by a let and applied once: the let is gone and the call is direct | 167 | `Mono` (erased function-argument specialization, its `CLet` rule) |
+| a closure bound by a let and never used: removed | 24 (+1 used twice) | `Mono`, the same rule (the let is kept only if still free) |
+| an ordinary single-use let sunk into its use | 28 | `normIn` let sinking |
+| other unused lets removed | 4 | |
+| a let with 2-3 uses reshaped | 16 | other passes (mostly vector fusion programs) |
+| Core equal up to aliases; a callee is `Local` in the erased code, `Imported` in the typed | 16 | `Mono`'s compatibility clones of imported code |
+| other | 1 | |
+
+So the name was misleading: most of these aren't the Core optimizer. They are
+the erased-side monomorphization (`Mono.specializeCompatibility`), which runs
+after region placement and so after the typed program the plan reads. It
+turns a let-bound known closure that is applied into a direct call to its
+code with the captures as arguments (no closure object, no `fpr_applyN`),
+and clones imported helpers into the unit. The typed side has its own
+callback specializer (`Core.Typed.Callback`) before placement, but it
+doesn't cover the let-bound local case or the compatibility clones.
+
+This matters for the plan: if the typed lowering becomes the authority
+without this specialization, these 190-odd functions would allocate a closure
+and call through `fpr_applyN` where today they make a direct call. The
+step it points to is moving the let-bound closure rule (and the
+compatibility clones) into the typed pipeline before placement, rather than
+mirroring it in the plan. `normIn`'s sinking (28) is the typed optimizer's
+job, as slice 2 already said.
