@@ -1,0 +1,13 @@
+# A helper's lambda that a caller inlines keeps the helper's code identity.
+# Once the typed callback pass calls List.find's clone with the capture, the
+# caller's binding of that closure is dead and must go (logbook's `project`);
+# tests/check_typed_lowering.py requires optimized=0 for this program's root.
+List = use "std/list".
+Option = use "std/option".
+sessOf sid xs = case List.find (fn s -> s.sid == sid) xs of
+    Option.Some s -> s
+  | Option.None -> {sid = sid, q = ""}.
+project sid xs =
+  s = sessOf sid xs;
+  strlen s.q + s.sid.
+main = print (project 2 ({sid = 1, q = "a"} :: {sid = 2, q = "bcd"} :: Nil)).

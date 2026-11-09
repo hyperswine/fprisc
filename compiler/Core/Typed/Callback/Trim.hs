@@ -84,15 +84,23 @@ trimCallbacks types@(TypeContext linears _) arities schemas templates plans remo
         Nothing->S.fromList (map (resolve aliases) cs)<>S.unions (map (uses graph candidateIds live aliases) ps)
         where needed b=binderId b `S.notMember` candidateIds || binderId b `S.member` live
       resolve aliases uid=case M.lookup uid aliases of Just next | next/=uid->resolve aliases next;_->uid
+      -- a closure's code is in this graph, or it is a checked template (an
+      -- inlined function's lambda keeps its home's code identity)
+      closureCode graph label=case M.lookup label graph of
+        Just f->codeKind f==ClosureCode
+        Nothing->maybe False (\(Template _ _ _ _ kind)->kind==ClosureCode) (M.lookup (CodeTarget label) templates)
+      closureArity graph label=case M.lookup label graph of
+        Just f->Just (length (codeParameters f))
+        Nothing->(\(Template _ parameters _ _ _)->length parameters) <$> M.lookup (CodeTarget label) templates
       droppable graph b rhs=binderId b `S.member` removable && pureValue graph rhs
       pureValue graph e=case exprNode (unNote e) of
         Var (Local _)->True
         Var (Global name _)->maybe False (>0) (M.lookup name arities)
-        ClosureValue label _->maybe False ((==ClosureCode) . codeKind) (M.lookup label graph)
+        ClosureValue label _->closureCode graph label
         Apply {}->let (h,args)=spine e []
                       n=case exprNode h of
                         Var (Global name _)->M.lookup name arities
-                        ClosureValue label _->length . codeParameters <$> M.lookup label graph
+                        ClosureValue label _ | closureCode graph label->closureArity graph label
                         _->Nothing
                   in maybe False (>length args) n && all (evaluated arities) args
         IntValue _->True;StringValue _->True;BoolValue _->True;LayoutLiteral _->True

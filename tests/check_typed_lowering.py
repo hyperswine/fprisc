@@ -85,6 +85,27 @@ def rv32(tmp):
     return bad
 
 
+# an inlined helper's lambda is a template closure: once the callback pass
+# calls the higher-order function's clone with its capture, the caller's
+# binding of it is dead and must go, so nothing in the root keeps the erased
+# function (typed callbacks' trim)
+INLINED_CLOSURE = 'tests/typed_core/inlined_closure.fpr'
+
+
+def inlined_closure(tmp):
+    out = compile_notes(ROOT / INLINED_CLOSURE, None, tmp, 'inlined-closure')
+    for m in NOTE.finditer(out):
+        v = dict(zip(FIELDS, map(int, m.groups()[:10])))
+        if m.group(12) == 'root':
+            if v['optimized'] or v['typed'] != v['s1']:
+                print(f'FAIL inlined closure: {v}, expected every root S1 function typed')
+                return 1
+            print(f'typed lowering (inlined closure): root s1={v["s1"]} typed={v["typed"]}, no dead closure let')
+            return 0
+    print('FAIL inlined closure: no root note')
+    return 1
+
+
 def main():
     corpus = json.loads((ROOT / 'tests/pipeline/corpus.json').read_text())['entries']
     bad = 0
@@ -128,6 +149,7 @@ def main():
                 print(f'FAIL {name}: no S1 function emitted typed')
                 bad += 1
         bad += rv32(tmp)
+        bad += inlined_closure(tmp)
     if bad:
         return 1
     print('typed lowering: S1 functions are emitted from the typed lowering where the erased lowering agrees, every other one accounted for: PASS')
