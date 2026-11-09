@@ -27,7 +27,7 @@ import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
-import Codegen (Target, codegenRev, productBackendWidth, emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative, foreignEntries)
+import Codegen (Target, codegenRev, productBackendWidth, emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative, foreignEntries, normalizesLiterals)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth, registerBudget)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -827,11 +827,11 @@ compileWithReport accepted report = do
           -- slice 2 emits every S1 function from its typed lowering where the
           -- erased lowering of the same function agrees; a disagreement stops
           -- the compile. FPR_NO_TYPED_LOWER=1 emits the erased functions.
-          typedInput result emitted extArities = do
+          typedInput result emitted extArities local = do
             skip <- (== Just "1") <$> lookupEnv "FPR_NO_TYPED_LOWER"
             let placedNames = Regions.resultPlacedNames result
-                lowered = TypedLowering.typedFunctions (tgtPolicy linkedTgt) extArities (foreignEntries linkedTgt)
-                            (Regions.resultNative result) (Regions.resultTyped result) placedNames emitted
+                lowered = TypedLowering.typedFunctions (normalizesLiterals linkedTgt) (tgtPolicy linkedTgt) extArities (foreignEntries linkedTgt)
+                            (Regions.resultNative result) (Regions.resultTyped result) placedNames emitted local
             pure (lowered, if skip then M.empty else ML.intersectionWith (,) (TypedLowering.loweredFns lowered) (TypedLowering.loweredCores lowered),
                   placedNames `S.difference` TypedLowering.loweredPlaced lowered)
           typedLowering lowered result emitted extArities label stages emission = do
@@ -865,7 +865,7 @@ compileWithReport accepted report = do
             traceStages <- (== Just "1") <$> lookupEnv "FPR_TYPED_LOWER_STAGES"
             showName <- lookupEnv "FPR_TYPED_LOWER_STAGES_SHOW"
             when (traceStages || isJust showName) $ do
-              let report = TypedLowering.check (tgtPolicy linkedTgt) extArities (foreignEntries linkedTgt)
+              let report = TypedLowering.check (normalizesLiterals linkedTgt) (tgtPolicy linkedTgt) extArities (foreignEntries linkedTgt)
                              (Regions.resultNative result) emitted
                   allStages = stages ++ [("optimized", emOptimized emission), ("eligible", emEligible emission)]
               when traceStages $ putStrLn (TypedLowering.stagesNote report allStages (emLowered emission) ++ " unit=" ++ label)
@@ -1155,7 +1155,7 @@ compileWithReport accepted report = do
                 prog <- own specialized
                 prepared<-ready M.empty (Linked.artifactId artifact) exps (prog `M.union` erasedConstructorStubs prog)
                 let unitExt = NativeImports.importArities prepared `M.union` M.union (if oArc opts then arcExterns else M.empty) ext
-                (lowered,typedFns,placedNames) <- typedInput placed (M.keysSet unitProgram `S.difference` elide) unitExt
+                (lowered,typedFns,placedNames) <- typedInput placed (M.keysSet unitProgram `S.difference` elide) unitExt (NativeImports.readyProgram prepared `M.union` NativeImports.readyTemplates prepared)
                 -- FORCE before the write: an `error` raised while the
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
@@ -1296,7 +1296,7 @@ compileWithReport accepted report = do
         (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact)) (rootProg `M.union` erasedConstructorStubs rootProg)
       let rootEmitted = M.keysSet (Regions.resultProgram (artifactRegions Linked.RootArtifact)) `S.difference` Linked.artifactElided (artifactOf Linked.RootArtifact)
           rootExt = NativeImports.importArities rootReady `M.union` extFor
-      (rootLowered,rootTypedFns,rootPlacedNames) <- typedInput (artifactRegions Linked.RootArtifact) rootEmitted rootExt
+      (rootLowered,rootTypedFns,rootPlacedNames) <- typedInput (artifactRegions Linked.RootArtifact) rootEmitted rootExt (NativeImports.readyProgram rootReady `M.union` NativeImports.readyTemplates rootReady)
       let rootEmission = emitTypedProductProgramWithImports rootTypedFns rootPlacedNames (Regions.resultProgram (artifactRegions Linked.RootArtifact)) rootProductParameters (if oArc opts then S.empty else checkedCallbackTargets) (NativeImports.readyTemplates rootReady) linkedTgt rvv spec imageExports (NativeImports.importArities rootReady `M.union` extFor)
                                      (NativeImports.readySymbols rootReady)
                                      (Linked.artifactElided (artifactOf Linked.RootArtifact)) (NativeImports.readyProgram rootReady)

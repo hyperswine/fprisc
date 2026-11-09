@@ -59,7 +59,7 @@ lowerings fn erased =
       params = map binderName (functionParameters fn)
       prog = M.singleton name (params, erased)
       e = Lower.lowerFn m2Policy M.empty prog M.empty M.empty name (params, erased)
-      t = Typed.lowerFn m2Policy layout prog M.empty M.empty fn
+      t = Typed.lowerFn True m2Policy layout prog M.empty M.empty fn
    in (show <$> e, show <$> t)
 
 agrees :: Function -> Core -> Bool
@@ -124,7 +124,7 @@ main = do
       built = Function "lit" [lx] (ex listT (ListBuilder (binderId lx) (binderId lx) (ex listT (ListValue [local lx, int 1]))))
       listProg = M.fromList [("lit", (["x"], litErased)), ("Cons", (["h", "t"], CMk 3 1 [CVar "h", CVar "t"])), ("Nil", ([], CMk 3 0 []))]
       erasedLit = Lower.lowerFn m2Policy M.empty listProg M.empty M.empty "lit" (["x"], litErased)
-      typedOfList fn = Typed.lowerFn m2Policy layout listProg M.empty M.empty fn
+      typedOfList fn = Typed.lowerFn True m2Policy layout listProg M.empty M.empty fn
       sameFn x y = case (x, y) of (Right x', Right y') -> x' {I.fnSourceParams = []} == y' {I.fnSourceParams = []}; _ -> False
   check ("a list literal agrees (slice 3f): " ++ show (erasedLit, typedOfList lit)) (sameFn erasedLit (typedOfList lit))
   check "a list builder agrees with its body (slice 3f)" (sameFn erasedLit (typedOfList built))
@@ -141,7 +141,7 @@ main = do
       -- the hooks are HAL primitives in a compile (tgtHal), as here
       hal = foreignEntries rv64 {tgtHal = M.fromList [("$callPend", 1), ("$callLeave", 2)]}
       erasedCaller = Lower.lowerFn m2Policy M.empty regionProg M.empty hal "caller" (["n"], callerErased)
-      typedCaller = Typed.lowerFn m2Policy layout regionProg M.empty hal caller
+      typedCaller = Typed.lowerFn True m2Policy layout regionProg M.empty hal caller
   check ("a call region agrees: " ++ show (erasedCaller, typedCaller))
     (case (erasedCaller, typedCaller) of (Right a, Right b) -> a {I.fnSourceParams = []} == b {I.fnSourceParams = []}; _ -> False)
 
@@ -157,9 +157,19 @@ main = do
       maskErased = app "band" [CVar "x", app "+" [CInt 1, CInt 1]]
       maskProg = M.singleton "mask" (["x"], maskErased)
       erasedMask = Lower.lowerFn m2Policy M.empty maskProg M.empty bitHal "mask" (["x"], maskErased)
-      typedMask = Typed.lowerFn m2Policy layout maskProg M.empty bitHal mask
+      typedMask = Typed.lowerFn True m2Policy layout maskProg M.empty bitHal mask
   check ("a delegated primitive with a substituted literal agrees: " ++ show (erasedMask, typedMask))
     (case (erasedMask, typedMask) of (Right a, Right b) -> a {I.fnSourceParams = []} == b {I.fnSourceParams = []}; _ -> False)
+  -- a target without the optimizer's normalization (RV32, fuel-free, ARC)
+  -- keeps the literal let in the erased Core: the plan keeps it too
+  let keptErased = CLet "k" (CInt 1) (app "band" [CVar "x", app "+" [CVar "k", CInt 1]])
+      keptProg = M.singleton "mask" (["x"], keptErased)
+      erasedKept = Lower.lowerFn m2Policy M.empty keptProg M.empty bitHal "mask" (["x"], keptErased)
+      typedKept = Typed.lowerFn False m2Policy layout keptProg M.empty bitHal mask
+  check ("without normalization the literal let is kept: " ++ show (erasedKept, typedKept))
+    (case (erasedKept, typedKept) of (Right a, Right b) -> a {I.fnSourceParams = []} == b {I.fnSourceParams = []}; _ -> False)
+  check "the kept literal let lowers differently from the substituted one"
+    (case (erasedKept, erasedMask) of (Right a, Right b) -> a {I.fnSourceParams = []} /= b {I.fnSourceParams = []}; _ -> False)
 
   -- slice 3d-i: a constructor pattern with fields, and a constructor value
   -- swap p = case p of Pair a b -> Pair b a  (Pair: tid 9, variant 0, arity 2)
@@ -178,7 +188,7 @@ main = do
         (CErr "case: no matching pattern; arms were [Pair a b]"))
       swapProg = M.singleton "swap" (["p"], swapErased)
       erasedSwap = Lower.lowerFn m2Policy M.empty swapProg M.empty M.empty "swap" (["p"], swapErased)
-      typedSwap = Typed.lowerFn m2Policy pairLayout swapProg M.empty M.empty swap
+      typedSwap = Typed.lowerFn True m2Policy pairLayout swapProg M.empty M.empty swap
   check ("a constructor match and value agree: " ++ show (erasedSwap, typedSwap))
     (case (erasedSwap, typedSwap) of (Right x', Right y') -> x' {I.fnSourceParams = []} == y' {I.fnSourceParams = []}; _ -> False)
 
@@ -199,18 +209,18 @@ main = do
   let readProg = M.singleton "readVector" (["handle"], readCore)
       hal = M.insert "$vec.at" (Lower.Prim 2 (Just "fpr_g_vec_at") Nothing) (foreignEntries rv64)
       readErased = Lower.lowerFn m2Policy M.empty readProg M.empty hal "readVector" (["handle"],readCore)
-      readTyped = Typed.lowerFn m2Policy layout readProg M.empty hal readFn
+      readTyped = Typed.lowerFn True m2Policy layout readProg M.empty hal readFn
   check ("pair-free vector access agrees and preserves the read: " ++ show (readErased,readTyped))
     (case (readErased,readTyped) of (Right a,Right b) -> a == b; _ -> False)
   check "a pair-free read cannot escape its binding"
-    (isLeft (Typed.planCore layout (Function "badVector" [handle]
+    (isLeft (Typed.planCore True layout (Function "badVector" [handle]
       (ex pairTy (VectorReadPair Read.At [int 0] (local handle))))))
   check "vector read with the wrong index arity refuses"
-    (isLeft (Typed.planCore layout (readFn {functionBody=ex tInt (LetPattern pairPat
+    (isLeft (Typed.planCore True layout (readFn {functionBody=ex tInt (LetPattern pairPat
       (ex pairTy (VectorReadPair Read.At [] (local handle))) (local element))})))
   let builder = Function "vectorBuilder" [] (ex (TFn tInt vecTy)
         (VectorBuild BuildEmpty (ex (TLayout tInt) (LayoutLiteral ""))))
-  check "vector layout and builder plan agree" (case Typed.planCore layout builder of
+  check "vector layout and builder plan agree" (case Typed.planCore True layout builder of
     Right ([], body) -> body == app (builderRuntimeName BuildEmpty) [CStr ""]
     _ -> False)
 
@@ -219,8 +229,8 @@ main = do
   let mode = NativeMode PerFunction StrictOff "typed-probe" (Just (DirectRV W64 HartTp)) False noTune False True False
       target = rv64 {tgtNative = Just mode}
       prog = M.singleton "pick" (["n"], pickErased)
-      typedOf fn = (either error id (Typed.lowerFn (tgtPolicy target) layout prog M.empty (foreignEntries target) fn),
-                    either error id (Typed.planCore layout fn))
+      typedOf fn = (either error id (Typed.lowerFn True (tgtPolicy target) layout prog M.empty (foreignEntries target) fn),
+                    either error id (Typed.planCore True layout fn))
       emitWith typed = emitTypedProductProgramWithImports typed S.empty prog emptyProductParameters S.empty M.empty target False True []
         M.empty (publicSymbols S.empty) S.empty prog
       good = emitWith (M.singleton "pick" (typedOf pick))

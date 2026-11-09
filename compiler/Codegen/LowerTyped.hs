@@ -67,9 +67,26 @@ data TE
   | PCall TE [TE] -- erased `f a b`: an application Lower dispatches itself (slice 3g: closures, code calls, a local head)
   | PLam [Key] TE -- erased `\x y -> body` (Lower refuses it, as it refuses the erased lambda)
 
--- every let the plan builds: the optimizer substitutes an Int literal let
--- at its uses (Core.Opt.Normalize.normIn) before the erased lowering, and
--- the erased lowering sees the literal where it is used
+-- The plan builds plain lets. Where the target runs the optimizer's
+-- normalization (Core.Opt.Normalize.normIn: Codegen.normalizesLiterals), an
+-- Int literal let is substituted at its uses before the erased lowering,
+-- and the plan does the same afterwards (literalLets); elsewhere (RV32,
+-- fuel-free and ARC profiles) the let stays, as it does in the erased Core.
+literalLets :: TE -> TE
+literalLets t = case t of
+  PLet k a b -> pLet k (literalLets a) (literalLets b)
+  PApp h as -> PApp h (map literalLets as)
+  PIf a b c -> PIf (literalLets a) (literalLets b) (literalLets c)
+  PEqInt a i -> PEqInt (literalLets a) i
+  PTag tid var a -> PTag tid var (literalLets a)
+  PMk tid var fs -> PMk tid var (map literalLets fs)
+  PProj i a -> PProj i (literalLets a)
+  PStrEq a str -> PStrEq (literalLets a) str
+  PList xs -> PList (map literalLets xs)
+  PCall f as -> PCall (literalLets f) (map literalLets as)
+  PLam ks b -> PLam ks (literalLets b)
+  _ -> t
+
 pLet :: Key -> TE -> TE -> TE
 pLet k a b = case a of
   PInt _ -> substitute k a b
@@ -133,24 +150,24 @@ type TEnv = M.Map Key (VId, Ty)
 
 data Plan = Plan {planLayout :: Layout, planNext :: Int}
 
-lowerFn :: Policy -> Layout -> Prog -> M.Map String Int -> M.Map String Prim -> Function -> Either Reason Fn
+lowerFn :: Bool -> Policy -> Layout -> Prog -> M.Map String Int -> M.Map String Prim -> Function -> Either Reason Fn
 -- the Core the plan stands for (parameters and body): what the erased
 -- lowering would be given for the same function before any optimization
-planCore :: Layout -> Function -> Either Reason ([String], Core)
-planCore layout f = do
-  planned <- plan layout (functionBody f)
+planCore :: Bool -> Layout -> Function -> Either Reason ([String], Core)
+planCore normalizes layout f = do
+  planned <- plan normalizes layout (functionBody f)
   pure (map (keyName . KBinder . binderId) (functionParameters f), toCore planned)
 
-lowerFn policy layout prog ext hal f = do
-  planned <- plan layout (functionBody f)
+lowerFn normalizes policy layout prog ext hal f = do
+  planned <- plan normalizes layout (functionBody f)
   lowerEntry policy M.empty prog ext hal (functionName f) (map binderName (functionParameters f)) $ \cx pvs ->
     lowerTail cx (M.fromList (zip (map (KBinder . binderId) (functionParameters f)) pvs)) planned
 
 -- Plan the whole body once, before lowering, with one supply of scrutinee
 -- names: the plan is pure, and erasure's fallback duplication lowers the same
 -- subtree more than once.
-plan :: Layout -> Expr -> Either Reason TE
-plan layout body = fst <$> go 0 body
+plan :: Bool -> Layout -> Expr -> Either Reason TE
+plan normalizes layout body = (if normalizes then literalLets else id) . fst <$> go 0 body
   where
     go :: Int -> Expr -> Either Reason (TE, Int)
     go n e = case exprNode e of
@@ -201,12 +218,12 @@ plan layout body = fst <$> go 0 body
         (x, n1) <- go n base
         let k = KScrut n1
         (body, n2) <- update (PRef k) fields (n1 + 1)
-        pure (pLet k x body, n2)
+        pure (PLet k x body, n2)
       PlannedUpdate base updatePlan -> do
         (x, n1) <- go n base
         let k = KScrut n1
         (body, n2) <- plannedUpdate (Just (exprType base)) (PRef k) updatePlan (n1 + 1)
-        pure (pLet k x body, n2)
+        pure (PLet k x body, n2)
       -- a pattern binding (slice 3d-iii): the value bound to a temporary,
       -- then the pattern matched against it (erasure's bindPattern)
       LetPattern p rhs body ->
@@ -220,7 +237,7 @@ plan layout body = fst <$> go 0 body
       Let p a b -> do
         (a', n1) <- go n a
         (b', n2) <- go n1 b
-        pure (pLet (KBinder (binderId p)) a' b', n2)
+        pure (PLet (KBinder (binderId p)) a' b', n2)
       If a b c -> do
         (a', n1) <- go n a
         (b', n2) <- go n1 b
@@ -253,14 +270,14 @@ plan layout body = fst <$> go 0 body
         (x, n1) <- go (n + 3) a
         (f', n2) <- go n1 fn
         (tid, var, _) <- constructor "Ok"
-        let success = pLet kok (PProj 0 (PRef ks)) (PCall f' [PRef kok])
-            failure = pLet kerr (PProj 0 (PRef ks)) (PCall (PGlobal "Err") [PRef kerr])
-        pure (pLet ks x (PIf (PTag tid var (PRef ks)) success failure), n2)
+        let success = PLet kok (PProj 0 (PRef ks)) (PCall f' [PRef kok])
+            failure = PLet kerr (PProj 0 (PRef ks)) (PCall (PGlobal "Err") [PRef kerr])
+        pure (PLet ks x (PIf (PTag tid var (PRef ks)) success failure), n2)
       -- a sequence: erasure binds the first value to a fresh `seq` name
       Sequence a b -> do
         (a', n1) <- go (n + 1) a
         (b', n2) <- go n1 b
-        pure (pLet (KScrut n) a' b', n2)
+        pure (PLet (KScrut n) a' b', n2)
       -- a join call: erasure calls the join's code by its label, captures
       -- first (a known function of the program)
       JoinCall (CodeId label) captures args -> do
@@ -278,7 +295,7 @@ plan layout body = fst <$> go 0 body
         let k = KScrut n1
             message = "case: no matching pattern; arms were [" ++ intercalate "," [patDisplay p | Alternative [p] _ _ <- alts] ++ "]"
         (arms, n2) <- caseArms (n1 + 1) True (PErr message) (PRef k) alts
-        pure (pLet k arg' arms, n2)
+        pure (PLet k arg' arms, n2)
       Match (FunctionMatch owner) args alts -> do
         (args', n1) <- goList n args
         functionArms n1 True (PErr ("no matching clause for " ++ owner)) args' alts
@@ -304,7 +321,7 @@ plan layout body = fst <$> go 0 body
         [(_, idx, _)] | closedRowShape recordType -> (PProj idx scrut, n)
         many ->
           let k = KScrut n
-           in (pLet k scrut (foldr (\(tid, idx, ar) rest -> PIf (PTag tid ar (PRef k)) (PProj idx (PRef k)) rest)
+           in (PLet k scrut (foldr (\(tid, idx, ar) rest -> PIf (PTag tid ar (PRef k)) (PProj idx (PRef k)) rest)
                   (PErr ("no shape with field ." ++ name ++ " matched")) many), n + 1)
     update scrut assigns n0 = do
       let roots = nub [head path | (path, _) <- assigns, not (null path)]
@@ -408,17 +425,17 @@ plan layout body = fst <$> go 0 body
         (next, n3) <- continuation (n2 + 2)
         afterHandle <- matchPat (PRef saved) handlePat next failure
         matched <- matchPat (PRef value) valuePat afterHandle failure
-        pure (pLet saved original (pLet value
+        pure (PLet saved original (PLet value
           (PApp (Read.peekName op) (args ++ [PRef saved])) matched), n3)
       _ -> do
         (v, n1) <- go n rhs
         let k = KScrut n1
         (next, n2) <- continuation (n1 + 1)
         matched <- matchPat (PRef k) p next failure
-        pure (pLet k v matched, n2)
+        pure (PLet k v matched, n2)
     matchPat scrut p ok failed = case patNode p of
       Wildcard -> pure ok
-      Bind b -> pure (pLet (KBinder (binderId b)) scrut ok)
+      Bind b -> pure (PLet (KBinder (binderId b)) scrut ok)
       IntegerPattern i -> pure (PIf (PEqInt scrut i) ok failed)
       StringPattern str -> pure (PIf (PStrEq scrut str) ok failed)
       ConstructorPattern name ps -> do
@@ -436,7 +453,7 @@ plan layout body = fst <$> go 0 body
           k <- rest
           -- KScrut (-1): a placeholder no counter produces
           x <- either Left (Right . fst) (project (Just (patType p)) scrut name (-1))
-          pure (pLet (KBinder (binderId b)) (rekey (KScrut (-1)) (KField (binderId b)) x) k)) (pure ok) fs
+          pure (PLet (KBinder (binderId b)) (rekey (KScrut (-1)) (KField (binderId b)) x) k)) (pure ok) fs
       _ -> Left ("typed lowering: the pattern " ++ patDisplay p)
     -- erasure's matchFields: the last field's test innermost
     matchFields scrut ps ok failed =

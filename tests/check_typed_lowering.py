@@ -22,6 +22,13 @@ compile, so every compile succeeding is the main assertion. On top of that:
     FPR_NO_TYPED_LOWER=1;
   - across the corpus, typed must be non-zero for each target.
 Shared units are counted once per target (by unit name).
+
+RV32 (no posix system: the default system) compiles a fixed set of
+programs instead (RV32_PROGRAMS). RV32 doesn't run the optimizer's
+normalization or reuse, and its call table differs from the host's, so
+it is where a plan that mirrors only the host pipeline disagrees; each of
+these must compile, refuse nothing, account for every S1 function and
+emit the same code as the FPR_NO_TYPED_LOWER=1 build.
 """
 import json, os, re, subprocess, sys, tempfile
 from pathlib import Path
@@ -32,14 +39,16 @@ FIELDS = ('s1', 'typed', 'regions', 'worker', 'reuse', 'optimized', 'placed', 'a
 CENSUS = re.compile(r'# typed lowering census: (.*) unit=(\S+)')
 FIXTURE_S1 = 7
 FIXTURE_TYPED = 4
+RV32_PROGRAMS = ['tests/pipeline/typed_lower_s1.fpr', 'tests/typed_core/vector_reads.fpr', 'examples/mconf.fpr',
+                 'examples/report.fpr', 'tests/base/vecpipeline.fpr', 'examples/swarm.fpr']
 
 
-def compile_notes(src, target, tmp, tag, extra=None):
+def compile_notes(src, target, tmp, tag, extra=None, system='posix'):
     env = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
     env.update(extra or {})
     env.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=str(tmp / f'c-{tag}-{target or "host"}'))
     out = tmp / f'{tag}-{target or "host"}.s'
-    cmd = [str(ROOT / 'fpr'), 'compile', '--system=posix'] + ([f'--target={target}'] if target else []) + [str(src), str(out)]
+    cmd = [str(ROOT / 'fpr'), 'compile'] + ([f'--system={system}'] if system else []) + ([f'--target={target}'] if target else []) + [str(src), str(out)]
     p = subprocess.run(cmd, cwd=ROOT, env=env, text=True, capture_output=True, timeout=900)
     if p.returncode != 0:
         sys.exit(f'FAIL {tag} ({target or "host"}): compile failed\n{p.stdout[-2000:]}{p.stderr[-2000:]}')
@@ -48,6 +57,32 @@ def compile_notes(src, target, tmp, tag, extra=None):
 
 def code(path):
     return [l for l in path.read_text().splitlines() if not l.startswith('#')]
+
+
+def rv32(tmp):
+    bad = 0
+    typed = 0
+    for src in RV32_PROGRAMS:
+        tag = 'rv32-' + Path(src).stem
+        out = compile_notes(ROOT / src, 'rv32', tmp, tag, system=None)
+        for m in NOTE.finditer(out):
+            v = dict(zip(FIELDS, map(int, m.groups()[:10])))
+            typed += v['typed']
+            if v['refused']:
+                print(f'FAIL {src} (rv32): typed lowering refused {v["refused"]}: {m.group(11)}')
+                bad += 1
+            if sum(v[k] for k in ('typed', 'worker', 'reuse', 'optimized', 'placed', 'arc', 'absent')) != v['s1']:
+                print(f'FAIL {src} (rv32) unit {m.group(12)}: S1 functions unaccounted for: {v}')
+                bad += 1
+        compile_notes(ROOT / src, 'rv32', tmp, tag + '-erased', {'FPR_NO_TYPED_LOWER': '1'}, system=None)
+        if code(tmp / f'{tag}-rv32.s') != code(tmp / f'{tag}-erased-rv32.s'):
+            print(f'FAIL {src} (rv32): code differs from the FPR_NO_TYPED_LOWER=1 build')
+            bad += 1
+    print(f'typed lowering (rv32): {len(RV32_PROGRAMS)} programs, typed={typed} (shared units counted per program), code identical' if not bad else 'typed lowering (rv32): FAILED')
+    if typed == 0:
+        print('FAIL rv32: no S1 function emitted typed')
+        bad += 1
+    return bad
 
 
 def main():
@@ -92,6 +127,7 @@ def main():
             if total['typed'] == 0:
                 print(f'FAIL {name}: no S1 function emitted typed')
                 bad += 1
+        bad += rv32(tmp)
     if bad:
         return 1
     print('typed lowering: S1 functions are emitted from the typed lowering where the erased lowering agrees, every other one accounted for: PASS')

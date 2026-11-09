@@ -6,7 +6,7 @@
 -- Static PAPs, constructor constants and module registries have a separate
 -- native data owner. Refusals are diagnostics; no text translator is retained.
 
-module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports,emitCheckedProgramWithImports,emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, productBackendWidth, foreignEntries) where
+module Codegen (emitProgram, emitProgramWith,emitProgramWithSymbols,emitProgramWithImports,emitCheckedProgramWithImports,emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, productBackendWidth, foreignEntries, normalizesLiterals) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.
@@ -229,6 +229,15 @@ externals ext prog = S.toList (S.fromList (concat [go (S.fromList ps) b [] | (_,
 -- Runtime entries for saturated primitive calls and first-class primitive
 -- values. Core primitives use fpr_prim_fn_/fpr_prim_obj_; foreign declarations
 -- use fpr_g_ with the runtime's C ABI arity limit.
+-- constructor reuse, and the normalization run with it (Core.Opt.Pipeline:
+-- NormalizeForReuse needs both): the typed lowering's plan substitutes Int
+-- literal lets exactly when normIn runs (normalizesLiterals)
+reuses :: Target -> Bool
+reuses tgt = tgtReuse tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt)
+
+normalizesLiterals :: Target -> Bool
+normalizesLiterals tgt = reuses tgt && tgtScalarFast tgt
+
 foreignEntries :: Target -> M.Map String Prim
 foreignEntries tgt =
   M.union
@@ -427,7 +436,7 @@ emitTypedProductProgramWithImports typed placed reference products checked impor
           optPairReturns = tgtPairReturns tgt && tgtW tgt == 8 && not (tgtArc tgt) && polProfile (tgtPolicy tgt) == HostedBase && productBackendWidth (tgtNative tgt >>= nmBackend) >= 2,
           optProductWidth = productBackendWidth (tgtNative tgt >>= nmBackend),
           optNormalize = tgtScalarFast tgt,
-          optReuse = tgtReuse tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt),
+          optReuse = reuses tgt,
           optPoolResetters = tgtPoolResetters tgt }
       optimized = either (error . ("Core optimization: " ++)) id (optimizeCoreWithProducts products checked imports opts elide prog0)
       prog = optimizedProgram optimized

@@ -39,8 +39,8 @@ data Report = Report
 
 -- `emitted`: the names the unit emits; `ext`: the imported arities the
 -- emission uses.
-check :: Policy -> M.Map String Int -> M.Map String Prim -> Native.NativeCore -> S.Set String -> Report
-check policy ext hal native emitted =
+check :: Bool -> Policy -> M.Map String Int -> M.Map String Prim -> Native.NativeCore -> S.Set String -> Report
+check normalizes policy ext hal native emitted =
   Report (censusNote (census known functions)) (S.size s1) (count isAgreed)
     [(n, r) | (n, Refused r) <- outcomes] (count isBoth) (count isErase) [d | (_, Disagree d) <- outcomes]
     (M.fromList [(n, (def, fn)) | (n, AgreedWith def fn) <- outcomes])
@@ -56,7 +56,7 @@ check policy ext hal native emitted =
     isErase o = case o of EraseRefused -> True; _ -> False
     outcome n = case (erasedOf n, M.lookup n functions) of
       (Right (Just def), Just fn) ->
-        case (Lower.lowerFn policy M.empty prog ext hal n def, Typed.lowerFn policy layout prog ext hal fn) of
+        case (Lower.lowerFn policy M.empty prog ext hal n def, Typed.lowerFn normalizes policy layout prog ext hal fn) of
           (Right a, Right b)
             | a == b -> AgreedWith def b
             | otherwise -> Disagree (n ++ ": " ++ firstDifference a b)
@@ -87,19 +87,26 @@ data Lowered = Lowered
 -- `regions`: placement's typed result, `placed`: the definitions placement
 -- rewrote. A placed S1 function whose typed region body is an ordinary
 -- expression is lowered from that body.
-typedFunctions :: Policy -> M.Map String Int -> M.Map String Prim -> Native.NativeCore -> Maybe RT.Program -> S.Set String -> S.Set String -> Lowered
-typedFunctions policy ext hal native regions placed emitted =
+-- `local` is the call table emission's erased lowering uses: the program
+-- after the erased Mono and ownership passes plus the read-only imported
+-- templates (Codegen: `context`). A function it defines that the placed
+-- program does not (Mono's compatibility clones, an imported template), or
+-- defines with another arity, is called as a local function there, so the
+-- typed lowering's call table is that one first.
+typedFunctions :: Bool -> Policy -> M.Map String Int -> M.Map String Prim -> Native.NativeCore -> Maybe RT.Program -> S.Set String -> S.Set String -> Prog -> Lowered
+typedFunctions normalizes policy ext hal native regions placed emitted local =
   Lowered (censusNote (census known functions)) (S.size s1)
     (M.fromList [(n, fn) | (n, Right fn) <- results]) [(n, why) | (n, Left why) <- results]
     (S.fromList [n | (n, Right _) <- results, M.member n fromRegions])
     -- lazy: read only for the few functions whose typed and erased native
     -- functions differ (a plan that lowered also plans)
-    (ML.fromList [(n, either (const ([], CErr "typed lowering: no plan")) id (Typed.planCore layout fn))
+    (ML.fromList [(n, either (const ([], CErr "typed lowering: no plan")) id (Typed.planCore normalizes layout fn))
                  | (n, Right _) <- results, Just fn <- [input n]])
   where
     (functions, prog, known, layout) = context ext native emitted
     s1 = s1Functions known functions
-    results = [(n, Typed.lowerFn policy layout prog ext hal fn) | n <- S.toAscList s1, Just fn <- [input n]]
+    calls = local `M.union` prog
+    results = [(n, Typed.lowerFn normalizes policy layout calls ext hal fn) | n <- S.toAscList s1, Just fn <- [input n]]
     -- a placed function without an ordinary region body keeps its boundary
     -- body: emission then keeps the erased function (counted as placed)
     fromRegions = M.fromList
