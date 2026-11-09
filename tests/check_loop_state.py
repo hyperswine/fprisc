@@ -62,7 +62,9 @@ main =
     refusals = {
         'initial-vector': ('step s = (False, s).\nmain = _ = Vec.free (Sys.loop (Vec.iota 2) step); Unit.\n',
                            'Sys.loop: the state may not hold a Vector'),
-        'captured-vector': ('step v s = _ = Vec.free v; (False, s).\nmain = print (str (Sys.loop 0 (step (Vec.iota 2)))).\n',
+        # the plain capture is refused statically (below); `keep` is the
+        # explicit escape that still reaches the runtime backstop
+        'captured-vector': ('step v s = _ = Vec.free v; (False, s).\nmain = print (str (Sys.loop 0 (step (keep (Vec.iota 2))))).\n',
                             'Sys.loop: the callback may not capture a Vector'),
         'returned-vector': ('step s =\n  me = myself 0;\n  _ = send me (Vec.iota 2);\n  m = receiveFrom me me;\n  v = keep m;\n  _ = drop m;\n  (False, v).\nmain = print (str (Sys.loop 0 step)).\n',
                             'Sys.loop: the state may not hold a Vector'),
@@ -74,3 +76,11 @@ main =
         p = subprocess.run([exe], capture_output=True, text=True, timeout=10)
         assert p.returncode != 0 and reason in p.stdout+p.stderr, (name, p.stdout, p.stderr)
         print(f'Sys.loop {name}: named refusal PASS')
+    # a closure that owns a Vector is single-use and Sys.loop calls its
+    # callback once per iteration (docs/2026-11-09-CALLABLE-OWNERSHIP.md)
+    src = out / 'captured-vector-static.fpr'
+    src.write_text('unsafe base.\nstep v s = _ = Vec.free v; (False, s).\nmain = print (str (Sys.loop 0 (step (Vec.iota 2)))).\n')
+    p = subprocess.run([str(ROOT/'fpr'), 'build', str(src), '--harts', '4', '-o', str(out / 'captured-vector-static')],
+                       cwd=ROOT, capture_output=True, text=True, timeout=180)
+    assert p.returncode != 0 and "'Sys.loop' may call its function argument #2 more than once" in p.stdout + p.stderr, (p.stdout, p.stderr)
+    print('Sys.loop captured-vector: static refusal PASS')
