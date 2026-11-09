@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Audit known ownership gaps using safe nominal tokens, never real resources.
 
-Diagnostic tool, intentionally outside check_base while gaps remain. Exit 1
-means at least one invalid program was accepted; 0 means all non-escape probes
-were refused. --native-run also executes accepted probes using harmless tokens.
+Every non-escape probe is refused since the callable-ownership fix
+(docs/2026-11-09-CALLABLE-OWNERSHIP.md), so CI runs this audit as a gate
+(.github/workflows/ci.yml, "Linear ownership audit"); a new probe that is
+accepted fails the build. Exit 1 means at least one invalid program was
+accepted; 0 means all non-escape probes were refused. --native-run also
+executes accepted probes using harmless tokens.
 """
 import argparse
 import json

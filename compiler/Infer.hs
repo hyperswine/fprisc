@@ -1700,11 +1700,18 @@ builtinLinShapes linNs =
   -- as before, and `keep` keeps its deliberate-escape meaning.
   M.insert "sendLinear" ([LU, LL], LU) $
   M.fromList
-    [ (n, (map (eraseVars . linShapeT linNs) ps, eraseVars (linShapeT linNs r)))
+    [ (n, (zipWith (param n) [0 ..] ps, eraseVars (linShapeT linNs r)))
       | (n, Forall _ _ t) <- M.toList builtinEnv,
         let (ps, r) = peelFn t
     ]
   where
+    -- a primitive that runs its callback repeatedly keeps the callback
+    -- symbolic; the checker seeds "must be unrestricted" for it
+    param n i p = case p of
+      TFn _ _ | n `elem` repeatedCallbackPrims -> fnParamShape i (arrows p)
+      _ -> eraseVars (linShapeT linNs p)
+    arrows (TFn _ b) = 1 + arrows b
+    arrows _ = 0 :: Int
     peelFn (TFn a b) = let (as, r) = peelFn b in (a : as, r)
     peelFn t = ([], t)
 
@@ -1842,7 +1849,14 @@ inferTopsSession session previous capture prof sigs structs tops =
               peel k (TFn a b) = let (as, r) = peel (k - 1 :: Int) b in (a : as, r)
               peel _ tt = ([], tt)
               (pts, rt) = peel ar tz
-              lsig = (map (linShapeT linNs) pts, linShapeT linNs rt)
+              -- callable ownership: function-typed parameters are
+              -- symbolic, a function-typed result records its arity
+              -- (docs/2026-11-09-CALLABLE-OWNERSHIP.md)
+              arrows (TFn _ b) = 1 + arrows b
+              arrows _ = 0 :: Int
+              pshape i pt = case pt of TFn _ _ -> fnParamShape i (arrows pt); _ -> linShapeT linNs pt
+              rshape = case arrows rt of 0 -> linShapeT linNs rt; k -> fnResultShape k
+              lsig = (zipWith pshape [0 ..] pts, rshape)
           modify (\s -> s {iNotes = iNotes s ++ [(n, p)], iInterfaces = iInterfaces s ++ [(n, tz)], iLinSigs = iLinSigs s ++ [(n, lsig)]})
       when (ipVectorLayouts prof) (prepareVectorEvidence rwBinds)
       -- resolve operator sites against the final substitution, then

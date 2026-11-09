@@ -36,7 +36,14 @@ import Ownership.Shape
       demandOwnership,
       joinLShape,
       projectOwnership,
-      updateOwnership )
+      updateOwnership,
+      fnParamShape,
+      fnResultShape,
+      fnResultArity,
+      fnVarInfo,
+      callableArity,
+      repeatedCallbackPrims,
+      closureShape )
 import qualified Data.Map.Strict as M
     ( delete,
       empty,
@@ -126,11 +133,25 @@ buildLinInfo tops = LinInfo lin sigs conSh conAr M.empty
     aliases = [(t, tgt) | TAlias t tgt <- tops]
     lin0 = [n | TType n True _ _ <- tops]
     lin = lin0 ++ [t | (t, tgt) <- aliases, tgt `elem` lin0]
-    sigs = M.fromList [(n, (map sh ps, sh r)) | TSig n (ps, r) _ <- tops]
+    -- function-typed parameters are symbolic callables and a
+    -- function-typed result records its arity (docs/2026-11-09-CALLABLE-OWNERSHIP.md)
+    sigs = M.fromList [(n, (zipWith param [0 ..] ps, result r)) | TSig n (ps, r) _ <- tops]
+    param :: Int -> Ty -> LShape
+    param i t = case t of
+      TArrT _ _ -> fnParamShape i (arrows t)
+      _ -> sh t
+    field t = case t of
+      TArrT _ _ -> fnResultShape (arrows t)
+      _ -> sh t
+    result t = case arrows t of
+      0 -> sh t
+      k -> fnResultShape k
+    arrows (TArrT _ b) = 1 + arrows b
+    arrows _ = 0 :: Int
     -- a constructor of a generic type makes `T a b` with its parameters
     -- symbolic; the fields are the declared field types, parameters symbolic
     conSh0 = M.union
-      (M.fromList [(c, ((if linear then lown else lcon) t (map LVar params), map sh tys)) | TType t linear params cs <- tops, (c, tys) <- cs])
+      (M.fromList [(c, ((if linear then lown else lcon) t (map LVar params), map field tys)) | TType t linear params cs <- tops, (c, tys) <- cs])
       builtinConSh
     conSh = foldl' (\m (t, tgt) -> maybe m (\e -> M.insert t e m) (M.lookup tgt m)) conSh0 aliases
     conAr0 = M.union (M.fromList [(c, length tys) | TType _ _ _ cs2 <- tops, (c, tys) <- cs2]) builtinConAr
@@ -174,8 +195,10 @@ linearityDiagnostics (LinearityResult ds _)=ds
 linearityConstraints :: LinearityResult -> M.Map Name [Name]
 linearityConstraints (LinearityResult _ constraints)=constraints
 checkLinearity :: LinInfo -> [STop] -> LinearityResult
-checkLinearity li tops = go (M.map (sort . nub) (liUnres li))
+checkLinearity li tops = go (M.map (sort . nub) (M.unionWith (++) (liUnres li) primCallbacks))
   where
+    primCallbacks = M.fromList [(n, vs) | n <- repeatedCallbackPrims, Just (ps, _) <- [M.lookup n (liSigs li)],
+                                         let vs = [v | LVar v <- ps, isJust (fnVarInfo v)], not (null vs)]
     -- Each round unions obligations into the old table. The functions and
     -- shape variables are finite, so strict growth terminates. A fixed round
     -- cap could return incomplete ownership evidence for a long wrapper chain.
@@ -205,8 +228,12 @@ checkLinearityRound li tops = LinearityResult (concat [es | (_, es, _) <- result
     groupTB (_ : rest) = groupTB rest
 
     checkClause n (pats, g, body) =
+      -- A clause may bind fewer parameters than its signature declares
+      -- (`at t = fn n -> ...` for `Token -> Int -> Int`): the parameters
+      -- it does bind still carry their shapes.
       let paramShapes = case M.lookup n (liSigs li) of
-            Just (ps, _) | length ps == length pats -> ps
+            Just (ps, _) | length ps >= length pats -> take (length pats) ps
+            Just (ps, r) | fnResultArity r > 0 -> ps ++ replicate (length pats - length ps) LU
             _ -> replicate (length pats) LU
           binds = concat (zipWith (bindPat li) pats paramShapes)
           wildErrs = concat (zipWith (wildLinErrs li) pats paramShapes)
@@ -364,7 +391,7 @@ linExpr li env0 = go env0
             -- the closure owns what it captured: applying it twice is
             -- refused outright for a sure owner, and constrains the type
             -- variable for a possible one
-            sh = foldl' joinLShape LU (map snd caps)
+            sh = closureShape (map snd caps)
          in (be ++ capErrs, bc, sh)
       SCase scrut arms ->
         let (se, sc, sshape) = go env scrut
@@ -380,6 +407,11 @@ linExpr li env0 = go env0
             shape = foldl' joinLShape LU (map snd live)
          in (errs ++ agree, total, shape)
       SBlock stmts final -> goBlock env stmts final
+
+    -- a closure or partial application that holds an owner is itself
+    -- single-use; say so, since nothing in its type is linear
+    closureNote (LCon "fn" False _) = "; it is a closure or partial application holding a linear value, so it is single-use"
+    closureNote _ = ""
 
     disagreeingM a b = M.filter id (M.intersectionWith (/=) a' b')
       where
@@ -405,7 +437,7 @@ linExpr li env0 = go env0
           (e2, c2, shf) = goBlock env' rest final
           errs = case c2 of
             Nothing -> []
-            Just cc | isLin sh, M.findWithDefault 0 n cc /= 1 -> demandOwnership sh ("linear variable '" ++ n ++ "' used " ++ show (M.findWithDefault 0 n cc) ++ " time(s), expected exactly 1")
+            Just cc | isLin sh, M.findWithDefault 0 n cc /= 1 -> demandOwnership sh ("linear variable '" ++ n ++ "' used " ++ show (M.findWithDefault 0 n cc) ++ " time(s), expected exactly 1" ++ closureNote sh)
             _ -> []
           c2' = fmap (M.delete n) c2
        in (e1 ++ e2 ++ errs, plus c1 c2', shf)
@@ -433,6 +465,7 @@ linExpr li env0 = go env0
           argErrs = concat [er | (er, _, _) <- argRes]
           argCnt = foldl' plus (Just zero) [c | (_, c, _) <- argRes]
           anyLinArg = any (\(_, _, s) -> isLin s) argRes
+          heldShape = closureShape [s | (_, _, s) <- argRes]
        in case h of
             SVar "error" | Nothing <- M.lookup "error" env -> (argErrs, Nothing, LU)
             SVar g ->
@@ -446,17 +479,30 @@ linExpr li env0 = go env0
               -- Local callbacks shadow globals, just as they do during
               -- inference and execution. A global with the same spelling
               -- cannot supply this callback's result shape or constraints.
+              -- A local callable whose arity is known (a function-typed
+              -- parameter, a function name or field bound locally) that
+              -- receives fewer arguments is a partial application: over
+              -- an owner it holds that owner and is single-use.
               let (sh, full, callErrs) = case M.lookup g env of
-                    Just _ -> (LU, True, [])
+                    Just local -> (LU, maybe True (length args >=) (callableArity local), [])
                     Nothing -> headShape g [s | (_, _, s) <- argRes]
-                  sh2 = if anyLinArg && not full then LL else sh
+                  sh2 = if anyLinArg && not full then heldShape else sh
                   (he, hc, _) = go env (SVar g)
                in (argErrs ++ callErrs ++ he, plus hc argCnt, sh2)
             _ ->
-              let (he, hc, _) = go env h
-               in (argErrs ++ he, plus hc argCnt, LU)
+              -- an expression head (a case choosing a function, an
+              -- application returning one, a lambda): when its arity is
+              -- unknown, whatever owners the arguments hand it may be held
+              -- by the result, which is then single-use
+              let (he, hc, hs) = go env h
+                  arity = case h of
+                    SLam ps _ -> Just (length ps)
+                    _ -> callableArity hs
+                  partial = maybe True (length args <) arity
+               in (argErrs ++ he, plus hc argCnt, if anyLinArg && partial then heldShape else LU)
       where
         flatten (SApp f a) acc = flatten f (a : acc)
+        flatten (SMark _ f) acc@(_ : _) = flatten f acc
         flatten f acc = (f, acc)
 
     headShape g argShapes
@@ -466,12 +512,18 @@ linExpr li env0 = go env0
       | Just (ps, r) <- M.lookup g (liSigs li) =
           let b = bindingsL ps argShapes
               required = M.findWithDefault [] g (liUnres li)
-              violated = concat [demandOwnership s ("'" ++ g ++ "' duplicates or discards its argument of type `" ++ v ++ "`, so it cannot take an owned value there") | v <- required, Just s <- [M.lookup v b]]
-           in (if nargs == length ps then substL b LU r else LU, nargs >= length ps, violated)
+              violated = concat [demandOwnership s (unresMessage v) | v <- required, Just s <- [M.lookup v b]]
+              unresMessage v
+                | Just (i, _) <- fnVarInfo v = "'" ++ g ++ "' may call its function argument #" ++ show (1 + i)
+                    ++ " more than once (or never), so it cannot take a single-use closure there (a lambda or partial application that captured a linear value)"
+                | otherwise = "'" ++ g ++ "' duplicates or discards its argument of type `" ++ v ++ "`, so it cannot take an owned value there"
+              total = length ps + fnResultArity r
+           in (if nargs == length ps then substL b LU r else LU, nargs >= total, violated)
       | otherwise = (LU, True, [])
       where
         nargs = length argShapes
     globalShape v
       | Just (ps, r) <- M.lookup v (liSigs li), null ps = eraseVars r
+      | Just (ps, r) <- M.lookup v (liSigs li) = fnResultShape (length ps + fnResultArity r)
       | Just (r, as) <- M.lookup v (liConSh li), null as = eraseVars r
       | otherwise = LU

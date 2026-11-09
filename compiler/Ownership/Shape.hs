@@ -93,6 +93,7 @@ substL b dflt = go
       LTupS ss -> LTupS (map go ss)
       LRecS fs open -> LRecS [(f, go t) | (f, t) <- fs] open
       LCon n True as -> LCon n True (map go as)
+      m@(LCon "->" False as) | all (== LU) as -> m -- a callable's arity, no owners
       LCon n False as -> lcon n (map go as)
       s -> s
 
@@ -130,6 +131,7 @@ isConstraintMark _ = False
 -- A case result must retain ownership from every live arm. In particular an
 -- unrestricted first arm cannot erase a linear closure returned by a later arm.
 joinLShape :: LShape -> LShape -> LShape
+joinLShape a b | a == b = a
 joinLShape LU b = b
 joinLShape a LU = a
 joinLShape (LVar a) (LVar b) | a == b = LVar a
@@ -164,3 +166,67 @@ projectLShape fields shape=let (findings,result)=projectOwnership fields shape
 updateLShape :: [String] -> LShape -> LShape -> ([String], LShape)
 updateLShape fields new old=let (findings,result)=updateOwnership fields new old
   in (map renderLegacyFinding findings,result)
+
+-- Callable ownership (docs/2026-11-09-CALLABLE-OWNERSHIP.md).
+--
+-- A function-typed PARAMETER of a signature is symbolic, exactly like a
+-- type variable: the argument may be a single-use closure (one that
+-- captured an owner), so a body that calls or copies the parameter more
+-- than once, or never uses it, records "this callable must be
+-- unrestricted" and every call passing a linear closure there is refused.
+-- The variable is named "->i" (no source type variable can be spelled so).
+-- The name also records how many arguments the parameter takes, so a call
+-- that supplies fewer is known to be a partial application.
+fnParamShape :: Int -> Int -> LShape
+fnParamShape i k = LVar (fnVarName i k)
+
+fnVarName :: Int -> Int -> String
+fnVarName i k = "->" ++ show i ++ "/" ++ show k
+
+-- (position, arity) of a callable parameter variable
+fnVarInfo :: String -> Maybe (Int, Int)
+fnVarInfo ('-' : '>' : rest) = case break (== '/') rest of
+  (i, '/' : k) | [(iv, "")] <- reads i, [(kv, "")] <- reads k -> Just (iv, kv)
+  _ -> Nothing
+fnVarInfo _ = Nothing
+
+isFnVar :: String -> Bool
+isFnVar ('-' : '>' : _) = True
+isFnVar _ = False
+
+-- A function-typed RESULT of k further parameters.  It is unrestricted
+-- (isLin is False, and substitution collapses it to LU); only its arity is
+-- read, so a call that supplies the declared parameters but not the ones the
+-- returned function takes is a partial application, and a partial
+-- application over an owner is a single-use closure.
+fnResultShape :: Int -> LShape
+fnResultShape k | k > 0 = LCon "->" False (replicate k LU)
+fnResultShape _ = LU
+
+fnResultArity :: LShape -> Int
+fnResultArity (LCon "->" False as) | all (== LU) as = length as
+fnResultArity _ = 0
+
+-- How many arguments a function value with this shape takes, when known:
+-- a callable parameter, or a function name or field read through its type.
+callableArity :: LShape -> Maybe Int
+callableArity (LVar v) = snd <$> fnVarInfo v
+callableArity s = case fnResultArity s of
+  0 -> Nothing
+  k -> Just k
+
+-- Primitives have no body for the checker to read, so the ones that call
+-- their callback once per element or per iteration say so here: a
+-- single-use closure is refused there exactly as at a source function that
+-- calls its parameter twice.  (A primitive that calls its callback once,
+-- like `Sys.arena` or `spawn`, is not listed.)
+repeatedCallbackPrims :: [String]
+repeatedCallbackPrims = ["Vec.map", "Vec.mapSame", "Vec.filter", "Vec.fold", "Sys.loop", "Sys.loopWith"]
+
+-- The ownership of a closure that holds these values: owned if any is
+-- (surely or symbolically), unrestricted otherwise.  Unlike a join it
+-- keeps distinct type variables symbolic instead of collapsing them to LL,
+-- so a generic helper that builds a closure over its argument constrains
+-- that argument rather than failing outright.
+closureShape :: [LShape] -> LShape
+closureShape = lcon "fn" . filter isLin
