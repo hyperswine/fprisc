@@ -4,8 +4,10 @@ Audited source: `ee84d90ae524263c9f38a57e76cfc017ad2fb7bc` (2026-10-17).
 All checks ran locally. No printer, remote host, or production service was used.
 
 Subsequent implementation and remaining gaps are tracked in
-[ownership corrections](2026-10-17-OWNERSHIP-CORRECTIONS.md). The measurements
-below retain the original pre-fix audit snapshot.
+[ownership corrections](2026-10-17-OWNERSHIP-CORRECTIONS.md) and
+[callable ownership](2026-11-09-CALLABLE-OWNERSHIP.md). Since the latter, every
+non-escape probe is refused and CI's reliability job runs this audit as a gate.
+The measurements below retain the original pre-fix audit snapshot.
 
 ## Conclusion
 
@@ -48,9 +50,9 @@ Reproduce from the repository root:
 XDG_CACHE_HOME=/private/tmp/fpr-pure-cache python3 tools/audit_linear_ownership.py --native-run --json /private/tmp/linear-ownership-gaps.json
 ```
 
-Exit status 1 means an invalid program was accepted. This diagnostic deliberately
-remains outside the passing regression suite while the gaps exist; its goal is
-eventual refusal of every invalid non-escape probe.
+Exit status 1 means an invalid program was accepted. This diagnostic was kept
+outside the passing regression suite while the gaps existed. Since
+[callable ownership](2026-11-09-CALLABLE-OWNERSHIP.md) it exits 0 and CI requires that.
 
 ### Actual frame buffer consequence
 

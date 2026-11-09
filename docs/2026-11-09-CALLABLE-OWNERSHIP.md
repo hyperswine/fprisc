@@ -48,15 +48,24 @@ twin that must build and run identically in native and HostedBytecode.
 - **Function types nested in a parameter** (`((Int -> Int), Int)`, a record
   field, `List (Int -> Int)`): symbolic too, named by their path (`->0.1/1`).
   The diagnostic says "a function inside its argument #1".
-- **Function types nested in a result** (`Token -> ((Int -> Int), Int)`): they
-  are `heldVar`; a call binds it to the owners the closure may hold.
-- **Closures over an owner the callee made itself** (`mk k = t = Token k; fn
-  n -> consume t + n` behind `Int -> (Int -> Int)`): a body that returns a
-  surely-owned closure where its signature has a function type adds
-  `heldVar` to the function's obligations. Every result of that function is
-  then single-use, whatever its arguments. This goes through the same fixpoint
-  as the other obligations, so wrappers inherit it. Inferred signatures get it
-  too.
+- **Function types nested in a result** (`Token -> ((Int -> Int), Int)`):
+  they are `heldVar`. What a call's result holds there comes from the body,
+  through the same fixpoint as the other obligations, so wrappers inherit it
+  and inferred signatures get it too:
+  - If the body returns a surely-owned closure there, the function records
+    `heldVar`, and every result is single-use. This covers `pair t = (fn n ->
+    consume t + n, 0)` and also a closure over an owner the callee made
+    itself (`mk k = t = Token k; fn n -> consume t + n` behind
+    `Int -> (Int -> Int)`).
+  - If the body returns a closure over a symbolic owner (a callable
+    parameter passed through, a `t : a`), the function records `heldOf v`.
+    The call's result then holds what the call passed for `v`. An owned
+    argument beside a passed-through callback therefore does not make the
+    callback single-use (`std/mvu.fpr`'s `renderStep`).
+- **Joins of two callables** (a case returning one of two callback
+  parameters) stay symbolic and hold what either holds. Before, they
+  collapsed to a sure owner. That made `examples/pos1.fpr`'s pricing record
+  of functions owned once callables were symbolic.
 - **Function-typed constructor fields.** `Holder (fn n -> consume t + n)` for
   `Holder = Type (Holder (Int -> Int))` lost the owner: the constructed value's
   type cannot say its field is single-use. Constructing one is refused ("pass
@@ -101,16 +110,25 @@ All runs were local, on the shared Linux x86-64 box (8 vCPU).
 - `tools/audit_linear_ownership.py`: 0 invalid probes accepted by either
   frontend; only `keep_escape`, the explicit escape, is accepted (it was 4 at
   `0e14b0e`). It takes about 5 s wall.
-- `tests/check_callable_ownership.py` (new, in `check_base`): 32 cases. That
-  is 18 refusals checked in both frontends, 3 Sol-only scheme refusals, and 11
-  legal single-use programs built natively and run in both with identical
-  output. It takes about 30 s, under load.
+  [Recorded output](evidence/2026-11-09-linear-ownership-after-callables.json)
+  comes from `--native-run --json`.
+- `tests/check_callable_ownership.py` (new, in `check_base`): 34 cases. That
+  is 19 refusals checked in both frontends, 3 Sol-only scheme refusals, and 12
+  legal programs built natively and run in both with identical output. It takes about 30 s, under load.
 - Every tracked `.fpr` was run through `fprc --check-only` (632 files), and every
   `.fpr`/`.sol` through `fpr sol --asm` (750 files). Both ran against `0e14b0e`
-  and the branch. SWEEP_RESULT
+  and the branch. No file changes verdict in either frontend: 0 of 632 and 0
+  of 750 differ in exit status or linearity refusal. The three files Sol
+  refuses for linearity are refused identically at `0e14b0e`. Earlier
+  revisions of this change failed this sweep: 70 files over four std sites,
+  each traced to a join bug and fixed above, not by weakening the rule.
 - Full `check_base` job list on the branch, compared job-by-job against
   `0e14b0e` on the same box: SUITE_RESULT
-- `tests/check_compile_budget.py`: BUDGET_RESULT
+- `tests/check_compile_budget.py` passes. This platform (ghc-9.8.2
+  x86_64-linux) has no recorded baseline, so the same script also ran at
+  `0e14b0e`. Allocation: hello 1,347,055,472 vs 1,345,816,296 bytes (+0.09%),
+  std-live 29,113,088,016 vs 29,089,165,672 (+0.08%), pos1 60,547,393,912 vs
+  60,462,587,776 (+0.14%). Peak live is within 0.6%.
 
 ## CI
 
