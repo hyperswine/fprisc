@@ -3443,6 +3443,97 @@ V fpr_apply(V f, V a) {
   return (V)q;
 }
 
+/* ---- sortListWith: List.sortWith's engine (std/list.fpr) ---------------
+ * A STABLE merge sort over an array of the list's elements, then one fresh
+ * list.  std/list's Ordering-returning comparator is called through its
+ * closure, once per comparison, exactly as the FP-RISC merge sort did; only
+ * the merging and the cells move to C.  Stable: the right run's element
+ * goes first only when strictly Less, so equal elements keep their input
+ * order.
+ *   comparisons  <= n * ceil(log2 n)   (one fewer per merge; a merge whose
+ *                                      runs are already in order costs one)
+ *   cells        n fresh cons cells (16 + 8 bytes each), the input's Nil reused
+ *   scratch      3n words of raw pool memory (elements, permutation, merge
+ *                buffer), freed before returning
+ * The comparator answers std/order's Ordering (Less | Equal | Greater): a
+ * nullary constructor, a static whose `var` is its index, 0 for Less.  An
+ * immediate (tagged) answer is refused rather than guessed at. */
+static inline V apply2(V f, V a, V b) {
+  if (!ISINT(f) && TID(f) == T_PAP) {
+    pap_t *p = (pap_t *)f;
+    if (p->nargs + 2 == p->arity) {
+      V args[8 + FPR_ARGSPILL];
+      for (uw i = 0; i < p->nargs; i++) args[i] = p->args[i];
+      args[p->nargs] = a;
+      args[p->nargs + 1] = b;
+      return callf(p->fn, p->arity, args);
+    }
+  }
+  return fpr_apply(fpr_apply(f, a), b);
+}
+/* cmp b a answers Less: b goes first.  The argument order is the FP-RISC
+ * merge's (`cmp y x`, y from the right run): the comparator sees its
+ * arguments in the same roles.  For a comparator that is a total preorder
+ * the result is exactly the old merge's; one that is not may see fewer
+ * questions (the in-order shortcut) and so may order differently. */
+static inline int sort_lt(V cmp, V b, V a) {
+  V r = apply2(cmp, b, a);
+  if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
+  return ((hdr_t *)r)->var == 0;
+}
+/* merge runs src[lo..mid) and src[mid..hi) of indices into keys, to dst */
+static void sort_merge(V cmp, const V *keys, const uw *src, uw *dst, uw lo, uw mid, uw hi) {
+  uw i = lo, j = mid, k = lo;
+  if (mid > lo && mid < hi && !sort_lt(cmp, keys[src[mid]], keys[src[mid - 1]])) {
+    for (; k < hi; k++) dst[k] = src[k]; /* already in order: one comparison */
+    return;
+  }
+  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, keys[src[j]], keys[src[i]]) ? src[j++] : src[i++];
+  while (i < mid) dst[k++] = src[i++];
+  while (j < hi) dst[k++] = src[j++];
+}
+/* The stable order of keys[0..n) under cmp, as a permutation: answers the
+ * buffer (idx or tmp, both n words) holding perm, keys[perm[0]] first.
+ * Bottom-up: runs of width w merged into runs of 2w, ceil(log2 n) passes.
+ * Shared by List.sortWith (below) and Vec.sortWith (vec.c), which moves
+ * every column by the same permutation. */
+uw *fpr_sort_perm(V cmp, const V *keys, uw *idx, uw *tmp, uw n) {
+  for (uw i = 0; i < n; i++) idx[i] = i;
+  uw *src = idx, *dst = tmp;
+  for (uw w = 1; w < n; w *= 2) {
+    for (uw lo = 0; lo < n; lo += 2 * w) {
+      uw mid = lo + w < n ? lo + w : n;
+      uw hi = lo + 2 * w < n ? lo + 2 * w : n;
+      sort_merge(cmp, keys, src, dst, lo, mid, hi);
+    }
+    uw *t = src; src = dst; dst = t;
+  }
+  return src;
+}
+static V g_sortListWith(V cmp, V list) {
+  uw n = 0;
+  V c = list;
+  for (; is_cons(c); c = ((V *)((char *)c + 8))[1]) n++;
+  V nil = c; /* the input's own Nil: shared, it carries nothing */
+  if (n < 2) return list; /* a list of 0 or 1 is its own sort (persistent: shared) */
+  V *keys = (V *)fpr_alloc_raw((V)(3 * n * sizeof(V)));
+  uw *idx = (uw *)(keys + n), *tmp = idx + n;
+  uw i = 0;
+  for (c = list; is_cons(c); c = ((V *)((char *)c + 8))[1]) keys[i++] = ((V *)((char *)c + 8))[0];
+  uw *perm = fpr_sort_perm(cmp, keys, idx, tmp, n);
+  V acc = nil;
+  for (uw k = n; k > 0; k--) {
+    hdr_t *cell = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
+    cell->tid = T_LIST;
+    cell->var = 1;
+    *(V *)((char *)cell + 8) = keys[perm[k - 1]];
+    *(V *)((char *)cell + 8 + sizeof(uw)) = acc;
+    acc = (V)cell;
+  }
+  fpr_free_raw((V)keys);
+  return acc;
+}
+
 /* whole-spine application: rargs points at the LAST argument, with each
  * argument 16 bytes apart going UP (the codegen push discipline).
  * Saturating allocates nothing; under-saturation builds exactly ONE
@@ -5039,6 +5130,7 @@ FPR_FN(fpr_g_intMax, g_intMax, 1);
 FPR_FN(fpr_g_intMin, g_intMin, 1);
 FPR_FN(fpr_g_substr, g_substr, 3);
 FPR_FN(fpr_g_strJoin, g_strJoin, 2);
+FPR_FN(fpr_g_sortListWith, g_sortListWith, 2);
 FPR_FN(fpr_g_drop, g_drop, 1);
 FPR_FN(fpr_g_arcLive, g_arcLive, 1);
 FPR_FN(fpr_g_heapUsed, g_heapUsed, 1);

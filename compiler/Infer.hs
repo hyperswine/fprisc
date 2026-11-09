@@ -571,6 +571,10 @@ builtinEnv =
       ("Vec.toList", scheme [0] (TFn (tVector (sv 0)) (tList (sv 0)))),
       ("Vec.free", scheme [0] (TFn (tVector (sv 0)) tUnit)),
       ("Vec.split", scheme [0] (TFn tInt (TFn (tVector (sv 0)) (TTupT [tVector (sv 0), tVector (sv 0)])))),
+      -- std/vector's sortWith engine: in place, stable, by std/order's Ordering
+      -- (vec.c h_sortWith; a free result type for the same reason as
+      -- sortListWith).  std/vector is the caller.
+      ("sortVecWith", scheme [0, 1] (TFn (TFn (sv 0) (TFn (sv 0) (sv 1))) (TFn (tVector (sv 0)) (tVector (sv 0))))),
       ("Vec.dup", scheme [0] (TFn (tVector (sv 0)) (TTupT [tVector (sv 0), tVector (sv 0)]))),
       ("Vec.iota", mono (TFn tInt (tVector tInt))),
       ("Vec.axpb", mono (TFn tInt (TFn tInt (TFn (tVector tInt) (tVector tInt))))),
@@ -770,6 +774,10 @@ builtinEnv =
       ("substr", mono (TFn tStr (TFn tInt (TFn tInt tStr)))),
       -- Sol's names and contracts (Sol/Infer.hs): byte strings, 0-based, -1 = not found
       ("strJoin", mono (TFn tStr (TFn (TAp (TC "List") tStr) tStr))),
+      -- List.sortWith's engine (runtime.c): a stable merge sort in C calling the
+      -- comparator; its answer is std/order's Ordering, which
+      -- this table cannot name, hence the free result type.  std/list is the caller.
+      ("sortListWith", scheme [0, 1] (TFn (TFn (sv 0) (TFn (sv 0) (sv 1))) (TFn (TAp (TC "List") (sv 0)) (TAp (TC "List") (sv 0))))),
       -- block device + net (bytes/words; loosely typed payloads)
       -- GPU tier (runtime/posix/gfx.c: scene-driven render function)
       -- Mod runtime resolution (remote calling).  runtime/mod.c is the

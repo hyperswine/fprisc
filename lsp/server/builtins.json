@@ -1619,6 +1619,19 @@
    }
   }
  },
+ "sortVecWith": {
+  "sig": "sortVecWith : (a -> a -> b) -> (Vector a) -> Vector a",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "Vector.sortWith's engine (std/vector): a stable in-place sort of a Vector by the comparator (an Ordering); call Vector.sortWith instead.",
+  "profile": "fpr",
+  "variants": {
+   "fpr": {
+    "sig": "sortVecWith : (a -> a -> b) -> (Vector a) -> Vector a",
+    "doc": "Vector.sortWith's engine (std/vector): a stable in-place sort of a Vector by the comparator (an Ordering); call Vector.sortWith instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   }
+  }
+ },
  "Vec.dup": {
   "sig": "Vec.dup : (Vector a) -> (Vector a, Vector a)",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
@@ -3998,6 +4011,24 @@
    "sol": {
     "sig": "strJoin : String -> (List String) -> String",
     "doc": "Join a list of strings with the separator supplied as the first argument.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "sortListWith": {
+  "sig": "sortListWith : (a -> a -> b) -> (List a) -> List a",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "List.sortWith's engine: a stable merge sort of the list by the comparator (an Ordering); call List.sortWith instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "sortListWith : (a -> a -> b) -> (List a) -> List a",
+    "doc": "List.sortWith's engine: a stable merge sort of the list by the comparator (an Ordering); call List.sortWith instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "sortListWith : (a -> a -> b) -> (List a) -> List a",
+    "doc": "List.sortWith's engine: a stable merge sort of the list by the comparator (an Ordering); call List.sortWith instead.",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }

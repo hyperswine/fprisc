@@ -1,0 +1,69 @@
+# List.sortWith (runtime merge, runtime.c sortListWith) and Vector.sortWith
+# (std/vector, in place): agreement with an insertion-sort reference, stability,
+# the input list untouched, and the shapes a merge sort special-cases.
+unsafe base.
+List = use "std/list".
+Vector = use "std/vector".
+Order = use "std/order".
+P = Type (P Int Int).
+key p = case p of P k _ -> k.
+pos p = case p of P _ i -> i.
+byKey a b = Order.int (key a) (key b).
+# a key with many ties: stability shows
+rnd seed i = ((i * 7919 + seed * 104729) - ((i * 7919 + seed * 104729) / 9973) * 9973) - ((((i * 7919 + seed * 104729) - ((i * 7919 + seed * 104729) / 9973) * 9973) / 7) * 7).
+items seed n = List.map (fn i -> P (rnd seed i) i) (List.range 0 (n - 1)).
+# the reference: insertion that puts x after every element not greater than it
+insertRef cmp x ys = case ys of
+    Nil -> x :: Nil
+  | y :: r -> (case cmp x y of Order.Less -> x :: ys | _ -> y :: insertRef cmp x r).
+sortRef cmp xs = List.fold (fn acc x -> insertRef cmp x acc) Nil xs.
+# sorted by key, ties by original position
+ordered xs = case xs of
+    Nil -> True
+  | a :: r -> (case r of
+        Nil -> True
+      | b :: _ -> (key a < key b or (key a == key b and pos a < pos b)) and ordered r).
+cmpF : F64 -> F64 -> Order.Ordering .
+cmpF a b = if a < b then Order.Less else if b < a then Order.Greater else Order.Equal.
+showF xs = List.map F64.str xs.
+same n xs = List.length xs == n and List.sum (List.map pos xs) == (n * (n - 1)) / 2.
+# every original position exactly once (re-sorted by position with a total order)
+perm n xs = List.map pos (List.sortWith (Order.by pos Order.int) xs) == List.range 0 (n - 1).
+agreesRef n = List.sortWith byKey (items n n) == sortRef byKey (items n n).
+listOk n = sortedOk n (List.sortWith byKey (items 3 n)).
+sortedOk n s = ordered s and same n s.
+vecOk n = Vec.toList (Vector.sortWith byKey (Vec.fromList (items 5 n))) == List.sortWith byKey (items 5 n).
+main =
+  small = List.range 0 60 |> List.filter agreesRef;
+  _ = print "List.sortWith = insertion reference for sizes 0..60: {List.length small} of 61";
+  sizes = 0 :: 1 :: 2 :: 3 :: 7 :: 8 :: 9 :: 63 :: 64 :: 65 :: 1000 :: 4097 :: 30000 :: Nil;
+  okL = List.filter listOk sizes;
+  _ = print "List: ordered, stable and a permutation at {okL}";
+  okV = List.filter vecOk sizes;
+  _ = print "Vector.sortWith = List.sortWith at {okV}";
+  xs = items 9 12;
+  _ = List.sortWith byKey xs;
+  _ = print "the input is untouched: {List.map pos xs == List.range 0 11}";
+  asc = List.range 0 9999;
+  desc = List.reverse asc;
+  flat = List.map (fn i -> P 4 i) asc;
+  _ = print "ascending {List.sortWith Order.int asc == asc} descending {List.sortWith Order.int desc == asc} all equal stays put {List.sortWith byKey flat == flat}";
+  _ = print "vector ascending {Vec.toList (Vector.sortWith Order.int (Vec.fromList desc)) == asc} descending {Vec.toList (Vector.sortWith (Order.reverse Order.int) (Vec.fromList asc)) == desc}";
+  ws = "pear" :: "fig" :: "apple" :: "kiwi" :: "date" :: "fig" :: Nil;
+  _ = print "strings {List.sortWith Order.string ws} {Vec.toList (Vector.sortWith Order.string (Vec.fromList ws))} by length {Vec.toList (Vector.sortBy Order.int (fn w -> strlen w) (Vec.fromList ws))}";
+  fs = Vec.toList (Vector.sortWith cmpF (Vec.fromList (2.5 :: 0.25 :: 1.0 :: 0.5 :: 0.25 :: Nil)));
+  _ = print "a float column {showF fs}";
+  _ = print "thenBy {List.sortWith (Order.thenBy (Order.by pos (Order.reverse Order.int)) byKey) (items 2 10)}";
+  # comparators that are not total preorders: no promise about the order, but
+  # every element comes back exactly once and nothing traps
+  big = items 7 20000;
+  always = fn a b -> Order.Less;
+  never = fn a b -> Order.Equal;
+  flaky = fn a b -> if (pos a + pos b) - ((pos a + pos b) / 3) * 3 == 0 then Order.Less else (if key a < key b then Order.Greater else Order.Equal);
+  _ = print "always Less: a permutation {perm 20000 (List.sortWith always big)} {perm 20000 (Vec.toList (Vector.sortWith always (Vec.fromList big)))}";
+  _ = print "always Equal: the input order {List.sortWith never big == big} {Vec.toList (Vector.sortWith never (Vec.fromList big)) == big}";
+  _ = print "inconsistent: a permutation {perm 20000 (List.sortWith flaky big)} {perm 20000 (Vec.toList (Vector.sortWith flaky (Vec.fromList big)))}";
+  # one element, and a big input through both
+  _ = print "one {List.sortWith byKey (P 3 0 :: Nil)} {Vec.toList (Vector.sortWith byKey (Vec.fromList (P 3 0 :: Nil)))}";
+  huge = items 11 200000;
+  print "200,000: list {sortedOk 200000 (List.sortWith byKey huge)} vector {sortedOk 200000 (Vec.toList (Vector.sortWith byKey (Vec.fromList huge)))}".

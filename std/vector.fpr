@@ -1,0 +1,25 @@
+# std/vector.fpr -- typed helpers over the linear `Vector` (docs/2026-08-25-VEC.md).
+#
+#   Vector = use "std/vector".
+#   Order = use "std/order".
+#   v2 = Vector.sortWith Order.int v              # the same handle, sorted in place
+#   v3 = Vector.sortBy Order.string name people   # records by one field
+#
+# The Vec.* operations are primitives in the prelude; what lives here needs a
+# std type in its signature (the comparator answers std/order's Ordering).
+
+Ord = use "order".
+
+# A STABLE sort, in place: equal elements keep their order, so sorting by one
+# key and then by another composes, exactly as List.sortWith.  The vector is
+# consumed and comes back sorted (it is linear: nothing else can see the old
+# order).  The runtime merges a permutation (sortVecWith, runtime/vec.c):
+# each row is built once as the comparator's argument, at most n * ceil(log2 n)
+# calls of `cmp`, then every column moves by the permutation; 3n words of
+# scratch are returned before it answers.
+sortWith : (a -> a -> Ord.Ordering) -> Vector a -> Vector a .
+sortWith cmp v = sortVecWith cmp v.
+
+# sort by a key: Vector.sortBy Order.int age people
+sortBy : (k -> k -> Ord.Ordering) -> (a -> k) -> Vector a -> Vector a .
+sortBy cmp key v = sortVecWith (Ord.by key cmp) v.
