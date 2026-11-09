@@ -1836,8 +1836,14 @@ void fpr_code_publish(void) {
   fpr_instruction_fence(); /* the loader may call the image entry directly */
   __atomic_add_fetch(&code_generation, 1, __ATOMIC_RELEASE);
 }
+static void code_fence(fpr_hart_t *h) {
+  uw code_now = __atomic_load_n(&code_generation, __ATOMIC_ACQUIRE);
+  if (code_now != h->code_seen) {
+    fpr_instruction_fence();
+    h->code_seen = code_now;
+  }
+}
 static void hart_loop(fpr_hart_t *h) {
-  uw code_seen = 0;
   uw last_act = 0, stable = 0;
   uint64_t quiet_since = 0; /* CLINT time the current lull began (detector) */
   h->lcg = h->id * 2654435761u + 12345u; /* decorrelated, deterministic */
@@ -1892,13 +1898,13 @@ static void hart_loop(fpr_hart_t *h) {
         n->probe_drained = 0;
       }
 #endif
-      uw code_now = __atomic_load_n(&code_generation, __ATOMIC_ACQUIRE);
-      if (code_now != code_seen) {
-        fpr_instruction_fence();
-        code_seen = code_now;
-      }
+      code_fence(h);
+      h->direct_run = 0;
       FPR_SCHED_EVENT(FPR_SCHED_DISPATCH, h->id, n->id);
       fpr_ctx_switch(h->sched_ctx, live_block(n)->ctx);
+      /* a direct handoff may have run other actors since: the one that
+       * switched back to this loop is the current one */
+      n = h->current;
       FPR_SCHED_EVENT(FPR_SCHED_RETURN, h->id, n->id);
       hal_actor_stack(0); /* the hart loop may free that stack (reap): nothing watched here */
 #if FPR_SENDER_CREDITS
@@ -1976,11 +1982,23 @@ static void hart_loop(fpr_hart_t *h) {
 }
 
 /* switch from the current actor back to this hart's loop */
+/* every actor resumes here (or in direct_handoff): when another actor
+ * switched straight to this one, its context is saved now, so it may run
+ * again -- on this hart's loop, a later handoff, or a thief */
+static inline void resumed(void) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *from = h->switched_from;
+  if (from) {
+    h->switched_from = 0;
+    __atomic_store_n(&from->running, 0, __ATOMIC_RELEASE);
+  }
+  fpr_fuel_set(h, FUEL_QUANTUM); /* fresh slice on resume */
+}
 static void to_sched(void) {
   fpr_hart_t *h = fpr_hart();
   acb_t *p = h->current;
   fpr_ctx_switch(live_block(p)->ctx, h->sched_ctx); /* returns when re-scheduled */
-  fpr_fuel_set(fpr_hart(), FUEL_QUANTUM); /* fresh slice on resume */
+  resumed();
 }
 
 /* the compiler-inserted fuel check (0(tp) hit zero) lands here */
@@ -2164,6 +2182,68 @@ static int spin_until(acb_t *a, pred_t pred, uw arg) {
   return 0;
 }
 
+/* DIRECT HANDOFF (2026-11-10, QOS docs/2026-11-09-ACTOR-ROUND-TRIP.md):
+ * an actor that has just woken a peer on its own hart and now blocks
+ * switches straight to that peer -- no pass of the hart loop, no backlog
+ * selection, no run queue.  A same-hart call (send, then wait for the
+ * reply) becomes two direct switches.
+ *
+ * Only when the peer is the one thing this hart has to do: the only
+ * backlog entry, an empty run queue, no ships from other harts, no
+ * sleepers, and not the interrupt hart with bound sources (their drains
+ * live in the hart loop).  Otherwise, and every FPR_DIRECT_HANDOFF
+ * handoffs, the hart loop runs as before.
+ *
+ * Correctness rests on one rule: the outgoing actor keeps its running
+ * mark until the incoming one has resumed (resumed()), after its context
+ * is saved.  Until then nothing can dispatch it: a wake or a kill ships it
+ * to this hart's backlog, which only this hart's loop reads, and a thief
+ * skips running entries.  The peer must be parked in block_unless
+ * (wait_kind set): its saved context returns through resumed(), which a
+ * fresh actor's entry does not. */
+#ifndef FPR_DIRECT_HANDOFF
+#define FPR_DIRECT_HANDOFF 64
+#endif
+static int direct_handoff(fpr_hart_t *h, acb_t *a) {
+  acb_t *b = h->wake_hint;
+  if (!FPR_DIRECT_HANDOFF || !b || b == a || fpr_plane_actors) return 0;
+  if (h->direct_run >= FPR_DIRECT_HANDOFF || h->rq_head || h->slp_head) return 0;
+  if (h->id == fpr_irq_hart && (__atomic_load_n(&irq_bound, __ATOMIC_RELAXED) ||
+                                __atomic_load_n(&tmr_bound, __ATOMIC_RELAXED)))
+    return 0;
+  for (uw s = 0; s < fpr_live_harts; s++) {
+    xring_t *x = &xr[s][h->id];
+    if (__atomic_load_n(&x->rt, __ATOMIC_ACQUIRE) != x->rh) return 0;
+  }
+  fpr_lock(&h->bl_lock);
+  if (h->bl_head != b || h->bl_len != 1 || !b->in_bl || b->in_rq || !b->wait_kind ||
+      __atomic_load_n(&b->hart, __ATOMIC_ACQUIRE) != h->id ||
+      __atomic_load_n(&b->var, __ATOMIC_ACQUIRE) != ST_READY ||
+      __atomic_load_n(&b->running, __ATOMIC_ACQUIRE)) {
+    fpr_unlock(&h->bl_lock);
+    return 0;
+  }
+  h->bl_head = h->bl_tail = 0;
+  h->bl_len = 0;
+  b->in_bl = 0;
+  __atomic_store_n(&b->running, (uint32_t)h->id + 1, __ATOMIC_RELEASE);
+  fpr_unlock(&h->bl_lock);
+  h->wake_hint = 0;
+  h->direct_run++;
+  TR(b, 5);
+  fpr_bump_close(h); /* a's window, as the hart loop closes it */
+  h->switched_from = a;
+  h->current = b;
+  h->stk_lo = b->stk_lo;
+  h->stk_span = b->stk_span;
+  if (b->stack && b->stk_span != ~(uw)0) hal_actor_stack((void *)(b->stk_lo - FPR_STACK_HEADROOM));
+  code_fence(h);
+  FPR_SCHED_EVENT(FPR_SCHED_DISPATCH, h->id, b->id);
+  fpr_ctx_switch(live_block(a)->ctx, live_block(b)->ctx);
+  resumed();
+  return 1;
+}
+
 static int block_unless(acb_t *a, pred_t pred, uw arg, enum wait_kind kind) {
   if (spin_until(a, pred, arg)) return 0; /* it arrived while we looked */
   uint32_t exp = ST_READY;
@@ -2185,7 +2265,7 @@ static int block_unless(acb_t *a, pred_t pred, uw arg, enum wait_kind kind) {
   TR(a, 10);
   __atomic_fetch_add(&g_blocked, 1, __ATOMIC_RELAXED);
   if (a->irq_target) __atomic_fetch_add(&g_irq_waiting, 1, __ATOMIC_RELAXED);
-  to_sched();
+  if (!direct_handoff(fpr_hart(), a)) to_sched();
   TR(a, 12);
   if (a->irq_target) __atomic_fetch_sub(&g_irq_waiting, 1, __ATOMIC_RELAXED);
   __atomic_fetch_sub(&g_blocked, 1, __ATOMIC_RELAXED);

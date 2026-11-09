@@ -548,6 +548,11 @@ typedef struct {
   struct fpr_acb *wake_hint; /* owner-only, one-shot local wake preference;
                               * never a queue entry or an ownership transfer */
   uw handoff_run;           /* consecutive preferred admissions, bounded */
+  struct fpr_acb *switched_from; /* direct handoff (actors.c): the actor that
+                              * switched straight to the current one; whoever
+                              * resumes clears its running mark (appended) */
+  uw direct_run;            /* direct handoffs since the hart loop last ran */
+  uw code_seen;             /* code generation this hart last fenced for */
 #ifdef FPR_COST_PROBE
   uint64_t cost_alloc_requests, cost_alloc_bytes;
   uint64_t cost_copies, cost_copy_bytes, cost_msg_slabs;
