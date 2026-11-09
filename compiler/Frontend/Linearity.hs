@@ -33,6 +33,7 @@ import Ownership.Shape
       lown,
       substL,
       bindingsL,
+      matchL,
       demandOwnership,
       joinLShape,
       projectOwnership,
@@ -46,6 +47,9 @@ import Ownership.Shape
       heldVar,
       fieldVar,
       heldAt,
+      heldOf,
+      heldOfVar,
+      heldVarsAt,
       callableArity,
       repeatedCallbackPrims,
       closureShape )
@@ -310,6 +314,7 @@ checkLinearityRound li tops = LinearityResult (concat [es | (_, es, _) <- result
           -- has a function type (an owner it created or holds itself,
           -- not one a caller handed it) makes every result single-use
           heldErr = [RequireUnrestricted heldVar | heldAt declResult bodyShape]
+            ++ [RequireUnrestricted (heldOf v) | v <- heldVarsAt declResult bodyShape]
           linear = [v | (v, s) <- M.toList genv, isLin s]
           guardUsed = M.keys (M.filter (> 0) gc)
           guardErr = concat [demandOwnership (M.findWithDefault LU v genv) ("guard uses linear variable(s) " ++ show guardUsed ++ " (guards may re-evaluate on fallthrough)") | v <- guardUsed]
@@ -567,14 +572,25 @@ linExpr li env0 = go env0
       | Just (ps, r) <- M.lookup g (liSigs li) =
           let b = bindingsL ps argShapes
               required = M.findWithDefault [] g (liUnres li)
-              violated = concat [demandOwnership s (unresMessage v) | v <- required, v /= heldVar, Just s <- [M.lookup v b]]
+              violated = concat [demandOwnership s (unresMessage v) | v <- required, v /= heldVar, isNothing (heldOfVar v), Just s <- [M.lookup v b]]
+              -- a module's definition is spelled `name@hash` here
+              shown = takeWhile (/= '@') g
               unresMessage v
-                | Just (i, _) <- fnVarInfo v = "'" ++ g ++ "' may call " ++ (if fnVarNested v then "a function inside its argument #" else "its function argument #") ++ show (1 + i)
+                | Just (i, _) <- fnVarInfo v = "'" ++ shown ++ "' may call " ++ (if fnVarNested v then "a function inside its argument #" else "its function argument #") ++ show (1 + i)
                     ++ " more than once (or never), so it cannot take a single-use closure there (a lambda or partial application that captured a linear value)"
-                | otherwise = "'" ++ g ++ "' duplicates or discards its argument of type `" ++ v ++ "`, so it cannot take an owned value there"
+                | otherwise = "'" ++ shown ++ "' duplicates or discards its argument of type `" ++ v ++ "`, so it cannot take an owned value there"
               total = length ps + fnResultArity r
-              owners = [s | s <- argShapes, isLin s] ++ [LL | heldVar `elem` required]
-              b' = M.insert heldVar (closureShape owners) b
+              -- what the result's nested function positions hold: what
+              -- the body showed it keeps there (an owner of its own, or
+              -- the arguments for those symbolic owners)
+              owners = [LL | heldVar `elem` required] ++ [s | r0 <- required, Just v <- [heldOfVar r0], Just s <- [M.lookup v b], isLin s]
+              -- one symbolic owner is the value itself (a callable passed
+              -- through): kept as it is, so it joins with the arm that
+              -- returns it directly
+              heldShape' = case owners of
+                [o] | not (hardLin o) -> o
+                _ -> closureShape owners
+              b' = M.insert heldVar heldShape' b
            in (if nargs == length ps then substL b' LU r else LU, nargs >= total, violated)
       | otherwise = (LU, True, [])
       where
@@ -583,10 +599,15 @@ linExpr li env0 = go env0
         -- constructed value's type: refused (constrains a callable
         -- parameter of the enclosing function instead, when symbolic)
         stored = case M.lookup g (liConFnFields li) of
+          -- each function-typed position on its own: joining two
+          -- unrestricted callables of different arity is not an owner
           Just templates
-            | Just held <- M.lookup fieldVar (bindingsL templates argShapes) ->
-                demandOwnership held ("constructor '" ++ g ++ "' cannot store a single-use closure (a lambda or partial application that captured a linear value) in a function-typed field: the field's type cannot say it is single-use; pass the owner as its own field instead")
+            | held@(_ : _) <- [a | (v, a) <- concat (zipWith matchL templates argShapes), v == fieldVar, isLin a] ->
+                concatMap (`demandOwnership` storedMessage) held
           _ -> []
+        storedMessage = "constructor '" ++ g' ++ "' cannot store a single-use closure (a lambda or partial application that captured a linear value) in a function-typed field: the field's type cannot say it is single-use; pass the owner as its own field instead"
+          -- (the constructor's spelling without its module hash)
+          where g' = takeWhile (/= '@') g
     globalShape v
       | Just (ps, _) <- M.lookup v (liSigs li), null ps, heldVar `elem` M.findWithDefault [] v (liUnres li) = closureShape [LL]
       | Just (ps, r) <- M.lookup v (liSigs li), null ps = eraseVars r

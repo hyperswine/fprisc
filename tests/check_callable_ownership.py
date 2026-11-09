@@ -51,6 +51,9 @@ mk k = t = Token k; fn n -> consume t + n.
 '''
 HOLDER = '''Holder = Type (Holder (Int -> Int)).
 '''
+PASS = '''pass : (Int, (Int -> Int)) -> Token -> (Int, (Int -> Int)).
+pass st t = u = consume t; st.
+'''
 
 # (source, the diagnostic text both frontends must print)
 REFUSALS = {
@@ -119,6 +122,10 @@ wrap : Token -> Holder.
 wrap t = Holder (fn n -> consume t + n).
 main = h = wrap (Token 7); Holder f = h; print (f 1 + f 2).
 ''', "constructor 'Holder' cannot store a single-use closure"),
+    # a callable passed through a result keeps the ownership it came with
+    'pass-through-twice': (PASS + '''
+main = t = Token 7; f = fn n -> consume t + n; (n, g) = pass (1, f) (Token 1); print (g n + g n).
+''', "linear variable 'g' used 2 time(s)"),
     'std-list-map': ('''
 main = t = Token 7; f = fn n -> consume t + n; print (List.map f [1, 2]).
 ''', "'List.map' may call its function argument #1"),
@@ -162,6 +169,14 @@ main = f = mk 7; print (f 1).
     'constructor-field-unrestricted': (HOLDER + '''
 main = k = 3; h = Holder (fn n -> n + k); Holder f = h; print (f 1 + f 2).
 ''', '9\n'),
+    # an owned argument beside a passed-through callable does not make the
+    # callable single-use, and the arm returning it directly joins with
+    # the arm that passes it through (std/mvu.fpr renderStep's shape)
+    'pass-through-join': (PASS + '''
+choose : Bool -> (Int, (Int -> Int)) -> (Int, (Int -> Int)).
+choose b st = case b of True -> st | False -> pass st (Token 1).
+main = k = 3; (n, g) = choose False (1, fn x -> x + k); print (g n + g n).
+''', 'consume 1\n8\n'),
     'higher-order-unrestricted-twice': (TWICE + '''
 main = k = 7; print (twice (fn n -> k + n)).
 ''', '(7, 8)\n'),

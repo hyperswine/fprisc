@@ -219,6 +219,28 @@ heldVar = "->held"
 fieldVar :: String
 fieldVar = "->field"
 
+-- A body whose result, at a function position, holds a closure over a
+-- SYMBOLIC owner (a parameter of type `a`, a callable parameter) records
+-- heldOf v: a call's result then holds whatever the call passed for v.
+heldOf :: String -> String
+heldOf v = heldVar ++ ":" ++ v
+
+heldOfVar :: String -> Maybe String
+heldOfVar r = case splitAt (length heldVar + 1) r of
+  (p, v) | p == heldVar ++ ":" -> Just v
+  _ -> Nothing
+
+-- the symbolic owners a body's result holds at the declared function
+-- positions (see heldAt)
+heldVarsAt :: LShape -> LShape -> [String]
+heldVarsAt decl body = case (decl, body) of
+  (LVar v, b) | v == heldVar -> lvars b
+  (LCon "->" False as, b) | all (== LU) as -> lvars b
+  (LTupS ds, LTupS bs) | length ds == length bs -> concat (zipWith heldVarsAt ds bs)
+  (LRecS ds _, LRecS bs _) -> concat [heldVarsAt d b | (f, d) <- ds, Just b <- [lookup f bs]]
+  (LCon n _ ds, LCon m _ bs) | n == m, length ds == length bs -> concat (zipWith heldVarsAt ds bs)
+  _ -> []
+
 -- Does a body's result hold an owner for sure at a position where the
 -- declared result has a function type?  Then the function's result is a
 -- single-use closure even when its arguments are unrestricted.

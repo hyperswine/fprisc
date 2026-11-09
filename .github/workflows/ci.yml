@@ -77,10 +77,6 @@ jobs:
         run: |
           make fpr
           ./fpr --version || test -x ./fpr
-      # every invalid probe must be refused by both frontends (a few
-      # seconds; docs/2026-11-09-CALLABLE-OWNERSHIP.md)
-      - name: Linear ownership audit
-        run: python3 -u tools/audit_linear_ownership.py
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -191,6 +187,10 @@ jobs:
           cabal update
           cabal build
           make fpr
+      # every invalid ownership probe must be refused by both frontends
+      # (about 5 s; docs/2026-11-09-CALLABLE-OWNERSHIP.md)
+      - name: Linear ownership audit
+        run: FPR_HOME="$GITHUB_WORKSPACE" python3 -u tools/audit_linear_ownership.py
       - name: reliability checks
         env:
           RELIABILITY_FULL: ${{ github.event_name == 'schedule' && '1' || '0' }}
