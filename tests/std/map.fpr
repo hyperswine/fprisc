@@ -16,6 +16,30 @@ main =
   _ = print "big size {Map.size big} first {Map.first big} get {Map.get 7919 big}";
   small = List.range 1 100000 |> List.fold (fn m i -> case i - (i / 2) * 2 == 0 of True -> Map.remove ((i * 7919) - ((i * 7919) / 100003) * 100003) m | False -> m) big;
   _ = print "after removing half {Map.size small}";
+  # alter: add, replace, drop and leave alone, in one descent each
+  bumped = Map.alter "the" bump counts |> Map.alter "cow" bump;
+  _ = print "alter {Map.entries bumped} size {Map.size bumped}";
+  dropped = Map.alter "and" (fn o -> Option.None) counts;
+  _ = print "alter drop {Map.keys dropped} size {Map.size dropped}";
+  same = Map.alter "cow" (fn o -> Option.None) counts;
+  _ = print "alter absent+None {Map.entries same} size {Map.size same} equal {Map.equal same counts}";
+  _ = print "insertWith {Map.entries (Map.insertWith (fn o n -> o * 10 + n) "the" 7 counts |> Map.insertWith (fn o n -> o * 10 + n) "yak" 7)}";
+  # the same 100,000 keys by alter as by get+insert/remove: every key, every count, still balanced
+  key = fn i -> (i * 7919) - ((i * 7919) / 1009) * 1009;
+  step = fn m i -> case i - (i / 3) * 3 == 0 of
+      True -> Map.alter (key i) (fn o -> case o of Option.Some c -> (if c > 40 then Option.None else Option.Some (c + 1)) | Option.None -> Option.None) m
+    | False -> Map.alter (key i) bump m;
+  ref = fn m i -> case i - (i / 3) * 3 == 0 of
+      True -> (case Map.get (key i) m of Option.Some c -> (if c > 40 then Map.remove (key i) m else Map.insert (key i) (c + 1) m) | Option.None -> m)
+    | False -> Map.insert (key i) (1 + Option.withDefault 0 (Map.get (key i) m)) m;
+  byAlter = List.range 1 100000 |> List.fold step Map.ints;
+  byRef = List.range 1 100000 |> List.fold ref Map.ints;
+  _ = print "alter vs get+insert/remove: size {Map.size byAlter} {Map.size byRef} same {Map.equal byAlter byRef} first {Map.first byAlter}";
+  # the empty map and a single key
+  one = Map.alter 5 (fn o -> Option.Some 50) Map.ints;
+  _ = print "alter empty: add {Map.entries one} size {Map.size one}; None {Map.size (Map.alter 5 (fn o -> Option.None) Map.ints)}; drop the only key {Map.entries (Map.alter 5 (fn o -> Option.None) one)} size {Map.size (Map.alter 5 (fn o -> Option.None) one)}; replace {Map.entries (Map.alter 5 (fn o -> Option.map (fn v -> v + 1) o) one)}; insertWith {Map.entries (Map.insertWith (fn o n -> o + n) 5 7 one)}";
+  gone = Map.keys byAlter |> List.fold (fn m k -> Map.alter k (fn o -> Option.None) m) byAlter;
+  _ = print "alter every key away: size {Map.size gone} entries {Map.entries gone}";
   a = Set.fromList Order.int (3 :: 1 :: 2 :: 3 :: Nil);
   b = Set.fromList Order.int (2 :: 3 :: 4 :: Nil);
   print "set {Set.toList a} union {Set.toList (Set.union a b)} intersect {Set.toList (Set.intersect a b)} diff {Set.toList (Set.diff a b)} member {Set.member 4 a}".

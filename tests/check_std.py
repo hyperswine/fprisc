@@ -25,7 +25,7 @@ check('foundation', label='Option, Order, Result; values print as they are writt
 check('pagination', label='Pagination: contracted positive page sizes, nonnegative counts, clamped pages and overflow-safe offsets')
 check('list', label='List: map/filter/fold/find/zip/group, a stable merge sort of 300,000')
 check('string', label='String: split/join/trim/replace/search/slices/toInt, 1.3 MB through join and split')
-check('map', label='Map and Set: a persistent AVL tree, 100,000 keys in and half out, ascending iteration')
+check('map', label='Map and Set: a persistent AVL tree, 100,000 keys in and half out, ascending iteration; alter/insertWith in one descent agree with get+insert/remove over 100,000 updates')
 check('json', label='Json: parse with line and column, escapes and surrogate pairs, deterministic render, a 640 KB round trip')
 with tempfile.TemporaryDirectory(prefix='fpr-store-') as t:
     check('store', args=(str(Path(t) / 'store'),), label='Store: shard actors, pages across shards newest first, search on every shard at once, removal, a shard compacting its own file, reopening from the files')
