@@ -77,10 +77,27 @@ mapL : (Int -> Int) -> (xs : List Int | measure xs) -> List Int.
 mapL f xs = case xs of Nil -> Nil | x :: r -> f x :: mapL f r.
 main = t = Token 7; f = fn n -> consume t + n; print (mapL f [1, 2]).
 ''', "'mapL' may call its function argument #1"),
+    'std-list-map': ('''
+main = t = Token 7; f = fn n -> consume t + n; print (List.map f [1, 2]).
+''', "'List.map' may call its function argument #1"),
     'prim-vec-map': ('''
 main = t = Token 7; v = Vec.push 1 (Vec.new Unit); f = fn n -> consume t + n;
   w = Vec.map f v; u = Vec.free w; print 0.
 ''', "'Vec.map' may call its function argument #1"),
+}
+
+# HostedBytecode-only list schemes (Sol.Infer.solBuiltins): primitives with
+# no body, so the refusal comes from Ownership.Shape.repeatedCallbackPrims
+SOL_REFUSALS = {
+    'sol-scheme-map': ('''
+main = t = Token 7; f = fn n -> consume t + n; print (map f [1, 2]).
+''', "'map' may call its function argument #1"),
+    'sol-scheme-foldl': ('''
+main = t = Token 7; f = fn a n -> consume t + n; print (foldl f 0 [1, 2]).
+''', "'foldl' may call its function argument #1"),
+    'sol-scheme-filter-nested': ('''
+main = t = Token 7; f = fn n -> consume t + n; print (filter (fn x -> f x > 0) [1, 2]).
+''', "'filter' may call its function argument #1"),
 }
 
 POSITIVES = {
@@ -109,8 +126,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--case', action='append', help='run only the named case; repeatable')
     args = parser.parse_args()
-    selected = set(args.case or REFUSALS.keys() | POSITIVES.keys())
-    unknown = selected - REFUSALS.keys() - POSITIVES.keys()
+    selected = set(args.case or REFUSALS.keys() | SOL_REFUSALS.keys() | POSITIVES.keys())
+    unknown = selected - REFUSALS.keys() - SOL_REFUSALS.keys() - POSITIVES.keys()
     if unknown:
         parser.error('unknown case(s): ' + ', '.join(sorted(unknown)))
     with tempfile.TemporaryDirectory(prefix='fpr-callable-ownership-') as directory:
@@ -140,6 +157,17 @@ def main():
                 assert result.returncode != 0 and 'LINEARITY: ERRORS' in output, (name, mode, result.returncode, output)
                 assert needle in output, (name, mode, needle, output)
             print(name + ': refused by native and Sol', flush=True)
+
+        for name, (body, needle) in SOL_REFUSALS.items():
+            if name not in selected:
+                continue
+            source = tmp / (name + '.fpr')
+            source.write_text(BASE + body)
+            result = invoke([ROOT / 'fpr', 'sol', source])
+            output = result.stdout + result.stderr
+            assert result.returncode != 0 and 'LINEARITY: ERRORS' in output, (name, result.returncode, output)
+            assert needle in output and 'consume 7' not in output, (name, needle, output)
+            print(name + ': refused by Sol', flush=True)
 
         for name, (body, expected) in POSITIVES.items():
             if name not in selected:

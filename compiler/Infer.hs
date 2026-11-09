@@ -1690,7 +1690,12 @@ typecheck sigs structs tops = let (e, _, _, _, _) = inferTops sigs structs tops 
 -- at the top level. Higher-order arguments remain TFn/shape LU; this does
 -- not yet express whether a callback carries a single-use capture.
 builtinLinShapes :: [Name] -> M.Map Name ([LShape], LShape)
-builtinLinShapes linNs =
+builtinLinShapes = builtinLinShapesFor builtinEnv
+
+-- the same derivation over another frontend's primitive table (Sol's
+-- list schemes `map` / `filter` / `foldl` are not native primitives)
+builtinLinShapesFor :: TEnv -> [Name] -> M.Map Name ([LShape], LShape)
+builtinLinShapesFor env linNs =
   -- sendLinear MOVES its payload: the polymorphic type would derive LU
   -- under the current coarse treatment of quantified vars, but move semantics is the
   -- verb's whole meaning, so the consume is declared here explicitly --
@@ -1701,7 +1706,7 @@ builtinLinShapes linNs =
   M.insert "sendLinear" ([LU, LL], LU) $
   M.fromList
     [ (n, (zipWith (param n) [0 ..] ps, eraseVars (linShapeT linNs r)))
-      | (n, Forall _ _ t) <- M.toList builtinEnv,
+      | (n, Forall _ _ t) <- M.toList env,
         let (ps, r) = peelFn t
     ]
   where

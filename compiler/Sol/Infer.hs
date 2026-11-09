@@ -19,7 +19,7 @@
 --
 -- This file was a ~1,000-line fork of Infer.hs; the un-forking is
 -- docs/2026-08-29-MEMORY-V2-PLAN.md's "de-fork the frontend" item made real.
-module Sol.Infer (inferTops, inferResult, inferSession, builtinNames) where
+module Sol.Infer (inferTops, inferResult, inferSession, builtinNames, solBuiltins) where
 
 import Infer (IProf (..), TEnv, InferenceResult, inferTopsResult, inferTopsSession, inferTopsWith, mono, scheme, sv)
 import Infer.Session (CheckedDefinitions)

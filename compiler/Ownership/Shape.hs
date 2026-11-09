@@ -221,7 +221,11 @@ callableArity s = case fnResultArity s of
 -- calls its parameter twice.  (A primitive that calls its callback once,
 -- like `Sys.arena` or `spawn`, is not listed.)
 repeatedCallbackPrims :: [String]
-repeatedCallbackPrims = ["Vec.map", "Vec.mapSame", "Vec.filter", "Vec.fold", "Sys.loop", "Sys.loopWith"]
+repeatedCallbackPrims =
+  ["Vec.map", "Vec.mapSame", "Vec.filter", "Vec.fold", "Sys.loop", "Sys.loopWith",
+   -- HostedBytecode's list schemes (Sol.Infer.solBuiltins), which the
+   -- Sol prelude's List.map / List.filter / List.foldl reach
+   "map", "filter", "foldl"]
 
 -- The ownership of a closure that holds these values: owned if any is
 -- (surely or symbolically), unrestricted otherwise.  Unlike a join it

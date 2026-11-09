@@ -37,7 +37,7 @@ import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Safety (checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryChecker)
 import Precond (applyPreconds, preTable, validatePre, validatePreUses)
-import Sol.Infer (inferResult, inferSession, builtinNames)
+import Sol.Infer (inferResult, inferSession, builtinNames, solBuiltins)
 import Infer.Session (CheckedDefinitions)
 import Sol.ReplParse (appendCommand)
 import Sol.Slice (injectedNames, mentions, orderedShapes, shapeSeed, sliceIndices)
@@ -48,7 +48,7 @@ import qualified Data.ByteString.Lazy as BL
 import Numeric (showHex)
 import Infer.Result
 import qualified Diagnostic.Render as SourceDiagnostic
-import Infer (builtinLinShapes)
+import Infer (builtinLinShapes, builtinLinShapesFor)
 import Sol.Width (widthReport)
 import Sol.HandJIT (JitCtx, initJIT)
 import System.Environment (getArgs, lookupEnv)
@@ -574,7 +574,8 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll utops u
   -- signatures in the same priority order as the native frontend.
   let li0 = buildLinInfo tops
       li = li0 {liSigs = liSigs li0 `M.union` M.fromList linsigs
-                          `M.union` builtinLinShapes (liLinTys li0)}
+                          `M.union` builtinLinShapes (liLinTys li0)
+                          `M.union` builtinLinShapesFor solBuiltins (liLinTys li0)}
       linearity = checkLinearity li tops
       lerrs = linearityDiagnostics linearity
   unless (null lerrs) $ do

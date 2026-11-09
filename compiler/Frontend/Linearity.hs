@@ -197,7 +197,10 @@ linearityConstraints (LinearityResult _ constraints)=constraints
 checkLinearity :: LinInfo -> [STop] -> LinearityResult
 checkLinearity li tops = go (M.map (sort . nub) (M.unionWith (++) (liUnres li) primCallbacks))
   where
-    primCallbacks = M.fromList [(n, vs) | n <- repeatedCallbackPrims, Just (ps, _) <- [M.lookup n (liSigs li)],
+    -- a source definition of the same name (a module's own `map`) is read
+    -- from its body instead
+    defined = [n | TBind n _ _ _ <- tops]
+    primCallbacks = M.fromList [(n, vs) | n <- repeatedCallbackPrims, n `notElem` defined, Just (ps, _) <- [M.lookup n (liSigs li)],
                                          let vs = [v | LVar v <- ps, isJust (fnVarInfo v)], not (null vs)]
     -- Each round unions obligations into the old table. The functions and
     -- shape variables are finite, so strict growth terminates. A fixed round
