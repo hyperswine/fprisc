@@ -442,6 +442,7 @@ halArities =
       ("Vec.set", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
       ("Vec.toList", 1), ("Vec.fromList", 1), ("Vec.free", 1),
       ("Vec.zipAdd", 2), ("Vec.zipSub", 2), ("Vec.zipMul", 2), ("Vec.dot", 2), ("Vec.scale", 2),
+      ("sortListWith", 2),
       ("use", 1), ("run", 2), ("View.serve", 5)
     ]
     ++ [(name, arity) | (name, arity, _) <- ScriptIO.api ++ Process.api ++ Digest.api ++ Format.api ++ Http.api]

@@ -257,35 +257,17 @@ unique xs = reverse (fold (fn seen x -> case member x seen of True -> seen | Fal
 
 # ---- sorting -------------------------------------------------------------------------
 # A stable merge sort: equal elements keep their order, so sorting by one key
-# and then by another composes.  O(n log n), no stack.
+# and then by another composes.  O(n log n), no stack.  The merging runs in the
+# runtime (sortListWith, runtime/runtime.c) over an array of the elements:
+# at most n * ceil(log2 n) calls of `cmp`, n fresh cells, 2n words of scratch
+# returned before it answers.  `cmp` is called as the list merge called it
+# (`cmp y x`, y from the later run; y first only when Less).
 sortWith : (a -> a -> Ord.Ordering) -> (xs : List a) -> List a | size sortWith <= len xs .
-sortWith cmp xs = mergeAll cmp (map singleton xs).
+sortWith cmp xs = sortListWith cmp xs.
 
 # sort by a key: List.sortBy Order.int size files
 sortBy : (k -> k -> Ord.Ordering) -> (a -> k) -> (xs : List a) -> List a | size sortBy <= len xs .
 sortBy cmp key xs = sortWith (Ord.by key cmp) xs.
-
-mergeAll : unsafe (a -> a -> Ord.Ordering) -> List (List a) -> List a .
-mergeAll cmp runs = case runs of
-    Nil -> Nil
-  | one :: Nil -> one
-  | _ -> mergeAll cmp (mergePairs cmp runs Nil).
-
-mergePairs : (a -> a -> Ord.Ordering) -> (runs : List (List a) | measure runs) -> List (List a) -> List (List a) .
-mergePairs cmp runs acc = case runs of
-    a :: b :: rest -> mergePairs cmp rest (merge cmp a b Nil :: acc)
-  | one :: Nil -> reverse (one :: acc)
-  | Nil -> reverse acc.
-
-# `b`'s element goes first only when strictly Less: that is what keeps it stable
-merge : unsafe (a -> a -> Ord.Ordering) -> List a -> List a -> List a -> List a .
-merge cmp xs ys acc = case xs of
-    Nil -> revOnto acc ys
-  | x :: xr -> (case ys of
-        Nil -> revOnto acc xs
-      | y :: yr -> (case cmp y x of
-            Ord.Less -> merge cmp xs yr (y :: acc)
-          | _ -> merge cmp xr ys (x :: acc))).
 
 # ---- grouping ------------------------------------------------------------------------
 # consecutive elements with equal keys (deep ==), as (key, members) in order.

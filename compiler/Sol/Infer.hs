@@ -97,6 +97,7 @@ solBuiltins =
       ("strLower", mono (TFn tStr tStr)),
       ("strTrim", mono (TFn tStr tStr)),
       ("strJoin", mono (TFn tStr (TFn (tList tStr) tStr))),
+      ("sortListWith", scheme [0, 1] (TFn (TFn (sv 0) (TFn (sv 0) (sv 1))) (TFn (tList (sv 0)) (tList (sv 0))))),
       ("strCmp", mono (TFn tStr (TFn tStr tInt))),
       ("strCodes", mono (TFn tStr (tList tInt))),
       ("chr", mono (TFn tInt tStr)),

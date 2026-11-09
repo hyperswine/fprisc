@@ -664,6 +664,8 @@ FPR_FN(fpr_g_Vec_x2efromListAs, h_fromListAs, 2);
 FPR_FN(fpr_g_Vec_x2etoList, h_toList, 1);
 FPR_FN(fpr_g_Vec_x2efree, h_free, 1);
 FPR_FN(fpr_g_Vec_x2esplit, h_split, 2);
+static V h_sortWith(V cmp, V vec); /* below, beside h_dup */
+FPR_FN(fpr_g_sortVecWith, h_sortWith, 2);
 
 /* ==== the numeric SIMD tier ============================================
  * Element-wise ops over ONE unboxed Int column, striding the raw block
@@ -758,6 +760,32 @@ static V h_iota(V nv) {
   V v = h_new((V)&fpr_unit);
   for (sw i = 0; i < n; i++) v = h_push(TAG(i), v);
   return v;
+}
+
+/* sortVecWith (std/vector.fpr sortWith): a STABLE sort in place, by the same merge as List.sortWith
+ * (runtime.c fpr_sort_perm; the same comparator protocol: `cmp b a`, b from
+ * the later run, b first only when Less).  Each row is rebuilt ONCE as the
+ * comparator's argument (a record row is one cell; scalars build nothing),
+ * the merge sorts a permutation, and then every column is moved by it:
+ * at most n * ceil(log2 n) comparisons, n + ncols * n word moves, and 3n
+ * words of raw scratch returned before it answers.  Consumes and returns the
+ * vector (linear: the handle comes back sorted). */
+static V h_sortWith(V cmp, V vec) {
+  vec_t *x = vchk(vec, "Vector.sortWith: not a Vector");
+  uw n = x->len;
+  if (n < 2) return (V)x;
+  V *keys = (V *)fpr_alloc_raw((V)(3 * n * sizeof(V)));
+  uw *idx = (uw *)(keys + n), *tmp = idx + n;
+  for (uw i = 0; i < n; i++) keys[i] = row_at(x, i);
+  uw *perm = fpr_sort_perm(cmp, keys, idx, tmp, n);
+  uw *spare = perm == idx ? tmp : idx; /* the other n words */
+  for (uw k = 0; k < x->ncols; k++) {
+    uw *base = x->cols[k]->base;
+    for (uw i = 0; i < n; i++) spare[i] = base[perm[i]];
+    __builtin_memcpy(base, spare, n * sizeof(uw));
+  }
+  fpr_free_raw((V)keys);
+  return (V)x;
 }
 
 static V h_dup(V vec) {

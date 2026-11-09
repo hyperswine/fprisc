@@ -66,6 +66,8 @@ const docs = {
   strTrim: 'Remove whitespace from both ends of a string.',
   strCodes: 'Return the byte codes of a string in order.',
   strJoin: 'Join a list of strings with the separator supplied as the first argument.',
+  sortListWith: 'List.sortWith\'s engine: a stable merge sort of the list by the comparator (an Ordering); call List.sortWith instead.',
+  sortVecWith: 'Vector.sortWith\'s engine (std/vector): a stable in-place sort of a Vector by the comparator (an Ordering); call Vector.sortWith instead.',
   intMax: 'Return the largest tagged Int on this target. Use Unit as the argument. Int arithmetic traps on overflow; use I32/I64 for explicit wrapping arithmetic in AOT programs.',
   intMin: 'Return the smallest tagged Int on this target. Use Unit as the argument. This value has no positive Int counterpart: negating it overflows.',
   fileRead: 'Read a file into a string through the selected host machine implementation.',

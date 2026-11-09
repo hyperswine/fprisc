@@ -459,7 +459,8 @@ builtinArities =
         ("Vec.new", 1), ("Vec.range", 2), ("Vec.mmul", 5), ("Vec.push", 2), ("Vec.len", 1), ("Vec.get", 2),
         ("Vec.set", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
         ("Vec.toList", 1), ("Vec.fromList", 1), ("Vec.free", 1),
-        ("Vec.zipAdd", 2), ("Vec.zipSub", 2), ("Vec.zipMul", 2), ("Vec.dot", 2), ("Vec.scale", 2)
+        ("Vec.zipAdd", 2), ("Vec.zipSub", 2), ("Vec.zipMul", 2), ("Vec.dot", 2), ("Vec.scale", 2),
+        ("sortListWith", 2)
       ]
 
 builtinCall :: VMEnv -> Name -> [Value] -> IO Value
@@ -2023,6 +2024,28 @@ vecCall env name args = case (name, args) of
         go bad = vmPanic ("Vec.fromList: not a list: " ++ render bad)
     go xs
     pure v
+  -- List.sortWith's engine (std/list.fpr; native: runtime.c sortListWith):
+  -- a stable bottom-up merge, `cmp y x` with y from the later run, y first
+  -- only when Less
+  ("sortListWith", [f, xs]) -> do
+    let items (VData t 1 [x, rest]) | t == listT = x : items rest
+        items _ = []
+        less y x = do
+          g <- apply env f y
+          o <- apply env g x
+          pure (case o of VData _ 0 [] -> True; _ -> False)
+        merge as [] = pure as
+        merge [] bs = pure bs
+        merge (x : xr) (y : yr) = do
+          yFirst <- less y x
+          if yFirst then (y :) <$> merge (x : xr) yr else (x :) <$> merge xr (y : yr)
+        pairs (a : b : rest) = (:) <$> merge a b <*> pairs rest
+        pairs rest = pure rest
+        sortRuns [] = pure []
+        sortRuns [one] = pure one
+        sortRuns runs = pairs runs >>= sortRuns
+    sorted <- sortRuns (map (: []) (items xs))
+    pure (foldr (\x acc -> VData listT 1 [x, acc]) (VData listT 0 []) sorted)
   ("Vec.map", [f, VVec r]) -> vecScheme env "vecmap" f Nothing r
   ("Vec.filter", [f, VVec r]) -> vecScheme env "vecfilter" f Nothing r
   ("Vec.fold", [f, z, VVec r]) -> vecScheme env "vecfold" f (Just z) r
