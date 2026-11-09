@@ -1570,6 +1570,12 @@ uw fpr_msg_charge_to(V v, uw pid, int shared, uw limit) {
   }
   return fpr_msg_slab_charge(need);
 }
+#if FPR_INL_CELL
+/* a slot-carried message is one cell of exactly its preheader total (its
+ * fields add nothing: fpr_msg_inline_size admits only what dc_budget counts
+ * as free), so its charge is fpr_msg_charge_to's without the walk */
+uw fpr_msg_inline_charge(uw total) { return fpr_msg_slab_charge(total); }
+#endif
 static fpr_slab_t *msg_slab_new(uw need) {
   if (need>(uw)-1-sizeof(fpr_slab_t)-FPR_SLAB_PAD) fpr_cpanic("message allocation size overflow");
   fpr_slab_t *sl = 0;

@@ -3156,23 +3156,38 @@ static acb_t syscall_mb; /* below: the syscall trampoline's reply mailbox */
 
 /* the small-message path (fpr_msg_inline_size): the cell goes into the
  * slot's cell area of a dedicated channel.  1 sent; 0 not this path (the
- * ordinary send follows, and it grows a full ring). */
+ * ordinary send follows: it grows a full ring and answers a dead actor or
+ * a full mailbox).  A bounded inbox is charged exactly what the ordinary
+ * path charges (inbox_reserve), so a limit admits the same messages
+ * whichever path carries them; the charge rides in the slot's charge word
+ * and the receiver releases it as it does any other. */
 /* out of line: an ordinary send pays only SEND_INLINE_MAY's tests */
-#define SEND_INLINE_MAY(a, m) (FPR_INL_CELL && !ISINT(m) && (m) && !(a)->inbox_max_messages)
+#define SEND_INLINE_MAY(a, m) (FPR_INL_CELL && !ISINT(m) && (m))
 __attribute__((noinline)) static int send_inline(acb_t *a, uw key, V m) {
   if (a == mem_act || a == &syscall_mb || !a->ch) return 0;
   acb_t *cur = fpr_hart()->current;
   if (!cur || cur->pid != a->pid) return 0;
   uw total = fpr_msg_inline_size(m, a->pid);
   if (!total) return 0;
-  chan_t *c = chan_for(a, key, 1);
+  int bounded = a->inbox_max_messages != 0;
+  chan_t *c;
+  if (bounded) {
+    /* bounded channels resolve under the lock that orders the death check
+     * (reap clears a->ch); the block stays type-stable after the unlock,
+     * and every later step re-checks death under the same lock */
+    fpr_lock(&a->shlock);
+    if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) { fpr_unlock(&a->shlock); return 0; }
+    c = chan_for(a, key, 1);
+    fpr_unlock(&a->shlock);
+  } else c = chan_for(a, key, 1);
   if (!c || c->sender == SHARED_KEY) return 0;
-  ringv_t *rv = c->rv; /* dedicated: single producer, private rt */
+  ringv_t *rv = c->rv; /* dedicated: single producer */
   if (!rv->inl) {
     /* the first small message on this channel: a ring of the same size
-     * with a cell area, installed like a growth (the old ring stays on the
-     * chain until the channel block is reused) */
-    ringv_t *nv = ring_block_di(rv->cap, 0, 0, 0, 0, 1);
+     * with a cell area (and the charge words a bounded ring carries),
+     * installed like a growth (the old ring stays on the chain until the
+     * channel block is reused) */
+    ringv_t *nv = ring_block_di(rv->cap, 0, 0, 0, rv->charge != 0 || bounded, 1);
     if (!nv) return 0;
     fpr_lock(&a->shlock);
     if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD || c->rv != rv) {
@@ -3184,12 +3199,40 @@ __attribute__((noinline)) static int send_inline(acb_t *a, uw key, V m) {
     fpr_unlock(&a->shlock);
     rv = nv;
   }
-  if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) return 0;
+  if (!bounded) {
+    if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) return 0;
+    uint32_t rt = c->rt;
+    if (rt - c->rh_seen >= rv->cap) c->rh_seen = __atomic_load_n(&c->rh, __ATOMIC_ACQUIRE);
+    if (rt - c->rh_seen >= rv->cap) return 0;
+    SLOT(rv, rt) = fpr_msg_inline_put(INLAT(rv, rt), m, total);
+    __atomic_store_n(&c->rt, rt + 1, __ATOMIC_RELEASE); /* publish */
+    return 1;
+  }
+  /* bounded: reserve, then publish under the lock reap waits on.  Nothing
+   * between the two allocates or parks, so the reservation is cancelled
+   * here or committed here (send_cancel / send_committed) */
+  uw charge;
+#ifdef FPR_INBOX_TEST
+  if (fpr_msg_inline_charge(total) != fpr_msg_charge_to(m, a->pid, 0, a->inbox_max_bytes) &&
+      fpr_msg_charge_to(m, a->pid, 0, a->inbox_max_bytes) <= a->inbox_max_bytes)
+    fpr_cpanic("inbox: a slot-carried message charged unlike the ordinary path");
+#endif
+  if (inbox_reserve_bytes(a, fpr_msg_inline_charge(total), &charge)) return 0; /* refused: the ordinary path answers */
+  fpr_lock(&a->shlock);
+  rv = c->rv;
   uint32_t rt = c->rt;
   if (rt - c->rh_seen >= rv->cap) c->rh_seen = __atomic_load_n(&c->rh, __ATOMIC_ACQUIRE);
-  if (rt - c->rh_seen >= rv->cap) return 0;
+  if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD || !rv->inl || !rv->charge ||
+      rt - c->rh_seen >= rv->cap) {
+    fpr_unlock(&a->shlock);
+    send_cancel(cur);
+    return 0;
+  }
   SLOT(rv, rt) = fpr_msg_inline_put(INLAT(rv, rt), m, total);
+  CHARGEAT(rv, rt) = charge;
   __atomic_store_n(&c->rt, rt + 1, __ATOMIC_RELEASE); /* publish */
+  fpr_unlock(&a->shlock);
+  send_committed(a);
   return 1;
 }
 
@@ -3313,6 +3356,12 @@ static V a_send_linear(V av, V m) {
       fpr_vec_release(m);
     return send_err("dead actor");
   }
+  /* a built flat value: nothing of the sender's to release (not a Vector) */
+  if (!movable && SEND_INLINE_MAY(a, m) && send_inline(a, (uw)fpr_hart()->current, m)) {
+    __atomic_thread_fence(__ATOMIC_SEQ_CST); /* Dekker: publish before flag read */
+    wake(a);
+    return OK_UNIT;
+  }
   if (a->inbox_max_messages) {
     uw charge;
     const char *why = inbox_reserve(a, m, movable, &charge);
@@ -3333,12 +3382,6 @@ static V a_send_linear(V av, V m) {
       if (!ISINT(original) && fpr_in_heap(original) && TID(original) == T_VEC) fpr_vec_release(original);
     } else if (sender) sender->send_root = m;
     return bounded_publish(a, m, charge);
-  }
-  /* a built flat value: nothing of the sender's to release (not a Vector) */
-  if (!movable && SEND_INLINE_MAY(a, m) && send_inline(a, (uw)fpr_hart()->current, m)) {
-    __atomic_thread_fence(__ATOMIC_SEQ_CST); /* Dekker: publish before flag read */
-    wake(a);
-    return OK_UNIT;
   }
   chan_t *c = 0;
   if (!movable) {

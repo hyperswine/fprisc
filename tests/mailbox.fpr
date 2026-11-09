@@ -2,6 +2,11 @@
 # refuses the burst that outruns it and says so, a Dynamic ring grows
 # and keeps every message in order, and the ARC table grows past its
 # old 1024-entry ceiling with thousands of shared values in flight.
+# The ARC trial sends a nested pair: a message of only ints and handles
+# rides in its ring slot (runtime/actors.c send_inline) and is never an
+# ARC entry, so a flat tuple would no longer reach the table at all. The
+# trial reads arcLive while all of them are queued, and says so if the
+# table did not hold them.
 #
 #   make qos-app PROG=tests/mailbox.fpr && (cd ../qos && ./qosp --yes ../fp-risc/app.qa)
 unsafe program.
@@ -38,6 +43,17 @@ drainT me main k last ordered =
   (a, b) = receiveFrom me main;
   drainT me main (k - 1) a (ordered and a > last).
 
+# the same over nested pairs: each message is an ARC entry while queued
+sink3 main gate me =
+  k = receiveFrom me gate;
+  (last, ordered) = drainA me main k 0 True;
+  _ = AC.sendOrDie main (k, ordered);
+  0.
+drainA me main 0 last ordered = (last, ordered).
+drainA me main k last ordered =
+  (a, (b, c)) = receiveFrom me main;
+  drainA me main (k - 1) a (ordered and a > last and c == a * 3).
+
 # a burst of n ints: how many were queued
 burst who i n ok | i > n = ok.
 burst who i n ok = case send who i of
@@ -47,6 +63,11 @@ burstT who i n ok | i > n = ok.
 burstT who i n ok = case send who (i, i * 3) of
     Ok u -> burstT who (i + 1) n (ok + 1)
   | Err e -> burstT who (i + 1) n ok.
+
+burstA who i n ok | i > n = ok.
+burstA who i n ok = case send who (i, (i, i * 3)) of
+    Ok u -> burstA who (i + 1) n (ok + 1)
+  | Err e -> burstA who (i + 1) n ok.
 
 trial me cap n =
   g = spawn gate;
@@ -65,16 +86,30 @@ trialT me cap n =
   (k, ordered) = receiveFrom me s;
   (ok, k, ordered).
 
+# held: how many ARC entries the queued burst added
+trialA me cap n =
+  g = spawn gate;
+  s = AC.spawnWith cap (sink3 me g);
+  _ = AC.sendOrDie g s;
+  a0 = arcLive 0;
+  ok = burstA s 1 n 0;
+  held = arcLive 0 - a0;
+  _ = AC.sendOrDie g ok;
+  (k, ordered) = receiveFrom me s;
+  (ok, held, k, ordered).
+
 main =
   me = myself 0;
   (a, ka, oa) = trial me (Static 8) 20;
   (b, kb, ob) = trialT me (Dynamic 8) 20;
-  (c, kc, oc) = trialT me (Dynamic 8) 3000;
+  (c, held, kc, oc) = trialA me (Dynamic 8) 3000;
   dead = spawn (fn m -> 0);
   _ = kill dead;
   r = send dead 1;
   deadTxt = case r of Ok u -> "ok" | Err e -> e;
-  _ = print "mailbox: static 8 queued {a} of 20 ({20 - a} refused), drained {ka} {orderWord oa}; dynamic 8 queued {b} of 20, drained {kb} {orderWord ob}; arc {c} shared values held, drained {kc} {orderWord oc}; a dead actor answers {deadTxt}";
+  _ = print "mailbox: static 8 queued {a} of 20 ({20 - a} refused), drained {ka} {orderWord oa}; dynamic 8 queued {b} of 20, drained {kb} {orderWord ob}; arc {heldWord c held}, drained {kc} {orderWord oc}; a dead actor answers {deadTxt}";
   0.
+heldWord c held | held >= c = "{c} shared values held".
+heldWord c held = "{c} queued but only {held} ARC entries held".
 orderWord True = "in order".
 orderWord False = "OUT OF ORDER".

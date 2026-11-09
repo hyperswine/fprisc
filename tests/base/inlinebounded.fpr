@@ -1,0 +1,83 @@
+# small flat messages to a BOUNDED inbox (runtime/actors.c send_inline,
+# QOS docs/2026-11-10-ACTOR-ROUND-TRIP-STEPS-2-3.md).  A slot-carried
+# message is charged what the ordinary path charges, and the receiver
+# releases the charge when it takes it.  This checks:
+#   the message limit refuses the same sends ("mailbox full"), and the
+#     limit is whole again once the receiver has taken them;
+#   order, with refusals in between;
+#   a byte limit admits as many slot-carried messages as ordinary ones;
+#   a selective receive past slot-carried messages releases their charges.
+unsafe program.
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+ok (Ok value) = value.
+ok (Err why) = error why.
+
+mkTail : Int -> String .
+mkTail i = strcat "x" (if i % 3 == 0 then "yz" else "y").
+
+# sends i..n; counts admitted and refused (only "mailbox full" refusals)
+fill w me i n yes no | i > n = (yes, no).
+fill w me i n yes no =
+  case send w (i, me) of
+      Ok u -> fill w me (i + 1) n (yes + 1) no
+    | Err "mailbox full" -> fill w me (i + 1) n yes (no + 1)
+    | Err why -> error "inlinebounded: {why}".
+# the same with a built string: the ordinary path
+fillWide w me i n yes no | i > n = (yes, no).
+fillWide w me i n yes no =
+  case send w (i, me, mkTail i) of
+      Ok u -> fillWide w me (i + 1) n (yes + 1) no
+    | Err "mailbox full" -> fillWide w me (i + 1) n yes (no + 1)
+    | Err why -> error "inlinebounded: {why}".
+
+# takes k messages from main; counts those out of order (expects first..)
+takeIn me main want 0 bad = bad.
+takeIn me main want k bad =
+  (i, who) = receiveFrom me main;
+  takeIn me main (want + 1) (k - 1) (if i == want and who == main then bad else bad + 1).
+
+# a gate message would itself be refused by a full inbox: the receivers
+# sleep while main fills, then take (main has long finished by then)
+pause = Sys.sleepUs 300000.
+# rounds of: pause, take five, report
+rounds me main first 0 = 0.
+rounds me main first r =
+  _ = pause;
+  bad = takeIn me main first 5 0;
+  _ = send main bad;
+  rounds me main (first + 5) (r - 1).
+taker main me = rounds me main 1 2.
+
+# selective: three tuples, then a result taken past them, then the three
+shifter main me =
+  _ = pause;
+  r = case receiveRes me of Ok v -> v | Err e -> 0 - 1;
+  bad = takeIn me main 1 3 0;
+  _ = send main (r, bad);
+  0.
+
+sleeping me = Sys.sleepUs 30000000.
+
+main =
+  me = myself 0;
+  # five messages at most, bytes no constraint
+  t = ok (Sys.spawnInbox (0 - 1) 5 1048576 (taker me));
+  (y1, n1) = fill t me 1 8 0 0;
+  b1 = receiveFrom me t;
+  (y2, n2) = fill t me 6 13 0 0;
+  b2 = receiveFrom me t;
+  # bytes only: as many of each kind
+  sa = ok (Sys.spawnInbox (0 - 1) 1000 524288 sleeping);
+  sb = ok (Sys.spawnInbox (0 - 1) 1000 524288 sleeping);
+  (ya, na) = fill sa me 1 100 0 0;
+  (yb, nb) = fillWide sb me 1 100 0 0;
+  # the shift: four sends to a four-message inbox, a fifth refused
+  s = ok (Sys.spawnInbox (0 - 1) 4 1048576 (shifter me));
+  _ = send s (1, me);
+  _ = send s (2, me);
+  _ = send s (3, me);
+  _ = send s (Ok 9);
+  over = case send s (4, me) of Ok u -> "admitted" | Err why -> why;
+  (r, b3) = receiveFrom me s;
+  _ = print "inlinebounded: limit 5 took {y1} refused {n1}, then took {y2} refused {n2}, {b1}+{b2} out of order; bytes admit {ya} small and {yb} wide ({na}/{nb} refused); result {r} past three with {b3} out of order, fifth {over}";
+  0.

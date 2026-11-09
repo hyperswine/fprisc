@@ -1029,6 +1029,7 @@ uw fpr_msg_inline_size(V v, uw pid);
 V fpr_msg_inline_put(char *cell, V v, uw total);
 uw fpr_msg_inline_total(V v);
 V fpr_msg_inline_take(V v);
+uw fpr_msg_inline_charge(uw total);
 /* Opaque bulk storage (a Vector's directory and columns, runtime/vec.c):
  * allocated in the actor's BASE pool whatever region is open, so an owned
  * Vector survives a turn's reset and crosses the boundary by handle; it is
