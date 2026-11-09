@@ -143,12 +143,49 @@ popMin t = case t of
       | _ -> (case popMin l of (mk, mv, l2) -> (mk, mv, balance l2 k v r)))
   | Leaf -> error "Map.popMin: empty".
 
-# change, add or drop one key in a single pass of your function:
+# change, add or drop one key: `f` sees the current value (None when the key is
+# absent) and says what to keep (None drops the key).  ONE descent of the tree:
+# `f` is called exactly once, at the key's place, and only the path to it is
+# rebuilt.  When nothing changes (absent key, `f` says None) the map you passed
+# comes back as it was, nothing copied.
+#   Map.alter w (fn old -> Option.Some (1 + Option.withDefault 0 old)) counts
+alter : k -> (O.Option v -> O.Option v) -> Map k v -> Map k v .
+alter k f m = case m of
+  Map cmp n t -> (case altGo cmp k f t of
+      (t2, d) -> if d == 2 then m else Map cmp (n + d) t2).
+# (the new tree, what happened): 1 added, 0 - 1 removed, 0 the value replaced
+# in place (no height changed, so the path is copied without rebalancing),
+# 2 nothing changed (the caller keeps its own tree).  Depth is O(log n).
+altGo : (k -> k -> Ord.Ordering) -> k -> (O.Option v -> O.Option v) -> (t : Tree k v | measure t) -> (Tree k v, Int) .
+altGo cmp k f t = case t of
+    Leaf -> (case f O.None of
+        O.Some v -> (Node 1 Leaf k v Leaf, 1)
+      | O.None -> (Leaf, 2))
+  | Node h l k2 v2 r -> (case cmp k k2 of
+        Ord.Less -> (case altGo cmp k f l of
+            (l2, d) -> if d == 2 then (t, 2)
+                       else if d == 0 then (Node h l2 k2 v2 r, 0)
+                       else (balance l2 k2 v2 r, d))
+      | Ord.Greater -> (case altGo cmp k f r of
+            (r2, d) -> if d == 2 then (t, 2)
+                       else if d == 0 then (Node h l k2 v2 r2, 0)
+                       else (balance l k2 v2 r2, d))
+      | Ord.Equal -> (case f (O.Some v2) of
+            O.Some v -> (Node h l k v r, 0)
+          | O.None -> (glue l r, 0 - 1))).
+
+# `alter` under its older name (one descent too; it used to be get, then insert
+# or remove):
 #   Map.update w (fn old -> Option.Some (1 + Option.withDefault 0 old)) counts
 update : k -> (O.Option v -> O.Option v) -> Map k v -> Map k v .
-update k f m = case f (get k m) of
-    O.Some v -> insert k v m
-  | O.None -> remove k m.
+update k f m = alter k f m.
+
+# insert, or where the key is already there store `f old v` instead:
+#   Map.insertWith (fn old new -> old + new) w 1 counts
+insertWith : (v -> v -> v) -> k -> v -> Map k v -> Map k v .
+insertWith f k v m = alter k (fn old -> case old of
+    O.Some o -> O.Some (f o v)
+  | O.None -> O.Some v) m.
 
 # ---- traversing (ascending by key) -----------------------------------------------
 fold : (b -> k -> v -> b) -> b -> Map k v -> b .

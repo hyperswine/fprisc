@@ -2,4 +2,10 @@ counts [(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 3)] size 5 the=Some 3 cow
 after [and, bird, cat, dog, zebra] [2, 1, 1, 1, 9] original still 5
 big size 100000 first Some (1, 47318) get Some 1
 after removing half 50000
+alter [(and, 2), (bird, 1), (cat, 1), (cow, 1), (dog, 1), (the, 4)] size 6
+alter drop [bird, cat, dog, the] size 4
+alter absent+None [(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 3)] size 5 equal True
+insertWith [(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 37), (yak, 7)]
+alter vs get+insert/remove: size 1009 1009 same True first Some (0, 15)
+alter every key away: size 0 entries []
 set [1, 2, 3] union [1, 2, 3, 4] intersect [2, 3] diff [1] member False
