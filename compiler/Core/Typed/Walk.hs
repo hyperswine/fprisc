@@ -7,6 +7,7 @@ import Data.List (nub)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
+{-# INLINABLE mapChildrenM #-}
 mapChildrenM :: Applicative m => (Expr -> m Expr) -> Expr -> m Expr
 mapChildrenM f e = (\node -> e {exprNode=node}) <$> case exprNode e of
   Apply a b->Apply <$> f a <*> f b
@@ -41,6 +42,7 @@ mapChildrenM f e = (\node -> e {exprNode=node}) <$> case exprNode e of
     guard (BoolGuard x)=BoolGuard <$> f x
     guard (PatternGuard p x)=PatternGuard p <$> f x
 
+{-# INLINABLE mapUpdateM #-}
 mapUpdateM :: Applicative m => (Expr -> m Expr) -> UpdatePlan -> m UpdatePlan
 mapUpdateM f (UpdatePlan roots branches)=UpdatePlan roots <$> traverse branch branches
   where
