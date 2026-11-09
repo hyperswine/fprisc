@@ -40,3 +40,11 @@ Measured and not taken: `INLINABLE` on `Core.Typed.Erase`'s `eraseFunction*`
 and `Core.Typed.Close.closeFunction*` (the other exported `Monad m =>`
 functions in the typed pipeline) saves 0.4-0.5 points more (hello -0.4%,
 std-live +2.0%, pos1 -2.3%): their callers mostly use one monad already.
+
+## Baseline re-recorded
+
+At the owner's request the darwin baseline (`ghc-9.8.2 aarch64-apple-darwin`)
+was re-recorded from 27b49d9: hello 1.47 GB / 47 MB peak, std-live 30.68 GB /
+357 MB, pos1 63.58 GB / 496 MB. The 2026-11-02 baseline it replaces predated
+the typed lowering; the new one includes it. Other environments' baselines are
+unchanged.
