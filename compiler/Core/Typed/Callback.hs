@@ -151,6 +151,20 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears _) arities cata
     safeKnown s@(Scope env _ _) visited (Known _ caps leading)=
       all (\uid->case M.lookup uid env of Just b->safeValue s visited (ref b);_->False) caps
       && all (safeValue s visited) leading
+    -- A local closure can be called directly with already evaluated captures
+    -- even when a capture is an opaque non-linear container. This does not
+    -- authorize cloning callbacks through that container or rebuilding an
+    -- escaping closure. Partially applied values retain the stricter rule.
+    localClosure (Scope env _ _) (Known (CodeTarget label) caps []) =
+      maybe False ((==ClosureCode) . contractKind) (M.lookup label baseContracts)
+      && all (\uid -> maybe False (\b -> not (isLin (binderShape b)) && captureValue (binderType b)) (M.lookup uid env)) caps
+    localClosure _ _ = False
+    -- An arrow or open variable can hide an ownership-sensitive environment.
+    -- Admit closed lists of already safe values; preserve the old refusal for
+    -- unknown callbacks and nominal containers without a transport proof.
+    captureValue (TAp (TC "List") element) = captureValue element
+    captureValue ty = plain ty
+    usable s k = safeKnown s S.empty k || localClosure s k
     value s desired (Known target caps leading)=do
       let fullType=foldr (TFn . exprType) desired leading
       head'<-case target of
@@ -184,7 +198,7 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears _) arities cata
           Just k | safeKnown s S.empty k->modify (\w->w {removable=S.insert (binderId b) (removable w)})
           _->pure ()
         case known s rhs' of
-          Just k@(Known t caps leading) | safeKnown s S.empty k,
+          Just k@(Known t caps leading) | usable s k,
             not (poly (binderScheme b) && not (null leading))->
               snapshotMany s leading $ \scope' saved->do
                 let k'=Known t caps saved
@@ -200,6 +214,7 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears _) arities cata
         args<-mapM (walk depth s) args0
         case known s head' of
           Just k | safeKnown s S.empty k->invoke depth s e k args
+                 | localClosure s k->direct s e k args
           _->do record "<dynamic>" D.UnknownTarget
                 result<-apply head' args;pure result {exprOrigin=exprOrigin e,exprOffset=exprOffset e}
       CodeCall label caps args->mapM (walk depth s) args >>= invoke depth s e (Known (CodeTarget label) caps [])

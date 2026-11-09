@@ -122,7 +122,7 @@
   },
   "scripts": {
     "builtins": "node tools/mkbuiltins.js .. server/builtins.json",
-    "test": "node test/toolchains.js && node test/qualified-signatures.js && node test/editor-metadata.js && node test/workspace-index.js && node test/editor-features.js && node test/check-scheduling.js && node test/check-lsp.js && node test/release.js && node test/check.js && node test/discovery.js && node test/builtins.js && node test/current-api.js && node test/case-bindings.js && node test/strings.js && node test/compiler-check.js && node test/modules.js && node test/optimization-remarks.js",
+    "test": "node test/toolchains.js && node test/qualified-signatures.js && node test/editor-metadata.js && node test/workspace-index.js && node test/editor-features.js && node test/resource-inference.js && node test/check-scheduling.js && node test/check-lsp.js && node test/release.js && node test/check.js && node test/discovery.js && node test/builtins.js && node test/current-api.js && node test/case-bindings.js && node test/strings.js && node test/compiler-check.js && node test/modules.js && node test/optimization-remarks.js",
     "package": "node tools/release.js package",
     "publish:marketplace": "node tools/release.js publish",
     "verify:marketplace": "node tools/release.js verify"

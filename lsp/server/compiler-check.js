@@ -479,6 +479,7 @@ function createChecker({ settings, workspaceRoot, readText, readOpen = () => nul
               const aliases = new Map([...input.files].reverse().map(([name, info]) => [info.real, name]));
               const editorPath = name => { try { return aliases.get(fs.realpathSync(name)) || name; } catch (_) { return name; } };
               report.types = report.types.map(t => ({ ...t, file: editorPath(t.file) }));
+              report.resources = report.resources.map(r => ({ ...r, file: editorPath(r.file) }));
               result = new Map();
               for (const d of report.diagnostics) {
                 // For deliberately file-level legacy gates, retain the legacy

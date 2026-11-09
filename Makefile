@@ -228,6 +228,7 @@ pipeline-baseline: fpr
 	python3 tools/pipeline-baseline.py --record
 
 pipeline-baseline-check: fpr
+	python3 tests/pipeline/check_baseline_gate.py
 	python3 tools/pipeline-baseline.py --check
 
 pipeline-baseline-rv64: fpr

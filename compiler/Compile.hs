@@ -73,7 +73,7 @@ import Frontend.Desugar.Typed (prepareChecked,selectCheckedUnit,checkedCallAriti
 import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTopsInterfaces)
 import Safety (measureCheck, checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import qualified Cost
-import qualified Resource.ResultSize as ResultSize
+import qualified Resource.Analysis as Resource
 import Manifest (Manifest (..), readManifest, renderNs)
 import Struct (expandStructs, sigTable, structTable)
 import Modules (LoadResult (..), ModExport (..), hashAST, loadProgram)
@@ -671,38 +671,24 @@ compileWithReport accepted report = do
           r <- readManifest path
           case r of
             Left err -> putStrLn ("=== MANIFEST: ERROR ===\n  * " ++ err) >> exitFailure
-            Right m -> pure (Just m)
+            Right m -> do
+              body <- readFile path
+              Editor.source report path body
+              pure (Just m)
       when (oCost opts || declaredAny) $ do
         let costInput = compileRaw finalTops
             costProg = fst (turnPassWith False costInput)
             (measTable, _) = measureCheck tops
-            surface = M.fromList [(n, [case p of PVar v -> v; PSig v _ -> v; _ -> "arg" ++ show i | (i, p) <- zip [1 :: Int ..] ps]) | TBind n ps _ _ <- firstClauses finalTops]
-            firstClauses ts = M.elems (M.fromListWith (\_ old -> old) [(n, t) | t@(TBind n _ _ _) <- ts])
+            surface = Resource.surfaceNames finalTops
             coefs = maybe M.empty mCoefs manifest
             prims = maybe M.empty mPrims manifest
-            (declared0, declErrs) = Cost.declaredBounds (M.keysSet coefs) surface costProg finalTops
-            -- the manifest binds the coefficients; without one a bound that
-            -- uses them stays symbolic and cannot be judged
-            declared = M.map (\d -> d {Cost.dWork = Cost.substCoefs coefs <$> Cost.dWork d, Cost.dAlloc = Cost.substCoefs coefs <$> Cost.dAlloc d, Cost.dLive = Cost.substCoefs coefs <$> Cost.dLive d, Cost.dSize = Cost.substCoefs coefs <$> Cost.dSize d}) declared0
-            -- Implicit checks must verify every declared contract, including
-            -- unused imports, but need no equations for unrelated functions.
-            -- Reports and target judgements retain the whole-program view.
-            contractRoots = M.keysSet (M.filter (\d -> Cost.dWork d /= Nothing || Cost.dAlloc d /= Nothing || Cost.dLive d /= Nothing) declared)
-            sizeDefinitions = M.map NativeCore.checkedFunction
-              (NativeCore.nativeDefinitions (Regions.programNative costInput))
-            sizeCandidates = M.mapMaybeWithKey (\n d -> do
-              bound <- Cost.dSize d
-              fn <- M.lookup n sizeDefinitions
-              (ps,_) <- M.lookup n costProg
-              let qs = map TCore.binderName (TCore.functionParameters fn)
-              if length ps /= length qs then Nothing else Just
-                (Cost.substituteCost (M.fromList (zip ps (map Cost.CP qs)))
-                  (M.fromList (zip ps (map Cost.CLen qs))) bound)) declared
-            sizeProofs = ResultSize.proveSizes measTable sizeCandidates (Regions.programNative costInput)
-            verifiedSizes = ResultSize.verifiedBounds sizeProofs
-            eqs = Cost.costProgramForWithSizes verifiedSizes
-              (if oCost opts || isJust manifest then M.keysSet costProg else contractRoots)
-              measTable declared costProg
+            analysis = Resource.analyze
+              (if oCost opts || isJust manifest then M.keysSet costProg else S.empty)
+              measTable coefs finalTops (Regions.programNative costInput) costProg
+            declared = Resource.declarations analysis
+            declErrs = Resource.declarationErrors analysis
+            verifiedSizes = Resource.sizes analysis
+            eqs = Resource.equations analysis
             rootNames = [n | n <- S.toList rootBinds, M.member n costProg]
             priceW g = fst <$> M.lookup g prims
             priceA g = snd <$> M.lookup g prims
@@ -803,6 +789,14 @@ compileWithReport accepted report = do
             unless (null missing) $ hPutStrLn stderr ("checked interface: missing inferred exports: " ++ unwords missing) >> exitFailure
             accepted [(n, canonicalTypeWith id t) | (n, t) <- public]
         else accepted [(n, canonicalTypeWith interfaceName t) | (n, t) <- interfaces, S.member n rootBinds]
+      -- Optional editor inference cannot bypass or time-limit the required
+      -- contract checks above. No native emission is needed for this report.
+      when (oEditorJSON opts && not (oSol opts) && not (oBuiltin opts)) $ do
+        let input = compileRaw finalTops
+            prog = fst (turnPassWith False input)
+            analysis = Resource.analyze rootBinds
+              (fst (measureCheck tops)) (maybe M.empty mCoefs manifest) finalTops (Regions.programNative input) prog
+        Editor.resources report (Resource.surfaceNames finalTops) prog preTab analysis
       Editor.types report notes
       when checkOnly exitSuccess
       -- ---- per-unit CODEGEN (separate compilation) ----

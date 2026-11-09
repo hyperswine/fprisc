@@ -232,6 +232,7 @@ library
       Precond
       Safety
       Cost
+      Resource.Analysis
       Resource.ResultSize
       Manifest
       StdBridge

@@ -1,5 +1,10 @@
 # Pipeline refactoring: preserve evidence, consolidate optimization
 
+Progress: [9 November checkpoint](2026-11-09-PIPELINE-REFACTORING-CHECKPOINT.md)
+assesses P0/P2 evidence, remaining erased-path dependencies and compiler-budget
+limits. [Resource inference/editor intent](2026-11-09-RESOURCE-INFERENCE-AND-EDITOR-INTENT.md)
+provides a candidate first consumer for P1 summaries.
+
 Date: 7 November 2026. Status: proposed implementation roadmap. Baseline:
 `6761b28`. This document adds no compiler behavior and does not mark the phases
 below complete.
@@ -124,6 +129,10 @@ segments, compiler allocation/time and timing, and the drift it does not
 explain is printed rather than hidden. C and GHC reference ratios are still
 unaudited, so no ratio is an acceptance target yet, and no target beyond the
 recording host has been recorded.
+
+**9 November follow-up:** the [P0/P1 implementation record](2026-11-09-RESOURCE-EDITOR-IMPLEMENTATION.md)
+records the corrected floating-point legality rule, enforced baseline metric gate,
+and initial shared resource analysis/editor consumer. P1 remains incomplete.
 
 ## Phase P1 - Shared facts, summaries and invalidation
 

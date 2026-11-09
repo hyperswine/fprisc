@@ -459,3 +459,10 @@ step it points to is moving the let-bound closure rule (and the
 compatibility clones) into the typed pipeline before placement, rather than
 mirroring it in the plan. `normIn`'s sinking (28) is the typed optimizer's
 job, as slice 2 already said.
+
+## Follow-up implementation
+
+The [typed closures and vectors record](2026-11-09-TYPED-CLOSURES-AND-VECTORS.md)
+records the scoped local-list-capture rule and vector lowering extension, with
+validation and remaining migration limits. Earlier counts above are historical;
+they are not a new full-sweep result for that extension.

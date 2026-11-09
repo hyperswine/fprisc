@@ -727,6 +727,23 @@ function hoverFor(uri, doc, pos) {
   return null;
 }
 
+
+function resourceHover(summary) {
+  // Keep equations as code, including unknown dependencies; never label these
+  // portable work units as CPU cycles or a wall-clock guarantee.
+  const clean = s => String(s).replace(/`/g, "'").replace(/[\r\n]/g, ' ');
+  const lines = [];
+  for (const [key, title, unit] of [['work', 'Work', 'abstract ops'], ['allocation', 'Allocation', 'requested bytes']]) {
+    const b = summary.inferred[key];
+    lines.push(`${title}: ${b.status === 'proved' ? '<= ' : 'unknown; equation '}${clean(b.display)} ${unit}`);
+    if (b.unknowns.length) lines.push(`  Unknown dependencies: ${b.unknowns.map(clean).join(', ')}`);
+    if (summary.declared[key]) lines.push(`Declared ${title.toLowerCase()}: <= ${clean(summary.declared[key].display)} ${unit}`);
+  }
+  if (summary.domains.length) lines.push(`Requires: ${summary.domains.map(clean).join('; ')}`);
+  lines.push('Stack: not inferred', 'Target time: unavailable');
+  return '\n\nInferred resources (native source model):\n\n```text\n' + lines.join('\n') + '\n```';
+}
+
 function renderDecl(d, srcDoc, label, uri) {
   let head = declHeadLine(d, srcDoc);
   if (d.sigLine === undefined && !d.usePath) {
@@ -739,6 +756,19 @@ function renderDecl(d, srcDoc, label, uri) {
   if (d.usePath) head = `${d.name} = use "${d.usePath}"`;
   let out = '```' + fenceOf(uri || srcDoc.uri) + '\n' + head + '\n```';
   if (d.doc) out += '\n\n' + d.doc;
+  if (!d.usePath && fenceOf(uri || srcDoc.uri) !== 'sol') {
+    const file = uriToPath(srcDoc.uri);
+    for (const result of compilerDiags.values()) {
+      const resource = result.editor && (result.editor.resources || []).find(r =>
+        r.file === file && (r.start.line === d.line || r.start.line === d.sigLine) && r.name === d.name);
+      if (resource) { out += resourceHover(resource.summary); break; }
+      if (result.editor && result.editor.resourceStatus === 'budget-limited' &&
+          result.editor.types.some(t => t.file === file && (t.start.line === d.line || t.start.line === d.sigLine) && t.name === d.name)) {
+        out += '\n\nResource inference: analysis budget reached; bounds unavailable.';
+        break;
+      }
+    }
+  }
   if (d.usePath) {
     const target = loadModule(srcDoc.uri, d.usePath);
     if (target) {

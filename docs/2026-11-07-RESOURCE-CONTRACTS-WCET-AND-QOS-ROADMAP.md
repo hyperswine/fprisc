@@ -1,5 +1,8 @@
 # Resource contracts, simple-risc WCET and QOS admission
 
+Follow-up: [resource inference and editor integration intent](2026-11-09-RESOURCE-INFERENCE-AND-EDITOR-INTENT.md)
+defines the first user-facing inference/hover scope and its implementation gates.
+
 Date: 7 November 2026. Status: proposed implementation roadmap; no milestone
 below is claimed complete by this document. Baseline inspected: `6761b28`.
 

@@ -17,19 +17,30 @@ async function until(pred, label) { const end = Date.now() + 7000; while (!pred(
 const fs=require('fs'),path=require('path');
 const digest=${digest.toString()};
 fs.appendFileSync('calls','run\\n');
+const bound=unit=>({unit,status:'proved',display:'0',expression:{op:'constant',value:'0'},unknowns:[]});
+const equation={work:bound('abstract-operations'),allocation:bound('requested-cell-bytes')};
 const inputs=['root.fpr','hidden.fpr'].map(n=>({file:path.resolve(n),digest:digest(fs.readFileSync(n,'utf8'))}));
-console.error(JSON.stringify({editorVersion:1,positionEncoding:'utf-32',algorithm:'fnv1a-64-utf8',root:path.resolve('root.fpr'),ok:true,inputs,diagnostics:[],types:[{file:path.resolve('root.fpr'),name:'value',type:'Int',start:{line:0,character:0}}]}));
+setTimeout(()=>console.error(JSON.stringify({editorVersion:2,resourceVersion:1,resourceModel:"native-source-v1",resourceStatus:"complete",resources:[{file:path.resolve("root.fpr"),name:"value",declaration:"value",start:{line:0,character:0},summary:{scope:"native-source",provenance:"checked-source-cost-equations",parameters:[],domains:[],declared:{},inferred:equation,effective:equation}}],positionEncoding:'utf-32',algorithm:'fnv1a-64-utf8',root:path.resolve('root.fpr'),ok:true,inputs,diagnostics:[],types:[{file:path.resolve('root.fpr'),name:'value',type:'Int',start:{line:0,character:0}}]})), fs.existsSync('delay') ? 180 : 0);
 `); fs.chmodSync(file('compiler'), 0o755);
     const count = () => fs.existsSync(file('calls')) ? fs.readFileSync(file('calls'), 'utf8').trim().split('\n').length : 0;
     checker = createChecker({ settings: () => ({ home: dir, compilerPath: file('compiler') }), workspaceRoot: () => dir,
       readText: p => { try { return fs.readFileSync(p, 'utf8'); } catch (_) { return null; } }, readOpen: p => open.get(p) ?? null,
       onMissing: (_c, e) => { throw e; }, onResult: (_f, r) => { result = r; if (r) events++; }, delay: 0 });
     checker.check(file('root.fpr')); await until(() => events === 1, 'first report');
+    assert.equal(result.editor.resources.length, 1);
     assert(result.editor.types.length); assert(checker.affected(file('hidden.fpr')).includes(file('root.fpr')));
-    checker.check(file('root.fpr')); await until(() => events === 2, 'cached report'); assert.equal(count(), 1);
+    checker.check(file('root.fpr')); await until(() => events === 2, 'cached report'); assert.equal(count(), 1); assert.equal(result.editor.resources.length, 1);
     const old = fs.statSync(file('hidden.fpr')); write('hidden.fpr', 'metadataOnly = 2.\n'); fs.utimesSync(file('hidden.fpr'), old.atime, old.mtime);
     checker.invalidate(file('hidden.fpr')); checker.check(file('root.fpr')); await until(() => events === 3, 'manifest dependency invalidated'); assert.equal(count(), 2);
     open.set(file('hidden.fpr'), 'dirty'); checker.invalidate(file('hidden.fpr')); checker.check(file('root.fpr')); await sleep(80); assert.equal(result, null); assert.equal(count(), 2);
+    // Supersede a running version-2 report, including its resource rows.
+    open.clear(); write('delay', ''); write('hidden.fpr', 'metadataOnly = 4.\n'); checker.check(file('root.fpr'));
+    await until(() => count() === 3, 'delayed resource check started');
+    write('hidden.fpr', 'metadataOnly = 3.\n'); checker.invalidate(file('hidden.fpr'));
+    fs.unlinkSync(file('delay')); checker.check(file('root.fpr'));
+    await until(() => events === 4, 'fresh resource report after cancellation');
+    await sleep(250); assert.equal(events, 4, 'superseded resource report stays discarded');
+    assert.equal(result.editor.resources.length, 1);
     await checker.dispose(); open.clear(); events = 0;
     write('calls', '');
     write('compiler', `#!${process.execPath}

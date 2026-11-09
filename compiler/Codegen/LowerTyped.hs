@@ -3,18 +3,13 @@
 -- of checked functions (P2 typed lowering, slice 1:
 -- docs/2026-11-08-P2-TYPED-LOWERING-SLICE-1.md).
 --
--- The class: any signature (slice 1 had Int and Bool; slices 3a and 3b
--- admit any type, monomorphic or not, since every value of a public function
--- is a tagged word), first-order, calls to known functions and the integer
--- operators, literal/binder/Bool matches with Boolean guards. Everything else is refused with a reason naming the
--- form, as Codegen.Lower refuses.
---
--- Slice 1 runs this beside the erased lowering and requires the same SSA, so
--- the dispatch follows Codegen.Lower form for form and shares its emission
--- core. A match is planned the way the erasure boundary plans it
--- (Core.Typed.Erase: scrutinee binding, test order, fallback duplication,
--- the Bool-coverage shortcut) with typed leaves; where erasure would build
--- a join or a lambda, this lowering refuses.
+-- The admitted class now includes polymorphic tagged signatures, products,
+-- strings, lists, closures and vector builders/pair-free reads (slice 3).
+-- Unsupported forms are refused with a reason. The typed plan shares the
+-- native emission core and is checked against erased lowering before becoming
+-- authoritative; optimized and ownership/region exemptions remain explicit.
+-- Pattern evaluation and failure order follow Core.Typed.Erase, with typed
+-- leaves and binder identities retained through planning.
 module Codegen.LowerTyped (lowerFn, planCore, Layout (..)) where
 
 import Core.Region.Runtime (Hook (..), hookName)
@@ -35,6 +30,8 @@ import Control.Monad.Except (throwError)
 import Data.List (intercalate, nub, sort, sortOn)
 import Control.Monad (foldM)
 import Core.Typed.Layout (recordShapes, closedRowShape)
+import Compiler.VectorLayout (builderRuntimeName)
+import qualified Core.VectorRead as Read
 import Type.Relation (fieldType)
 import qualified Data.Map.Strict as M
 
@@ -178,6 +175,10 @@ plan layout body = fst <$> go 0 body
       AtomValue a -> pure (PMk 6 0 [PStr a], n)
       -- a string literal (slice 3e)
       StringValue str -> pure (PStr str, n)
+      LayoutLiteral spec -> pure (PStr spec, n)
+      VectorBuild builder evidence -> do
+        (value, n1) <- go n evidence
+        pure (PApp (builderRuntimeName builder) [value], n1)
       -- lists (slice 3f), as erasure builds them: a literal is its Cons
       -- chain, a builder is its body (the stores are SetField)
       ListValue xs -> do
@@ -208,12 +209,9 @@ plan layout body = fst <$> go 0 body
         pure (pLet k x body, n2)
       -- a pattern binding (slice 3d-iii): the value bound to a temporary,
       -- then the pattern matched against it (erasure's bindPattern)
-      LetPattern p rhs body -> do
-        (v, n1) <- go n rhs
-        let k = KScrut n1
-        (body', n2) <- go (n1 + 1) body
-        matched <- matchPat (PRef k) p body' (PErr ("let pattern: no match; pattern was " ++ patDisplay p))
-        pure (pLet k v matched, n2)
+      LetPattern p rhs body ->
+        bindPattern n p rhs (\k -> go k body)
+          (PErr ("let pattern: no match; pattern was " ++ patDisplay p))
       -- the TRMC tail store: a primitive call
       SetField base 1 value -> do
         (b, n1) <- go n base
@@ -396,12 +394,28 @@ plan layout body = fst <$> go 0 body
         pure (PIf e' inner fallback, n2)
       -- a pattern guard (slice 3d-iii): the value bound to a temporary and
       -- matched, the remaining guards inside
-      PatternGuard p e -> do
-        (e', n1) <- go n e
+      PatternGuard p e -> bindPattern n p e (\k -> guards k rest ok fallback) fallback
+    -- Pair-free reads snapshot the old handle before matching either binder.
+    -- Keep the read/check even when its element is discarded.
+    bindPattern n p rhs continuation failure = case (exprNode rhs, patNode p) of
+      (VectorReadPair op indices handle, TuplePattern [valuePat, handlePat]) -> do
+        when (length indices /= Read.indexArity op)
+          (Left "typed lowering: vector read index arity")
+        (args, n1) <- goList n indices
+        (original, n2) <- go n1 handle
+        let saved = KScrut n2
+            value = KScrut (n2 + 1)
+        (next, n3) <- continuation (n2 + 2)
+        afterHandle <- matchPat (PRef saved) handlePat next failure
+        matched <- matchPat (PRef value) valuePat afterHandle failure
+        pure (pLet saved original (pLet value
+          (PApp (Read.peekName op) (args ++ [PRef saved])) matched), n3)
+      _ -> do
+        (v, n1) <- go n rhs
         let k = KScrut n1
-        (inner, n2) <- guards (n1 + 1) rest ok fallback
-        matched <- matchPat (PRef k) p inner fallback
-        pure (pLet k e' matched, n2)
+        (next, n2) <- continuation (n1 + 1)
+        matched <- matchPat (PRef k) p next failure
+        pure (pLet k v matched, n2)
     matchPat scrut p ok failed = case patNode p of
       Wildcard -> pure ok
       Bind b -> pure (pLet (KBinder (binderId b)) scrut ok)

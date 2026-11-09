@@ -92,6 +92,15 @@ external library edits remain separate work.
 - Corrected the VS Code minimum to 1.82, matching `vscode-languageclient` 9.
   The server reports the extension's actual version.
 
+Native saved-file hovers now also show source-model work and requested allocation
+bounds, including symbolic callback costs, unknown dependencies and declared
+contracts. These are abstract operations/bytes, not hardware time. Dirty roots or
+dependencies clear the resource information alongside inferred types. Sol hovers
+do not display native costs. Optional inference has a 1000 ms budget; exceeding
+it leaves type checking intact and marks bounds unavailable. See the
+[resource editor implementation](../docs/2026-11-09-RESOURCE-EDITOR-IMPLEMENTATION.md)
+for schema versions, measurements and scope.
+
 The new compiler's `--editor-json` check reports versioned diagnostics, actual
 source dependencies and inferred top-level types for native FP-RISC and Sol.
 Hover shows inferred types after a successful saved-file check; editing a root

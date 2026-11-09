@@ -27,7 +27,7 @@
 -- structurally is `len p`.  Arguments to callees substitute into the
 -- callee's equation when they are linear in the caller's parameters;
 -- anything else is the opaque `?`.
-module Cost (Cost (..), CostEq (..), Declared (..), Verdict (..), costProgram, costProgramFor, costProgramForWithSizes, simplifyCost, substituteCost, checkBoundsAssuming, declaredBounds, checkBounds, checkBoundsWith, checkBoundsUnderWith, renderVerdict, substCoefs, coefsIn, resolvePrims, evalConst, omegas, prettyCost, prettyIn, renderReport, hasOmega, primAllocates, allocGrows) where
+module Cost (Cost (..), CostEq (..), Declared (..), Verdict (..), costProgram, costProgramFor, costProgramForWithSizes, simplifyCost, substituteCost, checkBoundsAssuming, declaredBounds, checkBounds, checkBoundsWith, checkBoundsUnderWith, renderVerdict, substCoefs, coefsIn, resolvePrims, evalConst, omegas, prettyCost, prettyIn, renameC, renderReport, hasOmega, primAllocates, allocGrows) where
 
 import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (intercalate, nub, sort, isPrefixOf)

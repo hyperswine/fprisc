@@ -24,13 +24,12 @@
 --   products    plus pattern bindings and pattern guards, with any signature
 --               (slice 3d-iii)
 --   strings     plus string literals and string patterns, with any
---               signature (slice 3e: t1 through strings are what
---               Codegen.LowerTyped accepts)
+--               signature (slice 3e)
 --   lists       plus list literals and list builders
 --   closures    plus lambdas, closures, code and join calls
---   vectors     plus vector builds and pair-free reads
---   polymorphic a type variable in the signature (counted before the rest)
---   other       anything else (LetRec, layout literals, regions, ...)
+--   vectors     plus vector builds, layouts and pair-free reads
+--   polymorphic reserved legacy bucket; supported signatures classify above
+--   other       anything else (LetRec, unsupported regions, ...)
 module Compiler.Native.TypedCensus (Census(..), census, censusNote, s1Functions) where
 import Core.Typed.Syntax
 import Core.Typed.Walk (mapChildrenM)
@@ -57,10 +56,10 @@ data Feature = FCall | FForm | FConstruct | FPattern | FProduct | FString | FLis
 census :: (String -> Bool) -> M.Map String Function -> Census
 census known functions = Census (M.fromListWith (+) [(c, 1) | c <- M.elems (classify known functions)])
 
--- The typed lowering's class: t1 through strings (slice 1's S1 widened
--- by slices 3a-3d).
+-- The typed lowering's class: t1 through vectors (slice 1's S1 widened
+-- by the subsequent slice 3 rungs).
 s1Functions :: (String -> Bool) -> M.Map String Function -> S.Set String
-s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors, Records, Products, Strings, Lists, Closures]) (classify known functions))
+s1Functions known functions = M.keysSet (M.filter (`elem` [T1, Calls, Signatures, Generic, Forms, Constructors, Records, Products, Strings, Lists, Closures, Vectors]) (classify known functions))
 
 classify :: (String -> Bool) -> M.Map String Function -> M.Map String Class
 classify known functions = M.mapWithKey (\n _ -> classOf n) functions
@@ -90,7 +89,6 @@ classify known functions = M.mapWithKey (\n _ -> classOf n) functions
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString] -> Strings
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList] -> Lists
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList, FClosure] -> Closures
-        | p -> Polymorphic
         | fs `S.isSubsetOf` S.fromList [FCall, FForm, FConstruct, FPattern, FProduct, FString, FList, FClosure, FVector] -> Vectors
         | otherwise -> Other
     -- a call to a known function: a global that is neither an integer
@@ -178,7 +176,7 @@ bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> pat
       VectorBuild _ _ -> S.singleton FVector
       VectorReadPair _ _ _ -> S.singleton FVector
       LetRec _ _ _ -> S.singleton FOther
-      LayoutLiteral _ -> S.singleton FOther
+      LayoutLiteral _ -> S.singleton FVector
     patterns = case exprNode e of
       Match _ _ alts -> S.unions [S.unions (map patternFeatures ps) <> S.unions (map guardFeatures gs) | Alternative ps gs _ <- alts]
       MatchTail _ _ alts _ -> S.unions [S.unions (map patternFeatures ps) | Alternative ps _ _ <- alts]

@@ -82,13 +82,18 @@ guard failure.
 
 | Class | Examples today | What a pass may assume |
 | --- | --- | --- |
-| Total | comparisons, Boolean operators, float arithmetic except division | may move, duplicate, delete, re-associate freely |
+| Total | comparisons, Boolean operators, float arithmetic except division | may move, duplicate or delete when dependencies and observable results are preserved; totality alone does not permit reassociation |
 | Trapping | `Int` `+` `-` `*` (overflow), `/` (divisor), indexing, allocation capacity | may move only where first-trap order is preserved, or under the Rule 4 relaxation |
 | ImmutableRead | field/tag/string reads, `vec` element reads, hart/region reads | may move if no intervening write, allocation move or safepoint can invalidate the value |
 | MutableEffect | writes reachable from a value, in-place TRMC cell writes | must keep order with every aliasing reader/writer |
 | Allocation / reclamation | `$reuse.fresh`, bump windows, pool resets | changes failure timing (Rule 6) and invalidates reads of the pool |
 | External | C/foreign calls, runtime entries (`$regionRoom`, `$loopLeave`) | opaque: no motion across, no duplication |
 | Scheduling | entry and back-edge ticks, park/resume, receive, spawn | obligation placement only (Rule 5) |
+
+**Arithmetic legality.** Floating-point reassociation, contraction and algebraic
+identities require a separate proof preserving the specified rounding, NaN,
+infinity and signed-zero behavior. Being non-trapping is not such a proof.
+Integer rewrites must also preserve overflow/trap behavior.
 
 **Enforcement today.** The vocabulary is implicit in three predicates that
 agree on the trapping boundary: `Core.FusionPolicy.safePrimitives` /

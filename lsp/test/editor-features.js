@@ -27,6 +27,15 @@ let srv;
     const checked = compile('root.' + ext), parsed = report(checked);
     assert.equal(checked.status, 0, checked.stderr + checked.stdout);
     assert(parsed.report.ok);
+    assert.equal(parsed.report.editorVersion, 2);
+    if (ext === 'fpr') {
+      assert.equal(parsed.report.resourceStatus, 'complete');
+      assert(parsed.report.resources.some(r => r.name === 'answer' && r.summary.inferred.work.status === 'proved'));
+      assert(parsed.report.resources.some(r => r.name === 'value' && r.file.endsWith('/dep.fpr')));
+    } else {
+      assert.equal(parsed.report.resourceStatus, 'not-requested');
+      assert.deepEqual(parsed.report.resources, []);
+    }
     assert(parsed.report.inputs.some(i => i.file.endsWith('/dep.' + ext)));
     assert(parsed.report.types.some(t => t.name === 'answer' && t.type === 'Int'));
     assert(parsed.report.types.some(t => t.name === 'identity' && t.type.includes('->')));
@@ -75,14 +84,24 @@ let srv;
     open(name);
     await until(async () => (await hover(name, 1, 2)).includes('answer : Int'), ext + ' inferred hover');
     assert((await hover(name, 1, 13)).includes('M.value : Int'), ext + ' imported inferred hover');
+    assert.equal((await hover(name, 1, 2)).includes('Inferred resources'), ext === 'fpr');
+    assert.equal((await hover(name, 1, 13)).includes('Inferred resources'), ext === 'fpr');
     change(name, disk(file(name)) + '\n# edit\n');
     assert(!(await hover(name, 1, 2)).includes('answer : Int'), 'dirty buffer clears inferred type');
+    assert(!(await hover(name, 1, 2)).includes('Inferred resources'), 'dirty buffer clears resources');
     change(name, disk(file(name))); send('textDocument/didSave', { textDocument: { uri: uri(name) } });
     await until(async () => (await hover(name, 1, 2)).includes('answer : Int'), ext + ' fresh hover returns');
     open('dep.' + ext); change('dep.' + ext, 'value = "changed".\n');
     assert(!(await hover(name, 1, 2)).includes('answer : Int'), 'dirty dependency clears importer types');
+    assert(!(await hover(name, 1, 2)).includes('Inferred resources'), 'dirty dependency clears resources');
     send('textDocument/didClose', { textDocument: { uri: uri('dep.' + ext) } });
   }
+  write('resources.fpr', 'twice f x = f (f x).\nopaque x = print x.\ncount : (n : Int | measure n) -> Int -> Int | work count <= 5 * max 0 n + 5.\ncount n acc | n <= 0 = acc.\ncount n acc = count (n - 1) (acc + 1).\n');
+  open('resources.fpr');
+  await until(async () => (await hover('resources.fpr', 0, 2)).includes('2·work f + 2'), 'callback resource hover');
+  assert((await hover('resources.fpr', 1, 2)).includes('Unknown dependencies: print'));
+  assert((await hover('resources.fpr', 2, 2)).includes('Declared work:'), 'signature resource hover');
+  assert((await hover('resources.fpr', 3, 2)).includes('Declared work:'), 'definition resource hover');
   // The source scanner must retain complete names even while a file is being
   // edited into a definition the selected toolchain may not yet support.
   send('workspace/didChangeConfiguration', { settings: { fpr: { home, check: false } } });

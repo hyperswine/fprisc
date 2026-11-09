@@ -113,6 +113,21 @@ main=do
       opaque=run (T.Function "opaque" [unknown] opaqueBody)
   check "unused closures without capture ownership proof remain in the graph"
     (T.binderId local `elem` map T.binderId (allBinders (T.functionBody (closedRoot (callbackClosed opaque)))))
+  let listTy=TAp (TC "List") int
+      xs=binder "list-capture" 0 "xs" listTy
+      arg=binder "list-capture" 1 "arg" int
+      cb=binder "list-capture" 2 "cb" (TFn int listTy)
+      value=expr (TFn int listTy) (T.Lambda [arg] (ref xs))
+      source=T.Function "listCapture" [xs] (expr listTy
+        (T.Let cb value (apply (ref cb) (expr int (T.IntValue 4)))))
+      direct=callbackClosed (run source)
+      escaping=callbackClosed (run (T.Function "escapeListCapture" [xs]
+        (expr (T.binderType cb) (T.Let cb value (ref cb)))))
+  check "a closed list capture calls directly without a closure object"
+    (verifyClosed types direct==Right () && T.binderId cb `notElem`
+      map T.binderId (allBinders (T.functionBody (closedRoot direct))))
+  check "an escaping list closure retains its identity binding"
+    (T.binderId cb `elem` map T.binderId (allBinders (T.functionBody (closedRoot escaping))))
   let seed=binder "wide" 0 "seed" int
       cb=binder "wide" 1 "cb" callbackTy
       cbArg=binder "wide" 2 "x" int

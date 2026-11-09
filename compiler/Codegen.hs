@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 204 -- importing artifacts own checked scalar-wrapper adapters
+codegenRev = 205 -- typed local container closures and vector lowering
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

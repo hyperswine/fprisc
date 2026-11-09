@@ -1,5 +1,7 @@
 -- P2 typed lowering, slice 1: Codegen.LowerTyped gives the native function
 -- Codegen.Lower gives for the erasure of the same checked function.
+import Compiler.VectorLayout (VectorBuilder(..), builderRuntimeName)
+import qualified Core.VectorRead as Read
 import Codegen.Policy
 import Codegen (emitTypedProductProgramWithImports, Emission (..), TypedUse (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), Target (..), rv64, foreignEntries)
 import Codegen.IR (Width (..))
@@ -179,6 +181,38 @@ main = do
       typedSwap = Typed.lowerFn m2Policy pairLayout swapProg M.empty M.empty swap
   check ("a constructor match and value agree: " ++ show (erasedSwap, typedSwap))
     (case (erasedSwap, typedSwap) of (Right x', Right y') -> x' {I.fnSourceParams = []} == y' {I.fnSourceParams = []}; _ -> False)
+
+  -- Vector constructors carry their checked layout descriptor. Pair-free
+  -- reads retain the access and snapshot the original handle before binds.
+  let vecTy = TAp (TC "Vector") tInt
+      handle = binder 40 "handle" vecTy
+      nextHandle = binder 41 "nextHandle" vecTy
+      element = binder 42 "element" tInt
+      pairTy = TTupT [tInt, vecTy]
+      pairPat = Pattern pairTy "(element,nextHandle)" (TuplePattern
+        [Pattern tInt "element" (Bind element), Pattern vecTy "nextHandle" (Bind nextHandle)])
+      readBody = ex tInt (LetPattern pairPat
+        (ex pairTy (VectorReadPair Read.At [int 0] (local handle))) (local element))
+      readFn = Function "readVector" [handle] readBody
+      readCore = CLet "saved" (CVar "handle") (CLet "read" (app "$vec.at" [CInt 0,CVar "saved"])
+        (CLet "element" (CVar "read") (CLet "nextHandle" (CVar "saved") (CVar "element"))))
+  let readProg = M.singleton "readVector" (["handle"], readCore)
+      hal = M.insert "$vec.at" (Lower.Prim 2 (Just "fpr_g_vec_at") Nothing) (foreignEntries rv64)
+      readErased = Lower.lowerFn m2Policy M.empty readProg M.empty hal "readVector" (["handle"],readCore)
+      readTyped = Typed.lowerFn m2Policy layout readProg M.empty hal readFn
+  check ("pair-free vector access agrees and preserves the read: " ++ show (readErased,readTyped))
+    (case (readErased,readTyped) of (Right a,Right b) -> a == b; _ -> False)
+  check "a pair-free read cannot escape its binding"
+    (isLeft (Typed.planCore layout (Function "badVector" [handle]
+      (ex pairTy (VectorReadPair Read.At [int 0] (local handle))))))
+  check "vector read with the wrong index arity refuses"
+    (isLeft (Typed.planCore layout (readFn {functionBody=ex tInt (LetPattern pairPat
+      (ex pairTy (VectorReadPair Read.At [] (local handle))) (local element))})))
+  let builder = Function "vectorBuilder" [] (ex (TFn tInt vecTy)
+        (VectorBuild BuildEmpty (ex (TLayout tInt) (LayoutLiteral ""))))
+  check "vector layout and builder plan agree" (case Typed.planCore layout builder of
+    Right ([], body) -> body == app (builderRuntimeName BuildEmpty) [CStr ""]
+    _ -> False)
 
   -- slice 2: emission takes the typed function where the erased lowering
   -- of the same function agrees, keeps the erased one where it does not

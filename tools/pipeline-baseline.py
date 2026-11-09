@@ -23,7 +23,7 @@ Records, for every entry of tests/pipeline/corpus.json:
                                           bench/pipeline-baseline-rv64.json
 
 `--record` is a machine-local act: the file names the host it was measured on.
-Comparing a different host reports, never fails (tools/bench.py does the same).
+Comparing a different host reports metric drift without gating it.
 Behaviour is the contract: a stdout, exit status or trap mismatch always fails,
 whatever the compiler.  Metric drift fails only when the compiler binary is the
 one the baseline was recorded with; a new compiler changes code and allocation
@@ -357,27 +357,28 @@ def compare(baseline, fresh, slack, same_compiler, subset):
             drift.append(f'{name}: remark stream changed')
         if old['coverage']['units'] != new['coverage']['units']:
             drift.append(f'{name}: per-unit coverage {old["coverage"]["units"]} -> {new["coverage"]["units"]}')
-        if not same_compiler:
-            continue
+        # Changed compiler/host metrics remain visible for review, but only
+        # a repeat on the same compiler and host is a deterministic gate.
+        metric_changes = failures if same_compiler else drift
         for path in GATED:
             a, b = metric(old, path), metric(new, path)
             if a is None or b is None:
                 continue
             if a == 0:
                 if b != 0:
-                    drift.append(f'{name}: {path} {a} -> {b}')
+                    metric_changes.append(f'{name}: {path} {a} -> {b}')
                 continue
             if abs(b - a) > abs(a) * slack:
-                drift.append(f'{name}: {path} {a} -> {b}')
+                metric_changes.append(f'{name}: {path} {a} -> {b}')
         for fn, facts in old['functions'].items():
             fresh_facts = new['functions'].get(fn)
             if fresh_facts is None:
-                drift.append(f'{name}: function {fn} is gone')
+                metric_changes.append(f'{name}: function {fn} is gone')
                 continue
             for key in PER_FUNCTION:
                 a, b = facts.get(key), fresh_facts.get(key)
                 if a is not None and b is not None and a != b:
-                    drift.append(f'{name}: {fn}.{key} {a} -> {b}')
+                    metric_changes.append(f'{name}: {fn}.{key} {a} -> {b}')
     return failures, drift
 
 
