@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-ubsan-') as d:
     (tmp / 'empty').mkdir()
     progs = [(tmp / 'dir.fpr', [str(tmp / 'empty')], 'entries 0\n')]
     progs[0][0].write_text(SRC)
-    extra = sys.argv[1:] or ['tests/std/list.fpr', 'tests/std/string.fpr', 'tests/std/map.fpr']
+    extra = sys.argv[1:] or ['tests/std/list.fpr', 'tests/std/string.fpr', 'tests/std/map.fpr', 'tests/std/sort.fpr']
     for src in extra:
         p = ROOT / src
         progs.append((p, [], p.with_suffix('.expected').read_text()))
