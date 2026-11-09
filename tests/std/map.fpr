@@ -35,6 +35,9 @@ main =
   byAlter = List.range 1 100000 |> List.fold step Map.ints;
   byRef = List.range 1 100000 |> List.fold ref Map.ints;
   _ = print "alter vs get+insert/remove: size {Map.size byAlter} {Map.size byRef} same {Map.equal byAlter byRef} first {Map.first byAlter}";
+  # the empty map and a single key
+  one = Map.alter 5 (fn o -> Option.Some 50) Map.ints;
+  _ = print "alter empty: add {Map.entries one} size {Map.size one}; None {Map.size (Map.alter 5 (fn o -> Option.None) Map.ints)}; drop the only key {Map.entries (Map.alter 5 (fn o -> Option.None) one)} size {Map.size (Map.alter 5 (fn o -> Option.None) one)}; replace {Map.entries (Map.alter 5 (fn o -> Option.map (fn v -> v + 1) o) one)}; insertWith {Map.entries (Map.insertWith (fn o n -> o + n) 5 7 one)}";
   gone = Map.keys byAlter |> List.fold (fn m k -> Map.alter k (fn o -> Option.None) m) byAlter;
   _ = print "alter every key away: size {Map.size gone} entries {Map.entries gone}";
   a = Set.fromList Order.int (3 :: 1 :: 2 :: 3 :: Nil);

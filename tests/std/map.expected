@@ -7,5 +7,6 @@ alter drop [bird, cat, dog, the] size 4
 alter absent+None [(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 3)] size 5 equal True
 insertWith [(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 37), (yak, 7)]
 alter vs get+insert/remove: size 1009 1009 same True first Some (0, 15)
+alter empty: add [(5, 50)] size 1; None 0; drop the only key [] size 0; replace [(5, 51)]; insertWith [(5, 57)]
 alter every key away: size 0 entries []
 set [1, 2, 3] union [1, 2, 3, 4] intersect [2, 3] diff [1] member False
