@@ -1607,7 +1607,8 @@ static void slp_drain(fpr_hart_t *h);   /* the parked sleep, below block_unless 
 static void slp_wfi_arm(fpr_hart_t *h);
 
 static void drain(fpr_hart_t *h) {
-  for (uw s = 0; s < FPR_NHARTS; s++) {
+  /* only live harts ship: an image built for 8 harts and run on 2 scans 2 */
+  for (uw s = 0; s < fpr_live_harts; s++) {
     xring_t *x = &xr[s][h->id];
     uint32_t rt = __atomic_load_n(&x->rt, __ATOMIC_ACQUIRE);
     while (x->rh != rt) {
