@@ -3478,7 +3478,7 @@ static inline V apply2(V f, V a, V b) {
  * questions (the in-order shortcut) and so may order differently. */
 static inline int sort_lt(V cmp, V b, V a) {
   V r = apply2(cmp, b, a);
-  if (ISINT(r)) fpr_trap("List.sortWith: the comparator did not answer an Ordering");
+  if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
   return ((hdr_t *)r)->var == 0;
 }
 /* merge runs src[lo..mid) and src[mid..hi) of indices into keys, to dst */

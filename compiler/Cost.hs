@@ -609,6 +609,19 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
                       let sw = fnWork step
                           sa = fnAlloc step
                        in plus (R (CO "loop:Sys.loopWith") (CO "?len") (CAdd [sa, CMul [CN 2, CO "?len"]]) [(sw, sa, sa)]) rargs
+                  -- sortListWith cmp xs (List.sortWith's engine, runtime.c): a
+                  -- bottom-up merge calls `cmp` at most n·⌈log2 n⌉ times, and
+                  -- ⌈log2 n⌉ <= 62 for any list a 64-bit (or 32-bit) word can
+                  -- count, so 62·n comparisons bound it linearly.  The rest is
+                  -- one walk to count, one to gather, n fresh cons cells
+                  -- (24 bytes each), and 3n words (24n bytes) of raw scratch
+                  -- that are live during the sort and freed before it returns.
+                  | g == "sortListWith", [f, xs] <- args ->
+                      let n = lenOf xs
+                          cmps = CMul [CN 62, n]
+                          w = CAdd [CN 1, CMul [CN 3, n], CMul [cmps, CAdd [CN 1, fnWork f]]]
+                          a = CAdd [CMul [CN 24, n], CMul [cmps, fnAlloc f]]
+                       in plus (R w a (CAdd [a, CMul [CN 24, n]]) []) rargs
                   | Just (pw, pa) <- primCostOf g (map lenOf args) -> plus (alloc pw pa) rargs
                   | otherwise -> plus (alloc (CAdd [CN 1, CO g]) (CO g)) rargs -- an undeclared primitive
                 _ -> plus (go h) (plus (alloc (CAdd [CN 1, CO "?"]) (CO "?")) rargs)

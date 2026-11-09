@@ -259,9 +259,10 @@ unique xs = reverse (fold (fn seen x -> case member x seen of True -> seen | Fal
 # A stable merge sort: equal elements keep their order, so sorting by one key
 # and then by another composes.  O(n log n), no stack.  The merging runs in the
 # runtime (sortListWith, runtime/runtime.c) over an array of the elements:
-# at most n * ceil(log2 n) calls of `cmp`, n fresh cells, 2n words of scratch
+# at most n * ceil(log2 n) calls of `cmp`, n fresh cells, 3n words of scratch
 # returned before it answers.  `cmp` is called as the list merge called it
-# (`cmp y x`, y from the later run; y first only when Less).
+# (`cmp y x`, y from the later run; y first only when Less).  The cost pass
+# (compiler/Cost.hs) charges it 62·n comparisons: ⌈log2 n⌉ <= 62 for any n.
 sortWith : (a -> a -> Ord.Ordering) -> (xs : List a) -> List a | size sortWith <= len xs .
 sortWith cmp xs = sortListWith cmp xs.
 

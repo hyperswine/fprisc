@@ -27,6 +27,8 @@ cmpF : F64 -> F64 -> Order.Ordering .
 cmpF a b = if a < b then Order.Less else if b < a then Order.Greater else Order.Equal.
 showF xs = List.map F64.str xs.
 same n xs = List.length xs == n and List.sum (List.map pos xs) == (n * (n - 1)) / 2.
+# every original position exactly once (re-sorted by position with a total order)
+perm n xs = List.map pos (List.sortWith (Order.by pos Order.int) xs) == List.range 0 (n - 1).
 agreesRef n = List.sortWith byKey (items n n) == sortRef byKey (items n n).
 listOk n = sortedOk n (List.sortWith byKey (items 3 n)).
 sortedOk n s = ordered s and same n s.
@@ -51,4 +53,17 @@ main =
   _ = print "strings {List.sortWith Order.string ws} {Vec.toList (Vector.sortWith Order.string (Vec.fromList ws))} by length {Vec.toList (Vector.sortBy Order.int (fn w -> strlen w) (Vec.fromList ws))}";
   fs = Vec.toList (Vector.sortWith cmpF (Vec.fromList (2.5 :: 0.25 :: 1.0 :: 0.5 :: 0.25 :: Nil)));
   _ = print "a float column {showF fs}";
-  print "thenBy {List.sortWith (Order.thenBy (Order.by pos (Order.reverse Order.int)) byKey) (items 2 10)}".
+  _ = print "thenBy {List.sortWith (Order.thenBy (Order.by pos (Order.reverse Order.int)) byKey) (items 2 10)}";
+  # comparators that are not total preorders: no promise about the order, but
+  # every element comes back exactly once and nothing traps
+  big = items 7 20000;
+  always = fn a b -> Order.Less;
+  never = fn a b -> Order.Equal;
+  flaky = fn a b -> if (pos a + pos b) - ((pos a + pos b) / 3) * 3 == 0 then Order.Less else (if key a < key b then Order.Greater else Order.Equal);
+  _ = print "always Less: a permutation {perm 20000 (List.sortWith always big)} {perm 20000 (Vec.toList (Vector.sortWith always (Vec.fromList big)))}";
+  _ = print "always Equal: the input order {List.sortWith never big == big} {Vec.toList (Vector.sortWith never (Vec.fromList big)) == big}";
+  _ = print "inconsistent: a permutation {perm 20000 (List.sortWith flaky big)} {perm 20000 (Vec.toList (Vector.sortWith flaky (Vec.fromList big)))}";
+  # one element, and a big input through both
+  _ = print "one {List.sortWith byKey (P 3 0 :: Nil)} {Vec.toList (Vector.sortWith byKey (Vec.fromList (P 3 0 :: Nil)))}";
+  huge = items 11 200000;
+  print "200,000: list {sortedOk 200000 (List.sortWith byKey huge)} vector {sortedOk 200000 (Vec.toList (Vector.sortWith byKey (Vec.fromList huge)))}".
