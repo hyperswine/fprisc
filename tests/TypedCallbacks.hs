@@ -128,6 +128,24 @@ main=do
       map T.binderId (allBinders (T.functionBody (closedRoot direct))))
   check "an escaping list closure retains its identity binding"
     (T.binderId cb `elem` map T.binderId (allBinders (T.functionBody (closedRoot escaping))))
+  -- a nominal capture: Box holds an Int, Fun holds a function
+  let nominalTypes=T.TypeContext [] (M.fromList [("Box",Forall [] [] (TFn int (TC "Box"))),("Fun",Forall [] [] (TFn callbackTy (TC "Fun")))])
+      runNominal=right . specializeCallbacks SpecializeCallbacks (Namespace "test") nominalTypes M.empty . close
+      nominal capTy=
+        let c=binder "nominal-capture" 0 "c" capTy
+            a=binder "nominal-capture" 1 "arg" int
+            k=binder "nominal-capture" 2 "k" (TFn int capTy)
+        in (k,T.Function "nominalCapture" [c] (expr capTy
+             (T.Let k (expr (TFn int capTy) (T.Lambda [a] (ref c))) (apply (ref k) (expr int (T.IntValue 4))))))
+      (boxK,boxSource)=nominal (TC "Box")
+      (funK,funSource)=nominal (TC "Fun")
+      boxed=callbackClosed (runNominal boxSource)
+      funned=callbackClosed (runNominal funSource)
+  check "an arrow-free nominal capture calls directly without a closure object"
+    (verifyClosed nominalTypes boxed==Right () && T.binderId boxK `notElem`
+      map T.binderId (allBinders (T.functionBody (closedRoot boxed))))
+  check "a nominal capture holding a function keeps its closure"
+    (T.binderId funK `elem` map T.binderId (allBinders (T.functionBody (closedRoot funned))))
   let seed=binder "wide" 0 "seed" int
       cb=binder "wide" 1 "cb" callbackTy
       cbArg=binder "wide" 2 "x" int

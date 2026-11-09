@@ -69,7 +69,7 @@ specializeClosedWithDecisions reporting namespace types arities snapshot origina
   -- verifies before publication, so the merged input needs no separate check.
   runCallbacks reporting namespace types arities snapshot (mergeClosedLibrary (catalogLibrary snapshot) original)
 
-runCallbacks reporting (Namespace ns) types@(TypeContext linears _) arities catalogView input=do
+runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSchemes) arities catalogView input=do
   unless (all (>=0) arities) (Left "typed callbacks: negative physical arity")
   (rootBody,work)<-runStateT (do
     body<-walk 0 (scope (functionParameters root)) (functionBody root)
@@ -159,11 +159,31 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears _) arities cata
       maybe False ((==ClosureCode) . contractKind) (M.lookup label baseContracts)
       && all (\uid -> maybe False (\b -> not (isLin (binderShape b)) && captureValue (binderType b)) (M.lookup uid env)) caps
     localClosure _ _ = False
-    -- An arrow or open variable can hide an ownership-sensitive environment.
-    -- Admit closed lists of already safe values; preserve the old refusal for
-    -- unknown callbacks and nominal containers without a transport proof.
-    captureValue (TAp (TC "List") element) = captureValue element
-    captureValue ty = plain ty
+    -- The direct call passes each capture as an argument instead of storing
+    -- it in a closure object. Ownership shapes describe a closed, arrow-free
+    -- value exactly, nominal ones included (Ownership.TypeShape), so either
+    -- place holds the same non-linear value. An arrow's shape is LU whatever
+    -- its environment holds, and an open variable can still become linear:
+    -- a capture whose type reaches either, directly or through a nominal
+    -- type's constructor fields, keeps the closure.
+    captureValue ty = let (vs, rs) = U.variables ty in S.null vs && S.null rs && arrowFree S.empty ty
+    arrowFree seen ty = case ty of
+      TFn _ _ -> False
+      TV _ -> True -- a constructor field's parameter: its argument is checked
+      TLayout _ -> True
+      TTupT xs -> all (arrowFree seen) xs
+      TRec row -> rowFree row
+      TAp f a -> arrowFree seen f && arrowFree seen a
+      TC n
+        | n `S.member` seen || n == "List" -> True -- List's element is the argument checked beside it
+        | Just fields <- M.lookup n nominalFields -> all (arrowFree (S.insert n seen)) fields
+        | otherwise -> plain ty -- a type without constructors here proves nothing
+      where rowFree r = case r of RExt _ t rest -> arrowFree seen t && rowFree rest; _ -> True
+    nominalFields = M.fromListWith (++)
+      [ (n, fields) | Forall _ _ sc <- M.elems constructorSchemes, let (fields, result) = arrows sc,
+        n : _ <- [headName result] ]
+    arrows t = case t of TFn a b -> let (as, r) = arrows b in (a : as, r); _ -> ([], t)
+    headName t = case t of TC n -> [n]; TAp f _ -> headName f; _ -> []
     usable s k = safeKnown s S.empty k || localClosure s k
     value s desired (Known target caps leading)=do
       let fullType=foldr (TFn . exprType) desired leading
@@ -181,7 +201,7 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears _) arities cata
       | otherwise=do
           b<-freshBinder (Forall [] [] (exprType e))
           case known s e of
-            Just k | safeKnown s S.empty k->modify (\w->w {removable=S.insert (binderId b) (removable w)})
+            Just k | usable s k->modify (\w->w {removable=S.insert (binderId b) (removable w)})
             _->pure ()
           body<-continuation (extend [b] s) (ref b)
           pure (generated (exprType body) (Let b e body))
@@ -195,7 +215,7 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears _) arities cata
       Let b rhs body->do
         rhs'<-walk depth s rhs
         case known s rhs' of
-          Just k | safeKnown s S.empty k->modify (\w->w {removable=S.insert (binderId b) (removable w)})
+          Just k | usable s k->modify (\w->w {removable=S.insert (binderId b) (removable w)})
           _->pure ()
         case known s rhs' of
           Just k@(Known t caps leading) | usable s k,
