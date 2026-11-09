@@ -33,6 +33,7 @@ data CompileArguments = CompileArguments
     oFiles :: [FilePath],
     oForeign :: [FilePath], -- --foreign=FILE: the SYSTEM's primitive declarations (signatures only)
     oNoInline :: Bool, -- --no-inline / FPR_NO_INLINE=1: base code keeps every call (debugging, WCET comparison)
+    oCallables :: Maybe String, -- analysis-only checked callable census (--callables)
     oCost :: Bool, -- --cost: print every root function's work/alloc equations (Cost.hs), then continue
     oEditorJSON :: Bool, -- versioned editor report, never executes or emits code
     oCheckOnly :: Bool, -- check libraries/modules without an executable entry point
@@ -53,7 +54,7 @@ parseCompileArguments = resolveHost . foldl step defaults
         oA64=False, oA64Mac=False, oX64=False, oX64Mac=False,
         oQosApp=False, oQosSingle=False, oPlugin=False, oRvv=False,
         oStdCheck=False, oSol=False, oPrelude=Nothing, oNoSafety=False,
-        oFiles=[], oForeign=[], oNoInline=False, oCost=False,
+        oFiles=[], oForeign=[], oNoInline=False, oCallables=Nothing, oCost=False,
         oEditorJSON=False, oCheckOnly=False, oManifest=Nothing, oStackBudget=Nothing, oHeapBudget=Nothing, oStackReport=False, oRemarks=Nothing }
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -90,6 +91,8 @@ parseCompileArguments = resolveHost . foldl step defaults
     step o "--profile=qos-native" = step o "--system=qos-native"
     step o "--profile=qos-portable" = step o "--system=qos-portable"
     step o "--arc" = o {oArc = True}
+    step o "--callables" = o {oCallables=Just "summary"}
+    step o a | "--callables=" `isPrefixOf` a = o {oCallables=Just (drop (length "--callables=") a)}
     step o "--cost" = o {oCost = True}
     step o "--remarks" = o {oRemarks = Just "hot"}
     step o a | "--remarks=" `isPrefixOf` a = o {oRemarks = Just (drop (length "--remarks=") a)}

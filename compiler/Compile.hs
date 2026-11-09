@@ -61,6 +61,7 @@ import Frontend.Normalize
 import Frontend.Diagnostics
 import qualified Diagnostic.Render as Diagnostic
 import qualified Compiler.Editor as Editor
+import qualified Compiler.CallableReport as CallableReport
 import qualified Source.Span as Source
 import qualified Data.List.NonEmpty as NE
 import qualified Diagnostic.Remark as Remark
@@ -246,6 +247,10 @@ compileWithReport accepted report = do
   remarkMode<-either (\why->hPutStrLn stderr ("error: "++why) >> exitFailure) pure (Remark.parseMode (oRemarks opts0))
   when (oCheckOnly opts0 && remarkMode/=Remark.Off) $
     hPutStrLn stderr "error: optimization remarks require native compilation; omit --check-only" >> exitFailure
+  when (maybe False (`notElem` ["summary","json"]) (oCallables opts0)) $
+    hPutStrLn stderr "error: --callables expects summary or json" >> exitFailure
+  when (isJust (oCallables opts0) && (oCheckOnly opts0 || oEditorJSON opts0)) $
+    hPutStrLn stderr "error: --callables requires native compilation; omit --check-only/--editor-json" >> exitFailure
   (rootSrc0, rootTopsParsed) <- parseFileSrcEditor report inp
   -- the PROFILE is the file's: `profile base.` (or `unsafe base.`), a
   -- .sol file is sol; the flag serves a file that says nothing, and
@@ -1118,7 +1123,7 @@ compileWithReport accepted report = do
           prefix (Linked.PreludeArtifact h)="$specaux.p"++take 12 h++"."
           prefix (Linked.DependencyArtifact h)="$specaux.u"++take 12 h++"."
           prefix Linked.RootArtifact=error "native link: root is not an imported artifact"
-          applyReport label asm = when (Options.diagApply diagnostic) $ hPutStrLn stderr
+          applyReport label asm = when (Options.diagApply diagnostic || isJust (oCallables opts)) $ hPutStrLn stderr
             ("apply " ++ label ++ ": dispatch=" ++ show (length [() | l <- lines asm, "fpr_apply" `List.isInfixOf` l, any (`List.isInfixOf` l) ["call ", "bl "]])
              ++ " known-partial=" ++ show (length [() | l <- lines asm, "# pap-create:" `List.isPrefixOf` l])
              ++ " static-descriptors=" ++ show (length [() | l <- lines asm, "# static-pap:" `List.isPrefixOf` l]))
@@ -1148,7 +1153,7 @@ compileWithReport accepted report = do
             cached <- if oStackReport opts then pure False else doesFileExist path
             if cached
               then do
-                when (Options.diagApply diagnostic) (readFile path >>= applyReport (takeFileName path))
+                when (Options.diagApply diagnostic || isJust (oCallables opts)) (readFile path >>= applyReport (takeFileName path))
                 pure (path, "cached")
               else do
                 let (specialized,productParameters)=mono unitProducts (takeFileName path) M.empty unitProgram
@@ -1192,6 +1197,7 @@ compileWithReport accepted report = do
       -- artifact is reused or emitted. Later legacy passes consume projections;
       -- they do not replace the retained checked inputs with inferred evidence.
       either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) linkedResult
+      when (isJust (oCallables opts)) (CallableReport.writeReport (oCallables opts==Just "json") anchors linked)
       -- Validate local layout evidence before any projection can force its
       -- pure Either result (including width and export checks).
       when (oArc opts) $ either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) arcPrepared

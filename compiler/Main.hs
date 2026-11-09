@@ -60,6 +60,7 @@ usage =
       "    the file declares its profile: `profile builtin|base|extbase|sol.` (docs/2026-09-19-PROFILES.md)",
       "    --profile=builtin --arc             the raw ABI with first-order automatic ARC",
       "    --editor-json                      check only; versioned diagnostics, inputs and inferred types",
+      "    --callables[=summary|json]          checked callable census/summaries (compile; stderr)",
       "    --remarks[=hot|all|json]             native optimization remarks (compile/build; stderr)",
       "    --heap-budget=BYTES                 bound cumulative builtin C heap use at every RV64 --lib C export",
       "    --stack-report                      include native stack facts in assembly (automatic for C exports)",

@@ -153,3 +153,10 @@ invalidates the dependent machine evidence.
 No new surface syntax, runtime enforcement, hardware guarantee or automatic
 contract rewriting is authorized by displaying inferred bounds. This document
 records intent; implementation and promotion require the gates above.
+
+## Experimental callable representations
+
+The [static-functions and defunctionalization design](2026-11-09-STATIC-FUNCTIONS-AND-DEFUNCTIONALIZATION.md)
+adds a proposed consumer of finite call-target summaries. Generated dispatch and
+environment storage must have explicit resource accounting; current source-model
+hovers are not optimized-code or machine-time receipts for that experiment.

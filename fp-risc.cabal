@@ -125,6 +125,7 @@ library
       Diagnostic.Syntax
       Diagnostic.Remark
       Diagnostic.Render
+      Compiler.CallableReport
       Compiler.Editor
       Compiler.CommandLine
       FPRISC
@@ -183,6 +184,7 @@ library
       Core.Typed.Contract
       Core.Typed.Resolve
       Core.Typed.Stage
+      Core.Typed.Callable
       Core.Typed.Callback
       Core.Typed.Callback.Model
       Core.Typed.Callback.Catalog
@@ -562,3 +564,8 @@ test-suite SolReplIncremental
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            SolReplIncremental.hs
+
+test-suite CallableAnalysis
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            CallableAnalysis.hs

@@ -168,6 +168,11 @@ interfaces; do not rewrite all analyses into one solver.
 warm-cache evidence; structured diagnostics identify the failing dependency.
 This is shared work with resource milestones R1 and R4, not a second summary system.
 
+**Callable-summary consumer (9 November):** the [analysis-only callable census](2026-11-09-CALLABLE-CENSUS-AND-SUMMARIES.md)
+adds shared checked targets/captures/argument/return flow and explicit unknowns,
+without enabling rewrites. Persistent summaries and general pass invalidation
+remain open.
+
 ## Phase P2 - Preserve typed evidence through lowering
 
 **Deliver:** a checked bridge from typed Core to SSA carrying concrete signatures,
@@ -191,6 +196,11 @@ width tests pass. Initial migration should retain code shape where possible so
 representation changes are reviewed separately.
 
 ## Phase P3 - One representation and ownership planner
+
+The [static-functions and defunctionalization design](2026-11-09-STATIC-FUNCTIONS-AND-DEFUNCTIONALIZATION.md)
+records six steps toward eliminating generic callable machinery and an opt-in
+experiment spanning P1–P6. Its proposed flags are not implemented; it does not
+change the default ABI or relax this phase's promotion gates.
 
 **Deliver:** a plan for scalar values, scalar products, concrete heap objects,
 closures, tagged boundary values, call conventions and explicit adapters.

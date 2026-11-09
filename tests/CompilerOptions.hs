@@ -12,6 +12,8 @@ identity :: [(String,String)] -> String
 identity=codegenCacheIdentity . codegenOptions . options
 main :: IO ()
 main=do
+  require (oCallables (parseCompileArguments ["--callables","module.fpr","out.s"])==Just "summary") "callable report flag missing"
+  require (oCallables (parseCompileArguments ["module.fpr","out.s"])==Nothing) "callable analysis enabled by default"
   let baseline=identity []
   forM_ [[],[("FPR_TYPED_IR_BACKEND","")],[("FPR_TYPED_IR_BACKEND","mixed")],
          [("FPR_NO_RECEIVE_TURNS","0")],[("FPR_NO_INLINE","unexpected")],
