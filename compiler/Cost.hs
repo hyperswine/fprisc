@@ -622,6 +622,17 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
                           w = CAdd [CN 1, CMul [CN 3, n], CMul [cmps, CAdd [CN 1, fnWork f]]]
                           a = CAdd [CMul [CN 24, n], CMul [cmps, fnAlloc f]]
                        in plus (R w a (CAdd [a, CMul [CN 24, n]]) []) rargs
+                  -- the MutMap engine (runtime/vec.c; docs/2026-11-10-MUTMAP.md).
+                  -- `len m` of a MutMap is its slot count C (a power of two,
+                  -- at most 3/4 full); `len k` the key's length (String
+                  -- bytes; an Int key's is unknown here, and costs 1).  A
+                  -- probe visits at most C slots and compares |k| bytes
+                  -- only where the stored hash is equal; growth to 2C
+                  -- re-places every entry by its stored hash, at most 2C
+                  -- slots each in the worst (flooded) case, and is charged
+                  -- to the insert that triggers it.  Columns: 3 words per
+                  -- slot plus 3 column headers and the 8-slot minimum.
+                  | Just r <- mutmapCost g args -> plus r rargs
                   | Just (pw, pa) <- primCostOf g (map lenOf args) -> plus (alloc pw pa) rargs
                   | otherwise -> plus (alloc (CAdd [CN 1, CO g]) (CO g)) rargs -- an undeclared primitive
                 _ -> plus (go h) (plus (alloc (CAdd [CN 1, CO "?"]) (CO "?")) rargs)
@@ -700,6 +711,49 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
           (CVar g, []) | Just p <- paramOf g -> CA p
           (CVar g, _) | S.member g globals, M.notMember g sub -> opaqueParams (ceAlloc (fromMaybe (opaqueEq g) (seen done g)))
           _ -> CO "?"
+        -- (work, alloc, live) of one MutMap primitive call, args costed by the caller
+        mutmapCost g args = case (g, args) of
+          ("strHash", [k]) -> Just (alloc (CAdd [CN 1, lenOf k]) (CN 0))
+          ("intHash", [_]) -> Just (alloc (CN 1) (CN 0))
+          ("mutmapStrings", [n]) -> Just (fresh (natOf n))
+          ("mutmapInts", [n]) -> Just (fresh (natOf n))
+          ("mutmapReserve", [n, m]) ->
+            let c = lenOf m
+                nn = slotsFor (natOf n)
+             in Just (R (CAdd [CN 1, CMul [CN 3, nn], c, CMul [c, nn]]) (CAdd [CN 48, CMul [CN 24, nn]])
+                        (CAdd [CN 48, CMul [CN 24, nn], CMul [CN 24, c]]) [])
+          ("mutmapInsert", [k, _, m]) -> Just (insertR k m)
+          ("mutmapInsertWith", [f, k, _, m]) -> Just (plus (insertR k m) (R (fnWork f) (fnAlloc f) (fnAlloc f) []))
+          ("mutmapSlot", [k, m]) -> Just (alloc (probeW k m) (CN 24))
+          ("mutmapValueAt", [_, _]) -> Just (alloc (CN 1) (CN 24))
+          ("mutmapSetAt", [_, _, _]) -> Just (alloc (CN 1) (CN 0))
+          ("mutmapRemoveAt", [_, m]) -> Just (alloc (CAdd [CN 1, lenOf m]) (CN 0))
+          ("mutmapRemove", [k, m]) -> Just (alloc (CAdd [probeW k m, lenOf m]) (CN 0))
+          ("mutmapSize", [_]) -> Just (alloc (CN 1) (CN 24))
+          ("mutmapCapacity", [_]) -> Just (alloc (CN 1) (CN 24))
+          -- one call of f per entry (at most C), each through two
+          -- partial applications of at most 56 bytes, freed at once
+          ("mutmapFold", [f, _, m]) ->
+            let c = lenOf m
+             in Just (R (CAdd [CN 1, CMul [c, CAdd [CN 4, fnWork f]]])
+                        (CAdd [CN 24, CMul [c, CAdd [CN 112, fnAlloc f]]])
+                        (CAdd [CN 24, CMul [c, CAdd [CN 112, fnAlloc f]]]) [])
+          -- a (key, value) pair and a cell per entry, and the Nil
+          ("mutmapToList", [m]) -> let c = lenOf m in Just (alloc (CAdd [CN 1, c]) (CAdd [CN 32, CMul [CN 48, c]]))
+          ("mutmapFree", [_]) -> Just (alloc (CN 1) (CN 0))
+          _ -> Nothing
+          where
+            natOf n = mkNat (fromMaybe (CO "?n") (symOf n))
+            -- the slots that hold n entries at 3/4: below 8n/3 + 8
+            slotsFor n = CAdd [CN 8, CMul [CN 3, n]]
+            fresh n = let nn = slotsFor n in alloc (CAdd [CN 1, CMul [CN 3, nn]]) (CAdd [CN 160, CMul [CN 24, nn]])
+            probeW k m = let c = lenOf m; kl = lenOf k in CAdd [CN 1, kl, CMul [c, CAdd [CN 1, kl]]]
+            -- probe, then (at worst) grow C -> 2C: clear 2C slots, scan C, place C entries at <= 2C probes each
+            insertR k m =
+              let c = lenOf m
+               in R (CAdd [probeW k m, CN 25, CMul [CN 7, c], CMul [CN 2, c, c]])
+                    (CAdd [CN 240, CMul [CN 48, c]])
+                    (CAdd [CN 240, CMul [CN 72, c]]) []
 
 -- Monotonicity in all structural lengths. Signed scalar factors need a
 -- nonnegative proof before multiplying a size-dependent expression.

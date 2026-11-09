@@ -204,6 +204,7 @@ prelude =
       "shNow c = read (NowSh c).",
       "readLineNow u = read NowLine.",
       "Vector 1 a = Type (Vector Int).",
+      "MutMap 1 k v = Type (MutMap Int).",
       "Vec.new : Unit -> Vector a.",
       "Vec.range : Int -> Int -> Vector Int.",
       "Vec.mmul : Int -> Int -> Int -> Vector Int -> Vector Int -> (Vector Int, Vector Int, Vector Int).",
@@ -442,7 +443,8 @@ halArities =
       ("Vec.set", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
       ("Vec.toList", 1), ("Vec.fromList", 1), ("Vec.free", 1),
       ("Vec.zipAdd", 2), ("Vec.zipSub", 2), ("Vec.zipMul", 2), ("Vec.dot", 2), ("Vec.scale", 2),
-      ("sortListWith", 2),
+      ("sortListWith", 2), ("strHash", 1), ("intHash", 1),
+      ("mutmapStrings", 1), ("mutmapInts", 1), ("mutmapReserve", 2), ("mutmapInsert", 3), ("mutmapInsertWith", 4), ("mutmapSlot", 2), ("mutmapValueAt", 2), ("mutmapSetAt", 3), ("mutmapRemoveAt", 2), ("mutmapRemove", 2), ("mutmapSize", 1), ("mutmapCapacity", 1), ("mutmapFold", 3), ("mutmapToList", 1), ("mutmapFree", 1),
       ("use", 1), ("run", 2), ("View.serve", 5)
     ]
     ++ [(name, arity) | (name, arity, _) <- ScriptIO.api ++ Process.api ++ Digest.api ++ Format.api ++ Http.api]

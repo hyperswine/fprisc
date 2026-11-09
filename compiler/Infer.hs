@@ -392,6 +392,9 @@ tyToTypeA aliases tbl0 ty = runStateT (go ty) tbl0
       TCon "Vector" args | length args /= 1 -> do
         lift (report "Vector requires one element type: write Vector Int, Vector F64, or Vector a")
         pure (TC "Vector")
+      TCon "MutMap" args | length args /= 2 -> do
+        lift (report "MutMap requires a key and a value type: write MutMap String Int, or MutMap k v")
+        pure (TC "MutMap")
       TCon n args -> foldl' TAp (TC (canon n)) <$> mapM go args
       TVApp n args -> do h <- var n; foldl' TAp h <$> mapM go args
       TArrT a b -> TFn <$> go a <*> go b
@@ -576,6 +579,27 @@ builtinEnv =
       -- sortListWith).  std/vector is the caller.
       ("sortVecWith", scheme [0, 1] (TFn (TFn (sv 0) (TFn (sv 0) (sv 1))) (TFn (tVector (sv 0)) (tVector (sv 0))))),
       ("Vec.dup", scheme [0] (TFn (tVector (sv 0)) (TTupT [tVector (sv 0), tVector (sv 0)]))),
+      -- std/mutmap's engine (runtime/vec.c, the MutMap section): a linear
+      -- hash table keyed by Int or String.  Every operation consumes the map
+      -- and hands it back; reads answer (result, map).  std/mutmap.fpr is
+      -- the caller (docs/2026-11-10-MUTMAP.md).
+      ("strHash", mono (TFn tStr tInt)),
+      ("intHash", mono (TFn tInt tInt)),
+      ("mutmapStrings", scheme [0] (TFn tInt (tMutMap tStr (sv 0)))),
+      ("mutmapInts", scheme [0] (TFn tInt (tMutMap tInt (sv 0)))),
+      ("mutmapReserve", scheme [0, 1] (TFn tInt (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1))))),
+      ("mutmapInsert", scheme [0, 1] (TFn (sv 0) (TFn (sv 1) (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1)))))),
+      ("mutmapInsertWith", scheme [0, 1] (TFn (TFn (sv 1) (TFn (sv 1) (sv 1))) (TFn (sv 0) (TFn (sv 1) (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1))))))),
+      ("mutmapSlot", scheme [0, 1] (TFn (sv 0) (TFn (tMutMap (sv 0) (sv 1)) (TTupT [tInt, tMutMap (sv 0) (sv 1)])))),
+      ("mutmapValueAt", scheme [0, 1] (TFn tInt (TFn (tMutMap (sv 0) (sv 1)) (TTupT [sv 1, tMutMap (sv 0) (sv 1)])))),
+      ("mutmapSetAt", scheme [0, 1] (TFn tInt (TFn (sv 1) (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1)))))),
+      ("mutmapRemoveAt", scheme [0, 1] (TFn tInt (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1))))),
+      ("mutmapRemove", scheme [0, 1] (TFn (sv 0) (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1))))),
+      ("mutmapSize", scheme [0, 1] (TFn (tMutMap (sv 0) (sv 1)) (TTupT [tInt, tMutMap (sv 0) (sv 1)]))),
+      ("mutmapCapacity", scheme [0, 1] (TFn (tMutMap (sv 0) (sv 1)) (TTupT [tInt, tMutMap (sv 0) (sv 1)]))),
+      ("mutmapFold", scheme [0, 1, 2] (TFn (TFn (sv 2) (TFn (sv 0) (TFn (sv 1) (sv 2)))) (TFn (sv 2) (TFn (tMutMap (sv 0) (sv 1)) (TTupT [sv 2, tMutMap (sv 0) (sv 1)]))))),
+      ("mutmapToList", scheme [0, 1] (TFn (tMutMap (sv 0) (sv 1)) (TTupT [tList (TTupT [sv 0, sv 1]), tMutMap (sv 0) (sv 1)]))),
+      ("mutmapFree", scheme [0, 1] (TFn (tMutMap (sv 0) (sv 1)) tUnit)),
       ("Vec.iota", mono (TFn tInt (tVector tInt))),
       ("Vec.axpb", mono (TFn tInt (TFn tInt (TFn (tVector tInt) (tVector tInt))))),
       ("Vec.sar", mono (TFn tInt (TFn (tVector tInt) (tVector tInt)))),

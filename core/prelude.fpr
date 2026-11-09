@@ -21,6 +21,10 @@ closeHandle h = case h of Handle v -> v.
 
 Vector 1 a = Type Int.
 
+# the linear hash table, keyed by Int or String (std/mutmap.fpr; runtime/vec.c):
+# one owner, so its writes happen in place (docs/2026-11-10-MUTMAP.md)
+MutMap 1 k v = Type Int.
+
 and a b = case a of True -> b | False -> False.
 or a b = case a of True -> True | False -> b.
 not b = case b of True -> False | False -> True.

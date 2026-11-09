@@ -953,3 +953,401 @@ FPR_FN(fpr_g_Vec_x2ezipEq, h_zipEq, 2);
 FPR_FN(fpr_g_Vec_x2ezipMax, h_zipMax, 2);
 FPR_FN(fpr_g_Vec_x2eabsv, h_absv, 1);
 FPR_FN(fpr_g_Vec_x2eeqS, h_eqS, 2);
+
+/* ==== MutMap: the LINEAR hash table (std/mutmap.fpr) ====================
+ * docs/2026-11-10-MUTMAP.md.  A MutMap is a vec_t with rep VR_MAP and three
+ * columns -- 0: the stored hash (raw; 0 = an empty slot, otherwise the key's
+ * hash with the top bit set), 1: the key (raw Int, or a boxed String),
+ * 2: the value (boxed) -- open addressing with LINEAR probing over a
+ * power-of-two number of slots (`len`), at most 3/4 full, removal by
+ * backward shift (no tombstones, so a probe never passes more than the
+ * cluster it is in).  eltid counts the entries, elvar is the key kind.
+ *
+ * It is a vec_t so that everything that already moves, copies, bounds and
+ * releases a Vector does the same to a MutMap with no new case: the deep
+ * copier (send, keep, Sys.loop's boundary refusal), the region/bulk storage
+ * rule, and the release path.  Empty slots hold TAG(0) in the boxed columns,
+ * which every walker reads as an Int.
+ *
+ * LINEARITY is what makes the in-place writes sound (`MutMap 1 k v` in the
+ * prelude): nothing else can hold the old version.  Every operation consumes
+ * the map and hands the same handle back.
+ *
+ * Costs (compiler/Cost.hs, the mutmap* rules): with C = the capacity before
+ * the call and |k| the key's length, one probe sequence visits at most C
+ * slots and compares a key only where the stored hash is equal; growth
+ * (a doubling) re-places every entry by its STORED hash, never rehashing a
+ * key, and is charged to the insert that triggers it, as Vector's push. */
+#define MM_KINT 1u
+#define MM_KSTR 2u
+#define MM_TOP ((uw)1 << (sizeof(uw) * 8 - 1))
+#define MM_MIN 8u
+
+/* ---- the hashes: deterministic, unseeded, not cryptographic -------------
+ * 64-bit words: Int keys go through splitmix64's finalizer (a bijection, so
+ * distinct Ints never collide before the slot mask); String bytes through
+ * XXH64's single-lane round and avalanche (8-byte words, then 4, then
+ * bytes), with seed 0 and the length mixed in first.  Only 64x64->64
+ * multiplies: no 128-bit product, so no libgcc call on bare metal.
+ * 32-bit words (RV32): murmur3's fmix32 for Ints and murmur3_32 for bytes,
+ * 32-bit multiplies only.  The hash is part of nothing observable except
+ * slot order and strHash/intHash themselves; a fixed hash can be flooded by
+ * chosen keys (see the doc), which costs probes, never correctness. */
+#if UINTPTR_MAX > 0xFFFFFFFFu
+static inline uw mm_rotl(uw x, unsigned r) { return (x << r) | (x >> (64 - r)); }
+static uw mm_int_hash(sw k) {
+  uw z = (uw)k + 0x9E3779B97F4A7C15ull;
+  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+  z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+  return z ^ (z >> 31);
+}
+#define XP1 0x9E3779B185EBCA87ull
+#define XP2 0xC2B2AE3D27D4EB4Full
+#define XP3 0x165667B19E3779F9ull
+#define XP4 0x85EBCA77C2B2AE63ull
+#define XP5 0x27D4EB2F165667C5ull
+static uw mm_bytes_hash(const uint8_t *p, uw n) {
+  uw h = XP5 + n, i = 0;
+  for (; i + 8 <= n; i += 8) {
+    uw w = 0;
+    for (unsigned b = 0; b < 8; b++) w |= (uw)p[i + b] << (8 * b);
+    w *= XP2; w = mm_rotl(w, 31); w *= XP1;
+    h ^= w; h = mm_rotl(h, 27) * XP1 + XP4;
+  }
+  if (i + 4 <= n) {
+    uw w = 0;
+    for (unsigned b = 0; b < 4; b++) w |= (uw)p[i + b] << (8 * b);
+    h ^= w * XP1; h = mm_rotl(h, 23) * XP2 + XP3;
+    i += 4;
+  }
+  for (; i < n; i++) { h ^= (uw)p[i] * XP5; h = mm_rotl(h, 11) * XP1; }
+  h ^= h >> 33; h *= XP2; h ^= h >> 29; h *= XP3; h ^= h >> 32;
+  return h;
+}
+#else
+static inline uw mm_rotl(uw x, unsigned r) { return (x << r) | (x >> (32 - r)); }
+static uw mm_fmix(uw h) {
+  h ^= h >> 16; h *= 0x85EBCA6Bu; h ^= h >> 13; h *= 0xC2B2AE35u; h ^= h >> 16;
+  return h;
+}
+static uw mm_int_hash(sw k) { return mm_fmix((uw)k + 0x9E3779B9u); }
+static uw mm_bytes_hash(const uint8_t *p, uw n) {
+  uw h = 0, i = 0;
+  for (; i + 4 <= n; i += 4) {
+    uw w = (uw)p[i] | (uw)p[i + 1] << 8 | (uw)p[i + 2] << 16 | (uw)p[i + 3] << 24;
+    w *= 0xCC9E2D51u; w = mm_rotl(w, 15); w *= 0x1B873593u;
+    h ^= w; h = mm_rotl(h, 13) * 5u + 0xE6546B64u;
+  }
+  uw w = 0;
+  switch (n & 3) {
+    case 3: w ^= (uw)p[i + 2] << 16; /* fallthrough */
+    case 2: w ^= (uw)p[i + 1] << 8;  /* fallthrough */
+    case 1: w ^= (uw)p[i]; w *= 0xCC9E2D51u; w = mm_rotl(w, 15); w *= 0x1B873593u; h ^= w;
+  }
+  return mm_fmix(h ^ n);
+}
+#endif
+
+static uw mm_str_hash(V s) {
+  if (ISINT(s) || TID(s) != T_STR) fpr_cpanic("strHash: not a String");
+  str_t *t = (str_t *)s;
+  return mm_bytes_hash(t->bytes, t->len);
+}
+/* strHash / intHash: the table's hashes as Ints, nonnegative (the top two
+ * bits dropped so the result is a tagged Int on every word size) */
+static V g_strHash(V s) { return TAG((sw)(mm_str_hash(s) >> 2)); }
+static V g_intHash(V k) {
+  if (!ISINT(k)) fpr_cpanic("intHash: not an Int");
+  return TAG((sw)(mm_int_hash(UNTAG(k)) >> 2));
+}
+
+static vec_t *mchk(V m, const char *who) {
+  vec_t *x = vchk(m, who);
+  if (VREP(x) != VR_MAP) fpr_cpanic(who);
+  return x;
+}
+static inline uw *mm_h(vec_t *x) { return x->cols[0]->base; }
+static inline uw *mm_k(vec_t *x) { return x->cols[1]->base; }
+static inline uw *mm_v(vec_t *x) { return x->cols[2]->base; }
+
+/* the key's stored hash (top bit set), checking it is the map's key kind */
+static uw mm_key_hash(vec_t *x, V k) {
+  if (x->elvar == MM_KINT) {
+    if (!ISINT(k)) fpr_cpanic("MutMap: an Int-keyed map got a non-Int key");
+    return mm_int_hash(UNTAG(k)) | MM_TOP;
+  }
+  if (ISINT(k) || TID(k) != T_STR) fpr_cpanic("MutMap: a String-keyed map got a non-String key");
+  return mm_str_hash(k) | MM_TOP;
+}
+static inline uw mm_key_raw(vec_t *x, V k) { return x->elvar == MM_KINT ? (uw)UNTAG(k) : (uw)k; }
+static int mm_key_eq(vec_t *x, uw slot, V k) {
+  uw s = mm_k(x)[slot];
+  if (x->elvar == MM_KINT) return s == (uw)UNTAG(k);
+  if (s == (uw)k) return 1;
+  str_t *a = (str_t *)s, *b = (str_t *)k;
+  if (a->len != b->len) return 0;
+  for (uw i = 0; i < a->len; i++)
+    if (a->bytes[i] != b->bytes[i]) return 0;
+  return 1;
+}
+static inline V mm_key_val(vec_t *x, uw slot) {
+  uw s = mm_k(x)[slot];
+  return x->elvar == MM_KINT ? TAG((sw)s) : (V)s;
+}
+static void mm_clear(vec_t *x, uw slot) {
+  mm_h(x)[slot] = 0;
+  mm_k(x)[slot] = x->elvar == MM_KINT ? 0 : (uw)TAG(0);
+  mm_v(x)[slot] = (uw)TAG(0);
+}
+
+/* fresh, empty columns of ncap slots (a power of two) */
+static void mm_cols(vec_t *x, uw ncap) {
+  for (uw k = 0; k < 3; k++) {
+    col_t *c = col_new();
+    if (ncap) {
+      c->base = (uw *)fpr_alloc_bulk(ncap * sizeof(uw));
+      c->cap = ncap;
+    }
+    x->cols[k] = c;
+  }
+  x->len = ncap;
+  for (uw i = 0; i < ncap; i++) mm_clear(x, i);
+}
+
+/* the slot holding k (>= 0), or -1; *empty gets the first empty slot of the
+ * probe (where k would go).  At most `len` slots are visited. */
+static sw mm_find(vec_t *x, V k, uw h, uw *empty) {
+  uw cap = x->len;
+  *empty = (uw)-1;
+  if (!cap) return -1;
+  uw mask = cap - 1, i = h & mask, *hs = mm_h(x);
+  for (uw n = 0; n < cap; n++, i = (i + 1) & mask) {
+    if (hs[i] == 0) { *empty = i; return -1; }
+    if (hs[i] == h && mm_key_eq(x, i, k)) return (sw)i;
+  }
+  return -1; /* full: cannot happen at load <= 3/4, kept as the bound */
+}
+
+/* the slot capacity that holds n entries at load <= 3/4 */
+static uw mm_cap_for(uw n) {
+  uw cap = MM_MIN;
+  while (cap - cap / 4 < n) {
+    if (cap > ((uw)-1 >> 3)) fpr_cpanic("MutMap: capacity out of range");
+    cap *= 2;
+  }
+  return cap;
+}
+
+/* re-place every entry into ncap slots by its stored hash (keys are distinct,
+ * so no key is compared), then free the old columns */
+static void mm_rehash(vec_t *x, uw ncap) {
+  col_t *oh = x->cols[0], *ok = x->cols[1], *ov = x->cols[2];
+  uw ocap = x->len;
+  mm_cols(x, ncap);
+  uw mask = ncap - 1, *hs = mm_h(x), *ks = mm_k(x), *vs = mm_v(x);
+  for (uw j = 0; j < ocap; j++) {
+    uw h = oh->base[j];
+    if (!h) continue;
+    uw i = h & mask;
+    while (hs[i]) i = (i + 1) & mask;
+    hs[i] = h; ks[i] = ok->base[j]; vs[i] = ov->base[j];
+  }
+  col_free(oh); col_free(ok); col_free(ov);
+}
+
+static V mm_new(uw kind, V capv) {
+  if (!ISINT(capv)) fpr_cpanic("MutMap: the capacity is not an Int");
+  sw n = UNTAG(capv);
+  vec_t *x = (vec_t *)fpr_alloc_object_bulk(sizeof(vec_t));
+  x->tid = T_VEC;
+  x->var = VR_MAP;
+  x->len = 0;
+  x->eltid = 0;
+  x->elvar = kind;
+  x->ncols = 0; x->kinds = 0; x->cols = 0;
+  x->shape = 0; x->shape_len = 0;
+  vdir_alloc(x, 3);
+  x->kinds[0] = VK_INT;
+  x->kinds[1] = kind == MM_KINT ? VK_INT : VK_BOX;
+  x->kinds[2] = VK_BOX;
+  mm_cols(x, n > 0 ? mm_cap_for((uw)n) : 0);
+  return (V)x;
+}
+static V g_mutmapStrings(V capv) { return mm_new(MM_KSTR, capv); }
+static V g_mutmapInts(V capv) { return mm_new(MM_KINT, capv); }
+
+/* withCapacity: room for n entries with no further growth (never shrinks) */
+static V g_mutmapReserve(V nv, V m) {
+  vec_t *x = mchk(m, "MutMap.withCapacity: not a MutMap");
+  if (!ISINT(nv)) fpr_cpanic("MutMap.withCapacity: the capacity is not an Int");
+  sw n = UNTAG(nv);
+  if (n > 0) {
+    uw cap = mm_cap_for((uw)n);
+    if (cap > x->len) mm_rehash(x, cap);
+  }
+  return m;
+}
+
+/* place a key known to be absent: grows first when the entry would pass 3/4 */
+static void mm_place_new(vec_t *x, V k, uw h, V v, uw empty) {
+  uw cap = x->len;
+  if (cap == 0 || (x->eltid + 1) > cap - cap / 4 || empty == (uw)-1) {
+    mm_rehash(x, cap ? cap * 2 : MM_MIN);
+    uw mask = x->len - 1, *hs = mm_h(x);
+    empty = h & mask;
+    while (hs[empty]) empty = (empty + 1) & mask;
+  }
+  mm_h(x)[empty] = h;
+  mm_k(x)[empty] = mm_key_raw(x, k);
+  mm_v(x)[empty] = (uw)v;
+  x->eltid++;
+}
+
+static V g_mutmapInsert(V k, V v, V m) {
+  vec_t *x = mchk(m, "MutMap.insert: not a MutMap");
+  uw h = mm_key_hash(x, k), empty;
+  sw at = mm_find(x, k, h, &empty);
+  if (at >= 0) mm_v(x)[at] = (uw)v;
+  else mm_place_new(x, k, h, v, empty);
+  return m;
+}
+
+static V mm_apply2(V f, V a, V b) {
+  V pf = fpr_apply(f, a);
+  V r = fpr_apply(pf, b);
+  if (!ISINT(pf) && TID(pf) == T_PAP && pf != f) fpr_free(pf);
+  return r;
+}
+
+/* insertWith f k v: where k is there store `f old v`, else v (std/map's
+ * argument order).  f is called at most once. */
+static V g_mutmapInsertWith(V f, V k, V v, V m) {
+  vec_t *x = mchk(m, "MutMap.insertWith: not a MutMap");
+  uw h = mm_key_hash(x, k), empty;
+  sw at = mm_find(x, k, h, &empty);
+  if (at >= 0) {
+    V nv = mm_apply2(f, (V)mm_v(x)[at], v);
+    mm_v(x)[at] = (uw)nv; /* f cannot reach the map (it is linear): `at` still holds */
+  } else mm_place_new(x, k, h, v, empty);
+  return m;
+}
+
+/* (the slot holding k, or -1; the map) */
+static V g_mutmapSlot(V k, V m) {
+  vec_t *x = mchk(m, "MutMap.get: not a MutMap");
+  uw h = mm_key_hash(x, k), empty;
+  return mktup2(TAG(mm_find(x, k, h, &empty)), m);
+}
+static uw mm_occupied(vec_t *x, V iv, const char *who) {
+  if (!ISINT(iv)) fpr_cpanic(who);
+  sw i = UNTAG(iv);
+  if (i < 0 || (uw)i >= x->len) fpr_trap_range(who, i, x->len);
+  if (!mm_h(x)[i]) fpr_cpanic(who);
+  return (uw)i;
+}
+static V g_mutmapValueAt(V iv, V m) {
+  vec_t *x = mchk(m, "MutMap: not a MutMap");
+  uw i = mm_occupied(x, iv, "MutMap: not an occupied slot");
+  return mktup2((V)mm_v(x)[i], m);
+}
+static V g_mutmapSetAt(V iv, V v, V m) {
+  vec_t *x = mchk(m, "MutMap: not a MutMap");
+  uw i = mm_occupied(x, iv, "MutMap: not an occupied slot");
+  mm_v(x)[i] = (uw)v;
+  return m;
+}
+/* empty slot i, then pull later entries of its cluster back over the gap
+ * (backward shift): every remaining key stays reachable from its home slot */
+static void mm_delete(vec_t *x, uw i) {
+  uw mask = x->len - 1, *hs = mm_h(x), *ks = mm_k(x), *vs = mm_v(x);
+  uw j = i;
+  for (;;) {
+    j = (j + 1) & mask;
+    if (!hs[j]) break;
+    uw home = hs[j] & mask;
+    /* j may move to i when its home is not cyclically inside (i, j] */
+    int inside = i <= j ? (home > i && home <= j) : (home > i || home <= j);
+    if (!inside) {
+      hs[i] = hs[j]; ks[i] = ks[j]; vs[i] = vs[j];
+      i = j;
+    }
+  }
+  mm_clear(x, i);
+  x->eltid--;
+}
+static V g_mutmapRemoveAt(V iv, V m) {
+  vec_t *x = mchk(m, "MutMap: not a MutMap");
+  mm_delete(x, mm_occupied(x, iv, "MutMap: not an occupied slot"));
+  return m;
+}
+static V g_mutmapRemove(V k, V m) {
+  vec_t *x = mchk(m, "MutMap.remove: not a MutMap");
+  uw h = mm_key_hash(x, k), empty;
+  sw at = mm_find(x, k, h, &empty);
+  if (at >= 0) mm_delete(x, (uw)at);
+  return m;
+}
+static V g_mutmapSize(V m) {
+  vec_t *x = mchk(m, "MutMap.size: not a MutMap");
+  return mktup2(TAG((sw)x->eltid), m);
+}
+static V g_mutmapCapacity(V m) {
+  vec_t *x = mchk(m, "MutMap.capacity: not a MutMap");
+  return mktup2(TAG((sw)(x->len - x->len / 4)), m);
+}
+/* fold f z m: f acc k v over the entries in SLOT order (deterministic for a
+ * given word size and sequence of operations; not key order) */
+static V g_mutmapFold(V f, V z, V m) {
+  vec_t *x = mchk(m, "MutMap.fold: not a MutMap");
+  V acc = z;
+  for (uw i = 0; i < x->len; i++) {
+    if (!mm_h(x)[i]) continue;
+    V p1 = fpr_apply(f, acc);
+    V p2 = fpr_apply(p1, mm_key_val(x, i));
+    acc = fpr_apply(p2, (V)mm_v(x)[i]);
+    if (!ISINT(p2) && TID(p2) == T_PAP && p2 != f) fpr_free(p2);
+    if (!ISINT(p1) && TID(p1) == T_PAP && p1 != f) fpr_free(p1);
+  }
+  return mktup2(acc, m);
+}
+/* (the (key, value) pairs in slot order, the map) */
+static V g_mutmapToList(V m) {
+  vec_t *x = mchk(m, "MutMap.toList: not a MutMap");
+  hdr_t *nil = (hdr_t *)fpr_alloc(8);
+  nil->tid = T_LIST;
+  nil->var = 0;
+  V acc = (V)nil;
+  for (uw i = x->len; i > 0; i--) {
+    if (!mm_h(x)[i - 1]) continue;
+    V pair = mktup2(mm_key_val(x, i - 1), (V)mm_v(x)[i - 1]);
+    hdr_t *c = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
+    c->tid = T_LIST;
+    c->var = 1;
+    *(V *)((char *)c + 8) = pair;
+    *(V *)((char *)c + 8 + sizeof(uw)) = acc;
+    acc = (V)c;
+  }
+  return mktup2(acc, m);
+}
+static V g_mutmapFree(V m) {
+  vfree(mchk(m, "MutMap.free: not a MutMap"));
+  return (V)&fpr_unit;
+}
+
+FPR_FN(fpr_g_strHash, g_strHash, 1);
+FPR_FN(fpr_g_intHash, g_intHash, 1);
+FPR_FN(fpr_g_mutmapStrings, g_mutmapStrings, 1);
+FPR_FN(fpr_g_mutmapInts, g_mutmapInts, 1);
+FPR_FN(fpr_g_mutmapReserve, g_mutmapReserve, 2);
+FPR_FN(fpr_g_mutmapInsert, g_mutmapInsert, 3);
+FPR_FN(fpr_g_mutmapInsertWith, g_mutmapInsertWith, 4);
+FPR_FN(fpr_g_mutmapSlot, g_mutmapSlot, 2);
+FPR_FN(fpr_g_mutmapValueAt, g_mutmapValueAt, 2);
+FPR_FN(fpr_g_mutmapSetAt, g_mutmapSetAt, 3);
+FPR_FN(fpr_g_mutmapRemoveAt, g_mutmapRemoveAt, 2);
+FPR_FN(fpr_g_mutmapRemove, g_mutmapRemove, 2);
+FPR_FN(fpr_g_mutmapSize, g_mutmapSize, 1);
+FPR_FN(fpr_g_mutmapCapacity, g_mutmapCapacity, 1);
+FPR_FN(fpr_g_mutmapFold, g_mutmapFold, 3);
+FPR_FN(fpr_g_mutmapToList, g_mutmapToList, 1);
+FPR_FN(fpr_g_mutmapFree, g_mutmapFree, 1);

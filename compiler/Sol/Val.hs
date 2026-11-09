@@ -33,6 +33,8 @@ import qualified Sol.Digest as Digest
 import Data.Array.IO (IOArray, getElems, newArray_, readArray, writeArray)
 import Data.IORef
 import Data.Int (Int64)
+import Data.Word (Word64)
+import qualified Data.IntMap.Strict as IM
 import Data.List (intercalate)
 import System.IO.Unsafe (unsafePerformIO)
 import Foreign.ForeignPtr (ForeignPtr, castForeignPtr, mallocForeignPtrArray, withForeignPtr)
@@ -63,6 +65,7 @@ data Value
   | VData !Int !Int [Value]
   | VPap String [Value] !Int -- global or HAL symbol, collected args, remaining
   | VVec (IORef VecStore) -- the linear SoA vector
+  | VMutMap (IORef MutMapStore) -- the linear hash table (Sol.MutMap; native: runtime/vec.c)
   | VDeferred Unique DeferredRef -- opaque transaction-local result reference
   | VMod FilePath String -- content-addressed file module: path + AST hash
 
@@ -153,6 +156,7 @@ render (VData t v fs) = "<" ++ show t ++ "." ++ show v ++ (if null fs then "" el
 render (VPap g _ n) = "<fn " ++ g ++ "/" ++ show n ++ ">"
 render (VDeferred _ _) = "<deferred>"
 render (VVec _) = "<vector>"
+render (VMutMap _) = "<mutmap>"
 render (VMod p h) = "<module " ++ p ++ "#" ++ take 8 h ++ "...>"
 
 -- ---- the SoA store ----------------------------------------------------------
@@ -252,6 +256,18 @@ data VecRep
   | RScalar ColKind
   | RSoA !Int [ColKind] -- element tid, per-field kinds
   deriving (Eq)
+
+-- std/mutmap's table in the sketch tier: the SAME open addressing as the
+-- native runtime (linear probing over a power-of-two slot count, at most
+-- 3/4 full, backward-shift removal, growth by doubling), slot by slot, so
+-- fold and toList visit entries in the order a 64-bit native build does.
+-- Slots are a sparse IntMap: slot -> (stored hash, key, value).
+data MutMapStore = MutMapStore
+  { mmStrKeys :: !Bool,
+    mmCap :: !Int,
+    mmCount :: !Int,
+    mmSlots :: !(IM.IntMap (Word64, Value, Value))
+  }
 
 data VecStore = VecStore
   { vLen :: !Int,
