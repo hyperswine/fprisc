@@ -81,8 +81,10 @@ typeInstanceMeasures measures programs
           M.insert name (m {mFn=name}) known
       | otherwise=known
 derive measures p=Analysis p (Cost.costProgram measures M.empty p)
--- receiveLoops: receive loops take the loop form (False for a QOS process
--- image, whose plane memory reclaims per turn through $receiveLoop)
+-- receiveLoops: receive loops take the loop form; False keeps the
+-- $receiveLoop trampoline (tests use it; the driver passes True everywhere
+-- since 2026-11-09: QOS Portable images own their heap, and the native
+-- plane's process images were never built as QOS app targets)
 data Options=Options {loopRegions :: Bool,callRegions :: Bool,receiveLoops :: Bool,persistentLoop :: Maybe String} deriving (Eq,Show)
 data Result=Bypassed Program | Placed Program Analysis Turns.Rewrite Typed.Program
 -- The typed program the result was placed from (typed lowering census).

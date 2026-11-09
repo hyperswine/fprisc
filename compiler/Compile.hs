@@ -616,10 +616,15 @@ compileWithReport accepted report = do
           callbackMode=if Options.cgSpecialize codegen && not (oArc opts) then SpecializeCallbacks else PreserveCallbacks
           nativeUnit home cons unit=compileSelected home PreserveCallbacks (selectUnit cons unit)
           regionContext=Regions.context (fst (measureCheck tops)) (compileRaw finalTops)
+          -- Receive loops take the loop form on every target. QOS app images
+          -- (qa64/qx64/qrv64, --system=qos-portable) are hosted by qosp and own
+          -- their heap, so the region hooks work there; they kept the per-turn
+          -- trampoline until 2026-11-09, at about 120 ns per round trip
+          -- (QOS docs/2026-11-09-ACTOR-ROUND-TRIP.md).
           runTurnsWith regions input=if oBuiltin opts || oArc opts || not (Options.cgReceiveTurns codegen)
             then Regions.bypass input
             else either error id (Regions.place
-              (Regions.Options (regions && Options.cgLoopRegions codegen) (regions && Options.cgCallRegions codegen) (not (oQosApp opts)) (if oQosApp opts || oBuiltin opts then Nothing else Options.cgPersistentLoop codegen)) regionContext input)
+              (Regions.Options (regions && Options.cgLoopRegions codegen) (regions && Options.cgCallRegions codegen) True (if oQosApp opts || oBuiltin opts then Nothing else Options.cgPersistentLoop codegen)) regionContext input)
           regionProjection result=(Regions.resultProgram result,Regions.resultNotes result)
           turnPassWith regions=regionProjection . runTurnsWith regions
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
@@ -1102,7 +1107,7 @@ compileWithReport accepted report = do
           regionArtifacts=if oBuiltin opts || oArc opts || not (Options.cgReceiveTurns codegen)
             then M.map Regions.bypass regionInputs
             else either error id (Regions.placePrograms
-              (Regions.Options (Options.cgLoopRegions codegen) (Options.cgCallRegions codegen) (not (oQosApp opts)) (if oQosApp opts || oBuiltin opts then Nothing else Options.cgPersistentLoop codegen))
+              (Regions.Options (Options.cgLoopRegions codegen) (Options.cgCallRegions codegen) True (if oQosApp opts || oBuiltin opts then Nothing else Options.cgPersistentLoop codegen))
               (fst (measureCheck tops)) regionInputs)
           typedRegionPrograms=M.mapMaybe Regions.resultTyped regionArtifacts
           artifactRegions key=regionArtifacts M.! key
