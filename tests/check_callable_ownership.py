@@ -5,7 +5,10 @@ Covers the callable cases of the ownership audit
 (tools/audit_linear_ownership.py; docs/2026-11-09-CALLABLE-OWNERSHIP.md):
 a linear capture reaching a higher-order parameter, a returned closure, a
 partial application through an alias, and a partial application of a
-dynamically chosen function. Each refusal has a legal single-use twin that
+dynamically chosen function; and the neighbouring forms found while
+closing them: function types nested in parameters and results, lambda-bodied
+definitions, closures over an owner the callee made itself, function-typed
+constructor fields, and the HostedBytecode list schemes. Each refusal has a legal single-use twin that
 must still build and run identically in native and HostedBytecode.
 
 The compiler must already be built. Tokens are immutable integers with no
@@ -36,6 +39,17 @@ once f = f 1.
 '''
 MAKE = '''make : Token -> (Int -> Int).
 make t = fn n -> consume t + n.
+'''
+PAIR = '''pair : Token -> ((Int -> Int), Int).
+pair t = (fn n -> consume t + n, 0).
+'''
+DUP = '''dup : ((Int -> Int), Int) -> Int.
+dup p = (g, k) = p; g k + g k.
+'''
+SELF = '''mk : Int -> (Int -> Int).
+mk k = t = Token k; fn n -> consume t + n.
+'''
+HOLDER = '''Holder = Type (Holder (Int -> Int)).
 '''
 
 # (source, the diagnostic text both frontends must print)
@@ -77,6 +91,34 @@ mapL : (Int -> Int) -> (xs : List Int | measure xs) -> List Int.
 mapL f xs = case xs of Nil -> Nil | x :: r -> f x :: mapL f r.
 main = t = Token 7; f = fn n -> consume t + n; print (mapL f [1, 2]).
 ''', "'mapL' may call its function argument #1"),
+    # a function type nested in a parameter is a callable parameter too
+    'nested-callback-twice': (DUP + '''
+main = t = Token 7; f = fn n -> consume t + n; print (dup (f, 1)).
+''', "'dup' may call a function inside its argument #1 more than once"),
+    # a lambda-bodied definition's parameters are its own
+    'lambda-bodied-twice': ('''
+twice = fn f -> (f 0, f 1).
+main = t = Token 7; f = fn n -> consume t + n; print (twice f).
+''', "'twice' may call its function argument #1 more than once"),
+    # a function type nested in a result holds the owners passed in
+    'tuple-result-twice': (PAIR + '''
+main = (f, k) = pair (Token 7); print (f 1 + f 2 + k).
+''', "linear variable 'f' used 2 time(s)"),
+    # a closure over an owner the callee made itself, behind an
+    # unrestricted-looking signature
+    'self-held-twice': (SELF + '''
+main = f = mk 7; print (f 1 + f 2).
+''', "linear variable 'f' used 2 time(s)"),
+    'self-held-unannotated-twice': ('''
+mk k = t = Token k; fn n -> consume t + n.
+main = f = mk 7; print (f 1 + f 2).
+''', "linear variable 'f' used 2 time(s)"),
+    # a function-typed constructor field cannot say it is single-use
+    'constructor-field-store': (HOLDER + '''
+wrap : Token -> Holder.
+wrap t = Holder (fn n -> consume t + n).
+main = h = wrap (Token 7); Holder f = h; print (f 1 + f 2).
+''', "constructor 'Holder' cannot store a single-use closure"),
     'std-list-map': ('''
 main = t = Token 7; f = fn n -> consume t + n; print (List.map f [1, 2]).
 ''', "'List.map' may call its function argument #1"),
@@ -104,6 +146,22 @@ POSITIVES = {
     'higher-order-once': (ONCE + '''
 main = t = Token 7; f = fn n -> consume t + n; print (once f).
 ''', 'consume 7\n8\n'),
+    'lambda-bodied-once': ('''
+once = fn f -> f 1.
+main = t = Token 7; f = fn n -> consume t + n; print (once f).
+''', 'consume 7\n8\n'),
+    'nested-callback-unrestricted': (DUP + '''
+main = k = 3; print (dup (fn n -> n + k, 1)).
+''', '8\n'),
+    'tuple-result-once': (PAIR + '''
+main = (f, k) = pair (Token 7); print (f 1 + k).
+''', 'consume 7\n8\n'),
+    'self-held-once': (SELF + '''
+main = f = mk 7; print (f 1).
+''', 'consume 7\n8\n'),
+    'constructor-field-unrestricted': (HOLDER + '''
+main = k = 3; h = Holder (fn n -> n + k); Holder f = h; print (f 1 + f 2).
+''', '9\n'),
     'higher-order-unrestricted-twice': (TWICE + '''
 main = k = 7; print (twice (fn n -> k + n)).
 ''', '(7, 8)\n'),
