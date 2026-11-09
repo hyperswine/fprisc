@@ -181,14 +181,55 @@ fnParamShape :: Int -> Int -> LShape
 fnParamShape i k = LVar (fnVarName i k)
 
 fnVarName :: Int -> Int -> String
-fnVarName i k = "->" ++ show i ++ "/" ++ show k
+fnVarName i k = fnPathName [i] k
 
--- (position, arity) of a callable parameter variable
+-- A function type NESTED in a parameter (`((Int -> Int), Int)`, a record
+-- field, a `List (Int -> Int)`) is symbolic too; its variable is named by
+-- the path to it, "->0.1/1", the first index being the parameter.
+fnPathName :: [Int] -> Int -> String
+fnPathName path k = "->" ++ dotted path ++ "/" ++ show k
+  where
+    dotted [] = "0"
+    dotted [i] = show i
+    dotted (i : is) = show i ++ "." ++ dotted is
+
+-- (parameter position, arity) of a callable parameter variable
 fnVarInfo :: String -> Maybe (Int, Int)
 fnVarInfo ('-' : '>' : rest) = case break (== '/') rest of
-  (i, '/' : k) | [(iv, "")] <- reads i, [(kv, "")] <- reads k -> Just (iv, kv)
+  (path, '/' : k) | [(iv, "")] <- reads (takeWhile (/= '.') path), [(kv, "")] <- reads k -> Just (iv, kv)
   _ -> Nothing
 fnVarInfo _ = Nothing
+
+-- (parameter position, nested?) for a diagnostic
+fnVarNested :: String -> Bool
+fnVarNested v = '.' `elem` takeWhile (/= '/') v
+
+-- A function type nested in a RESULT (`Token -> ((Int -> Int), Int)`) is
+-- this variable.  A call binds it to the owners the closure may hold: the
+-- owned arguments, and an owner of the callee's own when its body returns a
+-- single-use closure there (the callee then carries heldVar among its
+-- obligations).  Unbound, it is unrestricted.
+heldVar :: String
+heldVar = "->held"
+
+-- A function type in a constructor FIELD, for the construction check: a
+-- single-use closure stored there is invisible to the constructed value's
+-- type, so constructing one is refused (or, over a callable parameter,
+-- constrains that parameter to be unrestricted).
+fieldVar :: String
+fieldVar = "->field"
+
+-- Does a body's result hold an owner for sure at a position where the
+-- declared result has a function type?  Then the function's result is a
+-- single-use closure even when its arguments are unrestricted.
+heldAt :: LShape -> LShape -> Bool
+heldAt decl body = case (decl, body) of
+  (LVar v, b) | v == heldVar -> hardLin b
+  (LCon "->" False as, b) | all (== LU) as -> hardLin b
+  (LTupS ds, LTupS bs) | length ds == length bs -> or (zipWith heldAt ds bs)
+  (LRecS ds _, LRecS bs _) -> or [heldAt d b | (f, d) <- ds, Just b <- [lookup f bs]]
+  (LCon n _ ds, LCon m _ bs) | n == m, length ds == length bs -> or (zipWith heldAt ds bs)
+  _ -> False
 
 isFnVar :: String -> Bool
 isFnVar ('-' : '>' : _) = True

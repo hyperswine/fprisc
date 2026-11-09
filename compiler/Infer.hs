@@ -1849,7 +1849,16 @@ inferTopsSession session previous capture prof sigs structs tops =
           t <- instantiate sc
           p <- prettyT t
           tz <- zonk t
-          let ar = case clausesOf n of ((ps0, _, _) : _) -> length ps0; [] -> 0
+          -- a guardless lambda body's parameters count as the clause's
+          -- own, as the linearity checker reads them
+          let lamParams b = case b of
+                SMark _ e -> lamParams e
+                SLam xs e -> length xs + lamParams e
+                _ -> 0
+              ar = case clausesOf n of
+                ((ps0, [], b0) : _) -> length ps0 + lamParams b0
+                ((ps0, _, _) : _) -> length ps0
+                [] -> 0
               peel 0 tt = ([], tt)
               peel k (TFn a b) = let (as, r) = peel (k - 1 :: Int) b in (a : as, r)
               peel _ tt = ([], tt)
@@ -1859,8 +1868,32 @@ inferTopsSession session previous capture prof sigs structs tops =
               -- (docs/2026-11-09-CALLABLE-OWNERSHIP.md)
               arrows (TFn _ b) = 1 + arrows b
               arrows _ = 0 :: Int
-              pshape i pt = case pt of TFn _ _ -> fnParamShape i (arrows pt); _ -> linShapeT linNs pt
-              rshape = case arrows rt of 0 -> linShapeT linNs rt; k -> fnResultShape k
+              pshape i pt = case pt of TFn _ _ -> fnParamShape i (arrows pt); _ -> callablesT (\path k -> LVar (fnPathName (i : path) k)) pt
+              rshape = case arrows rt of 0 -> callablesT (\_ _ -> LVar heldVar) rt; k -> fnResultShape k
+              -- function types nested in a parameter or result
+              -- (Ownership.Shape.fnPathName / heldVar); none, linShapeT
+              callablesT at t0 = if hasFn t0 then walkT [] t0 else linShapeT linNs t0
+                where
+                  walkT path t = case t of
+                    TFn _ _ -> at path (arrows t)
+                    _ | not (hasFn t) -> linShapeT linNs t
+                    TTupT ts -> LTupS (zipWith (\j u -> walkT (path ++ [j]) u) [0 ..] ts)
+                    TRec row -> let fs = rowFields row in LRecS [(f, walkT (path ++ [j]) u) | (j, (f, u)) <- zip [0 ..] fs] (rowOpen row)
+                    TAp _ _ | (TC c, as) <- unrollT t [] -> (if c `elem` linNs then lown else lcon) c (zipWith (\j u -> walkT (path ++ [j]) u) [0 ..] as)
+                    _ -> linShapeT linNs t
+              hasFn t = case t of
+                TFn _ _ -> True
+                TTupT ts -> any hasFn ts
+                TRec row -> any (hasFn . snd) (rowFields row)
+                TAp a b -> hasFn a || hasFn b
+                _ -> False
+              unrollT (TAp f a) acc = unrollT f (a : acc)
+              unrollT h acc = (h, acc)
+              rowFields (RExt f t r) = (f, t) : rowFields r
+              rowFields _ = []
+              rowOpen (RExt _ _ r) = rowOpen r
+              rowOpen (RV _) = True
+              rowOpen RNil = False
               lsig = (zipWith pshape [0 ..] pts, rshape)
           modify (\s -> s {iNotes = iNotes s ++ [(n, p)], iInterfaces = iInterfaces s ++ [(n, tz)], iLinSigs = iLinSigs s ++ [(n, lsig)]})
       when (ipVectorLayouts prof) (prepareVectorEvidence rwBinds)

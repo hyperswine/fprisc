@@ -13,7 +13,7 @@ import qualified Diagnostic.Syntax as Diagnostic
 import Ownership.Finding (Finding(..),atFinding)
 import Source.Span (SourceOffset(..))
 import Data.List ( foldl', isPrefixOf, nub, sort )
-import Data.Maybe ( fromMaybe, isJust )
+import Data.Maybe ( fromMaybe, isJust, isNothing )
 import Frontend.Paths ( shapeTyTable )
 import Frontend.Syntax
     ( Ty(..),
@@ -41,6 +41,11 @@ import Ownership.Shape
       fnResultShape,
       fnResultArity,
       fnVarInfo,
+      fnPathName,
+      fnVarNested,
+      heldVar,
+      fieldVar,
+      heldAt,
       callableArity,
       repeatedCallbackPrims,
       closureShape )
@@ -99,7 +104,11 @@ data LinInfo = LinInfo
     liSigs :: M.Map Name ([LShape], LShape),
     liConSh :: M.Map Name (LShape, [LShape]),
     liConAr :: M.Map Name Int,
-    liUnres :: M.Map Name [Name]
+    liUnres :: M.Map Name [Name],
+    -- per constructor, per field: the field's shape with every function
+    -- type in it as `fieldVar`, for the construction check (none when the
+    -- constructor has no function-typed field)
+    liConFnFields :: M.Map Name [LShape]
   }
 
 shapeOfTy :: [Name] -> Ty -> LShape
@@ -125,7 +134,7 @@ shapeOfTyIn lin shapes = go S.empty
       TOther -> LU
 
 buildLinInfo :: [STop] -> LinInfo
-buildLinInfo tops = LinInfo lin sigs conSh conAr M.empty
+buildLinInfo tops = LinInfo lin sigs conSh conAr M.empty conFn
   where
     -- TAlias resolves here too (the sol profile's module aliasing):
     -- an alias of a linear type is linear, and its constructors carry
@@ -139,15 +148,33 @@ buildLinInfo tops = LinInfo lin sigs conSh conAr M.empty
     param :: Int -> Ty -> LShape
     param i t = case t of
       TArrT _ _ -> fnParamShape i (arrows t)
-      _ -> sh t
+      _ -> callables (\path k -> LVar (fnPathName (i : path) k)) t
     field t = case t of
       TArrT _ _ -> fnResultShape (arrows t)
-      _ -> sh t
+      _ -> callables (\_ k -> fnResultShape k) t
     result t = case arrows t of
-      0 -> sh t
+      0 -> callables (\_ _ -> LVar heldVar) t
       k -> fnResultShape k
     arrows (TArrT _ b) = 1 + arrows b
     arrows _ = 0 :: Int
+    -- the shape of a type with each function type nested in it replaced
+    -- by `at path arity`; a type with no function in it is exactly `sh`
+    callables at t0 = if hasArrow t0 then walk [] t0 else sh t0
+      where
+        walk path t = case t of
+          TArrT _ _ -> at path (arrows t)
+          _ | not (hasArrow t) -> sh t
+          TTup ts -> LTupS (zipWith (\j u -> walk (path ++ [j]) u) [0 ..] ts)
+          TRecT fs row -> LRecS [(f, walk (path ++ [j]) u) | (j, (f, u)) <- zip [0 ..] fs] (isJust row)
+          TCon n as | not (null as) -> (if n `elem` lin then lown else lcon) n (zipWith (\j u -> walk (path ++ [j]) u) [0 ..] as)
+          _ -> sh t
+    hasArrow t = case t of
+      TArrT _ _ -> True
+      TTup ts -> any hasArrow ts
+      TRecT fs _ -> any (hasArrow . snd) fs
+      TCon _ as -> any hasArrow as
+      _ -> False
+    conFn = M.fromList [(c, map (callables (\_ _ -> LVar fieldVar)) tys) | TType _ _ _ cs <- tops, (c, tys) <- cs, any hasArrow tys]
     -- a constructor of a generic type makes `T a b` with its parameters
     -- symbolic; the fields are the declared field types, parameters symbolic
     conSh0 = M.union
@@ -230,11 +257,28 @@ checkLinearityRound li tops = LinearityResult (concat [es | (_, es, _) <- result
     groupTB (TBind n ps g b : rest) = let (same, others) = span (\(TBind n' _ _ _) -> n' == n) rest in (n, (ps, g, b) : [(p', g', b') | TBind _ p' g' b' <- same]) : groupTB others
     groupTB (_ : rest) = groupTB rest
 
-    checkClause n (pats, g, body) =
+    checkClause n (pats0, g, body0) =
       -- A clause may bind fewer parameters than its signature declares
       -- (`at t = fn n -> ...` for `Token -> Int -> Int`): the parameters
-      -- it does bind still carry their shapes.
-      let paramShapes = case M.lookup n (liSigs li) of
+      -- it does bind still carry their shapes.  A guardless clause whose
+      -- body is a lambda binds the lambda's parameters as its own
+      -- (`twice = fn f -> (f 0, f 1)` is `twice f = (f 0, f 1)`), so a
+      -- callable parameter of a lambda-bodied definition is checked too.
+      let (pats, body) = if null g then absorb pats0 body0 else (pats0, body0)
+          absorb ps b = case b of
+            SMark _ inner | SLam {} <- unmark inner -> absorb ps inner
+            SLam xs inner -> absorb (ps ++ map PVar xs) inner
+            _ -> (ps, b)
+          unmark (SMark _ e) = unmark e
+          unmark e = e
+          -- the declared result this clause's body produces: the
+          -- signature's, or a function (of the parameters it leaves)
+          declResult = case M.lookup n (liSigs li) of
+            Just (ps, r)
+              | length ps == length pats -> r
+              | length ps > length pats -> fnResultShape (length ps - length pats)
+            _ -> LU
+          paramShapes = case M.lookup n (liSigs li) of
             Just (ps, _) | length ps >= length pats -> take (length pats) ps
             Just (ps, r) | fnResultArity r > 0 -> ps ++ replicate (length pats - length ps) LU
             _ -> replicate (length pats) LU
@@ -261,14 +305,18 @@ checkLinearityRound li tops = LinearityResult (concat [es | (_, es, _) <- result
               )
               (env, [], M.empty)
               (zip [0 ..] g)
-          (be, bc, _) = lin' genv body
+          (be, bc, bodyShape) = lin' genv body
+          -- a body that returns a single-use closure where the signature
+          -- has a function type (an owner it created or holds itself,
+          -- not one a caller handed it) makes every result single-use
+          heldErr = [RequireUnrestricted heldVar | heldAt declResult bodyShape]
           linear = [v | (v, s) <- M.toList genv, isLin s]
           guardUsed = M.keys (M.filter (> 0) gc)
           guardErr = concat [demandOwnership (M.findWithDefault LU v genv) ("guard uses linear variable(s) " ++ show guardUsed ++ " (guards may re-evaluate on fallthrough)") | v <- guardUsed]
           useErrs = case bc of
             Nothing -> []
             Just c -> concat [demandOwnership (M.findWithDefault LU v genv) ("linear variable '" ++ v ++ "' used " ++ show (M.findWithDefault 0 v c) ++ " time(s), expected exactly 1") | v <- linear, M.findWithDefault 0 v c /= 1]
-       in nub (wildErrs ++ ge ++ be ++ guardErr ++ useErrs)
+       in nub (wildErrs ++ ge ++ be ++ guardErr ++ useErrs ++ heldErr)
       where
         lin' = linExpr li
         irrefutable (PVar _) = True
@@ -469,6 +517,9 @@ linExpr li env0 = go env0
           argCnt = foldl' plus (Just zero) [c | (_, c, _) <- argRes]
           anyLinArg = any (\(_, _, s) -> isLin s) argRes
           heldShape = closureShape [s | (_, _, s) <- argRes]
+          -- the callee's own owner, when its body returns a single-use
+          -- closure (heldVar among its obligations)
+          selfHeld g = isNothing (M.lookup g env) && heldVar `elem` M.findWithDefault [] g (liUnres li)
        in case h of
             SVar "error" | Nothing <- M.lookup "error" env -> (argErrs, Nothing, LU)
             SVar g ->
@@ -489,7 +540,8 @@ linExpr li env0 = go env0
               let (sh, full, callErrs) = case M.lookup g env of
                     Just local -> (LU, maybe True (length args >=) (callableArity local), [])
                     Nothing -> headShape g [s | (_, _, s) <- argRes]
-                  sh2 = if anyLinArg && not full then heldShape else sh
+                  self = selfHeld g
+                  sh2 = if (anyLinArg || self) && not full then closureShape ([s | (_, _, s) <- argRes] ++ [LL | self]) else sh
                   (he, hc, _) = go env (SVar g)
                in (argErrs ++ callErrs ++ he, plus hc argCnt, sh2)
             _ ->
@@ -511,21 +563,32 @@ linExpr li env0 = go env0
     headShape g argShapes
       | Just (retSh, fields) <- M.lookup g (liConSh li),
         Just ar <- M.lookup g (liConAr li) =
-          (if nargs == ar then substL (bindingsL fields argShapes) LU retSh else LU, nargs >= ar, [])
+          (if nargs == ar then substL (bindingsL fields argShapes) LU retSh else LU, nargs >= ar, stored)
       | Just (ps, r) <- M.lookup g (liSigs li) =
           let b = bindingsL ps argShapes
               required = M.findWithDefault [] g (liUnres li)
-              violated = concat [demandOwnership s (unresMessage v) | v <- required, Just s <- [M.lookup v b]]
+              violated = concat [demandOwnership s (unresMessage v) | v <- required, v /= heldVar, Just s <- [M.lookup v b]]
               unresMessage v
-                | Just (i, _) <- fnVarInfo v = "'" ++ g ++ "' may call its function argument #" ++ show (1 + i)
+                | Just (i, _) <- fnVarInfo v = "'" ++ g ++ "' may call " ++ (if fnVarNested v then "a function inside its argument #" else "its function argument #") ++ show (1 + i)
                     ++ " more than once (or never), so it cannot take a single-use closure there (a lambda or partial application that captured a linear value)"
                 | otherwise = "'" ++ g ++ "' duplicates or discards its argument of type `" ++ v ++ "`, so it cannot take an owned value there"
               total = length ps + fnResultArity r
-           in (if nargs == length ps then substL b LU r else LU, nargs >= total, violated)
+              owners = [s | s <- argShapes, isLin s] ++ [LL | heldVar `elem` required]
+              b' = M.insert heldVar (closureShape owners) b
+           in (if nargs == length ps then substL b' LU r else LU, nargs >= total, violated)
       | otherwise = (LU, True, [])
       where
         nargs = length argShapes
+        -- a single-use closure in a function-typed field is lost to the
+        -- constructed value's type: refused (constrains a callable
+        -- parameter of the enclosing function instead, when symbolic)
+        stored = case M.lookup g (liConFnFields li) of
+          Just templates
+            | Just held <- M.lookup fieldVar (bindingsL templates argShapes) ->
+                demandOwnership held ("constructor '" ++ g ++ "' cannot store a single-use closure (a lambda or partial application that captured a linear value) in a function-typed field: the field's type cannot say it is single-use; pass the owner as its own field instead")
+          _ -> []
     globalShape v
+      | Just (ps, _) <- M.lookup v (liSigs li), null ps, heldVar `elem` M.findWithDefault [] v (liUnres li) = closureShape [LL]
       | Just (ps, r) <- M.lookup v (liSigs li), null ps = eraseVars r
       | Just (ps, r) <- M.lookup v (liSigs li) = fnResultShape (length ps + fnResultArity r)
       | Just (r, as) <- M.lookup v (liConSh li), null as = eraseVars r
