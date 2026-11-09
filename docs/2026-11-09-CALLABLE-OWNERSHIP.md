@@ -109,12 +109,12 @@ All runs were local, on the shared Linux x86-64 box (8 vCPU).
 
 - `tools/audit_linear_ownership.py`: 0 invalid probes accepted by either
   frontend; only `keep_escape`, the explicit escape, is accepted (it was 4 at
-  `0e14b0e`). It takes about 5 s wall.
+  `0e14b0e`). It takes about 5.5 s wall (CI-style); about 10 s with `--native-run`.
   [Recorded output](evidence/2026-11-09-linear-ownership-after-callables.json)
   comes from `--native-run --json`.
 - `tests/check_callable_ownership.py` (new, in `check_base`): 34 cases. That
   is 19 refusals checked in both frontends, 3 Sol-only scheme refusals, and 12
-  legal programs built natively and run in both with identical output. It takes about 30 s, under load.
+  legal programs built natively and run in both with identical output. It took 14.6 s in the full `check_base` run at `b05d682` (one of four workers).
 - Every tracked `.fpr` was run through `fprc --check-only` (632 files), and every
   `.fpr`/`.sol` through `fpr sol --asm` (750 files). Both ran against `0e14b0e`
   and the branch. No file changes verdict in either frontend: 0 of 632 and 0
@@ -123,16 +123,43 @@ All runs were local, on the shared Linux x86-64 box (8 vCPU).
   revisions of this change failed this sweep: 70 files over four std sites,
   each traced to a join bug and fixed above, not by weakening the rule.
 - Full `check_base` job list on the branch, compared job-by-job against
-  `0e14b0e` on the same box: SUITE_RESULT
+  `0e14b0e` on the same box: 226 jobs / 191 ok / 35 failed at `b05d682`
+  (the new `tests/check_callable_ownership.py` job, 14.6 s, ok) versus
+  225 / 190 / 35 at `0e14b0e`. Zero status flips among the shared 225 jobs.
+  The 35 failures match base and are the ones this box already hits without
+  clang/riscv toolchains (and a few pre-existing segfault/oracle failures
+  that also fail at `0e14b0e`). Recorded as
+  `/workspace/out/fpr-own/final.json` vs `base.json`.
 - `tests/check_compile_budget.py` passes. This platform (ghc-9.8.2
   x86_64-linux) has no recorded baseline, so the same script also ran at
   `0e14b0e`. Allocation: hello 1,347,055,472 vs 1,345,816,296 bytes (+0.09%),
   std-live 29,113,088,016 vs 29,089,165,672 (+0.08%), pos1 60,547,393,912 vs
   60,462,587,776 (+0.14%). Peak live is within 0.6%.
 
+
+## Open questions
+
+For Jack, before treating this as done beyond the four audit probes:
+
+1. **Linear top-level constants.** `c = mk 7` (or `g = Token 7`) can be
+   referenced from any number of places because global references are not
+   counted. Refuse linear globals, or count them per program?
+2. **Unknown-arity locals applied to an owner.** `(fn h -> h t) at` still
+   treats `h` as fully applied. Treat unknown-arity application as partial
+   (sound, may refuse more code)? A sweep of how often that fires has not
+   been run.
+3. **Named record types with function fields** used as parameters
+   (`Handlers = { on : Int -> Int }` by name). Cover them the same way as
+   inline record types in signatures?
+4. **Linear-type constructors with function fields** are refused
+   conservatively today. Prefer letting the linear value own the closure
+   instead?
+5. **`keep` escape.** Still accepted by the audit (explicit). Leave the
+   runtime Vector-capture backstop as the only stop, or tighten further?
+
 ## CI
 
 `.github/workflows/ci.yml` runs the audit as a step of the reliability job,
 after `make fpr`. Exit 1 (an invalid probe accepted) fails the job. It adds
-about 5 s. `tests/check_callable_ownership.py` runs in `check_base` (x86-64
+about 5.5 s (measured locally at `b05d682`, CI-style, no `--native-run`). `tests/check_callable_ownership.py` runs in `check_base` (x86-64
 job), where it adds about 30 s of one worker's time.
