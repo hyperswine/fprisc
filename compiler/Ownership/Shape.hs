@@ -138,7 +138,19 @@ joinLShape (LVar a) (LVar b) | a == b = LVar a
 joinLShape (LCon n o as) (LCon m p bs) | n == m, length as == length bs = (if o || p then LCon n True else lcon n) (zipWith joinLShape as bs)
 joinLShape (LTupS as) (LTupS bs) | length as == length bs = LTupS (zipWith joinLShape as bs)
 joinLShape (LRecS as ar) (LRecS bs br) = LRecS (M.toList (M.unionWith joinLShape (M.fromList as) (M.fromList bs))) (ar || br)
+-- Two callables (a callable parameter, a closure, an arity marker): the
+-- join holds what either holds, and stays symbolic, instead of collapsing
+-- to a sure owner (a case returning one of two callback parameters).
+joinLShape a b | Just xs <- callableOwners a, Just ys <- callableOwners b = lcon "fn" (nub (xs ++ ys))
 joinLShape _ _ = LL
+
+-- the owners a callable-shaped value holds, when it is one
+callableOwners :: LShape -> Maybe [LShape]
+callableOwners = \case
+  LVar v | isFnVar v -> Just [LVar v]
+  LCon "fn" False xs -> Just xs
+  LCon "->" False as | all (== LU) as -> Just []
+  _ -> Nothing
 
 projectOwnership :: [String] -> LShape -> ([Finding], LShape)
 projectOwnership [] sh = ([], sh)
