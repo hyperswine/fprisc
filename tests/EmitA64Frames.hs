@@ -18,7 +18,7 @@ main = do
   let width = I.W64
       policy = m2Policy
       access = case hart of "x28" -> HartX28; "tlv" -> HartTlvMachO; "tls" -> HartTlsElf; _ -> HartGlobal
-      cfg = A64Config (if format=="mac" then MachO else ELF) access policy (S.fromList ["large","tailLarge","loopLarge"]) False (loopMode=="1") False noTune
+      cfg = A64Config (if format=="mac" then MachO else ELF) access policy (S.fromList ["large","tailLarge","loopLarge"]) False (loopMode=="1") False False noTune
       params = [(I.VId n,I.TVal) | n<-[0..63]]
       fn name count tailing looping =
         let idn n = I.VId n
