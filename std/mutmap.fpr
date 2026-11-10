@@ -100,7 +100,8 @@ remove : k -> MutMap k v -> MutMap k v
   | work remove <= len k + len m + len m * (len k + 1) + 1 | alloc remove <= 0 | live remove <= 0 .
 remove k m = mutmapRemove k m.
 
-# one probe for the key; f sees what is there and says what should be
+# f sees what is there and says what should be: one probe for a key that is
+# there, two for a new one (the insert probes again; the bound counts both)
 alter : k -> (O.Option v -> O.Option v) -> MutMap k v -> MutMap k v
   | work alter <= 2 * len k + work f + 2 * len m * len m + 8 * len m + 2 * len m * (len k + 1) + 39 | alloc alter <= alloc f + 48 * len m + 280 | live alter <= alloc f + 72 * len m + 280 .
 alter k f m =
