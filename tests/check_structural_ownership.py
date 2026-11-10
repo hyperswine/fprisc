@@ -79,6 +79,33 @@ makeRecord u = {owner = Token 7, tag = 0}.
 main = record = makeRecord 0;
   print (consume record.owner, consume record.owner).
 ''',
+    'record-update-take-not-replaced': '''
+main = old = {owner = Token 7, tag = 0};
+  fresh = {old | tag = consume old.owner}; print (consume fresh.owner).
+''',
+    'record-update-take-twice': '''
+main = old = {owner = Token 7, tag = 0};
+  fresh = {old | owner = Token (consume old.owner + consume old.owner)};
+  print (consume fresh.owner).
+''',
+    'record-update-whole-base-in-value': '''
+weigh : {owner : Token, tag : Int} -> Int.
+weigh record = consume record.owner.
+main = old = {owner = Token 7, tag = 0};
+  fresh = {old | tag = weigh old}; print (consume fresh.owner).
+''',
+    'record-update-nested-take-not-replaced': '''
+main = old = {inner = {owner = Token 7, other = Token 8}, flag = True};
+  fresh = {old | inner.owner = Token (consume old.inner.other)};
+  {inner} = fresh; {owner, other} = inner; print (consume owner, consume other).
+''',
+    'record-update-take-wider-than-replaced': '''
+merge : {owner : Token, other : Token} -> Token.
+merge pair = {owner, other} = pair; Token (consume owner + consume other).
+main = old = {inner = {owner = Token 7, other = Token 8}, flag = True};
+  fresh = {old | inner.owner = merge old.inner};
+  {inner} = fresh; {owner, other} = inner; print (consume owner, consume other).
+''',
     'case-result-closure-double': '''
 main = owner = Token 7;
   callback = (case False of
@@ -141,6 +168,35 @@ main = old = {inner = {owner = Token 7, tag = 0}, flag = True};
 makeRecord u = {owner = Token 7, tag = 0}.
 main = record = makeRecord 0; print (consume record.owner).
 ''', 'consume 7\n7\n'),
+    'record-update-reads-metadata': ('''
+Counter = {owner : Token, n : Int}.
+bump : Counter -> Counter.
+bump s = {s | n = s.n + 1}.
+main = s = bump (bump {owner = Token 7, n = 0});
+  {owner, n} = s; print (consume owner, n).
+''', 'consume 7\n(7, 2)\n'),
+    'record-update-branches-read-metadata': ('''
+Counter = {owner : Token, n : Int}.
+step : Counter -> Counter.
+step s = {s | n = if s.n > 1 then 0 else s.n + 1}.
+main = s = step (step (step {owner = Token 7, n = 0}));
+  {owner, n} = s; print (consume owner, n).
+''', 'consume 7\n(7, 0)\n'),
+    'record-update-replaces-taken-owner': ('''
+main = old = {owner = Token 7, tag = 0};
+  fresh = {old | owner = Token (consume old.owner + 1)};
+  print (consume fresh.owner).
+''', 'consume 7\nconsume 8\n8\n'),
+    'record-update-nested-take-replace': ('''
+main = old = {inner = {owner = Token 7, tag = 1}, flag = True};
+  fresh = {old | inner.owner = Token (consume old.inner.owner + old.inner.tag)};
+  print (consume fresh.inner.owner).
+''', 'consume 7\nconsume 8\n8\n'),
+    'record-update-shadowed-base': ('''
+main = old = {owner = Token 7, tag = 0};
+  fresh = {old | tag = (fn old -> old.tag + 1) {tag = 4}};
+  {owner, tag} = fresh; print (consume owner, tag).
+''', 'consume 7\n(7, 5)\n'),
     'guard-created-owner-once': ('''
 guardedToken u | owner <- Token 7 = consume owner.
 guardedToken _ = 0.

@@ -140,6 +140,15 @@ file suffixes; a clause applies to both unless it says which.
 - Partial applications and lambdas may capture linears; the closure
   becomes linear.  (today)  `[test: tests/linpap.fpr]`
 - Discarding a linear with `_` is refused.  (today)  `[test: check-all "linear PAPs"]`
+- A record holding an owner is updated in place of destructuring:
+  `{s | n = s.n + 1}` consumes `s` once, and reads of `s`'s own fields in
+  the new values belong to that consumption.  An unrestricted field read
+  is a copy.  An owned field read (`{s | tok = f s.tok}`) takes it out
+  of `s`, so the same update must replace that field or a record holding
+  it; reading it twice, leaving it unreplaced, or using the whole `s`
+  again in a new value is refused.  A projection outside an update still
+  consumes the record, so `s.n` alone refuses the owners it leaves.
+  (today)  `[test: tests/check_structural_ownership.py record-update-*]`
 
 ### 6. `unsafe` and `measure`
 

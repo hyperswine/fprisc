@@ -12,7 +12,7 @@ import Core.Syntax ( Name )
 import qualified Diagnostic.Syntax as Diagnostic
 import Ownership.Finding (Finding(..),atFinding)
 import Source.Span (SourceOffset(..))
-import Data.List ( foldl', isPrefixOf, nub, sort )
+import Data.List ( foldl', intercalate, isPrefixOf, nub, sort, stripPrefix )
 import Data.Maybe ( fromMaybe, isJust, isNothing )
 import Frontend.Paths ( shapeTyTable )
 import Frontend.Syntax
@@ -23,7 +23,7 @@ import Frontend.Syntax
       SStmt(SBindPat, SBind),
       Seg(SegExpr),
       SExpr(..) )
-import Frontend.Traverse ( sFree )
+import Frontend.Traverse ( sFree, transformE, unmark )
 import Ownership.Shape
     ( LShape(..),
       isLin,
@@ -414,6 +414,8 @@ linExpr li env0 = go env0
             repeated = M.filter (> (1 :: Int)) (M.fromListWith (+) [(f, 1) | (f, _) <- fields])
             errs = concat [demandOwnership s ("duplicate record field '" ++ f ++ "' discards or aliases an owned value") | f <- M.keys repeated, (n, s) <- fields, n == f]
          in (concat [e | (e, _, _) <- rs] ++ errs, foldl' plus (Just zero) [c | (_, c, _) <- rs], LRecS fields False)
+      SUpd m as
+        | SVar v <- unmark m, Just vsh <- M.lookup v env, isLin vsh -> updateOwned env m v vsh as
       SUpd m as ->
         let base@(_, _, sh) = go env m
             updates = map (go env . snd) as
@@ -468,6 +470,56 @@ linExpr li env0 = go env0
     -- single-use; say so, since nothing in its type is linear
     closureNote (LCon "fn" False _) = "; it is a closure or partial application holding a linear value, so it is single-use"
     closureNote _ = ""
+
+    -- `{s | n = s.n + 1}` on an owned `s`: the update consumes `s` once,
+    -- and reading `s`'s own fields in the new values is part of that one
+    -- consumption, as if written `{tok, n} = s; {tok = tok, n = n + 1}`.
+    -- Reading an unrestricted field copies it.  Reading an owned field
+    -- takes it out of `s`, so the same update must replace that field (or
+    -- a record holding it); otherwise the new record would hold it too.
+    updateOwned env m v vsh as =
+      let rhs = [transformE (takeField v) S.empty e | (_, e) <- as]
+          taken = nub [p | e <- rhs, t <- sFree e, Just p <- [takenPath t]]
+          owned = [p | p <- taken, isLin (pathShape p vsh)]
+          tenv = M.union (M.fromList [(takeName p, pathShape p vsh) | p <- taken]) env
+          (be, bc, _) = go env m
+          updates = map (go tenv) rhs
+          counts = foldl' plus (Just zero) [c | (_, c, _) <- updates]
+          uses p = maybe 1 (M.findWithDefault 0 (takeName p)) counts
+          moved = [p | p <- owned, uses p >= 1]
+          shown p = intercalate "." (v : p)
+          covered p = any (\(q, _) -> q `isPrefixOf` p) as
+          takeErrs = concat
+            [ if uses p > 1
+                then demandOwnership (pathShape p vsh) ("record update reads owned field '" ++ shown p ++ "' " ++ show (uses p) ++ " time(s); it can be taken out of '" ++ v ++ "' once")
+                else demandOwnership (pathShape p vsh) ("record update takes owned field '" ++ shown p ++ "' out of '" ++ v ++ "' but does not replace it, so the new record would hold it twice; replace '" ++ intercalate "." p ++ "' in the same update")
+            | p <- moved, uses p > 1 || not (covered p) ]
+          overlapErrs = concat
+            [ demandOwnership (pathShape q vsh) ("record update takes owned field '" ++ shown q ++ "' twice, once inside '" ++ shown p ++ "'")
+            | p <- moved, q <- moved, p /= q, p `isPrefixOf` q ]
+          cleared = foldl' (\s p -> setPath p LU s) vsh moved
+          fields = zip (map fst as) [s | (_, _, s) <- updates]
+          (errs, result) = foldl' (\(es, old) (path, new) -> let (more, next) = updateOwnership path new old in (es ++ more, next)) ([], cleared) fields
+          outer = fmap (\cc -> foldr (M.delete . takeName) cc taken) counts
+       in (be ++ concat [e | (e, _, _) <- updates] ++ takeErrs ++ overlapErrs ++ errs, plus bc outer, result)
+
+    takeField v bs e = case e of
+      SProj inner path | SVar x <- unmark inner ->
+        if x == v && S.notMember v bs
+          then SVar (takeName path)
+          else maybe e (\p -> SVar (takeName (p ++ path))) (takenPath x)
+      _ -> e
+    takeName p = "%take:" ++ intercalate "." p
+    takenPath t = splitDots <$> stripPrefix "%take:" t
+    splitDots str = case break (== '.') str of
+      (a, []) -> [a]
+      (a, _ : rest) -> a : splitDots rest
+    pathShape [] sh = sh
+    pathShape (f : ps) (LRecS fs _) = maybe LU (pathShape ps) (lookup f fs)
+    pathShape _ _ = LU
+    setPath [] new _ = new
+    setPath (f : ps) new (LRecS fs open) = LRecS [(g, if g == f then setPath ps new sh else sh) | (g, sh) <- fs] open
+    setPath _ _ sh = sh
 
     disagreeingM a b = M.filter id (M.intersectionWith (/=) a' b')
       where
