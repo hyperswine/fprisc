@@ -1,0 +1,859 @@
+#!/usr/bin/env -S fpr run
+# antivirus.fpr -- toyav, ported to FP-RISC.
+#
+# The original lives in Playground/python-playground-UV/toyav: a small
+# signature engine over fictional, normalized decompiler assembly. It parses a
+# rule DSL (PATTERN / .data / WITHIN BLOCK: / AND / WEIGHT / $bindings / _ /
+# ...), parses the assembly into data regions and instruction blocks, then
+# matches each clause with backtracking and keeps the strongest coherent
+# candidate.
+#
+# The rule and assembly files stay in that project, so run it against theirs:
+#
+#   fpr run examples/antivirus.fpr \
+#     ../Playground/python-playground-UV/toyav/examples/file_read.rules \
+#     ../Playground/python-playground-UV/toyav/examples/full.asm
+#
+# This port keeps the original's observable behaviour on the same inputs: the
+# same report text, percentages, evidence order, partial scores, tie-breaking
+# (the first strongest candidate wins) and search-budget failure. Weights are
+# integers in millionths, so 0.15 is 150000 and every percentage is exact
+# integer arithmetic instead of floating point.
+#
+# Verified against the original: its six examples, the mutations
+# test_toyav.py exercises (data-binding backtracking, skipping past a wrong
+# syscall, a required line, a one-line hole, a terminator closing a block,
+# occurrences not accumulating), --json, the seven invalid-rule errors, every
+# search budget in a sweep, and randomized rule/assembly pairs -- stdout and
+# exit status are identical in each.
+#
+# Ported: the rule language, the assembly model, line binding with `$name`
+# and `_`, `...` skips, block terminators, backtracking over data bindings,
+# block starts and skips, the search budget (--max-states) and --json.
+# Not ported: --ast (the parsed rule tree is not printed).
+profile base.
+File = use "std/file".
+L = use "std/list".
+O = use "std/option".
+S = use "std/string".
+Program = use "std/program".
+
+# ---- the rule AST -------------------------------------------------------
+# wt is a weight in millionths; `text` is the pattern as written, `toks` its
+# normalized tokens (the original re-tokenizes it on every attempt).
+LP = { text : String, toks : List String, wt : Int }.
+It = Type (One LP | Gap).
+Clause = { scope : String, items : List It }.
+Rule = { number : Int, name : String, clauses : List Clause }.
+
+# ---- the assembly -------------------------------------------------------
+Src = { number : Int, text : String }.
+Region = { name : String, lines : List Src }.
+Prog = { data : List Region, blocks : List Region }.
+
+# ---- matching -----------------------------------------------------------
+# Bindings are an ordered association list: the original's dict keeps an
+# existing name in place and appends a new one, and that order is printed.
+Ev = { pattern : String, wt : Int, matched : Bool, line : Int, block : String }.
+Cand = { bindings : List (String, String), evidence : List Ev, complete : Bool }.
+St = { i : Int, pos : Int, env : List (String, String), hits : List Ev }.
+Work = { index : Int, env : List (String, String), evidence : List Ev }.
+Best = { evidence : List Ev, bindings : List (String, String), score : Int, count : Int, full : Bool }.
+
+Flags = { json : Bool, maxStates : Int, bad : O.Option String }.
+# rule / assembly parse state
+RS = { lang : Bool, sigs : List Rule, cur : O.Option Rule, open : Bool }.
+AS = { section : String, curName : O.Option String, curLines : List Src,
+       data : List Region, blocks : List Region }.
+
+# ---- text building -------------------------------------------------------
+# Strings concatenate with `strcat`; these name the shapes the report and the
+# diagnostics use.
+cat : String -> String -> String .
+cat a b = strcat a b.
+
+msg : String -> String -> String -> String .
+msg prefix middle suffix = cat prefix (cat middle suffix).
+
+msg4 : String -> String -> String -> String -> String .
+msg4 a b c d = cat a (cat b (cat c d)).
+
+# ---- character classes (ASCII: the original's tokens are byte tokens) ----
+isDigitCode : Int -> Bool .
+isDigitCode c = c >= 48 and c <= 57.
+
+isUpperCode : Int -> Bool .
+isUpperCode c = c >= 65 and c <= 90.
+
+isLowerCode : Int -> Bool .
+isLowerCode c = c >= 97 and c <= 122.
+
+isIdentStart : Int -> Bool .
+isIdentStart c = isUpperCode c or isLowerCode c or c == 95.
+
+isIdentChar : Int -> Bool .
+isIdentChar c = isIdentStart c or isDigitCode c.
+
+isSpaceCode : Int -> Bool .
+isSpaceCode c = c == 32 or c == 9 or c == 10 or c == 13.
+
+isTerminator : String -> Bool .
+isTerminator w = w == "return" or w == "ret" or w == "jmp" or w == "jump" or w == "branch" or w == "br".
+
+isIdentText : unsafe String -> Bool .
+isIdentText t = strlen t > 0 and isIdentStart (charAt t 0) and identRest t 1.
+
+identRest : unsafe String -> Int -> Bool .
+identRest t i = if i >= strlen t then True else isIdentChar (charAt t i) and identRest t (i + 1).
+
+# ---- comments and normalization -----------------------------------------
+# `#` starts a comment only outside a double-quoted string; an unterminated
+# string is an error, as in the original.
+uncomment : unsafe String -> Result String String .
+uncomment s = uncGo s 0 (strlen s) False False.
+
+uncGo : unsafe String -> Int -> Int -> Bool -> Bool -> Result String String .
+uncGo s i n quoted escaped =
+  if i >= n then (if quoted then Err "unterminated string" else Ok (S.trim s))
+  else c = charAt s i;
+       if escaped then uncGo s (i + 1) n quoted False
+       else if quoted and c == 92 then uncGo s (i + 1) n quoted True
+       else if c == 34 then uncGo s (i + 1) n (not quoted) False
+       else if c == 35 and not quoted then Ok (S.trim (substr s 0 i))
+       else uncGo s (i + 1) n quoted False.
+
+# The original's TOKENS regexp, left to right: quoted string, $ident, <-, ->,
+# ident, number, then any single non-space character. Joining the tokens with
+# one space is its `normalize`.
+tokenize : unsafe String -> List String .
+tokenize s = tokGo s 0 (strlen s) Nil.
+
+tokGo : unsafe String -> Int -> Int -> List String -> List String .
+tokGo s i n acc =
+  if i >= n then L.reverse acc
+  else c = charAt s i;
+       if isSpaceCode c then tokGo s (i + 1) n acc
+       else if c == 34 then quotedTok s i n acc
+       else if c == 36 and i + 1 < n and isIdentStart (charAt s (i + 1)) then dollarTok s i n acc
+       else if c == 60 and i + 1 < n and charAt s (i + 1) == 45 then tokGo s (i + 2) n ("<-" :: acc)
+       else if c == 45 and i + 1 < n and charAt s (i + 1) == 62 then tokGo s (i + 2) n ("->" :: acc)
+       else if isIdentStart c then identTok s i n acc
+       else if isDigitCode c then digitTok s i n acc
+       else tokGo s (i + 1) n (substr s i 1 :: acc).
+
+normalize : unsafe String -> String .
+normalize s = S.join " " (tokenize s).
+
+quotedTok : unsafe String -> Int -> Int -> List String -> List String .
+quotedTok s i n acc = e = quoteEnd s i n;
+  tokGo s e n (substr s i (e - i) :: acc).
+
+dollarTok : unsafe String -> Int -> Int -> List String -> List String .
+dollarTok s i n acc = e = identEnd s (i + 1) n;
+  tokGo s e n (substr s i (e - i) :: acc).
+
+identTok : unsafe String -> Int -> Int -> List String -> List String .
+identTok s i n acc = e = identEnd s i n;
+  tokGo s e n (substr s i (e - i) :: acc).
+
+digitTok : unsafe String -> Int -> Int -> List String -> List String .
+digitTok s i n acc = e = digitEnd s i n;
+  tokGo s e n (substr s i (e - i) :: acc).
+
+# index just past a quoted string, escapes included; n when unterminated
+quoteEnd : unsafe String -> Int -> Int -> Int .
+quoteEnd s i n = qGo s (i + 1) n False.
+
+qGo : unsafe String -> Int -> Int -> Bool -> Int .
+qGo s j n escaped =
+  if j >= n then n
+  else c = charAt s j;
+       if escaped then qGo s (j + 1) n False
+       else if c == 92 then qGo s (j + 1) n True
+       else if c == 34 then j + 1
+       else qGo s (j + 1) n False.
+
+identEnd : unsafe String -> Int -> Int -> Int .
+identEnd s i n = if i < n and isIdentChar (charAt s i) then identEnd s (i + 1) n else i.
+
+digitEnd : unsafe String -> Int -> Int -> Int .
+digitEnd s i n = if i < n and isDigitCode (charAt s i) then digitEnd s (i + 1) n else i.
+
+# ---- weights: integer millionths ----------------------------------------
+pow10 : unsafe Int -> Int .
+pow10 k = if k <= 0 then 1 else 10 * pow10 (k - 1).
+
+# round num/den to nearest, ties to even (`:.0%` on a float does the same)
+roundHalfEven : Int -> Int -> Int .
+roundHalfEven num den =
+  if den <= 0 then 0
+  else q = num / den;
+       r = num % den;
+       if 2 * r > den then q + 1
+       else if 2 * r == den then (if q % 2 == 0 then q else q + 1)
+       else q.
+
+percentMicro : Int -> Int .
+percentMicro micro = roundHalfEven micro 10000.
+
+# float()'s grammar: [sign] digits [. digits] [e [sign] digits]
+isNumberText : unsafe String -> Bool .
+isNumberText t = numScan t 0 (strlen t) False False.
+
+numScan : unsafe String -> Int -> Int -> Bool -> Bool -> Bool .
+numScan t i n seenDigit seenDot =
+  if i >= n then seenDigit
+  else c = charAt t i;
+       if (c == 43 or c == 45) and i == 0 then numScan t (i + 1) n seenDigit seenDot
+       else if isDigitCode c then numScan t (i + 1) n True seenDot
+       else if c == 46 and not seenDot then numScan t (i + 1) n seenDigit True
+       else if (c == 101 or c == 69) and seenDigit then expPart t (i + 1) n
+       else False.
+
+expPart : unsafe String -> Int -> Int -> Bool .
+expPart t i n =
+  if i < n and (charAt t i == 43 or charAt t i == 45) then expDigits t (i + 1) n else expDigits t i n.
+
+expDigits : unsafe String -> Int -> Int -> Bool .
+expDigits t i n = if i >= n then False else digitsOnly t i n.
+
+digitsOnly : unsafe String -> Int -> Int -> Bool .
+digitsOnly t i n = if i >= n then True else if isDigitCode (charAt t i) then digitsOnly t (i + 1) n else False.
+
+# digits of the mantissa, the number of fraction digits, then D * 10^(E+6)
+mantissaDigits : unsafe String -> Int -> Int -> Int -> Int -> Bool -> (Int, Int) .
+mantissaDigits t i n digits frac seenDot =
+  if i >= n then (digits, frac)
+  else c = charAt t i;
+       if isDigitCode c then mantissaDigits t (i + 1) n (digits * 10 + (c - 48)) (if seenDot then frac + 1 else frac) seenDot
+       else mantissaDigits t (i + 1) n digits frac (seenDot or c == 46).
+
+exponentAt : unsafe String -> Int -> Int -> Int .
+exponentAt t i n =
+  if i >= n then n
+  else c = charAt t i;
+       if c == 101 or c == 69 then i + 1
+       else exponentAt t (i + 1) n.
+
+signedDigits : unsafe String -> Int -> Int -> Int -> Int -> Int .
+signedDigits t i n sign acc =
+  if i >= n then sign * acc
+  else c = charAt t i;
+       if c == 45 then signedDigits t (i + 1) n (0 - 1) acc
+       else if c == 43 then signedDigits t (i + 1) n sign acc
+       else if isDigitCode c then signedDigits t (i + 1) n sign (acc * 10 + (c - 48))
+       else sign * acc.
+
+numberMicro : unsafe String -> Int .
+numberMicro t =
+  e = exponentAt t 0 (strlen t);
+  expn = if e < strlen t then signedDigits t e (strlen t) 1 0 else 0;
+  mant = if e < strlen t then substr t 0 (e - 1) else t;
+  parts = mantissaDigits mant 0 (strlen mant) 0 0 False;
+  case parts of (digits, frac) -> microScale digits (expn - frac).
+
+microScale : unsafe Int -> Int -> Int .
+microScale digits shift = if shift + 6 >= 0 then digits * pow10 (shift + 6) else roundHalfEven digits (pow10 (0 - (shift + 6))).
+
+toMicro : unsafe String -> Result Int String .
+toMicro t =
+  if isNanOrInf t then Err "weight must be finite and nonnegative"
+  else if not (isNumberText t) then Err (msg "could not convert string to float: \x27" t "\x27")
+  else micro = numberMicro t;
+       if strlen t > 0 and charAt t 0 == 45 and micro > 0 then Err "weight must be finite and nonnegative" else Ok micro.
+
+isNanOrInf : String -> Bool .
+isNanOrInf t = l = low t;
+  l == "nan" or l == "+nan" or l == "-nan" or l == "inf" or l == "+inf" or l == "-inf" or l == "infinity" or l == "+infinity" or l == "-infinity".
+
+low : String -> String .
+low t = S.toLower t.
+
+# ---- the rule language ---------------------------------------------------
+parseHeader : unsafe String -> O.Option (Int, String) .
+parseHeader line = if S.startsWith "PATTERN " line then headerAt line 8 else O.None.
+
+headerAt : unsafe String -> Int -> O.Option (Int, String) .
+headerAt line j0 = j = digitEnd line j0 (strlen line);
+  if j == j0 then O.None
+  else if not (j + 1 < strlen line and charAt line j == 32 and charAt line (j + 1) == 91) then O.None
+  else close = indexOfCode line 93 (j + 2) (strlen line);
+       if close < 0 then O.None
+       else name = substr line (j + 2) (close - (j + 2));
+            if strlen name == 0 then O.None
+            else if substr line close (strlen line - close) == "]:" then headerNumber (substr line j0 (j - j0)) name
+            else O.None.
+
+headerNumber : String -> String -> O.Option (Int, String) .
+headerNumber digits name = case S.toInt digits of Ok n -> O.Some (n, name) | Err _ -> O.None.
+
+indexOfCode : unsafe String -> Int -> Int -> Int -> Int .
+indexOfCode s c i n = if i >= n then 0 - 1 else if charAt s i == c then i else indexOfCode s c (i + 1) n.
+
+# `(.+?)\s+WEIGHT\s+(\S+)`: the leftmost WEIGHT whose remainder is one token
+splitWeight : unsafe String -> O.Option (String, String) .
+splitWeight line = scanWord line 0 (strlen line).
+
+scanWord : unsafe String -> Int -> Int -> O.Option (String, String) .
+scanWord line i n =
+  if i + 6 > n then O.None
+  else if substr line i 6 == "WEIGHT" and i > 0 and isSpaceCode (charAt line (i - 1)) then
+    (case oneWord line (i + 6) n of
+       O.Some w -> O.Some (S.trimRight (substr line 0 i), w)
+     | O.None -> scanWord line (i + 1) n)
+  else scanWord line (i + 1) n.
+
+# whitespace, then one nonempty whitespace-free word to the end
+oneWord : unsafe String -> Int -> Int -> O.Option String .
+oneWord line i n = if i >= n then O.None else if not (isSpaceCode (charAt line i)) then O.None else wordAt line i n.
+
+wordAt : unsafe String -> Int -> Int -> O.Option String .
+wordAt line i n = if i >= n then O.None else if isSpaceCode (charAt line i) then wordAt line (i + 1) n else singleWord line i n.
+
+singleWord : unsafe String -> Int -> Int -> O.Option String .
+singleWord line i n = if hasSpace line i n then O.None else O.Some (substr line i (n - i)).
+
+hasSpace : unsafe String -> Int -> Int -> Bool .
+hasSpace s i n = if i >= n then False else isSpaceCode (charAt s i) or hasSpace s (i + 1) n.
+
+parseRules : unsafe String -> Result (List Rule) String .
+parseRules source = rulesFold (L.indexed (S.lines source)) { lang = False, sigs = Nil, cur = O.None, open = False }.
+
+rulesFold : unsafe List (Int, String) -> RS -> Result (List Rule) String .
+rulesFold lines st = case lines of
+    Nil -> finishRules st
+  | (idx, raw) :: rest -> case uncomment raw of
+        Err why -> Err (msg4 "rule line " (S.fromInt (idx + 1)) ": " why)
+      | Ok line -> if strlen line == 0 then rulesFold rest st else stepOrFail (idx + 1) line st rest.
+
+stepOrFail : unsafe Int -> String -> RS -> List (Int, String) -> Result (List Rule) String .
+stepOrFail n line st rest = case ruleStep n line st of Err why -> Err why | Ok st2 -> rulesFold rest st2.
+
+ruleStep : unsafe Int -> String -> RS -> Result RS String .
+ruleStep n line st =
+  if line == "using assembly" then usingAssembly n st
+  else if line == "AND" then ruleAnd n st
+  else if line == ".data" or line == "WITHIN BLOCK:" then ruleScope n line st
+  else if line == "..." then addItem n Gap st
+  else case parseHeader line of
+         O.Some (num, name) -> ruleHeader n num name st
+       | O.None -> ruleBody n line st.
+
+usingAssembly : Int -> RS -> Result RS String .
+usingAssembly n st =
+  if st.lang or not (L.isEmpty st.sigs) then Err (msg "rule line " (S.fromInt n) ": using assembly must occur once, at the start")
+  else Ok { lang = True, sigs = st.sigs, cur = st.cur, open = st.open }.
+
+ruleAnd : Int -> RS -> Result RS String .
+ruleAnd n st = case st.cur of
+    O.None -> Err (msg "rule line " (S.fromInt n) ": expected PATTERN number [name]:")
+  | O.Some sig -> if not st.open or clauseEmpty sig then Err (msg "rule line " (S.fromInt n) ": AND needs a preceding clause")
+                  else Ok { lang = st.lang, sigs = st.sigs, cur = st.cur, open = False }.
+
+ruleScope : Int -> String -> RS -> Result RS String .
+ruleScope n line st = case st.cur of
+    O.None -> Err (msg "rule line " (S.fromInt n) ": expected PATTERN number [name]:")
+  | O.Some sig -> if st.open then Err (msg "rule line " (S.fromInt n) ": separate clauses with AND")
+                  else Ok { lang = st.lang, sigs = st.sigs, cur = O.Some (addClause sig (if line == ".data" then "data" else "block")), open = True }.
+
+ruleHeader : Int -> Int -> String -> RS -> Result RS String .
+ruleHeader n num name st =
+  if not st.lang then Err (msg "rule line " (S.fromInt n) ": expected using assembly")
+  else if O.isSome st.cur and not st.open then Err (msg "rule line " (S.fromInt n) ": previous pattern has an unfinished clause")
+  else Ok { lang = st.lang, sigs = closeSig st, cur = O.Some { number = num, name = name, clauses = Nil }, open = False }.
+
+ruleBody : unsafe Int -> String -> RS -> Result RS String .
+ruleBody n line st = case splitWeight line of
+    O.Some (text, w) -> weightedItem n text w st
+  | O.None -> addItem n (One { text = line, toks = tokenize line, wt = 0 }) st.
+
+weightedItem : unsafe Int -> String -> String -> RS -> Result RS String .
+weightedItem n text w st = case toMicro w of
+    Err why -> Err (msg4 "rule line " (S.fromInt n) ": " why)
+  | Ok wt -> addItem n (One { text = text, toks = tokenize text, wt = wt }) st.
+
+addItem : unsafe Int -> It -> RS -> Result RS String .
+addItem n item st = case st.cur of
+    O.None -> Err (msg "rule line " (S.fromInt n) ": expected PATTERN number [name]:")
+  | O.Some sig -> if not st.open then Err (msg "rule line " (S.fromInt n) ": expected .data or WITHIN BLOCK:")
+                  else Ok { lang = st.lang, sigs = st.sigs, cur = O.Some (pushItem sig item), open = True }.
+
+clauseEmpty : Rule -> Bool .
+clauseEmpty sig = case lastClause sig.clauses of O.None -> True | O.Some c -> L.isEmpty c.items.
+
+lastClause : List Clause -> O.Option Clause .
+lastClause cs = L.get (L.length cs - 1) cs.
+
+addClause : Rule -> String -> Rule .
+addClause sig scope = { number = sig.number, name = sig.name, clauses = L.append sig.clauses [{ scope = scope, items = Nil }] }.
+
+pushItem : unsafe Rule -> It -> Rule .
+pushItem sig item = { number = sig.number, name = sig.name, clauses = pushItemClauses sig.clauses item }.
+
+pushItemClauses : unsafe List Clause -> It -> List Clause .
+pushItemClauses cs item = case cs of
+    Nil -> Nil
+  | c :: Nil -> { scope = c.scope, items = L.append c.items [item] } :: Nil
+  | c :: rest -> c :: pushItemClauses rest item.
+
+# the finished signatures so far, plus the one in progress
+closeSig : RS -> List Rule .
+closeSig st = case st.cur of O.None -> st.sigs | O.Some sig -> L.append st.sigs [sig].
+
+finishRules : unsafe RS -> Result (List Rule) String .
+finishRules st = if not st.open then Err "unfinished clause" else checkAll (closeSig st).
+
+checkAll : unsafe List Rule -> Result (List Rule) String .
+checkAll sigs =
+  if L.isEmpty sigs then Err "no signatures"
+  else if hasDuplicateNumbers sigs then Err "duplicate pattern number"
+  else checkSigs sigs.
+
+hasDuplicateNumbers : unsafe List Rule -> Bool .
+hasDuplicateNumbers sigs = case sigs of
+    Nil -> False
+  | s :: rest -> L.any (fn t -> t.number == s.number) rest or hasDuplicateNumbers rest.
+
+checkSigs : unsafe List Rule -> Result (List Rule) String .
+checkSigs sigs = case sigs of
+    Nil -> Ok Nil
+  | s :: rest -> case checkSig s of Err why -> Err why | Ok _ -> case checkSigs rest of Err why -> Err why | Ok _ -> Ok sigs.
+
+checkSig : unsafe Rule -> Result Rule String .
+checkSig sig =
+  if L.isEmpty sig.clauses then Err "each signature needs nonempty clauses containing a line pattern"
+  else if not (allClausesOk sig.clauses) then Err "each signature needs nonempty clauses containing a line pattern"
+  else if totalWeight sig.clauses > 1000000 then Err (msg "pattern " (S.fromInt sig.number) ": weights must sum to at most 1")
+  else Ok sig.
+
+allClausesOk : unsafe List Clause -> Bool .
+allClausesOk cs = case cs of
+    Nil -> True
+  | c :: rest -> (not (L.isEmpty c.items) and hasPattern c.items) and allClausesOk rest.
+
+hasPattern : unsafe List It -> Bool .
+hasPattern its = case its of
+    Nil -> False
+  | One p :: rest -> True
+  | Gap :: rest -> hasPattern rest.
+
+totalWeight : List Clause -> Int .
+totalWeight clauses = L.fold (fn acc -> fn c -> acc + L.fold (fn a -> fn it -> a + itemWeight it) 0 c.items) 0 clauses.
+
+itemWeight : It -> Int .
+itemWeight it = case it of One p -> p.wt | Gap -> 0.
+
+# ---- the assembly language -----------------------------------------------
+parseAsm : unsafe String -> Result Prog String .
+parseAsm source = asmFold (L.indexed (S.lines source)) { section = "text", curName = O.None, curLines = Nil, data = Nil, blocks = Nil }.
+
+asmFold : unsafe List (Int, String) -> AS -> Result Prog String .
+asmFold lines st = case lines of
+    Nil -> Ok (finishAsm st)
+  | (idx, raw) :: rest -> case uncomment raw of
+        Err why -> Err (msg4 "assembly line " (S.fromInt (idx + 1)) ": " why)
+      | Ok line -> if strlen line == 0 then asmFold rest st else asmLineOrFail (idx + 1) line st rest.
+
+finishAsm : AS -> Prog .
+finishAsm st = done = flushAsm st;
+  { data = done.data, blocks = done.blocks }.
+
+asmLineOrFail : unsafe Int -> String -> AS -> List (Int, String) -> Result Prog String .
+asmLineOrFail n line st rest = case asmLine n line st of Err why -> Err why | Ok st2 -> asmFold rest st2.
+
+asmLine : unsafe Int -> String -> AS -> Result AS String .
+asmLine n line st =
+  if line == ".data" then Ok (switchSection "data" st)
+  else if line == ".text" then Ok (switchSection "text" st)
+  else if S.startsWith "." line then Err (msg4 (cat "assembly line " (S.fromInt n)) "unsupported section/directive \x27" line "\x27")
+  else if isLabel line then asmLabel line st
+  else Ok (addLine n line st).
+
+switchSection : String -> AS -> AS .
+switchSection section st = closed = flushAsm st;
+  { section = section, curName = O.None, curLines = Nil, data = closed.data, blocks = closed.blocks }.
+
+asmLabel : String -> AS -> Result AS String .
+asmLabel line st =
+  if st.section == "data" then Err "use symbol = value declarations in .data"
+  else closed = flushAsm st;
+       Ok { section = st.section, curName = O.Some (labelName line), curLines = Nil, data = closed.data, blocks = closed.blocks }.
+
+addLine : unsafe Int -> String -> AS -> AS .
+addLine n line st = name = case st.curName of
+      O.None -> cat st.section (cat "@" (S.fromInt n))
+    | O.Some what -> what;
+  st2 = { section = st.section, curName = O.Some name, curLines = { number = n, text = normalize line } :: st.curLines, data = st.data, blocks = st.blocks };
+  if st.section == "text" and endsBlock line then flushAsm st2 else st2.
+
+isLabel : unsafe String -> Bool .
+isLabel line = strlen line > 1 and charAt line (strlen line - 1) == 58 and isIdentText (substr line 0 (strlen line - 1)).
+
+labelName : String -> String .
+labelName line = substr line 0 (strlen line - 1).
+
+endsBlock : String -> Bool .
+endsBlock line = case S.words line of Nil -> False | w :: rest -> isTerminator w.
+
+# close the region being built, if any
+flushAsm : AS -> AS .
+flushAsm st = case st.curName of
+    O.None -> st
+  | O.Some name -> putRegion (L.reverse st.curLines) name st.
+
+putRegion : List Src -> String -> AS -> AS .
+putRegion lines name st =
+  if st.section == "data" then { section = st.section, curName = O.None, curLines = Nil, data = L.append st.data [{ name = name, lines = lines }], blocks = st.blocks }
+  else { section = st.section, curName = O.None, curLines = Nil, data = st.data, blocks = L.append st.blocks [{ name = name, lines = lines }] }.
+
+# ---- line matching -------------------------------------------------------
+# `$name` is an identifier and a repeated one must equal its binding; `_` is
+# one or more tokens; every other token is literal.
+matchTokens : unsafe List String -> List String -> List (String, String) -> O.Option (List (String, String)) .
+matchTokens pat toks env = case pat of
+    Nil -> if L.isEmpty toks then O.Some env else O.None
+  | p :: rest ->
+      if p == "_" then gapTry rest toks env 1
+      else if strlen p > 1 and charAt p 0 == 36 then varMatch (substr p 1 (strlen p - 1)) rest toks env
+      else case toks of Nil -> O.None | t :: ts -> if t == p then matchTokens rest ts env else O.None.
+
+gapTry : unsafe List String -> List String -> List (String, String) -> Int -> O.Option (List (String, String)) .
+gapTry rest toks env k =
+  if k > L.length toks then O.None
+  else case matchTokens rest (L.drop k toks) env of O.Some e -> O.Some e | O.None -> gapTry rest toks env (k + 1).
+
+varMatch : unsafe String -> List String -> List String -> List (String, String) -> O.Option (List (String, String)) .
+varMatch name rest toks env = case toks of
+    Nil -> O.None
+  | t :: ts -> if not (isIdentText t) then O.None
+               else case lookupEnv env name of
+                      O.Some v -> if v == t then matchTokens rest ts env else O.None
+                    | O.None -> matchTokens rest ts (L.append env [(name, t)]).
+
+lookupEnv : unsafe List (String, String) -> String -> O.Option String .
+lookupEnv env name = case env of
+    Nil -> O.None
+  | (k, v) :: rest -> if k == name then O.Some v else lookupEnv rest name.
+
+matchLine : unsafe LP -> String -> List (String, String) -> O.Option (List (String, String)) .
+matchLine lp text env = matchTokens lp.toks (tokenize text) env.
+
+# ---- clause matching: the original's yield order, materialized -----------
+# The original is a generator and `scan` keeps the FIRST strongest candidate,
+# so the order of equally strong candidates decides the answer. This builds
+# the same sequence: the whole-clause prefix, then for every region and start
+# a DFS that yields a prefix before each expansion and pushes `...` shadows
+# from the earliest end, so skipping zero lines is tried first.
+unmatchedFrom : unsafe List It -> Int -> List Ev .
+unmatchedFrom items i = unE (L.drop i items).
+
+unE : unsafe List It -> List Ev .
+unE its = case its of
+    Nil -> Nil
+  | it :: rest -> case it of
+        One p -> { pattern = p.text, wt = p.wt, matched = False, line = 0, block = "" } :: unE rest
+      | Gap -> unE rest.
+
+clauseCands : unsafe Clause -> List Region -> List (String, String) -> List Cand .
+clauseCands clause regions env =
+  L.append [{ bindings = env, evidence = unmatchedFrom clause.items 0, complete = False }]
+           (L.concat (L.map (fn r -> regionCands clause env r) regions)).
+
+regionCands : unsafe Clause -> List (String, String) -> Region -> List Cand .
+regionCands clause env region =
+  L.concat (L.map (fn start -> startCands clause env region start) (countUp 0 (L.length region.lines))).
+
+countUp : unsafe Int -> Int -> List Int .
+countUp k n = if k >= n then Nil else k :: countUp (k + 1) n.
+
+startCands : unsafe Clause -> List (String, String) -> Region -> Int -> List Cand .
+startCands clause env region start =
+  dfs clause region [{ i = 0, pos = start, env = env, hits = Nil }] Nil.
+
+dfs : unsafe Clause -> Region -> List St -> List Cand -> List Cand .
+dfs clause region stack acc = case stack of
+    Nil -> L.reverse acc
+  | st :: rest ->
+      if st.i >= L.length clause.items then dfs clause region rest (completeCand st :: acc)
+      else case L.get st.i clause.items of
+             O.None -> dfs clause region rest acc
+           | O.Some item -> dfs clause region (L.append (expand clause region st item) rest) (prefixCand clause st :: acc).
+
+prefixCand : unsafe Clause -> St -> Cand .
+prefixCand clause st = { bindings = st.env, evidence = L.append st.hits (unmatchedFrom clause.items st.i), complete = False }.
+
+completeCand : St -> Cand .
+completeCand st = { bindings = st.env, evidence = st.hits, complete = True }.
+
+# the states one expansion pushes, in pop order
+expand : unsafe Clause -> Region -> St -> It -> List St .
+expand clause region st item = case item of
+    Gap -> endsFrom st st.pos (L.length region.lines)
+  | One p -> if st.pos >= L.length region.lines then Nil else expandOne st p (lineAt region st.pos) region.
+
+expandOne : unsafe St -> LP -> Src -> Region -> List St .
+expandOne st p line region = case matchLine p line.text st.env of
+    O.None -> Nil
+  | O.Some env2 -> [{ i = st.i + 1, pos = st.pos + 1, env = env2,
+                      hits = L.append st.hits [{ pattern = p.text, wt = p.wt, matched = True, line = line.number, block = region.name }] }].
+
+endsFrom : unsafe St -> Int -> Int -> List St .
+endsFrom st from to = if from > to then Nil else { i = st.i + 1, pos = from, env = st.env, hits = st.hits } :: endsFrom st (from + 1) to.
+
+lineAt : Region -> Int -> Src .
+lineAt region i = case L.get i region.lines of O.Some l -> l | O.None -> { number = 0, text = "" }.
+
+# ---- scoring -------------------------------------------------------------
+# The original walks a work list of (clause, bindings, evidence) and ranks
+# every finished path by (score, matched lines, full match); the later
+# clauses' unmatched lines stay in the evidence so completeness counts the
+# whole rule.
+scanSig : unsafe Rule -> Prog -> Int -> Result Best String .
+scanSig sig prog budget =
+  scanGo sig prog budget [{ index = 0, env = Nil, evidence = Nil }]
+         { evidence = Nil, bindings = Nil, score = 0 - 1, count = 0 - 1, full = False } 0.
+
+scanGo : unsafe Rule -> Prog -> Int -> List Work -> Best -> Int -> Result Best String .
+scanGo sig prog budget work best states = case work of
+    Nil -> if best.score < 0 then Err (msg "pattern " (S.fromInt sig.number) ": no candidate") else Ok best
+  | w :: rest -> case L.get w.index sig.clauses of
+        O.None -> scanGo sig prog budget rest best states
+      | O.Some clause -> scanClause sig prog budget clause w rest best states.
+
+scanClause : unsafe Rule -> Prog -> Int -> Clause -> Work -> List Work -> Best -> Int -> Result Best String .
+scanClause sig prog budget clause w rest best states =
+  foldCands sig prog budget (clauseCands clause (if clause.scope == "data" then prog.data else prog.blocks) w.env) rest w best states.
+
+foldCands : unsafe Rule -> Prog -> Int -> List Cand -> List Work -> Work -> Best -> Int -> Result Best String .
+foldCands sig prog budget cands rest w best states = case cands of
+    Nil -> scanGo sig prog budget rest best states
+  | c :: cs -> stepCand sig prog budget cs rest w best states c.
+
+stepCand : unsafe Rule -> Prog -> Int -> List Cand -> List Work -> Work -> Best -> Int -> Cand -> Result Best String .
+stepCand sig prog budget cs rest w best states c =
+  if states + 1 > budget then Err (msg "pattern " (S.fromInt sig.number) ": search budget exceeded; narrow the rule")
+  else judge sig prog budget cs rest w best (states + 1) c.
+
+judge : unsafe Rule -> Prog -> Int -> List Cand -> List Work -> Work -> Best -> Int -> Cand -> Result Best String .
+judge sig prog budget cs rest w best states c =
+  evidence = L.append w.evidence c.evidence;
+  last = w.index + 1 >= L.length sig.clauses;
+  full = c.complete and last;
+  if c.complete and not last then
+    foldCands sig prog budget cs (L.append [{ index = w.index + 1, env = c.bindings, evidence = evidence }] rest) w best states
+  else rankCand sig prog budget cs rest w best states c evidence full.
+
+rankCand : unsafe Rule -> Prog -> Int -> List Cand -> List Work -> Work -> Best -> Int -> Cand -> List Ev -> Bool -> Result Best String .
+rankCand sig prog budget cs rest w best states c evidence full =
+  all = L.append evidence (laterUnmatched sig.clauses (w.index + 1));
+  score = sumMatched all;
+  count = countMatched all;
+  best2 = if betterRank score count full best then { evidence = all, bindings = c.bindings, score = score, count = count, full = full } else best;
+  foldCands sig prog budget cs rest w best2 states.
+
+laterUnmatched : unsafe List Clause -> Int -> List Ev .
+laterUnmatched clauses i = case L.drop i clauses of
+    Nil -> Nil
+  | c :: rest -> L.append (unmatchedFrom c.items 0) (laterUnmatched rest 1).
+
+betterRank : Int -> Int -> Bool -> Best -> Bool .
+betterRank score count full best =
+  if score != best.score then score > best.score
+  else if count != best.count then count > best.count
+  else full and not best.full.
+
+sumMatched : List Ev -> Int .
+sumMatched evs = L.fold (fn acc -> fn e -> if e.matched then acc + e.wt else acc) 0 evs.
+
+countMatched : List Ev -> Int .
+countMatched evs = L.fold (fn acc -> fn e -> if e.matched then acc + 1 else acc) 0 evs.
+
+# ---- the report ----------------------------------------------------------
+scorePercent : Best -> Int .
+scorePercent best = roundHalfEven best.score 10000.
+
+completePercent : Best -> Int .
+completePercent best = roundHalfEven (best.count * 100) (L.length best.evidence).
+
+evLine : Ev -> String .
+evLine e =
+  if e.matched then "  + {e.pattern} [weight {percentMicro e.wt}%] (line {e.line}, {e.block})"
+  else "  - {e.pattern} [weight {percentMicro e.wt}%]".
+
+pairText : (String, String) -> String .
+pairText kv = case kv of (k, v) -> cat "\x27" (cat k (cat "\x27: \x27" (cat v "\x27"))).
+
+bindLine : List (String, String) -> String .
+bindLine bs = cat "  bindings: \{" (cat (S.join ", " (L.map pairText bs)) "\}").
+
+report : Rule -> Best -> List String .
+report sig best = status = if best.full then "FULL MATCH" else "incomplete match";
+  L.append ["{sig.name}: evidence {scorePercent best}%; completeness {completePercent best}%; {status}"]
+           (L.append (L.map evLine best.evidence) [bindLine best.bindings]).
+
+renderText : List (Rule, Best) -> List String .
+renderText results =
+  L.append (L.concat (L.map (fn pair -> case pair of (s, b) -> report s b) results))
+           ["Evidence scores are rule weights, not probabilities of malware."].
+
+# ---- JSON (the original's --json document) -------------------------------
+jsonText : unsafe String -> String .
+jsonText s = cat "\"" (cat (jsonChars s 0 (strlen s)) "\"").
+
+jsonChars : unsafe String -> Int -> Int -> String .
+jsonChars s i n =
+  if i >= n then ""
+  else c = charAt s i;
+       esc = if c == 34 then "\\\"" else if c == 92 then "\\\\" else if c == 10 then "\\n" else if c == 9 then "\\t" else if c == 13 then "\\r" else substr s i 1;
+       strcat esc (jsonChars s (i + 1) n).
+
+# the original sums an empty generator to the int 0, and a float otherwise
+jsonScore : unsafe Int -> String .
+jsonScore micro = if micro == 0 then "0" else microText micro.
+
+# a value in millionths as the shortest decimal the original prints
+microText : unsafe Int -> String .
+microText micro =
+  whole = micro / 1000000;
+  frac = micro % 1000000;
+  if frac == 0 then cat (S.fromInt whole) ".0"
+  else cat (S.fromInt whole) (cat "." (trimZeros (S.padLeft 6 "0" (S.fromInt frac)))).
+
+trimZeros : unsafe String -> String .
+trimZeros s = if strlen s > 0 and charAt s (strlen s - 1) == 48 then trimZeros (substr s 0 (strlen s - 1)) else s.
+
+jsonEvidence : unsafe Ev -> List String .
+jsonEvidence e =
+  L.append ["      \{",
+            cat "        \"pattern\": " (cat (jsonText e.pattern) ","),
+            cat "        \"weight\": " (cat (microText e.wt) ","),
+            cat "        \"matched\": " (cat (if e.matched then "true" else "false") ","),
+            cat "        \"line\": " (cat (if e.matched then S.fromInt e.line else "null") ","),
+            cat "        \"block\": " (if e.matched then jsonText e.block else "null")]
+           ["      \}"].
+
+jsonBindings : unsafe List (String, String) -> List String .
+jsonBindings bs =
+  if L.isEmpty bs then ["    \"bindings\": \{\},"]
+  else L.append ["    \"bindings\": \{"]
+         (L.append (commaSep (L.map (fn kv -> case kv of (k, v) -> msg4 "      " (jsonText k) ": " (jsonText v)) bs))
+                   ["    \},"]).
+
+commaSep : unsafe List String -> List String .
+commaSep xs = commaGo xs 0 (L.length xs).
+
+commaGo : unsafe List String -> Int -> Int -> List String .
+commaGo xs i n = case xs of
+    Nil -> Nil
+  | x :: rest -> (if i + 1 < n then cat x "," else x) :: commaGo rest (i + 1) n.
+
+jsonSig : unsafe Rule -> Best -> List String .
+jsonSig sig best =
+  L.append ["  \{",
+            cat "    \"number\": " (cat (S.fromInt sig.number) ","),
+            cat "    \"name\": " (cat (jsonText sig.name) ","),
+            cat "    \"evidence_score\": " (cat (jsonScore best.score) ","),
+            cat "    \"match_completeness\": " (cat (microText (roundHalfEven (best.count * 1000000) (L.length best.evidence))) ","),
+            cat "    \"full_match\": " (cat (if best.full then "true" else "false") ",")]
+    (L.append (jsonBindings best.bindings)
+              (L.append ["    \"evidence\": ["]
+                        (L.append (commaGroups (L.map jsonEvidence best.evidence))
+                                  ["    ]", "  \}"]))).
+
+# each group is a list of lines; every group but the last ends with a comma
+commaGroups : unsafe List (List String) -> List String .
+commaGroups groups = groupsGo groups 0 (L.length groups) Nil.
+
+groupsGo : unsafe List (List String) -> Int -> Int -> List String -> List String .
+groupsGo groups i n acc = case groups of
+    Nil -> L.reverse acc
+  | g :: rest -> marked = if i + 1 < n then commaLast g else g;
+                 groupsGo rest (i + 1) n (L.append (L.reverse marked) acc).
+
+commaLast : unsafe List String -> List String .
+commaLast g = gLast g 0 (L.length g).
+
+gLast : unsafe List String -> Int -> Int -> List String .
+gLast g i n =
+  if i >= n then Nil
+  else x = case L.get i g of O.Some v -> v | O.None -> "";
+       (if i + 1 == n then cat x "," else x) :: gLast g (i + 1) n.
+
+renderJson : unsafe List (Rule, Best) -> List String .
+renderJson results =
+  L.append ["["] (L.append (commaGroups (L.map (fn pair -> case pair of (s, b) -> jsonSig s b) results)) ["]"]).
+
+# ---- the command line ----------------------------------------------------
+# argparse takes the options anywhere, and --max-states either as the next
+# argument or after `=`; the first complaint wins.
+Args = { paths : List String, flags : Flags }.
+
+parseArgs : unsafe List String -> Args .
+parseArgs argv = argsGo argv { paths = Nil, flags = { json = False, maxStates = 100000, bad = O.None } }.
+
+argsGo : unsafe List String -> Args -> Args .
+argsGo argv acc = case argv of
+    Nil -> acc
+  | a :: rest ->
+      if a == "--json" then argsGo rest { paths = acc.paths, flags = setJson acc.flags }
+      else if a == "--max-states" then pairFlag rest acc
+      else if S.startsWith "--max-states=" a then argsGo rest { paths = acc.paths, flags = maxStatesFlag acc.flags (S.dropLeft 13 a) }
+      else if S.startsWith "-" a then argsGo rest { paths = acc.paths, flags = complain acc.flags (msg "unrecognised argument: \x27" a "\x27") }
+      else argsGo rest { paths = L.append acc.paths [a], flags = acc.flags }.
+
+setJson : Flags -> Flags .
+setJson f = { json = True, maxStates = f.maxStates, bad = f.bad }.
+
+complain : Flags -> String -> Flags .
+complain f why = { json = f.json, maxStates = f.maxStates, bad = keepBad f why }.
+
+keepBad : Flags -> String -> O.Option String .
+keepBad f why = case f.bad of O.Some old -> O.Some old | O.None -> O.Some why.
+
+# --max-states consumed: report what the options are doing with the next one
+pairFlag : unsafe List String -> Args -> Args .
+pairFlag rest acc = case rest of
+    Nil -> { paths = acc.paths, flags = complain acc.flags "--max-states needs a value" }
+  | value :: more -> argsGo more { paths = acc.paths, flags = maxStatesFlag acc.flags value }.
+
+maxStatesFlag : Flags -> String -> Flags .
+maxStatesFlag f text = case S.toInt text of
+    Ok n -> if n < 1 then complain f "--max-states must be positive" else { json = f.json, maxStates = n, bad = f.bad }
+  | Err _ -> complain f (msg "invalid --max-states value: \x27" text "\x27").
+
+scanAll : unsafe List Rule -> Prog -> Int -> Result (List (Rule, Best)) String .
+scanAll sigs prog budget = case sigs of
+    Nil -> Ok Nil
+  | s :: rest -> case scanSig s prog budget of
+        Err why -> Err why
+      | Ok best -> case scanAll rest prog budget of Err why -> Err why | Ok more -> Ok ((s, best) :: more).
+
+emit : unsafe Flags -> List (Rule, Best) -> Unit .
+emit flags results = lines = if flags.json then renderJson results else renderText results;
+  print (S.join "\n" lines).
+
+run : unsafe String -> String -> Flags -> Unit .
+run rulesPath asmPath flags = case flags.bad of
+    O.Some why -> Program.fail 2 (msg "toyav: " why "\n")
+  | O.None -> case File.readText rulesPath of
+        Err why -> Program.fail 2 (cat "toyav: " (cat rulesPath (cat ": " (cat why "\n"))))
+      | Ok rulesText -> case File.readText asmPath of
+            Err why -> Program.fail 2 (cat "toyav: " (cat asmPath (cat ": " (cat why "\n"))))
+          | Ok asmText -> case parseRules rulesText of
+                Err why -> Program.fail 2 (msg "toyav: " why "\n")
+              | Ok sigs -> case parseAsm asmText of
+                    Err why -> Program.fail 2 (msg "toyav: " why "\n")
+                  | Ok prog -> case scanAll sigs prog flags.maxStates of
+                        Err why -> Program.fail 2 (msg "toyav: " why "\n")
+                      | Ok results -> emit flags results.
+
+usage : String .
+usage = "toyav: usage: antivirus.fpr RULES ASSEMBLY [--json] [--max-states N]\n".
+
+runArgs : unsafe Args -> Unit .
+runArgs args = case args.paths of
+    rulesPath :: asmPath :: Nil -> run rulesPath asmPath args.flags
+  | rulesPath :: asmPath :: more -> Program.fail 2 usage
+  | _ -> Program.fail 2 usage.
+
+main = runArgs (parseArgs (Program.args Unit)).
