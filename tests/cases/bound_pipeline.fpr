@@ -1,9 +1,12 @@
-# Historical undersized proof, retained as an expected UNPROVED regression.
-# Std map's growing reverse accumulator cannot be priced at its initial size.
-# See bound_pipeline_direct.fpr for the separately justified positive case.
+# Std map conses onto an accumulator and reverses it on exit. Its final
+# reverse is charged once, at the accumulator's grown length (Cost.exitSplit):
+# 9 per element for map's steps, 7 each for the reverse and sum walks.
+# The historical 19 * len xs + 27 priced that reverse at the empty initial
+# accumulator; tests/check_cost.py keeps it as an OVER regression.
+# See bound_pipeline_direct.fpr for the direct-map positive case.
 L = use "std/list".
 double : Int -> Int | work double <= 1 .
 double x = x * 2.
-total : (xs : List Int) -> Int | work total <= 19 * len xs + 27 .
+total : (xs : List Int) -> Int | work total <= 23 * len xs + 27 .
 total xs = L.sum (L.map double xs).
 main = print (total (L.range 1 10)).

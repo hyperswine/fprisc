@@ -168,6 +168,24 @@ Still red, each needing a decision or an investigation:
 Also open: the three `std/list` size annotations above are declared and not
 used by callers until they have lemmas.
 
+Update, 11 November: both `examples/ideal/check.py` rows are resolved.
+
+- `pipeline.fpr`: the cost pass now proves the recurrence std `map` needs.
+  A measured linear recursion whose accumulator is consed onto at every step
+  is charged as (steps) x (its recursive paths) plus its exit path once, at
+  the accumulator's grown length (`Cost.exitSplit`), so `mapGo`'s final
+  `reverse acc` is charged once, over all `len xs` cells, instead of as an
+  opaque term on every call. The derived bound is `9·len xs + 14·(len xs + 1) + 13`, which is
+  `23·len xs + 27`: the declared `19·len xs + 27` had only been proven by
+  pricing that reverse at the empty initial accumulator, so it is corrected.
+- `transitions.fpr`: the typed erasure reads a record field and updates a
+  record through an always-true shape guard (`if` + tag test, then the field
+  or the update, else an error), and the cost pass charges the guard's 2 ops.
+  `clampMax`/`clampMin` went from 5 to 9 (one read, one update) and `reset`
+  from 3 to 5, so `update` is 29 and `replay` 35 per event. The declared
+  bounds follow; they were 25 and 31. Not charging guards the type makes
+  always-true would need type information the cost pass does not have.
+
 ## Results on this host
 
 62 of 72 checks passed before the fixes in items 4 and 5; with them, the

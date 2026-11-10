@@ -69,7 +69,7 @@ fact : (n : Int | n >= 0) -> Int -> Int
 fact n acc = factGo n acc.
 
 factGo : (n : Int | measure n) -> Int -> Int
-  | work factGo <= 5 * n + 5 | alloc factGo <= 0 .
+  | work factGo <= 5 * max 0 n + 5 | alloc factGo <= 0 .
 factGo n acc | n <= 0 = acc.
 factGo n acc = factGo (n - 1) (acc * n).
 ```
@@ -173,7 +173,7 @@ available in the language; this example shows explicit ownership completion.
 `transitions.fpr` keeps invalid event payloads at a fallible/guarded input
 boundary. Positive increments/decrements call contracted internal functions;
 the guards discharge their obligations. Event replay has a structural measure
-and proven bounds `work <= 31 * len events + 31` and
+and proven bounds `work <= 35 * len events + 35` and
 `alloc <= 48 * len events + 48`. These bounds concern the abstract compiler cost
 model, not elapsed time, and the contracts do not prove integer overflow absent.
 

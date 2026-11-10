@@ -275,7 +275,7 @@ main = if O.main == "measure: {{I.lsum [1,2,3,4] 0}} {{I.fact 5 1}} {{I.sumTo 10
     for name, module, old, new, needle in [
         ('bad-buffer-descent', 'buffer', 'buildGo (n - 1)', 'buildGo n', 'measure does not decrease'),
         ('bad-replay-descent', 'transitions', 'replay rest (update', 'replay events (update', 'measure does not decrease'),
-        ('bad-replay-bound', 'transitions', '31 * len events + 31', '1', 'OVER')]:
+        ('bad-replay-bound', 'transitions', '35 * len events + 35', '1', 'OVER')]:
         src = tmp / (name + '.fpr')
         source = (IDEAL / (module + '.fpr')).read_text()
         assert old in source
@@ -292,7 +292,7 @@ main = if O.main == "measure: {{I.lsum [1,2,3,4] 0}} {{I.fact 5 1}} {{I.sumTo 10
         p = harness(tmp, 'bad-' + name, f'M = use "{IDEAL / (module + ".fpr")}".\nmain = print (M.{expression}).\n', ok=False)
         assert p.returncode != 0 and 'precondition violated:' in p.stdout + p.stderr, p.stdout + p.stderr
     for name, old, new, needle in [
-        ('bad-bound', '19 * len xs + 27', '1', 'OVER'),
+        ('bad-bound', '23 * len xs + 27', '1', 'OVER'),
         ('bad-measure', 'factGo (n - 1)', 'factGo n', 'measure does not decrease')]:
         src = tmp / (name + '.fpr')
         source = IDEAL / ('pipeline.fpr' if name == 'bad-bound' else 'measure.fpr')

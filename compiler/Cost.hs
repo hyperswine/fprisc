@@ -422,9 +422,18 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
                       CMax (bounded l : [opaqueParams (ceLive b) | b <- partners])
                     )
               eqFor (n, (mc, step)) =
-                let calls = CAdd [CDivC (CNat mc) step, CN 1]
+                let edges = CDivC (CNat mc) step
+                    calls = CAdd [edges, CN 1]
                     (w, a, l) = perCall n
-                 in (n, CostEq (simp (CMul [calls, w])) (simp (CMul [calls, a])) (simp (CMul [calls, l])) (ceSteps (bodies M.! n)))
+                    whole = (simp (CMul [calls, w]), simp (CMul [calls, a]), simp (CMul [calls, l]))
+                    -- a varying parameter left the per-call bound opaque; try
+                    -- charging the exit path once, at its final arguments
+                    (w', a', l') = case ns of
+                      [_] | any varying (triple whole), Just split <- exitSplit done grp n edges,
+                            not (any varying (triple split)) -> split
+                      _ -> whole
+                 in (n, CostEq w' a' l' (ceSteps (bodies M.! n)))
+              triple (x, y, z) = [x, y, z]
            in foldr (\(n, e) acc -> M.insert n e acc) done (map eqFor ms)
         -- Unmeasured or branching recursion: the call count is unknown, so work is opaque,
         -- but a group none of whose bodies allocates per call allocates
@@ -441,12 +450,16 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
     -- only when that parameter is forwarded unchanged on every recursive
     -- edge. A later solver may prove useful monotone bounds; guessing the
     -- initial argument here would understate both work and live allocation.
-    stableCost stable = walk
+    stableCost = stableCostWith M.empty
+    -- `grown`: a varying parameter's length, replaced by its bound at the
+    -- final call (see exitSplit)
+    stableCostWith grown stable = walk
       where
         keep p atom = if any (\q -> p == q || (q ++ ".#") `isPrefixOf` p) (S.toList stable)
-          then atom else (case atom of CP _ -> CV; _ -> CO) ("varying-recursive-parameter:" ++ p)
+          then atom else (case atom of CP _ -> CV; _ -> CO) (varyingTag ++ p)
         walk = \case
           c@(CP p) -> keep p c
+          CLen p | Just g <- M.lookup p grown -> g
           c@(CLen p) -> keep p c
           c@(CW p) -> keep p c
           c@(CA p) -> keep p c
@@ -456,6 +469,141 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
           CNat e -> CNat (walk e)
           CDivC e k -> CDivC (walk e) k
           c -> c
+    varyingTag = "varying-recursive-parameter:"
+    varying = \case
+      CO t -> varyingTag `isPrefixOf` t
+      CV t -> varyingTag `isPrefixOf` t
+      CAdd xs -> any varying xs
+      CMul xs -> any varying xs
+      CMax xs -> any varying xs
+      CNat e -> varying e
+      CDivC e _ -> varying e
+      _ -> False
+
+    -- A linear measured recursion is a chain of calls: every call but the
+    -- last takes a path that makes the recursive call, and the last takes
+    -- one that does not. So a chain of at most calls = edges + 1 calls
+    -- costs at most
+    --   edges * (the recursive paths, over stable parameters)
+    --   + (the exit paths, once, at the final arguments).
+    -- An accumulator that every recursive edge passes on unchanged or with
+    -- at most k cells consed in front ends with length <= its entry length
+    -- + k * edges, where edges = calls - 1 = the measure's step count. This
+    -- is what lets `mapGo f xs acc = ... Nil -> reverse acc` charge its
+    -- final reverse once instead of an opaque amount on every call. Other
+    -- varying parameters stay opaque, and the caller keeps the plain bound
+    -- unless the split removes every varying term.
+    exitSplit done grp n edges =
+      let (ps, body) = prog M.! n
+          sub = M.fromList [(p, CP p) | p <- ps]
+          costOf b = let R w a l _ = costE done grp (M.fromList [(p, p) | p <- ps]) sub b in (w, a, l)
+          stable = stableArgs grp n (ps, body)
+          grown = M.fromList [ (p, CAdd [CLen p, CMul [CN k, edges]])
+                             | (p, k) <- M.toList (lengthGrowth grp n (ps, body)), S.notMember p stable ]
+          (rw, ra, rl) = costOf (recPaths grp S.empty body)
+          (bw, ba, bl) = costOf (exitPaths grp S.empty body)
+          onRec = stableCost stable
+          onExit = stableCostWith grown stable
+          total r b = simp (CAdd [CMul [edges, onRec r], onExit b])
+       in Just (total rw bw, total ra ba, total rl bl)
+
+    callsGroup grp = go
+      where
+        go bound = \case
+          CVar v -> S.member v grp && S.notMember v bound
+          CApp a b -> go bound a || go bound b
+          CLam xs b -> go (bound <> S.fromList xs) b
+          CLet x a b -> go bound a || go (S.insert x bound) b
+          CIf c t f -> any (go bound) [c, t, f]
+          CMk _ _ fs -> any (go bound) fs
+          CTagEq _ _ x -> go bound x
+          CProj _ x -> go bound x
+          _ -> False
+    -- only the paths that make a group call (a path that does not becomes a
+    -- dead arm); the split stays at branches and lets whose own condition or
+    -- bound value makes no call, and keeps everything else whole
+    recPaths grp bound e
+      | not (callsGroup grp bound e) = CErr "exit path"
+      | CIf c t f <- e, not (callsGroup grp bound c) = CIf c (recPaths grp bound t) (recPaths grp bound f)
+      | CLet x a b <- e, not (callsGroup grp bound a) = CLet x a (recPaths grp (S.insert x bound) b)
+      | otherwise = e
+    -- only the paths that make no group call: an expression every path of
+    -- which makes one becomes a dead arm, and anything unsure stays whole
+    exitPaths grp bound e
+      | not (callsGroup grp bound e) = e
+      | mustCall grp bound e = CErr "recursive path"
+      | CIf c t f <- e, not (callsGroup grp bound c) = CIf c (exitPaths grp bound t) (exitPaths grp bound f)
+      | CLet x a b <- e, not (callsGroup grp bound a) = CLet x a (exitPaths grp (S.insert x bound) b)
+      | otherwise = e
+    -- every evaluation of the expression makes a group call (strict
+    -- positions only; a lambda body need not run)
+    mustCall grp = go
+      where
+        go bound = \case
+          app@CApp {} ->
+            let (h, args) = spine app []
+             in case h of
+                  CVar g | S.member g grp && S.notMember g bound -> True
+                  _ -> any (go bound) (h : args)
+          CLet x a b -> go bound a || go (S.insert x bound) b
+          CIf c t f -> go bound c || (go bound t && go bound f)
+          CMk _ _ fs -> any (go bound) fs
+          CTagEq _ _ x -> go bound x
+          CProj _ x -> go bound x
+          _ -> False
+        spine (CApp f a) args = spine f (a : args)
+        spine h args = (h, args)
+
+    -- per parameter, the most list cells any self-call conses in front of
+    -- it (0: forwarded unchanged); absent when some self-call passes anything
+    -- else in its position, or the function calls itself unsaturated
+    lengthGrowth grp owner (ps, body) =
+      case edgesOf S.empty M.empty body of
+        Nothing -> M.empty
+        Just calls ->
+          M.fromList [ (p, k) | (i, p) <- zip [0 :: Int ..] ps
+                     , Just ks <- [mapM (\args -> growth p (args !! i)) calls]
+                     , let k = maximum (0 : ks) ]
+      where
+        arity = length ps
+        -- the arguments of each self-call, each argument as its growth over
+        -- (parameter, cells) where known
+        edgesOf bound al = \case
+          CLet x a b -> (++) <$> edgesOf bound al a
+                             <*> edgesOf (S.insert x bound) (maybe (M.delete x al) (\g -> M.insert x g al) (shape bound al a)) b
+          CLam xs b -> edgesOf (bound <> S.fromList xs) (foldr M.delete al xs) b
+          CIf c t f -> concat <$> mapM (edgesOf bound al) [c, t, f]
+          CMk _ _ fs -> concat <$> mapM (edgesOf bound al) fs
+          CTagEq _ _ x -> edgesOf bound al x
+          CProj _ x -> edgesOf bound al x
+          app@CApp {} ->
+            let (h, args) = spine app []
+             in case h of
+                  CVar g | S.member g grp && S.notMember g bound ->
+                    if g == owner && length args == arity
+                      then (\inner -> map (shape bound al) args : inner) <$> (concat <$> mapM (edgesOf bound al) args)
+                      else Nothing
+                  _ -> concat <$> mapM (edgesOf bound al) (h : args)
+          CVar g | S.member g grp && S.notMember g bound -> Nothing
+          _ -> Just []
+        -- an expression's shape: some parameter with k cells in front
+        shape bound al = \case
+          CVar x | Just g <- M.lookup x al -> Just g
+                 | x `elem` ps, S.notMember x bound -> Just (x, 0)
+          CMk 2 1 [_, rest] -> bump <$> shape bound al rest
+          e -> case spine e [] of
+            (CVar c, [_, rest]) | S.notMember c bound, isCons c -> bump <$> shape bound al rest
+            _ -> Nothing
+        bump (p, k) = (p, k + 1)
+        isCons c = case M.lookup c allProg of
+          Just (cps, CMk 2 1 fs) -> length cps == 2 && length fs == 2
+          _ -> False
+        growth p = \case
+          Just (q, k) | q == p -> Just k
+          _ -> Nothing
+        spine (CApp f a) args = spine f (a : args)
+        spine h args = (h, args)
+
     stableArgs grp owner (ps,body) = scan (S.fromList ps) (M.fromList [(p,p) | p<-ps]) body
       where
         allParams = S.fromList ps
