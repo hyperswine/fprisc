@@ -61,6 +61,42 @@ for RISC-V) without stopping at the first failure.
    result. The limit is 180 minutes on the schedule and unchanged on pushes.
    How long the full size takes is not yet known.
 
+8. **CI's SimpleRisc pin was older than the presets.** The workflow checked
+   out simple-risc `cf42451` (1 November), where `fprisc-72` is placement 0
+   with no floorplan. `tools/run_tangnano20k_examples.py` has described
+   placement 3 with `fprisc-81.plan` since `9451dca`, and the RV32IM
+   `fprisc-81`/`fprisc-84` presets since 8 November, so "Tang Nano preset and
+   protocol gates" failed once CI reached it. The pin is `00fbd13`
+   (fprisc-84: the RV32IM canon), the commit those presets were written
+   against; the Tang Nano steps pass against it here.
+
+9. **x86-64 inline bump allocation overwrote its own slab pointer when the
+   cell's destination was spilled** (compiler, x86-64 only). With the pin
+   moved, CI reached the host-extra group for the first time and
+   `check_finite_field_workers.py` timed out in `parameters-16-regions-boxed`.
+   The program runs in 10 ms on arm64; on x86-64 it hangs on Linux and
+   faults under Rosetta, from 12 boxed parameters up, and not with
+   `FPR_NO_BUMP_ALLOC=1` or `FPR_NO_INLINE=1`.
+
+   The inline bump (`Codegen/Target/X64.hs`) keeps the hart and then the pool
+   in r11 and the window's slab in r10. Those are also x64's only two
+   allocator scratches, and `Allocate.rewrite` hands a spilled or dead
+   definition a scratch. So a spilled cell arrived as r10 and the fast path
+   read `movq 32(%r10), %r10`: the cell's end replaced the slab, and the
+   bounds test and the header store then used it as a slab. AArch64
+   (x16/x17 against scratches x13..x15) and RISC-V (t3..t5 against t0..t2)
+   keep the two sets apart and are not affected.
+
+   When the destination is r10 or r11 the cell is now built in rax, pushed
+   before the fast path and popped after it on both exits, then moved to the
+   destination once r10 and r11 are finished. `codegenRev` 209. The inline
+   bump is from 3 November (`0567ca6`), so `e138e65`, the QOS pin, has the
+   fault for hosted x86-64 programs with enough live values around a
+   constructor; a loaded QOS app keeps the allocator call and is not
+   affected. `check_finite_field_workers.py` now asserts on every host that
+   the x64 assembly of that fixture builds its spilled cells in the borrowed
+   register, and `check_x64_macos.py` runs it.
+
 ## The Word pair that no longer fit its heap
 
 With item 5 fixed, `check_pair_raw.py` reached the RawWord program, which

@@ -108,6 +108,21 @@ def main():
             assert costs['boxed']>=costs['default'] and costs['boxed']>0,(name,costs)
             print(f'{name}: {costs}, normal regions and 1/4 harts PASS',flush=True)
 
+        # x64's allocator scratches (r10, r11) are the inline bump's own slab
+        # and hart registers. A cell whose destination is spilled must be
+        # built in a borrowed register: with 16 boxed parameters one is, and
+        # the fast path used to overwrite its slab with the cell (a fault on
+        # macOS, a hang on Linux). Compile-only, so every host checks it.
+        source,_=fixture('parameters',16);src=tmp/'bump-spill.fpr';src.write_text(source);asm=tmp/'bump-spill.s'
+        p=subprocess.run([compiler,'compile','--system=posix','--target=x64',f'--prelude={ROOT}/core/prelude.fpr',src,asm],
+                         cwd=ROOT,env=dict(base,FPR_NO_FIELD_WORKERS='1'),text=True,capture_output=True,timeout=240)
+        assert p.returncode==0,(p.stdout[-1000:],p.stderr[-3000:])
+        text=asm.read_text()
+        assert not re.search(r'\(%r10\), %r1[01]\n\s+addq \$\d+, %r1[01]\n',text),'x64 inline bump builds a cell in its own scratch'
+        borrowed=len(re.findall(r'pushq %rax\n\s+movq \d+\(%r11\), %r10\n',text))
+        assert borrowed>=1,'the fixture no longer spills a bump destination on x64; pick one that does'
+        print(f'x64 inline bump: {borrowed} spilled cell destination(s) built in a borrowed register PASS',flush=True)
+
         depth=8;maxint=4611686018427387903
         effects=nested('(print "payload" >> 7)',depth)
         cases={
