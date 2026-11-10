@@ -63,16 +63,20 @@ def run(args, expected=0, timeout=120):
     return p
 
 
-def fn_body(asm, name):
-    m = re.search(r'^# fn ' + name + r' .*?(?=^# native-insns-v1)', asm, re.M | re.S)
-    assert m, name
-    return m[0]
+def fn_bodies(asm, name):
+    """Every emitted body of a source function: its own symbol, or a worker
+    the compiler split from it (`$worker.ret2.$product.swap`). A function
+    inlined into its callers has no body of its own and is counted there."""
+    return re.findall(r'^# fn (?:\S*\.)?' + re.escape(name) + r' .*?(?=^# native-insns-v1)', asm, re.M | re.S)
 
 
 def ownership_calls(asm):
     total = 0
     for name in ('total', 'swap', 'build', 'tot', 'step', 'loop'):
-        total += len(re.findall(r'call fpr_fn__x24arc_x2e(?:retain|release)\b', fn_body(asm, name)))
+        bodies = fn_bodies(asm, name)
+        # the recursive functions cannot be inlined away
+        assert bodies or name not in ('build', 'tot', 'loop'), name
+        total += sum(len(re.findall(r'call fpr_fn__x24arc_x2e(?:retain|release)\b', body)) for body in bodies)
     return total
 
 

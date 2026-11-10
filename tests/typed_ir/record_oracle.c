@@ -1,7 +1,7 @@
 /* Included after the shared kernel oracle runtime. All expected values below
    are computed independently of the generated record planner and callbacks. */
 extern V fpr_fn_sampleRow(V),fpr_fn_probeRecordMap(V),fpr_fn_probeRecordCaptured(V,V);
-extern V fpr_fn_probeLastFilter(V);
+extern V fpr_fn_probeLastFilter(V),fpr_fn_sampleWide(V);
 extern V fpr_fn_probeRecordFilter(V),fpr_fn_probeRecordFold(V,V,V,V);
 static V cells[300][100], expected[300][100];
 static uint8_t kinds[300];
@@ -82,9 +82,18 @@ int main(void) {
         col[c]=(Col){100,cells[c]};cols[c]=&col[c];
         for(int i=0;i<5;i++) cells[c][i]=c==predicate_col?i-2:opaque_cell(c,i);
     }
-    Vec wide={9006,3,5,shape,variant,300,kinds,cols};
+    /* The filter kernel requires its own element type, not just enough
+       columns: take WideRow's identity from a generated WideRow. */
+    used=0; hart[0]=1;
+    V wideSample=fpr_fn_sampleWide(tag(1));
+    uint32_t wideShape=((uint32_t*)wideSample)[0], wideVariant=((uint32_t*)wideSample)[1];
+    CHECK(wideShape!=shape);
+    Vec wide={9006,3,5,wideShape,wideVariant,300,kinds,cols};
     CHECK(fpr_fn_probeLastFilter((V)&wide)==(V)&wide && wide.len==2);
     for(int c=0;c<300;c++) CHECK(cells[c][0]==(c==predicate_col?1:opaque_cell(c,3)) && cells[c][1]==(c==predicate_col?2:opaque_cell(c,4)));
+    /* A wide-enough vector of another element type takes the generic path. */
+    Vec other={9006,3,5,shape,variant,300,kinds,cols};
+    CHECK(fpr_fn_probeLastFilter((V)&other)==123 && other.len==5);
     /* Reject bad descriptors before dereferencing the absent column table. */
     for(int c=0;c<9;c++) kinds[c]=1;
     Vec bad={9006,2,5,shape,variant,9,0,0};
@@ -100,7 +109,7 @@ int main(void) {
     kinds[8]=1;
     CHECK(fpr_fn_probeRecordFold((V)&fpr_unit,tag(1),tag(0),(V)&bad)==123);
     CHECK(fpr_fn_probeRecordFold(tag(1),tag(1),(V)&fpr_unit,(V)&bad)==123);
-    CHECK(fallbacks==7 && yields>1000 && cases==1500);
+    CHECK(fallbacks==8 && yields>1000 && cases==1500);
     say("TYPED_KERNEL_PASS 1500 record cases: simultaneous/captured map, 9/64/300-column filter, captured fold, empty, guards, hostile yields\n");
     return 0;
 }
