@@ -61,21 +61,43 @@ for RISC-V) without stopping at the first failure.
    result. The limit is 180 minutes on the schedule and unchanged on pushes.
    How long the full size takes is not yet known.
 
-## Open
+## The Word pair that no longer fit its heap
 
-- **A Pair of Word no longer fits the 16 KiB heap in `check_pair_raw.py`.**
-  With item 5 fixed the check reaches the RawWord program, which ends in
-  `Builtin: out of memory` at `tot (build 50)`. The Int program fits. Both
-  pass at 32 KiB with no live allocation left, so it is peak demand, not a
-  leak, and the wrong way round for a representation that should be smaller.
-  Not diagnosed; the heap size in the check is unchanged so the check stays
-  red on this.
+With item 5 fixed, `check_pair_raw.py` reached the RawWord program, which
+ended in `Builtin: out of memory` at `tot (build 50)` in its 16 KiB heap; the
+Int program fit, and both passed at 32 KiB with no live allocation left.
+
+Not a compiler regression. The check declared `Pair = Type (Pair a b)`: `a`
+and `b` are type variables of a non-parametric type. On 3 November their
+field kinds were inferred by unification from use, which is what the
+[experiment](2026-11-03-PAIR-RAWWORD-EXPERIMENT.md) relied on. Since the
+generic tagged fallback
+([completion record](2026-11-04-ZERO-OVERHEAD-COMPLETION.md), codegen 166)
+such variables are uniform slots, so `build` boxed each Word
+(`$arc.uniformBoxWord`, one 24-byte cell) on the way into the pair: two extra
+cells a pair, and 50 pairs did not fit. `e138e65` behaves the same.
+
+Declared parametric, `Pair a b = Type (Pair a b)`, the specialiser gives the
+pair raw Word fields, with no box site, and the program fits 16 KiB again
+(37 retain/release sites against 48 for Int fields). The check now declares
+it that way.
+
+Its last stage expected a program mixing `IPair` and `WPair` through a List
+to be refused as "incompatible representations" under `FPR_NO_TYPE_SPEC=1`.
+That refusal is gone by design (the fallback keeps the generic ABI when
+cloning is off). The stage now checks what holds instead: raw Word fields
+with C2 clones by default and with no clones under `FPR_NO_TYPE_SPEC=1`, and
+that the same program with fields left as variables of non-parametric types
+does box each Word.
+
+One thing for the language rather than the check: `Pair = Type (Pair a b)` is
+accepted silently and costs two allocations per pair against the parametric
+spelling. `--remarks` says nothing about it.
 
 ## Results on this host
 
 62 of 72 checks passed before the fixes in items 4 and 5; with them, the
-three contract checks pass and `check_pair_raw.py` fails only on the open
-item. Six checks cannot run here and are CI-only evidence:
+three contract checks and `check_pair_raw.py` pass. Six checks cannot run here and are CI-only evidence:
 `check_rv32_float_constants` and `check_fixed_stack_reservation` (no RV32
 SoftFloat archive), `check_typed_ir_x64` in both modes (requires native
 x86-64, not Rosetta), and `check_rv64_linux` in both modes (no

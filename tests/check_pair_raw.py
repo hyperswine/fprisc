@@ -5,9 +5,10 @@ The same observations are made on a Pair of Int (managed fields) and on a
 Pair of Word (RawWord fields, the representation a type specialiser would pick
 for `Pair Int Int`), each in its own builtin ARC program on QEMU RV64. Checks:
 identical output and no live allocation afterwards for both; the raw program
-retains and releases less; and one program that mixes both pairs through a
-shared List is refused by Representation.hs (representation-polymorphic code
-needs cloning, which is C2 proper)."""
+retains and releases less; one program that mixes both pairs through a
+shared List keeps raw Word fields, with C2 clones by default and with none
+under FPR_NO_TYPE_SPEC=1; and the same program with its fields left as
+variables of non-parametric types boxes each Word (uniform slots)."""
 from pathlib import Path
 import os
 import re
@@ -17,8 +18,12 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 
+# Pair is declared parametric. `Pair = Type (Pair a b)` leaves a and b as type
+# variables of a non-parametric type, which are uniform slots since the generic
+# tagged fallback (docs/2026-11-04-ZERO-OVERHEAD-COMPLETION.md): a Word stored
+# there is boxed, two extra cells a pair, and 50 pairs no longer fit the heap.
 TEMPLATE = '''# Pair experiment ({name}): identical observations on {desc}.
-Pair = Type (Pair a b).
+Pair a b = Type (Pair a b).
 check b = case b of True -> Unit | False -> error "pair observation failed".
 leaks = Mem.liveAllocations Unit.
 mk a b = {mk}.
@@ -48,12 +53,16 @@ WORD = dict(name='RawWord fields', desc='RawWord fields',
             a='(Word.fromInt n)', b='(Word.fromInt (n * 2))',
             step='(Word.fromInt (Word.toInt (Word.add a b) - (Word.toInt (Word.add a b) / 1000003) * 1000003))')
 
-MIXED = '''IPair = Type (IPair a b).
-WPair = Type (WPair a b).
+MIXED = '''IPair a b = Type (IPair a b).
+WPair a b = Type (WPair a b).
 build n = case n == 0 of True -> [] | False -> IPair n n :: build (n - 1).
 buildW n = case n == 0 of True -> [] | False -> WPair (Word.fromInt n) (Word.fromInt n) :: buildW (n - 1).
 main = _ = build 3; _ = buildW 3; Unit.
 '''
+
+# The same program with the fields left as variables of non-parametric types:
+# uniform slots, so each Word is boxed on the way in.
+UNIFORM = MIXED.replace('IPair a b = Type', 'IPair = Type').replace('WPair a b = Type', 'WPair = Type')
 
 
 def run(args, expected=0, timeout=120):
@@ -104,18 +113,29 @@ def main():
         assert calls['word'] < calls['int'], calls
         print(f"RawWord Pair: {calls['word']} retain/release sites against {calls['int']} for Int fields: PASS")
 
-        mixed = tmp / 'mixed.fpr'
-        mixed.write_text(MIXED)
-        run(['make', 'bare-metal-builtin', 'ARC=1', 'ARC_CHECK=1', 'BUILTIN_HEAP_BYTES=16384',
-             f'PROG={mixed}', f'BUILD={tmp / "mixed"}', f'IMAGE={tmp / "mixed.elf"}'], timeout=300)
-        run(['qemu-system-riscv64', '-machine', 'virt', '-m', '128M', '-nographic',
-             '-bios', 'none', '-kernel', tmp / 'mixed.elf'], timeout=60)
-        env_nospec = dict(os.environ, FPR_NO_TYPE_SPEC='1')
-        p = subprocess.run(['make', 'bare-metal-builtin', 'ARC=1', 'BUILTIN_HEAP_BYTES=16384',
-                            f'PROG={mixed}', f'BUILD={tmp / "mixed-nospec"}', f'IMAGE={tmp / "mixed-nospec.elf"}'],
-                           capture_output=True, text=True, env=env_nospec, timeout=300)
-        assert p.returncode != 0 and 'incompatible representations' in p.stdout + p.stderr, p.stdout[-1500:]
-        print('Int and Word pairs through List specialize under C2 and refuse under FPR_NO_TYPE_SPEC=1: PASS')
+        def image(name, source, env=None):
+            path = tmp / f'{name}.fpr'
+            path.write_text(source)
+            p = subprocess.run(['make', 'bare-metal-builtin', 'ARC=1', 'ARC_CHECK=1', 'BUILTIN_HEAP_BYTES=16384',
+                                f'PROG={path}', f'BUILD={tmp / name}', f'IMAGE={tmp / (name + ".elf")}'],
+                               capture_output=True, text=True, env=env, timeout=300)
+            assert p.returncode == 0, (name, (p.stdout + p.stderr)[-1500:])
+            run(['qemu-system-riscv64', '-machine', 'virt', '-m', '128M', '-nographic',
+                 '-bios', 'none', '-kernel', tmp / f'{name}.elf'], timeout=60)
+            asm = (tmp / name / 'builtin.s').read_text()
+            return asm.count('uniformBoxWord'), len(re.findall(r'^# fn \S*\$typespec\$', asm, re.M))
+
+        boxes, clones = image('mixed', MIXED)
+        assert boxes == 0 and clones > 0, (boxes, clones)
+        # Without cloning the generic ABI is kept (it used to be refused as
+        # incompatible representations): the two pair types are distinct data
+        # instances, so their fields still do not meet.
+        boxes, clones = image('mixed-nospec', MIXED, dict(os.environ, FPR_NO_TYPE_SPEC='1'))
+        assert boxes == 0 and clones == 0, (boxes, clones)
+        print('Int and Word pairs through List: raw Word fields with C2 clones, and under FPR_NO_TYPE_SPEC=1 with none: PASS')
+        boxes, _ = image('uniform', UNIFORM)
+        assert boxes > 0, boxes
+        print(f'Fields left as variables of a non-parametric type are uniform slots: {boxes} Word box sites: PASS')
 
 
 if __name__ == '__main__':
