@@ -61,6 +61,15 @@ for RISC-V) without stopping at the first failure.
    result. The limit is 180 minutes on the schedule and unchanged on pushes.
    How long the full size takes is not yet known.
 
+8. **CI's SimpleRisc pin was older than the presets.** The workflow checked
+   out simple-risc `cf42451` (1 November), where `fprisc-72` is placement 0
+   with no floorplan. `tools/run_tangnano20k_examples.py` has described
+   placement 3 with `fprisc-81.plan` since `9451dca`, and the RV32IM
+   `fprisc-81`/`fprisc-84` presets since 8 November, so "Tang Nano preset and
+   protocol gates" failed once CI reached it. The pin is `00fbd13`
+   (fprisc-84: the RV32IM canon), the commit those presets were written
+   against; the Tang Nano steps pass against it here.
+
 ## The Word pair that no longer fit its heap
 
 With item 5 fixed, `check_pair_raw.py` reached the RawWord program, which
