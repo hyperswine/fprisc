@@ -37,12 +37,25 @@ with tempfile.TemporaryDirectory(prefix='fpr-regs-') as d:
   leaf=tmp/'leaf.s';leaf.write_text(selected)
   harness=tmp/'harness.c';harness.write_text("""
 #include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 #include <assert.h>
 #include <stdio.h>
 static intptr_t hart[60]={[0]=1000000,[58]=-1};
 void *fpr_stack_grow(void) { __builtin_trap(); }
 void *probe_hart=hart;
-void fpr_fuel_exhausted(void) { hart[0]=1000000; }
+void fpr_fuel_exhausted(void) { FUEL_SET(1000000); }
 /* the slow paths of the inline Int arithmetic (never taken here) */
 intptr_t fpr_prim_fn__x2b(intptr_t a, intptr_t b) { (void)a; (void)b; __builtin_trap(); }
 intptr_t fpr_prim_fn__x2d(intptr_t a, intptr_t b) { (void)a; (void)b; __builtin_trap(); }

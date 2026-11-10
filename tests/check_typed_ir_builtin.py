@@ -30,7 +30,7 @@ def main():
    assert 'fpr_fuel_exhausted' not in text and 'fpr_stack_grow' not in text and '# wcet:' not in text
    hold=next(h for h in headers if h.startswith('hold '));assert not re.search(r'spills=0\b',hold),hold
    assert 'segmax=UNBOUNDED' in text,'no-fuel loops must retain honest native reports'
-   obj=tmp/f'builtin{width}.o';run(['riscv64-unknown-elf-gcc','-march=rv'+str(width)+'im','-mabi='+('ilp32' if width==32 else 'lp64'),'-c',asm,'-o',obj],env)
+   obj=tmp/f'builtin{width}.o';run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv'+str(width)+'im','-mabi='+('ilp32' if width==32 else 'lp64'),'-c',asm,'-o',obj],env)
    print('RV'+str(width)+': typed builtin emission, fixed stacks, no fuel, assembled PASS',flush=True)
 
 if __name__=='__main__':main()

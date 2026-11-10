@@ -163,7 +163,7 @@ class LinkedStackTests(unittest.TestCase):
     def build(cls, text, name, relax=False, compressed=False):
         source, image = cls.directory/(name+'.s'), cls.directory/(name+'.elf')
         source.write_text(text.replace('.option norvc','.option rvc') if compressed else text)
-        run(['riscv64-unknown-elf-gcc','-march=rv64imc' if compressed else '-march=rv64im','-mabi=lp64','-nostdlib',
+        run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv64imc' if compressed else '-march=rv64im','-mabi=lp64','-nostdlib',
              *([] if relax else ['-mno-relax','-Wl,--no-relax']),
              '-T', ROOT/'tests/typed_ir/kernel_link.ld',source,'-o',image])
         return image.read_bytes()

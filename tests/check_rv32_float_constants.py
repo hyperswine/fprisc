@@ -22,7 +22,7 @@ def build(source,out,env,*,compiler=None,extra=None,compressed=False,physical=Fa
     soft=Path(env.get('FPR_SOFTFLOAT_ROOT',ROOT/'build/tangnano20k-softfloat'))
     library=soft/'build/Linux-RISCV32-GCC/softfloat.a'
     elf=out/'base.elf'
-    cmd=['riscv64-unknown-elf-gcc','-march=rv32im'+('c' if compressed else '')+'_zicsr_zifencei',
+    cmd=['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv32im'+('c' if compressed else '')+'_zicsr_zifencei',
          '-mabi=ilp32','-mcmodel=medany','-Os','-ffreestanding','-nostdlib','-nostartfiles','-fno-builtin',
          '-DFPR_NHARTS=1','-DFPR_BUILTIN','-DFPR_SIMPLE_RISC','-DFPR_CPU_MHZ=48',
          '-DFPR_BUILTIN_HEAP_MAX_BYTES=8388608','-ffunction-sections','-fdata-sections','-Wl,--gc-sections',
@@ -34,7 +34,7 @@ def build(source,out,env,*,compiler=None,extra=None,compressed=False,physical=Fa
          '-I'+str(soft/'source/include'),'machine/tangnano20k/softfloat.c',asm,*units,library,'-lgcc','-o',elf]
     # Debian's bare GCC exposes libc headers through Picolibc's specs, as
     # machine/tangnano20k/build.sh does; newlib toolchains need no override.
-    specs=Path(run(['riscv64-unknown-elf-gcc','-print-file-name=picolibc.specs'],env).strip())
+    specs=Path(run(['riscv64-unknown-elf-gcc','-ffixed-x27','-print-file-name=picolibc.specs'],env).strip())
     if specs.is_absolute() and specs.is_file():cmd.insert(1,'--specs=picolibc.specs')
     if not physical:cmd.insert(1,'-DFPR_TANGNANO_QEMU')
     if extra:cmd[1:1]=['-Wl,--wrap=fpr_fn_main',str(extra)]

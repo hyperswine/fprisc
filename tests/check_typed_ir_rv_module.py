@@ -93,6 +93,19 @@ SECTIONS {
 
 ORACLE = r'''
 #include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 typedef intptr_t V;
 /* Both cells are INITIALISED so they live in .tdata: a static freestanding
    image gives .tbss no memory of its own (it would alias .bss). */
@@ -120,7 +133,7 @@ static void say(const char *msg) {
 #define CHECK(ok) do { if (!(ok)) oracle_finish(__LINE__); } while (0)
 static V tag(V x) { return (V)(((uintptr_t)x << 1) | 1); }
 static V bits(double d) { union { double d; V v; } c; c.d=d; return c.v; }
-void oracle_tick(void) { hart[0]=1; yields++; for (int i=1; i<=56; i++) hart[i]=tag(-777); }
+void oracle_tick(void) { FUEL_SET(1); yields++; for (int i=1; i<=56; i++) hart[i]=tag(-777); }
 uintptr_t fpr_stack_grow(void) { oracle_finish(1); }
 V fpr_prim_fn__x2b(V a,V b) { return tag((a>>1)+(b>>1)); }
 V fpr_prim_fn__x2a(V a,V b) { return tag((a>>1)*(b>>1)); }
@@ -138,16 +151,16 @@ int main(void) {
     hart[57]=0; hart[58]=(V)UINTPTR_MAX;
     unsigned cases=0;
     for (V x=-300; x<=300; x++) {
-        hart[0]=1;
+        FUEL_SET(1);
         CHECK(fpr_fn_mathOp(tag(x))==tag(3*x)); cases++;
-        hart[0]=1;
+        FUEL_SET(1);
         CHECK(fpr_fn_twice(tag(x))==tag(6*x)); cases++;
-        hart[0]=1;
+        FUEL_SET(1);
         CHECK(fpr_fn_floatOp(bits((double)x*0.25))==bits((double)x*0.5)); cases++;
     }
-    hart[0]=1;
+    FUEL_SET(1);
     CHECK(fpr_fn_hartOK((V)&fpr_unit)==(V)&fpr_true && reads==1); cases++;
-    hart[0]=1;
+    FUEL_SET(1);
     struct Str *s=(void *)fpr_fn_greeting((V)&fpr_unit);
     CHECK(s->tid==9000 && s->len==3 && s->bytes[0]=='m' && s->bytes[1]=='o' && s->bytes[2]=='d'); cases++;
     /* the hart was read through the TLS cell: every entry tick with fuel 1 yielded */
@@ -205,7 +218,7 @@ def main():
         # the assembler's relocations: the hart through the TLS GOT, calls through
         # the PLT, no local-exec TLS
         obj = tmp / 'module.o'
-        run(['riscv64-unknown-elf-gcc', '-march=rv64imafd_zicsr_zifencei', '-mabi=lp64', '-c', asm, '-o', obj], env)
+        run(['riscv64-unknown-elf-gcc', '-ffixed-x27', '-march=rv64imafd_zicsr_zifencei', '-mabi=lp64', '-c', asm, '-o', obj], env)
         relocs = run(['riscv64-unknown-elf-readelf', '-rW', obj], env)
         kinds = set(re.findall(r'R_RISCV_[A-Z0-9_]+', relocs))
         assert 'R_RISCV_TLS_GOT_HI20' in kinds and 'R_RISCV_CALL_PLT' in kinds, kinds
@@ -221,7 +234,7 @@ def main():
         ld = tmp / 'link.ld'; ld.write_text(LINK)
         oracle = tmp / 'oracle.c'; oracle.write_text(ORACLE)
         exe = tmp / 'module.elf'
-        run(['riscv64-unknown-elf-gcc', '-march=rv64imafd_zicsr_zifencei', '-mabi=lp64', '-mcmodel=medany',
+        run(['riscv64-unknown-elf-gcc', '-ffixed-x27', '-march=rv64imafd_zicsr_zifencei', '-mabi=lp64', '-mcmodel=medany',
              '-msmall-data-limit=0', '-O2', '-ffreestanding', '-nostdlib', '-fno-builtin', '-static',
              '-T', ld, crt, probe, oracle, '-o', exe], env)
         result = run(['qemu-system-riscv64', '-machine', 'virt', '-smp', '1', '-m', '16M',

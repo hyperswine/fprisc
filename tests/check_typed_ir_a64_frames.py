@@ -87,7 +87,7 @@ __attribute__((noreturn)) void oracle_finish(int code){if(code)fprintf(stderr,"A
     print(run([emitter,'a64','mac' if mac else 'elf',hart,loops,asm],env),end='',flush=True)
     assert asm.read_text().count('reserve=yes')==3
     exe=out/f'oracle-{hart}-{loops}'
-    run(['cc','-O2','-fno-omit-frame-pointer',*(['-DSELF_LOOPS'] if loops=='1' else []),source,wrapper,asm,'-o',exe],env)
+    run(['cc','-O2','-ffixed-x27','-fno-omit-frame-pointer',*(['-DSELF_LOOPS'] if loops=='1' else []),source,wrapper,asm,'-o',exe],env)
     result=run([exe],env);assert 'A64_SIZED_FRAMES_PASS' in result,result
     print(f'A64 {hart} loops={loops}: '+result.strip(),flush=True)
   production_runtime(out,env,emitter)

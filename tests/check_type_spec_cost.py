@@ -56,7 +56,7 @@ def measure(tmp, count, generic):
     rts = dict(ast.literal_eval(stats.read_text().split('\n', 1)[1]))
     asm = output.read_text()
     obj = tmp / (label + '.o')
-    subprocess.run(['riscv64-unknown-elf-gcc', '-march=rv64imafdc_zicsr', '-mabi=lp64',
+    subprocess.run(['riscv64-unknown-elf-gcc', '-ffixed-x27', '-march=rv64imafdc_zicsr', '-mabi=lp64',
                     '-c', output, '-o', obj], check=True, capture_output=True)
     sizes = subprocess.check_output(['riscv64-unknown-elf-size', '-A', obj], text=True)
     text_bytes = sum(int(n) for n in re.findall(r'^\.text(?:\.\S+)?\s+(\d+)', sizes, re.M))

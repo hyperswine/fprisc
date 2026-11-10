@@ -58,10 +58,10 @@ data RegisterBudget = RegisterBudget
 -- by backend name, as the allocation configurations define them
 registerBudget :: String -> Maybe RegisterBudget
 registerBudget = \case
-  "a64" -> Just (RegisterBudget 9 22 8 14) -- x19..x27 + x0..x12; d8..d15 + d2..d7
+  "a64" -> Just (RegisterBudget 8 21 8 14) -- x19..x26 + x0..x12 (x27 is the fuel counter); d8..d15 + d2..d7
   "x64" -> Just (RegisterBudget 5 12 0 0) -- rbx, r12..r15 + rax, rcx, rdx, rsi, rdi, r8, r9
-  "rv64" -> Just (RegisterBudget 11 19 0 0) -- s1..s11 + a0..a7
-  "rv32" -> Just (RegisterBudget 11 19 0 0)
+  "rv64" -> Just (RegisterBudget 10 18 0 0) -- s1..s10 + a0..a7 (s11 is the fuel counter)
+  "rv32" -> Just (RegisterBudget 10 18 0 0)
   _ -> Nothing
 
 m2Policy :: Policy

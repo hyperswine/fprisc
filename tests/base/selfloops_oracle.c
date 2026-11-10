@@ -1,4 +1,17 @@
 #include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 #ifdef FPR_ORACLE_RV64
 __attribute__((noreturn)) void oracle_finish(int code) {
     *(volatile unsigned *)0x100000 = code ? 0x13333 : 0x5555;
@@ -23,7 +36,7 @@ void fpr_fuel_exhausted(void) {
     uintptr_t sp = (uintptr_t)&sp;
     if (yields++) assert(first_sp == sp);
     else first_sp = sp;
-    hart[0] = 7;
+    FUEL_SET(7);
 }
 #ifdef FPR_ORACLE_RV64
 /* The RV selector uses checked C primitives for these operations. The
@@ -47,10 +60,10 @@ int main(void) {
 #endif
     for (intptr_t n=0; n<100; ++n) for (intptr_t a=-10; a<=10; ++a) {
         intptr_t b=31-a, want=n%2 ? b+2*a : a+2*b;
-        hart[0]=7; yields=0; first_sp=0;
+        FUEL_SET(7); yields=0; first_sp=0;
         assert(fpr_fn_rotate2(2*n+1, 2*a+1, 2*b+1) == 2*want+1);
         assert(yields == (unsigned)(n+1)/7);
-        assert(hart[0] == 7-(n+1)%7);
+        assert(fuel_left() == 7-(n+1)%7);
     }
     puts("self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS");
     return 0;

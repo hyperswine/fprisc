@@ -41,7 +41,7 @@ fpr_ctx_switch:
     REG_S s8,  12*WSZ(a0)
     REG_S s9,  13*WSZ(a0)
     REG_S s10, 14*WSZ(a0)
-    REG_S s11, 15*WSZ(a0)
+    /* slot 15 unused: s11 is the hart's fuel counter, not a context's (fpr.h) */
 
     REG_L ra,   0*WSZ(a1)
     REG_L sp,   1*WSZ(a1)
@@ -57,5 +57,4 @@ fpr_ctx_switch:
     REG_L s8,  12*WSZ(a1)
     REG_L s9,  13*WSZ(a1)
     REG_L s10, 14*WSZ(a1)
-    REG_L s11, 15*WSZ(a1)
     ret

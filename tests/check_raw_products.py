@@ -172,7 +172,7 @@ def raw_library(tmp, env, rollback, abi):
     crt=tmp/'crt.S';crt.write_text((ROOT/'tests/typed_ir/kernel_crt.S').read_text().split('.globl fpr_fuel_exhausted')[0])
     oracle=tmp/'oracle.c';oracle.write_text(ORACLE)
     image=asm.with_suffix('.elf')
-    run(['riscv64-unknown-elf-gcc','-march=rv64imafdc_zicsr',f'-mabi={"lp64d" if abi=="hard" else "lp64"}','-mcmodel=medany',
+    run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv64imafdc_zicsr',f'-mabi={"lp64d" if abi=="hard" else "lp64"}','-mcmodel=medany',
          '-msmall-data-limit=0','-O2','-ffreestanding','-nostdlib','-fno-builtin','-Wl,--gc-sections',
          '-T',ROOT/'tests/typed_ir/kernel_link.ld',crt,asm,oracle,'-o',image])
     symbols=run(['riscv64-unknown-elf-nm',image])

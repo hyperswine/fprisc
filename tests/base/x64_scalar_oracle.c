@@ -2,6 +2,19 @@
 #include <assert.h>
 #include <setjmp.h>
 #include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +36,7 @@ static const int64_t lo = -INT64_C(4611686018427387904), hi = INT64_C(4611686018
 static V tag(int64_t x) { return (V)(((uint64_t)x << 1) | 1); }
 static int64_t untag(V x) { return x >> 1; }
 void probe_fuel_reset(void) {
-    ++yields; hart[0] = 3;
+    ++yields; FUEL_SET(3);
     /* Entry must copy private argument cells before a scheduling boundary. */
     probe_a6=probe_a7=tag(-777);
     for (unsigned i=1;i<=56;i++) hart[i]=(uintptr_t)tag(-777);
@@ -95,7 +108,7 @@ static V invoke(Fn fn, const V *args, unsigned count) {
     for (unsigned i=0;i<count && i<6;i++) first[i]=args[i];
     probe_a6=count>6 ? args[6] : 0; probe_a7=count>7 ? args[7] : 0;
     for (unsigned i=8;i<count;i++) hart[i-7]=(uintptr_t)args[i];
-    hart[0]=1; hart[57]=0; hart[58]=force_growth ? 0 : UINTPTR_MAX; force_growth=0;
+    FUEL_SET(1); hart[57]=0; hart[58]=force_growth ? 0 : UINTPTR_MAX; force_growth=0;
     ++cases;
     return probe_call(fn,first);
 }

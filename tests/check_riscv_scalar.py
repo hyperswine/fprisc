@@ -100,7 +100,7 @@ def compile_image(out, bits, source, env, compressed=False):
         library=sfroot/'build/Linux-RISCV64-GCC/softfloat.a'
         assert library.exists(),'build the RV64 SoftFloat archive before running this gate'
         softfloat=['-I'+str(sfroot/'source/include'),'machine/tangnano20k/softfloat.c',str(library)]
-    run(['riscv64-unknown-elf-gcc', f'-march=rv{bits}im' + ('c' if compressed else '') + '_zicsr_zifencei',
+    run(['riscv64-unknown-elf-gcc', '-ffixed-x27', f'-march=rv{bits}im' + ('c' if compressed else '') + '_zicsr_zifencei',
          '-mabi=ilp32' if bits == 32 else '-mabi=lp64', '-mcmodel=medany', '-Os',
          '-ffreestanding', '-nostdlib', '-nostartfiles', '-fno-builtin',
          '-DFPR_NHARTS=1', '-DFPR_BUILTIN', '-DFPR_SIMPLE_RISC',
@@ -145,7 +145,7 @@ def main():
     parser.add_argument('--bits', type=int, nargs='+', choices=(32, 64), default=[32, 64],
                         help='Run selected word sizes; default checks both')
     widths = parser.parse_args().bits
-    for tool in ('riscv64-unknown-elf-gcc', *(f'qemu-system-riscv{b}' for b in widths)):
+    for tool in ('riscv64-unknown-elf-gcc', '-ffixed-x27', *(f'qemu-system-riscv{b}' for b in widths)):
         assert shutil.which(tool), f'{tool} is required for this execution gate'
     metrics = {}
     with tempfile.TemporaryDirectory(prefix='fpr-riscv-scalar-') as tmp:

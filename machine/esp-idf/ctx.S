@@ -31,7 +31,7 @@ fpr_ctx_switch:
     sw s8,   12*4(a0)
     sw s9,   13*4(a0)
     sw s10,  14*4(a0)
-    sw s11,  15*4(a0)
+    /* slot 15 unused: s11 is the hart's fuel counter (fpr.h) */
 #if defined(__riscv_flen) && __riscv_flen >= 32
     fsw fs0,  16*4(a0)
     fsw fs1,  17*4(a0)
@@ -71,7 +71,6 @@ fpr_ctx_switch:
     lw s8,   12*4(a1)
     lw s9,   13*4(a1)
     lw s10,  14*4(a1)
-    lw s11,  15*4(a1)
     ret
 
 /* V fpr_cstack_call(void *fn, V a, V b, V c, void *top);

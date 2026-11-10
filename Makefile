@@ -24,7 +24,8 @@ RT_VIRT = $(MACHINE)/virt/crt0.S $(MACHINE)/virt/ctx.S $(MACHINE)/virt/ctx_fab.c
 # (QOS Native's drivers: `make bare-metal` run from the qos tree passes them)
 EXTRA_RT ?=
 
-ARCHFLAGS = -march=rv64imafdc_zicsr -mabi=lp64 -mcmodel=medany
+# s11 (x27) is the fuel counter: no C may hold a value in it (runtime/fpr.h)
+ARCHFLAGS = -march=rv64imafdc_zicsr -mabi=lp64 -mcmodel=medany -ffixed-x27
 # hosted (qosp) apps grant memory in QOSSLAB-byte slabs: the 256 KiB
 # machine default is a per-actor and per-message floor that caps a
 # thousand-session server at a few dozen; 32 KiB keeps the recycler's
@@ -49,7 +50,7 @@ ACCEL = -accel tcg,thread=multi
 # changes: no unit touches mstatus.VS and the images run on V-less cores.
 ifeq ($(RVV),1)
 FPRC_FLAGS += --rvv
-ARCHFLAGS = -march=rv64imafdcv_zicsr -mabi=lp64 -mcmodel=medany
+ARCHFLAGS = -march=rv64imafdcv_zicsr -mabi=lp64 -mcmodel=medany -ffixed-x27
 ACCEL += -cpu rv64,v=true
 endif
 TIMEOUT := $(shell command -v timeout 2>/dev/null || echo "")
@@ -369,7 +370,7 @@ BUILTIN_RV32_MARCH = rv32imc_zicsr_zifencei
 else ifneq ($(BUILTIN_RVC),0)
 $(error BUILTIN_RVC must be 0 or 1)
 endif
-BUILTIN_ARCHFLAGS = -march=$(BUILTIN_RV32_MARCH) -mabi=ilp32 -mcmodel=medany \
+BUILTIN_ARCHFLAGS = -march=$(BUILTIN_RV32_MARCH) -mabi=ilp32 -mcmodel=medany -ffixed-x27 \
                    -ffreestanding -nostdlib -nostartfiles -Os -Wall -Wextra \
                    -fno-builtin -fno-stack-protector -DFPR_SIMPLE_RISC
 BUILTIN_COMPILER_FLAGS = --target=rv32

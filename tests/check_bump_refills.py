@@ -81,6 +81,19 @@ SECTIONS {
 ''')
         c=tmp/'oracle.c'
         c.write_text(r'''#include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 typedef uintptr_t V;
 static V hart[80];
 __thread V *fpr_posix_hart=hart;
@@ -95,7 +108,7 @@ V fpr_prim_fn__x2b(V a,V b){return (((a>>1)+(b>>1))<<1)|1;}
 V fpr_prim_fn__x2d(V a,V b){return (((a>>1)-(b>>1))<<1)|1;}
 __attribute__((noreturn)) void oracle_finish(int code){*(volatile unsigned*)0x100000=code?((unsigned)code<<16)|0x3333:0x5555;for(;;){}}
 V fpr_stack_grow(void){oracle_finish(7);}
-void fpr_fuel_exhausted(void){hart[0]=1000000000;}
+void fpr_fuel_exhausted(void){FUEL_SET(1000000000);}
 V fpr_alloc(V raw){
  if(raw!=24||slab[4]+TOTAL>(V)(arena+sizeof arena))oracle_finish(2);
  V start=slab[4];slab[4]+=TOTAL;requests++;
@@ -106,7 +119,7 @@ V fpr_alloc(V raw){
 }
 extern V fpr_fn_build(V,V);
 int main(void){for(cold=0;cold<2;cold++){
- hart[0]=1000000000;hart[58]=(V)-1;hart[60]=0;requests=0;
+ FUEL_SET(1000000000);hart[58]=(V)-1;hart[60]=0;requests=0;
  slab[1]=(V)pool;slab[4]=(V)arena;slab[5]=(V)arena;
  V xs=fpr_fn_build(401,(V)&nil);uintptr_t n=0,sum=0;
  while(xs!=(V)&nil){if(n++>=4800||((uint32_t*)xs)[0]!=2||((uint32_t*)xs)[1]!=1)oracle_finish(3);
@@ -119,7 +132,7 @@ int main(void){for(cold=0;cold<2;cold++){
 ''')
         c.write_text(c.read_text().replace('COMPACT_PREFIX','8' if args.compact else '16'))
         elf=tmp/'oracle.elf'
-        run(['riscv64-unknown-elf-gcc','-march=rv64im_zicsr','-mabi=lp64','-mcmodel=medany','-msmall-data-limit=0','-O2','-ffreestanding','-nostdlib','-fno-builtin','-T',ld,crt,rv,c,'-o',elf],env)
+        run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv64im_zicsr','-mabi=lp64','-mcmodel=medany','-msmall-data-limit=0','-O2','-ffreestanding','-nostdlib','-fno-builtin','-T',ld,crt,rv,c,'-o',elf],env)
         run(['qemu-system-riscv64','-machine','virt','-m','32M','-nographic','-bios','none','-kernel',elf],env,60)
         print('RV64 shared-refill register, owner and physical extent oracle: 4,800 cold/inline cells PASS',flush=True)
 if __name__=='__main__':main()

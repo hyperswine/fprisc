@@ -67,10 +67,11 @@ p = Phys
 args, callers, saved, scratch :: [Phys]
 args = Calling.argumentRegisters Calling.RiscV
 callers = Calling.callerClobbers Calling.RiscV
-saved = map (p . ("s" ++) . show) [1..11 :: Int]
+-- s11 is the fuel counter (runtime/fpr.h fpr_fuel_set), never a value's
+saved = map (p . ("s" ++) . show) [1..10 :: Int]
 scratch = map p ["t0", "t1", "t2"]
 reserved :: [Phys]
-reserved = map p ["zero", "ra", "sp", "gp", "tp", "s0", "t3", "t4", "t5", "t6"]
+reserved = map p ["zero", "ra", "sp", "gp", "tp", "s0", "s11", "t3", "t4", "t5", "t6"]
 regFile :: RegisterFile
 regFile = RegisterFile (\r -> if S.member r regFileMembers then Just GPR else Nothing) reserved
 
@@ -708,7 +709,8 @@ render cfg fn ly large restores pools (I i) = map (\s -> if last s == ':' then s
                             "mv " ++ d ++ ", t3"])
           ++ [done ++ ":"]
     tick = tickN 1
-    tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l FuelReady, ("call " ++ Call.runtimeName Call.FuelSaveEntry), l FuelReady ++ ":"]
+    -- the counter is s11: one add and a branch, no hart read and no memory
+    tickN n = ["addi s11, s11, -" ++ show n, "bgtz s11, " ++ l FuelReady, ("call " ++ Call.runtimeName Call.FuelSaveEntry), l FuelReady ++ ":"]
     ew = if cfgWidth cfg == W32 then "32" else "64"
     go op ds us = case (op,ds,us) of
       (O.Common O.EntryStatic,[],[]) -> []
@@ -741,8 +743,8 @@ render cfg fn ly large restores pools (I i) = map (\s -> if last s == ':' then s
       (O.RV R.Panic,[],[OAddr sym]) -> ["la a0, " ++ addressName sym, ("call " ++ Call.runtimeName Call.PanicEntry)]
       (O.Common O.EntryCheckTick,[],[]) -> hart ++ stack ++ tick
       (O.Common O.EntryCheck,[],[]) -> hart ++ stack
-      (O.Common O.EntryTick,[],[]) -> hart ++ tick
-      (O.Common O.TickN,[],[OI n]) -> hart ++ tickN n
+      (O.Common O.EntryTick,[],[]) -> tick
+      (O.Common O.TickN,[],[OI n]) -> tickN n
       (O.RV R.VectorMax,[d],[]) -> ["vsetvli " ++ r d ++ ", x0, e" ++ ew ++ ", m1, ta, ma"]
       (O.RV R.VectorLanes,[d],[a,n,OI bound]) ->
         ["vsetvli t4, " ++ r n ++ ", e" ++ ew ++ ", m1, ta, ma", "vle" ++ ew ++ ".v v8, (" ++ r a ++ ")",

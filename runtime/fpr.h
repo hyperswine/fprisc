@@ -232,6 +232,8 @@ void fpr_bkt_put(void **b);
 #define FPR_NATIVE_ABI 13u /* v9 with x27 the fuel counter, not a saved register (docs/2026-11-10-REGISTER-FUEL.md); v9: hosted A64 context and hart layout include d8..d15; the acb's received-root list; the hart's region clock (cell 58) and the acb's pending call regions (REGIONS-LOOPS-CALLS) */
 #elif defined(FPR_POSIX) && defined(__aarch64__)
 #define FPR_NATIVE_ABI 15u /* QOS A64 apps: v11 with x27 the fuel counter; v11: v8 plus d8..d15 in the context (docs/2026-11-06-QOSAPP-A64-FP-CONTEXT.md) */
+#elif defined(__riscv)
+#define FPR_NATIVE_ABI 17u /* v8 with s11 the fuel counter, not a saved register (docs/2026-11-10-REGISTER-FUEL.md) */
 #else
 #define FPR_NATIVE_ABI 8u /* QOS and other hosted layouts: v6 plus the acb's received-root list (REGIONS-STAGE1), the hart's region clock and the acb's pending call regions (REGIONS-LOOPS-CALLS) */
 #endif
@@ -241,6 +243,8 @@ void fpr_bkt_put(void **b);
 #define FPR_NATIVE_ABI 14u /* compact v13 */
 #elif defined(FPR_POSIX) && defined(__aarch64__)
 #define FPR_NATIVE_ABI 16u /* QOS A64 apps: compact v15 */
+#elif defined(__riscv)
+#define FPR_NATIVE_ABI 18u /* compact v17 */
 #else
 #define FPR_NATIVE_ABI 9u
 #endif
@@ -455,7 +459,7 @@ extern void (*fpr_buddy_uncharge)(uw tag, uw bytes); /* a charged block went hom
 #endif
 #endif
 typedef struct {
-  sw fuel; /* MUST stay at offset 0: generated code does ld/sd 0(tp).  Unused on AArch64, where x27 is the counter (fpr_fuel_set) */
+  sw fuel; /* x86-64's fuel counter, at offset 0 (X64.hs).  Unused on AArch64 and RISC-V, where x27/s11 is the counter (fpr_fuel_set) */
   /* ARGUMENT SPILL CELLS: the memory lane for call arguments past the
    * eight the IR carries in a0..a7.  Caller stores arg i (i >= 8) to
    * W*(1+i-8)(tp) right before transfer; callee's prologue copies the
@@ -742,7 +746,8 @@ static inline fpr_hart_t *fpr_hart(void) {
  * refills it.  It is one counter per HART THREAD, not per actor: an actor
  * that parks and resumes continues on whatever the running hart has left.
  *
- * AArch64: the counter IS x27 (docs/2026-11-10-REGISTER-FUEL.md).  It
+ * AArch64 and RISC-V: the counter IS x27 (docs/2026-11-10-REGISTER-FUEL.md;
+ * s11 by its RISC-V name).  On AArch64  It
  * follows x28's discipline exactly: generated code never allocates it
  * (A64.hs budget x19..x26), every C file is compiled -ffixed-x27 (it
  * already was, for the (x27, x28) pair), and fpr_ctx_switch neither saves
@@ -755,6 +760,13 @@ static inline fpr_hart_t *fpr_hart(void) {
 #define FPR_FUEL_REGISTER 1
 static inline void fpr_fuel_set(fpr_hart_t *h, sw n) { (void)h; __asm__ volatile("mov x27, %0" :: "r"(n)); }
 static inline sw fpr_fuel_left(fpr_hart_t *h) { (void)h; sw n; __asm__ volatile("mov %0, x27" : "=r"(n)); return n; }
+#elif defined(__riscv) && !defined(FPR_FUEL_CELL)
+/* RISC-V: s11, which is x27 there too.  The same three rules: RV.hs never
+ * allocates it (s1..s10), every C file is compiled -ffixed-x27, and no
+ * context switch saves it (machine/virt, machine/unix, machine/esp-idf). */
+#define FPR_FUEL_REGISTER 1
+static inline void fpr_fuel_set(fpr_hart_t *h, sw n) { (void)h; __asm__ volatile("mv s11, %0" :: "r"(n)); }
+static inline sw fpr_fuel_left(fpr_hart_t *h) { (void)h; sw n; __asm__ volatile("mv %0, s11" : "=r"(n)); return n; }
 #else
 static inline void fpr_fuel_set(fpr_hart_t *h, sw n) { h->fuel = n; }
 static inline sw fpr_fuel_left(fpr_hart_t *h) { return h->fuel; }

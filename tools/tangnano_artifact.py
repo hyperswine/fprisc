@@ -33,7 +33,7 @@ def main():
     report = dict(preset=os.environ.get('FPR_PRESET'), repository=repository(ROOT),
                   program={'path': str(Path(source).resolve()), 'sha256': sha(source)},
                   compiler_sha256=sha(ROOT / 'fpr'),
-                  gcc=subprocess.check_output(['riscv64-unknown-elf-gcc', '--version'], text=True).splitlines()[0],
+                  gcc=subprocess.check_output(['riscv64-unknown-elf-gcc', '-ffixed-x27', '--version'], text=True).splitlines()[0],
                   configuration=dict(xlen=int(xlen), compressed=rvc == '1', cpu_mhz=int(frequency),
                                      reclamation='regions',
                                      qemu=os.environ.get('FPR_QEMU', '0') == '1'),

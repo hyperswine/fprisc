@@ -14,9 +14,11 @@ def crt(width):
  code=base+clobber('fpr_fuel_exhausted','oracle_tick',None)+clobber('fpr_stack_reserve','oracle_reserve','a0')
  regs=['s'+str(i) for i in range(12)]
  code+=' .globl oracle_invoke\noracle_invoke:\n addi sp,sp,-128\n'+f' {st} ra,0(sp)\n'
- code+=''.join(f' {st} {r},{(i+1)*w}(sp)\n li {r},{1000+i}\n' for i,r in enumerate(regs))
+ # s11 is the fuel counter (runtime/fpr.h fpr_fuel_set), not a saved value:
+ # one unit on entry, and oracle_tick refills one, so every tick is hostile
+ code+=''.join(f' {st} {r},{(i+1)*w}(sp)\n li {r},{1 if r=="s11" else 1000+i}\n' for i,r in enumerate(regs))
  code+=f' la t0,oracle_entry_sp\n {st} sp,0(t0)\n la t0,oracle_target\n {ld} t0,0(t0)\n jalr ra,t0,0\n'
- code+=''.join(f' li t0,{1000+i}\n bne {r},t0,oracle_bad_saved\n' for i,r in enumerate(regs))
+ code+=''.join(f' li t0,{1000+i}\n bne {r},t0,oracle_bad_saved\n' for i,r in enumerate(regs) if r!='s11')
  code+=''.join(f' {ld} {r},{(i+1)*w}(sp)\n' for i,r in enumerate(regs))
  code+=f' {ld} ra,0(sp)\n addi sp,sp,128\n ret\noracle_bad_saved:\n li a0,200\n tail oracle_finish\n'
  return code
@@ -56,9 +58,9 @@ def actor_runtime(out,env,width,*,compiler=None,strict=True,counter=None,execute
  image=out/('actor-'+width+'.elf')
  # The installed toolchain has integer-ABI IMAC multilibs, but no IMAD/soft
  # combination. Its IMAC libgcc has the same ILP32/LP64 calling convention.
- libgcc=run(['riscv64-unknown-elf-gcc','-march=rv'+width+'imac','-mabi='+('ilp32' if width=='32' else 'lp64'),'-print-libgcc-file-name'],mode).strip()
+ libgcc=run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv'+width+'imac','-mabi='+('ilp32' if width=='32' else 'lp64'),'-print-libgcc-file-name'],mode).strip()
  assert Path(libgcc).is_file(),libgcc
- command=['riscv64-unknown-elf-gcc','-march=rv'+width+'imafdc_zicsr_zifencei','-mabi='+('ilp32' if width=='32' else 'lp64'),
+ command=['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv'+width+'imafdc_zicsr_zifencei','-mabi='+('ilp32' if width=='32' else 'lp64'),
   '-mcmodel=medany','-msmall-data-limit=0','-O2','-ffreestanding','-nostdlib','-nostartfiles','-fno-builtin','-fno-stack-protector',
   '-DFPR_NHARTS=1',*(['-DFPR_STACK_SZ=32752','-DFPR_BUDDY_MIN=4096'] if small_stack else []),'-Iruntime','-Imachine/virt','-T','machine/virt/link.ld',
   *[ROOT/'machine/virt'/p for p in ('crt0.S','ctx.S','ctx_fab.c','hal.c','memshim.c')],*raw,asm,*units,
@@ -90,7 +92,7 @@ def main():
     headers=re.findall(r'^# fn .*$',asm.read_text(),re.M);assert len(headers)==3 and all('reserve=yes' in h for h in headers),headers
     assert not re.search(r'native-insns-v1:.*UNBOUNDED',asm.read_text())
     crtfile=out/'crt.S';crtfile.write_text(crt(width));image=out/f'frames-{width}-{loops}.elf'
-    run(['riscv64-unknown-elf-gcc','-march=rv'+width+'im_zicsr_zifencei','-mabi='+('ilp32' if width=='32' else 'lp64'),'-mcmodel=medany',
+    run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv'+width+'im_zicsr_zifencei','-mabi='+('ilp32' if width=='32' else 'lp64'),'-mcmodel=medany',
          '-msmall-data-limit=0','-O2','-fno-omit-frame-pointer','-ffreestanding','-nostdlib','-fno-builtin',*(['-DSELF_LOOPS'] if loops=='1' else []),
          '-T',FIX/'kernel_link.ld',crtfile,asm,FIX/'rv_frames_oracle.c','-o',image],env)
     result=run(['qemu-system-riscv'+width,'-machine','virt','-m','16M','-nographic','-bios','none','-kernel',image],env)

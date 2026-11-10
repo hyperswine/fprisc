@@ -68,6 +68,7 @@ SECTIONS {
             units = Path(str(asm) + '.units').read_text().splitlines()
             guest = out / 'qemu.elf'
             scalar.run(['riscv64-unknown-elf-gcc',
+                        '-ffixed-x27',
                         '-march=rv32im' + ('c' if compressed else '') + '_zicsr_zifencei',
                         '-mabi=ilp32', '-mcmodel=medany', '-Os', '-ffreestanding', '-nostdlib',
                         '-nostartfiles', '-fno-builtin', '-DFPR_NHARTS=1', '-DFPR_BUILTIN',

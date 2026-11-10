@@ -169,7 +169,7 @@ int main(void){{
             images={}
             for mode,assembly in [('plain',admitted),('measured',out/'observed.s')]:
                 image=out/(mode+'.elf')
-                run(['riscv64-unknown-elf-gcc','-march=rv64imc_zicsr' if args.rvc else '-march=rv64im_zicsr','-mabi=lp64','-mcmodel=medany',
+                run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv64imc_zicsr' if args.rvc else '-march=rv64im_zicsr','-mabi=lp64','-mcmodel=medany',
                      '-msmall-data-limit=0','-O2','-ffreestanding','-nostdlib','-fno-builtin','-ffunction-sections',
                      *(['-DMEASURE_STACK'] if mode=='measured' else []),
                      '-Wl,--gc-sections','-T',ROOT/'tests/typed_ir/kernel_link.ld',out/'crt.S',assembly,out/'oracle.c','-o',image],env)

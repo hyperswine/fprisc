@@ -45,11 +45,11 @@ int main(void) {
     __asm__ volatile("mv tp,%0" :: "r"(hart) : "memory");
     hart[57]=0; hart[58]=(V)UINTPTR_MAX;
     for (V x=-300;x<=300;x++) {
-        hart[0]=1; CHECK(fpr_fn_mathOp(tag(x))==tag(3*x));
-        hart[0]=1; CHECK(fpr_fn_twice(tag(x))==tag(6*x));
-        hart[0]=1; CHECK(fpr_fn_wideCall(tag(x))==tag(x+44));
+        FUEL_SET(1); CHECK(fpr_fn_mathOp(tag(x))==tag(3*x));
+        FUEL_SET(1); CHECK(fpr_fn_twice(tag(x))==tag(6*x));
+        FUEL_SET(1); CHECK(fpr_fn_wideCall(tag(x))==tag(x+44));
     }
-    hart[0]=1; CHECK(eq((void *)fpr_fn_greeting((V)&fpr_unit),"mod"));
+    FUEL_SET(1); CHECK(eq((void *)fpr_fn_greeting((V)&fpr_unit),"mod"));
     CHECK(fpr_modtab[0]==0x4650524d && fpr_modtab[1]==2);
     CHECK(fpr_modtab[3]==(uintptr_t)fpr_layout_table);
     CHECK(fpr_modtab[4]==(sizeof(uintptr_t)==8 ? 8 : 16));
@@ -62,7 +62,7 @@ int main(void) {
             CHECK(((uint32_t *)pap)[0]==9001);
             uintptr_t *fields=(void *)((char *)pap+8);
             CHECK(fields[0]==(uintptr_t)fpr_fn_mathOp && fields[1]==1 && fields[2]==0);
-            hart[0]=1; CHECK(((V (*)(V))fields[0])(tag(14))==tag(42)); found++;
+            FUEL_SET(1); CHECK(((V (*)(V))fields[0])(tag(14))==tag(42)); found++;
         }
         rows++;
     }
@@ -83,7 +83,7 @@ int main(void) {
     V cells[260]; uint8_t kinds[]={1}; Col col={260,cells}; Col *cols[]={&col};
     if(TRAP_CASE) {
         Vec v={9006,1,2,0,0,1,kinds,cols};cells[0]=INTPTR_MAX/2;cells[1]=1;
-        hart[0]=1;fpr_fn_probe(tag(0),(V)&v);oracle_finish(__LINE__);
+        FUEL_SET(1);fpr_fn_probe(tag(0),(V)&v);oracle_finish(__LINE__);
     }
     unsigned cases=0;
     for(int n=0;n<=257;n++) for(int mode=0;mode<4;mode++) {
@@ -93,7 +93,7 @@ int main(void) {
         V start=mode==2 ? INTPTR_MAX/2-1000 : mode==1 ? 0 : 7;
         if(mode==1 && n>=2) { sum-=cells[0]+cells[1]; cells[0]=INTPTR_MAX/2; cells[1]=-cells[0]; }
         if(mode==3 && n>=3) { sum-=cells[0]+cells[1]+cells[2]; cells[0]=1;cells[1]=2;cells[2]=3;sum+=6; }
-        used=0;hart[0]=1;
+        used=0;FUEL_SET(1);
         V pair=fpr_fn_probe(tag(start),(V)&v);
         CHECK(*(V*)((char*)pair+8)==tag(start+sum));
         CHECK(*(V*)((char*)pair+8+sizeof(V))==(V)&v && v.len==n);
@@ -146,7 +146,7 @@ def main():
                 oracle=tmp/'oracle.c'
                 support=SUPPORT
                 if vector:
-                    support=support.replace('hart[0]=1; yields++;', 'hart[0]=1; yields++; __asm__ volatile("vsetivli zero,1,e32,m1,ta,ma; vmv.v.i v0,-1; vmv.v.i v1,-1; vmv.v.i v2,-1; vmv.v.i v3,-1; vmv.v.i v4,-1; vmv.v.i v8,-1; vmv.v.i v9,-1; vmv.v.i v10,-1" ::: "memory");')
+                    support=support.replace('FUEL_SET(1); yields++;', 'FUEL_SET(1); yields++; __asm__ volatile("vsetivli zero,1,e32,m1,ta,ma; vmv.v.i v0,-1; vmv.v.i v1,-1; vmv.v.i v2,-1; vmv.v.i v3,-1; vmv.v.i v4,-1; vmv.v.i v8,-1; vmv.v.i v9,-1; vmv.v.i v10,-1" ::: "memory");')
                 oracle.write_text(support+(RVV_ORACLE if vector else PLUGIN_ORACLE))
                 extra=[]
                 if vector:
@@ -169,7 +169,7 @@ def main():
                     assert '# typed IR: no translation' in executable.read_text()
                     assert executable.read_text().count('fpr_rvv_enable:')==1
                 elf=tmp/'probe.elf'
-                run(['riscv64-unknown-elf-gcc','-march=rv'+width+('imv_zicsr_zifencei' if vector else 'im_zicsr_zifencei'),
+                run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv'+width+('imv_zicsr_zifencei' if vector else 'im_zicsr_zifencei'),
                      '-mabi='+('ilp32' if width=='32' else 'lp64'),'-mcmodel=medany','-msmall-data-limit=0','-O2',
                      '-ffreestanding','-nostdlib','-fno-builtin','-fno-tree-vectorize','-T',FIX/'kernel_link.ld',crt,asm,*extra,oracle,'-o',elf],env)
                 symbols=run(['riscv64-unknown-elf-readelf','-sW',elf],env)
@@ -182,7 +182,7 @@ def main():
                     print(f'RV{width} {"RVV VLEN="+str(vlen) if vector else "plugin PAP/table, args 9"}: QEMU execution PASS',flush=True)
                 if vector:
                     trapped=tmp/'trap.elf'
-                    run(['riscv64-unknown-elf-gcc','-march=rv'+width+'imv_zicsr_zifencei',
+                    run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv'+width+'imv_zicsr_zifencei',
                          '-mabi='+('ilp32' if width=='32' else 'lp64'),'-mcmodel=medany','-msmall-data-limit=0','-O2',
                          '-DTRAP_CASE=1','-ffreestanding','-nostdlib','-fno-builtin','-fno-tree-vectorize',
                          '-T',FIX/'kernel_link.ld',crt,asm,*extra,oracle,'-o',trapped],env)

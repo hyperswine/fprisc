@@ -2,6 +2,19 @@
  * a foreign tail and self-loop. The substitute reserve has explicit windows
  * and clobbers every hart argument cell; production runtime is tested apart. */
 #include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 typedef intptr_t V;
 typedef uintptr_t U;
 static V hart[64];
@@ -31,7 +44,7 @@ U oracle_reserve(U sp,U bytes){
  hart[57]=(V)(base+65536);hart[58]=sizeof(chunks[0])-65536;
  return (U)(base+sizeof(chunks[0]));
 }
-void oracle_tick(void){hart[0]=1;ticks++;for(int i=1;i<=56;i++)hart[i]=tag(-777);}
+void oracle_tick(void){FUEL_SET(1);ticks++;for(int i=1;i<=56;i++)hart[i]=tag(-777);}
 V oracle_id(V x,V n){
  if(loop_probe){U sp=(U)__builtin_frame_address(0);if(sp<min_sp)min_sp=sp;if(sp>max_sp)max_sp=sp;}
  return tag((x>>1)+(n>>1));
@@ -50,7 +63,7 @@ int main(void){
   for(int i=0;i<64;i++)expected[i]=tag(100+i);
   if(phase==4)expected[0]=tag(3);
   for(int i=8;i<64;i++)hart[i-7]=expected[i];
-  hart[0]=1;mode=phase==1?1:0;
+  FUEL_SET(1);mode=phase==1?1:0;
   U sp;__asm__ volatile("mv %0,sp":"=r"(sp));
   if(phase==2){hart[57]=sp-1024*1024;hart[58]=1024*1024+65536;}else{hart[57]=sp+1024;hart[58]=1;}
   unsigned before=reserves;

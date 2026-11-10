@@ -95,7 +95,7 @@ def main():
                      '+RTS','-t'+str(stats),'--machine-readable','-RTS'],costenv)
                 seconds = time.perf_counter()-start
                 rts = dict(ast.literal_eval(stats.read_text().split('\n',1)[1]))
-                run(['riscv64-unknown-elf-gcc','-march=rv64imafdc_zicsr','-mabi=lp64','-c',asm,'-o',obj],costenv)
+                run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv64imafdc_zicsr','-mabi=lp64','-c',asm,'-o',obj],costenv)
                 sizes = run(['riscv64-unknown-elf-size','-A',obj],costenv).stdout
                 text_bytes = sum(int(n) for n in re.findall(r'^\.text(?:\.\S+)?\s+(\d+)',sizes,re.M))
                 compile_cost = dict(allocated_bytes=int(rts['bytes allocated']),max_bytes_used=int(rts['max_bytes_used']),

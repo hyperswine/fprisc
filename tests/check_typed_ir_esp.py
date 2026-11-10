@@ -91,6 +91,19 @@ SECTIONS {
 
 ORACLE = r'''
 #include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 typedef intptr_t V;
 /* initialised, so the cells are in .tdata (a static freestanding image gives .tbss no memory) */
 __thread V tls_anchor = 1;
@@ -116,7 +129,7 @@ static void say(const char *msg) {
 }
 #define CHECK(ok) do { if (!(ok)) oracle_finish(__LINE__); } while (0)
 static V tag(V x) { return (V)(((uintptr_t)x << 1) | 1); }
-void oracle_tick(void) { hart[0]=1; yields++; for (int i=1; i<=56; i++) hart[i]=tag(-777); }
+void oracle_tick(void) { FUEL_SET(1); yields++; for (int i=1; i<=56; i++) hart[i]=tag(-777); }
 uintptr_t fpr_stack_grow(void) { oracle_finish(2); }
 V fpr_prim_fn__x2b(V a,V b) { return tag((a>>1)+(b>>1)); }
 V fpr_prim_fn__x2d(V a,V b) { return tag((a>>1)-(b>>1)); }
@@ -130,7 +143,7 @@ struct Str { uint32_t tid,var; uintptr_t len; unsigned char bytes[]; };
 extern V fpr_fn_eArith(V,V), fpr_fn_eChoose(V,V), fpr_fn_eLoop(V,V,V), fpr_fn_eWideCall(V), fpr_fn_eString(V), fpr_fn_eDeep(V);
 int main(void) {
     fpr_esp_hart = hart;
-    hart[57]=0; hart[58]=(V)UINTPTR_MAX; hart[0]=1;
+    hart[57]=0; hart[58]=(V)UINTPTR_MAX; FUEL_SET(1);
     unsigned cases=0;
     for (V a=-20;a<=20;a++) for(V b=-10;b<=10;b++) {
         CHECK(fpr_fn_eArith(tag(a),tag(b))==tag(a*b+a-b)); cases++;
@@ -203,7 +216,7 @@ def main():
         ld = tmp / 'link.ld'; ld.write_text(LINK)
         oracle = tmp / 'oracle.c'; oracle.write_text(ORACLE)
         exe = tmp / 'esp.elf'
-        run(['riscv64-unknown-elf-gcc', '-march=rv32im_zicsr_zifencei', '-mabi=ilp32', '-mcmodel=medany',
+        run(['riscv64-unknown-elf-gcc', '-ffixed-x27', '-march=rv32im_zicsr_zifencei', '-mabi=ilp32', '-mcmodel=medany',
              '-msmall-data-limit=0', '-O2', '-ffreestanding', '-nostdlib', '-fno-builtin', '-static',
              '-T', ld, crt, probe, oracle, '-o', exe], env)
         result = run(['qemu-system-riscv32', '-machine', 'virt', '-smp', '1', '-m', '16M',

@@ -19,7 +19,7 @@ fpr_ctx_switch:
     sd s8, 96(a0)
     sd s9, 104(a0)
     sd s10, 112(a0)
-    sd s11, 120(a0)
+    /* slot 15 (120) unused: s11 is the hart thread's fuel counter (fpr.h) */
     fsd fs0, 128(a0)
     fsd fs1, 136(a0)
     fsd fs2, 144(a0)
@@ -49,7 +49,6 @@ fpr_ctx_switch:
     ld s8, 96(a1)
     ld s9, 104(a1)
     ld s10, 112(a1)
-    ld s11, 120(a1)
     fld fs0, 128(a1)
     fld fs1, 136(a1)
     fld fs2, 144(a1)

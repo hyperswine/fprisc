@@ -45,7 +45,7 @@ def main():
             body = return_bodies(whole, width)
             asm.write_text('.text\n'+body+fuel_wrapper(whole, body))
             exe = tmp/f'width{width}.elf'
-            checked(['riscv64-unknown-elf-gcc', '-march=rv64im_zicsr_zifencei', '-mabi=lp64',
+            checked(['riscv64-unknown-elf-gcc', '-ffixed-x27', '-march=rv64im_zicsr_zifencei', '-mabi=lp64',
                      '-mcmodel=medany', '-msmall-data-limit=0', '-O2', '-ffreestanding', '-nostdlib',
                      '-fno-builtin', f'-DPRODUCT_WIDTH={width}', '-T', ROOT/'tests/typed_ir/kernel_link.ld',
                      ROOT/'tests/typed_ir/kernel_crt.S', asm, ROOT/'tests/typed_ir/product_return_oracle.c', '-o', exe])

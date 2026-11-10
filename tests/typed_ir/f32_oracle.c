@@ -14,7 +14,7 @@ int main(void) {
     int cases=0;
     for(int n=0;n<100;n++) for(int ci=-3;ci<=3;ci++) {
         float c=(float)ci*0.75f;
-        used=0; hart[0]=1;
+        used=0; FUEL_SET(1);
         Vec v={9006,4,n,0,0,1,kinds,n?cols:0};
         for(int i=0;i<n;i++) { expected[i]=(float)(i-20)*0.5f; cells[i]=fb(expected[i]); }
         CHECK(fpr_fn_probeMap(fb(c),(V)&v)==(V)&v);

@@ -123,7 +123,7 @@ int main(void) {
     def check(args):
         p=subprocess.run(list(map(str,args)),capture_output=True,text=True,timeout=120)
         assert p.returncode==0,(args,p.returncode,p.stdout[-1000:],p.stderr[-3000:])
-    check(['riscv64-unknown-elf-gcc','-march=rv32imac_zicsr','-mabi=ilp32','-mcmodel=medany','-msmall-data-limit=0','-O2','-ffreestanding','-fno-builtin','-ffunction-sections','-fdata-sections','-DFPR_NHARTS=1','-I',ROOT/'runtime','-nostdlib','-Wl,--gc-sections','-T',ld,crt,source,'-o',elf])
+    check(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv32imac_zicsr','-mabi=ilp32','-mcmodel=medany','-msmall-data-limit=0','-O2','-ffreestanding','-fno-builtin','-ffunction-sections','-fdata-sections','-DFPR_NHARTS=1','-I',ROOT/'runtime','-nostdlib','-Wl,--gc-sections','-T',ld,crt,source,'-o',elf])
     check(['qemu-system-riscv32','-machine','virt','-m','32M','-nographic','-bios','none','-kernel',elf])
     print('RV32 legacy owner slot and managed/raw frees execute correctly under QEMU PASS',flush=True)
 

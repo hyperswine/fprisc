@@ -6,11 +6,15 @@
 struct boolean {uint32_t tid,var;} fpr_true={1,1},fpr_false={1,0};
 static uintptr_t hart[64]={[0]=1000000,[58]=UINTPTR_MAX};
 uintptr_t *probe_hart=hart;
-/* The fuel counter: x27 on AArch64 (runtime/fpr.h fpr_fuel_set; this file
-   is built -ffixed-x27), the hart block's first word elsewhere. */
-#ifdef __aarch64__
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
 #define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
 static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
 #else
 #define FUEL_SET(n) (hart[0]=(n))
 #define fuel_left() ((intptr_t)hart[0])

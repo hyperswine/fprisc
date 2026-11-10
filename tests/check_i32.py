@@ -204,7 +204,7 @@ class Suite:
             'machine/builtin/heap.c', 'machine/builtin/unsafe.c', 'runtime/runtime.c',
             'runtime/i32.c', 'runtime/bits.c', 'machine/virt/memshim.c']]
         units = [Path(line) for line in assembly.with_suffix('.s.units').read_text().splitlines() if line]
-        checked(['riscv64-unknown-elf-gcc', '-march=rv32im_zicsr_zifencei', '-mabi=ilp32', '-mcmodel=medany',
+        checked(['riscv64-unknown-elf-gcc', '-ffixed-x27', '-march=rv32im_zicsr_zifencei', '-mabi=ilp32', '-mcmodel=medany',
                  '-Os', '-ffreestanding', '-nostdlib', '-nostartfiles', '-fno-builtin',
                  '-DFPR_NHARTS=1', '-DFPR_BUILTIN', '-DFPR_SIMPLE_RISC',
                  '-DFPR_BUILTIN_HEAP_MAX_BYTES=8388608', '-ffunction-sections', '-fdata-sections',

@@ -1,14 +1,16 @@
-# Register fuel: the counter in x27 on AArch64
+# Register fuel: the counter in x27 (AArch64) and s11 (RISC-V)
 
 Date: 10 November 2026. Kind: implementation record with measurements.
-Branch `register-fuel`, base `38ad9f0`. `codegenRev` 210; `FPR_NATIVE_ABI`
-13/14 (hosted A64, plain/compact) and 15/16 (QOS A64 apps).
+Branch `register-fuel`, base `38ad9f0`. `codegenRev` 211; `FPR_NATIVE_ABI`
+13/14 (hosted A64, plain/compact), 15/16 (QOS A64 apps) and 17/18 (RISC-V).
 
 This is step 4 of the [fixed-costs proposal](2026-11-06-FIXED-COSTS-PROPOSAL.md)
 and decision 3 of the [performance priorities](2026-11-09-PERFORMANCE-PRIORITIES.md),
-taken on 10 November: the fuel counter lives in a register. AArch64 is done
-here. RISC-V (s11, the same register number) and the weighting of a tick by
-the work it covers are the next two steps and are not in this change.
+taken on 10 November: the fuel counter lives in a register. AArch64 and
+RISC-V are done here, in two commits; x86-64 keeps the memory cell. The
+weighting of a tick by the work it covers (decided the same day: the
+worst-case instruction count of the segment, at today's tick sites) is the
+next step and is not in this change.
 
 ## The convention
 
@@ -101,21 +103,48 @@ Pi 4's Cortex-A72, x86-64 (which keeps the memory counter, see below) and
 above all the RV32 soft core, where the tick is four instructions and two
 memory accesses at an IPC near 0.4. None of those is measured yet.
 
+## RISC-V: s11
+
+s11 is x27 by number, and the convention is the same three rules:
+
+- `RV.hs` allocates s1..s10 and reserves s11. The tick is
+  `addi s11, s11, -n` and `bgtz s11`: two instructions where there were
+  four and two memory accesses, and no hart read when the tick stands alone
+  (a hart read is one instruction on bare metal and three or four through
+  TLS).
+- Every RISC-V C build carries `-ffixed-x27`: the virt machine and the
+  builtin profile (`Makefile`), hosted Linux (`Build.hs`), the Tang Nano
+  (`machine/tangnano20k/build.sh`) and the ESP-IDF component.
+- `machine/virt/ctx.S`, `machine/unix/ctx_rv64.S` and
+  `machine/esp-idf/ctx.S` leave slot 15 unused.
+
+The Tang Nano runtime (`base.c`) refills through `fpr_fuel_set`. Its
+interrupt entry (`machine/builtin/interrupt.S`) saves and restores x27 with
+every other register, so a handler written in FP-RISC spends the interrupted
+code's counter and the restore gives it back; the memory cell was not
+restored. That is the one place the count differs, and it errs toward the
+interrupted code.
+
+Prebuilt C (picolibc, SoftFloat, ESP-IDF's libraries) treats s11 as
+callee-saved and never calls generated code, so it needs no flag.
+
+Not measured: this host has no RISC-V hardware. The static effect on
+`tests/bench/fib.fpr` for RV64 Linux is 237 to 231 instructions, the three
+tick sites two instructions shorter each.
+
 ## What this does not do
 
-- **RISC-V.** s11 is x27 on RISC-V and is the intended register. It needs
-  `-ffixed-x27` on every RISC-V C build (virt, builtin, Linux, ESP-IDF, QOS
-  Native), the same change in `machine/virt/ctx.S`, `machine/unix/ctx_rv64.S`
-  and `machine/esp-idf/ctx.S`, and the allocator's `saved` list cut to
-  s1..s10. The Tang Nano board and the ESP32-P4 cannot be run from here.
 - **x86-64.** It has five callee-saved registers and its two allocator
   scratches are already contended (see item 9 of the
   [CI baseline](2026-11-10-CI-GREEN-BASELINE.md)). It keeps the memory
   counter.
 - **Weighting.** A tick still charges one unit per function entry or loop
-  iteration, whatever the size of the code it covers. Charging by block size
-  is the next step and changes what a quantum means; it is a separate change.
-- **QOS.** The pin, `appside/entry.c` and the pairing sweep.
+  iteration, whatever the size of the code it covers.
+- **QOS.** `appside/entry.c` writes `hart->fuel` and must use
+  `fpr_fuel_set`; QOS Native's C needs `-ffixed-x27`; the pin and the
+  pairing sweep. None of it is done.
+- **Boards.** The Tang Nano and the ESP32-P4 were not run; QEMU ran the
+  Tang Nano examples.
 
 ## Tests changed
 
@@ -130,9 +159,18 @@ memory accesses at an IPC near 0.4. None of those is measured yet.
   They use `fpr_fuel_set` and `fpr_fuel_left`, which are the hart cell on
   the other targets. `check_self_loops.py` caught the first: its exact tick
   count read 0 used of 1,000,000.
-- `machine/builtin/contracts/rv64-c-heap-v1.json`: `runtime/fpr.h` hash. The
-  header gained the two accessors and the A64 ABI numbers; nothing in the
-  RV64 builtin heap.
+- The RISC-V and shared oracles (`tests/typed_ir/*_oracle.c`,
+  `tests/base/*_oracle.c` and the C inside eight `check_*.py`) modelled fuel
+  as `hart[0]`. They set and read it through `FUEL_SET`/`fuel_left`, which
+  are x27, s11 or `hart[0]` by architecture, and every RISC-V compile in
+  the test scripts carries `-ffixed-x27`. `check_typed_ir_rv_frames.py`
+  seeds s11 as fuel, as the A64 one seeds x27.
+- `machine/builtin/contracts/rv64-c-heap-v1.json`: the hashes of
+  `runtime/fpr.h` (the accessors and A64 ABI numbers) and of
+  `compiler/Codegen/Target/RV.hs` (the register set and the tick). The
+  contract asks for requalification; the three checks it gates pass under
+  QEMU, and whether the scalar-boundary audit needs more than that is the
+  owner's call.
 
 ## Verification
 
@@ -143,7 +181,7 @@ On the Mac (arm64), each run with its own build cache:
   both modes, `check_rv64_linux`).
 - `make unit-tests`: pass.
 - `check_base`, run with each failing job set aside until the rest passed:
-  218 jobs pass. Set aside were the six already red on main (see the
+  218 jobs pass after the AArch64 commit and 220 after the RISC-V one. Set aside were the six already red on main (see the
   [CI baseline](2026-11-10-CI-GREEN-BASELINE.md)) and
   `check_pos_core.py`, whose compile timed out beside five other cold
   builds and which passes alone.
@@ -154,5 +192,9 @@ On the Mac (arm64), each run with its own build cache:
   and the two oracle sources seed, refill and read the counter through x27
   on AArch64.
 
-Not verified: Linux AArch64 (the Pi), QOS, and anything on x86-64 or RISC-V
-beyond their unchanged emission.
+RISC-V under QEMU: the `riscv` group (the RV32 and RV64 oracles, frames,
+modules, the ESP and QOS hart conventions), the Tang Nano examples and
+program checks.
+
+Not verified: Linux AArch64 (the Pi), Linux RISC-V (no cross compiler
+here), QOS, the boards, and x86-64 beyond its unchanged emission.
