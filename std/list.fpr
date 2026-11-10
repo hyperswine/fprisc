@@ -253,7 +253,12 @@ intersperse sep xs = case xs of
 # every element equal (deep ==) to an EARLIER one is dropped; order kept.
 # Quadratic: use a Set for big lists.
 unique : (xs : List a) -> List a | size unique <= len xs .
-unique xs = reverse (fold (fn seen x -> case member x seen of True -> seen | False -> x :: seen) Nil xs).
+unique xs = uniqueGo xs Nil.
+# `seen` holds the kept elements, newest first; each step keeps at most one.
+uniqueGo : (xs : List a | measure xs) -> List a -> List a .
+uniqueGo xs seen = case xs of
+    Nil -> reverse seen
+  | x :: r -> (case member x seen of True -> uniqueGo r seen | False -> uniqueGo r (x :: seen)).
 
 # ---- sorting -------------------------------------------------------------------------
 # A stable merge sort: equal elements keep their order, so sorting by one key

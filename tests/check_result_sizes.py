@@ -31,6 +31,7 @@ main =
   _ = print (L.length (L.range 4611686018427387903 4611686018427387903));
   _ = print (L.length (L.map (fn x -> x + 1) [1,2,3]));
   _ = print (L.length (L.zip [1,2,3] [4,5]));
+  _ = print (L.length (L.unique [1,2,1,3,2]));
   print (L.length (L.append [1,2] [3,4,5])).
 '''
 
@@ -94,16 +95,13 @@ def main():
 
         p,exe,env=build('library',LIBRARY)
         assert p.returncode==0,(p.stdout[-7000:],p.stderr)
-        for name in ['range','repeat','reverse','append','map','indexedMap','filter','filterMap','take','drop','zip','zipWith']:
+        for name in ['range','repeat','reverse','append','map','indexedMap','filter','filterMap','take','drop','zip','zipWith',
+                     'unique','sortWith','sortBy']:
             line=next((line for line in p.stdout.splitlines() if re.search(r'^  '+name+r'@[^:]+: declared size',line)),None)
             assert line and line.endswith('PROVEN'),(name,line,p.stdout[-7000:])
             rows.append(dict(case='library-size-proof',name=name,diagnostic=line.strip()))
-        for name in ['unique','sortWith']:
-            line=next((line for line in p.stdout.splitlines() if re.search(r'^  '+name+r'@[^:]+: declared size',line)),None)
-            assert line and 'UNPROVED' in line and 'annotation is not used' in line,(name,line)
-            rows.append(dict(case='unsupported-library-size',name=name,diagnostic=line.strip()))
-        run('library',exe,env,'0\n0\n1\n3\n2\n5\n')
-        print('Standard list size proofs, explicit unsupported lemmas and signed endpoints PASS',flush=True)
+        run('library',exe,env,'0\n0\n1\n3\n2\n3\n5\n')
+        print('Standard list size proofs, including unique and sorting, and signed endpoints PASS',flush=True)
 
         source='literal = "éλ🙂\\x00\\xff".\nmain = print (strlen literal).\n'
         p,exe,env=build('byte-string',source)

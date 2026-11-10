@@ -173,8 +173,10 @@ checkResultSizes=do
         , "inner xs = case xs of [] -> [] | x :: _ -> x."
         , "unicode = \"éλ🙂\"."
         , "cat x = strcat x \"éλ🙂\"."
+        , "sorted : (a -> a -> b) -> List a -> List a."
+        , "sorted cmp xs = sortListWith cmp xs."
         ]
-      names=S.fromList ["rev","reverse","mapGo","map","direct","repeatGo","repeat","rangeGo","range","duplicate","inner","unicode","cat"]
+      names=S.fromList ["rev","reverse","mapGo","map","direct","repeatGo","repeat","rangeGo","range","duplicate","inner","unicode","cat","sorted"]
       (_,native)=compile "result-sizes" source names
       (_,tops)=prepare "result-sizes" source
       (measures,errors)=Safety.measureCheck tops
@@ -190,7 +192,7 @@ checkResultSizes=do
           (M.fromList (zip ps (map Cost.CN lengths))) bound)
       require name=check ("missing result size: "++name++"; "++show bounds) (M.member name bounds)
   check "result-size fixture measures verified" (null errors)
-  mapM_ require ["rev","reverse","mapGo","map","direct","repeatGo","repeat","rangeGo","range","unicode","cat"]
+  mapM_ require ["rev","reverse","mapGo","map","direct","repeatGo","repeat","rangeGo","range","unicode","cat","sorted"]
   check "accumulator and direct maps preserve structural size"
     (at "rev" [] [4,3]==Just 7 && at "map" [] [0,4]==Just 4 && at "direct" [] [0,4]==Just 4)
   check "repeat size clamps negative inputs and retains accumulator size"
@@ -203,11 +205,13 @@ checkResultSizes=do
     (M.notMember "inner" bounds)
   check "String sizes count UTF-8 bytes"
     (at "unicode" [] []==Just 8 && at "cat" [] [5]==Just 13)
+  check "the runtime sort returns a permutation of its list"
+    (at "sorted" [] [0,0]==Just 0 && at "sorted" [] [0,7]==Just 7)
   let twice=M.singleton "duplicate" (Cost.CMul [Cost.CN 2,Cost.CLen (firstParam "duplicate")])
       twiceBounds=Sizes.verifiedBounds (Sizes.proveSizes measures twice native)
   check "independently preserved non-unit slope can be proved"
     (M.member "duplicate" twiceBounds)
-  putStrLn "Result sizes: typed list patterns, accumulator/direct induction, signed repeat/range, UTF-8 bytes and false-invariant refusals passed"
+  putStrLn "Result sizes: typed list patterns, accumulator/direct induction, signed repeat/range, UTF-8 bytes, the runtime sort and false-invariant refusals passed"
 
 checkRecordUpdateLayouts=do
   let source="set : Int -> {x : Int} -> {x : Int}. set n p = {p | x = n}. "

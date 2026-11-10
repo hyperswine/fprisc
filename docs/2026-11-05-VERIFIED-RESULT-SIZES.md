@@ -95,6 +95,13 @@ range, repeat, reverse, append, map, indexedMap, filter, filterMap, take, drop,
 zip and zipWith. `unique` and sorting still need richer callback/nested-container
 invariants; their annotations remain explicitly unproved and unused.
 
+On Nov 10 these three were verified too, without callback invariants. `unique`
+is now a measured first-order helper (`uniqueGo xs seen`) that keeps the
+`len xs + len seen` accumulator invariant. `sortWith` calls the runtime merge
+`sortListWith`, which the pass treats as a primitive: it returns a permutation
+of its list whatever the comparator answers, so its size is exactly `len xs`.
+`sortBy` is proved through `sortWith`.
+
 These are **partial-correctness** lemmas: they bound a result if evaluation
 returns. They do not establish termination, eliminate a trap, or reorder effects.
 The minimum-Int range still overflows after its preceding `before` print, with
