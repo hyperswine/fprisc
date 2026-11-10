@@ -18,7 +18,7 @@ CONFIGS = {
 }
 # programs that need arguments, files or environment from tests/check_std.py
 NEEDS_HARNESS = {'store', 'storewire', 'storeconc', 'durable', 'posix', 'apps'}
-SUBSET = ['list', 'string', 'map', 'json', 'foundation', 'codec', 'ifelse', 'pagination']  # sorting, strings, trees, parsing, ADTs, codecs: wide pass coverage per build
+SUBSET = ['list', 'string', 'map', 'json', 'foundation', 'codec', 'ifelse', 'pagination', 'sort']  # sorting, strings, trees, parsing, ADTs, codecs, a primitive as a value: wide pass coverage per build
 full = os.environ.get('RELIABILITY_FULL') == '1'
 progs = sorted(p.stem for p in (ROOT / 'tests/std').glob('*.expected')
                if p.stem not in NEEDS_HARNESS and (ROOT / 'tests/std' / (p.stem + '.fpr')).exists()) if full else SUBSET

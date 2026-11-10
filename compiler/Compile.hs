@@ -418,7 +418,7 @@ compileWithReport accepted report = do
       -- the runtime releases every root an actor took when the turn that
       -- took it ends, so the compiler inserts no `drop` any more (the
       -- autoDrop pass of docs/2026-08-25-MEMORY.md is retired).
-      let (tops0, asNotes) = aritySpill tops0R
+      let (tops0, asNotes) = (\(ts, ns) -> (etaPrimitiveValues ts, ns)) (aritySpill tops0R)
       mapM_ putStrLn asNotes
       -- ---- ML-style modules: expand sigs/structures, typecheck (HM +
       -- rows), resolve operators by operand type, monomorphize -----------
@@ -436,8 +436,8 @@ compileWithReport accepted report = do
           -- too so root' -- used for cons/tid tables -- matches what the
           -- root emits.  Notes are dropped here: the pass above already
           -- printed the same lines.
-          root' = expandU (fst (aritySpill root0))
-          units = [(h, expandU (fst (aritySpill uts))) | (h, uts) <- units0]
+          root' = expandU (etaPrimitiveValues (fst (aritySpill root0)))
+          units = [(h, expandU (etaPrimitiveValues (fst (aritySpill uts)))) | (h, uts) <- units0]
           tops = expandU tops0
       unless (null preludeExpErrs) $ do
         putStrLn "=== SIG/STRUCT: ERRORS ==="
