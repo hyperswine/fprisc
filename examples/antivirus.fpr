@@ -1,4 +1,5 @@
 #!/usr/bin/env -S fpr run
+
 # antivirus.fpr -- toyav, ported to FP-RISC.
 #
 # The original lives in Playground/python-playground-UV/toyav: a small
@@ -31,7 +32,9 @@
 # and `_`, `...` skips, block terminators, backtracking over data bindings,
 # block starts and skips, the search budget (--max-states) and --json.
 # Not ported: --ast (the parsed rule tree is not printed).
+
 profile base.
+
 File = use "std/file".
 L = use "std/list".
 O = use "std/option".
