@@ -441,6 +441,10 @@ void buddy_release_range(void *addr, uw bytes);
 void buddy_init(void *base, uw size);
 void buddy_tag(void *p, uw tag);            /* charge a block to tag (0: no one) */
 uw buddy_tag_of(void *p);
+int buddy_order_for(uw bytes);              /* the order a request is served from */
+int buddy_block_order(void *p);             /* a live block's order */
+uw buddy_order_bytes(int order);            /* a block of that order, header included */
+uw fpr_mem_cached_bytes(void);              /* actors.c: free blocks held in the harts' caches */
 extern void (*fpr_buddy_uncharge)(uw tag, uw bytes); /* a charged block went home */
 
 /* Saved actor context: integer slots, then callee-saved FP state where
