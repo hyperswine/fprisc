@@ -186,7 +186,7 @@ evaluate definitions known = go
         let (headExpr,args)=spine e [] in
         case T.exprNode headExpr of
           T.Var (T.Global n _) | n=="error",M.notMember n definitions -> []
-          T.Var (T.Global n _) | M.member n known || (M.notMember n definitions && n `elem` ["+","-","*","<","<=",">",">=","==","!=","strcat","strlen","substr"]) ->
+          T.Var (T.Global n _) | M.member n known || (M.notMember n definitions && n `elem` ["+","-","*","<","<=",">",">=","==","!=","strcat","strlen","substr","sortListWith"]) ->
             [(q,call q n vs) | (q,vs)<-many p args]
           _ -> [(p,Unknown)]
       T.CodeCall (T.CodeId n) captures xs -> [(q,call q n (map (lookupValue q) captures++vs)) | (q,vs)<-many p xs]
@@ -240,6 +240,11 @@ primitive name args=case (name,args) of
   ("strcat",[Sized StringSize a ea,Sized StringSize b eb])->Sized StringSize (add a b) (ea&&eb)
   ("strlen",[Sized StringSize a True])->Number a
   ("substr",[Sized StringSize a _,_,_])->Sized StringSize a False
+  -- List.sortWith's runtime merge (runtime.c sortListWith) returns a
+  -- permutation of its list, whatever the comparator answers: every merge
+  -- emits each index once, then one fresh cell per element (a list shorter
+  -- than two comes back as itself; a non-Ordering answer traps instead).
+  ("sortListWith",[_,Sized ListSize a exact])->Sized ListSize a exact
   _->Unknown
 
 match p pat value=case T.patNode pat of
