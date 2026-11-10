@@ -35,5 +35,5 @@ static V exercise(V mv){
  return TAG(32);
 }
 FPR_FN(fpr_g_Reserve_x2eexercise,exercise,1);
-static V tick(V u){(void)u;fpr_hart()->fuel=1;return (V)&fpr_unit;}
+static V tick(V u){(void)u;fpr_fuel_set(fpr_hart(), 1);return (V)&fpr_unit;}
 FPR_FN(fpr_g_Reserve_x2etick,tick,1);

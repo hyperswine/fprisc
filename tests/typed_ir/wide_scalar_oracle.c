@@ -1,6 +1,19 @@
 /* The actual emitted narrow entry constructs a wide call. At each fuel reset
  * another actor may use every hart argument cell before the first resumes. */
 #include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (state.hart[0]=(n))
+#define fuel_left() ((intptr_t)state.hart[0])
+#endif
 
 static struct { uintptr_t guard0; intptr_t hart[64]; uintptr_t guard1; } state = {
     .guard0 = 0xbad123, .hart = {[58] = -1}, .guard1 = 0x456bad
@@ -13,7 +26,7 @@ __attribute__((noreturn)) void oracle_finish(int code) {
 }
 void oracle_tick(void) {
     ++ticks;
-    state.hart[0] = 3;
+    FUEL_SET(3);
     for (int i = 1; i <= 56; ++i) state.hart[i] = 0xdead0000 + i;
 }
 void *fpr_stack_grow(void) { oracle_finish(1); }
@@ -45,7 +58,7 @@ int main(void) {
     __asm__ volatile ("mv tp, %0" :: "r"(state.hart) : "memory");
     for (unsigned k = 0; k < sizeof(cases)/sizeof(cases[0]); ++k) {
         for (int n = 0; n <= 512; ++n) {
-            state.hart[0]=1; ticks=0;
+            FUEL_SET(1); ticks=0;
             intptr_t got = cases[k].entry(2*n+1);
             if (got != 2*answer(cases[k].width,n)+1 || !ticks ||
                 state.guard0!=0xbad123 || state.guard1!=0x456bad) oracle_finish(1);

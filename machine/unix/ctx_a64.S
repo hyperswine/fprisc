@@ -1,6 +1,6 @@
 /* ctx_a64.S — fpr_ctx_switch for AArch64 AAPCS64.  x0=save x1=load.
- * Layout: 0 = resume pc, 1 = sp, 4..12 = x19..x27, 14 = x29 (slot 13
- * is padding); d8-d15 in slots 16..23.  AAPCS64 makes them callee-saved,
+ * Layout: 0 = resume pc, 1 = sp, 4..11 = x19..x26, 14 = x29 (slots 12
+ * and 13 are padding); d8-d15 in slots 16..23.  AAPCS64 makes them callee-saved,
  * and clang uses them for INTEGER values too: QOS apps once kept a 16-word
  * integer-only context, and a7f4fd6's a_spawn_inbox lost its result header
  * (clang held the constant in d8 across a park; the actor resumed on another
@@ -34,7 +34,8 @@ SYM(fpr_ctx_switch):
     stp x21, x22, [x0, #48]
     stp x23, x24, [x0, #64]
     stp x25, x26, [x0, #80]
-    str x27, [x0, #96]         // x28 stays live: it is the hart register
+    // slot 12 (#96) is unused: x27 is the hart thread's fuel counter and x28
+    // its hart register, neither a per-context value
     str x29, [x0, #112]
 #ifndef FPR_CTX_A64_BENCH_INTEGER /* tools/bench-a64-context.py only: no build selects it */
     stp d8, d9, [x0, #128]
@@ -49,7 +50,6 @@ SYM(fpr_ctx_switch):
     ldp x21, x22, [x1, #48]
     ldp x23, x24, [x1, #64]
     ldp x25, x26, [x1, #80]
-    ldr x27, [x1, #96]         // x28 stays live: it is the hart register
     ldr x29, [x1, #112]
 #ifndef FPR_CTX_A64_BENCH_INTEGER /* tools/bench-a64-context.py only: no build selects it */
     ldp d8, d9, [x1, #128]

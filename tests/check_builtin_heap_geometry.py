@@ -59,7 +59,7 @@ def main():
             outputs={}
             for mode in ('exact','short'):
                 image=out/f'{width}-{mode}.elf'
-                run(['riscv64-unknown-elf-gcc',*common,f'-march=rv{width}im_zicsr',
+                run(['riscv64-unknown-elf-gcc','-ffixed-x27',*common,f'-march=rv{width}im_zicsr',
                      '-mabi='+('ilp32' if width==32 else 'lp64'),'-mcmodel=medany','-Os','-ffreestanding',
                      '-fno-builtin','-nostdlib','-nostartfiles','-DFPR_BUILTIN','-DHEAP_FREESTANDING',
                      '-DFPR_BUILTIN_HEAP_MAX_BYTES=65536',

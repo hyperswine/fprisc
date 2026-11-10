@@ -1,5 +1,18 @@
 /* Check actual generated raw-bits functions, independently of the runtime. */
 #include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 #include <stdio.h>
 struct boolean { uint32_t tid, var; } fpr_true = {1, 1}, fpr_false = {1, 0};
 /* A hart block as generated code reads it: fuel at word 0, the stack
@@ -8,7 +21,7 @@ struct boolean { uint32_t tid, var; } fpr_true = {1, 1}, fpr_false = {1, 0};
    for the link (typed-IR functions check every entry; legacy leaves skip). */
 static uintptr_t hart[64] = {1000000};
 uintptr_t *probe_hart = hart;
-uintptr_t fpr_fuel_exhausted(void) { hart[0] = 1000000; return 0; }
+uintptr_t fpr_fuel_exhausted(void) { FUEL_SET(1000000); return 0; }
 void *fpr_stack_grow(void) { return 0; }
 static void hart_init(void) { hart[57] = 0; hart[58] = UINTPTR_MAX; }
 #define DECL(n) extern uintptr_t fpr_fn_##n(uintptr_t, uintptr_t)

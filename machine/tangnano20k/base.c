@@ -38,10 +38,10 @@ __attribute__((noreturn)) void hal_poweroff(int code){heap_report();raw(code?"FP
 void fpr_cpanic_n(const char *s,uw n){raw("Base panic: ");for(uw i=0;i<n;i++)hal_putc(s[i]);hal_putc('\n');hal_poweroff(1);}
 void fpr_cpanic(const char *s){fpr_cpanic_n(s,strlen(s));}
 void fpr_builtin_main(void){
- fpr_set_tp(&fpr_harts[0]);fpr_builtin_heap_clock(&fpr_harts[0].region_bytes);fpr_harts[0].fuel=1000000;fpr_harts[0].stk_lo=(uw)_heap_end+4096;fpr_harts[0].stk_span=65536-4096;
+ fpr_set_tp(&fpr_harts[0]);fpr_builtin_heap_clock(&fpr_harts[0].region_bytes);fpr_fuel_set(&fpr_harts[0],1000000);fpr_harts[0].stk_lo=(uw)_heap_end+4096;fpr_harts[0].stk_span=65536-4096;
  fpr_builtin_heap_init(_heap_start,_heap_end);(void)fpr_fn_main();hal_poweroff(0);
 }
-void fpr_fuel_exhausted(void){fpr_harts[0].fuel=1000000;}
+void fpr_fuel_exhausted(void){fpr_fuel_set(&fpr_harts[0],1000000);}
 
 static uint64_t cycles(void){
 #if __riscv_xlen == 32

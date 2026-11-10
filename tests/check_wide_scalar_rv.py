@@ -62,6 +62,7 @@ def main():
         checked(
             [
                 "riscv64-unknown-elf-gcc",
+                '-ffixed-x27',
                 "-march=rv64imafdc_zicsr_zifencei",
                 "-mabi=lp64",
                 "-mcmodel=medany",

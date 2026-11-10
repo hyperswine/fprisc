@@ -37,7 +37,7 @@ units=();while IFS= read -r unit;do [[ -z "$unit" ]] || units+=("$unit");done < 
 specs="$(riscv64-unknown-elf-gcc -print-file-name=picolibc.specs)"
 libc=()
 if [[ "$specs" == /* && -f "$specs" ]]; then libc=(--specs=picolibc.specs); fi
-riscv64-unknown-elf-gcc -march="$march" -mabi="$abi" -mcmodel=medany -Os ${libc[@]+"${libc[@]}"} \
+riscv64-unknown-elf-gcc -march="$march" -mabi="$abi" -mcmodel=medany -ffixed-x27 -Os ${libc[@]+"${libc[@]}"} \
  -ffreestanding -nostdlib -nostartfiles -fno-builtin -DFPR_NHARTS=1 -DFPR_BUILTIN ${uart[@]+"${uart[@]}"} ${diagnostics[@]+"${diagnostics[@]}"} \
  -DFPR_SIMPLE_RISC -DFPR_CPU_MHZ="$freq" -DFPR_BUILTIN_HEAP_MAX_BYTES=8388608 -ffunction-sections -fdata-sections \
  -Wl,--gc-sections -Wl,--no-warn-rwx-segments -I runtime -I machine/builtin \

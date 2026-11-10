@@ -123,7 +123,7 @@ SECTIONS {
             objects = re.findall(r'(?ms)^    \.balign 8\n\.Ltirstr[^:\n]*:\n    \.long 9000\n.*?(?=^$)', text)
             asm.write_text('.text\n' + '\n'.join(body for _, body in chosen) + fuel_wrapper(text) + '\n.section .rodata\n' + '\n'.join(objects))
             exe = root / 'oracle.elf'
-            run(['riscv64-unknown-elf-gcc', '-march=rv' + width + 'im_zicsr_zifencei', '-mabi=' + ('lp64' if width == '64' else 'ilp32'), '-mcmodel=medany',
+            run(['riscv64-unknown-elf-gcc', '-ffixed-x27', '-march=rv' + width + 'im_zicsr_zifencei', '-mabi=' + ('lp64' if width == '64' else 'ilp32'), '-mcmodel=medany',
                  '-msmall-data-limit=0', '-O2', '-ffreestanding', '-nostdlib', '-fno-builtin',
                  '-T', ld, crt, asm, ROOT/'tests/typed_ir/rv_oracle.c', '-o', exe], env)
             result = run(['qemu-system-riscv' + width, '-machine', 'virt', '-smp', '1', '-m', '16M',

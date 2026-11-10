@@ -67,7 +67,7 @@ SECTIONS {
             assert bool(re.search(r"^\.Ltir_rotate2_m3loop:", selected, re.M)) == (enabled == "1" and env.get('FPR_TYPED_IR_EARLY_LOOPS') != '1')
             assembly.write_text(selected)
             exe = tmp / "oracle.elf"
-            run(["riscv64-unknown-elf-gcc", "-march=rv64im_zicsr_zifencei",
+            run(["riscv64-unknown-elf-gcc", '-ffixed-x27', "-march=rv64im_zicsr_zifencei",
                  "-mabi=lp64", "-mcmodel=medany", "-msmall-data-limit=0",
                  "-O2", "-ffreestanding", "-nostdlib", "-fno-builtin",
                  "-DFPR_ORACLE_RV64", "-T", link, crt, assembly,

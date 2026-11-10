@@ -35,7 +35,8 @@ idf_component_register(
            lwip pthread vfs fatfs wear_levelling
            esp_wifi esp_netif esp_event nvs_flash bt esp_hosted)
 # the runtime is freestanding C with its own conventions: its warnings are its own
-target_compile_options(${COMPONENT_LIB} PRIVATE -w
+# -ffixed-x27: s11 is the fuel counter (runtime/fpr.h); no runtime C may hold a value in it
+target_compile_options(${COMPONENT_LIB} PRIVATE -w -ffixed-x27
   -DFPR_NHARTS=2 -DFPR_CTX_WORDS=28 -DFPR_POSIX -DFPR_ESP_IDF # the system, and its host
   -DFPR_SLAB_SZ=32768 -DFPR_STACK_SZ=65528
   $<$<BOOL:${FPR_ESP_DEBUG}>:-DFPR_ESP_DEBUG>

@@ -21,7 +21,7 @@ def main():
         raise SystemExit("Run FPR_XLEN=32 machine/tangnano20k/build-softfloat.sh first")
     OUT.mkdir(parents=True, exist_ok=True)
     args = [
-        "riscv64-unknown-elf-gcc", "-march=rv32im_zicsr_zifencei", "-mabi=ilp32",
+        "riscv64-unknown-elf-gcc", '-ffixed-x27', "-march=rv32im_zicsr_zifencei", "-mabi=ilp32",
         "-mcmodel=medany", "-Os", "-ffreestanding", "-nostdlib", "-nostartfiles",
         "-fno-builtin", "-DFPR_NHARTS=1", "-DFPR_BUILTIN", "-DFPR_SIMPLE_RISC",
         "-DFPR_TANGNANO_QEMU", "-DFPR_CPU_MHZ=27", "-DFPR_BUILTIN_HEAP_MAX_BYTES=8388608",

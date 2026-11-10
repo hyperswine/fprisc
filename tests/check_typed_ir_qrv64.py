@@ -219,7 +219,7 @@ def main():
             print('qrv64 execution SKIP: ' + ', '.join(missing))
             return
         obj = tmp / 'app.o'
-        run(['riscv64-unknown-elf-gcc', '-march=rv64imafd_zicsr_zifencei', '-mabi=lp64', '-c', asm, '-o', obj], env)
+        run(['riscv64-unknown-elf-gcc', '-ffixed-x27', '-march=rv64imafd_zicsr_zifencei', '-mabi=lp64', '-c', asm, '-o', obj], env)
         relocs = run(['riscv64-unknown-elf-readelf', '-rW', obj], env)
         kinds = set(re.findall(r'R_RISCV_[A-Z0-9_]+', relocs))
         assert not any('TLS' in k or 'TPREL' in k for k in kinds), kinds
@@ -233,7 +233,7 @@ def main():
         ld = tmp / 'link.ld'; ld.write_text(LINK)
         oracle = tmp / 'oracle.c'; oracle.write_text(ORACLE)
         exe = tmp / 'app.elf'
-        run(['riscv64-unknown-elf-gcc', '-march=rv64imafd_zicsr_zifencei', '-mabi=lp64', '-mcmodel=medany',
+        run(['riscv64-unknown-elf-gcc', '-ffixed-x27', '-march=rv64imafd_zicsr_zifencei', '-mabi=lp64', '-mcmodel=medany',
              '-msmall-data-limit=0', '-O2', '-ffreestanding', '-nostdlib', '-fno-builtin', '-static',
              '-T', ld, crt, probe, oracle, '-o', exe], env)
         result = run(['qemu-system-riscv64', '-machine', 'virt', '-smp', '1', '-m', '16M',

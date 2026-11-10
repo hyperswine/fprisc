@@ -14,8 +14,21 @@ static unsigned yields,fallbacks;
 #endif
 #define CHECK(x) do { if(!(x)) {fprintf(stderr,"captured SIMD oracle line %d\n",__LINE__);exit(1);} } while(0)
 static V tag(V n){return (V)(((uintptr_t)n<<1)|1);}
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 void fpr_fuel_exhausted(void){
- hart[0]=1;yields++;
+ FUEL_SET(1);yields++;
  /* A hostile C call destroys caller-saved lane/scratch registers. Captures
   * must survive in preserved registers or spill slots across this call. */
 #ifdef __aarch64__
@@ -47,8 +60,9 @@ static V wide(V x,V*c){volatile double m=num(x)*num(c[0]),a=m+num(c[1]),b=a-num(
 int main(void){
 #ifdef __aarch64__
  V old;__asm__ volatile("mov %0,x28":"=r"(old));__asm__ volatile("mov x28,%0"::"r"(hart):"memory");
+ intptr_t oldfuel=fuel_left();
 #endif
- hart[57]=0;hart[58]=(V)UINTPTR_MAX;hart[0]=1;
+ hart[57]=0;hart[58]=(V)UINTPTR_MAX;FUEL_SET(1);
  V cells[130],original[130];uint8_t kinds[]={1};Col col={128,cells+1};Col*cols[]={&col};Vec v={9006,1,0,0,0,1,kinds,cols};
  if(TRAP_CASE){
   V top=INTPTR_MAX/2,bottom=-top-1;v.len=2;cells[1]=0;cells[2]=0;
@@ -59,7 +73,7 @@ int main(void){
  }
  unsigned cases=0;
  for(int n=0;n<66;n++)for(int c=-4;c<=4;c++)for(int op=0;op<4;op++){
-  v.len=n;v.cols=n?cols:0;hart[0]=1;
+  v.len=n;v.cols=n?cols:0;FUEL_SET(1);
   for(int i=0;i<130;i++)cells[i]=original[i]=i-30;
   V answer=op==0?fpr_fn_probeAdd(tag(c),(V)&v):op==1?fpr_fn_probeSub(tag(c),(V)&v):op==2?fpr_fn_probeRsub(tag(c),(V)&v):fpr_fn_probeLong(tag(c),(V)&v);
   CHECK(answer==(V)&v&&v.len==n);
@@ -69,7 +83,7 @@ int main(void){
   * their upper bits. Choose lane signs so each checked result fits. */
  V limits[]={INTPTR_MAX/2,-INTPTR_MAX/2-1,INTPTR_MAX/2-1,-INTPTR_MAX/2,0};
  for(unsigned c=0;c<5;c++)for(int op=0;op<3;op++){
-  V cap=limits[c];v.len=3;v.cols=cols;hart[0]=1;
+  V cap=limits[c];v.len=3;v.cols=cols;FUEL_SET(1);
   V x=cap>0?1:-1;
   if(op==0)x=-x;
   for(int i=0;i<3;i++)cells[i+1]=x;
@@ -82,16 +96,16 @@ int main(void){
  /* Aggregating two lane ticks must preserve the scalar logical charge,
   * even though forced-yield counts differ between pair and scalar loops. */
  for(int n=0;n<66;n++){
-  v.len=n;v.cols=n?cols:0;hart[0]=1000000;
+  v.len=n;v.cols=n?cols:0;FUEL_SET(1000000);
   for(int i=0;i<130;i++)cells[i]=0;
   unsigned before=yields;
   CHECK(fpr_fn_probeAdd(tag(3),(V)&v)==(V)&v);
-  CHECK(hart[0]==1000000-n-2&&yields==before);
+  CHECK(fuel_left()==1000000-n-2&&yields==before);
  }
  uint64_t edges[]={0,UINT64_C(0x8000000000000000),1,UINT64_C(0x0010000000000000),UINT64_C(0x7fefffffffffffff),UINT64_C(0x3ff0000000000000),UINT64_C(0xbff0000000000000),UINT64_C(0x7ff0000000000000),UINT64_C(0xfff0000000000000),UINT64_C(0x7ff8000000000001),UINT64_C(0x7ff0000000000001)};
  uint64_t seed=UINT64_C(0x123456789abcdef);
  for(int trial=0;trial<11*11+2048;trial++)for(int op=0;op<2;op++){
-  int n=trial<121?trial%34:2+trial%3;v.len=n;v.cols=n?cols:0;v.rep=4;kinds[0]=3;hart[0]=1;
+  int n=trial<121?trial%34:2+trial%3;v.len=n;v.cols=n?cols:0;v.rep=4;kinds[0]=3;FUEL_SET(1);
   V c[7];for(int j=0;j<7;j++)c[j]=trial<121?(V)edges[(trial/11+j)%11]:(V)next(&seed);
   for(int i=0;i<130;i++)cells[i]=original[i]=trial<121?(V)edges[(trial+i)%11]:(V)next(&seed);
   probe_a6=c[6];probe_a7=(V)&v; /* generated x64 parameters 7/8 use these cells */
@@ -104,7 +118,7 @@ int main(void){
  kinds[0]=3;CHECK(fpr_fn_probeAdd(tag(1),(V)&v)==123);
  CHECK(fallbacks==2&&yields>1000);
 #ifdef __aarch64__
- __asm__ volatile("mov x28,%0"::"r"(old):"memory");
+ __asm__ volatile("mov x28,%0"::"r"(old):"memory");FUEL_SET(oldfuel);
 #endif
  printf("CAPTURED_SIMD_PASS %u cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, %u hostile yields\n",cases,yields);
 }

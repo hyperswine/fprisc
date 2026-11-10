@@ -23,7 +23,7 @@ uw __wrap_fpr_stack_reserve(uw sp,uw bytes){
  return __real_fpr_stack_reserve(sp,bytes);
 }
 V __wrap_fpr_fn_main(void){return __real_fpr_fn_main();}
-static V tick(V u){(void)u;fpr_hart()->fuel=1;return (V)&fpr_unit;}
+static V tick(V u){(void)u;fpr_fuel_set(fpr_hart(), 1);return (V)&fpr_unit;}
 FPR_FN(fpr_g_Reserve_x2etick,tick,1);
 '''
 

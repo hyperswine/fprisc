@@ -155,7 +155,7 @@ int main(void){
             images={}
             for mode in ('plain','measured'):
                 image=out/(mode+'.elf')
-                run(['riscv64-unknown-elf-gcc','-march=rv64imc_zicsr' if args.rvc else '-march=rv64im_zicsr','-mabi=lp64','-mcmodel=medany','-msmall-data-limit=0',
+                run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv64imc_zicsr' if args.rvc else '-march=rv64im_zicsr','-mabi=lp64','-mcmodel=medany','-msmall-data-limit=0',
                      '-O2','-ffreestanding','-fno-builtin','-nostdlib','-ffunction-sections','-fdata-sections','-Wl,--gc-sections',
                      '-DFPR_BUILTIN','-DFPR_BUILTIN_ARC',*(['-DFPR_BUILTIN_HEAP_STATS'] if mode=='measured' else []),
                      '-Iruntime','-Imachine/builtin','-T',ROOT/'tests/typed_ir/kernel_link.ld',out/'crt.S',assembly,

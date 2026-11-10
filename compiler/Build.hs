@@ -206,7 +206,7 @@ build configuration p = do
       -- it saves registers one at a time, never paired with x28.
       fixed = case tArch of
         "aarch64" -> ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"]
-        "riscv64" -> ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany"]
+        "riscv64" -> ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-ffixed-x27"] -- s11: the fuel counter
         _ -> []
       cflags = archFlags ++ ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe] ++ ["-DFPR_LAYOUT_CHECK" | layoutCheck] ++ ["-DFPR_LAYOUT_FAULT" | layoutFault] ++ ["-DFPR_LAYOUT_REPORT" | layoutReport] ++ ["-DFPR_BUMP_CHECK" | bumpCheck] ++ ["-DFPR_LEGACY_CELLS" | not compactCells]
       linux = if tOS == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []

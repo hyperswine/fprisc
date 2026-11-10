@@ -143,7 +143,7 @@ def main():
 
         def build(width, name, source=heap, extra=()):
             image = tmp / f'rv{width}-{name}.elf'
-            run(['riscv64-unknown-elf-gcc', *common,
+            run(['riscv64-unknown-elf-gcc', '-ffixed-x27', *common,
                  f'-march=rv{width}im_zicsr', '-mabi=' + ('ilp32' if width == 32 else 'lp64'),
                  '-mcmodel=medany', '-Os', '-ffreestanding', '-fno-builtin', '-nostdlib', '-nostartfiles',
                  '-DFPR_BUILTIN', '-DFPR_BUILTIN_ARC', '-DHEAP_FREESTANDING', *extra,
@@ -184,7 +184,7 @@ def main():
             assert 'INDEXED BUILTIN HEAP HOLDS' in boot(width, image)
             print(f'RV{width} bounded 64 KiB/8 MiB heaps, oversized refusal and complete bounded contracts: passed', flush=True)
             if width == 32:
-                output = run(['riscv64-unknown-elf-gcc', *common, '-march=rv32im_zicsr', '-mabi=ilp32',
+                output = run(['riscv64-unknown-elf-gcc', '-ffixed-x27', *common, '-march=rv32im_zicsr', '-mabi=ilp32',
                               '-DFPR_BUILTIN', '-DFPR_BUILTIN_HEAP_MAX_BYTES=4294967296ULL',
                               '-c', heap, '-o', tmp/'bad-rv32-limit.o'], 1)
                 assert 'maximum exceeds address space' in output, output

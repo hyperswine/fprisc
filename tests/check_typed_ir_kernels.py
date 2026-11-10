@@ -180,7 +180,7 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
             asm.write_text('.text\n'+body+rodata)
             crt=tmp/(target+'-crt.S');crt.write_text((FIX/'kernel_crt.S').read_text().replace('sd ra','sw ra').replace('ld ra','lw ra') if width=='32' else (FIX/'kernel_crt.S').read_text())
             exe=tmp/(target+'.elf')
-            run(['riscv64-unknown-elf-gcc','-march=rv'+width+('imafd_zicsr_zifencei' if floating else 'im_zicsr_zifencei'),'-mabi='+('lp64' if width=='64' else 'ilp32'),
+            run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv'+width+('imafd_zicsr_zifencei' if floating else 'im_zicsr_zifencei'),'-mabi='+('lp64' if width=='64' else 'ilp32'),
                  '-mcmodel=medany','-msmall-data-limit=0','-O2','-ffreestanding','-nostdlib','-fno-builtin',
                  '-T',FIX/'kernel_link.ld',crt,asm,oracle,'-o',exe],env)
             output=run(['qemu-system-riscv'+width,'-machine','virt','-smp','1','-m','16M','-nographic','-bios','none','-kernel',exe],env)
@@ -193,7 +193,7 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
                 link([asm,case],exe,mac,env)
                 result=run([*runner,exe],env)
             else:
-                run(['riscv64-unknown-elf-gcc','-march=rv'+width+('imafd_zicsr_zifencei' if floating else 'im_zicsr_zifencei'),'-mabi='+('lp64' if width=='64' else 'ilp32'),
+                run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv'+width+('imafd_zicsr_zifencei' if floating else 'im_zicsr_zifencei'),'-mabi='+('lp64' if width=='64' else 'ilp32'),
                      '-mcmodel=medany','-msmall-data-limit=0','-O2','-ffreestanding','-nostdlib','-fno-builtin',
                      '-T',FIX/'kernel_link.ld',crt,asm,case,'-o',exe],env)
                 result=run(['qemu-system-riscv'+width,'-machine','virt','-smp','1','-m','16M','-nographic','-bios','none','-kernel',exe],env)

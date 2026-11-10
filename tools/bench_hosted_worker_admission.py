@@ -70,6 +70,7 @@ def measure(compiler, size, directory, source_text=None, switches=None):
     subprocess.run(
         [
             "riscv64-unknown-elf-gcc",
+            '-ffixed-x27',
             "-march=rv64imafdc_zicsr",
             "-mabi=lp64",
             "-c",

@@ -10,15 +10,19 @@ def shim(mac,hart):
  def addr(reg,s):
   s=sym(s)
   return f'adrp {reg},{s}'+('@PAGE' if mac else '')+'\n'+f'add {reg},{reg},'+(s+'@PAGEOFF' if mac else ':lo12:'+s)+'\n'
- def clobber(name,callee,keep):
-  return f'.globl {sym(name)}\n{sym(name)}:\n stp x29,x30,[sp,#-16]!\n mov x29,sp\n bl {sym(callee)}\n ldp x29,x30,[sp],#16\n'+''.join(f' mov x{i},#0\n' for i in range(18) if i!=keep)+' ret\n'
- s='.text\n'+clobber('fpr_stack_reserve','oracle_reserve',0)+clobber('fpr_fuel_exhausted','oracle_tick',None)
+ # x27 is the fuel counter (runtime/fpr.h fpr_fuel_set), not a callee-saved
+ # value: one unit on entry and after every tick, so every tick is hostile,
+ # as hart[0]=1 was for the memory counter
+ def clobber(name,callee,keep,refuel=False):
+  return f'.globl {sym(name)}\n{sym(name)}:\n stp x29,x30,[sp,#-16]!\n mov x29,sp\n bl {sym(callee)}\n ldp x29,x30,[sp],#16\n'+''.join(f' mov x{i},#0\n' for i in range(18) if i!=keep)+(' mov x27,#1\n' if refuel else '')+' ret\n'
+ s='.text\n'+clobber('fpr_stack_reserve','oracle_reserve',0)+clobber('fpr_fuel_exhausted','oracle_tick',None,refuel=True)
  s+=f'.globl {sym("oracle_invoke")}\n{sym("oracle_invoke")}:\n sub sp,sp,#256\n stp x29,x30,[sp]\n'
- for i in range(10):s+=f' str x{19+i},[sp,#{16+i*8}]\n mov x{19+i},#{1000+i}\n'
+ for i in range(10):s+=f' str x{19+i},[sp,#{16+i*8}]\n mov x{19+i},#{1 if i==8 else 1000+i}\n'
  for i in range(8):s+=f' str d{8+i},[sp,#{96+i*8}]\n mov x9,#{2000+i}\n fmov d{8+i},x9\n'
  if hart=='x28':s+=addr('x10','fpr_posix_hart')+'ldr x28,[x10]\n'
  s+='mov x9,sp\n'+addr('x10','oracle_entry_sp')+'str x9,[x10]\n'+addr('x10','oracle_target')+'ldr x10,[x10]\n blr x10\n'
  for i in range(10):
+  if i==8:continue # the counter: spent, not preserved
   s+=(addr('x10','fpr_posix_hart')+'ldr x10,[x10]\n' if i==9 and hart=='x28' else f' mov x10,#{1000+i}\n')
   s+=f' cmp x{19+i},x10\n b.ne 99f\n'
  for i in range(8):s+=f' fmov x9,d{8+i}\n mov x10,#{2000+i}\n cmp x9,x10\n b.ne 99f\n'
@@ -83,7 +87,7 @@ __attribute__((noreturn)) void oracle_finish(int code){if(code)fprintf(stderr,"A
     print(run([emitter,'a64','mac' if mac else 'elf',hart,loops,asm],env),end='',flush=True)
     assert asm.read_text().count('reserve=yes')==3
     exe=out/f'oracle-{hart}-{loops}'
-    run(['cc','-O2','-fno-omit-frame-pointer',*(['-DSELF_LOOPS'] if loops=='1' else []),source,wrapper,asm,'-o',exe],env)
+    run(['cc','-O2','-ffixed-x27','-fno-omit-frame-pointer',*(['-DSELF_LOOPS'] if loops=='1' else []),source,wrapper,asm,'-o',exe],env)
     result=run([exe],env);assert 'A64_SIZED_FRAMES_PASS' in result,result
     print(f'A64 {hart} loops={loops}: '+result.strip(),flush=True)
   production_runtime(out,env,emitter)

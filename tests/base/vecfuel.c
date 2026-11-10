@@ -2,7 +2,7 @@
 #include "fpr.h"
 static V force_kernel_fuel(V unit) {
   (void)unit;
-  fpr_hart()->fuel = 2;
+  fpr_fuel_set(fpr_hart(), 2);
   return (V)&fpr_unit;
 }
 FPR_FN(fpr_g_forceKernelFuel, force_kernel_fuel, 1);

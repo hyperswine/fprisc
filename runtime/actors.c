@@ -1785,7 +1785,7 @@ static void to_sched(void) {
   fpr_hart_t *h = fpr_hart();
   acb_t *p = h->current;
   fpr_ctx_switch(p->ctx, h->sched_ctx); /* returns when re-scheduled */
-  fpr_hart()->fuel = FUEL_QUANTUM;      /* fresh slice on resume */
+  fpr_fuel_set(fpr_hart(), FUEL_QUANTUM); /* fresh slice on resume */
 }
 
 /* the compiler-inserted fuel check (0(tp) hit zero) lands here */
@@ -1797,7 +1797,7 @@ void fpr_fuel_exhausted(void) {
 #endif
   h->fuel_preempts++;
   FPR_SCHED_EVENT(FPR_SCHED_FUEL, h->id, h->current->id);
-  h->fuel = FUEL_QUANTUM;
+  fpr_fuel_set(h, FUEL_QUANTUM);
   TR(h->current, 14);
   enq(h, h->current); /* still runnable: back of our own queue */
   to_sched();
@@ -1807,7 +1807,7 @@ void fpr_fuel_exhausted(void) {
 static void trampoline(void) {
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h->current;
-  h->fuel = FUEL_QUANTUM;
+  fpr_fuel_set(h, FUEL_QUANTUM);
   if (a->entry == 0) {          /* actor 0: main itself */
     V r = fpr_fn_main();
     if (fpr_is_process) {       /* return to the loader, don't halt the machine */

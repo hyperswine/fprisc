@@ -57,7 +57,7 @@ int main(void){
 }
 ''')
         byte_elf=tmp/'raw-byte.elf'
-        run(['riscv64-unknown-elf-gcc','-march=rv64im_zicsr_zifencei','-mabi=lp64','-mcmodel=medany',
+        run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv64im_zicsr_zifencei','-mabi=lp64','-mcmodel=medany',
              '-msmall-data-limit=0','-O2','-ffreestanding','-nostdlib','-fno-builtin','-Wl,--gc-sections',
              '-T',ROOT/'tests/typed_ir/kernel_link.ld',crt,byte_asm,byte_c,'-o',byte_elf])
         out=run(['qemu-system-riscv64','-machine','virt','-m','16M','-nographic','-bios','none','-kernel',byte_elf])

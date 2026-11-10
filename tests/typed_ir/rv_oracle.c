@@ -1,6 +1,19 @@
 /* Independent oracle for direct typed RV32/RV64. Runtime calls are substitutes;
    Linux CI separately exercises TLS, actor scheduling and real allocation. */
 #include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 typedef intptr_t V;
 static V hart[64];
 static unsigned yields;
@@ -21,7 +34,7 @@ __attribute__((noreturn)) void oracle_finish(int code) {
 static V tag(V x) { return (V)(((uintptr_t)x << 1) | 1); }
 static V untag(V x) { return x >> 1; }
 void oracle_tick(void) {
-    hart[0] = 3; yields++;
+    FUEL_SET(3); yields++;
     for (int i=1; i<=56; i++) hart[i]=tag(-777);
 }
 uintptr_t fpr_stack_grow(void) { oracle_finish(1); }
@@ -46,17 +59,17 @@ int main(void) {
     hart[57]=0; hart[58]=(V)UINTPTR_MAX;
     unsigned count=0;
     for (V a=-20;a<=20;a++) for(V b=-10;b<=10;b++) {
-        hart[0]=1;
+        FUEL_SET(1);
         CHECK(fpr_fn_rvArith(tag(a),tag(b))==tag(a*b+a-b)); count++;
         CHECK(fpr_fn_rvChoose(tag(a),tag(b))==tag(a<b?a:b)); count++;
         if(b) { CHECK(fpr_fn_rvDiv(tag(a),tag(b))==tag(a/b)); count++; }
     }
     for (V n=0;n<100;n++) for(V a=-10;a<=10;a++) {
-        V b=31-a; hart[0]=1;
+        V b=31-a; FUEL_SET(1);
         CHECK(fpr_fn_rvLoop(tag(n),tag(a),tag(b))==tag(n%2 ? b+2*a : a+2*b)); count++;
     }
     for (V n=-20;n<=20;n++) {
-        hart[0]=1;
+        FUEL_SET(1);
         CHECK(fpr_fn_rvNested(tag(n))==tag(4*n+6)); count++;
         CHECK(fpr_fn_rvWideCall(tag(n))==tag(n+44)); count++;
     }

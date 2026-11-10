@@ -28,7 +28,7 @@ def main():
     # the ticks' register-saving wrapper is emitted once per unit, after the functions
     wrapper=re.search(r'(?ms)^fpr_fuel_save_local:\n.*?^\s*ret\n',text)
     asm.write_text('.text\n'+body+('\n'+wrapper.group(0) if wrapper else ''))
-    run(['clang','-O2','-ffp-contract=off','-ffixed-x28',asm,oracle,'-o',exe],env)
+    run(['clang','-O2','-ffp-contract=off','-ffixed-x27','-ffixed-x28',asm,oracle,'-o',exe],env)
     result=run([exe],env)
    elif target=='x64':
     available=host()
@@ -41,7 +41,7 @@ def main():
     # the ticks' register-saving wrapper is emitted once per unit, after the functions
     wrapper=re.search(r'(?ms)^fpr_fuel_save_local:\n.*?^\s*ret\n',text)
     asm.write_text('.text\n'+body+('\n'+wrapper.group(0) if wrapper else ''))
-    run(['riscv64-unknown-elf-gcc','-O2','-ffp-contract=off','-march=rv64imafd_zicsr_zifencei','-mabi=lp64','-mcmodel=medany','-msmall-data-limit=0','-ffreestanding','-nostdlib','-fno-builtin','-T',ROOT/'tests/typed_ir/kernel_link.ld',ROOT/'tests/typed_ir/kernel_crt.S',asm,oracle,'-o',exe],env)
+    run(['riscv64-unknown-elf-gcc','-ffixed-x27','-O2','-ffp-contract=off','-march=rv64imafd_zicsr_zifencei','-mabi=lp64','-mcmodel=medany','-msmall-data-limit=0','-ffreestanding','-nostdlib','-fno-builtin','-T',ROOT/'tests/typed_ir/kernel_link.ld',ROOT/'tests/typed_ir/kernel_crt.S',asm,oracle,'-o',exe],env)
     result=run(['qemu-system-riscv64','-machine','virt','-m','16M','-nographic','-bios','none','-kernel',exe],env)
     assert 'FLOAT_TREE_PASS' in result,result
    print(target+': '+result.strip(),flush=True)

@@ -6,11 +6,24 @@
 struct boolean {uint32_t tid,var;} fpr_true={1,1},fpr_false={1,0};
 static uintptr_t hart[64]={[0]=1000000,[58]=UINTPTR_MAX};
 uintptr_t *probe_hart=hart;
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 #ifdef __riscv
-void oracle_tick(void) { hart[0]=1000000; }
+void oracle_tick(void) { FUEL_SET(1000000); }
 void oracle_finish(int code) { *(volatile unsigned*)0x100000=code?0x13333:0x5555;for(;;){} }
 #else
-void fpr_fuel_exhausted(void) { hart[0]=1000000; }
+void fpr_fuel_exhausted(void) { FUEL_SET(1000000); }
 #endif
 void *fpr_stack_grow(void) { __builtin_trap(); }
 #define DECL(n) extern uintptr_t fpr_fn_##n(uintptr_t,uintptr_t,uintptr_t)
@@ -42,6 +55,7 @@ int main(void){
 #ifdef __aarch64__
  uintptr_t old; __asm__ volatile("mov %0,x28":"=r"(old));
  __asm__ volatile("mov x28,%0"::"r"(hart):"memory");
+ intptr_t oldfuel=fuel_left(); FUEL_SET(1000000);
 #endif
 #ifdef __riscv
  __asm__ volatile("mv tp,%0"::"r"(hart):"memory");
@@ -54,6 +68,7 @@ int main(void){
  for(unsigned i=0;i<4096;i++){uint64_t a=next(&seed),b=next(&seed),c=next(&seed);bad+=check64(a,b,c);bad+=check32(a,b,c);count++;}
 #ifdef __aarch64__
  __asm__ volatile("mov x28,%0"::"r"(old):"memory");
+ FUEL_SET(oldfuel);
 #endif
 #ifdef __riscv
  const char *msg=bad?"FLOAT_TREE_FAIL\n":"FLOAT_TREE_PASS\n";volatile unsigned char *uart=(void*)0x10000000;

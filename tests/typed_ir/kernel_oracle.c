@@ -1,6 +1,19 @@
 /* Independent integer-column oracle, with hostile fuel calls. This runs on
    native/Rosetta x64 and bare RV32/RV64; hosted scheduler checks are separate. */
 #include <stdint.h>
+/* The fuel counter: x27 on AArch64 and s11 on RISC-V (runtime/fpr.h
+   fpr_fuel_set; this file is then built -ffixed-x27), the hart block's
+   first word on x86-64. */
+#if defined(__aarch64__)
+#define FUEL_SET(n) __asm__ volatile("mov x27,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mov %0,x27":"=r"(n));return n;}
+#elif defined(__riscv)
+#define FUEL_SET(n) __asm__ volatile("mv s11,%0"::"r"((uintptr_t)(n)))
+static inline intptr_t fuel_left(void){intptr_t n;__asm__ volatile("mv %0,s11":"=r"(n));return n;}
+#else
+#define FUEL_SET(n) (hart[0]=(n))
+#define fuel_left() ((intptr_t)hart[0])
+#endif
 #ifndef __riscv
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,7 +55,7 @@ __attribute__((noreturn)) void oracle_finish(int code) { fprintf(stderr,"oracle 
 #endif
 #define CHECK(ok) do { if (!(ok)) oracle_finish(__LINE__); } while (0)
 static V tag(V x) { return (V)(((uintptr_t)x<<1)|1); }
-void oracle_tick(void) { hart[0]=1; yields++; for(int i=1;i<=56;i++) hart[i]=tag(-777); }
+void oracle_tick(void) { FUEL_SET(1); yields++; for(int i=1;i<=56;i++) hart[i]=tag(-777); }
 #ifndef __riscv
 void fpr_fuel_exhausted(void) {
     oracle_tick();
@@ -78,7 +91,7 @@ int main(void) {
     if(TRAP_CASE) {
         Vec v={9006,1,1,0,0,1,kinds,cols};
         const V top=INTPTR_MAX/2, bottom=-top-1;
-        hart[0]=1;
+        FUEL_SET(1);
         if(TRAP_CASE==1) { cells[0]=1; fpr_fn_probeFold(tag(1),tag(top),(V)&v); }
         if(TRAP_CASE==2) { cells[0]=top; fpr_fn_probeFold(tag(top),tag(0),(V)&v); }
         if(TRAP_CASE==3) { cells[0]=bottom; fpr_fn_probeDiv(tag(-1),(V)&v); }
@@ -86,7 +99,7 @@ int main(void) {
         oracle_finish(__LINE__);
     }
     for(int n=0;n<100;n++) for(int cap=-3;cap<=3;cap++) {
-        used=0; hart[0]=1;
+        used=0; FUEL_SET(1);
         Vec v={9006,1,n,0,0,1,kinds,n?cols:0};
         for(int i=0;i<n;i++) cells[i]=i-20;
         CHECK(fpr_fn_probeMap(tag(cap),(V)&v)==(V)&v);

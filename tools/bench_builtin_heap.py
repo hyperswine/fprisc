@@ -36,7 +36,7 @@ def main():
                 heap_sha256=hashlib.sha256(current.read_bytes()).hexdigest(),
                 fixture_sha256=hashlib.sha256(fixture.read_bytes()).hexdigest(),
                 tool_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-                compiler=run(['riscv64-unknown-elf-gcc','--version']).splitlines()[0],
+                compiler=run(['riscv64-unknown-elf-gcc','-ffixed-x27','--version']).splitlines()[0],
                 flags=flags,measure='deterministic guest instruction counts; no statistics/lookup counters; not hardware cycles or wall time',records=[])
     with tempfile.TemporaryDirectory(prefix='fpr-heap-cost-') as directory:
         out=Path(directory)
@@ -49,7 +49,7 @@ def main():
             samples={}
             for name,source in [('before',out/'before.c'),('after',current)]:
                 image=out/f'{width}-{name}.elf'
-                run(['riscv64-unknown-elf-gcc',*flags,*arch,'-T',out/'link.ld',out/'start.S',out/'hal.c',
+                run(['riscv64-unknown-elf-gcc','-ffixed-x27',*flags,*arch,'-T',out/'link.ld',out/'start.S',out/'hal.c',
                      fixture,source,ROOT/'machine/virt/memshim.c','-lgcc','-o',image])
                 output=run([*qemu,'-kernel',image])
                 counts={n:int(c) for n,c in re.findall(r'HEAP WORK nodes=(\d+) cycles=(\d+)',output)}

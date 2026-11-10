@@ -178,7 +178,7 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
         elf=out/'image.elf'
         # Keep the schedule dispatcher visible to the direct-call stack proof.
         flags=FLAGS if sequence is None else [*FLAGS,'-fno-jump-tables']
-        run(['riscv64-unknown-elf-gcc',*flags,'-Wl,--gc-sections','-Iruntime','-Imachine/builtin',
+        run(['riscv64-unknown-elf-gcc','-ffixed-x27',*flags,'-Wl,--gc-sections','-Iruntime','-Imachine/builtin',
              '-T',out/'link.ld',*inputs,'-lgcc','-o',elf])
         require(before=={str(p):sha(p.read_bytes()) for p in inputs},'link inputs changed during admission')
         require(verify_contract()==contract,'runtime contract changed during admission')
@@ -193,7 +193,7 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
             runtime_contract=contract,recipe_sha256=sha(Path(__file__).read_bytes()),
             runtime_recipe_sha256=sha((ROOT/'tools/static_arena_runtime.py').read_bytes()),
             root_source_sha256=source_hash,assembly_sha256=sha(asm.read_bytes()),
-            linked_inputs_sha256=before,flags=flags,build_commands=commands,toolchain=run(['riscv64-unknown-elf-gcc','--version']).splitlines()[0],
+            linked_inputs_sha256=before,flags=flags,build_commands=commands,toolchain=run(['riscv64-unknown-elf-gcc','-ffixed-x27','--version']).splitlines()[0],
             scope='One fresh, exclusive, non-reentrant RV64 builtin activation from the controlled boot path; no WCET claim.',
             assumptions=['Trusted compiler and C/assembler/linker toolchain; valid-memory program semantics.',
                          'QEMU virt machine address map, machine-mode reset, hart 0; other harts park without memory accesses.',

@@ -113,7 +113,7 @@ __attribute__((noreturn)) void oracle_finish(int n){*(volatile unsigned*)0x10000
             source += 'say("NATIVE_STACK_PASS\\n");return 0;}\n'
             (out/'oracle.c').write_text(source)
             image = out/(target+'.elf')
-            run(['riscv64-unknown-elf-gcc', '-march='+target+'im_zicsr', '-mabi='+abi,
+            run(['riscv64-unknown-elf-gcc', '-ffixed-x27', '-march='+target+'im_zicsr', '-mabi='+abi,
                  '-mcmodel=medany', '-msmall-data-limit=0', '-O2', '-ffreestanding', '-nostdlib',
                  '-fno-builtin', '-T', ROOT/'tests/typed_ir/kernel_link.ld', out/'crt.S',
                  out/'observed.s', out/'oracle.c', '-o', image], env)

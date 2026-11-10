@@ -26,7 +26,7 @@ int main(void) {
 #ifdef __riscv
     __asm__ volatile("mv tp,%0" :: "r"(hart) : "memory");
 #endif
-    hart[57]=0; hart[58]=(V)UINTPTR_MAX; hart[0]=1;
+    hart[57]=0; hart[58]=(V)UINTPTR_MAX; FUEL_SET(1);
     V sample=fpr_fn_sampleRow(tag(2));
     uint32_t shape=((uint32_t*)sample)[0], variant=((uint32_t*)sample)[1];
     if(TRAP_CASE) {
@@ -40,7 +40,7 @@ int main(void) {
     int cases=0;
     for(int width=9;width<=300;width=width==9?64:width==64?300:301)
     for(int n=0;n<100;n++) for(int cap=-2;cap<=2;cap++) {
-        used=0; hart[0]=1;
+        used=0; FUEL_SET(1);
         V captured=fpr_fn_sampleRow(tag(cap));
         Vec v={9006,3,n,shape,variant,width,kinds,n?cols:0};
         for(int c=0;c<width;c++) {
@@ -84,7 +84,7 @@ int main(void) {
     }
     /* The filter kernel requires its own element type, not just enough
        columns: take WideRow's identity from a generated WideRow. */
-    used=0; hart[0]=1;
+    used=0; FUEL_SET(1);
     V wideSample=fpr_fn_sampleWide(tag(1));
     uint32_t wideShape=((uint32_t*)wideSample)[0], wideVariant=((uint32_t*)wideSample)[1];
     CHECK(wideShape!=shape);

@@ -45,7 +45,7 @@ def main():
                 seconds=time.monotonic()-start
                 rts=dict(ast.literal_eval(stats.read_text().split('\n',1)[1]))
                 obj=d/'out.o'
-                subprocess.run(['riscv64-unknown-elf-gcc','-march=rv64imafdc_zicsr','-mabi=lp64','-c',out,'-o',obj],check=True,capture_output=True)
+                subprocess.run(['riscv64-unknown-elf-gcc','-ffixed-x27','-march=rv64imafdc_zicsr','-mabi=lp64','-c',out,'-o',obj],check=True,capture_output=True)
                 sizes=subprocess.check_output(['riscv64-unknown-elf-size','-A',obj],text=True)
                 text_bytes=sum(int(n) for n in re.findall(r'^\.text(?:\.\S+)?\s+(\d+)',sizes,re.M))
                 asm=out.read_text();functions=len(re.findall(r'^# fn ',asm,re.M))
