@@ -30,7 +30,7 @@
 module Cost (Cost (..), CostEq (..), Declared (..), Verdict (..), costProgram, costProgramFor, costProgramForWithSizes, simplifyCost, substituteCost, checkBoundsAssuming, declaredBounds, checkBounds, checkBoundsWith, checkBoundsUnderWith, renderVerdict, substCoefs, coefsIn, resolvePrims, evalConst, omegas, prettyCost, prettyIn, renameC, renderReport, hasOmega, primAllocates, allocGrows) where
 
 import Data.Graph (SCC (..), stronglyConnComp)
-import Data.List (intercalate, nub, sort, isPrefixOf)
+import Data.List (intercalate, nub, sort, isPrefixOf, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
@@ -329,6 +329,11 @@ primCostOf g lens
   where
     unit = Just (CN 1, CN 0)
 
+-- the costing environment's slot for "the pair a MutMap read answered, over
+-- this parameter's map" (not a source name: '#' cannot start one)
+mutmapReadKey :: Name -> Name
+mutmapReadKey t = '#' : t
+
 -- the cell a constructor with n fields asks the allocator for (runtime/fpr.h)
 cellBytes :: Int -> Integer
 cellBytes 0 = 0 -- nullary constructors are statics (fpr_true, fpr_false, fpr_unit, Nil)
@@ -547,6 +552,8 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
                 sub' = M.insert x (fromMaybe (CV "?") (symOf a)) sub
                 params' = case a of
                   CVar v | Just p <- paramOf v -> M.insert x p params
+                  _ | Just p <- sameMutMap a -> M.insert x p params
+                    | Just p <- mutmapRead a -> M.insert (mutmapReadKey x) p (M.delete x params)
                   _ -> M.delete x params
              in plus ra (costE done grp params' sub' b)
           CIf c t f -> plus (alloc (CN 1) (CN 0)) (plus (go c) (branch (go t) (go f)))
@@ -622,6 +629,17 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
                           w = CAdd [CN 1, CMul [CN 3, n], CMul [cmps, CAdd [CN 1, fnWork f]]]
                           a = CAdd [CMul [CN 24, n], CMul [cmps, fnAlloc f]]
                        in plus (R w a (CAdd [a, CMul [CN 24, n]]) []) rargs
+                  -- the MutMap engine (runtime/vec.c; docs/2026-11-10-MUTMAP.md).
+                  -- `len m` of a MutMap is its slot count C (a power of two,
+                  -- at most 3/4 full); `len k` the key's length (String
+                  -- bytes; an Int key's is unknown here, and costs 1).  A
+                  -- probe visits at most C slots and compares |k| bytes
+                  -- only where the stored hash is equal; growth to 2C
+                  -- re-places every entry by its stored hash, at most 2C
+                  -- slots each in the worst (flooded) case, and is charged
+                  -- to the insert that triggers it.  Columns: 3 words per
+                  -- slot plus 3 column headers and the 8-slot minimum.
+                  | Just r <- mutmapCost g args -> plus r rargs
                   | Just (pw, pa) <- primCostOf g (map lenOf args) -> plus (alloc pw pa) rargs
                   | otherwise -> plus (alloc (CAdd [CN 1, CO g]) (CO g)) rargs -- an undeclared primitive
                 _ -> plus (go h) (plus (alloc (CAdd [CN 1, CO "?"]) (CO "?")) rargs)
@@ -700,6 +718,78 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
           (CVar g, []) | Just p <- paramOf g -> CA p
           (CVar g, _) | S.member g globals, M.notMember g sub -> opaqueParams (ceAlloc (fromMaybe (opaqueEq g) (seen done g)))
           _ -> CO "?"
+        -- A MutMap handed back by an operation that cannot grow it has the
+        -- slot count it came in with: its `len` is the parameter's.  A read
+        -- answers (result, map); the map is field 1 of the pair.
+        sameMutMap a = case a of
+          CProj 1 (CVar t) -> M.lookup (mutmapReadKey t) params
+          _ -> case spine a [] of
+            (CVar g, args@(_ : _))
+              | g `elem` ["mutmapSetAt", "mutmapRemoveAt", "mutmapRemove",
+                          "fixedmapSetAt", "fixedmapRemoveAt", "fixedmapRemove", "fixedmapGrowable"], CVar v <- last args -> paramOf v
+            _ -> Nothing
+        mutmapRead a = case spine a [] of
+          (CVar g, args@(_ : _))
+            | g `elem` ["mutmapSlot", "mutmapValueAt", "mutmapSize", "mutmapCapacity", "mutmapFold", "mutmapToList",
+                        -- a FixedMap never grows, so its inserts answer (stored?, the same map)
+                        "fixedmapSlot", "fixedmapValueAt", "fixedmapSize", "fixedmapCapacity", "fixedmapFold", "fixedmapToList",
+                        "fixedmapInsert", "fixedmapInsertWith"],
+              CVar v <- last args -> paramOf v
+          _ -> Nothing
+        -- (work, alloc, live) of one MutMap primitive call, args costed by the caller
+        mutmapCost g args = case (g, args) of
+          ("strHash", [k]) -> Just (alloc (CAdd [CN 1, lenOf k]) (CN 0))
+          ("intHash", [_]) -> Just (alloc (CN 1) (CN 0))
+          ("mutmapStrings", [n]) -> Just (fresh (natOf n))
+          ("mutmapInts", [n]) -> Just (fresh (natOf n))
+          ("mutmapReserve", [n, m]) ->
+            let c = lenOf m
+                nn = slotsFor (natOf n)
+             in Just (R (CAdd [CN 1, CMul [CN 3, nn], c, CMul [c, nn]]) (CAdd [CN 48, CMul [CN 24, nn]])
+                        (CAdd [CN 48, CMul [CN 24, nn], CMul [CN 24, c]]) [])
+          ("mutmapInsert", [k, _, m]) -> Just (insertR k m)
+          ("mutmapInsertWith", [f, k, _, m]) -> Just (plus (insertR k m) (R (fnWork f) (fnAlloc f) (fnAlloc f) []))
+          ("mutmapSlot", [k, m]) -> Just (alloc (probeW k m) (CN 24))
+          ("mutmapValueAt", [_, _]) -> Just (alloc (CN 1) (CN 24))
+          ("mutmapSetAt", [_, _, _]) -> Just (alloc (CN 1) (CN 0))
+          ("mutmapRemoveAt", [_, m]) -> Just (alloc (CAdd [CN 1, lenOf m]) (CN 0))
+          ("mutmapRemove", [k, m]) -> Just (alloc (CAdd [probeW k m, lenOf m]) (CN 0))
+          ("mutmapSize", [_]) -> Just (alloc (CN 1) (CN 24))
+          ("mutmapCapacity", [_]) -> Just (alloc (CN 1) (CN 24))
+          -- one call of f per entry (at most C), each through two
+          -- partial applications of at most 56 bytes, freed at once
+          ("mutmapFold", [f, _, m]) ->
+            let c = lenOf m
+             in Just (R (CAdd [CN 1, CMul [c, CAdd [CN 4, fnWork f]]])
+                        (CAdd [CN 24, CMul [c, CAdd [CN 112, fnAlloc f]]])
+                        (CAdd [CN 24, CMul [c, CAdd [CN 112, fnAlloc f]]]) [])
+          -- a (key, value) pair and a cell per entry, and the Nil
+          ("mutmapToList", [m]) -> let c = lenOf m in Just (alloc (CAdd [CN 1, c]) (CAdd [CN 32, CMul [CN 48, c]]))
+          ("mutmapFree", [_]) -> Just (alloc (CN 1) (CN 0))
+          -- std/fixedmap: the same table, never grown.  An insert is one
+          -- probe sequence (at most C slots; the runtime's limit of n <= 3C/4
+          -- entries makes it at most n + 1, which the pass cannot name), a
+          -- store, and the (stored?, map) pair: no growth term at all.
+          ("fixedmapStrings", [n]) -> Just (fresh (natOf n))
+          ("fixedmapInts", [n]) -> Just (fresh (natOf n))
+          ("fixedmapInsert", [k, _, m]) -> Just (alloc (CAdd [probeW k m, CN 4]) (CN 24))
+          ("fixedmapInsertWith", [f, k, _, m]) -> Just (plus (alloc (CAdd [probeW k m, CN 4]) (CN 24)) (R (fnWork f) (fnAlloc f) (fnAlloc f) []))
+          ("fixedmapCapacity", [_]) -> Just (alloc (CN 1) (CN 24))
+          ("fixedmapGrowable", [_]) -> Just (alloc (CN 1) (CN 0))
+          (_, _) | Just g' <- stripPrefix "fixedmap" g -> mutmapCost ("mutmap" ++ g') args
+          _ -> Nothing
+          where
+            natOf n = mkNat (fromMaybe (CO "?n") (symOf n))
+            -- the slots that hold n entries at 3/4: below 8n/3 + 8
+            slotsFor n = CAdd [CN 8, CMul [CN 3, n]]
+            fresh n = let nn = slotsFor n in alloc (CAdd [CN 1, CMul [CN 3, nn]]) (CAdd [CN 160, CMul [CN 24, nn]])
+            probeW k m = let c = lenOf m; kl = lenOf k in CAdd [CN 1, kl, CMul [c, CAdd [CN 1, kl]]]
+            -- probe, then (at worst) grow C -> 2C: clear 2C slots, scan C, place C entries at <= 2C probes each
+            insertR k m =
+              let c = lenOf m
+               in R (CAdd [probeW k m, CN 25, CMul [CN 7, c], CMul [CN 2, c, c]])
+                    (CAdd [CN 240, CMul [CN 48, c]])
+                    (CAdd [CN 240, CMul [CN 72, c]]) []
 
 -- Monotonicity in all structural lengths. Signed scalar factors need a
 -- nonnegative proof before multiplying a size-dependent expression.

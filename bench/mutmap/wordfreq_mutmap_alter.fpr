@@ -1,0 +1,25 @@
+# word frequency: std/mutmap through MutMap.alter (the Option-taking update,
+# as the std/map version uses Map.update), top 10
+List = use "std/list".
+String = use "std/string".
+MutMap = use "std/mutmap".
+O = use "std/option".
+Ord = use "std/order".
+
+bump : O.Option Int -> O.Option Int .
+bump old = case old of O.Some c -> O.Some (c + 1) | O.None -> O.Some 1.
+
+byCount : (String, Int) -> (String, Int) -> Ord.Ordering .
+byCount a b = case a of
+  (wa, ca) -> (case b of (wb, cb) -> if ca != cb then Ord.int cb ca else Ord.string wa wb).
+
+main =
+  path = case Sys.args Unit of p :: _ -> p | Nil -> "data/corpus.txt";
+  ws = String.words (fileRead path);
+  counts = List.fold (fn m w -> MutMap.alter w bump m) (MutMap.strings Unit) ws;
+  (n, counts) = MutMap.size counts;
+  (es, counts) = MutMap.toList counts;
+  _ = MutMap.free counts;
+  top = List.take 10 (List.sortWith byCount es);
+  _ = print "distinct {n} total {List.length ws}";
+  List.each (fn e -> case e of (w, c) -> print "{w} {c}") top.

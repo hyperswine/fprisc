@@ -1,0 +1,179 @@
+# FixedMap (std/fixedmap, runtime/vec.c's fixedmap* engine): the linear hash
+# table with a FIXED entry limit.  It never grows; a new key into a full map
+# answers None and leaves the map as it was; a key already there is always
+# replaced; a remove makes room.  The oracle is the persistent Map with the
+# same limit applied by hand: 100,000 random operations on Int keys and on
+# String keys over universes larger than the limit, so the map is full for
+# most of the run.  Ownership misuse is refused at compile time
+# (tests/check_mutmap.py).
+unsafe base.
+List = use "std/list".
+FixedMap = use "std/fixedmap".
+MutMap = use "std/mutmap".
+Map = use "std/map".
+Order = use "std/order".
+O = use "std/option".
+
+next s = (s * 1103515245 + 12345) - ((s * 1103515245 + 12345) / 2147483648) * 2147483648.
+
+bump o = case o of O.Some c -> O.Some (c + 1) | O.None -> O.Some 1.
+dropOdd o = case o of O.Some c -> (if c - (c / 2) * 2 == 1 then O.None else O.Some (c + 1)) | O.None -> O.None.
+
+# the oracle's answer for a write that may add key k: refused only when k is
+# new and the reference already holds the limit
+fits lim k ref = Map.member k ref or Map.size ref < lim.
+okOf b = if b then O.Some Unit else O.None.
+# what alter f would add to an absent key
+addsNew f k ref = if Map.member k ref then False else O.isSome (f O.None).
+
+stepI : Int -> Int -> Int -> Int -> (Int, FixedMap Int Int, Map.Map Int Int) -> (Int, FixedMap Int Int, Map.Map Int Int) .
+stepI lim op k v st = case st of (bad, fm, ref) ->
+  if op == 0 then (case FixedMap.insert k v fm of (r, fm2) ->
+      ok = fits lim k ref;
+      (if r == okOf ok then bad else bad + 1, fm2, if ok then Map.insert k v ref else ref))
+  else if op == 1 then (bad, FixedMap.remove k fm, Map.remove k ref)
+  else if op == 2 then (case FixedMap.alter k bump fm of (r, fm2) ->
+      ok = not (addsNew bump k ref) or Map.size ref < lim;
+      (if r == okOf ok then bad else bad + 1, fm2, if ok then Map.alter k bump ref else ref))
+  else if op == 3 then (case FixedMap.alter k dropOdd fm of (r, fm2) ->
+      (if r == O.Some Unit then bad else bad + 1, fm2, Map.alter k dropOdd ref))
+  else if op == 4 then (case FixedMap.insertWith (fn a b -> a + b) k v fm of (r, fm2) ->
+      ok = fits lim k ref;
+      (if r == okOf ok then bad else bad + 1, fm2, if ok then Map.insertWith (fn a b -> a + b) k v ref else ref))
+  else (case FixedMap.get k fm of (got, fm2) -> (if got == Map.get k ref then bad else bad + 1, fm2, ref)).
+
+runI : (n : Int | measure n) -> Int -> Int -> Int -> (Int, FixedMap Int Int, Map.Map Int Int) -> (Int, FixedMap Int Int, Map.Map Int Int) .
+runI n lim universe s st = if n <= 0 then st else
+  s1 = next s;
+  s2 = next s1;
+  h1 = s1 / 32768;
+  h2 = s2 / 1024;
+  op = h1 - (h1 / 6) * 6;
+  k = h2 - (h2 / universe) * universe;
+  runI (n - 1) lim universe s2 (stepI lim op k (s1 / 7) st).
+
+skey k = "key-{k}".
+
+stepS : Int -> Int -> String -> Int -> (Int, FixedMap String Int, Map.Map String Int) -> (Int, FixedMap String Int, Map.Map String Int) .
+stepS lim op k v st = case st of (bad, fm, ref) ->
+  if op == 0 then (case FixedMap.insert k v fm of (r, fm2) ->
+      ok = fits lim k ref;
+      (if r == okOf ok then bad else bad + 1, fm2, if ok then Map.insert k v ref else ref))
+  else if op == 1 then (bad, FixedMap.remove k fm, Map.remove k ref)
+  else if op == 2 then (case FixedMap.alter k bump fm of (r, fm2) ->
+      ok = not (addsNew bump k ref) or Map.size ref < lim;
+      (if r == okOf ok then bad else bad + 1, fm2, if ok then Map.alter k bump ref else ref))
+  else if op == 3 then (case FixedMap.alter k dropOdd fm of (r, fm2) ->
+      (if r == O.Some Unit then bad else bad + 1, fm2, Map.alter k dropOdd ref))
+  else if op == 4 then (case FixedMap.insertWith (fn a b -> a + b) k v fm of (r, fm2) ->
+      ok = fits lim k ref;
+      (if r == okOf ok then bad else bad + 1, fm2, if ok then Map.insertWith (fn a b -> a + b) k v ref else ref))
+  else (case FixedMap.member k fm of (got, fm2) -> (if got == Map.member k ref then bad else bad + 1, fm2, ref)).
+
+runS : (n : Int | measure n) -> Int -> Int -> Int -> (Int, FixedMap String Int, Map.Map String Int) -> (Int, FixedMap String Int, Map.Map String Int) .
+runS n lim universe s st = if n <= 0 then st else
+  s1 = next s;
+  s2 = next s1;
+  h1 = s1 / 32768;
+  h2 = s2 / 1024;
+  op = h1 - (h1 / 6) * 6;
+  k = h2 - (h2 / universe) * universe;
+  runS (n - 1) lim universe s2 (stepS lim op (skey k) (s1 / 7) st).
+
+verdictI name st = case st of (bad, fm, ref) ->
+  (n, fm2) = FixedMap.size fm;
+  (c, fm3) = FixedMap.capacity fm2;
+  frozen = FixedMap.freeze Order.int fm3;
+  print "{name}: {bad} wrong answers, size {n} = {Map.size ref}: {n == Map.size ref}, never past {c}: {n <= c}, frozen = oracle: {Map.entries frozen == Map.entries ref}".
+verdictS name st = case st of (bad, fm, ref) ->
+  (n, fm2) = FixedMap.size fm;
+  (c, fm3) = FixedMap.capacity fm2;
+  frozen = FixedMap.freeze Order.string fm3;
+  print "{name}: {bad} wrong answers, size {n} = {Map.size ref}: {n == Map.size ref}, never past {c}: {n <= c}, frozen = oracle: {Map.entries frozen == Map.entries ref}".
+
+# insert keys i .. i+n-1; how many were stored
+fillCount : (n : Int | measure n) -> Int -> Int -> FixedMap Int Int -> (Int, FixedMap Int Int) .
+fillCount n i acc m = if n <= 0 then (acc, m) else
+  (r, m1) = FixedMap.insert i (i * i) m;
+  fillCount (n - 1) (i + 1) (if r == O.Some Unit then acc + 1 else acc) m1.
+
+# the slot count of a map, through its fold being over slots: toMutMap's
+# capacity is the slots' 3/4
+slotsAfter : Int -> Int .
+slotsAfter n =
+  m = FixedMap.ints n;
+  mm = FixedMap.toMutMap m;
+  (c, mm2) = MutMap.capacity mm;
+  _ = MutMap.free mm2;
+  c.
+
+main =
+  # filling to exactly n, then the n+1-th new key refused with the map intact
+  m = FixedMap.ints 5;
+  (stored, m) = fillCount 5 0 0 m;
+  (full, m) = FixedMap.isFull m;
+  (r6, m) = FixedMap.insert 100 1 m;
+  (r6w, m) = FixedMap.insertWith (fn a b -> a + b) 101 1 m;
+  (ra, m) = FixedMap.alter 102 bump m;
+  (n, m) = FixedMap.size m;
+  (es, m) = FixedMap.sortedList Order.int m;
+  _ = print "fill to 5: {stored} stored, full {full}; a 6th key: insert {r6}, insertWith {r6w}, alter {ra}; size {n}, entries {es}";
+  # replacing in a full map always succeeds
+  (u1, m) = FixedMap.insert 3 333 m;
+  (u2, m) = FixedMap.insertWith (fn a b -> a + b) 4 1000 m;
+  (u3, m) = FixedMap.alter 0 bump m;
+  (u4, m) = FixedMap.alter 100 (fn o -> O.None) m;
+  (v3, m) = FixedMap.get 3 m;
+  (v4, m) = FixedMap.get 4 m;
+  (v0, m) = FixedMap.get 0 m;
+  _ = print "full map updates: insert {u1}, insertWith {u2}, alter {u3}, alter-to-None on an absent key {u4}; 3 -> {v3}, 4 -> {v4}, 0 -> {v0}";
+  # remove makes room; alter to None removes
+  m = FixedMap.remove 1 m;
+  (r7, m) = FixedMap.insert 100 7 m;
+  (r8, m) = FixedMap.insert 101 8 m;
+  (d, m) = FixedMap.alter 2 (fn o -> O.None) m;
+  (r9, m) = FixedMap.insert 101 9 m;
+  (r10, m) = FixedMap.insert 102 10 m;
+  (es2, m) = FixedMap.sortedList Order.int m;
+  _ = print "remove then insert: {r7}, then full again {r8}; alter-remove {d}, replace {r9}, a new key {r10}; entries {es2}";
+  # capacity never changes, sized once
+  (c, m) = FixedMap.capacity m;
+  _ = FixedMap.free m;
+  _ = print "capacity {c}; after toMutMap, MutMap.capacity (3/4 of the slots) for n = 1, 6, 7, 12, 13, 1000: {[slotsAfter 1, slotsAfter 6, slotsAfter 7, slotsAfter 12, slotsAfter 13, slotsAfter 1000]}";
+  # zero and negative limits: every new key refused
+  z = FixedMap.strings 0;
+  (rz, z) = FixedMap.insert "a" 1 z;
+  (cz, z) = FixedMap.capacity z;
+  (gz, z) = FixedMap.get "a" z;
+  _ = FixedMap.free z;
+  ng = FixedMap.ints (0 - 3);
+  (rn, ng) = FixedMap.insert 1 1 ng;
+  (cn, ng) = FixedMap.capacity ng;
+  _ = FixedMap.free ng;
+  _ = print "limit 0: insert {rz}, capacity {cz}, get {gz}; limit -3: insert {rn}, capacity {cn}";
+  # a full fixed map handed to MutMap grows on from there
+  g = FixedMap.ints 3;
+  (_, g) = fillCount 3 10 0 g;
+  mm = FixedMap.toMutMap g;
+  mm = MutMap.insert 99 1 mm;
+  (gn, mm) = MutMap.size mm;
+  _ = MutMap.free mm;
+  _ = print "toMutMap: a full 3 then one more: size {gn}";
+  # string keys, update in a full map
+  s = FixedMap.strings 2;
+  (s1, s) = FixedMap.insert "cat" 1 s;
+  (s2, s) = FixedMap.insert "dog" 2 s;
+  (s3, s) = FixedMap.insert "eel" 3 s;
+  (s4, s) = FixedMap.insertWith (fn a b -> a + b) "cat" 10 s;
+  _ = print "strings: {s1} {s2} {s3} {s4}, frozen {Map.entries (FixedMap.freeze Order.string s)}";
+  # fold over a full map
+  f = FixedMap.ints 4;
+  (_, f) = fillCount 9 1 0 f;
+  (sum, f) = FixedMap.fold (fn acc k v -> acc + k + v) 0 f;
+  _ = FixedMap.free f;
+  _ = print "fold over 4 of 9: {sum}";
+  _ = verdictI "Int keys, limit 5, universe 7, 20,000 ops" (runI 20000 5 7 1 (0, FixedMap.ints 5, Map.ints));
+  _ = verdictI "Int keys, limit 300, universe 1000, 100,000 ops" (runI 100000 300 1000 7 (0, FixedMap.ints 300, Map.ints));
+  _ = verdictI "Int keys, limit 6, universe 1000000, 20,000 ops" (runI 20000 6 1000000 11 (0, FixedMap.ints 6, Map.ints));
+  _ = verdictS "String keys, limit 3, universe 5, 20,000 ops" (runS 20000 3 5 3 (0, FixedMap.strings 3, Map.strings));
+  verdictS "String keys, limit 700, universe 2000, 100,000 ops" (runS 100000 700 2000 5 (0, FixedMap.strings 700, Map.strings)).

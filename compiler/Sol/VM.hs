@@ -30,6 +30,7 @@ import Foreign.Marshal.Array (peekArray)
 import Foreign.Ptr ()
 import Foreign.Storable (peek)
 import qualified Sol.Gpu as Gpu
+import qualified Sol.MutMap as MM
 import qualified Sol.Process as Process
 import qualified Sol.Digest as Digest
 import qualified Sol.Format as Format
@@ -460,8 +461,17 @@ builtinArities =
         ("Vec.set", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
         ("Vec.toList", 1), ("Vec.fromList", 1), ("Vec.free", 1),
         ("Vec.zipAdd", 2), ("Vec.zipSub", 2), ("Vec.zipMul", 2), ("Vec.dot", 2), ("Vec.scale", 2),
-        ("sortListWith", 2)
+        ("sortListWith", 2),
+        ("mutmapStrings", 1), ("mutmapInts", 1), ("mutmapReserve", 2), ("mutmapInsert", 3), ("mutmapInsertWith", 4), ("mutmapSlot", 2), ("mutmapValueAt", 2), ("mutmapSetAt", 3), ("mutmapRemoveAt", 2), ("mutmapRemove", 2), ("mutmapSize", 1), ("mutmapCapacity", 1), ("mutmapFold", 3), ("mutmapToList", 1), ("mutmapFree", 1),
+        ("fixedmapStrings", 1), ("fixedmapInts", 1), ("fixedmapInsert", 3), ("fixedmapInsertWith", 4), ("fixedmapCapacity", 1), ("fixedmapGrowable", 1), ("fixedmapSlot", 2), ("fixedmapValueAt", 2), ("fixedmapSetAt", 3), ("fixedmapRemoveAt", 2), ("fixedmapRemove", 2), ("fixedmapSize", 1), ("fixedmapFold", 3), ("fixedmapToList", 1), ("fixedmapFree", 1)
       ]
+
+-- the FixedMap engine's reads, in-place writes and removals are MutMap's own
+fixedShared :: Name -> Maybe Name
+fixedShared g = case g of
+  _ | g `elem` ["fixedmapSlot", "fixedmapValueAt", "fixedmapSetAt", "fixedmapRemoveAt", "fixedmapRemove", "fixedmapSize", "fixedmapFold", "fixedmapToList", "fixedmapFree"] ->
+        Just ("mutmap" ++ drop (length ("fixedmap" :: String)) g)
+  _ -> Nothing
 
 builtinCall :: VMEnv -> Name -> [Value] -> IO Value
 builtinCall env g args
@@ -1036,6 +1046,9 @@ mkHal cons scriptArgs tx preempts rt =
       ("strcat", (2, \[a, b] -> fmap VStr (liftA2 (++) (vsStr a) (vsStr b)))),
       ("String.len", (1, \[v] -> case stringLength v of Just n -> pure (VInt (fromIntegral n)); Nothing -> vmPanic "strlen: not a String")),
       ("strlen", (1, \[v] -> case stringLength v of Just n -> pure (VInt (fromIntegral n)); Nothing -> vmPanic "strlen: not a String")),
+      -- MutMap's hashes (Sol.MutMap; the native 64-bit values, Strings as UTF-8)
+      ("strHash", (1, \[v] -> MM.strHashV <$> vsStr v)),
+      ("intHash", (1, \[v] -> case v of VInt i -> pure (MM.intHashV i); _ -> vmPanic "intHash: not an Int")),
       -- the host's Int is the tagged 63-bit value (docs/2026-10-12-INT-OVERFLOW.md)
       ("intMax", (1, \[_] -> pure (VInt (2 ^ (62 :: Int) - 1)))),
       ("intMin", (1, \[_] -> pure (VInt (negate (2 ^ (62 :: Int)))))),
@@ -2046,6 +2059,41 @@ vecCall env name args = case (name, args) of
         sortRuns runs = pairs runs >>= sortRuns
     sorted <- sortRuns (map (: []) (items xs))
     pure (foldr (\x acc -> VData listT 1 [x, acc]) (VData listT 0 []) sorted)
+  -- std/mutmap's engine (Sol.MutMap; native: runtime/vec.c)
+  ("mutmapStrings", [VInt n]) -> MM.newMutMap True n
+  ("mutmapInts", [VInt n]) -> MM.newMutMap False n
+  ("mutmapReserve", [VInt n, m@(VMutMap r)]) -> MM.mmReserve n r >> pure m
+  ("mutmapInsert", [k, v, m@(VMutMap r)]) -> MM.mmInsert k v r >> pure m
+  ("mutmapInsertWith", [f, k, v, m@(VMutMap r)]) ->
+    MM.mmInsertWith (\old new -> apply env f old >>= \g -> apply env g new) k v r >> pure m
+  ("mutmapSlot", [k, m@(VMutMap r)]) -> do i <- MM.mmSlot k r; pure (VData 4 0 [VInt i, m])
+  ("mutmapValueAt", [VInt i, m@(VMutMap r)]) -> do v <- MM.mmValueAt i r; pure (VData 4 0 [v, m])
+  ("mutmapSetAt", [VInt i, v, m@(VMutMap r)]) -> MM.mmSetAt i v r >> pure m
+  ("mutmapRemoveAt", [VInt i, m@(VMutMap r)]) -> MM.mmRemoveAt i r >> pure m
+  ("mutmapRemove", [k, m@(VMutMap r)]) -> MM.mmRemove k r >> pure m
+  ("mutmapSize", [m@(VMutMap r)]) -> do n <- MM.mmSize r; pure (VData 4 0 [VInt n, m])
+  ("mutmapCapacity", [m@(VMutMap r)]) -> do n <- MM.mmCapacity r; pure (VData 4 0 [VInt n, m])
+  ("mutmapFold", [f, z, m@(VMutMap r)]) -> do
+    es <- MM.mmEntries r
+    let step acc (k, v) = apply env f acc >>= \g -> apply env g k >>= \h -> apply env h v
+        go acc [] = pure acc
+        go acc (e : rest) = step acc e >>= \acc' -> go acc' rest
+    out <- go z es
+    pure (VData 4 0 [out, m])
+  ("mutmapToList", [m@(VMutMap r)]) -> do
+    es <- MM.mmEntries r
+    pure (VData 4 0 [foldr (\(k, v) acc -> VData listT 1 [VData 4 0 [k, v], acc]) (VData listT 0 []) es, m])
+  ("mutmapFree", [VMutMap _]) -> pure vUnit
+  -- std/fixedmap's engine: the same table with an entry limit (Sol.MutMap)
+  ("fixedmapStrings", [VInt n]) -> MM.newFixedMap True n
+  ("fixedmapInts", [VInt n]) -> MM.newFixedMap False n
+  ("fixedmapInsert", [k, v, m@(VMutMap r)]) -> do ok <- MM.fmInsert k v r; pure (VData 4 0 [VInt (if ok then 1 else 0), m])
+  ("fixedmapInsertWith", [f, k, v, m@(VMutMap r)]) -> do
+    ok <- MM.fmInsertWith (\old new -> apply env f old >>= \g -> apply env g new) k v r
+    pure (VData 4 0 [VInt (if ok then 1 else 0), m])
+  ("fixedmapCapacity", [m@(VMutMap r)]) -> do n <- MM.fmCapacity r; pure (VData 4 0 [VInt n, m])
+  ("fixedmapGrowable", [m@(VMutMap r)]) -> MM.fmGrowable r >> pure m
+  (g, as) | Just g' <- fixedShared g -> vecCall env g' as
   ("Vec.map", [f, VVec r]) -> vecScheme env "vecmap" f Nothing r
   ("Vec.filter", [f, VVec r]) -> vecScheme env "vecfilter" f Nothing r
   ("Vec.fold", [f, z, VVec r]) -> vecScheme env "vecfold" f (Just z) r

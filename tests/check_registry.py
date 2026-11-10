@@ -141,6 +141,7 @@ base('tools/sol-install-check.py', 300)
 base('tools/sol-effects-check.py', 300)
 base('tests/check_structural_ownership.py', 300)
 base('tests/check_callable_ownership.py', 300)
+base('tests/check_mutmap.py', 300)
 base('tests/check_generic_ownership.py', 600)
 base('tests/check_pos_core.py', 300)
 base('tests/check_compile_budget.py', 1200)  # cold compiles; allocation is load-independent
