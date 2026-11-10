@@ -28,7 +28,7 @@ def main():
     # the ticks' register-saving wrapper is emitted once per unit, after the functions
     wrapper=re.search(r'(?ms)^fpr_fuel_save_local:\n.*?^\s*ret\n',text)
     asm.write_text('.text\n'+body+('\n'+wrapper.group(0) if wrapper else ''))
-    run(['clang','-O2','-ffp-contract=off','-ffixed-x28',asm,oracle,'-o',exe],env)
+    run(['clang','-O2','-ffp-contract=off','-ffixed-x27','-ffixed-x28',asm,oracle,'-o',exe],env)
     result=run([exe],env)
    elif target=='x64':
     available=host()

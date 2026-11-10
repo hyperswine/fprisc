@@ -49,7 +49,7 @@ def main():
             asm.write_text('.text\n'+(body if a64 else adapt(body,mac,borrowed=target=='qx64')))
             exe=tmp/'oracle'
             def build(extra):
-                if a64:run(['clang','-O2','-ffp-contract=off','-ffixed-x28',*extra,asm,oracle,'-o',exe],mode)
+                if a64:run(['clang','-O2','-ffp-contract=off','-ffixed-x27','-ffixed-x28',*extra,asm,oracle,'-o',exe],mode)
                 else:link(['-ffp-contract=off',*extra,asm,oracle],exe,mac,mode)
             build([]);out=run([*runner,exe],mode);assert 'CAPTURED_SIMD_PASS' in out,out
             print(target+': '+out.strip(),flush=True)

@@ -2,16 +2,16 @@
 #include "fpr.h"
 static V arm(V unit) {
     (void)unit;
-    fpr_hart()->fuel = 1000000;
+    fpr_fuel_set(fpr_hart(), 1000000);
     return (V)&fpr_unit;
 }
 static V used(V unit) {
     (void)unit;
-    return TAG(1000000 - fpr_hart()->fuel);
+    return TAG(1000000 - fpr_fuel_left(fpr_hart()));
 }
 static V force(V unit) {
     (void)unit;
-    fpr_hart()->fuel = 1;
+    fpr_fuel_set(fpr_hart(), 1);
     return (V)&fpr_unit;
 }
 FPR_FN(fpr_g_Loops_x2earm, arm, 1);

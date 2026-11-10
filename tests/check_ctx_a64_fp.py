@@ -39,12 +39,14 @@ def main():
     qos = defines(['-DFPR_POSIX', '-DFPR_QOSAPP'])
     legacy_qos = defines(['-DFPR_POSIX', '-DFPR_QOSAPP', '-DFPR_LEGACY_CELLS'])
     assert hosted['FPR_CTX_WORDS'] == 24 and qos['FPR_CTX_WORDS'] == 24, (hosted, qos)
-    assert qos['FPR_NATIVE_ABI'] == 12 and legacy_qos['FPR_NATIVE_ABI'] == 11, (qos, legacy_qos)
+    assert qos['FPR_NATIVE_ABI'] == 16 and legacy_qos['FPR_NATIVE_ABI'] == 15, (qos, legacy_qos)  # x27 is the fuel counter
     failures = []
     with tempfile.TemporaryDirectory(prefix='fpr-ctx-a64-fp-') as d:
         for name, flags, lose in VARIANTS:
             exe = Path(d) / name
-            subprocess.run(['clang', '-O2', '-ffixed-x28', '-pthread', *flags,
+            # -ffixed-x27 with -ffixed-x28, as every C file that switches is
+            # built: the switch saves neither (x27 is the fuel counter)
+            subprocess.run(['clang', '-O2', '-ffixed-x27', '-ffixed-x28', '-pthread', *flags,
                             str(ROOT / 'tests/ctx_a64_fp.c'), str(ROOT / 'tests/ctx_a64_fp.S'),
                             str(ROOT / 'machine/unix/ctx_a64.S'), '-o', str(exe)], check=True, timeout=120)
             for run in range(3):

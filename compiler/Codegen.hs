@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 209 -- x64 inline bump: a spilled cell destination is built in a borrowed register
+codegenRev = 210 -- AArch64: the fuel counter is x27 (register fuel); the budget is x19..x26
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

@@ -26,7 +26,7 @@ static V invoke(void){
 #endif
 }
 V oracle_id(V x,V n){
- if(UNTAG(n)==8999 && depth){depth--;V child=invoke();check(child);fpr_hart()->fuel=1;}
+ if(UNTAG(n)==8999 && depth){depth--;V child=invoke();check(child);fpr_fuel_set(fpr_hart(), 1);}
  return TAG(UNTAG(x)+UNTAG(n));
 }
 V oracle_tail(V p){return p;}

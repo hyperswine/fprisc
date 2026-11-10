@@ -10,13 +10,13 @@ def main():
  with tempfile.TemporaryDirectory(prefix='fpr-a64-fp-') as d:
   tmp=Path(d);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp/'cache'))
   exe=tmp/'context'
-  run(['clang','-O2','-DFPR_POSIX','-ffixed-x28','-I'+str(ROOT/'runtime'),ROOT/'tests/base/a64_fp_context.c',ROOT/'tests/base/a64_fp_context.S',ROOT/'machine/unix/ctx_a64.S','-o',exe],env)
+  run(['clang','-O2','-DFPR_POSIX','-ffixed-x27','-ffixed-x28','-I'+str(ROOT/'runtime'),ROOT/'tests/base/a64_fp_context.c',ROOT/'tests/base/a64_fp_context.S',ROOT/'machine/unix/ctx_a64.S','-o',exe],env)
   print(run([exe],env).strip(),flush=True)
   # Removing FP state must make this independent context oracle fail.
   broken=tmp/'ctx-integer-only.S'
   broken.write_text(re.sub(r'^    (?:stp|ldp) d(?:8|10|12|14),.*\n','',(ROOT/'machine/unix/ctx_a64.S').read_text(),flags=re.M))
   negative=tmp/'integer-only'
-  run(['clang','-O2','-DFPR_POSIX','-ffixed-x28','-I'+str(ROOT/'runtime'),ROOT/'tests/base/a64_fp_context.c',ROOT/'tests/base/a64_fp_context.S',broken,'-o',negative],env)
+  run(['clang','-O2','-DFPR_POSIX','-ffixed-x27','-ffixed-x28','-I'+str(ROOT/'runtime'),ROOT/'tests/base/a64_fp_context.c',ROOT/'tests/base/a64_fp_context.S',broken,'-o',negative],env)
   bad=subprocess.run([str(negative)],env=env,capture_output=True,text=True,timeout=30)
   assert bad.returncode!=0 and 'Assertion' in bad.stderr,(bad.returncode,bad.stderr)
   print('A64 FP context: integer-only switch negative control fails as required PASS',flush=True)

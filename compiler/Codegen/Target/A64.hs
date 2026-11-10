@@ -138,7 +138,7 @@ a64RegisterFile = RegisterFile classOf reserved
       _ -> Nothing
     below limit d = not (null d) && all (\c -> c >= '0' && c <= '9') d
       && foldl (\n c -> n * 10 + (fromEnum c - fromEnum '0')) 0 d < (limit :: Int)
-    reserved = [Phys "sp", x 16, x 17, x 18, x 28, x 29, x 30]
+    reserved = [Phys "sp", x 16, x 17, x 18, x 27, x 28, x 29, x 30]
 
 -- what a C call destroys (AAPCS64 caller-saved integer registers and the
 -- link register); x18 is the platform register and never holds a value
@@ -150,16 +150,18 @@ callerSaved = Calling.callerClobbers Calling.AArch64
 scratchPool :: [Phys]
 scratchPool = map x [9 .. 15]
 
--- M3 allocation (Codegen.Allocate): the budget is x19..x27, the registers
--- the context switch preserves (docs/2026-10-19-REGISTER-ALLOCATION.md 3.3:
--- s1..s9; x28 is the hart register); the caller-saved pool is what no
+-- M3 allocation (Codegen.Allocate): the budget is x19..x26, the registers
+-- the context switch preserves (docs/2026-10-19-REGISTER-ALLOCATION.md 3.3;
+-- x27 is the fuel counter and x28 the hart register, both the hart
+-- thread's and never a value's: docs/2026-11-10-REGISTER-FUEL.md); the
+-- caller-saved pool is what no
 -- expansion reserves for itself across an instruction (x9..x11 are the
 -- entry sequence's scratch, so a value that spans it cannot take them, and
 -- that exclusion comes from the sequence's declared implicit definitions);
 -- x13..x15 are never allocated: they reload spilled operands and break copy
 -- cycles.
 calleeBudget, callerPool, allocScratch :: [Phys]
-calleeBudget = map x [19 .. 27]
+calleeBudget = map x [19 .. 26]
 callerPool = map x ([9 .. 12] ++ [8, 7 .. 0])
 allocScratch = map x [13, 14, 15]
 
@@ -1186,8 +1188,8 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
       (O.Common O.EntryCheck, _, _) | frameless -> framelessChecks False
       (O.Common O.EntryCheckTick, _, _) -> hartRead ++ stackCheck ++ tick
       (O.Common O.EntryCheck, _, _) -> hartRead ++ stackCheck
-      (O.Common O.EntryTick, _, _) -> hartRead ++ tick
-      (O.Common O.TickN, _, [OI n]) -> hartRead ++ tickN n
+      (O.Common O.EntryTick, _, _) -> tick
+      (O.Common O.TickN, _, [OI n]) -> tickN n
       (O.A64 A.PairLoad, [], [base, OI n]) -> ["ldr q" ++ show n ++ ", [" ++ reg base ++ "]"]
       (O.A64 A.PairStore, [], [base, OI n]) -> ["str q" ++ show n ++ ", [" ++ reg base ++ "]"]
       (O.A64 A.PairDuplicate, [], [src, OI n]) -> ["dup v" ++ show n ++ ".2d, " ++ reg src]
@@ -1283,8 +1285,7 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
       ++ [ lbl (entryLabel i SameStack) ++ ":" ]
       ++ hartRead
       ++ (if fuel then
-            [ "ldur x10, [x9, #0]", "sub x10, x10, #1", "stur x10, [x9, #0]",
-              "cmp x10, #0", "b.gt " ++ lbl (entryLabel i FuelReady),
+            [ "subs x27, x27, #1", "b.gt " ++ lbl (entryLabel i FuelReady),
               "bl " ++ fuelSaveSymbol (cfgFormat cfg),
               lbl (entryLabel i FuelReady) ++ ":" ]
           else [])
@@ -1349,11 +1350,10 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
                             "mov " ++ d ++ ", x17"])
           ++ [done ++ ":"]
     tick = tickN 1
+    -- the counter is x27 (runtime/fpr.h fpr_fuel_set): one flag-setting
+    -- subtract and a branch, no hart read and no memory
     tickN n =
-      [ "ldur x10, [x9, #0]",
-        "sub x10, x10, #" ++ show n,
-        "stur x10, [x9, #0]",
-        "cmp x10, #0",
+      [ "subs x27, x27, #" ++ show n,
         "b.gt " ++ lbl (entryLabel i FuelReady)
       ] ++ parkArgs "str" "stur" ++ [
         "bl " ++ fuelSaveSymbol (cfgFormat cfg)
