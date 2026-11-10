@@ -11,7 +11,8 @@ actor ever spawned:
   * a spawn walked the channel-block limbo list under its lock, past every
     block reaped since the harts were last all awake.
 
-Each workload runs at n and at 8n. Linear work is 8 times the time; the
+Each workload runs at n and at 8n (a third case checks that what dead
+workers held is usable again on a small heap). Linear work is 8 times the time; the
 check allows 24 times plus a second of fixed cost, and the old code took
 between 60 and several hundred times."""
 from pathlib import Path
@@ -51,6 +52,33 @@ main =
 """
 
 
+# After four spawners have churned 800 workers on a 16 MiB heap, the main
+# actor asks for a 300,000-cell list (7.2 MiB of cells).  It fits only if
+# what the dead workers held came back: their channel blocks out of limbo,
+# and the blocks the harts cache released when the buddy runs short
+# (docs/2026-11-11-HART-BLOCK-CACHE.md).  Before, it was "heap exhausted".
+SMALL_HEAP = """unsafe base.
+worker : unsafe Int -> Int -> Int -> Unit .
+worker parent k self = _ = send parent (lenOf (build k Nil) 0); Unit.
+build : unsafe Int -> List Int -> List Int .
+build n acc = if n == 0 then acc else build (n - 1) (n :: acc).
+lenOf : unsafe List Int -> Int -> Int .
+lenOf xs acc = case xs of _ :: r -> lenOf r (acc + 1) | _ -> acc.
+run : unsafe Int -> Int -> Int -> Int .
+run me n acc = if n == 0 then acc else
+  w = spawn (worker me 20000);
+  r = receiveFrom me w;
+  run me (n - 1) (acc + r).
+boss : unsafe Int -> Int -> Int -> Unit .
+boss parent n self = _ = send parent (run self n 0); Unit.
+main =
+  me = myself 0;
+  b1 = spawn (boss me 200); b2 = spawn (boss me 200); b3 = spawn (boss me 200); b4 = spawn (boss me 200);
+  r = receiveFrom me b1 + receiveFrom me b2 + receiveFrom me b3 + receiveFrom me b4;
+  print "{r} {lenOf (build 300000 Nil) 0}".
+"""
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='fpr-spawn-scaling-') as d:
         tmp = Path(d)
@@ -78,6 +106,16 @@ def main():
             a, b = times[small], times[8 * small]
             assert b <= 24 * a + 1.0, (name, times, 'eight times the actors took more than 24 times as long')
             print(f'{name}: {small} in {a:.3f} s, {8 * small} in {b:.3f} s ({b / a:.1f}x for 8x) PASS', flush=True)
+        src = tmp / 'small.fpr'
+        src.write_text(SMALL_HEAP)
+        exe = tmp / 'small'
+        p = subprocess.run([str(ROOT / 'fpr'), 'build', str(src), '--harts', '4', '-o', str(exe)],
+                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=300)
+        assert p.returncode == 0, p.stderr[-2000:]
+        for _ in range(3):
+            r = subprocess.run([str(exe)], env=dict(env, FPR_HEAP_MB='16'), capture_output=True, text=True, timeout=120)
+            assert r.returncode == 0 and r.stdout.strip() == '16000000 300000', (r.returncode, r.stdout[-300:], r.stderr[-500:])
+        print('16 MiB heap: 800 dead workers leave room for a 300,000-cell list PASS', flush=True)
     return 0
 
 

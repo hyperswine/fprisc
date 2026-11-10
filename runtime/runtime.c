@@ -4692,7 +4692,7 @@ static V g_meminfo(V u) {
     cells[i] = cell;
   }
   uw vals[8] = {fpr_mem_own ? buddy_arena_size() >> 10 : 0,
-                fpr_mem_own ? buddy_free_bytes() >> 10 : 0,
+                fpr_mem_own ? (buddy_free_bytes() + fpr_mem_cached_bytes()) >> 10 : 0,
                 fpr_mem_reqs, fpr_mem_waits, fpr_mem_direct, fpr_mem_frees,
                 fpr_mem_denied, fpr_mem_inline};
   for (int i = 0; i < 8; i++) FPR_FLD(cells[i], 0) = TAG((sw)vals[i]);

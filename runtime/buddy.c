@@ -63,6 +63,11 @@ static int order_of(uw bytes) {
 }
 
 static uw block_size(int order) { return BUDDY_MIN_BLOCK << order; }
+/* the order a request of `bytes` is served from, and the order of a live
+ * block (actors.c's per-hart cache keys blocks by it) */
+int buddy_order_for(uw bytes) { return order_of(bytes); }
+int buddy_block_order(void *p) { return BUDDY_ORDER(*(uw *)((char *)p - sizeof(uw))); }
+uw buddy_order_bytes(int order) { return block_size(order); }
 
 /* the span and its unit, for a per-block side table (runtime.c's image map) */
 void buddy_geometry(char **base, uw *size, uw *min_block) {

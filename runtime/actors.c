@@ -393,14 +393,33 @@ __attribute__((weak)) void hal_actor_stack(void *lo) { (void)lo; }
  * previous block's unused half, and passed by that accident until the
  * guard said so.)  Same memory, the whole block, the guard at its true
  * low end.  A process's grant is only known to be what was wanted. */
+/* A stack keeps its guard while it waits in its hart's cache (warm_put,
+ * with the block caches below): guarding and unguarding are two mprotect
+ * calls per actor, and under four spawners they were most of the time
+ * left.  Whether the block is charged to a budget is in its buddy header,
+ * which the guard covers, so stack_guarded notes it in the block's top
+ * word (STACK_NOTE bytes the stack does not use) before the guard goes on:
+ * only a plain stack is kept, and only an uncharged spawner is given one. */
+#define STACK_NOTE 16
+static void *warm_take(uw *size);
+static int warm_put(void *p, uw size);
+static int spawner_charged(void);
 static void *stack_guarded(void *p, uw *size) {
   if (!p) return 0;
   *size = big_block_size(p, STACK_SZ); /* reads the header the guard is about to cover */
+  if (fpr_mem_own) {
+    *size -= STACK_NOTE;
+    *(uw *)((char *)p + *size) = buddy_tag_of(p) == 0;
+  }
   hal_stack_guard(p, *size);
   return p;
 }
 static void *stack_block(uw *size) {
-  if (fpr_mem_own) return stack_guarded(fpr_charge(fpr_mem_take(STACK_SZ)), size);
+  if (fpr_mem_own) {
+    void *warm = spawner_charged() ? 0 : warm_take(size);
+    if (warm) return warm; /* guarded already, and nobody's to pay for */
+    return stack_guarded(fpr_charge(fpr_mem_take(STACK_SZ)), size);
+  }
   void *p = fpr_fl_take(&stack_fl, STACK_SZ);
   if (p) return stack_guarded(p, size);
   __atomic_add_fetch(&fpr_stk_misses, 1, __ATOMIC_RELAXED);
@@ -417,6 +436,7 @@ static void *stack_block(uw *size) {
 
 /* a dead actor's stack: home to the memory actor, or the recycler */
 static void stack_recycle(void *p, uw size) {
+  if (size && fpr_mem_own && *(uw *)((char *)p + size) && warm_put(p, size)) return; /* kept, guard on */
   if (size) hal_stack_unguard(p, size);
   if (fpr_mem_own) { fpr_mem_give(p); return; }
   fpr_fl_put(&stack_fl, p, STACK_SZ);
@@ -3815,9 +3835,142 @@ int fpr_mem_own;
 uw fpr_mem_reqs, fpr_mem_waits, fpr_mem_direct, fpr_mem_frees, fpr_mem_denied, fpr_mem_inline;
 static acb_t mem_hart_key[FPR_NHARTS]; /* var pinned READY: never "dead" */
 
+/* ---- THE HARTS' BLOCK CACHES (docs/2026-11-11-HART-BLOCK-CACHE.md) -------
+ * A block that goes home is usually wanted again at once, by the same
+ * hart, at the same size: a dead worker's stack and first slab, the next
+ * worker's.  Through the buddy that is a free that coalesces and a take
+ * that splits again, under the one lock -- and when the lock is held, a
+ * queued request, a park and a wake.  So each hart keeps the last few
+ * blocks it freed, by order, and hands them back first.
+ *
+ *   - Only plain blocks.  A block charged to a process's budget goes home,
+ *     where the buddy un-charges it; a cached block is re-charged by its
+ *     next taker exactly as a fresh one is (fpr_charge).
+ *   - Only the small orders (CACHE_ORDERS, up to 512 KiB at the 64 KiB
+ *     minimum) and CACHE_DEPTH of each: what one hart holds back is
+ *     bounded, 3.75 MiB at most on the 64 KiB geometry.
+ *   - Never at the allocator's expense.  A take the buddy cannot serve
+ *     empties every hart's cache into it and tries again, so a block held
+ *     here never turns a servable request into "no memory".  Each cache has
+ *     a lock for that reason only; its own hart is the one user otherwise.
+ *   - Cached bytes are free bytes: Sys.memInfo adds them back.
+ *
+ * FPR_NO_BLOCK_CACHE (a build flag) removes it; the admission tests, which
+ * force requests onto the memory actor's queue, build without it. */
+#if !defined(FPR_NO_BLOCK_CACHE) && !defined(FPR_ADMISSION_TEST)
+#define CACHE_ORDERS 4
+#define CACHE_DEPTH 4
+typedef struct {
+  fpr_lock_t mu;
+  uint8_t n[CACHE_ORDERS], warm_n;
+  void *blk[CACHE_ORDERS][CACHE_DEPTH];
+  void *warm[CACHE_DEPTH]; uw warm_size[CACHE_DEPTH]; /* guarded stacks (stack_recycle) */
+} blkcache_t;
+static blkcache_t blk_cache[FPR_NHARTS];
+static uw blk_cached_bytes;
+uw fpr_mem_cache_hits, fpr_mem_cache_puts, fpr_mem_cache_flushes;
+uw fpr_mem_cached_bytes(void) { return __atomic_load_n(&blk_cached_bytes, __ATOMIC_RELAXED); }
+static void *cache_take(fpr_hart_t *h, uw bytes) {
+  int o = buddy_order_for(bytes);
+  if (!h || o >= CACHE_ORDERS) return 0;
+  blkcache_t *c = &blk_cache[h->id];
+  if (!c->n[o]) return 0; /* its own hart is the only one that fills it */
+  void *p = 0;
+  fpr_lock(&c->mu);
+  if (c->n[o]) p = c->blk[o][--c->n[o]];
+  fpr_unlock(&c->mu);
+  if (p) {
+    __atomic_sub_fetch(&blk_cached_bytes, buddy_order_bytes(o), __ATOMIC_RELAXED);
+    __atomic_add_fetch(&fpr_mem_cache_hits, 1, __ATOMIC_RELAXED);
+  }
+  return p;
+}
+static int cache_put(fpr_hart_t *h, void *p) {
+  if (!h || buddy_tag_of(p)) return 0;
+  int o = buddy_block_order(p);
+  if (o >= CACHE_ORDERS) return 0;
+  blkcache_t *c = &blk_cache[h->id];
+  int kept = 0;
+  fpr_lock(&c->mu);
+  if (c->n[o] < CACHE_DEPTH) { c->blk[o][c->n[o]++] = p; kept = 1; }
+  fpr_unlock(&c->mu);
+  if (kept) {
+    __atomic_add_fetch(&blk_cached_bytes, buddy_order_bytes(o), __ATOMIC_RELAXED);
+    __atomic_add_fetch(&fpr_mem_cache_puts, 1, __ATOMIC_RELAXED);
+  }
+  return kept;
+}
+static void *warm_take(uw *size) {
+  fpr_hart_t *h = fpr_hart();
+  if (!h) return 0;
+  blkcache_t *c = &blk_cache[h->id];
+  if (!c->warm_n) return 0;
+  void *p = 0;
+  fpr_lock(&c->mu);
+  if (c->warm_n) { p = c->warm[--c->warm_n]; *size = c->warm_size[c->warm_n]; }
+  fpr_unlock(&c->mu);
+  if (p) {
+    __atomic_sub_fetch(&blk_cached_bytes, *size + STACK_NOTE + sizeof(uw), __ATOMIC_RELAXED);
+    __atomic_add_fetch(&fpr_mem_cache_hits, 1, __ATOMIC_RELAXED);
+  }
+  return p;
+}
+static int warm_put(void *p, uw size) {
+  fpr_hart_t *h = fpr_hart();
+  if (!h) return 0;
+  blkcache_t *c = &blk_cache[h->id];
+  int kept = 0;
+  fpr_lock(&c->mu);
+  if (c->warm_n < CACHE_DEPTH) { c->warm[c->warm_n] = p; c->warm_size[c->warm_n++] = size; kept = 1; }
+  fpr_unlock(&c->mu);
+  if (kept) {
+    __atomic_add_fetch(&blk_cached_bytes, size + STACK_NOTE + sizeof(uw), __ATOMIC_RELAXED);
+    __atomic_add_fetch(&fpr_mem_cache_puts, 1, __ATOMIC_RELAXED);
+  }
+  return kept;
+}
+/* every hart's cache back to the buddy: 1 when anything went */
+static int cache_flush(void) {
+  int any = 0;
+  for (uw i = 0; i < FPR_NHARTS; i++) {
+    blkcache_t *c = &blk_cache[i];
+    void *out[CACHE_ORDERS * CACHE_DEPTH + CACHE_DEPTH];
+    int n = 0;
+    fpr_lock(&c->mu);
+    while (c->warm_n) { /* a warm stack leaves its guard behind */
+      void *w = c->warm[--c->warm_n];
+      uw size = c->warm_size[c->warm_n];
+      hal_stack_unguard(w, size);
+      __atomic_sub_fetch(&blk_cached_bytes, size + STACK_NOTE + sizeof(uw), __ATOMIC_RELAXED);
+      out[n++] = w;
+    }
+    for (int o = 0; o < CACHE_ORDERS; o++) {
+      while (c->n[o]) {
+        out[n++] = c->blk[o][--c->n[o]];
+        __atomic_sub_fetch(&blk_cached_bytes, buddy_order_bytes(o), __ATOMIC_RELAXED);
+      }
+    }
+    fpr_unlock(&c->mu);
+    for (int k = 0; k < n; k++) buddy_free(out[k]);
+    if (n) any = 1;
+  }
+  if (any) __atomic_add_fetch(&fpr_mem_cache_flushes, 1, __ATOMIC_RELAXED);
+  return any;
+}
+#else
+uw fpr_mem_cached_bytes(void) { return 0; }
+static void *warm_take(uw *size) { (void)size; return 0; }
+static int warm_put(void *p, uw size) { (void)p; (void)size; return 0; }
+static void *cache_take(fpr_hart_t *h, uw bytes) { (void)h; (void)bytes; return 0; }
+static int cache_put(fpr_hart_t *h, void *p) { (void)h; (void)p; return 0; }
+static int cache_flush(void) { return 0; }
+#endif
+
 void *fpr_mem_take_direct(uw bytes) {
   __atomic_add_fetch(&fpr_mem_direct, 1, __ATOMIC_RELAXED);
-  return buddy_alloc(bytes);
+  void *p = buddy_alloc(bytes);
+  if (!p && cache_flush()) p = buddy_alloc(bytes); /* the harts were holding what it needed */
+  return p;
 }
 /* The reply slot transfers ownership by CAS. A killed waiter leaves a
  * cancellation sentinel: a later grant goes home rather than becoming an
@@ -3841,6 +3994,7 @@ static int mem_post(uw key, V m) {
 void *fpr_mem_take(uw bytes) {
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
+  { void *p = cache_take(h, bytes); if (p) return p; } /* this hart freed one of this size */
   if (!mem_act || !a || a == mem_act) return fpr_mem_take_direct(bytes);
 #ifdef FPR_ADMISSION_TEST
   extern int fpr_admission_test_queue(void);
@@ -3851,6 +4005,7 @@ void *fpr_mem_take(uw bytes) {
      * ahead of it in case one of them makes room */
     int busy;
     void *p = buddy_alloc_try(bytes, &busy);
+    if (!p && !busy && cache_flush()) p = buddy_alloc_try(bytes, &busy); /* a shortage the caches caused */
     if (p) { __atomic_add_fetch(&fpr_mem_inline, 1, __ATOMIC_RELAXED); return p; }
   }
   __atomic_store_n(&a->mem_reply, MEM_PENDING, __ATOMIC_RELEASE);
@@ -3870,6 +4025,7 @@ void fpr_mem_give(void *p) {
   __atomic_add_fetch(&fpr_mem_frees, 1, __ATOMIC_RELAXED);
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
+  if (cache_put(h, p)) return; /* kept for this hart's next take of the size */
   if (!mem_act || a == mem_act) { buddy_free(p); return; }
   if (buddy_free_try(p)) return; /* uncontended: done on the spot */
   uw key = a ? (uw)a : (uw)&mem_hart_key[h ? h->id : 0];
@@ -3902,6 +4058,7 @@ static V mem_body(V me) {
     uw x = (uw)UNTAG(m);
     if (x & 1) {
       void *p = buddy_alloc(x >> 1);
+      if (!p && cache_flush()) p = buddy_alloc(x >> 1);
       if (!p) fpr_mem_denied++;
       acb_t *r = (acb_t *)from;
 #ifdef FPR_ADMISSION_TEST
@@ -4095,6 +4252,13 @@ static void pol_uncharge(uw tag, uw bytes) {
                                       __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {}
 }
 
+/* would fpr_charge tag a block the running actor takes now? */
+static int spawner_charged(void) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  pidpol_t *p = a ? a->pol : 0;
+  return p && p->budget && !((uw)p >> (8 * (sizeof(uw) - 1)));
+}
 void *fpr_charge(void *blk) {
   if (!blk || !fpr_mem_own) return blk; /* only this image's own buddy blocks carry tags */
   fpr_hart_t *h = fpr_hart();
