@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 208 -- the GPU pair-sum hook is offered again (guards inlined into the sum)
+codegenRev = 209 -- x64 inline bump: a spilled cell destination is built in a borrowed register
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

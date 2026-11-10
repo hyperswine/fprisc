@@ -102,6 +102,17 @@ def execution(tmp, env, runner):
         if name == 'probe':
             assert got.stdout.strip() == 'probe: ' + str(sum(n + 1 * 2 + 2 * 3 + 3 * 4 + 4 * 5 + 5 * 6 + 6 * 7 + 7 * 8 + 8 * 9 + 9 * 10 for n in range(1, 1001))), got.stdout
         rows.append(f'{name} exit {got.returncode}')
+    # Sixteen boxed parameters spill an inline bump's destination on x64
+    # (tests/check_finite_field_workers.py holds the fixture and the reason).
+    import check_finite_field_workers
+    source, answer = check_finite_field_workers.fixture('parameters', 16)
+    prog = tmp / 'bumpspill.fpr'
+    prog.write_text(source)
+    boxed = dict(env, FPR_NO_FIELD_WORKERS='1')
+    sh([FPR, 'build', '--target=macos-x86_64', prog, '-o', tmp / 'bumpspill-x64'], boxed)
+    got = sh([tmp / 'bumpspill-x64'], boxed, cwd=tmp, timeout=60, check=False)
+    assert (got.returncode, got.stdout) == (0, f'{answer}\n'), ('bumpspill', got.returncode, got.stdout[-500:], got.stderr[-500:])
+    rows.append('bumpspill exit 0')
     how = 'same stdout and status as the AArch64 build' if oracle else 'exit status and self-checks'
     print(f'x64mac execution ({runner}, real runtime and Darwin TLS, default harts): {", ".join(rows)}; {how}: PASS')
 

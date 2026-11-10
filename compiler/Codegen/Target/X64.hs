@@ -1023,13 +1023,22 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
     -- end and then the cell.  Every test precedes every store; the refill
     -- passes the raw size in r11 and takes the cell in r11 from
     -- fpr_alloc_save_local, which preserves every allocatable register.
-    bump d c =
+    --
+    -- A spilled (or dead) cell arrives here in an allocator scratch, and
+    -- x64's two scratches are r10 and r11 themselves: the fast path would
+    -- overwrite its own slab or hart with the cell.  It then builds the cell
+    -- in rax, borrowed around the fast path, and hands it to d once r10 and
+    -- r11 are done.  Nothing between the push and either pop touches rsp.
+    bump dest c =
       let t = show (bcTotal c)
           cell k = show (8 * (1 + toInteger k))
           w k = show (8 * k)
           refill = lbl (entryLabel i BumpRefill)
           done = lbl (entryLabel i BumpDone)
+          borrowed = dest `elem` ["%r10", "%r11"]
+          d = if borrowed then "%rax" else dest
        in loadCell HartPointer "%r11"
+          ++ ["pushq %rax" | borrowed]
           ++ [ "movq " ++ cell bumpSlabCell ++ "(%r11), %r10",
                "testq %r10, %r10",
                "jz " ++ refill,
@@ -1048,13 +1057,15 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
           ++ ["movq $" ++ t ++ ", -16(" ++ d ++ ")" | bcPrefix c == 16]
           ++ ["movq %r10, -8(" ++ d ++ ")"]
           ++ ["movq $0, " ++ show p ++ "(" ++ d ++ ")" | Just p <- [bcPad c]]
+          ++ concat [["movq %rax, " ++ dest, "popq %rax"] | borrowed]
           ++ [ "jmp " ++ done,
                refill ++ ":" ]
+          ++ ["popq %rax" | borrowed]
           ++ (case bumpRefill pools i of
                 Just shared -> ["call " ++ lbl shared]
                 Nothing -> ["movq $" ++ show (bcRaw c) ++ ", %r11",
                             "subq $8, %rsp", "call " ++ Call.runtimeName Call.AllocSaveEntry, "addq $8, %rsp",
-                            "movq %r11, " ++ d])
+                            "movq %r11, " ++ dest])
           ++ [done ++ ":"]
     tick = tickN 1
     tickN n = ["subq $" ++ show n ++ ", (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (entryLabel i FuelReady)]
