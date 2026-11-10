@@ -57,9 +57,6 @@ inferSession old = inferTopsSession True old Nothing solProf
 builtinNames :: [Name]
 builtinNames = M.keys solBuiltins
 
-mm :: Type -> Type -> Type
-mm = tMutMap
-
 solBuiltins :: TEnv
 solBuiltins =
   M.fromList
@@ -103,21 +100,21 @@ solBuiltins =
       ("sortListWith", scheme [0, 1] (TFn (TFn (sv 0) (TFn (sv 0) (sv 1))) (TFn (tList (sv 0)) (tList (sv 0))))),
       ("strHash", mono (TFn tStr tInt)),
       ("intHash", mono (TFn tInt tInt)),
-      ("mutmapStrings", scheme [0] (TFn tInt (mm tStr (sv 0)))),
-      ("mutmapInts", scheme [0] (TFn tInt (mm tInt (sv 0)))),
-      ("mutmapReserve", scheme [0, 1] (TFn tInt (TFn (mm (sv 0) (sv 1)) (mm (sv 0) (sv 1))))),
-      ("mutmapInsert", scheme [0, 1] (TFn (sv 0) (TFn (sv 1) (TFn (mm (sv 0) (sv 1)) (mm (sv 0) (sv 1)))))),
-      ("mutmapInsertWith", scheme [0, 1] (TFn (TFn (sv 1) (TFn (sv 1) (sv 1))) (TFn (sv 0) (TFn (sv 1) (TFn (mm (sv 0) (sv 1)) (mm (sv 0) (sv 1))))))),
-      ("mutmapSlot", scheme [0, 1] (TFn (sv 0) (TFn (mm (sv 0) (sv 1)) (TTupT [tInt, mm (sv 0) (sv 1)])))),
-      ("mutmapValueAt", scheme [0, 1] (TFn tInt (TFn (mm (sv 0) (sv 1)) (TTupT [sv 1, mm (sv 0) (sv 1)])))),
-      ("mutmapSetAt", scheme [0, 1] (TFn tInt (TFn (sv 1) (TFn (mm (sv 0) (sv 1)) (mm (sv 0) (sv 1)))))),
-      ("mutmapRemoveAt", scheme [0, 1] (TFn tInt (TFn (mm (sv 0) (sv 1)) (mm (sv 0) (sv 1))))),
-      ("mutmapRemove", scheme [0, 1] (TFn (sv 0) (TFn (mm (sv 0) (sv 1)) (mm (sv 0) (sv 1))))),
-      ("mutmapSize", scheme [0, 1] (TFn (mm (sv 0) (sv 1)) (TTupT [tInt, mm (sv 0) (sv 1)]))),
-      ("mutmapCapacity", scheme [0, 1] (TFn (mm (sv 0) (sv 1)) (TTupT [tInt, mm (sv 0) (sv 1)]))),
-      ("mutmapFold", scheme [0, 1, 2] (TFn (TFn (sv 2) (TFn (sv 0) (TFn (sv 1) (sv 2)))) (TFn (sv 2) (TFn (mm (sv 0) (sv 1)) (TTupT [sv 2, mm (sv 0) (sv 1)]))))),
-      ("mutmapToList", scheme [0, 1] (TFn (mm (sv 0) (sv 1)) (TTupT [tList (TTupT [sv 0, sv 1]), mm (sv 0) (sv 1)]))),
-      ("mutmapFree", scheme [0, 1] (TFn (mm (sv 0) (sv 1)) tUnit)),
+      ("mutmapStrings", scheme [0] (TFn tInt (tMutMap tStr (sv 0)))),
+      ("mutmapInts", scheme [0] (TFn tInt (tMutMap tInt (sv 0)))),
+      ("mutmapReserve", scheme [0, 1] (TFn tInt (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1))))),
+      ("mutmapInsert", scheme [0, 1] (TFn (sv 0) (TFn (sv 1) (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1)))))),
+      ("mutmapInsertWith", scheme [0, 1] (TFn (TFn (sv 1) (TFn (sv 1) (sv 1))) (TFn (sv 0) (TFn (sv 1) (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1))))))),
+      ("mutmapSlot", scheme [0, 1] (TFn (sv 0) (TFn (tMutMap (sv 0) (sv 1)) (TTupT [tInt, tMutMap (sv 0) (sv 1)])))),
+      ("mutmapValueAt", scheme [0, 1] (TFn tInt (TFn (tMutMap (sv 0) (sv 1)) (TTupT [sv 1, tMutMap (sv 0) (sv 1)])))),
+      ("mutmapSetAt", scheme [0, 1] (TFn tInt (TFn (sv 1) (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1)))))),
+      ("mutmapRemoveAt", scheme [0, 1] (TFn tInt (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1))))),
+      ("mutmapRemove", scheme [0, 1] (TFn (sv 0) (TFn (tMutMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1))))),
+      ("mutmapSize", scheme [0, 1] (TFn (tMutMap (sv 0) (sv 1)) (TTupT [tInt, tMutMap (sv 0) (sv 1)]))),
+      ("mutmapCapacity", scheme [0, 1] (TFn (tMutMap (sv 0) (sv 1)) (TTupT [tInt, tMutMap (sv 0) (sv 1)]))),
+      ("mutmapFold", scheme [0, 1, 2] (TFn (TFn (sv 2) (TFn (sv 0) (TFn (sv 1) (sv 2)))) (TFn (sv 2) (TFn (tMutMap (sv 0) (sv 1)) (TTupT [sv 2, tMutMap (sv 0) (sv 1)]))))),
+      ("mutmapToList", scheme [0, 1] (TFn (tMutMap (sv 0) (sv 1)) (TTupT [tList (TTupT [sv 0, sv 1]), tMutMap (sv 0) (sv 1)]))),
+      ("mutmapFree", scheme [0, 1] (TFn (tMutMap (sv 0) (sv 1)) tUnit)),
       ("strCmp", mono (TFn tStr (TFn tStr tInt))),
       ("strCodes", mono (TFn tStr (tList tInt))),
       ("chr", mono (TFn tInt tStr)),

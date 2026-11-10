@@ -85,6 +85,7 @@ function renderType(src) {
     if (t === 'TC') return (toks[p++] || '""').replace(/"/g, '');
     if (t === 'TV' || t === 'sv') { const n = +toks[p++]; return TVNAME[n] || `t${n}`; }
     if (t === 'tList' || t === 'tVector') return `${t === 'tList' ? 'List' : 'Vector'} ${arg()}`;
+    if (t === 'tMutMap') { const k = arg(); const v = arg(); return `MutMap ${k} ${v}`; }
     if (t === 'tcon') {
       const n = (toks[p++] || '""').replace(/"/g, '');
       const xs = ty();

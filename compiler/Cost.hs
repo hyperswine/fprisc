@@ -329,6 +329,11 @@ primCostOf g lens
   where
     unit = Just (CN 1, CN 0)
 
+-- the costing environment's slot for "the pair a MutMap read answered, over
+-- this parameter's map" (not a source name: '#' cannot start one)
+mutmapReadKey :: Name -> Name
+mutmapReadKey t = '#' : t
+
 -- the cell a constructor with n fields asks the allocator for (runtime/fpr.h)
 cellBytes :: Int -> Integer
 cellBytes 0 = 0 -- nullary constructors are statics (fpr_true, fpr_false, fpr_unit, Nil)
@@ -547,6 +552,8 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
                 sub' = M.insert x (fromMaybe (CV "?") (symOf a)) sub
                 params' = case a of
                   CVar v | Just p <- paramOf v -> M.insert x p params
+                  _ | Just p <- sameMutMap a -> M.insert x p params
+                    | Just p <- mutmapRead a -> M.insert (mutmapReadKey x) p (M.delete x params)
                   _ -> M.delete x params
              in plus ra (costE done grp params' sub' b)
           CIf c t f -> plus (alloc (CN 1) (CN 0)) (plus (go c) (branch (go t) (go f)))
@@ -711,6 +718,20 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
           (CVar g, []) | Just p <- paramOf g -> CA p
           (CVar g, _) | S.member g globals, M.notMember g sub -> opaqueParams (ceAlloc (fromMaybe (opaqueEq g) (seen done g)))
           _ -> CO "?"
+        -- A MutMap handed back by an operation that cannot grow it has the
+        -- slot count it came in with: its `len` is the parameter's.  A read
+        -- answers (result, map); the map is field 1 of the pair.
+        sameMutMap a = case a of
+          CProj 1 (CVar t) -> M.lookup (mutmapReadKey t) params
+          _ -> case spine a [] of
+            (CVar g, args@(_ : _))
+              | g `elem` ["mutmapSetAt", "mutmapRemoveAt", "mutmapRemove"], CVar v <- last args -> paramOf v
+            _ -> Nothing
+        mutmapRead a = case spine a [] of
+          (CVar g, args@(_ : _))
+            | g `elem` ["mutmapSlot", "mutmapValueAt", "mutmapSize", "mutmapCapacity", "mutmapFold", "mutmapToList"],
+              CVar v <- last args -> paramOf v
+          _ -> Nothing
         -- (work, alloc, live) of one MutMap primitive call, args costed by the caller
         mutmapCost g args = case (g, args) of
           ("strHash", [k]) -> Just (alloc (CAdd [CN 1, lenOf k]) (CN 0))
