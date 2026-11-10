@@ -15,7 +15,7 @@ clampMin s | s.amount < 0 = {s | amount = 0}.
 clampMin s = s.
 reset s = {amount = 0, hist = s.hist + 1}.
 
-update : Msg -> State -> State | work update <= 25 | alloc update <= 48.
+update : Msg -> State -> State | work update <= 29 | alloc update <= 48.
 update (Increment n) s | n > 0 = s |> addAmount n |> clampMax.
 update (Increment _) s = s.
 update (Decrement n) s | n > 0 = s |> subAmount n |> clampMin.
@@ -26,7 +26,7 @@ update Reset s = s |> reset.
 # A structural measure verifies termination of replay. The current checker
 # needs descent in a body case, rather than a pattern-headed recursive clause.
 replay : (events : List Msg | measure events) -> State -> State
-  | work replay <= 31 * len events + 31 | alloc replay <= 48 * len events + 48.
+  | work replay <= 35 * len events + 35 | alloc replay <= 48 * len events + 48.
 replay events s = case events of
     Nil -> s
   | event :: rest -> replay rest (update event s).

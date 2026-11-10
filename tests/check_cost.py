@@ -69,10 +69,17 @@ assert 'inc: declared work <= 10   derived 1   PROVEN' in r, r
 r = cost(CASES / 'bound_ok.fpr')
 assert 'count: declared work <= 5·max(0, n) + 5   derived 5·(max(0, n) + 1)   PROVEN' in r, r
 # The original std-map proof priced its growing reverse accumulator at the
-# initial length. Keep that source as a refusal regression; it needs a real
-# recurrence proof. A direct measured map keeps the independent composition,
-# callback, declared-size and manifest checks below meaningful.
-build('bound_pipeline.fpr', 'UNPROVED', 'varying-recursive-parameter', ok=False)
+# initial length. The exit-path recurrence charges mapGo's final reverse
+# once, at the accumulator's grown length: the derived bound is linear and
+# proves 23·len xs + 27, while the historical 19·len xs + 27 is refused as
+# OVER. A direct measured map keeps the independent composition, callback,
+# declared-size and manifest checks below meaningful.
+r = cost(CASES / 'bound_pipeline.fpr')
+assert 'total: declared work <= 23·len xs + 27   derived 9·len xs + 14·(len xs + 1) + 13   PROVEN' in r, r
+old_bound = Path('/tmp/fpr-cost-bound-pipeline-19.fpr')
+old_bound.write_text((CASES / 'bound_pipeline.fpr').read_text().replace('23 * len xs + 27', '19 * len xs + 27'))
+p = subprocess.run(['./fpr', 'build', str(old_bound), '-o', '/tmp/fpr-cost-probe'], capture_output=True, text=True, timeout=300)
+assert p.returncode != 0 and 'OVER (len xs: derived 23, declared 19)' in p.stdout + p.stderr, p.stdout + p.stderr
 r = cost(CASES / 'bound_pipeline_direct.fpr')
 assert line(r, 'total', 'work') == '16·(len xs + 1) + 6', line(r, 'total', 'work')
 assert line(r, 'main', 'work') == 'ω(print) + 257', line(r, 'main', 'work')
@@ -119,10 +126,11 @@ r = cost(ROOT / 'examples' / 'todo.fpr', timeout=120)
 dt = time.time() - t0
 assert dt < 60, f'todo cost report took {dt:.0f}s'
 assert re.search(r'^  updateWith\s+work  <= max\(', r, re.M), r
-# The per-item depth remains visible, while std-map's growing reverse
-# accumulator is explicitly unproved instead of priced at its initial size.
-assert re.search(r'^  view\s+work  <= .*\(len m\.#2 \+ 1\)·max\(', r, re.M), r
-assert 'varying-recursive-parameter:' in line(r, 'view', 'work'), r
+# The per-item depth remains visible (the items list's length is opaque
+# here, ω(?len)), and std-map/indexedMap's reverse accumulators are priced
+# once at their grown length instead of as varying terms.
+assert re.search(r'^  view\s+work  <= .*ω\(\?len\)·\(', r, re.M), r
+assert 'varying-recursive-parameter:' not in line(r, 'view', 'work'), r
 # Todo's UTF-8 helper now declares measure k; preserve that recurrence rather
 # than the older opaque-helper expectation. Rendered string lengths stay opaque.
 assert line(r, 'dropGo', 'work') == '(max(0, k) + 1)·(len s + 15)', r

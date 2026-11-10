@@ -205,3 +205,36 @@ checkResourceCosts = do
   let fakeList=derive [("main",([],app "strcat" [CMk 77 1 [CInt 1,CMk 77 0 []],CStr ""]))] M.empty
   check "two fields do not establish builtin list length"
     (C.hasOmega (allocs fakeList "main"))
+
+  -- An accumulator consed onto at every step is read only by the exit path:
+  -- the chain charges that path once, at the accumulator's grown length.
+  let structural n p = Measure n [p] (MStructural p) 1 [n]
+      isNil x = CTagEq 2 0 x
+      count = ("count",(["ys"],CIf (isNil (v "ys")) (CInt 0) (app "count" [CProj 1 (v "ys")])))
+      walkWith exitE nextAcc = derive
+        [count,
+         ("walk",(["xs","acc"],CIf (isNil (v "xs")) exitE
+            (app "walk" [CProj 1 (v "xs"),nextAcc]))),
+         ("main",([],app "walk" [CMk 2 1 [CInt 1,CMk 2 1 [CInt 2,CMk 2 0 []]],CMk 2 0 []]))]
+        (M.fromList [("count",structural "count" "ys"),("walk",structural "walk" "xs")])
+      consed = walkWith (app "count" [v "acc"]) (CMk 2 1 [CProj 0 (v "xs"),v "acc"])
+      atEntry = derive [count,("main",([],app "count" [CMk 2 1 [CInt 1,CMk 2 1 [CInt 2,CMk 2 0 []]]]))]
+        (M.singleton "count" (structural "count" "ys"))
+  check "a consed accumulator read on the exit path has a linear bound"
+    (not (C.hasOmega (work consed "walk")) && not (C.hasOmega (work consed "main")))
+  -- count costs 4 per cell plus 4. Each of walk's steps costs 6; its exit
+  -- (if, tag test, the call) is 3 plus count over every consed cell, not
+  -- over the entry accumulator alone. For main's 2-cell input that is
+  -- 2*6 + 3 + 12, plus the call and four list cells: 32 (count over the
+  -- same 2 cells alone, with its call and three cells, is 16).
+  check "the exit path is charged at the grown accumulator length"
+    (C.prettyCost (work consed "walk") == "6\183len xs + 4\183(len acc + len xs + 1) + 3" &&
+     C.evalConst (work consed "main") == Just 32 && C.evalConst (work atEntry "main") == Just 16)
+  check "an accumulator that grows by an unknown amount stays opaque"
+    (C.hasOmega (work (walkWith (app "count" [v "acc"]) (app "strcat" [v "acc",v "acc"])) "walk"))
+  check "a consed accumulator read on every step stays opaque"
+    (let body = CIf (isNil (v "xs")) (CInt 0)
+                  (CLet "n" (app "count" [v "acc"]) (app "walk" [CProj 1 (v "xs"),CMk 2 1 [v "n",v "acc"]]))
+         eqs = derive [count,("walk",(["xs","acc"],body))]
+                 (M.fromList [("count",structural "count" "ys"),("walk",structural "walk" "xs")])
+      in C.hasOmega (work eqs "walk"))
