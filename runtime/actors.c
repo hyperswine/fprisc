@@ -232,14 +232,19 @@ typedef struct fpr_acb {
   uw stk_lo, stk_span, stk_total;
   /* Sys.sleepUs: linked on hart `slp_hart`'s sleeper list right now (see a_sleep_us) */
   uw slp_on, slp_hart;
-  /* receiveFromRes: the sender this actor is parked on (0 when not), and
-   * how many actors are parked on THIS one -- a dying actor walks the
-   * ledger to wake its watchers only when the count says there are any */
+  /* receiveFromRes: the sender this actor is parked on (0 when not; its low
+   * bit is set once the dying sender has picked it to wake), and how many
+   * actors are parked on THIS one */
   void (*external_cleanup)(void *);
   void *external_arg;
   fpr_resource_t *resources;
   struct fpr_acb *watch;
   uw watchers;
+  /* the actors parked on THIS one, linked through their watch_nx under
+   * watch_lock: a death wakes them without walking the ledger of every
+   * actor ever spawned (it did, and 80,000 watched workers took 110 s) */
+  struct fpr_acb *watch_head, *watch_nx;
+  fpr_lock_t watch_lock;
   char why[FPR_WHY_BYTES]; /* why it died: a trap's text, "killed"; empty = it returned */
   struct pidpol *pol;      /* its process's confinement or ending, if any (Sys.confine, Sys.killPid);
                             * what it spawns into the same process inherits it */
@@ -654,7 +659,16 @@ static acb_t *acb_block(void) {
  *   hart -- its hart's epoch cannot advance past it.  A reaped block
  *   parks on a limbo list stamped with every live hart's epoch and is
  *   reused only after each has advanced by 2: any send that loaded a
- *   stale var==READY has long since completed.
+ *   stale var==READY has long since completed.  A hart seen parked in
+ *   its wfi after the stamp counts as advanced: it has no send in
+ *   flight, and one it starts on waking reads var==DEAD.  Without that
+ *   a single sleeping hart held every reaped block in limbo for as long
+ *   as it slept.
+ *
+ * The limbo is a queue, oldest first.  Stamps only grow, so when the
+ * head has not matured nothing behind it has, and a take looks at one
+ * block (it used to walk the whole list under the lock, past every
+ * block reaped since the last quiet moment).
  *
  * Without this, frame-per-actor designs retire 8 KiB of dead rings
  * per frame forever (pshell exhausted a Pi 4's arena in minutes). */
@@ -668,13 +682,15 @@ static fpr_freelist_t chb_fl; /* never-referenced carve extras ONLY --
                                * reaped blocks go to limbo and are
                                * reused from there, so the flnode
                                * overlay can't race a stale send */
-static chblk_t *chb_limbo;
-static fpr_lock_t chb_lock; /* the limbo list + its epoch stamps */
+static chblk_t *chb_limbo, *chb_limbo_tail; /* a queue: put at the tail, take the head */
+static fpr_lock_t chb_lock; /* the limbo queue + its epoch stamps */
+static volatile uw hart_phase[FPR_NHARTS]; /* hart_loop's progress; 4 = inside hal_wfi, and only there */
 
 static void chb_drain(chan_t *ch); /* below reap: releases what a dead actor's rings still hold */
 static int chb_matured(chblk_t *b) {
   for (uw i = 0; i < fpr_live_harts; i++)
-    if (fpr_harts[i].epoch < b->stamp[i] + 2) return 0;
+    if (fpr_harts[i].epoch < b->stamp[i] + 2 &&
+        __atomic_load_n(&hart_phase[i], __ATOMIC_SEQ_CST) != 4) return 0;
   return 1;
 }
 
@@ -725,15 +741,11 @@ static chan_t *chb_take(void) {
   chblk_t *b = 0;
   int fresh = 0;
   fpr_lock(&chb_lock);
-  /* matured limbo first, then the free list */
-  chblk_t **pp = &chb_limbo;
-  while (*pp) {
-    if (chb_matured(*pp)) {
-      b = *pp;
-      *pp = b->nx;
-      break;
-    }
-    pp = &(*pp)->nx;
+  /* the oldest limbo block if it has matured, then the free list */
+  if (chb_limbo && chb_matured(chb_limbo)) {
+    b = chb_limbo;
+    chb_limbo = b->nx;
+    if (!chb_limbo) chb_limbo_tail = 0;
   }
   fpr_unlock(&chb_lock);
   if (b) chb_drain(b->ch); /* a send that raced the kill landed here: release it */
@@ -769,8 +781,9 @@ static void chb_limbo_put(chan_t *ch) {
   fpr_lock(&chb_lock);
   for (uw i = 0; i < FPR_NHARTS; i++)
     b->stamp[i] = (i < fpr_live_harts) ? fpr_harts[i].epoch : 0;
-  b->nx = chb_limbo;
-  chb_limbo = b;
+  b->nx = 0;
+  if (chb_limbo_tail) chb_limbo_tail->nx = b; else chb_limbo = b;
+  chb_limbo_tail = b;
   fpr_unlock(&chb_lock);
 }
 
@@ -878,6 +891,7 @@ static void mem_cancel(acb_t *a);
 static volatile uw g_blocked;      /* actors currently parked */
 static volatile uw g_sleepers;     /* of which: parked with a deadline */
 static volatile uw g_irq_waiting;  /* of which: an interrupt's actor, waiting for it */
+static void watch_del(struct fpr_acb *a); /* with wake_watchers, below */
 static void reap(acb_t *a) {
   if (__atomic_load_n(&a->running, __ATOMIC_ACQUIRE)) return;
   uint32_t expected = 0;
@@ -889,6 +903,7 @@ static void reap(acb_t *a) {
   if (a->inbox_max_messages) { /* wait for an already publishing producer */
     fpr_lock(&a->shlock); fpr_unlock(&a->shlock);
   }
+  watch_del(a); /* killed while parked on a sender: off that sender's watcher list */
   if (a->wait_kind) { /* a killed parked actor never returns through block_unless */
     __atomic_fetch_sub(&g_blocked, 1, __ATOMIC_RELAXED);
     if (a->irq_target) __atomic_fetch_sub(&g_irq_waiting, 1, __ATOMIC_RELAXED);
@@ -973,7 +988,7 @@ static xring_t xr[FPR_NHARTS][FPR_NHARTS];
 /* where each hart's loop is (1 drained, 2 entering steal, 3 past steal,
  * 4 entering wfi, 5 back from wfi) and how many turns it has taken --
  * the deadlock dump's answer to "is hart N looping or stuck?" */
-static volatile uw hart_phase[FPR_NHARTS], hart_loops[FPR_NHARTS], hart_loops_at_quiet[FPR_NHARTS];
+static volatile uw hart_loops[FPR_NHARTS], hart_loops_at_quiet[FPR_NHARTS]; /* hart_phase: with the channel limbo above */
 static volatile uint64_t hart_wfi_at[FPR_NHARTS]; /* mtime when the hart last entered wfi */
 
 static void xpush(uw src, uw dst, acb_t *a) {
@@ -1773,10 +1788,13 @@ static void hart_loop(fpr_hart_t *h) {
     }
     tmr_wfi_arm(h); /* a sooner timer deadline overrides on the irq hart */
     slp_wfi_arm(h); /* the nearest sleeper, sooner still */
-    hart_phase[h->id] = 4;
     hart_wfi_at[h->id] = hal_mtime();
+    /* phase 4 brackets the wfi and nothing else: the channel limbo reads it
+     * as "this hart has no send in flight" (chb_matured), so both stores are
+     * ordered against a sender's seq_cst load of var */
+    __atomic_store_n(&hart_phase[h->id], 4, __ATOMIC_SEQ_CST);
     hal_wfi(); /* sleeps unless msip/mtip is already pending again */
-    hart_phase[h->id] = 5;
+    __atomic_store_n(&hart_phase[h->id], 5, __ATOMIC_SEQ_CST);
   }
 }
 
@@ -2403,6 +2421,12 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->dp_n = 0;
   a->msg_slab = 0;
   a->running = 0; /* the block may be reused: no hart has this context yet */
+  /* nobody is parked on a new actor and it is parked on nobody.  The acb
+   * arena is carved from recycled buddy blocks, not zeroed memory: left
+   * unset, a stale word here read as a watcher count and every death
+   * walked the whole ledger (wake_watchers) */
+  a->watch = 0; a->watchers = 0; a->watch_head = 0; a->watch_nx = 0;
+  __builtin_memset(&a->watch_lock, 0, sizeof a->watch_lock);
   a->irq_target = 0;
   if (!a->pool.buckets) fpr_cpanic("spawn: no memory for a bucket array");
   a->entry_hold = admitted ? admitted->entry_hold : 0;
@@ -3088,10 +3112,53 @@ static V dead_of(acb_t *s) {
   return fpr_mkresultn(1, buf, n);
 }
 
+/* The watchers of `s` are a list on s (watch_head, through each watcher's
+ * watch_nx) under s->watch_lock.  A watcher links itself before it counts
+ * itself in `watchers`, and counts itself before block_unless re-checks
+ * DEAD, so the pairing above is unchanged: the dier that reads a count
+ * finds every counted watcher on the list.
+ *
+ * The dier wakes outside the lock (a wake ships across harts): under the
+ * lock it picks up to WATCH_BATCH watchers it has not picked yet, marks
+ * each (the low bit of its `watch`), unlocks, wakes them, and repeats.
+ * A watcher only leaves the list or joins another through watch_del, under
+ * the same lock, so the walk is never of a list that moved. */
+#define WATCH_BATCH 32
+#define WATCH_OF(a) ((acb_t *)((uw)(a)->watch & ~(uw)1))
+static void watch_add(acb_t *a, acb_t *s) {
+  fpr_lock(&s->watch_lock);
+  a->watch_nx = s->watch_head;
+  s->watch_head = a;
+  __atomic_store_n(&a->watch, s, __ATOMIC_SEQ_CST);
+  __atomic_fetch_add(&s->watchers, 1, __ATOMIC_SEQ_CST);
+  fpr_unlock(&s->watch_lock);
+}
+static void watch_del(acb_t *a) {
+  acb_t *s = WATCH_OF(a);
+  if (!s) return;
+  fpr_lock(&s->watch_lock);
+  for (acb_t **pp = &s->watch_head; *pp; pp = &(*pp)->watch_nx)
+    if (*pp == a) { *pp = a->watch_nx; break; }
+  a->watch_nx = 0;
+  __atomic_fetch_sub(&s->watchers, 1, __ATOMIC_SEQ_CST);
+  __atomic_store_n(&a->watch, 0, __ATOMIC_SEQ_CST);
+  fpr_unlock(&s->watch_lock);
+}
 static void wake_watchers(acb_t *s) {
   if (__atomic_load_n(&s->watchers, __ATOMIC_SEQ_CST) == 0) return;
-  for (acb_t *a = __atomic_load_n(&g_all, __ATOMIC_ACQUIRE); a; a = a->all_nx)
-    if (__atomic_load_n(&a->watch, __ATOMIC_SEQ_CST) == s) wake(a);
+  for (;;) {
+    acb_t *batch[WATCH_BATCH];
+    int n = 0;
+    fpr_lock(&s->watch_lock);
+    for (acb_t *w = s->watch_head; w && n < WATCH_BATCH; w = w->watch_nx)
+      if (((uw)w->watch & 1) == 0) {
+        __atomic_store_n(&w->watch, (acb_t *)((uw)s | 1), __ATOMIC_SEQ_CST);
+        batch[n++] = w;
+      }
+    fpr_unlock(&s->watch_lock);
+    for (int i = 0; i < n; i++) wake(batch[i]);
+    if (n < WATCH_BATCH) return;
+  }
 }
 
 static V ok_of(V m) {
@@ -3143,11 +3210,9 @@ static V a_receive_from_res(V me, V fromv) {
     uint32_t k;
     if (sh_has_from(a, sid, &k)) return ok_of(take_at(a, sh_chan(a), k));
     if (dead) return dead_of(s);
-    __atomic_store_n(&a->watch, s, __ATOMIC_SEQ_CST);
-    __atomic_fetch_add(&s->watchers, 1, __ATOMIC_SEQ_CST);
+    watch_add(a, s);
     block_unless(a, p_from_dead, sid);
-    __atomic_fetch_sub(&s->watchers, 1, __ATOMIC_SEQ_CST);
-    __atomic_store_n(&a->watch, 0, __ATOMIC_SEQ_CST);
+    watch_del(a);
   }
 }
 
