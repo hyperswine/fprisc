@@ -7,7 +7,8 @@ from fuel_wrapper import fuel_wrapper
 
 def main():
     env={k:v for k,v in os.environ.items() if not k.startswith('FPR_')}
-    env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_NO_INLINE='1',FPR_NO_SCALAR_WORKERS='1',FPR_NO_FIELD_WORKERS='1',FPR_TYPED_IR_STRICT='all')
+    env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),FPR_NO_INLINE='1',FPR_NO_SCALAR_WORKERS='1',FPR_NO_FIELD_WORKERS='1',FPR_TYPED_IR_STRICT='all',
+               FPR_NO_TICK_WEIGHT='1') # the oracle holds a SIMD pair to the scalar loop's exact unit count
     with tempfile.TemporaryDirectory(prefix='fpr-captured-simd-') as d:
         tmp=Path(d);env['XDG_CACHE_HOME'] = os.environ.get('XDG_CACHE_HOME', str(tmp/'cache'))
         fixture=ROOT/'tests/typed_ir/captured_simd.fpr'

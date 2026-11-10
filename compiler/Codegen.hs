@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 211 -- register fuel: x27 on AArch64 (budget x19..x26), s11 on RISC-V (s1..s10)
+codegenRev = 212 -- weighted ticks: a tick charges the worst-case instruction count of the code it covers
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

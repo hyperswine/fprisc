@@ -926,6 +926,7 @@ compileWithReport accepted report = do
                            else HostedBase,
               polFuel = not (oBuiltin opts),
               polTickBatch = Options.cgTickBatch codegen,
+              polTickWeight = Options.cgTickWeight codegen,
               polStackCheck = if oBuiltin opts then StackStatic else if (Options.nativeShallowStack native) then StackCheckShallow else StackCheckEveryEntry,
               polFloatInline = (Options.cgFloatInline codegen),
               polLoopMotion = Options.cgLoopMotion codegen,

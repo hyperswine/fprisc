@@ -18,7 +18,8 @@ def main():
         tmp = Path(td)
         env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
                    XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / "cache")), FPR_NO_INLINE="1",
-                   FPR_NO_SCALAR_WORKERS="1", FPR_NO_FIELD_WORKERS="1")
+                   FPR_NO_SCALAR_WORKERS="1", FPR_NO_FIELD_WORKERS="1",
+                   FPR_NO_TICK_WEIGHT="1")  # the oracle counts units exactly
         env.pop("FPR_FOREIGN", None)
         # Exercise native loop conversion with an independent fuel/stack oracle.
         env["FPR_TYPED_IR_BACKEND"] = "mixed"

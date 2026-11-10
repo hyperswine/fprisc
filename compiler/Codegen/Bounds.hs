@@ -14,7 +14,7 @@
 -- It is not the retired `# wcet:` metric, which counted shared-RISC lines
 -- on the retired slot generator's emission.
 -- Neither is elapsed time.
-module Codegen.Bounds (Tok (..), Flow (..), Report (..), analyse, reportLine) where
+module Codegen.Bounds (Tok (..), Flow (..), Report (..), analyse, reportLine, tickWeights) where
 
 import Data.List (foldl')
 import qualified Data.Map.Strict as M
@@ -167,3 +167,86 @@ analyse toks
          in case sequence starts of
               Left () -> Nothing
               Right rs -> Just (maximum (0 : [v | Just v <- rs]))
+
+-- The weight of each fuel tick (docs/2026-11-11-WEIGHTED-TICKS.md): the
+-- largest number of target instructions the function itself can execute
+-- from that tick, the tick's own item included, to the next tick or to an
+-- exit.  A call is transparent: the callee charges its own instructions at
+-- its own ticks, and the instructions after the call return are this
+-- function's, covered by the tick before the call.  The instructions
+-- between the function's first instruction and the first tick it reaches
+-- (the prologue, the stack check) have no tick before them, so every tick
+-- reachable from the entry without crossing another one carries them too.
+--
+-- The stream is the one `analyse` reads, each item paired with whether it
+-- is a tick.  The result has one weight per tick, in stream order; Nothing
+-- when some cycle has no tick in it (the function is UNBOUNDED for
+-- `analyse` as well, and keeps unit ticks).
+tickWeights :: [(Tok, Bool)] -> Maybe [Int]
+tickWeights marked
+  | invalid = Nothing
+  | otherwise = do
+      prefix <- startOf "%entry"
+      mapM (\(l, i) -> do rest <- runFrom l (i + 1)
+                          pure (itemCost l i + rest + (if S.member (l, i) firsts then prefix else 0))) ticks
+  where
+    toks = map fst marked
+    labels = [l | TLabel l <- toks]
+    labelSet = S.fromList labels
+    targets = concat [case tFlow t of FCond ls -> ls; FJump l -> [l]; _ -> [] | t@TIns {} <- toks]
+    invalid = length labels /= S.size labelSet || S.member "%entry" labelSet || any (`S.notMember` labelSet) targets
+    -- a conditional or unconditional transfer ends its block, as in `analyse`
+    prefixName = head [q | n <- [0 :: Int ..], let q = "%tick" ++ show n ++ ":", all (\l -> take (length q) l /= q) labels]
+    split = concat [case t of
+      TIns {tFlow = flow} | flow /= FNext -> [(t, k), (TLabel (prefixName ++ show n), False)]
+      _ -> [(t, k)] | (n, (t, k)) <- zip [0 :: Int ..] marked]
+    blocks = go "%entry" [] split
+      where
+        go cur acc [] = [(cur, reverse acc)]
+        go cur acc ((TLabel l, _) : rest) = (cur, reverse acc) : go l [] rest
+        go cur acc (t : rest) = go cur (t : acc) rest
+    names = map fst blocks
+    nextOf = M.fromList (zip names (drop 1 names))
+    bmap = M.fromList blocks
+    itemsOf l = M.findWithDefault [] l bmap
+    itemCost l i = tCost (fst (itemsOf l !! i))
+    succMap = M.fromList [(l, succsOf ins l) | (l, ins) <- blocks]
+    succsOf ins l =
+      let lastFlow = if null ins then FNext else tFlow (fst (last ins))
+          cond = concat [ls | (TIns {tFlow = FCond ls}, _) <- ins]
+          falls = case lastFlow of FJump _ -> False; FExit -> False; _ -> True
+       in cond ++ (case lastFlow of FJump t -> [t]; _ -> []) ++ [n | falls, Just n <- [M.lookup l nextOf]]
+    ticks = [(l, i) | (l, ins) <- blocks, (i, (_, True)) <- zip [0 :: Int ..] ins]
+    -- within one block: the tick-free cost from item i, and whether the run
+    -- reaches the block's end (False: a tick stops it)
+    runIn l i = case break snd (drop i (itemsOf l)) of
+      (free, rest) -> (sum (map (tCost . fst) free), null rest)
+    -- the longest tick-free run from a block's start to a tick or an exit,
+    -- memoised; Nothing on a cycle with no tick
+    startTab = foldl' (\m l -> fst (visit S.empty m l)) M.empty names
+    visit grey m l
+      | Just v <- M.lookup l m = (m, v)
+      | S.member l grey = (m, Nothing)
+      | otherwise =
+          let (cost, open) = runIn l 0
+           in if not open then (M.insert l (Just cost) m, Just cost)
+              else
+                let step (mm, acc) s' = let (mm1, v) = visit (S.insert l grey) mm s' in (mm1, v : acc)
+                    (m1, vs) = foldl' step (m, []) (M.findWithDefault [] l succMap)
+                    r = if any (== Nothing) vs then Nothing else Just (cost + maximum (0 : [v | Just v <- vs]))
+                 in (M.insert l r m1, r)
+    startOf l = M.findWithDefault (Just 0) l startTab
+    runFrom l i =
+      let (cost, open) = runIn l i
+       in if not open then Just cost
+          else do vs <- mapM startOf (M.findWithDefault [] l succMap)
+                  pure (cost + maximum (0 : vs))
+    -- the ticks the entry reaches without crossing another tick
+    firsts = reach S.empty S.empty ["%entry"]
+      where
+        reach _ acc [] = acc
+        reach seen acc (l : rest)
+          | S.member l seen = reach seen acc rest
+          | otherwise = case [i | (i, (_, True)) <- zip [0 :: Int ..] (itemsOf l)] of
+              i : _ -> reach (S.insert l seen) (S.insert (l, i) acc) rest
+              [] -> reach (S.insert l seen) acc (M.findWithDefault [] l succMap ++ rest)

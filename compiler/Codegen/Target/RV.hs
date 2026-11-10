@@ -575,10 +575,13 @@ emitFnRVWithSymbols symbols cfg fn = do
         [[local fn label ++ ":", "    mv "++d++", ra", "    li t3, "++show raw,
           "    call "++Call.runtimeName Call.AllocSaveEntry, "    mv ra, "++d,
           "    mv "++d++", t3", "    ret"] | ((d,raw),label)<-M.toList refills]
-      rendered = [(it, render cfg fn ly large restores refills it) | it <- body]
+      renderOne = render cfg fn ly large restores refills
+      prologueToks = [TIns (instructionCost prologue) FNext False (if large then 1 else 0)]
+      weighted = weighTicks (polTickWeight (cfgPolicy cfg)) prologueToks renderOne (\it ls -> token refills (it, ls)) body
+      rendered = [(it, renderOne it) | it <- weighted]
       -- The reserve call is in the entry ABI shim, before allocated values
       -- exist. It stages/restores every incoming parameter and the link.
-      report = analyse (TIns (instructionCost prologue) FNext False (if large then 1 else 0) : concatMap (token refills) rendered)
+      report = analyse (prologueToks ++ concatMap (token refills) rendered)
       name = fnName fn
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sf)) ++ ") typed-ir rv" ++ show (widthBits (cfgWidth cfg)) ++ " frame=" ++ show n
                  ++ (if large then " reserve=yes" else "") ++ (if shallow then " shallow=yes" else " shallow=no") ++ " saved="
@@ -708,9 +711,9 @@ render cfg fn ly large restores pools (I i) = map (\s -> if last s == ':' then s
                             "call " ++ Call.runtimeName Call.AllocSaveEntry,
                             "mv " ++ d ++ ", t3"])
           ++ [done ++ ":"]
-    tick = tickN 1
-    -- the counter is s11: one add and a branch, no hart read and no memory
-    tickN n = ["addi s11, s11, -" ++ show n, "bgtz s11, " ++ l FuelReady, ("call " ++ Call.runtimeName Call.FuelSaveEntry), l FuelReady ++ ":"]
+    -- the counter is s11: one add and a branch, no hart read and no memory.
+    -- A weight past addi's twelve bits goes through t4, the tick's scratch.
+    tickN n = (if n <= 2047 then ["addi s11, s11, -" ++ show n] else ["li t4, " ++ show (min n 0x7fffffff), "sub s11, s11, t4"]) ++ ["bgtz s11, " ++ l FuelReady, ("call " ++ Call.runtimeName Call.FuelSaveEntry), l FuelReady ++ ":"]
     ew = if cfgWidth cfg == W32 then "32" else "64"
     go op ds us = case (op,ds,us) of
       (O.Common O.EntryStatic,[],[]) -> []
@@ -741,10 +744,10 @@ render cfg fn ly large restores pools (I i) = map (\s -> if last s == ':' then s
       (O.RV R.Push,[],[v]) -> ["addi sp, sp, -16", stWord ++ " " ++ r v ++ ", 0(sp)"]
       (O.RV R.ApplyN,[_],[n]) -> ["mv a2, sp", "li a1, " ++ show (num n)] ++ memory ld "a0" "sp" (16*num n) ++ [("call " ++ Call.runtimeName Call.ApplyEntry)] ++ adjust "sp" "sp" (16*(num n+1))
       (O.RV R.Panic,[],[OAddr sym]) -> ["la a0, " ++ addressName sym, ("call " ++ Call.runtimeName Call.PanicEntry)]
-      (O.Common O.EntryCheckTick,[],[]) -> hart ++ stack ++ tick
+      (O.Common O.EntryCheckTick,[],us) -> hart ++ stack ++ tickN (tickWeightOf us)
       (O.Common O.EntryCheck,[],[]) -> hart ++ stack
-      (O.Common O.EntryTick,[],[]) -> tick
-      (O.Common O.TickN,[],[OI n]) -> tickN n
+      (O.Common O.EntryTick,[],us) -> tickN (tickWeightOf us)
+      (O.Common O.TickN,[],us) -> tickN (tickWeightOf us)
       (O.RV R.VectorMax,[d],[]) -> ["vsetvli " ++ r d ++ ", x0, e" ++ ew ++ ", m1, ta, ma"]
       (O.RV R.VectorLanes,[d],[a,n,OI bound]) ->
         ["vsetvli t4, " ++ r n ++ ", e" ++ ew ++ ", m1, ta, ma", "vle" ++ ew ++ ".v v8, (" ++ r a ++ ")",
