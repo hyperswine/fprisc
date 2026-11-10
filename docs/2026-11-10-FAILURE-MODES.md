@@ -1,8 +1,10 @@
 # Failure modes: what traps, what overflows, what is silently wrong
 
 Date: 2026-11-10 (revised the same day with Jack's decisions, then again the
-same day with D6–D12, the answers to the seven remaining questions; D6–D12
-are decided, and open to review or replacement). Kind: audit, decisions and
+same day with D6–D12, the answers to the seven remaining questions; later
+the same day D9's `min / -1` case was decided as two's-complement wrapping,
+replacing the named panic; D6–D12 are decided, and open to review or
+replacement). Kind: audit, decisions and
 proposal. Applies to `540ba57` (main after
 PR #59). Every behaviour marked **verified** was run on this date: native is
 `fpr build` for the posix system on x86-64 Linux, Sol is `fpr sol` on the same
@@ -40,7 +42,7 @@ Recorded from Jack's review of the first draft of this page, 2026-11-10:
 | D6 | `Int` is mathematically exact: never overflows, never wraps, never traps on arithmetic. Small values stay in the tagged 63-bit word (31-bit on RV32) and promote to a heap bignum otherwise. Bounded and no-heap code must prove every `Int` stays small or use `I64`/`I32` | **Decided, open to review/replacement** (2026-11-10) | [D6](#d6-exact-int) |
 | D7 | `I32.ofInt` / `I64.ofInt` return `Option` (`None` out of range). No implicit wrapping conversion | **Decided, open to review/replacement** (2026-11-10) | [D7](#d7-i32ofint--i64ofint-return-option) |
 | D8 | `/` is floored division; `Math.quot` / `Math.rem` are the truncated pair; the identity `a == (a / b) * b + a % b` always holds | **Decided, open to review/replacement** (2026-11-10) | [D8](#d8--is-floored-division) |
-| D9 | `%` and `/` on `I64`/`I32` are floored too (same symbol, same meaning). `I64.quot`/`I64.rem` and `I32.quot`/`I32.rem` are the hardware truncated results. `min / -1` keeps the existing named panic | **Decided, open to review/replacement** (2026-11-10) | [D9](#d9--and--on-i64i32-are-floored-too) |
+| D9 | `%` and `/` on `I64`/`I32` are floored too (same symbol, same meaning). `I64.quot`/`I64.rem` and `I32.quot`/`I32.rem` are the hardware truncated results. `min / -1` wraps to `min` (two's complement; no panic) | **Decided, open to review/replacement** (2026-11-10) | [D9](#d9--and--on-i64i32-are-floored-too) |
 | D10 | Two explicit types: `Bytes` (immutable `Array Byte`, any bytes) and `String` (immutable byte array, guaranteed valid UTF-8). Length and indexing are in bytes. I/O yields `Bytes` | **Decided, open to review/replacement** (2026-11-10) | [D10](#d10-two-types-bytes-and-string) |
 | D11 | Rename in one change; no deprecated aliases. Old names become compile errors that name the replacement | **Decided, open to review/replacement** (2026-11-10) | [D11](#d11-rename-in-one-change-no-deprecated-aliases) |
 | D12 | Calculator: `Rem` is truncated remainder (`Math.rem`); add a separate `Mod` that is floored (`%`). Each name means exactly one thing | **Decided, open to review/replacement** (2026-11-10) | [D12](#d12-calculator-rem-is-truncated-mod-is-floored) |
@@ -169,7 +171,7 @@ M a few days, L a week or more; estimates), and the pipeline phase from
 | `BITSHIFTL 1 (-1)` | V: `BITSHIFTL: shift must be 0..63` | n/a | no | Precondition `(k : Int | k >= 0 and k < 63)` so it can be discharged | S | P1 |
 | `I64` `*` past 64 bits | V: wraps (`-4`) | n/a | by design | Keep (I64's contract) | - | - |
 | `I64 / 0`, `I32 / 0` | V: `I64: division by zero`, `I32: division by zero` | n/a | no | **Decided (D9):** same `b != 0` precondition as `Int` | S | P1 |
-| `I64.min / -1`, `I32.min / -1` | D: named panic `I64: division overflow (INT64_MIN / -1)`, `I32: division overflow (INT32_MIN / -1)` ([I64](2026-10-05-I64.md), [I32](2026-10-18-I32.md)); the corresponding remainder is 0 | n/a | no | **Decided (D9):** keep this existing panic, for both floored `/` and `I64.quot`/`I32.quot`. `%` and `rem` of `min` and `-1` are `0`. (Wrapping to `I64.min` / `I32.min` would also match ARM/RISC-V `sdiv`; this page does not change the documented trap.) | - | - |
+| `I64.min / -1`, `I32.min / -1` | D: named panic `I64: division overflow (INT64_MIN / -1)`, `I32: division overflow (INT32_MIN / -1)` ([I64](2026-10-05-I64.md), [I32](2026-10-18-I32.md)); the corresponding remainder is 0 | n/a | no | **Decided (D9, 2026-11-10):** wrap, no panic. `min / -1 == min` and `quot min -1 == min` (two's-complement wrap, matching ARM/RISC-V `sdiv`; x86-64 `idiv` faults, so codegen must special-case divisor `-1`). `min % -1 == 0` and `rem min -1 == 0`. Same in the Sol interpreter and JIT. This replaces the existing named panic. | S | std + backend |
 | `I64` `%` / `/` of ordinary negative values | D: `/` truncates, `%` has the dividend's sign ([I64](2026-10-05-I64.md), [I32](2026-10-18-I32.md)) | n/a | surprising relative to `Int` after D5/D8 | **Decided (D9):** `/` and `%` are floored on `I64`/`I32` too (`(-7 : I64) / 2 == -4`, `(-7 : I64) % 2 == 1`). `I64.quot`/`I64.rem` and `I32.quot`/`I32.rem` keep the hardware truncated results | S | std + backend |
 | `I64.toInt` too big | V: `Err I64.toInt: does not fit an Int (63 bits)` | n/a | no | With exact `Int` (D6) this becomes total: every `I64`/`I32` value is an `Int` (a value past 63 bits is a bignum). Today's `Result` form goes away | with D6 | - |
 | `I32.ofInt intMax`, `I64.ofInt` of a value past 64 bits | V: `I32.ofInt intMax` is `-1` (low 32 bits); today every `Int` fits `I64.ofInt` | n/a | **yes, by design** (MEMORY-I32 page) | **Decided (D7):** `I32.ofInt : Int -> Option I32`, `I64.ofInt : Int -> Option I64`; `None` out of range (`I32.ofInt 2147483648 == None`; today's `intMax` case becomes `None`). No implicit wrapping | S | - |
@@ -570,16 +572,17 @@ signatures: [D8](#d8--is-floored-division), [D9](#d9--and--on-i64i32-are-floored
   type. `I64.quot`/`I64.rem` and `I32.quot`/`I32.rem` stay as named
   functions for the hardware truncated result, with the same `b != 0`
   precondition.
-- **`I64.min / -1` and `I32.min / -1`.** The existing contract
-  ([I64](2026-10-05-I64.md), [I32](2026-10-18-I32.md)) is a named panic
-  (`I64: division overflow (INT64_MIN / -1)`, `I32: division overflow
-  (INT32_MIN / -1)`), and the corresponding remainder is 0. This page
-  keeps that policy for both floored `/` and `I64.quot`/`I32.quot` (the
-  exact quotient is an integer, so floored and truncated coincide).
-  Wrapping to `I64.min` / `I32.min` would also be a defensible reading of
-  "fixed-width two's-complement wrapping" and would match ARM and RISC-V
-  `sdiv`, but it would change a documented, tested trap, so it is not
-  adopted here. `%` and `rem` of `min` and `-1` remain `0`.
+- **`I64.min / -1` and `I32.min / -1`.** **Decided (D9, 2026-11-10):**
+  wrap, no panic. `min / -1 == min`, `quot min -1 == min`,
+  `min % -1 == 0`, `rem min -1 == 0`. This is two's-complement wrapping
+  and matches ARM and RISC-V `sdiv`. x86-64 `idiv` raises `#DE`, so
+  codegen must special-case a divisor of `-1`. The Sol interpreter and
+  JIT agree. This replaces the existing named panic
+  `I64: division overflow (INT64_MIN / -1)` /
+  `I32: division overflow (INT32_MIN / -1)`
+  ([I64](2026-10-05-I64.md), [I32](2026-10-18-I32.md)). Details,
+  examples and the tests and docs to change:
+  [D9](#d9--and--on-i64i32-are-floored-too).
 
 ## Proposed policy (revised 2026-11-10 with Jack's decisions)
 
@@ -684,7 +687,7 @@ more.
 | # | Item | Effort | Phase | Depends on |
 | --- | --- | --- | --- | --- |
 | 1 | Differential failure corpus, native against Sol interpreter against Sol JIT (this page's probes plus `%`, bytes and bignum cases) in CI | S | P0 | - |
-| 2 | `%` and `/` floored on `Int`, `I64` and `I32` (prelude `Int.mod`, Sol `Int.mod`, I64/I32 operators); add `Math.quot` and keep `Math.rem`, `I64.quot`/`I64.rem`, `I32.quot`/`I32.rem` for the truncated pair; fix-ups: `int_edge` and `algebra.sol` expectations; `wasmvm` `IRemS`/`div_s` moved to `I64.rem`/`I64.quot`; `clientcalc` `Rem` stays truncated (`Math.rem`) and a new `Mod` is floored (`%`) (D12); `band` lowering for positive powers of two. `I64.min / -1` and `I32.min / -1` keep the existing named panic (D9) | S | std + backend | - |
+| 2 | `%` and `/` floored on `Int`, `I64` and `I32` (prelude `Int.mod`, Sol `Int.mod`, I64/I32 operators); add `Math.quot` and keep `Math.rem`, `I64.quot`/`I64.rem`, `I32.quot`/`I32.rem` for the truncated pair; fix-ups: `int_edge` and `algebra.sol` expectations; `wasmvm` `IRemS`/`div_s` moved to `I64.rem`/`I64.quot`; `clientcalc` `Rem` stays truncated (`Math.rem`) and a new `Mod` is floored (`%`) (D12); `band` lowering for positive powers of two | S | std + backend | - |
 | 3 | Sol JIT stops wrapping: overflow poison and re-run in the interpreter (correct on its own: the interpreter is already exact) | S-M | Sol VM | - |
 | 4 | Refuse literal-false preconditions and literal zero divisors | S | P1 | - |
 | 5 | `Option` forms for every index operation (`String.byteAt?`, `Bytes.byteAt?`, `Vec.get?`, `Vec.set?`, `Vec.slice?`, `S.slice?`, `SStr.at?`, `SStr.push -> Option`); warnings on unproven trapping reads; migrate std's guarded reads | M | std + frontend | - |
@@ -700,8 +703,9 @@ more.
 | 15 | String view variant, if performance priority #12 favours slices; built on item 6's representation | M | std/runtime | 6, [9] |
 | 16 | `parseInt` deprecated for `S.toInt`; Sol honours `FPR_HEAP_MB`; `std/math` loads on Sol | S | std / Sol VM | - |
 | 17 | `intovf.fpr` (renamed: Int promotion) under QEMU A64/RV64 where CI has it | S | P0 | 7 |
+| 18 | `I64.min / -1` and `I32.min / -1` wrap to `min` (D9, 2026-11-10): no panic. `min / -1 == min`, `quot min -1 == min`, `min % -1 == 0`, `rem min -1 == 0`, on native and in the Sol interpreter and JIT. Drop the named panic in `runtime/runtime.c` (`i64_div`) and `runtime/i32.c` (`divs`); keep a special case so C signed overflow and x86-64 `idiv` `#DE` are never hit (return `min` when the divisor is `-1`). Update tests and docs that still assert the panic (`tests/check_i32.py` `div-overflow`, `tests/check_rv32_numeric_runtime.py` `i32-div-trap`, `tests/base/rv32numeric_runtime.c` `FPR_TEST_I32_DIV_TRAP`, `docs/2026-10-05-I64.md`, `docs/2026-10-18-I32.md`, `docs/2026-10-12-MEMORY-I32-REFINEMENTS.md`, `docs/evidence/2026-10-18-i32.json`); add wrap cases to `tests/i64.fpr` and the I32 suite | S | std + backend | - |
 
-Items 2, 3, 4, 5, 6 and 10 do not wait on the pipeline. Item 7 is the one
+Items 2, 3, 4, 5, 6, 10 and 18 do not wait on the pipeline. Item 7 is the one
 large piece of work. It should land before P3's unboxing slices
 (performance order 8), so unboxing is built once, on the "proven fixnum"
 rule.
@@ -731,7 +735,7 @@ The seven questions, answered:
 | 1 | Exact `Int` (option (a)), including the bounded-code rule? | Yes | [D6](#d6-exact-int) |
 | 2 | `I32.ofInt` / `I64.ofInt` of an Int that does not fit? | Return `Option`; no implicit wrapping | [D7](#d7-i32ofint--i64ofint-return-option) |
 | 3 | Make `/` floored too, so the identity holds? | Yes; `Math.quot` / `Math.rem` are the truncated pair | [D8](#d8--is-floored-division) |
-| 4 | `%` and `/` on `I64`/`I32`? | Floored, same symbols; `quot`/`rem` for hardware truncated results. `min / -1` keeps the existing named panic | [D9](#d9--and--on-i64i32-are-floored-too) |
+| 4 | `%` and `/` on `I64`/`I32`? | Floored, same symbols; `quot`/`rem` for hardware truncated results. `min / -1` wraps to `min` (no panic) | [D9](#d9--and--on-i64i32-are-floored-too) |
 | 5 | One `String` type, or `String` plus `Bytes`? | Two types: `Bytes` (any bytes) and `String` (valid UTF-8) | [D10](#d10-two-types-bytes-and-string) |
 | 6 | Old names during migration? | Rename in one change; no deprecated aliases; old names are compile errors that name the replacement | [D11](#d11-rename-in-one-change-no-deprecated-aliases) |
 | 7 | Calculator `Rem`? | Truncated (`Math.rem`); add a separate `Mod` that is floored (`%`) | [D12](#d12-calculator-rem-is-truncated-mod-is-floored) |
@@ -859,31 +863,59 @@ I64.rem  : I64 -> (b : I64 | b != 0) -> I64  -- truncated (hardware)
 ```
 
 And the same four operations on `I32`. The identity
-`a == (a / b) * b + a % b` holds on `I64`/`I32` whenever the quotient is
-representable (the `min / -1` case below is the exception, because the
-quotient is not). Ordinary examples match the `Int` table, for instance
+`a == (a / b) * b + a % b` holds on `I64`/`I32` in two's-complement
+wrapping arithmetic, including the `min / -1` case below (the product
+wraps too). Ordinary examples match the `Int` table, for instance
 `(-7 : I64) / 2 == -4`, `(-7 : I64) % 2 == 1`, `I64.quot (-7) 2 == -3`,
 `I64.rem (-7) 2 == -1`.
 
-**The `min / -1` case.** `I64.min / -1` and `I32.min / -1` overflow the
-representable range (the mathematical result is `2^63` and `2^31`). The
-existing `I64` and `I32` contract ([2026-10-05-I64.md](2026-10-05-I64.md),
-[2026-10-18-I32.md](2026-10-18-I32.md)) is a named panic:
+**The `min / -1` case (decided 2026-11-10).** `I64.min / -1` and
+`I32.min / -1` overflow the representable range (the mathematical result
+is `2^63` and `2^31`). Jack chose wrapping: this case follows the
+fixed-width two's-complement contract of `I64` and `I32`, with no panic.
 
-- `I64.min / -1` and `I64.quot I64.min (-1)` panic with
-  `I64: division overflow (INT64_MIN / -1)`
-- `I32.min / -1` and `I32.quot I32.min (-1)` panic with
-  `I32: division overflow (INT32_MIN / -1)`
+- `I64.min / -1 == I64.min` and `I64.quot I64.min (-1) == I64.min`
+- `I32.min / -1 == I32.min` and `I32.quot I32.min (-1) == I32.min`
 - `I64.min % -1 == 0` and `I64.rem I64.min (-1) == 0` (and the same for
   `I32`)
 
-Floored and truncated quotients coincide here, because the exact quotient
-is an integer, so the panic applies to both `/` and `quot`. This page
-keeps that documented, tested trap rather than wrapping to `I64.min` /
-`I32.min`. Wrapping would also be a defensible reading of "fixed-width
-two's-complement wrapping" and would match ARM and RISC-V `sdiv` (x86
-`idiv` raises `#DE`); it is left open to review if Jack wants wrap
-instead.
+Floored `/` and truncated `quot` coincide here, because the exact
+quotient is an integer. The remainder is 0 either way, so the wrapping
+identity `a == (a / b) * b + a % b` holds (the product
+`I64.min * (-1)` also wraps to `I64.min`). The unwrapped mathematical
+identity does not, because the true quotient is not representable.
+
+This matches ARM and RISC-V `sdiv`. x86-64 `idiv` raises `#DE` on this
+case, so any codegen that emits `idiv`/`idivl` (and the C primitives,
+where signed overflow is undefined) must special-case a divisor of `-1`
+and return `min`, never execute the hardware divide. The Sol interpreter
+and the Sol JIT give the same answers; there is no panic on any backend.
+
+This replaces the existing named panic
+`I64: division overflow (INT64_MIN / -1)` /
+`I32: division overflow (INT32_MIN / -1)`, documented in
+[2026-10-05-I64.md](2026-10-05-I64.md) and
+[2026-10-18-I32.md](2026-10-18-I32.md) and implemented in
+`runtime/runtime.c` (`i64_div`) and `runtime/i32.c` (`divs`). The
+implementation work (order item 18) updates those primitives and the
+tests and docs that still assert the panic:
+
+- `tests/check_i32.py`: `RUNTIME_FAILURES['div-overflow']` expects
+  `I32: division overflow`
+- `tests/check_rv32_numeric_runtime.py`: case `i32-div-trap` expects
+  `I32: division overflow (INT32_MIN / -1)`
+- `tests/base/rv32numeric_runtime.c`: `FPR_TEST_I32_DIV_TRAP` currently
+  requires a trap (`I32 min/-1 did not trap`)
+- `docs/2026-10-05-I64.md`: "Division by zero and `INT64_MIN / -1` panic"
+- `docs/2026-10-18-I32.md`: the panic is the type contract, and the
+  Tang Nano board log records the panic
+- `docs/2026-10-12-MEMORY-I32-REFINEMENTS.md`: the proposed I32 contract
+  and the `tests/i32.fpr` plan still say the case panics
+- `docs/evidence/2026-10-18-i32.json`: recorded outputs of the panic
+
+`tests/i64.fpr` already checks `I64.rem min64 minus1 == 0` and does not
+exercise `min64 / minus1` (it would panic today). The implementation
+adds wrap cases for `/` and `quot` on both `I64` and `I32`.
 
 <a id="d10-two-types-bytes-and-string"></a>
 ### D10. Two types: `Bytes` and `String`
