@@ -103,6 +103,16 @@ main = m = FixedMap.ints 1; m2 = MutMap.insert 1 1 m; u = MutMap.free m2; print 
 ''',
 }
 
+# the rebinding type-check gap (docs/2026-11-10-MUTMAP.md) lets `m = MutMap.insert 1 1 m`
+# compile on a FixedMap; the runtime's growing primitives refuse it, native and Sol,
+# so a fixed map is never grown silently
+BACKSTOPS = {
+    'fixed-grown-through-rebinding-gap': '''
+main = m = FixedMap.ints 1; m = MutMap.insert 1 1 m; u = MutMap.free m; print 0.
+''',
+}
+BACKSTOP_PANIC = 'a growing operation got a FixedMap'
+
 
 def main():
     with tempfile.TemporaryDirectory(prefix='fpr-mutmap-') as directory:
@@ -155,7 +165,20 @@ def main():
                 assert result.returncode == 0, (name, mode, result.returncode, result.stdout + result.stderr)
                 assert got == expected, (name, mode, expected, result.stdout, result.stderr)
             print(name + ': agrees in native and Sol', flush=True)
-    print(f'{len(REFUSALS) + len(TYPE_REFUSALS) + len(POSITIVES)} MutMap and FixedMap ownership cases PASS', flush=True)
+        for name, body in BACKSTOPS.items():
+            source = tmp / (name + '.fpr')
+            source.write_text(BASE + body)
+            binary = tmp / name
+            built = invoke([ROOT / 'fpr', 'build', source, '-o', binary])
+            if built.returncode != 0:
+                print(name + ': refused at compile time (the type-check gap is closed)', flush=True)
+                continue
+            for mode, command in (('native', [binary]), ('Sol', [ROOT / 'fpr', 'sol', source])):
+                result = invoke(command)
+                output = result.stdout + result.stderr
+                assert result.returncode != 0 and BACKSTOP_PANIC in output, (name, mode, result.returncode, output)
+            print(name + ': runtime refuses in native and Sol', flush=True)
+    print(f'{len(REFUSALS) + len(TYPE_REFUSALS) + len(POSITIVES) + len(BACKSTOPS)} MutMap and FixedMap ownership cases PASS', flush=True)
 
 
 if __name__ == '__main__':

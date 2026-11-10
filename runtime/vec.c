@@ -1075,6 +1075,14 @@ static vec_t *mchk(V m, const char *who) {
   if (VREP(x) != VR_MAP) fpr_cpanic(who);
   return x;
 }
+/* a growing operation: never on a FixedMap.  The types keep the two apart;
+ * this is the backstop for the rebinding type-check gap (the same role as
+ * the key-kind check), so a fixed map is never grown silently. */
+static vec_t *gchk(V m, const char *who) {
+  vec_t *x = mchk(m, who);
+  if (x->elvar & 4u) fpr_cpanic("MutMap: a growing operation got a FixedMap (a type error the checker missed)");
+  return x;
+}
 static inline uw *mm_h(vec_t *x) { return x->cols[0]->base; }
 static inline uw *mm_k(vec_t *x) { return x->cols[1]->base; }
 static inline uw *mm_v(vec_t *x) { return x->cols[2]->base; }
@@ -1187,7 +1195,7 @@ static V g_mutmapInts(V capv) { return mm_new(MM_KINT, capv); }
 
 /* withCapacity: room for n entries with no further growth (never shrinks) */
 static V g_mutmapReserve(V nv, V m) {
-  vec_t *x = mchk(m, "MutMap.withCapacity: not a MutMap");
+  vec_t *x = gchk(m, "MutMap.withCapacity: not a MutMap");
   if (!ISINT(nv)) fpr_cpanic("MutMap.withCapacity: the capacity is not an Int");
   sw n = UNTAG(nv);
   if (n > 0) {
@@ -1213,7 +1221,7 @@ static void mm_place_new(vec_t *x, V k, uw h, V v, uw empty) {
 }
 
 static V g_mutmapInsert(V k, V v, V m) {
-  vec_t *x = mchk(m, "MutMap.insert: not a MutMap");
+  vec_t *x = gchk(m, "MutMap.insert: not a MutMap");
   uw h = mm_key_hash(x, k), empty;
   sw at = mm_find(x, k, h, &empty);
   if (at >= 0) mm_v(x)[at] = (uw)v;
@@ -1231,7 +1239,7 @@ static V mm_apply2(V f, V a, V b) {
 /* insertWith f k v: where k is there store `f old v`, else v (std/map's
  * argument order).  f is called at most once. */
 static V g_mutmapInsertWith(V f, V k, V v, V m) {
-  vec_t *x = mchk(m, "MutMap.insertWith: not a MutMap");
+  vec_t *x = gchk(m, "MutMap.insertWith: not a MutMap");
   uw h = mm_key_hash(x, k), empty;
   sw at = mm_find(x, k, h, &empty);
   if (at >= 0) {

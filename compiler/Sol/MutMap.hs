@@ -113,10 +113,19 @@ rehash :: Int -> MutMapStore -> MutMapStore
 rehash ncap st = st {mmCap = ncap, mmSlots = foldl place IM.empty (IM.elems (mmSlots st))}
   where place acc e@(h, _, _) = IM.insert (firstEmpty ncap acc h) e acc
 
+-- a growing operation never takes a FixedMap (vec.c's gchk: the backstop for
+-- the rebinding type-check gap)
+growable :: IORef MutMapStore -> IO ()
+growable r = do
+  st <- readIORef r
+  case mmLimit st of
+    Nothing -> pure ()
+    Just _ -> vmFail "MutMap: a growing operation got a FixedMap (a type error the checker missed)"
+
 mmReserve :: Integer -> IORef MutMapStore -> IO ()
 mmReserve n r
-  | n <= 0 = pure ()
-  | otherwise = modifyIORef' r (\st -> let c = capFor (fromInteger n) in if c > mmCap st then rehash c st else st)
+  | n <= 0 = growable r
+  | otherwise = growable r >> modifyIORef' r (\st -> let c = capFor (fromInteger n) in if c > mmCap st then rehash c st else st)
 
 placeNew :: MutMapStore -> Value -> Word64 -> Value -> Maybe Int -> MutMapStore
 placeNew st0 k h v empty =
@@ -130,6 +139,7 @@ placeNew st0 k h v empty =
 
 mmInsert :: Value -> Value -> IORef MutMapStore -> IO ()
 mmInsert k v r = do
+  growable r
   st <- readIORef r
   h <- keyHash st k
   writeIORef r $! case find st k h of
@@ -138,6 +148,7 @@ mmInsert k v r = do
 
 mmInsertWith :: (Value -> Value -> IO Value) -> Value -> Value -> IORef MutMapStore -> IO ()
 mmInsertWith f k v r = do
+  growable r
   st <- readIORef r
   h <- keyHash st k
   case find st k h of
