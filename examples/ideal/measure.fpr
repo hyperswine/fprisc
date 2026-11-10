@@ -15,8 +15,10 @@ copy xs = case xs of Nil -> Nil | x :: rest -> x :: copy rest.
 fact : (n : Int | n >= 0) -> Int -> Int
   | work fact <= 5 * n + 6 | alloc fact <= 0 .
 fact n acc = factGo n acc.
+# The loop takes any Int, so its bound is stated over the signed domain;
+# `fact` proves the simpler one from its own n >= 0.
 factGo : (n : Int | measure n) -> Int -> Int
-  | work factGo <= 5 * n + 5 | alloc factGo <= 0 .
+  | work factGo <= 5 * max 0 n + 5 | alloc factGo <= 0 .
 factGo n acc | n <= 0 = acc.
 factGo n acc = factGo (n - 1) (acc * n).
 

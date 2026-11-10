@@ -70,7 +70,11 @@ main =
     assert re.search(r'pages@\w+: declared work <= 8 .* PROVEN', report), report
     assert re.search(r'plan@\w+: declared work <= 25 .* PROVEN', report), report
     assert re.search(r'plan@\w+: declared alloc <= 32 .* PROVEN', report), report
-    assert 'UNPROVED' not in report and ' OVER ' not in report, report
+    # The report also lists every imported result-size annotation, and says
+    # so when one has no independent lemma and is therefore not used (three
+    # in std/list: sortBy, sortWith, unique). That is not a failed bound.
+    judged = '\n'.join(l for l in report.splitlines() if 'no result-size lemma; annotation is not used' not in l)
+    assert 'UNPROVED' not in judged and ' OVER ' not in judged, report
     want = [f'{size},{count},{request}:' + ','.join(map(str, reference(size, count, request)))
             for sizes, counts, requests in groups
             for size in sizes for count in counts for request in requests]
