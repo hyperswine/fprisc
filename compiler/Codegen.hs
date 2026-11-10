@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 207 -- callback trim drops dead closures over an inlined function's code
+codegenRev = 208 -- the GPU pair-sum hook is offered again (guards inlined into the sum)
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -714,6 +714,9 @@ isGpuPairSum p = case spSoa p of
   where
     strip (CLet x a b) = substGpu x (strip a) (strip b)
     strip (CIf (CMk 1 1 []) t _) = strip t
+    -- A field read inlined into the sum keeps its always-true shape guard
+    -- as an operand, not as a let above the sum; see through it there too.
+    strip (CApp f a) = CApp (strip f) (strip a)
     strip e = e
     addTerms (CApp (CApp (CVar "+") a) b) = addTerms a ++ addTerms b
     addTerms (CVar x) = [x]

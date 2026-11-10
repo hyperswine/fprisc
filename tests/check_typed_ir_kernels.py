@@ -167,7 +167,8 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
                 assert not args.require_execution,'x64 execution unavailable'
                 print('x64 execution SKIP');continue
             mac,runner,label=available
-            asm.write_text('.text\n'+adapt(body,mac,borrowed=target=='qx64')+rodata)
+            # Mach-O has no .rodata; the pools are read-only constants either way.
+            asm.write_text('.text\n'+adapt(body,mac,borrowed=target=='qx64')+(rodata.replace('.section .rodata','.const') if mac else rodata))
             exe=tmp/'x64-oracle';link([asm,oracle],exe,mac,env)
             output=run([*runner,exe],env)
         else:

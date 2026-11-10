@@ -168,7 +168,10 @@ jobs:
     name: reliability gates (debian trixie)
     runs-on: ubuntu-latest
     container: debian:trixie
-    timeout-minutes: 40
+    # The nightly full size (RELIABILITY_FULL=1: every tests/std program in
+    # each configuration, 2000 fuzz mutants) does not fit the push budget; at
+    # 40 minutes every scheduled run was cancelled without a result.
+    timeout-minutes: ${{ github.event_name == 'schedule' && 180 || 40 }}
     steps:
       - name: tools
         run: |
