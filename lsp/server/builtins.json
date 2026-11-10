@@ -1645,6 +1645,582 @@
    }
   }
  },
+ "strHash": {
+  "sig": "strHash : String -> Int",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "A String's hash as a nonnegative Int: deterministic and unseeded (XXH64's single-lane round over the bytes on 64-bit words, murmur3 on 32-bit); MutMap's String hash. Not cryptographic.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "strHash : String -> Int",
+    "doc": "A String's hash as a nonnegative Int: deterministic and unseeded (XXH64's single-lane round over the bytes on 64-bit words, murmur3 on 32-bit); MutMap's String hash. Not cryptographic.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "strHash : String -> Int",
+    "doc": "A String's hash as a nonnegative Int: deterministic and unseeded (XXH64's single-lane round over the bytes on 64-bit words, murmur3 on 32-bit); MutMap's String hash. Not cryptographic.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "intHash": {
+  "sig": "intHash : Int -> Int",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "An Int's hash as a nonnegative Int: deterministic and unseeded (splitmix64's finalizer on 64-bit words, murmur3 fmix32 on 32-bit); MutMap's Int hash.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "intHash : Int -> Int",
+    "doc": "An Int's hash as a nonnegative Int: deterministic and unseeded (splitmix64's finalizer on 64-bit words, murmur3 fmix32 on 32-bit); MutMap's Int hash.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "intHash : Int -> Int",
+    "doc": "An Int's hash as a nonnegative Int: deterministic and unseeded (splitmix64's finalizer on 64-bit words, murmur3 fmix32 on 32-bit); MutMap's Int hash.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapStrings": {
+  "sig": "mutmapStrings : Int -> MutMap String a",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: a new String-keyed MutMap with room for n entries; call MutMap.strings / MutMap.withCapacity instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapStrings : Int -> MutMap String a",
+    "doc": "std/mutmap's engine: a new String-keyed MutMap with room for n entries; call MutMap.strings / MutMap.withCapacity instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapStrings : Int -> MutMap String a",
+    "doc": "std/mutmap's engine: a new String-keyed MutMap with room for n entries; call MutMap.strings / MutMap.withCapacity instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapInts": {
+  "sig": "mutmapInts : Int -> MutMap Int a",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: a new Int-keyed MutMap with room for n entries; call MutMap.ints / MutMap.withCapacity instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapInts : Int -> MutMap Int a",
+    "doc": "std/mutmap's engine: a new Int-keyed MutMap with room for n entries; call MutMap.ints / MutMap.withCapacity instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapInts : Int -> MutMap Int a",
+    "doc": "std/mutmap's engine: a new Int-keyed MutMap with room for n entries; call MutMap.ints / MutMap.withCapacity instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapReserve": {
+  "sig": "mutmapReserve : Int -> (MutMap a b) -> MutMap a b",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: grow a MutMap now so n entries fit with no growth; call MutMap.withCapacity instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapReserve : Int -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: grow a MutMap now so n entries fit with no growth; call MutMap.withCapacity instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapReserve : Int -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: grow a MutMap now so n entries fit with no growth; call MutMap.withCapacity instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapInsert": {
+  "sig": "mutmapInsert : a -> b -> (MutMap a b) -> MutMap a b",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: insert or replace a key in place; call MutMap.insert instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapInsert : a -> b -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: insert or replace a key in place; call MutMap.insert instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapInsert : a -> b -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: insert or replace a key in place; call MutMap.insert instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapInsertWith": {
+  "sig": "mutmapInsertWith : (b -> b -> b) -> a -> b -> (MutMap a b) -> MutMap a b",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: insert, or store f old new where the key is present; call MutMap.insertWith instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapInsertWith : (b -> b -> b) -> a -> b -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: insert, or store f old new where the key is present; call MutMap.insertWith instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapInsertWith : (b -> b -> b) -> a -> b -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: insert, or store f old new where the key is present; call MutMap.insertWith instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapSlot": {
+  "sig": "mutmapSlot : a -> (MutMap a b) -> (Int, MutMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: the slot holding a key, or -1, and the map; call MutMap.get / member / alter instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapSlot : a -> (MutMap a b) -> (Int, MutMap a b)",
+    "doc": "std/mutmap's engine: the slot holding a key, or -1, and the map; call MutMap.get / member / alter instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapSlot : a -> (MutMap a b) -> (Int, MutMap a b)",
+    "doc": "std/mutmap's engine: the slot holding a key, or -1, and the map; call MutMap.get / member / alter instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapValueAt": {
+  "sig": "mutmapValueAt : Int -> (MutMap a b) -> (b, MutMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: the value in an occupied slot, and the map; call MutMap.get instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapValueAt : Int -> (MutMap a b) -> (b, MutMap a b)",
+    "doc": "std/mutmap's engine: the value in an occupied slot, and the map; call MutMap.get instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapValueAt : Int -> (MutMap a b) -> (b, MutMap a b)",
+    "doc": "std/mutmap's engine: the value in an occupied slot, and the map; call MutMap.get instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapSetAt": {
+  "sig": "mutmapSetAt : Int -> b -> (MutMap a b) -> MutMap a b",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: replace the value in an occupied slot; call MutMap.alter instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapSetAt : Int -> b -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: replace the value in an occupied slot; call MutMap.alter instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapSetAt : Int -> b -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: replace the value in an occupied slot; call MutMap.alter instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapRemoveAt": {
+  "sig": "mutmapRemoveAt : Int -> (MutMap a b) -> MutMap a b",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: empty an occupied slot (backward shift); call MutMap.alter instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapRemoveAt : Int -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: empty an occupied slot (backward shift); call MutMap.alter instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapRemoveAt : Int -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: empty an occupied slot (backward shift); call MutMap.alter instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapRemove": {
+  "sig": "mutmapRemove : a -> (MutMap a b) -> MutMap a b",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: remove a key if present; call MutMap.remove instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapRemove : a -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: remove a key if present; call MutMap.remove instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapRemove : a -> (MutMap a b) -> MutMap a b",
+    "doc": "std/mutmap's engine: remove a key if present; call MutMap.remove instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapSize": {
+  "sig": "mutmapSize : (MutMap a b) -> (Int, MutMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: the entry count, and the map; call MutMap.size instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapSize : (MutMap a b) -> (Int, MutMap a b)",
+    "doc": "std/mutmap's engine: the entry count, and the map; call MutMap.size instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapSize : (MutMap a b) -> (Int, MutMap a b)",
+    "doc": "std/mutmap's engine: the entry count, and the map; call MutMap.size instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapCapacity": {
+  "sig": "mutmapCapacity : (MutMap a b) -> (Int, MutMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: entries held before the next growth, and the map; call MutMap.capacity instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapCapacity : (MutMap a b) -> (Int, MutMap a b)",
+    "doc": "std/mutmap's engine: entries held before the next growth, and the map; call MutMap.capacity instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapCapacity : (MutMap a b) -> (Int, MutMap a b)",
+    "doc": "std/mutmap's engine: entries held before the next growth, and the map; call MutMap.capacity instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapFold": {
+  "sig": "mutmapFold : (c -> a -> b -> c) -> c -> (MutMap a b) -> (c, MutMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: fold f acc k v over the entries in slot order; call MutMap.fold instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapFold : (c -> a -> b -> c) -> c -> (MutMap a b) -> (c, MutMap a b)",
+    "doc": "std/mutmap's engine: fold f acc k v over the entries in slot order; call MutMap.fold instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapFold : (c -> a -> b -> c) -> c -> (MutMap a b) -> (c, MutMap a b)",
+    "doc": "std/mutmap's engine: fold f acc k v over the entries in slot order; call MutMap.fold instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapToList": {
+  "sig": "mutmapToList : (MutMap a b) -> (List (a, b), MutMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: the (key, value) pairs in slot order, and the map; call MutMap.toList instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapToList : (MutMap a b) -> (List (a, b), MutMap a b)",
+    "doc": "std/mutmap's engine: the (key, value) pairs in slot order, and the map; call MutMap.toList instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapToList : (MutMap a b) -> (List (a, b), MutMap a b)",
+    "doc": "std/mutmap's engine: the (key, value) pairs in slot order, and the map; call MutMap.toList instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "mutmapFree": {
+  "sig": "mutmapFree : (MutMap a b) -> Unit",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/mutmap's engine: release a MutMap's storage; call MutMap.free or MutMap.freeze instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "mutmapFree : (MutMap a b) -> Unit",
+    "doc": "std/mutmap's engine: release a MutMap's storage; call MutMap.free or MutMap.freeze instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "mutmapFree : (MutMap a b) -> Unit",
+    "doc": "std/mutmap's engine: release a MutMap's storage; call MutMap.free or MutMap.freeze instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapStrings": {
+  "sig": "fixedmapStrings : Int -> FixedMap String a",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: a new String-keyed FixedMap holding at most n entries, never growing; call FixedMap.strings instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapStrings : Int -> FixedMap String a",
+    "doc": "std/fixedmap's engine: a new String-keyed FixedMap holding at most n entries, never growing; call FixedMap.strings instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapStrings : Int -> FixedMap String a",
+    "doc": "std/fixedmap's engine: a new String-keyed FixedMap holding at most n entries, never growing; call FixedMap.strings instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapInts": {
+  "sig": "fixedmapInts : Int -> FixedMap Int a",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: a new Int-keyed FixedMap holding at most n entries, never growing; call FixedMap.ints instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapInts : Int -> FixedMap Int a",
+    "doc": "std/fixedmap's engine: a new Int-keyed FixedMap holding at most n entries, never growing; call FixedMap.ints instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapInts : Int -> FixedMap Int a",
+    "doc": "std/fixedmap's engine: a new Int-keyed FixedMap holding at most n entries, never growing; call FixedMap.ints instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapInsert": {
+  "sig": "fixedmapInsert : a -> b -> (FixedMap a b) -> (Int, FixedMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: insert or replace a key in place: 1 stored, 0 refused (a new key into a full map; nothing changed), and the map; call FixedMap.insert instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapInsert : a -> b -> (FixedMap a b) -> (Int, FixedMap a b)",
+    "doc": "std/fixedmap's engine: insert or replace a key in place: 1 stored, 0 refused (a new key into a full map; nothing changed), and the map; call FixedMap.insert instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapInsert : a -> b -> (FixedMap a b) -> (Int, FixedMap a b)",
+    "doc": "std/fixedmap's engine: insert or replace a key in place: 1 stored, 0 refused (a new key into a full map; nothing changed), and the map; call FixedMap.insert instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapInsertWith": {
+  "sig": "fixedmapInsertWith : (b -> b -> b) -> a -> b -> (FixedMap a b) -> (Int, FixedMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: insert, or store f old new where the key is present: 1 stored, 0 refused, and the map; call FixedMap.insertWith instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapInsertWith : (b -> b -> b) -> a -> b -> (FixedMap a b) -> (Int, FixedMap a b)",
+    "doc": "std/fixedmap's engine: insert, or store f old new where the key is present: 1 stored, 0 refused, and the map; call FixedMap.insertWith instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapInsertWith : (b -> b -> b) -> a -> b -> (FixedMap a b) -> (Int, FixedMap a b)",
+    "doc": "std/fixedmap's engine: insert, or store f old new where the key is present: 1 stored, 0 refused, and the map; call FixedMap.insertWith instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapCapacity": {
+  "sig": "fixedmapCapacity : (FixedMap a b) -> (Int, FixedMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: the entry limit the map was made with, and the map; call FixedMap.capacity instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapCapacity : (FixedMap a b) -> (Int, FixedMap a b)",
+    "doc": "std/fixedmap's engine: the entry limit the map was made with, and the map; call FixedMap.capacity instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapCapacity : (FixedMap a b) -> (Int, FixedMap a b)",
+    "doc": "std/fixedmap's engine: the entry limit the map was made with, and the map; call FixedMap.capacity instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapGrowable": {
+  "sig": "fixedmapGrowable : (FixedMap a b) -> MutMap a b",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: the same table as a growable MutMap, nothing copied; call FixedMap.toMutMap instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapGrowable : (FixedMap a b) -> MutMap a b",
+    "doc": "std/fixedmap's engine: the same table as a growable MutMap, nothing copied; call FixedMap.toMutMap instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapGrowable : (FixedMap a b) -> MutMap a b",
+    "doc": "std/fixedmap's engine: the same table as a growable MutMap, nothing copied; call FixedMap.toMutMap instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapSlot": {
+  "sig": "fixedmapSlot : a -> (FixedMap a b) -> (Int, FixedMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: the slot holding a key, or -1, and the map; call FixedMap.get / member / alter instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapSlot : a -> (FixedMap a b) -> (Int, FixedMap a b)",
+    "doc": "std/fixedmap's engine: the slot holding a key, or -1, and the map; call FixedMap.get / member / alter instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapSlot : a -> (FixedMap a b) -> (Int, FixedMap a b)",
+    "doc": "std/fixedmap's engine: the slot holding a key, or -1, and the map; call FixedMap.get / member / alter instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapValueAt": {
+  "sig": "fixedmapValueAt : Int -> (FixedMap a b) -> (b, FixedMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: the value in an occupied slot, and the map; call FixedMap.get instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapValueAt : Int -> (FixedMap a b) -> (b, FixedMap a b)",
+    "doc": "std/fixedmap's engine: the value in an occupied slot, and the map; call FixedMap.get instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapValueAt : Int -> (FixedMap a b) -> (b, FixedMap a b)",
+    "doc": "std/fixedmap's engine: the value in an occupied slot, and the map; call FixedMap.get instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapSetAt": {
+  "sig": "fixedmapSetAt : Int -> b -> (FixedMap a b) -> FixedMap a b",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: replace the value in an occupied slot; call FixedMap.alter instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapSetAt : Int -> b -> (FixedMap a b) -> FixedMap a b",
+    "doc": "std/fixedmap's engine: replace the value in an occupied slot; call FixedMap.alter instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapSetAt : Int -> b -> (FixedMap a b) -> FixedMap a b",
+    "doc": "std/fixedmap's engine: replace the value in an occupied slot; call FixedMap.alter instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapRemoveAt": {
+  "sig": "fixedmapRemoveAt : Int -> (FixedMap a b) -> FixedMap a b",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: empty an occupied slot (backward shift); call FixedMap.alter instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapRemoveAt : Int -> (FixedMap a b) -> FixedMap a b",
+    "doc": "std/fixedmap's engine: empty an occupied slot (backward shift); call FixedMap.alter instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapRemoveAt : Int -> (FixedMap a b) -> FixedMap a b",
+    "doc": "std/fixedmap's engine: empty an occupied slot (backward shift); call FixedMap.alter instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapRemove": {
+  "sig": "fixedmapRemove : a -> (FixedMap a b) -> FixedMap a b",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: remove a key if present; call FixedMap.remove instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapRemove : a -> (FixedMap a b) -> FixedMap a b",
+    "doc": "std/fixedmap's engine: remove a key if present; call FixedMap.remove instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapRemove : a -> (FixedMap a b) -> FixedMap a b",
+    "doc": "std/fixedmap's engine: remove a key if present; call FixedMap.remove instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapSize": {
+  "sig": "fixedmapSize : (FixedMap a b) -> (Int, FixedMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: the entry count, and the map; call FixedMap.size instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapSize : (FixedMap a b) -> (Int, FixedMap a b)",
+    "doc": "std/fixedmap's engine: the entry count, and the map; call FixedMap.size instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapSize : (FixedMap a b) -> (Int, FixedMap a b)",
+    "doc": "std/fixedmap's engine: the entry count, and the map; call FixedMap.size instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapFold": {
+  "sig": "fixedmapFold : (c -> a -> b -> c) -> c -> (FixedMap a b) -> (c, FixedMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: fold f acc k v over the entries in slot order; call FixedMap.fold instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapFold : (c -> a -> b -> c) -> c -> (FixedMap a b) -> (c, FixedMap a b)",
+    "doc": "std/fixedmap's engine: fold f acc k v over the entries in slot order; call FixedMap.fold instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapFold : (c -> a -> b -> c) -> c -> (FixedMap a b) -> (c, FixedMap a b)",
+    "doc": "std/fixedmap's engine: fold f acc k v over the entries in slot order; call FixedMap.fold instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapToList": {
+  "sig": "fixedmapToList : (FixedMap a b) -> (List (a, b), FixedMap a b)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: the (key, value) pairs in slot order, and the map; call FixedMap.toList instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapToList : (FixedMap a b) -> (List (a, b), FixedMap a b)",
+    "doc": "std/fixedmap's engine: the (key, value) pairs in slot order, and the map; call FixedMap.toList instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapToList : (FixedMap a b) -> (List (a, b), FixedMap a b)",
+    "doc": "std/fixedmap's engine: the (key, value) pairs in slot order, and the map; call FixedMap.toList instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
+ "fixedmapFree": {
+  "sig": "fixedmapFree : (FixedMap a b) -> Unit",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "std/fixedmap's engine: release a FixedMap's storage; call FixedMap.free or FixedMap.freeze instead.",
+  "profile": "both",
+  "variants": {
+   "fpr": {
+    "sig": "fixedmapFree : (FixedMap a b) -> Unit",
+    "doc": "std/fixedmap's engine: release a FixedMap's storage; call FixedMap.free or FixedMap.freeze instead.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   },
+   "sol": {
+    "sig": "fixedmapFree : (FixedMap a b) -> Unit",
+    "doc": "std/fixedmap's engine: release a FixedMap's storage; call FixedMap.free or FixedMap.freeze instead.",
+    "section": "Sol builtins (compiler/Sol/Infer.hs)"
+   }
+  }
+ },
  "Vec.iota": {
   "sig": "Vec.iota : Int -> Vector Int",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
@@ -7712,6 +8288,42 @@
    "fpr": {
     "sig": "Vector 1 a = Type Int.",
     "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nVector 1 a = Type Int.\n```",
+    "section": "FP-RISC prelude (core/prelude.fpr)"
+   }
+  }
+ },
+ "MutMap": {
+  "sig": "MutMap 1 k v = Type (MutMap Int).",
+  "section": "Sol prelude (compiler/Sol/Preamble.hs)",
+  "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nMutMap 1 k v = Type (MutMap Int).\n```",
+  "profile": "both",
+  "variants": {
+   "sol": {
+    "sig": "MutMap 1 k v = Type (MutMap Int).",
+    "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nMutMap 1 k v = Type (MutMap Int).\n```",
+    "section": "Sol prelude (compiler/Sol/Preamble.hs)"
+   },
+   "fpr": {
+    "sig": "MutMap 1 k v = Type Int.",
+    "doc": "the linear hash table, keyed by Int or String (std/mutmap.fpr; runtime/vec.c):\none owner, so its writes happen in place (docs/2026-11-10-MUTMAP.md)",
+    "section": "FP-RISC prelude (core/prelude.fpr)"
+   }
+  }
+ },
+ "FixedMap": {
+  "sig": "FixedMap 1 k v = Type (FixedMap Int).",
+  "section": "Sol prelude (compiler/Sol/Preamble.hs)",
+  "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nFixedMap 1 k v = Type (FixedMap Int).\n```",
+  "profile": "both",
+  "variants": {
+   "sol": {
+    "sig": "FixedMap 1 k v = Type (FixedMap Int).",
+    "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nFixedMap 1 k v = Type (FixedMap Int).\n```",
+    "section": "Sol prelude (compiler/Sol/Preamble.hs)"
+   },
+   "fpr": {
+    "sig": "FixedMap 1 k v = Type Int.",
+    "doc": "the same table with a fixed entry limit: it never grows, and an insert of a\nnew key past the limit answers None (std/fixedmap.fpr)",
     "section": "FP-RISC prelude (core/prelude.fpr)"
    }
   }

@@ -34,6 +34,41 @@ ints = empty Ord.int.
 fromList : (k -> k -> Ord.Ordering) -> List (k, v) -> Map k v .
 fromList cmp kvs = insertAll kvs (empty cmp).
 
+# pairs whose keys are STRICTLY ascending under cmp (sorted, no duplicates:
+# what MutMap.freeze hands over) become a balanced tree in O(n) with no
+# rebalancing.  Pairs that are not strictly ascending are not trusted: they
+# go through fromList (later pairs win), so the result is always a valid Map.
+fromDistinctAscList : (k -> k -> Ord.Ordering) -> List (k, v) -> Map k v .
+fromDistinctAscList cmp kvs =
+  (asc, n) = ascCount cmp kvs 0;
+  if asc then (case buildAsc (bitsFor n 0 0) n kvs of
+      (t, Nil) -> Map cmp n t
+    | _ -> fromList cmp kvs)
+  else fromList cmp kvs.
+
+# (strictly ascending?, length)
+ascCount : (k -> k -> Ord.Ordering) -> (kvs : List (k, v) | measure kvs) -> Int -> (Bool, Int) .
+ascCount cmp kvs n = case kvs of
+    Nil -> (True, n)
+  | (k1, _) :: rest -> (case rest of
+        Nil -> (True, n + 1)
+      | (k2, _) :: _ -> (case cmp k1 k2 of
+            Ord.Less -> ascCount cmp rest (n + 1)
+          | _ -> (False, n))).
+
+# the least d with 2^d - 1 >= n: p runs 0, 1, 3, 7, ... (p = 2^d - 1); a
+# word holds at most 64 such steps
+bitsFor : Int -> Int -> (d : Int | measure (64 - d)) -> Int .
+bitsFor n p d = if p >= n then d else if d >= 64 then d else bitsFor n (p + p + 1) (d + 1).
+
+# the first n pairs as a tree of height at most d (d >= bitsFor n), and the rest
+buildAsc : (d : Int | measure d) -> Int -> List (k, v) -> (Tree k v, List (k, v)) .
+buildAsc d n kvs = if n <= 0 then (Leaf, kvs) else if d <= 0 then (Leaf, kvs) else
+  (l, rest) = buildAsc (d - 1) (n / 2) kvs;
+  case rest of
+      Nil -> (l, Nil)
+    | (k, v) :: rest2 -> (case buildAsc (d - 1) (n - n / 2 - 1) rest2 of (r, rest3) -> (node l k v r, rest3)).
+
 # later pairs win
 insertAll : List (k, v) -> Map k v -> Map k v .
 insertAll kvs m = insertAllGo kvs m.

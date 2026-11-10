@@ -173,6 +173,13 @@ the current implementation.
    runtime-backed table is estimated at 0.4-0.6 s on wordfreq (estimate, not
    measured). `Map` stays the default in examples; `MutMap` is the type for hot
    loops, as `Vector` is.
+   *Status (10 November): implemented on `perf/mutmap`
+   ([MutMap](2026-11-10-MUTMAP.md)). Measured 0.477 s / 207 MB on wordfreq
+   (main's `Map`: 4.108 s / 1992 MB). The probe bound is C slots; the ordered
+   collision fallback is not built. The capacity policy is decided: growth
+   stays charged in `MutMap`, and the refuse-past-capacity option is
+   `std/fixedmap`'s `FixedMap`, whose full map answers `None` (no trap) and
+   whose insert contract has no growth term.*
 4. **A C sort behind `List.sortWith` and a new `Vec.sortWith`**: convert, sort
    (stable), rebuild. The list form is invisible to programs except for its
    stated `alloc` bound. The FP-RISC heapsort lower bound measured 1.2x faster

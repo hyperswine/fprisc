@@ -1,0 +1,171 @@
+# MutMap (std/mutmap, runtime/vec.c): the linear hash table against the
+# persistent Map as an oracle -- 100,000 random operations on Int keys and on
+# String keys, in tiny tables (every probe collides) and in grown ones; the
+# empty map; growth and withCapacity; removal by backward shift; freeze to an
+# ordered Map; fold, toList, thaw.  Ownership misuse is refused at compile
+# time (tests/check_mutmap.py).
+unsafe base.
+List = use "std/list".
+MutMap = use "std/mutmap".
+Map = use "std/map".
+Order = use "std/order".
+O = use "std/option".
+
+# a 31-bit LCG: deterministic on every word size (its high bits are the random ones)
+next s = (s * 1103515245 + 12345) - ((s * 1103515245 + 12345) / 2147483648) * 2147483648.
+
+bump o = case o of O.Some c -> O.Some (c + 1) | O.None -> O.Some 1.
+dropOdd o = case o of O.Some c -> (if c - (c / 2) * 2 == 1 then O.None else O.Some (c + 1)) | O.None -> O.None.
+
+# one random operation on key k, to both maps; counts disagreements
+step : Int -> Int -> Int -> (Int, MutMap Int Int, Map.Map Int Int) -> (Int, MutMap Int Int, Map.Map Int Int) .
+step op k v st = case st of (bad, mm, ref) ->
+  if op == 0 then (bad, MutMap.insert k v mm, Map.insert k v ref)
+  else if op == 1 then (bad, MutMap.remove k mm, Map.remove k ref)
+  else if op == 2 then (bad, MutMap.alter k bump mm, Map.alter k bump ref)
+  else if op == 3 then (bad, MutMap.alter k dropOdd mm, Map.alter k dropOdd ref)
+  else if op == 4 then (bad, MutMap.insertWith (fn a b -> a + b) k v mm, Map.insertWith (fn a b -> a + b) k v ref)
+  else (case MutMap.get k mm of (got, mm2) -> (if got == Map.get k ref then bad else bad + 1, mm2, ref)).
+
+runInts : (n : Int | measure n) -> Int -> Int -> (Int, MutMap Int Int, Map.Map Int Int) -> (Int, MutMap Int Int, Map.Map Int Int) .
+runInts n universe s st = if n <= 0 then st else
+  s1 = next s;
+  s2 = next s1;
+  h1 = s1 / 32768;
+  h2 = s2 / 1024;
+  op = h1 - (h1 / 6) * 6;
+  k = h2 - (h2 / universe) * universe;
+  runInts (n - 1) universe s2 (step op k (s1 / 7) st).
+
+skey k = "key-{k}".
+
+stepS : Int -> String -> Int -> (Int, MutMap String Int, Map.Map String Int) -> (Int, MutMap String Int, Map.Map String Int) .
+stepS op k v st = case st of (bad, mm, ref) ->
+  if op == 0 then (bad, MutMap.insert k v mm, Map.insert k v ref)
+  else if op == 1 then (bad, MutMap.remove k mm, Map.remove k ref)
+  else if op == 2 then (bad, MutMap.alter k bump mm, Map.alter k bump ref)
+  else if op == 3 then (bad, MutMap.alter k dropOdd mm, Map.alter k dropOdd ref)
+  else if op == 4 then (bad, MutMap.insertWith (fn a b -> a + b) k v mm, Map.insertWith (fn a b -> a + b) k v ref)
+  else (case MutMap.member k mm of (got, mm2) -> (if got == Map.member k ref then bad else bad + 1, mm2, ref)).
+
+runStrs : (n : Int | measure n) -> Int -> Int -> (Int, MutMap String Int, Map.Map String Int) -> (Int, MutMap String Int, Map.Map String Int) .
+runStrs n universe s st = if n <= 0 then st else
+  s1 = next s;
+  s2 = next s1;
+  h1 = s1 / 32768;
+  h2 = s2 / 1024;
+  op = h1 - (h1 / 6) * 6;
+  k = h2 - (h2 / universe) * universe;
+  runStrs (n - 1) universe s2 (stepS op (skey k) (s1 / 7) st).
+
+# the final state: bad gets, sizes, and the frozen entries against the oracle
+verdictI name st = case st of (bad, mm, ref) ->
+  (n, mm2) = MutMap.size mm;
+  frozen = MutMap.freeze Order.int mm2;
+  print "{name}: {bad} wrong reads, size {n} = {Map.size ref}: {n == Map.size ref}, frozen = oracle: {Map.entries frozen == Map.entries ref}".
+verdictS name st = case st of (bad, mm, ref) ->
+  (n, mm2) = MutMap.size mm;
+  frozen = MutMap.freeze Order.string mm2;
+  print "{name}: {bad} wrong reads, size {n} = {Map.size ref}: {n == Map.size ref}, frozen = oracle: {Map.entries frozen == Map.entries ref}".
+
+fill : (n : Int | measure n) -> Int -> MutMap Int Int -> MutMap Int Int .
+fill n i m = if n <= 0 then m else fill (n - 1) (i + 1) (MutMap.insert i (i * i) m).
+
+# the capacities met while inserting 0..n-1 one by one: each growth is a doubling
+caps : (n : Int | measure n) -> Int -> Int -> List Int -> MutMap Int Int -> (List Int, MutMap Int Int) .
+caps n i last acc m = if n <= 0 then (List.reverse acc, m) else
+  m1 = MutMap.insert i i m;
+  (c, m2) = MutMap.capacity m1;
+  if c == last then caps (n - 1) (i + 1) last acc m2 else caps (n - 1) (i + 1) c (c :: acc) m2.
+
+removeAll : (ks : List Int | measure ks) -> MutMap Int Int -> MutMap Int Int .
+removeAll ks m = case ks of Nil -> m | k :: rest -> removeAll rest (MutMap.remove k m).
+
+main =
+  # the empty map
+  e = MutMap.strings Unit;
+  (g, e) = MutMap.get "x" e;
+  (z, e) = MutMap.size e;
+  (c0, e) = MutMap.capacity e;
+  (es, e) = MutMap.toList e;
+  (fz, e) = MutMap.fold (fn acc k v -> acc + v) 0 e;
+  e = MutMap.remove "x" e;
+  e = MutMap.alter "x" (fn o -> O.None) e;
+  (emp, e) = MutMap.isEmpty e;
+  frozenE = MutMap.freeze Order.string e;
+  _ = print "empty: get {g}, size {z}, capacity {c0}, toList {es}, fold {fz}, isEmpty {emp}, frozen {Map.entries frozenE}";
+
+  # a handful, by hand
+  h = MutMap.ints Unit;
+  h = MutMap.insert 5 50 h;
+  h = MutMap.insert 1 10 h;
+  h = MutMap.insert 5 55 h;
+  h = MutMap.insertWith (fn old new -> old * 100 + new) 1 7 h;
+  h = MutMap.alter 9 (fn o -> O.Some 90) h;
+  (g5, h) = MutMap.getOr 0 5 h;
+  (g7, h) = MutMap.getOr (0 - 1) 7 h;
+  (m9, h) = MutMap.member 9 h;
+  (s3, h) = MutMap.size h;
+  (sum, h) = MutMap.fold (fn acc k v -> acc + k + v) 0 h;
+  (sorted, h) = MutMap.sortedList Order.int h;
+  _ = MutMap.free h;
+  _ = print "by hand: 5 -> {g5}, 7 -> {g7}, 9 member {m9}, size {s3}, fold {sum}, sorted {sorted}";
+
+  # growth: the capacities passed on the way to 10,000 entries
+  (cs, gm) = caps 10000 0 0 Nil (MutMap.ints Unit);
+  (gs, gm) = MutMap.size gm;
+  _ = MutMap.free gm;
+  _ = print "growth to {gs}: capacities {cs}";
+
+  # withCapacity: 5,000 inserts and the capacity never moves
+  w = MutMap.withCapacity 5000 (MutMap.ints Unit);
+  (wc0, w) = MutMap.capacity w;
+  w = fill 5000 0 w;
+  (wc1, w) = MutMap.capacity w;
+  w = MutMap.withCapacity 10 w;
+  (wc2, w) = MutMap.capacity w;
+  (ws, w) = MutMap.size w;
+  _ = MutMap.free w;
+  _ = print "withCapacity 5000: capacity {wc0} before, {wc1} after {ws} inserts, {wc2} after asking for 10 (never shrinks): {wc0 >= 5000 and wc0 == wc1 and wc1 == wc2}";
+
+  # removal by backward shift: fill a table, remove every third key, then the rest
+  r = fill 3000 0 (MutMap.ints Unit);
+  r = removeAll (List.filter (fn k -> k - (k / 3) * 3 == 0) (List.range 0 2999)) r;
+  (rs, r) = MutMap.size r;
+  (rok, r) = MutMap.fold (fn acc k v -> acc and v == k * k and k - (k / 3) * 3 != 0) True r;
+  (r2, r) = MutMap.get 2 r;
+  (r3, r) = MutMap.get 3 r;
+  r = removeAll (List.range 0 2999) r;
+  (rs2, r) = MutMap.size r;
+  (rl, r) = MutMap.toList r;
+  _ = MutMap.free r;
+  _ = print "backward shift: {rs} left after removing 1000, all intact {rok}, 2 -> {r2}, 3 -> {r3}; then {rs2} left, toList {rl}";
+
+  # the oracle: tiny universes keep the tables small and every probe colliding
+  _ = verdictI "Int keys, universe 7, 20,000 ops" (runInts 20000 7 1 (0, MutMap.ints Unit, Map.ints));
+  _ = verdictI "Int keys, universe 1000, 100,000 ops" (runInts 100000 1000 42 (0, MutMap.ints Unit, Map.ints));
+  _ = verdictI "Int keys, universe 1000000, 100,000 ops" (runInts 100000 1000000 7 (0, MutMap.ints Unit, Map.ints));
+  _ = verdictS "String keys, universe 5, 20,000 ops" (runStrs 20000 5 3 (0, MutMap.strings Unit, Map.strings));
+  _ = verdictS "String keys, universe 2000, 100,000 ops" (runStrs 100000 2000 99 (0, MutMap.strings Unit, Map.strings));
+
+  # negative and huge Int keys hash like any other
+  n = MutMap.insertAll ((0 - 1, 1) :: (intMin Unit, 2) :: (intMax Unit, 3) :: (0, 4) :: Nil) (MutMap.ints Unit);
+  nm = MutMap.freeze Order.int n;
+  _ = print "extreme Int keys: {Map.values nm}";
+
+  # strings that share prefixes, the empty string, long keys
+  t = MutMap.insertAll (("", 0) :: ("a", 1) :: ("ab", 2) :: ("abc", 3) :: ("abcdefgh", 8) :: ("abcdefghi", 9) :: ("abcdefghijklmnopqrstuvwxyz0123456789", 36) :: Nil) (MutMap.strings Unit);
+  (tg, t) = MutMap.get "abcdefgh" t;
+  (te, t) = MutMap.get "" t;
+  tm = MutMap.freeze Order.string t;
+  _ = print "string keys: abcdefgh -> {tg}, empty -> {te}, {Map.entries tm}";
+
+  # thaw: a MutMap of a Map's entries; the Map is untouched
+  src = Map.fromList Order.int ((3, 9) :: (1, 1) :: (2, 4) :: Nil);
+  th = MutMap.thaw src (MutMap.ints Unit);
+  th = MutMap.insert 4 16 th;
+  back = MutMap.freeze Order.int th;
+  _ = print "thaw: {Map.entries back}, source still {Map.entries src}";
+
+  # the hashes themselves: deterministic, nonnegative
+  print "strHash \"\" {strHash ""}, strHash \"fprisc\" {strHash "fprisc"}, intHash 0 {intHash 0}, intHash -1 {intHash (0 - 1)}".

@@ -1,0 +1,21 @@
+# word frequency: std/mutmap keyed by String (the linear hash table), top 10.
+# Same output as the std/map version (byCount is a total order).
+List = use "std/list".
+String = use "std/string".
+MutMap = use "std/mutmap".
+Ord = use "std/order".
+
+byCount : (String, Int) -> (String, Int) -> Ord.Ordering .
+byCount a b = case a of
+  (wa, ca) -> (case b of (wb, cb) -> if ca != cb then Ord.int cb ca else Ord.string wa wb).
+
+main =
+  path = case Sys.args Unit of p :: _ -> p | Nil -> "data/corpus.txt";
+  ws = String.words (fileRead path);
+  counts = List.fold (fn m w -> MutMap.insertWith (fn old new -> old + new) w 1 m) (MutMap.strings Unit) ws;
+  (n, counts) = MutMap.size counts;
+  (es, counts) = MutMap.toList counts;
+  _ = MutMap.free counts;
+  top = List.take 10 (List.sortWith byCount es);
+  _ = print "distinct {n} total {List.length ws}";
+  List.each (fn e -> case e of (w, c) -> print "{w} {c}") top.

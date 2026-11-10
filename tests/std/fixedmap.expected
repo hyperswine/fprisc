@@ -1,0 +1,13 @@
+fill to 5: 5 stored, full True; a 6th key: insert None, insertWith None, alter None; size 5, entries [(0, 0), (1, 1), (2, 4), (3, 9), (4, 16)]
+full map updates: insert Some (), insertWith Some (), alter Some (), alter-to-None on an absent key Some (); 3 -> Some 333, 4 -> Some 1016, 0 -> Some 1
+remove then insert: Some (), then full again None; alter-remove Some (), replace Some (), a new key None; entries [(0, 1), (3, 333), (4, 1016), (100, 7), (101, 9)]
+capacity 5; after toMutMap, MutMap.capacity (3/4 of the slots) for n = 1, 6, 7, 12, 13, 1000: [6, 6, 12, 12, 24, 1536]
+limit 0: insert None, capacity 0, get None; limit -3: insert None, capacity 0
+toMutMap: a full 3 then one more: size 4
+strings: Some () Some () None Some (), frozen [(cat, 11), (dog, 2)]
+fold over 4 of 9: 40
+Int keys, limit 5, universe 7, 20,000 ops: 0 wrong answers, size 4 = 4: True, never past 5: True, frozen = oracle: True
+Int keys, limit 300, universe 1000, 100,000 ops: 0 wrong answers, size 300 = 300: True, never past 300: True, frozen = oracle: True
+Int keys, limit 6, universe 1000000, 20,000 ops: 0 wrong answers, size 6 = 6: True, never past 6: True, frozen = oracle: True
+String keys, limit 3, universe 5, 20,000 ops: 0 wrong answers, size 3 = 3: True, never past 3: True, frozen = oracle: True
+String keys, limit 700, universe 2000, 100,000 ops: 0 wrong answers, size 700 = 700: True, never past 700: True, frozen = oracle: True

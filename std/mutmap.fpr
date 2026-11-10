@@ -1,0 +1,155 @@
+# std/mutmap.fpr -- MutMap: a LINEAR hash table keyed by Int or String
+# (docs/2026-11-10-MUTMAP.md).
+#
+#   MutMap = use "std/mutmap".
+#   Order = use "std/order".
+#   m = MutMap.strings Unit                           # or MutMap.ints Unit
+#   m2 = MutMap.insertWith (fn old new -> old + new) "cat" 1 m
+#   (n, m3) = MutMap.get "cat" m2                     # reads hand the map back
+#   counts = MutMap.freeze Order.string m3            # an ordered, persistent Map
+#
+# The contracts:
+#   * `MutMap 1 k v` is LINEAR (core/prelude.fpr), like `Vector`: every
+#     operation consumes the map and returns it, and the checker makes sure
+#     nothing else holds the old one.  That is what lets the runtime write in
+#     place (runtime/vec.c): an insert is a probe and a store, not a path copy.
+#     A closure that captures a MutMap is single-use (docs/2026-11-09-CALLABLE-OWNERSHIP.md).
+#   * keys are Ints or Strings, hashed by the runtime (intHash, strHash:
+#     deterministic and unseeded).  Values are anything.
+#   * ORDER: fold and toList visit entries in SLOT order -- deterministic for
+#     a given word size and sequence of operations, but not key order and not
+#     insertion order.  `freeze cmp` gives the ascending-ordered `Map`.
+#   * COST: an operation probes at most the table's slot count; an insert that
+#     passes 3/4 full doubles the table first and pays for it (Vector's rule).
+#     `withCapacity n` makes room for n entries up front, so a loop of at most
+#     n inserts never grows.  The bounds are in compiler/Cost.hs (mutmap*).
+#     For a table that never grows and answers None when full, with no
+#     growth term in its insert bound, use std/fixedmap's FixedMap.
+#   * absence is an Option.  A MutMap must be consumed: free, freeze, or
+#     handed on.
+
+O = use "option".
+Ord = use "order".
+L = use "list".
+M = use "map".
+
+# ---- making --------------------------------------------------------------------
+strings : Unit -> MutMap String v
+  | work strings <= 25 | alloc strings <= 352 | live strings <= 352 .
+strings u = mutmapStrings 0.
+
+ints : Unit -> MutMap Int v
+  | work ints <= 25 | alloc ints <= 352 | live ints <= 352 .
+ints u = mutmapInts 0.
+
+# room for n entries with no growth (never shrinks)
+withCapacity : Int -> MutMap k v -> MutMap k v
+  | work withCapacity <= len m + 3 * (3 * max 0 n + 8) + len m * (3 * max 0 n + 8) + 1 | alloc withCapacity <= 24 * (3 * max 0 n + 8) + 48 | live withCapacity <= 24 * len m + 24 * (3 * max 0 n + 8) + 48 .
+withCapacity n m = mutmapReserve n m.
+
+# later pairs win
+insertAll : (kvs : List (k, v) | measure kvs) -> MutMap k v -> MutMap k v .
+insertAll kvs m = case kvs of Nil -> m | (k, v) :: rest -> insertAll rest (mutmapInsert k v m).
+
+# ---- reading -------------------------------------------------------------------
+get : k -> MutMap k v -> (O.Option v, MutMap k v)
+  | work get <= len k + len m * (len k + 1) + 16 | alloc get <= 88 | live get <= 88 .
+get k m =
+  (i, m1) = mutmapSlot k m;
+  if i < 0 then (O.None, m1) else
+  (v, m2) = mutmapValueAt i m1;
+  (O.Some v, m2).
+
+getOr : v -> k -> MutMap k v -> (v, MutMap k v)
+  | work getOr <= len k + len m * (len k + 1) + 9 | alloc getOr <= 48 | live getOr <= 48 .
+getOr d k m =
+  (i, m1) = mutmapSlot k m;
+  if i < 0 then (d, m1) else mutmapValueAt i m1.
+
+member : k -> MutMap k v -> (Bool, MutMap k v)
+  | work member <= len k + len m * (len k + 1) + 7 | alloc member <= 48 | live member <= 48 .
+member k m =
+  (i, m1) = mutmapSlot k m;
+  (i >= 0, m1).
+
+size : MutMap k v -> (Int, MutMap k v)
+  | work size <= 1 | alloc size <= 24 | live size <= 24 .
+size m = mutmapSize m.
+
+isEmpty : MutMap k v -> (Bool, MutMap k v)
+  | work isEmpty <= 7 | alloc isEmpty <= 48 | live isEmpty <= 48 .
+isEmpty m =
+  (n, m1) = mutmapSize m;
+  (n == 0, m1).
+
+# how many entries it holds before an insert grows it
+capacity : MutMap k v -> (Int, MutMap k v)
+  | work capacity <= 1 | alloc capacity <= 24 | live capacity <= 24 .
+capacity m = mutmapCapacity m.
+
+# ---- writing -------------------------------------------------------------------
+insert : k -> v -> MutMap k v -> MutMap k v
+  | work insert <= len k + 7 * len m + 2 * len m * len m + len m * (len k + 1) + 26 | alloc insert <= 48 * len m + 240 | live insert <= 72 * len m + 240 .
+insert k v m = mutmapInsert k v m.
+
+# insert, or where the key is already there store `f old v` (Map.insertWith's order):
+#   MutMap.insertWith (fn old new -> old + new) w 1 counts
+insertWith : (v -> v -> v) -> k -> v -> MutMap k v -> MutMap k v
+  | work insertWith <= len k + 7 * len m + work f + 2 * len m * len m + len m * (len k + 1) + 26 | alloc insertWith <= 48 * len m + alloc f + 240 | live insertWith <= 72 * len m + alloc f + 240 .
+insertWith f k v m = mutmapInsertWith f k v m.
+
+remove : k -> MutMap k v -> MutMap k v
+  | work remove <= len k + len m + len m * (len k + 1) + 1 | alloc remove <= 0 | live remove <= 0 .
+remove k m = mutmapRemove k m.
+
+# f sees what is there and says what should be: one probe for a key that is
+# there, two for a new one (the insert probes again; the bound counts both)
+alter : k -> (O.Option v -> O.Option v) -> MutMap k v -> MutMap k v
+  | work alter <= 2 * len k + work f + 2 * len m * len m + 8 * len m + 2 * len m * (len k + 1) + 39 | alloc alter <= alloc f + 48 * len m + 280 | live alter <= alloc f + 72 * len m + 280 .
+alter k f m =
+  (i, m1) = mutmapSlot k m;
+  if i < 0 then (case f O.None of O.None -> m1 | O.Some v -> mutmapInsert k v m1) else
+  (old, m2) = mutmapValueAt i m1;
+  case f (O.Some old) of O.None -> mutmapRemoveAt i m2 | O.Some v -> mutmapSetAt i v m2.
+
+update : k -> (O.Option v -> O.Option v) -> MutMap k v -> MutMap k v
+  | work update <= 2 * len k + work f + 2 * len m * len m + 8 * len m + 2 * len m * (len k + 1) + 40 | alloc update <= alloc f + 48 * len m + 280 | live update <= alloc f + 72 * len m + 280 .
+update k f m = alter k f m.
+
+# ---- whole-map ----------------------------------------------------------------
+# f acc k v over every entry, in slot order
+fold : (b -> k -> v -> b) -> b -> MutMap k v -> (b, MutMap k v)
+  | work fold <= len m * (work f + 4) + 1 | alloc fold <= len m * (alloc f + 112) + 24 | live fold <= len m * (alloc f + 112) + 24 .
+fold f z m = mutmapFold f z m.
+
+# the (key, value) pairs in slot order
+toList : MutMap k v -> (List (k, v), MutMap k v)
+  | work toList <= len m + 1 | alloc toList <= 48 * len m + 32 | live toList <= 48 * len m + 32 .
+toList m = mutmapToList m.
+
+# the pairs ascending by key under cmp (Order.string / Order.int)
+sortedList : (k -> k -> Ord.Ordering) -> MutMap k v -> (List (k, v), MutMap k v) .
+sortedList cmp m =
+  (es, m1) = mutmapToList m;
+  (L.sortWith (byKey cmp) es, m1).
+
+byKey : (k -> k -> Ord.Ordering) -> (k, v) -> (k, v) -> Ord.Ordering
+  | work byKey <= work cmp + 7 | alloc byKey <= alloc cmp | live byKey <= alloc cmp .
+byKey cmp a b = case a of (ka, _) -> (case b of (kb, _) -> cmp ka kb).
+
+# the storage goes back to the allocator
+free : MutMap k v -> Unit
+  | work free <= 1 | alloc free <= 0 | live free <= 0 .
+free m = mutmapFree m.
+
+# the persistent, ordered Map of the same entries; the MutMap is consumed.
+# O(n log n): one sort (the runtime merge) and a balanced build.
+freeze : (k -> k -> Ord.Ordering) -> MutMap k v -> M.Map k v .
+freeze cmp m =
+  (es, m1) = sortedList cmp m;
+  _ = mutmapFree m1;
+  M.fromDistinctAscList cmp es.
+
+# a MutMap of a Map's entries (the Map is untouched)
+thaw : M.Map k v -> MutMap k v -> MutMap k v .
+thaw src m = insertAll (M.entries src) (mutmapReserve (M.size src) m).

@@ -1,0 +1,267 @@
+{
+ "date": "2026-11-10",
+ "method": "1 warm-up round, then 7 rounds in shuffled interleaved order; median wall seconds (perf_counter around GNU time) and median peak RSS (GNU time %M); x86_64 box, 8 cores",
+ "compilers": {
+  "main": "540ba57 (origin/main)",
+  "mutmap": "perf/mutmap (de80d99 + 1b7ab00)"
+ },
+ "inputs": {
+  "wordfreq": "corpus.txt, 9,948,779 bytes, 2,000,000 words, 50,000 distinct",
+  "treemap": "500k LCG Int inserts then 500k lookups"
+ },
+ "outputs_identical": "md5 of stdout equal across every wordfreq binary, and across every treemap binary",
+ "results": {
+  "treemap_map.main": {
+   "wall_median_s": 1.302,
+   "wall_min_s": 1.242,
+   "wall_max_s": 1.404,
+   "peak_rss_median_mb": 613.9,
+   "raw_wall_s_rss_kb": [
+    [
+     1.3016,
+     628600
+    ],
+    [
+     1.2421,
+     628648
+    ],
+    [
+     1.3226,
+     628648
+    ],
+    [
+     1.2935,
+     628560
+    ],
+    [
+     1.404,
+     628648
+    ],
+    [
+     1.3518,
+     628592
+    ],
+    [
+     1.2763,
+     628592
+    ]
+   ]
+  },
+  "treemap_map.mutmap": {
+   "wall_median_s": 1.328,
+   "wall_min_s": 1.222,
+   "wall_max_s": 1.35,
+   "peak_rss_median_mb": 613.9,
+   "raw_wall_s_rss_kb": [
+    [
+     1.2877,
+     628608
+    ],
+    [
+     1.2217,
+     628584
+    ],
+    [
+     1.35,
+     628588
+    ],
+    [
+     1.255,
+     628608
+    ],
+    [
+     1.3282,
+     628680
+    ],
+    [
+     1.3447,
+     628640
+    ],
+    [
+     1.336,
+     628664
+    ]
+   ]
+  },
+  "treemap_mutmap.mutmap": {
+   "wall_median_s": 0.441,
+   "wall_min_s": 0.425,
+   "wall_max_s": 0.503,
+   "peak_rss_median_mb": 162.2,
+   "raw_wall_s_rss_kb": [
+    [
+     0.5033,
+     166004
+    ],
+    [
+     0.4248,
+     166044
+    ],
+    [
+     0.4498,
+     166124
+    ],
+    [
+     0.4414,
+     166012
+    ],
+    [
+     0.4384,
+     166124
+    ],
+    [
+     0.4523,
+     166160
+    ],
+    [
+     0.4384,
+     166184
+    ]
+   ]
+  },
+  "wordfreq_map.main": {
+   "wall_median_s": 4.108,
+   "wall_min_s": 3.934,
+   "wall_max_s": 4.332,
+   "peak_rss_median_mb": 1991.9,
+   "raw_wall_s_rss_kb": [
+    [
+     4.0553,
+     2039688
+    ],
+    [
+     4.0162,
+     2039724
+    ],
+    [
+     3.9338,
+     2039736
+    ],
+    [
+     4.2465,
+     2039568
+    ],
+    [
+     4.332,
+     2039688
+    ],
+    [
+     4.1878,
+     2039680
+    ],
+    [
+     4.1078,
+     2039572
+    ]
+   ]
+  },
+  "wordfreq_map.mutmap": {
+   "wall_median_s": 3.977,
+   "wall_min_s": 3.863,
+   "wall_max_s": 4.366,
+   "peak_rss_median_mb": 1991.9,
+   "raw_wall_s_rss_kb": [
+    [
+     3.8631,
+     2039760
+    ],
+    [
+     3.9768,
+     2039744
+    ],
+    [
+     4.3663,
+     2039720
+    ],
+    [
+     3.9008,
+     2039672
+    ],
+    [
+     4.1869,
+     2039688
+    ],
+    [
+     3.9509,
+     2039740
+    ],
+    [
+     4.1926,
+     2039736
+    ]
+   ]
+  },
+  "wordfreq_mutmap.mutmap": {
+   "wall_median_s": 0.477,
+   "wall_min_s": 0.461,
+   "wall_max_s": 0.504,
+   "peak_rss_median_mb": 206.9,
+   "raw_wall_s_rss_kb": [
+    [
+     0.4774,
+     212028
+    ],
+    [
+     0.4769,
+     211904
+    ],
+    [
+     0.494,
+     211840
+    ],
+    [
+     0.4608,
+     212080
+    ],
+    [
+     0.4749,
+     211888
+    ],
+    [
+     0.4889,
+     211944
+    ],
+    [
+     0.5045,
+     211888
+    ]
+   ]
+  },
+  "wordfreq_mutmap_alter.mutmap": {
+   "wall_median_s": 0.624,
+   "wall_min_s": 0.575,
+   "wall_max_s": 0.663,
+   "peak_rss_median_mb": 388.6,
+   "raw_wall_s_rss_kb": [
+    [
+     0.6166,
+     398000
+    ],
+    [
+     0.6081,
+     397904
+    ],
+    [
+     0.6635,
+     397904
+    ],
+    [
+     0.5745,
+     397904
+    ],
+    [
+     0.6243,
+     397796
+    ],
+    [
+     0.6542,
+     397928
+    ],
+    [
+     0.6487,
+     398064
+    ]
+   ]
+  }
+ }
+}

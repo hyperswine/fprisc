@@ -267,6 +267,7 @@ library
       Sol.Effects
       Sol.Txn
       Sol.VM
+      Sol.MutMap
       Sol.Val
       Sol.Web
       Sol.WebAssets

@@ -1,0 +1,14 @@
+empty: get None, size 0, capacity 0, toList [], fold 0, isEmpty True, frozen []
+by hand: 5 -> 55, 7 -> -1, 9 member True, size 3, fold 1167, sorted [(1, 1007), (5, 55), (9, 90)]
+growth to 10000: capacities [6, 12, 24, 48, 96, 192, 384, 768, 1536, 3072, 6144, 12288]
+withCapacity 5000: capacity 6144 before, 6144 after 5000 inserts, 6144 after asking for 10 (never shrinks): True
+backward shift: 2000 left after removing 1000, all intact True, 2 -> Some 4, 3 -> None; then 0 left, toList []
+Int keys, universe 7, 20,000 ops: 0 wrong reads, size 4 = 4: True, frozen = oracle: True
+Int keys, universe 1000, 100,000 ops: 0 wrong reads, size 627 = 627: True, frozen = oracle: True
+Int keys, universe 1000000, 100,000 ops: 0 wrong reads, size 48064 = 48064: True, frozen = oracle: True
+String keys, universe 5, 20,000 ops: 0 wrong reads, size 4 = 4: True, frozen = oracle: True
+String keys, universe 2000, 100,000 ops: 0 wrong reads, size 1270 = 1270: True, frozen = oracle: True
+extreme Int keys: [2, 1, 4, 3]
+string keys: abcdefgh -> Some 8, empty -> Some 0, [(, 0), (a, 1), (ab, 2), (abc, 3), (abcdefgh, 8), (abcdefghi, 9), (abcdefghijklmnopqrstuvwxyz0123456789, 36)]
+thaw: [(1, 1), (2, 4), (3, 9), (4, 16)], source still [(1, 1), (2, 4), (3, 9)]
+strHash "" 4310427313519344230, strHash "fprisc" 2400402795614854473, intHash 0 4073552104164651883, intHash -1 4122584066742110984
