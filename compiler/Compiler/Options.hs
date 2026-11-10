@@ -26,7 +26,7 @@ data NativeOptions = NativeOptions
 data CodegenOptions = CodegenOptions
   { nativeOptions :: NativeOptions, cgIndexedMemory :: Bool, cgFloatInline :: Bool,
     cgSimd :: Bool, cgFusion :: Bool, cgListFuse :: Bool, cgCaseKnown :: Bool, cgTypeSpec :: Bool, cgTypedCase :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgStringFast :: Bool, cgInterval :: Bool, cgLoopMotion :: Bool, cgEarlyLoops :: Bool, cgFramelessEntry :: Bool, cgStringScan :: Bool,
-    cgScalarWorkers :: Bool, cgTrmc :: Bool, cgTickBatch :: Bool, cgPairReturns :: Bool, cgFieldWorkers :: Bool, cgTupleScalars :: Bool, cgPipelineInline :: Bool,
+    cgScalarWorkers :: Bool, cgTrmc :: Bool, cgTickBatch :: Bool, cgTickWeight :: Bool, cgPairReturns :: Bool, cgFieldWorkers :: Bool, cgTupleScalars :: Bool, cgPipelineInline :: Bool,
     cgReuse :: Bool, cgSpecialize :: Bool, cgReceiveTurns :: Bool, cgBumpAlloc :: Bool, cgCompactCells :: Bool,
     cgPersistentLoop :: Maybe String, cgLoopRegions :: Bool, cgCallRegions :: Bool, cgInline :: Bool } deriving (Eq,Show)
 data DiagnosticOptions = DiagnosticOptions
@@ -70,7 +70,7 @@ parseCompilerOptions env = do
           cgStringScan=on "FPR_TYPED_IR_STRING_SCAN",
           cgEarlyLoops=on "FPR_TYPED_IR_EARLY_LOOPS" && nativeSelfLoops native,
           cgFramelessEntry=yes "FPR_TYPED_IR_FRAMELESS_ENTRY",
-          cgScalarWorkers=enabled "SCALAR_WORKERS", cgTrmc=enabled "TRMC", cgTickBatch=enabled "TICK_BATCH", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
+          cgScalarWorkers=enabled "SCALAR_WORKERS", cgTrmc=enabled "TRMC", cgTickBatch=enabled "TICK_BATCH", cgTickWeight=enabled "TICK_WEIGHT", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
           cgReceiveTurns=enabled "RECEIVE_TURNS", cgBumpAlloc=enabled "BUMP_ALLOC", cgCompactCells=env "FPR_COMPACT_CELLS" /= Just "0", cgLoopRegions=enabled "LOOP_REGIONS",
           cgPersistentLoop=if enabled "PERSISTENT_COPY_OUT" then Just (maybe "*" id (env "FPR_PERSISTENT_LOOP")) else Nothing, cgCallRegions=enabled "CALL_REGIONS", cgInline=enabled "INLINE" }
@@ -128,7 +128,7 @@ optimizationFlags :: CodegenOptions -> String
 optimizationFlags c = (case cgPersistentLoop c of { Just "*" -> ""; Just n -> "-persist" ++ showHex (fnv n) ""; Nothing -> "-nopersist" }) ++ flag (not (cgCompactCells c)) "-c16" ++ flag (cgLoopMotion c) "-licm" ++ flag (not (cgEarlyLoops c)) "-noearlyloops" ++ flag (not (cgStringScan c)) "-nostrscan" ++ flag (cgFramelessEntry c) "-frameless" ++ concat
   [flag (not enabled) suffix | (enabled,suffix)<-
     [(cgPipelineInline c,"-nopinline"),(cgReuse c,"-noreuse"),
-     (cgScalarWorkers c,"-noscalar"),(cgTrmc c,"-notrmc"),(cgTickBatch c,"-notickbatch"),(cgPairReturns c,"-nopairret"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),
+     (cgScalarWorkers c,"-noscalar"),(cgTrmc c,"-notrmc"),(cgTickBatch c,"-notickbatch"),(cgTickWeight c,"-notickweight"),(cgPairReturns c,"-nopairret"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),
      (cgTypeSpec c,"-notypespec"),(cgTypedCase c,"-notypedcase"),(cgBumpAlloc c,"-nobump"),(cgIndexedMemory c,"-noidx"),(cgReceiveTurns c,"-nort"),
      (cgLoopRegions c,"-nolr"),(cgCallRegions c,"-nocr"),
      (cgSpecialize c,"-nospec"),(cgInline c,"-noinl"),

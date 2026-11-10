@@ -1013,10 +1013,12 @@ emitFnA64WithSymbols symbols cfg fn = do
         [[local cfg name label ++ ":", "    mov "++d++", x30", "    mov x16, #"++show raw,
           "    bl "++Call.runtimeName Call.AllocSaveEntry, "    mov x30, "++d,
           "    mov "++d++", x17", "    ret"] | ((d,raw),label)<-M.toList refills]
-      rendered = map (\it -> (it, renderItem cfg ly large name frameless pairs restores refills it)) body
-      toks = [TIns (length (filter isInstruction reserve)) FNext False
+      renderOne = renderItem cfg ly large name frameless pairs restores refills
+      reserveToks = [TIns (length (filter isInstruction reserve)) FNext False
                 (1 + if cfgHart cfg == HartTlvMachO then 3 else 0) | large]
-             ++ concatMap (uncurry (tokOf refills)) rendered
+      weighted = weighTicks (polTickWeight (cfgPolicy cfg)) reserveToks renderOne (tokOf refills) body
+      rendered = map (\it -> (it, renderOne it)) weighted
+      toks = reserveToks ++ concatMap (uncurry (tokOf refills)) rendered
       report = analyse toks
       header =
         ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir a64 frame=" ++ show (lyBytes ly)
@@ -1235,12 +1237,12 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
         _ -> hartRead ++ ldst "ldr" "ldur" (reg d) "x9" (8 * (1 + j))
       (O.A64 A.SubtractShifted1, [d], [a, b]) -> ["sub " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b ++ ", asr #1"]
       (O.Common O.BumpAlloc, [d], [OI raw]) | Just c <- bumpCellFor (cfgPolicy cfg) raw -> bump (reg d) c
-      (O.Common O.EntryCheckTick, _, _) | frameless -> framelessChecks True
-      (O.Common O.EntryCheck, _, _) | frameless -> framelessChecks False
-      (O.Common O.EntryCheckTick, _, _) -> hartRead ++ stackCheck ++ tick
+      (O.Common O.EntryCheckTick, _, us) | frameless -> framelessChecks (Just (tickWeightOf us))
+      (O.Common O.EntryCheck, _, _) | frameless -> framelessChecks Nothing
+      (O.Common O.EntryCheckTick, _, us) -> hartRead ++ stackCheck ++ tickN (tickWeightOf us)
       (O.Common O.EntryCheck, _, _) -> hartRead ++ stackCheck
-      (O.Common O.EntryTick, _, _) -> tick
-      (O.Common O.TickN, _, [OI n]) -> tickN n
+      (O.Common O.EntryTick, _, us) -> tickN (tickWeightOf us)
+      (O.Common O.TickN, _, us) -> tickN (tickWeightOf us)
       (O.A64 A.PairLoad, [], [base, OI n]) -> ["ldr q" ++ show n ++ ", [" ++ reg base ++ "]"]
       (O.A64 A.PairStore, [], [base, OI n]) -> ["str q" ++ show n ++ ", [" ++ reg base ++ "]"]
       (O.A64 A.PairDuplicate, [], [src, OI n]) -> ["dup v" ++ show n ++ ".2d, " ++ reg src]
@@ -1335,11 +1337,12 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
            "str x30, [sp]" ]
       ++ [ lbl (entryLabel i SameStack) ++ ":" ]
       ++ hartRead
-      ++ (if fuel then
-            [ "subs x27, x27, #1", "b.gt " ++ lbl (entryLabel i FuelReady),
+      ++ (case fuel of
+          Just w ->
+            charge w ++ [ "b.gt " ++ lbl (entryLabel i FuelReady),
               "bl " ++ fuelSaveSymbol (cfgFormat cfg),
               lbl (entryLabel i FuelReady) ++ ":" ]
-          else [])
+          Nothing -> [])
       ++ [ "ldr x30, [sp], #16", lbl (entryLabel i StackReady) ++ ":" ]
     stackCheck =
       [ "mov x10, sp",
@@ -1400,11 +1403,17 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
                             "bl " ++ Call.runtimeName Call.AllocSaveEntry,
                             "mov " ++ d ++ ", x17"])
           ++ [done ++ ":"]
-    tick = tickN 1
     -- the counter is x27 (runtime/fpr.h fpr_fuel_set): one flag-setting
-    -- subtract and a branch, no hart read and no memory
+    -- subtract and a branch, no hart read and no memory.  A weight past
+    -- twelve bits takes a shifted subtract first; past twenty-four it is
+    -- capped (no function in the corpus comes near 16 M instructions
+    -- between two ticks).
+    charge n
+      | n <= 4095 = ["subs x27, x27, #" ++ show n]
+      | otherwise = let m = min n 0xffffff in
+          ["sub x27, x27, #" ++ show (m `div` 4096) ++ ", lsl #12", "subs x27, x27, #" ++ show (m `mod` 4096)]
     tickN n =
-      [ "subs x27, x27, #" ++ show n,
+      charge n ++ [
         "b.gt " ++ lbl (entryLabel i FuelReady)
       ] ++ parkArgs "str" "stur" ++ [
         "bl " ++ fuelSaveSymbol (cfgFormat cfg)

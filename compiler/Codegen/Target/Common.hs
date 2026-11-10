@@ -5,9 +5,10 @@ module Codegen.Target.Common
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
     boxedFloatLabel, boxedFloatObject, BumpRefills, planBumpRefills, bumpRefill,
+    weighTicks, tickWeightOf,
     SymbolPolicy,symbolPolicy,publicSymbols,symbolNames,
     Visibility(..),WeakSpelling(..),visibilityFor,visibilityLines ) where
-import Codegen.Bounds (Report)
+import Codegen.Bounds (Report, Tok, tickWeights)
 import qualified Codegen.Stack as Stack
 import Codegen.IR (Name)
 import qualified Codegen.IR as IR
@@ -404,3 +405,34 @@ bumpSlabOwner = 1
 bumpSlabHp = 4
 bumpSlabEnd = 5
 bumpPoolAllocated = 2
+
+-- Weighted fuel ticks (docs/2026-11-11-WEIGHTED-TICKS.md).  Each tick item
+-- (the entry's, a loop's, an inlined callee's, a counted one) leaves here
+-- with its weight as its one immediate use: the worst-case number of
+-- target instructions from it to the next tick or an exit
+-- (Codegen.Bounds.tickWeights), measured on this target's own rendering.
+-- A weight changes how its tick prints (a large one needs a second
+-- instruction), so the stream is rendered and measured twice and each tick
+-- takes the larger answer.  A function with a tick-free cycle keeps its
+-- unit ticks; `analyse` reports it UNBOUNDED.
+weighTicks :: Bool -> [Tok] -> (Item -> [String]) -> (Item -> [String] -> [Tok]) -> [Item] -> [Item]
+weighTicks enabled prologue render token body
+  | not enabled || not (any isTick body) = body
+  | otherwise = case pass body of
+      Nothing -> body
+      Just first -> case pass (assign first body) of
+        Nothing -> body
+        Just second -> assign (zipWith max first second) body
+  where
+    isTick (I i) = siOpcode i `elem` map Opcode.Common [Opcode.EntryCheckTick, Opcode.EntryTick, Opcode.TickN]
+    isTick _ = False
+    pass items = tickWeights ([(t, False) | t <- prologue] ++ concat [[(t, isTick it) | t <- token it (render it)] | it <- items])
+    assign (w : ws) (I i : rest) | isTick (I i) = I (i {siUses = [OI (toInteger w)]}) : assign ws rest
+    assign ws (it : rest) = it : assign ws rest
+    assign _ [] = []
+
+-- what a tick item charges: its weight when weighTicks assigned one, the
+-- counted tick's own count, one unit otherwise
+tickWeightOf :: [Operand] -> Integer
+tickWeightOf uses = case uses of [OI n] -> n; _ -> 1
+

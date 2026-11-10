@@ -791,8 +791,11 @@ emitFnX64WithSymbols symbols cfg fn = do
         [[local (cfgHart cfg) name label ++ ":", "    movq $"++show raw++", %r11",
           "    call "++Call.runtimeName Call.AllocSaveEntry,
           "    movq %r11, %"++d, "    ret"] | ((d,raw),label)<-M.toList refills]
-      rendered = [(it, renderItem cfg ly large name saveLines restores refills it) | it <- body]
-      report = analyse ([TIns (length (filter isInstruction reserve)) FNext False 1 | large] ++ concatMap (uncurry (tokOf refills)) rendered)
+      renderOne = renderItem cfg ly large name saveLines restores refills
+      reserveToks = [TIns (length (filter isInstruction reserve)) FNext False 1 | large]
+      weighted = weighTicks (polTickWeight (cfgPolicy cfg)) reserveToks renderOne (tokOf refills) body
+      rendered = [(it, renderOne it) | it <- weighted]
+      report = analyse (reserveToks ++ concatMap (uncurry (tokOf refills)) rendered)
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
                   ++ (if large then " reserve=yes" else "")
                   ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
@@ -982,10 +985,10 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       (O.X64 O.Panic,[],[OAddr s]) -> ("leaq " ++ gsym hart (addressName s) ++ "(%rip), %rdi") : call (Call.runtimeName Call.PanicEntry)
       (O.X64 O.Ret,[],values) | not (null values),length values<=8 -> epilogue ++ ["ret"]
       (O.Common O.TailJump,[],OCode s:_) -> epilogue ++ ["jmp " ++ gsym hart (codeName s)]
-      (O.Common O.EntryCheckTick,_,_) -> hartRead ++ stackCheck ++ tick
+      (O.Common O.EntryCheckTick,_,us) -> hartRead ++ stackCheck ++ tickN (tickWeightOf us)
       (O.Common O.EntryCheck,_,_) -> hartRead ++ stackCheck
-      (O.Common O.EntryTick,_,_) -> hartRead ++ tick
-      (O.Common O.TickN,_,[OI n]) -> hartRead ++ tickN n
+      (O.Common O.EntryTick,_,us) -> hartRead ++ tickN (tickWeightOf us)
+      (O.Common O.TickN,_,us) -> hartRead ++ tickN (tickWeightOf us)
       _ -> error ("X64 render: no form for " ++ show (op,ds,us))
     suffix O.Float64="sd"
     suffix O.Float32="ss"
@@ -1068,6 +1071,5 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
                             "subq $8, %rsp", "call " ++ Call.runtimeName Call.AllocSaveEntry, "addq $8, %rsp",
                             "movq %r11, " ++ dest])
           ++ [done ++ ":"]
-    tick = tickN 1
-    tickN n = ["subq $" ++ show n ++ ", (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (entryLabel i FuelReady)]
+    tickN n = ["subq $" ++ show (min n 0x7fffffff) ++ ", (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (entryLabel i FuelReady)]
       ++ parkArgs True ++ ["subq $8, %rsp", "call " ++ Call.runtimeName Call.FuelSaveEntry, "addq $8, %rsp"] ++ parkArgs False ++ [lbl (entryLabel i FuelReady) ++ ":"]

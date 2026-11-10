@@ -89,7 +89,17 @@
 #endif
 #define XCAP 64     /* acb pointers per cross-hart wake ring */
 
-#define FUEL_QUANTUM 2000 /* FPRISC function entries per scheduling slice */
+/* A scheduling slice, in the unit a tick charges.  Ticks are weighted by
+ * the target instructions they cover (Codegen.Bounds.tickWeights,
+ * docs/2026-11-11-WEIGHTED-TICKS.md), so the slice is an instruction
+ * budget for generated code; calls into this runtime are not counted.
+ * FPR_UNIT_TICKS (FPR_NO_TICK_WEIGHT=1 builds) is the old unit: one per
+ * function entry or loop iteration, about fifty instructions each. */
+#ifdef FPR_UNIT_TICKS
+#define FUEL_QUANTUM 2000
+#else
+#define FUEL_QUANTUM 100000
+#endif
 
 enum { ST_READY, ST_BLOCKED, ST_DEAD };
 

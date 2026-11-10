@@ -17,7 +17,8 @@ def main():
         tmp = Path(td)
         env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
                    XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp / "cache")), FPR_NO_INLINE="1",
-                   FPR_NO_SCALAR_WORKERS="1", FPR_NO_FIELD_WORKERS="1")
+                   FPR_NO_SCALAR_WORKERS="1", FPR_NO_FIELD_WORKERS="1",
+                   FPR_NO_TICK_WEIGHT="1")  # the oracle counts units exactly, seven to a refill
         env.pop("FPR_FOREIGN", None)
         source = tmp / "probe.fpr"
         source.write_text(fixture()[0])

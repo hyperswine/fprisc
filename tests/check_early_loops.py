@@ -11,7 +11,8 @@ def main():
         tmp = Path(directory)
         env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
                    XDG_CACHE_HOME=str(tmp / 'cache'), FPR_NO_INLINE='1',
-                   FPR_NO_SCALAR_WORKERS='1', FPR_NO_FIELD_WORKERS='1')
+                   FPR_NO_SCALAR_WORKERS='1', FPR_NO_FIELD_WORKERS='1',
+                   FPR_NO_TICK_WEIGHT='1')  # exact fuel: units, one per entry or iteration
         env.pop('FPR_FOREIGN', None)
         source = tmp / 'loops.fpr'
         text, expected = fixture()
