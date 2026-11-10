@@ -23,6 +23,8 @@
 #     passes 3/4 full doubles the table first and pays for it (Vector's rule).
 #     `withCapacity n` makes room for n entries up front, so a loop of at most
 #     n inserts never grows.  The bounds are in compiler/Cost.hs (mutmap*).
+#     For a table that never grows and answers None when full, with no
+#     growth term in its insert bound, use std/fixedmap's FixedMap.
 #   * absence is an Option.  A MutMap must be consumed: free, freeze, or
 #     handed on.
 

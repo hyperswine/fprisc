@@ -19,3 +19,16 @@ agree n = case L.fold mstep (MM.ints Unit, M.ints) (L.range 0 n) of (mm, ref) ->
 > print (intHash 42).
 > print (case MM.toList (MM.insert 3 30 (MM.insert 1 10 (MM.insert 2 20 (MM.ints Unit)))) of (es, m) -> (case MM.free m of _ -> es)).
 > print (agree 3000).
+# std/fixedmap: the same table with an entry limit (Sol.MutMap's fm*); a new
+# key into a full map answers None and leaves the map as it was
+FM = use "../../std/fixedmap".
+fins p kv = case p of (rs, fm) -> (case kv of (k, v) -> (case FM.insert k v fm of (r, fm2) -> (r :: rs, fm2))).
+fixedRun u = case L.fold fins (Nil, FM.ints 3) ((1, 10) :: (2, 20) :: (3, 30) :: (4, 40) :: (2, 22) :: Nil) of
+  (rs, fm) -> (case FM.remove 1 fm of fm2 -> (case FM.insert 4 40 fm2 of (r, fm3) -> (L.reverse (r :: rs), M.entries (FM.freeze Ord.int fm3)))).
+fstep lim p i = case p of (bad, fm, ref) -> (case FM.insert (key i) i fm of (r, fm2) ->
+    ok = M.member (key i) ref or M.size ref < lim;
+    want = if ok then O.Some Unit else O.None;
+    (if r == want then bad else bad + 1, (if i - (i / 5) * 5 == 0 then FM.remove (key (i / 2)) fm2 else fm2), (if ok then (if i - (i / 5) * 5 == 0 then M.remove (key (i / 2)) (M.insert (key i) i ref) else M.insert (key i) i ref) else (if i - (i / 5) * 5 == 0 then M.remove (key (i / 2)) ref else ref)))).
+fagree n = case L.fold (fstep 40) (0, FM.ints 40, M.ints) (L.range 0 n) of (bad, fm, ref) -> bad == 0 and M.entries (FM.freeze Ord.int fm) == M.entries ref.
+> print (fixedRun Unit).
+> print (fagree 3000).

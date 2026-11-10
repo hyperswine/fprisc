@@ -299,7 +299,7 @@ repeatedCallbackPrims :: [String]
 repeatedCallbackPrims =
   ["Vec.map", "Vec.mapSame", "Vec.filter", "Vec.fold", "Sys.loop", "Sys.loopWith",
    -- std/mutmap's fold engine: once per entry
-   "mutmapFold",
+   "mutmapFold", "fixedmapFold",
    -- HostedBytecode's list schemes (Sol.Infer.solBuiltins), which the
    -- Sol prelude's List.map / List.filter / List.foldl reach
    "map", "filter", "foldl"]

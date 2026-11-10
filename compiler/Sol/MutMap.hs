@@ -7,7 +7,8 @@
 module Sol.MutMap
   ( intHash64, bytesHash64, strHashV, intHashV,
     newMutMap, mmReserve, mmInsert, mmInsertWith, mmSlot, mmValueAt, mmSetAt,
-    mmRemoveAt, mmRemove, mmSize, mmCapacity, mmEntries
+    mmRemoveAt, mmRemove, mmSize, mmCapacity, mmEntries,
+    newFixedMap, fmInsert, fmInsertWith, fmCapacity, fmGrowable
   ) where
 
 import Data.Bits (rotateL, shiftR, xor, (.&.), (.|.), shiftL)
@@ -87,7 +88,7 @@ capFor :: Int -> Int
 capFor n = go minCap where go c = if c - c `div` 4 >= n then c else go (c * 2)
 
 newMutMap :: Bool -> Integer -> IO Value
-newMutMap strKeys n = VMutMap <$> newIORef (MutMapStore strKeys (if n > 0 then capFor (fromInteger n) else 0) 0 IM.empty)
+newMutMap strKeys n = VMutMap <$> newIORef (MutMapStore strKeys (if n > 0 then capFor (fromInteger n) else 0) 0 IM.empty Nothing)
 
 -- (the slot holding k, or Nothing; the first empty slot of the probe)
 find :: MutMapStore -> Value -> Word64 -> (Maybe Int, Maybe Int)
@@ -205,3 +206,50 @@ mmCapacity r = (\st -> toInteger (mmCap st - mmCap st `div` 4)) <$> readIORef r
 -- (key, value) in slot order
 mmEntries :: IORef MutMapStore -> IO [(Value, Value)]
 mmEntries r = map (\(_, k, v) -> (k, v)) . IM.elems . mmSlots <$> readIORef r
+
+-- ---- FixedMap (std/fixedmap; vec.c's fixedmap* engine) -----------------------
+-- the slots for n entries at load <= 3/4, never more; n <= 0 gives none
+newFixedMap :: Bool -> Integer -> IO Value
+newFixedMap strKeys n0 =
+  let n = max 0 n0
+   in VMutMap <$> newIORef (MutMapStore strKeys (if n > 0 then capFor (fromInteger n) else 0) 0 IM.empty (Just (fromInteger n)))
+
+limitOf :: MutMapStore -> IO Int
+limitOf st = maybe (vmFail "FixedMap: not a FixedMap") pure (mmLimit st)
+
+-- True: stored (an existing key is always replaced); False: a new key and
+-- the map already holds its limit, so nothing changed
+fmInsert :: Value -> Value -> IORef MutMapStore -> IO Bool
+fmInsert k v r = do
+  st <- readIORef r
+  lim <- limitOf st
+  h <- keyHash st k
+  case find st k h of
+    (Just i, _) -> do
+      writeIORef r $! st {mmSlots = IM.adjust (\(h', k', _) -> (h', k', v)) i (mmSlots st)}
+      pure True
+    (Nothing, e@(Just _)) | mmCount st < lim -> writeIORef r (placeNew st k h v e) >> pure True
+    _ -> pure False
+
+fmInsertWith :: (Value -> Value -> IO Value) -> Value -> Value -> IORef MutMapStore -> IO Bool
+fmInsertWith f k v r = do
+  st <- readIORef r
+  lim <- limitOf st
+  h <- keyHash st k
+  case find st k h of
+    (Just i, _) -> do
+      let (h', k', old) = mmSlots st IM.! i
+      new <- f old v
+      writeIORef r $! st {mmSlots = IM.insert i (h', k', new) (mmSlots st)}
+      pure True
+    (Nothing, e@(Just _)) | mmCount st < lim -> writeIORef r (placeNew st k h v e) >> pure True
+    _ -> pure False
+
+fmCapacity :: IORef MutMapStore -> IO Integer
+fmCapacity r = readIORef r >>= fmap toInteger . limitOf
+
+fmGrowable :: IORef MutMapStore -> IO ()
+fmGrowable r = do
+  st <- readIORef r
+  _ <- limitOf st
+  writeIORef r $! st {mmLimit = Nothing}

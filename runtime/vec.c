@@ -982,6 +982,15 @@ FPR_FN(fpr_g_Vec_x2eeqS, h_eqS, 2);
 #define MM_KSTR 2u
 #define MM_TOP ((uw)1 << (sizeof(uw) * 8 - 1))
 #define MM_MIN 8u
+/* elvar: bits 0-1 the key kind; bit 2 set on a FIXED map (std/fixedmap),
+ * whose entry limit n sits in the bits above.  A fixed map never grows: its
+ * slot count is fixed at creation (n entries at load <= 3/4), and an insert
+ * of a new key into a map already holding n entries is refused (the caller
+ * gets None and the map back; docs/2026-11-10-MUTMAP.md, Fixed capacity). */
+#define MM_FIXED 4u
+#define MM_KIND(x) ((x)->elvar & 3u)
+#define MM_ISFIXED(x) (((x)->elvar & MM_FIXED) != 0)
+#define MM_LIMIT(x) ((x)->elvar >> 3)
 
 /* ---- the hashes: deterministic, unseeded, not cryptographic -------------
  * 64-bit words: Int keys go through splitmix64's finalizer (a bijection, so
@@ -1072,17 +1081,17 @@ static inline uw *mm_v(vec_t *x) { return x->cols[2]->base; }
 
 /* the key's stored hash (top bit set), checking it is the map's key kind */
 static uw mm_key_hash(vec_t *x, V k) {
-  if (x->elvar == MM_KINT) {
+  if (MM_KIND(x) == MM_KINT) {
     if (!ISINT(k)) fpr_cpanic("MutMap: an Int-keyed map got a non-Int key");
     return mm_int_hash(UNTAG(k)) | MM_TOP;
   }
   if (ISINT(k) || TID(k) != T_STR) fpr_cpanic("MutMap: a String-keyed map got a non-String key");
   return mm_str_hash(k) | MM_TOP;
 }
-static inline uw mm_key_raw(vec_t *x, V k) { return x->elvar == MM_KINT ? (uw)UNTAG(k) : (uw)k; }
+static inline uw mm_key_raw(vec_t *x, V k) { return MM_KIND(x) == MM_KINT ? (uw)UNTAG(k) : (uw)k; }
 static int mm_key_eq(vec_t *x, uw slot, V k) {
   uw s = mm_k(x)[slot];
-  if (x->elvar == MM_KINT) return s == (uw)UNTAG(k);
+  if (MM_KIND(x) == MM_KINT) return s == (uw)UNTAG(k);
   if (s == (uw)k) return 1;
   str_t *a = (str_t *)s, *b = (str_t *)k;
   if (a->len != b->len) return 0;
@@ -1092,11 +1101,11 @@ static int mm_key_eq(vec_t *x, uw slot, V k) {
 }
 static inline V mm_key_val(vec_t *x, uw slot) {
   uw s = mm_k(x)[slot];
-  return x->elvar == MM_KINT ? TAG((sw)s) : (V)s;
+  return MM_KIND(x) == MM_KINT ? TAG((sw)s) : (V)s;
 }
 static void mm_clear(vec_t *x, uw slot) {
   mm_h(x)[slot] = 0;
-  mm_k(x)[slot] = x->elvar == MM_KINT ? 0 : (uw)TAG(0);
+  mm_k(x)[slot] = MM_KIND(x) == MM_KINT ? 0 : (uw)TAG(0);
   mm_v(x)[slot] = (uw)TAG(0);
 }
 
@@ -1334,6 +1343,65 @@ static V g_mutmapFree(V m) {
   return (V)&fpr_unit;
 }
 
+
+/* ---- FixedMap (std/fixedmap): the same table, never growing ---------------
+ * fixedmap{Strings,Ints} n: slots for n entries at load <= 3/4 (n <= 0: no
+ * slots, every new key refused).  At most n slots are ever occupied and at
+ * least a quarter are empty, so a probe passes at most n occupied slots
+ * before it meets the key or an empty slot: n + 1 slots, and never C. */
+static V mm_new_fixed(uw kind, V capv) {
+  if (!ISINT(capv)) fpr_cpanic("FixedMap: the capacity is not an Int");
+  sw n = UNTAG(capv);
+  if (n < 0) n = 0;
+  if ((uw)n > ((uw)-1 >> 4)) fpr_cpanic("FixedMap: capacity out of range");
+  V m = mm_new(kind, TAG(n));
+  ((vec_t *)m)->elvar = kind | MM_FIXED | ((uw)n << 3);
+  return m;
+}
+static V g_fixedmapStrings(V capv) { return mm_new_fixed(MM_KSTR, capv); }
+static V g_fixedmapInts(V capv) { return mm_new_fixed(MM_KINT, capv); }
+
+static vec_t *fchk(V m, const char *who) {
+  vec_t *x = mchk(m, who);
+  if (!MM_ISFIXED(x)) fpr_cpanic(who);
+  return x;
+}
+/* (1 stored / 0 refused, the map): an existing key is always replaced; a
+ * new key is placed only while fewer than n entries are held */
+static V g_fixedmapInsert(V k, V v, V m) {
+  vec_t *x = fchk(m, "FixedMap.insert: not a FixedMap");
+  uw h = mm_key_hash(x, k), empty;
+  sw at = mm_find(x, k, h, &empty);
+  if (at >= 0) { mm_v(x)[at] = (uw)v; return mktup2(TAG(1), m); }
+  if (x->eltid >= MM_LIMIT(x) || empty == (uw)-1) return mktup2(TAG(0), m);
+  mm_place_new(x, k, h, v, empty); /* eltid + 1 <= n <= 3/4 C: no growth */
+  return mktup2(TAG(1), m);
+}
+static V g_fixedmapInsertWith(V f, V k, V v, V m) {
+  vec_t *x = fchk(m, "FixedMap.insertWith: not a FixedMap");
+  uw h = mm_key_hash(x, k), empty;
+  sw at = mm_find(x, k, h, &empty);
+  if (at >= 0) {
+    V nv = mm_apply2(f, (V)mm_v(x)[at], v);
+    mm_v(x)[at] = (uw)nv;
+    return mktup2(TAG(1), m);
+  }
+  if (x->eltid >= MM_LIMIT(x) || empty == (uw)-1) return mktup2(TAG(0), m);
+  mm_place_new(x, k, h, v, empty);
+  return mktup2(TAG(1), m);
+}
+/* the entry limit n, and the map */
+static V g_fixedmapCapacity(V m) {
+  vec_t *x = fchk(m, "FixedMap.capacity: not a FixedMap");
+  return mktup2(TAG((sw)MM_LIMIT(x)), m);
+}
+/* the same table as a growable MutMap (nothing moves) */
+static V g_fixedmapGrowable(V m) {
+  vec_t *x = fchk(m, "FixedMap.toMutMap: not a FixedMap");
+  x->elvar = MM_KIND(x);
+  return m;
+}
+
 FPR_FN(fpr_g_strHash, g_strHash, 1);
 FPR_FN(fpr_g_intHash, g_intHash, 1);
 FPR_FN(fpr_g_mutmapStrings, g_mutmapStrings, 1);
@@ -1351,3 +1419,19 @@ FPR_FN(fpr_g_mutmapCapacity, g_mutmapCapacity, 1);
 FPR_FN(fpr_g_mutmapFold, g_mutmapFold, 3);
 FPR_FN(fpr_g_mutmapToList, g_mutmapToList, 1);
 FPR_FN(fpr_g_mutmapFree, g_mutmapFree, 1);
+FPR_FN(fpr_g_fixedmapStrings, g_fixedmapStrings, 1);
+FPR_FN(fpr_g_fixedmapInts, g_fixedmapInts, 1);
+FPR_FN(fpr_g_fixedmapInsert, g_fixedmapInsert, 3);
+FPR_FN(fpr_g_fixedmapInsertWith, g_fixedmapInsertWith, 4);
+FPR_FN(fpr_g_fixedmapCapacity, g_fixedmapCapacity, 1);
+FPR_FN(fpr_g_fixedmapGrowable, g_fixedmapGrowable, 1);
+/* the reads, writes-in-place and removals are MutMap's own: they never grow */
+FPR_FN(fpr_g_fixedmapSlot, g_mutmapSlot, 2);
+FPR_FN(fpr_g_fixedmapValueAt, g_mutmapValueAt, 2);
+FPR_FN(fpr_g_fixedmapSetAt, g_mutmapSetAt, 3);
+FPR_FN(fpr_g_fixedmapRemoveAt, g_mutmapRemoveAt, 2);
+FPR_FN(fpr_g_fixedmapRemove, g_mutmapRemove, 2);
+FPR_FN(fpr_g_fixedmapSize, g_mutmapSize, 1);
+FPR_FN(fpr_g_fixedmapFold, g_mutmapFold, 3);
+FPR_FN(fpr_g_fixedmapToList, g_mutmapToList, 1);
+FPR_FN(fpr_g_fixedmapFree, g_mutmapFree, 1);

@@ -30,7 +30,7 @@
 module Cost (Cost (..), CostEq (..), Declared (..), Verdict (..), costProgram, costProgramFor, costProgramForWithSizes, simplifyCost, substituteCost, checkBoundsAssuming, declaredBounds, checkBounds, checkBoundsWith, checkBoundsUnderWith, renderVerdict, substCoefs, coefsIn, resolvePrims, evalConst, omegas, prettyCost, prettyIn, renameC, renderReport, hasOmega, primAllocates, allocGrows) where
 
 import Data.Graph (SCC (..), stronglyConnComp)
-import Data.List (intercalate, nub, sort, isPrefixOf)
+import Data.List (intercalate, nub, sort, isPrefixOf, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
@@ -725,11 +725,15 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
           CProj 1 (CVar t) -> M.lookup (mutmapReadKey t) params
           _ -> case spine a [] of
             (CVar g, args@(_ : _))
-              | g `elem` ["mutmapSetAt", "mutmapRemoveAt", "mutmapRemove"], CVar v <- last args -> paramOf v
+              | g `elem` ["mutmapSetAt", "mutmapRemoveAt", "mutmapRemove",
+                          "fixedmapSetAt", "fixedmapRemoveAt", "fixedmapRemove", "fixedmapGrowable"], CVar v <- last args -> paramOf v
             _ -> Nothing
         mutmapRead a = case spine a [] of
           (CVar g, args@(_ : _))
-            | g `elem` ["mutmapSlot", "mutmapValueAt", "mutmapSize", "mutmapCapacity", "mutmapFold", "mutmapToList"],
+            | g `elem` ["mutmapSlot", "mutmapValueAt", "mutmapSize", "mutmapCapacity", "mutmapFold", "mutmapToList",
+                        -- a FixedMap never grows, so its inserts answer (stored?, the same map)
+                        "fixedmapSlot", "fixedmapValueAt", "fixedmapSize", "fixedmapCapacity", "fixedmapFold", "fixedmapToList",
+                        "fixedmapInsert", "fixedmapInsertWith"],
               CVar v <- last args -> paramOf v
           _ -> Nothing
         -- (work, alloc, live) of one MutMap primitive call, args costed by the caller
@@ -762,6 +766,17 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
           -- a (key, value) pair and a cell per entry, and the Nil
           ("mutmapToList", [m]) -> let c = lenOf m in Just (alloc (CAdd [CN 1, c]) (CAdd [CN 32, CMul [CN 48, c]]))
           ("mutmapFree", [_]) -> Just (alloc (CN 1) (CN 0))
+          -- std/fixedmap: the same table, never grown.  An insert is one
+          -- probe sequence (at most C slots; the runtime's limit of n <= 3C/4
+          -- entries makes it at most n + 1, which the pass cannot name), a
+          -- store, and the (stored?, map) pair: no growth term at all.
+          ("fixedmapStrings", [n]) -> Just (fresh (natOf n))
+          ("fixedmapInts", [n]) -> Just (fresh (natOf n))
+          ("fixedmapInsert", [k, _, m]) -> Just (alloc (CAdd [probeW k m, CN 4]) (CN 24))
+          ("fixedmapInsertWith", [f, k, _, m]) -> Just (plus (alloc (CAdd [probeW k m, CN 4]) (CN 24)) (R (fnWork f) (fnAlloc f) (fnAlloc f) []))
+          ("fixedmapCapacity", [_]) -> Just (alloc (CN 1) (CN 24))
+          ("fixedmapGrowable", [_]) -> Just (alloc (CN 1) (CN 0))
+          (_, _) | Just g' <- stripPrefix "fixedmap" g -> mutmapCost ("mutmap" ++ g') args
           _ -> Nothing
           where
             natOf n = mkNat (fromMaybe (CO "?n") (symOf n))

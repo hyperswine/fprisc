@@ -1,0 +1,156 @@
+# std/fixedmap.fpr -- FixedMap: a LINEAR hash table with a FIXED entry limit,
+# keyed by Int or String (docs/2026-11-10-MUTMAP.md, Fixed capacity).
+#
+#   FixedMap = use "std/fixedmap".
+#   O = use "std/option".
+#   m = FixedMap.ints 1000                     # room for exactly 1000 keys
+#   (ok, m2) = FixedMap.insert 7 "seven" m     # ok: O.Some Unit, or O.None when full
+#   (v, m3) = FixedMap.get 7 m2                # reads hand the map back
+#
+# The contracts:
+#   * `FixedMap 1 k v` is LINEAR (core/prelude.fpr), like `MutMap`, and is
+#     the same runtime table (runtime/vec.c, the fixedmap* engine).
+#   * It NEVER GROWS.  `ints n` / `strings n` size the table once, for n
+#     entries at load <= 3/4, and it holds at most n keys.  An insert of a NEW
+#     key into a map that already holds n answers `O.None` and hands the map
+#     back unchanged -- it does not trap, grow, or drop the map.  Replacing
+#     the value of a key that is already there always succeeds (`O.Some Unit`),
+#     full or not.  A remove makes room again.
+#   * COST: no growth term anywhere.  An insert is one probe sequence and a
+#     store.  The contract states the probe as at most C slots (C = `len m`,
+#     the slot count); the runtime's limit makes it at most n + 1, because
+#     only n slots can be occupied (see the doc).
+#   * ORDER: as MutMap -- fold and toList visit SLOT order, `freeze` sorts.
+#   * absence is an Option.  A FixedMap must be consumed: free, freeze,
+#     toMutMap, or handed on.
+
+O = use "option".
+Ord = use "order".
+L = use "list".
+M = use "map".
+
+# ---- making --------------------------------------------------------------------
+# room for exactly n String keys (n <= 0: none)
+strings : Int -> FixedMap String v
+  | work strings <= 3 * (3 * max 0 n + 8) + 1 | alloc strings <= 24 * (3 * max 0 n + 8) + 160 | live strings <= 24 * (3 * max 0 n + 8) + 160 .
+strings n = fixedmapStrings n.
+
+# room for exactly n Int keys (n <= 0: none)
+ints : Int -> FixedMap Int v
+  | work ints <= 3 * (3 * max 0 n + 8) + 1 | alloc ints <= 24 * (3 * max 0 n + 8) + 160 | live ints <= 24 * (3 * max 0 n + 8) + 160 .
+ints n = fixedmapInts n.
+
+# ---- reading -------------------------------------------------------------------
+get : k -> FixedMap k v -> (O.Option v, FixedMap k v)
+  | work get <= len k + len m * (len k + 1) + 16 | alloc get <= 88 | live get <= 88 .
+get k m =
+  (i, m1) = fixedmapSlot k m;
+  if i < 0 then (O.None, m1) else
+  (v, m2) = fixedmapValueAt i m1;
+  (O.Some v, m2).
+
+getOr : v -> k -> FixedMap k v -> (v, FixedMap k v)
+  | work getOr <= len k + len m * (len k + 1) + 9 | alloc getOr <= 48 | live getOr <= 48 .
+getOr d k m =
+  (i, m1) = fixedmapSlot k m;
+  if i < 0 then (d, m1) else fixedmapValueAt i m1.
+
+member : k -> FixedMap k v -> (Bool, FixedMap k v)
+  | work member <= len k + len m * (len k + 1) + 7 | alloc member <= 48 | live member <= 48 .
+member k m =
+  (i, m1) = fixedmapSlot k m;
+  (i >= 0, m1).
+
+size : FixedMap k v -> (Int, FixedMap k v)
+  | work size <= 1 | alloc size <= 24 | live size <= 24 .
+size m = fixedmapSize m.
+
+isEmpty : FixedMap k v -> (Bool, FixedMap k v)
+  | work isEmpty <= 7 | alloc isEmpty <= 48 | live isEmpty <= 48 .
+isEmpty m =
+  (n, m1) = fixedmapSize m;
+  (n == 0, m1).
+
+# the entry limit n it was made with
+capacity : FixedMap k v -> (Int, FixedMap k v)
+  | work capacity <= 1 | alloc capacity <= 24 | live capacity <= 24 .
+capacity m = fixedmapCapacity m.
+
+# holding its limit: the next NEW key would be refused
+isFull : FixedMap k v -> (Bool, FixedMap k v)
+  | work isFull <= 12 | alloc isFull <= 72 | live isFull <= 72 .
+isFull m =
+  (n, m1) = fixedmapSize m;
+  (c, m2) = fixedmapCapacity m1;
+  (n >= c, m2).
+
+# ---- writing -------------------------------------------------------------------
+# O.Some Unit: stored (a new key, or the value of one already there replaced);
+# O.None: a new key and the map already holds its limit -- nothing changed
+insert : k -> v -> FixedMap k v -> (O.Option Unit, FixedMap k v)
+  | work insert <= len k + len m * (len k + 1) + 17 | alloc insert <= 80 | live insert <= 80 .
+insert k v m =
+  (ok, m1) = fixedmapInsert k v m;
+  (stored ok, m1).
+
+# insert, or where the key is already there store `f old v` (always succeeds
+# for a key that is there; None only for a new key into a full map)
+insertWith : (v -> v -> v) -> k -> v -> FixedMap k v -> (O.Option Unit, FixedMap k v)
+  | work insertWith <= len k + work f + len m * (len k + 1) + 17 | alloc insertWith <= alloc f + 80 | live insertWith <= alloc f + 80 .
+insertWith f k v m =
+  (ok, m1) = fixedmapInsertWith f k v m;
+  (stored ok, m1).
+
+stored : Int -> O.Option Unit
+  | work stored <= 6 | alloc stored <= 32 | live stored <= 32 .
+stored ok = if ok == 1 then O.Some Unit else O.None.
+
+remove : k -> FixedMap k v -> FixedMap k v
+  | work remove <= len k + len m + len m * (len k + 1) + 1 | alloc remove <= 0 | live remove <= 0 .
+remove k m = fixedmapRemove k m.
+
+# f sees what is there and says what should be.  O.None only when f asks to
+# add a key that is not there and the map is full (f's value is dropped and
+# the map is unchanged); a replace or a removal always succeeds.
+alter : k -> (O.Option v -> O.Option v) -> FixedMap k v -> (O.Option Unit, FixedMap k v)
+  | work alter <= 2 * len k + work f + 2 * len m * (len k + 1) + len m + 39 | alloc alter <= alloc f + 120 | live alter <= alloc f + 120 .
+alter k f m =
+  (i, m1) = fixedmapSlot k m;
+  if i < 0 then (case f O.None of O.None -> (O.Some Unit, m1) | O.Some v -> insert k v m1) else
+  (old, m2) = fixedmapValueAt i m1;
+  case f (O.Some old) of O.None -> (O.Some Unit, fixedmapRemoveAt i m2) | O.Some v -> (O.Some Unit, fixedmapSetAt i v m2).
+
+# ---- whole-map ----------------------------------------------------------------
+fold : (b -> k -> v -> b) -> b -> FixedMap k v -> (b, FixedMap k v)
+  | work fold <= len m * (work f + 4) + 1 | alloc fold <= len m * (alloc f + 112) + 24 | live fold <= len m * (alloc f + 112) + 24 .
+fold f z m = fixedmapFold f z m.
+
+toList : FixedMap k v -> (List (k, v), FixedMap k v)
+  | work toList <= len m + 1 | alloc toList <= 48 * len m + 32 | live toList <= 48 * len m + 32 .
+toList m = fixedmapToList m.
+
+sortedList : (k -> k -> Ord.Ordering) -> FixedMap k v -> (List (k, v), FixedMap k v) .
+sortedList cmp m =
+  (es, m1) = fixedmapToList m;
+  (L.sortWith (byKey cmp) es, m1).
+
+byKey : (k -> k -> Ord.Ordering) -> (k, v) -> (k, v) -> Ord.Ordering
+  | work byKey <= work cmp + 7 | alloc byKey <= alloc cmp | live byKey <= alloc cmp .
+byKey cmp a b = case a of (ka, _) -> (case b of (kb, _) -> cmp ka kb).
+
+free : FixedMap k v -> Unit
+  | work free <= 1 | alloc free <= 0 | live free <= 0 .
+free m = fixedmapFree m.
+
+# the persistent, ordered Map of the same entries; the FixedMap is consumed
+freeze : (k -> k -> Ord.Ordering) -> FixedMap k v -> M.Map k v .
+freeze cmp m =
+  (es, m1) = sortedList cmp m;
+  _ = fixedmapFree m1;
+  M.fromDistinctAscList cmp es.
+
+# the same table as a growable MutMap (nothing is copied; from here on an
+# insert may grow it, under MutMap's contracts)
+toMutMap : FixedMap k v -> MutMap k v
+  | work toMutMap <= 1 | alloc toMutMap <= 0 | live toMutMap <= 0 .
+toMutMap m = fixedmapGrowable m.

@@ -29,7 +29,8 @@
  * table) stored in the same descriptor, so the deep copier, the message
  * and region boundaries and the release path treat it like any vector:
  * three columns (hash raw, key, value), len = the slot capacity, eltid =
- * the entry count, elvar = the key kind.  No Vec.* operation can reach one:
+ * the entry count, elvar = the key kind (bits 0-1; a FixedMap, std/fixedmap,
+ * also sets bit 2 and keeps its entry limit above).  No Vec.* operation can reach one:
  * the type checker keeps `MutMap k v` and `Vector a` apart. */
 enum { VR_UNSET = 0, VR_INT = 1, VR_BOX = 2, VR_SOA = 3, VR_FLT = 4, VR_TREE = 5, VR_MAP = 6 };
 

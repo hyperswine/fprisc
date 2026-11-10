@@ -23,7 +23,7 @@ module Sol.Infer (inferTops, inferResult, inferSession, builtinNames, solBuiltin
 
 import Infer (IProf (..), TEnv, InferenceResult, inferTopsResult, inferTopsSession, inferTopsWith, mono, scheme, sv)
 import Infer.Session (CheckedDefinitions)
-import Type.Syntax (Type(..), tBool, tInt, tList, tMutMap, tStr, tUnit, tcon)
+import Type.Syntax (Type(..), tBool, tInt, tFixedMap, tList, tMutMap, tStr, tUnit, tcon)
 import qualified Data.Map.Strict as M
 import Ownership.Shape (LShape)
 import Core.Syntax (Name)
@@ -115,6 +115,21 @@ solBuiltins =
       ("mutmapFold", scheme [0, 1, 2] (TFn (TFn (sv 2) (TFn (sv 0) (TFn (sv 1) (sv 2)))) (TFn (sv 2) (TFn (tMutMap (sv 0) (sv 1)) (TTupT [sv 2, tMutMap (sv 0) (sv 1)]))))),
       ("mutmapToList", scheme [0, 1] (TFn (tMutMap (sv 0) (sv 1)) (TTupT [tList (TTupT [sv 0, sv 1]), tMutMap (sv 0) (sv 1)]))),
       ("mutmapFree", scheme [0, 1] (TFn (tMutMap (sv 0) (sv 1)) tUnit)),
+      ("fixedmapStrings", scheme [0] (TFn tInt (tFixedMap tStr (sv 0)))),
+      ("fixedmapInts", scheme [0] (TFn tInt (tFixedMap tInt (sv 0)))),
+      ("fixedmapInsert", scheme [0, 1] (TFn (sv 0) (TFn (sv 1) (TFn (tFixedMap (sv 0) (sv 1)) (TTupT [tInt, tFixedMap (sv 0) (sv 1)]))))),
+      ("fixedmapInsertWith", scheme [0, 1] (TFn (TFn (sv 1) (TFn (sv 1) (sv 1))) (TFn (sv 0) (TFn (sv 1) (TFn (tFixedMap (sv 0) (sv 1)) (TTupT [tInt, tFixedMap (sv 0) (sv 1)])))))),
+      ("fixedmapCapacity", scheme [0, 1] (TFn (tFixedMap (sv 0) (sv 1)) (TTupT [tInt, tFixedMap (sv 0) (sv 1)]))),
+      ("fixedmapGrowable", scheme [0, 1] (TFn (tFixedMap (sv 0) (sv 1)) (tMutMap (sv 0) (sv 1)))),
+      ("fixedmapSlot", scheme [0, 1] (TFn (sv 0) (TFn (tFixedMap (sv 0) (sv 1)) (TTupT [tInt, tFixedMap (sv 0) (sv 1)])))),
+      ("fixedmapValueAt", scheme [0, 1] (TFn tInt (TFn (tFixedMap (sv 0) (sv 1)) (TTupT [sv 1, tFixedMap (sv 0) (sv 1)])))),
+      ("fixedmapSetAt", scheme [0, 1] (TFn tInt (TFn (sv 1) (TFn (tFixedMap (sv 0) (sv 1)) (tFixedMap (sv 0) (sv 1)))))),
+      ("fixedmapRemoveAt", scheme [0, 1] (TFn tInt (TFn (tFixedMap (sv 0) (sv 1)) (tFixedMap (sv 0) (sv 1))))),
+      ("fixedmapRemove", scheme [0, 1] (TFn (sv 0) (TFn (tFixedMap (sv 0) (sv 1)) (tFixedMap (sv 0) (sv 1))))),
+      ("fixedmapSize", scheme [0, 1] (TFn (tFixedMap (sv 0) (sv 1)) (TTupT [tInt, tFixedMap (sv 0) (sv 1)]))),
+      ("fixedmapFold", scheme [0, 1, 2] (TFn (TFn (sv 2) (TFn (sv 0) (TFn (sv 1) (sv 2)))) (TFn (sv 2) (TFn (tFixedMap (sv 0) (sv 1)) (TTupT [sv 2, tFixedMap (sv 0) (sv 1)]))))),
+      ("fixedmapToList", scheme [0, 1] (TFn (tFixedMap (sv 0) (sv 1)) (TTupT [tList (TTupT [sv 0, sv 1]), tFixedMap (sv 0) (sv 1)]))),
+      ("fixedmapFree", scheme [0, 1] (TFn (tFixedMap (sv 0) (sv 1)) tUnit)),
       ("strCmp", mono (TFn tStr (TFn tStr tInt))),
       ("strCodes", mono (TFn tStr (tList tInt))),
       ("chr", mono (TFn tInt tStr)),

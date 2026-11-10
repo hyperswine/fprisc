@@ -27,6 +27,7 @@ check('sort', label='List.sortWith (runtime merge) and Vector.sortWith (in place
 check('list', label='List: map/filter/fold/find/zip/group, a stable merge sort of 300,000')
 check('string', label='String: split/join/trim/replace/search/slices/toInt, 1.3 MB through join and split')
 check('map', label='Map and Set: a persistent AVL tree, 100,000 keys in and half out, ascending iteration; alter/insertWith in one descent agree with get+insert/remove over 100,000 updates')
+check('fixedmap', label='FixedMap: the never-growing linear hash table against Map with the same limit over 260,000 random operations, full most of the time: a new key into a full map answers None and leaves it intact, a key already there is always replaced, remove makes room, limits 0 and negative, toMutMap grows on')
 check('mutmap', label='MutMap: the linear hash table against Map over 100,000 random operations on Int and String keys (tiny tables too), the empty map, growth by doubling, withCapacity never growing, backward-shift removal, freeze to an ordered Map, thaw, the hashes')
 check('json', label='Json: parse with line and column, escapes and surrogate pairs, deterministic render, a 640 KB round trip')
 with tempfile.TemporaryDirectory(prefix='fpr-store-') as t:
@@ -45,8 +46,9 @@ assert got == ['[1, 2, 3]', 'Some 3', 'A-B--C', '[(and, 2), (bird, 1), (cat, 1),
 p = subprocess.run([fpr, 'sol', str(ROOT / 'tests' / 'std' / 'solmutmap.sol')], capture_output=True, text=True, timeout=300)
 got = [l for l in p.stdout.splitlines() if not l.startswith(('[sol]', '[table]', '[jit]'))]
 assert got == ['[(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 3)]', '698586392370338664', '3419864383188818853',
-               '[(1, 10), (3, 30), (2, 20)]', 'True'], p.stdout + p.stderr
-print('MutMap from a Sol script: PASS')
+               '[(1, 10), (3, 30), (2, 20)]', 'True',
+               '([Some (), Some (), Some (), None, Some (), Some ()], [(2, 22), (3, 30), (4, 40)])', 'True'], p.stdout + p.stderr
+print('MutMap and FixedMap from a Sol script: PASS')
 bad = ROOT / 'tests' / 'std' / 'codec_bad.fpr'
 p2 = subprocess.run([fpr, 'build', str(bad), '-o', os.devnull], capture_output=True, text=True, timeout=300)
 assert p2.returncode != 0 and 'codec literal @Msg' in p2.stdout + p2.stderr, p2.stdout + p2.stderr

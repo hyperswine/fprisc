@@ -266,7 +266,10 @@ data MutMapStore = MutMapStore
   { mmStrKeys :: !Bool,
     mmCap :: !Int,
     mmCount :: !Int,
-    mmSlots :: !(IM.IntMap (Word64, Value, Value))
+    mmSlots :: !(IM.IntMap (Word64, Value, Value)),
+    -- a FixedMap's entry limit (std/fixedmap): never grows, refuses a new
+    -- key once it holds this many; Nothing for a growable MutMap
+    mmLimit :: !(Maybe Int)
   }
 
 data VecStore = VecStore
