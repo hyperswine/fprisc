@@ -130,6 +130,44 @@ One thing for the language rather than the check: `Pair = Type (Pair a b)` is
 accepted silently and costs two allocations per pair against the parametric
 spelling. `--remarks` says nothing about it.
 
+## check_base: the last step, and what is still red
+
+With items 8 and 9 merged, the x86-64 job passes every step up to and
+including host-extra on Linux and stops in `check_base`, which stops at its
+first failing job. Run here with each failing job set aside in turn until the
+rest passed: 227 jobs, 7 failing. All of them fail with the allocation fix of
+item 9 removed, so none comes from it, and the ones checked against
+`e138e65` (pagination, the ideal examples) already fail there.
+
+Fixed, stale against `5e4f248` (5 November):
+
+- `tests/check_pagination.py` and `examples/ideal/check.py` asserted that
+  `UNPROVED` appears nowhere in a `--cost` report. The report now lists every
+  imported result-size annotation and says "UNPROVED (no result-size lemma;
+  annotation is not used)" for the three in `std/list` it cannot verify
+  independently (`sortBy`, `sortWith`, `unique`). Those lines are left out of
+  the assertion; a real unproved or over-budget bound still fails it.
+- `examples/ideal/measure.fpr`: `factGo` declared `work <= 5 * n + 5`, false
+  for negative `n`, and the checker refuses it over the signed domain. The
+  bound is `5 * max 0 n + 5`; `fact` still proves `5 * n + 6` from its own
+  `n >= 0`.
+- `tests/check_typed_units.py` expected unit names to carry `ccore2-`; the
+  Core cache identity has been `core4-` since `5e4f248`. It now accepts any
+  version.
+
+Still red, each needing a decision or an investigation:
+
+| Job | Failure |
+|---|---|
+| `examples/ideal/check.py` (`transitions.fpr`) | `update` declares `work <= 25`, derived 29. Why the cost grew by 4 is not known. |
+| `examples/ideal/check.py` (`pipeline.fpr`) | `total = xs \|> List.map double \|> List.sum` has no derived bound: `varying-recursive-parameter:$typed_v_2` is opaque, so any declared work bound over `List.sum` fails `--cost`. A regression in cost derivation or a deliberate tightening. |
+| `tests/check_x64_scalar.py`, `tests/check_x64_qos.py` | `rotate63`: the stores to hart argument cells 8 and 448 the check expects for the non-looped form are not found. |
+| `tests/check_trmc_arc.py` | the `values` program has no `$worker.trmc.` worker with TRMC enabled. |
+| `tests/check_trust.py` | `std/fixedmap.fpr`, `std/mutmap.fpr` and `std/vector.fpr` are not on `Safety.approvedLibraries`. An approval, so not added here. |
+
+Also open: the three `std/list` size annotations above are declared and not
+used by callers until they have lemmas.
+
 ## Results on this host
 
 62 of 72 checks passed before the fixes in items 4 and 5; with them, the

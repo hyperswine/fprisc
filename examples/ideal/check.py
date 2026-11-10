@@ -92,7 +92,10 @@ def check(tmp):
         p = build(IDEAL / (name + '.fpr'), exe, '--cost')
         bins[name] = exe
         if name in ['measure', 'pipeline', 'todo', 'transitions']:
-            assert 'PROVEN' in p.stdout and 'UNPROVED' not in p.stdout, p.stdout
+            # an imported size annotation with no independent lemma is listed
+            # as not used (std/list: sortBy, sortWith, unique), not as a failed bound
+            judged = '\n'.join(l for l in p.stdout.splitlines() if 'no result-size lemma; annotation is not used' not in l)
+            assert 'PROVEN' in judged and 'UNPROVED' not in judged, p.stdout
     print('eight ideal programs build; their declared bounds are proven', flush=True)
 
     # File tool: empty, CRLF, Unicode, multiple inputs and a missing file.

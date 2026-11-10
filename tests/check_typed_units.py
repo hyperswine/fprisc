@@ -4,6 +4,7 @@
 The caller builds fpr once. Keep all roots in one cache so stale cross-root
 reuse would be observable, rather than hidden by per-case build directories.
 """
+import re
 import os
 from pathlib import Path
 import subprocess
@@ -82,7 +83,9 @@ def main():
             run([ROOT / 'fpr', 'compile', f'--target={target}', path, output])
             emitted = list((output_dir / 'units').glob('u-*.s'))
             assert output.exists() and emitted, (target, emitted)
-            assert all('ccore2-' in p.name for p in emitted), (target, emitted)
+            # every unit is named by its Core cache identity, whatever its
+            # version (Core.CacheIdentity: core2 until 5e4f248, core4 since)
+            assert all(re.search(r'-ccore\d+-[0-9a-f]{16}-', p.name) for p in emitted), (target, emitted)
         # The imported caller is unchanged while its root-provided callee
         # changes from bounded arithmetic to allocating recursion and back.
         # Region placement (and therefore the cache key) must follow the
