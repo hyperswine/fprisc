@@ -1,6 +1,9 @@
 # Failure modes: what traps, what overflows, what is silently wrong
 
-Date: 2026-11-10 (revised the same day with Jack's decisions). Kind: audit, decisions and proposal. Applies to `540ba57` (main after
+Date: 2026-11-10 (revised the same day with Jack's decisions, then again the
+same day with D6–D12, the answers to the seven remaining questions; D6–D12
+are decided, and open to review or replacement). Kind: audit, decisions and
+proposal. Applies to `540ba57` (main after
 PR #59). Every behaviour marked **verified** was run on this date: native is
 `fpr build` for the posix system on x86-64 Linux, Sol is `fpr sol` on the same
 file. A64 and RV64 were **not executed** (no QEMU on the audit machine); where
@@ -29,26 +32,41 @@ Recorded from Jack's review of the first draft of this page, 2026-11-10:
 
 | # | Decision | Status | Section |
 | --- | --- | --- | --- |
-| D1 | `Int` should neither trap nor fail silently; some `Int` speed may be given up for that. `I64` (and `I32`) are the fixed-width types for high-performance code | **Decided** (direction); this page recommends the mechanism | [Int: never wraps, never traps](#int-never-wraps-never-traps) |
-| D2 | Strings are bytes everywhere: a byte array, not a list of characters | **Decided** | [Strings are byte arrays](#strings-are-byte-arrays) |
+| D1 | `Int` should neither trap nor fail silently; some `Int` speed may be given up for that. `I64` (and `I32`) are the fixed-width types for high-performance code | **Decided** (direction); mechanism confirmed as D6 | [Int: never wraps, never traps](#int-never-wraps-never-traps), [D6](#d6-exact-int) |
+| D2 | Strings are bytes everywhere: a byte array, not a list of characters | **Decided**; D10 splits this into `String` (valid UTF-8) and `Bytes` (any bytes) | [Strings are byte arrays](#strings-are-byte-arrays), [D10](#d10-two-types-bytes-and-string) |
 | D3 | Indexing never traps: each index operation returns `Option` or takes a precondition | **Decided** | [Indexing without traps](#indexing-without-traps) |
 | D4 | No `Int.checkedAdd` / `Int.wrappingAdd` family | **Decided**; removed from this proposal | - |
-| D5 | `%` is the true (floored) modulo, as `Math.mod` is | **Decided** | [`%` is floored modulo](#-is-floored-modulo) |
+| D5 | `%` is the true (floored) modulo, as `Math.mod` is | **Decided**; D8 makes `/` floored too so the identity holds; D9 applies both symbols to `I64`/`I32` | [`%` is floored modulo, `/` is floored division](#-is-floored-modulo--is-floored-division), [D8](#d8--is-floored-division), [D9](#d9--and--on-i64i32-are-floored-too) |
+| D6 | `Int` is mathematically exact: never overflows, never wraps, never traps on arithmetic. Small values stay in the tagged 63-bit word (31-bit on RV32) and promote to a heap bignum otherwise. Bounded and no-heap code must prove every `Int` stays small or use `I64`/`I32` | **Decided, open to review/replacement** (2026-11-10) | [D6](#d6-exact-int) |
+| D7 | `I32.ofInt` / `I64.ofInt` return `Option` (`None` out of range). No implicit wrapping conversion | **Decided, open to review/replacement** (2026-11-10) | [D7](#d7-i32ofint--i64ofint-return-option) |
+| D8 | `/` is floored division; `Math.quot` / `Math.rem` are the truncated pair; the identity `a == (a / b) * b + a % b` always holds | **Decided, open to review/replacement** (2026-11-10) | [D8](#d8--is-floored-division) |
+| D9 | `%` and `/` on `I64`/`I32` are floored too (same symbol, same meaning). `I64.quot`/`I64.rem` and `I32.quot`/`I32.rem` are the hardware truncated results. `min / -1` keeps the existing named panic | **Decided, open to review/replacement** (2026-11-10) | [D9](#d9--and--on-i64i32-are-floored-too) |
+| D10 | Two explicit types: `Bytes` (immutable `Array Byte`, any bytes) and `String` (immutable byte array, guaranteed valid UTF-8). Length and indexing are in bytes. I/O yields `Bytes` | **Decided, open to review/replacement** (2026-11-10) | [D10](#d10-two-types-bytes-and-string) |
+| D11 | Rename in one change; no deprecated aliases. Old names become compile errors that name the replacement | **Decided, open to review/replacement** (2026-11-10) | [D11](#d11-rename-in-one-change-no-deprecated-aliases) |
+| D12 | Calculator: `Rem` is truncated remainder (`Math.rem`); add a separate `Mod` that is floored (`%`). Each name means exactly one thing | **Decided, open to review/replacement** (2026-11-10) | [D12](#d12-calculator-rem-is-truncated-mod-is-floored) |
+
+**Naming rule.** Each operator or function name denotes one semantics across
+all numeric types (`Int`, `I64`, `I32`) and all backends. Alternative
+semantics get their own name (`Math.quot`/`Math.rem`, `I64.quot`/`I64.rem`,
+`I32.quot`/`I32.rem`, calculator `Rem` vs `Mod`).
 
 Where the first draft below (the table, the silent-failure list) says
 otherwise, these decisions and the sections that implement them win. The
 table cells that say "Decision N" refer to the first draft's questions,
 which this revision answers:
 
-1. Sol Int width: answered by D1 (exact everywhere, not a 63-bit trap).
-2. String length: answered by D2 (bytes).
+1. Sol Int width: answered by D1 and D6 (exact everywhere, not a 63-bit trap).
+2. String length: answered by D2 and D10 (bytes, on both `String` and `Bytes`).
 3. Undischarged builtin preconditions: lifted onto the signature. This is
    still the recommendation and is now part of D3: where lifting stops, the
    program is refused, and no runtime check is inserted.
 4. Index reads: answered by D3 (no trapping form).
 5. Explicit overflow operations: answered by D4 (none).
-6. Lenient helpers: `%` is answered by D5. `substr`/`take`/`drop` stay
+6. Lenient helpers: `%` is answered by D5 and D8. `substr`/`take`/`drop` stay
    clamping and documented. `parseInt` is deprecated (work item 16).
+
+The seven remaining questions of the previous revision are answered as
+[D6–D12](#decisions-d6d12-2026-11-10-expected-semantics).
 
 ## What already exists (read before the table)
 
@@ -143,16 +161,18 @@ M a few days, L a week or more; estimates), and the pipeline phase from
 | `2 ^ 63` | V: overflow trap (from the squaring `*`) | V: `9223372036854775808` | **Sol: yes** | As above | with above | - |
 | `x ^ n`, `n < 0` | V: `(^): negative exponent` | V: same, plus a hint | no | Precondition `(n : Int | n >= 0)` on `intPow` so it is discharged or blamed at the caller | S | P1 (caller facts) |
 | `Math.powInt a n`, `n < 0` | V: answers `0` | not run (std/math needs F64) | **yes** | Same precondition as `^`, or `Option Int` | S | - |
-| `x / 0`, `x % 0` (Int) | V: `division by zero`, exit 1 (literal `7 / 0` too) | V: `SOL PANIC: division by zero` | no | Undischarged builtin `/` becomes a visible precondition (Decision 3); a literal zero divisor is a compile error | S-M | P1 |
+| `x / 0`, `x % 0` (Int) | V: `division by zero`, exit 1 (literal `7 / 0` too) | V: `SOL PANIC: division by zero` | no | **Decided (D8):** `/` and `%` carry `(b : Int \| b != 0)`. Undischarged obligations are lifted onto the signature (Decision 3); a literal zero divisor is a compile error | S-M | P1 |
 | `Math.mod 7 0` (has `(b : Int | b != 0)`) | V: `precondition violated: mod@... requires (b != 0), got b=0 (in main)` | not run (std/math) | no | Already the target style; refuse the literal case at compile time | S | P1 |
-| `(0 - 7) % 2` | V: `-1` (`%` is `Int.mod`, which truncates: the sign of the dividend); `Math.mod` gives `1`, `Math.rem` `-1` | not run | surprising, documented in code | **Decided (D5):** `%` becomes floored, giving `1`; `Math.rem` keeps `-1` ([`%` section](#-is-floored-modulo)) | S | std + backend |
+| `(0 - 7) % 2`, `(0 - 7) / 2` | V: `%` is `-1` (`Int.mod` truncates: the sign of the dividend); `Math.mod` gives `1`, `Math.rem` `-1`. `/` is `-3` (truncates toward zero) | not run for `Math.*` | surprising, documented in code | **Decided (D5, D8):** `%` is floored (`-7 % 2 == 1`); `/` is floored (`-7 / 2 == -4`); `Math.quot -7 2 == -3`, `Math.rem -7 2 == -1`. Identity `a == (a / b) * b + a % b` holds ([`%` / `/` section](#-is-floored-modulo--is-floored-division)) | S | std + backend |
 | `BITSHIFTL 1 62` | V: `-4611686018427387904` | not available on Sol (type error) | by design (bit ops act on the 63-bit word) | Keep; say so in the `band`/`BITSHIFTL` docs | S | - |
 | `BITSHIFTL 1 63` | V: `0` | n/a | yes, but the panic text for `-1` says "shift must be 0..63" | With exact `Int` (D1) `BITSHIFTL 1 63` is `2^63`; the only precondition left is `k >= 0` | with D1 | - |
 | `BITSHIFTL 1 (-1)` | V: `BITSHIFTL: shift must be 0..63` | n/a | no | Precondition `(k : Int | k >= 0 and k < 63)` so it can be discharged | S | P1 |
 | `I64` `*` past 64 bits | V: wraps (`-4`) | n/a | by design | Keep (I64's contract) | - | - |
-| `I64 / 0`, `I32 / 0` | V: `I64: division by zero`, `I32: division by zero` | n/a | no | Preconditions as Int | S | P1 |
-| `I64.toInt` too big | V: `Err I64.toInt: does not fit an Int (63 bits)` | n/a | no | Keep | - | - |
-| `I32.ofInt intMax` | V: `-1` (low 32 bits) | n/a | **yes, by design** (MEMORY-I32 page) | Narrowing question (Questions for Jack, 2): `Option`, precondition, or a wrapping form that says so | S | - |
+| `I64 / 0`, `I32 / 0` | V: `I64: division by zero`, `I32: division by zero` | n/a | no | **Decided (D9):** same `b != 0` precondition as `Int` | S | P1 |
+| `I64.min / -1`, `I32.min / -1` | D: named panic `I64: division overflow (INT64_MIN / -1)`, `I32: division overflow (INT32_MIN / -1)` ([I64](2026-10-05-I64.md), [I32](2026-10-18-I32.md)); the corresponding remainder is 0 | n/a | no | **Decided (D9):** keep this existing panic, for both floored `/` and `I64.quot`/`I32.quot`. `%` and `rem` of `min` and `-1` are `0`. (Wrapping to `I64.min` / `I32.min` would also match ARM/RISC-V `sdiv`; this page does not change the documented trap.) | - | - |
+| `I64` `%` / `/` of ordinary negative values | D: `/` truncates, `%` has the dividend's sign ([I64](2026-10-05-I64.md), [I32](2026-10-18-I32.md)) | n/a | surprising relative to `Int` after D5/D8 | **Decided (D9):** `/` and `%` are floored on `I64`/`I32` too (`(-7 : I64) / 2 == -4`, `(-7 : I64) % 2 == 1`). `I64.quot`/`I64.rem` and `I32.quot`/`I32.rem` keep the hardware truncated results | S | std + backend |
+| `I64.toInt` too big | V: `Err I64.toInt: does not fit an Int (63 bits)` | n/a | no | With exact `Int` (D6) this becomes total: every `I64`/`I32` value is an `Int` (a value past 63 bits is a bignum). Today's `Result` form goes away | with D6 | - |
+| `I32.ofInt intMax`, `I64.ofInt` of a value past 64 bits | V: `I32.ofInt intMax` is `-1` (low 32 bits); today every `Int` fits `I64.ofInt` | n/a | **yes, by design** (MEMORY-I32 page) | **Decided (D7):** `I32.ofInt : Int -> Option I32`, `I64.ofInt : Int -> Option I64`; `None` out of range (`I32.ofInt 2147483648 == None`; today's `intMax` case becomes `None`). No implicit wrapping | S | - |
 | A64/RV64 inline checks, NEON lanes | D: same traps (INT-OVERFLOW page); RVV Int kernels decline Int bodies | - | U here | Run `tests/base/intovf.fpr` under QEMU in CI legs that have it | - | P0 |
 
 ### Floating point and conversions
@@ -171,12 +191,12 @@ M a few days, L a week or more; estimates), and the pipeline phase from
 
 | Operation | Native x86-64 | Sol | Silent? | Proposal | Effort | Phase |
 | --- | --- | --- | --- | --- | --- | --- |
-| `strlen "é"`, `charAt "é" 0` | V: `2`, `195` (bytes) | V: `1`, `233` (code points) | **yes, backends disagree** | One definition. The docs say strings are bytes (edge battery #5); Sol should follow, with code-point functions named as such (Decision 2) | M | Sol VM |
-| `S.fromCodes [233]`, `[233, 8364]` | V: one byte `0xE9`; trap `chr: 8364 is not a byte ...` | V: `1` code point; `[1114112]` crashes the host (`Prelude.chr`) | **yes** | Make `fromCodes` encode UTF-8 (it is what its name and `chr`'s message promise); refuse a non-scalar code by name (`Result`) | S | - |
-| `chr 256`, `chr (-1)` | V: named refusal | V: `chr 256` a one-char string; `chr (-1)` host crash `Prelude.chr: bad argument` | **Sol: yes** | Sol `chr` refuses outside 0..255 by name like native | S | Sol VM |
-| `charAt "" 0`, `charAt s (-1)` | V: `charAt: index out of range (0, length 0)` | V: `SOL PANIC: charAt: index out of range` | no | Keep the trapping form with precondition `0 <= i and i < strlen s` (needs `strlen` atoms, see below); add `S.byteAt : Int -> String -> Option Int` | M | P1 + P5 |
-| `xs ! 5`, `xs ! (-1)` (List) | V: `!: index out of range (5)` | V: same text, no index | no | Same as `charAt`: keep with precondition; `L.get` already answers `Option` | M | P1 + P5 |
-| `substr "abc" (-1) 5`, `substr "abc" 5 2`, negative length | V: `abc`, empty, empty (clamps) | V: same | **yes** (documented clamping) | Keep as the total, clamping form, and name it so (Decision 6); add `S.slice : Int -> Int -> String -> Option String` that refuses | S | - |
+| `strlen "é"`, `charAt "é" 0` | V: `2`, `195` (bytes) | V: `1`, `233` (code points) | **yes, backends disagree** | **Decided (D2, D10, D11):** length and indexing are in bytes on both `String` and `Bytes`, on every backend (`strlen "é" == 2`, `String.byteAt "é" 0` is `195`). `charAt` is removed (compile error naming `String.byteAt` or `String.codes`). `String.codes "é" == [233]` | M | Sol VM + std |
+| `S.fromCodes [233]`, `[233, 8364]` | V: one byte `0xE9`; trap `chr: 8364 is not a byte ...` | V: `1` code point; `[1114112]` crashes the host (`Prelude.chr`) | **yes** | **Decided (D10):** `String.fromCodes : List Int -> Option String` encodes UTF-8 (`String.fromCodes [233]` is `Some "é"`). `None` if any value is not a Unicode scalar (`[1114112]`, `[-1]`, `[0xD800]`). `String.fromBytes` of a lone `0xE9` is `None` (invalid UTF-8 cannot inhabit `String`) | S | - |
+| `chr 256`, `chr (-1)` | V: named refusal | V: `chr 256` a one-char string; `chr (-1)` host crash `Prelude.chr: bad argument` | **Sol: yes** | `chr` returns a `Byte` (not a `String`: a lone `0xE9` is not valid UTF-8), with precondition `0 <= n and n < 256`. Sol refuses outside that range by name, like native, and no longer crashes the host | S | Sol VM |
+| `charAt "" 0`, `charAt s (-1)` | V: `charAt: index out of range (0, length 0)` | V: `SOL PANIC: charAt: index out of range` | no | **Decided (D3, D11):** `charAt` is removed. `String.byteAt` and `Bytes.byteAt` come in a precondition form (`0 <= i and i < length`) and an `Option` form; neither traps ([Indexing without traps](#indexing-without-traps)) | M | P1 + P5 |
+| `xs ! 5`, `xs ! (-1)` (List) | V: `!: index out of range (5)` | V: same text, no index | no | **Decided (D3):** no trapping form. Precondition `0 <= i and i < len xs`, and `L.get` already answers `Option` | M | P1 + P5 |
+| `substr "abc" (-1) 5`, `substr "abc" 5 2`, negative length | V: `abc`, empty, empty (clamps) | V: same | **yes** (documented clamping) | Keep as the total, clamping form, and name it so; add `S.slice : Int -> Int -> String -> Option String` that refuses | S | - |
 | `S.dropLeft 10 "abc"`, `S.dropRight 10 "abc"` | V: empty | V: empty | clamps, total | Keep (total is reasonable here) | - | - |
 | `L.take (-2)`, `L.drop (-2)` | V: `[]`, whole list | V: same | clamps, total | Keep | - | - |
 | `L.head Nil`, `L.get 7`, `M.get` missing, `L.minimum` empty | V: `None` | V: `None` | no | Already the policy | - | - |
@@ -228,18 +248,21 @@ M a few days, L a week or more; estimates), and the pipeline phase from
 | (d) Saturating | `intMax` | Simple to state | **Silent wrong answer**, the thing this page exists to remove | Fixed cost | `add` + `cmov` | Change both | Fits |
 | (status quo) Trap at 63 bits | named panic | - | Abrupt failure | Fixed cost | `add` + overflow branch | Interpreter disagrees, JIT wraps | Fits |
 
-**Recommendation: (a), with (c) used where it pays: inside code that declares
+**Decided (D6): (a), with (c) used where it pays: inside code that declares
 WCET bounds, and as the compiler's way of choosing the fast path everywhere.**
-`Int` becomes the mathematical integer. The compiler proves "this value fits a
+`Int` is the mathematical integer: it never overflows, never wraps, and never
+traps on arithmetic. The compiler proves "this value fits a
 fixnum" wherever it can (the interval facts it already has, plus the length
 atoms of D3) and emits exactly today's code there, with no check at all. Where
 it cannot prove that, it emits the fast path with a slow path that promotes,
 in place of today's slow path that panics. In code with declared
 `work`/`alloc`/`live` bounds, and in no-heap units, an Int whose size is not
-bounded is a compile error that names the variable. The fix is a guard, a
-precondition such as `(n : Int | n < 1000000)`, or `I64`. That is (c) exactly
-where WCET needs it and nowhere else. `I64` and `I32` stay fixed width and
-wrapping: they are the HPC types, as D1 says.
+bounded is a compile error that names the variable and the unproven range. The
+fix is a guard, a precondition such as `(n : Int | n < 1000000)`, or `I64`.
+That is (c) exactly where WCET needs it and nowhere else. `I64` and `I32` stay
+fixed width and wrapping: they are the HPC types, as D1 says. Expected
+semantics, including the examples that every backend must agree on, are in
+[D6](#d6-exact-int).
 
 Why not (b) or (c) alone: (b) puts failure handling into every arithmetic
 expression, and D4 already says no to that family. (c) alone makes ordinary
@@ -271,9 +294,14 @@ need annotations it cannot sensibly have. (d) is silent.
   `I64.toInt` (now total). `intMax Unit` / `intMin Unit` become the fixnum
   bounds, which are a cost fact and not a semantic limit. They are used in 48
   places (17 in std). Most of them are parse bounds that go away.
-- **Conversions down**: `I64.ofInt` and `I32.ofInt` of an Int that does not
-  fit. Today `I32.ofInt` keeps the low 32 bits, silently. See the questions at
-  the end of this page.
+- **Conversions down (D7):** `I64.ofInt : Int -> Option I64` and
+  `I32.ofInt : Int -> Option I32`. `None` when the value is out of range
+  (for example `I32.ofInt 2147483648 == None`; today's `I32.ofInt intMax`,
+  which is silently `-1`, becomes `None`). No implicit wrapping conversion.
+  Bit reinterpretation, if ever needed, would be a separately named explicit
+  operation and is not added now. The other direction, `I64.toInt` /
+  `I32.toInt`, becomes total once `Int` is exact, because every `I64`/`I32`
+  value is an `Int`. Details and examples: [D7](#d7-i32ofint--i64ofint-return-option).
 - **Sol**: the interpreter changes nothing for `+ - *`. The JIT
   (`AsmX64`/`AsmA64`: `AddI`/`SubI`/`MulI` are plain `add`/`imul` today)
   gets an overflow branch to a third fuel-cell poison value, after the
@@ -362,7 +390,7 @@ code that wants 32 or 64 wrapping bits should say `I32`/`I64`.
 
 ## Strings are byte arrays
 
-Native already does this: `str_t` is `{tid, var, len, bytes[]}`
+Native already stores text as bytes: `str_t` is `{tid, var, len, bytes[]}`
 (`runtime/fpr.h`). `strlen` is the byte length, `charAt` reads a byte, and
 `std/binary` already uses `String` as a byte buffer (`B.u8 : Int -> String ->
 Option Int`). The "list of characters" is Sol's representation:
@@ -370,56 +398,78 @@ Option Int`). The "list of characters" is Sol's representation:
 `String` (a list of code points) with a lazily built code-point array. That
 is why `strlen "é"` is 2 natively and 1 on Sol.
 
+**D10 supersedes the earlier one-type recommendation** (one `String` that
+may hold any bytes, UTF-8 by convention). The reasoning: invalid text
+cannot masquerade as `String`. D2 still holds: length and indexing are in
+bytes, on every backend. Expected signatures, conversions and examples are
+in [D10](#d10-two-types-bytes-and-string). Rename policy: [D11](#d11-rename-in-one-change-no-deprecated-aliases).
+
 Design:
 
-- **`String` is the immutable byte array.** It is one type, not a separate
-  `Bytes` type next to it. It may hold any bytes, as on native today, and
-  text functions treat it as UTF-8 by convention, as Go does. A literal and
-  `"{...}"` interpolation produce UTF-8. Validity is a function
-  (`S.isUtf8 : String -> Bool`), not a type invariant, because `std/binary`,
-  `wire`, `mqtt` and `fat` build binary strings with `chr`/`putU8`.
-- **std renames and additions** (old name kept one release as an alias,
-  then removed):
-  - `S.length`/`strlen`: bytes (unchanged natively).
-  - `charAt s i` becomes `S.byteAt`. It comes in two forms, per D3: the
+- **Two explicit types.** `Bytes` is an immutable `Array Byte` and may
+  hold any bytes. `String` is an immutable byte array that is guaranteed
+  valid UTF-8. `String.toBytes : String -> Bytes` is zero-copy.
+  `String.fromBytes : Bytes -> Option String` is `None` if the bytes are
+  not valid UTF-8.
+- **Literals and I/O.** `"..."` literals and `"{...}"` interpolations are
+  `String` (hence valid UTF-8). I/O that reads files or sockets yields
+  `Bytes`; decoding to text is an explicit `String.fromBytes` (or a named
+  helper built on it). Writing text is an explicit `String.toBytes`.
+- **`std/binary`, `wire`, `mqtt` and `fat`** use `Bytes` for binary
+  buffers, not `String`. That is why those modules no longer need a
+  `String` that can hold arbitrary bytes.
+- **std renames and additions** (one change, no deprecated aliases, D11):
+  - `S.length`/`strlen` on `String`, and the corresponding length on
+    `Bytes`: bytes (unchanged natively).
+  - `charAt` is removed. A use of it is a compile error:
+    `charAt was removed: use String.byteAt (bytes) or String.codes (code points)`.
+    `String.byteAt` and `Bytes.byteAt` each come in two forms, per D3: the
     precondition form `byteAt : (s : String) -> (i : Int | 0 <= i and i <
-    strlen s) -> Int`, and `S.byteAt? : Int -> String -> Option Int`, which
-    is today's `B.u8`. 186 call sites in std/examples/tests (211 in the
-    repo, 53 files).
-  - `S.codes` becomes `S.bytes : String -> List Int` (22 sites). `S.codes`
-    is redefined as code points (UTF-8 decode).
-  - `S.fromCodes` encodes code points as UTF-8. It is the precondition form
-    `(cs : List Int | all valid code points)` once the precondition
-    language has quantifiers. Until then it is `S.fromCodes : List Int ->
-    Option String`, with `None` for a surrogate or a value above
-    `0x10FFFF`. Native today panics above 255, and Sol crashes in the host
-    on `chr (-1)`. `S.fromBytes : List Int -> Option String` is the byte
-    form. 4 sites.
-  - `chr` (byte) keeps its name with the precondition `0 <= n and n < 256`
-    (124 sites, mostly literal or masked arguments that discharge
-    statically).
-  - New UTF-8 helpers: `S.decodeAt : Int -> String -> Option (Int, Int)`
-    (code point and width at a byte offset), `S.codePointCount`,
-    `S.isUtf8`.
-  - `S.reverse` reverses code points (it reverses bytes today, which
-    breaks multi-byte text; no call sites outside std). `toUpper`/`toLower`
-    stay ASCII, as documented.
+    strlen s) -> Int`, and `byteAt? : Int -> String -> Option Int`, which
+    is today's `B.u8` on `String`. 186 `charAt` call sites in
+    std/examples/tests (211 in the repo, 53 files).
+  - The old `codes` (bytes on native, code points on Sol) is removed. A
+    use of it is a compile error naming the replacement (`String.bytes` /
+    `String.toBytes` for bytes, `String.codes` for code points). Existing
+    call sites do not silently change meaning. `String.codes : String ->
+    List Int` is code points only, from this change onward. 22 old `codes`
+    sites.
+  - `String.fromCodes : List Int -> Option String` encodes UTF-8 and is
+    `None` if any value is not a Unicode scalar (a surrogate, a negative
+    value, or a value above `0x10FFFF`). It can become a precondition form
+    `(cs : List Int | all valid scalars)` once the precondition language
+    has quantifiers. Native today panics above 255, and Sol crashes in the
+    host on `chr (-1)`. 4 sites.
+  - `chr` returns a `Byte`, not a `String` (a lone `0xE9` is not valid
+    UTF-8 and must not inhabit `String`), with the precondition
+    `0 <= n and n < 256` (124 sites, mostly literal or masked arguments
+    that discharge statically).
+  - New UTF-8 helpers live on `String`: `String.decodeAt : Int -> String
+    -> Option (Int, Int)` (code point and width at a byte offset),
+    `String.codePointCount`. `Bytes.isUtf8 : Bytes -> Bool` is the check
+    behind `String.fromBytes`. A valid `String` does not need `isUtf8`.
+  - `String.reverse` reverses code points (today's `S.reverse` reverses
+    bytes, which breaks multi-byte text; no call sites outside std).
+    `toUpper`/`toLower` stay ASCII, as documented.
   - `substr` keeps its clamping behaviour (a documented total function).
     `S.slice` is its refusing form: precondition or `Option`, per D3.
-- **Sol parity**: `VString` becomes a strict `ByteString` holding UTF-8,
-  which is the `VBytes` it already has. That makes `strlen` and `byteAt`
-  O(1) on Sol with no lazy code-point array. 124 `VStr`/`VString` uses in
-  `compiler/Sol` (100 in `VM.hs`) need review. Most are construct or match
-  through the pattern synonym, so the change is mostly in
-  `Val.hs`/`VM.hs`'s string primitives (estimate M).
+- **Sol parity**: `VString` becomes a strict `ByteString` holding
+  validated UTF-8; `Bytes` is the `VBytes` Sol already has. That makes
+  `strlen` and `byteAt` O(1) on Sol with no lazy code-point array. 124
+  `VStr`/`VString` uses in `compiler/Sol` (100 in `VM.hs`) need review.
+  Most are construct or match through the pattern synonym, so the change
+  is mostly in `Val.hs`/`VM.hs`'s string primitives (estimate M).
 - **Link to performance priority #12 (string slices).** A slice is the same
   representation plus an offset: `{tid, var, len, off, buf}` or a tagged
-  view variant. Deciding "String is a byte array" now settles what a slice
-  slices. If #12's investigation favours slices, the byte-array change
-  should add the view variant to the `str_t` tag at the same time, so
-  `split`/`lines`/`words` do not need a second migration. The copy-out rule
-  #12 asks for becomes "copy-out and message copy compact a view to its own
-  bytes". Bytes everywhere is a prerequisite for #12, not a competitor.
+  view variant. Deciding that both `String` and `Bytes` are byte arrays
+  now settles what a slice slices. If #12's investigation favours slices,
+  the byte-array change should add the view variant to the `str_t` tag at
+  the same time, so `split`/`lines`/`words` do not need a second
+  migration. The copy-out rule #12 asks for becomes "copy-out and message
+  copy compact a view to its own bytes". A `String` slice stays valid
+  UTF-8 only if it is cut at a code-point boundary; otherwise the result
+  is `Bytes` (or `None` from the `Option` form). Bytes everywhere is a
+  prerequisite for #12, not a competitor.
 
 ## Indexing without traps
 
@@ -438,7 +488,8 @@ Every index operation gets one of two forms, and no form traps:
 
 | Operation | Precondition form | `Option` form | Sites (std/examples/tests) |
 | --- | --- | --- | --- |
-| `charAt` -> `S.byteAt` | `0 <= i and i < strlen s` | `S.byteAt?` (today's `B.u8`) | 186 |
+| `charAt` -> `String.byteAt` | `0 <= i and i < strlen s` | `String.byteAt?` (today's `B.u8`) | 186 |
+| `Bytes.byteAt` (new) | `0 <= i and i < length b` | `Bytes.byteAt?` | new |
 | `xs ! i` (List) | `0 <= i and i < len xs` | `L.get` (exists) | 3 (Sol: 29) |
 | `Vec.get` | `0 <= i and i < Vec.len v` | `Vec.get? : Int -> Vector 1 a -> (Option a, Vector 1 a)` | 50 |
 | `Vec.set` | same | `Vec.set? -> (Bool, Vector 1 a)` | 5 |
@@ -467,22 +518,32 @@ is not silent.
 So in the meantime the `Option` form is the only one that never traps.
 Nothing becomes silent at any step.
 
-## `%` is floored modulo
+## `%` is floored modulo, `/` is floored division
 
 `%` on `Int` is `Int.mod` in `core/prelude.fpr`, defined as
 `a - (a / b) * b` (truncated). It gives `-7 % 3 = -1` and `7 % -3 = 1` on
 both native and Sol (verified today, `p2/mod.fpr`). `/` truncates too
-(`-7 / 2 = -3`). Change:
+(`-7 / 2 = -3`). Change, now decided as D5, D8 and D9 (examples and
+signatures: [D8](#d8--is-floored-division), [D9](#d9--and--on-i64i32-are-floored-too)):
 
-- `Int.mod` becomes `Math.mod`'s definition: `r = a - (a / b) * b; if r != 0
-  and ((r < 0) != (b < 0)) then r + b else r`, with the precondition
-  `(b : Int | b != 0)`. `Math.rem` stays as the truncated remainder, by
-  name. Sol's `Int.mod` (the `Preamble.hs` struct) gets the same definition.
-- **Codegen**: x86-64 `idiv`, A64 `sdiv`+`msub` and RV64 `rem` all give the
-  truncated remainder. The floored result adds one fix-up (`test r`; `xor`
-  the signs; conditional `add b`), about 3-4 instructions next to a 20-40+
-  cycle divide. That is an estimate, not measured. With a positive constant
-  divisor it is cheaper than today, because floored `x % 2^k` is
+- **`/` is floored**: `a / b = floor(a/b)`, with the precondition
+  `(b : Int | b != 0)`. So `-7 / 2 == -4` and `7 / -2 == -4`.
+- **`%` is floored** (D5): `Int.mod` becomes `Math.mod`'s definition,
+  `r = a - (a / b) * b; if r != 0 and ((r < 0) != (b < 0)) then r + b else
+  r`, with the same `b != 0` precondition. The remainder takes the sign of
+  the divisor: `-7 % 2 == 1`, `7 % -2 == -1`. Sol's `Int.mod` (the
+  `Preamble.hs` struct) gets the same definition.
+- **The identity** `a == (a / b) * b + a % b` always holds (when `b != 0`).
+- **Truncated pair, under their own names** (naming rule):
+  `Math.quot` is the truncated quotient, `Math.rem` is the truncated
+  remainder. Identity: `a == Math.quot a b * b + Math.rem a b`.
+  `Math.quot -7 2 == -3`, `Math.rem -7 2 == -1`.
+- **Codegen**: x86-64 `idiv`, A64 `sdiv`+`msub` and RV64 `div`/`rem` all
+  give the truncated pair. The floored result adds one fix-up on each of
+  `/` and `%` (`test r`; `xor` the signs; conditional `add b` on the
+  remainder and `sub 1` on the quotient), about 3-4 instructions next to a
+  20-40+ cycle divide. That is an estimate, not measured. With a positive
+  constant divisor it is cheaper than today, because floored `x % 2^k` is
   `band x (2^k - 1)` with no sign fix-up, and the interval facts already
   know when `b > 0`.
 - **Call sites** (58 `%` sites in std/examples/tests, 100 in the repo
@@ -490,26 +551,35 @@ both native and Sol (verified today, `p2/mod.fpr`). `/` truncates too
   hex digits, LCGs on non-negative state) or test `% k == 0`, which does
   not change. The ones whose meaning changes:
   - `tests/edge/int_edge.fpr:11` expects `-1 1` for `(0-7) % 3` and
-    `7 % (0-3)`; that becomes `2 -2`. Update the expected output.
+    `7 % (0-3)`; that becomes `2 -2`. Update the expected output, and any
+    `/` expectations for negative operands (`-7 / 2` becomes `-4`).
   - `sol/examples/algebra.sol:16` expects `-7 % 3 = -1`; update it to `2`.
     (`sol/examples/strings.sol:66` already calls `%` "Numeric.mod".)
   - `examples/wasm/wasmvm.fpr:318` `ibin64 IRemS a b = Ok (a % b)` is WASM
-    `rem_s`, which is truncated, so it must become `Math.rem` (or
-    `I64.rem`).
-  - `std/clientcalc.fpr:70` `Rem a b -> ... % ...`: the user calculator's
-    `Rem` becomes floored unless it switches to `Math.rem`. Which one to
-    keep is a product choice.
+    `rem_s`, which is truncated, so it must become `I64.rem` (or
+    `Math.rem` on `Int`). The matching `div_s` must use `I64.quot`, not
+    `/`.
+  - `std/clientcalc.fpr:70` `Rem a b -> ... % ...`: **decided (D12).**
+    `Rem` is the truncated remainder (`Math.rem`). A new `Mod` is the
+    floored modulo (`%`). Each name means exactly one thing.
   - `std/view.fpr:775` already takes `abs` first and is not affected.
-- **`I64`/`I32` `%`** (`I64.rem`/`I32.rem` today, used in
+- **`I64`/`I32` `%` and `/`** (`I64.rem`/`I32.rem` today, used in
   `tests/i64.fpr:48`, `tests/tangnano20k_i32_core.fpr:27-29`, and the I64
   LCG in `tests/dtree.fpr:328`, whose wrapped product can be negative):
-  recommended floored too, so the symbol means one thing. `I64.rem`/`I32.rem`
-  stay as named functions for code that wants the hardware result. See the
-  questions at the end of this page.
-- **`/` and the identity `a == (a / b) * b + a % b`**: with floored `%` and
-  truncating `/` the identity breaks for negative operands. Python and
-  Haskell (`div`/`mod`) make both floored. See the questions at the end of
-  this page.
+  **decided (D9)** floored, so the symbol means one thing on every numeric
+  type. `I64.quot`/`I64.rem` and `I32.quot`/`I32.rem` stay as named
+  functions for the hardware truncated result, with the same `b != 0`
+  precondition.
+- **`I64.min / -1` and `I32.min / -1`.** The existing contract
+  ([I64](2026-10-05-I64.md), [I32](2026-10-18-I32.md)) is a named panic
+  (`I64: division overflow (INT64_MIN / -1)`, `I32: division overflow
+  (INT32_MIN / -1)`), and the corresponding remainder is 0. This page
+  keeps that policy for both floored `/` and `I64.quot`/`I32.quot` (the
+  exact quotient is an integer, so floored and truncated coincide).
+  Wrapping to `I64.min` / `I32.min` would also be a defensible reading of
+  "fixed-width two's-complement wrapping" and would match ARM and RISC-V
+  `sdiv`, but it would change a documented, tested trap, so it is not
+  adopted here. `%` and `rem` of `min` and `-1` remain `0`.
 
 ## Proposed policy (revised 2026-11-10 with Jack's decisions)
 
@@ -538,12 +608,15 @@ the tree, made consistent.
    This is Jack's "divide should just say `y != 0`". Until the length atoms
    exist, index reads keep a warning-level runtime check (see [the
    transition](#indexing-without-traps)).
-3. **`Int` is exact** (D1, [Int: never wraps, never
+3. **`Int` is exact** (D1, D6, [Int: never wraps, never
    traps](#int-never-wraps-never-traps)). It has no overflow and no trap.
    The compiler picks the fixnum fast path by proof, and code with declared
-   bounds must show its Ints are small. `I64` and `I32` are fixed width and
-   wrap; they are the HPC types. There is no `checkedAdd` or `wrappingAdd`
-   (D4).
+   bounds must show its Ints are small or use `I64`/`I32`. `I64` and `I32`
+   are fixed width and wrap; they are the HPC types. Narrowing conversions
+   return `Option` (D7). There is no `checkedAdd` or `wrappingAdd` (D4).
+   `/` and `%` are floored on `Int`, `I64` and `I32` (D5, D8, D9); the
+   truncated pair has its own names (`Math.quot`/`Math.rem`,
+   `I64.quot`/`I64.rem`, `I32.quot`/`I32.rem`).
 4. **Resource exhaustion stays a typed trap**: heap, stack, fuel budgets,
    ring capacities. Where a function declares `work`/`alloc`/`live` bounds,
    the WCET pass proves the trap absent; elsewhere it is a named panic that
@@ -552,10 +625,10 @@ the tree, made consistent.
    scheduler states, "not the current actor's handle". They are compiler or
    runtime bugs, not program failures.
 6. **Every backend gives the same answer or the same named failure.** Sol's
-   interpreter, Sol's JIT and native agree on `Int` (exact everywhere),
-   strings (bytes everywhere, D2), `%` (floored, D5), `chr`, `parseInt` and
-   heap limits. A differential corpus (the probes of this page) enforces
-   it in P0.
+   interpreter, Sol's JIT and native agree on `Int` (exact everywhere, D6),
+   `String`/`Bytes` (bytes everywhere, D2, D10), `/` and `%` (floored on
+   every numeric type, D5, D8, D9), `chr`, `parseInt` and heap limits. A
+   differential corpus (the probes of this page) enforces it in P0.
 
 ### What the precondition language can express today, and what it needs
 
@@ -611,12 +684,12 @@ more.
 | # | Item | Effort | Phase | Depends on |
 | --- | --- | --- | --- | --- |
 | 1 | Differential failure corpus, native against Sol interpreter against Sol JIT (this page's probes plus `%`, bytes and bignum cases) in CI | S | P0 | - |
-| 2 | `%` floored on `Int` (prelude `Int.mod`, Sol `Int.mod`), with the fix-ups: `int_edge` and `algebra.sol` expectations; `wasmvm` `IRemS` and `clientcalc` `Rem` moved to `Math.rem`; `band` lowering for positive powers of two | S | std + backend | Q3 for `/` and Q4 for `I64`/`I32` |
+| 2 | `%` and `/` floored on `Int`, `I64` and `I32` (prelude `Int.mod`, Sol `Int.mod`, I64/I32 operators); add `Math.quot` and keep `Math.rem`, `I64.quot`/`I64.rem`, `I32.quot`/`I32.rem` for the truncated pair; fix-ups: `int_edge` and `algebra.sol` expectations; `wasmvm` `IRemS`/`div_s` moved to `I64.rem`/`I64.quot`; `clientcalc` `Rem` stays truncated (`Math.rem`) and a new `Mod` is floored (`%`) (D12); `band` lowering for positive powers of two. `I64.min / -1` and `I32.min / -1` keep the existing named panic (D9) | S | std + backend | - |
 | 3 | Sol JIT stops wrapping: overflow poison and re-run in the interpreter (correct on its own: the interpreter is already exact) | S-M | Sol VM | - |
 | 4 | Refuse literal-false preconditions and literal zero divisors | S | P1 | - |
-| 5 | `Option` forms for every index operation (`S.byteAt?`, `Vec.get?`, `Vec.set?`, `Vec.slice?`, `S.slice?`, `SStr.at?`, `SStr.push -> Option`); warnings on unproven trapping reads; migrate std's guarded reads | M | std + frontend | - |
-| 6 | Strings as bytes: Sol `VString` becomes a UTF-8 `ByteString`; `charAt` renamed `byteAt`; `codes`/`fromCodes` become UTF-8, `bytes`/`fromBytes` added, UTF-8 helpers added; `S.reverse` reverses code points; Sol `chr` refuses by name | M | Sol VM + std | - |
-| 7 | Exact `Int`, stage 1: bignum runtime and slow paths (C primitives return a bignum instead of panicking), operand tag tests in the inline paths, `VR_INT` columns go boxed on a bignum, kernels fall back to scalar code, bignum hashing, `str`, parses and JSON | L | runtime + backend (before P3 unboxing, so unboxing is written for the new rule) | 1, 3 |
+| 5 | `Option` forms for every index operation (`String.byteAt?`, `Bytes.byteAt?`, `Vec.get?`, `Vec.set?`, `Vec.slice?`, `S.slice?`, `SStr.at?`, `SStr.push -> Option`); warnings on unproven trapping reads; migrate std's guarded reads | M | std + frontend | - |
+| 6 | Two types, `Bytes` and `String` (D10): Sol `VString` becomes a validated UTF-8 `ByteString`, `Bytes` is existing `VBytes`; `charAt` and the old `codes` removed as compile errors that name the replacement (D11, no aliases); `String.byteAt`/`Bytes.byteAt`, `String.codes` (code points), `String.fromCodes : List Int -> Option String`, `String.toBytes` (zero-copy), `String.fromBytes : Bytes -> Option String`; I/O yields `Bytes`; `chr` returns `Byte`; `String.reverse` reverses code points; `std/binary`/`wire`/`mqtt`/`fat` move to `Bytes`; Sol `chr` refuses by name | M | Sol VM + std | - |
+| 7 | Exact `Int`, stage 1: bignum runtime and slow paths (C primitives return a bignum instead of panicking), operand tag tests in the inline paths, `VR_INT` columns go boxed on a bignum, kernels fall back to scalar code, bignum hashing, `str`, parses and JSON; `I32.ofInt`/`I64.ofInt` become `Option` (D7); `I64.toInt`/`I32.toInt` become total | L | runtime + backend (before P3 unboxing, so unboxing is written for the new rule) | 1, 3 |
 | 8 | Exact `Int`, stage 2: refuse unbounded Ints in code with declared bounds and in no-heap units; limb-count cost terms in `Cost.hs`; RV32 build-size check | M-L | P1 + P6 | 7 |
 | 9 | Rebinding type-check gap | M | P2 | - |
 | 10 | Duplicate clause refused | S | - | - |
@@ -633,30 +706,278 @@ large piece of work. It should land before P3's unboxing slices
 (performance order 8), so unboxing is built once, on the "proven fixnum"
 rule.
 
-## Questions for Jack (remaining)
+<a id="decisions-d6d12-2026-11-10-expected-semantics"></a>
+## Decisions D6–D12 (2026-11-10): expected semantics
 
-1. **Exact `Int` (option (a)) as recommended?** Includes the rule that code
-   with declared `work`/`alloc` bounds, and no-heap units, must prove their
-   Ints small or use `I64`/`I32`.
-2. **Narrowing conversions.** `I32.ofInt`/`I64.ofInt` of an Int that does
-   not fit: (a) `Option` (recommended; it removes today's silent low-32-bit
-   answer), (b) a precondition, or (c) keep wrapping under a name that
-   says so (`I32.wrap`).
-3. **`/` with floored `%`.** Make `/` floored too, so `a == (a / b) * b + a
-   % b` holds (recommended, as Python and Haskell do; `Math.quot` keeps the
-   truncated quotient), or keep `/` truncating and accept that the identity
-   fails for negative operands.
-4. **`%` on `I64`/`I32`.** Floored like `Int` (recommended: one meaning for
-   the symbol; `I64.rem`/`I32.rem` stay for the hardware result), or
-   truncated, since they are the hardware-shaped types.
-5. **One `String` type, or `String` plus `Bytes`.** Recommended: one type,
-   any bytes allowed, UTF-8 by convention, as on native today. The
-   alternative is a UTF-8-validated `String` and a separate `Bytes`, which
-   is stricter but touches `std/binary`, `wire`, `mqtt` and `fat`.
-6. **Old names during migration.** Keep `charAt`/`codes` as warned aliases
-   for one release (recommended), or rename in one change.
-7. **`clientcalc`'s `Rem`.** Floored (`%`) or truncated (`Math.rem`) for
-   calculator users.
+Recorded from Jack's review of the seven remaining questions on this page,
+2026-11-10:
+
+> For the 7 questions let's choose the answers that make them as explicit
+> as possible and also the expected semantics of those operations. And
+> write them down (to review or replace later if needed)
+
+Status of each: **decided, open to review or replacement**. Sol, the Sol
+JIT and native give the same answer, or the same named failure, for every
+example below.
+
+**Naming rule.** Each operator or function name denotes one semantics
+across all numeric types (`Int`, `I64`, `I32`) and all backends.
+Alternative semantics get their own name.
+
+The seven questions, answered:
+
+| Q | Question | Answer | Decision |
+| --- | --- | --- | --- |
+| 1 | Exact `Int` (option (a)), including the bounded-code rule? | Yes | [D6](#d6-exact-int) |
+| 2 | `I32.ofInt` / `I64.ofInt` of an Int that does not fit? | Return `Option`; no implicit wrapping | [D7](#d7-i32ofint--i64ofint-return-option) |
+| 3 | Make `/` floored too, so the identity holds? | Yes; `Math.quot` / `Math.rem` are the truncated pair | [D8](#d8--is-floored-division) |
+| 4 | `%` and `/` on `I64`/`I32`? | Floored, same symbols; `quot`/`rem` for hardware truncated results. `min / -1` keeps the existing named panic | [D9](#d9--and--on-i64i32-are-floored-too) |
+| 5 | One `String` type, or `String` plus `Bytes`? | Two types: `Bytes` (any bytes) and `String` (valid UTF-8) | [D10](#d10-two-types-bytes-and-string) |
+| 6 | Old names during migration? | Rename in one change; no deprecated aliases; old names are compile errors that name the replacement | [D11](#d11-rename-in-one-change-no-deprecated-aliases) |
+| 7 | Calculator `Rem`? | Truncated (`Math.rem`); add a separate `Mod` that is floored (`%`) | [D12](#d12-calculator-rem-is-truncated-mod-is-floored) |
+
+<a id="d6-exact-int"></a>
+### D6. Exact `Int`
+
+`Int` is the mathematical integer. Arithmetic on `Int` never overflows,
+never wraps, and never traps. A value that fits the tagged 63-bit word
+(31-bit on RV32) stays in that word; a result that does not fit is
+promoted to a heap bignum. The compiler emits today's fixnum code where
+it proves the value stays small (range analysis and preconditions).
+
+Code with declared `work`/`alloc`/`live` bounds, and no-heap units, must
+prove every `Int` stays small, or must use `I64`/`I32`. Otherwise it is a
+compile error that names the variable and the unproven range.
+
+Examples, identical on native, the Sol interpreter and the Sol JIT:
+
+- `intMax + 1 == 4611686018427387904`
+- `intMin - 1 == -4611686018427387905`
+- `intMin / (-1) == 4611686018427387904`
+- `0 - intMin == 4611686018427387904`
+- `Math.abs intMin == 4611686018427387904`
+- `2 ^ 63 == 9223372036854775808`
+- `BITSHIFTL 1 63 == 9223372036854775808`
+
+The only remaining failure of `Int` arithmetic itself is running out of
+memory, already a typed trap. Division and remainder still require
+`b != 0` (D8). `I64` and `I32` stay fixed-width two's-complement wrapping
+types for HPC (D1, D9). The Sol JIT must agree: on overflow it re-runs in
+the interpreter (or otherwise produces the exact result), and must never
+wrap silently.
+
+<a id="d7-i32ofint--i64ofint-return-option"></a>
+### D7. `I32.ofInt` / `I64.ofInt` return `Option`
+
+```
+I32.ofInt : Int -> Option I32
+I64.ofInt : Int -> Option I64
+```
+
+`Some v` when the value is in the destination range; `None` when it is
+not. There is no implicit wrapping conversion. Bit reinterpretation, if
+ever needed, would be a separately named explicit operation; it is not
+added now.
+
+`I32` range is `-2147483648` through `2147483647`. `I64` range is
+`-9223372036854775808` (`I64.min`) through `9223372036854775807`
+(`I64.max`).
+
+Examples, identical on every backend:
+
+- `I32.ofInt 0 == Some 0`
+- `I32.ofInt 2147483647 == Some` of `I32` `2147483647`
+- `I32.ofInt 2147483648 == None`
+- `I32.ofInt (-2147483648) == Some I32.min`
+- `I32.ofInt (-2147483649) == None`
+- `I32.ofInt intMax == None` (today this is silently `-1`)
+- `I64.ofInt intMax == Some` of that value (it fits in 64 bits)
+- `I64.ofInt (2 ^ 63) == None`
+- `I64.ofInt (0 - (2 ^ 63)) == Some I64.min`
+- `I64.ofInt (0 - (2 ^ 63) - 1) == None`
+
+The other direction, `I32.toInt` / `I64.toInt`, becomes total once `Int`
+is exact (D6), because every `I32`/`I64` value is an `Int`. `I64`/`I32`
+arithmetic remains fixed-width two's-complement wrapping by type, as the
+explicit HPC types (D1, D9).
+
+<a id="d8--is-floored-division"></a>
+### D8. `/` is floored division
+
+```
+(/) : Int -> (b : Int | b != 0) -> Int
+(%) : Int -> (b : Int | b != 0) -> Int
+Math.quot : Int -> (b : Int | b != 0) -> Int
+Math.rem  : Int -> (b : Int | b != 0) -> Int
+```
+
+`a / b = floor(a/b)`: the greatest integer less than or equal to the
+exact rational quotient. `%` is floored modulo (D5). The remainder takes
+the sign of the divisor: `0 <= |a % b| < |b|`, and either `a % b == 0` or
+`a % b` has the same sign as `b`. The identity
+
+```
+a == (a / b) * b + a % b
+```
+
+always holds when `b != 0`.
+
+`Math.quot` is the truncated (toward-zero) quotient. `Math.rem` is the
+truncated remainder (sign of the dividend). Identity:
+
+```
+a == Math.quot a b * b + Math.rem a b
+```
+
+A zero divisor is a compile error when it is decidably zero; otherwise
+the `b != 0` requirement is lifted onto the caller's signature (policy
+2).
+
+Examples, identical on every backend:
+
+| `a` | `b` | `a / b` | `a % b` | `Math.quot a b` | `Math.rem a b` |
+| --- | --- | --- | --- | --- | --- |
+| `-7` | `2` | `-4` | `1` | `-3` | `-1` |
+| `7` | `2` | `3` | `1` | `3` | `1` |
+| `7` | `-2` | `-4` | `-1` | `-3` | `1` |
+| `-7` | `-2` | `3` | `-1` | `3` | `-1` |
+| `-7` | `3` | `-3` | `2` | `-2` | `-1` |
+| `7` | `-3` | `-3` | `-2` | `-2` | `1` |
+| `0` | `2` | `0` | `0` | `0` | `0` |
+
+<a id="d9--and--on-i64i32-are-floored-too"></a>
+### D9. `%` and `/` on `I64`/`I32` are floored too
+
+The same symbols have the same meaning on `I64` and `I32` as on `Int`
+(naming rule). Each carries the precondition `b != 0`.
+
+```
+(/) : I64 -> (b : I64 | b != 0) -> I64    -- floored
+(%) : I64 -> (b : I64 | b != 0) -> I64    -- floored
+I64.quot : I64 -> (b : I64 | b != 0) -> I64  -- truncated (hardware)
+I64.rem  : I64 -> (b : I64 | b != 0) -> I64  -- truncated (hardware)
+```
+
+And the same four operations on `I32`. The identity
+`a == (a / b) * b + a % b` holds on `I64`/`I32` whenever the quotient is
+representable (the `min / -1` case below is the exception, because the
+quotient is not). Ordinary examples match the `Int` table, for instance
+`(-7 : I64) / 2 == -4`, `(-7 : I64) % 2 == 1`, `I64.quot (-7) 2 == -3`,
+`I64.rem (-7) 2 == -1`.
+
+**The `min / -1` case.** `I64.min / -1` and `I32.min / -1` overflow the
+representable range (the mathematical result is `2^63` and `2^31`). The
+existing `I64` and `I32` contract ([2026-10-05-I64.md](2026-10-05-I64.md),
+[2026-10-18-I32.md](2026-10-18-I32.md)) is a named panic:
+
+- `I64.min / -1` and `I64.quot I64.min (-1)` panic with
+  `I64: division overflow (INT64_MIN / -1)`
+- `I32.min / -1` and `I32.quot I32.min (-1)` panic with
+  `I32: division overflow (INT32_MIN / -1)`
+- `I64.min % -1 == 0` and `I64.rem I64.min (-1) == 0` (and the same for
+  `I32`)
+
+Floored and truncated quotients coincide here, because the exact quotient
+is an integer, so the panic applies to both `/` and `quot`. This page
+keeps that documented, tested trap rather than wrapping to `I64.min` /
+`I32.min`. Wrapping would also be a defensible reading of "fixed-width
+two's-complement wrapping" and would match ARM and RISC-V `sdiv` (x86
+`idiv` raises `#DE`); it is left open to review if Jack wants wrap
+instead.
+
+<a id="d10-two-types-bytes-and-string"></a>
+### D10. Two types: `Bytes` and `String`
+
+This supersedes the earlier one-type recommendation on this page (one
+`String` that may hold any bytes, UTF-8 by convention). The reasoning:
+invalid text cannot masquerade as `String`. D2 still holds: length and
+indexing are in bytes on both types, on every backend.
+
+- `Bytes` is an immutable `Array Byte`. It may hold any bytes, with no
+  validity invariant.
+- `String` is an immutable byte array that is guaranteed valid UTF-8.
+
+Length and indexing on `String` are in bytes, not code points. The same
+is true of `Bytes`. Index operations follow D3: an `Option` form and a
+precondition form, and neither traps.
+
+Conversions:
+
+```
+String.toBytes   : String -> Bytes              -- zero-copy
+String.fromBytes : Bytes -> Option String       -- None if invalid UTF-8
+String.fromCodes : List Int -> Option String    -- None if any value is
+                                                -- not a Unicode scalar
+                                                -- (outside 0..0x10FFFF,
+                                                -- or a surrogate
+                                                -- 0xD800..0xDFFF)
+String.codes     : String -> List Int           -- Unicode scalar values
+                                                -- (code points)
+String.byteAt                                 -- Option and precondition
+                                              -- forms, per D3
+```
+
+`"..."` literals and `"{...}"` interpolations are `String`, hence valid
+UTF-8. I/O that reads files or sockets yields `Bytes`. Decoding to text
+is an explicit `String.fromBytes` (or a named helper built on it).
+Writing text is an explicit `String.toBytes`. `std/binary`, `wire`,
+`mqtt` and `fat` use `Bytes` for binary buffers.
+
+`chr` returns a `Byte`, not a `String`, with precondition
+`0 <= n and n < 256`. A lone byte such as `0xE9` is not valid UTF-8 and
+must not inhabit `String`.
+
+Examples, identical on every backend:
+
+- `strlen "é" == 2`
+- `String.byteAt "é" 0` is `195` (precondition form) and `Some 195`
+  (`Option` form); index `1` is `169`; index `2` is `None` / a compile
+  error if the index is unproven
+- `String.codes "é" == [233]`
+- `String.fromCodes [233] == Some "é"` (UTF-8 bytes `0xC3 0xA9`)
+- `String.fromCodes [8364] == Some "€"` (UTF-8 bytes `0xE2 0x82 0xAC`)
+- `String.fromCodes [1114112] == None`
+- `String.fromCodes [-1] == None`
+- `String.fromCodes [0xD800] == None`
+- `String.fromBytes` of a single byte `0xE9` is `None`
+- `String.fromBytes (String.toBytes "é") == Some "é"`
+- `String.toBytes "é"` has length 2 and bytes `195`, `169`
+
+<a id="d11-rename-in-one-change-no-deprecated-aliases"></a>
+### D11. Rename in one change; no deprecated aliases
+
+There is no compatibility window in which old names keep compiling as
+aliases. An alias would hide that the meaning changed on Sol (bytes vs
+code points).
+
+In the same change:
+
+- `charAt` is removed. Using it is a compile error whose message names
+  the replacement, for example:
+  `charAt was removed: use String.byteAt (bytes) or String.codes (code points)`.
+- The old `codes` (bytes on native, code points on Sol) is removed.
+  Using it is a compile error naming the replacement, for example:
+  `codes was removed: use String.bytes or String.toBytes (bytes) or String.codes (code points)`.
+  Existing call sites do not silently change meaning. The only `codes`
+  from this change onward is `String.codes : String -> List Int` (code
+  points).
+- Other renamed operations (`String.fromCodes` now returns
+  `Option String` and encodes UTF-8, and so on) are the only bindings
+  from that change onward.
+
+<a id="d12-calculator-rem-is-truncated-mod-is-floored"></a>
+### D12. Calculator: `Rem` is truncated, `Mod` is floored
+
+In `std/clientcalc.fpr`:
+
+- `Rem` is the truncated remainder, i.e. `Math.rem`. `Rem -7 2` answers
+  `-1`.
+- A new `Mod` is the floored modulo, i.e. `%`. `Mod -7 2` answers `1`.
+
+Each name means exactly one thing (naming rule). The calculator's
+division, if it is the `/` operator, is floored (D8). If the calculator
+also exposes a truncated quotient, that operation gets its own name
+(`Quot`, `Math.quot`).
 
 ## Evidence
 
