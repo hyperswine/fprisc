@@ -1,6 +1,6 @@
 # Failure modes: what traps, what overflows, what is silently wrong
 
-Date: 2026-11-10. Kind: audit and proposal. Applies to `540ba57` (main after
+Date: 2026-11-10 (revised the same day with Jack's decisions). Kind: audit, decisions and proposal. Applies to `540ba57` (main after
 PR #59). Every behaviour marked **verified** was run on this date: native is
 `fpr build` for the posix system on x86-64 Linux, Sol is `fpr sol` on the same
 file. A64 and RV64 were **not executed** (no QEMU on the audit machine); where
@@ -10,7 +10,45 @@ This page answers one question: where does a program fail abruptly, and where
 does it fail *silently* (a wrong value, a clamp, a default, or two backends
 disagreeing)? It then proposes one policy for each kind of failure: return
 `Option`/`Result`, a precondition in the signature (discharged statically where
-possible), an explicit wrapping operation, or a typed trap that stays.
+possible), an exact result where the first draft had an overflow, or a typed
+trap that stays.
+
+## Jack's decisions (2026-11-10)
+
+Recorded from Jack's review of the first draft of this page, 2026-11-10:
+
+> Is it possible to just make Int get checked rather than trap. Or something
+> elegant rather than what we have now. I64 is also meant to be the actual
+> type for high performance computing so maybe it might be fine to sacrifice
+> some of `Int`'s efficiency if it means just simpler and safer execution.
+> Strings should be bytes everywhere yes, should be something like Array Byte
+> rather than List Char. Index should not trap actually, I think it should
+> either return Option or have a precondition instead. No extra checkedAdds or
+> wrappingAdds and % should be the real modulo operation - can just change it
+> so it actually is
+
+| # | Decision | Status | Section |
+| --- | --- | --- | --- |
+| D1 | `Int` should neither trap nor fail silently; some `Int` speed may be given up for that. `I64` (and `I32`) are the fixed-width types for high-performance code | **Decided** (direction); this page recommends the mechanism | [Int: never wraps, never traps](#int-never-wraps-never-traps) |
+| D2 | Strings are bytes everywhere: a byte array, not a list of characters | **Decided** | [Strings are byte arrays](#strings-are-byte-arrays) |
+| D3 | Indexing never traps: each index operation returns `Option` or takes a precondition | **Decided** | [Indexing without traps](#indexing-without-traps) |
+| D4 | No `Int.checkedAdd` / `Int.wrappingAdd` family | **Decided**; removed from this proposal | - |
+| D5 | `%` is the true (floored) modulo, as `Math.mod` is | **Decided** | [`%` is floored modulo](#-is-floored-modulo) |
+
+Where the first draft below (the table, the silent-failure list) says
+otherwise, these decisions and the sections that implement them win. The
+table cells that say "Decision N" refer to the first draft's questions,
+which this revision answers:
+
+1. Sol Int width: answered by D1 (exact everywhere, not a 63-bit trap).
+2. String length: answered by D2 (bytes).
+3. Undischarged builtin preconditions: lifted onto the signature. This is
+   still the recommendation and is now part of D3: where lifting stops, the
+   program is refused, and no runtime check is inserted.
+4. Index reads: answered by D3 (no trapping form).
+5. Explicit overflow operations: answered by D4 (none).
+6. Lenient helpers: `%` is answered by D5. `substr`/`take`/`drop` stay
+   clamping and documented. `parseInt` is deprecated (work item 16).
 
 ## What already exists (read before the table)
 
@@ -100,21 +138,21 @@ M a few days, L a week or more; estimates), and the pipeline phase from
 
 | Operation | Native x86-64 | Sol | Silent? | Proposal | Effort | Phase |
 | --- | --- | --- | --- | --- | --- | --- |
-| `intMax + 1`, `intMin - 1`, `*` past 63 bits | V: named trap `Int overflow: a + b does not fit an Int (...)`, exit 1 | V: exact bignum, exit 0 (interpreter); V: wraps at 2^64 in a JIT `foldl` | **Sol: yes** | Keep the trap (2026-10-12 decision). Make Sol trap at the same 63-bit bound in the interpreter (`arith`) and the JIT (an overflow-flag branch to the existing `fuelTrap` poison, as division by zero does) | M | Sol VM (outside P-phases); differential test in P0 corpus |
+| `intMax + 1`, `intMin - 1`, `*` past 63 bits | V: named trap `Int overflow: a + b does not fit an Int (...)`, exit 1 | V: exact bignum, exit 0 (interpreter); V: wraps at 2^64 in a JIT `foldl` | **Sol: yes** | **Revised (D1):** exact `Int` everywhere; native promotes to a bignum, the Sol interpreter already agrees, the Sol JIT re-runs in the interpreter on overflow ([Int section](#int-never-wraps-never-traps)) | L | runtime + backend; Sol VM; P0 corpus |
 | `intMin / (-1)`, `0 - intMin`, `Math.abs intMin` | V: named overflow trap | V: exact bignum (`abs` not run: `std/math` does not load on Sol, see below) | **Sol: yes** | As above | with above | - |
 | `2 ^ 63` | V: overflow trap (from the squaring `*`) | V: `9223372036854775808` | **Sol: yes** | As above | with above | - |
 | `x ^ n`, `n < 0` | V: `(^): negative exponent` | V: same, plus a hint | no | Precondition `(n : Int | n >= 0)` on `intPow` so it is discharged or blamed at the caller | S | P1 (caller facts) |
 | `Math.powInt a n`, `n < 0` | V: answers `0` | not run (std/math needs F64) | **yes** | Same precondition as `^`, or `Option Int` | S | - |
 | `x / 0`, `x % 0` (Int) | V: `division by zero`, exit 1 (literal `7 / 0` too) | V: `SOL PANIC: division by zero` | no | Undischarged builtin `/` becomes a visible precondition (Decision 3); a literal zero divisor is a compile error | S-M | P1 |
 | `Math.mod 7 0` (has `(b : Int | b != 0)`) | V: `precondition violated: mod@... requires (b != 0), got b=0 (in main)` | not run (std/math) | no | Already the target style; refuse the literal case at compile time | S | P1 |
-| `(0 - 7) % 2` | V: `-1` (`%` is `Int.mod`, which truncates: the sign of the dividend); `Math.mod` gives `1`, `Math.rem` `-1` | not run | surprising, documented in code | Rename: `%` stays truncating but the struct field becomes `rem`; or make `%` the floored `Math.mod` (Decision 6) | S | - |
+| `(0 - 7) % 2` | V: `-1` (`%` is `Int.mod`, which truncates: the sign of the dividend); `Math.mod` gives `1`, `Math.rem` `-1` | not run | surprising, documented in code | **Decided (D5):** `%` becomes floored, giving `1`; `Math.rem` keeps `-1` ([`%` section](#-is-floored-modulo)) | S | std + backend |
 | `BITSHIFTL 1 62` | V: `-4611686018427387904` | not available on Sol (type error) | by design (bit ops act on the 63-bit word) | Keep; say so in the `band`/`BITSHIFTL` docs | S | - |
-| `BITSHIFTL 1 63` | V: `0` | n/a | yes, but the panic text for `-1` says "shift must be 0..63" | Make the message and the rule agree (0..62 refused past, or 63 documented) | S | - |
+| `BITSHIFTL 1 63` | V: `0` | n/a | yes, but the panic text for `-1` says "shift must be 0..63" | With exact `Int` (D1) `BITSHIFTL 1 63` is `2^63`; the only precondition left is `k >= 0` | with D1 | - |
 | `BITSHIFTL 1 (-1)` | V: `BITSHIFTL: shift must be 0..63` | n/a | no | Precondition `(k : Int | k >= 0 and k < 63)` so it can be discharged | S | P1 |
 | `I64` `*` past 64 bits | V: wraps (`-4`) | n/a | by design | Keep (I64's contract) | - | - |
 | `I64 / 0`, `I32 / 0` | V: `I64: division by zero`, `I32: division by zero` | n/a | no | Preconditions as Int | S | P1 |
 | `I64.toInt` too big | V: `Err I64.toInt: does not fit an Int (63 bits)` | n/a | no | Keep | - | - |
-| `I32.ofInt intMax` | V: `-1` (low 32 bits) | n/a | **yes, by design** (MEMORY-I32 page) | Add `I32.ofIntChecked : Int -> Option I32` beside it; consider renaming the wrapping one `I32.wrapInt` | S | - |
+| `I32.ofInt intMax` | V: `-1` (low 32 bits) | n/a | **yes, by design** (MEMORY-I32 page) | Narrowing question (Questions for Jack, 2): `Option`, precondition, or a wrapping form that says so | S | - |
 | A64/RV64 inline checks, NEON lanes | D: same traps (INT-OVERFLOW page); RVV Int kernels decline Int bodies | - | U here | Run `tests/base/intovf.fpr` under QEMU in CI legs that have it | - | P0 |
 
 ### Floating point and conversions
@@ -178,47 +216,346 @@ M a few days, L a week or more; estimates), and the pipeline phase from
 | Discharged precondition does not reach codegen | V: in `d : Int -> (y : Int | y != 0) -> Int`, the x86-64 code tests `y` at the boundary and then tests it again before `idivq` | no (cost) | Pass the precondition fact to `Codegen.Interval` as an entry fact; the zero test goes | S-M | P1 + P5 |
 | `std/math` does not load on Sol | V: `unbound name: F64.toInt` (and the rest of the F64 functions) when imported by a Sol run | no (refused) | Split `std/math` into Int and F64 modules, or gate the F64 half by profile | S | - |
 
-## Proposed policy
+## Int: never wraps, never traps
+
+### Options considered
+
+| Option | What `big + 1` does | Elegance in FP style | Safety | WCET | Native cost | Sol | RV32 / QOS |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| (a) **Arbitrary precision with a small-int fast path**: the tagged 63-bit word (31 on RV32) as today; on overflow the result is a heap bignum (Lisp fixnum/bignum, Haskell `Integer`, Python `int`) | `4611686018427387904`, exact | Best: `Int` means integer; no new operators, no `Option` plumbing, no annotations | Overflow cannot happen; the only failure left is running out of memory, already a typed trap | Fixed cost where intervals prove the fit (most loop counters, indices, lengths); elsewhere cost grows with limbs, so bounded code must prove a size bound (below) | Fast path keeps `add` + overflow branch; adds an operand tag test where the operand is not known small (measured below) | The interpreter is already exact (`VInt !Integer`): Sol and native agree for free. The JIT needs one change: overflow re-runs the kernel in the interpreter | Small runtime (estimate below); allocating Ints are refused in no-heap units unless proven small |
+| (b) `+ - *` return `Option Int` | `None` | Poor: every arithmetic expression becomes a `case` or a monadic chain; `D4` rejects the named-function version of this already | Total, but pushes the failure to every caller | Fixed cost | One branch, plus `Option` boxing unless P3 unboxes it | Needs the same change in both | Fits |
+| (c) Range-typed `Int`: every arithmetic result must be proven in range, or the function states a precondition | Compile error unless proven | Precise, but annotation-heavy for application code: accumulators, sums and products of inputs have no static bound, so their signatures fill up with ranges | No runtime failure | Fixed cost | No checks at all | Same checker | Fits |
+| (d) Saturating | `intMax` | Simple to state | **Silent wrong answer**, the thing this page exists to remove | Fixed cost | `add` + `cmov` | Change both | Fits |
+| (status quo) Trap at 63 bits | named panic | - | Abrupt failure | Fixed cost | `add` + overflow branch | Interpreter disagrees, JIT wraps | Fits |
+
+**Recommendation: (a), with (c) used where it pays: inside code that declares
+WCET bounds, and as the compiler's way of choosing the fast path everywhere.**
+`Int` becomes the mathematical integer. The compiler proves "this value fits a
+fixnum" wherever it can (the interval facts it already has, plus the length
+atoms of D3) and emits exactly today's code there, with no check at all. Where
+it cannot prove that, it emits the fast path with a slow path that promotes,
+in place of today's slow path that panics. In code with declared
+`work`/`alloc`/`live` bounds, and in no-heap units, an Int whose size is not
+bounded is a compile error that names the variable. The fix is a guard, a
+precondition such as `(n : Int | n < 1000000)`, or `I64`. That is (c) exactly
+where WCET needs it and nowhere else. `I64` and `I32` stay fixed width and
+wrapping: they are the HPC types, as D1 says.
+
+Why not (b) or (c) alone: (b) puts failure handling into every arithmetic
+expression, and D4 already says no to that family. (c) alone makes ordinary
+application code (a running total, a product of two inputs, a parsed number)
+need annotations it cannot sensibly have. (d) is silent.
+
+### What changes
+
+- **Runtime**: a bignum object (sign, limb count, limbs; no pointers, so
+  region copy-out and message copy are a `memcpy`), and the slow paths of
+  `+ - * / %`, comparison, equality, hashing (`MutMap` Int keys, so Sol and
+  native must hash bignums the same way), `str`, `S.toInt`, `wireInt`, JSON
+  integers, and the bit operations (`band`/`bor`/`bxor`/shifts on
+  two's-complement integers of any size, as in Python). The C primitives
+  `fpr_prim_fn_+` and the others already are the slow path. They return a
+  bignum instead of panicking.
+- **Codegen**: the inline fast path keeps `(a0 - 1) + a1` with its overflow
+  branch. It also tests `a0 & a1 & 1` when either operand is not known to be
+  a fixnum. Comparisons get the same tag test. `*` keeps its 31-bit inline
+  rule. P5's "untagged loop Ints" (performance priority #10) applies only to
+  Ints proven to fit, which it already needs for the trap.
+- **Vectors**: `VR_INT` columns hold fixnums. A bignum stored into one turns
+  the column boxed (the representation change that `VR_UNSET -> VR_BOX` is
+  already). The unboxed kernels (`genU`, NEON lanes) leave on overflow to the
+  scalar path instead of panicking.
+- **Things that stop failing**: `intMax + 1`, `abs intMin`, `intMin / -1`,
+  `2 ^ 63`, `BITSHIFTL 1 63`, `S.toInt` of 20 digits (`Err out of range`
+  goes away), `parseInt` stopping at the digit that would overflow, and
+  `I64.toInt` (now total). `intMax Unit` / `intMin Unit` become the fixnum
+  bounds, which are a cost fact and not a semantic limit. They are used in 48
+  places (17 in std). Most of them are parse bounds that go away.
+- **Conversions down**: `I64.ofInt` and `I32.ofInt` of an Int that does not
+  fit. Today `I32.ofInt` keeps the low 32 bits, silently. See the questions at
+  the end of this page.
+- **Sol**: the interpreter changes nothing for `+ - *`. The JIT
+  (`AsmX64`/`AsmA64`: `AddI`/`SubI`/`MulI` are plain `add`/`imul` today)
+  gets an overflow branch to a third fuel-cell poison value, after the
+  existing `fuelPoison` for division by zero. `withFuelCell` answers it by
+  re-running the scheme in the interpreter, so the JIT result never differs.
+  Re-running is sound only for the schemes that cannot perform effects,
+  which are the numeric `foldl`/`map`/`filter` schemes the JIT accepts; that
+  has to be checked when this is implemented.
+
+### WCET: how a contract bounds a bignum
+
+- **Proven small (the common case)**: the cost is today's unit cost. Interval
+  discharge already proves `i + 1` under `i < n`. Its facts (loop induction,
+  `strlen >= 0`, guards) and the D3 length atoms cover counters, indices,
+  lengths and offsets.
+- **Bounded but large**: a precondition or guard such as `x < 10^30` gives a
+  limb count. The cost language prices `+`/`-` as `c * limbs` and `*` as
+  `c * limbs(a) * limbs(b)`, a measure of the same shape as `len` in `size`
+  annotations. `Cost.hs` prices `+` as `unit` today, which stays the
+  proven-fixnum case.
+- **Unbounded, in bounded code**: refused at compile time with blame (for
+  example "`acc` in `sumAll` has no size bound; `sumAll` declares
+  `work <= ...`").
+- **Unbounded, in unbounded code** (no declared bounds): allowed, and costed
+  by the region/alloc accounting like any other allocation.
+
+The rule Jack can state in one line: *Int is exact; code with a time bound
+has to show that its Ints are small.*
+
+### Measured: C model of the fast path (x86-64, this box)
+
+`/workspace/out/fprisc-failure-audit/intproto/proto.c` (not committed) is a C
+model of fprisc's tagged word (`2x+1`). It compares today's trap with
+promotion to a minimal bump-allocated bignum, on the same two loops as the
+[overflow-cost table](#cost-of-overflow-checking-measured-x86-64-this-box) below. Each figure is the median over 5 to 7 timed runs,
+in three separate runs of the harness. The box had load averages of 8 to 22
+from other work while this ran, so treat the ranges as noisy. All variants
+printed identical results. The promoted `sum` loop to 3.1e9 crosses into
+bignums partway and prints the exact `4804999998450000000`.
+
+| Loop (300M iterations) | trap (today's shape) | promote, no proofs | promote, loop versioned | proven fixnum (no check) |
+| --- | --- | --- | --- | --- |
+| hash (`*` then `+` then `band`) | 0.47-0.64 s | 0.39-0.54 s | 0.48 s | 0.32-0.38 s |
+| sum (`acc + i`) | 0.12-0.17 s | 0.25-0.38 s | 0.13 s | 0.17-0.23 s (only `i` proven) |
+
+"Loop versioned" runs a fixnum-only loop with just `add` and the overflow
+branch, and continues in the generic loop at the first overflow. The
+compiler can do this for any loop whose state starts small, because a value
+only becomes a bignum through that branch.
+
+Reading (the fprisc figures are **estimates** from the model, not
+measurements of fprisc):
+
+- Where the fit is proven, promotion and trap compile to the same code. That
+  is the "proven" column, and it is where interval discharge already
+  operates.
+- Unproven, a `*`-bound loop shows no difference beyond noise. A tight
+  `+`-bound loop pays about 2.1-2.3x in the model, or about 0.5-0.7 ns per
+  iteration, for the operand tag tests. Applied to fprisc's measured `sum`
+  (0.374 s), that is an estimated +0.15-0.21 s if nothing were proven. With
+  `i` proven, as interval discharge does today, the estimate is +0.04-0.06 s
+  (about 1.1-1.2x).
+- With loop versioning the model matches the trap within noise
+  (0.127 s against 0.121 s). Versioning is a P5 pass, so this page counts on
+  it for the long-term cost but not for the first slice.
+- The bignum regime itself: the Sol overflow probe's loop
+  (`acc + i * 10^15`, 10M iterations, two bignum operations each) ran in
+  0.42-0.58 s, about 21-29 ns per bignum operation including a bump
+  allocation, with no GC. It allocated 170 MB in the model. In fprisc those
+  are short-lived leaf objects, so they add to the reclamation problem
+  ([performance priorities](2026-11-09-PERFORMANCE-PRIORITIES.md) #2) in
+  loops that really are large. The trap answered no number at all there.
+
+### Size on small targets (estimate)
+
+The model's add, subtract, small multiply, compare and normalise compile to
+about 0.8 KB of x86-64 text at `-Os`. A complete runtime adds schoolbook
+multiply, division with remainder, shifts, the bit operations, decimal
+conversion both ways, and hashing. **Estimate: 3-5 KB on RV32 at `-Os`**
+(not built: the box has no RISC-V toolchain). On RV32 the fixnum is 31 bits,
+so values past about ±1.07e9 promote. Millisecond timestamps and byte
+counters reach that. Today they trap there. With this design they promote
+in hosted code and are refused at compile time in no-heap units (`--raw`,
+the virt PLIC/CLINT units, whose `$arc.add` adapters allocate nothing). QOS
+code that wants 32 or 64 wrapping bits should say `I32`/`I64`.
+
+## Strings are byte arrays
+
+Native already does this: `str_t` is `{tid, var, len, bytes[]}`
+(`runtime/fpr.h`). `strlen` is the byte length, `charAt` reads a byte, and
+`std/binary` already uses `String` as a byte buffer (`B.u8 : Int -> String ->
+Option Int`). The "list of characters" is Sol's representation:
+`VString String Int (Array Int Char)` (`compiler/Sol/Val.hs`) is a Haskell
+`String` (a list of code points) with a lazily built code-point array. That
+is why `strlen "é"` is 2 natively and 1 on Sol.
+
+Design:
+
+- **`String` is the immutable byte array.** It is one type, not a separate
+  `Bytes` type next to it. It may hold any bytes, as on native today, and
+  text functions treat it as UTF-8 by convention, as Go does. A literal and
+  `"{...}"` interpolation produce UTF-8. Validity is a function
+  (`S.isUtf8 : String -> Bool`), not a type invariant, because `std/binary`,
+  `wire`, `mqtt` and `fat` build binary strings with `chr`/`putU8`.
+- **std renames and additions** (old name kept one release as an alias,
+  then removed):
+  - `S.length`/`strlen`: bytes (unchanged natively).
+  - `charAt s i` becomes `S.byteAt`. It comes in two forms, per D3: the
+    precondition form `byteAt : (s : String) -> (i : Int | 0 <= i and i <
+    strlen s) -> Int`, and `S.byteAt? : Int -> String -> Option Int`, which
+    is today's `B.u8`. 186 call sites in std/examples/tests (211 in the
+    repo, 53 files).
+  - `S.codes` becomes `S.bytes : String -> List Int` (22 sites). `S.codes`
+    is redefined as code points (UTF-8 decode).
+  - `S.fromCodes` encodes code points as UTF-8. It is the precondition form
+    `(cs : List Int | all valid code points)` once the precondition
+    language has quantifiers. Until then it is `S.fromCodes : List Int ->
+    Option String`, with `None` for a surrogate or a value above
+    `0x10FFFF`. Native today panics above 255, and Sol crashes in the host
+    on `chr (-1)`. `S.fromBytes : List Int -> Option String` is the byte
+    form. 4 sites.
+  - `chr` (byte) keeps its name with the precondition `0 <= n and n < 256`
+    (124 sites, mostly literal or masked arguments that discharge
+    statically).
+  - New UTF-8 helpers: `S.decodeAt : Int -> String -> Option (Int, Int)`
+    (code point and width at a byte offset), `S.codePointCount`,
+    `S.isUtf8`.
+  - `S.reverse` reverses code points (it reverses bytes today, which
+    breaks multi-byte text; no call sites outside std). `toUpper`/`toLower`
+    stay ASCII, as documented.
+  - `substr` keeps its clamping behaviour (a documented total function).
+    `S.slice` is its refusing form: precondition or `Option`, per D3.
+- **Sol parity**: `VString` becomes a strict `ByteString` holding UTF-8,
+  which is the `VBytes` it already has. That makes `strlen` and `byteAt`
+  O(1) on Sol with no lazy code-point array. 124 `VStr`/`VString` uses in
+  `compiler/Sol` (100 in `VM.hs`) need review. Most are construct or match
+  through the pattern synonym, so the change is mostly in
+  `Val.hs`/`VM.hs`'s string primitives (estimate M).
+- **Link to performance priority #12 (string slices).** A slice is the same
+  representation plus an offset: `{tid, var, len, off, buf}` or a tagged
+  view variant. Deciding "String is a byte array" now settles what a slice
+  slices. If #12's investigation favours slices, the byte-array change
+  should add the view variant to the `str_t` tag at the same time, so
+  `split`/`lines`/`words` do not need a second migration. The copy-out rule
+  #12 asks for becomes "copy-out and message copy compact a view to its own
+  bytes". Bytes everywhere is a prerequisite for #12, not a competitor.
+
+## Indexing without traps
+
+Every index operation gets one of two forms, and no form traps:
+
+- **Precondition form**: the operation is total on its stated domain. The
+  compiler discharges the obligation (guards, case arms, interval and loop
+  induction facts, the caller's own preconditions). Otherwise it lifts the
+  obligation onto the enclosing function's signature (first draft,
+  Decision 3). Where it cannot lift any further (`main`, an actor body, a
+  callback), it is a compile error that offers the `Option` form or a guard.
+  **No runtime check is ever inserted for these.**
+- **`Option` form**: answers `None` out of range. For a linear structure it
+  hands the structure back, as `FixedMap` insert does:
+  `(Option a, Vector 1 a)`.
+
+| Operation | Precondition form | `Option` form | Sites (std/examples/tests) |
+| --- | --- | --- | --- |
+| `charAt` -> `S.byteAt` | `0 <= i and i < strlen s` | `S.byteAt?` (today's `B.u8`) | 186 |
+| `xs ! i` (List) | `0 <= i and i < len xs` | `L.get` (exists) | 3 (Sol: 29) |
+| `Vec.get` | `0 <= i and i < Vec.len v` | `Vec.get? : Int -> Vector 1 a -> (Option a, Vector 1 a)` | 50 |
+| `Vec.set` | same | `Vec.set? -> (Bool, Vector 1 a)` | 5 |
+| `Vec.slice off n` | `0 <= off and 0 <= n and off + n <= Vec.len v` | `Vec.slice?` | 0 |
+| `Vec.burst` | `0 <= off and off + len s <= len d` | `Vec.burst?` | - |
+| `S.slice` (new) | `0 <= a and a <= b and b <= strlen s` | `S.slice?` | new |
+| `SStr.at`, `SStr.put` | `i < SStr.len s` / `i < 128` | `SStr.at?` | (tangnano tests) |
+| `SStr.push` | none: capacity is runtime state | `Option` only, as `FixedMap` | (tangnano tests) |
+
+`take`/`drop`/`substr` stay total and clamping. That is documented, so it
+is not silent.
+
+**Until the length atoms exist.** The predicate fragment has no `len`,
+`strlen` or `Vec.len` atoms yet (table above; P1 + P5). Order:
+
+1. **Now**: add every `Option` form, and migrate std code that already
+   guards before it reads (the `B.u8` pattern) to the `Option` form or to
+   the guarded read. The trapping forms stay working but warn ("unproven
+   index; use `byteAt?` or a guard"), counted by `fpr check`.
+2. **When P1 adds length atoms and passes Precond facts to Interval**: the
+   trapping forms become the precondition forms. A call site that cannot be
+   discharged or lifted becomes a compile error, and the runtime range
+   checks are deleted. This step changes what compiles, so it waits for the
+   warning count from step 1 to reach zero in std, examples and tests.
+
+So in the meantime the `Option` form is the only one that never traps.
+Nothing becomes silent at any step.
+
+## `%` is floored modulo
+
+`%` on `Int` is `Int.mod` in `core/prelude.fpr`, defined as
+`a - (a / b) * b` (truncated). It gives `-7 % 3 = -1` and `7 % -3 = 1` on
+both native and Sol (verified today, `p2/mod.fpr`). `/` truncates too
+(`-7 / 2 = -3`). Change:
+
+- `Int.mod` becomes `Math.mod`'s definition: `r = a - (a / b) * b; if r != 0
+  and ((r < 0) != (b < 0)) then r + b else r`, with the precondition
+  `(b : Int | b != 0)`. `Math.rem` stays as the truncated remainder, by
+  name. Sol's `Int.mod` (the `Preamble.hs` struct) gets the same definition.
+- **Codegen**: x86-64 `idiv`, A64 `sdiv`+`msub` and RV64 `rem` all give the
+  truncated remainder. The floored result adds one fix-up (`test r`; `xor`
+  the signs; conditional `add b`), about 3-4 instructions next to a 20-40+
+  cycle divide. That is an estimate, not measured. With a positive constant
+  divisor it is cheaper than today, because floored `x % 2^k` is
+  `band x (2^k - 1)` with no sign fix-up, and the interval facts already
+  know when `b > 0`.
+- **Call sites** (58 `%` sites in std/examples/tests, 100 in the repo
+  including Sol). Almost all have a non-negative dividend (time, counters,
+  hex digits, LCGs on non-negative state) or test `% k == 0`, which does
+  not change. The ones whose meaning changes:
+  - `tests/edge/int_edge.fpr:11` expects `-1 1` for `(0-7) % 3` and
+    `7 % (0-3)`; that becomes `2 -2`. Update the expected output.
+  - `sol/examples/algebra.sol:16` expects `-7 % 3 = -1`; update it to `2`.
+    (`sol/examples/strings.sol:66` already calls `%` "Numeric.mod".)
+  - `examples/wasm/wasmvm.fpr:318` `ibin64 IRemS a b = Ok (a % b)` is WASM
+    `rem_s`, which is truncated, so it must become `Math.rem` (or
+    `I64.rem`).
+  - `std/clientcalc.fpr:70` `Rem a b -> ... % ...`: the user calculator's
+    `Rem` becomes floored unless it switches to `Math.rem`. Which one to
+    keep is a product choice.
+  - `std/view.fpr:775` already takes `abs` first and is not affected.
+- **`I64`/`I32` `%`** (`I64.rem`/`I32.rem` today, used in
+  `tests/i64.fpr:48`, `tests/tangnano20k_i32_core.fpr:27-29`, and the I64
+  LCG in `tests/dtree.fpr:328`, whose wrapped product can be negative):
+  recommended floored too, so the symbol means one thing. `I64.rem`/`I32.rem`
+  stay as named functions for code that wants the hardware result. See the
+  questions at the end of this page.
+- **`/` and the identity `a == (a / b) * b + a % b`**: with floored `%` and
+  truncating `/` the identity breaks for negative operands. Python and
+  Haskell (`div`/`mod`) make both floored. See the questions at the end of
+  this page.
+
+## Proposed policy (revised 2026-11-10 with Jack's decisions)
 
 One rule per kind of failure. Each is a direction already taken somewhere in
 the tree, made consistent.
 
 1. **Absence is an `Option`, failure to convert is a `Result`.** Lookups,
-   parses and "first/last/minimum" already follow this. Extend it to every
-   index read by adding the `Option` form beside the trapping form
-   (`S.byteAt`, `Vec.get?`-style `Vec.lookup`, `S.slice`, `F64.toIntChecked`,
-   `I32.ofIntChecked`, `SStr.push`, `MutMap.fixed` insert as already decided).
-   A lenient total helper that clamps (`substr`, `take`, `drop`) may stay,
-   but its doc line says it clamps.
-2. **Domain errors are preconditions, not traps.** Division, `%`, `^`,
-   shifts, `chr`, `Sys.exit`, and index reads with the trapping form carry a
-   signature predicate: `(/) : Int -> (y : Int | y != 0) -> Int`,
-   `(!) : (xs : List a) -> (i : Int | i >= 0 and i < len xs) -> a`. The
-   compiler:
-   - discharges it from guards, case arms, own preconditions and (new) the
-     interval facts, emitting nothing;
-   - refuses it when it is decidably false (a literal zero divisor);
-   - otherwise inserts the blamed call-site check, and **lifts the
-     obligation onto the enclosing function's signature when the operand is
-     one of its parameters** (Decision 3), so the requirement is visible in
-     the type the caller sees and moves outward until a guard discharges it.
-   This is Jack's "divide should just say `y != 0`".
-3. **Overflow is checked by default** (unchanged from 2026-10-12). Wrapping
-   is explicit: `I64`, `I32`, and the bit operations. If wanted, add
-   `Int.checkedAdd/Sub/Mul : Int -> Int -> Option Int` for code that prefers
-   `None` to a trap, and (Decision 5) `Int.wrappingAdd` etc. The checks are
-   removed only by proof (interval discharge), never by a flag.
+   parses and "first/last/minimum" already follow this. Every index
+   operation gets an `Option` form (D3, [Indexing without
+   traps](#indexing-without-traps)), as do capacity-bound writes
+   (`SStr.push`, `FixedMap` insert). A total helper that clamps (`substr`,
+   `take`, `drop`) stays, and its doc line says that it clamps.
+2. **Domain errors are preconditions, and preconditions never become
+   runtime traps.** Division, `%`, `^`, shifts, `chr`, `Sys.exit` and the
+   precondition form of every index operation carry a signature predicate:
+   `(/) : Int -> (y : Int | y != 0) -> Int`, `byteAt : (s : String) -> (i :
+   Int | 0 <= i and i < strlen s) -> Int`. The compiler:
+   - discharges it from guards, case arms, its own preconditions and (new)
+     the interval facts, and emits nothing;
+   - refuses it when it is decidably false, such as a literal zero divisor;
+   - otherwise lifts it onto the enclosing function's signature when the
+     operand is one of its parameters, so the requirement shows up in the
+     type the caller sees and moves outward until a guard discharges it;
+   - and where it cannot lift further, refuses the program and offers the
+     `Option` form or a guard.
+   This is Jack's "divide should just say `y != 0`". Until the length atoms
+   exist, index reads keep a warning-level runtime check (see [the
+   transition](#indexing-without-traps)).
+3. **`Int` is exact** (D1, [Int: never wraps, never
+   traps](#int-never-wraps-never-traps)). It has no overflow and no trap.
+   The compiler picks the fixnum fast path by proof, and code with declared
+   bounds must show its Ints are small. `I64` and `I32` are fixed width and
+   wrap; they are the HPC types. There is no `checkedAdd` or `wrappingAdd`
+   (D4).
 4. **Resource exhaustion stays a typed trap**: heap, stack, fuel budgets,
-   ring capacities. Where a function declares `work`/`alloc`/`live` bounds
+   ring capacities. Where a function declares `work`/`alloc`/`live` bounds,
    the WCET pass proves the trap absent; elsewhere it is a named panic that
    supervision can catch. Nothing returns a default.
 5. **Invariant violations stay panics** (`fpr_cpanic`): layout tables,
    scheduler states, "not the current actor's handle". They are compiler or
    runtime bugs, not program failures.
 6. **Every backend gives the same answer or the same named failure.** Sol's
-   interpreter, Sol's JIT and native agree on Int width, string length,
-   `chr`, `parseInt` and heap limits, enforced by a differential corpus
-   (the probes of this page) in P0.
+   interpreter, Sol's JIT and native agree on `Int` (exact everywhere),
+   strings (bytes everywhere, D2), `%` (floored, D5), `chr`, `parseInt` and
+   heap limits. A differential corpus (the probes of this page) enforces
+   it in P0.
 
 ### What the precondition language can express today, and what it needs
 
@@ -254,50 +591,72 @@ Reading (estimates, labelled as such):
   than the whole check cost in C, so the remaining gap is mostly other fixed
   costs (tagging, fuel ticks, calls), which the
   [performance priorities](2026-11-09-PERFORMANCE-PRIORITIES.md) already order.
-- None of the proposals adds checks to native code: native already checks.
-  Preconditions *remove* checks where discharged, and the lifted form moves a
-  check outward (once per call instead of once per operation). The one added
-  cost is in Sol: a JIT overflow branch per `AddI/SubI/MulI` (not measured;
-  expected to be of the same order as the C row above) and 63-bit fit tests
-  in the interpreter, which already pays for `Integer`.
+- First draft: none of the proposals added checks to native code, because
+  native already checks. Revised (D1): exact `Int` adds one operand tag test
+  where an operand is not proven fixnum. The [C model](#measured-c-model-of-the-fast-path-x86-64-this-box)
+  measures that, and loop versioning removes it. Preconditions still
+  *remove* checks where discharged, and the lifted form moves a check
+  outward (once per call instead of once per operation). Sol's JIT gains one
+  overflow branch per `AddI/SubI/MulI` (not measured; expected to be of the
+  same order as the C row above). Sol's interpreter is unchanged, because it
+  is already exact.
 
-## Order of work
+## Order of work (revised 2026-11-10)
+
+Phases are from the [pipeline roadmap](2026-11-07-PIPELINE-REFACTORING-ROADMAP.md);
+numbers in brackets are the [performance priorities](2026-11-09-PERFORMANCE-PRIORITIES.md)
+delivery order. Effort estimates: S under a day, M a few days, L a week or
+more.
 
 | # | Item | Effort | Phase | Depends on |
 | --- | --- | --- | --- | --- |
-| 1 | Sol Int = native Int: 63-bit trap in the interpreter and the JIT | M | Sol VM | Decision 1 |
-| 2 | Differential failure corpus (this page's probes) native vs Sol in CI | S | P0 | 1 |
-| 3 | Rebinding type-check gap | M | P2 | - |
+| 1 | Differential failure corpus, native against Sol interpreter against Sol JIT (this page's probes plus `%`, bytes and bignum cases) in CI | S | P0 | - |
+| 2 | `%` floored on `Int` (prelude `Int.mod`, Sol `Int.mod`), with the fix-ups: `int_edge` and `algebra.sol` expectations; `wasmvm` `IRemS` and `clientcalc` `Rem` moved to `Math.rem`; `band` lowering for positive powers of two | S | std + backend | Q3 for `/` and Q4 for `I64`/`I32` |
+| 3 | Sol JIT stops wrapping: overflow poison and re-run in the interpreter (correct on its own: the interpreter is already exact) | S-M | Sol VM | - |
 | 4 | Refuse literal-false preconditions and literal zero divisors | S | P1 | - |
-| 5 | Sol strings follow the byte definition; `fromCodes` encodes UTF-8; Sol `chr` refuses by name | M | Sol VM / std | Decision 2 |
-| 6 | Duplicate clause refused | S | - | - |
-| 7 | Lift undischarged builtin and parameter preconditions onto signatures; report them in `--editor-json` | M | P1 (+P2 typed sites) | Decision 3 |
-| 8 | `Option` forms beside trapping index/convert operations; preconditions on `^`, shifts, `chr`, `Sys.exit`, `powInt` | S-M | std + P1 | Decision 4 |
-| 9 | `len`/`strlen`/`Vec.len` atoms in the predicate fragment; Precond facts as Interval entry facts (drops duplicate zero tests and index checks) | L | P1 + P5 | 7 |
-| 10 | `parseInt` deprecated for `S.toInt`; `%` naming | S | std | Decision 6 |
-| 11 | Sol honours `FPR_HEAP_MB`; `std/math` loads on Sol | S | Sol VM / std | - |
-| 12 | `intovf.fpr` under QEMU A64/RV64 where CI has it | S | P0 | - |
+| 5 | `Option` forms for every index operation (`S.byteAt?`, `Vec.get?`, `Vec.set?`, `Vec.slice?`, `S.slice?`, `SStr.at?`, `SStr.push -> Option`); warnings on unproven trapping reads; migrate std's guarded reads | M | std + frontend | - |
+| 6 | Strings as bytes: Sol `VString` becomes a UTF-8 `ByteString`; `charAt` renamed `byteAt`; `codes`/`fromCodes` become UTF-8, `bytes`/`fromBytes` added, UTF-8 helpers added; `S.reverse` reverses code points; Sol `chr` refuses by name | M | Sol VM + std | - |
+| 7 | Exact `Int`, stage 1: bignum runtime and slow paths (C primitives return a bignum instead of panicking), operand tag tests in the inline paths, `VR_INT` columns go boxed on a bignum, kernels fall back to scalar code, bignum hashing, `str`, parses and JSON | L | runtime + backend (before P3 unboxing, so unboxing is written for the new rule) | 1, 3 |
+| 8 | Exact `Int`, stage 2: refuse unbounded Ints in code with declared bounds and in no-heap units; limb-count cost terms in `Cost.hs`; RV32 build-size check | M-L | P1 + P6 | 7 |
+| 9 | Rebinding type-check gap | M | P2 | - |
+| 10 | Duplicate clause refused | S | - | - |
+| 11 | Lift undischarged builtin and parameter preconditions onto signatures; report them in `--editor-json` | M | P1 (+P2 typed sites) | - |
+| 12 | `len`/`strlen`/`Vec.len` atoms; Precond facts as Interval entry facts. This drops duplicate zero tests and index checks and, for exact `Int`, proves most indices and counters fixnum [10] | L | P1 + P5 | 11 |
+| 13 | Index operations become precondition-only (no runtime range checks left) once item 5's warning count is zero | M | P1 | 5, 12 |
+| 14 | Loop versioning for promotable loop state (fixnum loop, generic continuation): removes the unproven tag-test cost measured above | M | P5 | 7 |
+| 15 | String view variant, if performance priority #12 favours slices; built on item 6's representation | M | std/runtime | 6, [9] |
+| 16 | `parseInt` deprecated for `S.toInt`; Sol honours `FPR_HEAP_MB`; `std/math` loads on Sol | S | std / Sol VM | - |
+| 17 | `intovf.fpr` (renamed: Int promotion) under QEMU A64/RV64 where CI has it | S | P0 | 7 |
 
-## Decisions for Jack
+Items 2, 3, 4, 5, 6 and 10 do not wait on the pipeline. Item 7 is the one
+large piece of work. It should land before P3's unboxing slices
+(performance order 8), so unboxing is built once, on the "proven fixnum"
+rule.
 
-1. **Sol Int width.** Trap at 63 bits like native (recommended: one
-   language), or keep Sol exact (then Sol and native disagree by design, and
-   the JIT still has to stop wrapping).
-2. **What a string's length is.** Bytes everywhere (recommended: the
-   documented definition and native's), with named code-point functions; or
-   code points everywhere (native cost: UTF-8 scans for `strlen`/`charAt`).
-3. **Undischarged builtin preconditions.** (a) Lift them onto the
-   enclosing signature as inferred predicates, shown by the editor
-   (recommended); (b) warn; (c) refuse in safe code unless written.
-4. **Index reads.** Keep `!`/`charAt`/`Vec.get` trapping with
-   preconditions and add `Option` siblings (recommended), or make the
-   `Option` form the default name.
-5. **Explicit overflow operations on Int.** `Int.checkedAdd -> Option`
-   (cheap, recommended), and/or `Int.wrappingAdd` (the 2026-10-12 page says
-   none is planned: "I64 is the type that wraps").
-6. **Lenient helpers.** Keep `substr`/`take`/`drop` clamping as documented
-   total functions (recommended), deprecate `parseInt`, and choose whether
-   `%` is truncating `rem` (today) or floored `mod` like `Math.mod`.
+## Questions for Jack (remaining)
+
+1. **Exact `Int` (option (a)) as recommended?** Includes the rule that code
+   with declared `work`/`alloc` bounds, and no-heap units, must prove their
+   Ints small or use `I64`/`I32`.
+2. **Narrowing conversions.** `I32.ofInt`/`I64.ofInt` of an Int that does
+   not fit: (a) `Option` (recommended; it removes today's silent low-32-bit
+   answer), (b) a precondition, or (c) keep wrapping under a name that
+   says so (`I32.wrap`).
+3. **`/` with floored `%`.** Make `/` floored too, so `a == (a / b) * b + a
+   % b` holds (recommended, as Python and Haskell do; `Math.quot` keeps the
+   truncated quotient), or keep `/` truncating and accept that the identity
+   fails for negative operands.
+4. **`%` on `I64`/`I32`.** Floored like `Int` (recommended: one meaning for
+   the symbol; `I64.rem`/`I32.rem` stay for the hardware result), or
+   truncated, since they are the hardware-shaped types.
+5. **One `String` type, or `String` plus `Bytes`.** Recommended: one type,
+   any bytes allowed, UTF-8 by convention, as on native today. The
+   alternative is a UTF-8-validated `String` and a separate `Bytes`, which
+   is stricter but touches `std/binary`, `wire`, `mqtt` and `fat`.
+6. **Old names during migration.** Keep `charAt`/`codes` as warned aliases
+   for one release (recommended), or rename in one change.
+7. **`clientcalc`'s `Rem`.** Floored (`%`) or truncated (`Math.rem`) for
+   calculator users.
 
 ## Evidence
 
