@@ -139,8 +139,8 @@ endif
 fpr-dev: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/*.c fp-risc.cabal Makefile
 	@set -e; mkdir -p build; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
 	if command -v cabal >/dev/null 2>&1; then \
-	  $(NATIVE_PKG_ENV) cabal build exe:fpr -f dev --builddir=dist-dev; \
-	  cp "$$($(NATIVE_PKG_ENV) cabal list-bin fpr -f dev --builddir=dist-dev)" "$$fresh"; \
+	  $(NATIVE_PKG_ENV) cabal build exe:fpr --project-file=cabal.project.dev -f dev --builddir=dist-dev; \
+	  cp "$$($(NATIVE_PKG_ENV) cabal list-bin fpr --project-file=cabal.project.dev -f dev --builddir=dist-dev)" "$$fresh"; \
 	else \
 	  mkdir -p build/ghc-dev; \
 	  gcc -c compiler/cbits/fsx.c -o build/ghc-dev/fsx.o; \

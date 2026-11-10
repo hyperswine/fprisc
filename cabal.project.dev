@@ -1,0 +1,5 @@
+-- make fpr-dev: the same one package, outside the release plan.
+-- cabal.project.freeze pins `fp-risc -dev` (and the release dependency
+-- versions), which no -O0 build can satisfy; a project file of another
+-- name does not read that freeze.
+packages: .
