@@ -1085,7 +1085,6 @@ static uw img_static_raw(V v, uw pid) {
  * (regions nest LIFO), so the new state may keep pointing at it.  Copying it
  * anyway made every full compaction re-copy, say, a fold's remaining input.
  * Vectors keep their own move-or-copy rule. */
-static _Thread_local struct fpr_pool *dc_size_region; /* the sizing pass's; it never parks */
 /* Sharing.  The copier walks a tree: a cell reached twice is copied twice.
  * In a loop's state that can multiply (a list of versions of one tree), so a
  * region copy that finds more bytes than the region can hold -- a tree walk
@@ -1094,9 +1093,10 @@ static _Thread_local struct fpr_pool *dc_size_region; /* the sizing pass's; it n
  * byte cap below.  The table lives in an ownerless slab for the one copy. */
 typedef struct dc_share { uw mask, n, limit; int full; uw *key; V *val; } dc_share_t;
 static uw region_shared_copies, region_shared_full;
-static _Thread_local dc_share_t *dc_size_share;  /* sizing: count each cell once */
-static _Thread_local uw dc_size_left;            /* sizing: bytes before the walk */
-static _Thread_local int dc_size_over;           /*   has proved sharing; stop */
+/* the sizing pass's context, passed down (a thread-local read was a call per
+ * cell on macOS): the retained state slab, a region copy's arena, the byte
+ * cap and whether it was passed, and the table that counts cells once */
+typedef struct dc_sz { fpr_slab_t *retain; struct fpr_pool *region; dc_share_t *share; uw left; int over; } dc_sz_t;
 static uw dc_share_slot(dc_share_t *t, V v) {
   uw i = (((uw)v >> 4) * (uw)0x9E3779B97F4A7C15ull) >> 20 & t->mask;
   while (t->key[i] && t->key[i] != (uw)v) i = (i + 1) & t->mask;
@@ -1106,9 +1106,9 @@ static V dc_share_get(dc_share_t *t, V v) { uw i = dc_share_slot(t, v); return t
 static void dc_share_put(dc_share_t *t, V v, V n) { uw i = dc_share_slot(t, v); if (!t->key[i]) t->n++; t->key[i] = (uw)v; t->val[i] = n; }
 /* the sizing pass meets a heap cell of a region copy: 0 = do not count it
  * (seen before, or the cap was passed and the walk is abandoned) */
-static int dc_size_visit(V v) {
-  if (dc_size_share) {
-    dc_share_t *t = dc_size_share;
+static inline int dc_size_visit(dc_sz_t *z, V v) {
+  if (z->share) {
+    dc_share_t *t = z->share;
     if (t->full) return 1; /* abandoned: the caller falls back to the tree copy */
     uw i = dc_share_slot(t, v);
     if (t->key[i]) return 0;
@@ -1116,10 +1116,10 @@ static int dc_size_visit(V v) {
     t->key[i] = (uw)v; t->n++;
     return 1;
   }
-  if (dc_size_over) return 0;
+  if (z->over) return 0;
   uw t = PREHEADER(v);
-  if (t > dc_size_left) { dc_size_over = 1; return 0; }
-  dc_size_left -= t;
+  if (t > z->left) { z->over = 1; return 0; }
+  z->left -= t;
   return 1;
 }
 static int dc_outside(V v, struct fpr_pool *region) {
@@ -1132,17 +1132,19 @@ static int dc_retained(V v, fpr_slab_t *retain) {
   uw address = (uw)v;
   return address >= (uw)(retain + 1) && address < (uw)retain->hp && slab_of(v) == retain;
 }
-static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
+static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
   if (ISINT(v) || !v) return 0;
+  fpr_slab_t *retain = z ? z->retain : 0;
+  struct fpr_pool *region = z ? z->region : 0;
   if (!fpr_in_heap(v)) {
     uw pid = img_foreign((const void *)v);
     if (!pid) return 0; /* an immortal static, or the receiver's own image */
     uw n = dc_cellsz(img_static_raw(v, pid));
-    if (TID(v) == T_RESULT) n += dc_size_in(*(V *)((char *)v + 8), retain, immutable);
+    if (TID(v) == T_RESULT) n += dc_size_in(*(V *)((char *)v + 8), z, immutable);
     return n;
   }
-  if (dc_retained(v, retain) || dc_outside(v, dc_size_region)) return 0;
-  if (dc_size_region && !dc_size_visit(v)) return 0;
+  if (dc_retained(v, retain) || dc_outside(v, region)) return 0;
+  if (region && !dc_size_visit(z, v)) return 0;
   uw total = PREHEADER(v);
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
@@ -1160,7 +1162,7 @@ static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
         if (x->len) n += dc_rawsz(x->len * sizeof(uw));
         if (!VK_RAW(x->kinds[k])) /* boxed column: elements recurse */
           for (uw i = 0; i < x->len; i++)
-            n += dc_size_in((V)x->cols[k]->base[i], retain, immutable);
+            n += dc_size_in((V)x->cols[k]->base[i], z, immutable);
       }
       return n;
     }
@@ -1173,17 +1175,17 @@ static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
         fpr_actor_fail("send: a function of another process cannot leave it "
                        "(its code goes when that process ends)");
       uw n = total;
-      for (uw i = 0; i < p->nargs; i++) n += dc_size_in((V)p->args[i], retain, immutable);
+      for (uw i = 0; i < p->nargs; i++) n += dc_size_in((V)p->args[i], z, immutable);
       return n;
     }
     case T_STORED_LIST: case T_LIST: {
       uw n = 0;
       V c = v;
       unsigned heads;
-      while (!ISINT(c) && fpr_in_heap(c) && (heads = spine_payloads(c)) && !dc_retained(c, retain) && !dc_outside(c, dc_size_region)) {
-        if (c != v && dc_size_region && !dc_size_visit(c)) return n; /* the rest of this spine is counted */
+      while (!ISINT(c) && fpr_in_heap(c) && (heads = spine_payloads(c)) && !dc_retained(c, retain) && !dc_outside(c, region)) {
+        if (c != v && region && !dc_size_visit(z, c)) return n; /* the rest of this spine is counted */
         n += PREHEADER(c);
-        for (unsigned i=0; i<heads; ++i) n += dc_size_in(spine_slots(c)[i], retain, immutable);
+        for (unsigned i=0; i<heads; ++i) n += dc_size_in(spine_slots(c)[i], z, immutable);
         c = spine_slots(c)[heads];
       }
       /* the tail: the static nil (not in the heap: 0); a nil a primitive built
@@ -1192,16 +1194,16 @@ static uw dc_size_in(V v, fpr_slab_t *retain, int *immutable) {
        * allocation's padding and follow garbage, which hung a send forever);
        * or an improper tail */
       if (dc_retained(c, retain)) return n;
-      if (!ISINT(c) && c && fpr_in_heap(c) && dc_outside(c, dc_size_region)) return n;
+      if (!ISINT(c) && c && fpr_in_heap(c) && dc_outside(c, region)) return n;
       if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST) return n + PREHEADER(c);
-      return n + dc_size_in(c, retain, immutable);
+      return n + dc_size_in(c, z, immutable);
     }
     default: { /* uniform-V constructor: derive field count */
       if (h->tid == T_LIST) return total; /* a heap nil reached directly (var 0): no fields */
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       uw n = total;
       V *f = (V *)((char *)v + 8);
-      for (uw i = 0; i < nf; i++) n += dc_size_in(f[i], retain, immutable);
+      for (uw i = 0; i < nf; i++) n += dc_size_in(f[i], z, immutable);
       return n;
     }
   }
@@ -2012,6 +2014,9 @@ struct fpr_scope {
    * last copy produced, and the arena's bump gauge when it was taken */
   uw live_bytes, alloc_mark;
   int receive; /* opened at a receive loop's entry (g_region_open) */
+  int declined; uw declined_bytes; /* transfer_copy_in found too much would survive */
+  uw retry_at; /* after a declined copy: the arena gauge to reach before the next try */
+  uw decline_run; /* declines since the last copy: each waits twice as long */
   fpr_pool_t ap;
 };
 static struct fpr_scope *bootstrap_scopes[FPR_NHARTS];
@@ -2025,7 +2030,7 @@ static struct fpr_scope **scope_push(struct fpr_scope *scope) {
   scope->spare = 0;
   scope->state_slab = scope->next_slab = 0;
   scope->generations = 0; scope->immutable_state = scope->preserve_state = 0;
-  scope->live_bytes = scope->alloc_mark = 0; scope->receive = 0;
+  scope->live_bytes = scope->alloc_mark = 0; scope->receive = 0; scope->declined = 0; scope->declined_bytes = 0; scope->retry_at = 0; scope->decline_run = 0;
   scope->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
   scope->seq = 0;
   scope->prev_override = 0;
@@ -2066,7 +2071,7 @@ static void slab_free_ownerless(fpr_slab_t *sl) {
 #ifndef FPR_STATE_GENERATIONS
 #define FPR_STATE_GENERATIONS 8
 #endif
-static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int movevec, struct fpr_pool *region) {
+static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int movevec, struct fpr_pool *region, uw survive_limit) {
   fpr_hart_t *h = fpr_hart();
   uw pid = fpr_current_pid();
   fpr_slab_t *retain = scope->state_slab;
@@ -2083,22 +2088,36 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
     cap = scope->ap.allocated - scope->alloc_mark + (uw)FPR_REGION_SLAB;
     if (scope->state_slab) cap += (uw)(scope->state_slab->hp - fpr_slab_start(scope->state_slab));
   }
-  dc_size_region = region; dc_size_share = 0; dc_size_left = cap; dc_size_over = 0;
-  uw need = dc_size_in(v, retain, &immutable);
-  if (retain && !dc_size_over && (!immutable || need > (uw)(retain->end - retain->hp))) {
+  /* in a run of declines (a builder), the walk need only learn that more than
+   * the limit survives: it stops there.  The first walk after a copy goes to
+   * the cap, where passing it proves sharing rather than survival. */
+  int quick = region && survive_limit && scope->decline_run && survive_limit < cap;
+  dc_sz_t z = {.retain = retain, .region = region, .left = quick ? survive_limit : cap};
+  uw need = dc_size_in(v, &z, &immutable);
+  if (quick && z.over) {
+    if (h) h->copy_movevec = 0;
+    scope->declined = 1;
+    scope->declined_bytes = survive_limit + 1;
+    return v;
+  }
+  if (retain && !z.over && (!immutable || need > (uw)(retain->end - retain->hp))) {
     retain = 0;
     immutable = 1;
-    dc_size_left = cap;
-    need = dc_size_in(v, 0, &immutable);
+    z.retain = 0; z.left = cap;
+    need = dc_size_in(v, &z, &immutable);
   }
   fpr_slab_t *table = 0;
   dc_share_t share;
-  if (dc_size_over) { /* shared: size again counting each cell once, then copy once */
+  /* shared: size again counting each cell once, then copy once.  Either the
+   * walk passed the cap, which only sharing can do, or it would decline the
+   * copy: a state of versions sharing their tails looks, walked as a tree,
+   * like one that survives -- counted once, it may be mostly garbage. */
+  if (z.over || (region && survive_limit && need > survive_limit)) {
     retain = 0;
     immutable = 1;
     uw slots = 64;
     while (slots < 2 * (cap / 16)) slots *= 2;
-    dc_size_region = 0; /* msg_slab_new may park: the actor can migrate */
+    /* msg_slab_new may park: the actor can migrate */
     table = msg_slab_new(slots * 2 * sizeof(uw));
     h = fpr_hart();
     if (h) { h->copy_pid = pid; h->copy_movevec = (uw)movevec; }
@@ -2106,15 +2125,15 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
     share.key = (uw *)fpr_slab_start(table);
     share.val = (V *)(share.key + slots);
     __builtin_memset(share.key, 0, slots * sizeof(uw));
-    dc_size_region = region; dc_size_share = &share;
-    need = dc_size_in(v, 0, &immutable);
+    z.retain = 0; z.share = &share;
+    need = dc_size_in(v, &z, &immutable);
     if (share.full) { /* more distinct cells than the region could hold: a tree copy, as before */
-      dc_size_share = 0;
+      z.share = 0;
       slab_free_ownerless(table);
       table = 0;
       immutable = 1;
-      dc_size_left = ~(uw)0; dc_size_over = 0;
-      need = dc_size_in(v, 0, &immutable);
+      z.left = ~(uw)0; z.over = 0;
+      need = dc_size_in(v, &z, &immutable);
       __atomic_fetch_add(&region_shared_full, 1, __ATOMIC_RELAXED);
     } else {
       share.n = 0;
@@ -2122,8 +2141,16 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
       __atomic_fetch_add(&region_shared_copies, 1, __ATOMIC_RELAXED);
     }
   }
-  dc_size_region = 0; dc_size_share = 0;
   if (h) h->copy_movevec = 0;
+  /* a copy that would keep more than the limit frees too little to pay for
+   * itself (a builder: all it allocates is its result); the caller keeps the
+   * arena and asks again once it has grown past this size */
+  if (survive_limit && need > survive_limit) {
+    if (table) slab_free_ownerless(table);
+    scope->declined = 1;
+    scope->declined_bytes = need;
+    return v;
+  }
   FPR_COST_ADD(h, cost_copies, 1);
   FPR_COST_ADD(h, cost_copy_bytes, need);
   FPR_COST_ADD(h, cost_state_copies, 1);
@@ -2139,6 +2166,9 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
   }
   scope->generations = 0;
   if (table && !need) { slab_free_ownerless(table); table = 0; }
+  /* a region copy that finds nothing to copy: everything it reaches lies
+   * outside the region (or is an int, static, handle or moved Vector) */
+  if (!need && region) return v;
   if (!need) { /* ints, statics, handles, or a moved Vector */
     if (movevec && !ISINT(v) && v && fpr_in_heap(v) && TID(v) == T_VEC && vec_movable_here(v)) return v;
     return dc_dup(v, 0);
@@ -2164,7 +2194,7 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
   if (c.released) vec_release_in(v);
   return r;
 }
-static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) { return transfer_copy_in(v, scope, novec, 0, 0); }
+static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) { return transfer_copy_in(v, scope, novec, 0, 0, 0); }
 /* Commit the next state after arena/root teardown. A retained graph keeps its
  * existing hold; otherwise the previous slab loses exactly this scope's hold.
  * Exported roots/borrow windows can still pin it. Only an unreferenced slab
@@ -2206,7 +2236,11 @@ static void scope_release(struct fpr_scope *scope) {
  * are no regions at all: the plane predates them, and the program runs as it
  * did before stage 2 -- correct, without the reclamation. */
 #define REGION_MASK (((uw)1 << (sizeof(uw) * 8 - 3)) - 1) /* fits a tagged Int */
-static uw region_opens, region_cycles, region_call_opens, pend_grows, region_deferrals;
+static uw region_opens, region_cycles, region_call_opens, pend_grows, region_deferrals, region_declines;
+#ifndef FPR_REGION_SURVIVAL
+#define FPR_REGION_SURVIVAL 16 /* copy only when at most 1/this of the arena survives: a steady state copies at about 16x live (at most ~9% more work on the app suite), a builder (all of it survives) never */
+#endif
+uw fpr_region_declines_count(void) { return __atomic_load_n(&region_declines, __ATOMIC_RELAXED); }
 uw fpr_region_shared_copies_count(void) { return __atomic_load_n(&region_shared_copies, __ATOMIC_RELAXED); }
 #ifndef FPR_REGION_GROWTH
 #define FPR_REGION_GROWTH 2
@@ -2232,7 +2266,7 @@ static struct fpr_scope *region_open(fpr_hart_t *h, uw seq) {
   sc->held = 0; sc->spare = 0;
   sc->state_slab = sc->next_slab = 0;
   sc->generations = 0; sc->immutable_state = sc->preserve_state = 0;
-  sc->live_bytes = sc->alloc_mark = 0; sc->receive = 0;
+  sc->live_bytes = sc->alloc_mark = 0; sc->receive = 0; sc->declined = 0; sc->declined_bytes = 0; sc->retry_at = 0; sc->decline_run = 0;
   sc->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
   sc->seq = seq;
   struct fpr_pool **slot = override_slot(h);
@@ -2277,6 +2311,40 @@ static int region_adopt(fpr_hart_t *h, fpr_pool_t *ap, fpr_pool_t *into, V r) {
   __atomic_fetch_add(&region_adopted_bytes, used, __ATOMIC_RELAXED);
   return 1;
 }
+/* a pure loop region that cycled, closing with a result at least half of
+ * what it holds (its arena since the last reset, and the state slab): the
+ * state slab and the arena's slabs join the pool it closes into, as
+ * region_adopt does for a region that never cycled.  Copying the result out
+ * instead re-copied a builder's whole list -- every line of a file -- after a
+ * single early copy had made the region "cycled". */
+static int region_adopt_state(fpr_hart_t *h, struct fpr_scope *sc, fpr_pool_t *into, V r) {
+  fpr_slab_t *ts = sc->state_slab;
+  if (into->fixed_heap || sc->receive || sc->next_slab || sc->preserve_state || !ts) return 0;
+  uw used = sc->ap.allocated - sc->alloc_mark + (uw)(ts->hp - fpr_slab_start(ts));
+  if (!used) return 0;
+  uw left = used - used / 2;
+  h->copy_movevec = 1;
+  int big = kp_reaches(r, &left);
+  h->copy_movevec = 0;
+  if (!big) return 0;
+  fpr_lock(&arc_lock);
+  if (ts->owner || ts->holds != 1) { fpr_unlock(&arc_lock); return 0; } /* another keeper: copy */
+  ts->holds = 0;
+  ts->owner = into;
+  ts->pushed = 0;
+  fpr_slab_t *tail = ts;
+  ts->next = sc->ap.cur;
+  for (fpr_slab_t *sl = sc->ap.cur; sl; sl = sl->next) { sl->owner = into; tail = sl; }
+  if (into->cur) { tail->next = into->cur->next; into->cur->next = ts; } /* behind its bump slab */
+  else { tail->next = 0; into->cur = ts; }
+  into->allocated += used;
+  sc->ap.cur = 0; sc->ap.bigfree = 0;
+  fpr_unlock(&arc_lock);
+  sc->state_slab = 0; sc->held = 0;
+  __atomic_fetch_add(&region_adoptions, 1, __ATOMIC_RELAXED);
+  __atomic_fetch_add(&region_adopted_bytes, used, __ATOMIC_RELAXED);
+  return 1;
+}
 static V region_close(fpr_hart_t *h, struct fpr_scope *sc, V r) {
   struct fpr_pool **slot = override_slot(h);
   fpr_bump_close(h);
@@ -2286,7 +2354,8 @@ static V region_close(fpr_hart_t *h, struct fpr_scope *sc, V r) {
    * messages since it opened (a receive loop's last turns): the result may
    * point into a message, and the messages die here, after the copy */
   int received = h->current && fpr_acb_rx(h->current)->n > sc->rx_mark;
-  if (!received && !sc->held && !sc->spare && region_adopt(h, &sc->ap, cur_pool(h), r)) {
+  if (!received && ((!sc->held && !sc->spare && region_adopt(h, &sc->ap, cur_pool(h), r)) ||
+                    (sc->held && region_adopt_state(h, sc, cur_pool(h), r)))) {
     scope_release(sc);
     scope_unlink(scope_head(h), sc);
     fpr_free_raw((V)sc);
@@ -2367,16 +2436,33 @@ static V g_region_cycle(V seqv, V packed) {
    * Declining keeps the arena; the back edge re-marks and asks again a slab
    * later.  A receive loop cycles every slab: its cycle also releases the
    * messages its turns took. */
-  if (!sc->receive && sc->ap.allocated - sc->alloc_mark < (uw)FPR_REGION_GROWTH * sc->live_bytes) {
+  if (!sc->receive && (sc->ap.allocated - sc->alloc_mark < (uw)FPR_REGION_GROWTH * sc->live_bytes ||
+                       sc->ap.allocated < sc->retry_at)) {
     __atomic_fetch_add(&region_deferrals, 1, __ATOMIC_RELAXED);
     return packed;
   }
-  V t = transfer_copy_in(packed, sc, 0, 1, sc->receive ? 0 : &sc->ap);
+  /* ...and only when the copy frees at least half of what the arena holds:
+   * a loop whose state is everything it allocates (a list builder admitted
+   * with persistent copy-out) pays a sizing walk, never a copy */
+  uw bumped = sc->ap.allocated - sc->alloc_mark;
+  sc->declined = 0;
+  V t = transfer_copy_in(packed, sc, 0, 1, sc->receive ? 0 : &sc->ap, sc->receive ? 0 : bumped / FPR_REGION_SURVIVAL + 1);
+  if (sc->declined) {
+    /* try again once the arena has doubled from here: the sizing walks then
+     * cost at most twice the allocation, whatever fraction survives (a loop
+     * keeping just over half re-walked its state at every slab) */
+    sc->live_bytes = sc->declined_bytes;
+    sc->retry_at = sc->ap.allocated + (bumped << (sc->decline_run < 3 ? sc->decline_run : 3));
+    sc->decline_run++;
+    __atomic_fetch_add(&region_declines, 1, __ATOMIC_RELAXED);
+    return packed;
+  }
   fpr_slab_t *ns = sc->preserve_state ? sc->state_slab : sc->next_slab;
   sc->live_bytes = ns ? (uw)(ns->hp - fpr_slab_start(ns)) : 0;
   scope_roots_die(sc);
   arena_reset(&sc->ap);
   sc->alloc_mark = sc->ap.allocated;
+  sc->retry_at = 0; sc->decline_run = 0;
   transfer_retire(sc);
   sc->held = t;
   __atomic_fetch_add(&region_cycles, 1, __ATOMIC_RELAXED);
@@ -2657,7 +2743,7 @@ static V g_loop_in(V s, V f, int movevec) {
     if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
       fpr_cpanic("Sys.loop: continue must be a Bool");
     int more = ((hdr_t *)go)->var == 1;
-    V t = transfer_copy_in(nx, &scope, movevec ? 0 : "Sys.loop: the state may not hold a Vector (use Sys.loopWith)", movevec, 0);
+    V t = transfer_copy_in(nx, &scope, movevec ? 0 : "Sys.loop: the state may not hold a Vector (use Sys.loopWith)", movevec, 0, 0);
     scope_roots_die(&scope);
     arena_reset(&ap);
     transfer_retire(&scope);

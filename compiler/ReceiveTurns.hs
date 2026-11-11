@@ -119,6 +119,7 @@ receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs in
                                 | signature <- M.elems interfaces, t <- interfaceResult signature : interfaceArguments signature]
     boundedType t = maybe (Region.bounded model t) fst (M.lookup t typeProperties)
     copyableType t = maybe (Region.copyable model t) snd (M.lookup t typeProperties)
+    copyOutType t = copyableType t || Region.copyableWithFunctions model t
     refs ps = S.fromList . filter (`notElem` ps) . freeVars
     edges p = M.map (uncurry refs) p
     reaches graph seeds = fix seeds
@@ -155,10 +156,20 @@ receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs in
               ++ either id (const (if isPure ns then (if loopRegions then "loop region at the self tail call (opens after a slab, resets per slab)" else "loop region not placed (FPR_NO_LOOP_REGIONS=1)")
                                    else if looped ns then "turn region at the receive (opens at entry, cycles per slab)" else "automatic value-state turn regions")) r ++ persistentNote ns r
             | (ns,r) <- zip groups results]
+    -- the loops admitted only because their state may be copied out: their
+    -- live state is unbounded (List, String, a recursive type), which stage 2
+    -- declines without copy-out
     persistentNote ns r
-      | Right _ <- r, loopRegions, isPure ns, Just n <- persistentLoop, n `elem` ns =
-          "; persistent copy-out enabled for " ++ n ++ " (copy work depends on live state)"
+      | Right _ <- r, loopRegions, isPure ns,
+        copied@(_ : _) <- [n | n <- S.toList (entries ns), copyOut n,
+                               not (null (typedProblemsWith (const boundedType) True (invariants ns) n))] =
+          "; persistent copy-out for " ++ unwords copied ++ " (copy work depends on live state)"
       | otherwise = ""
+    -- FPR_PERSISTENT_LOOP: unset = every pure loop ("*"), or one function by name
+    copyOut n = case persistentLoop of
+      Just "*" -> True
+      Just m -> m == n
+      Nothing -> False
     turned = M.union rewritten prog
     -- the loops that got a region: a call into one needs no call region
     loopEntries = S.fromList (concat [ns | (ns, Right _) <- zip groups results, isPure ns, loopRegions])
@@ -545,12 +556,13 @@ receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs in
     -- copy out of the arguments must not grow with the loop); a receive
     -- loop takes any value type.  An invariant or function-typed parameter
     -- needs no evidence: it is copied as it is, Vectors moved by the runtime.
-    typedProblems pure invariant n = case M.lookup n interfaces of
+    typedProblems pure = typedProblemsWith (\n -> if not pure then copyableType else if copyOut n then copyOutType else boundedType) pure
+    typedProblemsWith okFor pure invariant n = case M.lookup n interfaces of
       Just signature -> let ps=fst (prog M.! n)
                             as=interfaceArguments signature;r=interfaceResult signature
-                            -- A nominated loop may copy variable-size immutable state.
+                            -- A copy-out loop may copy variable-size immutable state.
                             -- All other admission, effect and liveness checks still apply.
-                            ok=if pure && Just n /= persistentLoop then boundedType else copyableType
+                            ok=okFor n
                             handedBack=case r of
                               TV x->or [case a of TV y->x==y;_->False
                                 | (i,a)<-zip [0..] as,S.member (n,i) invariant]
@@ -559,7 +571,7 @@ receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs in
                           [n++": live parameter "++show i++" has "++show a
                             | (i,p,a)<-zip3 [1::Int ..] ps as,p `elem` kept n,not (ok a),
                               S.notMember (n,i-1) invariant,not (isFn a)]
-                          ++[n++": result has "++show r | not (copyableType r || nonReturning n || handedBack)]
+                          ++[n++": result has "++show r | not (copyableType r || (pure && copyOut n && copyOutType r) || nonReturning n || handedBack)]
       Nothing->[n++": no checked physical interface"]
     isFn (TFn _ _)=True
     isFn _=False

@@ -1,6 +1,6 @@
 -- Copyability/boundedness over checked types and constructor schemes. No
 -- source AST conversion or type inference belongs in a region consumer.
-module Core.Region.Types (ValueModel,valueModel,copyable,bounded) where
+module Core.Region.Types (ValueModel,valueModel,copyable,copyableWithFunctions,bounded) where
 import Core.Typed.Syntax (TypeContext(..))
 import Type.Syntax
 import Control.Monad (unless)
@@ -29,12 +29,18 @@ valueModel (TypeContext linears schemas)=do
     arrows (TFn a b)=let (as,r)=arrows b in (a:as,r)
     arrows t=([],t)
 
-copyable,bounded :: ValueModel -> Type -> Bool
-copyable=property False
-bounded=property True
+copyable,copyableWithFunctions,bounded :: ValueModel -> Type -> Bool
+copyable=property False False
+bounded=property True False
+-- A pure loop's copy-out state may also hold functions inside its data (a
+-- std/map value carries its comparator), as a function-typed loop parameter
+-- already may: the runtime copies a closure with its captures, an owned
+-- Vector among them by its move-or-copy rule.  A receive turn keeps the
+-- first-order rule.
+copyableWithFunctions=property False True
 
-property :: Bool -> ValueModel -> Type -> Bool
-property finite (ValueModel linears declarations)=check S.empty
+property :: Bool -> Bool -> ValueModel -> Type -> Bool
+property finite functions (ValueModel linears declarations)=check S.empty
   where
     check seen ty=case ty of
       TTupT ts->all (check seen) ts
@@ -42,6 +48,7 @@ property finite (ValueModel linears declarations)=check S.empty
       -- Evidence describes one fixed element type throughout the activation;
       -- it is a compiler-generated immutable layout descriptor.
       TLayout _->True
+      TFn _ _->functions
       _->case spine ty of
         (TC n,as)
           | n `elem` ["Int","Bool","Unit","Atom","I64","Word","F64","I32"]->null as

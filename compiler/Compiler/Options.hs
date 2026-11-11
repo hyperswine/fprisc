@@ -73,7 +73,7 @@ parseCompilerOptions env = do
           cgScalarWorkers=enabled "SCALAR_WORKERS", cgTrmc=enabled "TRMC", cgTickBatch=enabled "TICK_BATCH", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
           cgReceiveTurns=enabled "RECEIVE_TURNS", cgBumpAlloc=enabled "BUMP_ALLOC", cgCompactCells=env "FPR_COMPACT_CELLS" /= Just "0", cgLoopRegions=enabled "LOOP_REGIONS",
-          cgPersistentLoop=if enabled "PERSISTENT_COPY_OUT" then env "FPR_PERSISTENT_LOOP" else Nothing, cgCallRegions=enabled "CALL_REGIONS", cgInline=enabled "INLINE" }
+          cgPersistentLoop=if enabled "PERSISTENT_COPY_OUT" then Just (maybe "*" id (env "FPR_PERSISTENT_LOOP")) else Nothing, cgCallRegions=enabled "CALL_REGIONS", cgInline=enabled "INLINE" }
       diagnostic=DiagnosticOptions
         { diagTypedIr=env "FPR_TYPED_IR", diagReceiveNotes=yes "FPR_RECEIVE_NOTES",
           diagApply=yes "FPRC_APPLY", diagPreconditions=yes "FPR_PRECOND_NOTES",
@@ -125,7 +125,7 @@ nativeOptionFlags fpAvailable n =
     StrictNames names->"-strict"++take 12 (showHex (fnv (intercalate "," names)) "")
 
 optimizationFlags :: CodegenOptions -> String
-optimizationFlags c = maybe "" (\n -> "-persist" ++ showHex (fnv n) "") (cgPersistentLoop c) ++ flag (not (cgCompactCells c)) "-c16" ++ flag (cgLoopMotion c) "-licm" ++ flag (cgEarlyLoops c) "-earlyloops" ++ flag (cgStringScan c) "-strscan" ++ flag (cgFramelessEntry c) "-frameless" ++ concat
+optimizationFlags c = (case cgPersistentLoop c of { Just "*" -> ""; Just n -> "-persist" ++ showHex (fnv n) ""; Nothing -> "-nopersist" }) ++ flag (not (cgCompactCells c)) "-c16" ++ flag (cgLoopMotion c) "-licm" ++ flag (cgEarlyLoops c) "-earlyloops" ++ flag (cgStringScan c) "-strscan" ++ flag (cgFramelessEntry c) "-frameless" ++ concat
   [flag (not enabled) suffix | (enabled,suffix)<-
     [(cgPipelineInline c,"-nopinline"),(cgReuse c,"-noreuse"),
      (cgScalarWorkers c,"-noscalar"),(cgTrmc c,"-notrmc"),(cgTickBatch c,"-notickbatch"),(cgPairReturns c,"-nopairret"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),

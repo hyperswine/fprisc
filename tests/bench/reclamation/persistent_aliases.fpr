@@ -19,15 +19,25 @@ mapLoop n size tree = if n == 0 then M.fold (fn acc k v -> acc + v) 0 (M.Map Ord
      M.Map _ k t -> mapLoop (n - 1) k t).
 # Keep every version: each shares its tail with the one before, so n steps
 # hold about 2n distinct cells while a tree walk of the state finds n*n/2.
+# Each step also makes scratch (a list of 32 that dies), so most of what the
+# loop allocates is garbage and copy-out runs: only sharing keeps it cheap.
 history : unsafe Int -> List Int -> List (List Int) -> Int.
 history n cur hs = if n == 0 then L.sum (L.map L.length hs) + L.length cur else
-  next = n :: cur; history (n - 1) next (next :: hs).
+  scratch = L.reverse (L.map (fn i -> i * n) (L.range 1 32));
+  next = (if L.sum scratch == 0 then 0 else n) :: cur; history (n - 1) next (next :: hs).
 # Walk an input built before the loop with a small changing window: the input
 # lives in the caller's pool, outlives the loop's region and is never copied.
 scan : unsafe List Int -> List Int -> Int.
 scan xs acc = case xs of
     Nil -> L.sum acc
   | x :: rest -> scan rest (L.take 4 (x :: acc)).
+# Consume an input built before the loop, making scratch each step: the state
+# copy-out finds is only the remaining input, all of it outside the region,
+# so the copy has nothing to copy (it once dereferenced a missing context).
+drain : unsafe List Int -> Int -> Int.
+drain xs acc = case xs of
+    Nil -> acc
+  | x :: rest -> drain rest (acc + L.sum (L.reverse (L.range 0 (x % 8)))).
 steps count = n = parseInt count; if n < 0 then error "negative steps" else n.
 main = case Sys.args Unit of
     ["list",count] -> xs = L.range 0 1023;
@@ -37,5 +47,6 @@ main = case Sys.args Unit of
   | ["map",count] -> old = M.insert 999 1 M.ints;
       (case old of M.Map _ k t -> answer = mapLoop (steps count) k t; print "{answer} {M.fold (fn acc k v -> acc + v) 0 old}")
   | ["scan",count] -> print "{scan (L.range 1 (steps count)) Nil}"
+  | ["drain",count] -> print "{drain (L.range 1 (steps count)) 0}"
   | ["history",count] -> print "{history (steps count) Nil Nil}"
-  | _ -> error "expected list, tree, map, scan or history and a nonnegative count".
+  | _ -> error "expected list, tree, map, scan, drain or history and a nonnegative count".

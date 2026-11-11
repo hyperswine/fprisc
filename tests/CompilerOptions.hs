@@ -27,7 +27,7 @@ main=do
   -- cache entry. The receive-turn control was absent from Build's old list.
   forM_ ([ ("FPR_NO_"++name,"1") | name<-
     ["PIPELINE_INLINE","REUSE","VEC_FUSE","VEC_SIMD","SCALAR_WORKERS","TRMC","TICK_BATCH","PAIR_RETURNS","FIELD_WORKERS","TUPLE_SCALARS","TYPE_SPEC","TYPED_CASE",
-     "F64_INLINE","INLINE","VEC_PEEK","VEC_FAST","SPEC","INDEXED_MEMORY","RECEIVE_TURNS","LOOP_REGIONS","CALL_REGIONS"]]
+     "F64_INLINE","INLINE","VEC_PEEK","VEC_FAST","SPEC","INDEXED_MEMORY","RECEIVE_TURNS","LOOP_REGIONS","CALL_REGIONS","PERSISTENT_COPY_OUT"]]
     ++ [("FPR_TYPED_IR_"++name,value) | (name,value)<-
       [("BACKEND","1"),("STRICT","all"),("SELF_LOOPS","0"),("FP_POOL","0"),
        ("SHALLOW_STACK","1"),("FORWARD_PARAMS","1"),("ENTRY_ARGS","1"),

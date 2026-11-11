@@ -1,4 +1,4 @@
-"""A nominated persistent loop reclaims scratch while preserving old versions."""
+"""Persistent loops reclaim scratch (automatically, or one named loop) while preserving old versions."""
 import os
 import re
 import subprocess
@@ -22,9 +22,12 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
                                ("treeLoop", ["tree", "10000"], "10000 0"),
                                ("mapLoop", ["map", "50000"], "8257 1"),
                                ("history", ["history", "20000"], "200030000"),
-                               ("scan", ["scan", "1000000"], "3999994")):
-        for selected, rollback in ((False, False), (True, False), (True, True), (True, False)):
-            enabled = selected and not rollback
+                               ("scan", ["scan", "1000000"], "3999994"),
+                               ("drain", ["drain", "200000"], "2100000")):
+        # copy-out is automatic for every pure loop; FPR_PERSISTENT_LOOP names one,
+        # FPR_NO_PERSISTENT_COPY_OUT=1 turns it off; the cache follows each
+        for selected, rollback in ((False, False), (True, False), (False, True), (False, False)):
+            enabled = not rollback
             mode = dict(env)
             if rollback:
                 mode["FPR_NO_PERSISTENT_COPY_OUT"] = "1"

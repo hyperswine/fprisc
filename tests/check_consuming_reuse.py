@@ -45,7 +45,9 @@ def main():
             ledger=json.loads(result.stderr.split('[fpr cost] ')[1])
             assert ledger['alloc_requests']==expected,ledger
         for off in ('0','1'):
-            mode=dict(env,FPR_NO_REUSE=off,FPR_COST_REPORT='1')
+            # the exact ledger of what reuse saves: without copy-out, whose
+            # cycles pack the loop state into a tuple of their own (checked below)
+            mode=dict(env,FPR_NO_REUSE=off,FPR_COST_REPORT='1',FPR_NO_PERSISTENT_COPY_OUT='1')
             command([ROOT/'fpr','build',ROOT/'tests/bench/reclamation/fixed_state.fpr','-o',exe],mode)
             counts=[]
             for steps in (0,64):
