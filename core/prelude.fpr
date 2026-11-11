@@ -180,28 +180,29 @@ strSubGo a b la lb = case strSufEq a b (la - lb) 0 of True -> strTake a (la - lb
 # -1, 0, 1: bytewise, the shorter first on a tie
 strCmp : String -> String -> Int .
 strCmp a b = strCmpGo a b 0 (strlen a) (strlen b).
+# one loop, guards only: no Bool is built (an `or` made one per byte, and
+# the walk ping-ponged through a second function)
 strCmpGo : unsafe String -> String -> Int -> Int -> Int -> Int .
-strCmpGo a b i la lb = case i >= la or i >= lb of
-    True -> (case la == lb of True -> 0 | False -> (case la < lb of True -> 0 - 1 | False -> 1))
-  | False -> strCmpAt a b i la lb (charAt a i) (charAt b i).
-strCmpAt : unsafe String -> String -> Int -> Int -> Int -> Int -> Int -> Int .
-strCmpAt a b i la lb ca cb = case ca == cb of
-    True -> strCmpGo a b (i + 1) la lb
-  | False -> (case ca < cb of True -> 0 - 1 | False -> 1).
+strCmpGo a b i la lb | i >= la = (case la == lb of True -> 0 | False -> 0 - 1).
+strCmpGo a b i la lb | i >= lb = 1.
+strCmpGo a b i la lb | charAt a i == charAt b i = strCmpGo a b (i + 1) la lb.
+strCmpGo a b i la lb | charAt a i < charAt b i = 0 - 1.
+strCmpGo a b i la lb = 1.
 
 # the first match of p in s at or after `from` (a negative from is 0); -1 = none
 strIndexFrom : String -> String -> Int -> Int .
 strIndexFrom p s from = strIndexGo p s (case from < 0 of True -> 0 | False -> from) (strlen p) (strlen s).
 strIndexGo : unsafe String -> String -> Int -> Int -> Int -> Int .
-strIndexGo p s i lp ls = case lp == 0 of
-    True -> (case i <= ls of True -> i | False -> 0 - 1)
-  | False -> (case i + lp > ls of
-      True -> 0 - 1
-    | False -> (case strMatchAt p s i 0 lp of True -> i | False -> strIndexGo p s (i + 1) lp ls)).
-strMatchAt : unsafe String -> String -> Int -> Int -> Int -> Bool .
-strMatchAt p s i k lp = case k >= lp of
-    True -> True
-  | False -> (case charAt s (i + k) == charAt p k of True -> strMatchAt p s i (k + 1) lp | False -> False).
+strIndexGo p s i lp ls | lp == 0 = (case i <= ls of True -> i | False -> 0 - 1).
+strIndexGo p s i lp ls | i + lp > ls = 0 - 1.
+strIndexGo p s i lp ls | strMatchAt p s i 0 lp == lp = i.
+strIndexGo p s i lp ls = strIndexGo p s (i + 1) lp ls.
+# how many of p's characters match s's from i on (lp: all of them); an Int,
+# so no Bool crosses the call
+strMatchAt : unsafe String -> String -> Int -> Int -> Int -> Int .
+strMatchAt p s i k lp | k >= lp = k.
+strMatchAt p s i k lp | charAt s (i + k) == charAt p k = strMatchAt p s i (k + 1) lp.
+strMatchAt p s i k lp = k.
 strIndexOf : String -> String -> Int .
 strIndexOf p s = strIndexFrom p s 0.
 
