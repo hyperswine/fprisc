@@ -17,6 +17,17 @@ mapLoop : unsafe Int -> Int -> M.Tree Int Int -> Int.
 mapLoop n size tree = if n == 0 then M.fold (fn acc k v -> acc + v) 0 (M.Map Ord.int size tree) else
   (case M.insert (n % 128) n (M.Map Ord.int size tree) of
      M.Map _ k t -> mapLoop (n - 1) k t).
+# Keep every version: each shares its tail with the one before, so n steps
+# hold about 2n distinct cells while a tree walk of the state finds n*n/2.
+history : unsafe Int -> List Int -> List (List Int) -> Int.
+history n cur hs = if n == 0 then L.sum (L.map L.length hs) + L.length cur else
+  next = n :: cur; history (n - 1) next (next :: hs).
+# Walk an input built before the loop with a small changing window: the input
+# lives in the caller's pool, outlives the loop's region and is never copied.
+scan : unsafe List Int -> List Int -> Int.
+scan xs acc = case xs of
+    Nil -> L.sum acc
+  | x :: rest -> scan rest (L.take 4 (x :: acc)).
 steps count = n = parseInt count; if n < 0 then error "negative steps" else n.
 main = case Sys.args Unit of
     ["list",count] -> xs = L.range 0 1023;
@@ -25,4 +36,6 @@ main = case Sys.args Unit of
       print "{total updated} {total original}"
   | ["map",count] -> old = M.insert 999 1 M.ints;
       (case old of M.Map _ k t -> answer = mapLoop (steps count) k t; print "{answer} {M.fold (fn acc k v -> acc + v) 0 old}")
-  | _ -> error "expected list, tree or map and a nonnegative count".
+  | ["scan",count] -> print "{scan (L.range 1 (steps count)) Nil}"
+  | ["history",count] -> print "{history (steps count) Nil Nil}"
+  | _ -> error "expected list, tree, map, scan or history and a nonnegative count".
