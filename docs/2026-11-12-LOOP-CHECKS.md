@@ -15,7 +15,7 @@ first slice of the [fixed-cost proposal](2026-11-06-FIXED-COSTS-PROPOSAL.md)'s s
 | `strCmpGo` text | 247 instructions | 195 instructions |
 
 All app outputs are unchanged. The changes are AArch64-only, apart from the String guard, which is shared IR. `codegenRev`
-is now 215. It had not been bumped for this branch's earlier codegen changes either, and a stale unit cache hid this
+is now 216 (215 went to a concurrent send change on main). It had not been bumped for this branch's earlier codegen changes either, and a stale unit cache hid this
 round's effect until it was.
 
 ## The loop, per byte, before
