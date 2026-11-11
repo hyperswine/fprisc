@@ -273,7 +273,7 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
     isNil scope (CVar f)=S.notMember f scope && M.lookup f definitions==Just ([],nil)
     isNil _ e=e==nil
     twins=M.fromList ([(worker,body) | (_,worker,body)<-M.elems plans++M.elems starters] ++ M.elems cursors)
-    builders=spineBuilders resetting definitions
+    builders=spineBuildersWith linked resetting definitions
     fresh _ e | e==nil=True
     fresh scope (CLet x _ rest)=fresh (S.insert x scope) rest
     fresh scope e | Just (_,rest)<-consFields definitions scope e=fresh scope rest
@@ -286,6 +286,7 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
         _ -> privateSeed scope args (M.lookup f builders)
       (CVar f,args) | S.notMember f scope -> privateSeed scope args (M.lookup f linked)
       _ -> False
+    privateSeed _ args (Just (arity,i)) | i<0 = length args==arity
     privateSeed scope args (Just (arity,i)) = length args==arity && fresh scope (args!!i)
       && all (not . resets resetting scope) (drop (i+1) args)
     privateSeed _ _ Nothing=False
@@ -329,7 +330,44 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
 -- Only publish arity and the ownership-transferring seed slot. Callers
 -- still prove the seed fresh at the actual saturated call site.
 spineBuilders :: S.Set Name -> Prog -> M.Map Name (Int,Int)
-spineBuilders resetting definitions=M.mapMaybeWithKey summarize definitions
+spineBuilders = spineBuildersWith M.empty
+
+-- Builders publish their seed slot; a function every exit of which returns a
+-- fresh spine whatever its arguments publishes slot -1. Fresh exits are Nil, a
+-- cons onto a fresh spine, a call to a builder with a fresh seed, a call to
+-- another fresh-returning function (a greatest fixed point: tail calls and the
+-- region wrappers' inner and cold functions), and a call or loop region's
+-- leave around one (its result is copied out or adopted whole). List.reverse
+-- (revOnto seeded with Nil) is one; so is a builder that exits through it.
+spineBuildersWith :: M.Map Name (Int,Int) -> S.Set Name -> Prog -> M.Map Name (Int,Int)
+spineBuildersWith linked resetting definitions = M.union seeded unconditional
+  where
+    seeded=seededBuilders resetting definitions
+    candidates=M.keysSet (M.filterWithKey (\n (ps,b)->not (null ps) && n `notElem` ps && bounded 256 b) definitions)
+    fixed known=let next=S.filter (exitsFresh known) known in if next==known then known else fixed next
+    unconditional=M.fromSet (\n->(length (fst (definitions M.! n)),-1)) (fixed (candidates S.\\ M.keysSet seeded))
+    exitsFresh known n=let (ps,b)=definitions M.! n in exits known (S.fromList ps) b
+    exits known scope (CLet x _ rest)=exits known (S.insert x scope) rest
+    exits known scope (CIf _ a b)=exits known scope a && exits known scope b
+    exits known scope e=freshExpr known scope e
+    freshExpr known scope e
+      | e==CMk 2 0 []=True
+      | Just (_,rest)<-consFields definitions scope e=freshExpr known scope rest
+      | otherwise=case spine e of
+          (CVar f,[_,result]) | f `elem` [hookName CallLeave,hookName LoopLeave], S.notMember f scope,
+                                M.notMember f definitions -> freshExpr known scope result
+          (CVar f,args) | S.notMember f scope -> case M.lookup f definitions of
+            Just ([],CMk 2 0 []) -> null args
+            Just (ps,_) | length args==length ps ->
+              S.member f known || seedFresh (M.lookup f seeded) args
+            Just _ -> False
+            Nothing -> seedFresh (M.lookup f linked) args
+          _ -> False
+        where seedFresh (Just (arity,i)) args=length args==arity && (i<0 || freshExpr known scope (args!!i))
+              seedFresh Nothing _=False
+
+seededBuilders :: S.Set Name -> Prog -> M.Map Name (Int,Int)
+seededBuilders resetting definitions=M.mapMaybeWithKey summarize definitions
   where
     summarize n fn@(ps,_) = fmap ((,) (length ps)) (builderSlot n fn)
     -- A builder returns its private accumulator, or tail-calls itself
