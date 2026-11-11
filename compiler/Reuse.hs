@@ -108,7 +108,8 @@ consumeListSpines :: M.Map Name (Int,Int) -> Prog -> S.Set String -> S.Set Strin
 consumeListSpines linked definitions resetting excluded program = rewritten `M.union` M.restrictKeys twins used
   where
     nil = CMk 2 0 []
-    plan name (ps,CIf (CTagEq 2 tag (CVar xs)) a b) = do
+    plan True _ _ = Nothing
+    plan False name (ps,CIf (CTagEq 2 tag (CVar xs)) a b) = do
       let (empty,step) = if tag==0 then (a,b) else (b,a)
           worker = "$worker.spine."++name
           -- Keep the strict field reads in their original order.
@@ -144,7 +145,7 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
       let next=wrap (foldl CApp (CVar worker) (take acc args ++ [updated] ++ drop (acc+1) args))
       pure (src,worker,(ps,CIf (CTagEq 2 tag (CVar xs))
                     (if tag==0 then empty else next) (if tag==0 then next else empty)))
-    plan _ _=Nothing
+    plan _ _ _=Nothing
     peelFields xs scope fields (CLet k rhs@(CProj i (CVar p)) body)
       | p==xs, i==0 || i==1, S.notMember k scope = do
           (wrap,bindings,rest)<-peelFields xs (S.insert k scope) (M.insert k rhs fields) body
@@ -154,9 +155,9 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
     -- it allocates the output cell. Reuse that input, then perform the
     -- original cursor link and recur with the saved tail. Only this clone's
     -- initializer supplies the disjoint output prefix and unique remainder.
-    cursorPlan name (ps@[xs,root,cursor],CIf (CTagEq 2 0 (CVar tested)) done step)
+    cursorPlan em name (ps@[xs,root,cursor],CIf (CTagEq 2 0 (CVar tested)) done step)
       | tested==xs, "$worker.trmc." `isPrefixOf` name, returns root done = do
-          out<-cellStep ps xs step $ \scope tailRef cell rest ->case rest of
+          out<-cellStep em ps xs step $ \scope tailRef cell rest ->case rest of
             CLet k (CApp (CApp (CVar "$trmc.setTail") (CVar dst)) (CVar src)) call
               | dst==cursor,src==cell,S.notMember k scope,
                 spine call==(CVar name,[tailRef,CVar root,CVar cell]) ->
@@ -165,32 +166,61 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
             _ -> Nothing
           if worker `M.member` definitions || rebinds worker step || worker `elem` ps then Nothing
             else Just (worker,(ps,CIf (CTagEq 2 0 (CVar xs)) done out))
-      where worker="$worker.spine.cursor."++name
-    cursorPlan _ _=Nothing
+      where worker=spinePrefix em++"cursor."++name
+    cursorPlan _ _ _=Nothing
     returns root (CVar x)=x==root
     returns root (CLet k (CApp (CVar f) (CInt 0)) rest)=f==entryTickName && k/=root && returns root rest
     returns _ _=False
-    cursors=M.mapMaybeWithKey cursorPlan program
-    cellStep ps xs step finish=do
+    cursors em=M.mapMaybeWithKey (cursorPlan em) program
+    cellStep em ps xs step finish=do
       (wrap,fields,body)<-peelFields xs (S.fromList ps) M.empty step
       [tailName]<-pure [k | (k,CProj 1 _)<-M.toList fields]
       let initial=S.fromList ps `S.union` M.keysSet fields
           -- An element computation may read the projected head, never the
           -- cursor, list or tail. Preserve every evaluation and fuel tick.
           allowed scope e=not (resets resetting scope e || any (\x->mentions x e) (tailName:ps))
-          allocation scope (CLet k rhs rest) | k `S.notMember` scope,allowed scope rhs =
+          -- element reuse (the spineE family only): the list's elements are
+          -- unique, so the old element may become the new one when the element
+          -- is a same-layout constructor whose fields read it; otherwise the
+          -- element must be fresh or the old one moved, so the output stays
+          -- element-fresh, or the plan is refused
+          heads=[k | (k,CProj 0 _)<-M.toList fields]
+          element rest v=case v of
+            _ | not em -> Just v
+            CVar k | k `elem` heads -> Just v -- the old element, moved
+            _ | [h]<-heads, not (mentions h rest), Just v'<-reuseElement h v -> Just v'
+            _ | freshHead v -> Just v
+            _ -> Nothing
+          -- in the spineE family any other computation may read the old
+          -- element only by projection or layout test, never keep it
+          keepsNoHead e=not em || all (\h->readsOnly h 64 e) heads
+          allocation scope (CLet k rhs rest) | k `S.notMember` scope,allowed scope rhs,
+            em, cellHead rest==Just (CVar k), occurrences k rest==1 = do
+              rhs'<-element rest rhs
+              CLet k rhs' <$> allocation (S.insert k scope) rest
+          allocation scope (CLet k rhs rest) | k `S.notMember` scope,allowed scope rhs,keepsNoHead rhs =
             CLet k rhs <$> allocation (S.insert k scope) rest
-          allocation scope value@(CMk 2 1 [v,end]) | allowed scope v,isNil scope end =
-            Just (CApp (CApp (CVar "$reuse.fresh") (CVar xs)) value)
+          allocation scope (CMk 2 1 [v,end]) | allowed scope v,isNil scope end = do
+            v'<-if em then (case v of CVar _ -> Just v; _ -> element (CMk 2 0 []) v) else Just v
+            Just (CApp (CApp (CVar "$reuse.fresh") (CVar xs)) (CMk 2 1 [v',end]))
           allocation _ _=Nothing
+          cellHead (CLet _ _ r)=cellHead r
+          cellHead (CMk 2 1 [v,_])=Just v
+          cellHead _=Nothing
           go scope (CLet k value rest) | S.notMember k scope =
             case allocation scope value of
-              Just reused -> CLet k reused <$> finish (S.insert k scope) (CVar tailName) k rest
-              Nothing | allowed scope value -> CLet k value <$> go (S.insert k scope) rest
+              Just reused | not em || all (\h->not (mentions h rest)) heads -> CLet k reused <$> finish (S.insert k scope) (CVar tailName) k rest
+              Just _ -> Nothing
+              -- in the spineE family an element bound before the cell is not
+              -- checked for freshness: refuse rather than guess
+              Nothing | allowed scope value, keepsNoHead value, not (em && isElementLet k rest) -> CLet k value <$> go (S.insert k scope) rest
               _ -> Nothing
           go _ _=Nothing
+          isElementLet k rest=case [c | c<-nodes rest, Just (CVar v)<-[cellHead c], v==k] of
+            [] -> False
+            _ -> True
       wrap <$> go initial body
-    startPlan name (ps@[xs,seed],CIf (CTagEq 2 0 (CVar tested)) empty step)
+    startPlan em name (ps@[xs,seed],CIf (CTagEq 2 0 (CVar tested)) empty step)
       | xs==tested, worker `M.notMember` definitions, worker `notElem` ps = do
           let scope=S.fromList ps
               -- The private entry is selected only with an empty accumulator.
@@ -201,27 +231,27 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
               endsNil local (CLet k (CApp (CVar f) (CInt 0)) b)=f==entryTickName && S.notMember f local && k/=seed && endsNil (S.insert k local) b
               endsNil local e=isNil local e || e==CVar seed
           if not (endsNil scope emptyBranch) then Nothing else pure ()
-          out<-cellStep ps xs (pick step) $ \locals tailRef cell rest ->case spine rest of
-            (CVar f,args) | args==[tailRef,CVar cell,CVar cell], Just (w,_)<-M.lookup f cursors,
+          out<-cellStep em ps xs (pick step) $ \locals tailRef cell rest ->case spine rest of
+            (CVar f,args) | args==[tailRef,CVar cell,CVar cell], Just (w,_)<-M.lookup f (cursors em),
                             f `S.notMember` locals,w `S.notMember` locals ->
               Just (foldl CApp (CVar w) args)
             _ -> Nothing
           pure (0,worker,(ps,CIf (CTagEq 2 0 (CVar xs)) emptyBranch out))
-      where worker="$worker.spine.map."++name
-    startPlan _ _=Nothing
-    starters=M.mapMaybeWithKey startPlan program
-    traversals=M.mapMaybeWithKey plan program
-    loops=M.mapMaybeWithKey loopPlan program
-    plans=M.unions [traversals,loops,M.mapMaybeWithKey regionEntry program]
+      where worker=spinePrefix em++"map."++name
+    startPlan _ _ _=Nothing
+    starters em=M.mapMaybeWithKey (startPlan em) program
+    traversals em=M.mapMaybeWithKey (plan em) program
+    loops em=M.mapMaybeWithKey (loopPlan em) program
+    plans em=M.unions [traversals em,loops em,M.mapMaybeWithKey (regionEntry em) program]
     -- The borrowing entry owns the region lifecycle. Its consuming twin
     -- enters the same scope and changes only the destination of the inner
     -- call. The cold edge in that inner loop calls the ordinary cycle.
-    regionEntry name (ps,body)=do
+    regionEntry em name (ps,body)=do
       CLet seqId open (CLet markId mark (CApp (CApp (CVar leave) token) call))<-Just body
       let (callee,args)=spine call
-          worker="$worker.spine.region."++name
+          worker=spinePrefix em++"region."++name
       CVar inner<-Just callee
-      (i,target,(params,_))<-M.lookup inner loops
+      (i,target,(params,_))<-M.lookup inner (loops em)
       if open/=CApp (CVar (hookName SequenceNumber)) (CInt 0) ||
          mark/=CApp (CVar (hookName PoolMark)) (CInt 0) ||
          leave/=hookName LoopLeave || token/=CVar seqId ||
@@ -238,14 +268,14 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
     -- borrowing. A terminal arm can hand the list back to arbitrary code.
     -- linear in the body; a region's inner loop carries its room test and
     -- its exit path, so it is often past the 256 the other plans use
-    loopPlan name (ps,body)
+    loopPlan em name (ps,body)
       | name `elem` ps || name `S.member` excluded || not (bounded 2048 body) = Nothing
       | otherwise=listToMaybe [ (i,worker,(ps,out)) | (i,x)<-zip [0..] ps,
           worker `M.notMember` definitions, not (rebinds worker body), worker `notElem` ps,
           not (rebinds x body || rebinds name body),
           Just (True,out)<-[branch i x (S.fromList ps) body]]
       where
-        worker="$worker.spine.loop."++name
+        worker=spinePrefix em++"loop."++name
         safe x scope e=not (mentions x e || resets resetting scope e)
         branch i x scope (CLet k rhs rest) | safe x scope rhs = do
           (changed,out)<-branch i x (S.insert k scope) rest
@@ -263,7 +293,7 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
             M.member f definitions,length args==length ps =
               let marked=init args++[mutating (last args)]
                   consumes=args!!i==CVar x && all (safe x scope) (take i args++drop (i+1) args)
-              in Just (False,foldl CApp (CVar (if consumes then cycleTwinName name else f)) marked)
+              in Just (False,foldl CApp (CVar (if consumes then cycleTwinName em name else f)) marked)
           | not (mentions name e)=Just (False,e)
           | (CVar f,args)<-spine e,f==name,length args==length ps,
             all (safe x scope) (take i args++drop (i+1) args) = do
@@ -277,7 +307,7 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
           (CVar f,[token,result]) | f==hookName CallLeave, S.notMember f scope,
             M.notMember f definitions, safe x scope token ->
               CApp (CApp (CVar f) token) <$> transfer x scope nulls result
-          (CVar f,[source,seed]) | source==CVar x, Just (0,w,([_,_],_))<-M.lookup f (M.union traversals starters),
+          (CVar f,[source,seed]) | source==CVar x, Just (0,w,([_,_],_))<-M.lookup f (M.union (traversals em) (starters em)),
             S.notMember f scope,S.notMember w scope,isNil scope seed || (case seed of CVar k->S.member k nulls;_->False) ->
               Just (CApp (CApp (CVar w) source) seed)
           _ -> Nothing
@@ -286,17 +316,114 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
     -- the cold edge of a consuming region loop: the ordinary cycle (copy out,
     -- reset) re-entering the consuming inner loop. After a cycle the state is
     -- the loop's alone: a fresh copy, or its own cells when the copy deferred.
-    cycleTwins=M.fromList [(cycleTwinName inner,(cps,renameHead inner worker cbody)) |
-      (inner,(_,worker,_))<-M.toList loops, Just cyc<-[cycleOf inner],
-      Just (cps,cbody)<-[M.lookup cyc definitions], M.notMember (cycleTwinName inner) definitions]
+    cycleTwins em=M.fromList [(cycleTwinName em inner,(cps,renameHead inner worker cbody)) |
+      (inner,(_,worker,_))<-M.toList (loops em), Just cyc<-[cycleOf inner],
+      Just (cps,cbody)<-[M.lookup cyc definitions], M.notMember (cycleTwinName em inner) definitions]
     renameHead from to e=case e of
       CVar v | v==from->CVar to
       CLet k a b->CLet k (renameHead from to a) (renameHead from to b)
       CApp f a->CApp (renameHead from to f) (renameHead from to a)
       CIf c a b->CIf (renameHead from to c) (renameHead from to a) (renameHead from to b)
       _->e
-    twins=M.fromList ([(worker,body) | (_,worker,body)<-M.elems plans++M.elems starters] ++ M.elems cursors) `M.union` cycleTwins
+    twinsOf em=M.fromList ([(worker,body) | (_,worker,body)<-M.elems (plans em)++M.elems (starters em)] ++ M.elems (cursors em)) `M.union` cycleTwins em
+    twins=twinsOf False `M.union` twinsOf True
     builders=spineBuildersWith linked resetting definitions
+    -- Element freshness: every element of the spine is stored in that spine
+    -- only (a fresh constructor, or an element moved out of a unique spine).
+    -- A summary is the set of argument slots whose spines must have fresh
+    -- elements for the result's to be; a greatest fixed point, like the
+    -- fresh results. Only the spineE family relies on it.
+    efSummaries=efFixedM True (M.fromSet (const S.empty) efCandidates)
+    -- spine freshness by the same walk, elements ignored: a seeded builder
+    -- behind a copy-out region wrapper is fresh when its seed is
+    fsSummaries=efFixedM False (M.fromSet (const S.empty) efCandidates)
+    efCandidates=M.keysSet (M.filterWithKey (\n (ps,b)->not (null ps) && n `notElem` ps && bounded 4096 b) definitions)
+    efFixedM hm cur=let next=M.fromList [(n,r) | n<-M.keys cur, Just r<-[efFunctionM hm cur n]]
+                    in if next==cur then cur else efFixedM hm next
+    efFunctionM hm cur n=let (ps,b)=definitions M.! n in efExitsM hm cur ps b M.empty b
+    efExitsM hm cur ps body env e=case e of
+      CLet x rhs rest
+        | Just _<-efTrmcStart hm ps body env x rhs rest -> Just S.empty
+        | otherwise -> efExitsM hm cur ps body (M.insert x rhs env) rest
+      CIf _ a b -> S.union <$> efExitsM hm cur ps body env a <*> efExitsM hm cur ps body env b
+      _ -> efExprM hm cur ps body env e
+    -- a TRMC builder's first step: a cell with a fresh element becomes the
+    -- root and cursor of a worker that only ever stores fresh elements
+    efTrmcStart hm _ body env x rhs rest=do
+      (CVar w,args@(_:_:_))<-Just (spine rest)
+      if "$worker.trmc." `isPrefixOf` w && drop (length args-2) args==[CVar x,CVar x]
+         && not (any (mentions x) (take (length args-2) args)) && freshCell rhs
+         && (not hm || (efCellHead body env rhs && efWorker w)) then Just () else Nothing
+    efCellHead body env rhs=case cellHead' rhs of
+      Just h -> freshHeadIn body (M.union (bindings rhs) env) h
+      Nothing -> False
+    cellHead' (CLet _ _ r)=cellHead' r
+    cellHead' (CMk 2 1 [v,_])=Just v
+    cellHead' _=Nothing
+    freshHeadIn body env h=freshHead h || case h of
+      CVar k | Just rhs<-M.lookup k env -> freshHead rhs && occurrences k body==1
+      _ -> False
+    efWorker w=case M.lookup w definitions of
+      Just (_,b) -> and [freshHeadIn b (bindings b) h | CMk 2 1 [h,_]<-nodes b]
+      Nothing -> False
+    bindings b=M.fromList [(k,rhs) | CLet k rhs _<-nodes b]
+    efExpr=efExprM True
+    efExprM hm cur ps body env e
+      | isNil S.empty e = Just S.empty
+      | Just i<-param e = Just (S.singleton i)
+      -- a cell's element may never reach the spine behind it (a builder
+      -- storing its accumulator in a payload keeps those cells alive)
+      | Just (h,t)<-consFields definitions (S.fromList ps) e =
+          if any (\v->mentions v h) (S.toList (reach (S.fromList [y | CVar y<-nodes t]))) then Nothing
+          else S.union <$> (if hm then efHead h else Just S.empty) <*> efExprM hm cur ps body env t
+      | otherwise=case spine e of
+          (CVar f,[_,result]) | f `elem` [hookName CallLeave,hookName LoopLeave], M.notMember f definitions ->
+            efExprM hm cur ps body env result
+          (CVar f,args) | Just need<-M.lookup f cur, Just (fps,_)<-M.lookup f definitions, length args==length fps ->
+            S.unions <$> mapM (\j->efExprM hm cur ps body env (args!!j)) (S.toList need)
+          (CVar f,args) | M.notMember f definitions, Just (arity,need)<-stdMovers hm f, length args==arity ->
+            S.unions <$> mapM (\j->efExprM hm cur ps body env (args!!j)) need
+          _ -> case e of
+            CLet x rhs rest -> efExprM hm cur ps body (M.insert x rhs env) rest
+            -- a region cycle's packed state, read back: the copy is fresh, a
+            -- deferral hands the same state back
+            CVar k | Just rhs<-M.lookup k env, Just c<-cycled rhs Nothing -> efExprM hm cur ps body env c
+            CProj j (CVar k) | Just rhs<-M.lookup k env, Just c<-cycled rhs (Just j) -> efExprM hm cur ps body env c
+            _ -> Nothing
+      where
+        cycled rhs slot=case (spine rhs,slot) of
+          ((CVar c,[_,packed]),Nothing) | c==hookName Cycle -> Just packed
+          ((CVar c,[_,CMk _ _ comps]),Just j) | c==hookName Cycle, j<length comps -> Just (comps!!j)
+          _ -> Nothing
+        -- the variables a tail depends on, through the bindings in scope
+        reach known=let next=S.unions (known:[S.fromList [y | CVar y<-nodes rhs] | k<-S.toList known, Just rhs<-[M.lookup k env]])
+                    in if next==known then known else reach next
+        -- a parameter, or the tail of a parameter's cell
+        param (CVar p) | Just i<-lookup p (zip ps [0..])=Just i
+        param (CVar k) | Just rhs<-M.lookup k env, Just c<-cycled rhs Nothing=param c
+        param (CProj j (CVar k)) | Just rhs<-M.lookup k env, Just c<-cycled rhs (Just j)=param c
+        param (CVar k) | Just rhs<-M.lookup k env=param rhs
+        param (CProj 1 (CVar p)) | Just i<-lookup p (zip ps [0..])=Just i
+        param _=Nothing
+        -- an element: fresh, or moved out of a parameter's cell once
+        efHead h | freshHeadIn body env h=Just S.empty
+        efHead (CVar k) | Just (CProj 0 (CVar p))<-M.lookup k env, Just i<-lookup p (zip ps [0..]),
+                          occurrences k body==1=Just (S.singleton i)
+        efHead _=Nothing
+    -- std/list's revOnto moves every element of its first argument onto its
+    -- second, and reverse is revOnto onto Nil: their results' elements are
+    -- fresh when their arguments' are. Their bodies live in another unit, so
+    -- the linked builder table vouches for them (revOnto seeds slot 1,
+    -- reverse is a fresh-returning wrapper).
+    -- (spine only: revOnto's new cells are fresh, its tail is the second
+    -- argument's spine; reverse's are all new)
+    stdMovers hm f
+      | "revOnto@" `isPrefixOf` f, M.lookup f linked==Just (2,1) = Just (2,if hm then [0,1] else [1])
+      | "reverse@" `isPrefixOf` f, M.lookup f linked==Just (1,-1) = Just (1,if hm then [0] else [])
+      | otherwise=Nothing
+    elementsFresh scope e=efExpr efSummaries [] (CVar "$no.body") M.empty (stripLets e)==Just S.empty
+    stripLets (CLet _ _ r)=stripLets r
+    stripLets e=e
     fresh _ e | e==nil=True
     fresh scope (CLet x _ rest)=fresh (S.insert x scope) rest
     fresh scope e | Just (_,rest)<-consFields definitions scope e=fresh scope rest
@@ -313,12 +440,15 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
     privateSeed scope args (Just (arity,i)) = length args==arity && fresh scope (args!!i)
       && all (not . resets resetting scope) (drop (i+1) args)
     privateSeed _ _ Nothing=False
+    -- a function whose spine summary the call's arguments meet (a seeded
+    -- builder behind a region wrapper, a map entry)
+    summaryFresh scope e=efExprM False fsSummaries [] (CVar "$no.body") M.empty (stripLets e)==Just S.empty
     -- Move ownership of a let-bound spine along one executed path. Any
     -- sibling use (including a projection of the tail) defeats transfer.
     lastUse x scope expr=case spine expr of
       (CVar f,[token,result]) | f==hookName CallLeave, S.notMember f scope,
         M.notMember f definitions, independent token -> CApp (CApp (CVar f) token) (descend result)
-      (CVar f,args) | Just (i,w,(ps,_))<-M.lookup f plans,
+      (CVar f,args) | Just (i,w,(ps,_))<-M.lookup f (plans False),
         f `S.notMember` scope,w `S.notMember` scope,length args==length ps,
         args!!i==CVar x,all independent (take i args++drop (i+1) args) ->
           foldl CApp (CVar w) args
@@ -332,8 +462,11 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
       where independent e=not (mentions x e || resets resetting scope e)
             descend=lastUse x scope
     rewriteCall scope e=case spine e of
-      (CVar f,args) | Just (i,w,(ps,_))<-M.lookup f plans, f `S.notMember` scope,
-        w `S.notMember` scope, length args==length ps, fresh scope (args!!i),
+      (CVar f,args) | Just (i,w,(ps,_))<-M.lookup f (plans True), f `S.notMember` scope,
+        w `S.notMember` scope, length args==length ps, fresh scope (args!!i) || summaryFresh scope (args!!i), elementsFresh scope (args!!i),
+        all (not . resets resetting scope) (drop (i+1) args) -> foldl CApp (CVar w) args
+      (CVar f,args) | Just (i,w,(ps,_))<-M.lookup f (plans False), f `S.notMember` scope,
+        w `S.notMember` scope, length args==length ps, fresh scope (args!!i) || summaryFresh scope (args!!i),
         all (not . resets resetting scope) (drop (i+1) args) -> foldl CApp (CVar w) args
       _->case e of
         CLet x a b->let local=S.insert x scope
@@ -398,12 +531,71 @@ spineBuildersWith linked resetting definitions = M.union seeded unconditional
         where seedFresh (Just (arity,i)) args=length args==arity && (i<0 || freshExpr known scope (args!!i))
               seedFresh Nothing _=False
 
+-- the element-reusing rewrite: the value-producing constructor at e's tail
+-- (through lets that only bind and return it, and ticks) is built over h when
+-- h has the same layout, and allocated otherwise. The fields are bound first
+-- (every read of h happens before the store), and the layout test reads h's
+-- header: some field projects h, so h is a constructor. The old element is
+-- unique (the spineE family's invariant), so nothing else sees the write.
+reuseElement :: String -> Core -> Maybe Core
+reuseElement h whole
+  | any projects (nodes whole), Just (out,True)<-go whole = Just out
+  | otherwise = Nothing
+  where
+    -- (rewritten, whether some exit now builds over h); every exit is either
+    -- a rewritten constructor or a trap
+    go e=case e of
+      CLet y a b | returnsVar y b, Just (a',r)<-go a -> Just (CLet y a' b,r)
+      -- a binding before the constructor runs before the store: it may read
+      -- h by projection, never keep it
+      CLet y a b | y/=h, readsOnly h 64 a, Just (b',r)<-go b -> Just (CLet y a b',r)
+      CIf c a b | readsOnly h 64 c, Just (a',ra)<-go a, Just (b',rb)<-go b -> Just (CIf c a' b',ra || rb)
+      CErr _ -> Just (e,False)
+      CMk t v fs | t/=2, not (null fs), length fs<=64, all (readsOnly h (length fs)) fs,
+        all (\x->not (mentions x e)) (names fs) ->
+          Just (foldr (\(x,f) b->CLet x f b)
+                  (CIf (CTagEq t v (CVar h))
+                       (CApp (CApp (CVar "$reuse.fresh") (CVar h)) (CMk t v (map CVar (names fs))))
+                       (CMk t v (map CVar (names fs))))
+                  (zip (names fs) fs),True)
+      _ -> Nothing
+    names fs=["$elem."++h++"."++show i | i<-[0..length fs-1]]
+    -- some read of a field of h in the element computation: h is a
+    -- constructor, so the layout test may read its header
+    projects n=case n of
+      CProj _ (CVar y) -> y==h
+      _ -> False
+    returnsVar y (CVar z)=y==z
+    returnsVar y (CLet k (CApp (CVar f) (CInt 0)) b)=f==entryTickName && k/=y && returnsVar y b
+    returnsVar _ _=False
+-- a freshly constructed (non-list) value: a constructor in every exit, seen
+-- through lets that bind it and return it past fuel ticks
+freshHead :: Core -> Bool
+freshHead e=case e of
+  CMk t _ fs -> t/=2 && not (null fs)
+  CLet y a b | returnsVar b -> freshHead a
+             | otherwise -> freshHead b
+    where returnsVar (CVar z)=z==y
+          returnsVar (CLet k (CApp (CVar f) (CInt 0)) r)=f==entryTickName && k/=y && returnsVar r
+          returnsVar _=False
+  CIf _ a b -> freshHead a && freshHead b
+  CErr _ -> True
+  CApp (CApp (CVar "$reuse.fresh") (CVar _)) c -> freshHead c
+  _ -> False
+occurrences :: String -> Core -> Int
+occurrences x e=length [() | CVar y<-nodes e, y==x]
+
 -- ReceiveTurns' region loop names: the inner loop and its cold cycle
 cycleOf :: Name -> Maybe Name
 cycleOf n | "$loop.in." `isPrefixOf` n=Just ("$loop.cycle."++drop (length "$loop.in.") n)
 cycleOf _=Nothing
-cycleTwinName :: Name -> Name
-cycleTwinName inner="$worker.spine.cycle."++inner
+cycleTwinName :: Bool -> Name -> Name
+cycleTwinName em inner=spinePrefix em++"cycle."++inner
+-- the twin families: spine reuse, and spine plus element reuse (used only on
+-- a list whose elements are fresh too)
+spinePrefix :: Bool -> String
+spinePrefix False="$worker.spine."
+spinePrefix True="$worker.spineE."
 -- runtime.c REGION_MUT_BIT: the region's loop overwrites its state in place
 regionMutBit :: Integer
 regionMutBit=2^(58::Int)

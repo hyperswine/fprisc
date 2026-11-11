@@ -48,6 +48,21 @@ nudge : List Pt -> List Pt.
 nudge xs = L.map (fn p -> {a = p.a + 1, b = p.b + 2}) xs.
 records : unsafe Int -> List Pt -> Int.
 records n xs = if n <= 0 then L.sum (L.map (fn p -> p.a + p.b) xs) else records (n - 1) (nudge xs).
+# Element reuse (the spineE family): a list whose elements are fresh, from a
+# builder, is consumed in place, records included, while tuple scratch makes
+# copy-out cycle. Then the two lists element reuse must refuse: one record
+# stored twice, and a record still used after the loop. Overwriting either in
+# place would change the answers below.
+mkPts : unsafe Int -> List Pt -> List Pt.
+mkPts n acc = if n <= 0 then acc else mkPts (n - 1) ({a = n, b = 0} :: acc).
+swing : Int -> (Int, Int).
+swing a = if a > 1000000 then (0, 1) else (a + 1, 2).
+stepPts : List Pt -> List Pt.
+stepPts xs = L.map (fn p -> (x, d) = swing p.a; {a = x, b = p.b + d}) xs.
+elements : unsafe Int -> List Pt -> Int.
+elements n xs = if n <= 0 then L.sum (L.map (fn p -> p.a + p.b) xs) else elements (n - 1) (stepPts xs).
+twice : unsafe Int -> Pt -> List Pt -> List Pt.
+twice n r acc = if n <= 0 then acc else twice (n - 1) r (r :: r :: acc).
 steps count = n = parseInt count; if n < 0 then error "negative steps" else n.
 main = case Sys.args Unit of
     ["list",count] -> xs = L.range 0 1023;
@@ -58,6 +73,9 @@ main = case Sys.args Unit of
       (case old of M.Map _ k t -> answer = mapLoop (steps count) k t; print "{answer} {M.fold (fn acc k v -> acc + v) 0 old}")
   | ["scan",count] -> print "{scan (L.range 1 (steps count)) Nil}"
   | ["records",count] -> print "{records (steps count) (L.map (fn i -> {a = i, b = 0}) (L.range 0 19999))}"
+  | ["elements",count] -> print "{elements (steps count) (mkPts 20000 Nil)}"
+  | ["shared",count] -> r = {a = 5, b = 0}; print "{elements (steps count) (twice 1000 r Nil)}"
+  | ["kept",count] -> r = {a = 7, b = 0}; total = elements (steps count) (r :: mkPts 999 Nil); print "{total} {r.a} {r.b}"
   | ["drain",count] -> print "{drain (L.range 1 (steps count)) 0}"
   | ["history",count] -> print "{history (steps count) Nil Nil}"
-  | _ -> error "expected list, tree, map, scan, drain, records or history and a nonnegative count".
+  | _ -> error "expected list, tree, map, scan, drain, records, elements, shared, kept or history and a nonnegative count".

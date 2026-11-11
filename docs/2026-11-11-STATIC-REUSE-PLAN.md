@@ -131,3 +131,54 @@ What remains:
   a step (the record, and `bounce`'s two tuples, which unboxed pair returns would remove).
 - **Increment 5: consuming `Map` updates.**
 - **format's variance.**
+
+## Increment 4: element reuse (later on 11 November)
+
+sim now makes 80.1M allocation requests, its two `bounce` tuples per
+particle-step, against 160.1M with `FPR_NO_REUSE=1`. Instructions: 13.7 G against
+33.1 G (-59%). Peak RSS is 129 MB, against 81 MB with spine reuse only, because copies are rarer once only tuple
+garbage is left, so the arena grows further between them. The sim ceiling is raised to 195 MB for that reason.
+`mainbug` (a builder of records into a map loop) makes 40,020 requests in all,
+the initial list only, against 120M. Its instructions are 3.6 G against 17.5 G.
+
+### How it stays sound
+
+- **Two twin families.** `$worker.spine.*` reuses cells. `$worker.spineE.*`
+  reuses cells and elements. A call site picks spineE only when the list is spine-fresh and
+  element-fresh: every element is stored in that spine only.
+- **Element freshness** is a parameter-dependent summary (a greatest fixed point). Each function
+  gets the set of argument slots whose spines must have fresh elements for its result's to be. The leaves are:
+  - Nil, and the tail of a parameter's cell;
+  - a cons whose element is a fresh constructor (seen through `let r = ... in r` and ticks), or an element moved once out of a parameter's cell;
+  - calls through summaries;
+  - region leaves, and a region cycle's packed state (a copy is fresh, a deferral is the same state);
+  - a TRMC builder's first step, when its worker only stores fresh constructors;
+  - std's `revOnto` and `reverse`, vouched for by the linked builder table.
+- **Spine freshness** uses the same walk with elements ignored. This is what admits a
+  seeded builder behind a copy-out region wrapper.
+- **An element never reaches the spine behind it.** A cell whose element mentions any variable its tail depends on (through
+  `let`s and parameters) refuses, as with `seed :: seed`. `ReuseCheck` caught that hole in the first version.
+- **The spineE cell step.** The element computation's value-producing constructor is rewritten
+  to bind its fields, test the old element's (tag, variant), and then build over it, or
+  allocate when the layout differs.
+  - The test reads the header. Some read of a field of the old element proves it is a constructor.
+  - Every other binding in the step may read the old element only by projection or layout test.
+  - The element may be the old one moved, a fresh constructor, or the rewrite. Anything else refuses the
+    plan, so spineE's outputs stay element-fresh.
+
+### Tests
+
+`persistent_aliases` (in `check_persistent_reclamation`, with reuse on) gains three cases:
+- `elements`: element reuse with copy-out cycling. The answer is checked, and requests must be under 70M (they were 120M without element reuse).
+- `shared`: one record stored twice. Requests stay above 150,000 (no element reuse), and the answer is checked.
+- `kept`: a record still used after the loop is unchanged.
+
+`check_reuse` (with `ReuseCheck`), `check_consuming_reuse`, `check_state_generations`,
+`check_digest_vectors` and `check_compiler_options` pass. The app ceilings pass.
+
+### Still open
+
+- **h-style initial lists.** A `List.map` over `List.range` in `main` gets a copy-out region whose inner loop is not
+  yet summarised, so element reuse starts one iteration later. Spine reuse still applies.
+- **The tuples.** Unboxed pair returns would remove sim's two remaining allocations.
+- **Increment 5:** consuming `Map` updates.

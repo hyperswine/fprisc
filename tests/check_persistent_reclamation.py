@@ -24,7 +24,10 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
                                ("history", ["history", "20000"], "200030000"),
                                ("scan", ["scan", "1000000"], "3999994"),
                                ("drain", ["drain", "200000"], "2100000"),
-                               ("records", ["records", "3000"], "379990000")):
+                               ("records", ["records", "3000"], "379990000"),
+                               ("elements", ["elements", "3000"], "380010000"),
+                               ("shared", ["shared", "50"], "310000"),
+                               ("kept", ["kept", "50"], "649507 7 0")):
         # copy-out is automatic for every pure loop; FPR_PERSISTENT_LOOP names one,
         # FPR_NO_PERSISTENT_COPY_OUT=1 turns it off; the cache follows each
         for selected, rollback in ((False, False), (True, False), (False, True), (False, False)):
@@ -33,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
             # Consuming reuse makes most of these loops allocation-free, which
             # leaves copy-out nothing to do; measure copy-out without it. The
             # records case is reuse and copy-out together (the mutating region).
-            if loop != "records":
+            if loop not in ("records", "elements", "shared", "kept"):
                 mode["FPR_NO_REUSE"] = "1"
             if rollback:
                 mode["FPR_NO_PERSISTENT_COPY_OUT"] = "1"
@@ -43,7 +46,22 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
             p = run([exe, *args], mode)
             assert p.stdout.strip() == answer, (args, p.stdout)
             copies = int(re.search(r'"state_copies":(\d+)', p.stderr)[1])
+            requests = int(re.search(r'"alloc_requests":(\d+)', p.stderr)[1])
+            if loop == "kept":
+                # no scratch: nothing for copy-out to do; the answer and the
+                # untouched record are the check
+                assert "7 0" in p.stdout, p.stdout
+                continue
+            if loop == "shared":
+                # one record stored twice: element reuse must not fire (the
+                # records are allocated each step), and the answer above holds
+                assert requests > 150000, (loop, requests)
+                continue
             assert (copies > 0) == enabled, (loop, enabled, copies)
+            if loop == "elements":
+                # records reused in place: one allocation a step (the tuple),
+                # not two (it was 120M without element reuse)
+                assert requests < 70_000_000, (loop, requests)
             if loop == "history" and enabled:
                 # the versions share their tails: copy-out copies distinct cells
                 # (about 2n), not the n*n/2 a tree walk finds (4.2 GB unshared)
