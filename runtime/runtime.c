@@ -2014,6 +2014,7 @@ struct fpr_scope {
    * last copy produced, and the arena's bump gauge when it was taken */
   uw live_bytes, alloc_mark;
   int receive; /* opened at a receive loop's entry (g_region_open) */
+  int mutating; /* its loop runs a consuming twin (REGION_MUT_BIT): see transfer_copy_in */
   int declined; uw declined_bytes; /* transfer_copy_in found too much would survive */
   uw retry_at; /* after a declined copy: the arena gauge to reach before the next try */
   uw decline_run; /* declines since the last copy: each waits twice as long */
@@ -2030,7 +2031,7 @@ static struct fpr_scope **scope_push(struct fpr_scope *scope) {
   scope->spare = 0;
   scope->state_slab = scope->next_slab = 0;
   scope->generations = 0; scope->immutable_state = scope->preserve_state = 0;
-  scope->live_bytes = scope->alloc_mark = 0; scope->receive = 0; scope->declined = 0; scope->declined_bytes = 0; scope->retry_at = 0; scope->decline_run = 0;
+  scope->live_bytes = scope->alloc_mark = 0; scope->receive = 0; scope->mutating = 0; scope->declined = 0; scope->declined_bytes = 0; scope->retry_at = 0; scope->decline_run = 0;
   scope->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
   scope->seq = 0;
   scope->prev_override = 0;
@@ -2075,7 +2076,7 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
   fpr_hart_t *h = fpr_hart();
   uw pid = fpr_current_pid();
   fpr_slab_t *retain = scope->state_slab;
-  if (FPR_STATE_GENERATIONS <= 1 || !scope->immutable_state ||
+  if (FPR_STATE_GENERATIONS <= 1 || !scope->immutable_state || scope->mutating ||
       scope->generations >= FPR_STATE_GENERATIONS ||
       (retain && __atomic_load_n(&retain->promoted, __ATOMIC_ACQUIRE))) retain = 0;
   if (h) { h->copy_pid = pid; h->copy_movevec = (uw)movevec; }
@@ -2236,6 +2237,13 @@ static void scope_release(struct fpr_scope *scope) {
  * are no regions at all: the plane predates them, and the program runs as it
  * did before stage 2 -- correct, without the reclamation. */
 #define REGION_MASK (((uw)1 << (sizeof(uw) * 8 - 3)) - 1) /* fits a tagged Int */
+/* A consuming twin (Reuse.hs regionEntry) adds this bit to its region's
+ * sequence number. Its loop overwrites state cells in place, which can make a
+ * cell outside the region, or one retained in the state slab, point into the
+ * arena; immutable data only points at older data. So a mutating region's
+ * copy-out descends everything it reaches: no outside rule, no retained
+ * generations. Sequence numbers never reach this bit. */
+#define REGION_MUT_BIT ((uw)1 << 58)
 static uw region_opens, region_cycles, region_call_opens, pend_grows, region_deferrals, region_declines;
 #ifndef FPR_REGION_SURVIVAL
 #define FPR_REGION_SURVIVAL 16 /* copy only when at most 1/this of the arena survives: a steady state copies at about 16x live (at most ~9% more work on the app suite), a builder (all of it survives) never */
@@ -2266,7 +2274,7 @@ static struct fpr_scope *region_open(fpr_hart_t *h, uw seq) {
   sc->held = 0; sc->spare = 0;
   sc->state_slab = sc->next_slab = 0;
   sc->generations = 0; sc->immutable_state = sc->preserve_state = 0;
-  sc->live_bytes = sc->alloc_mark = 0; sc->receive = 0; sc->declined = 0; sc->declined_bytes = 0; sc->retry_at = 0; sc->decline_run = 0;
+  sc->live_bytes = sc->alloc_mark = 0; sc->receive = 0; sc->mutating = 0; sc->declined = 0; sc->declined_bytes = 0; sc->retry_at = 0; sc->decline_run = 0;
   sc->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
   sc->seq = seq;
   struct fpr_pool **slot = override_slot(h);
@@ -2422,9 +2430,11 @@ static V g_region_cycle(V seqv, V packed) {
   if (fpr_plane_memory) return packed;
   fpr_hart_t *h = fpr_hart();
   struct fpr_scope *sc = *scope_head(h);
-  uw seq = (uw)UNTAG(seqv);
+  uw seq = (uw)UNTAG(seqv) & ~REGION_MUT_BIT;
+  int mutating = ((uw)UNTAG(seqv) & REGION_MUT_BIT) != 0;
+  if (sc && sc->seq == seq && mutating) sc->mutating = 1; /* a twin now writes this region's state */
   if (!sc || sc->seq != seq) {
-    region_open(h, seq);
+    region_open(h, seq)->mutating = mutating;
     __atomic_fetch_add(&region_opens, 1, __ATOMIC_RELAXED);
     return packed;
   }
@@ -2446,7 +2456,7 @@ static V g_region_cycle(V seqv, V packed) {
    * with persistent copy-out) pays a sizing walk, never a copy */
   uw bumped = sc->ap.allocated - sc->alloc_mark;
   sc->declined = 0;
-  V t = transfer_copy_in(packed, sc, 0, 1, sc->receive ? 0 : &sc->ap, sc->receive ? 0 : bumped / FPR_REGION_SURVIVAL + 1);
+  V t = transfer_copy_in(packed, sc, 0, 1, sc->receive || sc->mutating ? 0 : &sc->ap, sc->receive ? 0 : bumped / FPR_REGION_SURVIVAL + 1);
   if (sc->declined) {
     /* try again once the arena has doubled from here: the sizing walks then
      * cost at most twice the allocation, whatever fraction survives (a loop
@@ -2473,7 +2483,7 @@ static V g_loop_leave(V seqv, V r) {
   if (fpr_plane_memory) return r;
   fpr_hart_t *h = fpr_hart();
   struct fpr_scope *sc = *scope_head(h);
-  if (!sc || sc->seq != (uw)UNTAG(seqv)) return r;
+  if (!sc || sc->seq != ((uw)UNTAG(seqv) & ~REGION_MUT_BIT)) return r;
   return region_close(h, sc, r);
 }
 /* a costly call begins: a pending region, opened only if the call uses a

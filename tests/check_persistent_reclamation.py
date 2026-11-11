@@ -23,12 +23,18 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
                                ("mapLoop", ["map", "50000"], "8257 1"),
                                ("history", ["history", "20000"], "200030000"),
                                ("scan", ["scan", "1000000"], "3999994"),
-                               ("drain", ["drain", "200000"], "2100000")):
+                               ("drain", ["drain", "200000"], "2100000"),
+                               ("records", ["records", "3000"], "379990000")):
         # copy-out is automatic for every pure loop; FPR_PERSISTENT_LOOP names one,
         # FPR_NO_PERSISTENT_COPY_OUT=1 turns it off; the cache follows each
         for selected, rollback in ((False, False), (True, False), (False, True), (False, False)):
             enabled = not rollback
             mode = dict(env)
+            # Consuming reuse makes most of these loops allocation-free, which
+            # leaves copy-out nothing to do; measure copy-out without it. The
+            # records case is reuse and copy-out together (the mutating region).
+            if loop != "records":
+                mode["FPR_NO_REUSE"] = "1"
             if rollback:
                 mode["FPR_NO_PERSISTENT_COPY_OUT"] = "1"
             if selected:

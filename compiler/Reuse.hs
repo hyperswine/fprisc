@@ -230,14 +230,16 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
          any (`elem` (seqId:markId:ps)) [inner,target,leave,hookName SequenceNumber,hookName PoolMark] ||
          M.member worker definitions ||
          name `S.member` excluded then Nothing else
-        Just (i,worker,(ps,CLet seqId open (CLet markId mark
+        Just (i,worker,(ps,CLet seqId (mutating open) (CLet markId mark
           (CApp (CApp (CVar leave) token) (foldl CApp (CVar target) args)))))
 
     -- A traversal seeded with Nil returns precisely the consumed cells.
     -- Carry that fact through a self-tail call, keeping the public entry
     -- borrowing. A terminal arm can hand the list back to arbitrary code.
+    -- linear in the body; a region's inner loop carries its room test and
+    -- its exit path, so it is often past the 256 the other plans use
     loopPlan name (ps,body)
-      | name `elem` ps || name `S.member` excluded || not (bounded 256 body) = Nothing
+      | name `elem` ps || name `S.member` excluded || not (bounded 2048 body) = Nothing
       | otherwise=listToMaybe [ (i,worker,(ps,out)) | (i,x)<-zip [0..] ps,
           worker `M.notMember` definitions, not (rebinds worker body), worker `notElem` ps,
           not (rebinds x body || rebinds name body),
@@ -253,6 +255,15 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
           (cb,b')<-branch i x scope b
           pure (ca || cb,CIf c a' b')
         branch i x scope e
+          -- the consuming inner loop's cold edge: its region now holds cells
+          -- written in place, so every cycle from here carries the mutating
+          -- bit on the sequence number (runtime.c REGION_MUT_BIT), and when
+          -- the state passes through unchanged the cycle re-enters this twin
+          | Just cyc<-cycleOf name,(CVar f,args@(_:_))<-spine e,f==cyc,f `S.notMember` scope,
+            M.member f definitions,length args==length ps =
+              let marked=init args++[mutating (last args)]
+                  consumes=args!!i==CVar x && all (safe x scope) (take i args++drop (i+1) args)
+              in Just (False,foldl CApp (CVar (if consumes then cycleTwinName name else f)) marked)
           | not (mentions name e)=Just (False,e)
           | (CVar f,args)<-spine e,f==name,length args==length ps,
             all (safe x scope) (take i args++drop (i+1) args) = do
@@ -272,7 +283,19 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
           _ -> Nothing
     isNil scope (CVar f)=S.notMember f scope && M.lookup f definitions==Just ([],nil)
     isNil _ e=e==nil
-    twins=M.fromList ([(worker,body) | (_,worker,body)<-M.elems plans++M.elems starters] ++ M.elems cursors)
+    -- the cold edge of a consuming region loop: the ordinary cycle (copy out,
+    -- reset) re-entering the consuming inner loop. After a cycle the state is
+    -- the loop's alone: a fresh copy, or its own cells when the copy deferred.
+    cycleTwins=M.fromList [(cycleTwinName inner,(cps,renameHead inner worker cbody)) |
+      (inner,(_,worker,_))<-M.toList loops, Just cyc<-[cycleOf inner],
+      Just (cps,cbody)<-[M.lookup cyc definitions], M.notMember (cycleTwinName inner) definitions]
+    renameHead from to e=case e of
+      CVar v | v==from->CVar to
+      CLet k a b->CLet k (renameHead from to a) (renameHead from to b)
+      CApp f a->CApp (renameHead from to f) (renameHead from to a)
+      CIf c a b->CIf (renameHead from to c) (renameHead from to a) (renameHead from to b)
+      _->e
+    twins=M.fromList ([(worker,body) | (_,worker,body)<-M.elems plans++M.elems starters] ++ M.elems cursors) `M.union` cycleTwins
     builders=spineBuildersWith linked resetting definitions
     fresh _ e | e==nil=True
     fresh scope (CLet x _ rest)=fresh (S.insert x scope) rest
@@ -343,10 +366,19 @@ spineBuildersWith :: M.Map Name (Int,Int) -> S.Set Name -> Prog -> M.Map Name (I
 spineBuildersWith linked resetting definitions = M.union seeded unconditional
   where
     seeded=seededBuilders resetting definitions
-    candidates=M.keysSet (M.filterWithKey (\n (ps,b)->not (null ps) && n `notElem` ps && bounded 256 b) definitions)
+    -- the exit walk only descends lets and branches: a looser bound than the
+    -- builders' (a TRMC map with its element inlined is often past 256)
+    candidates=M.keysSet (M.filterWithKey (\n (ps,b)->not (null ps) && n `notElem` ps && bounded 4096 b) definitions)
     fixed known=let next=S.filter (exitsFresh known) known in if next==known then known else fixed next
     unconditional=M.fromSet (\n->(length (fst (definitions M.! n)),-1)) (fixed (candidates S.\\ M.keysSet seeded))
     exitsFresh known n=let (ps,b)=definitions M.! n in exits known (S.fromList ps) b
+    -- a TRMC builder's first step: a fresh cell becomes the cursor worker's
+    -- root and cursor (its last two parameters); the worker links fresh cells
+    -- behind it and returns the root. No other argument may see the cell.
+    exits _ scope (CLet x rhs rest)
+      | freshCell rhs,(CVar w,args@(_:_:_))<-spine rest,"$worker.trmc." `isPrefixOf` w,
+        S.notMember w scope,[CVar r,CVar c]<-drop (length args-2) args,r==x,c==x,
+        not (any (mentions x) (take (length args-2) args))=True
     exits known scope (CLet x _ rest)=exits known (S.insert x scope) rest
     exits known scope (CIf _ a b)=exits known scope a && exits known scope b
     exits known scope e=freshExpr known scope e
@@ -365,6 +397,24 @@ spineBuildersWith linked resetting definitions = M.union seeded unconditional
           _ -> False
         where seedFresh (Just (arity,i)) args=length args==arity && (i<0 || freshExpr known scope (args!!i))
               seedFresh Nothing _=False
+
+-- ReceiveTurns' region loop names: the inner loop and its cold cycle
+cycleOf :: Name -> Maybe Name
+cycleOf n | "$loop.in." `isPrefixOf` n=Just ("$loop.cycle."++drop (length "$loop.in.") n)
+cycleOf _=Nothing
+cycleTwinName :: Name -> Name
+cycleTwinName inner="$worker.spine.cycle."++inner
+-- runtime.c REGION_MUT_BIT: the region's loop overwrites its state in place
+regionMutBit :: Integer
+regionMutBit=2^(58::Int)
+mutating :: Core -> Core
+mutating seqValue=CApp (CApp (CVar "bor") seqValue) (CInt regionMutBit)
+
+-- a cons whose tail is Nil, after any lets that compute its head
+freshCell :: Core -> Bool
+freshCell (CLet _ _ rest)=freshCell rest
+freshCell (CMk 2 1 [_,t])=t==CMk 2 0 [] || t==CVar "Nil"
+freshCell _=False
 
 seededBuilders :: S.Set Name -> Prog -> M.Map Name (Int,Int)
 seededBuilders resetting definitions=M.mapMaybeWithKey summarize definitions

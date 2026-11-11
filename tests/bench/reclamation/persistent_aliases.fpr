@@ -38,6 +38,16 @@ drain : unsafe List Int -> Int -> Int.
 drain xs acc = case xs of
     Nil -> acc
   | x :: rest -> drain rest (acc + L.sum (L.reverse (L.range 0 (x % 8)))).
+# A loop of records, consumed in place: each step's map reuses the list's cells
+# and stores a new record (allocated in the region's arena) into them. A cell
+# outside the region, or retained in the state slab, then points into the
+# arena, so copy-out must descend it: the consuming twin marks its region
+# mutating (runtime.c REGION_MUT_BIT). Without that the answer was wrong.
+Pt = { a : Int, b : Int }.
+nudge : List Pt -> List Pt.
+nudge xs = L.map (fn p -> {a = p.a + 1, b = p.b + 2}) xs.
+records : unsafe Int -> List Pt -> Int.
+records n xs = if n <= 0 then L.sum (L.map (fn p -> p.a + p.b) xs) else records (n - 1) (nudge xs).
 steps count = n = parseInt count; if n < 0 then error "negative steps" else n.
 main = case Sys.args Unit of
     ["list",count] -> xs = L.range 0 1023;
@@ -47,6 +57,7 @@ main = case Sys.args Unit of
   | ["map",count] -> old = M.insert 999 1 M.ints;
       (case old of M.Map _ k t -> answer = mapLoop (steps count) k t; print "{answer} {M.fold (fn acc k v -> acc + v) 0 old}")
   | ["scan",count] -> print "{scan (L.range 1 (steps count)) Nil}"
+  | ["records",count] -> print "{records (steps count) (L.map (fn i -> {a = i, b = 0}) (L.range 0 19999))}"
   | ["drain",count] -> print "{drain (L.range 1 (steps count)) 0}"
   | ["history",count] -> print "{history (steps count) Nil Nil}"
-  | _ -> error "expected list, tree, map, scan, drain or history and a nonnegative count".
+  | _ -> error "expected list, tree, map, scan, drain, records or history and a nonnegative count".

@@ -437,6 +437,12 @@ receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs in
     transform ns
       | any (\n->maybe False builderRegionEntry (M.lookup n interfaces)) ns = Left "private list builder state cannot cross a region boundary; unchanged"
       | any (`S.member` managed) ns = Left "explicit region management; unchanged"
+      -- A TRMC map's entry keeps everything it builds: copy-out would only
+      -- decline at run time, and its region wrapper hides the entry from the
+      -- consuming-reuse planner (Reuse.hs startPlan). Bounded state still
+      -- takes its ordinary loop region.
+      | isPure ns, any callsTrmc ns, not (null (concatMap (typedProblemsWith (const boundedType) True (invariants ns)) (S.toList (entries ns)))) =
+          Left "a TRMC builder's entry: copy-out would not free its state; unchanged"
       | S.null boundaries = Left "no checked receive entry; unchanged"
       | not (null problems) = Left ((if isPure ns then "state is unbounded, polymorphic or lacks type evidence; unchanged ("
                                      else "state/result is mutable, functional, polymorphic or lacks type evidence; unchanged (") ++ intercalate "; " problems ++ ")"
@@ -573,6 +579,7 @@ receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs in
                               S.notMember (n,i-1) invariant,not (isFn a)]
                           ++[n++": result has "++show r | not (copyableType r || (pure && copyOut n && copyOutType r) || nonReturning n || handedBack)]
       Nothing->[n++": no checked physical interface"]
+    callsTrmc n=any (\v->take 13 v=="$worker.trmc.") (freeVars (snd (prog M.! n)))
     isFn (TFn _ _)=True
     isFn _=False
     -- Check EVERY member, including untyped private joins: a source body
