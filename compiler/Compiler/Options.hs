@@ -73,7 +73,7 @@ parseCompilerOptions env = do
           cgScalarWorkers=enabled "SCALAR_WORKERS", cgTrmc=enabled "TRMC", cgTickBatch=enabled "TICK_BATCH", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
           cgReceiveTurns=enabled "RECEIVE_TURNS", cgBumpAlloc=enabled "BUMP_ALLOC", cgCompactCells=env "FPR_COMPACT_CELLS" /= Just "0", cgLoopRegions=enabled "LOOP_REGIONS",
-          cgPersistentLoop=env "FPR_PERSISTENT_LOOP", cgCallRegions=enabled "CALL_REGIONS", cgInline=enabled "INLINE" }
+          cgPersistentLoop=if enabled "PERSISTENT_COPY_OUT" then env "FPR_PERSISTENT_LOOP" else Nothing, cgCallRegions=enabled "CALL_REGIONS", cgInline=enabled "INLINE" }
       diagnostic=DiagnosticOptions
         { diagTypedIr=env "FPR_TYPED_IR", diagReceiveNotes=yes "FPR_RECEIVE_NOTES",
           diagApply=yes "FPRC_APPLY", diagPreconditions=yes "FPR_PRECOND_NOTES",

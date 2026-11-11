@@ -15,7 +15,10 @@ still apply. An eligible loop opens a region on allocation pressure, copies
 its live arguments out at subsequent slab boundaries and releases the
 scratch arena. Existing references into the caller's pool survive.
 The selection participates in both cache keys. Unset the variable for the
-default policy. QOS process images bypass the experiment.
+default policy. QOS process images and Builtin bypass the experiment. Set
+`FPR_NO_PERSISTENT_COPY_OUT=1` to override the selection while retaining
+ordinary loop regions. Placement notes identify the selected mechanism.
+This implements the fallback experiment in the [memory reclamation intent](2026-11-11-MEMORY-RECLAMATION-INTENT.md).
 
 Hosted arm64 peak RSS and median elapsed time, three runs after warmup:
 

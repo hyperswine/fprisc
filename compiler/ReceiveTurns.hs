@@ -153,8 +153,12 @@ receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs in
     -- prints only under FPR_RECEIVE_NOTES, with a count under --cost
     notes = [(if isPure ns then (if isLeft r then "turn-regions (declined): " else if loopRegions then "turn-regions: " else "turn-regions (candidate): ") else "receive-turns: ") ++ unwords ns ++ ": "
               ++ either id (const (if isPure ns then (if loopRegions then "loop region at the self tail call (opens after a slab, resets per slab)" else "loop region not placed (FPR_NO_LOOP_REGIONS=1)")
-                                   else if looped ns then "turn region at the receive (opens at entry, cycles per slab)" else "automatic value-state turn regions")) r
+                                   else if looped ns then "turn region at the receive (opens at entry, cycles per slab)" else "automatic value-state turn regions")) r ++ persistentNote ns r
             | (ns,r) <- zip groups results]
+    persistentNote ns r
+      | Right _ <- r, loopRegions, isPure ns, Just n <- persistentLoop, n `elem` ns =
+          "; persistent copy-out enabled for " ++ n ++ " (copy work depends on live state)"
+      | otherwise = ""
     turned = M.union rewritten prog
     -- the loops that got a region: a call into one needs no call region
     loopEntries = S.fromList (concat [ns | (ns, Right _) <- zip groups results, isPure ns, loopRegions])

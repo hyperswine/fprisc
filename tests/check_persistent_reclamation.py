@@ -21,9 +21,12 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
     for loop, args, answer in (("walk", ["list", "256"], "785920 523776"),
                                ("treeLoop", ["tree", "10000"], "10000 0"),
                                ("mapLoop", ["map", "50000"], "8257 1")):
-        for enabled in (False, True, False):
+        for selected, rollback in ((False, False), (True, False), (True, True), (True, False)):
+            enabled = selected and not rollback
             mode = dict(env)
-            if enabled:
+            if rollback:
+                mode["FPR_NO_PERSISTENT_COPY_OUT"] = "1"
+            if selected:
                 mode["FPR_PERSISTENT_LOOP"] = loop
             run([ROOT / "fpr", "build", SOURCE, "-o", exe], mode)
             p = run([exe, *args], mode)
