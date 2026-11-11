@@ -82,8 +82,10 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
                 continue
             if loop == "shared":
                 # one record stored twice: element reuse must not fire (the
-                # records are allocated each step), and the answer above holds
-                assert requests > 150000, (loop, requests)
+                # records are allocated each step: 50 x 2000), and the answer
+                # above holds (the bound counted the step's tuple too before
+                # local products, 2026-11-12)
+                assert requests >= 100000, (loop, requests)
                 continue
             if loop == "elements":
                 # records reused in place, and the step's tuple is gone too

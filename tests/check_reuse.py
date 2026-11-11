@@ -14,7 +14,7 @@ left
 right
 {left = 2, right = 1}
 '''
-def check_execution(run,run_cost,enabled):
+def check_execution(run,run_cost,enabled,inlined=True):
     for harts in (1,4):
         code,out,err=run('',harts)
         assert code==0 and out==EXPECTED,(code,out,err)
@@ -24,9 +24,9 @@ def check_execution(run,run_cost,enabled):
     assert code==0,(out,err)
     result,ledger=out.splitlines()
     ledger=json.loads(ledger)
-    # enabled: the loop's record never escapes, so local products leaves no
-    # cell at all (it was 10000 with reuse alone, 2026-11-12)
-    assert result=='100020000' and ledger['alloc_requests']==(0 if enabled else 20000),(result,ledger)
+    # enabled: reuse makes fresh's two records one; inlined, that record
+    # never escapes the loop, so local products leaves no cell (2026-11-12)
+    assert result=='100020000' and ledger['alloc_requests']==((0 if inlined else 10000) if enabled else 20000),(result,ledger)
     return ledger
 
 # Keep the allocation ratchet specific to reuse: pair returns can independently
@@ -62,7 +62,7 @@ def main():
                             p=subprocess.run([str(path)]+([case] if case else []),env=dict(mode,FPR_HARTS=str(harts)),capture_output=True,text=True,timeout=90)
                             return p.returncode,p.stdout,p.stderr
                         return run
-                    ledger=check_execution(runner(exe),runner(tmp/'reuse-cost'),off=='0')
+                    ledger=check_execution(runner(exe),runner(tmp/'reuse-cost'),off=='0',no_inline=='0')
                     print(f'reuse disabled={off} inline-disabled={no_inline} registers-disabled={no_regs}: {ledger["alloc_requests"]} allocations PASS',flush=True)
         # Exercise the separate executable-run cache, not only unit caching.
         for off in ('1','0','1'):
@@ -71,6 +71,6 @@ def main():
             out=command([ROOT/'fpr','run',ROOT/'tests/base/freshreuse.fpr',
                          '--with',ROOT/'tests/bench/costprobe.c',
                          '--with',ROOT/'tests/bench/workers_clock.c','cost'],mode).stdout
-            assert json.loads(out.splitlines()[-1])['alloc_requests']==(20000 if off=='1' else 10000),out
+            assert json.loads(out.splitlines()[-1])['alloc_requests']==(20000 if off=='1' else 0),out
         print('Fresh reuse: native values, alias/child preservation, field failure order, 1/4 harts, allocation ratchet, warm caches and RV64/RV32 typed emission PASS')
 if __name__=='__main__': main()

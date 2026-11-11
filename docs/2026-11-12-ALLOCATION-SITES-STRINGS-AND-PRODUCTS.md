@@ -117,24 +117,60 @@ a cell) and the string pieces. A 200,000-step loop goes from 400,201 requests to
 A differential program over 19 values (signed extremes, negatives, powers of two) and 15 literal divisors
 prints the same as the previous compiler.
 
+## 5. The prelude's string loops
+
+csv and wordfreq spend most of their time comparing map keys (`strCmp`) and searching
+(`strIndexFrom`). Both are FP-RISC loops in `core/prelude.fpr`.
+
+- **`strCmpGo`.** An `or` in it built a `Bool` object per byte, which was then tested through its header,
+  and the walk alternated with `strCmpAt`. It is now one self-recursive function of guards.
+- **`strMatchAt`.** It returns how many characters matched, so no `Bool` crosses the call.
+
+Answers are the same on a grid of strings: empty strings, prefixes, and `from` values that are negative or past the end.
+csv drops from 19.8 to 15.6 G instructions, and wordfreq from 22.9 to 16.5 G.
+
+The loop still pays, at every byte, the stack check and fuel tick, a test that both arguments are
+strings, and a bounds check on each `charAt`. That is about 70 instructions a byte, where C needs about 4. The existing opt-in
+modes (`FPR_TYPED_IR_LOOP_MOTION`, `STRING_SCAN`, `SHRINK_WRAP`) change nothing here. Hoisting these
+invariant checks out of a self-loop is the fixed-cost proposal's step 3, and it is the largest
+remaining lever for csv and wordfreq.
+
+## Gates and the compile budget
+
+Several exact allocation gates now count less than they used to. Each is updated, with a comment saying why:
+
+- **`check_reuse`.** 10000 -> 0. The loop's record never escapes, so local products leaves no cell.
+- **`check_case_known` shared-alternative.** 31 -> 1, with the pass on and off. One shape is unboxed either way.
+- **`check_abstraction_equivalence` sum-count-pair.** 5 -> 3. The printed interpolation is one String.
+- **`check_fold_scalars`.** 2005/1005 -> 2003/1003, for the same reason.
+- **`check_persistent_reclamation` elements.** It is now allocation-free, so copy-out has nothing to copy.
+
+The darwin compile budget for `std-live` was already +9.2% over its baseline at `69d893a0`. This work
+adds about one more point. Most of it is that each unit using a map now compiles a copy of std/map's
+`insGo` with `balance` and the rotations inlined. `tests/compile_budget.json` is rerecorded for
+`ghc-9.8.2 aarch64-apple-darwin`. The Linux CI baseline could not be rerecorded from here.
+
 ## Speed against C and the peers
 
-`tests/bench/apps/run.py --runs 5` after these changes (`results/2026-11-12-after.json`):
+`tests/bench/apps/run.py --runs 5` on a quiet machine (`results/2026-11-12-m4-final.json`). The
+`before` column is yesterday's default build, still in `bin-fpr` as `fpr-nocopy` (copy-out off, as on
+11 November):
 
-| Workload | FP-RISC wall / RSS | C | FP-RISC / C |
-|---|---|---|---|
-| csv | 0.908 s / 175 MB | 0.029 s | 31.8x |
-| wordfreq | 1.440 s / 315 MB | 0.067 s | 21.4x |
-| format | 0.301 s / 397 MB | 0.192 s | 1.6x |
-| records | 0.453 s / 133 MB | 0.113 s | 4.0x |
-| treemap | 0.794 s / 76 MB | 0.071 s | 11.2x |
-| sim | 0.192 s / 4 MB | 0.038 s | 5.1x |
+| Workload | Before: wall / RSS | Now: wall / RSS | C | Now / C |
+|---|---|---|---|---|
+| csv | 0.845 s / 1356 MB | 0.580 s / 159 MB | 0.023 s | 25.0x |
+| wordfreq | 1.169 s / 1795 MB | 0.696 s / 315 MB | 0.045 s | 15.4x |
+| format | 0.621 s / 1026 MB | 0.241 s / 397 MB | 0.168 s | 1.4x |
+| records | 0.346 s / 209 MB | 0.339 s / 133 MB | 0.094 s | 3.6x |
+| treemap | 0.525 s / 614 MB | 0.419 s / 76 MB | 0.055 s | 7.6x |
+| sim | 1.332 s / 3904 MB | 0.168 s / 4 MB | 0.029 s | 5.9x |
 
-The table above was measured while the test suite ran on four workers in parallel. Best-of-3 single
-runs on a quiet machine are lower (treemap 0.63 s, records 0.37 s, wordfreq 1.2 s). Against the
-11 November baseline (`2026-11-11-m4-57201f0.json`): format 0.645 -> 0.301 s and sim 1.347 -> 0.192 s.
-Peak RSS is down across the board (csv 1356 -> 175 MB, wordfreq 1795 -> 315 MB, sim 3775 -> 4 MB).
-csv and wordfreq remain 20-30x C. Their time is in the string and map code itself, not in allocation.
+The geometric mean against C goes from 12.6x (11 November baseline, `2026-11-11-m4-57201f0.json`) to 6.7x,
+and against the peer median from about 6x to 4.0x. The RSS ceilings are lowered to about 1.5x the new
+peaks: csv 240, wordfreq 475, format 600, treemap 115 and sim 16 MB. sim's ceiling is set at the process floor rather than 1.5x.
+
+csv and wordfreq remain 15-25x C. Their time is in the prelude's byte loops (section 5) and in the
+map's comparator, which is called through the generic `fpr_applyN`. It is not in allocation.
 
 ## Still open
 
@@ -147,5 +183,7 @@ csv and wordfreq remain 20-30x C. Their time is in the string and map code itsel
 - **`kp_dup` at `main`'s region close.** format copies its 1M kept lines when `main`'s region closes. Adopting
   the region's slabs when most of it survives would remove that copy.
 - **Literal divisors on X64 and RV.** The bare `idiv`/`div` lowering there, and powers of two as shifts on all three.
+- **Byte loops.** Hoist the stack check, the string tests and the bounds checks out of self-loops such as `strCmpGo`
+  (fixed-cost step 3); call a known comparator directly instead of through `fpr_applyN`.
 - **Fixed-cost proposal steps 1-3.** Instruction selection and frames, sharing checked operations, and
   loop-invariant checks are next on the speed side.
