@@ -1,0 +1,33 @@
+unsafe base.
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+profileReport : Unit -> Unit .
+must (Ok x) = x.
+must (Err why) = error why.
+park me = Sys.sleepUs 30000000.
+burst target payload 0 accepted = accepted.
+burst target payload n accepted =
+  case send target payload of
+    Ok u -> burst target payload (n - 1) (accepted + 1)
+  | Err "mailbox full" -> burst target payload (n - 1) accepted
+  | Err why -> error why.
+worker boss target me =
+  _ = must (send boss 0);
+  _ = receiveFrom me boss;
+  count = burst target (strcat "sender " (str me)) 512 0;
+  must (send boss count).
+start boss target 0 = Nil.
+start boss target n = actor = spawn (worker boss target); actor :: start boss target (n - 1).
+collect me Nil = 0.
+collect me (x :: xs) = n = receiveFrom me x; n + collect me xs.
+release Nil = Unit.
+release (x :: xs) = _ = must (send x 0); release xs.
+main =
+  me = myself 0;
+  target = must (Sys.spawnInbox 0 32 2097152 park);
+  actors = start me target 4;
+  _ = collect me actors;
+  _ = release actors;
+  accepted = collect me actors;
+  _ = if accepted == 32 then Unit else error "unexpected accepted count";
+  _ = profileReport Unit;
+  kill target.

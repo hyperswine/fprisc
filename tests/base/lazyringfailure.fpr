@@ -1,0 +1,30 @@
+# Build with FPR_ADMISSION_TEST, FPR_LAZY_DYNAMIC_RINGS=1 and admission_probe.c.
+unsafe base.
+Probe.failNext : Int -> Unit .
+Probe.denials : Unit -> Int .
+must (Ok value) = value.
+must (Err why) = error why.
+gate me = child = receive me; send child 0.
+worker parent gate me =
+  _ = must (receiveFromRes me gate);
+  drain parent me 0.
+drain parent me i = if i == 300 then send parent i else
+  x = must (receiveFromRes me parent);
+  if x == i then drain parent me (i + 1) else error "lost or duplicated message".
+fill child i end = if i == end then Unit else _ = must (send child i); fill child (i + 1) end.
+refuse child i =
+  _ = Probe.failNext 9;
+  case send child i of Err why -> if why == "mailbox full" then Unit else error why
+  | Ok u -> error "expected ring allocation failure".
+main =
+  me = myself 0;
+  start = spawn gate;
+  child = spawnCap 1 256 (worker me start);
+  _ = fill child 0 64;
+  _ = refuse child 64;
+  _ = fill child 64 256;
+  _ = refuse child 256;
+  _ = fill child 256 300;
+  _ = must (send start child);
+  if must (receiveFromRes me child) == 300 and Probe.denials Unit == 2 then print "lazyringfailure: HOLDS"
+  else error "incomplete retry".

@@ -1,0 +1,55 @@
+unsafe base.
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+Sys.mailboxCommittedBytes : Unit -> Int .
+Sys.mailboxDeferredBytes : Unit -> Int .
+must (Ok x) = x.
+must (Err why) = error why.
+gate me = target = receive me; must (send target 0).
+worker parent start me =
+  _ = must (send parent (Sys.mailboxCommittedBytes Unit, Sys.mailboxDeferredBytes Unit));
+  _ = receiveFrom me start;
+  must (send parent (Sys.mailboxCommittedBytes Unit, Sys.mailboxDeferredBytes Unit)).
+fill w n = if n == 0 then Unit else _ = must (send w n); fill w (n - 1).
+sample me mode n =
+  start = spawn gate;
+  w = spawnCap mode 256 (worker me start);
+  before = receiveFrom me w;
+  _ = fill w n;
+  _ = must (send start w);
+  after = receiveFrom me w;
+  (before, after).
+sampleAdmitted me =
+  start = spawn gate;
+  w = must (Sys.spawnInbox 0 65 131072 (worker me start));
+  (initial, pending) = receiveFrom me w;
+  _ = fill w 64;
+  _ = must (send start w);
+  (after, remaining) = receiveFrom me w;
+  if pending == 0 and remaining == 0 and initial == after then initial else error "admitted ring backing changed".
+recycle me initial pending grown rest 0 = Unit.
+recycle me initial pending grown rest n =
+  ((before, deferred), (after, remaining)) = sample me 1 513;
+  if before == initial and deferred == pending and after == grown and remaining == rest
+    then recycle me initial pending grown rest (n - 1)
+    else error "reused mailbox retained prior ring layout".
+freeKiB u = case Sys.memInfo 0 of _ :: free :: _ -> free | _ -> error "missing allocator statistics".
+main =
+  me = myself 0;
+  admitted = sampleAdmitted me;
+  ((fixed, fd), (same, sd)) = sample me 0 65;
+  ((initial, pending), (grown, rest)) = sample me 1 257;
+  _ = if fixed == same and fd == 0 and sd == 0 then Unit else error "static backing";
+  _ = if pending == 0 then (if initial == fixed and rest == 0 then Unit else error "eager backing")
+      else (if initial + pending == fixed and pending > rest and rest > 0 then Unit else error "lazy backing");
+  _ = if grown > initial + (pending - rest) then Unit else error "missing retained growth";
+  ((fresh, deferred), (again, remaining)) = sample me 1 513;
+  _ = if fresh == initial and deferred == pending and again > grown and remaining == rest then Unit else error "second ring growth";
+  _ = recycle me initial pending again remaining 16;
+  _ = Sys.sleepUs 20000;
+  before = freeKiB Unit;
+  _ = recycle me initial pending again remaining 32;
+  _ = Sys.sleepUs 20000;
+  delta = before - freeKiB Unit;
+  # One lost 64 KiB allocator block per lifetime would consume 2048 KiB.
+  _ = if delta < 2048 then Unit else error "allocator retained at least one block per lifetime";
+  print "ringbytes: allocator delta {delta} KiB over 32 lifetimes; admitted {admitted} committed, dynamic {initial} committed, {pending} deferred, then {grown} committed, {rest} deferred".

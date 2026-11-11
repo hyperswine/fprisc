@@ -1,0 +1,21 @@
+# Keep the receiver parked on a different sender while filling its data ring.
+unsafe base.
+must (Ok x) = x.
+must (Err why) = error why.
+gate me = worker = receive me; send worker 0.
+drain me parent i n = if i == n then send parent i else
+  case receiveFromRes me parent of
+    Ok x -> if x == i then drain me parent (i + 1) n else error "ring order"
+  | Err why -> error why.
+worker parent start n me =
+  _ = must (receiveFromRes me start);
+  drain me parent 0 n.
+fill w i n = if i == n then Unit else _ = must (send w i); fill w (i + 1) n.
+check me mode capacity n =
+  start = spawn gate;
+  w = spawnCap mode capacity (worker me start n);
+  _ = fill w 0 n;
+  _ = if mode == 0 then (case send w n of Err why -> Unit | Ok u -> error "static capacity") else Unit;
+  _ = must (send start w);
+  if must (receiveFromRes me w) == n then Unit else error "missing messages".
+main = me = myself 0; _ = check me 1 256 600; _ = check me 0 256 256; print "lazyrings: HOLDS".

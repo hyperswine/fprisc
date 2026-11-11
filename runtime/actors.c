@@ -82,6 +82,11 @@
                       * another: Static n never grows (a WCET bound),
                       * Dynamic n doubles from the buddy when full. */
 #define RING_MAX (1u << 20)
+/* Opt-in best-effort Dynamic n rings start inline and acquire their
+ * requested capacity when the first inline ring fills. */
+#ifndef FPR_LAZY_DYNAMIC_RINGS
+#define FPR_LAZY_DYNAMIC_RINGS 0
+#endif
 #define XCAP 64     /* acb pointers per cross-hart wake ring */
 
 #define FUEL_QUANTUM 2000 /* FPRISC function entries per scheduling slice */
@@ -155,6 +160,7 @@ typedef struct chblk {
 typedef struct fpr_acb {
   uint32_t tid, var; /* var = status word (atomic; doubles as header) */
   uint32_t reaping; /* exactly one hart may tear down this immortal identity */
+  uint32_t migrating_ready; /* carry the backlog timestamp across a steal */
   chan_t *ch; /* first field of the recyclable chblk_t */
   uint32_t scan; /* round-robin cursor for fair receive (owner-only) */
   uint32_t mbdyn;  /* mailbox policy: 1 = rings grow (Dynamic n) */
@@ -166,6 +172,10 @@ typedef struct fpr_acb {
    * returns this unpublished reservation and promoted root exactly once. */
   struct fpr_acb *send_to;
   uw send_charge;
+#if FPR_SENDER_CREDITS
+  struct fpr_acb *credit_to;
+  uw credit_bytes;
+#endif
   V send_root;
   fpr_slab_t *send_hold;
   fpr_slab_t *entry_hold; /* admitted entry copy: separate from the local heap */
@@ -724,8 +734,11 @@ static void chan_init(chan_t *c, uw *shfrom, int fresh) {
 }
 /* a ring of cap slots (plus tags when the channel is the shared one),
  * in one block; 0 when there is no memory */
+static uw ring_block_bytes(uint32_t cap, int tagged, int budgeted) {
+  return sizeof(ringv_t) + (uw)cap * sizeof(V) + (tagged ? (uw)cap * sizeof(uw) : 0) + (budgeted ? (uw)cap * sizeof(uw) : 0);
+}
 static ringv_t *ring_block_d(uint32_t cap, int tagged, ringv_t *old, int direct, int budgeted) {
-  uw bytes = sizeof(ringv_t) + (uw)cap * sizeof(V) + (tagged ? (uw)cap * sizeof(uw) : 0) + (budgeted ? (uw)cap * sizeof(uw) : 0);
+  uw bytes = ring_block_bytes(cap, tagged, budgeted);
   ringv_t *nv = (ringv_t *)big_block_d(bytes, direct);
   if (!nv) return 0;
   nv->cap = cap;
@@ -815,24 +828,77 @@ static void inbox_release(acb_t *a, uw bytes) {
   a->inbox_messages--; a->inbox_bytes -= bytes;
   fpr_unlock(&a->inbox_lock);
 }
-static const char *inbox_reserve(acb_t *a, V m, int shared, uw *charged) {
-  *charged = 0;
-  if (!a->inbox_max_messages) return 0;
-  uw bytes = fpr_msg_charge_to(m, a->pid, shared, a->inbox_max_bytes);
+#if FPR_SENDER_CREDITS
+/* One prepaid message of exactly the previous charge. The hart owns these
+ * fields until it releases running. Published actor identities survive reap. */
+static void credit_return(acb_t *sender) {
+  if (!sender->credit_to) return;
+  inbox_release(sender->credit_to, sender->credit_bytes);
+  sender->credit_to = 0;
+}
+#endif
+static const char *inbox_reserve_bytes(acb_t *a, uw bytes, uw *charged) {
+  acb_t *sender = fpr_hart()->current;
+#if FPR_SENDER_CREDITS
+  if (sender && sender->credit_to) {
+    if (sender->credit_to == a && sender->credit_bytes == bytes &&
+        __atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_DEAD) {
+#ifdef FPR_INBOX_PROFILE
+      extern void fpr_inbox_profile_credit_hit(void);
+      fpr_inbox_profile_credit_hit();
+#endif
+      sender->credit_to = 0;
+      *charged = bytes;
+      if (sender->send_to) fpr_cpanic("inbox: nested send reservation");
+      sender->send_to = a; sender->send_charge = bytes;
+      INBOX_TEST(1, a);
+      return 0;
+    }
+    credit_return(sender);
+  }
+#endif
   if (bytes > a->inbox_max_bytes) return "message too large";
   fpr_lock(&a->inbox_lock);
   const char *why = 0;
   if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) why = "dead actor";
   else if (a->inbox_messages >= a->inbox_max_messages || bytes > a->inbox_max_bytes - a->inbox_bytes) why = "mailbox full";
-  else { a->inbox_messages++; a->inbox_bytes += bytes; }
+  else {
+    a->inbox_messages++; a->inbox_bytes += bytes;
+#if FPR_SENDER_CREDITS
+    if (sender && a->inbox_messages < a->inbox_max_messages &&
+        bytes <= a->inbox_max_bytes - a->inbox_bytes) {
+      a->inbox_messages++; a->inbox_bytes += bytes;
+      sender->credit_to = a; sender->credit_bytes = bytes;
+    }
+#endif
+  }
   fpr_unlock(&a->inbox_lock);
   if (!why) *charged = bytes;
-  if (!why && fpr_hart()->current) {
-    acb_t *sender = fpr_hart()->current;
+  if (!why && sender) {
     if (sender->send_to) fpr_cpanic("inbox: nested send reservation");
     sender->send_to = a; sender->send_charge = bytes;
   }
   if (!why) INBOX_TEST(1, a);
+  return why;
+}
+#ifdef FPR_INBOX_PROFILE
+extern uw fpr_inbox_profile_clock(void);
+extern void fpr_inbox_profile_sample(uw charge_ns, uw reserve_ns, int admitted);
+#endif
+static const char *inbox_reserve(acb_t *a, V m, int shared, uw *charged) {
+  *charged = 0;
+  if (!a->inbox_max_messages) return 0;
+#ifdef FPR_INBOX_PROFILE
+  uw start = fpr_inbox_profile_clock();
+#endif
+  uw bytes = fpr_msg_charge_to(m, a->pid, shared, a->inbox_max_bytes);
+#ifdef FPR_INBOX_PROFILE
+  uw sized = fpr_inbox_profile_clock();
+#endif
+  const char *why = inbox_reserve_bytes(a, bytes, charged);
+#ifdef FPR_INBOX_PROFILE
+  fpr_inbox_profile_sample(sized - start, fpr_inbox_profile_clock() - sized, !why);
+#endif
   return why;
 }
 static void send_cancel(acb_t *sender) {
@@ -845,6 +911,9 @@ static void send_cancel(acb_t *sender) {
   if (root) fpr_arc_decref(root);
   if (hold) fpr_slab_unhold(hold, 0);
   if (target) inbox_release(target, bytes);
+#if FPR_SENDER_CREDITS
+  credit_return(sender);
+#endif
 }
 static void send_committed(acb_t *a) {
   if (a->inbox_max_messages && fpr_hart()->current) {
@@ -1036,6 +1105,9 @@ static void xpush(uw src, uw dst, acb_t *a) {
 #define RQ_CAP 4 /* run-queue admissions per refill batch */
 #endif
 #define DONATE_HI 4 /* backlog length past which an idle hart is rung */
+#ifndef FPR_DIRECT_LOCAL_HANDOFF
+#define FPR_DIRECT_LOCAL_HANDOFF 0
+#endif
 #ifndef FPR_LOCAL_HANDOFF
 #define FPR_LOCAL_HANDOFF 2 /* preferred local wakes before a normal admission */
 #endif
@@ -1054,8 +1126,17 @@ static void ship(acb_t *a);
  * order in hart_loop (Dekker): either the thief's scan sees the entry,
  * or we see its idle flag and raise msip. */
 static void offer(fpr_hart_t *h) {
+  __atomic_thread_fence(__ATOMIC_SEQ_CST); /* pairs with idle publication before steal */
   for (uw i = 0; i < fpr_live_harts; i++)
-    if (i != h->id && fpr_harts[i].idle) { hal_ipi_send(i); break; }
+    if (i != h->id && __atomic_load_n(&fpr_harts[i].idle, __ATOMIC_RELAXED)) { hal_ipi_send(i); break; }
+}
+
+/* Writers serialize under bl_lock. Thieves sample the count before taking
+ * that lock, so publish each update atomically without a second locked RMW. */
+static uw backlog_resize(fpr_hart_t *h, int delta) {
+  uw len = __atomic_load_n(&h->bl_len, __ATOMIC_RELAXED) + delta;
+  __atomic_store_n(&h->bl_len, len, __ATOMIC_RELAXED);
+  return len;
 }
 
 /* take the oldest unpinned READY entry of another hart's backlog.  Only
@@ -1080,8 +1161,9 @@ static acb_t *steal_from(fpr_hart_t *v, uw target) {
     if (prev) prev->bl_next = a->bl_next;
     else v->bl_head = a->bl_next;
     if (v->bl_tail == a) v->bl_tail = prev;
-    v->bl_len--;
+    backlog_resize(v, -1);
     a->in_bl = 0;
+    a->migrating_ready = 1;
     /* Publish the new owner BEFORE releasing the old owner's admission
      * lock. A wake may still be travelling to that old owner. */
     __atomic_store_n(&a->hart, target, __ATOMIC_RELEASE);
@@ -1096,7 +1178,7 @@ static acb_t *steal(fpr_hart_t *h) {
     if (!__atomic_load_n(&v->bl_len, __ATOMIC_RELAXED)) continue;
     acb_t *a = steal_from(v, h->id);
     if (a) {
-      g_steals++;
+      __atomic_fetch_add(&g_steals, 1, __ATOMIC_RELAXED);
       return a;
     }
   }
@@ -1121,15 +1203,15 @@ static void backlog_add(fpr_hart_t *h, acb_t *a) {
   } /* already listed: one entry is the invariant */
   a->in_bl = 1;
   TR(a, 4);
-  a->ready_at = a->prio ? 0 : g_adm; /* stamped in admission time; a
-                                      * priority actor is the oldest by
-                                      * construction, so aging picks it */
+  /* A forwarded wake may insert the stolen actor before the thief does.
+   * The first insertion consumes the carried stamp in either ordering. */
+  if (!a->migrating_ready) a->ready_at = __atomic_load_n(&g_adm, __ATOMIC_RELAXED);
+  a->migrating_ready = 0;
   a->bl_next = 0;
-  if (!a->weight) a->weight = 1;
   if (h->bl_tail) h->bl_tail->bl_next = a;
   else h->bl_head = a;
   h->bl_tail = a;
-  uw len = ++h->bl_len;
+  uw len = backlog_resize(h, 1);
   fpr_unlock(&h->bl_lock);
   if (len > DONATE_HI) offer(h);
 }
@@ -1140,7 +1222,7 @@ static void backlog_cycle(fpr_hart_t *h) {
   /* the list walked longer than any list can be: name the ring */
   char buf[96], *p = buf, *e = buf + sizeof buf - 1;
   dl_put(&p, e, "backlog cycle on hart "); dl_num(&p, e, h->id);
-  dl_put(&p, e, " len "); dl_num(&p, e, h->bl_len); dl_put(&p, e, ":");
+  dl_put(&p, e, " len "); dl_num(&p, e, __atomic_load_n(&h->bl_len, __ATOMIC_RELAXED)); dl_put(&p, e, ":");
   acb_t *a = h->bl_head;
   for (int i = 0; a && i < 12; i++, a = a->bl_next) { dl_put(&p, e, " "); dl_num(&p, e, a->id); }
   *p = 0;
@@ -1149,6 +1231,13 @@ static void backlog_cycle(fpr_hart_t *h) {
 }
 static acb_t *select_backlog(fpr_hart_t *h) {
 retry:
+  /* Only the owner inserts here; remote arrivals wait in xr until drain.
+   * A thief can make a nonempty observation stale only by removing work. */
+  if (!__atomic_load_n(&h->bl_len, __ATOMIC_RELAXED)) {
+    h->wake_hint = 0;
+    h->handoff_run = 0;
+    return 0;
+  }
   fpr_lock(&h->bl_lock); /* a thief may be walking this list */
   acb_t *prev = 0, *a = h->bl_head;
   acb_t *aged = 0, *aged_prev = 0;
@@ -1158,6 +1247,10 @@ retry:
    * Consume once, including when aging or the handoff budget overrides it. */
   acb_t *hint = h->wake_hint, *local = 0, *local_prev = 0;
   h->wake_hint = 0;
+  /* Backlog insertion uses this lock. All its stamps therefore precede
+   * this snapshot, including stamps retained when an actor migrated. */
+  uw now = __atomic_load_n(&g_adm, __ATOMIC_RELAXED);
+  uw tau = __atomic_load_n(&g_tau, __ATOMIC_RELAXED);
   uw total = 0, walked = 0;
   while (a) {
     if (++walked > 1000000) backlog_cycle(h);
@@ -1168,7 +1261,7 @@ retry:
       TR(a, 6);
       if (prev) prev->bl_next = nx; else h->bl_head = nx;
       if (h->bl_tail == a) h->bl_tail = prev;
-      h->bl_len--;
+      backlog_resize(h, -1);
       a->in_bl = 0;
       if (st == ST_DEAD) {
         /* Teardown may wake the memory actor on this hart, re-entering
@@ -1181,13 +1274,27 @@ retry:
       a = nx;
       continue;
     }
-    if (a->prio || g_adm - a->ready_at > g_tau) {
-      if (!aged || a->ready_at < aged->ready_at) { aged = a; aged_prev = prev; }
+    uw age = now - a->ready_at;
+    if (a->prio || age > tau) {
+      /* Equal priority actors keep list order. Unsigned age comparisons
+       * also order ordinary entries whose stamps straddle clock wrap. */
+      if (!aged || (a->prio && !aged->prio) ||
+          (!a->prio && !aged->prio && age > now - aged->ready_at)) {
+        aged = a;
+        aged_prev = prev;
+      }
     }
-    total += a->weight;
+    /* One draw per ready actor, including those scanned after aging
+     * has decided the class. Later admissions depend on this state. */
     h->lcg = h->lcg * 1103515245u + 12345u;
-    if ((h->lcg >> 16) % total < a->weight) { pick = a; pick_prev = prev; }
-    if (a == hint) { local = a; local_prev = prev; }
+    if (!aged) {
+      uw weight = __atomic_load_n(&a->weight, __ATOMIC_RELAXED);
+      if (!weight) weight = 1;
+      /* A shifted draw is below an overflowing mathematical sum. */
+      if (__builtin_add_overflow(total, weight, &total)) total = (uw)-1;
+      if (!pick || (h->lcg >> 16) % total < weight) { pick = a; pick_prev = prev; }
+      if (a == hint) { local = a; local_prev = prev; }
+    }
     prev = a;
     a = nx;
   }
@@ -1199,38 +1306,63 @@ retry:
     TR(sel, 5);
     if (sp) sp->bl_next = sel->bl_next; else h->bl_head = sel->bl_next;
     if (h->bl_tail == sel) h->bl_tail = sp;
-    h->bl_len--;
+    backlog_resize(h, -1);
     sel->in_bl = 0;
   }
   fpr_unlock(&h->bl_lock);
   return sel;
 }
 
+#ifdef FPR_COST_PROBE
+void fpr_scheduler_costs(uint64_t *admissions, uint64_t *selection, uint64_t *clock) {
+  uint64_t count = 0, select_ns = 0, clock_ns = 0;
+  for (uw i = 0; i < fpr_live_harts; i++) {
+    fpr_hart_t *h = &fpr_harts[i];
+    count += __atomic_load_n(&h->sched_admissions, __ATOMIC_RELAXED);
+    select_ns += __atomic_load_n(&h->sched_select_ns, __ATOMIC_RELAXED);
+    clock_ns += __atomic_load_n(&h->sched_clock_ns, __ATOMIC_RELAXED);
+  }
+  *admissions = count;
+  *selection = select_ns;
+  *clock = clock_ns;
+}
+#endif
+
 /* admit up to RQ_CAP backlog actors into the FIFO run queue */
-static void refill(fpr_hart_t *h) {
+static acb_t *refill(fpr_hart_t *h) {
   while (h->rq_len < RQ_CAP) {
+#ifdef FPR_COST_PROBE
+    uint64_t select_start = FPR_PROBE_NOW();
+#endif
     acb_t *a = select_backlog(h);
-    if (!a) return;
+    if (!a) return 0;
+#ifdef FPR_COST_PROBE
+    uint64_t selected = FPR_PROBE_NOW();
+#endif
     uw adm = __atomic_add_fetch(&g_adm, 1, __ATOMIC_RELAXED);
+#ifdef FPR_COST_PROBE
+    uint64_t advanced = FPR_PROBE_NOW();
+    FPR_COST_ADD(h, sched_select_ns, selected - select_start);
+    FPR_COST_ADD(h, sched_clock_ns, advanced - selected);
+    FPR_COST_ADD(h, sched_admissions, 1);
+#endif
     uw wait = adm - a->ready_at;
-    if (wait > g_max_wait) g_max_wait = wait;
-    /* the run queue holds an actor once: a second entry is a self-loop
-     * that spins the hart forever -- name it instead */
-    for (acb_t *q = h->rq_head; q; q = q->next)
-      if (q == a) {
-        char buf[128], *bp = buf, *e = buf + sizeof buf - 1;
-        dl_put(&bp, e, "run queue holds actor "); dl_num(&bp, e, a->id);
-        dl_put(&bp, e, " twice (var "); dl_num(&bp, e, a->var);
-        dl_put(&bp, e, " in_bl "); dl_num(&bp, e, a->in_bl);
-        dl_put(&bp, e, " prio "); dl_num(&bp, e, a->prio);
-        dl_put(&bp, e, " hart "); dl_num(&bp, e, a->hart);
-        dl_put(&bp, e, " on "); dl_num(&bp, e, h->id);
-        dl_put(&bp, e, " current "); dl_num(&bp, e, h->current ? h->current->id : 0);
-        dl_put(&bp, e, ")");
-        *bp = 0;
-        dl_out(buf, (uw)(bp - buf));
-        fpr_cpanic("actors: run queue double entry");
-      }
+    uw observed = __atomic_load_n(&g_max_wait, __ATOMIC_RELAXED);
+    while (observed < wait && !__atomic_compare_exchange_n(
+               &g_max_wait, &observed, wait, 1, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {}
+#if FPR_DIRECT_LOCAL_HANDOFF
+    /* A sole selected wake can go straight to dispatch. Only this hart
+     * inserts local backlog entries; thieves can only remove them. */
+    if (!h->rq_head && h->handoff_run &&
+        !__atomic_load_n(&h->bl_len, __ATOMIC_RELAXED)) {
+      if (RQ_CAP > 1) h->handoff_run = 0; /* baseline's final empty selection */
+      return a;
+    }
+#endif
+    /* Only this hart links or pops its FIFO. refill sets membership on
+     * every insertion and deq clears it on every removal. A thief can
+     * transfer backlog entries only, never a queued entry. */
+    if (a->in_rq) fpr_cpanic("actors: run queue double entry");
     a->next = 0;
     a->in_rq = 1;
     if (h->rq_tail) h->rq_tail->next = a;
@@ -1238,23 +1370,27 @@ static void refill(fpr_hart_t *h) {
     h->rq_tail = a;
     h->rq_len++;
   }
+  return 0;
 }
 
 static void enq(fpr_hart_t *h, acb_t *a) { backlog_add(h, a); }
 
 static acb_t *deq(fpr_hart_t *h) {
-  refill(h);
-  while (h->rq_head) {
-    acb_t *a = h->rq_head;
-    h->rq_head = a->next;
-    if (!h->rq_head) h->rq_tail = 0;
-    h->rq_len--;
-    a->in_rq = 0;
+  acb_t *a = refill(h);
+  while (a || h->rq_head) {
+    if (!a) {
+      a = h->rq_head;
+      h->rq_head = a->next;
+      if (!h->rq_head) h->rq_tail = 0;
+      h->rq_len--;
+      a->in_rq = 0;
+    }
     uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
     /* skip stale entries: DEAD forever; BLOCKED re-ships on real wake */
     if (st == ST_DEAD) reap(a); /* slab refactor: reclaim off its stack */
     if (st == ST_READY) { TR(a, 7); return a; }
     TR(a, 8);
+    a = 0;
   }
   return 0;
 }
@@ -1551,6 +1687,7 @@ static void dl_num(char **p, const char *e, uw u) {
   while (u) { d[--i] = '0' + (u % 10); u /= 10; }
   dl_put(p, e, d + i);
 }
+enum wait_kind { WAIT_ANY = 1, WAIT_FROM, WAIT_RESULT };
 static void deadlock_dump(void) {
   for (acb_t *a = g_all; a; a = a->all_nx) {
     uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
@@ -1560,8 +1697,8 @@ static void deadlock_dump(void) {
     dl_put(&p, e, a->pin ? " pinned" : " free");
     dl_put(&p, e, st == ST_DEAD ? " DEAD" : (st == ST_READY ? " READY" : " BLOCKED"));
     if (st == ST_BLOCKED) {
-      dl_put(&p, e, a->wait_kind == 2 ? " waits from " : (a->wait_kind == 3 ? " waits res" : " waits any"));
-      if (a->wait_kind == 2) dl_num(&p, e, ((acb_t *)a->wait_arg)->id);
+      dl_put(&p, e, a->wait_kind == WAIT_FROM ? " waits from " : (a->wait_kind == WAIT_RESULT ? " waits res" : " waits any"));
+      if (a->wait_kind == WAIT_FROM) dl_num(&p, e, ((acb_t *)a->wait_arg)->id);
     }
     uw held = 0;
     if (a->ch) for (int i = 0; i < MAXSND; i++) if (a->ch[i].sender) held += ch_count(&a->ch[i]);
@@ -1596,7 +1733,7 @@ static void deadlock_dump(void) {
   for (uw i = 0; i < fpr_live_harts; i++) {
     char buf[160], *p = buf, *e = buf + sizeof buf - 1;
     dl_put(&p, e, "dl: hart "); dl_num(&p, e, i);
-    dl_put(&p, e, fpr_harts[i].idle ? " idle" : " busy");
+    dl_put(&p, e, __atomic_load_n(&fpr_harts[i].idle, __ATOMIC_RELAXED) ? " idle" : " busy");
     dl_put(&p, e, " current "); dl_num(&p, e, fpr_harts[i].current ? fpr_harts[i].current->id : 0);
     dl_put(&p, e, " phase "); dl_num(&p, e, hart_phase[i]);
     dl_put(&p, e, " turns-in-quiet-window "); dl_num(&p, e, hart_loops[i] - hart_loops_at_quiet[i]);
@@ -1701,7 +1838,7 @@ static void hart_loop(fpr_hart_t *h) {
       n = deq(h);
     }
     if (n) {
-      h->idle = 0;
+      __atomic_store_n(&h->idle, 0, __ATOMIC_RELAXED);
       stable = 0;
       fpr_bump_close(h); /* the hart loop's window is not the actor's */
       h->current = n;
@@ -1730,6 +1867,9 @@ static void hart_loop(fpr_hart_t *h) {
       fpr_ctx_switch(h->sched_ctx, live_block(n)->ctx);
       FPR_SCHED_EVENT(FPR_SCHED_RETURN, h->id, n->id);
       hal_actor_stack(0); /* the hart loop may free that stack (reap): nothing watched here */
+#if FPR_SENDER_CREDITS
+      credit_return(n);
+#endif
       __atomic_store_n(&n->running, 0, __ATOMIC_RELEASE); /* saved: it may run elsewhere now */
       if (fpr_hart() != h) hart_reg_lost(h, n);
       fpr_bump_close(h); /* the actor's window, closed whichever way it left */
@@ -1745,13 +1885,13 @@ static void hart_loop(fpr_hart_t *h) {
      * idle-check: whichever side loses the race still observes the
      * other's write, so work past DONATE_HI is never left under a
      * sleeping hart. */
-    h->idle = 1;
+    __atomic_store_n(&h->idle, 1, __ATOMIC_RELAXED);
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
     {
       hart_phase[h->id] = 2;
       acb_t *s = steal(h);
       hart_phase[h->id] = 3;
-      if (s) { h->idle = 0; backlog_add(h, s); continue; }
+      if (s) { __atomic_store_n(&h->idle, 0, __ATOMIC_RELAXED); backlog_add(h, s); continue; }
     }
     if (h->id == 0) {
       /* deadlock detector, timer-paced: hart 0 wakes every DETECT_TICKS
@@ -1763,7 +1903,7 @@ static void hart_loop(fpr_hart_t *h) {
       uw blk = __atomic_load_n(&g_blocked, __ATOMIC_RELAXED);
       int all_idle = 1;
       for (uw i = 0; i < fpr_live_harts; i++)
-        if (!fpr_harts[i].idle) all_idle = 0;
+        if (!__atomic_load_n(&fpr_harts[i].idle, __ATOMIC_RELAXED)) all_idle = 0;
       uw slp = __atomic_load_n(&g_sleepers, __ATOMIC_RELAXED);
       /* a world with a sleeper is not a deadlock: its deadline will wake it, and
        * whoever waits on it may be waiting for what it sends then (the rule was
@@ -1941,13 +2081,31 @@ static int hart_quiet(fpr_hart_t *h) {
   }
   return 1;
 }
+/* Each hart owns its window. An expired spin halves the next budget down
+ * to a single probe; a successful probe restores the configured window. */
+#ifndef FPR_ADAPTIVE_BLOCK_SPIN
+#define FPR_ADAPTIVE_BLOCK_SPIN 0
+#endif
+static struct spin_window {
+  uw configured, current;
+  int initialized;
+} spin_windows[FPR_NHARTS];
+
 static int spin_until(acb_t *a, pred_t pred, uw arg) {
-  static uw spin_ns = (uw)-1;
-  if (spin_ns == (uw)-1) spin_ns = hal_block_spin_ns();
-  if (!spin_ns) return 0;
   fpr_hart_t *h = fpr_hart();
-  if (!hart_quiet(h)) return 0;
-  uint64_t end = hal_mtime() + spin_ns / 100 + 1; /* 100 ns ticks */
+  struct spin_window *window = &spin_windows[h->id];
+  if (!window->initialized) {
+    window->current = window->configured = hal_block_spin_ns();
+    window->initialized = 1;
+  }
+  if (!window->configured || !hart_quiet(h)) return 0;
+  if (FPR_ADAPTIVE_BLOCK_SPIN && !window->current) {
+    if (!pred(a, arg)) return 0;
+    window->current = window->configured;
+    return 1;
+  }
+  uint64_t start = hal_mtime();
+  uw ticks = window->current / 100 + 1;
   /* exponential backoff between looks: an imminent reply is seen almost at
    * once, and a waiter that is only keeping pace with its producer stops
    * re-reading the producer's line (each look at an empty channel reads
@@ -1961,14 +2119,19 @@ static int spin_until(acb_t *a, pred_t pred, uw arg) {
       __asm__ volatile("pause");
 #endif
     }
-    if (pred(a, arg)) return 1;
+    if (pred(a, arg)) {
+      if (FPR_ADAPTIVE_BLOCK_SPIN) window->current = window->configured;
+      return 1;
+    }
     if (gap < FPR_SPIN_GAP) gap <<= 1;
-  } while (hal_mtime() < end && hart_quiet(h));
+    if (!hart_quiet(h)) return 0;
+  } while (hal_mtime() - start < ticks);
+  if (FPR_ADAPTIVE_BLOCK_SPIN) window->current /= 2;
   return 0;
 }
 
-static void block_unless(acb_t *a, pred_t pred, uw arg) {
-  if (spin_until(a, pred, arg)) return; /* it arrived while we looked */
+static int block_unless(acb_t *a, pred_t pred, uw arg, enum wait_kind kind) {
+  if (spin_until(a, pred, arg)) return 0; /* it arrived while we looked */
   uint32_t exp = ST_READY;
   if (!__atomic_compare_exchange_n(&a->var, &exp, ST_BLOCKED, 0,
                                    __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
@@ -1981,10 +2144,10 @@ static void block_unless(acb_t *a, pred_t pred, uw arg) {
     exp = ST_BLOCKED;
     __atomic_compare_exchange_n(&a->var, &exp, ST_READY, 0,
                                 __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
-    return; /* whether we or a waker flipped it, we are READY */
+    return 0; /* whether we or a waker flipped it, we are READY */
   }
-  a->wait_kind = (pred == p_from || pred == p_from_dead) ? 2 : (pred == p_res ? 3 : 1);
   a->wait_arg = arg;
+  a->wait_kind = kind;
   TR(a, 10);
   __atomic_fetch_add(&g_blocked, 1, __ATOMIC_RELAXED);
   if (a->irq_target) __atomic_fetch_add(&g_irq_waiting, 1, __ATOMIC_RELAXED);
@@ -1993,6 +2156,7 @@ static void block_unless(acb_t *a, pred_t pred, uw arg) {
   if (a->irq_target) __atomic_fetch_sub(&g_irq_waiting, 1, __ATOMIC_RELAXED);
   __atomic_fetch_sub(&g_blocked, 1, __ATOMIC_RELAXED);
   a->wait_kind = 0;
+  return 1;
 }
 
 /* Shared monotonic clock in the scheduler's 10 MHz units. */
@@ -2012,6 +2176,32 @@ static int p_sleep(acb_t *a, uw unused) {
   (void)unused;
   return hal_mtime() >= a->wake_at;
 }
+static void sleeper_link(fpr_hart_t *h, acb_t *a, uint64_t deadline) {
+  a->wake_at = deadline;
+  a->slp_hart = h->id;
+  __atomic_store_n(&a->slp_on, 1, __ATOMIC_RELEASE);
+  a->slp_next = h->slp_head;
+  h->slp_head = a;
+  __atomic_fetch_add(&g_sleepers, 1, __ATOMIC_RELAXED);
+}
+
+static void sleeper_unlink_local(acb_t *a) {
+  /* woken by the deadline: slp_drain already unlinked us.  Woken early and now
+   * past it: still linked.  Unlink here when the list is THIS hart's to touch. */
+  if (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) {
+    fpr_hart_t *hn = fpr_hart();
+    if (hn && hn->id == a->slp_hart) {
+      for (acb_t **pp = &hn->slp_head; *pp; pp = &(*pp)->slp_next)
+        if (*pp == a) {
+          *pp = a->slp_next;
+          __atomic_fetch_sub(&g_sleepers, 1, __ATOMIC_RELAXED);
+          __atomic_store_n(&a->slp_on, 0, __ATOMIC_RELEASE);
+          break;
+        }
+    }
+  }
+}
+
 static V a_sleep_us(V usv) {
   if (!ISINT(usv)) fpr_trap("Sys.sleepUs: microseconds must be an Int");
   sw us = UNTAG(usv);
@@ -2041,27 +2231,9 @@ static V a_sleep_us(V usv) {
     fpr_hal_sleep_us((uw)us);
     return (V)&fpr_unit;
   }
-  a->wake_at = now + (uint64_t)us * 10; /* mtime runs at 10 MHz everywhere we run */
-  a->slp_hart = h->id;
-  __atomic_store_n(&a->slp_on, 1, __ATOMIC_RELEASE);
-  a->slp_next = h->slp_head;
-  h->slp_head = a;
-  __atomic_fetch_add(&g_sleepers, 1, __ATOMIC_RELAXED);
-  while (!p_sleep(a, 0)) block_unless(a, p_sleep, 0);
-  /* woken by the deadline: slp_drain already unlinked us.  Woken early and now
-   * past it: still linked.  Unlink here when the list is THIS hart's to touch. */
-  if (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) {
-    fpr_hart_t *hn = fpr_hart();
-    if (hn && hn->id == a->slp_hart) {
-      for (acb_t **pp = &hn->slp_head; *pp; pp = &(*pp)->slp_next)
-        if (*pp == a) {
-          *pp = a->slp_next;
-          __atomic_fetch_sub(&g_sleepers, 1, __ATOMIC_RELAXED);
-          __atomic_store_n(&a->slp_on, 0, __ATOMIC_RELEASE);
-          break;
-        }
-    }
-  }
+  sleeper_link(h, a, now + (uint64_t)us * 10);
+  while (!p_sleep(a, 0)) block_unless(a, p_sleep, 0, WAIT_ANY);
+  sleeper_unlink_local(a);
   return (V)&fpr_unit;
 }
 void fpr_actor_sleep_us(uw us) {
@@ -2413,6 +2585,9 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->inbox_max_bytes = admitted ? admitted->inbox_max_bytes : 0;
   a->inbox_messages = a->inbox_bytes = 0;
   a->inbox_charges = admitted ? admitted->inbox_charges : 0;
+#if FPR_SENDER_CREDITS
+  a->credit_to = 0;
+#endif
   a->send_to = 0; a->send_charge = 0; a->send_root = 0; a->send_hold = 0;
   a->mem_reply = 0;
   a->pool_override = 0;
@@ -2450,16 +2625,17 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
       a->ch[i].budget_owner = a;
       a->ch[i].rv0.charge = a->inbox_charges + (uw)i * RING_CAP;
     }
-    if (cap > RING_CAP) { /* a bigger first ring than the inline one */
+    if (cap > RING_CAP && !(FPR_LAZY_DYNAMIC_RINGS && dyn && !admitted)) {
       ringv_t *rv = ring_block(cap, i == SHIDX, a->ch[i].rv);
       if (!rv) fpr_cpanic("spawn: no memory for the mailbox rings (spawnCap)");
       a->ch[i].rv = rv;
-    } else
+    } else if (cap <= RING_CAP)
       a->ch[i].rv0.cap = cap; /* a smaller ring in the inline slots (masked) */
   }
   a->scan = 0;
   __builtin_memset(&a->shlock, 0, sizeof a->shlock);
   a->in_bl = 0;
+  a->migrating_ready = 0;
   a->tr_i = 0;
   a->entry = f;
   a->next = 0;
@@ -2771,9 +2947,13 @@ static int ring_push(acb_t *a, chan_t *c, uw key, V m, uw charge) {
       return 1;
     }
     uint32_t ncap = rv->cap * 2;
+    if (FPR_LAZY_DYNAMIC_RINGS && ncap < a->mbcap) ncap = a->mbcap;
     int can = c->dyn && rv->cap < RING_MAX;
     if (locked) fpr_unlock(&a->shlock);
     if (!can) return 0;
+#ifdef FPR_ADMISSION_TEST
+    if (fpr_admission_test_fail(9)) return 0; /* ring backing unavailable */
+#endif
     ringv_t *nv = ring_block_d(ncap, shared, 0, a == mem_act, a->inbox_max_messages != 0);
     if (!nv) return 0;
     fpr_lock(&a->shlock);
@@ -2950,6 +3130,54 @@ static V a_send_linear(V av, V m) {
   return OK_UNIT;
 }
 
+/* Experimental fused construction for a local mailbox. */
+static V send_built(acb_t *target, acb_t *sender, V left, V right, int pair) {
+  if (__atomic_load_n(&target->var, __ATOMIC_ACQUIRE) == ST_DEAD)
+    return send_err("dead actor");
+  uw size = pair ? fpr_msg_pair_size() : fpr_msg_concat_size(left, right);
+  uw charge = 0;
+  if (target->inbox_max_messages) {
+    const char *why = inbox_reserve_bytes(target, fpr_msg_slab_charge(size), &charge);
+    if (why) return send_err(why);
+  }
+  V root = pair ? fpr_msg_int_pair(left, right, &sender->send_hold) : fpr_msg_concat(left, right, size, &sender->send_hold);
+  if (target->inbox_max_messages) INBOX_TEST(2, target);
+  fpr_arc_incref(root);
+  if (target->inbox_max_messages) sender->send_root = root;
+  fpr_slab_t *hold = sender->send_hold;
+  sender->send_hold = 0;
+  fpr_slab_unhold(hold, 0);
+  if (target->inbox_max_messages) {
+    INBOX_TEST(3, target);
+    return bounded_publish(target, root, charge);
+  }
+  return a_send_linear((V)target, root);
+}
+static V a_send_concat(V av, V left, V right) {
+  if (fpr_plane_actors) return fpr_plane_actors->send_concat(av, left, right);
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap("sendConcat: target is not an actor");
+  acb_t *target = (acb_t *)av;
+  acb_t *sender = fpr_hart()->current;
+  if (fpr_plane_memory || !sender ||
+      target->pid != fpr_current_pid())
+    return a_send(av, fpr_prim_fn_strcat(left, right));
+  return send_built(target, sender, left, right, 0);
+}
+static V a_send_int_pair(V av, V left, V right) {
+  if (fpr_plane_actors) return fpr_plane_actors->send_int_pair(av, left, right);
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap("sendIntPair: target is not an actor");
+  acb_t *target = (acb_t *)av;
+  if (!fpr_plane_memory && ISINT(left) && ISINT(right) &&
+      fpr_hart()->current && target->pid == fpr_current_pid())
+    return send_built(target, fpr_hart()->current, left, right, 1);
+  hdr_t *t = (hdr_t *)fpr_alloc(8 + 2 * sizeof(V));
+  t->tid = T_TUP2; t->var = 0;
+  FPR_FLD(t, 0) = left; FPR_FLD(t, 1) = right;
+  return a_send(av, (V)t);
+}
+FPR_FN(fpr_g_Sys_x2esendIntPair, a_send_int_pair, 3);
+FPR_FN(fpr_g_Sys_x2esendConcat, a_send_concat, 3);
+
 /* ---- the SYSCALL MAILBOX (process.c's trampoline) -------------------
  * A dormant acb that is never scheduled: var is pinned ST_READY so a
  * sender's wake CAS(BLOCKED->READY) always fails -- replies are
@@ -3016,7 +3244,7 @@ static V a_receive(V me) {
     FPR_COST_ADD(fpr_hart(), xr_scan_ns, FPR_PROBE_NOW() - r0);
     FPR_COST_ADD(fpr_hart(), xr_block_n, 1);
 #endif
-    block_unless(a, p_any, 0);
+    block_unless(a, p_any, 0, WAIT_ANY);
 #ifdef FPR_COST_PROBE
     r0 = FPR_PROBE_NOW();
 #endif
@@ -3079,7 +3307,7 @@ static V a_receive_from(V me, V fromv) {
     FPR_COST_ADD(fpr_hart(), xr_scan_ns, FPR_PROBE_NOW() - r0);
     FPR_COST_ADD(fpr_hart(), xr_block_n, 1);
 #endif
-    block_unless(a, p_from, sid);
+    block_unless(a, p_from, sid, WAIT_FROM);
 #ifdef FPR_COST_PROBE
     r0 = FPR_PROBE_NOW();
 #endif
@@ -3125,7 +3353,6 @@ static V dead_of(acb_t *s) {
  * A watcher only leaves the list or joins another through watch_del, under
  * the same lock, so the walk is never of a list that moved. */
 #define WATCH_BATCH 32
-#define WATCH_OF(a) ((acb_t *)((uw)(a)->watch & ~(uw)1))
 static void watch_add(acb_t *a, acb_t *s) {
   fpr_lock(&s->watch_lock);
   a->watch_nx = s->watch_head;
@@ -3135,7 +3362,9 @@ static void watch_add(acb_t *a, acb_t *s) {
   fpr_unlock(&s->watch_lock);
 }
 static void watch_del(acb_t *a) {
-  acb_t *s = WATCH_OF(a);
+  /* Sender death can concurrently mark the low bit before we take its lock. */
+  uw watched = (uw)__atomic_load_n(&a->watch, __ATOMIC_ACQUIRE);
+  acb_t *s = (acb_t *)(watched & ~(uw)1);
   if (!s) return;
   fpr_lock(&s->watch_lock);
   for (acb_t **pp = &s->watch_head; *pp; pp = &(*pp)->watch_nx)
@@ -3191,6 +3420,44 @@ static V a_receive_from_now(V me, V fromv) {
   return dead ? dead_of((acb_t *)fromv) : (V)&recv_empty;
 }
 
+static int from_dead_or_due(acb_t *a, uw sender) {
+  return p_from_dead(a, sender) || hal_mtime() >= a->wake_at;
+}
+
+/* Native owner runtime only. Register both wake sources before the
+ * block/recheck handshake. The caller owns correlation and deadline policy. */
+int fpr_wait_from_until_c(V me, V from, uint64_t deadline) {
+  if (fpr_plane_actors) return 0;
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h->current;
+  if (!a || (V)a != me || ISINT(from) || TID(from) != T_ACTOR)
+    fpr_cpanic("waitFromUntil: invalid actor");
+  if (p_from_dead(a, (uw)from) || hal_mtime() >= deadline) return 1;
+  /* An earlier ordinary sleep can still be linked on a remote hart. */
+  if (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) return 0;
+  /* Only the running actor changes its pin after spawn. Thieves read it
+   * under bl_lock, so synchronize transitions only for migratable actors. */
+  int temporary_pin = !a->pin;
+  if (temporary_pin) {
+    fpr_lock(&h->bl_lock);
+    a->pin = 1;
+    fpr_unlock(&h->bl_lock);
+  }
+  sleeper_link(h, a, deadline);
+  watch_add(a, (acb_t *)from);
+  int parked = 0;
+  while (!from_dead_or_due(a, (uw)from))
+    parked |= block_unless(a, from_dead_or_due, (uw)from, WAIT_FROM);
+  watch_del(a);
+  sleeper_unlink_local(a);
+  if (temporary_pin) {
+    fpr_lock(&h->bl_lock);
+    a->pin = 0;
+    fpr_unlock(&h->bl_lock);
+  }
+  return 1 + parked;
+}
+
 static V a_receive_from_res(V me, V fromv) {
   if (fpr_plane_actors) return fpr_plane_actors->receive_from_res(me, fromv);
   fpr_hart_t *h = fpr_hart();
@@ -3212,7 +3479,7 @@ static V a_receive_from_res(V me, V fromv) {
     if (sh_has_from(a, sid, &k)) return ok_of(take_at(a, sh_chan(a), k));
     if (dead) return dead_of(s);
     watch_add(a, s);
-    block_unless(a, p_from_dead, sid);
+    block_unless(a, p_from_dead, sid, WAIT_FROM);
     watch_del(a);
   }
 }
@@ -3236,7 +3503,7 @@ static V a_receive_res(V me) {
         if (!ISINT(m) && TID(m) == T_RESULT) return take_at(a, c, k);
       }
     }
-    block_unless(a, p_res, 0);
+    block_unless(a, p_res, 0, WAIT_RESULT);
   }
 }
 
@@ -3302,16 +3569,45 @@ static V a_myself(V dummy) {
   return (V)fpr_hart()->current;
 }
 
+/* Per-actor layout bytes: the live receiver owns the inline block. Growth
+ * publishes under shlock; replaced blocks remain committed until recycle.
+ * Deferred bytes describe capacity requested at spawn but not backed yet. */
+static V mailbox_bytes(int deferred) {
+  acb_t *a = fpr_hart()->current;
+  if (!a || !a->ch) return TAG(0);
+  uw bytes = deferred ? 0 : sizeof(((chblk_t *)0)->ch) + sizeof(((chblk_t *)0)->shfrom);
+  if (!deferred && a->inbox_charges) bytes += INBOX_CHARGES_SIZE;
+  fpr_lock(&a->shlock);
+  for (int i = 0; i < MAXSND; i++) {
+    chan_t *c = &a->ch[i];
+    ringv_t *rv = c->rv;
+    if (deferred) {
+      if (rv->cap < a->mbcap)
+        bytes += ring_block_bytes(a->mbcap, i == SHIDX, c->budget_owner != 0);
+    } else {
+      for (; rv != &c->rv0; rv = rv->old)
+        bytes += ring_block_bytes(rv->cap, rv->from != 0, rv->charge != 0);
+    }
+  }
+  fpr_unlock(&a->shlock);
+  return TAG((sw)bytes);
+}
+static V mailbox_committed(V ignored) { (void)ignored; return mailbox_bytes(0); }
+static V mailbox_deferred(V ignored) { (void)ignored; return mailbox_bytes(1); }
+FPR_FN(fpr_g_Sys_x2emailboxCommittedBytes, mailbox_committed, 1);
+FPR_FN(fpr_g_Sys_x2emailboxDeferredBytes, mailbox_deferred, 1);
+
 static V g_hart_id(V d) { (void)d; return TAG((sw)fpr_hart()->id); }
 static V g_harts(V d) { (void)d; return TAG((sw)fpr_live_harts); }
 
 /* scheduler introspection + tuning (docs/2026-10-02-SCHED-MODEL.md) */
-static V g_sched_tau(V d) { (void)d; return TAG((sw)g_tau); }
-static V g_sched_set_tau(V n) { g_tau = (uw)UNTAG(n); return (V)&fpr_unit; }
-static V g_sched_max_wait(V d) { (void)d; return TAG((sw)g_max_wait); }
-static V g_sched_steals(V d) { (void)d; return TAG((sw)g_steals); }
+static V g_sched_tau(V d) { (void)d; return TAG((sw)__atomic_load_n(&g_tau, __ATOMIC_RELAXED)); }
+static V g_sched_set_tau(V n) { __atomic_store_n(&g_tau, (uw)UNTAG(n), __ATOMIC_RELAXED); return (V)&fpr_unit; }
+static V g_sched_max_wait(V d) { (void)d; return TAG((sw)__atomic_load_n(&g_max_wait, __ATOMIC_RELAXED)); }
+static V g_sched_steals(V d) { (void)d; return TAG((sw)__atomic_load_n(&g_steals, __ATOMIC_RELAXED)); }
 static V g_sched_set_weight(V av, V w) {
-  ((acb_t *)av)->weight = (uw)UNTAG(w) ? (uw)UNTAG(w) : 1;
+  sw weight = UNTAG(w);
+  __atomic_store_n(&((acb_t *)av)->weight, weight > 0 ? (uw)weight : 1, __ATOMIC_RELAXED);
   return (V)&fpr_unit;
 }
 
@@ -3565,7 +3861,7 @@ void *fpr_mem_take(uw bytes) {
   __atomic_add_fetch(&fpr_mem_reqs, 1, __ATOMIC_RELAXED);
   while (!p_mem(a, 0)) {
     __atomic_add_fetch(&fpr_mem_waits, 1, __ATOMIC_RELAXED);
-    block_unless(a, p_mem, 0);
+    block_unless(a, p_mem, 0, WAIT_ANY);
   }
   return (void *)__atomic_exchange_n(&a->mem_reply, 0, __ATOMIC_ACQ_REL);
 }
@@ -3594,7 +3890,7 @@ static V mem_next(acb_t *a, uw *from) {
         return take_at(a, c, c->rh);
       }
     }
-    block_unless(a, p_any, 0);
+    block_unless(a, p_any, 0, WAIT_ANY);
   }
 }
 static V mem_body(V me) {
@@ -3687,6 +3983,8 @@ void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
   actors->receive_from_now = a_receive_from_now;
   actors->spawn_inbox = a_spawn_inbox;
   actors->send_linear = a_send_linear;
+  actors->send_concat = a_send_concat;
+  actors->send_int_pair = a_send_int_pair;
   actors->send_arc = a_send_arc;
   memory->abi = FPR_PLANE_MEMORY_ABI;
 #ifdef FPR_COMPACT_CELLS

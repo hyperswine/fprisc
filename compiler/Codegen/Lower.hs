@@ -373,11 +373,31 @@ unify a b
   | a == b = a
   | otherwise = TVal
 
+-- A declared fused HAL entry opts the unit into direct outgoing construction.
+-- Preserve the ordinary argument order and leave every shadowed name alone.
+fusedSend :: Cx -> Env -> Core -> Maybe Core
+fusedSend cx env (CApp (CApp (CVar "send") target)
+                      (CApp (CApp (CVar "strcat") left) right))
+  | polProfile (cxPolicy cx) == HostedBase,
+    all (isPrim cx env) ["send", "strcat", "Sys.sendConcat"],
+    Just (Prim 2 (Just "fpr_g_send_call2") _) <- M.lookup "send" (cxHal cx),
+    Just (Prim 3 (Just "fpr_g_Sys_x2esendConcat_call3") _) <- M.lookup "Sys.sendConcat" (cxHal cx) =
+      Just (foldl CApp (CVar "Sys.sendConcat") [target, left, right])
+fusedSend cx env (CApp (CApp (CVar "send") target) (CMk 4 0 [left, right]))
+  | polProfile (cxPolicy cx) == HostedBase,
+    all (isPrim cx env) ["send", "Sys.sendIntPair"],
+    Just (Prim 2 (Just "fpr_g_send_call2") _) <- M.lookup "send" (cxHal cx),
+    Just (Prim 3 (Just "fpr_g_Sys_x2esendIntPair_call3") _) <- M.lookup "Sys.sendIntPair" (cxHal cx) =
+      -- The runtime checks the value tags and uses ordinary send for references.
+      Just (foldl CApp (CVar "Sys.sendIntPair") [target, left, right])
+fusedSend _ _ _ = Nothing
+
 -- tail position: the expression is the function's result
 lowerTail :: Cx -> Env -> Core -> L ()
 lowerTail cx env expr = ended (go expr) >> pure ()
  where
   go = \case
+    e | Just fused <- fusedSend cx env e -> go fused
     CLet x a b -> lowerBind cx env x a >>= \env' -> lowerTail cx env' b
     CIf c t f -> do
       p <- lowerCond cx env c
@@ -551,6 +571,7 @@ isPrimName cx h = M.notMember h (cxProg cx) && M.notMember h (cxExt cx)
 -- value position: the natural representation of the expression
 lowerVal :: Cx -> Env -> Core -> L (VId, Ty)
 lowerVal cx env = \case
+  e | Just fused <- fusedSend cx env e -> lowerVal cx env fused
   CVar x
     | Just r <- M.lookup x env -> pure r
     | otherwise -> lowerGlobal cx x

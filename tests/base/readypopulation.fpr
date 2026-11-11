@@ -1,0 +1,28 @@
+unsafe base.
+schedSetWeight : Int -> Int -> Unit .
+Population.size : Unit -> Int .
+Population.arrive : Unit -> Unit .
+Population.ready : Unit -> Int .
+Population.finish : Int -> Unit .
+Population.report : Unit -> Unit .
+Population.done : Unit -> Int .
+await me count read = if read Unit == count then Unit else _ = yield me; await me count read.
+rounds me 0 = Unit.
+rounds me n = _ = yield me; rounds me (n - 1).
+worker count ticket me =
+  _ = schedSetWeight me (if ticket % 8 == 0 then 64 else 1);
+  _ = Population.arrive Unit;
+  _ = await me count Population.ready;
+  _ = rounds me 16;
+  _ = schedSetWeight me (if ticket % 8 == 1 then 64 else 1);
+  _ = rounds me 16;
+  Population.finish ticket.
+launch count 0 = Unit.
+launch count n = _ = spawn (worker count n); launch count (n - 1).
+main =
+  me = myself 0;
+  count = Population.size Unit;
+  _ = launch count count;
+  _ = await me count Population.done;
+  _ = Population.report Unit;
+  print "ready population {count}: all completed, max admission wait {schedMaxWait 0}".

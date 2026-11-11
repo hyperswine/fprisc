@@ -667,6 +667,14 @@ def sleepwait(tmp):
     print('An actor waiting 3 s on a sleeping actor is not a deadlock: PASS')
 
 @case
+def timedready(tmp):
+    exe = tmp / 'timedready'
+    run(['./fpr', 'build', 'tests/base/timedready.fpr', '--harts', '4',
+         '--with', 'tests/base/timedready_probe.c', '-o', exe])
+    for harts in ('1', '4'):
+        assert run([exe], env={'FPR_HARTS': harts, 'FPR_BLOCK_SPIN_NS': '0'}).stdout == 'timedready: HOLDS\n'
+
+@case
 def bigheap(tmp):
     # 4c. the heap is a reservation of address space, not a size: a live heap past
     # the 256 MiB it used to be fixed at, and FPR_HEAP_MB caps a run by name

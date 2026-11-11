@@ -1,0 +1,49 @@
+unsafe base.
+timedReady : Int -> Int -> Int -> Int .
+must (Ok value) = value.
+must (Err why) = error why.
+check ok why = if ok then Unit else error why.
+relay boss me = _ = receive me; must (send boss 1).
+owner boss ack me =
+  _ = must (send boss 42);
+  _ = must (send ack 1);
+  receiveFrom me boss.
+lateOwner boss me =
+  next = receiveFrom me boss;
+  _ = must (send boss 31);
+  must (send next 1).
+nextOwner boss me =
+  _ = receive me;
+  _ = Sys.sleepUs 2000;
+  must (send boss 32).
+switchOwner me =
+  old = spawn (lateOwner me);
+  next = spawn (nextOwner me);
+  _ = check (timedReady me old 100000 == 2) "first owner did not time out";
+  _ = must (send old next);
+  _ = check (timedReady me next 10000000 != 0) "second owner wait unavailable";
+  _ = check (must (receiveFromNow me next) == 32) "second owner was not ready";
+  _ = check (must (receiveFromNow me old) == 31) "late reply lost";
+  Unit.
+exercise me =
+  _ = switchOwner me;
+  ack = spawn (relay me);
+  peer = spawn (owner me ack);
+  _ = receiveFrom me ack;
+  _ = check (timedReady me peer 10000000 == 1) "queued reply parked";
+  _ = check (receiveFrom me peer == 42) "readiness consumed reply";
+  _ = must (send me 73);
+  _ = check (timedReady me peer 0 == 1) "elapsed deadline parked";
+  _ = check (timedReady me peer 100000 == 2) "live peer timeout did not park";
+  _ = check (receiveFrom me me == 73) "unrelated message consumed";
+  _ = must (send peer 1);
+  _ = case receiveFromRes me peer of Err "dead actor" -> Unit | _ -> error "owner did not exit";
+  _ = check (timedReady me peer 10000000 == 1) "dead owner parked";
+  Unit.
+mobile boss me = _ = exercise me; must (send boss 1).
+main =
+  me = myself 0;
+  _ = exercise me;
+  child = spawn (mobile me);
+  _ = check (must (receiveFromRes me child) == 1) "mobile waiter failed";
+  print "timedready: HOLDS".

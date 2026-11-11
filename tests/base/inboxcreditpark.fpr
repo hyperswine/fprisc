@@ -1,0 +1,39 @@
+# Both senders share hart zero. The competitor cannot run until the holder
+# returns to the scheduler. The receiver never drains either payload.
+unsafe base.
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+must (Ok x) = x.
+must (Err why) = error why.
+park me = Sys.sleepUs 30000000.
+holder target next boss me =
+  payload = strcat "holder " (str me);
+  _ = must (send target payload);
+  _ = must (send next me);
+  receiveFrom me boss.
+competitor target boss me =
+  _ = receive me;
+  payload = strcat "competitor " (str me);
+  result = case send target payload of
+      Err why -> Err "unused credit still held: {why}"
+    | Ok u -> case send target payload of Err "mailbox full" -> Ok 1 | other -> Err "queued capacity was returned";
+  must (send boss result).
+mixedCharges boss =
+  target = must (Sys.spawnInbox 0 4 131072 park);
+  payload = strcat "mixed " (str boss);
+  _ = must (send target payload);
+  _ = must (send target 1);
+  _ = must (send target payload);
+  _ = case send target payload of Err "mailbox full" -> Unit | other -> error "byte limit lost on charge change";
+  _ = must (send target 2);
+  _ = case send target 3 of Err "mailbox full" -> Unit | other -> error "message limit lost on charge change";
+  kill target.
+main =
+  boss = myself 0;
+  _ = mixedCharges boss;
+  target = must (Sys.spawnInbox 0 2 131072 park);
+  next = spawnOn 0 (competitor target boss);
+  first = spawnOn 0 (holder target next boss);
+  _ = must (receiveFrom boss next);
+  _ = must (send first 0);
+  _ = kill target;
+  print "inboxcreditpark: unused credit returned and queued charge retained HOLDS".

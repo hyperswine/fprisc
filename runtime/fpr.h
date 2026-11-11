@@ -250,7 +250,7 @@ void fpr_bkt_put(void **b);
 #define FPR_NATIVE_ABI 26u
 #endif
 #endif
-#define FPR_PLANE_ACTORS_ABI 4u /* v4: recyclable actor execution state; v3: opt-in transactional spawn_inbox; v2: receive_from_now */
+#define FPR_PLANE_ACTORS_ABI 6u /* v6: packed integer-pair send; v5: fused flat-string send; v4: recyclable actor execution state; v3: opt-in transactional spawn_inbox; v2: receive_from_now */
 #ifdef FPR_COMPACT_CELLS
 #define FPR_PLANE_MEMORY_ABI 5u
 #else
@@ -278,6 +278,8 @@ typedef struct fpr_plane_actors {
   V (*spawn_inbox)(V hart, V messages, V bytes, V f); /* global inbox admission */
   V (*send_linear)(V target, V m);    /* preserves move ownership on the plane */
   V (*send_arc)(V target, V m);       /* preserves same-process shares */
+  V (*send_concat)(V target, V left, V right);
+  V (*send_int_pair)(V target, V left, V right);
 } fpr_plane_actors_t;
 typedef struct fpr_plane_memory {
   uw abi;                             /* FPR_PLANE_MEMORY_ABI of the exporter */
@@ -336,6 +338,12 @@ uw fpr_image_count(void);                /* images registered now */
 extern void (*fpr_pid_quiet)(uw pid);    /* actors.c reap: an actor of pid was reclaimed */
 uw fpr_current_pid(void);                /* actors.c: the running actor's process (0 = boot) */
 int fpr_entry_copy_try(V v, uw pid, V *out, fpr_slab_t **hold);
+uw fpr_msg_slab_charge(uw need);
+uw fpr_msg_pair_size(void);
+V fpr_msg_int_pair(V a, V b, fpr_slab_t **hold);
+uw fpr_msg_concat_size(V left, V right);
+V fpr_msg_concat(V left, V right, uw size, fpr_slab_t **hold);
+V fpr_prim_fn_strcat(V left, V right);
 V fpr_msg_copy_to(V v, uw pid);          /* fpr_msg_copy for a receiver in process pid */
 uw fpr_msg_charge_to(V v, uw pid, int shared, uw limit);       /* conservative queued representation charge */
 V fpr_msg_copy_held_to(V v, uw pid, fpr_slab_t **hold); /* unpublished send hold */
@@ -345,6 +353,7 @@ uw fpr_arc_live_count(void);         /* runtime.c: the arc gauge */
 int fpr_arc_movable_root(V v);       /* runtime.c: sendLinear's transfer test */
 void fpr_arc_promote_share(V v);     /* runtime.c: sendArc's promotion */
 V fpr_receive_res_c(V me);           /* actors.c: receiveRes, C-callable */
+int fpr_wait_from_until_c(V me, V from, uint64_t deadline_ticks); /* 0 unavailable, 1 ready without parking, 2 resumed after parking */
 V fpr_receive_from_now_c(V me, V from); /* selective nonblocking C wait */
 V fpr_receive_from_res_c(V me, V from); /* actors.c: receiveFromRes, C-callable (a dead sender answers Err) */
 void fpr_fuel_exhausted(void);       /* actors.c: the fuel trap */
@@ -545,6 +554,7 @@ typedef struct {
   uint64_t xr_recv_n, xr_scan_ns, xr_block_n, xr_drop_ns;
   uint64_t xr_drop_hit_n, xr_drop_miss_n; /* decrefs that found an entry / had none
                                            * (docs/2026-10-18-ARC-TABLE-CHURN.md) */
+  uint64_t sched_admissions, sched_select_ns, sched_clock_ns;
   uint64_t xl_drain_n, xl_drain_ns, xl_run_n, xl_run_ns;
   uint64_t xp_park_n, xp_park_ns, xp_bell_n, xp_bell_ns;
   uint64_t cost_turns; /* value-state turns run (Sys.loop, loopWith, the
@@ -582,6 +592,7 @@ static inline void fpr_bump_close(fpr_hart_t *h) { if (h) h->bump_slab = 0; }
 
 /* Opt-in per-hart cost ledger. Ordinary builds emit no increments. */
 #ifdef FPR_COST_PROBE
+void fpr_scheduler_costs(uint64_t *admissions, uint64_t *selection, uint64_t *clock);
 uint64_t hal_probe_ns(void); /* machine/posix/hal.c: a fine monotonic clock */
 #define FPR_PROBE_NOW() hal_probe_ns()
 #else

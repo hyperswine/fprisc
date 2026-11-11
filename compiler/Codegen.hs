@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 214 -- private consuming entries can carry a fresh cell across a recursive backedge
+codegenRev = 215 -- fuse send of a flat concat when the hosted unit declares the runtime entry
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

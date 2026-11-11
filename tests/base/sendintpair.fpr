@@ -1,0 +1,35 @@
+unsafe base.
+Sys.sendIntPair : Int -> Int -> Int -> Result Unit String .
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+must (Ok x) = x.
+must (Err why) = error why.
+gate parent me = peer = receiveFrom me parent; must (send peer 0).
+inspect parent latch me =
+  _ = receiveFrom me latch;
+  (a, b) = receiveFrom me parent;
+  (who, c) = receiveFrom me parent;
+  must (send parent (a == 7 and b == 0 - 3 and who == parent and c == 5)).
+rounds me 0 = Unit.
+rounds me n =
+  _ = must (send me (n, n + 1));
+  pair = receiveFrom me me;
+  (a, b) = pair;
+  _ = if a == n and b == n + 1 then Unit else error "pair contents";
+  _ = drop pair;
+  rounds me (n - 1).
+mark me tag value = _ = must (send me tag); value.
+main =
+  me = myself 0;
+  _ = must (send (mark me 1 me) (mark me 2 "left", mark me 3 "right"));
+  first = receiveFrom me me; second = receiveFrom me me; third = receiveFrom me me;
+  (left, right) = receiveFrom me me;
+  _ = if first == 1 and second == 2 and third == 3 and left == "left" and right == "right" then Unit else error "pair evaluation";
+  _ = rounds me 5000;
+  latch = spawn (gate me);
+  target = must (Sys.spawnInbox 0 3 131072 (inspect me latch));
+  _ = must (Sys.sendIntPair target 7 (0 - 3));
+  _ = must (Sys.sendIntPair target me 5);
+  _ = case Sys.sendIntPair target 0 1 of Err "mailbox full" -> Unit | other -> error "missing refusal";
+  _ = must (send latch target);
+  _ = if receiveFrom me target then Unit else error "pair delivery";
+  print "sendintpair: HOLDS".

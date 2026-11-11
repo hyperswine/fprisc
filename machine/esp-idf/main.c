@@ -69,7 +69,7 @@ static void watch_task(void *arg) {
     for (int i = 0; i < FPR_NHARTS; i++) {
       fpr_hart_t *h = &fpr_harts[i];
       struct fpr_acb *c = h->current;
-      esp_rom_printf("[watch] hart %d: epoch %u idle %u current %p\n", i, (unsigned)h->epoch, (unsigned)h->idle, (void *)c);
+      esp_rom_printf("[watch] hart %d: epoch %u idle %u current %p\n", i, (unsigned)h->epoch, (unsigned)__atomic_load_n(&h->idle, __ATOMIC_RELAXED), (void *)c);
     }
   }
 }

@@ -1,0 +1,40 @@
+unsafe base.
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+schedProbeRole : Int -> Unit .
+schedProbeBegin : Unit -> Unit .
+schedProbeEnd : Unit -> Unit .
+schedProbeReport : Unit -> Unit .
+must (Ok x) = x.
+must (Err why) = error why.
+# Gate tokens cost no bytes and use the reserved second message slot.
+gate boss me = target = receiveFrom me boss; _ = must (send target 0); gate boss me.
+reader boss latch me =
+  _ = receiveFrom me latch;
+  value = receiveFrom me boss;
+  _ = must (send boss value);
+  _ = drop value;
+  reader boss latch me.
+busy n = if n == 1000000 then busy 0 else busy (n + 1).
+competitor boss me = _ = schedProbeRole 1; _ = must (send boss 1); busy 0.
+rounds me target latch 0 = Unit.
+rounds me target latch n =
+  payload = strcat "item-" (str n);
+  _ = must (send target payload);
+  _ = case send target payload of Err "mailbox full" -> Unit | other -> error "missing byte refusal";
+  _ = must (send latch target);
+  value = receiveFrom me target;
+  _ = if value == payload then Unit else error "reply order";
+  _ = drop value;
+  rounds me target latch (n - 1).
+main =
+  me = myself 0;
+  latch = spawnOn 0 (gate me);
+  target = must (Sys.spawnInbox 0 2 65536 (reader me latch));
+  noise = spawnOn 0 (competitor me);
+  _ = receiveFrom me noise;
+  _ = schedProbeBegin Unit;
+  _ = rounds me target latch 256;
+  _ = schedProbeEnd Unit;
+  _ = schedProbeReport Unit;
+  _ = kill noise; _ = kill latch; _ = kill target;
+  print "handoffpressure: 256 admissions, refusals and ordered replies".

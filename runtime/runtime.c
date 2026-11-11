@@ -73,7 +73,7 @@ static void hart_init(int id) {
   for (int i = 0; i < FPR_NBUCKETS; i++) h->pool.buckets[i] = 0;
   h->current = 0;
   h->rq_head = h->rq_tail = 0;
-  h->idle = 0;
+  __atomic_store_n(&h->idle, 0, __ATOMIC_RELAXED);
   h->fuel_preempts = 0;
   h->rpos = 0;
 }
@@ -1333,7 +1333,10 @@ static int dc_budget(V v, uw *left, unsigned depth) {
       if (!budget_take(left, total)) return 0;
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *fields = (V *)((char *)v + 8);
-      for (uw i = 0; i < nf; i++) if (!dc_budget(fields[i], left, depth + 1)) return 0;
+      for (uw i = 0; i < nf; i++) {
+        V child = fields[i];
+        if (child && !ISINT(child) && !dc_budget(child, left, depth + 1)) return 0;
+      }
       return 1;
     }
   }
@@ -1501,7 +1504,11 @@ static V dc_dup(V v, dctx_t *c) {
       if (c->share) dc_share_put(c->share, v, n);
       V *f = (V *)((char *)n + 8);
       for (uw i = 0; i < nf; i++) {
-        f[i] = dc_dup(f[i], c);
+        /* dc_cell already copied immediate fields, including correlation
+         * IDs in request tuples. Only references can require rewriting. */
+        V child = f[i];
+        if (!child || ISINT(child)) continue;
+        f[i] = dc_dup(child, c);
         if (c->overflow) return 0;
       }
       return n;
@@ -1531,11 +1538,24 @@ static V dc_dup(V v, dctx_t *c) {
 #define FPR_MSG_SLAB_SZ ((uw)64 * 1024)
 #endif
 #define MSG_SLAB_SZ FPR_MSG_SLAB_SZ
+static unsigned clz64(uint64_t x);
+uw fpr_msg_slab_charge(uw need) {
+  if (!need) return 0;
+  if (need > (uw)-1 - sizeof(fpr_slab_t) - FPR_SLAB_PAD - 32) return (uw)-1;
+  uw want = need + sizeof(fpr_slab_t) + FPR_SLAB_PAD + 32;
+  if (want < MSG_SLAB_SZ) want = MSG_SLAB_SZ;
+  /* The ordinary floor is already a power of two. Oversized graphs and
+   * non-power-of-two floors round up with one leading-zero count. */
+  if (!(want & (want - 1))) return want;
+  if (want > ((uw)-1 >> 1)) return (uw)-1;
+  return (uw)1 << (64 - clz64(want - 1));
+}
 /* Charge a whole potential message slab per queued graph. Packing can share
  * slabs, so this deliberately overcounts; it includes the slab floor and
  * buddy rounding. Allocator arenas and the sender's reusable hold are separate.
  * Size walking does not allocate or park, so the hart-local copy pid is safe. */
 uw fpr_msg_charge_to(V v, uw pid, int shared, uw limit) {
+  if (ISINT(v) || !v) return 0;
   fpr_hart_t *h = fpr_hart();
   uw prior = h ? h->copy_pid : 0;
   if (h) h->copy_pid = pid;
@@ -1548,16 +1568,7 @@ uw fpr_msg_charge_to(V v, uw pid, int shared, uw limit) {
     fpr_slab_t *sl = *(fpr_slab_t **)((char *)v - 8);
     if (sl && (uw)(sl->end - (char *)sl) > need) need = (uw)(sl->end - (char *)sl);
   }
-  if (!need) return 0;
-  if (need > (uw)-1 - sizeof(fpr_slab_t) - FPR_SLAB_PAD - 32) return (uw)-1;
-  uw want = need + sizeof(fpr_slab_t) + FPR_SLAB_PAD + 32;
-  if (want < MSG_SLAB_SZ) want = MSG_SLAB_SZ;
-  uw bound = 1;
-  while (bound < want) {
-    if (bound > (uw)-1 / 2) return (uw)-1;
-    bound <<= 1;
-  }
-  return bound;
+  return fpr_msg_slab_charge(need);
 }
 static fpr_slab_t *msg_slab_new(uw need) {
   if (need>(uw)-1-sizeof(fpr_slab_t)-FPR_SLAB_PAD) fpr_cpanic("message allocation size overflow");
@@ -1581,6 +1592,63 @@ static fpr_slab_t *msg_slab_new(uw need) {
   sl->next = 0;
   return sl;
 }
+/* Build a flat outgoing string without first allocating the joined bytes in
+ * the sender's pool. The caller owns the slab hold until ARC promotion. */
+uw fpr_msg_concat_size(V left, V right) {
+  str_t *x = (str_t *)left, *y = (str_t *)right;
+  if (ISINT(left) || ISINT(right) || x->tid != T_STR || y->tid != T_STR)
+    fpr_trap("sendConcat: not strings");
+  uw overhead = sizeof(str_t) + FPR_MANAGED_PREFIX + 15 + sizeof(fpr_slab_t) + FPR_SLAB_PAD;
+  if (x->len > (uw)-1 - overhead || y->len > (uw)-1 - overhead - x->len)
+    fpr_trap("sendConcat: string size overflow");
+  return dc_cellsz(sizeof(str_t) + x->len + y->len);
+}
+/* Reserve a construction hold independently of the sender's packing hold.
+ * Large dedicated cells leave the current packing slab intact. */
+static V msg_build_cell(uw raw, uw size, fpr_slab_t **hold) {
+  fpr_slab_t **slot = fpr_acb_msg_slot(fpr_hart()->current);
+  int pack = size <= MSG_SLAB_SZ - sizeof(fpr_slab_t) - FPR_SLAB_PAD;
+  fpr_slab_t *sl = pack ? *slot : 0;
+  if (sl && size > (uw)(sl->end - sl->hp)) {
+    *slot = 0;
+    fpr_slab_unhold(sl, 0);
+    sl = 0;
+  }
+  if (sl) {
+    fpr_lock(&arc_lock);
+    sl->holds++;
+    fpr_unlock(&arc_lock);
+  } else {
+    sl = msg_slab_new(size);
+    sl->holds = pack ? 2 : 1;
+    if (pack) *slot = sl;
+    FPR_COST_ADD(fpr_hart(), cost_msg_slabs, 1);
+  }
+  *hold = sl;
+  dctx_t c = {.hp=sl->hp, .sl=sl, .end=sl->end};
+  V root = dc_bump(&c, raw);
+  sl->hp = c.hp;
+  return root;
+}
+uw fpr_msg_pair_size(void) { return dc_cellsz(8 + 2 * sizeof(V)); }
+V fpr_msg_int_pair(V a, V b, fpr_slab_t **hold) {
+  hdr_t *t = (hdr_t *)msg_build_cell(8 + 2 * sizeof(V), fpr_msg_pair_size(), hold);
+  t->tid = T_TUP2; t->var = 0;
+  FPR_FLD(t, 0) = a; FPR_FLD(t, 1) = b;
+  return (V)t;
+}
+V fpr_msg_concat(V left, V right, uw size, fpr_slab_t **hold) {
+  str_t *x = (str_t *)left, *y = (str_t *)right;
+  uw n = x->len + y->len;
+  str_t *s = (str_t *)msg_build_cell(sizeof(str_t) + n, size, hold);
+  s->tid = T_STR;
+  s->var = 0;
+  s->len = n;
+  __builtin_memcpy(s->bytes, x->bytes, x->len);
+  __builtin_memcpy(s->bytes + x->len, y->bytes, y->len);
+  return (V)s;
+}
+
 /* holds--; the slab goes home once nothing keeps it (arc_lock) */
 static void slab_unhold_locked(fpr_slab_t *sl) {
   if (--sl->holds == 0 && sl->escaped == 0 && !sl->owner) fpr_slab_release(sl);
@@ -1638,8 +1706,12 @@ static V msg_copy_held_in(V v, int fresh, uw pid, fpr_slab_t **hold) {
     fpr_slab_unhold(sl, 0);
     sl = 0;
   }
-  /* No packing slab: a fresh floor slab, again one pass. */
-  sl = msg_slab_new(MSG_SLAB_SZ - sizeof(fpr_slab_t));
+  /* A flat heap string carries its exact copy footprint. Request room for
+   * it on the first allocation, even when it exceeds the packing floor. */
+  uw first_need = MSG_SLAB_SZ - sizeof(fpr_slab_t);
+  if (TID(v) == T_STR && fpr_in_heap(v) && PREHEADER(v) > first_need)
+    first_need = PREHEADER(v);
+  sl = msg_slab_new(first_need);
   FPR_COST_ADD(fpr_hart(), cost_msg_slabs, 1);
   /* Allocation above can park; another actor on this hart can change it. */
   h = fpr_hart(); /* the sender may also have migrated while parked */

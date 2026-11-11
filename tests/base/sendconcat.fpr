@@ -1,0 +1,46 @@
+unsafe base.
+Sys.sendConcat : Int -> String -> String -> Result Unit String .
+must (Ok x) = x.
+must (Err why) = error why.
+worker parent me =
+  a = receive me;
+  b = receive me;
+  _ = must (send parent (a == "abcd" and b == ""));
+  Unit.
+S = use "std/string".
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+Sys.alive : Int -> Bool .
+gate me = peer = receive me; send peer 0.
+inspect parent start me =
+  _ = receiveFrom me start;
+  v = receive me;
+  _ = must (send parent (v == S.repeat 131072 "a"));
+  Unit.
+produce peer me =
+  part = S.repeat 65536 "a";
+  must (send peer (strcat part part)).
+awaitExit a = if Sys.alive a then _ = Sys.sleepUs 1000; awaitExit a else Unit.
+via send strcat peer = send peer (strcat "left" "right").
+reverseJoin a b = strcat b a.
+observe peer value = value == "rightleft".
+mark me tag value = _ = must (send me tag); value.
+main =
+  me = myself 0;
+  _ = if via observe reverseJoin me then Unit else error "shadowed calls";
+  w = spawn (worker me);
+  _ = must (send (mark me 1 w) (strcat (mark me 2 "ab") (mark me 3 "cd")));
+  one = receiveFrom me me; two = receiveFrom me me; three = receiveFrom me me;
+  _ = if one == 1 and two == 2 and three == 3 then Unit else error "send evaluation order";
+  _ = must (Sys.sendConcat w "" "");
+  _ = if receiveFrom me w then Unit else error "short strings";
+  start = spawn gate;
+  dest = must (Sys.spawnInbox (0 - 1) 2 262144 (inspect me start));
+  large = S.repeat 131072 "z";
+  _ = case Sys.sendConcat dest large large of Err "message too large" -> Unit | other -> error "byte limit";
+  source = spawn (produce dest);
+  _ = awaitExit source;
+  _ = case Sys.sendConcat dest "x" "y" of Err "mailbox full" -> Unit | other -> error "aggregate byte limit";
+  _ = must (send start dest);
+  _ = awaitExit dest;
+  _ = case Sys.sendConcat dest "x" "y" of Err why -> Unit | Ok u -> error "dead target";
+  if receiveFrom me dest then print "sendconcat: HOLDS" else error "concat delivery".

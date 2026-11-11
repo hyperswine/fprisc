@@ -1,0 +1,25 @@
+# Repeated FIFO insertion/removal with more runnable actors than a refill.
+unsafe base.
+rounds me n = if n == 0 then Unit else _ = yield me; rounds me (n - 1).
+worker parent ticket me =
+  _ = rounds me 128;
+  send parent ticket.
+launch parent n = if n == 0 then Nil else
+  actor = spawn (worker parent n);
+  (actor, n) :: launch parent (n - 1).
+collect me Nil = Unit.
+collect me ((actor, ticket) :: rest) = case receiveFromRes me actor of
+    Ok got -> if got == ticket then collect me rest else error "wrong completion"
+  | Err why -> error why.
+sample me n previousWait previousSteals = if n == 0 then Unit else
+  _ = yield me;
+  wait = schedMaxWait 0;
+  steals = schedSteals 0;
+  if wait < previousWait or steals < previousSteals then error "scheduler counter decreased"
+  else sample me (n - 1) wait steals.
+main =
+  me = myself 0;
+  actors = launch me 32;
+  _ = sample me 128 0 0;
+  _ = collect me actors;
+  if schedMaxWait 0 > 0 then print "readyqueue: HOLDS" else error "missing wait samples".

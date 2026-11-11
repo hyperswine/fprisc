@@ -1,6 +1,7 @@
 # Deterministic cancellation at reservation, copied slab and promoted root.
 unsafe program.
 Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+Sys.sendConcat : Int -> String -> String -> Result Unit String .
 Inbox.arm : Int -> Int -> Int -> Unit .
 S = use "std/string".
 AC = use "std/actor".
@@ -8,25 +9,29 @@ ok (Ok value) = value.
 ok (Err why) = error why.
 check yes why = if yes then Unit else error "inboxkill: {why}".
 sleeping me = Sys.sleepUs 30000000.
-sender target boss me = _ = send boss (send target (S.repeat 1000 "x")); Unit.
+sender fused target boss me =
+  result = if fused then Sys.sendConcat target (S.repeat 500 "x") (S.repeat 500 "y") else send target (S.repeat 1000 "x");
+  _ = send boss result; Unit.
 retry me target n = case send target (S.repeat 1000 "y") of
     Ok _ -> True
   | Err "mailbox full" -> if n <= 0 then False else _ = Sys.sleepUs 100; retry me target (n - 1)
   | Err why -> error why.
-killSender me phase =
-  target = ok (Sys.spawnInbox (0 - 1) 1 1048576 sleeping);
+killSender me fused phase =
+  target = ok (Sys.spawnInbox (0 - 1) 2 1048576 sleeping);
   _ = Inbox.arm target me phase;
-  child = spawn (sender target me);
+  child = spawn (sender fused target me);
   reached = receiveFrom me child;
   _ = check (reached == phase) "copy hook not reached";
   _ = kill child;
   _ = check (retry me target 1000) "sender death leaked inbox reservation";
+  _ = check (retry me target 1000) "sender death leaked spare credit";
+  _ = check (case send target 0 of Err "mailbox full" -> True | other -> False) "cancel returned a queued slot";
   _ = kill target;
   Unit.
-killReceiver me phase =
-  target = ok (Sys.spawnInbox (0 - 1) 1 1048576 sleeping);
+killReceiver me fused phase =
+  target = ok (Sys.spawnInbox (0 - 1) 2 1048576 sleeping);
   _ = Inbox.arm target me phase;
-  child = spawn (sender target me);
+  child = spawn (sender fused target me);
   _ = check (receiveFrom me child == phase) "receiver hook not reached";
   _ = kill target;
   reply = receiveFrom me child;
@@ -35,12 +40,13 @@ killReceiver me phase =
   Unit.
 rounds me 0 = Unit.
 rounds me n =
-  _ = killSender me 1;
-  _ = killSender me 2;
-  _ = killSender me 3;
-  _ = killSender me 4;
-  _ = killReceiver me 2;
-  _ = killReceiver me 4;
+  fused = n % 2 == 0;
+  _ = killSender me fused 1;
+  _ = killSender me fused 2;
+  _ = killSender me fused 3;
+  _ = killSender me fused 4;
+  _ = killReceiver me fused 2;
+  _ = killReceiver me fused 4;
   rounds me (n - 1).
 main =
   me = myself 0;
