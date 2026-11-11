@@ -89,8 +89,9 @@ main = print (List.fold step (0, 0) [1, 2]).
             match = re.search(r'\[fpr cost\] (\{.*\})', p.stderr)
             assert match, p.stderr
             ledger = json.loads(match.group(1))
-            assert ledger['alloc_requests'] == (2005 if disabled else 1005), (disabled, ledger)
-        print('Tuple folds: independent of List fusion, 2005 -> 1005 allocations PASS', flush=True)
+            # (the printed interpolation is one String: string pieces, 2026-11-12)
+            assert ledger['alloc_requests'] == (2003 if disabled else 1003), (disabled, ledger)
+        print('Tuple folds: independent of List fusion, 2003 -> 1003 allocations PASS', flush=True)
 
 
 if __name__ == '__main__':
