@@ -237,3 +237,64 @@ rebalance still allocate through `balance`.
 - **Inserts that rebalance.** A consuming `balance` would let rotations rebuild nodes in place too. This is
   treemap's case (393k distinct keys out of 500k inserts); it gains nothing yet.
 - **Maps not built from empty in the loop** (a map passed in from elsewhere) stay persistent, by design.
+
+## Increment 6: consuming balance, std/map's own walker, and a soundness fix (12 November)
+
+### A soundness hole in increment 5 (fixed here)
+
+Increment 5's use check counted consumers per path, but it did not stop a loop from
+returning the map it had already consumed. For example:
+
+    staleGo xs m = case xs of
+        Nil -> m
+      | x :: rest -> m2 = M.insert (x % 50) x m; staleGo rest (if x % 7 == 0 then m else m2).
+
+Once the insert has run in place, `m` is no longer the old map: it carries the
+insert that the program discarded. The merged `4740d788` takes this plan. No app
+workload has this shape, but the plan is wrong.
+
+The check is now path-sensitive:
+
+- **After the consumer.** Once x is consumed on a path, x may not appear on that path again. There is one exception: x may be the value of a branch on the walker's own "nothing changed" result (`d == 2`), and only for walkers that keep that contract. A walker keeps it when every tail `(t', 2)` hands back t itself or the static `Leaf`, and every rebuilding tail's second field is a constant other than 2, or a code an enclosing branch has shown is not 2. By induction, `d == 2` then means nothing was rebuilt anywhere along the path, which is std's `alter`.
+- **Tail tuples.** x may be moved whole into a tail tuple only on a path that never consumed it.
+- **Hand-on bindings.** A binding whose one use hands its value on whole (the loop's map slot, or the result) counts as a tail for x. Without this, csv's fold loop lost its plan.
+
+### Consuming balance
+
+The walker twin inlines std/map's `balance` and `node` into its tail tuple. The bodies come from the linked program: `Compile.hs` passes them as `tgtMapBodies` and `Pipeline` as `optMapBodies`. Each inlined site gets binders of its own.
+
+- **No rotation.** The node rebuild over t becomes `$reuse.fresh t`. Overwrite now also descends the branches of an `if` whose test only reads t.
+- **Rotation.** Rotations still call `rotRight`/`rotLeft` and allocate.
+- **Acceptance.** A twin is accepted only if it rebuilds over t somewhere.
+
+### std/map's own walker
+
+When insert is inlined into a loop, the consumer is std/map's `insGo`, which lives in the map unit. Walkers were taken only from the unit's own functions, so treemap got no plan. Now:
+
+- **The body.** `insGo`'s linked body is plumbed with `balance` and `node`. Its variable aliases are substituted away (`dropAliases`), and it is admitted as a walker.
+- **Std/map is recognised by its bodies.** That means `insGo` and `balance` in the map bodies, and its `Leaf` in the unit. A unit that inlined insert names no `Leaf` of its own, so the old test found nothing, and the empty map at the entry was not vouched for either.
+- **The twin.** The twin is a private copy in the using unit, named `$worker.mapown.walk.insGo@H.<tag>`. The tag is FNV-1a over the unit's own names, so two units' copies never share a symbol.
+
+### Measured (M4, requests from `FPR_COST_REPORT`)
+
+| Workload | Before (increment 5) | Now | Instructions | Peak RSS |
+|---|---|---|---|---|
+| treemap | 11.0M | 1.94M | 6.96 -> 5.32 G | 614 -> 134 MB |
+| wordfreq | 11.1M | 10.4M | 23.7 -> 23.6 G | 435 -> 417 MB |
+| csv | 24.0M | 24.0M | 21.9 G | 233 MB |
+| `persistent_aliases inserts` | 3.95M (reuse off) | 0.66M | | |
+
+All outputs match. `stale` and `staleout` give the no-reuse answers.
+
+### Tests
+
+`persistent_aliases` gains three cases, all with reuse on:
+
+- **`stale`.** The hole above. The answer is the check.
+- **`inserts`.** Insert inlined, with a tuple exit holding the map. Requests must stay under 1M.
+- **`staleout`.** It returns, in a tuple, the version it consumed. It must be refused, and the answer is the check.
+
+### Still open
+
+- **Rotations** still allocate. A consuming `rotLeft`/`rotRight` would reuse t and its child.
+- **Other std/map walkers** are not plumbed: only `insGo` is. `remGo` and alter's walker would follow the same path when a workload inlines them.

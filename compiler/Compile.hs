@@ -27,7 +27,7 @@ import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
-import Codegen (Target, codegenRev, productBackendWidth, emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtSpineBuilders, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative, foreignEntries, normalizesLiterals)
+import Codegen (Target, codegenRev, productBackendWidth, emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtSpineBuilders, tgtMapBodies, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative, foreignEntries, normalizesLiterals)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth, registerBudget)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -1116,7 +1116,8 @@ compileWithReport accepted report = do
           linkedProgram=M.unions [Regions.resultProgram (artifactRegions key) | key<-M.keys (Linked.linkedArtifacts linked)]
           resetting=poolResetters linkedProgram
           linkedTgt=tgt {tgtPoolResetters=resetting,tgtSpineBuilders=
-            M.filterWithKey (\name _ -> '@' `elem` name) (spineBuilders resetting (linkedProgram `M.union` erasedConstructorStubs linkedProgram))}
+            M.filterWithKey (\name _ -> '@' `elem` name) (spineBuilders resetting (linkedProgram `M.union` erasedConstructorStubs linkedProgram)),
+            tgtMapBodies=M.filterWithKey (\name _ -> any (`isPrefixOf` name) ["balance@","node@","insGo@"]) linkedProgram}
           -- a constructor is global everywhere: a clone that references one
           -- links against the owner's symbol, so qualifyAux leaves the name
           importedCore = M.unions

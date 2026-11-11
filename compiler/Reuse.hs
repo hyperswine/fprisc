@@ -10,6 +10,8 @@ import Core.Region.Runtime (Hook(..),hookName)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (isPrefixOf)
+import Data.Bits (xor)
+import Numeric (showHex)
 import Data.Maybe (mapMaybe, fromMaybe, listToMaybe, isJust)
 
 type Shape = (Int,Int,Int)
@@ -56,14 +58,14 @@ poolResetters prog = go initial
 -- fails). Other parameters remain borrowing. No wrapper, descriptor or exported
 -- ABI is changed. Bodies and call sites are in the same compilation unit.
 reuseProgram :: S.Set String -> S.Set String -> Prog -> (Prog,[String])
-reuseProgram = reuseProgramWithImports M.empty M.empty
+reuseProgram = reuseProgramWithImports M.empty M.empty M.empty
 
-reuseProgramWithImports :: M.Map Name (Int,Int) -> Prog -> S.Set String -> S.Set String -> Prog -> (Prog,[String])
-reuseProgramWithImports linked imports resetting excluded prog = (spineProgram `M.union` additions,
+reuseProgramWithImports :: M.Map Name (Int,Int) -> Prog -> Prog -> S.Set String -> S.Set String -> Prog -> (Prog,[String])
+reuseProgramWithImports linked mapBodies imports resetting excluded prog = (spineProgram `M.union` additions,
   ["# private consuming workers: "++show (M.size additions),
    "# private consuming list traversals: "++show (M.size spineProgram - M.size rewritten)])
   where
-    spineProgram = consumeListSpines linked (prog `M.union` imports) resetting excluded rewritten
+    spineProgram = consumeListSpines linked mapBodies (prog `M.union` imports) resetting excluded rewritten
     choose (name,(ps,b))
       | "$worker." `isPrefixOf` name || S.member name excluded ||
         null ps || length ps>64 || not (bounded 256 b) = Nothing
@@ -104,8 +106,8 @@ reuseProgramWithImports linked imports resetting excluded prog = (spineProgram `
 -- A strict accumulator traversal has already evaluated the next tail
 -- before constructing the next accumulator. Transfer that exact cons cell
 -- only from a spine whose entire construction is private to this call.
-consumeListSpines :: M.Map Name (Int,Int) -> Prog -> S.Set String -> S.Set String -> Prog -> Prog
-consumeListSpines linked definitions resetting excluded program = rewritten `M.union` M.restrictKeys twins used
+consumeListSpines :: M.Map Name (Int,Int) -> Prog -> Prog -> S.Set String -> S.Set String -> Prog -> Prog
+consumeListSpines linked mapBodies definitions resetting excluded program = rewritten `M.union` M.restrictKeys twins used
   where
     nil = CMk 2 0 []
     plan True _ _ = Nothing
@@ -324,11 +326,22 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
     -- over t's layout from fields that only read t becomes an overwrite of t;
     -- a self call on a child of t becomes the twin; t may otherwise be
     -- projected, tested, or returned unchanged in a tuple's first field.
-    walkers=M.mapMaybeWithKey walkerPlan program
+    walkers=M.mapMaybeWithKey walkerPlan (program `M.union` importedWalkers)
+    -- std/map's own walkers (insert inlined into a loop calls insGo@ from
+    -- the map unit): the twin is a private copy in this unit, named with the
+    -- unit's tag so two units' copies never share a symbol
+    importedWalkers=M.filterWithKey (\n _ -> '@' `elem` n && S.member (drop 1 (dropWhile (/='@') n)) leafHashes
+                                            && not (any (`isPrefixOf` n) ["Leaf@","Node@","balance@","node@","rot"]))
+                      (M.map (\(ps,b)->(ps,dropAliases M.empty b)) (mapBodies `M.difference` program))
+    wTwin n | M.member n program = walkerTwin n
+            | otherwise = walkerTwin n++"."++unitTag
+    -- (FNV-1a over the unit's own names: two units never hold the same set)
+    unitTag=showHex (foldl (\h c->((h `xor` fromEnum c)*16777619) `mod` 4294967296) (2166136261::Int)
+                            (concat (M.keys program))) ""
     walkerPlan name (ps,body) = do
       CIf (CTagEq tag 0 (CVar t)) leafCase nodeCase<-Just body
       j<-lookup t (zip ps [0..])
-      if name `elem` ps || t==name || not (bounded 4096 body) || M.member (walkerTwin name) definitions then Nothing else Just ()
+      if name `elem` ps || t==name || not (bounded 4096 body) || M.member (wTwin name) definitions then Nothing else Just ()
       let children=S.fromList [k | CLet k (CProj i (CVar y)) _<-nodes nodeCase, y==t, i==1 || i==4]
           selfCall e=case spine e of
             (CVar f,args) | f==name, length args==length ps -> Just args
@@ -349,7 +362,7 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
                      | n<-nodes nodeCase, (CVar f,_)<-[spine n], f==name ]
       if not (tUses && selfOk) then Nothing else Just ()
       let rename e=case e of
-            CVar v | v==name -> CVar (walkerTwin name)
+            CVar v | v==name -> CVar (wTwin name)
             CLet k a b -> CLet k (rename a) (rename b)
             CApp f a -> CApp (rename f) (rename a)
             CIf c a b -> CIf (rename c) (rename a) (rename b)
@@ -357,20 +370,71 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
             CProj i a -> CProj i (rename a)
             CTagEq tg vr a -> CTagEq tg vr (rename a)
             _ -> e
-          -- the tail results of the node branch
-          tailNode e=case e of
-            CLet k a b -> CLet k a (tailNode b)
-            CIf c a b -> CIf c (tailNode a) (tailNode b)
-            CMk 4 vr [f0,f1] | not (mentions t f1) -> CMk 4 vr [overwrite f0,f1]
-            _ -> e
+          -- the tail results of the node branch (numbered: each inlined
+          -- balance gets binders of its own)
+          tailNode n e=case e of
+            CLet k a b -> let (b',n')=tailNode n b in (CLet k a b',n')
+            CIf c a b -> let (a',n1)=tailNode n a; (b',n2)=tailNode n1 b in (CIf c a' b',n2)
+            CMk 4 vr [f0,f1] | not (mentions t f1) ->
+              let site="$bal."++show n++"."
+                  direct=overwrite f0
+                  -- a rebalanced node: std/map's balance, inlined with node,
+                  -- rebuilds over t when no rotation is needed
+                  expanded=fmap overwrite (expandBalance site f0)
+              in (CMk 4 vr [if direct/=f0 then direct else case expanded of
+                                Just x | rebuildsOver x -> x
+                                _ -> f0,f1],n+1)
+            _ -> (e,n)
+          rebuildsOver x=any (\m->case m of CApp (CApp (CVar "$reuse.fresh") (CVar y)) _->y==t;_->False) (nodes x)
           overwrite e=case e of
             CLet k a b | not (mentions t a) || readsOnly t 5 a -> CLet k a (overwrite b)
+            CIf c a b | readsOnly t 5 c -> CIf c (overwrite a) (overwrite b)
             CMk tg 1 fs | tg==tag, length fs==5, all (readsOnly t 5) fs ->
               CApp (CApp (CVar "$reuse.fresh") (CVar t)) e
             _ -> e
-          twin=CIf (CTagEq tag 0 (CVar t)) (rename leafCase) (tailNode (rename nodeCase))
-      if twin==CIf (CTagEq tag 0 (CVar t)) (rename leafCase) (rename nodeCase) then Nothing else
+          twin=CIf (CTagEq tag 0 (CVar t)) (rename leafCase) (fst (tailNode (0::Int) (rename nodeCase)))
+      if not (rebuildsOver twin) then Nothing else
         Just (j,tag,(ps,twin))
+    -- std/map's balance l k v r with its node calls inlined, binders renamed
+    -- under a prefix of the site's own (the bodies come from the linked
+    -- program: Codegen tgtMapBodies)
+    expandBalance site e=case spine e of
+      (CVar bn,args@[_,_,_,_]) | "balance@" `isPrefixOf` bn,
+        Just bal<-M.lookup bn mapBodies, Just nod<-M.lookup ("node@"++drop (length "balance@") bn) mapBodies ->
+          let withNodes k x=case x of
+                _ | (CVar nn,nargs@[_,_,_,_])<-spine x, nn=="node@"++drop (length "balance@") bn ->
+                      (inlineCall (site++"n"++show k++".") nod nargs,k+1)
+                CLet y a b -> let (a',k1)=withNodes k a; (b',k2)=withNodes k1 b in (CLet y a' b',k2)
+                CIf c a b -> let (c',k1)=withNodes k c; (a',k2)=withNodes k1 a; (b',k3)=withNodes k2 b in (CIf c' a' b',k3)
+                CApp f a -> let (f',k1)=withNodes k f; (a',k2)=withNodes k1 a in (CApp f' a',k2)
+                _ -> (x,k)
+          in Just (fst (withNodes (0::Int) (inlineCall site bal args)))
+      _ -> Nothing
+    -- walkers that keep alter's contract: a tail result (t', 2) hands back
+    -- the tree it was given (t itself, or the static Leaf), and a tail that
+    -- rebuilds says anything but 2 (a constant, or a code a branch has shown
+    -- is not 2). By induction d == 2 then means nothing was rebuilt anywhere,
+    -- so a caller may return the map it consumed.
+    contractWalkers=S.fromList [n | n<-M.keys walkers, contractOk n]
+    contractOk n=case M.lookup n program of
+      Just (_,CIf (CTagEq _ 0 (CVar t)) leafCase nodeCase) -> tails t S.empty leafCase && tails t S.empty nodeCase
+      _ -> False
+      where
+        tails t notTwo e=case e of
+          CLet _ _ c -> tails t notTwo c
+          CIf (CTagEq 1 1 (CApp (CApp (CVar "==") (CVar d)) (CInt 2))) a c -> tails t notTwo a && tails t (S.insert d notTwo) c
+          CIf _ a c -> tails t notTwo a && tails t notTwo c
+          CMk 4 _ [f0,f1] -> case constant f1 of
+            Just 2 -> f0==CVar t || (case f0 of CVar g -> "Leaf@" `isPrefixOf` g; _ -> False)
+            Just _ -> True
+            Nothing -> case f1 of CVar d -> S.member d notTwo; _ -> False
+          CErr _ -> True
+          _ -> False
+        constant e=case e of
+          CInt k -> Just k
+          CApp (CApp (CVar op) a) c | op `elem` ["+","-","*"], Just u<-constant a, Just v<-constant c ->
+            Just (case op of "+" -> u+v; "-" -> u-v; _ -> u*v)
+          _ -> Nothing
     -- a loop owning a map: its parameter x is the map; x is only projected,
     -- tested, or handed on whole (a tail value, or the cold edge); its tree
     -- (field 2) goes only to a deep walker. The twin calls the walker twin and
@@ -397,7 +461,7 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
         treeVars x=S.fromList [k | CLet k (CProj 2 (CVar y)) _<-nodes body, y==x]
         walkerCall x e=case spine e of
           (CVar w,args) | Just (j,_,(wps,_))<-M.lookup w walkers, length args==length wps,
-            treeArg x (args!!j), not (any (mentions x) (take j args++drop (j+1) args)) -> Just (walkerTwin w,args)
+            treeArg x (args!!j), not (any (mentions x) (take j args++drop (j+1) args)) -> Just (wTwin w,args)
           (CVar o,args) | tier>=1, Just (j,ow,(ops,_))<-M.lookup o mapOps, length args==length ops,
             args!!j==CVar x, not (any (mentions x) (take j args++drop (j+1) args)) -> Just (ow,args)
           (CVar o,args) | tier==2, Just (j,ow,(ops,_))<-M.lookup o (M.union mapLoops mapRegionEntries), length args==length ops,
@@ -412,33 +476,67 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
           -- the recursive slot; its tree only in one walker call
           let walkerCalls=[n | n<-nodes b, Just _<-[walkerCall x n]]
               -- x's uses, judged per whole application (a partial
-              -- application inside a consumer call is that call's)
-              usesOk=uses b
-              uses e=case e of
+              -- application inside a consumer call is that call's), with the
+              -- path in view: once the map is consumed on a path it may not
+              -- appear again there, except as the result of a branch on the
+              -- walker's own "nothing changed" (d == 2) when the walker keeps
+              -- that contract; it may be moved whole into a tail tuple only on
+              -- a path that never consumed it
+              perPathOf e=(if isJust (walkerCall x e) then 1 else 0)+case e of
+                CIf c a d -> perPathOf c+max (perPathOf a) (perPathOf d)
+                CLet _ a d -> perPathOf a+perPathOf d
+                CApp f a -> perPathOf f+perPathOf a
+                CMk _ _ fs -> sum (map perPathOf fs)
+                CProj _ a -> perPathOf a
+                CTagEq _ _ a -> perPathOf a
+                _ -> 0 :: Int
+              usesOk=uses True b
+              uses tl e=case e of
                 CApp _ _ | (CVar f,args)<-spine e, f==name || Just f==cycleOf name ->
                   and [k==i || not (mentions x a) | (k,a)<-zip [0..] args] && all usesArg args
                 CApp _ _ | Just _<-walkerCall x e, (_,args)<-spine e -> all usesArg args
-                CApp _ _ | (f,args)<-spine e -> not (any (\a->a==CVar x || treeArg x a) (f:args)) && all uses (f:args)
-                CMk _ _ fs -> not (any (\a->a==CVar x || treeArg x a) fs) && all uses fs
-                CLet k a c -> a/=CVar x && not (S.member k (treeVars x) && occurrences k b/=1) && uses a && uses c
-                CIf c a d -> uses c && uses a && uses d
-                CProj _ a -> uses a
-                CTagEq _ _ a -> uses a
+                CApp _ _ | (f,args)<-spine e -> not (any (\a->a==CVar x || treeArg x a) (f:args)) && all (uses False) (f:args)
+                CMk _ _ fs | tl, length (filter (==CVar x) fs)==1, not (any consumes fs) ->
+                  all (\f->f==CVar x || (not (mentions x f) && uses False f)) fs
+                CMk _ _ fs -> not (any (\a->a==CVar x || treeArg x a) fs) && all (uses False) fs
+                -- a binding whose one use hands its value on whole (the loop's
+                -- map slot, or the result) is a tail for x's purposes
+                CLet k a c -> a/=CVar x && not (S.member k (treeVars x) && occurrences k b/=1) &&
+                  uses (handsOn k c) a &&
+                  (if consumes a then afterConsume (contracted a) (S.singleton k) S.empty c else uses tl c)
+                CIf c a d -> uses False c && uses tl a && uses tl d
+                CProj _ a -> a==CVar x || uses False a
+                CTagEq _ _ a -> a==CVar x || uses False a
+                CVar v -> v/=x || tl
                 _ -> True
+              consumes e=perPathOf e>0
+              handsOn k c=occurrences k c==1 && moved c
+                where moved e=case e of
+                        CVar v -> v==k
+                        CApp _ _ | (CVar f,args)<-spine e, f==name || Just f==cycleOf name, length args==length ps ->
+                          args!!i==CVar k && not (any (mentions k) (take i args++drop (i+1) args))
+                        CLet _ a d -> not (mentions k a) && moved d
+                        CIf c a d -> not (mentions k c) && (if mentions k a then moved a else moved d)
+                        _ -> False
+              -- the consumer in a is a walker keeping the d == 2 contract
+              contracted a=or [S.member w contractWalkers | n<-nodes a, (CVar w,_)<-[spine n], M.member w walkers]
+              afterConsume ok2 rs ds e=case e of
+                CLet k a c -> not (mentions x a) && uses False a &&
+                  afterConsume ok2 (if a `elem` map CVar (S.toList rs) then S.insert k rs else rs)
+                                   (case a of CProj 1 (CVar r) | S.member r rs -> S.insert k ds; _ -> ds) c
+                CIf cond th el | ok2, Just dv<-unchangedTest cond, S.member dv ds ->
+                  (th==CVar x || (not (mentions x th) && uses True th)) && afterConsume ok2 rs ds el
+                CIf cond th el -> not (mentions x cond) && afterConsume ok2 rs ds th && afterConsume ok2 rs ds el
+                _ -> not (mentions x e) && uses True e
+              unchangedTest cond=case cond of
+                CTagEq 1 1 (CApp (CApp (CVar "==") (CVar dv)) (CInt 2)) -> Just dv
+                _ -> Nothing
               -- an argument handed to a consumer: x itself, its tree, or a
               -- use-checked expression
-              usesArg a=a==CVar x || treeArg x a || uses a
+              usesArg a=a==CVar x || treeArg x a || uses False a
           -- the map is consumed at most once on any path (the branches of a
           -- loop may each consume it), and somewhere
-          let perPath e=(if isJust (walkerCall x e) then 1 else 0)+case e of
-                CIf c a d -> perPath c+max (perPath a) (perPath d)
-                CLet _ a d -> perPath a+perPath d
-                CApp f a -> perPath f+perPath a
-                CMk _ _ fs -> sum (map perPath fs)
-                CProj _ a -> perPath a
-                CTagEq _ _ a -> perPath a
-                _ -> 0 :: Int
-          if null walkerCalls || perPath b/=1 || not usesOk then Nothing else Just ()
+          if null walkerCalls || perPathOf b/=1 || not usesOk then Nothing else Just ()
           let go e=case e of
                 _ | Just (w,args)<-walkerCall x e -> foldl CApp (CVar w) args
                 _ | (CVar f,args)<-spine e, f==name, length args==length ps -> foldl CApp (CVar worker) (map go args)
@@ -470,12 +568,17 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
       (inner,(_,worker,_))<-M.toList mapLoops, Just cyc<-[cycleOf inner],
       Just (cps,cbody)<-[M.lookup cyc definitions], M.notMember (mapCycleTwin inner) definitions]
     mapTwins=M.fromList ([(w,b) | (_,w,b)<-M.elems mapLoops++M.elems mapOps++M.elems mapEntries++M.elems mapRegionEntries]
-                ++[(walkerTwin n,b) | (n,(_,_,b))<-M.toList walkers]) `M.union` mapCycleTwins
+                ++[(wTwin n,b) | (n,(_,_,b))<-M.toList walkers]) `M.union` mapCycleTwins
     -- the plans a call site may enter with an owned map: the loop, or its
     -- region wrapper
     mapPlans=M.unions [mapLoops,mapRegionEntries,mapEntries]
     -- std/map's empty maps, from the unit whose Leaf the walkers test
     leafHashes=S.fromList [drop 1 (dropWhile (/='@') v) | (_,(_,b))<-M.toList program, CVar v<-nodes b, "Leaf@" `isPrefixOf` v]
+      `S.union` stdMapHashes
+    -- std/map itself, known by its definitions (a unit that inlined insert
+    -- names no Leaf of its own)
+    stdMapHashes=S.fromList [h | k<-M.keys mapBodies, "insGo@" `isPrefixOf` k, let h=drop 1 (dropWhile (/='@') k),
+                                 M.member ("balance@"++h) mapBodies, M.member ("Leaf@"++h) definitions]
     -- (a local bound to one counts: an empty map has no node to rebuild, so
     -- sharing it elsewhere is harmless)
     ownedMap e=case stripLets e of
@@ -768,6 +871,37 @@ freshHead e=case e of
   _ -> False
 occurrences :: String -> Core -> Int
 occurrences x e=length [() | CVar y<-nodes e, y==x]
+
+-- a call inlined: its parameters bound to the arguments in order, every
+-- binder of the body renamed under the prefix
+inlineCall :: String -> ([Name],Core) -> [Core] -> Core
+inlineCall pre (ps,b) args=foldr (\(p,a) r->CLet (pre++p) a r) (renameBinders pre (M.fromList [(p,pre++p) | p<-ps]) b) (zip ps args)
+-- a linked body's variable aliases (x = y), substituted away; typed
+-- binders are unique, so nothing is captured
+dropAliases :: M.Map Name Name -> Core -> Core
+dropAliases env e=case e of
+  CVar v -> CVar (M.findWithDefault v v env)
+  CLet x (CVar v) b -> dropAliases (M.insert x (M.findWithDefault v v env) env) b
+  CLet x a b -> CLet x (dropAliases env a) (dropAliases env b)
+  CLam qs b -> CLam qs (dropAliases env b)
+  CApp f a -> CApp (dropAliases env f) (dropAliases env a)
+  CIf c a b -> CIf (dropAliases env c) (dropAliases env a) (dropAliases env b)
+  CMk t v fs -> CMk t v (map (dropAliases env) fs)
+  CTagEq t v a -> CTagEq t v (dropAliases env a)
+  CProj k a -> CProj k (dropAliases env a)
+  _ -> e
+
+renameBinders :: String -> M.Map Name Name -> Core -> Core
+renameBinders pre env e=case e of
+  CVar v -> CVar (M.findWithDefault v v env)
+  CLet x a b -> let x'=pre++x in CLet x' (renameBinders pre env a) (renameBinders pre (M.insert x x' env) b)
+  CLam ps b -> let ps'=map (pre++) ps in CLam ps' (renameBinders pre (M.union (M.fromList (zip ps ps')) env) b)
+  CApp f a -> CApp (renameBinders pre env f) (renameBinders pre env a)
+  CIf c a b -> CIf (renameBinders pre env c) (renameBinders pre env a) (renameBinders pre env b)
+  CMk t v fs -> CMk t v (map (renameBinders pre env) fs)
+  CTagEq t v a -> CTagEq t v (renameBinders pre env a)
+  CProj k a -> CProj k (renameBinders pre env a)
+  _ -> e
 
 -- ReceiveTurns' region loop names: the inner loop and its cold cycle
 cycleOf :: Name -> Maybe Name

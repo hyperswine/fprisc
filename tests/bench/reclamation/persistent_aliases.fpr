@@ -79,6 +79,26 @@ historyGo : unsafe List Int -> M.Map Int Int -> List (M.Map Int Int) -> Int.
 historyGo xs m hist = case xs of
     Nil -> L.sum (L.map M.size hist) + M.size m
   | x :: rest -> historyGo rest (M.update (x % 50) bumpCount m) (m :: hist).
+# A loop that consumes its map and then, on some steps, keeps the version it
+# consumed: in place, the kept version would carry the discarded insert. The
+# owned-map plan must refuse it (only std's alter may return what it consumed,
+# and only when its walker reports nothing changed).
+staleGo : unsafe List Int -> M.Map Int Int -> M.Map Int Int.
+staleGo xs m = case xs of
+    Nil -> m
+  | x :: rest -> m2 = M.insert (x % 50) x m; staleGo rest (if x % 7 == 0 then m else m2).
+# std/map's insert inlined into a loop leaves std/map's own walker (insGo) as
+# the consumer; the unit takes a private in-place copy of it. inserts exits
+# with a tuple holding the map; staleout returns, on one step, the version it
+# consumed, which the plan must refuse.
+insertsGo : unsafe List Int -> M.Map Int Int -> (Int, M.Map Int Int).
+insertsGo xs m = case xs of
+    Nil -> (L.length xs, m)
+  | x :: rest -> insertsGo rest (M.insert (x * 7919 % 100003) x m).
+staleOut : unsafe List Int -> M.Map Int Int -> (Int, M.Map Int Int).
+staleOut xs m = case xs of
+    Nil -> (0, m)
+  | x :: rest -> m2 = M.insert (x % 50 + 100) x m; if x % 97 == 0 then (M.size m2, m) else staleOut rest m2.
 steps count = n = parseInt count; if n < 0 then error "negative steps" else n.
 main = case Sys.args Unit of
     ["list",count] -> xs = L.range 0 1023;
@@ -95,6 +115,9 @@ main = case Sys.args Unit of
   | ["mapcount",count] -> print "{mapcount (steps count)}"
   | ["maphistory",count] -> print "{historyGo (L.range 1 (steps count)) M.ints Nil}"
   | ["mapshared",count] -> e = M.ints; m = L.fold countKey e (L.range 1 (steps count)); print "{M.size m} {M.size e}"
+  | ["inserts",count] -> r = insertsGo (L.range 1 (steps count)) M.ints; (z, m) = r; print "{z} {M.size m} {M.fold (fn acc k v -> (acc * 31 + k + v) % 1000000007) 0 m}"
+  | ["staleout",count] -> r = staleOut (L.range 1 (steps count)) M.ints; (a, m) = r; print "{a} {M.size m} {M.fold (fn acc k v -> acc + k * v) 0 m}"
+  | ["stale",count] -> m = staleGo (L.range 1 (steps count)) M.ints; print "{M.size m} {M.fold (fn acc k v -> acc + k * v) 0 m}"
   | ["drain",count] -> print "{drain (L.range 1 (steps count)) 0}"
   | ["history",count] -> print "{history (steps count) Nil Nil}"
-  | _ -> error "expected list, tree, map, scan, drain, records, elements, shared, kept, mapcount, maphistory, mapshared or history and a nonnegative count".
+  | _ -> error "expected list, tree, map, scan, drain, records, elements, shared, kept, mapcount, maphistory, mapshared, stale, inserts, staleout or history and a nonnegative count".
