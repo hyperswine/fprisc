@@ -619,7 +619,7 @@ compileWithReport accepted report = do
           runTurnsWith regions input=if oBuiltin opts || oArc opts || not (Options.cgReceiveTurns codegen)
             then Regions.bypass input
             else either error id (Regions.place
-              (Regions.Options (regions && Options.cgLoopRegions codegen) (regions && Options.cgCallRegions codegen) (not (oQosApp opts))) regionContext input)
+              (Regions.Options (regions && Options.cgLoopRegions codegen) (regions && Options.cgCallRegions codegen) (not (oQosApp opts)) (if oQosApp opts then Nothing else Options.cgPersistentLoop codegen)) regionContext input)
           regionProjection result=(Regions.resultProgram result,Regions.resultNotes result)
           turnPassWith regions=regionProjection . runTurnsWith regions
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
@@ -1101,7 +1101,7 @@ compileWithReport accepted report = do
           regionArtifacts=if oBuiltin opts || oArc opts || not (Options.cgReceiveTurns codegen)
             then M.map Regions.bypass regionInputs
             else either error id (Regions.placePrograms
-              (Regions.Options (Options.cgLoopRegions codegen) (Options.cgCallRegions codegen) (not (oQosApp opts)))
+              (Regions.Options (Options.cgLoopRegions codegen) (Options.cgCallRegions codegen) (not (oQosApp opts)) (if oQosApp opts then Nothing else Options.cgPersistentLoop codegen))
               (fst (measureCheck tops)) regionInputs)
           typedRegionPrograms=M.mapMaybe Regions.resultTyped regionArtifacts
           artifactRegions key=regionArtifacts M.! key

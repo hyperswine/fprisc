@@ -134,7 +134,7 @@ checkTypeInstanceContracts=do
       (measures,errors)=Safety.measureCheck measuredTops
       measured=keeping (const True) "type-measure" measuredSource (S.fromList ["down","run"])
       program=right (Regions.prepare measured)
-      result ms=right (Regions.place (Regions.Options False False False)
+      result ms=right (Regions.place (Regions.Options False False False Nothing)
         (Regions.context (Regions.typeInstanceMeasures ms [program]) program) program)
       view ms=case Regions.resultAnalysis (result ms) of Just a->a;_->error "missing region cost view"
       derived=view measures
@@ -146,7 +146,7 @@ checkTypeInstanceContracts=do
   check "verified source descent survives typed instantiation in region costing"
     (null errors && not (M.null measures) && Regions.analysisCosts derived==expected
       && not (Cost.hasOmega (work measures)) && Cost.hasOmega (work M.empty))
-  let batch=right (Regions.placePrograms (Regions.Options False False False)
+  let batch=right (Regions.placePrograms (Regions.Options False False False Nothing)
         (Regions.typeInstanceMeasures measures [program]) (M.singleton (0::Int) program))
   check "batch region placement uses the same inherited verified measure"
     (case Regions.resultAnalysis (batch M.! 0) of Just a->Regions.analysisCosts a==expected;_->False)

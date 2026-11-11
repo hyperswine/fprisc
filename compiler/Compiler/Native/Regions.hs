@@ -83,7 +83,7 @@ typeInstanceMeasures measures programs
 derive measures p=Analysis p (Cost.costProgram measures M.empty p)
 -- receiveLoops: receive loops take the loop form (False for a QOS process
 -- image, whose plane memory reclaims per turn through $receiveLoop)
-data Options=Options {loopRegions :: Bool,callRegions :: Bool,receiveLoops :: Bool} deriving (Eq,Show)
+data Options=Options {loopRegions :: Bool,callRegions :: Bool,receiveLoops :: Bool,persistentLoop :: Maybe String} deriving (Eq,Show)
 data Result=Bypassed Program | Placed Program Analysis Turns.Rewrite Typed.Program
 -- The typed program the result was placed from (typed lowering census).
 resultNative :: Result -> Native.NativeCore
@@ -172,7 +172,7 @@ placeWith opts (Context source@(Program _ _ _ _ worldFaces worldShared _ _) _ _)
       arities=M.map (length . fst) allCode
       checked=Native.nativeDefinitions (programNative input)
   sites<-Sites.callSites model arities (M.mapWithKey (\name _->Native.checkedFunction <$> M.lookup name checked) p)
-  rewrite<-Turns.receiveTurns (loopRegions opts) (callRegions opts) (receiveLoops opts) (analysisCosts view) signatures model sites
+  rewrite<-Turns.receiveTurns (loopRegions opts) (callRegions opts) (receiveLoops opts) (persistentLoop opts) (analysisCosts view) signatures model sites
     (shared<>worldShared) allCode joins p
   typed<-Typed.build (programNative input) (M.map interfaceArity signatures) rewrite
   projection<-Typed.emitProgram typed

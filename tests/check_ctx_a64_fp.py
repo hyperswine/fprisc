@@ -39,7 +39,7 @@ def main():
     qos = defines(['-DFPR_POSIX', '-DFPR_QOSAPP'])
     legacy_qos = defines(['-DFPR_POSIX', '-DFPR_QOSAPP', '-DFPR_LEGACY_CELLS'])
     assert hosted['FPR_CTX_WORDS'] == 24 and qos['FPR_CTX_WORDS'] == 24, (hosted, qos)
-    assert qos['FPR_NATIVE_ABI'] == 16 and legacy_qos['FPR_NATIVE_ABI'] == 15, (qos, legacy_qos)  # x27 is the fuel counter
+    assert qos['FPR_NATIVE_ABI'] == 22 and legacy_qos['FPR_NATIVE_ABI'] == 21, (qos, legacy_qos)  # recyclable actor execution state
     failures = []
     with tempfile.TemporaryDirectory(prefix='fpr-ctx-a64-fp-') as d:
         for name, flags, lose in VARIANTS:

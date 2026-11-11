@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 212 -- cost: an exit path is charged once at a consed accumulator's grown length (call-region placement reads these equations)
+codegenRev = 213 -- guarded string scans admit direct return exits
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

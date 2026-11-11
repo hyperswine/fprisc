@@ -77,10 +77,17 @@ main=do
   check "independent accumulator overflow" (case ocResult (evalProgram fast "scan" [RString [1],RInt 0,RInt 1,RInt hi]) of Left (Trap _)->True;_->False)
   forM_ [("inclusive",scan ">" (CInt 1) False),("stride two",scan ">=" (CInt 2) False),
          ("descending",scan ">=" (CInt (-1)) False),("changing bound",scan ">=" (CInt 1) True),
-         ("early-exit search (profitability)",search),("mixed backedges",scan ">=" (CIf (app "==" [CVar "i",CInt 0]) (CInt 1) (CInt 2)) False)] $ \(label,body)->do
+         ("mixed backedges",scan ">=" (CIf (app "==" [CVar "i",CInt 0]) (CInt 1) (CInt 2)) False)] $ \(label,body)->do
     let plain=simplify policy (lower policy body)
         candidate=simplify (policy {polStringScan=True}) (lower policy body)
     check (label++" refuses") (plain==candidate)
+  let plainSearch=simplify policy (lower policy search)
+      fastSearch=simplify (policy {polStringScan=True}) (lower policy search)
+  check "early exit admitted" (plainSearch/=fastSearch && verifyProgramWidth W64 fastSearch==Right ())
+  forM_ [RString [32,1],RString [1,32],RString [1,2],RString [],RInt 7] $ \s->
+    forM_ indices $ \i->forM_ indices $ \n->do
+      let args=[s,RInt i,RInt n,RInt 9]
+      check "early exit exact outcome/events" (evalProgram plainSearch "scan" args==evalProgram fastSearch "scan" args)
   forM_ [1,2] $ \stride->do
     let before=simplify policy (lower policy (twoLatches stride))
         after=simplify (policy {polStringScan=True}) (lower policy (twoLatches stride))

@@ -1,0 +1,19 @@
+unsafe base.
+O = use "std/option".
+# -1 is outside the accepted payload range. The raw entry is an experiment control.
+scan s n i acc = if i >= n then acc else
+  byte = charAt s i;
+  if byte < 48 or byte > 57 then 0 - 1 else scan s n (i + 1) (acc + byte - 48).
+parse s = value = scan s (strlen s) 0 0;
+  if value < 0 then O.None else O.Some value.
+options s n acc = if n == 0 then acc else
+  options s (n - 1) (case parse s of O.Some x -> acc + x | O.None -> acc - 1).
+raw s n acc = if n == 0 then acc else raw s (n - 1) (acc + scan s (strlen s) 0 0).
+main = case Sys.args Unit of
+    ["stored",s] -> xs = keep [parse s];
+      (case xs of x :: _ -> print (case x of O.Some v -> v | O.None -> 0 - 1) | _ -> error "lost result")
+  | [mode,s,count] -> n = parseInt count;
+      if n < 0 then error "negative count" else
+      if mode == "option" then print (options s n 0) else
+      if mode == "raw" then print (raw s n 0) else error "unknown mode"
+  | _ -> error "expected mode, digits and count".

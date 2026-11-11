@@ -228,28 +228,29 @@ void fpr_bkt_put(void **b);
  * Every operation here still speaks in tagged values (V): the tables
  * bind one FP-RISC runtime to another.  A plain-word API for other
  * languages is the next step, not this one. */
+/* Versions 19-26 move owner-only execution state into the recyclable channel block. */
 #if defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
-#define FPR_NATIVE_ABI 13u /* v9 with x27 the fuel counter, not a saved register (docs/2026-11-10-REGISTER-FUEL.md); v9: hosted A64 context and hart layout include d8..d15; the acb's received-root list; the hart's region clock (cell 58) and the acb's pending call regions (REGIONS-LOOPS-CALLS) */
+#define FPR_NATIVE_ABI 19u
 #elif defined(FPR_POSIX) && defined(__aarch64__)
-#define FPR_NATIVE_ABI 15u /* QOS A64 apps: v11 with x27 the fuel counter; v11: v8 plus d8..d15 in the context (docs/2026-11-06-QOSAPP-A64-FP-CONTEXT.md) */
+#define FPR_NATIVE_ABI 21u
 #elif defined(__riscv)
-#define FPR_NATIVE_ABI 17u /* v8 with s11 the fuel counter, not a saved register (docs/2026-11-10-REGISTER-FUEL.md) */
+#define FPR_NATIVE_ABI 23u
 #else
-#define FPR_NATIVE_ABI 8u /* QOS and other hosted layouts: v6 plus the acb's received-root list (REGIONS-STAGE1), the hart's region clock and the acb's pending call regions (REGIONS-LOOPS-CALLS) */
+#define FPR_NATIVE_ABI 25u
 #endif
 #ifdef FPR_COMPACT_CELLS
 #undef FPR_NATIVE_ABI
 #if defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
-#define FPR_NATIVE_ABI 14u /* compact v13 */
+#define FPR_NATIVE_ABI 20u
 #elif defined(FPR_POSIX) && defined(__aarch64__)
-#define FPR_NATIVE_ABI 16u /* QOS A64 apps: compact v15 */
+#define FPR_NATIVE_ABI 22u
 #elif defined(__riscv)
-#define FPR_NATIVE_ABI 18u /* compact v17 */
+#define FPR_NATIVE_ABI 24u
 #else
-#define FPR_NATIVE_ABI 9u
+#define FPR_NATIVE_ABI 26u
 #endif
 #endif
-#define FPR_PLANE_ACTORS_ABI 3u /* v3: opt-in transactional spawn_inbox; v2: receive_from_now */
+#define FPR_PLANE_ACTORS_ABI 4u /* v4: recyclable actor execution state; v3: opt-in transactional spawn_inbox; v2: receive_from_now */
 #ifdef FPR_COMPACT_CELLS
 #define FPR_PLANE_MEMORY_ABI 5u
 #else
@@ -417,7 +418,7 @@ typedef struct fpr_pend { uw seq; struct fpr_pool *pool; uw mark; struct fpr_sco
  * loops: "call region: a nested region is still open") */
 typedef struct fpr_pends { fpr_pend_t *v; uw n, cap; fpr_slab_t *block; fpr_pend_t v0[FPR_PEND_INLINE]; } fpr_pends_t;
 void fpr_pends_reclaim(struct fpr_acb *a);       /* runtime.c: the actor ends: free the block */
-fpr_pends_t *fpr_acb_pends(struct fpr_acb *a);    /* actors.c: &a->pends */
+fpr_pends_t *fpr_acb_pends(struct fpr_acb *a);    /* owner or exclusive reaper only */
 uw fpr_pend_grows_count(void);
 uw fpr_region_opens_count(void);   /* loop regions opened (lazily, at a back edge) */
 uw fpr_region_cycles_count(void);  /* loop region resets after the first open */

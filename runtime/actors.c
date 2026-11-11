@@ -139,16 +139,23 @@ typedef struct {
 } chan_t;
 uw fpr_ring_grows, fpr_send_full; /* growths; sends refused for a full ring */
 
+#define DP_N 16
+typedef struct chblk {
+  chan_t ch[MAXSND];
+  uw shfrom[RING_CAP]; /* the shared ring's per-entry sender tags (its inline ring) */
+  /* Only the running owner and its exclusive reaper use these fields.
+   * Recycle them with the rings after the existing epoch grace period. */
+  uw ctx[FPR_CTX_WORDS];
+  fpr_pends_t pends;
+  fpr_slab_t *dp[DP_N];
+  struct chblk *nx;
+  uw stamp[FPR_NHARTS];
+} chblk_t;
+
 typedef struct fpr_acb {
   uint32_t tid, var; /* var = status word (atomic; doubles as header) */
-  uw ctx[FPR_CTX_WORDS]; /* ra sp gp tp s0..s11, then fs0..fs11 where the machine saves them */
   uint32_t reaping; /* exactly one hart may tear down this immortal identity */
-  chan_t *ch;        /* MAXSND channels, OUT-OF-LINE (see chblk below):
-                      * the acb stays permanent (send-to-dead reads
-                      * var), but its 8 KiB of rings is reclaimed at
-                      * reap -- the permanent residue per dead actor is
-                      * now ~sizeof(acb_t) ~= 250 B, which is what the
-                      * "stated ceiling" always meant to say */
+  chan_t *ch; /* first field of the recyclable chblk_t */
   uint32_t scan; /* round-robin cursor for fair receive (owner-only) */
   uint32_t mbdyn;  /* mailbox policy: 1 = rings grow (Dynamic n) */
   uint32_t mbcap;  /* initial ring capacity per channel (spawnCap) */
@@ -187,8 +194,7 @@ typedef struct fpr_acb {
    * packs), so a dropper records a hold per slab instead of chaining
    * the slab itself; DP_N outstanding is plenty (one window holds the
    * messages of one activation), and an overflow retires the oldest. */
-#define DP_N 16
-  fpr_slab_t *dp[DP_N];
+
   uw dp_n;
   fpr_slab_t *msg_slab; /* the slab this actor's sends pack into (runtime.c) */
   fpr_pool_t pool; /* this actor's slabs + recycle buckets (slab refactor) */
@@ -254,8 +260,10 @@ typedef struct fpr_acb {
 #endif
   struct fpr_scope *scopes; /* active scratch regions on this actor's stack */
   fpr_rx_t rx; /* the message roots this actor took in the current turn (fpr.h) */
-  fpr_pends_t pends; /* pending call regions (fpr.h) */
+
 } acb_t;
+
+static chblk_t *live_block(acb_t *a) { return (chblk_t *)a->ch; }
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
 fpr_plane_actors_t *fpr_plane_actors = 0; /* see fpr.h: NULL = this image is the plane */
@@ -282,18 +290,18 @@ void fpr_drop_park(fpr_slab_t *sl) {
     return;
   }
   if (a->dp_n == DP_N) { /* overflow: the oldest window is retired now */
-    fpr_slab_unhold(a->dp[0], 1);
-    for (uw i = 1; i < DP_N; i++) a->dp[i - 1] = a->dp[i];
+    fpr_slab_unhold(live_block(a)->dp[0], 1);
+    for (uw i = 1; i < DP_N; i++) live_block(a)->dp[i - 1] = live_block(a)->dp[i];
     a->dp_n--;
   }
-  a->dp[a->dp_n++] = sl;
+  live_block(a)->dp[a->dp_n++] = sl;
   sl->holds++;
 }
 static void drop_drain(acb_t *a) {
   if (!a->dp_n) return;
   uw n = a->dp_n;
   a->dp_n = 0;
-  fpr_slabs_unhold(a->dp, n);
+  fpr_slabs_unhold(live_block(a)->dp, n);
 }
 fpr_slab_t **fpr_acb_msg_slot(struct fpr_acb *a) { return &a->msg_slab; }
 void fpr_drop_drain_current(void) {
@@ -305,7 +313,7 @@ fpr_pool_t *fpr_acb_pool(struct fpr_acb *a) { return &a->pool; }
 struct fpr_pool **fpr_acb_override_slot(struct fpr_acb *a) { return &a->pool_override; }
 struct fpr_scope **fpr_acb_scope_slot(struct fpr_acb *a) { return &a->scopes; }
 fpr_rx_t *fpr_acb_rx(struct fpr_acb *a) { return &a->rx; }
-fpr_pends_t *fpr_acb_pends(struct fpr_acb *a) { return &a->pends; }
+fpr_pends_t *fpr_acb_pends(struct fpr_acb *a) { return &live_block(a)->pends; }
 
 /* big raw blocks (stacks, acbs, rings): the memory actor's buddy on an
  * image that owns one (fpr_mem_own -- a machine boot, the qosp app);
@@ -672,12 +680,6 @@ static acb_t *acb_block(void) {
  *
  * Without this, frame-per-actor designs retire 8 KiB of dead rings
  * per frame forever (pshell exhausted a Pi 4's arena in minutes). */
-typedef struct chblk {
-  chan_t ch[MAXSND];
-  uw shfrom[RING_CAP]; /* the shared ring's per-entry sender tags (its inline ring) */
-  struct chblk *nx;
-  uw stamp[FPR_NHARTS];
-} chblk_t;
 static fpr_freelist_t chb_fl; /* never-referenced carve extras ONLY --
                                * reaped blocks go to limbo and are
                                * reused from there, so the flnode
@@ -772,6 +774,7 @@ static chan_t *chb_take(void) {
   }
   for (int i = 0; i < MAXSND; i++) chan_init(&b->ch[i], i == SHIDX ? b->shfrom : 0, fresh);
   b->ch[SHIDX].sender = SHARED_KEY; /* the overflow ring is always bound */
+  b->pends = (fpr_pends_t){0};
   return b->ch;
 }
 static chan_t *sh_chan(acb_t *a) { return &a->ch[SHIDX]; }
@@ -1724,7 +1727,7 @@ static void hart_loop(fpr_hart_t *h) {
         code_seen = code_now;
       }
       FPR_SCHED_EVENT(FPR_SCHED_DISPATCH, h->id, n->id);
-      fpr_ctx_switch(h->sched_ctx, n->ctx);
+      fpr_ctx_switch(h->sched_ctx, live_block(n)->ctx);
       FPR_SCHED_EVENT(FPR_SCHED_RETURN, h->id, n->id);
       hal_actor_stack(0); /* the hart loop may free that stack (reap): nothing watched here */
       __atomic_store_n(&n->running, 0, __ATOMIC_RELEASE); /* saved: it may run elsewhere now */
@@ -1802,7 +1805,7 @@ static void hart_loop(fpr_hart_t *h) {
 static void to_sched(void) {
   fpr_hart_t *h = fpr_hart();
   acb_t *p = h->current;
-  fpr_ctx_switch(p->ctx, h->sched_ctx); /* returns when re-scheduled */
+  fpr_ctx_switch(live_block(p)->ctx, h->sched_ctx); /* returns when re-scheduled */
   fpr_fuel_set(fpr_hart(), FUEL_QUANTUM); /* fresh slice on resume */
 }
 
@@ -2328,7 +2331,6 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.resources = 0;
   main_acb.scopes = 0;
   main_acb.rx.roots = 0; main_acb.rx.n = 0; main_acb.rx.cap = 0; main_acb.rx.block = 0;
-  main_acb.pends.v = 0; main_acb.pends.n = 0; main_acb.pends.cap = 0; main_acb.pends.block = 0;
   ledger_push(&main_acb);
   uw stk_sz = 0;
   char *stk = (char *)stack_block(&stk_sz);
@@ -2343,8 +2345,8 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.segs = main_acb.spare = 0;
   main_acb.stk_total = 0;
   stk_window(&main_acb, 0, stk, stk_sz);
-  for (int i = 0; i < FPR_CTX_WORDS; i++) main_acb.ctx[i] = 0;
-  fpr_ctx_fabricate(main_acb.ctx, (void (*)(void))trampoline,
+  for (int i = 0; i < FPR_CTX_WORDS; i++) live_block(&main_acb)->ctx[i] = 0;
+  fpr_ctx_fabricate(live_block(&main_acb)->ctx, (void (*)(void))trampoline,
                     ((uw)stk + stk_sz) & ~(uw)15, &fpr_harts[0]);
   enq(&fpr_harts[0], &main_acb);
   fpr_mem_spawn(); /* the memory actor, second in hart 0's queue */
@@ -2416,7 +2418,6 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->pool_override = 0;
   a->scopes = 0;
   a->rx.roots = 0; a->rx.n = 0; a->rx.cap = 0; a->rx.block = 0;
-  a->pends.v = 0; a->pends.n = 0; a->pends.cap = 0; a->pends.block = 0;
   a->reaping = 0;
   a->dp_n = 0;
   a->msg_slab = 0;
@@ -2483,10 +2484,10 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
     a->budget_refused = 0;
   }
   ledger_push(a);
-  for (int i = 0; i < FPR_CTX_WORDS; i++) a->ctx[i] = 0;
+  for (int i = 0; i < FPR_CTX_WORDS; i++) live_block(a)->ctx[i] = 0;
   /* first-activation state is machine-specific (x86 needs a stack-
    * alignment bias; rv needs tp) -- the ctx layer owns fabrication */
-  fpr_ctx_fabricate(a->ctx, (void (*)(void))trampoline,
+  fpr_ctx_fabricate(live_block(a)->ctx, (void (*)(void))trampoline,
                     ((uw)stk + stk_sz) & ~(uw)15, &fpr_harts[hart]);
   /* everything above happens-before the ship (ring release / same-hart
    * program order), so the owner hart sees a fully built acb */

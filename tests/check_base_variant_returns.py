@@ -106,6 +106,22 @@ def check(target, record):
             asm.unlink()
             return exe, workers
 
+        parser = (ROOT/"tests/bench/unbox/parse_digits.fpr").read_text()
+        for disabled in (False, True):
+            mode = dict(env, FPR_NO_INLINE="1", FPR_COST_PROBE="1", FPR_COST_REPORT="1",
+                        FPR_NO_PAIR_RETURNS=str(int(disabled)))
+            exe, workers = build("digits", parser, mode)
+            assert any(w.endswith(".$variant.parse") for w in workers) == (not disabled), workers
+            counts = []
+            for n in (10, 1010):
+                q = run([exe, "option", "123", str(n)], mode)
+                assert q.returncode == 0 and q.stdout == f"{6*n}\n", q
+                counts.append(json.loads(re.search(r'\[fpr cost\] (\{.*\})', q.stderr)[1])["alloc_requests"])
+            assert counts[1] - counts[0] == (1000 if disabled else 0), counts
+            for digits, expected in (("123", 6), ("abc", -1)):
+                q = run([exe, "stored", digits], mode)
+                assert q.returncode == 0 and q.stdout == f"{expected}\n", q
+
         for inline in (True, False):
             reference = {}
             for switch in ("default", "FPR_NO_TYPE_SPEC", "FPR_NO_PAIR_RETURNS", "default"):

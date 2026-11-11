@@ -1,0 +1,20 @@
+unsafe base.
+L = use "std/list".
+advance xs = L.map (fn x -> x + 1) xs.
+plain n xs = if n == 0 then L.sum xs else plain (n - 1) (advance xs).
+turn state = (n,xs) = state; (n > 1,(n - 1,advance xs)).
+region n xs = if n == 0 then L.sum xs else
+  (_,ys) = Sys.loop (n,xs) turn; L.sum ys.
+update i v = if i == 0 then v else
+  j = i - 1; (x,w) = Vec.get j v; update j (Vec.set j (x + 1) w).
+total i v acc = if i == 0 then _ = Vec.free v; acc else
+  j = i - 1; (x,w) = Vec.get j v; total j w (acc + x).
+owned n size v = if n == 0 then total size v 0 else owned (n - 1) size (update size v).
+main = case Sys.args Unit of
+    [mode, count] -> n = parseInt count;
+      if n < 0 then error "negative steps" else
+      if mode == "owned" then print (owned n 2048 (Vec.iota 2048)) else
+      xs = L.range 0 2047;
+      if mode == "plain" then print (plain n xs) else
+      if mode == "region" then print (region n xs) else error "unknown mode"
+  | _ -> error "expected mode and steps".

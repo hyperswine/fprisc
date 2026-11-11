@@ -1,0 +1,28 @@
+unsafe base.
+L = use "std/list".
+M = use "std/map".
+Ord = use "std/order".
+advance xs = L.map (fn x -> x + 1) xs.
+walk n xs = if n == 0 then xs else walk (n - 1) (advance xs).
+Tree = Type (Leaf Int | Fork Tree Tree).
+grow d = if d == 0 then Leaf 0 else Fork (grow (d - 1)) (grow (d - 1)).
+# Path-copy one leaf. Every untouched branch stays shared with the old root.
+bump key tree = case tree of
+    Leaf n -> Leaf (n + 1)
+  | Fork a b -> if key % 2 == 0 then Fork (bump (key / 2) a) b else Fork a (bump (key / 2) b).
+treeLoop n tree = if n == 0 then tree else treeLoop (n - 1) (bump n tree).
+total tree = case tree of Leaf n -> n | Fork a b -> total a + total b.
+# Keep the fixed ordering function outside the variable-sized AVL tree.
+mapLoop : unsafe Int -> Int -> M.Tree Int Int -> Int.
+mapLoop n size tree = if n == 0 then M.fold (fn acc k v -> acc + v) 0 (M.Map Ord.int size tree) else
+  (case M.insert (n % 128) n (M.Map Ord.int size tree) of
+     M.Map _ k t -> mapLoop (n - 1) k t).
+steps count = n = parseInt count; if n < 0 then error "negative steps" else n.
+main = case Sys.args Unit of
+    ["list",count] -> xs = L.range 0 1023;
+      (case xs of _ :: tail -> ys = walk (steps count) xs; print "{L.sum ys} {L.sum tail}" | Nil -> error "empty")
+  | ["tree",count] -> original = grow 7; updated = treeLoop (steps count) original;
+      print "{total updated} {total original}"
+  | ["map",count] -> old = M.insert 999 1 M.ints;
+      (case old of M.Map _ k t -> answer = mapLoop (steps count) k t; print "{answer} {M.fold (fn acc k v -> acc + v) 0 old}")
+  | _ -> error "expected list, tree or map and a nonnegative count".

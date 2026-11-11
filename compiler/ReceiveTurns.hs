@@ -104,9 +104,9 @@ validateSource (Rewrite _ _ _ groups _ (Authority before membership context shar
           newLive=S.fromList [i | (i,p)<-zip [0::Int ..] newPs,p `S.member` (liveNow M.! n)]
       unless (length oldPs==length newPs && newLive `S.isSubsetOf` oldLive) (bad ("dead argument became observable at "++n))
 
-receiveTurns :: Bool -> Bool -> Bool -> M.Map Name (CostEq,CostEq) -> M.Map Name Interface
+receiveTurns :: Bool -> Bool -> Bool -> Maybe String -> M.Map Name (CostEq,CostEq) -> M.Map Name Interface
              -> Region.ValueModel -> Sites.CallSites -> S.Set Name -> Prog -> S.Set Name -> Prog -> Either String Rewrite
-receiveTurns loopRegions callRegionsOn receiveLoops contextEqs interfaces model sites shared context joins prog = do
+receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs interfaces model sites shared context joins prog = do
   let result=Rewrite final (notes++callNotes) generated selectedGroups callTargets (Authority prog (M.keysSet membership) context shared)
   verifyRewrite prog result
   pure result
@@ -544,7 +544,9 @@ receiveTurns loopRegions callRegionsOn receiveLoops contextEqs interfaces model 
     typedProblems pure invariant n = case M.lookup n interfaces of
       Just signature -> let ps=fst (prog M.! n)
                             as=interfaceArguments signature;r=interfaceResult signature
-                            ok=if pure then boundedType else copyableType
+                            -- A nominated loop may copy variable-size immutable state.
+                            -- All other admission, effect and liveness checks still apply.
+                            ok=if pure && Just n /= persistentLoop then boundedType else copyableType
                             handedBack=case r of
                               TV x->or [case a of TV y->x==y;_->False
                                 | (i,a)<-zip [0..] as,S.member (n,i) invariant]
