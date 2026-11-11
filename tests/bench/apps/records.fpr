@@ -1,0 +1,31 @@
+# records (SPEC.md): 1M records, three-key sort, group by dept
+List = use "std/list".
+Ord = use "std/order".
+
+R = { id : Int, dept : Int, age : Int, salary : Int }.
+
+lcg : Int -> Int .
+lcg x = (x * 1103515245 + 12345) % 2147483648.
+
+gen : (n : Int) -> (i : Int | measure (n - i)) -> Int -> List R -> List R .
+gen n i x acc = if i >= n then List.reverse acc else
+  x2 = lcg x;
+  gen n (i + 1) x2 ({id = i, dept = x2 % 100, age = 18 + (x2 / 100) % 63, salary = 30000 + (x2 / 6300) % 90000} :: acc).
+
+cmp : R -> R -> Ord.Ordering .
+cmp a b = if a.dept != b.dept then Ord.int a.dept b.dept
+  else if a.age != b.age then Ord.int b.age a.age
+  else Ord.int a.id b.id.
+
+grp : List (Int, Int, Int, Int) -> R -> List (Int, Int, Int, Int) .
+grp acc r = case acc of
+    g :: rest -> (case g of
+      (d, c, s, f) -> if d == r.dept then (d, c + 1, s + r.salary, f) :: rest else (r.dept, 1, r.salary, r.id) :: acc)
+  | Nil -> (r.dept, 1, r.salary, r.id) :: Nil.
+
+main =
+  rs = List.sortWith cmp (gen 1000000 0 42 Nil);
+  o = List.fold (fn h r -> (h * 31 + r.id) % 1000000007) 0 rs;
+  gs = List.reverse (List.fold grp Nil rs);
+  _ = print "records {List.length rs} order {o}";
+  List.each (fn g -> case g of (d, c, s, f) -> print "{d} {c} {s} {f}") gs.

@@ -1,0 +1,35 @@
+# sim (SPEC.md): 20k particles x 2000 steps, the state a List of records
+List = use "std/list".
+
+P = { px : Int, py : Int, vx : Int, vy : Int }.
+
+lcg : Int -> Int .
+lcg x = (x * 1103515245 + 12345) % 2147483648.
+
+gen : (n : Int) -> (i : Int | measure (n - i)) -> Int -> List P -> List P .
+gen n i x acc = if i >= n then List.reverse acc else
+  a = lcg x;
+  b = lcg a;
+  c = lcg b;
+  d = lcg c;
+  gen n (i + 1) d ({px = a % 1000000, py = b % 1000000, vx = c % 2001 - 1000, vy = d % 2001 - 1000} :: acc).
+
+bounce : Int -> Int -> (Int, Int) .
+bounce p v = if p < 0 then (0 - p, 0 - v) else if p > 1000000 then (2000000 - p, 0 - v) else (p, v).
+
+move : P -> P .
+move p =
+  vy0 = p.vy - 1;
+  (x, vx) = bounce (p.px + p.vx) p.vx;
+  (y, vy) = bounce (p.py + vy0) vy0;
+  {px = x, py = y, vx = vx, vy = vy}.
+
+run : (n : Int | measure n) -> List P -> List P .
+run n ps = if n <= 0 then ps else run (n - 1) (List.map move ps).
+
+main =
+  ps = run 2000 (gen 20000 0 1 Nil);
+  sx = List.fold (fn s p -> s + p.px) 0 ps;
+  sy = List.fold (fn s p -> s + p.py) 0 ps;
+  e = List.fold (fn s p -> s + p.vx * p.vx + p.vy * p.vy) 0 ps;
+  print "particles {List.length ps} steps 2000 sx {sx} sy {sy} energy {e}".

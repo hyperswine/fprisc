@@ -1,0 +1,4 @@
+lines 1000000 bytes 56138251 hash 344859191
+order 0 cust c0 qty 1 total 0.00 status open
+order 499999 cust c2377 qty 13 total 3952.71 status paid
+order 999999 cust c2666 qty 9 total 8952.71 status open
