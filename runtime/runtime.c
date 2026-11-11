@@ -654,11 +654,57 @@ __attribute__((destructor)) static void bump_check_report(void) {
   praw("\n");
 }
 #endif
+#ifdef FPR_COST_PROBE
+/* Allocation sites (FPR_ALLOC_SITES=<file> on a probe build, host.c): each
+ * allocation's return-address chain, a few frames deep along the frame
+ * pointers, counted in a fixed table; host.c writes it at exit and
+ * tools/alloc_sites.py resolves the addresses.  A chain that leaves the
+ * stack's shape stops early; a full table counts the rest as dropped. */
+#define SITE_N 16384
+#define SITE_DEPTH 6
+uw fpr_site_keys[SITE_N][SITE_DEPTH], fpr_site_counts[SITE_N], fpr_site_bytes[SITE_N], fpr_site_dropped;
+static int sites_on = -1;
+/* the host's switch (machine/unix/host.c); weak: other hosts have none */
+__attribute__((weak)) int fpr_alloc_sites_enabled(void);
+static __attribute__((noinline)) void site_note(uw bytes) {
+  if (sites_on < 0) sites_on = fpr_alloc_sites_enabled ? fpr_alloc_sites_enabled() : 0;
+  if (!sites_on) return;
+  uw key[SITE_DEPTH] = {0};
+  uw *fp = (uw *)__builtin_frame_address(0);
+  extern int main(int, char **);
+  uw text = (uw)&main;
+  for (int d = 0; d < SITE_DEPTH && fp; d++) {
+    uw ret = fp[1];
+    /* a return address outside the program's text: the chain left the
+     * frame records (generated code keeps no frame pointer of its own) */
+    if ((ret > text ? ret - text : text - ret) > ((uw)1 << 28)) break;
+    key[d] = ret;
+    uw *next = (uw *)fp[0];
+    if ((uw)next <= (uw)fp || (uw)next - (uw)fp > ((uw)1 << 20) || ((uw)next & 7)) break;
+    fp = next;
+  }
+  uw hsh = 1469598103934665603ull;
+  for (int d = 0; d < SITE_DEPTH; d++) hsh = (hsh ^ key[d]) * 1099511628211ull;
+  for (uw i = 0, j = hsh % SITE_N; i < SITE_N; i++, j = (j + 1) % SITE_N) {
+    if (fpr_site_counts[j] == 0) {
+      for (int d = 0; d < SITE_DEPTH; d++) fpr_site_keys[j][d] = key[d];
+    } else if (__builtin_memcmp(fpr_site_keys[j], key, sizeof key)) continue;
+    fpr_site_counts[j]++;
+    fpr_site_bytes[j] += bytes;
+    return;
+  }
+  fpr_site_dropped++;
+}
+#define SITE_NOTE(b) site_note(b)
+#else
+#define SITE_NOTE(b) ((void)0)
+#endif
 static V alloc_in_size(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk,uw prefix) {
   if (raw_bytes>(uw)-1-prefix-15-sizeof(fpr_slab_t)-FPR_SLAB_PAD) fpr_cpanic("allocation size overflow");
   uw total = (raw_bytes+prefix+15)&~(uw)15;
   FPR_COST_ADD(h, cost_alloc_requests, 1);
   FPR_COST_ADD(h, cost_alloc_bytes, total);
+  SITE_NOTE(total);
   if (total <= (uw)16 * FPR_NBUCKETS) {
     uw idx = total / 16 - 1;
     void *p = bucket_take(pool, idx);
@@ -825,6 +871,7 @@ V fpr_alloc(V raw_bytes) {
       h->region_bytes += total;
       FPR_COST_ADD(h, cost_alloc_requests, 1);
       FPR_COST_ADD(h, cost_alloc_bytes, total);
+      SITE_NOTE(total);
       allocation_header(p,total,sl,FPR_MANAGED_PREFIX);
       alloc_zero_pad(p+FPR_MANAGED_PREFIX,raw_bytes,total,FPR_MANAGED_PREFIX);
       bump_open(h);
@@ -4330,6 +4377,51 @@ V fpr_prim_fn_str(V v) {
   uw n = (uw)rpos;
   __builtin_memcpy(snapshot, rbuf, n);
   return (V)fpr_mkstr(snapshot, n);
+}
+
+/* An interpolation's pieces in one tuple (Core.Opt.Pipeline buildStrings):
+ * one String and one copy, however many pieces, where a strcat chain made
+ * a String per piece and copied the front again at every step.  A String
+ * piece is copied; anything else renders as str would, twice (to size, then
+ * to copy): render is deterministic, and nothing allocates between a render
+ * and its copy, so the hart's buffer cannot change under it. */
+static uw pieces_arity(V t) {
+  if (ISINT(t)) fpr_trap("string pieces: not a tuple");
+  uw tid = TID(t);
+  if (tid == T_TUP2) return 2;
+  if (tid == T_TUP3) return 3;
+  if (tid >= T_TUP4 && tid <= T_TUP8) return tid - T_TUP4 + 4;
+  if (tid > T_TUPN && tid < T_TUPN_END) return tid - T_TUPN;
+  fpr_trap("string pieces: not a tuple");
+  return 0;
+}
+V fpr_prim_fn__x24strcatT(V t) {
+  uw n = pieces_arity(t);
+  uw total = 0;
+  for (uw i = 0; i < n; i++) {
+    V v = ((V *)((char *)t + 8))[i];
+    if (!ISINT(v) && TID(v) == T_STR) total += ((str_t *)v)->len;
+    else { rpos = 0; render(v); total += (uw)rpos; }
+  }
+  str_t *out = (str_t *)fpr_alloc(sizeof(str_t) + total);
+  out->tid = T_STR;
+  out->var = 0;
+  out->len = total;
+  uw at = 0;
+  for (uw i = 0; i < n; i++) {
+    V v = ((V *)((char *)t + 8))[i];
+    if (!ISINT(v) && TID(v) == T_STR) {
+      str_t *x = (str_t *)v;
+      __builtin_memcpy(out->bytes + at, x->bytes, x->len);
+      at += x->len;
+    } else {
+      rpos = 0;
+      render(v);
+      __builtin_memcpy(out->bytes + at, rbuf, (uw)rpos);
+      at += (uw)rpos;
+    }
+  }
+  return (V)out;
 }
 
 fpr_lock_t fpr_con_lock; /* console: one LINE at a time across harts */

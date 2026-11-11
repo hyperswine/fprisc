@@ -43,39 +43,48 @@ append a b = strcat a b.
 # the only sensible way: the whole string, unsplit.
 split : String -> String -> List String .
 split sep s | strlen sep == 0 = s :: Nil.
-split sep s = splitGo (strlen s + 1) sep s 0 Nil.
-splitGo : (fuel : Int | measure fuel) -> String -> String -> Int -> List String -> List String .
-splitGo fuel sep s from acc | fuel <= 0 = rev acc Nil.
-splitGo fuel sep s from acc =
+split sep s = splitGo (strlen s + 1) sep s 0.
+# front to back (tail recursion modulo cons: one cell per piece, no reverse)
+splitGo : (fuel : Int | measure fuel) -> String -> String -> Int -> List String .
+splitGo fuel sep s from | fuel <= 0 = Nil.
+splitGo fuel sep s from =
   at = strIndexFrom sep s from;
-  if at < 0 then rev (substr s from (strlen s - from) :: acc) Nil
-  else splitGo (fuel - 1) sep s (at + strlen sep) (substr s from (at - from) :: acc).
+  if at < 0 then substr s from (strlen s - from) :: Nil
+  else substr s from (at - from) :: splitGo (fuel - 1) sep s (at + strlen sep).
 
 # on "\n"; a trailing newline does not make an empty last line, and "\r\n" ends a line too
 lines : String -> List String .
-lines s = linesTidy (split "\n" s) Nil.
-linesTidy : (ls : List String | measure ls) -> List String -> List String .
-linesTidy ls acc = case ls of
-    Nil -> rev acc Nil
-  | l :: Nil -> if strlen l == 0 then rev acc Nil else rev (dropCr l :: acc) Nil
-  | l :: r -> linesTidy r (dropCr l :: acc).
+lines s = linesGo (strlen s + 1) s 0.
+# one pass, front to back: each line is cut once, its "\r" left out
+linesGo : (fuel : Int | measure fuel) -> String -> Int -> List String .
+linesGo fuel s from | fuel <= 0 = Nil.
+linesGo fuel s from | from >= strlen s = Nil.
+linesGo fuel s from =
+  at = strIndexFrom "\n" s from;
+  if at < 0 then lineAt s from (strlen s) :: Nil
+  else lineAt s from at :: linesGo (fuel - 1) s (at + 1).
+lineAt : String -> Int -> Int -> String .
+lineAt s from end | end > from and charAt s (end - 1) == 13 = substr s from (end - 1 - from).
+lineAt s from end = substr s from (end - from).
 dropCr : String -> String .
 dropCr l | endsWith "\r" l = substr l 0 (strlen l - 1).
 dropCr l = l.
 
 # maximal runs of non-whitespace
 words : String -> List String .
-words s = wordsGo s 0 (strlen s) Nil.
-wordsGo : String -> (pos : Int | measure (n - pos)) -> (n : Int) -> List String -> List String .
-wordsGo s pos n acc | pos >= n = rev acc Nil.
-wordsGo s pos n acc =
-  if isSpace (charAt s pos) then wordsGo s (pos + 1) n acc
-  else wordEnd s pos (pos + 1) n acc.
-wordEnd : String -> Int -> (pos : Int | measure (n - pos)) -> (n : Int) -> List String -> List String .
-wordEnd s start pos n acc | pos >= n = rev (substr s start (pos - start) :: acc) Nil.
-wordEnd s start pos n acc =
-  if isSpace (charAt s pos) then wordsGo s (pos + 1) n (substr s start (pos - start) :: acc)
-  else wordEnd s start (pos + 1) n acc.
+words s = wordsGo (strlen s + 1) s 0 (strlen s).
+# front to back, like split; fuel bounds the steps (each one moves pos on)
+wordsGo : (fuel : Int | measure fuel) -> String -> Int -> Int -> List String .
+wordsGo fuel s pos n | fuel <= 0 = Nil.
+wordsGo fuel s pos n | pos >= n = Nil.
+wordsGo fuel s pos n | isSpace (charAt s pos) = wordsGo (fuel - 1) s (pos + 1) n.
+wordsGo fuel s pos n =
+  stop = wordEnd s (pos + 1) n;
+  substr s pos (stop - pos) :: wordsGo (fuel - 1) s stop n.
+# the first space at or after pos, or n
+wordEnd : String -> (pos : Int | measure (n - pos)) -> (n : Int) -> Int .
+wordEnd s pos n | pos >= n = n.
+wordEnd s pos n = if isSpace (charAt s pos) then pos else wordEnd s (pos + 1) n.
 
 # ---- searching ---------------------------------------------------------------------
 # where `p` first occurs, from 0; `indexFrom i` looks at or after position i
@@ -91,10 +100,15 @@ contains : String -> String -> Bool .
 contains p s = strIndexOf p s >= 0.
 
 startsWith : String -> String -> Bool .
-startsWith p s = strlen p <= strlen s and substr s 0 (strlen p) == p.
+startsWith p s = strlen p <= strlen s and sameAt p s 0 0 (strlen p).
 
 endsWith : String -> String -> Bool .
-endsWith p s = strlen p <= strlen s and substr s (strlen s - strlen p) (strlen p) == p.
+endsWith p s = strlen p <= strlen s and sameAt p s (strlen s - strlen p) 0 (strlen p).
+
+# p's characters from i on equal s's from off + i on (in place: no substring)
+sameAt : String -> String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> Bool .
+sameAt p s off i n | i >= n = True.
+sameAt p s off i n = if charAt p i != charAt s (off + i) then False else sameAt p s off (i + 1) n.
 
 # how many times, not overlapping
 count : String -> String -> Int .
@@ -218,23 +232,24 @@ toInt s =
   n = strlen s;
   neg = startsWith "-" s;
   first = if neg then 1 else 0;
-  if first >= n then Err "not a number: \"{s}\""
-  else (case digitsGo s first n 0 of
-        Err 1 -> Err "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})"
-      | Err _ -> Err "not a number: \"{s}\""
-      | Ok v ->
-          if neg then Ok v
-          else if v == intMin Unit then Err "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})"
-          else Ok (0 - v)).
-# The digits accumulate NEGATIVELY so the most negative Int is reachable.
-# Err 0: not a digit; Err 1: the value would pass the 63-bit Int (it used
-# to wrap silently: "4611686018427387904" answered -4611686018427387904)
-digitsGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Result Int Int .
-digitsGo s i n acc | i >= n = Ok acc.
+  v = if first >= n then 1 else digitsGo s first n 0;
+  if v <= 0 and (neg or v != intMin Unit) then Ok (if neg then v else 0 - v)
+  else toIntErr s v.
+# the failures, apart, so toInt stays small enough to inline (a caller's
+# match on its Ok then needs no box)
+toIntErr : String -> Int -> Result Int String .
+toIntErr s v | v == 1 = Err "not a number: \"{s}\"".
+toIntErr s v = Err "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})".
+# The digits accumulate NEGATIVELY so the most negative Int is reachable,
+# which leaves the positive answers for the failures, unboxed: 1, not a
+# digit; 2, the value would pass the 63-bit Int (it used to wrap silently:
+# "4611686018427387904" answered -4611686018427387904)
+digitsGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int .
+digitsGo s i n acc | i >= n = acc.
 digitsGo s i n acc =
   c = charAt s i;
-  if not (isDigit c) then Err 0
-  else if acc < (intMin Unit + (c - 48)) / 10 then Err 1
+  if not (isDigit c) then 1
+  else if acc < (intMin Unit + (c - 48)) / 10 then 2
   else digitsGo s (i + 1) n (acc * 10 - (c - 48)).
 
 # ---- ordering ------------------------------------------------------------------------

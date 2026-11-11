@@ -1117,7 +1117,7 @@ compileWithReport accepted report = do
           resetting=poolResetters linkedProgram
           linkedTgt=tgt {tgtPoolResetters=resetting,tgtSpineBuilders=
             M.filterWithKey (\name _ -> '@' `elem` name) (spineBuilders resetting (linkedProgram `M.union` erasedConstructorStubs linkedProgram)),
-            tgtMapBodies=M.filterWithKey (\name _ -> any (`isPrefixOf` name) ["balance@","node@","insGo@"]) linkedProgram}
+            tgtMapBodies=M.filterWithKey (\name _ -> any (`isPrefixOf` name) ["balance@","node@","insGo@","rotRight@","rotLeft@"]) linkedProgram}
           -- a constructor is global everywhere: a clone that references one
           -- links against the owner's symbol, so qualifyAux leaves the name
           importedCore = M.unions

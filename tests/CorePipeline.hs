@@ -67,8 +67,8 @@ main = do
     Left (ErrorCall msg) -> "cannot verify" `isInfixOf` msg
     Right _ -> False)
   check "named pass order" (map passName (optimizationReports result)==
-    [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,PairReturns])
-  check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,False])
+    [FuseVectors,MakeWorkers,NormalizeForReuse,ReuseConstructors,BuildStrings,PairReturns])
+  check "pass activation" (map passEnabled (optimizationReports result)==[False,True,True,True,True,False])
   check "missing function refused" (failed (verifyPassResult source M.empty M.empty))
   check "entry arity drift refused" (failed (verifyPassResult source (M.singleton "sum" (["n"],CInt 0)) M.empty))
   check "duplicate parameters refused" (failed (optimizeCore none S.empty (M.singleton "f" (["x","x"],v "x"))))

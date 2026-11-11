@@ -35,10 +35,33 @@ static void cost_report(void) {
           (unsigned long long)fpr_cost_buddy_allocs, (unsigned long long)fpr_cost_buddy_frees);
   if (out != stderr) fclose(out);
 }
+/* FPR_ALLOC_SITES=<file>: the allocation-site table (runtime.c site_note),
+ * one line per chain, with main's address so tools/alloc_sites.py can undo
+ * the load slide */
+#define SITE_N 16384
+#define SITE_DEPTH 6
+extern uw fpr_site_keys[SITE_N][SITE_DEPTH], fpr_site_counts[SITE_N], fpr_site_bytes[SITE_N], fpr_site_dropped;
+int fpr_alloc_sites_enabled(void) { const char *w = getenv("FPR_ALLOC_SITES"); return w && *w; }
+static void sites_report(void) {
+  const char *where = getenv("FPR_ALLOC_SITES");
+  if (!where || !*where) return;
+  FILE *out = fopen(where, "w");
+  if (!out) return;
+  extern int main(int, char **);
+  fprintf(out, "main %llx dropped %llu\n", (unsigned long long)(uintptr_t)&main, (unsigned long long)fpr_site_dropped);
+  for (uw i = 0; i < SITE_N; i++) {
+    if (!fpr_site_counts[i]) continue;
+    fprintf(out, "%llu %llu", (unsigned long long)fpr_site_counts[i], (unsigned long long)fpr_site_bytes[i]);
+    for (int d = 0; d < SITE_DEPTH; d++) fprintf(out, " %llx", (unsigned long long)fpr_site_keys[i][d]);
+    fprintf(out, "\n");
+  }
+  fclose(out);
+}
 #endif
 void hal_poweroff(int code) {
 #ifdef FPR_COST_PROBE
   cost_report();
+  sites_report();
 #endif
   fflush(stdout);
   fflush(stderr);

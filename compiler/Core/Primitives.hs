@@ -26,7 +26,10 @@ primArities = scalarPrimitives ++
     -- floats: raw-bits payloads; every op is a C prim the type-directed
     -- site resolution routes to (Infer.hs).  f64frombits is the
     -- literal encoding (a tagged V cannot carry 64 raw bits).
-    ("f64frombits", 2), ("f32frombits", 1)
+    ("f64frombits", 2), ("f32frombits", 1),
+    -- an interpolation's pieces in one tuple, one String out (runtime.c;
+    -- Core.Opt.Pipeline buildStrings makes the calls, nothing else)
+    ("$strcatT", 1)
   ]
   ++ [ ("F" ++ w ++ "." ++ op, 2)
        | w <- ["64", "32"], op <- ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!="] ]

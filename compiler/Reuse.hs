@@ -380,11 +380,56 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
                   direct=overwrite f0
                   -- a rebalanced node: std/map's balance, inlined with node,
                   -- rebuilds over t when no rotation is needed
-                  expanded=fmap overwrite (expandBalance site f0)
+                  expanded=fmap consumeCells (expandBalance site f0)
               in (CMk 4 vr [if direct/=f0 then direct else case expanded of
                                 Just x | rebuildsOver x -> x
                                 _ -> f0,f1],n+1)
             _ -> (e,n)
+          -- the cells a node built in an inlined balance or rotation may
+          -- take: t, the walker's own rebuilt subtrees, and the nodes taken
+          -- apart from those. Each is unique (an owned map's nodes have one
+          -- parent each). A cell is taken on a path where it is known to be a
+          -- Node (never the static Leaf), by a node whose fields only read it,
+          -- when nothing evaluated after mentions it; and only once. Names
+          -- that alias one cell share its root. (Children of t itself went to
+          -- the walker's recursive call, which may hand back the same cell.)
+          selfResults=S.fromList [r | CLet r a _<-nodes nodeCase, Just _<-[selfCall a]]
+          seeds=S.insert t (S.fromList [k | CLet k (CProj 0 (CVar r)) _<-nodes nodeCase, S.member r selfResults])
+          consumeCells e0=fst (cc (M.fromList [(x,x) | x<-S.toList seeds]) [t] S.empty [] e0)
+            where
+              cc al known used after e=case e of
+                CLet k a b ->
+                  let al'=case a of
+                        CVar u | Just r<-M.lookup u al -> M.insert k r al
+                        CProj i (CVar u) | i==1 || i==4, Just r<-M.lookup u al, r/=t -> M.insert k k al
+                        _ -> al
+                      (a',u1)=cc al known used (b:after) a
+                      (b',u2)=cc al' known u1 after b
+                  in (CLet k a' b',u2)
+                CIf c a b ->
+                  let (c',u1)=cc al known used (a:b:after) c
+                      (a',ua)=cc al (known++evidence al True c) u1 after a
+                      (b',ub)=cc al (known++evidence al False c) u1 after b
+                  in (CIf c' a' b',S.union ua ub)
+                CMk tg 1 fs | tg==tag, length fs==5 ->
+                  let (fs',u1)=ccList al known used after fs
+                      names r=[n | (n,r')<-M.toList al, r'==r]
+                      free=[r | r<-known, S.notMember r u1,
+                                all (\n->all (readsOnly n 5) fs') (names r),
+                                not (any (\n->any (mentions n) after) (names r))]
+                  in case free of
+                       r:_ -> (CApp (CApp (CVar "$reuse.fresh") (CVar r)) (CMk tg 1 fs'),S.insert r u1)
+                       [] -> (CMk tg 1 fs',u1)
+                CMk tg v fs -> let (fs',u1)=ccList al known used after fs in (CMk tg v fs',u1)
+                CApp f a -> let (f',u1)=cc al known used (a:after) f; (a',u2)=cc al known u1 after a in (CApp f' a',u2)
+                _ -> (e,used)
+              ccList al known used after fs=go used fs
+                where go u []=([],u)
+                      go u (x:xs)=let (x',u1)=cc al known u (xs++after) x; (xs',u2)=go u1 xs in (x':xs',u2)
+              -- a Node test on a cell: Node on the branch it names
+              evidence al side c=case c of
+                CTagEq tg v (CVar x) | tg==tag, Just r<-M.lookup x al, (v==1)==side -> [r]
+                _ -> []
           rebuildsOver x=any (\m->case m of CApp (CApp (CVar "$reuse.fresh") (CVar y)) _->y==t;_->False) (nodes x)
           overwrite e=case e of
             CLet k a b | not (mentions t a) || readsOnly t 5 a -> CLet k a (overwrite b)
@@ -392,7 +437,7 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
             CMk tg 1 fs | tg==tag, length fs==5, all (readsOnly t 5) fs ->
               CApp (CApp (CVar "$reuse.fresh") (CVar t)) e
             _ -> e
-          twin=CIf (CTagEq tag 0 (CVar t)) (rename leafCase) (fst (tailNode (0::Int) (rename nodeCase)))
+          twin=CIf (CTagEq tag 0 (CVar t)) (knownCtors (rename leafCase)) (fst (tailNode (0::Int) (knownCtors (rename nodeCase))))
       if not (rebuildsOver twin) then Nothing else
         Just (j,tag,(ps,twin))
     -- std/map's balance l k v r with its node calls inlined, binders renamed
@@ -401,9 +446,15 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
     expandBalance site e=case spine e of
       (CVar bn,args@[_,_,_,_]) | "balance@" `isPrefixOf` bn,
         Just bal<-M.lookup bn mapBodies, Just nod<-M.lookup ("node@"++drop (length "balance@") bn) mapBodies ->
-          let withNodes k x=case x of
-                _ | (CVar nn,nargs@[_,_,_,_])<-spine x, nn=="node@"++drop (length "balance@") bn ->
+          let h=drop (length "balance@") bn
+              withNodes k x=case x of
+                _ | (CVar nn,nargs@[_,_,_,_])<-spine x, nn=="node@"++h ->
                       (inlineCall (site++"n"++show k++".") nod nargs,k+1)
+                -- a rotation, inlined too: its nodes can take the cells it
+                -- takes apart (consumeCells)
+                _ | (CVar rn,rargs@[_,_,_,_])<-spine x, rn `elem` ["rotRight@"++h,"rotLeft@"++h],
+                    Just rot<-M.lookup rn mapBodies ->
+                      withNodes (k+1) (inlineCall (site++"r"++show k++".") rot rargs)
                 CLet y a b -> let (a',k1)=withNodes k a; (b',k2)=withNodes k1 b in (CLet y a' b',k2)
                 CIf c a b -> let (c',k1)=withNodes k c; (a',k2)=withNodes k1 a; (b',k3)=withNodes k2 b in (CIf c' a' b',k3)
                 CApp f a -> let (f',k1)=withNodes k f; (a',k2)=withNodes k1 a in (CApp f' a',k2)
@@ -537,19 +588,24 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
           -- the map is consumed at most once on any path (the branches of a
           -- loop may each consume it), and somewhere
           if null walkerCalls || perPathOf b/=1 || not usesOk then Nothing else Just ()
-          let go e=case e of
-                _ | Just (w,args)<-walkerCall x e -> foldl CApp (CVar w) args
-                _ | (CVar f,args)<-spine e, f==name, length args==length ps -> foldl CApp (CVar worker) (map go args)
+          -- once the map is consumed on a path, the wrapper it came in
+          -- (comparator, size, tree) is dead there too: a Map built on that
+          -- path takes its cell (the use check keeps x off the path)
+          let go done e=case e of
+                _ | Just (w,args)<-walkerCall x e -> foldl CApp (CVar w) (map (go done) args)
+                _ | (CVar f,args)<-spine e, f==name, length args==length ps -> foldl CApp (CVar worker) (map (go done) args)
                 _ | (CVar f,args@(_:_))<-spine e, Just f==cycleOf name, length args==length ps ->
-                      foldl CApp (CVar (mapCycleTwin name)) (init (map go args)++[mutatingAt (cycleComponent name i) (last args)])
-                CLet k a c -> CLet k (go a) (go c)
-                CApp f a -> CApp (go f) (go a)
-                CIf c a d -> CIf (go c) (go a) (go d)
-                CMk t v fs -> CMk t v (map go fs)
-                CProj k a -> CProj k (go a)
-                CTagEq t v a -> CTagEq t v (go a)
+                      foldl CApp (CVar (mapCycleTwin name)) (init (map (go done) args)++[mutatingAt (cycleComponent name i) (last args)])
+                CLet k a c -> CLet k (go done a) (go (done || consumes a) c)
+                CApp f a -> CApp (go done f) (go done a)
+                CIf c a d -> CIf (go done c) (go done a) (go done d)
+                CMk t v fs | done, S.member t mapTags, not (any (==CVar x) fs) ->
+                  CApp (CApp (CVar "$reuse.fresh") (CVar x)) (CMk t v (map (go done) fs))
+                CMk t v fs -> CMk t v (map (go done) fs)
+                CProj k a -> CProj k (go done a)
+                CTagEq t v a -> CTagEq t v (go done a)
                 _ -> e
-          Just (go b)
+          Just (go False b)
     mapRegionEntries=M.mapMaybeWithKey mapRegionEntry program
     mapRegionEntry name (ps,body)=do
       CLet seqId open (CLet markId mark (CApp (CApp (CVar leave) token) call))<-Just body
@@ -577,6 +633,14 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
       `S.union` stdMapHashes
     -- std/map itself, known by its definitions (a unit that inlined insert
     -- names no Leaf of its own)
+    freshWrapper a=case (a,mapCtors) of
+      (CVar _,[(t,v,n)]) -> Just (CMk t v [CProj k a | k<-[0..n-1]])
+      _ -> Nothing
+    mapCtors=[(t,v,length fs) | (k,(_,CMk t v fs))<-M.toList definitions, "Map@" `isPrefixOf` k,
+                                S.member (drop 1 (dropWhile (/='@') k)) leafHashes]
+    -- std/map's Map wrapper: its constructor's tag
+    mapTags=S.fromList [t | (k,(_,CMk t _ _))<-M.toList definitions, "Map@" `isPrefixOf` k,
+                            S.member (drop 1 (dropWhile (/='@') k)) leafHashes]
     stdMapHashes=S.fromList [h | k<-M.keys mapBodies, "insGo@" `isPrefixOf` k, let h=drop 1 (dropWhile (/='@') k),
                                  M.member ("balance@"++h) mapBodies, M.member ("Leaf@"++h) definitions]
     -- (a local bound to one counts: an empty map has no node to rebuild, so
@@ -746,9 +810,13 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
       where independent e=not (mentions x e || resets resetting scope e)
             descend=lastUse x scope
     rewriteCall scope e=case spine e of
+      -- the twin enters with a copy of the empty map's wrapper: the twins
+      -- write the wrapper they own in place, and std/map's empty maps are
+      -- shared statics
       (CVar f,args) | Just (i,w,(ps,_))<-M.lookup f mapPlans, f `S.notMember` scope,
         w `S.notMember` scope, length args==length ps, ownedMap (args!!i),
-        all (not . resets resetting scope) (drop (i+1) args) -> foldl CApp (CVar w) args
+        Just copy<-freshWrapper (args!!i),
+        all (not . resets resetting scope) (drop (i+1) args) -> foldl CApp (CVar w) (take i args++[copy]++drop (i+1) args)
       (CVar f,args) | Just (i,w,(ps,_))<-M.lookup f (plans True), f `S.notMember` scope,
         w `S.notMember` scope, length args==length ps, fresh scope (args!!i) || summaryFresh scope (args!!i), elementsFresh scope (args!!i),
         all (not . resets resetting scope) (drop (i+1) args) -> foldl CApp (CVar w) args
@@ -869,6 +937,49 @@ freshHead e=case e of
   CErr _ -> True
   CApp (CApp (CVar "$reuse.fresh") (CVar _)) c -> freshHead c
   _ -> False
+-- Known constructors. A let whose value ends, through lets, in a
+-- constructor, and whose variable is only tested (as an if's condition),
+-- projected, or reused by $reuse.fresh, never reaches memory: its lets
+-- float out in order, its fields get names of their own, its tests are
+-- decided and its projections read the fields. Typed binders are unique,
+-- so floating captures nothing. A callback inlined into a walker hands its
+-- Option over this way (std/map's update: f (Some old), then a match).
+knownCtors :: Core -> Core
+knownCtors e=let e'=kcStep e in if e'==e then e else knownCtors e'
+  where
+    kcStep x=case x of
+      CLet o rhs body | Just (wrap,CMk tg v fs)<-peel rhs, inspected o tg body ->
+        let fns=[o++".f"++show k | k<-[0..length fs-1]]
+        in wrap (foldr (\(f,y) b->CLet f y b) (decide o tg v fns body) (zip fns fs))
+      CLet k a b -> CLet k (kcStep a) (kcStep b)
+      CApp f a -> CApp (kcStep f) (kcStep a)
+      CIf c a b -> CIf (kcStep c) (kcStep a) (kcStep b)
+      CMk t v fs -> CMk t v (map kcStep fs)
+      CProj k a -> CProj k (kcStep a)
+      CTagEq t v a -> CTagEq t v (kcStep a)
+      _ -> x
+    peel (CLet k a b)=do (w,c)<-peel b; Just (CLet k a . w,c)
+    peel c@(CMk _ _ _)=Just (id,c)
+    peel _=Nothing
+    inspected o tg x=case x of
+      CVar y -> y/=o
+      CIf (CTagEq t _ (CVar y)) a b | y==o -> t==tg && inspected o tg a && inspected o tg b
+      CProj _ (CVar y) | y==o -> True
+      CApp (CApp (CVar "$reuse.fresh") (CVar y)) m | y==o -> inspected o tg m
+      CLam _ b -> not (mentions o b)
+      _ -> all (inspected o tg) (children x)
+    decide o tg v fns x=let d=decide o tg v fns in case x of
+      CIf (CTagEq _ w (CVar y)) a b | y==o -> if w==v then d a else d b
+      CProj k (CVar y) | y==o -> if k>=0 && k<length fns then CVar (fns!!k) else CErr "known constructor: no such field"
+      CApp (CApp (CVar "$reuse.fresh") (CVar y)) m | y==o -> d m
+      CLet k a b -> CLet k (d a) (d b)
+      CApp f a -> CApp (d f) (d a)
+      CIf c a b -> CIf (d c) (d a) (d b)
+      CMk t w fs -> CMk t w (map d fs)
+      CProj k a -> CProj k (d a)
+      CTagEq t w a -> CTagEq t w (d a)
+      _ -> x
+
 occurrences :: String -> Core -> Int
 occurrences x e=length [() | CVar y<-nodes e, y==x]
 
