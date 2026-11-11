@@ -26,6 +26,14 @@ search = (["s","i","n","acc"],
   CIf (app ">=" [CVar "i",CVar "n"]) (CVar "acc")
     (CIf (app "==" [app "charAt" [CVar "s",CVar "i"],CInt 32]) (CVar "i")
       (app "scan" [CVar "s",app "+" [CVar "i",CInt 1],CVar "n",CVar "acc"])))
+-- two strings compared byte by byte, each bounded by its own exit test
+-- (the prelude's strCmpGo): both reads lose their checks in the copy
+compare2 = (["a","b","i","la","lb"],
+  CIf (app ">=" [CVar "i",CVar "la"]) (CIf (app "==" [CVar "la",CVar "lb"]) (CInt 0) (CInt (-1)))
+    (CIf (app ">=" [CVar "i",CVar "lb"]) (CInt 1)
+      (CIf (app "==" [app "charAt" [CVar "a",CVar "i"],app "charAt" [CVar "b",CVar "i"]])
+        (app "scan" [CVar "a",CVar "b",app "+" [CVar "i",CInt 1],CVar "la",CVar "lb"])
+        (CIf (app "<" [app "charAt" [CVar "a",CVar "i"],app "charAt" [CVar "b",CVar "i"]]) (CInt (-1)) (CInt 1)))))
 twoLatches stride = (["s","i","n","acc"],
   CIf (app ">=" [CVar "i",CVar "n"]) (CVar "acc")
     (CIf (app "==" [CVar "i",CInt 0]) (recur 1) (recur stride)))
@@ -103,5 +111,16 @@ main=do
     let plain=simplify p (lower p (scan ">=" (CInt 1) False))
         candidate=simplify (p {polStringScan=True}) (lower p (scan ">=" (CInt 1) False))
     check "unsupported lowering unchanged" (plain==candidate)
+  let plainCmp=simplify policy (lower policy compare2)
+      fastCmp=simplify (policy {polStringScan=True}) (lower policy compare2)
+      cmpFn=fastCmp M.! "scan"
+      cmpLoops=naturalLoops cmpFn (analyze cmpFn)
+      cmpOps l=[o | block<-fnBlocks cmpFn,S.member (bId block) (loopBlocks l),Instr _ o<-bInstrs block]
+  check "two strings versioned" (plainCmp/=fastCmp && verifyProgramWidth W64 fastCmp==Right ())
+  check "two strings: a loop with no read checks" (any (\l->not (any descriptor (cmpOps l)) && null [c | OCall c _<-cmpOps l]) cmpLoops)
+  let cmpStrings=[RString [],RString [1],RString [1,2],RString [1,3],RString [2],RInt 7]
+  forM_ cmpStrings $ \x->forM_ cmpStrings $ \y->forM_ [-1,0,1,2] $ \i->forM_ [-1,0,1,2,3] $ \la->forM_ [0,1,2,3] $ \lb->do
+    let args=[x,y,RInt i,RInt la,RInt lb]
+    check ("two strings exact outcome/events "++show args) (evalProgram plainCmp "scan" args==evalProgram fastCmp "scan" args)
   putStrLn "StringScan: guarded version, 2500 exact evaluator outcomes/events, bounds/overflow/zero-trip/refusal proofs PASS"
   where descriptor o=case o of OLoad {}->True;OTagTest {}->True;OIsInt {}->True;_->False

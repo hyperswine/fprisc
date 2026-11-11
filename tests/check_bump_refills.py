@@ -22,7 +22,11 @@ def main():
         env={k:v for k,v in os.environ.items() if not k.startswith('FPR_')}
         env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=str(tmp/'cache'),
                    FPR_NO_LIST_FUSE='1',FPR_NO_FIELD_WORKERS='1',FPR_NO_SCALAR_WORKERS='1',
-                   FPR_NO_LOOP_REGIONS='1',FPR_NO_CALL_REGIONS='1',FPR_HARTS='1')
+                   FPR_NO_LOOP_REGIONS='1',FPR_NO_CALL_REGIONS='1',FPR_HARTS='1',
+                   # refill-tail sharing in the backend's own loop form: an early
+                   # IR loop (the default since 2026-11-12) leaves one refill
+                   # call outside the shared tails (docs/2026-11-12-LOOP-CHECKS.md)
+                   FPR_TYPED_IR_EARLY_LOOPS='0')
         env['FPR_COMPACT_CELLS']='1' if args.compact else '0'
         node='acc'
         for k in reversed(range(24)): node=f'(Cons (n + {k}) {node})'

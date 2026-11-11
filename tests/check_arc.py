@@ -29,7 +29,11 @@ def build(source, image, directory, heap=16384, extra=()):
 
 def tail_loop(asm,name):
     body=re.search(r'^# fn '+name+r' .*?(?=^# native-insns-v1:)',asm,re.M|re.S)
-    assert body and 'loops=1' in body[0] and 'j .Ltir_'+name+'_m3loop' in body[0], 'ARC lost frame-reusing tail recursion'
+    # the backend's loop form (m3loop), or an early IR loop (the default since
+    # 2026-11-12): either way a back jump, and no call of itself
+    assert body and (('loops=1' in body[0] and 'j .Ltir_'+name+'_m3loop' in body[0])
+                     or (re.search(r'\bj \.Ltir_'+name+r'_b\d+', body[0])
+                         and not re.search(r'\b(?:call|tail|jal)\s+\S*fpr_fn_'+name+r'\b', body[0]))), 'ARC lost frame-reusing tail recursion'
     headers=re.findall(r'^# fn (.*)',asm,re.M)
     assert headers and all('typed-ir rv64' in h for h in headers),'ARC escaped native coverage'
 

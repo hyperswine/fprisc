@@ -33,7 +33,7 @@ import Codegen.IR
 import Codegen.ControlFlow (analyze,dominators,predecessors,reachable)
 import Codegen.StringScan (versionScan)
 import Codegen.Interval (discharge)
-import Codegen.LoopOptimize (moveInvariants)
+import Codegen.LoopOptimize (moveInvariants, carryRaw, dropUnusedParameters)
 import Codegen.Policy (Policy (..), Profile (..), RegisterBudget, policyWidth)
 import Codegen.Pressure (clobbersRegisters)
 import Codegen.Verify (verifyFn)
@@ -59,10 +59,16 @@ passesWith options=
   [ ("fold-conversions", dropDeadPure . foldConversions),
     ("branch-on-comparison", dropDeadPure . threadBooleanJoins),
     ("share-pure-in-block", dropDeadPure . sharePureInBlock)
-  ] ++ [("move-loop-invariants",dropDeadPure . moveInvariants (registerBudget options) (inlineFloats options)) | moveLoopInvariants options]
+  ] ++ [("move-loop-invariants",\f -> if hasCycle f then dropDeadPure (moveInvariants (registerBudget options) (inlineFloats options) f) else f) | moveLoopInvariants options]
     ++ [("discharge-proven-checks", dropDeadPure . discharge width) | Just width <- [intervalWidth options]]
     ++ [("share-pure-across-blocks", dropDeadPure . sharePureAcrossBlocks (inlineFloats options)) | intervalWidth options /= Nothing]
-    ++ [("version-string-scan", dropDeadPure . versionScan) | stringScan options]
+    -- a versioned function's fast copy has no slow-path calls, so its
+    -- invariants fit now: move them again (that function only)
+    ++ [("version-string-scan", \f -> let f'=dropDeadPure (versionScan f)
+                                       in if f'==f || not (moveLoopInvariants options) then f'
+                                          else dropDeadPure (moveInvariants (registerBudget options) (inlineFloats options) (carryRawAll f')))
+       | stringScan options]
+    ++ [("carry-raw-ints", carryRawAll)]
     ++ [("fold-constant-divisors", dropDeadPure . foldDivisors)]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
 
@@ -360,3 +366,26 @@ foldDivisors fn=fn {fnBlocks=map block (fnBlocks fn)}
       Instr d@(Just (v,_)) (OArith Mul l r) | Just _<-product' v -> Instr d (OArithU Mul l r)
       Instr d@(Just _) (OArith Sub x p) | Just x'<-product' p, x'==x -> Instr d (OArithU Sub x p)
       _ -> i
+
+-- raw loop-carried Ints, only where a header could carry one (a loop's
+-- header parameter is a tagged word some back edge tags)
+carryRawAll :: Fn -> Fn
+carryRawAll f
+  | not (hasCycle f) = f
+  | not (any (\b -> any ((==TVal) . snd) (bParams b)) (fnBlocks f)) = f
+  | not (any (\(Instr _ o) -> case o of OTag _ -> True; _ -> False) (concatMap bInstrs (fnBlocks f))) = f
+  | otherwise = dropDeadPure (dropUnusedParameters (carryRaw f))
+
+-- a loop at all (a depth-first walk from the entry, linear): the loop
+-- passes compute dominators, which most functions do not need
+hasCycle :: Fn -> Bool
+hasCycle f = go S.empty S.empty [(fnEntry f, False)]
+  where
+    succs = M.fromList [(bId b, map fst (termSuccs (bTerm b))) | b <- fnBlocks f]
+    go _ _ [] = False
+    go done onPath ((b, leaving) : rest)
+      | leaving = go (S.insert b done) (S.delete b onPath) rest
+      | S.member b onPath = True
+      | S.member b done = go done onPath rest
+      | otherwise = let next = M.findWithDefault [] b succs
+                    in any (`S.member` onPath) next || go done (S.insert b onPath) ([(n, False) | n <- next, S.notMember n done] ++ (b, True) : rest)

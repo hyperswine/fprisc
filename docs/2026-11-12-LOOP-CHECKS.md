@@ -77,3 +77,103 @@ Every base job passes on this change, apart from the four known-red ones. Update
   out-of-line `varno` label. The check accepts either form: the Int bit, then one header load at +0.
 - **`tests/compile_budget.json`.** Allocation is now 2-3% lower on every program. `hello`'s peak residency is
   48 MB, the same as at `69d893a0`. The 28 MB recorded earlier today was an outlier, so the budget is rerecorded.
+
+## Second round: the three next steps (12 November, later)
+
+### Two measurement mistakes, corrected
+
+Both mistakes affected the "no effect" results above, so they are recorded here:
+
+- **Builds piped into `head`.** `make fpr 2>&1 | grep " error" | head` lets `head` exit early. GHC's
+  partial-function warnings contain "an error", so `head` filled up and `make` died of SIGPIPE before relinking `./fpr`.
+  Measurements and checks then ran a stale compiler. Builds now write a log file.
+- **zsh does not split words.** In `env $m ...`, a `$m` holding two flags set one variable whose value was the rest of the string.
+  Every combined-flag measurement was wrong, including "early loops plus motion change nothing". The loop now uses `${=m}`.
+
+### Step 2, versioning on invariant guards: done
+
+`Codegen.StringScan` handled one string scanned by one header test. It now versions any counted
+loop whose String reads are each bounded by an exit test `i >= n`, with n invariant, that dominates all of that
+string's reads. Each string may have several such tests, and the exits may be any blocks: the whole body is copied once,
+up to 48 blocks and 320 instructions. The dispatch checks, without trapping:
+
+- `i >= 0`;
+- each string's one-word header;
+- for each string, that some bounding `n` is no larger than its length.
+
+Any miss runs the original CFG. In the copy each read is a bare indexed byte load.
+
+`tests/StringScan.hs` adds a two-string compare. The versioned copy has no read checks, and it agrees with
+the original in the evaluator on 1,600 combinations of valid and invalid strings, indices and limits. All earlier cases
+still pass, including the refusals (inclusive bound, stride two, descending, changing bound, mixed back edges)
+and the trap orders.
+
+### Step 1, untagged Ints: done, more generally than planned
+
+Instead of mixed scalar workers, a loop pass, `LoopOptimize.carryRaw`, gives a header parameter that every back edge passes as a fresh
+`OTag x` a raw companion:
+
+- the preheader passes the untag of the arrival;
+- each back edge passes its `x`;
+- every `untag p` reads the companion.
+
+By induction the companion equals `untag p` on every iteration, for any arrival (untag is total), so the result is exact.
+When nothing else uses the tagged parameter, it is dropped along with the back edges' tags. This applies to every IR loop, not only workers.
+
+### Defaults
+
+Early loops and String-scan versioning are now on by default. Each is turned off by setting its flag
+to `0` (`FPR_TYPED_IR_EARLY_LOOPS`, `FPR_TYPED_IR_STRING_SCAN`). Loop motion stays opt-in
+(`FPR_TYPED_IR_LOOP_MOTION=1`). On the six apps it is worth at most 1% (wordfreq) and nothing elsewhere,
+and it is the most expensive of the three to compile. When it is on, a versioned function is moved
+again after versioning, because its fast copy has no slow-path calls and its invariants then fit.
+
+| `myCmp` microbenchmark (instructions, including ~0.65 G of setup) | |
+|---|---|
+| before this round | 2.122 G |
+| early loops | 2.059 G |
+| early loops + versioning (the default now) | 1.493 G |
+| + loop motion (opt-in) | 1.404 G |
+
+In the default build the fast loop is about 20 instructions a byte, down from 51: the two limits' untags stay in it. With motion (which hoists them) it is 16:
+
+- two limit compares;
+- two byte loads, each with an address add;
+- the byte compare;
+- the increment;
+- the fuel tick;
+- the back-edge copy.
+
+What remains against C (about 5-6) is an add-immediate, an indexed byte load with the offset folded into a
+hoisted base, the back-edge copy, and the fuel tick, which the runtime contract requires.
+
+Apps (default build): csv 13.1 -> 12.33 G instructions, wordfreq 13.4 -> 11.66 G. Map keys mostly differ
+in their first bytes, so per-call costs dominate there, not the per-byte loop.
+
+### Qualifying the defaults
+
+Turning early loops on changed what several checks pinned. None of these is a behaviour regression:
+
+- **The self-loop checks (A64, X64, RV64) and the ARC tail-loop check.** These expected the backend's
+  `m3loop` label unless early loops were explicitly on. They now expect it only when early loops are off.
+  The ARC check accepts either loop form, as long as the function never calls itself.
+- **`check_tick_batch`.** It counted static tick sites. An early IR loop has one at entry and one per back
+  edge (the filter loop's keep and skip make two), but still runs one tick per iteration. The check now
+  asks for no more than that, and for fewer than the unbatched build.
+- **`check_bump_refills`.** It tests refill-tail sharing in the backend's own loop form, so it pins early
+  loops off. Under an early IR loop one refill call falls outside the shared tails. That costs code size only;
+  spills are 18 either way.
+- **`CompilerOptions`.** It checks that each flag changes the cache tag (now `=0` for the two defaults), and that the
+  default tag stays empty: the suffixes are now `-noearlyloops` and `-nostrscan`.
+
+`codegenRev` is 217. The passes skip functions with nothing to do: versioning looks for String byte reads,
+and the raw-Int and motion passes look for a cycle (a linear walk) before computing dominators. The darwin
+compile budget passes without being re-recorded: `std-live` is +4.4% against the baseline, and `main`
+itself is now +2.5% from the concurrent actor-runtime commit.
+
+### Step 3, saving registers only around slow calls: not needed for these loops
+
+With versioning, the fast copy has no calls, so all its values fit in registers. The pressure problem
+remains for loops that cannot be versioned, where a slow path calls C and every live value must sit in a
+callee-saved register. That is a register-allocator change (saving live values around a cold call). It is
+left until a loop shows the need: none of the six apps does now.

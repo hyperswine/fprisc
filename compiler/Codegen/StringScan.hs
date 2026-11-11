@@ -1,21 +1,28 @@
--- Guarded versioning for a bounded, immutable String scan. No caller contract
--- is assumed: zero trips and every failed entry guard use the original CFG.
--- The fast copy has i >= 0 and n <= strlen(s); its header establishes i < n.
--- Every back edge must carry exactly i+1, formed under that header guard.
--- Thus i remains nonnegative without wrapping, and each byte read is in range.
+-- Guarded versioning for bounded, immutable String reads in a counted loop.
+-- No caller contract is assumed: zero trips and every failed entry guard use
+-- the original CFG. The dispatch checks i >= 0 at entry and, for each String
+-- read in the loop, that the value is a String and that some exit test
+-- `i >= n` dominating all of its reads has n <= strlen(s). Every back edge
+-- carries exactly i+1, so in the fast copy i stays nonnegative without
+-- wrapping and i < n <= strlen(s) at each read: the copy drops the reads'
+-- String tests, length loads and bounds checks. Two strings compared in one
+-- loop (the prelude's strCmpGo) qualify as one string scanned does.
 module Codegen.StringScan (versionScan) where
 
 import Codegen.IR
 import Codegen.ControlFlow
-import Data.List (find)
-import Data.Maybe (listToMaybe)
+import Data.List (find, nub)
+import Data.Maybe (listToMaybe, mapMaybe)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
--- One small counted loop per function, one string, one unit-stride index. Deliberate
--- admission limits bound code growth and leave more general loops unchanged.
+-- One small counted loop per function and one unit-stride index; deliberate
+-- size limits bound the code growth (the whole body is copied once).
 versionScan :: Fn -> Fn
-versionScan fn = maybe fn build candidate
+versionScan fn
+  -- most functions read no String bytes: no analysis for them
+  | null [() | b <- fnBlocks fn, Instr _ (OLoadByte _ 16) <- bInstrs b] = fn
+  | otherwise = maybe fn build candidate
   where
     blocks = fnBlocks fn
     byId = M.fromList [(bId b,b) | b <- blocks]
@@ -37,96 +44,112 @@ versionScan fn = maybe fn build candidate
     candidate = do
       [loop] <- pure (naturalLoops fn flow)
       preId <- loopPreheader loop
-      if preId == fnEntry fn && length blocks <= 24 && sum (map (length . bInstrs) blocks) <= 160
+      if preId == fnEntry fn && length blocks <= 48 && sum (map (length . bInstrs) blocks) <= 320
         then pure () else Nothing
       pre <- M.lookup preId byId
       header <- M.lookup (loopHeader loop) byId
       TBr h arrivals <- pure (bTerm pre)
-      TCondBr test exit exitArgs body bodyArgs <- pure (bTerm header)
-      (_, OCmp Ge idx limit) <- M.lookup test defs
-      -- No header effects may be speculated by the dispatch. The original
-      -- header still executes in both copies, with exactly its original ops.
-      if M.lookup body (predecessors flow) == Just (S.singleton h) && exit /= body && all (\(Instr _ o) -> opEffect o == Pure) (bInstrs header)
-         && null exitArgs && null bodyArgs then pure () else Nothing
-      -- A body edge may finish the scan immediately. Its return block is
-      -- cloned in place, so an exit neither advances the index nor visits
-      -- the next byte. Keep more complex side exits on the checked path.
-      let allowedTarget t = S.member t (loopBlocks loop) || case bTerm <$> M.lookup t byId of
-            Just (TRet _) -> True
-            _ -> False
-      if all (all (allowedTarget . fst) . termSuccs . bTerm)
-             [b | b <- blocks, bId b /= h, S.member (bId b) (loopBlocks loop)]
-        then pure () else Nothing
-      (slot,(param,ty)) <- find (\(_, (p,t)) -> (t==TInt && idx==p) || (t==TVal && op idx==Just (OUntag p)))
-                           (zip [0..] (bParams header))
-      (bound,unboxBound) <- rawSource limit
-      let incoming = [(b,args) | b <- blocks, (target,args) <- termSuccs (bTerm b), target==h, bId b/=preId]
-          advance (b,args) = length args==length (bParams header) && dom body (bId b)
+      let members = loopBlocks loop
+          inLoop b = S.member b members
+          incoming = [(b,args) | b <- blocks, (target,args) <- termSuccs (bTerm b), target==h, bId b/=preId]
+          -- the index: a header parameter every back edge advances by one
+          advance param ty (b,args) slot = length args==length (bParams header) && inLoop (bId b)
             && case (if ty==TVal then op (args !! slot) else Just (OTag (args !! slot))) of
               Just (OTag next) -> case M.lookup next defs of
-                Just (d,OArith Add x k) -> dom body d && rawOf param x && one k
-                Just (d,OArithU Add x k) -> dom body d && rawOf param x && one k
+                Just (d,OArith Add x k) -> inLoop d && rawOf param x && one k
+                Just (d,OArithU Add x k) -> inLoop d && rawOf param x && one k
                 _ -> False
               _ -> False
-      if not (null incoming) && all advance incoming then pure () else Nothing
-      -- Only the concrete managed String byte layout produced by StringRead.
-      str <- listToMaybe [s | b <- blocks, dom body (bId b),
-                        Instr _ (OLoadByte cursor 16) <- bInstrs b,
-                        Just (OIndexByte a i) <- [op cursor], rawOf param i,
-                        Just (OAddress s) <- [op a], outside s,
-                        any (\(_,o) -> o==OTagTest 9000 0 s || o==OVariantTest 9000 0 s) (M.elems defs),
-                        any (\v -> lengthOf s v) (M.keys defs)]
+      (slot,(param,ty)) <- find (\(k,(p,t)) -> not (null incoming) && all (\e -> advance p t e k) incoming)
+                                 (zip [0..] (bParams header))
       if length arrivals == length (bParams header) then pure () else Nothing
-      pure (pre,header,body,param,ty,arrivals !! slot,bound,unboxBound,str)
-    build (pre,header,body,param,ty,start,bound,unboxBound,str) = compact (sweep result)
+      -- exit tests i >= n (n invariant): leaving the loop on true, staying on false
+      let limits = [(no,n) | b <- blocks, inLoop (bId b), TCondBr t yes [] no [] <- [bTerm b],
+                             Just (OCmp Ge i n) <- [op t], rawOf param i, Just _ <- [rawSource n],
+                             not (inLoop yes), inLoop no]
+          -- the managed String layout produced by StringRead, per string
+          strings = nub [s | b <- blocks, inLoop (bId b), Instr _ (OLoadByte cursor 16) <- bInstrs b,
+                             Just (OIndexByte a i) <- [op cursor], rawOf param i,
+                             Just (OAddress s) <- [op a], outside s]
+          readBlocks s = [bId b | b <- blocks, inLoop (bId b),
+                                  any (\(Instr d o) -> maybe False (\(v,_) -> lengthOf s v) d
+                                                       || case o of OLoadByte c 16 -> maybe False (\x -> case x of OIndexByte a _ -> address s a; _ -> False) (op c); _ -> False)
+                                      (bInstrs b)]
+          bound s = nub [n | (no,n) <- limits, all (dom no) (readBlocks s)]
+          admitted = [(s,bound s) | s <- strings, not (null (bound s)),
+                                    any (\b -> any (\(Instr _ o) -> o==OTagTest 9000 0 s || o==OVariantTest 9000 0 s) (bInstrs b)) blocks]
+      if not (null admitted) && length admitted == length strings then pure () else Nothing
+      pure (pre,header,param,ty,arrivals !! slot,admitted)
+    build (pre,header,param,ty,start,admitted) = compact (sweep result)
       where
         copied = filter ((/= bId pre) . bId) blocks
         nextB = 1 + maximum [n | b <- blocks, BId n <- [bId b]]
         nextV = 1 + maximum (0:[n | b <- blocks, (VId n,_) <- bParams b]
                                ++ [n | b <- blocks, Instr (Just (VId n,_)) _ <- bInstrs b])
-        -- Six dispatch blocks, then a fresh SSA/CFG copy including its exits.
-        labels = M.fromList [(bId b,BId n) | (b,n) <- zip copied [nextB+6..]]
+        ins v t o = Instr (Just (v,t)) o
+        TBr _ arrivals = bTerm pre
+        -- the dispatch's values and blocks, numbered from nextV / nextB
+        z = VId nextV
+        initial = VId (nextV+1)
+        pNonneg = VId (nextV+2)
+        perString = zip admitted [nextV+3,nextV+3+(4+2*maxLimits)..]
+        maxLimits = maximum (1:[length ns | (_,ns) <- admitted])
+        firstClone = nextV+3+(4+2*maxLimits)*length admitted
+        countOf = M.fromList [(s,VId (base+2)) | ((s,_),base) <- perString]
+        unpack v input yes = ins v TInt (if yes then OUntag input else OArithU Add input z)
+        toOriginal = (bId header,arrivals)
+        -- block ids: B0, then per string one test block, one load block and
+        -- one block per limit; then the jump into the copy
+        stringBlocks = scanl (+) (nextB+1) [2+length ns | (_,ns) <- admitted]
+        enterCopy = BId (last stringBlocks)
+        firstBlock k = BId (stringBlocks !! k)
+        nextString k = if k+1 < length admitted then firstBlock (k+1) else enterCopy
+        fallback p target = TCondBr p target [] (fst toOriginal) (snd toOriginal)
+        dispatch =
+          Block (BId nextB) [] [ins z TInt (OConstInt 0), unpack initial start (ty==TVal),
+                                ins pNonneg TPred (OCmp Ge initial z)] (fallback pNonneg (firstBlock 0))
+          : concat [stringDispatch k s ns base | (k,((s,ns),base)) <- zip [0..] perString]
+          ++ [Block enterCopy [] [] (TBr (label (bId header)) arrivals)]
+        stringDispatch k s ns base =
+          let BId b0 = firstBlock k
+              pStr = VId base; addr = VId (base+1); count = VId (base+2)
+              limitBlock j n =
+                let (src,yes) = maybe (n,False) id (rawSource n)
+                    raw = VId (base+3+2*j); pFits = VId (base+4+2*j)
+                    otherwise' = if j+1 < length ns then TCondBr pFits (nextString k) [] (BId (b0+3+j)) []
+                                 else fallback pFits (nextString k)
+                in Block (BId (b0+2+j)) [] [unpack raw src yes, ins pFits TPred (OCmp Le raw count)] otherwise'
+          in [Block (BId b0) [] [ins pStr TPred (OVariantTest 9000 0 s)] (fallback pStr (BId (b0+1))),
+              Block (BId (b0+1)) [] [ins addr TAddr (OAddress s), ins count TInt (OLoad TInt addr 8)] (TBr (BId (b0+2)) [])]
+             ++ zipWith limitBlock [0..] ns
+        -- the copy: fresh labels and values
+        labels = M.fromList [(bId b,BId n) | (b,n) <- zip copied [last stringBlocks+1..]]
         values = M.fromList (zip [v | b <- copied, v <- map fst (bParams b) ++ [v | Instr (Just (v,_)) _ <- bInstrs b]]
-                                (map VId [nextV+10..]))
+                                (map VId [firstClone..]))
         rename v = M.findWithDefault v v values
         label b = M.findWithDefault b b labels
-        [initial,limit,pActive,pNonneg,pInt,pString,addr,count,pLimit,z] = map VId [nextV..nextV+9]
-        ins v t o = Instr (Just (v,t)) o
-        unpack v input yes = ins v TInt (if yes then OUntag input else OArithU Add input z)
-        original = bTerm pre
-        TBr _ arrivals = original
-        fallback p yes target = if yes then TCondBr p target [] (bId header) arrivals
-                                      else TCondBr p (bId header) arrivals target []
-        dispatch =
-          [Block (BId nextB) [] [ins z TInt (OConstInt 0),unpack initial start (ty==TVal),unpack limit bound unboxBound,
-                                ins pActive TPred (OCmp Lt initial limit)] (fallback pActive True (BId (nextB+1))),
-           Block (BId (nextB+1)) [] [ins pNonneg TPred (OCmp Ge initial z)] (fallback pNonneg True (BId (nextB+2))),
-           Block (BId (nextB+2)) [] [ins pInt TPred (OIsInt str)] (fallback pInt False (BId (nextB+3))),
-           Block (BId (nextB+3)) [] [ins pString TPred (OTagTest 9000 0 str)] (fallback pString True (BId (nextB+4))),
-           Block (BId (nextB+4)) [] [ins addr TAddr (OAddress str),ins count TInt (OLoad TInt addr 8),
-                                    ins pLimit TPred (OCmp Le limit count)] (fallback pLimit True (BId (nextB+5))),
-           Block (BId (nextB+5)) [] [] (TBr (label (bId header)) arrivals)]
-        known b p = case op p of
-          Just (OIsInt s) | s==str -> Just False
-          Just (OTagTest 9000 0 s) | s==str -> Just True
-          Just (OVariantTest 9000 0 s) | s==str -> Just True -- StringRead's one-word guard
-          Just (OCmp Ge i k) | dom body (bId b), rawOf param i, zero k -> Just True
-          Just (OCmp Lt i n) | dom body (bId b), rawOf param i, lengthOf str n -> Just True
+        proven s = M.member s countOf
+        known p = case op p of
+          Just (OIsInt s) | proven s -> Just False
+          Just (OTagTest 9000 0 s) | proven s -> Just True
+          Just (OVariantTest 9000 0 s) | proven s -> Just True
+          Just (OCmp Ge i k) | rawOf param i, zero k -> Just True
+          Just (OCmp Lt i n) | rawOf param i, any (\s -> lengthOf s n) (M.keys countOf) -> Just True
           _ -> Nothing
         term b = case bTerm b of
-          TCondBr p yes ys no ns | Just takeYes <- known b p -> if takeYes then TBr yes ys else TBr no ns
+          TCondBr p yes ys no ns | Just takeYes <- known p -> if takeYes then TBr yes ys else TBr no ns
           t -> t
         targets t = case mapTermUses rename t of
           TBr b as -> TBr (label b) as
           TCondBr p y ys n ns -> TCondBr p (label y) ys (label n) ns
           t' -> t'
-        -- Cached lengths are immutable. Keep each byte's OAddress(str) in
-        -- the loop so the managed string remains live across fuel safepoints.
-        lengths = M.fromList [(rename v,count) | v <- M.keys defs, lengthOf str v]
+        -- each String's length comes from the dispatch (immutable)
+        lengths = M.fromList [(rename v,count) | v <- M.keys defs, (s,count) <- M.toList countOf, lengthOf s v]
         use v = M.findWithDefault (rename v) (rename v) lengths
+        isLength v = any (\s -> lengthOf s v) (M.keys countOf)
         clone b = Block (label (bId b)) [(rename v,t) | (v,t) <- bParams b]
           [Instr (fmap (\(v,t)->(rename v,t)) d) (mapOpUses use o)
-          | Instr d o <- bInstrs b, not (maybe False (\(v,_)->lengthOf str v) d)]
+          | Instr d o <- bInstrs b, not (maybe False (\(v,_)->isLength v) d)]
           (mapTermUses (\v->M.findWithDefault v v lengths) (targets (term b)))
         result = fn {fnBlocks = [if bId b==bId pre then b {bTerm=TBr (BId nextB) []} else b | b<-blocks]
                                   ++ dispatch ++ map clone copied}

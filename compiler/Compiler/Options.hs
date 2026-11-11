@@ -67,8 +67,8 @@ parseCompilerOptions env = do
       codegen=CodegenOptions
         { nativeOptions=native, cgIndexedMemory=enabled "INDEXED_MEMORY", cgFloatInline=enabled "F64_INLINE",
           cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgListFuse=enabled "LIST_FUSE", cgCaseKnown=enabled "CASE_KNOWN", cgTypeSpec=enabled "TYPE_SPEC", cgTypedCase=enabled "TYPED_CASE", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST", cgStringFast=enabled "STR_FAST", cgInterval=enabled "INTERVAL", cgLoopMotion=yes "FPR_TYPED_IR_LOOP_MOTION",
-          cgStringScan=yes "FPR_TYPED_IR_STRING_SCAN",
-          cgEarlyLoops=yes "FPR_TYPED_IR_EARLY_LOOPS" && nativeSelfLoops native,
+          cgStringScan=on "FPR_TYPED_IR_STRING_SCAN",
+          cgEarlyLoops=on "FPR_TYPED_IR_EARLY_LOOPS" && nativeSelfLoops native,
           cgFramelessEntry=yes "FPR_TYPED_IR_FRAMELESS_ENTRY",
           cgScalarWorkers=enabled "SCALAR_WORKERS", cgTrmc=enabled "TRMC", cgTickBatch=enabled "TICK_BATCH", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
@@ -125,7 +125,7 @@ nativeOptionFlags fpAvailable n =
     StrictNames names->"-strict"++take 12 (showHex (fnv (intercalate "," names)) "")
 
 optimizationFlags :: CodegenOptions -> String
-optimizationFlags c = (case cgPersistentLoop c of { Just "*" -> ""; Just n -> "-persist" ++ showHex (fnv n) ""; Nothing -> "-nopersist" }) ++ flag (not (cgCompactCells c)) "-c16" ++ flag (cgLoopMotion c) "-licm" ++ flag (cgEarlyLoops c) "-earlyloops" ++ flag (cgStringScan c) "-strscan" ++ flag (cgFramelessEntry c) "-frameless" ++ concat
+optimizationFlags c = (case cgPersistentLoop c of { Just "*" -> ""; Just n -> "-persist" ++ showHex (fnv n) ""; Nothing -> "-nopersist" }) ++ flag (not (cgCompactCells c)) "-c16" ++ flag (cgLoopMotion c) "-licm" ++ flag (not (cgEarlyLoops c)) "-noearlyloops" ++ flag (not (cgStringScan c)) "-nostrscan" ++ flag (cgFramelessEntry c) "-frameless" ++ concat
   [flag (not enabled) suffix | (enabled,suffix)<-
     [(cgPipelineInline c,"-nopinline"),(cgReuse c,"-noreuse"),
      (cgScalarWorkers c,"-noscalar"),(cgTrmc c,"-notrmc"),(cgTickBatch c,"-notickbatch"),(cgPairReturns c,"-nopairret"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),

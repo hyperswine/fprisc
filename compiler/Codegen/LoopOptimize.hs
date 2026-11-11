@@ -1,12 +1,13 @@
 -- Speculate only total register operations into existing unique preheaders.
 -- Pure in the IR is not sufficient: field/tag/string reads may dereference
 -- pointers, and hart/region reads can change across a safepoint.
-module Codegen.LoopOptimize (moveInvariants) where
+module Codegen.LoopOptimize (moveInvariants, carryRaw, dropUnusedParameters) where
 import Codegen.IR
 import Codegen.ControlFlow
 import Codegen.Policy (RegisterBudget)
 import Codegen.Pressure
 import Data.List (sortOn,foldl')
+import Data.Maybe (isJust,listToMaybe)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -73,7 +74,8 @@ moveInvariants budget inlineFloats fn=
               | otherwise->let before=loopPressure b inlineFloats f members
                            in take (longest (\c->noWorse (pressureOf c) before) 0 n) instructions
           noWorse a b=prGpr a<=prGpr b && prFpr a<=prFpr b && prGprAcross a<=prGprAcross b && prFprAcross a<=prFprAcross b
-      in if null admitted then f else apply admitted
+      -- nothing to move: no pressure analysis either (the costly part)
+      in if null instructions || null admitted then f else apply admitted
     move f _=f
 
 cheap :: Op -> Bool
@@ -105,3 +107,50 @@ dropUnusedParameters fn=
         _->t
       next=fn {fnBlocks=[block {bParams=keep (bId block) (bParams block),bTerm=term (bTerm block)} | block<-fnBlocks fn]}
   in if next==fn then fn else dropUnusedParameters next
+
+-- Loop-carried Ints, untagged. A header parameter p (a tagged word) that
+-- every back edge passes as a freshly tagged Int (OTag x) gets a raw
+-- companion r: the preheader passes untag of its arrival, each back edge
+-- its x, and every `untag p` reads r instead. By induction r == untag p on
+-- every iteration, whatever the arrival is (untag is total), so the answer
+-- is exact. p stays for any tagged use; when none is left it goes
+-- (dropUnusedParameters) and so do the back edges' tags (dropDeadPure).
+carryRaw :: Fn -> Fn
+carryRaw fn0=go fn0 (12::Int)
+  where
+    go fn 0=fn
+    go fn n=case [r | loop<-naturalLoops fn (analyze fn), Just r<-[step fn loop]] of
+      f:_ -> go f (n-1)
+      [] -> fn
+    step fn loop=do
+      pre<-loopPreheader loop
+      let h=loopHeader loop
+          byId=M.fromList [(bId b,b) | b<-fnBlocks fn]
+          defs=M.fromList [(v,o) | b<-fnBlocks fn,Instr (Just (v,_)) o<-bInstrs b]
+      header<-M.lookup h byId
+      preBlock<-M.lookup pre byId
+      TBr h' preArgs<-Just (bTerm preBlock)
+      if h'==h && h/=fnEntry fn then Just () else Nothing
+      let latchArgs=[args | b<-fnBlocks fn,bId b/=pre,(t,args)<-termSuccs (bTerm b),t==h]
+          tagged a=case M.lookup a defs of Just (OTag x)->Just x; _->Nothing
+          untags p=[w | b<-fnBlocks fn,Instr (Just (w,TInt)) (OUntag q)<-bInstrs b,q==p]
+      (k,(p,_))<-listToMaybe [(k,pt) | (k,pt@(p,TVal))<-zip [0..] (bParams header),
+                               not (null latchArgs),all (\args->length args==length (bParams header)
+                                                             && isJust (tagged (args!!k))) latchArgs,
+                               not (null (untags p))]
+      let top=1+maximum (0:[i | b<-fnBlocks fn,(VId i,_)<-bParams b]++[i | b<-fnBlocks fn,Instr (Just (VId i,_)) _<-bInstrs b])
+          r=VId top; u=VId (top+1)
+          dropped=S.fromList (untags p)
+          rename v=if S.member v dropped then r else v
+          extend t=case t of
+            TBr t' as | t'==h -> TBr t' (as++[raw as])
+            TCondBr c y ys n' ns -> TCondBr c y (if y==h then ys++[raw ys] else ys) n' (if n'==h then ns++[raw ns] else ns)
+            other -> other
+          raw as=maybe r id (tagged (as!!k))
+          block b
+            | bId b==pre=b {bInstrs=bInstrs b++[Instr (Just (u,TInt)) (OUntag (preArgs!!k))],bTerm=TBr h (preArgs++[u])}
+            | otherwise=
+                let b'=if bId b==h then b {bParams=bParams b++[(r,TInt)]} else b
+                in b' {bInstrs=[Instr d (mapOpUses rename o) | Instr d o<-bInstrs b',maybe True (\(w,_)->S.notMember w dropped) d],
+                       bTerm=mapTermUses rename (extend (bTerm b'))}
+      Just fn {fnBlocks=map block (fnBlocks fn)}
