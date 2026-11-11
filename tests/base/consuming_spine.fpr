@@ -1,0 +1,5 @@
+unsafe base.
+L = use "std/list".
+walk xs acc = case xs of Nil -> acc | x :: tail -> walk tail ((x + 1) :: acc).
+repeat n xs = if n == 0 then xs else repeat (n - 1) (walk xs Nil).
+main = print (repeat 4 (L.range 1 6)).

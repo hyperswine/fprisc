@@ -27,7 +27,7 @@ import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
-import Codegen (Target, codegenRev, productBackendWidth, emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative, foreignEntries, normalizesLiterals)
+import Codegen (Target, codegenRev, productBackendWidth, emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtSpineBuilders, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative, foreignEntries, normalizesLiterals)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth, registerBudget)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -44,9 +44,9 @@ import qualified Data.Map.Lazy as ML
 import qualified Core.Alpha as Alpha
 import qualified Data.Set as S
 import Core.Syntax
-import Reuse (poolResetters)
+import Reuse (poolResetters,spineBuilders)
 import Core.Opt.ProductParameters (withoutVariantResults)
-import Core.CacheIdentity (CallArities(..),coreCacheIdentityWithProducts)
+import Core.CacheIdentity (CallArities(..),coreCacheIdentityWithBuilders)
 import qualified Compiler.Options as Options
 import Compiler.CommandLine
 import Core.Identity (Namespace(..))
@@ -1113,8 +1113,10 @@ compileWithReport accepted report = do
             else Regions.resultProgram (artifactRegions Linked.RootArtifact)
           -- every function of the linked program that may reset the pool, by
           -- the names unit Core calls them: constructor reuse never spans one
-          linkedTgt=tgt {tgtPoolResetters=poolResetters (M.unions
-            [Regions.resultProgram (artifactRegions key) | key<-M.keys (Linked.linkedArtifacts linked)])}
+          linkedProgram=M.unions [Regions.resultProgram (artifactRegions key) | key<-M.keys (Linked.linkedArtifacts linked)]
+          resetting=poolResetters linkedProgram
+          linkedTgt=tgt {tgtPoolResetters=resetting,tgtSpineBuilders=
+            M.filterWithKey (\name _ -> '@' `elem` name) (spineBuilders resetting (linkedProgram `M.union` erasedConstructorStubs linkedProgram))}
           -- a constructor is global everywhere: a clone that references one
           -- links against the owner's symbol, so qualifyAux leaves the name
           importedCore = M.unions
@@ -1144,7 +1146,7 @@ compileWithReport accepted report = do
                 elide=Linked.artifactElided artifact
                 unitProgram=Regions.resultProgram placed
                 unitProducts=resultProducts placed
-                path=pathBase++"-c"++coreCacheIdentityWithProducts unitProducts (tgtPoolResetters linkedTgt) elide (CallArities ext halAr) unitProgram++"-"++tag++".s"
+                path=pathBase++"-c"++coreCacheIdentityWithBuilders (tgtSpineBuilders linkedTgt) unitProducts (tgtPoolResetters linkedTgt) elide (CallArities ext halAr) unitProgram++"-"++tag++".s"
             reportTurns placed
             checkBuiltinWidth unitProgram
             -- Reports are requested evidence, not cached proof authority.

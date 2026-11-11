@@ -12,7 +12,7 @@ import Core.Opt.PairReturns (productReturnProgramWithVariants)
 import Workers (ScalarSignatures, workerizeWithProducts, internalWorker)
 import Core.Opt.StoredLists (storeLists)
 import Core.Opt.ProductParameters
-import Reuse (reuseProgram, poolResetters)
+import Reuse (reuseProgramWithImports, poolResetters)
 import Control.Monad (foldM, unless)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -22,7 +22,7 @@ data OptimizationOptions = OptimizationOptions
     optScalarWorkers :: Bool, optPairReturns :: Bool, optProductWidth :: Int, optNormalize :: Bool, optReuse :: Bool,
     -- known pool resetters beyond this program and its imports (the linked
     -- program's, Reuse.poolResetters): reuse never spans a call to one
-    optPoolResetters :: S.Set Name }
+    optPoolResetters :: S.Set Name, optSpineBuilders :: M.Map Name (Int,Int) }
   deriving (Eq, Show)
 
 data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | PairReturns
@@ -73,7 +73,7 @@ optimizeCoreWithProducts products checked imports opts elide input = do
               let enabled = optReuse opts && optNormalize opts
                   p = if enabled then M.map (\(ps,b)->(ps,normIn (S.fromList ps) b)) before else before
               in (p,optimizedSignatures state,[],enabled)
-            ReuseConstructors -> let (p,ns) = if optReuse opts then reuseProgram (optPoolResetters opts `S.union` poolResetters (M.union before imports)) elide before else (before,[])
+            ReuseConstructors -> let (p,ns) = if optReuse opts then reuseProgramWithImports (optSpineBuilders opts) imports (optPoolResetters opts `S.union` poolResetters (M.union before imports)) elide before else (before,[])
                                  in (p,optimizedSignatures state,ns,optReuse opts)
             -- after every pass that reads call results: the twins are the last functions made
             PairReturns

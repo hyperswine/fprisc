@@ -64,6 +64,41 @@ main = do
     (["callback"],local (CLet "z" (apply "callback" [CInt 0]) constants)))))
   check "known nonresetting calls permit child escape" (entryHas (M.fromList
     [("keep",(["child"],v "child")),("entry",([],local (CLet "z" (apply "keep" [CProj 0 (v "r")]) rebuild)))]))
+  let loopBody=CIf (v "done") (v "p") (apply "loop" [v "done",update])
+      loopProg body=M.fromList [("loop",(["done","p"],body)),
+        ("entry",(["done"],local (apply "loop" [v "done",v "r"])))]
+      worker="$worker.consume.1.loop"
+  check "fresh loop state selects private recursive entry" $
+    M.lookup worker (compile (loopProg loopBody)) ==
+      Just (["done","p"],CIf (v "done") (v "p")
+        (apply worker [v "done",CApp (CApp (v "$reuse.fresh") (v "p")) update]))
+  check "borrowed recursive entry remains persistent" $
+    M.lookup "loop" (compile (loopProg loopBody))==Just (["done","p"],loopBody)
+  let nil=CMk 2 0 []
+      cons h t=CMk 2 1 [h,t]
+      source=v "xs"; acc=v "acc"; headValue=CProj 0 source; tailValue=CProj 1 source
+      traversal value=CIf (CTagEq 2 0 source) acc
+        (apply "mapRev" [tailValue,cons value acc])
+      mapped value list=compile (M.fromList
+        [("mapRev",(["xs","acc"],traversal value)),
+         ("entry",(["borrowed"],apply "mapRev" [list,nil]))])
+      freshList=cons (CInt 2) (cons (CInt 1) nil)
+      selected value list=M.member "$worker.spine.mapRev" (mapped value list)
+  check "fresh entire spine transfers every recursive tail" (selected headValue freshList)
+  check "fresh prefix with borrowed tail refuses destructive traversal"
+    (not (selected headValue (cons (CInt 2) (v "borrowed"))))
+  check "retaining a tail in the mapped value refuses" (not (selected tailValue freshList))
+  check "resetting element callback refuses" (not (selected (apply "unknown" [headValue]) freshList))
+  let builder next=CIf (v "done") (v "seed") (apply "build" [v "done",next])
+      probeBuilder body seed=compile (M.fromList
+        [("mapRev",(["xs","acc"],traversal headValue)),("build",(["done","seed"],body)),
+         ("entry",(["done","borrowed"],apply "mapRev" [apply "build" [v "done",seed],nil]))])
+      builds=builder (cons (CInt 3) (v "seed"))
+      selectsBuilder b seed=M.member "$worker.spine.mapRev" (probeBuilder b seed)
+  check "private builder accumulator becomes a private spine" (selectsBuilder builds nil)
+  check "builder with borrowed seed retains its shared tail" (not (selectsBuilder builds (v "borrowed")))
+  check "builder embedding its accumulator in a payload refuses"
+    (not (selectsBuilder (builder (cons (v "seed") (v "seed"))) nil))
   check "private consuming entry" (selects call)
   check "alias consuming entry" (selects aliasesCall)
   check "branch consuming entries" (selects (CIf (v "flag") call aliasesCall))

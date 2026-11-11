@@ -34,10 +34,22 @@ runtime state-copy counters and toggling the option in a shared build cache.
 Run `python3 tests/check_persistent_reclamation.py`.
 
 Copy work depends on the size and sharing of the live graph. A measured RSS
-plateau alone cannot supply a WCET or live-byte certificate. Automatic
-consuming list workers still need a proof covering the whole spine, and
-in-place AVL updates need per-path ownership evidence. The copy-out
-experiment provides a control for both optimizations.
+plateau alone cannot supply a WCET or live-byte certificate. The native compiler now recognizes fresh list builders, including the
+imported builder behind `List.range`. When the caller gives up its last
+reference to a proven fresh spine, a private consuming worker can carry
+the cells around a recursive backedge and refill them in traversal order.
+The public entry continues to borrow its argument. A retained tail takes
+the borrowing path and can use the nominated region fallback.
+
+On the hosted fixed-state fixture, mapping 2,048 integers 64 times with
+`FPR_PERSISTENT_LOOP=plain` took 2,052 allocation requests and zero
+state copies. The checksum was 2,227,200. Compare reuse on and off with
+`python3 tests/check_consuming_reuse.py`. These are allocator counters;
+the timing and RSS table above predates the consuming worker.
+
+In-place AVL updates still need per-path ownership evidence. Use the
+tree/map copy-out fixtures to study shared paths. Copy-out selection
+remains explicit while its cost on growing states is under analysis.
 
 ### Actor storage
 

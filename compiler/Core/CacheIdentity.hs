@@ -3,7 +3,7 @@
 -- from a checked import context. Keep reachable elided constructor stubs (the
 -- inliner can read them), and external call arities used by this program.
 -- Unrelated root declarations must not invalidate unchanged unit code.
-module Core.CacheIdentity (CallArities(..),coreCacheIdentity,coreCacheIdentityWithResetters,coreCacheIdentityWithProducts) where
+module Core.CacheIdentity (CallArities(..),coreCacheIdentity,coreCacheIdentityWithResetters,coreCacheIdentityWithProducts,coreCacheIdentityWithBuilders) where
 import Core.Syntax (Prog,Name,freeVars)
 import Core.Opt.ProductParameters
 import Data.Binary (encode)
@@ -28,14 +28,16 @@ coreCacheIdentityWithResetters=coreCacheIdentityWithProducts emptyProductParamet
 -- Checked parameter layouts can differ even when erased projections coincide
 -- (for example a closed record versus an open row in a one-shape catalog).
 coreCacheIdentityWithProducts :: ProductParameters -> S.Set Name -> S.Set Name -> CallArities -> Prog -> String
-coreCacheIdentityWithProducts products resetters elided (CallArities globals primitives) program = "core4-"++replicate (16-length hex) '0'++hex
+coreCacheIdentityWithProducts=coreCacheIdentityWithBuilders M.empty
+
+coreCacheIdentityWithBuilders builders products resetters elided (CallArities globals primitives) program = "core4-"++replicate (16-length hex) '0'++hex
   where
     references p=S.unions [S.fromList (freeVars body) S.\\ S.fromList ps | (ps,body)<-M.elems p]
     needed p=let extra=M.restrictKeys program (references p S.\\ M.keysSet p)
              in if M.null extra then p else needed (M.union p extra)
     relevant=needed (M.withoutKeys program elided)
     external=references relevant S.\\ M.keysSet relevant
-    bytes=encode (relevant,M.restrictKeys globals external,M.restrictKeys primitives external,
+    bytes=encode (M.restrictKeys builders external :: M.Map Name (Int,Int),relevant,M.restrictKeys globals external,M.restrictKeys primitives external,
       S.toAscList (resetters `S.intersection` external),productParameterKey relevant products)
     hash=BL.foldl' (\h byte->(h `xor` fromIntegral byte)*1099511628211) 14695981039346656037 bytes :: Word64
     hex=showHex hash ""

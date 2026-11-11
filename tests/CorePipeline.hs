@@ -22,7 +22,7 @@ app n = foldl CApp (CVar n)
 right = either error id
 failed (Left _) = True
 failed _ = False
-none = OptimizationOptions False False False False False False 2 False False S.empty
+none = OptimizationOptions False False False False False False 2 False False S.empty M.empty
 
 main = do
   checkExports

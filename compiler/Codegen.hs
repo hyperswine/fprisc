@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 213 -- guarded string scans admit direct return exits
+codegenRev = 214 -- private consuming entries can carry a fresh cell across a recursive backedge
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:
@@ -86,7 +86,7 @@ data Target = Target
     tgtReuse :: Bool,
     -- every function that may reset the pool, over the whole linked program
     -- (Reuse.poolResetters): constructor reuse never spans a call to one
-    tgtPoolResetters :: S.Set String,
+    tgtPoolResetters :: S.Set String, tgtSpineBuilders :: M.Map String (Int,Int),
     tgtTypedIr :: Maybe String, -- optional lowering report; does not change emitted code
     tgtHal :: M.Map String Int, -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
@@ -149,7 +149,7 @@ data TypedUse = TypedUse
 rv64, rv32 :: Target
 rv64 = Target {tgtW=8,tgtName="rv64",tgtFuel=True,tgtArc=False,tgtWeak=False,tgtHeapProof=False,tgtStackReport=False,
   tgtSimd=False,tgtFusion=True,tgtFloatInline=True,tgtScalarFast=True,tgtIndexedMemory=True,
-  tgtScalarWorkers=True,tgtPairReturns=True,tgtFieldWorkers=True,tgtTupleScalars=True,tgtPipelineInline=True,tgtReuse=True,tgtPoolResetters=S.singleton "Sys.poolReset",
+  tgtScalarWorkers=True,tgtPairReturns=True,tgtFieldWorkers=True,tgtTupleScalars=True,tgtPipelineInline=True,tgtReuse=True,tgtSpineBuilders=M.empty,tgtPoolResetters=S.singleton "Sys.poolReset",
   tgtTypedIr=Nothing,tgtHal=M.empty,tgtPolicy=m2Policy,
   tgtNative=Just (defaultMode (DirectRV (policyWidth m2Policy) RV.HartTp))}
 rv32 = rv64 {tgtW=4,tgtName="rv32",tgtFloatInline=False,
@@ -437,7 +437,7 @@ emitTypedProductProgramWithImports typed placed reference products checked impor
           optProductWidth = productBackendWidth (tgtNative tgt >>= nmBackend),
           optNormalize = tgtScalarFast tgt,
           optReuse = reuses tgt,
-          optPoolResetters = tgtPoolResetters tgt }
+          optPoolResetters = tgtPoolResetters tgt, optSpineBuilders = tgtSpineBuilders tgt }
       optimized = either (error . ("Core optimization: " ++)) id (optimizeCoreWithProducts products checked imports opts elide prog0)
       prog = optimizedProgram optimized
       workerSigs = optimizedSignatures optimized

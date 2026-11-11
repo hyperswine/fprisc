@@ -37,6 +37,28 @@ def main():
             p=subprocess.run(list(map(str,args)),cwd=ROOT,env=mode,capture_output=True,text=True,timeout=300)
             assert p.returncode==0,(args,p.stdout[-2000:],p.stderr[-2000:])
             return p
+        for off, expected in (('0', 6), ('1', 30)):
+            mode=dict(env,FPR_NO_REUSE=off,FPR_COST_REPORT='1',FPR_NO_INLINE='0')
+            command([ROOT/'fpr','build',ROOT/'tests/base/consuming_spine.fpr','-o',exe],mode)
+            result=command([exe],mode)
+            assert result.stdout=='[5, 6, 7, 8, 9, 10]\n',result.stdout
+            ledger=json.loads(result.stderr.split('[fpr cost] ')[1])
+            assert ledger['alloc_requests']==expected,ledger
+        for off in ('0','1'):
+            mode=dict(env,FPR_NO_REUSE=off,FPR_COST_REPORT='1')
+            command([ROOT/'fpr','build',ROOT/'tests/bench/reclamation/fixed_state.fpr','-o',exe],mode)
+            counts=[]
+            for steps in (0,64):
+                result=command([exe,'plain',str(steps)],mode)
+                assert int(result.stdout)==2048*(2047+2*steps)//2,result.stdout
+                counts.append(json.loads(result.stderr.split('[fpr cost] ')[1])['alloc_requests'])
+            assert counts[1]-counts[0]==(0 if off=='0' else 2048*64),counts
+        mode=dict(env,FPR_PERSISTENT_LOOP='plain',FPR_COST_REPORT='1',FPR_NO_REUSE='0')
+        command([ROOT/'fpr','build',ROOT/'tests/bench/reclamation/fixed_state.fpr','-o',exe],mode)
+        result=command([exe,'plain','64'],mode)
+        ledger=json.loads(result.stderr.split('[fpr cost] ')[1])
+        assert result.stdout.strip()=='2227200' and ledger['state_copies']==0, (result.stdout,ledger)
+        assert ledger['alloc_requests']==2052,ledger
         for inline in ('1','0'):
             for regs in ('0',):
                 for off in ('1','0','1'):
