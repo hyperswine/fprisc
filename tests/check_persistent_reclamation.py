@@ -27,7 +27,10 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
                                ("records", ["records", "3000"], "379990000"),
                                ("elements", ["elements", "3000"], "380010000"),
                                ("shared", ["shared", "50"], "310000"),
-                               ("kept", ["kept", "50"], "649507 7 0")):
+                               ("kept", ["kept", "50"], "649507 7 0"),
+                               ("mapcount", ["mapcount", "200000"], "99481500"),
+                               ("maphistory", ["maphistory", "2000"], "98775"),
+                               ("mapshared", ["mapshared", "200000"], "997 0")):
         # copy-out is automatic for every pure loop; FPR_PERSISTENT_LOOP names one,
         # FPR_NO_PERSISTENT_COPY_OUT=1 turns it off; the cache follows each
         for selected, rollback in ((False, False), (True, False), (False, True), (False, False)):
@@ -36,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
             # Consuming reuse makes most of these loops allocation-free, which
             # leaves copy-out nothing to do; measure copy-out without it. The
             # records case is reuse and copy-out together (the mutating region).
-            if loop not in ("records", "elements", "shared", "kept"):
+            if loop not in ("records", "elements", "shared", "kept", "mapcount", "maphistory", "mapshared"):
                 mode["FPR_NO_REUSE"] = "1"
             if rollback:
                 mode["FPR_NO_PERSISTENT_COPY_OUT"] = "1"
@@ -47,6 +50,20 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
             assert p.stdout.strip() == answer, (args, p.stdout)
             copies = int(re.search(r'"state_copies":(\d+)', p.stderr)[1])
             requests = int(re.search(r'"alloc_requests":(\d+)', p.stderr)[1])
+            if loop == "maphistory":
+                # every old version is kept: the loop must not own its map;
+                # the answer (sizes of all versions) is the check
+                continue
+            if loop in ("mapcount", "mapshared") and enabled and not selected:
+                # the owned map is rebuilt in place along its path while the
+                # scratch makes copy-out cycle (3.4M requests without it). With
+                # copy-out on one other loop only, field workers unbox the map
+                # first, a shape owned maps do not take yet
+                assert copies > 0 and requests < 2_000_000, (loop, copies, requests)
+            if loop in ("mapcount", "mapshared") and selected:
+                # FPR_PERSISTENT_LOOP names a function that is not the fold
+                # loop: nothing to copy; the answer is the check
+                continue
             if loop == "kept":
                 # no scratch: nothing for copy-out to do; the answer and the
                 # untouched record are the check

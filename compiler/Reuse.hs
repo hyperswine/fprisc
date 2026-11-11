@@ -10,7 +10,7 @@ import Core.Region.Runtime (Hook(..),hookName)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (isPrefixOf)
-import Data.Maybe (mapMaybe, fromMaybe, listToMaybe)
+import Data.Maybe (mapMaybe, fromMaybe, listToMaybe, isJust)
 
 type Shape = (Int,Int,Int)
 type Plans = M.Map String (Int,Shape,Int,String)
@@ -291,7 +291,7 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
           -- the state passes through unchanged the cycle re-enters this twin
           | Just cyc<-cycleOf name,(CVar f,args@(_:_))<-spine e,f==cyc,f `S.notMember` scope,
             M.member f definitions,length args==length ps =
-              let marked=init args++[mutating (last args)]
+              let marked=init args++[mutatingAt (cycleComponent name i) (last args)]
                   consumes=args!!i==CVar x && all (safe x scope) (take i args++drop (i+1) args)
               in Just (False,foldl CApp (CVar (if consumes then cycleTwinName em name else f)) marked)
           | not (mentions name e)=Just (False,e)
@@ -313,12 +313,193 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
           _ -> Nothing
     isNil scope (CVar f)=S.notMember f scope && M.lookup f definitions==Just ([],nil)
     isNil _ e=e==nil
+    -- ---- owned maps: a std/map threaded through a loop, from an empty map,
+    -- is unique all the way down (path copying shares only with the previous
+    -- version, which the loop gave up). Its tree walkers then rebuild the
+    -- node they took apart in place. Tree nodes only: an empty map's wrapper
+    -- and its Leaf are shared statics, and a Leaf is never rebuilt.
+    --
+    -- A deep walker: recursive on a tree parameter t, a Leaf test on t, and a
+    -- node branch whose tail results are tuples (node, d). A tail node built
+    -- over t's layout from fields that only read t becomes an overwrite of t;
+    -- a self call on a child of t becomes the twin; t may otherwise be
+    -- projected, tested, or returned unchanged in a tuple's first field.
+    walkers=M.mapMaybeWithKey walkerPlan program
+    walkerPlan name (ps,body) = do
+      CIf (CTagEq tag 0 (CVar t)) leafCase nodeCase<-Just body
+      j<-lookup t (zip ps [0..])
+      if name `elem` ps || t==name || not (bounded 4096 body) || M.member (walkerTwin name) definitions then Nothing else Just ()
+      let children=S.fromList [k | CLet k (CProj i (CVar y)) _<-nodes nodeCase, y==t, i==1 || i==4]
+          selfCall e=case spine e of
+            (CVar f,args) | f==name, length args==length ps -> Just args
+            _ -> Nothing
+          -- t's own uses: projections, the Leaf/Node test, a tuple's first field
+          tUses=and [ok n | n<-nodes body]
+            where ok n=case n of
+                    CMk 4 _ (CVar y:rest) | y==t -> not (any (mentions t) rest)
+                    CMk _ _ fs -> not (any (==CVar t) fs)
+                    CApp _ _ | (_,args)<-spine n -> not (any (==CVar t) args)
+                    CLet _ a _ -> a/=CVar t
+                    _ -> True
+          selfOk=and [ case selfCall n of
+                         Just args -> case args!!j of
+                                        CVar c -> S.member c children && not (any (mentions t) (take j args++drop (j+1) args))
+                                        _ -> False
+                         Nothing -> True
+                     | n<-nodes nodeCase, (CVar f,_)<-[spine n], f==name ]
+      if not (tUses && selfOk) then Nothing else Just ()
+      let rename e=case e of
+            CVar v | v==name -> CVar (walkerTwin name)
+            CLet k a b -> CLet k (rename a) (rename b)
+            CApp f a -> CApp (rename f) (rename a)
+            CIf c a b -> CIf (rename c) (rename a) (rename b)
+            CMk tg vr fs -> CMk tg vr (map rename fs)
+            CProj i a -> CProj i (rename a)
+            CTagEq tg vr a -> CTagEq tg vr (rename a)
+            _ -> e
+          -- the tail results of the node branch
+          tailNode e=case e of
+            CLet k a b -> CLet k a (tailNode b)
+            CIf c a b -> CIf c (tailNode a) (tailNode b)
+            CMk 4 vr [f0,f1] | not (mentions t f1) -> CMk 4 vr [overwrite f0,f1]
+            _ -> e
+          overwrite e=case e of
+            CLet k a b | not (mentions t a) || readsOnly t 5 a -> CLet k a (overwrite b)
+            CMk tg 1 fs | tg==tag, length fs==5, all (readsOnly t 5) fs ->
+              CApp (CApp (CVar "$reuse.fresh") (CVar t)) e
+            _ -> e
+          twin=CIf (CTagEq tag 0 (CVar t)) (rename leafCase) (tailNode (rename nodeCase))
+      if twin==CIf (CTagEq tag 0 (CVar t)) (rename leafCase) (rename nodeCase) then Nothing else
+        Just (j,tag,(ps,twin))
+    -- a loop owning a map: its parameter x is the map; x is only projected,
+    -- tested, or handed on whole (a tail value, or the cold edge); its tree
+    -- (field 2) goes only to a deep walker. The twin calls the walker twin and
+    -- re-enters itself, through the cycle with the mutating bit.
+    -- map operations (alter, insert: no recursion, the map's one consumer a
+    -- walker) and map loops (recursive or a region's inner loop, whose one
+    -- consumer is a walker or a map operation)
+    -- (tiers, so no plan depends on itself: 0 operations, 1 loops, 2 entries,
+    -- which are non-recursive wrappers handing the map to a loop)
+    mapOps=M.mapMaybeWithKey (mapLoopPlan 0) program
+    mapLoops=M.mapMaybeWithKey (mapLoopPlan 1) program
+    mapEntries=M.mapMaybeWithKey (mapLoopPlan 2) program
+    mapLoopPlan :: Int -> Name -> ([Name],Core) -> Maybe (Int,Name,([Name],Core))
+    mapLoopPlan tier name (ps,body)
+      | name `elem` ps || name `S.member` excluded || not (bounded 4096 body) = Nothing
+      | recursive/=(tier==1) = Nothing
+      | otherwise=listToMaybe [ (i,worker,(ps,out)) | (i,x)<-zip [0..] ps,
+          M.notMember worker definitions, not (rebinds x body),
+          Just out<-[mapBody i x body] ]
+      where
+        recursive=or [f==name || Just f==cycleOf name | n<-nodes body, (CVar f,_)<-[spine n]]
+        wantLoop=tier==1
+        worker=(case tier of 0 -> "$worker.mapown.op."; 1 -> "$worker.mapown.loop."; _ -> "$worker.mapown.entry.")++name
+        treeVars x=S.fromList [k | CLet k (CProj 2 (CVar y)) _<-nodes body, y==x]
+        walkerCall x e=case spine e of
+          (CVar w,args) | Just (j,_,(wps,_))<-M.lookup w walkers, length args==length wps,
+            treeArg x (args!!j), not (any (mentions x) (take j args++drop (j+1) args)) -> Just (walkerTwin w,args)
+          (CVar o,args) | tier>=1, Just (j,ow,(ops,_))<-M.lookup o mapOps, length args==length ops,
+            args!!j==CVar x, not (any (mentions x) (take j args++drop (j+1) args)) -> Just (ow,args)
+          (CVar o,args) | tier==2, Just (j,ow,(ops,_))<-M.lookup o (M.union mapLoops mapRegionEntries), length args==length ops,
+            args!!j==CVar x, not (any (mentions x) (take j args++drop (j+1) args)) -> Just (ow,args)
+          _ -> Nothing
+        treeArg x a=case a of
+          CVar k -> S.member k (treeVars x)
+          CProj 2 (CVar y) -> y==x
+          _ -> False
+        mapBody i x b=do
+          -- x's uses: projections, tests, whole tail values, the cold edge,
+          -- the recursive slot; its tree only in one walker call
+          let walkerCalls=[n | n<-nodes b, Just _<-[walkerCall x n]]
+              -- x's uses, judged per whole application (a partial
+              -- application inside a consumer call is that call's)
+              usesOk=uses b
+              uses e=case e of
+                CApp _ _ | (CVar f,args)<-spine e, f==name || Just f==cycleOf name ->
+                  and [k==i || not (mentions x a) | (k,a)<-zip [0..] args] && all usesArg args
+                CApp _ _ | Just _<-walkerCall x e, (_,args)<-spine e -> all usesArg args
+                CApp _ _ | (f,args)<-spine e -> not (any (\a->a==CVar x || treeArg x a) (f:args)) && all uses (f:args)
+                CMk _ _ fs -> not (any (\a->a==CVar x || treeArg x a) fs) && all uses fs
+                CLet k a c -> a/=CVar x && not (S.member k (treeVars x) && occurrences k b/=1) && uses a && uses c
+                CIf c a d -> uses c && uses a && uses d
+                CProj _ a -> uses a
+                CTagEq _ _ a -> uses a
+                _ -> True
+              -- an argument handed to a consumer: x itself, its tree, or a
+              -- use-checked expression
+              usesArg a=a==CVar x || treeArg x a || uses a
+          -- the map is consumed at most once on any path (the branches of a
+          -- loop may each consume it), and somewhere
+          let perPath e=(if isJust (walkerCall x e) then 1 else 0)+case e of
+                CIf c a d -> perPath c+max (perPath a) (perPath d)
+                CLet _ a d -> perPath a+perPath d
+                CApp f a -> perPath f+perPath a
+                CMk _ _ fs -> sum (map perPath fs)
+                CProj _ a -> perPath a
+                CTagEq _ _ a -> perPath a
+                _ -> 0 :: Int
+          if null walkerCalls || perPath b/=1 || not usesOk then Nothing else Just ()
+          let go e=case e of
+                _ | Just (w,args)<-walkerCall x e -> foldl CApp (CVar w) args
+                _ | (CVar f,args)<-spine e, f==name, length args==length ps -> foldl CApp (CVar worker) (map go args)
+                _ | (CVar f,args@(_:_))<-spine e, Just f==cycleOf name, length args==length ps ->
+                      foldl CApp (CVar (mapCycleTwin name)) (init (map go args)++[mutatingAt (cycleComponent name i) (last args)])
+                CLet k a c -> CLet k (go a) (go c)
+                CApp f a -> CApp (go f) (go a)
+                CIf c a d -> CIf (go c) (go a) (go d)
+                CMk t v fs -> CMk t v (map go fs)
+                CProj k a -> CProj k (go a)
+                CTagEq t v a -> CTagEq t v (go a)
+                _ -> e
+          Just (go b)
+    mapRegionEntries=M.mapMaybeWithKey mapRegionEntry program
+    mapRegionEntry name (ps,body)=do
+      CLet seqId open (CLet markId mark (CApp (CApp (CVar leave) token) call))<-Just body
+      let (callee,args)=spine call
+          worker="$worker.mapown.region."++name
+      CVar inner<-Just callee
+      (i,target,(params,_))<-M.lookup inner mapLoops
+      if open/=CApp (CVar (hookName SequenceNumber)) (CInt 0) ||
+         mark/=CApp (CVar (hookName PoolMark)) (CInt 0) ||
+         leave/=hookName LoopLeave || token/=CVar seqId ||
+         args/=map CVar (ps++[markId,seqId]) || length params/=length args ||
+         i>=length ps || M.member worker definitions || name `S.member` excluded then Nothing else
+        Just (i,worker,(ps,CLet seqId (mutating open) (CLet markId mark
+          (CApp (CApp (CVar leave) token) (foldl CApp (CVar target) args)))))
+    mapCycleTwins=M.fromList [(mapCycleTwin inner,(cps,renameHead inner worker cbody)) |
+      (inner,(_,worker,_))<-M.toList mapLoops, Just cyc<-[cycleOf inner],
+      Just (cps,cbody)<-[M.lookup cyc definitions], M.notMember (mapCycleTwin inner) definitions]
+    mapTwins=M.fromList ([(w,b) | (_,w,b)<-M.elems mapLoops++M.elems mapOps++M.elems mapEntries++M.elems mapRegionEntries]
+                ++[(walkerTwin n,b) | (n,(_,_,b))<-M.toList walkers]) `M.union` mapCycleTwins
+    -- the plans a call site may enter with an owned map: the loop, or its
+    -- region wrapper
+    mapPlans=M.unions [mapLoops,mapRegionEntries,mapEntries]
+    -- std/map's empty maps, from the unit whose Leaf the walkers test
+    leafHashes=S.fromList [drop 1 (dropWhile (/='@') v) | (_,(_,b))<-M.toList program, CVar v<-nodes b, "Leaf@" `isPrefixOf` v]
+    -- (a local bound to one counts: an empty map has no node to rebuild, so
+    -- sharing it elsewhere is harmless)
+    ownedMap e=case stripLets e of
+      CVar g | any (\p->p `isPrefixOf` g) ["strings@","ints@","empty@"],
+               S.member (drop 1 (dropWhile (/='@') g)) leafHashes -> True
+      CVar k | Just rhs<-M.lookup k localBindings, rhs/=CVar k -> ownedMap rhs
+      _ -> False
+    localBindings=M.fromList [(k,rhs) | (_,(_,b))<-M.toList program, CLet k rhs _<-nodes b]
     -- the cold edge of a consuming region loop: the ordinary cycle (copy out,
     -- reset) re-entering the consuming inner loop. After a cycle the state is
     -- the loop's alone: a fresh copy, or its own cells when the copy deferred.
     cycleTwins em=M.fromList [(cycleTwinName em inner,(cps,renameHead inner worker cbody)) |
       (inner,(_,worker,_))<-M.toList (loops em), Just cyc<-[cycleOf inner],
       Just (cps,cbody)<-[M.lookup cyc definitions], M.notMember (cycleTwinName em inner) definitions]
+    -- where the cycle of a region's inner loop packs parameter i: runtime.c
+    -- REGION_MUT_SHIFT (k+1 for the kth tuple component, 63 for the whole
+    -- packed value, 0 when it cannot say)
+    cycleComponent inner i=case cycleOf inner >>= (`M.lookup` definitions) of
+      Just (cps,cbody) | i<length cps ->
+        case [packed | CLet _ rhs _<-nodes cbody, (CVar c,[_,packed])<-[spine rhs], c==hookName Cycle] of
+          [CVar v] | v==cps!!i -> 63
+          [CMk _ _ comps] | Just k<-lookup (CVar (cps!!i)) (zip comps [1..]) -> k
+          _ -> 0
+      _ -> 0
     renameHead from to e=case e of
       CVar v | v==from->CVar to
       CLet k a b->CLet k (renameHead from to a) (renameHead from to b)
@@ -326,7 +507,7 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
       CIf c a b->CIf (renameHead from to c) (renameHead from to a) (renameHead from to b)
       _->e
     twinsOf em=M.fromList ([(worker,body) | (_,worker,body)<-M.elems (plans em)++M.elems (starters em)] ++ M.elems (cursors em)) `M.union` cycleTwins em
-    twins=twinsOf False `M.union` twinsOf True
+    twins=twinsOf False `M.union` twinsOf True `M.union` mapTwins
     builders=spineBuildersWith linked resetting definitions
     -- Element freshness: every element of the spine is stored in that spine
     -- only (a fresh constructor, or an element moved out of a unique spine).
@@ -462,6 +643,9 @@ consumeListSpines linked definitions resetting excluded program = rewritten `M.u
       where independent e=not (mentions x e || resets resetting scope e)
             descend=lastUse x scope
     rewriteCall scope e=case spine e of
+      (CVar f,args) | Just (i,w,(ps,_))<-M.lookup f mapPlans, f `S.notMember` scope,
+        w `S.notMember` scope, length args==length ps, ownedMap (args!!i),
+        all (not . resets resetting scope) (drop (i+1) args) -> foldl CApp (CVar w) args
       (CVar f,args) | Just (i,w,(ps,_))<-M.lookup f (plans True), f `S.notMember` scope,
         w `S.notMember` scope, length args==length ps, fresh scope (args!!i) || summaryFresh scope (args!!i), elementsFresh scope (args!!i),
         all (not . resets resetting scope) (drop (i+1) args) -> foldl CApp (CVar w) args
@@ -591,6 +775,11 @@ cycleOf n | "$loop.in." `isPrefixOf` n=Just ("$loop.cycle."++drop (length "$loop
 cycleOf _=Nothing
 cycleTwinName :: Bool -> Name -> Name
 cycleTwinName em inner=spinePrefix em++"cycle."++inner
+-- owned-map twins: a tree walker that rebuilds in place, the map loop's own
+-- cold cycle
+walkerTwin,mapCycleTwin :: Name -> Name
+walkerTwin n="$worker.mapown.walk."++n
+mapCycleTwin n="$worker.mapown.cycle."++n
 -- the twin families: spine reuse, and spine plus element reuse (used only on
 -- a list whose elements are fresh too)
 spinePrefix :: Bool -> String
@@ -600,7 +789,10 @@ spinePrefix True="$worker.spineE."
 regionMutBit :: Integer
 regionMutBit=2^(58::Int)
 mutating :: Core -> Core
-mutating seqValue=CApp (CApp (CVar "bor") seqValue) (CInt regionMutBit)
+mutating=mutatingAt 0
+-- with the written component of the packed state (runtime.c REGION_MUT_SHIFT)
+mutatingAt :: Integer -> Core -> Core
+mutatingAt comp seqValue=CApp (CApp (CVar "bor") seqValue) (CInt (regionMutBit+comp*2^(52::Int)))
 
 -- a cons whose tail is Nil, after any lets that compute its head
 freshCell :: Core -> Bool

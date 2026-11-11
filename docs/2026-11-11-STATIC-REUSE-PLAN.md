@@ -182,3 +182,58 @@ the initial list only, against 120M. Its instructions are 3.6 G against 17.5 G.
   yet summarised, so element reuse starts one iteration later. Spine reuse still applies.
 - **The tuples.** Unboxed pair returns would remove sim's two remaining allocations.
 - **Increment 5:** consuming `Map` updates.
+
+## Increment 5: owned maps (later on 11 November)
+
+A std/map threaded through a loop from an empty map is unique all the way down.
+Path copying shares unchanged subtrees only with the previous version, which
+the loop gave up. Its tree walker then rebuilds, in place, each node it took
+apart and rebuilds with the same layout. That covers the common case, an update
+of an existing key, where every path node is rebuilt unchanged in shape. Inserts that
+rebalance still allocate through `balance`.
+
+| Workload | Requests, reuse on | Reuse off | Instructions | Peak RSS |
+|---|---|---|---|---|
+| wordfreq | 11.1M | 37.0M | 23.7 against 28.8 G | 435 against 513 MB |
+| csv | 24.0M | 34.2M | 21.9 against 23.4 G | 233 MB, both |
+| `persistent_aliases mapcount` | 1.41M | 3.40M | | |
+
+### How it stays sound
+
+- **Deep walkers.** A walker recurses on a tree parameter t, after a Leaf test on t. Each tail result of
+  its node branch is a tuple `(node, d)`. A tail node of t's layout, built from fields
+  that only read t, becomes `$reuse.fresh t`. A self call on a child of t becomes the
+  twin. t may otherwise only be projected, tested, or returned unchanged as a tuple's
+  first field.
+- **Tiers.** There are three:
+  - map operations: non-recursive, like a specialised `alter`, whose one consumer of the map is a walker;
+  - map loops: recursive, or a region's inner loop, whose consumer is a walker or an operation;
+  - entries: wrappers handing the map to a loop or region wrapper.
+
+  The map is used only by projection or layout test, or handed on whole (a tail value,
+  the recursive slot, the cold edge), never captured or stored. It is consumed at most once on any path.
+- **The empty map's wrapper and its `Leaf` are shared statics and are never written.**
+  A call site enters a twin only with one of std/map's empty maps (`strings`, `ints`, `empty`).
+  They are matched by name and tied to the std/map unit whose `Leaf` the walkers
+  test. Sharing that empty map elsewhere is harmless.
+- **Regions.** Cycles from a twin carry `REGION_MUT_BIT` and now also the written
+  component of the packed state (`REGION_MUT_SHIFT`, read off the cycle's own
+  packing). The runtime copies that component whole and keeps the outside
+  rule for the rest; no other component can reach the unique structure's
+  cells. Copying the whole state took csv to 740 MB, because the walk counted all of its remaining
+  input; with the component it is 233 MB again.
+
+### Tests
+
+`persistent_aliases` gains three cases (reuse on):
+- `mapcount`: an owned map with per-step scratch, so copy-out cycles while nodes are written. The answer is checked, and requests must be under 2M.
+- `maphistory`: every old version is kept, so the loop must not own its map. The sizes of all versions are checked.
+- `mapshared`: the empty map it started from is still empty.
+
+### Still open
+
+- **The loop without a region.** Field workers unbox the map into (comparator, size, tree) first, a
+  shape the plans do not take. Copy-out is on by default, so the default build is covered.
+- **Inserts that rebalance.** A consuming `balance` would let rotations rebuild nodes in place too. This is
+  treemap's case (393k distinct keys out of 500k inserts); it gains nothing yet.
+- **Maps not built from empty in the loop** (a map passed in from elsewhere) stay persistent, by design.

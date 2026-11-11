@@ -63,6 +63,22 @@ elements : unsafe Int -> List Pt -> Int.
 elements n xs = if n <= 0 then L.sum (L.map (fn p -> p.a + p.b) xs) else elements (n - 1) (stepPts xs).
 twice : unsafe Int -> Pt -> List Pt -> List Pt.
 twice n r acc = if n <= 0 then acc else twice (n - 1) r (r :: r :: acc).
+# Owned maps: a std/map threaded through a fold from an empty map is rebuilt
+# in place along its path. mapcount makes scratch each step, so copy-out
+# cycles while nodes are written (the mutating region); maphistory keeps every
+# old version, so the loop must not own its map; mapshared reuses the empty
+# map it started from, which must stay empty.
+O = use "std/option".
+bumpCount : O.Option Int -> O.Option Int.
+bumpCount old = case old of O.Some c -> O.Some (c + 1) | O.None -> O.Some 1.
+countKey : M.Map Int Int -> Int -> M.Map Int Int.
+countKey m i = scratch = L.reverse (L.range 0 (i % 4)); M.update (i % 997 + L.length scratch - L.length scratch) bumpCount m.
+mapcount : Int -> Int.
+mapcount n = m = L.fold (fn acc i -> scratch = L.reverse (L.range 0 (i % 4)); M.update (i % 997 + L.length scratch - L.length scratch) bumpCount acc) M.ints (L.range 1 n); M.fold (fn acc k v -> acc + k * v) 0 m.
+historyGo : unsafe List Int -> M.Map Int Int -> List (M.Map Int Int) -> Int.
+historyGo xs m hist = case xs of
+    Nil -> L.sum (L.map M.size hist) + M.size m
+  | x :: rest -> historyGo rest (M.update (x % 50) bumpCount m) (m :: hist).
 steps count = n = parseInt count; if n < 0 then error "negative steps" else n.
 main = case Sys.args Unit of
     ["list",count] -> xs = L.range 0 1023;
@@ -76,6 +92,9 @@ main = case Sys.args Unit of
   | ["elements",count] -> print "{elements (steps count) (mkPts 20000 Nil)}"
   | ["shared",count] -> r = {a = 5, b = 0}; print "{elements (steps count) (twice 1000 r Nil)}"
   | ["kept",count] -> r = {a = 7, b = 0}; total = elements (steps count) (r :: mkPts 999 Nil); print "{total} {r.a} {r.b}"
+  | ["mapcount",count] -> print "{mapcount (steps count)}"
+  | ["maphistory",count] -> print "{historyGo (L.range 1 (steps count)) M.ints Nil}"
+  | ["mapshared",count] -> e = M.ints; m = L.fold countKey e (L.range 1 (steps count)); print "{M.size m} {M.size e}"
   | ["drain",count] -> print "{drain (L.range 1 (steps count)) 0}"
   | ["history",count] -> print "{history (steps count) Nil Nil}"
-  | _ -> error "expected list, tree, map, scan, drain, records, elements, shared, kept or history and a nonnegative count".
+  | _ -> error "expected list, tree, map, scan, drain, records, elements, shared, kept, mapcount, maphistory, mapshared or history and a nonnegative count".

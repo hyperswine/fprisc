@@ -2,7 +2,7 @@
  "about": "Peak-RSS ceilings for the FP-RISC builds (decision 6, docs/2026-11-11-COPY-OUT-DECISIONS.md): about 1.5x the peak measured with automatic copy-out on an Apple M4 at 1261f167. run.py --ceilings fails above them. Lower a ceiling when a change lowers its workload; never raise one without a reason in the commit.",
  "ceilings_mb": {
   "csv": 350,
-  "wordfreq": 768,
+  "wordfreq": 655,
   "wordfreq.fpr-mutmap": 350,
   "format": 1400,
   "records": 200,

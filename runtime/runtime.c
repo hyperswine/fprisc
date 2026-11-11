@@ -1017,6 +1017,8 @@ typedef struct {
   struct fpr_pool *region; /* set: a pure loop region's copy-out; a cell another
                             * pool owns outlives the region and stays by identity */
   struct dc_share *share;  /* set: copy each shared cell once (source -> copy) */
+  V mut_root;              /* set: the component a consuming twin writes in place;
+                            * its subtree is copied whole (no outside rule) */
 } dctx_t;
 /* a Vector that may cross a turn boundary by handle: its header is in this
  * actor's base pool (so every piece is, vec.c allocates bulk there and a
@@ -1096,7 +1098,7 @@ static uw region_shared_copies, region_shared_full;
 /* the sizing pass's context, passed down (a thread-local read was a call per
  * cell on macOS): the retained state slab, a region copy's arena, the byte
  * cap and whether it was passed, and the table that counts cells once */
-typedef struct dc_sz { fpr_slab_t *retain; struct fpr_pool *region; dc_share_t *share; uw left; int over; } dc_sz_t;
+typedef struct dc_sz { fpr_slab_t *retain; struct fpr_pool *region; dc_share_t *share; uw left; int over; V mut_root; } dc_sz_t;
 static uw dc_share_slot(dc_share_t *t, V v) {
   uw i = (((uw)v >> 4) * (uw)0x9E3779B97F4A7C15ull) >> 20 & t->mask;
   while (t->key[i] && t->key[i] != (uw)v) i = (i + 1) & t->mask;
@@ -1134,6 +1136,13 @@ static int dc_retained(V v, fpr_slab_t *retain) {
 }
 static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
   if (ISINT(v) || !v) return 0;
+  if (z && z->mut_root && v == z->mut_root) {
+    struct fpr_pool *r = z->region;
+    z->mut_root = 0; z->region = 0;
+    uw n = dc_size_in(v, z, immutable);
+    z->region = r; z->mut_root = v;
+    return n;
+  }
   fpr_slab_t *retain = z ? z->retain : 0;
   struct fpr_pool *region = z ? z->region : 0;
   if (!fpr_in_heap(v)) {
@@ -1314,6 +1323,13 @@ static V dc_buffer(dctx_t *c,uw raw) { return dc_bump_size(c,raw,FPR_RAW_PREFIX)
 
 static V dc_dup(V v, dctx_t *c) {
   if (ISINT(v) || !v) return v;
+  if (c && c->mut_root && v == c->mut_root) {
+    struct fpr_pool *r = c->region;
+    c->mut_root = 0; c->region = 0;
+    V n = dc_dup(v, c);
+    c->region = r; c->mut_root = v;
+    return n;
+  }
   if (!fpr_in_heap(v)) {
     uw pid = img_foreign((const void *)v);
     if (!pid) return v;
@@ -2015,6 +2031,8 @@ struct fpr_scope {
   uw live_bytes, alloc_mark;
   int receive; /* opened at a receive loop's entry (g_region_open) */
   int mutating; /* its loop runs a consuming twin (REGION_MUT_BIT): see transfer_copy_in */
+  uw mut_comp;  /* which component of the packed state the twin writes: 0 unknown
+                 * (the whole state), k > 0 the (k-1)th, REGION_MUT_ALL the state */
   int declined; uw declined_bytes; /* transfer_copy_in found too much would survive */
   uw retry_at; /* after a declined copy: the arena gauge to reach before the next try */
   uw decline_run; /* declines since the last copy: each waits twice as long */
@@ -2031,7 +2049,7 @@ static struct fpr_scope **scope_push(struct fpr_scope *scope) {
   scope->spare = 0;
   scope->state_slab = scope->next_slab = 0;
   scope->generations = 0; scope->immutable_state = scope->preserve_state = 0;
-  scope->live_bytes = scope->alloc_mark = 0; scope->receive = 0; scope->mutating = 0; scope->declined = 0; scope->declined_bytes = 0; scope->retry_at = 0; scope->decline_run = 0;
+  scope->live_bytes = scope->alloc_mark = 0; scope->receive = 0; scope->mutating = 0; scope->mut_comp = 0; scope->declined = 0; scope->declined_bytes = 0; scope->retry_at = 0; scope->decline_run = 0;
   scope->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
   scope->seq = 0;
   scope->prev_override = 0;
@@ -2072,7 +2090,7 @@ static void slab_free_ownerless(fpr_slab_t *sl) {
 #ifndef FPR_STATE_GENERATIONS
 #define FPR_STATE_GENERATIONS 8
 #endif
-static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int movevec, struct fpr_pool *region, uw survive_limit) {
+static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int movevec, struct fpr_pool *region, uw survive_limit, V mut_root) {
   fpr_hart_t *h = fpr_hart();
   uw pid = fpr_current_pid();
   fpr_slab_t *retain = scope->state_slab;
@@ -2093,7 +2111,7 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
    * the limit survives: it stops there.  The first walk after a copy goes to
    * the cap, where passing it proves sharing rather than survival. */
   int quick = region && survive_limit && scope->decline_run && survive_limit < cap;
-  dc_sz_t z = {.retain = retain, .region = region, .left = quick ? survive_limit : cap};
+  dc_sz_t z = {.retain = retain, .region = region, .left = quick ? survive_limit : cap, .mut_root = mut_root};
   uw need = dc_size_in(v, &z, &immutable);
   if (quick && z.over) {
     if (h) h->copy_movevec = 0;
@@ -2160,7 +2178,7 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
   if (retain && (need || dc_retained(v, retain))) {
     scope->preserve_state = 1; /* cancellation also owns the slab mid-copy */
     scope->generations++;
-    dctx_t c = {.hp=retain->hp, .sl=retain, .novec=novec, .movevec=movevec, .retain=retain, .region=region};
+    dctx_t c = {.hp=retain->hp, .sl=retain, .novec=novec, .movevec=movevec, .retain=retain, .region=region, .mut_root=mut_root};
     V r = dc_dup(v, &c);
     retain->hp = c.hp;
     return r;
@@ -2188,14 +2206,14 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
   scope->generations = 1;
   h = fpr_hart();
   if (h) h->copy_pid = pid;
-  dctx_t c = {.hp=sl->hp, .sl=sl, .novec=novec, .movevec=movevec, .region=region, .share=table ? &share : 0};
+  dctx_t c = {.hp=sl->hp, .sl=sl, .novec=novec, .movevec=movevec, .region=region, .share=table ? &share : 0, .mut_root=mut_root};
   V r = dc_dup(v, &c);
   sl->hp = c.hp;
   if (table) slab_free_ownerless(table);
   if (c.released) vec_release_in(v);
   return r;
 }
-static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) { return transfer_copy_in(v, scope, novec, 0, 0, 0); }
+static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) { return transfer_copy_in(v, scope, novec, 0, 0, 0, 0); }
 /* Commit the next state after arena/root teardown. A retained graph keeps its
  * existing hold; otherwise the previous slab loses exactly this scope's hold.
  * Exported roots/borrow windows can still pin it. Only an unreferenced slab
@@ -2244,6 +2262,13 @@ static void scope_release(struct fpr_scope *scope) {
  * copy-out descends everything it reaches: no outside rule, no retained
  * generations. Sequence numbers never reach this bit. */
 #define REGION_MUT_BIT ((uw)1 << 58)
+/* bits 52..57: which component of the packed state the twin writes (0 = not
+ * said: copy the whole state with no outside rule; 63 = the packed state is
+ * that one value). The other components keep the outside rule: the written
+ * structure is unique, so no other component reaches its cells. */
+#define REGION_MUT_SHIFT 52
+#define REGION_MUT_ALL ((uw)63)
+#define REGION_SEQ_BITS (~(REGION_MUT_BIT | ((uw)63 << REGION_MUT_SHIFT)))
 static uw region_opens, region_cycles, region_call_opens, pend_grows, region_deferrals, region_declines;
 #ifndef FPR_REGION_SURVIVAL
 #define FPR_REGION_SURVIVAL 16 /* copy only when at most 1/this of the arena survives: a steady state copies at about 16x live (at most ~9% more work on the app suite), a builder (all of it survives) never */
@@ -2274,7 +2299,7 @@ static struct fpr_scope *region_open(fpr_hart_t *h, uw seq) {
   sc->held = 0; sc->spare = 0;
   sc->state_slab = sc->next_slab = 0;
   sc->generations = 0; sc->immutable_state = sc->preserve_state = 0;
-  sc->live_bytes = sc->alloc_mark = 0; sc->receive = 0; sc->mutating = 0; sc->declined = 0; sc->declined_bytes = 0; sc->retry_at = 0; sc->decline_run = 0;
+  sc->live_bytes = sc->alloc_mark = 0; sc->receive = 0; sc->mutating = 0; sc->mut_comp = 0; sc->declined = 0; sc->declined_bytes = 0; sc->retry_at = 0; sc->decline_run = 0;
   sc->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
   sc->seq = seq;
   struct fpr_pool **slot = override_slot(h);
@@ -2430,11 +2455,13 @@ static V g_region_cycle(V seqv, V packed) {
   if (fpr_plane_memory) return packed;
   fpr_hart_t *h = fpr_hart();
   struct fpr_scope *sc = *scope_head(h);
-  uw seq = (uw)UNTAG(seqv) & ~REGION_MUT_BIT;
+  uw seq = (uw)UNTAG(seqv) & REGION_SEQ_BITS;
   int mutating = ((uw)UNTAG(seqv) & REGION_MUT_BIT) != 0;
-  if (sc && sc->seq == seq && mutating) sc->mutating = 1; /* a twin now writes this region's state */
+  uw comp = ((uw)UNTAG(seqv) >> REGION_MUT_SHIFT) & 63;
+  if (sc && sc->seq == seq && mutating) { sc->mutating = 1; if (comp) sc->mut_comp = comp; } /* a twin now writes this region's state */
   if (!sc || sc->seq != seq) {
-    region_open(h, seq)->mutating = mutating;
+    struct fpr_scope *o = region_open(h, seq);
+    o->mutating = mutating; o->mut_comp = comp;
     __atomic_fetch_add(&region_opens, 1, __ATOMIC_RELAXED);
     return packed;
   }
@@ -2456,7 +2483,18 @@ static V g_region_cycle(V seqv, V packed) {
    * with persistent copy-out) pays a sizing walk, never a copy */
   uw bumped = sc->ap.allocated - sc->alloc_mark;
   sc->declined = 0;
-  V t = transfer_copy_in(packed, sc, 0, 1, sc->receive || sc->mutating ? 0 : &sc->ap, sc->receive ? 0 : bumped / FPR_REGION_SURVIVAL + 1);
+  /* a mutating region whose twin said which component it writes copies that
+   * component whole and keeps the outside rule for the rest */
+  V mut_root = 0;
+  int whole = sc->mutating && !sc->mut_comp;
+  if (sc->mutating && sc->mut_comp == REGION_MUT_ALL) mut_root = packed;
+  else if (sc->mutating && sc->mut_comp && !ISINT(packed) && packed && fpr_in_heap(packed)) {
+    hdr_t *ph = (hdr_t *)packed;
+    uw nf = (PREHEADER(packed) - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
+    if (ph->tid < T_STR && sc->mut_comp - 1 < nf) mut_root = ((V *)((char *)packed + 8))[sc->mut_comp - 1];
+    else whole = 1;
+  } else if (sc->mutating && sc->mut_comp) whole = 1;
+  V t = transfer_copy_in(packed, sc, 0, 1, sc->receive || whole ? 0 : &sc->ap, sc->receive ? 0 : bumped / FPR_REGION_SURVIVAL + 1, mut_root);
   if (sc->declined) {
     /* try again once the arena has doubled from here: the sizing walks then
      * cost at most twice the allocation, whatever fraction survives (a loop
@@ -2483,7 +2521,7 @@ static V g_loop_leave(V seqv, V r) {
   if (fpr_plane_memory) return r;
   fpr_hart_t *h = fpr_hart();
   struct fpr_scope *sc = *scope_head(h);
-  if (!sc || sc->seq != ((uw)UNTAG(seqv) & ~REGION_MUT_BIT)) return r;
+  if (!sc || sc->seq != ((uw)UNTAG(seqv) & REGION_SEQ_BITS)) return r;
   return region_close(h, sc, r);
 }
 /* a costly call begins: a pending region, opened only if the call uses a
@@ -2753,7 +2791,7 @@ static V g_loop_in(V s, V f, int movevec) {
     if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
       fpr_cpanic("Sys.loop: continue must be a Bool");
     int more = ((hdr_t *)go)->var == 1;
-    V t = transfer_copy_in(nx, &scope, movevec ? 0 : "Sys.loop: the state may not hold a Vector (use Sys.loopWith)", movevec, 0, 0);
+    V t = transfer_copy_in(nx, &scope, movevec ? 0 : "Sys.loop: the state may not hold a Vector (use Sys.loopWith)", movevec, 0, 0, 0);
     scope_roots_die(&scope);
     arena_reset(&ap);
     transfer_retire(&scope);
