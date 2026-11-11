@@ -27,7 +27,7 @@ pick x = if x > 10 then O.Some x else O.Some (x + 1).
 loop : unsafe Int -> Int -> Int .
 loop i acc = if i == 0 then acc else loop (i - 1) (case pick i of O.Some y -> acc + y | O.None -> acc + 1).
 main = print "{loop 30 0}".
-''', 31, 31),
+''', 1, 1),  # one shape (Some) in both leaves: local products unboxes it either way (2026-11-12)
     # An unknown leaf (a call that is not inlined or not a constructor) declines.
     'unknown-leaf': ('''O = use "std/option".
 loop : unsafe Int -> Int -> Int .

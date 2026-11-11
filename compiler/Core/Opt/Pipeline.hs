@@ -16,6 +16,7 @@ import Reuse (reuseProgramWithImports, poolResetters)
 import Control.Monad (foldM, unless)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+import Data.Maybe (isJust)
 import Compiler.DataLayout (tupWideBase)
 
 data OptimizationOptions = OptimizationOptions
@@ -126,7 +127,7 @@ verifyPassResult before after sigs = do
 -- str would (a float piece is already its String: Infer's str! sites).
 -- The tuple keeps the pieces in order, so they evaluate as before.
 buildStrings :: Prog -> Prog
-buildStrings=M.map (\(ps,b)->(ps,go b))
+buildStrings=M.map (\fn@(ps,b)->if hasChain b then (ps,go b) else fn)
   where
     go e=case e of
       CApp (CApp (CVar "strcat") _) _ | leaves@(_:_:_:_)<-chain e ->
@@ -139,6 +140,18 @@ buildStrings=M.map (\(ps,b)->(ps,go b))
       CTagEq t v a -> CTagEq t v (go a)
       CLam qs b -> CLam qs (go b)
       _ -> e
+    -- most functions build no string: leave them untouched (no copy)
+    hasChain x=case x of
+      CApp (CApp (CVar "strcat") (CApp (CApp (CVar "strcat") _) _)) _ -> True
+      CApp (CApp (CVar "strcat") _) (CApp (CApp (CVar "strcat") _) _) -> True
+      CApp f a -> hasChain f || hasChain a
+      CLet _ a b -> hasChain a || hasChain b
+      CIf c a b -> hasChain c || hasChain a || hasChain b
+      CMk _ _ fs -> any hasChain fs
+      CProj _ a -> hasChain a
+      CTagEq _ _ a -> hasChain a
+      CLam _ b -> hasChain b
+      _ -> False
     chain (CApp (CApp (CVar "strcat") a) b)=chain a++chain b
     chain x=[x]
     unstr (CApp (CVar "str") x)=x
@@ -156,25 +169,37 @@ buildStrings=M.map (\(ps,b)->(ps,go b))
 -- the first trap is the original's. (An inlined pair-returning helper,
 -- sim's bounce, leaves this shape.)
 localProducts :: Prog -> Prog
-localProducts=M.map (\(ps,b)->(ps,go b))
+localProducts=M.map (\fn@(ps,b)->if any isCandidate (lets b) then (ps,go (uses b) b) else fn)
   where
-    go e=case e of
+    lets b=[(t,rhs) | CLet t rhs _<-nodesOf b]
+    nodesOf x=x:concatMap nodesOf (kids x)
+    isCandidate (_,rhs)=case prefix rhs of (_,tree) -> isJust (shape tree)
+    -- each variable's uses, in one walk: projected fields, shapes tested
+    -- (as an if's condition), and whether it is used any other way
+    uses b=M.fromListWith merge (walk b)
+    merge (a1,b1,c1) (a2,b2,c2)=(max a1 a2,S.union b1 b2,c1 || c2)
+    walk x=case x of
+      CProj i (CVar y) -> [(y,(i,S.empty,i<0))]
+      CIf (CTagEq tg v (CVar y)) a b -> (y,(-1,S.singleton (tg,v),False)):walk a++walk b
+      CVar y -> [(y,(-1,S.empty,True))]
+      _ -> concatMap walk (kids x)
+    go info e=case e of
       -- the lets in front of the branches run once, outside (typed
       -- binders are unique: floating them captures nothing); only the
       -- branching part is copied
-      CLet t rhs body | (front,tree)<-prefix rhs, Just sh@(_,_,n)<-shape tree, n>=1, cheapTree tree,
-                        size tree<=64, projectedOnly t sh body ->
+      CLet t rhs body | (front,tree)<-prefix rhs, Just sh@(tg,v,n)<-shape tree, n>=1, cheapTree tree,
+                        size tree<=64, projectedOnly info t sh ->
         let names=[t++"#"++show i | i<-[0..n-1]]
             copies=[rename (t++"#"++show i++".") M.empty (leaves (!!i) tree) | i<-[0..n-1]]
             body'=subst t sh names body
-        in go (front (foldr (\(nm,c) b->CLet nm c b) body' (zip names copies)))
-      CLet k a b -> CLet k (go a) (go b)
-      CApp f a -> CApp (go f) (go a)
-      CIf c a b -> CIf (go c) (go a) (go b)
-      CMk t v fs -> CMk t v (map go fs)
-      CProj k a -> CProj k (go a)
-      CTagEq t v a -> CTagEq t v (go a)
-      CLam qs b -> CLam qs (go b)
+        in go info (front (foldr (\(nm,c) b->CLet nm c b) body' (zip names copies)))
+      CLet k a b -> CLet k (go info a) (go info b)
+      CApp f a -> CApp (go info f) (go info a)
+      CIf c a b -> CIf (go info c) (go info a) (go info b)
+      CMk t v fs -> CMk t v (map (go info) fs)
+      CProj k a -> CProj k (go info a)
+      CTagEq t v a -> CTagEq t v (go info a)
+      CLam qs b -> CLam qs (go info b)
       _ -> e
     prefix x=case x of
       CLet k a b | CIf _ _ _<-a -> (id,x)
@@ -216,14 +241,11 @@ localProducts=M.map (\(ps,b)->(ps,go b))
       CLet _ a b -> [a,b]; CIf c a b -> [c,a,b]; CApp f a -> [f,a]; CMk _ _ fs -> fs
       CProj _ a -> [a]; CTagEq _ _ a -> [a]; CLam _ b -> [b]; _ -> []
     -- every use of t a projection of one of its n fields, or a test of
-    -- its shape (an if's condition: always true)
-    projectedOnly t sh@(tg,v,n) x=case x of
-      CProj i (CVar y) | y==t -> i>=0 && i<n
-      CIf (CTagEq tg' v' (CVar y)) a b | y==t -> (tg',v')==(tg,v) && projectedOnly t sh a && projectedOnly t sh b
-      CVar y -> y/=t
-      CLet k a b -> k/=t && projectedOnly t sh a && projectedOnly t sh b
-      CLam qs b -> t `notElem` qs && projectedOnly t sh b
-      _ -> all (projectedOnly t sh) (kids x)
+    -- its shape (an if's condition: always true); typed binders are unique,
+    -- so the function-wide walk speaks for t's scope
+    projectedOnly info t (tg,v,n)=case M.lookup t info of
+      Nothing -> True
+      Just (maxField,shapes,other) -> not other && maxField<n && all (==(tg,v)) (S.toList shapes)
     subst t sh@(tg,v,_) names x=let subst' = subst t sh names in case x of
       CIf (CTagEq tg' v' (CVar y)) a _ | y==t, (tg',v')==(tg,v) -> subst' a
       CProj i (CVar y) | y==t -> CVar (names!!i)

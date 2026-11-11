@@ -94,7 +94,8 @@ def families(n):
 # A spelling not listed is reported, not gated. Recorded 2026-11-03.
 #  - fused direct/let-bound pipelines and the scalar loops allocate nothing
 #    (the same gates as tests/check_list_fusion.py);
-#  - sum-count-pair's loop: 4 requests for "{s} {c}" plus the one final pair;
+#  - sum-count-pair's loop: 2 requests for "{s} {c}" (one String from its
+#    pieces, 2026-11-12) plus the one final pair;
 #  - materialize: descending range builders allocate just 500 result cells;
 #    the explicit loop still conses 500 then reverses. Both allocate a result pair.
 # Helper-wrapped scalar pipelines now share the zero-allocation gate.
@@ -102,8 +103,8 @@ def families(n):
 EXPECT = {
     ('sum-map-filter', 'helper'): 0, ('sum-map-filter', 'direct'): 0, ('sum-map-filter', 'let'): 0, ('sum-map-filter', 'loop'): 0,
     ('count-filter', 'helper'): 0, ('count-filter', 'direct'): 0, ('count-filter', 'let'): 0, ('count-filter', 'loop'): 0,
-    ('sum-count-pair', 'direct'): 5, ('sum-count-pair', 'let'): 5,
-    ('sum-count-pair', 'helper'): 5, ('sum-count-pair', 'loop'): 5,
+    ('sum-count-pair', 'direct'): 3, ('sum-count-pair', 'let'): 3,
+    ('sum-count-pair', 'helper'): 3, ('sum-count-pair', 'loop'): 3,
     ('materialize', 'direct'): 501, ('materialize', 'let'): 501,
     ('materialize', 'helper'): 501, ('materialize', 'loop'): 1001,
 }

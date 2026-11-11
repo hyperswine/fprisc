@@ -85,11 +85,14 @@ with tempfile.TemporaryDirectory(prefix="fpr-persistent-") as d:
                 # records are allocated each step), and the answer above holds
                 assert requests > 150000, (loop, requests)
                 continue
-            assert (copies > 0) == enabled, (loop, enabled, copies)
             if loop == "elements":
-                # records reused in place: one allocation a step (the tuple),
-                # not two (it was 120M without element reuse)
-                assert requests < 70_000_000, (loop, requests)
+                # records reused in place, and the step's tuple is gone too
+                # (local products, 2026-11-12): no scratch, so copy-out has
+                # nothing to copy (it was 120M without element reuse, 60M
+                # with it)
+                assert requests < 100_000, (loop, requests)
+                continue
+            assert (copies > 0) == enabled, (loop, enabled, copies)
             if loop == "history" and enabled:
                 # the versions share their tails: copy-out copies distinct cells
                 # (about 2n), not the n*n/2 a tree walk finds (4.2 GB unshared)

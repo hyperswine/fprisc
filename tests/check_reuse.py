@@ -24,7 +24,9 @@ def check_execution(run,run_cost,enabled):
     assert code==0,(out,err)
     result,ledger=out.splitlines()
     ledger=json.loads(ledger)
-    assert result=='100020000' and ledger['alloc_requests']==(10000 if enabled else 20000),(result,ledger)
+    # enabled: the loop's record never escapes, so local products leaves no
+    # cell at all (it was 10000 with reuse alone, 2026-11-12)
+    assert result=='100020000' and ledger['alloc_requests']==(0 if enabled else 20000),(result,ledger)
     return ledger
 
 # Keep the allocation ratchet specific to reuse: pair returns can independently
