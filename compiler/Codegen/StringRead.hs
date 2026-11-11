@@ -74,8 +74,8 @@ lowerRead builder plan = do
         StrCharAt _ s _ -> s
   -- a tagged Int is not a string, and a heap value whose header is not
   -- (T_STR, 0) is left to C: its diagnostics name the case
-  v TPred (OIsInt str) >>= guardNot
-  v TPred (OTagTest stringTypeId 0 str) >>= guard
+  -- one header word: OVariantTest answers False for a tagged Int too
+  v TPred (OVariantTest stringTypeId 0 str) >>= guard
   address <- v TAddr (OAddress str)
   count <- v TInt (OLoad TInt address stringLengthOffset)
   fast <- case plan of

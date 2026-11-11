@@ -388,8 +388,58 @@ selectBlock cfg fn tyMap b = do
         run more
       run (i : more) = selectInstr cfg tyMap i >> run more
       run [] = pure ()
-  run rest
-  selectTerm cfg fn b
+      -- a comparison whose only use is this block's branch: compare and
+      -- branch on the flags (no cset, no cbz)
+      fused = case (reverse rest, bTerm b) of
+        (Instr (Just (p, _)) op : _, TCondBr p' t [] e [])
+          | p == p', useCount p == 1, fusable op -> Just (op, t, e)
+        _ -> Nothing
+      fusable = \case OCmp {} -> True; OVariantTest {} -> True; _ -> False
+      -- a small constant this block makes for the comparison alone: an
+      -- immediate operand, and no register
+      immediateOf y = case [n | Instr (Just (v, _)) (OConstInt n) <- rest, v == y] of
+        [n] | n >= 0, n < 4096, useCount y == 1 -> Just n
+        _ -> Nothing
+      useCount v = length [() | blk <- fnBlocks fn, Instr _ op <- bInstrs blk, u <- opUses op, u == v]
+                 + length [() | blk <- fnBlocks fn, u <- termUses (bTerm blk), u == v]
+  case fused of
+    Just (op, t, e) -> do
+      let next = case dropWhile ((/= bId b) . bId) (fnBlocks fn) of
+            _ : n : _ -> Just (bId n)
+            _ -> Nothing
+          -- branch to t when the condition holds, to e otherwise, falling
+          -- through to whichever comes next
+          branch c c' = if Just e == next then emitI (bcond c (blockLabel t))
+                        else if Just t == next then emitI (bcond c' (blockLabel e))
+                        else emitI (bcond c (blockLabel t)) >> emitI (jump (blockLabel e))
+      case op of
+        OCmp o x y -> do
+          let imm = immediateOf y
+              dropped = [i | Just _ <- [imm], i@(Instr (Just (v, _)) (OConstInt _)) <- rest, v == y]
+          run (filter (`notElem` dropped) (init rest))
+          case imm of
+            Just n -> emitI (cmpi (vreg x) n)
+            Nothing -> emitI (cmp (vreg x) (vreg y))
+          branch (cmpCond o) (cmpCond (negateOp o))
+        OVariantTest tg c v -> do
+          run (init rest)
+          -- a tagged Int is no match; else the header word against the pair
+          bit <- freshV False
+          emitI (rri A.AndImmediate bit (vreg v) 1)
+          emitI (cbnz bit (blockLabel e))
+          hdr <- freshV False
+          want <- freshV False
+          emitI (plain (O.A64 A.LoadField) [any' hdr] [any' (vreg v), OI 0])
+          emitI (li want (headerWord tg c))
+          emitI (cmp hdr want)
+          branch O.Equal O.NotEqual
+        _ -> refuse "internal: an unfusable branch condition"
+    Nothing -> do
+      run rest
+      selectTerm cfg fn b
+  where
+    cmpCond = \case Lt -> O.Less; Gt -> O.Greater; Le -> O.LessEqual; Ge -> O.GreaterEqual; Eq -> O.Equal; Ne -> O.NotEqual
+    negateOp = \case Lt -> Ge; Le -> Gt; Gt -> Le; Ge -> Lt; Eq -> Ne; Ne -> Eq
 
 selectInstr :: A64Config -> M.Map VId Ty -> Instr -> Se ()
 selectInstr cfg _ (Instr d op) = case op of

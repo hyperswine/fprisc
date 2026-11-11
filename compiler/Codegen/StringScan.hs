@@ -74,7 +74,7 @@ versionScan fn = maybe fn build candidate
                         Instr _ (OLoadByte cursor 16) <- bInstrs b,
                         Just (OIndexByte a i) <- [op cursor], rawOf param i,
                         Just (OAddress s) <- [op a], outside s,
-                        any (\(_,o) -> o==OTagTest 9000 0 s) (M.elems defs),
+                        any (\(_,o) -> o==OTagTest 9000 0 s || o==OVariantTest 9000 0 s) (M.elems defs),
                         any (\v -> lengthOf s v) (M.keys defs)]
       if length arrivals == length (bParams header) then pure () else Nothing
       pure (pre,header,body,param,ty,arrivals !! slot,bound,unboxBound,str)
@@ -109,6 +109,7 @@ versionScan fn = maybe fn build candidate
         known b p = case op p of
           Just (OIsInt s) | s==str -> Just False
           Just (OTagTest 9000 0 s) | s==str -> Just True
+          Just (OVariantTest 9000 0 s) | s==str -> Just True -- StringRead's one-word guard
           Just (OCmp Ge i k) | dom body (bId b), rawOf param i, zero k -> Just True
           Just (OCmp Lt i n) | dom body (bId b), rawOf param i, lengthOf str n -> Just True
           _ -> Nothing

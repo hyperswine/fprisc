@@ -136,8 +136,13 @@ def main():
             body_off = fn_block(asm_off.read_text(), 'sumTree')
             assert 'tagno' not in body_on and 'tagdone' not in body_on, (target, body_on)
             # the Int check survives, then one 64-bit header load at +0
-            if target in ('x64', 'a64mac'):
+            if target == 'x64':
                 assert 'varno' in body_on, (target, body_on)
+            elif target == 'a64mac':
+                # out of line ('varno'), or fused into its branch (2026-11-12):
+                # the Int bit, then one header load at +0
+                assert 'varno' in body_on or (re.search(r'and (x\d+), (x\d+), #1\n\s+cbnz \1', body_on)
+                                              and re.search(r'ldu?r x\d+, \[x\d+(, #0)?\]', body_on)), (target, body_on)
             else:
                 assert re.search(r'andi \w+, \w+, 1\n\s+bnez', body_on) and re.search(r'ld \w+, 0\(', body_on), (target, body_on)
             if target in ('x64', 'a64mac'):

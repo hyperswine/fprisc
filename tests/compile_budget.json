@@ -15,16 +15,16 @@
   },
   "ghc-9.8.2 aarch64-apple-darwin": {
     "hello": {
-      "allocated_bytes": 1541609328,
-      "max_bytes_used": 27673248
+      "allocated_bytes": 1513005072,
+      "max_bytes_used": 47885272
     },
     "pos1": {
-      "allocated_bytes": 68706521192,
-      "max_bytes_used": 509262064
+      "allocated_bytes": 67432429848,
+      "max_bytes_used": 500311800
     },
     "std-live": {
-      "allocated_bytes": 33794322272,
-      "max_bytes_used": 386820872
+      "allocated_bytes": 32869025760,
+      "max_bytes_used": 357870528
     }
   }
 }
