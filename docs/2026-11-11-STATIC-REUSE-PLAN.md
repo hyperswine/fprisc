@@ -1,4 +1,4 @@
-# Static reuse: plan and first findings
+# Static reuse: plan, findings and the first increments
 
 Date: 11 November 2026. Kind: plan with measurements. Decision 5 of
 [the copy-out decisions](2026-11-11-COPY-OUT-DECISIONS.md): static reuse is the
@@ -81,3 +81,53 @@ held back from main. The patch is on branch `static-reuse` as its first commit.
 - The app suite's allocation requests drop on sim (target: one allocation per step for the
   element until increment 4, then none) and on csv and wordfreq after increment 5.
 - `run.py --ceilings` passes, and outputs stay byte-identical.
+
+## Status, later on 11 November (branch static-reuse)
+
+Increments 1 to 3 are done. The cause was not record construction itself;
+there were five blockers.
+
+1. **The initial list was not fresh.** A spine from `List.map` or a `gen`-style
+   builder is not a "builder" in the old sense. Fresh results (increment 2) plus
+   one more exit shape fix it: a TRMC builder's first step, which makes a fresh cell the
+   cursor worker's root and cursor. The fixture's `L.range` was always fresh, which is why it worked.
+2. **The size guards.** The fresh-result walk and the loop plan used the 256-node bound of the
+   other plans. A TRMC map with its element inlined, or a region's inner loop, is past
+   it. They now take 4096 and 2048; both walks are linear.
+3. **Copy-out regions on TRMC map entries.** A map entry frees nothing, but automatic copy-out
+   wrapped it, hiding it from the start plan. `ReceiveTurns` now declines copy-out for a loop that calls a
+   TRMC worker. Bounded state still gets its ordinary region.
+4. **The cycle re-entered the borrowing loop** (increment 3). The consuming inner loop's cold
+   edge now calls a cycle twin that re-enters it.
+5. **A memory-safety hazard, now closed.** A consuming twin writes a new record (in the arena)
+   into a reused cell that may lie outside the region, or in the retained state
+   slab. Copy-out's outside rule (a9006074) and retained generations do not
+   descend such cells, so the record was lost at the reset.
+   - The fix: every cycle a twin reaches carries `REGION_MUT_BIT` on the
+     sequence number, and the runtime marks the region mutating. A mutating region's copy-out descends everything.
+   - The test: `persistent_aliases records` returned 291296522 instead of 379990000 without the fix, and passes with it.
+   - On main (`33c77f5a`) the hazard is latent. Copy-out plus spine reuse does not compose there,
+     because of blockers 2 and 3, so the same program is correct.
+
+Allocation requests, instructions retired and peak RSS, with reuse against `FPR_NO_REUSE=1` (copy-out on in both):
+
+| Workload | Reuse on | Reuse off |
+|---|---|---|
+| sim | 120.1M, 21.4 G, 81 MB | 160.1M, 33.1 G, 97 MB |
+| csv | 33.2M, 23.3 G | 34.2M, 23.5 G |
+| wordfreq | 35.0M, 28.7 G | 37.0M, 29.2 G |
+| records, treemap | unchanged | |
+| format | 20.1M, 6.4-6.9 G | 20.1M, 6.3 G |
+
+- **format** varies with reuse on (+5% on average, no allocation change), from std-unit code. Open.
+- **The record loop** in `persistent_aliases`: 120.0M to 60.1M requests, 17.5 to 9.1 G instructions.
+
+`check_base` passes, apart from the four checks red at 57201f0. Also passing: check_consuming_reuse,
+check_reuse, check_persistent_reclamation (records added), check_state_generations, check_digest_vectors and
+check_compiler_options. The app ceilings pass, and sim's ceiling drops to 125 MB.
+
+What remains:
+- **Increment 4: element reuse.** It is now the whole of sim's gap: three allocations
+  a step (the record, and `bounce`'s two tuples, which unboxed pair returns would remove).
+- **Increment 5: consuming `Map` updates.**
+- **format's variance.**
