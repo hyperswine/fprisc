@@ -29,6 +29,9 @@ be several times slower than its peers.
   one. The documented Base direction (regions, no reference counts) and the
   "ARC with reuse" direction discussed on 9 November disagree; that needs a
   decision (section "Decisions needed").
+  *Status (11 November): decided. Pursue (a) static in-place reuse of unique
+  cells, with (b) regions with copy-out as the fallback; (c) precise ARC in
+  Base is not chosen. See [memory reclamation intent](2026-11-11-MEMORY-RECLAMATION-INTENT.md).*
 - **Data structures are the second gap and are not in the documents at all.**
   There is no mutable hash map, `Map.update` walks the tree twice, and
   `List.sortWith` is a list merge sort. These fixes are library and runtime
@@ -195,7 +198,12 @@ Goal: application loops whose state is a list, map or tree run in memory
 proportional to their live data, with no annotation, and the WCET/`live`
 bounds stay sound.
 
-The candidate mechanisms, none decided:
+*Status (11 November): decided. Pursue (a) and (b) together; (c) is not
+chosen. The [memory reclamation intent](2026-11-11-MEMORY-RECLAMATION-INTENT.md)
+records the composition, phase placement, WCET treatment, gates, flags
+and the 11 November baseline numbers.*
+
+The candidate mechanisms, decided as (a) then (b) on 11 November 2026:
 
 - **(a) Static in-place reuse of uniquely owned cells**, Perceus-style but
   proved at compile time, extending `Reuse.hs` and the consuming workers from
@@ -210,14 +218,14 @@ The candidate mechanisms, none decided:
   longer.
 - **(c) Precise ARC with reuse in Base** (Proposal B of 12 October), which the
   regions proposal set aside for count traffic, code size and its need for
-  borrowed parameters.
+  borrowed parameters. Not chosen on 11 November.
 
 Phase placement: the decision and a measurement plan belong now. Mechanism
 (a) is a P3 consumer of P1's uniqueness/lifetime domain ("Escape, aliasing,
 uniqueness and lifetimes: scalar replacement, reuse, regions"); (b) is P6
-region-room placement plus runtime copy-out; (c) is a runtime and ABI revision
-that must follow P3 and requalify QOS. Each lands with its own `FPR_NO_*` flag,
-the 19-entry corpus drift explanation and the QOS pairing gate.
+region-room placement plus runtime copy-out. (c) is not scheduled. Each of
+(a) and (b) lands with its own `FPR_NO_*` flag, the 19-entry corpus drift
+explanation and the QOS pairing gate.
 
 Gates: RSS on csv and wordfreq grows no faster than the input (2x input gives
 at most about 2x RSS, not 2x garbage); sim RSS flat over steps; the declared
@@ -295,11 +303,11 @@ Gate: `fib` worker instruction count and the checked-C ratio (1.90 today).
 | 2 | `Map.alter`, C sort (`List.sortWith`, `Vec.sortWith`) | std/runtime | - |
 | 3 | Close four ownership probes; audit in CI | frontend | - |
 | 4 | `MutMap` with hash primitives and `freeze` | std/runtime | 3 |
-| 5 | Memory reclamation decision and measurement plan | decision | 1 |
+| 5 | Memory reclamation decision and measurement plan (decided 11 November: (a)+(b); [intent](2026-11-11-MEMORY-RECLAMATION-INTENT.md)) | decision | 1 |
 | 6 | P2 completion | P2 | in progress |
 | 7 | Backend selection and frames | backend | - |
 | 8 | P3 slices with Option/Result/tuple returns, C1 2a, C2 on base | P3 | 6 |
-| 9 | Reclamation implementation | P1 + P3 (a), P6 (b) or runtime (c) | 5, 8 |
+| 9 | Reclamation implementation | P1 + P3 (a), P6 (b) | 5, 8 |
 | 10 | P5 folding, range discharge with P1 summaries, untagged loop Ints | P1, P5 | 6 |
 | 11 | P6 composed work, then register fuel with QOS | P6 | - |
 | 12 | String slices, if the investigation favours them | std/runtime | 9 |
@@ -333,8 +341,9 @@ These can be made small but not zero:
 - **Persistent data by default.** Code that genuinely shares old versions pays
   for keeping them. Linear types (`Vector`, `MutMap`) and proved uniqueness
   recover in-place cost where ownership is clear.
-- **Reclamation work.** Region copy-out, reuse checks or counts, whichever the
-  memory decision chooses, cost something per cycle or per object.
+- **Reclamation work.** Region copy-out or reuse checks, per the
+  [11 November intent](2026-11-11-MEMORY-RECLAMATION-INTENT.md), cost
+  something per cycle or per object.
 
 Realistic direction, a hypothesis rather than a measurement: about C on
 numeric and array code over linear or unique data, and 1.5-3x C on
@@ -357,11 +366,11 @@ allocation-heavy functional code, where OCaml and GHC sit today.
 
 ## Decisions needed
 
-1. **Memory model for unbounded persistent state**: (a) static in-place reuse,
-   (b) regions with copy-out for list/tree state, (c) precise ARC with reuse in
-   Base, or a combination. The 23 October regions proposal set (c) aside; the
-   9 November discussion assumed it. One of the two needs to be recorded as
-   superseded.
+1. **Memory model for unbounded persistent state**: **decided 11 November
+   2026.** Pursue (a) static in-place reuse and (b) regions with copy-out
+   for list/tree state; (c) precise ARC with reuse in Base is not chosen,
+   consistent with the 23 October regions proposal. See
+   [memory reclamation intent](2026-11-11-MEMORY-RECLAMATION-INTENT.md).
 2. **Chunked fuel**: still blocked on its proof (fixed costs 4b); this page
    does not schedule it.
 3. **Register fuel on AArch64** (fixed costs, open question 1): one
