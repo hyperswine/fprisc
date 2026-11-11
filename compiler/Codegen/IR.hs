@@ -203,7 +203,7 @@ data Op
   | OApply VId [VId] -- TVal, TVal.. -> TVal: the generic application through the runtime (fpr_applyN): partial, over-saturated, or of a computed head; allocates PAPs in the runtime, calls anything
   | OKernelArith ArithOp VId VId -- checked TInt arithmetic with the vector-kernel overflow/zero diagnostics
   | OArith ArithOp VId VId -- TInt TInt -> TInt; traps in program order with the primitive's message
-  | OArithU ArithOp VId VId -- TInt TInt -> TInt, no overflow check: a difference-bound proof (Codegen.Interval) showed the result always fits; only Add/Sub are produced
+  | OArithU ArithOp VId VId -- TInt TInt -> TInt, proven not to trap: no overflow check (Add/Sub: a difference-bound proof, Codegen.Interval; Div by a literal other than 0 and -1, and the Mul/Sub of a remainder by it: Simplify.foldDivisors), no zero test
   | OBit BitOp VId VId -- TInt TInt -> TInt: and, or, xor of the untagged values
   | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
   | OCmp CmpOp VId VId -- TInt TInt -> TPred
@@ -327,7 +327,7 @@ opEffect = \case
   OApply _ _ -> AnyEffect
   OKernelArith _ _ _ -> MayTrap
   OArith _ _ _ -> MayTrap
-  OArithU o _ _ -> if o == Div then MayTrap else Pure -- a zero divisor still traps; the proof removes only the fit check
+  OArithU _ _ _ -> Pure -- proven: no zero divisor, no overflow
   OBit _ _ _ -> Pure
   OShift _ _ _ -> MayTrap
   OCmp _ _ _ -> Pure

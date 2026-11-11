@@ -220,8 +220,8 @@ callFn width program name args = do
           y <- int env b
           r <- arith width o x y
           pure (Just (VInt r))
-        -- the difference-bound proof (Codegen.Interval) already ruled the
-        -- overflow out; a zero divisor keeps the primitive's trap
+        -- proven not to trap (Codegen.Interval, Simplify.foldDivisors); the
+        -- evaluator still checks, so a wrong proof shows as a trap here
         OArithU o a b -> do
           x <- int env a
           y <- int env b

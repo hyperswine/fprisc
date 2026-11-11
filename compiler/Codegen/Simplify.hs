@@ -63,6 +63,7 @@ passesWith options=
     ++ [("discharge-proven-checks", dropDeadPure . discharge width) | Just width <- [intervalWidth options]]
     ++ [("share-pure-across-blocks", dropDeadPure . sharePureAcrossBlocks (inlineFloats options)) | intervalWidth options /= Nothing]
     ++ [("version-string-scan", dropDeadPure . versionScan) | stringScan options]
+    ++ [("fold-constant-divisors", dropDeadPure . foldDivisors)]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
 
 -- the simplified function and the number of instructions it lost
@@ -328,3 +329,34 @@ fuseFloatTrees fn = fn {fnBlocks = map blk (fnBlocks fn)}
        in if ftreeRegisters whole <= ftreeScratch && whole /= original then (whole, True) else (original, False)
     graft cands (FLeaf v) = M.findWithDefault (FLeaf v) v cands
     graft cands (FNode o x y) = FNode o (graft cands x) (graft cands y)
+
+-- Division by a literal. q = x / d with d a literal other than 0 and -1
+-- cannot trap (no zero divisor) and cannot overflow (|q| <= |x|); then
+-- p = q * d cannot overflow (|p| <= |x|), and x - p, the remainder, cannot
+-- either (|x - p| < |d|). `%` reaches here as exactly that Div/Mul/Sub, so
+-- `x % 2` loses its zero test, its fit tests and its second division.
+-- First traps are unchanged: none of the three could trap.
+foldDivisors :: Fn -> Fn
+foldDivisors fn=fn {fnBlocks=map block (fnBlocks fn)}
+  where
+    defs=M.fromList [(v,o) | b<-fnBlocks fn, Instr (Just (v,_)) o<-bInstrs b]
+    literal v=case M.lookup v defs of Just (OConstInt d) -> Just d; _ -> Nothing
+    safe d=d/=0 && d/=(-1)
+    quotient v=case M.lookup v defs of
+      Just (OArith Div x b) | Just d<-literal b, safe d -> Just (x,d)
+      Just (OArithU Div x b) | Just d<-literal b, safe d -> Just (x,d)
+      _ -> Nothing
+    -- q * d (either order), q a quotient of x by d
+    product' v=case M.lookup v defs of
+      Just o | Just (l,r)<-mulOf o -> case (quotient l,literal r,quotient r,literal l) of
+        (Just (x,d),Just d',_,_) | d==d' -> Just x
+        (_,_,Just (x,d),Just d') | d==d' -> Just x
+        _ -> Nothing
+      _ -> Nothing
+    mulOf o=case o of OArith Mul l r -> Just (l,r); OArithU Mul l r -> Just (l,r); _ -> Nothing
+    block b=b {bInstrs=map instr (bInstrs b)}
+    instr i=case i of
+      Instr d@(Just _) (OArith Div x b) | Just k<-literal b, safe k -> Instr d (OArithU Div x b)
+      Instr d@(Just (v,_)) (OArith Mul l r) | Just _<-product' v -> Instr d (OArithU Mul l r)
+      Instr d@(Just _) (OArith Sub x p) | Just x'<-product' p, x'==x -> Instr d (OArithU Sub x p)
+      _ -> i

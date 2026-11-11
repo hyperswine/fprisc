@@ -29,7 +29,7 @@ data OptimizationOptions = OptimizationOptions
     optMapBodies :: Prog }
   deriving (Eq, Show)
 
-data CorePass = FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | BuildStrings | PairReturns
+data CorePass = LocalProducts | FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | BuildStrings | PairReturns
   deriving (Eq, Show)
 
 data PassReport = PassReport
@@ -62,11 +62,14 @@ optimizeCoreWithProducts :: ProductParameters -> S.Set Name -> Prog -> Optimizat
 optimizeCoreWithProducts products checked imports opts elide input = do
   verifyPassResult input input M.empty
   foldM run (OptimizedCore input M.empty [])
-    [FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BuildStrings, PairReturns]
+    [LocalProducts, FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BuildStrings, PairReturns]
   where
     run state pass = do
       let before = optimizedProgram state
           (after,sigs,notes,enabled) = case pass of
+            -- a tuple built in each branch and taken apart at once: its
+            -- fields, each from its own copy of the (cheap, pure) branches
+            LocalProducts -> (if optReuse opts then localProducts before else before,optimizedSignatures state,[],optReuse opts)
             FuseVectors -> let (p,ns) = if optFusion opts then fuseCompatibilityWithImports (checkedKinds (M.union before imports) products) checked imports before else (before,[])
                            in (p,optimizedSignatures state,ns,optFusion opts)
             MakeWorkers -> let fields = optWorkers opts && optFieldWorkers opts
@@ -142,3 +145,103 @@ buildStrings=M.map (\(ps,b)->(ps,go b))
     unstr x=x
     -- runtime/fpr.h: Tup2 4, Tup3 5, Tup4..Tup8 10..14, wider T_TUPN + n
     tupleTid n | n==2=4 | n==3=5 | n<=8=n+6 | otherwise=tupWideBase+n
+
+-- Local products. A let whose value is a tree of lets and ifs ending in one
+-- constructor shape (a tuple, a record), used only through projections,
+-- never needs the cell: each field gets a let of its own, over a copy of
+-- the tree that keeps that field. Only for trees that are cheap and pure
+-- (arithmetic, comparisons, projections, tests, ticks; no call, no
+-- allocation): the copies repeat that work instead of allocating. The
+-- first copy evaluates what the original did up to its first field, so
+-- the first trap is the original's. (An inlined pair-returning helper,
+-- sim's bounce, leaves this shape.)
+localProducts :: Prog -> Prog
+localProducts=M.map (\(ps,b)->(ps,go b))
+  where
+    go e=case e of
+      -- the lets in front of the branches run once, outside (typed
+      -- binders are unique: floating them captures nothing); only the
+      -- branching part is copied
+      CLet t rhs body | (front,tree)<-prefix rhs, Just sh@(_,_,n)<-shape tree, n>=1, cheapTree tree,
+                        size tree<=64, projectedOnly t sh body ->
+        let names=[t++"#"++show i | i<-[0..n-1]]
+            copies=[rename (t++"#"++show i++".") M.empty (leaves (!!i) tree) | i<-[0..n-1]]
+            body'=subst t sh names body
+        in go (front (foldr (\(nm,c) b->CLet nm c b) body' (zip names copies)))
+      CLet k a b -> CLet k (go a) (go b)
+      CApp f a -> CApp (go f) (go a)
+      CIf c a b -> CIf (go c) (go a) (go b)
+      CMk t v fs -> CMk t v (map go fs)
+      CProj k a -> CProj k (go a)
+      CTagEq t v a -> CTagEq t v (go a)
+      CLam qs b -> CLam qs (go b)
+      _ -> e
+    prefix x=case x of
+      CLet k a b | CIf _ _ _<-a -> (id,x)
+                 | otherwise -> let (f,t')=prefix b in (CLet k a . f,t')
+      _ -> (id,x)
+    shape x=case x of
+      CLet _ _ b -> shape b
+      CIf _ a b -> case (shape a,shape b) of
+        (Just sa,Just sb) | sa==sb -> Just sa
+        (Just sa,Nothing) | isErr b -> Just sa
+        (Nothing,Just sb) | isErr a -> Just sb
+        _ -> Nothing
+      CMk t v fs -> Just (t,v,length fs)
+      _ -> Nothing
+    isErr x=case x of CErr _ -> True; CLet _ _ b -> isErr b; _ -> False
+    leaves f x=case x of
+      CLet k a b -> CLet k a (leaves f b)
+      CIf c a b -> CIf c (leaves f a) (leaves f b)
+      CMk _ _ fs -> f fs
+      _ -> x
+    cheapTree x=case x of
+      CLet _ a b -> cheap a && cheapTree b
+      CIf c a b -> cheap c && cheapTree a && cheapTree b
+      CMk _ _ fs -> all cheap fs
+      CErr _ -> True
+      _ -> False
+    cheap x=case x of
+      CVar _ -> True
+      CInt _ -> True
+      CProj _ a -> cheap a
+      CTagEq _ _ a -> cheap a
+      CLet _ a b -> cheap a && cheap b
+      CIf c a b -> cheap c && cheap a && cheap b
+      CApp (CVar "$fuel") (CInt _) -> True
+      CApp (CApp (CVar op) a) b | op `elem` ["+","-","*","/","==","!=","<",">","<=",">="] -> cheap a && cheap b
+      _ -> False
+    size x=1+sum (map size (kids x))
+    kids x=case x of
+      CLet _ a b -> [a,b]; CIf c a b -> [c,a,b]; CApp f a -> [f,a]; CMk _ _ fs -> fs
+      CProj _ a -> [a]; CTagEq _ _ a -> [a]; CLam _ b -> [b]; _ -> []
+    -- every use of t a projection of one of its n fields, or a test of
+    -- its shape (an if's condition: always true)
+    projectedOnly t sh@(tg,v,n) x=case x of
+      CProj i (CVar y) | y==t -> i>=0 && i<n
+      CIf (CTagEq tg' v' (CVar y)) a b | y==t -> (tg',v')==(tg,v) && projectedOnly t sh a && projectedOnly t sh b
+      CVar y -> y/=t
+      CLet k a b -> k/=t && projectedOnly t sh a && projectedOnly t sh b
+      CLam qs b -> t `notElem` qs && projectedOnly t sh b
+      _ -> all (projectedOnly t sh) (kids x)
+    subst t sh@(tg,v,_) names x=let subst' = subst t sh names in case x of
+      CIf (CTagEq tg' v' (CVar y)) a _ | y==t, (tg',v')==(tg,v) -> subst' a
+      CProj i (CVar y) | y==t -> CVar (names!!i)
+      CLet k a b -> CLet k (subst' a) (subst' b)
+      CApp f a -> CApp (subst' f) (subst' a)
+      CIf c a b -> CIf (subst' c) (subst' a) (subst' b)
+      CMk tg2 v2 fs -> CMk tg2 v2 (map subst' fs)
+      CProj k a -> CProj k (subst' a)
+      CTagEq tg2 v2 a -> CTagEq tg2 v2 (subst' a)
+      CLam qs b -> CLam qs (subst' b)
+      _ -> x
+    -- a copy's binders under a prefix of its own (binders stay unique)
+    rename pre env x=case x of
+      CVar v -> CVar (M.findWithDefault v v env)
+      CLet k a b -> let k'=pre++k in CLet k' (rename pre env a) (rename pre (M.insert k k' env) b)
+      CApp f a -> CApp (rename pre env f) (rename pre env a)
+      CIf c a b -> CIf (rename pre env c) (rename pre env a) (rename pre env b)
+      CMk tg v fs -> CMk tg v (map (rename pre env) fs)
+      CProj k a -> CProj k (rename pre env a)
+      CTagEq tg v a -> CTagEq tg v (rename pre env a)
+      _ -> x

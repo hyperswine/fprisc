@@ -515,11 +515,12 @@ selectInstr cfg _ (Instr d op) = case op of
     emitL done
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
-  -- the difference-bound proof removed the fit check; Mul/Div keep theirs
+  -- proven not to trap: the bare instruction
   OArithU o a b -> def (\r -> case o of
     Add -> emitI (rrr A.Add r (vreg a) (vreg b))
     Sub -> emitI (rrr A.Subtract r (vreg a) (vreg b))
-    _ -> arith False o r (vreg a) (vreg b))
+    Mul -> emitI (rrr A.Multiply r (vreg a) (vreg b))
+    Div -> emitI (rrr A.Divide r (vreg a) (vreg b)))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
   OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> A.And; BOr -> A.Or; BXor -> A.Xor) r (vreg a) (vreg b)))
   -- F64 on the bits: d16/d17 live only inside the expansion (no float

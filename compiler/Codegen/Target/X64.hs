@@ -457,7 +457,8 @@ selectInstr cfg _ (Instr d op) = case op of
     emitL done
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
-  -- the difference-bound proof removed the fit check; Mul/Div keep theirs
+  -- proven not to trap; Mul/Div keep the checked form here (correct, not
+  -- yet the bare instruction)
   OArithU o a b -> def (\r -> case o of
     Add -> emitI (rrr O.Add r (vreg a) (vreg b))
     Sub -> emitI (rrr O.Subtract r (vreg a) (vreg b))

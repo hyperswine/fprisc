@@ -1,0 +1,26 @@
+# Local products (Core.Opt.Pipeline localProducts) and string pieces
+# (buildStrings): each case prints the same as the build with both off.
+List = use "std/list".
+Pt = { a : Int, b : Int }.
+clamp : Int -> Int -> (Int, Int) .
+clamp p v = if p < 0 then (0 - p, 0 - v) else if p > 100 then (200 - p, 0 - v) else (p, v).
+# a record shape, three branches
+shapeOf : Int -> Pt .
+shapeOf x = if x % 3 == 0 then {a = x, b = 1} else if x % 3 == 1 then {a = 0 - x, b = 2} else {a = x * 2, b = 3}.
+# a field that traps (division by zero) only in its own copy
+divPair : Int -> Int -> (Int, Int) .
+divPair x d = if x > 0 then (x + 1, x / d) else (x - 1, 0).
+# the tuple escapes (stored): must stay a cell
+keepPairs : Int -> List (Int, Int) -> List (Int, Int) .
+keepPairs x acc = t = clamp x 7; t :: acc.
+sumClamp : (n : Int) -> (i : Int | measure (n - i)) -> Int -> Int .
+sumClamp n i s = if i >= n then s else
+  (p, v) = clamp (i * 37 % 300 - 100) i;
+  r = shapeOf i;
+  sumClamp n (i + 1) (s + p * 3 + v + r.a * 5 + r.b).
+main = case Sys.args Unit of
+    ["sum", count] -> print "{sumClamp (parseInt count) 0 0}"
+  | ["keep"] -> print "{List.fold (fn s t -> case t of (p, v) -> s + p + v) 0 (List.fold (fn acc x -> keepPairs x acc) Nil (List.range 0 1000))}"
+  | ["divs", d] -> (case divPair 5 (parseInt d) of (q, r) -> print "{q} {r}")
+  | ["pieces"] -> print "a{1}b{"two"}c{3.5}d{(1, [2, 3])}e{{a = 1, b = 2}}f{-7}g{List.range 0 3}h"
+  | _ -> error "expected sum, keepPairs, divPair or pieces".
