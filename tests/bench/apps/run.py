@@ -5,12 +5,15 @@
   sh build_peers.sh                    bin/<w>.{c,rust,go,ocaml,java}
   python3 run.py --build               bin-fpr/<w>.fpr (and variants) with $FPR or `fpr`
   python3 run.py [--runs 5] [--out results/X.json] [w ...]
+  python3 run.py --ceilings            the FP-RISC binaries once each: output, and
+                                       peak RSS at most ceilings.json (exit 1 above)
 
 One warm-up round, then --runs rounds in shuffled interleaved order. Every run's
 stdout must equal expected/<w>.out (a wrong answer is a failure, not a time).
 Wall time is the median; peak RSS is the median maximum resident set size
-(macOS `time -l`, Linux GNU `time -f %M`). Peers are informational, as in the
-reference audit: C is unchecked."""
+(the child's rusage from wait4). Peers are informational, as in the
+reference audit: C is unchecked. The ceilings gate only FP-RISC (decision 6,
+docs/2026-11-11-COPY-OUT-DECISIONS.md)."""
 import argparse, json, os, platform, random, re, shutil, statistics, subprocess, sys, tempfile, time
 from pathlib import Path
 
@@ -37,20 +40,37 @@ def build(fpr, ws, env_extra):
             print(f'built {out.name} in {time.time() - t0:.1f} s', flush=True)
 
 def timed(cmd):
-    with tempfile.NamedTemporaryFile() as tf:
-        if platform.system() == 'Darwin':
-            tcmd = ['/usr/bin/time', '-l', '-o', tf.name]
-        else:
-            tcmd = [os.environ.get('GNU_TIME', '/usr/bin/time'), '-f', '%M', '-o', tf.name]
+    """exit code, stdout, wall seconds, peak RSS in MB of this one child"""
+    with tempfile.TemporaryFile() as out:
         t0 = time.perf_counter()
-        p = subprocess.run(tcmd + cmd, capture_output=True)
+        p = subprocess.Popen(cmd, stdout=out, stderr=subprocess.DEVNULL)
+        _, status, usage = os.wait4(p.pid, 0)
         dt = time.perf_counter() - t0
-        txt = open(tf.name).read()
-    if platform.system() == 'Darwin':
-        rss = int(re.search(r'(\d+)\s+maximum resident set size', txt).group(1)) / 2**20
-    else:
-        rss = int(txt.split()[-1]) / 1024
-    return p.returncode, p.stdout, dt, rss
+        p.returncode = os.waitstatus_to_exitcode(status)
+        out.seek(0)
+        stdout = out.read()
+    # ru_maxrss is bytes on macOS, KiB on Linux
+    rss = usage.ru_maxrss / (2**20 if platform.system() == 'Darwin' else 1024)
+    return p.returncode, stdout, dt, rss
+
+def ceilings(ws):
+    limits = json.load(open(HERE / 'ceilings.json'))['ceilings_mb']
+    failed = 0
+    for w in ws:
+        for label in ['fpr', *VARIANTS.get(w, {})]:
+            exe = FBIN / f'{w}.{label}'
+            key = w if label == 'fpr' else f'{w}.{label}'
+            if key not in limits:
+                continue
+            if not exe.exists():
+                sys.exit(f'{exe.name}: not built (run.py --build)')
+            rc, out, dt, rss = timed([str(exe)] + ARGS.get(w, []))
+            ok = rc == 0 and out == (EXP / f'{w}.out').read_bytes() and rss <= limits[key]
+            failed += not ok
+            print(f'{key:22s} {rss:7.0f} MB (ceiling {limits[key]}) {dt:6.2f} s  {"PASS" if ok else "FAIL" if rc == 0 and out == (EXP / f"{w}.out").read_bytes() else "WRONG OUTPUT"}')
+    if failed:
+        sys.exit(f'app ceilings: {failed} over their ceiling or wrong')
+    print('app ceilings: every FP-RISC workload within its peak-RSS ceiling PASS')
 
 def main():
     ap = argparse.ArgumentParser()
@@ -59,8 +79,12 @@ def main():
     ap.add_argument('--build', action='store_true')
     ap.add_argument('--out')
     ap.add_argument('--env', action='append', default=[], help='NAME=VALUE for fpr build')
+    ap.add_argument('--ceilings', action='store_true', help='gate peak RSS against ceilings.json')
     a = ap.parse_args()
     ws = a.workloads or WORKLOADS
+    if a.ceilings:
+        ceilings(ws)
+        return
     if a.build:
         build(os.environ.get('FPR', 'fpr'), ws, dict(e.split('=', 1) for e in a.env))
         return

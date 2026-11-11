@@ -198,6 +198,14 @@ jobs:
         env:
           RELIABILITY_FULL: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: FPR_HOME="$GITHUB_WORKSPACE" python3 -u tests/reliability/run_all.py
+      # peak-RSS ceilings for the six application workloads (FP-RISC builds
+      # only; decision 6 of docs/2026-11-11-COPY-OUT-DECISIONS.md; under a minute)
+      - name: app memory ceilings
+        run: |
+          cd tests/bench/apps
+          python3 gen.py
+          FPR="$GITHUB_WORKSPACE/fpr" FPR_HOME="$GITHUB_WORKSPACE" python3 -u run.py --build
+          python3 -u run.py --ceilings
       - name: fuzz failures (for minimization)
         if: failure()
         uses: actions/upload-artifact@v4
