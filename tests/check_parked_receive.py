@@ -110,6 +110,11 @@ def main():
         assert actors.count(marker)==1
         actors=actors.replace('#include "fpr.h"','#include "fpr.h"\nextern void fpr_test_parked(void *, uw);',1)
         actors=actors.replace(marker,'      if (__atomic_load_n(&n->var, __ATOMIC_ACQUIRE)==ST_BLOCKED) fpr_test_parked(n,fpr_acb_rx(n)->n);\n'+marker)
+        # a direct handoff parks without a pass of the hart loop: the actor that
+        # resumes clears the parked actor's running mark (resumed())
+        handoff='    __atomic_store_n(&from->running, 0, __ATOMIC_RELEASE);'
+        assert actors.count(handoff)==1
+        actors=actors.replace(handoff,'    if (__atomic_load_n(&from->var, __ATOMIC_ACQUIRE)==ST_BLOCKED) fpr_test_parked(from,fpr_acb_rx(from)->n);\n'+handoff)
         (tmp/'actors.c').write_text(actors)
         cc=tmp/'cc';cc.write_text('#!/usr/bin/env python3\nimport os,sys\na=['+repr(str(tmp/'actors.c'))+' if x.endswith("/runtime/actors.c") else x for x in sys.argv[1:]]\nos.execvp("cc",["cc",*a])\n');cc.chmod(0o755)
         env=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=os.environ.get('XDG_CACHE_HOME', str(tmp/'cache')))
@@ -126,12 +131,14 @@ def main():
                         assert p.returncode==0 and p.stdout==mode+' PASS\n',(disabled,harts,mode,run,p.stdout,p.stderr)
                 print(f'park boundary: no-inline={disabled} harts={harts}: any/sender/death/Result readiness, unrelated queued messages, exact sender effects, copied state and live mid-turn roots PASS',flush=True)
         # Ordinary call selection carries the same boundary contract on each
-        # managed ISA; QOS process images keep their existing trampoline.
+        # managed ISA. QOS app images take the receive-loop form too since
+        # 2026-11-09 (they own their heap; the trampoline cost Portable ~120 ns
+        # per round trip).
         for target in ('a64','x64','rv64','rv32','qa64','qx64','qrv64'):
             assembly=tmp/(target+'.s')
             p=subprocess.run([args.compiler,'compile',f'--target={target}',program,assembly],cwd=ROOT,env=env,capture_output=True,text=True,timeout=180)
             assert p.returncode==0,p.stdout+p.stderr
             emitted=assembly.read_text()
-            assert ('fpr_g__x24receiveReady' in emitted)==(target in ('a64','x64','rv64','rv32')),target
+            assert 'fpr_g__x24receiveReady' in emitted,target
             print(f'park boundary emission: {target} PASS',flush=True)
 if __name__=='__main__': main()
