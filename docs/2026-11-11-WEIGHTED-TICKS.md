@@ -1,7 +1,7 @@
 # Weighted ticks: fuel counts instructions
 
 Date: 11 November 2026. Kind: implementation record. Branch `weighted-ticks`,
-on top of [register fuel](2026-11-10-REGISTER-FUEL.md). `codegenRev` 212.
+on top of [register fuel](2026-11-10-REGISTER-FUEL.md). `codegenRev` 218 on main (212 on the branch it was written on).
 Rollback: `FPR_NO_TICK_WEIGHT=1` (build-cache suffix `-notickweight`).
 
 Decided 10 November: a tick charges the worst-case instruction count of the
