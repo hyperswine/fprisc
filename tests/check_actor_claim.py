@@ -27,6 +27,14 @@ void fpr_cpanic(const char *why) { fprintf(stderr, "%s\n", why); abort(); }
  * the harness has no turns, so the root is counted and nothing else */
 static uw rx_pushed;
 void fpr_rx_push(struct fpr_acb *a, V m) { (void)a; (void)m; rx_pushed++; }
+/* take_at reads the current hart and unpacks slot-carried messages; the
+ * harness rings have no cell area, so the unpackers are never reached */
+#ifndef fpr_posix_hart
+__thread fpr_hart_t *fpr_posix_hart;
+#endif
+static fpr_hart_t harness_hart;
+uw fpr_msg_inline_total(V v) { (void)v; fpr_cpanic("harness: slot-carried message"); return 0; }
+V fpr_msg_inline_take(V v) { fpr_cpanic("harness: slot-carried message"); return v; }
 static acb_t winner, loser, previous;
 static int inject;
 static struct { hdr_t h; V value; } result = {{T_RESULT, 0}, 0};
@@ -40,6 +48,7 @@ static void claim_interleave(void *av, unsigned long key) {
   __atomic_store_n(&c->rt, rt + 1, __ATOMIC_RELEASE);
 }
 int main(void) {
+  fpr_posix_hart = &harness_hart;
   /* Also cover dead, drained slot reuse with wrapped, nonzero counters. */
   for (int reclaimed = 0; reclaimed < 2; reclaimed++) {
     acb_t a = {0}; chan_t ch[MAXSND] = {0};
