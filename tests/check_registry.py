@@ -164,6 +164,7 @@ BASE.append(Check('tests/check_layout_table.py:compact', 'tests/check_layout_tab
 BASE.append(Check('tests/check_bump_refills.py:compact', 'tests/check_bump_refills.py', 600, args=('--compact',)))
 base('tests/check_tick_batch.py', 300)
 base('tests/check_spawn_scaling.py', 600, alone=True)
+base('tests/check_inline_messages.py', 600)
 base('tests/check_tick_weights.py', 300)
 base('tests/check_ret2.py', 600)
 base('tests/check_product_returns.py', 900)
