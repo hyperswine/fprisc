@@ -793,8 +793,7 @@ emitFnX64WithSymbols symbols cfg fn = do
           "    movq %r11, %"++d, "    ret"] | ((d,raw),label)<-M.toList refills]
       renderOne = renderItem cfg ly large name saveLines restores refills
       reserveToks = [TIns (length (filter isInstruction reserve)) FNext False 1 | large]
-      weighted = weighTicks (polTickWeight (cfgPolicy cfg)) reserveToks renderOne (tokOf refills) body
-      rendered = [(it, renderOne it) | it <- weighted]
+      rendered = weighTicks (polTickWeight (cfgPolicy cfg)) reserveToks renderOne (tokOf refills) body
       report = analyse (reserveToks ++ concatMap (uncurry (tokOf refills)) rendered)
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
                   ++ (if large then " reserve=yes" else "")

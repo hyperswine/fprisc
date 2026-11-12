@@ -577,8 +577,7 @@ emitFnRVWithSymbols symbols cfg fn = do
           "    mv "++d++", t3", "    ret"] | ((d,raw),label)<-M.toList refills]
       renderOne = render cfg fn ly large restores refills
       prologueToks = [TIns (instructionCost prologue) FNext False (if large then 1 else 0)]
-      weighted = weighTicks (polTickWeight (cfgPolicy cfg)) prologueToks renderOne (\it ls -> token refills (it, ls)) body
-      rendered = [(it, renderOne it) | it <- weighted]
+      rendered = weighTicks (polTickWeight (cfgPolicy cfg)) prologueToks renderOne (\it ls -> token refills (it, ls)) body
       -- The reserve call is in the entry ABI shim, before allocated values
       -- exist. It stages/restores every incoming parameter and the link.
       report = analyse (prologueToks ++ concatMap (token refills) rendered)

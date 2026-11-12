@@ -411,24 +411,33 @@ bumpPoolAllocated = 2
 -- with its weight as its one immediate use: the worst-case number of
 -- target instructions from it to the next tick or an exit
 -- (Codegen.Bounds.tickWeights), measured on this target's own rendering.
--- A weight changes how its tick prints (a large one needs a second
--- instruction), so the stream is rendered and measured twice and each tick
--- takes the larger answer.  A function with a tick-free cycle keeps its
--- unit ticks; `analyse` reports it UNBOUNDED.
-weighTicks :: Bool -> [Tok] -> (Item -> [String]) -> (Item -> [String] -> [Tok]) -> [Item] -> [Item]
+--
+-- The function is rendered once.  Assigning a weight changes only how its
+-- tick prints, so only the ticks are rendered again; and only when one of
+-- them then prints a different number of instructions (a weight too large
+-- for one subtract) is the stream measured a second time, each tick taking
+-- the larger answer.  A function with a tick-free cycle keeps its unit
+-- ticks; `analyse` reports it UNBOUNDED.  The result is the rendered
+-- stream, each item with its lines.
+weighTicks :: Bool -> [Tok] -> (Item -> [String]) -> (Item -> [String] -> [Tok]) -> [Item] -> [(Item, [String])]
 weighTicks enabled prologue render token body
-  | not enabled || not (any isTick body) = body
-  | otherwise = case pass body of
-      Nothing -> body
-      Just first -> case pass (assign first body) of
-        Nothing -> body
-        Just second -> assign (zipWith max first second) body
+  | not enabled || not (any isTick body) = first
+  | otherwise = case weights first of
+      Nothing -> first
+      Just w1 ->
+        let second = assign w1 first
+         in if costs second == costs first then second
+            else case weights second of
+              Nothing -> first
+              Just w2 -> assign (zipWith max w1 w2) first
   where
+    first = [(it, render it) | it <- body]
     isTick (I i) = siOpcode i `elem` map Opcode.Common [Opcode.EntryCheckTick, Opcode.EntryTick, Opcode.TickN]
     isTick _ = False
-    pass items = tickWeights ([(t, False) | t <- prologue] ++ concat [[(t, isTick it) | t <- token it (render it)] | it <- items])
-    assign (w : ws) (I i : rest) | isTick (I i) = I (i {siUses = [OI (toInteger w)]}) : assign ws rest
-    assign ws (it : rest) = it : assign ws rest
+    weights rendered = tickWeights ([(t, False) | t <- prologue] ++ concat [[(t, isTick it) | t <- token it ls] | (it, ls) <- rendered])
+    costs rendered = [token it ls | (it, ls) <- rendered, isTick it]
+    assign (w : ws) ((I i, _) : rest) | isTick (I i) = let it = I (i {siUses = [OI (toInteger w)]}) in (it, render it) : assign ws rest
+    assign ws (r : rest) = r : assign ws rest
     assign _ [] = []
 
 -- what a tick item charges: its weight when weighTicks assigned one, the

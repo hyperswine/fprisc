@@ -1016,8 +1016,7 @@ emitFnA64WithSymbols symbols cfg fn = do
       renderOne = renderItem cfg ly large name frameless pairs restores refills
       reserveToks = [TIns (length (filter isInstruction reserve)) FNext False
                 (1 + if cfgHart cfg == HartTlvMachO then 3 else 0) | large]
-      weighted = weighTicks (polTickWeight (cfgPolicy cfg)) reserveToks renderOne (tokOf refills) body
-      rendered = map (\it -> (it, renderOne it)) weighted
+      rendered = weighTicks (polTickWeight (cfgPolicy cfg)) reserveToks renderOne (tokOf refills) body
       toks = reserveToks ++ concatMap (uncurry (tokOf refills)) rendered
       report = analyse toks
       header =

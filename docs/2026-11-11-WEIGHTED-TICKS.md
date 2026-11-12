@@ -30,8 +30,11 @@ The rules, all in `Codegen.Bounds.tickWeights`:
   own rendering, after placement, frames and every pseudo's expansion: the
   stream `native-insns-v1` already reads. Each backend renders its function,
   measures, assigns the weights and renders again (`Target.Common.weighTicks`).
-  A weight that needs a second instruction to subtract changes the count, so
-  the measurement runs twice and each tick takes the larger answer.
+  The function is rendered once and only its ticks are rendered again with
+  their weights; when a weight needs a second instruction to subtract, the
+  count changes, the stream is measured a second time and each tick takes
+  the larger answer. (Rendering the whole function again cost 6% of compile
+  allocation and put the compile budget over its margin; this costs 1.6%.)
 - **A call is transparent.** The callee charges its own instructions at its
   own ticks. The instructions after the call returns are the caller's and
   are covered by the tick before the call.
