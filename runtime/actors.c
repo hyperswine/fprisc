@@ -1717,6 +1717,9 @@ static void dl_num(char **p, const char *e, uw u) {
   while (u) { d[--i] = '0' + (u % 10); u /= 10; }
   dl_put(p, e, d + i);
 }
+/* <sys/wait.h> defines WAIT_ANY as a macro (macOS, glibc), and a harness that
+ * includes this file after it (tests/check_actor_claim.py) stopped compiling */
+#undef WAIT_ANY
 enum wait_kind { WAIT_ANY = 1, WAIT_FROM, WAIT_RESULT };
 static void deadlock_dump(void) {
   for (acb_t *a = g_all; a; a = a->all_nx) {
