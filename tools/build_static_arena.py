@@ -27,6 +27,7 @@ CONTRACT=ROOT/'machine/builtin/contracts/rv64-c-heap-v1.json'
 TARGET=ROOT/'machine/builtin/targets/virt.json'
 TARGET_ID='builtin-rv64-virt-128m'
 LINK_TOOL=ROOT/'tools/static-arena-link.sol'
+HEAP_PROOF_TOOL=ROOT/'tools/static-arena-heap-proof.sol'
 PUBLIC='fpr_static_callback'
 KINDS={'KWord':'uintptr_t','KInt':'intptr_t','KBool':'int','KUnit':'uintptr_t'}
 
@@ -135,7 +136,7 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
         commands.append(arena_tool(LINK_TOOL, out, 'compile', source, str(max(1,heap_bytes)),
                                    *(name+':'+symbol for name,symbol in symbols.items()), env=env))
         text=asm.read_text()
-        by_symbol = arena_tool(ROOT/'tools/static-arena-heap-proof.sol', asm, str(heap_bytes),
+        by_symbol = arena_tool(HEAP_PROOF_TOOL, asm, str(heap_bytes),
                                *symbols.values(), env=env)
         proofs = {name: by_symbol[symbol] for name, symbol in symbols.items()}
         if sequence is None:
@@ -168,6 +169,7 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
             root_source_sha256=source_hash,assembly_sha256=sha(asm.read_bytes()),
             linked_inputs_sha256=linked['inputs'],flags=linked['flags'],build_commands=commands,toolchain=linked['toolchain'],
             link_recipe_sha256=sha(LINK_TOOL.read_bytes()),
+            heap_proof_recipe_sha256=sha(HEAP_PROOF_TOOL.read_bytes()),
             scope='One fresh, exclusive, non-reentrant RV64 builtin activation from the controlled boot path; no WCET claim.',
             assumptions=['Trusted compiler and C/assembler/linker toolchain; valid-memory program semantics.',
                          'QEMU virt machine address map, machine-mode reset, hart 0; other harts park without memory accesses.',
