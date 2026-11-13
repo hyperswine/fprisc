@@ -43,7 +43,23 @@ append a b = strcat a b.
 # the only sensible way: the whole string, unsplit.
 split : String -> String -> List String .
 split sep s | strlen sep == 0 = s :: Nil.
+split sep s | strlen sep == 1 = splitCharGo (strlen s + 1) (charAt sep 0) s 0 (strlen s).
 split sep s = splitGo (strlen s + 1) sep s 0.
+# a one-byte separator: a byte scan per piece (charFrom), not a substring
+# search at every position
+splitCharGo : (fuel : Int | measure fuel) -> Int -> String -> Int -> Int -> List String .
+splitCharGo fuel c s from n | fuel <= 0 = Nil.
+splitCharGo fuel c s from n =
+  at = charFrom s c from n;
+  if at < 0 then substr s from (n - from) :: Nil
+  else substr s from (at - from) :: splitCharGo (fuel - 1) c s (at + 1) n.
+# where byte c first occurs at or after i (before n), or -1: one byte
+# compared a step, a counted loop the compiler reads without checks
+# (Codegen.StringScan)
+charFrom : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> Int .
+charFrom s c i n | i >= n = 0 - 1.
+charFrom s c i n | charAt s i == c = i.
+charFrom s c i n = charFrom s c (i + 1) n.
 # front to back (tail recursion modulo cons: one cell per piece, no reverse)
 splitGo : (fuel : Int | measure fuel) -> String -> String -> Int -> List String .
 splitGo fuel sep s from | fuel <= 0 = Nil.
@@ -60,7 +76,7 @@ linesGo : (fuel : Int | measure fuel) -> String -> Int -> List String .
 linesGo fuel s from | fuel <= 0 = Nil.
 linesGo fuel s from | from >= strlen s = Nil.
 linesGo fuel s from =
-  at = strIndexFrom "\n" s from;
+  at = charFrom s 10 from (strlen s);
   if at < 0 then lineAt s from (strlen s) :: Nil
   else lineAt s from at :: linesGo (fuel - 1) s (at + 1).
 lineAt : String -> Int -> Int -> String .
