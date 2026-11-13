@@ -6,6 +6,7 @@ import Codegen.Opcode.Types
 data Opcode
   = Move | FloatMove | Literal | Address | FrameLoad | FrameStore | LoadSigned32
   | ShiftLeftImmediate | ShiftRightArithmeticImmediate | OrImmediate | AndImmediate | XorImmediate
+  | AddImmediate | SubtractImmediate
   | SignExtend63 | SignExtend31 | Add | Subtract | Multiply | Divide | And | Xor | Or
   | ShiftLeft | ShiftRight | Compare | CompareImmediate | SubtractShifted1
   | Set Condition | Select Condition | Branch Condition | BranchZero | BranchNonzero | Jump
@@ -17,7 +18,7 @@ data Opcode
   deriving (Eq,Ord,Show)
 name op=case op of
   Move->"mov";FloatMove->"fmov";Literal->"li";Address->"la";FrameLoad->"ldr";FrameStore->"str";LoadSigned32->"ldrsw"
-  ShiftLeftImmediate->"lsl";ShiftRightArithmeticImmediate->"asr";OrImmediate->"orri";AndImmediate->"andi";XorImmediate->"eori"
+  ShiftLeftImmediate->"lsl";ShiftRightArithmeticImmediate->"asr";OrImmediate->"orri";AndImmediate->"andi";XorImmediate->"eori";AddImmediate->"addi";SubtractImmediate->"subi"
   SignExtend63->"sbfx63";SignExtend31->"sbfx31";Add->"add";Subtract->"sub";Multiply->"mul";Divide->"sdiv";And->"and";Xor->"eor";Or->"orr"
   ShiftLeft->"lslr";ShiftRight->"lsrr";Compare->"cmp";CompareImmediate->"cmpi";SubtractShifted1->"sub.asr1"
   Set c->"cset."++conditionName c;Select c->"csel."++conditionName c;Branch c->"b."++conditionName c

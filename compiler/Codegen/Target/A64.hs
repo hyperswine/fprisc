@@ -386,15 +386,27 @@ selectBlock cfg fn tyMap b = do
         (results, more) <- either (refuse) pure (productCallResults c d following)
         callProduct (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (map vreg results)
         run more
-      run (i : more) = selectInstr cfg tyMap i >> run more
+      run (i@(Instr (Just (v, _)) (OConstInt _)) : more) | S.member v immediateOnly = run more
+      run (i : more) = selectInstr cfg immediates i >> run more
       run [] = pure ()
+      -- constants (0..4095) an add or subtract can take as an immediate,
+      -- function-wide; those used only that way are never made
+      immediates = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk, n >= 0, n < 4096]
+      immUse v (Instr _ o) = case o of
+        OArith x a b | x `elem` [Add, Sub] -> b == v || (x == Add && a == v && M.notMember b immediates)
+        OArithU x a b | x `elem` [Add, Sub] -> b == v || (x == Add && a == v && M.notMember b immediates)
+        _ -> False
+      immediateOnly = S.fromList [v | v <- M.keys immediates,
+                                       let users = [i | blk <- fnBlocks fn, i@(Instr _ o) <- bInstrs blk, v `elem` opUses o],
+                                       not (null users), all (immUse v) users,
+                                       v `notElem` concat [termUses (bTerm blk) | blk <- fnBlocks fn]]
       -- a comparison whose only use is this block's branch: compare and
       -- branch on the flags (no cset, no cbz)
       fused = case (reverse rest, bTerm b) of
         (Instr (Just (p, _)) op : _, TCondBr p' t [] e [])
           | p == p', useCount p == 1, fusable op -> Just (op, t, e)
         _ -> Nothing
-      fusable = \case OCmp {} -> True; OVariantTest {} -> True; _ -> False
+      fusable = \case OCmp {} -> True; OVariantTest {} -> True; OTagTest {} -> True; _ -> False
       -- a small constant this block makes for the comparison alone: an
       -- immediate operand, and no register
       immediateOf y = case [n | Instr (Just (v, _)) (OConstInt n) <- rest, v == y] of
@@ -433,6 +445,24 @@ selectBlock cfg fn tyMap b = do
           emitI (li want (headerWord tg c))
           emitI (cmp hdr want)
           branch O.Equal O.NotEqual
+        OTagTest tg c v -> do
+          run (init rest)
+          -- a tagged Int is no match; then the typeid word, then the variant
+          bit <- freshV False
+          emitI (rri A.AndImmediate bit (vreg v) 1)
+          emitI (cbnz bit (blockLabel e))
+          tid <- freshV False
+          want <- freshV False
+          emitI (ldrsw tid (vreg v) 0)
+          emitI (li want (fromIntegral tg))
+          emitI (cmp tid want)
+          emitI (bcond O.NotEqual (blockLabel e))
+          var <- freshV False
+          wantv <- freshV False
+          emitI (ldrsw var (vreg v) 4)
+          emitI (li wantv (fromIntegral c))
+          emitI (cmp var wantv)
+          branch O.Equal O.NotEqual
         _ -> refuse "internal: an unfusable branch condition"
     Nothing -> do
       run rest
@@ -441,8 +471,8 @@ selectBlock cfg fn tyMap b = do
     cmpCond = \case Lt -> O.Less; Gt -> O.Greater; Le -> O.LessEqual; Ge -> O.GreaterEqual; Eq -> O.Equal; Ne -> O.NotEqual
     negateOp = \case Lt -> Ge; Le -> Gt; Gt -> Le; Ge -> Lt; Eq -> Ne; Ne -> Eq
 
-selectInstr :: A64Config -> M.Map VId Ty -> Instr -> Se ()
-selectInstr cfg _ (Instr d op) = case op of
+selectInstr :: A64Config -> M.Map VId Integer -> Instr -> Se ()
+selectInstr cfg immediates (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq Protocol.FuelOnly -- an inlined callee's tick mid-block
   OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq Protocol.FuelOnly l) {siOpcode = O.Common O.TickN, siUses = [OI (fromIntegral n)]})
@@ -564,8 +594,15 @@ selectInstr cfg _ (Instr d op) = case op of
     emitI (li r 0)
     emitL done
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
+  -- a small constant operand of + or -: the immediate form (the slow path
+  -- makes its register)
+  OArith o a b | o `elem` [Add, Sub], Just n <- M.lookup b immediates -> def (\r -> arithImm o r (vreg a) n)
+  OArith Add a b | Just n <- M.lookup a immediates -> def (\r -> arithImm Add r (vreg b) n)
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
   -- proven not to trap: the bare instruction
+  OArithU o a b | o `elem` [Add, Sub], Just n <- M.lookup b immediates ->
+    def (\r -> emitI (rri (if o == Add then A.AddImmediate else A.SubtractImmediate) r (vreg a) n))
+  OArithU Add a b | Just n <- M.lookup a immediates -> def (\r -> emitI (rri A.AddImmediate r (vreg b) n))
   OArithU o a b -> def (\r -> case o of
     Add -> emitI (rrr A.Add r (vreg a) (vreg b))
     Sub -> emitI (rrr A.Subtract r (vreg a) (vreg b))
@@ -708,6 +745,32 @@ selectInstr cfg _ (Instr d op) = case op of
     -- the fast path computes and checks the 63-bit fit, the
     -- slow path retags the ORIGINAL operands and re-enters the C primitive,
     -- whose panic text and failure order are the language's
+    -- checked a + n / a - n, n a small constant: the immediate instruction,
+    -- the 63-bit fit check, and the C primitive on the slow path with n
+    -- made in a register there
+    arithImm o r a n = do
+      slow <- freshL "slow"
+      done <- freshL "done"
+      t <- freshV False
+      emitI (rri (if o == Add then A.AddImmediate else A.SubtractImmediate) t a n)
+      fit t slow
+      emitI (mov r t)
+      emitI (jump done)
+      emitL slow
+      b <- freshV False
+      emitI (li b n)
+      ta <- freshV False
+      ta' <- freshV True
+      tb <- freshV False
+      tb' <- freshV True
+      emitI (rri A.ShiftLeftImmediate ta a 1)
+      emitI (rri A.OrImmediate ta' ta 1)
+      emitI (rri A.ShiftLeftImmediate tb b 1)
+      emitI (rri A.OrImmediate tb' tb 1)
+      res <- freshV True
+      call (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
+      emitI (rri A.ShiftRightArithmeticImmediate r res 1)
+      emitL done
     arith kernel o r a b = do
       slow <- freshL "slow"
       done <- freshL "done"
@@ -1202,6 +1265,8 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
       (O.A64 A.ShiftRightArithmeticImmediate, [d], [s, n]) -> ["asr " ++ reg d ++ ", " ++ reg s ++ ", #" ++ show (imm n)]
       (O.A64 A.OrImmediate, [d], [s, n]) -> ["orr " ++ reg d ++ ", " ++ reg s ++ ", #" ++ show (imm n)] -- 1: a valid bitmask immediate
       (O.A64 A.AndImmediate, [d], [s, n]) -> ["and " ++ reg d ++ ", " ++ reg s ++ ", #" ++ show (imm n)]
+      (O.A64 A.AddImmediate, [d], [s, n]) -> ["add " ++ reg d ++ ", " ++ reg s ++ ", #" ++ show (imm n)]
+      (O.A64 A.SubtractImmediate, [d], [s, n]) -> ["sub " ++ reg d ++ ", " ++ reg s ++ ", #" ++ show (imm n)]
       (O.A64 A.XorImmediate, [d], [s, n]) -> ["eor " ++ reg d ++ ", " ++ reg s ++ ", #" ++ show (imm n)]
       (O.A64 A.SignExtend63, [d], [s, _]) -> ["sbfx " ++ reg d ++ ", " ++ reg s ++ ", #0, #63"]
       (O.A64 A.SignExtend31, [d], [s, _]) -> ["sbfx " ++ reg d ++ ", " ++ reg s ++ ", #0, #31"]

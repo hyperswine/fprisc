@@ -37,6 +37,7 @@ checkForms rf owner items=do
             A.LoadSigned32->one [word,immediate]
             A.ShiftLeftImmediate->one [word,immediate];A.ShiftRightArithmeticImmediate->one [word,immediate]
             A.OrImmediate->one [word,immediate];A.AndImmediate->one [word,immediate];A.XorImmediate->one [word,immediate]
+            A.AddImmediate->one [word,immediate];A.SubtractImmediate->one [word,immediate]
             A.SignExtend63->one [word,immediate];A.SignExtend31->one [word,immediate]
             A.Add->binary;A.Subtract->binary;A.Multiply->binary;A.Divide->binary;A.And->binary;A.Xor->binary;A.Or->binary
             A.ShiftLeft->binary;A.ShiftRight->binary;A.SubtractShifted1->binary
