@@ -2,11 +2,17 @@
 J = use "../sol/lib/json".
 F = use "toolchain-files".
 invalid = "missing/ambiguous fresh compiler heap proof".
+readDigits : unsafe List Int -> Int -> Int .
+readDigits digits value = case digits of
+    [] -> value
+  | c :: rest -> if c >= 48 and c <= 57 then readDigits rest (value * 10 + c - 48) else error invalid.
+decimal : unsafe String -> String -> Int .
 decimal key token =
   prefix = key + "=";
   digits = Str.slice token (Str.len prefix) (Str.len token);
-  if Str.startsWith prefix token and digits != "" and List.all (fn c -> c >= 48 and c <= 57) (Str.codes digits)
-  then parseInt digits else error invalid.
+  if Str.startsWith prefix token and digits != ""
+  then readDigits (Str.codes digits) 0 else error invalid.
+proof : unsafe List String -> Int -> String -> (String,J.Json) .
 proof lines heap symbol =
   prefix = "# native-heap-budget-v1: " + symbol + " ";
   case List.filter (Str.startsWith prefix) lines of
