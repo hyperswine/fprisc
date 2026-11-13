@@ -633,11 +633,16 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
       `S.union` stdMapHashes
     -- std/map itself, known by its definitions (a unit that inlined insert
     -- names no Leaf of its own)
-    freshWrapper a=case (a,mapCtors) of
-      (CVar _,[(t,v,n)]) -> Just (CMk t v [CProj k a | k<-[0..n-1]])
+    -- the wrapper of the module the empty map comes from (std/map and
+    -- std/hashmap share the shape: each has its own Map constructor)
+    freshWrapper a=case a of
+      CVar _ | Just h<-rootHash a, [(t,v,n)]<-mapCtorsOf h -> Just (CMk t v [CProj k a | k<-[0..n-1]])
       _ -> Nothing
-    mapCtors=[(t,v,length fs) | (k,(_,CMk t v fs))<-M.toList definitions, "Map@" `isPrefixOf` k,
-                                S.member (drop 1 (dropWhile (/='@') k)) leafHashes]
+    rootHash e=case stripLets e of
+      CVar g | any (\p->p `isPrefixOf` g) ["strings@","ints@","empty@"] -> Just (drop 1 (dropWhile (/='@') g))
+      CVar k | Just rhs<-M.lookup k localBindings, rhs/=CVar k -> rootHash rhs
+      _ -> Nothing
+    mapCtorsOf h=[(t,v,length fs) | (k,(_,CMk t v fs))<-M.toList definitions, k=="Map@"++h]
     -- std/map's Map wrapper: its constructor's tag
     mapTags=S.fromList [t | (k,(_,CMk t _ _))<-M.toList definitions, "Map@" `isPrefixOf` k,
                             S.member (drop 1 (dropWhile (/='@') k)) leafHashes]

@@ -1,0 +1,50 @@
+unsafe base.
+HashMap = use "std/hashmap".
+Map = use "std/map".
+List = use "std/list".
+String = use "std/string".
+Option = use "std/option".
+Order = use "std/order".
+bump old = Option.Some (1 + Option.withDefault 0 old).
+# the same entries, in key order: a HashMap against the Map it should equal
+same cmp h m = Map.equal (HashMap.toMap cmp h) m.
+key = fn i -> (i * 7919) - ((i * 7919) / 1009) * 1009.
+step = fn alter m i -> case i - (i / 3) * 3 == 0 of
+    True -> alter (key i) (fn o -> case o of Option.Some c -> (if c > 40 then Option.None else Option.Some (c + 1)) | Option.None -> Option.None) m
+  | False -> alter (key i) bump m.
+# a loop that keeps every 1000th version while it updates: the kept versions must not change
+history : unsafe List Int -> HashMap.Map Int Int -> List (HashMap.Map Int Int) -> List (HashMap.Map Int Int) .
+history xs m kept = case xs of
+    Nil -> m :: kept
+  | x :: rest -> (case x - (x / 1000) * 1000 == 0 of
+      True -> history rest (HashMap.update (x % 50) bump m) (m :: kept)
+    | False -> history rest (HashMap.update (x % 50) bump m) kept).
+main =
+  text = "the cat and the dog and the bird";
+  counts = String.words text |> List.fold (fn m w -> HashMap.update w bump m) HashMap.strings;
+  _ = print "counts in key order {Map.entries (HashMap.toMap Order.string counts)} size {HashMap.size counts} the={HashMap.get "the" counts} cow={HashMap.get "cow" counts}";
+  m2 = HashMap.remove "the" counts |> HashMap.insert "zebra" 9;
+  _ = print "after {Map.keys (HashMap.toMap Order.string m2)} original still {HashMap.size counts} the={HashMap.get "the" counts}";
+  big = List.range 1 100000 |> List.fold (fn m i -> HashMap.insert ((i * 7919) - ((i * 7919) / 100003) * 100003) i m) HashMap.ints;
+  bigM = List.range 1 100000 |> List.fold (fn m i -> Map.insert ((i * 7919) - ((i * 7919) / 100003) * 100003) i m) Map.ints;
+  _ = print "big size {HashMap.size big} get {HashMap.get 7919 big} same as Map {same Order.int big bigM}";
+  small = List.range 1 100000 |> List.fold (fn m i -> case i - (i / 2) * 2 == 0 of True -> HashMap.remove ((i * 7919) - ((i * 7919) / 100003) * 100003) m | False -> m) big;
+  smallM = List.range 1 100000 |> List.fold (fn m i -> case i - (i / 2) * 2 == 0 of True -> Map.remove ((i * 7919) - ((i * 7919) / 100003) * 100003) m | False -> m) bigM;
+  _ = print "after removing half {HashMap.size small} same as Map {same Order.int small smallM} big untouched {HashMap.size big}";
+  byAlter = List.range 1 100000 |> List.fold (step HashMap.alter) HashMap.ints;
+  byMap = List.range 1 100000 |> List.fold (step Map.alter) Map.ints;
+  _ = print "alter over 100,000 updates: size {HashMap.size byAlter} {Map.size byMap} same {same Order.int byAlter byMap}";
+  # equal hashes for different keys: a hash of k % 3 puts every key in three ties
+  poor = HashMap.empty (fn k -> k % 3) Order.int;
+  tied = List.range 1 3000 |> List.fold (step HashMap.alter) poor;
+  tiedM = List.range 1 3000 |> List.fold (step Map.alter) Map.ints;
+  _ = print "three hashes for 1009 keys: size {HashMap.size tied} same {same Order.int tied tiedM} get {HashMap.get (key 7) tied} {Map.get (key 7) tiedM}";
+  one = HashMap.alter 5 (fn o -> Option.Some 50) HashMap.ints;
+  _ = print "alter empty: add {HashMap.entries one} size {HashMap.size one}; None {HashMap.size (HashMap.alter 5 (fn o -> Option.None) HashMap.ints)}; drop the only key {HashMap.entries (HashMap.alter 5 (fn o -> Option.None) one)}; replace {HashMap.entries (HashMap.alter 5 (fn o -> Option.map (fn v -> v + 1) o) one)}; insertWith {HashMap.entries (HashMap.insertWith (fn o n -> o + n) 5 7 one)}";
+  gone = HashMap.keys byAlter |> List.fold (fn m k -> HashMap.alter k (fn o -> Option.None) m) byAlter;
+  _ = print "alter every key away: size {HashMap.size gone} entries {HashMap.entries gone}";
+  kept = history (List.range 1 5000) HashMap.ints Nil;
+  _ = print "kept versions while updating: {List.map HashMap.size kept} sums {List.map (fn m -> HashMap.fold (fn a k v -> a + v) 0 m) kept}";
+  _ = print "member {HashMap.member "cat" counts} {HashMap.member "cow" counts} getOr {HashMap.getOr 0 "dog" counts} {HashMap.getOr 0 "cow" counts}";
+  _ = print "map/filter/union {HashMap.get "the" (HashMap.map (fn v -> v * 10) counts)} {HashMap.size (HashMap.filter (fn k v -> v > 1) counts)} {HashMap.size (HashMap.union m2 counts)}";
+  print "equal regardless of insertion order {HashMap.equal (HashMap.fromList strHash Order.string [("a", 1), ("b", 2), ("c", 3)]) (HashMap.fromList strHash Order.string [("c", 3), ("a", 1), ("b", 2)])}".

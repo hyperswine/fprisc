@@ -1,0 +1,12 @@
+counts in key order [(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 3)] size 5 the=Some 3 cow=None
+after [and, bird, cat, dog, zebra] original still 5 the=Some 3
+big size 100000 get Some 1 same as Map True
+after removing half 50000 same as Map True big untouched 100000
+alter over 100,000 updates: size 1009 1009 same True
+three hashes for 1009 keys: size 1009 same True get Some 3 Some 3
+alter empty: add [(5, 50)] size 1; None 0; drop the only key []; replace [(5, 51)]; insertWith [(5, 57)]
+alter every key away: size 0 entries []
+kept versions while updating: [50, 50, 50, 50, 50, 50] sums [5000, 4999, 3999, 2999, 1999, 999]
+member True False getOr 1 0
+map/filter/union Some 30 2 6
+equal regardless of insertion order True

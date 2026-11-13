@@ -1,0 +1,256 @@
+# std/hashmap.fpr -- HashMap: keys to values, found by their hash.
+#
+#   HashMap = use "std/hashmap".
+#   counts = words |> List.fold (fn m w -> HashMap.update w bump m) HashMap.strings   # a HashMap.Map String Int
+#   HashMap.get "cat" counts
+#
+# The contracts:
+#   * keys are hashed by a function you give once, when the map is made
+#     (`HashMap.strings` and `HashMap.ints` use the runtime's strHash and
+#     intHash: deterministic, unseeded), with a comparator for the rare keys
+#     whose hashes are equal.  A lookup compares Ints down the tree and
+#     the keys themselves once, where the hash matches: a String key is
+#     hashed once, not compared at every node as in std/map.
+#   * a HashMap is a persistent value, like Map: insert and remove return a
+#     new map and share the rest.  O(log n) each (an AVL tree ordered by
+#     hash, then key).  When a map is threaded through a loop from one of the
+#     empty maps and nothing else holds it, the compiler rebuilds it in
+#     place (owned maps, docs/2026-11-11-STATIC-REUSE-PLAN.md): you get a
+#     mutable table's costs without a separate API.
+#   * iteration is DETERMINISTIC but in HASH order (then key order among
+#     equal hashes): entries, keys, values and fold.  `toMap cmp` gives an
+#     ascending std/map Map.
+#   * absence is an Option.  Nothing here panics.
+#   * EQUALITY: two maps with the same entries hold the same tree up to
+#     balance, so compare with `HashMap.equal a b` (entries are canonical),
+#     not `==`.
+#
+# The tree is std/map's, with the hashed key in the key slot: the names and
+# shapes (Leaf, Node, node, balance, rotRight, rotLeft, insGo, altGo) are
+# the ones the owned-map rewriting knows (Reuse.hs), so a HashMap is
+# rebuilt in place exactly where a Map would be.
+
+O = use "option".
+Ord = use "order".
+M = use "map".
+L = use "list".
+
+# a key with its hash; ordered by hash, then by the map's comparator
+HK k = Type (HK Int k).
+Tree k v = Type (Leaf | Node Int (Tree k v) (HK k) v (Tree k v)).
+Ops k = Type (Ops (k -> Int) (k -> k -> Ord.Ordering)).
+Map k v = Type (Map (Ops k) Int (Tree k v)).
+
+# ---- making --------------------------------------------------------------------
+empty : (k -> Int) -> (k -> k -> Ord.Ordering) -> Map k v .
+empty hash cmp = Map (Ops hash cmp) 0 Leaf.
+
+strings = empty strHash Ord.string.
+ints = empty intHash Ord.int.
+
+fromList : (k -> Int) -> (k -> k -> Ord.Ordering) -> List (k, v) -> Map k v .
+fromList hash cmp kvs = insertAll kvs (empty hash cmp).
+
+# later pairs win
+insertAll : List (k, v) -> Map k v -> Map k v .
+insertAll kvs m = insertAllGo kvs m.
+insertAllGo : (kvs : List (k, v) | measure kvs) -> Map k v -> Map k v .
+insertAllGo kvs m = case kvs of Nil -> m | (k, v) :: r -> insertAllGo r (insert k v m).
+
+# ---- reading -------------------------------------------------------------------
+size : Map k v -> Int
+  | work size <= 5 | alloc size <= 0 .
+size (Map _ n _) = n.
+
+isEmpty : Map k v -> Bool
+  | work isEmpty <= 8 | alloc isEmpty <= 16 .
+isEmpty m = size m == 0.
+
+# where a key (hash h) falls against a node's key: Ints first, the keys only
+# when the hashes are equal
+place : (k -> k -> Ord.Ordering) -> Int -> k -> HK k -> Ord.Ordering .
+place cmp h k p = case p of
+  HK h2 k2 -> (if h < h2 then Ord.Less else if h > h2 then Ord.Greater else cmp k k2).
+
+get : k -> Map k v -> O.Option v .
+get k (Map (Ops hash cmp) _ t) = getGo cmp (hash k) k t.
+getGo : (k -> k -> Ord.Ordering) -> Int -> k -> (t : Tree k v | measure t) -> O.Option v .
+getGo cmp h k t = case t of
+    Leaf -> O.None
+  | Node _ l p v r -> (case place cmp h k p of
+        Ord.Less -> getGo cmp h k l
+      | Ord.Greater -> getGo cmp h k r
+      | Ord.Equal -> O.Some v).
+
+getOr : v -> k -> Map k v -> v .
+getOr d k (Map (Ops hash cmp) _ t) = getOrGo d cmp (hash k) k t.
+getOrGo : v -> (k -> k -> Ord.Ordering) -> Int -> k -> (t : Tree k v | measure t) -> v .
+getOrGo d cmp h k t = case t of
+    Leaf -> d
+  | Node _ l p v r -> (case place cmp h k p of
+        Ord.Less -> getOrGo d cmp h k l
+      | Ord.Greater -> getOrGo d cmp h k r
+      | Ord.Equal -> v).
+
+member : k -> Map k v -> Bool .
+member k (Map (Ops hash cmp) _ t) = memberGo cmp (hash k) k t.
+memberGo : (k -> k -> Ord.Ordering) -> Int -> k -> (t : Tree k v | measure t) -> Bool .
+memberGo cmp h k t = case t of
+    Leaf -> False
+  | Node _ l p _ r -> (case place cmp h k p of
+        Ord.Less -> memberGo cmp h k l
+      | Ord.Greater -> memberGo cmp h k r
+      | Ord.Equal -> True).
+
+# ---- the tree (std/map's) ----------------------------------------------------------
+height : Tree k v -> Int
+  | work height <= 5 | alloc height <= 0 .
+height Leaf = 0.
+height (Node h _ _ _ _) = h.
+
+node : Tree k v -> HK k -> v -> Tree k v -> Tree k v .
+node l k v r =
+  hl = height l;
+  hr = height r;
+  Node (1 + (if hl > hr then hl else hr)) l k v r.
+
+balance : Tree k v -> HK k -> v -> Tree k v -> Tree k v .
+balance l k v r =
+  hl = height l;
+  hr = height r;
+  if hl > hr + 1 then rotRight l k v r
+  else if hr > hl + 1 then rotLeft l k v r
+  else node l k v r.
+
+rotRight : Tree k v -> HK k -> v -> Tree k v -> Tree k v .
+rotRight l k v r = case l of
+    Leaf -> node l k v r
+  | Node _ ll lk lv lr -> (if height ll >= height lr then
+        node ll lk lv (node lr k v r)
+      else (case lr of
+            Leaf -> node ll lk lv (node lr k v r)
+          | Node _ lrl lrk lrv lrr -> node (node ll lk lv lrl) lrk lrv (node lrr k v r))).
+
+rotLeft : Tree k v -> HK k -> v -> Tree k v -> Tree k v .
+rotLeft l k v r = case r of
+    Leaf -> node l k v r
+  | Node _ rl rk rv rr -> (if height rr >= height rl then
+        node (node l k v rl) rk rv rr
+      else (case rl of
+            Leaf -> node (node l k v rl) rk rv rr
+          | Node _ rll rlk rlv rlr -> node (node l k v rll) rlk rlv (node rlr rk rv rr))).
+
+# ---- writing ---------------------------------------------------------------------
+insert : k -> v -> Map k v -> Map k v .
+insert k v (Map ops n t) = case ops of
+  Ops hash cmp -> (case insGo cmp (hash k) k v t of (t2, added) -> Map ops (n + added) t2).
+# (the new tree, 1 if the key is new else 0).  Depth is O(log n).
+insGo : (k -> k -> Ord.Ordering) -> Int -> k -> v -> (t : Tree k v | measure t) -> (Tree k v, Int) .
+insGo cmp h k v t = case t of
+    Leaf -> (Node 1 Leaf (HK h k) v Leaf, 1)
+  | Node ht l p v2 r -> (case place cmp h k p of
+        Ord.Less -> (case insGo cmp h k v l of (l2, a) -> (balance l2 p v2 r, a))
+      | Ord.Greater -> (case insGo cmp h k v r of (r2, a) -> (balance l p v2 r2, a))
+      | Ord.Equal -> (Node ht l p v r, 0)).
+
+remove : k -> Map k v -> Map k v .
+remove k (Map ops n t) = case ops of
+  Ops hash cmp -> (case remGo cmp (hash k) k t of (t2, gone) -> Map ops (n - gone) t2).
+remGo : (k -> k -> Ord.Ordering) -> Int -> k -> (t : Tree k v | measure t) -> (Tree k v, Int) .
+remGo cmp h k t = case t of
+    Leaf -> (Leaf, 0)
+  | Node _ l p v2 r -> (case place cmp h k p of
+        Ord.Less -> (case remGo cmp h k l of (l2, g) -> (balance l2 p v2 r, g))
+      | Ord.Greater -> (case remGo cmp h k r of (r2, g) -> (balance l p v2 r2, g))
+      | Ord.Equal -> (glue l r, 1)).
+
+glue : Tree k v -> Tree k v -> Tree k v .
+glue l Leaf = l.
+glue l r =
+  (k, v, r2) = popMin r;
+  balance l k v r2.
+popMin : (t : Tree k v | measure t) -> (HK k, v, Tree k v) .
+popMin t = case t of
+    Node _ l k v r -> (case l of
+        Leaf -> (k, v, r)
+      | _ -> (case popMin l of (mk, mv, l2) -> (mk, mv, balance l2 k v r)))
+  | Leaf -> error "HashMap.popMin: empty".
+
+# change, add or drop one key, in one descent (Map.alter's contract): `f`
+# sees the current value (None when absent) and says what to keep (None
+# drops the key); when nothing changes the map you passed comes back as it was
+alter : k -> (O.Option v -> O.Option v) -> Map k v -> Map k v .
+alter k f m = case m of
+  Map ops n t -> (case ops of
+    Ops hash cmp -> (case altGo cmp (hash k) k f t of
+      (t2, d) -> if d == 2 then m else Map ops (n + d) t2)).
+# (the new tree, what happened): 1 added, 0 - 1 removed, 0 replaced in
+# place, 2 nothing changed (the caller keeps its own tree)
+altGo : (k -> k -> Ord.Ordering) -> Int -> k -> (O.Option v -> O.Option v) -> (t : Tree k v | measure t) -> (Tree k v, Int) .
+altGo cmp h k f t = case t of
+    Leaf -> (case f O.None of
+        O.Some v -> (Node 1 Leaf (HK h k) v Leaf, 1)
+      | O.None -> (Leaf, 2))
+  | Node ht l p v2 r -> (case place cmp h k p of
+        Ord.Less -> (case altGo cmp h k f l of
+            (l2, d) -> if d == 2 then (t, 2)
+                       else if d == 0 then (Node ht l2 p v2 r, 0)
+                       else (balance l2 p v2 r, d))
+      | Ord.Greater -> (case altGo cmp h k f r of
+            (r2, d) -> if d == 2 then (t, 2)
+                       else if d == 0 then (Node ht l p v2 r2, 0)
+                       else (balance l p v2 r2, d))
+      | Ord.Equal -> (case f (O.Some v2) of
+            O.Some v -> (Node ht l p v r, 0)
+          | O.None -> (glue l r, 0 - 1))).
+
+update : k -> (O.Option v -> O.Option v) -> Map k v -> Map k v .
+update k f m = alter k f m.
+
+# insert, or where the key is already there store `f old v` instead
+insertWith : (v -> v -> v) -> k -> v -> Map k v -> Map k v .
+insertWith f k v m = alter k (fn old -> case old of
+    O.Some o -> O.Some (f o v)
+  | O.None -> O.Some v) m.
+
+# ---- traversing (hash order) -----------------------------------------------------
+fold : (b -> k -> v -> b) -> b -> Map k v -> b .
+fold f z (Map _ _ t) = foldGo f z t.
+foldGo : (b -> k -> v -> b) -> b -> (t : Tree k v | measure t) -> b .
+foldGo f z t = case t of
+    Leaf -> z
+  | Node _ l p v r -> (case p of HK _ k -> foldGo f (f (foldGo f z l) k v) r).
+
+rev : (xs : List a | measure xs) -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+entries : Map k v -> List (k, v) .
+entries m = rev (fold (fn acc k v -> (k, v) :: acc) Nil m) Nil.
+
+keys : Map k v -> List k .
+keys m = rev (fold (fn acc k v -> k :: acc) Nil m) Nil.
+
+values : Map k v -> List v .
+values m = rev (fold (fn acc k v -> v :: acc) Nil m) Nil.
+
+map : (v -> w) -> Map k v -> Map k w .
+map f (Map ops n t) = Map ops n (mapGo f t).
+mapGo : (v -> w) -> (t : Tree k v | measure t) -> Tree k w .
+mapGo f t = case t of Leaf -> Leaf | Node h l k v r -> Node h (mapGo f l) k (f v) (mapGo f r).
+
+filter : (k -> v -> Bool) -> Map k v -> Map k v .
+filter p m = case m of Map (Ops hash cmp) _ _ ->
+  fold (fn acc k v -> if p k v then insert k v acc else acc) (empty hash cmp) m.
+
+# every key of either; where both have it, `a`'s value
+union : Map k v -> Map k v -> Map k v .
+union a b = fold (fn acc k v -> insert k v acc) b a.
+
+# the same keys with equal values (entries are in a canonical order)
+equal : Map k v -> Map k v -> Bool .
+equal a b = entries a == entries b.
+
+# the ascending, ordered std/map Map of the same entries: sorted once, then
+# built balanced in O(n) (keys are distinct, so fromDistinctAscList trusts them)
+toMap : (k -> k -> Ord.Ordering) -> Map k v -> M.Map k v .
+toMap cmp m = M.fromDistinctAscList cmp (L.sortWith (fn a b -> case a of (ka, _) -> (case b of (kb, _) -> cmp ka kb)) (entries m)).

@@ -1,0 +1,29 @@
+# treemap with std/hashmap: 500k inserts, 500k lookups; the key hash is taken in ascending order (toMap)
+Map = use "std/hashmap".
+Ord = use "std/order".
+O = use "std/option".
+OMap = use "std/map".
+
+lcg : Int -> Int .
+lcg x = (x * 1103515245 + 12345) % 2147483648.
+
+inserts : (n : Int) -> (i : Int | measure (n - i)) -> Int -> Map.Map Int Int -> (Int, Map.Map Int Int) .
+inserts n i x m = if i >= n then (x, m) else
+  x2 = lcg x;
+  inserts n (i + 1) x2 (Map.insert (x2 % 1000000) i m).
+
+lookups : Map.Map Int Int -> (n : Int) -> (i : Int | measure (n - i)) -> Int -> Int -> Int -> (Int, Int) .
+lookups m n i x hits s = if i >= n then (hits, s) else
+  x2 = lcg x;
+  case Map.get (x2 % 1000000) m of
+      O.Some v -> lookups m n (i + 1) x2 (hits + 1) (s + v)
+    | O.None -> lookups m n (i + 1) x2 hits s.
+
+main =
+  n = 500000;
+  r = inserts n 0 7 Map.ints;
+  case r of (x, m) -> report m (lookups m n 0 x 0 0).
+
+report : Map.Map Int Int -> (Int, Int) -> Unit .
+report m hs = case hs of
+  (hits, s) -> print "size {Map.size m} hits {hits} sum {s} keyhash {OMap.fold (fn h k v -> (h * 31 + k) % 1000000007) 0 (Map.toMap Ord.int m)}".
