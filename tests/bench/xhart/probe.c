@@ -31,7 +31,7 @@ static uint64_t pct(double q) {
     }
   return 0;
 }
-#define NF 22
+#define NF 23
 static uint64_t base[NF];
 static void snap(uint64_t o[NF]) {
   for (int k = 0; k < NF; k++) o[k] = 0;
@@ -42,7 +42,7 @@ static void snap(uint64_t o[NF]) {
                       h->xs_xship_n, h->xs_xpush_ns, h->xs_ipi_ns, h->xs_lship_n,
                       h->xr_recv_n, h->xr_scan_ns, h->xr_block_n, h->xr_drop_ns,
                       h->xl_drain_n, h->xl_drain_ns, h->xl_run_n, h->xl_run_ns,
-                      h->xp_park_n, h->xp_park_ns, h->xp_bell_n, h->xp_bell_ns};
+                      h->xp_park_n, h->xp_park_ns, h->xp_bell_n, h->xp_bell_ns, h->xs_ipi_n};
     for (int k = 0; k < NF; k++) o[k] += v[k];
   }
 #endif
@@ -51,7 +51,7 @@ static const char *names[NF] = {"send_n", "send_ns", "copy_ns", "arc_incref_ns",
                                 "xship_n", "xpush_ns", "ipi_ns", "local_ship_n",
                                 "recv_n", "recv_scan_ns", "recv_block_n", "drop_ns",
                                 "drain_n", "ship_to_drain_ns", "run_n", "drain_to_run_ns",
-                                "park_n", "park_ns", "bell_n", "bell_to_wake_ns"};
+                                "park_n", "park_ns", "bell_n", "bell_to_wake_ns", "xship_ipi_n"};
 static V xh_begin(V u) { (void)u; snap(base); nsamp = 0; for (int b = 0; b < 64; b++) for (int s = 0; s < 8; s++) hist[b][s] = 0; return (V)&fpr_unit; }
 static V xh_report(V u) {
   (void)u; uint64_t a[NF]; snap(a);

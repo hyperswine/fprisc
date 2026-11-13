@@ -41,6 +41,12 @@ foldRange f z a b = case a > b of
 foldRangeGo : (b -> Int -> b) -> b -> (a : Int) -> (b : Int | measure (b - a)) -> b .
 foldRangeGo f z a b = case a < b of True -> foldRangeGo f (f z a) (a + 1) b | False -> f z a.
 
+# Evaluate the callback in the same ascending order as mapGo. foldRange
+# checks the lower endpoint before the first call and stops at the upper
+# endpoint without incrementing it.
+mapRangeForward : (Int -> a) -> Int -> Int -> List a .
+mapRangeForward f a b = reverse (foldRange (fn acc i -> f i :: acc) Nil a b).
+
 # Producer-only range/map target: builds the mapped list in one descending
 # pass (one cell per element; no intermediate range list and no reverse).
 # It calls f from b down to a. Fusion admits only callbacks whose one trap is

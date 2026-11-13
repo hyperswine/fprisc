@@ -147,6 +147,9 @@ static uint8_t *img_bits;
 static char *img_base;
 static uw img_units, img_shift;
 static fpr_image_t *img_list;
+static fpr_image_t *img_pid_hit; /* first matching registry entry at last lookup */
+static fpr_image_t *img_recent; /* protected by img_lock */
+static uw img_count; /* writers serialized by img_lock */
 static fpr_lock_t img_lock;
 static int in_image(const void *p) {
   uint8_t *b = __atomic_load_n(&img_bits, __ATOMIC_ACQUIRE);
@@ -157,9 +160,17 @@ static int in_image(const void *p) {
 static void img_mark(fpr_image_t *im, int on) {
   uw u0 = (uw)(im->lo - img_base) >> img_shift;
   uw u1 = (uw)(im->hi - img_base + ((uw)1 << img_shift) - 1) >> img_shift;
-  for (uw u = u0; u < u1 && u < img_units; u++) {
-    if (on) __atomic_fetch_or(&img_bits[u >> 3], (uint8_t)(1u << (u & 7)), __ATOMIC_RELEASE);
-    else __atomic_fetch_and(&img_bits[u >> 3], (uint8_t)~(1u << (u & 7)), __ATOMIC_RELEASE);
+  if (u1 > img_units) u1 = img_units;
+  while (u0 < u1) {
+    unsigned bit = (unsigned)(u0 & 7);
+    uw span = u1 - u0 < 8 - bit ? u1 - u0 : 8 - bit;
+    uint8_t mask = (uint8_t)(((1u << span) - 1) << bit);
+    uint8_t *byte = &img_bits[u0 >> 3];
+    /* img_lock serializes writers. Only boundary bytes need their old bits. */
+    uint8_t value = on ? mask : 0;
+    if (mask != UINT8_MAX) value |= __atomic_load_n(byte, __ATOMIC_RELAXED) & ~mask;
+    __atomic_store_n(byte, value, __ATOMIC_RELEASE);
+    u0 += span;
   }
 }
 void fpr_image_add(fpr_image_t *im) {
@@ -180,34 +191,62 @@ void fpr_image_add(fpr_image_t *im) {
     fpr_cpanic("images: an image block outside the buddy span");
   im->next = img_list;
   img_list = im;
+  img_pid_hit = 0;
+  img_recent = im;
   img_mark(im, 1);
+  __atomic_store_n(&img_count, __atomic_load_n(&img_count, __ATOMIC_RELAXED) + 1, __ATOMIC_RELEASE);
   fpr_unlock(&img_lock);
 }
 void fpr_image_remove(fpr_image_t *im) {
   fpr_lock(&img_lock);
-  for (fpr_image_t **pp = &img_list; *pp; pp = &(*pp)->next)
-    if (*pp == im) { *pp = im->next; break; }
-  img_mark(im, 0);
+  for (fpr_image_t **pp = &img_list; *pp; pp = &(*pp)->next) {
+    if (*pp != im) continue;
+    *pp = im->next;
+    if (img_pid_hit == im) img_pid_hit = 0;
+    if (img_recent == im) img_recent = 0;
+    img_mark(im, 0);
+    __atomic_store_n(&img_count, __atomic_load_n(&img_count, __ATOMIC_RELAXED) - 1, __ATOMIC_RELEASE);
+    break;
+  }
   fpr_unlock(&img_lock);
 }
 fpr_image_t *fpr_image_of_pid(uw pid) {
   fpr_lock(&img_lock);
-  fpr_image_t *im = img_list;
-  while (im && im->pid != pid) im = im->next;
+  fpr_image_t *im = img_pid_hit;
+  if (!im || im->pid != pid) {
+    im = img_list;
+    while (im && im->pid != pid) im = im->next;
+    img_pid_hit = im;
+  }
   fpr_unlock(&img_lock);
   return im;
 }
 /* the pid of the image p lies in, when that is not the process the copy in
  * progress is for (0: not an image, or the receiver's own) */
-static uw img_foreign(const void *p) {
+static fpr_image_t *image_at_locked(const void *p) {
+  const char *addr = (const char *)p;
+  if (img_recent && addr >= img_recent->lo && addr < img_recent->hi) return img_recent;
+  for (fpr_image_t *im = img_list; im; im = im->next) {
+    if (addr >= im->lo && addr < im->hi) {
+      img_recent = im;
+      return im;
+    }
+  }
+  return 0;
+}
+static uw image_owner_pid(const void *p) {
   if (!in_image(p)) return 0;
-  uw pid = 0;
   fpr_lock(&img_lock);
-  for (fpr_image_t *im = img_list; im; im = im->next)
-    if ((const char *)p >= im->lo && (const char *)p < im->hi) { pid = im->pid; break; }
+  fpr_image_t *im = image_at_locked(p);
+  uw pid = im ? im->pid : 0;
   fpr_unlock(&img_lock);
+  return pid;
+}
+static uw img_foreign(const void *p) {
+  uw pid = image_owner_pid(p);
+  if (!pid) return 0;
   fpr_hart_t *h = fpr_hart();
-  return pid && (!h || pid != h->copy_pid) ? pid : 0;
+  return (!h || pid != h->copy_pid) ? pid : 0;
 }
 /* an image still owned by no process (pid 0: attached, not yet launched)
  * that holds p becomes process pid's: Sys.spawnApp adopts the image its
@@ -217,20 +256,13 @@ uw fpr_image_adopt(const void *p, uw pid) {
   if (!in_image(p)) return 0;
   uw took = 0;
   fpr_lock(&img_lock);
-  for (fpr_image_t *im = img_list; im; im = im->next)
-    if ((const char *)p >= im->lo && (const char *)p < im->hi) {
-      if (im->pid == 0) { im->pid = pid; took = 1; }
-      break;
-    }
+  fpr_image_t *im = image_at_locked(p);
+  if (im && im->pid == 0) { im->pid = pid; img_pid_hit = 0; took = 1; }
   fpr_unlock(&img_lock);
   return took;
 }
 uw fpr_image_count(void) {
-  uw n = 0;
-  fpr_lock(&img_lock);
-  for (fpr_image_t *im = img_list; im; im = im->next) n++;
-  fpr_unlock(&img_lock);
-  return n;
+  return __atomic_load_n(&img_count, __ATOMIC_ACQUIRE);
 }
 void (*fpr_pid_quiet)(uw pid);
 
@@ -463,7 +495,7 @@ typedef struct {
   uw site, want, got, actor;
 } growev_t;
 static growev_t growlog[GROWLOG_N];
-static uw growlog_seq;
+/* Each successful growth reserves its ring position in fpr_grow_count. */
 const char *fpr_growsite_name(uw site) {
   static const char *names[] = {"?", "slab", "slab-spare", "buckets",
                                 "big-block", "stack", "msg"};
@@ -478,14 +510,18 @@ fpr_grant_t fpr_grow_counted(uw want, uw site) {
     /* an actor's own blocks are its process's to pay for (a confined one has
      * a budget: actors.c); the ARC table (5) and the shared spare (2) are
      * the machine's, whoever happened to grow them */
-    if (site != 5 && site != 2) g.ptr = fpr_charge(g.ptr);
-    if (g.ptr) g.size = buddy_block_usable_size(g.ptr);
+    if (g.ptr) {
+      g.size = buddy_block_usable_size(g.ptr);
+      if (site != 5 && site != 2) {
+        g.ptr = fpr_charge_sized(g.ptr, g.size);
+        if (!g.ptr) g.size = 0;
+      }
+    }
   } else if (fpr_grow_memory)
     g = fpr_grow_memory(want); /* a loaded process: the loader's grant */
   if (g.ptr) {
-    __atomic_add_fetch(&fpr_grow_count, 1, __ATOMIC_RELAXED);
+    uw s = __atomic_fetch_add(&fpr_grow_count, 1, __ATOMIC_RELAXED);
     __atomic_add_fetch(&fpr_grow_bytes, g.size, __ATOMIC_RELAXED);
-    uw s = __atomic_fetch_add(&growlog_seq, 1, __ATOMIC_RELAXED);
     growev_t *e = &growlog[s % GROWLOG_N];
     __atomic_store_n(&e->seq, 0, __ATOMIC_RELAXED); /* invalidate for readers */
     e->site = site;
@@ -816,7 +852,7 @@ static V alloc_in_size(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk,uw
             praw("[mem] exhausted: want ");
             pdec(want);
             praw(" after ");
-            pdec(fpr_grow_count);
+            pdec(__atomic_load_n(&fpr_grow_count, __ATOMIC_RELAXED));
             praw(" blocks / ");
             pdec(fpr_grow_bytes >> 20);
             praw(" MiB taken\n");
@@ -1656,27 +1692,35 @@ V fpr_msg_concat(V left, V right, uw size, fpr_slab_t **hold) {
 }
 
 /* holds--; the slab goes home once nothing keeps it (arc_lock) */
-static void slab_unhold_locked(fpr_slab_t *sl) {
-  if (--sl->holds == 0 && sl->escaped == 0 && !sl->owner) fpr_slab_release(sl);
+static void slab_unhold_locked(fpr_slab_t *sl, uw count) {
+  sl->holds -= count;
+  if (sl->holds == 0 && sl->escaped == 0 && !sl->owner) fpr_slab_release(sl);
 }
 void fpr_slab_unhold(fpr_slab_t *sl, int locked) {
   if (!locked) fpr_lock(&arc_lock);
-  slab_unhold_locked(sl);
+  slab_unhold_locked(sl, 1);
   if (!locked) fpr_unlock(&arc_lock);
 }
 void fpr_slabs_unhold(fpr_slab_t **sls, uw n) {
   fpr_lock(&arc_lock);
-  for (uw i = 0; i < n; i++) slab_unhold_locked(sls[i]);
+  for (uw i = 0; i < n;) {
+    uw first = i++;
+    while (i < n && sls[i] == sls[first]) i++;
+    slab_unhold_locked(sls[first], i - first);
+  }
   fpr_unlock(&arc_lock);
 }
 static void slab_free_ownerless(fpr_slab_t *sl); /* fwd: defined by the state copies */
 static V msg_copy_held_in(V v, int fresh, uw pid, fpr_slab_t **hold) {
-  fpr_hart_t *h = fpr_hart();
-  if (h) h->copy_pid = pid;
-  if (ISINT(v) || !v) { /* ints and nil: nothing to copy, no slab */
-    FPR_COST_ADD(h, cost_copies, 1);
+  if (ISINT(v) || !v) {
+#ifdef FPR_COST_PROBE
+    fpr_hart_t *probe_hart = fpr_hart();
+    FPR_COST_ADD(probe_hart, cost_copies, 1);
+#endif
     return v;
   }
+  fpr_hart_t *h = fpr_hart();
+  if (h) h->copy_pid = pid;
   if (!fpr_in_heap(v)) { /* statics and bare actor handles: an image lookup */
     uw need = dc_size(v);
     FPR_COST_ADD(h, cost_copies, 1);
@@ -1796,9 +1840,6 @@ uw fpr_msg_inline_size(V v, uw pid) {
   if (tid == T_LIST || (tid >= T_STR && tid <= T_STORED_LIST)) return 0;
   uw total = PREHEADER(v);
   if (total > FPR_INL_CELL) return 0;
-  fpr_hart_t *h = fpr_hart();
-  uw prior = h ? h->copy_pid : 0;
-  if (h) h->copy_pid = pid;
   uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
   V *f = (V *)((char *)v + 8);
   uw ok = total;
@@ -1810,9 +1851,9 @@ uw fpr_msg_inline_size(V v, uw pid) {
       ok = 0;
       break;
     }
-    if (img_foreign((const void *)x)) { ok = 0; break; }
+    uw owner = image_owner_pid((const void *)x);
+    if (owner && owner != pid) { ok = 0; break; }
   }
-  if (h) h->copy_pid = prior;
   return ok;
 }
 V fpr_msg_inline_put(char *cell, V v, uw total) {
@@ -1844,6 +1885,8 @@ int fpr_entry_copy_try(V v, uw pid, V *out, fpr_slab_t **hold) {
   if (!sl) return 0;
   sl->owner = 0; sl->escaped = 0; sl->holds = 1; sl->promoted = 0; sl->pushed = 0;
   sl->hp = fpr_slab_start(sl); sl->next = 0;
+  /* The slab allocation can park this actor and resume it on another hart. */
+  fpr_hart()->copy_pid = pid;
   dctx_t c = {sl->hp, sl};
   *out = dc_dup(v, &c);
   sl->hp = c.hp;
@@ -2501,6 +2544,7 @@ static struct fpr_scope *region_open(fpr_hart_t *h, uw seq) {
  * fixed-heap pool keeps its cap: never adopted into. */
 static uw region_adoptions, region_adopted_bytes;
 uw fpr_region_adoptions_count(void) { return __atomic_load_n(&region_adoptions, __ATOMIC_RELAXED); }
+uw fpr_region_adopted_bytes_count(void) { return __atomic_load_n(&region_adopted_bytes, __ATOMIC_RELAXED); }
 static int region_adopt(fpr_hart_t *h, fpr_pool_t *ap, fpr_pool_t *into, V r) {
   uw used = ap->allocated;
   if (into->fixed_heap || !ap->cur || !used) return 0;
@@ -2771,7 +2815,8 @@ uw fpr_region_opens_count(void) { uw o, r; fpr_builtin_region_counts(&o, &r); re
 uw fpr_region_cycles_count(void) { return 0; }
 uw fpr_region_call_opens_count(void) { return 0; }
 uw fpr_pend_grows_count(void) { return 0; }
-static uw region_adoptions;
+static uw region_adoptions, region_adopted_bytes;
+uw fpr_region_adopted_bytes_count(void) { return region_adopted_bytes; }
 uw fpr_region_adoptions_count(void) { return region_adoptions; }
 /* adopt: a compiler-placed region whose result is at least as large as what
  * it allocated since its last reset hands its blocks to the enclosing region
@@ -2785,7 +2830,7 @@ static V region_close_builtin(V r, int adopt) {
     h->copy_movevec = 1;
     int big = used && kp_reaches(r, &left);
     h->copy_movevec = 0;
-    if (big) { fpr_builtin_region_adopt(tok); region_adoptions++; return r; }
+    if (big) { fpr_builtin_region_adopt(tok); region_adoptions++; region_adopted_bytes += used; return r; }
   }
   h->copy_movevec = 1;
   V out = kp_dup(r);
@@ -3635,6 +3680,33 @@ static V g_drop(V v) {
   return (V)&fpr_unit;
 }
 
+/* There are exactly 256 one-byte Strings. Like a string literal, each is an
+ * immutable static: chr needs no actor allocation, even inside a tight text
+ * encoder. A table in a mortal process image follows the existing static-data
+ * copy rule when sent outside that image; it is not a global heap cache. */
+typedef struct {
+  uint32_t tid, var;
+  uw len;
+  uint8_t bytes[1];
+} __attribute__((aligned(8))) byte_str_t;
+_Static_assert(__builtin_offsetof(byte_str_t, bytes) == __builtin_offsetof(str_t, bytes),
+               "byte String layout");
+#define BYTE_STR(n) { T_STR, 0, 1, { (n) } }
+#define BYTE_STR_16(n) \
+  BYTE_STR((n)+0), BYTE_STR((n)+1), BYTE_STR((n)+2), BYTE_STR((n)+3), \
+  BYTE_STR((n)+4), BYTE_STR((n)+5), BYTE_STR((n)+6), BYTE_STR((n)+7), \
+  BYTE_STR((n)+8), BYTE_STR((n)+9), BYTE_STR((n)+10), BYTE_STR((n)+11), \
+  BYTE_STR((n)+12), BYTE_STR((n)+13), BYTE_STR((n)+14), BYTE_STR((n)+15)
+static const byte_str_t byte_strings[256] = {
+  BYTE_STR_16(0), BYTE_STR_16(16), BYTE_STR_16(32), BYTE_STR_16(48),
+  BYTE_STR_16(64), BYTE_STR_16(80), BYTE_STR_16(96), BYTE_STR_16(112),
+  BYTE_STR_16(128), BYTE_STR_16(144), BYTE_STR_16(160), BYTE_STR_16(176),
+  BYTE_STR_16(192), BYTE_STR_16(208), BYTE_STR_16(224), BYTE_STR_16(240)
+};
+#undef BYTE_STR_16
+#undef BYTE_STR
+static const byte_str_t empty_string = { T_STR, 0, 0, { 0 } };
+
 /* substr s off len -- the bytes [off, off + len), 0-based, clamped. Mechanism, not
  * policy: diskfs chunks payloads into pages (write) and takes the used
  * prefix of a page (read) with this; doing it via chr+strcat would be
@@ -3647,6 +3719,11 @@ static V g_substr(V sv, V off, V len) {
   if (l < 0) l = 0;
   if ((uw)o >= s->len) { o = 0; l = 0; }
   if ((uw)l > s->len - (uw)o) l = (sw)(s->len - (uw)o);
+  if (!l) return (V)&empty_string;
+  if (l == 1) return (V)&byte_strings[s->bytes[o]];
+  /* A borrowed input can die at the next receive or explicit drop. Keep
+   * heap-backed slices independently owned, even for a whole-string cut. */
+  if (!o && (uw)l == s->len && !fpr_in_heap(sv)) return sv;
   return (V)fpr_mkstr(s->bytes + o, (uw)l);
 }
 /* ---- strJoin: the string operation a library cannot build cheaply -------
@@ -3662,11 +3739,28 @@ static int is_cons(V v) { return !ISINT(v) && TID(v) == T_LIST && ((hdr_t *)v)->
 static V g_strJoin(V sepv, V list) {
   str_t *sep = want_str(sepv, "strJoin: the separator is not a String");
   uw total = 0, n = 0;
+  str_t *piece = 0;
   for (V c = list; is_cons(c); c = ((V *)((char *)c + 8))[1]) {
-    total += want_str(((V *)((char *)c + 8))[0], "strJoin: not a List of String")->len;
+    str_t *x = want_str(((V *)((char *)c + 8))[0], "strJoin: not a List of String");
+    if (x->len) {
+      if (x->len > ~(uw)0 - total) fpr_trap("strJoin: size overflow");
+      total += x->len;
+      piece = x;
+    }
     n++;
   }
-  if (n > 1) total += (n - 1) * sep->len;
+  if (n > 1 && sep->len) {
+    if (sep->len > (~(uw)0 - total) / (n - 1)) fpr_trap("strJoin: size overflow");
+    total += (n - 1) * sep->len;
+    if (!piece) piece = sep;
+  }
+  if (!total) return (V)&empty_string;
+  if (total == 1) return (V)&byte_strings[piece->bytes[0]];
+  if (total > ~(uw)0 - sizeof(str_t)) fpr_trap("strJoin: size overflow");
+  if (piece->len == total) {
+    if (!fpr_in_heap((V)piece)) return (V)piece;
+    return (V)fpr_mkstr(piece->bytes, total);
+  }
   str_t *out = (str_t *)fpr_alloc(sizeof(str_t) + total);
   out->tid = T_STR; out->var = 0; out->len = total;
   uw at = 0, i = 0;
@@ -3698,7 +3792,13 @@ static V g_arcLive(V d) {
  * a program's stdout carries only what the program printed and a pipeline
  * never mistakes a panic for data.  FPR_DIAG_STDOUT=1 restores the old
  * single-stream behaviour there (roadmap #39, item C). */
+__attribute__((weak)) void hal_console_bytes(const char *bytes, uw len) {
+  for (uw i = 0; i < len; i++) hal_putc(bytes[i]);
+}
 __attribute__((weak)) void hal_eputc(char c) { hal_putc(c); }
+__attribute__((weak)) void hal_diag_bytes(const char *bytes, uw len) {
+  for (uw i = 0; i < len; i++) hal_eputc(bytes[i]);
+}
 static void praw(const char *s) {
   while (*s) hal_eputc(*s++);
 }
@@ -4342,23 +4442,51 @@ static void remit(char c) {
              "strings with strcat, not interpolation");
   rbuf[rpos++] = c;
 }
-static void remits(const char *s) { while (*s) remit(*s++); }
+static void render_bytes(const void *src, uw len) {
+  if (len > (uw)(FPR_RBUF_SZ - 1 - rpos))
+    fpr_trap("str/print: render buffer full (4096B) -- build large "
+             "strings with strcat, not interpolation");
+  __builtin_memcpy(rbuf + rpos, src, len);
+  rpos += len;
+}
+static void remits(const char *s) {
+  uw len = 0;
+  while (s[len]) len++;
+  render_bytes(s, len);
+}
+/* Sizing an integer piece needs only its decimal width. */
+static uw decimal_width(sw value) {
+  uw magnitude = value < 0 ? (uw)0 - (uw)value : (uw)value;
+  uw width = 1 + (value < 0);
+  while (magnitude >= 10000) {
+    magnitude /= 10000;
+    width += 4;
+  }
+  return width + (magnitude >= 10) + (magnitude >= 100) + (magnitude >= 1000);
+}
+static void write_decimal(uint8_t *dest, uw width, sw value) {
+  uw magnitude = value < 0 ? (uw)0 - (uw)value : (uw)value;
+  do {
+    dest[--width] = (uint8_t)('0' + magnitude % 10);
+    magnitude /= 10;
+  } while (magnitude);
+  if (value < 0) dest[0] = '-';
+}
+
 static void rdec(sw n) {
-  char b[24];
-  int i = 23;
-  int neg = n < 0;
-  uw u = neg ? (uw)0 - (uw)n : (uw)n;
-  if (u == 0) b[i--] = '0';
-  while (u) { b[i--] = '0' + (u % 10); u /= 10; }
-  if (neg) b[i--] = '-';
-  for (int j = i + 1; j <= 23; j++) remit(b[j]);
+  uw width = decimal_width(n);
+  if (width > (uw)(FPR_RBUF_SZ - 1 - rpos))
+    fpr_trap("str/print: render buffer full (4096B) -- build large "
+             "strings with strcat, not interpolation");
+  write_decimal((uint8_t *)rbuf + rpos, width, n);
+  rpos += width;
 }
 static void rdec64(int64_t n) {
   char b[24]; int i = 24;
   uint64_t m = n < 0 ? (uint64_t)0 - (uint64_t)n : (uint64_t)n;
   do { b[--i] = (char)('0' + m % 10u); m /= 10u; } while (m);
   if (n < 0) b[--i] = '-';
-  while (i < 24) remit(b[i++]);
+  render_bytes(b + i, (uw)(24 - i));
 }
 static void render(V v);
 static uw dtoa(char *,double,int);
@@ -4370,7 +4498,7 @@ static void renderField(V obj,uw i) {
   if(k=='d'||k=='f') {
     union { V u; double d; } d={v}; union { uint32_t u; float f; } f={(uint32_t)v};
     char b[40]; uw n=dtoa(b,k=='d'?d.d:(double)f.f,k=='d'?15:7);
-    for(uw j=0;j<n;j++)remit(b[j]);
+    render_bytes(b, n);
     return;
   }
 #endif
@@ -4417,7 +4545,7 @@ static void render(V v) {
   switch (h->tid) {
     case T_STR: {
       str_t *s = (str_t *)v;
-      for (uw i = 0; i < s->len; i++) remit((char)s->bytes[i]);
+      render_bytes(s->bytes, s->len);
       break;
     }
     case T_BOOL: remits(h->var ? "True" : "False"); break;
@@ -4456,7 +4584,7 @@ static void render(V v) {
       else if (h->var == 5 || h->var == 6) {
         char b[40];
         uw n = dtoa(b, h->var == 5 ? boxed_dbits(v) : (double)boxed_fbits(v), h->var == 5 ? 15 : 7);
-        for (uw i = 0; i < n; i++) remit(b[i]);
+        render_bytes(b, n);
       }
       else rdec((sw)((bits_t *)v)->val);
       break;
@@ -4475,7 +4603,9 @@ static void render(V v) {
           remit('{');
           for (uw i = 0; i < c->arity; i++) {
             if (i) remits(", ");
-            while (*n && *n != ',') remit(*n++);
+            const char *start = n;
+            while (*n && *n != ',') n++;
+            render_bytes(start, (uw)(n - start));
             if (*n) n++;
             remits(" = ");
             renderField(v, i);
@@ -4497,7 +4627,16 @@ V fpr_prim_fn_str(V v) {
   /* a String renders as itself: return it unchanged rather than
    * copying it through the fixed render buffer. This is what makes
    * "{s}" safe for strings of any size (and it saves the copy). */
-  if (!ISINT(v) && TID(v) == T_STR) return v;
+  if (ISINT(v)) {
+    sw value = UNTAG(v);
+    if (value >= 0 && value <= 9) return (V)&byte_strings['0' + value];
+    uw width = decimal_width(value);
+    str_t *out = (str_t *)fpr_alloc(sizeof(str_t) + width);
+    out->tid = T_STR; out->var = 0; out->len = width;
+    write_decimal(out->bytes, width, value);
+    return (V)out;
+  }
+  if (TID(v) == T_STR) return v;
   rpos = 0;
   render(v);
   /* Allocating can park this actor for a slab grant. Another actor on the
@@ -4530,8 +4669,12 @@ V fpr_prim_fn__x24strcatT(V t) {
   uw total = 0;
   for (uw i = 0; i < n; i++) {
     V v = ((V *)((char *)t + 8))[i];
-    if (!ISINT(v) && TID(v) == T_STR) total += ((str_t *)v)->len;
-    else { rpos = 0; render(v); total += (uw)rpos; }
+    uw len;
+    if (ISINT(v)) len = decimal_width(UNTAG(v));
+    else if (TID(v) == T_STR) len = ((str_t *)v)->len;
+    else { rpos = 0; render(v); len = (uw)rpos; }
+    if (len > ~(uw)0 - sizeof(str_t) - total) fpr_trap("string pieces: size overflow");
+    total += len;
   }
   str_t *out = (str_t *)fpr_alloc(sizeof(str_t) + total);
   out->tid = T_STR;
@@ -4540,7 +4683,12 @@ V fpr_prim_fn__x24strcatT(V t) {
   uw at = 0;
   for (uw i = 0; i < n; i++) {
     V v = ((V *)((char *)t + 8))[i];
-    if (!ISINT(v) && TID(v) == T_STR) {
+    if (ISINT(v)) {
+      sw value = UNTAG(v);
+      uw width = decimal_width(value);
+      write_decimal(out->bytes + at, width, value);
+      at += width;
+    } else if (TID(v) == T_STR) {
       str_t *x = (str_t *)v;
       __builtin_memcpy(out->bytes + at, x->bytes, x->len);
       at += x->len;
@@ -4594,7 +4742,7 @@ void fpr_logput(int sev, const char *b, uw n) {
     d[0] = (unsigned char)sev;
     d[1] = (unsigned char)n; d[2] = (unsigned char)(n >> 8);
     d[3] = (unsigned char)(n >> 16); d[4] = (unsigned char)(n >> 24);
-    for (uw i = 0; i < n; i++) d[STAGE_HDR + i] = (unsigned char)b[i];
+    if (n) __builtin_memcpy(d + STAGE_HDR, b, n);
     stage_used += STAGE_HDR + n;
   } else stage_dropped++;
   echo_total++;
@@ -4619,10 +4767,11 @@ void fpr_logput(int sev, const char *b, uw n) {
     s = " line(s); rings intact)\n";
     for (const char *c = s; *c; c++) hal_putc(*c);
   }
-  void (*out)(char) = sev == 1 || sev == 2 ? hal_eputc : hal_putc;
-  for (const char *c = pre[sev]; *c; c++) out(*c);
-  for (uw i = 0; i < n; i++) out(b[i]);
-  out('\n');
+  void (*out)(const char *, uw) = sev == 1 || sev == 2 ? hal_diag_bytes : hal_console_bytes;
+  static const uw prefix_len[LOG_SEVS] = {6, 7, 6, 7};
+  out(pre[sev], prefix_len[sev]);
+  if (n) out(b, n);
+  out("\n", 1);
   fpr_unlock(&fpr_con_lock);
 }
 
@@ -4635,6 +4784,8 @@ static V g_logStage(V sevv, V sv) {
   fpr_logput((int)UNTAG(sevv), (const char *)t->bytes, t->len);
   return (V)&fpr_unit;
 }
+
+const hdr_t fpr_list_nil = {T_LIST, 0};
 
 static V log_tup2(V a, V b) {
   hdr_t *t = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
@@ -4651,6 +4802,9 @@ static V log_tup2(V a, V b) {
 static V g_logStaged(V u) {
   (void)u;
   fpr_confined_refuse("Sys.logStaged (the system log)");
+  static const struct { hdr_t hdr; V dropped, entries; } empty = {
+    {T_TUP2, 0}, TAG(0), (V)&fpr_list_nil
+  };
   unsigned char *buf = 0;
   uw n, dropped, cap = 0;
   for (;;) {
@@ -4663,21 +4817,22 @@ static V g_logStaged(V u) {
     fpr_lock(&log_lock);
     if (stage_used > cap) { fpr_unlock(&log_lock); continue; }
     n = stage_used;
-    for (uw i = 0; i < n; i++) buf[i] = stage[i];
+    if (n) __builtin_memcpy(buf, stage, n);
     dropped = stage_dropped;
     stage_used = 0;
     stage_dropped = 0;
     fpr_unlock(&log_lock);
     break;
   }
-  hdr_t *nil = (hdr_t *)fpr_alloc(8);
-  nil->tid = T_LIST;
-  nil->var = 0;
-  V list = (V)nil;
+  if (!n && !dropped) {
+    if (buf) fpr_free_raw((V)buf);
+    return (V)&empty;
+  }
+  V list = (V)&fpr_list_nil;
   for (uw at = 0; at < n;) { /* oldest first, consed: the head is newest */
     uw len = (uw)buf[at + 1] | (uw)buf[at + 2] << 8 | (uw)buf[at + 3] << 16 | (uw)buf[at + 4] << 24;
     V line = (V)fpr_mkstr(buf + at + STAGE_HDR, len);
-    V *cell = (V *)fpr_alloc(24);
+    V *cell = (V *)fpr_alloc(sizeof(hdr_t) + 2 * sizeof(V));
     ((hdr_t *)cell)->tid = T_LIST;
     ((hdr_t *)cell)->var = 1;
     FPR_FLD(cell, 0) = log_tup2(TAG((sw)buf[at]), line);
@@ -4715,11 +4870,11 @@ FPR_FN(fpr_g_Sys_x2elogger, g_logger, 1);
 /* Sys.memStats () -> (grows, mib): the arena growth ledger */
 static V g_memstats(V u) {
   (void)u;
-  V *t = (V *)fpr_alloc(24);
-  ((hdr_t *)t)->tid = 4; /* Tup2 */
+  V *t = (V *)fpr_alloc(sizeof(hdr_t) + 2 * sizeof(V));
+  ((hdr_t *)t)->tid = T_TUP2;
   ((hdr_t *)t)->var = 0;
-  FPR_FLD(t, 0) = TAG((sw)fpr_grow_count);
-  FPR_FLD(t, 1) = TAG((sw)(fpr_grow_bytes >> 20));
+  FPR_FLD(t, 0) = TAG((sw)__atomic_load_n(&fpr_grow_count, __ATOMIC_RELAXED));
+  FPR_FLD(t, 1) = TAG((sw)(__atomic_load_n(&fpr_grow_bytes, __ATOMIC_RELAXED) >> 20));
   return (V)t;
 }
 FPR_FN(fpr_g_Sys_x2ememStats, g_memstats, 1);
@@ -4736,13 +4891,10 @@ static V g_meminfo(V u) {
   (void)u;
   /* build the cells FIRST: the list itself may be the caller's first
    * allocation, and the numbers should include the slab that costs */
-  hdr_t *nil = (hdr_t *)fpr_alloc(8);
-  nil->tid = T_LIST;
-  nil->var = 0;
-  V list = (V)nil;
+  V list = (V)&fpr_list_nil;
   V *cells[8];
   for (int i = 7; i >= 0; i--) {
-    V *cell = (V *)fpr_alloc(24);
+    V *cell = (V *)fpr_alloc(sizeof(hdr_t) + 2 * sizeof(V));
     ((hdr_t *)cell)->tid = T_LIST;
     ((hdr_t *)cell)->var = 1;
     FPR_FLD(cell, 1) = list;
@@ -4765,19 +4917,17 @@ FPR_FN(fpr_g_Sys_x2ememInfo, g_meminfo, 1);
  * slot (seq changed while copying) is skipped rather than lied about. */
 static V g_growlog(V u) {
   (void)u;
-  hdr_t *nil = (hdr_t *)fpr_alloc(8);
-  nil->tid = T_LIST;
-  nil->var = 0;
-  V list = (V)nil;
-  uw newest = __atomic_load_n(&growlog_seq, __ATOMIC_ACQUIRE);
+  V list = (V)&fpr_list_nil;
+  uw newest = __atomic_load_n(&fpr_grow_count, __ATOMIC_RELAXED);
   uw have = newest < GROWLOG_N ? newest : GROWLOG_N;
   /* build oldest -> newest by consing, so the head is newest */
   for (uw s = newest - have; s < newest; s++) {
     growev_t *e = &growlog[s % GROWLOG_N];
     uw seq1 = __atomic_load_n(&e->seq, __ATOMIC_ACQUIRE);
+    if (seq1 != s + 1) continue;
     growev_t c = *e;
     uw seq2 = __atomic_load_n(&e->seq, __ATOMIC_ACQUIRE);
-    if (seq1 != s + 1 || seq2 != s + 1) continue; /* torn or overwritten */
+    if (seq2 != s + 1) continue; /* torn or overwritten */
     char line[96];
     int p = 0;
     const char *fmt[] = {"#", " ", " a", " want ", "K got ", "K"};
@@ -4799,7 +4949,7 @@ static V g_growlog(V u) {
       for (int j = di + 1; j <= 23 && p < 90; j++) line[p++] = d[j];
     }
     V str = (V)fpr_mkstr((const uint8_t *)line, (uw)p);
-    V *cell = (V *)fpr_alloc(24);
+    V *cell = (V *)fpr_alloc(sizeof(hdr_t) + 2 * sizeof(V));
     ((hdr_t *)cell)->tid = T_LIST;
     ((hdr_t *)cell)->var = 1;
     FPR_FLD(cell, 0) = str;
@@ -4826,7 +4976,7 @@ V fpr_prim_fn_print(V v) {
     n = (uw)rpos;
   }
   fpr_lock(&fpr_con_lock);
-  for (uw i = 0; i < n; i++) hal_putc(out[i]);
+  hal_console_bytes(out, n);
   hal_putc('\n');
   fpr_unlock(&fpr_con_lock);
   return (V)&fpr_unit;
@@ -4857,6 +5007,16 @@ V fpr_prim_fn_strcat(V a, V b) {
   str_t *x = (str_t *)a, *y = (str_t *)b;
   if (ISINT(a) || ISINT(b) || x->tid != T_STR || y->tid != T_STR)
     fpr_trap("strcat: not strings");
+  if (!x->len || !y->len) {
+    str_t *piece = x->len ? x : y;
+    if (!piece->len) return (V)&empty_string;
+    if (piece->len == 1) return (V)&byte_strings[piece->bytes[0]];
+    if (!fpr_in_heap((V)piece)) return (V)piece;
+    return (V)fpr_mkstr(piece->bytes, piece->len);
+  }
+  if (x->len > ~(uw)0 - sizeof(str_t) ||
+      y->len > ~(uw)0 - sizeof(str_t) - x->len)
+    fpr_trap("strcat: size overflow");
   str_t *s = (str_t *)fpr_alloc(sizeof(str_t) + x->len + y->len);
   s->tid = T_STR;
   s->var = 0;
@@ -4877,7 +5037,7 @@ V fpr_prim_fn_error(V s) { fpr_panic(s); }
 void fpr_render_to_uart(V v) {
   rpos = 0;
   render(v);
-  for (int i = 0; i < rpos; i++) hal_putc(rbuf[i]);
+  hal_console_bytes(rbuf, (uw)rpos);
 }
 
 /* string helpers exposed through the fpr_g_ contract (0-based) */
@@ -4900,31 +5060,6 @@ static V g_strlen(V s) {
  * where the Int is narrower, and a module cannot name a prelude constant */
 static V g_intMax(V u) { (void)u; return TAG(INT_MAX_TAGGED); }
 static V g_intMin(V u) { (void)u; return TAG(INT_MIN_TAGGED); }
-/* There are exactly 256 one-byte Strings. Like a string literal, each is an
- * immutable static: chr needs no actor allocation, even inside a tight text
- * encoder. A table in a mortal process image follows the existing static-data
- * copy rule when sent outside that image; it is not a global heap cache. */
-typedef struct {
-  uint32_t tid, var;
-  uw len;
-  uint8_t bytes[1];
-} __attribute__((aligned(8))) byte_str_t;
-_Static_assert(__builtin_offsetof(byte_str_t, bytes) == __builtin_offsetof(str_t, bytes),
-               "byte String layout");
-#define BYTE_STR(n) { T_STR, 0, 1, { (n) } }
-#define BYTE_STR_16(n) \
-  BYTE_STR((n)+0), BYTE_STR((n)+1), BYTE_STR((n)+2), BYTE_STR((n)+3), \
-  BYTE_STR((n)+4), BYTE_STR((n)+5), BYTE_STR((n)+6), BYTE_STR((n)+7), \
-  BYTE_STR((n)+8), BYTE_STR((n)+9), BYTE_STR((n)+10), BYTE_STR((n)+11), \
-  BYTE_STR((n)+12), BYTE_STR((n)+13), BYTE_STR((n)+14), BYTE_STR((n)+15)
-static const byte_str_t byte_strings[256] = {
-  BYTE_STR_16(0), BYTE_STR_16(16), BYTE_STR_16(32), BYTE_STR_16(48),
-  BYTE_STR_16(64), BYTE_STR_16(80), BYTE_STR_16(96), BYTE_STR_16(112),
-  BYTE_STR_16(128), BYTE_STR_16(144), BYTE_STR_16(160), BYTE_STR_16(176),
-  BYTE_STR_16(192), BYTE_STR_16(208), BYTE_STR_16(224), BYTE_STR_16(240)
-};
-#undef BYTE_STR_16
-#undef BYTE_STR
 static V g_chr(V c) {
   if (!ISINT(c)) fpr_trap("chr: not an Int");
   /* chr makes ONE BYTE; a value outside 0..255 used to be truncated

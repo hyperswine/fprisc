@@ -9,7 +9,7 @@ import Core.Syntax
 import Core.Opt.Fusion (fuseCompatibilityWithImports)
 import Core.Opt.Normalize (normIn)
 import Core.Opt.PairReturns (productReturnProgramWithVariants)
-import Workers (ScalarSignatures, workerizeWithProducts, internalWorker)
+import Workers (ScalarSignatures, workerizeWithResultFacts, internalWorker)
 import Core.Opt.StoredLists (storeLists)
 import Core.Opt.ProductParameters
 import Reuse (reuseProgramWithImports, poolResetters)
@@ -62,11 +62,13 @@ optimizeCoreWithCheckedImports=optimizeCoreWithProducts emptyProductParameters
 optimizeCoreWithProducts :: ProductParameters -> S.Set Name -> Prog -> OptimizationOptions -> S.Set Name -> Prog -> Either String OptimizedCore
 optimizeCoreWithProducts products checked imports opts elide input = do
   verifyPassResult input input M.empty
-  foldM run (OptimizedCore input M.empty [])
+  fst <$> foldM run (OptimizedCore input M.empty [],products)
     [LocalProducts, FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BuildStrings, PairReturns]
   where
-    run state pass = do
+    run (state,facts) pass = do
       let before = optimizedProgram state
+          (workers,workerNotes,workerSigs,workerFacts) = workerizeWithResultFacts facts
+            (optWorkers opts && optFieldWorkers opts) (optTupleScalars opts) (optWorkers opts && optScalarWorkers opts) before
           (after,sigs,notes,enabled) = case pass of
             -- a tuple built in each branch and taken apart at once: its
             -- fields, each from its own copy of the (cheap, pure) branches
@@ -75,8 +77,7 @@ optimizeCoreWithProducts products checked imports opts elide input = do
                            in (p,optimizedSignatures state,ns,optFusion opts)
             MakeWorkers -> let fields = optWorkers opts && optFieldWorkers opts
                                scalars = optWorkers opts && optScalarWorkers opts
-                               (p,ns,ss) = workerizeWithProducts products fields (optTupleScalars opts) scalars before
-                           in (p,ss,ns,fields || scalars)
+                           in (workers,workerSigs,workerNotes,fields || scalars)
             NormalizeForReuse ->
               let enabled = optReuse opts && optNormalize opts
                   p = if enabled then M.map (\(ps,b)->(ps,normIn (S.fromList ps) b)) before else before
@@ -92,13 +93,13 @@ optimizeCoreWithProducts products checked imports opts elide input = do
               | optPairReturns opts ->
                   let width=optProductWidth opts
                       (stored,notes)=storeLists products width before
-                      (out,ss,ns)=productReturnProgramWithVariants (variantResults before products) width stored (optimizedSignatures state)
+                      (out,ss,ns)=productReturnProgramWithVariants (variantResults before facts) width stored (optimizedSignatures state)
                   in (out,ss,notes++ns,True)
               | otherwise -> (before,optimizedSignatures state,[],False)
       case verifyPassResult before after sigs of
         Left err -> Left (show pass ++ ": " ++ err)
         Right () -> Right (OptimizedCore after sigs
-          (optimizationReports state ++ [PassReport pass enabled notes]))
+          (optimizationReports state ++ [PassReport pass enabled notes]), if pass==MakeWorkers then workerFacts else facts)
 
 -- Passes may add private functions, but must retain existing entry arities.
 -- Workers record representations at creation time: check their names and

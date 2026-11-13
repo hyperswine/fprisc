@@ -38,8 +38,12 @@ specializeCompatibility checked importedCode namespace arities external input =
 
 specializeCompatibilityWithProducts :: ProductParameters -> S.Set Name -> S.Set Name -> String -> M.Map Name Int -> Prog -> Prog -> (Prog,ProductParameters)
 specializeCompatibilityWithProducts products checked importedCode namespace arities external input =
-  (includeAux result,renameProductParameters (M.intersectionWith (\(ps,_) (qs,_)->(ps,qs)) input localInput) products)
+  (includeAux result,withCloneVariantResults cloneSources products renamedProducts)
   where
+    renamedProducts = renameProductParameters (M.intersectionWith (\(ps,_) (qs,_)->(ps,qs)) input localInput) products
+    cloneSources = [(source,old,target,params) | ((source,_),target)<-M.toList (seen st),
+                    Just (old,_)<-[M.lookup source (M.union input external)],
+                    Just (params,_)<-[M.lookup target (clones st)]]
     -- Global callback identities must stay global even if the caller later
     -- shadows their spelling after binding an alias to the function value.
     localize n (ps,b) =

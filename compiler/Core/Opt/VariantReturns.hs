@@ -40,11 +40,24 @@ plans capacity prog checked=(admitted,twins)
       guard (not (null ps) && M.notMember (worker layout n) prog)
       convert layout (S.fromList ps) b
     convert layout@(tid,vs) bound expr=case expr of
+      -- ANF may name the return value before returning it directly.
+      -- The RHS runs once in the original outer scope.
+      CLet x a (CVar y) | x==y -> convert layout bound a
       CLet x a b->do (body,exits,aux)<-convert layout (S.insert x bound) b
                      pure (CLet x a body,exits,aux)
       CIf c a b->do (yes,xs,p)<-convert layout bound a
                     (no,ys,q)<-convert layout bound b
                     pure (CIf c yes no,xs++ys,M.union p q)
+      -- Forward a nested result through its existing region boundary. The
+      -- slow path moves the packet fields before closing the active region.
+      CApp (CApp (CVar "$callLeave") (CVar token)) value
+        | S.notMember "$callLeave" bound, S.member token bound -> do
+            (packet,ends,aux)<-convert layout bound value
+            let local=unused "$variant.forward"
+                unused name | S.member name bound || occurs name value || M.member name prog = unused (name++"$")
+                            | otherwise = name
+            wrapped<-regionResult prog bound (Plan "" layout) local token packet
+            pure (wrapped,ends,aux)
       CErr _->Just (expr,[],M.empty)
       CMk t v fields | t==tid, M.lookup v vs==Just (length fields)->do
         result<-pack layout bound v fields
@@ -100,14 +113,38 @@ regionResult prog bound (Plan _ layout) result token call=do
       local=S.insert result bound
       free n=S.notMember n local && M.notMember n prog
   guard (result/=token && all free [marker,"$callActive","$callLeave"])
-  (tid,v,_)<-M.lookup ("Tup"++show size) smallTupleLayouts
-  let wordsOf x=[CProj i (CVar x) | i<-[0..size-1]]
-      leave x=CApp (CApp (CVar "$callLeave") (CVar token)) x
+  let leave x=CApp (CApp (CVar "$callLeave") (CVar token)) x
       saved=result++"$saved"
-      copied=CLet saved (leave (CMk tid v (wordsOf result)))
-                    (foldl' CApp (CVar marker) (wordsOf saved))
       direct=CLet saved (leave (CInt 0)) (CVar result)
-  pure (CLet result call (CIf (CApp (CVar "$callActive") (CVar token)) copied direct))
+      staticWord (CStr _) = True
+      staticWord (CInt _) = True
+      staticWord (CMk _ _ []) = True
+      staticWord _ = False
+      -- For a known constructor, padding and literal fields can cross the
+      -- close directly. For an unknown variant only the tag is always static.
+      representatives = case spineOf call of
+        (CVar target,fields) | target==marker && length fields==size ->
+          [(i,representative i field fields) | (i,field)<-zip [0..] fields, not (staticWord field)]
+        _ -> [(i,i) | i<-[1..size-1]]
+      -- Only repeated reads of a bound local are known to be identical.
+      representative i field@(CVar n) fields | S.member n bound =
+        maybe i id (lookup field (zip (take i fields) [0..]))
+      representative i _ _ = i
+      liveFields = [i | (i,j)<-representatives, i==j]
+      original i=CProj i (CVar result)
+      pack fields=foldl' CApp (CVar marker) fields
+      positions=[(i,slot) | (i,j)<-representatives, Just slot<-[lookup j (zip liveFields [0..])]]
+      rebuild i=maybe (original i) (\slot->CProj slot (CVar saved)) (lookup i positions)
+  close<-case liveFields of
+    [] -> pure direct
+    [i] -> pure (CLet saved (leave (original i))
+            (pack [if lookup j positions==Just 0 then CVar saved else original j | j<-[0..size-1]]))
+    _ -> do
+      (tid,v,_)<-M.lookup ("Tup"++show (length liveFields)) smallTupleLayouts
+      let copied=CLet saved (leave (CMk tid v (map original liveFields)))
+                   (pack (map rebuild [0..size-1]))
+      pure (CIf (CApp (CVar "$callActive") (CVar token)) copied direct)
+  pure (CLet result call close)
 
 -- A packet never becomes a first-class language value. Projections require
 -- the field to exist in every variant still possible on this branch.
@@ -129,9 +166,15 @@ reader prog bound (Plan _ layout@(tid,variants)) result body=do
           Nothing->go scope possible b
           Just k | M.size possible==1->go scope possible a
                  | otherwise->CIf <$> test scope v <*> go scope (M.singleton v k) a <*> go scope (M.delete v possible) b
+      CTagEq t v (CVar x) | x==result->do
+        guard (t==tid)
+        if M.notMember v possible then pure (CMk 1 0 [])
+        else if M.size possible==1 then pure (CMk 1 1 [])
+        else test scope v
       CProj i (CVar x) | x==result->do
         guard (i>=0 && all (>i) possible)
         pure (CProj (i+1) (CVar result))
+      CLet alias (CVar x) b | x==result -> inlineAlias alias b >>= go scope possible
       CLet x a b->CLet x <$> go scope possible a <*> (if x==result then Just b else go (S.insert x scope) possible b)
       CLam ps b | result `notElem` ps && occurs result b->Nothing
       CApp a b->CApp <$> child a <*> child b
@@ -141,3 +184,21 @@ reader prog bound (Plan _ layout@(tid,variants)) result body=do
       CProj i x->CProj i <$> child x
       _->Just e
       where child=go scope possible
+    -- Substitute only free alias reads. Refuse a rewrite that would capture
+    -- the packet name; an escaping read is still rejected by go.
+    inlineAlias alias = walk
+      where
+        walk e = case e of
+          CVar x | x==alias -> Just (CVar result)
+          CLet x a b -> CLet x <$> walk a <*> under [x] b
+          CLam ps b -> CLam ps <$> under ps b
+          CApp a b -> CApp <$> walk a <*> walk b
+          CIf c a b -> CIf <$> walk c <*> walk a <*> walk b
+          CMk t v xs -> CMk t v <$> traverse walk xs
+          CTagEq t v a -> CTagEq t v <$> walk a
+          CProj i a -> CProj i <$> walk a
+          _ -> Just e
+        under names b
+          | alias `elem` names = Just b
+          | result `elem` names && occurs alias b = Nothing
+          | otherwise = walk b

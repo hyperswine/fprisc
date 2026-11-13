@@ -461,13 +461,24 @@ fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linea
           let prefixes=prefix++innerPrefix
               scope'=foldl (\s (b,_)->M.insert (binderId b) b s) scope prefixes
           checked<-checkSingle scope' (globalName head') f MapRange
-          case checked of
-            Nothing->pure Nothing
-            Just _->do
+          -- The forward worker admits effectful and trapping callbacks. Bind
+          -- this fallback to the reviewed std/list revision, including map,
+          -- reverse and foldRange; older and custom modules keep their path.
+          let stdHash = "dce015ec6fe59be4"
+              forward = "mapRangeForward@" ++ stdHash
+              target = case checked of
+                Just _ -> Just mrName
+                Nothing | moduleHash (globalName rh) == stdHash
+                        , moduleHash (globalName head') == stdHash
+                        , M.member forward (catalogSchemas snapshot) -> Just forward
+                _ -> Nothing
+          case target of
+            Nothing -> pure Nothing
+            Just name -> do
               let intTy=TC "Int"
                   ty=TFn (exprType f) (TFn intTy (TFn intTy (exprType old)))
-                  mrSc=M.findWithDefault (Forall [] [] ty) mrName (catalogSchemas snapshot)
-                  mr=gen old ty (Var (Global mrName mrSc))
+                  mrSc=M.findWithDefault (Forall [] [] ty) name (catalogSchemas snapshot)
+                  mr=gen old ty (Var (Global name mrSc))
                   call=foldl (apply old) mr [f,a,b]
               modify (\(Build n cs ns v _)->Build n cs ns v True)
               pure (Just (foldr (bind old) call prefixes))

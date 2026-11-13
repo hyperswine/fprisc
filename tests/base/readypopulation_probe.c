@@ -45,8 +45,11 @@ static V report(V ignored) {
 #ifdef FPR_COST_PROBE
   uint64_t count, select_ns, clock_ns;
   fpr_scheduler_costs(&count, &select_ns, &clock_ns);
-  printf("scheduler profile: admissions=%llu select_ns=%llu clock_ns=%llu\n",
-         (unsigned long long)count, (unsigned long long)select_ns, (unsigned long long)clock_ns);
+  uint64_t entries, held_ns;
+  fpr_scheduler_scan_costs(&entries, &held_ns);
+  printf("scheduler profile: admissions=%llu select_ns=%llu clock_ns=%llu scanned=%llu lock_ns=%llu\n",
+         (unsigned long long)count, (unsigned long long)select_ns, (unsigned long long)clock_ns,
+         (unsigned long long)entries, (unsigned long long)held_ns);
 #endif
   return ignored;
 }

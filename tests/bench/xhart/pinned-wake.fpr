@@ -1,0 +1,21 @@
+XH.begin : Unit -> Unit .
+XH.report : Unit -> String .
+
+worker : unsafe Int -> Int -> Unit .
+worker boss self =
+  n = receive self;
+  _ = send boss (n + hartId 0);
+  worker boss self.
+
+loop : unsafe Int -> Int -> Int -> Int -> Int .
+loop me w n sum = if n == 0 then sum else
+  _ = send w n;
+  reply = receiveFrom me w;
+  loop me w (n - 1) (sum + reply - n).
+
+main = me = myself 0; home = hartId 0;
+  _ = XH.begin Unit;
+  w = spawnOn 1 (worker me);
+  sum = loop me w 100 0;
+  report = XH.report Unit; _ = kill w;
+  if home == 0 and sum == 100 then print report else error "unexpected hart placement".

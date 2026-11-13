@@ -45,7 +45,7 @@ import qualified Core.Alpha as Alpha
 import qualified Data.Set as S
 import Core.Syntax
 import Reuse (poolResetters,spineBuilders)
-import Core.Opt.ProductParameters (withoutVariantResults)
+import Core.Opt.ProductParameters (withImportedVariantResults, withoutVariantResults)
 import Core.CacheIdentity (CallArities(..),coreCacheIdentityWithBuilders)
 import qualified Compiler.Options as Options
 import Compiler.CommandLine
@@ -1019,7 +1019,7 @@ compileWithReport accepted report = do
             ++ (if a64 || x64 then "-native1" else "")
             ++ Options.nativeOptionFlags (a64 && not qapp) native
           tag = "g" ++ show codegenRev ++ backendTag ++ Options.optimizationFlags codegen
-            ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "")
+            ++ "rt3pc6-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "")
             ++ Options.vectorOptionFlags codegen ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
@@ -1305,7 +1305,10 @@ compileWithReport accepted report = do
         (oExports opts) tops0RL (M.map (length . fst) rootProgSym) (functionSymbol . checkedTarget) of
           Left err -> hPutStrLn stderr ("export " ++ Exports.exportSource err ++ ": " ++ Exports.exportMessage err) >> exitFailure
           Right checked -> pure checked
-      let (rootSpecialized,rootProductParameters)=mono (resultProducts (artifactRegions Linked.RootArtifact)) ("root" ++ take 12 rootHash) importedSym rootProgSym
+      let rootFacts = withImportedVariantResults importedSym
+            [resultProducts placed | (key,placed)<-M.toList regionArtifacts,key/=Linked.RootArtifact]
+            (resultProducts (artifactRegions Linked.RootArtifact))
+          (rootSpecialized,rootProductParameters)=mono rootFacts ("root" ++ take 12 rootHash) importedSym rootProgSym
       rootProg <- ownWith borrowed rootSpecialized
       rootReady<-ready borrowed Linked.RootArtifact
         (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact)) (rootProg `M.union` erasedConstructorStubs rootProg)

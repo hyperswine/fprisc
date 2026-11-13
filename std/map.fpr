@@ -95,10 +95,24 @@ getGo cmp k t = case t of
       | Ord.Equal -> O.Some v).
 
 getOr : v -> k -> Map k v -> v .
-getOr d k m = O.withDefault d (get k m).
+getOr d k (Map cmp _ t) = getOrGo d cmp k t.
+getOrGo : v -> (k -> k -> Ord.Ordering) -> k -> (t : Tree k v | measure t) -> v .
+getOrGo d cmp k t = case t of
+    Leaf -> d
+  | Node _ l k2 v r -> (case cmp k k2 of
+        Ord.Less -> getOrGo d cmp k l
+      | Ord.Greater -> getOrGo d cmp k r
+      | Ord.Equal -> v).
 
 member : k -> Map k v -> Bool .
-member k m = O.isSome (get k m).
+member k (Map cmp _ t) = memberGo cmp k t.
+memberGo : (k -> k -> Ord.Ordering) -> k -> (t : Tree k v | measure t) -> Bool .
+memberGo cmp k t = case t of
+    Leaf -> False
+  | Node _ l k2 _ r -> (case cmp k k2 of
+        Ord.Less -> memberGo cmp k l
+      | Ord.Greater -> memberGo cmp k r
+      | Ord.Equal -> True).
 
 # ---- the tree --------------------------------------------------------------------
 height : Tree k v -> Int
@@ -271,4 +285,9 @@ pairsEq veq xs ys = case xs of
 
 # the least / greatest key
 first : Map k v -> O.Option (k, v) .
-first m = case entries m of Nil -> O.None | e :: _ -> O.Some e.
+first (Map _ _ t) = firstGo t.
+firstGo : (t : Tree k v | measure t) -> O.Option (k, v) .
+firstGo t = case t of
+    Leaf -> O.None
+  | Node _ Leaf k v _ -> O.Some (k, v)
+  | Node _ l _ _ _ -> firstGo l.

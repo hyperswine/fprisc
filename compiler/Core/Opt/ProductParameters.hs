@@ -5,7 +5,7 @@
 module Core.Opt.ProductParameters
   (ProductParameters,emptyProductParameters,checkedProductParameters,parameterProduct,
    CheckedKinds,checkedKinds,rawKind,
-   VariantLayout,StorageLayout(..),StorageField(..),storagePlans,storageLists,variantResults,withoutVariantResults,renameProductParameters,expandProductParameter,productParameterKey) where
+   VariantLayout,StorageLayout(..),StorageField(..),storagePlans,storageLists,variantResults,withImportedVariantResults,withCloneVariantResults,withoutVariantResults,renameProductParameters,expandProductParameter,productParameterKey) where
 import Compiler.DataLayout
 import Core.Syntax (Prog)
 import Core.Typed.Syntax (TypeContext(..),binderName)
@@ -83,7 +83,7 @@ checkedProductParameters layouts (TypeContext linears constructors) interfaces=
     rawModel=M.mapMaybe (\defs->case S.toList defs of [Just def]->Just def;_->Nothing) choices
     definitions=M.mapMaybe (sequence . S.toList) choices
     results=M.mapMaybe (\face->do bs<-interfaceParameters face
-                                  layout@(_,vs)<-scalarLayout (interfaceResult face)
+                                  layout@(_,vs)<-variantLayout True (interfaceResult face)
                                   if M.size vs>1 then Just (map binderName bs,layout) else Nothing) interfaces
     listLayout (TAp (TC "List") el)=do
       layout<-scalarLayout el
@@ -113,15 +113,23 @@ checkedProductParameters layouts (TypeContext linears constructors) interfaces=
     readers=M.mapMaybe (\face->do bs<-interfaceParameters face
                                   [(i,layout)]<-Just [(i,l) | (i,t)<-zip [0..] (interfaceArguments face),Just l<-[listLayout t]]
                                   Just (map binderName bs,(i,layout))) interfaces
-    scalarLayout ty=do
+    -- A private return packet carries the ordinary String pointer. The
+    -- existing region-close slow path keeps its fields together. Stored
+    -- fields use separate ownership rules and retain scalar-only admission.
+    scalarLayout = variantLayout False
+    variantLayout privateReturn ty=do
       let (headType,args)=spine ty
       TC owner<-Just headType
       ds<-M.lookup owner definitions
       let scalar (TV i)=case drop i args of
-            arg:_ | i>=0->baseScalar arg
+            arg:_ | i>=0->baseScalar arg || (privateReturn && genericWord arg)
             _->False
           scalar t=baseScalar t
-          baseScalar t=t `elem` [tInt,tBool,tUnit]
+          -- A polymorphic constructor argument already occupies one tagged
+          -- word. Carry that exact word through the private result packet.
+          genericWord (TV _) = True
+          genericWord _ = False
+          baseScalar t=t `elem` [tInt,tBool,tUnit] || (privateReturn && t==TC "String")
           fields (Definition n (_,_,_) ts)=n==length args && all scalar ts
           shapes=[(t,v,k) | Definition _ (t,v,k) _<-ds]
           variants=M.fromList [(v,k) | (_,v,k)<-shapes]
@@ -242,6 +250,23 @@ storagePlans :: Prog -> ProductParameters -> (M.Map String StorageLayout,M.Map S
 storagePlans program (ProductParameters _ _ _ _ producers readers _)=
   let owned=matching program producers in (owned,if M.null owned then M.empty else matching program readers)
 
+-- An imported specialization may copy a producer into its caller. Transport
+-- only the checked result facts belonging to actual, qualified input bodies.
+withImportedVariantResults :: Prog -> [ProductParameters] -> ProductParameters -> ProductParameters
+withImportedVariantResults imports owners (ProductParameters ls model args local ps rs ks) =
+  ProductParameters ls model args (M.union local imported) ps rs ks
+  where
+    imported = M.unions [M.filterWithKey matches facts | ProductParameters _ _ _ facts _ _ _ <- owners]
+    matches name (params,_) = '@' `elem` name && fmap fst (M.lookup name imports) == Just params
+
+-- Callback specialization changes the inputs of a clone but preserves its result.
+withCloneVariantResults :: [(String,[String],String,[String])] -> ProductParameters -> ProductParameters -> ProductParameters
+withCloneVariantResults clones (ProductParameters _ _ _ original _ _ _) (ProductParameters ls model args results ps rs ks) =
+  ProductParameters ls model args (M.union results copied) ps rs ks
+  where
+    copied = M.fromList [(target,(params,layout)) | (source,old,target,params)<-clones,
+                         Just (checked,layout)<-[M.lookup source original], old==checked]
+
 withoutVariantResults :: ProductParameters -> ProductParameters
 withoutVariantResults (ProductParameters layouts model table _ _ _ kinds)=ProductParameters layouts model table M.empty M.empty M.empty kinds
 
@@ -279,7 +304,11 @@ expandProductParameter source old target new index shape@(_,_,width) (ProductPar
               ks'=take index ks++fieldKinds++drop (index+1) ks
           in forcedEntry ks' r `seq` M.insert target (new,(ks',r)) kinds0
         _->kinds0
-      evidence=ProductParameters layouts model table results producers readers kinds
+      workerResults=case M.lookup source results of
+        Just (checked,layout) | valid && checked==old && M.notMember target results ->
+          M.insert target (new,layout) results
+        _ -> results
+      evidence=ProductParameters layouts model table workerResults producers readers kinds
   in case M.lookup source table of
     Just (checked,types)
       | checked==old,index>=0,index<length old,width>0,
@@ -296,7 +325,7 @@ expandProductParameter source old target new index shape@(_,_,width) (ProductPar
           in case selected of
             Just (actual,_) | actual/=shape->evidence
             _ | M.null next->evidence
-              | otherwise->ProductParameters layouts model (M.insert target (new,next) table) results producers readers kinds
+              | otherwise->ProductParameters layouts model (M.insert target (new,next) table) workerResults producers readers kinds
     _->evidence
   where forcedEntry ks r=foldr seq r ks `seq` ()
 

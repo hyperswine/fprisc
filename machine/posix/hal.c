@@ -8,6 +8,7 @@
  */
 #include "fpr.h"
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <time.h>
@@ -39,18 +40,33 @@ void hal_putc(char c) {
   if (c == '\n') fflush(stdout);
 }
 
+void hal_console_bytes(const char *bytes, uw len) {
+  while (len) {
+    const char *newline = memchr(bytes, '\n', len);
+    uw chunk = newline ? (uw)(newline - bytes) + 1 : len;
+    fwrite(bytes, 1, chunk, stdout);
+    if (newline) fflush(stdout);
+    bytes += chunk;
+    len -= chunk;
+  }
+}
+
 /* diagnostics (runtime.c praw, [warn]/[ERR] echo): stderr, unbuffered,
  * after flushing stdout so the two streams interleave in program order on
  * a shared terminal.  FPR_DIAG_STDOUT=1: the pre-#39 single stream. */
-void hal_eputc(char c) {
+void hal_diag_bytes(const char *bytes, uw len) {
   static int to_stdout = -1;
   if (to_stdout < 0) {
     const char *e = getenv("FPR_DIAG_STDOUT");
     to_stdout = e && *e && *e != '0';
   }
-  if (to_stdout) { hal_putc(c); return; }
+  if (to_stdout) { hal_console_bytes(bytes, len); return; }
   fflush(stdout);
-  fputc(c, stderr);
+  fwrite(bytes, 1, len, stderr);
+}
+
+void hal_eputc(char c) {
+  hal_diag_bytes(&c, 1);
 }
 
 /* ---- external interrupts from host threads ---------------------------

@@ -1,6 +1,6 @@
 -- Private Base worker/wrapper conventions. Public arities and function values
 -- stay general. This pass runs after all source safety/ownership checking.
-module Workers (workerize, workerizeWithSignatures, workerizeWithOptions, workerizeWithProducts, ScalarSignatures, internalWorker, scalarPrimitives,
+module Workers (workerize, workerizeWithSignatures, workerizeWithOptions, workerizeWithProducts, workerizeWithResultFacts, ScalarSignatures, internalWorker, scalarPrimitives,
                Agreement(..), scalarWorkersWith) where
 
 import Codegen.IR (arityCeiling)
@@ -208,13 +208,18 @@ workerizeWithOptions=workerizeWithProducts emptyProductParameters
 
 workerizeWithProducts :: ProductParameters -> Bool -> Bool -> Bool -> Prog -> (Prog,[String],ScalarSignatures)
 workerizeWithProducts products fields tupleScalars scalars prog =
+  let (p,notes,sigs,_) = workerizeWithResultFacts products fields tupleScalars scalars prog
+  in (p,notes,sigs)
+
+workerizeWithResultFacts :: ProductParameters -> Bool -> Bool -> Bool -> Prog -> (Prog,[String],ScalarSignatures,ProductParameters)
+workerizeWithResultFacts products fields tupleScalars scalars prog =
   let (p,nf,fieldNotes,products') = if fields then fieldWorkers products tupleScalars prog else (prog,0,[],products)
       -- the field pass carries checked facts to the workers it creates
       (q,sigs,bridge) = if scalars then scalarWorkers (checkedKinds p products') p else (p,M.empty,noAgreement)
   -- forced with the result, so the agreement check runs whether or not the
   -- notes are printed
   in bridge `seq` (q,["# private workers: fields="++show nf++" scalar="++show (M.size sigs)]
-        ++ [bridgeNote bridge | scalars] ++ fieldNotes, sigs)
+        ++ [bridgeNote bridge | scalars] ++ fieldNotes, sigs, products')
 
 -- P2 signature bridge (docs/2026-11-08-P2-SIGNATURE-BRIDGE.md). Slice 2: a
 -- scalar worker's signature comes from its checked interface. KernelKinds

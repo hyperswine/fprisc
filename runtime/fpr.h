@@ -64,7 +64,7 @@ V fpr_f32_from_bits32(uint32_t bits);
 #define TID(v) (((hdr_t *)(v))->tid)
 #define BOOL(b) ((b) ? (V)&fpr_true : (V)&fpr_false)
 
-extern const hdr_t fpr_true, fpr_false, fpr_unit;
+extern const hdr_t fpr_true, fpr_false, fpr_unit, fpr_list_nil;
 
 /* ---- SMP: the per-hart control block ---------------------------------
  * Every hart's tp register points at its fpr_hart_t FOR THE LIFE OF THE
@@ -303,6 +303,7 @@ typedef struct fpr_plane_memory {
 } fpr_plane_memory_t;
 extern fpr_plane_actors_t *fpr_plane_actors; /* NULL = this image is the plane */
 extern fpr_plane_memory_t *fpr_plane_memory; /* NULL = this image owns its heap */
+int fpr_pid_has_live(uw pid);
 uw fpr_pid_live(uw pid); /* actors of process pid not yet dead and off every hart */
 void fpr_memory_scopes_export(fpr_plane_memory_t *memory);
 void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory); /* fill with THIS image's impls */
@@ -353,6 +354,8 @@ uw fpr_arc_live_count(void);         /* runtime.c: the arc gauge */
 int fpr_arc_movable_root(V v);       /* runtime.c: sendLinear's transfer test */
 void fpr_arc_promote_share(V v);     /* runtime.c: sendArc's promotion */
 V fpr_receive_res_c(V me);           /* actors.c: receiveRes, C-callable */
+int fpr_receive_from_status_c(V me, V from, V *message); /* 1 message, 0 empty, -1 dead */
+int fpr_wait_any_until_c(V me, uint64_t deadline_ticks);
 int fpr_wait_from_until_c(V me, V from, uint64_t deadline_ticks); /* 0 unavailable, 1 ready without parking, 2 resumed after parking */
 V fpr_receive_from_now_c(V me, V from); /* selective nonblocking C wait */
 V fpr_receive_from_res_c(V me, V from); /* actors.c: receiveFromRes, C-callable (a dead sender answers Err) */
@@ -432,6 +435,7 @@ uw fpr_pend_grows_count(void);
 uw fpr_region_opens_count(void);   /* loop regions opened (lazily, at a back edge) */
 uw fpr_region_cycles_count(void);  /* loop region resets after the first open */
 uw fpr_region_call_opens_count(void); /* call regions the allocator opened */
+uw fpr_region_adopted_bytes_count(void); /* cumulative allocator bytes transferred on region close */
 uw fpr_region_adoptions_count(void); /* regions closed by handing their slabs to the enclosing pool */
 void fpr_pool_reclaim(struct fpr_acb *a);    /* runtime.c: death teardown */
 void *buddy_alloc(uw bytes);                 /* buddy.c */
@@ -441,6 +445,7 @@ void *buddy_realloc(void *p, uw bytes);      /* grow/shrink; in-place when
                                               * alloc+copy+free.  NULL on
                                               * exhaustion, original intact. */
 void buddy_free(void *p);
+void buddy_free_cached(void **blocks, uw count);
 uw buddy_block_usable_size(void *p);
 void buddy_geometry(char **base, uw *size, uw *min_block);
 uw buddy_free_bytes(void);
@@ -529,6 +534,7 @@ typedef struct {
   /* two-tier bounded-latency scheduler (docs/2026-10-02-SCHED-MODEL.md) */
   struct fpr_acb *bl_head, *bl_tail; /* ready backlog (owner-only) */
   uw bl_len;
+  int bl_ordered_ready; /* owner verified an all-ready, ordinary FIFO backlog */
   uw rq_len;
   uw lcg; /* per-hart deterministic PRNG state (weighted default tier) */
   struct fpr_pool *pool_override; /* Sys.arena: non-NULL while a scoped
@@ -559,11 +565,12 @@ typedef struct {
   /* the cross-hart ledger (docs/2026-10-01-XHART.md): ns spent and counts,
    * each recorded on the hart where the work happened */
   uint64_t xs_send_n, xs_send_ns, xs_copy_ns, xs_arc_ns, xs_push_ns, xs_wake_ns;
-  uint64_t xs_xship_n, xs_xpush_ns, xs_ipi_ns, xs_lship_n;
+  uint64_t xs_xship_n, xs_xpush_ns, xs_ipi_ns, xs_lship_n, xs_ipi_n;
   uint64_t xr_recv_n, xr_scan_ns, xr_block_n, xr_drop_ns;
   uint64_t xr_drop_hit_n, xr_drop_miss_n; /* decrefs that found an entry / had none
                                            * (docs/2026-10-18-ARC-TABLE-CHURN.md) */
   uint64_t sched_admissions, sched_select_ns, sched_clock_ns;
+  uint64_t sched_scanned, sched_lock_ns;
   uint64_t xl_drain_n, xl_drain_ns, xl_run_n, xl_run_ns;
   uint64_t xp_park_n, xp_park_ns, xp_bell_n, xp_bell_ns;
   uint64_t cost_turns; /* value-state turns run (Sys.loop, loopWith, the
@@ -601,6 +608,7 @@ static inline void fpr_bump_close(fpr_hart_t *h) { if (h) h->bump_slab = 0; }
 
 /* Opt-in per-hart cost ledger. Ordinary builds emit no increments. */
 #ifdef FPR_COST_PROBE
+void fpr_scheduler_scan_costs(uint64_t *entries, uint64_t *held_ns);
 void fpr_scheduler_costs(uint64_t *admissions, uint64_t *selection, uint64_t *clock);
 uint64_t hal_probe_ns(void); /* machine/posix/hal.c: a fine monotonic clock */
 #define FPR_PROBE_NOW() hal_probe_ns()
@@ -937,6 +945,7 @@ __attribute__((noreturn)) void fpr_actor_fail(const char *why);
  * blocks are charged to a budget, it may not use the machine's devices or
  * start processes, and it ends WHOLE -- every actor, with one reason -- when
  * its budget refuses a block.  Sys.killPid ends any process whole. */
+void *fpr_charge_sized(void *blk, uw usable);
 void *fpr_charge(void *blk);      /* a block just taken, charged to the current actor's process when it has a
                                    * budget: the block, or 0 when the budget refuses it (the block went home) */
 /* a take failed (a heap slab, a stack segment, a message slab): a budgeted
@@ -1090,6 +1099,8 @@ extern void (*fpr_panic_persist)(const char *msg, uw n);
 str_t *fpr_mkstr(const uint8_t *src, uw n);
 
 void hal_putc(char c); /* hal.c: raw console for panics + runtime */
+void hal_diag_bytes(const char *bytes, uw len);
+void hal_console_bytes(const char *bytes, uw len);
 void hal_eputc(char c); /* diagnostics: hal_putc, or stderr where the board has one */
 /* posix hosts (machine/posix/hal.c): interrupt sources for host threads that
  * raise on actors' behalf (the readiness watcher, the job broker), taken from

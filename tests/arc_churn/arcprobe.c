@@ -24,6 +24,7 @@ static V used(V u)  { (void)u; return TAG((sw)fpr_arc_used()); }
 static V regionOpens(V u) { (void)u; return TAG((sw)fpr_region_opens_count()); }
 static V regionCycles(V u) { (void)u; return TAG((sw)fpr_region_cycles_count()); }
 static V pendGrows(V u) { (void)u; return TAG((sw)fpr_pend_grows_count()); }
+static V adoptedBytes(V u) { (void)u; return TAG((sw)fpr_region_adopted_bytes_count()); }
 static V adoptions(V u) { (void)u; return TAG((sw)fpr_region_adoptions_count()); }
 static V callOpens(V u) { (void)u; return TAG((sw)fpr_region_call_opens_count()); }
 static V rxGrows(V u) { (void)u; return TAG((sw)fpr_rx_grows_count()); }
@@ -53,6 +54,7 @@ FPR_FN(fpr_g_Arc_x2erxGrows, rxGrows, 1);
 FPR_FN(fpr_g_Arc_x2eregionOpens, regionOpens, 1);
 FPR_FN(fpr_g_Arc_x2eregionCycles, regionCycles, 1);
 FPR_FN(fpr_g_Arc_x2ecallOpens, callOpens, 1);
+FPR_FN(fpr_g_Arc_x2eadoptedBytes, adoptedBytes, 1);
 FPR_FN(fpr_g_Arc_x2eadoptions, adoptions, 1);
 FPR_FN(fpr_g_Arc_x2ependGrows, pendGrows, 1);
 FPR_FN(fpr_g_Arc_x2erxHwm, rxHwm, 1);

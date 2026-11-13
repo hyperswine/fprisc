@@ -1,4 +1,5 @@
 unsafe base.
+timedAny : Int -> Int -> Int .
 timedReady : Int -> Int -> Int -> Int .
 must (Ok value) = value.
 must (Err why) = error why.
@@ -26,6 +27,11 @@ switchOwner me =
   _ = check (must (receiveFromNow me old) == 31) "late reply lost";
   Unit.
 exercise me =
+  delayed = spawn (nextOwner me);
+  _ = must (send delayed 1);
+  _ = check (timedAny me 10000000 != 0) "any-message wait unavailable";
+  _ = check (must (receiveNow me) == 32) "any-message wait lost wake";
+  _ = check (timedAny me 100000 == 2) "empty mailbox timeout did not park";
   _ = switchOwner me;
   ack = spawn (relay me);
   peer = spawn (owner me ack);
