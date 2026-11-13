@@ -1,7 +1,7 @@
 -- Bounded uniqueness proofs for fresh constructors and private consuming entries.
 -- Public calls remain borrowing. Only a fresh, nonescaping root can transfer
 -- ownership; last syntactic use of a borrowed value is never sufficient.
-module Reuse (reuseFresh, reuseProgram, reuseProgramWithImports, spineBuilders, reuseView, poolResetters) where
+module Reuse (reuseFresh, reuseProgram, reuseProgramWithImports, spineBuilders, reuseView, poolResetters, mapBodiesOf) where
 import Control.Applicative ((<|>))
 import Core.Opt.Normalize (normIn)
 import Core.Syntax (Core(..), Prog, Name)
@@ -660,8 +660,60 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
     -- unchanged to the walker's own calls.
     directComparator ps body=case S.toList ownedComparators of
       [g] | g/="?", [p]<-[p | (i,p)<-zip [0..] ps, any (appliedTwice p) (nodes body), handedOn (length ps) i p body] ->
-              substCall p g body
+              inlineComparator g (substCall p g body)
       _ -> body
+    -- A small comparator (an if-tree over its two arguments whose leaves are
+    -- nullary constructors, each at most once, calling nothing private to its
+    -- module: Ord.int) is inlined where the walker cases on its answer, and
+    -- each leaf becomes the branch the case takes for it: no call, no
+    -- Ordering built, one comparison branch per node, as in C.
+    inlineComparator g e=case fmap (fmap (dropAliases M.empty)) (M.lookup g mapBodies) of
+      Just (cps@[_,_],cb) | Just leaves<-ctorLeaves cb, distinct leaves,
+                            all (\v->v `elem` cps || '@' `notElem` v || isJust (nullaryCtor v)) [v | CVar v<-nodes cb] -> go e
+        where
+          go x=case x of
+            CLet o (CApp (CApp (CVar f) a) b) body | f==g, Just tg<-caseTag o body, all ((==tg) . fst) (fromMaybe [] (ctorLeaves cb)) ->
+              let CLet _ a' (CLet _ b' tree)=inlineCall ("$cmp."++o++".") (cps,cb) [go a,go b]
+                  xs=["$cmp."++o++"."++c | c<-cps]
+              in CLet (xs!!0) a' (CLet (xs!!1) b' (mapLeaves (\v->go (resolveTag o tg v body)) tree))
+            CLet k a b -> CLet k (go a) (go b)
+            CApp f a -> CApp (go f) (go a)
+            CIf c a b -> CIf (go c) (go a) (go b)
+            CMk t v fs -> CMk t v (map go fs)
+            CProj k a -> CProj k (go a)
+            CTagEq t v a -> CTagEq t v (go a)
+            CLam qs b -> CLam qs (go b)
+            _ -> x
+      _ -> e
+      where
+        distinct vs=length vs==S.size (S.fromList vs)
+    ctorLeaves x=case x of
+      CIf c a b | not (any isLam (nodes c)) -> (++) <$> ctorLeaves a <*> ctorLeaves b
+      CMk t v [] -> Just [(t,v)]
+      CVar c | Just tv<-nullaryCtor c -> Just [tv]
+      _ -> Nothing
+    -- a nullary constructor named by its global stub (Less@h = Less)
+    nullaryCtor c=case M.lookup c mapBodies `orElseM` M.lookup c definitions of
+      Just ([],CMk t v []) -> Just (t,v)
+      _ -> Nothing
+    orElseM a b=maybe b Just a
+    isLam x=case x of CLam _ _ -> True; _ -> False
+    mapLeaves f x=case x of
+      CIf c a b -> CIf c (mapLeaves f a) (mapLeaves f b)
+      CMk t v [] -> f (t,v)
+      CVar c | Just tv<-nullaryCtor c -> f tv
+      _ -> x
+    -- the walker's case on o: a chain of tag tests, o used nowhere else
+    caseTag o body=case [t | CTagEq t _ (CVar y)<-nodes body, y==o] of
+      ts@(t:_) | all (==t) ts, onlyTested o body -> Just t
+      _ -> Nothing
+    onlyTested o x=case x of
+      CIf (CTagEq _ _ (CVar y)) a b | y==o -> onlyTested o a && onlyTested o b
+      CVar y -> y/=o
+      _ -> all (onlyTested o) (children x)
+    resolveTag o tg (t,v) x=case x of
+      CIf (CTagEq _ w (CVar y)) a b | y==o -> if t==tg && w==v then resolveTag o tg (t,v) a else resolveTag o tg (t,v) b
+      _ -> x
     appliedTwice p e=case e of CApp (CApp (CVar q) _) _ -> q==p; _ -> False
     handedOn arity i p body=and [args!!i==CVar p | n<-nodes body, (CVar f,args)<-[spine n],
                                  "$worker.mapown.walk." `isPrefixOf` f, length args==arity]
@@ -1044,6 +1096,16 @@ occurrences x e=length [() | CVar y<-nodes e, y==x]
 
 -- a call inlined: its parameters bound to the arguments in order, every
 -- binder of the body renamed under the prefix
+-- the map family's bodies from the linked program, and the functions its
+-- empty maps name (their comparators), for Reuse's walkers
+mapBodiesOf :: Prog -> Prog
+mapBodiesOf linked=M.union roots (M.restrictKeys linked (named `S.union` stubs))
+  where
+    roots=M.filterWithKey (\name _ -> any (`isPrefixOf` name) ["balance@","node@","insGo@","rotRight@","rotLeft@","strings@","ints@","empty@"]) linked
+    named=S.fromList [g | (n,(_,b))<-M.toList roots, any (`isPrefixOf` n) ["strings@","ints@","empty@"], CVar g<-nodes b, '@' `elem` g]
+    -- and the globals those name (the comparators' constructor stubs)
+    stubs=S.fromList [c | (_,(_,b))<-M.toList (M.restrictKeys linked named), CVar c<-nodes b, Just ([],_)<-[M.lookup c linked]]
+
 inlineCall :: String -> ([Name],Core) -> [Core] -> Core
 inlineCall pre (ps,b) args=foldr (\(p,a) r->CLet (pre++p) a r) (renameBinders pre (M.fromList [(p,pre++p) | p<-ps]) b) (zip ps args)
 -- a linked body's variable aliases (x = y), substituted away; typed

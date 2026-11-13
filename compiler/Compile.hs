@@ -44,7 +44,7 @@ import qualified Data.Map.Lazy as ML
 import qualified Core.Alpha as Alpha
 import qualified Data.Set as S
 import Core.Syntax
-import Reuse (poolResetters,spineBuilders)
+import Reuse (poolResetters,spineBuilders,mapBodiesOf)
 import Core.Opt.ProductParameters (withImportedVariantResults, withoutVariantResults)
 import Core.CacheIdentity (CallArities(..),coreCacheIdentityWithBuilders)
 import qualified Compiler.Options as Options
@@ -1123,7 +1123,7 @@ compileWithReport accepted report = do
           resetting=poolResetters linkedProgram
           linkedTgt=tgt {tgtPoolResetters=resetting,tgtSpineBuilders=
             M.filterWithKey (\name _ -> '@' `elem` name) (spineBuilders resetting (linkedProgram `M.union` erasedConstructorStubs linkedProgram)),
-            tgtMapBodies=M.filterWithKey (\name _ -> any (`isPrefixOf` name) ["balance@","node@","insGo@","rotRight@","rotLeft@","strings@","ints@","empty@"]) linkedProgram}
+            tgtMapBodies=mapBodiesOf linkedProgram}
           -- a constructor is global everywhere: a clone that references one
           -- links against the owner's symbol, so qualifyAux leaves the name
           importedCore = M.unions
