@@ -249,7 +249,7 @@ def main():
             report['executions']['native'] = {'elapsed_us': times[-1], 'elapsed_us_runs': times, 'wall_seconds': wall, 'passed': True}
             print(output, flush=True)
         if args.hardware or args.qemu:
-            output, _ = execute([source_root / 'machine/tangnano20k/build.sh', fixture, out], source_root, environment, 180)
+            output, _ = execute([os.environ.get('SOL', 'sol'), source_root / 'machine/tangnano20k/build.sol', fixture, out], source_root, environment, 180)
             (out / 'board-build.log').write_text(output)
             image = out / 'base.bin'
             board = {**board_artifact(out), 'frequency_mhz': args.freq_mhz,

@@ -37,7 +37,7 @@ def main():
         target = out / ('imc' if compressed else 'im')
         env = {**environment, 'FPR_RVC': str(int(compressed))}
         for pass_number in range(2):
-            log = run([source_root / 'machine/tangnano20k/build.sh', fixture, target], env)
+            log = run([os.environ.get('SOL', 'sol'), source_root / 'machine/tangnano20k/build.sol', fixture, target], env)
             if pass_number == 0:
                 assert 'software-float mode' in log, 'missing float-kernel fallback diagnostic'
             assembly = '\n'.join(p.read_text() for p in target.rglob('*.s'))

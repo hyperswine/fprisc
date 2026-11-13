@@ -92,8 +92,8 @@ The following commands retain the original RV64 configuration:
 
 ```bash
 make fpr
-machine/tangnano20k/build-softfloat.sh
-machine/tangnano20k/build.sh tests/tangnano20k_base.fpr
+sol machine/tangnano20k/build-softfloat.sol
+sol machine/tangnano20k/build.sol tests/tangnano20k_base.fpr
 mkdir -p build/tangnano20k-files
 cp tests/fixtures/uart-device/* build/tangnano20k-files/
 python3 tools/run_tangnano20k_base.py build/tangnano20k-base/base.bin \
@@ -113,8 +113,8 @@ load the matching image into SRAM. The old RV32 `P/R` loader is insufficient
 for large Base programs. From fprisc:
 
 ```bash
-FPR_XLEN=32 machine/tangnano20k/build-softfloat.sh
-FPR_XLEN=32 FPR_RVC=1 FPR_CPU_MHZ=72 machine/tangnano20k/build.sh \
+FPR_XLEN=32 sol machine/tangnano20k/build-softfloat.sol
+FPR_XLEN=32 FPR_RVC=1 FPR_CPU_MHZ=72 sol machine/tangnano20k/build.sol \
   tests/tangnano20k_rv32_host.fpr "$PWD/build/tangnano20k-rv32-host"
 python3 tools/run_tangnano20k_base.py build/tangnano20k-rv32-host/base.bin \
   --root build/tangnano20k-rv32-host --freq-mhz 72 \
@@ -150,7 +150,7 @@ See also [the original RV32 port record](../../docs/2026-10-18-RV32-BASE.md).
 
 ```bash
 FPR_XLEN=32 FPR_RVC=1 FPR_CPU_MHZ=48 FPR_HEAP_REPORT=1 \
-  machine/tangnano20k/build.sh tests/tangnano20k_dtree.fpr "$PWD/build/tangnano20k-dtree"
+  sol machine/tangnano20k/build.sol tests/tangnano20k_dtree.fpr "$PWD/build/tangnano20k-dtree"
 ```
 
 `FPR_HEAP_REPORT=1` prints allocation residency and churn at exit: live and
@@ -165,7 +165,7 @@ and `Sys.timeUs` returns host microseconds modulo 2^30 (about 17.90 minutes),
 matching the positive tagged-Int range. Short elapsed-time calculations must
 account for wrap. RPC timeouts and sleeps use the full local 64-bit counter.
 
-`FPR_RVC=1 machine/tangnano20k/build.sh ...` explicitly selects compressed
+`FPR_RVC=1 sol machine/tangnano20k/build.sol ...` explicitly selects compressed
 RV64IMC code for a matching RV64 FPGA image with the C decoder enabled.
 The default remains RV64IM. The linked ISA check accepts C only for this
 explicit option and continues to reject A/F/D and incompatible ABI libraries.
@@ -252,7 +252,7 @@ clang -O1 -fno-builtin -fsanitize=undefined,address \
   tests/tangnano20k_softfloat.c \
   /path/to/softfloat/build/Linux-x86_64-GCC/softfloat.a -o /tmp/board-softfloat
 /tmp/board-softfloat
-FPR_SOFTFLOAT_ROOT=/path/to/softfloat machine/tangnano20k/build.sh \
+FPR_SOFTFLOAT_ROOT=/path/to/softfloat sol machine/tangnano20k/build.sol \
   tests/tangnano20k_wasm.fpr "$PWD/build/tangnano20k-wasm"
 python3 tools/run_tangnano20k_base.py build/tangnano20k-wasm/base.bin \
   --root tests/fixtures/uart-device --freq-mhz 27 --timeout 180

@@ -22,7 +22,7 @@ def run(args, env=None, timeout=180):
 
 for compressed in (False, True):
     out = ROOT / 'build' / ('tangnano20k-clock-c' if compressed else 'tangnano20k-clock-im')
-    print(run(['machine/tangnano20k/build.sh', 'tests/tangnano20k_clock.fpr', out],
+    print(run([os.environ.get('SOL', 'sol'), 'machine/tangnano20k/build.sol', 'tests/tangnano20k_clock.fpr', out],
               {**os.environ, 'FPR_RVC': str(int(compressed))}).splitlines()[-1], flush=True)
     image = (out / 'base.bin').read_bytes()
     image += b'\0' * (-len(image) % 4)

@@ -18,7 +18,6 @@ repository root =
         Ok (PipelineResult 0 _ _ _) -> J.JObj [("revision",J.JStr (Str.trim rev)),("diff_sha256",J.JStr (hash path))]
       | Ok (PipelineResult status _ _ errors) -> unavailable (case Utf8.decode (Bytes.concat errors) of Ok s -> s | _ -> "git diff exited {status}")
       | Err why -> unavailable "{why}".
-manifest : unsafe String -> String -> String -> String -> String -> String -> String -> Unit .
 manifest root program out width rvc mhz soft =
   units = List.filter (fn p -> p != "") (Str.lines (F.readText "{out}/base.s.units"));
   source = F.canonical program;
@@ -32,7 +31,6 @@ manifest root program out width rvc mhz soft =
     ("compiler_sha256",J.JStr (hash "{root}/fpr")),("gcc",J.JStr gcc),("configuration",config),("artifacts",artifacts),("units",sources),
     ("softfloat_sha256",J.JStr (hash "{soft}/build/Linux-RISCV{width}-GCC/softfloat.a"))];
   writePath "{out}/build-manifest.json" (J.pretty record + "\n").
-main : unsafe Unit -> Unit .
 > case args Unit of ["repository",root] -> print (J.render (repository root))
   | [root,source,out,width,rvc,mhz,soft] -> manifest root source out width rvc mhz soft
   | _ -> error "expected ROOT SOURCE OUTPUT XLEN RVC CPU_MHZ SOFTFLOAT_ROOT or repository ROOT".

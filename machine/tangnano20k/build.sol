@@ -10,12 +10,11 @@ inputs width argv =
   defaultOut = "{B.query ["pwd","-P"]}/build/tangnano20k-base";
   case argv of [] -> (defaultProg,defaultOut)
   | [prog] -> (prog,defaultOut) | [prog,out] -> (prog,out)
-  | _ -> error "usage: build.sh [PROGRAM [OUT]]".
+  | _ -> error "usage: sol machine/tangnano20k/build.sol [PROGRAM [OUT]]".
 sources = ["machine/tangnano20k/crt0.S","machine/tangnano20k/base.c","machine/tangnano20k/sd_hal.c",
   "machine/tangnano20k/unsupported.c","machine/builtin/heap.c","runtime/runtime.c","machine/builtin/unsafe.c",
   "machine/builtin/tangnano20k/machine.c","runtime/i32.c","runtime/bits.c","runtime/vec.c","runtime/sstr.c",
   "runtime/mod.c","machine/virt/memshim.c"].
-main : unsafe Unit -> Unit .
 > _ = Preset.apply Unit; width = B.setting "FPR_XLEN" "64"; abi = Board.abi width;
   (prog,out) = inputs width (args Unit); clock = B.setting "FPR_CPU_MHZ" "27";
   compressed = switch "FPR_RVC" ["--compressed"]; rvc = if compressed == [] then "0" else "1";
@@ -27,7 +26,7 @@ main : unsafe Unit -> Unit .
   _ = B.runWith [("FPR_NO_F64_INLINE","1")] ["./fprc","--system=bare-metal","--profile=base","--target=rv{width}","--prelude=core/prelude.fpr",prog,assembly];
   soft = B.setting "FPR_SOFTFLOAT_ROOT" "{B.query ["pwd","-P"]}/build/tangnano20k-softfloat";
   archive = "{soft}/build/Linux-RISCV{width}-GCC/softfloat.a";
-  _ = (if B.exists "-f" archive then Unit else error "SoftFloat missing: run FPR_XLEN={width} machine/tangnano20k/build-softfloat.sh");
+  _ = (if B.exists "-f" archive then Unit else error "SoftFloat missing: run FPR_XLEN={width} sol machine/tangnano20k/build-softfloat.sol");
   units = List.filter (fn p -> p != "") (Str.lines (readPath "{assembly}.units"));
   support = if width == "32" then ["-lgcc"] else [];
   _ = B.command (List.concat [["riscv64-unknown-elf-gcc","-march=rv{width}{isa}_zicsr_zifencei","-mabi={abi}","-mcmodel=medany","-ffixed-x27","-Os"],Board.libc Unit,

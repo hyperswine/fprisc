@@ -151,7 +151,7 @@ class Suite:
         directory = self.out / (name + ('-imc' if compressed else '-im'))
         directory.mkdir(parents=True, exist_ok=True)
         environment = {**os.environ, 'FPR_XLEN': '32', 'FPR_RVC': str(int(compressed)), 'FPR_QEMU': '1'}
-        checked(['machine/tangnano20k/build.sh', source, directory], directory / 'build.log', env=environment)
+        checked([os.environ.get('SOL', 'sol'), 'machine/tangnano20k/build.sol', source, directory], directory / 'build.log', env=environment)
         return directory / 'base.elf'
 
     def qemu_run(self, image, name, reason=None, bits=32):

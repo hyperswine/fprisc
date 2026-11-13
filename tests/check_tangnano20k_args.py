@@ -41,7 +41,7 @@ def main():
         env = {**os.environ, 'FPR_XLEN': str(xlen), 'FPR_RVC': '1',
                'FPR_QEMU': '1', 'FPR_CPU_MHZ': '48'}
         env.pop('FPR_PRESET', None)
-        build = subprocess.run(['machine/tangnano20k/build.sh', 'tests/tangnano20k_args.fpr', str(out)],
+        build = subprocess.run([os.environ.get('SOL', 'sol'), 'machine/tangnano20k/build.sol', 'tests/tangnano20k_args.fpr', str(out)],
                                cwd=ROOT, env=env, capture_output=True, text=True, timeout=180)
         (out / 'build.log').write_text(build.stdout + build.stderr)
         assert build.returncode == 0, build.stdout + build.stderr

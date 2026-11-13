@@ -2,7 +2,7 @@
 """Exercise RV32 numeric boxes directly in C, independently of FP lowering.
 
 Requires the usual Tang Nano toolchain, qemu-system-riscv32 and SoftFloat:
-    FPR_XLEN=32 machine/tangnano20k/build-softfloat.sh
+    FPR_XLEN=32 sol machine/tangnano20k/build-softfloat.sol
     python3 tests/check_rv32_numeric_runtime.py
 """
 import json
@@ -18,7 +18,7 @@ LIBRARY = SOFT / "build/Linux-RISCV32-GCC/softfloat.a"
 
 def main():
     if not LIBRARY.is_file():
-        raise SystemExit("Run FPR_XLEN=32 machine/tangnano20k/build-softfloat.sh first")
+        raise SystemExit("Run FPR_XLEN=32 sol machine/tangnano20k/build-softfloat.sol first")
     OUT.mkdir(parents=True, exist_ok=True)
     args = [
         "riscv64-unknown-elf-gcc", '-ffixed-x27', "-march=rv32im_zicsr_zifencei", "-mabi=ilp32",

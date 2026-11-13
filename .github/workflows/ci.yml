@@ -109,8 +109,8 @@ jobs:
           echo "SIMPLE_RISC_ROOT=$GITHUB_WORKSPACE/.ci/simple-risc" >> "$GITHUB_ENV"
       - name: Tang Nano SoftFloat (RV32 and RV64)
         run: |
-          FPR_PRESET=fprisc-48 machine/tangnano20k/build-softfloat.sh
-          FPR_XLEN=64 machine/tangnano20k/build-softfloat.sh
+          FPR_PRESET=fprisc-48 sol machine/tangnano20k/build-softfloat.sol
+          FPR_XLEN=64 sol machine/tangnano20k/build-softfloat.sol
       - name: Typed RV32 float constants and software runtime
         run: python3 -u tests/check_ci.py --group rv32-runtime --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
       - name: Typed IR direct backends (Linux x86-64)

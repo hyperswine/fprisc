@@ -246,14 +246,14 @@ def main():
         run(['make', 'fpr'], out / 'compiler-build.log', env, 900)
         softfloat = Path(env.get('FPR_SOFTFLOAT_ROOT', ROOT / 'build/tangnano20k-softfloat'))
         if not (softfloat / 'build/Linux-RISCV32-GCC/softfloat.a').is_file():
-            run(['machine/tangnano20k/build-softfloat.sh'], out / 'softfloat-build.log', env, 300)
+            run([os.environ.get('SOL', 'sol'), 'machine/tangnano20k/build-softfloat.sol'], out / 'softfloat-build.log', env, 300)
         if args.program is not None:
             directory = out / 'program'
             directory.mkdir(exist_ok=True)
             started = time.monotonic()
             case = dict(name='program', passed=False)
             report['cases'].append(case)
-            run(['machine/tangnano20k/build.sh', source, directory], directory / 'build.log', env)
+            run([os.environ.get('SOL', 'sol'), 'machine/tangnano20k/build.sol', source, directory], directory / 'build.log', env)
             case['build'] = json.loads((directory / 'build-manifest.json').read_text())
             if bitstream:
                 run([args.loader, '-b', 'tangnano20k', bitstream], out / 'program-fpga.log', env, 120)
@@ -289,7 +289,7 @@ def main():
                 validate_classifier(execution)
                 case['classifier_report'] = str(directory / 'results.json')
             else:
-                run(['machine/tangnano20k/build.sh', SOURCES[name], directory], directory / 'build.log', env)
+                run([os.environ.get('SOL', 'sol'), 'machine/tangnano20k/build.sol', SOURCES[name], directory], directory / 'build.log', env)
                 case['build'] = json.loads((directory / 'build-manifest.json').read_text())
                 files = directory / 'files'
                 files.mkdir(exist_ok=True)

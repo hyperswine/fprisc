@@ -83,7 +83,7 @@ def main():
             out = ROOT / 'build' / 'tangnano20k-rv32-base' / f'{name}-im{"c" if compressed else ""}'
             out.mkdir(parents=True, exist_ok=True)
             env = {**os.environ, 'FPR_XLEN': '32', 'FPR_RVC': str(int(compressed)), 'FPR_QEMU': '1'}
-            build = subprocess.run(['machine/tangnano20k/build.sh', source, str(out)],
+            build = subprocess.run([os.environ.get('SOL', 'sol'), 'machine/tangnano20k/build.sol', source, str(out)],
                                    cwd=ROOT, env=env, text=True, capture_output=True, timeout=180)
             (out / 'build.log').write_text(build.stdout + build.stderr)
             assert build.returncode == 0, (out, build.stdout, build.stderr)

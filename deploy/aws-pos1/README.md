@@ -14,7 +14,7 @@ browser ──https/wss──▶ Caddy :443 ──▶ pos1 127.0.0.1:6710 ──
 
 | Script | Runs on | Does |
 |---|---|---|
-| `build.sh` | Mac | `fpr build --target=linux-aarch64 --cc aarch64-linux-gnu-gcc` into `out/pos1` |
+| `sol deploy/aws-pos1/build.sol` | Mac | `fpr build --target=linux-aarch64 --cc aarch64-linux-gnu-gcc` into `out/pos1` |
 | `provision.sh` | Mac | key pair, security group, instance, Elastic IP; writes `state.env` (idempotent) |
 | `deploy.sh` | Mac | build, copy, run `server/install.sh` over SSH |
 | `server/install.sh` | instance | users, pos1 + Caddy + Alloy units and config, restart (idempotent) |
