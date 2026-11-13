@@ -3773,14 +3773,20 @@ static V g_strJoin(V sepv, V list) {
   return (V)out;
 }
 /* ---- strCompare: byte order, -1 / 0 / 1 (prelude strCmp) ---------------
- * memcmp over the shorter length, then the lengths: the answer the
+ * memcmp (a byte loop off posix) over the shorter length, then the lengths: the answer the
  * prelude's byte loop gave, at memcmp's speed (a map keyed by String
  * compares at every node it passes). */
 static V g_strCompare(V av, V bv) {
   str_t *a = want_str(av, "strCompare: not a String");
   str_t *b = want_str(bv, "strCompare: not a String");
   uw n = a->len < b->len ? a->len : b->len;
+#if defined(FPR_POSIX) && !defined(FPR_QOSAPP)
   int c = n ? __builtin_memcmp(a->bytes, b->bytes, n) : 0;
+#else
+  /* freestanding images link no libc memcmp */
+  int c = 0;
+  for (uw i = 0; i < n && !c; i++) c = (int)a->bytes[i] - (int)b->bytes[i];
+#endif
   if (c == 0) c = a->len < b->len ? -1 : a->len > b->len ? 1 : 0;
   return TAG(c < 0 ? -1 : c > 0 ? 1 : 0);
 }
