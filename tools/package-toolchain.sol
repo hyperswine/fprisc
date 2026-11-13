@@ -71,7 +71,7 @@ package root prefix version notices output =
   _ = B.command ["mkdir","{sdk}/licenses"];
   _ = B.command ["cp","-RpL",notices + "/.","{sdk}/licenses"];
   withCompiler = J.set "compilerNotices" (J.JStr compiler) (J.set "release" (J.JStr version) meta);
-  qualified = J.set "qualification" (J.JStr "release candidate: qualify with toolchain-install-check.py --release") withCompiler;
+  qualified = J.set "qualification" (J.JStr "release candidate: installed runtime qualification required; archived Python harness retired") withCompiler;
   manifest = J.set "files" (I.inventory bundle) qualified;
   # tar reads the private copy immediately. The transaction's deferred writes
   # would become visible only after tar exits.

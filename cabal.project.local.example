@@ -1,11 +1,5 @@
--- macOS with Homebrew: copy to cabal.project.local, then run cabal build.
--- Install the native dependencies with: brew install pkgconf libgit2 libarchive
--- libarchive is keg-only. Cabal's solver needs its pkg-config metadata;
--- extra-lib-dirs alone does not satisfy pkgconfig-depends.
--- The wrapper supports Apple Silicon and Intel Homebrew prefixes.
-program-locations
-  pkg-config-location: tools/pkg-config-homebrew
-
--- Optional per-package knobs:
--- package fp-risc
---   profiling: True
+-- macOS Homebrew: install pkgconf, libgit2 and libarchive.
+-- Export PKG_CONFIG_PATH before Cabal's solver runs, for example:
+-- PKG_CONFIG_PATH=/opt/homebrew/opt/libarchive/lib/pkgconfig cabal build
+-- Use /usr/local/opt/libarchive/lib/pkgconfig on Intel Homebrew.
+-- No repository shell wrapper is needed.

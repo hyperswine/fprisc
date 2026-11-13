@@ -1,304 +1,34 @@
-# CI for FP-RISC on a stock x86-64 runner.
-#
-# Debian trixie container: fp-risc.cabal needs libgit2 >= 1.9
-# (pkgconfig-depends), which Ubuntu 24.04 does not ship; trixie's GHC
-# 9.6 and its libghc-* packages provide the Haskell dependencies.
-# One compiler build; check_registry.py owns the distinct CI configurations.
-# Successful source-bound receipts let Base reuse their coverage.
-#
-# Covered: tests/check_base.py (the umbrella: hosted x86-64 builds and
-# runs, the x64 lowering checks, typed vectors, POSIX modules, clang
-# vector limits and POSIX PIC, the RV64 Unix lowering), check_i32 and
-# check_raw, and the RV64 Linux suite cross-built with
-# riscv64-linux-gnu-gcc and run under qemu-user.
-# check_raw also covers builtin images with the installed bare-metal tools.
-# Also covered: Tang Nano RV32 Base examples/custom programs in QEMU,
-# RV32/RV64 argument regressions and both repositories' preset gates.
-# Not covered: physical boards, vendor synthesis, macOS/AArch64 hosts.
+# Main now qualifies surviving Sol/native workflows; archived Python/Bash coverage is retired.
 name: ci
-
 on:
   push:
-    branches: [main, typed-ir-retire, codex/a64-overflow-checks-20261020, codex/typed-ir-migration-20261022]
+    branches: [main]
   pull_request:
   workflow_dispatch:
-  # nightly: the reliability job at full size (all std programs x configs, 2000 fuzz mutants)
-  schedule:
-    - cron: '17 15 * * *'
-
 permissions:
   contents: read
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  DEBIAN_FRONTEND: noninteractive
-  LC_ALL: C.UTF-8
-
 jobs:
-  x86-64:
-    name: x86-64 (debian trixie)
+  sol-native:
     runs-on: ubuntu-latest
     container: debian:trixie
-    timeout-minutes: 150
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: sh
     steps:
-      - name: tools
+      - uses: actions/checkout@v4
+      - name: Native build dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates python3 zstd \
-            make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev \
-            libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev \
-            libegl-dev libgl-dev clang libclang-rt-dev lld \
-            gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user \
-            gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf qemu-system-misc
-      - uses: actions/checkout@v4
-      - name: matching SimpleRisc preset
-        uses: actions/checkout@v4
-        with:
-          repository: hyperswine/simple-risc
-          ref: 00fbd13a27dcce07958ba3916ffa1aa4415fef12
-          path: .ci/simple-risc
-      # checkout's action-local HOME differs from later container steps.
-      # Trust only the two repositories this job explicitly checked out.
-      - name: Git ownership inside the job container
+          apt-get install -y --no-install-recommends git ca-certificates make gcc pkg-config ghc cabal-install libghc-megaparsec-dev libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev libegl-dev libgl-dev
+      - name: Build compiler
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE/.ci/simple-risc"
-      - name: cabal build (Linux x86-64)
-        run: |
-          # cabal.project.freeze pins the release plan (GHC 9.8.2 boot packages);
-          # CI runners ship other GHCs, so build CI against their own plan.
           rm -f cabal.project.freeze
           cabal update
-          cabal build
-      - name: make fpr
-        run: |
           make fpr
-          mkdir -p "$RUNNER_TEMP/sol-bin"
-          ln -sf "$GITHUB_WORKSPACE/fpr" "$RUNNER_TEMP/sol-bin/sol"
-          echo "$RUNNER_TEMP/sol-bin" >> "$GITHUB_PATH"
-          echo "SOL=$RUNNER_TEMP/sol-bin/sol" >> "$GITHUB_ENV"
-          ./fpr --version || test -x ./fpr
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: lsp/package-lock.json
-      - name: Editor checks and VSIX (matching compiler)
-        working-directory: lsp
+      - name: Script policy and Sol smoke
         run: |
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run package
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fpr-lang-vsix
-          path: lsp/artifacts/*.vsix
-          if-no-files-found: error
-      # the two Haskell checks no script runs; the other cabal test suites
-      # run inside check_base (make unit-tests runs them all locally)
-      - name: cabal test (parser grouping, module search path)
-        run: cabal test test:if-precedence-check test:module-path-check --test-show-details=direct
-      # in a container job ${{ github.workspace }} is the HOST's path;
-      # $GITHUB_WORKSPACE is the one the container sees
-      # tools/run_tangnano20k_base.py imports simple-risc's rom_protocol; its
-      # default (a sibling ../simple-risc) does not exist on the runner.
-      - run: |
-          echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-          echo "SIMPLE_RISC_ROOT=$GITHUB_WORKSPACE/.ci/simple-risc" >> "$GITHUB_ENV"
-      - name: Tang Nano SoftFloat (RV32 and RV64)
-        run: |
-          FPR_PRESET=fprisc-48 sol machine/tangnano20k/build-softfloat.sol
-          FPR_XLEN=64 sol machine/tangnano20k/build-softfloat.sol
-      - name: Typed RV32 float constants and software runtime
-        run: python3 -u tests/check_ci.py --group rv32-runtime --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
-      - name: Typed IR direct backends (Linux x86-64)
-        run: python3 -u tests/check_ci.py --group native --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
-      - name: Typed IR direct RISC-V (QEMU independent oracles)
-        run: python3 -u tests/check_ci.py --group riscv --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
-      - name: Typed IR RV64 Linux (TLS and actor runtime)
-        run: python3 -u tests/check_ci.py --group rv64-typed --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
-      - name: Tang Nano preset and protocol gates
-        env:
-          SIMPLE_RISC_ROOT: .ci/simple-risc
-        run: |
-          python3 -m unittest discover -s tests -p test_tangnano20k_examples.py
-          python3 -m unittest discover -s .ci/simple-risc/boards/tangnano20k/sdram -p test_preset_manifest.py
-          python3 tests/check_tangnano20k_virtual.py
-      - name: Tang Nano examples and custom programs (QEMU)
-        run: |
-          python3 -u tools/run_tangnano20k_examples.py --target qemu
-          python3 -u tests/check_tangnano20k_program.py
-      - name: Tang Nano argument limits (RV32/RV64 QEMU)
-        run: python3 -u tests/check_tangnano20k_args.py
-      - name: Tang Nano results and failure logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: tangnano-qemu-evidence
-          if-no-files-found: warn
-          path: |
-            build/tangnano20k-examples/**/*.json
-            build/tangnano20k-examples/**/*.log
-            build/tangnano20k-program-check/**/*.json
-            build/tangnano20k-program-check/**/*.log
-            build/tangnano20k-args/**/*.json
-            build/tangnano20k-args/**/*.log
-
-      - name: Additional host and RV64 runtime configurations
-        run: python3 -u tests/check_ci.py --group host-extra --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
-      - name: All explicit configurations passed
-        run: python3 tests/check_ci.py --verify --results "$RUNNER_TEMP/check-results.json"
-      - name: check_base (the typed backend is the default)
-        run: python3 -u tests/check_base.py --completed "$RUNNER_TEMP/check-results.json" --timings-json "$RUNNER_TEMP/base-times.json" --times
-      - name: Suite timing and coverage records
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: suite-timings
-          if-no-files-found: warn
-          path: |
-            ${{ runner.temp }}/check-results.json
-            ${{ runner.temp }}/base-times.json
-
-  # Reliability gates (tests/reliability/*.py, docs/2026-11-01-RELIABILITY-CORRECTNESS-WCET-ROADMAP.md):
-  # stdcheck over std, std contract sync, UBSan runtime, config differential,
-  # fixed-seed fuzz smoke, compiler-crash repros, List-fusion random
-  # differential (list_fusion_random.py). Parallel to x86-64, so it adds
-  # runner minutes but no wall-clock time. PRs run the small sizes; the nightly
-  # schedule sets RELIABILITY_FULL=1.
-  reliability:
-    name: reliability gates (debian trixie)
-    runs-on: ubuntu-latest
-    container: debian:trixie
-    # The nightly full size (RELIABILITY_FULL=1: every tests/std program in
-    # each configuration, 2000 fuzz mutants) does not fit the push budget; at
-    # 40 minutes every scheduled run was cancelled without a result.
-    timeout-minutes: ${{ github.event_name == 'schedule' && 180 || 40 }}
-    steps:
-      - name: tools
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates python3 zstd \
-            make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev \
-            libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev \
-            libegl-dev libgl-dev clang lld
-      - uses: actions/checkout@v4
-      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: make fpr
-        run: |
-          # cabal.project.freeze pins the release plan (GHC 9.8.2 boot packages);
-          # CI runners ship other GHCs, so build CI against their own plan.
-          rm -f cabal.project.freeze
-          cabal update
-          cabal build
-          make fpr
-          mkdir -p "$RUNNER_TEMP/sol-bin"
-          ln -sf "$GITHUB_WORKSPACE/fpr" "$RUNNER_TEMP/sol-bin/sol"
-          echo "$RUNNER_TEMP/sol-bin" >> "$GITHUB_PATH"
-          echo "SOL=$RUNNER_TEMP/sol-bin/sol" >> "$GITHUB_ENV"
-      # every invalid ownership probe must be refused by both frontends
-      # (about 5 s; docs/2026-11-09-CALLABLE-OWNERSHIP.md)
-      - name: Linear ownership audit
-        run: FPR_HOME="$GITHUB_WORKSPACE" python3 -u tools/audit_linear_ownership.py
-      - name: reliability checks
-        env:
-          RELIABILITY_FULL: ${{ github.event_name == 'schedule' && '1' || '0' }}
-        run: FPR_HOME="$GITHUB_WORKSPACE" python3 -u tests/reliability/run_all.py
-      # peak-RSS ceilings for the six application workloads (FP-RISC builds
-      # only; decision 6 of docs/2026-11-11-COPY-OUT-DECISIONS.md; under a minute)
-      - name: app memory ceilings
-        run: |
-          cd tests/bench/apps
-          python3 gen.py
-          FPR="$GITHUB_WORKSPACE/fpr" FPR_HOME="$GITHUB_WORKSPACE" python3 -u run.py --build
-          python3 -u run.py --ceilings
-      - name: fuzz failures (for minimization)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fuzz-smoke-failures
-          if-no-files-found: ignore
-          path: build/fuzz-smoke/
-
-  # Sol scripting suites (tools/sol-ci.sh). Separate job: it needs only a
-  # built fpr, so unrelated red steps in x86-64 do not mask it.
-  sol:
-    name: sol suites (debian trixie)
-    runs-on: ubuntu-latest
-    container: debian:trixie
-    timeout-minutes: 90
-    steps:
-      - name: tools
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates python3 zstd \
-            make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev \
-            libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev \
-            libegl-dev libgl-dev clang lld curl
-      - uses: actions/checkout@v4
-      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - run: git config --global user.email ci@example.invalid && git config --global user.name ci
-      - name: make fpr
-        run: |
-          # cabal.project.freeze pins the release plan (GHC 9.8.2 boot packages);
-          # CI runners ship other GHCs, so build CI against their own plan.
-          rm -f cabal.project.freeze
-          cabal update
-          cabal build
-          make fpr
-          mkdir -p "$RUNNER_TEMP/sol-bin"
-          ln -sf "$GITHUB_WORKSPACE/fpr" "$RUNNER_TEMP/sol-bin/sol"
-          echo "$RUNNER_TEMP/sol-bin" >> "$GITHUB_PATH"
-          echo "SOL=$RUNNER_TEMP/sol-bin/sol" >> "$GITHUB_ENV"
-      - run: echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-      # The container runs as root, which ignores the permission bits that
-      # the denied-path checks (e.g. sol-fs-check try_ls_denied) rely on.
-      - name: Sol suites (as an unprivileged user)
-        run: |
-          useradd -m sol
-          chown -R sol "$GITHUB_WORKSPACE"
-          su sol -c 'git config --global --add safe.directory "$GITHUB_WORKSPACE"; git config --global user.email ci@example.invalid; git config --global user.name ci; export FPR_HOME="$GITHUB_WORKSPACE"; cd "$GITHUB_WORKSPACE" && sh tools/sol-ci.sh'
-      - name: Sol logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sol-logs-linux
-          if-no-files-found: warn
-          path: build/sol-ci/
-
-  # Sol was verified on macOS arm64; informational leg, never blocks.
-  sol-macos:
-    name: sol suites (macos-15, non-blocking)
-    runs-on: macos-15
-    continue-on-error: true
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-      - name: tools
-        run: brew install ghc cabal-install libgit2 libarchive curl pkg-config
-      # libarchive and curl are keg-only in Homebrew
-      - run: echo "PKG_CONFIG_PATH=$(brew --prefix libarchive)/lib/pkgconfig:$(brew --prefix curl)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
-      - name: make fpr
-        run: |
-          # cabal.project.freeze pins the release plan (GHC 9.8.2 boot packages);
-          # CI runners ship other GHCs, so build CI against their own plan.
-          rm -f cabal.project.freeze
-          cabal update
-          cabal build
-          make fpr
-          mkdir -p "$RUNNER_TEMP/sol-bin"
-          ln -sf "$GITHUB_WORKSPACE/fpr" "$RUNNER_TEMP/sol-bin/sol"
-          echo "$RUNNER_TEMP/sol-bin" >> "$GITHUB_PATH"
-          echo "SOL=$RUNNER_TEMP/sol-bin/sol" >> "$GITHUB_ENV"
-      - run: echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-      - name: Sol suites
-        run: sh tools/sol-ci.sh
-      - name: Sol logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sol-logs-macos
-          if-no-files-found: warn
-          path: build/sol-ci/
+          ./fpr sol tools/sol-only-check.sol
+          ./fpr sol tests/sol-main-smoke.sol
+      - name: Native compiler unit suites
+        run: make unit-tests

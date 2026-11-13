@@ -12,7 +12,7 @@
 -- both found beside the fpr binary (Home.hs).  No Makefile, no QOS: the
 -- same three parts a bare-metal image is made of, with libc as the board.
 -- On the esp-idf host the same parts are built as an ESP-IDF project by
--- machine/esp-idf/build.sh (docs/2026-09-23-ESP-IDF.md).
+-- machine/esp-idf/build.sol (docs/2026-09-23-ESP-IDF.md).
 module Build (buildMain, runMain, runMainIn, isDiagnostic, checkKey, onlineCores) where
 
 import Data.List (isPrefixOf)
@@ -314,7 +314,7 @@ buildMain args = do
   p <- plan args
   unless (null (pRest p)) $ hPutStrLn stderr usage >> exitFailure
   when (pModule p && pHost p /= "unix") $ hPutStrLn stderr "host modules require --host=unix" >> exitFailure
-  when (pHost p == "esp-idf") $ espIdf "build.sh" p []
+  when (pHost p == "esp-idf") $ espIdf "build.sol" p []
   prof <- profileOf (pSource p)
   when (prof == "sol") $ hPutStrLn stderr "fpr build: a sol program runs on the VM (`fpr run`, `fpr sol`); it is not built into an executable" >> exitFailure
   configuration <- Options.readCompilerOptions
@@ -376,7 +376,7 @@ runMainIn dir args = do
   when (pModule p) $ hPutStrLn stderr "use fpr build --module, then Native.attach" >> exitFailure
   when (pHost p == "esp-idf") $ do
     unless (null (pRest p)) $ hPutStrLn stderr "fpr run: a board program is started with no arguments (Sys.args is [] there)" >> exitFailure
-    espIdf "run.sh" p (maybe [] (: []) (pPort p))
+    espIdf "run" p (maybe [] (: []) (pPort p))
   prof <- profileOf (pSource p)
   when (prof == "sol") $ withArgs (pSource p : pRest p) Sol.Main.main >> exitWith ExitSuccess
   when (pRelease p) $ Options.readCompilerOptions >>= releaseGuard "run"
@@ -509,21 +509,20 @@ fnvBytes = B.foldl' (\h c -> (h `xor` fromIntegral c) * 1099511628211) 146959810
 fnv64 :: String -> Word64
 fnv64 = foldl' (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) 14695981039346656037
 
--- --host=esp-idf: the board's build and console live beside its host layer
--- (machine/esp-idf/build.sh, run.sh, console.py), in ESP-IDF's tools; fpr
--- hands over and exits with their status -- for `run`, the program's own.
+-- ESP-IDF builds use Sol; vendor tools must already be on PATH.
+-- Flash/console automation is archived until its Sol transport is implemented.
 espIdf :: String -> Plan -> [String] -> IO ()
-espIdf script p extra = do
+espIdf action p _ = do
+  when (action /= "build.sol") $ do
+    hPutStrLn stderr "ESP-IDF flash/console automation is retired pending a Sol implementation; use idf.py directly or the archived release"
+    exitFailure
   home <- fprHome
-  let dir = home </> "machine" </> "esp-idf"
+  source <- makeAbsolute (pSource p)
   out <- makeAbsolute (fromMaybe (home </> "build" </> "esp-idf" </> takeBaseName (pSource p)) (pOut p))
-  env0 <- System.Environment.getEnvironment
-  let env = [("FPR_ESP_OUT", out)] ++ [("FPR_ESP_VERBOSE", "1") | pVerbose p]
-            ++ [kv | kv@(k, _) <- env0, k /= "FPR_ESP_OUT", not (pVerbose p && k == "FPR_ESP_VERBOSE")]
-      args = if script == "build.sh" then [pSource p, out] else pSource p : extra
-  (_, _, _, ph) <- createProcess (proc "sh" ((dir </> script) : args)) {env = Just env}
+  self <- getExecutablePath
+  (_, _, _, ph) <- createProcess (proc self ["sol", home </> "machine" </> "esp-idf" </> "build.sol", source, out]) {cwd = Just home}
   code <- waitForProcess ph
-  when (script == "build.sh" && code == ExitSuccess) $
-    hPutStrLn stderr ("fpr build: " ++ (out </> "idf" </> "fpr_esp.bin") ++ " (flash with: fpr run --host=esp-idf, or idf.py -B " ++ (out </> "idf") ++ " flash)")
+  when (code == ExitSuccess) $
+    hPutStrLn stderr ("fpr build: " ++ (out </> "idf" </> "fpr_esp.bin"))
   exitWith code
 

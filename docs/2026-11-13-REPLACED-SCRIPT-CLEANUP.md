@@ -1,5 +1,7 @@
 # Replaced-script cleanup (2026-11-13)
 
+This earlier cleanup record is superseded by the [Sol-only main cutover](2026-11-13-SOL-ONLY.md). Its retained-script list describes the earlier checkpoint.
+
 The final pre-cleanup source is preserved in the GitHub release
 [`legacy-scripts-final-2026-11-13`](https://github.com/hyperswine/fprisc/releases/tag/legacy-scripts-final-2026-11-13), including a source archive and checksums.
 This is a source checkpoint, not a new binary toolchain version.

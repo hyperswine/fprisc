@@ -1,4 +1,4 @@
-# The launcher resolves caller-relative paths and sources ESP-IDF's environment.
+# Run from the FP-RISC checkout with the ESP-IDF vendor environment configured.
 B = use "../../sol/lib/build".
 idfVersion dir = ProcessResult status tag _ = unwrap (Proc.runNow (ProcessSpec ["git","describe","--tags"] dir [] "" 0));
   case (status,Str.split 46 (Str.trim tag)) of

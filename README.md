@@ -24,7 +24,7 @@ byte pipelines and owned jobs. See the [process contract](docs/2026-10-29-SOL-PR
 for migration from automatic command replay and unlimited text capture.
 
 ```sh
-sudo apt-get install make gcc pkg-config python3 libgit2-dev libarchive-dev libcurl4-openssl-dev \
+sudo apt-get install make gcc pkg-config libgit2-dev libarchive-dev libcurl4-openssl-dev \
   libegl-dev libgl-dev libgmp-dev zlib1g-dev
 cabal update
 make fpr                                  # builds ./fpr (first build fetches deps)
@@ -34,9 +34,16 @@ make stdcheck                             # stdcheck: OK
 cabal test test:if-precedence-check test:module-path-check
 ```
 
-`make unit-tests` runs every cabal test suite. `python3 tests/check_ci.py`
-runs the CI groups, which also need the RISC-V cross toolchains and QEMU
-installed by `.github/workflows/ci.yml`.
+`make unit-tests` runs the native Cabal test suites. Current Sol checks are:
+
+```sh
+./fpr sol tools/sol-only-check.sol
+./fpr sol tests/sol-main-smoke.sol
+```
+
+The former Python/Bash suites and automation were deliberately removed from
+`main`. See the [Sol-only transition](docs/2026-11-13-SOL-ONLY.md) for the archive
+and functionality still to restore. This branch does not claim their old coverage.
 
 Native AOT compilation uses verified typed IR and direct RV32/RV64, AArch64 and x64
 selectors. The RISC-V text generator and translators are retired in the current
@@ -169,23 +176,10 @@ operations, CSR access, interrupt masking, atomics and fences. Try
 For a chronological account of the QOS review, repository split, profile design
 and BareMetal implementation, see the [project progress summary](docs/2026-09-18-PROJECT-PROGRESS-SUMMARY.md).
 
-## Local printer dashboard
+## Printer tooling
 
-`examples/printers.fpr` is a small read-only `std/live` dashboard, with
-expandable printer cards, live telemetry/freshness, measured report and refresh
-rates, and cameras that connect only on demand. It uses a narrow Python LAN
-transport for Bambu MQTT/TLS and camera framing; an opt-in native TLS/MQTT
-collector owns authenticated telemetry, and an opt-in native camera service
-owns shared JPEG framing and MJPEG streaming. The UI and per-session state are
-FP-RISC. Try it without any printer or credentials:
-
-```sh
-./fpr build examples/printers.fpr -o build/printers
-python3 tools/printer_dashboard.py --demo
-```
-
-See [setup and checks](examples/printer-dashboard/README.md) for local-printer
-configuration and the current validation boundary.
+Native printer application sources remain. The Python demo/transport tools are
+archived in the final legacy source release; use that release for the old demo.
 
 Sol can also be installed as a versioned source-plus-runner bundle with
 `make sol-install SOL_PREFIX="$HOME/.local"`. See the
@@ -194,8 +188,5 @@ dependencies, shebangs, writable state, library resolution and release checks.
 
 ## VS Code extension
 
-The FP-RISC/Sol extension lives in [`lsp/`](lsp/README.md), alongside its
-compiler-backed tests. Build `fpr`, then run `tools/lsp-release.sh package`
-to test and create a VSIX. `tools/lsp-release.sh publish --dry-run` rehearses
-the release; `publish` uploads the tested artifact to the existing
-`jasen.fpr-lang` Marketplace entry.
+The FP-RISC/Sol extension lives in [`lsp/`](lsp/README.md). From that directory,
+run `npm ci` and `npm run package`. The former shell release wrapper is archived.

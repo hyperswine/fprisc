@@ -98,7 +98,7 @@ FPR_COMPILER_HS := $(if $(wildcard compiler),$(shell find compiler -type f -name
 # reaches for ghc through the fprc prerequisite
 ifneq ($(wildcard ../.installed),)
 fpr:
-	@test -x fpr || { echo "installed tree without fpr: reinstall (qos.py install / brew reinstall qos-fpr)"; exit 1; }
+	@test -x fpr || { echo "installed tree without fpr: reinstall the native toolchain"; exit 1; }
 else ifneq ($(FPR_TOOLCHAIN),.)
 .PHONY: fpr
 fpr:
@@ -221,24 +221,9 @@ fprmeta: fpr
 unit-tests:
 	$(NATIVE_PKG_ENV) cabal test $(if $(UNIT),test:$(UNIT),all) --test-show-details=direct
 
-# ---- P0 pipeline baselines (docs/2026-11-07-PIPELINE-PASS-INVENTORY.md) ----
-# Behavioural contracts plus recorded code/compile metrics for the corpus in
-# tests/pipeline/corpus.json.  A pre-promotion gate, not a per-PR CI job: it
-# builds every entry cold (about three minutes) on this host only.
-pipeline-baseline: fpr
-	python3 tools/pipeline-baseline.py --record
-
-pipeline-baseline-check: fpr
-	python3 tests/pipeline/check_baseline_gate.py
-	python3 tools/pipeline-baseline.py --check
-
-pipeline-baseline-rv64: fpr
-	python3 tools/pipeline-baseline.py --record --target=rv64
-
-# C/GHC reference audit (docs/2026-11-08-PIPELINE-REFERENCE-AUDIT.md): same
-# answers, SIMD, checked vs unchecked; needs cc and, for the GHC rows, ghc.
-pipeline-reference-audit: fpr
-	python3 tests/pipeline/reference_audit.py --record
+# Retired measurement tools are preserved in legacy-scripts-final-2026-11-13.
+pipeline-baseline pipeline-baseline-check pipeline-baseline-rv64 pipeline-reference-audit:
+	$(error This Python-based measurement workflow is retired; see docs/2026-11-13-SOL-ONLY.md)
 
 # ---- the std proof pass ------------------------------------------------
 stdcheck: fprc
@@ -418,7 +403,7 @@ bare-metal-builtin-run: bare-metal-builtin
 ifeq ($(BUILTIN_BOARD),virt)
 	$(QEMU) -machine virt -smp 1 -m 128M -nographic -bios none -kernel $(IMAGE)
 else
-	python3 tools/run_simple_risc.py $(basename $(IMAGE)).bin $(SIMPLE_RISC_FLAGS)
+	$(error Physical-board transport is retired pending a Sol implementation; use the archived release)
 endif
 .PHONY: bare-metal-builtin bare-metal-builtin-run
 
