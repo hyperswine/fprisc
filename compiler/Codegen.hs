@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 223 -- owned maps call their comparator directly; (222) owned maps pick the wrapper of their own module (std/map, std/hashmap) (221: String fields in private variant returns).
+codegenRev = 224 -- A64: add/sub immediates, fused record-layout tests, exact-arity applies call directly; fewer nested call regions; small comparators inlined in owned-map walkers (223: owned maps call their comparator directly; 222: owned maps pick the wrapper of their own module; 221: String fields in private variant returns).
 -- 220 Forward range/map fusion.
 -- 219 -- QOS app images take the receive-loop form; slot-carried small messages (218: weighted ticks: a tick charges the worst-case instruction count of the code it covers 217: early IR loops and String-scan versioning (several strings) by default; raw loop-carried Ints (216: A64 compare-and-branch, one-word String guard))
 

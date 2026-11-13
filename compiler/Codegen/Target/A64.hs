@@ -392,9 +392,10 @@ selectBlock cfg fn tyMap b = do
       -- constants (0..4095) an add or subtract can take as an immediate,
       -- function-wide; those used only that way are never made
       immediates = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk, n >= 0, n < 4096]
+      -- (the other operand stays a register: `c + c` keeps c's register)
       immUse v (Instr _ o) = case o of
-        OArith x a b | x `elem` [Add, Sub] -> b == v || (x == Add && a == v && M.notMember b immediates)
-        OArithU x a b | x `elem` [Add, Sub] -> b == v || (x == Add && a == v && M.notMember b immediates)
+        OArith x a b | x `elem` [Add, Sub] -> (b == v && a /= v) || (x == Add && a == v && M.notMember b immediates)
+        OArithU x a b | x `elem` [Add, Sub] -> (b == v && a /= v) || (x == Add && a == v && M.notMember b immediates)
         _ -> False
       immediateOnly = S.fromList [v | v <- M.keys immediates,
                                        let users = [i | blk <- fnBlocks fn, i@(Instr _ o) <- bInstrs blk, v `elem` opUses o],
@@ -1289,6 +1290,18 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
       (O.Common O.JumpLoop, [], [OL l]) -> ["b " ++ lbl l]
       (O.A64 A.Call, _, OCode s : _) -> ["bl " ++ gsym cfg (codeName s)]
       (O.A64 A.Push, [], [v]) -> ["sub sp, sp, #16", "str " ++ reg v ++ ", [sp]"]
+      (O.A64 A.ApplyN, [_], [OI n]) | n >= 1 && n <= 8 ->
+        -- a function value with nothing captured, applied to exactly its
+        -- arity, is called directly (runtime.c fpr_applyN does the same
+        -- through callf): pap_t is tid/var, fn @8, arity @16, nargs @24
+        [ "ldr x0, [sp, #" ++ show (16 * n) ++ "]", "tbnz x0, #0, 1f",
+          "ldr w9, [x0]", "mov w10, #9001", "cmp w9, w10", "b.ne 1f",
+          "ldp x9, x10, [x0, #16]", "cmp x9, #" ++ show n, "ccmp x10, #0, #0, eq", "b.ne 1f",
+          "ldr x16, [x0, #8]" ]
+        ++ ["ldr x" ++ show i ++ ", [sp, #" ++ show (16 * (n - 1 - i)) ++ "]" | i <- [0 .. n - 1]]
+        ++ [ "blr x16", "b 2f",
+          "1:", "mov x2, sp", "mov x1, #" ++ show n,
+          "bl " ++ gsym cfg (Call.runtimeName Call.ApplyEntry), "2:", "add sp, sp, #" ++ show (16 * (n + 1)) ]
       (O.A64 A.ApplyN, [_], [OI n]) ->
         [ "mov x2, sp", "mov x1, #" ++ show n, "ldr x0, [sp, #" ++ show (16 * n) ++ "]",
           "bl " ++ gsym cfg (Call.runtimeName Call.ApplyEntry), "add sp, sp, #" ++ show (16 * (n + 1)) ]
