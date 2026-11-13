@@ -32,6 +32,10 @@ link root out sequence =
         List.map (fn symbol -> "--export={symbol}") exports,["--heap-budget={limit}",source,"{out}/callback.s"]];
       _ = runTool root argv;
       print (J.render (J.JArr (List.map J.JStr argv)))
+  | [root,out,"execute"] ->
+      argv = ["qemu-system-riscv64","-machine","virt","-smp","1","-m","128M","-nographic","-bios","none","-kernel","{out}/image.elf"];
+      output = runTool root argv;
+      print (J.render (J.JObj [("command",J.JArr (List.map J.JStr argv)),("output",J.JStr output)]))
   | [root,out,"single"] -> print (J.render (link root out False))
   | [root,out,"sequence"] -> print (J.render (link root out True))
-  | _ -> error "expected ROOT BUILD_DIR single|sequence".
+  | _ -> error "expected ROOT BUILD_DIR compile SOURCE LIMIT EXPORT... | single | sequence | execute".

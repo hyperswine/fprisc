@@ -131,11 +131,6 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
         out=Path(directory)
         env.update(FPR_HOME=str(ROOT),XDG_CACHE_HOME=str(out/'cache'))
         commands=[]
-        def run(command):
-            command=list(map(str,command));commands.append(command)
-            p=subprocess.run(command,cwd=ROOT,env=env,capture_output=True,text=True,timeout=240)
-            require(p.returncode==0,'controlled build/execution failed:\n'+p.stdout[-3000:]+p.stderr[-3000:])
-            return p.stdout+p.stderr
         asm=out/'callback.s'
         commands.append(arena_tool(LINK_TOOL, out, 'compile', source, str(max(1,heap_bytes)),
                                    *(name+':'+symbol for name,symbol in symbols.items()), env=env))
@@ -193,7 +188,9 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
             result['callback_work']['analysis_sha256']={name:sha((ROOT/'tools'/name).read_bytes())
                 for name in ('linked_callback_work.py','check_linked_stack.py','riscv_compressed.py')}
         if execute:
-            output=run(['qemu-system-riscv64','-machine','virt','-smp','1','-m','128M','-nographic','-bios','none','-kernel',elf])
+            execution = arena_tool(LINK_TOOL, out, 'execute', env=env)
+            commands.append(execution['command'])
+            output = execution['output']
             values=re.findall(r'^STATIC_ARENA_PASS result=(\d+)$',output,re.M)
             require(len(values)==1,'execution did not return the guarded activation result')
             result['execution']=dict(status='RV64-QEMU-PASS',result_bits=int(values[0]),output=output)
