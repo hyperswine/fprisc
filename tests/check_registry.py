@@ -29,7 +29,7 @@ def base(path, timeout, alone=False, lock=None):
 
 # These independent Base configurations also run through tests/run.sol.
 for row in Path(__file__).with_name('sol-checks.tsv').read_text().splitlines():
-    path, timeout = row.split('\t')
+    path, timeout, *_ = row.split('\t')
     base(path, int(timeout))
 
 base('tests/check_target_image.py', 300)
