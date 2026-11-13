@@ -18,7 +18,7 @@ runtimeHashes root =
   else error "listing runtime sources: {err}".
 builderSources = ["tools/pi-qualification-build.sol","tools/qualification-compile.sol","tools/qualification-symbols.sol",
   "tools/pi-hart-registers.sol","tools/pi-hart-registers.c","tools/pi-qualification-cases.sol",
-  "tools/pi-scheduler-cases.sol","tools/pi-scheduler.fpr.in","tools/pi-language-cases.sol"].
+  "tools/pi-scheduler-cases.sol","tools/pi-scheduler.fpr.in","tools/pi-fixture-modes.sol","tools/pi-language-cases.sol"].
 inventory obj = J.JObj (List.map hashEntry (pairs obj)).
 # The compiler runs before the Sol transaction commits and needs the source immediately.
 writeFixture path source =
