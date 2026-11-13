@@ -181,10 +181,41 @@ receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs in
     callCandidates=[g | (g,(ps,_))<-M.toList (prog `M.union` context),costly g (length ps)]
     callCandidateSet=S.fromList callCandidates
     callTargets=if not callRegionsOn then M.empty else M.fromList
-      [(n,targets) | (n,body)<-M.toList prog,M.member n interfaces,
+      [(n,targets) | (n,body)<-M.toList prog,M.member n interfaces,not (nestedOwner n),
         let targets=S.filter (\g->g `S.member` callCandidateSet && copyableAt n g && not (sameGroup n g)) (refs (fst body) (snd body)),
         not (S.null targets)]
     sameGroup a b=case (M.lookup a sccIx,M.lookup b sccIx) of (Just x,Just y)->x==y;_->False
+    -- a function its callers wrap needs no call region of its own around a
+    -- call: the callee's scratch dies with the enclosing pending region a few
+    -- frames up.  Only for a function outside every recursion, so what waits
+    -- for that region is bounded by its static call sites (a recursive one
+    -- would hold its callees' scratch for the whole recursion).
+    -- and only for a function no other unit can name, every reference to it
+    -- in this unit a saturated call some caller wraps: an entry point, a
+    -- function value or a call a caller does not wrap keeps its regions
+    nestedOwner n=S.notMember n recursive && S.notMember n shared && case M.lookup n prog of
+      Just (ps,_) | costly n (length ps) ->
+        let users=[m | (m,(_,b))<-M.toList prog, m/=n, S.member n (refs [] b)]
+        in not (null users) && all (\m->wraps m n (length ps)) users
+      _ -> False
+    wraps m n k=case M.lookup m prog of
+      Just (mps,b) -> M.member m interfaces && not (nestedOwner m) && copyableAt m n && not (sameGroup m n)
+                      && onlySaturated n k (S.fromList mps) b
+      Nothing -> False
+    -- every occurrence of n is the head of a call with k arguments
+    onlySaturated n k bound e=case spine e of
+      (CVar g,as) | g==n -> S.notMember n bound && length as==k && all (onlySaturated n k bound) as
+      (h,as@(_:_)) -> onlySaturated n k bound h && all (onlySaturated n k bound) as
+      _ -> case e of
+        CVar g -> g/=n || S.member n bound
+        CLam xs b -> onlySaturated n k (bound `S.union` S.fromList xs) b
+        CLet x a b -> onlySaturated n k bound a && onlySaturated n k (S.insert x bound) b
+        CIf c a b -> all (onlySaturated n k bound) [c,a,b]
+        CMk _ _ fs -> all (onlySaturated n k bound) fs
+        CTagEq _ _ x -> onlySaturated n k bound x
+        CProj _ x -> onlySaturated n k bound x
+        _ -> True
+    recursive=S.fromList (concat [c | CyclicSCC c<-stronglyConnComp [(m,m,S.toList (refs ps b `S.intersection` M.keysSet prog)) | (m,(ps,b))<-M.toList prog]])
     describe ns=concatMap one ns
       where
         boundaries=entries ns
@@ -361,7 +392,7 @@ receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs in
         -- loop's own boundary only reclaims per slab of its iteration.  Not the
         -- generated bookkeeping helpers. Their explicit roles, rather than
         -- a spelling convention, decide which bodies can contain call regions.
-        eligible n = M.member n prog && (M.member n interfaces ||
+        eligible n = M.member n prog && not (nestedOwner n) && (M.member n interfaces ||
           maybe False ((==LoopInner) . generatedKind) (M.lookup n generated))
         rewritten' = M.mapWithKey (\n (ps, b) -> if eligible n then let (b', k) = wrap n (S.fromList ps) 0 b in ((ps, b'), k) else ((ps, b), 0)) p
         site n _ = fst (rewritten' M.! n)
