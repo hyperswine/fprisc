@@ -33,7 +33,11 @@ The QOS Python entry points `ccobj.py`, `mkimports.py`, `mkexports.py` and `nati
 
 The QOS disk builder's Python entry point was also removed. Given the same two QA archives, the Sol builder produced a byte-identical 4 MiB disk. In a separate run, `tools/build-checkout-app.sol` compiled `tests/appa.fpr` and `tests/appb.fpr` through the real Make target and seeded the resulting archives in that order. The output image has not been booted.
 
-The QOS model build still uses `tools/mkmesh.py` to convert STL into FP-RISC mesh modules. Before removing it, compare binary and ASCII STL inputs, axis conversion, scale, floor alignment and rounding with the Python reference from the rollback tag.
+QOS has since removed the Python mesh converter. Its Sol replacement reproduced the module bodies for all 11 checked-in STL inputs. Clean-checkout comparisons also covered ASCII, a binary file with a solid-prefixed header, negative scale and floor alignment.
+
+FP-RISC now reads fresh per-export heap proofs in Sol, and admission receipts identify the checker by SHA-256. A fresh paired checkout admitted a 416-byte heap requirement against a 512-byte reserve and executed the image under RV64 QEMU, returning 42. QOS read native ABI values 24, 6 and 5 from the same FP-RISC checkout. The run used a previously built compiler binary.
+
+The Pi builder now expands scheduler sources and the eight optimization-control configurations in Sol. The full generated plan matched its predecessor for 98 build entries and 99 case specifications, as did all six focused plans, excluding the changed builder's own hash. These comparisons cover fixture generation; physical Pi qualification remains outstanding.
 
 1. Finish the FP-RISC static-arena driver. [The existing entry point](../tools/build_static_arena.py) still generates the caller, computes placement and coordinates publication. It also invokes the optional linked-stack and callback proofs. Keep the last admitted image intact when any of those steps refuses a replacement.
 2. Move Pi qualification fixture generation and case selection out of [the Python coordinator](../tools/build_pi_runtime_qualification.py). Compare a focused bundle's case list, expected values and produced binaries before retiring the old path.
