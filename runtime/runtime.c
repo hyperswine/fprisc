@@ -3772,6 +3772,18 @@ static V g_strJoin(V sepv, V list) {
   }
   return (V)out;
 }
+/* ---- strCompare: byte order, -1 / 0 / 1 (prelude strCmp) ---------------
+ * memcmp over the shorter length, then the lengths: the answer the
+ * prelude's byte loop gave, at memcmp's speed (a map keyed by String
+ * compares at every node it passes). */
+static V g_strCompare(V av, V bv) {
+  str_t *a = want_str(av, "strCompare: not a String");
+  str_t *b = want_str(bv, "strCompare: not a String");
+  uw n = a->len < b->len ? a->len : b->len;
+  int c = n ? __builtin_memcmp(a->bytes, b->bytes, n) : 0;
+  if (c == 0) c = a->len < b->len ? -1 : a->len > b->len ? 1 : 0;
+  return TAG(c < 0 ? -1 : c > 0 ? 1 : 0);
+}
 static V g_arcLive(V d) {
   (void)d;
   if (fpr_plane_memory) return TAG((sw)fpr_plane_memory->arc_live());
@@ -5762,6 +5774,7 @@ FPR_FN(fpr_g_intMax, g_intMax, 1);
 FPR_FN(fpr_g_intMin, g_intMin, 1);
 FPR_FN(fpr_g_substr, g_substr, 3);
 FPR_FN(fpr_g_strJoin, g_strJoin, 2);
+FPR_FN(fpr_g_strCompare, g_strCompare, 2);
 FPR_FN(fpr_g_sortListWith, g_sortListWith, 2);
 FPR_FN(fpr_g_drop, g_drop, 1);
 FPR_FN(fpr_g_arcLive, g_arcLive, 1);

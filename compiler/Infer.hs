@@ -818,6 +818,7 @@ builtinEnv =
       ("substr", mono (TFn tStr (TFn tInt (TFn tInt tStr)))),
       -- Sol's names and contracts (Sol/Infer.hs): byte strings, 0-based, -1 = not found
       ("strJoin", mono (TFn tStr (TFn (TAp (TC "List") tStr) tStr))),
+      ("strCompare", mono (TFn tStr (TFn tStr tInt))), -- byte order, -1/0/1 (runtime.c g_strCompare)
       -- List.sortWith's engine (runtime.c): a stable merge sort in C calling the
       -- comparator; its answer is std/order's Ordering, which
       -- this table cannot name, hence the free result type.  std/list is the caller.

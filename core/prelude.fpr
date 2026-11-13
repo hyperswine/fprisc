@@ -179,7 +179,7 @@ strSubGo a b la lb = case strSufEq a b (la - lb) 0 of True -> strTake a (la - lb
 
 # -1, 0, 1: bytewise, the shorter first on a tie
 strCmp : String -> String -> Int .
-strCmp a b = strCmpGo a b 0 (strlen a) (strlen b).
+strCmp a b = strCompare a b. # runtime.c g_strCompare (memcmp); strCmpGo is the same answer in FP-RISC
 # one loop, guards only: no Bool is built (an `or` made one per byte, and
 # the walk ping-ponged through a second function)
 strCmpGo : unsafe String -> String -> Int -> Int -> Int -> Int .
