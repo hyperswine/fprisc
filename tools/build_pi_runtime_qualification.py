@@ -67,7 +67,7 @@ def main():
         return name
 
     scheduler = [
-        [shape, variant, sched.source(shape, a.rounds), switches, str(sched.HAL)]
+        [shape, variant, sched.WORK["scalar" if shape == "copy" else shape], switches, str(sched.HAL)]
         for shape, variant, switches in sched.VARIANTS if not focused or shape == focused
     ]
 

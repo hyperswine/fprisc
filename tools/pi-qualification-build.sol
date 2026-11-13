@@ -18,7 +18,7 @@ runtimeHashes root =
   else error "listing runtime sources: {err}".
 builderSources = ["tools/pi-qualification-build.sol","tools/qualification-compile.sol","tools/qualification-symbols.sol",
   "tools/pi-hart-registers.sol","tools/pi-hart-registers.c","tools/pi-qualification-cases.sol",
-  "tools/pi-scheduler-cases.sol","tools/pi-language-cases.sol"].
+  "tools/pi-scheduler-cases.sol","tools/pi-scheduler.fpr.in","tools/pi-language-cases.sol"].
 inventory obj = J.JObj (List.map hashEntry (pairs obj)).
 # The compiler runs before the Sol transaction commits and needs the source immediately.
 writeFixture path source =
@@ -40,7 +40,9 @@ buildBundle input output =
   plan = unwrap (J.parse (readPath input));
   scheduler = (case field plan "scheduler" of J.JArr xs -> xs | _ -> error "expected scheduler fixtures");
   repetitions = field (field plan "metadata") "repetitions";
-  variants = List.concat (List.map (Scheduler.fixturePair repetitions) scheduler);
+  root = unwrap (J.text (field plan "root"));
+  template = readPath "{root}/tools/pi-scheduler.fpr.in";
+  variants = List.concat (List.map (Scheduler.fixturePair template (field (field plan "metadata") "rounds") repetitions) scheduler);
   schedulerSpecs = List.map (fn pair -> (_,spec) = pair; spec) variants;
   schedulerJobs = List.map (fn pair -> (job,_) = pair; job) variants;
   specs = (case field plan "cases" of J.JArr xs -> xs | _ -> error "expected fixture list");
@@ -50,7 +52,7 @@ buildBundle input output =
   _ = (if status == 0 then Unit else error "{compiler} --version: {err}");
   first = (case Str.lines version of line :: _ -> line | [] -> error "missing compiler version: {err}");
   jobs = (case field plan "builds" of J.JArr xs -> xs | _ -> error "expected build list");
-  root = unwrap (J.text (field plan "root")); out = unwrap (J.text (field plan "out"));
+  out = unwrap (J.text (field plan "out"));
   cross = unwrap (J.text (field plan "mode"));
   runner = unwrap (J.text (field (field plan "files") "runner_source_sha256"));
   _ = Hart.checkRegisters compiler "{root}/tools/pi-hart-registers.c" out;

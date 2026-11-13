@@ -12,8 +12,19 @@ matrix shape variant mode repetitions =
 watchdog shape harts = J.JObj [("kind",J.JStr "watchdog"),("binary",J.JStr "{shape}-default-plain"),
   ("args",J.JArr [J.JStr "stall"]),("harts",J.JNum harts),("timeout",J.JNum 3)].
 # The compiler and case matrix consume the same plain/probe pair, in that order.
-fixturePair repetitions fixture = case fixture of
-    J.JArr [J.JStr shape,J.JStr variant,source,switches,hal] ->
+sourceText template rounds shape code work result =
+  copy = shape == "copy";
+  pong = if copy then "case receive self of (who,n,payload) -> _ = send who (n + 1,payload); pong self."
+         else "case receive self of (who,n,payload) -> _ = send who (n + 1); pong self.";
+  fields = [("\{imports}",if copy then "List = use \"std/list\"." else ""),
+    ("\{payload}",if copy then "List.range 1 4096" else "0"),("\{pong}",pong),
+    ("\{receive}",if copy then "case receiveFrom me p of (r,returned) -> (r,returned)" else "(receiveFrom me p,0)"),
+    ("\{check}",if copy then "List.length returned == 4096 and List.sum returned == 8390656" else "True"),
+    ("\{rounds}",rounds),("\{result}",result),("\{work}",work),("\{code}",code)];
+  List.fold (fn text pair -> (marker,value) = pair; Str.replace marker value text) template fields.
+fixturePair template rounds repetitions fixture = case fixture of
+    J.JArr [J.JStr shape,J.JStr variant,J.JArr [J.JStr code,J.JStr work,result],switches,hal] ->
+      source = J.JStr (sourceText template (J.render rounds) shape code work (J.render result));
       enabled = (if variant == "default" then "enabled" else "disabled");
       checks = J.JArr [J.JStr "scheduler",J.JStr shape,J.JStr enabled];
       List.map (fn mode ->

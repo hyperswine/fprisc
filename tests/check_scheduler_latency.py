@@ -163,46 +163,11 @@ def source(shape, rounds):
     receive = ('case receiveFrom me p of (r,returned) -> (r,returned)' if copy
                else '(receiveFrom me p,0)')
     check = 'List.length returned == 4096 and List.sum returned == 8390656' if copy else 'True'
-    return f'''unsafe base.
-{('List = use "std/list".' if copy else '')}
-{code}
-schedProbeOpaque : a -> a.
-schedProbeRole : Int -> Unit.
-schedProbeBegin : Unit -> Unit.
-schedProbeEnd : Unit -> Unit.
-schedProbeReport : Unit -> Unit.
-schedProbeStall : Unit -> Unit.
-spin x = y = {work}; spin (y - {result}).
-hog parent self = _ = schedProbeRole 1; x = 0; ready = {work};
-  _ = send parent ready; spin (ready - {result}).
-ponger self = _ = schedProbeRole 2; pong self.
-pong self = {pong}
-ping me p k acc samples payload = if k == 0 then (acc,samples) else
-  start = Sys.timeUs Unit; _ = send p (me,k,payload); (r,returned) = {receive};
-  elapsed = Sys.timeUs Unit - start;
-  _ = if r == k + 1 and {check} then Unit else error "bad reply";
-  ping me p (k - 1) (acc + r) (elapsed :: samples) payload.
-start me n remote = if n == 0 then [] else
-  spawnOn (if remote then n % 2 else 0) (hog me) :: start me (n - 1) remote.
-ready me actors = case actors of [] -> Unit | a :: rest ->
-  value = receiveFrom me a; _ = if value == {result} then Unit else error "bad warmup";
-  ready me rest.
-stop actors = case actors of [] -> Unit | a :: rest -> _ = kill a; stop rest.
-dump samples = case samples of [] -> Unit | x :: rest -> _ = print x; dump rest.
-run route load = _ = schedProbeRole 3; me = myself 0;
-  remote = route == "remote"; count = if load == "eight" then 8 else if load == "one" then 1 else 0;
-  actors = start me count remote; _ = ready me actors;
-  p = spawnOn (if remote then 1 else 0) ponger; payload = {payload};
-  _ = ping me p 16 0 [] payload;
-  _ = schedProbeBegin Unit; result = ping me p {rounds} 0 [] payload;
-  _ = schedProbeEnd Unit; _ = stop actors; _ = kill p; _ = schedProbeReport Unit;
-  case result of (acc,samples) -> print acc >> dump samples.
-staller self = schedProbeStall Unit.
-main = case Sys.args Unit of
-  ["stall"] -> me = myself 0; a = spawnOn 0 staller; print (receiveFrom me a)
-  | [route,load] -> run route load
-  | _ -> error "scheduler fixture arguments".
-'''
+    template = (ROOT / "tools/pi-scheduler.fpr.in").read_text()
+    return template.format(imports='List = use "std/list".' if copy else '', code=code,
+                           work=work, result=result, pong=pong, receive=receive,
+                           check=check, payload=payload, rounds=rounds)
+
 
 
 def digest(path):
