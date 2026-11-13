@@ -1,0 +1,44 @@
+unsafe base.
+Value = Type (Plus Int | Minus Int).
+Tree = Type (Leaf | Branch Tree Value Tree).
+make d n = if d <= 0 then Leaf else
+  left = make (d - 1) (n+1); right = make (d - 1) (n+2);
+  v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.
+score t = case t of Leaf -> 0 | Branch l v r -> case v of
+  Plus x -> score l + x + score r | Minus x -> score l - x + score r.
+mark x = _ = print x; x.
+repeated d = if d <= 0 then Leaf else child = repeated (d - 1); Branch child (Plus d) child.
+useShared d = t = repeated d; a = score t; score t + a.
+marked n d = l = make (mark 0) n; v = Minus (mark (20 / d)); r = make (mark (n+1)) n; Branch l v r.
+useMarked n d = t = marked n d; a = score t; score t + a.
+endpoint n = t = Branch Leaf (Plus n) Leaf; score t.
+escaping n = t = make 1 n; _ = print (score t); t.
+captured n = t = make 1 n; fn u -> t.
+sendTree parent self = send parent (escaping (receive self)).
+Checked = Type (NoneHere | Both Checked Value Checked).
+fallible depth n d = if depth <= 0 then NoneHere else
+  left = fallible (depth - 1) n d; _ = mark 7; value = Plus (mark (20 / d));
+  k = mark (n+1); right = fallible (depth - 1) k d; Both left value right.
+readChecked t = case t of NoneHere -> 0 | Both l v r -> case v of
+  Plus x -> readChecked l + x + readChecked r | Minus y -> readChecked l - y + readChecked r.
+checkOrder n d = t = fallible 1 n d; a = readChecked t; a + readChecked t.
+Payload = Type (Absent | One Int | Two Int Int).
+Bundle = Type (Start | Stop | Node String Payload Bundle).
+makeBundle n = if n <= 0 then Stop else if n == 1 then Start else
+  Node "kept" (if n == 2 then Absent else if n == 3 then One n else Two n (n+1)) (makeBundle (n - 1)).
+readBundle t = case t of Start -> 7 | Stop -> 8 | Node s val child ->
+  (if s == "kept" then 0 else 999) + (case val of Absent -> 1 | One x -> x | Two x y -> x+y) + readBundle child.
+bundles n = b = makeBundle n; a = readBundle b; readBundle b + a.
+main = case Sys.args Unit of
+  ["shared"] -> print (useShared 10) | ["empty"] -> print (useShared 0)
+  | ["ok"] -> print (useMarked 3 2) | ["division"] -> print (useMarked 4611686018427387903 0)
+  | ["overflow"] -> print (useMarked 4611686018427387903 1)
+  | ["lower"] -> print (useMarked (0 - 4611686018427387903 - 1) 1)
+  | ["max"] -> print (endpoint 4611686018427387903) | ["min"] -> print (endpoint (0 - 4611686018427387903 - 1))
+  | ["closure"] -> f = captured 1; print (keep (f Unit))
+  | ["escape"] -> print (keep (escaping 2))
+  | ["actor"] -> me = myself 0; child = spawn (sendTree me); _ = send child 1; print (keep (receiveFrom me child))
+  | ["prior"] -> print (checkOrder 4611686018427387903 0) | ["later"] -> print (checkOrder 4611686018427387903 1)
+  | ["branch"] -> print (checkOrder 4 2)
+  | ["bundle"] -> print (bundles 4) | ["stop"] -> print (bundles 0)
+  | _ -> error "bad case".

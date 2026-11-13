@@ -1,0 +1,904 @@
+{
+  "files": {
+    "compiler_sha256": "@ROOT@/fpr",
+    "hart_register_probe_sha256": "@OUT@/hart-registers.s",
+    "runner_source_sha256": "@RUNNER@",
+    "builder_sha256": "@ROOT@/tools/build-pi-runtime-qualification.sol",
+    "cross_wrapper_sha256": null
+  },
+  "fixtures": [
+    "tools/pi-fixtures/map-controls-0c9625.fpr",
+    "tools/pi-fixtures/tree-region-17ed70.fpr",
+    "tools/pi-fixtures/scalar-wrapper-1dbf54.fpr",
+    "tools/pi-fixtures/import-constructor-259f4c.fpr",
+    "tools/pi-fixtures/fields-2b8142.fpr",
+    "tools/pi-fixtures/map-region-2d4968.fpr",
+    "tools/pi-fixtures/lifetime-394b65.fpr",
+    "tools/pi-fixtures/map-explicit-3ee903.fpr",
+    "tools/pi-fixtures/storage-6826f8.fpr",
+    "tools/pi-fixtures/import-explicit-6bc9a9.fpr",
+    "tools/pi-fixtures/spines-6cf17c.fpr",
+    "tools/pi-fixtures/map-6d2258.fpr",
+    "tools/pi-fixtures/shared-region-8aea35.fpr",
+    "tools/pi-fixtures/import-arena-98f6cb.fpr",
+    "tools/pi-fixtures/nested-a5d9c3.fpr",
+    "tools/pi-fixtures/import-api-b3791a.fpr",
+    "tools/pi-fixtures/transport-b7342c.fpr",
+    "tools/pi-fixtures/import-effects-b8af89.fpr",
+    "tools/pi-fixtures/transport-bdbddc.fpr",
+    "tools/pi-fixtures/variant-c706e4.fpr",
+    "tools/pi-fixtures/variant-d99a5f.fpr",
+    "tools/pi-fixtures/active-region-e320c6.fpr",
+    "tools/pi-fixtures/variant-list-eda882.fpr",
+    "tools/pi-fixtures/tree-fd3a1f.fpr",
+    "tools/pi-scheduler.fpr.in",
+    "tests/base/variant_region.c",
+    "tests/base/carrier_meters.fpr",
+    "tests/base/carrier_region.c",
+    "tests/base/stored_spine.c",
+    "tests/base/scheduler_probe.c"
+  ],
+  "compiler": "cc",
+  "scheduler": [
+    [
+      "imported-carrier",
+      "default",
+      [
+        "Map = use \"std/map\".\nM = use \"tests/base/carrier_meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.pack n) m).\naddValue a key value = a + M.value value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\n",
+        "x + check 128",
+        16512
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "imported-carrier",
+      "boxed",
+      [
+        "Map = use \"std/map\".\nM = use \"tests/base/carrier_meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.pack n) m).\naddValue a key value = a + M.value value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\n",
+        "x + check 128",
+        16512
+      ],
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ]
+  ],
+  "cases": [
+    [
+      "imported-carrier",
+      "import-effects-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "effects",
+          [
+            "effects"
+          ],
+          "3\n2\n1\n6\n7\n8\n21\n",
+          null
+        ],
+        [
+          "divide",
+          [
+            "divide"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "observes",
+          [
+            "observes"
+          ],
+          "Meters 1\nMeters 2\n3\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 2\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-arena-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "arena",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-effects-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "effects",
+          [
+            "effects"
+          ],
+          "3\n2\n1\n6\n7\n8\n21\n",
+          null
+        ],
+        [
+          "divide",
+          [
+            "divide"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "observes",
+          [
+            "observes"
+          ],
+          "Meters 1\nMeters 2\n3\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 2\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-arena-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "arena",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-constructor-0-1-0",
+      false,
+      false,
+      6136,
+      368112,
+      [
+        [
+          "constructor",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-api-0-1-0",
+      false,
+      false,
+      6136,
+      368112,
+      [
+        [
+          "api",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-constructor-0-1-1",
+      false,
+      true,
+      5624,
+      351728,
+      [
+        [
+          "constructor",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-api-0-1-1",
+      false,
+      true,
+      5624,
+      351728,
+      [
+        [
+          "api",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier-explicit",
+      "import-explicit-0-1-1",
+      false,
+      true,
+      5624,
+      351728,
+      [
+        [
+          "explicit",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-effects-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "effects",
+          [
+            "effects"
+          ],
+          "3\n2\n1\n6\n7\n8\n21\n",
+          null
+        ],
+        [
+          "divide",
+          [
+            "divide"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "observes",
+          [
+            "observes"
+          ],
+          "Meters 1\nMeters 2\n3\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 2\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-arena-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "arena",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-effects-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "effects",
+          [
+            "effects"
+          ],
+          "3\n2\n1\n6\n7\n8\n21\n",
+          null
+        ],
+        [
+          "divide",
+          [
+            "divide"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "observes",
+          [
+            "observes"
+          ],
+          "Meters 1\nMeters 2\n3\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 2\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-arena-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "arena",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-constructor-1-1-0",
+      true,
+      false,
+      6137,
+      359968,
+      [
+        [
+          "constructor",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-api-1-1-0",
+      true,
+      false,
+      6137,
+      359968,
+      [
+        [
+          "api",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-constructor-1-1-1",
+      true,
+      true,
+      5625,
+      343584,
+      [
+        [
+          "constructor",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-api-1-1-1",
+      true,
+      true,
+      5625,
+      343584,
+      [
+        [
+          "api",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier-explicit",
+      "import-explicit-1-1-1",
+      true,
+      true,
+      5625,
+      343584,
+      [
+        [
+          "explicit",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "watchdog",
+      "imported-carrier"
+    ]
+  ],
+  "builds": [
+    [
+      "import-effects-0-0-0",
+      {
+        "fixture": "import-effects-b8af89.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-arena-0-0-0",
+      {
+        "fixture": "import-arena-98f6cb.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "import-effects-0-0-1",
+      {
+        "fixture": "import-effects-b8af89.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-arena-0-0-1",
+      {
+        "fixture": "import-arena-98f6cb.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "import-constructor-0-1-0",
+      {
+        "fixture": "import-constructor-259f4c.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "import-api-0-1-0",
+      {
+        "fixture": "import-api-b3791a.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "import-constructor-0-1-1",
+      {
+        "fixture": "import-constructor-259f4c.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "import-api-0-1-1",
+      {
+        "fixture": "import-api-b3791a.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "import-explicit-0-1-1",
+      {
+        "fixture": "import-explicit-6bc9a9.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier-explicit",
+        "enabled"
+      ]
+    ],
+    [
+      "import-effects-1-0-0",
+      {
+        "fixture": "import-effects-b8af89.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-arena-1-0-0",
+      {
+        "fixture": "import-arena-98f6cb.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "import-effects-1-0-1",
+      {
+        "fixture": "import-effects-b8af89.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-arena-1-0-1",
+      {
+        "fixture": "import-arena-98f6cb.fpr"
+      },
+      {
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "import-constructor-1-1-0",
+      {
+        "fixture": "import-constructor-259f4c.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "import-api-1-1-0",
+      {
+        "fixture": "import-api-b3791a.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "import-constructor-1-1-1",
+      {
+        "fixture": "import-constructor-259f4c.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "import-api-1-1-1",
+      {
+        "fixture": "import-api-b3791a.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "import-explicit-1-1-1",
+      {
+        "fixture": "import-explicit-6bc9a9.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier-explicit",
+        "enabled"
+      ]
+    ]
+  ],
+  "root": "@ROOT@",
+  "out": "@OUT@",
+  "mode": "native",
+  "metadata": {
+    "rounds": 256,
+    "repetitions": 3,
+    "lifetime_expected": "1374656\n([7, 8], [7, 8])\n",
+    "lifetime_wrappers": 8385,
+    "nested_allocation_removals": {}
+  }
+}

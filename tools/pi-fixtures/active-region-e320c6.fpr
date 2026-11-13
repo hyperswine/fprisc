@@ -1,0 +1,7 @@
+unsafe base.
+Variant.payload : Int -> Int .
+Variant.check : Int -> Int .
+Carrier = Type (Plain Int | Cloaked Int).
+boundary n = if n < 0 then boundary (0 - n) else if n == 0 then Plain 1 else Cloaked (Variant.payload n).
+observe n = case boundary n of Plain x -> x | Cloaked x -> Variant.check x.
+main = print (observe 1).

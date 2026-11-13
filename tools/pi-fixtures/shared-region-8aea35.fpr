@@ -1,0 +1,9 @@
+unsafe base.
+Stored.payload : Int -> Int .
+Stored.valid : Int -> Int .
+Stored.opens : Unit -> Int .
+T = Type (A Int | B Int).
+make n = if n <= 0 then [] else (if n % 2 == 0 then A (Stored.payload n) else B (Stored.payload n)) :: make (n - 1).
+count xs a = case xs of [] -> a | h :: tail -> case h of A x -> count tail (a+Stored.valid x) | B y -> count tail (a+Stored.valid y).
+main = before = Stored.opens Unit; xs = make 6000; a = count xs 0; b = count xs a;
+  _ = if Stored.opens Unit > before then Unit else error "no call region opened"; print b.

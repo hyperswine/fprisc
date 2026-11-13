@@ -1,0 +1,17 @@
+
+OUTPUT_ARCH(riscv)
+ENTRY(_start)
+MEMORY { RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 128M }
+SECTIONS {
+ .text : { KEEP(*(.text.entry)) *(.text .text.*) } > RAM
+ .rodata : { *(.rodata .rodata.* .srodata .srodata.*) } > RAM
+ .data : { *(.data .data.* .sdata .sdata.*) PROVIDE(__global_pointer$ = . + 0x800); } > RAM
+ .bss (NOLOAD) : { . = ALIGN(16); fpr_static_bss_start = .;
+   *(.bss .bss.* .sbss .sbss.* COMMON)
+   . = ALIGN(16); fpr_static_bss_end = .; } > RAM
+ .arena_heap (NOLOAD) : { . = ALIGN(16); fpr_static_heap_guard = .; . += 16;
+   fpr_static_heap_start = .; . += HEAP_BYTES; fpr_static_heap_end = .; . += 16; } > RAM
+ .arena_stack (NOLOAD) : { . = ALIGN(16); fpr_static_stack_guard = .; . += 16;
+   fpr_static_stack_start = .; . += STACK_BYTES; fpr_static_stack_end = .; . += 16; } > RAM
+ ASSERT(fpr_static_stack_end + 16 + 65536 <= ORIGIN(RAM) + LENGTH(RAM), "static arenas exceed target reserve")
+}

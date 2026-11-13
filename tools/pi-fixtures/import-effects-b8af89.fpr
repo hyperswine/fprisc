@@ -1,0 +1,25 @@
+unsafe base.
+Map = use "std/map".
+M = use "tests/base/carrier_meters".
+fill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.pack n) m).
+addValue a key value = a + M.value value.
+check n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.
+put n d m = if n <= 0 then m else put (n - 1) d (Map.insert n (M.packChecked n d) m).
+readSum a k v = a + M.readChecked v.
+checked n d = m = put n d Map.ints; Map.fold readSum 0 m.
+readSeen a k v = a + M.observe v.
+showAll n = m = fill n Map.ints; Map.fold readSeen 0 m.
+addEdge a k v = a + M.value v.
+edgeBuild n m = if n > 0 then Map.insert 1 (M.pack n) m else Map.insert 2 (M.pack n) m.
+edge n = m = edgeBuild n Map.ints; Map.fold addEdge 0 m.
+give n = fill n Map.ints.
+child parent self = n = receive self; send parent (give n).
+main = case Sys.args Unit of
+  ["effects"] -> print (checked 3 2)
+  | ["divide"] -> print (checked 3 0)
+  | ["observes"] -> print (showAll 2)
+  | ["max"] -> print (edge 4611686018427387903)
+  | ["min"] -> print (edge (0 - 4611686018427387903 - 1))
+  | ["overflow"] -> print (checked 4611686018427387903 1)
+  | ["actor"] -> p = myself 0; a = spawn (child p); _ = send a 2; m = receiveFrom p a; print (Map.getOr (M.pack 0) 2 m)
+  | _ -> print (check 3).

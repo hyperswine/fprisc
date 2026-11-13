@@ -1,0 +1,27 @@
+unsafe base.
+Cell a = Type (Cell a).
+walk n x = if n <= 0 then x else walk (n - 1) x.
+
+mark n = _ = print n; n.
+check n = _ = print n; n <= 0.
+through count payload last = if check count then payload else through (count - 1) payload last.
+read d = case through (mark 2) (mark 11,mark (10 / d)) (mark (4611686018427387903 + d)) of
+  (x,_) -> x.
+readSafe v = case through (mark 2) (mark 11,mark v) (mark 22) of (x,_) -> x.
+observe p n = _ = print p; n <= 0.
+watch n p = if observe p n then p else watch (n - 1) p.
+foreignRead n = case watch 1 (n,n + 1) of (x,y) -> x + y.
+pick n x y = if n <= 0 then y else if n == 1 then x else pick (n - 1) x y.
+swapped n = case pick 2 (n,1) (n,2) of (x,y) -> x+y.
+heap n = if n <= 0 then [] else n :: heap (n - 1).
+carry n = case walk 81 (heap n, heap (n+1)) of (xs,ys) ->
+  extra = heap (n+2); (xs,ys,extra).
+child parent self = n = receive self; send parent (carry n).
+main = case Sys.args Unit of
+  ["ok"] -> print (readSafe 7)
+  | ["division"] -> print (read 0)
+  | ["overflow"] -> print (read 1)
+  | ["observe"] -> print (foreignRead 4)
+  | ["other"] -> print (swapped 9)
+  | ["actor"] -> me = myself 0; a = spawn (child me); _ = send a 2; print (keep (receiveFrom me a))
+  | _ -> error "unknown".

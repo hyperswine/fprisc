@@ -1,0 +1,9 @@
+unsafe base.
+Value = Type (Plus Int | Minus Int).
+Tree = Type (Leaf | Branch Tree Value Tree).
+make d n = if d <= 0 then Leaf else
+  left = make (d - 1) (n+1); right = make (d - 1) (n+2);
+  v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.
+score t = case t of Leaf -> 0 | Branch l v r -> case v of
+  Plus x -> score l + x + score r | Minus x -> score l - x + score r.
+main = t = make 10 1; _ = print (score t); print (score t + 7).

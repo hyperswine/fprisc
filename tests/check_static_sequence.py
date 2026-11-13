@@ -206,8 +206,8 @@ def main():
         cfg = tmp / "sequence.json"
         cfg.write_text(json.dumps(word))
         cmd = [
-            sys.executable,
-            str(ROOT / "tools/build_static_arena.py"),
+            "sol",
+            str(ROOT / "tools/build-static-arena.sol"),
             str(source),
             "--sequence",
             str(cfg),

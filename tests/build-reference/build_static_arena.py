@@ -16,13 +16,13 @@ import struct
 import subprocess
 import tempfile
 
-from check_target_image import admit, require
-from check_linked_stack import Image, prove
-from linked_callback_work import callback_work
+from check_target_image import admit as _admit, require
+from check_linked_stack import Image, prove as _prove
+from linked_callback_work import callback_work as _callback_work
 from static_arena_runtime import START, LINK, CALLER, HEAP_SETUP, CHECKPOINT
 import static_arena_sequence as sequence_policy
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 CONTRACT=ROOT/'machine/builtin/contracts/rv64-c-heap-v1.json'
 TARGET=ROOT/'machine/builtin/targets/virt.json'
 TARGET_ID='builtin-rv64-virt-128m'
@@ -32,10 +32,26 @@ PUBLIC='fpr_static_callback'
 KINDS={'KWord':'uintptr_t','KInt':'intptr_t','KBool':'int','KUnit':'uintptr_t'}
 
 
+def clean_proof(function, *args):
+    from unittest.mock import patch
+    env = {k:v for k,v in os.environ.items() if not k.startswith('FPR_')}
+    env['FPR_HOME'] = str(ROOT)
+    with patch.dict(os.environ, env, clear=True):
+        return function(*args)
+
+
+def admit(*args): return clean_proof(_admit, *args)
+def prove(*args): return clean_proof(_prove, *args)
+def callback_work(*args): return clean_proof(_callback_work, *args)
+
+
 def sha(data):return hashlib.sha256(data).hexdigest()
 
 
 def arena_tool(tool, *args, env=None):
+    if env is None:
+        env = {k:v for k,v in os.environ.items() if not k.startswith('FPR_')}
+        env['FPR_HOME'] = str(ROOT)
     proc = subprocess.run([os.environ.get('SOL') or 'sol', tool, ROOT, *args],
                           cwd=ROOT, env=env, text=True, capture_output=True, timeout=250)
     require(proc.returncode == 0, proc.stderr.strip() or 'controlled link failed')
@@ -165,7 +181,7 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
             heap=heap,
             regions=regions,linked_stack=stack,compiler_sha256=compiler_hash,
             runtime_contract=contract,recipe_sha256=sha(Path(__file__).read_bytes()),
-            runtime_recipe_sha256=sha((ROOT/'tools/static_arena_runtime.py').read_bytes()),
+            runtime_recipe_sha256=sha((ROOT/'tests/build-reference/static_arena_runtime.py').read_bytes()),
             root_source_sha256=source_hash,assembly_sha256=sha(asm.read_bytes()),
             linked_inputs_sha256=linked['inputs'],flags=linked['flags'],build_commands=commands,toolchain=linked['toolchain'],
             link_recipe_sha256=sha(LINK_TOOL.read_bytes()),
@@ -178,7 +194,7 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
         if sequence is not None:
             result.update(schema='static-builtin-sequence-admission-v1',sequence=sequence,
                           sequence_sha256=sha(json.dumps(sequence,sort_keys=True,separators=(',',':')).encode()),dispatch='fixed read-only schedule with direct entry calls',
-                          sequence_policy_sha256=sha((ROOT/'tools/static_arena_sequence.py').read_bytes()),
+                          sequence_policy_sha256=sha((ROOT/'tests/build-reference/static_arena_sequence.py').read_bytes()),
                           scope='Finite exclusive RV64 builtin activations from controlled startup, with typed scalar hand-offs and reclamation checks before every arena reset.')
         if callback_instructions is not None:
             calls=[entry] if sequence is None else [step['entry'] for step in steps]

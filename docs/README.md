@@ -457,4 +457,4 @@ they began.
 - [Structural refinements for sorted lists](2026-11-13-STRUCTURAL-REFINEMENTS.md) proposes inductive result contracts, erased proofs and game examples.
 - [Exokernels, microkernels, and capability-bounded memory](research/2026-11-12-EXOKERNELS-MICROKERNELS-AND-CAPABILITY-BOUNDED-MEMORY.md) compares protected placement, accounting and restart semantics and proposes a QOS file-service experiment.
 - The linear types, actors and transaction research notes are preserved in [v1](research/2026-11-12-RESEARCH-v1.md), [v2](research/2026-11-12-RESEARCH-v2.md) and [v3](research/2026-11-12-RESEARCH-v3.md).
-- [Sol build migration in FP-RISC and QOS](2026-11-13-SOL-BUILD-MIGRATION.md) records which build paths moved, which outputs matched and where to resume.
+- [Sol build migration in FP-RISC and QOS](2026-11-13-SOL-BUILD-MIGRATION.md) records the completed core build migration, matched outputs and qualification boundaries.

@@ -1,0 +1,7 @@
+unsafe base.
+Cell a = Type (Cell a).
+walk n x = if n <= 0 then x else walk (n - 1) x.
+
+foldCell n a = if n <= 0 then a else case walk 3 (Cell n) of Cell x -> foldCell (n - 1) (a + x).
+foldPair n a = if n <= 0 then a else case walk 3 (n,n + 1) of (x,y) -> foldPair (n - 1) (a + x + y).
+main = print (foldCell 1000 0 + foldPair 1000 0 + walk 3 11).

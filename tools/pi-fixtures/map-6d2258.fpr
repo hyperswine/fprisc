@@ -1,0 +1,7 @@
+unsafe base.
+Map = use "std/map".
+Meters = Type (Meters Int).
+fill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (Meters n) m).
+addValue a key value = case value of Meters x -> a + x.
+check n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.
+main = print (check 512).

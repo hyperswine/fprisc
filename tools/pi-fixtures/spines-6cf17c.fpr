@@ -1,0 +1,10 @@
+unsafe base.
+Stored.make : Int -> Int -> a .
+Stored.verify : a -> Int -> Int -> Int .
+child parent self = (v,n,w) = receive self; copied = keep v;
+  _ = if Stored.verify copied n w == 1 then Unit else error "lost payload on receive";
+  send parent copied.
+check n w = me = myself 0; a = spawn (child me); v = Sys.arena (fn u -> Stored.make n w);
+  _ = send a (v,n,w); c = receiveFrom me a; Stored.verify c n w.
+main = case Sys.args Unit of ["deep"] -> print (check 16000 1)
+  | _ -> print (check 4500 1 + check 4500 2 + check 4500 7 + check 4500 8).

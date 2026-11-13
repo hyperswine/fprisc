@@ -1,0 +1,12 @@
+unsafe base.
+Stored.payload : Int -> Int .
+Stored.valid : Int -> Int .
+Stored.opens : Unit -> Int .
+Val = Type (A Int | B Int).
+Tree = Type (Leaf | Branch Tree Val Tree).
+make d = if d <= 0 then Leaf else l = make (d - 1); r = make (d - 1);
+  Branch l (if d % 2 == 0 then A (Stored.payload d) else B (Stored.payload d)) r.
+count t = case t of Leaf -> 0 | Branch l value r -> case value of
+  A x -> count l + Stored.valid x + count r | B y -> count l + Stored.valid y + count r.
+main = before = Stored.opens Unit; t = make 13; a = count t; b = count t;
+  _ = if Stored.opens Unit > before then Unit else error "no call region opened"; print (a+b).

@@ -89,7 +89,7 @@ Write build scripts only in Sol. Use Sol 0.13.1 or any compatible version, and k
 
 For a 0.13.1 compatibility check, use the Sol executable from the FP-RISC 0.13.1 toolchain. That release prints `Sol 0.14.0-dev (scripting API 1)` for `sol --version`. The packaged compiler hash is recorded in the [0.13.1 release evidence](docs/evidence/2026-11-02-fprisc-0.13.1-release.json).
 
-Some existing commands still invoke Bash or Python during the migration. When changing one, move its build logic into Sol, verify the replacement through the existing command, and remove the superseded implementation. See the [build migration checkpoint](docs/2026-11-13-SOL-BUILD-MIGRATION.md) for completed comparisons and remaining work.
+Some existing commands still invoke Bash or Python during the migration. When changing one, move its build logic into Sol, verify the replacement through the existing command, and remove the superseded implementation. See the [build migration checkpoint](docs/2026-11-13-SOL-BUILD-MIGRATION.md) for the completed core build paths, verification and qualification boundaries.
 
 ## Profiles and systems
 

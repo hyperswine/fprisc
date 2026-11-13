@@ -1,0 +1,26 @@
+unsafe base.
+Map = use "std/map".
+Meters = Type (Meters Int).
+fill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (Meters n) m).
+addValue a key value = case value of Meters x -> a + x.
+check n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.
+observe a k value = _ = print value; a+1.
+showMap n = m = fill n Map.ints; Map.fold observe 0 m.
+escaped n = fill n Map.ints.
+next a k v = case v of Meters x -> _ = print k; if x == 2 then a / (x - 2) else a+x.
+trap n = m = fill n Map.ints; Map.fold next 0 m.
+mark x = _ = print x; x.
+up n d m = if n <= 0 then m else up (n - 1) d (Map.insert n (Meters (mark (d+n))) m).
+edge n d = m = up n d Map.ints; Map.fold addValue 0 m.
+matchOnly a k v = case v of Meters 1 -> a+1 | Meters _ -> error "no matching meter".
+partial n = m = fill n Map.ints; Map.fold matchOnly 0 m.
+child p self = count = receive self; send p (escaped count).
+main = case Sys.args Unit of
+  ["order"] -> print (showMap 3)
+  | ["trap"] -> print (trap 3)
+  | ["overflow"] -> print (edge 2 4611686018427387902)
+  | ["max"] -> print (edge 1 4611686018427387902)
+  | ["min"] -> print (edge 1 (0 - 4611686018427387903 - 1))
+  | ["partial"] -> print (partial 2)
+  | ["actor"] -> p = myself 0; a = spawn (child p); _ = send a 3; m = receiveFrom p a; print (Map.getOr (Meters 0) 3 m)
+  | _ -> print (check 3).

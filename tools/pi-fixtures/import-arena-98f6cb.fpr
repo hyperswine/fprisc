@@ -1,0 +1,10 @@
+unsafe base.
+Map = use "std/map".
+M = use "tests/base/carrier_meters".
+Carrier.payload : Int -> Int .
+Carrier.valid : Int -> Int .
+Carrier.promoted : Int -> Int .
+fillLive n m = if n <= 0 then m else fillLive (n - 1) (Map.insert n (M.pack (Carrier.payload n)) m).
+pick a k value = x = M.value value; if Carrier.valid x == 1 then (if k == 1 then x else a) else error "lost map value".
+extract n = m = fillLive n Map.ints; Map.fold pick 0 m.
+main = saved = Sys.arena (fn u -> extract 2048); print (Carrier.promoted saved).

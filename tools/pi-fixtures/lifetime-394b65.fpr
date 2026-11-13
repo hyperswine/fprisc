@@ -1,0 +1,16 @@
+unsafe base.
+Cell a = Type (Cell a).
+makePayload n = Cell [n,n + 1].
+churnPayload n = if n <= 0 then 0 else case makePayload n of Cell ys ->
+  case ys of [a,b] -> a + b + churnPayload (n - 1) | _ -> error "bad churn payload".
+consumePayload n = case makePayload n of Cell xs ->
+  noise = churnPayload 64;
+  case xs of [a,b] -> a * 100 + b + noise | _ -> error "lost payload".
+loopPayload n acc = if n <= 0 then acc else loopPayload (n - 1) (acc + consumePayload n).
+payloadActor parent self = n = receive self;
+  payload = case makePayload n of Cell xs -> xs;
+  noise = churnPayload 64;
+  _ = if noise == 4224 then Unit else error "bad actor churn";
+  send parent (payload,payload).
+main = _ = print (loopPayload 128 0); me = myself 0;
+  a = spawn (payloadActor me); _ = send a 7; print (receiveFrom me a).

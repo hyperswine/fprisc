@@ -1,0 +1,5 @@
+
+ fpr_builtin_heap_plan plan;
+ check(!fpr_builtin_heap_plan_range(fpr_static_heap_start,fpr_static_heap_end,&plan));
+ check(plan.block_prefix_bytes==80 && plan.minimum_block_bytes==96);
+ fpr_builtin_heap_init(fpr_static_heap_start,fpr_static_heap_end);

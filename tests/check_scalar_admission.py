@@ -12,6 +12,7 @@ import tempfile
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
+sys.path.insert(0,str(ROOT/'tests/build-reference'))
 import build_static_arena as gate
 
 SOURCE='''profile builtin.

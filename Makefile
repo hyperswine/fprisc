@@ -406,7 +406,7 @@ endif
 ifeq ($(ARC_CHECK),1)
 BUILTIN_CFLAGS += -DFPR_ARC_CHECK
 endif
-bare-metal-builtin: fprc $(BUILTIN_COMPILE) $(MACHINE)/builtin/link-image.sol $(BUILTIN_RT) $(BUILTIN_LINK) $(BUILTIN_IMAGE_MANIFEST) tools/target-image.sol tools/check_target_image.py tools/check_linked_stack.py tools/riscv_compressed.py FORCE
+bare-metal-builtin: fprc $(BUILTIN_COMPILE) $(MACHINE)/builtin/link-image.sol $(BUILTIN_RT) $(BUILTIN_LINK) $(BUILTIN_IMAGE_MANIFEST) tools/target-image.sol tools/target-image-core.sol tools/linked-stack.sol tools/linked-rv64.sol tools/riscv-compressed.sol FORCE
 	"$(SOL)" "$(BUILTIN_COMPILE)" image "$(FPRC)" "$(PROG)" "$(BUILD)/builtin.s" $(BUILTIN_COMPILER_FLAGS) $(FPRC_FLAGS)
 	SOL="$(SOL)" "$(SOL)" "$(MACHINE)/builtin/link-image.sol" "$(IMAGE)" "$(basename $(IMAGE)).bin" "$(dir $(IMAGE))" \
 	  "$(BUILTIN_BOARD)" "$(CROSS)" "$(BUILTIN_IMAGE_MANIFEST)" "$(BUILTIN_IMAGE_TARGET)" "$(BUILTIN_STACK_ENTRIES)" "$(BUILD)/builtin.s" \

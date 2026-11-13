@@ -1,0 +1,1072 @@
+{
+  "files": {
+    "compiler_sha256": "@ROOT@/fpr",
+    "hart_register_probe_sha256": "@OUT@/hart-registers.s",
+    "runner_source_sha256": "@RUNNER@",
+    "builder_sha256": "@ROOT@/tools/build-pi-runtime-qualification.sol",
+    "cross_wrapper_sha256": null
+  },
+  "fixtures": [
+    "tools/pi-fixtures/map-controls-0c9625.fpr",
+    "tools/pi-fixtures/tree-region-17ed70.fpr",
+    "tools/pi-fixtures/scalar-wrapper-1dbf54.fpr",
+    "tools/pi-fixtures/import-constructor-259f4c.fpr",
+    "tools/pi-fixtures/fields-2b8142.fpr",
+    "tools/pi-fixtures/map-region-2d4968.fpr",
+    "tools/pi-fixtures/lifetime-394b65.fpr",
+    "tools/pi-fixtures/map-explicit-3ee903.fpr",
+    "tools/pi-fixtures/storage-6826f8.fpr",
+    "tools/pi-fixtures/import-explicit-6bc9a9.fpr",
+    "tools/pi-fixtures/spines-6cf17c.fpr",
+    "tools/pi-fixtures/map-6d2258.fpr",
+    "tools/pi-fixtures/shared-region-8aea35.fpr",
+    "tools/pi-fixtures/import-arena-98f6cb.fpr",
+    "tools/pi-fixtures/nested-a5d9c3.fpr",
+    "tools/pi-fixtures/import-api-b3791a.fpr",
+    "tools/pi-fixtures/transport-b7342c.fpr",
+    "tools/pi-fixtures/import-effects-b8af89.fpr",
+    "tools/pi-fixtures/transport-bdbddc.fpr",
+    "tools/pi-fixtures/variant-c706e4.fpr",
+    "tools/pi-fixtures/variant-d99a5f.fpr",
+    "tools/pi-fixtures/active-region-e320c6.fpr",
+    "tools/pi-fixtures/variant-list-eda882.fpr",
+    "tools/pi-fixtures/tree-fd3a1f.fpr",
+    "tools/pi-scheduler.fpr.in",
+    "tests/base/variant_region.c",
+    "tests/base/carrier_meters.fpr",
+    "tests/base/carrier_region.c",
+    "tests/base/stored_spine.c",
+    "tests/base/scheduler_probe.c"
+  ],
+  "compiler": "cc",
+  "scheduler": [
+    [
+      "base-storage",
+      "default",
+      [
+        "Choice = Type (Plus Int | Minus Int).\nbuildCells n = if n <= 0 then [] else (if n % 2 == 0 then Plus n else Minus n) :: buildCells (n - 1).\nreadCells xs a = case xs of [] -> a | h :: tail -> case h of Plus v -> readCells tail (a+v) | Minus v -> readCells tail (a - v).\nwork n x = xs = buildCells n; a = readCells xs x; readCells xs a.\n",
+        "work 2000 x",
+        2000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-storage",
+      "boxed",
+      [
+        "Choice = Type (Plus Int | Minus Int).\nbuildCells n = if n <= 0 then [] else (if n % 2 == 0 then Plus n else Minus n) :: buildCells (n - 1).\nreadCells xs a = case xs of [] -> a | h :: tail -> case h of Plus v -> readCells tail (a+v) | Minus v -> readCells tail (a - v).\nwork n x = xs = buildCells n; a = readCells xs x; readCells xs a.\n",
+        "work 2000 x",
+        2000
+      ],
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ]
+  ],
+  "cases": [
+    [
+      "base-storage",
+      "storage-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "3\n5\n3\n25\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "3\n5\n3\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "wide",
+          [
+            "wide"
+          ],
+          "44\n",
+          null
+        ],
+        [
+          "eight",
+          [
+            "eight"
+          ],
+          "54\n",
+          null
+        ],
+        [
+          "over",
+          [
+            "over"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "heap",
+          [
+            "heap"
+          ],
+          "6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "shared-region-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "shared-region",
+          [],
+          "12000\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "storage-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "3\n5\n3\n25\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "3\n5\n3\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "wide",
+          [
+            "wide"
+          ],
+          "44\n",
+          null
+        ],
+        [
+          "eight",
+          [
+            "eight"
+          ],
+          "54\n",
+          null
+        ],
+        [
+          "over",
+          [
+            "over"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "heap",
+          [
+            "heap"
+          ],
+          "6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "shared-region-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "shared-region",
+          [],
+          "12000\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "scalar-wrapper-0-1-0",
+      false,
+      false,
+      2000,
+      null,
+      [
+        [
+          "scalar-wrapper",
+          [],
+          "500511\n500517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "variant-list-0-1-0",
+      false,
+      false,
+      2000,
+      null,
+      [
+        [
+          "variant-list",
+          [],
+          "511\n517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "scalar-wrapper-0-1-1",
+      false,
+      true,
+      1000,
+      null,
+      [
+        [
+          "scalar-wrapper",
+          [],
+          "500511\n500517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "variant-list-0-1-1",
+      false,
+      true,
+      1000,
+      null,
+      [
+        [
+          "variant-list",
+          [],
+          "511\n517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "storage-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "3\n5\n3\n25\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "3\n5\n3\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "wide",
+          [
+            "wide"
+          ],
+          "44\n",
+          null
+        ],
+        [
+          "eight",
+          [
+            "eight"
+          ],
+          "54\n",
+          null
+        ],
+        [
+          "over",
+          [
+            "over"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "heap",
+          [
+            "heap"
+          ],
+          "6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "shared-region-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "shared-region",
+          [],
+          "12000\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "spines-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "deep",
+          [
+            "deep"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "widths",
+          [
+            "widths"
+          ],
+          "4\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "storage-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "3\n5\n3\n25\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "3\n5\n3\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "wide",
+          [
+            "wide"
+          ],
+          "44\n",
+          null
+        ],
+        [
+          "eight",
+          [
+            "eight"
+          ],
+          "54\n",
+          null
+        ],
+        [
+          "over",
+          [
+            "over"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "heap",
+          [
+            "heap"
+          ],
+          "6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "shared-region-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "shared-region",
+          [],
+          "12000\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "spines-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "deep",
+          [
+            "deep"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "widths",
+          [
+            "widths"
+          ],
+          "4\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "scalar-wrapper-1-1-0",
+      true,
+      false,
+      2000,
+      null,
+      [
+        [
+          "scalar-wrapper",
+          [],
+          "500511\n500517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "variant-list-1-1-0",
+      true,
+      false,
+      2000,
+      null,
+      [
+        [
+          "variant-list",
+          [],
+          "511\n517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "scalar-wrapper-1-1-1",
+      true,
+      true,
+      1000,
+      null,
+      [
+        [
+          "scalar-wrapper",
+          [],
+          "500511\n500517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "variant-list-1-1-1",
+      true,
+      true,
+      1000,
+      null,
+      [
+        [
+          "variant-list",
+          [],
+          "511\n517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "watchdog",
+      "base-storage"
+    ]
+  ],
+  "builds": [
+    [
+      "storage-0-0-0",
+      {
+        "fixture": "storage-6826f8.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "shared-region-0-0-0",
+      {
+        "fixture": "shared-region-8aea35.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "storage-0-0-1",
+      {
+        "fixture": "storage-6826f8.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "shared-region-0-0-1",
+      {
+        "fixture": "shared-region-8aea35.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "scalar-wrapper-0-1-0",
+      {
+        "fixture": "scalar-wrapper-1dbf54.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "disabled"
+      ]
+    ],
+    [
+      "variant-list-0-1-0",
+      {
+        "fixture": "variant-list-eda882.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "disabled"
+      ]
+    ],
+    [
+      "scalar-wrapper-0-1-1",
+      {
+        "fixture": "scalar-wrapper-1dbf54.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "enabled"
+      ]
+    ],
+    [
+      "variant-list-0-1-1",
+      {
+        "fixture": "variant-list-eda882.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "enabled"
+      ]
+    ],
+    [
+      "storage-1-0-0",
+      {
+        "fixture": "storage-6826f8.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "shared-region-1-0-0",
+      {
+        "fixture": "shared-region-8aea35.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "spines-1-0-0",
+      {
+        "fixture": "spines-6cf17c.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_LAYOUT_CHECK": "1",
+        "FPR_COMPACT_CELLS": "0"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "storage-1-0-1",
+      {
+        "fixture": "storage-6826f8.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "shared-region-1-0-1",
+      {
+        "fixture": "shared-region-8aea35.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "spines-1-0-1",
+      {
+        "fixture": "spines-6cf17c.fpr"
+      },
+      {
+        "FPR_LAYOUT_CHECK": "1",
+        "FPR_COMPACT_CELLS": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "scalar-wrapper-1-1-0",
+      {
+        "fixture": "scalar-wrapper-1dbf54.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "disabled"
+      ]
+    ],
+    [
+      "variant-list-1-1-0",
+      {
+        "fixture": "variant-list-eda882.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "disabled"
+      ]
+    ],
+    [
+      "scalar-wrapper-1-1-1",
+      {
+        "fixture": "scalar-wrapper-1dbf54.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "enabled"
+      ]
+    ],
+    [
+      "variant-list-1-1-1",
+      {
+        "fixture": "variant-list-eda882.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "enabled"
+      ]
+    ]
+  ],
+  "root": "@ROOT@",
+  "out": "@OUT@",
+  "mode": "native",
+  "metadata": {
+    "rounds": 256,
+    "repetitions": 3,
+    "lifetime_expected": "1374656\n([7, 8], [7, 8])\n",
+    "lifetime_wrappers": 8385,
+    "nested_allocation_removals": {}
+  }
+}

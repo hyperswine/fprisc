@@ -1,0 +1,32 @@
+
+#include "builtin.h"
+#include <stdint.h>
+const hdr_t fpr_unit={0,0},fpr_true={1,1},fpr_false={1,0};
+_Alignas(16) uw fpr_static_hart_state[128];
+_Static_assert(1 + FPR_ARGSPILL <= 128,"reserved hart argument state is too small");
+volatile uw fpr_static_result;
+volatile uw fpr_static_status;
+extern unsigned char fpr_static_heap_guard[],fpr_static_heap_start[],fpr_static_heap_end[];
+extern unsigned char fpr_static_stack_guard[],fpr_static_stack_end[];
+DECLARATION
+static void say(const char*s){volatile unsigned char*u=(void*)0x10000000;for(;*s;s++){while(!(u[5]&32)){}u[0]=*s;}}
+static void number(uw n){char b[32];unsigned k=0;do{b[k++]='0'+n%10;n/=10;}while(n);while(k){char s[]={b[--k],0};say(s);}}
+__attribute__((noreturn)) static void finish(int failed){
+ fpr_static_status=failed?2:1;*(volatile unsigned*)0x100000=failed?0x13333:0x5555;for(;;){}
+}
+void fpr_cpanic(const char*s){say("STATIC_ARENA_FAIL ");say(s);say("\n");finish(1);}
+static void check(int ok){if(!ok)fpr_cpanic("geometry, ownership or guard");}
+__attribute__((noreturn)) void fpr_static_run(void){
+ for(unsigned i=0;i<16;i++){
+  fpr_static_heap_guard[i]=fpr_static_heap_end[i]=0xa5;
+  fpr_static_stack_guard[i]=fpr_static_stack_end[i]=0xa5;
+ }
+ HEAP_SETUP
+ INVOCATION
+ check(fpr_builtin_live_allocations()==0);
+ for(unsigned i=0;i<16;i++){
+  check(fpr_static_heap_guard[i]==0xa5 && fpr_static_heap_end[i]==0xa5);
+  check(fpr_static_stack_guard[i]==0xa5 && fpr_static_stack_end[i]==0xa5);
+ }
+ say("STATIC_ARENA_PASS result=");number(fpr_static_result);say("\n");finish(0);
+}

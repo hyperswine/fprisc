@@ -336,17 +336,14 @@ qosPortable args = do
   explicit <- System.Environment.lookupEnv "QOS_PORTABLE_BUILDER"
   let sdk = takeDirectory (takeDirectory self)
       native = sdk </> "tools" </> "qos"
-      legacy = sdk </> "tools" </> "portable_sdk.py"
       forwarded = ["build", "--compiler", self] ++ filter (/= "--target=qos-portable") args
   hasMetadata <- doesFileExist (sdk </> "sdk.json")
-  hasNative <- doesFileExist native
   let (builder, command, prefix) = case explicit of
         Just path | takeExtension path == ".sol" -> (path, self, ["sol", path])
-        Just path -> (path, "python3", [path])
-        Nothing | hasMetadata && hasNative -> (native, native, [])
-        Nothing -> (legacy, "python3", [legacy])
+        Just path -> (path, path, [])
+        Nothing -> (native, native, [])
   exists <- doesFileExist builder
-  unless exists $ hPutStrLn stderr "fpr build: QOS Portable apps are built by the QOS SDK with its own compiler; run `qos build` in the project (this fpr has no QOS builder)" >> exitWith (ExitFailure 2)
+  unless (exists && (explicit /= Nothing || hasMetadata)) $ hPutStrLn stderr "fpr build: QOS Portable apps are built by the QOS SDK with its own compiler; run `qos build` in the project (this fpr has no QOS builder)" >> exitWith (ExitFailure 2)
   code <- rawSystem command (prefix ++ forwarded)
   exitWith code
 

@@ -1,6 +1,6 @@
 # Fixed arenas for a controlled builtin activation
 
-`tools/build_static_arena.py` now composes the compiler's heap-demand proof,
+`tools/build-static-arena.sol` now composes the compiler's heap-demand proof,
 the actual linked C/native stack proof, runtime identity, startup and physical
 memory placement for **one fresh, exclusive RV64 builtin activation**. It
 builds the image itself; it does not accept an arbitrary ELF and trust an old
@@ -16,7 +16,7 @@ concurrent dispatch or physical-board deadlines. The compiler remains codegen
 Given a builtin library declaring `identity : Word -> Word`:
 
 ```
-python3 tools/build_static_arena.py callbacks.fpr \
+sol tools/build-static-arena.sol callbacks.fpr \
   --entry identity --arguments '[18364758544493064720]' \
   --heap-bytes 416 --stack-bytes 352 \
   --image build/identity.elf --execute

@@ -1,0 +1,32 @@
+
+.section .text.entry,"ax",@progbits
+.globl _start
+_start:
+    csrw mie, zero
+    csrw mstatus, zero
+    csrr t0, mhartid
+    bnez t0, .Lpark
+    .option push
+    .option norelax
+    la gp, __global_pointer$
+    .option pop
+    la sp, fpr_static_stack_end
+    la tp, fpr_static_hart_state
+    la t0, .Lfatal
+    csrw mtvec, t0
+    la t0, fpr_static_bss_start
+    la t1, fpr_static_bss_end
+.Lclear:
+    bgeu t0, t1, .Lenter
+    sd zero, 0(t0)
+    addi t0, t0, 8
+    j .Lclear
+.Lenter:
+    tail fpr_static_run
+.balign 4
+.Lfatal:
+    lui t0, 0x100
+    li t1, 0x13333
+    sw t1, 0(t0)
+.Lpark:
+    j .Lpark

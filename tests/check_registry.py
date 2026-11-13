@@ -61,6 +61,7 @@ base('tests/check_heap_budget.py', 600)
 base('tests/check_linked_stack.py', 600)
 base('tests/check_static_arena.py', 600)
 base('tests/check_static_sequence.py', 600)
+base('tests/check_sol_core_build.py', 600)
 base('tests/check_scalar_admission.py', 600)
 base('tests/check_state_generations.py', 300)
 base('tests/check_persistent_reclamation.py', 300)
@@ -245,6 +246,7 @@ GROUPS = {
         ci('tests/test_aarch64_fuel.py'),
         ci('tests/check_static_arena.py', required=True),
         ci('tests/check_static_sequence.py', required=True),
+        ci('tests/check_sol_core_build.py'),
         ci('tests/check_scalar_admission.py', required=True),
         ci('tests/check_typed_ir_rv.py', required=True, args=('--width', '32'), variant='rv32'),
         ci('tests/check_typed_ir_rv.py', required=True, args=('--width', '64'), variant='rv64'),

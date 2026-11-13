@@ -1,0 +1,12 @@
+union { uintptr_t word,unit; intptr_t integer; int boolean; } state={0};
+for (uw i=0; i<sizeof(fpr_static_steps)/sizeof(fpr_static_steps[0]); ++i) {
+const struct static_step *step=&fpr_static_steps[i];
+if (i) {
+CHECKPOINT
+HEAP_SETUP
+}
+switch (step->entry) {
+CASES
+default: fpr_cpanic("invalid static entry");}
+}
+fpr_static_result=(uw)state.PREVIOUS_MEMBER;

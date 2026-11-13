@@ -15,7 +15,7 @@ link image binary directory board cross manifest target entries assembly flags =
   elf = "{scratch}/image.elf"; report = "{scratch}/image.json"; raw = "{scratch}/image.bin";
   reloc = (if board == "tangnano20k" then [["{cross}objcopy","-O","binary",elf,raw],["{cross}size",elf],["mv",raw,binary]] else []);
   check = (if entries == "" then [B.setting "SOL" "sol","tools/target-image.sol"] else
-    ["python3","tools/check_target_image.py","--stack-entries",entries]);
+    [B.setting "SOL" "sol","tools/linked-stack.sol","--stack-entries",entries]);
   result = commands ([["{cross}gcc"] + inputs + ["-o",elf],
     check + ["--image",elf,"--manifest",manifest,"--target",target,"--report",report]]
     + reloc + [["mv",report,"{image}.admission.json"],["mv",elf,image]]);

@@ -1,0 +1,949 @@
+{
+  "files": {
+    "compiler_sha256": "@ROOT@/fpr",
+    "hart_register_probe_sha256": "@OUT@/hart-registers.s",
+    "runner_source_sha256": "@RUNNER@",
+    "builder_sha256": "@ROOT@/tools/build-pi-runtime-qualification.sol",
+    "cross_wrapper_sha256": null
+  },
+  "fixtures": [
+    "tools/pi-fixtures/map-controls-0c9625.fpr",
+    "tools/pi-fixtures/tree-region-17ed70.fpr",
+    "tools/pi-fixtures/scalar-wrapper-1dbf54.fpr",
+    "tools/pi-fixtures/import-constructor-259f4c.fpr",
+    "tools/pi-fixtures/fields-2b8142.fpr",
+    "tools/pi-fixtures/map-region-2d4968.fpr",
+    "tools/pi-fixtures/lifetime-394b65.fpr",
+    "tools/pi-fixtures/map-explicit-3ee903.fpr",
+    "tools/pi-fixtures/storage-6826f8.fpr",
+    "tools/pi-fixtures/import-explicit-6bc9a9.fpr",
+    "tools/pi-fixtures/spines-6cf17c.fpr",
+    "tools/pi-fixtures/map-6d2258.fpr",
+    "tools/pi-fixtures/shared-region-8aea35.fpr",
+    "tools/pi-fixtures/import-arena-98f6cb.fpr",
+    "tools/pi-fixtures/nested-a5d9c3.fpr",
+    "tools/pi-fixtures/import-api-b3791a.fpr",
+    "tools/pi-fixtures/transport-b7342c.fpr",
+    "tools/pi-fixtures/import-effects-b8af89.fpr",
+    "tools/pi-fixtures/transport-bdbddc.fpr",
+    "tools/pi-fixtures/variant-c706e4.fpr",
+    "tools/pi-fixtures/variant-d99a5f.fpr",
+    "tools/pi-fixtures/active-region-e320c6.fpr",
+    "tools/pi-fixtures/variant-list-eda882.fpr",
+    "tools/pi-fixtures/tree-fd3a1f.fpr",
+    "tools/pi-scheduler.fpr.in",
+    "tests/base/variant_region.c",
+    "tests/base/carrier_meters.fpr",
+    "tests/base/carrier_region.c",
+    "tests/base/stored_spine.c",
+    "tests/base/scheduler_probe.c"
+  ],
+  "compiler": "cc",
+  "scheduler": [
+    [
+      "base-fields",
+      "default",
+      [
+        "Value = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nmake d n = if d <= 0 then Leaf else\n  left = make (d - 1) (n+1); right = make (d - 1) (n+2);\n  v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.\nscore t = case t of Leaf -> 0 | Branch l v r -> case v of\n  Plus x -> score l + x + score r | Minus x -> score l - x + score r.\nwork d x = t = make d 1; a = score t; x - a - score t.\n",
+        "work 11 x",
+        4
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-fields",
+      "boxed",
+      [
+        "Value = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nmake d n = if d <= 0 then Leaf else\n  left = make (d - 1) (n+1); right = make (d - 1) (n+2);\n  v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.\nscore t = case t of Leaf -> 0 | Branch l v r -> case v of\n  Plus x -> score l + x + score r | Minus x -> score l - x + score r.\nwork d x = t = make d 1; a = score t; x - a - score t.\n",
+        "work 11 x",
+        4
+      ],
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ]
+  ],
+  "cases": [
+    [
+      "base-fields",
+      "tree-region-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "16382\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "fields-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "prior",
+          [
+            "prior"
+          ],
+          "7\n",
+          "division by zero"
+        ],
+        [
+          "later",
+          [
+            "later"
+          ],
+          "7\n20\n",
+          "Int overflow"
+        ],
+        [
+          "branch",
+          [
+            "branch"
+          ],
+          "7\n10\n5\n20\n",
+          null
+        ],
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "4072\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "0\n10\n4\n-28\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "0\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "0\n20\n",
+          "Int overflow"
+        ],
+        [
+          "lower",
+          [
+            "lower"
+          ],
+          "0\n20\n-4611686018427387903\n-40\n",
+          null
+        ],
+        [
+          "bundle",
+          [
+            "bundle"
+          ],
+          "40\n",
+          null
+        ],
+        [
+          "stop",
+          [
+            "stop"
+          ],
+          "16\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "2\nBranch Leaf (Plus 2) Leaf\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "Branch Leaf (Minus 1) Leaf\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "-1\nBranch Leaf (Minus 1) Leaf\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-region-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "16382\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "fields-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "prior",
+          [
+            "prior"
+          ],
+          "7\n",
+          "division by zero"
+        ],
+        [
+          "later",
+          [
+            "later"
+          ],
+          "7\n20\n",
+          "Int overflow"
+        ],
+        [
+          "branch",
+          [
+            "branch"
+          ],
+          "7\n10\n5\n20\n",
+          null
+        ],
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "4072\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "0\n10\n4\n-28\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "0\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "0\n20\n",
+          "Int overflow"
+        ],
+        [
+          "lower",
+          [
+            "lower"
+          ],
+          "0\n20\n-4611686018427387903\n-40\n",
+          null
+        ],
+        [
+          "bundle",
+          [
+            "bundle"
+          ],
+          "40\n",
+          null
+        ],
+        [
+          "stop",
+          [
+            "stop"
+          ],
+          "16\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "2\nBranch Leaf (Plus 2) Leaf\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "Branch Leaf (Minus 1) Leaf\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "-1\nBranch Leaf (Minus 1) Leaf\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-0-1-0",
+      false,
+      false,
+      2046,
+      null,
+      [
+        [
+          "tree",
+          [],
+          "-2\n5\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-0-1-1",
+      false,
+      true,
+      1023,
+      null,
+      [
+        [
+          "tree",
+          [],
+          "-2\n5\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-region-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "16382\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "fields-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "prior",
+          [
+            "prior"
+          ],
+          "7\n",
+          "division by zero"
+        ],
+        [
+          "later",
+          [
+            "later"
+          ],
+          "7\n20\n",
+          "Int overflow"
+        ],
+        [
+          "branch",
+          [
+            "branch"
+          ],
+          "7\n10\n5\n20\n",
+          null
+        ],
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "4072\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "0\n10\n4\n-28\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "0\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "0\n20\n",
+          "Int overflow"
+        ],
+        [
+          "lower",
+          [
+            "lower"
+          ],
+          "0\n20\n-4611686018427387903\n-40\n",
+          null
+        ],
+        [
+          "bundle",
+          [
+            "bundle"
+          ],
+          "40\n",
+          null
+        ],
+        [
+          "stop",
+          [
+            "stop"
+          ],
+          "16\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "2\nBranch Leaf (Plus 2) Leaf\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "Branch Leaf (Minus 1) Leaf\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "-1\nBranch Leaf (Minus 1) Leaf\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-region-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "16382\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "fields-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "prior",
+          [
+            "prior"
+          ],
+          "7\n",
+          "division by zero"
+        ],
+        [
+          "later",
+          [
+            "later"
+          ],
+          "7\n20\n",
+          "Int overflow"
+        ],
+        [
+          "branch",
+          [
+            "branch"
+          ],
+          "7\n10\n5\n20\n",
+          null
+        ],
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "4072\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "0\n10\n4\n-28\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "0\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "0\n20\n",
+          "Int overflow"
+        ],
+        [
+          "lower",
+          [
+            "lower"
+          ],
+          "0\n20\n-4611686018427387903\n-40\n",
+          null
+        ],
+        [
+          "bundle",
+          [
+            "bundle"
+          ],
+          "40\n",
+          null
+        ],
+        [
+          "stop",
+          [
+            "stop"
+          ],
+          "16\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "2\nBranch Leaf (Plus 2) Leaf\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "Branch Leaf (Minus 1) Leaf\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "-1\nBranch Leaf (Minus 1) Leaf\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-1-1-0",
+      true,
+      false,
+      2046,
+      null,
+      [
+        [
+          "tree",
+          [],
+          "-2\n5\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-1-1-1",
+      true,
+      true,
+      1023,
+      null,
+      [
+        [
+          "tree",
+          [],
+          "-2\n5\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "watchdog",
+      "base-fields"
+    ]
+  ],
+  "builds": [
+    [
+      "tree-region-0-0-0",
+      {
+        "fixture": "tree-region-17ed70.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "fields-0-0-0",
+      {
+        "fixture": "fields-2b8142.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "tree-region-0-0-1",
+      {
+        "fixture": "tree-region-17ed70.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "fields-0-0-1",
+      {
+        "fixture": "fields-2b8142.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "tree-0-1-0",
+      {
+        "fixture": "tree-fd3a1f.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-fields",
+        "disabled"
+      ]
+    ],
+    [
+      "tree-0-1-1",
+      {
+        "fixture": "tree-fd3a1f.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-fields",
+        "enabled"
+      ]
+    ],
+    [
+      "tree-region-1-0-0",
+      {
+        "fixture": "tree-region-17ed70.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "fields-1-0-0",
+      {
+        "fixture": "fields-2b8142.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "tree-region-1-0-1",
+      {
+        "fixture": "tree-region-17ed70.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "fields-1-0-1",
+      {
+        "fixture": "fields-2b8142.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "tree-1-1-0",
+      {
+        "fixture": "tree-fd3a1f.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-fields",
+        "disabled"
+      ]
+    ],
+    [
+      "tree-1-1-1",
+      {
+        "fixture": "tree-fd3a1f.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-fields",
+        "enabled"
+      ]
+    ]
+  ],
+  "root": "@ROOT@",
+  "out": "@OUT@",
+  "mode": "native",
+  "metadata": {
+    "rounds": 256,
+    "repetitions": 3,
+    "lifetime_expected": "1374656\n([7, 8], [7, 8])\n",
+    "lifetime_wrappers": 8385,
+    "nested_allocation_removals": {}
+  }
+}

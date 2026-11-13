@@ -1,0 +1,44 @@
+unsafe base.
+Step = Type (NothingHere | Add Int | Move Int Int Bool).
+mark n = _ = print n; n.
+buildSteps n d = if n <= 0 then [] else
+  (if n == 1 then NothingHere else if n == 2 then Add (mark 3) else Move (mark n) (mark (10/d)) True) :: buildSteps (n - 1) d.
+totalSteps xs acc = case xs of [] -> acc | h :: rest -> case h of NothingHere -> totalSteps rest (acc+1)
+  | Add x -> totalSteps rest (acc+x) | Move x y b -> totalSteps rest (if b then acc+x+y else acc).
+shared n d = xs = buildSteps n d; a = totalSteps xs 1; totalSteps xs a.
+escape n = xs = buildSteps n 2; _ = print (totalSteps xs 0); xs.
+closure n = xs = buildSteps n 2; fn x -> if x then xs else [].
+Edge = Type (LeftEdge Int | RightEdge Int).
+extreme n d = if n <= 0 then [] else RightEdge (mark (d+1)) :: extreme (n - 1) d.
+sumEdge xs acc = case xs of [] -> acc | h :: tail -> case h of LeftEdge x -> sumEdge tail (acc - x) | RightEdge x -> sumEdge tail (acc+x).
+edge d = xs = extreme 1 d; sumEdge xs 0.
+Wide = Type (Short Int | Long Int Int Int Int Int Int Int).
+wide n = if n <= 0 then [] else (if n == 1 then Short n else Long n n n n n n (n+1)) :: wide (n - 1).
+readWide xs acc = case xs of [] -> acc | h :: rest -> case h of Short x -> readWide rest (acc+x) | Long a _ _ _ _ _ z -> readWide rest (acc+a+z).
+sharedWide n = xs = wide n; a = readWide xs 0; readWide xs a.
+Eight = Type (Eight Int Int Int Int Int Int Int Int).
+eight n = if n <= 0 then [] else Eight n (n+1) n n n n n (n+2) :: eight (n - 1).
+sum8 xs acc = case xs of [] -> acc | h :: rest -> case h of Eight a b _ _ _ _ _ z -> sum8 rest (acc+a+b+z).
+full n = xs = eight n; a = sum8 xs 0; sum8 xs a.
+Over = Type (Little Int | Large Int Int Int Int Int Int Int Int).
+over n = if n <= 0 then [] else Large n n n n n n n n :: over (n - 1).
+sumOver xs acc = case xs of [] -> acc | h :: rest -> case h of Little x -> sumOver rest (acc+x) | Large x _ _ _ _ _ _ y -> sumOver rest (acc+x+y).
+outOfRange n = xs = over n; sumOver xs 0.
+Heap = Type (Number Int | Message String).
+heap n = if n <= 0 then [] else Number n :: heap (n - 1).
+readHeap xs acc = case xs of [] -> acc | h :: rest -> case h of Number x -> readHeap rest (acc+x) | Message s -> readHeap rest (acc+strlen s).
+boxed n = xs = heap n; readHeap xs 0.
+child parent self = n = receive self; send parent (escape n).
+main = case Sys.args Unit of
+  ["shared"] -> print (shared 3 2) | ["empty"] -> print (shared 0 0)
+  | ["division"] -> print (shared 3 0)
+  | ["overflow"] -> print (edge 4611686018427387903)
+  | ["min"] -> print (edge (0 - 4611686018427387903 - 1))
+  | ["max"] -> print (edge 4611686018427387902)
+  | ["escape"] -> print (keep (escape 3))
+  | ["closure"] -> f = closure 3; print (keep (f True))
+  | ["actor"] -> me = myself 0; a = spawn (child me); _ = send a 3; print (keep (receiveFrom me a))
+  | ["eight"] -> print (full 3) | ["over"] -> print (outOfRange 3)
+  | ["wide"] -> print (sharedWide 4)
+  | ["heap"] -> print (boxed 3)
+  | _ -> error "case".

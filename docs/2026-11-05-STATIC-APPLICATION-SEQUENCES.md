@@ -5,7 +5,7 @@ The RV64 admission tool can now build an application consisting of several check
 The [example source](../examples/static-arena/word-state.fpr) and [four-step input](../examples/static-arena/word-state.json) start at 7, add 3, add the largest unsigned word (wrapping to 9), and choose the carried value. Build and execute it from the repository root:
 
 ```sh
-python3 tools/build_static_arena.py examples/static-arena/word-state.fpr \
+sol tools/build-static-arena.sol examples/static-arena/word-state.fpr \
   --sequence examples/static-arena/word-state.json \
   --heap-bytes 624 --stack-bytes 448 --image /tmp/word-state.elf --execute
 ```
@@ -45,7 +45,7 @@ keep b = b.
 ```
 
 ```sh
-python3 tools/build_static_arena.py /tmp/keep.fpr --entry keep --arguments '[1]' \
+sol tools/build-static-arena.sol /tmp/keep.fpr --entry keep --arguments '[1]' \
   --heap-bytes 0 --stack-bytes 1024 --callback-instructions 20 \
   --image /tmp/keep.elf --execute
 ```

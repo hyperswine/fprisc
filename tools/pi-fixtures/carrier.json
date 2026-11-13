@@ -1,0 +1,764 @@
+{
+  "files": {
+    "compiler_sha256": "@ROOT@/fpr",
+    "hart_register_probe_sha256": "@OUT@/hart-registers.s",
+    "runner_source_sha256": "@RUNNER@",
+    "builder_sha256": "@ROOT@/tools/build-pi-runtime-qualification.sol",
+    "cross_wrapper_sha256": null
+  },
+  "fixtures": [
+    "tools/pi-fixtures/map-controls-0c9625.fpr",
+    "tools/pi-fixtures/tree-region-17ed70.fpr",
+    "tools/pi-fixtures/scalar-wrapper-1dbf54.fpr",
+    "tools/pi-fixtures/import-constructor-259f4c.fpr",
+    "tools/pi-fixtures/fields-2b8142.fpr",
+    "tools/pi-fixtures/map-region-2d4968.fpr",
+    "tools/pi-fixtures/lifetime-394b65.fpr",
+    "tools/pi-fixtures/map-explicit-3ee903.fpr",
+    "tools/pi-fixtures/storage-6826f8.fpr",
+    "tools/pi-fixtures/import-explicit-6bc9a9.fpr",
+    "tools/pi-fixtures/spines-6cf17c.fpr",
+    "tools/pi-fixtures/map-6d2258.fpr",
+    "tools/pi-fixtures/shared-region-8aea35.fpr",
+    "tools/pi-fixtures/import-arena-98f6cb.fpr",
+    "tools/pi-fixtures/nested-a5d9c3.fpr",
+    "tools/pi-fixtures/import-api-b3791a.fpr",
+    "tools/pi-fixtures/transport-b7342c.fpr",
+    "tools/pi-fixtures/import-effects-b8af89.fpr",
+    "tools/pi-fixtures/transport-bdbddc.fpr",
+    "tools/pi-fixtures/variant-c706e4.fpr",
+    "tools/pi-fixtures/variant-d99a5f.fpr",
+    "tools/pi-fixtures/active-region-e320c6.fpr",
+    "tools/pi-fixtures/variant-list-eda882.fpr",
+    "tools/pi-fixtures/tree-fd3a1f.fpr",
+    "tools/pi-scheduler.fpr.in",
+    "tests/base/variant_region.c",
+    "tests/base/carrier_meters.fpr",
+    "tests/base/carrier_region.c",
+    "tests/base/stored_spine.c",
+    "tests/base/scheduler_probe.c"
+  ],
+  "compiler": "cc",
+  "scheduler": [
+    [
+      "base-carrier",
+      "default",
+      [
+        "Map = use \"std/map\".\nMeters = Type (Meters Int).\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (Meters n) m).\naddValue a key value = case value of Meters x -> a + x.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\n",
+        "x + check 128",
+        16512
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-carrier",
+      "boxed",
+      [
+        "Map = use \"std/map\".\nMeters = Type (Meters Int).\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (Meters n) m).\naddValue a key value = case value of Meters x -> a + x.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\n",
+        "x + check 128",
+        16512
+      ],
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ]
+  ],
+  "cases": [
+    [
+      "base-carrier",
+      "map-region-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "arena-copy",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-controls-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "order",
+          [
+            "order"
+          ],
+          "Meters 1\nMeters 2\nMeters 3\n3\n",
+          null
+        ],
+        [
+          "trap",
+          [
+            "trap"
+          ],
+          "1\n2\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "partial",
+          [
+            "partial"
+          ],
+          "",
+          "no matching meter"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 3\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-region-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "arena-copy",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-controls-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "order",
+          [
+            "order"
+          ],
+          "Meters 1\nMeters 2\nMeters 3\n3\n",
+          null
+        ],
+        [
+          "trap",
+          [
+            "trap"
+          ],
+          "1\n2\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "partial",
+          [
+            "partial"
+          ],
+          "",
+          "no matching meter"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 3\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-0-1-0",
+      false,
+      false,
+      6136,
+      368112,
+      [
+        [
+          "allocation",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-0-1-1",
+      false,
+      true,
+      5624,
+      351728,
+      [
+        [
+          "allocation",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier-explicit",
+      "map-explicit-0-1-1",
+      false,
+      true,
+      5624,
+      351728,
+      [
+        [
+          "explicit",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-region-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "arena-copy",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-controls-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "order",
+          [
+            "order"
+          ],
+          "Meters 1\nMeters 2\nMeters 3\n3\n",
+          null
+        ],
+        [
+          "trap",
+          [
+            "trap"
+          ],
+          "1\n2\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "partial",
+          [
+            "partial"
+          ],
+          "",
+          "no matching meter"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 3\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-region-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "arena-copy",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-controls-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "order",
+          [
+            "order"
+          ],
+          "Meters 1\nMeters 2\nMeters 3\n3\n",
+          null
+        ],
+        [
+          "trap",
+          [
+            "trap"
+          ],
+          "1\n2\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "partial",
+          [
+            "partial"
+          ],
+          "",
+          "no matching meter"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 3\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-1-1-0",
+      true,
+      false,
+      6137,
+      359968,
+      [
+        [
+          "allocation",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-1-1-1",
+      true,
+      true,
+      5625,
+      343584,
+      [
+        [
+          "allocation",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier-explicit",
+      "map-explicit-1-1-1",
+      true,
+      true,
+      5625,
+      343584,
+      [
+        [
+          "explicit",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "watchdog",
+      "base-carrier"
+    ]
+  ],
+  "builds": [
+    [
+      "map-region-0-0-0",
+      {
+        "fixture": "map-region-2d4968.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-controls-0-0-0",
+      {
+        "fixture": "map-controls-0c9625.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "map-region-0-0-1",
+      {
+        "fixture": "map-region-2d4968.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-controls-0-0-1",
+      {
+        "fixture": "map-controls-0c9625.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "map-0-1-0",
+      {
+        "fixture": "map-6d2258.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "map-0-1-1",
+      {
+        "fixture": "map-6d2258.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "map-explicit-0-1-1",
+      {
+        "fixture": "map-explicit-3ee903.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier-explicit",
+        "enabled"
+      ]
+    ],
+    [
+      "map-region-1-0-0",
+      {
+        "fixture": "map-region-2d4968.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-controls-1-0-0",
+      {
+        "fixture": "map-controls-0c9625.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "map-region-1-0-1",
+      {
+        "fixture": "map-region-2d4968.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-controls-1-0-1",
+      {
+        "fixture": "map-controls-0c9625.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "map-1-1-0",
+      {
+        "fixture": "map-6d2258.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "map-1-1-1",
+      {
+        "fixture": "map-6d2258.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "map-explicit-1-1-1",
+      {
+        "fixture": "map-explicit-3ee903.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier-explicit",
+        "enabled"
+      ]
+    ]
+  ],
+  "root": "@ROOT@",
+  "out": "@OUT@",
+  "mode": "native",
+  "metadata": {
+    "rounds": 256,
+    "repetitions": 3,
+    "lifetime_expected": "1374656\n([7, 8], [7, 8])\n",
+    "lifetime_wrappers": 8385,
+    "nested_allocation_removals": {}
+  }
+}

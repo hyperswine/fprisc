@@ -1,0 +1,46 @@
+unsafe base.
+Cell a = Type (Cell a).
+makePair n = if n < 0 then makePair (0 - n) else ((n,n + 1),(n + 2,n + 3)).
+makeCell n = if n < 0 then makeCell (0 - n) else Cell (Cell n).
+consumePair n acc = if n <= 0 then acc else case makePair n of (left,right) ->
+  case left of (w,x) -> case right of (y,z) -> consumePair (n - 1) (acc + w + x + y + z).
+consumeCell n acc = if n <= 0 then acc else case makeCell n of Cell inner ->
+  case inner of Cell x -> consumeCell (n - 1) (acc + x).
+make8 n = if n < 0 then make8 (0 - n) else ((n,n + 1,n + 2,n + 3),(n + 4,n + 5,n + 6,n + 7)).
+make9 n = if n < 0 then make9 (0 - n) else ((n,n + 1,n + 2),(n + 3,n + 4,n + 5),(n + 6,n + 7,n + 8)).
+read8 n = case make8 n of (a,b) -> case a of (p,q,r,s) -> case b of (t,u,v,w) -> p+w.
+read9 n = case make9 n of (a,b,c) -> case a of (p,q,r) -> case b of (s,t,u) -> case c of (v,w,x) -> p+t+x.
+mark n = _ = print n; n.
+marked n d = if n < 0 then marked (0 - n) d else ((mark 1,mark n),(mark (10 / d),mark (n + 1))).
+readMarks n d = case marked n d of (a,b) -> case a of (p,q) -> case b of (r,s) -> p.
+escapeInner n = case makePair n of (a,b) -> a.
+outer n = makePair n.
+listPayload n = if n < 0 then listPayload (0 - n) else [n,n + 1].
+heapPayload n = if n < 0 then heapPayload (0 - n) else
+  xs = listPayload n; ((xs,n),(xs,n + 2)).
+sumTwo xs = case xs of [u,v] -> u + v | _ -> error "lost heap payload".
+churn n acc = if n <= 0 then acc else case heapPayload n of (a,b) ->
+  case a of (xs,p) -> case b of (ys,q) -> churn (n - 1) (acc + p + q + sumTwo xs + sumTwo ys).
+hold n = case heapPayload n of (a,b) -> case a of (xs,p) -> case b of (ys,q) ->
+  noise = churn 80 0; (xs,ys,p + q + noise).
+adder n x = n + x.
+funPacket n = if n < 0 then funPacket (0 - n) else f = adder n; ((f,n),(f,n + 2)).
+funRead n = case funPacket n of (a,b) -> case a of (f,x) -> case b of (g,y) ->
+  noise = churn 80 0; f x + g y + noise.
+child parent self = n = receive self; send parent (hold n).
+main = case Sys.args Unit of
+  ["pairs"] -> print (consumePair 1000 0)
+  | ["cells"] -> print (consumeCell 1000 0)
+  | ["eight"] -> print (read8 9)
+  | ["nine"] -> print (read9 9)
+  | ["effect"] -> print (readMarks 3 2)
+  | ["division"] -> print (readMarks 4611686018427387903 0)
+  | ["overflow"] -> print (readMarks 4611686018427387903 1)
+  | ["endpoint"] -> print (readMarks 4611686018427387902 1)
+  | ["underflow"] -> print (readMarks (0 - 4611686018427387903 - 1) 1)
+  | ["inner"] -> print (escapeInner 7)
+  | ["outer"] -> print (outer 7)
+  | ["closure"] -> print (funRead 7)
+  | ["actor"] -> me = myself 0; a = spawn (child me); b = spawn (child me); _ = send a 7; _ = send b 17;
+      x = receiveFrom me a; y = receiveFrom me b; _ = print (keep x); print (keep y)
+  | _ -> error "unknown case".

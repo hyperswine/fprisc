@@ -27,21 +27,67 @@ The committed base revisions are available as source releases under the same tag
 | Buildroot post-build hooks | The Pi splash and STAR64 console checks passed. Running the hooks twice on fixture root filesystems produced matching installed content. STAR64 now preserves the existing permissions on `/etc/inittab`, including when they are more restrictive than the default. |
 | Printer alerts | Regeneration reproduced exact categories for 4,477 codes across seven catalogs and omitted the same 186 ambiguous codes. Only the generator-name comment changed in the generated FP-RISC source. |
 
-## Where to resume
+## Core migration completed
 
-The QOS Python entry points `ccobj.py`, `mkimports.py`, `mkexports.py` and `native-abis.py` have been removed locally. Their replacements matched the cached C fixture object, assembly for 83 imports in three output modes and 983 exports, and ABI values for both cell layouts. The assembly comparisons allowed the generated filename comment to change. The Pi post-build hook also ran through its legacy filename using the packaged Sol executable on `PATH`.
+The remaining core build paths now run in Sol:
 
-The QOS disk builder's Python entry point was also removed. Given the same two QA archives, the Sol builder produced a byte-identical 4 MiB disk. In a separate run, `tools/build-checkout-app.sol` compiled `tests/appa.fpr` and `tests/appb.fpr` through the real Make target and seeded the resulting archives in that order. The output image has not been booted.
+- `tools/build-static-arena.sol` owns scalar callers, typed finite sequences,
+  linked placement, stack admission, optional callback instruction proofs and
+  publication. The RV64 IMC decoder and linked-byte abstract interpreter live in
+  `riscv-compressed.sol` and `linked-rv64.sol`. `linked-stack.sol` also replaces
+  Python in the Makefile's optional `BUILTIN_STACK_ENTRIES` gate. Physical and
+  contract checks have library modules shared with their CLI entry points.
+- `tools/build-pi-runtime-qualification.sol` reads checked-in FP-RISC fixtures
+  and plans under `tools/pi-fixtures/`; it no longer imports Python test modules.
+  It sanitizes compiler controls, records the selected plan and builder hashes,
+  and calls the existing Sol compiler/case/scheduler modules.
+- QOS's `qbuild` and `tools/main-profile.sol` own contributor builds, app/plugin
+  bundles and Main profile generation. Bundles carry a native launcher. Its
+  installed SDK stager and packager remain Sol, with a native installed `qos`.
+- `fpr build --target=qos-portable` no longer implicitly launches Python. Native
+  builders and explicit executable or Sol overrides propagate their exit codes.
+- The Pi compiler SDK defaults to a Python-free compiler/plugin bundle.
+  Its optional legacy editor daemon requires an explicit target Python runtime,
+  copied without executing it during packaging.
 
-QOS has since removed the Python mesh converter. Its Sol replacement reproduced the module bodies for all 11 checked-in STL inputs. Clean-checkout comparisons also covered ASCII, a binary file with a solid-prefixed header, negative scale and floor alignment.
+Retired FP-RISC coordinators are independent test oracles under
+`tests/build-reference/`, with no production build callers. The compiler and C
+build mechanisms still use Make and POSIX `/bin/sh`; this migration removes
+Python and Bash from the core orchestration, not upstream vendor toolchains.
 
-FP-RISC now reads fresh per-export heap proofs in Sol, and admission receipts identify the checker by SHA-256. A fresh paired checkout admitted a 416-byte heap requirement against a 512-byte reserve and executed the image under RV64 QEMU, returning 42. QOS read native ABI values 24, 6 and 5 from the same FP-RISC checkout. The run used a previously built compiler binary.
+### Validation
 
-The Pi builder now expands scheduler sources and the eight optimization-control configurations in Sol. The full generated plan matched its predecessor for 98 build entries and 99 case specifications, as did all six focused plans, excluding the changed builder's own hash. These comparisons cover fixture generation; physical Pi qualification remains outstanding.
+`tests/check_sol_core_build.py` compares all seven Pi plans with the retired
+coordinator: the full plan has 98 language builds; focused slices have 18, 14,
+12, 18, 12 and 8 respectively. Scheduler jobs are expanded separately by Sol.
+It compares all 38,550 supported RV64 compressed encodings with the independent
+Python decoder, normalized ELF bytes, placement, linked stack/work receipts,
+QEMU results, typed previous-result handoffs and preservation after refusals.
+The four compressed/uncompressed and relaxed/unrelaxed linked fixtures also
+match stack/work bounds and refuse dynamic stack changes, unresolved jumps,
+retaining cycles, damaged return links and writes outside the proved frame.
+GCC's random temporary object names are normalized only in the ELF string table.
+Receipts themselves retain the exact image hash.
 
-1. Finish the FP-RISC static-arena driver. [The existing entry point](../tools/build_static_arena.py) still generates the caller, computes placement and coordinates publication. It also invokes the optional linked-stack and callback proofs. Keep the last admitted image intact when any of those steps refuses a replacement.
-2. Move Pi qualification fixture generation and case selection out of [the Python coordinator](../tools/build_pi_runtime_qualification.py). Compare a focused bundle's case list, expected values and produced binaries before retiring the old path.
-3. Finish QOS checkout app build orchestration in `qos.py`. The installed Portable SDK uses the native `qos` command. Its parity check stages `tools/portable_sdk.py` separately as a comparison builder. Exercise process and plugin builds through the contributor CLI and the installed SDK, then remove Python build paths whose callers have moved. Inventory script references in CI, Make recipes and packaging before deleting the remaining launchers.
-   [The compiler driver](../compiler/Build.hs) now forwards `fpr build --target=qos-portable` to the native `tools/qos` beside its SDK metadata. Older SDKs retain the Python fallback. An explicit `QOS_PORTABLE_BUILDER` ending in `.sol` runs with the same compiler; other overrides preserve the old Python invocation. The rebuilt compiler selected the native SDK builder and forwarded a project path containing a space, the compiler path and a verbose flag. Temporary SDK fixtures also exercised the Python fallback and an explicit Sol override. The compiler propagated their distinct exit codes (19, 23 and 21) and returned 2 when no builder existed.
-   The native process linker and ABI probe now share `cellLayoutFlag` in QOS `tools/native-abi.sol`. Build the same process with the default compact layout and with `FPR_COMPACT_CELLS=0`. For each build, compare the packaged native, actors and memory ABI values with those from the target headers under that layout. This comparison is pending.
-4. Verify both repositories together from clean checkouts. QOS still pins FP-RISC `94efae2b7e3a`. Check which QOS commands require newly added FP-RISC scripts and coordinate the pin with the FP-RISC change. Run the full suites and the Linux SDK install check, build the Buildroot images and verify board boots separately. Those runs are deferred.
+A scalar Bool callback requires exactly 20 instructions in both implementations.
+Compact QOS process ABI values 24/6/5 and legacy values 23/6/4 match the target
+headers under the same layout. The rebuilt compiler's SDK dispatch preserves
+paths containing spaces and distinct native/Sol exit codes, and refuses a missing
+native builder even when a legacy Python builder is present.
+
+The QOS guide is `qos/docs/2026-11-13-CORE-SOL-BUILDS.md` in the sibling checkout.
+Core contributor bundles have been built with Python and Bash blocked on PATH
+and launched successfully. QOS installed SDK acceptance passed with both source
+checkouts inaccessible; installed desktop and standalone process builds also
+passed with Python and Bash blocked on PATH. The existing static-arena regression
+and four target-image builds passed, including failed-publication preservation.
+Release-package and clean-checkout verification are recorded below as they complete.
+
+### Qualification boundaries
+
+The full compiler/QOS test corpora still use Python and Bash, including the
+QOS sweep's leg bodies. The migration does not claim their removal. Physical
+Pi/STAR64 qualification, upstream Buildroot images, native Linux Pi SDK
+installation and ESP-IDF vendor dependencies need separate validation. Existing
+release packaging guards for clean inputs, matching revisions, inventories,
+licenses and native linkage are preserved.

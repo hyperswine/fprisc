@@ -1,0 +1,7 @@
+unsafe base.
+Map = use "std/map".
+M = use "tests/base/carrier_meters".
+fill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.Meters n) m).
+addValue a key value = case value of M.Meters x -> a + x.
+check n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.
+main = print (check 512).

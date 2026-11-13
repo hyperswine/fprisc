@@ -1,0 +1,5 @@
+ check(fpr_builtin_live_allocations()==0);
+ for(unsigned i=0;i<16;i++){
+  check(fpr_static_heap_guard[i]==0xa5 && fpr_static_heap_end[i]==0xa5);
+  check(fpr_static_stack_guard[i]==0xa5 && fpr_static_stack_end[i]==0xa5);
+ }

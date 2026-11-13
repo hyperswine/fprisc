@@ -28,7 +28,8 @@ class CoverageTests(unittest.TestCase):
 
     def test_old_explicit_configurations_are_preserved(self):
         # Lock down the execution obligations during the move out of YAML.
-        self.assertEqual(len(CI), 72)
+        self.assertEqual(len(CI), 73)
+        self.assertIn('tests/check_sol_core_build.py', CI)
         self.assertIn('tests/test_aarch64_fuel.py', CI)
         self.assertIn('tests/check_imported_carriers.py', CI)
         self.assertIn('tests/check_base_carrier.py', CI)

@@ -1,0 +1,5610 @@
+{
+  "files": {
+    "compiler_sha256": "@ROOT@/fpr",
+    "hart_register_probe_sha256": "@OUT@/hart-registers.s",
+    "runner_source_sha256": "@RUNNER@",
+    "builder_sha256": "@ROOT@/tools/build-pi-runtime-qualification.sol",
+    "cross_wrapper_sha256": null
+  },
+  "fixtures": [
+    "tools/pi-fixtures/map-controls-0c9625.fpr",
+    "tools/pi-fixtures/tree-region-17ed70.fpr",
+    "tools/pi-fixtures/scalar-wrapper-1dbf54.fpr",
+    "tools/pi-fixtures/import-constructor-259f4c.fpr",
+    "tools/pi-fixtures/fields-2b8142.fpr",
+    "tools/pi-fixtures/map-region-2d4968.fpr",
+    "tools/pi-fixtures/lifetime-394b65.fpr",
+    "tools/pi-fixtures/map-explicit-3ee903.fpr",
+    "tools/pi-fixtures/storage-6826f8.fpr",
+    "tools/pi-fixtures/import-explicit-6bc9a9.fpr",
+    "tools/pi-fixtures/spines-6cf17c.fpr",
+    "tools/pi-fixtures/map-6d2258.fpr",
+    "tools/pi-fixtures/shared-region-8aea35.fpr",
+    "tools/pi-fixtures/import-arena-98f6cb.fpr",
+    "tools/pi-fixtures/nested-a5d9c3.fpr",
+    "tools/pi-fixtures/import-api-b3791a.fpr",
+    "tools/pi-fixtures/transport-b7342c.fpr",
+    "tools/pi-fixtures/import-effects-b8af89.fpr",
+    "tools/pi-fixtures/transport-bdbddc.fpr",
+    "tools/pi-fixtures/variant-c706e4.fpr",
+    "tools/pi-fixtures/variant-d99a5f.fpr",
+    "tools/pi-fixtures/active-region-e320c6.fpr",
+    "tools/pi-fixtures/variant-list-eda882.fpr",
+    "tools/pi-fixtures/tree-fd3a1f.fpr",
+    "tools/pi-scheduler.fpr.in",
+    "tests/base/variant_region.c",
+    "tests/base/carrier_meters.fpr",
+    "tests/base/carrier_region.c",
+    "tests/base/stored_spine.c",
+    "tests/base/scheduler_probe.c"
+  ],
+  "compiler": "cc",
+  "scheduler": [
+    [
+      "scalar",
+      "default",
+      [
+        "work n x = if n <= 0 then x else work (n - 1) (x + 1).\n",
+        "work 10000 x",
+        10000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "scalar-group",
+      "default",
+      [
+        "cycle0 n x = if n <= 0 then x else cycle1 (n - 1) (x + 1).\ncycle1 n x = if n <= 0 then x else cycle2 (n - 1) (x + 1).\ncycle2 n x = if n <= 0 then x else cycle3 (n - 1) (x + 1).\ncycle3 n x = if n <= 0 then x else cycle4 (n - 1) (x + 1).\ncycle4 n x = if n <= 0 then x else cycle5 (n - 1) (x + 1).\ncycle5 n x = if n <= 0 then x else cycle6 (n - 1) (x + 1).\ncycle6 n x = if n <= 0 then x else cycle7 (n - 1) (x + 1).\ncycle7 n x = if n <= 0 then x else cycle8 (n - 1) (x + 1).\ncycle8 n x = if n <= 0 then x else cycle9 (n - 1) (x + 1).\ncycle9 n x = if n <= 0 then x else cycle10 (n - 1) (x + 1).\ncycle10 n x = if n <= 0 then x else cycle11 (n - 1) (x + 1).\ncycle11 n x = if n <= 0 then x else cycle12 (n - 1) (x + 1).\ncycle12 n x = if n <= 0 then x else cycle13 (n - 1) (x + 1).\ncycle13 n x = if n <= 0 then x else cycle14 (n - 1) (x + 1).\ncycle14 n x = if n <= 0 then x else cycle15 (n - 1) (x + 1).\ncycle15 n x = if n <= 0 then x else cycle16 (n - 1) (x + 1).\ncycle16 n x = if n <= 0 then x else cycle17 (n - 1) (x + 1).\ncycle17 n x = if n <= 0 then x else cycle18 (n - 1) (x + 1).\ncycle18 n x = if n <= 0 then x else cycle19 (n - 1) (x + 1).\ncycle19 n x = if n <= 0 then x else cycle20 (n - 1) (x + 1).\ncycle20 n x = if n <= 0 then x else cycle21 (n - 1) (x + 1).\ncycle21 n x = if n <= 0 then x else cycle22 (n - 1) (x + 1).\ncycle22 n x = if n <= 0 then x else cycle23 (n - 1) (x + 1).\ncycle23 n x = if n <= 0 then x else cycle24 (n - 1) (x + 1).\ncycle24 n x = if n <= 0 then x else cycle25 (n - 1) (x + 1).\ncycle25 n x = if n <= 0 then x else cycle26 (n - 1) (x + 1).\ncycle26 n x = if n <= 0 then x else cycle27 (n - 1) (x + 1).\ncycle27 n x = if n <= 0 then x else cycle28 (n - 1) (x + 1).\ncycle28 n x = if n <= 0 then x else cycle29 (n - 1) (x + 1).\ncycle29 n x = if n <= 0 then x else cycle30 (n - 1) (x + 1).\ncycle30 n x = if n <= 0 then x else cycle31 (n - 1) (x + 1).\ncycle31 n x = if n <= 0 then x else cycle32 (n - 1) (x + 1).\ncycle32 n x = if n <= 0 then x else cycle33 (n - 1) (x + 1).\ncycle33 n x = if n <= 0 then x else cycle34 (n - 1) (x + 1).\ncycle34 n x = if n <= 0 then x else cycle35 (n - 1) (x + 1).\ncycle35 n x = if n <= 0 then x else cycle36 (n - 1) (x + 1).\ncycle36 n x = if n <= 0 then x else cycle37 (n - 1) (x + 1).\ncycle37 n x = if n <= 0 then x else cycle38 (n - 1) (x + 1).\ncycle38 n x = if n <= 0 then x else cycle39 (n - 1) (x + 1).\ncycle39 n x = if n <= 0 then x else cycle40 (n - 1) (x + 1).\ncycle40 n x = if n <= 0 then x else cycle41 (n - 1) (x + 1).\ncycle41 n x = if n <= 0 then x else cycle42 (n - 1) (x + 1).\ncycle42 n x = if n <= 0 then x else cycle43 (n - 1) (x + 1).\ncycle43 n x = if n <= 0 then x else cycle44 (n - 1) (x + 1).\ncycle44 n x = if n <= 0 then x else cycle45 (n - 1) (x + 1).\ncycle45 n x = if n <= 0 then x else cycle46 (n - 1) (x + 1).\ncycle46 n x = if n <= 0 then x else cycle47 (n - 1) (x + 1).\ncycle47 n x = if n <= 0 then x else cycle48 (n - 1) (x + 1).\ncycle48 n x = if n <= 0 then x else cycle49 (n - 1) (x + 1).\ncycle49 n x = if n <= 0 then x else cycle50 (n - 1) (x + 1).\ncycle50 n x = if n <= 0 then x else cycle51 (n - 1) (x + 1).\ncycle51 n x = if n <= 0 then x else cycle52 (n - 1) (x + 1).\ncycle52 n x = if n <= 0 then x else cycle53 (n - 1) (x + 1).\ncycle53 n x = if n <= 0 then x else cycle54 (n - 1) (x + 1).\ncycle54 n x = if n <= 0 then x else cycle55 (n - 1) (x + 1).\ncycle55 n x = if n <= 0 then x else cycle56 (n - 1) (x + 1).\ncycle56 n x = if n <= 0 then x else cycle57 (n - 1) (x + 1).\ncycle57 n x = if n <= 0 then x else cycle58 (n - 1) (x + 1).\ncycle58 n x = if n <= 0 then x else cycle59 (n - 1) (x + 1).\ncycle59 n x = if n <= 0 then x else cycle60 (n - 1) (x + 1).\ncycle60 n x = if n <= 0 then x else cycle61 (n - 1) (x + 1).\ncycle61 n x = if n <= 0 then x else cycle62 (n - 1) (x + 1).\ncycle62 n x = if n <= 0 then x else cycle63 (n - 1) (x + 1).\ncycle63 n x = if n <= 0 then x else cycle64 (n - 1) (x + 1).\ncycle64 n x = if n <= 0 then x else cycle65 (n - 1) (x + 1).\ncycle65 n x = if n <= 0 then x else cycle66 (n - 1) (x + 1).\ncycle66 n x = if n <= 0 then x else cycle67 (n - 1) (x + 1).\ncycle67 n x = if n <= 0 then x else cycle68 (n - 1) (x + 1).\ncycle68 n x = if n <= 0 then x else cycle69 (n - 1) (x + 1).\ncycle69 n x = if n <= 0 then x else cycle70 (n - 1) (x + 1).\ncycle70 n x = if n <= 0 then x else cycle71 (n - 1) (x + 1).\ncycle71 n x = if n <= 0 then x else cycle72 (n - 1) (x + 1).\ncycle72 n x = if n <= 0 then x else cycle73 (n - 1) (x + 1).\ncycle73 n x = if n <= 0 then x else cycle74 (n - 1) (x + 1).\ncycle74 n x = if n <= 0 then x else cycle75 (n - 1) (x + 1).\ncycle75 n x = if n <= 0 then x else cycle76 (n - 1) (x + 1).\ncycle76 n x = if n <= 0 then x else cycle77 (n - 1) (x + 1).\ncycle77 n x = if n <= 0 then x else cycle78 (n - 1) (x + 1).\ncycle78 n x = if n <= 0 then x else cycle79 (n - 1) (x + 1).\ncycle79 n x = if n <= 0 then x else cycle80 (n - 1) (x + 1).\ncycle80 n x = if n <= 0 then x else cycle81 (n - 1) (x + 1).\ncycle81 n x = if n <= 0 then x else cycle82 (n - 1) (x + 1).\ncycle82 n x = if n <= 0 then x else cycle83 (n - 1) (x + 1).\ncycle83 n x = if n <= 0 then x else cycle84 (n - 1) (x + 1).\ncycle84 n x = if n <= 0 then x else cycle85 (n - 1) (x + 1).\ncycle85 n x = if n <= 0 then x else cycle86 (n - 1) (x + 1).\ncycle86 n x = if n <= 0 then x else cycle87 (n - 1) (x + 1).\ncycle87 n x = if n <= 0 then x else cycle88 (n - 1) (x + 1).\ncycle88 n x = if n <= 0 then x else cycle89 (n - 1) (x + 1).\ncycle89 n x = if n <= 0 then x else cycle90 (n - 1) (x + 1).\ncycle90 n x = if n <= 0 then x else cycle91 (n - 1) (x + 1).\ncycle91 n x = if n <= 0 then x else cycle92 (n - 1) (x + 1).\ncycle92 n x = if n <= 0 then x else cycle93 (n - 1) (x + 1).\ncycle93 n x = if n <= 0 then x else cycle94 (n - 1) (x + 1).\ncycle94 n x = if n <= 0 then x else cycle95 (n - 1) (x + 1).\ncycle95 n x = if n <= 0 then x else cycle96 (n - 1) (x + 1).\ncycle96 n x = if n <= 0 then x else cycle97 (n - 1) (x + 1).\ncycle97 n x = if n <= 0 then x else cycle98 (n - 1) (x + 1).\ncycle98 n x = if n <= 0 then x else cycle99 (n - 1) (x + 1).\ncycle99 n x = if n <= 0 then x else cycle100 (n - 1) (x + 1).\ncycle100 n x = if n <= 0 then x else cycle101 (n - 1) (x + 1).\ncycle101 n x = if n <= 0 then x else cycle102 (n - 1) (x + 1).\ncycle102 n x = if n <= 0 then x else cycle103 (n - 1) (x + 1).\ncycle103 n x = if n <= 0 then x else cycle104 (n - 1) (x + 1).\ncycle104 n x = if n <= 0 then x else cycle105 (n - 1) (x + 1).\ncycle105 n x = if n <= 0 then x else cycle106 (n - 1) (x + 1).\ncycle106 n x = if n <= 0 then x else cycle107 (n - 1) (x + 1).\ncycle107 n x = if n <= 0 then x else cycle108 (n - 1) (x + 1).\ncycle108 n x = if n <= 0 then x else cycle109 (n - 1) (x + 1).\ncycle109 n x = if n <= 0 then x else cycle110 (n - 1) (x + 1).\ncycle110 n x = if n <= 0 then x else cycle111 (n - 1) (x + 1).\ncycle111 n x = if n <= 0 then x else cycle112 (n - 1) (x + 1).\ncycle112 n x = if n <= 0 then x else cycle113 (n - 1) (x + 1).\ncycle113 n x = if n <= 0 then x else cycle114 (n - 1) (x + 1).\ncycle114 n x = if n <= 0 then x else cycle115 (n - 1) (x + 1).\ncycle115 n x = if n <= 0 then x else cycle116 (n - 1) (x + 1).\ncycle116 n x = if n <= 0 then x else cycle117 (n - 1) (x + 1).\ncycle117 n x = if n <= 0 then x else cycle118 (n - 1) (x + 1).\ncycle118 n x = if n <= 0 then x else cycle119 (n - 1) (x + 1).\ncycle119 n x = if n <= 0 then x else cycle120 (n - 1) (x + 1).\ncycle120 n x = if n <= 0 then x else cycle121 (n - 1) (x + 1).\ncycle121 n x = if n <= 0 then x else cycle122 (n - 1) (x + 1).\ncycle122 n x = if n <= 0 then x else cycle123 (n - 1) (x + 1).\ncycle123 n x = if n <= 0 then x else cycle124 (n - 1) (x + 1).\ncycle124 n x = if n <= 0 then x else cycle125 (n - 1) (x + 1).\ncycle125 n x = if n <= 0 then x else cycle126 (n - 1) (x + 1).\ncycle126 n x = if n <= 0 then x else cycle127 (n - 1) (x + 1).\ncycle127 n x = if n <= 0 then x else cycle128 (n - 1) (x + 1).\ncycle128 n x = if n <= 0 then x else cycle129 (n - 1) (x + 1).\ncycle129 n x = if n <= 0 then x else cycle130 (n - 1) (x + 1).\ncycle130 n x = if n <= 0 then x else cycle0 (n - 1) (x + 1).\n",
+        "cycle0 10000 x",
+        10000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "scalar-group",
+      "boxed",
+      [
+        "cycle0 n x = if n <= 0 then x else cycle1 (n - 1) (x + 1).\ncycle1 n x = if n <= 0 then x else cycle2 (n - 1) (x + 1).\ncycle2 n x = if n <= 0 then x else cycle3 (n - 1) (x + 1).\ncycle3 n x = if n <= 0 then x else cycle4 (n - 1) (x + 1).\ncycle4 n x = if n <= 0 then x else cycle5 (n - 1) (x + 1).\ncycle5 n x = if n <= 0 then x else cycle6 (n - 1) (x + 1).\ncycle6 n x = if n <= 0 then x else cycle7 (n - 1) (x + 1).\ncycle7 n x = if n <= 0 then x else cycle8 (n - 1) (x + 1).\ncycle8 n x = if n <= 0 then x else cycle9 (n - 1) (x + 1).\ncycle9 n x = if n <= 0 then x else cycle10 (n - 1) (x + 1).\ncycle10 n x = if n <= 0 then x else cycle11 (n - 1) (x + 1).\ncycle11 n x = if n <= 0 then x else cycle12 (n - 1) (x + 1).\ncycle12 n x = if n <= 0 then x else cycle13 (n - 1) (x + 1).\ncycle13 n x = if n <= 0 then x else cycle14 (n - 1) (x + 1).\ncycle14 n x = if n <= 0 then x else cycle15 (n - 1) (x + 1).\ncycle15 n x = if n <= 0 then x else cycle16 (n - 1) (x + 1).\ncycle16 n x = if n <= 0 then x else cycle17 (n - 1) (x + 1).\ncycle17 n x = if n <= 0 then x else cycle18 (n - 1) (x + 1).\ncycle18 n x = if n <= 0 then x else cycle19 (n - 1) (x + 1).\ncycle19 n x = if n <= 0 then x else cycle20 (n - 1) (x + 1).\ncycle20 n x = if n <= 0 then x else cycle21 (n - 1) (x + 1).\ncycle21 n x = if n <= 0 then x else cycle22 (n - 1) (x + 1).\ncycle22 n x = if n <= 0 then x else cycle23 (n - 1) (x + 1).\ncycle23 n x = if n <= 0 then x else cycle24 (n - 1) (x + 1).\ncycle24 n x = if n <= 0 then x else cycle25 (n - 1) (x + 1).\ncycle25 n x = if n <= 0 then x else cycle26 (n - 1) (x + 1).\ncycle26 n x = if n <= 0 then x else cycle27 (n - 1) (x + 1).\ncycle27 n x = if n <= 0 then x else cycle28 (n - 1) (x + 1).\ncycle28 n x = if n <= 0 then x else cycle29 (n - 1) (x + 1).\ncycle29 n x = if n <= 0 then x else cycle30 (n - 1) (x + 1).\ncycle30 n x = if n <= 0 then x else cycle31 (n - 1) (x + 1).\ncycle31 n x = if n <= 0 then x else cycle32 (n - 1) (x + 1).\ncycle32 n x = if n <= 0 then x else cycle33 (n - 1) (x + 1).\ncycle33 n x = if n <= 0 then x else cycle34 (n - 1) (x + 1).\ncycle34 n x = if n <= 0 then x else cycle35 (n - 1) (x + 1).\ncycle35 n x = if n <= 0 then x else cycle36 (n - 1) (x + 1).\ncycle36 n x = if n <= 0 then x else cycle37 (n - 1) (x + 1).\ncycle37 n x = if n <= 0 then x else cycle38 (n - 1) (x + 1).\ncycle38 n x = if n <= 0 then x else cycle39 (n - 1) (x + 1).\ncycle39 n x = if n <= 0 then x else cycle40 (n - 1) (x + 1).\ncycle40 n x = if n <= 0 then x else cycle41 (n - 1) (x + 1).\ncycle41 n x = if n <= 0 then x else cycle42 (n - 1) (x + 1).\ncycle42 n x = if n <= 0 then x else cycle43 (n - 1) (x + 1).\ncycle43 n x = if n <= 0 then x else cycle44 (n - 1) (x + 1).\ncycle44 n x = if n <= 0 then x else cycle45 (n - 1) (x + 1).\ncycle45 n x = if n <= 0 then x else cycle46 (n - 1) (x + 1).\ncycle46 n x = if n <= 0 then x else cycle47 (n - 1) (x + 1).\ncycle47 n x = if n <= 0 then x else cycle48 (n - 1) (x + 1).\ncycle48 n x = if n <= 0 then x else cycle49 (n - 1) (x + 1).\ncycle49 n x = if n <= 0 then x else cycle50 (n - 1) (x + 1).\ncycle50 n x = if n <= 0 then x else cycle51 (n - 1) (x + 1).\ncycle51 n x = if n <= 0 then x else cycle52 (n - 1) (x + 1).\ncycle52 n x = if n <= 0 then x else cycle53 (n - 1) (x + 1).\ncycle53 n x = if n <= 0 then x else cycle54 (n - 1) (x + 1).\ncycle54 n x = if n <= 0 then x else cycle55 (n - 1) (x + 1).\ncycle55 n x = if n <= 0 then x else cycle56 (n - 1) (x + 1).\ncycle56 n x = if n <= 0 then x else cycle57 (n - 1) (x + 1).\ncycle57 n x = if n <= 0 then x else cycle58 (n - 1) (x + 1).\ncycle58 n x = if n <= 0 then x else cycle59 (n - 1) (x + 1).\ncycle59 n x = if n <= 0 then x else cycle60 (n - 1) (x + 1).\ncycle60 n x = if n <= 0 then x else cycle61 (n - 1) (x + 1).\ncycle61 n x = if n <= 0 then x else cycle62 (n - 1) (x + 1).\ncycle62 n x = if n <= 0 then x else cycle63 (n - 1) (x + 1).\ncycle63 n x = if n <= 0 then x else cycle64 (n - 1) (x + 1).\ncycle64 n x = if n <= 0 then x else cycle65 (n - 1) (x + 1).\ncycle65 n x = if n <= 0 then x else cycle66 (n - 1) (x + 1).\ncycle66 n x = if n <= 0 then x else cycle67 (n - 1) (x + 1).\ncycle67 n x = if n <= 0 then x else cycle68 (n - 1) (x + 1).\ncycle68 n x = if n <= 0 then x else cycle69 (n - 1) (x + 1).\ncycle69 n x = if n <= 0 then x else cycle70 (n - 1) (x + 1).\ncycle70 n x = if n <= 0 then x else cycle71 (n - 1) (x + 1).\ncycle71 n x = if n <= 0 then x else cycle72 (n - 1) (x + 1).\ncycle72 n x = if n <= 0 then x else cycle73 (n - 1) (x + 1).\ncycle73 n x = if n <= 0 then x else cycle74 (n - 1) (x + 1).\ncycle74 n x = if n <= 0 then x else cycle75 (n - 1) (x + 1).\ncycle75 n x = if n <= 0 then x else cycle76 (n - 1) (x + 1).\ncycle76 n x = if n <= 0 then x else cycle77 (n - 1) (x + 1).\ncycle77 n x = if n <= 0 then x else cycle78 (n - 1) (x + 1).\ncycle78 n x = if n <= 0 then x else cycle79 (n - 1) (x + 1).\ncycle79 n x = if n <= 0 then x else cycle80 (n - 1) (x + 1).\ncycle80 n x = if n <= 0 then x else cycle81 (n - 1) (x + 1).\ncycle81 n x = if n <= 0 then x else cycle82 (n - 1) (x + 1).\ncycle82 n x = if n <= 0 then x else cycle83 (n - 1) (x + 1).\ncycle83 n x = if n <= 0 then x else cycle84 (n - 1) (x + 1).\ncycle84 n x = if n <= 0 then x else cycle85 (n - 1) (x + 1).\ncycle85 n x = if n <= 0 then x else cycle86 (n - 1) (x + 1).\ncycle86 n x = if n <= 0 then x else cycle87 (n - 1) (x + 1).\ncycle87 n x = if n <= 0 then x else cycle88 (n - 1) (x + 1).\ncycle88 n x = if n <= 0 then x else cycle89 (n - 1) (x + 1).\ncycle89 n x = if n <= 0 then x else cycle90 (n - 1) (x + 1).\ncycle90 n x = if n <= 0 then x else cycle91 (n - 1) (x + 1).\ncycle91 n x = if n <= 0 then x else cycle92 (n - 1) (x + 1).\ncycle92 n x = if n <= 0 then x else cycle93 (n - 1) (x + 1).\ncycle93 n x = if n <= 0 then x else cycle94 (n - 1) (x + 1).\ncycle94 n x = if n <= 0 then x else cycle95 (n - 1) (x + 1).\ncycle95 n x = if n <= 0 then x else cycle96 (n - 1) (x + 1).\ncycle96 n x = if n <= 0 then x else cycle97 (n - 1) (x + 1).\ncycle97 n x = if n <= 0 then x else cycle98 (n - 1) (x + 1).\ncycle98 n x = if n <= 0 then x else cycle99 (n - 1) (x + 1).\ncycle99 n x = if n <= 0 then x else cycle100 (n - 1) (x + 1).\ncycle100 n x = if n <= 0 then x else cycle101 (n - 1) (x + 1).\ncycle101 n x = if n <= 0 then x else cycle102 (n - 1) (x + 1).\ncycle102 n x = if n <= 0 then x else cycle103 (n - 1) (x + 1).\ncycle103 n x = if n <= 0 then x else cycle104 (n - 1) (x + 1).\ncycle104 n x = if n <= 0 then x else cycle105 (n - 1) (x + 1).\ncycle105 n x = if n <= 0 then x else cycle106 (n - 1) (x + 1).\ncycle106 n x = if n <= 0 then x else cycle107 (n - 1) (x + 1).\ncycle107 n x = if n <= 0 then x else cycle108 (n - 1) (x + 1).\ncycle108 n x = if n <= 0 then x else cycle109 (n - 1) (x + 1).\ncycle109 n x = if n <= 0 then x else cycle110 (n - 1) (x + 1).\ncycle110 n x = if n <= 0 then x else cycle111 (n - 1) (x + 1).\ncycle111 n x = if n <= 0 then x else cycle112 (n - 1) (x + 1).\ncycle112 n x = if n <= 0 then x else cycle113 (n - 1) (x + 1).\ncycle113 n x = if n <= 0 then x else cycle114 (n - 1) (x + 1).\ncycle114 n x = if n <= 0 then x else cycle115 (n - 1) (x + 1).\ncycle115 n x = if n <= 0 then x else cycle116 (n - 1) (x + 1).\ncycle116 n x = if n <= 0 then x else cycle117 (n - 1) (x + 1).\ncycle117 n x = if n <= 0 then x else cycle118 (n - 1) (x + 1).\ncycle118 n x = if n <= 0 then x else cycle119 (n - 1) (x + 1).\ncycle119 n x = if n <= 0 then x else cycle120 (n - 1) (x + 1).\ncycle120 n x = if n <= 0 then x else cycle121 (n - 1) (x + 1).\ncycle121 n x = if n <= 0 then x else cycle122 (n - 1) (x + 1).\ncycle122 n x = if n <= 0 then x else cycle123 (n - 1) (x + 1).\ncycle123 n x = if n <= 0 then x else cycle124 (n - 1) (x + 1).\ncycle124 n x = if n <= 0 then x else cycle125 (n - 1) (x + 1).\ncycle125 n x = if n <= 0 then x else cycle126 (n - 1) (x + 1).\ncycle126 n x = if n <= 0 then x else cycle127 (n - 1) (x + 1).\ncycle127 n x = if n <= 0 then x else cycle128 (n - 1) (x + 1).\ncycle128 n x = if n <= 0 then x else cycle129 (n - 1) (x + 1).\ncycle129 n x = if n <= 0 then x else cycle130 (n - 1) (x + 1).\ncycle130 n x = if n <= 0 then x else cycle0 (n - 1) (x + 1).\n",
+        "cycle0 10000 x",
+        10000
+      ],
+      {
+        "FPR_NO_SCALAR_WORKERS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "wide-scalar",
+      "default",
+      [
+        "wide64 n x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14 x15 x16 x17 x18 x19 x20 x21 x22 x23 x24 x25 x26 x27 x28 x29 x30 x31 x32 x33 x34 x35 x36 x37 x38 x39 x40 x41 x42 x43 x44 x45 x46 x47 x48 x49 x50 x51 x52 x53 x54 x55 x56 x57 x58 x59 x60 x61 x62 x63 = if n == (0 - 1) then 777 else if n <= 0 then 1 * x1 + 2 * x2 + 3 * x3 + 4 * (if x4 then 11 else (0 - 13)) + 5 * x5 + 6 * x6 + 7 * x7 + 8 * (if x8 then 11 else (0 - 13)) + 9 * x9 + 10 * x10 + 11 * x11 + 12 * (if x12 then 11 else (0 - 13)) + 13 * x13 + 14 * x14 + 15 * x15 + 16 * (if x16 then 11 else (0 - 13)) + 17 * x17 + 18 * x18 + 19 * x19 + 20 * (if x20 then 11 else (0 - 13)) + 21 * x21 + 22 * x22 + 23 * x23 + 24 * (if x24 then 11 else (0 - 13)) + 25 * x25 + 26 * x26 + 27 * x27 + 28 * (if x28 then 11 else (0 - 13)) + 29 * x29 + 30 * x30 + 31 * x31 + 32 * (if x32 then 11 else (0 - 13)) + 33 * x33 + 34 * x34 + 35 * x35 + 36 * (if x36 then 11 else (0 - 13)) + 37 * x37 + 38 * x38 + 39 * x39 + 40 * (if x40 then 11 else (0 - 13)) + 41 * x41 + 42 * x42 + 43 * x43 + 44 * (if x44 then 11 else (0 - 13)) + 45 * x45 + 46 * x46 + 47 * x47 + 48 * (if x48 then 11 else (0 - 13)) + 49 * x49 + 50 * x50 + 51 * x51 + 52 * (if x52 then 11 else (0 - 13)) + 53 * x53 + 54 * x54 + 55 * x55 + 56 * (if x56 then 11 else (0 - 13)) + 57 * x57 + 58 * x58 + 59 * x59 + 60 * (if x60 then 11 else (0 - 13)) + 61 * x61 + 62 * x62 + 63 * x63 else wide64 (n - 1) x2 x3 x5 x8 x6 x7 x9 x12 x10 x11 x13 x16 x14 x15 x17 x20 x18 x19 x21 x24 x22 x23 x25 x28 x26 x27 x29 x32 x30 x31 x33 x36 x34 x35 x37 x40 x38 x39 x41 x44 x42 x43 x45 x48 x46 x47 x49 x52 x50 x51 x53 x56 x54 x55 x57 x60 x58 x59 x61 x4 x62 x63 x1.\n",
+        "x + wide64 4051 5 12 19 False 33 40 47 True 61 68 75 False 89 96 103 False 117 124 131 True 145 152 159 False 173 180 187 False 201 208 215 True 229 236 243 False 257 264 271 False 285 292 299 True 313 320 327 False 341 348 355 False 369 376 383 True 397 404 411 False 425 432 439",
+        288272
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "wide-scalar",
+      "boxed",
+      [
+        "wide64 n x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14 x15 x16 x17 x18 x19 x20 x21 x22 x23 x24 x25 x26 x27 x28 x29 x30 x31 x32 x33 x34 x35 x36 x37 x38 x39 x40 x41 x42 x43 x44 x45 x46 x47 x48 x49 x50 x51 x52 x53 x54 x55 x56 x57 x58 x59 x60 x61 x62 x63 = if n == (0 - 1) then 777 else if n <= 0 then 1 * x1 + 2 * x2 + 3 * x3 + 4 * (if x4 then 11 else (0 - 13)) + 5 * x5 + 6 * x6 + 7 * x7 + 8 * (if x8 then 11 else (0 - 13)) + 9 * x9 + 10 * x10 + 11 * x11 + 12 * (if x12 then 11 else (0 - 13)) + 13 * x13 + 14 * x14 + 15 * x15 + 16 * (if x16 then 11 else (0 - 13)) + 17 * x17 + 18 * x18 + 19 * x19 + 20 * (if x20 then 11 else (0 - 13)) + 21 * x21 + 22 * x22 + 23 * x23 + 24 * (if x24 then 11 else (0 - 13)) + 25 * x25 + 26 * x26 + 27 * x27 + 28 * (if x28 then 11 else (0 - 13)) + 29 * x29 + 30 * x30 + 31 * x31 + 32 * (if x32 then 11 else (0 - 13)) + 33 * x33 + 34 * x34 + 35 * x35 + 36 * (if x36 then 11 else (0 - 13)) + 37 * x37 + 38 * x38 + 39 * x39 + 40 * (if x40 then 11 else (0 - 13)) + 41 * x41 + 42 * x42 + 43 * x43 + 44 * (if x44 then 11 else (0 - 13)) + 45 * x45 + 46 * x46 + 47 * x47 + 48 * (if x48 then 11 else (0 - 13)) + 49 * x49 + 50 * x50 + 51 * x51 + 52 * (if x52 then 11 else (0 - 13)) + 53 * x53 + 54 * x54 + 55 * x55 + 56 * (if x56 then 11 else (0 - 13)) + 57 * x57 + 58 * x58 + 59 * x59 + 60 * (if x60 then 11 else (0 - 13)) + 61 * x61 + 62 * x62 + 63 * x63 else wide64 (n - 1) x2 x3 x5 x8 x6 x7 x9 x12 x10 x11 x13 x16 x14 x15 x17 x20 x18 x19 x21 x24 x22 x23 x25 x28 x26 x27 x29 x32 x30 x31 x33 x36 x34 x35 x37 x40 x38 x39 x41 x44 x42 x43 x45 x48 x46 x47 x49 x52 x50 x51 x53 x56 x54 x55 x57 x60 x58 x59 x61 x4 x62 x63 x1.\n",
+        "x + wide64 4051 5 12 19 False 33 40 47 True 61 68 75 False 89 96 103 False 117 124 131 True 145 152 159 False 173 180 187 False 201 208 215 True 229 236 243 False 257 264 271 False 285 292 299 True 313 320 327 False 341 348 355 False 369 376 383 True 397 404 411 False 425 432 439",
+        288272
+      ],
+      {
+        "FPR_NO_SCALAR_WORKERS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "imported-carrier",
+      "default",
+      [
+        "Map = use \"std/map\".\nM = use \"tests/base/carrier_meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.pack n) m).\naddValue a key value = a + M.value value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\n",
+        "x + check 128",
+        16512
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "imported-carrier",
+      "boxed",
+      [
+        "Map = use \"std/map\".\nM = use \"tests/base/carrier_meters\".\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (M.pack n) m).\naddValue a key value = a + M.value value.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\n",
+        "x + check 128",
+        16512
+      ],
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-carrier",
+      "default",
+      [
+        "Map = use \"std/map\".\nMeters = Type (Meters Int).\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (Meters n) m).\naddValue a key value = case value of Meters x -> a + x.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\n",
+        "x + check 128",
+        16512
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-carrier",
+      "boxed",
+      [
+        "Map = use \"std/map\".\nMeters = Type (Meters Int).\nfill n m = if n <= 0 then m else fill (n - 1) (Map.insert n (Meters n) m).\naddValue a key value = case value of Meters x -> a + x.\ncheck n = m = fill n Map.ints; a = Map.fold addValue 0 m; Map.fold addValue a m.\n",
+        "x + check 128",
+        16512
+      ],
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-fields",
+      "default",
+      [
+        "Value = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nmake d n = if d <= 0 then Leaf else\n  left = make (d - 1) (n+1); right = make (d - 1) (n+2);\n  v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.\nscore t = case t of Leaf -> 0 | Branch l v r -> case v of\n  Plus x -> score l + x + score r | Minus x -> score l - x + score r.\nwork d x = t = make d 1; a = score t; x - a - score t.\n",
+        "work 11 x",
+        4
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-fields",
+      "boxed",
+      [
+        "Value = Type (Plus Int | Minus Int).\nTree = Type (Leaf | Branch Tree Value Tree).\nmake d n = if d <= 0 then Leaf else\n  left = make (d - 1) (n+1); right = make (d - 1) (n+2);\n  v = if n % 2 == 0 then Plus n else Minus n; Branch left v right.\nscore t = case t of Leaf -> 0 | Branch l v r -> case v of\n  Plus x -> score l + x + score r | Minus x -> score l - x + score r.\nwork d x = t = make d 1; a = score t; x - a - score t.\n",
+        "work 11 x",
+        4
+      ],
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-storage",
+      "default",
+      [
+        "Choice = Type (Plus Int | Minus Int).\nbuildCells n = if n <= 0 then [] else (if n % 2 == 0 then Plus n else Minus n) :: buildCells (n - 1).\nreadCells xs a = case xs of [] -> a | h :: tail -> case h of Plus v -> readCells tail (a+v) | Minus v -> readCells tail (a - v).\nwork n x = xs = buildCells n; a = readCells xs x; readCells xs a.\n",
+        "work 2000 x",
+        2000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-storage",
+      "boxed",
+      [
+        "Choice = Type (Plus Int | Minus Int).\nbuildCells n = if n <= 0 then [] else (if n % 2 == 0 then Plus n else Minus n) :: buildCells (n - 1).\nreadCells xs a = case xs of [] -> a | h :: tail -> case h of Plus v -> readCells tail (a+v) | Minus v -> readCells tail (a - v).\nwork n x = xs = buildCells n; a = readCells xs x; readCells xs a.\n",
+        "work 2000 x",
+        2000
+      ],
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-variant",
+      "default",
+      [
+        "Choice = Type (LeftCell Int | RightCell Int).\nchoose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then LeftCell n else RightCell (n+1).\nwork n x = if n <= 0 then x else case choose n of LeftCell y -> work (n - 1) (x+y) | RightCell y -> work (n - 1) (x - y).\n",
+        "work 10000 x",
+        0
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-variant",
+      "boxed",
+      [
+        "Choice = Type (LeftCell Int | RightCell Int).\nchoose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then LeftCell n else RightCell (n+1).\nwork n x = if n <= 0 then x else case choose n of LeftCell y -> work (n - 1) (x+y) | RightCell y -> work (n - 1) (x - y).\n",
+        "work 10000 x",
+        0
+      ],
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-transport",
+      "default",
+      [
+        "walk n p = if n <= 0 then p else walk (n - 1) p.\nwork n x = if n <= 0 then x else case walk 3 (x,1) of (a,b) -> work (n - 1) (a+b).\n",
+        "work 10000 x",
+        10000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "base-transport",
+      "boxed",
+      [
+        "walk n p = if n <= 0 then p else walk (n - 1) p.\nwork n x = if n <= 0 then x else case walk 3 (x,1) of (a,b) -> work (n - 1) (a+b).\n",
+        "work 10000 x",
+        10000
+      ],
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "nested-return",
+      "default",
+      [
+        "emitNested x = y0 = x + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; ((y31,1),(2,3)).\nwork n x = if n <= 0 then x else (case emitNested x of (a,b) -> case a of (p,q) -> case b of (r,s) -> work (n - 1) (p+q+r+s)).\n",
+        "work 10000 x",
+        380000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "nested-return",
+      "boxed",
+      [
+        "emitNested x = y0 = x + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; ((y31,1),(2,3)).\nwork n x = if n <= 0 then x else (case emitNested x of (a,b) -> case a of (p,q) -> case b of (r,s) -> work (n - 1) (p+q+r+s)).\n",
+        "work 10000 x",
+        380000
+      ],
+      {
+        "FPR_NO_PAIR_RETURNS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "wide-return",
+      "default",
+      [
+        "Cell = Type (Cell Int).\nwidePayload x = y0 = x + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; y32 = y31 + 1; y33 = y32 + 1; y34 = y33 + 1; y35 = y34 + 1; y36 = y35 + 1; y37 = y36 + 1; y38 = y37 + 1; y39 = y38 + 1; y40 = y39 + 1; y41 = y40 + 1; y42 = y41 + 1; y43 = y42 + 1; y44 = y43 + 1; y45 = y44 + 1; y46 = y45 + 1; y47 = y46 + 1; y48 = y47 + 1; y49 = y48 + 1; y50 = y49 + 1; y51 = y50 + 1; y52 = y51 + 1; y53 = y52 + 1; y54 = y53 + 1; y55 = y54 + 1; y56 = y55 + 1; y57 = y56 + 1; y58 = y57 + 1; y59 = y58 + 1; y60 = y59 + 1; y61 = y60 + 1; y62 = y61 + 1; y63 = y62 + 1; y64 = y63 + 1; y65 = y64 + 1; y66 = y65 + 1; y67 = y66 + 1; y68 = y67 + 1; y69 = y68 + 1; y70 = y69 + 1; y71 = y70 + 1; y72 = y71 + 1; y73 = y72 + 1; y74 = y73 + 1; y75 = y74 + 1; y76 = y75 + 1; y77 = y76 + 1; y78 = y77 + 1; y79 = y78 + 1; y80 = y79 + 1; y81 = y80 + 1; y82 = y81 + 1; y83 = y82 + 1; y84 = y83 + 1; y85 = y84 + 1; y86 = y85 + 1; y87 = y86 + 1; y88 = y87 + 1; y89 = y88 + 1; y90 = y89 + 1; y91 = y90 + 1; y92 = y91 + 1; y93 = y92 + 1; y94 = y93 + 1; y95 = y94 + 1; y96 = y95 + 1; y97 = y96 + 1; y98 = y97 + 1; y99 = y98 + 1; y100 = y99 + 1; y101 = y100 + 1; y102 = y101 + 1; y103 = y102 + 1; y104 = y103 + 1; y105 = y104 + 1; y106 = y105 + 1; y107 = y106 + 1; y108 = y107 + 1; y109 = y108 + 1; y110 = y109 + 1; y111 = y110 + 1; y112 = y111 + 1; y113 = y112 + 1; y114 = y113 + 1; y115 = y114 + 1; y116 = y115 + 1; y117 = y116 + 1; y118 = y117 + 1; y119 = y118 + 1; y120 = y119 + 1; y121 = y120 + 1; y122 = y121 + 1; y123 = y122 + 1; y124 = y123 + 1; y125 = y124 + 1; y126 = y125 + 1; y127 = y126 + 1; y128 = y127 + 1; y129 = y128 + 1; y130 = y129 + 1; y131 = y130 + 1; y132 = y131 + 1; y133 = y132 + 1; y134 = y133 + 1; y135 = y134 + 1; y136 = y135 + 1; y137 = y136 + 1; y138 = y137 + 1; y139 = y138 + 1; y140 = y139 + 1; y141 = y140 + 1; y142 = y141 + 1; y143 = y142 + 1; y144 = y143 + 1; y145 = y144 + 1; y146 = y145 + 1; y147 = y146 + 1; y148 = y147 + 1; y149 = y148 + 1; y150 = y149 + 1; y151 = y150 + 1; y152 = y151 + 1; y153 = y152 + 1; y154 = y153 + 1; y155 = y154 + 1; y156 = y155 + 1; y157 = y156 + 1; y158 = y157 + 1; y159 = y158 + 1; y160 = y159 + 1; y161 = y160 + 1; y162 = y161 + 1; y163 = y162 + 1; y164 = y163 + 1; y165 = y164 + 1; y166 = y165 + 1; y167 = y166 + 1; y168 = y167 + 1; y169 = y168 + 1; y170 = y169 + 1; y171 = y170 + 1; y172 = y171 + 1; y173 = y172 + 1; y174 = y173 + 1; y175 = y174 + 1; y176 = y175 + 1; y177 = y176 + 1; y178 = y177 + 1; y179 = y178 + 1; y180 = y179 + 1; y181 = y180 + 1; y182 = y181 + 1; y183 = y182 + 1; y184 = y183 + 1; y185 = y184 + 1; y186 = y185 + 1; y187 = y186 + 1; y188 = y187 + 1; y189 = y188 + 1; y190 = y189 + 1; y191 = y190 + 1; y192 = y191 + 1; y193 = y192 + 1; y194 = y193 + 1; y195 = y194 + 1; y196 = y195 + 1; y197 = y196 + 1; y198 = y197 + 1; y199 = y198 + 1; y200 = y199 + 1; y201 = y200 + 1; y202 = y201 + 1; y203 = y202 + 1; y204 = y203 + 1; y205 = y204 + 1; y206 = y205 + 1; y207 = y206 + 1; y208 = y207 + 1; y209 = y208 + 1; y210 = y209 + 1; y211 = y210 + 1; y212 = y211 + 1; y213 = y212 + 1; y214 = y213 + 1; y215 = y214 + 1; y216 = y215 + 1; y217 = y216 + 1; y218 = y217 + 1; y219 = y218 + 1; y220 = y219 + 1; y221 = y220 + 1; y222 = y221 + 1; y223 = y222 + 1; y224 = y223 + 1; y225 = y224 + 1; y226 = y225 + 1; y227 = y226 + 1; y228 = y227 + 1; y229 = y228 + 1; y230 = y229 + 1; y231 = y230 + 1; y232 = y231 + 1; y233 = y232 + 1; y234 = y233 + 1; y235 = y234 + 1; y236 = y235 + 1; y237 = y236 + 1; y238 = y237 + 1; y239 = y238 + 1; y240 = y239 + 1; y241 = y240 + 1; y242 = y241 + 1; y243 = y242 + 1; y244 = y243 + 1; y245 = y244 + 1; y246 = y245 + 1; y247 = y246 + 1; y248 = y247 + 1; y249 = y248 + 1; y250 = y249 + 1; y251 = y250 + 1; y252 = y251 + 1; y253 = y252 + 1; y254 = y253 + 1; y255 = y254 + 1; y256 = y255 + 1; y257 = y256 + 1; y258 = y257 + 1; y259 = y258 + 1; y260 = y259 + 1; y261 = y260 + 1; y262 = y261 + 1; y263 = y262 + 1; y264 = y263 + 1; y265 = y264 + 1; y266 = y265 + 1; y267 = y266 + 1; y268 = y267 + 1; y269 = y268 + 1; y270 = y269 + 1; y271 = y270 + 1; y272 = y271 + 1; y273 = y272 + 1; y274 = y273 + 1; y275 = y274 + 1; y276 = y275 + 1; y277 = y276 + 1; y278 = y277 + 1; y279 = y278 + 1; y280 = y279 + 1; y281 = y280 + 1; y282 = y281 + 1; y283 = y282 + 1; y284 = y283 + 1; y285 = y284 + 1; y286 = y285 + 1; y287 = y286 + 1; y288 = y287 + 1; y289 = y288 + 1; y290 = y289 + 1; y291 = y290 + 1; y292 = y291 + 1; y293 = y292 + 1; y294 = y293 + 1; y295 = y294 + 1; y296 = y295 + 1; y297 = y296 + 1; y298 = y297 + 1; y299 = y298 + 1; Cell y299.\nwork n x = if n <= 0 then x else (case widePayload x of Cell y -> work (n - 1) y).\n",
+        "work 1000 x",
+        300000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "wide-return",
+      "boxed",
+      [
+        "Cell = Type (Cell Int).\nwidePayload x = y0 = x + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; y32 = y31 + 1; y33 = y32 + 1; y34 = y33 + 1; y35 = y34 + 1; y36 = y35 + 1; y37 = y36 + 1; y38 = y37 + 1; y39 = y38 + 1; y40 = y39 + 1; y41 = y40 + 1; y42 = y41 + 1; y43 = y42 + 1; y44 = y43 + 1; y45 = y44 + 1; y46 = y45 + 1; y47 = y46 + 1; y48 = y47 + 1; y49 = y48 + 1; y50 = y49 + 1; y51 = y50 + 1; y52 = y51 + 1; y53 = y52 + 1; y54 = y53 + 1; y55 = y54 + 1; y56 = y55 + 1; y57 = y56 + 1; y58 = y57 + 1; y59 = y58 + 1; y60 = y59 + 1; y61 = y60 + 1; y62 = y61 + 1; y63 = y62 + 1; y64 = y63 + 1; y65 = y64 + 1; y66 = y65 + 1; y67 = y66 + 1; y68 = y67 + 1; y69 = y68 + 1; y70 = y69 + 1; y71 = y70 + 1; y72 = y71 + 1; y73 = y72 + 1; y74 = y73 + 1; y75 = y74 + 1; y76 = y75 + 1; y77 = y76 + 1; y78 = y77 + 1; y79 = y78 + 1; y80 = y79 + 1; y81 = y80 + 1; y82 = y81 + 1; y83 = y82 + 1; y84 = y83 + 1; y85 = y84 + 1; y86 = y85 + 1; y87 = y86 + 1; y88 = y87 + 1; y89 = y88 + 1; y90 = y89 + 1; y91 = y90 + 1; y92 = y91 + 1; y93 = y92 + 1; y94 = y93 + 1; y95 = y94 + 1; y96 = y95 + 1; y97 = y96 + 1; y98 = y97 + 1; y99 = y98 + 1; y100 = y99 + 1; y101 = y100 + 1; y102 = y101 + 1; y103 = y102 + 1; y104 = y103 + 1; y105 = y104 + 1; y106 = y105 + 1; y107 = y106 + 1; y108 = y107 + 1; y109 = y108 + 1; y110 = y109 + 1; y111 = y110 + 1; y112 = y111 + 1; y113 = y112 + 1; y114 = y113 + 1; y115 = y114 + 1; y116 = y115 + 1; y117 = y116 + 1; y118 = y117 + 1; y119 = y118 + 1; y120 = y119 + 1; y121 = y120 + 1; y122 = y121 + 1; y123 = y122 + 1; y124 = y123 + 1; y125 = y124 + 1; y126 = y125 + 1; y127 = y126 + 1; y128 = y127 + 1; y129 = y128 + 1; y130 = y129 + 1; y131 = y130 + 1; y132 = y131 + 1; y133 = y132 + 1; y134 = y133 + 1; y135 = y134 + 1; y136 = y135 + 1; y137 = y136 + 1; y138 = y137 + 1; y139 = y138 + 1; y140 = y139 + 1; y141 = y140 + 1; y142 = y141 + 1; y143 = y142 + 1; y144 = y143 + 1; y145 = y144 + 1; y146 = y145 + 1; y147 = y146 + 1; y148 = y147 + 1; y149 = y148 + 1; y150 = y149 + 1; y151 = y150 + 1; y152 = y151 + 1; y153 = y152 + 1; y154 = y153 + 1; y155 = y154 + 1; y156 = y155 + 1; y157 = y156 + 1; y158 = y157 + 1; y159 = y158 + 1; y160 = y159 + 1; y161 = y160 + 1; y162 = y161 + 1; y163 = y162 + 1; y164 = y163 + 1; y165 = y164 + 1; y166 = y165 + 1; y167 = y166 + 1; y168 = y167 + 1; y169 = y168 + 1; y170 = y169 + 1; y171 = y170 + 1; y172 = y171 + 1; y173 = y172 + 1; y174 = y173 + 1; y175 = y174 + 1; y176 = y175 + 1; y177 = y176 + 1; y178 = y177 + 1; y179 = y178 + 1; y180 = y179 + 1; y181 = y180 + 1; y182 = y181 + 1; y183 = y182 + 1; y184 = y183 + 1; y185 = y184 + 1; y186 = y185 + 1; y187 = y186 + 1; y188 = y187 + 1; y189 = y188 + 1; y190 = y189 + 1; y191 = y190 + 1; y192 = y191 + 1; y193 = y192 + 1; y194 = y193 + 1; y195 = y194 + 1; y196 = y195 + 1; y197 = y196 + 1; y198 = y197 + 1; y199 = y198 + 1; y200 = y199 + 1; y201 = y200 + 1; y202 = y201 + 1; y203 = y202 + 1; y204 = y203 + 1; y205 = y204 + 1; y206 = y205 + 1; y207 = y206 + 1; y208 = y207 + 1; y209 = y208 + 1; y210 = y209 + 1; y211 = y210 + 1; y212 = y211 + 1; y213 = y212 + 1; y214 = y213 + 1; y215 = y214 + 1; y216 = y215 + 1; y217 = y216 + 1; y218 = y217 + 1; y219 = y218 + 1; y220 = y219 + 1; y221 = y220 + 1; y222 = y221 + 1; y223 = y222 + 1; y224 = y223 + 1; y225 = y224 + 1; y226 = y225 + 1; y227 = y226 + 1; y228 = y227 + 1; y229 = y228 + 1; y230 = y229 + 1; y231 = y230 + 1; y232 = y231 + 1; y233 = y232 + 1; y234 = y233 + 1; y235 = y234 + 1; y236 = y235 + 1; y237 = y236 + 1; y238 = y237 + 1; y239 = y238 + 1; y240 = y239 + 1; y241 = y240 + 1; y242 = y241 + 1; y243 = y242 + 1; y244 = y243 + 1; y245 = y244 + 1; y246 = y245 + 1; y247 = y246 + 1; y248 = y247 + 1; y249 = y248 + 1; y250 = y249 + 1; y251 = y250 + 1; y252 = y251 + 1; y253 = y252 + 1; y254 = y253 + 1; y255 = y254 + 1; y256 = y255 + 1; y257 = y256 + 1; y258 = y257 + 1; y259 = y258 + 1; y260 = y259 + 1; y261 = y260 + 1; y262 = y261 + 1; y263 = y262 + 1; y264 = y263 + 1; y265 = y264 + 1; y266 = y265 + 1; y267 = y266 + 1; y268 = y267 + 1; y269 = y268 + 1; y270 = y269 + 1; y271 = y270 + 1; y272 = y271 + 1; y273 = y272 + 1; y274 = y273 + 1; y275 = y274 + 1; y276 = y275 + 1; y277 = y276 + 1; y278 = y277 + 1; y279 = y278 + 1; y280 = y279 + 1; y281 = y280 + 1; y282 = y281 + 1; y283 = y282 + 1; y284 = y283 + 1; y285 = y284 + 1; y286 = y285 + 1; y287 = y286 + 1; y288 = y287 + 1; y289 = y288 + 1; y290 = y289 + 1; y291 = y290 + 1; y292 = y291 + 1; y293 = y292 + 1; y294 = y293 + 1; y295 = y294 + 1; y296 = y295 + 1; y297 = y296 + 1; y298 = y297 + 1; y299 = y298 + 1; Cell y299.\nwork n x = if n <= 0 then x else (case widePayload x of Cell y -> work (n - 1) y).\n",
+        "work 1000 x",
+        300000
+      ],
+      {
+        "FPR_NO_PAIR_RETURNS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "helper-guard",
+      "default",
+      [
+        "Cell a = Type (Cell a).\nbumpGuard c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 c12 c13 c14 c15 = case c0 of Cell x0 -> case c1 of Cell x1 -> case c2 of Cell x2 -> case c3 of Cell x3 -> case c4 of Cell x4 -> case c5 of Cell x5 -> case c6 of Cell x6 -> case c7 of Cell x7 -> case c8 of Cell x8 -> case c9 of Cell x9 -> case c10 of Cell x10 -> case c11 of Cell x11 -> case c12 of Cell x12 -> case c13 of Cell x13 -> case c14 of Cell x14 -> case c15 of Cell x15 -> y0 = x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15 + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; y31.\nwork n x = if n <= 0 then x else work (n - 1) (if n % 2 == 0 then bumpGuard (Cell x) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) else (schedProbeOpaque bumpGuard) (Cell x) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0)).\n",
+        "work 10000 x",
+        320000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "helper-guard",
+      "boxed",
+      [
+        "Cell a = Type (Cell a).\nbumpGuard c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 c12 c13 c14 c15 = case c0 of Cell x0 -> case c1 of Cell x1 -> case c2 of Cell x2 -> case c3 of Cell x3 -> case c4 of Cell x4 -> case c5 of Cell x5 -> case c6 of Cell x6 -> case c7 of Cell x7 -> case c8 of Cell x8 -> case c9 of Cell x9 -> case c10 of Cell x10 -> case c11 of Cell x11 -> case c12 of Cell x12 -> case c13 of Cell x13 -> case c14 of Cell x14 -> case c15 of Cell x15 -> y0 = x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15 + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; y31.\nwork n x = if n <= 0 then x else work (n - 1) (if n % 2 == 0 then bumpGuard (Cell x) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) else (schedProbeOpaque bumpGuard) (Cell x) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0) (Cell 0)).\n",
+        "work 10000 x",
+        320000
+      ],
+      {
+        "FPR_NO_FIELD_WORKERS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "helper-deep",
+      "default",
+      [
+        "Cell a = Type (Cell a).\nbumpDeep a = case a of Cell x0 -> case x0 of Cell x1 -> case x1 of Cell x2 -> case x2 of Cell x3 -> case x3 of Cell x4 -> case x4 of Cell x5 -> case x5 of Cell x6 -> case x6 of Cell x7 -> y0 = x7 + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; y31.\nwork n x = if n <= 0 then x else work (n - 1) (bumpDeep (Cell (Cell (Cell (Cell (Cell (Cell (Cell (Cell x))))))))).\n",
+        "work 10000 x",
+        320000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "helper-deep",
+      "boxed",
+      [
+        "Cell a = Type (Cell a).\nbumpDeep a = case a of Cell x0 -> case x0 of Cell x1 -> case x1 of Cell x2 -> case x2 of Cell x3 -> case x3 of Cell x4 -> case x4 of Cell x5 -> case x5 of Cell x6 -> case x6 of Cell x7 -> y0 = x7 + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; y31.\nwork n x = if n <= 0 then x else work (n - 1) (bumpDeep (Cell (Cell (Cell (Cell (Cell (Cell (Cell (Cell x))))))))).\n",
+        "work 10000 x",
+        320000
+      ],
+      {
+        "FPR_NO_FIELD_WORKERS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "helper-return",
+      "default",
+      [
+        "Cell = Type (Cell Int).\nemitPayload x = y0 = x + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; Cell y31.\nwork n x = if n <= 0 then x else (case emitPayload x of Cell y -> work (n - 1) y).\n",
+        "work 10000 x",
+        320000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "helper-return",
+      "boxed",
+      [
+        "Cell = Type (Cell Int).\nemitPayload x = y0 = x + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; Cell y31.\nwork n x = if n <= 0 then x else (case emitPayload x of Cell y -> work (n - 1) y).\n",
+        "work 10000 x",
+        320000
+      ],
+      {
+        "FPR_NO_PAIR_RETURNS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "helper-tree",
+      "default",
+      [
+        "Cell = Type (Cell Int).\nNest = Type (Nest Cell).\nbumpTree a b = case a of Nest innerA -> case innerA of Cell x -> case b of Nest innerB -> case innerB of Cell y -> y0 = x + y + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; y31.\nwork n x = if n <= 0 then x else work (n - 1) (bumpTree (Nest (Cell x)) (Nest (Cell 0))).\n",
+        "work 10000 x",
+        320000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "helper-tree",
+      "boxed",
+      [
+        "Cell = Type (Cell Int).\nNest = Type (Nest Cell).\nbumpTree a b = case a of Nest innerA -> case innerA of Cell x -> case b of Nest innerB -> case innerB of Cell y -> y0 = x + y + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; y31.\nwork n x = if n <= 0 then x else work (n - 1) (bumpTree (Nest (Cell x)) (Nest (Cell 0))).\n",
+        "work 10000 x",
+        320000
+      ],
+      {
+        "FPR_NO_FIELD_WORKERS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "helper",
+      "default",
+      [
+        "Cell = Type (Cell Int).\nbumpCell c = case c of Cell x -> y0 = x + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; y31.\nwork n x = if n <= 0 then x else work (n - 1) (bumpCell (Cell x)).\n",
+        "work 10000 x",
+        320000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "helper",
+      "boxed",
+      [
+        "Cell = Type (Cell Int).\nbumpCell c = case c of Cell x -> y0 = x + 1; y1 = y0 + 1; y2 = y1 + 1; y3 = y2 + 1; y4 = y3 + 1; y5 = y4 + 1; y6 = y5 + 1; y7 = y6 + 1; y8 = y7 + 1; y9 = y8 + 1; y10 = y9 + 1; y11 = y10 + 1; y12 = y11 + 1; y13 = y12 + 1; y14 = y13 + 1; y15 = y14 + 1; y16 = y15 + 1; y17 = y16 + 1; y18 = y17 + 1; y19 = y18 + 1; y20 = y19 + 1; y21 = y20 + 1; y22 = y21 + 1; y23 = y22 + 1; y24 = y23 + 1; y25 = y24 + 1; y26 = y25 + 1; y27 = y26 + 1; y28 = y27 + 1; y29 = y28 + 1; y30 = y29 + 1; y31 = y30 + 1; y31.\nwork n x = if n <= 0 then x else work (n - 1) (bumpCell (Cell x)).\n",
+        "work 10000 x",
+        320000
+      ],
+      {
+        "FPR_NO_FIELD_WORKERS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "wrapper",
+      "default",
+      [
+        "Cell = Type (Cell Int).\nwork n c = case c of Cell x -> if n <= 0 then x else work (n - 1) (Cell (x + 1)).\n",
+        "work 10000 (Cell x)",
+        10000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "wrapper",
+      "boxed",
+      [
+        "Cell = Type (Cell Int).\nwork n c = case c of Cell x -> if n <= 0 then x else work (n - 1) (Cell (x + 1)).\n",
+        "work 10000 (Cell x)",
+        10000
+      ],
+      {
+        "FPR_NO_FIELD_WORKERS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "product",
+      "default",
+      [
+        "work n c = case c of (a,b,c,d) -> if n <= 0 then a + b + c + d else work (n - 1) (a + 1,b + 1,c + 1,d + 1).\n",
+        "work 10000 (x,0,0,0)",
+        40000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "product",
+      "boxed",
+      [
+        "work n c = case c of (a,b,c,d) -> if n <= 0 then a + b + c + d else work (n - 1) (a + 1,b + 1,c + 1,d + 1).\n",
+        "work 10000 (x,0,0,0)",
+        40000
+      ],
+      {
+        "FPR_NO_FIELD_WORKERS": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "list",
+      "default",
+      [
+        "List = use \"std/list\".\n",
+        "x + List.sum (List.range 1 10000)",
+        50005000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "list",
+      "unfused",
+      [
+        "List = use \"std/list\".\n",
+        "x + List.sum (List.range 1 10000)",
+        50005000
+      ],
+      {
+        "FPR_NO_LIST_FUSE": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "list",
+      "unbatched",
+      [
+        "List = use \"std/list\".\n",
+        "x + List.sum (List.range 1 10000)",
+        50005000
+      ],
+      {
+        "FPR_NO_TICK_BATCH": "1"
+      },
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ],
+    [
+      "copy",
+      "default",
+      [
+        "work n x = if n <= 0 then x else work (n - 1) (x + 1).\n",
+        "work 10000 x",
+        10000
+      ],
+      {},
+      "@ROOT@/tests/base/scheduler_probe.c"
+    ]
+  ],
+  "cases": [
+    [
+      "base-transport",
+      "transport-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "2\n11\n7\n22\n2\n1\n0\n11\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "2\n11\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "2\n11\n10\n",
+          "Int overflow"
+        ],
+        [
+          "observe",
+          [
+            "observe"
+          ],
+          "(4, 5)\n(4, 5)\n9\n",
+          null
+        ],
+        [
+          "other",
+          [
+            "other"
+          ],
+          "10\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "([2, 1], [3, 2, 1], [4, 3, 2, 1])\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "active-region-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "variant-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "single",
+          [
+            "single"
+          ],
+          "9\n10\n",
+          null
+        ],
+        [
+          "double",
+          [
+            "double"
+          ],
+          "5\n8\n7\n",
+          null
+        ],
+        [
+          "mutual",
+          [
+            "mutual"
+          ],
+          "2\n8\n4\n",
+          null
+        ],
+        [
+          "other",
+          [
+            "other"
+          ],
+          "7\n7\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "width",
+          [
+            "width"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "unused-overflow",
+          [
+            "unused-overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "unused-division",
+          [
+            "unused-division"
+          ],
+          "7\n8\n",
+          "division by zero"
+        ],
+        [
+          "max-success",
+          [
+            "max-success"
+          ],
+          "4611686018427387902\n4611686018427387903\n10\n4611686018427387902\n",
+          null
+        ],
+        [
+          "min-success",
+          [
+            "min-success"
+          ],
+          "-4611686018427387904\n-4611686018427387903\n5\n-4611686018427387904\n",
+          null
+        ],
+        [
+          "wide-fallback",
+          [
+            "wide-fallback"
+          ],
+          "6\n",
+          null
+        ],
+        [
+          "mixed",
+          [
+            "mixed"
+          ],
+          "5\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "5\n8\nDouble 5 True\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Wide 4 5 4 4 4 4 6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-effects-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "effects",
+          [
+            "effects"
+          ],
+          "3\n2\n1\n6\n7\n8\n21\n",
+          null
+        ],
+        [
+          "divide",
+          [
+            "divide"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "observes",
+          [
+            "observes"
+          ],
+          "Meters 1\nMeters 2\n3\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 2\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-arena-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "arena",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-region-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "arena-copy",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-controls-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "order",
+          [
+            "order"
+          ],
+          "Meters 1\nMeters 2\nMeters 3\n3\n",
+          null
+        ],
+        [
+          "trap",
+          [
+            "trap"
+          ],
+          "1\n2\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "partial",
+          [
+            "partial"
+          ],
+          "",
+          "no matching meter"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 3\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-region-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "16382\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "fields-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "prior",
+          [
+            "prior"
+          ],
+          "7\n",
+          "division by zero"
+        ],
+        [
+          "later",
+          [
+            "later"
+          ],
+          "7\n20\n",
+          "Int overflow"
+        ],
+        [
+          "branch",
+          [
+            "branch"
+          ],
+          "7\n10\n5\n20\n",
+          null
+        ],
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "4072\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "0\n10\n4\n-28\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "0\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "0\n20\n",
+          "Int overflow"
+        ],
+        [
+          "lower",
+          [
+            "lower"
+          ],
+          "0\n20\n-4611686018427387903\n-40\n",
+          null
+        ],
+        [
+          "bundle",
+          [
+            "bundle"
+          ],
+          "40\n",
+          null
+        ],
+        [
+          "stop",
+          [
+            "stop"
+          ],
+          "16\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "2\nBranch Leaf (Plus 2) Leaf\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "Branch Leaf (Minus 1) Leaf\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "-1\nBranch Leaf (Minus 1) Leaf\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "storage-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "3\n5\n3\n25\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "3\n5\n3\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "wide",
+          [
+            "wide"
+          ],
+          "44\n",
+          null
+        ],
+        [
+          "eight",
+          [
+            "eight"
+          ],
+          "54\n",
+          null
+        ],
+        [
+          "over",
+          [
+            "over"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "heap",
+          [
+            "heap"
+          ],
+          "6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "shared-region-0-0-0",
+      false,
+      false,
+      null,
+      null,
+      [
+        [
+          "shared-region",
+          [],
+          "12000\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "lifetime",
+      "lifetime-0-0-0",
+      false,
+      false,
+      false
+    ],
+    [
+      "nested-return",
+      "nested-0-0-0",
+      false,
+      false,
+      false,
+      {
+        "pairs": "2008000\n",
+        "cells": "500500\n",
+        "eight": "25\n",
+        "nine": "39\n",
+        "inner": "(7, 8)\n",
+        "outer": "((7, 8), (9, 10))\n",
+        "actor": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+        "closure": "19790\n",
+        "effect": "1\n3\n5\n4\n1\n",
+        "endpoint": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+        "division": "1\n4611686018427387903\n",
+        "overflow": "1\n4611686018427387903\n10\n",
+        "underflow": ""
+      }
+    ],
+    [
+      "base-transport",
+      "transport-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "2\n11\n7\n22\n2\n1\n0\n11\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "2\n11\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "2\n11\n10\n",
+          "Int overflow"
+        ],
+        [
+          "observe",
+          [
+            "observe"
+          ],
+          "(4, 5)\n(4, 5)\n9\n",
+          null
+        ],
+        [
+          "other",
+          [
+            "other"
+          ],
+          "10\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "([2, 1], [3, 2, 1], [4, 3, 2, 1])\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "active-region-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "variant-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "single",
+          [
+            "single"
+          ],
+          "9\n10\n",
+          null
+        ],
+        [
+          "double",
+          [
+            "double"
+          ],
+          "5\n8\n7\n",
+          null
+        ],
+        [
+          "mutual",
+          [
+            "mutual"
+          ],
+          "2\n8\n4\n",
+          null
+        ],
+        [
+          "other",
+          [
+            "other"
+          ],
+          "7\n7\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "width",
+          [
+            "width"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "unused-overflow",
+          [
+            "unused-overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "unused-division",
+          [
+            "unused-division"
+          ],
+          "7\n8\n",
+          "division by zero"
+        ],
+        [
+          "max-success",
+          [
+            "max-success"
+          ],
+          "4611686018427387902\n4611686018427387903\n10\n4611686018427387902\n",
+          null
+        ],
+        [
+          "min-success",
+          [
+            "min-success"
+          ],
+          "-4611686018427387904\n-4611686018427387903\n5\n-4611686018427387904\n",
+          null
+        ],
+        [
+          "wide-fallback",
+          [
+            "wide-fallback"
+          ],
+          "6\n",
+          null
+        ],
+        [
+          "mixed",
+          [
+            "mixed"
+          ],
+          "5\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "5\n8\nDouble 5 True\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Wide 4 5 4 4 4 4 6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-effects-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "effects",
+          [
+            "effects"
+          ],
+          "3\n2\n1\n6\n7\n8\n21\n",
+          null
+        ],
+        [
+          "divide",
+          [
+            "divide"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "observes",
+          [
+            "observes"
+          ],
+          "Meters 1\nMeters 2\n3\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 2\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-arena-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "arena",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-region-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "arena-copy",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-controls-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "order",
+          [
+            "order"
+          ],
+          "Meters 1\nMeters 2\nMeters 3\n3\n",
+          null
+        ],
+        [
+          "trap",
+          [
+            "trap"
+          ],
+          "1\n2\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "partial",
+          [
+            "partial"
+          ],
+          "",
+          "no matching meter"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 3\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-region-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "16382\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "fields-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "prior",
+          [
+            "prior"
+          ],
+          "7\n",
+          "division by zero"
+        ],
+        [
+          "later",
+          [
+            "later"
+          ],
+          "7\n20\n",
+          "Int overflow"
+        ],
+        [
+          "branch",
+          [
+            "branch"
+          ],
+          "7\n10\n5\n20\n",
+          null
+        ],
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "4072\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "0\n10\n4\n-28\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "0\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "0\n20\n",
+          "Int overflow"
+        ],
+        [
+          "lower",
+          [
+            "lower"
+          ],
+          "0\n20\n-4611686018427387903\n-40\n",
+          null
+        ],
+        [
+          "bundle",
+          [
+            "bundle"
+          ],
+          "40\n",
+          null
+        ],
+        [
+          "stop",
+          [
+            "stop"
+          ],
+          "16\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "2\nBranch Leaf (Plus 2) Leaf\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "Branch Leaf (Minus 1) Leaf\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "-1\nBranch Leaf (Minus 1) Leaf\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "storage-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "3\n5\n3\n25\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "3\n5\n3\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "wide",
+          [
+            "wide"
+          ],
+          "44\n",
+          null
+        ],
+        [
+          "eight",
+          [
+            "eight"
+          ],
+          "54\n",
+          null
+        ],
+        [
+          "over",
+          [
+            "over"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "heap",
+          [
+            "heap"
+          ],
+          "6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "shared-region-0-0-1",
+      false,
+      true,
+      null,
+      null,
+      [
+        [
+          "shared-region",
+          [],
+          "12000\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "lifetime",
+      "lifetime-0-0-1",
+      false,
+      false,
+      true
+    ],
+    [
+      "nested-return",
+      "nested-0-0-1",
+      false,
+      false,
+      true,
+      {
+        "pairs": "2008000\n",
+        "cells": "500500\n",
+        "eight": "25\n",
+        "nine": "39\n",
+        "inner": "(7, 8)\n",
+        "outer": "((7, 8), (9, 10))\n",
+        "actor": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+        "closure": "19790\n",
+        "effect": "1\n3\n5\n4\n1\n",
+        "endpoint": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+        "division": "1\n4611686018427387903\n",
+        "overflow": "1\n4611686018427387903\n10\n",
+        "underflow": ""
+      }
+    ],
+    [
+      "base-transport",
+      "transport-0-1-0",
+      false,
+      false,
+      2000,
+      null,
+      [
+        [
+          "allocation",
+          [],
+          "1502511\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "variant-0-1-0",
+      false,
+      false,
+      1000,
+      null,
+      [
+        [
+          "allocation",
+          [],
+          "0\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-constructor-0-1-0",
+      false,
+      false,
+      6136,
+      368112,
+      [
+        [
+          "constructor",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-api-0-1-0",
+      false,
+      false,
+      6136,
+      368112,
+      [
+        [
+          "api",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-0-1-0",
+      false,
+      false,
+      6136,
+      368112,
+      [
+        [
+          "allocation",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-0-1-0",
+      false,
+      false,
+      2046,
+      null,
+      [
+        [
+          "tree",
+          [],
+          "-2\n5\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "scalar-wrapper-0-1-0",
+      false,
+      false,
+      2000,
+      null,
+      [
+        [
+          "scalar-wrapper",
+          [],
+          "500511\n500517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "variant-list-0-1-0",
+      false,
+      false,
+      2000,
+      null,
+      [
+        [
+          "variant-list",
+          [],
+          "511\n517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "lifetime",
+      "lifetime-0-1-0",
+      false,
+      true,
+      false
+    ],
+    [
+      "nested-return",
+      "nested-0-1-0",
+      false,
+      true,
+      false,
+      {
+        "pairs": "2008000\n",
+        "cells": "500500\n",
+        "eight": "25\n",
+        "nine": "39\n",
+        "inner": "(7, 8)\n",
+        "outer": "((7, 8), (9, 10))\n",
+        "actor": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+        "closure": "19790\n",
+        "effect": "1\n3\n5\n4\n1\n",
+        "endpoint": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+        "division": "1\n4611686018427387903\n",
+        "overflow": "1\n4611686018427387903\n10\n",
+        "underflow": ""
+      }
+    ],
+    [
+      "base-transport",
+      "transport-0-1-1",
+      false,
+      true,
+      0,
+      null,
+      [
+        [
+          "allocation",
+          [],
+          "1502511\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "variant-0-1-1",
+      false,
+      true,
+      0,
+      null,
+      [
+        [
+          "allocation",
+          [],
+          "0\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-constructor-0-1-1",
+      false,
+      true,
+      5624,
+      351728,
+      [
+        [
+          "constructor",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-api-0-1-1",
+      false,
+      true,
+      5624,
+      351728,
+      [
+        [
+          "api",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier-explicit",
+      "import-explicit-0-1-1",
+      false,
+      true,
+      5624,
+      351728,
+      [
+        [
+          "explicit",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-0-1-1",
+      false,
+      true,
+      5624,
+      351728,
+      [
+        [
+          "allocation",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier-explicit",
+      "map-explicit-0-1-1",
+      false,
+      true,
+      5624,
+      351728,
+      [
+        [
+          "explicit",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-0-1-1",
+      false,
+      true,
+      1023,
+      null,
+      [
+        [
+          "tree",
+          [],
+          "-2\n5\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "scalar-wrapper-0-1-1",
+      false,
+      true,
+      1000,
+      null,
+      [
+        [
+          "scalar-wrapper",
+          [],
+          "500511\n500517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "variant-list-0-1-1",
+      false,
+      true,
+      1000,
+      null,
+      [
+        [
+          "variant-list",
+          [],
+          "511\n517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "lifetime",
+      "lifetime-0-1-1",
+      false,
+      true,
+      true
+    ],
+    [
+      "nested-return",
+      "nested-0-1-1",
+      false,
+      true,
+      true,
+      {
+        "pairs": "2008000\n",
+        "cells": "500500\n",
+        "eight": "25\n",
+        "nine": "39\n",
+        "inner": "(7, 8)\n",
+        "outer": "((7, 8), (9, 10))\n",
+        "actor": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+        "closure": "19790\n",
+        "effect": "1\n3\n5\n4\n1\n",
+        "endpoint": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+        "division": "1\n4611686018427387903\n",
+        "overflow": "1\n4611686018427387903\n10\n",
+        "underflow": ""
+      }
+    ],
+    [
+      "base-transport",
+      "transport-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "2\n11\n7\n22\n2\n1\n0\n11\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "2\n11\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "2\n11\n10\n",
+          "Int overflow"
+        ],
+        [
+          "observe",
+          [
+            "observe"
+          ],
+          "(4, 5)\n(4, 5)\n9\n",
+          null
+        ],
+        [
+          "other",
+          [
+            "other"
+          ],
+          "10\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "([2, 1], [3, 2, 1], [4, 3, 2, 1])\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "active-region-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "variant-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "single",
+          [
+            "single"
+          ],
+          "9\n10\n",
+          null
+        ],
+        [
+          "double",
+          [
+            "double"
+          ],
+          "5\n8\n7\n",
+          null
+        ],
+        [
+          "mutual",
+          [
+            "mutual"
+          ],
+          "2\n8\n4\n",
+          null
+        ],
+        [
+          "other",
+          [
+            "other"
+          ],
+          "7\n7\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "width",
+          [
+            "width"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "unused-overflow",
+          [
+            "unused-overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "unused-division",
+          [
+            "unused-division"
+          ],
+          "7\n8\n",
+          "division by zero"
+        ],
+        [
+          "max-success",
+          [
+            "max-success"
+          ],
+          "4611686018427387902\n4611686018427387903\n10\n4611686018427387902\n",
+          null
+        ],
+        [
+          "min-success",
+          [
+            "min-success"
+          ],
+          "-4611686018427387904\n-4611686018427387903\n5\n-4611686018427387904\n",
+          null
+        ],
+        [
+          "wide-fallback",
+          [
+            "wide-fallback"
+          ],
+          "6\n",
+          null
+        ],
+        [
+          "mixed",
+          [
+            "mixed"
+          ],
+          "5\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "5\n8\nDouble 5 True\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Wide 4 5 4 4 4 4 6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-effects-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "effects",
+          [
+            "effects"
+          ],
+          "3\n2\n1\n6\n7\n8\n21\n",
+          null
+        ],
+        [
+          "divide",
+          [
+            "divide"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "observes",
+          [
+            "observes"
+          ],
+          "Meters 1\nMeters 2\n3\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 2\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-arena-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "arena",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-region-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "arena-copy",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-controls-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "order",
+          [
+            "order"
+          ],
+          "Meters 1\nMeters 2\nMeters 3\n3\n",
+          null
+        ],
+        [
+          "trap",
+          [
+            "trap"
+          ],
+          "1\n2\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "partial",
+          [
+            "partial"
+          ],
+          "",
+          "no matching meter"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 3\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-region-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "16382\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "fields-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "prior",
+          [
+            "prior"
+          ],
+          "7\n",
+          "division by zero"
+        ],
+        [
+          "later",
+          [
+            "later"
+          ],
+          "7\n20\n",
+          "Int overflow"
+        ],
+        [
+          "branch",
+          [
+            "branch"
+          ],
+          "7\n10\n5\n20\n",
+          null
+        ],
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "4072\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "0\n10\n4\n-28\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "0\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "0\n20\n",
+          "Int overflow"
+        ],
+        [
+          "lower",
+          [
+            "lower"
+          ],
+          "0\n20\n-4611686018427387903\n-40\n",
+          null
+        ],
+        [
+          "bundle",
+          [
+            "bundle"
+          ],
+          "40\n",
+          null
+        ],
+        [
+          "stop",
+          [
+            "stop"
+          ],
+          "16\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "2\nBranch Leaf (Plus 2) Leaf\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "Branch Leaf (Minus 1) Leaf\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "-1\nBranch Leaf (Minus 1) Leaf\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "storage-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "3\n5\n3\n25\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "3\n5\n3\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "wide",
+          [
+            "wide"
+          ],
+          "44\n",
+          null
+        ],
+        [
+          "eight",
+          [
+            "eight"
+          ],
+          "54\n",
+          null
+        ],
+        [
+          "over",
+          [
+            "over"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "heap",
+          [
+            "heap"
+          ],
+          "6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "shared-region-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "shared-region",
+          [],
+          "12000\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "spines-1-0-0",
+      true,
+      false,
+      null,
+      null,
+      [
+        [
+          "deep",
+          [
+            "deep"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "widths",
+          [
+            "widths"
+          ],
+          "4\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "lifetime",
+      "lifetime-1-0-0",
+      true,
+      false,
+      false
+    ],
+    [
+      "nested-return",
+      "nested-1-0-0",
+      true,
+      false,
+      false,
+      {
+        "pairs": "2008000\n",
+        "cells": "500500\n",
+        "eight": "25\n",
+        "nine": "39\n",
+        "inner": "(7, 8)\n",
+        "outer": "((7, 8), (9, 10))\n",
+        "actor": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+        "closure": "19790\n",
+        "effect": "1\n3\n5\n4\n1\n",
+        "endpoint": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+        "division": "1\n4611686018427387903\n",
+        "overflow": "1\n4611686018427387903\n10\n",
+        "underflow": ""
+      }
+    ],
+    [
+      "base-transport",
+      "transport-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "2\n11\n7\n22\n2\n1\n0\n11\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "2\n11\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "2\n11\n10\n",
+          "Int overflow"
+        ],
+        [
+          "observe",
+          [
+            "observe"
+          ],
+          "(4, 5)\n(4, 5)\n9\n",
+          null
+        ],
+        [
+          "other",
+          [
+            "other"
+          ],
+          "10\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "([2, 1], [3, 2, 1], [4, 3, 2, 1])\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "active-region-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "variant-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "single",
+          [
+            "single"
+          ],
+          "9\n10\n",
+          null
+        ],
+        [
+          "double",
+          [
+            "double"
+          ],
+          "5\n8\n7\n",
+          null
+        ],
+        [
+          "mutual",
+          [
+            "mutual"
+          ],
+          "2\n8\n4\n",
+          null
+        ],
+        [
+          "other",
+          [
+            "other"
+          ],
+          "7\n7\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "width",
+          [
+            "width"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "unused-overflow",
+          [
+            "unused-overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "unused-division",
+          [
+            "unused-division"
+          ],
+          "7\n8\n",
+          "division by zero"
+        ],
+        [
+          "max-success",
+          [
+            "max-success"
+          ],
+          "4611686018427387902\n4611686018427387903\n10\n4611686018427387902\n",
+          null
+        ],
+        [
+          "min-success",
+          [
+            "min-success"
+          ],
+          "-4611686018427387904\n-4611686018427387903\n5\n-4611686018427387904\n",
+          null
+        ],
+        [
+          "wide-fallback",
+          [
+            "wide-fallback"
+          ],
+          "6\n",
+          null
+        ],
+        [
+          "mixed",
+          [
+            "mixed"
+          ],
+          "5\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "5\n8\nDouble 5 True\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Wide 4 5 4 4 4 4 6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-effects-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "effects",
+          [
+            "effects"
+          ],
+          "3\n2\n1\n6\n7\n8\n21\n",
+          null
+        ],
+        [
+          "divide",
+          [
+            "divide"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "observes",
+          [
+            "observes"
+          ],
+          "Meters 1\nMeters 2\n3\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "4611686018427387903\n",
+          "Int overflow"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 2\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-arena-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "arena",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-region-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "arena-copy",
+          [],
+          "1\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-controls-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "order",
+          [
+            "order"
+          ],
+          "Meters 1\nMeters 2\nMeters 3\n3\n",
+          null
+        ],
+        [
+          "trap",
+          [
+            "trap"
+          ],
+          "1\n2\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "partial",
+          [
+            "partial"
+          ],
+          "",
+          "no matching meter"
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "Meters 3\n",
+          null
+        ],
+        [
+          "ordinary",
+          [
+            "ordinary"
+          ],
+          "12\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-region-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "active-region",
+          [],
+          "16382\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "fields-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "prior",
+          [
+            "prior"
+          ],
+          "7\n",
+          "division by zero"
+        ],
+        [
+          "later",
+          [
+            "later"
+          ],
+          "7\n20\n",
+          "Int overflow"
+        ],
+        [
+          "branch",
+          [
+            "branch"
+          ],
+          "7\n10\n5\n20\n",
+          null
+        ],
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "4072\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "0\n",
+          null
+        ],
+        [
+          "ok",
+          [
+            "ok"
+          ],
+          "0\n10\n4\n-28\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "0\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "0\n20\n",
+          "Int overflow"
+        ],
+        [
+          "lower",
+          [
+            "lower"
+          ],
+          "0\n20\n-4611686018427387903\n-40\n",
+          null
+        ],
+        [
+          "bundle",
+          [
+            "bundle"
+          ],
+          "40\n",
+          null
+        ],
+        [
+          "stop",
+          [
+            "stop"
+          ],
+          "16\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "2\nBranch Leaf (Plus 2) Leaf\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n",
+          null
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387904\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "Branch Leaf (Minus 1) Leaf\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "-1\nBranch Leaf (Minus 1) Leaf\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "storage-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "shared",
+          [
+            "shared"
+          ],
+          "3\n5\n3\n25\n",
+          null
+        ],
+        [
+          "empty",
+          [
+            "empty"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "division",
+          [
+            "division"
+          ],
+          "3\n",
+          "division by zero"
+        ],
+        [
+          "overflow",
+          [
+            "overflow"
+          ],
+          "",
+          "Int overflow"
+        ],
+        [
+          "min",
+          [
+            "min"
+          ],
+          "-4611686018427387903\n-4611686018427387903\n",
+          null
+        ],
+        [
+          "max",
+          [
+            "max"
+          ],
+          "4611686018427387903\n4611686018427387903\n",
+          null
+        ],
+        [
+          "escape",
+          [
+            "escape"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "closure",
+          [
+            "closure"
+          ],
+          "3\n5\n3\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "actor",
+          [
+            "actor"
+          ],
+          "3\n5\n3\n12\n[Move 3 5 True, Add 3, NothingHere]\n",
+          null
+        ],
+        [
+          "wide",
+          [
+            "wide"
+          ],
+          "44\n",
+          null
+        ],
+        [
+          "eight",
+          [
+            "eight"
+          ],
+          "54\n",
+          null
+        ],
+        [
+          "over",
+          [
+            "over"
+          ],
+          "12\n",
+          null
+        ],
+        [
+          "heap",
+          [
+            "heap"
+          ],
+          "6\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "shared-region-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "shared-region",
+          [],
+          "12000\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "spines-1-0-1",
+      true,
+      true,
+      null,
+      null,
+      [
+        [
+          "deep",
+          [
+            "deep"
+          ],
+          "1\n",
+          null
+        ],
+        [
+          "widths",
+          [
+            "widths"
+          ],
+          "4\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "lifetime",
+      "lifetime-1-0-1",
+      true,
+      false,
+      true
+    ],
+    [
+      "nested-return",
+      "nested-1-0-1",
+      true,
+      false,
+      true,
+      {
+        "pairs": "2008000\n",
+        "cells": "500500\n",
+        "eight": "25\n",
+        "nine": "39\n",
+        "inner": "(7, 8)\n",
+        "outer": "((7, 8), (9, 10))\n",
+        "actor": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+        "closure": "19790\n",
+        "effect": "1\n3\n5\n4\n1\n",
+        "endpoint": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+        "division": "1\n4611686018427387903\n",
+        "overflow": "1\n4611686018427387903\n10\n",
+        "underflow": ""
+      }
+    ],
+    [
+      "base-transport",
+      "transport-1-1-0",
+      true,
+      false,
+      2000,
+      null,
+      [
+        [
+          "allocation",
+          [],
+          "1502511\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "variant-1-1-0",
+      true,
+      false,
+      1000,
+      null,
+      [
+        [
+          "allocation",
+          [],
+          "0\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-constructor-1-1-0",
+      true,
+      false,
+      6137,
+      359968,
+      [
+        [
+          "constructor",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-api-1-1-0",
+      true,
+      false,
+      6137,
+      359968,
+      [
+        [
+          "api",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-1-1-0",
+      true,
+      false,
+      6137,
+      359968,
+      [
+        [
+          "allocation",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-1-1-0",
+      true,
+      false,
+      2046,
+      null,
+      [
+        [
+          "tree",
+          [],
+          "-2\n5\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "scalar-wrapper-1-1-0",
+      true,
+      false,
+      2000,
+      null,
+      [
+        [
+          "scalar-wrapper",
+          [],
+          "500511\n500517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "variant-list-1-1-0",
+      true,
+      false,
+      2000,
+      null,
+      [
+        [
+          "variant-list",
+          [],
+          "511\n517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "lifetime",
+      "lifetime-1-1-0",
+      true,
+      true,
+      false
+    ],
+    [
+      "nested-return",
+      "nested-1-1-0",
+      true,
+      true,
+      false,
+      {
+        "pairs": "2008000\n",
+        "cells": "500500\n",
+        "eight": "25\n",
+        "nine": "39\n",
+        "inner": "(7, 8)\n",
+        "outer": "((7, 8), (9, 10))\n",
+        "actor": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+        "closure": "19790\n",
+        "effect": "1\n3\n5\n4\n1\n",
+        "endpoint": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+        "division": "1\n4611686018427387903\n",
+        "overflow": "1\n4611686018427387903\n10\n",
+        "underflow": ""
+      }
+    ],
+    [
+      "base-transport",
+      "transport-1-1-1",
+      true,
+      true,
+      0,
+      null,
+      [
+        [
+          "allocation",
+          [],
+          "1502511\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-variant",
+      "variant-1-1-1",
+      true,
+      true,
+      0,
+      null,
+      [
+        [
+          "allocation",
+          [],
+          "0\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-constructor-1-1-1",
+      true,
+      true,
+      5625,
+      343584,
+      [
+        [
+          "constructor",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier",
+      "import-api-1-1-1",
+      true,
+      true,
+      5625,
+      343584,
+      [
+        [
+          "api",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "imported-carrier-explicit",
+      "import-explicit-1-1-1",
+      true,
+      true,
+      5625,
+      343584,
+      [
+        [
+          "explicit",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier",
+      "map-1-1-1",
+      true,
+      true,
+      5625,
+      343584,
+      [
+        [
+          "allocation",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-carrier-explicit",
+      "map-explicit-1-1-1",
+      true,
+      true,
+      5625,
+      343584,
+      [
+        [
+          "explicit",
+          [],
+          "262656\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-fields",
+      "tree-1-1-1",
+      true,
+      true,
+      1023,
+      null,
+      [
+        [
+          "tree",
+          [],
+          "-2\n5\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "scalar-wrapper-1-1-1",
+      true,
+      true,
+      1000,
+      null,
+      [
+        [
+          "scalar-wrapper",
+          [],
+          "500511\n500517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "base-storage",
+      "variant-list-1-1-1",
+      true,
+      true,
+      1000,
+      null,
+      [
+        [
+          "variant-list",
+          [],
+          "511\n517\n",
+          null
+        ]
+      ]
+    ],
+    [
+      "lifetime",
+      "lifetime-1-1-1",
+      true,
+      true,
+      true
+    ],
+    [
+      "nested-return",
+      "nested-1-1-1",
+      true,
+      true,
+      true,
+      {
+        "pairs": "2008000\n",
+        "cells": "500500\n",
+        "eight": "25\n",
+        "nine": "39\n",
+        "inner": "(7, 8)\n",
+        "outer": "((7, 8), (9, 10))\n",
+        "actor": "([7, 8], [7, 8], 19776)\n([17, 18], [17, 18], 19796)\n",
+        "closure": "19790\n",
+        "effect": "1\n3\n5\n4\n1\n",
+        "endpoint": "1\n4611686018427387902\n10\n4611686018427387903\n1\n",
+        "division": "1\n4611686018427387903\n",
+        "overflow": "1\n4611686018427387903\n10\n",
+        "underflow": ""
+      }
+    ],
+    [
+      "watchdog",
+      "scalar"
+    ]
+  ],
+  "builds": [
+    [
+      "transport-0-0-0",
+      {
+        "fixture": "transport-bdbddc.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "active-region-0-0-0",
+      {
+        "fixture": "active-region-e320c6.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/variant_region.c",
+      []
+    ],
+    [
+      "variant-0-0-0",
+      {
+        "fixture": "variant-d99a5f.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-effects-0-0-0",
+      {
+        "fixture": "import-effects-b8af89.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-arena-0-0-0",
+      {
+        "fixture": "import-arena-98f6cb.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-region-0-0-0",
+      {
+        "fixture": "map-region-2d4968.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-controls-0-0-0",
+      {
+        "fixture": "map-controls-0c9625.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "tree-region-0-0-0",
+      {
+        "fixture": "tree-region-17ed70.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "fields-0-0-0",
+      {
+        "fixture": "fields-2b8142.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "storage-0-0-0",
+      {
+        "fixture": "storage-6826f8.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "shared-region-0-0-0",
+      {
+        "fixture": "shared-region-8aea35.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "lifetime-0-0-0",
+      {
+        "fixture": "lifetime-394b65.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_PAIR_RETURNS": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "nested-0-0-0",
+      {
+        "fixture": "nested-a5d9c3.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_PAIR_RETURNS": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "transport-0-0-1",
+      {
+        "fixture": "transport-bdbddc.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "active-region-0-0-1",
+      {
+        "fixture": "active-region-e320c6.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/variant_region.c",
+      []
+    ],
+    [
+      "variant-0-0-1",
+      {
+        "fixture": "variant-d99a5f.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-effects-0-0-1",
+      {
+        "fixture": "import-effects-b8af89.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-arena-0-0-1",
+      {
+        "fixture": "import-arena-98f6cb.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-region-0-0-1",
+      {
+        "fixture": "map-region-2d4968.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-controls-0-0-1",
+      {
+        "fixture": "map-controls-0c9625.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "tree-region-0-0-1",
+      {
+        "fixture": "tree-region-17ed70.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "fields-0-0-1",
+      {
+        "fixture": "fields-2b8142.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "storage-0-0-1",
+      {
+        "fixture": "storage-6826f8.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "shared-region-0-0-1",
+      {
+        "fixture": "shared-region-8aea35.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "lifetime-0-0-1",
+      {
+        "fixture": "lifetime-394b65.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "nested-0-0-1",
+      {
+        "fixture": "nested-a5d9c3.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "transport-0-1-0",
+      {
+        "fixture": "transport-b7342c.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-transport",
+        "disabled"
+      ]
+    ],
+    [
+      "variant-0-1-0",
+      {
+        "fixture": "variant-c706e4.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-variant",
+        "disabled"
+      ]
+    ],
+    [
+      "import-constructor-0-1-0",
+      {
+        "fixture": "import-constructor-259f4c.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "import-api-0-1-0",
+      {
+        "fixture": "import-api-b3791a.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "map-0-1-0",
+      {
+        "fixture": "map-6d2258.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "tree-0-1-0",
+      {
+        "fixture": "tree-fd3a1f.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-fields",
+        "disabled"
+      ]
+    ],
+    [
+      "scalar-wrapper-0-1-0",
+      {
+        "fixture": "scalar-wrapper-1dbf54.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "disabled"
+      ]
+    ],
+    [
+      "variant-list-0-1-0",
+      {
+        "fixture": "variant-list-eda882.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "disabled"
+      ]
+    ],
+    [
+      "lifetime-0-1-0",
+      {
+        "fixture": "lifetime-394b65.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_PAIR_RETURNS": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "nested-0-1-0",
+      {
+        "fixture": "nested-a5d9c3.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_PAIR_RETURNS": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "transport-0-1-1",
+      {
+        "fixture": "transport-b7342c.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-transport",
+        "enabled"
+      ]
+    ],
+    [
+      "variant-0-1-1",
+      {
+        "fixture": "variant-c706e4.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-variant",
+        "enabled"
+      ]
+    ],
+    [
+      "import-constructor-0-1-1",
+      {
+        "fixture": "import-constructor-259f4c.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "import-api-0-1-1",
+      {
+        "fixture": "import-api-b3791a.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "import-explicit-0-1-1",
+      {
+        "fixture": "import-explicit-6bc9a9.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier-explicit",
+        "enabled"
+      ]
+    ],
+    [
+      "map-0-1-1",
+      {
+        "fixture": "map-6d2258.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "map-explicit-0-1-1",
+      {
+        "fixture": "map-explicit-3ee903.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier-explicit",
+        "enabled"
+      ]
+    ],
+    [
+      "tree-0-1-1",
+      {
+        "fixture": "tree-fd3a1f.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-fields",
+        "enabled"
+      ]
+    ],
+    [
+      "scalar-wrapper-0-1-1",
+      {
+        "fixture": "scalar-wrapper-1dbf54.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "enabled"
+      ]
+    ],
+    [
+      "variant-list-0-1-1",
+      {
+        "fixture": "variant-list-eda882.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "enabled"
+      ]
+    ],
+    [
+      "lifetime-0-1-1",
+      {
+        "fixture": "lifetime-394b65.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "nested-0-1-1",
+      {
+        "fixture": "nested-a5d9c3.fpr"
+      },
+      {
+        "FPR_NO_INLINE": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "transport-1-0-0",
+      {
+        "fixture": "transport-bdbddc.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "active-region-1-0-0",
+      {
+        "fixture": "active-region-e320c6.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/variant_region.c",
+      []
+    ],
+    [
+      "variant-1-0-0",
+      {
+        "fixture": "variant-d99a5f.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-effects-1-0-0",
+      {
+        "fixture": "import-effects-b8af89.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-arena-1-0-0",
+      {
+        "fixture": "import-arena-98f6cb.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-region-1-0-0",
+      {
+        "fixture": "map-region-2d4968.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-controls-1-0-0",
+      {
+        "fixture": "map-controls-0c9625.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "tree-region-1-0-0",
+      {
+        "fixture": "tree-region-17ed70.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "fields-1-0-0",
+      {
+        "fixture": "fields-2b8142.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "storage-1-0-0",
+      {
+        "fixture": "storage-6826f8.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "shared-region-1-0-0",
+      {
+        "fixture": "shared-region-8aea35.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "spines-1-0-0",
+      {
+        "fixture": "spines-6cf17c.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_LAYOUT_CHECK": "1",
+        "FPR_COMPACT_CELLS": "0"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "lifetime-1-0-0",
+      {
+        "fixture": "lifetime-394b65.fpr"
+      },
+      {
+        "FPR_NO_PAIR_RETURNS": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "nested-1-0-0",
+      {
+        "fixture": "nested-a5d9c3.fpr"
+      },
+      {
+        "FPR_NO_PAIR_RETURNS": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "transport-1-0-1",
+      {
+        "fixture": "transport-bdbddc.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "active-region-1-0-1",
+      {
+        "fixture": "active-region-e320c6.fpr"
+      },
+      {},
+      "plain",
+      "@ROOT@/tests/base/variant_region.c",
+      []
+    ],
+    [
+      "variant-1-0-1",
+      {
+        "fixture": "variant-d99a5f.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-effects-1-0-1",
+      {
+        "fixture": "import-effects-b8af89.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "import-arena-1-0-1",
+      {
+        "fixture": "import-arena-98f6cb.fpr"
+      },
+      {
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-region-1-0-1",
+      {
+        "fixture": "map-region-2d4968.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/carrier_region.c",
+      []
+    ],
+    [
+      "map-controls-1-0-1",
+      {
+        "fixture": "map-controls-0c9625.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "tree-region-1-0-1",
+      {
+        "fixture": "tree-region-17ed70.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_LAYOUT_CHECK": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "fields-1-0-1",
+      {
+        "fixture": "fields-2b8142.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "storage-1-0-1",
+      {
+        "fixture": "storage-6826f8.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "shared-region-1-0-1",
+      {
+        "fixture": "shared-region-8aea35.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "spines-1-0-1",
+      {
+        "fixture": "spines-6cf17c.fpr"
+      },
+      {
+        "FPR_LAYOUT_CHECK": "1",
+        "FPR_COMPACT_CELLS": "1"
+      },
+      "plain",
+      "@ROOT@/tests/base/stored_spine.c",
+      []
+    ],
+    [
+      "lifetime-1-0-1",
+      {
+        "fixture": "lifetime-394b65.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "nested-1-0-1",
+      {
+        "fixture": "nested-a5d9c3.fpr"
+      },
+      {},
+      "plain",
+      "",
+      []
+    ],
+    [
+      "transport-1-1-0",
+      {
+        "fixture": "transport-b7342c.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-transport",
+        "disabled"
+      ]
+    ],
+    [
+      "variant-1-1-0",
+      {
+        "fixture": "variant-c706e4.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-variant",
+        "disabled"
+      ]
+    ],
+    [
+      "import-constructor-1-1-0",
+      {
+        "fixture": "import-constructor-259f4c.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "import-api-1-1-0",
+      {
+        "fixture": "import-api-b3791a.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "map-1-1-0",
+      {
+        "fixture": "map-6d2258.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier",
+        "disabled"
+      ]
+    ],
+    [
+      "tree-1-1-0",
+      {
+        "fixture": "tree-fd3a1f.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-fields",
+        "disabled"
+      ]
+    ],
+    [
+      "scalar-wrapper-1-1-0",
+      {
+        "fixture": "scalar-wrapper-1dbf54.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "disabled"
+      ]
+    ],
+    [
+      "variant-list-1-1-0",
+      {
+        "fixture": "variant-list-eda882.fpr"
+      },
+      {
+        "FPR_NO_TYPE_SPEC": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "disabled"
+      ]
+    ],
+    [
+      "lifetime-1-1-0",
+      {
+        "fixture": "lifetime-394b65.fpr"
+      },
+      {
+        "FPR_NO_PAIR_RETURNS": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "nested-1-1-0",
+      {
+        "fixture": "nested-a5d9c3.fpr"
+      },
+      {
+        "FPR_NO_PAIR_RETURNS": "1",
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "transport-1-1-1",
+      {
+        "fixture": "transport-b7342c.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-transport",
+        "enabled"
+      ]
+    ],
+    [
+      "variant-1-1-1",
+      {
+        "fixture": "variant-c706e4.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-variant",
+        "enabled"
+      ]
+    ],
+    [
+      "import-constructor-1-1-1",
+      {
+        "fixture": "import-constructor-259f4c.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "import-api-1-1-1",
+      {
+        "fixture": "import-api-b3791a.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "import-explicit-1-1-1",
+      {
+        "fixture": "import-explicit-6bc9a9.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "imported-carrier-explicit",
+        "enabled"
+      ]
+    ],
+    [
+      "map-1-1-1",
+      {
+        "fixture": "map-6d2258.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier",
+        "enabled"
+      ]
+    ],
+    [
+      "map-explicit-1-1-1",
+      {
+        "fixture": "map-explicit-3ee903.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-carrier-explicit",
+        "enabled"
+      ]
+    ],
+    [
+      "tree-1-1-1",
+      {
+        "fixture": "tree-fd3a1f.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-fields",
+        "enabled"
+      ]
+    ],
+    [
+      "scalar-wrapper-1-1-1",
+      {
+        "fixture": "scalar-wrapper-1dbf54.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "enabled"
+      ]
+    ],
+    [
+      "variant-list-1-1-1",
+      {
+        "fixture": "variant-list-eda882.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      [
+        "language",
+        "base-storage",
+        "enabled"
+      ]
+    ],
+    [
+      "lifetime-1-1-1",
+      {
+        "fixture": "lifetime-394b65.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      []
+    ],
+    [
+      "nested-1-1-1",
+      {
+        "fixture": "nested-a5d9c3.fpr"
+      },
+      {
+        "FPR_NO_LOOP_REGIONS": "1",
+        "FPR_NO_CALL_REGIONS": "1",
+        "FPR_COST_PROBE": "1",
+        "FPR_COST_REPORT": "1"
+      },
+      "plain",
+      "",
+      []
+    ]
+  ],
+  "root": "@ROOT@",
+  "out": "@OUT@",
+  "mode": "native",
+  "metadata": {
+    "rounds": 256,
+    "repetitions": 3,
+    "lifetime_expected": "1374656\n([7, 8], [7, 8])\n",
+    "lifetime_wrappers": 8385,
+    "nested_allocation_removals": {
+      "pairs": 3000,
+      "cells": 2000,
+      "eight": 3,
+      "nine": 1
+    }
+  }
+}

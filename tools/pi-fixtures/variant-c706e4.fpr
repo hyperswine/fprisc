@@ -1,0 +1,5 @@
+unsafe base.
+Choice = Type (LeftCell Int | RightCell Int).
+choose n = if n < 0 then choose (0 - n) else if n % 2 == 0 then LeftCell n else RightCell (n+1).
+fold n acc = if n <= 0 then acc else case choose n of LeftCell x -> fold (n - 1) (acc+x) | RightCell x -> fold (n - 1) (acc - x).
+main = print (fold 1000 0).

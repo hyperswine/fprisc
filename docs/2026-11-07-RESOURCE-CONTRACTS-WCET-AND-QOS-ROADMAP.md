@@ -48,7 +48,7 @@ Implementation anchors: [Cost](../compiler/Cost.hs),
 [check placement](../compiler/Codegen/Placement.hs),
 [heap](../compiler/Codegen/Heap.hs), [stack](../compiler/Codegen/Stack.hs),
 [manifests](../compiler/Manifest.hs), and
-[whole-activation admission](../tools/build_static_arena.py).
+[whole-activation admission](../tools/build-static-arena.sol).
 
 ## Contract design rules
 

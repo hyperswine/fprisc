@@ -1,0 +1,7 @@
+unsafe base.
+Meters = Type (Meters Int).
+Choice = Type (Plus Int | Minus Int).
+Rows = Type (End | RowPlus Int Rows | RowMinus Int Rows).
+build n = if n <= 0 then [] else (if n % 2 == 0 then Plus n else Minus n) :: build (n - 1).
+total xs acc = case xs of [] -> acc | m :: rest -> case m of Plus v -> total rest (acc+v) | Minus v -> total rest (acc - v).
+main = xs = build 1000; _ = print (total xs 11); print (total xs 17).
