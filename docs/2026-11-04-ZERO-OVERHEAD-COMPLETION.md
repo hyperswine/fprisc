@@ -138,7 +138,7 @@ transactional rollback, pinned boundaries and cloned result evidence.
 Final image admission uses manifests in `machine/builtin/targets/`, selected
 automatically by `BUILTIN_BOARD`/`BUILTIN_RAM`, with an explicit
 `BUILTIN_IMAGE_MANIFEST` override. The manifest identity must match the build's
-selected target independently. `tools/check_target_image.py` validates ELF
+selected target independently. `tools/target-image.sol` validates ELF
 width, load/run addresses, section/segment agreement, entry point, loaded
 address span and static RAM plus the target's reserved minimum. The subsequent
 [load-segment correction](2026-11-05-LOAD-SEGMENT-ADMISSION.md) includes complete

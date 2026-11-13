@@ -6,18 +6,12 @@ execute anything on the device. Imported fixtures are the host-qualified ones.
 """
 
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
-import re
-import shlex
 import subprocess
+import tempfile
 import sys
-
-
-def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def main():
@@ -60,133 +54,28 @@ def main():
         FPR_HOME=str(root), FPR_PATH=str(root), XDG_CACHE_HOME=str(out / "cache")
     )
 
-    def checked(cmd, extra=None):
-        return subprocess.run(
-            list(map(str, cmd)),
-            cwd=root,
-            env=dict(env, **(extra or {})),
-            check=True,
-            text=True,
-            capture_output=True,
-        )
-
     driver = a.cross_cc or "cc"
     # Linux AArch64 actors migrate between threads with the hart in x28.
     # A cross driver can accept -ffixed-x28 yet still allocate it. Force
     # live integers across an opaque call and inspect the emitted registers.
-    pressure = out / "hart-registers.c"
-    values = ["v" + str(i) for i in range(20)]
-    pressure.write_text("extern void opaque(void);\nunsigned long pressure(volatile unsigned long *p) {\n"
-                        + "".join(f"  unsigned long {v} = *p++;\n" for v in values)
-                        + "  opaque();\n"
-                        + "".join(f'  asm volatile ("" : "+r" ({v}));\n' for v in values)
-                        + "  return " + " ^ ".join(values) + ";\n}\n")
-    asm = pressure.with_suffix(".s")
-    checked([driver, "-O2", "-ffixed-x27", "-ffixed-x28", "-S", pressure, "-o", asm])
-    instructions = [line.split("//")[0] for line in asm.read_text().splitlines()
-                    if line.startswith("\t") and not line.lstrip().startswith(".")]
-    if re.search(r"\b[wx]2[78]\b", "\n".join(instructions)):
-        raise SystemExit("Linux ARM64 C compiler used reserved x27/x28; check the cross compiler target features")
-    checked([driver, "-O2", "-Wall", "-Wextra", a.runner_source, "-o", out / "runner"])
-    cc = out / "probe-cc"
-    cc.write_text(
-        '#!/bin/sh\nexec ' + shlex.quote(driver) + ' -DFPR_SCHED_PROBE "$@"\n'
-    )
-    cc.chmod(0o755)
-    cases = []
-    binaries = {}
-    storage_symbols = {}
-    sources = {}
+    asm = out / "hart-registers.s"
+    case_specs = []
+    builds = []
 
-    def build(name, source, switches, probe=False, hal=None):
-        src = out / (name + ".fpr")
-        src.write_text(source)
-        exe = out / name
-        cmd = [root / "fpr", "build", src, "--harts", "4", "-o", exe]
-        if a.cross_cc:
-            cmd += ["--target=linux-aarch64"]
-        if probe or a.cross_cc:
-            cmd += ["--cc", cc if probe else driver]
-        if hal:
-            cmd += ["--with", hal]
-        checked(cmd, switches)
-        symbols = checked(["nm" if not a.cross_cc else "llvm-nm", exe]).stdout
-        assert bool(re.search(r"\b_?fpr_sched_probe$", symbols, re.M)) == probe
-        storage_symbols[name] = re.findall(r"\b(fpr_fn__x24(?:worker_x2estorage|carrier)_x2e\w+)$", symbols, re.M)
-        header = exe.read_bytes()[:20]
-        assert (
-            header[:6] == b"\x7fELF\x02\x01"
-            and int.from_bytes(header[18:20], "little") == 183
-        ), name
-        binaries[name] = digest(exe)
-        sources[src.name] = digest(src)
-        print(name, "built", flush=True)
+    def build(name, source, switches, hal=None, expectations=()):
+        builds.append([name, source, switches.copy(), "plain", str(hal or ""), expectations])
         return name
 
-    for shape, variant, switches in sched.VARIANTS:
-        if focused and shape != focused:
-            continue
-        for probe in (False, True):
-            name = build(
-                shape + "-" + variant + ("-probe" if probe else "-plain"),
-                sched.source(shape, a.rounds),
-                switches,
-                probe,
-                sched.HAL,
-            )
-            if shape == "imported-carrier":
-                adapters=[n for n in storage_symbols[name] if "_x2epack_x40" in n and "_x24at_x2eroot" in n]
-                assert len(adapters)==int(variant=="default"),(name,adapters)
-            if shape == "base-carrier":
-                assert ("fpr_fn__x24carrier_x2e6_x2eMeters_x2efill" in storage_symbols[name]) == (variant == "default")
-            if shape == "base-fields":
-                assert ("fpr_fn__x24worker_x2estorage_x2eaggregate_x2emake" in storage_symbols[name]) == (variant == "default")
-            if shape == "base-storage":
-                assert ("fpr_fn__x24worker_x2estorage_x2elist_x2ebuildCells" in storage_symbols[name]) == (variant == "default")
-            for harts, route in ((1, "local"), (4, "local"), (4, "remote")):
-                for count, load in ((0, "zero"), (1, "one"), (8, "eight")):
-                    for rep in range(1 if probe else a.repetitions):
-                        cases.append(
-                            dict(
-                                kind="scheduler",
-                                binary=name,
-                                args=[route, load],
-                                harts=harts,
-                                shape=shape,
-                                variant=variant,
-                                probe=probe,
-                                competitors=count,
-                                route=route,
-                                repetition=rep,
-                                timeout=60,
-                            )
-                        )
+    scheduler = [
+        [shape, variant, sched.source(shape, a.rounds), switches, str(sched.HAL)]
+        for shape, variant, switches in sched.VARIANTS if not focused or shape == focused
+    ]
+
     def language_cases(kind, label, source, switches, normal, enabled, checks, allocations=None, hal=None, allocated_bytes=None):
-        build(label, source, switches, hal=hal)
-        if kind=="imported-carrier" and allocations is not None:
-            assert any("_x24at_x2eroot" in n for n in storage_symbols[label])==enabled,label
-        if kind == "base-carrier" and allocations is not None:
-            assert ("fpr_fn__x24carrier_x2e6_x2eMeters_x2efill" in storage_symbols[label]) == enabled
-        if kind == "base-fields" and allocations is not None:
-            for worker in ("aggregate_x2emake", "read_x2escore"):
-                assert ("fpr_fn__x24worker_x2estorage_x2e"+worker in storage_symbols[label]) == enabled
-        if kind == "base-storage" and allocations is not None:
-            for worker in ("list_x2ebuild", "read_x2etotal"):
-                assert ("fpr_fn__x24worker_x2estorage_x2e"+worker in storage_symbols[label]) == enabled
-        for harts in (1, 4):
-            for case, args, output, trap in checks:
-                row = dict(kind=kind, binary=label, args=args, case=case, harts=harts,
-                           normal_inline=normal, isolated=allocations is not None, enabled=enabled,
-                           timeout=60, expected_stdout=output, expected_exit=int(bool(trap)), trap=trap)
-                if allocations is not None:
-                    row["expected_allocations"] = allocations
-                    if allocated_bytes is not None:
-                        row["expected_allocated_bytes"] = allocated_bytes
-                    if kind == "base-fields":
-                        row["expected_allocated_bytes"] = 49104 if enabled else 81840
-                    if kind == "base-storage":
-                        row["expected_allocated_bytes"] = 32 * allocations
-                cases.append(row)
+        expectations = ("language", kind, "enabled" if enabled else "disabled") if allocations is not None else ()
+        build(label, source, switches, hal=hal, expectations=expectations)
+        spec = [kind, label, normal, enabled, allocations, allocated_bytes, checks]
+        case_specs.append(spec)
 
     map_counts = {(True, True): (5625, 343584), (True, False): (6137, 359968), (False, True): (5624, 351728), (False, False): (6136, 368112)}
     for normal in (False, True):
@@ -300,108 +189,48 @@ def main():
                     life.SOURCE,
                     switches,
                 )
-                for harts in (1, 4):
-                    cases.append(
-                        dict(
-                            kind="lifetime",
-                            binary=name,
-                            args=[],
-                            harts=harts,
-                            normal_inline=normal,
-                            isolated=isolated,
-                            enabled=enabled,
-                            timeout=60,
-                        )
-                    )
+                case_specs.append(["lifetime", name, normal, isolated, enabled])
                 nested_name = build(
                     f"nested-{int(normal)}-{int(isolated)}-{int(enabled)}",
                     nested.fixture(),
                     switches,
                 )
-                for harts in (1, 4):
-                    for case, expected in nested.answers().items():
-                        trap = {
-                            "division": "division by zero",
-                            "overflow": "Int overflow",
-                            "underflow": "Int overflow",
-                        }.get(case)
-                        cases.append(
-                            dict(
-                                kind="nested-return",
-                                binary=nested_name,
-                                args=[case],
-                                case=case,
-                                harts=harts,
-                                normal_inline=normal,
-                                isolated=isolated,
-                                enabled=enabled,
-                                timeout=60,
-                                expected_stdout=expected,
-                                expected_exit=1 if trap else 0,
-                                trap=trap,
-                            )
-                        )
-    for harts in (1, 4):
-        cases.append(
-            dict(
-                kind="watchdog",
-                binary=(focused or "scalar")+"-default-plain",
-                args=["stall"],
-                harts=harts,
-                timeout=3,
-            )
-        )
-    binaries["runner"] = digest(out / "runner")
-    record = dict(
-        schema="pi-runtime-qualification-bundle-v1",
-        compiler_sha256=digest(root / "fpr"),
-        hart_register_probe_sha256=digest(asm),
-        c_compiler=checked([driver, "--version"]).stdout.splitlines()[0],
-        cross_wrapper_sha256=digest(Path(a.cross_cc)) if a.cross_cc else None,
-        rounds=a.rounds,
-        repetitions=a.repetitions,
-        lifetime_expected=life.EXPECTED,
-        lifetime_wrappers=(life.COUNT + 1) * (life.CHURN + 1),
-        binaries=binaries,
-        storage_symbols={name: values for name, values in storage_symbols.items() if values},
-        sources=sources,
-        fixtures={
-            str(p.relative_to(root)): digest(p)
-            for p in [
-                root / "tests/check_scheduler_latency.py",
-                root / "tests/check_unary_return_lifetimes.py",
-                root / "tests/check_nested_base_returns.py",
-                root / "tests/check_base_transport.py",
-                root / "tests/check_base_variant_returns.py",
-                root / "tests/base/variant_region.c",
-                root / "tests/check_base_stored_lists.py",
-                root / "tests/check_base_stored_fields.py",
-                root / "tests/check_base_carrier.py",
-                root / "tests/check_imported_carriers.py", imported.MODULE,
-                root / "tests/base/carrier_region.c",
-                stored.SYSTEM,
-                sched.HAL,
-            ]
-        },
-        runtime_sha256={
-            str(p.relative_to(root)): digest(p)
-            for p in sorted((root / "runtime").glob("*"))
-            if p.is_file()
-        },
-        runner_source_sha256=digest(a.runner_source),
-        builder_sha256=digest(Path(__file__)),
-        nested_allocation_removals={} if focused else {
-            "pairs": 3 * nested.COUNT,
-            "cells": 2 * nested.COUNT,
-            "eight": 3,
-            "nine": 1,
-        },
-        cases=cases,
+                case_specs.append(["nested-return", nested_name, normal, isolated, enabled, nested.answers()])
+    case_specs.append(["watchdog", focused or "scalar"])
+    fixtures = [
+        "tests/check_scheduler_latency.py", "tests/check_unary_return_lifetimes.py",
+        "tests/check_nested_base_returns.py", "tests/check_base_transport.py",
+        "tests/check_base_variant_returns.py", "tests/base/variant_region.c",
+        "tests/check_base_stored_lists.py", "tests/check_base_stored_fields.py",
+        "tests/check_base_carrier.py", "tests/check_imported_carriers.py",
+        str(imported.MODULE.relative_to(root)), "tests/base/carrier_region.c",
+        str(stored.SYSTEM.relative_to(root)), str(sched.HAL.relative_to(root)),
+    ]
+    plan = dict(
+        files=dict(compiler_sha256=root / "fpr", hart_register_probe_sha256=asm,
+                   runner_source_sha256=a.runner_source, builder_sha256=Path(__file__),
+                   cross_wrapper_sha256=Path(a.cross_cc) if a.cross_cc else None),
+        fixtures=fixtures,
+        compiler=driver, scheduler=scheduler, cases=case_specs, builds=builds, root=root, out=out,
+        mode="cross" if a.cross_cc else "native",
+        metadata=dict(
+            rounds=a.rounds,
+            repetitions=a.repetitions,
+            lifetime_expected=life.EXPECTED,
+            lifetime_wrappers=(life.COUNT + 1) * (life.CHURN + 1),
+            nested_allocation_removals={} if focused else {
+                "pairs": 3 * nested.COUNT,
+                "cells": 2 * nested.COUNT,
+                "eight": 3,
+                "nine": 1,
+            },
+        ),
     )
-    (out / "manifest.json").write_text(json.dumps(record, indent=2) + "\n")
-    print(
-        "Built", len(binaries), "binaries and", len(cases), "physical cases", flush=True
-    )
+    with tempfile.TemporaryDirectory(dir=out) as scratch:
+        plan_path = Path(scratch) / "bundle.json"
+        plan_path.write_text(json.dumps(plan, default=lambda path: str(path.resolve()), ensure_ascii=False))
+        subprocess.run([os.environ.get("SOL", "sol"), root / "tools/pi-qualification-build.sol",
+                        plan_path, out / "manifest.json"], cwd=root, env=env, check=True)
 
 
 if __name__ == "__main__":

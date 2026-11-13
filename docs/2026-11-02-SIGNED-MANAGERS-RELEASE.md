@@ -21,7 +21,7 @@ and SDK versions, projects, caches and application data.
 The archive SHA-256 is
 `f5f9ee18878496e670a7cca0c35f72c0d49c799eee79f3aebb28c1867e86fc3b`;
 its recorded source is `dfcb333c6e8e9fafbec5e36867cd43abb135fe25`.
-`tools/package-fprmeta.py` packages a qualified binary from a clean commit and
+`sol tools/package-fprmeta.sol --output DIRECTORY` packages a qualified binary from a clean commit and
 records its archive, source, public key and system-library dependencies.
 
 ## What is available

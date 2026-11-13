@@ -12,7 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 from run_tangnano20k_examples import FPGA_CONFIG, FPGA_CONFIG_72, fpga_image, validate_case, validate_classifier
-from tangnano_artifact import sha
+from run_tangnano20k_examples import sha
 
 
 class ExampleGate(unittest.TestCase):
@@ -67,14 +67,15 @@ class ExampleGate(unittest.TestCase):
 
     def test_presets_refuse_conflicting_environment(self):
         env = {k: v for k, v in os.environ.items() if not k.startswith(('FPR_', 'SDRAM_'))}
-        runtime = ROOT / 'machine/tangnano20k/preset.sh'
+        runtime = ROOT / 'machine/tangnano20k/preset.sol'
         hardware = Path(os.environ.get('SIMPLE_RISC_ROOT', ROOT.parent / 'simple-risc')) / 'boards/tangnano20k/sdram/preset.sh'
         for script, key, options in (
             (runtime, 'FPR_PRESET', {'FPR_XLEN': '64', 'FPR_CPU_MHZ': '72', 'FPR_RVC': '0'}),
             (hardware, 'SDRAM_PRESET', {'SDRAM_FREQ_MHZ': '54', 'SDRAM_CPU_FREQ_MHZ': '72',
                                       'SDRAM_RVC': '0', 'SDRAM_PHASE_DEGREES': '90',
                                       'SDRAM_CACHE_LINE_BITS': '7', 'SDRAM_RTL_FILE': '/tmp/stale.v'})):
-            command = ['bash', '-c', 'set -eu; source "$1"', 'test', str(script)]
+            command = ([env.get('SOL') or 'sol', str(script)] if script == runtime else
+                       ['bash', '-c', 'set -eu; source "$1"', 'test', str(script)])
             good = subprocess.run(command, env={**env, key: 'fprisc-48'}, capture_output=True)
             self.assertEqual(good.returncode, 0, good.stderr)
             for name, value in options.items():
@@ -158,8 +159,8 @@ class ExampleGate(unittest.TestCase):
 
     def test_runtime_preset_72_sets_its_clock(self):
         env = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
-        script = ROOT / 'machine/tangnano20k/preset.sh'
-        command = ['bash', '-c', 'set -eu; source "$1"; echo "$FPR_CPU_MHZ $FPR_XLEN $FPR_RVC"', 'test', str(script)]
+        script = ROOT / 'machine/tangnano20k/preset.sol'
+        command = [env.get('SOL') or 'sol', str(script)]
         good = subprocess.run(command, env={**env, 'FPR_PRESET': 'fprisc-72'}, capture_output=True, text=True)
         self.assertEqual(good.stdout.strip(), '72 32 1', good.stderr)
         bad = subprocess.run(command, env={**env, 'FPR_PRESET': 'fprisc-72', 'FPR_CPU_MHZ': '48'},

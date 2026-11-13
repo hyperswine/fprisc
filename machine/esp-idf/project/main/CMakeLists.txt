@@ -23,6 +23,8 @@ if(CMAKE_SCRIPT_MODE_FILE)
 else()
   file(GLOB FPR_POSIX_SRCS CONFIGURE_DEPENDS "${FPR_ROOT}/machine/posix/*.c")
 endif()
+# ESP-IDF has no dynamic loader. Native.attach is a hosted POSIX primitive.
+list(REMOVE_ITEM FPR_POSIX_SRCS "${FPR_ROOT}/machine/posix/os_module.c")
 idf_component_register(
   SRCS ${FPR_M}/main.c ${FPR_M}/hal.c ${FPR_M}/esp.c ${FPR_M}/fs.c ${FPR_M}/ctx.S ${FPR_ROOT}/machine/virt/ctx_fab.c
        ${FPR_RT}/runtime.c ${FPR_RT}/i32.c ${FPR_RT}/actors.c ${FPR_RT}/bits.c ${FPR_RT}/vec.c

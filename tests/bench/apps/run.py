@@ -2,7 +2,7 @@
 """run.py -- the application workloads against C and peers (SPEC.md).
 
   python3 gen.py                       inputs into data/ (once)
-  sh build_peers.sh                    bin/<w>.{c,rust,go,ocaml,java}
+  sol build_peers.sol                  bin/<w>.{c,rust,go,ocaml,java}
   python3 run.py --build               bin-fpr/<w>.fpr (and variants) with $FPR or `fpr`
   python3 run.py [--runs 5] [--out results/X.json] [w ...]
   python3 run.py --ceilings            the FP-RISC binaries once each: output, and
@@ -21,23 +21,7 @@ HERE = Path(__file__).resolve().parent
 BIN, FBIN, DATA, EXP = HERE / 'bin', HERE / 'bin-fpr', HERE / 'data', HERE / 'expected'
 WORKLOADS = ['csv', 'wordfreq', 'format', 'records', 'treemap', 'sim']
 PEERS = ['c', 'rust', 'go', 'ocaml', 'java']
-# FP-RISC variants beyond the plain program: label -> source
-VARIANTS = {'wordfreq': {'fpr-mutmap': 'wordfreq_mutmap.fpr'}, 'treemap': {'fpr-mutmap': 'treemap_mutmap.fpr'}}
 ARGS = {'csv': [str(DATA / 'sales.csv')], 'wordfreq': [str(DATA / 'corpus.txt')]}
-
-def build(fpr, ws, env_extra):
-    FBIN.mkdir(exist_ok=True)
-    env = dict(os.environ, **env_extra)
-    for w in ws:
-        srcs = {'fpr': f'{w}.fpr', **VARIANTS.get(w, {})}
-        for label, src in srcs.items():
-            out = FBIN / f'{w}.{label}'
-            t0 = time.time()
-            p = subprocess.run([fpr, 'build', '-o', str(out), str(HERE / src)], cwd=HERE, env=env,
-                               capture_output=True, text=True)
-            if p.returncode != 0:
-                sys.exit(f'build {src} failed:\n{p.stdout}\n{p.stderr}')
-            print(f'built {out.name} in {time.time() - t0:.1f} s', flush=True)
 
 def timed(cmd):
     """exit code, stdout, wall seconds, peak RSS in MB of this one child"""
@@ -57,7 +41,7 @@ def ceilings(ws):
     limits = json.load(open(HERE / 'ceilings.json'))['ceilings_mb']
     failed = 0
     for w in ws:
-        for label in ['fpr', *VARIANTS.get(w, {})]:
+        for label in (['fpr', 'fpr-mutmap'] if w in ('wordfreq', 'treemap') else ['fpr']):
             exe = FBIN / f'{w}.{label}'
             key = w if label == 'fpr' else f'{w}.{label}'
             if key not in limits:
@@ -86,7 +70,8 @@ def main():
         ceilings(ws)
         return
     if a.build:
-        build(os.environ.get('FPR', 'fpr'), ws, dict(e.split('=', 1) for e in a.env))
+        env = dict(os.environ, **dict(e.split('=', 1) for e in a.env))
+        subprocess.run([os.environ.get('SOL', 'sol'), 'build_fpr.sol', *ws], cwd=HERE, env=env, check=True)
         return
     jobs = {}
     for w in ws:

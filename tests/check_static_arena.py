@@ -113,6 +113,11 @@ def trace(image_path,receipt):
     log.unlink();return result
 
 
+EXPECTED_FLAGS = ['-march=rv64imc_zicsr','-mabi=lp64','-mcmodel=medany','-msmall-data-limit=0','-O2',
+       '-ffreestanding','-fno-builtin','-fno-stack-protector','-nostdlib','-nostartfiles',
+       '-ffunction-sections','-fdata-sections','-DFPR_BUILTIN','-DFPR_BUILTIN_ARC']
+
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--require-execution',action='store_true');ap.add_argument('--record',type=Path)
@@ -215,7 +220,7 @@ def main():
             assert previous==(image.read_bytes(),Path(str(image)+'.admission.json').read_bytes())
             with patch.dict(os.environ,{'FPR_HOME':'/missing','FPR_NO_TYPE_SPEC':'1','HEAP':'fpr','CFLAGS':'-DBROKEN','LDFLAGS':'-Wl,--defsym=fpr_alloc=0'}):
                 clean=gate.build(source,'identity',examples[0][3],416,4096,image,True)
-            assert clean['flags']==gate.FLAGS and clean['execution']['result_bits']==examples[0][5]
+            assert clean['flags']==EXPECTED_FLAGS and clean['execution']['result_bits']==examples[0][5]
             previous=image.read_bytes(),Path(str(image)+'.admission.json').read_bytes()
             for kwargs,reason in [({'heap_bytes':400},'needs 416'),({'stack_bytes':16},'needs'),({'arguments':[2**64]},'KWord')]:
                 options=dict(source=source,entry='identity',arguments=examples[0][3],heap_bytes=416,stack_bytes=4096,image_path=image)

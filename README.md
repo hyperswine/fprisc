@@ -83,6 +83,14 @@ This split changes source ownership, not language semantics or the profile model
 Actor/Vector placement and the future Builtin/Base/ExtBase contracts remain design
 work; the current runtime is not being presented as a completed minimal Builtin.
 
+## Build scripts
+
+Write build scripts only in Sol. Use Sol 0.13.1 or any compatible version, and keep scripts runnable on 0.13.1. Do not add build logic in Bash or Python.
+
+For a 0.13.1 compatibility check, use the Sol executable from the FP-RISC 0.13.1 toolchain. That release prints `Sol 0.14.0-dev (scripting API 1)` for `sol --version`. The packaged compiler hash is recorded in the [0.13.1 release evidence](docs/evidence/2026-11-02-fprisc-0.13.1-release.json).
+
+Some existing commands still invoke Bash or Python during the migration. When changing one, move its build logic into Sol, verify the replacement through the existing command, and remove the superseded implementation. See the [build migration checkpoint](docs/2026-11-13-SOL-BUILD-MIGRATION.md) for completed comparisons and remaining work.
+
 ## Profiles and systems
 
 A file declares what it is written against -- `profile builtin.`,

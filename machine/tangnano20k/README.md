@@ -72,7 +72,7 @@ For the recommended RV32 configuration:
 python3 tools/run_tangnano20k_examples.py --target qemu
 python3 tools/run_tangnano20k_examples.py --program examples/wc.fpr \
   --root /path/to/files --arg=notes.txt --arg='two words.txt'
-FPR_PRESET=fprisc-48 machine/tangnano20k/build.sh examples/wc.fpr build/tangnano20k-wc
+FPR_PRESET=fprisc-48 sol machine/tangnano20k/build.sol examples/wc.fpr build/tangnano20k-wc
 python3 tools/run_tangnano20k_base.py build/tangnano20k-wc/base.bin \
   --freq-mhz 48 --root /path/to/files --arg=notes.txt --arg='two words.txt'
 ```

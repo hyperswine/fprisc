@@ -40,7 +40,7 @@ def build(source,out,env,*,compiler=None,extra=None,compressed=False,physical=Fa
     if extra:cmd[1:1]=['-Wl,--wrap=fpr_fn_main',str(extra)]
     cmd[1:1]=list(ldflags)
     run(cmd,env)
-    run([sys.executable,ROOT/'tools/check_tangnano20k_isa.py',elf,'--xlen','32',*(['--compressed'] if compressed else [])],env)
+    run([os.environ.get('SOL') or 'sol',ROOT/'machine/tangnano20k/isa.sol',elf,'--xlen','32',*(['--compressed'] if compressed else [])],env)
     return elf
 
 def boot(elf,env,*,count=False):

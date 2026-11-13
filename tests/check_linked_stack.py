@@ -415,7 +415,7 @@ def main():
             assert any(f['compressed_instructions']>0 for f in proof['functions'])
             native=record['compressed_native_stack_parity']['images'][mode]['linked_stack']
             assert any(f['compressed_instructions']>0 for f in native['functions'])
-    for name in ('tools/check_linked_stack.py','tools/riscv_compressed.py','tools/check_target_image.py','tests/check_linked_stack.py',
+    for name in ('tools/check_linked_stack.py','tools/riscv_compressed.py','tools/target-image.sol','tools/check_target_image.py','tests/check_linked_stack.py',
                  'tests/linked_stack_probe.py','tests/check_heap_budget.py','tests/check_callback_stack.py',
                  'machine/builtin/heap.c','machine/builtin/arc.c'):
         record['sources'][name]=hashlib.sha256((ROOT/name).read_bytes()).hexdigest()

@@ -39,7 +39,7 @@ prior material summaries.
 ## Catalog provenance
 
 `std/printeralertcodes.fpr` is generated from the installed BambuStudio model
-catalogs using `python3 scripts/generate_printer_alert_codes.py`. Input filenames,
+catalogs using `sol scripts/generate-printer-alert-codes.sol`. Input filenames,
 versions, SHA-256 values and category counts are pinned in
 `docs/printer-alert-catalog.json`. The application needs no BambuStudio files or
 internet access to classify known codes. The generator emits exact identifiers

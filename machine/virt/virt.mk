@@ -18,11 +18,11 @@
 # rv64 only: the raw ABI has no rv32 lowering, so an rv32 image keeps the C
 # (hal.c, under #if __riscv_xlen == 32).
 VIRT_MACHINE ?= $(MACHINE)
-VIRT_CLINT_EXPORTS = ipiSend:hal_ipi_send,ipiClear:hal_ipi_clear,mtime:hal_mtime,timerPark:hal_timer_park,timerArm:hal_timer_arm
-VIRT_RAWFLAGS = --profile=bare-metal-builtin --arc --raw --lib
+SOL ?= sol
+VIRT_CLINT_BUILD = $(VIRT_MACHINE)/virt/build-clint.sol
 
-$(BUILD)/virt-clint.s: $(VIRT_MACHINE)/virt/clint.fpr $(FPRC)
-	@mkdir -p $(BUILD)
-	"$(FPRC)" $(VIRT_RAWFLAGS) --export=$(VIRT_CLINT_EXPORTS) $< $@ >/dev/null
+$(BUILD)/virt-clint.s: $(VIRT_MACHINE)/virt/clint.fpr $(FPRC) $(VIRT_CLINT_BUILD)
+	@mkdir -p "$(BUILD)"
+	"$(SOL)" "$(VIRT_CLINT_BUILD)" "$(FPRC)" "$<" "$@"
 
 VIRT_FPR = $(BUILD)/virt-clint.s $(VIRT_MACHINE)/virt/rawunit.c

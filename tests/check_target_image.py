@@ -250,6 +250,6 @@ if __name__ == '__main__':
         args.record.write_text(json.dumps(dict(
             schema='target-load-segments-validation-v1', unit_tests_passed=count,
             compiler_sha256=hashlib.sha256((ROOT/'fpr').read_bytes()).hexdigest(),
-            tool_sha256=hashlib.sha256((ROOT/'tools/check_target_image.py').read_bytes()).hexdigest(),
+            tool_sha256=hashlib.sha256((ROOT/'tools/target-image.sol').read_bytes()).hexdigest(),
             test_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             images=records), indent=2) + '\n')

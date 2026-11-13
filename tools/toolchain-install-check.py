@@ -147,7 +147,7 @@ def main():
     parser.add_argument('--binary', type=Path, default=ROOT / 'fpr')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--release', type=Path, metavar='ARCHIVE',
-                        help='qualify a packaged release tarball (tools/package-toolchain.py; its SHA256SUMS beside it) '
+                        help='qualify a packaged release tarball (tools/package-toolchain.sol; its SHA256SUMS beside it) '
                              'instead of staging --binary')
     parser.add_argument('--deny-source', type=Path, action='append', default=[],
                         help='additional source/worktree root to deny during qualification')
@@ -163,7 +163,9 @@ def main():
     if args.release:
         unpack_release(args.release.resolve(), prefix, work)
     else:
-        subprocess.run([sys.executable, ROOT / 'tools/stage-toolchain.py', '--binary', args.binary,
+        sol = [os.environ['SOL']] if os.environ.get('SOL') else (
+            [ROOT / 'fpr', 'sol'] if (ROOT / 'fpr').is_file() else ['sol'])
+        subprocess.run([*sol, ROOT / 'tools/stage-toolchain.sol', '--root', ROOT, '--binary', args.binary,
                         '--output', prefix], check=True, capture_output=True, text=True)
     before = hashes(prefix)
     for p in sorted(prefix.rglob('*'), reverse=True):

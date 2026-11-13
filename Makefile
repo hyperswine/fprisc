@@ -332,9 +332,9 @@ endif
 # one line: a backslash continuation inside a variable becomes a space,
 # and a space splits the --export= argument
 HEAP_EXPORTS = heapInit:fpr_builtin_heap_init,inHeap:fpr_in_heap,alloc:fpr_alloc,free:fpr_free,realloc:fpr_realloc,retain:fpr_builtin_retain,release:fpr_builtin_release,allocAdt:fpr_builtin_alloc_adt,liveAllocations:fpr_builtin_live_allocations,setLayout:fpr_builtin_set_layout,fieldCount:fpr_builtin_field_count,fieldKind:fpr_builtin_field_kind
-$(BUILD)/heap.s: fprc $(MACHINE)/builtin/heap.fpr FORCE
-	@mkdir -p $(BUILD)
-	./fprc --system=bare-metal --profile=builtin --arc --raw --lib --export=$(HEAP_EXPORTS) $(MACHINE)/builtin/heap.fpr $@
+BUILTIN_COMPILE = $(MACHINE)/builtin/compile.sol
+$(BUILD)/heap.s: fprc $(MACHINE)/builtin/heap.fpr $(BUILTIN_COMPILE) FORCE
+	"$(SOL)" "$(BUILTIN_COMPILE)" library "$(FPRC)" "$(MACHINE)/builtin/heap.fpr" "$@" "$(HEAP_EXPORTS)" --raw
 BUILTIN_RT = $(MACHINE)/builtin/crt0.S $(MACHINE)/builtin/virt.c $(BUILTIN_HEAP) \
              $(MACHINE)/builtin/unsafe.c $(MACHINE)/builtin/arc.c $(MACHINE)/builtin/machine.S $(MACHINE)/builtin/interrupt.S $(RUNTIME)/runtime.c $(RUNTIME)/i32.c $(RUNTIME)/bits.c $(MACHINE)/virt/memshim.c
 BUILTIN_BOARD ?= virt
@@ -397,9 +397,8 @@ BUILTIN_STACK_ENTRIES ?=
 LIB ?= machine/builtin/heap.fpr
 LIB_EXPORT ?=
 LIB_FLAGS ?=
-builtin-lib: fprc FORCE
-	@mkdir -p $(BUILD)
-	./fprc --system=bare-metal --profile=builtin --arc $(LIB_FLAGS) --lib --export=$(LIB_EXPORT) $(LIB) $(BUILD)/lib-$(basename $(notdir $(LIB))).s
+builtin-lib: fprc $(BUILTIN_COMPILE) FORCE
+	"$(SOL)" "$(BUILTIN_COMPILE)" library "$(FPRC)" "$(LIB)" "$(BUILD)/lib-$(basename $(notdir $(LIB))).s" "$(LIB_EXPORT)" $(LIB_FLAGS)
 .PHONY: builtin-lib
 ifneq ($(BUILTIN_HEAP_BYTES),)
 BUILTIN_CFLAGS += -DFPR_BUILTIN_HEAP_BYTES=$(BUILTIN_HEAP_BYTES)
@@ -407,22 +406,13 @@ endif
 ifeq ($(ARC_CHECK),1)
 BUILTIN_CFLAGS += -DFPR_ARC_CHECK
 endif
-bare-metal-builtin: fprc $(BUILTIN_RT) $(BUILTIN_LINK) $(BUILTIN_IMAGE_MANIFEST) tools/check_target_image.py tools/check_linked_stack.py tools/riscv_compressed.py FORCE
-	@mkdir -p $(BUILD)
-	./fprc --system=bare-metal --profile=builtin $(BUILTIN_COMPILER_FLAGS) $(FPRC_FLAGS) $(PROG) $(BUILD)/builtin.s
-	@set -eu; temporary=$$(mktemp -d "$(dir $(IMAGE)).fpr-image.XXXXXX"); \
-	trap 'rm -rf "$$temporary"' EXIT; \
-	$(CROSS)gcc $(BUILTIN_ARCHFLAGS) -UFPR_NHARTS -DFPR_NHARTS=1 -DFPR_BUILTIN $(BUILTIN_CFLAGS) -ffunction-sections -fdata-sections \
+bare-metal-builtin: fprc $(BUILTIN_COMPILE) $(MACHINE)/builtin/link-image.sol $(BUILTIN_RT) $(BUILTIN_LINK) $(BUILTIN_IMAGE_MANIFEST) tools/target-image.sol tools/check_target_image.py tools/check_linked_stack.py tools/riscv_compressed.py FORCE
+	"$(SOL)" "$(BUILTIN_COMPILE)" image "$(FPRC)" "$(PROG)" "$(BUILD)/builtin.s" $(BUILTIN_COMPILER_FLAGS) $(FPRC_FLAGS)
+	SOL="$(SOL)" "$(SOL)" "$(MACHINE)/builtin/link-image.sol" "$(IMAGE)" "$(basename $(IMAGE)).bin" "$(dir $(IMAGE))" \
+	  "$(BUILTIN_BOARD)" "$(CROSS)" "$(BUILTIN_IMAGE_MANIFEST)" "$(BUILTIN_IMAGE_TARGET)" "$(BUILTIN_STACK_ENTRIES)" "$(BUILD)/builtin.s" \
+	  $(BUILTIN_ARCHFLAGS) -UFPR_NHARTS -DFPR_NHARTS=1 -DFPR_BUILTIN $(BUILTIN_CFLAGS) -ffunction-sections -fdata-sections \
 	  -Wl,--gc-sections -T $(BUILTIN_LINK) -I$(RUNTIME) -I$(MACHINE)/builtin \
-	  $(BUILTIN_RT) $(BUILD)/builtin.s $$(cat $(BUILD)/builtin.s.units) $(BUILTIN_EXTRA) $(BUILTIN_LDFLAGS) -o "$$temporary/image.elf"; \
-	python3 tools/check_target_image.py --image "$$temporary/image.elf" --manifest "$(BUILTIN_IMAGE_MANIFEST)" --target "$(BUILTIN_IMAGE_TARGET)" --stack-entries "$(BUILTIN_STACK_ENTRIES)" --report "$$temporary/image.json"; \
-	if [ "$(BUILTIN_BOARD)" = tangnano20k ]; then \
-	  $(CROSS)objcopy -O binary "$$temporary/image.elf" "$$temporary/image.bin"; \
-	  $(CROSS)size "$$temporary/image.elf"; \
-	  mv "$$temporary/image.bin" "$(basename $(IMAGE)).bin"; \
-	fi; \
-	mv "$$temporary/image.json" "$(IMAGE).admission.json"; \
-	mv "$$temporary/image.elf" "$(IMAGE)"
+	  $(BUILTIN_RT) "$(BUILD)/builtin.s" --fpr-units $(BUILTIN_EXTRA) $(BUILTIN_LDFLAGS)
 
 bare-metal-builtin-run: bare-metal-builtin
 ifeq ($(BUILTIN_BOARD),virt)
@@ -437,6 +427,6 @@ SOL_PREFIX ?= $(HOME)/.local
 SOL_BUNDLE ?= build/sol-bundle.tar.gz
 .PHONY: sol-bundle sol-install
 sol-bundle: fpr
-	python3 tools/sol-install.py --output "$(SOL_BUNDLE)"
+	$(if $(SOL),"$(SOL)",./fpr sol) tools/sol-install.sol "$(CURDIR)" --output "$(SOL_BUNDLE)"
 sol-install: fpr
-	python3 tools/sol-install.py --prefix "$(SOL_PREFIX)"
+	$(if $(SOL),"$(SOL)",./fpr sol) tools/sol-install.sol "$(CURDIR)" --prefix "$(SOL_PREFIX)"

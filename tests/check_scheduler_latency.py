@@ -235,10 +235,15 @@ def main():
         base = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
         base.update(FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), XDG_CACHE_HOME=str(tmp/'cache'))
         cc = shlex.split(os.environ.get('CC', 'cc'))
-        wrapper = tmp/'probe-cc'
-        wrapper.write_text('#!/usr/bin/env python3\nimport os,sys\n'
-                           f'cc = {cc!r}\nos.execvp(cc[0], cc + ["-DFPR_SCHED_PROBE"] + sys.argv[1:])\n')
-        wrapper.chmod(0o755)
+        # fpr --cc accepts an executable path. Adapt compound commands such as
+        # "ccache clang" only when the caller actually supplies one.
+        if len(cc) == 1:
+            driver = cc[0]
+        else:
+            driver = tmp/'compound-cc'
+            driver.write_text('#!/usr/bin/env python3\nimport os,sys\n'
+                              f'cc = {cc!r}\nos.execvp(cc[0], cc + sys.argv[1:])\n')
+            driver.chmod(0o755)
 
         def checked(command, env, timeout=180):
             p = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, timeout=timeout)
@@ -246,7 +251,7 @@ def main():
             return p
 
         # Build everything before measurement, keeping compile activity out of
-        # each latency sample. The cache key includes the distinct CC wrapper.
+        # each latency sample. The runtime cache key includes the probe flag.
         builds = []
         for shape, variant, switches in VARIANTS:
             name = shape+'-'+variant
@@ -256,10 +261,8 @@ def main():
             exes = {}
             for probe in (False, True):
                 exe = tmp/(name+('-probe' if probe else '-plain'))
-                checked([ROOT/'fpr', 'build', src, '--harts', '4', '--with', HAL,
-                         *(['--cc', wrapper] if probe else []), '-o', exe], env)
-                symbols = checked(['nm', exe], env).stdout
-                assert bool(re.search(r'\b_?fpr_sched_probe$', symbols, re.M)) == probe
+                checked([os.environ.get('SOL', 'sol'), ROOT/'tools/pi-qualification-compile.sol',
+                         ROOT, src, exe, 'native', driver, 'probe' if probe else 'plain', HAL], env)
                 exes[probe] = exe
             asm = tmp/(name+'.s')
             checked([ROOT/'fpr', 'compile', '--system=posix', '--target=rv64', src, asm], env)

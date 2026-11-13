@@ -8,6 +8,7 @@ simple-risc's preset of that name.
 It does not write FPGA flash or the SD card. QEMU verifies software only.
 """
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -20,7 +21,20 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tests'))
 from check_tangnano20k_rv32_base import run_image
 from run_tangnano20k_base import Device
-from tangnano_artifact import sha, repository
+
+
+def sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def repository(root):
+    try:
+        return json.loads(subprocess.check_output(
+            [os.environ.get('SOL') or 'sol', ROOT / 'machine/tangnano20k/artifact.sol',
+             'repository', root], text=True, stderr=subprocess.PIPE))
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        return {'revision': None, 'diff_sha256': None, 'error': str(exc)[-400:]}
+
 
 CASES = ('hello', 'numeric', 'collections', 'host', 'args', 'wc', 'classifier')
 SOURCES = {'hello': 'examples/tangnano20k_hello.fpr',
@@ -223,8 +237,8 @@ def main():
             report['invocation'] = dict(source=str(source), root=str(files), arguments=args.arg,
                                         input_lines=args.input, environment=environment, timeout=args.timeout)
         # Validate the preset before compiler builds, tool downloads or hardware
-        # changes. The shell contract refuses conflicting inherited settings.
-        run(['bash', '-c', 'source machine/tangnano20k/preset.sh'], out / 'preset.log', env)
+        # changes. The board preset rejects conflicting inherited settings.
+        run([env.get('SOL') or 'sol', 'machine/tangnano20k/preset.sol'], out / 'preset.log', env)
         env.update(FPR_XLEN='32', FPR_RVC=str(int(PRESETS[args.preset]['compressed'])), FPR_CPU_MHZ=str(args.mhz))
         bitstream = None
         if args.target == 'board':

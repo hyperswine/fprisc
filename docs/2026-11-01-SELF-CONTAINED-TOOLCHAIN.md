@@ -25,7 +25,7 @@ libraries, but not for `llhttp`, so a fully static link would mean building
 `llhttp` ourselves. Bundling handles all of them the same way and leaves
 developer builds (`make fpr`) unchanged:
 
-- `tools/native_linkage.py` walks the compiler's `otool -L` closure. It copies
+- `tools/toolchain-bundle-libs.sol` walks the compiler's `otool -L` closure. It copies
   every library outside `/usr/lib` and `/System` into `libexec/fprisc/lib/`,
   sets each one's install name to `@rpath/NAME`, and rewrites every reference
   to `@rpath/NAME`.
@@ -44,8 +44,8 @@ byte-identical files.
 
 **Refusals.**
 
-- `tools/stage-toolchain.py` checks every Mach-O file in the stage after
-  bundling. `tools/package-toolchain.py` checks the copy it is about to
+- `tools/stage-toolchain.sol` checks every Mach-O file in the stage after
+  bundling. `tools/package-toolchain.sol` checks the copy it is about to
   archive. A file may load only from `/usr/lib`, `/System`, or files inside the
   toolchain (through `@rpath`, `@loader_path` or `@executable_path`). Every
   `LC_RPATH` must point inside the toolchain too. A violation names the binary
@@ -160,11 +160,10 @@ freeze. Note that `cabal freeze` writes `index-state`, so a later
 ## For QOS to copy
 
 - The QOS SDK's private compiler has the same two Homebrew libraries.
-  `tools/native_linkage.py` is standalone: `bundle(sdk, executable)` and
-  `problems(prefix, executable)`. QOS's SDK packager can import it, or copy
-  it, for its compiler and for `qosp-gl` (Homebrew `glfw`).
+  The Sol modules `tools/toolchain-bundle-libs.sol` and
+  `tools/toolchain-linkage.sol` expose `bundle sdk executable` and
+  `verify prefix executable` for the private compiler and `qosp-gl` (Homebrew `glfw`).
 - QOS needs its own `cabal.project.freeze` and the same plan comparison. The
-  `frozen_plan` and `plan_drift` helpers in `tools/package-toolchain.py` can
-  be reused.
+  `verify manifest freeze` function in `tools/toolchain-freeze.sol` performs that comparison.
 - The install-check pattern carries over: deny `/opt/homebrew`, prove the
   denial, and record what dyld actually loaded.

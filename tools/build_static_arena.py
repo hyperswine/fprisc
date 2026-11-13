@@ -26,15 +26,7 @@ ROOT=Path(__file__).resolve().parents[1]
 CONTRACT=ROOT/'machine/builtin/contracts/rv64-c-heap-v1.json'
 TARGET=ROOT/'machine/builtin/targets/virt.json'
 TARGET_ID='builtin-rv64-virt-128m'
-FLAGS=['-march=rv64imc_zicsr','-mabi=lp64','-mcmodel=medany','-msmall-data-limit=0','-O2',
-       '-ffreestanding','-fno-builtin','-fno-stack-protector','-nostdlib','-nostartfiles',
-       '-ffunction-sections','-fdata-sections','-DFPR_BUILTIN','-DFPR_BUILTIN_ARC']
-RUNTIME=['machine/builtin/heap.c','machine/builtin/arc.c','machine/virt/memshim.c']
-CONTRACT_SOURCES=set(RUNTIME+['machine/builtin/builtin.h','machine/builtin/uniform.inc',
-    'machine/builtin/uniform-aggregate.inc','runtime/fpr.h','compiler/Codegen/Heap.hs',
-    'compiler/Codegen/Calling.hs','compiler/Codegen/Calling/Types.hs',
-    'compiler/Codegen/Export/Plan.hs','compiler/Codegen/Target/RV/Export.hs',
-    'compiler/Codegen/Target/RV.hs','compiler/Codegen/Target/RV/ScalarAdapters.hs'])
+LINK_TOOL=ROOT/'tools/static-arena-link.sol'
 PUBLIC='fpr_static_callback'
 KINDS={'KWord':'uintptr_t','KInt':'intptr_t','KBool':'int','KUnit':'uintptr_t'}
 
@@ -42,16 +34,15 @@ KINDS={'KWord':'uintptr_t','KInt':'intptr_t','KBool':'int','KUnit':'uintptr_t'}
 def sha(data):return hashlib.sha256(data).hexdigest()
 
 
+def arena_tool(tool, *args, env=None):
+    proc = subprocess.run([os.environ.get('SOL') or 'sol', tool, ROOT, *args],
+                          cwd=ROOT, env=env, text=True, capture_output=True, timeout=250)
+    require(proc.returncode == 0, proc.stderr.strip() or 'controlled link failed')
+    return json.loads(proc.stdout)
+
+
 def verify_contract():
-    contract=json.loads(CONTRACT.read_bytes())
-    require(isinstance(contract,dict) and set(contract)=={'schema','description','sources_sha256'},'invalid audited heap contract fields')
-    require(contract['schema']=='builtin-rv64-c-heap-v1','unsupported audited heap contract')
-    require(isinstance(contract['sources_sha256'],dict) and set(contract['sources_sha256'])==CONTRACT_SOURCES,
-            'audited heap contract does not cover its complete policy/runtime dependencies')
-    for name,expected in contract['sources_sha256'].items():
-        require(isinstance(expected,str) and re.fullmatch('[0-9a-f]{64}',expected) is not None,'invalid audited source hash: '+name)
-        require(sha((ROOT/name).read_bytes())==expected,'audited runtime/heap contract changed: '+name)
-    return contract
+    return arena_tool(ROOT/'tools/static-arena-contract.sol', CONTRACT)
 
 
 def signature(assembly,public=PUBLIC):
@@ -169,18 +160,9 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
                       requested_bytes=sum(proofs[s['entry']]['requested_bytes'] for s in steps),per_entry=proofs)
         for name,content in [('start.S',START),('caller.c',body),('link.ld',LINK.replace('HEAP_BYTES',str(heap_bytes)).replace('STACK_BYTES',str(stack_bytes)))]:
             (out/name).write_text(content)
-        # No additional objects, libraries, user link flags, --wrap overrides or
-        # alternate runtime selection can enter this closed link recipe.
-        units_path=Path(str(asm)+'.units')
-        units=[Path(p) for p in units_path.read_text().splitlines()] if units_path.exists() else []
-        inputs=[out/'start.S',asm,*units,out/'caller.c',*[ROOT/p for p in RUNTIME]]
-        before={str(p):sha(p.read_bytes()) for p in inputs}
-        elf=out/'image.elf'
-        # Keep the schedule dispatcher visible to the direct-call stack proof.
-        flags=FLAGS if sequence is None else [*FLAGS,'-fno-jump-tables']
-        run(['riscv64-unknown-elf-gcc','-ffixed-x27',*flags,'-Wl,--gc-sections','-Iruntime','-Imachine/builtin',
-             '-T',out/'link.ld',*inputs,'-lgcc','-o',elf])
-        require(before=={str(p):sha(p.read_bytes()) for p in inputs},'link inputs changed during admission')
+        linked = arena_tool(LINK_TOOL, out, 'single' if sequence is None else 'sequence', env=env)
+        commands.extend(linked['commands'])
+        elf = out / 'image.elf'
         require(verify_contract()==contract,'runtime contract changed during admission')
         require(sha(source.read_bytes())==source_hash,'root source changed during admission')
         require(sha((ROOT/'fpr').read_bytes())==compiler_hash,'compiler changed during admission')
@@ -193,7 +175,8 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
             runtime_contract=contract,recipe_sha256=sha(Path(__file__).read_bytes()),
             runtime_recipe_sha256=sha((ROOT/'tools/static_arena_runtime.py').read_bytes()),
             root_source_sha256=source_hash,assembly_sha256=sha(asm.read_bytes()),
-            linked_inputs_sha256=before,flags=flags,build_commands=commands,toolchain=run(['riscv64-unknown-elf-gcc','-ffixed-x27','--version']).splitlines()[0],
+            linked_inputs_sha256=linked['inputs'],flags=linked['flags'],build_commands=commands,toolchain=linked['toolchain'],
+            link_recipe_sha256=sha(LINK_TOOL.read_bytes()),
             scope='One fresh, exclusive, non-reentrant RV64 builtin activation from the controlled boot path; no WCET claim.',
             assumptions=['Trusted compiler and C/assembler/linker toolchain; valid-memory program semantics.',
                          'QEMU virt machine address map, machine-mode reset, hart 0; other harts park without memory accesses.',

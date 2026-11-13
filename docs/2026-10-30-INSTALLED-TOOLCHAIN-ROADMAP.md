@@ -60,7 +60,7 @@ of QOS's runtime and SDK.
 
 Sol already has its own prefix installer
 ([Sol installation](2026-10-29-SOL-INSTALLATION.md): `make sol-install` /
-`tools/sol-install.py`). It installs `PREFIX/bin/sol` and refuses to replace
+`./fpr sol tools/sol-install.sol .`). It installs `PREFIX/bin/sol` and refuses to replace
 an unrelated `bin/sol`. Decide whether the formula replaces that path or the
 two stay separate install methods. Then document what happens when a prefix
 install and a Homebrew install are both on PATH, and which `sol` owns the
@@ -196,7 +196,7 @@ release, with larger host/target matrices separate from everyday feedback.
 ## First-step feasibility record
 
 **The installed SDK core is feasible and passed locally.**
-`tools/stage-toolchain.py` now stages a private standalone SDK without installing
+`tools/stage-toolchain.sol` now stages a private standalone SDK without installing
 global commands. `tools/toolchain-install-check.py` qualifies it with real access
 denial, a minimal tool PATH and fresh caches. The
 [recorded evidence](evidence/2026-10-30-installed-toolchain-feasibility.json)
@@ -273,11 +273,11 @@ command QOS is meant to stop exporting.
 
 **Packaging (step 3).**
 
-- `tools/compiler-licenses.py` collects notices for the compiler's Haskell
+- `tools/compiler-licenses.sol` collects notices for the compiler's Haskell
   dependencies from its Cabal plan, the GHC docs and the source cache. It
   fails closed when one is missing. It is the QOS SDK packager's tool, moved
   here because the notices describe this compiler.
-- `tools/package-toolchain.py` takes a stage from `tools/stage-toolchain.py`
+- `tools/package-toolchain.sol` takes a stage from `tools/stage-toolchain.sol`
   and refuses unless all of these hold:
   - the tree is clean and the stage was made from the current commit;
   - the version matches the compiler's `fpr --version`;
@@ -308,9 +308,10 @@ omits. See the [evidence](evidence/2026-10-30-toolchain-release-candidate.json).
 
 ```sh
 make fpr
-python3 tools/compiler-licenses.py --plan dist-newstyle/cache/plan.json --output /tmp/fpr-notices
-python3 tools/stage-toolchain.py --output /tmp/fpr-stage
-python3 tools/package-toolchain.py --sdk /tmp/fpr-stage --version 0.12.0-rc1 \
+# bsdtar reads license notices from cached Hackage source archives.
+./fpr sol tools/compiler-licenses.sol --plan dist-newstyle/cache/plan.json --output /tmp/fpr-notices
+./fpr sol tools/stage-toolchain.sol --output /tmp/fpr-stage
+./fpr sol tools/package-toolchain.sol --sdk /tmp/fpr-stage --version 0.12.0-rc1 \
   --notices /tmp/fpr-notices --output /tmp/fpr-release
 python3 tools/toolchain-install-check.py --release /tmp/fpr-release/fprisc-0.12.0-rc1-macos-arm64.tar.gz \
   --qos /opt/homebrew/bin/qos --output /tmp/fpr-qual

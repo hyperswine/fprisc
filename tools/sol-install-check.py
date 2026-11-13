@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import tarfile
 import tempfile
 import time
@@ -26,7 +25,7 @@ def main():
         w = Path(temporary).resolve()
         prefix = w/'prefix with spaces'
         archive = w/'bundle.tar.gz'
-        result = subprocess.run([sys.executable, ROOT/'tools/sol-install.py', '--binary', FPR,
+        result = subprocess.run([FPR, 'sol', ROOT/'tools/sol-install.sol', ROOT, '--binary', FPR,
                                  '--prefix', prefix, '--output', archive], capture_output=True, timeout=90)
         assert result.returncode == 0, result
         metadata = json.loads(result.stdout)
@@ -165,7 +164,8 @@ def main():
             installed = sol.resolve().parent
             library = installed/'source/sol/lib/digest.sol'
             original = library.read_bytes(); library.write_bytes(b'broken = ).\n')
-            p = subprocess.run([sys.executable, extracted/metadata['bundle_id']/'source/tools/sol-install.py',
+            p = subprocess.run([FPR, 'sol', extracted/metadata['bundle_id']/'source/tools/sol-install.sol',
+                                extracted/metadata['bundle_id']/'source',
                                 '--binary', extracted/metadata['bundle_id']/'fpr', '--prefix', prefix],
                                capture_output=True, timeout=90)
             assert p.returncode != 0 and b'corrupt' in p.stderr, p
@@ -173,7 +173,7 @@ def main():
             # Refuse to overwrite an unrelated installed command.
             unmanaged = w/'unmanaged/bin'; unmanaged.mkdir(parents=True)
             (unmanaged/'sol').write_text('user-owned')
-            p = subprocess.run([sys.executable, ROOT/'tools/sol-install.py', '--binary', FPR,
+            p = subprocess.run([FPR, 'sol', ROOT/'tools/sol-install.sol', ROOT, '--binary', FPR,
                                 '--prefix', unmanaged.parent], capture_output=True, timeout=60)
             assert p.returncode != 0 and (unmanaged/'sol').read_text() == 'user-owned'
             count += 1

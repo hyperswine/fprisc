@@ -211,7 +211,7 @@ class Suite:
                  '-Wl,--gc-sections', '-Wl,--no-warn-rwx-segments', '-I', ROOT / 'runtime',
                  '-I', ROOT / 'machine/builtin', '-T', ROOT / 'machine/builtin/tangnano20k/link-sdram.ld',
                  *sources, board, assembly, *units, '-lgcc', '-o', image], directory / 'build.log')
-        checked(['python3', 'tools/check_tangnano20k_isa.py', image, '--xlen', '32'], directory / 'isa.log')
+        checked([os.environ.get('SOL') or 'sol', 'machine/tangnano20k/isa.sol', image, '--xlen', '32'], directory / 'isa.log')
         code, output = self.qemu_run(image, 'builtin')
         assert 'BUILTIN I32 HOLDS' in output and 'FPR EXIT 0' in output, output
         self.record('integer core', 'QEMU RV32IM manual Builtin (16550 adapter)', image, output, code)

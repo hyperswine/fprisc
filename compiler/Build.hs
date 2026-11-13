@@ -210,7 +210,9 @@ build configuration p = do
         "aarch64" -> ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"]
         "riscv64" -> ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-ffixed-x27"] -- s11: the fuel counter
         _ -> []
-      cflags = archFlags ++ ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe] ++ ["-DFPR_LAYOUT_CHECK" | layoutCheck] ++ ["-DFPR_LAYOUT_FAULT" | layoutFault] ++ ["-DFPR_LAYOUT_REPORT" | layoutReport] ++ ["-DFPR_BUMP_CHECK" | bumpCheck] ++ ["-DFPR_LEGACY_CELLS" | not compactCells] ++ ["-DFPR_UNIT_TICKS" | not tickWeight]
+      -- Scheduler probes instrument the cached runtime as well as the observer HAL.
+      schedProbeFlags = ["-DFPR_SCHED_PROBE" | "-DFPR_SCHED_PROBE" `elem` pCFlags p]
+      cflags = archFlags ++ ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ schedProbeFlags ++ ["-DFPR_COST_PROBE" | costProbe] ++ ["-DFPR_LAYOUT_CHECK" | layoutCheck] ++ ["-DFPR_LAYOUT_FAULT" | layoutFault] ++ ["-DFPR_LAYOUT_REPORT" | layoutReport] ++ ["-DFPR_BUMP_CHECK" | bumpCheck] ++ ["-DFPR_LEGACY_CELLS" | not compactCells] ++ ["-DFPR_UNIT_TICKS" | not tickWeight]
       linux = if tOS == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
       -- when their source is newer: a warm build compiles the program
@@ -332,10 +334,20 @@ qosPortable :: [String] -> IO ()
 qosPortable args = do
   self <- getExecutablePath >>= canonicalizePath
   explicit <- System.Environment.lookupEnv "QOS_PORTABLE_BUILDER"
-  let builder = fromMaybe (takeDirectory (takeDirectory self) </> "tools" </> "portable_sdk.py") explicit
+  let sdk = takeDirectory (takeDirectory self)
+      native = sdk </> "tools" </> "qos"
+      legacy = sdk </> "tools" </> "portable_sdk.py"
+      forwarded = ["build", "--compiler", self] ++ filter (/= "--target=qos-portable") args
+  hasMetadata <- doesFileExist (sdk </> "sdk.json")
+  hasNative <- doesFileExist native
+  let (builder, command, prefix) = case explicit of
+        Just path | takeExtension path == ".sol" -> (path, self, ["sol", path])
+        Just path -> (path, "python3", [path])
+        Nothing | hasMetadata && hasNative -> (native, native, [])
+        Nothing -> (legacy, "python3", [legacy])
   exists <- doesFileExist builder
   unless exists $ hPutStrLn stderr "fpr build: QOS Portable apps are built by the QOS SDK with its own compiler; run `qos build` in the project (this fpr has no QOS builder)" >> exitWith (ExitFailure 2)
-  code <- rawSystem "python3" ([builder, "build", "--compiler", self] ++ filter (/= "--target=qos-portable") args)
+  code <- rawSystem command (prefix ++ forwarded)
   exitWith code
 
 -- A release is built the way the toolchain builds by default.  The FPR_*

@@ -19,7 +19,7 @@ sol --version
 sol /absolute/path/to/task.sol argument
 ```
 
-`tools/sol-install.py --prefix PREFIX --output ARCHIVE` can do both steps.
+`./fpr sol tools/sol-install.sol . --prefix PREFIX --output ARCHIVE` can do both steps.
 It requires Python 3 and Git in a checkout, stages the complete version before
 activation, and refuses to replace an unrelated `PREFIX/bin/sol`. The installed
 command invokes the native runner directly through a relative symlink to a versioned directory under `libexec/sol/`;
@@ -38,7 +38,7 @@ An extracted archive can run directly with `BUNDLE/launch-sol task.sol`.
 To install it under a new prefix, run:
 
 ```sh
-python3 BUNDLE/source/tools/sol-install.py --binary BUNDLE/fpr --prefix PREFIX
+BUNDLE/fpr sol BUNDLE/source/tools/sol-install.sol BUNDLE/source --binary BUNDLE/fpr --prefix PREFIX
 ```
 
 To roll back, run that installer from the retained older bundle with its own

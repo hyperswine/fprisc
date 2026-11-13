@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
 """Virtual-device protocol, rooted filesystem and refusal checks (no FPGA)."""
+import os
+import subprocess
 import tempfile
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0,str(root/'tools'))
 from run_tangnano20k_base import Device,frame,parse,MAX_PAYLOAD
-from check_tangnano20k_isa import check
+def check(report, compressed=False, xlen=64):
+    with tempfile.TemporaryDirectory() as temp:
+        path = Path(temp) / "readelf.txt"
+        path.write_text(report)
+        argv = [os.environ.get("SOL") or "sol", root/"machine/tangnano20k/isa.sol", "--report", path, "--xlen", str(xlen)]
+        if compressed:
+            argv.append("--compressed")
+        result = subprocess.run(argv, capture_output=True, text=True)
+        if result.returncode:
+            raise ValueError(result.stderr)
+
 report='ELF64 little endian\nFlags: 0x0\nTag_RISCV_arch: "rv64i2p1_m2p0_zicsr2p0_zifencei2p0_zmmul1p0"'
 check(report)
 compressed_report=report.replace('0x0','0x1').replace('_m2p0','_m2p0_c2p0')
