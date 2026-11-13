@@ -137,8 +137,8 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
             require(p.returncode==0,'controlled build/execution failed:\n'+p.stdout[-3000:]+p.stderr[-3000:])
             return p.stdout+p.stderr
         asm=out/'callback.s'
-        run([ROOT/'fpr','compile','--profile=bare-metal-builtin','--arc','--lib',
-            *['--export='+name+':'+symbol for name,symbol in symbols.items()],'--heap-budget='+str(max(1,heap_bytes)),source,asm])
+        commands.append(arena_tool(LINK_TOOL, out, 'compile', source, str(max(1,heap_bytes)),
+                                   *(name+':'+symbol for name,symbol in symbols.items()), env=env))
         text=asm.read_text()
         proofs={}
         for name,symbol in symbols.items():

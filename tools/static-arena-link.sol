@@ -27,6 +27,11 @@ link root out sequence =
     J.JObj [("flags",J.JArr (List.map J.JStr opts)),("inputs",before),("toolchain",J.JStr version),
             ("commands",J.JArr (List.map (fn argv -> J.JArr (List.map J.JStr argv)) [command,info]))].
 > case args Unit of
-    [root,out,"single"] -> print (J.render (link root out False))
+    root :: out :: "compile" :: source :: limit :: exports ->
+      argv = List.concat [["{root}/fpr","compile","--profile=bare-metal-builtin","--arc","--lib"],
+        List.map (fn symbol -> "--export={symbol}") exports,["--heap-budget={limit}",source,"{out}/callback.s"]];
+      _ = runTool root argv;
+      print (J.render (J.JArr (List.map J.JStr argv)))
+  | [root,out,"single"] -> print (J.render (link root out False))
   | [root,out,"sequence"] -> print (J.render (link root out True))
   | _ -> error "expected ROOT BUILD_DIR single|sequence".
