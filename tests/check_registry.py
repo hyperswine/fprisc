@@ -4,6 +4,7 @@ Only an explicitly successful CI configuration may cover a Base invocation.
 --require-execution strengthens the same check; other arguments/environments
 need an explicit coverage declaration and stay separate configurations.
 """
+from pathlib import Path
 from dataclasses import dataclass, replace
 
 
@@ -26,7 +27,11 @@ def base(path, timeout, alone=False, lock=None):
     BASE.append(Check(path, path, timeout, alone=alone, lock=lock))
 
 
-base('tests/test_check_registry.py', 60)
+# These independent Base configurations also run through tests/run.sol.
+for row in Path(__file__).with_name('sol-checks.tsv').read_text().splitlines():
+    path, timeout = row.split('\t')
+    base(path, int(timeout))
+
 base('tests/check_target_image.py', 300)
 base('tests/check_type_specialization.py', 600)
 base('tests/check_uniform_aggregate.py', 600)
@@ -54,7 +59,6 @@ base('tests/check_callback_stack.py', 600)
 base('tests/check_builtin_heap_geometry.py', 300)
 base('tests/check_heap_budget.py', 600)
 base('tests/check_linked_stack.py', 600)
-base('tests/test_aarch64_fuel.py', 60)
 base('tests/check_static_arena.py', 600)
 base('tests/check_static_sequence.py', 600)
 base('tests/check_scalar_admission.py', 600)
@@ -63,8 +67,6 @@ base('tests/check_persistent_reclamation.py', 300)
 base('tests/check_local_products.py', 300)
 base('tests/check_alloc_fast.py', 300)
 base('tests/check_channel_alignment.py', 300)
-base('tests/check_ctx_a64_fp.py', 120)
-base('tests/check_digest_vectors.py', 300)
 base('tests/check_parked_receive.py', 300)
 base('tests/check_compiler_options.py', 300, lock='cabal')
 base('tests/check_diagnostics.py', 300, lock='cabal')
@@ -127,17 +129,11 @@ base('examples/ideal/check.py', 600)
 base('tests/check_higher_order_contracts.py', 600)
 base('tests/check_contract_rewrites.py', 600)
 base('tests/check_printer_ownership.py', 600)
-base('tools/sol-linearity-check.py', 300)
-base('tools/sol-fs-check.py', 300)
-base('tools/sol-science-check.py', 300)
 base('tools/sol-repl-check.py', 300)
-base('tools/sol-io-check.py', 300)
+base('tools/sol-science-check.py', 300)
 base('tools/sol-retry-policy-check.py', 120)
 base('tools/sol-pipeline-check.py', 180)
 base('tools/sol-receipt-budget-check.py', 720)  # aggregate receipt serialization also runs under QEMU
-base('tools/sol-digest-check.py', 180)
-base('tools/sol-format-check.py', 180)
-base('tools/sol-cli-config-check.py', 180)
 base('tools/sol-http-check.py', 180)
 base('tools/sol-install-check.py', 300)
 base('tools/sol-effects-check.py', 300)

@@ -1,0 +1,10 @@
+tests/test_check_registry.py	60
+tests/test_aarch64_fuel.py	60
+tests/check_ctx_a64_fp.py	120
+tools/sol-linearity-check.py	300
+tools/sol-fs-check.py	300
+tools/sol-io-check.py	300
+tools/sol-digest-check.py	180
+tools/sol-format-check.py	180
+tools/sol-cli-config-check.py	180
+tests/check_digest_vectors.py	300
