@@ -81,7 +81,10 @@ and launched successfully. QOS installed SDK acceptance passed with both source
 checkouts inaccessible; installed desktop and standalone process builds also
 passed with Python and Bash blocked on PATH. The existing static-arena regression
 and four target-image builds passed, including failed-publication preservation.
-Release-package and clean-checkout verification are recorded below as they complete.
+Release-package and clean-checkout verification are recorded in the sibling
+QOS core build guide. The release-plan audit also added the already-used
+GHC Haskeline 0.8.2.1 and terminfo 0.4.1.6 packages to `cabal.project.freeze`;
+all dependency versions and flags now match the verified compiler plan.
 
 ### Qualification boundaries
 
