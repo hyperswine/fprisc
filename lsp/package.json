@@ -2,7 +2,7 @@
   "name": "fpr-lang",
   "displayName": "FP-RISC (fpr + sol)",
   "description": "FP-RISC and Sol language support: compiler diagnostics on save, syntax highlighting, source-generated API hovers, completions, outlines, semantic tokens, and cross-module navigation.",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "publisher": "hyperswine",
   "repository": {
     "type": "git",

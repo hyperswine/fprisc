@@ -23,6 +23,7 @@ function plan(mode, dryRun = false) {
     [process.execPath, [vsce, 'package', '--out', vsix,
       '--baseContentUrl', 'https://github.com/hyperswine/fprisc/blob/main/lsp/',
       '--baseImagesUrl', 'https://github.com/hyperswine/fprisc/raw/main/lsp/']],
+    [process.execPath, [path.join(root, 'test/packaged-compatibility.js'), vsix]],
   ];
   if (mode === 'publish' && !dryRun) commands.push([process.execPath, [vsce, 'publish', '--packagePath', vsix]]);
   return { vsix, commands };

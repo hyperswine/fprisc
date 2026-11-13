@@ -8,6 +8,14 @@ If you installed an older `jasen.fpr-lang` VSIX, disable or uninstall it before
 installing this extension. The publisher ID changed because `jasen` is unavailable
 to this publisher account; existing installations do not automatically migrate.
 
+## Version 0.9.2: current compiler compatibility
+
+The installed 0.9.1 package only accepted editor report format 1. Current FP-RISC
+and Sol compilers emit format 2, which that package rejected as unsupported. This
+update ships the existing format-2 reader under a new extension version, retaining
+format-1 compatibility. Packaging now tests the actual VSIX reader against success
+and error reports from both profiles, without executing Sol scripts.
+
 ## Version 0.9.1
 
 - The unresolved-name scan now reads constructor patterns. A `Type` names its
@@ -323,8 +331,8 @@ locked dependencies, runs the complete suite against the compiler checkout,
 and packages the extension:
 
 ```sh
-/path/to/fprisc/tools/lsp-release.sh package
-code --install-extension /path/to/fprisc/lsp/artifacts/fpr-lang-0.9.0.vsix
+cd /path/to/fprisc/lsp && npm run package
+code --install-extension /path/to/fprisc/lsp/artifacts/fpr-lang-0.9.2.vsix
 ```
 
 For iteration after `npm ci`, run `npm run package` inside `lsp/`. The VSIX
@@ -349,7 +357,7 @@ fail rather than silently using an old saved credential.
 Verify publisher access without uploading anything:
 
 ```sh
-/path/to/fprisc/tools/lsp-release.sh verify
+npm run verify:marketplace
 # Or, after npm ci inside lsp/: npm run verify:marketplace
 ```
 
@@ -360,8 +368,8 @@ removal was needed. This verification did not publish an extension version.
 Then package or publish explicitly:
 
 ```sh
-/path/to/fprisc/tools/lsp-release.sh publish --dry-run
-/path/to/fprisc/tools/lsp-release.sh publish
+npm run publish:marketplace -- --dry-run
+npm run publish:marketplace
 ```
 
 The dry run performs testing and packaging without uploading. Publishing runs

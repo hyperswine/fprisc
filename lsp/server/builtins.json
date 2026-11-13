@@ -11077,25 +11077,12 @@
  "strCmpGo": {
   "sig": "strCmpGo : unsafe String -> String -> Int -> Int -> Int -> Int",
   "section": "FP-RISC prelude (core/prelude.fpr)",
-  "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nstrCmpGo a b i la lb = case i >= la or i >= lb of\n    True -> (case la == lb of True -> 0 | False -> (case la < lb of True -> 0 - 1 | False -> 1))\n  | False -> strCmpAt a b i la lb (charAt a i) (charAt b i).\n```",
+  "doc": "one loop, guards only: no Bool is built (an `or` made one per byte, and\nthe walk ping-ponged through a second function)",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "strCmpGo : unsafe String -> String -> Int -> Int -> Int -> Int",
-    "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nstrCmpGo a b i la lb = case i >= la or i >= lb of\n    True -> (case la == lb of True -> 0 | False -> (case la < lb of True -> 0 - 1 | False -> 1))\n  | False -> strCmpAt a b i la lb (charAt a i) (charAt b i).\n```",
-    "section": "FP-RISC prelude (core/prelude.fpr)"
-   }
-  }
- },
- "strCmpAt": {
-  "sig": "strCmpAt : unsafe String -> String -> Int -> Int -> Int -> Int -> Int -> Int",
-  "section": "FP-RISC prelude (core/prelude.fpr)",
-  "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nstrCmpAt a b i la lb ca cb = case ca == cb of\n    True -> strCmpGo a b (i + 1) la lb\n  | False -> (case ca < cb of True -> 0 - 1 | False -> 1).\n```",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "strCmpAt : unsafe String -> String -> Int -> Int -> Int -> Int -> Int -> Int",
-    "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nstrCmpAt a b i la lb ca cb = case ca == cb of\n    True -> strCmpGo a b (i + 1) la lb\n  | False -> (case ca < cb of True -> 0 - 1 | False -> 1).\n```",
+    "doc": "one loop, guards only: no Bool is built (an `or` made one per byte, and\nthe walk ping-ponged through a second function)",
     "section": "FP-RISC prelude (core/prelude.fpr)"
    }
   }
@@ -11103,25 +11090,25 @@
  "strIndexGo": {
   "sig": "strIndexGo : unsafe String -> String -> Int -> Int -> Int -> Int",
   "section": "FP-RISC prelude (core/prelude.fpr)",
-  "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nstrIndexGo p s i lp ls = case lp == 0 of\n    True -> (case i <= ls of True -> i | False -> 0 - 1)\n  | False -> (case i + lp > ls of\n      True -> 0 - 1\n    | False -> (case strMatchAt p s i 0 lp of True -> i | False -> strIndexGo p s (i + 1) lp ls)).\n```",
+  "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nstrIndexGo p s i lp ls = strIndexGo p s (i + 1) lp ls.\n```",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "strIndexGo : unsafe String -> String -> Int -> Int -> Int -> Int",
-    "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nstrIndexGo p s i lp ls = case lp == 0 of\n    True -> (case i <= ls of True -> i | False -> 0 - 1)\n  | False -> (case i + lp > ls of\n      True -> 0 - 1\n    | False -> (case strMatchAt p s i 0 lp of True -> i | False -> strIndexGo p s (i + 1) lp ls)).\n```",
+    "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nstrIndexGo p s i lp ls = strIndexGo p s (i + 1) lp ls.\n```",
     "section": "FP-RISC prelude (core/prelude.fpr)"
    }
   }
  },
  "strMatchAt": {
-  "sig": "strMatchAt : unsafe String -> String -> Int -> Int -> Int -> Bool",
+  "sig": "strMatchAt : unsafe String -> String -> Int -> Int -> Int -> Int",
   "section": "FP-RISC prelude (core/prelude.fpr)",
-  "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nstrMatchAt p s i k lp = case k >= lp of\n    True -> True\n  | False -> (case charAt s (i + k) == charAt p k of True -> strMatchAt p s i (k + 1) lp | False -> False).\n```",
+  "doc": "how many of p's characters match s's from i on (lp: all of them); an Int,\nso no Bool crosses the call",
   "profile": "fpr",
   "variants": {
    "fpr": {
-    "sig": "strMatchAt : unsafe String -> String -> Int -> Int -> Int -> Bool",
-    "doc": "Definition in FP-RISC prelude (core/prelude.fpr):\n\n```\nstrMatchAt p s i k lp = case k >= lp of\n    True -> True\n  | False -> (case charAt s (i + k) == charAt p k of True -> strMatchAt p s i (k + 1) lp | False -> False).\n```",
+    "sig": "strMatchAt : unsafe String -> String -> Int -> Int -> Int -> Int",
+    "doc": "how many of p's characters match s's from i on (lp: all of them); an Int,\nso no Bool crosses the call",
     "section": "FP-RISC prelude (core/prelude.fpr)"
    }
   }

@@ -9,7 +9,7 @@ exports.run=async()=>{
  const result={status:'running',extension:'hyperswine.fpr-lang',checks:[]};
  try{
   fs.writeFileSync(path.join(workspace,'main.fpr'),'profile base.\nS = use \"std/string\".\ninc x = x + 1.\nmain = print (S.trim \" packaged editor \").\nbroken = packaged_editor_missing.\n');
-  const ext=vscode.extensions.getExtension('hyperswine.fpr-lang');assert(ext);assert.equal(ext.packageJSON.version,'0.9.0');await ext.activate();
+  const ext=vscode.extensions.getExtension('hyperswine.fpr-lang');assert(ext);assert.equal(ext.packageJSON.version,require('../package.json').version);await ext.activate();
   const uri=vscode.Uri.file(path.join(workspace,'main.fpr'));const doc=await vscode.workspace.openTextDocument(uri);await vscode.window.showTextDocument(doc);
   await until(()=>vscode.languages.getDiagnostics(uri).some(d=>d.message.includes('packaged_editor_missing')),'packaged compiler diagnostic');result.checks.push('managed packaged compiler diagnostic');
   const edit=new vscode.WorkspaceEdit();edit.replace(uri,new vscode.Range(doc.positionAt(0),doc.positionAt(doc.getText().length)),doc.getText().replace('broken = packaged_editor_missing.\n',''));
