@@ -437,7 +437,7 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
             CMk tg 1 fs | tg==tag, length fs==5, all (readsOnly t 5) fs ->
               CApp (CApp (CVar "$reuse.fresh") (CVar t)) e
             _ -> e
-          twin=CIf (CTagEq tag 0 (CVar t)) (knownCtors (rename leafCase)) (fst (tailNode (0::Int) (knownCtors (rename nodeCase))))
+          twin=directComparator ps (CIf (CTagEq tag 0 (CVar t)) (knownCtors (rename leafCase)) (fst (tailNode (0::Int) (knownCtors (rename nodeCase)))))
       if not (rebuildsOver twin) then Nothing else
         Just (j,tag,(ps,twin))
     -- std/map's balance l k v r with its node calls inlined, binders renamed
@@ -650,6 +650,60 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
                                  M.member ("balance@"++h) mapBodies, M.member ("Leaf@"++h) definitions]
     -- (a local bound to one counts: an empty map has no node to rebuild, so
     -- sharing it elsewhere is harmless)
+    -- The comparator, called directly. A walker twin runs only on an owned
+    -- map, and an owned map's comparator is the one of the empty map it
+    -- started from: the twins rebuild the wrapper with its own field. When
+    -- every owned map in the unit starts from empty maps with one known
+    -- comparator (a global function), the walker's comparator parameter is
+    -- that function: its calls become direct calls (no generic apply).
+    -- The parameter is the one applied to two arguments and handed on
+    -- unchanged to the walker's own calls.
+    directComparator ps body=case S.toList ownedComparators of
+      [g] | g/="?", [p]<-[p | (i,p)<-zip [0..] ps, any (appliedTwice p) (nodes body), handedOn (length ps) i p body] ->
+              substCall p g body
+      _ -> body
+    appliedTwice p e=case e of CApp (CApp (CVar q) _) _ -> q==p; _ -> False
+    handedOn arity i p body=and [args!!i==CVar p | n<-nodes body, (CVar f,args)<-[spine n],
+                                 "$worker.mapown.walk." `isPrefixOf` f, length args==arity]
+    substCall p g e=case e of
+      CApp (CApp (CVar q) a) b | q==p -> CApp (CApp (CVar g) (substCall p g a)) (substCall p g b)
+      CApp f a -> CApp (substCall p g f) (substCall p g a)
+      CLet k a b -> CLet k (substCall p g a) (substCall p g b)
+      CIf c a b -> CIf (substCall p g c) (substCall p g a) (substCall p g b)
+      CMk t v fs -> CMk t v (map (substCall p g) fs)
+      CProj k a -> CProj k (substCall p g a)
+      CTagEq t v a -> CTagEq t v (substCall p g a)
+      CLam qs b -> CLam qs (substCall p g b)
+      _ -> e
+    -- the comparators of the empty maps owned maps start from, in this unit
+    -- (every empty map the unit names, owned or not: a superset, so the
+    -- answer only errs toward the generic call; computed apart from the
+    -- plans, which depend on the walkers)
+    ownedComparators=S.fromList [maybe "?" id (rootComparator (CVar g)) | (_,(_,b))<-M.toList program, CVar g<-nodes b,
+                                 any (\p->p `isPrefixOf` g) ["strings@","ints@","empty@"],
+                                 S.member (drop 1 (dropWhile (/='@') g)) leafHashes]
+    rootComparator e=case stripLets e of
+      CVar g | any (\p->p `isPrefixOf` g) ["strings@","ints@","empty@"] -> M.lookup g mapBodies >>= comparatorOf . dropAliases M.empty . snd
+      CVar k | Just rhs<-M.lookup k localBindings, rhs/=CVar k -> rootComparator rhs
+      _ -> Nothing
+    -- a root's body: the Map constructor over (cmp | Ops hash cmp), or a call
+    -- of its module's `empty`, inlined once
+    comparatorOf body=case stripLets body of
+      CMk t _ [ops,_,_] | S.member t mapTags -> case resolve (stripLets ops) of
+        CVar g | global g -> Just g
+        CMk _ _ [_,c] | CVar g<-resolve (stripLets c), global g -> Just g
+        _ -> Nothing
+      e | (CVar f,args)<-spine e, "empty@" `isPrefixOf` f, Just fb<-M.lookup f mapBodies, length args==length (fst fb) ->
+            comparatorOf (dropAliases M.empty (inlineCall "$root." fb args))
+      _ -> Nothing
+      where
+        -- a name bound in the body, followed to what it names
+        lets=M.fromList [(k,stripLets rhs) | CLet k rhs _<-nodes body]
+        resolve e=case e of
+          CVar v | Just r<-M.lookup v lets, r/=e -> resolve r
+          _ -> e
+        -- a program-wide function: a module-qualified name, not a local
+        global g='@' `elem` g && not ("$" `isPrefixOf` g)
     ownedMap e=case stripLets e of
       CVar g | any (\p->p `isPrefixOf` g) ["strings@","ints@","empty@"],
                S.member (drop 1 (dropWhile (/='@') g)) leafHashes -> True
