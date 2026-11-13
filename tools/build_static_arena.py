@@ -135,13 +135,9 @@ def build(source,entry,arguments,heap_bytes,stack_bytes,image_path,execute=False
         commands.append(arena_tool(LINK_TOOL, out, 'compile', source, str(max(1,heap_bytes)),
                                    *(name+':'+symbol for name,symbol in symbols.items()), env=env))
         text=asm.read_text()
-        proofs={}
-        for name,symbol in symbols.items():
-            matches=re.findall(r'^# native-heap-budget-v1: '+re.escape(symbol)+r' requests=(\d+) requested=(\d+) arena=(\d+) limit=(\d+) scope=fresh-aligned-builtin-rv64-c-heap$',text,re.M)
-            require(len(matches)==1,'missing/ambiguous fresh compiler heap proof')
-            count,requested,arena,limit=map(int,matches[0])
-            require(limit==max(1,heap_bytes) and arena<=heap_bytes,'heap proof differs from selected arena')
-            proofs[name]=dict(requests=count,requested_bytes=requested,required_arena_bytes=arena)
+        by_symbol = arena_tool(ROOT/'tools/static-arena-heap-proof.sol', asm, str(heap_bytes),
+                               *symbols.values(), env=env)
+        proofs = {name: by_symbol[symbol] for name, symbol in symbols.items()}
         if sequence is None:
             body,sig=caller(text,arguments,heap_bytes)
             heap=dict(**proofs[entry],reserved_bytes=heap_bytes)
