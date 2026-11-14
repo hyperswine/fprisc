@@ -1294,17 +1294,25 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
         | otherwise -> ["bl " ++ gsym cfg (codeName s)]
       (O.A64 A.Push, [], [v]) -> ["sub sp, sp, #16", "str " ++ reg v ++ ", [sp]"]
       (O.A64 A.ApplyN, [_], [OI n]) | n >= 1 && n <= 8 ->
-        -- a function value with nothing captured, applied to exactly its
-        -- arity, is called directly (runtime.c fpr_applyN does the same
-        -- through callf): pap_t is tid/var, fn @8, arity @16, nargs @24
-        [ "ldr x0, [sp, #" ++ show (16 * n) ++ "]", "tbnz x0, #0, 1f",
-          "ldr w9, [x0]", "mov w10, #9001", "cmp w9, w10", "b.ne 1f",
-          "ldp x9, x10, [x0, #16]", "cmp x9, #" ++ show n, "ccmp x10, #0, #0, eq", "b.ne 1f",
-          "ldr x16, [x0, #8]" ]
-        ++ ["ldr x" ++ show i ++ ", [sp, #" ++ show (16 * (n - 1 - i)) ++ "]" | i <- [0 .. n - 1]]
-        ++ [ "blr x16", "b 2f",
-          "1:", "mov x2, sp", "mov x1, #" ++ show n,
-          "bl " ++ gsym cfg (Call.runtimeName Call.ApplyEntry), "2:", "add sp, sp, #" ++ show (16 * (n + 1)) ]
+        -- a function value applied to exactly the arguments it still needs
+        -- is called directly when it holds at most two captured arguments
+        -- and its arity fits the registers (runtime.c fpr_applyN does the
+        -- same through callf): pap_t is tid/var, fn @8, arity @16, nargs @24,
+        -- captured args @32.  Captured args go first, then the pushed ones.
+        let held = [h | h <- [0, 1, 2], n + h <= 8]
+            label h = show (5 + h)
+            explicit h = ["ldr x" ++ show (h + i) ++ ", [sp, #" ++ show (16 * (n - 1 - i)) ++ "]" | i <- [0 .. n - 1]]
+            captured h = ["ldr x" ++ show k ++ ", [x0, #" ++ show (32 + 8 * k) ++ "]" | k <- reverse [0 .. h - 1]]
+            -- the code pointer first: the explicit args of an h = 0 call overwrite x0
+            arm h = [label h ++ ":", "ldr x16, [x0, #8]"] ++ explicit h ++ captured h ++ ["blr x16", "b 2f"]
+         in [ "ldr x0, [sp, #" ++ show (16 * n) ++ "]", "tbnz x0, #0, 1f",
+              "ldr w9, [x0]", "mov w10, #9001", "cmp w9, w10", "b.ne 1f",
+              "ldp x9, x10, [x0, #16]", "sub x9, x9, x10", "cmp x9, #" ++ show n, "b.ne 1f" ]
+            ++ concat [["cmp x10, #" ++ show h, "b.eq " ++ label h ++ "f"] | h <- held]
+            ++ ["b 1f"]
+            ++ concatMap arm held
+            ++ [ "1:", "mov x2, sp", "mov x1, #" ++ show n,
+                 "bl " ++ gsym cfg (Call.runtimeName Call.ApplyEntry), "2:", "add sp, sp, #" ++ show (16 * (n + 1)) ]
       (O.A64 A.ApplyN, [_], [OI n]) ->
         [ "mov x2, sp", "mov x1, #" ++ show n, "ldr x0, [sp, #" ++ show (16 * n) ++ "]",
           "bl " ++ gsym cfg (Call.runtimeName Call.ApplyEntry), "add sp, sp, #" ++ show (16 * (n + 1)) ]

@@ -2366,8 +2366,13 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
   if (z.over || (region && survive_limit && need > survive_limit)) {
     retain = 0;
     immutable = 1;
+    /* every distinct cell is at least 16 bytes and the tree walk counted
+     * each at least once: a walk that finished under the cap bounds them
+     * by its count, which is often far below the arena's (the table's
+     * clear was a memset, and fresh pages, the size of the whole arena) */
+    uw bound = z.over || need > cap ? cap : need;
     uw slots = 64;
-    while (slots < 2 * (cap / 16)) slots *= 2;
+    while (slots < 2 * (bound / 16)) slots *= 2;
     /* msg_slab_new may park: the actor can migrate */
     table = msg_slab_new(slots * 2 * sizeof(uw));
     h = fpr_hart();
