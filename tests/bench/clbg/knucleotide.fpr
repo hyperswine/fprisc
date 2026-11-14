@@ -1,4 +1,5 @@
-# knucleotide (SPEC.md): k-mer counts of the third fasta sequence with std/hashmap keyed by String
+# knucleotide (SPEC.md): k-mer counts of the third fasta sequence with std/hashmap,
+# each k-mer packed two bits a base into an Int key (k <= 18 here; 31 fit)
 String = use "std/string".
 List = use "std/list".
 Map = use "std/hashmap".
@@ -16,27 +17,48 @@ three ls inside acc = case ls of
       (if inside then List.reverse acc else three rest (String.startsWith ">THREE" l) acc)
     else if inside then three rest inside (String.toUpper l :: acc) else three rest inside acc.
 
-count : String -> Int -> (last : Int) -> (pos : Int | measure (last - pos)) -> Map.Map String Int -> Map.Map String Int .
-count s k last pos m = if pos > last then m else count s k last (pos + 1) (Map.update (substr s pos k) bump m).
+# A 0, C 1, G 2, T 3: the first base is the most significant, so keys of one
+# length order as their k-mers do
+code : Int -> Int .
+code c = if c == 65 then 0 else if c == 67 then 1 else if c == 71 then 2 else 3.
 
-table : String -> Int -> Map.Map String Int .
-table s k = count s k (strlen s - k) 0 Map.strings.
+base : Int -> String .
+base b = if b == 0 then "A" else if b == 1 then "C" else if b == 2 then "G" else "T".
 
-byCount : (String, Int) -> (String, Int) -> Ord.Ordering .
+pow4 : (k : Int | measure k) -> Int .
+pow4 k = if k <= 0 then 1 else 4 * pow4 (k - 1).
+
+pack : String -> (n : Int) -> (i : Int | measure (n - i)) -> Int -> Int .
+pack q n i key = if i >= n then key else pack q n (i + 1) (key * 4 + code (charAt q i)).
+
+unpack : (k : Int | measure k) -> Int -> String -> String .
+unpack k key acc = if k <= 0 then acc else unpack (k - 1) (key / 4) (strcat (base (key % 4)) acc).
+
+# the key of the k-mer ending at pos is the one before it, shifted, with the new base
+count : String -> Int -> (n : Int) -> (pos : Int | measure (n - pos)) -> Int -> Map.Map Int Int -> Map.Map Int Int .
+count s span n pos key m = if pos >= n then m else
+  next = (key * 4 + code (charAt s pos)) % span;
+  count s span n (pos + 1) next (Map.update next bump m).
+
+# the first k-1 bases start the key; every position after them ends a k-mer
+table : String -> Int -> Map.Map Int Int .
+table s k = count s (pow4 k) (strlen s) (k - 1) (pack s (k - 1) 0 0) Map.ints.
+
+byCount : (Int, Int) -> (Int, Int) -> Ord.Ordering .
 byCount a b = case a of
-  (ka, ca) -> (case b of (kb, cb) -> if ca != cb then Ord.int cb ca else Ord.string ka kb).
+  (ka, ca) -> (case b of (kb, cb) -> if ca != cb then Ord.int cb ca else Ord.int ka kb).
 
 pad3 : Int -> String .
 pad3 f = if f < 10 then "00{f}" else if f < 100 then "0{f}" else "{f}".
 
-freqLine : Int -> (String, Int) -> Unit .
-freqLine total e = case e of
-  (key, c) -> print "{key} {(200000 * c + total) / (2 * total) / 1000}.{pad3 ((200000 * c + total) / (2 * total) % 1000)}".
+freqLine : Int -> Int -> (Int, Int) -> Unit .
+freqLine k total e = case e of
+  (key, c) -> print "{unpack k key ""} {(200000 * c + total) / (2 * total) / 1000}.{pad3 ((200000 * c + total) / (2 * total) % 1000)}".
 
 frequencies : String -> Int -> Unit .
 frequencies s k =
   total = strlen s - k + 1;
-  _ = List.each (freqLine total) (List.sortWith byCount (Map.entries (table s k)));
+  _ = List.each (freqLine k total) (List.sortWith byCount (Map.entries (table s k)));
   print "".
 
 main =
@@ -44,5 +66,5 @@ main =
   s = strJoin "" (three (String.lines (fileRead path)) False Nil);
   _ = frequencies s 1;
   _ = frequencies s 2;
-  List.each (fn q -> print "{Map.getOr 0 q (table s (strlen q))}\t{q}")
+  List.each (fn q -> print "{Map.getOr 0 (pack q (strlen q) 0 0) (table s (strlen q))}\t{q}")
     ["GGT", "GGTA", "GGTATT", "GGTATTTTAATT", "GGTATTTTAATTTATAGT"].

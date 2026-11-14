@@ -43,6 +43,7 @@ opSignature tyOf = \case
     mapM_ (`expect` TVal) fields
     pure (Just TVal)
   OAddress v -> expect v TVal >> pure (Just TAddr)
+  OVectorView part v -> expect v TVal >> pure (Just (if part == ViewBase then TAddr else TInt))
   OIndex a i -> expect a TAddr >> expect i TInt >> pure (Just TAddr)
   OIndexByte a i -> expect a TAddr >> expect i TInt >> pure (Just TAddr)
   OLoad t a n -> memory t a n >> pure (Just t)

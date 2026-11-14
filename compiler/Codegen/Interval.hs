@@ -96,7 +96,7 @@ discharge width fn
     -- reaches an operation whose operand was untagged or projected again.
     shareable op = case op of
       OConstInt {} -> True; ONullary {} -> True; OBits {} -> True
-      OAddress {} -> True; OIndex {} -> True; OIndexByte {} -> True
+      OAddress {} -> True; OIndex {} -> True; OIndexByte {} -> True; OVectorView {} -> True
       OField {} -> True; OTag {} -> True; OUntag {} -> True
       OTruth {} -> True; OBoolOf {} -> True; ONot {} -> True; OIsInt {} -> True
       OTagTest {} -> True; OVariantTest {} -> True

@@ -569,6 +569,7 @@ builtinEnv =
       ("Vec.set", scheme [0] (TFn tInt (TFn (sv 0) (TFn (tVector (sv 0)) (tVector (sv 0)))))),
       ("Vec.at", scheme [0] (TFn tInt (TFn (tVector (sv 0)) (TTupT [sv 0, tVector (sv 0)])))),
       ("Vec.put", scheme [0] (TFn tInt (TFn (sv 0) (TFn (tVector (sv 0)) (tVector (sv 0)))))),
+      ("Vec.pack", mono (TFn tInt (TFn tInt (TFn (tVector tInt) (TTupT [tStr, tVector tInt]))))),
       ("Vec.map", scheme [0, 1] (TFn (TFn (sv 0) (sv 1)) (TFn (tVector (sv 0)) (tVector (sv 1))))),
       ("Vec.mapSame", scheme [0] (TFn (TFn (sv 0) (sv 0)) (TFn (tVector (sv 0)) (tVector (sv 0))))),
       ("Vec.filter", scheme [0] (TFn (TFn (sv 0) tBool) (TFn (tVector (sv 0)) (tVector (sv 0))))),

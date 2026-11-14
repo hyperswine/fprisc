@@ -35,20 +35,89 @@ uw hal_block_spin_ns(void) {
   return s && *s ? (uw)strtoull(s, 0, 10) : 2000;
 }
 
+/* Standard output is flushed at every newline when it is a terminal (or
+ * $FPR_STDOUT_LINES=1, or on ESP-IDF, whose console is a UART): what a person
+ * watches appears as it is printed.  Into a pipe or a file it is buffered,
+ * as a C program's is, because a write(2) per printed line was most of the
+ * running time of a program that prints many lines.  The buffer is written
+ * when it fills, when a hart goes idle (park.c), before any diagnostic, raw
+ * descriptor read or write, child process and exit -- so output still appears
+ * in program order -- and, whatever the program then does (a blocking call,
+ * a long computation), by a flusher thread within OUT_LATENCY_US of the first
+ * byte buffered.  A process killed by a signal loses at most what it printed
+ * in that last interval. */
+#define OUT_LATENCY_US 50000
+static int out_lines = -1;
+static int out_dirty;
+#ifndef FPR_ESP_IDF
+static pthread_mutex_t out_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t out_cv = PTHREAD_COND_INITIALIZER;
+static int out_flusher_started;
+void hal_console_flush(void);
+/* sleeps until something is buffered, gives the writer OUT_LATENCY_US to
+ * add to it, writes it out; one write(2) per interval of printing */
+static void *out_flusher(void *arg) {
+  (void)arg;
+  for (;;) {
+    pthread_mutex_lock(&out_mu);
+    while (!__atomic_load_n(&out_dirty, __ATOMIC_ACQUIRE)) pthread_cond_wait(&out_cv, &out_mu);
+    pthread_mutex_unlock(&out_mu);
+    usleep(OUT_LATENCY_US);
+    hal_console_flush();
+  }
+  return 0;
+}
+static void out_wake(void) {
+  pthread_mutex_lock(&out_mu);
+  if (!out_flusher_started) {
+    pthread_t t;
+    pthread_attr_t a;
+    pthread_attr_init(&a);
+    pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
+    /* without the thread the other flushes still hold; try again next time */
+    if (pthread_create(&t, &a, out_flusher, 0) == 0) out_flusher_started = 1;
+    pthread_attr_destroy(&a);
+  }
+  pthread_cond_signal(&out_cv);
+  pthread_mutex_unlock(&out_mu);
+}
+#else
+static void out_wake(void) {}
+#endif
+static int line_mode(void) {
+  int m = __atomic_load_n(&out_lines, __ATOMIC_RELAXED);
+  if (m < 0) {
+#ifdef FPR_ESP_IDF
+    m = 1;
+#else
+    const char *e = getenv("FPR_STDOUT_LINES");
+    m = (e && *e && *e != '0') || isatty(1);
+    if (!m) setvbuf(stdout, 0, _IOFBF, 1 << 16);
+#endif
+    __atomic_store_n(&out_lines, m, __ATOMIC_RELAXED);
+  }
+  return m;
+}
+void hal_console_flush(void) {
+  if (__atomic_load_n(&out_dirty, __ATOMIC_RELAXED) && __atomic_exchange_n(&out_dirty, 0, __ATOMIC_ACQ_REL))
+    fflush(stdout);
+}
+static void wrote(int newline) {
+  if (newline && line_mode()) fflush(stdout);
+  else if (!__atomic_exchange_n(&out_dirty, 1, __ATOMIC_ACQ_REL)) out_wake(); /* clean -> buffered: once an interval */
+}
+
 void hal_putc(char c) {
+  if (out_lines < 0) line_mode(); /* the buffer is chosen before the first byte */
   fputc(c, stdout);
-  if (c == '\n') fflush(stdout);
+  wrote(c == '\n');
 }
 
 void hal_console_bytes(const char *bytes, uw len) {
-  while (len) {
-    const char *newline = memchr(bytes, '\n', len);
-    uw chunk = newline ? (uw)(newline - bytes) + 1 : len;
-    fwrite(bytes, 1, chunk, stdout);
-    if (newline) fflush(stdout);
-    bytes += chunk;
-    len -= chunk;
-  }
+  if (!len) return;
+  if (out_lines < 0) line_mode();
+  fwrite(bytes, 1, len, stdout);
+  wrote(memchr(bytes, '\n', len) != 0);
 }
 
 /* diagnostics (runtime.c praw, [warn]/[ERR] echo): stderr, unbuffered,
@@ -61,6 +130,7 @@ void hal_diag_bytes(const char *bytes, uw len) {
     to_stdout = e && *e && *e != '0';
   }
   if (to_stdout) { hal_console_bytes(bytes, len); return; }
+  __atomic_store_n(&out_dirty, 0, __ATOMIC_RELEASE);
   fflush(stdout);
   fwrite(bytes, 1, len, stderr);
 }

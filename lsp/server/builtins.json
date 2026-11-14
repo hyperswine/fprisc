@@ -1485,6 +1485,19 @@
    }
   }
  },
+ "Vec.pack": {
+  "sig": "Vec.pack : Int -> Int -> (Vector Int) -> (String, Vector Int)",
+  "section": "FP-RISC builtins (compiler/Infer.hs)",
+  "doc": "Copy the Ints at [from, from + count) out as the bytes of one String, returning it with the successor vector owner; each must be a byte (0..255). A Vector Int written with Vec.set and packed once is a byte buffer (std/bytes). Preserve linear ownership using the returned vector(s); inputs are consumed as shown by the signature.",
+  "profile": "fpr",
+  "variants": {
+   "fpr": {
+    "sig": "Vec.pack : Int -> Int -> (Vector Int) -> (String, Vector Int)",
+    "doc": "Copy the Ints at [from, from + count) out as the bytes of one String, returning it with the successor vector owner; each must be a byte (0..255). A Vector Int written with Vec.set and packed once is a byte buffer (std/bytes). Preserve linear ownership using the returned vector(s); inputs are consumed as shown by the signature.",
+    "section": "FP-RISC builtins (compiler/Infer.hs)"
+   }
+  }
+ },
  "Vec.map": {
   "sig": "Vec.map : (a -> b) -> (Vector a) -> Vector b",
   "section": "FP-RISC builtins (compiler/Infer.hs)",

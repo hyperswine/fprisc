@@ -128,6 +128,7 @@ callFn width program name args = do
           -- address the inline read fragments (Codegen.StringRead) form
           r@RString {} -> pure (Just (VAddr r 0))
           _ -> stuck "unmanaged memory is outside the Core evaluator; use the native kernel oracle"
+        OVectorView _ _ -> stuck "unmanaged memory is outside the Core evaluator"
         OIndex _ _ -> stuck "unmanaged memory is outside the Core evaluator"
         OIndexByte a i -> look env a >>= \case
           VAddr r off -> do

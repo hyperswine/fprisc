@@ -1114,6 +1114,7 @@ str_t *fpr_mkstr(const uint8_t *src, uw n);
 void hal_putc(char c); /* hal.c: raw console for panics + runtime */
 void hal_diag_bytes(const char *bytes, uw len);
 void hal_console_bytes(const char *bytes, uw len);
+void hal_console_flush(void); /* posix hosts: write out buffered standard output (machine/posix/hal.c) */
 void hal_eputc(char c); /* diagnostics: hal_putc, or stderr where the board has one */
 /* posix hosts (machine/posix/hal.c): interrupt sources for host threads that
  * raise on actors' behalf (the readiness watcher, the job broker), taken from

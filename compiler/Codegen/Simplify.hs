@@ -32,8 +32,9 @@ module Codegen.Simplify (Options(..),defaultOptions,policyOptions,simplifyFn,sim
 import Codegen.IR
 import Codegen.ControlFlow (analyze,dominators,predecessors,reachable)
 import Codegen.StringScan (versionScan)
+import Codegen.VectorRead (expandViews)
 import Codegen.Interval (discharge)
-import Codegen.LoopOptimize (moveInvariants, carryRaw, dropUnusedParameters)
+import Codegen.LoopOptimize (moveInvariants, moveViews, carryRaw, dropUnusedParameters)
 import Codegen.Policy (Policy (..), Profile (..), RegisterBudget, policyWidth)
 import Codegen.Pressure (clobbersRegisters)
 import Codegen.Verify (verifyFn)
@@ -60,7 +61,8 @@ passesWith options=
     ("forward-empty-blocks", forwardEmptyBlocks),
     ("branch-on-comparison", dropDeadPure . threadBooleanJoins),
     ("share-pure-in-block", dropDeadPure . sharePureInBlock)
-  ] ++ [("move-loop-invariants",\f -> if hasCycle f then dropDeadPure (moveInvariants (registerBudget options) (inlineFloats options) f) else f) | moveLoopInvariants options]
+  ] ++ [("hoist-vector-views",\f -> if hasView f && hasCycle f then moveViews f else f)]
+    ++ [("move-loop-invariants",\f -> if hasCycle f then dropDeadPure (moveInvariants (registerBudget options) (inlineFloats options) f) else f) | moveLoopInvariants options]
     ++ [("discharge-proven-checks", dropDeadPure . discharge width) | Just width <- [intervalWidth options]]
     ++ [("share-pure-across-blocks", dropDeadPure . sharePureAcrossBlocks (inlineFloats options)) | intervalWidth options /= Nothing]
     -- a versioned function's fast copy has no slow-path calls, so its
@@ -77,6 +79,12 @@ passesWith options=
     ++ [("fold-constant-divisors", dropDeadPure . foldConversions . foldDivisors)]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
     ++ [("forward-empty-blocks-again", forwardEmptyBlocks)]
+    -- last: a vector view is one operation for every pass above (shared,
+    -- moved out of loops) and its tests and loads for the targets
+    ++ [("expand-vector-views", expandViews)]
+
+hasView :: Fn -> Bool
+hasView = any (any (\(Instr _ op) -> case op of OVectorView {} -> True; _ -> False) . bInstrs) . fnBlocks
 
 -- ---- forwarding blocks -----------------------------------------------------
 
@@ -121,18 +129,22 @@ simplifyFn :: Program -> Fn -> Either String (Fn, Int)
 simplifyFn=simplifyFnWith defaultOptions
 
 simplifyFnWith :: Options -> Program -> Fn -> Either String (Fn,Int)
-simplifyFnWith options program fn0 = go fn0 (passesWith options)
+simplifyFnWith options program fn0 = go False fn0 (passesWith options)
   where
     size f = sum (map (length . bInstrs) (fnBlocks f))
-    go f [] = Right (f, size fn0 - size f)
-    go f ((name, pass) : rest) =
+    go _ f [] = Right (f, size fn0 - size f)
+    go verified f ((name, pass) : rest) =
       let f' = pass f
-       in case verifyFn program f' of
+       -- A pass that answers the function it was given changed nothing, and
+       -- that function has verified already: no second verification. The
+       -- first pass's result is always verified (the lowered function is
+       -- not known to verify), so every function is verified at least once.
+       in if verified && f' == f then go True f rest else case verifyFn program f' of
             -- the function before and after the pass, for the report: this is
             -- a compiler error, and the IR is what a fix needs
             Left err -> Left ("simplify " ++ name ++ " on " ++ fnName f ++ ": " ++ err
                                ++ "\n-- before " ++ name ++ ":\n" ++ dumpFn f ++ "-- after:\n" ++ dumpFn f')
-            Right () -> go f' rest
+            Right () -> go True f' rest
 
 -- every function; the callers' conventions do not change (entry
 -- parameters and results are untouched), so the program verifies whole
@@ -413,7 +425,7 @@ crossShareable = \case
   OUntag {} -> True; OTag {} -> True; OField {} -> True
   OTruth {} -> True; OBoolOf {} -> True; ONot {} -> True; OIsInt {} -> True
   OTagTest {} -> True; OVariantTest {} -> True
-  OAddress {} -> True; OIndex {} -> True; OIndexByte {} -> True
+  OAddress {} -> True; OIndex {} -> True; OIndexByte {} -> True; OVectorView {} -> True
   OArithU {} -> True; OBit {} -> True; OCmp {} -> True
   _ -> False
 

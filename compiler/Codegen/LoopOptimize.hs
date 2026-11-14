@@ -1,7 +1,7 @@
 -- Speculate only total register operations into existing unique preheaders.
 -- Pure in the IR is not sufficient: field/tag/string reads may dereference
 -- pointers, and hart/region reads can change across a safepoint.
-module Codegen.LoopOptimize (moveInvariants, carryRaw, dropUnusedParameters) where
+module Codegen.LoopOptimize (moveInvariants, moveViews, carryRaw, dropUnusedParameters) where
 import Codegen.IR
 import Codegen.ControlFlow
 import Codegen.Policy (RegisterBudget)
@@ -12,7 +12,15 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 moveInvariants :: Maybe RegisterBudget -> Bool -> Fn -> Fn
-moveInvariants budget inlineFloats fn=
+moveInvariants=moveWhere speculatable
+
+-- Vector views alone, whatever the policy says of general motion: a view
+-- left in a loop repeats its tests and loads on every iteration.
+moveViews :: Fn -> Fn
+moveViews=moveWhere (\op->case op of OVectorView {}->True;_->False) Nothing False
+
+moveWhere :: (Op -> Bool) -> Maybe RegisterBudget -> Bool -> Fn -> Fn
+moveWhere wanted budget inlineFloats fn=
   let moved=foldl' move fn (sortOn (S.size . loopBlocks) (naturalLoops fn flow))
   in if moved==fn then fn else dropUnusedParameters moved
   where
@@ -31,7 +39,7 @@ moveInvariants budget inlineFloats fn=
           resolve v=maybe v resolve (M.lookup v aliases)
           available moved v=S.member v moved || maybe False (\d->S.notMember d members && dominates d pre) (M.lookup (resolve v) defs)
           loopInstrs=[i | b<-fnBlocks f,S.member (bId b) members,i<-bInstrs b]
-          candidates=[(v,Instr (Just (v,t)) (mapOpUses resolve op)) | Instr (Just (v,t)) op<-loopInstrs,speculatable op]
+          candidates=[(v,Instr (Just (v,t)) (mapOpUses resolve op)) | Instr (Just (v,t)) op<-loopInstrs,wanted op]
           choose excluded=go S.empty []
             where
               go moved chosen =
@@ -74,8 +82,14 @@ moveInvariants budget inlineFloats fn=
               | otherwise->let before=loopPressure b inlineFloats f members
                            in take (longest (\c->noWorse (pressureOf c) before) 0 n) instructions
           noWorse a b=prGpr a<=prGpr b && prFpr a<=prFpr b && prGprAcross a<=prGprAcross b && prFprAcross a<=prFprAcross b
+          -- A vector view is some twenty instructions of tests and loads:
+          -- repeating it every iteration costs far more than the registers
+          -- it holds, so it moves whatever the pressure. The rest are then
+          -- weighed against the loop that has it outside.
+          views=[i | i@(Instr _ (OVectorView {}))<-instructions]
       -- nothing to move: no pressure analysis either (the costly part)
-      in if null instructions || null admitted then f else apply admitted
+      in if not (null views) then move (apply views) loop
+         else if null instructions || null admitted then f else apply admitted
     move f _=f
 
 cheap :: Op -> Bool
@@ -86,7 +100,7 @@ cheap op=case op of
 speculatable :: Op -> Bool
 speculatable op=case op of
   OConstInt {}->True; ONullary {}->True; OBits {}->True
-  OAddress {}->True; OIndex {}->True; OTag {}->True; OUntag {}->True
+  OAddress {}->True; OIndex {}->True; OTag {}->True; OUntag {}->True; OVectorView {}->True
   OBoolOf {}->True; ONot {}->True; OIsInt {}->True
   OSymbol {}->True; OFunValue {}->True; OBit {}->True; OCmp {}->True
   OFloatBin {}->True; OFloat32Bin {}->True; OFloatCmp {}->True; OFloat32Cmp {}->True

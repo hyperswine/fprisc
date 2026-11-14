@@ -94,6 +94,7 @@ FPR_FN(fpr_g_Sys_x2eenv, h_env, 1);
 
 static V h_read_line(V u) {
   (void)u;
+  hal_console_flush(); /* a prompt is out before the program waits for the answer */
   size_t cap = 256, n = 0;
   char *buf = malloc(cap);
   if (!buf) fpr_cpanic("Sys.readLine: out of memory");

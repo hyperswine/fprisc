@@ -1,6 +1,7 @@
 # fasta (SPEC.md): one repeated and two random DNA sequences, 60 characters a line
 String = use "std/string".
 List = use "std/list".
+Bytes = use "std/bytes".
 
 alu : String .
 alu = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATGGTGAAACCCCGTCTCTACTAAAAATACAAAAATTAGCCGGGCGTGGTGGCGCGCGCCTGTAATCCCAGCTACTCGGGAGGCTGAGGCAGGAGAATCGCTTGAACCCGGGAGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA".
@@ -30,25 +31,26 @@ repeatLines n s pos = if n <= 0 then Unit else
   _ = print (substr s pos len);
   repeatLines (n - len) s ((pos + len) % 287).
 
-# one line of len random characters; answers the codes (reversed) and the seed
-randomCodes : List (Int, F64) -> (k : Int | measure k) -> Int -> List Int -> (List Int, Int) .
-randomCodes t k seed acc = if k <= 0 then (acc, seed) else
+# bytes 0..k-1 of the buffer: k random characters; answers the seed and the buffer
+randomInto : List (Int, F64) -> (k : Int) -> (j : Int | measure (k - j)) -> Int -> Vector Int -> (Int, Vector Int) .
+randomInto t k j seed b = if j >= k then (seed, b) else
   s = (seed * 3877 + 29573) % 139968;
-  randomCodes t (k - 1) s (pick (F64.ofInt s / 139968.0) t :: acc).
+  randomInto t k (j + 1) s (Bytes.put j (pick (F64.ofInt s / 139968.0) t) b).
 
-randomLines : unsafe List (Int, F64) -> Int -> Int -> Int .
-randomLines t n seed = if n <= 0 then seed else
+randomLines : unsafe List (Int, F64) -> Int -> Int -> Vector Int -> (Int, Vector Int) .
+randomLines t n seed b = if n <= 0 then (seed, b) else
   len = if n < 60 then n else 60;
-  (cs, s) = randomCodes t len seed Nil;
-  _ = print (String.fromCodes (List.reverse cs));
-  randomLines t (n - len) s.
+  (s, b1) = randomInto t len 0 seed b;
+  (line, b2) = Bytes.pack 0 len b1;
+  _ = print line;
+  randomLines t (n - len) s b2.
 
 main =
   n = case Sys.args Unit of a :: _ -> (case String.toInt a of Ok v -> v | Err _ -> 2500000) | Nil -> 2500000;
   _ = print ">ONE Homo sapiens alu";
   _ = repeatLines (2 * n) (strcat alu alu) 0;
   _ = print ">TWO IUB ambiguity codes";
-  seed = randomLines (cumulative iub) (3 * n) 42;
+  (seed, b1) = randomLines (cumulative iub) (3 * n) 42 (Bytes.new 60);
   _ = print ">THREE Homo sapiens frequency";
-  _ = randomLines (cumulative homo) (5 * n) seed;
-  Unit.
+  (_, b2) = randomLines (cumulative homo) (5 * n) seed b1;
+  Bytes.free b2.

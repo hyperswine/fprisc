@@ -35,6 +35,7 @@ dumpFn fn =
       OMakeSpine v fs -> "make-spine " ++ value v ++ args fs
       OReuse t c r fs -> "reuse " ++ value r ++ " as " ++ show t ++ ":" ++ show c ++ args fs
       OAddress v -> "address " ++ value v
+      OVectorView part v -> "vector.view " ++ show part ++ " " ++ value v
       OIndex a i -> "index " ++ value a ++ " " ++ value i
       OIndexByte a i -> "indexbyte " ++ value a ++ " " ++ value i
       OLoad t a n -> "load " ++ show t ++ " " ++ value a ++ "+" ++ show n

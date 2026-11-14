@@ -102,6 +102,7 @@ void hal_wfi(void) {
     }
     if (__atomic_exchange_n(&p->bell, 0, __ATOMIC_ACQ_REL)) return; /* rung while spinning */
   }
+  hal_console_flush(); /* an idle hart: nothing more is coming soon, so what was printed goes out */
   pthread_mutex_lock(&p->mu);
   __atomic_store_n(&p->waiting, 1, __ATOMIC_SEQ_CST);
   uint64_t now = hal_mtime(), until = now + PARK_CAP;

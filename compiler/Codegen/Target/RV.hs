@@ -277,6 +277,7 @@ select cfg fn = do
         Just (v,_) -> value (vreg v) op
     value d = \case
       OAddress v -> emit (plain (O.RV R.Move) [anyV d] [anyV (vreg v)])
+      OVectorView {} -> lift (Left "internal: a vector view reached selection unexpanded")
       OIndex a i -> do
         offset <- fresh
         ri R.ShiftLeftImmediate offset (vreg i) (if cfgWidth cfg == W32 then 2 else 3)

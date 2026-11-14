@@ -26,7 +26,7 @@
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
     ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), simdCaptures, simdRegisters, ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign, calleeConvention,
-    productCallResults, Op (..), headerWord, Instr (..), Term (..), Block (..), Fn (..), Program,
+    productCallResults, Op (..), ViewPart (..), headerWord, Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
   ) where
@@ -67,6 +67,9 @@ data BitOp = BAnd | BOr | BXor deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- F64 arithmetic on IEEE binary64 bits held in a TVal (the 64-bit V ABI's
 -- float representation): IEEE semantics, no trap, no fused multiply-add
+-- the parts of a flat vector view: element count (0 unless flat), column base, 1 for an Int column
+data ViewPart = ViewLength | ViewBase | ViewInteger deriving (Eq, Ord, Show, Enum, Bounded)
+
 data FloatOp = FAdd | FSub | FMul | FDiv deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- A two-lane SIMD map body: the lane, indexed scalar captures, literals
@@ -179,6 +182,11 @@ data Op
   | OMakeSpine VId [VId] -- private cell: raw variant ordinal, tagged payloads and tail
   | OReuse Int Int VId [VId] -- overwrite the fields of a constructor the program owns uniquely (Reuse.reuseFresh proved it), answer it; every field is evaluated before the first store
   | OAddress VId -- TVal -> TAddr; internal lowering, after the object/representation guard
+  | OVectorView ViewPart VId -- TVal -> TInt, TAddr, TInt: one part of a vector handle's flat view (Codegen.VectorRead). Total: any
+                             -- value answers, a flat Int or float column with its length, base and kind, everything else with
+                             -- length 0. A handle is linear and no operation on the same handle value moves or resizes its
+                             -- column, so the answer is a function of the value: shared and moved out of loops like any pure
+                             -- operation, and expanded into its tests and loads by the simplifier's last pass
   | OIndex VId VId -- TAddr, TInt -> TAddr; address + index * target word bytes
   | OIndexByte VId VId -- TAddr, TInt -> TAddr; address + index, for byte-addressed data (String bytes)
   | OLoad Ty VId Int -- word load at a byte offset: TInt, TVal or TAddr; mutable memory, never CSE
@@ -305,6 +313,7 @@ opEffect = \case
   OMake _ _ _ -> RuntimeCall
   OReuse _ _ _ _ -> Writes
   OAddress _ -> Pure
+  OVectorView _ _ -> Pure
   OIndex _ _ -> Pure
   OIndexByte _ _ -> Pure
   OLoad _ _ _ -> Reads
@@ -366,6 +375,7 @@ opUses = \case
   OMake _ _ fs -> fs
   OReuse _ _ r fs -> r : fs
   OAddress v -> [v]
+  OVectorView _ v -> [v]
   OIndex a i -> [a,i]
   OIndexByte a i -> [a,i]
   OLoad _ a _ -> [a]
@@ -436,6 +446,7 @@ mapOpUses f = \case
   OMake t v fs -> OMake t v (map f fs)
   OReuse t v r fs -> OReuse t v (f r) (map f fs)
   OAddress v -> OAddress (f v)
+  OVectorView part v -> OVectorView part (f v)
   OIndex a i -> OIndex (f a) (f i)
   OIndexByte a i -> OIndexByte (f a) (f i)
   OLoad t a n -> OLoad t (f a) n

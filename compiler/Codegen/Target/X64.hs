@@ -496,6 +496,7 @@ selectInstr cfg facts (Instr d op) = case op of
   ORvvLanes _ _ -> refuse "RISC-V vector lanes on x86-64"
   ORvvSumLoaded _ -> refuse "a RISC-V vector sum on x86-64"
   OAddress v -> def (\r -> emitI (mov r (vreg v)))
+  OVectorView {} -> refuse "internal: a vector view reached selection unexpanded"
   OIndex a i -> def $ \r -> do
     offset <- freshV False
     emitI (rri O.ShiftLeftImmediate offset (vreg i) 3)

@@ -1,0 +1,77 @@
+# std golden: element reads and in-place stores of every vector shape, in and out of loops
+# (the flat Int and float columns are read and written inline through a view of the handle;
+# tuples, strings and a vector that grows take the runtime's general path)
+List = use "std/list".
+
+sumInt : (n : Int) -> (i : Int | measure (n - i)) -> Int -> Vector Int -> (Int, Vector Int) .
+sumInt n i acc v = if i >= n then (acc, v) else
+  (x, v1) = Vec.get i v;
+  sumInt n (i + 1) (acc + x) v1.
+
+sumF : (n : Int) -> (i : Int | measure (n - i)) -> F64 -> Vector F64 -> (F64, Vector F64) .
+sumF n i acc v = if i >= n then (acc, v) else
+  (x, v1) = Vec.get i v;
+  sumF n (i + 1) (acc + x) v1.
+
+# in place: each element becomes twice itself plus its index
+twice : (n : Int) -> (i : Int | measure (n - i)) -> Vector Int -> Vector Int .
+twice n i v = if i >= n then v else
+  (x, v1) = Vec.get i v;
+  twice n (i + 1) (Vec.set i (2 * x + i) v1).
+
+scale : (n : Int) -> (i : Int | measure (n - i)) -> Vector F64 -> Vector F64 .
+scale n i v = if i >= n then v else
+  (x, v1) = Vec.get i v;
+  scale n (i + 1) (Vec.set i (x * 1.5) v1).
+
+# a loop whose vector grows: the handle changes every turn, the view with it
+grow : (n : Int | measure n) -> Vector Int -> Vector Int .
+grow n v = if n <= 0 then v else
+  (len, v1) = Vec.len v;
+  (last, v2) = Vec.get (len - 1) v1;
+  grow (n - 1) (Vec.push (last + n) v2).
+
+# pairs: a vector of tuples is not flat; reads and stores take the general path
+sumPairs : (n : Int) -> (i : Int | measure (n - i)) -> Int -> Vector (Int, Int) -> (Int, Vector (Int, Int)) .
+sumPairs n i acc v = if i >= n then (acc, v) else
+  (p, v1) = Vec.get i v;
+  (case p of (a, b) -> sumPairs n (i + 1) (acc + a * b) (Vec.set i (b, a) v1)).
+
+strs : (n : Int) -> (i : Int | measure (n - i)) -> String -> Vector String -> (String, Vector String) .
+strs n i acc v = if i >= n then (acc, v) else
+  (s, v1) = Vec.get i v;
+  strs n (i + 1) (strcat acc s) (Vec.set i (strcat s "!") v1).
+
+main =
+  (a, v1) = sumInt 10 0 0 (twice 10 0 (Vec.range 0 10));
+  _ = print a;
+  _ = Vec.free v1;
+  (f, w1) = sumF 4 0 0.0 (scale 4 0 (Vec.fromList [1.0, 2.5, 0.0 - 3.0, 1000000.25]));
+  _ = print f;
+  _ = Vec.free w1;
+  g = grow 20 (Vec.fromList [1]);
+  (gs, g1) = sumInt 21 0 0 g;
+  _ = print gs;
+  _ = Vec.free g1;
+  (ps, p1) = sumPairs 3 0 0 (Vec.fromList [(1, 2), (3, 4), (5, 6)]);
+  _ = print ps;
+  (ps2, p2) = sumPairs 3 0 0 p1;
+  _ = print ps2;
+  _ = print (Vec.toList p2);
+  (ss, s1) = strs 3 0 "" (Vec.fromList ["a", "bc", "def"]);
+  _ = print ss;
+  (ss2, s2) = strs 3 0 "" s1;
+  _ = print ss2;
+  _ = Vec.free s2;
+  e = Vec.new Unit;
+  (n0, e1) = Vec.len e;
+  _ = print n0;
+  e2 = Vec.push 7 e1;
+  (x0, e3) = Vec.get 0 e2;
+  _ = print x0;
+  e4 = Vec.set 0 9 e3;
+  (x1, e5) = Vec.get 0 e4;
+  _ = print x1;
+  _ = Vec.free e5;
+  wide = Vec.set 0 4611686018427387903 (Vec.set 1 (0 - 4611686018427387903) (Vec.range 0 3));
+  print (Vec.toList wide).

@@ -192,6 +192,128 @@ inlineFloat cx env h args =
           ("f32frombits",[CInt _]) -> True
           _ -> False
 
+vectorBuilder :: ScalarVector.Builder L
+vectorBuilder = ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 newBlock open emitDo close
+
+-- An element read (`$vec.get`, `$vec.at`) or an in-place store (`Vec.set`,
+-- `Vec.put`) of a flat vector, lowered through the handle's view.
+data VectorAccess = ReadElement Callee Core Core | StoreElement Callee Core Core Core
+
+vectorAccess :: Cx -> Env -> Core -> Maybe VectorAccess
+vectorAccess cx env e = case headName e of
+  Just h | h == "$vec.get" || h == "$vec.at" || h == "Vec.set" || h == "Vec.put",
+           (CVar _, args) <- spineOf e -> vectorAccessOf cx env h args
+  _ -> Nothing
+  where
+    -- the applied name, without building the spine (this is asked of every let)
+    headName x = case x of
+      CApp f _ -> applied f
+      _ -> Nothing
+    applied x = case x of
+      CApp f _ -> applied f
+      CVar h -> Just h
+      _ -> Nothing
+
+-- the name is tested first: this is asked of every application
+vectorAccessOf :: Cx -> Env -> Name -> [Core] -> Maybe VectorAccess
+vectorAccessOf cx env h args = case args of
+  [index, vec]
+    | h == "$vec.get" || h == "$vec.at",
+      Just (op, callee) <- scalarVectorCall cx env h 2, op /= VectorRead.Length -> Just (ReadElement callee index vec)
+  [index, element, vec]
+    | h == "Vec.set" || h == "Vec.put", isPrim cx env h, Just callee <- calleeOf cx h 3,
+      ScalarVector.canStore (cxPolicy cx) h callee -> Just (StoreElement callee index element vec)
+  _ -> Nothing
+
+-- The view lives in the environment under the handle's value, so it is
+-- visible exactly where that value is: a scope the view's blocks dominate.
+viewNames :: VId -> [Name]
+viewNames (VId n) = ["\0vector." ++ field ++ "." ++ show n | field <- ["length", "base", "integer"]]
+
+viewOf :: Env -> VId -> L (Env, ScalarVector.View)
+viewOf env vec = case mapM (`M.lookup` env) (viewNames vec) of
+  Just [(count, _), (base, _), (flag, _)] -> pure (env, ScalarVector.View count base flag)
+  _ -> do
+    view <- ScalarVector.makeView vectorBuilder vec
+    pure (withView vec view env, view)
+
+withView :: VId -> ScalarVector.View -> Env -> Env
+withView vec (ScalarVector.View count base flag) env =
+  M.union (M.fromList (zip (viewNames vec) [(count, TInt), (base, TAddr), (flag, TInt)])) env
+
+lowerVector :: Cx -> Env -> VectorAccess -> L (Env, VId)
+lowerVector cx env access = case access of
+  ReadElement callee index vec -> do
+    i <- indexOf index
+    handle <- lowerVal cx env vec >>= asVal
+    (env', view) <- viewOf env handle
+    result <- ScalarVector.lowerElement vectorBuilder callee view i handle
+    pure (env', result)
+  StoreElement callee index element vec -> do
+    i <- indexOf index
+    value <- lowerVal cx env element >>= asVal
+    handle <- lowerVal cx env vec >>= asVal
+    (env', view) <- viewOf env handle
+    ScalarVector.lowerStore vectorBuilder callee view i value handle
+    pure (env', handle)
+  where
+    indexOf index = lowerVal cx env index >>= \case
+      (v, TInt) -> pure (ScalarVector.Raw v)
+      r -> ScalarVector.Tagged <$> asVal r
+
+-- std/hashmap's trie node read or written by field number (runtime.c
+-- g_nodeGet, g_nodeSet; only std/hashmap may name them). Inline it is the
+-- runtime's one guard, the field number below 64, then the word at that
+-- field; a number outside goes to the C entry, which traps by name.
+nodeAccess :: Cx -> Env -> Name -> [Core] -> Maybe (Callee, Core, Core, Maybe Core)
+nodeAccess cx env h args
+  | h /= "nodeGet" && h /= "nodeSet" = Nothing
+  | policyWidth (cxPolicy cx) /= W64 || polProfile (cxPolicy cx) `notElem` [HostedBase, QosApp]
+    || not (polVectorFast (cxPolicy cx)) = Nothing
+  | otherwise = case args of
+      [index, cell] | h == "nodeGet", Just callee <- entry "nodeGet" 2 -> Just (callee, index, cell, Nothing)
+      [index, cell, value] | h == "nodeSet", Just callee <- entry "nodeSet" 3 -> Just (callee, index, cell, Just value)
+      _ -> Nothing
+  where
+    entry h n
+      | isPrim cx env h, Just callee <- calleeOf cx h n,
+        calleeKind callee == Foreign ("fpr_g_" ++ mangleName h ++ "_call" ++ show n),
+        calleeResult callee == TVal, calleeParams callee == replicate n TVal = Just callee
+      | otherwise = Nothing
+
+lowerNode :: Cx -> Env -> Callee -> Core -> Core -> Maybe Core -> L (VId, Ty)
+lowerNode cx env callee index cell stored = do
+  number <- lowerVal cx env index
+  node <- lowerVal cx env cell >>= asVal
+  value <- traverse (\x -> lowerVal cx env x >>= asVal) stored
+  (join, result) <- newBlock1 TVal
+  (slow, _) <- newBlock []
+  let guard p = do
+        (next, _) <- newBlock []
+        close (TCondBr p next [] slow [])
+        open next []
+  i <- case number of
+    (v, TInt) -> pure v
+    boxed -> do
+      b <- asVal boxed
+      emit TPred (OIsInt b) >>= guard
+      emit TInt (OUntag b)
+  zero <- emit TInt (OConstInt 0)
+  emit TPred (OCmp Ge i zero) >>= guard
+  limit <- emit TInt (OConstInt 64)
+  emit TPred (OCmp Lt i limit) >>= guard
+  address <- emit TAddr (OAddress node)
+  field <- emit TAddr (OIndex address i)
+  case value of
+    Nothing -> emit TVal (OLoad TVal field 8) >>= \v -> close (TBr join [v])
+    Just v -> emitDo (OStore TVal field 8 v) >> close (TBr join [node])
+  open slow []
+  boxed <- asVal number
+  answer <- emit TVal (OCall callee ([boxed, node] ++ maybe [] pure value))
+  close (TBr join [answer])
+  open join [(result, TVal)]
+  pure (result, TVal)
+
 scalarVectorCall :: Cx -> Env -> Name -> Int -> Maybe (VectorRead.Read,Callee)
 scalarVectorCall cx env name count
   | not (isPrim cx env name)=Nothing
@@ -423,6 +545,8 @@ lowerTail cx env expr = ended (go expr) >> pure ()
         M.notMember h env,
         not (inlineFloat cx env h args),
         scalarVectorCall cx env h (length args)==Nothing,
+        Nothing <- vectorAccessOf cx env h args,
+        Nothing <- nodeAccess cx env h args,
         Just c <- calleeOf cx h (length args) -> do
           as <- mapM (lowerVal cx env) args
           if h == cxSelf cx
@@ -442,6 +566,10 @@ lowerTail cx env expr = ended (go expr) >> pure ()
 -- a let binder: a local alias shares the value; anything else is lowered
 lowerBind :: Cx -> Env -> Name -> Core -> L Env
 lowerBind cx env x a = case a of
+  -- an element read or store keeps the handle's flat view for the body
+  _ | Just access <- vectorAccess cx env a -> do
+        (env', result) <- lowerVector cx env access
+        pure (M.insert x (result, TVal) env')
   CVar y | Just b <- M.lookup y env ->
     pure $ case snd b of
       TProduct n -> M.union (M.fromList
@@ -669,11 +797,13 @@ lowerVal cx env = \case
           refuse ("call to scalar worker `" ++ h ++ "` without representation metadata")
       | Just (pts, _) <- M.lookup h (cxSigs cx), length pts /= length args ->
           refuse ("call to scalar worker `" ++ h ++ "` whose representation metadata has the wrong arity")
+      | Just access<-vectorAccessOf cx env h args->(\(_,result)->(result,TVal)) <$> lowerVector cx env access
+      | Just (callee, index, cell, stored) <- nodeAccess cx env h args -> lowerNode cx env callee index cell stored
       | Just (op,callee)<-scalarVectorCall cx env h (length args)->do
           values<-mapM (\arg->lowerVal cx env arg >>= asVal) args
           case ScalarVector.planRead (cxPolicy cx) op callee values of
             Just plan->do
-              let builder=ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 open close
+              let builder=vectorBuilder
               result<-ScalarVector.lowerRead builder plan
               pure (result,TVal)
             Nothing->(\result->(result,TVal)) <$> emit TVal (OCall callee values)
@@ -744,7 +874,7 @@ lowerVal cx env = \case
           let c = Callee h (Foreign sym) [TVal] TVal
           case StringRead.planLength (cxPolicy cx) c str of
             Just plan -> do
-              let builder = ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 open close
+              let builder = vectorBuilder
               result <- StringRead.lowerRead builder plan
               pure (result, TInt)
             Nothing -> do
@@ -756,7 +886,7 @@ lowerVal cx env = \case
           let c = Callee h (Foreign sym) [TVal, TVal] TVal
           case StringRead.planElement (cxPolicy cx) c str index of
             Just plan -> do
-              let builder = ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 open close
+              let builder = vectorBuilder
               result <- StringRead.lowerRead builder plan
               pure (result, TInt)
             Nothing -> do

@@ -3941,6 +3941,8 @@ __attribute__((weak)) void hal_console_bytes(const char *bytes, uw len) {
   for (uw i = 0; i < len; i++) hal_putc(bytes[i]);
 }
 __attribute__((weak)) void hal_eputc(char c) { hal_putc(c); }
+/* a console with no buffer of its own has nothing to write out */
+__attribute__((weak)) void hal_console_flush(void) {}
 __attribute__((weak)) void hal_diag_bytes(const char *bytes, uw len) {
   for (uw i = 0; i < len; i++) hal_eputc(bytes[i]);
 }

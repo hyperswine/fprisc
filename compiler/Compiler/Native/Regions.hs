@@ -85,7 +85,8 @@ derive measures p=Analysis p (Cost.costProgram measures M.empty p)
 -- $receiveLoop trampoline (tests use it; the driver passes True everywhere
 -- since 2026-11-09: QOS Portable images own their heap, and the native
 -- plane's process images were never built as QOS app targets)
-data Options=Options {loopRegions :: Bool,callRegions :: Bool,receiveLoops :: Bool,persistentLoop :: Maybe String} deriving (Eq,Show)
+-- rawFloats: a float is its bits in the word (64-bit targets), so float arithmetic allocates nothing
+data Options=Options {loopRegions :: Bool,callRegions :: Bool,receiveLoops :: Bool,persistentLoop :: Maybe String,rawFloats :: Bool} deriving (Eq,Show)
 data Result=Bypassed Program | Placed Program Analysis Turns.Rewrite Typed.Program
 -- The typed program the result was placed from (typed lowering census).
 resultNative :: Result -> Native.NativeCore
@@ -174,7 +175,7 @@ placeWith opts (Context source@(Program _ _ _ _ worldFaces worldShared _ _) _ _)
       arities=M.map (length . fst) allCode
       checked=Native.nativeDefinitions (programNative input)
   sites<-Sites.callSites model arities (M.mapWithKey (\name _->Native.checkedFunction <$> M.lookup name checked) p)
-  rewrite<-Turns.receiveTurns (loopRegions opts) (callRegions opts) (receiveLoops opts) (persistentLoop opts) (analysisCosts view) signatures model sites
+  rewrite<-Turns.receiveTurns (rawFloats opts) (loopRegions opts) (callRegions opts) (receiveLoops opts) (persistentLoop opts) (analysisCosts view) signatures model sites
     (shared<>worldShared) allCode joins p
   typed<-Typed.build (programNative input) (M.map interfaceArity signatures) rewrite
   projection<-Typed.emitProgram typed

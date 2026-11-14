@@ -86,6 +86,7 @@ static V h_read(V fdv, V nv) {
   int fd = want_fd(fdv, "Os.read: the stream is not an Int");
   sw n = ISINT(nv) ? UNTAG(nv) : 0;
   if (n <= 0) return os_ok(os_str("", 0));
+  hal_console_flush(); /* what was printed is out before the program waits for input */
   char small[4096], *buf = small;
   if ((size_t)n > sizeof small) { buf = malloc((size_t)n); if (!buf) return os_err("out of memory"); }
   ssize_t r;
@@ -103,6 +104,7 @@ static V h_write(V fdv, V datav) {
 #ifndef FPR_ESP_IDF
   signal(SIGPIPE, SIG_IGN); /* a peer that has gone is an Err, not our death */
 #endif
+  hal_console_flush(); /* printed lines first: a raw write to descriptor 1 follows them */
   ssize_t r;
   do r = write(fd, d->bytes, d->len); while (r < 0 && errno == EINTR);
   return r < 0 ? os_again_or_errno() : os_ok(TAG((sw)r));

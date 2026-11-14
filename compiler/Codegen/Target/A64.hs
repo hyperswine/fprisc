@@ -99,7 +99,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 32 -- shared refill tails keyed by placed destination and raw size
+a64SelectionRev = 33 -- fall-through layout, compares fused across edge moves, loop-carried floats in the float registers (32: shared refill tails keyed by placed destination and raw size)
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -416,10 +416,13 @@ selectBlock cfg fn tyMap b = do
       -- a comparison whose only use is this block's branch: compare and
       -- branch on the flags (no cset, no cbz)
       fused = case (reverse rest, bTerm b) of
-        (Instr (Just (p, _)) op : _, TCondBr p' t [] e [])
-          | p == p', useCount p == 1, fusable op -> Just (op, t, e)
+        (Instr (Just (p, _)) op : _, TCondBr p' t as e bs)
+          | p == p', useCount p == 1, fusable op (null as && null bs) -> Just (op, t, as, e, bs)
         _ -> Nothing
-      fusable = \case OCmp {} -> True; OVariantTest {} -> True; OTagTest {} -> True; _ -> False
+      -- a comparison leaves its answer in the flags, which the edge moves
+      -- keep; the tag tests branch to the else block mid-test, so they fuse
+      -- only when that edge carries nothing
+      fusable op bare = case op of OCmp {} -> True; OVariantTest {} -> bare; OTagTest {} -> bare; _ -> False
       -- a small constant this block makes for the comparison alone: an
       -- immediate operand, and no register
       immediateOf y = case [n | Instr (Just (v, _)) (OConstInt n) <- rest, v == y] of
@@ -428,15 +431,10 @@ selectBlock cfg fn tyMap b = do
       useCount v = length [() | blk <- fnBlocks fn, Instr _ op <- bInstrs blk, u <- opUses op, u == v]
                  + length [() | blk <- fnBlocks fn, u <- termUses (bTerm blk), u == v]
   case fused of
-    Just (op, t, e) -> do
-      let next = case dropWhile ((/= bId b) . bId) (fnBlocks fn) of
-            _ : n : _ -> Just (bId n)
-            _ -> Nothing
-          -- branch to t when the condition holds, to e otherwise, falling
+    Just (op, t, as, e, bs) -> do
+      let -- branch to t when the condition holds, to e otherwise, falling
           -- through to whichever comes next
-          branch c c' = if Just e == next then emitI (bcond c (blockLabel t))
-                        else if Just t == next then emitI (bcond c' (blockLabel e))
-                        else emitI (bcond c (blockLabel t)) >> emitI (jump (blockLabel e))
+          branch c c' = condBranch fn b (bcond c) (bcond c') t as e bs
       case op of
         OCmp o x y -> do
           let imm = immediateOf y
@@ -531,6 +529,7 @@ selectInstr cfg immediates (Instr d op) = case op of
   ORvvLanes _ _ -> refuse "RISC-V vector lanes on A64"
   ORvvSumLoaded _ -> refuse "a RISC-V vector sum on A64"
   OAddress v -> def (\r -> emitI (mov r (vreg v)))
+  OVectorView {} -> refuse "internal: a vector view reached selection unexpanded"
   OIndex a i -> def $ \r -> do
     offset <- freshV False
     emitI (rri A.ShiftLeftImmediate offset (vreg i) 3)
@@ -935,23 +934,9 @@ selectTerm cfg fn b = case bTerm b of
         tailJump (CodeSymbol (functionSymbol (fnName fn))) (FprCall TicksFuel) (map vreg as)
     | otherwise -> do
         parallelMoves (zip (paramsOf target) (map vreg as))
-        emitI (jump (blockLabel target))
-  TCondBr p t as e bs
-    -- the textually next block is reached by falling through: a hot path
-    -- laid out after its test takes no branch at all
-    | null as && null bs, Just e == next -> emitI (cbnz (vreg p) (blockLabel t))
-    | null as && null bs, Just t == next -> emitI (cbz (vreg p) (blockLabel e))
-    | null as && null bs -> do
-        emitI (cbnz (vreg p) (blockLabel t))
-        emitI (jump (blockLabel e))
-    | otherwise -> do
-        edge <- freshL "edge"
-        emitI (cbnz (vreg p) edge)
-        parallelMoves (zip (paramsOf e) (map vreg bs))
-        emitI (jump (blockLabel e))
-        emitL edge
-        parallelMoves (zip (paramsOf t) (map vreg as))
-        emitI (jump (blockLabel t))
+        -- the block laid out next is fallen into
+        unless (Just target == nextBlock fn b) (emitI (jump (blockLabel target)))
+  TCondBr p t as e bs -> condBranch fn b (cbnz (vreg p)) (cbz (vreg p)) t as e bs
   TTailCall c as -> do
     when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
     tailJump (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as)
@@ -961,10 +946,48 @@ selectTerm cfg fn b = case bTerm b of
     modify (\s -> s {selStrings = S.insert msg (selStrings s)})
     emitI (Protocol.selectProtocol Calling.AArch64 (plain (O.A64 A.Panic) [] [OAddr (StaticObject (stringLabel msg))]))
   where
-    next = case dropWhile ((/= bId b) . bId) (fnBlocks fn) of
-      (_ : n : _) -> Just (bId n)
-      _ -> Nothing
     paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
+
+-- the block laid out after this one
+nextBlock :: Fn -> Block -> Maybe BId
+nextBlock fn b = case dropWhile ((/= bId b) . bId) (fnBlocks fn) of
+  (_ : n : _) -> Just (bId n)
+  _ -> Nothing
+
+-- A two-way branch given the jump taken when the condition holds and the
+-- jump taken when it does not. Whichever target is laid out next is fallen
+-- into; a side with no block-parameter moves is branched to directly, and
+-- only an edge with moves on both sides gets a block of its own. The moves
+-- come after the branch, so a comparison's flags are read before them.
+condBranch :: Fn -> Block -> (Label -> SInstr) -> (Label -> SInstr) -> BId -> [VId] -> BId -> [VId] -> Se ()
+condBranch fn b whenTrue whenFalse t as e bs = case (null movesT, null movesE) of
+  (True, True)
+    | Just e == next -> emitI (whenTrue (blockLabel t))
+    | Just t == next -> emitI (whenFalse (blockLabel e))
+    | otherwise -> emitI (whenTrue (blockLabel t)) >> emitI (jump (blockLabel e))
+  (True, False) -> do
+    emitI (whenTrue (blockLabel t))
+    parallelMoves movesE
+    jumpOn e
+  (False, True) -> do
+    emitI (whenFalse (blockLabel e))
+    parallelMoves movesT
+    jumpOn t
+  (False, False) -> do
+    edge <- freshL "edge"
+    emitI (whenTrue edge)
+    parallelMoves movesE
+    emitI (jump (blockLabel e))
+    emitL edge
+    parallelMoves movesT
+    jumpOn t
+  where
+    next = nextBlock fn b
+    moves _ [] = [] -- most edges carry nothing: no search for the target's parameters
+    moves target args = filter (uncurry (/=)) (zip [vreg v | blk <- fnBlocks fn, bId blk == target, (v, _) <- bParams blk] (map vreg args))
+    movesT = moves t as
+    movesE = moves e bs
+    jumpOn target = unless (Just target == next) (emitI (jump (blockLabel target)))
 
 -- ---- placement, layout, rendering --------------------------------------
 
@@ -1014,12 +1037,52 @@ allocConfig self managed =
 -- parameters keep the word ABI; non-float uses receive a bit-preserving move.
 -- Tree scratch d16..d23 and SIMD scratch are disjoint from the pool d2..d15.
 floatPool :: SFn -> SFn
-floatPool fn = fn {sfBody = evalState (concat <$> mapM item (sfBody fn)) start}
+floatPool fn
+  -- no float operation at all: nothing to pool, and no move to revisit
+  | not (any floatItem (sfBody fn)) = fn
+  | otherwise = fn {sfBody = evalState (concat <$> mapM item (sfBody fn)) start}
   where
-    floats = S.fromList [v | I i <- sfBody fn, floatingDef (siOpcode i), OV v _ <- siDefs i]
+    floatItem (I i) = case siOpcode i of
+      O.A64 (A.FloatBinary {}) -> True; O.A64 (A.FloatCompare {}) -> True
+      O.A64 (A.TreeOutput {}) -> True; O.A64 (A.TreeLeaf {}) -> True
+      _ -> False
+    floatItem _ = False
+    produced = S.fromList [v | I i <- sfBody fn, floatingDef (siOpcode i), OV v _ <- siDefs i]
     floatingDef (O.A64 (A.FloatBinary O.WordBits _ _)) = True
     floatingDef (O.A64 (A.TreeOutput O.WordBits _)) = True
     floatingDef _ = False
+    -- A value that only moves define (a block parameter: one move per edge)
+    -- joins the float class when one of those moves brings a float and a
+    -- float operation reads it. A loop then carries its floats in the float
+    -- registers; the edges that bring a word (the loop's entry) pay the one
+    -- move in. Fixed and tied registers, and the function's own parameters,
+    -- keep the word ABI.
+    plainMove i = case (siOpcode i, siDefs i, siUses i) of
+      (O.A64 A.Move, [OV d (Any GPR)], [OV src (Any GPR)]) -> Just (d, src)
+      _ -> Nothing
+    pinned = S.fromList (sfParams fn) `S.union` S.fromList
+      [v | I i <- sfBody fn, OV v c <- siDefs i ++ siUses i, c /= Any GPR]
+    sources = M.fromListWith (++) ([(d, [Just src]) | I i <- sfBody fn, Just (d, src) <- [plainMove i]]
+      ++ [(v, [Nothing]) | I i <- sfBody fn, Nothing <- [plainMove i], OV v _ <- siDefs i])
+    floatRead = S.fromList [v | I i <- sfBody fn, floatContext (siOpcode i), OV v _ <- siUses i]
+    floatContext (O.A64 (A.FloatBinary O.WordBits _ _)) = True
+    floatContext (O.A64 (A.FloatCompare O.WordBits _ _)) = True
+    floatContext (O.A64 (A.TreeLeaf O.WordBits _)) = True
+    floatContext _ = False
+    carried have =
+      let wanted = floatRead `S.union` S.fromList [src | I i <- sfBody fn, Just (d, src) <- [plainMove i], S.member d have]
+          more = S.fromList [v | (v, from) <- M.toList sources, S.notMember v pinned, S.member v wanted,
+                                 all (/= Nothing) from,
+                                 or [S.member src have | Just src <- from] || onlyFloatReads v]
+          next = have `S.union` more
+       in if next == have then have else carried next
+    -- a joined word that float operations read at least twice and nothing
+    -- else reads (a float read from a vector) is moved in once, at the join
+    readCounts = M.fromListWith (\(a, b) (c, d) -> (a + c, b + d)) [(v, (1 :: Int, if floatContext (siOpcode i) then 1 else 0 :: Int)) | I i <- sfBody fn, OV v _ <- siUses i]
+    onlyFloatReads v = case M.lookup v readCounts of
+      Just (every, floating) -> floating >= 2 && every == floating
+      Nothing -> False
+    floats = carried produced
     start = 1 + maximum (0 : [n | I i <- sfBody fn, OV (VReg n) _ <- siDefs i ++ siUses i])
     fresh :: RegClass -> State Int Operand
     fresh cls = do n <- get; put (n+1); pure (OV (VReg n) (Any cls))
@@ -1040,6 +1103,8 @@ floatPool fn = fn {sfBody = evalState (concat <$> mapM item (sfBody fn)) start}
       O.A64 (A.TreeOutput O.WordBits w)->pure [I i {siOpcode=O.A64 (A.TreeOutput O.FloatRegisters w),siDefs=map def (siDefs i)}]
       O.A64 (A.TreeLeaf O.WordBits w) | OV v _ : rest <- siUses i, S.member v floats ->
         pure [I i {siOpcode=O.A64 (A.TreeLeaf O.FloatRegisters w),siUses=fp v:rest}]
+      O.A64 A.Move | Just (d, src) <- plainMove i, S.member d floats ->
+        pure [I i {siOpcode=O.A64 A.FloatMove,siDefs=[fp d],siUses=[if S.member src floats then fp src else OV src (Any GPR)]}]
       _ -> do
         args <- mapM asWord (siUses i)
         pure (concatMap fst args ++ [I i {siUses=map snd args}])

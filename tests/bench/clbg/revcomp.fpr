@@ -1,6 +1,7 @@
 # revcomp (SPEC.md): reverse complement of each fasta sequence, 60 characters a line
 String = use "std/string".
 List = use "std/list".
+Bytes = use "std/bytes".
 
 # complement by character code: a 128-byte table, upper and lower case
 table : String .
@@ -12,30 +13,32 @@ comp c = case (if c >= 97 and c <= 122 then c - 32 else c) of
   | 83 -> 83 | 89 -> 82 | 75 -> 77 | 86 -> 66 | 72 -> 68 | 68 -> 72 | 66 -> 86 | 78 -> 78
   | u -> u.
 
-# codes of one output line: positions from, from-1, ... (k of them) of seq, complemented
-lineCodes : String -> String -> Int -> (k : Int | measure k) -> List Int -> List Int .
-lineCodes t seq from k acc = if k <= 0 then List.reverse acc else
-  lineCodes t seq (from - 1) (k - 1) (charAt t (charAt seq from) :: acc).
+# bytes 0..k-1 of the buffer: sequence positions from, from-1, ..., complemented
+lineInto : String -> String -> Int -> (k : Int) -> (j : Int | measure (k - j)) -> Vector Int -> Vector Int .
+lineInto t seq from k j b = if j >= k then b else
+  lineInto t seq from k (j + 1) (Bytes.put j (charAt t (charAt seq (from - j))) b).
 
 # output line i of nl covers sequence positions len-1-60i down to max(0, len-60(i+1))
-emit : String -> String -> Int -> (nl : Int) -> (i : Int | measure (nl - i)) -> Unit .
-emit t seq len nl i = if i >= nl then Unit else
+emit : String -> String -> Int -> (nl : Int) -> (i : Int | measure (nl - i)) -> Vector Int -> Vector Int .
+emit t seq len nl i b = if i >= nl then b else
   left = len - 60 * i;
-  _ = print (String.fromCodes (lineCodes t seq (left - 1) (if left < 60 then left else 60) Nil));
-  emit t seq len nl (i + 1).
+  k = if left < 60 then left else 60;
+  (line, b1) = Bytes.pack 0 k (lineInto t seq (left - 1) k 0 b);
+  _ = print line;
+  emit t seq len nl (i + 1) b1.
 
-flush : String -> List String -> Unit .
-flush t body = case body of
-    Nil -> Unit
-  | _ -> (case strJoin "" (List.reverse body) of seq -> emit t seq (strlen seq) ((strlen seq + 59) / 60) 0).
+flush : String -> List String -> Vector Int -> Vector Int .
+flush t body b = case body of
+    Nil -> b
+  | _ -> (case strJoin "" (List.reverse body) of seq -> emit t seq (strlen seq) ((strlen seq + 59) / 60) 0 b).
 
-walk : String -> (ls : List String | measure ls) -> List String -> Unit .
-walk t ls body = case ls of
-    Nil -> flush t body
+walk : String -> (ls : List String | measure ls) -> List String -> Vector Int -> Vector Int .
+walk t ls body b = case ls of
+    Nil -> flush t body b
   | l :: rest -> if String.startsWith ">" l then
-      (case flush t body of _ -> (case print l of _ -> walk t rest Nil))
-    else walk t rest (l :: body).
+      (case flush t body b of b1 -> (case print l of _ -> walk t rest Nil b1))
+    else walk t rest (l :: body) b.
 
 main =
   path = case Sys.args Unit of p :: _ -> p | Nil -> "data/fasta-2500000.txt";
-  walk table (String.lines (fileRead path)) Nil.
+  Bytes.free (walk table (String.lines (fileRead path)) Nil (Bytes.new 60)).

@@ -1,0 +1,32 @@
+# std golden: std/bytes, a byte buffer written in place and packed into a String
+Bytes = use "std/bytes".
+
+fill : (n : Int) -> (i : Int | measure (n - i)) -> Vector Int -> Vector Int .
+fill n i b = if i >= n then b else fill n (i + 1) (Bytes.put i (97 + i % 26) b).
+
+main =
+  b0 = Bytes.new 0;
+  (e, b1) = Bytes.pack 0 0 b0;
+  _ = print "[{e}]";
+  _ = Bytes.free b1;
+  c0 = Bytes.new 3;
+  (n, c1) = Vec.len c0;
+  _ = print n;
+  c2 = Bytes.put 2 67 (Bytes.put 1 66 (Bytes.put 0 65 c1));
+  (s, c3) = Bytes.pack 0 3 c2;
+  _ = print s;
+  (t, c4) = Bytes.pack 1 2 c3;
+  _ = print t;
+  (x, c5) = Bytes.get 1 c4;
+  _ = print x;
+  _ = Bytes.free c5;
+  # one buffer, refilled: every line is packed from the same sixty bytes
+  d0 = fill 60 0 (Bytes.new 60);
+  (line, d1) = Bytes.pack 0 60 d0;
+  _ = print line;
+  d2 = Bytes.put 0 255 (Bytes.put 1 0 d1);
+  (raw, d3) = Bytes.pack 0 2 d2;
+  _ = print (strlen raw);
+  _ = print (charAt raw 0);
+  _ = print (charAt raw 1);
+  Bytes.free d3.

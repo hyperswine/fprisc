@@ -44,7 +44,7 @@ clobbersRegisters :: Bool -> Op -> Bool
 clobbersRegisters inlineFloats = \case
   OConstInt {} -> False; OHartCell {} -> False; ORegionRoom {} -> False
   ONullary {} -> False; OString {} -> False; OBoxedFloat {} -> False
-  OAddress {} -> False; OIndex {} -> False; OIndexByte {} -> False; OLoad {} -> False; OLoadByte {} -> False
+  OAddress {} -> False; OVectorView {} -> False; OIndex {} -> False; OIndexByte {} -> False; OLoad {} -> False; OLoadByte {} -> False
   OStore {} -> False; OSetField {} -> False; OField {} -> False; OTag {} -> False; OUntag {} -> False
   OBoolOf {} -> False; OTruth {} -> False; ONot {} -> False; OIsInt {} -> False
   OTagTest {} -> False; OVariantTest {} -> False; OSymbol {} -> False; OFunValue {} -> False

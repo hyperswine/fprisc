@@ -104,9 +104,9 @@ validateSource (Rewrite _ _ _ groups _ (Authority before membership context shar
           newLive=S.fromList [i | (i,p)<-zip [0::Int ..] newPs,p `S.member` (liveNow M.! n)]
       unless (length oldPs==length newPs && newLive `S.isSubsetOf` oldLive) (bad ("dead argument became observable at "++n))
 
-receiveTurns :: Bool -> Bool -> Bool -> Maybe String -> M.Map Name (CostEq,CostEq) -> M.Map Name Interface
+receiveTurns :: Bool -> Bool -> Bool -> Bool -> Maybe String -> M.Map Name (CostEq,CostEq) -> M.Map Name Interface
              -> Region.ValueModel -> Sites.CallSites -> S.Set Name -> Prog -> S.Set Name -> Prog -> Either String Rewrite
-receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs interfaces model sites shared context joins prog = do
+receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop contextEqs interfaces model sites shared context joins prog = do
   let result=Rewrite final (notes++callNotes) generated selectedGroups callTargets (Authority prog (M.keysSet membership) context shared)
   verifyRewrite prog result
   pure result
@@ -288,6 +288,16 @@ receiveTurns loopRegions callRegionsOn receiveLoops persistentLoop contextEqs in
         vectorRead g as = case (g, as) of
           ("$vec.len", [_]) -> Just False
           (_, [_, CVar h]) | g `elem` ["$vec.at","$vec.get"], flatVector h -> Just False
+          -- an in-place store into a flat column writes one word (vec.c h_set)
+          (_, [_, _, CVar h]) | g `elem` ["Vec.set","Vec.put"], M.notMember g prog, flatVector h -> Just False
+          -- Where a float is its bits in the word, float arithmetic, comparison
+          -- and conversion compute a word and allocate nothing. (On a 32-bit
+          -- word a float is a boxed leaf, and the unknown-code rule stays.)
+          (_, [_, _]) | rawFloats, S.member g floatBinaryNames, M.notMember g prog -> Just False
+          (_, [_]) | rawFloats, S.member g floatUnaryNames, M.notMember g prog -> Just False
+          -- a float literal is its bits
+          ("f64frombits", [_, _]) | rawFloats, M.notMember g prog -> Just False
+          ("f32frombits", [_]) | rawFloats, M.notMember g prog -> Just False
           _ -> Nothing
         groupCall bound e = case spine e of
           (CVar g, as) | not (S.member g bound), S.member g group, not (null as) -> Just as
@@ -650,3 +660,8 @@ pack xs = CMk (case length xs of 2 -> 4; 3 -> 5; n | n <= 8 -> n + 6; n -> tupWi
 orElse :: Maybe a -> Maybe a -> Maybe a
 orElse (Just x) _ = Just x
 orElse Nothing y = y
+
+-- the float primitives that compute a word where a float is its bits
+floatBinaryNames, floatUnaryNames :: S.Set Name
+floatBinaryNames = S.fromList [w ++ op | w <- ["F64.","F32."], op <- ["+","-","*","/","<",">","<=",">=","==","!="]]
+floatUnaryNames = S.fromList [w ++ f | w <- ["F64.","F32."], f <- ["sqrt","ofInt","toInt"]]

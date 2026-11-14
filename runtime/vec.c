@@ -651,6 +651,33 @@ FPR_FN(fpr_g__x24vec_x2eget, h_peek_get, 2);
 FPR_FN(fpr_g__x24vec_x2eat, h_peek_at, 2);
 FPR_FN(fpr_g__x24vec_x2elen, h_peek_len, 1);
 FPR_FN(fpr_g_Vec_x2eput, h_put, 3);
+/* Vec.pack from n vec: the n Ints at [from, from+n) as the bytes of one
+ * String, and the handle back.  This is what makes a Vector Int a byte
+ * buffer: written in place by Vec.set, packed once, where a String built a
+ * character at a time allocates a cell per character.  Every element packed
+ * must be a byte; nothing is truncated. */
+static V h_pack(V fromv, V nv, V vec) {
+  vec_t *x = vchk(vec, "Vec.pack: not a Vector");
+  if (!ISINT(fromv) || !ISINT(nv)) fpr_cpanic("Vec.pack: the range is not two Ints");
+  sw from = UNTAG(fromv), n = UNTAG(nv);
+  if (from < 0 || n < 0 || (uw)from > x->len || (uw)n > x->len - (uw)from)
+    fpr_trap_range("Vec.pack: range outside the vector", from < 0 || n < 0 ? (from < 0 ? from : n) : from + n, x->len);
+  if (n && VREP(x) != VR_INT) fpr_cpanic("Vec.pack: not a Vector of Int");
+  str_t *s = (str_t *)fpr_alloc(sizeof(str_t) + (uw)n);
+  s->tid = T_STR;
+  s->var = 0;
+  s->len = (uw)n;
+  if (n) {
+    const uw *src = vl_slot(x->cols[0], (uw)from);
+    uw seen = 0;
+    for (uw i = 0; i < (uw)n; i++) { seen |= src[i]; s->bytes[i] = (uint8_t)src[i]; }
+    if (seen > 255)
+      for (uw i = 0; i < (uw)n; i++)
+        if (src[i] > 255) fpr_trap_num("Vec.pack: ", (sw)src[i], " is not a byte (0..255)");
+  }
+  return mktup2((V)s, (V)x);
+}
+FPR_FN(fpr_g_Vec_x2epack, h_pack, 3);
 FPR_FN(fpr_g_Vec_x2emap, fpr_vec_map, 2);
 FPR_FN(fpr_g_Vec_x2emapAs, h_mapAs, 3);
 FPR_FN(fpr_g_Vec_x2efilter, fpr_vec_filter, 2);
