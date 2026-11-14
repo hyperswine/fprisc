@@ -1,0 +1,5 @@
+P = Type (P Int Int).
+main =
+  a = P 1 2;
+  b = nodeSet 0 a (P 9 9);
+  print "{case a of P x y -> x}".

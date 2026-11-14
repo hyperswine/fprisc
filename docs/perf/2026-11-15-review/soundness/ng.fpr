@@ -1,0 +1,3 @@
+main =
+  s = nodeGet 7 42;
+  print "{s + 1}".

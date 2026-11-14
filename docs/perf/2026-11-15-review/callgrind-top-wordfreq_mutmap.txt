@@ -1,0 +1,35 @@
+# OLD 3485b92f
+total 3891551697
+    1142.9M  fpr_fn_wordEnd
+     452.0M  fpr_fn_wordsGo
+     291.5M  fpr_alloc
+     262.7M  mm_str_hash
+     201.4M  mm_find
+     175.1M  alloc_in_size
+     174.7M  g_substr
+     148.2M  fpr_apply
+     125.2M  g_mutmapInsertWith
+      91.6M  callf
+      90.1M  g_call_pend.part.0
+      85.6M  kp_reaches
+      73.0M  fpr_fn_byCount
+      70.0M  fpr_fn_lengthGo
+      66.0M  g_call_leave
+
+# NEW beca82ea
+total 2363971987
+     357.5M  fpr_fn_wordEnd
+     298.9M  fpr_fn__x24loop_x2ein_x2ewordsGo
+     262.7M  mm_str_hash
+     201.4M  mm_find
+     190.0M  fpr_alloc
+     174.7M  g_substr
+     137.2M  kp_reaches
+     115.0M  fpr_apply2
+     101.8M  g_mutmapInsertWith
+      79.9M  fpr_fn_rev
+      58.6M  fpr_in_heap
+      56.9M  fpr_fn_byCount
+      48.0M  fpr_fn__x24typed_x2emono_x2emain_x2e1
+      44.5M  fpr_layout_fields
+      40.0M  fpr_fn_lengthGo

@@ -1,0 +1,35 @@
+# OLD 3485b92f
+total 6016186115
+    2531.6M  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4093fe6d4cd2727480_x2e2e0e9e58
+     730.5M  apply2
+     660.3M  fpr_fn__x24worker_x2emaplookup_x2egetGo
+     545.8M  fpr_applyN
+     339.0M  callf
+     191.4M  g_sortListWith
+     151.1M  dc_size_in
+     109.3M  fpr_fn__x24worker_x2eret2_x2ebuildAsc
+      93.4M  fpr_fn__x24loop_x2ein_x2elookups
+      90.8M  kp_reaches
+      88.3M  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2einserts
+      44.5M  fpr_fn__x24typed_x2emono_x2eentries_x4093fe6d4cd2727480_x2e1
+      44.0M  fpr_layout_fields
+      42.6M  fpr_in_heap
+      41.6M  fpr_fn__x24typed_x2emono_x2ereport_x2e2
+
+# NEW beca82ea
+total 3128482029
+     636.4M  fpr_apply2
+     545.7M  fpr_applyN
+     292.2M  callf
+     272.3M  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x404c89bac69853e13d_x2e8acc979f
+     191.4M  g_sortListWith
+     164.8M  fpr_fn__x24worker_x2emaplookup_x2egetGo
+     156.4M  dc_size_in
+     114.0M  kp_reaches
+     110.4M  fpr_fn__x24typed_x2emono_x2eentries_x404c89bac69853e13d_x2e1
+      82.6M  fpr_fn__x24worker_x2eret2_x2ebuildAsc
+      73.5M  fpr_fn__x24loop_x2ein_x2elookups
+      72.0M  fpr_in_heap
+      70.5M  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2einserts
+      37.4M  layout_find
+      35.4M  fpr_alloc

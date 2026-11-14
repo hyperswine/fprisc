@@ -1,0 +1,35 @@
+# OLD 3485b92f
+total 5934303118
+    1117.6M  fpr_fn_charFrom
+    1083.8M  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2estep_x2e2
+     643.6M  fpr_fn_digitsGo
+     421.9M  g_strCompare
+     355.4M  fpr_fn_splitCharGo
+     344.6M  fpr_alloc
+     317.6M  g_substr
+     262.9M  fpr_fn_toIntGo
+     233.1M  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e1
+     214.2M  fpr_fn_linesGo
+     163.5M  fpr_fn_split
+     145.9M  fpr_fn_isNeg
+     132.0M  g_call_pend.part.0
+      99.0M  g_call_leave
+      65.3M  dc_size_in
+
+# NEW beca82ea
+total 4817432986
+     837.4M  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2estep_x2e2
+     625.7M  fpr_fn_charFrom
+     421.9M  g_strCompare
+     413.0M  fpr_fn__x24loop_x2ein_x2esplitCharGo
+     374.1M  fpr_fn_digitsGo
+     344.6M  fpr_alloc
+     317.6M  g_substr
+     191.5M  fpr_fn_toIntGo
+     189.0M  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e1
+     152.7M  fpr_fn_split
+     137.1M  fpr_fn__x24loop_x2ein_x2elinesGo
+     107.9M  fpr_fn_isNeg
+      94.6M  dc_size_in
+      88.0M  g_call_pend.part.0
+      66.9M  kp_reaches

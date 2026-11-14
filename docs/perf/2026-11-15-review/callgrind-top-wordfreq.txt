@@ -1,0 +1,35 @@
+# OLD 3485b92f
+total 6426287091
+    2739.7M  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2emain_x2e6
+    1142.9M  fpr_fn_wordEnd
+     833.1M  g_strCompare
+     452.0M  fpr_fn_wordsGo
+     174.7M  g_substr
+     173.9M  fpr_alloc
+     168.0M  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e1
+      92.1M  kp_reaches
+      90.1M  g_call_pend.part.0
+      70.0M  fpr_fn_lengthGo
+      69.7M  fpr_fn_byCount
+      66.0M  g_call_leave
+      43.6M  fpr_in_heap
+      35.9M  alloc_in_size
+      30.9M  fpr_layout_fields
+
+# NEW beca82ea
+total 4717258728
+    2080.1M  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2emain_x2e6
+     833.1M  g_strCompare
+     357.5M  fpr_fn_wordEnd
+     298.9M  fpr_fn__x24loop_x2ein_x2ewordsGo
+     185.3M  fpr_alloc
+     174.7M  g_substr
+     143.7M  kp_reaches
+     128.0M  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e1
+      79.9M  fpr_fn_rev
+      66.1M  fpr_in_heap
+      54.2M  fpr_fn_byCount
+      48.4M  fpr_layout_fields
+      40.0M  fpr_fn_lengthGo
+      38.7M  layout_total
+      37.1M  layout_find

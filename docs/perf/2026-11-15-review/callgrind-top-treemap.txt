@@ -1,0 +1,35 @@
+# OLD 3485b92f
+total 3147676994
+    2200.5M  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2e6a3ec38b
+     337.5M  fpr_fn__x24worker_x2emaplookup_x2egetGo
+     138.8M  dc_size_in
+      83.1M  fpr_fn__x24loop_x2ein_x2elookups
+      73.5M  kp_reaches
+      73.2M  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2einserts
+      43.5M  fpr_fn__x24typed_x2emono_x2ereport_x2e1
+      35.7M  fpr_fn_node
+      34.7M  fpr_in_heap
+      27.4M  fpr_layout_fields
+      21.0M  layout_find
+      12.5M  fpr_g__x24fnIs_call2
+      12.0M  in_image
+      10.9M  layout_total
+       8.1M  drain
+
+# NEW beca82ea
+total 2275550057
+    1506.9M  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f
+     229.2M  fpr_fn__x24worker_x2emaplookup_x2egetGo
+     138.8M  dc_size_in
+      73.5M  kp_reaches
+      60.0M  fpr_fn__x24loop_x2ein_x2elookups
+      54.4M  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2einserts
+      34.7M  fpr_in_heap
+      32.2M  fpr_fn__x24typed_x2emono_x2ereport_x2e1
+      27.8M  fpr_fn_node
+      27.4M  fpr_layout_fields
+      21.0M  layout_find
+      12.5M  fpr_g__x24fnIs_call2
+      12.0M  in_image
+      10.9M  layout_total
+       5.9M  drain
