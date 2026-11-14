@@ -1,0 +1,23 @@
+== csv
+total faults 82877 323.7 MB
+  31488  123.0 MB  stack-like(top-of-page)   0%  7eff3ed24158
+   9217   36.0 MB  stack-like(top-of-page)   0%  47a740
+   7753   30.3 MB  stack-like(top-of-page)   0%  46783d
+   5388   21.0 MB  stack-like(top-of-page)   0%  47a71c
+   3857   15.1 MB  stack-like(top-of-page) 100%  47a674
+   3851   15.0 MB  stack-like(top-of-page)   0%  ffffffff818b0619
+   3792   14.8 MB  stack-like(top-of-page) 100%  463a50
+   3778   14.8 MB  stack-like(top-of-page) 100%  463a48
+== wordfreq
+total faults 92424 361.0 MB
+  15506   60.6 MB  stack-like(top-of-page)   0%  469d4e
+  15452   60.4 MB  stack-like(top-of-page) 100%  4748a6
+  12711   49.7 MB  stack-like(top-of-page) 100%  474882
+  12655   49.4 MB  stack-like(top-of-page) 100%  469bf1
+   8578   33.5 MB  stack-like(top-of-page)   0%  478300
+   6437   25.1 MB  stack-like(top-of-page)   0%  4782dc
+   4719   18.4 MB  stack-like(top-of-page)   0%  ffffffff818b0619
+   2760   10.8 MB  stack-like(top-of-page) 100%  47798b
+csv faults 82877 323.7 MB; stack-like (push at top of page): 19544 76.3 MB
+wordfreq faults 92424 361.0 MB; stack-like (push at top of page): 46891 183.2 MB
+wordfreq_mutmap faults 89799 350.8 MB; stack-like (push at top of page): 46889 183.2 MB

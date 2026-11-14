@@ -1,0 +1,63 @@
+total Ir 6,016,186,115
+
+generated code 4,469,829,770 (74.3%) by class:
+  gen:cmp/test                       697,598,854  11.6%
+  gen:cond branch                    514,564,959   8.6%
+  gen:reg move                       507,290,904   8.4%
+  gen:bool materialize               450,511,720   7.5%
+  gen:heap load/store                430,850,065   7.2%
+  gen:tag/untag/overflow             386,353,266   6.4%
+  gen:stack spill/reload             382,218,440   6.4%
+  gen:jmp                            363,688,398   6.0%
+  gen:call/ret/frame                 291,429,552   4.8%
+  gen:movabs const                   215,441,643   3.6%
+  gen:fuel/tls                       119,141,398   2.0%
+  gen:alu/other                      110,740,571   1.8%
+
+top 22 functions:
+    2,531,676,763  42.1%  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4093fe6d4cd2727480_x2e2e0e9e58
+      668,715,353  11.1%  fpr_fn__x24worker_x2emaplookup_x2egetGo_x4093fe6d4cd2727480
+      545,806,295   9.1%  fpr_applyN
+      513,763,892   8.5%  fpr_fn__x24typed_x5flifted_x5f0_x2e22_x2etoMap_x4093fe6d4cd2727480
+      260,744,355   4.3%  fpr_fn_int_x40924703f5bf666d9f
+      217,077,420   3.6%  apply2
+      191,436,993   3.2%  g_sortListWith
+      151,065,760   2.5%  dc_size_in
+      115,009,050   1.9%  fpr_fn__x24worker_x2eret2_x2ebuildAsc_x4038720051f9dd2f88
+       97,586,896   1.6%  fpr_fn__x24loop_x2ein_x2elookups
+       91,058,745   1.5%  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2einserts
+       90,848,075   1.5%  kp_reaches
+       89,595,064   1.5%  callf
+       50,359,688   0.8%  fpr_fn__x24typed_x2emono_x2eentries_x4093fe6d4cd2727480_x2e1
+       45,252,995   0.8%  fpr_fn__x24typed_x2emono_x2ereport_x2e4
+       44,047,080   0.7%  fpr_layout_fields
+       42,574,560   0.7%  fpr_in_heap
+       41,710,205   0.7%  fpr_fn__x24typed_x2emono_x2ereport_x2e2
+       35,781,057   0.6%  fpr_fn_node_x4093fe6d4cd2727480
+       33,770,953   0.6%  layout_find
+       29,719,969   0.5%  fpr_alloc
+       21,000,000   0.3%  g_intHash
+
+most-called targets (callgrind call counts; static callee address -> symbol):
+      8,570,729  0x00000000004245ef'2
+      8,235,915  callf
+      7,235,914  apply2
+      4,625,205  fpr_applyN
+      3,615,375  fpr_applyN'2
+      3,564,854  dc_size_in'2
+      2,647,705  in_image
+      2,307,245  kp_reaches'2
+      2,202,127  fpr_in_heap
+      1,468,291  layout_find
+      1,468,236  layout_total
+      1,468,236  fpr_layout_fields
+      1,000,000  g_intHash
+        908,418  fpr_acb_override_slot
+        773,483  0x000000000045d2da'2
+        654,968  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4093fe6d4cd2727480_x2e2e0e9e58
+        512,155  fpr_fn__x24worker_x2emaplookup_x2egetGo_x4093fe6d4cd2727480
+        500,000  fpr_g__x24fnIs_call2
+        454,202  fpr_alloc
+        445,578  img_foreign
+        376,922  0x000000000041f7af'2
+        376,517  0x00000000004457d6'2

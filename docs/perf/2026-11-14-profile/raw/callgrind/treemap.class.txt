@@ -1,0 +1,63 @@
+total Ir 3,147,676,994
+
+generated code 2,780,312,975 (88.3%) by class:
+  gen:cmp/test                       433,161,928  13.8%
+  gen:reg move                       331,281,666  10.5%
+  gen:cond branch                    312,111,654   9.9%
+  gen:bool materialize               292,285,596   9.3%
+  gen:tag/untag/overflow             291,196,074   9.3%
+  gen:heap load/store                268,026,441   8.5%
+  gen:jmp                            262,122,247   8.3%
+  gen:stack spill/reload             247,028,694   7.8%
+  gen:movabs const                   125,946,165   4.0%
+  gen:call/ret/frame                  94,333,538   3.0%
+  gen:fuel/tls                        65,784,693   2.1%
+  gen:alu/other                       57,034,279   1.8%
+
+top 22 functions:
+    2,200,599,157  69.9%  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2e6a3ec38b
+      340,054,033  10.8%  fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88
+      138,793,956   4.4%  dc_size_in
+       83,086,665   2.6%  fpr_fn__x24loop_x2ein_x2elookups
+       75,544,770   2.4%  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2einserts
+       73,471,411   2.3%  kp_reaches
+       45,252,995   1.4%  fpr_fn__x24typed_x2emono_x2ereport_x2e1
+       35,718,761   1.1%  fpr_fn_node_x4038720051f9dd2f88
+       34,667,202   1.1%  fpr_in_heap
+       27,374,670   0.9%  fpr_layout_fields
+       20,988,461   0.7%  layout_find
+       12,500,000   0.4%  fpr_g__x24fnIs_call2
+       12,014,035   0.4%  in_image
+       10,949,868   0.3%  layout_total
+        8,124,870   0.3%  drain
+        5,334,966   0.2%  deq
+        3,722,503   0.1%  hart_loop
+        3,649,661   0.1%  fpr_alloc
+        3,469,368   0.1%  img_foreign
+        3,294,657   0.1%  ?
+        2,657,324   0.1%  backlog_add
+        1,835,951   0.1%  fpr_ctx_switch
+
+most-called targets (callgrind call counts; static callee address -> symbol):
+      8,578,396  0x000000000041f52b'2
+      3,469,702  dc_size_in'2
+      2,402,807  in_image
+      2,003,758  kp_reaches'2
+      1,824,579  fpr_in_heap
+        912,539  layout_find
+        912,489  layout_total
+        912,489  fpr_layout_fields
+        638,879  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2e6a3ec38b
+        578,228  img_foreign
+        507,196  fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88
+        500,000  fpr_g__x24fnIs_call2
+        374,979  0x000000000041aaac'2
+        275,446  fpr_fn_node_x4038720051f9dd2f88
+        136,601  0x0000000000420f2b'2
+        125,128  0x000000000041f725'2
+         96,629  hal_actor_stack
+         96,626  fpr_fuel_save_local
+         94,903  fpr_acb_override_slot
+         48,945  tmr_drain
+         48,945  drain
+         48,945  deq
