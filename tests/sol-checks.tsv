@@ -12,6 +12,7 @@ digest	300	tests/sol-checks/digest.sol	push
 compile-tracked	1800	tests/sol-checks/compile-tracked.sol	push
 panic-stderr	300	tests/sol-checks/panic-stderr.sol	push
 crash-repros	300	tests/sol-checks/crash-repros.sol	push
+privileged-builtins	300	tests/sol-checks/privileged-builtins.sol	push
 ownership	300	tests/sol-checks/ownership.sol	push
 linearity	300	tests/sol-checks/linearity.sol	push
 x64-bump-spill	300	tests/sol-checks/x64-bump-spill.sol	push

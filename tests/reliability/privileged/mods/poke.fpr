@@ -1,0 +1,2 @@
+P = Type (P Int Int).
+poke n = case nodeSet 0 (P n n) (P 0 0) of P x _ -> x.

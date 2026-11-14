@@ -1,0 +1,6 @@
+# nodeWith inside a local function under a lambda.
+P = Type (P Int Int).
+grow p =
+  copy q = nodeWith 2 0 q q;
+  List.map (fn r -> copy r) [p].
+main = print "{List.len (grow (P 1 2))}".

@@ -1,0 +1,3 @@
+# A user module is not std/hashmap: its mention is refused too.
+M = use "mods/poke".
+main = print "{M.poke 1}".

@@ -1,0 +1,4 @@
+# Taking the builtin as a value is a mention too.
+P = Type (P Int Int).
+peek = nodeGet.
+main = print "{case peek 0 (P 1 2) of P x _ -> x}".
