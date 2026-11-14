@@ -9,7 +9,7 @@ import Core.Primitives (primArities,entryTickName)
 import Core.Region.Runtime (Hook(..),hookName)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, stripPrefix)
 import Data.Bits (xor)
 import Numeric (showHex)
 import Data.Maybe (mapMaybe, fromMaybe, listToMaybe, isJust)
@@ -37,7 +37,7 @@ poolResetters :: Prog -> S.Set String
 poolResetters prog = go initial
   where
     base=S.fromList ("Sys.poolReset":map hookName [CallLeave,LoopLeave,Cycle,ReceiveLoop])
-    safe=S.fromList (entryTickName:map fst primArities++map hookName [CallPending,SequenceNumber,Open,PoolMark,HasRoom])
+    safe=S.fromList (entryTickName:"$fnIs":map fst primArities++map hookName [CallPending,SequenceNumber,Open,PoolMark,HasRoom])
     facts=M.map (\(ps,b)->references (S.fromList ps) b) prog
     calls=M.map fst facts
     unknown=S.unions (M.elems calls) S.\\ (M.keysSet prog `S.union` safe)
@@ -667,9 +667,9 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
     -- module: Ord.int) is inlined where the walker cases on its answer, and
     -- each leaf becomes the branch the case takes for it: no call, no
     -- Ordering built, one comparison branch per node, as in C.
-    inlineComparator g e=case fmap (fmap (dropAliases M.empty)) (M.lookup g mapBodies) of
+    inlineComparator g e=case fmap (fmap (dropAliases M.empty . expandCmp g)) (M.lookup g mapBodies) of
       Just (cps@[_,_],cb) | Just leaves<-ctorLeaves cb, distinct leaves,
-                            all (\v->v `elem` cps || '@' `notElem` v || isJust (nullaryCtor v)) [v | CVar v<-nodes cb] -> go e
+                            all (\v->v `elem` cps || S.member v (binders cb) || '@' `notElem` v || isJust (nullaryCtor v)) [v | CVar v<-nodes cb] -> go e
         where
           go x=case x of
             CLet o (CApp (CApp (CVar f) a) b) body | f==g, Just tg<-caseTag o body, all ((==tg) . fst) (fromMaybe [] (ctorLeaves cb)) ->
@@ -689,9 +689,32 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
         distinct vs=length vs==S.size (S.fromList vs)
     ctorLeaves x=case x of
       CIf c a b | not (any isLam (nodes c)) -> (++) <$> ctorLeaves a <*> ctorLeaves b
+      CLet _ a b | not (any isLam (nodes a)) -> ctorLeaves b
       CMk t v [] -> Just [(t,v)]
       CVar c | Just tv<-nullaryCtor c -> Just [tv]
       _ -> Nothing
+    -- A comparator written through small helpers (Order.string is
+    -- fromInt (strCmp a b)) has them inlined first, two levels deep: each
+    -- saturated call of a small, non-recursive global the map bodies carry.
+    -- Every inlined binder gets a fresh prefix, so binders stay unique.
+    expandCmp g body=fst (ex (2::Int) (0::Int) body)
+      where
+        ex d n x=case x of
+          _ | d>0, (CVar f,args@(_:_))<-spine x, f/=g, '@' `elem` f,
+              Just (ps,b)<-M.lookup f mapBodies, length ps==length args, length (nodes b)<=40,
+              S.notMember f (S.fromList [v | CVar v<-nodes b]) ->
+                let (args',n1)=exs d n args
+                    (b',n2)=ex (d-1) (n1+1) (dropAliases M.empty b)
+                in (inlineCall ("$cx"++show n1++".") (ps,b') args',n2)
+          CLet k a b -> let (a',n1)=ex d n a; (b',n2)=ex d n1 b in (CLet k a' b',n2)
+          CIf c a b -> let (c',n1)=ex d n c; (a',n2)=ex d n1 a; (b',n3)=ex d n2 b in (CIf c' a' b',n3)
+          CApp f a -> let (f',n1)=ex d n f; (a',n2)=ex d n1 a in (CApp f' a',n2)
+          CTagEq t v a -> let (a',n1)=ex d n a in (CTagEq t v a',n1)
+          CProj k a -> let (a',n1)=ex d n a in (CProj k a',n1)
+          _ -> (x,n)
+        exs _ n []=([],n)
+        exs d n (a:as)=let (a',n1)=ex d n a; (as',n2)=exs d n1 as in (a':as',n2)
+    binders x=S.fromList ([k | CLet k _ _<-nodes x]++concat [qs | CLam qs _<-nodes x])
     -- a nullary constructor named by its global stub (Less@h = Less)
     nullaryCtor c=case M.lookup c mapBodies `orElseM` M.lookup c definitions of
       Just ([],CMk t v []) -> Just (t,v)
@@ -700,6 +723,7 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
     isLam x=case x of CLam _ _ -> True; _ -> False
     mapLeaves f x=case x of
       CIf c a b -> CIf c (mapLeaves f a) (mapLeaves f b)
+      CLet k a b -> CLet k a (mapLeaves f b)
       CMk t v [] -> f (t,v)
       CVar c | Just tv<-nullaryCtor c -> f tv
       _ -> x
@@ -785,7 +809,7 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
       CIf c a b->CIf (renameHead from to c) (renameHead from to a) (renameHead from to b)
       _->e
     twinsOf em=M.fromList ([(worker,body) | (_,worker,body)<-M.elems (plans em)++M.elems (starters em)] ++ M.elems (cursors em)) `M.union` cycleTwins em
-    twins=twinsOf False `M.union` twinsOf True `M.union` mapTwins
+    twins=twinsOf False `M.union` twinsOf True `M.union` mapTwins `M.union` lookupTwins
     builders=spineBuildersWith linked resetting definitions
     -- Element freshness: every element of the spine is stored in that spine
     -- only (a fresh constructor, or an element moved out of a unique spine).
@@ -941,7 +965,79 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
         CIf c a b->CIf (rewriteCall scope c) (rewriteCall scope a) (rewriteCall scope b)
         CApp f x->CApp (rewriteCall scope f) (rewriteCall scope x)
         _->e
-    rewritten=M.map (\(ps,b)->(ps,rewriteCall (S.fromList ps) b)) program
+    rewritten=M.map (\(ps,b)->(ps,versionLookups (rewriteCall (S.fromList ps) b))) program
+    -- Lookups by a known comparator. When every empty map the unit names
+    -- carries one comparator g (directComparator's condition), a saturated
+    -- Map.get / getOr / member call goes to a private twin that asks once,
+    -- at run time, whether the map's comparator is g ($fnIs: the same code,
+    -- nothing captured) and then walks with g inlined; any other map (one
+    -- built elsewhere, with another comparator) takes the original walk.
+    lookupPlans=case S.toList ownedComparators of
+      [g] | g/="?" -> M.fromList [(f,plan) | (f,(fps,fb))<-M.toList mapBodies,
+                                   any (`isPrefixOf` f) ["get@","getOr@","member@"],
+                                   S.member (drop 1 (dropWhile (/='@') f)) leafHashes,
+                                   Just plan<-[lookupPlan g f fps (dropAliases M.empty fb)]]
+      _ -> M.empty
+    lookupPlan g f fps fb=case [(e,go,args,i) | e<-nodes fb, (CVar go,args)<-[spine e],
+                                 any (`isPrefixOf` go) ["getGo@","getOrGo@","memberGo@"],
+                                 Just (gps,_)<-[M.lookup go mapBodies], length args==length gps,
+                                 Just i<-[walkerComparator go]] of
+      [(call,go,args,i)] | CVar c<-args!!i ->
+        let worker="$worker.maplookup."++f
+            walker="$worker.maplookup."++go
+            fast=foldl CApp (CVar walker) (dropAt i args)
+            guarded=CIf (CApp (CApp (CVar "$fnIs") (CVar c)) (CVar g)) fast call
+        in Just (worker,(fps,replaceExpr call guarded fb),walker,lookupWalker g go i walker)
+      _ -> Nothing
+    -- the walker's comparator: the parameter applied to two arguments and
+    -- handed on unchanged to its own saturated calls
+    walkerComparator go=case fmap (fmap (dropAliases M.empty)) (M.lookup go mapBodies) of
+      Just (gps,gb) -> listToMaybe [i | (i,p)<-zip [0..] gps, any (appliedTwice p) (nodes gb),
+                                     and [args!!i==CVar p | n<-nodes gb, (CVar h,args)<-[spine n], h==go, length args==length gps]]
+      Nothing -> Nothing
+    lookupWalker g go i walker=
+      let (gps,gb)=mapBodies M.! go
+          p=gps!!i
+          self e=case e of
+            _ | (CVar h,args)<-spine e, h==go, length args==length gps -> foldl CApp (CVar walker) (map self (dropAt i args))
+            CLet k a b -> CLet k (self a) (self b)
+            CApp a b -> CApp (self a) (self b)
+            CIf c a b -> CIf (self c) (self a) (self b)
+            CMk t v fs -> CMk t v (map self fs)
+            CProj k a -> CProj k (self a)
+            CTagEq t v a -> CTagEq t v (self a)
+            _ -> e
+      in (dropAt i gps,inlineComparator g (self (substCall p g (dropAliases M.empty gb))))
+    dropAt i xs=take i xs++drop (i+1) xs
+    replaceExpr from to e
+      | e==from = to
+      | otherwise = case e of
+          CLet k a b -> CLet k (replaceExpr from to a) (replaceExpr from to b)
+          CApp a b -> CApp (replaceExpr from to a) (replaceExpr from to b)
+          CIf c a b -> CIf (replaceExpr from to c) (replaceExpr from to a) (replaceExpr from to b)
+          CMk t v fs -> CMk t v (map (replaceExpr from to) fs)
+          CProj k a -> CProj k (replaceExpr from to a)
+          CTagEq t v a -> CTagEq t v (replaceExpr from to a)
+          _ -> e
+    lookupTwins=M.fromList (concat [[(w,wb),(k,kb)] | (w,wb,k,kb)<-M.elems lookupPlans])
+    -- the walkers themselves, where an inlined Map.get calls one directly
+    walkerPlans=M.fromList [(go,(k,i)) | (_,_,k,_)<-M.elems lookupPlans, Just go<-[stripPrefix "$worker.maplookup." k],
+                                         Just i<-[walkerComparator go]]
+    versionLookups e=case e of
+      _ | (CVar f,args)<-spine e, Just (w,(fps,_),_,_)<-M.lookup f lookupPlans, length args==length fps ->
+            foldl CApp (CVar w) (map versionLookups args)
+        | (CVar f,args)<-spine e, Just (k,i)<-M.lookup f walkerPlans, Just (gps,_)<-M.lookup f mapBodies,
+          length args==length gps, CVar c<-args!!i, [g]<-S.toList ownedComparators ->
+            let args'=map versionLookups args
+            in CIf (CApp (CApp (CVar "$fnIs") (CVar c)) (CVar g)) (foldl CApp (CVar k) (dropAt i args')) (foldl CApp (CVar f) args')
+      CLet k a b -> CLet k (versionLookups a) (versionLookups b)
+      CApp a b -> CApp (versionLookups a) (versionLookups b)
+      CIf c a b -> CIf (versionLookups c) (versionLookups a) (versionLookups b)
+      CMk t v fs -> CMk t v (map versionLookups fs)
+      CProj k a -> CProj k (versionLookups a)
+      CTagEq t v a -> CTagEq t v (versionLookups a)
+      CLam qs b -> CLam qs (versionLookups b)
+      _ -> e
     references p=S.fromList [w | (_,b)<-M.elems p,CVar w<-nodes b,M.member w twins]
     reachable seen pending
       | S.null pending=seen
@@ -1101,10 +1197,18 @@ occurrences x e=length [() | CVar y<-nodes e, y==x]
 mapBodiesOf :: Prog -> Prog
 mapBodiesOf linked=M.union roots (M.restrictKeys linked (named `S.union` stubs))
   where
-    roots=M.filterWithKey (\name _ -> any (`isPrefixOf` name) ["balance@","node@","insGo@","rotRight@","rotLeft@","strings@","ints@","empty@"]) linked
-    named=S.fromList [g | (n,(_,b))<-M.toList roots, any (`isPrefixOf` n) ["strings@","ints@","empty@"], CVar g<-nodes b, '@' `elem` g]
+    roots=M.filterWithKey (\name _ -> any (`isPrefixOf` name) (["balance@","node@","insGo@","rotRight@","rotLeft@","strings@","ints@","empty@"]++lookupRoots)) linked
+    named0=S.fromList [g | (n,(_,b))<-M.toList roots, any (`isPrefixOf` n) ["strings@","ints@","empty@"], CVar g<-nodes b, '@' `elem` g]
+    -- and the helpers those call, two levels (Reuse expandCmp)
+    refsOf ns=S.fromList [g | (_,(_,b))<-M.toList (M.restrictKeys linked ns), CVar g<-nodes b, '@' `elem` g]
+    named=let n1=refsOf named0 in S.unions [named0,n1,refsOf n1]
     -- and the globals those name (the comparators' constructor stubs)
     stubs=S.fromList [c | (_,(_,b))<-M.toList (M.restrictKeys linked named), CVar c<-nodes b, Just ([],_)<-[M.lookup c linked]]
+
+-- the lookups that get a version for a known comparator (Reuse lookupTwins)
+-- and their walkers
+lookupRoots :: [String]
+lookupRoots=["get@","getGo@","getOr@","getOrGo@","member@","memberGo@"]
 
 inlineCall :: String -> ([Name],Core) -> [Core] -> Core
 inlineCall pre (ps,b) args=foldr (\(p,a) r->CLet (pre++p) a r) (renameBinders pre (M.fromList [(p,pre++p) | p<-ps]) b) (zip ps args)

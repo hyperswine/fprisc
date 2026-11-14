@@ -1,0 +1,33 @@
+# Map lookups by a known comparator (Reuse lookupTwins): this unit's own
+# empty maps all carry Ord.int, so its Map.get / getOr / member calls go to
+# twins with Ord.int inlined, behind a run-time check of the map's
+# comparator.  Maps built elsewhere with another comparator (a reversed one,
+# a captured one) must take the general walk and still find their keys.
+Map = use "std/map".
+Ord = use "std/order".
+List = use "std/list".
+O = use "std/option".
+
+show : O.Option Int -> String .
+show o = case o of O.Some v -> "Some {v}" | O.None -> "None".
+
+bool : Bool -> String .
+bool b = if b then "yes" else "no".
+
+report : String -> Map.Map Int Int -> Unit .
+report name m =
+  _ = print "{name} get 10 {show (Map.get 10 m)} get 11 {show (Map.get 11 m)} get 999 {show (Map.get 999 m)}";
+  _ = print "{name} getOr 12 {Map.getOr (0 - 1) 12 m} getOr 1001 {Map.getOr (0 - 1) 1001 m}";
+  print "{name} member 14 {bool (Map.member 14 m)} member 15 {bool (Map.member 15 m)}".
+
+pairs : List (Int, Int) .
+pairs = List.map (fn i -> (i * 2, i * 3)) (List.range 0 600).
+
+main =
+  owned = List.fold (fn m p -> case p of (k, v) -> Map.insert k v m) Map.ints pairs;
+  _ = report "owned" owned;
+  _ = report "sameElsewhere" (Map.fromList Ord.int pairs);
+  _ = report "reversed" (Map.fromList (Ord.reverse Ord.int) pairs);
+  _ = report "byKey" (Map.fromList (Ord.by (fn k -> 0 - k) Ord.int) pairs);
+  total = List.fold (fn s k -> s + Map.getOr 0 k owned) 0 (List.range 0 1200);
+  print "total {total}".

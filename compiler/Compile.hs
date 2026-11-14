@@ -910,7 +910,7 @@ compileWithReport accepted report = do
               [ M.fromList [(n, length as) | TSig n (as, _) _ <- preludeE' ++ concatMap snd units' ++ root'],
                 M.map (\(Forall _ _ t) -> arrows t) builtinEnv,
                 -- pair-free reads planned by Core.Typed.VectorRead (vec.c)
-                M.fromList ([("$callActive",1) | oBase opts]++VectorRead.peekArities++[("$receiveLoop", 2), ("$regionSeq", 1), ("$regionOpen", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$receiveReady", 2), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2)]) ]
+                M.fromList ([("$callActive",1) | oBase opts]++VectorRead.peekArities++[("$receiveLoop", 2), ("$regionSeq", 1), ("$regionOpen", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$receiveReady", 2), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2), ("$fnIs", 2)]) ]
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHeapProof = isJust heapBudget, tgtStackReport = oStackReport opts || isJust stackBudget || not (null (oExports opts)), tgtHal = halAr, tgtFloatInline = (Options.cgFloatInline codegen), tgtSimd=(oA64 opts || oX64 opts) && (Options.cgSimd codegen), tgtFusion=(Options.cgFusion codegen),

@@ -72,6 +72,7 @@ static void hart_init(int id) {
   fpr_pool_init(&h->pool, hart_bkts[id]);
   for (int i = 0; i < FPR_NBUCKETS; i++) h->pool.buckets[i] = 0;
   h->current = 0;
+  h->pend_stack = 0;
   h->rq_head = h->rq_tail = 0;
   __atomic_store_n(&h->idle, 0, __ATOMIC_RELAXED);
   h->fuel_preempts = 0;
@@ -629,12 +630,13 @@ void fpr_bkt_put(void **b) {
 #ifndef FPR_BUILTIN
 static fpr_pool_t *base_pool(fpr_hart_t *h) { return h->current ? fpr_acb_pool(h->current) : &h->pool; }
 static int region_trip(fpr_hart_t *h, fpr_pool_t *pool); /* below, with the regions */
-/* Generated cells commonly leave one aligned word of rounding padding.
- * Keep arbitrary byte-sized payloads on memset's general path. */
+/* The rounding pad (under 16 bytes) is cleared inline: bytes up to the next
+ * word, then whole words, so a String's odd length no longer costs a memset
+ * call.  The payload itself is never touched (check_alloc_fast). */
 static inline void alloc_zero_pad(char *payload, uw raw_bytes, uw total, uw prefix) {
-  uw pad = total - prefix - raw_bytes;
-  if (pad == sizeof(uw)) *(uw *)(payload + raw_bytes) = 0;
-  else if (pad) __builtin_memset(payload + raw_bytes, 0, pad);
+  uw end = total - prefix, o = raw_bytes;
+  for (; o < end && (o & (sizeof(uw) - 1)); o++) payload[o] = 0;
+  for (; o < end; o += sizeof(uw)) *(uw *)(payload + o) = 0;
 }
 /* The inline bump window (fpr.h, bump_slab).  Opened at the end of every
  * fpr_alloc over the pool that is then current; generated code then bumps
@@ -1176,7 +1178,12 @@ static uw img_static_raw(V v, uw pid) {
  * of distinct cells never could -- copies again with a table that maps each
  * copied source cell to its copy.  The common unshared state pays only the
  * byte cap below.  The table lives in an ownerless slab for the one copy. */
-typedef struct dc_share { uw mask, n, limit; int full; uw *key; V *val; } dc_share_t;
+/* A key is the cell's address with the pass in its low bits (cells are word
+ * aligned): the sizing pass writes tag 1, the copy pass tag 2.  The copy
+ * meets only cells the sizing counted, each at the end of the same probe
+ * chain, so it takes over their slots and the table is never cleared between
+ * the passes (that clear was a memset of the whole table at every cycle). */
+typedef struct dc_share { uw mask, n, limit, tag, occupied; int full; uw *key; V *val; } dc_share_t;
 static uw region_shared_copies, region_shared_full;
 /* the sizing pass's context, passed down (a thread-local read was a call per
  * cell on macOS): the retained state slab, a region copy's arena, the byte
@@ -1184,11 +1191,16 @@ static uw region_shared_copies, region_shared_full;
 typedef struct dc_sz { fpr_slab_t *retain; struct fpr_pool *region; dc_share_t *share; uw left; int over; V mut_root; } dc_sz_t;
 static uw dc_share_slot(dc_share_t *t, V v) {
   uw i = (((uw)v >> 4) * (uw)0x9E3779B97F4A7C15ull) >> 20 & t->mask;
-  while (t->key[i] && t->key[i] != (uw)v) i = (i + 1) & t->mask;
+  while (t->key[i] && (t->key[i] & ~(uw)7) != (uw)v) i = (i + 1) & t->mask;
   return i;
 }
-static V dc_share_get(dc_share_t *t, V v) { uw i = dc_share_slot(t, v); return t->key[i] ? t->val[i] : 0; }
-static void dc_share_put(dc_share_t *t, V v, V n) { uw i = dc_share_slot(t, v); if (!t->key[i]) t->n++; t->key[i] = (uw)v; t->val[i] = n; }
+static V dc_share_get(dc_share_t *t, V v) { uw i = dc_share_slot(t, v); return t->key[i] == ((uw)v | t->tag) ? t->val[i] : 0; }
+static void dc_share_put(dc_share_t *t, V v, V n) {
+  uw i = dc_share_slot(t, v);
+  if (t->key[i] != ((uw)v | t->tag)) t->n++;
+  if (!t->key[i] && ++t->occupied >= t->mask) fpr_cpanic("copy: the share table filled");
+  t->key[i] = (uw)v | t->tag; t->val[i] = n;
+}
 /* the sizing pass meets a heap cell of a region copy: 0 = do not count it
  * (seen before, or the cap was passed and the walk is abandoned) */
 static inline int dc_size_visit(dc_sz_t *z, V v) {
@@ -1198,7 +1210,7 @@ static inline int dc_size_visit(dc_sz_t *z, V v) {
     uw i = dc_share_slot(t, v);
     if (t->key[i]) return 0;
     if (t->n >= t->limit) { t->full = 1; return 1; }
-    t->key[i] = (uw)v; t->n++;
+    t->key[i] = (uw)v | t->tag; t->n++; t->occupied++;
     return 1;
   }
   if (z->over) return 0;
@@ -2361,6 +2373,7 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
     h = fpr_hart();
     if (h) { h->copy_pid = pid; h->copy_movevec = (uw)movevec; }
     share.mask = slots - 1; share.n = 0; share.limit = slots / 4 * 3; share.full = 0;
+    share.tag = 1; share.occupied = 0;
     share.key = (uw *)fpr_slab_start(table);
     share.val = (V *)(share.key + slots);
     __builtin_memset(share.key, 0, slots * sizeof(uw));
@@ -2376,7 +2389,7 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
       __atomic_fetch_add(&region_shared_full, 1, __ATOMIC_RELAXED);
     } else {
       share.n = 0;
-      __builtin_memset(share.key, 0, slots * sizeof(uw)); /* the copy's map starts empty */
+      share.tag = 2; /* the copy's map starts empty: its entries carry the new tag */
       __atomic_fetch_add(&region_shared_copies, 1, __ATOMIC_RELAXED);
     }
   }
@@ -2770,6 +2783,7 @@ static V g_call_pend(V u) {
   fpr_pool_t *pool = cur_pool(h);
   fpr_pend_t *e = &ps->v[ps->n++];
   e->seq = 0; e->pool = (struct fpr_pool *)pool; e->mark = pool->allocated; e->scope = 0;
+  h->pend_stack = ps; /* generated code pushes the next ones itself (fpr.h) */
   return TAG((sw)(ps->n - 1));
 }
 /* A private multiword result is already in registers. Materialize a
@@ -2787,6 +2801,7 @@ static V g_call_leave(V tok, V r) {
   fpr_pends_t *ps = pends_of(h);
   if (!ps->n || ps->n - 1 != (uw)UNTAG(tok)) fpr_cpanic("call region: left out of order");
   fpr_pend_t e = ps->v[--ps->n];
+  h->pend_stack = ps;
   if (!e.scope) return r;
   if (*scope_head(h) != e.scope) fpr_cpanic("call region: a nested region is still open");
   return region_close(h, e.scope, r);
@@ -3780,15 +3795,31 @@ static V g_strCompare(V av, V bv) {
   str_t *a = want_str(av, "strCompare: not a String");
   str_t *b = want_str(bv, "strCompare: not a String");
   uw n = a->len < b->len ? a->len : b->len;
-#if defined(FPR_POSIX) && !defined(FPR_QOSAPP)
-  int c = n ? __builtin_memcmp(a->bytes, b->bytes, n) : 0;
-#else
-  /* freestanding images link no libc memcmp */
+  /* a word at a time, no libc (freestanding images link no memcmp, and map
+   * keys are short: the call cost more than the compare).  The first
+   * differing word, read big-endian, orders as its first differing byte. */
   int c = 0;
-  for (uw i = 0; i < n && !c; i++) c = (int)a->bytes[i] - (int)b->bytes[i];
+  uw i = 0;
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  for (; i + 8 <= n; i += 8) {
+    uint64_t p, q;
+    __builtin_memcpy(&p, a->bytes + i, 8);
+    __builtin_memcpy(&q, b->bytes + i, 8);
+    if (p != q) { p = __builtin_bswap64(p); q = __builtin_bswap64(q); c = p < q ? -1 : 1; break; }
+  }
 #endif
+  for (; !c && i < n; i++) if (a->bytes[i] != b->bytes[i]) c = a->bytes[i] < b->bytes[i] ? -1 : 1;
   if (c == 0) c = a->len < b->len ? -1 : a->len > b->len ? 1 : 0;
-  return TAG(c < 0 ? -1 : c > 0 ? 1 : 0);
+  return TAG(c);
+}
+/* $fnIs f g: f is the function value g -- the same code, nothing captured
+ * (Reuse lookupTwins: a map lookup's comparator, against the one the unit's
+ * empty maps all carry).  Anything else answers False, and the caller takes
+ * its general path. */
+static V g_fn_is(V f, V g) {
+  if (ISINT(f) || ISINT(g) || !f || !g || TID(f) != T_PAP || TID(g) != T_PAP) return (V)&fpr_false;
+  pap_t *a = (pap_t *)f, *b = (pap_t *)g;
+  return a->fn == b->fn && a->nargs == 0 && b->nargs == 0 && a->arity == b->arity ? (V)&fpr_true : (V)&fpr_false;
 }
 static V g_arcLive(V d) {
   (void)d;
@@ -5781,6 +5812,7 @@ FPR_FN(fpr_g_intMin, g_intMin, 1);
 FPR_FN(fpr_g_substr, g_substr, 3);
 FPR_FN(fpr_g_strJoin, g_strJoin, 2);
 FPR_FN(fpr_g_strCompare, g_strCompare, 2);
+FPR_FN(fpr_g__x24fnIs, g_fn_is, 2);
 FPR_FN(fpr_g_sortListWith, g_sortListWith, 2);
 FPR_FN(fpr_g_drop, g_drop, 1);
 FPR_FN(fpr_g_arcLive, g_arcLive, 1);
