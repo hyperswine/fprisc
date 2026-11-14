@@ -1,0 +1,48 @@
+# knucleotide (SPEC.md): k-mer counts of the third fasta sequence with std/hashmap keyed by String
+String = use "std/string".
+List = use "std/list".
+Map = use "std/hashmap".
+O = use "std/option".
+Ord = use "std/order".
+
+bump : O.Option Int -> O.Option Int .
+bump old = case old of O.Some c -> O.Some (c + 1) | O.None -> O.Some 1.
+
+# the lines after ">THREE", up to the next header
+three : (ls : List String | measure ls) -> Bool -> List String -> List String .
+three ls inside acc = case ls of
+    Nil -> List.reverse acc
+  | l :: rest -> if String.startsWith ">" l then
+      (if inside then List.reverse acc else three rest (String.startsWith ">THREE" l) acc)
+    else if inside then three rest inside (String.toUpper l :: acc) else three rest inside acc.
+
+count : String -> Int -> (last : Int) -> (pos : Int | measure (last - pos)) -> Map.Map String Int -> Map.Map String Int .
+count s k last pos m = if pos > last then m else count s k last (pos + 1) (Map.update (substr s pos k) bump m).
+
+table : String -> Int -> Map.Map String Int .
+table s k = count s k (strlen s - k) 0 Map.strings.
+
+byCount : (String, Int) -> (String, Int) -> Ord.Ordering .
+byCount a b = case a of
+  (ka, ca) -> (case b of (kb, cb) -> if ca != cb then Ord.int cb ca else Ord.string ka kb).
+
+pad3 : Int -> String .
+pad3 f = if f < 10 then "00{f}" else if f < 100 then "0{f}" else "{f}".
+
+freqLine : Int -> (String, Int) -> Unit .
+freqLine total e = case e of
+  (key, c) -> print "{key} {(200000 * c + total) / (2 * total) / 1000}.{pad3 ((200000 * c + total) / (2 * total) % 1000)}".
+
+frequencies : String -> Int -> Unit .
+frequencies s k =
+  total = strlen s - k + 1;
+  _ = List.each (freqLine total) (List.sortWith byCount (Map.entries (table s k)));
+  print "".
+
+main =
+  path = case Sys.args Unit of p :: _ -> p | Nil -> "data/fasta-1000000.txt";
+  s = strJoin "" (three (String.lines (fileRead path)) False Nil);
+  _ = frequencies s 1;
+  _ = frequencies s 2;
+  List.each (fn q -> print "{Map.getOr 0 q (table s (strlen q))}\t{q}")
+    ["GGT", "GGTA", "GGTATT", "GGTATTTTAATT", "GGTATTTTAATTTATAGT"].

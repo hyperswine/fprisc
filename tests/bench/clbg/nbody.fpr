@@ -1,0 +1,134 @@
+# nbody (SPEC.md): five planets, the state one flat F64 vector (x y z vx vy vz m per body)
+String = use "std/string".
+List = use "std/list".
+
+pi : F64 .
+pi = 3.141592653589793.
+solarMass : F64 .
+solarMass = 4.0 * pi * pi.
+daysPerYear : F64 .
+daysPerYear = 365.24.
+
+body : F64 -> F64 -> F64 -> F64 -> F64 -> F64 -> F64 -> List F64 .
+body x y z vx vy vz m = [x, y, z, vx * daysPerYear, vy * daysPerYear, vz * daysPerYear, m * solarMass].
+
+bodies : Unit -> List F64 .
+bodies u = List.concat [
+  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, solarMass],
+  body 4.84143144246472090 (0.0 - 1.16032004402742839) (0.0 - 0.103622044471123109)
+       0.00166007664274403694 0.00769901118419740425 (0.0 - 0.0000690460016972063023) 0.000954791938424326609,
+  body 8.34336671824457987 4.12479856412430479 (0.0 - 0.403523417114321381)
+       (0.0 - 0.00276742510726862411) 0.00499852801234917238 0.0000230417297573763929 0.000285885980666130812,
+  body 12.8943695621391310 (0.0 - 15.1111514016986312) (0.0 - 0.223307578892655734)
+       0.00296460137564761618 0.00237847173959480950 (0.0 - 0.0000296589568540237556) 0.0000436624404335156298,
+  body 15.3796971148509165 (0.0 - 25.9193146099879641) 0.179258772950371181
+       0.00268067772490389322 0.00162824170038242295 (0.0 - 0.0000951592254519715870) 0.0000515138902046611451].
+
+# velocity updates for the pair (i, j)
+pair : Int -> Int -> Vector F64 -> Vector F64 .
+pair i j s0 =
+  a = 7 * i;
+  b = 7 * j;
+  (xi, s1) = Vec.get a s0;
+  (yi, s2) = Vec.get (a + 1) s1;
+  (zi, s3) = Vec.get (a + 2) s2;
+  (mi, s4) = Vec.get (a + 6) s3;
+  (xj, s5) = Vec.get b s4;
+  (yj, s6) = Vec.get (b + 1) s5;
+  (zj, s7) = Vec.get (b + 2) s6;
+  (mj, s8) = Vec.get (b + 6) s7;
+  dx = xi - xj;
+  dy = yi - yj;
+  dz = zi - zj;
+  d2 = dx * dx + dy * dy + dz * dz;
+  mag = 0.01 / (d2 * F64.sqrt d2);
+  (vxi, s9) = Vec.get (a + 3) s8;
+  (vyi, s10) = Vec.get (a + 4) s9;
+  (vzi, s11) = Vec.get (a + 5) s10;
+  (vxj, s12) = Vec.get (b + 3) s11;
+  (vyj, s13) = Vec.get (b + 4) s12;
+  (vzj, s14) = Vec.get (b + 5) s13;
+  s15 = Vec.set (a + 3) (vxi - dx * mj * mag) s14;
+  s16 = Vec.set (a + 4) (vyi - dy * mj * mag) s15;
+  s17 = Vec.set (a + 5) (vzi - dz * mj * mag) s16;
+  s18 = Vec.set (b + 3) (vxj + dx * mi * mag) s17;
+  s19 = Vec.set (b + 4) (vyj + dy * mi * mag) s18;
+  Vec.set (b + 5) (vzj + dz * mi * mag) s19.
+
+pairsFrom : (i : Int) -> (j : Int | measure (5 - j)) -> Vector F64 -> Vector F64 .
+pairsFrom i j s = if j >= 5 then s else pairsFrom i (j + 1) (pair i j s).
+
+pairs : (i : Int | measure (5 - i)) -> Vector F64 -> Vector F64 .
+pairs i s = if i >= 5 then s else pairs (i + 1) (pairsFrom i (i + 1) s).
+
+moveAxis : Int -> Vector F64 -> Vector F64 .
+moveAxis k s =
+  (x, s1) = Vec.get k s;
+  (v, s2) = Vec.get (k + 3) s1;
+  Vec.set k (x + 0.01 * v) s2.
+
+moves : (i : Int | measure (5 - i)) -> Vector F64 -> Vector F64 .
+moves i s = if i >= 5 then s else
+  a = 7 * i;
+  moves (i + 1) (moveAxis (a + 2) (moveAxis (a + 1) (moveAxis a s))).
+
+advance : (n : Int | measure n) -> Vector F64 -> Vector F64 .
+advance n s = if n <= 0 then s else advance (n - 1) (moves 0 (pairs 0 s)).
+
+potential : (i : Int) -> (j : Int | measure (5 - j)) -> F64 -> Vector F64 -> (F64, Vector F64) .
+potential i j e s0 = if j >= 5 then (e, s0) else
+  a = 7 * i;
+  b = 7 * j;
+  (xi, s1) = Vec.get a s0;
+  (yi, s2) = Vec.get (a + 1) s1;
+  (zi, s3) = Vec.get (a + 2) s2;
+  (mi, s4) = Vec.get (a + 6) s3;
+  (xj, s5) = Vec.get b s4;
+  (yj, s6) = Vec.get (b + 1) s5;
+  (zj, s7) = Vec.get (b + 2) s6;
+  (mj, s8) = Vec.get (b + 6) s7;
+  dx = xi - xj;
+  dy = yi - yj;
+  dz = zi - zj;
+  potential i (j + 1) (e - mi * mj / F64.sqrt (dx * dx + dy * dy + dz * dz)) s8.
+
+energyFrom : (i : Int | measure (5 - i)) -> F64 -> Vector F64 -> (F64, Vector F64) .
+energyFrom i e s0 = if i >= 5 then (e, s0) else
+  a = 7 * i;
+  (vx, s1) = Vec.get (a + 3) s0;
+  (vy, s2) = Vec.get (a + 4) s1;
+  (vz, s3) = Vec.get (a + 5) s2;
+  (m, s4) = Vec.get (a + 6) s3;
+  (e2, s5) = potential i (i + 1) (e + 0.5 * m * (vx * vx + vy * vy + vz * vz)) s4;
+  energyFrom (i + 1) e2 s5.
+
+momentum : (i : Int | measure (5 - i)) -> Int -> F64 -> Vector F64 -> (F64, Vector F64) .
+momentum i k p s0 = if i >= 5 then (p, s0) else
+  (v, s1) = Vec.get (7 * i + k) s0;
+  (m, s2) = Vec.get (7 * i + 6) s1;
+  momentum (i + 1) k (p + v * m) s2.
+
+offset : Int -> Vector F64 -> Vector F64 .
+offset k s =
+  (p, s1) = momentum 0 k 0.0 s;
+  Vec.set k (0.0 - p / solarMass) s1.
+
+# fixed notation with 9 decimals
+digits9 : (n : Int | measure n) -> Int -> String -> String .
+digits9 n f acc = if n <= 0 then acc else digits9 (n - 1) (f / 10) (strcat (chr (48 + f % 10)) acc).
+
+fmt9 : F64 -> String .
+fmt9 x =
+  neg = x < 0.0;
+  a = F64.toInt ((if neg then 0.0 - x else x) * 1000000000.0 + 0.5);
+  body = "{a / 1000000000}.{digits9 9 (a % 1000000000) ""}";
+  if neg and a > 0 then strcat "-" body else body.
+
+main =
+  n = case Sys.args Unit of a :: _ -> (case String.toInt a of Ok v -> v | Err _ -> 5000000) | Nil -> 5000000;
+  s0 = offset 5 (offset 4 (offset 3 (Vec.fromList (bodies Unit))));
+  (e0, s1) = energyFrom 0 0.0 s0;
+  _ = print (fmt9 e0);
+  (e1, s2) = energyFrom 0 0.0 (advance n s1);
+  _ = Vec.free s2;
+  print (fmt9 e1).

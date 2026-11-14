@@ -1,0 +1,41 @@
+# revcomp (SPEC.md): reverse complement of each fasta sequence, 60 characters a line
+String = use "std/string".
+List = use "std/list".
+
+# complement by character code: a 128-byte table, upper and lower case
+table : String .
+table = String.fromCodes (List.map comp (List.range 0 127)).
+
+comp : Int -> Int .
+comp c = case (if c >= 97 and c <= 122 then c - 32 else c) of
+    65 -> 84 | 67 -> 71 | 71 -> 67 | 84 -> 65 | 85 -> 65 | 77 -> 75 | 82 -> 89 | 87 -> 87
+  | 83 -> 83 | 89 -> 82 | 75 -> 77 | 86 -> 66 | 72 -> 68 | 68 -> 72 | 66 -> 86 | 78 -> 78
+  | u -> u.
+
+# codes of one output line: positions from, from-1, ... (k of them) of seq, complemented
+lineCodes : String -> String -> Int -> (k : Int | measure k) -> List Int -> List Int .
+lineCodes t seq from k acc = if k <= 0 then List.reverse acc else
+  lineCodes t seq (from - 1) (k - 1) (charAt t (charAt seq from) :: acc).
+
+# output line i of nl covers sequence positions len-1-60i down to max(0, len-60(i+1))
+emit : String -> String -> Int -> (nl : Int) -> (i : Int | measure (nl - i)) -> Unit .
+emit t seq len nl i = if i >= nl then Unit else
+  left = len - 60 * i;
+  _ = print (String.fromCodes (lineCodes t seq (left - 1) (if left < 60 then left else 60) Nil));
+  emit t seq len nl (i + 1).
+
+flush : String -> List String -> Unit .
+flush t body = case body of
+    Nil -> Unit
+  | _ -> (case strJoin "" (List.reverse body) of seq -> emit t seq (strlen seq) ((strlen seq + 59) / 60) 0).
+
+walk : String -> (ls : List String | measure ls) -> List String -> Unit .
+walk t ls body = case ls of
+    Nil -> flush t body
+  | l :: rest -> if String.startsWith ">" l then
+      (case flush t body of _ -> (case print l of _ -> walk t rest Nil))
+    else walk t rest (l :: body).
+
+main =
+  path = case Sys.args Unit of p :: _ -> p | Nil -> "data/fasta-2500000.txt";
+  walk table (String.lines (fileRead path)) Nil.

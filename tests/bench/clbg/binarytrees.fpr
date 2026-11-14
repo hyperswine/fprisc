@@ -1,0 +1,29 @@
+# binarytrees (SPEC.md): allocate and count perfect binary trees
+String = use "std/string".
+Tree = Type (Empty | Node Tree Tree).
+
+make : (d : Int | measure d) -> Tree .
+make d = if d <= 0 then Node Empty Empty else Node (make (d - 1)) (make (d - 1)).
+
+check : (t : Tree | measure t) -> Int .
+check t = case t of Empty -> 0 | Node l r -> 1 + check l + check r.
+
+pow2 : (n : Int | measure n) -> Int .
+pow2 n = if n <= 0 then 1 else 2 * pow2 (n - 1).
+
+sumChecks : (n : Int | measure n) -> Int -> Int -> Int .
+sumChecks n d acc = if n <= 0 then acc else sumChecks (n - 1) d (acc + check (make d)).
+
+depths : (maxD : Int) -> (d : Int | measure (maxD - d)) -> Unit .
+depths maxD d = if d > maxD then Unit else
+  iters = pow2 (maxD - d + 4);
+  _ = print "{iters}\t trees of depth {d}\t check: {sumChecks iters d 0}";
+  depths maxD (d + 2).
+
+main =
+  n = case Sys.args Unit of a :: _ -> (case String.toInt a of Ok v -> v | Err _ -> 18) | Nil -> 18;
+  maxD = if n > 6 then n else 6;
+  _ = print "stretch tree of depth {maxD + 1}\t check: {check (make (maxD + 1))}";
+  long = make maxD;
+  _ = depths maxD 4;
+  print "long lived tree of depth {maxD}\t check: {check long}".

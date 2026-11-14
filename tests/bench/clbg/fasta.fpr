@@ -1,0 +1,54 @@
+# fasta (SPEC.md): one repeated and two random DNA sequences, 60 characters a line
+String = use "std/string".
+List = use "std/list".
+
+alu : String .
+alu = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATGGTGAAACCCCGTCTCTACTAAAAATACAAAAATTAGCCGGGCGTGGTGGCGCGCGCCTGTAATCCCAGCTACTCGGGAGGCTGAGGCAGGAGAATCGCTTGAACCCGGGAGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA".
+
+# (character code, probability) in table order
+iub : List (Int, F64) .
+iub = [(97, 0.27), (99, 0.12), (103, 0.12), (116, 0.27),
+       (66, 0.02), (68, 0.02), (72, 0.02), (75, 0.02), (77, 0.02), (78, 0.02),
+       (82, 0.02), (83, 0.02), (86, 0.02), (87, 0.02), (89, 0.02)].
+
+homo : List (Int, F64) .
+homo = [(97, 0.3029549426680), (99, 0.1979883004921), (103, 0.1975473066391), (116, 0.3015094502008)].
+
+# running sums of the probabilities
+cumulative : List (Int, F64) -> List (Int, F64) .
+cumulative t = List.reverse (List.fold (fn acc e -> case e of
+    (c, p) -> (case acc of (_, s) :: _ -> (c, s + p) :: acc | Nil -> (c, p) :: Nil)) Nil t).
+
+pick : F64 -> (t : List (Int, F64) | measure t) -> Int .
+pick r t = case t of
+    (c, s) :: rest -> (case rest of Nil -> c | _ -> if r < s then c else pick r rest)
+  | Nil -> 0.
+
+repeatLines : unsafe Int -> String -> Int -> Unit .
+repeatLines n s pos = if n <= 0 then Unit else
+  len = if n < 60 then n else 60;
+  _ = print (substr s pos len);
+  repeatLines (n - len) s ((pos + len) % 287).
+
+# one line of len random characters; answers the codes (reversed) and the seed
+randomCodes : List (Int, F64) -> (k : Int | measure k) -> Int -> List Int -> (List Int, Int) .
+randomCodes t k seed acc = if k <= 0 then (acc, seed) else
+  s = (seed * 3877 + 29573) % 139968;
+  randomCodes t (k - 1) s (pick (F64.ofInt s / 139968.0) t :: acc).
+
+randomLines : unsafe List (Int, F64) -> Int -> Int -> Int .
+randomLines t n seed = if n <= 0 then seed else
+  len = if n < 60 then n else 60;
+  (cs, s) = randomCodes t len seed Nil;
+  _ = print (String.fromCodes (List.reverse cs));
+  randomLines t (n - len) s.
+
+main =
+  n = case Sys.args Unit of a :: _ -> (case String.toInt a of Ok v -> v | Err _ -> 2500000) | Nil -> 2500000;
+  _ = print ">ONE Homo sapiens alu";
+  _ = repeatLines (2 * n) (strcat alu alu) 0;
+  _ = print ">TWO IUB ambiguity codes";
+  seed = randomLines (cumulative iub) (3 * n) 42;
+  _ = print ">THREE Homo sapiens frequency";
+  _ = randomLines (cumulative homo) (5 * n) seed;
+  Unit.
