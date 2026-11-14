@@ -1,0 +1,63 @@
+total Ir 3,891,551,697
+
+generated code 1,880,526,441 (48.3%) by class:
+  gen:cmp/test                       302,741,685   7.8%
+  gen:reg move                       261,724,897   6.7%
+  gen:bool materialize               258,911,658   6.7%
+  gen:cond branch                    197,750,328   5.1%
+  gen:jmp                            155,503,111   4.0%
+  gen:movabs const                   140,481,136   3.6%
+  gen:tag/untag/overflow             123,053,752   3.2%
+  gen:alu/other                      117,209,866   3.0%
+  gen:fuel/tls                        89,896,878   2.3%
+  gen:heap load/store                 78,796,836   2.0%
+  gen:call/ret/frame                  77,815,499   2.0%
+  gen:stack spill/reload              76,640,795   2.0%
+
+top 22 functions:
+    1,147,356,910  29.5%  fpr_fn_wordEnd_x40119e171f11d63acf
+      457,857,263  11.8%  fpr_fn_wordsGo_x40119e171f11d63acf
+      291,465,846   7.5%  fpr_alloc
+      262,724,840   6.8%  mm_str_hash
+      201,446,636   5.2%  mm_find
+      175,114,895   4.5%  alloc_in_size
+      174,678,774   4.5%  g_substr
+      148,200,025   3.8%  fpr_apply
+      125,150,000   3.2%  g_mutmapInsertWith
+       90,133,089   2.3%  g_call_pend.part.0
+       85,620,024   2.2%  kp_reaches
+       73,098,726   1.9%  fpr_fn_byCount
+       70,203,456   1.8%  fpr_fn__x24typed_x5flifted_x5f0_x2e4_x2emain
+       70,002,919   1.8%  fpr_fn_lengthGo_x4021100e0c17a53d18
+       66,000,041   1.7%  g_call_leave
+       62,001,959   1.6%  fpr_fn__x24typed_x2emono_x2emain_x2e1
+       50,702,373   1.3%  free_block
+       36,050,612   0.9%  fpr_in_heap
+       33,150,015   0.9%  fpr_free
+       32,000,000   0.8%  mm_key_hash.isra.0
+       27,037,920   0.7%  fpr_layout_fields
+       24,122,832   0.6%  ?
+
+most-called targets (callgrind call counts; static callee address -> symbol):
+     10,200,287  fpr_acb_override_slot
+      5,266,654  fpr_acb_pool
+      4,100,140  fpr_alloc
+      4,000,265  fpr_acb_pends
+      2,509,394  fpr_apply'2
+      2,455,870  alloc_in_size
+      2,013,374  fpr_fn_wordEnd_x40119e171f11d63acf
+      2,000,001  fpr_g__x24callPend_call1
+      2,000,001  fpr_g__x24callLeave_call2
+      2,000,001  g_call_leave
+      2,000,001  g_call_pend.part.0
+      2,000,000  fpr_g_substr_call3
+      2,000,000  fpr_g_mutmapInsertWith_call4
+      2,000,000  mm_key_hash.isra.0
+      2,000,000  mm_find
+      2,000,000  g_substr
+      2,000,000  mm_str_hash
+      1,999,981  0x00000000004616fc'2
+      1,978,618  0x0000000000461014'2
+      1,950,098  free_block
+      1,950,039  __memcpy_avx_unaligned_erms
+      1,950,001  callf

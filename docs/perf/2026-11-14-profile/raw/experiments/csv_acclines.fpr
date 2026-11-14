@@ -1,0 +1,47 @@
+# csv (SPEC.md): parse 1M lines KEY,A,B and aggregate per key with std/map
+List = use "std/list".
+String = use "std/string".
+Map = use "std/map".
+O = use "std/option".
+Ord = use "std/order".
+
+num : String -> Int .
+num s = case String.toInt s of Ok n -> n | Err _ -> 0.
+
+add : Int -> Int -> O.Option (Int, Int, Int) -> O.Option (Int, Int, Int) .
+add a b old = case old of
+    O.Some t -> (case t of (c, s, m) -> O.Some (c + 1, s + a, if b > m then b else m))
+  | O.None -> O.Some (1, a, b).
+
+step : Map.Map String (Int, Int, Int) -> String -> Map.Map String (Int, Int, Int) .
+step m line = case String.split "," line of
+    k :: a :: b :: _ -> Map.update k (add (num a) (num b)) m
+  | _ -> m.
+
+bySum : (String, (Int, Int, Int)) -> (String, (Int, Int, Int)) -> Ord.Ordering .
+bySum x y = case x of
+  (kx, tx) -> (case y of
+    (ky, ty) -> (case tx of
+      (_, sx, _) -> (case ty of
+        (_, sy, _) -> if sx != sy then Ord.int sy sx else Ord.string kx ky))).
+
+lineFrom : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int .
+lineFrom s i n | i >= n = n.
+lineFrom s i n | charAt s i == 10 = i.
+lineFrom s i n = lineFrom s (i + 1) n.
+myLines : String -> List String .
+myLines s = lGo (strlen s + 1) s 0 Nil.
+lGo : (fuel : Int | measure fuel) -> String -> Int -> List String -> List String .
+lGo fuel s from acc | fuel <= 0 = List.reverse acc.
+lGo fuel s from acc | from >= strlen s = List.reverse acc.
+lGo fuel s from acc =
+  at = lineFrom s from (strlen s);
+  lGo (fuel - 1) s (at + 1) (substr s from (at - from) :: acc).
+
+main =
+  path = case Sys.args Unit of p :: _ -> p | Nil -> "data/sales.csv";
+  ls = myLines (fileRead path);
+  agg = List.fold step Map.strings ls;
+  top = List.take 10 (List.sortWith bySum (Map.entries agg));
+  _ = print "keys {Map.size agg} lines {List.length ls}";
+  List.each (fn e -> case e of (k, t) -> (case t of (c, s, m) -> print "{k} {c} {s} {m}")) top.

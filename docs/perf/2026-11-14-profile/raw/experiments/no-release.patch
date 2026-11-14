@@ -1,0 +1,12 @@
+diff --git a/machine/unix/host.c b/machine/unix/host.c
+index 5b478f31..1f2ff53b 100644
+--- a/machine/unix/host.c
++++ b/machine/unix/host.c
+@@ -218,6 +218,7 @@ void hal_heap_span(char **lo, char **hi, char **span_hi) {
+ }
+ 
+ void hal_heap_release(void *p, uw bytes) {
++  if (getenv("FPR_EXP_NO_RELEASE")) return; /* profiling experiment only */
+   uintptr_t pg = (uintptr_t)getpagesize();
+   uintptr_t a = ((uintptr_t)p + pg - 1) & ~(pg - 1), e = ((uintptr_t)p + bytes) & ~(pg - 1);
+   if (e <= a) return;

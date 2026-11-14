@@ -1,0 +1,32 @@
+# word frequency: std/mutmap keyed by String (the linear hash table), top 10.
+# Same output as the std/map version (byCount is a total order).
+List = use "std/list".
+String = use "std/string".
+MutMap = use "std/mutmap".
+Ord = use "std/order".
+
+byCount : (String, Int) -> (String, Int) -> Ord.Ordering .
+byCount a b = case a of
+  (wa, ca) -> (case b of (wb, cb) -> if ca != cb then Ord.int cb ca else Ord.string wa wb).
+
+isSp : Int -> Bool .
+isSp c = c == 32 or (c >= 9 and c <= 13).
+myWords : String -> List String .
+myWords s = wGo s 0 (strlen s) Nil.
+wGo : String -> (pos : Int | measure (n - pos)) -> (n : Int) -> List String -> List String .
+wGo s pos n acc | pos >= n = List.reverse acc.
+wGo s pos n acc = if isSp (charAt s pos) then wGo s (pos + 1) n acc else wEnd s pos (pos + 1) n acc.
+wEnd : String -> Int -> (pos : Int | measure (n - pos)) -> (n : Int) -> List String -> List String .
+wEnd s start pos n acc | pos >= n = List.reverse (substr s start (pos - start) :: acc).
+wEnd s start pos n acc = if isSp (charAt s pos) then wGo s (pos + 1) n (substr s start (pos - start) :: acc) else wEnd s start (pos + 1) n acc.
+
+main =
+  path = case Sys.args Unit of p :: _ -> p | Nil -> "data/corpus.txt";
+  ws = myWords (fileRead path);
+  counts = List.fold (fn m w -> MutMap.insertWith (fn old new -> old + new) w 1 m) (MutMap.strings Unit) ws;
+  (n, counts) = MutMap.size counts;
+  (es, counts) = MutMap.toList counts;
+  _ = MutMap.free counts;
+  top = List.take 10 (List.sortWith byCount es);
+  _ = print "distinct {n} total {List.length ws}";
+  List.each (fn e -> case e of (w, c) -> print "{w} {c}") top.

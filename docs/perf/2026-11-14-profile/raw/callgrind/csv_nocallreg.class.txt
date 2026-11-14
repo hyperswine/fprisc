@@ -1,0 +1,49 @@
+total Ir 5,565,086,027
+
+generated code 4,227,784,993 (76.0%) by class:
+  gen:reg move                       596,137,462  10.7%
+  gen:cmp/test                       549,883,139   9.9%
+  gen:bool materialize               479,946,571   8.6%
+  gen:cond branch                    419,751,280   7.5%
+  gen:stack spill/reload             388,965,995   7.0%
+  gen:tag/untag/overflow             351,660,173   6.3%
+  gen:jmp                            296,252,604   5.3%
+  gen:fuel/tls                       254,698,950   4.6%
+  gen:call/ret/frame                 253,361,712   4.6%
+  gen:heap load/store                232,965,226   4.2%
+  gen:movabs const                   227,997,302   4.1%
+  gen:alu/other                      176,164,579   3.2%
+
+top 15 functions:
+    1,120,209,265  20.1%  fpr_fn_charFrom_x40119e171f11d63acf
+    1,087,586,320  19.5%  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2estep_x2e2
+      646,104,507  11.6%  fpr_fn_digitsGo_x40119e171f11d63acf
+      421,911,912   7.6%  g_strCompare
+      357,014,561   6.4%  fpr_fn_splitCharGo_x40119e171f11d63acf
+      318,812,098   5.7%  fpr_alloc
+      317,635,724   5.7%  g_substr
+      242,197,986   4.4%  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e1
+      226,007,734   4.1%  fpr_fn_toIntGo_x40119e171f11d63acf
+      217,010,096   3.9%  fpr_fn_linesGo_x40119e171f11d63acf
+      149,005,643   2.7%  fpr_fn_split_x40119e171f11d63acf
+      146,005,826   2.6%  fpr_fn_isNeg_x40119e171f11d63acf
+       85,718,138   1.5%  alloc_in_size
+       65,328,995   1.2%  dc_size_in
+       35,001,479   0.6%  fpr_fn_lengthGo_x4021100e0c17a53d18
+
+most-called targets (callgrind call counts; static callee address -> symbol):
+      9,163,436  g_strCompare
+      9,163,436  fpr_g_strCompare_call2
+      8,155,606  0x0000000000426fa6'2
+      8,048,893  fpr_acb_override_slot
+      4,024,444  fpr_alloc
+      4,013,920  fpr_fn_charFrom_x40119e171f11d63acf
+      4,000,000  fpr_g_substr_call3
+      4,000,000  g_substr
+      2,017,018  fpr_fn_toIntGo_x40119e171f11d63acf
+      2,014,440  fpr_fn_digitsGo_x40119e171f11d63acf
+      2,009,340  fpr_acb_pool
+      2,001,942  fpr_fn_isNeg_x40119e171f11d63acf
+      1,522,405  dc_size_in'2
+      1,044,950  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2estep_x2e2
+      1,025,595  fpr_fn_splitCharGo_x40119e171f11d63acf

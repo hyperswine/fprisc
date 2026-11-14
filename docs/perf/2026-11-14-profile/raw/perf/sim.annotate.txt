@@ -1,0 +1,453 @@
+ Percent |	Source code & Disassembly of sim for cpu-clock (7978 samples, percent: local period)
+----------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3      Disassembly of section .text:
+         :
+         : 5      000000000041d5d3 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0>:
+    0.00 :   41d5d3: sub    $0x70,%rsp
+    0.00 :   41d5d7: mov    %rbp,0x68(%rsp)
+    0.00 :   41d5dc: lea    0x78(%rsp),%rbp
+    0.00 :   41d5e1: mov    %rbx,-0x18(%rbp)
+    0.00 :   41d5e5: mov    %r12,-0x20(%rbp)
+    0.00 :   41d5e9: mov    %r13,-0x28(%rbp)
+    0.00 :   41d5ed: mov    %r14,-0x30(%rbp)
+    0.00 :   41d5f1: mov    %r15,-0x38(%rbp)
+    0.00 :   41d5f5: mov    %rsi,-0x40(%rbp)
+    0.00 :   41d5f9: mov    %rdi,%rbx
+    0.00 :   41d5fc: mov    %rdx,%r12
+    0.00 :   41d5ff: mov    %fs:0xfffffffffffffff8,%r10
+    0.01 :   41d608: lea    0x8(%rsp),%r11
+    0.00 :   41d60d: sub    0x1c8(%r10),%r11
+    0.01 :   41d614: cmp    0x1d0(%r10),%r11
+    0.00 :   41d61b: jb     41d63c <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x69>
+    0.00 :   41d61d: sub    $0x8,%rsp
+    0.00 :   41d621: call   474ab0 <fpr_stack_grow>
+    0.00 :   41d626: add    $0x8,%rsp
+    0.00 :   41d62a: test   %rax,%rax
+    0.00 :   41d62d: je     41d633 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x60>
+    0.00 :   41d62f: lea    -0x8(%rax),%rsp
+    0.00 :   41d633: mov    %fs:0xfffffffffffffff8,%r10
+    0.00 :   41d63c: subq   $0x137,(%r10)
+    0.00 :   41d643: cmpq   $0x0,(%r10)
+    0.00 :   41d647: jg     41d656 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x83>
+    0.00 :   41d649: sub    $0x8,%rsp
+    0.00 :   41d64d: call   421300 <fpr_fuel_save_local>
+    0.00 :   41d652: add    $0x8,%rsp
+    0.00 :   41d656: mov    %r12,%r10
+    0.00 :   41d659: mov    %r10,-0x48(%rbp)
+    0.00 :   41d65d: jmp    41d65f <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x8c>
+    0.45 :   41d65f: mov    %rbx,%rax
+    0.14 :   41d662: and    $0x1,%rax
+    1.64 :   41d666: test   %rax,%rax
+    0.00 :   41d669: jne    41d684 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0xb1>
+    0.39 :   41d66b: mov    (%rbx),%rax
+    0.84 :   41d66e: movabs $0x2,%rcx
+    0.15 :   41d678: cmp    %rcx,%rax
+    0.04 :   41d67b: sete   %al
+    0.11 :   41d67e: movzbq %al,%rax
+    0.41 :   41d682: jmp    41d68e <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0xbb>
+    0.00 :   41d684: movabs $0x0,%rax
+    0.19 :   41d68e: test   %rax,%rax
+    0.00 :   41d691: jne    41d695 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0xc2>
+    1.48 :   41d693: jmp    41d6b9 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0xe6>
+    0.00 :   41d695: mov    -0x40(%rbp),%rax
+    0.00 :   41d699: mov    -0x18(%rbp),%rbx
+    0.00 :   41d69d: mov    -0x20(%rbp),%r12
+    0.00 :   41d6a1: mov    -0x28(%rbp),%r13
+    0.00 :   41d6a5: mov    -0x30(%rbp),%r14
+    0.00 :   41d6a9: mov    -0x38(%rbp),%r15
+    0.00 :   41d6ad: mov    %rbp,%r11
+    0.00 :   41d6b0: mov    -0x10(%rbp),%rbp
+    0.00 :   41d6b4: lea    -0x8(%r11),%rsp
+    0.00 :   41d6b8: ret
+    0.31 :   41d6b9: mov    0x8(%rbx),%r14
+    0.39 :   41d6bd: mov    0x10(%rbx),%r10
+    0.21 :   41d6c1: mov    %r10,-0x50(%rbp)
+    0.16 :   41d6c5: mov    0x20(%r14),%rax
+    0.19 :   41d6c9: sar    $1,%rax
+    0.35 :   41d6cc: movabs $0x1,%rcx
+    0.11 :   41d6d6: mov    %rax,%rdx
+    1.92 :   41d6d9: sub    %rcx,%rdx
+    0.41 :   41d6dc: mov    %rdx,%rsi
+    0.24 :   41d6df: shl    $1,%rsi
+    0.21 :   41d6e2: sar    $1,%rsi
+    0.20 :   41d6e5: cmp    %rdx,%rsi
+    0.00 :   41d6e8: jne    41d6ef <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x11c>
+    0.13 :   41d6ea: mov    %rdx,%r13
+    0.29 :   41d6ed: jmp    41d719 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x146>
+    0.00 :   41d6ef: shl    $1,%rax
+    0.00 :   41d6f2: mov    %rax,%rdi
+    0.00 :   41d6f5: or     $0x1,%rdi
+    0.00 :   41d6f9: mov    %rcx,%rax
+    0.00 :   41d6fc: shl    $1,%rax
+    0.00 :   41d6ff: mov    %rax,%rsi
+    0.00 :   41d702: or     $0x1,%rsi
+    0.00 :   41d706: sub    $0x8,%rsp
+    0.00 :   41d70a: call   465a60 <fpr_prim_fn__x2d>
+    0.00 :   41d70f: add    $0x8,%rsp
+    0.00 :   41d713: mov    %rax,%r13
+    0.00 :   41d716: sar    $1,%r13
+    0.15 :   41d719: mov    0x8(%r14),%rax
+    1.84 :   41d71d: sar    $1,%rax
+    0.40 :   41d720: mov    0x18(%r14),%r15
+    0.29 :   41d724: mov    %r15,%rcx
+    0.25 :   41d727: sar    $1,%rcx
+    0.21 :   41d72a: mov    %rax,%rdx
+    0.09 :   41d72d: add    %rcx,%rdx
+    0.48 :   41d730: mov    %rdx,%rsi
+    0.10 :   41d733: shl    $1,%rsi
+    2.08 :   41d736: sar    $1,%rsi
+    0.60 :   41d739: cmp    %rdx,%rsi
+    0.00 :   41d73c: jne    41d743 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x170>
+    0.60 :   41d73e: mov    %rdx,%r12
+    0.31 :   41d741: jmp    41d76d <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x19a>
+    0.00 :   41d743: shl    $1,%rax
+    0.00 :   41d746: mov    %rax,%rdi
+    0.00 :   41d749: or     $0x1,%rdi
+    0.00 :   41d74d: mov    %rcx,%rax
+    0.00 :   41d750: shl    $1,%rax
+    0.00 :   41d753: mov    %rax,%rsi
+    0.00 :   41d756: or     $0x1,%rsi
+    0.00 :   41d75a: sub    $0x8,%rsp
+    0.00 :   41d75e: call   465a20 <fpr_prim_fn__x2b>
+    0.00 :   41d763: add    $0x8,%rsp
+    0.00 :   41d767: mov    %rax,%r12
+    0.00 :   41d76a: sar    $1,%r12
+    0.10 :   41d76d: movabs $0x0,%rax
+    0.11 :   41d777: cmp    %rax,%r12
+    0.61 :   41d77a: setl   %r10b
+    0.28 :   41d77e: movzbq %r10b,%r10
+    2.64 :   41d782: mov    %r10,-0x58(%rbp)
+    0.69 :   41d786: mov    -0x58(%rbp),%r10
+    0.41 :   41d78a: test   %r10,%r10
+    0.00 :   41d78d: jne    41d7be <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x1eb>
+    0.19 :   41d78f: movabs $0xf4240,%rax
+    0.11 :   41d799: cmp    %rax,%r12
+    0.05 :   41d79c: setg   %al
+    0.36 :   41d79f: movzbq %al,%rax
+    0.11 :   41d7a3: test   %rax,%rax
+    0.00 :   41d7a6: jne    41d7aa <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x1d7>
+    1.64 :   41d7a8: jmp    41d7b9 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x1e6>
+    0.00 :   41d7aa: movabs $0x1e8480,%rax
+    0.00 :   41d7b4: sub    %r12,%rax
+    0.00 :   41d7b7: jmp    41d811 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x23e>
+    0.50 :   41d7b9: mov    %r12,%rax
+    0.33 :   41d7bc: jmp    41d811 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x23e>
+    0.00 :   41d7be: movabs $0x0,%rax
+    0.00 :   41d7c8: mov    %rax,%rcx
+    0.00 :   41d7cb: sub    %r12,%rcx
+    0.00 :   41d7ce: mov    %rcx,%rdx
+    0.00 :   41d7d1: shl    $1,%rdx
+    0.00 :   41d7d4: sar    $1,%rdx
+    0.00 :   41d7d7: cmp    %rcx,%rdx
+    0.00 :   41d7da: jne    41d7de <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x20b>
+    0.00 :   41d7dc: jmp    41d808 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x235>
+    0.00 :   41d7de: shl    $1,%rax
+    0.00 :   41d7e1: mov    %rax,%rdi
+    0.00 :   41d7e4: or     $0x1,%rdi
+    0.00 :   41d7e8: mov    %r12,%rax
+    0.00 :   41d7eb: shl    $1,%rax
+    0.00 :   41d7ee: mov    %rax,%rsi
+    0.00 :   41d7f1: or     $0x1,%rsi
+    0.00 :   41d7f5: sub    $0x8,%rsp
+    0.00 :   41d7f9: call   465a60 <fpr_prim_fn__x2d>
+    0.00 :   41d7fe: add    $0x8,%rsp
+    0.00 :   41d802: mov    %rax,%rcx
+    0.00 :   41d805: sar    $1,%rcx
+    0.00 :   41d808: mov    %rcx,%r10
+    0.00 :   41d80b: mov    %r10,-0x60(%rbp)
+    0.01 :   41d80f: jmp    41d81a <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x247>
+    0.19 :   41d811: mov    %rax,%r10
+    0.05 :   41d814: mov    %r10,-0x60(%rbp)
+    0.08 :   41d818: jmp    41d81a <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x247>
+    0.35 :   41d81a: mov    -0x58(%rbp),%r10
+    0.16 :   41d81e: test   %r10,%r10
+    0.00 :   41d821: jne    41d89f <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x2cc>
+    1.84 :   41d823: movabs $0xf4240,%rax
+    0.55 :   41d82d: cmp    %rax,%r12
+    0.28 :   41d830: setg   %al
+    0.11 :   41d833: movzbq %al,%rax
+    0.04 :   41d837: test   %rax,%rax
+    0.00 :   41d83a: jne    41d83e <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x26b>
+    0.08 :   41d83c: jmp    41d89a <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x2c7>
+    0.00 :   41d83e: movabs $0x0,%rax
+    0.00 :   41d848: mov    %r15,%rcx
+    0.00 :   41d84b: sar    $1,%rcx
+    0.00 :   41d84e: mov    %rax,%rdx
+    0.00 :   41d851: sub    %rcx,%rdx
+    0.00 :   41d854: mov    %rdx,%rsi
+    0.00 :   41d857: shl    $1,%rsi
+    0.00 :   41d85a: sar    $1,%rsi
+    0.00 :   41d85d: cmp    %rdx,%rsi
+    0.00 :   41d860: jne    41d864 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x291>
+    0.00 :   41d862: jmp    41d88e <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x2bb>
+    0.00 :   41d864: shl    $1,%rax
+    0.00 :   41d867: mov    %rax,%rdi
+    0.00 :   41d86a: or     $0x1,%rdi
+    0.00 :   41d86e: mov    %rcx,%rax
+    0.00 :   41d871: shl    $1,%rax
+    0.00 :   41d874: mov    %rax,%rsi
+    0.00 :   41d877: or     $0x1,%rsi
+    0.00 :   41d87b: sub    $0x8,%rsp
+    0.00 :   41d87f: call   465a60 <fpr_prim_fn__x2d>
+    0.00 :   41d884: add    $0x8,%rsp
+    0.00 :   41d888: mov    %rax,%rdx
+    0.00 :   41d88b: sar    $1,%rdx
+    0.00 :   41d88e: mov    %rdx,%rax
+    0.00 :   41d891: shl    $1,%rax
+    0.00 :   41d894: or     $0x1,%rax
+    0.00 :   41d898: jmp    41d8fe <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x32b>
+    0.33 :   41d89a: mov    %r15,%rax
+    0.15 :   41d89d: jmp    41d8fe <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x32b>
+    0.00 :   41d89f: movabs $0x0,%rax
+    0.00 :   41d8a9: mov    %r15,%rcx
+    0.00 :   41d8ac: sar    $1,%rcx
+    0.00 :   41d8af: mov    %rax,%rdx
+    0.00 :   41d8b2: sub    %rcx,%rdx
+    0.00 :   41d8b5: mov    %rdx,%rsi
+    0.00 :   41d8b8: shl    $1,%rsi
+    0.01 :   41d8bb: sar    $1,%rsi
+    0.00 :   41d8be: cmp    %rdx,%rsi
+    0.00 :   41d8c1: jne    41d8c5 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x2f2>
+    0.01 :   41d8c3: jmp    41d8ef <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x31c>
+    0.00 :   41d8c5: shl    $1,%rax
+    0.00 :   41d8c8: mov    %rax,%rdi
+    0.00 :   41d8cb: or     $0x1,%rdi
+    0.00 :   41d8cf: mov    %rcx,%rax
+    0.00 :   41d8d2: shl    $1,%rax
+    0.00 :   41d8d5: mov    %rax,%rsi
+    0.00 :   41d8d8: or     $0x1,%rsi
+    0.00 :   41d8dc: sub    $0x8,%rsp
+    0.00 :   41d8e0: call   465a60 <fpr_prim_fn__x2d>
+    0.00 :   41d8e5: add    $0x8,%rsp
+    0.00 :   41d8e9: mov    %rax,%rdx
+    0.00 :   41d8ec: sar    $1,%rdx
+    0.00 :   41d8ef: mov    %rdx,%rax
+    0.00 :   41d8f2: shl    $1,%rax
+    0.00 :   41d8f5: or     $0x1,%rax
+    0.00 :   41d8f9: mov    %rax,%r12
+    0.01 :   41d8fc: jmp    41d903 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x330>
+    1.53 :   41d8fe: mov    %rax,%r12
+    0.36 :   41d901: jmp    41d903 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x330>
+    0.25 :   41d903: mov    0x10(%r14),%rax
+    0.78 :   41d907: sar    $1,%rax
+    0.28 :   41d90a: mov    %rax,%rcx
+    0.18 :   41d90d: add    %r13,%rcx
+    0.56 :   41d910: mov    %rcx,%rdx
+    0.14 :   41d913: shl    $1,%rdx
+    2.27 :   41d916: sar    $1,%rdx
+    0.54 :   41d919: cmp    %rcx,%rdx
+    0.00 :   41d91c: jne    41d923 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x350>
+    0.55 :   41d91e: mov    %rcx,%r15
+    0.51 :   41d921: jmp    41d94d <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x37a>
+    0.00 :   41d923: shl    $1,%rax
+    0.00 :   41d926: mov    %rax,%rdi
+    0.00 :   41d929: or     $0x1,%rdi
+    0.00 :   41d92d: mov    %r13,%rax
+    0.00 :   41d930: shl    $1,%rax
+    0.00 :   41d933: mov    %rax,%rsi
+    0.00 :   41d936: or     $0x1,%rsi
+    0.00 :   41d93a: sub    $0x8,%rsp
+    0.00 :   41d93e: call   465a20 <fpr_prim_fn__x2b>
+    0.00 :   41d943: add    $0x8,%rsp
+    0.00 :   41d947: mov    %rax,%r15
+    0.00 :   41d94a: sar    $1,%r15
+    0.10 :   41d94d: movabs $0x0,%rax
+    0.30 :   41d957: cmp    %rax,%r15
+    0.80 :   41d95a: setl   %r10b
+    0.34 :   41d95e: movzbq %r10b,%r10
+    3.55 :   41d962: mov    %r10,-0x58(%rbp)
+    1.24 :   41d966: mov    -0x58(%rbp),%r10
+    0.61 :   41d96a: test   %r10,%r10
+    0.00 :   41d96d: jne    41d99e <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x3cb>
+    0.24 :   41d96f: movabs $0xf4240,%rax
+    0.03 :   41d979: cmp    %rax,%r15
+    0.14 :   41d97c: setg   %al
+    0.40 :   41d97f: movzbq %al,%rax
+    0.08 :   41d983: test   %rax,%rax
+    0.00 :   41d986: jne    41d98a <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x3b7>
+    1.43 :   41d988: jmp    41d999 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x3c6>
+    0.00 :   41d98a: movabs $0x1e8480,%rax
+    0.00 :   41d994: sub    %r15,%rax
+    0.00 :   41d997: jmp    41d9f1 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x41e>
+    0.54 :   41d999: mov    %r15,%rax
+    0.30 :   41d99c: jmp    41d9f1 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x41e>
+    0.00 :   41d99e: movabs $0x0,%rax
+    0.03 :   41d9a8: mov    %rax,%rcx
+    0.00 :   41d9ab: sub    %r15,%rcx
+    0.00 :   41d9ae: mov    %rcx,%rdx
+    0.00 :   41d9b1: shl    $1,%rdx
+    0.00 :   41d9b4: sar    $1,%rdx
+    0.00 :   41d9b7: cmp    %rcx,%rdx
+    0.00 :   41d9ba: jne    41d9be <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x3eb>
+    0.00 :   41d9bc: jmp    41d9e8 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x415>
+    0.00 :   41d9be: shl    $1,%rax
+    0.00 :   41d9c1: mov    %rax,%rdi
+    0.00 :   41d9c4: or     $0x1,%rdi
+    0.00 :   41d9c8: mov    %r15,%rax
+    0.00 :   41d9cb: shl    $1,%rax
+    0.00 :   41d9ce: mov    %rax,%rsi
+    0.00 :   41d9d1: or     $0x1,%rsi
+    0.00 :   41d9d5: sub    $0x8,%rsp
+    0.00 :   41d9d9: call   465a60 <fpr_prim_fn__x2d>
+    0.00 :   41d9de: add    $0x8,%rsp
+    0.00 :   41d9e2: mov    %rax,%rcx
+    0.00 :   41d9e5: sar    $1,%rcx
+    0.00 :   41d9e8: mov    %rcx,%r10
+    0.00 :   41d9eb: mov    %r10,-0x68(%rbp)
+    0.00 :   41d9ef: jmp    41d9fa <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x427>
+    0.20 :   41d9f1: mov    %rax,%r10
+    0.00 :   41d9f4: mov    %r10,-0x68(%rbp)
+    0.23 :   41d9f8: jmp    41d9fa <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x427>
+    0.31 :   41d9fa: mov    -0x58(%rbp),%r10
+    0.10 :   41d9fe: test   %r10,%r10
+    0.00 :   41da01: jne    41da72 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x49f>
+    1.78 :   41da03: movabs $0xf4240,%rax
+    0.61 :   41da0d: cmp    %rax,%r15
+    0.31 :   41da10: setg   %al
+    0.16 :   41da13: movzbq %al,%rax
+    0.04 :   41da17: test   %rax,%rax
+    0.00 :   41da1a: jne    41da1e <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x44b>
+    0.24 :   41da1c: jmp    41da6d <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x49a>
+    0.00 :   41da1e: movabs $0x0,%rax
+    0.01 :   41da28: mov    %rax,%rcx
+    0.00 :   41da2b: sub    %r13,%rcx
+    0.00 :   41da2e: mov    %rcx,%rdx
+    0.01 :   41da31: shl    $1,%rdx
+    0.00 :   41da34: sar    $1,%rdx
+    0.00 :   41da37: cmp    %rcx,%rdx
+    0.00 :   41da3a: jne    41da3e <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x46b>
+    0.00 :   41da3c: jmp    41da68 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x495>
+    0.00 :   41da3e: shl    $1,%rax
+    0.00 :   41da41: mov    %rax,%rdi
+    0.00 :   41da44: or     $0x1,%rdi
+    0.00 :   41da48: mov    %r13,%rax
+    0.00 :   41da4b: shl    $1,%rax
+    0.00 :   41da4e: mov    %rax,%rsi
+    0.00 :   41da51: or     $0x1,%rsi
+    0.00 :   41da55: sub    $0x8,%rsp
+    0.00 :   41da59: call   465a60 <fpr_prim_fn__x2d>
+    0.00 :   41da5e: add    $0x8,%rsp
+    0.00 :   41da62: mov    %rax,%rcx
+    0.00 :   41da65: sar    $1,%rcx
+    0.00 :   41da68: mov    %rcx,%rax
+    0.00 :   41da6b: jmp    41dabe <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x4eb>
+    0.16 :   41da6d: mov    %r13,%rax
+    0.09 :   41da70: jmp    41dabe <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x4eb>
+    0.00 :   41da72: movabs $0x0,%rax
+    0.00 :   41da7c: mov    %rax,%rcx
+    0.00 :   41da7f: sub    %r13,%rcx
+    0.00 :   41da82: mov    %rcx,%rdx
+    0.01 :   41da85: shl    $1,%rdx
+    0.00 :   41da88: sar    $1,%rdx
+    0.00 :   41da8b: cmp    %rcx,%rdx
+    0.00 :   41da8e: jne    41da92 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x4bf>
+    0.00 :   41da90: jmp    41dabc <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x4e9>
+    0.00 :   41da92: shl    $1,%rax
+    0.00 :   41da95: mov    %rax,%rdi
+    0.00 :   41da98: or     $0x1,%rdi
+    0.00 :   41da9c: mov    %r13,%rax
+    0.00 :   41da9f: shl    $1,%rax
+    0.00 :   41daa2: mov    %rax,%rsi
+    0.00 :   41daa5: or     $0x1,%rsi
+    0.00 :   41daa9: sub    $0x8,%rsp
+    0.00 :   41daad: call   465a60 <fpr_prim_fn__x2d>
+    0.00 :   41dab2: add    $0x8,%rsp
+    0.00 :   41dab6: mov    %rax,%rcx
+    0.00 :   41dab9: sar    $1,%rcx
+    0.01 :   41dabc: jmp    41dac3 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x4f0>
+    1.15 :   41dabe: mov    %rax,%rcx
+    0.49 :   41dac1: jmp    41dac3 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x4f0>
+    0.29 :   41dac3: mov    %r14,%rax
+    0.20 :   41dac6: and    $0x1,%rax
+    0.08 :   41daca: test   %rax,%rax
+    0.00 :   41dacd: jne    41dafb <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x528>
+    0.34 :   41dacf: movslq (%r14),%rax
+    0.34 :   41dad2: movabs $0x3969f87,%rdx
+    0.11 :   41dadc: cmp    %rdx,%rax
+    0.00 :   41dadf: jne    41dafb <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x528>
+    2.17 :   41dae1: movslq 0x4(%r14),%rax
+    0.60 :   41dae5: movabs $0x4,%rdx
+    0.26 :   41daef: cmp    %rdx,%rax
+    0.39 :   41daf2: sete   %al
+    0.19 :   41daf5: movzbq %al,%rax
+    0.36 :   41daf9: jmp    41db05 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x532>
+    0.00 :   41dafb: movabs $0x0,%rax
+    0.11 :   41db05: test   %rax,%rax
+    0.00 :   41db08: jne    41db0c <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x539>
+    0.00 :   41db0a: jmp    41db41 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x56e>
+    0.48 :   41db0c: mov    -0x60(%rbp),%rax
+    1.63 :   41db10: shl    $1,%rax
+    0.73 :   41db13: or     $0x1,%rax
+    0.33 :   41db17: mov    -0x68(%rbp),%rdx
+    0.23 :   41db1b: shl    $1,%rdx
+    0.19 :   41db1e: or     $0x1,%rdx
+    0.61 :   41db22: shl    $1,%rcx
+    0.24 :   41db25: or     $0x1,%rcx
+    0.48 :   41db29: mov    %rax,0x8(%r14)
+    1.60 :   41db2d: mov    %rdx,0x10(%r14)
+    0.64 :   41db31: mov    %r12,0x18(%r14)
+    0.38 :   41db35: mov    %rcx,0x20(%r14)
+    0.33 :   41db39: mov    %r14,%rax
+    0.15 :   41db3c: jmp    41dbf3 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x620>
+    0.00 :   41db41: mov    -0x60(%rbp),%rax
+    0.00 :   41db45: shl    $1,%rax
+    0.00 :   41db48: or     $0x1,%rax
+    0.00 :   41db4c: mov    -0x68(%rbp),%rdx
+    0.00 :   41db50: shl    $1,%rdx
+    0.00 :   41db53: or     $0x1,%rdx
+    0.00 :   41db57: shl    $1,%rcx
+    0.00 :   41db5a: or     $0x1,%rcx
+    0.00 :   41db5e: mov    %fs:0xfffffffffffffff8,%r11
+    0.00 :   41db67: mov    0x1e0(%r11),%r10
+    0.00 :   41db6e: test   %r10,%r10
+    0.00 :   41db71: je     41dbae <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x5db>
+    0.00 :   41db73: mov    0x1e8(%r11),%rsi
+    0.00 :   41db7a: cmpq   $0x0,0x10(%rsi)
+    0.00 :   41db7f: jne    41dbae <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x5db>
+    0.00 :   41db81: mov    0x20(%r10),%rsi
+    0.00 :   41db85: add    $0x30,%rsi
+    0.00 :   41db89: cmp    0x28(%r10),%rsi
+    0.00 :   41db8d: ja     41dbae <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x5db>
+    0.00 :   41db8f: mov    %rsi,0x20(%r10)
+    0.00 :   41db93: addq   $0x30,0x1d8(%r11)
+    0.00 :   41db9b: mov    0x8(%r10),%r11
+    0.00 :   41db9f: addq   $0x30,0x10(%r11)
+    0.00 :   41dba4: sub    $0x28,%rsi
+    0.00 :   41dba8: mov    %r10,-0x8(%rsi)
+    0.00 :   41dbac: jmp    41dbc5 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x5f2>
+    0.00 :   41dbae: mov    $0x28,%r11
+    0.00 :   41dbb5: sub    $0x8,%rsp
+    0.00 :   41dbb9: call   421320 <fpr_alloc_save_local>
+    0.00 :   41dbbe: add    $0x8,%rsp
+    0.00 :   41dbc2: mov    %r11,%rsi
+    0.00 :   41dbc5: movabs $0x3969f87,%rdi
+    0.00 :   41dbcf: mov    %edi,(%rsi)
+    0.00 :   41dbd1: movabs $0x4,%rdi
+    0.00 :   41dbdb: mov    %edi,0x4(%rsi)
+    0.00 :   41dbde: mov    %rax,0x8(%rsi)
+    0.00 :   41dbe2: mov    %rdx,0x10(%rsi)
+    0.00 :   41dbe6: mov    %r12,0x18(%rsi)
+    0.00 :   41dbea: mov    %rcx,0x20(%rsi)
+    0.00 :   41dbee: mov    %rsi,%rax
+    0.00 :   41dbf1: jmp    41dbf3 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x620>
+    0.50 :   41dbf3: lea    0x68376(%rip),%rcx        # 485f70 <fpr_modtab+0x6ca0>
+    0.51 :   41dbfa: mov    %rax,0x8(%rbx)
+    1.63 :   41dbfe: mov    %rcx,0x10(%rbx)
+    9.81 :   41dc02: mov    %rbx,%rcx
+    3.51 :   41dc05: mov    -0x48(%rbp),%r10
+    2.02 :   41dc09: mov    %rcx,0x10(%r10)
+    1.35 :   41dc0d: mov    %fs:0xfffffffffffffff8,%r10
+    1.30 :   41dc16: subq   $0x123,(%r10)
+    4.31 :   41dc1d: cmpq   $0x0,(%r10)
+    5.52 :   41dc21: jg     41dc30 <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x65d>
+    0.00 :   41dc23: sub    $0x8,%rsp
+    0.10 :   41dc27: call   421300 <fpr_fuel_save_local>
+    0.06 :   41dc2c: add    $0x8,%rsp
+    0.46 :   41dc30: mov    -0x50(%rbp),%r10
+    0.33 :   41dc34: mov    %r10,%rbx
+    0.15 :   41dc37: mov    %rcx,%r10
+    0.11 :   41dc3a: mov    %r10,-0x48(%rbp)
+    0.09 :   41dc3e: jmp    41d65f <fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0+0x8c>

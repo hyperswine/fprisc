@@ -1,0 +1,4 @@
+csv.c summary: 277955196
+wordfreq.c summary: 474639753
+treemap.c summary: 285672838
+sim.c summary: 721957857

@@ -1,0 +1,63 @@
+total Ir 5,934,303,118
+
+generated code 4,280,783,079 (72.1%) by class:
+  gen:reg move                       614,138,172  10.3%
+  gen:cmp/test                       549,882,437   9.3%
+  gen:bool materialize               479,946,571   8.1%
+  gen:cond branch                    419,750,578   7.1%
+  gen:stack spill/reload             402,965,995   6.8%
+  gen:tag/untag/overflow             353,660,175   6.0%
+  gen:jmp                            296,252,251   5.0%
+  gen:call/ret/frame                 271,364,364   4.6%
+  gen:fuel/tls                       254,698,950   4.3%
+  gen:heap load/store                232,963,114   3.9%
+  gen:movabs const                   228,997,303   3.9%
+  gen:alu/other                      176,163,169   3.0%
+
+top 22 functions:
+    1,120,208,986  18.9%  fpr_fn_charFrom_x40119e171f11d63acf
+    1,087,582,975  18.3%  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2estep_x2e2
+      646,103,940  10.9%  fpr_fn_digitsGo_x40119e171f11d63acf
+      421,911,912   7.1%  g_strCompare
+      357,014,624   6.0%  fpr_fn_splitCharGo_x40119e171f11d63acf
+      344,616,956   5.8%  fpr_alloc
+      317,635,724   5.4%  g_substr
+      264,008,883   4.4%  fpr_fn_toIntGo_x40119e171f11d63acf
+      242,198,400   4.1%  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e1
+      217,010,096   3.7%  fpr_fn_linesGo_x40119e171f11d63acf
+      164,006,231   2.8%  fpr_fn_split_x40119e171f11d63acf
+      146,005,859   2.5%  fpr_fn_isNeg_x40119e171f11d63acf
+      132,003,563   2.2%  g_call_pend.part.0
+       99,000,041   1.7%  g_call_leave
+       65,328,995   1.1%  dc_size_in
+       47,307,425   0.8%  kp_reaches
+       35,001,479   0.6%  fpr_fn_lengthGo_x4021100e0c17a53d18
+       33,507,612   0.6%  fpr_in_heap
+       25,396,680   0.4%  fpr_layout_fields
+       22,099,208   0.4%  fpr_acb_override_slot
+       19,474,018   0.3%  layout_find
+       18,185,376   0.3%  layout_total
+
+most-called targets (callgrind call counts; static callee address -> symbol):
+     11,049,604  fpr_acb_override_slot
+      9,163,436  fpr_g_strCompare_call2
+      9,163,436  g_strCompare
+      8,155,508  0x0000000000426fa6'2
+      6,000,605  fpr_acb_pends
+      4,024,797  fpr_alloc
+      4,013,827  fpr_fn_charFrom_x40119e171f11d63acf
+      4,000,000  fpr_g_substr_call3
+      4,000,000  g_substr
+      3,000,001  g_call_pend.part.0
+      3,000,001  fpr_g__x24callPend_call1
+      2,113,478  fpr_g__x24callLeave_call2
+      2,113,478  g_call_leave
+      2,017,212  fpr_fn_toIntGo_x40119e171f11d63acf
+      2,014,251  fpr_fn_digitsGo_x40119e171f11d63acf
+      2,001,953  fpr_fn_isNeg_x40119e171f11d63acf
+      1,991,495  0x000000000046947f'2
+      1,866,516  in_image
+      1,693,030  fpr_in_heap
+      1,522,405  dc_size_in'2
+      1,515,448  layout_total
+      1,045,105  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2estep_x2e2
