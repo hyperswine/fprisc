@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 -- Shared native output and symbol identity, independent of instruction set.
 module Codegen.Target.Common
-  ( ObjectFormat (..), NativeFn (..), usesTick, usesBump, BumpCell (..), bumpCell, bumpCellFor, bumpSlabCell, bumpBucketsCell, bumpRegionCell, bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated, mangleName, functionSymbol, calleeCodeSymbol,
+  ( ObjectFormat (..), NativeFn (..), usesTick, usesBump, BumpCell (..), bumpCell, bumpCellFor, bumpSlabCell, bumpBucketsCell, bumpRegionCell, pendStackCell, pendEntryWords, bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated, mangleName, functionSymbol, calleeCodeSymbol,
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
     boxedFloatLabel, boxedFloatObject, BumpRefills, planBumpRefills, bumpRefill,
@@ -399,6 +399,13 @@ bumpRegionCell, bumpSlabCell, bumpBucketsCell :: Int
 bumpRegionCell = 58
 bumpSlabCell = 59
 bumpBucketsCell = 60
+-- runtime/fpr.h pend_stack: the running actor's pending call-region stack
+-- (fpr_pends_t: v, n, cap at words 0..2), or 0; an entry (fpr_pend_t) is
+-- seq, pool, mark, scope, pendEntryWords words
+pendStackCell :: Int
+pendStackCell = 61
+pendEntryWords :: Integer
+pendEntryWords = 4
 -- in words: fpr_slab_t owner/hp/end, fpr_pool_t allocated
 bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated :: Integer
 bumpSlabOwner = 1

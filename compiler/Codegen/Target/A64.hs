@@ -1288,7 +1288,10 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
       (O.A64 A.BranchNonzero, [], [r, OL l]) -> ["cbnz " ++ reg r ++ ", " ++ lbl l]
       (O.A64 A.Jump, [], [OL l]) -> ["b " ++ lbl l]
       (O.Common O.JumpLoop, [], [OL l]) -> ["b " ++ lbl l]
-      (O.A64 A.Call, _, OCode s : _) -> ["bl " ++ gsym cfg (codeName s)]
+      (O.A64 A.Call, _, OCode s : _)
+        | inlinePends, codeName s == "fpr_g__x24callPend_call1" -> pendPush (gsym cfg (codeName s))
+        | inlinePends, codeName s == "fpr_g__x24callLeave_call2" -> pendPop (gsym cfg (codeName s))
+        | otherwise -> ["bl " ++ gsym cfg (codeName s)]
       (O.A64 A.Push, [], [v]) -> ["sub sp, sp, #16", "str " ++ reg v ++ ", [sp]"]
       (O.A64 A.ApplyN, [_], [OI n]) | n >= 1 && n <= 8 ->
         -- a function value with nothing captured, applied to exactly its
@@ -1307,7 +1310,13 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
           "bl " ++ gsym cfg (Call.runtimeName Call.ApplyEntry), "add sp, sp, #" ++ show (16 * (n + 1)) ]
       (O.A64 A.Panic, [], [OAddr s]) -> address "x0" (addressName s) ++ ["bl " ++ gsym cfg (Call.runtimeName Call.PanicEntry)]
       (O.A64 A.Ret, [], values) | not (null values) && length values <= 8 -> epilogue ++ ["ret"]
-      (O.Common O.TailJump, [], OCode s : _) -> epilogue ++ ["b " ++ gsym cfg (codeName s)]
+      (O.Common O.TailJump, [], OCode s : _)
+        | inlinePends, codeName s == "fpr_g__x24callLeave_call2" ->
+            -- the pop reads only the hart and the pending stack, so it can
+            -- run before the epilogue; a region that opened still jumps
+            let unwind = filter (/= "ret") epilogue
+             in pendPopTest ++ ["mov x0, x1"] ++ unwind ++ ["ret", "3:"] ++ unwind ++ ["b " ++ gsym cfg (codeName s)]
+        | otherwise -> epilogue ++ ["b " ++ gsym cfg (codeName s)]
       (O.Common O.StoreSpill, [], [s, OI j]) -> hartRead ++ ldst "str" "stur" (reg s) "x9" (8 * (1 + j))
       (O.Common O.LoadSpill, [d], [OI j]) -> case cfgHart cfg of
         HartX28 -> ldst "ldr" "ldur" (reg d) "x28" (8 * (1 + j)) -- the hart register itself: no copy into x9
@@ -1437,6 +1446,34 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
         ++ parkArgs "ldr" "ldur"
         ++ hartRead -- the call clobbered x9
         ++ [lbl (entryLabel i StackReady) ++ ":"]
+    -- Call regions inline (runtime/fpr.h pend_stack): while the hart has the
+    -- running actor's pending stack and an open bump window, $callPend
+    -- pushes {0, the window's pool, its allocated gauge, no scope} and
+    -- $callLeave pops an entry whose region never opened.  Any other case
+    -- calls the runtime, which also sets the cell.  The call's argument and
+    -- result registers are its own; x9..x14 are free across a C call.
+    inlinePends = bumpAllocates (cfgPolicy cfg) && cfgHart cfg == HartX28
+    pcell = "[x28, #" ++ show (8 * (1 + pendStackCell)) ++ "]"
+    pendPush sym =
+      [ "ldr x9, " ++ pcell, "cbz x9, 3f",
+        "ldr x10, [x28, #" ++ show (8 * (1 + bumpSlabCell)) ++ "]", "cbz x10, 3f",
+        "ldp x11, x12, [x9, #8]", "cmp x11, x12", "b.hs 3f",
+        "ldr x10, [x10, #" ++ show (8 * bumpSlabOwner) ++ "]",
+        "ldr x12, [x10, #" ++ show (8 * bumpPoolAllocated) ++ "]",
+        "ldr x13, [x9]", "add x13, x13, x11, lsl #" ++ show (3 + log2 pendEntryWords),
+        "stp xzr, x10, [x13]", "stp x12, xzr, [x13, #16]",
+        "add x12, x11, #1", "str x12, [x9, #8]",
+        "lsl x0, x11, #1", "orr x0, x0, #1", "b 4f",
+        "3:", "bl " ++ sym, "4:" ]
+    pendPop sym = pendPopTest ++ ["mov x0, x1", "b 4f", "3:", "bl " ++ sym, "4:"]
+    pendPopTest =
+      [ "ldr x9, " ++ pcell, "cbz x9, 3f",
+        "ldr x11, [x9, #8]", "sub x11, x11, #1", "cmp x11, x0, asr #1", "b.ne 3f",
+        "ldr x13, [x9]", "add x13, x13, x11, lsl #" ++ show (3 + log2 pendEntryWords),
+        "ldr x14, [x13, #24]", "cbnz x14, 3f",
+        "str x11, [x9, #8]" ]
+    log2 :: Integer -> Integer
+    log2 n = if n <= 1 then 0 else 1 + log2 (n `div` 2)
     -- The inline bump (Protocol BumpAllocate; runtime/fpr.h bump_slab): x16
     -- is the window's slab, x17 a scratch word, d the new cell's end and then
     -- the cell.  Every test precedes every store, so a refill sees the

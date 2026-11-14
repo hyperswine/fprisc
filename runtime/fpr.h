@@ -519,6 +519,15 @@ typedef struct {
    * array, or at an all-empty one for a bucketless region arena. */
   struct fpr_slab *bump_slab;
   void **bump_bkt;
+  /* THE INLINE PENDING STACK (hart cell 61: Codegen Target.Common
+   * pendStackCell, docs/2026-11-14-GAP-FOLLOWUPS.md).  The running
+   * actor's (or the hart loop's) pending call-region stack, as pends_of
+   * answers it, or 0.  Only g_call_pend/g_call_leave set it, and every change
+   * of the running actor clears it, so it is never another actor's stack.
+   * While it and the bump window are both open, generated code pushes a
+   * pending region itself (the window's slab owner is the current pool) and
+   * pops one that never opened; anything else calls the runtime. */
+  struct fpr_pends *pend_stack;
   uw id;
   fpr_pool_t pool;                /* boot/hart-loop allocs (pre-actor, never freed) */
   struct fpr_acb *current;        /* running actor, 0 = in the hart loop */
@@ -593,6 +602,8 @@ _Static_assert(__builtin_offsetof(fpr_hart_t, region_bytes) == sizeof(sw) * (3 +
 _Static_assert(__builtin_offsetof(fpr_hart_t, bump_slab) == sizeof(sw) * (4 + FPR_ARGSPILL) &&
                __builtin_offsetof(fpr_hart_t, bump_bkt) == sizeof(sw) * (5 + FPR_ARGSPILL),
                "bump_slab/bump_bkt must follow region_bytes: hart cells 59, 60 (Lower.bumpSlabCell)");
+_Static_assert(__builtin_offsetof(fpr_hart_t, pend_stack) == sizeof(sw) * (6 + FPR_ARGSPILL),
+               "pend_stack must follow bump_bkt: hart cell 61 (Common.pendStackCell)");
 /* the slab and pool words the inline bump reads and writes (Lower.bump*Offset) */
 _Static_assert(__builtin_offsetof(fpr_slab_t, owner) == sizeof(sw) * 1 &&
                __builtin_offsetof(fpr_slab_t, hp) == sizeof(sw) * 4 &&

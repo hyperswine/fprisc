@@ -2071,6 +2071,7 @@ static void hart_loop(fpr_hart_t *h) {
       }
       stable = 0;
       fpr_bump_close(h); /* the hart loop's window is not the actor's */
+      h->pend_stack = 0; /* nor its pending stack (fpr.h) */
       h->current = n;
       h->stk_lo = n->stk_lo; /* the entry check reads the RUNNING actor's segment */
       h->stk_span = n->stk_span;
@@ -2103,6 +2104,7 @@ static void hart_loop(fpr_hart_t *h) {
       __atomic_store_n(&n->running, 0, __ATOMIC_RELEASE); /* saved: it may run elsewhere now */
       if (fpr_hart() != h) hart_reg_lost(h, n);
       fpr_bump_close(h); /* the actor's window, closed whichever way it left */
+      h->pend_stack = 0;
       h->current = 0;
       /* body-return / kill marked it DEAD before switching back; we are
        * on the hart-loop stack now, so ITS stack is safe to reclaim */
@@ -2447,6 +2449,7 @@ static int direct_handoff(fpr_hart_t *h, acb_t *a) {
   h->direct_run++;
   TR(b, 5);
   fpr_bump_close(h); /* a's window, as the hart loop closes it */
+  h->pend_stack = 0; /* and a's pending stack (fpr.h) */
   h->switched_from = a;
   h->current = b;
   h->stk_lo = b->stk_lo;
