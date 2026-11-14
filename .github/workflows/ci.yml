@@ -16,11 +16,18 @@ jobs:
       run:
         shell: sh
     steps:
-      - uses: actions/checkout@v4
-      - name: Native build dependencies
+      # git must exist before actions/checkout; without it checkout falls back to a
+      # REST tarball with no .git, and tools/sol-only-check.sol's `git ls-files` fails.
+      - name: Install git for checkout
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates make gcc pkg-config ghc cabal-install libghc-megaparsec-dev libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev libegl-dev libgl-dev
+          apt-get install -y --no-install-recommends git ca-certificates
+      - uses: actions/checkout@v4
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Native build dependencies
+        run: |
+          apt-get install -y --no-install-recommends make gcc pkg-config ghc cabal-install libghc-megaparsec-dev libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev libegl-dev libgl-dev
       - name: Build compiler
         run: |
           rm -f cabal.project.freeze
