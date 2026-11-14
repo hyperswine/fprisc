@@ -1,0 +1,7 @@
+# nodeSet on an ordinary immutable value: before the check it overwrote
+# a's first field in place and the Int field then printed as `P 9 9`.
+P = Type (P Int Int).
+main =
+  a = P 1 2;
+  b = nodeSet 0 a (P 9 9);
+  print "{case a of P x y -> x}".

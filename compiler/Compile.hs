@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module Compile (compileMain, checkedInterface, parseFile) where
 
 import Data.List (sortBy)
@@ -80,13 +81,13 @@ import Struct (expandStructs, sigTable, structTable)
 import Modules (LoadResult (..), ModExport (..), hashAST, loadProgram)
 import qualified Precond
 import Precond (PreNote (..), PreStatus (..), applyPreconds, checkedName, preTable, renderNote, validatePre, validatePreUses)
-import Home (underHome)
-import System.Directory (createDirectoryIfMissing, doesFileExist, renameFile)
+import Home (fprHome, underHome)
+import System.Directory (canonicalizePath, createDirectoryIfMissing, doesFileExist, renameFile)
 import System.Environment (getArgs, lookupEnv)
 import qualified System.Info
 import StdBridge (runStdCheck)
 import System.Exit (ExitCode (..), exitFailure, exitSuccess, exitWith)
-import Control.Exception (try)
+import Control.Exception (SomeException, try)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import System.Environment (withArgs)
 import System.FilePath (takeDirectory, takeExtension, takeFileName, (</>))
@@ -413,6 +414,25 @@ compileWithReport accepted report = do
         putStrLn "=== PATH LITERALS: ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchored pathErrs)
         Editor.legacy report "path-literal" pathErrs
+        exitFailure
+      -- Privileged builtins (std/hashmap's trie node access: nodeGet,
+      -- nodeWith, nodeSet).  Their schemes are deliberately loose
+      -- (`Int -> a -> a`) and they read and store a cell by field number
+      -- with no layout check, so a program that names them can mutate an
+      -- immutable value or read past a cell.  Only the modules listed in
+      -- privilegedBuiltinModules, resolved under FPR_HOME, may mention them.
+      privileged <- privilegedModulePaths
+      let privHashes = S.fromList [drop 1 h | (n, (p, _)) <- M.toList unitAnchors, S.member p privileged,
+                                              let h = dropWhile (/= '@') n, not (null h)]
+      rootPrivileged <- (`S.member` privileged) <$> canonicalPathOr inp
+      let privErrs =
+            [ "in " ++ n ++ ": " ++ b ++ " is a privileged builtin (std/hashmap only): user code cannot call it"
+              | (h, uts) <- ("", root0) : units0, if null h then not rootPrivileged else S.notMember h privHashes,
+                (n, b) <- privilegedMentions uts ]
+      unless (null privErrs) $ do
+        putStrLn "=== PRIVILEGED BUILTINS: ERRORS ==="
+        mapM_ (putStrLn . ("  * " ++)) (anchored privErrs)
+        Editor.legacy report "privileged-builtin" privErrs
         exitFailure
       -- A received message dies with its turn (docs/2026-10-24-REGIONS-STAGE1.md):
       -- the runtime releases every root an actor took when the turn that
@@ -1478,3 +1498,67 @@ posixPic a64 mach asm = unlines (go (lines asm))
           in ["    pushq " ++ scratch, "    movq " ++ n ++ "@GOTTPOFF(%rip), " ++ scratch, replace l, "    popq " ++ scratch] ++ go rest
       | not mach, dropWhile (== ' ') l == ".section .rodata" = ".section .data.rel.ro" : go rest
       | otherwise = l : go rest
+
+-- ---- privileged builtins ---------------------------------------------------
+-- Builtins whose types the checker cannot make safe (field-number cell
+-- access), and the std modules allowed to name them.  Kept here rather than in
+-- Safety.hs: tests/sol-checks/trust.sol reads every quoted std path in that
+-- file as a safety allow-list entry.
+privilegedBuiltins :: [Name]
+privilegedBuiltins = ["nodeGet", "nodeWith", "nodeSet"]
+
+privilegedBuiltinModules :: [FilePath]
+privilegedBuiltinModules = ["std" </> "hashmap.fpr"]
+
+canonicalPathOr :: FilePath -> IO FilePath
+canonicalPathOr p = either (const p) id <$> (try (canonicalizePath p) :: IO (Either SomeException FilePath))
+
+-- FPR_HOME only (not FPR_PATH): a search-path root cannot supply its own
+-- std/hashmap.fpr and inherit the privilege.
+privilegedModulePaths :: IO (S.Set FilePath)
+privilegedModulePaths = do
+  h <- fprHome
+  S.fromList <$> mapM (canonicalPathOr . (h </>)) privilegedBuiltinModules
+
+-- (defining top, builtin) for every mention of a privileged builtin in a
+-- unit's tops.  Deliberately ignores local shadowing: the names are reserved,
+-- so a mention anywhere (value, alias, guard, precondition, struct field,
+-- top-level eval) counts.  Every constructor is listed (no wildcard), so a
+-- new expression form cannot silently escape the check.
+privilegedMentions :: [STop] -> [(Name, Name)]
+privilegedMentions tops = List.nub (concatMap topM tops)
+  where
+    hit n = n `elem` privilegedBuiltins
+    topM = \case
+      TBind n _ gs e -> [(n, b) | b <- concatMap guardM gs ++ exprM e]
+      TSig n _ pres -> [(n, b) | Just (_, e) <- pres, b <- exprM e]
+      TStruct n _ fs -> [(n, b) | (_, e) <- fs, b <- exprM e]
+      TAlias a b -> [(a, b) | hit b]
+      TEval e -> [("main", b) | b <- exprM e]
+      TType {} -> []
+      TShape {} -> []
+      TSigDef {} -> []
+      TUse {} -> []
+      TSkip -> []
+    guardM = \case
+      GBool e -> exprM e
+      GPat _ e -> exprM e
+    exprM = \case
+      SVar v -> [v | hit v]
+      SMark _ e -> exprM e
+      SInt _ -> []
+      SAtom _ -> []
+      SStrI segs -> concat [exprM e | SegExpr e <- segs]
+      SApp a b -> exprM a ++ exprM b
+      SLam _ e -> exprM e
+      SBlock ss e -> concatMap stmtM ss ++ exprM e
+      SCase x arms -> exprM x ++ concatMap (exprM . snd) arms
+      SBin _ a b -> exprM a ++ exprM b
+      SProj e _ -> exprM e
+      SRec fs -> concatMap (exprM . snd) fs
+      SUpd m as -> exprM m ++ concatMap (exprM . snd) as
+      STup es -> concatMap exprM es
+      SList es -> concatMap exprM es
+    stmtM = \case
+      SBind _ _ e -> exprM e
+      SBindPat _ e -> exprM e

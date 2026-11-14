@@ -3835,8 +3835,36 @@ static V g_fn_is(V f, V g) {
  * compiler puts it where it has shown x has one holder (Reuse's owned maps),
  * never the source.  The field number is the caller's to get right, as a
  * constructor's own field offsets are. */
-static V g_nodeGet(V i, V x) { return ((V *)x)[1 + UNTAG(i)]; }
+/* The compiler lets only std/hashmap name these (Compile.hs
+ * privilegedBuiltins), so x is std/hashmap's node by construction.  The one
+ * guard on every call is the field number: at most TAG(NODE_MAX_FIELDS - 1),
+ * one unsigned compare (a negative or too-large Int, or a pointer, fails
+ * it), so a std bug cannot index far past a cell.  FPR_NODE_CHECK adds
+ * the full checks -- x a constructor cell (not a tagged Int, null, or a
+ * runtime-internal string/closure/vector cell) and the field number inside
+ * x's own layout (a layout-table lookup).  The cell checks alone, without
+ * the lookup, added 3.1% to treemap_hashmap's instructions under callgrind
+ * (3.128G -> 3.226G), too dear for the trie's hot path by default. */
+#define NODE_MAX_FIELDS 64
+static inline void node_check(const char *who, V i, V x) {
+  if ((uw)i > (uw)TAG(NODE_MAX_FIELDS - 1)) fpr_cpanic(who);
+#ifdef FPR_NODE_CHECK
+  if (!ISINT(i) || !x || ISINT(x) || (TID(x) >= T_STR && TID(x) <= T_STORED_LIST)) fpr_cpanic(who);
+  if ((uw)UNTAG(i) >= fpr_layout_fields(TID(x), ((hdr_t *)x)->var)) fpr_cpanic(who);
+#else
+  (void)x;
+#endif
+}
+static V g_nodeGet(V i, V x) {
+  node_check("nodeGet: not a constructor cell, or field number out of range", i, x);
+  return ((V *)x)[1 + UNTAG(i)];
+}
 static V g_nodeWith(V n, V i, V x, V v) {
+  node_check("nodeWith: not a constructor cell, or field number out of range", i, x);
+  if ((uw)n > (uw)TAG(NODE_MAX_FIELDS) || (uw)i >= (uw)n) fpr_cpanic("nodeWith: field count out of range");
+#ifdef FPR_NODE_CHECK
+  if ((uw)UNTAG(n) != fpr_layout_fields(TID(x), ((hdr_t *)x)->var)) fpr_cpanic("nodeWith: field count is not the cell's");
+#endif
   uw words = 1 + (uw)UNTAG(n);
   V c = fpr_alloc(8 * words);
   /* a word loop: freestanding images link no memcpy */
@@ -3844,7 +3872,11 @@ static V g_nodeWith(V n, V i, V x, V v) {
   ((V *)c)[1 + UNTAG(i)] = v;
   return c;
 }
-static V g_nodeSet(V i, V x, V v) { ((V *)x)[1 + UNTAG(i)] = v; return x; }
+static V g_nodeSet(V i, V x, V v) {
+  node_check("nodeSet: not a constructor cell, or field number out of range", i, x);
+  ((V *)x)[1 + UNTAG(i)] = v;
+  return x;
+}
 static V g_arcLive(V d) {
   (void)d;
   if (fpr_plane_memory) return TAG((sw)fpr_plane_memory->arc_live());

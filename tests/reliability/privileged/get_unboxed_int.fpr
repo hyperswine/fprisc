@@ -1,0 +1,4 @@
+# nodeGet on a tagged Int: before the check this segfaulted (exit 139).
+main =
+  s = nodeGet 7 42;
+  print "{s + 1}".
