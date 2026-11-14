@@ -1,0 +1,116 @@
+== sim  [time: perf cpu-clock]
+  0.9%  kernel (page faults, read, mm)
+  0.0%  rt: allocator (alloc/free/blocks)
+  0.0%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  3.1%  rt: scheduler/fuel/stack
+ 95.6%  gen: other generated code
+  0.3%  other/unresolved
+-- [instructions: callgrind]
+  0.0%  rt: string ops (substr/compare/mkstr/concat)
+  0.0%  rt: allocator (alloc/free/blocks)
+  0.1%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  0.0%  rt: closures/generic apply & sort
+  0.9%  rt: scheduler/fuel/stack
+ 99.1%  gen: other generated code
+  0.0%  other/unresolved
+== csv  [time: perf cpu-clock]
+ 25.5%  kernel (page faults, read, mm)
+ 19.7%  gen: string scan (lines/words/split/charFrom)
+  7.2%  gen: int parse (toInt/digits)
+ 14.8%  gen: map walk (insert/lookup/rebalance)
+ 10.9%  rt: string ops (substr/compare/mkstr/concat)
+  6.3%  rt: allocator (alloc/free/blocks)
+ 11.2%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  1.4%  rt: scheduler/fuel/stack
+  2.6%  gen: other generated code
+  0.5%  other/unresolved
+-- [instructions: callgrind]
+ 31.3%  gen: string scan (lines/words/split/charFrom)
+ 17.8%  gen: int parse (toInt/digits)
+ 18.3%  gen: map walk (insert/lookup/rebalance)
+ 12.7%  rt: string ops (substr/compare/mkstr/concat)
+  5.9%  rt: allocator (alloc/free/blocks)
+  8.6%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  0.0%  rt: closures/generic apply & sort
+  0.5%  rt: scheduler/fuel/stack
+  4.7%  gen: other generated code
+  0.2%  other/unresolved
+== wordfreq  [time: perf cpu-clock]
+ 17.4%  kernel (page faults, read, mm)
+ 13.4%  gen: string scan (lines/words/split/charFrom)
+ 27.9%  gen: map walk (insert/lookup/rebalance)
+ 28.9%  rt: string ops (substr/compare/mkstr/concat)
+  1.5%  rt: allocator (alloc/free/blocks)
+  5.6%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  0.2%  rt: closures/generic apply & sort
+  1.2%  rt: scheduler/fuel/stack
+  3.5%  gen: other generated code
+  0.3%  other/unresolved
+-- [instructions: callgrind]
+ 25.0%  gen: string scan (lines/words/split/charFrom)
+ 43.0%  gen: map walk (insert/lookup/rebalance)
+ 16.1%  rt: string ops (substr/compare/mkstr/concat)
+  3.3%  rt: allocator (alloc/free/blocks)
+  6.9%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  0.3%  rt: closures/generic apply & sort
+  0.5%  rt: scheduler/fuel/stack
+  4.9%  gen: other generated code
+  0.0%  other/unresolved
+== wordfreq_mutmap  [time: perf cpu-clock]
+ 27.8%  kernel (page faults, read, mm)
+ 24.8%  gen: string scan (lines/words/split/charFrom)
+  3.9%  rt: string ops (substr/compare/mkstr/concat)
+ 17.9%  rt: hash table (mutmap/hash)
+  9.5%  rt: allocator (alloc/free/blocks)
+  8.5%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  2.0%  rt: closures/generic apply & sort
+  0.9%  rt: scheduler/fuel/stack
+  4.4%  gen: other generated code
+  0.5%  other/unresolved
+-- [instructions: callgrind]
+ 41.2%  gen: string scan (lines/words/split/charFrom)
+  4.9%  rt: string ops (substr/compare/mkstr/concat)
+ 16.3%  rt: hash table (mutmap/hash)
+ 14.1%  rt: allocator (alloc/free/blocks)
+ 10.5%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  4.9%  rt: closures/generic apply & sort
+  0.4%  rt: scheduler/fuel/stack
+  7.1%  gen: other generated code
+  0.6%  other/unresolved
+== treemap  [time: perf cpu-clock]
+  3.9%  kernel (page faults, read, mm)
+ 80.5%  gen: map walk (insert/lookup/rebalance)
+  0.2%  rt: allocator (alloc/free/blocks)
+  9.1%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  1.1%  rt: scheduler/fuel/stack
+  4.6%  gen: other generated code
+  0.2%  other/unresolved
+-- [instructions: callgrind]
+ 81.8%  gen: map walk (insert/lookup/rebalance)
+  0.0%  rt: string ops (substr/compare/mkstr/concat)
+  0.2%  rt: allocator (alloc/free/blocks)
+ 10.6%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  0.0%  rt: closures/generic apply & sort
+  0.8%  rt: scheduler/fuel/stack
+  6.5%  gen: other generated code
+  0.1%  other/unresolved
+== treemap_hashmap  [time: perf cpu-clock]
+  4.9%  kernel (page faults, read, mm)
+ 68.1%  gen: map walk (insert/lookup/rebalance)
+  0.1%  rt: hash table (mutmap/hash)
+  0.2%  rt: allocator (alloc/free/blocks)
+  7.8%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+  4.8%  rt: closures/generic apply & sort
+  1.0%  rt: scheduler/fuel/stack
+ 12.6%  gen: other generated code
+  0.3%  other/unresolved
+-- [instructions: callgrind]
+ 55.7%  gen: map walk (insert/lookup/rebalance)
+  0.0%  rt: string ops (substr/compare/mkstr/concat)
+  0.3%  rt: hash table (mutmap/hash)
+  0.5%  rt: allocator (alloc/free/blocks)
+  6.8%  rt: regions/copy-out/ownership (pend, leave, copy, reach, layout)
+ 17.4%  rt: closures/generic apply & sort
+  0.6%  rt: scheduler/fuel/stack
+ 18.6%  gen: other generated code
+  0.1%  other/unresolved

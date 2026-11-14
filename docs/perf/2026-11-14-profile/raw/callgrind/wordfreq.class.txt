@@ -1,0 +1,63 @@
+total Ir 6,426,287,091
+
+generated code 4,681,877,793 (72.9%) by class:
+  gen:cmp/test                       605,021,958   9.4%
+  gen:stack spill/reload             560,813,518   8.7%
+  gen:reg move                       509,384,380   7.9%
+  gen:bool materialize               500,879,374   7.8%
+  gen:cond branch                    459,928,064   7.2%
+  gen:heap load/store                377,261,392   5.9%
+  gen:call/ret/frame                 355,934,188   5.5%
+  gen:fuel/tls                       334,777,940   5.2%
+  gen:movabs const                   283,786,912   4.4%
+  gen:jmp                            274,475,844   4.3%
+  gen:tag/untag/overflow             272,536,859   4.2%
+  gen:alu/other                      147,077,364   2.3%
+
+top 22 functions:
+    2,756,065,509  42.9%  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2emain_x2e6
+    1,147,356,910  17.9%  fpr_fn_wordEnd_x40119e171f11d63acf
+      833,053,075  13.0%  g_strCompare
+      457,857,263   7.1%  fpr_fn_wordsGo_x40119e171f11d63acf
+      174,678,774   2.7%  g_substr
+      173,852,375   2.7%  fpr_alloc
+      168,010,432   2.6%  fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e1
+       92,074,226   1.4%  kp_reaches
+       90,133,089   1.4%  g_call_pend.part.0
+       70,002,919   1.1%  fpr_fn_lengthGo_x4021100e0c17a53d18
+       69,721,490   1.1%  fpr_fn_byCount
+       66,000,041   1.0%  g_call_leave
+       43,550,224   0.7%  fpr_in_heap
+       35,917,334   0.6%  alloc_in_size
+       30,917,400   0.5%  fpr_layout_fields
+       27,752,864   0.4%  dc_size_in
+       24,885,439   0.4%  fpr_g_strCompare_call2
+       24,733,560   0.4%  layout_total
+       23,704,530   0.4%  layout_find
+       20,248,864   0.3%  g_sortListWith
+       12,267,584   0.2%  fpr_acb_override_slot
+       12,000,846   0.2%  fpr_acb_pends
+
+most-called targets (callgrind call counts; static callee address -> symbol):
+     24,885,439  g_strCompare
+     24,885,439  fpr_g_strCompare_call2
+     22,618,797  0x00000000004255ed'2
+      6,133,792  fpr_acb_override_slot
+      4,000,282  fpr_acb_pends
+      2,293,618  in_image
+      2,190,442  fpr_in_heap
+      2,116,600  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2emain_x2e6
+      2,066,891  fpr_alloc
+      2,061,130  layout_total
+      2,013,374  fpr_fn_wordEnd_x40119e171f11d63acf
+      2,000,001  fpr_g__x24callPend_call1
+      2,000,001  fpr_g__x24callLeave_call2
+      2,000,001  g_call_leave
+      2,000,001  g_call_pend.part.0
+      2,000,000  fpr_g_substr_call3
+      2,000,000  g_substr
+      1,999,981  0x0000000000469cdc'2
+      1,978,618  0x00000000004695f4'2
+      1,166,878  fpr_acb_pool
+      1,058,043  kp_reaches'2
+      1,030,630  layout_find

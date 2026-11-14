@@ -1,0 +1,226 @@
+   4,000,000  463a32: sub    $0x40,%rsp
+   4,000,000  463a36: mov    %rbp,0x38(%rsp)
+   4,000,000  463a3b: lea    0x48(%rsp),%rbp
+   4,000,000  463a40: mov    %rbx,-0x18(%rbp)
+   4,000,000  463a44: mov    %r12,-0x20(%rbp)
+   4,000,000  463a48: mov    %r13,-0x28(%rbp)
+   4,000,000  463a4c: mov    %r14,-0x30(%rbp)
+   4,000,000  463a50: mov    %r15,-0x38(%rbp)
+   4,000,000  463a54: mov    %rdi,%rbx
+   4,000,000  463a57: mov    %rsi,%r14
+   4,000,000  463a5a: mov    %rdx,%r13
+   4,000,000  463a5d: mov    %rcx,%r12
+   4,000,000  463a60: mov    %fs:0xfffffffffffffff8,%r10
+   4,000,000  463a69: lea    0x8(%rsp),%r11
+   4,000,000  463a6e: sub    0x1c8(%r10),%r11
+   4,000,000  463a75: cmp    0x1d0(%r10),%r11
+   4,000,000  463a7c: jb     463a9d <fpr_fn_charFrom_x40119e171f11d63acf+0x6b>
+           9  463a7e: sub    $0x8,%rsp
+           9  463a82: call   494c70 <fpr_stack_grow>
+           9  463a87: add    $0x8,%rsp
+           9  463a8b: test   %rax,%rax
+           9  463a8e: je     463a94 <fpr_fn_charFrom_x40119e171f11d63acf+0x62>
+           9  463a90: lea    -0x8(%rax),%rsp
+           9  463a94: mov    %fs:0xfffffffffffffff8,%r10
+   4,000,000  463a9d: subq   $0x7b,(%r10)
+   4,000,000  463aa1: cmpq   $0x0,(%r10)
+   4,000,000  463aa5: jg     463ab4 <fpr_fn_charFrom_x40119e171f11d63acf+0x82>
+       5,000  463aa7: sub    $0x8,%rsp
+       5,000  463aab: call   46c1b0 <fpr_fuel_save_local>
+       5,000  463ab0: add    $0x8,%rsp
+   4,000,000  463ab4: movabs $0x0,%rax
+   4,000,000  463abe: mov    %r13,%rcx
+   4,000,000  463ac1: sar    $1,%rcx
+   4,000,000  463ac4: cmp    %rax,%rcx
+   4,000,000  463ac7: setge  %al
+   4,000,000  463aca: movzbq %al,%rax
+   4,000,000  463ace: test   %rax,%rax
+   4,000,000  463ad1: jne    463ad8 <fpr_fn_charFrom_x40119e171f11d63acf+0xa6>
+           0  463ad3: mov    %r13,%r15
+           0  463ad6: jmp    463add <fpr_fn_charFrom_x40119e171f11d63acf+0xab>
+   4,000,000  463ad8: jmp    463c43 <fpr_fn_charFrom_x40119e171f11d63acf+0x211>
+           0  463add: mov    %r15,%rax
+           0  463ae0: sar    $1,%rax
+           0  463ae3: mov    %r12,%rcx
+           0  463ae6: sar    $1,%rcx
+           0  463ae9: cmp    %rcx,%rax
+           0  463aec: setge  %cl
+           0  463aef: movzbq %cl,%rcx
+           0  463af3: test   %rcx,%rcx
+           0  463af6: jne    463afa <fpr_fn_charFrom_x40119e171f11d63acf+0xc8>
+           0  463af8: jmp    463b38 <fpr_fn_charFrom_x40119e171f11d63acf+0x106>
+           0  463afa: movabs $0x0,%rax
+           0  463b04: movabs $0x1,%rcx
+           0  463b0e: sub    %rcx,%rax
+           0  463b11: shl    $1,%rax
+           0  463b14: or     $0x1,%rax
+           0  463b18: mov    -0x18(%rbp),%rbx
+           0  463b1c: mov    -0x20(%rbp),%r12
+           0  463b20: mov    -0x28(%rbp),%r13
+           0  463b24: mov    -0x30(%rbp),%r14
+           0  463b28: mov    -0x38(%rbp),%r15
+           0  463b2c: mov    %rbp,%r11
+           0  463b2f: mov    -0x10(%rbp),%rbp
+           0  463b33: lea    -0x8(%r11),%rsp
+           0  463b37: ret
+           0  463b38: mov    %rbx,%rcx
+           0  463b3b: and    $0x1,%rcx
+           0  463b3f: test   %rcx,%rcx
+           0  463b42: jne    463b5d <fpr_fn_charFrom_x40119e171f11d63acf+0x12b>
+           0  463b44: mov    (%rbx),%rcx
+           0  463b47: movabs $0x2328,%rdx
+           0  463b51: cmp    %rdx,%rcx
+           0  463b54: sete   %cl
+           0  463b57: movzbq %cl,%rcx
+           0  463b5b: jmp    463b67 <fpr_fn_charFrom_x40119e171f11d63acf+0x135>
+           0  463b5d: movabs $0x0,%rcx
+           0  463b67: test   %rcx,%rcx
+           0  463b6a: jne    463b6e <fpr_fn_charFrom_x40119e171f11d63acf+0x13c>
+           0  463b6c: jmp    463bac <fpr_fn_charFrom_x40119e171f11d63acf+0x17a>
+           0  463b6e: mov    %rbx,%rcx
+           0  463b71: mov    0x8(%rcx),%rdx
+           0  463b75: movabs $0x0,%rsi
+           0  463b7f: cmp    %rsi,%rax
+           0  463b82: setge  %sil
+           0  463b86: movzbq %sil,%rsi
+           0  463b8a: test   %rsi,%rsi
+           0  463b8d: jne    463b91 <fpr_fn_charFrom_x40119e171f11d63acf+0x15f>
+           0  463b8f: jmp    463bac <fpr_fn_charFrom_x40119e171f11d63acf+0x17a>
+           0  463b91: cmp    %rdx,%rax
+           0  463b94: setl   %dl
+           0  463b97: movzbq %dl,%rdx
+           0  463b9b: test   %rdx,%rdx
+           0  463b9e: jne    463ba2 <fpr_fn_charFrom_x40119e171f11d63acf+0x170>
+           0  463ba0: jmp    463bac <fpr_fn_charFrom_x40119e171f11d63acf+0x17a>
+           0  463ba2: add    %rax,%rcx
+           0  463ba5: movzbq 0x10(%rcx),%rax
+           0  463baa: jmp    463bc4 <fpr_fn_charFrom_x40119e171f11d63acf+0x192>
+           0  463bac: mov    %rbx,%rdi
+           0  463baf: mov    %r15,%rsi
+           0  463bb2: sub    $0x8,%rsp
+           0  463bb6: call   487d40 <fpr_g_charAt_call2>
+           0  463bbb: add    $0x8,%rsp
+           0  463bbf: sar    $1,%rax
+           0  463bc2: jmp    463bc4 <fpr_fn_charFrom_x40119e171f11d63acf+0x192>
+           0  463bc4: mov    %r14,%rcx
+           0  463bc7: sar    $1,%rcx
+           0  463bca: cmp    %rcx,%rax
+           0  463bcd: sete   %al
+           0  463bd0: movzbq %al,%rax
+           0  463bd4: test   %rax,%rax
+           0  463bd7: jne    463bdb <fpr_fn_charFrom_x40119e171f11d63acf+0x1a9>
+           0  463bd9: jmp    463bfe <fpr_fn_charFrom_x40119e171f11d63acf+0x1cc>
+           0  463bdb: mov    %r15,%rax
+           0  463bde: mov    -0x18(%rbp),%rbx
+           0  463be2: mov    -0x20(%rbp),%r12
+           0  463be6: mov    -0x28(%rbp),%r13
+           0  463bea: mov    -0x30(%rbp),%r14
+           0  463bee: mov    -0x38(%rbp),%r15
+           0  463bf2: mov    %rbp,%r11
+           0  463bf5: mov    -0x10(%rbp),%rbp
+           0  463bf9: lea    -0x8(%r11),%rsp
+           0  463bfd: ret
+           0  463bfe: mov    %r15,%rax
+           0  463c01: sar    $1,%rax
+           0  463c04: movabs $0x1,%rcx
+           0  463c0e: add    %rcx,%rax
+           0  463c11: shl    $1,%rax
+           0  463c14: mov    %rax,%rcx
+           0  463c17: or     $0x1,%rcx
+           0  463c1b: mov    %fs:0xfffffffffffffff8,%r10
+           0  463c24: subq   $0x45,(%r10)
+           0  463c28: cmpq   $0x0,(%r10)
+           0  463c2c: jg     463c3b <fpr_fn_charFrom_x40119e171f11d63acf+0x209>
+           0  463c2e: sub    $0x8,%rsp
+           0  463c32: call   46c1b0 <fpr_fuel_save_local>
+           0  463c37: add    $0x8,%rsp
+           0  463c3b: mov    %rcx,%r15
+           0  463c3e: jmp    463add <fpr_fn_charFrom_x40119e171f11d63acf+0xab>
+   4,000,000  463c43: mov    %rbx,%rax
+   4,000,000  463c46: and    $0x1,%rax
+   4,000,000  463c4a: test   %rax,%rax
+   4,000,000  463c4d: jne    463c68 <fpr_fn_charFrom_x40119e171f11d63acf+0x236>
+   4,000,000  463c4f: mov    (%rbx),%rax
+   4,000,000  463c52: movabs $0x2328,%rcx
+   4,000,000  463c5c: cmp    %rcx,%rax
+   4,000,000  463c5f: sete   %al
+   4,000,000  463c62: movzbq %al,%rax
+   4,000,000  463c66: jmp    463c72 <fpr_fn_charFrom_x40119e171f11d63acf+0x240>
+           0  463c68: movabs $0x0,%rax
+   4,000,000  463c72: test   %rax,%rax
+   4,000,000  463c75: jne    463c7f <fpr_fn_charFrom_x40119e171f11d63acf+0x24d>
+           0  463c77: mov    %r13,%r15
+           0  463c7a: jmp    463add <fpr_fn_charFrom_x40119e171f11d63acf+0xab>
+   4,000,000  463c7f: jmp    463c81 <fpr_fn_charFrom_x40119e171f11d63acf+0x24f>
+   4,000,000  463c81: mov    %rbx,%rcx
+   4,000,000  463c84: mov    0x8(%rcx),%rax
+   4,000,000  463c88: mov    %r12,%rdx
+   4,000,000  463c8b: sar    $1,%rdx
+   4,000,000  463c8e: cmp    %rax,%rdx
+   4,000,000  463c91: setle  %al
+   4,000,000  463c94: movzbq %al,%rax
+   4,000,000  463c98: test   %rax,%rax
+   4,000,000  463c9b: jne    463ca5 <fpr_fn_charFrom_x40119e171f11d63acf+0x273>
+           0  463c9d: mov    %r13,%r15
+           0  463ca0: jmp    463add <fpr_fn_charFrom_x40119e171f11d63acf+0xab>
+   4,000,000  463ca5: jmp    463ca7 <fpr_fn_charFrom_x40119e171f11d63acf+0x275>
+   4,000,000  463ca7: mov    %r13,%rax
+   4,000,000  463caa: sar    $1,%rax
+   4,000,000  463cad: mov    %r13,%rsi
+   4,000,000  463cb0: jmp    463cb2 <fpr_fn_charFrom_x40119e171f11d63acf+0x280>
+  31,557,498  463cb2: cmp    %rdx,%rax
+  31,557,498  463cb5: setge  %dil
+  31,557,498  463cb9: movzbq %dil,%rdi
+  31,557,498  463cbd: test   %rdi,%rdi
+  31,557,498  463cc0: jne    463cc4 <fpr_fn_charFrom_x40119e171f11d63acf+0x292>
+  30,557,498  463cc2: jmp    463d02 <fpr_fn_charFrom_x40119e171f11d63acf+0x2d0>
+   1,000,000  463cc4: movabs $0x0,%rax
+   1,000,000  463cce: movabs $0x1,%rcx
+   1,000,000  463cd8: sub    %rcx,%rax
+   1,000,000  463cdb: shl    $1,%rax
+   1,000,000  463cde: or     $0x1,%rax
+   1,000,000  463ce2: mov    -0x18(%rbp),%rbx
+   1,000,000  463ce6: mov    -0x20(%rbp),%r12
+   1,000,000  463cea: mov    -0x28(%rbp),%r13
+   1,000,000  463cee: mov    -0x30(%rbp),%r14
+   1,000,000  463cf2: mov    -0x38(%rbp),%r15
+   1,000,000  463cf6: mov    %rbp,%r11
+   1,000,000  463cf9: mov    -0x10(%rbp),%rbp
+   1,000,000  463cfd: lea    -0x8(%r11),%rsp
+   1,000,000  463d01: ret
+  30,557,498  463d02: mov    %rcx,%rdi
+  30,557,498  463d05: add    %rax,%rdi
+  30,557,498  463d08: movzbq 0x10(%rdi),%rdi
+  30,557,498  463d0d: mov    %r14,%r8
+  30,557,498  463d10: sar    $1,%r8
+  30,557,498  463d13: cmp    %r8,%rdi
+  30,557,498  463d16: sete   %dil
+  30,557,498  463d1a: movzbq %dil,%rdi
+  30,557,498  463d1e: test   %rdi,%rdi
+  30,557,498  463d21: jne    463d25 <fpr_fn_charFrom_x40119e171f11d63acf+0x2f3>
+  27,557,498  463d23: jmp    463d48 <fpr_fn_charFrom_x40119e171f11d63acf+0x316>
+   3,000,000  463d25: mov    %rsi,%rax
+   3,000,000  463d28: mov    -0x18(%rbp),%rbx
+   3,000,000  463d2c: mov    -0x20(%rbp),%r12
+   3,000,000  463d30: mov    -0x28(%rbp),%r13
+   3,000,000  463d34: mov    -0x30(%rbp),%r14
+   3,000,000  463d38: mov    -0x38(%rbp),%r15
+   3,000,000  463d3c: mov    %rbp,%r11
+   3,000,000  463d3f: mov    -0x10(%rbp),%rbp
+   3,000,000  463d43: lea    -0x8(%r11),%rsp
+   3,000,000  463d47: ret
+  27,557,498  463d48: movabs $0x1,%rsi
+  27,557,498  463d52: mov    %rax,%rdi
+  27,557,498  463d55: add    %rsi,%rdi
+  27,557,498  463d58: mov    %rdi,%rsi
+  27,557,498  463d5b: shl    $1,%rsi
+  27,557,498  463d5e: or     $0x1,%rsi
+  27,557,498  463d62: mov    %fs:0xfffffffffffffff8,%r10
+  27,557,498  463d6b: subq   $0x23,(%r10)
+  27,557,498  463d6f: cmpq   $0x0,(%r10)
+  27,557,498  463d73: jg     463d82 <fpr_fn_charFrom_x40119e171f11d63acf+0x350>
+       8,827  463d75: sub    $0x8,%rsp
+       8,827  463d79: call   46c1b0 <fpr_fuel_save_local>
+       8,827  463d7e: add    $0x8,%rsp
+  27,557,498  463d82: mov    %rdi,%rax
+  27,557,498  463d85: jmp    463cb2 <fpr_fn_charFrom_x40119e171f11d63acf+0x280>

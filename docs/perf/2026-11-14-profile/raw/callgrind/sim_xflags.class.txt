@@ -1,0 +1,49 @@
+total Ir 6,714,325,404
+
+generated code 6,651,800,351 (99.1%) by class:
+  gen:reg move                       962,518,429  14.3%
+  gen:cmp/test                       961,187,067  14.3%
+  gen:jmp                            800,909,901  11.9%
+  gen:tag/untag/overflow             722,024,105  10.8%
+  gen:cond branch                    681,537,476  10.2%
+  gen:heap load/store                640,761,399   9.5%
+  gen:bool materialize               640,083,236   9.5%
+  gen:stack spill/reload             560,386,085   8.3%
+  gen:movabs const                   400,353,182   6.0%
+  gen:alu/other                      161,283,469   2.4%
+  gen:fuel/tls                       120,378,039   1.8%
+  gen:call/ret/frame                     377,963   0.0%
+
+top 15 functions:
+    6,640,281,408  98.9%  fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0
+       19,337,838   0.3%  drain
+       12,812,670   0.2%  deq
+        8,739,084   0.1%  hart_loop
+        7,538,870   0.1%  fpr_fn__x24worker_x2etrmc_x2e_x24trmc_x2e3_x2egen_x2e0
+        6,405,904   0.1%  backlog_add
+        4,425,879   0.1%  fpr_ctx_switch
+        2,329,380   0.0%  fpr_fuel_save_local
+        2,212,911   0.0%  fpr_fuel_exhausted
+        1,973,798   0.0%  kp_reaches
+        1,747,043   0.0%  to_sched
+        1,320,110   0.0%  fpr_fn__x24typed_x2emono_x2emain_x2e5
+          740,069   0.0%  fpr_fn__x24typed_x2emono_x2emain_x2e3
+          740,069   0.0%  fpr_fn__x24typed_x2emono_x2emain_x2e1
+          700,069   0.0%  fpr_fn_lengthGo_x4021100e0c17a53d18
+
+most-called targets (callgrind call counts; static callee address -> symbol):
+        232,941  hal_actor_stack
+        232,938  fpr_fuel_save_local
+        116,493  tmr_drain
+        116,493  drain
+        116,493  deq
+        116,471  fpr_ctx_switch
+        116,471  backlog_add
+        116,470  to_sched
+        116,470  0x0000000000454e00'2
+        116,469  fpr_fuel_exhausted
+        116,279  fpr_fn__x24worker_x2espineE_x2ecursor_x2e_x24worker_x2etrmc_x2e_x24trmc_x2e3_x2erun_x2e0
+         43,861  kp_reaches'2
+         17,595  layout_find
+         17,552  in_image
+         17,550  fpr_in_heap

@@ -1,0 +1,8 @@
+# bench.py --runs 10 (load-gated, interleaved), 2026-11-14 ~19:59 AEDT; copied verbatim from the run's stdout
+sim                        0.404 s (min 0.387)       14 MB  user 0.408 sys 0.004
+sim_nocallreg              0.355 s (min 0.343)       14 MB  user 0.361 sys 0.004
+sim_xflags                 0.382 s (min 0.367)       14 MB  user 0.378 sys 0.004
+csv                        0.704 s (min 0.680)      170 MB  user 0.540 sys 0.179
+csv_nocallreg              0.682 s (min 0.637)      170 MB  user 0.544 sys 0.151
+treemap                    1.164 s (min 1.052)       60 MB  user 1.121 sys 0.058
+treemap_nocopyout          0.976 s (min 0.924)       43 MB  user 0.965 sys 0.026

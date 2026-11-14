@@ -1,0 +1,49 @@
+total Ir 2,819,700,278
+
+generated code 2,775,224,549 (98.4%) by class:
+  gen:cmp/test                       432,157,466  15.3%
+  gen:reg move                       331,765,909  11.8%
+  gen:cond branch                    311,606,541  11.1%
+  gen:bool materialize               291,284,288  10.3%
+  gen:tag/untag/overflow             290,690,845  10.3%
+  gen:heap load/store                267,515,648   9.5%
+  gen:jmp                            262,119,033   9.3%
+  gen:stack spill/reload             246,509,772   8.7%
+  gen:movabs const                   125,943,548   4.5%
+  gen:call/ret/frame                  94,324,727   3.3%
+  gen:fuel/tls                        65,278,819   2.3%
+  gen:alu/other                       56,027,953   2.0%
+
+top 15 functions:
+    2,200,600,217  78.0%  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2e98928d64
+      340,054,236  12.1%  fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88
+       83,086,422   2.9%  fpr_fn__x24loop_x2ein_x2elookups
+       70,503,119   2.5%  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2eloop_x2einserts
+       45,252,995   1.6%  fpr_fn__x24typed_x2emono_x2ereport_x2e1
+       35,718,613   1.3%  fpr_fn_node_x4038720051f9dd2f88
+       12,500,000   0.4%  fpr_g__x24fnIs_call2
+        8,010,496   0.3%  drain
+        5,308,316   0.2%  deq
+        3,619,208   0.1%  hart_loop
+        3,028,929   0.1%  alloc_in_size
+        2,913,221   0.1%  fpr_alloc
+        2,654,079   0.1%  backlog_add
+        1,833,709   0.1%  fpr_ctx_switch
+        1,042,734   0.0%  fpr_alloc_save_local
+
+most-called targets (callgrind call counts; static callee address -> symbol):
+      8,578,347  0x000000000041ee8d'2
+        639,254  fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2e98928d64
+        507,277  fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88
+        500,000  fpr_g__x24fnIs_call2
+        374,731  0x000000000041a351'2
+        275,465  fpr_fn_node_x4038720051f9dd2f88
+        136,734  0x000000000042088d'2
+        126,072  0x000000000041f087'2
+         96,511  hal_actor_stack
+         96,508  fpr_fuel_save_local
+         94,802  fpr_acb_override_slot
+         77,525  fpr_acb_pool
+         48,256  backlog_add
+         48,256  tmr_drain
+         48,256  drain
