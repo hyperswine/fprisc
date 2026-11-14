@@ -178,8 +178,8 @@ for the kernel and the cache-missing tree walks.
        (`g_sortListWith → apply2 → fpr_applyN → callf`, 7.2 M calls, **29% of instructions**)
      * the insert walk costs +15% instructions (an `HK` box per key)
      * the hash function is called through a closure (1 M `callf → g_intHash`).
-   * Ints are not boxed in the nodes I looked at. Tree walks are latency-bound, so node layout and locality matter for
-     treemap, but I have no measurement isolating the layout itself.
+   * I did not inspect node layout or boxing directly. Tree walks are latency-bound (3.1 G instructions/s), so
+     layout and locality probably matter for treemap, but nothing here isolates them.
 4. **x64 codegen: confirmed, and it is the largest bucket, but not for the reasons I gave.**
    The hot loops make no calls and do not allocate, so cross-call register allocation and bump spills are not what they pay
    for. They pay for per-instruction selection:
