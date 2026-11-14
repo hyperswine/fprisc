@@ -35,3 +35,4 @@ settle check root failed = known = knownItems check root;
   _ = List.map (fn i -> print "KNOWN FAIL {check}:{i}") (List.filter (fn i -> List.has i known) failed);
   _ = List.map (fn i -> print "NOW PASSES {check}:{i}: remove it from tests/sol-checks-known-failures.tsv") fixed;
   if unexpected == [] and fixed == [] then Unit else error "{check}: unexpected failures {unexpected}, known failures now passing {fixed}".
+isFile path = ProcessResult code _ _ = call ["test","-f",path] [] 5000; code == 0.
