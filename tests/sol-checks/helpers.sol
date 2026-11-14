@@ -24,3 +24,14 @@ pool slots pending active done = case pending of
 | [] -> List.append (List.rev done) (List.map collect active).
 parallel : unsafe Int -> List (String, List String, String, List (String, String), Int) -> List (String, Int, String, String).
 parallel slots jobs = pool slots jobs [] [].
+# Known failures inside one check: rows "<check>:<item>" in tests/sol-checks-known-failures.tsv.
+knownItems check root = prefix = "{check}:"; List.concat (List.map (fn row -> case Str.split 9 row of
+    key :: _ -> if Str.startsWith prefix key then [Str.slice key (Str.len prefix) (Str.len key)] else []
+  | [] -> []) (Str.lines (readPath "{root}/tests/sol-checks-known-failures.tsv"))).
+# Fails on an unexpected failed item, or on a known item that did not fail.
+settle check root failed = known = knownItems check root;
+  unexpected = List.filter (fn i -> not (List.has i known)) failed;
+  fixed = List.filter (fn k -> not (List.has k failed)) known;
+  _ = List.map (fn i -> print "KNOWN FAIL {check}:{i}") (List.filter (fn i -> List.has i known) failed);
+  _ = List.map (fn i -> print "NOW PASSES {check}:{i}: remove it from tests/sol-checks-known-failures.tsv") fixed;
+  if unexpected == [] and fixed == [] then Unit else error "{check}: unexpected failures {unexpected}, known failures now passing {fixed}".
