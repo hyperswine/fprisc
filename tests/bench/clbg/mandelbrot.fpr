@@ -1,0 +1,33 @@
+# mandelbrot (SPEC.md): a binary PBM of the Mandelbrot set
+String = use "std/string".
+List = use "std/list".
+OS = use "std/os".
+
+inSet : (k : Int | measure k) -> F64 -> F64 -> F64 -> F64 -> F64 -> F64 -> Bool .
+inSet k cr ci zr zi tr ti = if tr + ti > 4.0 then False else if k <= 0 then True else
+  zi1 = 2.0 * zr * zi + ci;
+  zr1 = tr - ti + cr;
+  inSet (k - 1) cr ci zr1 zi1 (zr1 * zr1) (zi1 * zi1).
+
+shl : Int -> (k : Int | measure k) -> Int .
+shl b k = if k <= 0 then b else shl (b * 2) (k - 1).
+
+# one row's bytes, most significant bit first, padded to a whole byte
+row : Int -> F64 -> (n : Int) -> (x : Int | measure (n - x)) -> Int -> Int -> List String -> List String .
+row n2 ci n x bits byte acc = if x >= n then
+    (if bits == 0 then List.reverse acc else List.reverse (chr (shl byte (8 - bits)) :: acc))
+  else
+  cr = 2.0 * F64.ofInt x / F64.ofInt n2 - 1.5;
+  b = byte * 2 + (if inSet 50 cr ci 0.0 0.0 0.0 0.0 then 1 else 0);
+  if bits == 7 then row n2 ci n (x + 1) 0 0 (chr b :: acc) else row n2 ci n (x + 1) (bits + 1) b acc.
+
+rows : (n : Int) -> (y : Int | measure (n - y)) -> List String -> List String .
+rows n y acc = if y >= n then List.reverse acc else
+  ci = 2.0 * F64.ofInt y / F64.ofInt n - 1.0;
+  rows n (y + 1) (strJoin "" (row n ci n 0 0 0 Nil) :: acc).
+
+main =
+  n = case Sys.args Unit of s :: _ -> (case String.toInt s of Ok v -> v | Err _ -> 4000) | Nil -> 4000;
+  _ = print "P4\n{n} {n}";
+  _ = OS.write 1 (strJoin "" (rows n 0 Nil));
+  Unit.

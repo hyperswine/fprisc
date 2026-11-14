@@ -1,0 +1,58 @@
+# spectralnorm (SPEC.md): power method on A^T A, vectors as linear F64 vectors
+String = use "std/string".
+
+a : Int -> Int -> F64 .
+a i j = 1.0 / F64.ofInt ((i + j) * (i + j + 1) / 2 + i + 1).
+
+# sum over j of A(i, j) * u[j] (or A(j, i) when t)
+rowSum : Bool -> Int -> (n : Int) -> (j : Int | measure (n - j)) -> F64 -> Vector F64 -> (F64, Vector F64) .
+rowSum t i n j acc u = if j >= n then (acc, u) else
+  (x, u1) = Vec.get j u;
+  rowSum t i n (j + 1) (acc + (if t then a j i else a i j) * x) u1.
+
+mulRows : Bool -> (n : Int) -> (i : Int | measure (n - i)) -> Vector F64 -> Vector F64 -> (Vector F64, Vector F64) .
+mulRows t n i u w = if i >= n then (u, w) else
+  (s, u1) = rowSum t i n 0 0.0 u;
+  mulRows t n (i + 1) u1 (Vec.set i s w).
+
+# AtA u, writing into w; answers u back and the result
+atav : Int -> Vector F64 -> Vector F64 -> Vector F64 -> (Vector F64, Vector F64, Vector F64) .
+atav n u tmp w =
+  (u1, tmp1) = mulRows False n 0 u tmp;
+  (tmp2, w1) = mulRows True n 0 tmp1 w;
+  (u1, tmp2, w1).
+
+iterate : (k : Int | measure k) -> Int -> Vector F64 -> Vector F64 -> Vector F64 -> (Vector F64, Vector F64, Vector F64) .
+iterate k n u v tmp = if k <= 0 then (u, v, tmp) else
+  (u1, tmp1, v1) = atav n u tmp v;
+  (v2, tmp2, u2) = atav n v1 tmp1 u1;
+  iterate (k - 1) n u2 v2 tmp2.
+
+dots : (n : Int) -> (i : Int | measure (n - i)) -> F64 -> F64 -> Vector F64 -> Vector F64 -> (F64, F64, Vector F64, Vector F64) .
+dots n i vbv vv u v = if i >= n then (vbv, vv, u, v) else
+  (x, u1) = Vec.get i u;
+  (y, v1) = Vec.get i v;
+  dots n (i + 1) (vbv + x * y) (vv + y * y) u1 v1.
+
+ones : (n : Int) -> (i : Int | measure (n - i)) -> Vector F64 -> Vector F64 .
+ones n i v = if i >= n then v else ones n (i + 1) (Vec.push 1.0 v).
+
+zeros : (n : Int) -> (i : Int | measure (n - i)) -> Vector F64 -> Vector F64 .
+zeros n i v = if i >= n then v else zeros n (i + 1) (Vec.push 0.0 v).
+
+digits9 : (n : Int | measure n) -> Int -> String -> String .
+digits9 n f acc = if n <= 0 then acc else digits9 (n - 1) (f / 10) (strcat (chr (48 + f % 10)) acc).
+
+fmt9 : F64 -> String .
+fmt9 x =
+  r = F64.toInt (x * 1000000000.0 + 0.5);
+  "{r / 1000000000}.{digits9 9 (r % 1000000000) ""}".
+
+main =
+  n = case Sys.args Unit of s :: _ -> (case String.toInt s of Ok v -> v | Err _ -> 2000) | Nil -> 2000;
+  (u, v, tmp) = iterate 10 n (ones n 0 (Vec.new Unit)) (zeros n 0 (Vec.new Unit)) (zeros n 0 (Vec.new Unit));
+  (vbv, vv, u1, v1) = dots n 0 0.0 0.0 u v;
+  _ = Vec.free u1;
+  _ = Vec.free v1;
+  _ = Vec.free tmp;
+  print (fmt9 (F64.sqrt (vbv / vv))).
