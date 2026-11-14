@@ -58,7 +58,7 @@ splitCharGo fuel c s from n =
 # (Codegen.StringScan)
 charFrom : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> Int .
 charFrom s c i n | i >= n = 0 - 1.
-charFrom s c i n | charAt s i == c = i.
+charFrom s c i n | charAt s i == c + 0 = i.
 charFrom s c i n = charFrom s c (i + 1) n.
 # front to back (tail recursion modulo cons: one cell per piece, no reverse)
 splitGo : (fuel : Int | measure fuel) -> String -> String -> Int -> List String .
@@ -245,17 +245,23 @@ fromInt n = str n.
 # the WHOLE string must be a decimal integer, with an optional leading "-"
 toInt : String -> Result Int String .
 toInt s =
+  neg = isNeg s;
+  v = toIntGo s neg;
+  if v <= 0 then Ok (if neg then v else 0 - v)
+  else Err (toIntErr s v).
+isNeg : String -> Bool .
+isNeg s = strlen s > 0 and charAt s 0 == 45.
+toIntGo : String -> Bool -> Int .
+toIntGo s neg =
   n = strlen s;
-  neg = startsWith "-" s;
   first = if neg then 1 else 0;
   v = if first >= n then 1 else digitsGo s first n 0;
-  if v <= 0 and (neg or v != intMin Unit) then Ok (if neg then v else 0 - v)
-  else toIntErr s v.
+  if neg then v else if v == intMin Unit then 2 else v.
 # the failures, apart, so toInt stays small enough to inline (a caller's
 # match on its Ok then needs no box)
-toIntErr : String -> Int -> Result Int String .
-toIntErr s v | v == 1 = Err "not a number: \"{s}\"".
-toIntErr s v = Err "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})".
+toIntErr : String -> Int -> String .
+toIntErr s v | v == 1 = "not a number: \"{s}\"".
+toIntErr s _ = "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})".
 # The digits accumulate NEGATIVELY so the most negative Int is reachable,
 # which leaves the positive answers for the failures, unboxed: 1, not a
 # digit; 2, the value would pass the 63-bit Int (it used to wrap silently:
@@ -264,7 +270,11 @@ digitsGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int .
 digitsGo s i n acc | i >= n = acc.
 digitsGo s i n acc =
   c = charAt s i;
-  if not (isDigit c) then 1
+  if c < 48 then 1
+  else if c > 57 then 1
+  else if acc > intMin Unit / 10 then
+    (if acc <= 0 then digitsGo s (i + 1) n (acc * 10 - (c - 48)) else 2)
+  else if acc > 0 then 2
   else if acc < (intMin Unit + (c - 48)) / 10 then 2
   else digitsGo s (i + 1) n (acc * 10 - (c - 48)).
 

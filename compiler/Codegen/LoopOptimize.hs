@@ -29,7 +29,7 @@ moveInvariants budget inlineFloats fn=
             Just [args]<-[M.lookup (bId b) incoming],((param,_),arg)<-zip (bParams b) args,
             Just d<-[M.lookup arg defs],d/=bId b,dominates d (bId b)]
           resolve v=maybe v resolve (M.lookup v aliases)
-          available moved v=S.member v moved || maybe False (\d->S.notMember d members && dominates d pre) (M.lookup v defs)
+          available moved v=S.member v moved || maybe False (\d->S.notMember d members && dominates d pre) (M.lookup (resolve v) defs)
           loopInstrs=[i | b<-fnBlocks f,S.member (bId b) members,i<-bInstrs b]
           candidates=[(v,Instr (Just (v,t)) (mapOpUses resolve op)) | Instr (Just (v,t)) op<-loopInstrs,speculatable op]
           choose excluded=go S.empty []

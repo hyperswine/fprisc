@@ -110,13 +110,15 @@ discharge width fn
        in M.findWithDefault v' v' repOf
     cmps = M.fromList [(resolve v, (o, resolve a, resolve b)) | Instr (Just (v, TPred)) (OCmp o a b) <- instrs]
     consts = M.fromList [(resolve v, n) | Instr (Just (v, TInt)) (OConstInt n) <- instrs]
-    -- Direct producer bounds: constants, string byte lengths (>= 0), and
-    -- bitwise AND with a non-negative constant mask (in 0..mask).
+    -- Direct producer bounds: constants, string byte lengths (>= 0), byte reads
+    -- (0..255), and bitwise AND with a non-negative constant mask (in 0..mask).
     producerBounds :: M.Map VId (Integer, Integer)
     producerBounds = M.fromListWith (\(l1, u1) (l2, u2) -> (max l1 l2, min u1 u2)) $ concat
       [ case op of
           OConstInt n -> [(resolve v, (n, n))]
           OStrLen _ -> [(resolve v, (0, hi))]
+          OLoadByte _ _ -> [(resolve v, (0, 255))]
+          OCharAt _ _ -> [(resolve v, (0, 255))]
           OBit BAnd a b
             | Just m <- M.lookup (resolve b) consts, m >= 0 -> [(resolve v, (0, min hi m))]
             | Just m <- M.lookup (resolve a) consts, m >= 0 -> [(resolve v, (0, min hi m))]
@@ -258,15 +260,27 @@ discharge width fn
               _ -> []
             entryLBs = [l | (e, Just ae) <- entryInts, Just l <- [lbWith M.empty (outFactsOnEdge e (bId h)) ae]]
             entryUBs = [u' | (e, Just ae) <- entryInts, Just u' <- [ubWith M.empty (outFactsOnEdge e (bId h)) ae]]
-            extraLB = if nonDecreasing && length entryLBs == length entryInts
-                        then M.singleton u (minimum entryLBs) else M.empty
-            extraUB = if nonIncreasing && length entryUBs == length entryInts
-                        then M.singleton u (maximum entryUBs) else M.empty
+            entryMin = minimum entryLBs
+            entryMax = maximum entryUBs
+            -- Even when a back-edge step is not a constant add/sub (e.g.,
+            -- `r = u * 10 - d` with `u <= 0` and `d >= 0`), if assuming the
+            -- entry bound `u <= entryMax` (or `u >= entryMin`) implies every
+            -- back-edge value `r` also satisfies `r <= entryMax` (or `r >= entryMin`),
+            -- the bound holds inductively on every iteration.
+            inductiveLB = length entryLBs == length entryInts && (nonDecreasing || all (\(l, mr) -> case mr of
+              Just r -> r == u || maybe False (>= entryMin) (varLB (M.singleton u entryMin) M.empty (latchFacts l) r)
+              Nothing -> False) backInts)
+            inductiveUB = length entryUBs == length entryInts && (nonIncreasing || all (\(l, mr) -> case mr of
+              Just r -> r == u || maybe False (<= entryMax) (varUB M.empty (M.singleton u entryMax) (latchFacts l) r)
+              Nothing -> False) backInts)
+            extraLB = if inductiveLB then M.singleton u entryMin else M.empty
+            extraUB = if inductiveUB then M.singleton u entryMax else M.empty
          in (relLB ++ relUB, extraLB, extraUB)
       where
         loopIntVar = case paramTy of
           TInt -> Just (resolve param)
-          TVal -> case [resolve w | Instr (Just (w, TInt)) (OUntag p') <- bInstrs h, p' == param] of
+          TVal -> case [resolve w | b <- fnBlocks fn, S.member (bId h) (M.findWithDefault S.empty (bId b) doms),
+                                    Instr (Just (w, TInt)) (OUntag p') <- bInstrs b, p' == param] of
             w : _ -> Just w
             [] -> Nothing
           _ -> Nothing
@@ -303,13 +317,172 @@ discharge width fn
       | k > 0 = maybe False (\u -> u + k <= hi) (ubWith extraUB fs x)
       | k < 0 = maybe False (\l -> l + k >= lo) (lbWith extraLB fs x)
       | otherwise = True
-    arithProof extraLB extraUB fs o x y = case o of
-      Add -> case (M.lookup (resolve x) consts, M.lookup (resolve y) consts) of
-        (_, Just k) -> fitsAdd extraLB extraUB fs (resolve x) k
-        (Just k, _) -> fitsAdd extraLB extraUB fs (resolve y) k
-        _ -> False
-      Sub | Just k <- M.lookup (resolve y) consts -> fitsAdd extraLB extraUB fs (resolve x) (negate k)
+    -- When a comparison establishes `x >= y` where `y = (a + b) / d` (with
+    -- `d > 0` and `a + b <= 0`), we have `x * d >= a + b - (d - 1)`; similarly
+    -- `x <= (a + b) / d` (with `d > 0` and `a + b >= 0`) implies
+    -- `x * d <= a + b + (d - 1)`. This discharges the `acc * 10 - d` steps in
+    -- decimal parsers guarded by `acc < (intMin + d) / 10` or `acc <= (intMax - d) / 10`.
+    divMulLB extraLB extraUB fs x k = minimum'
+      [ lab - (k - 1) + c * k
+      | (q, x', c) <- fs
+      , x' == x
+      , Just (ab, d) <- [divOf q]
+      , Just dv <- [M.lookup (resolve d) consts]
+      , dv == k
+      , Just uab <- [ubWith extraUB fs (resolve ab)]
+      , uab <= 0
+      , Just lab <- [lbWith extraLB fs (resolve ab)] ]
+    divMulUB extraLB extraUB fs x k = maximum'
+      [ uab + (k - 1) + c * k
+      | (x', q, c) <- fs
+      , x' == x
+      , Just (ab, d) <- [divOf q]
+      , Just dv <- [M.lookup (resolve d) consts]
+      , dv == k
+      , Just lab <- [lbWith extraLB fs (resolve ab)]
+      , lab >= 0
+      , Just uab <- [ubWith extraUB fs (resolve ab)] ]
+    -- Exact `x * d - a >= -(d - 1)` when `x >= a / d` and `a <= 0`: even when
+    -- `x * d` alone only satisfies `x * d >= intMin` (when `a = intMin + r`
+    -- with `0 <= r < d`), subtracting `r` satisfies `x * d - r >= a - (d - 1) - r = intMin - (d - 1)`?
+    -- Wait: when `a = m + r` (`m = intMin`, `0 <= r <= d - 1`), for any `r` in `0..d-1`:
+    -- if `x >= (m + r) `quot` d`, does `x * d - r >= m` ALWAYS hold?
+    -- Proof: let `m = q0 * d - rem0` where `0 <= rem0 < d` (since `m < 0`, `m `quot` d = q0` when `rem0 == 0` or `q0` with `m = q0 * d - rem0`).
+    -- Since `0 <= r < d`:
+    --   * If `r <= rem0`: `m + r <= q0 * d < 0`, so `(m + r) `quot` d = q0`.
+    --     Then `x >= q0` implies `x * d - r >= q0 * d - r >= q0 * d - rem0 = m`!
+    --   * If `r > rem0`: `m + r = q0 * d + (r - rem0) = (q0 + 1) * d - (d - (r - rem0))`,
+    --     and since `0 < d - (r - rem0) < d` (as `1 <= r - rem0 < d`), `(m + r) `quot` d = q0 + 1`!
+    --     Then `x >= q0 + 1` implies `x * d - r >= (q0 + 1) * d - r = q0 * d + (d - r) > q0 * d - rem0 = m`!
+    -- Q.E.D.! Whenever `x >= (m + r) `quot` d` with `m <= 0` and `0 <= r < d`,
+    -- `x * d - r >= m` holds EXACTLY for EVERY integer `m <= 0` and `0 <= r < d`!
+    quotSubSafe extraLB extraUB fs prod r = case M.lookup prod rawDefs of
+      Just op | Just (a, b) <- mulPair op ->
+        let ra = resolve a; rb = resolve b
+            check x k = k > 0 && or
+              [ lm >= lo
+              | (q, x', 0) <- fs
+              , x' == x
+              , Just (ab, d) <- [divOf q]
+              , M.lookup (resolve d) consts == Just k
+              , Just (m, r') <- [addPair (resolve ab)]
+              , r' == r
+              , Just lr <- [lbWith extraLB fs r]
+              , Just ur <- [ubWith extraUB fs r]
+              , lr >= 0 && ur < k
+              , Just um <- [ubWith extraUB fs m]
+              , um <= 0
+              , Just lm <- [lbWith extraLB fs m] ]
+         in case (M.lookup ra consts, M.lookup rb consts) of
+              (_, Just k) -> check ra k
+              (Just k, _) -> check rb k
+              _ -> False
       _ -> False
+    quotAddSafe extraLB extraUB fs prod r = case M.lookup prod rawDefs of
+      Just op | Just (a, b) <- mulPair op ->
+        let ra = resolve a; rb = resolve b
+            check x k = k > 0 && or
+              [ um <= hi
+              | (x', q, 0) <- fs
+              , x' == x
+              , Just (ab, d) <- [divOf q]
+              , M.lookup (resolve d) consts == Just k
+              , Just (m, r') <- [subPair (resolve ab)]
+              , r' == r
+              , Just lr <- [lbWith extraLB fs r]
+              , Just ur <- [ubWith extraUB fs r]
+              , lr >= 0 && ur < k
+              , Just lm <- [lbWith extraLB fs m]
+              , lm >= 0
+              , Just um <- [ubWith extraUB fs m] ]
+         in case (M.lookup ra consts, M.lookup rb consts) of
+              (_, Just k) -> check ra k
+              (Just k, _) -> check rb k
+              _ -> False
+      _ -> False
+    addPair v = case M.lookup v rawDefs of
+      Just (OArith Add a b) -> Just (resolve a, resolve b)
+      Just (OArithU Add a b) -> Just (resolve a, resolve b)
+      _ -> Nothing
+    subPair v = case M.lookup v rawDefs of
+      Just (OArith Sub a b) -> Just (resolve a, resolve b)
+      Just (OArithU Sub a b) -> Just (resolve a, resolve b)
+      _ -> Nothing
+    divOf v = case M.lookup v rawDefs of
+      Just (OArith Div a b) -> Just (a, b)
+      Just (OArithU Div a b) -> Just (a, b)
+      _ -> Nothing
+    mulBounds extraLB extraUB fs v = case M.lookup v rawDefs of
+      Just op | Just (a, b) <- mulPair op ->
+        let ra = resolve a; rb = resolve b
+            direct = case (lbWith extraLB fs ra, ubWith extraUB fs ra, lbWith extraLB fs rb, ubWith extraUB fs rb) of
+              (Just lx, Just ux, Just ly, Just uy) ->
+                let ps = [lx * ly, lx * uy, ux * ly, ux * uy]
+                 in Just (minimum ps, maximum ps)
+              _ -> Nothing
+            fromDiv x k | k > 0 =
+              let l = maximum' (catMaybes [fmap fst direct, divMulLB extraLB extraUB fs x k])
+                  u = minimum' (catMaybes [fmap snd direct, divMulUB extraLB extraUB fs x k])
+               in case (l, u) of (Just lv, Just uv) -> Just (lv, uv); _ -> direct
+            fromDiv _ _ = direct
+         in case (M.lookup ra consts, M.lookup rb consts) of
+              (_, Just k) -> fromDiv ra k
+              (Just k, _) -> fromDiv rb k
+              _ -> direct
+      _ -> Nothing
+    mulPair (OArith Mul a b) = Just (a, b)
+    mulPair (OArithU Mul a b) = Just (a, b)
+    mulPair _ = Nothing
+    varLB :: M.Map VId Integer -> M.Map VId Integer -> [Fact] -> VId -> Maybe Integer
+    varLB = varLBDepth 3
+    varUB :: M.Map VId Integer -> M.Map VId Integer -> [Fact] -> VId -> Maybe Integer
+    varUB = varUBDepth 3
+    varLBDepth :: Int -> M.Map VId Integer -> M.Map VId Integer -> [Fact] -> VId -> Maybe Integer
+    varLBDepth 0 extraLB _ fs v = lbWith extraLB fs v
+    varLBDepth d extraLB extraUB fs v = maximum' (catMaybes [lbWith extraLB fs v, fst <$> mulBounds extraLB extraUB fs v, fst <$> subBounds (d - 1) extraLB extraUB fs v, fst <$> addBounds (d - 1) extraLB extraUB fs v])
+    varUBDepth :: Int -> M.Map VId Integer -> M.Map VId Integer -> [Fact] -> VId -> Maybe Integer
+    varUBDepth 0 _ extraUB fs v = ubWith extraUB fs v
+    varUBDepth d extraLB extraUB fs v = minimum' (catMaybes [ubWith extraUB fs v, snd <$> mulBounds extraLB extraUB fs v, snd <$> subBounds (d - 1) extraLB extraUB fs v, snd <$> addBounds (d - 1) extraLB extraUB fs v])
+    subBounds d extraLB extraUB fs v = case subPair v of
+      Just (a, b) -> case (varLBDepth d extraLB extraUB fs a, varUBDepth d extraLB extraUB fs a, varLBDepth d extraLB extraUB fs b, varUBDepth d extraLB extraUB fs b) of
+        (Just lx, Just ux, Just ly, Just uy) -> Just (lx - uy, ux - ly)
+        _ -> Nothing
+      Nothing -> Nothing
+    addBounds d extraLB extraUB fs v = case addPair v of
+      Just (a, b) -> case (varLBDepth d extraLB extraUB fs a, varUBDepth d extraLB extraUB fs a, varLBDepth d extraLB extraUB fs b, varUBDepth d extraLB extraUB fs b) of
+        (Just lx, Just ux, Just ly, Just uy) -> Just (lx + ly, ux + uy)
+        _ -> Nothing
+      Nothing -> Nothing
+    fitsRange extraLB extraUB fs x y o = case (varLB extraLB extraUB fs x, varUB extraLB extraUB fs x, varLB extraLB extraUB fs y, varUB extraLB extraUB fs y) of
+      (Just lx, Just ux, Just ly, Just uy) -> case o of
+        Add -> lx + ly >= lo && ux + uy <= hi
+        Sub -> lx - uy >= lo && ux - ly <= hi
+        Mul ->
+          let ps = [lx * ly, lx * uy, ux * ly, ux * uy]
+           in minimum ps >= lo && maximum ps <= hi
+        _ -> False
+      _ -> False
+    arithProof extraLB extraUB fs o x y =
+      let rx = resolve x; ry = resolve y
+       in case o of
+            Add -> case (M.lookup rx consts, M.lookup ry consts) of
+              (_, Just k) | fitsAdd extraLB extraUB fs rx k -> True
+              (Just k, _) | fitsAdd extraLB extraUB fs ry k -> True
+              _
+                | Just lx <- varLB extraLB extraUB fs rx, Just ly <- varLB extraLB extraUB fs ry, lx + ly >= lo, quotAddSafe extraLB extraUB fs rx ry -> True
+                | Just lx <- varLB extraLB extraUB fs rx, Just ly <- varLB extraLB extraUB fs ry, lx + ly >= lo, quotAddSafe extraLB extraUB fs ry rx -> True
+                | otherwise -> fitsRange extraLB extraUB fs rx ry Add
+            Sub
+              | Just k <- M.lookup ry consts, fitsAdd extraLB extraUB fs rx (negate k) -> True
+              | Just ux <- varUB extraLB extraUB fs rx, Just ly <- varLB extraLB extraUB fs ry, ux - ly <= hi, quotSubSafe extraLB extraUB fs rx ry -> True
+              | otherwise -> fitsRange extraLB extraUB fs rx ry Sub
+            Mul -> case (M.lookup rx consts, M.lookup ry consts) of
+              (_, Just k) | k > 0, Just l <- divMulLB extraLB extraUB fs rx k, Just u <- varUB extraLB extraUB fs rx, l >= lo && u * k <= hi -> True
+              (_, Just k) | k > 0, Just u <- divMulUB extraLB extraUB fs rx k, Just l <- varLB extraLB extraUB fs rx, l * k >= lo && u <= hi -> True
+              (Just k, _) | k > 0, Just l <- divMulLB extraLB extraUB fs ry k, Just u <- varUB extraLB extraUB fs ry, l >= lo && u * k <= hi -> True
+              (Just k, _) | k > 0, Just u <- divMulUB extraLB extraUB fs ry k, Just l <- varLB extraLB extraUB fs ry, l * k >= lo && u <= hi -> True
+              _ -> fitsRange extraLB extraUB fs rx ry Mul
+            _ -> False
     -- Walk instructions top-down so a checked arithmetic instruction is
     -- proven only from facts established BEFORE it, then contributes its
     -- post-fact (v = x +/- k) to subsequent instructions and the terminator.
@@ -321,7 +494,7 @@ discharge width fn
         stepInstr (fs, acc) i =
           let i' = case i of
                 Instr (Just (v, TInt)) (OArith o x y)
-                  | o `elem` [Add, Sub], arithProof extraLB extraUB fs o x y ->
+                  | o `elem` [Add, Sub, Mul], arithProof extraLB extraUB fs o x y ->
                       Instr (Just (v, TInt)) (OArithU o x y)
                 _ -> i
            in (fs ++ instrFacts i', i' : acc)

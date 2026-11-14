@@ -437,7 +437,7 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
             CMk tg 1 fs | tg==tag, length fs==5, all (readsOnly t 5) fs ->
               CApp (CApp (CVar "$reuse.fresh") (CVar t)) e
             _ -> e
-          twin=directComparator ps (CIf (CTagEq tag 0 (CVar t)) (knownCtors (rename leafCase)) (fst (tailNode (0::Int) (knownCtors (rename nodeCase)))))
+          twin=directComparator ps (CIf (CTagEq tag 0 (CVar t)) (knownCtors nullaryCtor (rename leafCase)) (fst (tailNode (0::Int) (knownCtors nullaryCtor (rename nodeCase)))))
       if not (rebuildsOver twin) then Nothing else
         Just (j,tag,(ps,twin))
     -- std/map's balance l k v r with its node calls inlined, binders renamed
@@ -473,7 +473,8 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
       where
         tails t notTwo e=case e of
           CLet _ _ c -> tails t notTwo c
-          CIf (CTagEq 1 1 (CApp (CApp (CVar "==") (CVar d)) (CInt 2))) a c -> tails t notTwo a && tails t (S.insert d notTwo) c
+          CIf (CTagEq 1 1 (CApp (CApp (CVar op) (CVar d)) (CInt k))) a c
+            | (op=="==" && k==2) || (op==">" && k==1) -> tails t notTwo a && tails t (S.insert d notTwo) c
           CIf _ a c -> tails t notTwo a && tails t notTwo c
           CMk 4 _ [f0,f1] -> case constant f1 of
             Just 2 -> f0==CVar t || (case f0 of CVar g -> "Leaf@" `isPrefixOf` g; _ -> False)
@@ -580,7 +581,8 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
                 CIf cond th el -> not (mentions x cond) && afterConsume ok2 rs ds th && afterConsume ok2 rs ds el
                 _ -> not (mentions x e) && uses True e
               unchangedTest cond=case cond of
-                CTagEq 1 1 (CApp (CApp (CVar "==") (CVar dv)) (CInt 2)) -> Just dv
+                CTagEq 1 1 (CApp (CApp (CVar op) (CVar dv)) (CInt k))
+                  | (op=="==" && k==2) || (op==">" && k==1) -> Just dv
                 _ -> Nothing
               -- an argument handed to a consumer: x itself, its tree, or a
               -- use-checked expression
@@ -1151,8 +1153,8 @@ freshHead e=case e of
 -- decided and its projections read the fields. Typed binders are unique,
 -- so floating captures nothing. A callback inlined into a walker hands its
 -- Option over this way (std/map's update: f (Some old), then a match).
-knownCtors :: Core -> Core
-knownCtors e=let e'=kcStep e in if e'==e then e else knownCtors e'
+knownCtors :: (Name -> Maybe (Int,Int)) -> Core -> Core
+knownCtors nullaryCtor e=let e'=kcStep e in if e'==e then e else knownCtors nullaryCtor e'
   where
     kcStep x=case x of
       CLet o rhs body | Just (wrap,CMk tg v fs)<-peel rhs, inspected o tg body ->
@@ -1165,9 +1167,17 @@ knownCtors e=let e'=kcStep e in if e'==e then e else knownCtors e'
       CProj k a -> CProj k (kcStep a)
       CTagEq t v a -> CTagEq t v (kcStep a)
       _ -> x
+    peel (CLet y a b) | Just ticks<-returnsTicks y b = do (w,c)<-peel a; Just (w . ticks,c)
     peel (CLet k a b)=do (w,c)<-peel b; Just (CLet k a . w,c)
+    peel (CIf cond a (CErr m))=do (w,c)<-peel a; Just (\x->CIf cond (w x) (CErr m),c)
+    peel (CIf cond (CErr m) b)=do (w,c)<-peel b; Just (\x->CIf cond (CErr m) (w x),c)
     peel c@(CMk _ _ _)=Just (id,c)
+    peel (CVar g) | Just (tg,v)<-nullaryCtor g = Just (id,CMk tg v [])
     peel _=Nothing
+    returnsTicks y (CVar z) | y==z = Just id
+    returnsTicks y (CLet k (CApp (CVar f) (CInt 0)) b)
+      | f==entryTickName && k/=y = fmap (CLet k (CApp (CVar f) (CInt 0)) .) (returnsTicks y b)
+    returnsTicks _ _=Nothing
     inspected o tg x=case x of
       CVar y -> y/=o
       CIf (CTagEq t _ (CVar y)) a b | y==o -> t==tg && inspected o tg a && inspected o tg b
@@ -1197,8 +1207,8 @@ occurrences x e=length [() | CVar y<-nodes e, y==x]
 mapBodiesOf :: Prog -> Prog
 mapBodiesOf linked=M.union roots (M.restrictKeys linked (named `S.union` stubs))
   where
-    roots=M.filterWithKey (\name _ -> any (`isPrefixOf` name) (["balance@","node@","insGo@","rotRight@","rotLeft@","strings@","ints@","empty@"]++lookupRoots)) linked
-    named0=S.fromList [g | (n,(_,b))<-M.toList roots, any (`isPrefixOf` n) ["strings@","ints@","empty@"], CVar g<-nodes b, '@' `elem` g]
+    roots=M.filterWithKey (\name _ -> any (`isPrefixOf` name) (["balance@","node@","insGo@","altGo@","alter@","update@","insertWith@","rotRight@","rotLeft@","strings@","ints@","empty@"]++lookupRoots)) linked
+    named0=S.fromList [g | (n,(_,b))<-M.toList roots, any (`isPrefixOf` n) ["strings@","ints@","empty@","altGo@"], CVar g<-nodes b, '@' `elem` g]
     -- and the helpers those call, two levels (Reuse expandCmp)
     refsOf ns=S.fromList [g | (_,(_,b))<-M.toList (M.restrictKeys linked ns), CVar g<-nodes b, '@' `elem` g]
     named=let n1=refsOf named0 in S.unions [named0,n1,refsOf n1]

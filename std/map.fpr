@@ -201,7 +201,7 @@ popMin t = case t of
 alter : k -> (O.Option v -> O.Option v) -> Map k v -> Map k v .
 alter k f m = case m of
   Map cmp n t -> (case altGo cmp k f t of
-      (t2, d) -> if d == 2 then m else Map cmp (n + d) t2).
+      (t2, d) -> if d > 1 then m else Map cmp (n + d) t2).
 # (the new tree, what happened): 1 added, 0 - 1 removed, 0 the value replaced
 # in place (no height changed, so the path is copied without rebalancing),
 # 2 nothing changed (the caller keeps its own tree).  Depth is O(log n).
@@ -212,11 +212,11 @@ altGo cmp k f t = case t of
       | O.None -> (Leaf, 2))
   | Node h l k2 v2 r -> (case cmp k k2 of
         Ord.Less -> (case altGo cmp k f l of
-            (l2, d) -> if d == 2 then (t, 2)
+            (l2, d) -> if d > 1 then (t, 2)
                        else if d == 0 then (Node h l2 k2 v2 r, 0)
                        else (balance l2 k2 v2 r, d))
       | Ord.Greater -> (case altGo cmp k f r of
-            (r2, d) -> if d == 2 then (t, 2)
+            (r2, d) -> if d > 1 then (t, 2)
                        else if d == 0 then (Node h l k2 v2 r2, 0)
                        else (balance l k2 v2 r2, d))
       | Ord.Equal -> (case f (O.Some v2) of

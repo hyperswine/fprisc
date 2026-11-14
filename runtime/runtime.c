@@ -4062,6 +4062,9 @@ V fpr_apply(V f, V a) {
 static inline V apply2(V f, V a, V b) {
   if (!ISINT(f) && TID(f) == T_PAP) {
     pap_t *p = (pap_t *)f;
+    if (p->nargs == 0 && p->arity == 2) return ((F2)p->fn)(a, b);
+    if (p->nargs == 1 && p->arity == 3) return ((F3)p->fn)(p->args[0], a, b);
+    if (p->nargs == 2 && p->arity == 4) return ((F4)p->fn)(p->args[0], p->args[1], a, b);
     if (p->nargs + 2 == p->arity) {
       V args[8 + FPR_ARGSPILL];
       for (uw i = 0; i < p->nargs; i++) args[i] = p->args[i];
@@ -4093,11 +4096,38 @@ static void sort_merge(V cmp, const V *keys, const uw *src, uw *dst, uw lo, uw m
   while (i < mid) dst[k++] = src[i++];
   while (j < hi) dst[k++] = src[j++];
 }
+/* merge runs src[lo..mid) and src[mid..hi) of element values directly, to dst */
+static void sort_merge_vals(V cmp, F2 fn2, const V *src, V *dst, uw lo, uw mid, uw hi) {
+  uw i = lo, j = mid, k = lo;
+  if (fn2) {
+    if (mid > lo && mid < hi) {
+      V r = fn2(src[mid], src[mid - 1]);
+      if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
+      if (((hdr_t *)r)->var != 0) {
+        for (; k < hi; k++) dst[k] = src[k];
+        return;
+      }
+    }
+    while (i < mid && j < hi) {
+      V r = fn2(src[j], src[i]);
+      if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
+      dst[k++] = (((hdr_t *)r)->var == 0) ? src[j++] : src[i++];
+    }
+  } else {
+    if (mid > lo && mid < hi && !sort_lt(cmp, src[mid], src[mid - 1])) {
+      for (; k < hi; k++) dst[k] = src[k];
+      return;
+    }
+    while (i < mid && j < hi) dst[k++] = sort_lt(cmp, src[j], src[i]) ? src[j++] : src[i++];
+  }
+  while (i < mid) dst[k++] = src[i++];
+  while (j < hi) dst[k++] = src[j++];
+}
 /* The stable order of keys[0..n) under cmp, as a permutation: answers the
  * buffer (idx or tmp, both n words) holding perm, keys[perm[0]] first.
  * Bottom-up: runs of width w merged into runs of 2w, ceil(log2 n) passes.
- * Shared by List.sortWith (below) and Vec.sortWith (vec.c), which moves
- * every column by the same permutation. */
+ * Shared by Vec.sortWith (vec.c), which moves every column by the same
+ * permutation. */
 uw *fpr_sort_perm(V cmp, const V *keys, uw *idx, uw *tmp, uw n) {
   for (uw i = 0; i < n; i++) idx[i] = i;
   uw *src = idx, *dst = tmp;
@@ -4117,21 +4147,33 @@ static V g_sortListWith(V cmp, V list) {
   for (; is_cons(c); c = ((V *)((char *)c + 8))[1]) n++;
   V nil = c; /* the input's own Nil: shared, it carries nothing */
   if (n < 2) return list; /* a list of 0 or 1 is its own sort (persistent: shared) */
-  V *keys = (V *)fpr_alloc_raw((V)(3 * n * sizeof(V)));
-  uw *idx = (uw *)(keys + n), *tmp = idx + n;
+  V *buf = (V *)fpr_alloc_raw((V)(2 * n * sizeof(V)));
+  V *src = buf, *dst = buf + n;
   uw i = 0;
-  for (c = list; is_cons(c); c = ((V *)((char *)c + 8))[1]) keys[i++] = ((V *)((char *)c + 8))[0];
-  uw *perm = fpr_sort_perm(cmp, keys, idx, tmp, n);
+  for (c = list; is_cons(c); c = ((V *)((char *)c + 8))[1]) src[i++] = ((V *)((char *)c + 8))[0];
+  F2 fn2 = (F2)0;
+  if (!ISINT(cmp) && TID(cmp) == T_PAP) {
+    pap_t *p = (pap_t *)cmp;
+    if (p->nargs == 0 && p->arity == 2) fn2 = (F2)p->fn;
+  }
+  for (uw w = 1; w < n; w *= 2) {
+    for (uw lo = 0; lo < n; lo += 2 * w) {
+      uw mid = lo + w < n ? lo + w : n;
+      uw hi = lo + 2 * w < n ? lo + 2 * w : n;
+      sort_merge_vals(cmp, fn2, src, dst, lo, mid, hi);
+    }
+    V *t = src; src = dst; dst = t;
+  }
   V acc = nil;
   for (uw k = n; k > 0; k--) {
     hdr_t *cell = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
     cell->tid = T_LIST;
     cell->var = 1;
-    *(V *)((char *)cell + 8) = keys[perm[k - 1]];
+    *(V *)((char *)cell + 8) = src[k - 1];
     *(V *)((char *)cell + 8 + sizeof(uw)) = acc;
     acc = (V)cell;
   }
-  fpr_free_raw((V)keys);
+  fpr_free_raw((V)buf);
   return acc;
 }
 

@@ -17,7 +17,7 @@ int _ _ = Greater.
 
 # bytewise; a prefix sorts first
 string : String -> String -> Ordering .
-string a b = fromInt (strCmp a b).
+string a b = fromInt (strCompare a b).
 
 # a negative, zero or positive number, as C's comparators answer
 fromInt : Int -> Ordering

@@ -56,20 +56,24 @@ passes=passesWith defaultOptions
 
 passesWith :: Options -> [(String,Fn -> Fn)]
 passesWith options=
-  [ ("fold-conversions", dropDeadPure . foldConversions),
+  [ ("fold-conversions", dropDeadPure . foldConversions . foldDivisors),
     ("branch-on-comparison", dropDeadPure . threadBooleanJoins),
     ("share-pure-in-block", dropDeadPure . sharePureInBlock)
   ] ++ [("move-loop-invariants",\f -> if hasCycle f then dropDeadPure (moveInvariants (registerBudget options) (inlineFloats options) f) else f) | moveLoopInvariants options]
     ++ [("discharge-proven-checks", dropDeadPure . discharge width) | Just width <- [intervalWidth options]]
     ++ [("share-pure-across-blocks", dropDeadPure . sharePureAcrossBlocks (inlineFloats options)) | intervalWidth options /= Nothing]
     -- a versioned function's fast copy has no slow-path calls, so its
-    -- invariants fit now: move them again (that function only)
+    -- invariants fit now: move them again, then discharge any arithmetic
+    -- checks proven in the fast copy and share duplicate pure ops
     ++ [("version-string-scan", \f -> let f'=dropDeadPure (versionScan f)
-                                       in if f'==f || not (moveLoopInvariants options) then f'
-                                          else dropDeadPure (moveInvariants (registerBudget options) (inlineFloats options) (carryRawAll f')))
+                                          f1=if f'==f || not (moveLoopInvariants options) then f'
+                                             else dropDeadPure (moveInvariants (registerBudget options) (inlineFloats options) (carryRawAll f'))
+                                       in case intervalWidth options of
+                                            Just width | f'/=f -> dropDeadPure (sharePureAcrossBlocks (inlineFloats options) (dropDeadPure (threadBooleanJoins (dropDeadPure (discharge width f1)))))
+                                            _ -> f1)
        | stringScan options]
     ++ [("carry-raw-ints", carryRawAll)]
-    ++ [("fold-constant-divisors", dropDeadPure . foldDivisors)]
+    ++ [("fold-constant-divisors", dropDeadPure . foldConversions . foldDivisors)]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
 
 -- the simplified function and the number of instructions it lost
@@ -133,6 +137,7 @@ dropDeadPure fn =
 foldConversions :: Fn -> Fn
 foldConversions fn =
   let defs = defsOf fn
+      isZero v = M.lookup v defs == Just (OConstInt 0)
       sub = M.fromList
         [ (v, u)
         | (v, op) <- M.toList defs,
@@ -140,9 +145,14 @@ foldConversions fn =
             OUntag w | Just (OTag u) <- M.lookup w defs -> Just u
             OTag w | Just (OUntag u) <- M.lookup w defs -> Just u
             OTruth w | Just (OBoolOf u) <- M.lookup w defs -> Just u
+            OArithU Add x z | isZero z -> Just x
+            OArithU Add z x | isZero z -> Just x
+            OArithU Sub x z | isZero z -> Just x
             _ -> Nothing]
         ]
-      fn' = substitute sub fn
+      fn1 = substitute sub fn
+      hasEqVal = any (\(Instr _ op) -> case op of OEqVal {} -> True; _ -> False) (concatMap bInstrs (fnBlocks fn1))
+      fn' = if hasEqVal then lowerEqValToIntCmp fn1 else fn1
       -- the folded definitions themselves are now unused and pure: dropDeadPure takes them
       -- Product erasure can leave `truth True` guarding an impossible panic.
       -- Fold only the language's immutable Bool constructors, then remove
@@ -159,6 +169,33 @@ foldConversions fn =
       branched=fn' {fnBlocks=[b {bTerm=M.findWithDefault (bTerm b) (bId b) changed} | b<-fnBlocks fn']}
       live=reachable (analyze branched)
    in if M.null changed then fn' else branched {fnBlocks=filter ((`S.member` live) . bId) (fnBlocks branched)}
+
+-- When both operands of `OEqVal eq a b` are already known to be raw `TInt`s
+-- on every path reaching the instruction (either defined by `OTag u` or
+-- untagged by `OUntag` in a strictly dominating block or earlier in the same
+-- block), `OEqVal eq a b` is identical to `OCmp (if eq then Eq else Ne) ua ub`.
+lowerEqValToIntCmp :: Fn -> Fn
+lowerEqValToIntCmp fn =
+  let flow = analyze fn
+      doms = dominators flow
+      live = reachable flow
+      taggedDefs = M.fromList [(v, u) | b <- fnBlocks fn, Instr (Just (v, TVal)) (OTag u) <- bInstrs b]
+      blockUntags = M.fromList
+        [ (bId b, M.fromList [(x, u) | Instr (Just (u, TInt)) (OUntag x) <- bInstrs b])
+        | b <- fnBlocks fn, S.member (bId b) live ]
+      rewriteBlock b
+        | S.notMember (bId b) live = b
+        | otherwise =
+            let strictDoms = [d | d <- S.toList (M.findWithDefault S.empty (bId b) doms), d /= bId b]
+                domEnv = M.unions (taggedDefs : [M.findWithDefault M.empty d blockUntags | d <- strictDoms])
+                step (env, acc) i@(Instr (Just (v, TInt)) (OUntag x)) =
+                  (M.insert x v env, i : acc)
+                step (env, acc) (Instr d@(Just (_, TPred)) (OEqVal eq a b))
+                  | Just ua <- M.lookup a env, Just ub <- M.lookup b env =
+                      (env, Instr d (OCmp (if eq then Eq else Ne) ua ub) : acc)
+                step (env, acc) i = (env, i : acc)
+             in b {bInstrs = reverse (snd (foldl' step (domEnv, []) (bInstrs b)))}
+   in fn {fnBlocks = map rewriteBlock (fnBlocks fn)}
 
 -- ---- pass 2: branch on the comparison ---------------------------------------
 
@@ -362,6 +399,8 @@ foldDivisors fn=fn {fnBlocks=map block (fnBlocks fn)}
     mulOf o=case o of OArith Mul l r -> Just (l,r); OArithU Mul l r -> Just (l,r); _ -> Nothing
     block b=b {bInstrs=map instr (bInstrs b)}
     instr i=case i of
+      Instr d@(Just _) (OArith Div x b) | Just a<-literal x, Just k<-literal b, safe k -> Instr d (OConstInt (a `quot` k))
+      Instr d@(Just _) (OArithU Div x b) | Just a<-literal x, Just k<-literal b, safe k -> Instr d (OConstInt (a `quot` k))
       Instr d@(Just _) (OArith Div x b) | Just k<-literal b, safe k -> Instr d (OArithU Div x b)
       Instr d@(Just (v,_)) (OArith Mul l r) | Just _<-product' v -> Instr d (OArithU Mul l r)
       Instr d@(Just _) (OArith Sub x p) | Just x'<-product' p, x'==x -> Instr d (OArithU Sub x p)
