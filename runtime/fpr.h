@@ -1083,6 +1083,8 @@ void fpr_arc_incref(V v);
 void fpr_arc_decref(V v);
 uw fpr_arc_live(void);
 V fpr_apply(V f, V a);
+V fpr_apply2(V f, V a, V b);       /* f a b, no partial application when f takes exactly two more */
+V fpr_apply3(V f, V a, V b, V c);
 uw *fpr_sort_perm(V cmp, const V *keys, uw *idx, uw *tmp, uw n); /* runtime.c: stable, cmp answers an Ordering */
 V fpr_applyN(V f, uw n, V *rargs);
 V fpr_send_as(uw sender_key, V av, V m); /* Result Unit String: Ok queued */

@@ -273,7 +273,11 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
               picks=[(slot,cb) | slot<-S.toAscList (M.findWithDefault S.empty target demands),
                 Just argument<-[M.lookup slot actuals],Just cb<-[known s argument],
                 safeKnown s S.empty cb,stable target slot]
-          clone<-if null picks then do
+          clone<-if null picks && variantClone target ordinary then do
+              result<-getClone depth target []
+              record (targetName target) (either id (const D.Specialized) result)
+              pure result
+            else if null picks then do
               let wanted=S.toAscList (M.findWithDefault S.empty target demands)
                   knowns=[(slot,cb) | slot<-wanted,Just argument<-[M.lookup slot actuals],Just cb<-[known s argument]]
                   why | any (not . stable target . fst) knowns=D.Unstable
@@ -294,6 +298,31 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
                   else CodeCall label (caps++extraCaps) (saved++savedLeading)}
             Left _->direct s old k args
         _->direct s old k args
+    -- A small, non-recursive imported function whose result is a sum type
+    -- (String.toInt's Result, Map.get's Option) is cloned even without a
+    -- callback to specialize: the private clone may return its variant in
+    -- registers, where the home unit's exported entry returns a cell.  Only
+    -- the program's own functions clone (their names carry no module hash):
+    -- library bodies keep the names the owned-map rewriting recognises.
+    variantClone target ordinary=case target of
+      RootTarget n | n/=functionName root, '@' `elem` n, '@' `notElem` functionName root,
+        Just (Template [] parameters body contract _)<-M.lookup target templates,
+        length ordinary==length parameters, nodes body<=160,
+        n `S.notMember` globalNames body, sumType (contractResult contract)->True
+      _->False
+    sumType ty=case resultHead ty of
+      Just h->M.findWithDefault (0::Int) h constructorCounts>=2
+        && not (null (M.findWithDefault [] h nominalFields)) -- Ordering's answers are statics: nothing saved
+        && not (any (mentions h) (M.findWithDefault [] h nominalFields)) -- List and trees gain nothing
+      Nothing->False
+    mentions h ty=case ty of
+      TC n->n==h
+      TAp f a->mentions h f || mentions h a
+      TFn a b->mentions h a || mentions h b
+      TTupT xs->any (mentions h) xs
+      _->False
+    resultHead ty=case ty of TC h->Just h;TAp f _->resultHead f;_->Nothing
+    constructorCounts=M.fromListWith (+) [(h,1) | Forall _ _ sc<-M.elems constructorSchemes, Just h<-[resultHead (snd (arrows sc))]]
     -- Preserve the argument positions before rearranging private capture and
     -- parameter banks. Callback objects stay available for identity uses.
     prepareArguments s picks ordinary continuation=go s 0 ordinary [] captured

@@ -3097,7 +3097,7 @@ static V g_loop_with(V vec, V s, V f) {
 #ifdef FPR_BUILTIN
   { V state = s, v = vec;
   for (;;) {
-    V r = fpr_apply(fpr_apply(f, state), v);
+    V r = fpr_apply2(f, state, v);
     if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP3)
       fpr_cpanic("Sys.loopWith: a step must return (continue, state, vector)");
     V go = FPR_FLD(r, 0);
@@ -3128,7 +3128,7 @@ static V g_loop_with(V vec, V s, V f) {
   V state = s;
   for (;;) {
     FPR_COST_ADD(fpr_hart(), cost_turns, 1);
-    V r = fpr_apply(fpr_apply(f, state), vec);
+    V r = fpr_apply2(f, state, vec);
     if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP3)
       fpr_cpanic("Sys.loopWith: a step must return (continue, state, vector)");
     V go = *(V *)((char *)r + 8);
@@ -4083,7 +4083,8 @@ V fpr_apply(V f, V a) {
  * The comparator answers std/order's Ordering (Less | Equal | Greater): a
  * nullary constructor, a static whose `var` is its index, 0 for Less.  An
  * immediate (tagged) answer is refused rather than guessed at. */
-static inline V apply2(V f, V a, V b) {
+static int apply_builds(V f);
+V fpr_apply2(V f, V a, V b) {
   if (!ISINT(f) && TID(f) == T_PAP) {
     pap_t *p = (pap_t *)f;
     if (p->nargs == 0 && p->arity == 2) return ((F2)p->fn)(a, b);
@@ -4097,8 +4098,36 @@ static inline V apply2(V f, V a, V b) {
       return callf(p->fn, p->arity, args);
     }
   }
-  return fpr_apply(fpr_apply(f, a), b);
+  int built = apply_builds(f);
+  V pf = fpr_apply(f, a);
+  V r = fpr_apply(pf, b);
+  if (built) fpr_free(pf);
+  return r;
 }
+/* f a where f takes more than one more argument: the partial application
+ * fpr_apply builds is churn the caller frees after its last use; any other
+ * result (f's own answer) may be held elsewhere and is never freed here */
+static int apply_builds(V f) {
+  return !ISINT(f) && TID(f) == T_PAP && ((pap_t *)f)->nargs + 1 < ((pap_t *)f)->arity;
+}
+/* three arguments at once (MutMap.fold): no partial applications built */
+V fpr_apply3(V f, V a, V b, V c) {
+  if (!ISINT(f) && TID(f) == T_PAP) {
+    pap_t *p = (pap_t *)f;
+    if (p->nargs + 3 == p->arity) {
+      V args[8 + FPR_ARGSPILL];
+      for (uw i = 0; i < p->nargs; i++) args[i] = p->args[i];
+      args[p->nargs] = a; args[p->nargs + 1] = b; args[p->nargs + 2] = c;
+      return callf(p->fn, p->arity, args);
+    }
+  }
+  int built = apply_builds(f);
+  V p1 = fpr_apply(f, a);
+  V r = fpr_apply2(p1, b, c);
+  if (built) fpr_free(p1);
+  return r;
+}
+static inline V apply2(V f, V a, V b) { return fpr_apply2(f, a, b); }
 /* cmp b a answers Less: b goes first.  The argument order is the FP-RISC
  * merge's (`cmp y x`, y from the right run): the comparator sees its
  * arguments in the same roles.  For a comparator that is a total preorder

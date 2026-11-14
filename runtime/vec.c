@@ -545,12 +545,10 @@ V fpr_vec_fold(V f, V z, V vec) {
   vec_t *x = vchk(vec, "Vec.fold: not a Vector");
   V acc = z;
   for (uw i = 0; i < x->len; i++) {
-    V pf = fpr_apply(f, acc);
-    acc = fpr_apply(pf, row_at(x, i));
-    /* the intermediate PAP is churn: release it, or an immortal
-     * actor's generic-tier fold bleeds one pap per element (the
-     * saturating apply copies args out; nothing retains pf) */
-    if (!ISINT(pf) && TID(pf) == T_PAP && pf != f) fpr_free(pf);
+    /* fpr_apply2 builds no intermediate PAP when f takes two more
+     * arguments, and frees the one it builds otherwise: an immortal
+     * actor's generic-tier fold must not bleed one per element */
+    acc = fpr_apply2(f, acc, row_at(x, i));
   }
   return mktup2(acc, (V)x);
 }
@@ -1229,12 +1227,7 @@ static V g_mutmapInsert(V k, V v, V m) {
   return m;
 }
 
-static V mm_apply2(V f, V a, V b) {
-  V pf = fpr_apply(f, a);
-  V r = fpr_apply(pf, b);
-  if (!ISINT(pf) && TID(pf) == T_PAP && pf != f) fpr_free(pf);
-  return r;
-}
+static V mm_apply2(V f, V a, V b) { return fpr_apply2(f, a, b); }
 
 /* insertWith f k v: where k is there store `f old v`, else v (std/map's
  * argument order).  f is called at most once. */
@@ -1319,11 +1312,7 @@ static V g_mutmapFold(V f, V z, V m) {
   V acc = z;
   for (uw i = 0; i < x->len; i++) {
     if (!mm_h(x)[i]) continue;
-    V p1 = fpr_apply(f, acc);
-    V p2 = fpr_apply(p1, mm_key_val(x, i));
-    acc = fpr_apply(p2, (V)mm_v(x)[i]);
-    if (!ISINT(p2) && TID(p2) == T_PAP && p2 != f) fpr_free(p2);
-    if (!ISINT(p1) && TID(p1) == T_PAP && p1 != f) fpr_free(p1);
+    acc = fpr_apply3(f, acc, mm_key_val(x, i), (V)mm_v(x)[i]);
   }
   return mktup2(acc, m);
 }
