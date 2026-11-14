@@ -1,4 +1,4 @@
-# word frequency: std/map keyed by String (ordered AVL; std has no hash map), top 10
+# word frequency with std/hashmap keyed by String (a persistent hash trie, written in place while the fold owns it), top 10
 List = use "std/list".
 String = use "std/string".
 Map = use "std/hashmap".

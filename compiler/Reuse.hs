@@ -326,7 +326,11 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
     -- over t's layout from fields that only read t becomes an overwrite of t;
     -- a self call on a child of t becomes the twin; t may otherwise be
     -- projected, tested, or returned unchanged in a tuple's first field.
-    walkers=M.mapMaybeWithKey walkerPlan (program `M.union` importedWalkers)
+    -- (two tiers, so no plan asks for itself: a trie walker's specialized
+    -- first step recurs through the general walker, a plan of the first tier)
+    walkers=walkers0 `M.union` M.mapMaybeWithKey (trieWalkerPlan walkers0) (walkerSources `M.difference` walkers0)
+    walkers0=M.mapMaybeWithKey (\n b->walkerPlan n b <|> trieWalkerPlan M.empty n b) walkerSources
+    walkerSources=program `M.union` importedWalkers
     -- std/map's own walkers (insert inlined into a loop calls insGo@ from
     -- the map unit): the twin is a private copy in this unit, named with the
     -- unit's tag so two units' copies never share a symbol
@@ -338,6 +342,97 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
     -- (FNV-1a over the unit's own names: two units never hold the same set)
     unitTag=showHex (foldl (\h c->((h `xor` fromEnum c)*16777619) `mod` 4294967296) (2166136261::Int)
                             (concat (M.keys program))) ""
+    -- A trie walker (std/hashmap): recursive on a tree parameter t, a Leaf
+    -- test on t first, and a node step that reads one child by number
+    -- (nodeGet i t), recurs on it, and answers (nodeWith n i t c2, d): a copy
+    -- of t with that child replaced. On an owned map t has one holder, so the
+    -- twin stores into t (nodeSet). What makes the store unobservable:
+    --   * the copy is the first field of a TAIL tuple, so nothing reads t
+    --     after it;
+    --   * t is otherwise only tested, projected, read by number, or answered
+    --     whole;
+    --   * the child goes only to the recursive call, and what is stored is
+    --     that call's tree, used once, at the number the child was read at:
+    --     no subtree ends up under two parents.
+    -- A tail tuple that builds t's own constructor again from fields that
+    -- only read t (a Tip with a new value) is built over t.
+    trieWalkerPlan :: M.Map Name (Int,Int,([Name],Core)) -> Name -> ([Name],Core) -> Maybe (Int,Int,([Name],Core))
+    trieWalkerPlan known name (ps,body) = do
+      CIf (CTagEq tag 0 (CVar t)) leafCase rest<-Just body
+      j<-lookup t (zip ps [0..])
+      if name `elem` ps || t==name || not (bounded 4096 body) || M.member (wTwin name) definitions then Nothing else Just ()
+      let withT e=case spine e of
+            (CVar "nodeWith",[n,i,CVar y,x]) | y==t -> Just (n,i,x)
+            _ -> Nothing
+          getT e=case spine e of
+            (CVar "nodeGet",[i,CVar y]) | y==t -> Just i
+            _ -> Nothing
+          -- the recursive call: this walker, or a walker already planned
+          -- (its twin, its tree slot); the tree argument comes first here
+          selfCall e=case spine e of
+            (CVar f,args) | f==name, length args==length ps -> Just (args!!j:take j args++drop (j+1) args)
+            (CVar f,args) | Just (jc,_,(cps,_))<-M.lookup f known, length args==length cps ->
+              Just (args!!jc:take jc args++drop (jc+1) args)
+            _ -> Nothing
+          -- children: read by number, each handed to one recursive call
+          childIx=M.fromList [(k,i) | CLet k a _<-nodes rest, Just i<-[getT a]]
+          selfOn k=[() | n<-nodes rest, Just (a0:_)<-[selfCall n], a0==CVar k]
+          childrenOk=and [occurrences k rest==1 && length (selfOn k)==1 | k<-M.keys childIx]
+          -- the recursive results and the trees taken from them
+          -- (the call sits under the let that reads the child)
+          tailSelf e=case e of CLet _ _ b -> tailSelf b; _ -> selfCall e
+          results=M.fromList [(r,c) | CLet r a _<-nodes rest, Just (CVar c:_)<-[tailSelf a], M.member c childIx]
+          trees=M.fromList [(c2,r) | CLet c2 (CProj 0 (CVar r)) _<-nodes rest, M.member r results]
+          -- every mention of t is one of the allowed uses
+          uses e=case e of
+            CVar v -> v/=t
+            CTagEq _ _ (CVar y) | y==t -> True
+            CProj _ (CVar y) | y==t -> True
+            CMk 4 _ [CVar y,f1] | y==t -> uses f1
+            CMk 4 _ [f0,f1] | Just (n,i,x)<-withT f0 -> uses n && uses i && uses x && uses f1 && stored i x
+            CLam vs b -> t `elem` vs || not (mentions t b)
+            _ | Just i<-getT e -> uses i
+            _ | Just (a0:others)<-selfCall e -> (case a0 of CVar c -> M.member c childIx; _ -> False) && all uses others
+            _ -> all uses (children e)
+          stored i x=case x of
+            CVar c2 | Just r<-M.lookup c2 trees, Just c<-M.lookup r results -> M.lookup c childIx==Just i && occurrences c2 rest==1
+            _ -> False
+          -- a copy of t only as the first field of a tail tuple
+          noWith e=null [() | n<-nodes e, Just _<-[withT n]]
+          tails e=case e of
+            CLet _ a b -> noWith a && tails b
+            CIf c a b -> noWith c && tails a && tails b
+            CMk 4 _ [f0,f1] | Just (n,i,x)<-withT f0 -> noWith n && noWith i && noWith x && noWith f1
+            _ -> noWith e
+          copies=[() | n<-nodes rest, Just _<-[withT n]]
+      if null copies || not (childrenOk && uses rest && tails rest && not (mentions t leafCase)) then Nothing else Just ()
+      let rename e=case e of
+            CVar v | v==name || M.member v known -> CVar (wTwin v)
+            CLet k a b -> CLet k (rename a) (rename b)
+            CApp f a -> CApp (rename f) (rename a)
+            CIf c a b -> CIf (rename c) (rename a) (rename b)
+            CMk tg vr fs -> CMk tg vr (map rename fs)
+            CProj i a -> CProj i (rename a)
+            CTagEq tg vr a -> CTagEq tg vr (rename a)
+            _ -> e
+          -- the tails, with what t is known to be on the way (a true test)
+          own known e=case e of
+            CLet k a b -> CLet k a (own known b)
+            CIf c@(CTagEq tg v (CVar y)) a b | y==t, tg==tag -> CIf c (own (Just v) a) (own known b)
+            CIf c a b -> CIf c (own known a) (own known b)
+            CMk 4 vr [f0,f1] | Just (_,i,x)<-withT f0 ->
+              CMk 4 vr [CApp (CApp (CApp (CVar "nodeSet") i) (CVar t)) x,f1]
+            CMk 4 vr [f0,f1] | Just v<-known, v/=0, not (mentions t f1), Just f0'<-over v f0 -> CMk 4 vr [f0',f1]
+            _ -> e
+          -- t's own constructor built again (under the tick that precedes
+          -- it), from fields that only read t: built over t
+          over v e=case e of
+            CLet k a b | not (mentions t a) -> CLet k a <$> over v b
+            CMk tg v' fs | tg==tag, v'==v, not (null fs), all (readsOnly t (length fs)) fs ->
+              Just (CApp (CApp (CVar "$reuse.fresh") (CVar t)) e)
+            _ -> Nothing
+          twin=directComparator ps (CIf (CTagEq tag 0 (CVar t)) (knownCtors nullaryCtor (rename leafCase)) (own Nothing (knownCtors nullaryCtor (rename rest))))
+      Just (j,tag,(ps,twin))
     walkerPlan name (ps,body) = do
       CIf (CTagEq tag 0 (CVar t)) leafCase nodeCase<-Just body
       j<-lookup t (zip ps [0..])
@@ -649,7 +744,7 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
     mapTags=S.fromList [t | (k,(_,CMk t _ _))<-M.toList definitions, "Map@" `isPrefixOf` k,
                             S.member (drop 1 (dropWhile (/='@') k)) leafHashes]
     stdMapHashes=S.fromList [h | k<-M.keys mapBodies, "insGo@" `isPrefixOf` k, let h=drop 1 (dropWhile (/='@') k),
-                                 M.member ("balance@"++h) mapBodies, M.member ("Leaf@"++h) definitions]
+                                 M.member ("balance@"++h) mapBodies || M.member ("altGo@"++h) mapBodies, M.member ("Leaf@"++h) definitions]
     -- (a local bound to one counts: an empty map has no node to rebuild, so
     -- sharing it elsewhere is harmless)
     -- The comparator, called directly. A walker twin runs only on an owned
@@ -1009,7 +1104,19 @@ consumeListSpines linked mapBodies definitions resetting excluded program = rewr
             CProj k a -> CProj k (self a)
             CTagEq t v a -> CTagEq t v (self a)
             _ -> e
-      in (dropAt i gps,inlineComparator g (self (substCall p g (dropAliases M.empty gb))))
+          -- (where the walker hands its comparator to a helper, the helper
+          -- gets the known function: the parameter is gone)
+          known e=case e of
+            CVar v | v==p -> CVar g
+            CLet k a b -> CLet k (known a) (known b)
+            CApp a b -> CApp (known a) (known b)
+            CIf c a b -> CIf (known c) (known a) (known b)
+            CMk t v fs -> CMk t v (map known fs)
+            CProj k a -> CProj k (known a)
+            CTagEq t v a -> CTagEq t v (known a)
+            CLam qs b | p `notElem` qs -> CLam qs (known b)
+            _ -> e
+      in (dropAt i gps,known (inlineComparator g (self (substCall p g (dropAliases M.empty gb)))))
     dropAt i xs=take i xs++drop (i+1) xs
     replaceExpr from to e
       | e==from = to

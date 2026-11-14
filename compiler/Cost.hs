@@ -321,6 +321,10 @@ primCostOf g lens
   | g == "keep" = Just (CN 0, CN 0)
   | g `elem` ["strlen", "String.len", "charAt"] = unit
   | g == "chr" = Just (CN 1, CN 17)
+  -- a trie node by field number (std/hashmap; runtime.c g_nodeGet): a read
+  -- and a store are a word; nodeWith copies a sixteen-field cell
+  | g `elem` ["nodeGet", "nodeSet"] = unit
+  | g == "nodeWith" = Just (CN 18, CN 152)
   | g `elem` ["intMax", "intMin"] = unit
   | g == "strcat", [a, b] <- lens = Just (CAdd [CN 1, a, b], CAdd [CN 16, a, b])
   | g == "substr", (a : _) <- lens = Just (CAdd [CN 1, a], CAdd [CN 16, a])

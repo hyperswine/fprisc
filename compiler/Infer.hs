@@ -819,6 +819,12 @@ builtinEnv =
       -- Sol's names and contracts (Sol/Infer.hs): byte strings, 0-based, -1 = not found
       ("strJoin", mono (TFn tStr (TFn (TAp (TC "List") tStr) tStr))),
       ("strCompare", mono (TFn tStr (TFn tStr tInt))), -- byte order, -1/0/1 (runtime.c g_strCompare)
+      -- a constructor cell by field number (runtime.c g_nodeGet; std/hashmap's
+      -- trie node): a node whose fields are all of its own type, so a child
+      -- read or stored is typed as the node is.  std only.
+      ("nodeGet", scheme [0] (TFn tInt (TFn (sv 0) (sv 0)))),
+      ("nodeWith", scheme [0] (TFn tInt (TFn tInt (TFn (sv 0) (TFn (sv 0) (sv 0)))))),
+      ("nodeSet", scheme [0] (TFn tInt (TFn (sv 0) (TFn (sv 0) (sv 0))))),
       -- List.sortWith's engine (runtime.c): a stable merge sort in C calling the
       -- comparator; its answer is std/order's Ordering, which
       -- this table cannot name, hence the free result type.  std/list is the caller.

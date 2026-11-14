@@ -3821,6 +3821,25 @@ static V g_fn_is(V f, V g) {
   pap_t *a = (pap_t *)f, *b = (pap_t *)g;
   return a->fn == b->fn && a->nargs == 0 && b->nargs == 0 && a->arity == b->arity ? (V)&fpr_true : (V)&fpr_false;
 }
+/* ---- nodeGet / nodeWith / nodeSet: a constructor cell read and written
+ * by field NUMBER (std/hashmap's trie node: sixteen children, the one to
+ * take chosen by four bits of a hash).  A cell is its header word and then
+ * its fields, a word each.  nodeGet i x reads field i.  nodeWith n i x v is
+ * a fresh copy of x, a cell of n fields, with field i replaced: the
+ * persistent update.  nodeSet i x v stores into x itself and answers x: the
+ * compiler puts it where it has shown x has one holder (Reuse's owned maps),
+ * never the source.  The field number is the caller's to get right, as a
+ * constructor's own field offsets are. */
+static V g_nodeGet(V i, V x) { return ((V *)x)[1 + UNTAG(i)]; }
+static V g_nodeWith(V n, V i, V x, V v) {
+  uw words = 1 + (uw)UNTAG(n);
+  V c = fpr_alloc(8 * words);
+  /* a word loop: freestanding images link no memcpy */
+  for (uw w = 0; w < words; w++) ((V *)c)[w] = ((V *)x)[w];
+  ((V *)c)[1 + UNTAG(i)] = v;
+  return c;
+}
+static V g_nodeSet(V i, V x, V v) { ((V *)x)[1 + UNTAG(i)] = v; return x; }
 static V g_arcLive(V d) {
   (void)d;
   if (fpr_plane_memory) return TAG((sw)fpr_plane_memory->arc_live());
@@ -5855,6 +5874,9 @@ FPR_FN(fpr_g_substr, g_substr, 3);
 FPR_FN(fpr_g_strJoin, g_strJoin, 2);
 FPR_FN(fpr_g_strCompare, g_strCompare, 2);
 FPR_FN(fpr_g__x24fnIs, g_fn_is, 2);
+FPR_FN(fpr_g_nodeGet, g_nodeGet, 2);
+FPR_FN(fpr_g_nodeWith, g_nodeWith, 4);
+FPR_FN(fpr_g_nodeSet, g_nodeSet, 3);
 FPR_FN(fpr_g_sortListWith, g_sortListWith, 2);
 FPR_FN(fpr_g_drop, g_drop, 1);
 FPR_FN(fpr_g_arcLive, g_arcLive, 1);

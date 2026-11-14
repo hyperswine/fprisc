@@ -76,4 +76,5 @@ listed `trust` known failures.
   the call to `wordEnd` as scratch, so these loops get a region and TRMC leaves a region loop alone. Teaching the
   planner that a callee never allocates, and that an allocation handed to the next state is not scratch, would let
   TRMC build them front to back with no region.
-* Fix 5 (copy-out in in-place loops, direct calls for known closures, a table behind `std/hashmap`).
+* Fix 5: copy-out in in-place loops, direct calls for known closures. (The table behind `std/hashmap` is done:
+  [std/hashmap as a hash trie](2026-11-14-HASH-TRIE.md).)
