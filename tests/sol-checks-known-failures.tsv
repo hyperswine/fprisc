@@ -1,0 +1,2 @@
+# Checks that fail on main for a recorded reason: name<TAB>reason.
+# tests/run.sol still runs them; it fails if one of them starts passing.
