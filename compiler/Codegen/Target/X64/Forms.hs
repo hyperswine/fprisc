@@ -59,6 +59,9 @@ checkForms owner items=do
             O.OrImmediate->one [word,immediate]
             O.AndImmediate->one [word,immediate]
             O.XorImmediate->one [word,immediate]
+            O.AddImmediate->one [word,immediate]
+            O.TagWord->one [word]
+            O.LoadByteIndexed->one [word,word,immediate]
             O.SignExtend63->one [word,immediate]
             O.ShiftLeft->binary;O.ShiftRight->binary;O.Divide->binary
             O.FrameLoad->one [frame]

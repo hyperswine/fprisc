@@ -43,16 +43,19 @@ append a b = strcat a b.
 # the only sensible way: the whole string, unsplit.
 split : String -> String -> List String .
 split sep s | strlen sep == 0 = s :: Nil.
-split sep s | strlen sep == 1 = splitCharGo (strlen s + 1) (charAt sep 0) s 0 (strlen s).
-split sep s = splitGo (strlen s + 1) sep s 0.
+split sep s | strlen sep == 1 = splitCharGo (strlen s + 1) (charAt sep 0) s 0 (strlen s) Nil.
+split sep s = splitGo (strlen s + 1) sep s 0 Nil.
 # a one-byte separator: a byte scan per piece (charFrom), not a substring
-# search at every position
-splitCharGo : (fuel : Int | measure fuel) -> Int -> String -> Int -> Int -> List String .
-splitCharGo fuel c s from n | fuel <= 0 = Nil.
-splitCharGo fuel c s from n =
+# search at every position.  The pieces gather in `acc` and every exit is
+# `rev acc`: that is the shape the compiler builds front to back in a loop
+# (one cell per piece, no reverse pass, a constant stack).  A piece consed
+# onto the recursive call instead is a native frame per piece.
+splitCharGo : (fuel : Int | measure fuel) -> Int -> String -> Int -> Int -> List String -> List String .
+splitCharGo fuel c s from n acc | fuel <= 0 = rev acc Nil.
+splitCharGo fuel c s from n acc =
   at = charFrom s c from n;
-  if at < 0 then substr s from (n - from) :: Nil
-  else substr s from (at - from) :: splitCharGo (fuel - 1) c s (at + 1) n.
+  if at < 0 then rev (substr s from (n - from) :: acc) Nil
+  else splitCharGo (fuel - 1) c s (at + 1) n (substr s from (at - from) :: acc).
 # where byte c first occurs at or after i (before n), or -1: one byte
 # compared a step, a counted loop the compiler reads without checks
 # (Codegen.StringScan)
@@ -60,25 +63,24 @@ charFrom : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> Int .
 charFrom s c i n | i >= n = 0 - 1.
 charFrom s c i n | charAt s i == c + 0 = i.
 charFrom s c i n = charFrom s c (i + 1) n.
-# front to back (tail recursion modulo cons: one cell per piece, no reverse)
-splitGo : (fuel : Int | measure fuel) -> String -> String -> Int -> List String .
-splitGo fuel sep s from | fuel <= 0 = Nil.
-splitGo fuel sep s from =
+splitGo : (fuel : Int | measure fuel) -> String -> String -> Int -> List String -> List String .
+splitGo fuel sep s from acc | fuel <= 0 = rev acc Nil.
+splitGo fuel sep s from acc =
   at = strIndexFrom sep s from;
-  if at < 0 then substr s from (strlen s - from) :: Nil
-  else substr s from (at - from) :: splitGo (fuel - 1) sep s (at + strlen sep).
+  if at < 0 then rev (substr s from (strlen s - from) :: acc) Nil
+  else splitGo (fuel - 1) sep s (at + strlen sep) (substr s from (at - from) :: acc).
 
 # on "\n"; a trailing newline does not make an empty last line, and "\r\n" ends a line too
 lines : String -> List String .
-lines s = linesGo (strlen s + 1) s 0.
-# one pass, front to back: each line is cut once, its "\r" left out
-linesGo : (fuel : Int | measure fuel) -> String -> Int -> List String .
-linesGo fuel s from | fuel <= 0 = Nil.
-linesGo fuel s from | from >= strlen s = Nil.
-linesGo fuel s from =
+lines s = linesGo (strlen s + 1) s 0 Nil.
+# one pass: each line is cut once, its "\r" left out; gathered like split
+linesGo : (fuel : Int | measure fuel) -> String -> Int -> List String -> List String .
+linesGo fuel s from acc | fuel <= 0 = rev acc Nil.
+linesGo fuel s from acc | from >= strlen s = rev acc Nil.
+linesGo fuel s from acc =
   at = charFrom s 10 from (strlen s);
-  if at < 0 then lineAt s from (strlen s) :: Nil
-  else lineAt s from at :: linesGo (fuel - 1) s (at + 1).
+  if at < 0 then rev (lineAt s from (strlen s) :: acc) Nil
+  else linesGo (fuel - 1) s (at + 1) (lineAt s from at :: acc).
 lineAt : String -> Int -> Int -> String .
 lineAt s from end | end > from and charAt s (end - 1) == 13 = substr s from (end - 1 - from).
 lineAt s from end = substr s from (end - from).
@@ -88,15 +90,15 @@ dropCr l = l.
 
 # maximal runs of non-whitespace
 words : String -> List String .
-words s = wordsGo (strlen s + 1) s 0 (strlen s).
-# front to back, like split; fuel bounds the steps (each one moves pos on)
-wordsGo : (fuel : Int | measure fuel) -> String -> Int -> Int -> List String .
-wordsGo fuel s pos n | fuel <= 0 = Nil.
-wordsGo fuel s pos n | pos >= n = Nil.
-wordsGo fuel s pos n | isSpace (charAt s pos) = wordsGo (fuel - 1) s (pos + 1) n.
-wordsGo fuel s pos n =
+words s = wordsGo (strlen s + 1) s 0 (strlen s) Nil.
+# gathered like split; fuel bounds the steps (each one moves pos on)
+wordsGo : (fuel : Int | measure fuel) -> String -> Int -> Int -> List String -> List String .
+wordsGo fuel s pos n acc | fuel <= 0 = rev acc Nil.
+wordsGo fuel s pos n acc | pos >= n = rev acc Nil.
+wordsGo fuel s pos n acc | isSpace (charAt s pos) = wordsGo (fuel - 1) s (pos + 1) n acc.
+wordsGo fuel s pos n acc =
   stop = wordEnd s (pos + 1) n;
-  substr s pos (stop - pos) :: wordsGo (fuel - 1) s stop n.
+  wordsGo (fuel - 1) s stop n (substr s pos (stop - pos) :: acc).
 # the first space at or after pos, or n
 wordEnd : String -> (pos : Int | measure (n - pos)) -> (n : Int) -> Int .
 wordEnd s pos n | pos >= n = n.

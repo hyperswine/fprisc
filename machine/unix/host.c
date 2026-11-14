@@ -88,6 +88,7 @@ void fpr_ctx_fabricate(uw *ctx, void (*entry)(void), uw stack_top16,
  * the end is a fault AT the end instead of a walk through whatever lay
  * below.  The fault is caught on an alternate signal stack -- the one that
  * faulted has, by definition, no room left -- and said by name. */
+#include <errno.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
@@ -221,9 +222,24 @@ void hal_heap_release(void *p, uw bytes) {
   uintptr_t pg = (uintptr_t)getpagesize();
   uintptr_t a = ((uintptr_t)p + pg - 1) & ~(pg - 1), e = ((uintptr_t)p + bytes) & ~(pg - 1);
   if (e <= a) return;
-#ifdef __APPLE__
-  madvise((void *)a, e - a, MADV_FREE);
-#else
+  /* MADV_FREE wherever the host has it (macOS, FreeBSD, Linux since 4.5):
+   * the pages stay mapped until the kernel wants them, so a block that is
+   * taken again soon costs no fault and no zeroing.  MADV_DONTNEED drops
+   * them at once: a loop that frees and retakes a 1 MiB block each cycle
+   * then faults every page back in (csv: 82.9 k faults against 44.3 k, 12%
+   * of its wall time; docs/2026-11-14-PERFORMANCE-PROFILE.md).  The price
+   * is in the reading, not the memory: lazily freed pages count in the
+   * resident size until they are reclaimed.  A kernel that refuses the
+   * advice (EINVAL before Linux 4.5) gets the old call. */
+#ifdef MADV_FREE
+  static int no_free;
+  if (!no_free) {
+    if (madvise((void *)a, e - a, MADV_FREE) == 0) return;
+    if (errno != EINVAL) return;
+    no_free = 1;
+  }
+#endif
+#ifndef __APPLE__
   madvise((void *)a, e - a, MADV_DONTNEED);
 #endif
 }

@@ -9,6 +9,7 @@ data X64Op
   | Set Condition | Select Condition | Branch Condition | BranchZero | BranchNonzero | Jump
   | Add | Subtract | Multiply | And | Or | Xor
   | ShiftLeftImmediate | ShiftRightArithmeticImmediate | OrImmediate | AndImmediate | XorImmediate
+  | AddImmediate | TagWord | LoadByteIndexed
   | SignExtend63 | ShiftLeft | ShiftRight | Divide
   | FrameLoad | FrameStore | LoadByte | LoadField | StoreField | StoreHeader
   | Call | Ret | Push | ApplyN | Panic | Enter | Save
@@ -22,6 +23,7 @@ x64Name op=case op of
   BranchZero->"jzero";BranchNonzero->"jnonzero";Jump->"jmp"
   Add->"add";Subtract->"sub";Multiply->"mul";And->"and";Or->"or";Xor->"xor"
   ShiftLeftImmediate->"lsl";ShiftRightArithmeticImmediate->"asr";OrImmediate->"orri";AndImmediate->"andi";XorImmediate->"eori"
+  AddImmediate->"addi";TagWord->"tag";LoadByteIndexed->"load.byte.indexed"
   SignExtend63->"sext63";ShiftLeft->"shlq";ShiftRight->"shrq";Divide->"divide"
   FrameLoad->"load";FrameStore->"store";LoadByte->"load.byte";LoadField->"load.field";StoreField->"store.field";StoreHeader->"store.header"
   Call->"call";Ret->"ret";Push->"push";ApplyN->"applyn";Panic->"panic";Enter->"enter";Save->"save"

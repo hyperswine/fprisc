@@ -7,7 +7,7 @@ data CommonOp=EntryCheckTick | EntryCheck | EntryTick | EntryStatic | TickN
   | TailJump | JumpLoop | SavesHere | LoadCell | StoreCell | LoadSpill | StoreSpill | Params | BumpAlloc
   deriving (Eq,Ord,Show,Enum,Bounded)
 data Condition=Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual
-  | Overflow | UnsignedAboveEqual | UnsignedBelow
+  | Overflow | NoOverflow | UnsignedAboveEqual | UnsignedBelow
   deriving (Eq,Ord,Show,Enum,Bounded)
 data Width=Float64 | Float32 deriving (Eq,Ord,Show,Enum,Bounded)
 data SimdOp=PairAdd | PairSub | PairFloatAdd | PairFloatSub | PairFloatMul
@@ -20,7 +20,7 @@ commonName op=case op of
   LoadCell->"load.cell";StoreCell->"store.cell";LoadSpill->"load.spill";StoreSpill->"store.spill";Params->"params";BumpAlloc->"alloc.bump"
 conditionName c=case c of
   Equal->"eq";NotEqual->"ne";Less->"lt";Greater->"gt";LessEqual->"le";GreaterEqual->"ge"
-  Overflow->"o";UnsignedAboveEqual->"hs";UnsignedBelow->"lo"
+  Overflow->"o";NoOverflow->"no";UnsignedAboveEqual->"hs";UnsignedBelow->"lo"
 floatName op=case op of FAdd->"add";FSub->"sub";FMul->"mul";FDiv->"div"
 comparisonName op=case op of Lt->"lt";Gt->"gt";Le->"le";Ge->"ge";Eq->"eq";Ne->"ne"
 simdName op=case op of

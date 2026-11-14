@@ -41,7 +41,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 32 -- private products through eight volatile result words
+x64SelectionRev = 33 -- compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words)
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -184,6 +184,11 @@ rrr :: O.X64Op -> VReg -> VReg -> VReg -> SInstr
 rrr op d a b = (plain (O.X64 op) [OV d (Tied 0)] [any' a, any' b]) {siFlags = FlagsDef}
 rri :: O.X64Op -> VReg -> VReg -> Integer -> SInstr
 rri op d s n = (plain (O.X64 op) [OV d (Tied 0)] [any' s, OI n]) {siFlags = FlagsDef}
+-- rd <- rs + n and rd <- 2 * rs + 1 (the tagged Int): one lea each
+addi :: VReg -> VReg -> Integer -> SInstr
+addi d s n = plain (O.X64 O.AddImmediate) [any' d] [any' s, OI n]
+tagw :: VReg -> VReg -> SInstr
+tagw d s = plain (O.X64 O.TagWord) [any' d] [any' s]
 ldrsw :: VReg -> VReg -> Integer -> SInstr
 ldrsw d s off = plain (O.X64 O.LoadSigned32) [any' d] [any' s, OI off]
 cmp :: VReg -> VReg -> SInstr
@@ -295,15 +300,58 @@ select cfg fn = do
       managed0 = S.fromList [vreg v | (v, TVal) <- M.toList tyMap]
       params = [vreg v | (v, _) <- bParams (entryBlock fn)]
       st0 = Sel maxV 0 [] managed0 S.empty S.empty
+      facts = fnFacts fn
+      following = zip (fnBlocks fn) (map (Just . bId) (drop 1 (fnBlocks fn)) ++ [Nothing])
   when (length params > arityCeiling) (Left ("arity above " ++ show arityCeiling))
-  (_, st) <- runStateT (mapM_ (selectBlock cfg fn tyMap) (fnBlocks fn)) st0
+  (_, st) <- runStateT (mapM_ (\(b, next) -> selectBlock cfg fn facts next b) following) st0
   pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st, selStrings st)
 
 entryBlock :: Fn -> Block
 entryBlock fn = head [b | b <- fnBlocks fn, bId b == fnEntry fn]
 
-selectBlock :: X64Config -> Fn -> M.Map VId Ty -> Block -> Se ()
-selectBlock cfg fn tyMap b = do
+-- What selection reads of the whole function, made once: the constants an
+-- instruction can take as an immediate operand (a signed 32-bit field, its
+-- negation too: a subtraction is the addition of the negative), those no
+-- instruction needs in a register (never made), how often each value is
+-- read, and every block's parameters.
+data Facts = Facts
+  { fImmediates :: M.Map VId Integer,
+    fImmediateOnly :: S.Set VId,
+    fUses :: M.Map VId Int,
+    fParams :: M.Map BId [VReg] }
+
+fnFacts :: Fn -> Facts
+fnFacts fn = Facts immediates only uses params
+  where
+    ops = [o | blk <- fnBlocks fn, Instr _ o <- bInstrs blk]
+    terms = concat [termUses (bTerm blk) | blk <- fnBlocks fn]
+    immediates = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk, abs n < 2 ^ (31 :: Int)]
+    -- a read that is not an immediate operand keeps the constant's register
+    held = S.fromList (terms ++ [u | o <- ops, u <- opUses o, M.member u immediates, fmap (\(_, iv, _) -> iv) (immediateForm immediates o) /= Just u])
+    only = M.keysSet immediates `S.difference` held
+    uses = M.fromListWith (+) [(u, 1) | u <- terms ++ concatMap opUses ops]
+    params = M.fromList [(bId blk, [vreg v | (v, _) <- bParams blk]) | blk <- fnBlocks fn]
+
+-- The instructions with an immediate form, and which operand is which:
+-- (the register operand, the constant's value id, the constant).  The one
+-- rule both the selection of the instruction and the decision to never make
+-- the constant read, so they cannot disagree.
+immediateForm :: M.Map VId Integer -> Op -> Maybe (VId, VId, Integer)
+immediateForm immediates = \case
+  OCmp _ a b -> right a b
+  OArith o a b | o `elem` [Add, Sub] -> case right a b of
+    Nothing | o == Add -> right b a
+    form -> form
+  OArithU o a b | o `elem` [Add, Sub] -> case right a b of
+    Nothing | o == Add -> right b a
+    form -> form
+  _ -> Nothing
+  where
+    right a b | a /= b, Just n <- M.lookup b immediates = Just (a, b, n)
+              | otherwise = Nothing
+
+selectBlock :: X64Config -> Fn -> Facts -> Maybe BId -> Block -> Se ()
+selectBlock cfg fn facts next b = do
   emitL (blockLabel (bId b))
   let isEntry = bId b == fnEntry fn
       policy = cfgPolicy cfg
@@ -326,13 +374,118 @@ selectBlock cfg fn tyMap b = do
         (results, more) <- either (refuse) pure (productCallResults c d following)
         emitCallProduct (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (map vreg results)
         run more
-      run (i : more) = selectInstr cfg tyMap i >> run more
+      run (Instr (Just (v, _)) (OConstInt _) : more) | S.member v (fImmediateOnly facts) = run more
+      -- a byte address made for one load: the load takes base and index
+      run (Instr (Just (p, _)) (OIndexByte a i) : Instr (Just (v, _)) (OLoadByte p' n) : more)
+        | p == p', M.lookup p (fUses facts) == Just 1 = do
+            emitI (plain (O.X64 O.LoadByteIndexed) [any' (vreg v)] [any' (vreg a), any' (vreg i), OI (fromIntegral n)])
+            run more
+      run (i : more) = selectInstr cfg facts i >> run more
       run [] = pure ()
-  run rest
-  selectTerm cfg fn b
+      moves target args = filter (uncurry (/=)) (zip (M.findWithDefault [] target (fParams facts)) (map vreg args))
+      -- a comparison whose only reader is this block's branch: compare and
+      -- branch on the flags (no set, no zero-extension, no test).  The edge
+      -- moves come after the branch and x86 moves leave the flags alone.
+      fused = case (reverse rest, bTerm b) of
+        (Instr (Just (p, _)) op : _, TCondBr p' t as e bs)
+          | p == p', M.lookup p (fUses facts) == Just 1 -> case op of
+              OCmp {} -> Just op
+              OVariantTest {} | null (moves t as), null (moves e bs) -> Just op
+              OTagTest {} | null (moves t as), null (moves e bs) -> Just op
+              _ -> Nothing
+        _ -> Nothing
+  case (fused, bTerm b) of
+    (Just op, TCondBr _ t as e bs) -> do
+      run (init rest)
+      let flags c = condBranch fn facts next (bcond c) (bcond (negateCond c)) t as e bs
+      case op of
+        OCmp o x y -> do
+          case immediateForm (fImmediates facts) op of
+            Just (_, _, n) -> emitI (cmpi (vreg x) n)
+            Nothing -> emitI (cmp (vreg x) (vreg y))
+          flags (cmpCond o)
+        -- a tagged Int is no match; else the header word against the pair
+        OVariantTest tg c v -> do
+          bit <- freshV False
+          emitI (rri O.AndImmediate bit (vreg v) 1)
+          emitI (cbnz bit (blockLabel e))
+          hdr <- freshV False
+          want <- freshV False
+          emitI (plain (O.X64 O.LoadField) [any' hdr] [any' (vreg v), OI 0])
+          emitI (li want (headerWord tg c))
+          emitI (cmp hdr want)
+          flags O.Equal
+        -- a tagged Int is no match; then the typeid word, then the variant
+        OTagTest tg c v -> do
+          bit <- freshV False
+          emitI (rri O.AndImmediate bit (vreg v) 1)
+          emitI (cbnz bit (blockLabel e))
+          tid <- freshV False
+          emitI (ldrsw tid (vreg v) 0)
+          cmpConst tid (fromIntegral tg)
+          emitI (bcond O.NotEqual (blockLabel e))
+          var <- freshV False
+          emitI (ldrsw var (vreg v) 4)
+          cmpConst var (fromIntegral c)
+          flags O.Equal
+        _ -> refuse "internal: an unfusable branch condition"
+    _ -> do
+      run rest
+      selectTerm cfg fn facts next b
 
-selectInstr :: X64Config -> M.Map VId Ty -> Instr -> Se ()
-selectInstr cfg _ (Instr d op) = case op of
+-- a compare against a constant: the immediate where it fits the field
+cmpConst :: VReg -> Integer -> Se ()
+cmpConst v n
+  | abs n < 2 ^ (31 :: Int) = emitI (cmpi v n)
+  | otherwise = do
+      want <- freshV False
+      emitI (li want n)
+      emitI (cmp v want)
+
+cmpCond :: CmpOp -> O.Condition
+cmpCond = \case Lt -> O.Less; Gt -> O.Greater; Le -> O.LessEqual; Ge -> O.GreaterEqual; Eq -> O.Equal; Ne -> O.NotEqual
+
+negateCond :: O.Condition -> O.Condition
+negateCond = \case
+  O.Less -> O.GreaterEqual; O.GreaterEqual -> O.Less; O.Greater -> O.LessEqual; O.LessEqual -> O.Greater
+  O.Equal -> O.NotEqual; O.NotEqual -> O.Equal
+  O.UnsignedBelow -> O.UnsignedAboveEqual; O.UnsignedAboveEqual -> O.UnsignedBelow
+  O.Overflow -> O.NoOverflow; O.NoOverflow -> O.Overflow
+
+-- A two-way branch given the jump taken when the condition holds and the
+-- jump taken when it does not.  Whichever target is laid out next is fallen
+-- into; a side with no block-parameter moves is branched to directly, and
+-- only an edge with moves on both sides gets a block of its own.
+condBranch :: Fn -> Facts -> Maybe BId -> (Label -> SInstr) -> (Label -> SInstr) -> BId -> [VId] -> BId -> [VId] -> Se ()
+condBranch _ facts next whenTrue whenFalse t as e bs = case (null movesT, null movesE) of
+  (True, True)
+    | Just e == next -> emitI (whenTrue (blockLabel t))
+    | Just t == next -> emitI (whenFalse (blockLabel e))
+    | otherwise -> emitI (whenTrue (blockLabel t)) >> emitI (jump (blockLabel e))
+  (True, False) -> do
+    emitI (whenTrue (blockLabel t))
+    parallelMoves movesE
+    jumpOn e
+  (False, True) -> do
+    emitI (whenFalse (blockLabel e))
+    parallelMoves movesT
+    jumpOn t
+  (False, False) -> do
+    edge <- freshL "edge"
+    emitI (whenTrue edge)
+    parallelMoves movesE
+    emitI (jump (blockLabel e))
+    emitL edge
+    parallelMoves movesT
+    jumpOn t
+  where
+    moves target args = filter (uncurry (/=)) (zip (M.findWithDefault [] target (fParams facts)) (map vreg args))
+    movesT = moves t as
+    movesE = moves e bs
+    jumpOn target = unless (Just target == next) (emitI (jump (blockLabel target)))
+
+selectInstr :: X64Config -> Facts -> Instr -> Se ()
+selectInstr cfg facts (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq Protocol.FuelOnly -- an inlined callee's tick mid-block
   OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq Protocol.FuelOnly l) {siOpcode = O.Common O.TickN, siUses = [OI (fromIntegral n)]})
@@ -400,10 +553,7 @@ selectInstr cfg _ (Instr d op) = case op of
   OApply f as -> def $ \rd -> do
     forM_ (f : as) $ \v -> emitI (Protocol.selectProtocol Calling.X86_64 (plain (O.X64 O.Push) [] [any' (vreg v)]))
     emitI (Protocol.selectProtocol Calling.X86_64 (plain (O.X64 O.ApplyN) [fix rd (r "rax")] [OI (fromIntegral (length as))]))
-  OTag v -> def $ \r -> do
-    t <- freshV False
-    emitI (rri O.ShiftLeftImmediate t (vreg v) 1)
-    emitI (rri O.OrImmediate r t 1)
+  OTag v -> def (\r -> emitI (tagw r (vreg v)))
   OUntag v -> def (\r -> emitI (rri O.ShiftRightArithmeticImmediate r (vreg v) 1))
   OBoolOf p -> def $ \r -> do
     f <- freshV True
@@ -456,7 +606,12 @@ selectInstr cfg _ (Instr d op) = case op of
     emitI (li r 0)
     emitL done
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
+  -- a constant operand of + or -: the immediate instruction (the slow path
+  -- makes the constant, for the C primitive)
+  OArith o _ _ | Just (x, _, n) <- immediateForm (fImmediates facts) op -> def (\r -> arithImm o r (vreg x) n)
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
+  OArithU o _ _ | Just (x, _, n) <- immediateForm (fImmediates facts) op ->
+    def (\r -> emitI (addi r (vreg x) (if o == Sub then negate n else n)))
   -- proven not to trap; Mul/Div keep the checked form here (correct, not
   -- yet the bare instruction)
   OArithU o a b -> def (\r -> case o of
@@ -495,7 +650,9 @@ selectInstr cfg _ (Instr d op) = case op of
   OFloat32Cmp o a b -> def (\r -> emitI ((plain (O.X64 (O.FloatCompare O.Float32 o)) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
-    emitI (cmp (vreg a) (vreg b))
+    case immediateForm (fImmediates facts) op of
+      Just (_, _, n) -> emitI (cmpi (vreg a) n)
+      Nothing -> emitI (cmp (vreg a) (vreg b))
     emitI (cset (cond o) r)
   OEqVal eq a b -> def $ \r -> do
     slow <- freshL "eqslow"
@@ -595,13 +752,38 @@ selectInstr cfg _ (Instr d op) = case op of
     -- the fast path computes and checks the 63-bit fit, the
     -- slow path retags the ORIGINAL operands and re-enters the C primitive,
     -- whose panic text and failure order are the language's
+    arithImm o r a n = do
+      slow <- freshL "slow"
+      done <- freshL "done"
+      emitI (addi r a (if o == Sub then negate n else n))
+      fits r done
+      emitL slow
+      b <- freshV False
+      emitI (li b n)
+      retagged o r a b
+      emitL done
+    -- the answer is in r before the check, so the fitting path is one
+    -- taken branch over the slow path and no jump around it (the slow path
+    -- still reads the operands: r never shares a register with them)
+    fits r done = do
+      n <- freshV False
+      emitI (rri O.ShiftLeftImmediate n r 1)
+      emitI (bcond O.NoOverflow done)
+    retagged o r a b = do
+      ta' <- freshV True
+      tb' <- freshV True
+      emitI (tagw ta' a)
+      emitI (tagw tb' b)
+      res <- freshV True
+      emitCall (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
+      emitI (rri O.ShiftRightArithmeticImmediate r res 1)
     arith kernel o r a b = do
       slow <- freshL "slow"
       done <- freshL "done"
       t <- freshV False
       case o of
-        Add -> emitI (rrr O.Add t a b) >> fit t slow
-        Sub -> emitI (rrr O.Subtract t a b) >> fit t slow
+        Add -> emitI (rrr O.Add r a b) >> fits r done
+        Sub -> emitI (rrr O.Subtract r a b) >> fits r done
         Mul -> do
           emitI (rrr O.Multiply t a b)
           emitI (bcond O.Overflow slow) -- full 64-bit overflow, then 63-bit language fit
@@ -610,8 +792,9 @@ selectInstr cfg _ (Instr d op) = case op of
           emitI (cbz b slow)
           emitI (divide t a b)
           fit t slow
-      emitI (mov r t)
-      emitI (jump done)
+      when (o `elem` [Mul, Div]) $ do
+        emitI (mov r t)
+        emitI (jump done)
       emitL slow
       if kernel then do
         zero <- freshL "kernelzero"
@@ -623,25 +806,14 @@ selectInstr cfg _ (Instr d op) = case op of
         -- Both entries are noreturn. Define the result on the impossible
         -- continuation as well so the allocation oracle needs no exception.
         emitI (li r 0)
-      else do
-        ta <- freshV False
-        ta' <- freshV True
-        tb <- freshV False
-        tb' <- freshV True
-        emitI (rri O.ShiftLeftImmediate ta a 1)
-        emitI (rri O.OrImmediate ta' ta 1)
-        emitI (rri O.ShiftLeftImmediate tb b 1)
-        emitI (rri O.OrImmediate tb' tb 1)
-        res <- freshV True
-        emitCall (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
-        emitI (rri O.ShiftRightArithmeticImmediate r res 1)
+      else retagged o r a b
       emitL done
-    -- the 63-bit fit check: sign-extend the low 63 bits and compare
+    -- the 63-bit fit check: a value fits when its top two bits agree, and
+    -- a left shift by one sets the overflow flag exactly when they do not
     fit t slow = do
       n <- freshV False
-      emitI (rri O.SignExtend63 n t 0)
-      emitI (cmp n t)
-      emitI (bcond O.NotEqual slow)
+      emitI (rri O.ShiftLeftImmediate n t 1)
+      emitI (bcond O.Overflow slow)
     -- BITSHIFTL / BITSHIFTR agree with runtime/bits.c: a count outside
     -- 0..63 (negative counts included, compared unsigned) takes the slow
     -- path, the HAL entry fpr_g_<name>_call2 with the original operands
@@ -684,8 +856,8 @@ parallelMoves = go . filter (uncurry (/=))
         emitI (mov t s)
         go ((d, t) : [(d', if s' == s then t else s') | (d', s') <- tail ms])
 
-selectTerm :: X64Config -> Fn -> Block -> Se ()
-selectTerm cfg fn b = case bTerm b of
+selectTerm :: X64Config -> Fn -> Facts -> Maybe BId -> Block -> Se ()
+selectTerm cfg fn facts nextBlock b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
   TRetProduct vs -> retProduct (map vreg vs)
   TBr target as
@@ -693,20 +865,9 @@ selectTerm cfg fn b = case bTerm b of
         emitTail (CodeSymbol (functionSymbol (fnName fn))) (FprCall TicksFuel) (map vreg as)
     | otherwise -> do
         parallelMoves (zip (paramsOf target) (map vreg as))
-        emitI (jump (blockLabel target))
-  TCondBr p t as e bs
-    | null as && null bs, Just e == nextBlock -> emitI (cbnz (vreg p) (blockLabel t))
-    | null as && null bs -> do
-        emitI (cbnz (vreg p) (blockLabel t))
-        emitI (jump (blockLabel e))
-    | otherwise -> do
-        edge <- freshL "edge"
-        emitI (cbnz (vreg p) edge)
-        parallelMoves (zip (paramsOf e) (map vreg bs))
-        emitI (jump (blockLabel e))
-        emitL edge
-        parallelMoves (zip (paramsOf t) (map vreg as))
-        emitI (jump (blockLabel t))
+        -- the block laid out next is fallen into
+        unless (Just target == nextBlock) (emitI (jump (blockLabel target)))
+  TCondBr p t as e bs -> condBranch fn facts nextBlock (cbnz (vreg p)) (cbz (vreg p)) t as e bs
   TTailCall c as -> do
     when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
     emitTail (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as)
@@ -716,10 +877,7 @@ selectTerm cfg fn b = case bTerm b of
     modify (\s -> s {selStrings = S.insert msg (selStrings s)})
     emitI (Protocol.selectProtocol Calling.X86_64 (plain (O.X64 O.Panic) [] [OAddr (StaticObject (stringLabel msg))]))
   where
-    paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
-    nextBlock = case dropWhile ((/= bId b) . bId) (fnBlocks fn) of
-      (_ : n : _) -> Just (bId n)
-      _ -> Nothing
+    paramsOf bid = M.findWithDefault [] bid (fParams facts)
 
 -- ---- placement, frame layout and rendering ------------------------------
 placement :: S.Set VReg -> Placement
@@ -905,7 +1063,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       p -> p ++ "d"
     imm = \case OI n -> show n; o -> error ("X64 render: not an immediate " ++ show o)
     slot ref = show (M.findWithDefault (error "X64 render: missing frame object") ref (lyOffset ly)) ++ "(%rbp)"
-    cc = \case O.Equal -> "e"; O.NotEqual -> "ne"; O.Less -> "l"; O.Greater -> "g"; O.LessEqual -> "le"; O.GreaterEqual -> "ge"; O.Overflow -> "o"; O.UnsignedAboveEqual -> "ae"; O.UnsignedBelow -> "b"
+    cc = \case O.Equal -> "e"; O.NotEqual -> "ne"; O.Less -> "l"; O.Greater -> "g"; O.LessEqual -> "le"; O.GreaterEqual -> "ge"; O.Overflow -> "o"; O.NoOverflow -> "no"; O.UnsignedAboveEqual -> "ae"; O.UnsignedBelow -> "b"
     call sym = ["subq $8, %rsp", "call " ++ gsym hart sym, "addq $8, %rsp"]
     go op ds us = case (op,ds,us) of
       (O.Common O.BumpAlloc,[d],[OI raw]) | Just c <- bumpCellFor (cfgPolicy cfg) raw -> bump (reg d) c
@@ -929,8 +1087,19 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
         loadCell HartPointer h ++ ["movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(" ++ h ++ ")"]
       (O.Common O.LoadSpill,[d],[OI j]) -> loadCell HartPointer (reg d) ++ ["movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
       (O.X64 O.Move,[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
-      (O.X64 O.Literal,[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
+      -- the shortest move that makes the constant (none touches the flags:
+      -- a fused compare may sit between its test and its branch): a 32-bit
+      -- move zero-extends, a quad move sign-extends 32 bits, movabs the rest
+      (O.X64 O.Literal,[d],[OI n])
+        | n >= 0, n < 2 ^ (32 :: Int) -> ["movl $" ++ show n ++ ", " ++ word32 d]
+        | n >= -(2 ^ (31 :: Int)), n < 0 -> ["movq $" ++ show n ++ ", " ++ reg d]
+        | otherwise -> ["movabsq $" ++ show n ++ ", " ++ reg d]
       (O.X64 O.Address,[d],[OAddr s]) -> ["leaq " ++ gsym hart (addressName s) ++ "(%rip), " ++ reg d]
+      -- three-address forms through the address unit: no tie to a source's
+      -- register and the flags untouched
+      (O.X64 O.AddImmediate,[d],[s,n]) -> ["leaq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
+      (O.X64 O.TagWord,[d],[s]) -> ["leaq 1(" ++ reg s ++ "," ++ reg s ++ "), " ++ reg d]
+      (O.X64 O.LoadByteIndexed,[d],[base,index,n]) -> ["movzbq " ++ imm n ++ "(" ++ reg base ++ "," ++ reg index ++ "), " ++ reg d]
       (O.X64 O.LoadByte,[d],[base,n]) -> ["movzbq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
       (O.X64 O.LoadField,[d],[base,n]) -> ["movq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
       (O.X64 O.StoreField,[],[base,value,n]) -> ["movq " ++ reg value ++ ", " ++ imm n ++ "(" ++ reg base ++ ")"]
@@ -1070,5 +1239,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
                             "subq $8, %rsp", "call " ++ Call.runtimeName Call.AllocSaveEntry, "addq $8, %rsp",
                             "movq %r11, " ++ dest])
           ++ [done ++ ":"]
-    tickN n = ["subq $" ++ show (min n 0x7fffffff) ++ ", (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (entryLabel i FuelReady)]
+    -- the subtraction sets the flags the branch reads (jg after it: the
+    -- fuel was above the weight, so what is left is above zero)
+    tickN n = ["subq $" ++ show (min n 0x7fffffff) ++ ", (%r10)", "jg " ++ lbl (entryLabel i FuelReady)]
       ++ parkArgs True ++ ["subq $8, %rsp", "call " ++ Call.runtimeName Call.FuelSaveEntry, "addq $8, %rsp"] ++ parkArgs False ++ [lbl (entryLabel i FuelReady) ++ ":"]

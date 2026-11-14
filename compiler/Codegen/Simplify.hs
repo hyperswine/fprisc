@@ -200,22 +200,62 @@ lowerEqValToIntCmp fn =
 -- ---- pass 2: branch on the comparison ---------------------------------------
 
 threadBooleanJoins :: Fn -> Fn
-threadBooleanJoins fn = foldl' threadJoin fn [bId b | b <- fnBlocks fn, isBoolJoin b]
+threadBooleanJoins fn0 = foldl' threadJoin fn [bId b | b <- fnBlocks fn, isBoolJoin fn b]
+  where fn = forwardIntoBoolJoins fn0
+
+-- A join that tests its one parameter and branches: the parameter's truth
+-- (`truth`), or the record test for True or for False (a `case` on the
+-- Bool; Bool is type 1, False variant 0, True variant 1).  The arms come
+-- back in truth order: where control goes when the parameter is True, then
+-- when it is False.
+boolJoinArms :: Block -> Maybe (VId, VId, (BId, [VId]), (BId, [VId]))
+boolJoinArms b = case (bParams b, bInstrs b, bTerm b) of
+  ([(vj, TVal)], [Instr (Just (q, TPred)) test], TCondBr c t as e bs) | c == q -> case test of
+    OTruth w | w == vj -> Just (vj, q, (t, as), (e, bs))
+    OTagTest 1 1 w | w == vj -> Just (vj, q, (t, as), (e, bs))
+    OTagTest 1 0 w | w == vj -> Just (vj, q, (e, bs), (t, as))
+    _ -> Nothing
+  _ -> Nothing
+
+-- the parameter and its test must have no use outside the join: once
+-- the join is threaded away, nothing would define them on the
+-- threaded paths (a QOS module tested the Bool again two joins later)
+isBoolJoin :: Fn -> Block -> Bool
+isBoolJoin fn b = case boolJoinArms b of
+  Just (vj, q, (t, as), (e, bs)) ->
+    bId b /= fnEntry fn && t /= bId b && e /= bId b
+      && vj `notElem` (as ++ bs) && q `notElem` (as ++ bs)
+      && not (usedOutside vj) && not (usedOutside q)
+  Nothing -> False
   where
-    -- the parameter and its truth must have no use outside the join: once
-    -- the join is threaded away, nothing would define them on the
-    -- threaded paths (a QOS module tested the Bool again two joins later)
-    usedOutside b v = or [v `elem` (concat [opUses op | Instr _ op <- bInstrs o] ++ termUses (bTerm o)) | o <- fnBlocks fn, bId o /= bId b]
-    isBoolJoin b = case (bParams b, bInstrs b, bTerm b) of
-      ([(vj, TVal)], [Instr (Just (q, TPred)) (OTruth w)], TCondBr c t as e bs) ->
-        w == vj && c == q && bId b /= fnEntry fn && t /= bId b && e /= bId b
-          && vj `notElem` (as ++ bs) && q `notElem` (as ++ bs)
-          && not (usedOutside b vj) && not (usedOutside b q)
-      _ -> False
+    usedOutside v = or [v `elem` (concat [opUses op | Instr _ op <- bInstrs o] ++ termUses (bTerm o)) | o <- fnBlocks fn, bId o /= bId b]
+
+-- `a or (b and c)` joins twice: the inner join does nothing but hand its
+-- parameter to the outer one.  Its edges go to the outer join directly, so
+-- each can be threaded by what it passes (the inner join then has no edge
+-- left and goes).
+forwardIntoBoolJoins :: Fn -> Fn
+forwardIntoBoolJoins fn = if M.null forwarders then fn else
+       let blocks' = [b {bTerm = retarget (bTerm b)} | b <- fnBlocks fn]
+           targeted = S.fromList (concat [map fst (termSuccs (bTerm b)) | b <- blocks'])
+        in fn {fnBlocks = [b | b <- blocks', M.notMember (bId b) forwarders || S.member (bId b) targeted]}
+  where
+    joins = S.fromList [bId b | b <- fnBlocks fn, isBoolJoin fn b]
+    -- one step only: a forwarder that hands on to another forwarder waits
+    forwarders = M.fromList
+      [(bId b, j) | b <- fnBlocks fn, bId b /= fnEntry fn, ([(v, TVal)], [], TBr j [a]) <- [(bParams b, bInstrs b, bTerm b)],
+                    a == v, j /= bId b, S.member j joins]
+    edge target args = case (M.lookup target forwarders, args) of
+      (Just j, [_]) -> (j, args)
+      _ -> (target, args)
+    retarget = \case
+      TBr b as -> uncurry TBr (edge b as)
+      TCondBr c b1 as1 b2 bs2 -> let (b1', as1') = edge b1 as1; (b2', bs2') = edge b2 bs2 in TCondBr c b1' as1' b2' bs2'
+      other -> other
 
 threadJoin :: Fn -> BId -> Fn
 threadJoin fn j = case [b | b <- fnBlocks fn, bId b == j] of
-  [join] | TCondBr _ t as e bs <- bTerm join ->
+  [join] | Just (_, _, (t, as), (e, bs)) <- boolJoinArms join ->
     let defs = defsOf fn
         -- an edge into the join: the argument it passes decides
         redirect a = case M.lookup a defs of

@@ -1358,6 +1358,7 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
          "fcmp " ++ freg w 16 ++ ", " ++ freg w 17,"cset " ++ reg d ++ ", " ++ fpcond c]
       _ -> error ("A64 render: no form for " ++ show op ++ " " ++ show ds ++ " " ++ show us)
     condition O.Overflow="vs"
+    condition O.NoOverflow="vc"
     condition c=O.conditionName c
     freg O.Float64 n="d"++show n
     freg O.Float32 n="s"++show n
