@@ -204,10 +204,11 @@ main = do
       readBody = ex tInt (LetPattern pairPat
         (ex pairTy (VectorReadPair Read.At [int 0] (local handle))) (local element))
       readFn = Function "readVector" [handle] readBody
-      readCore = CLet "saved" (CVar "handle") (CLet "read" (app "$vec.at" [CInt 0,CVar "saved"])
+      -- a read of a Vector Int carries its element in its name (Core.VectorRead)
+      readCore = CLet "saved" (CVar "handle") (CLet "read" (app "$vec.at.int" [CInt 0,CVar "saved"])
         (CLet "element" (CVar "read") (CLet "nextHandle" (CVar "saved") (CVar "element"))))
   let readProg = M.singleton "readVector" (["handle"], readCore)
-      hal = M.insert "$vec.at" (Lower.Prim 2 (Just "fpr_g_vec_at") Nothing) (foreignEntries rv64)
+      hal = M.insert "$vec.at.int" (Lower.Prim 2 (Just "fpr_g_vec_at") Nothing) (foreignEntries rv64)
       readErased = Lower.lowerFn m2Policy M.empty readProg M.empty hal "readVector" (["handle"],readCore)
       readTyped = Typed.lowerFn True m2Policy layout readProg M.empty hal readFn
   check ("pair-free vector access agrees and preserves the read: " ++ show (readErased,readTyped))

@@ -649,6 +649,13 @@ static V h_put(V iv, V v, V vec) {
 FPR_FN(fpr_g_Vec_x2eat, h_at, 2);
 FPR_FN(fpr_g__x24vec_x2eget, h_peek_get, 2);
 FPR_FN(fpr_g__x24vec_x2eat, h_peek_at, 2);
+/* the same reads under the names the compiler uses where the element's type
+ * is Int or a float (Core.VectorRead): one entry, the type only tells the
+ * inline path which column kind to expect */
+FPR_FN(fpr_g__x24vec_x2eget_x2eint, h_peek_get, 2);
+FPR_FN(fpr_g__x24vec_x2eget_x2efloat, h_peek_get, 2);
+FPR_FN(fpr_g__x24vec_x2eat_x2eint, h_peek_at, 2);
+FPR_FN(fpr_g__x24vec_x2eat_x2efloat, h_peek_at, 2);
 FPR_FN(fpr_g__x24vec_x2elen, h_peek_len, 1);
 FPR_FN(fpr_g_Vec_x2eput, h_put, 3);
 /* Vec.pack from n vec: the n Ints at [from, from+n) as the bytes of one

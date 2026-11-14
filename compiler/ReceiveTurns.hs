@@ -31,6 +31,7 @@ import qualified Data.Set as S
 import Core.Syntax
 import Compiler.DataLayout (tupWideBase)
 import Core.Region.Interface
+import qualified Core.VectorRead as VectorRead
 import Core.Region.Runtime (receiveReady)
 import qualified Core.Region.Receive as Receive
 import qualified Core.Region.Types as Region
@@ -288,6 +289,8 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
         vectorRead g as = case (g, as) of
           ("$vec.len", [_]) -> Just False
           (_, [_, CVar h]) | g `elem` ["$vec.at","$vec.get"], flatVector h -> Just False
+          -- a read named for an Int or float element is of a flat column by its type
+          (_, [_, _]) | VectorRead.peekElement g /= VectorRead.AnyElement -> Just False
           -- an in-place store into a flat column writes one word (vec.c h_set)
           (_, [_, _, CVar h]) | g `elem` ["Vec.set","Vec.put"], M.notMember g prog, flatVector h -> Just False
           -- Where a float is its bits in the word, float arithmetic, comparison
@@ -295,6 +298,9 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
           -- word a float is a boxed leaf, and the unknown-code rule stays.)
           (_, [_, _]) | rawFloats, S.member g floatBinaryNames, M.notMember g prog -> Just False
           (_, [_]) | rawFloats, S.member g floatUnaryNames, M.notMember g prog -> Just False
+          -- bit operations and the runtime's two hashes compute a word (bits.c, vec.c)
+          (_, [_, _]) | S.member g wordBinaryNames, M.notMember g prog -> Just False
+          (_, [_]) | g == "intHash" || g == "strHash", M.notMember g prog -> Just False
           -- a float literal is its bits
           ("f64frombits", [_, _]) | rawFloats, M.notMember g prog -> Just False
           ("f32frombits", [_]) | rawFloats, M.notMember g prog -> Just False
@@ -665,3 +671,5 @@ orElse Nothing y = y
 floatBinaryNames, floatUnaryNames :: S.Set Name
 floatBinaryNames = S.fromList [w ++ op | w <- ["F64.","F32."], op <- ["+","-","*","/","<",">","<=",">=","==","!="]]
 floatUnaryNames = S.fromList [w ++ f | w <- ["F64.","F32."], f <- ["sqrt","ofInt","toInt"]]
+wordBinaryNames :: S.Set Name
+wordBinaryNames = S.fromList ["band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]

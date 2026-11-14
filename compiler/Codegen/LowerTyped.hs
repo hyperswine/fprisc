@@ -426,7 +426,7 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
         afterHandle <- matchPat (PRef saved) handlePat next failure
         matched <- matchPat (PRef value) valuePat afterHandle failure
         pure (PLet saved original (PLet value
-          (PApp (Read.peekName op) (args ++ [PRef saved])) matched), n3)
+          (PApp (Read.peekNameAs (Read.elementOf (exprType handle)) op) (args ++ [PRef saved])) matched), n3)
       _ -> do
         (v, n1) <- go n rhs
         let k = KScrut n1

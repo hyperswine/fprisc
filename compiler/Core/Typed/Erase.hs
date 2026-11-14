@@ -250,7 +250,7 @@ eraseWith annotation region contracts types layout f = runExceptT $ do
       pure (CVar n)
     bindPattern stem env names p rhs continuation failure=case (exprNode rhs,patNode p) of
       (VectorReadPair op indices handle,TuplePattern [valuePat,handlePat])->do
-        unless (M.notMember (Read.peekName op) names)
+        unless (M.notMember (Read.peekNameAs (Read.elementOf (exprType handle)) op) names)
           (throwError "typed Core erasure: display spelling would capture a vector read operation")
         args<-mapM (go env names) indices
         original<-go env names handle
@@ -262,7 +262,7 @@ eraseWith annotation region contracts types layout f = runExceptT $ do
         -- Snapshot the old handle before pattern binders can shadow its
         -- display spelling. The input is a verified evaluated local.
         pure (CLet saved original (CLet value
-          (foldl CApp (CVar (Read.peekName op)) (args++[CVar saved])) matched))
+          (foldl CApp (CVar (Read.peekNameAs (Read.elementOf (exprType handle)) op)) (args++[CVar saved])) matched))
       _->do
         value<-go env names rhs
         tmp<-fresh stem

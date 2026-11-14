@@ -81,7 +81,7 @@ passesWith options=
     ++ [("forward-empty-blocks-again", forwardEmptyBlocks)]
     -- last: a vector view is one operation for every pass above (shared,
     -- moved out of loops) and its tests and loads for the targets
-    ++ [("expand-vector-views", expandViews)]
+    ++ [("expand-vector-views", \f -> let f' = expandViews f in if f' == f then f else dropUnusedParameters f')]
 
 hasView :: Fn -> Bool
 hasView = any (any (\(Instr _ op) -> case op of OVectorView {} -> True; _ -> False) . bInstrs) . fnBlocks

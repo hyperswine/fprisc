@@ -67,8 +67,9 @@ data BitOp = BAnd | BOr | BXor deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- F64 arithmetic on IEEE binary64 bits held in a TVal (the 64-bit V ABI's
 -- float representation): IEEE semantics, no trap, no fused multiply-add
--- the parts of a flat vector view: element count (0 unless flat), column base, 1 for an Int column
-data ViewPart = ViewLength | ViewBase | ViewInteger deriving (Eq, Ord, Show, Enum, Bounded)
+-- the parts of a flat vector view: element count (0 unless flat), column base, 1 for an Int column; and the count
+-- for one column kind alone (0 for the other kind too), which is what a read whose element type is known tests
+data ViewPart = ViewLength | ViewBase | ViewInteger | ViewIntLength | ViewFloatLength deriving (Eq, Ord, Show, Enum, Bounded)
 
 data FloatOp = FAdd | FSub | FMul | FDiv deriving (Eq, Ord, Show, Enum, Bounded)
 

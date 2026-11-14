@@ -90,7 +90,9 @@ checkVectorReads compile=do
     check "malformed operation contracts refuse" (failed (verifyFunction context (replaced rhs)))
   let primitives=M.fromList
         [("Vec.at",(["i","v"],CMk 4 0 [CApp (CApp (CVar "+") (CVar "i")) (CVar "v"),CVar "v"])),
-         ("$vec.at",(["i","v"],CApp (CApp (CVar "+") (CVar "i")) (CVar "v")))]
+         ("$vec.at",(["i","v"],CApp (CApp (CVar "+") (CVar "i")) (CVar "v"))),
+         -- the name a read of a Vector Int carries (Core.VectorRead.peekNameAs)
+         ("$vec.at.int",(["i","v"],CApp (CApp (CVar "+") (CVar "i")) (CVar "v")))]
       evaluate fn=let p=M.insert "shadow" (erase fn) primitives
                       (ir,refused)=Lower.lowerProgram m2Policy M.empty p p M.empty M.empty
                   in if null refused then E.evalProgram ir "shadow" [E.RInt 100] else error (show refused)

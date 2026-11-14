@@ -1,7 +1,7 @@
 {-# LANGUAGE TupleSections #-}
 -- Guarded scalar reads are typed CFG fragments. Operands are already evaluated
 -- before entry, and every miss calls the original C entry with those values.
-module Codegen.VectorRead (Builder(..),ScalarRead(..),View(..),Index(..),canRead,canStore,storeNames,planRead,lowerRead,makeView,lowerElement,lowerStore,expandViews) where
+module Codegen.VectorRead (Builder(..),ScalarRead(..),View(..),Index(..),canRead,canStore,storeNames,planRead,lowerRead,lowerElement,lowerStore,expandViews) where
 import Codegen.IR
 import Codegen.Policy
 import Codegen.Target.Common (mangleName)
@@ -17,7 +17,8 @@ data Builder m=Builder
     newJoinN :: [Ty] -> m (BId,[VId]),
     begin :: BId -> [(VId,Ty)] -> m (),
     effect :: Op -> m (),
-    end :: Term -> m () }
+    end :: Term -> m (),
+    rare :: BId -> m () } -- the block is rarely run: lay it out of the way
 data ScalarRead=Length Callee VId | Element Callee VId VId
 
 canRead :: Policy -> Read.Read -> Callee -> Bool
@@ -25,10 +26,10 @@ canRead policy op callee
   | not (polVectorFast policy) || policyWidth policy/=W64
     || polProfile policy `notElem` [HostedBase,QosApp]=False
   | calleeKind callee/=Foreign expected || calleeResult callee/=TVal
-    || calleeParams callee/=replicate arity TVal || calleeName callee/=Read.peekName op=False
+    || calleeParams callee/=replicate arity TVal || Read.fromPeekName (calleeName callee)/=Just op=False
   | otherwise=True
   where arity=Read.indexArity op+1
-        expected="fpr_g_"++mangleName (Read.peekName op)++"_call"++show arity
+        expected="fpr_g_"++mangleName (calleeName callee)++"_call"++show arity
 
 planRead :: Policy -> Read.Read -> Callee -> [VId] -> Maybe ScalarRead
 planRead policy op callee args
@@ -114,7 +115,12 @@ lowerRead builder plan=do
 -- column, so the view is a function of the handle value (IR.OVectorView): it
 -- holds wherever that value is in scope, repeated views are shared, and a
 -- loop that carries the same handle forms its view once, before the loop.
-data View=View { viewLength :: VId, viewBase :: VId, viewInteger :: VId }
+-- What an access tests and reads through: the mixed view (either column
+-- kind, told apart at each access), or the one kind the element's type names
+-- (the length is 0 for the other kind, so no test of which it is).
+data View=Mixed { viewLength :: VId, viewBase :: VId, viewInteger :: VId }
+  | Ints { viewLength :: VId, viewBase :: VId }
+  | Floats { viewLength :: VId, viewBase :: VId }
 -- an index already known to be an Int, or a value still to be tested
 data Index=Raw VId | Tagged VId
 
@@ -127,10 +133,6 @@ canStore policy name callee
     || polProfile policy `notElem` [HostedBase,QosApp]=False
   | otherwise=name `elem` storeNames && calleeKind callee==Foreign ("fpr_g_"++mangleName name++"_call3")
       && calleeResult callee==TVal && calleeParams callee==replicate 3 TVal && calleeName callee==name
-
-makeView :: Monad m => Builder m -> VId -> m View
-makeView builder vec=View <$> part TInt ViewLength <*> part TAddr ViewBase <*> part TInt ViewInteger
-  where part ty which=value builder ty (OVectorView which vec)
 
 -- the tests and loads of a view, ending in `join`, whose parameters are the
 -- three parts
@@ -160,7 +162,7 @@ viewBlocks builder vec join=do
         directory<-load TAddr address (columnsOffset 8)
         column<-load TAddr directory 0
         base<-load TAddr column (columnBaseOffset 8)
-        end builder (TBr join [count,base,flag])
+        end builder (TBr join (if flag==one then [count,base,flag,count,zero] else [count,base,flag,zero,count]))
   isInteger<-v TPred (OTagTest vectorTypeId intRep vec)
   integer<-label
   checkFloat<-label
@@ -179,7 +181,7 @@ viewBlocks builder vec join=do
     end builder (TBr ok [])
     enter ok) zero
   enter miss
-  end builder (TBr join [zero,address,zero])
+  end builder (TBr join [zero,address,zero,zero,zero])
 
 -- Replace every view operation by its blocks: the simplifier's last pass, so
 -- no target selects one. A run of parts of one handle in a block shares one
@@ -206,9 +208,9 @@ expandViews fn
             first which=head [d | Instr (Just (d,_)) (OVectorView w _)<-run,w==which]
         modify (\(v,l,copies)->(v,l,[(d,first which) | which<-parts,Instr (Just (d,_)) (OVectorView w _)<-run,w==which,d/=first which]++copies))
         join<-freshBlock
-        results<-mapM (\which->if which `elem` parts then pure (first which) else freshValue) [ViewLength,ViewBase,ViewInteger]
+        results<-mapM (\which->if which `elem` parts then pure (first which) else freshValue) [minBound..maxBound]
         made<-expansion (bId b) (bParams b) before vec join
-        more<-block (Block join (zip results [TInt,TAddr,TInt]) after (bTerm b))
+        more<-block (Block join (zip results [TInt,TAddr,TInt,TInt,TInt]) after (bTerm b))
         pure (made++more)
       _->pure [b]
     expansion start params before vec join=do
@@ -235,7 +237,8 @@ expander=Builder
     effect=emitInto . Instr Nothing,
     end = \term->modify (\(open,done)->case open of
       Just (b,ps,instrs)->(Nothing,Block b ps (reverse instrs) term:done)
-      Nothing->error "Codegen.VectorRead: a terminator without an open block") }
+      Nothing->error "Codegen.VectorRead: a terminator without an open block"),
+    rare = \_->pure () }
   where
     emitInto :: Instr -> Expand ()
     emitInto i=modify (\(open,done)->case open of
@@ -264,59 +267,85 @@ boxedIndex builder index=case index of
   Raw raw->value builder TVal (OTag raw)
   Tagged boxed->pure boxed
 
-lowerElement :: Monad m => Builder m -> Callee -> View -> Index -> VId -> m VId
+-- the element as the view's kind reads it: a raw Int (TInt) from an Int
+-- column, the word itself (TVal) from a float column
+lowerElement :: Monad m => Builder m -> Callee -> View -> Index -> VId -> m (VId,Ty)
 lowerElement builder callee view index vec=do
   let v=value builder
-  (join,result)<-newJoin builder TVal
+      ty=case view of Ints {}->TInt;_->TVal
+  (join,result)<-newJoin builder ty
   slow<-newLabel builder
+  rare builder slow
   cursor<-cellOf builder view index slow
-  zero<-v TInt (OConstInt 0)
-  isInteger<-v TPred (OCmp Ne (viewInteger view) zero)
-  integer<-newLabel builder
-  floating<-newLabel builder
-  end builder (TCondBr isInteger integer [] floating [])
-  begin builder integer []
-  raw<-v TInt (OLoad TInt cursor 0)
-  boxed<-v TVal (OTag raw)
-  end builder (TBr join [boxed])
-  begin builder floating []
-  bits<-v TVal (OLoad TVal cursor 0)
-  end builder (TBr join [bits])
+  case view of
+    Ints {}->v TInt (OLoad TInt cursor 0) >>= \raw->end builder (TBr join [raw])
+    Floats {}->v TVal (OLoad TVal cursor 0) >>= \bits->end builder (TBr join [bits])
+    Mixed {}->do
+      zero<-v TInt (OConstInt 0)
+      isInteger<-v TPred (OCmp Ne (viewInteger view) zero)
+      integer<-newLabel builder
+      floating<-newLabel builder
+      end builder (TCondBr isInteger integer [] floating [])
+      begin builder integer []
+      raw<-v TInt (OLoad TInt cursor 0)
+      boxed<-v TVal (OTag raw)
+      end builder (TBr join [boxed])
+      begin builder floating []
+      bits<-v TVal (OLoad TVal cursor 0)
+      end builder (TBr join [bits])
   begin builder slow []
   i<-boxedIndex builder index
   answer<-v TVal (OCall callee [i,vec])
-  end builder (TBr join [answer])
-  begin builder join [(result,TVal)]
-  pure result
+  -- the C entry answers a tagged Int for an Int element: by its type, an Int
+  out<-case view of Ints {}->v TInt (OUntag answer);_->pure answer
+  end builder (TBr join [out])
+  begin builder join [(result,ty)]
+  pure (result,ty)
 
 -- An in-place store. Its answer is the handle it was given: the C entry
 -- (vec.c h_set), which keeps every other case and its traps, returns its
 -- argument too, and a store changes neither the length nor the column, so
--- the same value and the same view go on.
-lowerStore :: Monad m => Builder m -> Callee -> View -> Index -> VId -> VId -> m ()
+-- the same value and the same view go on. The element is a raw Int the
+-- lowering already holds (Left), or a word (Right): an Int column takes a
+-- word only after the test that it is an Int.
+lowerStore :: Monad m => Builder m -> Callee -> View -> Index -> Either VId VId -> VId -> m ()
 lowerStore builder callee view index element vec=do
   let v=value builder
+      intStore cursor slow=case element of
+        Left raw->effect builder (OStore TInt cursor 0 raw)
+        Right word->do
+          small<-v TPred (OIsInt word)
+          store<-newLabel builder
+          end builder (TCondBr small store [] slow [])
+          begin builder store []
+          raw<-v TInt (OUntag word)
+          effect builder (OStore TInt cursor 0 raw)
+      asWord=case element of
+        Left raw->v TVal (OTag raw)
+        Right word->pure word
   join<-newLabel builder
   slow<-newLabel builder
+  rare builder slow
   cursor<-cellOf builder view index slow
-  zero<-v TInt (OConstInt 0)
-  isInteger<-v TPred (OCmp Ne (viewInteger view) zero)
-  integer<-newLabel builder
-  floating<-newLabel builder
-  end builder (TCondBr isInteger integer [] floating [])
-  begin builder integer []
-  small<-v TPred (OIsInt element)
-  store<-newLabel builder
-  end builder (TCondBr small store [] slow [])
-  begin builder store []
-  raw<-v TInt (OUntag element)
-  effect builder (OStore TInt cursor 0 raw)
-  end builder (TBr join [])
-  begin builder floating []
-  effect builder (OStore TVal cursor 0 element)
-  end builder (TBr join [])
+  case view of
+    Ints {}->intStore cursor slow >> end builder (TBr join [])
+    Floats {}->asWord >>= \word->effect builder (OStore TVal cursor 0 word) >> end builder (TBr join [])
+    Mixed {}->do
+      zero<-v TInt (OConstInt 0)
+      isInteger<-v TPred (OCmp Ne (viewInteger view) zero)
+      integer<-newLabel builder
+      floating<-newLabel builder
+      end builder (TCondBr isInteger integer [] floating [])
+      begin builder integer []
+      intStore cursor slow
+      end builder (TBr join [])
+      begin builder floating []
+      word<-asWord
+      effect builder (OStore TVal cursor 0 word)
+      end builder (TBr join [])
   begin builder slow []
   i<-boxedIndex builder index
-  _<-v TVal (OCall callee [i,element,vec])
+  word<-asWord
+  _<-v TVal (OCall callee [i,word,vec])
   end builder (TBr join [])
   begin builder join []

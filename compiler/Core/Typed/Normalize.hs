@@ -139,7 +139,7 @@ globalNames e=own<>S.unions (map globalNames (children e))
       JoinCall (CodeId n) _ _->[n]
       EntryTick->[entryTickName]
       VectorBuild builder _->[builderRuntimeName builder]
-      VectorReadPair op _ _->[Read.peekName op]
+      VectorReadPair op _ handle->[Read.peekNameAs (Read.elementOf (exprType handle)) op]
       CallRegion _->map hookName [CallPending,CallLeave]
       ListValue _->["Cons","Nil"]
       ResultPipe {}->["Err"]

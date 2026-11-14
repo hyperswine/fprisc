@@ -56,7 +56,8 @@ data Prim = Prim {primArity :: Int, primEntry :: Maybe String, primObject :: May
 
 data Cur = Cur BId [(VId, Ty)] [Instr] -- instructions reversed
 
-data St = St {stV :: Int, stB :: Int, stCur :: Maybe Cur, stDone :: [Block]}
+-- stCold: blocks named as rarely run (a vector access's C entry), laid out after the rest
+data St = St {stV :: Int, stB :: Int, stCur :: Maybe Cur, stDone :: [Block], stCold :: [BId]}
 
 -- A terminated expression has no value. Keep its closed blocks and prior
 -- effects; a lowering refusal still discards the whole function.
@@ -193,15 +194,19 @@ inlineFloat cx env h args =
           _ -> False
 
 vectorBuilder :: ScalarVector.Builder L
-vectorBuilder = ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 newBlock open emitDo close
+vectorBuilder = ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 newBlock open emitDo close chill
 
--- An element read (`$vec.get`, `$vec.at`) or an in-place store (`Vec.set`,
--- `Vec.put`) of a flat vector, lowered through the handle's view.
-data VectorAccess = ReadElement Callee Core Core | StoreElement Callee Core Core Core
+chill :: BId -> L ()
+chill b = modify (\s -> s {stCold = b : stCold s})
+
+-- An element read (`$vec.get`, `$vec.at`, and their names for an Int or a
+-- float element) or an in-place store (`Vec.set`, `Vec.put`) of a flat
+-- vector, lowered through the handle's view.
+data VectorAccess = ReadElement VectorRead.Element Callee Core Core | StoreElement Callee Core Core Core
 
 vectorAccess :: Cx -> Env -> Core -> Maybe VectorAccess
 vectorAccess cx env e = case headName e of
-  Just h | h == "$vec.get" || h == "$vec.at" || h == "Vec.set" || h == "Vec.put",
+  Just h | "$vec." `isPrefixOf` h || h == "Vec.set" || h == "Vec.put",
            (CVar _, args) <- spineOf e -> vectorAccessOf cx env h args
   _ -> Nothing
   where
@@ -218,44 +223,78 @@ vectorAccess cx env e = case headName e of
 vectorAccessOf :: Cx -> Env -> Name -> [Core] -> Maybe VectorAccess
 vectorAccessOf cx env h args = case args of
   [index, vec]
-    | h == "$vec.get" || h == "$vec.at",
-      Just (op, callee) <- scalarVectorCall cx env h 2, op /= VectorRead.Length -> Just (ReadElement callee index vec)
+    | "$vec." `isPrefixOf` h,
+      Just (op, callee) <- scalarVectorCall cx env h 2, op /= VectorRead.Length ->
+        Just (ReadElement (VectorRead.peekElement h) callee index vec)
   [index, element, vec]
     | h == "Vec.set" || h == "Vec.put", isPrim cx env h, Just callee <- calleeOf cx h 3,
       ScalarVector.canStore (cxPolicy cx) h callee -> Just (StoreElement callee index element vec)
   _ -> Nothing
 
--- The view lives in the environment under the handle's value, so it is
--- visible exactly where that value is: a scope the view's blocks dominate.
-viewNames :: VId -> [Name]
-viewNames (VId n) = ["\0vector." ++ field ++ "." ++ show n | field <- ["length", "base", "integer"]]
+-- What is known of a handle lives in the environment under the handle's
+-- value, so it is visible exactly where that value is: a scope the defining
+-- blocks dominate. A view part is the IR's pure operation, made on first use.
+-- The element kind is what a typed read of the handle said; a store, which
+-- carries no type here, uses it.
+factName :: String -> VId -> Name
+factName fact (VId n) = "\0vector." ++ fact ++ "." ++ show n
 
-viewOf :: Env -> VId -> L (Env, ScalarVector.View)
-viewOf env vec = case mapM (`M.lookup` env) (viewNames vec) of
-  Just [(count, _), (base, _), (flag, _)] -> pure (env, ScalarVector.View count base flag)
-  _ -> do
-    view <- ScalarVector.makeView vectorBuilder vec
-    pure (withView vec view env, view)
+viewPart :: Env -> VId -> ViewPart -> L (Env, VId)
+viewPart env vec part = case M.lookup name env of
+  Just (v, _) -> pure (env, v)
+  Nothing -> do
+    v <- emit ty (OVectorView part vec)
+    pure (M.insert name (v, ty) env, v)
+  where
+    name = factName (show part) vec
+    ty = if part == ViewBase then TAddr else TInt
 
-withView :: VId -> ScalarVector.View -> Env -> Env
-withView vec (ScalarVector.View count base flag) env =
-  M.union (M.fromList (zip (viewNames vec) [(count, TInt), (base, TAddr), (flag, TInt)])) env
+elementKind :: Env -> VId -> VectorRead.Element
+elementKind env vec
+  | M.member (factName "int" vec) env = VectorRead.IntElement
+  | M.member (factName "float" vec) env = VectorRead.FloatElement
+  | otherwise = VectorRead.AnyElement
 
-lowerVector :: Cx -> Env -> VectorAccess -> L (Env, VId)
+withElement :: VectorRead.Element -> VId -> Env -> Env
+withElement element vec env = case element of
+  VectorRead.IntElement -> M.insert (factName "int" vec) (vec, TVal) env
+  VectorRead.FloatElement -> M.insert (factName "float" vec) (vec, TVal) env
+  VectorRead.AnyElement -> env
+
+viewOf :: Env -> VectorRead.Element -> VId -> L (Env, ScalarVector.View)
+viewOf env element vec = case element of
+  VectorRead.IntElement -> do
+    (env1, count) <- viewPart env vec ViewIntLength
+    (env2, base) <- viewPart env1 vec ViewBase
+    pure (env2, ScalarVector.Ints count base)
+  VectorRead.FloatElement -> do
+    (env1, count) <- viewPart env vec ViewFloatLength
+    (env2, base) <- viewPart env1 vec ViewBase
+    pure (env2, ScalarVector.Floats count base)
+  VectorRead.AnyElement -> do
+    (env1, count) <- viewPart env vec ViewLength
+    (env2, base) <- viewPart env1 vec ViewBase
+    (env3, flag) <- viewPart env2 vec ViewInteger
+    pure (env3, ScalarVector.Mixed count base flag)
+
+lowerVector :: Cx -> Env -> VectorAccess -> L (Env, (VId, Ty))
 lowerVector cx env access = case access of
-  ReadElement callee index vec -> do
+  ReadElement typed callee index vec -> do
     i <- indexOf index
     handle <- lowerVal cx env vec >>= asVal
-    (env', view) <- viewOf env handle
+    let element = if typed == VectorRead.AnyElement then elementKind env handle else typed
+    (env', view) <- viewOf (withElement element handle env) element handle
     result <- ScalarVector.lowerElement vectorBuilder callee view i handle
     pure (env', result)
   StoreElement callee index element vec -> do
     i <- indexOf index
-    value <- lowerVal cx env element >>= asVal
+    value <- lowerVal cx env element >>= \case
+      (v, TInt) -> pure (Left v)
+      r -> Right <$> asVal r
     handle <- lowerVal cx env vec >>= asVal
-    (env', view) <- viewOf env handle
+    (env', view) <- viewOf env (elementKind env handle) handle
     ScalarVector.lowerStore vectorBuilder callee view i value handle
-    pure (env', handle)
+    pure (env', (handle, TVal))
   where
     indexOf index = lowerVal cx env index >>= \case
       (v, TInt) -> pure (ScalarVector.Raw v)
@@ -288,6 +327,7 @@ lowerNode cx env callee index cell stored = do
   value <- traverse (\x -> lowerVal cx env x >>= asVal) stored
   (join, result) <- newBlock1 TVal
   (slow, _) <- newBlock []
+  chill slow
   let guard p = do
         (next, _) <- newBlock []
         close (TCondBr p next [] slow [])
@@ -398,7 +438,7 @@ lowerEntry policy sigs prog ext hal name params lowerBody
   | workerPrefix `isPrefixOf` name, M.notMember name sigs = Left "a scalar worker without representation metadata"
   | length ptys /= length params = Left "worker representation metadata has the wrong arity"
   | otherwise = do
-      result <- evalStateT (runExceptT go) (St 0 0 Nothing [])
+      result <- evalStateT (runExceptT go) (St 0 0 Nothing [] [])
       either (const (Left "internal: uncaught terminated function")) (Right . placeTicks policy . formSelfLoop policy) result
   where
     (ptys, rty0) = M.findWithDefault (map (const TVal) params, TVal) name sigs
@@ -415,7 +455,10 @@ lowerEntry policy sigs prog ext hal name params lowerBody
       when (polFuel policy) (emitDo OSafepoint)
       let cx = Cx prog ext hal policy name entry ptys rty sigs
       lowerBody cx (zip pvs ptys)
-      blocks <- gets (reverse . stDone)
+      done <- gets (reverse . stDone)
+      rare <- gets stCold
+      -- the rarely run blocks go last, so the common path falls through
+      let blocks = [b | b <- done, bId b `notElem` rare] ++ [b | b <- done, bId b `elem` rare]
       pure Fn {fnName = name, fnSourceParams = params, fnResult = rty, fnEntry = entry, fnBlocks = blocks}
 
 -- Private names for product components, inaccessible from source identifiers.
@@ -569,7 +612,7 @@ lowerBind cx env x a = case a of
   -- an element read or store keeps the handle's flat view for the body
   _ | Just access <- vectorAccess cx env a -> do
         (env', result) <- lowerVector cx env access
-        pure (M.insert x (result, TVal) env')
+        pure (M.insert x result env')
   CVar y | Just b <- M.lookup y env ->
     pure $ case snd b of
       TProduct n -> M.union (M.fromList
@@ -797,7 +840,7 @@ lowerVal cx env = \case
           refuse ("call to scalar worker `" ++ h ++ "` without representation metadata")
       | Just (pts, _) <- M.lookup h (cxSigs cx), length pts /= length args ->
           refuse ("call to scalar worker `" ++ h ++ "` whose representation metadata has the wrong arity")
-      | Just access<-vectorAccessOf cx env h args->(\(_,result)->(result,TVal)) <$> lowerVector cx env access
+      | Just access<-vectorAccessOf cx env h args->snd <$> lowerVector cx env access
       | Just (callee, index, cell, stored) <- nodeAccess cx env h args -> lowerNode cx env callee index cell stored
       | Just (op,callee)<-scalarVectorCall cx env h (length args)->do
           values<-mapM (\arg->lowerVal cx env arg >>= asVal) args

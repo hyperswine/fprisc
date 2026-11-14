@@ -1,13 +1,9 @@
-# knucleotide (SPEC.md): k-mer counts of the third fasta sequence with std/hashmap,
-# each k-mer packed two bits a base into an Int key (k <= 18 here; 31 fit)
+# knucleotide (SPEC.md): k-mer counts of the third fasta sequence with std/mutmap (a flat
+# open-addressing table), each k-mer packed two bits a base into an Int key (k <= 18 here; 31 fit)
 String = use "std/string".
 List = use "std/list".
-Map = use "std/hashmap".
-O = use "std/option".
+Map = use "std/mutmap".
 Ord = use "std/order".
-
-bump : O.Option Int -> O.Option Int .
-bump old = case old of O.Some c -> O.Some (c + 1) | O.None -> O.Some 1.
 
 # the lines after ">THREE", up to the next header
 three : (ls : List String | measure ls) -> Bool -> List String -> List String .
@@ -34,15 +30,16 @@ pack q n i key = if i >= n then key else pack q n (i + 1) (key * 4 + code (charA
 unpack : (k : Int | measure k) -> Int -> String -> String .
 unpack k key acc = if k <= 0 then acc else unpack (k - 1) (key / 4) (strcat (base (key % 4)) acc).
 
-# the key of the k-mer ending at pos is the one before it, shifted, with the new base
-count : String -> Int -> (n : Int) -> (pos : Int | measure (n - pos)) -> Int -> Map.Map Int Int -> Map.Map Int Int .
+# the key of the k-mer ending at pos is the one before it, shifted, with the new base;
+# span is 4^k, so span - 1 masks the 2k bits
+count : String -> Int -> (n : Int) -> (pos : Int | measure (n - pos)) -> Int -> MutMap Int Int -> MutMap Int Int .
 count s span n pos key m = if pos >= n then m else
-  next = (key * 4 + code (charAt s pos)) % span;
-  count s span n (pos + 1) next (Map.update next bump m).
+  next = band (key * 4 + code (charAt s pos)) (span - 1);
+  count s span n (pos + 1) next (Map.insertWith (fn old new -> old + new) next 1 m).
 
 # the first k-1 bases start the key; every position after them ends a k-mer
-table : String -> Int -> Map.Map Int Int .
-table s k = count s (pow4 k) (strlen s) (k - 1) (pack s (k - 1) 0 0) Map.ints.
+table : String -> Int -> MutMap Int Int .
+table s k = count s (pow4 k) (strlen s) (k - 1) (pack s (k - 1) 0 0) (Map.ints Unit).
 
 byCount : (Int, Int) -> (Int, Int) -> Ord.Ordering .
 byCount a b = case a of
@@ -58,13 +55,20 @@ freqLine k total e = case e of
 frequencies : String -> Int -> Unit .
 frequencies s k =
   total = strlen s - k + 1;
-  _ = List.each (freqLine k total) (List.sortWith byCount (Map.entries (table s k)));
+  (entries, m) = Map.toList (table s k);
+  _ = Map.free m;
+  _ = List.each (freqLine k total) (List.sortWith byCount entries);
   print "".
+
+query : String -> String -> Unit .
+query s q =
+  (c, m) = Map.getOr 0 (pack q (strlen q) 0 0) (table s (strlen q));
+  _ = Map.free m;
+  print "{c}\t{q}".
 
 main =
   path = case Sys.args Unit of p :: _ -> p | Nil -> "data/fasta-1000000.txt";
   s = strJoin "" (three (String.lines (fileRead path)) False Nil);
   _ = frequencies s 1;
   _ = frequencies s 2;
-  List.each (fn q -> print "{Map.getOr 0 (pack q (strlen q) 0 0) (table s (strlen q))}\t{q}")
-    ["GGT", "GGTA", "GGTATT", "GGTATTTTAATT", "GGTATTTTAATTTATAGT"].
+  List.each (query s) ["GGT", "GGTA", "GGTATT", "GGTATTTTAATT", "GGTATTTTAATTTATAGT"].
