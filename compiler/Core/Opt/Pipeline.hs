@@ -18,6 +18,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Maybe (isJust)
 import Compiler.DataLayout (tupWideBase)
+import Core.ProductABI (packName)
 
 data OptimizationOptions = OptimizationOptions
   { optFusion :: Bool, optWorkers :: Bool, optFieldWorkers :: Bool, optTupleScalars :: Bool,
@@ -30,7 +31,7 @@ data OptimizationOptions = OptimizationOptions
     optMapBodies :: Prog }
   deriving (Eq, Show)
 
-data CorePass = LocalProducts | FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | BuildStrings | PairReturns
+data CorePass = LocalProducts | FuseVectors | MakeWorkers | NormalizeForReuse | ReuseConstructors | BuildStrings | PairReturns | LocalPacks
   deriving (Eq, Show)
 
 data PassReport = PassReport
@@ -63,7 +64,7 @@ optimizeCoreWithProducts :: ProductParameters -> S.Set Name -> Prog -> Optimizat
 optimizeCoreWithProducts products checked imports opts elide input = do
   verifyPassResult input input M.empty
   fst <$> foldM run (OptimizedCore input M.empty [],products)
-    [LocalProducts, FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BuildStrings, PairReturns]
+    [LocalProducts, FuseVectors, MakeWorkers, NormalizeForReuse, ReuseConstructors, BuildStrings, PairReturns, LocalPacks]
   where
     run (state,facts) pass = do
       let before = optimizedProgram state
@@ -72,7 +73,9 @@ optimizeCoreWithProducts products checked imports opts elide input = do
           (after,sigs,notes,enabled) = case pass of
             -- a tuple built in each branch and taken apart at once: its
             -- fields, each from its own copy of the (cheap, pure) branches
-            LocalProducts -> (if optReuse opts then localProducts before else before,optimizedSignatures state,[],optReuse opts)
+            -- (with private products, trees of two to eight fields wait for
+            -- LocalPacks: one copy that hands every field to a join)
+            LocalProducts -> (if optReuse opts then localProductsWith (\n->not (optPairReturns opts) || n<2 || n>8) Nothing before else before,optimizedSignatures state,[],optReuse opts)
             FuseVectors -> let (p,ns) = if optFusion opts then fuseCompatibilityWithImports (checkedKinds (M.union before imports) products) checked imports before else (before,[])
                            in (p,optimizedSignatures state,ns,optFusion opts)
             MakeWorkers -> let fields = optWorkers opts && optFieldWorkers opts
@@ -89,6 +92,10 @@ optimizeCoreWithProducts products checked imports opts elide input = do
             BuildStrings -> let p=if optReuse opts then buildStrings before else before
                             in (p,optimizedSignatures state,["string pieces: "++n | (n,b)<-M.toList p, M.lookup n before /= Just b],optReuse opts)
             -- after every pass that reads call results: the twins are the last functions made
+            LocalPacks
+              | optReuse opts && optPairReturns opts ->
+                  (localProductsWith (\n->n>=2 && n<=8) (Just packName) before,optimizedSignatures state,[],True)
+              | otherwise -> (before,optimizedSignatures state,[],False)
             PairReturns
               | optPairReturns opts ->
                   let width=optProductWidth opts
@@ -169,8 +176,16 @@ buildStrings=M.map (\fn@(ps,b)->if hasChain b then (ps,go b) else fn)
 -- first copy evaluates what the original did up to its first field, so
 -- the first trap is the original's. (An inlined pair-returning helper,
 -- sim's bounce, leaves this shape.)
+--
+-- With a pack (LocalPacks, the last pass: private products exist), a tree of
+-- two to eight fields is not copied: its leaves become $product.packN and
+-- the typed lowering gives the tree one join with a parameter per field
+-- (Codegen.Lower productWidth). The branches are tested once, as written.
 localProducts :: Prog -> Prog
-localProducts=M.map (\fn@(ps,b)->if any isCandidate (lets b) then (ps,go (uses b) b) else fn)
+localProducts=localProductsWith (const True) Nothing
+
+localProductsWith :: (Int -> Bool) -> Maybe (Int -> Name) -> Prog -> Prog
+localProductsWith wanted pack=M.map (\fn@(ps,b)->if any isCandidate (lets b) then (ps,go (uses b) b) else fn)
   where
     lets b=[(t,rhs) | CLet t rhs _<-nodesOf b]
     nodesOf x=x:concatMap nodesOf (kids x)
@@ -188,7 +203,10 @@ localProducts=M.map (\fn@(ps,b)->if any isCandidate (lets b) then (ps,go (uses b
       -- the lets in front of the branches run once, outside (typed
       -- binders are unique: floating them captures nothing); only the
       -- branching part is copied
-      CLet t rhs body | (front,tree)<-prefix rhs, Just sh@(tg,v,n)<-shape tree, n>=1, cheapTree tree,
+      CLet t rhs body | (front,tree)<-prefix rhs, Just sh@(tg,v,n)<-shape tree, n>=1, wanted n, Just mk<-pack, cheapTree tree,
+                        projectedOnly info t sh ->
+        go info (front (CLet t (leaves (foldl CApp (CVar (mk n))) tree) (tests t sh body)))
+      CLet t rhs body | (front,tree)<-prefix rhs, Just sh@(tg,v,n)<-shape tree, n>=1, wanted n, cheapTree tree,
                         size tree<=64, projectedOnly info t sh ->
         let names=[t++"#"++show i | i<-[0..n-1]]
             copies=[rename (t++"#"++show i++".") M.empty (leaves (!!i) tree) | i<-[0..n-1]]
@@ -247,6 +265,17 @@ localProducts=M.map (\fn@(ps,b)->if any isCandidate (lets b) then (ps,go (uses b
     projectedOnly info t (tg,v,n)=case M.lookup t info of
       Nothing -> True
       Just (maxField,shapes,other) -> not other && maxField<n && all (==(tg,v)) (S.toList shapes)
+    -- only the shape tests go (always true); projections stay, of the pack
+    tests t sh@(tg,v,_) x=let tests' = tests t sh in case x of
+      CIf (CTagEq tg' v' (CVar y)) a _ | y==t, (tg',v')==(tg,v) -> tests' a
+      CLet k a b -> CLet k (tests' a) (tests' b)
+      CApp f a -> CApp (tests' f) (tests' a)
+      CIf c a b -> CIf (tests' c) (tests' a) (tests' b)
+      CMk tg2 v2 fs -> CMk tg2 v2 (map tests' fs)
+      CProj k a -> CProj k (tests' a)
+      CTagEq tg2 v2 a -> CTagEq tg2 v2 (tests' a)
+      CLam qs b -> CLam qs (tests' b)
+      _ -> x
     subst t sh@(tg,v,_) names x=let subst' = subst t sh names in case x of
       CIf (CTagEq tg' v' (CVar y)) a _ | y==t, (tg',v')==(tg,v) -> subst' a
       CProj i (CVar y) | y==t -> CVar (names!!i)

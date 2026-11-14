@@ -481,7 +481,9 @@ main = do
       joinD = dumpFn (simplH M.! "join")
   check "tag/untag pairs fold and the untags are shared" (M.lookup "pair" removedH == Just 3 && length (filter ("untag" `isInfixOf`) (lines pairD)) == 1 && not ("tag v1" `isInfixOf` pairD))
   check "the materialised Bool is gone: the join block is threaded away" (M.lookup "join" removedH == Just 3 && not ("truth" `isInfixOf` joinD) && not ("boolof" `isInfixOf` joinD) && not ("b3(" `isInfixOf` joinD))
-  check "the constant edge jumps to its arm, the boolof edge branches on its predicate" ("  br b4()" `isInfixOf` joinD && "condbr v6 -> b4() | b5()" `isInfixOf` joinD)
+  -- the constant edge's block, left empty by the threading, is forwarded:
+  -- the first test goes straight to the arm
+  check ("the constant edge jumps to its arm, the boolof edge branches on its predicate\n" ++ joinD) ("condbr v3 -> b4() | b2()" `isInfixOf` joinD && "condbr v6 -> b4() | b5()" `isInfixOf` joinD)
   -- a pass whose result does not verify is a compiler error, not a fallback
   let broken = (simplifyFn M.empty pairFn {fnBlocks = [b {bTerm = TRet (VId 99)} | b <- fnBlocks pairFn]})
   check "an unverifiable result is an error naming the pass" (case broken of Left e -> "simplify fold-conversions on pair" `isInfixOf` e; _ -> False)

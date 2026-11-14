@@ -57,6 +57,7 @@ passes=passesWith defaultOptions
 passesWith :: Options -> [(String,Fn -> Fn)]
 passesWith options=
   [ ("fold-conversions", dropDeadPure . foldConversions . foldDivisors),
+    ("forward-empty-blocks", forwardEmptyBlocks),
     ("branch-on-comparison", dropDeadPure . threadBooleanJoins),
     ("share-pure-in-block", dropDeadPure . sharePureInBlock)
   ] ++ [("move-loop-invariants",\f -> if hasCycle f then dropDeadPure (moveInvariants (registerBudget options) (inlineFloats options) f) else f) | moveLoopInvariants options]
@@ -75,6 +76,45 @@ passesWith options=
     ++ [("carry-raw-ints", carryRawAll)]
     ++ [("fold-constant-divisors", dropDeadPure . foldConversions . foldDivisors)]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
+    ++ [("forward-empty-blocks-again", forwardEmptyBlocks)]
+
+-- ---- forwarding blocks -----------------------------------------------------
+
+-- A block with no instructions that only jumps on (a join of joins: the
+-- local-product tree's `b7(x, y): br b8(x, y)`) is bypassed: each edge to it
+-- goes straight to its target, with the block's parameters replaced by that
+-- edge's arguments. Its other arguments are values it does not define, so
+-- they dominate every predecessor too. Unreached blocks are then dropped.
+forwardEmptyBlocks :: Fn -> Fn
+forwardEmptyBlocks fn = case M.keys forwards of
+  [] -> fn
+  _ -> let fn' = prune (fn {fnBlocks = map retarget (fnBlocks fn)}) in if fn' == fn then fn else forwardEmptyBlocks fn'
+  where
+    -- a parameter a later block reads directly (the block dominates it)
+    -- would lose its definition: such a block stays
+    usedIn = M.fromListWith S.union [(v, S.singleton (bId b)) | b <- fnBlocks fn,
+                                     v <- concatMap (\(Instr _ op) -> opUses op) (bInstrs b) ++ termUses (bTerm b)]
+    onlyHere b v = maybe True (`S.isSubsetOf` S.singleton (bId b)) (M.lookup v usedIn)
+    forwarder b = bId b /= fnEntry fn && null (bInstrs b) && case bTerm b of TBr t _ -> t /= bId b; _ -> False
+    forwards = M.fromList [(bId b, (map fst (bParams b), t, as)) | b <- fnBlocks fn, forwarder b, TBr t as <- [bTerm b],
+                                                                    all (onlyHere b . fst) (bParams b)]
+    -- one step per round: a chain shortens by one, to the fixpoint
+    edge (b, xs) = case M.lookup b forwards of
+      Just (ps, t, as) | length ps == length xs ->
+        let sub = M.fromList (zip ps xs) in (t, map (\v -> M.findWithDefault v v sub) as)
+      _ -> (b, xs)
+    retarget b = b {bTerm = case bTerm b of
+      TBr t as -> uncurry TBr (edge (t, as))
+      TCondBr c t as e bs -> let (t', as') = edge (t, as); (e', bs') = edge (e, bs) in TCondBr c t' as' e' bs'
+      other -> other}
+    prune f =
+      let reach seen [] = seen
+          reach seen (x : xs)
+            | S.member x seen = reach seen xs
+            | otherwise = reach (S.insert x seen) (maybe [] (map fst . termSuccs . bTerm) (M.lookup x blocks) ++ xs)
+          blocks = M.fromList [(bId b, b) | b <- fnBlocks f]
+          live = reach S.empty [fnEntry f]
+       in f {fnBlocks = [b | b <- fnBlocks f, S.member (bId b) live]}
 
 -- the simplified function and the number of instructions it lost
 simplifyFn :: Program -> Fn -> Either String (Fn, Int)

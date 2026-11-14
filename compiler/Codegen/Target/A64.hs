@@ -80,7 +80,7 @@ import Codegen.Annotation (EntryPoint(..),entryLabel,checkSaveGroups)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict hiding (fix)
 import Data.Bits (shiftR, (.&.))
-import Data.List (intercalate)
+import Data.List (intercalate, isInfixOf, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Word (Word64)
@@ -287,6 +287,18 @@ trapCall s = do
     ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
   emitI selected
 
+-- The checked-arithmetic slow path: the fast path already saw the overflow
+-- (or the zero divisor), so the C primitive, given the original operands,
+-- traps with the language's text and never returns. Selected as a noreturn
+-- transfer, nothing is live across it: the slow paths no longer push a
+-- loop's values into callee-saved registers. (The li after it only defines
+-- the result on the impossible continuation, as the kernel traps do.)
+trapPrim :: String -> [VReg] -> Se ()
+trapPrim s args = do
+  selected <- either refuse pure (Calling.selectTransfer Calling.AArch64 Calling.RuntimeCall NeverReturns (CodeSymbol s) args Nothing
+    ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
+  emitI selected
+
 -- Place every product word before the epilogue.
 retProduct :: [VReg] -> Se ()
 retProduct values = do
@@ -446,6 +458,19 @@ selectBlock cfg fn tyMap b = do
           emitI (li want (headerWord tg c))
           emitI (cmp hdr want)
           branch O.Equal O.NotEqual
+        -- typeid and variant both in [0, 2^31): the two sign-extended words
+        -- compare equal exactly when the one header word does
+        OTagTest tg c v | headerFits tg c -> do
+          run (init rest)
+          bit <- freshV False
+          emitI (rri A.AndImmediate bit (vreg v) 1)
+          emitI (cbnz bit (blockLabel e))
+          hdr <- freshV False
+          want <- freshV False
+          emitI (plain (O.A64 A.LoadField) [any' hdr] [any' (vreg v), OI 0])
+          emitI (li want (headerWord tg c))
+          emitI (cmp hdr want)
+          branch O.Equal O.NotEqual
         OTagTest tg c v -> do
           run (init rest)
           -- a tagged Int is no match; then the typeid word, then the variant
@@ -471,6 +496,30 @@ selectBlock cfg fn tyMap b = do
   where
     cmpCond = \case Lt -> O.Less; Gt -> O.Greater; Le -> O.LessEqual; Ge -> O.GreaterEqual; Eq -> O.Equal; Ne -> O.NotEqual
     negateOp = \case Lt -> Ge; Le -> Gt; Gt -> Le; Ge -> Lt; Eq -> Ne; Ne -> Eq
+
+-- Checked arithmetic renders `b.ne slow; ...; b done; slow: <retag, call
+-- the C primitive>; done:`.  The primitive traps on the failure the fast
+-- path saw, so the slow segment is cold: it moves to the end of the
+-- function and jumps back, and the fast path falls through without its
+-- `b done`.  Rendered text only: the instructions, the labels and the
+-- control flow the tick analysis measured are the same (the fast path one
+-- jump shorter, the cold one a jump longer).
+coldSlowPaths :: [String] -> [String]
+coldSlowPaths ls = let (body, cold) = go ls in body ++ cold
+  where
+    trim = dropWhile (== ' ')
+    isSlow l = let t = trim l in not (null t) && last t == ':' && "_slow" `isInfixOf` t
+    go (j : l : rest)
+      | Just done <- stripPrefix "b " (trim j), "_done" `isInfixOf` done, isSlow l,
+        (segment, after) <- break ((== done ++ ":") . trim) rest, not (null after),
+        all (not . isSlow) segment =
+          let (body, cold) = go after
+           in (body, (l : segment ++ ["    b " ++ done]) ++ cold)
+    go (x : rest) = let (body, cold) = go rest in (x : body, cold)
+    go [] = ([], [])
+
+headerFits :: Int -> Int -> Bool
+headerFits t c = t >= 0 && c >= 0 && t < 2147483648 && c < 2147483648
 
 selectInstr :: A64Config -> M.Map VId Integer -> Instr -> Se ()
 selectInstr cfg immediates (Instr d op) = case op of
@@ -554,6 +603,7 @@ selectInstr cfg immediates (Instr d op) = case op of
   OTruth v -> def (\r -> emitI (ldrsw r (vreg v) 4))
   ONot p -> def (\r -> emitI (rri A.XorImmediate r (vreg p) 1))
   OIsInt v -> def (\r -> emitI (rri A.AndImmediate r (vreg v) 1))
+  OTagTest t c v | headerFits t c -> selectInstr cfg immediates (Instr d (OVariantTest t c v))
   OTagTest t c v -> def $ \r -> do
     miss <- freshL "tagno"
     done <- freshL "tagdone"
@@ -768,9 +818,8 @@ selectInstr cfg immediates (Instr d op) = case op of
       emitI (rri A.OrImmediate ta' ta 1)
       emitI (rri A.ShiftLeftImmediate tb b 1)
       emitI (rri A.OrImmediate tb' tb 1)
-      res <- freshV True
-      call (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
-      emitI (rri A.ShiftRightArithmeticImmediate r res 1)
+      trapPrim (primSymbol o) [ta', tb']
+      emitI (li r 0)
       emitL done
     arith kernel o r a b = do
       slow <- freshL "slow"
@@ -825,9 +874,8 @@ selectInstr cfg immediates (Instr d op) = case op of
         emitI (rri A.OrImmediate ta' ta 1)
         emitI (rri A.ShiftLeftImmediate tb b 1)
         emitI (rri A.OrImmediate tb' tb 1)
-        res <- freshV True
-        call (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
-        emitI (rri A.ShiftRightArithmeticImmediate r res 1)
+        trapPrim (primSymbol o) [ta', tb']
+        emitI (li r 0)
       emitL done
     -- the 63-bit fit check: sign-extend the low 63 bits and compare
     fit t slow = do
@@ -1090,7 +1138,7 @@ emitFnA64WithSymbols symbols cfg fn = do
            ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ (if wrapped == Nothing then "" else " wrapped=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," (map phys ps)) ++ " " ++ statsLine (alStats alloc)]
           ++ visibilityLines (cfgFormat cfg) WeakDirective (visibilityFor (cfgWeak cfg) symbols name) (gsym cfg sym)
           ++ [gsym cfg sym ++ ":"]
-      lines' = header ++ map (\s -> if last s == ':' then s else "    " ++ s) reserve ++ concatMap snd rendered ++ refillCode ++ [reportLine name report, ""]
+      lines' = header ++ map (\s -> if last s == ':' then s else "    " ++ s) reserve ++ coldSlowPaths (concatMap snd rendered) ++ refillCode ++ [reportLine name report, ""]
   checkForms a64RegisterFile name body
   checkSaveGroups name (length pairs) body
   let stack = Stack.selectedFrame Stack.LinkRegister ly (CodeSymbol (functionSymbol name))
