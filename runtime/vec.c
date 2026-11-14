@@ -1101,7 +1101,23 @@ static int mm_key_eq(vec_t *x, uw slot, V k) {
   if (s == (uw)k) return 1;
   str_t *a = (str_t *)s, *b = (str_t *)k;
   if (a->len != b->len) return 0;
-  for (uw i = 0; i < a->len; i++)
+  uw i = 0, n = a->len;
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ && UINTPTR_MAX > UINT32_MAX
+  /* whole words, the last cut to the bytes that count (runtime.c
+   * g_strCompare says why reading that word whole is safe) */
+  if (!(((uw)a | (uw)b) & 7)) {
+    for (; i < n; i += 8) {
+      uint64_t p, q;
+      __builtin_memcpy(&p, a->bytes + i, 8);
+      __builtin_memcpy(&q, b->bytes + i, 8);
+      if (p == q) continue;
+      uw rest = n - i;
+      return rest < 8 && !((p ^ q) & (~(uint64_t)0 >> (64 - 8 * rest)));
+    }
+    return 1;
+  }
+#endif
+  for (; i < n; i++)
     if (a->bytes[i] != b->bytes[i]) return 0;
   return 1;
 }

@@ -1188,7 +1188,10 @@ static uw region_shared_copies, region_shared_full;
 /* the sizing pass's context, passed down (a thread-local read was a call per
  * cell on macOS): the retained state slab, a region copy's arena, the byte
  * cap and whether it was passed, and the table that counts cells once */
-typedef struct dc_sz { fpr_slab_t *retain; struct fpr_pool *region; dc_share_t *share; uw left; int over; V mut_root; } dc_sz_t;
+typedef struct dc_sz { fpr_slab_t *retain; struct fpr_pool *region; dc_share_t *share; uw left; int over; V mut_root;
+  int quick; /* a quick walk: it stops once more than `left` bytes are known to survive */
+  int in_mut; /* a quick walk is under the written root, where the region's own rules are off */
+} dc_sz_t;
 static uw dc_share_slot(dc_share_t *t, V v) {
   uw i = (((uw)v >> 4) * (uw)0x9E3779B97F4A7C15ull) >> 20 & t->mask;
   while (t->key[i] && (t->key[i] & ~(uw)7) != (uw)v) i = (i + 1) & t->mask;
@@ -1219,6 +1222,18 @@ static inline int dc_size_visit(dc_sz_t *z, V v) {
   z->left -= t;
   return 1;
 }
+/* A quick walk under the written root.  The region's visit rule is off there
+ * (the structure has one holder, so it is a tree and is copied whole), and
+ * nothing else bounded that part of the walk: an owned map that would
+ * survive was walked to its last cell, at every retry, to learn what its
+ * first sixteenth of the arena's bytes already showed. */
+static inline int dc_size_quick(dc_sz_t *z, V v) {
+  if (z->over) return 0;
+  uw t = PREHEADER(v);
+  if (t > z->left) { z->over = 1; return 0; }
+  z->left -= t;
+  return 1;
+}
 static int dc_outside(V v, struct fpr_pool *region) {
   if (!region || ((hdr_t *)v)->tid == T_VEC) return 0;
   struct fpr_pool *o = __atomic_load_n(&slab_of(v)->owner, __ATOMIC_RELAXED);
@@ -1233,9 +1248,9 @@ static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
   if (ISINT(v) || !v) return 0;
   if (z && z->mut_root && v == z->mut_root) {
     struct fpr_pool *r = z->region;
-    z->mut_root = 0; z->region = 0;
+    z->mut_root = 0; z->region = 0; z->in_mut = z->quick;
     uw n = dc_size_in(v, z, immutable);
-    z->region = r; z->mut_root = v;
+    z->region = r; z->mut_root = v; z->in_mut = 0;
     return n;
   }
   fpr_slab_t *retain = z ? z->retain : 0;
@@ -1249,6 +1264,7 @@ static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
   }
   if (dc_retained(v, retain) || dc_outside(v, region)) return 0;
   if (region && !dc_size_visit(z, v)) return 0;
+  if (z && z->in_mut && !dc_size_quick(z, v)) return 0;
   uw total = PREHEADER(v);
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
@@ -1288,6 +1304,7 @@ static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
       unsigned heads;
       while (!ISINT(c) && fpr_in_heap(c) && (heads = spine_payloads(c)) && !dc_retained(c, retain) && !dc_outside(c, region)) {
         if (c != v && region && !dc_size_visit(z, c)) return n; /* the rest of this spine is counted */
+        if (c != v && z && z->in_mut && !dc_size_quick(z, c)) return n;
         n += PREHEADER(c);
         for (unsigned i=0; i<heads; ++i) n += dc_size_in(spine_slots(c)[i], z, immutable);
         c = spine_slots(c)[heads];
@@ -2343,7 +2360,7 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
    * the limit survives: it stops there.  The first walk after a copy goes to
    * the cap, where passing it proves sharing rather than survival. */
   int quick = region && survive_limit && scope->decline_run && survive_limit < cap;
-  dc_sz_t z = {.retain = retain, .region = region, .left = quick ? survive_limit : cap, .mut_root = mut_root};
+  dc_sz_t z = {.retain = retain, .region = region, .left = quick ? survive_limit : cap, .mut_root = mut_root, .quick = quick};
   uw need = dc_size_in(v, &z, &immutable);
   if (quick && z.over) {
     if (h) h->copy_movevec = 0;
@@ -2351,6 +2368,7 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
     scope->declined_bytes = survive_limit + 1;
     return v;
   }
+  z.quick = 0; /* it finished under the limit: the walks below count every cell */
   if (retain && !z.over && (!immutable || need > (uw)(retain->end - retain->hp))) {
     retain = 0;
     immutable = 1;
@@ -3802,15 +3820,37 @@ static V g_strCompare(V av, V bv) {
   uw n = a->len < b->len ? a->len : b->len;
   /* a word at a time, no libc (freestanding images link no memcmp, and map
    * keys are short: the call cost more than the compare).  The first
-   * differing word, read big-endian, orders as its first differing byte. */
+   * differing word, read big-endian, orders as its first differing byte.
+   * The last word is read whole and cut to the bytes that count: a String's
+   * bytes start on a word boundary of its cell, so the word that holds its
+   * last byte lies in the same eight aligned bytes (never across a page),
+   * and what follows the last byte is masked off before it is compared.
+   * Keys of a few letters were otherwise a byte loop that ends where the
+   * data says, a branch the processor cannot predict. */
   int c = 0;
   uw i = 0;
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-  for (; i + 8 <= n; i += 8) {
-    uint64_t p, q;
-    __builtin_memcpy(&p, a->bytes + i, 8);
-    __builtin_memcpy(&q, b->bytes + i, 8);
-    if (p != q) { p = __builtin_bswap64(p); q = __builtin_bswap64(q); c = p < q ? -1 : 1; break; }
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ && UINTPTR_MAX > UINT32_MAX
+  /* the first byte alone settles most compares of unrelated keys, and the
+   * answer is ready a few cycles sooner than the word's: the branch a map
+   * walk takes on it is a guess either way, and resolves that much earlier */
+  if (n && a->bytes[0] != b->bytes[0]) return TAG(a->bytes[0] < b->bytes[0] ? -1 : 1);
+  if (!(((uw)a | (uw)b) & 7)) {
+    for (; i < n; i += 8) {
+      uint64_t p, q;
+      __builtin_memcpy(&p, a->bytes + i, 8);
+      __builtin_memcpy(&q, b->bytes + i, 8);
+      if (p == q) continue;
+      uw rest = n - i;
+      if (rest < 8) {
+        uint64_t keep = ~(uint64_t)0 >> (64 - 8 * rest);
+        p &= keep; q &= keep;
+        if (p == q) break;
+      }
+      p = __builtin_bswap64(p); q = __builtin_bswap64(q);
+      c = p < q ? -1 : 1;
+      break;
+    }
+    i = n;
   }
 #endif
   for (; !c && i < n; i++) if (a->bytes[i] != b->bytes[i]) c = a->bytes[i] < b->bytes[i] ? -1 : 1;
@@ -4336,7 +4376,23 @@ str_t *fpr_mkstr(const uint8_t *src, uw n) {
   s->tid = T_STR;
   s->var = 0;
   s->len = n;
-  for (uw i = 0; i < n; i++) s->bytes[i] = src[i];
+  /* Most Strings made here are a field or a word cut from a line: a few
+   * bytes, where a call to memcpy (or the loop the compiler turns into one)
+   * costs more than the copy.  Up to 32 bytes go as words, the last one
+   * overlapping the one before; nothing is read past src + n. */
+  uint8_t *d = s->bytes;
+  if (n > 32) __builtin_memcpy(d, src, n);
+  else if (n >= 8) {
+    uint64_t w;
+    for (uw i = 0; i + 8 < n; i += 8) { __builtin_memcpy(&w, src + i, 8); __builtin_memcpy(d + i, &w, 8); }
+    __builtin_memcpy(&w, src + n - 8, 8); __builtin_memcpy(d + n - 8, &w, 8);
+  } else if (n >= 4) {
+    uint32_t w, x;
+    __builtin_memcpy(&w, src, 4); __builtin_memcpy(&x, src + n - 4, 4);
+    __builtin_memcpy(d, &w, 4); __builtin_memcpy(d + n - 4, &x, 4);
+  } else if (n) {
+    d[0] = src[0]; d[n >> 1] = src[n >> 1]; d[n - 1] = src[n - 1];
+  }
   return s;
 }
 

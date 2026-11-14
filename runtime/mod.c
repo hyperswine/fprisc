@@ -120,6 +120,10 @@ int fpr_layout_register(const uw *table) {
   fpr_unlock(&layout_lock);
   return result;
 }
+#ifdef FPR_COMPACT_CELLS /* 64-bit words: the entry packs into one */
+#define LAYOUT_RECENT 64
+static uw layout_recent[LAYOUT_RECENT];
+#endif
 uw fpr_layout_fields(uw tid, uw variant) {
   if (tid==T_STORED_LIST) return 2+(variant&7);
   /* Wide tuples encode their arity in the reserved type-id range. They
@@ -130,6 +134,17 @@ uw fpr_layout_fields(uw tid, uw variant) {
   }
 #ifdef FPR_COMPACT_CELLS
   if (fpr_plane_memory) return fpr_plane_memory->layout_fields(tid,variant);
+  /* A copy or a sizing walk asks this once per cell, and a structure has a
+   * handful of constructors: the recent answers, one word each (the key in
+   * the high 48 bits, the field count in the low 16), ahead of the hash
+   * probe.  An entry is a fact of the grow-only table, read and written
+   * whole, so harts need no lock and a lost write only costs a probe. */
+  uw cached=(tid*31+variant)&(LAYOUT_RECENT-1);
+  int small=tid<((uw)1<<24)-1 && variant<((uw)1<<24);
+  if (small) {
+    uw entry=__atomic_load_n(&layout_recent[cached],__ATOMIC_RELAXED);
+    if ((entry>>16)==(((tid+1)<<24)|variant)) return entry&0xffff;
+  }
 #endif
   layout_index *index=__atomic_load_n(&layouts,__ATOMIC_ACQUIRE);
   if (!index) {
@@ -139,6 +154,10 @@ uw fpr_layout_fields(uw tid, uw variant) {
   layout_slot *found=layout_find(index,tid,variant);
   if (__atomic_load_n(&found->tid_plus_one,__ATOMIC_ACQUIRE)!=tid+1 || found->variant!=variant)
     fpr_cpanic("layout check: the layout table has no entry for this constructor");
+#ifdef FPR_COMPACT_CELLS
+  if (small && found->fields<=0xffff)
+    __atomic_store_n(&layout_recent[cached],(((tid+1)<<24)|variant)<<16|found->fields,__ATOMIC_RELAXED);
+#endif
   return found->fields;
 }
 
