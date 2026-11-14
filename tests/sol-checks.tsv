@@ -1,10 +1,19 @@
-tests/test_check_registry.py	60
-tests/test_aarch64_fuel.py	60
-tests/check_ctx_a64_fp.py	120
-tools/sol-linearity-check.py	300	tests/sol-checks/linearity.sol
-tools/sol-fs-check.py	300
-tools/sol-io-check.py	300
-tools/sol-digest-check.py	180
-tools/sol-format-check.py	180
-tools/sol-cli-config-check.py	180
-tests/check_digest_vectors.py	300	tests/sol-checks/digest.sol
+# name	deadline (s)	Sol implementation	tier (push: every CI run; nightly: only with --nightly)
+# Heaviest first: tests/run.sol starts checks in this order.
+config-differential	3600	tests/sol-checks/config-differential.sol	push
+std-golden	2400	tests/sol-checks/std-golden.sol	push
+pagination	900	tests/sol-checks/pagination.sol	push
+ideal	900	tests/sol-checks/ideal.sol	push
+compile-budget	1200	tests/sol-checks/compile-budget.sol	push
+cost	600	tests/sol-checks/cost.sol	push
+result-sizes	600	tests/sol-checks/result-sizes.sol	push
+std-contracts	900	tests/sol-checks/std-contracts.sol	push
+digest	300	tests/sol-checks/digest.sol	push
+compile-tracked	1800	tests/sol-checks/compile-tracked.sol	push
+panic-stderr	300	tests/sol-checks/panic-stderr.sol	push
+crash-repros	300	tests/sol-checks/crash-repros.sol	push
+ownership	300	tests/sol-checks/ownership.sol	push
+linearity	300	tests/sol-checks/linearity.sol	push
+x64-bump-spill	300	tests/sol-checks/x64-bump-spill.sol	push
+stdcheck	300	tests/sol-checks/stdcheck.sol	push
+trust	60	tests/sol-checks/trust.sol	push

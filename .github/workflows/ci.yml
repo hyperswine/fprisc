@@ -1,10 +1,14 @@
-# Main now qualifies surviving Sol/native workflows; archived Python/Bash coverage is retired.
+# Main qualifies the surviving Sol/native workflows (sol-native) and the regression
+# checks ported from the retired Python suite to Sol (sol-checks, tests/run.sol).
 name: ci
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # nightly: the Sol checks at full size (every std program in each configuration, clientstate)
+  schedule:
+    - cron: '17 15 * * *'
 permissions:
   contents: read
 jobs:
@@ -39,3 +43,41 @@ jobs:
           ./fpr sol tests/sol-main-smoke.sol
       - name: Native compiler unit suites
         run: make unit-tests
+
+  # The regression checks ported from the retired Python suite (tests/run.sol,
+  # tests/sol-checks.tsv). A separate job, so it runs beside sol-native and a red
+  # step there does not hide these. Known failures on main are listed with their
+  # reasons in tests/sol-checks-known-failures.tsv.
+  sol-checks:
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    timeout-minutes: ${{ github.event_name == 'schedule' && 120 || 40 }}
+    defaults:
+      run:
+        shell: sh
+    steps:
+      - name: Install git for checkout
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+      - uses: actions/checkout@v4
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Native build dependencies
+        run: |
+          apt-get install -y --no-install-recommends make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev libegl-dev libgl-dev
+      - name: Build compiler
+        run: |
+          rm -f cabal.project.freeze
+          cabal update
+          make fpr
+          mkdir -p "$RUNNER_TEMP/sol-bin"
+          ln -sf "$GITHUB_WORKSPACE/fpr" "$RUNNER_TEMP/sol-bin/sol"
+          echo "$RUNNER_TEMP/sol-bin" >> "$GITHUB_PATH"
+          echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: Sol regression checks
+        if: github.event_name != 'schedule'
+        run: sol tests/run.sol --jobs 2
+      - name: Sol regression checks (nightly, full size)
+        if: github.event_name == 'schedule'
+        run: sol tests/run.sol --jobs 2 --nightly
