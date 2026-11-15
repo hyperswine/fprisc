@@ -417,7 +417,7 @@ prelude =
 halArities :: M.Map Name Int
 halArities =
   M.fromList $
-    [ ("str", 1), ("strcat", 2), ("String.len", 1), ("strlen", 1),
+    [ ("str", 1), ("strcat", 2), ("strCompare", 2), ("String.len", 1), ("strlen", 1),
       ("error", 1), ("Try.parseInt", 1), ("Try.parseNum", 1), ("Try.readPath", 1),
       ("Try.ls", 1), ("Try.stat", 1), ("Try.exists", 1), ("Try.lstat", 1), ("Try.statKind", 1), ("Try.walk", 4), ("Try.tempDir", 1), ("Try.tempFile", 1), ("Try.sh", 1),
       ("charAt", 2), ("chr", 1), ("substr", 3), ("!", 2),

@@ -1044,6 +1044,9 @@ mkHal cons scriptArgs tx preempts rt =
     [ ("str", (1, \[v] -> pure (VStr (render v)))),
       -- Strings retain lazy sequential text and share an on-demand character index.
       ("strcat", (2, \[a, b] -> fmap VStr (liftA2 (++) (vsStr a) (vsStr b)))),
+      -- byte order, -1 / 0 / 1 (runtime.c g_strCompare; std/order's String comparison): UTF-8 keeps
+      -- code point order, so comparing the characters answers what comparing the bytes does
+      ("strCompare", (2, \[a, b] -> (\x y -> VInt (case compare x y of LT -> -1; EQ -> 0; GT -> 1)) <$> vsStr a <*> vsStr b)),
       ("String.len", (1, \[v] -> case stringLength v of Just n -> pure (VInt (fromIntegral n)); Nothing -> vmPanic "strlen: not a String")),
       ("strlen", (1, \[v] -> case stringLength v of Just n -> pure (VInt (fromIntegral n)); Nothing -> vmPanic "strlen: not a String")),
       -- MutMap's hashes (Sol.MutMap; the native 64-bit values, Strings as UTF-8)
