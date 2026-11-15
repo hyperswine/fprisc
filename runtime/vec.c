@@ -658,6 +658,11 @@ FPR_FN(fpr_g__x24vec_x2eat_x2eint, h_peek_at, 2);
 FPR_FN(fpr_g__x24vec_x2eat_x2efloat, h_peek_at, 2);
 FPR_FN(fpr_g__x24vec_x2elen, h_peek_len, 1);
 FPR_FN(fpr_g_Vec_x2eput, h_put, 3);
+// a store named for its vector's element type (Core.VectorRead.storeNameAs): the same entries
+FPR_FN(fpr_g__x24vec_x2eset_x2eint, h_set, 3);
+FPR_FN(fpr_g__x24vec_x2eset_x2efloat, h_set, 3);
+FPR_FN(fpr_g__x24vec_x2eput_x2eint, h_put, 3);
+FPR_FN(fpr_g__x24vec_x2eput_x2efloat, h_put, 3);
 /* Vec.pack from n vec: the n Ints at [from, from+n) as the bytes of one
  * String, and the handle back.  This is what makes a Vector Int a byte
  * buffer: written in place by Vec.set, packed once, where a String built a

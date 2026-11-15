@@ -98,6 +98,7 @@ opSignature tyOf = \case
     unless (n >= negate (2 ^ (63 :: Int)) && n < 2 ^ (63 :: Int)) (Left ("bits " ++ show n ++ " is not a signed 64-bit word"))
     pure (Just TVal)
   OFloatBin _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
+  OFloatOfInt a -> expect a TInt >> pure (Just TVal)
   OFloatCmp _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
   OFloatTree t -> do
     case t of FNode {} -> pure (); FLeaf _ -> Left "a float tree is at least one operation"
@@ -287,4 +288,4 @@ simdExprOk int e = do
     else unless (floatOnly e) (Left "an F64 SIMD pair uses F64 + - * over the lane, captures and literals")
   where
     leaf = \case SLane -> True; SCapture _ -> True; SConst _ -> True; _ -> False
-    floatOnly = \case SLane -> True; SCapture _ -> True; SConst _ -> True; SFloat op x y -> op /= FDiv && floatOnly x && floatOnly y; SInt {} -> False
+    floatOnly = \case SLane -> True; SCapture _ -> True; SConst _ -> True; SFloat op x y -> op `notElem` [FDiv, FSqrt] && floatOnly x && floatOnly y; SInt {} -> False

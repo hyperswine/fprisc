@@ -24,10 +24,26 @@ analyze fn=Flow succs preds live (fix start)
       | otherwise=walk (S.insert b seen) (S.toList (M.findWithDefault S.empty b succs)++bs)
     live=walk S.empty [fnEntry fn]
     start=M.fromSet (\b->if b==fnEntry fn || S.notMember b live then S.singleton b else live) ids
-    step dm=M.mapWithKey (\b ds->if b==fnEntry fn || S.notMember b live then ds else
-      let ps=S.toList (S.intersection live (M.findWithDefault S.empty b preds))
-      in S.insert b (case ps of []->S.empty;p:rest->foldl S.intersection (dm M.! p) [dm M.! q | q<-rest])) dm
-    fix dm=let next=step dm in if next==dm then dm else fix next
+    -- The greatest fixed point of dom(b) = {b} + the intersection of dom over
+    -- b's reachable predecessors. Blocks are swept in reverse postorder and
+    -- each reads the sets already updated in the same sweep, so a reducible
+    -- graph settles in two sweeps whatever its size; sweeping all blocks from
+    -- the previous round's sets took a round per block of the longest path,
+    -- and comparing whole maps to find the end was most of what a large
+    -- function cost to compile.
+    order=snd (visit (S.empty,[]) (fnEntry fn))
+    visit (seen,out) b
+      | S.member b seen || S.notMember b ids=(seen,out)
+      | otherwise=let (seen',out')=foldl visit (S.insert b seen,out) (S.toList (M.findWithDefault S.empty b succs))
+                  in (seen',b:out')
+    sweep dm=foldl update (dm,False) order
+    update (dm,changed) b
+      | b==fnEntry fn=(dm,changed)
+      | otherwise=
+          let ps=S.toList (S.intersection live (M.findWithDefault S.empty b preds))
+              new=S.insert b (case ps of []->S.empty;p:rest->foldl S.intersection (dm M.! p) [dm M.! q | q<-rest])
+          in if S.size new==S.size (dm M.! b) then (dm,changed) else (M.insert b new dm,True)
+    fix dm=let (next,changed)=sweep dm in if changed then fix next else next
 
 naturalLoops :: Fn -> Flow -> [NaturalLoop]
 naturalLoops fn flow=

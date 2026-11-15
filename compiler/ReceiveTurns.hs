@@ -244,7 +244,37 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
     -- Constructors with fields, closures and the primitives the cost pass
     -- says allocate count; a call to a global outside the group that is not
     -- a primitive is assumed to allocate.
-    allocates group n = let (ps, b) = prog M.! n in iterAlloc (S.fromList ps) b
+    allocates group n = fst (allocation quiet group n)
+    -- The functions of this program that never allocate, whatever they are
+    -- given: no allocation of their own, and every function they name is one
+    -- of them. A call to one is not unknown code, so a loop whose iteration
+    -- only calls such functions (a helper that reads and stores into a flat
+    -- vector, an inner loop over one) is not a boundary. Found downwards:
+    -- assume every function with parameters is one, drop those with an
+    -- allocation of their own under that assumption, then everything that
+    -- names a dropped one.
+    quiet = candidates S.\\ reaches (edges prog) noisy
+      where
+        candidates = S.fromList [n | (n, (ps, _)) <- M.toList prog, not (null ps)] S.\\ (receivers `S.union` managed)
+        noisy = S.fromList [n | n <- S.toList candidates, snd (allocation candidates S.empty n) || appliesValue n]
+                  `S.union` (M.keysSet prog `S.intersection` (receivers `S.union` managed))
+    -- does n apply a value it holds (a parameter, a local, an expression's
+    -- result)? What such a value does when applied is not known here.
+    appliesValue n = let (ps, b) = prog M.! n in go (S.fromList ps) b
+      where
+        go bound e = case spine e of
+          (h, as@(_ : _)) -> (case h of CVar g -> S.member g bound; _ -> True) || any (go bound) as
+          _ -> case e of
+            CLet x a b' -> go bound a || go (S.insert x bound) b'
+            CIf c t f -> go bound c || go bound t || go bound f
+            CLam xs b' -> go (bound `S.union` S.fromList xs) b'
+            CMk _ _ fs -> any (go bound) fs
+            CTagEq _ _ x -> go bound x
+            CProj _ x -> go bound x
+            _ -> False
+    -- (does an iteration of n allocate scratch, does any path of n allocate),
+    -- with the calls to `still` taken as allocating nothing
+    allocation still group n = let (ps, b) = prog M.! n in (iterAlloc (S.fromList ps) b, rawAlloc (S.fromList ps) b)
       where
         -- A vector read allocates only for a Vector of records or tuples (a
         -- row is built); Int, float and boxed elements come back as the
@@ -293,6 +323,8 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
           (_, [_, _]) | VectorRead.peekElement g /= VectorRead.AnyElement -> Just False
           -- an in-place store into a flat column writes one word (vec.c h_set)
           (_, [_, _, CVar h]) | g `elem` ["Vec.set","Vec.put"], M.notMember g prog, flatVector h -> Just False
+          -- a store named for an Int or float element is into a flat column by its type
+          (_, [_, _, _]) | Just (_, element) <- VectorRead.storeElement g, element /= VectorRead.AnyElement -> Just False
           -- Where a float is its bits in the word, float arithmetic, comparison
           -- and conversion compute a word and allocate nothing. (On a 32-bit
           -- word a float is a boxed leaf, and the unknown-code rule stays.)
@@ -361,6 +393,7 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
         rawAlloc bound e = case spine e of
           (CVar g, as) | not (S.member g bound), not (null as) ->
             if S.member g group then any (argAlloc bound) as
+            else if S.member g still && fmap (length . fst) (M.lookup g prog) == Just (length as) then any (rawAlloc bound) as
             else case maybe (primAllocates g (length as)) Just (vectorRead g as) of
               Just False -> any (rawAlloc bound) as
               Just True -> True
@@ -397,7 +430,7 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
     costly g arity = case (M.lookup g prog `orElse` M.lookup g context,M.lookup g interfaces,M.lookup g callEqs) of
       (Just (ps,_),Just signature,Just (_,eq)) | length ps==arity,interfaceArity signature==arity,
         callableRegionEntry signature ->
-          copyableType (interfaceResult signature) && allocGrows growingOmega eq && S.notMember g loopEntries
+          copyableType (interfaceResult signature) && allocGrows growingOmega eq && S.notMember g loopEntries && S.notMember g quiet
       _->False
     copyableAt owner g=Sites.mayCopyResult sites (maybe owner generatedSource (M.lookup owner generated)) g
     callRegions p = (M.mapWithKey site p, [ "call-regions: " ++ n ++ ": " ++ show k ++ " call(s) under a pending region"
@@ -416,7 +449,7 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
         sameGroup a b = case (M.lookup a sccIx, M.lookup b sccIx) of (Just x, Just y) -> x == y; _ -> False
         -- wrap: (expression, sites so far) -> (expression', sites)
         wrap n bound k e = case spine e of
-          (CVar g, as@(_ : _)) | S.notMember g bound, not (sameGroup n g), copyableAt n g, costly g (length as) ->
+          (CVar g, as@(_ : _)) | S.notMember g bound, not (sameGroup n g), S.notMember g quiet, copyableAt n g, costly g (length as) ->
             -- the arguments are evaluated inside the pending region, as part
             -- of the call: a trip moves only later allocations to the arena,
             -- and the arguments die with the call (unbound, so the field

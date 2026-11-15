@@ -13,7 +13,7 @@ data X64Op
   | SignExtend63 | ShiftLeft | ShiftRight | Divide
   | FrameLoad | FrameStore | LoadByte | LoadField | StoreField | StoreHeader
   | Call | Ret | Push | ApplyN | Panic | Enter | Save
-  | FloatBinary Width FloatOp | FloatCompare Width CmpOp
+  | IntToFloat | FloatBinary Width FloatOp | FloatCompare Width CmpOp
   | TreeLeaf Width | TreeNode Width FloatOp | TreeOutput Width | TreeCompare Width CmpOp
   | PairLoad | PairStore | PairDuplicate | PairBinary SimdOp
   deriving (Eq,Ord,Show)
@@ -27,6 +27,7 @@ x64Name op=case op of
   SignExtend63->"sext63";ShiftLeft->"shlq";ShiftRight->"shrq";Divide->"divide"
   FrameLoad->"load";FrameStore->"store";LoadByte->"load.byte";LoadField->"load.field";StoreField->"store.field";StoreHeader->"store.header"
   Call->"call";Ret->"ret";Push->"push";ApplyN->"applyn";Panic->"panic";Enter->"enter";Save->"save"
+  IntToFloat->"cvtsi2sd"
   FloatBinary w f->widthPrefix "fbin" w++floatName f
   FloatCompare w c->widthPrefix "fcmp" w++comparisonName c
   TreeLeaf w->widthPrefix "ftree" w++"leaf"

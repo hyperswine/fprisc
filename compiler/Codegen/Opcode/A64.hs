@@ -12,7 +12,7 @@ data Opcode
   | Set Condition | Select Condition | Branch Condition | BranchZero | BranchNonzero | Jump
   | Call | Push | ApplyN | Panic | Ret | Enter | Save
   | LoadByte | LoadField | StoreField | StoreHeader
-  | FloatBinary FloatBank Width FloatOp | FloatCompare FloatBank Width CmpOp
+  | IntToFloat | FloatBinary FloatBank Width FloatOp | FloatCompare FloatBank Width CmpOp
   | TreeLeaf FloatBank Width | TreeOutput FloatBank Width | TreeNode Width FloatOp | TreeCompare Width CmpOp
   | PairLoad | PairStore | PairDuplicate | PairBinary SimdOp
   deriving (Eq,Ord,Show)
@@ -25,6 +25,7 @@ name op=case op of
   BranchZero->"cbz";BranchNonzero->"cbnz";Jump->"b"
   Call->"bl";Push->"push";ApplyN->"applyn";Panic->"panic";Ret->"ret";Enter->"enter";Save->"save"
   LoadByte->"load.byte";LoadField->"load.field";StoreField->"store.field";StoreHeader->"store.header"
+  IntToFloat->"scvtf"
   FloatBinary WordBits w f->widthPrefix "fbin" w++floatName f
   FloatBinary FloatRegisters w f->poolPrefix "bin" w++floatName f
   FloatCompare WordBits w c->widthPrefix "fcmp" w++comparisonName c

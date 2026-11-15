@@ -50,6 +50,7 @@ checkForms rf owner items=do
             A.Enter->none [];A.Save->none []
             A.LoadByte->one [word,immediate];A.LoadField->one [word,immediate]
             A.StoreField->none [word,word,immediate];A.StoreHeader->none [word,word,immediate]
+            A.IntToFloat->one [word]
             A.FloatBinary b _ _->matches [bank b] ds && matches [bank b,bank b] us
             A.FloatCompare b _ _->one [bank b,bank b]
             A.TreeLeaf b _->none [bank b,index 0 7]

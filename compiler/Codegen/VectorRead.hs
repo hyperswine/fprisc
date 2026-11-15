@@ -125,7 +125,7 @@ data View=Mixed { viewLength :: VId, viewBase :: VId, viewInteger :: VId }
 data Index=Raw VId | Tagged VId
 
 storeNames :: [String]
-storeNames=["Vec.set","Vec.put"]
+storeNames=Read.storeNames
 
 canStore :: Policy -> String -> Callee -> Bool
 canStore policy name callee

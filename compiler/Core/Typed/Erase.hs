@@ -136,6 +136,13 @@ eraseWith annotation region contracts types layout f = runExceptT $ do
         x<-go env names base
         v<-fresh "rec"
         CLet v x <$> plannedUpdate env names (Just (exprType base)) (CVar v) plan
+      -- a store into a `Vector Int` or a float vector goes by the name that says so
+      Apply f handle | Apply g _<-exprNode f,Apply h _<-exprNode g,Var (Global n _)<-exprNode h,
+        let typed=Read.storeNameAs (Read.elementOf (exprType handle)) n,typed/=n -> do
+          unless (M.notMember typed names) (throwError "typed Core erasure: display spelling would capture a vector store operation")
+          let Apply _ index=exprNode g
+              Apply _ value=exprNode f
+          foldl CApp (CVar typed) <$> mapM (go env names) [index,value,handle]
       Apply a b -> CApp <$> go env names a <*> go env names b
       Lambda ps b -> let (env',names')=scopes ps env names
                      in CLam (map binderName ps) <$> go env' names' b

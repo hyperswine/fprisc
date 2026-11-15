@@ -202,7 +202,7 @@ chill b = modify (\s -> s {stCold = b : stCold s})
 -- An element read (`$vec.get`, `$vec.at`, and their names for an Int or a
 -- float element) or an in-place store (`Vec.set`, `Vec.put`) of a flat
 -- vector, lowered through the handle's view.
-data VectorAccess = ReadElement VectorRead.Element Callee Core Core | StoreElement Callee Core Core Core
+data VectorAccess = ReadElement VectorRead.Element Callee Core Core | StoreElement VectorRead.Element Callee Core Core Core
 
 vectorAccess :: Cx -> Env -> Core -> Maybe VectorAccess
 vectorAccess cx env e = case headName e of
@@ -227,8 +227,8 @@ vectorAccessOf cx env h args = case args of
       Just (op, callee) <- scalarVectorCall cx env h 2, op /= VectorRead.Length ->
         Just (ReadElement (VectorRead.peekElement h) callee index vec)
   [index, element, vec]
-    | h == "Vec.set" || h == "Vec.put", isPrim cx env h, Just callee <- calleeOf cx h 3,
-      ScalarVector.canStore (cxPolicy cx) h callee -> Just (StoreElement callee index element vec)
+    | Just (_, typed) <- VectorRead.storeElement h, isPrim cx env h, Just callee <- calleeOf cx h 3,
+      ScalarVector.canStore (cxPolicy cx) h callee -> Just (StoreElement typed callee index element vec)
   _ -> Nothing
 
 -- What is known of a handle lives in the environment under the handle's
@@ -286,13 +286,14 @@ lowerVector cx env access = case access of
     (env', view) <- viewOf (withElement element handle env) element handle
     result <- ScalarVector.lowerElement vectorBuilder callee view i handle
     pure (env', result)
-  StoreElement callee index element vec -> do
+  StoreElement typed callee index element vec -> do
     i <- indexOf index
     value <- lowerVal cx env element >>= \case
       (v, TInt) -> pure (Left v)
       r -> Right <$> asVal r
     handle <- lowerVal cx env vec >>= asVal
-    (env', view) <- viewOf env (elementKind env handle) handle
+    let kind = if typed == VectorRead.AnyElement then elementKind env handle else typed
+    (env', view) <- viewOf (withElement kind handle env) kind handle
     ScalarVector.lowerStore vectorBuilder callee view i value handle
     pure (env', (handle, TVal))
   where
@@ -886,6 +887,18 @@ lowerVal cx env = \case
           x <- lowerVal cx env a >>= asVal
           y <- lowerVal cx env b >>= asVal
           v <- emit TVal (OFloatBin o x y)
+          pure (v, TVal)
+      -- an Int as the nearest F64: one conversion instruction (runtime.c F64.ofInt casts the same way)
+      | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
+        h == "F64.ofInt", [a] <- args -> do
+          x <- lowerVal cx env a >>= asInt
+          v <- emit TVal (OFloatOfInt x)
+          pure (v, TVal)
+      -- the square root is one instruction, correctly rounded like the C entry's
+      | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
+        h == "F64.sqrt" || h == "F32.sqrt", [a] <- args -> do
+          x <- lowerVal cx env a >>= asVal
+          v <- emit TVal ((if h == "F64.sqrt" then OFloatBin else OFloat32Bin) FSqrt x x)
           pure (v, TVal)
       | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
         Just o <- M.lookup h floatCmpOps, [a, b] <- args -> do

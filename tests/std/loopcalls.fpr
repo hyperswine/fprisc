@@ -1,0 +1,51 @@
+# std golden: calls inside loops. A helper, an inner loop and an inner loop that answers a tuple, each
+# called from one place inside a loop (Codegen.InlineCalls merges them into the caller); stores named
+# for their element; F64.sqrt and F64.ofInt inline.
+List = use "std/list".
+
+# one helper, called from one place inside a loop
+swap3 : Int -> Vector Int -> Vector Int .
+swap3 i v0 =
+  a = 3 * i;
+  (x, v1) = Vec.get a v0;
+  (y, v2) = Vec.get (a + 2) v1;
+  v3 = Vec.set a y v2;
+  Vec.set (a + 2) (x + i) v3.
+
+each3 : (n : Int) -> (i : Int | measure (n - i)) -> Vector Int -> Vector Int .
+each3 n i v = if i >= n then v else each3 n (i + 1) (swap3 i v).
+
+# an inner loop called from one place inside an outer loop
+rowFill : Int -> (n : Int) -> (j : Int | measure (n - j)) -> Vector F64 -> Vector F64 .
+rowFill i n j v = if j >= n then v else
+  rowFill i n (j + 1) (Vec.set (i * n + j) (F64.sqrt (F64.ofInt (i * j))) v).
+
+grid : (n : Int) -> (i : Int | measure (n - i)) -> Vector F64 -> Vector F64 .
+grid n i v = if i >= n then v else grid n (i + 1) (rowFill i n 0 v).
+
+# an inner loop that answers a tuple
+rowSum : Int -> (n : Int) -> (j : Int | measure (n - j)) -> F64 -> Vector F64 -> (F64, Vector F64) .
+rowSum i n j acc v = if j >= n then (acc, v) else
+  (x, v1) = Vec.get (i * n + j) v;
+  rowSum i n (j + 1) (acc + x) v1.
+
+sums : (n : Int) -> (i : Int | measure (n - i)) -> F64 -> Vector F64 -> (F64, Vector F64) .
+sums n i total v = if i >= n then (total, v) else
+  (s, v1) = rowSum i n 0 0.0 v;
+  sums n (i + 1) (total + s * F64.ofInt (i + 1)) v1.
+
+zerosF : (n : Int | measure n) -> Vector F64 -> Vector F64 .
+zerosF n v = if n <= 0 then v else zerosF (n - 1) (Vec.push 0.0 v).
+
+# a fill that only stores
+fill : (n : Int) -> (i : Int | measure (n - i)) -> Vector Int -> Vector Int .
+fill n i v = if i >= n then v else fill n (i + 1) (Vec.set i (i * i - 7) v).
+
+main =
+  _ = print (Vec.toList (each3 4 0 (Vec.fromList [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])));
+  _ = print (Vec.toList (fill 6 0 (Vec.fromList [0, 0, 0, 0, 0, 0])));
+  (total, g) = sums 5 0 0.0 (grid 5 0 (zerosF 25 (Vec.new Unit)));
+  (corner, g1) = Vec.get 24 g;
+  _ = Vec.free g1;
+  _ = print (F64.toInt (total * 1000000.0));
+  print (F64.toInt corner).

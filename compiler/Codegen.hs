@@ -29,6 +29,7 @@ import qualified Codegen.NativeData as NativeData
 import qualified Codegen.Kernel as K
 import Codegen.Lower (lowerProgram, Prim (..))
 import qualified Codegen.Simplify as Simplify
+import Codegen.InlineCalls (inlineCalls)
 import Codegen.Split (splitEntryValues)
 import Codegen.Target.Common (Tune (..), noTune, mangleName,SymbolPolicy,publicSymbols,symbolNames,visibilityFor,Visibility(..))
 import Codegen.Policy (Profile (..), StackPolicy(..), Policy (..), m2Policy, policyWidth)
@@ -58,7 +59,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 238 -- Element reads named for an Int or float element read their one column kind (raw Int results, no kind test), stores follow the handle's known kind, the C entries of vector accesses are laid out last; bit operations and hashes do not make a loop a region. (237: Vector element reads and in-place stores through a flat view formed once per handle and moved out of loops; inline trie node reads and stores; float arithmetic and flat stores do not make a loop a region. (236: Tuple-valued if-trees join once with a parameter per field (LocalPacks). (235: A64: closures holding up to two captured arguments are applied directly. (234: Owned hash tries: a trie walker's node copy (nodeWith) becomes a store (nodeSet) in its owned twin (233: Boolean joins thread through a case on the Bool (record tests, not only truth) and through a forwarding inner join (232: Peel fuel ticks, CErr guards, and nullary constructor stubs in Reuse.knownCtors; support d > 1 unchanged-tree contract in Reuse.hs. (231: Thread boolean joins after version-string-scan discharge; constant-fold safe integer division on literals in foldDivisors; 229: Depth-bounded add/sub/mul interval bounds for inductive loop parameters in Interval.hs; 228: Inductive non-linear loop parameter bounds in Interval.hs; restore isNeg helper in std/string.fpr so toInt inlines; 227: Inline intMin/intMax constants, byte-load & mul/sub interval bounds, OEqVal->OCmp for dominated Ints; 225: A64: call regions pushed and popped inline (hart cell 61); 224: A64: add/sub immediates, fused record-layout tests, exact-arity applies call directly; fewer nested call regions; small comparators inlined in owned-map walkers; 223: owned maps call their comparator directly; 222: owned maps pick the wrapper of their own module; 221: String fields in private variant returns).))))))
+codegenRev = 239 -- Calls from loops to functions named in one place are inlined on the IR (Codegen.InlineCalls); never-allocating functions are not region boundaries; stores named for their element; single-valued block parameters forwarded; guards proved from ranges; F64.sqrt/F32.sqrt/F64.ofInt inline. (238: Element reads named for an Int or float element read their one column kind (raw Int results, no kind test), stores follow the handle's known kind, the C entries of vector accesses are laid out last; bit operations and hashes do not make a loop a region. (237: Vector element reads and in-place stores through a flat view formed once per handle and moved out of loops; inline trie node reads and stores; float arithmetic and flat stores do not make a loop a region. (236: Tuple-valued if-trees join once with a parameter per field (LocalPacks). (235: A64: closures holding up to two captured arguments are applied directly. (234: Owned hash tries: a trie walker's node copy (nodeWith) becomes a store (nodeSet) in its owned twin (233: Boolean joins thread through a case on the Bool (record tests, not only truth) and through a forwarding inner join (232: Peel fuel ticks, CErr guards, and nullary constructor stubs in Reuse.knownCtors; support d > 1 unchanged-tree contract in Reuse.hs. (231: Thread boolean joins after version-string-scan discharge; constant-fold safe integer division on literals in foldDivisors; 229: Depth-bounded add/sub/mul interval bounds for inductive loop parameters in Interval.hs; 228: Inductive non-linear loop parameter bounds in Interval.hs; restore isNeg helper in std/string.fpr so toInt inlines; 227: Inline intMin/intMax constants, byte-load & mul/sub interval bounds, OEqVal->OCmp for dominated Ints; 225: A64: call regions pushed and popped inline (hart cell 61); 224: A64: add/sub immediates, fused record-layout tests, exact-arity applies call directly; fewer nested call regions; small comparators inlined in owned-map walkers; 223: owned maps call their comparator directly; 222: owned maps pick the wrapper of their own module; 221: String fields in private variant returns).)))))))
 -- 220 Forward range/map fusion.
 -- 219 -- QOS app images take the receive-loop form; slot-carried small messages (218: weighted ticks: a tick charges the worst-case instruction count of the code it covers 217: early IR loops and String-scan versioning (several strings) by default; raw loop-carried Ints (216: A64 compare-and-branch, one-word String guard))
 
@@ -183,7 +184,8 @@ typedIrNotes (Just mode) policy sigs ext hal prog emitted =
         ++ (if "dumplowered" `elem` ws then concatMap (map ("typed-ir: lowered | " ++) . lines . dumpFn) (M.elems lowered) else [])
         ++ concatMap evalNote ws
   where
-    (lowered, failures) = lowerProgram policy sigs prog emitted ext hal
+    (lowered0, failures) = lowerProgram policy sigs prog emitted ext hal
+    lowered = inlineFor policy lowered0
     -- the simplified program is what the backend consumes; the lowered one
     -- is kept beside it as the differential oracle of every evaluation
     (simplified, removed) = either (\e -> error ("typed-ir: " ++ e)) id (Simplify.simplifyProgramWith (Simplify.policyOptions policy) lowered)
@@ -390,9 +392,17 @@ nativeSelect typed placed reference tgt spec nm vkinds sigs ext exps prog emitte
           _ -> (e, [])
     -- the simplification passes (Codegen.Simplify), each verified; a
     -- failure is a compiler error
-    lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (Simplify.simplifyProgramWith (Simplify.policyOptions (tgtPolicy tgt)) lowered0)
+    lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (Simplify.simplifyProgramWith (Simplify.policyOptions (tgtPolicy tgt)) (inlineFor (tgtPolicy tgt) lowered0))
     -- FPR_TYPED_IR_SPLIT_ENTRY: verified like the simplification (a refusal is a compiler error)
     lowered = if nmSplitEntry nm then M.map splitEntryValues lowered1 else lowered1
+
+-- Calls inside loops become the callee's blocks (Codegen.InlineCalls) where
+-- the hosted profiles run: before simplification, so the views, bounds and
+-- invariants of the merged loop are found by the passes that follow.
+inlineFor :: Policy -> M.Map String Fn -> M.Map String Fn
+inlineFor policy program
+  | polProfile policy `elem` [HostedBase, QosApp] && policyWidth policy == W64 = inlineCalls program
+  | otherwise = program
 
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps elide prog0 =

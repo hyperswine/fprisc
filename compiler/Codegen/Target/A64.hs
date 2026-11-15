@@ -663,6 +663,7 @@ selectInstr cfg immediates (Instr d op) = case op of
   -- F64 on the bits: d16/d17 live only inside the expansion (no float
   -- register is allocated; AAPCS lets a call clobber them anyway)
   OFloatBin o a b -> def (\r -> emitI (rrr (A.FloatBinary O.WordBits O.Float64 o) r (vreg a) (vreg b)))
+  OFloatOfInt a -> def (\r -> emitI (plain (O.A64 A.IntToFloat) [any' r] [any' (vreg a)]))
   OFloatCmp o a b -> def (\r -> emitI ((rrr (A.FloatCompare O.WordBits O.Float64 o) r (vreg a) (vreg b)) {siFlags = FlagsDef}))
   OFloat32Bin o a b -> def (\r -> emitI (rrr (A.FloatBinary O.WordBits O.Float32 o) r (vreg a) (vreg b)))
   OFloatCmpTree o x y -> def (\r -> do
@@ -786,6 +787,7 @@ selectInstr cfg immediates (Instr d op) = case op of
         FSub -> simdBinary caps O.PairFloatSub x y next
         FMul -> simdBinary caps O.PairFloatMul x y next
         FDiv -> refuse "an F64 SIMD pair supports only add/subtract/multiply"
+        FSqrt -> refuse "an F64 SIMD pair supports only add/subtract/multiply"
     simdBinary caps name x y next = do
       (rx, n1) <- simdGo caps x next
       (ry, n2) <- simdGo caps y n1
@@ -1463,15 +1465,16 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
       (O.A64 (A.TreeOutput bank w), [d], [OI n]) ->
         ["fmov " ++ floatOperand bank w d ++ ", " ++ freg w (16+n)]
       (O.A64 (A.TreeNode w op), [], [OI n]) ->
-        ["f" ++ O.floatName op ++ " " ++ freg w (16+n) ++ ", " ++ freg w (16+n) ++ ", " ++ freg w (17+n)]
+        ["f" ++ O.floatName op ++ " " ++ freg w (16+n) ++ ", " ++ (if op == FSqrt then "" else freg w (16+n) ++ ", ") ++ freg w (17+n)]
+      (O.A64 A.IntToFloat, [d], [a]) -> ["scvtf d16, " ++ reg a, "fmov " ++ reg d ++ ", d16"]
       (O.A64 (A.FloatBinary O.FloatRegisters w op), [d], [a,b]) ->
-        ["f" ++ O.floatName op ++ " " ++ floatOperand O.FloatRegisters w d ++ ", " ++ floatOperand O.FloatRegisters w a ++ ", " ++ floatOperand O.FloatRegisters w b]
+        ["f" ++ O.floatName op ++ " " ++ floatOperand O.FloatRegisters w d ++ ", " ++ (if op == FSqrt then "" else floatOperand O.FloatRegisters w a ++ ", ") ++ floatOperand O.FloatRegisters w b]
       (O.A64 (A.FloatCompare O.FloatRegisters w c), [d], [a,b]) ->
         ["fcmp " ++ floatOperand O.FloatRegisters w a ++ ", " ++ floatOperand O.FloatRegisters w b,"cset " ++ reg d ++ ", " ++ fpcond c]
       (O.A64 (A.FloatBinary O.WordBits w op), [d], [a,b]) ->
         ["fmov " ++ freg w 16 ++ ", " ++ floatOperand O.WordBits w a,
          "fmov " ++ freg w 17 ++ ", " ++ floatOperand O.WordBits w b,
-         "f" ++ O.floatName op ++ " " ++ freg w 16 ++ ", " ++ freg w 16 ++ ", " ++ freg w 17,
+         "f" ++ O.floatName op ++ " " ++ freg w 16 ++ ", " ++ (if op == FSqrt then "" else freg w 16 ++ ", ") ++ freg w 17,
          "fmov " ++ floatOperand O.WordBits w d ++ ", " ++ freg w 16]
       (O.A64 (A.FloatCompare O.WordBits w c), [d], [a,b]) ->
         ["fmov " ++ freg w 16 ++ ", " ++ floatOperand O.WordBits w a,

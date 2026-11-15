@@ -363,6 +363,7 @@ select cfg fn = do
         ri R.ShiftRightArithmeticImmediate d t 1
       OBit op a b -> rr (case op of BAnd -> R.And; BOr -> R.Or; BXor -> R.Xor) d (vreg a) (vreg b)
       OFloatBin o a b -> rr (R.FloatBinary O.Float64 o) d (vreg a) (vreg b)
+      OFloatOfInt a -> rr R.IntToFloat d (vreg a) (vreg a)
       OFloatCmp o a b -> rr (R.FloatCompare O.Float64 o) d (vreg a) (vreg b)
       OFloat32Bin o a b -> rr (R.FloatBinary O.Float32 o) d (vreg a) (vreg b)
       OFloatCmpTree o x y -> do
@@ -762,10 +763,11 @@ render cfg fn ly large restores pools (I i) = map (\s -> if last s == ':' then s
       (O.RV (R.TreeLeaf width),[],[x,OI n]) -> ["fmv." ++ moveWidth width ++ ".x ft" ++ show n ++ ", " ++ r x]
       (O.RV (R.TreeOutput width),[d],[OI n]) -> ["fmv.x." ++ moveWidth width ++ " " ++ r d ++ ", ft" ++ show n]
       (O.RV (R.TreeNode width op),[],[OI n]) ->
-        ["f" ++ O.floatName op ++ "." ++ suffix width ++ " ft" ++ show n ++ ", ft" ++ show n ++ ", ft" ++ show (n+1)]
+        ["f" ++ O.floatName op ++ "." ++ suffix width ++ " ft" ++ show n ++ (if op == FSqrt then "" else ", ft" ++ show n) ++ ", ft" ++ show (n+1)]
+      (O.RV R.IntToFloat,[d],[a,_]) -> ["fcvt.d.l ft0, " ++ r a,"fmv.x.d " ++ r d ++ ", ft0"]
       (O.RV (R.FloatBinary width op),[d],[a,b]) ->
         [moveIn width a "ft0",moveIn width b "ft1",
-         "f" ++ O.floatName op ++ "." ++ suffix width ++ " ft0, ft0, ft1","fmv.x." ++ moveWidth width ++ " " ++ r d ++ ", ft0"]
+         "f" ++ O.floatName op ++ "." ++ suffix width ++ (if op == FSqrt then " ft0, ft1" else " ft0, ft0, ft1"),"fmv.x." ++ moveWidth width ++ " " ++ r d ++ ", ft0"]
       (O.RV (R.FloatCompare width c),[d],[a,b]) ->
         [moveIn width a "ft0",moveIn width b "ft1"] ++ floatCompare width c d
       _ -> error ("RV64 no render form " ++ show (op,ds,us))

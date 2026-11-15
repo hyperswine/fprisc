@@ -71,7 +71,9 @@ data BitOp = BAnd | BOr | BXor deriving (Eq, Ord, Show, Enum, Bounded)
 -- for one column kind alone (0 for the other kind too), which is what a read whose element type is known tests
 data ViewPart = ViewLength | ViewBase | ViewInteger | ViewIntLength | ViewFloatLength deriving (Eq, Ord, Show, Enum, Bounded)
 
-data FloatOp = FAdd | FSub | FMul | FDiv deriving (Eq, Ord, Show, Enum, Bounded)
+-- FSqrt is the square root of its operand, given twice (`OFloatBin FSqrt x x`): one
+-- instruction on every target, correctly rounded as the C entry's is; never a tree node
+data FloatOp = FAdd | FSub | FMul | FDiv | FSqrt deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- A two-lane SIMD map body: the lane, indexed scalar captures, literals
 -- (an Int or F64 bits), and operations applied to both lanes (NEON/SSE2).
@@ -219,6 +221,7 @@ data Op
   | OEqVal Bool VId VId -- TVal TVal -> TPred: deep structural equality (True) or inequality (False)
   | OBits Integer -- TVal: a raw 64-bit word, signed form (an F64 literal's IEEE bits)
   | OFloatBin FloatOp VId VId -- TVal TVal -> TVal: F64 arithmetic on the bits; semantics shared with Codegen.Eval
+  | OFloatOfInt VId -- TInt -> TVal: the bits of the F64 nearest the Int (ties to even: C's conversion, runtime.c F64.ofInt)
   | OFloatCmp CmpOp VId VId -- TVal TVal -> TPred: F64 ordered comparison (false on a NaN), != is its negation (true on a NaN)
   | OFloatTree FloatTree -- TVal leaves -> TVal: a tree of F64 operations in the scratch floating-point registers, one move in per leaf, one out (Simplify.fuseFloatTrees)
   | OFloatCmpTree CmpOp FloatTree FloatTree -- TVal leaves -> TPred, scratch roots 0/1
@@ -345,6 +348,7 @@ opEffect = \case
   OBits _ -> Pure
   OFloatBin _ _ _ -> Pure
   OFloatCmp _ _ _ -> Pure
+  OFloatOfInt _ -> Pure
   OFloatCmpTree _ _ _ -> Pure
   OFloat32CmpTree _ _ _ -> Pure
   OFloat32Tree _ -> Pure
@@ -407,6 +411,7 @@ opUses = \case
   OBits _ -> []
   OFloatBin _ a b -> [a, b]
   OFloatCmp _ a b -> [a, b]
+  OFloatOfInt a -> [a]
   OFloatCmpTree _ a b -> ftreeLeaves a ++ ftreeLeaves b
   OFloat32CmpTree _ a b -> ftreeLeaves a ++ ftreeLeaves b
   OFloat32Tree t -> ftreeLeaves t
@@ -478,6 +483,7 @@ mapOpUses f = \case
   OBits n -> OBits n
   OFloatBin o a b -> OFloatBin o (f a) (f b)
   OFloatCmp o a b -> OFloatCmp o (f a) (f b)
+  OFloatOfInt a -> OFloatOfInt (f a)
   OFloatCmpTree o a b -> OFloatCmpTree o (ftreeMap f a) (ftreeMap f b)
   OFloat32CmpTree o a b -> OFloat32CmpTree o (ftreeMap f a) (ftreeMap f b)
   OFloat32Tree t -> OFloat32Tree (ftreeMap f t)

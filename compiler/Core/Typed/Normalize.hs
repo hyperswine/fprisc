@@ -140,6 +140,7 @@ globalNames e=own<>S.unions (map globalNames (children e))
       EntryTick->[entryTickName]
       VectorBuild builder _->[builderRuntimeName builder]
       VectorReadPair op _ handle->[Read.peekNameAs (Read.elementOf (exprType handle)) op]
+      Apply f handle | Apply g _<-exprNode f,Apply h _<-exprNode g,Var (Global n _)<-exprNode h->[Read.storeNameAs (Read.elementOf (exprType handle)) n]
       CallRegion _->map hookName [CallPending,CallLeave]
       ListValue _->["Cons","Nil"]
       ResultPipe {}->["Err"]

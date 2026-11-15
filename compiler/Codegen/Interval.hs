@@ -302,7 +302,22 @@ discharge width fn
       , let loopLB = M.unionsWith max [l | s <- S.toList domSet, Just (_, l, _) <- [M.lookup s loopHeaderResults]]
       , let loopUB = M.unionsWith min [u | s <- S.toList domSet, Just (_, _, u) <- [M.lookup s loopHeaderResults]] ]
     factsAt d = M.findWithDefault ([], M.empty, M.empty) d blockFacts
-    cmpHolds extraLB extraUB fs o a b = case o of
+    -- a comparison holds by a difference walk, or by the two values' own
+    -- ranges (a product or a sum of bounded values has a range and no walk:
+    -- `7 * i + 3 >= 0` under `0 <= i`, the lower half of a bounds test)
+    cmpHolds extraLB extraUB fs o a b = cmpWalk extraLB extraUB fs o a b || cmpRange extraLB extraUB fs o (resolve a) (resolve b)
+    cmpRange extraLB extraUB fs o a b =
+      let below x y c = case (varUB extraLB extraUB fs x, varLB extraLB extraUB fs y) of
+            (Just u, Just l) -> u - l <= c
+            _ -> False
+       in case o of
+            Lt -> below a b (-1)
+            Le -> below a b 0
+            Gt -> below b a (-1)
+            Ge -> below b a 0
+            Eq -> below a b 0 && below b a 0
+            Ne -> below a b (-1) || below b a (-1)
+    cmpWalk extraLB extraUB fs o a b = case o of
       Lt -> leq (diffUBWith extraLB extraUB fs (resolve a) (resolve b)) (-1)
       Le -> leq (diffUBWith extraLB extraUB fs (resolve a) (resolve b)) 0
       Gt -> leq (diffUBWith extraLB extraUB fs (resolve b) (resolve a)) (-1)

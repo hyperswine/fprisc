@@ -59,6 +59,7 @@ passesWith :: Options -> [(String,Fn -> Fn)]
 passesWith options=
   [ ("fold-conversions", dropDeadPure . foldConversions . foldDivisors),
     ("forward-empty-blocks", forwardEmptyBlocks),
+    ("forward-single-valued-parameters", forwardSingleValued),
     ("branch-on-comparison", dropDeadPure . threadBooleanJoins),
     ("share-pure-in-block", dropDeadPure . sharePureInBlock)
   ] ++ [("hoist-vector-views",\f -> if hasView f && hasCycle f then moveViews f else f)]
@@ -123,6 +124,45 @@ forwardEmptyBlocks fn = case M.keys forwards of
           blocks = M.fromList [(bId b, b) | b <- fnBlocks f]
           live = reach S.empty [fnEntry f]
        in f {fnBlocks = [b | b <- fnBlocks f, S.member (bId b) live]}
+
+-- A block parameter that every edge into the block passes one value, or
+-- the parameter itself (around a loop), is that value: it is read directly
+-- and the parameter goes. The value is in scope: it is used on every edge
+-- that passes it, so it dominates those predecessors, and the rest of the
+-- edges come from blocks the parameter's block dominates. This is what makes
+-- a vector handle carried unchanged through nested loops, or handed back by
+-- an inlined callee's every exit, one value: its view is then formed once.
+forwardSingleValued :: Fn -> Fn
+forwardSingleValued fn
+  | M.null final = fn
+  | otherwise = forwardSingleValued fn {fnBlocks = map rewrite (fnBlocks fn)}
+  where
+    incoming = M.fromListWith (++) [(t, [as]) | b <- fnBlocks fn, (t, as) <- termSuccs (bTerm b)]
+    single = M.fromList
+      [ (p, x)
+      | b <- fnBlocks fn, bId b /= fnEntry fn,
+        Just edges <- [M.lookup (bId b) incoming],
+        all ((== length (bParams b)) . length) edges,
+        (i, (p, _)) <- zip [0 ..] (bParams b),
+        [x] <- [S.toList (S.delete p (S.fromList (map (!! i) edges)))] ]
+    -- a value that is itself forwarded: follow it, never round a cycle (a
+    -- cycle of such parameters has no entry, so its blocks are not reached)
+    resolve seen v = case M.lookup v single of
+      Just x | S.notMember x seen -> resolve (S.insert x seen) x
+      _ -> v
+    final = M.mapMaybeWithKey (\p _ -> let x = resolve (S.singleton p) p in if M.member x single then Nothing else Just x) single
+    rename v = M.findWithDefault v v final
+    keep target xs = case M.lookup target params of
+      Just ps | length ps == length xs -> [x | (x, p) <- zip xs ps, M.notMember p final]
+      _ -> xs
+    params = M.fromList [(bId b, map fst (bParams b)) | b <- fnBlocks fn]
+    term t = case mapTermUses rename t of
+      TBr target args -> TBr target (keep target args)
+      TCondBr c yes as no bs -> TCondBr c yes (keep yes as) no (keep no bs)
+      other -> other
+    rewrite b = b {bParams = [pt | pt@(p, _) <- bParams b, M.notMember p final],
+                   bInstrs = [Instr d (mapOpUses rename op) | Instr d op <- bInstrs b],
+                   bTerm = term (bTerm b)}
 
 -- the simplified function and the number of instructions it lost
 simplifyFn :: Program -> Fn -> Either String (Fn, Int)
@@ -338,7 +378,9 @@ sharePureInBlock fn =
   let sub = M.unions (map blockSub (fnBlocks fn))
       blockSub b = snd (foldl' step (M.empty, M.empty) (bInstrs b))
       step (seen, sub') (Instr (Just (v, _)) op)
-        | opEffect op == Pure =
+        -- a checked operation given the same operands again answers the
+        -- same, or the first one trapped and this one is never reached
+        | opEffect op == Pure || (case op of OArith {} -> True; _ -> False) =
             let op' = mapOpUses (resolve sub') op
              in case M.lookup op' seen of
                   Just u -> (seen, M.insert v u sub')
@@ -448,8 +490,8 @@ fuseFloatTrees fn = fn {fnBlocks = map blk (fnBlocks fn)}
            in Instr (Just (v, ty)) op' : go (if single then ds else add ds) (if single then add ss else ss) rest
       | Just op' <- comparison ds ss op = Instr (Just (v, ty)) op' : go ds ss rest
     go ds ss (i@(Instr _ op) : rest) = i : (if opEffect op == Pure then go ds ss else go M.empty M.empty) rest
-    treeOf ds _ (OFloatBin o a b) = Just (False, fst (fuse ds o a b), snd (fuse ds o a b))
-    treeOf _ ss (OFloat32Bin o a b) = Just (True, fst (fuse ss o a b), snd (fuse ss o a b))
+    treeOf ds _ (OFloatBin o a b) | o /= FSqrt = Just (False, fst (fuse ds o a b), snd (fuse ds o a b))
+    treeOf _ ss (OFloat32Bin o a b) | o /= FSqrt = Just (True, fst (fuse ss o a b), snd (fuse ss o a b))
     treeOf _ _ _ = Nothing
     comparison ds _ (OFloatCmp o a b) = cmp ds (OFloatCmpTree o) a b
     comparison _ ss (OFloat32Cmp o a b) = cmp ss (OFloat32CmpTree o) a b

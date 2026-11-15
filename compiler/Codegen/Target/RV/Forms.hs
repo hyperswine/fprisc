@@ -42,7 +42,7 @@ checkForms rf owner items=do
             R.Ret->null ds && not (null us) && length us <= 8 && matches (map fixed (take (length us) (Calling.productRegisters Calling.RiscV))) us;R.Push->none [word]
             R.ApplyN->matches [fixed (Phys "a0")] ds && matches [immediate] us
             R.Panic->none [symbol]
-            R.FloatBinary _ _->binary;R.FloatCompare _ _->binary
+            R.IntToFloat->binary;R.FloatBinary _ _->binary;R.FloatCompare _ _->binary
             R.TreeLeaf _->none [word,index 0 7];R.TreeOutput _->one [index 0 7]
             R.TreeNode _ _->none [index 0 6];R.TreeCompare _ _->one []
             R.VectorMax->one [];R.VectorLanes->one [word,word,immediate];R.VectorSum->one [word]

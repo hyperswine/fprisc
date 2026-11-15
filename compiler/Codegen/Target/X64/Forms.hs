@@ -77,6 +77,7 @@ checkForms owner items=do
             O.Panic->none [symbol]
             O.Enter->none []
             O.Save->none []
+            O.IntToFloat->one [word]
             O.FloatBinary _ _->binary
             O.FloatCompare _ _->binary
             O.TreeLeaf _->none [word,index 0 7]

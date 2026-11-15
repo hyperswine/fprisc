@@ -103,7 +103,7 @@ speculatable op=case op of
   OAddress {}->True; OIndex {}->True; OTag {}->True; OUntag {}->True; OVectorView {}->True
   OBoolOf {}->True; ONot {}->True; OIsInt {}->True
   OSymbol {}->True; OFunValue {}->True; OBit {}->True; OCmp {}->True
-  OFloatBin {}->True; OFloat32Bin {}->True; OFloatCmp {}->True; OFloat32Cmp {}->True
+  OFloatBin {}->True; OFloat32Bin {}->True; OFloatCmp {}->True; OFloat32Cmp {}->True; OFloatOfInt {}->True
   OFloatTree {}->True; OFloat32Tree {}->True; OFloatCmpTree {}->True; OFloat32CmpTree {}->True
   _->False
 

@@ -624,6 +624,7 @@ selectInstr cfg facts (Instr d op) = case op of
   -- F64 on the bits through xmm14/xmm15, inside the expansion only (SysV:
   -- caller-saved; no float register is allocated)
   OFloatBin o a b -> def (\r -> emitI (plain (O.X64 (O.FloatBinary O.Float64 o)) [any' r] [any' (vreg a), any' (vreg b)]))
+  OFloatOfInt a -> def (\r -> emitI (plain (O.X64 O.IntToFloat) [any' r] [any' (vreg a)]))
   OFloatCmp o a b -> def (\r -> emitI ((plain (O.X64 (O.FloatCompare O.Float64 o)) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
   OFloat32Bin o a b -> def (\r -> emitI (plain (O.X64 (O.FloatBinary O.Float32 o)) [any' r] [any' (vreg a), any' (vreg b)]))
   OFloatCmpTree o x y -> def (\r -> do
@@ -744,6 +745,7 @@ selectInstr cfg facts (Instr d op) = case op of
         FSub -> simdBinary caps O.PairFloatSub a b next
         FMul -> simdBinary caps O.PairFloatMul a b next
         FDiv -> refuse "an SSE2 pair division is outside the SIMD proof"
+        FSqrt -> refuse "an SSE2 pair square root is outside the SIMD proof"
     simdBinary caps op a b next = do
       (ra,n1) <- simdGo caps a next
       (rb,n2) <- simdGo caps b n1
@@ -1121,6 +1123,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       (O.X64 (O.TreeOutput w),[d],[OI n]) -> [moveOut w ("%xmm" ++ show (8+n)) d]
       (O.X64 (O.TreeNode w op),[],[OI n]) ->
         [O.floatName op ++ suffix w ++ " %xmm" ++ show (9+n) ++ ", %xmm" ++ show (8+n)]
+      (O.X64 O.IntToFloat,[d],[a]) -> ["cvtsi2sdq " ++ reg a ++ ", %xmm14","movq %xmm14, " ++ reg d]
       (O.X64 (O.FloatBinary w op),[d],[a,b]) ->
         [moveIn w a "%xmm14",moveIn w b "%xmm15",
          O.floatName op ++ suffix w ++ " %xmm15, %xmm14",moveOut w "%xmm14" d]

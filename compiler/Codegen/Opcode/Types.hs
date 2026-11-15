@@ -21,7 +21,7 @@ commonName op=case op of
 conditionName c=case c of
   Equal->"eq";NotEqual->"ne";Less->"lt";Greater->"gt";LessEqual->"le";GreaterEqual->"ge"
   Overflow->"o";NoOverflow->"no";UnsignedAboveEqual->"hs";UnsignedBelow->"lo"
-floatName op=case op of FAdd->"add";FSub->"sub";FMul->"mul";FDiv->"div"
+floatName op=case op of FAdd->"add";FSub->"sub";FMul->"mul";FDiv->"div";FSqrt->"sqrt"
 comparisonName op=case op of Lt->"lt";Gt->"gt";Le->"le";Ge->"ge";Eq->"eq";Ne->"ne"
 simdName op=case op of
   PairAdd->"simd.add";PairSub->"simd.sub";PairFloatAdd->"simd.fadd";PairFloatSub->"simd.fsub";PairFloatMul->"simd.fmul"

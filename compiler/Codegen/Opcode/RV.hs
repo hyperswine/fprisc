@@ -9,7 +9,7 @@ data Opcode
   | Compare CmpOp | Load64 | Load32 | LoadByte | LoadHalf | LoadUnsigned32
   | Store64 | Store32 | StoreHalf | StoreByte | FrameLoad | FrameStore | Fence
   | BranchNonzero | Jump | Call | Ret | Push | ApplyN | Panic
-  | FloatBinary Width FloatOp | FloatCompare Width CmpOp
+  | IntToFloat | FloatBinary Width FloatOp | FloatCompare Width CmpOp
   | TreeLeaf Width | TreeOutput Width | TreeNode Width FloatOp | TreeCompare Width CmpOp
   | VectorMax | VectorLanes | VectorSum
   deriving (Eq,Ord,Show)
@@ -21,6 +21,7 @@ name op=case op of
   Load64->"ld";Load32->"lw";LoadByte->"lbu";LoadHalf->"lhu";LoadUnsigned32->"lwu"
   Store64->"sd";Store32->"sw";StoreHalf->"sh";StoreByte->"sb";FrameLoad->"load.slot";FrameStore->"store.slot";Fence->"fence"
   BranchNonzero->"bnez";Jump->"j";Call->"call";Ret->"ret";Push->"push";ApplyN->"applyn";Panic->"panic"
+  IntToFloat->"fcvt.d.l"
   FloatBinary w f->widthPrefix "fbin" w++floatName f
   FloatCompare w c->widthPrefix "fcmp" w++comparisonName c
   TreeLeaf w->widthPrefix "ftree" w++"leaf";TreeOutput w->widthPrefix "ftree" w++"out"

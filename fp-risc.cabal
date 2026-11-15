@@ -221,6 +221,7 @@ library
       Codegen.ControlFlow
       Codegen.Interval
       Codegen.LoopOptimize
+      Codegen.InlineCalls
       Codegen.StringScan
       Codegen.LoopForm
       Codegen.Placement

@@ -64,13 +64,14 @@ dumpFn fn =
       OCmp o a b -> "cmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OEqVal eq a b -> (if eq then "eqval " else "neval ") ++ value a ++ ", " ++ value b
       OBits n -> "bits " ++ show n
-      OFloatBin o a b -> "fbin " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
+      OFloatBin o a b -> "fbin " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/"; FSqrt -> "sqrt") ++ " " ++ value a ++ ", " ++ value b
+      OFloatOfInt a -> "f64.ofint " ++ value a
       OFloatCmp o a b -> "fcmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OFloatCmpTree o a b -> "fcmp-tree " ++ cmpSymbol o ++ " " ++ ftreeText a ++ ", " ++ ftreeText b
       OFloat32CmpTree o a b -> "fcmp32-tree " ++ cmpSymbol o ++ " " ++ ftreeText a ++ ", " ++ ftreeText b
       OFloat32Tree t -> "ftree32 " ++ ftreeText t
       OFloatTree t -> "ftree " ++ ftreeText t
-      OFloat32Bin o a b -> "fbin32 " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
+      OFloat32Bin o a b -> "fbin32 " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/"; FSqrt -> "sqrt") ++ " " ++ value a ++ ", " ++ value b
       OFloat32Cmp o a b -> "fcmp32 " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OCall c as -> "call " ++ callee c ++ args as
       OCallProduct c as -> "callproduct " ++ callee c ++ args as
@@ -110,8 +111,8 @@ simdText = \case
   SCapture n -> "capture" ++ show n
   SConst n -> show n
   SInt o x y -> "(" ++ simdText x ++ " " ++ (case o of Add -> "+"; Sub -> "-"; Mul -> "*"; Div -> "/") ++ " " ++ simdText y ++ ")"
-  SFloat o x y -> "(" ++ simdText x ++ " " ++ (case o of FAdd -> "f+"; FSub -> "f-"; FMul -> "f*"; FDiv -> "f/") ++ " " ++ simdText y ++ ")"
+  SFloat o x y -> "(" ++ simdText x ++ " " ++ (case o of FAdd -> "f+"; FSub -> "f-"; FMul -> "f*"; FDiv -> "f/"; FSqrt -> "fsqrt") ++ " " ++ simdText y ++ ")"
 
 ftreeText :: FloatTree -> String
 ftreeText (FLeaf v) = "v" ++ show (let VId n = v in n)
-ftreeText (FNode o x y) = "(" ++ ftreeText x ++ " " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ ftreeText y ++ ")"
+ftreeText (FNode o x y) = "(" ++ ftreeText x ++ " " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/"; FSqrt -> "sqrt") ++ " " ++ ftreeText y ++ ")"

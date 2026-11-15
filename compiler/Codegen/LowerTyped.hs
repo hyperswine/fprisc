@@ -247,7 +247,11 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
         (h, args) -> case exprNode h of
           Var (Global name _) -> do
             (args', n1) <- goList n args
-            pure (PApp name args', n1)
+            -- as erasure names it: a store says what its vector's element is
+            let named = case args of
+                  [_, _, handle] -> Read.storeNameAs (Read.elementOf (exprType handle)) name
+                  _ -> name
+            pure (PApp named args', n1)
           -- any other head (a local, a closure, a code call's result):
           -- erasure's curried application, dispatched by Lower
           _ -> do
