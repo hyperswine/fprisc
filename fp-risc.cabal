@@ -506,6 +506,11 @@ test-suite LoopOptimize
   type:               exitcode-stdio-1.0
   main-is:            LoopOptimize.hs
 
+test-suite InlineCalls
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            InlineCalls.hs
+
 test-suite LoopForm
   import:             unit-test
   type:               exitcode-stdio-1.0
