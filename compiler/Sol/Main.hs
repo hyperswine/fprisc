@@ -87,7 +87,7 @@ runScript = do
   case as of
     ["--help"] -> putStrLn solHelp
     ["-h"] -> putStrLn solHelp
-    ["--version"] -> putStrLn "Sol 0.14.0 (scripting API 1)"
+    ["--version"] -> putStrLn "Sol 0.15.0-dev (scripting API 1)"
     ["state"] -> maintainState False
     ["recover"] -> maintainState True
     ("--repl" : rest) -> runRepl rest
@@ -753,7 +753,7 @@ runRepl scriptArgs = do
   now <- getPOSIXTime
   let dataFile = tmp ++ "/sol-repl-" ++ show (floor (now * 1000000) :: Integer) ++ ".soldata"
   when tty $
-    putStrLn "Sol 0.14.0 (scripting API 1) — one command, one transaction. Ctrl-D exits."
+    putStrLn "Sol 0.15.0-dev (scripting API 1) — one command, one transaction. Ctrl-D exits."
   -- Line editing, history and completion on a terminal (haskeline, GHCi's
   -- editor). The piped path stays raw hGetLine, so suites drive it
   -- unchanged. History lives with the other Sol state.
