@@ -1,0 +1,30 @@
+two bindings: n=7 beats=0
+  log start 5
+  log n is 7
+  sound blip 7
+  log said
+unknown key: n=5 beats=0
+  log start 5
+  log n is 5
+  sound blip 5
+  log said
+capture once: n=5 beats=0
+  log start 5
+  capture
+  log n is 5
+  sound blip 5
+  log said
+quit ends the run: n=6 beats=0
+  log start 5
+  log bye
+  quit
+ticks: n=5 beats=2
+  log start 5
+  log n is 5
+  sound blip 5
+  log said
+no tick below zero: n=-1 beats=0
+  log start 5
+view twice equal: True
+period 40 keys True
+game: done

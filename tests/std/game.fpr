@@ -1,0 +1,53 @@
+# std/game: one transition per input, effects once and in order, decoders that
+# may refuse, a quit that ends the run, view that performs nothing.
+Game = use "std/game".
+O = use "std/option".
+
+Msg = Type (Bump n | Say | Shot | Leave | Beat).
+
+init flags = ({ n = flags, beats = 0 }, Game.log "start {flags}").
+update (Bump k) m = ({ m | n = m.n + k }, Game.none).
+update Say m = (m, Game.batch [Game.log "n is {m.n}", Game.sound "blip" m.n, Game.log "said"]).
+update Shot m = (m, Game.capture).
+update Leave m = (m, Game.batch [Game.log "bye", Game.quit]).
+update Beat m = ({ m | beats = m.beats + 1 }, Game.none).
+
+# both the arrow and W bump; an unknown key is nobody's
+decode 103 = O.Some (Bump 1).
+decode 17 = O.Some (Bump 1).
+decode 108 = O.Some (Bump (0 - 1)).
+decode 57 = O.Some Say.
+decode 25 = O.Some Shot.
+decode 16 = O.Some Leave.
+decode k = O.None.
+# the tick is asked for only while n is not negative: a model that stops time
+subs m = if m.n < 0 then [Game.keys decode] else [Game.keys decode, Game.tick 40 Beat].
+view m = Game.layers m.n m.beats.
+
+a = Game.app init update subs view.
+
+effect (Game.ELog s) = "log {s}".
+effect (Game.ESound n v) = "sound {n} {v}".
+effect Game.ECapture = "capture".
+effect Game.EQuit = "quit".
+show label inputs = case Game.play a 5 inputs of (m, es) ->
+  _ = print "{label}: n={m.n} beats={m.beats}";
+  showAll es.
+showAll : (es : List Game.Effect | measure es) -> Unit .
+showAll es = case es of
+    Nil -> Unit
+  | e :: more -> _ = print "  {effect e}"; showAll more.
+
+main =
+  _ = show "two bindings" [Game.Key 103, Game.Key 17, Game.Key 57];
+  _ = show "unknown key" [Game.Key 999, Game.Key 57];
+  _ = show "capture once" [Game.Key 25, Game.Key 57];
+  _ = show "quit ends the run" [Game.Key 103, Game.Key 16, Game.Key 103, Game.Key 57];
+  _ = show "ticks" [Game.Elapsed 40, Game.Elapsed 40, Game.Elapsed 16, Game.Key 57];
+  _ = show "no tick below zero" [Game.Key 108, Game.Key 108, Game.Key 108, Game.Key 108, Game.Key 108, Game.Key 108, Game.Elapsed 40, Game.Elapsed 40];
+  (m, es) = Game.play a 5 [Game.Key 103];
+  # view twice: the same element, and nothing to perform
+  same = (case (Game.view a m, Game.view a m) of (Game.Layers w1 o1, Game.Layers w2 o2) -> w1 == w2 and o1 == o2);
+  _ = print "view twice equal: {same}";
+  _ = print "period {Game.period (subs m)} keys {Game.wantsKeys (subs m)}";
+  print "game: done".

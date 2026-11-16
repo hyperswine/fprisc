@@ -1,0 +1,186 @@
+# std/game.fpr -- Game: a pure MVU interface for games (docs/2026-11-12-GAME-MVU.md).
+#
+#   Game = use "std/game".
+#
+#   init   : flags -> (model, Game.Cmd msg)
+#   update : msg -> model -> (model, Game.Cmd msg)
+#   subs   : model -> List (Game.Sub msg)
+#   view   : model -> Game.Element
+#
+#   app = Game.app init update subs view
+#
+# The game defines its own Model and Msg. `update` is the only place state
+# changes and the only place effects are asked for, and it asks by VALUE: a
+# Cmd describes one-shot work (a log line, a sound, a frame capture, quit), a
+# Sub describes continuing interest (a key decoder, a periodic tick). Nothing
+# here opens a window, creates an actor or touches a device: a runner does
+# (QOS: programs/mods/gamerun.fpr), and `Game.play` below is a runner that does
+# none of it, for tests.
+#
+# THE CONTRACT A RUNNER KEEPS
+#   - every input reaches update as a Msg, through the decoders `subs model`
+#     gives for the model AS IT IS when the input is taken; a decoder may
+#     answer None, and the input is then nobody's
+#   - the commands of one transition are performed once, in order, after the
+#     model has changed; calling `view` any number of times performs nothing
+#   - a tick subscription keeps its cadence while it stays in the list
+#   - Quit ends the run after the transition that asked for it
+#
+# Data comes last, as everywhere in std.
+
+O = use "option".
+
+# ---- what update asks for --------------------------------------------------------------------
+# None        nothing
+# Batch cs    these, in order
+# Log s       one line of the game's transcript
+# Sound n v   play the cue named n; v is the game's own variation number
+# Capture     keep the frame this transition renders
+# Quit        end the run
+Cmd = Type (None | Batch cs | Log s | Sound n v | Capture | Quit).
+
+none = None.
+batch : List Cmd -> Cmd .
+batch cs = Batch cs.
+log : String -> Cmd .
+log s = Log s.
+sound : String -> Int -> Cmd .
+sound n v = Sound n v.
+capture = Capture.
+quit = Quit.
+
+# ---- what the model is interested in ---------------------------------------------------------
+# Tick ms msg    msg every ms milliseconds
+# Keys decode    a pressed key's code -> the game's message, or None
+# Wheel decode   a wheel movement (dy, dx) -> the game's message, or None
+Sub = Type (Tick ms msg | Keys decode | Wheel decode).
+
+tick ms msg = Tick ms msg.
+keys decode = Keys decode.
+wheel decode = Wheel decode.
+
+# ---- what view answers -----------------------------------------------------------------------
+# One frame as layers, back to front: the world (a scene the renderer walks)
+# and the overlay drawn over it (the HUD). Both are the game's own values; the
+# renderer of the platform the game was built for says what it draws.
+Element = Type (Layers world overlay).
+layers world overlay = Layers world overlay.
+
+App = Type (App ini upd sbs vw).
+app init update subs view = App init update subs view.
+
+# ---- the pure core: one input, one transition ------------------------------------------------
+# What a runner hands in. A runner turns its platform's events into these;
+# Elapsed carries the tick's own period, so two tick subscriptions of
+# different periods are told apart.
+Input = Type (Key code | Scroll dy dx | Elapsed ms).
+
+# What a runner performs, flat and in order.
+Effect = Type (ELog s | ESound n v | ECapture | EQuit).
+
+# the commands of a transition as effects, in the order they were asked for
+effects : Cmd -> List Effect .
+effects c = flat c Nil.
+flat : (c : Cmd | measure c) -> List Effect -> List Effect .
+flat c rest = case c of
+    None -> rest
+  | Log s -> ELog s :: rest
+  | Sound n v -> ESound n v :: rest
+  | Capture -> ECapture :: rest
+  | Quit -> EQuit :: rest
+  | Batch cs -> flatAll cs rest.
+flatAll : (cs : List Cmd | measure cs) -> List Effect -> List Effect .
+flatAll cs rest = case cs of
+    Nil -> rest
+  | c :: more -> flat c (flatAll more rest).
+
+# the message an input is, to the first subscription that takes it
+decode : (subs : List Sub | measure subs) -> Input -> O.Option msg .
+decode subs input = case subs of
+    Nil -> O.None
+  | s :: more -> (case taken s input of
+        O.Some msg -> O.Some msg
+      | O.None -> decode more input).
+taken : Sub -> Input -> O.Option msg .
+taken (Keys f) (Key code) = f code.
+taken (Wheel f) (Scroll dy dx) = f dy dx.
+taken (Tick ms msg) (Elapsed period) = if ms == period then O.Some msg else O.None.
+taken s input = O.None.
+
+# the shortest tick period the model asks for, or 0 for none: a runner's clock
+period : (subs : List Sub | measure subs) -> Int .
+period subs = case subs of
+    Nil -> 0
+  | Tick ms msg :: more -> shorter ms (period more)
+  | s :: more -> period more.
+shorter : Int -> Int -> Int .
+shorter a 0 = a.
+shorter a b = if a < b then a else b.
+# every tick period the model asks for, in subscription order
+periods : (subs : List Sub | measure subs) -> List Int .
+periods subs = case subs of
+    Nil -> Nil
+  | Tick ms msg :: more -> ms :: periods more
+  | s :: more -> periods more.
+wantsKeys : (subs : List Sub | measure subs) -> Bool .
+wantsKeys subs = case subs of
+    Nil -> False
+  | Keys f :: more -> True
+  | s :: more -> wantsKeys more.
+
+# start: the first model and what init asked for
+start : App -> flags -> (model, List Effect) .
+start (App ini upd sbs vw) flags = case ini flags of (m, c) -> (m, effects c).
+
+# one input: the model after it and the effects of that transition; an input
+# no subscription takes changes nothing
+step : App -> Input -> model -> (model, List Effect) .
+step (App ini upd sbs vw) input m = case decode (sbs m) input of
+    O.None -> (m, Nil)
+  | O.Some msg -> (case upd msg m of (m2, c) -> (m2, effects c)).
+
+subscriptions : App -> model -> List Sub .
+subscriptions (App ini upd sbs vw) m = sbs m.
+
+view : App -> model -> Element .
+view (App ini upd sbs vw) m = vw m.
+
+# ---- a runner with no platform: for tests ----------------------------------------------------
+# Feed inputs in order; answer the last model and every effect, in order. It
+# stops at the transition that asks to quit, as a runner does: the inputs after
+# it are never taken.
+play : App -> flags -> List Input -> (model, List Effect) .
+play a flags inputs = case start a flags of (m, es) ->
+  (if asksQuit es then (m, es) else playOn a inputs m (rev es Nil)).
+# `done` is the effects so far, newest first
+playOn : App -> (inputs : List Input | measure inputs) -> model -> List Effect -> (model, List Effect) .
+playOn a inputs m done = case inputs of
+    Nil -> (m, rev done Nil)
+  | input :: more -> (case step a input m of (m2, es) ->
+      (if asksQuit es then (m2, rev (onto es done) Nil) else playOn a more m2 (onto es done))).
+onto : (es : List Effect | measure es) -> List Effect -> List Effect .
+onto es done = case es of
+    Nil -> done
+  | e :: more -> onto more (e :: done).
+rev : (xs : List a | measure xs) -> List a -> List a .
+rev xs acc = case xs of
+    Nil -> acc
+  | x :: more -> rev more (x :: acc).
+asksQuit : (es : List Effect | measure es) -> Bool .
+asksQuit es = case es of
+    Nil -> False
+  | EQuit :: more -> True
+  | e :: more -> asksQuit more.
+
+# the transcript lines among some effects, in order: what a test compares
+logged : (es : List Effect | measure es) -> List String .
+logged es = case es of
+    Nil -> Nil
+  | ELog s :: more -> s :: logged more
+  | e :: more -> logged more.
+# how many times a frame capture was asked for
+captures : (es : List Effect | measure es) -> Int .
+captures es = case es of
+    Nil -> 0
+  | ECapture :: more -> 1 + captures more
+  | e :: more -> captures more.
