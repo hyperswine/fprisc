@@ -37,7 +37,9 @@ O = use "option".
 # Sound n v   play the cue named n; v is the game's own variation number
 # Capture     keep the frame this transition renders
 # Quit        end the run
-Cmd = Type (None | Batch cs | Log s | Sound n v | Capture | Quit).
+# Attempt task toMsg   fallible work; what came of it reaches update later as
+#             the message `toMsg result`, where result : Result String String
+Cmd = Type (None | Batch cs | Log s | Sound n v | Capture | Quit | Attempt task toMsg).
 
 none = None.
 batch : List Cmd -> Cmd .
@@ -48,6 +50,25 @@ sound : String -> Int -> Cmd .
 sound n v = Sound n v.
 capture = Capture.
 quit = Quit.
+attempt task toMsg = Attempt task toMsg.
+
+# ---- fallible work ---------------------------------------------------------------------------
+# A Task describes work that can fail and takes time: the game never performs
+# it. Its result is a Result String String handed to the `toMsg` the game gave
+# with it, and arrives as an ordinary message, after the transition that asked.
+# Independent tasks may be answered in any order; a game that cares carries a
+# request number in its message and ignores a result it no longer waits for.
+#
+# Storage is a log of records per name:
+#   Replay name          every record of the log, in order, as one text
+#   ReadLatest name      the newest record
+#   Append name text     add a record
+# What a completed append guarantees (durability, what a lost reply means) is
+# the storage's contract, not this module's.
+Task = Type (Replay name | ReadLatest name | Append name text).
+replay name = Replay name.
+readLatest name = ReadLatest name.
+append name text = Append name text.
 
 # ---- what the model is interested in ---------------------------------------------------------
 # Tick ms msg    msg every ms milliseconds
@@ -76,7 +97,7 @@ app init update subs view = App init update subs view.
 Input = Type (Key code | Scroll dy dx | Elapsed ms).
 
 # What a runner performs, flat and in order.
-Effect = Type (ELog s | ESound n v | ECapture | EQuit).
+Effect = Type (ELog s | ESound n v | ECapture | EQuit | ETask task toMsg).
 
 # the commands of a transition as effects, in the order they were asked for
 effects : Cmd -> List Effect .
@@ -88,6 +109,7 @@ flat c rest = case c of
   | Sound n v -> ESound n v :: rest
   | Capture -> ECapture :: rest
   | Quit -> EQuit :: rest
+  | Attempt task toMsg -> ETask task toMsg :: rest
   | Batch cs -> flatAll cs rest.
 flatAll : (cs : List Cmd | measure cs) -> List Effect -> List Effect .
 flatAll cs rest = case cs of
@@ -139,6 +161,10 @@ step (App ini upd sbs vw) input m = case decode (sbs m) input of
     O.None -> (m, Nil)
   | O.Some msg -> (case upd msg m of (m2, c) -> (m2, effects c)).
 
+# a message handed straight to update: how a runner delivers a task's result
+apply : App -> msg -> model -> (model, List Effect) .
+apply (App ini upd sbs vw) msg m = case upd msg m of (m2, c) -> (m2, effects c).
+
 subscriptions : App -> model -> List Sub .
 subscriptions (App ini upd sbs vw) m = sbs m.
 
@@ -149,15 +175,49 @@ view (App ini upd sbs vw) m = vw m.
 # Feed inputs in order; answer the last model and every effect, in order. It
 # stops at the transition that asks to quit, as a runner does: the inputs after
 # it are never taken.
+#
+# `playWith answer` also answers tasks: after each transition, every task it
+# asked for is given `answer task` and the result message is delivered before
+# the next input, in the order the tasks were asked for; what those deliveries
+# ask for is answered the same way. `play` refuses every task (Err), which is
+# what a game with no storage sees. A test that needs a late, missing or
+# reordered completion does not use these: it calls `step`, keeps the ETask
+# effects, and hands `apply` the message for whichever result it wants, when
+# it wants.
 play : App -> flags -> List Input -> (model, List Effect) .
-play a flags inputs = case start a flags of (m, es) ->
-  (if asksQuit es then (m, es) else playOn a inputs m (rev es Nil)).
+play a flags inputs = playWith refuse a flags inputs.
+refuse task = Err "Game.play answers no tasks".
+
+playWith : (task -> Result String String) -> App -> flags -> List Input -> (model, List Effect) .
+playWith answer a flags inputs = case start a flags of (m, es) ->
+  (case settle chain answer a es m Nil of (m2, done) ->
+    (if asksQuit done then (m2, rev done Nil) else playOn answer a inputs m2 done)).
 # `done` is the effects so far, newest first
-playOn : App -> (inputs : List Input | measure inputs) -> model -> List Effect -> (model, List Effect) .
-playOn a inputs m done = case inputs of
+playOn : (task -> Result String String) -> App -> (inputs : List Input | measure inputs) -> model -> List Effect -> (model, List Effect) .
+playOn answer a inputs m done = case inputs of
     Nil -> (m, rev done Nil)
   | input :: more -> (case step a input m of (m2, es) ->
-      (if asksQuit es then (m2, rev (onto es done) Nil) else playOn a more m2 (onto es done))).
+      (case settle chain answer a es m2 done of (m3, done2) ->
+        (if asksQuit done2 then (m3, rev done2 Nil) else playOn answer a more m3 done2))).
+# How many task results one transition may lead to, each asking for the next,
+# before the test runner calls it a loop. A game that chains more is wrong or
+# needs its own stepping; nothing is dropped silently.
+chain = 256.
+# record the effects, newest first, delivering each task's result where it
+# stands in the order
+settle : (fuel : Int | measure fuel) -> (task -> Result String String) -> App -> List Effect -> model -> List Effect -> (model, List Effect) .
+settle fuel answer a es m done = case es of
+    Nil -> (m, done)
+  | ETask task toMsg :: more ->
+      (if fuel <= 0 then error "Game.playWith: more than 256 chained task results in one transition"
+       else (case apply a (toMsg (answer task)) m of (m2, es2) ->
+         settle (fuel - 1) answer a (joined es2 more) m2 (ETask task toMsg :: done)))
+  | e :: more -> (if fuel <= 0 then error "Game.playWith: more than 256 chained task results in one transition"
+                  else settle (fuel - 1) answer a more m (e :: done)).
+joined : (xs : List a | measure xs) -> List a -> List a .
+joined xs ys = case xs of
+    Nil -> ys
+  | x :: more -> x :: joined more ys.
 onto : (es : List Effect | measure es) -> List Effect -> List Effect .
 onto es done = case es of
     Nil -> done
