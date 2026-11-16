@@ -41,7 +41,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 33 -- compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words)
+x64SelectionRev = 34 -- layout tests fused into branches across edge moves, testq for the tag bit (33: compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words))
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -201,6 +201,9 @@ csel :: O.Condition -> VReg -> VReg -> VReg -> SInstr
 csel cond d a b = (plain (O.X64 (O.Select cond)) [OV d (Tied 0)] [any' b, any' a]) {siFlags = FlagsUse}
 bcond :: O.Condition -> Label -> SInstr
 bcond cond l = (plain (O.X64 (O.Branch cond)) [] [OL l]) {siFlags = FlagsUse, siControl = CondTo [l]}
+-- testq $n, a: the flags of a AND n, nothing written (a tag-bit test)
+testi :: VReg -> Integer -> SInstr
+testi a n = (plain (O.X64 O.TestImmediate) [] [any' a, OI n]) {siFlags = FlagsDef}
 cbz, cbnz :: VReg -> Label -> SInstr
 cbz v l = (plain (O.X64 O.BranchZero) [] [any' v, OL l]) {siFlags = FlagsDef, siControl = CondTo [l]}
 cbnz v l = (plain (O.X64 O.BranchNonzero) [] [any' v, OL l]) {siFlags = FlagsDef, siControl = CondTo [l]}
@@ -390,8 +393,8 @@ selectBlock cfg fn facts next b = do
         (Instr (Just (p, _)) op : _, TCondBr p' t as e bs)
           | p == p', M.lookup p (fUses facts) == Just 1 -> case op of
               OCmp {} -> Just op
-              OVariantTest {} | null (moves t as), null (moves e bs) -> Just op
-              OTagTest {} | null (moves t as), null (moves e bs) -> Just op
+              OVariantTest {} -> Just op
+              OTagTest {} -> Just op
               _ -> Nothing
         _ -> Nothing
   case (fused, bTerm b) of
@@ -405,30 +408,63 @@ selectBlock cfg fn facts next b = do
             Nothing -> emitI (cmp (vreg x) (vreg y))
           flags (cmpCond o)
         -- a tagged Int is no match; else the header word against the pair
-        OVariantTest tg c v -> do
-          bit <- freshV False
-          emitI (rri O.AndImmediate bit (vreg v) 1)
-          emitI (cbnz bit (blockLabel e))
+        OVariantTest tg c v -> testBranch $ \miss -> do
+          emitI (testi (vreg v) 1)
+          emitI (bcond O.NotEqual miss)
           hdr <- freshV False
-          want <- freshV False
           emitI (plain (O.X64 O.LoadField) [any' hdr] [any' (vreg v), OI 0])
-          emitI (li want (headerWord tg c))
-          emitI (cmp hdr want)
-          flags O.Equal
+          cmpConst hdr (headerWord tg c)
         -- a tagged Int is no match; then the typeid word, then the variant
-        OTagTest tg c v -> do
-          bit <- freshV False
-          emitI (rri O.AndImmediate bit (vreg v) 1)
-          emitI (cbnz bit (blockLabel e))
+        OTagTest tg c v -> testBranch $ \miss -> do
+          emitI (testi (vreg v) 1)
+          emitI (bcond O.NotEqual miss)
           tid <- freshV False
           emitI (ldrsw tid (vreg v) 0)
           cmpConst tid (fromIntegral tg)
-          emitI (bcond O.NotEqual (blockLabel e))
+          emitI (bcond O.NotEqual miss)
           var <- freshV False
           emitI (ldrsw var (vreg v) 4)
           cmpConst var (fromIntegral c)
-          flags O.Equal
         _ -> refuse "internal: an unfusable branch condition"
+      where
+        -- A layout test leaves early to the no-match side and ends in the
+        -- flags of a compare that holds on a match.  Without block-parameter
+        -- moves on the no-match edge, every early exit is a direct branch to
+        -- that block and the final compare takes condBranch's layout.  With
+        -- them, the early exits and the final miss share one edge that
+        -- performs the moves; the match side is branched to (or through its
+        -- own edge when it has moves too).
+        testBranch body = case bTerm b of
+          TCondBr _ t as e bs
+            | null movesE -> body (blockLabel e) >> condBranch fn facts next (bcond O.Equal) (bcond O.NotEqual) t as e bs
+            | otherwise -> do
+                miss <- freshL "miss"
+                body miss
+                let missEdge = parallelMoves movesE >> emitI (jump (blockLabel e))
+                    hitEdge = parallelMoves movesT >> unless (Just t == next) (emitI (jump (blockLabel t)))
+                if null movesT
+                  then do
+                    emitI (bcond O.Equal (blockLabel t))
+                    emitL miss
+                    parallelMoves movesE
+                    unless (Just e == next) (emitI (jump (blockLabel e)))
+                  else if Just e == next
+                    then do
+                      emitI (bcond O.NotEqual miss)
+                      parallelMoves movesT
+                      emitI (jump (blockLabel t))
+                      emitL miss
+                      parallelMoves movesE
+                    else do
+                      hit <- freshL "hit"
+                      emitI (bcond O.Equal hit)
+                      emitL miss
+                      missEdge
+                      emitL hit
+                      hitEdge
+            where movesT = moves t as
+                  movesE = moves e bs
+          _ -> refuse "internal: a fused layout test without a two-way branch"
     _ -> do
       run rest
       selectTerm cfg fn facts next b
@@ -1143,6 +1179,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       (O.X64 O.Divide,[_],[_,b]) -> ["cqto", "idivq " ++ reg b]
       (O.X64 O.Compare,[],[a,b]) -> ["cmpq " ++ reg b ++ ", " ++ reg a]
       (O.X64 O.CompareImmediate,[],[a,n]) -> ["cmpq $" ++ imm n ++ ", " ++ reg a]
+      (O.X64 O.TestImmediate,[],[a,n]) -> ["testq $" ++ imm n ++ ", " ++ reg a]
       (O.X64 (O.Set c),[d],[]) -> ["set" ++ cc c ++ " " ++ byte d, "movzbq " ++ byte d ++ ", " ++ reg d]
       (O.X64 (O.Select c),[d],[_,a]) -> ["cmov" ++ cc c ++ " " ++ reg a ++ ", " ++ reg d]
       (O.X64 (O.Branch c),[],[OL l]) -> ["j" ++ cc c ++ " " ++ lbl l]

@@ -5,7 +5,7 @@ import Codegen.IR (FloatOp(..),CmpOp(..))
 import Codegen.Opcode.Types
 
 data X64Op
-  = Move | Literal | Address | LoadSigned32 | Compare | CompareImmediate
+  = Move | Literal | Address | LoadSigned32 | Compare | CompareImmediate | TestImmediate
   | Set Condition | Select Condition | Branch Condition | BranchZero | BranchNonzero | Jump
   | Add | Subtract | Multiply | And | Or | Xor
   | ShiftLeftImmediate | ShiftRightArithmeticImmediate | OrImmediate | AndImmediate | XorImmediate
@@ -18,7 +18,7 @@ data X64Op
   | PairLoad | PairStore | PairDuplicate | PairBinary SimdOp
   deriving (Eq,Ord,Show)
 x64Name op=case op of
-  Move->"movq";Literal->"li";Address->"la";LoadSigned32->"movslq";Compare->"cmpq";CompareImmediate->"cmpi"
+  Move->"movq";Literal->"li";Address->"la";LoadSigned32->"movslq";Compare->"cmpq";CompareImmediate->"cmpi";TestImmediate->"testi"
   Set c->"set."++conditionName c;Select c->"cmov."++conditionName c;Branch c->"j."++conditionName c
   BranchZero->"jzero";BranchNonzero->"jnonzero";Jump->"jmp"
   Add->"add";Subtract->"sub";Multiply->"mul";And->"and";Or->"or";Xor->"xor"
