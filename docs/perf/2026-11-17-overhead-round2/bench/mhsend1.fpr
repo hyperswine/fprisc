@@ -1,0 +1,17 @@
+# bench: one-pair baseline of mhsend -- 1 client/server pair on 2 harts,
+# 1,000,000 request/replies carrying a heap String (copied on send)
+server : unsafe Int -> a .
+server self = case receive self of (who, s) -> send who (strIndexOf "client" s) >> server self.
+loop : unsafe Int -> Int -> Int -> Int -> Int .
+loop me srv k acc = if k == 0 then acc else
+  _ = send srv (me, "request {k} from a client");
+  r = receiveFrom me srv;
+  loop me srv (k - 1) (acc + r).
+client : unsafe Int -> Int .
+client self = case receive self of (boss, srv) -> send boss (loop self srv 1000000 0) >> 0.
+main =
+  me = myself 0;
+  c0 = spawnOn 0 client; s0 = spawnOn 4 server;
+  _ = send c0 (me, s0);
+  t = receiveFrom me c0;
+  print "mhsend1 = {t}".

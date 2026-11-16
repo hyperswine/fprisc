@@ -1,0 +1,14 @@
+# bench: actor round trips ACROSS harts -- 1,000,000 request/replies between
+# an actor on hart 0 and one placed on hart 1 (pingpong.fpr is the same-hart
+# shape); docs/2026-10-01-XHART.md
+ponger : unsafe Int -> a .
+ponger self = case receive self of (who, n) -> send who (n + 1) >> ponger self.
+ping : unsafe Int -> Int -> Int -> Int -> Int .
+ping me p k acc = if k == 0 then acc else
+  _ = send p (me, k);
+  r = receiveFrom me p;
+  ping me p (k - 1) (acc + r).
+main =
+  me = myself 0;
+  p = spawnOn 1 ponger;
+  print "xpingpong = {ping me p 1000000 0}".

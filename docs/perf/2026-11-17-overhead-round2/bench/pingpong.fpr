@@ -1,0 +1,12 @@
+# bench: actor round trips -- 1,000,000 request/replies between two actors
+ponger : unsafe Int -> a .
+ponger self = case receive self of (who, n) -> send who (n + 1) >> ponger self.
+ping : unsafe Int -> Int -> Int -> Int -> Int .
+ping me p k acc = if k == 0 then acc else
+  _ = send p (me, k);
+  r = receiveFrom me p;
+  ping me p (k - 1) (acc + r).
+main =
+  me = myself 0;
+  p = spawn ponger;
+  print "pingpong = {ping me p 1000000 0}".
