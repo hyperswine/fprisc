@@ -7,6 +7,14 @@
 -- wrapping and i < n <= strlen(s) at each read: the copy drops the reads'
 -- String tests, length loads and bounds checks. Two strings compared in one
 -- loop (the prelude's strCmpGo) qualify as one string scanned does.
+--
+-- A function with one loop entered from its entry block copies its whole
+-- body. Otherwise (C3: a scan inlined into an outer loop, as wordEnd is in
+-- wordsGo) an innermost loop is versioned on its own: the dispatch sits on
+-- its preheader edge, only the loop's blocks are copied, and the copy
+-- leaves through the original exits. That needs every value the loop
+-- defines to leave it as a block argument (no use outside the loop), and
+-- the strings and limits to be defined outside the loop, dominating it.
 module Codegen.StringScan (versionScan) where
 
 import Codegen.IR
@@ -30,22 +38,48 @@ versionScan fn
     op v = snd <$> M.lookup v defs
     flow = analyze fn
     dom a b = S.member a (M.findWithDefault S.empty b (dominators flow))
-    outside v = maybe False ((== fnEntry fn) . fst) (M.lookup v defs)
-                || any ((==v) . fst) (maybe [] bParams (M.lookup (fnEntry fn) byId))
     rawOf p v = v == p || op v == Just (OUntag p)
-    rawSource v = case op v of
-      Just (OUntag p) | outside p -> Just (p,True)
-      _ | outside v -> Just (v,False)
-      _ -> Nothing
+    -- where a value is made: an instruction's block or a parameter's
+    homes = M.fromList ([(v,b) | (v,(b,_)) <- M.toList defs] ++ [(v,bId b) | b <- blocks, (v,_) <- bParams b])
     one v = op v == Just (OConstInt 1)
     zero v = op v == Just (OConstInt 0)
     address s a = op a == Just (OAddress s)
     lengthOf s v = case op v of Just (OLoad TInt a 8) -> address s a; _ -> False
-    candidate = do
-      [loop] <- pure (naturalLoops fn flow)
+    loops = naturalLoops fn flow
+    candidate = case loops of
+      [loop] | loopPreheader loop == Just (fnEntry fn) -> candidateFor True loop
+      _ -> listToMaybe (mapMaybe (candidateFor False) innermost)
+    innermost = [l | l <- loops, not (any (\o -> o /= l && S.isSubsetOf (loopBlocks o) (loopBlocks l)) loops)]
+    candidateFor whole loop = do
       preId <- loopPreheader loop
-      if preId == fnEntry fn && length blocks <= 48 && sum (map (length . bInstrs) blocks) <= 320
+      let inBody b = S.member b (loopBlocks loop)
+          -- empty blocks that only forward the loop's answer out of it
+          -- (an exit split by a join) go with the loop
+          tails = S.fromList [bId b | b <- blocks, not (inBody (bId b)), null (bInstrs b),
+                                      TBr t _ <- [bTerm b], not (inBody t),
+                                      Just ps <- [M.lookup (bId b) (predecessors flow)],
+                                      not (S.null ps), all inBody (S.toList ps)]
+          inLoop' b = inBody b || S.member b tails
+          loopOnly = [b | b <- blocks, inLoop' (bId b)]
+          -- the whole function, or the loop alone, is copied: the same
+          -- deliberate size limits bound the growth
+          sized = if whole then blocks else loopOnly
+          -- invariant inputs: made in the entry block (whole), or outside
+          -- the loop where they dominate its preheader (a loop alone)
+          outside v = if whole
+            then maybe False ((== fnEntry fn) . fst) (M.lookup v defs)
+                   || any ((==v) . fst) (maybe [] bParams (M.lookup (fnEntry fn) byId))
+            else maybe False (\b -> not (inLoop' b) && dom b preId) (M.lookup v homes)
+          rawSource v = case op v of
+            Just (OUntag p) | outside p -> Just (p,True)
+            _ | outside v -> Just (v,False)
+            _ -> Nothing
+          madeInLoop = S.fromList ([v | b <- loopOnly, (v,_) <- bParams b] ++ [v | b <- loopOnly, Instr (Just (v,_)) _ <- bInstrs b])
+          usedOutside = S.fromList [v | b <- blocks, not (inLoop' (bId b)),
+                                        v <- concatMap (\(Instr _ o) -> opUses o) (bInstrs b) ++ termUses (bTerm b)]
+      if length sized <= 48 && sum (map (length . bInstrs) sized) <= 320
         then pure () else Nothing
+      if whole || S.null (S.intersection madeInLoop usedOutside) then pure () else Nothing
       pre <- M.lookup preId byId
       header <- M.lookup (loopHeader loop) byId
       TBr h arrivals <- pure (bTerm pre)
@@ -63,8 +97,9 @@ versionScan fn
       (slot,(param,ty)) <- find (\(k,(p,t)) -> not (null incoming) && all (\e -> advance p t e k) incoming)
                                  (zip [0..] (bParams header))
       if length arrivals == length (bParams header) then pure () else Nothing
-      -- exit tests i >= n (n invariant): leaving the loop on true, staying on false
-      let limits = [(no,n) | b <- blocks, inLoop (bId b), TCondBr t yes [] no [] <- [bTerm b],
+      -- exit tests i >= n (n invariant): leaving the loop on true, staying
+      -- on false (a loop alone may pass its answer out on the exit edge)
+      let limits = [(no,n) | b <- blocks, inLoop (bId b), TCondBr t yes ys no [] <- [bTerm b], null ys || not whole,
                              Just (OCmp Ge i n) <- [op t], rawOf param i, Just _ <- [rawSource n],
                              not (inLoop yes), inLoop no]
           -- the managed String layout produced by StringRead, per string
@@ -79,10 +114,9 @@ versionScan fn
           admitted = [(s,bound s) | s <- strings, not (null (bound s)),
                                     any (\b -> any (\(Instr _ o) -> o==OTagTest 9000 0 s || o==OVariantTest 9000 0 s) (bInstrs b)) blocks]
       if not (null admitted) && length admitted == length strings then pure () else Nothing
-      pure (pre,header,param,ty,arrivals !! slot,admitted)
-    build (pre,header,param,ty,start,admitted) = compact (sweep result)
+      pure (pre,header,param,ty,arrivals !! slot,admitted,rawSource,if whole then filter ((/= bId pre) . bId) blocks else loopOnly)
+    build (pre,header,param,ty,start,admitted,rawSource,copied) = compact (sweep result)
       where
-        copied = filter ((/= bId pre) . bId) blocks
         nextB = 1 + maximum [n | b <- blocks, BId n <- [bId b]]
         nextV = 1 + maximum (0:[n | b <- blocks, (VId n,_) <- bParams b]
                                ++ [n | b <- blocks, Instr (Just (VId n,_)) _ <- bInstrs b])
