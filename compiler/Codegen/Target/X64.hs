@@ -36,7 +36,7 @@ import Codegen.Target.X64.Forms (checkForms)
 import Codegen.Target.Common
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict hiding (fix)
-import Data.List (intercalate)
+import Data.List (intercalate, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -275,6 +275,48 @@ emitCall sym convention args res = do
     (maybe DiscardResult (const WordResult) res) sym args res
     ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
   emitI selected
+
+-- A vector element read or store that the flat view did not serve calls
+-- its C entry (vec.c) through a function-local wrapper that saves every
+-- caller-saved word register but the result and the xmm pool
+-- (keepingWrapper): the call is a PreservingRuntime event that clobbers
+-- nothing, so the values live across a cold slow path, F64 values
+-- included, keep their registers instead of being kept in callee-saved
+-- registers or spilled on the hot path (C6 stage 1).
+emitKeepingCall :: CodeSymbol -> [VReg] -> VReg -> Se ()
+emitKeepingCall sym args res = do
+  stageArgs Calling.RuntimeCall args
+  selected <- either refuse pure (Calling.selectTransfer Calling.X86_64 Calling.RuntimeCall WordResult sym args (Just res)
+    ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
+  emitI selected {siClobbers = [], siCalls = [Call sym PreservingRuntime]}
+
+-- only the cold slow paths of inline vector accesses (Lower.vectorAccess)
+-- and only where floats have registers: a QOS app keeps the plain call
+keepsRegisters :: X64Config -> Callee -> Bool
+keepsRegisters cfg c = case calleeKind c of
+  Foreign _ -> polProfile (cfgPolicy cfg) /= QosApp && tuneFpPool (cfgTune cfg) && length (calleeParams c) <= 3
+    && any (`isPrefixOf` calleeName c) ["$vec.get", "$vec.at", "$vec.set", "$vec.put", "Vec.set", "Vec.put"]
+  _ -> False
+
+keepingCall :: SInstr -> Bool
+keepingCall i = siOpcode i == O.X64 O.Call && case siCalls i of
+  [c] -> callEffect c == PreservingRuntime
+  _ -> False
+
+keepingLabel :: String -> Label
+keepingLabel sym = Label ("keep_" ++ sym)
+
+-- one wrapper per C entry a function calls this way, after its code.
+-- Entered with rsp 8 mod 16 (the call site keeps the C alignment): eight
+-- pushes, the 96 bytes of float saves and one alignment word realign it.
+keepingWrappers :: X64Hart -> String -> [Item] -> [String]
+keepingWrappers hart name body = concat
+  [ [local hart name (keepingLabel sym) ++ ":"]
+    ++ ["    pushq %" ++ g | g <- saved] ++ saveFloats
+    ++ ["    subq $8, %rsp", "    call " ++ gsym hart sym, "    addq $8, %rsp"]
+    ++ restoreFloats ++ ["    popq %" ++ g | g <- reverse saved] ++ ["    ret"]
+  | sym <- S.toList (S.fromList [codeName s | I i <- body, keepingCall i, OCode s : _ <- [siUses i]]) ]
+  where saved = ["rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"]
 
 -- A private multi-word result, with the complete bank checked by Calling.
 emitCallProduct :: CodeSymbol -> CallConvention -> [VReg] -> [VReg] -> Se ()
@@ -801,7 +843,9 @@ selectInstr cfg facts (Instr d op) = case op of
   OResult _ -> refuse "internal: a product word without its call"
   OCall c as -> do
     when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
-    def (\r -> emitCall (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (Just r))
+    if keepsRegisters cfg c
+      then def (\r -> emitKeepingCall (calleeSymbol c) (map vreg as) r)
+      else def (\r -> emitCall (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (Just r))
   where
     makeCell tid variant fields = def $ \rd -> do
       let literal n = do r <- freshV False; emitI (li r (fromIntegral n)); pure r
@@ -1334,7 +1378,7 @@ emitFnX64WithSymbols symbols cfg fn = do
   let stack = Stack.selectedFrame Stack.StackReturnAddress ly (CodeSymbol (functionSymbol name))
         (["interposable-entry:"++functionSymbol name | visibilityFor (cfgWeak cfg) symbols name == WeakSymbol]
           ++ ["segmented-stack-reservation" | large] ++ ["darwin-tlv-boundary" | cfgHart cfg == HartTlvMachO]) body
-  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ refillCode ++ floatLiterals (cfgHart cfg) name allocatedBody ++ [reportLine name report, ""]) report stack (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
+  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ refillCode ++ keepingWrappers (cfgHart cfg) name allocatedBody ++ floatLiterals (cfgHart cfg) name allocatedBody ++ [reportLine name report, ""]) report stack (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
   where
     tokOf _ (ILabel (Label l)) _ = [TLabel l]
     tokOf pools (I i) ls = [TIns
@@ -1549,6 +1593,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       (O.X64 O.BranchNonzero,[],[v,OL l]) -> ["testq " ++ reg v ++ ", " ++ reg v,"jnz " ++ lbl l]
       (O.X64 O.Jump,[],[OL l]) -> ["jmp " ++ lbl l]
       (O.Common O.JumpLoop,[],[OL l]) -> ["jmp " ++ lbl l]
+      (O.X64 O.Call,_,OCode s:_) | keepingCall i -> ["subq $8, %rsp", "call " ++ lbl (keepingLabel (codeName s)), "addq $8, %rsp"]
       (O.X64 O.Call,_,OCode s:_) -> call (codeName s)
       (O.X64 O.Push,[],[v]) -> ["subq $16, %rsp", "movq " ++ reg v ++ ", (%rsp)"]
       (O.X64 O.ApplyN,[_],[OI n]) -> ["movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
