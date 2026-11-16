@@ -70,8 +70,32 @@ void hal_io_disarm(int fd) {
 /* a blocking descriptor with nothing to read yet: park the actor until it has
  * (or until it hangs up), instead of the hart; a non-blocking one keeps its
  * "again" answer */
+#if defined(__linux__) && !defined(FPR_ESP_IDF)
+/* descriptors Os.open opened on a regular file (until Os.close): a read of
+ * one never waits, so it skips the readiness check (a system call a read).
+ * A stale bit -- the descriptor closed some other way and reused -- only
+ * makes that read wait in the kernel, as every read did before. */
+#include <sys/stat.h>
+#define REG_FDS 4096
+static uint64_t reg_fd[REG_FDS / 64];
+static void reg_note(int fd) {
+  struct stat st;
+  if (fd < 0 || fd >= REG_FDS) return;
+  if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode)) __atomic_fetch_or(&reg_fd[fd / 64], (uint64_t)1 << (fd % 64), __ATOMIC_RELAXED);
+}
+static void reg_forget(int fd) {
+  if (fd >= 0 && fd < REG_FDS) __atomic_fetch_and(&reg_fd[fd / 64], ~((uint64_t)1 << (fd % 64)), __ATOMIC_RELAXED);
+}
+static int reg_is(int fd) {
+  return fd >= 0 && fd < REG_FDS && (__atomic_load_n(&reg_fd[fd / 64], __ATOMIC_RELAXED) >> (fd % 64)) & 1;
+}
+#else
+static void reg_note(int fd) { (void)fd; }
+static void reg_forget(int fd) { (void)fd; }
+#endif
 static void wait_readable(int fd) {
 #if defined(__linux__) && !defined(FPR_ESP_IDF)
+  if (reg_is(fd)) return;
   struct pollfd p = {fd, POLLIN, 0};
   int r;
   do r = poll(&p, 1, 0); while (r < 0 && errno == EINTR);
@@ -94,7 +118,11 @@ static V h_open(V pathv, V modev) {
             : !strcmp(mode, "rw") ? O_RDWR | O_CREAT : -1;
   V r;
   if (flags < 0) r = os_err("mode must be \"r\", \"w\", \"a\" or \"rw\"");
-  else { int fd = open(path, flags | O_CLOEXEC, 0666); r = fd < 0 ? os_errno() : os_ok(TAG(fd)); }
+  else {
+    int fd = open(path, flags | O_CLOEXEC, 0666);
+    if (fd >= 0) reg_note(fd);
+    r = fd < 0 ? os_errno() : os_ok(TAG(fd));
+  }
   free(path); free(mode);
   return r;
 }
@@ -192,5 +220,9 @@ static V h_seek(V fdv, V offv) {
 }
 FPR_FN_CSTACK(fpr_g_Os_x2eseek, h_seek, 2);
 
-static V h_close(V fdv) { return os_unit_or_errno(close(want_fd(fdv, "Os.close: the stream is not an Int"))); }
+static V h_close(V fdv) {
+  int fd = want_fd(fdv, "Os.close: the stream is not an Int");
+  reg_forget(fd);
+  return os_unit_or_errno(close(fd));
+}
 FPR_FN_CSTACK(fpr_g_Os_x2eclose, h_close, 1);
