@@ -268,6 +268,9 @@ typedef struct fpr_acb {
   uw stk_lo, stk_span, stk_total;
   /* Sys.sleepUs: linked on hart `slp_hart`'s sleeper list right now (see a_sleep_us) */
   uw slp_on, slp_hart;
+  /* set by the sleeper itself when it must sleep again while still linked on
+   * another hart's list (it migrated): that hart unlinks it and wakes it */
+  uw slp_cancel;
   /* receiveFromRes: the sender this actor is parked on (0 when not; its low
    * bit is set once the dying sender has picked it to wake), and how many
    * actors are parked on THIS one */
@@ -2554,6 +2557,10 @@ static int p_sleep(acb_t *a, uw unused) {
   (void)unused;
   return hal_mtime() >= a->wake_at;
 }
+static int p_unlinked(acb_t *a, uw unused) {
+  (void)unused;
+  return !__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE);
+}
 static void sleeper_link(fpr_hart_t *h, acb_t *a, uint64_t deadline) {
   a->wake_at = deadline;
   a->slp_hart = h->id;
@@ -2603,12 +2610,22 @@ static V a_sleep_us(V usv) {
    * at itself, and the hart walked that one-node cycle forever, running nothing
    * (an actor that sleeps while messages keep arriving -- std/poller -- did it
    * within a few hundred connections).  So: never link twice.  An actor still on
-   * a list another hart owns (it migrated mid-sleep) may not touch that list, and
-   * takes the host sleep this once; that hart unlinks it when it comes due. */
-  if (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) {
-    fpr_hal_sleep_us((uw)us);
-    return (V)&fpr_unit;
+   * a list another hart owns (it migrated mid-sleep) may not touch that list.
+   * It used to take the host sleep this once, blocking every actor on its new
+   * hart; now it asks the owning hart to drop the entry (slp_cancel, then the
+   * doorbell: that hart's loop runs slp_drain on every pass and again after
+   * clearing its doorbell) and parks until the entry is gone. */
+  sleeper_unlink_local(a); /* a stale entry on THIS hart's list: unlink it here */
+  while (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) {
+    uw owner = a->slp_hart;
+    __atomic_store_n(&a->slp_cancel, 1, __ATOMIC_RELEASE);
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    hal_ipi_send(owner);
+    block_unless(a, p_unlinked, 0, WAIT_ANY);
+    sleeper_unlink_local(a); /* it migrated back onto the owner meanwhile */
   }
+  __atomic_store_n(&a->slp_cancel, 0, __ATOMIC_RELAXED);
+  h = fpr_hart(); /* parking may have moved us to another hart */
   sleeper_link(h, a, now + (uint64_t)us * 10);
   while (!p_sleep(a, 0)) block_unless(a, p_sleep, 0, WAIT_ANY);
   sleeper_unlink_local(a);
@@ -2706,7 +2723,7 @@ static void slp_drain(fpr_hart_t *h) {
   while (*pp) {
     acb_t *a = *pp;
     uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
-    if (now >= a->wake_at || st == ST_DEAD) {
+    if (now >= a->wake_at || st == ST_DEAD || __atomic_load_n(&a->slp_cancel, __ATOMIC_ACQUIRE)) {
       *pp = a->slp_next;
       __atomic_store_n(&a->slp_on, 0, __ATOMIC_RELEASE); /* after the unlink: a_sleep_us reads it */
       __atomic_fetch_sub(&g_sleepers, 1, __ATOMIC_RELAXED);
