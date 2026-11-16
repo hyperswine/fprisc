@@ -291,6 +291,9 @@ callFn width program name args = do
               (trap ("charAt: index out of range (" ++ show n ++ ", length " ++ show (length bs) ++ ")"))
             pure (Just (VVal (RInt (toInteger (bs !! fromInteger n)))))
           _ -> trap "charAt: not a string"
+        (Foreign "fpr_g_strCompare_call2", [VVal x, VVal y]) -> Just $ case (x, y) of
+          (RString p, RString q) -> pure (Just (VVal (RInt (case compare p q of LT -> -1; EQ -> 0; GT -> 1))))
+          _ -> trap "strCompare: not a String"
         _ -> Nothing
       predicate env v = look env v >>= \case VPred b -> pure b; x -> stuck ("a predicate was needed, found " ++ show x)
   run (fnEntry fn) args M.empty

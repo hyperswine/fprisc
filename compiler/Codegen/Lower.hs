@@ -193,6 +193,15 @@ inlineFloat cx env h args =
           ("f32frombits",[CInt _]) -> True
           _ -> False
 
+-- strCompare with two arguments, on a target whose String layout the
+-- inline fragment knows (StringRead.canRead): its C entry's convention
+inlineStrCompare :: Cx -> Env -> Name -> [Core] -> Maybe Callee
+inlineStrCompare cx env h args
+  | h == "strCompare", [_, _] <- args, isPrim cx env h,
+    Just c <- calleeOf cx h 2,
+    StringRead.canRead (cxPolicy cx) c "strCompare" 2 = Just c
+  | otherwise = Nothing
+
 vectorBuilder :: ScalarVector.Builder L
 vectorBuilder = ScalarVector.Builder emit (fst <$> newBlock []) newBlock1 newBlock open emitDo close chill
 
@@ -588,6 +597,7 @@ lowerTail cx env expr = ended (go expr) >> pure ()
       | (CVar h, args@(_ : _)) <- spineOf e,
         M.notMember h env,
         not (inlineFloat cx env h args),
+        Nothing <- inlineStrCompare cx env h args,
         scalarVectorCall cx env h (length args)==Nothing,
         Nothing <- vectorAccessOf cx env h args,
         Nothing <- nodeAccess cx env h args,
@@ -948,6 +958,18 @@ lowerVal cx env = \case
             Nothing -> do
               v <- emit TInt (OCharAt str index)
               pure (v, TInt)
+      -- strCompare: answered inline when the first two bytes or the
+      -- lengths settle it, the C entry otherwise (StringRead.lowerCompare)
+      | Just c <- inlineStrCompare cx env h args, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal
+          y <- lowerVal cx env b >>= asVal
+          case StringRead.planCompare (cxPolicy cx) c x y of
+            Just plan -> do
+              result <- StringRead.lowerCompare vectorBuilder plan
+              pure (result, TInt)
+            Nothing -> do
+              r <- emit TVal (OCall c [x, y])
+              pure (r, TVal)
       | isPrim cx env h, h `elem` ["intMin", "intMax"], [a] <- args, Just (Prim 1 _ _) <- M.lookup h (cxHal cx) -> do
           _ <- lowerVal cx env a
           let (lo, hi) = intBounds (policyWidth (cxPolicy cx))
