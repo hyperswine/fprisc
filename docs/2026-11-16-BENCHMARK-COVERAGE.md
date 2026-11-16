@@ -188,3 +188,48 @@ golden 49 of 49; the four end-to-end runs log every sale.
 
 Still open from the list above: what eight cashiers are sent (1.5 MB per sale), the size of a
 receipt's markup, and the render outside the cached parts.
+
+## 17 November: the two games, played from a script
+
+`tests/bench/e2e/game.sol` with `gamedrive.c` ([specification](../tests/bench/e2e/SPEC.md)): the
+game is built by `qos build`, run by `qos run` in its window, and played through the evdev fifo its
+own checks use; the host's per-frame timestamps (`FPR_GFX_PROFILE`), a memory sample a second and
+`/usr/bin/time` say what it cost. Apple M4, five minutes of play each, the installed QOS Portable
+SDK 0.3.0, whose compiler is **FP-RISC 0.12.0**.
+
+| | Dungeon | Terra II |
+|---|---:|---:|
+| frames drawn | 17,316 | 18,452 |
+| frames a second | 57.3 | 57.5 |
+| host time in a frame, p50 / p99 / max | 0.99 / 1.9 / 4.7 ms | 1.1 / 2.2 / 4.5 ms |
+| of which draw, p50 / p99 | 0.32 / 0.49 ms | 0.40 / 0.67 ms |
+| CPU time (user + system) | 58.6 s of 305 s | 78.1 s of 326 s |
+| instructions per frame, whole process | 12.6 M | 18.0 M |
+| host memory, first / last sample | 132.2 / 132.4 MB | 157.0 / 163.1 MB |
+| peak memory (`time`) | 136 MB | 167 MB |
+
+Reading it:
+
+- **Both hold the display's pace with a wide margin.** The host spends 1 to 2 ms of a 16.7 ms frame;
+  the worst sampled frame was under 5 ms. The frame rate is the tick and the display, not a limit
+  of the program.
+- **About a fifth to a quarter of one core while playing** (10 cores on this machine), for a
+  turn-based game that redraws every frame. 12.6 M and 18.0 M instructions a frame include the host,
+  the GL driver and the app; the split between them was not measured.
+- **Dungeon's memory is flat** over five minutes (132.2 to 132.4 MB). **Terra II's grew 6 MB**
+  (157.0 to 163.1 MB, the last sample being the peak). Five minutes cannot say whether that levels
+  off; it should be run for longer.
+- **This is the released SDK, built with the 0.12.0 compiler**: before this month's code generation
+  work, and with the call-region defect of 16 November (a hand-written actor loop holding
+  everything until it dies) still in it. The numbers are what users have today, not what the
+  current compiler gives. Rebuilding the SDK at the current pin and running this again is the
+  comparison that matters, and would show whether Terra II's growth is that defect.
+
+What the first runs taught about the driver: Terra II queues keys and takes them between
+animations, so four keys a second built a backlog the quit key sat behind; its script sends one a
+second. The host's console echo is rate-limited, so the per-frame lines are a sample (about a
+quarter of the frames); the frame count is the app's own.
+
+Not done: no competitor runs the same game, so this is an absolute measurement, not a comparison;
+not run on the Pi 4B, where the margin is what matters; no input-to-frame latency; the app's share
+of a frame is not separated from the host's.
