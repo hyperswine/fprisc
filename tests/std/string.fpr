@@ -4,6 +4,7 @@ List = use "std/list".
 main =
   _ = print "split {String.split "," "a,b,,c"} join {String.join "-" ("x" :: "y" :: "z" :: Nil)} words {String.words "  the quick\tbrown  fox "}";
   _ = print "lines {String.lines "one\r\ntwo\nthree\n"} trim [{String.trim "  hi there \n"}] replace {String.replace "ab" "X" "abcabab"}";
+  _ = print "foldWords {String.foldWords (fn n w -> n + String.length w) 0 "  the quick\tbrown  fox "} {String.foldWords (fn acc w -> w :: acc) Nil " a bc "} foldLines {String.foldLines (fn acc l -> l :: acc) Nil "one\r\ntwo\nthree"} {String.foldLines (fn n l -> n + 1) 0 "x\n\ny\n"}";
   _ = print "index {String.indexOf "lo" "hello"} {String.indexOf "z" "hello"} contains {String.contains "ell" "hello"} starts {String.startsWith "he" "hello"} ends {String.endsWith "lo" "hello"} count {String.count "a" "banana"}";
   _ = print "slice {String.slice 1 4 "abcdef"} left {String.left 2 "abcdef"} right {String.right 2 "abcdef"} dropL {String.dropLeft 2 "abcdef"} dropR {String.dropRight 2 "abcdef"}";
   _ = print "upper {String.toUpper "héllo wörld"} pad [{String.padLeft 5 "0" "42"}] [{String.padRight 5 "." "ab"}] rev {String.reverse "abc"} rep {String.repeat 3 "ab"}";
