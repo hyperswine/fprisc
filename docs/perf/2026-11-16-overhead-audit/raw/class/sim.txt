@@ -1,0 +1,25 @@
+total 3.573 G
+
+fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun  3.521 G (98.5%)
+   reg-move 19%, branch 17%, compare 14%, alu/other 10%, tag/untag 10%, load 10%, store 8%, spill/frame 7%, overflow-check 3%, fuel/hart-tls 1%, call/ret 0%
+
+drain  0.013 G (0.4%)
+   alu/other 40%, branch 15%, compare 14%, load 13%, reg-move 9%, call/ret 8%
+
+deq  0.008 G (0.2%)
+   alu/other 24%, compare 17%, branch 16%, call/ret 12%, load 12%, store 11%, reg-move 4%, spill/frame 2%, fuel/hart-tls 2%
+
+hart_loop  0.006 G (0.2%)
+   alu/other 21%, load 18%, branch 16%, compare 14%, store 14%, call/ret 8%, reg-move 5%, spill/frame 3%, fuel/hart-tls 1%
+
+fpr_fn__x24worker_x2etrmc_x2e_x24trmc_x2e3_x2egen_x2e0  0.006 G (0.2%)
+   alu/other 30%, reg-move 24%, branch 14%, overflow-check 13%, compare 5%, store 5%, spill/frame 3%, load 3%, tag/untag 2%, fuel/hart-tls 1%, call/ret 0%
+
+backlog_add  0.004 G (0.1%)
+   branch 20%, alu/other 18%, load 18%, store 18%, compare 16%, reg-move 5%, fuel/hart-tls 2%, call/ret 2%
+
+fpr_ctx_switch  0.003 G (0.1%)
+   store 42%, load 42%, spill/frame 5%, alu/other 5%, branch 5%
+
+kp_reaches  0.002 G (0.1%)
+   call/ret 33%, branch 17%, alu/other 15%, compare 13%, reg-move 13%, load 4%, tag/untag 3%, spill/frame 2%

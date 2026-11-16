@@ -1,0 +1,8 @@
+sim             fpr 0.177s rss 17MB (u 0.180 s 0.004) | c 0.039s rss 17MB | x4.5 md5match=True st=0
+csv             fpr 0.456s rss 144MB (u 0.395 s 0.075) | c 0.036s rss 17MB | x12.7 md5match=True st=0
+wordfreq        fpr 0.927s rss 232MB (u 0.832 s 0.117) | c 0.097s rss 25MB | x9.6 md5match=True st=0
+wordfreq_mutmap fpr 0.418s rss 231MB (u 0.333 s 0.109) | c 0.093s rss 25MB | x4.5 md5match=True st=0
+treemap         fpr 0.856s rss 44MB (u 0.840 s 0.024) | c 0.126s rss 37MB | x6.8 md5match=True st=0
+treemap_mutmap  fpr 0.350s rss 159MB (u 0.293 s 0.067) | c 0.120s rss 37MB | x2.9 md5match=True st=0
+records         fpr 0.786s rss 125MB (u 0.737 s 0.056) | c 0.230s rss 62MB | x3.4 md5match=True st=0
+format          fpr 0.652s rss 394MB (u 0.414 s 0.223) | c 0.226s rss 79MB | x2.9 md5match=True st=0

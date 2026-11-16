@@ -1,0 +1,8 @@
+binarytrees     fpr 0.828s rss 88MB (u 0.796 s 0.044) | c 1.113s rss 42MB | x0.7 md5match=True st=0
+fannkuchredux   fpr 0.889s rss 42MB (u 0.894 s 0.000) | c 0.199s rss 42MB | x4.5 md5match=True st=0
+nbody           fpr 1.165s rss 42MB (u 1.171 s 0.000) | c 0.221s rss 42MB | x5.3 md5match=True st=0
+spectralnorm    fpr 1.102s rss 42MB (u 1.117 s 0.000) | c 0.195s rss 42MB | x5.7 md5match=True st=0
+mandelbrot      fpr 2.567s rss 42MB (u 2.577 s 0.016) | c 0.991s rss 42MB | x2.6 md5match=True st=0
+fasta           fpr 0.604s rss 42MB (u 0.585 s 0.028) | c 0.328s rss 42MB | x1.8 md5match=True st=0
+knucleotide     fpr 1.202s rss 216MB (u 1.044 s 0.194) | c 0.252s rss 42MB | x4.8 md5match=True st=0
+revcomp         fpr 0.305s rss 129MB (u 0.211 s 0.099) | c 0.064s rss 42MB | x4.8 md5match=True st=0

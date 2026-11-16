@@ -1,0 +1,25 @@
+total 4.452 G
+
+fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2estep_x2e  0.840 G (18.9%)
+   spill/frame 27%, alu/other 17%, branch 12%, reg-move 10%, compare 8%, load 8%, store 6%, tag/untag 5%, fuel/hart-tls 4%, call/ret 3%, overflow-check 0%
+
+fpr_fn_charFrom_x408f43d2f23d69210e  0.627 G (14.1%)
+   branch 23%, compare 20%, reg-move 17%, alu/other 14%, tag/untag 12%, spill/frame 8%, fuel/hart-tls 5%, load 1%, call/ret 1%
+
+g_strCompare  0.406 G (9.1%)
+   alu/other 30%, branch 23%, compare 23%, load 9%, reg-move 9%, tag/untag 5%, call/ret 2%
+
+fpr_fn_digitsGo_x408f43d2f23d69210e  0.375 G (8.4%)
+   branch 21%, alu/other 20%, compare 17%, reg-move 14%, spill/frame 12%, tag/untag 7%, overflow-check 4%, fuel/hart-tls 3%, load 1%, call/ret 1%
+
+fpr_alloc  0.345 G (7.7%)
+   branch 23%, compare 22%, alu/other 18%, load 12%, call/ret 10%, store 7%, reg-move 6%, fuel/hart-tls 1%, tag/untag 0%, spill/frame 0%
+
+fpr_fn__x24loop_x2ein_x2esplitCharGo_x408f43d2f23d69210e  0.265 G (6.0%)
+   alu/other 22%, spill/frame 17%, reg-move 13%, compare 11%, branch 11%, tag/untag 7%, store 7%, load 6%, fuel/hart-tls 4%, call/ret 2%, overflow-check 2%
+
+fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e1  0.195 G (4.4%)
+   compare 19%, reg-move 19%, alu/other 17%, branch 15%, load 11%, tag/untag 9%, call/ret 3%, spill/frame 2%, overflow-check 2%, store 2%, fuel/hart-tls 1%
+
+fpr_fn_rev_x408f43d2f23d69210e  0.191 G (4.3%)
+   alu/other 20%, branch 19%, load 15%, store 13%, compare 12%, reg-move 10%, fuel/hart-tls 5%, spill/frame 3%, tag/untag 3%, call/ret 1%

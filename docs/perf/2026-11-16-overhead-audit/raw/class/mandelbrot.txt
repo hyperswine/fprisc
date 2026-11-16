@@ -1,0 +1,25 @@
+total 1.251 G
+
+fpr_fn_inSet  1.150 G (92.0%)
+   reg-move 52%, alu/other 26%, branch 9%, compare 7%, tag/untag 2%, fuel/hart-tls 2%, spill/frame 1%, call/ret 0%
+
+fpr_fn__x24loop_x2ein_x2erows  0.091 G (7.2%)
+   alu/other 26%, reg-move 23%, branch 12%, compare 10%, spill/frame 10%, tag/untag 9%, overflow-check 4%, load 2%, fuel/hart-tls 2%, call/ret 1%, store 0%
+
+drain  0.003 G (0.2%)
+   alu/other 40%, branch 15%, compare 14%, load 13%, reg-move 9%, call/ret 8%
+
+deq  0.002 G (0.1%)
+   alu/other 24%, compare 17%, branch 16%, call/ret 12%, load 12%, store 11%, reg-move 4%, spill/frame 2%, fuel/hart-tls 2%
+
+hart_loop  0.001 G (0.1%)
+   alu/other 22%, load 18%, branch 16%, compare 14%, store 13%, call/ret 7%, reg-move 5%, spill/frame 3%, fuel/hart-tls 1%
+
+h_pack  0.001 G (0.1%)
+   alu/other 28%, branch 14%, reg-move 14%, compare 14%, store 14%, load 14%, call/ret 1%, tag/untag 1%
+
+backlog_add  0.001 G (0.1%)
+   branch 20%, alu/other 18%, load 18%, store 18%, compare 16%, reg-move 5%, fuel/hart-tls 2%, call/ret 2%
+
+?  0.001 G (0.0%)
+   alu/other 100%

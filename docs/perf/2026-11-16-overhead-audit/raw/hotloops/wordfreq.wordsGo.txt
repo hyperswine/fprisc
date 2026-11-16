@@ -1,0 +1,35 @@
+45810d    17335754 mov    %r15,%rax
+458110    17335754 sar    $1,%rax
+458113    17335754 cmp    %rax,%r13
+458116    17335754 jl     458124 <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x24b>
+458124    17335754 mov    %r14,%rax
+458127    17335754 and    $0x1,%rax
+45812b    17335754 test   %rax,%rax
+45812e    17335754 jne    458157 <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x27e>
+458130    17335754 mov    (%r14),%rax
+458133    17335754 mov    $0x2328,%ecx
+458138    17335754 cmp    %rcx,%rax
+45813b    17335754 jne    458157 <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x27e>
+45813d    17335754 mov    %r14,%rax
+458140    17335754 mov    0x8(%rax),%rcx
+458144    17335754 cmp    $0x0,%r13
+458148    17335754 jl     458157 <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x27e>
+45814a    17335754 cmp    %rcx,%r13
+45814d    17335754 jge    458157 <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x27e>
+45814f    17335754 movzbq 0x10(%rax,%r13,1),%rax
+458155    17335754 jmp    45816d <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x294>
+45816d    17335754 cmp    $0x20,%rax
+458171    17335754 jne    45817c <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x2a3>
+45817c    15502421 cmp    $0x9,%rax
+458180    15502421 jl     458191 <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x2b8>
+458182    15502421 cmp    $0xd,%rax
+458186    15502421 jg     458191 <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x2b8>
+458191    15335754 lea    0x1(%r13),%rcx
+458195    15335754 lea    0x1(%rcx,%rcx,1),%rdx
+45819a    15335754 mov    %fs:0xfffffffffffffff8,%r10
+4581a3    15335754 subq   $0x61,(%r10)
+4581a7    15335754 jg     4581b6 <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x2dd>
+4581b6    15335754 mov    %rdx,%r12
+4581b9    15335754 mov    %rcx,%r13
+4581bc    15335754 jmp    45810d <fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e+0x234>
+count 34 sum 888936580

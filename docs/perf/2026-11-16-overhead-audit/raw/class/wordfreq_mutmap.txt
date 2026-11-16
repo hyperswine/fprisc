@@ -1,0 +1,25 @@
+total 2.462 G
+
+fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e  0.889 G (36.1%)
+   branch 27%, compare 24%, reg-move 15%, alu/other 11%, tag/untag 9%, load 6%, fuel/hart-tls 3%, spill/frame 3%, store 1%, call/ret 0%, overflow-check 0%
+
+mm_str_hash  0.263 G (10.7%)
+   alu/other 57%, compare 17%, branch 12%, call/ret 7%, reg-move 6%, tag/untag 1%, load 1%
+
+fpr_alloc  0.190 G (7.7%)
+   branch 23%, compare 22%, alu/other 18%, load 11%, call/ret 10%, store 7%, reg-move 6%, fuel/hart-tls 1%, tag/untag 1%, spill/frame 0%
+
+kp_reaches  0.137 G (5.6%)
+   branch 23%, call/ret 19%, compare 19%, reg-move 14%, alu/other 13%, load 6%, spill/frame 4%, tag/untag 2%
+
+mm_find  0.130 G (5.3%)
+   branch 21%, load 20%, call/ret 20%, compare 16%, alu/other 12%, reg-move 9%, store 2%, spill/frame 0%
+
+g_mutmapInsertWith  0.102 G (4.1%)
+   call/ret 31%, reg-move 26%, load 15%, branch 10%, compare 8%, alu/other 6%, tag/untag 2%, store 2%, spill/frame 0%
+
+fpr_fn_rev_x408f43d2f23d69210e  0.080 G (3.2%)
+   alu/other 20%, branch 20%, load 17%, store 15%, compare 12%, reg-move 8%, fuel/hart-tls 5%, tag/untag 3%, call/ret 0%, spill/frame 0%
+
+fpr_layout_fields  0.065 G (2.7%)
+   alu/other 30%, call/ret 20%, compare 18%, branch 14%, reg-move 14%, load 5%, store 0%

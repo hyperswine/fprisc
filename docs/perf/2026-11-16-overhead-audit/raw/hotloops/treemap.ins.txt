@@ -1,0 +1,302 @@
+41f0ea     9113353 sub    $0xa0,%rsp
+41f0f1     9113353 mov    %rbp,0x98(%rsp)
+41f0f9     9113353 lea    0xa8(%rsp),%rbp
+41f101     9113353 mov    %rbx,-0x18(%rbp)
+41f105     9113353 mov    %r12,-0x20(%rbp)
+41f109     9113353 mov    %r13,-0x28(%rbp)
+41f10d     9113353 mov    %r14,-0x30(%rbp)
+41f111     9113353 mov    %r15,-0x38(%rbp)
+41f115     9113353 mov    %rdi,-0x40(%rbp)
+41f119     9113353 mov    %rsi,-0x48(%rbp)
+41f11d     9113353 mov    %rdx,-0x50(%rbp)
+41f121     9113353 mov    %rcx,%r14
+41f124     9113353 mov    %fs:0xfffffffffffffff8,%r10
+41f12d     9113353 lea    0x8(%rsp),%r11
+41f132     9113353 sub    0x1c8(%r10),%r11
+41f139     9113353 cmp    0x1d0(%r10),%r11
+41f140     9113353 jb     41f161 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x77>
+41f161     9113353 subq   $0x125,(%r10)
+41f168     9113353 jg     41f177 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x8d>
+41f177     9113353 mov    %r14,%rax
+41f17a     9113353 and    $0x1,%rax
+41f17e     9113353 test   %rax,%rax
+41f181     9113353 jne    41f266 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x17c>
+41f187     9113353 mov    (%r14),%rax
+41f18a     9113353 mov    $0x6ffddeaf,%ecx
+41f18f     9113353 cmp    %rcx,%rax
+41f192     9113353 jne    41f266 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x17c>
+41f266     8719876 mov    0x8(%r14),%rax
+41f26a     8719876 mov    0x10(%r14),%r15
+41f26e     8719876 mov    0x18(%r14),%rbx
+41f272     8719876 mov    0x20(%r14),%r13
+41f276     8719876 mov    0x28(%r14),%r12
+41f27a     8719876 mov    -0x48(%rbp),%rcx
+41f27e     8719876 sar    $1,%rcx
+41f281     8719876 mov    %rbx,%rdx
+41f284     8719876 sar    $1,%rdx
+41f287     8719876 cmp    %rdx,%rcx
+41f28a     8719876 jge    4202d2 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x11e8>
+41f290     4223171 mov    -0x40(%rbp),%rdi
+41f294     4223171 mov    -0x48(%rbp),%rsi
+41f298     4223171 mov    -0x50(%rbp),%rdx
+41f29c     4223171 mov    %r15,%rcx
+41f29f     4223171 sub    $0x8,%rsp
+41f2a3     4223171 call   41f0ea <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f>
+41f2a8     4223171 add    $0x8,%rsp
+41f2ac     4223171 mov    %rdx,-0x58(%rbp)
+41f2b0     4223171 mov    %rax,%r15
+41f2b3     4223171 mov    %r15,%rax
+41f2b6     4223171 and    $0x1,%rax
+41f2ba     4223171 test   %rax,%rax
+41f2bd     4223171 jne    41f2cc <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1e2>
+41f2bf     4223171 mov    (%r15),%rax
+41f2c2     4223171 mov    $0x6ffddeaf,%ecx
+41f2c7     4223171 cmp    %rcx,%rax
+41f2ca     4223171 je     41f2fe <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x214>
+41f2cc     4223171 mov    %r15,%rax
+41f2cf     4223171 and    $0x1,%rax
+41f2d3     4223171 test   %rax,%rax
+41f2d6     4223171 jne    41f2ea <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x200>
+41f2d8     4223171 mov    (%r15),%rax
+41f2db     4223171 movabs $0x16ffddeaf,%rcx
+41f2e5     4223171 cmp    %rcx,%rax
+41f2e8     4223171 je     41f311 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x227>
+41f311     4223171 mov    0x8(%r15),%rax
+41f315     4223171 mov    %rax,%r10
+41f318     4223171 mov    %r10,-0x60(%rbp)
+41f31c     4223171 mov    %r12,%rax
+41f31f     4223171 and    $0x1,%rax
+41f323     4223171 test   %rax,%rax
+41f326     4223171 jne    41f336 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x24c>
+41f328     4223171 mov    (%r12),%rax
+41f32c     4223171 mov    $0x6ffddeaf,%ecx
+41f331     4223171 cmp    %rcx,%rax
+41f334     4223171 je     41f369 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x27f>
+41f336     3990184 mov    %r12,%rax
+41f339     3990184 and    $0x1,%rax
+41f33d     3990184 test   %rax,%rax
+41f340     3990184 jne    41f355 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x26b>
+41f342     3990184 mov    (%r12),%rax
+41f346     3990184 movabs $0x16ffddeaf,%rcx
+41f350     3990184 cmp    %rcx,%rax
+41f353     3990184 je     41f37c <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x292>
+41f37c     3990184 mov    0x8(%r12),%rax
+41f381     3990184 mov    %rax,%r10
+41f384     3990184 mov    %r10,-0x68(%rbp)
+41f388     4223171 mov    -0x68(%rbp),%rax
+41f38c     4223171 sar    $1,%rax
+41f38f     4223171 lea    0x1(%rax),%rcx
+41f393     4223171 mov    %rcx,%r10
+41f396     4223171 shl    $1,%r10
+41f399     4223171 jno    41f3bd <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x2d3>
+41f3bd     4223171 mov    -0x60(%rbp),%rax
+41f3c1     4223171 sar    $1,%rax
+41f3c4     4223171 cmp    %rcx,%rax
+41f3c7     4223171 jle    41fa8c <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x9a2>
+41fa8c     4131526 mov    -0x60(%rbp),%rax
+41fa90     4131526 sar    $1,%rax
+41fa93     4131526 lea    0x1(%rax),%rcx
+41fa97     4131526 mov    %rcx,%r10
+41fa9a     4131526 shl    $1,%r10
+41fa9d     4131526 jno    41fac1 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x9d7>
+41fac1     4131526 mov    -0x68(%rbp),%rax
+41fac5     4131526 sar    $1,%rax
+41fac8     4131526 cmp    %rcx,%rax
+41facb     4131526 jle    42018f <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x10a5>
+42018f     4131526 mov    %r15,%rax
+420192     4131526 and    $0x1,%rax
+420196     4131526 test   %rax,%rax
+420199     4131526 jne    4201a8 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x10be>
+42019b     4131526 mov    (%r15),%rax
+42019e     4131526 mov    $0x6ffddeaf,%ecx
+4201a3     4131526 cmp    %rcx,%rax
+4201a6     4131526 je     4201da <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x10f0>
+4201a8     4131526 mov    %r15,%rax
+4201ab     4131526 and    $0x1,%rax
+4201af     4131526 test   %rax,%rax
+4201b2     4131526 jne    4201c6 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x10dc>
+4201b4     4131526 mov    (%r15),%rax
+4201b7     4131526 movabs $0x16ffddeaf,%rcx
+4201c1     4131526 cmp    %rcx,%rax
+4201c4     4131526 je     4201e6 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x10fc>
+4201e6     4131526 mov    0x8(%r15),%rax
+4201ea     4131526 mov    %r12,%rcx
+4201ed     4131526 and    $0x1,%rcx
+4201f1     4131526 test   %rcx,%rcx
+4201f4     4131526 jne    420204 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x111a>
+4201f6     4131526 mov    (%r12),%rcx
+4201fa     4131526 mov    $0x6ffddeaf,%edx
+4201ff     4131526 cmp    %rdx,%rcx
+420202     4131526 je     420237 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x114d>
+420204     3954675 mov    %r12,%rcx
+420207     3954675 and    $0x1,%rcx
+42020b     3954675 test   %rcx,%rcx
+42020e     3954675 jne    420223 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1139>
+420210     3954675 mov    (%r12),%rcx
+420214     3954675 movabs $0x16ffddeaf,%rdx
+42021e     3954675 cmp    %rdx,%rcx
+420221     3954675 je     420243 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1159>
+420243     3954675 mov    0x8(%r12),%rcx
+420248     4131526 mov    %rax,%rdx
+42024b     4131526 sar    $1,%rdx
+42024e     4131526 mov    %rcx,%rsi
+420251     4131526 sar    $1,%rsi
+420254     4131526 cmp    %rsi,%rdx
+420257     4131526 jg     42025b <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1171>
+42025e     4131526 mov    %rcx,%rax
+420261     4131526 sar    $1,%rax
+420264     4131526 lea    0x1(%rax),%rcx
+420268     4131526 mov    %rcx,%r10
+42026b     4131526 shl    $1,%r10
+42026e     4131526 jno    420292 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x11a8>
+420292     4131526 lea    0x1(%rcx,%rcx,1),%rax
+420297     4131526 mov    %rax,0x8(%r14)
+42029b     4131526 mov    %r15,0x10(%r14)
+42029f     4131526 mov    %rbx,0x18(%r14)
+4202a3     4131526 mov    %r13,0x20(%r14)
+4202a7     4131526 mov    %r12,0x28(%r14)
+4202ab     4131526 mov    %r14,%rax
+4202ae     4223171 mov    -0x58(%rbp),%rdx
+4202b2     4223171 mov    -0x18(%rbp),%rbx
+4202b6     4223171 mov    -0x20(%rbp),%r12
+4202ba     4223171 mov    -0x28(%rbp),%r13
+4202be     4223171 mov    -0x30(%rbp),%r14
+4202c2     4223171 mov    -0x38(%rbp),%r15
+4202c6     4223171 mov    %rbp,%r11
+4202c9     4223171 mov    -0x10(%rbp),%rbp
+4202cd     4223171 lea    -0x8(%r11),%rsp
+4202d1     4223171 ret
+4202d2     4496705 cmp    %rdx,%rcx
+4202d5     4496705 jne    420320 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1236>
+420320     4390182 mov    -0x40(%rbp),%rdi
+420324     4390182 mov    -0x48(%rbp),%rsi
+420328     4390182 mov    -0x50(%rbp),%rdx
+42032c     4390182 mov    %r12,%rcx
+42032f     4390182 sub    $0x8,%rsp
+420333     4390182 call   41f0ea <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f>
+420338     4390182 add    $0x8,%rsp
+42033c     4390182 mov    %rdx,-0x68(%rbp)
+420340     4390182 mov    %rax,%r12
+420343     4390182 mov    %r15,%rax
+420346     4390182 and    $0x1,%rax
+42034a     4390182 test   %rax,%rax
+42034d     4390182 jne    42035c <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1272>
+42034f     4390182 mov    (%r15),%rax
+420352     4390182 mov    $0x6ffddeaf,%ecx
+420357     4390182 cmp    %rcx,%rax
+42035a     4390182 je     42038e <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x12a4>
+42035c     4157530 mov    %r15,%rax
+42035f     4157530 and    $0x1,%rax
+420363     4157530 test   %rax,%rax
+420366     4157530 jne    42037a <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1290>
+420368     4157530 mov    (%r15),%rax
+42036b     4157530 movabs $0x16ffddeaf,%rcx
+420375     4157530 cmp    %rcx,%rax
+420378     4157530 je     4203a1 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x12b7>
+4203a1     4157530 mov    0x8(%r15),%rax
+4203a5     4157530 mov    %rax,%r10
+4203a8     4157530 mov    %r10,-0x60(%rbp)
+4203ac     4390182 mov    %r12,%rax
+4203af     4390182 and    $0x1,%rax
+4203b3     4390182 test   %rax,%rax
+4203b6     4390182 jne    4203c6 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x12dc>
+4203b8     4390182 mov    (%r12),%rax
+4203bc     4390182 mov    $0x6ffddeaf,%ecx
+4203c1     4390182 cmp    %rcx,%rax
+4203c4     4390182 je     4203f9 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x130f>
+4203c6     4390182 mov    %r12,%rax
+4203c9     4390182 and    $0x1,%rax
+4203cd     4390182 test   %rax,%rax
+4203d0     4390182 jne    4203e5 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x12fb>
+4203d2     4390182 mov    (%r12),%rax
+4203d6     4390182 movabs $0x16ffddeaf,%rcx
+4203e0     4390182 cmp    %rcx,%rax
+4203e3     4390182 je     42040c <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1322>
+42040c     4390182 mov    0x8(%r12),%rax
+420411     4390182 mov    %rax,%r10
+420414     4390182 mov    %r10,-0x70(%rbp)
+420418     4390182 mov    -0x70(%rbp),%rax
+42041c     4390182 sar    $1,%rax
+42041f     4390182 lea    0x1(%rax),%rcx
+420423     4390182 mov    %rcx,%r10
+420426     4390182 shl    $1,%r10
+420429     4390182 jno    42044d <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1363>
+42044d     4390182 mov    -0x60(%rbp),%rax
+420451     4390182 sar    $1,%rax
+420454     4390182 cmp    %rcx,%rax
+420457     4390182 jle    420b13 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1a29>
+420b13     4390182 mov    -0x60(%rbp),%rax
+420b17     4390182 sar    $1,%rax
+420b1a     4390182 lea    0x1(%rax),%rcx
+420b1e     4390182 mov    %rcx,%r10
+420b21     4390182 shl    $1,%r10
+420b24     4390182 jno    420b48 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x1a5e>
+420b48     4390182 mov    -0x70(%rbp),%rax
+420b4c     4390182 sar    $1,%rax
+420b4f     4390182 cmp    %rcx,%rax
+420b52     4390182 jle    4211f5 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x210b>
+4211f5     4298429 mov    %r15,%rax
+4211f8     4298429 and    $0x1,%rax
+4211fc     4298429 test   %rax,%rax
+4211ff     4298429 jne    42120e <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x2124>
+421201     4298429 mov    (%r15),%rax
+421204     4298429 mov    $0x6ffddeaf,%ecx
+421209     4298429 cmp    %rcx,%rax
+42120c     4298429 je     421240 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x2156>
+42120e     4122312 mov    %r15,%rax
+421211     4122312 and    $0x1,%rax
+421215     4122312 test   %rax,%rax
+421218     4122312 jne    42122c <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x2142>
+42121a     4122312 mov    (%r15),%rax
+42121d     4122312 movabs $0x16ffddeaf,%rcx
+421227     4122312 cmp    %rcx,%rax
+42122a     4122312 je     42124c <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x2162>
+42124c     4122312 mov    0x8(%r15),%rax
+421250     4298429 mov    %r12,%rcx
+421253     4298429 and    $0x1,%rcx
+421257     4298429 test   %rcx,%rcx
+42125a     4298429 jne    42126a <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x2180>
+42125c     4298429 mov    (%r12),%rcx
+421260     4298429 mov    $0x6ffddeaf,%edx
+421265     4298429 cmp    %rdx,%rcx
+421268     4298429 je     42129d <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x21b3>
+42126a     4298429 mov    %r12,%rcx
+42126d     4298429 and    $0x1,%rcx
+421271     4298429 test   %rcx,%rcx
+421274     4298429 jne    421289 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x219f>
+421276     4298429 mov    (%r12),%rcx
+42127a     4298429 movabs $0x16ffddeaf,%rdx
+421284     4298429 cmp    %rdx,%rcx
+421287     4298429 je     4212a9 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x21bf>
+4212a9     4298429 mov    0x8(%r12),%rcx
+4212ae     4298429 mov    %rax,%rdx
+4212b1     4298429 sar    $1,%rdx
+4212b4     4298429 mov    %rcx,%rsi
+4212b7     4298429 sar    $1,%rsi
+4212ba     4298429 cmp    %rsi,%rdx
+4212bd     4298429 jg     4212c1 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x21d7>
+4212bf     3761228 jmp    4212c4 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x21da>
+4212c4     4298429 mov    %rcx,%rax
+4212c7     4298429 sar    $1,%rax
+4212ca     4298429 lea    0x1(%rax),%rcx
+4212ce     4298429 mov    %rcx,%r10
+4212d1     4298429 shl    $1,%r10
+4212d4     4298429 jno    4212f8 <fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f+0x220e>
+4212f8     4298429 lea    0x1(%rcx,%rcx,1),%rax
+4212fd     4298429 mov    %rax,0x8(%r14)
+421301     4298429 mov    %r15,0x10(%r14)
+421305     4298429 mov    %rbx,0x18(%r14)
+421309     4298429 mov    %r13,0x20(%r14)
+42130d     4298429 mov    %r12,0x28(%r14)
+421311     4298429 mov    %r14,%rax
+421314     4390182 mov    -0x68(%rbp),%rdx
+421318     4390182 mov    -0x18(%rbp),%rbx
+42131c     4390182 mov    -0x20(%rbp),%r12
+421320     4390182 mov    -0x28(%rbp),%r13
+421324     4390182 mov    -0x30(%rbp),%r14
+421328     4390182 mov    -0x38(%rbp),%r15
+42132c     4390182 mov    %rbp,%r11
+42132f     4390182 mov    -0x10(%rbp),%rbp
+421333     4390182 lea    -0x8(%r11),%rsp
+421337     4390182 ret
+count 301 sum 1506959455

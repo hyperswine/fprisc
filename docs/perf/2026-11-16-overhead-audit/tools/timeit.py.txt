@@ -1,0 +1,24 @@
+import os,sys,time,subprocess,hashlib,statistics,json
+# usage: timeit.py rounds name:dir:arg ...
+R=int(sys.argv[1]); jobs=[]
+for s in sys.argv[2:]:
+    name,d,arg=s.split(':',2); jobs.append((name,d,arg))
+res={}
+def run(cmd,cwd):
+    t=time.perf_counter(); p=subprocess.Popen(cmd,cwd=cwd,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+    out=p.stdout.read(); _,st,ru=os.wait4(p.pid,0); w=time.perf_counter()-t
+    return w,ru.ru_maxrss/1024,ru.ru_utime,ru.ru_stime,hashlib.md5(out).hexdigest(),st
+for r in range(R):
+    for name,d,arg in jobs:
+        for lang,b in (('fpr','bin-fpr/'+name),('c','bin/'+name)):
+            cmd=['./'+b]+([arg] if arg else [])
+            w,rss,u,s,md,st=run(cmd,d)
+            res.setdefault((name,lang),[]).append((w,rss,u,s,md,st))
+out=[]
+for name,d,arg in jobs:
+    f=res[(name,'fpr')]; c=res[(name,'c')]
+    mw=lambda L,i:statistics.median(x[i] for x in L)
+    same = f[0][4]==c[0][4]
+    out.append(dict(name=name,fpr_wall=mw(f,0),c_wall=mw(c,0),ratio=mw(f,0)/mw(c,0),fpr_rss=mw(f,1),c_rss=mw(c,1),fpr_user=mw(f,2),fpr_sys=mw(f,3),c_user=mw(c,2),md5_match=same,status=f[0][5]))
+    print(f"{name:15s} fpr {mw(f,0):.3f}s rss {mw(f,1):.0f}MB (u {mw(f,2):.3f} s {mw(f,3):.3f}) | c {mw(c,0):.3f}s rss {mw(c,1):.0f}MB | x{mw(f,0)/mw(c,0):.1f} md5match={same} st={f[0][5]}",flush=True)
+json.dump(out,open(sys.argv[0]+'.'+str(int(time.time()))+'.json','w'),indent=1)

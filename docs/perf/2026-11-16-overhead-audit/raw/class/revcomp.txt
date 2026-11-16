@@ -1,0 +1,25 @@
+total 2.712 G
+
+fpr_fn__x24loop_x2ein_x2eemit  1.574 G (58.0%)
+   branch 24%, compare 21%, reg-move 16%, alu/other 13%, spill/frame 7%, load 7%, tag/untag 7%, overflow-check 2%, fuel/hart-tls 2%, store 2%, call/ret 0%
+
+fpr_fn_charFrom_x408f43d2f23d69210e  0.375 G (13.8%)
+   branch 28%, compare 21%, reg-move 15%, alu/other 14%, tag/untag 14%, fuel/hart-tls 7%, spill/frame 1%, load 0%, call/ret 0%
+
+h_pack  0.200 G (7.4%)
+   alu/other 27%, branch 15%, reg-move 14%, compare 14%, store 14%, load 13%, call/ret 3%, tag/untag 1%
+
+fpr_alloc  0.111 G (4.1%)
+   branch 23%, compare 22%, alu/other 18%, load 11%, call/ret 10%, store 7%, reg-move 6%, fuel/hart-tls 1%, tag/untag 1%, spill/frame 0%
+
+?  0.107 G (3.9%)
+   alu/other 100%
+
+fpr_fn__x24loop_x2ein_x2elinesGo_x408f43d2f23d69210e  0.057 G (2.1%)
+   alu/other 17%, branch 17%, reg-move 16%, compare 15%, tag/untag 9%, spill/frame 8%, load 8%, store 4%, fuel/hart-tls 2%, call/ret 1%, overflow-check 1%
+
+fpr_fn__x24loop_x2ein_x2ewalk  0.047 G (1.7%)
+   branch 20%, compare 17%, alu/other 15%, load 14%, reg-move 12%, tag/untag 8%, spill/frame 5%, store 5%, fuel/hart-tls 3%, call/ret 1%, overflow-check 0%
+
+fpr_fn_sameAt_x408f43d2f23d69210e  0.036 G (1.3%)
+   spill/frame 20%, compare 19%, branch 16%, reg-move 16%, alu/other 13%, tag/untag 8%, load 5%, fuel/hart-tls 1%, call/ret 1%, overflow-check 1%

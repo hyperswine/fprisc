@@ -1,0 +1,14 @@
+import sys,subprocess,re
+from cgaddr import parse
+binp,cgf,lo,hi=sys.argv[1],sys.argv[2],int(sys.argv[3],16),int(sys.argv[4],16)
+thr=float(sys.argv[5]) if len(sys.argv)>5 else 0
+cost=parse(cgf)
+dis={}
+for l in subprocess.run(['objdump','-d','--no-show-raw-insn','--start-address=%d'%lo,'--stop-address=%d'%hi,binp],capture_output=True,text=True).stdout.splitlines():
+    m=re.match(r'\s*([0-9a-f]+):\s+(.*)',l)
+    if m: dis[int(m.group(1),16)]=m.group(2).strip()
+n=0
+for a in sorted(dis):
+    c=cost.get(a,0)
+    if c>=thr: print(f"{a:x} {c:>11} {dis[a]}"); n+=1
+print("count",n, "sum", sum(cost.get(a,0) for a in dis))

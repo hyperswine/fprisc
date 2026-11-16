@@ -1,0 +1,25 @@
+total 2.328 G
+
+fpr_fn_cmp  1.049 G (45.1%)
+   compare 20%, alu/other 18%, branch 17%, reg-move 12%, spill/frame 11%, load 10%, tag/untag 7%, fuel/hart-tls 4%, call/ret 2%
+
+g_sortListWith  0.505 G (21.7%)
+   spill/frame 24%, branch 19%, alu/other 17%, compare 14%, load 10%, store 5%, tag/untag 4%, call/ret 4%, reg-move 2%
+
+fpr_fn__x24worker_x2etrmc_x2e_x24trmc_x2e3_x2egen_x2e0  0.190 G (8.2%)
+   alu/other 29%, reg-move 21%, branch 14%, overflow-check 9%, store 8%, compare 6%, load 4%, spill/frame 4%, tag/untag 3%, fuel/hart-tls 2%, call/ret 0%
+
+fpr_fn__x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e3  0.142 G (6.1%)
+   alu/other 17%, branch 17%, load 16%, compare 15%, store 10%, reg-move 7%, tag/untag 7%, spill/frame 5%, fuel/hart-tls 4%, overflow-check 1%, call/ret 0%
+
+kp_reaches  0.112 G (4.8%)
+   call/ret 33%, branch 17%, alu/other 15%, compare 13%, reg-move 13%, load 4%, tag/untag 3%, spill/frame 2%
+
+alloc_in_size  0.066 G (2.8%)
+   alu/other 27%, call/ret 20%, compare 17%, branch 17%, reg-move 8%, load 6%, store 3%, spill/frame 3%, fuel/hart-tls 0%, tag/untag 0%
+
+fpr_alloc  0.058 G (2.5%)
+   call/ret 21%, branch 19%, compare 17%, reg-move 14%, load 12%, alu/other 9%, spill/frame 5%, fuel/hart-tls 3%, store 0%
+
+fpr_fn__x24typed_x2emono_x2emain_x2e1  0.053 G (2.3%)
+   alu/other 26%, reg-move 26%, branch 15%, overflow-check 11%, load 8%, compare 6%, tag/untag 6%, fuel/hart-tls 2%, call/ret 0%, spill/frame 0%

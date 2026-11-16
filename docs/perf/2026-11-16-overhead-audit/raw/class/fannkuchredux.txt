@@ -1,0 +1,25 @@
+total 10.814 G
+
+fpr_fn__x24loop_x2ein_x2eloop  6.665 G (61.6%)
+   spill/frame 21%, reg-move 18%, branch 16%, alu/other 16%, compare 13%, tag/untag 8%, load 5%, store 2%, fuel/hart-tls 2%, overflow-check 1%, call/ret 0%
+
+alloc_in_size  1.241 G (11.5%)
+   alu/other 24%, call/ret 19%, branch 17%, compare 16%, reg-move 9%, load 8%, store 4%, spill/frame 3%, tag/untag 1%, fuel/hart-tls 0%
+
+fpr_fn_shiftLeft  0.722 G (6.7%)
+   branch 19%, spill/frame 17%, alu/other 16%, compare 15%, reg-move 14%, load 8%, tag/untag 7%, fuel/hart-tls 2%, store 1%, call/ret 1%
+
+free_block  0.472 G (4.4%)
+   branch 23%, load 19%, compare 19%, alu/other 19%, store 15%, call/ret 4%
+
+h_dup  0.348 G (3.2%)
+   call/ret 21%, store 18%, spill/frame 16%, alu/other 12%, branch 11%, compare 9%, reg-move 7%, load 4%, tag/untag 1%
+
+fpr_alloc_bulk  0.290 G (2.7%)
+   call/ret 25%, alu/other 25%, reg-move 20%, load 10%, branch 10%, fuel/hart-tls 5%, compare 5%
+
+vdir_alloc  0.240 G (2.2%)
+   alu/other 23%, branch 15%, spill/frame 15%, compare 14%, store 14%, call/ret 12%, reg-move 8%
+
+fpr_alloc  0.236 G (2.2%)
+   branch 22%, compare 18%, alu/other 17%, load 15%, call/ret 14%, reg-move 8%, store 5%, fuel/hart-tls 2%, spill/frame 0%

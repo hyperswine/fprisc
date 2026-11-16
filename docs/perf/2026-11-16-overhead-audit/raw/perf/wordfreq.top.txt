@@ -1,0 +1,14 @@
+    33.62%  [.] g_strCompare                                                                                 -      -            
+    23.95%  [.] fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2e_x24typed_x2emono_x2emain_x2e6  -      -            
+    15.01%  [k] clear_page_erms                                                                              -      -            
+     5.48%  [.] fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e                                         -      -            
+     3.22%  [.] fpr_fn_rev_x408f43d2f23d69210e                                                               -      -            
+     1.72%  [.] fpr_alloc                                                                                    -      -            
+     1.60%  [k] do_user_addr_fault                                                                           -      -            
+     1.26%  [.] kp_reaches                                                                                   -      -            
+     1.17%  [k] _copy_to_iter                                                                                -      -            
+     0.99%  [k] _raw_spin_lock                                                                               -      -            
+     0.99%  [.] fpr_fn_lengthGo_x4021100e0c17a53d18                                                          -      -            
+     0.96%  [.] fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e1      -      -            
+     0.69%  [.] fpr_g_strCompare_call2                                                                       -      -            
+     0.64%  [k] __list_del_entry_valid_or_report                                                             -      -            

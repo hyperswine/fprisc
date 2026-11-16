@@ -1,0 +1,14 @@
+    46.08%  [.] fpr_fn__x24worker_x2eret2_x2e_x24worker_x2emapown_x2ewalk_x2einsGo_x4038720051f9dd2f88_x2ec18b500f  -      -            
+    36.80%  [.] fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88                                         -      -            
+     4.84%  [.] fpr_fn__x24typed_x2emono_x2ereport_x2e1                                                             -      -            
+     3.60%  [.] kp_reaches                                                                                          -      -            
+     1.45%  [k] clear_page_erms                                                                                     -      -            
+     1.09%  [.] fpr_fn__x24loop_x2ein_x2elookups                                                                    -      -            
+     1.07%  [.] fpr_fn__x24worker_x2emapown_x2eloop_x2e_x24loop_x2ein_x2einserts                                    -      -            
+     0.55%  [.] hal_wfi                                                                                             -      -            
+     0.50%  [k] do_user_addr_fault                                                                                  -      -            
+     0.44%  [k] _raw_spin_lock                                                                                      -      -            
+     0.37%  [.] fpr_fn_node_x4038720051f9dd2f88                                                                     -      -            
+     0.28%  [k] __list_del_entry_valid_or_report                                                                    -      -            
+     0.24%  [.] layout_total                                                                                        -      -            
+     0.16%  [k] _raw_spin_unlock_irqrestore                                                                         -      -            

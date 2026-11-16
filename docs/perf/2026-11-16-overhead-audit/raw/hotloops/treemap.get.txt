@@ -1,0 +1,30 @@
+41bcd3     9578757 mov    %rax,%rcx
+41bcd6     9578757 and    $0x1,%rcx
+41bcda     9578757 test   %rcx,%rcx
+41bcdd     9578757 jne    41bd07 <fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88+0xa3>
+41bcdf     9578757 mov    (%rax),%rcx
+41bce2     9578757 mov    $0x6ffddeaf,%edx
+41bce7     9578757 cmp    %rdx,%rcx
+41bcea     9578757 jne    41bd07 <fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88+0xa3>
+41bd07     9275299 mov    0x10(%rax),%rcx
+41bd0b     9275299 mov    0x18(%rax),%rdx
+41bd0f     9275299 mov    0x20(%rax),%rsi
+41bd13     9275299 mov    0x28(%rax),%rdi
+41bd17     9275299 mov    %r12,%r8
+41bd1a     9275299 sar    $1,%r8
+41bd1d     9275299 sar    $1,%rdx
+41bd20     9275299 cmp    %rdx,%r8
+41bd23     9275299 jge    41bd46 <fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88+0xe2>
+41bd25     4446836 mov    %fs:0xfffffffffffffff8,%r10
+41bd2e     4446836 subq   $0x3e,(%r10)
+41bd32     4446836 jg     41bd41 <fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88+0xdd>
+41bd41     4446836 mov    %rcx,%rax
+41bd44     4446836 jmp    41bcd3 <fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88+0x6f>
+41bd46     4828463 cmp    %rdx,%r8
+41bd49     4828463 jne    41bde5 <fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88+0x181>
+41bde5     4631921 mov    %fs:0xfffffffffffffff8,%r10
+41bdee     4631921 subq   $0x3e,(%r10)
+41bdf2     4631921 jg     41be01 <fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88+0x19d>
+41be01     4631921 mov    %rdi,%rax
+41be04     4631921 jmp    41bcd3 <fpr_fn__x24worker_x2emaplookup_x2egetGo_x4038720051f9dd2f88+0x6f>
+count 29 sum 230626652

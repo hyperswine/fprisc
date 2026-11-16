@@ -1,0 +1,28 @@
+import sys,re,collections
+# parse callgrind --dump-instr=yes output -> self Ir per instruction address
+def parse(fn):
+    cost=collections.Counter(); last=0; skip=False
+    for line in open(fn):
+        if line.startswith('calls='): skip=True; continue
+        c=line[0]
+        if c in '0123456789+-*':
+            parts=line.split()
+            if not parts: continue
+            p=parts[0]
+            if p.startswith('0x'): a=int(p,16)
+            elif p[0]=='+': a=last+int(p[1:],16) if p[1:].startswith('0x') else last+int(p[1:])
+            elif p[0]=='-': a=last-int(p[1:])
+            elif p=='*': a=last
+            else:
+                try: a=int(p)
+                except: continue
+            last=a
+            if skip: skip=False; continue
+            if len(parts)>2:
+                try: cost[a]+=int(parts[2])
+                except: pass
+        else:
+            if not line.startswith(('fl=','fi=','fe=','fn=','cfn=','cfi=','cfl=','cob=','ob=')): pass
+    return cost
+if __name__=='__main__':
+    cost=parse(sys.argv[1]); print(sum(cost.values()))

@@ -1,0 +1,46 @@
+422447    25406664 movabs $0x4010000000000000,%r8
+422451    25406664 movq   %rsi,%xmm8
+422456    25406664 movq   %rdi,%xmm9
+42245b    25406664 addsd  %xmm9,%xmm8
+422460    25406664 movq   %r8,%xmm9
+422465    25406664 cmpltsd %xmm8,%xmm9
+42246b    25406664 movq   %xmm9,%r8
+422470    25406664 and    $0x1,%r8
+422474    25406664 test   %r8,%r8
+422477    25406664 je     4224a0 <fpr_fn_inSet+0x105>
+4224a0    24803604 cmp    $0x0,%rax
+4224a4    24803604 jg     4224cd <fpr_fn_inSet+0x132>
+4224cd    24406664 movabs $0x4000000000000000,%r8
+4224d7    24406664 movq   %r8,%xmm8
+4224dc    24406664 movq   %rcx,%xmm9
+4224e1    24406664 mulsd  %xmm9,%xmm8
+4224e6    24406664 movq   %rdx,%xmm9
+4224eb    24406664 mulsd  %xmm9,%xmm8
+4224f0    24406664 movq   %r14,%xmm9
+4224f5    24406664 addsd  %xmm9,%xmm8
+4224fa    24406664 movq   %xmm8,%r8
+4224ff    24406664 movq   %rsi,%xmm8
+422504    24406664 movq   %rdi,%xmm9
+422509    24406664 subsd  %xmm9,%xmm8
+42250e    24406664 movq   %r15,%xmm9
+422513    24406664 addsd  %xmm9,%xmm8
+422518    24406664 movq   %xmm8,%r9
+42251d    24406664 lea    -0x1(%rax),%rbx
+422521    24406664 movq   %r9,%xmm14
+422526    24406664 movq   %r9,%xmm15
+42252b    24406664 mulsd  %xmm15,%xmm14
+422530    24406664 movq   %xmm14,%r12
+422535    24406664 movq   %r8,%xmm14
+42253a    24406664 movq   %r8,%xmm15
+42253f    24406664 mulsd  %xmm15,%xmm14
+422544    24406664 movq   %xmm14,%r13
+422549    24406664 mov    %fs:0xfffffffffffffff8,%r10
+422552    24406664 subq   $0x30,(%r10)
+422556    24406664 jg     422565 <fpr_fn_inSet+0x1ca>
+422565    24406664 mov    %r9,%rcx
+422568    24406664 mov    %r8,%rdx
+42256b    24406664 mov    %r12,%rsi
+42256e    24406664 mov    %r13,%rdi
+422571    24406664 mov    %rbx,%rax
+422574    24406664 jmp    422447 <fpr_fn_inSet+0xac>
+count 45 sum 1150131485

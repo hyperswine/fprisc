@@ -1,0 +1,89 @@
+41eddf    40000000 mov    %r12,%rax
+41ede2    40000000 and    $0x1,%rax
+41ede6    40000000 test   %rax,%rax
+41ede9    40000000 jne    41ee00 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x562>
+41edeb    40000000 mov    (%r12),%rax
+41edef    40000000 mov    $0x2,%ecx
+41edf4    40000000 cmp    %rcx,%rax
+41edf7    40000000 sete   %al
+41edfa    40000000 movzbq %al,%rax
+41edfe    40000000 jmp    41ee05 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x567>
+41ee05    40000000 test   %rax,%rax
+41ee08    40000000 je     41ee16 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x578>
+41ee16    39998000 mov    0x8(%r12),%r14
+41ee1b    39998000 mov    0x10(%r12),%r10
+41ee20    39998000 mov    %r10,-0x58(%rbp)
+41ee24    39998000 mov    0x20(%r14),%rax
+41ee28    39998000 sar    $1,%rax
+41ee2b    39998000 lea    -0x1(%rax),%rbx
+41ee2f    39998000 mov    %rbx,%r10
+41ee32    39998000 shl    $1,%r10
+41ee35    39998000 jno    41ee59 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x5bb>
+41ee59    39998000 mov    0x8(%r14),%rax
+41ee5d    39998000 sar    $1,%rax
+41ee60    39998000 mov    0x18(%r14),%r15
+41ee64    39998000 mov    %r15,%rcx
+41ee67    39998000 sar    $1,%rcx
+41ee6a    39998000 mov    %rax,%rdx
+41ee6d    39998000 add    %rcx,%rdx
+41ee70    39998000 mov    %rdx,%r10
+41ee73    39998000 shl    $1,%r10
+41ee76    39998000 jno    41ee95 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x5f7>
+41ee95    39998000 cmp    $0x0,%rdx
+41ee99    39998000 jl     41ef14 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x676>
+41ee9b    39987990 cmp    $0xf4240,%rdx
+41eea2    39987990 jle    41ef03 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x665>
+41ef03    39977976 lea    0x1(%rdx,%rdx,1),%rax
+41ef08    39977976 mov    %rax,%r13
+41ef0b    39977976 mov    %r15,%r10
+41ef0e    39977976 mov    %r10,-0x70(%rbp)
+41ef12    39977976 jmp    41ef8f <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x6f1>
+41ef8f    39998000 mov    0x10(%r14),%rax
+41ef93    39998000 sar    $1,%rax
+41ef96    39998000 mov    %rax,%rcx
+41ef99    39998000 add    %rbx,%rcx
+41ef9c    39998000 mov    %rcx,%r10
+41ef9f    39998000 shl    $1,%r10
+41efa2    39998000 jno    41efc1 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x723>
+41efc1    39998000 cmp    $0x0,%rcx
+41efc5    39998000 jl     41f029 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x78b>
+41efc7    39975809 cmp    $0xf4240,%rcx
+41efce    39975809 jle    41f017 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x779>
+41f017    39972241 lea    0x1(%rcx,%rcx,1),%rax
+41f01c    39972241 lea    0x1(%rbx,%rbx,1),%rcx
+41f021    39972241 mov    %rax,%rdx
+41f024    39972241 mov    %rcx,%rax
+41f027    39972241 jmp    41f094 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x7f6>
+41f094    39998000 mov    %r14,%rcx
+41f097    39998000 and    $0x1,%rcx
+41f09b    39998000 test   %rcx,%rcx
+41f09e    39998000 jne    41f0d2 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x834>
+41f0a0    39998000 movslq (%r14),%rcx
+41f0a3    39998000 cmp    $0x3969f87,%rcx
+41f0aa    39998000 jne    41f0d2 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x834>
+41f0ac    39998000 movslq 0x4(%r14),%rcx
+41f0b0    39998000 cmp    $0x4,%rcx
+41f0b4    39998000 jne    41f0d2 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x834>
+41f0b6    39998000 mov    %r13,0x8(%r14)
+41f0ba    39998000 mov    %rdx,0x10(%r14)
+41f0be    39998000 mov    -0x70(%rbp),%r10
+41f0c2    39998000 mov    %r10,0x18(%r14)
+41f0c6    39998000 mov    %rax,0x20(%r14)
+41f0ca    39998000 mov    %r14,%rax
+41f0cd    39998000 mov    %rax,%rcx
+41f0d0    39998000 jmp    41f14a <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x8ac>
+41f14a    39998000 lea    0x61e1f(%rip),%rax        # 480f70 <fpr_modtab+0x6ca0>
+41f151    39998000 mov    %rcx,0x8(%r12)
+41f156    39998000 mov    %rax,0x10(%r12)
+41f15b    39998000 mov    %r12,%rcx
+41f15e    39998000 mov    -0x60(%rbp),%r10
+41f162    39998000 mov    %rcx,0x10(%r10)
+41f166    39998000 mov    %fs:0xfffffffffffffff8,%r10
+41f16f    39998000 subq   $0xb8,(%r10)
+41f176    39998000 jg     41f185 <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x8e7>
+41f185    39998000 mov    -0x58(%rbp),%r10
+41f189    39998000 mov    %r10,%r12
+41f18c    39998000 mov    %rcx,%r10
+41f18f    39998000 mov    %r10,-0x60(%rbp)
+41f193    39998000 jmp    41eddf <fpr_fn__x24worker_x2espineE_x2eloop_x2e_x24loop_x2ein_x2erun+0x541>
+count 88 sum 3520805661

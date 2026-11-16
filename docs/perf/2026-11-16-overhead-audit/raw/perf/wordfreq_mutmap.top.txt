@@ -1,0 +1,14 @@
+    42.64%  [k] clear_page_erms                                          -      -            
+    11.78%  [.] mm_find                                                  -      -            
+    10.04%  [.] fpr_fn__x24loop_x2ein_x2ewordsGo_x408f43d2f23d69210e     -      -            
+     5.13%  [.] fpr_fn_rev_x408f43d2f23d69210e                           -      -            
+     3.02%  [.] fpr_alloc                                                -      -            
+     2.65%  [k] do_user_addr_fault                                       -      -            
+     2.57%  [.] g_strCompare                                             -      -            
+     2.53%  [.] mm_str_hash                                              -      -            
+     1.57%  [.] fpr_fn_lengthGo_x4021100e0c17a53d18                      -      -            
+     1.21%  [.] kp_reaches                                               -      -            
+     0.99%  [k] __list_del_entry_valid_or_report                         -      -            
+     0.96%  [.] fpr_fn_byCount                                           -      -            
+     0.92%  [.] mm_key_hash.isra.0                                       -      -            
+     0.86%  [k] _raw_spin_lock                                           -      -            

@@ -1,0 +1,25 @@
+total 2.018 G
+
+fpr_fn_advance  2.005 G (99.3%)
+   alu/other 29%, reg-move 28%, spill/frame 19%, branch 9%, compare 7%, load 4%, store 2%, overflow-check 1%, fuel/hart-tls 1%, call/ret 0%, tag/untag 0%
+
+drain  0.004 G (0.2%)
+   alu/other 40%, branch 15%, compare 14%, load 13%, reg-move 9%, call/ret 8%
+
+deq  0.003 G (0.1%)
+   alu/other 24%, compare 17%, branch 16%, call/ret 12%, load 12%, store 11%, reg-move 4%, spill/frame 2%, fuel/hart-tls 2%
+
+hart_loop  0.002 G (0.1%)
+   alu/other 21%, load 18%, branch 16%, store 14%, compare 14%, call/ret 8%, reg-move 5%, spill/frame 3%, fuel/hart-tls 1%
+
+backlog_add  0.001 G (0.1%)
+   branch 20%, alu/other 18%, load 18%, store 18%, compare 16%, reg-move 5%, fuel/hart-tls 2%, call/ret 2%
+
+fpr_ctx_switch  0.001 G (0.0%)
+   store 42%, load 42%, spill/frame 5%, alu/other 5%, branch 5%
+
+fpr_fuel_save_local  0.000 G (0.0%)
+   call/ret 100%
+
+fpr_fuel_exhausted  0.000 G (0.0%)
+   alu/other 32%, load 21%, store 16%, compare 11%, branch 11%, fuel/hart-tls 5%, call/ret 5%

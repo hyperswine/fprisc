@@ -1,0 +1,25 @@
+total 2.814 G
+
+fpr_prim_fn__x24strcatT  0.817 G (29.0%)
+   alu/other 35%, compare 17%, branch 16%, reg-move 13%, spill/frame 5%, tag/untag 4%, call/ret 4%, load 4%, store 2%
+
+fpr_alloc  0.298 G (10.6%)
+   branch 22%, compare 21%, call/ret 14%, alu/other 14%, load 11%, reg-move 9%, store 5%, spill/frame 2%, fuel/hart-tls 2%, tag/untag 0%
+
+fpr_fn_line  0.221 G (7.9%)
+   alu/other 30%, reg-move 18%, spill/frame 13%, branch 11%, overflow-check 8%, store 7%, compare 4%, fuel/hart-tls 3%, tag/untag 3%, call/ret 2%, load 2%
+
+?  0.150 G (5.3%)
+   alu/other 100%
+
+alloc_in_size  0.136 G (4.8%)
+   alu/other 27%, call/ret 20%, compare 17%, branch 17%, reg-move 8%, load 6%, store 3%, spill/frame 3%, tag/untag 0%, fuel/hart-tls 0%
+
+fpr_in_heap  0.130 G (4.6%)
+   compare 35%, branch 30%, reg-move 10%, call/ret 10%, tag/untag 5%, load 5%, alu/other 5%
+
+kp_reaches  0.129 G (4.6%)
+   branch 22%, call/ret 20%, compare 18%, reg-move 14%, alu/other 13%, load 6%, spill/frame 4%, tag/untag 2%
+
+fpr_layout_fields  0.110 G (3.9%)
+   alu/other 30%, call/ret 20%, compare 18%, branch 14%, reg-move 14%, load 5%, store 0%

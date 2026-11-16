@@ -1,0 +1,25 @@
+total 2.059 G
+
+fpr_fn_check  1.157 G (56.2%)
+   alu/other 30%, spill/frame 16%, reg-move 13%, branch 10%, compare 8%, tag/untag 8%, call/ret 5%, load 5%, fuel/hart-tls 3%, overflow-check 3%
+
+fpr_fn_make  0.824 G (40.0%)
+   alu/other 27%, branch 13%, spill/frame 11%, store 11%, reg-move 11%, compare 9%, load 7%, fuel/hart-tls 4%, call/ret 4%, tag/untag 4%
+
+kp_reaches  0.019 G (0.9%)
+   call/ret 31%, branch 18%, alu/other 15%, reg-move 14%, compare 14%, load 4%, spill/frame 2%, tag/untag 2%
+
+layout_find  0.011 G (0.5%)
+   alu/other 49%, branch 17%, compare 15%, load 14%, reg-move 3%, call/ret 2%
+
+fpr_layout_fields  0.010 G (0.5%)
+   compare 22%, call/ret 20%, alu/other 19%, branch 16%, reg-move 14%, load 8%, store 0%
+
+fpr_in_heap  0.007 G (0.4%)
+   compare 32%, branch 32%, reg-move 11%, call/ret 11%, tag/untag 5%, load 5%, alu/other 5%
+
+drain  0.006 G (0.3%)
+   alu/other 40%, branch 15%, compare 14%, load 13%, reg-move 9%, call/ret 8%
+
+deq  0.004 G (0.2%)
+   alu/other 24%, compare 17%, branch 16%, call/ret 12%, load 12%, store 11%, reg-move 4%, spill/frame 2%, fuel/hart-tls 2%
