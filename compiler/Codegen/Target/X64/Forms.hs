@@ -41,6 +41,8 @@ checkForms owner items=do
             O.BumpAlloc->matches [word] ds && matches [immediate] us
           O.X64 op->case op of
             O.Move->one [word]
+            O.FloatLiteral->matches [float] ds && matches [immediate] us
+            O.FloatMove->matches [either'] ds && matches [either'] us && (any float ds || any float us)
             O.Literal->one [immediate]
             O.Address->one [symbol]
             O.LoadSigned32->one [word,immediate]
@@ -65,8 +67,8 @@ checkForms owner items=do
             O.LoadByteIndexed->one [word,word,immediate]
             O.SignExtend63->one [word,immediate]
             O.ShiftLeft->binary;O.ShiftRight->binary;O.Divide->binary
-            O.FrameLoad->one [frame]
-            O.FrameStore->none [word,frame]
+            O.FrameLoad->matches [either'] ds && matches [frame] us
+            O.FrameStore->none [either',frame]
             O.LoadByte->one [word,immediate]
             O.LoadField->one [word,immediate]
             O.StoreField->none [word,word,immediate]
@@ -78,13 +80,21 @@ checkForms owner items=do
             O.Panic->none [symbol]
             O.Enter->none []
             O.Save->none []
-            O.IntToFloat->one [word]
-            O.FloatBinary _ _->binary
-            O.FloatCompare _ _->binary
-            O.TreeLeaf _->none [word,index 0 7]
+            O.IntToFloat O.WordBits->one [word]
+            O.IntToFloat O.FloatRegisters->matches [float] ds && matches [word] us
+            O.FloatBinary O.WordBits _ _->binary
+            O.FloatBinary O.FloatRegisters _ _->matches [float] ds && matches [float,float] us
+            O.FloatCompare O.WordBits _ _->binary
+            O.FloatCompare O.FloatRegisters _ _->matches [word] ds && matches [float,float] us
+            O.FloatTest O.WordBits _->none [word,word]
+            O.FloatTest O.FloatRegisters _->none [float,float]
+            O.TreeLeaf O.WordBits _->none [word,index 0 7]
+            O.TreeLeaf O.FloatRegisters _->none [float,index 0 7]
             O.TreeNode _ _->none [index 0 6]
-            O.TreeOutput _->one [index 0 7]
+            O.TreeOutput O.WordBits _->one [index 0 7]
+            O.TreeOutput O.FloatRegisters _->matches [float] ds && matches [index 0 7] us
             O.TreeCompare _ _->one []
+            O.TreeTest _ _->none []
             O.PairLoad->none [word,index 8 8]
             O.PairStore->none [word,index 8 15]
             O.PairDuplicate->none [word,index 9 15]
@@ -106,6 +116,12 @@ checkForms owner items=do
     word (OV _ _)=True
     word (OP (Phys p))=p `elem` ["rax","rbx","rcx","rdx","rsi","rdi","rsp","rbp"]++["r"++show n | n<-[8::Int ..15]]
     word _=False
+    -- the allocated float class: a pooled virtual register, or xmm0..xmm13
+    -- (xmm14/xmm15 are the word bank's operands)
+    float (OV _ (Any FPR))=True
+    float (OP (Phys p))=p `elem` ["xmm"++show n | n<-[0::Int ..13]]
+    float _=False
+    either' o=word o || float o
     immediate (OI _)=True;immediate _=False
     index lo hi (OI n)=n>=lo && n<=hi;index _ _ _=False
     argumentCell (OC _)=True;argumentCell _=False
@@ -153,7 +169,8 @@ checkForms owner items=do
     ordinaryFlags op=case op of
       O.X64 x->case x of
         O.Set _->FlagsUse;O.Select _->FlagsUse;O.Branch _->FlagsUse
-        O.FloatCompare _ _->FlagsDef;O.TreeCompare _ _->FlagsDef
+        O.FloatCompare _ _ _->FlagsDef;O.TreeCompare _ _->FlagsDef
+        O.FloatTest _ _->FlagsDef;O.TreeTest _ _->FlagsDef
         _ | x `elem` [O.Add,O.Subtract,O.Multiply,O.And,O.Or,O.Xor,O.ShiftLeftImmediate,
               O.ShiftRightArithmeticImmediate,O.OrImmediate,O.AndImmediate,O.XorImmediate,
               O.SignExtend63,O.ShiftLeft,O.ShiftRight,O.Divide,O.Compare,O.CompareImmediate,O.TestImmediate,
