@@ -52,9 +52,11 @@ bodyBody10 u = [
   JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "textContent") (JS.Index (JS.Field (JS.Name "S") "d") (JS.Call (JS.Name "Number") [(JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-slot")])])))
 ].
 
+# A dynamic that is the cut mark (View.cut) only ends a static piece: it gets no
+# slot element, so the pieces on its two sides meet in the page as one run.
 buildBody9 u = [
   JS.Var "out" (JS.Text ""),
-  JS.For [JS.Var "i" (JS.Number 0)] (JS.Binary JS.Less (JS.Name "i") (JS.Field (JS.Field (JS.Name "S") "s") "length")) (JS.Increment (JS.Name "i")) [JS.Do (JS.AssignValue (JS.Name "out") (JS.Binary JS.Add (JS.Name "out") (JS.Index (JS.Field (JS.Name "S") "s") (JS.Name "i")))), JS.If (JS.Binary JS.Less (JS.Name "i") (JS.Field (JS.Field (JS.Name "S") "d") "length")) [JS.Do (JS.AssignValue (JS.Name "out") (JS.Binary JS.Add (JS.Name "out") (JS.Binary JS.Add (JS.Binary JS.Add (JS.Text "<span data-slot=\"") (JS.Name "i")) (JS.Text "\"></span>"))))] []],
+  JS.For [JS.Var "i" (JS.Number 0)] (JS.Binary JS.Less (JS.Name "i") (JS.Field (JS.Field (JS.Name "S") "s") "length")) (JS.Increment (JS.Name "i")) [JS.Do (JS.AssignValue (JS.Name "out") (JS.Binary JS.Add (JS.Name "out") (JS.Index (JS.Field (JS.Name "S") "s") (JS.Name "i")))), JS.If (JS.Binary JS.And (JS.Binary JS.Less (JS.Name "i") (JS.Field (JS.Field (JS.Name "S") "d") "length")) (JS.Binary JS.NotEqual (JS.Index (JS.Field (JS.Name "S") "d") (JS.Name "i")) (JS.Text G.cutMark))) [JS.Do (JS.AssignValue (JS.Name "out") (JS.Binary JS.Add (JS.Name "out") (JS.Binary JS.Add (JS.Binary JS.Add (JS.Text "<span data-slot=\"") (JS.Name "i")) (JS.Text "\"></span>"))))] []],
   JS.Var "wanted" (JS.Call (JS.Field (JS.Name "document") "createElement") [(JS.Text "div")]),
   JS.Do (JS.AssignValue (JS.Field (JS.Name "wanted") "innerHTML") (JS.Name "out")),
   JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "wanted") "querySelectorAll") [(JS.Text "[data-slot]")]) "forEach") [(JS.Function ["el"] (bodyBody10 Unit))]),

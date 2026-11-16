@@ -8,6 +8,7 @@
 # A String is bytes, so these work on any data.
 
 S = use "string".
+Bytes = use "bytes".
 
 rev : (xs : List a | measure xs) -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
@@ -16,11 +17,20 @@ rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 hexDigit : Int -> String .
 hexDigit d = chr (if d < 10 then 48 + d else 87 + d).
 
+# The digits go into a byte buffer in place and come out as one String: a list
+# of one-character strings joined afterwards was two strings and two cells a
+# byte, on every class name of every render (std/view names a class by the hex
+# of its declaration).
+hexCode : Int -> Int .
+hexCode d = if d < 10 then 48 + d else 87 + d.
 hex : String -> String .
-hex s = strJoin "" (hexGo s (strlen s - 1) Nil).
-hexGo : String -> (i : Int | measure i) -> List String -> List String .
-hexGo s i acc | i < 0 = acc.
-hexGo s i acc = hexGo s (i - 1) (hexDigit (charAt s i / 16) :: hexDigit (band (charAt s i) 15) :: acc).
+hex s = n = strlen s;
+  if n == 0 then "" else
+    (case Bytes.pack 0 (2 * n) (hexInto s 0 n (Bytes.new (2 * n))) of (out, b) -> _ = Bytes.free b; out).
+hexInto : String -> (i : Int | measure (n - i)) -> (n : Int) -> Vector Int -> Vector Int .
+hexInto s i n b | i >= n = b.
+hexInto s i n b = c = charAt s i;
+  hexInto s (i + 1) n (Bytes.put (2 * i + 1) (hexCode (band c 15)) (Bytes.put (2 * i) (hexCode (c / 16)) b)).
 
 # 0..15, or -1
 hexVal : Int -> Int

@@ -431,6 +431,14 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
       (Just (ps,_),Just signature,Just (_,eq)) | length ps==arity,interfaceArity signature==arity,
         callableRegionEntry signature ->
           copyableType (interfaceResult signature) && allocGrows growingOmega eq && S.notMember g loopEntries && S.notMember g quiet
+            -- A callee that may wait for a message may be an actor's loop,
+            -- which never returns: its pending region then never ends, every
+            -- turn's garbage stays in the region's arena until the actor dies,
+            -- and the actor's own gauge (heapUsed) never moves, so its
+            -- boundary (Actor.tidy) never fires. One that manages its pool
+            -- itself (Sys.poolReset) would reset the pool under the region
+            -- and leave the arena. Neither is put under a pending region.
+            && S.notMember g receivers && S.notMember g managed
       _->False
     copyableAt owner g=Sites.mayCopyResult sites (maybe owner generatedSource (M.lookup owner generated)) g
     callRegions p = (M.mapWithKey site p, [ "call-regions: " ++ n ++ ": " ++ show k ++ " call(s) under a pending region"
