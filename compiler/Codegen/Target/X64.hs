@@ -1046,10 +1046,11 @@ allocConfig self managed = AllocConfig
 -- pooled: an F32 word is the zero-extended low half, which movq would not
 -- keep.
 floatPool :: SFn -> SFn
-floatPool fn
-  | not (any floatItem (sfBody fn)) = fn
+floatPool fn0
+  | not (any floatItem (sfBody fn0)) = fn0
   | otherwise = fn {sfBody = map clobbering (forwardOutputs (evalState (concat <$> mapM item (sfBody fn)) (start, M.empty)))}
   where
+    (fn, hoisted) = hoistFloatParams floatContext fn0
     clobbering (I i) = I (floatClobbers i)
     clobbering l = l
     floatItem (I i) = floatingDef (siOpcode i) || floatContext (siOpcode i)
@@ -1100,7 +1101,7 @@ floatPool fn
     -- is loaded into its xmm register: movq reads memory into either class
     loads = S.fromList [v | I i <- sfBody fn, O.X64 O.LoadField <- [siOpcode i], [OV v (Any GPR)] <- [siDefs i],
                             S.notMember v pinned, everyFloat v]
-    floats = carried (produced `S.union` literals `S.union` loads)
+    floats = carried (produced `S.union` literals `S.union` loads `S.union` hoisted)
     start = 1 + maximum (0 : [n | I i <- sfBody fn, OV (VReg n) _ <- siDefs i ++ siUses i])
     fresh :: RegClass -> State (Int, M.Map Integer Operand) Operand
     fresh cls = do (n, m) <- get; put (n + 1, m); pure (OV (VReg n) (Any cls))
@@ -1207,6 +1208,78 @@ floatPool fn
     pooled i op floating = do
       args <- mapM asFloat (siUses i)
       pure (concatMap fst args ++ [I i {siOpcode = O.X64 op, siDefs = if floating then map def (siDefs i) else siDefs i, siUses = map snd args}])
+
+-- Unboxed F64 loop values (C6 stage 1): a function parameter is pinned
+-- to its word register by the ABI, so a float operation in a loop that
+-- reads a loop-invariant F64 parameter paid a movq into xmm on every
+-- iteration. When a call-free loop (a back edge from the end of a layout
+-- range [header, jump]) reads such a parameter in float operations, the
+-- parameter is moved into a fresh value once, on the single edge that
+-- enters the header from outside the loop, and every float read the
+-- header dominates takes that value; floatPool then gives it an xmm
+-- register. Word readers keep the parameter's own register.
+hoistFloatParams :: (O.Opcode -> Bool) -> SFn -> (SFn, S.Set VReg)
+hoistFloatParams floatContext fn
+  | null plans = (fn, S.empty)
+  | otherwise = (fn {sfBody = rewritten}, S.fromList [t | (_, moves) <- plans, (_, t) <- moves])
+  where
+    items = sfBody fn
+    n = length items
+    arr = M.fromList (zip [0 :: Int ..] items)
+    labelAt = M.fromList [(l, k) | (k, ILabel l) <- zip [0 ..] items]
+    -- a parameter some instruction redefines (a self loop's moves) is not invariant
+    params = S.fromList (sfParams fn) `S.difference` S.fromList [v | I i <- items, OV v _ <- siDefs i]
+    targets i = case siControl i of
+      JumpTo l -> [l]
+      CondTo ls -> ls
+      _ -> []
+    falls i = case siControl i of
+      Next -> True
+      CondTo _ -> True
+      _ -> False
+    succs k = case M.lookup k arr of
+      Just (ILabel _) -> [k + 1 | k + 1 < n]
+      Just (I i) -> [k + 1 | falls i, k + 1 < n] ++ [t | l <- targets i, Just t <- [M.lookup l labelAt]]
+      Nothing -> []
+    -- the items reachable from the entry without passing the header
+    outside h = go S.empty [0 | h /= 0]
+      where go seen [] = seen
+            go seen (k : ks) | S.member k seen || k == h = go seen ks
+                             | otherwise = go (S.insert k seen) (succs k ++ ks)
+    loops = [ (h, j) | (j, I i) <- zip [0 ..] items, l <- targets i, Just h <- [M.lookup l labelAt], h <= j,
+                       null [() | k <- [h .. j], Just (I c) <- [M.lookup k arr], clobbersFloats c] ]
+    -- the fuel and allocation wrappers preserve the xmm pool (saveFloats)
+    clobbersFloats c = not (all callPreserves (siCalls c)) || any (`elem` floatPoolRegs) (siClobbers c)
+    floatReads k = case M.lookup k arr of
+      Just (I i) | floatContext (siOpcode i) -> [v | OV v _ <- siUses i, S.member v params]
+      _ -> []
+    start0 = 1 + maximum (0 : [m | I i <- items, OV (VReg m) _ <- siDefs i ++ siUses i] ++ [m | VReg m <- sfParams fn])
+    -- one plan per header: its parameters, each with its fresh value
+    candidates = M.toList (M.fromListWith S.union
+      [ (h, S.fromList vs) | (h, j) <- loops, let vs = concatMap floatReads [h .. j], not (null vs) ])
+    plans = assign start0 [ (h, out, S.toList vs) | (h, vs) <- candidates, h > 0, let out = outside h, entryOk h out ]
+    assign _ [] = []
+    assign next ((h, out, vs) : rest) =
+      let moves = zip vs (map VReg [next ..])
+       in (h, moves) : assign (next + length vs) rest
+    -- the header is entered from outside only by falling through from the item before it
+    entryOk h out =
+      S.member (h - 1) out
+        && (case M.lookup (h - 1) arr of Just (I i) -> falls i; Just (ILabel _) -> True; Nothing -> False)
+        && null [ () | k <- S.toList out, k /= h - 1, h `elem` succs k ]
+    -- headers already planned own their dominated reads; the first plan wins
+    planFor = [ (h, out, M.fromList moves) | (h, moves) <- plans, let out = outside h ]
+    rewritten = concat [ before k ++ [rewrite k it] | (k, it) <- zip [0 ..] items ]
+    before k = [ I (plain (O.X64 O.Move) [OV t (Any GPR)] [OV p (Any GPR)]) | (h, moves) <- plans, h == k, (p, t) <- moves ]
+    rewrite k (I i) | floatContext (siOpcode i) =
+      I i {siUses = [ case o of
+                        OV v c | Just t <- dominating k v -> OV t c
+                        _ -> o
+                    | o <- siUses i ]}
+    rewrite _ it = it
+    dominating k v = case [ t | (_, out, m) <- planFor, S.notMember k out, Just t <- [M.lookup v m] ] of
+      (t : _) -> Just t
+      [] -> Nothing
 
 savedObjs :: [Phys] -> [FrameObj]
 savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) False False | (k, Phys p) <- zip [0 ..] saved]
