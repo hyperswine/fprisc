@@ -10,8 +10,9 @@ Machine: Linux x86-64, 8 cores, 8 harts (the posix default). Instruction counts 
 |---|---|---|---|
 | C4, C5, R6, R7 (round 1) | x64 flag branches, cheaper reuse check, wake ring overflow, sleep off the hart | merged | #81 |
 | C1 | x64 F64 register class, fused float compares | merged | #82 |
-| C3 | String-scan versioning for a scan inlined into an outer loop | open | #83 |
-| C10 | a Vector copy takes three blocks, not five | open | #84 |
+| C3 | String-scan versioning for a scan inlined into an outer loop | merged | #83 |
+| C10 | a Vector copy takes three blocks, not five | merged | #84 |
+| C7 | `String.foldWords`/`foldLines`: words and lines without the list | open | #86 |
 | R3 (part 1) | channel sender keys on a read-mostly line | measured, not shipped: wall time regressed | - |
 | R3 (part 2) | lock-free MPSC shared ring | deferred | - |
 | R8 | adaptive spin-before-block on by default | measured, not shipped | - |
@@ -37,7 +38,7 @@ x64 gained a float register pool (xmm0-5 and xmm8-13, with xmm6/7 as scratch), f
 
 The other 12 programs moved by +0.2% or less. nbody still spills floats: the slow-path C calls of vector reads (`fpr_g_$vec.get.float_call2`) sit on joined paths, and there are no callee-saved xmm registers.
 
-## C3: String scans inlined into an outer loop (#83, open)
+## C3: String scans inlined into an outer loop (#83, merged)
 
 `StringScan.versionScan` versioned only a scan that was a whole function. It now versions an innermost loop whose exits leave only through block parameters (plus empty exit-forwarding tails), so `wordsGo`'s inner loop runs its byte scan without the per-byte type test, length untag and second bounds check. Base is C1.
 
@@ -48,7 +49,7 @@ The other 12 programs moved by +0.2% or less. nbody still spills floats: the slo
 
 The other 14 programs moved by 0.2% or less. #83 was merged up with `main` (53a4d861) as codegenRev 241.
 
-## C10: a Vector copy takes three blocks, not five (#84, open)
+## C10: a Vector copy takes three blocks, not five (#84, merged)
 
 A copied column's storage now sits in the same block as its `col_t`, and the kind bytes sit right after the column directory, so `Vec.dup` of a one-column vector allocates three blocks instead of five. Only `runtime/vec.c` changes; no layout seen by generated code changes. Base is C3.
 
@@ -57,6 +58,26 @@ A copied column's storage now sits in the same block as its `col_t`, and the kin
 | fannkuchredux | 10704.7M | 9699.4M | -9.4% |
 
 fannkuchredux duplicates its permutation vector once per permutation. The other 15 programs moved by 0.3% or less.
+
+## C7: words and lines without the list (#86, open)
+
+`String.words` and `String.lines` build the whole list before anything consumes it. On wordfreq_mutmap's corpus, that is 2M cells and 2M strings alive at once. `String.foldWords step z s` (= `List.fold step z (String.words s)`) and `String.foldLines` hand each piece to `step` as soon as it is cut. They use the same scan and the same fuel bound (`strlen s + 1`) as `words`/`lines`. Programs have to opt in; the compiler does not fuse `List.fold f z (String.words s)`. Two new bench variants, `tests/bench/apps/wordfreq_stream.fpr` and `csv_stream.fpr`, print the same output as the originals. Base is C3 merged with main (82f2d259).
+
+Wall, CPU, peak RSS and minor faults are medians of 11 interleaved runs:
+
+| program | wall | CPU | max RSS | minor faults |
+|---|---:|---:|---:|---:|
+| wordfreq_mutmap | 528 ms | 533 ms | 230.9 MB | 58,873 |
+| wordfreq_stream | 333 ms | 339 ms | 108.6 MB | 27,596 |
+| csv | 527 ms | 535 ms | 144.4 MB | 36,751 |
+| csv_stream | 534 ms | 543 ms | 40.7 MB | 10,171 |
+
+| program | original | streamed | change |
+|---|---:|---:|---:|
+| wordfreq (mutmap) | 2169.7M | 1966.5M | -9.4% |
+| csv | 4249.4M | 4553.7M | +7.2% |
+
+csv_stream runs more instructions because it scans the text a second time to count lines (the original prints `List.length ls`). Its wall time is flat, and its peak memory drops by 72%.
 
 ## C8: inline strCompare (not shipped)
 
