@@ -41,7 +41,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 35 -- a fused tag test compares the whole header word (34: layout tests fused into branches across edge moves, testq for the tag bit; 33: compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words))
+x64SelectionRev = 36 -- F64 values in a float register class (xmm0..xmm5), ordered float compares fused into branches (35: a fused tag test compares the whole header word (34: layout tests fused into branches across edge moves, testq for the tag bit; 33: compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words))
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -63,9 +63,9 @@ x64Format = \case HartTlvMachO -> MachO; _ -> ELF
 fuelSaveWrapper :: X64Hart -> [String]
 fuelSaveWrapper hart =
   ["    .text", "    .balign 16", Call.runtimeName Call.FuelSaveEntry ++ ":"]
-  ++ ["    pushq %" ++ r | r <- saved]
+  ++ ["    pushq %" ++ r | r <- saved] ++ saveFloats
   ++ ["    call " ++ gsym hart (Call.runtimeName Call.FuelEntry)]
-  ++ ["    popq %" ++ r | r <- reverse saved]
+  ++ restoreFloats ++ ["    popq %" ++ r | r <- reverse saved]
   ++ ["    ret", ""]
   where saved = ["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"]
 
@@ -76,10 +76,10 @@ fuelSaveWrapper hart =
 allocSaveWrapper :: X64Hart -> [String]
 allocSaveWrapper hart =
   ["    .text", "    .balign 16", Call.runtimeName Call.AllocSaveEntry ++ ":"]
-  ++ ["    pushq %" ++ r | r <- saved]
+  ++ ["    pushq %" ++ r | r <- saved] ++ saveFloats
   ++ ["    subq $8, %rsp", "    movq %r11, %rdi", "    call " ++ gsym hart (Call.runtimeName Call.AllocEntry),
       "    movq %rax, %r11", "    addq $8, %rsp"]
-  ++ ["    popq %" ++ r | r <- reverse saved]
+  ++ restoreFloats ++ ["    popq %" ++ r | r <- reverse saved]
   ++ ["    ret", ""]
   where saved = ["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10"]
 
@@ -123,6 +123,41 @@ scratchPool = map r ["r8", "r9", "rsi", "rdi", "rcx", "rax", "rdx"]
 calleeBudget = map r ["rbx", "r12", "r13", "r14", "r15"]
 callerPool = map r ["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9"]
 allocScratch = map r ["r10", "r11"]
+
+-- The float class (C1): xmm0..xmm5 and xmm8..xmm13 for pooled F64
+-- values, xmm6/xmm7 the allocator's float reload scratch. SysV preserves
+-- no xmm register, so a float live across a call is spilled; the unit's
+-- fuel and refill wrappers save the twelve. The tree and SSE2 pair
+-- expansions write xmm8 and up as their own scratch, so those instructions
+-- name what they write as clobbers (floatClobbers); xmm14/xmm15 stay the
+-- word bank's operands and are never allocated.
+floatPoolNumbers :: [Int]
+floatPoolNumbers = [0 .. 5] ++ [8 .. 13]
+floatPoolRegs, floatScratch :: [Phys]
+floatPoolRegs = [r ("xmm" ++ show n) | n <- floatPoolNumbers]
+floatScratch = map r ["xmm6", "xmm7"]
+
+-- the wrappers' float saves: twelve 8-byte slots below the pushes (96
+-- bytes, so the call alignment is unchanged)
+saveFloats, restoreFloats :: [String]
+saveFloats = "    subq $96, %rsp" : ["    movq %xmm" ++ show n ++ ", " ++ show (8 * k) ++ "(%rsp)" | (k, n) <- zip [0 :: Int ..] floatPoolNumbers]
+restoreFloats = ["    movq " ++ show (8 * k) ++ "(%rsp), %xmm" ++ show n | (k, n) <- zip [0 :: Int ..] floatPoolNumbers] ++ ["    addq $96, %rsp"]
+
+-- what a tree or SSE2 pair step writes beyond its operands: its slot
+-- (xmm8 + n for a tree, the lane register for a pair). A pooled value
+-- live across the step is kept out of it.
+floatClobbers :: SInstr -> SInstr
+floatClobbers i = case (siOpcode i, siUses i) of
+  (O.X64 (O.TreeLeaf _ _), [_, OI n]) -> slot (8 + n)
+  (O.X64 (O.TreeNode _ _), [OI n]) -> slot (8 + n)
+  (O.X64 (O.TreeCompare _ _), []) -> i {siClobbers = siClobbers i ++ [xmm 8, xmm 9]}
+  (O.X64 O.PairLoad, [_, OI n]) -> slot n
+  (O.X64 O.PairDuplicate, [_, OI n]) -> slot n
+  (O.X64 (O.PairBinary _), [OI d, _, _]) -> slot d
+  _ -> i
+  where
+    xmm n = r ("xmm" ++ show n)
+    slot n = i {siClobbers = siClobbers i ++ [xmm n]}
 
 -- ---- selection state ---------------------------------------------------
 
@@ -395,6 +430,14 @@ selectBlock cfg fn facts next b = do
               OCmp {} -> Just op
               OVariantTest {} -> Just op
               OTagTest {} -> Just op
+              -- an ordered float comparison: ucomis and an unsigned branch,
+              -- which is not taken on NaN (as the reference evaluator's
+              -- ordered predicates are false); eq/ne need the parity flag
+              -- too and keep the materialised answer
+              OFloatCmp o _ _ | ordered o -> Just op
+              OFloat32Cmp o _ _ | ordered o -> Just op
+              OFloatCmpTree o _ _ | ordered o -> Just op
+              OFloat32CmpTree o _ _ | ordered o -> Just op
               _ -> Nothing
         _ -> Nothing
   case (fused, bTerm b) of
@@ -437,8 +480,30 @@ selectBlock cfg fn facts next b = do
           var <- freshV False
           emitI (ldrsw var (vreg v) 4)
           cmpConst var (fromIntegral c)
+        OFloatCmp o x y -> floatTest flags O.Float64 o x y
+        OFloat32Cmp o x y -> floatTest flags O.Float32 o x y
+        OFloatCmpTree o x y -> treeTest flags O.Float64 o x y
+        OFloat32CmpTree o x y -> treeTest flags O.Float32 o x y
         _ -> refuse "internal: an unfusable branch condition"
       where
+        -- FloatTest [l, r] renders `ucomis r, l`: above when l > r. An
+        -- unordered pair sets CF and ZF, so `a`/`ae` are not taken on NaN
+        -- and their negations are. gt/ge test the operands in order, lt/le
+        -- swapped, so the branch is always above or above-or-equal.
+        floatCond o = if o `elem` [Gt, Lt] then O.UnsignedAbove else O.UnsignedAboveEqual
+        floatTest flags' w o x y = do
+          let (l, r') = if o `elem` [Gt, Ge] then (x, y) else (y, x)
+          emitI ((plain (O.X64 (O.FloatTest O.WordBits w)) [] [any' (vreg l), any' (vreg r')]) {siFlags = FlagsDef})
+          flags' (floatCond o)
+        -- the two trees in xmm8 (left) and xmm9 (right), as OFloatCmpTree
+        -- lays them out; TreeTest orders the ucomis by the predicate the
+        -- same way
+        treeTest flags' w o x y = do
+          forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
+            FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.WordBits w)) [] [any' (vreg v), OI (fromIntegral n)])
+            FSNode f n -> emitI (plain (O.X64 (O.TreeNode w f)) [] [OI (fromIntegral n)])
+          emitI ((plain (O.X64 (O.TreeTest w o)) [] []) {siFlags = FlagsDef})
+          flags' (floatCond o)
         -- A layout test leaves early to the no-match side and ends in the
         -- flags of a compare that holds on a match.  Without block-parameter
         -- moves on the no-match edge, every early exit is a direct branch to
@@ -488,6 +553,19 @@ cmpConst v n
       emitI (li want n)
       emitI (cmp v want)
 
+-- a function's F64 constants sit after its code, one 8-byte word each
+floatLiteralLabel :: Integer -> Label
+floatLiteralLabel n = Label ("f64_" ++ show (n `mod` (2 ^ (64 :: Int))))
+
+floatLiterals :: X64Hart -> String -> [Item] -> [String]
+floatLiterals hart name body = case S.toList (S.fromList [n | I i <- body, siOpcode i == O.X64 O.FloatLiteral, [OI n] <- [siUses i], n /= 0]) of
+  [] -> []
+  ns -> "    .p2align 3" : concat [[local hart name (floatLiteralLabel n) ++ ":", "    .quad " ++ show (n `mod` (2 ^ (64 :: Int)))] | n <- ns]
+
+-- the comparisons that are false on NaN (eq/ne need the parity flag too)
+ordered :: CmpOp -> Bool
+ordered o = o `elem` [Lt, Gt, Le, Ge]
+
 cmpCond :: CmpOp -> O.Condition
 cmpCond = \case Lt -> O.Less; Gt -> O.Greater; Le -> O.LessEqual; Ge -> O.GreaterEqual; Eq -> O.Equal; Ne -> O.NotEqual
 
@@ -497,6 +575,7 @@ negateCond = \case
   O.Equal -> O.NotEqual; O.NotEqual -> O.Equal
   O.UnsignedBelow -> O.UnsignedAboveEqual; O.UnsignedAboveEqual -> O.UnsignedBelow
   O.Overflow -> O.NoOverflow; O.NoOverflow -> O.Overflow
+  O.UnsignedAbove -> O.UnsignedBelowEqual; O.UnsignedBelowEqual -> O.UnsignedAbove
 
 -- A two-way branch given the jump taken when the condition holds and the
 -- jump taken when it does not.  Whichever target is laid out next is fallen
@@ -669,33 +748,33 @@ selectInstr cfg facts (Instr d op) = case op of
   OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> O.And; BOr -> O.Or; BXor -> O.Xor) r (vreg a) (vreg b)))
   -- F64 on the bits through xmm14/xmm15, inside the expansion only (SysV:
   -- caller-saved; no float register is allocated)
-  OFloatBin o a b -> def (\r -> emitI (plain (O.X64 (O.FloatBinary O.Float64 o)) [any' r] [any' (vreg a), any' (vreg b)]))
-  OFloatOfInt a -> def (\r -> emitI (plain (O.X64 O.IntToFloat) [any' r] [any' (vreg a)]))
-  OFloatCmp o a b -> def (\r -> emitI ((plain (O.X64 (O.FloatCompare O.Float64 o)) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
-  OFloat32Bin o a b -> def (\r -> emitI (plain (O.X64 (O.FloatBinary O.Float32 o)) [any' r] [any' (vreg a), any' (vreg b)]))
+  OFloatBin o a b -> def (\r -> emitI (plain (O.X64 (O.FloatBinary O.WordBits O.Float64 o)) [any' r] [any' (vreg a), any' (vreg b)]))
+  OFloatOfInt a -> def (\r -> emitI (plain (O.X64 (O.IntToFloat O.WordBits)) [any' r] [any' (vreg a)]))
+  OFloatCmp o a b -> def (\r -> emitI ((plain (O.X64 (O.FloatCompare O.WordBits O.Float64 o)) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
+  OFloat32Bin o a b -> def (\r -> emitI (plain (O.X64 (O.FloatBinary O.WordBits O.Float32 o)) [any' r] [any' (vreg a), any' (vreg b)]))
   OFloatCmpTree o x y -> def (\r -> do
     forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
-      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.Float64)) [] [any' (vreg v), OI (fromIntegral n)])
+      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.WordBits O.Float64)) [] [any' (vreg v), OI (fromIntegral n)])
       FSNode f n -> emitI (plain (O.X64 (O.TreeNode O.Float64 f)) [] [OI (fromIntegral n)])
     emitI ((plain (O.X64 (O.TreeCompare O.Float64 o)) [any' r] []) {siFlags = FlagsDef}))
   OFloat32CmpTree o x y -> def (\r -> do
     forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
-      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.Float32)) [] [any' (vreg v), OI (fromIntegral n)])
+      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.WordBits O.Float32)) [] [any' (vreg v), OI (fromIntegral n)])
       FSNode f n -> emitI (plain (O.X64 (O.TreeNode O.Float32 f)) [] [OI (fromIntegral n)])
     emitI ((plain (O.X64 (O.TreeCompare O.Float32 o)) [any' r] []) {siFlags = FlagsDef}))
   OFloatTree t -> def (\r -> do
     let (steps, root) = ftreeSchedule t
     forM_ steps $ \case
-      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.Float64)) [] [any' (vreg v), OI (fromIntegral n)])
+      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.WordBits O.Float64)) [] [any' (vreg v), OI (fromIntegral n)])
       FSNode o n -> emitI (plain (O.X64 (O.TreeNode O.Float64 o)) [] [OI (fromIntegral n)])
-    emitI (plain (O.X64 (O.TreeOutput O.Float64)) [any' r] [OI (fromIntegral root)]))
+    emitI (plain (O.X64 (O.TreeOutput O.WordBits O.Float64)) [any' r] [OI (fromIntegral root)]))
   OFloat32Tree t -> def (\r -> do
     let (steps, root) = ftreeSchedule t
     forM_ steps $ \case
-      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.Float32)) [] [any' (vreg v), OI (fromIntegral n)])
+      FSLeaf v n -> emitI (plain (O.X64 (O.TreeLeaf O.WordBits O.Float32)) [] [any' (vreg v), OI (fromIntegral n)])
       FSNode o n -> emitI (plain (O.X64 (O.TreeNode O.Float32 o)) [] [OI (fromIntegral n)])
-    emitI (plain (O.X64 (O.TreeOutput O.Float32)) [any' r] [OI (fromIntegral root)]))
-  OFloat32Cmp o a b -> def (\r -> emitI ((plain (O.X64 (O.FloatCompare O.Float32 o)) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
+    emitI (plain (O.X64 (O.TreeOutput O.WordBits O.Float32)) [any' r] [OI (fromIntegral root)]))
+  OFloat32Cmp o a b -> def (\r -> emitI ((plain (O.X64 (O.FloatCompare O.WordBits O.Float32 o)) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
     case immediateForm (fImmediates facts) op of
@@ -931,7 +1010,7 @@ selectTerm cfg fn facts nextBlock b = case bTerm b of
 -- ---- placement, frame layout and rendering ------------------------------
 placement :: S.Set VReg -> Placement
 placement managed = Placement
-  { plScratch = \case GPR -> scratchPool; FPR -> [],
+  { plScratch = \case GPR -> scratchPool; FPR -> floatScratch,
     plLoad = \p ref -> plain (O.X64 O.FrameLoad) [OP p] [OF ref 0],
     plStore = \p ref -> plain (O.X64 O.FrameStore) [] [OP p, OF ref 0],
     plSlot = \v@(VReg n) -> frameObj n 8 8 (SpillSlot n) (S.member v managed) }
@@ -942,8 +1021,8 @@ placement managed = Placement
 allocConfig :: Maybe CodeSymbol -> S.Set VReg -> AllocConfig
 allocConfig self managed = AllocConfig
   { acCalleeSaved = calleeBudget,
-    acCallerSaved = callerPool,
-    acScratch = allocScratch,
+    acCallerSaved = callerPool ++ floatPoolRegs,
+    acScratch = allocScratch ++ floatScratch,
     acPreserved = map r ["rbp", "rsp"],
     acArrival = \params ->
       let placed=Calling.arrivalArguments Calling.X86_64 params
@@ -952,13 +1031,182 @@ allocConfig self managed = AllocConfig
         ++ [plain (O.Common O.LoadSpill) [any' v] [OI (toInteger j)] | (Calling.HartArgument j,v)<-placed],
     acLoad = \p ref -> plain (O.X64 O.FrameLoad) [OP p] [OF ref 0],
     acStore = \p ref -> plain (O.X64 O.FrameStore) [] [OP p, OF ref 0],
-    acMove = \d s' -> plain (O.X64 O.Move) [OP d] [OP s'],
+    acMove = \d s' -> plain (O.X64 (if rfClassOf x64RegisterFile d == Just FPR || rfClassOf x64RegisterFile s' == Just FPR then O.FloatMove else O.Move)) [OP d] [OP s'],
     acSlot = \n v -> frameObj n 8 8 (SpillSlot n) (S.member v managed),
     -- cqto writes rdx before idivq reads the divisor
     -- store.spill writes a scratch register before it reads the value
     acEarlyDef = \i -> siOpcode i `elem` [O.X64 O.Divide, O.Common O.StoreSpill, O.Common O.StoreCell],
     acClassOf = rfClassOf x64RegisterFile,
     acSelfLoop = self }
+
+-- Floating results get their own virtual register class (C1, as A64's
+-- floatPool: docs/2026-11-15-VECTOR-VIEWS-BUFFERED-OUTPUT.md section 5).
+-- Function and block parameters fixed to registers keep the word ABI; a
+-- word reader of a pooled value gets a bit-preserving movq. Only F64 is
+-- pooled: an F32 word is the zero-extended low half, which movq would not
+-- keep.
+floatPool :: SFn -> SFn
+floatPool fn
+  | not (any floatItem (sfBody fn)) = fn
+  | otherwise = fn {sfBody = map clobbering (forwardOutputs (evalState (concat <$> mapM item (sfBody fn)) (start, M.empty)))}
+  where
+    clobbering (I i) = I (floatClobbers i)
+    clobbering l = l
+    floatItem (I i) = floatingDef (siOpcode i) || floatContext (siOpcode i)
+    floatItem _ = False
+    produced = S.fromList [v | I i <- sfBody fn, floatingDef (siOpcode i), OV v _ <- siDefs i]
+    floatingDef = \case
+      O.X64 (O.FloatBinary O.WordBits O.Float64 _) -> True
+      O.X64 (O.TreeOutput O.WordBits O.Float64) -> True
+      O.X64 (O.IntToFloat O.WordBits) -> True
+      _ -> False
+    floatContext = \case
+      O.X64 (O.FloatBinary O.WordBits O.Float64 _) -> True
+      O.X64 (O.FloatCompare O.WordBits O.Float64 _) -> True
+      O.X64 (O.FloatTest O.WordBits O.Float64) -> True
+      O.X64 (O.TreeLeaf O.WordBits O.Float64) -> True
+      _ -> False
+    -- a value only plain moves define (a block parameter: one move per
+    -- edge) joins the class when one of those moves brings a float and a
+    -- float operation reads it: a loop then carries its floats in xmm
+    -- registers, and the edges that bring a word pay one move in
+    plainMove i = case (siOpcode i, siDefs i, siUses i) of
+      (O.X64 O.Move, [OV d (Any GPR)], [OV src (Any GPR)]) -> Just (d, src)
+      _ -> Nothing
+    pinned = S.fromList (sfParams fn) `S.union` S.fromList
+      [v | I i <- sfBody fn, OV v c <- siDefs i ++ siUses i, c /= Any GPR]
+    sources = M.fromListWith (++) ([(d, [Just src]) | I i <- sfBody fn, Just (d, src) <- [plainMove i]]
+      ++ [(v, [Nothing]) | I i <- sfBody fn, Nothing <- [plainMove i], OV v _ <- siDefs i])
+    floatRead = S.fromList [v | I i <- sfBody fn, floatContext (siOpcode i), OV v _ <- siUses i]
+    carried have =
+      let wanted = floatRead `S.union` S.fromList [src | I i <- sfBody fn, Just (d, src) <- [plainMove i], S.member d have]
+          more = S.fromList [v | (v, from) <- M.toList sources, S.notMember v pinned, S.member v wanted,
+                                 all (/= Nothing) from,
+                                 or [S.member src have | Just src <- from] || onlyFloatReads v]
+          next = have `S.union` more
+       in if next == have then have else carried next
+    readCounts = M.fromListWith (\(a, b) (c, d) -> (a + c, b + d)) [(v, (1 :: Int, if floatContext (siOpcode i) then 1 else 0 :: Int)) | I i <- sfBody fn, OV v _ <- siUses i]
+    onlyFloatReads v = case M.lookup v readCounts of
+      Just (every, floating) -> floating >= 2 && every == floating
+      Nothing -> False
+    -- a constant that only float operations read is made in its register
+    -- (FloatLiteral: one load from the function's literals, or xorps)
+    literals = S.fromList [v | I i <- sfBody fn, O.X64 O.Literal <- [siOpcode i], [OV v (Any GPR)] <- [siDefs i],
+                               S.notMember v pinned, everyFloat v]
+    everyFloat v = case M.lookup v readCounts of
+      Just (every, floating) -> floating >= 1 && every == floating
+      Nothing -> False
+    -- a word loaded for float operations alone (a vector's F64 element)
+    -- is loaded into its xmm register: movq reads memory into either class
+    loads = S.fromList [v | I i <- sfBody fn, O.X64 O.LoadField <- [siOpcode i], [OV v (Any GPR)] <- [siDefs i],
+                            S.notMember v pinned, everyFloat v]
+    floats = carried (produced `S.union` literals `S.union` loads)
+    start = 1 + maximum (0 : [n | I i <- sfBody fn, OV (VReg n) _ <- siDefs i ++ siUses i])
+    fresh :: RegClass -> State (Int, M.Map Integer Operand) Operand
+    fresh cls = do (n, m) <- get; put (n + 1, m); pure (OV (VReg n) (Any cls))
+    slotOf :: Integer -> State (Int, M.Map Integer Operand) (Maybe Operand)
+    slotOf n = gets (M.lookup n . snd)
+    setSlot :: Integer -> Operand -> State (Int, M.Map Integer Operand) ()
+    setSlot n o = modify (\(k, m) -> (k, M.insert n o m))
+    -- An F64 tree's slots become pooled values: a leaf names its value (a
+    -- word is moved in once), a step writes a fresh value, and the output
+    -- or the comparison reads the slots. No xmm8+ scratch is involved, and
+    -- a slot whose value dies at its step shares the register.
+    treeStep i = case (siOpcode i, siDefs i, siUses i) of
+      (O.X64 (O.TreeLeaf O.WordBits O.Float64), [], [OV v _, OI n]) -> do
+        (moves, o) <- asFloat (OV v (Any GPR))
+        setSlot n o
+        pure (Just moves)
+      (O.X64 (O.TreeNode O.Float64 op), [], [OI n]) -> do
+        b <- slotOf (n + 1)
+        a <- slotOf n
+        case (b, if op == FSqrt then maybe b Just a else a) of
+          (Just b', Just a') -> do
+            t <- fresh FPR
+            setSlot n t
+            pure (Just [I (plain (O.X64 (O.FloatBinary O.FloatRegisters O.Float64 op)) [t] [a', b'])])
+          _ -> unset n
+      (O.X64 (O.TreeOutput O.WordBits O.Float64), [d], [OI n]) -> slotOf n >>= \case
+        Just o -> clear >> pure (Just [I (plain (O.X64 O.FloatMove) [def d] [o])])
+        Nothing -> unset n
+      (O.X64 (O.TreeCompare O.Float64 c), [d], []) -> do
+        (x, y) <- both
+        clear
+        pure (Just [I ((plain (O.X64 (O.FloatCompare O.FloatRegisters O.Float64 c)) [d] [x, y]) {siFlags = FlagsDef})])
+      (O.X64 (O.TreeTest O.Float64 c), [], []) -> do
+        (x, y) <- both
+        clear
+        pure (Just [I ((plain (O.X64 (O.FloatTest O.FloatRegisters O.Float64)) [] (if c `elem` [Gt, Ge] then [x, y] else [y, x])) {siFlags = FlagsDef})])
+      _ -> pure Nothing
+    -- the schedule fills every slot a step reads (Codegen.IR ftreeSchedule)
+    unset n = error ("X64 float pool: a tree reads slot " ++ show n ++ " before it is written")
+    both = do
+      a <- slotOf 0
+      b <- slotOf 1
+      case (a, b) of
+        (Just x, Just y) -> pure (x, y)
+        (Nothing, _) -> unset 0
+        _ -> unset 1
+    clear :: State (Int, M.Map Integer Operand) ()
+    clear = modify (\(k, _) -> (k, M.empty))
+    -- the tree's last step writes the output's value itself: a fresh value
+    -- read once, by the move right after the step that defines it
+    forwardOutputs (I a : I b : rest)
+      | O.X64 O.FloatMove <- siOpcode b, [d@(OV _ (Any FPR))] <- siDefs b, [OV t (Any FPR)] <- siUses b,
+        [OV t' (Any FPR)] <- siDefs a, t == t', unVReg t >= start, onlyUse t
+        = forwardOutputs (I a {siDefs = [d]} : rest)
+    forwardOutputs (x : rest) = x : forwardOutputs rest
+    forwardOutputs [] = []
+    unVReg (VReg n) = n
+    -- a tree temporary is read by the next step or the output alone
+    onlyUse t = M.findWithDefault (0 :: Int) t tempUses == 1
+    tempUses = M.fromListWith (+) [(v, 1) | I i <- evalState (concat <$> mapM item (sfBody fn)) (start, M.empty), OV v _ <- siUses i]
+    fp v = OV v (Any FPR)
+    asFloat o@(OV v _) | S.member v floats = pure ([], fp v)
+                       | otherwise = do t <- fresh FPR; pure ([I (plain (O.X64 O.FloatMove) [t] [o])], t)
+    asFloat o = pure ([], o)
+    asWord o@(OV v constraint) | S.member v floats = do
+      t <- fresh GPR
+      let use = case t of OV w _ -> OV w constraint; _ -> error "X64 float pool: invalid fresh operand"
+      pure ([I (plain (O.X64 O.FloatMove) [t] [fp v])], use)
+                               | otherwise = pure ([], o)
+    asWord o = pure ([], o)
+    def (OV v _) | S.member v floats = fp v
+    def o = o
+    item (ILabel l) = pure [ILabel l]
+    item (I i) = treeStep i >>= \case
+      Just out -> pure out
+      Nothing -> plainItem i
+    plainItem i = case siOpcode i of
+      O.X64 O.Literal | [OV v _] <- siDefs i, S.member v floats ->
+        pure [I i {siOpcode = O.X64 O.FloatLiteral, siDefs = map def (siDefs i)}]
+      O.X64 O.LoadField | [OV v _] <- siDefs i, S.member v floats ->
+        pure [I i {siDefs = map def (siDefs i)}]
+      -- the stored value straight from its xmm register (movq to memory)
+      O.X64 O.StoreField | [base, OV v _, n] <- siUses i, S.member v floats -> do
+        (moves, base') <- asWord base
+        pure (moves ++ [I i {siUses = [base', fp v, n]}])
+      O.X64 (O.FloatBinary O.WordBits O.Float64 op) -> pooled i (O.FloatBinary O.FloatRegisters O.Float64 op) True
+      O.X64 (O.FloatCompare O.WordBits O.Float64 c) -> pooled i (O.FloatCompare O.FloatRegisters O.Float64 c) False
+      O.X64 (O.FloatTest O.WordBits O.Float64) -> pooled i (O.FloatTest O.FloatRegisters O.Float64) False
+      O.X64 (O.IntToFloat O.WordBits) | [OV v _] <- siDefs i, S.member v floats ->
+        pure [I i {siOpcode = O.X64 (O.IntToFloat O.FloatRegisters), siDefs = map def (siDefs i)}]
+      O.X64 (O.TreeOutput O.WordBits O.Float64) | [OV v _] <- siDefs i, S.member v floats ->
+        pure [I i {siOpcode = O.X64 (O.TreeOutput O.FloatRegisters O.Float64), siDefs = map def (siDefs i)}]
+      O.X64 (O.TreeLeaf O.WordBits O.Float64) | OV v _ : rest <- siUses i, S.member v floats ->
+        pure [I i {siOpcode = O.X64 (O.TreeLeaf O.FloatRegisters O.Float64), siUses = fp v : rest}]
+      O.X64 O.Move | Just (d, src) <- plainMove i, S.member d floats ->
+        pure [I i {siOpcode = O.X64 O.FloatMove, siDefs = [fp d], siUses = [if S.member src floats then fp src else OV src (Any GPR)]}]
+      O.X64 O.Move | Just (d, src) <- plainMove i, S.member src floats ->
+        pure [I i {siOpcode = O.X64 O.FloatMove, siDefs = [OV d (Any GPR)], siUses = [fp src]}]
+      _ -> do
+        args <- mapM asWord (siUses i)
+        pure (concatMap fst args ++ [I i {siUses = map snd args}])
+    -- the float form's uses all in the class; its definition in the class
+    -- when it is a float (a compare's answer stays a word)
+    pooled i op floating = do
+      args <- mapM asFloat (siUses i)
+      pure (concatMap fst args ++ [I i {siOpcode = O.X64 op, siDefs = if floating then map def (siDefs i) else siDefs i, siUses = map snd args}])
 
 savedObjs :: [Phys] -> [FrameObj]
 savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) False False | (k, Phys p) <- zip [0 ..] saved]
@@ -969,10 +1217,13 @@ emitFnX64 cfg=emitFnX64WithSymbols (publicSymbols (cfgExports cfg)) cfg
 emitFnX64WithSymbols :: SymbolPolicy -> X64Config -> Fn -> Either String NativeFn
 emitFnX64WithSymbols symbols cfg fn = do
   (sel0, managed, nulls, strs) <- select cfg fn
-  let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg) (tuneEntryArgs (cfgTune cfg)) argRegs fn sel0
+  let pooled = if polProfile (cfgPolicy cfg) == QosApp || not (tuneFpPool (cfgTune cfg)) then sel0 else floatPool sel0
+      fpValues = S.fromList [v | I i <- sfBody pooled, OV v (Any FPR) <- siDefs i ++ siUses i]
+      (sel, entrySlots) = forwardEntry (cfgForwardParams cfg) (tuneEntryArgs (cfgTune cfg)) argRegs fn pooled
+  -- (floatPool annotates the xmm clobbers only when it pools anything)
   checkForms (fnName fn) (sfBody sel)
   either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
-  let ac = allocConfig (if cfgSelfLoops cfg then Just (CodeSymbol (functionSymbol (fnName fn))) else Nothing) managed
+  let ac = allocConfig (if cfgSelfLoops cfg then Just (CodeSymbol (functionSymbol (fnName fn))) else Nothing) (S.difference managed fpValues)
   alloc <- either (Left . ("compiler error: " ++)) Right (allocateFn ac sel)
   either (Left . ("compiler error: " ++)) Right (checkAllocation ac (fnName fn) (alBody alloc))
   let saves = savedObjs (alSaved alloc)
@@ -1010,7 +1261,7 @@ emitFnX64WithSymbols symbols cfg fn = do
   let stack = Stack.selectedFrame Stack.StackReturnAddress ly (CodeSymbol (functionSymbol name))
         (["interposable-entry:"++functionSymbol name | visibilityFor (cfgWeak cfg) symbols name == WeakSymbol]
           ++ ["segmented-stack-reservation" | large] ++ ["darwin-tlv-boundary" | cfgHart cfg == HartTlvMachO]) body
-  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ refillCode ++ [reportLine name report, ""]) report stack (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
+  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ refillCode ++ floatLiterals (cfgHart cfg) name allocatedBody ++ [reportLine name report, ""]) report stack (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
   where
     tokOf _ (ILabel (Label l)) _ = [TLabel l]
     tokOf pools (I i) ls = [TIns
@@ -1112,7 +1363,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       p -> p ++ "d"
     imm = \case OI n -> show n; o -> error ("X64 render: not an immediate " ++ show o)
     slot ref = show (M.findWithDefault (error "X64 render: missing frame object") ref (lyOffset ly)) ++ "(%rbp)"
-    cc = \case O.Equal -> "e"; O.NotEqual -> "ne"; O.Less -> "l"; O.Greater -> "g"; O.LessEqual -> "le"; O.GreaterEqual -> "ge"; O.Overflow -> "o"; O.NoOverflow -> "no"; O.UnsignedAboveEqual -> "ae"; O.UnsignedBelow -> "b"
+    cc = \case O.Equal -> "e"; O.NotEqual -> "ne"; O.Less -> "l"; O.Greater -> "g"; O.LessEqual -> "le"; O.GreaterEqual -> "ge"; O.Overflow -> "o"; O.NoOverflow -> "no"; O.UnsignedAboveEqual -> "ae"; O.UnsignedBelow -> "b"; O.UnsignedAbove -> "a"; O.UnsignedBelowEqual -> "be"
     call sym = ["subq $8, %rsp", "call " ++ gsym hart sym, "addq $8, %rsp"]
     go op ds us = case (op,ds,us) of
       (O.Common O.BumpAlloc,[d],[OI raw]) | Just c <- bumpCellFor (cfgPolicy cfg) raw -> bump (reg d) c
@@ -1126,6 +1377,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       (O.X64 O.Save,[],[]) -> saveLines
       (O.Common O.Params,_,[]) -> [] -- the parameters are where the ABI put them
       (O.Common O.LoadCell,[d],[OC cell]) -> loadCell (ArgumentCell cell) (reg d)
+      -- movq loads and stores an xmm register as well as a word
       (O.X64 O.FrameLoad,[d],[OF ref 0]) -> ["movq " ++ slot ref ++ ", " ++ reg d]
       (O.X64 O.FrameStore,[],[s,OF ref 0]) -> ["movq " ++ reg s ++ ", " ++ slot ref]
       (O.Common O.StoreCell,[],[s,OC cell]) -> storeCell (ArgumentCell cell) (reg s)
@@ -1136,6 +1388,10 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
         loadCell HartPointer h ++ ["movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(" ++ h ++ ")"]
       (O.Common O.LoadSpill,[d],[OI j]) -> loadCell HartPointer (reg d) ++ ["movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
       (O.X64 O.Move,[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
+      (O.X64 O.FloatMove,[d],[s]) -> [fmove s d]
+      -- +0.0 by xorps (no flags touched), anything else from the literals
+      (O.X64 O.FloatLiteral,[d],[OI 0]) -> ["xorps " ++ reg d ++ ", " ++ reg d]
+      (O.X64 O.FloatLiteral,[d],[OI n]) -> ["movsd " ++ local hart fname (floatLiteralLabel n) ++ "(%rip), " ++ reg d]
       -- the shortest move that makes the constant (none touches the flags:
       -- a fused compare may sit between its test and its branch): a 32-bit
       -- move zero-extends, a quad move sign-extends 32 bits, movabs the rest
@@ -1165,17 +1421,40 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
         let (x,y,pred')=comparison c "%xmm8" "%xmm9"
          in ["cmp" ++ pred' ++ suffix w ++ " " ++ y ++ ", " ++ x,
              moveOut w x d,"andq $1, " ++ reg d]
-      (O.X64 (O.TreeLeaf w),[],[x,OI n]) -> [moveIn w x ("%xmm" ++ show (8+n))]
-      (O.X64 (O.TreeOutput w),[d],[OI n]) -> [moveOut w ("%xmm" ++ show (8+n)) d]
+      (O.X64 (O.TreeLeaf O.WordBits w),[],[x,OI n]) -> [moveIn w x ("%xmm" ++ show (8+n))]
+      (O.X64 (O.TreeOutput O.WordBits w),[d],[OI n]) -> [moveOut w ("%xmm" ++ show (8+n)) d]
+      (O.X64 (O.TreeLeaf O.FloatRegisters _),[],[x,OI n]) -> ["movapd " ++ reg x ++ ", %xmm" ++ show (8+n)]
+      (O.X64 (O.TreeOutput O.FloatRegisters _),[d],[OI n]) -> ["movapd %xmm" ++ show (8+n) ++ ", " ++ reg d]
+      (O.X64 (O.TreeTest w c),[],[]) ->
+        [if c `elem` [Gt, Ge] then "ucomi" ++ suffix w ++ " %xmm9, %xmm8" else "ucomi" ++ suffix w ++ " %xmm8, %xmm9"]
       (O.X64 (O.TreeNode w op),[],[OI n]) ->
         [O.floatName op ++ suffix w ++ " %xmm" ++ show (9+n) ++ ", %xmm" ++ show (8+n)]
-      (O.X64 O.IntToFloat,[d],[a]) -> ["cvtsi2sdq " ++ reg a ++ ", %xmm14","movq %xmm14, " ++ reg d]
-      (O.X64 (O.FloatBinary w op),[d],[a,b]) ->
+      (O.X64 (O.IntToFloat O.WordBits),[d],[a]) -> ["cvtsi2sdq " ++ reg a ++ ", %xmm14","movq %xmm14, " ++ reg d]
+      -- cleared first: cvtsi2sd writes only the low lane and would wait on
+      -- the register's previous value
+      (O.X64 (O.IntToFloat O.FloatRegisters),[d],[a]) -> ["xorps " ++ reg d ++ ", " ++ reg d,"cvtsi2sdq " ++ reg a ++ ", " ++ reg d]
+      -- two-address SSE: the result in d after a copy of a, or the operands
+      -- swapped when d holds b and the operation commutes; sqrt reads b only
+      (O.X64 (O.FloatBinary O.FloatRegisters w op),[d],[a,b])
+        | op == FSqrt -> [O.floatName op ++ suffix w ++ " " ++ reg b ++ ", " ++ reg d]
+        | reg d == reg a -> [O.floatName op ++ suffix w ++ " " ++ reg b ++ ", " ++ reg d]
+        | reg d /= reg b -> [fmove a d, O.floatName op ++ suffix w ++ " " ++ reg b ++ ", " ++ reg d]
+        | op `elem` [FAdd, FMul] -> [O.floatName op ++ suffix w ++ " " ++ reg a ++ ", " ++ reg d]
+        | otherwise -> [fmove a (OP (Phys "xmm15")), O.floatName op ++ suffix w ++ " " ++ reg b ++ ", %xmm15", fmove (OP (Phys "xmm15")) d]
+      (O.X64 (O.FloatCompare O.FloatRegisters w c),[d],[a,b]) ->
+        let (x,y,pred')=comparison c a b
+         in [fmove x (OP (Phys "xmm15")),
+             "cmp" ++ pred' ++ suffix w ++ " " ++ reg y ++ ", %xmm15",
+             moveOut w "%xmm15" d,"andq $1, " ++ reg d]
+      (O.X64 (O.FloatTest O.FloatRegisters w),[],[l,r']) -> ["ucomi" ++ suffix w ++ " " ++ reg r' ++ ", " ++ reg l]
+      (O.X64 (O.FloatTest O.WordBits w),[],[l,r']) ->
+        [moveIn w l "%xmm14",moveIn w r' "%xmm15","ucomi" ++ suffix w ++ " %xmm15, %xmm14"]
+      (O.X64 (O.FloatBinary O.WordBits w op),[d],[a,b]) ->
         [moveIn w a "%xmm14",moveIn w b "%xmm15",
          O.floatName op ++ suffix w ++ " %xmm15, %xmm14",moveOut w "%xmm14" d]
       -- Ordered predicates are false for NaN; inequality is true. gt/ge
       -- compare swapped operands, preserving the reference evaluator's rule.
-      (O.X64 (O.FloatCompare w c),[d],[a,b]) ->
+      (O.X64 (O.FloatCompare O.WordBits w c),[d],[a,b]) ->
         let (x,y,pred')=comparison c a b
          in [moveIn w x "%xmm14",moveIn w y "%xmm15",
              "cmp" ++ pred' ++ suffix w ++ " %xmm15, %xmm14",
@@ -1211,6 +1490,11 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       _ -> error ("X64 render: no form for " ++ show (op,ds,us))
     suffix O.Float64="sd"
     suffix O.Float32="ss"
+    -- between two xmm registers the whole register; a word through movq
+    fmove a d
+      | isXmm a && isXmm d = "movapd " ++ reg a ++ ", " ++ reg d
+      | otherwise = "movq " ++ reg a ++ ", " ++ reg d
+    isXmm o = take 4 (reg o) == "%xmm"
     moveIn O.Float64 x dst="movq " ++ reg x ++ ", " ++ dst
     moveIn O.Float32 x dst="movd " ++ word32 x ++ ", " ++ dst
     moveOut O.Float64 src d="movq " ++ src ++ ", " ++ reg d

@@ -13,8 +13,9 @@ data X64Op
   | SignExtend63 | ShiftLeft | ShiftRight | Divide
   | FrameLoad | FrameStore | LoadByte | LoadField | StoreField | StoreHeader
   | Call | Ret | Push | ApplyN | Panic | Enter | Save
-  | IntToFloat | FloatBinary Width FloatOp | FloatCompare Width CmpOp
-  | TreeLeaf Width | TreeNode Width FloatOp | TreeOutput Width | TreeCompare Width CmpOp
+  | IntToFloat FloatBank | FloatBinary FloatBank Width FloatOp | FloatCompare FloatBank Width CmpOp
+  | FloatMove | FloatLiteral | FloatTest FloatBank Width
+  | TreeLeaf FloatBank Width | TreeNode Width FloatOp | TreeOutput FloatBank Width | TreeCompare Width CmpOp | TreeTest Width CmpOp
   | PairLoad | PairStore | PairDuplicate | PairBinary SimdOp
   deriving (Eq,Ord,Show)
 x64Name op=case op of
@@ -27,11 +28,15 @@ x64Name op=case op of
   SignExtend63->"sext63";ShiftLeft->"shlq";ShiftRight->"shrq";Divide->"divide"
   FrameLoad->"load";FrameStore->"store";LoadByte->"load.byte";LoadField->"load.field";StoreField->"store.field";StoreHeader->"store.header"
   Call->"call";Ret->"ret";Push->"push";ApplyN->"applyn";Panic->"panic";Enter->"enter";Save->"save"
-  IntToFloat->"cvtsi2sd"
-  FloatBinary w f->widthPrefix "fbin" w++floatName f
-  FloatCompare w c->widthPrefix "fcmp" w++comparisonName c
-  TreeLeaf w->widthPrefix "ftree" w++"leaf"
+  IntToFloat b->bankPrefix b++"cvtsi2sd"
+  FloatBinary b w f->bankPrefix b++widthPrefix "fbin" w++floatName f
+  FloatCompare b w c->bankPrefix b++widthPrefix "fcmp" w++comparisonName c
+  FloatMove->"fmov";FloatLiteral->"fli"
+  FloatTest b w->bankPrefix b++widthPrefix "ftest" w
+  TreeLeaf b w->bankPrefix b++widthPrefix "ftree" w++"leaf"
   TreeNode w f->widthPrefix "ftree" w++floatName f
-  TreeOutput w->widthPrefix "ftree" w++"out"
+  TreeOutput b w->bankPrefix b++widthPrefix "ftree" w++"out"
   TreeCompare w c->widthPrefix "ftree" w++"cmp."++comparisonName c
+  TreeTest w c->widthPrefix "ftree" w++"test."++comparisonName c
   PairLoad->"simd.ld";PairStore->"simd.st";PairDuplicate->"simd.dup";PairBinary f->simdName f
+  where bankPrefix WordBits="";bankPrefix FloatRegisters="pool."
