@@ -1,6 +1,6 @@
 # Overhead elimination, round 2 (2026-11-17)
 
-Follows the overhead audit of 2026-11-16 (branch `ari/overhead-audit-2026-11-16`, `docs/perf/2026-11-16-overhead-audit`, not on `main`), which ranked compiled-code rows (C) and runtime rows (R). Round 1 was #81. This note records the outcome of each row taken up in round 2, with the measured numbers, and why R1, R4, R8 and the R3 shared ring were not done. The bench programs used for the runtime rows are in `2026-11-17-overhead-round2/bench/`.
+Follows the overhead audit of 2026-11-16 (branch `ari/overhead-audit-2026-11-16`, `docs/perf/2026-11-16-overhead-audit`, not on `main`), which ranked compiled-code rows (C) and runtime rows (R). Round 1 was #81. This note records the outcome of each row taken up in round 2, with the measured numbers, and why R1, R4, R5, R8 and both parts of R3 were not shipped. The bench programs used for the runtime rows are in `2026-11-17-overhead-round2/bench/`.
 
 Machine: Linux x86-64, 8 cores, 8 harts (the posix default). Instruction counts are callgrind Ir, the median of 3 runs (at most 2 running at once), at the audit's sizes. Wall and CPU (user+sys) times are medians of interleaved runs on an otherwise idle box, with the run counts given per row. Profiles are `perf record -F 2000..4000` cpu-clock samples (the box has no hardware counters).
 
@@ -11,8 +11,8 @@ Machine: Linux x86-64, 8 cores, 8 harts (the posix default). Instruction counts 
 | C4, C5, R6, R7 (round 1) | x64 flag branches, cheaper reuse check, wake ring overflow, sleep off the hart | merged | #81 |
 | C1 | x64 F64 register class, fused float compares | merged | #82 |
 | C3 | String-scan versioning for a scan inlined into an outer loop | open | #83 |
-| C10 | a Vector copy takes three blocks, not five | open | see below |
-| R3 (part 1) | channel sender keys on a read-mostly line | open | see below |
+| C10 | a Vector copy takes three blocks, not five | open | #84 |
+| R3 (part 1) | channel sender keys on a read-mostly line | measured, not shipped: wall time regressed | - |
 | R3 (part 2) | lock-free MPSC shared ring | deferred | - |
 | R8 | adaptive spin-before-block on by default | measured, not shipped | - |
 | R5 | lock-free freelists | measured, not shipped | - |
@@ -46,7 +46,7 @@ The other 12 programs moved by +0.2% or less. nbody still spills floats: the slo
 
 The other 14 programs moved by 0.2% or less. #83 was merged up with `main` (53a4d861) as codegenRev 241.
 
-## C10: a Vector copy takes three blocks, not five (open)
+## C10: a Vector copy takes three blocks, not five (#84, open)
 
 A copied column's storage now sits in the same block as its `col_t`, and the kind bytes sit right after the column directory, so `Vec.dup` of a one-column vector allocates three blocks instead of five. Only `runtime/vec.c` changes; no layout seen by generated code changes. Base is C3.
 
@@ -71,11 +71,20 @@ The base for the runtime rows is `ari/vec-copy-alloc` (b33f466f): main at 18fce3
 | `spawnchurn` | 25,000 waves of 8 spawn / request / reply / exit | `spawnchurn = 2500300000` |
 | `fanin` | 16 senders on all harts into one receiver (9 of them through the shared ring), every message acknowledged | `fanin = 2403200160000` |
 
-### R3: channel sender keys on a read-mostly line (part 1, open; ring deferred)
+### R3: channel sender keys on a read-mostly line (not shipped; ring deferred)
 
 In pingpong's profile `chan_for` was 12-16% of the samples. Most of those samples were on the compare right after the load of `ch[i].sender`. The key shared the producer's line with `rt`, so each lookup by the receiver (`chan_for`, `p_any`, `p_res`, `next_ready_channel`) pulled a line the producer had just written. The key now sits beside `rv0`, on a line written only when a slot is claimed or the channel is initialised. The inline slots start a line of their own. `chblk_t` grows by MAXSND x 64 bytes at most. Nothing else changes: same fields, same atomics, same claim protocol.
 
-pingpong profile: `chan_for` went from 12.4% to 5.0% of the samples. Wall times are in the PR.
+pingpong profile: `chan_for` went from 12.4% to 5.0% of the samples. But wall and CPU time went up, in two separate interleaved sets:
+
+| program | runs | wall, base | wall, R3 | CPU, base | CPU, R3 |
+|---|---:|---:|---:|---:|---:|
+| pingpong | 11 | 958 ms | 1033 ms | 1901 ms | 2072 ms |
+| pingpong | 21 | 974 ms | 1079 ms | 1957 ms | 2148 ms |
+| xpingpong | 11 | 946 ms | 1034 ms | 1894 ms | 2077 ms |
+| xpingpong | 21 | 1018 ms | 1101 ms | 2011 ms | 2198 ms |
+
+Both sets have R3 about 8-11% slower. The cause has not been measured; a likely one is that the larger `chblk_t` spreads each channel over more lines, so a round trip touches more of them than it saves. The change was not opened as a PR. It is on branch `ari/chan-sender-line` (b030ae7d) for reference.
 
 Not done:
 - **A direct channel index.** With the keys on read-mostly lines, the scan is at most 7 compares against lines already in the cache. A per-sender slot hint would replace that with about as many loads, plus a validity check against slot reclamation.
