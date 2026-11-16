@@ -3187,6 +3187,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->watch = 0; a->watchers = 0; a->watch_head = 0; a->watch_nx = 0;
   __builtin_memset(&a->watch_lock, 0, sizeof a->watch_lock);
   a->irq_target = 0;
+  a->io_slot1 = 0; /* parked on no descriptor (fpr_io_wait): a stale word here made reap cancel a slot it never took */
   if (!a->pool.buckets) fpr_cpanic("spawn: no memory for a bucket array");
   a->entry_hold = admitted ? admitted->entry_hold : 0;
   if (!admitted) f = fpr_msg_copy_to(f, pid != (uw)-1 ? pid : fpr_current_pid());
