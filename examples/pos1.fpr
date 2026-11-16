@@ -772,8 +772,10 @@ receipts v rows =
         , UI.vstack UI.stack [ UI.label overline "revenue", UI.text hero "${money v.revenue}" ]
         , UI.label caption "newest 50 shown" ]
     , UI.scroll { UI.stack | fill = UI.Grow } rows ].
+# the row's children sit between two cuts (View.cutKids), so each receipt is its
+# own pieces on the wire and a new sale sends one row, not the list
 receiptRow x =
-  UI.listItem UI.stack Nil
+  UI.listItem UI.stack Nil (G.cutKids
     [ UI.hstack { UI.stack | gap = 3, align = UI.Center }
         [ UI.labelWith { strong | tabular = True } [figure] "#{x.n}"
         , UI.labelWith caption [figure] x.cashier
@@ -785,7 +787,7 @@ receiptRow x =
         , UI.button { pill | vary = [UI.onState @Client.open x.n [UI.Inverted]] } [G.setTo @Client.open x.n] "lines"
         , UI.hstackWith { UI.stack | justify = UI.Trail, vary = [UI.Always [UI.Rigid]] } [UI.column UI.Act] [voidButton x] ]
     , UI.vstackWith { UI.stack | pad = 2, scroll = True, vary = [UI.Always [UI.Rigid]] } [G.showIf @Client.open x.n, UI.peek]
-        (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
+        (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ]).
 voidButton x | x.voided == 1 = UI.label { caption | wrap = False } "by {x.voidBy}".
 voidButton x = UI.button pill [G.send codec (Void x.n)] "void".
 lineRow (sku, q, pr, nm) = UI.hstack { UI.stack | justify = UI.Between } [ UI.label caption "{q} x {nm}", UI.label { caption | tabular = True } (money (q * pr)) ].

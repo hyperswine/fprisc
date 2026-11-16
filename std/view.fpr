@@ -54,6 +54,7 @@
 
 Encoding = use "encoding".
 L = use "list".
+Set = use "set".
 
 Attr = Type (Cls String | Utilities (List Utility) | LocalStyle String String (List Decl) | Att String String | Local String String
            | OnClick String String | OnSet String String | ShowIf String
@@ -343,6 +344,23 @@ focus ds = Utilities [Focus ds].
 disabled : List Decl -> Attr .
 disabled ds = Utilities [Disabled ds].
 
+# A CUT ends the static piece being built and starts the next, and draws
+# nothing. The wire sends statics and dynamics as two arrays and a change
+# re-sends whole elements of them, so a list whose rows hold no Dyn is ONE
+# static however many rows it has, and adding a row re-sends them all. A row
+# that opens and closes its children with `cut` is pieces of its own:
+#
+#   El "li" attrs (View.cutKids [ ... ])
+#
+# and a new row is a splice of its pieces alone. It is a Dyn whose text is
+# `cutMark`; the page script gives that text no slot element. Put it in the row
+# renderer itself, so a cached row and a fresh one render the same.
+cutMark = "<!--lv:cut-->".
+cut : Node .
+cut = Dyn cutMark.
+cutKids : List Node -> List Node .
+cutKids kids = cut :: append kids [cut].
+
 Atom = Type (Atom Int String String).
 localAtoms : List Attr -> List Atom .
 localAtoms attrs = lastAtoms (collectAtoms attrs).
@@ -468,15 +486,20 @@ entryRule scope prefix (CssAtom name own css) = if scope == own then localDeclRu
 entryRule scope prefix (CssName name) = localRuleFor scope prefix name.
 entryName (CssAtom name _ _) = name.
 entryName (CssName name) = name.
-nubEntries : (entries : List CssEntry | measure entries) -> List CssEntry .
-nubEntries entries = case entries of
-    Nil -> Nil
-  | entry :: rest -> if entryMember (entryName entry) rest then nubEntries rest else entry :: nubEntries rest.
-entryMember : String -> (entries : List CssEntry | measure entries) -> Bool .
-entryMember name entries = case entries of
-    Nil -> False
-  | CssAtom other _ _ :: rest -> name == other or entryMember name rest
-  | CssName other :: rest -> name == other or entryMember name rest.
+# Each name once, at the place of its LAST occurrence. A page names a few
+# hundred distinct classes thousands of times, so "is it in the rest of the
+# list" per entry was most of a render; the names seen go in a set instead.
+# Walking the list backwards makes the first sighting the last occurrence,
+# and consing onto the answer puts the kept entries back in their order.
+nubEntries : List CssEntry -> List CssEntry .
+nubEntries entries = keepUnseen (rev entries) Set.strings Nil.
+keepUnseen : (entries : List CssEntry | measure entries) -> Set.Set String -> List CssEntry -> List CssEntry .
+keepUnseen entries seen acc = case entries of
+    Nil -> acc
+  | entry :: rest ->
+      name = entryName entry;
+      if Set.member name seen then keepUnseen rest seen acc
+      else keepUnseen rest (Set.insert name seen) (entry :: acc).
 atomEntries : (atoms : List Atom | measure atoms) -> List CssEntry .
 atomEntries atoms = case atoms of
     Nil -> Nil
