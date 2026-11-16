@@ -1,0 +1,20 @@
+# word frequency, as wordfreq_mutmap, with the words streamed (String.foldWords): same output.
+List = use "std/list".
+String = use "std/string".
+MutMap = use "std/mutmap".
+Ord = use "std/order".
+
+byCount : (String, Int) -> (String, Int) -> Ord.Ordering .
+byCount a b = case a of
+  (wa, ca) -> (case b of (wb, cb) -> if ca != cb then Ord.int cb ca else Ord.string wa wb).
+
+main =
+  path = case Sys.args Unit of p :: _ -> p | Nil -> "data/corpus.txt";
+  counts = String.foldWords (fn m w -> MutMap.insertWith (fn old new -> old + new) w 1 m) (MutMap.strings Unit) (fileRead path);
+  (n, counts) = MutMap.size counts;
+  (es, counts) = MutMap.toList counts;
+  _ = MutMap.free counts;
+  total = List.fold (fn t e -> case e of (w, c) -> t + c) 0 es;
+  top = List.take 10 (List.sortWith byCount es);
+  _ = print "distinct {n} total {total}";
+  List.each (fn e -> case e of (w, c) -> print "{w} {c}") top.
