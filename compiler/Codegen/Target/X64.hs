@@ -290,13 +290,17 @@ emitKeepingCall sym args res = do
     ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
   emitI selected {siClobbers = [], siCalls = [Call sym PreservingRuntime]}
 
--- only the cold slow paths of inline vector accesses (Lower.vectorAccess)
--- and only where floats have registers: a QOS app keeps the plain call
+-- the cold slow paths of inline vector accesses (Lower.vectorAccess) and
+-- of checked Int arithmetic (retagged), only where floats have registers:
+-- a QOS app keeps the plain call
 keepsRegisters :: X64Config -> Callee -> Bool
 keepsRegisters cfg c = case calleeKind c of
-  Foreign _ -> polProfile (cfgPolicy cfg) /= QosApp && tuneFpPool (cfgTune cfg) && length (calleeParams c) <= 3
+  Foreign _ -> keepingEnabled cfg && length (calleeParams c) <= 3
     && any (`isPrefixOf` calleeName c) ["$vec.get", "$vec.at", "$vec.set", "$vec.put", "Vec.set", "Vec.put"]
   _ -> False
+
+keepingEnabled :: X64Config -> Bool
+keepingEnabled cfg = polProfile (cfgPolicy cfg) /= QosApp && tuneFpPool (cfgTune cfg)
 
 keepingCall :: SInstr -> Bool
 keepingCall i = siOpcode i == O.X64 O.Call && case siCalls i of
@@ -947,7 +951,10 @@ selectInstr cfg facts (Instr d op) = case op of
       emitI (tagw ta' a)
       emitI (tagw tb' b)
       res <- freshV True
-      emitCall (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
+      -- the cold re-entry keeps every register too (keepingWrappers)
+      if keepingEnabled cfg
+        then emitKeepingCall (CodeSymbol (primSymbol o)) [ta', tb'] res
+        else emitCall (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
       emitI (rri O.ShiftRightArithmeticImmediate r res 1)
     arith kernel o r a b = do
       slow <- freshL "slow"
