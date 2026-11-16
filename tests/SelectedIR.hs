@@ -169,7 +169,7 @@ main = do
   refused "x64 cannot render an A64 operation" "opcode/operand"
     (checkForms "forms" [I aFloat])
   let typedMove=plainOpcode (Opcode.X64 Opcode.Move) [gpr 2] [gpr 0]
-      typedCompare=plainOpcode (Opcode.X64 (Opcode.FloatCompare Opcode.Float32 Ne)) [gpr 2] [gpr 0,gpr 1]
+      typedCompare=plainOpcode (Opcode.X64 (Opcode.FloatCompare Opcode.WordBits Opcode.Float32 Ne)) [gpr 2] [gpr 0,gpr 1]
       typedBranch=(plainOpcode (Opcode.X64 (Opcode.Branch Opcode.UnsignedBelow)) [] [OL (Label "typed-out")])
         {siFlags=FlagsUse,siControl=CondTo [Label "typed-out"]}
   check "x64 constructors retain explicit width, predicate and branch condition"
@@ -185,7 +185,7 @@ main = do
   refused "x64 branch labels agree with control metadata" "control effect"
     (checkForms "typed" [I typedBranch {siControl=Next}])
   refused "x64 scratch tree indices remain inside the physical bank" "opcode/operand form"
-    (checkForms "typed" [I (plainOpcode (Opcode.X64 (Opcode.TreeLeaf Opcode.Float64)) [] [gpr 0,OI 8])])
+    (checkForms "typed" [I (plainOpcode (Opcode.X64 (Opcode.TreeLeaf Opcode.WordBits Opcode.Float64)) [] [gpr 0,OI 8])])
   let typedDivide=(plainOpcode (Opcode.X64 Opcode.Divide) [OV (v 2) (Fix (r "rax"))]
         [OV (v 0) (Fix (r "rax")),gpr 1]) {siImplicitDefs=[r "rdx"],siFlags=FlagsDef}
       typedAdd=(plainOpcode (Opcode.X64 Opcode.Add) [OV (v 2) (Tied 0)] [gpr 0,gpr 1]) {siFlags=FlagsDef}

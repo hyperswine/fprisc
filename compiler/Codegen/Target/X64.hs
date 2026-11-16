@@ -1096,7 +1096,11 @@ floatPool fn
     everyFloat v = case M.lookup v readCounts of
       Just (every, floating) -> floating >= 1 && every == floating
       Nothing -> False
-    floats = carried (produced `S.union` literals)
+    -- a word loaded for float operations alone (a vector's F64 element)
+    -- is loaded into its xmm register: movq reads memory into either class
+    loads = S.fromList [v | I i <- sfBody fn, O.X64 O.LoadField <- [siOpcode i], [OV v (Any GPR)] <- [siDefs i],
+                            S.notMember v pinned, everyFloat v]
+    floats = carried (produced `S.union` literals `S.union` loads)
     start = 1 + maximum (0 : [n | I i <- sfBody fn, OV (VReg n) _ <- siDefs i ++ siUses i])
     fresh :: RegClass -> State (Int, M.Map Integer Operand) Operand
     fresh cls = do (n, m) <- get; put (n + 1, m); pure (OV (VReg n) (Any cls))
@@ -1176,6 +1180,12 @@ floatPool fn
     plainItem i = case siOpcode i of
       O.X64 O.Literal | [OV v _] <- siDefs i, S.member v floats ->
         pure [I i {siOpcode = O.X64 O.FloatLiteral, siDefs = map def (siDefs i)}]
+      O.X64 O.LoadField | [OV v _] <- siDefs i, S.member v floats ->
+        pure [I i {siDefs = map def (siDefs i)}]
+      -- the stored value straight from its xmm register (movq to memory)
+      O.X64 O.StoreField | [base, OV v _, n] <- siUses i, S.member v floats -> do
+        (moves, base') <- asWord base
+        pure (moves ++ [I i {siUses = [base', fp v, n]}])
       O.X64 (O.FloatBinary O.WordBits O.Float64 op) -> pooled i (O.FloatBinary O.FloatRegisters O.Float64 op) True
       O.X64 (O.FloatCompare O.WordBits O.Float64 c) -> pooled i (O.FloatCompare O.FloatRegisters O.Float64 c) False
       O.X64 (O.FloatTest O.WordBits O.Float64) -> pooled i (O.FloatTest O.FloatRegisters O.Float64) False

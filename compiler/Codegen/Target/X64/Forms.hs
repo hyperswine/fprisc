@@ -70,8 +70,8 @@ checkForms owner items=do
             O.FrameLoad->matches [either'] ds && matches [frame] us
             O.FrameStore->none [either',frame]
             O.LoadByte->one [word,immediate]
-            O.LoadField->one [word,immediate]
-            O.StoreField->none [word,word,immediate]
+            O.LoadField->matches [either'] ds && matches [word,immediate] us
+            O.StoreField->none [word,either',immediate]
             O.StoreHeader->none [word,word,immediate]
             O.Call->length ds<=8 && all word ds && transfer us
             O.Ret->null ds && not (null us) && length us<=8 && all word us
