@@ -90,6 +90,10 @@ files open with `profile base.`:
 programs; `tests/check_trust.py`; the suites and the apps' own checks
 (`check_std`, `check_pos_reload`) as recorded in the commit.
 
+## Added 17 November 2026
+
+- `std/game.fpr`: no unsafe helpers. Every recursion carries a measure, the test runner's task chain included (a fuel count that fails loudly when it runs out); `fpr --stdcheck` passes.
+
 ## Open
 
 - Measures for the first-kind helpers in the library (above).

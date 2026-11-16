@@ -2,6 +2,7 @@
  *
  *   gamedrive feed FIFO INTERVAL_MS SECONDS QUIT_CODE FIRST_CODE CODE...
  *   gamedrive summary GAME_LOG RSS_SAMPLES
+ *   gamedrive keys FIFO INTERVAL_MS QUIT_CODE CODE...     each code once, then quit
  *
  * feed writes Linux evdev key events (press, then release) into the fifo the
  * game reads as FPR_EVDEV: FIRST_CODE once (the key that starts a game), then
@@ -73,6 +74,28 @@ static int feed(int argc, char **argv) {
   return 0;
 }
 
+/* each code once, in order, then the quit key until the game has gone: a
+ * fixed session, for comparing transcripts */
+static int keys(int argc, char **argv) {
+  if (argc < 7) die("usage: gamedrive keys FIFO INTERVAL_MS QUIT_CODE CODE...");
+  int fd = open(argv[2], O_WRONLY);
+  if (fd < 0) die("cannot open the key fifo");
+  long interval = atol(argv[3]);
+  int quit = atoi(argv[4]);
+  if (interval < 40) die("INTERVAL_MS is at least 40");
+  for (int i = 5; i < argc; i++) {
+    key(fd, atoi(argv[i]));
+    pause_ms(interval - 30);
+  }
+  signal(SIGPIPE, SIG_IGN);
+  for (int tries = 0; tries < 40; tries++) {
+    pause_ms(700);
+    if (!try_key(fd, quit)) break;
+  }
+  close(fd);
+  return 0;
+}
+
 static int cmp(const void *a, const void *b) {
   int64_t x = *(const int64_t *)a, y = *(const int64_t *)b;
   return x < y ? -1 : x > y;
@@ -136,6 +159,7 @@ static int summary(int argc, char **argv) {
 int main(int argc, char **argv) {
   if (argc > 1 && !strcmp(argv[1], "feed")) return feed(argc, argv);
   if (argc > 1 && !strcmp(argv[1], "summary")) return summary(argc, argv);
+  if (argc > 1 && !strcmp(argv[1], "keys")) return keys(argc, argv);
   die("usage: gamedrive feed ... | gamedrive summary GAME_LOG RSS_SAMPLES");
   return 1;
 }

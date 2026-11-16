@@ -1,0 +1,33 @@
+# Sleepers that are woken early by messages and may be stolen by other harts
+# mid-sleep: every sleep must end, and none may oversleep by much.
+unsafe program.
+List = use "std/list".
+
+Q = Type (Poke k | Done who).
+
+sleeper boss me = slLoop boss me 0.
+slLoop boss me k | k >= 300 = _ = send boss (Done me); k.
+slLoop boss me k =
+  t0 = Sys.mtime Unit;
+  _ = Sys.sleepUs 100;
+  t1 = Sys.mtime Unit;
+  _ = case t1 - t0 >= 1000 of True -> 0 | False -> error "sleepmig: woke before its deadline";
+  slLoop boss me (k + 1).
+
+poker xs k | k >= 20000 = 0.
+poker xs k = _ = List.map (fn x -> send x (Poke k)) xs; poker xs (k + 1).
+
+spawnAll boss n k acc | k >= n = acc.
+spawnAll boss n k acc = spawnAll boss n (k + 1) (spawn (sleeper boss) :: acc).
+
+waitAll me n | n == 0 = 0.
+waitAll me n = m = receive me; _ = drop m; waitAll me (n - 1).
+
+main =
+  me = myself 0;
+  xs = spawnAll me 64 0 [];
+  p2 = spawn (fn self -> poker xs 0);
+  p3 = spawn (fn self -> poker xs 0);
+  p = spawn (fn self -> poker xs 0);
+  _ = waitAll me 64;
+  print "sleepmig: ok, 64 sleepers x 300 sleeps".

@@ -1,0 +1,15 @@
+# bench: actor churn -- 200,000 spawn/request/reply/exit cycles, 8 in flight
+worker : Int -> Int .
+worker self = case receive self of (who, n) -> _ = send who (n + 1); 0.
+wave : unsafe Int -> Int -> Int -> Int .
+wave me k acc = if k == 0 then acc else
+  a = spawn worker; b = spawn worker; c = spawn worker; d = spawn worker;
+  e = spawn worker; f = spawn worker; g = spawn worker; h = spawn worker;
+  _ = send a (me, k); _ = send b (me, k); _ = send c (me, k); _ = send d (me, k);
+  _ = send e (me, k); _ = send f (me, k); _ = send g (me, k); _ = send h (me, k);
+  r = receiveFrom me a + receiveFrom me b + receiveFrom me c + receiveFrom me d
+    + receiveFrom me e + receiveFrom me f + receiveFrom me g + receiveFrom me h;
+  wave me (k - 1) (acc + r).
+main =
+  me = myself 0;
+  print "spawnchurn = {wave me 25000 0}".

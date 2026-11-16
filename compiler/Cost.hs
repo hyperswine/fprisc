@@ -82,6 +82,24 @@ simp = \case
   CDivC e k -> mkDiv (simp e) k
   c -> c
 
+-- the size past which a function's cost equation is replaced by its opaque name
+costLimit :: Int
+costLimit = 4096
+
+-- does the term have more than n nodes? Stops counting once it knows.
+largerThan :: Int -> Cost -> Bool
+largerThan n c = go [c] n < 0
+  where
+    go _ k | k < 0 = k
+    go [] k = k
+    go (x : rest) k = case x of
+      CAdd xs -> go (xs ++ rest) (k - 1)
+      CMul xs -> go (xs ++ rest) (k - 1)
+      CMax xs -> go (xs ++ rest) (k - 1)
+      CNat y -> go (y : rest) (k - 1)
+      CDivC y _ -> go (y : rest) (k - 1)
+      _ -> go rest (k - 1)
+
 simplifyCost :: Cost -> Cost
 simplifyCost = simp
 
@@ -140,7 +158,9 @@ mkMax xs = case rest ++ kmax of
   [e, CN 0] -> mkNat e
   zs -> CMax zs
   where
-    ys0 = nub (sort (concatMap unMax xs))
+    -- sorted and distinct. A set, not `nub . sort`: nub compares every pair,
+    -- and an arm is a tree (a large game's update made this minutes)
+    ys0 = S.toAscList (S.fromList (concatMap unMax xs))
     ks = [n | CN n <- ys0]
     -- arms that differ only in their constant keep the largest one:
     -- max(x + 44, x + 45) is x + 45
@@ -409,7 +429,7 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
       let (ps, body) = prog M.! n
           sub = M.fromList [(p, CP p) | p <- ps]
           R w a l steps = costE done grp (M.fromList [(p, p) | p <- ps]) sub body
-       in CostEq (simp w) (simp a) (simp l) [(simp x, simp y, simp z) | (x, y, z) <- steps]
+       in bounded n (CostEq (simp w) (simp a) (simp l) [(simp x, simp y, simp z) | (x, y, z) <- steps])
 
     recursiveGroup done ns =
       case mapM (\n -> (,) n <$> measureFor n) ns of
@@ -436,7 +456,7 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
                       [_] | any varying (triple whole), Just split <- exitSplit done grp n edges,
                             not (any varying (triple split)) -> split
                       _ -> whole
-                 in (n, CostEq w' a' l' (ceSteps (bodies M.! n)))
+                 in (n, bounded n (CostEq w' a' l' (ceSteps (bodies M.! n))))
               triple (x, y, z) = [x, y, z]
            in foldr (\(n, e) acc -> M.insert n e acc) done (map eqFor ms)
         -- Unmeasured or branching recursion: the call count is unknown, so work is opaque,
@@ -448,6 +468,16 @@ costProgramForWithSizes verifiedSizes roots measures declared allProg = M.mapWit
               eqOf n = if allocFree then CostEq (CO n) (CN 0) (CO n) [] else opaqueEq n
            in foldr (\n acc -> M.insert n (eqOf n) acc) done ns
     opaqueEq n = CostEq (CO n) (CO n) (CO n) []
+    -- A caller substitutes its callees' equations whole, so a term grows with
+    -- the depth of the call graph under it: a large program's top functions
+    -- reached millions of nodes and the simplifier (which sorts a max's arms,
+    -- comparing trees) took minutes. Past `costLimit` nodes an equation says
+    -- nothing a reader or a region decision uses; the function is then
+    -- opaque, as an unmeasured recursion is: never an understatement.
+    -- each component on its own, and only when something asks for it: most
+    -- equations are never read whole (the region analysis reads allocation)
+    bounded n (CostEq w a l steps) = CostEq (cap w) (cap a) (cap l) steps
+      where cap c = if largerThan costLimit c then CO n else c
 
     -- A decreasing measure does not bound other arguments: an accumulator
     -- can double at each step. Preserve a parameter-dependent per-call cost

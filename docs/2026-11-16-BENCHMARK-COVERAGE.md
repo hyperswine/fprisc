@@ -233,3 +233,28 @@ quarter of the frames); the frame count is the app's own.
 Not done: no competitor runs the same game, so this is an absolute measurement, not a comparison;
 not run on the Pi 4B, where the margin is what matters; no input-to-frame latency; the app's share
 of a frame is not separated from the host's.
+
+### The same games on an SDK built with the current compiler (17 November)
+
+QOS at `87600ff` with FP-RISC `main` (`a7b09bf5`) instead of its pin, staged with
+`tools/stage-portable-sdk.sol`. The games needed one source change to build: their boot code
+destructured the graphics endpoint as a pair, and it is now an owned `Endpoint` (`EC.owner`,
+`EC.close`); that is on a `game-mvu` branch in each game repository.
+
+| | Dungeon, 0.12.0 SDK | Dungeon, current | Terra II, 0.12.0 SDK | Terra II, current |
+|---|---:|---:|---:|---:|
+| seconds of play | 300 | 300 | 300 | 480 |
+| frames a second | 57.3 | 57.2 | 57.5 | 57.4 |
+| host time in a frame, p50 / p99 | 0.99 / 1.9 ms | 1.05 / 2.1 ms | 1.1 / 2.2 ms | 1.1 / 2.2 ms |
+| instructions per frame | 12.6 M | 11.7 M | 18.0 M | 16.6 M |
+| CPU per second of play | 0.19 s | 0.20 s | 0.24 s | 0.24 s |
+| host memory, first sample | 132 MB | 98 MB | 157 MB | 101 MB |
+| host memory, last sample | 132 MB | 99 MB | 163 MB, still rising | 125 MB, flat for the last 3 min |
+
+- **Memory is a quarter to a third lower**, and **Terra II's growth levels off**: 101 MB at the
+  start, 124.8 MB by five minutes, 124.9 MB at eight. On the old SDK it was still climbing at five
+  minutes; that run was not long enough to say whether it would also have levelled.
+- **Instructions per frame fall 7 to 8%**; CPU time per second of play does not move. Most of a
+  frame is the host and the GL driver, which this month's compiler work does not touch, so the
+  game logic's own gain is diluted. Separating the app's share is still not done.
+- Frame rate and host frame time are unchanged, as expected: both were far inside the budget.

@@ -1,0 +1,251 @@
+# std/game.fpr -- Game: a pure MVU interface for games (docs/2026-11-12-GAME-MVU.md).
+#
+#   Game = use "std/game".
+#
+#   init   : flags -> (model, Game.Cmd msg)
+#   update : msg -> model -> (model, Game.Cmd msg)
+#   subs   : model -> List (Game.Sub msg)
+#   view   : model -> Game.Element
+#
+#   app = Game.app init update subs view
+#
+# The game defines its own Model and Msg. `update` is the only place state
+# changes and the only place effects are asked for, and it asks by VALUE: a
+# Cmd describes one-shot work (a log line, a sound, a frame capture, quit), a
+# Sub describes continuing interest (a key decoder, a periodic tick). Nothing
+# here opens a window, creates an actor or touches a device: a runner does
+# (QOS: programs/mods/gamerun.fpr), and `Game.play` below is a runner that does
+# none of it, for tests.
+#
+# THE CONTRACT A RUNNER KEEPS
+#   - every input reaches update as a Msg, through the decoders `subs model`
+#     gives for the model AS IT IS when the input is taken; a decoder may
+#     answer None, and the input is then nobody's
+#   - the commands of one transition are performed once, in order, after the
+#     model has changed; calling `view` any number of times performs nothing
+#   - a tick subscription keeps its cadence while it stays in the list
+#   - Quit ends the run after the transition that asked for it
+#
+# Data comes last, as everywhere in std.
+
+O = use "option".
+
+# ---- what update asks for --------------------------------------------------------------------
+# None        nothing
+# Batch cs    these, in order
+# Log s       one line of the game's transcript
+# Sound n v   play the cue n (a name, or the cue itself: the platform's value);
+#             v is the game's own variation number
+# Music n v   the track n at volume v from now on; volume 0 is silence
+# Capture     keep the frame this transition renders
+# Quit        end the run
+# Attempt task toMsg   fallible work; what came of it reaches update later as
+#             the message `toMsg result`, where result : Result String String
+Cmd = Type (None | Batch cs | Log s | Sound n v | Music n v | Capture | Quit | Attempt task toMsg).
+
+none = None.
+batch : List Cmd -> Cmd .
+batch cs = Batch cs.
+log : String -> Cmd .
+log s = Log s.
+sound n v = Sound n v.
+music n v = Music n v.
+capture = Capture.
+quit = Quit.
+attempt task toMsg = Attempt task toMsg.
+
+# ---- fallible work ---------------------------------------------------------------------------
+# A Task describes work that can fail and takes time: the game never performs
+# it. Its result is a Result String String handed to the `toMsg` the game gave
+# with it, and arrives as an ordinary message, after the transition that asked.
+# Independent tasks may be answered in any order; a game that cares carries a
+# request number in its message and ignores a result it no longer waits for.
+#
+# Storage is a log of records per name:
+#   Replay name          every record of the log, in order, as one text
+#   ReadLatest name      the newest record
+#   Append name text     add a record
+# What a completed append guarantees (durability, what a lost reply means) is
+# the storage's contract, not this module's.
+Task = Type (Replay name | ReadLatest name | Append name text).
+# what every storage task answers on a platform with nothing to store on
+noStorage = "no storage".
+replay name = Replay name.
+readLatest name = ReadLatest name.
+append name text = Append name text.
+
+# ---- what the model is interested in ---------------------------------------------------------
+# Tick ms msg    msg every ms milliseconds
+# Keys decode    a pressed key's code -> the game's message, or None
+# Wheel decode   a wheel movement (dy, dx) -> the game's message, or None
+Sub = Type (Tick ms msg | Keys decode | Wheel decode).
+
+tick ms msg = Tick ms msg.
+keys decode = Keys decode.
+wheel decode = Wheel decode.
+
+# ---- what view answers -----------------------------------------------------------------------
+# One frame as layers, back to front: the world (a scene the renderer walks)
+# and the overlay drawn over it (the HUD). Both are the game's own values; the
+# renderer of the platform the game was built for says what it draws.
+Element = Type (Layers world overlay).
+layers world overlay = Layers world overlay.
+
+App = Type (App ini upd sbs vw).
+app init update subs view = App init update subs view.
+
+# ---- the pure core: one input, one transition ------------------------------------------------
+# What a runner hands in. A runner turns its platform's events into these;
+# Elapsed carries the tick's own period, so two tick subscriptions of
+# different periods are told apart.
+Input = Type (Key code | Scroll dy dx | Elapsed ms).
+
+# What a runner performs, flat and in order.
+Effect = Type (ELog s | ESound n v | EMusic n v | ECapture | EQuit | ETask task toMsg).
+
+# the commands of a transition as effects, in the order they were asked for
+effects : Cmd -> List Effect .
+effects c = flat c Nil.
+flat : (c : Cmd | measure c) -> List Effect -> List Effect .
+flat c rest = case c of
+    None -> rest
+  | Log s -> ELog s :: rest
+  | Sound n v -> ESound n v :: rest
+  | Music n v -> EMusic n v :: rest
+  | Capture -> ECapture :: rest
+  | Quit -> EQuit :: rest
+  | Attempt task toMsg -> ETask task toMsg :: rest
+  | Batch cs -> flatAll cs rest.
+flatAll : (cs : List Cmd | measure cs) -> List Effect -> List Effect .
+flatAll cs rest = case cs of
+    Nil -> rest
+  | c :: more -> flat c (flatAll more rest).
+
+# the message an input is, to the first subscription that takes it
+decode : (subs : List Sub | measure subs) -> Input -> O.Option msg .
+decode subs input = case subs of
+    Nil -> O.None
+  | s :: more -> (case taken s input of
+        O.Some msg -> O.Some msg
+      | O.None -> decode more input).
+taken : Sub -> Input -> O.Option msg .
+taken (Keys f) (Key code) = f code.
+taken (Wheel f) (Scroll dy dx) = f dy dx.
+taken (Tick ms msg) (Elapsed period) = if ms == period then O.Some msg else O.None.
+taken s input = O.None.
+
+# the shortest tick period the model asks for, or 0 for none: a runner's clock
+period : (subs : List Sub | measure subs) -> Int .
+period subs = case subs of
+    Nil -> 0
+  | Tick ms msg :: more -> shorter ms (period more)
+  | s :: more -> period more.
+shorter : Int -> Int -> Int .
+shorter a 0 = a.
+shorter a b = if a < b then a else b.
+# every tick period the model asks for, in subscription order
+periods : (subs : List Sub | measure subs) -> List Int .
+periods subs = case subs of
+    Nil -> Nil
+  | Tick ms msg :: more -> ms :: periods more
+  | s :: more -> periods more.
+wantsKeys : (subs : List Sub | measure subs) -> Bool .
+wantsKeys subs = case subs of
+    Nil -> False
+  | Keys f :: more -> True
+  | s :: more -> wantsKeys more.
+
+# start: the first model and what init asked for
+start : App -> flags -> (model, List Effect) .
+start (App ini upd sbs vw) flags = case ini flags of (m, c) -> (m, effects c).
+
+# one input: the model after it and the effects of that transition; an input
+# no subscription takes changes nothing
+step : App -> Input -> model -> (model, List Effect) .
+step (App ini upd sbs vw) input m = case decode (sbs m) input of
+    O.None -> (m, Nil)
+  | O.Some msg -> (case upd msg m of (m2, c) -> (m2, effects c)).
+
+# a message handed straight to update: how a runner delivers a task's result
+apply : App -> msg -> model -> (model, List Effect) .
+apply (App ini upd sbs vw) msg m = case upd msg m of (m2, c) -> (m2, effects c).
+
+subscriptions : App -> model -> List Sub .
+subscriptions (App ini upd sbs vw) m = sbs m.
+
+view : App -> model -> Element .
+view (App ini upd sbs vw) m = vw m.
+
+# ---- a runner with no platform: for tests ----------------------------------------------------
+# Feed inputs in order; answer the last model and every effect, in order. It
+# stops at the transition that asks to quit, as a runner does: the inputs after
+# it are never taken.
+#
+# `playWith answer` also answers tasks: after each transition, every task it
+# asked for is given `answer task` and the result message is delivered before
+# the next input, in the order the tasks were asked for; what those deliveries
+# ask for is answered the same way. `play` answers every task Err noStorage,
+# which is what a game with no storage sees. A test that needs a late, missing or
+# reordered completion does not use these: it calls `step`, keeps the ETask
+# effects, and hands `apply` the message for whichever result it wants, when
+# it wants.
+play : App -> flags -> List Input -> (model, List Effect) .
+play a flags inputs = playWith refuse a flags inputs.
+refuse task = Err noStorage.
+
+playWith : (task -> Result String String) -> App -> flags -> List Input -> (model, List Effect) .
+playWith answer a flags inputs = case start a flags of (m, es) ->
+  (case settle chain answer a es m Nil of (m2, done) ->
+    (if asksQuit done then (m2, rev done Nil) else playOn answer a inputs m2 done)).
+# `done` is the effects so far, newest first
+playOn : (task -> Result String String) -> App -> (inputs : List Input | measure inputs) -> model -> List Effect -> (model, List Effect) .
+playOn answer a inputs m done = case inputs of
+    Nil -> (m, rev done Nil)
+  | input :: more -> (case step a input m of (m2, es) ->
+      (case settle chain answer a es m2 done of (m3, done2) ->
+        (if asksQuit done2 then (m3, rev done2 Nil) else playOn answer a more m3 done2))).
+# How many task results one transition may lead to, each asking for the next,
+# before the test runner calls it a loop. A game that chains more is wrong or
+# needs its own stepping; nothing is dropped silently.
+chain = 256.
+# record the effects, newest first, delivering each task's result where it
+# stands in the order
+settle : (fuel : Int | measure fuel) -> (task -> Result String String) -> App -> List Effect -> model -> List Effect -> (model, List Effect) .
+settle fuel answer a es m done = case es of
+    Nil -> (m, done)
+  | ETask task toMsg :: more ->
+      (if fuel <= 0 then error "Game.playWith: more than 256 chained task results in one transition"
+       else (case apply a (toMsg (answer task)) m of (m2, es2) ->
+         settle (fuel - 1) answer a (joined es2 more) m2 (ETask task toMsg :: done)))
+  | e :: more -> (if fuel <= 0 then error "Game.playWith: more than 256 chained task results in one transition"
+                  else settle (fuel - 1) answer a more m (e :: done)).
+joined : (xs : List a | measure xs) -> List a -> List a .
+joined xs ys = case xs of
+    Nil -> ys
+  | x :: more -> x :: joined more ys.
+onto : (es : List Effect | measure es) -> List Effect -> List Effect .
+onto es done = case es of
+    Nil -> done
+  | e :: more -> onto more (e :: done).
+rev : (xs : List a | measure xs) -> List a -> List a .
+rev xs acc = case xs of
+    Nil -> acc
+  | x :: more -> rev more (x :: acc).
+asksQuit : (es : List Effect | measure es) -> Bool .
+asksQuit es = case es of
+    Nil -> False
+  | EQuit :: more -> True
+  | e :: more -> asksQuit more.
+
+# the transcript lines among some effects, in order: what a test compares
+logged : (es : List Effect | measure es) -> List String .
+logged es = case es of
+    Nil -> Nil
+  | ELog s :: more -> s :: logged more
+  | e :: more -> logged more.
+# how many times a frame capture was asked for
+captures : (es : List Effect | measure es) -> Int .
+captures es = case es of
+    Nil -> 0
+  | ECapture :: more -> 1 + captures more
+  | e :: more -> captures more.
