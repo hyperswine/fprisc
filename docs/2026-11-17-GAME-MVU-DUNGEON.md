@@ -1,7 +1,7 @@
 # Game MVU: the pure interface, a QOS runner, and Dungeon on it
 
-Date: 17 November 2026. Kind: implementation record for steps 1 and 2 of the
-[game MVU proposal](2026-11-12-GAME-MVU.md) and its first consumer. Terra II is not migrated.
+Date: 17 November 2026. Kind: implementation record for the
+[game MVU proposal](2026-11-12-GAME-MVU.md) and its two consumers, Dungeon and Terra II.
 
 ## What exists now
 
@@ -57,16 +57,60 @@ game never sees an actor, an endpoint or the environment pair.
 - Two minutes of scripted play (`tests/bench/e2e/game.sol`): 57.0 frames a second, 11.7 M
   instructions a frame, 98 to 99 MB: the same as before the migration on the same SDK.
 
+## Later the same day: tasks, music, and Terra II
+
+**Tasks.** `Game.attempt task toMsg` asks for fallible work and names the message its
+`Result String String` becomes. The tasks are storage, a log of records per name: `replay`,
+`readLatest`, `append`. `Game.apply app msg model` delivers a message directly: it is how a runner
+hands a result over, and how a test holds a completion back, reorders it or invents one.
+`Game.playWith answer` answers tasks in order after each transition; `Game.play` answers every
+task `Err Game.noStorage`, which is also what the QOS runner answers when `config.storage` is off.
+`Game.music name volume` joins the commands. The QOS runner performs tasks through the Files
+service, synchronously, where the task stood among the transition's effects.
+
+**Terra II** (branch `game-mvu`).
+- `src/game.fpr`: `init`, `update`, `subs` over the model, no platform call. The rules and input
+  handlers already queued their words and sound cues on the model; the tick that ran them now asks
+  for them as `log` and `sound` commands. The six in-place music calls queue a volume the same way.
+  A capture and quit are asked for at the transitions that used to perform them.
+- **Loading** is two tasks from `init`; the profile and the saved game arrive as messages. No disk,
+  an empty profile and a saved game are told apart, and a saved game that arrives after a game was
+  started does not replace it.
+- **Saves are acknowledged.** Records wait in order, each with an identity, one in flight; only its
+  acknowledgement removes it, and "game saved" is announced then, not when it was asked for. A
+  failed snapshot is kept and sent again after a rest. A profile event whose reply was lost is not
+  sent again (it would count a game twice): the profile is read back first, and the record is
+  acknowledged if its line is there. An answer for another identity is ignored.
+- `src/terra2.fpr` is the view and `Run.run` with the meshes, the cue player and storage on.
+
+Acceptance:
+- A fixed 34-key session through the real window gives the **same 54-line transcript** before and
+  after the migration (and twice in a row before).
+- Two launches on one disk: the second reports the profile, finds the saved game and continues it.
+- `tests/headless` (a small app project run by the SDK's host with no display): 23 assertions. A
+  match with a disk and without plays the same game; nothing is announced as saved without a disk;
+  cues are asked for once however many idle ticks follow; a record made while a write is in
+  flight waits behind it; a stale answer changes nothing; an unconfirmed profile event is read
+  back and never re-sent blindly; a failed snapshot is kept, rests and goes out again; a late
+  saved game does not overwrite a new one.
+- The game's own graphical check passes with the headless run added to it.
+
+**A compiler defect found on the way.** A cold compile of Terra II took more than nine minutes with
+the current compiler, before or after the migration (the SDK's per-project unit cache had been
+hiding it). The region placement computes a cost equation per function, a caller substitutes its
+callees' equations whole, and the simplifier sorts and compares those trees. Two changes in
+`compiler/Cost.hs`: a max's arms are made distinct through a set instead of `nub . sort`, and a
+function whose equation passes 4,096 nodes becomes opaque, as an unmeasured recursion already is
+(never an understatement). The bound is applied per component and only when a component is read, so programs that never read an equation whole pay nothing (the compile budget is unchanged). Cold compile: over nine minutes to 35 seconds. The migrated Terra II plays as before: 57.9 frames a second, 16.9 M instructions a frame, 124 MB after three minutes. The compile-budget gate
+did not see this: its three programs are too small. `codegenRev` 242.
+
 ## Not done
 
-- **Terra II.** It builds against the new SDK (its boot code was updated), but it is not migrated.
-  Its update path performs effects in place: about forty sound, music and print calls in the input
-  and action code, save appends through the Files client it holds in `env`, and a profile and
-  saved game read synchronously at init. Its note's steps 3 and 4 need what is not built yet:
-- **Tasks.** `Game.Cmd` has no fallible work with a result message (`attempt`), no
-  `Task.latest`, and `Game.play` cannot be handed a task completion. Storage with acknowledged
-  saves and the replaceable computation tasks depend on this.
-- **Dungeon's navigation field as a task** (the second half of its note).
+- **Replaceable computation tasks** (`Task.latest`): Dungeon's navigation field and Terra II's
+  tactical hint, the second half of each game's note.
+- **Asynchronous storage.** The QOS runner performs a task inside the frame that asked; a slow
+  disk is a slow frame. The game's side is already written for late answers.
+- **Terra II's failure paths on a real disk.** They are exercised by injected answers only.
 - **A purity check.** Nothing stops a `print` inside `view`; purity is a convention, as the
   proposal says it would be until a check exists.
 - **One tick period.** The QOS runner refuses a model whose tick subscriptions name different

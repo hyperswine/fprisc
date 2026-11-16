@@ -34,20 +34,22 @@ O = use "option".
 # None        nothing
 # Batch cs    these, in order
 # Log s       one line of the game's transcript
-# Sound n v   play the cue named n; v is the game's own variation number
+# Sound n v   play the cue n (a name, or the cue itself: the platform's value);
+#             v is the game's own variation number
+# Music n v   the track n at volume v from now on; volume 0 is silence
 # Capture     keep the frame this transition renders
 # Quit        end the run
 # Attempt task toMsg   fallible work; what came of it reaches update later as
 #             the message `toMsg result`, where result : Result String String
-Cmd = Type (None | Batch cs | Log s | Sound n v | Capture | Quit | Attempt task toMsg).
+Cmd = Type (None | Batch cs | Log s | Sound n v | Music n v | Capture | Quit | Attempt task toMsg).
 
 none = None.
 batch : List Cmd -> Cmd .
 batch cs = Batch cs.
 log : String -> Cmd .
 log s = Log s.
-sound : String -> Int -> Cmd .
 sound n v = Sound n v.
+music n v = Music n v.
 capture = Capture.
 quit = Quit.
 attempt task toMsg = Attempt task toMsg.
@@ -66,6 +68,8 @@ attempt task toMsg = Attempt task toMsg.
 # What a completed append guarantees (durability, what a lost reply means) is
 # the storage's contract, not this module's.
 Task = Type (Replay name | ReadLatest name | Append name text).
+# what every storage task answers on a platform with nothing to store on
+noStorage = "no storage".
 replay name = Replay name.
 readLatest name = ReadLatest name.
 append name text = Append name text.
@@ -97,7 +101,7 @@ app init update subs view = App init update subs view.
 Input = Type (Key code | Scroll dy dx | Elapsed ms).
 
 # What a runner performs, flat and in order.
-Effect = Type (ELog s | ESound n v | ECapture | EQuit | ETask task toMsg).
+Effect = Type (ELog s | ESound n v | EMusic n v | ECapture | EQuit | ETask task toMsg).
 
 # the commands of a transition as effects, in the order they were asked for
 effects : Cmd -> List Effect .
@@ -107,6 +111,7 @@ flat c rest = case c of
     None -> rest
   | Log s -> ELog s :: rest
   | Sound n v -> ESound n v :: rest
+  | Music n v -> EMusic n v :: rest
   | Capture -> ECapture :: rest
   | Quit -> EQuit :: rest
   | Attempt task toMsg -> ETask task toMsg :: rest
@@ -179,14 +184,14 @@ view (App ini upd sbs vw) m = vw m.
 # `playWith answer` also answers tasks: after each transition, every task it
 # asked for is given `answer task` and the result message is delivered before
 # the next input, in the order the tasks were asked for; what those deliveries
-# ask for is answered the same way. `play` refuses every task (Err), which is
-# what a game with no storage sees. A test that needs a late, missing or
+# ask for is answered the same way. `play` answers every task Err noStorage,
+# which is what a game with no storage sees. A test that needs a late, missing or
 # reordered completion does not use these: it calls `step`, keeps the ETask
 # effects, and hands `apply` the message for whichever result it wants, when
 # it wants.
 play : App -> flags -> List Input -> (model, List Effect) .
 play a flags inputs = playWith refuse a flags inputs.
-refuse task = Err "Game.play answers no tasks".
+refuse task = Err noStorage.
 
 playWith : (task -> Result String String) -> App -> flags -> List Input -> (model, List Effect) .
 playWith answer a flags inputs = case start a flags of (m, es) ->

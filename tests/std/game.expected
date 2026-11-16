@@ -28,7 +28,7 @@ no tick below zero: n=-1 beats=0
 a refused save: n=5 beats=0
   log start 5
   task append log [n 5]
-  log not saved: Game.play answers no tasks
+  log not saved: no storage
   log n is 5
   sound blip 5
   log said

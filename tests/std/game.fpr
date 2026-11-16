@@ -37,6 +37,7 @@ a = Game.app init update subs view.
 
 effect (Game.ELog s) = "log {s}".
 effect (Game.ESound n v) = "sound {n} {v}".
+effect (Game.EMusic n v) = "music {n} {v}".
 effect Game.ECapture = "capture".
 effect Game.EQuit = "quit".
 effect (Game.ETask (Game.Append name text) f) = "task append {name} [{text}]".
