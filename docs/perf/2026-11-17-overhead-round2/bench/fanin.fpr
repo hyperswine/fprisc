@@ -1,0 +1,29 @@
+# stress: 16 senders on all harts into one receiver -- 9 of them go through
+# the shared ring; every message is acknowledged, counted and summed
+sender : unsafe Int -> Int .
+sender self = case receive self of (boss, sink, base) -> go self sink base 20000 >> send boss 1 >> 0.
+go : unsafe Int -> Int -> Int -> Int -> Int .
+go self sink base k = if k == 0 then 0 else
+  _ = send sink (self, base + k);
+  _ = receiveFrom self sink;
+  go self sink base (k - 1).
+sink : unsafe Int -> Int -> Int -> Int .
+sink self n acc = if n == 0 then acc else case receive self of
+  (who, v) -> _ = send who 0; sink self (n - 1) (acc + v).
+collector : unsafe Int -> Int .
+collector self = case receive self of (boss, total) -> send boss (sink self total 0) >> 0.
+start : unsafe Int -> Int -> Int -> Int -> Int .
+start me snk i acc = if i == 16 then acc else
+  s = spawnOn (i % 8) sender;
+  _ = send s (me, snk, i * 1000000);
+  start me snk (i + 1) acc.
+waitAll : unsafe Int -> Int -> Int .
+waitAll me i = if i == 0 then 0 else _ = receive me; waitAll me (i - 1).
+main =
+  me = myself 0;
+  c = spawnOn 3 collector;
+  _ = send c (me, 320000);
+  _ = start me c 0 0;
+  t = receiveFrom me c;
+  _ = waitAll me 16;
+  print "fanin = {t}".

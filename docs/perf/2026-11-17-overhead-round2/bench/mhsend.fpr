@@ -1,0 +1,18 @@
+# bench: multi-hart send -- 4 client/server pairs on 8 harts, each client
+# makes 250,000 request/replies carrying a heap String (copied on send)
+server : unsafe Int -> a .
+server self = case receive self of (who, s) -> send who (strIndexOf "client" s) >> server self.
+loop : unsafe Int -> Int -> Int -> Int -> Int .
+loop me srv k acc = if k == 0 then acc else
+  _ = send srv (me, "request {k} from a client");
+  r = receiveFrom me srv;
+  loop me srv (k - 1) (acc + r).
+client : unsafe Int -> Int .
+client self = case receive self of (boss, srv) -> send boss (loop self srv 250000 0) >> 0.
+main =
+  me = myself 0;
+  c0 = spawnOn 0 client; c1 = spawnOn 1 client; c2 = spawnOn 2 client; c3 = spawnOn 3 client;
+  s0 = spawnOn 4 server; s1 = spawnOn 5 server; s2 = spawnOn 6 server; s3 = spawnOn 7 server;
+  _ = send c0 (me, s0); _ = send c1 (me, s1); _ = send c2 (me, s2); _ = send c3 (me, s3);
+  t = receiveFrom me c0 + receiveFrom me c1 + receiveFrom me c2 + receiveFrom me c3;
+  print "mhsend = {t}".
