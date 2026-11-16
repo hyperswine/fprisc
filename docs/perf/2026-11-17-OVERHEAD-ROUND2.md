@@ -1,6 +1,6 @@
 # Overhead elimination, round 2 (2026-11-17)
 
-Follows the overhead audit of 2026-11-16 (branch `ari/overhead-audit-2026-11-16`, `docs/perf/2026-11-16-overhead-audit`, not on `main`), which ranked compiled-code rows (C) and runtime rows (R). Round 1 was #81. This note records the outcome of each row taken up in round 2, with the measured numbers, and why R1, R4, R5, R8 and both parts of R3 were not shipped. The bench programs used for the runtime rows are in `2026-11-17-overhead-round2/bench/`.
+Follows the overhead audit of 2026-11-16 (branch `ari/overhead-audit-2026-11-16`, `docs/perf/2026-11-16-overhead-audit`, not on `main`), which ranked compiled-code rows (C) and runtime rows (R). Round 1 was #81. This note records the outcome of each row taken up in round 2, with the measured numbers, including R2 (#87, an epoll reactor that parks a waiting `Os.read`), and why R1, R4, R5, R8 and both parts of R3 were not shipped. The bench programs used for the runtime rows are in `2026-11-17-overhead-round2/bench/`.
 
 Machine: Linux x86-64, 8 cores, 8 harts (the posix default). Instruction counts are callgrind Ir, the median of 3 runs (at most 2 running at once), at the audit's sizes. Wall and CPU (user+sys) times are medians of interleaved runs on an otherwise idle box, with the run counts given per row. Profiles are `perf record -F 2000..4000` cpu-clock samples (the box has no hardware counters).
 
@@ -12,7 +12,8 @@ Machine: Linux x86-64, 8 cores, 8 harts (the posix default). Instruction counts 
 | C1 | x64 F64 register class, fused float compares | merged | #82 |
 | C3 | String-scan versioning for a scan inlined into an outer loop | merged | #83 |
 | C10 | a Vector copy takes three blocks, not five | merged | #84 |
-| C7 | `String.foldWords`/`foldLines`: words and lines without the list | open | #86 |
+| C7 | `String.foldWords`/`foldLines`: words and lines without the list | merged | #86 |
+| R2 | epoll reactor: a parked `Os.read` leaves its hart to the other actors | open | #87 |
 | R3 (part 1) | channel sender keys on a read-mostly line | measured, not shipped: wall time regressed | - |
 | R3 (part 2) | lock-free MPSC shared ring | deferred | - |
 | R8 | adaptive spin-before-block on by default | measured, not shipped | - |
@@ -59,7 +60,7 @@ A copied column's storage now sits in the same block as its `col_t`, and the kin
 
 fannkuchredux duplicates its permutation vector once per permutation. The other 15 programs moved by 0.3% or less.
 
-## C7: words and lines without the list (#86, open)
+## C7: words and lines without the list (#86, merged)
 
 `String.words` and `String.lines` build the whole list before anything consumes it. On wordfreq_mutmap's corpus, that is 2M cells and 2M strings alive at once. `String.foldWords step z s` (= `List.fold step z (String.words s)`) and `String.foldLines` hand each piece to `step` as soon as it is cut. They use the same scan and the same fuel bound (`strlen s + 1`) as `words`/`lines`. Programs have to opt in; the compiler does not fuse `List.fold f z (String.words s)`. Two new bench variants, `tests/bench/apps/wordfreq_stream.fpr` and `csv_stream.fpr`, print the same output as the originals. Base is C3 merged with main (82f2d259).
 
@@ -104,6 +105,18 @@ The base for the runtime rows is `ari/vec-copy-alloc` (b33f466f): main at 18fce3
 | `mhsend` | four such pairs (harts 0-3 to 4-7), 250,000 each | fixed checksum |
 | `spawnchurn` | 25,000 waves of 8 spawn / request / reply / exit | `spawnchurn = 2500300000` |
 | `fanin` | 16 senders on all harts into one receiver (9 of them through the shared ring), every message acknowledged | `fanin = 2403200160000` |
+
+### R2: an epoll reactor parks an actor waiting to read, not its hart (#87, open)
+
+Before this change, `Os.read` on a pipe or socket with nothing to read blocked in `read(2)` and stalled every other actor on that hart until data arrived. An epoll reactor thread (`machine/posix/os_io.c`) now waits for those descriptors. The reading actor parks with `fpr_io_wait` via `block_unless`, the same path sleep and IRQ waits use, and is woken with a slot|generation token so the reactor never holds an actor pointer. `g_io_waiting` is counted in the deadlock check, so a program waiting on input isn't reported as quiet. `Os.open` records regular files in a bitmap and `Os.close` clears them, so a file read skips the readiness check.
+
+`iowait` (a reader and a 20 x 10 ms ticker on the same hart, stdin = `(sleep 1; echo hello)`): on the base, the ticker is stalled by the read. It prints `first 1006 then 1` and takes 1.205 s. With the reactor it prints `first 1 then 1006`, in 1.003 s on the first head and 1.009 s on 9b502ce5.
+
+`readloop` (124k 4 KB `Os.read`s of a regular file, median of 11 runs): base 74 ms wall / 67 ms sys. A readiness poll on every read was 92 / 75 ms. With the regular-file bitmap it is 74 / 65 ms, the same wall time as base.
+
+`poller_stop` (std-golden) segfaulted on 41 of 100 runs after the first reactor commits, and on 0 of 100 without the reactor. A new actor's `io_slot1` was left uninitialized (the acb block is recycled and not zeroed), so reap ran `io_cancel` on a garbage slot. Setting `io_slot1 = 0` at spawn fixed it: 0 segfaults in 200 runs. `tests/run.sol` on 9b502ce5 is 19 run, 0 unexpected. iostress had 0 failures in 100 runs on the first head and 30 on 9b502ce5. The nightly config-differential is 42 programs × 10 configurations with the two known `no_reuse` mismatches only (`loopcalls`, `vecinline`).
+
+Scope: Linux epoll and `Os.read` only. kqueue, and parking `Os.write` / `Os.connect` / `Os.run`, are follow-ups. No codegen or fuel changes.
 
 ### R3: channel sender keys on a read-mostly line (not shipped; ring deferred)
 
@@ -184,8 +197,12 @@ A sharded table needs every one of those slab-chain walks to take per-slab locks
 | C10 | 200 | 3 |
 | C10, interleaved with R3, box loaded | 400 | 17 |
 | R3, interleaved with C10, box loaded | 400 | 12 |
+| R2 first head | 100 | 1 |
+| R2 (9b502ce5), under load | 30 | 5 |
+| C10, interleaved with R2, box loaded | 60 | 7 |
+| R2, interleaved with C10, box loaded | 60 | 5 |
 
-The crash is older than #81 and isn't caused by these branches. It shows up more often under load. It has not been diagnosed: the box has no debugger. `sleepmig`, `xwake`, `fanin` and `xpingpong` had no failures in 100 runs each on R3.
+The crash is older than #81 and isn't caused by these branches. It shows up more often under load. It has not been diagnosed: the box has no debugger. `sleepmig`, `xwake`, `fanin` and `xpingpong` had no failures in 100 runs each on R3, and none in 100 runs on the first R2 head or 30 on 9b502ce5.
 
 ### Repro
 
