@@ -147,7 +147,6 @@ typedef struct ringv {
 #endif
 #endif
 typedef struct {
-  uw sender;       /* sender id + 1; 0 = unbound (claimed by CAS) */
   uint32_t rt;     /* free-running tail: producer-owned; count = rt - rh */
   uint32_t rh_seen; /* the producer's last view of rh (never ahead of it) */
   uint32_t dyn;    /* 1 = the ring doubles when full (Dynamic n) */
@@ -157,8 +156,17 @@ typedef struct {
                     * before rt, so a seen rt is covered by the rv) */
   uint32_t rh __attribute__((aligned(FPR_CACHELINE))); /* free-running head: consumer-owned */
   uint32_t rt_seen; /* the consumer's last view of rt (never ahead of it) */
-  ringv_t rv0 __attribute__((aligned(FPR_CACHELINE))); /* the inline default */
-  V slots0[RING_CAP];
+  /* READ-MOSTLY LINE (overhead plan R3, 2026-11-17): the sender key is
+   * written only when a slot is claimed, and rv0 only when the channel is
+   * initialised.  Every lookup (chan_for, p_any, p_res,
+   * next_ready_channel) reads the keys of up to MAXSND channels; on the
+   * producer's line, beside rt, each of those reads pulled a line the
+   * producer had just written (pingpong: chan_for was 16% of the
+   * profile).  The inline slots start a line of their own, so a push
+   * does not invalidate rv0 either. */
+  uw sender __attribute__((aligned(FPR_CACHELINE))); /* sender id + 1; 0 = unbound (claimed by CAS) */
+  ringv_t rv0;     /* the inline default */
+  V slots0[RING_CAP] __attribute__((aligned(FPR_CACHELINE)));
   struct fpr_acb *budget_owner;
 } chan_t;
 uw fpr_ring_grows, fpr_send_full; /* growths; sends refused for a full ring */
