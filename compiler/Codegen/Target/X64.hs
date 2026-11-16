@@ -41,7 +41,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 34 -- layout tests fused into branches across edge moves, testq for the tag bit (33: compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words))
+x64SelectionRev = 35 -- a fused tag test compares the whole header word (34: layout tests fused into branches across edge moves, testq for the tag bit; 33: compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words))
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -414,7 +414,19 @@ selectBlock cfg fn facts next b = do
           hdr <- freshV False
           emitI (plain (O.X64 O.LoadField) [any' hdr] [any' (vreg v), OI 0])
           cmpConst hdr (headerWord tg c)
-        -- a tagged Int is no match; then the typeid word, then the variant
+        -- a tagged Int is no match; then the typeid word and the variant
+        -- word.  Both are 32-bit fields of one little-endian header word, so
+        -- when the pair is in [0, 2^31) (every tid the compiler assigns) the
+        -- two sign-extending loads and compares are exactly one 64-bit
+        -- compare against the header word, as OVariantTest does.
+        OTagTest tg c v
+          | inHalf tg && inHalf c -> testBranch $ \miss -> do
+              emitI (testi (vreg v) 1)
+              emitI (bcond O.NotEqual miss)
+              hdr <- freshV False
+              emitI (plain (O.X64 O.LoadField) [any' hdr] [any' (vreg v), OI 0])
+              cmpConst hdr (headerWord tg c)
+          where inHalf n = n >= 0 && toInteger n < 2 ^ (31 :: Int)
         OTagTest tg c v -> testBranch $ \miss -> do
           emitI (testi (vreg v) 1)
           emitI (bcond O.NotEqual miss)
@@ -434,37 +446,35 @@ selectBlock cfg fn facts next b = do
         -- them, the early exits and the final miss share one edge that
         -- performs the moves; the match side is branched to (or through its
         -- own edge when it has moves too).
-        testBranch body = case bTerm b of
-          TCondBr _ t as e bs
-            | null movesE -> body (blockLabel e) >> condBranch fn facts next (bcond O.Equal) (bcond O.NotEqual) t as e bs
-            | otherwise -> do
-                miss <- freshL "miss"
-                body miss
-                let missEdge = parallelMoves movesE >> emitI (jump (blockLabel e))
-                    hitEdge = parallelMoves movesT >> unless (Just t == next) (emitI (jump (blockLabel t)))
-                if null movesT
+        testBranch body
+          | null movesE = body (blockLabel e) >> condBranch fn facts next (bcond O.Equal) (bcond O.NotEqual) t as e bs
+          | otherwise = do
+              miss <- freshL "miss"
+              body miss
+              let missEdge = parallelMoves movesE >> emitI (jump (blockLabel e))
+                  hitEdge = parallelMoves movesT >> unless (Just t == next) (emitI (jump (blockLabel t)))
+              if null movesT
+                then do
+                  emitI (bcond O.Equal (blockLabel t))
+                  emitL miss
+                  parallelMoves movesE
+                  unless (Just e == next) (emitI (jump (blockLabel e)))
+                else if Just e == next
                   then do
-                    emitI (bcond O.Equal (blockLabel t))
+                    emitI (bcond O.NotEqual miss)
+                    parallelMoves movesT
+                    emitI (jump (blockLabel t))
                     emitL miss
                     parallelMoves movesE
-                    unless (Just e == next) (emitI (jump (blockLabel e)))
-                  else if Just e == next
-                    then do
-                      emitI (bcond O.NotEqual miss)
-                      parallelMoves movesT
-                      emitI (jump (blockLabel t))
-                      emitL miss
-                      parallelMoves movesE
-                    else do
-                      hit <- freshL "hit"
-                      emitI (bcond O.Equal hit)
-                      emitL miss
-                      missEdge
-                      emitL hit
-                      hitEdge
-            where movesT = moves t as
-                  movesE = moves e bs
-          _ -> refuse "internal: a fused layout test without a two-way branch"
+                  else do
+                    hit <- freshL "hit"
+                    emitI (bcond O.Equal hit)
+                    emitL miss
+                    missEdge
+                    emitL hit
+                    hitEdge
+          where movesT = moves t as
+                movesE = moves e bs
     _ -> do
       run rest
       selectTerm cfg fn facts next b
