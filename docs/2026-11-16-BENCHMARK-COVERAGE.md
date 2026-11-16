@@ -144,3 +144,47 @@ for the cart total, with and without these changes (not investigated).
 - **A receipt is about 18.7 KB of markup**, mostly class names that are the hex of a declaration.
 - Each event still renders the page outside the cached cards and rows: 116 to 147 M instructions a
   sale.
+
+## The memory held by a session: a call region around a loop that never returns
+
+Found and fixed the same day (`codegenRev` 240).
+
+| Run | peak memory before | after |
+|---|---:|---:|
+| 1 cashier, 25 sales | 0.21 GB | 28 MB |
+| 1 cashier, 50 sales | 0.52 GB | 45 MB |
+| 1 cashier, 200 sales | 2.7 GB | 48 MB |
+| 8 cashiers, 25 sales each | 5.7 GB | 279 MB |
+
+With `FPR_HEAP_MB=256`, 200 sales now complete (46 MB resident) where the server used to stop
+with "heap exhausted".
+
+**Cause.** The compiler puts a pending region around a call to a function that allocates
+(`ReceiveTurns.callRegions`): what the call allocates goes to the region's arena and dies when the
+call returns. Nothing excluded a callee that never returns. Live's session writer (`writing` in
+`std/live.fpr`) is such a loop; it is not a compiler receive loop (its state holds the app's
+functions), so it keeps itself small by hand with `Actor.tidy`, which resets the actor's pool once
+`heapUsed` passes a limit. Under the pending region every turn's allocation went to the arena
+instead: the arena never ended, `heapUsed` never moved (a constant 464,848 bytes while megabytes
+were rendered each turn), and `tidy` never fired. The session held everything it had ever
+allocated until it died.
+
+How it was found: the buddy's block takes by actor showed one actor taking 445 MiB of slabs in 30
+sales; that actor never cycled a receive region; its retired state slabs were all reusable; its
+count of shared objects was flat. So the memory was in an arena that was never reset.
+
+**Fix.** `costly` in `compiler/ReceiveTurns.hs` no longer admits a callee that may wait for a
+message (it may be an actor's loop) or one that manages its own pool (`Sys.poolReset` and the
+rest: under a region it would reset the pool and leave the arena). Both sets already existed in
+the analysis and include what a function reaches in other units.
+
+**Cost.** The writer now does its boundaries: 200 sales take 34.9 G instructions against 29.5 G
+(147 M to 175 M per sale; p50 7.4 to 8.4 ms). That is the price of the reclamation that was
+silently not happening. Any long-lived actor with a hand-written loop was exposed to this, not
+only Live's writer; QOS apps should be re-measured at the next pin.
+
+Checks: compiler unit suites pass; the Sol suite runs 18 checks with 0 unexpected outcomes; std
+golden 49 of 49; the four end-to-end runs log every sale.
+
+Still open from the list above: what eight cashiers are sent (1.5 MB per sale), the size of a
+receipt's markup, and the render outside the cached parts.
