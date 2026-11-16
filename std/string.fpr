@@ -104,6 +104,32 @@ wordEnd : String -> (pos : Int | measure (n - pos)) -> (n : Int) -> Int .
 wordEnd s pos n | pos >= n = n.
 wordEnd s pos n = if isSpace (charAt s pos) then pos else wordEnd s (pos + 1) n.
 
+# ---- streaming: each line or word handed to a step as it is cut -----------------
+# String.foldWords step z s = List.fold step z (String.words s), and
+# String.foldLines likewise for lines, without the list: each piece goes to
+# `step` as soon as it is cut, so a consumer that keeps only a count or a map
+# holds one piece at a time (a 2M-word corpus is no longer 2M cells and
+# strings alive at once). Same pieces, same order, same fuel bound.
+foldWords : (b -> String -> b) -> b -> String -> b .
+foldWords step z s = foldWordsGo (strlen s + 1) step s 0 (strlen s) z.
+foldWordsGo : (fuel : Int | measure fuel) -> (b -> String -> b) -> String -> Int -> Int -> b -> b .
+foldWordsGo fuel step s pos n acc | fuel <= 0 = acc.
+foldWordsGo fuel step s pos n acc | pos >= n = acc.
+foldWordsGo fuel step s pos n acc | isSpace (charAt s pos) = foldWordsGo (fuel - 1) step s (pos + 1) n acc.
+foldWordsGo fuel step s pos n acc =
+  stop = wordEnd s (pos + 1) n;
+  foldWordsGo (fuel - 1) step s stop n (step acc (substr s pos (stop - pos))).
+
+foldLines : (b -> String -> b) -> b -> String -> b .
+foldLines step z s = foldLinesGo (strlen s + 1) step s 0 z.
+foldLinesGo : (fuel : Int | measure fuel) -> (b -> String -> b) -> String -> Int -> b -> b .
+foldLinesGo fuel step s from acc | fuel <= 0 = acc.
+foldLinesGo fuel step s from acc | from >= strlen s = acc.
+foldLinesGo fuel step s from acc =
+  at = charFrom s 10 from (strlen s);
+  if at < 0 then step acc (lineAt s from (strlen s))
+  else foldLinesGo (fuel - 1) step s (at + 1) (step acc (lineAt s from at)).
+
 # ---- searching ---------------------------------------------------------------------
 # where `p` first occurs, from 0; `indexFrom i` looks at or after position i
 indexOf : String -> String -> O.Option Int .
