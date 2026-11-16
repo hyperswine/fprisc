@@ -87,7 +87,9 @@
 #ifndef FPR_LAZY_DYNAMIC_RINGS
 #define FPR_LAZY_DYNAMIC_RINGS 0
 #endif
-#define XCAP 64     /* acb pointers per cross-hart wake ring */
+#ifndef XCAP
+#define XCAP 64     /* acb pointers per cross-hart wake ring (a full ring overflows to xov) */
+#endif
 
 /* A scheduling slice, in the unit a tick charges.  Ticks are weighted by
  * the target instructions they cover (Codegen.Bounds.tickWeights,
@@ -236,6 +238,7 @@ typedef struct fpr_acb {
   uint32_t running; /* 0, or 1 + the hart whose loop has switched into this context and not yet back */
   uint32_t irq_target; /* bound to an interrupt source: the world outside can wake it */
   struct fpr_acb *slp_next; /* the hart's sleeper list (Sys.sleepUs) */
+  struct fpr_acb *x_next;   /* the destination hart's wake overflow stack (xpush, a full ring) */
   uint64_t wake_at;         /* its deadline, mtime ticks */
   uw prio; /* 1: admitted ahead of the backlog (the memory actor: every
             * other actor's allocation waits on it, so it never queues
@@ -265,6 +268,9 @@ typedef struct fpr_acb {
   uw stk_lo, stk_span, stk_total;
   /* Sys.sleepUs: linked on hart `slp_hart`'s sleeper list right now (see a_sleep_us) */
   uw slp_on, slp_hart;
+  /* set by the sleeper itself when it must sleep again while still linked on
+   * another hart's list (it migrated): that hart unlinks it and wakes it */
+  uw slp_cancel;
   /* receiveFromRes: the sender this actor is parked on (0 when not; its low
    * bit is set once the dying sender has picked it to wake), and how many
    * actors are parked on THIS one */
@@ -1133,6 +1139,30 @@ static xring_t xr[FPR_NHARTS][FPR_NHARTS];
 static uw hart_loops_at_quiet[FPR_NHARTS];
 
 
+/* The overflow of every ring into one hart: a lock-free stack (Treiber push,
+ * linked through acb->x_next) that only the destination empties, all at once
+ * with an exchange, so it has no ABA.  A producer whose ring is full pushes
+ * here instead of waiting for the destination to drain: a hart never spins on
+ * another hart's progress.  An actor is in transit at most once (one
+ * BLOCKED -> READY transition ships it), so it is on a ring or on this stack,
+ * never both, and its x_next is free while it is here. */
+typedef struct {
+#if FPR_NHARTS > 1
+  _Alignas(64)
+#endif
+  acb_t *head;
+} xoverflow_t;
+static xoverflow_t xov[FPR_NHARTS];
+static uw xov_pushes; /* how often a ring was full (the deadlock dump reports it) */
+
+static void xov_push(uw dst, acb_t *a) {
+  acb_t *head = __atomic_load_n(&xov[dst].head, __ATOMIC_RELAXED);
+  do a->x_next = head;
+  while (!__atomic_compare_exchange_n(&xov[dst].head, &head, a, 1, __ATOMIC_RELEASE,
+                                      __ATOMIC_RELAXED));
+  __atomic_fetch_add(&xov_pushes, 1, __ATOMIC_RELAXED);
+}
+
 static void xpush(uw src, uw dst, acb_t *a) {
   xring_t *x = &xr[src][dst];
   TR(a, 2);
@@ -1140,10 +1170,10 @@ static void xpush(uw src, uw dst, acb_t *a) {
   /* A stale head only understates available space. Refresh it when all
    * slots covered by the previous observation have been consumed. */
   if (tail - x->producer_head == XCAP) {
-    uint32_t head;
-    while (tail - (head = __atomic_load_n(&x->rh, __ATOMIC_ACQUIRE)) == XCAP)
-      __asm__ volatile("nop");
-    x->producer_head = head;
+    x->producer_head = __atomic_load_n(&x->rh, __ATOMIC_ACQUIRE);
+    /* still full: overflow, never wait (the ship's fence and doorbell that
+     * follow cover this stack exactly as they cover the ring) */
+    if (tail - x->producer_head == XCAP) { xov_push(dst, a); return; }
   }
   x->ring[tail % XCAP] = a;
   __atomic_store_n(&x->rt, tail + 1, __ATOMIC_RELEASE);
@@ -1773,7 +1803,21 @@ static int incoming_pending(fpr_hart_t *h) {
     xring_t *x = &xr[s][h->id];
     if (__atomic_load_n(&x->rt, __ATOMIC_ACQUIRE) != x->rh) return 1;
   }
-  return 0;
+  return __atomic_load_n(&xov[h->id].head, __ATOMIC_ACQUIRE) != 0;
+}
+
+static void drain_admit(fpr_hart_t *h, acb_t *a) {
+  TR(a, 3);
+#ifdef FPR_COST_PROBE
+  if (a->probe_shipped) {
+    uint64_t now = FPR_PROBE_NOW();
+    FPR_COST_ADD(h, xl_drain_n, 1);
+    FPR_COST_ADD(h, xl_drain_ns, now - a->probe_shipped);
+    a->probe_shipped = 0;
+    a->probe_drained = now;
+  }
+#endif
+  enq(h, a);
 }
 
 static void drain(fpr_hart_t *h) {
@@ -1791,21 +1835,16 @@ static void drain(fpr_hart_t *h) {
       head += count;
       /* Return the slots before admission can forward work to a peer. */
       __atomic_store_n(&x->rh, head, __ATOMIC_RELEASE);
-      for (uint32_t i = 0; i < count; i++) {
-        acb_t *a = batch[i];
-        TR(a, 3);
-#ifdef FPR_COST_PROBE
-        if (a->probe_shipped) {
-          uint64_t now = FPR_PROBE_NOW();
-          FPR_COST_ADD(h, xl_drain_n, 1);
-          FPR_COST_ADD(h, xl_drain_ns, now - a->probe_shipped);
-          a->probe_shipped = 0;
-          a->probe_drained = now;
-        }
-#endif
-        enq(h, a);
-      }
+      for (uint32_t i = 0; i < count; i++) drain_admit(h, batch[i]);
     }
+  }
+  /* then what overflowed full rings: take the whole stack and admit it in
+   * push order (the rings came first: everything on them was pushed before
+   * the push that found its ring full) */
+  if (__atomic_load_n(&xov[h->id].head, __ATOMIC_RELAXED)) {
+    acb_t *l = __atomic_exchange_n(&xov[h->id].head, (acb_t *)0, __ATOMIC_ACQUIRE), *order = 0;
+    while (l) { acb_t *n = l->x_next; l->x_next = order; order = l; l = n; }
+    while (order) { acb_t *n = order->x_next; order->x_next = 0; drain_admit(h, order); order = n; }
   }
 }
 
@@ -1949,6 +1988,16 @@ static void deadlock_dump(void) {
       *p = 0;
       dl_out(buf, (uw)(p - buf));
     }
+  for (uw dx = 0; dx < fpr_live_harts; dx++) {
+    acb_t *o = __atomic_load_n(&xov[dx].head, __ATOMIC_ACQUIRE);
+    if (!o) continue;
+    char buf[80], *p = buf, *e = buf + sizeof buf - 1;
+    dl_put(&p, e, "dl: xoverflow ->"); dl_num(&p, e, dx);
+    dl_put(&p, e, " top actor "); dl_num(&p, e, o->id);
+    dl_put(&p, e, " overflows "); dl_num(&p, e, __atomic_load_n(&xov_pushes, __ATOMIC_RELAXED));
+    *p = 0;
+    dl_out(buf, (uw)(p - buf));
+  }
   for (uw i = 0; i < fpr_live_harts; i++) {
     char buf[160], *p = buf, *e = buf + sizeof buf - 1;
     dl_put(&p, e, "dl: hart "); dl_num(&p, e, i);
@@ -2508,6 +2557,10 @@ static int p_sleep(acb_t *a, uw unused) {
   (void)unused;
   return hal_mtime() >= a->wake_at;
 }
+static int p_unlinked(acb_t *a, uw unused) {
+  (void)unused;
+  return !__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE);
+}
 static void sleeper_link(fpr_hart_t *h, acb_t *a, uint64_t deadline) {
   a->wake_at = deadline;
   a->slp_hart = h->id;
@@ -2557,12 +2610,22 @@ static V a_sleep_us(V usv) {
    * at itself, and the hart walked that one-node cycle forever, running nothing
    * (an actor that sleeps while messages keep arriving -- std/poller -- did it
    * within a few hundred connections).  So: never link twice.  An actor still on
-   * a list another hart owns (it migrated mid-sleep) may not touch that list, and
-   * takes the host sleep this once; that hart unlinks it when it comes due. */
-  if (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) {
-    fpr_hal_sleep_us((uw)us);
-    return (V)&fpr_unit;
+   * a list another hart owns (it migrated mid-sleep) may not touch that list.
+   * It used to take the host sleep this once, blocking every actor on its new
+   * hart; now it asks the owning hart to drop the entry (slp_cancel, then the
+   * doorbell: that hart's loop runs slp_drain on every pass and again after
+   * clearing its doorbell) and parks until the entry is gone. */
+  sleeper_unlink_local(a); /* a stale entry on THIS hart's list: unlink it here */
+  while (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) {
+    uw owner = a->slp_hart;
+    __atomic_store_n(&a->slp_cancel, 1, __ATOMIC_RELEASE);
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    hal_ipi_send(owner);
+    block_unless(a, p_unlinked, 0, WAIT_ANY);
+    sleeper_unlink_local(a); /* it migrated back onto the owner meanwhile */
   }
+  __atomic_store_n(&a->slp_cancel, 0, __ATOMIC_RELAXED);
+  h = fpr_hart(); /* parking may have moved us to another hart */
   sleeper_link(h, a, now + (uint64_t)us * 10);
   while (!p_sleep(a, 0)) block_unless(a, p_sleep, 0, WAIT_ANY);
   sleeper_unlink_local(a);
@@ -2660,7 +2723,7 @@ static void slp_drain(fpr_hart_t *h) {
   while (*pp) {
     acb_t *a = *pp;
     uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
-    if (now >= a->wake_at || st == ST_DEAD) {
+    if (now >= a->wake_at || st == ST_DEAD || __atomic_load_n(&a->slp_cancel, __ATOMIC_ACQUIRE)) {
       *pp = a->slp_next;
       __atomic_store_n(&a->slp_on, 0, __ATOMIC_RELEASE); /* after the unlink: a_sleep_us reads it */
       __atomic_fetch_sub(&g_sleepers, 1, __ATOMIC_RELAXED);

@@ -46,6 +46,7 @@ checkForms owner items=do
             O.LoadSigned32->one [word,immediate]
             O.Compare->none [word,word]
             O.CompareImmediate->none [word,immediate]
+            O.TestImmediate->none [word,immediate]
             O.Set _->one []
             O.Select _->one [word,word]
             O.Branch _->none [label]
@@ -155,7 +156,7 @@ checkForms owner items=do
         O.FloatCompare _ _->FlagsDef;O.TreeCompare _ _->FlagsDef
         _ | x `elem` [O.Add,O.Subtract,O.Multiply,O.And,O.Or,O.Xor,O.ShiftLeftImmediate,
               O.ShiftRightArithmeticImmediate,O.OrImmediate,O.AndImmediate,O.XorImmediate,
-              O.SignExtend63,O.ShiftLeft,O.ShiftRight,O.Divide,O.Compare,O.CompareImmediate,
+              O.SignExtend63,O.ShiftLeft,O.ShiftRight,O.Divide,O.Compare,O.CompareImmediate,O.TestImmediate,
               O.BranchZero,O.BranchNonzero,O.Call]->FlagsDef
         _->FlagsNone
       _->FlagsNone
