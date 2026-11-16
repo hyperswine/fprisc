@@ -10,6 +10,80 @@
 #endif
 #include <unistd.h>
 
+/* ---- the reactor: descriptor waits off the harts (overhead plan R2) -------
+ * One thread waits in epoll_wait for every descriptor an actor is parked on
+ * (actors.c fpr_io_wait) and hands each ready one back by its token
+ * (fpr_io_fire), which wakes the actor on its hart.  Started on the first
+ * wait.  A registration is one-shot and is removed by the waiter after it
+ * wakes.  Linux only for now: elsewhere hal_io_arm stays the runtime's weak
+ * "no reactor" and a read waits in the kernel as it did. */
+int fpr_io_wait(int fd, int events);
+#if defined(__linux__) && !defined(FPR_ESP_IDF)
+#include <sys/epoll.h>
+#include <pthread.h>
+#include <errno.h>
+void fpr_io_fire(uint64_t token);
+static int reactor_ep = -1;
+static pthread_once_t reactor_once = PTHREAD_ONCE_INIT;
+static void *reactor_loop(void *arg) {
+  (void)arg;
+  struct epoll_event ev[64];
+  for (;;) {
+    int n = epoll_wait(reactor_ep, ev, 64, -1);
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      fpr_cpanic("reactor: epoll_wait failed");
+    }
+    for (int i = 0; i < n; i++) fpr_io_fire(ev[i].data.u64);
+  }
+  return 0;
+}
+static void reactor_start(void) {
+  int ep = epoll_create1(EPOLL_CLOEXEC);
+  if (ep < 0) return;
+  reactor_ep = ep;
+  sigset_t all, old;
+  sigfillset(&all); /* the harts' signals stay with the harts */
+  pthread_sigmask(SIG_BLOCK, &all, &old);
+  pthread_attr_t at;
+  pthread_attr_init(&at);
+  pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+  pthread_t t;
+  if (pthread_create(&t, &at, reactor_loop, 0)) { close(ep); reactor_ep = -1; }
+  pthread_attr_destroy(&at);
+  pthread_sigmask(SIG_SETMASK, &old, 0);
+}
+/* 0 = armed; anything else = not (a regular file: EPERM; a descriptor some
+ * other actor is already waiting on: EEXIST) */
+int hal_io_arm(int fd, int events, uint64_t token) {
+  pthread_once(&reactor_once, reactor_start);
+  if (reactor_ep < 0) return -1;
+  struct epoll_event e;
+  e.events = ((events & 1) ? EPOLLIN | EPOLLRDHUP : 0) | ((events & 2) ? EPOLLOUT : 0) | EPOLLONESHOT;
+  e.data.u64 = token;
+  return epoll_ctl(reactor_ep, EPOLL_CTL_ADD, fd, &e);
+}
+void hal_io_disarm(int fd) {
+  if (reactor_ep >= 0) (void)epoll_ctl(reactor_ep, EPOLL_CTL_DEL, fd, 0);
+}
+#endif
+/* a blocking descriptor with nothing to read yet: park the actor until it has
+ * (or until it hangs up), instead of the hart; a non-blocking one keeps its
+ * "again" answer */
+static void wait_readable(int fd) {
+#if defined(__linux__) && !defined(FPR_ESP_IDF)
+  struct pollfd p = {fd, POLLIN, 0};
+  int r;
+  do r = poll(&p, 1, 0); while (r < 0 && errno == EINTR);
+  if (r != 0) return; /* ready, or poll's own error: the read reports it */
+  int flags = fcntl(fd, F_GETFL);
+  if (flags < 0 || (flags & O_NONBLOCK)) return;
+  (void)fpr_io_wait(fd, 1);
+#else
+  (void)fd;
+#endif
+}
+
 /* ---- streams: a file or a socket is a descriptor ------------------------- */
 static V h_open(V pathv, V modev) {
   char *path = os_cstr(pathv, "Os.open: the path is not a String");
@@ -89,6 +163,7 @@ static V h_read(V fdv, V nv) {
   hal_console_flush(); /* what was printed is out before the program waits for input */
   char small[4096], *buf = small;
   if ((size_t)n > sizeof small) { buf = malloc((size_t)n); if (!buf) return os_err("out of memory"); }
+  wait_readable(fd);
   ssize_t r;
   do r = read(fd, buf, (size_t)n); while (r < 0 && errno == EINTR);
   V out = r < 0 ? os_again_or_errno() : os_ok(os_str(buf, (uw)r));

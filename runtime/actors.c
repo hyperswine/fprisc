@@ -293,6 +293,7 @@ typedef struct fpr_acb {
 #endif
   struct fpr_scope *scopes; /* active scratch regions on this actor's stack */
   fpr_rx_t rx; /* the message roots this actor took in the current turn (fpr.h) */
+  uw io_slot1; /* fpr_io_wait: 1 + the I/O slot it is parked on, or 0 */
 
 } acb_t;
 
@@ -1027,7 +1028,9 @@ static void mem_cancel(acb_t *a);
 static volatile uw g_blocked;      /* actors currently parked */
 static volatile uw g_sleepers;     /* of which: parked with a deadline */
 static volatile uw g_irq_waiting;  /* of which: an interrupt's actor, waiting for it */
+static volatile uw g_io_waiting;   /* of which: parked on a descriptor (fpr_io_wait) */
 static void watch_del(struct fpr_acb *a); /* with wake_watchers, below */
+static void io_cancel(acb_t *a);  /* fpr_io_wait's slot, below */
 static void reap(acb_t *a) {
   if (__atomic_load_n(&a->running, __ATOMIC_ACQUIRE)) return;
   uint32_t expected = 0;
@@ -1040,6 +1043,7 @@ static void reap(acb_t *a) {
     fpr_lock(&a->shlock); fpr_unlock(&a->shlock);
   }
   watch_del(a); /* killed while parked on a sender: off that sender's watcher list */
+  if (a->io_slot1) io_cancel(a); /* killed while parked on a descriptor (fpr_io_wait) */
   if (a->wait_kind) { /* a killed parked actor never returns through block_unless */
     __atomic_fetch_sub(&g_blocked, 1, __ATOMIC_RELAXED);
     if (a->irq_target) __atomic_fetch_sub(&g_irq_waiting, 1, __ATOMIC_RELAXED);
@@ -2201,7 +2205,10 @@ static void hart_loop(fpr_hart_t *h) {
        * (os.c's watcher) -- will wake it.  A server idle between requests used
        * to look "moving" only because its poller ticked. */
       uw irqw = __atomic_load_n(&g_irq_waiting, __ATOMIC_RELAXED);
-      int quiet = blk > 0 && slp == 0 && irqw == 0;
+      /* nor one with an actor parked on a descriptor (fpr_io_wait): the
+       * reactor will wake it when the world outside writes */
+      uw iow = __atomic_load_n(&g_io_waiting, __ATOMIC_RELAXED);
+      int quiet = blk > 0 && slp == 0 && irqw == 0 && iow == 0;
       /* Hart zero just published idle. Sample peers only when their
        * state could advance the deadlock detector. */
       for (uw i = 1; quiet && i < fpr_live_harts; i++)
@@ -2537,6 +2544,122 @@ static int block_unless(acb_t *a, pred_t pred, uw arg, enum wait_kind kind) {
   if (a->irq_target) __atomic_fetch_sub(&g_irq_waiting, 1, __ATOMIC_RELAXED);
   __atomic_fetch_sub(&g_blocked, 1, __ATOMIC_RELAXED);
   a->wait_kind = 0;
+  return 1;
+}
+
+/* ---- I/O waits off the hart (overhead plan R2, part 1) ------------------
+ * A C entry about to wait in the kernel for a descriptor (Os.read on a
+ * blocking stream with nothing to read yet) parks its actor instead, when the
+ * machine has a reactor (hal_io_arm: machine/posix/os_io.c, epoll on Linux).
+ * The reactor thread waits for every armed descriptor in one system call and
+ * wakes the actor the way a ship from a full ring arrives: the BLOCKED ->
+ * READY flip, the owner hart's overflow stack, its doorbell.  The hart runs
+ * its other actors meanwhile.  Without a reactor, outside an actor, with
+ * every slot taken, or for a descriptor the reactor refuses (a regular file;
+ * one another actor is already waiting on), fpr_io_wait answers 0 and the
+ * caller waits in the kernel as before.
+ *
+ * A slot's word is gen << 2 | state.  ARMED: the actor's descriptor is with
+ * the reactor.  WAKING: the reactor has taken it and is waking the actor.
+ * FIRED: the reactor is done with it.  The reactor holds the actor only
+ * between ARMED -> WAKING and -> FIRED, and the actor (or reap, if it is
+ * killed) waits out that window before it lets the slot go, so the reactor
+ * never wakes an actor that has moved on.  The waiter's predicate is
+ * "WAKING or later": with the seq_cst status flip in block_unless and the
+ * reactor's seq_cst CAS before its wake, either the waiter sees WAKING or the
+ * reactor sees BLOCKED (the Dekker pairing block_unless keeps with a_send).
+ * The fuel and WCET accounting of the actor is unchanged: the wait was
+ * already unbounded, it now costs no hart. */
+#ifndef FPR_IO_SLOTS
+#define FPR_IO_SLOTS 256
+#endif
+enum { IO_FREE, IO_ARMED, IO_WAKING, IO_FIRED };
+static struct { uint64_t st; acb_t *a; int fd; } io_slot[FPR_IO_SLOTS];
+__attribute__((weak)) int hal_io_arm(int fd, int events, uint64_t token) {
+  (void)fd; (void)events; (void)token; return -1;
+}
+__attribute__((weak)) void hal_io_disarm(int fd) { (void)fd; }
+
+static int p_io(acb_t *a, uw slot) {
+  (void)a;
+  uint64_t st = __atomic_load_n(&io_slot[slot].st, __ATOMIC_SEQ_CST);
+  return (st & 3) >= IO_WAKING;
+}
+/* until the reactor is done with the slot, then free it for the next taker */
+static void io_release(uw slot) {
+  uint64_t st;
+  while (((st = __atomic_load_n(&io_slot[slot].st, __ATOMIC_ACQUIRE)) & 3) == IO_WAKING) {
+#if defined(__aarch64__)
+    __asm__ volatile("isb");
+#elif defined(__x86_64__)
+    __asm__ volatile("pause");
+#endif
+  }
+  io_slot[slot].a = 0;
+  __atomic_store_n(&io_slot[slot].st, ((st >> 2) + 1) << 2 | IO_FREE, __ATOMIC_RELEASE);
+}
+/* the reactor thread: the descriptor behind token is ready (or hung up) */
+void fpr_io_fire(uint64_t token) {
+  uw slot = (uw)(token & 0xffffffffu);
+  if (slot >= FPR_IO_SLOTS) return;
+  uint64_t expect = (token >> 32) << 2 | IO_ARMED;
+  if (!__atomic_compare_exchange_n(&io_slot[slot].st, &expect, (token >> 32) << 2 | IO_WAKING, 0,
+                                   __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+    return; /* cancelled: its actor was killed */
+  acb_t *a = io_slot[slot].a;
+  uint32_t exp = ST_BLOCKED;
+  if (__atomic_compare_exchange_n(&a->var, &exp, ST_READY, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+    uw target = __atomic_load_n(&a->hart, __ATOMIC_ACQUIRE);
+    TR(a, 1);
+    __atomic_fetch_add(&sched_stats_by_hart[target].activity, 1, __ATOMIC_RELAXED);
+    xov_push(target, a); /* not a hart: no ring of its own, the overflow stack takes any producer */
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    hal_ipi_send(target);
+  } /* else it has not blocked yet: its re-check after the flip sees WAKING */
+  __atomic_store_n(&io_slot[slot].st, (token >> 32) << 2 | IO_FIRED, __ATOMIC_RELEASE);
+}
+/* reap: a killed actor's slot, with the reactor out of it */
+static void io_cancel(acb_t *a) {
+  uw slot = a->io_slot1 - 1;
+  a->io_slot1 = 0;
+  hal_io_disarm(io_slot[slot].fd);
+  uint64_t st = __atomic_load_n(&io_slot[slot].st, __ATOMIC_ACQUIRE);
+  if ((st & 3) == IO_ARMED)
+    __atomic_compare_exchange_n(&io_slot[slot].st, &st, (st >> 2) << 2 | IO_FIRED, 0,
+                                __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+  io_release(slot);
+  __atomic_fetch_sub(&g_io_waiting, 1, __ATOMIC_RELAXED);
+}
+/* events: 1 readable, 2 writable.  1 = parked until the descriptor was ready
+ * (or hung up); 0 = not parked (see above): wait in the kernel instead. */
+int fpr_io_wait(int fd, int events) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  if (!a || fpr_plane_actors || fd < 0) return 0;
+  uw slot = FPR_IO_SLOTS;
+  uint64_t st = 0;
+  for (uw i = 0; i < FPR_IO_SLOTS; i++) {
+    st = __atomic_load_n(&io_slot[i].st, __ATOMIC_ACQUIRE);
+    if ((st & 3) == IO_FREE &&
+        __atomic_compare_exchange_n(&io_slot[i].st, &st, (st >> 2) << 2 | IO_ARMED, 0,
+                                    __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) { slot = i; break; }
+  }
+  if (slot == FPR_IO_SLOTS) return 0;
+  uint64_t gen = st >> 2;
+  io_slot[slot].a = a;
+  io_slot[slot].fd = fd;
+  if (hal_io_arm(fd, events, gen << 32 | slot) != 0) {
+    __atomic_store_n(&io_slot[slot].st, gen << 2 | IO_FIRED, __ATOMIC_RELEASE);
+    io_release(slot);
+    return 0;
+  }
+  __atomic_fetch_add(&g_io_waiting, 1, __ATOMIC_RELAXED);
+  a->io_slot1 = slot + 1;
+  while (!p_io(a, slot)) block_unless(a, p_io, slot, WAIT_ANY);
+  a->io_slot1 = 0;
+  hal_io_disarm(fd);
+  io_release(slot);
+  __atomic_fetch_sub(&g_io_waiting, 1, __ATOMIC_RELAXED);
   return 1;
 }
 
