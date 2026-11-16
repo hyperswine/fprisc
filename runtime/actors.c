@@ -2574,7 +2574,7 @@ static int block_unless(acb_t *a, pred_t pred, uw arg, enum wait_kind kind) {
 #define FPR_IO_SLOTS 256
 #endif
 enum { IO_FREE, IO_ARMED, IO_WAKING, IO_FIRED };
-static struct { uint64_t st; acb_t *a; int fd; } io_slot[FPR_IO_SLOTS];
+static struct { uw st; acb_t *a; int fd; } io_slot[FPR_IO_SLOTS]; /* a word: no 64-bit atomics on a 32-bit hart */
 __attribute__((weak)) int hal_io_arm(int fd, int events, uint64_t token) {
   (void)fd; (void)events; (void)token; return -1;
 }
@@ -2582,12 +2582,12 @@ __attribute__((weak)) void hal_io_disarm(int fd) { (void)fd; }
 
 static int p_io(acb_t *a, uw slot) {
   (void)a;
-  uint64_t st = __atomic_load_n(&io_slot[slot].st, __ATOMIC_SEQ_CST);
+  uw st = __atomic_load_n(&io_slot[slot].st, __ATOMIC_SEQ_CST);
   return (st & 3) >= IO_WAKING;
 }
 /* until the reactor is done with the slot, then free it for the next taker */
 static void io_release(uw slot) {
-  uint64_t st;
+  uw st;
   while (((st = __atomic_load_n(&io_slot[slot].st, __ATOMIC_ACQUIRE)) & 3) == IO_WAKING) {
 #if defined(__aarch64__)
     __asm__ volatile("isb");
@@ -2602,8 +2602,9 @@ static void io_release(uw slot) {
 void fpr_io_fire(uint64_t token) {
   uw slot = (uw)(token & 0xffffffffu);
   if (slot >= FPR_IO_SLOTS) return;
-  uint64_t expect = (token >> 32) << 2 | IO_ARMED;
-  if (!__atomic_compare_exchange_n(&io_slot[slot].st, &expect, (token >> 32) << 2 | IO_WAKING, 0,
+  uw gen = (uw)(token >> 32);
+  uw expect = gen << 2 | IO_ARMED;
+  if (!__atomic_compare_exchange_n(&io_slot[slot].st, &expect, gen << 2 | IO_WAKING, 0,
                                    __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
     return; /* cancelled: its actor was killed */
   acb_t *a = io_slot[slot].a;
@@ -2616,14 +2617,14 @@ void fpr_io_fire(uint64_t token) {
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
     hal_ipi_send(target);
   } /* else it has not blocked yet: its re-check after the flip sees WAKING */
-  __atomic_store_n(&io_slot[slot].st, (token >> 32) << 2 | IO_FIRED, __ATOMIC_RELEASE);
+  __atomic_store_n(&io_slot[slot].st, gen << 2 | IO_FIRED, __ATOMIC_RELEASE);
 }
 /* reap: a killed actor's slot, with the reactor out of it */
 static void io_cancel(acb_t *a) {
   uw slot = a->io_slot1 - 1;
   a->io_slot1 = 0;
   hal_io_disarm(io_slot[slot].fd);
-  uint64_t st = __atomic_load_n(&io_slot[slot].st, __ATOMIC_ACQUIRE);
+  uw st = __atomic_load_n(&io_slot[slot].st, __ATOMIC_ACQUIRE);
   if ((st & 3) == IO_ARMED)
     __atomic_compare_exchange_n(&io_slot[slot].st, &st, (st >> 2) << 2 | IO_FIRED, 0,
                                 __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
@@ -2637,7 +2638,7 @@ int fpr_io_wait(int fd, int events) {
   acb_t *a = h ? h->current : 0;
   if (!a || fpr_plane_actors || fd < 0) return 0;
   uw slot = FPR_IO_SLOTS;
-  uint64_t st = 0;
+  uw st = 0;
   for (uw i = 0; i < FPR_IO_SLOTS; i++) {
     st = __atomic_load_n(&io_slot[i].st, __ATOMIC_ACQUIRE);
     if ((st & 3) == IO_FREE &&
@@ -2645,10 +2646,10 @@ int fpr_io_wait(int fd, int events) {
                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) { slot = i; break; }
   }
   if (slot == FPR_IO_SLOTS) return 0;
-  uint64_t gen = st >> 2;
+  uw gen = st >> 2;
   io_slot[slot].a = a;
   io_slot[slot].fd = fd;
-  if (hal_io_arm(fd, events, gen << 32 | slot) != 0) {
+  if (hal_io_arm(fd, events, (uint64_t)gen << 32 | slot) != 0) {
     __atomic_store_n(&io_slot[slot].st, gen << 2 | IO_FIRED, __ATOMIC_RELEASE);
     io_release(slot);
     return 0;
