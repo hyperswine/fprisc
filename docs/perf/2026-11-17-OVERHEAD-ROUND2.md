@@ -18,6 +18,8 @@ Machine: Linux x86-64, 8 cores, 8 harts (the posix default). Instruction counts 
 | R5 | lock-free freelists | measured, not shipped | - |
 | R4 | per-hart Chase-Lev deque and admission clock | assessed, not shipped | - |
 | R1 | replace the global `arc_lock` | measured and assessed, not shipped | - |
+| C8 (part 1) | `strCompare` answered inline from the first two bytes or the lengths | measured, not shipped: more instructions | - |
+| C8 (part 2) | direct call of a MutMap combine function | not started | - |
 | C2 (fuel in a register) | | still deferred, as in `docs/2026-11-10-REGISTER-FUEL.md` | - |
 
 Fuel and WCET semantics are unchanged by everything here. x64 tick weights are the rendered native instruction counts of the code a tick covers (`weighTicks`), so the fuel charged per tick moves with any x64 codegen change, as it did with #81; the mechanism and the WCET reference (simple-risc) are unaffected.
@@ -55,6 +57,17 @@ A copied column's storage now sits in the same block as its `col_t`, and the kin
 | fannkuchredux | 10704.7M | 9699.4M | -9.4% |
 
 fannkuchredux duplicates its permutation vector once per permutation. The other 15 programs moved by 0.3% or less.
+
+## C8: inline strCompare (not shipped)
+
+The fragment (branch `ari/inline-strcompare`, a WIP commit) checked both headers, then answered from the lengths when either string was empty, from the first byte when they differed, and from the second byte when it differed. Anything else called `g_strCompare` as before. With no loop in the fragment, its worst case stays fixed. Measured against C3 merged with main (82f2d259), one callgrind run each:
+
+| program | C3 + main | inline strCompare | change |
+|---|---:|---:|---:|
+| csv | 4252.8M | 4569.3M | +7.4% |
+| wordfreq | 4474.5M | 4701.4M | +5.1% |
+
+The other 14 programs moved by 0.4% or less. In wordfreq, `g_strCompare` itself fell from 872M to 380M instructions, but the map walker that holds the fragment grew by about 720M. Keys next to each other in a map often share their first two bytes, so those compares ran the whole fragment (about 25 instructions) and then made the C call anyway. `g_strCompare` already settles the first byte before its word loop, so the fragment saved only the call itself. Doing better needs a word-at-a-time compare in generated code. That means a byte-swap operation in the IR and in all three backends, which is not there today. The direct-call path for MutMap combine functions (part 2) was not started. The std-level rewrite through `mutmapSlot`/`mutmapValueAt`/`mutmapSetAt` would probe twice on a miss, allocate two tuples per call, and need `insertWith`'s cost contract re-proved.
 
 ## Runtime rows
 
