@@ -52,9 +52,19 @@
 
 static inline uw *vl_slot(col_t *c, uw i) { return &c->base[i]; }
 
+/* A copied column (col_copy) carries its storage in the col_t's own block,
+ * right behind the col_t: one allocation instead of two.  Such storage is
+ * never freed or reallocated by itself; a separately allocated base can
+ * never sit there (its own preheader comes first). */
+static inline int col_inline(const col_t *c) { return c->base == (uw *)(c + 1); }
+
 static void col_grow(col_t *c) {
   uw ncap = c->cap ? c->cap * 2 : (uw)VL_B0;
-  c->base = (uw *)fpr_realloc_bulk((V)c->base, ncap * sizeof(uw));
+  if (col_inline(c)) {
+    uw *n = (uw *)fpr_alloc_bulk(ncap * sizeof(uw));
+    __builtin_memcpy(n, c->base, c->cap * sizeof(uw));
+    c->base = n;
+  } else c->base = (uw *)fpr_realloc_bulk((V)c->base, ncap * sizeof(uw));
   c->cap = ncap;
 }
 
@@ -66,7 +76,7 @@ static col_t *col_new(void) {
 }
 
 static void col_free(col_t *c) {
-  if (c->base) fpr_free_raw((V)c->base); /* >8KiB: bigfree LIFO */
+  if (c->base && !col_inline(c)) fpr_free_raw((V)c->base); /* >8KiB: bigfree LIFO */
   fpr_free_raw((V)c);
 }
 
@@ -90,14 +100,14 @@ static vec_t *vchk(V v, const char *who) {
 static void vfree(vec_t *x); /* fwd */
 static col_t *col_new(void);
 static col_t *col_copy(col_t *c, uw len) {
-  col_t *n = col_new();
-  if (len) {
-    uw cap = VL_B0;
-    while (cap < len) cap *= 2;
-    n->base = (uw *)fpr_alloc_bulk(cap * sizeof(uw));
-    n->cap = cap;
-    __builtin_memcpy(n->base, c->base, len * sizeof(uw));
-  }
+  if (!len) return col_new();
+  uw cap = VL_B0;
+  while (cap < len) cap *= 2;
+  /* the storage rides in the col_t's block (col_inline) */
+  col_t *n = (col_t *)fpr_alloc_bulk(sizeof(col_t) + cap * sizeof(uw));
+  n->base = (uw *)(n + 1);
+  n->cap = cap;
+  __builtin_memcpy(n->base, c->base, len * sizeof(uw));
   return n;
 }
 /* the descriptor: a directory of ncols column pointers and ncols kind
@@ -105,14 +115,16 @@ static col_t *col_copy(col_t *c, uw len) {
 static void vdir_alloc(vec_t *x, uw ncols) {
   if (ncols == 0 || ncols > ((uw)1 << 30) || ncols > ~(uw)0 / sizeof(col_t *)) fpr_cpanic("Vec: column count out of range");
   x->ncols = ncols;
-  x->cols = (col_t **)fpr_alloc_bulk(ncols * sizeof(col_t *));
-  x->kinds = (uint8_t *)fpr_alloc_bulk(VKINDS_BYTES(ncols));
+  /* one block: the directory, then the kind bytes right behind it (a
+   * separately allocated kinds can never sit there: vdir_free tells) */
+  x->cols = (col_t **)fpr_alloc_bulk(ncols * sizeof(col_t *) + VKINDS_BYTES(ncols));
+  x->kinds = (uint8_t *)(x->cols + ncols);
   for (uw k = 0; k < VKINDS_BYTES(ncols); k++) x->kinds[k] = VK_BOX;
   for (uw k = 0; k < ncols; k++) x->cols[k] = 0;
 }
 static void vdir_free(vec_t *x) {
+  if (x->kinds && x->kinds != (uint8_t *)(x->cols + x->ncols)) fpr_free_raw((V)x->kinds);
   if (x->cols) fpr_free_raw((V)x->cols);
-  if (x->kinds) fpr_free_raw((V)x->kinds);
   x->cols = 0;
   x->kinds = 0;
   x->ncols = 0;
