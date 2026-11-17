@@ -122,6 +122,7 @@ static int layout_add(const uw *table) {
  * refused table leaves every mask 0. A mask is published once, release, so a
  * reader on another hart sees either 0 (walk the fields conservatively, as
  * before) or the whole mask. */
+int fpr_layout_any_raw; /* some constructor has a raw-field mask: walkers ask */
 static int layout_raw_add(const uw *table) {
   layout_index *index=layouts;
   uw count=table?table[0]:0;
@@ -146,6 +147,7 @@ static int layout_raw_add(const uw *table) {
     slot->f32=r[3];
     __atomic_store_n(&slot->raw,r[2],__ATOMIC_RELEASE);
   }
+  __atomic_store_n(&fpr_layout_any_raw,1,__ATOMIC_RELEASE);
   return 0;
 }
 int fpr_layout_register(const uw *table) {
