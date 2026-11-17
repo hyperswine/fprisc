@@ -4202,18 +4202,42 @@ V fpr_apply3(V f, V a, V b, V c) {
   return r;
 }
 static inline V apply2(V f, V a, V b) { return fpr_apply2(f, a, b); }
+/* A comparator called n log n times is resolved ONCE: when it is a function
+ * value that takes exactly two more arguments and holds at most two, its
+ * code pointer and captured arguments are kept and every comparison is a
+ * direct call (std/mutmap's `byKey cmp` holds one).  Anything else goes
+ * through fpr_apply2 each time.  The callee's entry tick charges its fuel
+ * either way, exactly as callf's call does. */
+typedef struct { V f; uw fn, held; V c0, c1; } call2_t;
+static inline void call2_init(call2_t *c, V f) {
+  c->f = f; c->fn = 0; c->held = 3; c->c0 = c->c1 = 0;
+  if (ISINT(f) || TID(f) != T_PAP) return;
+  pap_t *p = (pap_t *)f;
+  if (p->nargs + 2 != p->arity || p->nargs > 2) return;
+  c->fn = p->fn; c->held = p->nargs;
+  if (p->nargs > 0) c->c0 = p->args[0];
+  if (p->nargs > 1) c->c1 = p->args[1];
+}
+static inline V call2(const call2_t *c, V a, V b) {
+  switch (c->held) {
+  case 0: return ((F2)c->fn)(a, b);
+  case 1: return ((F3)c->fn)(c->c0, a, b);
+  case 2: return ((F4)c->fn)(c->c0, c->c1, a, b);
+  default: return fpr_apply2(c->f, a, b);
+  }
+}
 /* cmp b a answers Less: b goes first.  The argument order is the FP-RISC
  * merge's (`cmp y x`, y from the right run): the comparator sees its
  * arguments in the same roles.  For a comparator that is a total preorder
  * the result is exactly the old merge's; one that is not may see fewer
  * questions (the in-order shortcut) and so may order differently. */
-static inline int sort_lt(V cmp, V b, V a) {
-  V r = apply2(cmp, b, a);
+static inline int sort_lt(const call2_t *cmp, V b, V a) {
+  V r = call2(cmp, b, a);
   if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
   return ((hdr_t *)r)->var == 0;
 }
 /* merge runs src[lo..mid) and src[mid..hi) of indices into keys, to dst */
-static void sort_merge(V cmp, const V *keys, const uw *src, uw *dst, uw lo, uw mid, uw hi) {
+static void sort_merge(const call2_t *cmp, const V *keys, const uw *src, uw *dst, uw lo, uw mid, uw hi) {
   uw i = lo, j = mid, k = lo;
   if (mid > lo && mid < hi && !sort_lt(cmp, keys[src[mid]], keys[src[mid - 1]])) {
     for (; k < hi; k++) dst[k] = src[k]; /* already in order: one comparison */
@@ -4224,29 +4248,13 @@ static void sort_merge(V cmp, const V *keys, const uw *src, uw *dst, uw lo, uw m
   while (j < hi) dst[k++] = src[j++];
 }
 /* merge runs src[lo..mid) and src[mid..hi) of element values directly, to dst */
-static void sort_merge_vals(V cmp, F2 fn2, const V *src, V *dst, uw lo, uw mid, uw hi) {
+static void sort_merge_vals(const call2_t *cmp, const V *src, V *dst, uw lo, uw mid, uw hi) {
   uw i = lo, j = mid, k = lo;
-  if (fn2) {
-    if (mid > lo && mid < hi) {
-      V r = fn2(src[mid], src[mid - 1]);
-      if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
-      if (((hdr_t *)r)->var != 0) {
-        for (; k < hi; k++) dst[k] = src[k];
-        return;
-      }
-    }
-    while (i < mid && j < hi) {
-      V r = fn2(src[j], src[i]);
-      if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
-      dst[k++] = (((hdr_t *)r)->var == 0) ? src[j++] : src[i++];
-    }
-  } else {
-    if (mid > lo && mid < hi && !sort_lt(cmp, src[mid], src[mid - 1])) {
-      for (; k < hi; k++) dst[k] = src[k];
-      return;
-    }
-    while (i < mid && j < hi) dst[k++] = sort_lt(cmp, src[j], src[i]) ? src[j++] : src[i++];
+  if (mid > lo && mid < hi && !sort_lt(cmp, src[mid], src[mid - 1])) {
+    for (; k < hi; k++) dst[k] = src[k]; /* already in order: one comparison */
+    return;
   }
+  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, src[j], src[i]) ? src[j++] : src[i++];
   while (i < mid) dst[k++] = src[i++];
   while (j < hi) dst[k++] = src[j++];
 }
@@ -4255,7 +4263,9 @@ static void sort_merge_vals(V cmp, F2 fn2, const V *src, V *dst, uw lo, uw mid, 
  * Bottom-up: runs of width w merged into runs of 2w, ceil(log2 n) passes.
  * Shared by Vec.sortWith (vec.c), which moves every column by the same
  * permutation. */
-uw *fpr_sort_perm(V cmp, const V *keys, uw *idx, uw *tmp, uw n) {
+uw *fpr_sort_perm(V cmpv, const V *keys, uw *idx, uw *tmp, uw n) {
+  call2_t cmp0, *cmp = &cmp0;
+  call2_init(cmp, cmpv);
   for (uw i = 0; i < n; i++) idx[i] = i;
   uw *src = idx, *dst = tmp;
   for (uw w = 1; w < n; w *= 2) {
@@ -4278,16 +4288,13 @@ static V g_sortListWith(V cmp, V list) {
   V *src = buf, *dst = buf + n;
   uw i = 0;
   for (c = list; is_cons(c); c = ((V *)((char *)c + 8))[1]) src[i++] = ((V *)((char *)c + 8))[0];
-  F2 fn2 = (F2)0;
-  if (!ISINT(cmp) && TID(cmp) == T_PAP) {
-    pap_t *p = (pap_t *)cmp;
-    if (p->nargs == 0 && p->arity == 2) fn2 = (F2)p->fn;
-  }
+  call2_t c2;
+  call2_init(&c2, cmp);
   for (uw w = 1; w < n; w *= 2) {
     for (uw lo = 0; lo < n; lo += 2 * w) {
       uw mid = lo + w < n ? lo + w : n;
       uw hi = lo + 2 * w < n ? lo + 2 * w : n;
-      sort_merge_vals(cmp, fn2, src, dst, lo, mid, hi);
+      sort_merge_vals(&c2, src, dst, lo, mid, hi);
     }
     V *t = src; src = dst; dst = t;
   }

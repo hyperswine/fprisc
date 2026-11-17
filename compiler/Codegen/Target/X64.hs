@@ -1603,6 +1603,31 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       (O.X64 O.Call,_,OCode s:_) | keepingCall i -> ["subq $8, %rsp", "call " ++ lbl (keepingLabel (codeName s)), "addq $8, %rsp"]
       (O.X64 O.Call,_,OCode s:_) -> call (codeName s)
       (O.X64 O.Push,[],[v]) -> ["subq $16, %rsp", "movq " ++ reg v ++ ", (%rsp)"]
+      (O.X64 O.ApplyN,[_],[OI n]) | n >= 1 && n <= 6 ->
+        -- a function value applied to exactly the arguments it still needs
+        -- is called directly when it holds at most two captured arguments
+        -- and its arity fits the six argument registers: the A64 fast path
+        -- (runtime.c fpr_applyN does the same through callf, which is what
+        -- every other case still reaches).  pap_t is tid/var, fn @8, arity
+        -- @16, nargs @24, captured args @32; captured args go first, then
+        -- the pushed ones.  The callee's entry tick charges its own fuel, as
+        -- it does when callf calls it; Bounds counts every line printed here.
+        let held = [h | h <- [0, 1, 2], n + h <= 6]
+            label h = show (5 + h)
+            argReg k = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"] !! fromIntegral k
+            explicit h = ["movq " ++ show (16 * (n - 1 - i)) ++ "(%rsp), " ++ argReg (h + i) | i <- [0 .. n - 1]]
+            captured h = ["movq " ++ show (32 + 8 * k) ++ "(%rax), " ++ argReg k | k <- [0 .. h - 1]]
+            arm h = [label h ++ ":", "movq 8(%rax), %r11"] ++ explicit h ++ captured h
+              ++ ["subq $8, %rsp", "call *%r11", "addq $8, %rsp", "jmp 2f"]
+         in [ "movq " ++ show (16 * n) ++ "(%rsp), %rax", "testq $1, %rax", "jnz 1f",
+              "cmpl $9001, (%rax)", "jne 1f",
+              "movq 16(%rax), %r10", "subq 24(%rax), %r10", "cmpq $" ++ show n ++ ", %r10", "jne 1f",
+              "movq 24(%rax), %r10" ]
+            ++ concat [["cmpq $" ++ show h ++ ", %r10", "je " ++ label h ++ "f"] | h <- held]
+            ++ ["jmp 1f"]
+            ++ concatMap arm held
+            ++ ["1:", "movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
+            ++ call (Call.runtimeName Call.ApplyEntry) ++ ["2:", "addq $" ++ show (16 * (n + 1)) ++ ", %rsp"]
       (O.X64 O.ApplyN,[_],[OI n]) -> ["movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
         ++ call (Call.runtimeName Call.ApplyEntry) ++ ["addq $" ++ show (16 * (n + 1)) ++ ", %rsp"]
       (O.X64 O.Panic,[],[OAddr s]) -> ("leaq " ++ gsym hart (addressName s) ++ "(%rip), %rdi") : call (Call.runtimeName Call.PanicEntry)
