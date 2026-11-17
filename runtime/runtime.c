@@ -676,10 +676,13 @@ static int region_trip(fpr_hart_t *h, fpr_pool_t *pool); /* below, with the regi
 /* The rounding pad (under 16 bytes) is cleared inline: bytes up to the next
  * word, then whole words, so a String's odd length no longer costs a memset
  * call.  The payload itself is never touched (check_alloc_fast). */
+/* Zero from the payload's last byte to the cell's end.  The word that holds
+ * byte raw_bytes is zeroed whole: its bytes below raw_bytes are fresh payload
+ * that the caller has not written yet (and will), so one word store does what
+ * a byte loop up to the word boundary did. */
 static inline void alloc_zero_pad(char *payload, uw raw_bytes, uw total, uw prefix) {
-  uw end = total - prefix, o = raw_bytes;
-  for (; o < end && (o & (sizeof(uw) - 1)); o++) payload[o] = 0;
-  for (; o < end; o += sizeof(uw)) *(uw *)(payload + o) = 0;
+  uw end = total - prefix;
+  for (uw o = raw_bytes & ~(uw)(sizeof(uw) - 1); o < end; o += sizeof(uw)) *(uw *)(payload + o) = 0;
 }
 /* The inline bump window (fpr.h, bump_slab).  Opened at the end of every
  * fpr_alloc over the pool that is then current; generated code then bumps
@@ -692,15 +695,23 @@ static inline void alloc_zero_pad(char *payload, uw raw_bytes, uw total, uw pref
  *   - in a process routed through the shared plane, whose pools grow in the
  *     kernel and whose actors the kernel's scheduler switches. */
 static void *bump_nobuckets[FPR_NBUCKETS]; /* a region arena's: always empty */
+/* bump_open over a pool the caller already knows is h's current one */
+static inline void bump_open_pool(fpr_hart_t *h, fpr_pool_t *pool) {
+#if defined(FPR_COST_PROBE) || (defined(FPR_COMPACT_CELLS) && defined(FPR_LAYOUT_CHECK))
+  (void)h; (void)pool;
+#else
+  if (fpr_plane_memory) return;
+  if (!pool->cur) return;
+  h->bump_bkt = pool->buckets ? pool->buckets : bump_nobuckets;
+  h->bump_slab = pool->cur;
+#endif
+}
 static inline void bump_open(fpr_hart_t *h) {
 #if defined(FPR_COST_PROBE) || (defined(FPR_COMPACT_CELLS) && defined(FPR_LAYOUT_CHECK))
   (void)h;
 #else
   if (fpr_plane_memory) return;
-  fpr_pool_t *pool = cur_pool(h);
-  if (!pool->cur) return;
-  h->bump_bkt = pool->buckets ? pool->buckets : bump_nobuckets;
-  h->bump_slab = pool->cur;
+  bump_open_pool(h, cur_pool(h));
 #endif
 }
 #ifdef FPR_BUMP_CHECK
@@ -955,7 +966,7 @@ V fpr_alloc(V raw_bytes) {
       SITE_NOTE(total);
       allocation_header(p,total,sl,FPR_MANAGED_PREFIX);
       alloc_zero_pad(p+FPR_MANAGED_PREFIX,raw_bytes,total,FPR_MANAGED_PREFIX);
-      bump_open(h);
+      bump_open_pool(h, pool); /* nothing above parks: h's current pool is still pool */
       return (V)(p + FPR_MANAGED_PREFIX);
     }
   }
@@ -3798,6 +3809,26 @@ static const byte_str_t byte_strings[256] = {
 #undef BYTE_STR
 static const byte_str_t empty_string = { T_STR, 0, 0, { 0 } };
 
+/* str_copy: n bytes into a fresh String (nothing overlaps).  Most Strings
+ * made here are a field or a word cut from a line, or an interpolation's
+ * short literal pieces: a few bytes, where a call to memcpy (or the loop the
+ * compiler turns into one) costs more than the copy.  Up to 32 bytes go as
+ * words, the last one overlapping the one before; nothing is read past
+ * src + n or written past d + n. */
+static inline __attribute__((always_inline)) void str_copy(uint8_t *d, const uint8_t *src, uw n) {
+  if (n > 32) __builtin_memcpy(d, src, n);
+  else if (n >= 8) {
+    uint64_t w;
+    for (uw i = 0; i + 8 < n; i += 8) { __builtin_memcpy(&w, src + i, 8); __builtin_memcpy(d + i, &w, 8); }
+    __builtin_memcpy(&w, src + n - 8, 8); __builtin_memcpy(d + n - 8, &w, 8);
+  } else if (n >= 4) {
+    uint32_t w, x;
+    __builtin_memcpy(&w, src, 4); __builtin_memcpy(&x, src + n - 4, 4);
+    __builtin_memcpy(d, &w, 4); __builtin_memcpy(d + n - 4, &x, 4);
+  } else if (n) {
+    d[0] = src[0]; d[n >> 1] = src[n >> 1]; d[n - 1] = src[n - 1];
+  }
+}
 /* substr s off len -- the bytes [off, off + len), 0-based, clamped. Mechanism, not
  * policy: diskfs chunks payloads into pages (write) and takes the used
  * prefix of a page (read) with this; doing it via chr+strcat would be
@@ -3857,8 +3888,8 @@ static V g_strJoin(V sepv, V list) {
   uw at = 0, i = 0;
   for (V c = list; is_cons(c); c = ((V *)((char *)c + 8))[1], i++) {
     str_t *x = (str_t *)((V *)((char *)c + 8))[0];
-    if (i) { __builtin_memcpy(out->bytes + at, sep->bytes, sep->len); at += sep->len; }
-    __builtin_memcpy(out->bytes + at, x->bytes, x->len);
+    if (i) { str_copy(out->bytes + at, sep->bytes, sep->len); at += sep->len; }
+    str_copy(out->bytes + at, x->bytes, x->len);
     at += x->len;
   }
   return (V)out;
@@ -4458,23 +4489,7 @@ str_t *fpr_mkstr(const uint8_t *src, uw n) {
   s->tid = T_STR;
   s->var = 0;
   s->len = n;
-  /* Most Strings made here are a field or a word cut from a line: a few
-   * bytes, where a call to memcpy (or the loop the compiler turns into one)
-   * costs more than the copy.  Up to 32 bytes go as words, the last one
-   * overlapping the one before; nothing is read past src + n. */
-  uint8_t *d = s->bytes;
-  if (n > 32) __builtin_memcpy(d, src, n);
-  else if (n >= 8) {
-    uint64_t w;
-    for (uw i = 0; i + 8 < n; i += 8) { __builtin_memcpy(&w, src + i, 8); __builtin_memcpy(d + i, &w, 8); }
-    __builtin_memcpy(&w, src + n - 8, 8); __builtin_memcpy(d + n - 8, &w, 8);
-  } else if (n >= 4) {
-    uint32_t w, x;
-    __builtin_memcpy(&w, src, 4); __builtin_memcpy(&x, src + n - 4, 4);
-    __builtin_memcpy(d, &w, 4); __builtin_memcpy(d + n - 4, &x, 4);
-  } else if (n) {
-    d[0] = src[0]; d[n >> 1] = src[n >> 1]; d[n - 1] = src[n - 1];
-  }
+  str_copy(s->bytes, src, n);
   return s;
 }
 
@@ -4791,12 +4806,22 @@ static uw decimal_width(sw value) {
   }
   return width + (magnitude >= 10) + (magnitude >= 100) + (magnitude >= 1000);
 }
-static void write_decimal(uint8_t *dest, uw width, sw value) {
+/* two digits a step from a table (half the divisions of a digit a step);
+ * the digits end at dest + width, as decimal_width sized them */
+static const char decimal_pairs[200] =
+  "00010203040506070809101112131415161718192021222324252627282930313233343536373839"
+  "40414243444546474849505152535455565758596061626364656667686970717273747576777879"
+  "8081828384858687888990919293949596979899";
+static inline __attribute__((always_inline)) void write_decimal(uint8_t *dest, uw width, sw value) {
   uw magnitude = value < 0 ? (uw)0 - (uw)value : (uw)value;
-  do {
-    dest[--width] = (uint8_t)('0' + magnitude % 10);
-    magnitude /= 10;
-  } while (magnitude);
+  while (magnitude >= 100) {
+    uw pair = magnitude % 100;
+    magnitude /= 100;
+    width -= 2;
+    __builtin_memcpy(dest + width, decimal_pairs + 2 * pair, 2);
+  }
+  if (magnitude >= 10) __builtin_memcpy(dest + width - 2, decimal_pairs + 2 * magnitude, 2);
+  else dest[width - 1] = (uint8_t)('0' + magnitude);
   if (value < 0) dest[0] = '-';
 }
 
@@ -5013,15 +5038,18 @@ static uw pieces_arity(V t) {
   fpr_trap("string pieces: not a tuple");
   return 0;
 }
+#define PIECES_KEPT 16 /* the sizing pass keeps this many pieces' widths */
 V fpr_prim_fn__x24strcatT(V t) {
   uw n = pieces_arity(t);
   uw total = 0;
+  uw kept[PIECES_KEPT]; /* an Int piece's decimal width, so the copy pass need not size it again */
   for (uw i = 0; i < n; i++) {
     V v = ((V *)((char *)t + 8))[i];
     uw len;
     if (ISINT(v)) len = decimal_width(UNTAG(v));
     else if (TID(v) == T_STR) len = ((str_t *)v)->len;
     else { rpos = 0; render(v); len = (uw)rpos; }
+    if (i < PIECES_KEPT) kept[i] = len;
     if (len > ~(uw)0 - sizeof(str_t) - total) fpr_trap("string pieces: size overflow");
     total += len;
   }
@@ -5034,12 +5062,12 @@ V fpr_prim_fn__x24strcatT(V t) {
     V v = ((V *)((char *)t + 8))[i];
     if (ISINT(v)) {
       sw value = UNTAG(v);
-      uw width = decimal_width(value);
+      uw width = i < PIECES_KEPT ? kept[i] : decimal_width(value);
       write_decimal(out->bytes + at, width, value);
       at += width;
     } else if (TID(v) == T_STR) {
       str_t *x = (str_t *)v;
-      __builtin_memcpy(out->bytes + at, x->bytes, x->len);
+      str_copy(out->bytes + at, x->bytes, x->len);
       at += x->len;
     } else {
       rpos = 0;
@@ -5375,9 +5403,10 @@ V fpr_prim_fn_strcat(V a, V b) {
    * the arena put source and destination at an unlucky distance (a
    * load/store aliasing stall): tests/bench/strbuild.fpr's 20,000 appends
    * took 50 ms longer depending on where a call region's slab landed
-   * (docs/2026-10-26-PERFORMANCE-REGRESSIONS.md) */
-  __builtin_memcpy(s->bytes, x->bytes, x->len);
-  __builtin_memcpy(s->bytes + x->len, y->bytes, y->len);
+   * (docs/2026-10-26-PERFORMANCE-REGRESSIONS.md).  Short pieces go as
+   * words (str_copy), longer ones to memcpy. */
+  str_copy(s->bytes, x->bytes, x->len);
+  str_copy(s->bytes + x->len, y->bytes, y->len);
   return (V)s;
 }
 
