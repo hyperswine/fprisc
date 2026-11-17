@@ -31,13 +31,13 @@ stopped without building anything. The real headroom is the C-primitive callback
 Repro programs: `docs/perf/2026-11-17-unbox-notes/cap.fpr` and `cap2.fpr` (run on the
 `ari/unbox-walkers` compiler, 26c5c459).
 
-- `MutMap.withCapacity 1152921504606846976` (2^60): `mm_cap_for` rounds to cap 2^61, which passes
-  the `cap > (uw)-1 >> 3` guard. `mm_cols` then computes `ncap * sizeof(uw)` = 2^64, which wraps to
+- `MutMap.withCapacity 1152921504606846976` (2^60): `mm_cap_for` (`runtime/vec.c`) checks
+  `cap > ((uw)-1 >> 3)` *before* doubling, so cap 2^60 passes the check and is doubled to 2^61. `mm_cols` then computes `ncap * sizeof(uw)` = 2^64, which wraps to
   0, so `fpr_alloc_bulk(0)` succeeds and `mm_clear` writes 2^61 slots past it. The process is
   OOM-killed (dmesg anon-rss 12,149,504 kB); "reserved" is never printed.
 - `MutMap.withCapacity 4611686018427387903` (2^62 - 1): clean panic
   `[ERR] MutMap: capacity out of range`, exit 1.
 
-So the guard misses the range where the rounded capacity times the 8-byte slot size overflows:
-the size check should be done on `ncap * sizeof(uw)` (or the guard tightened to `>> 4` to cover the
-rounding), so a too-large capacity gives the clean error instead of an OOM kill. Not fixed yet.
+So the guard misses the last doubling: a capacity whose rounded size times the 8-byte slot
+overflows gets through. Checking after the doubling (or checking `ncap * sizeof(uw)` in `mm_cols`)
+would turn this into the clean error instead of an OOM kill. Not fixed yet.
