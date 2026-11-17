@@ -23,3 +23,18 @@ PR A loop splitting, PR B shallow-stack default, stacked on ari/regalloc (#97).
 - AllocIR PASS (stage 2 tests). Running: drive-spA.sh (lane.lock), drive-st1.sh (lane2.lock, before=fpr-ra), tests-spA.sh (unit, push tier, cfgdiff, budget)
   -> logs unit-spA.log runsol-spA.log cfgdiff-spA.log budget-spA.log, done markers drive-*.done tests-spA.alldone
 - PR A not opened yet. Next: PR B worktree /workspace/fpr-shallow on ari/shallow-stack from ari/regalloc-split.
+
+## 00:20 AEDT — PR B in progress (uncommitted, /workspace/fpr-shallow, branch ari/shallow-stack from 842a99db)
+- Options.nativeShallowDefault (FPR_NO_SHALLOW_STACK=1 off, cache "-noshallow"); Compile.hs: StackCheckShallow default for x64 && not qapp && not builtin
+- Codegen.nativeSelect: shallow only for functions C can't enter (excl. OFunValue refs, symbolNames exps, main, nullary; any fallback => all checked)
+- Common.hs: bound doc + shallowReserve=1048/shallowFrameLimit=1024; runtime/actors.c FPR_SHALLOW_RESERVE 1048 + _Static_assert(HEADROOM > reserve)
+- built OK (build-shallow2.log). asm sp-sh1 (default) / sp-nosh1 (off): shallow fns 1..10 per bench; tools/shallow_audit.py: 0 suspicious refs in all 16
+- PR A drive-spA/st1 done; tests-spA.sh still in cfgdiff at 00:20
+
+## 00:35 AEDT — PR A results + PR B committed
+- PR A cg x3 median, before st1 (fpr-ra d7319d6f) vs after spA (842a99db): total 30,663,210,532 -> 30,023,320,555 (-2.09%);
+  sim -6.78 fannkuch -7.34 fasta -3.99 records -3.48 wordfreq -2.41 nbody -2.18 spectralnorm -2.11 csv -1.77 treemap -1.32 revcomp -1.17; none worse. 16/16 OK both.
+  (cg-st1-med.txt / cg-spA-med.txt). PR A unit 45/45 PASS; push tier 23 run 0 unexpected. cfgdiff+budget still running (tests-spA.sh).
+- PR B committed+pushed ari/shallow-stack aa2d0612 (parent 842a99db): no_shallow cfgdiff, codegenRev 256, design note section.
+  FPR_NO_SHALLOW_STACK=1 asm == PR A asm (16 benches incl units); rv64 bm/builtin + a64 unchanged (out/ra/rvcheck3).
+- Running: drive-shB.sh (lane2), tests-shB.sh (waits for tests-spA.alldone). PRs not opened yet.
