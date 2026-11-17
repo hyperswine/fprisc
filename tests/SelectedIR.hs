@@ -129,8 +129,11 @@ main = do
   refused "allocator events require physical operands" "allocation event"
     (AForms.checkForms a64RegisterFile "annotation-test" [I move {siDefs=[gpr 0]}])
   refused "an always-restore backend cannot inherit a shrink-wrap exit marker" "annotation does not match"
+    (RForms.checkForms (RegisterFile (\(Phys p)->if p=="a0" then Just GPR else Nothing) []) "annotation-test"
+      [I ((plainOpcode (Opcode.RV ROp.Ret) [] [OP (Phys "a0")]) {siControl=Return,siAnnotation=SkipRestores})])
+  check "x86-64 shrink-wrapped exits may skip restores"
     (checkForms "annotation-test" [I ((plainOpcode (Opcode.X64 Opcode.Ret) [] [OP (Phys "rax")])
-      {siControl=Return,siAnnotation=SkipRestores})])
+      {siControl=Return,siAnnotation=SkipRestores})]==Right ())
   let aOp op=plainOpcode (Opcode.A64 op)
       aFloat=(aOp (AOp.FloatBinary Opcode.FloatRegisters Opcode.Float64 FAdd)
         [OV (v 2) (Any FPR)] [OV (v 0) (Any FPR),OV (v 1) (Any FPR)])
@@ -332,6 +335,12 @@ main = do
   check "direct x64: SysV parameter moved to rbx, rbx saved, TLS hart" ("movq %rbx, -24(%rbp)\n    movq %rdi, %rbx\n" `isInfixOf` xt && "%fs:fpr_posix_hart@tpoff" `isInfixOf` xt && "saved=rbx " `isInfixOf` xt)
   check "direct x64: aligned primitive call" ("subq $8, %rsp\n    call fpr_prim_fn__x2d\n    addq $8, %rsp" `isInfixOf` xt)
   check "direct x64: frame-based return and native bound" ("leaq -8(%r11), %rsp\n    ret" `isInfixOf` xt && rSegMax (nfReport nfx) /= Nothing)
+  -- C9 stage 1 (docs/perf/2026-11-17-REGALLOC-DESIGN.md): the entry check
+  -- preserves registers, so the parameter stays in its arrival register
+  nfr <- either (error . ("FAIL: x64 frames: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False True False noTune X64.HartTls True) one)
+  let xr = unlines (nfLines nfr)
+  check "x64 frames: the entry check calls the preserving wrapper and the parameter stays in rdi" ("call fpr_stack_grow_local" `isInfixOf` xr && not ("%rbx" `isInfixOf` xr) && "movq %rdi, %rax\n    sarq $1, %rax" `isInfixOf` xr)
+  check "x64 frames: short epilogue and a native bound" ("leaq -16(%rbp), %rsp\n    popq %rbp\n    ret" `isInfixOf` xr && rSegMax (nfReport nfr) /= Nothing)
   -- the same function through direct RV64: the subtraction is now inline
   -- (the fit-check fast path), and the C primitive survives only as the
   -- slow path with retagged operands, the A64/X64 contract
