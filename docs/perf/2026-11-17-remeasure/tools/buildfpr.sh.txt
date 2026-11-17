@@ -1,0 +1,8 @@
+#!/bin/bash
+# buildfpr.sh TAG TREE -> /workspace/out/rm/TAG/{apps,clbg}/{bin-fpr,bin->C}
+T=$1; W=$2; R=/workspace/out/rm; O=$R/$T; B=$W/tests/bench
+source /workspace/out/env.sh; export FPR_HOME=$W XDG_CACHE_HOME=$O/cache
+for d in apps clbg; do mkdir -p $O/$d/bin-fpr; ln -sfn $R/c/$d $O/$d/bin; done
+for p in sim csv wordfreq wordfreq_mutmap format records treemap treemap_mutmap; do (cd $B/apps && $W/fpr build -o $O/apps/bin-fpr/$p $p.fpr > $O/$p.build 2>&1) || echo "BUILDFAIL $p"; done
+for p in binarytrees fannkuchredux nbody spectralnorm mandelbrot fasta knucleotide revcomp; do (cd $B/clbg && $W/fpr build -o $O/clbg/bin-fpr/$p $p.fpr > $O/$p.build 2>&1) || echo "BUILDFAIL $p"; done
+echo BUILT $T

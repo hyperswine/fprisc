@@ -1,0 +1,37 @@
+import sys,subprocess,re,collections,bisect,json
+sys.path.insert(0,'/workspace/out/rm/tools')
+from cgaddr import parse
+import classify_lib as CL
+binp,cgf=sys.argv[1],sys.argv[2]
+cost=parse(cgf); total=sum(cost.values())
+syms=[]
+for l in subprocess.run(['nm','-n',binp],capture_output=True,text=True).stdout.splitlines():
+    p=l.split()
+    if len(p)==3 and p[1] in 'tTwW': syms.append((int(p[0],16),p[2]))
+addrs=[s[0] for s in syms]
+def sym(a):
+    i=bisect.bisect_right(addrs,a)-1
+    return syms[i][1] if i>=0 else '?'
+dis={}
+for l in subprocess.run(['objdump','-d','--no-show-raw-insn',binp],capture_output=True,text=True).stdout.splitlines():
+    m=re.match(r'\s*([0-9a-f]+):\s+(.*)',l)
+    if m: dis[int(m.group(1),16)]=m.group(2).strip()
+srt=sorted(dis)
+def bucket(s):
+    if s=='g_strCompare' or 'strCompare' in s or s.startswith('fpr_str_eq') : return 'string compare'
+    if 'strcat' in s: return 'strcat'
+    if s in('fpr_alloc','alloc_in_size','fpr_in_heap','fpr_layout_fields','fpr_free','fpr_release') or s.startswith(('buddy','alloc_','fpr_alloc')): return 'allocator (fpr_alloc, alloc_in_size, fpr_in_heap, fpr_layout_fields)'
+    if s.startswith('kp_'): return 'kp_reaches'
+    if s.startswith(('mm_','g_mutmap')): return 'MutMap runtime (hash, find, insertWith)'
+    if s.startswith(('g_sort','apply','call2','fpr_apply')): return 'sort + closure dispatch (C side)'
+    if s.startswith('fpr_fn_') or s.startswith('fpr_prim_fn_'): return 'generated code'
+    return 'other runtime/libc'
+B=collections.Counter(); S=collections.Counter(); G=collections.Counter()
+for a,v in cost.items():
+    s=sym(a); b=bucket(s); B[b]+=v; S[s]+=v
+    if b=='generated code':
+        j=bisect.bisect_left(srt,a); prev=dis.get(srt[j-1]) if j>0 else None
+        G[CL.cls(a,dis.get(a,'?'),prev)]+=v
+json.dump(dict(total=total,buckets=B,gen_classes=G,top=S.most_common()),open(sys.argv[3],'w'),indent=1)
+print(f"total {total/1e9:.3f}G"); [print(f"  {k:60s} {v/1e9:.3f}G {100*v/total:5.1f}%") for k,v in B.most_common()]
+gt=sum(G.values()); print('  generated-code classes (% of whole program): '+', '.join(f"{k} {100*v/total:.1f}%" for k,v in G.most_common()))

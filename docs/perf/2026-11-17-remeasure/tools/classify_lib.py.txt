@@ -1,0 +1,20 @@
+import re
+def cls(a,ins,prev):
+    i=ins
+    if '%fs:' in i: return 'fuel/hart-tls'
+    if re.match(r'sub\s+\$0x[0-9a-f]+,\(%r10\)',i): return 'fuel/hart-tls'
+    if i.startswith('jg') and prev and re.match(r'sub\s+\$0x[0-9a-f]+,\(%r10\)',prev): return 'fuel/hart-tls'
+    if re.match(r'(jno|jo)\b',i): return 'overflow-check'
+    if re.match(r'sar\s+\$?0?x?1?,?%',i) or re.match(r'sar\s+%',i) or i.startswith('sar    %'): return 'tag/untag'
+    if re.match(r'(sar|shl|add)\s+%r\w+$',i) : return 'tag/untag'
+    if re.match(r'lea\s+0x1\(%r\w+,%r\w+,1\)',i) : return 'tag/untag'
+    if re.match(r'(and|test)\s+\$0x1,',i): return 'tag/untag'
+    if re.match(r'(sar|shl)\s+\$0x1,',i): return 'tag/untag'
+    if re.match(r'(mov|lea)\w*\s+.*-?0x[0-9a-f]+\(%rbp\)',i) or re.match(r'mov\w*\s+.*\(%rsp\)',i): return 'spill/frame'
+    if i.startswith(('call','ret','push','pop')): return 'call/ret'
+    if i.startswith('j'): return 'branch'
+    if i.startswith('cmp') or i.startswith('test') or i.startswith('set') or i.startswith('movzb'): return 'compare'
+    if re.match(r'mov\w*\s+-?(0x[0-9a-f]+)?\(%',i): return 'load'
+    if re.match(r'mov\w*\s+[^,]+,\s*-?(0x[0-9a-f]+)?\(%',i): return 'store'
+    if re.match(r'mov\w*\s+%\w+,%\w+$',i): return 'reg-move'
+    return 'alu/other'

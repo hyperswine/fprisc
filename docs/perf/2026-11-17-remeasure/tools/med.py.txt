@@ -1,0 +1,19 @@
+import statistics,math,collections
+def load(f):
+    d=collections.defaultdict(list)
+    for l in open(f):
+        p=l.split()
+        if len(p)==2: d[p[0]].append(int(p[1]))
+    return d
+o,n,c=load('/workspace/out/rm/cg-old-a.txt'),load('/workspace/out/rm/cg-new-a.txt'),load('/workspace/out/rm/cg-c.txt')
+apps="sim csv wordfreq wordfreq_mutmap format records treemap treemap_mutmap".split()
+clbg="binarytrees fannkuchredux nbody spectralnorm mandelbrot fasta knucleotide revcomp".split()
+gm=lambda xs: math.exp(sum(map(math.log,xs))/len(xs))
+for grp in (apps,clbg):
+    ro=[];rn=[]
+    for p in grp:
+        mo,mn,mc=[statistics.median(x) for x in (o[p+'.fpr'],n[p+'.fpr'],c[p.replace('_mutmap','')+'.c'])]
+        sp=lambda L:100*(max(L)-min(L))/statistics.median(L)
+        ro.append(mo/mc); rn.append(mn/mc)
+        print(f"{p:16} C {mc/1e9:.3f}G old {mo/1e9:.3f}G ({mo/mc:.2f}x) new {mn/1e9:.3f}G ({mn/mc:.2f}x) d {100*(mn-mo)/mo:+.1f}% spread o {sp(o[p+'.fpr']):.3f}% n {sp(n[p+'.fpr']):.3f}% c {sp(c[p.replace('_mutmap','')+'.c']):.3f}%")
+    print(f"GEOMEAN old {gm(ro):.2f}x new {gm(rn):.2f}x ; excl _mutmap old {gm([r for p,r in zip(grp,ro) if 'mutmap' not in p]):.2f} new {gm([r for p,r in zip(grp,rn) if 'mutmap' not in p]):.2f}\n")

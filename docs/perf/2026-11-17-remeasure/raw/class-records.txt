@@ -1,0 +1,25 @@
+total 2.258 G
+
+fpr_fn_cmp  1.049 G (46.5%)
+   compare 20%, alu/other 18%, branch 17%, reg-move 12%, spill/frame 11%, load 10%, tag/untag 7%, fuel/hart-tls 4%, call/ret 2%
+
+g_sortListWith  0.507 G (22.5%)
+   branch 19%, alu/other 17%, spill/frame 17%, load 16%, compare 14%, store 5%, tag/untag 4%, call/ret 4%, reg-move 3%
+
+fpr_fn__x24worker_x2etrmc_x2e_x24trmc_x2e3_x2egen_x2e0  0.183 G (8.1%)
+   alu/other 31%, reg-move 21%, branch 14%, overflow-check 10%, store 8%, compare 7%, load 4%, tag/untag 3%, fuel/hart-tls 2%, spill/frame 1%, call/ret 0%
+
+fpr_fn__x24loop_x2ein_x2e_x24typed_x2emono_x2emain_x2e3  0.132 G (5.8%)
+   alu/other 17%, branch 17%, load 17%, compare 14%, store 11%, tag/untag 8%, spill/frame 5%, reg-move 5%, fuel/hart-tls 5%, overflow-check 2%, call/ret 0%
+
+kp_reaches  0.067 G (3.0%)
+   branch 24%, alu/other 19%, compare 16%, call/ret 13%, reg-move 13%, load 7%, tag/untag 4%, spill/frame 4%
+
+alloc_in_size  0.066 G (2.9%)
+   alu/other 27%, call/ret 20%, compare 17%, branch 17%, reg-move 8%, load 6%, store 3%, spill/frame 3%, fuel/hart-tls 0%, tag/untag 0%
+
+fpr_alloc  0.058 G (2.6%)
+   call/ret 21%, branch 19%, compare 17%, reg-move 14%, load 12%, alu/other 9%, spill/frame 5%, fuel/hart-tls 3%, store 0%
+
+fpr_layout_fields  0.050 G (2.2%)
+   alu/other 24%, call/ret 20%, compare 20%, branch 15%, reg-move 14%, load 6%, store 0%

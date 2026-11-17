@@ -1,0 +1,21 @@
+import json,collections
+def bucket(s):
+    if s.startswith(('mm_','g_mutmap','fpr_g_mutmap')): return 'MutMap'
+    if s in('g_strCompare',) or 'strcat' in s or s in('g_substr','fpr_mkstr','g_strJoin','fpr_prim_fn_str'): return 'strings'
+    if s in('fpr_alloc','alloc_in_size','fpr_in_heap','fpr_layout_fields','vdir_alloc','free_block','vfree','fpr_alloc_bulk','fpr_alloc_object_bulk','fpr_free'): return 'alloc'
+    if s.startswith('kp_'): return 'regioncopy'
+    if s.startswith(('g_sort','fpr_apply')): return 'sort/apply'
+    if s.startswith(('h_','fpr_g_Vec')): return 'vec'
+    if s=='?': return 'shlib'
+    if s.startswith(('fpr_fn_','fpr_prim_fn_')): return 'gen'
+    return 'otherrt'
+P="sim csv wordfreq wordfreq_mutmap format records treemap treemap_mutmap binarytrees fannkuchredux nbody spectralnorm mandelbrot fasta knucleotide revcomp".split()
+cols=['gen','alloc','strings','MutMap','sort/apply','regioncopy','vec','shlib','otherrt']
+print('| program | total G | '+' | '.join(cols)+' | gen spill/frame | gen tag/untag | gen overflow | gen fuel |')
+print('|---|'+'---:|'*(len(cols)+5))
+for p in P:
+    d=json.load(open(f'/workspace/out/rm/new/bk-{p}.json')); t=d['total']; B=collections.Counter()
+    for s,v in d['top']: B[bucket(s)]+=v
+    g=d['gen_classes']
+    # gen bucket in buckets.py also had fpr_prim_fn_*strcat; classes there include strcat; keep as is
+    print(f"| {p} | {t/1e9:.3f} | "+' | '.join(f"{100*B[c]/t:.1f}" for c in cols)+' | '+' | '.join(f"{100*g.get(k,0)/t:.1f}" for k in ('spill/frame','tag/untag','overflow-check','fuel/hart-tls'))+' |')

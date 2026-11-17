@@ -1,0 +1,11 @@
+#!/bin/bash
+# cg.sh TAG REP LANG prog... : callgrind (--dump-instr=yes) at the audit's cgjobs sizes; prints "prog instr"
+T=$1; REP=$2; L=$3; shift 3; R=/workspace/out/rm; O=$R/$T/cg-r$REP; mkdir -p $O
+export LD_LIBRARY_PATH=/opt/tc/fprdeps/lib
+carg() { case $1 in sim|treemap|treemap_mutmap|records|format) echo;; csv) echo /workspace/out/data/sales.csv;; wordfreq|wordfreq_mutmap) echo /workspace/out/data/corpus.txt;;
+ binarytrees) echo 16;; fannkuchredux) echo 10;; nbody) echo 500000;; spectralnorm) echo 1000;; mandelbrot) echo 1000;; fasta) echo 1000000;;
+ knucleotide) echo $R/data/fasta-1000000.txt;; revcomp) echo $R/data/fasta-2500000.txt;; esac; }
+dir() { case $1 in sim|csv|wordfreq*|treemap*|records|format) echo apps;; *) echo clbg;; esac; }
+for p in "$@"; do d=$(dir $p); if [ $L = fpr ]; then b=$R/$T/$d/bin-fpr/$p; else b=$R/c/$d/$p; fi
+ (cd $R/$T/$d && valgrind --tool=callgrind --dump-instr=yes --callgrind-out-file=$O/$p.$L.cg $b $(carg $p) > $O/$p.$L.out 2> $O/$p.$L.vg.log)
+ echo "$p.$L $(grep -m1 '^summary:' $O/$p.$L.cg | cut -d' ' -f2)"; done

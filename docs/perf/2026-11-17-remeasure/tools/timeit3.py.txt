@@ -1,0 +1,21 @@
+import os,sys,time,subprocess,hashlib,statistics,json
+# timeit3.py rounds name:sub:arg ... ; interleaves old fpr, new fpr, C (audit timeit.py.txt method, 3-way)
+R=int(sys.argv[1]); jobs=[s.split(':',2) for s in sys.argv[2:]]
+RM='/workspace/out/rm'; res={}
+def run(cmd,cwd):
+    t=time.perf_counter(); p=subprocess.Popen(cmd,cwd=cwd,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+    out=p.stdout.read(); _,st,ru=os.wait4(p.pid,0); w=time.perf_counter()-t
+    return w,ru.ru_maxrss/1024,ru.ru_utime,ru.ru_stime,hashlib.md5(out).hexdigest(),st
+for r in range(R):
+    for name,sub,arg in jobs:
+        for lang,b,cwd in (('old',f'{RM}/old/{sub}/bin-fpr/{name}',f'{RM}/old/{sub}'),('new',f'{RM}/new/{sub}/bin-fpr/{name}',f'{RM}/new/{sub}'),('c',f'{RM}/c/{sub}/{name}',f'{RM}/new/{sub}')):
+            res.setdefault((name,lang),[]).append(run([b]+([arg] if arg else []),cwd))
+out=[]
+for name,sub,arg in jobs:
+    m=lambda L,i:statistics.median(x[i] for x in L)
+    o,n,c=res[(name,'old')],res[(name,'new')],res[(name,'c')]
+    d=dict(name=name,old=m(o,0),new=m(n,0),c=m(c,0),old_runs=[x[0] for x in o],new_runs=[x[0] for x in n],c_runs=[x[0] for x in c],
+      old_rss=m(o,1),new_rss=m(n,1),c_rss=m(c,1),md5_old=o[0][4]==c[0][4],md5_new=n[0][4]==c[0][4],st=(o[0][5],n[0][5]))
+    out.append(d)
+    print(f"{name:15s} old {d['old']:.3f}s new {d['new']:.3f}s c {d['c']:.3f}s | old x{d['old']/d['c']:.2f} new x{d['new']/d['c']:.2f} | rss old {d['old_rss']:.0f} new {d['new_rss']:.0f} c {d['c_rss']:.0f}MB md5 {d['md5_old']}/{d['md5_new']} st={d['st']}",flush=True)
+json.dump(out,open(f'{RM}/wall-{int(time.time())}.json','w'),indent=1)
