@@ -1,0 +1,24 @@
+# sendl0: send a list of records with I64 fields to an actor on the same hart (deep copy each way is one send), C6 stage 3c microbench
+profile base.
+T = Type (T I64 Int | N).
+build : unsafe Int -> List T -> List T.
+build k acc = if k == 0 then acc else build (k - 1) (T (I64.ofInt k) k :: acc).
+len : unsafe List T -> Int -> Int.
+len xs n = case xs of
+    _ :: rest -> len rest (n + 1)
+  | [] -> n.
+echo : unsafe Int -> a.
+echo me = case receive me of
+    (who, xs) -> _ = send who (len xs 0); echo me.
+loop : unsafe Int -> Int -> List T -> Int -> Int -> Int.
+loop me far xs r acc | r == 0 = acc.
+loop me far xs r acc =
+  _ = send far (me, xs);
+  n = receiveFrom me far;
+  loop me far xs (r - 1) (acc + n).
+main : unsafe Unit -> Unit.
+main u =
+  me = myself 0;
+  far = spawnOn 0 echo;
+  xs = build 20000 [N];
+  print (loop me far xs 50 0).
