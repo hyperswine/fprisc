@@ -35,7 +35,10 @@ data DEnv = DEnv
     dLifted :: [(Name, [Name], Core)],
     -- Private, saturated control-flow joins; ordinary lifted lambdas are
     -- not joins. Later passes may traverse these within the current turn.
-    dJoins :: [Name]
+    dJoins :: [Name],
+    -- C6 stage 3c: constructor -> its fields declared I64, which hold the
+    -- integer's raw bits (empty: every I64 field is a box)
+    dI64 :: M.Map Name [Int]
   }
 
 type D = Control.Monad.State.Strict.State DEnv
@@ -94,12 +97,27 @@ collectCons unitHash tops = M.union builtinCons (M.fromList user)
 -- conservatively walked word. The map is a pure function of the declarations
 -- (the unboxing proposal's Decision 3), and a row with no raw field is left
 -- out. Fields past the 64th are not marked.
-collectRawFields :: String -> [STop] -> M.Map (Int, Int) (Integer, Integer)
-collectRawFields unitHash tops = M.fromList
-  [ ((tidFor unitHash n, v), (mask ["F64", "F32"] tys, mask ["F32"] tys))
-  | TType n _ _ cs <- tops, ((_, tys), v) <- zip cs [0 ..], mask ["F64", "F32"] tys /= 0 ]
+--
+-- C6 stage 3c: with `i64` set, a field declared I64 is raw as well (its own
+-- third mask), and holds the integer's bits instead of a box; the same
+-- declarations then give collectI64Fields' constructor map.
+collectRawFields :: Bool -> String -> [STop] -> M.Map (Int, Int) (Integer, Integer, Integer)
+collectRawFields i64 unitHash tops = M.fromList
+  [ ((tidFor unitHash n, v), (mask (rawNames) tys, mask ["F32"] tys, mask ["I64" | i64] tys))
+  | TType n _ _ cs <- tops, ((_, tys), v) <- zip cs [0 ..], mask rawNames tys /= 0 ]
   where
+    rawNames = ["F64", "F32"] ++ ["I64" | i64]
     mask names tys = sum [ 2 ^ i | (i, TCon t []) <- zip [0 :: Int ..] tys, t `elem` names, i < 64 ]
+
+-- C6 stage 3c: each constructor's fields declared I64 (the first 64), the
+-- ones collectRawFields marks raw when I64 fields are unboxed. Erasure and
+-- desugaring store such a field through I64.toField and bind it through
+-- I64.ofField. Only the declared type counts (Decision 3): a type variable
+-- instantiated at I64 stays a box.
+collectI64Fields :: [STop] -> M.Map Name [Int]
+collectI64Fields tops = M.fromList
+  [ (c, is) | TType _ _ _ cs <- tops, (c, tys) <- cs
+  , let is = [ i | (i, TCon "I64" []) <- zip [0 :: Int ..] tys, i < 64 ], not (null is) ]
 
 collectShapes :: [STop] -> M.Map [Name] Int
 collectShapes tops = M.fromList [(fs, shapeIdFor fs) | fs <- allShapes]
@@ -352,7 +370,9 @@ compileArms scrut arms fallback = go True arms
             certain <- if null rest && not first && null [() | (_, Just _, _) <- arms] then coveredHead p else pure False
             if certain
               then case p of
-                PCon _ ps -> matchFields scrut ps inner nxt
+                PCon c ps -> do
+                  raw <- gets (maybe [] id . M.lookup c . dI64)
+                  matchFieldsRaw raw scrut ps inner nxt
                 PTup ps -> matchFields scrut ps inner nxt
                 _ -> matchPat scrut p inner nxt
               else matchPat scrut p inner nxt
@@ -402,7 +422,8 @@ matchPat scrut p ok fail' = case p of
   PCon c ps -> do
     (tid, var, ar) <- conInfo c
     unless (length ps == ar) $ error ("constructor " ++ c ++ " arity mismatch in pattern")
-    inner <- matchFields scrut ps ok fail'
+    raw <- gets (maybe [] id . M.lookup c . dI64)
+    inner <- matchFieldsRaw raw scrut ps ok fail'
     pure (CIf (CTagEq tid var scrut) inner fail')
   PTup ps -> do
     con <- tupCon (length ps)
@@ -417,12 +438,17 @@ matchPat scrut p ok fail' = case p of
     bind fs
 
 matchFields :: Core -> [SPat] -> Core -> Core -> D Core
-matchFields scrut ps ok fail' = go (zip [0 ..] ps)
+matchFields = matchFieldsRaw []
+
+-- C6 stage 3c: a field in `raw` holds an I64's bits; its pattern sees a box
+matchFieldsRaw :: [Int] -> Core -> [SPat] -> Core -> Core -> D Core
+matchFieldsRaw raw scrut ps ok fail' = go (zip [0 ..] ps)
   where
     go [] = pure ok
     go ((i, p) : rest) = do
       inner <- go rest
-      matchPat (CProj i scrut) p inner fail'
+      let field = if i `elem` raw then DataLayout.i64Load (CProj i scrut) else CProj i scrut
+      matchPat field p inner fail'
 
 compileTop :: [STop] -> D Prog
 compileTop = compileTopBy compileGroup
@@ -438,7 +464,8 @@ compileTopBy lowerGroup tops = do
 constructorStubs :: D Prog
 constructorStubs = do
   cons <- gets dCons
-  pure (M.fromList [(c, (params, CMk tid var (map CVar params)))
+  raw <- gets dI64
+  pure (M.fromList [(c, (params, CMk tid var (DataLayout.i64StoreAt (maybe [] id (M.lookup c raw)) (map CVar params))))
        | (c, (tid, var, ar)) <- M.toList cons, let params = ["x" ++ show i | i <- [1 .. ar]]])
 
 -- EVERY clause of a name, in source order, wherever it sits. Inference reads

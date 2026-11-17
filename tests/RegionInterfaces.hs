@@ -65,7 +65,7 @@ prepareSource ns source=
      then (right (prepareChecked result),inferenceTops result) else error (show (inferenceErrors result))
 native ns source names=
   let (plans,tops)=prepareSource ns source
-      layouts=Layouts (collectCons "unit" tops) (collectShapes tops)
+      layouts=Layouts (collectCons "unit" tops) (collectShapes tops) M.empty
       selected=right (selectUnit (M.keysSet (constructorLayouts layouts)) (right (selectCheckedUnit plans names)))
   in right (Native.compileSelection PreserveCallbacks layouts selected)
 place input=right (R.place (R.Options True True True Nothing False) (R.context M.empty input) input)
@@ -491,7 +491,7 @@ main=do
       codeShadow=T.Function "code-shadow" [parameter "worker"] invocation
       fresh :: String -> State Int String
       fresh prefix=do n<-get;put (n+1);pure (prefix++show n)
-      layout=Erase.Layout fresh (const Nothing) M.empty (\_ _ _->pure ())
+      layout=Erase.Layout fresh (const Nothing) M.empty (\_ _ _->pure ()) (const [])
       contracts=M.singleton code codeContract
   check "logical code identities survive even when display names would shadow them"
     (Verify.verifyFunctionWith contracts (T.TypeContext [] M.empty) codeShadow==Right ()
@@ -516,7 +516,7 @@ main=do
   check "a region context cannot borrow a different checking namespace"
     (failed (R.place (R.Options True True True Nothing False) (R.context M.empty input) other))
   let (physicalPlans,physicalTops)=prepareSource "physical" body
-      physicalLayouts=Layouts (collectCons "unit" physicalTops) (collectShapes physicalTops)
+      physicalLayouts=Layouts (collectCons "unit" physicalTops) (collectShapes physicalTops) M.empty
       physicalSelection=right (selectUnit (M.keysSet (constructorLayouts physicalLayouts))
         (right (selectCheckedUnit physicalPlans (S.singleton "counter"))))
       changedLayouts=physicalLayouts {shapeLayouts=M.singleton ["unrelated"] 99}
@@ -551,7 +551,7 @@ main=do
   check "independent compatibility counters remain distinct in cost/effect analysis"
     (length (filter (isSuffixOf "lifted_1") (M.keys scopeProjection))==2)
   let (plans,tops)=prepareSource "borrow" "entry n = n + 1."
-      layouts=Layouts (collectCons "unit" tops) (collectShapes tops)
+      layouts=Layouts (collectCons "unit" tops) (collectShapes tops) M.empty
       changed=right (selectClauses (M.keysSet (constructorLayouts layouts)) plans
         (parseSource "entry n = _ = str n; if n == 0 then (fn x -> x) else entry (n - 1)."))
       changedNative=right (Native.compileSelection PreserveCallbacks layouts changed)

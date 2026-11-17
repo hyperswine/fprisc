@@ -142,7 +142,7 @@ checkedLayouts = do
         [("Nil",Ty.Forall [0] [] (list a)),
          ("Cons",Ty.Forall [0] [] (Ty.TFn a (Ty.TFn (list a) (list a))))]
       physical=Layouts (M.fromList [("Nil",(2,0,0)),("Cons",(2,1,2)),("Tup2",(8,0,2))])
-        (M.singleton ["a","b"] 20)
+        (M.singleton ["a","b"] 20) M.empty
       context=T.TypeContext [] schemas
       build=Layout.layoutsFor physical context
       table=right (build [nested,wordList,list Ty.tInt])
@@ -366,7 +366,7 @@ scalarStorage = do
     (R.representWithStorage (M.singleton "wrapper" (ScalarLayoutDef 40 0 TextRep)) True S.empty M.empty M.empty)
   let a=Ty.TV 0;wrap t=Ty.TAp (Ty.TC "Wrap") t
       schemas=M.singleton "Wrap" (Ty.Forall [0] [] (Ty.TFn a (wrap a)))
-      physical=Layouts (M.singleton "Wrap" (40,0,1)) M.empty
+      physical=Layouts (M.singleton "Wrap" (40,0,1)) M.empty M.empty
       roots=[wrap (Ty.TC "Word"),wrap Ty.tInt,wrap Ty.tStr,wrap a,wrap (wrap (Ty.TC "Word"))]
       table=right (Layout.layoutsFor physical (T.TypeContext [] schemas) roots)
       key=right . Mono.typeKey . Layout.uniformType

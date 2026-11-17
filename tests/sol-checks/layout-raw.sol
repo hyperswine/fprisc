@@ -30,12 +30,12 @@ refused = [("listfield","profile base.\nQ = Type (Q (List F64) Int).\nmain = pri
 nestedOk = "profile base.\nP = Type (P F64 Int).\nR = Type (R P Int).\nmain = print [R (P 1.5 2) 3].\n".
 walkWant = "[P 2.5 3, Q 4]\n[W 1 (-1.5) 0.25 2, W 3 2e300 (-0.5) 4]\nTrue\nTrue\nTrue\nFalse\n".
 quad s = parseInt (Str.trim (Str.replace ".quad" "" s)).
-# the count word, then each row's raw and F32 masks, after the fpr_layout_raw label
+# the count word, then each row's raw, F32 and I64 masks, after the fpr_layout_raw label
 rawRows : unsafe List String -> List Int.
 rawRows ls = case ls of
   l :: rest -> if Str.trim l == "fpr_layout_raw:" then (case rest of
       c :: more -> n = quad c; nth k = quad (List.fold (fn acc x -> x) "" (List.take k more));
-        quad c :: List.concat (List.map (fn i -> [nth (4 * i + 3), nth (4 * i + 4)]) (List.range 0 (n - 1)))
+        quad c :: List.concat (List.map (fn i -> [nth (5 * i + 3), nth (5 * i + 4), nth (5 * i + 5)]) (List.range 0 (n - 1)))
     | [] -> []) else rawRows rest
 | [] -> [].
 main : unsafe Unit -> Unit.
@@ -46,7 +46,7 @@ main u = root = H.root Unit; work = tempDir "fpr-layout-raw";
   ProcessResult code out err = H.call ["{root}/fpr","compile","--system=posix","--prelude={root}/core/prelude.fpr",src,asm] env 240000;
   _ = (if code == 0 then Unit else error "compile exit {code}\n{out}{err}");
   rows = rawRows (Str.lines (readPath asm));
-  _ = (if rows == [2, 1, 0, 6, 4] or rows == [2, 6, 4, 1, 0] then Unit else error "fpr_layout_raw rows: want count 2, P with raw mask 1 (no F32) and W with raw mask 6 (F32 mask 4), got {rows}");
+  _ = (if rows == [2, 1, 0, 0, 6, 4, 0] or rows == [2, 6, 4, 0, 1, 0, 0] then Unit else error "fpr_layout_raw rows: want count 2, P with raw mask 1 (no F32, no I64) and W with raw mask 6 (F32 mask 4), got {rows}");
   ProcessResult bcode bout berr = H.call ["{root}/fpr","build","-o",exe,src] (List.append env [("FPR_LAYOUT_CHECK","1"),("FPR_LAYOUT_REPORT","1")]) 240000;
   _ = (if bcode == 0 then Unit else error "build exit {bcode}\n{bout}{berr}");
   ProcessResult rcode rout rerr = H.call [exe] [] 60000;

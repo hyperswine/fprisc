@@ -317,11 +317,11 @@ static inline uw cell_raw(V v) {
    * (a list of points). Masks never change once any_raw is set. */
   uw key = tid < 0x80000000u && var < (1u << 24) ? ((tid + 1) << 24) | var : 0;
   if (key && key == raw_cache_key) return raw_cache_mask;
-  uw m = fpr_layout_raw_mask(tid, var, 0);
+  uw m = fpr_layout_raw_mask(tid, var, 0, 0);
   if (key) { raw_cache_key = key; raw_cache_mask = m; }
   return m;
 #else
-  return fpr_layout_raw_mask(tid, var, 0);
+  return fpr_layout_raw_mask(tid, var, 0, 0);
 #endif
 }
 #define RAW_FIELD(mask, i) ((i) < 8 * sizeof(uw) && (((mask) >> (i)) & 1))
@@ -372,7 +372,7 @@ static void layout_report(V v) {
   if (bit == 16 && !(layout_seen & 32)) {
     /* C6 stage 3a: the first constructor met with raw fields, so a harness
      * can tell the masks reached the runtime */
-    uw raw = fpr_layout_raw_mask(TID(v), ((hdr_t *)v)->var, 0);
+    uw raw = fpr_layout_raw_mask(TID(v), ((hdr_t *)v)->var, 0, 0);
     if (raw) {
       layout_seen |= 32;
       praw("[layout] raw fields ");
@@ -4686,13 +4686,14 @@ static int veq(V a0, V b0) {
     }
     V *fa = (V *)((char *)a + 8), *fb = (V *)((char *)b + 8);
 #ifndef FPR_BUILTIN_RAW
-    uw f32 = 0, raw = cell_raw(a) ? fpr_layout_raw_mask(TID(a), ((hdr_t *)a)->var, &f32) : 0;
+    uw f32 = 0, i64m = 0, raw = cell_raw(a) ? fpr_layout_raw_mask(TID(a), ((hdr_t *)a)->var, &f32, &i64m) : 0;
 #endif
     for (uw i = nf; i-- > 0;) { /* last first, so field 0 pops first */
 #ifndef FPR_BUILTIN_RAW
       if (RAW_FIELD(raw, i)) { /* a float field: IEEE equality, as the builtin profile's 'd'/'f' kinds */
         int same;
-        if (RAW_FIELD(f32, i)) { union { uint32_t u; float f; } x = {(uint32_t)fa[i]}, y = {(uint32_t)fb[i]}; same = x.f == y.f; }
+        if (RAW_FIELD(i64m, i)) same = fa[i] == fb[i]; /* an I64 field (C6 stage 3c): its bits */
+        else if (RAW_FIELD(f32, i)) { union { uint32_t u; float f; } x = {(uint32_t)fa[i]}, y = {(uint32_t)fb[i]}; same = x.f == y.f; }
         else { union { V u; double d; } x = {fa[i]}, y = {fb[i]}; same = x.d == y.d; }
         if (!same) { eq = 0; goto done; }
         continue;
@@ -4789,17 +4790,18 @@ static void rdec64(int64_t n) {
 }
 static void render(V v);
 static uw dtoa(char *,double,int);
-/* C6 stage 3b: a raw float field of a user constructor, by its mask: 'd'
- * (F64), 'f' (F32) or 0 (a word to render by its tag) */
+/* C6 stage 3b: a raw field of a user constructor, by its mask: 'd' (F64),
+ * 'f' (F32), 'w' (I64, stage 3c) or 0 (a word to render by its tag) */
 static char raw_field_kind(V obj,uw i) {
   if (ISINT(obj) || !cell_raw(obj)) return 0;
-  uw f32, raw = fpr_layout_raw_mask(TID(obj), ((hdr_t *)obj)->var, &f32);
-  return RAW_FIELD(raw, i) ? (RAW_FIELD(f32, i) ? 'f' : 'd') : 0;
+  uw f32, i64m, raw = fpr_layout_raw_mask(TID(obj), ((hdr_t *)obj)->var, &f32, &i64m);
+  return RAW_FIELD(raw, i) ? (RAW_FIELD(i64m, i) ? 'w' : RAW_FIELD(f32, i) ? 'f' : 'd') : 0;
 }
 static void renderField(V obj,uw i) {
   V v=((V *)(obj+8))[i];
 #ifndef FPR_BUILTIN_RAW
   char rk=raw_field_kind(obj,i);
+  if(rk=='w') { rdec64((int64_t)v); return; } /* an I64 field: a signed decimal, as a boxed I64 prints */
   if(rk) {
     union { V u; double d; } d={v}; union { uint32_t u; float f; } f={(uint32_t)v};
     char b[40]; uw n=dtoa(b,rk=='d'?d.d:(double)f.f,rk=='d'?15:7);
@@ -4841,7 +4843,7 @@ static void renderArg(V obj, int i) {
   int paren = 0;
 #ifndef FPR_BUILTIN_RAW
   char rk = raw_field_kind(obj, i);
-  if (rk) paren = rk == 'd' ? (sw)f < 0 : (int32_t)(uint32_t)f < 0; /* the sign bit: -1.5 as (-1.5) */
+  if (rk) paren = rk == 'd' || rk == 'w' ? (sw)f < 0 : (int32_t)(uint32_t)f < 0; /* the sign bit: -1.5 as (-1.5), an I64 -3 as (-3) */
   else
 #endif
   if (ISINT(f)) paren = UNTAG(f) < 0;
@@ -5758,6 +5760,12 @@ static V vu64(uint64_t x) {
   return (V)b;
 }
 static V vi64(int64_t x) { return vu64((uint64_t)x); }
+/* C6 stage 3c: a constructor field declared I64 holds the integer's bits,
+ * not a box (the raw-field masks tell every walker never to follow it). The
+ * compiler stores a field through toField and reads one through ofField,
+ * which boxes it again for the code that uses it. */
+static V i64_toField(V a) { return (V)u64(a); }
+static V i64_ofField(V bits) { return vu64((uint64_t)bits); }
 static unsigned cnt64(V k) { return (unsigned)((uint64_t)UNTAG(k) & 63u); }
 
 static V result_of(unsigned var, V payload) {
@@ -5996,6 +6004,8 @@ FPR_FN(fpr_g_I64_x2eclz, i64_clz, 1);
 FPR_FN(fpr_g_I64_x2ectz, i64_ctz, 1);
 FPR_FN(fpr_g_I64_x2epopcnt, i64_popcnt, 1);
 FPR_FN(fpr_g_I64_x2eofInt, i64_ofInt, 1);
+FPR_FN(fpr_g_I64_x2etoField, i64_toField, 1);
+FPR_FN(fpr_g_I64_x2eofField, i64_ofField, 1);
 FPR_FN(fpr_g_I64_x2etoInt, i64_toInt, 1);
 FPR_FN(fpr_g_I64_x2ehi, i64_hi, 1);
 FPR_FN(fpr_g_I64_x2elo, i64_lo, 1);

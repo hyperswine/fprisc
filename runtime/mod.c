@@ -34,9 +34,10 @@ __attribute__((weak)) const uw fpr_modtab[1] = {0};
 __attribute__((weak)) const uw fpr_layout_table[1] = {0};
 __attribute__((weak)) const uw fpr_layout_raw[1] = {0};
 /* raw: the C6 stage 3a mask of fields that hold raw words (fpr_layout_raw),
- * f32: those of them that are F32; 0, the conservative answer, until the
- * image's mask rows are applied. */
-typedef struct { uw tid_plus_one, variant, fields, raw, f32; } layout_slot;
+ * f32: those of them that are F32, i64: those that are I64 (stage 3c; the
+ * rest are F64); 0, the conservative answer, until the image's mask rows
+ * are applied. */
+typedef struct { uw tid_plus_one, variant, fields, raw, f32, i64; } layout_slot;
 typedef struct { uw capacity, used; layout_slot slots[]; } layout_index;
 static layout_index *layouts;
 static fpr_lock_t layout_lock;
@@ -53,13 +54,14 @@ static layout_slot *layout_find(layout_index *index, uw tid, uw variant) {
     at=(at+1)&(index->capacity-1);
   }
 }
-static void layout_insert(layout_index *index, uw tid, uw variant, uw fields, uw raw, uw f32) {
+static void layout_insert(layout_index *index, uw tid, uw variant, uw fields, uw raw, uw f32, uw i64) {
   layout_slot *slot=layout_find(index,tid,variant);
   if (slot->tid_plus_one) return;
   slot->variant=variant;
   slot->fields=fields;
   slot->raw=raw;
   slot->f32=f32;
+  slot->i64=i64;
   __atomic_store_n(&slot->tid_plus_one,tid+1,__ATOMIC_RELEASE);
   index->used++;
 }
@@ -106,12 +108,12 @@ static int layout_add(const uw *table) {
     index->capacity=capacity;
     if (old) for (uw i=0;i<old->capacity;i++) {
       layout_slot *r=&old->slots[i];
-      if (r->tid_plus_one) layout_insert(index,r->tid_plus_one-1,r->variant,r->fields,__atomic_load_n(&r->raw,__ATOMIC_ACQUIRE),r->f32);
+      if (r->tid_plus_one) layout_insert(index,r->tid_plus_one-1,r->variant,r->fields,__atomic_load_n(&r->raw,__ATOMIC_ACQUIRE),r->f32,r->i64);
     }
   }
   for (uw i=0;i<count;i++) {
     const uw *r=table+1+3*i;
-    layout_insert(index,r[0],r[1],r[2],0,0);
+    layout_insert(index,r[0],r[1],r[2],0,0,0);
   }
   if (index!=old) __atomic_store_n(&layouts,index,__ATOMIC_RELEASE);
   return 0;
@@ -127,28 +129,32 @@ int fpr_layout_any_raw; /* some constructor has a raw-field mask: walkers ask */
  * table only when its constructor's bit is set, so cells of types without
  * float fields pay a load and a bit test */
 uw fpr_layout_raw_filter[FPR_LAYOUT_RAW_FILTER_WORDS];
+/* a row: (tid, variant, raw mask, F32 mask, I64 mask) */
+#define LAYOUT_RAW_ROW 5
 static int layout_raw_add(const uw *table) {
   layout_index *index=layouts;
   uw count=table?table[0]:0;
   if (!count) return 0;
-  if (!index || count>((uw)-1-1)/4) return -1;
+  if (!index || count>((uw)-1-1)/LAYOUT_RAW_ROW) return -1;
   for (uw i=0;i<count;i++) {
-    const uw *r=table+1+4*i;
-    if (r[0]==(uw)-1 || !r[2] || (r[3]&~r[2])) return -1;
+    const uw *r=table+1+LAYOUT_RAW_ROW*i;
+    if (r[0]==(uw)-1 || !r[2] || (r[3]&~r[2]) || (r[4]&~r[2]) || (r[3]&r[4])) return -1;
     layout_slot *found=layout_find(index,r[0],r[1]);
     if (found->tid_plus_one!=r[0]+1) return -1;
     if (found->fields<8*sizeof(uw) && (r[2]>>found->fields)) return -1;
-    if (found->raw && (found->raw!=r[2] || found->f32!=r[3])) return -1;
+    if (found->raw && (found->raw!=r[2] || found->f32!=r[3] || found->i64!=r[4])) return -1;
     if (i) {
-      const uw *prior=table+1+4*(i-1);
+      const uw *prior=table+1+LAYOUT_RAW_ROW*(i-1);
       if (prior[0]>r[0] || (prior[0]==r[0] && prior[1]>=r[1])) return -1;
     }
   }
-  /* f32 first: a reader that sees the raw mask (acquire) sees its F32 mask */
+  /* kinds first: a reader that sees the raw mask (acquire) sees its F32 and
+   * I64 masks */
   for (uw i=0;i<count;i++) {
-    const uw *r=table+1+4*i;
+    const uw *r=table+1+LAYOUT_RAW_ROW*i;
     layout_slot *slot=layout_find(index,r[0],r[1]);
     slot->f32=r[3];
+    slot->i64=r[4];
     __atomic_store_n(&slot->raw,r[2],__ATOMIC_RELEASE);
     uw bit=FPR_LAYOUT_RAW_FILTER_BIT(r[0],r[1]);
     __atomic_fetch_or(&fpr_layout_raw_filter[bit/(8*sizeof(uw))],(uw)1<<(bit%(8*sizeof(uw))),__ATOMIC_RELEASE);
@@ -218,11 +224,13 @@ uw fpr_layout_fields(uw tid, uw variant) {
 
 /* C6 stage 3a: the raw-field mask of a constructor (bit i: field i holds a
  * raw word, never a pointer), 0 when nothing is known; *f32 (when asked)
- * gets the mask of those fields that are F32 rather than F64. 0 is always a
+ * gets the mask of those fields that are F32 and *i64 of those that are I64
+ * (C6 stage 3c), the rest being F64. 0 is always a
  * safe answer: it is how every field was walked before the masks existed.
  * No walker reads it yet. */
-uw fpr_layout_raw_mask(uw tid, uw variant, uw *f32) {
+uw fpr_layout_raw_mask(uw tid, uw variant, uw *f32, uw *i64) {
   if (f32) *f32=0;
+  if (i64) *i64=0;
 #ifdef FPR_COMPACT_CELLS
   if (fpr_plane_memory) return 0; /* the plane's table carries no masks yet */
 #endif
@@ -235,6 +243,7 @@ uw fpr_layout_raw_mask(uw tid, uw variant, uw *f32) {
   if (__atomic_load_n(&found->tid_plus_one,__ATOMIC_ACQUIRE)!=tid+1 || found->variant!=variant) return 0;
   uw raw=__atomic_load_n(&found->raw,__ATOMIC_ACQUIRE);
   if (raw && f32) *f32=found->f32;
+  if (raw && i64) *i64=found->i64;
   return raw;
 }
 

@@ -44,7 +44,7 @@ data ProductParameters=ProductParameters Layouts (M.Map String Definition)
   (M.Map String ([String],M.Map Int Type)) ResultTable (Entries StorageLayout) (Entries (Int,StorageLayout))
   (Entries ([Maybe Kind],Maybe Kind))
 emptyProductParameters :: ProductParameters
-emptyProductParameters=ProductParameters (Layouts M.empty M.empty) M.empty M.empty M.empty M.empty M.empty M.empty
+emptyProductParameters=ProductParameters (Layouts M.empty M.empty M.empty) M.empty M.empty M.empty M.empty M.empty M.empty
 
 -- The raw-word ABI kind a checked type denotes, if any.
 rawKind :: Type -> Maybe Kind
@@ -149,7 +149,7 @@ checkedProductParameters layouts (TypeContext linears constructors) interfaces=
     localModel=M.map (\d@(Definition _ _ fields)->fields `deepseq` d) (M.restrictKeys model reachable)
     (records,tuples)=structuralDependencies dependencies
     localLayouts=Layouts (M.restrictKeys (constructorLayouts layouts) (S.map (\w->"Tup"++show w) tuples))
-      (M.restrictKeys (shapeLayouts layouts) records)
+      (M.restrictKeys (shapeLayouts layouts) records) M.empty
     variable (TV v)=Just v
     variable _=Nothing
 

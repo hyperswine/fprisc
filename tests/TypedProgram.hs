@@ -65,7 +65,7 @@ compile ns source names=
   let (plans,tops)=prepare ns source
       cons=collectCons "unit" tops
       selected=right (selectUnit (M.keysSet cons) (right (selectCheckedUnit plans names)))
-      output=right (Native.compileSelection PreserveCallbacks (Layouts cons (collectShapes tops)) selected)
+      output=right (Native.compileSelection PreserveCallbacks (Layouts cons (collectShapes tops) M.empty) selected)
   in (selected,output)
 answer p name args=let (ir,_)=Lower.lowerProgram m2Policy M.empty p p M.empty M.empty
                    in Eval.ocResult (Eval.evalProgram ir name args)
@@ -237,7 +237,7 @@ checkRecordUpdateLayouts=do
   let physical=closedLayouts (Native.nativeClosed native)
       types=P.programTypes (closedInput (Native.nativeClosed native))
       fresh prefix=do n<-get;put (n+1);pure (prefix++show (n::Int))
-      layout=Erase.Layout fresh (`M.lookup` constructorLayouts physical) (shapeLayouts physical) (\_ _ _->pure ())
+      layout=Erase.Layout fresh (`M.lookup` constructorLayouts physical) (shapeLayouts physical) (\_ _ _->pure ()) (const [])
       modifyPlan change e=let child=runIdentity (mapChildrenM (pure . modifyPlan change) e) in
         child {T.exprNode=case T.exprNode child of
           T.PlannedUpdate base plan->T.PlannedUpdate base (change plan)
@@ -514,7 +514,7 @@ main=do
       returns=P.program (Namespace "returning") (T.TypeContext [] M.empty) registry
         (M.fromList [("returning",1),("opaque-foreign",0)]) (M.singleton "returning" returning)
   check "logical arrows cannot invent physical parameters or foreign arities"
-    (not (failed returns) && verifyClosedProgram (right (closeProgram PreserveCallbacks (Layouts M.empty M.empty) (right returns)))==Right ())
+    (not (failed returns) && verifyClosedProgram (right (closeProgram PreserveCallbacks (Layouts M.empty M.empty M.empty) (right returns)))==Right ())
   let stable ns extra=
         let (_,result)=compile ns (extra++"captured n = (fn x -> n + x) 2.") (S.singleton "captured")
             definition=closedDefinitions (Native.nativeClosed result) M.! "captured"
@@ -525,7 +525,7 @@ main=do
   let (plans,tops)=prepare "changed" "entry x = x + 1."
       cons=collectCons "unit" tops
       changed=right (selectClauses (M.keysSet cons) plans [TBind "entry" [PVar "x"] [] (SInt 7)])
-      changedOutput=right (Native.compileSelection PreserveCallbacks (Layouts cons (collectShapes tops)) changed)
+      changedOutput=right (Native.compileSelection PreserveCallbacks (Layouts cons (collectShapes tops) M.empty) changed)
   check "changed compatibility clauses cannot reuse checked annotations"
     ("entry" `M.notMember` P.programFunctions (selectionProgram changed)
       && "entry" `M.member` Native.nativeCompatibility changedOutput
@@ -558,7 +558,7 @@ main=do
         first<-Compat.compileTopChecked compatPlans (changed "first" "+")
         second<-Compat.compileTopChecked compatPlans (changed "second" "*")
         pure (Compat.desugaredCore first `M.union` Compat.desugaredCore second))
-        (DEnv 0 compatCons (collectShapes compatTops) [] [])
+        (DEnv 0 compatCons (collectShapes compatTops) [] [] M.empty)
       client name=([],CApp (CApp (CVar name) (CInt 3)) (CInt 4))
       clients=M.insert "callFirst" (client "first") (M.insert "callSecond" (client "second") combined)
   check "stateful compatibility calls cannot collide on private lifted code"
@@ -572,12 +572,12 @@ main=do
       preludeCons=collectCons "prelude" preludeTops
       preludeNames=S.fromList [n | TBind n _ _ _<-preludeTops]
       preludeSelection=right (selectUnit (M.keysSet preludeCons) (right (selectCheckedUnit preludePlans preludeNames)))
-      preludeNative=right (Native.compileSelection SpecializeCallbacks (Layouts preludeCons (collectShapes preludeTops)) preludeSelection)
+      preludeNative=right (Native.compileSelection SpecializeCallbacks (Layouts preludeCons (collectShapes preludeTops) M.empty) preludeSelection)
   check "the complete prelude closes and erases without compatibility lowering"
     (not (S.null preludeNames) && preludeNames `S.isSubsetOf` M.keysSet (P.programFunctions (selectionProgram preludeSelection))
       && M.null (Native.nativeCompatibility preludeNative)
       && verifyClosedProgram (Native.nativeClosed preludeNative)==Right ())
-  let badLayouts=Layouts (M.adjust (\(tid,var,_)->(tid,var,1)) "Cons" (collectCons "unit" tops)) (collectShapes tops)
+  let badLayouts=Layouts (M.adjust (\(tid,var,_)->(tid,var,1)) "Cons" (collectCons "unit" tops)) (collectShapes tops) M.empty
       ordinary=right (selectUnit (M.keysSet cons) (right (selectCheckedUnit plans (S.singleton "entry"))))
   check "erasure cannot accept a contradictory constructor layout"
     (failed (Native.compileSelection PreserveCallbacks badLayouts ordinary))

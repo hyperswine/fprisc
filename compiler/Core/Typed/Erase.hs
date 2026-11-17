@@ -19,6 +19,7 @@ import Control.Monad.State.Strict (lift)
 import Data.List (sort,sortOn,nub,intercalate)
 import qualified Data.Map.Strict as M
 import Compiler.VectorLayout (builderRuntimeName)
+import Compiler.DataLayout (i64StoreAt,i64Load)
 
 -- Runtime layout authority and fresh/control-flow effects are supplied by the
 -- owning desugaring stage. Core typing is independent of content-addressed IDs.
@@ -26,7 +27,9 @@ data Layout m = Layout
   { freshName :: String -> m String,
     constructorLayout :: String -> Maybe (Int,Int,Int),
     recordLayouts :: M.Map [String] Int,
-    registerJoin :: String -> [String] -> Core -> m () }
+    registerJoin :: String -> [String] -> Core -> m (),
+    -- C6 stage 3c: a constructor's fields declared I64, stored as raw bits
+    constructorI64 :: String -> [Int] }
 
 eraseFunction :: Monad m => TypeContext -> Layout m -> Function -> m (Either String ([String],Core))
 eraseFunction = eraseFunctionWith M.empty
@@ -113,7 +116,7 @@ eraseWith annotation region contracts types layout f = runExceptT $ do
       Construct name xs -> do
         (tid,var,ar)<-con name
         unless (ar==length xs) (throwError "typed Core constructor value layout arity")
-        CMk tid var <$> mapM (go env names) xs
+        CMk tid var . i64StoreAt (constructorI64 layout name) <$> mapM (go env names) xs
       AtomValue a -> pure (CMk 6 0 [CStr a])
       TupleValue xs -> do
         (tid,var,_)<-con ("Tup"++show (length xs))
@@ -327,7 +330,7 @@ eraseWith annotation region contracts types layout f = runExceptT $ do
       ConstructorPattern name ps -> do
         (tid,var,ar)<-con name
         unless (ar==length ps) (throwError "typed Core constructor pattern layout arity")
-        inner<-matchFields scrut ps ok fail'
+        inner<-matchFieldsRaw (constructorI64 layout name) scrut ps ok fail'
         pure (CIf (CTagEq tid var scrut) inner fail')
       TuplePattern ps -> do
         (tid,var,_)<-con ("Tup"++show (length ps))
@@ -335,7 +338,10 @@ eraseWith annotation region contracts types layout f = runExceptT $ do
         pure (CIf (CTagEq tid var scrut) inner fail')
       RecordPattern fs -> foldr (\(name,b) rest -> do
         x<-project (Just (patType p)) scrut name; CLet (binderName b) x <$> rest) (pure ok) fs
-    matchFields scrut ps ok fail'=foldr (\(i,p) rest -> rest >>= \k -> matchPat (CProj i scrut) p k fail')
+    matchFields=matchFieldsRaw []
+    -- C6 stage 3c: a field in `raw` holds an I64's bits; its pattern sees a box
+    matchFieldsRaw raw scrut ps ok fail'=foldr (\(i,p) rest -> rest >>= \k ->
+        matchPat (if i `elem` raw then i64Load (CProj i scrut) else CProj i scrut) p k fail')
       (pure ok) (zip [0..] ps)
     tests p=case patNode p of
       IntegerPattern _ -> 1; StringPattern _ -> 1
@@ -394,7 +400,7 @@ eraseWith annotation region contracts types layout f = runExceptT $ do
                 inner<-guards pe pn gs b fail'
                 certain<-if null rest && not first && all (\(_,g,_) -> null g) alts then coveredHead p else pure False
                 if certain then case patNode p of
-                  ConstructorPattern _ ps -> matchFields scrut ps inner fail'
+                  ConstructorPattern name ps -> matchFieldsRaw (constructorI64 layout name) scrut ps inner fail'
                   TuplePattern ps -> matchFields scrut ps inner fail'
                   _ -> matchPat scrut p inner fail'
                 else matchPat scrut p inner fail'

@@ -23,7 +23,7 @@ uintptr_t fpr_layout_fields(uintptr_t tid, uintptr_t variant);
 /* C6 stage 3a: bit i set when field i of the constructor holds a raw word
  * (an F64 or F32 field); 0 when unknown, which is always safe. *f32, when
  * not null, gets the F32 subset. */
-uintptr_t fpr_layout_raw_mask(uintptr_t tid, uintptr_t variant, uintptr_t *f32);
+uintptr_t fpr_layout_raw_mask(uintptr_t tid, uintptr_t variant, uintptr_t *f32, uintptr_t *i64);
 extern int fpr_layout_any_raw; /* set once the image's masks are registered */
 #define FPR_LAYOUT_RAW_FILTER_WORDS 64 /* 4096 bits on a 64-bit target */
 #define FPR_LAYOUT_RAW_FILTER_BIT(tid, var) ((((tid) * (uintptr_t)2654435761u) ^ (var)) % (FPR_LAYOUT_RAW_FILTER_WORDS * 8 * sizeof(uintptr_t)))
