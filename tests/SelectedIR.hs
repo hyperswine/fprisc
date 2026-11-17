@@ -420,6 +420,8 @@ main = do
     (shrinkWrap False [s1] [ I (op "entry" [] []), I (br "join"), I (op "mv" [s1] [Phys "x0"]), I callS,
                        ILabel (Label "join"), I ret' ] == Nothing)
   check "no saved register, no change" (shrinkWrap False [] arms == Nothing)
+  check "a use in a block the entry cannot reach keeps the prologue saves"
+    (shrinkWrap False [s1] (arms ++ [ILabel (Label "dead"), I (op "mv" [s1] [Phys "x0"]), I ret']) == Nothing)
   putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, sized A64 frames and explicit profile/x64 limits, shrink-wrap placement and refusals: PASS"
 
 -- The contract checker runs on both sides of allocation. These cases exercise

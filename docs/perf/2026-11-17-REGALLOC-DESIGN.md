@@ -82,8 +82,11 @@ shrink-wrapping only moves saves inside it); (b) per-path frame sizes (allocate
 the save area only on paths that save), with the bound taken as the maximum over
 paths.
 
-**Recommendation: (a).** Stage 1 does not change frame sizes, so
-`Stack.selectedFrame` and every stack bound are unchanged. The instruction bounds
+**Recommendation: (a).** Stage 1 keeps one static frame per function, computed
+by `Stack.selectedFrame` as before. In the measured programs frames only shrink, because parameters no longer
+need callee-saved registers or parking slots: across records, treemap_mutmap,
+binarytrees, nbody, wordfreq and csv (125 functions), 46 frames are smaller and
+none is larger (the largest frame in each program is unchanged or smaller). The instruction bounds
 (`native-insns-v1` segmax/exittail/ccalls and the tick weights) are computed from
 the emitted instruction text, so they remain sound and pick up the shorter paths
 automatically. The WCET reference (cached-SDRAM simple-risc on the builtin RV32
