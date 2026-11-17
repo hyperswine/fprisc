@@ -95,7 +95,7 @@ compileSelectionWith first specialization mode layouts selected=do
       lower=do
         roots<-M.fromList <$> mapM (Legacy.compileGroup . fmap compatibilityClauses) (M.toAscList compatibility)
         Legacy.liftFix roots
-      initial=Legacy.DEnv first (constructorLayouts layouts) (shapeLayouts layouts) [] []
+      initial=Legacy.DEnv first (constructorLayouts layouts) (shapeLayouts layouts) [] [] (i64FieldLayouts layouts)
       (fallback,state)=if M.null compatibility then (M.empty,initial) else runState lower initial
       retained=selectionConstructors selected `S.union` S.fromList (concatMap (freeVars . snd) (M.elems fallback))
   (input,notes,typeInstances)<-case specialization of
@@ -240,7 +240,7 @@ eraseDefinitionsWith annotation closed owners=do
           constructor n=case M.lookup n (constructorLayouts layouts) of Just c->Just c;Nothing->wideTup n
           -- Closed Core contains explicit joins. Erasure cannot secretly
           -- manufacture another untyped function or invoke lambda lifting.
-          layout=Layout fresh constructor (shapeLayouts layouts) (\_ _ _->lift (Left "native Core: erasure manufactured an implicit join"))
+          layout=Layout fresh constructor (shapeLayouts layouts) (\_ _ _->lift (Left "native Core: erasure manufactured an implicit join")) (i64Fields layouts)
       body<-evalStateT (eraseFunctionAnnotated annotation (closedContracts owner) types layout fn) 0 >>= id
       pure (name,body)
 

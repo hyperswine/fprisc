@@ -122,7 +122,7 @@ main = do
   check "written signatures are validated after defaulting and resolution"
     (any (isInfixOf "more general") (inferenceErrors latePromise))
   let ts=erasePSig (inferenceTops result)
-      env=DEnv 0 (collectCons "unit" ts) (collectShapes ts) [] []
+      env=DEnv 0 (collectCons "unit" ts) (collectShapes ts) [] [] M.empty
       (old,oldState)=runState (compileTop ts) env
       (lowered,newState)=runState (compileTopChecked plans ts) env
       new=desugaredCore lowered
@@ -195,7 +195,7 @@ main = do
             checked=inferTopsChecked (Namespace prefix) aotProf (sigTable input) (structTable input) input
             planned=right (prepareChecked checked)
             units=inferenceTops checked
-            initial=DEnv 0 (collectCons "unit" units) (collectShapes units) [] []
+            initial=DEnv 0 (collectCons "unit" units) (collectShapes units) [] [] M.empty
             unitProgram=fst (runState (lowerToUntyped planned units >>= liftFix) initial)
         in M.filterWithKey (\name _ -> name=="unitFn" || M.notMember name (dCons initial)) unitProgram
   check "unit code is independent of inference namespaces and unrelated root constructors"
@@ -237,7 +237,7 @@ main = do
     (fn {T.functionBody=expr int (T.Let recursiveBinder recursiveRhs ref)})))
   check "recursive initializer signature mismatch refused" (failed (verifyFunction (T.TypeContext [] M.empty)
     (fn {T.functionBody=expr int (T.LetRec (bind "self" bid (TFn bool int)) recursiveRhs ref)})))
-  let runErase f = fst (runState (eraseFunction (T.TypeContext [] M.empty) (Layout fresh (const Nothing) M.empty (\_ _ _->pure ())) f) env)
+  let runErase f = fst (runState (eraseFunction (T.TypeContext [] M.empty) (Layout fresh (const Nothing) M.empty (\_ _ _->pure ()) (const [])) f) env)
   check "erasure refuses spelling capture"
     (failed (runErase (fn {T.functionBody=expr int (T.Let (bind "x" bid int) ref ref)})))
   let typed ty n=T.Expr ty (linShapeT [] ty) T.Generated Nothing n
@@ -258,7 +258,7 @@ main = do
   check "planned update cannot omit replacements" (failed (verifyFunction recordTypes
     (planned (T.UpdatePlan ["x"] [T.UpdateBranch 42 [("x",T.KeepField)]]))))
   check "stale layout plan refused at erasure" (failed (fst (runState
-    (eraseFunction recordTypes (Layout fresh (const Nothing) (M.singleton ["x"] 43) (\_ _ _->pure ())) (planned update)) env)))
+    (eraseFunction recordTypes (Layout fresh (const Nothing) (M.singleton ["x"] 43) (\_ _ _->pure ()) (const [])) (planned update)) env)))
   let functionTy=TFn int int
       functionRecord=TRec (RExt "f" functionTy (RV 100))
       recordParam=(bind "r" uid functionRecord) {T.binderShape=linShapeT [] functionRecord}

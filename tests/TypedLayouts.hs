@@ -33,7 +33,7 @@ main=do
   check "forwarded requirements remain attached to their owner" (layoutContractOwner (contracts M.! "wrap")==GlobalLayout "wrap")
   check "local requirements own a lexical identity" (any (\c->case layoutContractOwner c of LocalLayout _->True; _->False) (M.elems contracts))
   let ts=inferenceTops result
-      initial=DEnv 0 (collectCons "unit" ts) (collectShapes ts) [] []
+      initial=DEnv 0 (collectCons "unit" ts) (collectShapes ts) [] [] M.empty
       lowered=evalState (compileTopChecked plans ts) initial
   check "layout-bearing source functions reach the closed product" (expected `S.isSubsetOf` M.keysSet (desugaredClosed lowered))
   check "all layout products verify" (all (not . failed . verifyClosed (desugaredTypeContext lowered)) (M.elems (desugaredClosed lowered)))
