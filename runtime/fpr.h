@@ -25,6 +25,9 @@ uintptr_t fpr_layout_fields(uintptr_t tid, uintptr_t variant);
  * not null, gets the F32 subset. */
 uintptr_t fpr_layout_raw_mask(uintptr_t tid, uintptr_t variant, uintptr_t *f32);
 extern int fpr_layout_any_raw; /* set once the image's masks are registered */
+#define FPR_LAYOUT_RAW_FILTER_WORDS 64 /* 4096 bits on a 64-bit target */
+#define FPR_LAYOUT_RAW_FILTER_BIT(tid, var) ((((tid) * (uintptr_t)2654435761u) ^ (var)) % (FPR_LAYOUT_RAW_FILTER_WORDS * 8 * sizeof(uintptr_t)))
+extern uintptr_t fpr_layout_raw_filter[FPR_LAYOUT_RAW_FILTER_WORDS];
 typedef uintptr_t uw; /* one machine word: field / length / count type */
 typedef intptr_t sw;
 

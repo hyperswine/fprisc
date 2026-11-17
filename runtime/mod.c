@@ -123,6 +123,10 @@ static int layout_add(const uw *table) {
  * reader on another hart sees either 0 (walk the fields conservatively, as
  * before) or the whole mask. */
 int fpr_layout_any_raw; /* some constructor has a raw-field mask: walkers ask */
+/* one bit per hash of a (tid, variant) that has a mask: a walker asks the
+ * table only when its constructor's bit is set, so cells of types without
+ * float fields pay a load and a bit test */
+uw fpr_layout_raw_filter[FPR_LAYOUT_RAW_FILTER_WORDS];
 static int layout_raw_add(const uw *table) {
   layout_index *index=layouts;
   uw count=table?table[0]:0;
@@ -146,6 +150,8 @@ static int layout_raw_add(const uw *table) {
     layout_slot *slot=layout_find(index,r[0],r[1]);
     slot->f32=r[3];
     __atomic_store_n(&slot->raw,r[2],__ATOMIC_RELEASE);
+    uw bit=FPR_LAYOUT_RAW_FILTER_BIT(r[0],r[1]);
+    __atomic_fetch_or(&fpr_layout_raw_filter[bit/(8*sizeof(uw))],(uw)1<<(bit%(8*sizeof(uw))),__ATOMIC_RELEASE);
   }
   __atomic_store_n(&fpr_layout_any_raw,1,__ATOMIC_RELEASE);
   return 0;

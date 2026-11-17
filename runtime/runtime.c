@@ -304,12 +304,33 @@ static uw layout_arity(uw tid, uw var) { return fpr_layout_fields(tid,var); }
  * raw float word, never a pointer, so a walker copies or compares it and does
  * not follow it). Only user types (tid >= 0x20000000) have masks; an image
  * with none pays one load. Fields past the 64th are never raw. */
+#if defined(FPR_POSIX) && UINTPTR_MAX > 0xffffffffu
+static __thread uw raw_cache_key, raw_cache_mask;
+#endif
 static inline uw cell_raw(V v) {
   uw tid = TID(v);
   if (__builtin_expect(!__atomic_load_n(&fpr_layout_any_raw, __ATOMIC_RELAXED), 1) || tid < 0x20000000u) return 0;
-  return fpr_layout_raw_mask(tid, ((hdr_t *)v)->var, 0);
+  uw var = ((hdr_t *)v)->var, bit = FPR_LAYOUT_RAW_FILTER_BIT(tid, var);
+  if (!((__atomic_load_n(&fpr_layout_raw_filter[bit / (8 * sizeof(uw))], __ATOMIC_ACQUIRE) >> (bit % (8 * sizeof(uw)))) & 1)) return 0;
+#if defined(FPR_POSIX) && UINTPTR_MAX > 0xffffffffu
+  /* the last answer on this thread: a walk meets runs of one constructor
+   * (a list of points). Masks never change once any_raw is set. */
+  uw key = tid < 0x80000000u && var < (1u << 24) ? ((tid + 1) << 24) | var : 0;
+  if (key && key == raw_cache_key) return raw_cache_mask;
+  uw m = fpr_layout_raw_mask(tid, var, 0);
+  if (key) { raw_cache_key = key; raw_cache_mask = m; }
+  return m;
+#else
+  return fpr_layout_raw_mask(tid, var, 0);
+#endif
 }
 #define RAW_FIELD(mask, i) ((i) < 8 * sizeof(uw) && (((mask) >> (i)) & 1))
+/* The mask is looked up lazily, at the cell's first field that could be a
+ * pointer (not a tagged Int, not 0): a cell of Ints and nullary constructors
+ * never asks. Declare RAW_LAZY once per cell, then test RAW_AT(cell, i). */
+#define RAW_LAZY uw raw_mask_ = 0; int raw_known_ = 0
+#define RAW_AT(cell, i) (raw_known_ ? RAW_FIELD(raw_mask_, i) : (raw_known_ = 1, raw_mask_ = cell_raw(cell), RAW_FIELD(raw_mask_, i)))
+#define CANDIDATE(x) (!ISINT(x) && (x))
 /* Round the combined prefix and payload, exactly as fpr_alloc does. Actor
  * handles are not allocated cells; managed Device/Register values are fixed. */
 static uw layout_total(V v) {
@@ -1099,8 +1120,8 @@ static void dc_release(V v) {
       uw total = PREHEADER(v);
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *f = (V *)((char *)v + 8);
-      uw raw = cell_raw(v);
-      for (uw i = 0; i < nf; i++) if (!RAW_FIELD(raw, i)) dc_release(f[i]);
+      RAW_LAZY;
+      for (uw i = 0; i < nf; i++) if (CANDIDATE(f[i]) && !RAW_AT(v, i)) dc_release(f[i]);
       return;
     }
   }
@@ -1347,8 +1368,8 @@ static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       uw n = total;
       V *f = (V *)((char *)v + 8);
-      uw raw = cell_raw(v);
-      for (uw i = 0; i < nf; i++) if (!RAW_FIELD(raw, i)) n += dc_size_in(f[i], z, immutable);
+      RAW_LAZY;
+      for (uw i = 0; i < nf; i++) if (CANDIDATE(f[i]) && !RAW_AT(v, i)) n += dc_size_in(f[i], z, immutable);
       return n;
     }
   }
@@ -1422,11 +1443,10 @@ static int dc_budget(V v, uw *left, unsigned depth) {
       if (!budget_take(left, total)) return 0;
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *fields = (V *)((char *)v + 8);
-      uw raw = cell_raw(v);
+      RAW_LAZY;
       for (uw i = 0; i < nf; i++) {
         V child = fields[i];
-        if (RAW_FIELD(raw, i)) continue;
-        if (child && !ISINT(child) && !dc_budget(child, left, depth + 1)) return 0;
+        if (child && !ISINT(child) && !RAW_AT(v, i) && !dc_budget(child, left, depth + 1)) return 0;
       }
       return 1;
     }
@@ -1594,13 +1614,13 @@ static V dc_dup(V v, dctx_t *c) {
       if (c->overflow) return 0;
       if (c->share) dc_share_put(c->share, v, n);
       V *f = (V *)((char *)n + 8);
-      uw raw = cell_raw(v);
+      RAW_LAZY;
       for (uw i = 0; i < nf; i++) {
         /* dc_cell already copied immediate fields, including correlation
          * IDs in request tuples and raw float fields. Only references can
          * require rewriting. */
         V child = f[i];
-        if (!child || ISINT(child) || RAW_FIELD(raw, i)) continue;
+        if (!child || ISINT(child) || RAW_AT(v, i)) continue;
         f[i] = dc_dup(child, c);
         if (c->overflow) return 0;
       }
@@ -1900,10 +1920,10 @@ uw fpr_msg_inline_size(V v, uw pid) {
   uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
   V *f = (V *)((char *)v + 8);
   uw ok = total;
-  uw raw = cell_raw(v);
+  RAW_LAZY;
   for (uw i = 0; i < nf; i++) {
     V x = f[i];
-    if (ISINT(x) || !x || RAW_FIELD(raw, i)) continue;
+    if (ISINT(x) || !x || RAW_AT(v, i)) continue;
     if (fpr_in_heap(x)) {
       if (TID(x) == T_ACTOR) continue;
       ok = 0;
@@ -2054,8 +2074,8 @@ static V kp_dup(V v) {
       V n = fpr_alloc(total - FPR_MANAGED_PREFIX);
       __builtin_memcpy((void *)n, (void *)v, total - FPR_MANAGED_PREFIX);
       V *f = (V *)((char *)n + 8);
-      uw raw = cell_raw(v);
-      for (uw i = 0; i < nf; i++) if (!RAW_FIELD(raw, i)) f[i] = kp_dup(f[i]);
+      RAW_LAZY;
+      for (uw i = 0; i < nf; i++) if (CANDIDATE(f[i]) && !RAW_AT(v, i)) f[i] = kp_dup(f[i]);
       return n;
     }
   }
@@ -2102,8 +2122,8 @@ static int kp_reaches(V v, uw *left) {
       default: {
         uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
         V *f = (V *)((char *)v + 8);
-        uw raw = cell_raw(v);
-        for (uw i = 0; i < nf; i++) if (!RAW_FIELD(raw, i) && kp_reaches(f[i], left)) return 1;
+        RAW_LAZY;
+        for (uw i = 0; i < nf; i++) if (CANDIDATE(f[i]) && !RAW_AT(v, i) && kp_reaches(f[i], left)) return 1;
         return 0;
       }
     }
@@ -2163,9 +2183,9 @@ static int has_vec(V v) {
       uw total = PREHEADER(v);
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *f = (V *)((char *)v + 8);
-      uw raw = cell_raw(v);
+      RAW_LAZY;
       for (uw i = 0; i < nf; i++)
-        if (!RAW_FIELD(raw, i) && has_vec(f[i])) return 1;
+        if (CANDIDATE(f[i]) && !RAW_AT(v, i) && has_vec(f[i])) return 1;
       return 0;
     }
   }
@@ -2202,8 +2222,8 @@ static void vec_release_in(V v) {
       uw total = PREHEADER(v);
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *f = (V *)((char *)v + 8);
-      uw raw = cell_raw(v);
-      for (uw i = 0; i < nf; i++) if (!RAW_FIELD(raw, i)) vec_release_in(f[i]);
+      RAW_LAZY;
+      for (uw i = 0; i < nf; i++) if (CANDIDATE(f[i]) && !RAW_AT(v, i)) vec_release_in(f[i]);
       return;
     }
   }
@@ -4666,7 +4686,7 @@ static int veq(V a0, V b0) {
     }
     V *fa = (V *)((char *)a + 8), *fb = (V *)((char *)b + 8);
 #ifndef FPR_BUILTIN_RAW
-    uw f32 = 0, raw = TID(a) >= 0x20000000u && fpr_layout_any_raw ? fpr_layout_raw_mask(TID(a), ((hdr_t *)a)->var, &f32) : 0;
+    uw f32 = 0, raw = cell_raw(a) ? fpr_layout_raw_mask(TID(a), ((hdr_t *)a)->var, &f32) : 0;
 #endif
     for (uw i = nf; i-- > 0;) { /* last first, so field 0 pops first */
 #ifndef FPR_BUILTIN_RAW
@@ -4772,7 +4792,7 @@ static uw dtoa(char *,double,int);
 /* C6 stage 3b: a raw float field of a user constructor, by its mask: 'd'
  * (F64), 'f' (F32) or 0 (a word to render by its tag) */
 static char raw_field_kind(V obj,uw i) {
-  if (ISINT(obj) || TID(obj) < 0x20000000u || !fpr_layout_any_raw) return 0;
+  if (ISINT(obj) || !cell_raw(obj)) return 0;
   uw f32, raw = fpr_layout_raw_mask(TID(obj), ((hdr_t *)obj)->var, &f32);
   return RAW_FIELD(raw, i) ? (RAW_FIELD(f32, i) ? 'f' : 'd') : 0;
 }
