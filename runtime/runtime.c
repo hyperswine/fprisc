@@ -304,7 +304,7 @@ static uw layout_arity(uw tid, uw var) { return fpr_layout_fields(tid,var); }
  * raw float word, never a pointer, so a walker copies or compares it and does
  * not follow it). Only user types (tid >= 0x20000000) have masks; an image
  * with none pays one load. Fields past the 64th are never raw. */
-#if defined(FPR_POSIX) && UINTPTR_MAX > 0xffffffffu
+#if defined(FPR_POSIX) && !defined(FPR_QOSAPP) && UINTPTR_MAX > 0xffffffffu
 static __thread uw raw_cache_key, raw_cache_mask;
 #endif
 static inline uw cell_raw(V v) {
@@ -312,7 +312,7 @@ static inline uw cell_raw(V v) {
   if (__builtin_expect(!__atomic_load_n(&fpr_layout_any_raw, __ATOMIC_RELAXED), 1) || tid < 0x20000000u) return 0;
   uw var = ((hdr_t *)v)->var, bit = FPR_LAYOUT_RAW_FILTER_BIT(tid, var);
   if (!((__atomic_load_n(&fpr_layout_raw_filter[bit / (8 * sizeof(uw))], __ATOMIC_ACQUIRE) >> (bit % (8 * sizeof(uw)))) & 1)) return 0;
-#if defined(FPR_POSIX) && UINTPTR_MAX > 0xffffffffu
+#if defined(FPR_POSIX) && !defined(FPR_QOSAPP) && UINTPTR_MAX > 0xffffffffu
   /* the last answer on this thread: a walk meets runs of one constructor
    * (a list of points). Masks never change once any_raw is set. */
   uw key = tid < 0x80000000u && var < (1u << 24) ? ((tid + 1) << 24) | var : 0;
