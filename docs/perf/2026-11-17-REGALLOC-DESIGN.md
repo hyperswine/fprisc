@@ -119,3 +119,42 @@ threshold (as done). Measured against the compile budget in the PR.
 
 Not register allocation, but seen in the same profiles: the boxed-equality fast
 path sequence and separately inlined fuel ticks.
+
+## Stage 1 results (8841b1c9 against main 22ed0c71, Linux x86-64)
+
+Callgrind instructions, median of 3 at the cg sizes; 16/16 benchmark outputs match.
+Tests: unit 45/45; `tests/run.sol` push tier 23 checks, 0 unexpected (known failures only);
+nightly config differential 43 programs x 11 configurations (with `no_x64_ra`), only the
+known loopcalls/vecinline `no_reuse` build failures.
+Base binaries re-run from a path of the same length as the branch's gave identical
+counts, so the path has no effect on the comparison.
+
+| bench | main 22ed0c71 | ari/regalloc 8841b1c9 | change |
+|---|---:|---:|---:|
+| records | 2,256,916,816 | 2,149,379,587 | -4.76% |
+| treemap_mutmap | 1,540,995,472 | 1,412,034,538 | -8.37% |
+| csv | 4,228,304,720 | 4,221,244,033 | -0.17% |
+| wordfreq | 4,490,577,348 | 4,520,330,667 | +0.66% |
+| binarytrees | 1,967,400,807 | 1,804,028,253 | -8.30% |
+| nbody | 1,552,447,966 | 1,553,929,473 | +0.10% |
+| sim | 2,886,364,668 | 2,894,660,029 | +0.29% |
+| wordfreq_mutmap | 2,167,910,515 | 2,136,088,844 | -1.47% |
+| format | 2,785,901,863 | 2,776,926,998 | -0.32% |
+| treemap | 1,810,518,204 | 1,745,398,351 | -3.60% |
+| fannkuchredux | 820,875,578 | 819,081,149 | -0.22% |
+| spectralnorm | 833,509,652 | 841,942,941 | +1.01% |
+| mandelbrot | 821,114,085 | 800,659,199 | -2.49% |
+| fasta | 400,737,409 | 387,101,438 | -3.40% |
+| knucleotide | 2,413,212,646 | 2,354,618,933 | -2.43% |
+| revcomp | 257,388,554 | 257,540,999 | +0.06% |
+| total | 31,234,176,303 | 30,674,965,432 | -1.79% |
+
+The spectralnorm regression is one extra register-to-register copy per inner
+iteration of `mulRows` (a different assignment, no added spill, save or reload);
+wordfreq and sim are similar small assignment differences. Loop splitting/coalescing
+(stage 2, item 1) is where these get fixed.
+
+Compile budget (GHC allocation, `tests/sol-checks/compile-budget.sol`; this
+environment has no recorded baseline, so main is measured as the reference):
+hello 1,384,508,640 -> 1,397,108,144 bytes (+0.9%), std-live 30,934,788,208 ->
+31,793,656,992 (+2.8%), pos1 66,926,937,200 -> 68,154,825,776 (+1.8%); the gate is +10%.
