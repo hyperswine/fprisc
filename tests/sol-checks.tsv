@@ -11,6 +11,7 @@ std-contracts	900	tests/sol-checks/std-contracts.sol	push
 digest	300	tests/sol-checks/digest.sol	push
 compile-tracked	1800	tests/sol-checks/compile-tracked.sol	push
 panic-stderr	300	tests/sol-checks/panic-stderr.sol	push
+capacity-overflow	600	tests/sol-checks/capacity-overflow.sol	push
 crash-repros	300	tests/sol-checks/crash-repros.sol	push
 privileged-builtins	300	tests/sol-checks/privileged-builtins.sol	push
 ownership	300	tests/sol-checks/ownership.sol	push
