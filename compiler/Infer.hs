@@ -820,6 +820,12 @@ builtinEnv =
       -- Sol's names and contracts (Sol/Infer.hs): byte strings, 0-based, -1 = not found
       ("strJoin", mono (TFn tStr (TFn (TAp (TC "List") tStr) tStr))),
       ("strCompare", mono (TFn tStr (TFn tStr tInt))), -- byte order, -1/0/1 (runtime.c g_strCompare)
+      -- std/string's byte scans (runtime.c g_strFindByte/g_strFindSpace/g_strDigits):
+      -- charFrom s c i n, wordEnd s pos n, digitsGo s i n 0, answered and trapped as
+      -- their FP-RISC loops were
+      ("strFindByte", mono (TFn tStr (TFn tInt (TFn tInt (TFn tInt tInt))))),
+      ("strFindSpace", mono (TFn tStr (TFn tInt (TFn tInt tInt)))),
+      ("strDigits", mono (TFn tStr (TFn tInt (TFn tInt tInt)))),
       -- a constructor cell by field number (runtime.c g_nodeGet; std/hashmap's
       -- trie node): a node whose fields are all of its own type, so a child
       -- read or stored is typed as the node is.  std only.

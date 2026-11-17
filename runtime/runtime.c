@@ -3944,6 +3944,146 @@ static V g_strCompare(V av, V bv) {
   if (c == 0) c = a->len < b->len ? -1 : a->len > b->len ? 1 : 0;
   return TAG(c);
 }
+/* ---- byte scans behind std/string ------------------------------------------
+ * std/string's charFrom, wordEnd and digitsGo were byte loops in FP-RISC: a
+ * charAt, a compare and a fuel tick a byte.  These answer the same, byte for
+ * byte, trap for trap: the loops read s only at i < n, so a scan that reaches
+ * the end of the String before n traps where charAt would have (index =
+ * the String's length), and one that stops first never looks further.  Each
+ * is one pass over at most len s bytes (Cost.hs primCostOf: work 1 + len s,
+ * no allocation). */
+static str_t *scan_str(V sv) {
+  if (ISINT(sv) || TID(sv) != T_STR) fpr_trap("charAt: not a string");
+  return (str_t *)sv;
+}
+/* Byte scans a word at a time (64-bit little-endian, the cell's bytes on
+ * a word boundary).  Only whole aligned words are read: a String's bytes
+ * start on a word boundary of its cell, so the word holding its first or
+ * last byte lies in the same eight aligned bytes (never across a page, the
+ * reasoning g_strCompare's last word rests on).  Bytes of the first word
+ * below the start are forced to 0xff, which no test below flags and which
+ * borrows nothing; a hit at or past the end is cut to the end. */
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ && UINTPTR_MAX > UINT32_MAX
+#define SCAN_WORDS 1
+static const uint64_t scan_ones = 0x0101010101010101ull, scan_highs = 0x8080808080808080ull;
+static inline uint64_t scan_word(const uint8_t *p, uw w0) {
+  uint64_t w;
+  __builtin_memcpy(&w, p + w0, 8);
+  return w;
+}
+#endif
+/* the first k in [i, end) with p[k] == c, else end.  A byte of w equal to c
+ * is a zero byte of w ^ pat, and the lowest flagged byte of
+ * (x - 0x01..) & ~x & 0x80.. is exactly the first zero byte (a borrow only
+ * flags bytes above a zero one). */
+static uw scan_byte(const uint8_t *p, uw i, uw end, uint8_t c) {
+  if (i >= end) return end; /* no word to read: i may be past the bytes */
+#ifdef SCAN_WORDS
+  if (!((uw)p & 7)) {
+    const uint64_t pat = scan_ones * c;
+    uw w0 = i & ~(uw)7;
+    uint64_t x = (scan_word(p, w0) ^ pat) | ((1ull << ((i & 7) * 8)) - 1);
+    for (;;) {
+      uint64_t z = (x - scan_ones) & ~x & scan_highs;
+      if (z) {
+        uw k = w0 + ((uw)__builtin_ctzll(z) >> 3);
+        return k < end ? k : end;
+      }
+      w0 += 8;
+      if (w0 >= end) return end;
+      x = scan_word(p, w0) ^ pat;
+    }
+  }
+#endif
+  for (; i < end; i++) if (p[i] == c) return i;
+  return end;
+}
+/* the first k in [i, end) that isSpace holds for (32, or 9..13), else end.
+ * A word's bytes below 33 are flagged by (w - 0x21..) & ~w & 0x80.. (the
+ * lowest flagged one exactly, as above); each is then tested itself. */
+static uw scan_space(const uint8_t *p, uw i, uw end) {
+  if (i >= end) return end; /* no word to read: i may be past the bytes */
+#ifdef SCAN_WORDS
+  if (!((uw)p & 7)) {
+    uw w0 = i & ~(uw)7;
+    uint64_t x = scan_word(p, w0) | ((1ull << ((i & 7) * 8)) - 1);
+    for (;;) {
+      uint64_t z = (x - scan_ones * 33) & ~x & scan_highs;
+      while (z) {
+        uw k = w0 + ((uw)__builtin_ctzll(z) >> 3);
+        if (k >= end) return end;
+        uint8_t b = p[k];
+        if (b == 32 || (uint8_t)(b - 9) <= 4) return k;
+        /* not a space: look again above it, with it and all below it
+         * forced to 0xff (no flag, no borrow) */
+        uw sh = (k - w0 + 1) * 8;
+        if (sh >= 64) { z = 0; break; }
+        x |= (1ull << sh) - 1;
+        z = (x - scan_ones * 33) & ~x & scan_highs;
+      }
+      w0 += 8;
+      if (w0 >= end) return end;
+      x = scan_word(p, w0);
+    }
+  }
+#endif
+  for (; i < end; i++) {
+    uint8_t b = p[i];
+    if (b == 32 || (uint8_t)(b - 9) <= 4) return i;
+  }
+  return end;
+}
+/* strFindByte s c i n (std/string charFrom): where byte c first occurs at or
+ * after i (before n), or -1 */
+static V g_strFindByte(V sv, V cv, V iv, V nv) {
+  sw i = UNTAG(iv), n = UNTAG(nv), c = UNTAG(cv);
+  if (i >= n) return TAG(-1);
+  str_t *s = scan_str(sv);
+  if (i < 0) fpr_trap_range("charAt: index out of range", i, s->len);
+  uw end = (uw)n < s->len ? (uw)n : s->len;
+  if (c >= 0 && c <= 255) {
+    uw k = scan_byte(s->bytes, (uw)i, end, (uint8_t)c);
+    if (k < end) return TAG((sw)k);
+  }
+  if ((uw)n > s->len) fpr_trap_range("charAt: index out of range", (sw)s->len, s->len);
+  return TAG(-1);
+}
+/* strFindSpace s pos n (std/string wordEnd): the first byte at or after pos
+ * (before n) that isSpace holds for (32, or 9..13), or n */
+static V g_strFindSpace(V sv, V posv, V nv) {
+  sw pos = UNTAG(posv), n = UNTAG(nv);
+  if (pos >= n) return nv;
+  str_t *s = scan_str(sv);
+  if (pos < 0) fpr_trap_range("charAt: index out of range", pos, s->len);
+  uw end = (uw)n < s->len ? (uw)n : s->len;
+  uw k = scan_space(s->bytes, (uw)pos, end);
+  if (k < end) return TAG((sw)k);
+  if ((uw)n > s->len) fpr_trap_range("charAt: index out of range", (sw)s->len, s->len);
+  return nv;
+}
+/* strDigits s i n (std/string digitsGo s i n 0): the decimal digits of
+ * [i, n) accumulated NEGATIVELY (so the most negative Int is reachable),
+ * or 1 at a byte that is not a digit, or 2 when the value would pass the
+ * Int.  The same tests, in the same order, as digitsGo's FP-RISC. */
+static V g_strDigits(V sv, V iv, V nv) {
+  sw i = UNTAG(iv), n = UNTAG(nv), acc = 0;
+  if (i >= n) return TAG(0);
+  str_t *s = scan_str(sv);
+  if (i < 0) fpr_trap_range("charAt: index out of range", i, s->len);
+  const sw lo = -((sw)1 << (sizeof(sw) * 8 - 2)), lo10 = lo / 10; /* intMin Unit (INT_MIN_TAGGED, below) */
+  /* acc is never above 0 (it starts there and only goes down), so of the
+   * range tests only acc < (intMin + d) / 10 can fail, and only once acc is
+   * at or below intMin / 10 */
+  uw end = (uw)n < s->len ? (uw)n : s->len;
+  for (uw k = (uw)i; k < end; k++) {
+    sw d = (sw)s->bytes[k] - 48;
+    if ((uw)d > 9) return TAG(1);
+    if (acc <= lo10 && acc < (lo + d) / 10) return TAG(2);
+    acc = acc * 10 - d;
+  }
+  if ((uw)n > s->len) fpr_trap_range("charAt: index out of range", (sw)s->len, s->len);
+  return TAG(acc);
+}
 /* $fnIs f g: f is the function value g -- the same code, nothing captured
  * (Reuse lookupTwins: a map lookup's comparator, against the one the unit's
  * empty maps all carry).  Anything else answers False, and the caller takes
@@ -6152,6 +6292,9 @@ FPR_FN(fpr_g_intMin, g_intMin, 1);
 FPR_FN(fpr_g_substr, g_substr, 3);
 FPR_FN(fpr_g_strJoin, g_strJoin, 2);
 FPR_FN(fpr_g_strCompare, g_strCompare, 2);
+FPR_FN(fpr_g_strFindByte, g_strFindByte, 4);
+FPR_FN(fpr_g_strFindSpace, g_strFindSpace, 3);
+FPR_FN(fpr_g_strDigits, g_strDigits, 3);
 FPR_FN(fpr_g__x24fnIs, g_fn_is, 2);
 FPR_FN(fpr_g_nodeGet, g_nodeGet, 2);
 FPR_FN(fpr_g_nodeWith, g_nodeWith, 4);

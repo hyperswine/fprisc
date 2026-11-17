@@ -349,6 +349,9 @@ primCostOf g lens
   | g == "strcat", [a, b] <- lens = Just (CAdd [CN 1, a, b], CAdd [CN 16, a, b])
   | g == "substr", (a : _) <- lens = Just (CAdd [CN 1, a], CAdd [CN 16, a])
   | g == "parseInt", [a] <- lens = Just (CAdd [CN 1, a], CN 0)
+  -- std/string's byte scans (runtime.c): one pass over at most the String's
+  -- bytes, nothing allocated
+  | g `elem` ["strFindByte", "strFindSpace", "strDigits"], (a : _) <- lens = Just (CAdd [CN 1, a], CN 0)
   | otherwise = Nothing
   where
     unit = Just (CN 1, CN 0)
