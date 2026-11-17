@@ -322,6 +322,7 @@ static uw layout_total(V v) {
 }
 #ifdef FPR_LAYOUT_REPORT
 static void praw(const char *s); /* declared for real further down */
+static void pdec(uw u);
 /* one line per class, so a harness can tell "the rule held" from "no object of
  * that class was ever walked" -- the vacuity the first version of this check
  * could not see */
@@ -336,6 +337,17 @@ static void layout_report(V v) {
     case T_VEC: bit = 8; name = "vector"; break;
     case T_ACTOR: case T_DEVICE: case T_REGISTER: return;
     default: bit = 16; name = "constructor"; break;
+  }
+  if (bit == 16 && !(layout_seen & 32)) {
+    /* C6 stage 3a: the first constructor met with raw fields, so a harness
+     * can tell the masks reached the runtime */
+    uw raw = fpr_layout_raw_mask(TID(v), ((hdr_t *)v)->var);
+    if (raw) {
+      layout_seen |= 32;
+      praw("[layout] raw fields ");
+      pdec(raw);
+      praw("\n");
+    }
   }
   if (layout_seen & bit) return;
   layout_seen |= bit;

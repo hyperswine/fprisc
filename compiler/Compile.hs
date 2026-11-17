@@ -587,6 +587,8 @@ compileWithReport accepted report = do
           consRoot = collectCons rootHash root'
           consUnits = [(h, collectCons h uts) | (h, uts) <- units]
           consAll = M.unions (consPrelude : consRoot : map snd consUnits)
+          -- C6 stage 3a: which constructor fields hold raw words (fpr_layout_raw)
+          rawAll = M.unions (collectRawFields preludeHash preludeE : collectRawFields rootHash root' : [collectRawFields h uts | (h, uts) <- units])
           -- constructor stub ownership.  Each unit's Core now carries ONLY
           -- the constructor stubs it owns and emits; the others reference the
           -- owner's symbol through schemas/arities like any cross-unit call.
@@ -1391,8 +1393,22 @@ compileWithReport accepted report = do
                   ++ [ "    " ++ dir ++ " " ++ show (length layoutRows) ]
                   ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var, "    " ++ dir ++ " " ++ show ar ]
                             | ((tid, var), ar) <- layoutRows ]
+          -- C6 stage 3a: the raw-field masks beside the layout table, for 64-bit
+          -- images that publish one (the same owners, and not a plugin, whose
+          -- rows the runtime registers without masks). A row names a
+          -- (tid, variant) the layout table has and a mask below 2^fields; the
+          -- runtime refuses the whole table otherwise. Nothing reads the masks
+          -- yet: a field without a bit is walked as it always was.
+          rawRows = [ (k, m) | (k, m) <- M.toList rawAll, k `M.member` M.fromList layoutRows ]
+          layoutRawTab
+            | oBuiltin opts || oLib opts || oPlugin opts || dir /= ".quad" = ""
+            | otherwise = unlines $
+                [ "", "# raw constructor fields: count, then (tid, variant, mask) triples", "    .balign 8", "    .globl fpr_layout_raw", "fpr_layout_raw:" ]
+                  ++ [ "    " ++ dir ++ " " ++ show (length rawRows) ]
+                  ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var, "    " ++ dir ++ " " ++ show m ]
+                            | ((tid, var), m) <- rawRows ]
       let rootAsm = moduleFinal (unlines (["# typed IR: no translation"] ++ emNative rootEmission ++ emData rootEmission
-                                   ++ dataSyntax directFormat (lines conTab ++ lines layoutTab))) ++ unlines (concat tramps ++ callbackNotes)
+                                   ++ dataSyntax directFormat (lines conTab ++ lines layoutTab ++ lines layoutRawTab))) ++ unlines (concat tramps ++ callbackNotes)
           directFormat = if a64mac || x64mac then MachO else ELF
       directCheck "root" rootEmission
       admitted <- case stackBudget of

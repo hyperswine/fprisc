@@ -32,7 +32,10 @@ __attribute__((weak)) const uw fpr_modtab[1] = {0};
  * so retained logical capacity stays below twice the current capacity.
  * Buddy minimum-block rounding adds overhead to small indices. */
 __attribute__((weak)) const uw fpr_layout_table[1] = {0};
-typedef struct { uw tid_plus_one, variant, fields; } layout_slot;
+__attribute__((weak)) const uw fpr_layout_raw[1] = {0};
+/* raw: the C6 stage 3a mask of fields that hold raw words (fpr_layout_raw);
+ * 0, the conservative answer, until the image's mask rows are applied. */
+typedef struct { uw tid_plus_one, variant, fields, raw; } layout_slot;
 typedef struct { uw capacity, used; layout_slot slots[]; } layout_index;
 static layout_index *layouts;
 static fpr_lock_t layout_lock;
@@ -49,11 +52,12 @@ static layout_slot *layout_find(layout_index *index, uw tid, uw variant) {
     at=(at+1)&(index->capacity-1);
   }
 }
-static void layout_insert(layout_index *index, uw tid, uw variant, uw fields) {
+static void layout_insert(layout_index *index, uw tid, uw variant, uw fields, uw raw) {
   layout_slot *slot=layout_find(index,tid,variant);
   if (slot->tid_plus_one) return;
   slot->variant=variant;
   slot->fields=fields;
+  slot->raw=raw;
   __atomic_store_n(&slot->tid_plus_one,tid+1,__ATOMIC_RELEASE);
   index->used++;
 }
@@ -100,14 +104,43 @@ static int layout_add(const uw *table) {
     index->capacity=capacity;
     if (old) for (uw i=0;i<old->capacity;i++) {
       layout_slot *r=&old->slots[i];
-      if (r->tid_plus_one) layout_insert(index,r->tid_plus_one-1,r->variant,r->fields);
+      if (r->tid_plus_one) layout_insert(index,r->tid_plus_one-1,r->variant,r->fields,__atomic_load_n(&r->raw,__ATOMIC_ACQUIRE));
     }
   }
   for (uw i=0;i<count;i++) {
     const uw *r=table+1+3*i;
-    layout_insert(index,r[0],r[1],r[2]);
+    layout_insert(index,r[0],r[1],r[2],0);
   }
   if (index!=old) __atomic_store_n(&layouts,index,__ATOMIC_RELEASE);
+  return 0;
+}
+/* C6 stage 3a. Caller holds layout_lock, after the image's own layout rows
+ * are in. Every mask row must name a registered constructor and only fields
+ * it has; the whole table is checked before any mask is published, and a
+ * refused table leaves every mask 0. A mask is published once, release, so a
+ * reader on another hart sees either 0 (walk the fields conservatively, as
+ * before) or the whole mask. */
+static int layout_raw_add(const uw *table) {
+  layout_index *index=layouts;
+  uw count=table?table[0]:0;
+  if (!count) return 0;
+  if (!index || count>((uw)-1-1)/3) return -1;
+  for (uw i=0;i<count;i++) {
+    const uw *r=table+1+3*i;
+    if (r[0]==(uw)-1 || !r[2]) return -1;
+    layout_slot *found=layout_find(index,r[0],r[1]);
+    if (found->tid_plus_one!=r[0]+1) return -1;
+    if (found->fields<8*sizeof(uw) && (r[2]>>found->fields)) return -1;
+    if (found->raw && found->raw!=r[2]) return -1;
+    if (i) {
+      const uw *prior=table+1+3*(i-1);
+      if (prior[0]>r[0] || (prior[0]==r[0] && prior[1]>=r[1])) return -1;
+    }
+  }
+  for (uw i=0;i<count;i++) {
+    const uw *r=table+1+3*i;
+    __atomic_store_n(&layout_find(index,r[0],r[1])->raw,r[2],__ATOMIC_RELEASE);
+  }
   return 0;
 }
 int fpr_layout_register(const uw *table) {
@@ -115,7 +148,16 @@ int fpr_layout_register(const uw *table) {
   if (fpr_plane_memory) return fpr_plane_memory->layout_register(table?table:fpr_layout_table);
 #endif
   fpr_lock(&layout_lock);
-  int result=layouts?0:layout_add(fpr_layout_table);
+  int fresh=!layouts;
+  int result=fresh?layout_add(fpr_layout_table):0;
+  if (!result && fresh) {
+    /* The weak default is one word, so a compiler that inlines the reader
+     * may treat rows past it as out of bounds; the image's strong table is
+     * longer. Hide the pointer's origin. */
+    const uw *raw=fpr_layout_raw;
+    __asm__("" : "+r"(raw));
+    result=layout_raw_add(raw);
+  }
   if (!result && table!=fpr_layout_table) result=layout_add(table);
   fpr_unlock(&layout_lock);
   return result;
@@ -159,6 +201,24 @@ uw fpr_layout_fields(uw tid, uw variant) {
     __atomic_store_n(&layout_recent[cached],(((tid+1)<<24)|variant)<<16|found->fields,__ATOMIC_RELAXED);
 #endif
   return found->fields;
+}
+
+/* C6 stage 3a: the raw-field mask of a constructor (bit i: field i holds a
+ * raw word, never a pointer), 0 when nothing is known. 0 is always a safe
+ * answer: it is how every field was walked before the masks existed. No
+ * walker reads it yet. */
+uw fpr_layout_raw_mask(uw tid, uw variant) {
+#ifdef FPR_COMPACT_CELLS
+  if (fpr_plane_memory) return 0; /* the plane's table carries no masks yet */
+#endif
+  layout_index *index=__atomic_load_n(&layouts,__ATOMIC_ACQUIRE);
+  if (!index) {
+    if (fpr_layout_register(0)) fpr_cpanic("layout table: cannot initialize constructor metadata");
+    index=__atomic_load_n(&layouts,__ATOMIC_ACQUIRE);
+  }
+  layout_slot *found=layout_find(index,tid,variant);
+  if (__atomic_load_n(&found->tid_plus_one,__ATOMIC_ACQUIRE)!=tid+1 || found->variant!=variant) return 0;
+  return __atomic_load_n(&found->raw,__ATOMIC_ACQUIRE);
 }
 
 /* ---- attached tables: DYNAMICALLY LOADED module tables --------------
