@@ -36,7 +36,7 @@ import Codegen.Target.X64.Forms (checkForms)
 import Codegen.Target.Common
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict hiding (fix)
-import Data.List (intercalate)
+import Data.List (intercalate, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -275,6 +275,52 @@ emitCall sym convention args res = do
     (maybe DiscardResult (const WordResult) res) sym args res
     ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
   emitI selected
+
+-- A vector element read or store that the flat view did not serve calls
+-- its C entry (vec.c) through a function-local wrapper that saves every
+-- caller-saved word register but the result and the xmm pool
+-- (keepingWrapper): the call is a PreservingRuntime event that clobbers
+-- nothing, so the values live across a cold slow path, F64 values
+-- included, keep their registers instead of being kept in callee-saved
+-- registers or spilled on the hot path (C6 stage 1).
+emitKeepingCall :: CodeSymbol -> [VReg] -> VReg -> Se ()
+emitKeepingCall sym args res = do
+  stageArgs Calling.RuntimeCall args
+  selected <- either refuse pure (Calling.selectTransfer Calling.X86_64 Calling.RuntimeCall WordResult sym args (Just res)
+    ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
+  emitI selected {siClobbers = [], siCalls = [Call sym PreservingRuntime]}
+
+-- the cold slow paths of inline vector accesses (Lower.vectorAccess) and
+-- of checked Int arithmetic (retagged), only where floats have registers:
+-- a QOS app keeps the plain call
+keepsRegisters :: X64Config -> Callee -> Bool
+keepsRegisters cfg c = case calleeKind c of
+  Foreign _ -> keepingEnabled cfg && length (calleeParams c) <= 3
+    && any (`isPrefixOf` calleeName c) ["$vec.get", "$vec.at", "$vec.set", "$vec.put", "Vec.set", "Vec.put"]
+  _ -> False
+
+keepingEnabled :: X64Config -> Bool
+keepingEnabled cfg = polProfile (cfgPolicy cfg) /= QosApp && tuneFpPool (cfgTune cfg)
+
+keepingCall :: SInstr -> Bool
+keepingCall i = siOpcode i == O.X64 O.Call && case siCalls i of
+  [c] -> callEffect c == PreservingRuntime
+  _ -> False
+
+keepingLabel :: String -> Label
+keepingLabel sym = Label ("keep_" ++ sym)
+
+-- one wrapper per C entry a function calls this way, after its code.
+-- Entered with rsp 8 mod 16 (the call site keeps the C alignment): eight
+-- pushes, the 96 bytes of float saves and one alignment word realign it.
+keepingWrappers :: X64Hart -> String -> [Item] -> [String]
+keepingWrappers hart name body = concat
+  [ [local hart name (keepingLabel sym) ++ ":"]
+    ++ ["    pushq %" ++ g | g <- saved] ++ saveFloats
+    ++ ["    subq $8, %rsp", "    call " ++ gsym hart sym, "    addq $8, %rsp"]
+    ++ restoreFloats ++ ["    popq %" ++ g | g <- reverse saved] ++ ["    ret"]
+  | sym <- S.toList (S.fromList [codeName s | I i <- body, keepingCall i, OCode s : _ <- [siUses i]]) ]
+  where saved = ["rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"]
 
 -- A private multi-word result, with the complete bank checked by Calling.
 emitCallProduct :: CodeSymbol -> CallConvention -> [VReg] -> [VReg] -> Se ()
@@ -801,7 +847,9 @@ selectInstr cfg facts (Instr d op) = case op of
   OResult _ -> refuse "internal: a product word without its call"
   OCall c as -> do
     when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
-    def (\r -> emitCall (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (Just r))
+    if keepsRegisters cfg c
+      then def (\r -> emitKeepingCall (calleeSymbol c) (map vreg as) r)
+      else def (\r -> emitCall (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (Just r))
   where
     makeCell tid variant fields = def $ \rd -> do
       let literal n = do r <- freshV False; emitI (li r (fromIntegral n)); pure r
@@ -903,7 +951,10 @@ selectInstr cfg facts (Instr d op) = case op of
       emitI (tagw ta' a)
       emitI (tagw tb' b)
       res <- freshV True
-      emitCall (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
+      -- the cold re-entry keeps every register too (keepingWrappers)
+      if keepingEnabled cfg
+        then emitKeepingCall (CodeSymbol (primSymbol o)) [ta', tb'] res
+        else emitCall (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
       emitI (rri O.ShiftRightArithmeticImmediate r res 1)
     arith kernel o r a b = do
       slow <- freshL "slow"
@@ -1046,10 +1097,11 @@ allocConfig self managed = AllocConfig
 -- pooled: an F32 word is the zero-extended low half, which movq would not
 -- keep.
 floatPool :: SFn -> SFn
-floatPool fn
-  | not (any floatItem (sfBody fn)) = fn
+floatPool fn0
+  | not (any floatItem (sfBody fn0)) = fn0
   | otherwise = fn {sfBody = map clobbering (forwardOutputs (evalState (concat <$> mapM item (sfBody fn)) (start, M.empty)))}
   where
+    (fn, hoisted) = hoistFloatParams floatContext fn0
     clobbering (I i) = I (floatClobbers i)
     clobbering l = l
     floatItem (I i) = floatingDef (siOpcode i) || floatContext (siOpcode i)
@@ -1100,7 +1152,7 @@ floatPool fn
     -- is loaded into its xmm register: movq reads memory into either class
     loads = S.fromList [v | I i <- sfBody fn, O.X64 O.LoadField <- [siOpcode i], [OV v (Any GPR)] <- [siDefs i],
                             S.notMember v pinned, everyFloat v]
-    floats = carried (produced `S.union` literals `S.union` loads)
+    floats = carried (produced `S.union` literals `S.union` loads `S.union` hoisted)
     start = 1 + maximum (0 : [n | I i <- sfBody fn, OV (VReg n) _ <- siDefs i ++ siUses i])
     fresh :: RegClass -> State (Int, M.Map Integer Operand) Operand
     fresh cls = do (n, m) <- get; put (n + 1, m); pure (OV (VReg n) (Any cls))
@@ -1208,6 +1260,78 @@ floatPool fn
       args <- mapM asFloat (siUses i)
       pure (concatMap fst args ++ [I i {siOpcode = O.X64 op, siDefs = if floating then map def (siDefs i) else siDefs i, siUses = map snd args}])
 
+-- Unboxed F64 loop values (C6 stage 1): a function parameter is pinned
+-- to its word register by the ABI, so a float operation in a loop that
+-- reads a loop-invariant F64 parameter paid a movq into xmm on every
+-- iteration. When a call-free loop (a back edge from the end of a layout
+-- range [header, jump]) reads such a parameter in float operations, the
+-- parameter is moved into a fresh value once, on the single edge that
+-- enters the header from outside the loop, and every float read the
+-- header dominates takes that value; floatPool then gives it an xmm
+-- register. Word readers keep the parameter's own register.
+hoistFloatParams :: (O.Opcode -> Bool) -> SFn -> (SFn, S.Set VReg)
+hoistFloatParams floatContext fn
+  | null plans = (fn, S.empty)
+  | otherwise = (fn {sfBody = rewritten}, S.fromList [t | (_, moves) <- plans, (_, t) <- moves])
+  where
+    items = sfBody fn
+    n = length items
+    arr = M.fromList (zip [0 :: Int ..] items)
+    labelAt = M.fromList [(l, k) | (k, ILabel l) <- zip [0 ..] items]
+    -- a parameter some instruction redefines (a self loop's moves) is not invariant
+    params = S.fromList (sfParams fn) `S.difference` S.fromList [v | I i <- items, OV v _ <- siDefs i]
+    targets i = case siControl i of
+      JumpTo l -> [l]
+      CondTo ls -> ls
+      _ -> []
+    falls i = case siControl i of
+      Next -> True
+      CondTo _ -> True
+      _ -> False
+    succs k = case M.lookup k arr of
+      Just (ILabel _) -> [k + 1 | k + 1 < n]
+      Just (I i) -> [k + 1 | falls i, k + 1 < n] ++ [t | l <- targets i, Just t <- [M.lookup l labelAt]]
+      Nothing -> []
+    -- the items reachable from the entry without passing the header
+    outside h = go S.empty [0 | h /= 0]
+      where go seen [] = seen
+            go seen (k : ks) | S.member k seen || k == h = go seen ks
+                             | otherwise = go (S.insert k seen) (succs k ++ ks)
+    loops = [ (h, j) | (j, I i) <- zip [0 ..] items, l <- targets i, Just h <- [M.lookup l labelAt], h <= j,
+                       null [() | k <- [h .. j], Just (I c) <- [M.lookup k arr], clobbersFloats c] ]
+    -- the fuel and allocation wrappers preserve the xmm pool (saveFloats)
+    clobbersFloats c = not (all callPreserves (siCalls c)) || any (`elem` floatPoolRegs) (siClobbers c)
+    floatReads k = case M.lookup k arr of
+      Just (I i) | floatContext (siOpcode i) -> [v | OV v _ <- siUses i, S.member v params]
+      _ -> []
+    start0 = 1 + maximum (0 : [m | I i <- items, OV (VReg m) _ <- siDefs i ++ siUses i] ++ [m | VReg m <- sfParams fn])
+    -- one plan per header: its parameters, each with its fresh value
+    candidates = M.toList (M.fromListWith S.union
+      [ (h, S.fromList vs) | (h, j) <- loops, let vs = concatMap floatReads [h .. j], not (null vs) ])
+    plans = assign start0 [ (h, out, S.toList vs) | (h, vs) <- candidates, h > 0, let out = outside h, entryOk h out ]
+    assign _ [] = []
+    assign next ((h, out, vs) : rest) =
+      let moves = zip vs (map VReg [next ..])
+       in (h, moves) : assign (next + length vs) rest
+    -- the header is entered from outside only by falling through from the item before it
+    entryOk h out =
+      S.member (h - 1) out
+        && (case M.lookup (h - 1) arr of Just (I i) -> falls i; Just (ILabel _) -> True; Nothing -> False)
+        && null [ () | k <- S.toList out, k /= h - 1, h `elem` succs k ]
+    -- headers already planned own their dominated reads; the first plan wins
+    planFor = [ (h, out, M.fromList moves) | (h, moves) <- plans, let out = outside h ]
+    rewritten = concat [ before k ++ [rewrite k it] | (k, it) <- zip [0 ..] items ]
+    before k = [ I (plain (O.X64 O.Move) [OV t (Any GPR)] [OV p (Any GPR)]) | (h, moves) <- plans, h == k, (p, t) <- moves ]
+    rewrite k (I i) | floatContext (siOpcode i) =
+      I i {siUses = [ case o of
+                        OV v c | Just t <- dominating k v -> OV t c
+                        _ -> o
+                    | o <- siUses i ]}
+    rewrite _ it = it
+    dominating k v = case [ t | (_, out, m) <- planFor, S.notMember k out, Just t <- [M.lookup v m] ] of
+      (t : _) -> Just t
+      [] -> Nothing
+
 savedObjs :: [Phys] -> [FrameObj]
 savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) False False | (k, Phys p) <- zip [0 ..] saved]
 
@@ -1261,7 +1385,7 @@ emitFnX64WithSymbols symbols cfg fn = do
   let stack = Stack.selectedFrame Stack.StackReturnAddress ly (CodeSymbol (functionSymbol name))
         (["interposable-entry:"++functionSymbol name | visibilityFor (cfgWeak cfg) symbols name == WeakSymbol]
           ++ ["segmented-stack-reservation" | large] ++ ["darwin-tlv-boundary" | cfgHart cfg == HartTlvMachO]) body
-  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ refillCode ++ floatLiterals (cfgHart cfg) name allocatedBody ++ [reportLine name report, ""]) report stack (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
+  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ refillCode ++ keepingWrappers (cfgHart cfg) name allocatedBody ++ floatLiterals (cfgHart cfg) name allocatedBody ++ [reportLine name report, ""]) report stack (S.toList nulls) (S.toList strs) [] (usesTick allocatedBody) (usesBump allocatedBody))
   where
     tokOf _ (ILabel (Label l)) _ = [TLabel l]
     tokOf pools (I i) ls = [TIns
@@ -1476,6 +1600,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       (O.X64 O.BranchNonzero,[],[v,OL l]) -> ["testq " ++ reg v ++ ", " ++ reg v,"jnz " ++ lbl l]
       (O.X64 O.Jump,[],[OL l]) -> ["jmp " ++ lbl l]
       (O.Common O.JumpLoop,[],[OL l]) -> ["jmp " ++ lbl l]
+      (O.X64 O.Call,_,OCode s:_) | keepingCall i -> ["subq $8, %rsp", "call " ++ lbl (keepingLabel (codeName s)), "addq $8, %rsp"]
       (O.X64 O.Call,_,OCode s:_) -> call (codeName s)
       (O.X64 O.Push,[],[v]) -> ["subq $16, %rsp", "movq " ++ reg v ++ ", (%rsp)"]
       (O.X64 O.ApplyN,[_],[OI n]) -> ["movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
