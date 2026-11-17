@@ -217,3 +217,56 @@ overwritten by the staging and do not push it.
 Unit tests: `tests/AllocIR.hs` (cold-call saves in an argument register, a
 loop move hint, store forwarding, spill moves under the symbolic simulator).
 Config differential: `no_x64_split`.
+
+## Shallow leaves by default (hosted x86-64; `FPR_NO_SHALLOW_STACK=1` restores every check)
+
+Jack's choice: skip the entry stack check in small leaf functions by default,
+with every skipped frame statically covered. `StackCheckShallow` is now the
+policy for hosted x86-64 (not a QOS app, not builtin, not rv32). The existing
+`FPR_TYPED_IR_SHALLOW_STACK` opt-in for other hosted targets is unchanged
+except for the entry exclusion below, which now applies to it too.
+
+**Which functions skip it** (`Codegen.Target.Common.shallowEntry`, decided after
+allocation and layout). A function skips the check only when all of these hold:
+
+- Its frame is at most 1024 bytes (`lyBytes`).
+- No call in it can deepen the generated chain: no generated-function call, no
+  safepoint call, no `fpr_apply`. Tail transfers don't count.
+- C cannot enter it (`Codegen.nativeSelect`). The check stays in:
+  - every function whose static PAP the unit takes (`OFunValue`), since
+    `fpr_apply*`, vector callbacks and the actor entry call these from C;
+  - every linkable symbol, because other units can take its PAP, and the
+    module table and library exports point at it;
+  - `main`, which the runtime calls;
+  - every nullary definition.
+- Every function in the unit was lowered natively. If any function falls back,
+  every function in the unit keeps its check.
+
+`tools/shallow_audit.py` (outside the repo, in the PR notes) checked the
+emitted assembly of all 16 benchmarks, including their units. No shallow
+function's `fpr_obj_` or `fpr_fn_` symbol is referenced anywhere except as a
+direct `call`/`jmp` target or inside its own static PAP.
+
+**The exact bound** (x86-64).
+- A checked entry checks after allocating its frame. The check passes only when
+  `rsp + 8 >= stk_lo`, where `stk_lo = segment base + FPR_STACK_HEADROOM`. So the
+  checked caller runs at `rsp >= stk_lo - 8`.
+- Its call to a leaf pads 8 bytes and pushes the 8-byte return address.
+- The leaf's frame is at most 1024 bytes.
+- So no generated code in a shallow leaf runs below `stk_lo - 1048`
+  (`shallowReserve`; `FPR_SHALLOW_RESERVE` in runtime/actors.c, which
+  static-asserts `FPR_STACK_HEADROOM > 1048`).
+- A tail transfer from a leaf first restores the frame it leaves. Its target
+  therefore enters at the same `rsp` and either checks or is itself a shallow
+  leaf under the same bound.
+- A runtime C call made from a leaf starts at most 1040 bytes lower than one
+  made from a checked function. With unix's 64 KiB headroom, C still has at
+  least 64 KiB − 1048 bytes, minus that call's own pushes. The guard page stays
+  the backstop, as before.
+
+**WCET and stack bounds.**
+- Builtin (the cached SDRAM simple-risc reference) is `StackStatic`, so
+  nothing changes there: rv64 bare-metal, builtin and A64 output are identical
+  apart from the revision string.
+- `Codegen.Stack` frame bounds are unchanged. Skipping a check changes no frame
+  size or call edge.

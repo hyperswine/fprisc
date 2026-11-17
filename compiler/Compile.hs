@@ -975,7 +975,13 @@ compileWithReport accepted report = do
               polFuel = not (oBuiltin opts),
               polTickBatch = Options.cgTickBatch codegen,
               polTickWeight = Options.cgTickWeight codegen,
-              polStackCheck = if oBuiltin opts then StackStatic else if (Options.nativeShallowStack native) then StackCheckShallow else StackCheckEveryEntry,
+              -- hosted x86-64 (not a QOS app) skips the check in small
+              -- leaves by default (FPR_NO_SHALLOW_STACK=1 keeps every check);
+              -- FPR_TYPED_IR_SHALLOW_STACK opts the other hosted targets in
+              polStackCheck = if oBuiltin opts then StackStatic
+                              else if Options.nativeShallowStack native then StackCheckShallow
+                              else if Options.nativeShallowDefault native && x64 && not qapp && tgtName (oTarget opts) /= "rv32" then StackCheckShallow
+                              else StackCheckEveryEntry,
               polFloatInline = (Options.cgFloatInline codegen),
               polLoopMotion = Options.cgLoopMotion codegen,
               polStringScan = Options.cgStringScan codegen,
