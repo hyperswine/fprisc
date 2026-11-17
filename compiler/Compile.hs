@@ -1016,7 +1016,7 @@ compileWithReport accepted report = do
                               else Nothing,
                 nmSelfLoops = (Options.nativeSelfLoops native), nmForwardParams = (Options.nativeForwardParams native),
                 nmTune = Tune (Options.nativeEntryArgs native) (Options.nativeShrinkWrap native) (Options.nativeFpPool native) (Options.nativeLinkPairs native), nmSplitEntry = (Options.nativeSplitEntry native),
-                nmFramelessEntry = Options.cgFramelessEntry codegen }
+                nmFramelessEntry = Options.cgFramelessEntry codegen, nmX64Ra = Options.nativeX64Ra native }
           -- Every selected backend owns the whole output. A named subset can
           -- no longer permit another function or kernel to bypass typed IR.
           strictCheck what fallbacks = unless (null fallbacks) (strictFail what fallbacks)

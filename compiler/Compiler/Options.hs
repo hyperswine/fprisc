@@ -22,7 +22,12 @@ data NativeOptions = NativeOptions
   { nativeGranularity :: Granularity, nativeStrict :: Strict,
     nativeSelfLoops :: Bool, nativeForwardParams :: Bool, nativeShallowStack :: Bool,
     nativeEntryArgs :: Bool, nativeSplitEntry :: Bool, nativeShrinkWrap :: Bool,
-    nativeFpPool :: Bool, nativeLinkPairs :: Bool } deriving (Eq,Show)
+    nativeFpPool :: Bool, nativeLinkPairs :: Bool,
+    -- C9 stage 1 on hosted x86-64 (docs/perf/2026-11-17-REGALLOC-DESIGN.md):
+    -- entry arguments, the entry split, shrink-wrapped saves, the short
+    -- epilogue and live-set saves around deep-equality slow paths; on
+    -- unless FPR_NO_X64_RA=1
+    nativeX64Ra :: Bool } deriving (Eq,Show)
 data CodegenOptions = CodegenOptions
   { nativeOptions :: NativeOptions, cgIndexedMemory :: Bool, cgFloatInline :: Bool,
     cgSimd :: Bool, cgFusion :: Bool, cgListFuse :: Bool, cgCaseKnown :: Bool, cgTypeSpec :: Bool, cgTypedCase :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgStringFast :: Bool, cgInterval :: Bool, cgLoopMotion :: Bool, cgEarlyLoops :: Bool, cgFramelessEntry :: Bool, cgStringScan :: Bool,
@@ -63,7 +68,8 @@ parseCompilerOptions env = do
           nativeSelfLoops=on "FPR_TYPED_IR_SELF_LOOPS", nativeForwardParams=yes "FPR_TYPED_IR_FORWARD_PARAMS",
           nativeShallowStack=yes "FPR_TYPED_IR_SHALLOW_STACK", nativeEntryArgs=yes "FPR_TYPED_IR_ENTRY_ARGS",
           nativeSplitEntry=yes "FPR_TYPED_IR_SPLIT_ENTRY", nativeShrinkWrap=yes "FPR_TYPED_IR_SHRINK_WRAP",
-          nativeFpPool=on "FPR_TYPED_IR_FP_POOL", nativeLinkPairs=on "FPR_TYPED_IR_LINK_PAIRS" }
+          nativeFpPool=on "FPR_TYPED_IR_FP_POOL", nativeLinkPairs=on "FPR_TYPED_IR_LINK_PAIRS",
+          nativeX64Ra=enabled "X64_RA" }
       codegen=CodegenOptions
         { nativeOptions=native, cgIndexedMemory=enabled "INDEXED_MEMORY", cgFloatInline=enabled "F64_INLINE",
           cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgListFuse=enabled "LIST_FUSE", cgCaseKnown=enabled "CASE_KNOWN", cgTypeSpec=enabled "TYPE_SPEC", cgTypedCase=enabled "TYPED_CASE", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST", cgStringFast=enabled "STR_FAST", cgInterval=enabled "INTERVAL", cgLoopMotion=yes "FPR_TYPED_IR_LOOP_MOTION",
@@ -120,6 +126,7 @@ nativeOptionFlags fpAvailable n =
   ++ flag (nativeSplitEntry n) "-split"
   ++ flag (nativeShrinkWrap n) "-wrap"
   ++ flag (not (nativeLinkPairs n)) "-nolinkpairs"
+  ++ flag (not (nativeX64Ra n)) "-nox64ra"
   ++ case nativeStrict n of
     StrictOff->""; StrictAll->"-strictall"
     StrictNames names->"-strict"++take 12 (showHex (fnv (intercalate "," names)) "")

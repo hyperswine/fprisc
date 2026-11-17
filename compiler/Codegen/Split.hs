@@ -22,7 +22,7 @@
 -- input's.  The result is a verified function (a verifier refusal is a
 -- compiler error), and the reference evaluator's results, traps and event
 -- order are checked unchanged (tests/TypedIR.hs).
-module Codegen.Split (splitEntryValues) where
+module Codegen.Split (splitEntryValues, splitEntryValuesWith, callLike, preservedOnX64) where
 
 import Codegen.IR
 import Codegen.ControlFlow (analyze,dominators)
@@ -30,7 +30,13 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 splitEntryValues :: Fn -> Fn
-splitEntryValues fn = case [b | b <- fnBlocks fn, bId b == fnEntry fn] of
+splitEntryValues = splitEntryValuesWith callLike
+
+-- The split with the target's own notion of a call that clobbers the
+-- caller-saved registers (C9 stage 1: hosted x86-64 preserves them around
+-- its ticks, entry checks and deep-equality slow paths, preservedOnX64).
+splitEntryValuesWith :: (Op -> Bool) -> Fn -> Fn
+splitEntryValuesWith clobbering fn = case [b | b <- fnBlocks fn, bId b == fnEntry fn] of
   [entry] -> foldl (splitChild entry) fn children
     where
       entryDefs = M.fromList (blockDefs entry)
@@ -45,7 +51,7 @@ splitEntryValues fn = case [b | b <- fnBlocks fn, bId b == fnEntry fn] of
             -- ones the allocator must otherwise keep in a callee-saved
             -- register from the entry on (splitting the rest only adds
             -- copies, a loop's turn among them)
-            crossing = crossingIn f region
+            crossing = crossingIn clobbering f region
             moving = [(v, t) | (v, t) <- M.toList entryDefs, S.member v crossing]
             next0 = 1 + maximum (0 : [n | b <- fnBlocks f, (VId n, _) <- blockDefs b])
             fresh = M.fromList (zip (map fst moving) (map VId [next0 ..]))
@@ -66,8 +72,8 @@ splitEntryValues fn = case [b | b <- fnBlocks fn, bId b == fnEntry fn] of
   _ -> fn
 -- the values used after a call-like operation inside the region: later in
 -- the same block, or in a block of the region reachable from it
-crossingIn :: Fn -> S.Set BId -> S.Set VId
-crossingIn f region = S.fromList (concat [afterCall b ++ concatMap blockUses (reachFrom b) | b <- inRegion, hasCall b])
+crossingIn :: (Op -> Bool) -> Fn -> S.Set BId -> S.Set VId
+crossingIn callLike f region = S.fromList (concat [afterCall b ++ concatMap blockUses (reachFrom b) | b <- inRegion, hasCall b])
   where
     inRegion = [b | b <- fnBlocks f, S.member (bId b) region]
     byId = M.fromList [(bId b, b) | b <- fnBlocks f]
@@ -89,6 +95,17 @@ callLike op = case op of
   OStrLen _ -> True
   OCharAt _ _ -> True
   _ -> opEffect op `elem` [AnyEffect, RuntimeCall]
+
+-- operations whose hosted x86-64 expansion (C9 stage 1) keeps every
+-- allocatable register: the tick and entry wrappers, and the deep
+-- equality's live-set slow path
+preservedOnX64 :: Op -> Bool
+preservedOnX64 op = case op of
+  OSafepoint -> True
+  OSafepointN _ -> True
+  OStackCheck -> True
+  OEqVal _ _ _ -> True
+  _ -> False
 
 blockUses :: Block -> [VId]
 blockUses b = concat [opUses op | Instr _ op <- bInstrs b] ++ termUses (bTerm b)

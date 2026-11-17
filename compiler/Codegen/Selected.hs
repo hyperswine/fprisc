@@ -93,7 +93,9 @@ newtype Label = Label String deriving (Eq, Ord, Show)
 -- Semantic payloads and allocation accounting have different owners. An entry
 -- label spelled "copy" cannot become an allocation statistic, and inserting a
 -- copy cannot overwrite a label, frame-save index or restore decision.
-data Annotation=NoAnnotation | EntryLabels Label | SaveGroup Int | SkipRestores
+-- KeepsLive: a register-preserving runtime call whose expansion saves just
+-- the caller-saved registers live across it (x86-64, C9 stage 1).
+data Annotation=NoAnnotation | EntryLabels Label | SaveGroup Int | SkipRestores | KeepsLive [Phys]
   deriving (Eq,Ord,Show)
 data AllocationEvent=SpillStore | Reload | RegisterCopy deriving (Eq,Ord,Show)
 

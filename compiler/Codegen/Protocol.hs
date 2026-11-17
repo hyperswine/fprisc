@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 -- Existing embedded runtime protocols. One owner supplies and checks their
 -- effects; target renderers retain the actual instruction sequences.
-module Codegen.Protocol (Embedded(..),EntryChecks(..),entryChecks,entryOpcode,embedded,protocolCalls,protocolFlags,protocolControl,selectProtocol,checkProtocols) where
+module Codegen.Protocol (Embedded(..),EntryChecks(..),entryChecks,entryOpcode,embedded,protocolCalls,protocolFlags,protocolControl,selectProtocol,keepingEntry,keptCalls,checkProtocols) where
 import Codegen.Selected
 import Codegen.Call
 import Codegen.Calling (ABI(..),argumentRegisters,resultRegister,callerClobbers)
@@ -49,6 +49,22 @@ protocolCalls protocol=map runtimeEvent $ case protocol of
   StaticEntry->[]
   PushArgument->[]
   BumpAllocate->[AllocSaveEntry]
+
+-- C9 stage 1 (x86-64): the entry check's slow path through a unit-local
+-- wrapper that saves every allocatable caller-saved register around
+-- fpr_stack_grow (fpr_stack_grow_local), next to the tick's
+-- fpr_fuel_save_local. Nothing allocatable is clobbered, so the
+-- parameters need no fixed registers or parking slots through the entry.
+keptCalls :: Embedded -> Maybe [Call]
+keptCalls protocol=map runtimeEvent <$> case protocol of
+  CheckAndTick->Just [GrowStackSaveEntry,FuelSaveEntry]
+  CheckStack->Just [GrowStackSaveEntry]
+  _->Nothing
+keepingEntry :: ABI -> SInstr -> SInstr
+keepingEntry X86_64 instr
+  | Just protocol<-embedded (siOpcode instr),Just calls<-keptCalls protocol=
+      instr {siDefs=[],siUses=[],siClobbers=[],siCalls=calls}
+keepingEntry _ instr=instr
 
 -- Definitions on forwarded entry pseudos are preserved around their slow
 -- calls. A result definition is likewise not a clobbered value.
@@ -114,10 +130,11 @@ checkProtocols abi owner items=do
             CountedTick->null (siDefs i) && case siUses i of [OI n]->n>=1;_->False
             BumpAllocate->case (siDefs i,siUses i) of ([OV _ _],[OI n])->n>=8;([OP _],[OI n])->n>=8;_->False
             _->siDefs i==siUses i && params (siDefs i)
-      require "operand/target contract mismatch" shape
-      require "runtime event contract mismatch" (siCalls i==protocolCalls protocol)
+      let kept=abi==X86_64 && keptCalls protocol==Just (siCalls i)
+      require "operand/target contract mismatch" (if kept then null (siDefs i) && null (siUses i) else shape)
+      require "runtime event contract mismatch" (kept || siCalls i==protocolCalls protocol)
       require "implicit register contract mismatch" (sort (siImplicitDefs i)==sort (implicitDefs abi protocol) && sort (siImplicitUses i)==sort (implicitUses abi protocol))
-      require "caller clobber contract mismatch" (sort (siClobbers i)==sort (clobbers abi protocol (siDefs i)))
+      require "caller clobber contract mismatch" (if kept then null (siClobbers i) else sort (siClobbers i)==sort (clobbers abi protocol (siDefs i)))
       require "flag/control contract mismatch" (siFlags i==protocolFlags abi protocol && siControl i==protocolControl protocol)
 
 -- Apply consumes the head plus every argument, each in a 16-byte cell. The

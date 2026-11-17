@@ -297,7 +297,7 @@ main = do
             (TRet (VId 6)) ]
       cfg = A64Config MachO HartX28 m2Policy (S.singleton "one") False True False False noTune
   refused "A64 cannot consume RV32 policy" "64-bit word policy" (emitFnA64 cfg {cfgPolicy = m2Policy {polProfile = Rv32}} one)
-  refused "X64 cannot consume RV32 policy" "64-bit word policy" (X64.emitFnX64 (X64.X64Config (m2Policy {polProfile = Rv32}) S.empty False True False noTune X64.HartTls) one)
+  refused "X64 cannot consume RV32 policy" "64-bit word policy" (X64.emitFnX64 (X64.X64Config (m2Policy {polProfile = Rv32}) S.empty False True False noTune X64.HartTls False) one)
   nf <- either (error . ("FAIL: a64: " ++)) pure (emitFnA64 cfg one)
   let text = unlines (nfLines nf)
       has s = s `isInfixOf` text
@@ -325,7 +325,7 @@ main = do
   nfgm <- either (error . ("FAIL: a64 qos single mach-o: " ++)) pure (emitFnA64 (A64Config MachO HartGlobal qos S.empty False True False False noTune) one)
   check "QOS single: the global hart cell, Mach-O" ("adrp x9, _fpr_posix_hart@PAGE\n    ldr x9, [x9, _fpr_posix_hart@PAGEOFF]" `isInfixOf` unlines (nfLines nfgm))
   refused "a QOS app without fuel is refused" "without fuel" (emitFnA64 (A64Config ELF HartX28 (qos {polFuel = False}) S.empty False True False False noTune) one)
-  nfx <- either (error . ("FAIL: x64: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False True False noTune X64.HartTls) one)
+  nfx <- either (error . ("FAIL: x64: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False True False noTune X64.HartTls False) one)
   nfqx <- either (error . ("FAIL: qx64: " ++)) pure (X64.emitFnX64 (X64.X64Config qos S.empty False True False noTune X64.HartBorrow) one)
   check "QOS x64: borrowed hart, no app TLS" ("movq fpr_g_tlsoff(%rip), %r10\n    movq %fs:0(%r10), %r10" `isInfixOf` unlines (nfLines nfqx) && not ("@tpoff" `isInfixOf` unlines (nfLines nfqx)))
   let xt = unlines (nfLines nfx)
@@ -372,7 +372,7 @@ main = do
               ++ [Instr (Just (VId (4200 + n), TVal)) (OTag (VId n)) | n <- [0 .. 4199]])
             (TRet (VId 8399)) ]
   wideX64 <- either (error . ("FAIL: sized x64 frame: " ++)) pure
-    (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True False noTune X64.HartTls) wide)
+    (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True False noTune X64.HartTls False) wide)
   check "sized x64 frame reserves before entry" ("reserve=yes" `isInfixOf` unlines (nfLines wideX64) &&
     "call fpr_stack_reserve" `isInfixOf` unlines (nfLines wideX64) && rSegMax (nfReport wideX64) /= Nothing)
   wideA64 <- either (error . ("FAIL: sized A64 frame: " ++)) pure (emitFnA64 cfg wide)

@@ -52,7 +52,7 @@
 -- register outside the preserved set is live across a call.
 module Codegen.Allocate
   ( AllocConfig (..), Allocation (..), Stats (..), Loc (..), Place (..),
-    allocateFn, checkAllocation, statsLine, resolveCopies,
+    allocateFn, checkAllocation, statsLine, resolveCopies, liveAcross,
   ) where
 
 import Codegen.Frame
@@ -572,3 +572,22 @@ checkAllocation cfg name items = do
           stray = [name' p | p <- IS.toList inn, IS.notMember p preserved, IS.notMember p arrival]
       unless (null stray) $ Left ("checkAllocation " ++ name ++ ": read before written: " ++ show stray)
     [] -> pure ()
+
+-- The physical registers live across each instruction of an allocated
+-- stream (live out and not written by it), in stream order with the
+-- labels skipped: what a register-preserving call has to keep for the
+-- code after it (C9 stage 1, x86-64's live-set slow paths).  The same
+-- physical dataflow `checkAllocation` uses.
+liveAcross :: [Item] -> [(SInstr, [Phys])]
+liveAcross items =
+  [ (i, [name' p | p <- IS.toList out, IS.notMember p (IS.fromList (defsOf i))])
+  | (i, _, out) <- instrLiveSets usesOf defsOf items ]
+  where
+    key = M.fromList (zip regs [0 ..])
+    regs = nub [p | I i <- items, p <- physOf i]
+    physOf i = [p | OP p <- siDefs i ++ siUses i] ++ siImplicitDefs i ++ siImplicitUses i ++ siClobbers i
+    k p = key M.! p
+    back = IM.fromList [(n, p) | (p, n) <- M.toList key]
+    name' n = back IM.! n
+    usesOf i = map k ([p | OP p <- siUses i] ++ siImplicitUses i)
+    defsOf i = map k ([p | OP p <- siDefs i] ++ siImplicitDefs i ++ siClobbers i)
