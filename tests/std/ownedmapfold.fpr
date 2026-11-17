@@ -1,0 +1,73 @@
+# Owned map folds (compiler/Frontend/OwnedMapFold.hs,
+# docs/2026-11-18-OWNED-MAP-FOLDS.md): an ordered Map built by a fold from
+# Map.strings or Map.ints is built in a MutMap and frozen once.  Each case
+# prints what the plain std/map fold prints; the ones the rewrite must leave
+# alone are here so that they keep compiling and keep their answers.
+List = use "std/list".
+String = use "std/string".
+Map = use "std/map".
+O = use "std/option".
+
+bump : O.Option Int -> O.Option Int .
+bump old = case old of O.Some c -> O.Some (c + 1) | O.None -> O.Some 1.
+
+# a named step: two clauses' worth of paths, one leaving the map as it is
+count : Map.Map String Int -> String -> Map.Map String Int .
+count m w = if w == "skip" then m else Map.update w bump m.
+
+# every threading operation, and a removal that empties a key
+ops : Map.Map Int Int -> Int -> Map.Map Int Int .
+ops m x = case x % 5 of
+    0 -> Map.insert x (x * 10) m
+  | 1 -> Map.insertWith (fn old new -> old + new) (x % 7) x m
+  | 2 -> Map.remove (x - 2) m
+  | 3 -> Map.alter (x % 4) (fn old -> case old of O.Some v -> (if v > 20 then O.None else O.Some (v + 1)) | O.None -> O.Some 0) m
+  | _ ->
+    k = x % 3;
+    Map.update k bump m.
+
+# NOT rewritten: the step reads the map (Map.get), so the map is not only threaded
+seen : Map.Map String Int -> String -> Map.Map String Int .
+seen m w = case Map.get w m of O.Some _ -> m | O.None -> Map.insert w (Map.size m) m.
+
+# NOT rewritten: the start is not an empty map
+fromSeed : List String -> Map.Map String Int .
+fromSeed ws = List.fold count (Map.insert "seed" 100 Map.strings) ws.
+
+show : Map.Map String Int -> String .
+show m = String.join " " (List.map (fn e -> case e of (k, v) -> "{k}={v}") (Map.entries m)).
+
+# keys made inside the loop and tuple values replaced at every step, over
+# enough steps that the loop's region cycles many times: the map crosses each
+# boundary in place with its new elements copied (runtime.c, map_inplace)
+tally : Int -> O.Option (Int, Int) -> O.Option (Int, Int) .
+tally x old = case old of O.Some p -> (case p of (c, s) -> O.Some (c + 1, s + x)) | O.None -> O.Some (1, x).
+
+checksum : Map.Map String (Int, Int) -> Int .
+checksum m = List.fold (fn acc e -> case e of (k, p) -> (case p of (c, s) -> (acc * 31 + String.length k * 7 + c * 3 + s) % 1000000007)) 0 (Map.entries m).
+
+showInts : Map.Map Int Int -> String .
+showInts m = String.join " " (List.map (fn e -> case e of (k, v) -> "{k}={v}") (Map.entries m)).
+
+main =
+  ws = String.words "the cat skip sat on the mat the end skip cat";
+  a = List.fold count Map.strings ws;
+  _ = print "named: {Map.size a} {show a}";
+  b = List.fold (fn m w -> Map.insertWith (fn old new -> old + new) w 1 m) Map.strings ws;
+  _ = print "lambda: {show b}";
+  c = List.fold ops Map.ints (List.range 0 60);
+  _ = print "ints: {Map.size c} {showInts c}";
+  d = String.foldWords count Map.strings "b a b c a b";
+  _ = print "foldWords: {show d}";
+  e = List.fold seen Map.strings ws;
+  _ = print "reads: {show e}";
+  _ = print "seeded: {show (fromSeed ws)}";
+  # the frozen map is an ordinary persistent Map afterwards
+  f = Map.insert "zzz" 9 (Map.remove "the" a);
+  _ = print "after: {show f} equal {Map.equal a (List.fold count Map.strings ws)}";
+  t = List.fold (fn m x -> Map.update "key{x % 997}" (tally x) m) Map.strings (List.range 1 300000);
+  _ = print "cycles: {Map.size t} {checksum t}";
+  # a local named like the step shadows it: the call is to the local
+  count = fn m w -> Map.insert w 0 m;
+  g = List.fold count Map.strings ws;
+  print "shadowed: {show g}".

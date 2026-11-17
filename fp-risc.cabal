@@ -143,6 +143,7 @@ library
       Ownership.Finding
       Ownership.TypeShape
       Frontend.Linearity
+      Frontend.OwnedMapFold
       Home
       Exhaust
       Infer

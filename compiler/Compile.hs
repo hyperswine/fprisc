@@ -55,6 +55,7 @@ import Core.Pretty
 import Frontend.Syntax
 import Frontend.Parser (program)
 import Frontend.Desugar
+import Frontend.OwnedMapFold (ownedMapFolds)
 import Frontend.Paths
 import Frontend.Linearity
 import Frontend.Traverse
@@ -371,7 +372,11 @@ compileWithReport accepted report = do
   when (not checkOnly && nEvals == 0 && not (oPlugin opts) && not (oLib opts) && not (any isMain rootTops0)) $ do
     hPutStrLn stderr ("error: " ++ inp ++ " has no `main` (a program starts at main; a library unit is built with --module)")
     exitFailure
-  lr <- loadProgram preludeTops inp rootTops
+  -- an ordered Map built by a fold is built in a MutMap and frozen once
+  -- (Frontend/OwnedMapFold.hs; FPR_NO_OWNED_MAP_FOLD=1 turns it off)
+  let ownedFolds = Options.cgOwnedMapFold codegen && not solView && not (oBuiltin opts) && not (oLib opts)
+      rootTopsLoaded = if ownedFolds then fst (ownedMapFolds rootTops) else rootTops
+  lr <- loadProgram preludeTops inp rootTopsLoaded
   case lr of
     Left e -> Editor.problem report "import" e Nothing >> putStrLn e >> exitFailure
     Right (LoadResult tops0RL exports notes units0L root0L rootHash unitAnchors rootAliases unitSources) -> do

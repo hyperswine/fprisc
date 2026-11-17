@@ -67,6 +67,12 @@ typedef struct {
 } vec_t;
 
 #define VREP(x) ((x)->var & 0xffu)
+/* a MutMap's var, above the rep: set when a store may have put in a key or
+ * value the actor's base pool does not own (one in a region, a message, a
+ * state copy); clear when every element is the base pool's, so a loop
+ * region moves the map by its handle without looking inside (runtime.c,
+ * map_inplace; docs/2026-11-18-OWNED-MAP-FOLDS.md) */
+#define MM_EPH 0x100u
 #define VKINDS_BYTES(n) ((n) > (uw)VK_PAD ? (n) : (uw)VK_PAD)
 
 #endif /* FPR_VEC_LAYOUT_H */

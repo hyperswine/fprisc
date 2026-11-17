@@ -1035,7 +1035,10 @@ FPR_FN(fpr_g_Vec_x2eeqS, h_eqS, 2);
  * the call and |k| the key's length, one probe sequence visits at most C
  * slots and compares a key only where the stored hash is equal; growth
  * (a doubling) re-places every entry by its STORED hash, never rehashing a
- * key, and is charged to the insert that triggers it, as Vector's push. */
+ * key, and is charged to the insert that triggers it, as Vector's push. *
+ * A loop region moves a MutMap whose table is in the base pool by its handle
+ * and copies only the boxed keys and values it would free, back into their
+ * slots (runtime.c, map_inplace). */
 #define MM_KINT 1u
 #define MM_KSTR 2u
 #define MM_TOP ((uw)1 << (sizeof(uw) * 8 - 1))
@@ -1313,6 +1316,8 @@ static void mm_place_new(vec_t *x, V k, uw h, V v, uw empty) {
   mm_h(x)[empty] = h;
   mm_k(x)[empty] = mm_key_raw(x, k);
   mm_v(x)[empty] = (uw)v;
+  if (MM_KIND(x) != MM_KINT) fpr_mutmap_note(x, k);
+  fpr_mutmap_note(x, v);
   x->eltid++;
 }
 
@@ -1320,7 +1325,7 @@ static V g_mutmapInsert(V k, V v, V m) {
   vec_t *x = gchk(m, "MutMap.insert: not a MutMap");
   uw h = mm_key_hash(x, k), empty;
   sw at = mm_find(x, k, h, &empty);
-  if (at >= 0) mm_v(x)[at] = (uw)v;
+  if (at >= 0) { mm_v(x)[at] = (uw)v; fpr_mutmap_note(x, v); }
   else mm_place_new(x, k, h, v, empty);
   return m;
 }
@@ -1336,6 +1341,7 @@ static V g_mutmapInsertWith(V f, V k, V v, V m) {
   if (at >= 0) {
     V nv = mm_apply2(f, (V)mm_v(x)[at], v);
     mm_v(x)[at] = (uw)nv; /* f cannot reach the map (it is linear): `at` still holds */
+    fpr_mutmap_note(x, nv);
   } else mm_place_new(x, k, h, v, empty);
   return m;
 }
@@ -1362,6 +1368,7 @@ static V g_mutmapSetAt(V iv, V v, V m) {
   vec_t *x = mchk(m, "MutMap: not a MutMap");
   uw i = mm_occupied(x, iv, "MutMap: not an occupied slot");
   mm_v(x)[i] = (uw)v;
+  fpr_mutmap_note(x, v);
   return m;
 }
 /* empty slot i, then pull later entries of its cluster back over the gap
@@ -1467,7 +1474,7 @@ static V g_fixedmapInsert(V k, V v, V m) {
   vec_t *x = fchk(m, "FixedMap.insert: not a FixedMap");
   uw h = mm_key_hash(x, k), empty;
   sw at = mm_find(x, k, h, &empty);
-  if (at >= 0) { mm_v(x)[at] = (uw)v; return mktup2(TAG(1), m); }
+  if (at >= 0) { mm_v(x)[at] = (uw)v; fpr_mutmap_note(x, v); return mktup2(TAG(1), m); }
   if (x->eltid >= MM_LIMIT(x) || empty == (uw)-1) return mktup2(TAG(0), m);
   mm_place_new(x, k, h, v, empty); /* eltid + 1 <= n <= 3/4 C: no growth */
   return mktup2(TAG(1), m);
@@ -1479,6 +1486,7 @@ static V g_fixedmapInsertWith(V f, V k, V v, V m) {
   if (at >= 0) {
     V nv = mm_apply2(f, (V)mm_v(x)[at], v);
     mm_v(x)[at] = (uw)nv;
+    fpr_mutmap_note(x, nv);
     return mktup2(TAG(1), m);
   }
   if (x->eltid >= MM_LIMIT(x) || empty == (uw)-1) return mktup2(TAG(0), m);

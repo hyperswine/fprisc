@@ -1,0 +1,9 @@
+named: 6 cat=2 end=1 mat=1 on=1 sat=1 the=3
+lambda: cat=2 end=1 mat=1 on=1 sat=1 skip=2 the=3
+ints: 6 0=59 2=1 4=57 5=26 6=47 60=600
+foldWords: a=2 b=3 c=1
+reads: cat=1 end=6 mat=5 on=4 sat=3 skip=2 the=0
+seeded: cat=2 end=1 mat=1 on=1 sat=1 seed=100 the=3
+after: cat=2 end=1 mat=1 on=1 sat=1 zzz=9 equal True
+cycles: 997 945156918
+shadowed: cat=0 end=0 mat=0 on=0 sat=0 skip=0 the=0

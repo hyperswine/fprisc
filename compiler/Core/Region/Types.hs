@@ -54,6 +54,10 @@ property finite functions (ValueModel linears declarations)=check S.empty
           | n `elem` ["Int","Bool","Unit","Atom","I64","Word","F64","I32"]->null as
           | n=="String"->not finite && null as
           | n=="Vector"->length as==1 -- the existing move/copy-by-handle rule
+          -- a MutMap is a vec_t too (runtime/vec.c, VR_MAP): its handle has
+          -- one holder (it is linear), and the copier moves or copies it by
+          -- the Vector rule, its keys and values with it
+          | n=="MutMap"->length as==2 && all (check seen) as
           | n=="List"->not finite && length as==1 && all (check seen) as
           | n=="Result"->length as==2 && all (check seen) as
           | n `S.member` linears->False

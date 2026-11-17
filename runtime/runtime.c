@@ -1167,7 +1167,8 @@ typedef struct {
  * actor's base pool (so every piece is, vec.c allocates bulk there and a
  * turn's reset never touches it) and no column is boxed (a boxed element
  * could live in the turn's arena).  Anything else -- a message's Vector in
- * an ownerless slab, a boxed column -- is copied as before. */
+ * an ownerless slab, a boxed column -- is copied as before.  A MutMap with
+ * its table in the base pool crosses in place instead (map_inplace). */
 static fpr_slab_t *slab_of(V v);
 static int vec_movable_here(V v) {
 #ifdef FPR_BUILTIN
@@ -1186,6 +1187,50 @@ static int vec_movable_here(V v) {
   for (uw k = 0; k < x->ncols; k++) if (!VK_RAW(x->kinds[k])) return 0;
   return 1;
 #endif
+}
+/* A MutMap (vec.c, VR_MAP) whose table is in this actor's base pool: where a
+ * Vector would move, its header and columns stay put and only its boxed keys
+ * and values are copied -- by the region's own rules, so a key the base pool
+ * already owns stays shared -- and written back into their slots.  The map
+ * is linear: its one holder is the state being copied, so writing the slots
+ * in place is the move.  Copying the table itself at every cycle cost the
+ * whole table each time and, once it outgrew the region, stopped the region
+ * reclaiming at all (docs/2026-11-18-OWNED-MAP-FOLDS.md).  A message's map
+ * (an ownerless slab) is copied whole as before. */
+static int map_inplace(V v) {
+#ifdef FPR_BUILTIN
+  (void)v;
+  return 0;
+#else
+  vec_t *x = (vec_t *)v;
+  if (VREP(x) != VR_MAP || !x->ncols) return 0;
+  fpr_hart_t *h = fpr_hart();
+  if (!h) return 0;
+  fpr_pool_t *base = h->current ? fpr_acb_pool(h->current) : &h->pool;
+  fpr_slab_t *sl = slab_of(v);
+  return sl && sl->owner == base;
+#endif
+}
+/* an element the base pool does not own: one a region reset or a slab's
+ * release could free (statics, Ints and actor handles are never that) */
+static int mm_ephemeral(V e, fpr_pool_t *base) {
+  if (!CANDIDATE(e) || !fpr_in_heap(e) || TID(e) == T_ACTOR) return 0;
+  return __atomic_load_n(&slab_of(e)->owner, __ATOMIC_RELAXED) != base;
+}
+void fpr_mutmap_note(void *map, V e) {
+#ifdef FPR_BUILTIN
+  (void)map; (void)e;
+#else
+  vec_t *x = (vec_t *)map;
+  if (x->var & MM_EPH) return;
+  fpr_hart_t *h = fpr_hart();
+  fpr_pool_t *base = h ? (h->current ? fpr_acb_pool(h->current) : &h->pool) : 0;
+  if (!base || mm_ephemeral(e, base)) x->var |= MM_EPH;
+#endif
+}
+static fpr_pool_t *mm_base_pool(void) {
+  fpr_hart_t *h = fpr_hart();
+  return h ? (h->current ? fpr_acb_pool(h->current) : &h->pool) : 0;
 }
 
 /* a fresh cell's slab footprint: fpr_alloc's exact rounding + header */
@@ -1331,6 +1376,15 @@ static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
       if (immutable) *immutable = 0;
       { fpr_hart_t *mh = fpr_hart(); if (mh && mh->copy_movevec && vec_movable_here(v)) return 0; } /* moved, not copied */
       vec_t *x = (vec_t *)v;
+      { fpr_hart_t *mh = fpr_hart();
+        if (mh && mh->copy_movevec && map_inplace(v)) { /* only its boxed elements are copied */
+          if (!(x->var & MM_EPH)) return 0; /* every element is the base pool's: nothing to copy */
+          uw m = 0;
+          for (uw k = 0; k < x->ncols; k++)
+            if (x->cols[k] && !VK_RAW(x->kinds[k]))
+              for (uw i = 0; i < x->len; i++) m += dc_size_in((V)x->cols[k]->base[i], z, immutable);
+          return m;
+        } }
       uw n = dc_cellsz(sizeof(vec_t));
       if (x->shape_len) n += dc_rawsz(x->shape_len * sizeof(vec_shape_t));
       if (x->ncols) n += dc_rawsz(x->ncols * sizeof(col_t *)) + dc_rawsz(VKINDS_BYTES(x->ncols));
@@ -1525,6 +1579,24 @@ static V dc_dup(V v, dctx_t *c) {
   switch (h->tid) {
     case T_VEC: {
       if (c && c->movevec && vec_movable_here(v)) return v; /* the handle crosses; the storage stays put */
+      if (c && c->movevec && map_inplace(v)) { /* the table stays; its boxed elements are copied into their slots */
+        vec_t *x = (vec_t *)v;
+        if (!(x->var & MM_EPH)) return v;
+        fpr_pool_t *base = mm_base_pool();
+        int eph = 0;
+        for (uw k = 0; k < x->ncols; k++)
+          if (x->cols[k] && !VK_RAW(x->kinds[k]))
+            for (uw i = 0; i < x->len; i++) {
+              V e = (V)x->cols[k]->base[i];
+              if (!CANDIDATE(e)) continue;
+              V n = dc_dup(e, c);
+              if (c->overflow) return 0;
+              x->cols[k]->base[i] = (uw)n;
+              if (!eph && mm_ephemeral(n, base)) eph = 1;
+            }
+        if (!eph) x->var &= ~MM_EPH; /* all the base pool's now: the next boundaries move it by handle */
+        return v;
+      }
       if (c && c->movevec) c->released = 1; /* copied: the boundary releases the original after the copy */
       if (c->novec) fpr_cpanic(c->novec);
       /* the whole vector -- header, col_t's, column spans -- lands in
@@ -2024,6 +2096,21 @@ static V kp_dup(V v) {
     case T_VEC: {
       { fpr_hart_t *mh = fpr_hart(); if (mh && mh->copy_movevec && vec_movable_here(v)) return v; } /* a turn's final state */
       vec_t *x = (vec_t *)v;
+      { fpr_hart_t *mh = fpr_hart();
+        if (mh && mh->copy_movevec && map_inplace(v)) { /* the table stays; its boxed elements are copied */
+          if (!(x->var & MM_EPH)) return v;
+          fpr_pool_t *base = mm_base_pool();
+          int eph = 0;
+          for (uw k = 0; k < x->ncols; k++)
+            if (x->cols[k] && !VK_RAW(x->kinds[k]))
+              for (uw i = 0; i < x->len; i++) {
+                V n = kp_dup((V)x->cols[k]->base[i]);
+                x->cols[k]->base[i] = (uw)n;
+                if (!eph && mm_ephemeral(n, base)) eph = 1;
+              }
+          if (!eph) x->var &= ~MM_EPH;
+          return v;
+        } }
       vec_t *n = (vec_t *)fpr_alloc(sizeof(vec_t));
       n->tid = T_VEC;
       n->var = x->var;
@@ -2107,6 +2194,13 @@ static int kp_reaches(V v, uw *left) {
       fpr_hart_t *mh = fpr_hart();
       if (mh && mh->copy_movevec && vec_movable_here(v)) return 0;
       vec_t *x = (vec_t *)v;
+      if (mh && mh->copy_movevec && map_inplace(v)) { /* kp_dup copies only its boxed elements */
+        if (!(x->var & MM_EPH)) return 0;
+        for (uw k = 0; k < x->ncols; k++)
+          if (x->cols[k] && !VK_RAW(x->kinds[k]))
+            for (uw i = 0; i < x->len; i++) if (kp_reaches((V)x->cols[k]->base[i], left)) return 1;
+        return 0;
+      }
       uw n = dc_cellsz(sizeof(vec_t));
       for (uw k = 0; k < x->ncols; k++) if (x->cols[k]) n += dc_rawsz(sizeof(col_t)) + dc_rawsz(x->len * sizeof(uw));
       if (n >= *left) return 1;
@@ -2144,6 +2238,7 @@ static int kp_reaches(V v, uw *left) {
   }
 }
 static V g_keep(V v) { return kp_dup(v); }
+
 FPR_FN(fpr_g_keep, g_keep, 1);
 
 /* ---- Sys.arena: the structured arena --------------------------------
@@ -2213,7 +2308,7 @@ static void vec_release_in(V v) {
   if (ISINT(v) || !v || !fpr_in_heap(v)) return;
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
-    case T_VEC: if (!vec_movable_here(v)) fpr_vec_release(v); return;
+    case T_VEC: if (!vec_movable_here(v) && !map_inplace(v)) fpr_vec_release(v); return; /* moved, or kept in place */
     case T_ACTOR: case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER:
     case T_SSTR: return;
     case T_PAP: {
@@ -2512,7 +2607,7 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
    * outside the region (or is an int, static, handle or moved Vector) */
   if (!need && region) return v;
   if (!need) { /* ints, statics, handles, or a moved Vector */
-    if (movevec && !ISINT(v) && v && fpr_in_heap(v) && TID(v) == T_VEC && vec_movable_here(v)) return v;
+    if (movevec && !ISINT(v) && v && fpr_in_heap(v) && TID(v) == T_VEC && (vec_movable_here(v) || map_inplace(v))) return v;
     return dc_dup(v, 0);
   }
   fpr_slab_t *sl = scope->spare;

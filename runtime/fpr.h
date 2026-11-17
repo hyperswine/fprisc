@@ -1063,6 +1063,9 @@ uw fpr_msg_inline_charge(uw total);
  * Vector survives a turn's reset and crosses the boundary by handle; it is
  * linear, so its one owner frees it (docs/2026-10-24-REGIONS-STAGE2.md) */
 V fpr_alloc_bulk(V raw_bytes);
+/* a MutMap store: note whether the element may live outside the base pool
+ * (runtime.c, map_inplace) */
+void fpr_mutmap_note(void *map, V element);
 V fpr_realloc_bulk(V v, V want);
 V fpr_realloc(V buffer, V raw_bytes); /* hosted opaque-buffer growth; alias of
                                        * fpr_realloc_raw, using raw capacity */
