@@ -2,7 +2,7 @@
 -- Shared native output and symbol identity, independent of instruction set.
 module Codegen.Target.Common
   ( ObjectFormat (..), NativeFn (..), usesTick, usesBump, BumpCell (..), bumpCell, bumpCellFor, bumpSlabCell, bumpBucketsCell, bumpRegionCell, pendStackCell, pendEntryWords, bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated, mangleName, functionSymbol, calleeCodeSymbol,
-    stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
+    stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry, shallowReserve, shallowFrameLimit,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
     boxedFloatLabel, boxedFloatObject, BumpRefills, planBumpRefills, bumpRefill,
     weighTicks, tickWeightOf,
@@ -66,15 +66,41 @@ entrySlot n = -2000 - n
 
 -- The hosted runtime reserves headroom for one small entry. A small frame
 -- which cannot deepen the generated call chain may use that reserve.
+--
+-- The bound (x86-64, the hosted default; docs/perf/2026-11-17-REGALLOC-DESIGN.md).
+-- A checked entry runs its check after the frame is allocated:
+--   1. The check passes only when rsp + 8 >= stk_lo (= segment base +
+--      FPR_STACK_HEADROOM), so the checked caller is at rsp >= stk_lo - 8.
+--   2. Its call pads 8 bytes and pushes the 8-byte return address.
+--   3. The shallow leaf allocates its frame, lyBytes <= 1024.
+--   4. So no generated code in a shallow leaf runs below stk_lo - 1048
+--      (shallowReserve).
+-- What reaches a shallow leaf:
+--   * A shallow leaf calls no generated function (deepens), so only a
+--     checked caller or a tail transfer reaches it.
+--   * A tail transfer first restores the frame it leaves, so the next entry
+--     is at the same rsp.
+--   * C never enters one: nativeSelect keeps the check in every function
+--     whose PAP is taken, every linkable symbol, and main.
+-- What C gets: a runtime call from a leaf starts at stk_lo - 1048 at the
+-- lowest, 1040 bytes below a checked function's stk_lo - 8. With unix's
+-- 64 KiB headroom that leaves at least 64 KiB - 1048 (minus that call's own
+-- pushes). runtime/actors.c
+-- asserts the headroom exceeds the reserve (FPR_SHALLOW_RESERVE).
 -- Decide after allocation/layout (and self-loop formation), never from an
 -- estimated frame or assembly text. Tail exits discard this frame first.
 -- Unknown/generic calls are safepoints too and conservatively keep checks.
 -- The remaining tick declares the tick protocol's clobbers (none: its slow
 -- path saves every allocatable register); allocation assumed the entry's
 -- larger set, which is safe.
+shallowReserve :: Int
+shallowReserve = 8 + 16 + shallowFrameLimit -- the check's slack, call pad and return address, the frame
+shallowFrameLimit :: Int
+shallowFrameLimit = 1024
+
 shallowEntry :: StackPolicy -> Int -> [Item] -> (Bool, [Item])
 shallowEntry policy bytes items
-  | policy == StackCheckShallow, bytes <= 1024,
+  | policy == StackCheckShallow, bytes <= shallowFrameLimit,
     not (any deepens items) = (True, concatMap strip items)
   | otherwise = (False, items)
   where

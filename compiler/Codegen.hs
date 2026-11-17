@@ -24,7 +24,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
-import Codegen.IR (Fn (..), Block (..), Width (..), ArithOp (..), FloatOp (..), simdRegisters)
+import Codegen.IR (Fn (..), Block (..), Instr (..), Op (OFunValue), Width (..), ArithOp (..), FloatOp (..), simdRegisters)
 import qualified Codegen.NativeData as NativeData
 import qualified Codegen.Kernel as K
 import Codegen.Lower (lowerProgram, Prim (..))
@@ -59,7 +59,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 255 -- C9 stage 2: hosted x86-64 spill moves, cold-call saves, move hints, the lean tick (254: C9 stage 1: hosted x86-64 frames (entry args, entry split, shrink-wrapped saves, short epilogue, live-set equality slow paths).)
+codegenRev = 256 -- C9: hosted x86-64 shallow leaves by default (255: C9 stage 2: hosted x86-64 spill moves, cold-call saves, move hints, the lean tick (254: C9 stage 1: hosted x86-64 frames (entry args, entry split, shrink-wrapped saves, short epilogue, live-set equality slow paths).))
 -- 253 merge of main's raw I64 locals (251) into the x64 closure fast path (252).
 -- 220 Forward range/map fusion.
 -- 219 -- QOS app images take the receive-loop form; slot-carried small messages (218: weighted ticks: a tick charges the worst-case instruction count of the code it covers 217: early IR loops and String-scan versioning (several strings) by default; raw loop-carried Ints (216: A64 compare-and-branch, one-word String guard))
@@ -297,8 +297,25 @@ nativeSelect typed placed reference tgt spec nm vkinds sigs ext exps prog emitte
     Right () -> case nmBackend nm of
       Nothing -> ([], M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm) | n <- M.keys emitted], [], [])
       Just backend ->
-        let emit = emitNative tgt nm exps backend
-            results = [(n, emit f) | (n, f) <- M.toList lowered]
+        let results = shallowResults
+            -- the shallow-leaf policy (StackCheckShallow) applies only to
+            -- functions C cannot enter: one whose static PAP the unit takes
+            -- (OFunValue: fpr_apply* and the actor entry call it from C),
+            -- a linkable symbol (other units take its PAP, the module
+            -- table, library exports), main (the runtime's entry), and a
+            -- nullary definition keep the check. When any function of the
+            -- unit is not lowered here (a fallback), every entry keeps it.
+            -- The bound is in Codegen.Target.Common.shallowEntry.
+            shallowOn = polStackCheck (tgtPolicy tgt) == StackCheckShallow
+            checked = tgt {tgtPolicy = (tgtPolicy tgt) {polStackCheck = StackCheckEveryEntry}}
+            entered =
+              S.unions [S.fromList [v | b <- fnBlocks f, Instr _ (OFunValue v) <- bInstrs b] | f <- M.elems lowered]
+                <> symbolNames exps <> S.singleton "main" <> S.fromList [n | (n, (ps, _)) <- M.toList emitted, null ps]
+            resultsWith pick = [(n, emitNative (pick n) nm exps backend f) | (n, f) <- M.toList lowered]
+            perFunction = resultsWith (\n -> if shallowOn && S.member n entered then checked else tgt)
+            shallowResults
+              | shallowOn, not (null failures) || not (null [() | (_, Left _) <- perFunction]) = resultsWith (const checked)
+              | otherwise = perFunction
             errors = [n ++ ": " ++ e | (n, Left e) <- results, "compiler error: " `isPrefixOf` e]
             refusals = [(n, e) | (n, Left e) <- results, not ("compiler error: " `isPrefixOf` e)]
             accepted = M.fromList [(n, nf) | (n, Right nf) <- results]

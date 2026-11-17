@@ -510,6 +510,13 @@ static void stack_recycle(void *p, uw size) {
 _Static_assert(FPR_STACK_HEADROOM < STACK_SZ,
                "FPR_STACK_HEADROOM must leave the first stack segment room to run: "
                "the stack check subtracts it from the segment size");
+/* A shallow leaf (Codegen.Target.Common.shallowEntry, the hosted x86-64
+ * default) skips its check and runs at most 1048 bytes below stk_lo: the
+ * check's 8-byte slack, the call pad and return address, a frame of at most
+ * 1024 bytes.  The runtime's own calls from it still need room under that. */
+#define FPR_SHALLOW_RESERVE 1048
+_Static_assert(FPR_STACK_HEADROOM > FPR_SHALLOW_RESERVE,
+               "FPR_STACK_HEADROOM must cover a shallow leaf's reserve: generated code stays inside the segment");
 uw fpr_stack_max = (uw)1 << 30;
 
 /* A stack that cannot grow is the ACTOR's failure, not the machine's
