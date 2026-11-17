@@ -17,7 +17,7 @@ import Codegen.Selected (CodeSymbol(..))
 import qualified Compiler.Native.Core as NativeCore
 import qualified Compiler.Native.Linked as Linked
 import qualified Compiler.Native.Imports as NativeImports
-import Compiler.DataLayout (Layouts(..))
+import Compiler.DataLayout (Layouts(..), i64StoreAt)
 import Mono (specializeCompatibilityWithProducts, qualifyAux)
 import Inline (inlineSmall, inlineCompatibilityWithImports, vecPeekCompatibility)
 import qualified Compiler.Native.Regions as Regions
@@ -588,7 +588,14 @@ compileWithReport accepted report = do
           consUnits = [(h, collectCons h uts) | (h, uts) <- units]
           consAll = M.unions (consPrelude : consRoot : map snd consUnits)
           -- C6 stage 3a: which constructor fields hold raw words (fpr_layout_raw)
-          rawAll = M.unions (collectRawFields preludeHash preludeE : collectRawFields rootHash root' : [collectRawFields h uts | (h, uts) <- units])
+          -- C6 stage 3c: I64 constructor fields hold raw bits in the images
+          -- that publish the masks (fpr_layout_raw) and whose runtime reads
+          -- them: hosted Base, 64-bit, not a plugin (registered without masks),
+          -- a library, a QOS app (plane memory answers no mask), Sol or --arc
+          rawI64 = oBase opts && not (oBuiltin opts || oLib opts || oPlugin opts || oQosApp opts || oSol opts || oArc opts)
+                   && Backend.tgtW (oTarget opts) == 8
+          rawAll = M.unions (collectRawFields rawI64 preludeHash preludeE : collectRawFields rawI64 rootHash root' : [collectRawFields rawI64 h uts | (h, uts) <- units])
+          i64All = if rawI64 then M.unions (collectI64Fields preludeE : collectI64Fields root' : [collectI64Fields uts | (_, uts) <- units]) else M.empty
           -- constructor stub ownership.  Each unit's Core now carries ONLY
           -- the constructor stubs it owns and emits; the others reference the
           -- owner's symbol through schemas/arities like any cross-unit call.
@@ -607,7 +614,7 @@ compileWithReport accepted report = do
           preludeElided = allCons `S.difference` preludeCons
           unitElided h = allCons `S.difference` unitConsOf h
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
-          nativeLayouts=Layouts consAll shapes
+          nativeLayouts=Layouts consAll shapes i64All
           exportEntries=map fst (oExports opts)
             ++ [q | TSig q _ _<-finalTops,takeWhile (/='@') q `elem` map fst (oExports opts)]
           -- C adapters enter through the precondition checker when one
@@ -1166,7 +1173,7 @@ compileWithReport accepted report = do
           -- erased forms from the shared constructor authority instead, and
           -- `elide` keeps non-owned stubs out of the emitted text.
           erasedConstructorStubs prog=M.fromList
-            [ (name, if arity==0 then ([],CMk tid var []) else (params,CMk tid var (map CVar params)))
+            [ (name, if arity==0 then ([],CMk tid var []) else (params,CMk tid var (i64StoreAt (M.findWithDefault [] name i64All) (map CVar params))))
             | (name,(tid,var,arity))<-M.toList consAll, M.notMember name prog
             , let params=["x"++show i | i<-[1..arity]] ]
           emitUnit pathBase ext artifact = do
@@ -1404,10 +1411,10 @@ compileWithReport accepted report = do
           layoutRawTab
             | oBuiltin opts || oLib opts || oPlugin opts || dir /= ".quad" = ""
             | otherwise = unlines $
-                [ "", "# raw constructor fields: count, then (tid, variant, raw mask, F32 mask) rows", "    .balign 8", "    .globl fpr_layout_raw", "fpr_layout_raw:" ]
+                [ "", "# raw constructor fields: count, then (tid, variant, raw mask, F32 mask, I64 mask) rows", "    .balign 8", "    .globl fpr_layout_raw", "fpr_layout_raw:" ]
                   ++ [ "    " ++ dir ++ " " ++ show (length rawRows) ]
-                  ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var, "    " ++ dir ++ " " ++ show m, "    " ++ dir ++ " " ++ show f32 ]
-                            | ((tid, var), (m, f32)) <- rawRows ]
+                  ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var, "    " ++ dir ++ " " ++ show m, "    " ++ dir ++ " " ++ show f32, "    " ++ dir ++ " " ++ show i64 ]
+                            | ((tid, var), (m, f32, i64)) <- rawRows ]
       let rootAsm = moduleFinal (unlines (["# typed IR: no translation"] ++ emNative rootEmission ++ emData rootEmission
                                    ++ dataSyntax directFormat (lines conTab ++ lines layoutTab ++ lines layoutRawTab))) ++ unlines (concat tramps ++ callbackNotes)
           directFormat = if a64mac || x64mac then MachO else ELF
