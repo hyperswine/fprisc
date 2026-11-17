@@ -44,7 +44,7 @@ main=do
       names=S.fromList ["scalar","delayed","once","partial","complete","ordinary","shadow"]
   check ("typed trap coverage: "++show (checkedDeclines plans)) (checkedNames plans==names)
   let tops=inferenceTops result
-      initial=DEnv 0 (collectCons "unit" tops) (collectShapes tops) [] []
+      initial=DEnv 0 (collectCons "unit" tops) (collectShapes tops) [] [] M.empty
       lowered=evalState (compileTopChecked plans tops) initial
       closed=desugaredClosed lowered
       prog=desugaredCore lowered

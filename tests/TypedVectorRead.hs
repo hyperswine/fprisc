@@ -76,7 +76,7 @@ checkVectorReads compile=do
       original=T.Function "shadow" [input] (expr pair (T.LetPattern pat readRhs body))
       planned=original {T.functionBody=fst (planReads (T.functionBody original))}
       layout=Layout (\stem->do n<-get;put (n+1);pure (stem++show (n::Int)))
-        (\name->if name=="Tup2" then Just (4,0,2) else Nothing) M.empty (\_ _ _->error "unexpected join")
+        (\name->if name=="Tup2" then Just (4,0,2) else Nothing) M.empty (\_ _ _->error "unexpected join") (const [])
       erase fn=right (evalState (eraseFunction context layout fn) 0)
       T.LetPattern _ marked _=T.exprNode (T.functionBody planned)
       bad node=planned {T.functionBody=expr pair node}
