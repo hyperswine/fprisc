@@ -41,7 +41,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 37 -- C9 stage 1 frames under cfgFrames (36: F64 values in a float register class (xmm0..xmm5), ordered float compares fused into branches (35: a fused tag test compares the whole header word (34: layout tests fused into branches across edge moves, testq for the tag bit; 33: compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words))
+x64SelectionRev = 38 -- C9 stage 2 under cfgFrames: spill moves, cold-call saves, move hints, ticks keep rax (37: C9 stage 1 frames under cfgFrames (36: F64 values in a float register class (xmm0..xmm5), ordered float compares fused into branches (35: a fused tag test compares the whole header word (34: layout tests fused into branches across edge moves, testq for the tag bit; 33: compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words)))
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -1120,8 +1120,8 @@ placement managed = Placement
 -- the allocator's view of this target (M3): the first six parameters
 -- arrive in the SysV registers, seven and eight are read from the private
 -- cells before the entry sequence can destroy them
-allocConfig :: Maybe CodeSymbol -> S.Set VReg -> AllocConfig
-allocConfig self managed = AllocConfig
+allocConfig :: Bool -> Maybe CodeSymbol -> S.Set VReg -> AllocConfig
+allocConfig split self managed = AllocConfig
   { acCalleeSaved = calleeBudget,
     acCallerSaved = callerPool ++ floatPoolRegs,
     acScratch = allocScratch ++ floatScratch,
@@ -1139,7 +1139,9 @@ allocConfig self managed = AllocConfig
     -- store.spill writes a scratch register before it reads the value
     acEarlyDef = \i -> siOpcode i `elem` [O.X64 O.Divide, O.Common O.StoreSpill, O.Common O.StoreCell],
     acClassOf = rfClassOf x64RegisterFile,
-    acSelfLoop = self }
+    acSelfLoop = self,
+    acSpillMoves = split,
+    acColdCall = \i -> split && keepingCall i }
 
 -- Floating results get their own virtual register class (C1, as A64's
 -- floatPool: docs/2026-11-15-VECTOR-VIEWS-BUFFERED-OUTPUT.md section 5).
@@ -1399,12 +1401,12 @@ emitFnX64WithSymbols symbols cfg fn = do
       -- the stack check: Protocol.keepingEntry), so the parameters stay
       -- wherever the allocator puts them, with no parking slots
       (sel, entrySlots)
-        | cfgFrames cfg = (pooled {sfBody = [case it of I i -> I (Protocol.keepingEntry Calling.X86_64 i); _ -> it | it <- sfBody pooled]}, [])
+        | cfgFrames cfg = (pooled {sfBody = [case it of I i -> I (Protocol.keepingEntryWith (tuneSplit (cfgTune cfg)) Calling.X86_64 i); _ -> it | it <- sfBody pooled]}, [])
         | otherwise = forwardEntry (cfgForwardParams cfg) (tuneEntryArgs (cfgTune cfg)) argRegs fn pooled
   -- (floatPool annotates the xmm clobbers only when it pools anything)
   checkForms (fnName fn) (sfBody sel)
   either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
-  let ac = allocConfig (if cfgSelfLoops cfg then Just (CodeSymbol (functionSymbol (fnName fn))) else Nothing) (S.difference managed fpValues)
+  let ac = allocConfig (cfgFrames cfg && tuneSplit (cfgTune cfg)) (if cfgSelfLoops cfg then Just (CodeSymbol (functionSymbol (fnName fn))) else Nothing) (S.difference managed fpValues)
   alloc <- either (Left . ("compiler error: " ++)) Right (allocateFn ac sel)
   either (Left . ("compiler error: " ++)) Right (checkAllocation ac (fnName fn) (alBody alloc))
   let saves = savedObjs (alSaved alloc)

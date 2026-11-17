@@ -341,12 +341,13 @@ data Tune = Tune
   { tuneEntryArgs :: Bool, -- FPR_TYPED_IR_ENTRY_ARGS: parameters stay in their registers through the entry
     tuneShrinkWrap :: Bool, -- FPR_TYPED_IR_SHRINK_WRAP: callee saves at a dominating, acyclic block
     tuneFpPool :: Bool, -- hosted A64 d8..d15, preserved by its actor context
-    tuneLinkPairs :: Bool -- FPR_TYPED_IR_LINK_PAIRS (on unless 0): the frame link as one stp/ldp
+    tuneLinkPairs :: Bool, -- FPR_TYPED_IR_LINK_PAIRS (on unless 0): the frame link as one stp/ldp
+    tuneSplit :: Bool -- C9 stage 2 (docs/perf/2026-11-17-REGALLOC-DESIGN.md): hosted x86-64 spill code; FPR_NO_X64_SPLIT=1 is off
   }
   deriving (Eq, Show)
 
 noTune :: Tune
-noTune = Tune False False False False
+noTune = Tune False False False False False
 
 -- the body has a fuel tick, whose slow path is the unit's saving wrapper
 usesTick :: [Item] -> Bool

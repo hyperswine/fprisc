@@ -158,3 +158,62 @@ Compile budget (GHC allocation, `tests/sol-checks/compile-budget.sol`; this
 environment has no recorded baseline, so main is measured as the reference):
 hello 1,384,508,640 -> 1,397,108,144 bytes (+0.9%), std-live 30,934,788,208 ->
 31,793,656,992 (+2.8%), pos1 66,926,937,200 -> 68,154,825,776 (+1.8%); the gate is +10%.
+
+## Stage 2: loop spill code on hosted x86-64 (`FPR_NO_X64_SPLIT=1` is off)
+
+Jack's choice for stage 2 was loop live-range splitting, keeping the platform
+calling convention. Profiling the four targets showed the loop spill code came
+from four specific causes. Each one is fixed where it arises, not by a general
+interval splitter. All four are under `cfgFrames` (hosted x86-64 with stage 1
+on), behind `tuneSplit`; A64, RV and the builtin profile are unchanged.
+
+1. **Spill moves** (`acSpillMoves`). Before, a register move with one spilled
+   side went through the r10/r11 scratch: a load then a copy, or a copy then a
+   store. Now it is the frame access itself: one store or one load, or nothing
+   when both sides share a slot. A reload directly after a store of the same
+   register and slot is dropped (`forwardStores`, adjacent items only). This
+   was the hop at the wordfreq walk's parameters.
+2. **Cold-call splitting** (`acColdCall`, x86-64: `keepingCall`).
+   - **The problem.** A live-set slow path is a `PreservingRuntime` call: the
+     vector get/set fallbacks, the arithmetic overflow paths, and boxed
+     equality. Each one reserved its fixed argument registers (rdi/rsi/rdx)
+     for every value crossing it. In fannkuch's inner loop, with all five
+     callee-saved registers taken, `i+1` and `j-1` were spilled for the sake
+     of calls that almost never run.
+   - **The change.** A value crossing such a call may now take one of those
+     argument registers. It is stored to a frame slot before the call's
+     argument staging and reloaded after. Those frame slots are shared by all
+     cold calls in the function, as many per slot kind as the busiest call
+     needs.
+   - **The cost stays on the cold path.** The scan takes those registers
+     last (the `soft` set), so the store and reload land only on the slow
+     path, and only when the registers are needed.
+3. **Move hints.**
+   - **The problem.** The scan only hinted fixed operands, so a loop's next
+     value got whatever register came first and was copied into the loop
+     variable on every back edge. That was the extra copy in spectralnorm's
+     `mulRows`.
+   - **The change.** A value defined by a move from an already-placed value,
+     or moved into one, now prefers that value's register. It never prefers
+     a cold call's argument register it crosses. Holes are at block
+     granularity (Codegen.Liveness), so this pays when the next value is
+     computed in an earlier block than the copy, which is the normal shape
+     of a loop body.
+4. **The lean tick** (`Protocol.keepingEntryWith`).
+   - A mid-function fuel tick (`EntryTick`/`TickN`) reads the hart into r10,
+     subtracts, and on the slow path calls `fpr_fuel_save_local`, which
+     pushes and pops rax..r11. It never writes rax.
+   - Its protocol still claimed rax as an implicit definition, which kept rax
+     away from every value crossing a loop's tick.
+   - Under the split the kept tick no longer claims rax, and
+     `checkProtocols` accepts exactly that variant for x86-64 ticks.
+   - The stack check still claims rax, because `fpr_stack_grow` returns
+     through it.
+
+`checkAllocation` (the physical-liveness oracle) runs on every function as
+before. The cold-call save and restore are ordinary SpillStore/Reload items,
+so the stage 1 live-set pushes (`keepLive`) see the argument register as
+overwritten by the staging and do not push it.
+Unit tests: `tests/AllocIR.hs` (cold-call saves in an argument register, a
+loop move hint, store forwarding, spill moves under the symbolic simulator).
+Config differential: `no_x64_split`.

@@ -1015,7 +1015,7 @@ compileWithReport accepted report = do
                                              (if espHost then RV.HartTlsEsp else if qapp then RV.HartQos else if oBase opts && oPlugin opts then RV.HartTlsIe else if oBase opts then RV.HartTls else RV.HartTp))
                               else Nothing,
                 nmSelfLoops = (Options.nativeSelfLoops native), nmForwardParams = (Options.nativeForwardParams native),
-                nmTune = Tune (Options.nativeEntryArgs native) (Options.nativeShrinkWrap native) (Options.nativeFpPool native) (Options.nativeLinkPairs native), nmSplitEntry = (Options.nativeSplitEntry native),
+                nmTune = Tune (Options.nativeEntryArgs native) (Options.nativeShrinkWrap native) (Options.nativeFpPool native) (Options.nativeLinkPairs native) (Options.nativeX64Split native), nmSplitEntry = (Options.nativeSplitEntry native),
                 nmFramelessEntry = Options.cgFramelessEntry codegen, nmX64Ra = Options.nativeX64Ra native }
           -- Every selected backend owns the whole output. A named subset can
           -- no longer permit another function or kernel to bypass typed IR.

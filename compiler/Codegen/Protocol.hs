@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 -- Existing embedded runtime protocols. One owner supplies and checks their
 -- effects; target renderers retain the actual instruction sequences.
-module Codegen.Protocol (Embedded(..),EntryChecks(..),entryChecks,entryOpcode,embedded,protocolCalls,protocolFlags,protocolControl,selectProtocol,keepingEntry,keptCalls,checkProtocols) where
+module Codegen.Protocol (Embedded(..),EntryChecks(..),entryChecks,entryOpcode,embedded,protocolCalls,protocolFlags,protocolControl,selectProtocol,keepingEntry,keepingEntryWith,keptCalls,checkProtocols) where
 import Codegen.Selected
 import Codegen.Call
 import Codegen.Calling (ABI(..),argumentRegisters,resultRegister,callerClobbers)
@@ -61,10 +61,20 @@ keptCalls protocol=map runtimeEvent <$> case protocol of
   CheckStack->Just [GrowStackSaveEntry]
   _->Nothing
 keepingEntry :: ABI -> SInstr -> SInstr
-keepingEntry X86_64 instr
+keepingEntry=keepingEntryWith False
+-- C9 stage 2 (lean): a kept fuel-only tick (hart read into r10, the
+-- subtraction, the wrapper that pushes and pops rax..r11) never writes rax,
+-- so with lean set it does not claim it: a value may stay in rax across
+-- the loop's tick. The stack check's grow call does return in rax.
+keepingEntryWith :: Bool -> ABI -> SInstr -> SInstr
+keepingEntryWith lean X86_64 instr
   | Just protocol<-embedded (siOpcode instr),Just calls<-keptCalls protocol=
       instr {siDefs=[],siUses=[],siClobbers=[],siCalls=calls}
-keepingEntry _ instr=instr
+  | Just protocol<-embedded (siOpcode instr),lean && leanTick protocol=
+      instr {siImplicitDefs=filter (/=Phys "rax") (siImplicitDefs instr)}
+keepingEntryWith _ _ instr=instr
+leanTick :: Embedded -> Bool
+leanTick protocol=protocol `elem` [Tick,CountedTick]
 
 -- Definitions on forwarded entry pseudos are preserved around their slow
 -- calls. A result definition is likewise not a clobbered value.
@@ -133,7 +143,9 @@ checkProtocols abi owner items=do
       let kept=abi==X86_64 && keptCalls protocol==Just (siCalls i)
       require "operand/target contract mismatch" (if kept then null (siDefs i) && null (siUses i) else shape)
       require "runtime event contract mismatch" (kept || siCalls i==protocolCalls protocol)
-      require "implicit register contract mismatch" (sort (siImplicitDefs i)==sort (implicitDefs abi protocol) && sort (siImplicitUses i)==sort (implicitUses abi protocol))
+      let defsOk=sort (siImplicitDefs i)==sort (implicitDefs abi protocol)
+            || (abi==X86_64 && leanTick protocol && sort (siImplicitDefs i)==sort (filter (/=Phys "rax") (implicitDefs abi protocol)))
+      require "implicit register contract mismatch" (defsOk && sort (siImplicitUses i)==sort (implicitUses abi protocol))
       require "caller clobber contract mismatch" (if kept then null (siClobbers i) else sort (siClobbers i)==sort (clobbers abi protocol (siDefs i)))
       require "flag/control contract mismatch" (siFlags i==protocolFlags abi protocol && siControl i==protocolControl protocol)
 

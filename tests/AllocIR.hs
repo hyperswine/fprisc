@@ -75,11 +75,21 @@ cfg managed =
       acSlot = \n x -> frameObj n 8 8 (SpillSlot n) (S.member x managed),
       acEarlyDef = const False,
       acClassOf = classOf,
-      acSelfLoop = Nothing
+      acSelfLoop = Nothing,
+      acSpillMoves = False,
+      acColdCall = const False
     }
 
 plainCfg :: AllocConfig
 plainCfg = cfg S.empty
+
+-- C9 stage 2: spill moves, move hints, and "slow" as a cold preserving call
+splitCfg :: AllocConfig
+splitCfg = plainCfg {acSpillMoves = True, acColdCall = \i -> siOp i == "slow"}
+
+-- a cold slow path that preserves every register it is not handed (x in a0)
+slow :: Int -> SInstr
+slow x = (plain "slow" [] [OV (v x) (Fix a0)]) {siCalls = [Call.runtimeEvent Call.FuelSaveEntry]}
 
 -- the test vocabulary
 add :: Int -> Int -> Int -> SInstr
@@ -148,6 +158,10 @@ simulatePath decisions original physical = step (10000 :: Int) decisions (M.from
     step _ _ _ _ _ [] _ = Right ()
     step n ds regs slots venv (ILabel _ : ps) vs = step n ds regs slots venv ps vs
     step n ds regs slots venv ps (ILabel _ : vs) = step n ds regs slots venv ps vs
+    -- a virtual register move (C9 stage 2 may realise it as a store, a
+    -- load, a copy or nothing): its destination carries its source's name
+    step n ds regs slots venv ps (I vi : vs)
+      | siOp vi == "mv", [OV d _] <- siDefs vi, [OV x _] <- siUses vi = step n ds regs slots (M.insert d (venv M.! x) venv) ps vs
     step n ds regs slots venv (I p : ps) vs
       | siOp p == "mv", [OP d] <- siDefs p, [OP s] <- siUses p = step n ds (M.insert d (reg s) regs) slots venv ps vs
       | siOp p == "ld", [OP d] <- siDefs p, [OF ref 0] <- siUses p = step n ds (M.insert d (M.findWithDefault "<empty slot>" ref slots) regs) slots venv ps vs
@@ -421,4 +435,65 @@ main = do
     check ("a tied shift's destination is not its fixed count's register (" ++ what ++ ")")
       (case (siDefs (shiftOf a), siUses (shiftOf a)) of ([OP d], [OP x, OP c]) -> d /= c1 && c == c1 && d == x; _ -> False)
     either (error . (("FAIL: tied shift oracle (" ++ what ++ "): ") ++)) pure (checkAllocation plainCfg "shift" (alBody a))
+  -- C9 stage 2: six values crossing a cold call that takes x in a0 fill
+  -- every register, so one crosser sits in a0 and is saved to a slot and
+  -- reloaded around that call only
+  let coldFn =
+        fn [v 0, v 1]
+          ( [I (add 2 0 1)] ++ [I (add k (k - 1) (k - 1)) | k <- [3 .. 7]]
+              ++ [I (add 8 2 3), I (slow 8)]
+              ++ [I (add 9 2 3), I (add 10 9 4), I (add 11 10 5), I (add 12 11 6), I (add 13 12 7), I (ret 13)] )
+  ca <- either (error . ("FAIL: cold call: " ++)) pure (allocateFn splitCfg coldFn)
+  either (error . ("FAIL: cold call oracle: " ++)) pure (checkAllocation splitCfg "cold" (alBody ca))
+  either (error . ("FAIL: cold call simulation: " ++)) pure (simulate coldFn (alBody ca))
+  let crosserInA0 = [k | k <- [2 .. 7], M.lookup (v k) (alLocs ca) == Just (InReg a0)]
+      aroundSlow = let (pre, post) = break (\it -> case it of I i -> siOp i == "slow"; _ -> False) (alBody ca)
+                    in (reverse pre, drop 1 post)
+      savedBefore = [() | I i <- take 3 (fst aroundSlow), siOp i == "st", siAllocation i == Just SpillStore, (OP p : _) <- [siUses i], p == a0]
+      reloadedAfter = [() | I i <- take 3 (snd aroundSlow), siOp i == "ld", siAllocation i == Just Reload, [OP p] <- [siDefs i], p == a0]
+  check "a value crosses the cold call in its argument register" (length crosserInA0 == 1)
+  check "that value is stored before the cold call and reloaded after it" (not (null savedBefore) && not (null reloadedAfter))
+  check "the cold-call save slot is a frame slot" (stSlots (alStats ca) >= 1)
+  -- without the cold-call split the same function keeps a0 reserved
+  pa0 <- either (error . ("FAIL: cold call (plain): " ++)) pure (allocateFn plainCfg coldFn)
+  check "without the split no value crosses the call in a0" (null [k | k <- [2 .. 7], M.lookup (v k) (alLocs pa0) == Just (InReg a0)])
+  either (error . ("FAIL: cold call (plain) simulation: " ++)) pure (simulate coldFn (alBody pa0))
+  -- a loop's next value takes the loop variable's register (move hint):
+  -- the back edge's copy is the same register, so nothing moves (holes
+  -- are at block granularity: the next value is moved in a later block)
+  let hintLoop =
+        fn [v 0, v 1]
+          [ I (mv 2 0), I (jump "loop"),
+            ILabel (Label "loop"),
+            I (branchz 2 "out"),
+            I (add 4 2 1),
+            I (jump "next"),
+            ILabel (Label "next"),
+            I (mv 2 4),
+            I (jump "loop"),
+            ILabel (Label "out"),
+            I (ret 2) ]
+  ha <- either (error . ("FAIL: move hint: " ++)) pure (allocateFn splitCfg hintLoop)
+  either (error . ("FAIL: move hint oracle: " ++)) pure (checkAllocation splitCfg "hint" (alBody ha))
+  forM_ [[True], [False, True], [False, False, True]] $ \path ->
+    either (error . ("FAIL: move hint simulation: " ++)) pure (simulatePath path hintLoop (alBody ha))
+  check "the next value shares the loop variable's register" (M.lookup (v 4) (alLocs ha) == M.lookup (v 2) (alLocs ha) && isReg (M.lookup (v 2) (alLocs ha)))
+  -- a move into a spilled value is the store itself; a store then a reload
+  -- of the same register and slot drops the reload
+  let ref = FrameRef 0
+      stI = (plain "st" [] [OP c1, OF ref 0]) {siAllocation = Just SpillStore}
+      ldI = (plain "ld" [OP c1] [OF ref 0]) {siAllocation = Just Reload}
+      ldOther = (plain "ld" [OP c2] [OF ref 0]) {siAllocation = Just Reload}
+  check "a reload right after the store of the same register and slot is dropped" (forwardStores [I stI, I ldI] == [I stI])
+  check "a reload into another register stays" (forwardStores [I stI, I ldOther] == [I stI, I ldOther])
+  check "a label between them keeps the reload" (forwardStores [I stI, ILabel (Label "x"), I ldI] == [I stI, ILabel (Label "x"), I ldI])
+  let spillMove =
+        fn [v 0, v 1]
+          ( [I (add k 0 1) | k <- [2 .. 8]]
+              ++ [I (mv 9 2), I (call "f" [9] 10)]
+              ++ [I (add 11 10 3), I (add 12 11 4), I (add 13 12 5), I (add 14 13 6), I (add 15 14 7), I (add 16 15 8), I (add 17 16 9), I (ret 17)] )
+  sm <- either (error . ("FAIL: spill move: " ++)) pure (allocateFn splitCfg spillMove)
+  either (error . ("FAIL: spill move oracle: " ++)) pure (checkAllocation splitCfg "spillmove" (alBody sm))
+  either (error . ("FAIL: spill move simulation: " ++)) pure (simulate spillMove (alBody sm))
+  putStrLn "AllocIR stage 2: cold-call saves in argument registers, loop move hints, spill moves and store forwarding: PASS"
   putStrLn "AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; holes; loop-weighted spills; preserving ticks; the physical-liveness oracle; determinism: PASS"
