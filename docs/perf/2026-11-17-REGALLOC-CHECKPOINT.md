@@ -1,0 +1,19 @@
+# regalloc checkpoint (C9, x86-64 intra-procedural RA behind flag)
+- 20:56 AEDT start. worktree /workspace/fpr-ra branch ari/regalloc from origin/main 22ed0c71. scratch /workspace/out/ra. ONE cg lane only (string-runtime job running in parallel).
+- 21:00 built base fpr (22ed0c71); pristine baseline tree /workspace/fpr-ra-base (fpr+build/ copied)
+- 21:03 findings: linear scan already exists (Codegen.Allocate); x64 frame cost = rbp frame + callee saves + arg->callee copies + slots. Existing opt-in ENTRY_ARGS/SPLIT_ENTRY/SHRINK_WRAP(A64 only). eq/ne slow path is a clobbering call (not keeping). Baseline bench+cg x3 running: out/ra/drive-base.sh (lane.lock), tag base
+- 21:14 impl v1 in fpr-ra (uncommitted): FPR_NO_X64_RA flag; x64: keepingEntry protocol (stack_grow_local wrapper, no fixed params), shrinkWrap port, short epilogue, KeepsLive inline saves for keeping calls + eq slow path, entry split. snapshot trees/ra1; queued explore ra1, ra1off. explore ea (old ENTRY_ARGS) mixed: records +3.5% csv +3.1% tmm -6.8%
+- 21:14 impl v1 in fpr-ra (uncommitted): FPR_NO_X64_RA flag; x64: keepingEntry protocol (stack_grow_local wrapper, no fixed params), shrinkWrap port, short epilogue, KeepsLive inline saves for keeping calls + eq slow path, entry split. snapshot trees/ra1; queued explore ra1, ra1off. explore ea (old ENTRY_ARGS) mixed: records +3.5% csv +3.1% tmm -6.8%
+- 21:16 v2 (x64-aware split, keepLive skip) committed+pushed ari/regalloc 65a6cd54; snapshot trees/ra2 queued explore ra2
+- 21:17 RV check: bare-metal rv64 asm for demo/binarytrees/records and builtin demo identical base vs ra except codegenRev string g253->g254 (out/ra/rvcheck). unit tests v2 running -> out/ra/unit-v2.log
+- 21:18 design note + cfgdiff no_x64_ra + test ctor fixes pushed ari/regalloc 6853ac56. eas r1 read (records +8.67%, csv +2.43%, treemap_mutmap -6.78%). unit tests re-running.
+- 21:19 unit 45/45 PASS (unit-v3.log); pushed a4aa21aa
+- 21:21 FPR_NO_X64_RA=1 asm == base asm (6 benches, modulo rev string). frames: 125 fns, 0 larger, 46 smaller (out/ra/stk). ra1 r1: binarytrees -8.43 tmm -8.42 records -2.81 treemap -3.60; ra2 r1 running
+- 21:35 FIX: shrinkWrap crash (Prelude.maximum empty) on unreachable use, found by ideal/buffer in push tier; regression test added; pushed 8841b1c9. snapshot trees/ra3 = final candidate; drive-ra3.sh (bench+cg x3) and tests.sh v3 (push tier+cfgdiff) started
+- 21:37 unit 45/45 PASS on 8841b1c9 (unit-v4.log)
+- 21:45 budget main(22ed0c71): hello 1384508640 std-live 30934788208 pos1 66926937200 bytes alloc
+- 21:46 resumed; ra3 cg r3 + tests v3 + bs3 control still running
+- 21:46 queued diag/run.sh: spectralnorm dump-instr base vs ra3 (after bs3, lane-locked) to explain +1%
+- 21:56 ra3 DONE: bench 16/16 OK, cg x3 medians in out/ra/medians-ra3.md; bs3 control == base (path no effect); push tier EXIT 0, 23 run 0 unexpected (known only); branch budget hello 1397108144 std-live 31793656992 pos1 68154825776
+- 21:57 spectralnorm +1.0% diag: mulRows inner loop gets 1 extra reg-reg copy/iter (mov %rdx,%rsi) from different assignment (coalescing miss), no extra spills/saves (out/ra/diag)
+- 22:07 results appended to design note (uncommitted); waiting cfgdiff v3 (nightly)
