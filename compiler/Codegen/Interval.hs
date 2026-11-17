@@ -139,7 +139,11 @@ discharge width fn
     -- No vector holds more than 2^57 elements on a 64-bit target: no
     -- 64-bit target maps more than 2^57 bytes of virtual addresses, and
     -- every element takes at least one byte of its column (runtime/vec.c
-    -- keeps each in a word slot). So a flat view's length is at most 2^57,
+    -- keeps each in a word slot). A column only grows by allocating its
+    -- whole new size first (col_grow, h_range, col_copy, mm_cols), and an
+    -- allocation that large fails visibly ("allocation size overflow" or
+    -- fpr_exhausted) before any length is stored, so this adds no trap and
+    -- no runtime cap. So a flat view's length is at most 2^57,
     -- and a vector C entry that returns was given an index in [0, 2^57):
     -- h_get, h_peek_get, h_at, h_set and h_put trap otherwise. Both facts
     -- relate to one constant node (capNode, exactly 2^57), so a join of a
