@@ -389,6 +389,11 @@ shiftOps = M.fromList [(shiftName o, o) | o <- [minBound .. maxBound]]
 workerPrefix :: String
 workerPrefix = "$worker.scalar."
 
+-- runtime/fpr.h: an I64 box is a T_BITS cell of variant 4 (fpr_num64_t)
+i64BoxTid, i64BoxVariant :: Int
+i64BoxTid = 9004
+i64BoxVariant = 4
+
 scalarPrefix :: String
 scalarPrefix = "$scalar."
 
@@ -887,6 +892,21 @@ lowerVal cx env = \case
           x <- lowerVal cx env a >>= asVal
           y <- lowerVal cx env b >>= asVal
           v <- emit TVal (OFloatBin o x y)
+          pure (v, TVal)
+      -- C6 stage 3c: an I64 constructor field's bits. Reading one boxes them
+      -- as the cell the runtime's vu64 builds (fpr_num64_t: T_BITS variant 4,
+      -- width 64, the bits), but inline: the constructor path's bump, not a
+      -- call into I64.ofField and fpr_alloc. Storing one loads the bits out of
+      -- the box (u64), not a call into I64.toField.
+      | isPrim cx env h, h == "I64.ofField", policyWidth (cxPolicy cx) == W64, [a] <- args -> do
+          bits <- lowerVal cx env a >>= asVal
+          width <- emit TVal (OBits 64)
+          v <- emit TVal (OMake i64BoxTid i64BoxVariant [width, bits])
+          pure (v, TVal)
+      | isPrim cx env h, h == "I64.toField", policyWidth (cxPolicy cx) == W64, [a] <- args -> do
+          box <- lowerVal cx env a >>= asVal
+          addr <- emit TAddr (OAddress box)
+          v <- emit TVal (OLoad TVal addr 16)
           pure (v, TVal)
       -- an Int as the nearest F64: one conversion instruction (runtime.c F64.ofInt casts the same way)
       | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,

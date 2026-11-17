@@ -40,7 +40,8 @@ import qualified Data.Map.Strict as M
 data Layout = Layout
   { layoutConstructor :: String -> Maybe (Int, Int, Int),
     layoutConstructors :: [String],
-    layoutRecords :: M.Map [String] Int } -- record field names (sorted) -> shape id
+    layoutRecords :: M.Map [String] Int, -- record field names (sorted) -> shape id
+    layoutI64 :: String -> [Int] } -- C6 stage 3c: a constructor's fields declared I64, stored raw
 
 -- A local the lowering bound: a checked binder, or a scrutinee the match
 -- plan names (erasure's fresh `scrut`).
@@ -184,7 +185,8 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
         (tid, var, ar) <- constructor name
         when (ar /= length xs) (Left "typed lowering: a constructor value layout arity")
         (xs', n1) <- goList n xs
-        pure (PMk tid var xs', n1)
+        let raw = layoutI64 layout name
+        pure (PMk tid var [if i `elem` raw then PApp "I64.toField" [x] else x | (i, x) <- zip [0 :: Int ..] xs'], n1)
       TupleValue xs -> do
         (tid, var, _) <- constructor ("Tup" ++ show (length xs))
         (xs', n1) <- goList n xs
@@ -382,7 +384,7 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
           certain <- if null rest && not first && all (\(Alternative _ g _) -> null g) alts
             then coveredHead p else pure False
           matched <- if certain then case patNode p of
-              ConstructorPattern _ ps -> matchFields scrut ps inner next
+              ConstructorPattern name ps -> matchFieldsRaw (layoutI64 layout name) scrut ps inner next
               TuplePattern ps -> matchFields scrut ps inner next
               _ -> matchPat scrut p inner next
             else matchPat scrut p inner next
@@ -445,7 +447,7 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
       ConstructorPattern name ps -> do
         (tid, variant, ar) <- constructor name
         when (ar /= length ps) (Left "typed lowering: a constructor pattern layout arity")
-        inner <- matchFields scrut ps ok failed
+        inner <- matchFieldsRaw (layoutI64 layout name) scrut ps ok failed
         pure (PIf (PTag tid variant scrut) inner failed)
       TuplePattern ps -> do
         (tid, variant, _) <- constructor ("Tup" ++ show (length ps))
@@ -460,8 +462,12 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
           pure (PLet (KBinder (binderId b)) (rekey (KScrut (-1)) (KField (binderId b)) x) k)) (pure ok) fs
       _ -> Left ("typed lowering: the pattern " ++ patDisplay p)
     -- erasure's matchFields: the last field's test innermost
-    matchFields scrut ps ok failed =
-      foldr (\(i, q) rest -> rest >>= \k -> matchPat (PProj i scrut) q k failed) (pure ok) (zip [0 ..] ps)
+    matchFields = matchFieldsRaw []
+    -- C6 stage 3c: erasure's I64 fields, bound through a fresh box
+    matchFieldsRaw raw scrut ps ok failed =
+      foldr (\(i, q) rest -> rest >>= \k ->
+          matchPat (if i `elem` raw then PApp "I64.ofField" [PProj i scrut] else PProj i scrut) q k failed)
+        (pure ok) (zip [0 ..] ps)
     constructor name = maybe (Left ("typed lowering: unknown constructor " ++ name)) Right (layoutConstructor layout name)
     tests p = case patNode p of
       IntegerPattern _ -> 1 :: Int

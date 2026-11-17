@@ -204,7 +204,7 @@ eraseLogical native f source=do
         let name="$typed.region.proof."++T.functionName source++"."++stem++"."++show (n::Int)
         if name `S.member` reserved then fresh stem else pure name
       constructor n=case M.lookup n (constructorLayouts layouts) of Just c->Just c;_->wideTup n
-      layout=Layout fresh constructor (shapeLayouts layouts) (\_ _ _->lift (Left "typed region proof: implicit join"))
+      layout=Layout fresh constructor (shapeLayouts layouts) (\_ _ _->lift (Left "typed region proof: implicit join")) (i64Fields layouts)
   row<-evalStateT (eraseFunctionWith (R.functionContracts f) (Source.programTypes input) layout source) 0 >>= id
   pure (eraseLayoutCasts (M.singleton (R.functionSourceName f) row) M.! R.functionSourceName f)
 

@@ -33,10 +33,10 @@ expr ty node=T.Expr ty (linShapeT [] ty) T.Generated Nothing node
 binder ns n name ty=T.Binder (BinderId (Namespace ns) n) name (Forall [] [] ty) (linShapeT [] ty)
 ref b=expr (T.binderType b) (T.Var (T.Local (T.binderId b)))
 apply f a=case T.exprType f of TFn _ result->expr result (T.Apply f a);_->error "test arrow"
-initial=DEnv 0 M.empty M.empty [] []
+initial=DEnv 0 M.empty M.empty [] [] M.empty
 close f=right (evalState (closeFunction (Namespace "callback-tests") fresh types f) initial)
 erased closed=evalState (do
-  let layout=Layout fresh (\n->if n=="Tup2" then Just (2,0,2) else Nothing) M.empty (\_ _ _->pure ())
+  let layout=Layout fresh (\n->if n=="Tup2" then Just (2,0,2) else Nothing) M.empty (\_ _ _->pure ()) (const [])
       erase f=eraseFunctionWith (closedContracts closed) types layout f >>= either error pure
   root<-erase (closedRoot closed)
   codes<-mapM (\code->do value<-erase (T.codeAsFunction code);let T.CodeId name=T.codeId code in pure (name,value)) (M.elems (closedCode closed))

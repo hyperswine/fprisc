@@ -1580,10 +1580,18 @@ resolveSites prof sigs env = do
           TC "F32" -> pure (OpPrim "F32.str")
           TC "I64" -> pure (OpPrim "I64.str")
           TC "I32" -> pure (OpPrim "I32.str")
-          _ | mentionsFloat t -> do
-                p <- prettyT t
-                OpPrim "" <$ report ("str/print of " ++ p ++ ": render is tid-directed and floats are raw bits -- format float fields individually with F64.str/F32.str (v1)")
-            | otherwise -> pure (OpPrim "")
+          _ -> do
+                -- a nominal type hides its fields from mentionsFloat: `Q =
+                -- Type (Q (List F64) Int)` is TC "Q".  A field the definition
+                -- names F64/F32 is in the raw-field mask (C6 stage 3a) and
+                -- renders; a float anywhere else (a `List F64` field, a type
+                -- parameter instantiated at F64) would not, so it is refused.
+                byType <- gets iTypeConstructors
+                if mentionsFloat t || floatOutsideRawField byType t
+                  then do
+                    p <- prettyT t
+                    OpPrim "" <$ report ("str/print of " ++ p ++ ": render is tid-directed and floats are raw bits -- format float fields individually with F64.str/F32.str (v1)")
+                  else pure (OpPrim "")
       else case t of
         -- % and ^ have no opcode: they are the prelude's Int.mod / Int.pow
         -- (every backend sees an ordinary call; the JIT inlines it)
@@ -1839,6 +1847,7 @@ inferTopsSession session previous capture prof sigs structs tops =
     run :: I ([STop], Either String (Maybe Evidence.Evidence), [ElaborationFact], M.Map Name Scheme, M.Map Name [Type])
     run = do
       cons <- (\u -> M.union u builtinCons') <$> consEnv aliases tops
+      modify (\st -> st {iTypeConstructors=constructorsByType cons})
       declared <- sigAnnEnv aliases tops
       let env0 = seeds `M.union` declared `M.union` ipBuiltins prof
       -- group multi-clause binds under one name, preserving first-seen order
@@ -2384,3 +2393,61 @@ prettyRow :: Row -> I String
 prettyRow r = do
   s <- prettyT (TRec r)
   pure s
+
+-- each nominal type's constructor types (fields -> result), keyed by the
+-- type's name: the print guard reads the declared field types through it.
+constructorsByType :: M.Map Name Scheme -> M.Map Name [Type]
+constructorsByType cons = M.fromListWith (++)
+  [ (n, [ty]) | Forall _ _ ty <- M.elems cons, Just n <- [headName (result ty)] ]
+  where
+    result (TFn _ b) = result b
+    result t = t
+    headName (TAp f _) = headName f
+    headName (TC n) = Just n
+    headName _ = Nothing
+
+-- does a value of this type hold a float in a word the runtime cannot tell
+-- from a pointer?  A constructor field the definition itself names F64 or
+-- F32 sits in the raw-field mask (C6 stage 3a) and renders; a float anywhere
+-- else -- inside a List, a tuple, a record, a closure, or a type parameter
+-- instantiated at F64 -- does not.  Looks through nominal definitions, each
+-- name once.
+floatOutsideRawField :: M.Map Name [Type] -> Type -> Bool
+floatOutsideRawField byType = go S.empty
+  where
+    go seen t = case t of
+      TC "F64" -> True
+      TC "F32" -> True
+      _ | Just (n, args) <- spine t [], Just ctys <- M.lookup n byType ->
+            not (S.member n seen) && any (con (S.insert n seen) args) ctys
+      TAp a b -> go seen a || go seen b
+      TFn a b -> go seen a || go seen b
+      TTupT ts -> any (go seen) ts
+      TRec r -> row seen r
+      _ -> False
+    row seen = \case
+      RExt _ t rest -> go seen t || row seen rest
+      _ -> False
+    con seen args cty =
+      let (fields, res) = split cty
+          params = case spine res [] of
+            Just (_, ps) -> [v | TV v <- ps]
+            Nothing -> []
+          sub = IM.fromList (zip params args)
+          rawDeclared f = f == TC "F64" || f == TC "F32"
+      in or [ go seen (subst sub f) | (i, f) <- zip [0 :: Int ..] fields, not (rawDeclared f && i < 64) ]
+    split (TFn a b) = let (as, r) = split b in (a : as, r)
+    split r = ([], r)
+    spine (TAp f a) acc = spine f (a : acc)
+    spine (TC n) acc = Just (n, acc)
+    spine _ _ = Nothing
+    subst sub = \case
+      TV v -> IM.findWithDefault (TV v) v sub
+      TAp a b -> TAp (subst sub a) (subst sub b)
+      TFn a b -> TFn (subst sub a) (subst sub b)
+      TTupT ts -> TTupT (map (subst sub) ts)
+      TRec r -> TRec (srow sub r)
+      x -> x
+    srow sub = \case
+      RExt l t rest -> RExt l (subst sub t) (srow sub rest)
+      x -> x

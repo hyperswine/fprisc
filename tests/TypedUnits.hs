@@ -31,7 +31,7 @@ main=do
       names=S.fromList ["client","recursive"]
       unit=right (selectCheckedUnit plans names)
       resolved=inferenceTops checked
-      initial=DEnv 0 (collectCons "unit" resolved) (collectShapes resolved) [] []
+      initial=DEnv 0 (collectCons "unit" resolved) (collectShapes resolved) [] [] M.empty
       product=evalState (desugarCheckedUnit unit) initial
       own=evalState (lowerCheckedUnit unit >>= liftFix) initial
       provider=evalState (lowerCheckedUnit (right (selectCheckedUnit plans (S.singleton "provider"))) >>= liftFix) initial

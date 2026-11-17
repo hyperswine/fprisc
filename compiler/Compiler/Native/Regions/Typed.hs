@@ -169,5 +169,5 @@ emitProgram (Program native rewrite fs _ _)=do
             let candidate="$typed.region.erase."++show (length name)++"."++name++"."++stem++"."++show (n::Int)
             if candidate `S.member` reserved then fresh stem else pure candidate
           constructor n=case M.lookup n (constructorLayouts layouts) of Just c->Just c;_->wideTup n
-          layout=Layout fresh constructor (shapeLayouts layouts) (\_ _ _->lift (Left "typed region erasure: implicit join"))
+          layout=Layout fresh constructor (shapeLayouts layouts) (\_ _ _->lift (Left "typed region erasure: implicit join")) (i64Fields layouts)
       evalStateT (eraseRegionFunctionWith types layout f) 0 >>= id
