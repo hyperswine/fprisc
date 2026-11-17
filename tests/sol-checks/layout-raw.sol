@@ -8,6 +8,10 @@
 # on many hosts, crosses a send, prints, and compares; float fields compare as IEEE
 # values (0.0 == -0.0, NaN != NaN) and print as floats. Before the masks, printing
 # such a value dereferenced the float as a header (a segfault).
+# The print guard looks through nominal definitions: a float a mask does not cover
+# (a `List F64` field, a parameter instantiated at F64) is refused at compile time
+# rather than rendered from raw bits (it segfaulted before), while a nominal whose
+# float fields are all declared F64/F32, nested or not, still prints.
 H = use "helpers".
 fixture = "profile base.\nP = Type (P F64 Int | Q Int).\nW a = Type (W a F64 F32 a).\n" +
   "echo parent me = case receiveRes me of\n    Ok v -> send parent (Ok v)\n  | Err why -> send parent (Err why).\n" +
@@ -20,6 +24,10 @@ walk = "profile base.\nP = Type (P F64 Int | Q Int).\nW a = Type (W a F64 F32 a)
   "  _ = send child (Ok (big, ws, [P 2.5 3, Q 4]));\n  case receiveRes me of\n    Ok (b, w2, xs) ->\n" +
   "      _ = print xs;\n      _ = print w2;\n      _ = print (b == big);\n      _ = print (w2 == ws);\n" +
   "      _ = print (P 0.0 1 == P (0.0 - 0.0) 1);\n      print (P (0.0 / 0.0) 1 == P (0.0 / 0.0) 1)\n  | Err why -> print why.\n".
+refused = [("listfield","profile base.\nQ = Type (Q (List F64) Int).\nmain = print (Q [1.5, 2.5] 3).\n"),
+  ("param","profile base.\nB a = Type (B a Int).\nmain = print (B 1.5 2).\n"),
+  ("nested","profile base.\nQ = Type (Q (List F64) Int).\nR = Type (R Q).\nmain = print (R (Q [1.5] 3)).\n")].
+nestedOk = "profile base.\nP = Type (P F64 Int).\nR = Type (R P Int).\nmain = print [R (P 1.5 2) 3].\n".
 walkWant = "[P 2.5 3, Q 4]\n[W 1 (-1.5) 0.25 2, W 3 2e300 (-0.5) 4]\nTrue\nTrue\nTrue\nFalse\n".
 quad s = parseInt (Str.trim (Str.replace ".quad" "" s)).
 # the count word, then each row's raw and F32 masks, after the fpr_layout_raw label
@@ -50,6 +58,17 @@ main u = root = H.root Unit; work = tempDir "fpr-layout-raw";
   ProcessResult wb wbo wbe = H.call ["{root}/fpr","build","-o",wexe,wsrc] env 240000;
   _ = (if wb == 0 then Unit else error "walk build exit {wb}\n{wbo}{wbe}");
   ProcessResult wcode wout werr = H.call [wexe] [] 60000;
-  if wcode == 0 and wout == walkWant then print "layout raw masks: rows {rows}, runtime mask 1, walkers PASS"
-  else error "walk: exit {wcode}, want:\n{walkWant}got:\n{wout}{werr}".
+  _ = (if wcode == 0 and wout == walkWant then Unit else error "walk: exit {wcode}, want:\n{walkWant}got:\n{wout}{werr}");
+  bad = List.concat (List.map (fn c -> (name, text) = c; fsrc = "{work}/{name}.fpr";
+      _ = H.write fsrc (unwrap (Utf8.encode text));
+      ProcessResult fc fo fe = H.call ["{root}/fpr","build","-o","{work}/{name}",fsrc] env 240000;
+      if fc != 0 and Str.contains "floats are raw bits" (fo + fe) then [] else ["{name} (exit {fc}): {fo}{fe}"]) refused);
+  _ = (if bad == [] then Unit else error "print of a float outside a raw field not refused: {bad}");
+  nsrc = "{work}/nestedok.fpr"; nexe = "{work}/nestedok";
+  _ = H.write nsrc (unwrap (Utf8.encode nestedOk));
+  ProcessResult nb nbo nbe = H.call ["{root}/fpr","build","-o",nexe,nsrc] env 240000;
+  _ = (if nb == 0 then Unit else error "nested-ok build exit {nb}\n{nbo}{nbe}");
+  ProcessResult ncode nout nerr = H.call [nexe] [] 60000;
+  if ncode == 0 and nout == "[R (P 1.5 2) 3]\n" then print "layout raw masks: rows {rows}, runtime mask 1, walkers PASS, print guard PASS"
+  else error "nested-ok: exit {ncode}, want [R (P 1.5 2) 3], got:\n{nout}{nerr}".
 > main Unit.
