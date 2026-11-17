@@ -1073,17 +1073,35 @@ static uw mm_int_hash(sw k) {
 #define XP3 0x165667B19E3779F9ull
 #define XP4 0x85EBCA77C2B2AE63ull
 #define XP5 0x27D4EB2F165667C5ull
+/* the little-endian word at p: one load where the target is little-endian
+ * (the shifts are what the hash means; gcc did not fuse them into a load) */
+static inline uw mm_le64(const uint8_t *p) {
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  uint64_t w; __builtin_memcpy(&w, p, 8); return (uw)w;
+#else
+  uw w = 0;
+  for (unsigned b = 0; b < 8; b++) w |= (uw)p[b] << (8 * b);
+  return w;
+#endif
+}
+static inline uw mm_le32(const uint8_t *p) {
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  uint32_t w; __builtin_memcpy(&w, p, 4); return (uw)w;
+#else
+  uw w = 0;
+  for (unsigned b = 0; b < 4; b++) w |= (uw)p[b] << (8 * b);
+  return w;
+#endif
+}
 static uw mm_bytes_hash(const uint8_t *p, uw n) {
   uw h = XP5 + n, i = 0;
   for (; i + 8 <= n; i += 8) {
-    uw w = 0;
-    for (unsigned b = 0; b < 8; b++) w |= (uw)p[i + b] << (8 * b);
+    uw w = mm_le64(p + i);
     w *= XP2; w = mm_rotl(w, 31); w *= XP1;
     h ^= w; h = mm_rotl(h, 27) * XP1 + XP4;
   }
   if (i + 4 <= n) {
-    uw w = 0;
-    for (unsigned b = 0; b < 4; b++) w |= (uw)p[i + b] << (8 * b);
+    uw w = mm_le32(p + i);
     h ^= w * XP1; h = mm_rotl(h, 23) * XP2 + XP3;
     i += 4;
   }
