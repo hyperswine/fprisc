@@ -12,6 +12,7 @@ configs = [
   ("no_workers", [("FPR_NO_SCALAR_WORKERS","1"),("FPR_NO_FIELD_WORKERS","1")]),
   ("no_vec", [("FPR_NO_VEC_FUSE","1"),("FPR_NO_VEC_FAST","1"),("FPR_NO_VEC_SIMD","1")]),
   ("no_str", [("FPR_NO_STR_FAST","1")]), ("no_regions", [("FPR_NO_LOOP_REGIONS","1"),("FPR_NO_CALL_REGIONS","1")]),
+  ("no_x64_ra", [("FPR_NO_X64_RA","1")]),
   ("harts4", [("FPR_HARTS","4")])].
 # Programs that need arguments, files or environment from the old check_std harness.
 needsHarness = ["store","storewire","storeconc","durable","posix","apps"].

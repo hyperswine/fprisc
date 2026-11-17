@@ -326,7 +326,7 @@ main = do
   check "QOS single: the global hart cell, Mach-O" ("adrp x9, _fpr_posix_hart@PAGE\n    ldr x9, [x9, _fpr_posix_hart@PAGEOFF]" `isInfixOf` unlines (nfLines nfgm))
   refused "a QOS app without fuel is refused" "without fuel" (emitFnA64 (A64Config ELF HartX28 (qos {polFuel = False}) S.empty False True False False noTune) one)
   nfx <- either (error . ("FAIL: x64: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False True False noTune X64.HartTls False) one)
-  nfqx <- either (error . ("FAIL: qx64: " ++)) pure (X64.emitFnX64 (X64.X64Config qos S.empty False True False noTune X64.HartBorrow) one)
+  nfqx <- either (error . ("FAIL: qx64: " ++)) pure (X64.emitFnX64 (X64.X64Config qos S.empty False True False noTune X64.HartBorrow False) one)
   check "QOS x64: borrowed hart, no app TLS" ("movq fpr_g_tlsoff(%rip), %r10\n    movq %fs:0(%r10), %r10" `isInfixOf` unlines (nfLines nfqx) && not ("@tpoff" `isInfixOf` unlines (nfLines nfqx)))
   let xt = unlines (nfLines nfx)
   check "direct x64: SysV parameter moved to rbx, rbx saved, TLS hart" ("movq %rbx, -24(%rbp)\n    movq %rdi, %rbx\n" `isInfixOf` xt && "%fs:fpr_posix_hart@tpoff" `isInfixOf` xt && "saved=rbx " `isInfixOf` xt)
@@ -345,7 +345,7 @@ main = do
           [Instr Nothing OStackCheck, Instr Nothing OSafepoint,
            Instr Nothing (OSimdPair False (iterate (\e -> SFloat FAdd e SLane) SLane !! n) [] (VId 0)),
            Instr (Just (VId 1,TVal)) (ONullary 0 0)] (TRet (VId 1))]
-      pairCfg = X64.X64Config m2Policy S.empty False True False noTune X64.HartTls
+      pairCfg = X64.X64Config m2Policy S.empty False True False noTune X64.HartTls False
   pair7 <- either error pure (X64.emitFnX64 pairCfg (pairFn 7))
   check "SSE2 pair uses its last reserved temporary" ("addpd %xmm8, %xmm15" `isInfixOf` unlines (nfLines pair7))
   refused "SSE2 pair exceeds reserved bank" "seven scratch temporaries" (X64.emitFnX64 pairCfg (pairFn 8))
@@ -354,7 +354,7 @@ main = do
           [Instr Nothing OStackCheck, Instr Nothing OSafepoint]
           (TTailCall (Callee "callee" Imported [TVal, TVal] TVal) [VId 1, VId 0])]
   fw <- either error pure (emitFnA64 cfg {cfgForwardParams = True} wrapper)
-  fx <- either error pure (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True True noTune X64.HartTls) wrapper)
+  fx <- either error pure (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True True noTune X64.HartTls False) wrapper)
   forM_ [("a64", fw), ("x64", fx)] $ \(target, result) -> do
     let asm = unlines (nfLines result)
     check (target ++ " forwarding needs no callee-save parking") ("forward=yes saved=none" `isInfixOf` asm)
