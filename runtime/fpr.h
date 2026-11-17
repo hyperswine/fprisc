@@ -21,8 +21,9 @@ typedef uintptr_t V;
 int fpr_layout_register(const uintptr_t *table);
 uintptr_t fpr_layout_fields(uintptr_t tid, uintptr_t variant);
 /* C6 stage 3a: bit i set when field i of the constructor holds a raw word
- * (an F64 or F32 field); 0 when unknown, which is always safe. */
-uintptr_t fpr_layout_raw_mask(uintptr_t tid, uintptr_t variant);
+ * (an F64 or F32 field); 0 when unknown, which is always safe. *f32, when
+ * not null, gets the F32 subset. */
+uintptr_t fpr_layout_raw_mask(uintptr_t tid, uintptr_t variant, uintptr_t *f32);
 typedef uintptr_t uw; /* one machine word: field / length / count type */
 typedef intptr_t sw;
 

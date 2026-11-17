@@ -85,20 +85,21 @@ collectCons unitHash tops = M.union builtinCons (M.fromList user)
     user = concat [one (tidFor unitHash n) cs | (n, cs) <- tdecls]
     one tid cs = [(c, (tid, v, length tys)) | ((c, tys), v) <- zip cs [0 ..]]
 
--- C6 stage 3a: the raw fields of every constructor, by (tid, variant). Bit i
--- is set when field i is declared F64 or F32: on a 64-bit target a float is
--- its IEEE bit pattern in an ordinary word (tests/float.fpr), so that word is
--- never a pointer, whatever it looks like. Only a field the definition itself
--- names as a float is marked: a type variable instantiated at F64 (the head of
--- a `List F64`) is not, and stays a conservatively walked word. The map is a
--- pure function of the declarations (the unboxing proposal's Decision 3), and
--- a row with no raw field is left out. Fields past the 64th are not marked.
-collectRawFields :: String -> [STop] -> M.Map (Int, Int) Integer
+-- C6 stage 3a: the raw fields of every constructor, by (tid, variant): the
+-- mask of fields declared F64 or F32, and the mask of those declared F32. On a
+-- 64-bit target a float is its IEEE bit pattern in an ordinary word
+-- (tests/float.fpr), so that word is never a pointer, whatever it looks like.
+-- Only a field the definition itself names as a float is marked: a type
+-- variable instantiated at F64 (the head of a `List F64`) is not, and stays a
+-- conservatively walked word. The map is a pure function of the declarations
+-- (the unboxing proposal's Decision 3), and a row with no raw field is left
+-- out. Fields past the 64th are not marked.
+collectRawFields :: String -> [STop] -> M.Map (Int, Int) (Integer, Integer)
 collectRawFields unitHash tops = M.fromList
-  [ ((tidFor unitHash n, v), m)
-  | TType n _ _ cs <- tops, ((_, tys), v) <- zip cs [0 ..], let m = rawMask tys, m /= 0 ]
+  [ ((tidFor unitHash n, v), (mask ["F64", "F32"] tys, mask ["F32"] tys))
+  | TType n _ _ cs <- tops, ((_, tys), v) <- zip cs [0 ..], mask ["F64", "F32"] tys /= 0 ]
   where
-    rawMask tys = sum [ 2 ^ i | (i, TCon t []) <- zip [0 :: Int ..] tys, t `elem` ["F64", "F32"], i < 64 ]
+    mask names tys = sum [ 2 ^ i | (i, TCon t []) <- zip [0 :: Int ..] tys, t `elem` names, i < 64 ]
 
 collectShapes :: [STop] -> M.Map [Name] Int
 collectShapes tops = M.fromList [(fs, shapeIdFor fs) | fs <- allShapes]

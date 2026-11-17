@@ -341,7 +341,7 @@ static void layout_report(V v) {
   if (bit == 16 && !(layout_seen & 32)) {
     /* C6 stage 3a: the first constructor met with raw fields, so a harness
      * can tell the masks reached the runtime */
-    uw raw = fpr_layout_raw_mask(TID(v), ((hdr_t *)v)->var);
+    uw raw = fpr_layout_raw_mask(TID(v), ((hdr_t *)v)->var, 0);
     if (raw) {
       layout_seen |= 32;
       praw("[layout] raw fields ");
