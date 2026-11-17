@@ -4218,8 +4218,10 @@ static inline void call2_init(call2_t *c, V f) {
   if (p->nargs > 0) c->c0 = p->args[0];
   if (p->nargs > 1) c->c1 = p->args[1];
 }
-static inline V call2(const call2_t *c, V a, V b) {
-  switch (c->held) {
+/* `held` is a constant at every call (the merges below are instantiated per
+ * case), so the switch folds away and each comparison is one direct call */
+static inline __attribute__((always_inline)) V call2k(const call2_t *c, uw held, V a, V b) {
+  switch (held) {
   case 0: return ((F2)c->fn)(a, b);
   case 1: return ((F3)c->fn)(c->c0, a, b);
   case 2: return ((F4)c->fn)(c->c0, c->c1, a, b);
@@ -4231,32 +4233,50 @@ static inline V call2(const call2_t *c, V a, V b) {
  * arguments in the same roles.  For a comparator that is a total preorder
  * the result is exactly the old merge's; one that is not may see fewer
  * questions (the in-order shortcut) and so may order differently. */
-static inline int sort_lt(const call2_t *cmp, V b, V a) {
-  V r = call2(cmp, b, a);
+static inline __attribute__((always_inline)) int sort_lt(const call2_t *cmp, uw held, V b, V a) {
+  V r = call2k(cmp, held, b, a);
   if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
   return ((hdr_t *)r)->var == 0;
 }
 /* merge runs src[lo..mid) and src[mid..hi) of indices into keys, to dst */
-static void sort_merge(const call2_t *cmp, const V *keys, const uw *src, uw *dst, uw lo, uw mid, uw hi) {
+static inline __attribute__((always_inline)) void sort_merge_k(const call2_t *cmp0, uw held, const V *keys, const uw *src, uw *dst, uw lo, uw mid, uw hi) {
+  const call2_t c = *cmp0, *cmp = &c; /* a local copy: its fields stay in registers across the calls */
   uw i = lo, j = mid, k = lo;
-  if (mid > lo && mid < hi && !sort_lt(cmp, keys[src[mid]], keys[src[mid - 1]])) {
+  if (mid > lo && mid < hi && !sort_lt(cmp, held, keys[src[mid]], keys[src[mid - 1]])) {
     for (; k < hi; k++) dst[k] = src[k]; /* already in order: one comparison */
     return;
   }
-  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, keys[src[j]], keys[src[i]]) ? src[j++] : src[i++];
+  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, held, keys[src[j]], keys[src[i]]) ? src[j++] : src[i++];
   while (i < mid) dst[k++] = src[i++];
   while (j < hi) dst[k++] = src[j++];
 }
+static void sort_merge(const call2_t *cmp, const V *keys, const uw *src, uw *dst, uw lo, uw mid, uw hi) {
+  switch (cmp->held) {
+  case 0: sort_merge_k(cmp, 0, keys, src, dst, lo, mid, hi); break;
+  case 1: sort_merge_k(cmp, 1, keys, src, dst, lo, mid, hi); break;
+  case 2: sort_merge_k(cmp, 2, keys, src, dst, lo, mid, hi); break;
+  default: sort_merge_k(cmp, 3, keys, src, dst, lo, mid, hi); break;
+  }
+}
 /* merge runs src[lo..mid) and src[mid..hi) of element values directly, to dst */
-static void sort_merge_vals(const call2_t *cmp, const V *src, V *dst, uw lo, uw mid, uw hi) {
+static inline __attribute__((always_inline)) void sort_merge_vals_k(const call2_t *cmp0, uw held, const V *src, V *dst, uw lo, uw mid, uw hi) {
+  const call2_t c = *cmp0, *cmp = &c; /* a local copy: its fields stay in registers across the calls */
   uw i = lo, j = mid, k = lo;
-  if (mid > lo && mid < hi && !sort_lt(cmp, src[mid], src[mid - 1])) {
+  if (mid > lo && mid < hi && !sort_lt(cmp, held, src[mid], src[mid - 1])) {
     for (; k < hi; k++) dst[k] = src[k]; /* already in order: one comparison */
     return;
   }
-  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, src[j], src[i]) ? src[j++] : src[i++];
+  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, held, src[j], src[i]) ? src[j++] : src[i++];
   while (i < mid) dst[k++] = src[i++];
   while (j < hi) dst[k++] = src[j++];
+}
+static void sort_merge_vals(const call2_t *cmp, const V *src, V *dst, uw lo, uw mid, uw hi) {
+  switch (cmp->held) {
+  case 0: sort_merge_vals_k(cmp, 0, src, dst, lo, mid, hi); break;
+  case 1: sort_merge_vals_k(cmp, 1, src, dst, lo, mid, hi); break;
+  case 2: sort_merge_vals_k(cmp, 2, src, dst, lo, mid, hi); break;
+  default: sort_merge_vals_k(cmp, 3, src, dst, lo, mid, hi); break;
+  }
 }
 /* The stable order of keys[0..n) under cmp, as a permutation: answers the
  * buffer (idx or tmp, both n words) holding perm, keys[perm[0]] first.
