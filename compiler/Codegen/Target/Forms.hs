@@ -46,7 +46,7 @@ data CallForm=DirectCall | ApplyCall | PanicCall | NoCall deriving (Eq,Show)
 -- Ordinary ISA call/return constructors are interpreted by the caller. Shared
 -- protocol metadata is checked here, including the order of runtime events.
 callMetadata opcode form us cs=case Protocol.embedded opcode of
-  Just protocol->cs==Protocol.protocolCalls protocol
+  Just protocol->cs==Protocol.protocolCalls protocol || Just cs==Protocol.keptCalls protocol -- the second only on x86-64 (Protocol.checkProtocols)
   Nothing->case opcode of
     O.Common O.TailJump->target
     _ ->case form of DirectCall->target;ApplyCall->False;PanicCall->False;NoCall->null cs

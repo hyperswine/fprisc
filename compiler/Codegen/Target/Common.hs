@@ -264,11 +264,15 @@ shrinkWrap carrying saved items
   | null saved = Nothing
   | otherwise = do
       let uses = [bk | (bk, its) <- zip [0 ..] blocks, namesSaved its]
+      -- a use in a block the entry cannot reach has no dominator chain to the
+      -- entry (its set is just itself): keep the prologue saves
+      let live = reach [0]
       case uses of
         [] -> Nothing
+        _ | any (`S.notMember` live) uses -> Nothing
         _ -> do
           let common = foldr1 S.intersection [doms M.! u | u <- uses]
-              point = snd (maximum [(S.size (doms M.! c), c) | c <- S.toList common])
+          (_, point) <- S.lookupMax (S.fromList [(S.size (doms M.! c), c) | c <- S.toList common])
           if point == 0 || S.member point (reach (succs point)) then Nothing else do
             let reachable = S.insert point (reach (succs point))
                 exits = [bk | bk <- S.toList reachable, returns (blocks !! bk)]

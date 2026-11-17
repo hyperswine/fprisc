@@ -4,6 +4,7 @@
 module Codegen.Annotation
   (RestoreSupport(..),EntryPoint(..),checkAnnotations,checkSaveGroups,entryLabel) where
 import Codegen.Selected
+import Codegen.Call (callPreserves)
 import qualified Codegen.Opcode as O
 import qualified Codegen.Opcode.A64 as A
 import qualified Codegen.Opcode.RV as R
@@ -30,7 +31,8 @@ checkAnnotations restore owner items=do
       NoAnnotation->not (entry opcode) && opcode/=O.A64 A.Save
       EntryLabels (Label stem)->entry opcode && not (null stem)
       SaveGroup k->opcode==O.A64 A.Save && k>=0
-      SkipRestores->restore==ConditionalRestores && siControl i==Return)
+      SkipRestores->restore==ConditionalRestores && siControl i==Return
+      KeepsLive _->opcode==O.X64 O.Call && not (null (siCalls i)) && all callPreserves (siCalls i))
     require "allocation event does not match a physical copy/load/store" (case siAllocation i of
       Nothing->True
       Just SpillStore->opcode `elem` [O.X64 O.FrameStore,O.A64 A.FrameStore,O.RV R.FrameStore]

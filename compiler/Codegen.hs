@@ -30,7 +30,7 @@ import qualified Codegen.Kernel as K
 import Codegen.Lower (lowerProgram, Prim (..))
 import qualified Codegen.Simplify as Simplify
 import Codegen.InlineCalls (inlineCalls)
-import Codegen.Split (splitEntryValues)
+import Codegen.Split (splitEntryValues, splitEntryValuesWith, callLike, preservedOnX64)
 import Codegen.Target.Common (Tune (..), noTune, mangleName,SymbolPolicy,publicSymbols,symbolNames,visibilityFor,Visibility(..))
 import Codegen.Policy (Profile (..), StackPolicy(..), Policy (..), m2Policy, policyWidth)
 import qualified Codegen.Target.X64 as X64
@@ -59,7 +59,8 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 253 -- merge of main's raw I64 locals (251) into the x64 closure fast path (252).
+codegenRev = 254 -- C9 stage 1: hosted x86-64 frames (entry args, entry split, shrink-wrapped saves, short epilogue, live-set equality slow paths).
+-- 253 merge of main's raw I64 locals (251) into the x64 closure fast path (252).
 -- 220 Forward range/map fusion.
 -- 219 -- QOS app images take the receive-loop form; slot-carried small messages (218: weighted ticks: a tick charges the worst-case instruction count of the code it covers 217: early IR loops and String-scan versioning (several strings) by default; raw loop-carried Ints (216: A64 compare-and-branch, one-word String guard))
 
@@ -112,7 +113,8 @@ data NativeMode = NativeMode
     nmTune :: Tune, -- the fib experiments (docs/2026-10-22-TYPED-IR-FIB.md)
     nmSplitEntry :: Bool, -- Codegen.Split before selection
     nmSelfLoops :: Bool, -- self tail calls as loops rather than frame re-entry
-    nmFramelessEntry :: Bool -- step 1: entry checks before the frame (A64 first)
+    nmFramelessEntry :: Bool, -- step 1: entry checks before the frame (A64 first)
+    nmX64Ra :: Bool -- C9 stage 1 on hosted x86-64 (FPR_NO_X64_RA=1 restores the earlier frames)
   }
   deriving (Show)
 
@@ -163,7 +165,7 @@ rv32 = rv64 {tgtW=4,tgtName="rv32",tgtFloatInline=False,
   tgtNative=Just (defaultMode (DirectRV (policyWidth (m2Policy {polProfile=Rv32})) RV.HartTp))}
 
 defaultMode :: NativeBackend -> NativeMode
-defaultMode backend = NativeMode PerFunction StrictAll "native" (Just backend) False noTune False True False
+defaultMode backend = NativeMode PerFunction StrictAll "native" (Just backend) False noTune False True False False
 
 -- The typed-IR lowering of M1 (docs/2026-10-20-TYPED-NATIVE-IR-PLAN.md), as a
 -- diagnostic report: which functions lower, why the others
@@ -269,10 +271,24 @@ foreignEntries tgt =
 emitNative :: Target -> NativeMode -> SymbolPolicy -> NativeBackend -> Fn -> Either String NativeFn
 emitNative tgt nm symbols backend = case backend of
   DirectA64 fmt hart -> emitFnA64WithSymbols symbols (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmFramelessEntry nm) (nmTune nm))
-  DirectQX64 -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) X64.HartBorrow)
+  DirectQX64 -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) X64.HartBorrow False)
   DirectRV width hart -> RV.emitFnRVWithSymbols symbols (RV.RVConfig width (tgtPolicy tgt) hart exps (tgtWeak tgt) (nmSelfLoops nm))
-  DirectX64 fmt -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls))
+  DirectX64 fmt -> X64.emitFnX64WithSymbols symbols (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (x64Tune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls) (nmX64Ra nm))
   where exps=symbolNames symbols
+
+-- C9 stage 1 (docs/perf/2026-11-17-REGALLOC-DESIGN.md): hosted x86-64
+-- keeps the register parameters through the entry and shrink-wraps the
+-- callee saves; the entry split runs before selection for it.  A QOS app
+-- (DirectQX64) and the other targets keep their own switches.
+x64Frames :: NativeMode -> Bool
+x64Frames nm = nmX64Ra nm && case nmBackend nm of
+  Just (DirectX64 _) -> True
+  _ -> False
+
+x64Tune :: NativeMode -> Tune
+x64Tune nm
+  | x64Frames nm = (nmTune nm) {tuneShrinkWrap = True}
+  | otherwise = nmTune nm
 
 nativeSelect :: M.Map String (Fn, ([String], Core)) -> S.Set String -> Prog -> Target -> Bool -> NativeMode -> CheckedKinds -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation], Prog, M.Map String Fn, TypedUse)
 nativeSelect typed placed reference tgt spec nm vkinds sigs ext exps prog emitted =
@@ -396,7 +412,10 @@ nativeSelect typed placed reference tgt spec nm vkinds sigs ext exps prog emitte
     -- failure is a compiler error
     lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (Simplify.simplifyProgramWith (Simplify.policyOptions (tgtPolicy tgt)) (inlineFor (tgtPolicy tgt) lowered0))
     -- FPR_TYPED_IR_SPLIT_ENTRY: verified like the simplification (a refusal is a compiler error)
-    lowered = if nmSplitEntry nm then M.map splitEntryValues lowered1 else lowered1
+    lowered
+      | x64Frames nm = M.map (splitEntryValuesWith (\op -> callLike op && not (preservedOnX64 op))) lowered1
+      | nmSplitEntry nm = M.map splitEntryValues lowered1
+      | otherwise = lowered1
 
 -- Calls inside loops become the callee's blocks (Codegen.InlineCalls) where
 -- the hosted profiles run: before simplification, so the views, bounds and
@@ -495,7 +514,12 @@ emitTypedProductProgramWithImports typed placed reference products checked impor
             Just DirectQX64 -> error "typed-ir: an inline bump in a loaded QOS app"
             Just (DirectRV _ _) -> RV.allocSaveWrapper
             Nothing -> error "typed-ir: an inline bump without a native backend"
-      nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ fnText ++ fuelWrapper ++ allocWrapper
+      -- C9 stage 1: hosted x86-64 entry checks keep the arguments through
+      -- a unit-local stack-grow wrapper
+      growWrapper = case nmBackend nm of
+        Just (DirectX64 fmt) | x64Frames nm, not (null allFns) -> X64.stackGrowWrapper (if fmt == MachO then X64.HartTlvMachO else X64.HartTls)
+        _ -> []
+      nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ fnText ++ fuelWrapper ++ allocWrapper ++ growWrapper
         ++ (if null strings then [] else rodataDirective format : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) format) strings)
         ++ (if null floats then [] else rodataDirective format : concatMap (uncurry boxedFloatObject) floats)
       dat = NativeData.emitStaticDataWithLayout format (policyWidth (tgtPolicy tgt)) (tgtArc tgt) (tgtWeak tgt) exports symbols

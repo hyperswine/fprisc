@@ -129,8 +129,11 @@ main = do
   refused "allocator events require physical operands" "allocation event"
     (AForms.checkForms a64RegisterFile "annotation-test" [I move {siDefs=[gpr 0]}])
   refused "an always-restore backend cannot inherit a shrink-wrap exit marker" "annotation does not match"
+    (RForms.checkForms (RegisterFile (\(Phys p)->if p=="a0" then Just GPR else Nothing) []) "annotation-test"
+      [I ((plainOpcode (Opcode.RV ROp.Ret) [] [OP (Phys "a0")]) {siControl=Return,siAnnotation=SkipRestores})])
+  check "x86-64 shrink-wrapped exits may skip restores"
     (checkForms "annotation-test" [I ((plainOpcode (Opcode.X64 Opcode.Ret) [] [OP (Phys "rax")])
-      {siControl=Return,siAnnotation=SkipRestores})])
+      {siControl=Return,siAnnotation=SkipRestores})]==Right ())
   let aOp op=plainOpcode (Opcode.A64 op)
       aFloat=(aOp (AOp.FloatBinary Opcode.FloatRegisters Opcode.Float64 FAdd)
         [OV (v 2) (Any FPR)] [OV (v 0) (Any FPR),OV (v 1) (Any FPR)])
@@ -297,7 +300,7 @@ main = do
             (TRet (VId 6)) ]
       cfg = A64Config MachO HartX28 m2Policy (S.singleton "one") False True False False noTune
   refused "A64 cannot consume RV32 policy" "64-bit word policy" (emitFnA64 cfg {cfgPolicy = m2Policy {polProfile = Rv32}} one)
-  refused "X64 cannot consume RV32 policy" "64-bit word policy" (X64.emitFnX64 (X64.X64Config (m2Policy {polProfile = Rv32}) S.empty False True False noTune X64.HartTls) one)
+  refused "X64 cannot consume RV32 policy" "64-bit word policy" (X64.emitFnX64 (X64.X64Config (m2Policy {polProfile = Rv32}) S.empty False True False noTune X64.HartTls False) one)
   nf <- either (error . ("FAIL: a64: " ++)) pure (emitFnA64 cfg one)
   let text = unlines (nfLines nf)
       has s = s `isInfixOf` text
@@ -325,13 +328,19 @@ main = do
   nfgm <- either (error . ("FAIL: a64 qos single mach-o: " ++)) pure (emitFnA64 (A64Config MachO HartGlobal qos S.empty False True False False noTune) one)
   check "QOS single: the global hart cell, Mach-O" ("adrp x9, _fpr_posix_hart@PAGE\n    ldr x9, [x9, _fpr_posix_hart@PAGEOFF]" `isInfixOf` unlines (nfLines nfgm))
   refused "a QOS app without fuel is refused" "without fuel" (emitFnA64 (A64Config ELF HartX28 (qos {polFuel = False}) S.empty False True False False noTune) one)
-  nfx <- either (error . ("FAIL: x64: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False True False noTune X64.HartTls) one)
-  nfqx <- either (error . ("FAIL: qx64: " ++)) pure (X64.emitFnX64 (X64.X64Config qos S.empty False True False noTune X64.HartBorrow) one)
+  nfx <- either (error . ("FAIL: x64: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False True False noTune X64.HartTls False) one)
+  nfqx <- either (error . ("FAIL: qx64: " ++)) pure (X64.emitFnX64 (X64.X64Config qos S.empty False True False noTune X64.HartBorrow False) one)
   check "QOS x64: borrowed hart, no app TLS" ("movq fpr_g_tlsoff(%rip), %r10\n    movq %fs:0(%r10), %r10" `isInfixOf` unlines (nfLines nfqx) && not ("@tpoff" `isInfixOf` unlines (nfLines nfqx)))
   let xt = unlines (nfLines nfx)
   check "direct x64: SysV parameter moved to rbx, rbx saved, TLS hart" ("movq %rbx, -24(%rbp)\n    movq %rdi, %rbx\n" `isInfixOf` xt && "%fs:fpr_posix_hart@tpoff" `isInfixOf` xt && "saved=rbx " `isInfixOf` xt)
   check "direct x64: aligned primitive call" ("subq $8, %rsp\n    call fpr_prim_fn__x2d\n    addq $8, %rsp" `isInfixOf` xt)
   check "direct x64: frame-based return and native bound" ("leaq -8(%r11), %rsp\n    ret" `isInfixOf` xt && rSegMax (nfReport nfx) /= Nothing)
+  -- C9 stage 1 (docs/perf/2026-11-17-REGALLOC-DESIGN.md): the entry check
+  -- preserves registers, so the parameter stays in its arrival register
+  nfr <- either (error . ("FAIL: x64 frames: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False True False noTune X64.HartTls True) one)
+  let xr = unlines (nfLines nfr)
+  check "x64 frames: the entry check calls the preserving wrapper and the parameter stays in rdi" ("call fpr_stack_grow_local" `isInfixOf` xr && not ("%rbx" `isInfixOf` xr) && "movq %rdi, %rax\n    sarq $1, %rax" `isInfixOf` xr)
+  check "x64 frames: short epilogue and a native bound" ("leaq -16(%rbp), %rsp\n    popq %rbp\n    ret" `isInfixOf` xr && rSegMax (nfReport nfr) /= Nothing)
   -- the same function through direct RV64: the subtraction is now inline
   -- (the fit-check fast path), and the C primitive survives only as the
   -- slow path with retagged operands, the A64/X64 contract
@@ -345,7 +354,7 @@ main = do
           [Instr Nothing OStackCheck, Instr Nothing OSafepoint,
            Instr Nothing (OSimdPair False (iterate (\e -> SFloat FAdd e SLane) SLane !! n) [] (VId 0)),
            Instr (Just (VId 1,TVal)) (ONullary 0 0)] (TRet (VId 1))]
-      pairCfg = X64.X64Config m2Policy S.empty False True False noTune X64.HartTls
+      pairCfg = X64.X64Config m2Policy S.empty False True False noTune X64.HartTls False
   pair7 <- either error pure (X64.emitFnX64 pairCfg (pairFn 7))
   check "SSE2 pair uses its last reserved temporary" ("addpd %xmm8, %xmm15" `isInfixOf` unlines (nfLines pair7))
   refused "SSE2 pair exceeds reserved bank" "seven scratch temporaries" (X64.emitFnX64 pairCfg (pairFn 8))
@@ -354,7 +363,7 @@ main = do
           [Instr Nothing OStackCheck, Instr Nothing OSafepoint]
           (TTailCall (Callee "callee" Imported [TVal, TVal] TVal) [VId 1, VId 0])]
   fw <- either error pure (emitFnA64 cfg {cfgForwardParams = True} wrapper)
-  fx <- either error pure (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True True noTune X64.HartTls) wrapper)
+  fx <- either error pure (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True True noTune X64.HartTls False) wrapper)
   forM_ [("a64", fw), ("x64", fx)] $ \(target, result) -> do
     let asm = unlines (nfLines result)
     check (target ++ " forwarding needs no callee-save parking") ("forward=yes saved=none" `isInfixOf` asm)
@@ -372,7 +381,7 @@ main = do
               ++ [Instr (Just (VId (4200 + n), TVal)) (OTag (VId n)) | n <- [0 .. 4199]])
             (TRet (VId 8399)) ]
   wideX64 <- either (error . ("FAIL: sized x64 frame: " ++)) pure
-    (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True False noTune X64.HartTls) wide)
+    (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True False noTune X64.HartTls False) wide)
   check "sized x64 frame reserves before entry" ("reserve=yes" `isInfixOf` unlines (nfLines wideX64) &&
     "call fpr_stack_reserve" `isInfixOf` unlines (nfLines wideX64) && rSegMax (nfReport wideX64) /= Nothing)
   wideA64 <- either (error . ("FAIL: sized A64 frame: " ++)) pure (emitFnA64 cfg wide)
@@ -411,6 +420,8 @@ main = do
     (shrinkWrap False [s1] [ I (op "entry" [] []), I (br "join"), I (op "mv" [s1] [Phys "x0"]), I callS,
                        ILabel (Label "join"), I ret' ] == Nothing)
   check "no saved register, no change" (shrinkWrap False [] arms == Nothing)
+  check "a use in a block the entry cannot reach keeps the prologue saves"
+    (shrinkWrap False [s1] (arms ++ [ILabel (Label "dead"), I (op "mv" [s1] [Phys "x0"]), I ret']) == Nothing)
   putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, sized A64 frames and explicit profile/x64 limits, shrink-wrap placement and refusals: PASS"
 
 -- The contract checker runs on both sides of allocation. These cases exercise

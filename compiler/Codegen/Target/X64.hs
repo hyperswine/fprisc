@@ -15,7 +15,7 @@
 -- Parameters are parked before any entry check/tick, and rsp is restored
 -- from rbp at exit to preserve the runtime stack-segment contract.
 module Codegen.Target.X64
-  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, placement, allocConfig, fuelSaveWrapper, allocSaveWrapper ) where
+  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, placement, allocConfig, fuelSaveWrapper, allocSaveWrapper, stackGrowWrapper ) where
 
 import Compiler.DataLayout (storedListTid)
 import qualified Codegen.Calling as Calling
@@ -41,7 +41,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 36 -- F64 values in a float register class (xmm0..xmm5), ordered float compares fused into branches (35: a fused tag test compares the whole header word (34: layout tests fused into branches across edge moves, testq for the tag bit; 33: compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words))
+x64SelectionRev = 37 -- C9 stage 1 frames under cfgFrames (36: F64 values in a float register class (xmm0..xmm5), ordered float compares fused into branches (35: a fused tag test compares the whole header word (34: layout tests fused into branches across edge moves, testq for the tag bit; 33: compares fused into branches, immediates, fall-through layout (32: private products through eight volatile result words))
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -83,6 +83,22 @@ allocSaveWrapper hart =
   ++ ["    ret", ""]
   where saved = ["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10"]
 
+-- C9 stage 1: fpr_stack_grow behind a unit-local wrapper that keeps every
+-- allocatable caller-saved register but rax (the entry declares rax, r10
+-- and r11 written), the xmm pool included, so values stay where the
+-- allocator put them through the entry check (Protocol.keepingEntry).
+-- Entered with rsp 8 mod 16, as the tick's wrapper is; six pushes, the 96
+-- bytes of float saves and one alignment word realign it. The new segment
+-- (or 0) returns in rax; the caller adopts it.
+stackGrowWrapper :: X64Hart -> [String]
+stackGrowWrapper hart =
+  ["    .text", "    .balign 16", gsym hart (Call.runtimeName Call.GrowStackSaveEntry) ++ ":"]
+  ++ ["    pushq %" ++ g | g <- saved] ++ saveFloats
+  ++ ["    subq $8, %rsp", "    call " ++ gsym hart (Call.runtimeName Call.GrowStackEntry), "    addq $8, %rsp"]
+  ++ restoreFloats ++ ["    popq %" ++ g | g <- reverse saved]
+  ++ ["    ret", ""]
+  where saved = ["rcx", "rdx", "rsi", "rdi", "r8", "r9"]
+
 gsym :: X64Hart -> String -> String
 gsym hart s = case x64Format hart of
   MachO | take 2 s == ".L" -> drop 1 s
@@ -94,7 +110,11 @@ data X64Config = X64Config
     cfgSelfLoops :: Bool, -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
     cfgForwardParams :: Bool,
     cfgTune :: Tune,
-    cfgHart :: X64Hart
+    cfgHart :: X64Hart,
+    -- C9 stage 1 (docs/perf/2026-11-17-REGALLOC-DESIGN.md): shrink-wrapped
+    -- saves, the short epilogue and live-set saves around the deep
+    -- equality's slow path. Hosted x86-64 only; FPR_NO_X64_RA=1 is off.
+    cfgFrames :: Bool
   }
 
 r :: String -> Phys
@@ -307,6 +327,25 @@ keepingCall i = siOpcode i == O.X64 O.Call && case siCalls i of
   [c] -> callEffect c == PreservingRuntime
   _ -> False
 
+-- C9 stage 1: annotate each preserving runtime call of an allocated body
+-- with the caller-saved registers live across it (Allocate.liveAcross)
+keepLive :: [Item] -> [Item]
+keepLive items
+  | not (or [keepingCall i | I i <- items]) = items -- no physical liveness pass for the rest
+  | otherwise = go items (liveAcross items)
+  where
+    go (I i : rest) ((_, live) : ls)
+      | keepingCall i = I i {siAnnotation = KeepsLive [p | p <- live, saves p]} : go rest ls
+      | otherwise = I i : go rest ls
+    go (it : rest) ls = it : go rest ls
+    go [] _ = []
+    saves p@(Phys n) = p `elem` callerSaved || M.lookup n x64RegisterClasses == Just FPR
+
+keepsLive :: SInstr -> Bool
+keepsLive i = case siAnnotation i of
+  KeepsLive _ -> True
+  _ -> False
+
 keepingLabel :: String -> Label
 keepingLabel sym = Label ("keep_" ++ sym)
 
@@ -319,7 +358,7 @@ keepingWrappers hart name body = concat
     ++ ["    pushq %" ++ g | g <- saved] ++ saveFloats
     ++ ["    subq $8, %rsp", "    call " ++ gsym hart sym, "    addq $8, %rsp"]
     ++ restoreFloats ++ ["    popq %" ++ g | g <- reverse saved] ++ ["    ret"]
-  | sym <- S.toList (S.fromList [codeName s | I i <- body, keepingCall i, OCode s : _ <- [siUses i]]) ]
+  | sym <- S.toList (S.fromList [codeName s | I i <- body, keepingCall i, not (keepsLive i), OCode s : _ <- [siUses i]]) ]
   where saved = ["rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"]
 
 -- A private multi-word result, with the complete bank checked by Calling.
@@ -846,7 +885,13 @@ selectInstr cfg facts (Instr d op) = case op of
     emitI (jump done)
     emitL slow
     res <- freshV True
-    emitCall (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a, vreg b] (Just res)
+    -- C9 stage 1: the deep comparison saves only what is live across it
+    -- (KeepsLive), so tagged-Int comparisons do not push their operands
+    -- into callee-saved registers for a slow path they rarely take
+    let eqSym = CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))
+    if cfgFrames cfg && keepingEnabled cfg
+      then emitKeepingCall eqSym [vreg a, vreg b] res
+      else emitCall eqSym Calling.RuntimeCall [vreg a, vreg b] (Just res)
     emitI (ldrsw r res 4)
     emitL done
   OCallProduct _ _ -> refuse "internal: a product call outside its result packet"
@@ -1349,7 +1394,13 @@ emitFnX64WithSymbols symbols cfg fn = do
   (sel0, managed, nulls, strs) <- select cfg fn
   let pooled = if polProfile (cfgPolicy cfg) == QosApp || not (tuneFpPool (cfgTune cfg)) then sel0 else floatPool sel0
       fpValues = S.fromList [v | I i <- sfBody pooled, OV v (Any FPR) <- siDefs i ++ siUses i]
-      (sel, entrySlots) = forwardEntry (cfgForwardParams cfg) (tuneEntryArgs (cfgTune cfg)) argRegs fn pooled
+      -- C9 stage 1: the entry's two slow paths keep every allocatable
+      -- register themselves (the tick's wrapper, and stackGrowWrapper for
+      -- the stack check: Protocol.keepingEntry), so the parameters stay
+      -- wherever the allocator puts them, with no parking slots
+      (sel, entrySlots)
+        | cfgFrames cfg = (pooled {sfBody = [case it of I i -> I (Protocol.keepingEntry Calling.X86_64 i); _ -> it | it <- sfBody pooled]}, [])
+        | otherwise = forwardEntry (cfgForwardParams cfg) (tuneEntryArgs (cfgTune cfg)) argRegs fn pooled
   -- (floatPool annotates the xmm clobbers only when it pools anything)
   checkForms (fnName fn) (sfBody sel)
   either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
@@ -1361,16 +1412,26 @@ emitFnX64WithSymbols symbols cfg fn = do
       ordinary = layout 16 16 objs
       large = polStackCheck (cfgPolicy cfg) /= StackStatic && lyBytes ordinary > 32768
       ly = if large then layout 24 16 objs else ordinary
-      (shallow, allocatedBody) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody alloc)
+      (shallow, shallowBody) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody alloc)
+      -- C9 stage 1: each register-preserving runtime call saves only the
+      -- caller-saved registers live across it, inline (KeepsLive)
+      allocatedBody = if cfgFrames cfg then keepLive shallowBody else shallowBody
   when (not large && lyBytes ly > 32768) $ Left ("a frame of " ++ show (lyBytes ly) ++ " bytes exceeds the 32768-byte ceiling (half the runtime's stack headroom)")
   let name = fnName fn
       sym = gsym (cfgHart cfg) (functionSymbol name)
       saveOff o = show (M.findWithDefault (error "X64: a saved register without an offset") (foRef o) (lyOffset ly)) ++ "(%rbp)"
       saveLines = ["movq %" ++ p ++ ", " ++ saveOff o | o <- saves, SavedRegister p <- [foKind o]]
       restores = ["movq " ++ saveOff o ++ ", %" ++ p | o <- saves, SavedRegister p <- [foKind o]]
+      saveItem = I (plain (O.X64 O.Save) [] [])
+      -- shrink-wrapping (Common.shrinkWrap): the saves move to the deepest
+      -- acyclic block dominating every use of a saved register; returns
+      -- it does not dominate skip the restores. The frame itself (and so
+      -- the stack bound) is unchanged.
+      wrapped = if tuneShrinkWrap (cfgTune cfg) && not large then shrinkWrap False (alSaved alloc) allocatedBody else Nothing
       body = I ((plain (O.X64 O.Enter) [] []) {siImplicitDefs = map r (["rsp", "rbp"] ++ [p | large,p <- ["rax","r11"]])})
-        : [I (plain (O.X64 O.Save) [] []) | not (null saves)]
-        ++ allocatedBody
+        : case wrapped of
+            Nothing -> [saveItem | not (null saves)] ++ allocatedBody
+            Just items -> concatMap (\it -> case it of I s | siOpcode s == O.Common O.SavesHere -> [saveItem]; _ -> [it]) items
       reserve = if large then reserveFrame (cfgHart cfg) name (toInteger (lyBytes ly)) (length (sfParams sel)) else []
       refills = planBumpRefills 2 body
       -- The site's call supplies the alignment word the old inline refill
@@ -1385,7 +1446,7 @@ emitFnX64WithSymbols symbols cfg fn = do
       report = analyse (reserveToks ++ concatMap (uncurry (tokOf refills)) rendered)
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
                   ++ (if large then " reserve=yes" else "")
-                  ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
+                  ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ (if wrapped == Nothing then "" else " wrapped=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
         ++ visibilityLines (x64Format (cfgHart cfg)) (if x64Format (cfgHart cfg)==MachO then WeakDefinitionDirective else WeakDirective) (visibilityFor (cfgWeak cfg) symbols name) sym ++ [sym ++ ":"]
   checkForms name body
   let stack = Stack.selectedFrame Stack.StackReturnAddress ly (CodeSymbol (functionSymbol name))
@@ -1606,6 +1667,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       (O.X64 O.BranchNonzero,[],[v,OL l]) -> ["testq " ++ reg v ++ ", " ++ reg v,"jnz " ++ lbl l]
       (O.X64 O.Jump,[],[OL l]) -> ["jmp " ++ lbl l]
       (O.Common O.JumpLoop,[],[OL l]) -> ["jmp " ++ lbl l]
+      (O.X64 O.Call,_,OCode s:_) | keepingCall i, KeepsLive live <- siAnnotation i -> keepInline (codeName s) live
       (O.X64 O.Call,_,OCode s:_) | keepingCall i -> ["subq $8, %rsp", "call " ++ lbl (keepingLabel (codeName s)), "addq $8, %rsp"]
       (O.X64 O.Call,_,OCode s:_) -> call (codeName s)
       (O.X64 O.Push,[],[v]) -> ["subq $16, %rsp", "movq " ++ reg v ++ ", (%rsp)"]
@@ -1667,8 +1729,28 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       _->Nothing
     -- the callee-saved registers come back first (rbp-relative, so after a
     -- stack-segment change they still read the frame they were saved in)
-    epilogue = restores ++ ["movq %rbp, %r11", "movq -16(%rbp), %rbp"]
-      ++ [if large then "movq -24(%r11), %rsp" else "leaq -8(%r11), %rsp"]
+    -- a return the shrink-wrapped save point does not dominate restores
+    -- nothing (C9 stage 1); the short form pops the saved frame pointer
+    -- from where the prologue stored it (rbp - 16, below the return PC)
+    epilogue = (if siAnnotation i == SkipRestores then [] else restores)
+      ++ if cfgFrames cfg && not large then ["leaq -16(%rbp), %rsp", "popq %rbp"]
+         else ["movq %rbp, %r11", "movq -16(%rbp), %rbp"]
+              ++ [if large then "movq -24(%r11), %rsp" else "leaq -8(%r11), %rsp"]
+    -- the live-set form of a preserving call: the live caller-saved words
+    -- pushed, the live xmm values below them, one alignment word when the
+    -- count is even (the body runs at rsp 8 mod 16), then the C entry
+    keepInline sym live =
+      let gs = [p | Phys p <- live, M.lookup p x64RegisterClasses == Just GPR, Phys p `elem` callerSaved]
+          fs = [p | Phys p <- live, M.lookup p x64RegisterClasses == Just FPR]
+          pad = if even (length gs + length fs) then 8 else 0
+          below = 8 * length fs + pad
+       in ["pushq %" ++ g | g <- gs]
+          ++ ["subq $" ++ show below ++ ", %rsp" | below > 0]
+          ++ ["movq %" ++ f ++ ", " ++ show (8 * k) ++ "(%rsp)" | (k, f) <- zip [0 :: Int ..] fs]
+          ++ ["call " ++ gsym hart sym]
+          ++ ["movq " ++ show (8 * k) ++ "(%rsp), %" ++ f | (k, f) <- zip [0 :: Int ..] fs]
+          ++ ["addq $" ++ show below ++ ", %rsp" | below > 0]
+          ++ ["popq %" ++ g | g <- reverse gs]
     -- QOS publishes the host TLS displacement, shared by all hart threads.
     -- The borrow block is {hart, a6, a7}; never use the app's ELF TLS offsets.
     loadCell = loadCellFor hart
@@ -1678,7 +1760,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
       | (n, o) <- zip [0..] (siDefs i), let ref = FrameRef (entrySlot n)]
     stackCheck =
       ["leaq 8(%rsp), %r11", "subq 456(%r10), %r11", "cmpq 464(%r10), %r11", "jb " ++ lbl (entryLabel i StackReady)]
-      ++ parkArgs True ++ call (Call.runtimeName Call.GrowStackEntry)
+      ++ parkArgs True ++ call (Call.runtimeName (if Call.runtimeEvent Call.GrowStackSaveEntry `elem` siCalls i then Call.GrowStackSaveEntry else Call.GrowStackEntry))
       ++ ["testq %rax, %rax", "jz " ++ lbl (entryLabel i SameStack), "leaq -8(%rax), %rsp", lbl (entryLabel i SameStack) ++ ":"]
       ++ parkArgs False ++ hartRead ++ [lbl (entryLabel i StackReady) ++ ":"]
     -- The inline bump (Protocol BumpAllocate; runtime/fpr.h bump_slab): r11

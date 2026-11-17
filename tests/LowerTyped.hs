@@ -227,7 +227,7 @@ main = do
 
   -- slice 2: emission takes the typed function where the erased lowering
   -- of the same function agrees, keeps the erased one where it does not
-  let mode = NativeMode PerFunction StrictOff "typed-probe" (Just (DirectRV W64 HartTp)) False noTune False True False
+  let mode = NativeMode PerFunction StrictOff "typed-probe" (Just (DirectRV W64 HartTp)) False noTune False True False False
       target = rv64 {tgtNative = Just mode}
       prog = M.singleton "pick" (["n"], pickErased)
       typedOf fn = (either error id (Typed.lowerFn True (tgtPolicy target) layout prog M.empty (foreignEntries target) fn),

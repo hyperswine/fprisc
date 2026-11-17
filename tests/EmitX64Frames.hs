@@ -17,7 +17,7 @@ main = do
   [hart,loopMode,out] <- getArgs
   let width = I.W64
       policy = m2Policy
-      cfg = X64Config policy (S.fromList ["large","tailLarge","loopLarge"]) False (loopMode=="1") False noTune (if hart=="borrow" then HartBorrow else HartTls)
+      cfg = X64Config policy (S.fromList ["large","tailLarge","loopLarge"]) False (loopMode=="1") False noTune (if hart=="borrow" then HartBorrow else HartTls) False
       params = [(I.VId n,I.TVal) | n<-[0..63]]
       fn name count tailing looping =
         let idn n = I.VId n

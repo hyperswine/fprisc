@@ -13,7 +13,7 @@ import Control.Monad (unless,forM_)
 
 checkForms :: String -> [Item] -> Either String ()
 checkForms owner items=do
-  checkAnnotations AlwaysRestores owner items
+  checkAnnotations ConditionalRestores owner items
   Calling.checkTransfers Calling.X86_64 owner items
   checkProtocols Calling.X86_64 owner items
   forM_ [i | I i<-items] $ \i->do
