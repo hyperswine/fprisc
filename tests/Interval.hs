@@ -140,6 +140,28 @@ producerBoundsFn=Fn "producerBounds" ["s","x"] TInt (BId 0)
      (TRet (VId 8)),
    Block (BId 2) [] [Instr (Just (VId 9,TInt)) (OConstInt (-1))] (TRet (VId 9))]
 
+-- C6 stage 2: a vector read whose fast path is guarded by 0 <= i < view
+-- length and whose slow path is the C entry ($vec.get.int traps unless
+-- 0 <= i < len). Both arms join in b3, where `i + 1` cannot overflow on
+-- a 64-bit target: a view length and a returning entry's index are both
+-- below 2^57. `name` picks the callee; a non-vector entry proves nothing.
+vectorJoinFn name=Fn "vectorJoin" ["v","i"] TInt (BId 0)
+  [Block (BId 0) [(VId 0,TVal),(VId 1,TInt)]
+     [Instr (Just (VId 2,TInt)) (OVectorView ViewIntLength (VId 0)),
+      Instr (Just (VId 3,TInt)) (OConstInt 0),
+      Instr (Just (VId 4,TPred)) (OCmp Ge (VId 1) (VId 3))]
+     (TCondBr (VId 4) (BId 1) [] (BId 2) []),
+   Block (BId 1) [] [Instr (Just (VId 5,TPred)) (OCmp Lt (VId 1) (VId 2))]
+     (TCondBr (VId 5) (BId 3) [] (BId 2) []),
+   Block (BId 2) []
+     [Instr (Just (VId 6,TVal)) (OTag (VId 1)),
+      Instr (Just (VId 7,TVal)) (OCall (Callee name (Foreign "fpr_g_call2") [TVal,TVal] TVal) [VId 6,VId 0])]
+     (TBr (BId 3) []),
+   Block (BId 3) []
+     [Instr (Just (VId 8,TInt)) (OConstInt 1),
+      Instr (Just (VId 9,TInt)) (OArith Add (VId 1) (VId 8))]
+     (TRet (VId 9))]
+
 main=do
   forM_ [W32,W64] $ \width->do
     let original=M.singleton "sameDestination" sameDestination
@@ -197,5 +219,12 @@ main=do
   let (ladderSimpl,_)=either error id (simplifyFnWith on M.empty ladderFn)
   check "ladder: the 2^30-path guard threads (shortest distances, not path search)"
     (verifyFn M.empty ladderSimpl==Right () && length (condbrs ladderSimpl)==4*ladderK)
-  putStrLn "Interval discharge: guarded-counter proofs, step chains, join intersection, loop induction, producer bounds, the path ladder, cross-block sharing and evaluator differential PASS"
+  let vectorJoin w name=fst (either error id (simplifyFnWith (Options False Nothing True (Just w) False) M.empty (vectorJoinFn name)))
+  check "vectorJoin: the joined i + 1 discharges on W64 after a view or a returning $vec.get"
+    (verifyFn M.empty (vectorJoin W64 "$vec.get.int")==Right () && length (unchecked (vectorJoin W64 "$vec.get.int"))==1)
+  check "vectorJoin: W32 has no address-space cap, so i + 1 stays checked"
+    (null (unchecked (vectorJoin W32 "$vec.get.int")))
+  check "vectorJoin: a call that is not a vector entry proves nothing about i"
+    (null (unchecked (vectorJoin W64 "$vec.len")) && null (unchecked (vectorJoin W64 "Str.get")))
+  putStrLn "Interval discharge: guarded-counter proofs, step chains, join intersection, loop induction, producer bounds, the path ladder, the vector length cap, cross-block sharing and evaluator differential PASS"
   where prefix p s=take (length p) s==p
