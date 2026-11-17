@@ -49,6 +49,7 @@ clobbersRegisters inlineFloats = \case
   OBoolOf {} -> False; OTruth {} -> False; ONot {} -> False; OIsInt {} -> False
   OTagTest {} -> False; OVariantTest {} -> False; OSymbol {} -> False; OFunValue {} -> False
   OBit {} -> False; OCmp {} -> False; OBits {} -> False
+  OI64Arith {} -> False; OI64Bit {} -> False; OI64Cmp {} -> False
   ORvvVlMax {} -> False; ORvvLanes {} -> False; ORvvSumLoaded {} -> False
   OFloatBin {} -> not inlineFloats; OFloatCmp {} -> not inlineFloats; OFloatOfInt {} -> not inlineFloats
   OFloatTree {} -> not inlineFloats; OFloatCmpTree {} -> not inlineFloats

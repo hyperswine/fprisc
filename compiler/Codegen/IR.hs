@@ -221,6 +221,9 @@ data Op
   | OEqVal Bool VId VId -- TVal TVal -> TPred: deep structural equality (True) or inequality (False)
   | OBits Integer -- TVal: a raw 64-bit word, signed form (an F64 literal's IEEE bits)
   | OFloatBin FloatOp VId VId -- TVal TVal -> TVal: F64 arithmetic on the bits; semantics shared with Codegen.Eval
+  | OI64Arith ArithOp VId VId -- TVal TVal -> TVal: I64 +, -, * on the raw 64-bit words an I64 box holds, two's-complement wrapping (docs/2026-10-05-I64.md; W64 only, never Div)
+  | OI64Bit BitOp VId VId -- TVal TVal -> TVal: I64.and/or/xor on the raw words
+  | OI64Cmp CmpOp VId VId -- TVal TVal -> TPred: signed I64 comparison of the raw words
   | OFloatOfInt VId -- TInt -> TVal: the bits of the F64 nearest the Int (ties to even: C's conversion, runtime.c F64.ofInt)
   | OFloatCmp CmpOp VId VId -- TVal TVal -> TPred: F64 ordered comparison (false on a NaN), != is its negation (true on a NaN)
   | OFloatTree FloatTree -- TVal leaves -> TVal: a tree of F64 operations in the scratch floating-point registers, one move in per leaf, one out (Simplify.fuseFloatTrees)
@@ -347,6 +350,9 @@ opEffect = \case
   OEqVal _ _ _ -> RuntimeCall -- deep equality is the C primitive unless both are tagged Ints
   OBits _ -> Pure
   OFloatBin _ _ _ -> Pure
+  OI64Arith _ _ _ -> Pure
+  OI64Bit _ _ _ -> Pure
+  OI64Cmp _ _ _ -> Pure
   OFloatCmp _ _ _ -> Pure
   OFloatOfInt _ -> Pure
   OFloatCmpTree _ _ _ -> Pure
@@ -410,6 +416,9 @@ opUses = \case
   OEqVal _ a b -> [a, b]
   OBits _ -> []
   OFloatBin _ a b -> [a, b]
+  OI64Arith _ a b -> [a, b]
+  OI64Bit _ a b -> [a, b]
+  OI64Cmp _ a b -> [a, b]
   OFloatCmp _ a b -> [a, b]
   OFloatOfInt a -> [a]
   OFloatCmpTree _ a b -> ftreeLeaves a ++ ftreeLeaves b
@@ -482,6 +491,9 @@ mapOpUses f = \case
   OEqVal e a b -> OEqVal e (f a) (f b)
   OBits n -> OBits n
   OFloatBin o a b -> OFloatBin o (f a) (f b)
+  OI64Arith o a b -> OI64Arith o (f a) (f b)
+  OI64Bit o a b -> OI64Bit o (f a) (f b)
+  OI64Cmp o a b -> OI64Cmp o (f a) (f b)
   OFloatCmp o a b -> OFloatCmp o (f a) (f b)
   OFloatOfInt a -> OFloatOfInt (f a)
   OFloatCmpTree o a b -> OFloatCmpTree o (ftreeMap f a) (ftreeMap f b)
