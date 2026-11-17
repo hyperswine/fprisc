@@ -91,6 +91,10 @@ solBuiltins =
       -- Str.lines of a 100 KB file a minute's work
       ("strSplit", mono (TFn tInt (TFn tStr (tList tStr)))),
       ("strCompare", mono (TFn tStr (TFn tStr tInt))),
+      -- std/string's byte scans (runtime.c g_strFindByte/g_strFindSpace/g_strDigits)
+      ("strFindByte", mono (TFn tStr (TFn tInt (TFn tInt (TFn tInt tInt))))),
+      ("strFindSpace", mono (TFn tStr (TFn tInt (TFn tInt tInt)))),
+      ("strDigits", mono (TFn tStr (TFn tInt (TFn tInt tInt)))),
       ("strIndexOf", mono (TFn tStr (TFn tStr tInt))),
       ("strIndexFrom", mono (TFn tStr (TFn tStr (TFn tInt tInt)))), -- the compiled runtime's fourth string primitive (runtime.c)
       ("strReplace", mono (TFn tStr (TFn tStr (TFn tStr tStr)))),

@@ -1056,6 +1056,11 @@ mkHal cons scriptArgs tx preempts rt =
       ("intMax", (1, \[_] -> pure (VInt (2 ^ (62 :: Int) - 1)))),
       ("intMin", (1, \[_] -> pure (VInt (negate (2 ^ (62 :: Int)))))),
       ("charAt", (2, charAtH)),
+      -- std/string's byte scans (runtime.c g_strFindByte/g_strFindSpace/g_strDigits):
+      -- charFrom, wordEnd and digitsGo's loops, a charAt a step
+      ("strFindByte", (4, findByteH)),
+      ("strFindSpace", (3, findSpaceH)),
+      ("strDigits", (3, digitsH)),
       ("substr", (3, substrH)),
       -- the O(n) string tier: one pass each, no re-slicing of the rest
       -- (Str.split / indexOf / replace / upper / lower / trim / join in
@@ -1926,6 +1931,29 @@ mkHal cons scriptArgs tx preempts rt =
             then pure (VInt (fromIntegral (fromEnum (a ! fromInteger (i + 1)))))
             else vmPanic "charAt: index out of range"
     charAtH _ = vmPanic "charAt: bad args"
+    -- the byte at k as charAt reads it (its range check and panic)
+    codeAt sv k = charAtH [sv, VInt k] >>= \case VInt c -> pure c; _ -> vmPanic "charAt: bad args"
+    findByteH [sv, VInt c, VInt i, VInt n] = go i
+      where go k | k >= n = pure (VInt (-1))
+                 | otherwise = codeAt sv k >>= \b -> if b == c then pure (VInt k) else go (k + 1)
+    findByteH _ = vmPanic "strFindByte: bad args"
+    findSpaceH [sv, VInt pos, VInt n] = go pos
+      where go k | k >= n = pure (VInt n)
+                 | otherwise = codeAt sv k >>= \b -> if b == 32 || (b >= 9 && b <= 13) then pure (VInt k) else go (k + 1)
+    findSpaceH _ = vmPanic "strFindSpace: bad args"
+    digitsH [sv, VInt i, VInt n] = go i 0
+      where lo = negate (2 ^ (62 :: Int)) -- intMin
+            go k acc
+              | k >= n = pure (VInt acc)
+              | otherwise = codeAt sv k >>= \c ->
+                  let d = c - 48
+                      next = go (k + 1) (acc * 10 - d)
+                   in if c < 48 || c > 57 then pure (VInt 1)
+                      else if acc > lo `quot` 10 then (if acc <= 0 then next else pure (VInt 2))
+                      else if acc > 0 then pure (VInt 2)
+                      else if acc < (lo + d) `quot` 10 then pure (VInt 2)
+                      else next
+    digitsH _ = vmPanic "strDigits: bad args"
     -- Clamp in Integer before narrowing: huge Sol integers must not wrap.
     substrH [sv, VInt o0, VInt l0]
       | Just a <- stringIndex sv, Just size <- stringLength sv = do

@@ -56,13 +56,11 @@ splitCharGo fuel c s from n acc =
   at = charFrom s c from n;
   if at < 0 then rev (substr s from (n - from) :: acc) Nil
   else splitCharGo (fuel - 1) c s (at + 1) n (substr s from (at - from) :: acc).
-# where byte c first occurs at or after i (before n), or -1: one byte
-# compared a step, a counted loop the compiler reads without checks
-# (Codegen.StringScan)
-charFrom : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> Int .
-charFrom s c i n | i >= n = 0 - 1.
-charFrom s c i n | charAt s i == c + 0 = i.
-charFrom s c i n = charFrom s c (i + 1) n.
+# where byte c first occurs at or after i (before n), or -1.  The runtime's
+# strFindByte (runtime.c) scans eight bytes a step; it answers and traps as
+# the byte loop did (charAt s i == c, i from i to n - 1).
+charFrom : String -> Int -> Int -> Int -> Int .
+charFrom s c i n = strFindByte s c i n.
 splitGo : (fuel : Int | measure fuel) -> String -> String -> Int -> List String -> List String .
 splitGo fuel sep s from acc | fuel <= 0 = rev acc Nil.
 splitGo fuel sep s from acc =
@@ -100,9 +98,9 @@ wordsGo fuel s pos n acc =
   stop = wordEnd s (pos + 1) n;
   wordsGo (fuel - 1) s stop n (substr s pos (stop - pos) :: acc).
 # the first space at or after pos, or n
-wordEnd : String -> (pos : Int | measure (n - pos)) -> (n : Int) -> Int .
-wordEnd s pos n | pos >= n = n.
-wordEnd s pos n = if isSpace (charAt s pos) then pos else wordEnd s (pos + 1) n.
+# (the runtime's strFindSpace: isSpace (charAt s pos) from pos to n - 1)
+wordEnd : String -> Int -> Int -> Int .
+wordEnd s pos n = strFindSpace s pos n.
 
 # ---- streaming: each line or word handed to a step as it is cut -----------------
 # String.foldWords step z s = List.fold step z (String.words s), and
@@ -283,7 +281,7 @@ toIntGo : String -> Bool -> Int .
 toIntGo s neg =
   n = strlen s;
   first = if neg then 1 else 0;
-  v = if first >= n then 1 else digitsGo s first n 0;
+  v = if first >= n then 1 else digitsGo s first n;
   if neg then v else if v == intMin Unit then 2 else v.
 # the failures, apart, so toInt stays small enough to inline (a caller's
 # match on its Ok then needs no box)
@@ -294,17 +292,14 @@ toIntErr s _ = "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit}
 # which leaves the positive answers for the failures, unboxed: 1, not a
 # digit; 2, the value would pass the 63-bit Int (it used to wrap silently:
 # "4611686018427387904" answered -4611686018427387904)
-digitsGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int .
-digitsGo s i n acc | i >= n = acc.
-digitsGo s i n acc =
-  c = charAt s i;
-  if c < 48 then 1
-  else if c > 57 then 1
-  else if acc > intMin Unit / 10 then
-    (if acc <= 0 then digitsGo s (i + 1) n (acc * 10 - (c - 48)) else 2)
-  else if acc > 0 then 2
-  else if acc < (intMin Unit + (c - 48)) / 10 then 2
-  else digitsGo s (i + 1) n (acc * 10 - (c - 48)).
+# The runtime's strDigits (runtime.c) runs this loop from acc = 0, test for
+# test:
+#   c = charAt s i; c < 48 or c > 57 -> 1;
+#   acc > intMin / 10 -> (acc <= 0 -> next, else 2); acc > 0 -> 2;
+#   acc < (intMin + (c - 48)) / 10 -> 2; else next,
+#   next = the same from i + 1 with acc * 10 - (c - 48), and acc once i >= n.
+digitsGo : String -> Int -> Int -> Int .
+digitsGo s i n = strDigits s i n.
 
 # ---- ordering ------------------------------------------------------------------------
 compare : String -> String -> Ord.Ordering .
