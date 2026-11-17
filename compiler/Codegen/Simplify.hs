@@ -34,7 +34,7 @@ import Codegen.ControlFlow (analyze,dominators,predecessors,reachable)
 import Codegen.StringScan (versionScan)
 import Codegen.VectorRead (expandViews)
 import Codegen.Interval (discharge)
-import Codegen.LoopOptimize (moveInvariants, moveViews, carryRaw, dropUnusedParameters)
+import Codegen.LoopOptimize (moveInvariants, moveViews, carryRaw, carryRawI64, dropUnusedParameters)
 import Codegen.Policy (Policy (..), Profile (..), RegisterBudget, policyWidth)
 import Codegen.Pressure (clobbersRegisters)
 import Codegen.Verify (verifyFn)
@@ -58,6 +58,7 @@ passes=passesWith defaultOptions
 passesWith :: Options -> [(String,Fn -> Fn)]
 passesWith options=
   [ ("fold-conversions", dropDeadPure . foldConversions . foldDivisors),
+    ("forward-i64-bits", forwardI64Bits),
     ("forward-empty-blocks", forwardEmptyBlocks),
     ("forward-single-valued-parameters", forwardSingleValued),
     ("branch-on-comparison", dropDeadPure . threadBooleanJoins),
@@ -77,6 +78,7 @@ passesWith options=
                                             _ -> f1)
        | stringScan options]
     ++ [("carry-raw-ints", carryRawAll)]
+    ++ [("carry-raw-i64", \f -> if hasCycle f && hasI64Box f then forwardI64Bits (dropUnusedParameters (dropDeadPure (carryRawI64 f))) else f)]
     ++ [("fold-constant-divisors", dropDeadPure . foldConversions . foldDivisors)]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
     ++ [("forward-empty-blocks-again", forwardEmptyBlocks)]
@@ -223,6 +225,40 @@ dropDeadPure fn =
       live (Instr Nothing _) = True
       fn' = fn {fnBlocks = [b {bInstrs = filter live (bInstrs b)} | b <- fnBlocks fn]}
    in if fn' == fn then fn else dropDeadPure fn'
+
+-- ---- I64 boxes (C6 stage 3d) ---------------------------------------------
+
+-- An I64 box made in this function (Lower.i64Box: T_BITS variant 4, width,
+-- bits) answers a load of its bits (Lower.i64Bits: the word at 16) with the
+-- bits it was made from: the box is immutable and live at the load, so no
+-- reuse can have overwritten it.  A box nothing uses any more is dropped
+-- with it (an allocation with no other effect): an I64 field read, or an
+-- operation, whose box only fed the next operation builds nothing.
+forwardI64Bits :: Fn -> Fn
+forwardI64Bits fn
+  | not (hasI64Box fn) = fn
+  | otherwise =
+      let defs = defsOf fn
+          bitsOf w = case M.lookup w defs of
+            Just (OMake 9004 4 [_, u]) -> Just u
+            _ -> Nothing
+          forwarded = M.fromList
+            [ (v, u)
+            | b <- fnBlocks fn, Instr (Just (v, TVal)) (OLoad TVal a 16) <- bInstrs b,
+              Just (OAddress w) <- [M.lookup a defs], Just u <- [bitsOf w] ]
+          fn1 = substitute forwarded fn {fnBlocks = [b {bInstrs = [i | i@(Instr d _) <- bInstrs b, maybe True (\(v, _) -> M.notMember v forwarded) d]} | b <- fnBlocks fn]}
+       in dropDeadBoxes (dropDeadPure fn1)
+
+dropDeadBoxes :: Fn -> Fn
+dropDeadBoxes fn =
+  let used = usesOf fn
+      dead (Instr (Just (v, _)) (OMake 9004 4 [_, _])) = S.notMember v used
+      dead _ = False
+      fn' = fn {fnBlocks = [b {bInstrs = filter (not . dead) (bInstrs b)} | b <- fnBlocks fn]}
+   in if fn' == fn then fn else dropDeadPure fn'
+
+hasI64Box :: Fn -> Bool
+hasI64Box = any (any (\(Instr _ op) -> case op of OMake 9004 4 [_, _] -> True; _ -> False) . bInstrs) . fnBlocks
 
 -- ---- pass 1: conversion pairs ---------------------------------------------
 

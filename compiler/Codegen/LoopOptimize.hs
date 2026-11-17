@@ -1,7 +1,7 @@
 -- Speculate only total register operations into existing unique preheaders.
 -- Pure in the IR is not sufficient: field/tag/string reads may dereference
 -- pointers, and hart/region reads can change across a safepoint.
-module Codegen.LoopOptimize (moveInvariants, moveViews, carryRaw, dropUnusedParameters) where
+module Codegen.LoopOptimize (moveInvariants, moveViews, carryRaw, carryRawI64, dropUnusedParameters) where
 import Codegen.IR
 import Codegen.ControlFlow
 import Codegen.Policy (RegisterBudget)
@@ -104,6 +104,7 @@ speculatable op=case op of
   OBoolOf {}->True; ONot {}->True; OIsInt {}->True
   OSymbol {}->True; OFunValue {}->True; OBit {}->True; OCmp {}->True
   OFloatBin {}->True; OFloat32Bin {}->True; OFloatCmp {}->True; OFloat32Cmp {}->True; OFloatOfInt {}->True
+  OI64Arith {}->True; OI64Bit {}->True; OI64Cmp {}->True
   OFloatTree {}->True; OFloat32Tree {}->True; OFloatCmpTree {}->True; OFloat32CmpTree {}->True
   _->False
 
@@ -168,3 +169,74 @@ carryRaw fn0=go fn0 (12::Int)
                 in b' {bInstrs=[Instr d (mapOpUses rename o) | Instr d o<-bInstrs b',maybe True (\(w,_)->S.notMember w dropped) d],
                        bTerm=mapTermUses rename (extend (bTerm b'))}
       Just fn {fnBlocks=map block (fnBlocks fn)}
+
+-- C6 stage 3d: an I64 loop value carried as its raw bits.  A loop header's
+-- parameter that every back edge passes as a fresh I64 box (Lower.i64Box),
+-- and that the loop reads only through its bits (Lower.i64Bits), gets a raw
+-- twin parameter; the loads read the twin.  A use of the boxed parameter
+-- outside the loop (an exit returning it) is given a box built there from
+-- the twin, once per exit block.  Any other use inside the loop leaves the
+-- loop alone: a box per iteration there is what the latch builds now.  The
+-- boxed parameter and the latch boxes then die (Simplify.forwardI64Bits).
+carryRawI64 :: Fn -> Fn
+carryRawI64 fn0=go fn0 (12::Int)
+  where
+    go fn 0=fn
+    go fn n=case [r | loop<-naturalLoops fn (analyze fn), Just r<-[step fn loop]] of
+      f:_ -> go f (n-1)
+      [] -> fn
+    step fn loop=do
+      pre<-loopPreheader loop
+      let h=loopHeader loop
+          members=loopBlocks loop
+          byId=M.fromList [(bId b,b) | b<-fnBlocks fn]
+          defs=M.fromList [(v,o) | b<-fnBlocks fn,Instr (Just (v,_)) o<-bInstrs b]
+      header<-M.lookup h byId
+      preBlock<-M.lookup pre byId
+      TBr h' preArgs<-Just (bTerm preBlock)
+      if h'==h && h/=fnEntry fn then Just () else Nothing
+      let latchArgs=[args | b<-fnBlocks fn,bId b/=pre,(t,args)<-termSuccs (bTerm b),t==h]
+          boxed a=case M.lookup a defs of Just (OMake 9004 4 [_,x])->Just x; _->Nothing
+          -- the OAddress of p and the bit loads through it
+          addrs p=S.fromList [a | b<-fnBlocks fn,Instr (Just (a,TAddr)) (OAddress q)<-bInstrs b,q==p]
+          loadsOf as=[w | b<-fnBlocks fn,Instr (Just (w,TVal)) (OLoad TVal a 16)<-bInstrs b,S.member a as]
+          -- every other use of p: in which blocks
+          otherUses p as=[bId b | b<-fnBlocks fn,
+                            any (\(Instr d o)->p `elem` opUses o && not (maybe False (\(a,_)->S.member a as) d && isAddrOf p o)) (bInstrs b)
+                            || p `elem` termUses (bTerm b)]
+          addrUsedElsewhere as=or [any (`S.member` as) (opUses o) | b<-fnBlocks fn,Instr _ o<-bInstrs b,not (isBitLoad as o)]
+                               || or [any (`S.member` as) (termUses (bTerm b)) | b<-fnBlocks fn]
+      (k,p)<-listToMaybe [(k,p) | (k,(p,TVal))<-zip [0..] (bParams header),
+                            not (null latchArgs),all (\args->length args==length (bParams header) && isJust (boxed (args!!k))) latchArgs,
+                            let as=addrs p, not (null (loadsOf as)), not (addrUsedElsewhere as),
+                            all (`S.notMember` members) (otherUses p as)]
+      let as=addrs p
+          top=1+maximum (0:[i | b<-fnBlocks fn,(VId i,_)<-bParams b]++[i | b<-fnBlocks fn,Instr (Just (VId i,_)) _<-bInstrs b])
+          r=VId top; u=VId (top+1)
+          dropped=S.fromList (loadsOf as)
+          exits=S.fromList (otherUses p as)
+          extend t=case t of
+            TBr t' xs | t'==h -> TBr t' (xs++[raw xs])
+            TCondBr c y ys n' ns -> TCondBr c y (if y==h then ys++[raw ys] else ys) n' (if n'==h then ns++[raw ns] else ns)
+            other -> other
+          raw xs=maybe r id (boxed (xs!!k))
+          -- fresh names for the exit boxes: two per exit block
+          exitNames=M.fromList (zip (S.toList exits) [(VId (top+2+2*i),VId (top+3+2*i)) | i<-[0..]])
+          rebox b=case M.lookup (bId b) exitNames of
+            Nothing->b
+            Just (wv,pb)->let ren v=if v==p then pb else v
+                          in b {bInstrs=[Instr (Just (wv,TVal)) (OBits 64),Instr (Just (pb,TVal)) (OMake 9004 4 [wv,r])]
+                                         ++[Instr d (mapOpUses ren o) | Instr d o<-bInstrs b],
+                                bTerm=mapTermUses ren (bTerm b)}
+          rename v=if S.member v dropped then r else v
+          block b
+            | bId b==pre=b {bInstrs=bInstrs b++[Instr (Just (u,TAddr)) (OAddress (preArgs!!k)),Instr (Just (VId (top+2+2*S.size exits),TVal)) (OLoad TVal u 16)],
+                            bTerm=TBr h (preArgs++[VId (top+2+2*S.size exits)])}
+            | otherwise=
+                let b'=if bId b==h then b {bParams=bParams b++[(r,TVal)]} else b
+                    b''=b' {bInstrs=[Instr d (mapOpUses rename o) | Instr d o<-bInstrs b',maybe True (\(w,_)->S.notMember w dropped) d],
+                            bTerm=mapTermUses rename (extend (bTerm b'))}
+                in rebox b''
+      Just fn {fnBlocks=map block (fnBlocks fn)}
+    isAddrOf p o=case o of OAddress q->q==p; _->False
+    isBitLoad as o=case o of OLoad TVal a 16->S.member a as; _->False

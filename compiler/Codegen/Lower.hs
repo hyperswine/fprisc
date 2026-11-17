@@ -187,6 +187,7 @@ inlineFloat cx env h args =
       [CInt _, CInt _] | h == "f64frombits" -> True
       [CInt _] | h == "f32frombits" -> True
       [_, _] -> M.member h floatBinOps || M.member h floatCmpOps || M.member h float32BinOps || M.member h float32CmpOps
+        || M.member h i64ArithOps || M.member h i64BitOps || M.member h i64CmpOps
       _ -> False))
   where literal = case (h,args) of
           ("f64frombits",[CInt _,CInt _]) -> True
@@ -393,6 +394,28 @@ workerPrefix = "$worker.scalar."
 i64BoxTid, i64BoxVariant :: Int
 i64BoxTid = 9004
 i64BoxVariant = 4
+
+-- the I64 operators lowered on the raw words (C6 stage 3d); / and % stay C
+i64ArithOps :: M.Map String ArithOp
+i64ArithOps = M.fromList [("I64.+", Add), ("I64.-", Sub), ("I64.*", Mul)]
+
+i64BitOps :: M.Map String BitOp
+i64BitOps = M.fromList [("I64.and", BAnd), ("I64.or", BOr), ("I64.xor", BXor)]
+
+i64CmpOps :: M.Map String CmpOp
+i64CmpOps = M.fromList [("I64.<", Lt), ("I64.>", Gt), ("I64.<=", Le), ("I64.>=", Ge), ("I64.==", Eq), ("I64.!=", Ne)]
+
+-- an I64 box's bits (fpr_num64_t: header, width, then the value at 16)
+i64Bits :: VId -> L VId
+i64Bits box = do
+  addr <- emit TAddr (OAddress box)
+  emit TVal (OLoad TVal addr 16)
+
+-- a fresh I64 box around raw bits, inline (the constructor path's bump)
+i64Box :: VId -> L VId
+i64Box bits = do
+  width <- emit TVal (OBits 64)
+  emit TVal (OMake i64BoxTid i64BoxVariant [width, bits])
 
 scalarPrefix :: String
 scalarPrefix = "$scalar."
@@ -903,6 +926,30 @@ lowerVal cx env = \case
           width <- emit TVal (OBits 64)
           v <- emit TVal (OMake i64BoxTid i64BoxVariant [width, bits])
           pure (v, TVal)
+      -- I64 operators on the raw words (C6 stage 3d): each operand's bits
+      -- come out of its box (a load; Simplify.foldConversions forwards the
+      -- bits of a box made in the same function, so a field read or the
+      -- previous operation builds nothing), one wrapping instruction, and the
+      -- answer is boxed again the same inline way (comparisons answer a
+      -- predicate).  Division and remainder keep their C entries, with their
+      -- zero-divisor and INT64_MIN / -1 rules.
+      | isPrim cx env h, policyWidth (cxPolicy cx) == W64, Just o <- M.lookup h i64ArithOps, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal >>= i64Bits
+          y <- lowerVal cx env b >>= asVal >>= i64Bits
+          r <- emit TVal (OI64Arith o x y)
+          v <- i64Box r
+          pure (v, TVal)
+      | isPrim cx env h, policyWidth (cxPolicy cx) == W64, Just o <- M.lookup h i64BitOps, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal >>= i64Bits
+          y <- lowerVal cx env b >>= asVal >>= i64Bits
+          r <- emit TVal (OI64Bit o x y)
+          v <- i64Box r
+          pure (v, TVal)
+      | isPrim cx env h, policyWidth (cxPolicy cx) == W64, Just o <- M.lookup h i64CmpOps, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal >>= i64Bits
+          y <- lowerVal cx env b >>= asVal >>= i64Bits
+          p <- emit TPred (OI64Cmp o x y)
+          pure (p, TPred)
       | isPrim cx env h, h == "I64.toField", policyWidth (cxPolicy cx) == W64, [a] <- args -> do
           box <- lowerVal cx env a >>= asVal
           addr <- emit TAddr (OAddress box)

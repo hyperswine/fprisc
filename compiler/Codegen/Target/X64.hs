@@ -792,6 +792,12 @@ selectInstr cfg facts (Instr d op) = case op of
     _ -> arith False o r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
   OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> O.And; BOr -> O.Or; BXor -> O.Xor) r (vreg a) (vreg b)))
+  -- I64 on the raw words: the machine's own wrapping instruction
+  OI64Arith o a b -> def (\r -> emitI (rrr (case o of Add -> O.Add; Sub -> O.Subtract; _ -> O.Multiply) r (vreg a) (vreg b)))
+  OI64Bit o a b -> def (\r -> emitI (rrr (case o of BAnd -> O.And; BOr -> O.Or; BXor -> O.Xor) r (vreg a) (vreg b)))
+  OI64Cmp o a b -> def $ \r -> do
+    emitI (cmp (vreg a) (vreg b))
+    emitI (cset (cond o) r)
   -- F64 on the bits through xmm14/xmm15, inside the expansion only (SysV:
   -- caller-saved; no float register is allocated)
   OFloatBin o a b -> def (\r -> emitI (plain (O.X64 (O.FloatBinary O.WordBits O.Float64 o)) [any' r] [any' (vreg a), any' (vreg b)]))

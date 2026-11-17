@@ -19,6 +19,7 @@ linearity	300	tests/sol-checks/linearity.sol	push
 x64-bump-spill	300	tests/sol-checks/x64-bump-spill.sol	push
 layout-raw	300	tests/sol-checks/layout-raw.sol	push
 layout-raw-i64	300	tests/sol-checks/layout-raw-i64.sol	push
+i64-raw-locals	300	tests/sol-checks/i64-raw-locals.sol	push
 stdcheck	300	tests/sol-checks/stdcheck.sol	push
 reactor	300	tests/sol-checks/reactor.sol	push
 trust	60	tests/sol-checks/trust.sol	push

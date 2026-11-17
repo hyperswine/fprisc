@@ -362,6 +362,9 @@ select cfg fn = do
         call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [x,y] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 1
       OBit op a b -> rr (case op of BAnd -> R.And; BOr -> R.Or; BXor -> R.Xor) d (vreg a) (vreg b)
+      OI64Arith op a b -> rr (case op of Add -> R.Add; Sub -> R.Subtract; _ -> R.Multiply) d (vreg a) (vreg b)
+      OI64Bit op a b -> rr (case op of BAnd -> R.And; BOr -> R.Or; BXor -> R.Xor) d (vreg a) (vreg b)
+      OI64Cmp op a b -> rr (R.Compare op) d (vreg a) (vreg b)
       OFloatBin o a b -> rr (R.FloatBinary O.Float64 o) d (vreg a) (vreg b)
       OFloatOfInt a -> rr R.IntToFloat d (vreg a) (vreg a)
       OFloatCmp o a b -> rr (R.FloatCompare O.Float64 o) d (vreg a) (vreg b)
