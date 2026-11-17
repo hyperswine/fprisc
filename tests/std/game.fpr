@@ -43,6 +43,8 @@ effect Game.EQuit = "quit".
 effect (Game.ETask (Game.Append name text) f) = "task append {name} [{text}]".
 effect (Game.ETask (Game.ReadLatest name) f) = "task readLatest {name}".
 effect (Game.ETask (Game.Replay name) f) = "task replay {name}".
+effect (Game.ELatest key rev j f) = "latest {key} r{rev}".
+effect (Game.ECancel key) = "cancel {key}".
 show label inputs = case Game.play a 5 inputs of (m, es) ->
   _ = print "{label}: n={m.n} beats={m.beats}";
   showAll es.
@@ -87,4 +89,45 @@ main =
   same = (case (Game.view a m, Game.view a m) of (Game.Layers w1 o1, Game.Layers w2 o2) -> w1 == w2 and o1 == o2);
   _ = print "view twice equal: {same}";
   _ = print "period {Game.period (subs m)} keys {Game.wantsKeys (subs m)}";
+  _ = testLatest Unit;
   print "game: done".
+
+# ---- replaceable job test app ---------------------------------------------------------------
+JMsg = Type (JAsk tag rev steps | JGot tag rev res | JCancel).
+jInit u = ({ rev = 0, got = "none" }, Game.none).
+jUpdate (JAsk tag rev steps) m =
+  mk = Game.job (fn u -> (tag, steps)) (fn st -> (t, k) = st; if k <= 1 then Game.done "{t}-ok" else Game.more (t, k - 1));
+  ({ m | rev = rev }, Game.latest "search" rev mk (fn r res -> JGot tag r res)).
+jUpdate (JGot tag r res) m =
+  if r == m.rev then ({ m | got = res }, Game.none)
+  else (m, Game.log "ignored stale {tag} r{r}").
+jUpdate JCancel m = ({ m | rev = m.rev + 1, got = "cancelled" }, Game.cancel "search").
+jSubs m = Nil.
+jView m = Game.layers m.rev m.got.
+jApp = Game.app jInit jUpdate jSubs jView.
+
+testLatest u =
+  (m0, e0) = Game.start jApp 0;
+  # submit A (rev 1, 3 chunks), step 1 chunk -> still More
+  (m1, e1) = Game.apply jApp (JAsk "A" 1 3) m0;
+  q1 = Game.queueJobs e1 Nil;
+  (q2, m2, e2) = Game.stepJobs jApp q1 m1;
+  _ = print "after chunk 1 of A: got={m2.got}";
+  # replace with B (rev 2) then C (rev 3) within one chunk -> B never runs, C completes
+  (m3, e3) = Game.apply jApp (JAsk "B" 2 2) m2;
+  (m4, e4) = Game.apply jApp (JAsk "C" 3 2) m3;
+  q3 = Game.queueJobs e4 (Game.queueJobs e3 q2);
+  (q4, m5, e5) = Game.drainJobs 10 jApp q3 m4 Nil;
+  _ = print "after replace B->C: got={m5.got} rev={m5.rev}";
+  # deliver a stale A completion: model must not change
+  (m6, e6) = Game.apply jApp (JGot "A" 1 "A-ok") m5;
+  _ = print "after stale A: got={m6.got}";
+  _ = showAll e6;
+  # submit D (rev 4, 3 chunks), cancel before completion
+  (m7, e7) = Game.apply jApp (JAsk "D" 4 3) m6;
+  q5 = Game.queueJobs e7 q4;
+  (q6, m8, e8) = Game.stepJobs jApp q5 m7;
+  (m9, e9) = Game.apply jApp JCancel m8;
+  q7 = Game.queueJobs e9 q6;
+  (q8, m10, e10) = Game.drainJobs 10 jApp q7 m9 Nil;
+  print "after cancel: got={m10.got} rev={m10.rev}".

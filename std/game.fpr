@@ -41,7 +41,14 @@ O = use "option".
 # Quit        end the run
 # Attempt task toMsg   fallible work; what came of it reaches update later as
 #             the message `toMsg result`, where result : Result String String
-Cmd = Type (None | Batch cs | Log s | Sound n v | Music n v | Capture | Quit | Attempt task toMsg).
+# Latest key rev job onResult
+#             replaceable computation; `job` is `Job start step` where
+#             `start Unit -> state` and `step state -> More state | Done res`.
+#             A new submission for `key` replaces any pending input; at the
+#             next chunk boundary any superseded active state is discarded and
+#             the newest input starts. The result arrives as `onResult rev res`.
+# Cancel key  release both active and pending state for `key`
+Cmd = Type (None | Batch cs | Log s | Sound n v | Music n v | Capture | Quit | Attempt task toMsg | Latest key rev job onResult | Cancel key).
 
 none = None.
 batch : List Cmd -> Cmd .
@@ -53,6 +60,15 @@ music n v = Music n v.
 capture = Capture.
 quit = Quit.
 attempt task toMsg = Attempt task toMsg.
+latest key rev job onResult = Latest key rev job onResult.
+cancel key = Cancel key.
+
+# ---- replaceable computation ---------------------------------------------------------------
+Step = Type (More state | Done result).
+more state = More state.
+done result = Done result.
+Job = Type (Job start step).
+job start step = Job start step.
 
 # ---- fallible work ---------------------------------------------------------------------------
 # A Task describes work that can fail and takes time: the game never performs
@@ -101,7 +117,7 @@ app init update subs view = App init update subs view.
 Input = Type (Key code | Scroll dy dx | Elapsed ms).
 
 # What a runner performs, flat and in order.
-Effect = Type (ELog s | ESound n v | EMusic n v | ECapture | EQuit | ETask task toMsg).
+Effect = Type (ELog s | ESound n v | EMusic n v | ECapture | EQuit | ETask task toMsg | ELatest key rev job onResult | ECancel key).
 
 # the commands of a transition as effects, in the order they were asked for
 effects : Cmd -> List Effect .
@@ -115,6 +131,8 @@ flat c rest = case c of
   | Capture -> ECapture :: rest
   | Quit -> EQuit :: rest
   | Attempt task toMsg -> ETask task toMsg :: rest
+  | Latest key rev job onResult -> ELatest key rev job onResult :: rest
+  | Cancel key -> ECancel key :: rest
   | Batch cs -> flatAll cs rest.
 flatAll : (cs : List Cmd | measure cs) -> List Effect -> List Effect .
 flatAll cs rest = case cs of
@@ -249,3 +267,66 @@ captures es = case es of
     Nil -> 0
   | ECapture :: more -> 1 + captures more
   | e :: more -> captures more.
+
+# ---- deterministic stepping for replaceable jobs (for tests and cooperative runners) --------
+JobSlot = Type (JobSlot key active pending).
+
+submitJob : key -> Int -> Job -> (Int -> res -> msg) -> (slots : List JobSlot | measure slots) -> List JobSlot .
+submitJob key revN j onResult slots = case slots of
+    Nil -> JobSlot key O.None (O.Some (revN, j, onResult)) :: Nil
+  | JobSlot k act pend :: more ->
+      if k == key then JobSlot k act (O.Some (revN, j, onResult)) :: more
+      else JobSlot k act pend :: submitJob key revN j onResult more.
+
+cancelJob : key -> (slots : List JobSlot | measure slots) -> List JobSlot .
+cancelJob key slots = case slots of
+    Nil -> Nil
+  | JobSlot k act pend :: more ->
+      if k == key then cancelJob key more
+      else JobSlot k act pend :: cancelJob key more.
+
+queueJobs : (es : List Effect | measure es) -> List JobSlot -> List JobSlot .
+queueJobs es slots = case es of
+    Nil -> slots
+  | ELatest key revN j onResult :: more -> queueJobs more (submitJob key revN j onResult slots)
+  | ECancel key :: more -> queueJobs more (cancelJob key slots)
+  | e :: more -> queueJobs more slots.
+
+stepJobs : App -> List JobSlot -> model -> (List JobSlot, model, List Effect) .
+stepJobs a slots m =
+  (slots2, msgs) = stepSlots slots Nil Nil;
+  (m2, es) = deliverMsgs a (rev msgs Nil) m Nil;
+  (queueJobs es slots2, m2, es).
+
+stepSlots : (slots : List JobSlot | measure slots) -> List JobSlot -> List msg -> (List JobSlot, List msg) .
+stepSlots slots acc msgs = case slots of
+    Nil -> (rev acc Nil, msgs)
+  | JobSlot k act pend :: more ->
+      (case pend of
+          O.Some (revN, Job start stepFn, onResult) ->
+            (case stepOne k revN stepFn (start Unit) onResult of
+                (O.Some s2, ms2) -> stepSlots more (s2 :: acc) (joined ms2 msgs)
+              | (O.None, ms2) -> stepSlots more acc (joined ms2 msgs))
+        | O.None -> (case act of
+            O.Some (revN, stepFn, st, onResult) ->
+              (case stepOne k revN stepFn st onResult of
+                  (O.Some s2, ms2) -> stepSlots more (s2 :: acc) (joined ms2 msgs)
+                | (O.None, ms2) -> stepSlots more acc (joined ms2 msgs))
+          | O.None -> stepSlots more acc msgs)).
+
+stepOne k revN stepFn st onResult = case stepFn st of
+    More st2 -> (O.Some (JobSlot k (O.Some (revN, stepFn, st2, onResult)) O.None), Nil)
+  | Done res -> (O.None, [onResult revN res]).
+
+deliverMsgs : App -> (msgs : List msg | measure msgs) -> model -> List Effect -> (model, List Effect) .
+deliverMsgs a msgs m done = case msgs of
+    Nil -> (m, done)
+  | msg :: more -> (case apply a msg m of (m2, es) ->
+      deliverMsgs a more m2 (joined done es)).
+
+drainJobs : (fuel : Int | measure fuel) -> App -> List JobSlot -> model -> List Effect -> (List JobSlot, model, List Effect) .
+drainJobs fuel a slots m done = case slots of
+    Nil -> (Nil, m, done)
+  | s :: more -> if fuel <= 0 then (slots, m, done) else
+      (case stepJobs a slots m of (slots2, m2, es) ->
+        drainJobs (fuel - 1) a slots2 m2 (joined done es)).

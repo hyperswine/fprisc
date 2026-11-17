@@ -54,4 +54,9 @@ delivered late: n=106
   log saved
 view twice equal: True
 period 40 keys True
+after chunk 1 of A: got=none
+after replace B->C: got=C-ok rev=3
+after stale A: got=C-ok
+  log ignored stale A r1
+after cancel: got=cancelled rev=5
 game: done

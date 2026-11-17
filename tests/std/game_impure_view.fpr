@@ -1,0 +1,16 @@
+# Negative test: Game.app view must not perform side effects (direct or transitive).
+Game = use "std/game".
+
+init flags = (flags, Game.none).
+update msg m = (m, Game.none).
+subs m = Nil.
+
+logHelper x = _ = print "side effect {x}"; x.
+view m =
+  _ = logHelper m;
+  Game.layers m 0.
+
+main =
+  app = Game.app init update subs view;
+  case Game.view app 1 of
+    Game.Layers w o -> print "{w} {o}".

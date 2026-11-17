@@ -564,6 +564,20 @@ compileWithReport accepted report = do
             putStrLn "-- paste-ready signatures (inferred types):"
             mapM_ (putStrLn . ("SUGGEST " ++)) ssug
           exitFailure
+      unless (oBuiltin opts) $ do
+        let gameApps = S.fromList
+              [ n
+                | (n, (p, _)) <- M.toList unitAnchors,
+                  takeWhile (/= '@') n == "app",
+                  ("std" </> "game.fpr") `List.isSuffixOf` p
+              ]
+            foreignNames = S.fromList [n | TSig n _ _ <- foreignTops]
+            vpErrs = viewPurityErrors gameApps (impureViewPrimitives `S.union` foreignNames) tops
+        unless (null vpErrs) $ do
+          putStrLn "=== VIEW PURITY: ERRORS ==="
+          mapM_ (putStrLn . ("  * " ++)) (anchored vpErrs)
+          Editor.legacy report "view-purity" vpErrs
+          exitFailure
       -- One owned source product supplies the compatibility analyses and
       -- typed structure transformation. Units keep their checked projections;
       -- root clones preserve types/identities before layout and closure lifting.
@@ -1562,3 +1576,117 @@ privilegedMentions tops = List.nub (concatMap topM tops)
     stmtM = \case
       SBind _ _ e -> exprM e
       SBindPat _ e -> exprM e
+
+-- ---- Game.app view purity --------------------------------------------------
+impureViewPrimitives :: S.Set Name
+impureViewPrimitives = S.fromList
+  [ "print", "Sys.stderr", "Sys.readLine", "Sys.env", "Sys.args", "Sys.name", "Sys.exit", "Sys.timeUs",
+    "fileRead", "fileWrite", "fileAppend", "fileExists",
+    "read", "write", "Mem.read8", "Mem.write8", "Mem.read16", "Mem.write16",
+    "Mem.read32", "Mem.write32", "Mem.readWord", "Mem.writeWord",
+    "Mem.alloc", "Mem.realloc", "Mem.free", "Mem.atomicExchange", "Mem.compareExchange", "Mem.fence",
+    "CPU.csrRead", "CPU.csrWrite", "CPU.irqSave", "CPU.irqRestore", "CPU.irqEnable", "CPU.wait", "CPU.instructionFence",
+    "device", "reg8", "reg32",
+    "send", "sendLinear", "sendArc", "receive", "receiveRes", "receiveNow",
+    "receiveFrom", "receiveFromRes", "receiveFromNow",
+    "spawn", "spawnCap", "spawnCapOn", "spawnOn", "spawnHeap",
+    "myself", "myPid", "kill", "yield", "hartId",
+    "Sys.sleepUs", "Sys.mtime", "Sys.nextId", "Sys.actLive", "Sys.actInfo", "Sys.spawnApp", "Sys.poolReset",
+    "Sys.logStage", "Sys.logStaged", "Sys.logInstall", "Sys.logger",
+    "Sys.irqInstall", "Sys.irqRouter", "Sys.irqOpen", "Sys.irqDeliver", "Sys.irqTarget", "Sys.irqAck",
+    "Sys.timerBind", "Sys.timerArm", "Mod.fn", "Mod.detachLast", "schedSetTau"
+  ]
+
+viewPurityErrors :: S.Set Name -> S.Set Name -> [STop] -> [String]
+viewPurityErrors gameApps impureNames tops
+  | S.null gameApps = []
+  | otherwise = List.nub (concatMap checkTop tops)
+  where
+    bindMap = M.fromListWith (++) [(n, [(ps, gs, e)]) | TBind n ps gs e <- tops]
+    unmark (SMark _ e) = unmark e
+    unmark e = e
+    flattenApp e = case unmark e of
+      SApp f a -> let (h, as) = flattenApp f in (h, as ++ [a])
+      h -> (h, [])
+    checkTop = \case
+      TBind n _ gs e | S.notMember n gameApps ->
+        concatMap (checkGuard n) gs ++ checkExpr n e
+      TEval e -> checkExpr "main" e
+      _ -> []
+    checkGuard caller = \case
+      GBool e -> checkExpr caller e
+      GPat _ e -> checkExpr caller e
+    checkExpr caller e0 =
+      let here = case flattenApp e0 of
+            (SVar fn, args) | S.member fn gameApps, length args >= 4 ->
+              checkView caller (args !! 3)
+            _ -> []
+          sub = case e0 of
+            SMark _ e -> checkExpr caller e
+            SApp a b -> checkExpr caller a ++ checkExpr caller b
+            SLam _ e -> checkExpr caller e
+            SBlock ss e -> concatMap (checkStmt caller) ss ++ checkExpr caller e
+            SCase x arms -> checkExpr caller x ++ concatMap (checkExpr caller . snd) arms
+            SBin _ a b -> checkExpr caller a ++ checkExpr caller b
+            SProj e _ -> checkExpr caller e
+            SRec fs -> concatMap (checkExpr caller . snd) fs
+            SUpd m as -> checkExpr caller m ++ concatMap (checkExpr caller . snd) as
+            STup es -> concatMap (checkExpr caller) es
+            SList es -> concatMap (checkExpr caller) es
+            SStrI segs -> concat [checkExpr caller e | SegExpr e <- segs]
+            _ -> []
+       in here ++ sub
+    checkStmt caller = \case
+      SBind _ _ e -> checkExpr caller e
+      SBindPat _ e -> checkExpr caller e
+    checkView caller viewArg =
+      let seeds = [(Nothing, r) | r <- exprRefs S.empty viewArg]
+       in bfs S.empty seeds
+      where
+        bfs _ [] = []
+        bfs seen ((via, r) : rest)
+          | S.member r impureNames =
+              let detail = case via of
+                    Nothing -> "calls impure primitive '" ++ r ++ "'"
+                    Just v -> "reaches impure primitive '" ++ r ++ "' via '" ++ v ++ "'"
+               in ("in " ++ caller ++ ": Game.app view cannot perform side effects (" ++ detail ++ ")") : bfs seen rest
+          | S.member r seen = bfs seen rest
+          | Just cls <- M.lookup r bindMap =
+              let nextVia = Just (fromMaybe r via)
+                  nextRefs = [(nextVia, x) | cl <- cls, x <- clauseRefs cl]
+               in bfs (S.insert r seen) (rest ++ nextRefs)
+          | otherwise = bfs (S.insert r seen) rest
+    clauseRefs (ps, gs, body) =
+      let b0 = S.fromList (concatMap patVars ps)
+          (gRefs, b1) = List.foldl' stepGuard ([], b0) gs
+       in gRefs ++ exprRefs b1 body
+    stepGuard (acc, bs) = \case
+      GBool e -> (acc ++ exprRefs bs e, bs)
+      GPat p e -> (acc ++ exprRefs bs e, bs `S.union` S.fromList (patVars p))
+    exprRefs bs = \case
+      SMark _ e -> exprRefs bs e
+      SVar v -> [v | S.notMember v bs]
+      SApp a b -> exprRefs bs a ++ exprRefs bs b
+      SLam ps e -> exprRefs (bs `S.union` S.fromList ps) e
+      SBlock ss e -> let (rs, bs') = stmtsRefs bs ss in rs ++ exprRefs bs' e
+      SCase x arms -> exprRefs bs x ++ concat [exprRefs (bs `S.union` S.fromList (patVars p)) e | (p, e) <- arms]
+      SBin op a b -> [op | S.notMember op bs] ++ exprRefs bs a ++ exprRefs bs b
+      SProj e _ -> exprRefs bs e
+      SRec fs -> concatMap (exprRefs bs . snd) fs
+      SUpd m as -> exprRefs bs m ++ concatMap (exprRefs bs . snd) as
+      STup es -> concatMap (exprRefs bs) es
+      SList es -> concatMap (exprRefs bs) es
+      SStrI segs -> concat [exprRefs bs e | SegExpr e <- segs]
+      SInt _ -> []
+      SAtom _ -> []
+    stmtsRefs bs [] = ([], bs)
+    stmtsRefs bs (SBind n ps e : rest) =
+      let bs1 = S.insert n bs
+          rs1 = exprRefs (bs1 `S.union` S.fromList ps) e
+          (rs2, bs2) = stmtsRefs bs1 rest
+       in (rs1 ++ rs2, bs2)
+    stmtsRefs bs (SBindPat p e : rest) =
+      let rs1 = exprRefs bs e
+          bs1 = bs `S.union` S.fromList (patVars p)
+          (rs2, bs2) = stmtsRefs bs1 rest
+       in (rs1 ++ rs2, bs2)
