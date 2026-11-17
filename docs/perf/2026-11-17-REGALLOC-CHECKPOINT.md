@@ -17,3 +17,6 @@
 - 21:56 ra3 DONE: bench 16/16 OK, cg x3 medians in out/ra/medians-ra3.md; bs3 control == base (path no effect); push tier EXIT 0, 23 run 0 unexpected (known only); branch budget hello 1397108144 std-live 31793656992 pos1 68154825776
 - 21:57 spectralnorm +1.0% diag: mulRows inner loop gets 1 extra reg-reg copy/iter (mov %rdx,%rsi) from different assignment (coalescing miss), no extra spills/saves (out/ra/diag)
 - 22:07 results appended to design note (uncommitted); waiting cfgdiff v3 (nightly)
+- 22:08 checkpoint pushed to ari/unbox-notes 57c410a4 (worktree /workspace/fpr-ranotes)
+- 22:34 cfgdiff v3: 43 progs x 11 configs, only loopcalls/vecinline no_reuse (allowed); no_x64_ra clean
+- 22:34 PR opened https://github.com/hyperswine/fprisc/pull/97 head d7319d6f (compiler as measured 8841b1c9). DONE.
