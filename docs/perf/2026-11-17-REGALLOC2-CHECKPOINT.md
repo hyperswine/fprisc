@@ -38,3 +38,15 @@ PR A loop splitting, PR B shallow-stack default, stacked on ari/regalloc (#97).
 - PR B committed+pushed ari/shallow-stack aa2d0612 (parent 842a99db): no_shallow cfgdiff, codegenRev 256, design note section.
   FPR_NO_SHALLOW_STACK=1 asm == PR A asm (16 benches incl units); rv64 bm/builtin + a64 unchanged (out/ra/rvcheck3).
 - Running: drive-shB.sh (lane2), tests-shB.sh (waits for tests-spA.alldone). PRs not opened yet.
+
+## 01:00 AEDT — PR B measured
+- shB bench 16/16 OK; cg x3 median vs spA: total 30,023,320,555 -> 30,026,915,487 (+0.01%), every bench within ±0.1% except fasta -0.31% => neutral (matches the 2026-10-22 history: no speedup).
+- tests-spA cfgdiff still running (~35 min expected); tests-shB queued after it.
+
+## 01:12 AEDT — PR A tests done
+- cfgdiff 43 x 12 configs: only the 2 known no_reuse build failures (loopcalls, vecinline), same as stage 1/main.
+- budget: hello 1,403,684,600 (+1.4% vs main, +0.5% vs stage1), std-live 31,857,109,632 (+3.0% / +0.2%), pos1 68,257,029,056 (+2.0% / +0.15%); within budget.
+- tests-shB running now. Next: open PR A.
+
+## 01:20 AEDT — PR A opened: https://github.com/hyperswine/fprisc/pull/99 (base main; #97 merged 00:14 AEDT; main has #96/#98 after, disjoint files, not merged in)
+- body: out/ra/prA-body.md. Next: wait tests-shB, then open PR B (base ari/regalloc-split).
