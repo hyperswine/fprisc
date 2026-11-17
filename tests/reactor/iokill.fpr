@@ -1,0 +1,16 @@
+# Kill an actor parked waiting to read stdin, then read stdin from a fresh
+# actor on another hart: the dead reader's slot must be given back and the
+# descriptor armed again (actors.c io_cancel).
+unsafe program.
+Os.read : Int -> Int -> Result String String .
+
+reader boss me = n = (case Os.read 0 100 of Ok s -> strlen s | Err e -> 0 - 1); send boss (1000 + n).
+
+main =
+  me = myself 0;
+  r1 = spawnOn 0 (reader me);
+  _ = Sys.sleepUs 20000;
+  _ = kill r1;
+  r2 = spawnOn 1 (reader me);
+  a = receive me;
+  print "iokill: {a}".

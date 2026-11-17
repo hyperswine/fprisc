@@ -1,0 +1,57 @@
+two bindings: n=7 beats=0
+  log start 5
+  log n is 7
+  sound blip 7
+  log said
+unknown key: n=5 beats=0
+  log start 5
+  log n is 5
+  sound blip 5
+  log said
+capture once: n=5 beats=0
+  log start 5
+  capture
+  log n is 5
+  sound blip 5
+  log said
+quit ends the run: n=6 beats=0
+  log start 5
+  log bye
+  quit
+ticks: n=5 beats=2
+  log start 5
+  log n is 5
+  sound blip 5
+  log said
+no tick below zero: n=-1 beats=0
+  log start 5
+a refused save: n=5 beats=0
+  log start 5
+  task append log [n 5]
+  log not saved: no storage
+  log n is 5
+  sound blip 5
+  log said
+a stored save: n=105 beats=0
+  log start 5
+  task append log [n 5]
+  log saved
+  log n is 105
+  sound blip 105
+  log said
+a fetch chains a save: n=105 beats=0
+  log start 5
+  task readLatest log
+  log fetched n 5
+  task append log [seen]
+  log saved
+an empty store: n=5 beats=0
+  log start 5
+  task readLatest log
+  log nothing stored: no record
+held back: n=6 asked 1
+delivered late: n=106
+  log saved
+view twice equal: True
+period 40 keys True
+game: done

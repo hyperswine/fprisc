@@ -156,6 +156,7 @@ approvedLibraries =
     "std/encoding.fpr",
     "std/esp.fpr",
     "std/file.fpr",
+    "std/game.fpr",
     "std/gitrevision.fpr",
     "std/gpio.fpr",
     "std/http.fpr",

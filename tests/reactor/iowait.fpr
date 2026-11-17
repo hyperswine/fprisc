@@ -1,0 +1,19 @@
+# An actor waiting to read a pipe must not stall the other actors on its hart
+# (runtime/actors.c fpr_io_wait). Behind delay.fpr, the ticker (10 x 5 ms
+# sleeps, on the reader's hart) reports first, then the reader (6 bytes).
+# Before the reactor the read held the hart: "first 1006 then 1".
+unsafe program.
+Os.read : Int -> Int -> Result String String .
+
+reader boss me = n = (case Os.read 0 100 of Ok s -> strlen s | Err e -> 0 - 1); send boss (1000 + n).
+
+tick boss k me | k >= 10 = send boss 1.
+tick boss k me = _ = Sys.sleepUs 5000; tick boss (k + 1) me.
+
+main =
+  me = myself 0;
+  r = spawnOn 0 (reader me);
+  t = spawnOn 0 (tick me 0);
+  a = receive me;
+  b = receive me;
+  print "iowait: first {a} then {b}".

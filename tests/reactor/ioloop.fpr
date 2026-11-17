@@ -1,0 +1,19 @@
+# A reader parks on stdin for every chunk until end of input, while a ticker on
+# its hart keeps sleeping: total bytes and the ticker's count must both arrive.
+unsafe program.
+Os.read : Int -> Int -> Result String String .
+
+readAll boss total me = case Os.read 0 4096 of
+    Ok s -> (if strlen s == 0 then send boss (1000000 + total) else readAll boss (total + strlen s) me)
+  | Err e -> send boss (0 - 1).
+
+tick boss k me | k >= 50 = send boss k.
+tick boss k me = _ = Sys.sleepUs 2000; tick boss (k + 1) me.
+
+main =
+  me = myself 0;
+  r = spawnOn 0 (readAll me 0);
+  t = spawnOn 0 (tick me 0);
+  a = receive me;
+  b = receive me;
+  print "ioloop: {a + b}".

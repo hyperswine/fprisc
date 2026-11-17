@@ -1,0 +1,4 @@
+# Writes "hello\n" to stdout after half a second: the slow writer of reactor.sol's pipe.
+unsafe program.
+Os.write : Int -> String -> Result Int String .
+main = _ = Sys.sleepUs 500000; _ = Os.write 1 "hello\n"; 0.

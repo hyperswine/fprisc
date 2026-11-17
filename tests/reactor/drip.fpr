@@ -1,0 +1,6 @@
+# Writes "line 1" .. "line 200", a line every 2 ms: reactor.sol's writer for ioloop.fpr.
+unsafe program.
+Os.write : Int -> String -> Result Int String .
+drip k | k > 200 = 0.
+drip k = _ = Os.write 1 "line {k}\n"; _ = Sys.sleepUs 2000; drip (k + 1).
+main = drip 1.
