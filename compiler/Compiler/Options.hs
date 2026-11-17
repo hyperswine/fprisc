@@ -30,7 +30,10 @@ data NativeOptions = NativeOptions
     -- side of a register move is the frame access itself, values cross a
     -- cold live-set slow path in its argument registers (saved around it),
     -- move hints, and the fuel tick keeps rax; on unless FPR_NO_X64_SPLIT=1
-    nativeX64Ra :: Bool, nativeX64Split :: Bool } deriving (Eq,Show)
+    nativeX64Ra :: Bool, nativeX64Split :: Bool,
+    -- C9: hosted x86-64 skips the entry stack check in a small leaf C cannot
+    -- enter (Codegen.Target.Common.shallowEntry); on unless FPR_NO_SHALLOW_STACK=1
+    nativeShallowDefault :: Bool } deriving (Eq,Show)
 data CodegenOptions = CodegenOptions
   { nativeOptions :: NativeOptions, cgIndexedMemory :: Bool, cgFloatInline :: Bool,
     cgSimd :: Bool, cgFusion :: Bool, cgListFuse :: Bool, cgCaseKnown :: Bool, cgTypeSpec :: Bool, cgTypedCase :: Bool, cgVecPeek :: Bool, cgVectorFast :: Bool, cgStringFast :: Bool, cgInterval :: Bool, cgLoopMotion :: Bool, cgEarlyLoops :: Bool, cgFramelessEntry :: Bool, cgStringScan :: Bool,
@@ -72,7 +75,8 @@ parseCompilerOptions env = do
           nativeShallowStack=yes "FPR_TYPED_IR_SHALLOW_STACK", nativeEntryArgs=yes "FPR_TYPED_IR_ENTRY_ARGS",
           nativeSplitEntry=yes "FPR_TYPED_IR_SPLIT_ENTRY", nativeShrinkWrap=yes "FPR_TYPED_IR_SHRINK_WRAP",
           nativeFpPool=on "FPR_TYPED_IR_FP_POOL", nativeLinkPairs=on "FPR_TYPED_IR_LINK_PAIRS",
-          nativeX64Ra=enabled "X64_RA", nativeX64Split=enabled "X64_SPLIT" }
+          nativeX64Ra=enabled "X64_RA", nativeX64Split=enabled "X64_SPLIT",
+          nativeShallowDefault=enabled "SHALLOW_STACK" }
       codegen=CodegenOptions
         { nativeOptions=native, cgIndexedMemory=enabled "INDEXED_MEMORY", cgFloatInline=enabled "F64_INLINE",
           cgSimd=enabled "VEC_SIMD", cgFusion=enabled "VEC_FUSE", cgListFuse=enabled "LIST_FUSE", cgCaseKnown=enabled "CASE_KNOWN", cgTypeSpec=enabled "TYPE_SPEC", cgTypedCase=enabled "TYPED_CASE", cgVecPeek=enabled "VEC_PEEK", cgVectorFast=enabled "VEC_FAST", cgStringFast=enabled "STR_FAST", cgInterval=enabled "INTERVAL", cgLoopMotion=yes "FPR_TYPED_IR_LOOP_MOTION",
@@ -131,6 +135,7 @@ nativeOptionFlags fpAvailable n =
   ++ flag (not (nativeLinkPairs n)) "-nolinkpairs"
   ++ flag (not (nativeX64Ra n)) "-nox64ra"
   ++ flag (not (nativeX64Split n)) "-nox64split"
+  ++ flag (not (nativeShallowDefault n)) "-noshallow"
   ++ case nativeStrict n of
     StrictOff->""; StrictAll->"-strictall"
     StrictNames names->"-strict"++take 12 (showHex (fnv (intercalate "," names)) "")
