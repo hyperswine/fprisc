@@ -544,7 +544,8 @@ allocConfig cfg fn managed = AllocConfig
     acMove = \d s -> plain (O.RV R.Move) [OP d] [OP s],
     acSlot = \n v -> frameObj n (wordBytes cfg) (wordBytes cfg) (SpillSlot n) (S.member v managed),
     acEarlyDef = const False,
-    acSelfLoop = if cfgSelfLoops cfg then Just (CodeSymbol (functionSymbol (fnName fn))) else Nothing }
+    acSelfLoop = if cfgSelfLoops cfg then Just (CodeSymbol (functionSymbol (fnName fn))) else Nothing,
+    acSpillMoves = False, acColdCall = const False }
 
 emitFnRV :: RVConfig -> Fn -> Either String NativeFn
 emitFnRV cfg=emitFnRVWithSymbols (publicSymbols (cfgExports cfg)) cfg

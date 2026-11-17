@@ -52,7 +52,7 @@
 -- register outside the preserved set is live across a call.
 module Codegen.Allocate
   ( AllocConfig (..), Allocation (..), Stats (..), Loc (..), Place (..),
-    allocateFn, checkAllocation, statsLine, resolveCopies, liveAcross,
+    allocateFn, checkAllocation, statsLine, resolveCopies, liveAcross, forwardStores,
   ) where
 
 import Codegen.Frame
@@ -82,7 +82,17 @@ data AllocConfig = AllocConfig
     acSlot :: Int -> VReg -> FrameObj, -- slot n for a value like v (size, alignment, managed status)
     acEarlyDef :: SInstr -> Bool, -- the expansion may write a definition before it has read every use
     acClassOf :: Phys -> Maybe RegClass,
-    acSelfLoop :: Maybe CodeSymbol -- the function's own symbol: a tail transfer to it becomes a loop
+    acSelfLoop :: Maybe CodeSymbol, -- the function's own symbol: a tail transfer to it becomes a loop
+    -- C9 stage 2 (docs/perf/2026-11-17-REGALLOC-DESIGN.md): a selected move
+    -- with a spilled side is the store or the load itself (no scratch hop),
+    -- and a reload straight after the spill store of the same register is
+    -- dropped (the register still holds the value)
+    acSpillMoves :: Bool,
+    -- C9 stage 2: a cold call that preserves every register it is not
+    -- handed (a live-set slow path): a value crossing it may sit in one of
+    -- its fixed argument registers, and is then saved to a frame slot and
+    -- reloaded around that call only; the scan still prefers other registers
+    acColdCall :: SInstr -> Bool
   }
 
 data Stats = Stats
@@ -162,7 +172,11 @@ allocateFn cfg fn = do
       -- %rcx; given %rcx, the two copies collided, or, when the value died
       -- in %rcx and the result reused it, the count overwrote the value).
       tiedAt v i = not (null [() | OV d (Tied _) <- siDefs i, d == v])
+      fixedUses i = S.fromList [r | OV _ (Fix r) <- siUses i]
+      hardAt i = S.fromList (siImplicitDefs i ++ siImplicitUses i ++ siClobbers i
+        ++ [r | OV _ (Fix r) <- siDefs i] ++ [r | OP r <- siDefs i ++ siUses i])
       forbiddenAt v p i
+        | crosses v p, acColdCall cfg i = reservedAt i `S.difference` (fixedUses i `S.difference` hardAt i)
         | crosses v p = reservedAt i
         | definedAt v p && isLiveOut v p =
             S.fromList
@@ -206,11 +220,17 @@ allocateFn cfg fn = do
       crossesClobberV v = case M.lookup v ivs of
         Just iv -> any (\(p, _) -> crosses v p) (within iv clobberPositions)
         Nothing -> False
+      coldPositions = IM.fromAscList [(p, i) | (p, i) <- instrs, acColdCall cfg i]
+      -- the argument registers of the cold calls v crosses: allowed, but
+      -- taken last (each costs a store and a load on that cold path)
+      soft v iv = S.unions [fixedUses i | (p, i) <- within iv coldPositions, crosses v p]
       prefs v iv =
         let forb = forbidden v iv
+            avoid = soft v iv
             callee = filter (\r -> S.notMember r forb && acClassOf cfg r == M.lookup v classes) (acCalleeSaved cfg)
             caller = filter (\r -> S.notMember r forb && acClassOf cfg r == M.lookup v classes) (acCallerSaved cfg)
-         in if crossesCallV v then callee else if crossesClobberV v then callee ++ caller else caller ++ callee
+            ordered = if crossesCallV v then callee else if crossesClobberV v then callee ++ caller else caller ++ callee
+         in filter (`S.notMember` avoid) ordered ++ filter (`S.member` avoid) ordered
       tiedOtherUses v p = case IM.lookup p byPos of
         Just i | not (null [() | OV d (Tied _) <- siDefs i, d == v]) ->
           let k = head [k' | OV d (Tied k') <- siDefs i, d == v]
@@ -250,8 +270,21 @@ allocateFn cfg fn = do
             -- that register: the copy around the instruction disappears
             hints = [r | Just i <- [IM.lookup start byPos], OV d (Fix r) <- siDefs i, d == v]
               ++ [r | Just i <- [IM.lookup (ivEnd iv) byPos], OV u (Fix r) <- siUses i, u == v]
+            -- C9 stage 2: a value moved from or into one already placed
+            -- prefers its register (a loop's next value into the loop
+            -- parameter: the back edge's copy disappears)
+            moveHints
+              | acSpillMoves cfg =
+                  [r | q <- ivDefs iv, Just i <- [IM.lookup q byPos], Just (d, src, _) <- [plainMove cfg i], d == v, Just (Just r) <- [M.lookup src assign]]
+                    ++ [r | q <- ivUses iv, Just i <- [IM.lookup q byPos], Just (d, src, _) <- [plainMove cfg i], src == v, Just (Just r) <- [M.lookup d assign]]
+              | otherwise = []
             allowed0 = filter (`notElem` busy) (prefs v iv)
-            cands = filter (`elem` hints) allowed0 ++ filter (`notElem` hints) allowed0
+            firstHit hs = take 1 (filter (`elem` allowed0) hs)
+            -- (never into a cold call's argument register it crosses)
+            preferred = firstHit hints ++ take 1 [r | r <- firstHit moveHints, S.notMember r (soft v iv)]
+            cands
+              | acSpillMoves cfg = preferred ++ filter (`notElem` preferred) allowed0
+              | otherwise = filter (`elem` hints) allowed0 ++ filter (`notElem` hints) allowed0
          in case cands of
               (r : _) -> (live ++ [(v, iv, r)], M.insert v (Just r) assign)
               [] ->
@@ -289,20 +322,49 @@ allocateFn cfg fn = do
         Just (Just r) -> Just (InReg r)
         Just Nothing -> Just (InSlot (homes M.! v))
         Nothing -> Nothing -- dead: defined, never used
+  -- the values a cold call's argument staging would overwrite: crossing
+  -- it in one of its fixed argument registers (and not that register's own
+  -- argument), saved to a slot before the staging and reloaded after
+  let savers p i =
+        [ (v, r) | let (inn, out) = liveAt p, n <- IS.toList (IS.intersection inn out), let v = VReg n,
+          not (definedAt v p), Just (InReg r) <- [locOf v], S.member r (fixedUses i),
+          null [() | OV u (Fix r') <- siUses i, u == v, r' == r] ]
+      saverMap = IM.fromList [(p, s) | (p, i) <- IM.toList coldPositions, let s = savers p i, not (null s)]
+      kindOfV v = kindOf (acSlot cfg 0 v)
+      -- every cold call's saves are local to it: one set of slots per kind serves all
+      extraNeed = M.unionsWith max [M.fromListWith (+) [(kindOfV v, 1 :: Int) | (v, _) <- s] | s <- IM.elems saverMap]
+      extraSlots =
+        let base = length slotObjs
+            mk (n, (k, j)) = (k, j, (acSlot cfg n (head [v | s <- IM.elems saverMap, (v, _) <- s, kindOfV v == k])) {foRef = FrameRef n, foKind = SpillSlot n})
+         in map mk (zip [base ..] [(k, j) | (k, c) <- M.toList extraNeed, j <- [0 .. c - 1]])
+      saveSlotsAt p = case IM.lookup p saverMap of
+        Nothing -> []
+        Just s ->
+          let assign _ [] = []
+              assign used ((v, r) : rest) =
+                let k = kindOfV v
+                    j = M.findWithDefault 0 k used
+                    o = head [obj | (k', j', obj) <- extraSlots, k' == k, j' == j]
+                 in (r, foRef o) : assign (M.insert k (j + 1) used) rest
+           in assign M.empty s
   -- the rewrite, labels kept in place
   let walk _ [] = pure []
       walk p (ILabel l : rest) = (ILabel l :) <$> walk p rest
       walk p (I i : rest) = do
         items <- rewrite cfg here locOf p i
-        (items ++) <$> walk (p + 2 :: Int) rest
-  body <- walk 0 stream
+        let saves = saveSlotsAt p
+            before = [I ((acStore cfg r ref) {siAllocation = Just SpillStore}) | (r, ref) <- saves]
+            after = [I ((acLoad cfg r ref) {siAllocation = Just Reload}) | (r, ref) <- saves]
+        ((before ++ items ++ after) ++) <$> walk (p + 2 :: Int) rest
+  body0 <- walk 0 stream
+  let body = if acSpillMoves cfg then forwardStores body0 else body0
   let noted n = length [() | I x <- body, siAllocation x == Just n]
       stats =
         Stats
           { stValues = M.size ivs,
             stInRegister = length [() | Just (Just _) <- map (`M.lookup` assigned) (M.keys ivs)],
             stSpilled = length spilled,
-            stSlots = length slotObjs,
+            stSlots = length slotObjs + length extraSlots,
             stReloads = noted Reload,
             stSpillStores = noted SpillStore,
             stCopies = noted RegisterCopy,
@@ -314,7 +376,7 @@ allocateFn cfg fn = do
     Allocation
       { alBody = body,
         alSaved = saved,
-        alSlots = slotObjs,
+        alSlots = slotObjs ++ [o | (_, _, o) <- extraSlots],
         alLocs = M.fromList [(v, l) | v <- M.keys ivs, Just l <- [locOf v]],
         alStats = stats
       }
@@ -401,7 +463,44 @@ loopForm cfg here fn = case acSelfLoop cfg of
 -- one instruction: the copies before it, the instruction over physical
 -- registers, the copies after it
 rewrite :: AllocConfig -> String -> (VReg -> Maybe Loc) -> Pos -> SInstr -> Either String [Item]
-rewrite cfg here locOf _ i = do
+rewrite cfg here locOf pos i
+  | acSpillMoves cfg, Just (d, s, cls) <- plainMove cfg i =
+      case (locOf d, locOf s) of
+        (Just (InSlot ds), Just (InReg r)) | acClassOf cfg r == Just cls ->
+          pure [I ((acStore cfg r ds) {siAllocation = Just SpillStore})]
+        (Just (InReg r), Just (InSlot ss)) | acClassOf cfg r == Just cls ->
+          pure [I ((acLoad cfg r ss) {siAllocation = Just Reload})]
+        (Just (InSlot ds), Just (InSlot ss)) | ds == ss -> pure []
+        _ -> rewriteOne cfg here locOf pos i
+  | otherwise = rewriteOne cfg here locOf pos i
+
+-- a selected register move between two unconstrained values of one class,
+-- with no other effect (what `acMove` makes): its spilled side can be the
+-- frame access itself
+plainMove :: AllocConfig -> SInstr -> Maybe (VReg, VReg, RegClass)
+plainMove cfg i = case (siDefs i, siUses i) of
+  ([OV d (Any c)], [OV s (Any c')])
+    | c == c', siFlags i == FlagsNone, siControl i == Next, null (siCalls i),
+      null (siImplicitDefs i), null (siImplicitUses i), null (siClobbers i),
+      (r : _) <- [q | q <- acCalleeSaved cfg ++ acCallerSaved cfg, acClassOf cfg q == Just c],
+      siOpcode i == siOpcode (acMove cfg r r) -> Just (d, s, c)
+  _ -> Nothing
+
+-- A reload that directly follows the spill store of the same register into
+-- the same slot reads back what the register still holds: drop it.  Only
+-- adjacent pairs (nothing between them can have written the register).
+forwardStores :: [Item] -> [Item]
+forwardStores = go
+  where
+    go (I st : I ld : rest)
+      | siAllocation st == Just SpillStore, siAllocation ld == Just Reload,
+        [OP r, OF ref 0] <- siUses st, [OP r'] <- siDefs ld, [OF ref' 0] <- siUses ld,
+        r == r', ref == ref', null (siImplicitDefs ld) = go (I st : rest)
+    go (x : rest) = x : go rest
+    go [] = []
+
+rewriteOne :: AllocConfig -> String -> (VReg -> Maybe Loc) -> Pos -> SInstr -> Either String [Item]
+rewriteOne cfg here locOf _ i = do
   let scratch = acScratch cfg
       earlyDef = acEarlyDef cfg i
       uses = siUses i

@@ -59,7 +59,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 254 -- C9 stage 1: hosted x86-64 frames (entry args, entry split, shrink-wrapped saves, short epilogue, live-set equality slow paths).
+codegenRev = 255 -- C9 stage 2: hosted x86-64 spill moves, cold-call saves, move hints, the lean tick (254: C9 stage 1: hosted x86-64 frames (entry args, entry split, shrink-wrapped saves, short epilogue, live-set equality slow paths).)
 -- 253 merge of main's raw I64 locals (251) into the x64 closure fast path (252).
 -- 220 Forward range/map fusion.
 -- 219 -- QOS app images take the receive-loop form; slot-carried small messages (218: weighted ticks: a tick charges the worst-case instruction count of the code it covers 217: early IR loops and String-scan versioning (several strings) by default; raw loop-carried Ints (216: A64 compare-and-branch, one-word String guard))
@@ -288,7 +288,7 @@ x64Frames nm = nmX64Ra nm && case nmBackend nm of
 x64Tune :: NativeMode -> Tune
 x64Tune nm
   | x64Frames nm = (nmTune nm) {tuneShrinkWrap = True}
-  | otherwise = nmTune nm
+  | otherwise = (nmTune nm) {tuneSplit = False}
 
 nativeSelect :: M.Map String (Fn, ([String], Core)) -> S.Set String -> Prog -> Target -> Bool -> NativeMode -> CheckedKinds -> ScalarSignatures -> M.Map String Int -> SymbolPolicy -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String], [Heap.Equation], Prog, M.Map String Fn, TypedUse)
 nativeSelect typed placed reference tgt spec nm vkinds sigs ext exps prog emitted =

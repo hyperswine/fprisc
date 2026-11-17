@@ -1038,7 +1038,9 @@ allocConfig self managed =
       -- docs/2026-10-21-TYPED-IR-MERGE.md)
       acEarlyDef = \i -> siOpcode i == O.Common O.StoreSpill,
       acClassOf = rfClassOf a64RegisterFile,
-      acSelfLoop = self
+      acSelfLoop = self,
+      acSpillMoves = False,
+      acColdCall = const False
     }
 
 -- Floating results have their own virtual register class. Function/block
