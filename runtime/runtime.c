@@ -695,15 +695,18 @@ static inline void alloc_zero_pad(char *payload, uw raw_bytes, uw total, uw pref
  *   - in a process routed through the shared plane, whose pools grow in the
  *     kernel and whose actors the kernel's scheduler switches. */
 static void *bump_nobuckets[FPR_NBUCKETS]; /* a region arena's: always empty */
+static inline void bump_set(fpr_hart_t *h, fpr_pool_t *pool) {
+  if (!pool->cur) return;
+  h->bump_bkt = pool->buckets ? pool->buckets : bump_nobuckets;
+  h->bump_slab = pool->cur;
+}
 /* bump_open over a pool the caller already knows is h's current one */
 static inline void bump_open_pool(fpr_hart_t *h, fpr_pool_t *pool) {
 #if defined(FPR_COST_PROBE) || (defined(FPR_COMPACT_CELLS) && defined(FPR_LAYOUT_CHECK))
   (void)h; (void)pool;
 #else
   if (fpr_plane_memory) return;
-  if (!pool->cur) return;
-  h->bump_bkt = pool->buckets ? pool->buckets : bump_nobuckets;
-  h->bump_slab = pool->cur;
+  bump_set(h, pool);
 #endif
 }
 static inline void bump_open(fpr_hart_t *h) {
@@ -711,7 +714,7 @@ static inline void bump_open(fpr_hart_t *h) {
   (void)h;
 #else
   if (fpr_plane_memory) return;
-  bump_open_pool(h, cur_pool(h));
+  bump_set(h, cur_pool(h));
 #endif
 }
 #ifdef FPR_BUMP_CHECK
