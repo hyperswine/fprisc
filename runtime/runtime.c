@@ -293,6 +293,16 @@ static uw layout_extent(V address,uw record) {
 }
 #endif
 
+#if !defined(FPR_LAYOUT_CHECK) && !defined(FPR_COMPACT_CELLS)
+/* Targets without layout metadata (the builtin profile, 32-bit runtimes) have
+ * no raw-field masks: every field may be a pointer, as before C6 stage 3b.
+ * The walkers and veq below test these names on every target. */
+static inline uw cell_raw(V v) { (void)v; return 0; }
+#define RAW_FIELD(mask, i) ((i) < 8 * sizeof(uw) && (((mask) >> (i)) & 1))
+#define RAW_LAZY uw raw_mask_ = 0; int raw_known_ = 0
+#define RAW_AT(cell, i) (raw_known_ ? RAW_FIELD(raw_mask_, i) : (raw_known_ = 1, raw_mask_ = cell_raw(cell), RAW_FIELD(raw_mask_, i)))
+#define CANDIDATE(x) (!ISINT(x) && (x))
+#endif
 #if defined(FPR_LAYOUT_CHECK) || defined(FPR_COMPACT_CELLS)
 /* Managed extents come from the object's class and constructor metadata.
  * A legacy check compares with the size preheader; a compact check compares
