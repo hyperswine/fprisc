@@ -1,0 +1,14 @@
+# readl: read I64 constructor fields in a loop (C6 stage 3c microbench, recreated 2026-11-17)
+profile base.
+T = Type (T I64 Int | N).
+build : unsafe Int -> List T -> List T.
+build k acc = if k == 0 then acc else build (k - 1) (T (I64.ofInt k) k :: acc).
+total : unsafe List T -> I64 -> Int -> (I64, Int).
+total xs s n = case xs of
+    T a k :: rest -> total rest (s + a) (n + k)
+  | _ :: rest -> total rest s n
+  | [] -> (s, n).
+rep : unsafe List T -> Int -> I64 -> I64.
+rep xs r acc = if r == 0 then acc else (case total xs (I64.ofInt 0) 0 of (s, n) -> rep xs (r - 1) (acc + s)).
+main : unsafe Unit -> Unit.
+main u = xs = build 100000 [N]; print (rep xs 20 (I64.ofInt 0)).

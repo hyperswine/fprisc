@@ -1,0 +1,8 @@
+MutMap = use "std/mutmap".
+main =
+  m = MutMap.withCapacity 1152921504606846976 (MutMap.ints Unit);
+  _ = print "reserved";
+  m2 = MutMap.insert 1 2 m;
+  (v, m3) = MutMap.get 1 m2;
+  _ = MutMap.free m3;
+  print v.
