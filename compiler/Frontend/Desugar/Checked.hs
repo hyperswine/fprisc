@@ -30,7 +30,7 @@ bridge :: CallbackMode -> (S.Set String -> Either String SourceSelection) -> D D
 bridge mode select=do
   state<-get
   selected<-either error pure (select (M.keysSet (dCons state)))
-  output<-either error pure (Native.compileSelectionAt (dFresh state) mode (Layouts (dCons state) (dShapes state)) selected)
+  output<-either error pure (Native.compileSelectionAt (dFresh state) mode (Layouts (dCons state) (dShapes state) (dI64 state)) selected)
   modify (\s->s {dFresh=Native.nativeFresh output,dJoins=S.toList (Native.nativeJoins output)++dJoins s})
   pure (Desugared output)
 

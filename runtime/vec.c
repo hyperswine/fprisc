@@ -33,6 +33,12 @@
 #include <limits.h>
 
 #define VL_B0 16 /* words in a fresh column's first allocation */
+/* The most words a column may hold: the largest power of two whose byte size
+ * (words * sizeof(uw)) cannot wrap.  Growth and capacity requests check
+ * against it BEFORE any size is multiplied, so an impossible capacity is a
+ * visible "capacity out of range" panic, never a wrapped (tiny) allocation
+ * written past its end (docs/2026-11-10-FAILURE-MODES.md: fail visibly). */
+#define COL_CAP_MAX (((uw)-1 / sizeof(uw)) / 2 + 1)
 
 /* The layout lives in vec_layout.h (single source, shared with the
  * runtime's deep copier and the host-side gfx walker; Codegen.hs
@@ -59,6 +65,7 @@ static inline uw *vl_slot(col_t *c, uw i) { return &c->base[i]; }
 static inline int col_inline(const col_t *c) { return c->base == (uw *)(c + 1); }
 
 static void col_grow(col_t *c) {
+  if (c->cap > COL_CAP_MAX / 2) fpr_cpanic("Vec: capacity out of range");
   uw ncap = c->cap ? c->cap * 2 : (uw)VL_B0;
   if (col_inline(c)) {
     uw *n = (uw *)fpr_alloc_bulk(ncap * sizeof(uw));
@@ -205,6 +212,7 @@ static V h_range(V lov, V hiv) {
   fix_layout(x, lov); /* one raw Int column */
   col_t *c = x->cols[0];
   uw n = (uw)(hi - lo + 1);
+  if (n > COL_CAP_MAX) fpr_cpanic("Vec: capacity out of range");
   while (c->cap < n) col_grow(c);
   sw v = lo;
   uw *slot = c->base;
@@ -823,6 +831,7 @@ static V h_sortWith(V cmp, V vec) {
   vec_t *x = vchk(vec, "Vector.sortWith: not a Vector");
   uw n = x->len;
   if (n < 2) return (V)x;
+  if (n > (uw)-1 / (3 * sizeof(V))) fpr_cpanic("Vector.sortWith: length out of range");
   V *keys = (V *)fpr_alloc_raw((V)(3 * n * sizeof(V)));
   uw *idx = (uw *)(keys + n), *tmp = idx + n;
   for (uw i = 0; i < n; i++) keys[i] = row_at(x, i);
@@ -1184,6 +1193,7 @@ static void mm_clear(vec_t *x, uw slot) {
 
 /* fresh, empty columns of ncap slots (a power of two) */
 static void mm_cols(vec_t *x, uw ncap) {
+  if (ncap > COL_CAP_MAX) fpr_cpanic("MutMap: capacity out of range");
   for (uw k = 0; k < 3; k++) {
     col_t *c = col_new();
     if (ncap) {
@@ -1214,7 +1224,10 @@ static sw mm_find(vec_t *x, V k, uw h, uw *empty) {
 static uw mm_cap_for(uw n) {
   uw cap = MM_MIN;
   while (cap - cap / 4 < n) {
-    if (cap > ((uw)-1 >> 3)) fpr_cpanic("MutMap: capacity out of range");
+    /* checked before doubling against the bound on the DOUBLED value: the
+     * old `cap > (uw)-1 >> 3` let cap reach 2^61, whose column size
+     * 2^61 * 8 wraps to 0 (withCapacity 2^60 was OOM-killed, not refused) */
+    if (cap > COL_CAP_MAX / 2) fpr_cpanic("MutMap: capacity out of range");
     cap *= 2;
   }
   return cap;

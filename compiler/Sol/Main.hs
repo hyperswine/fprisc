@@ -588,7 +588,7 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll utops u
   -- inference: context-dependent record updates can fail only here.
   (cons, shapes) <- phase "layout" $ pure (collectCons tops, collectShapes (shapeSeed ptopsAll ++ libShapes ++ tops))
   -- The shared frontend stores UTF-8 bytes; the VM uses Chars.
-  prog <- phase "lower" $ pure (decodeProgStrings (fst (runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes [] []))))
+  prog <- phase "lower" $ pure (decodeProgStrings (fst (runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes [] [] M.empty))))
   noSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
   let specialized = if noSpec then prog else specializeFunctions "sol" halArities M.empty prog
   bprog <- phase "bytecode" $ pure (compileProg halArities specialized)

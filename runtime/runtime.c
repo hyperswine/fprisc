@@ -300,6 +300,37 @@ static uw layout_extent(V address,uw record) {
  * the program rather than make an unexercised rule pass vacuously. */
 #define LAYOUT_ROUND(n) ((((n) + 15) & ~(uw)15))
 static uw layout_arity(uw tid, uw var) { return fpr_layout_fields(tid,var); }
+/* C6 stage 3b: the raw-field mask of a constructor cell (bit i: field i is a
+ * raw float word, never a pointer, so a walker copies or compares it and does
+ * not follow it). Only user types (tid >= 0x20000000) have masks; an image
+ * with none pays one load. Fields past the 64th are never raw. */
+#if defined(FPR_POSIX) && UINTPTR_MAX > 0xffffffffu
+static __thread uw raw_cache_key, raw_cache_mask;
+#endif
+static inline uw cell_raw(V v) {
+  uw tid = TID(v);
+  if (__builtin_expect(!__atomic_load_n(&fpr_layout_any_raw, __ATOMIC_RELAXED), 1) || tid < 0x20000000u) return 0;
+  uw var = ((hdr_t *)v)->var, bit = FPR_LAYOUT_RAW_FILTER_BIT(tid, var);
+  if (!((__atomic_load_n(&fpr_layout_raw_filter[bit / (8 * sizeof(uw))], __ATOMIC_ACQUIRE) >> (bit % (8 * sizeof(uw)))) & 1)) return 0;
+#if defined(FPR_POSIX) && UINTPTR_MAX > 0xffffffffu
+  /* the last answer on this thread: a walk meets runs of one constructor
+   * (a list of points). Masks never change once any_raw is set. */
+  uw key = tid < 0x80000000u && var < (1u << 24) ? ((tid + 1) << 24) | var : 0;
+  if (key && key == raw_cache_key) return raw_cache_mask;
+  uw m = fpr_layout_raw_mask(tid, var, 0, 0);
+  if (key) { raw_cache_key = key; raw_cache_mask = m; }
+  return m;
+#else
+  return fpr_layout_raw_mask(tid, var, 0, 0);
+#endif
+}
+#define RAW_FIELD(mask, i) ((i) < 8 * sizeof(uw) && (((mask) >> (i)) & 1))
+/* The mask is looked up lazily, at the cell's first field that could be a
+ * pointer (not a tagged Int, not 0): a cell of Ints and nullary constructors
+ * never asks. Declare RAW_LAZY once per cell, then test RAW_AT(cell, i). */
+#define RAW_LAZY uw raw_mask_ = 0; int raw_known_ = 0
+#define RAW_AT(cell, i) (raw_known_ ? RAW_FIELD(raw_mask_, i) : (raw_known_ = 1, raw_mask_ = cell_raw(cell), RAW_FIELD(raw_mask_, i)))
+#define CANDIDATE(x) (!ISINT(x) && (x))
 /* Round the combined prefix and payload, exactly as fpr_alloc does. Actor
  * handles are not allocated cells; managed Device/Register values are fixed. */
 static uw layout_total(V v) {
@@ -322,6 +353,7 @@ static uw layout_total(V v) {
 }
 #ifdef FPR_LAYOUT_REPORT
 static void praw(const char *s); /* declared for real further down */
+static void pdec(uw u);
 /* one line per class, so a harness can tell "the rule held" from "no object of
  * that class was ever walked" -- the vacuity the first version of this check
  * could not see */
@@ -336,6 +368,17 @@ static void layout_report(V v) {
     case T_VEC: bit = 8; name = "vector"; break;
     case T_ACTOR: case T_DEVICE: case T_REGISTER: return;
     default: bit = 16; name = "constructor"; break;
+  }
+  if (bit == 16 && !(layout_seen & 32)) {
+    /* C6 stage 3a: the first constructor met with raw fields, so a harness
+     * can tell the masks reached the runtime */
+    uw raw = fpr_layout_raw_mask(TID(v), ((hdr_t *)v)->var, 0, 0);
+    if (raw) {
+      layout_seen |= 32;
+      praw("[layout] raw fields ");
+      pdec(raw);
+      praw("\n");
+    }
   }
   if (layout_seen & bit) return;
   layout_seen |= bit;
@@ -1077,7 +1120,8 @@ static void dc_release(V v) {
       uw total = PREHEADER(v);
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *f = (V *)((char *)v + 8);
-      for (uw i = 0; i < nf; i++) dc_release(f[i]);
+      RAW_LAZY;
+      for (uw i = 0; i < nf; i++) if (CANDIDATE(f[i]) && !RAW_AT(v, i)) dc_release(f[i]);
       return;
     }
   }
@@ -1324,7 +1368,8 @@ static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       uw n = total;
       V *f = (V *)((char *)v + 8);
-      for (uw i = 0; i < nf; i++) n += dc_size_in(f[i], z, immutable);
+      RAW_LAZY;
+      for (uw i = 0; i < nf; i++) if (CANDIDATE(f[i]) && !RAW_AT(v, i)) n += dc_size_in(f[i], z, immutable);
       return n;
     }
   }
@@ -1398,9 +1443,10 @@ static int dc_budget(V v, uw *left, unsigned depth) {
       if (!budget_take(left, total)) return 0;
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *fields = (V *)((char *)v + 8);
+      RAW_LAZY;
       for (uw i = 0; i < nf; i++) {
         V child = fields[i];
-        if (child && !ISINT(child) && !dc_budget(child, left, depth + 1)) return 0;
+        if (child && !ISINT(child) && !RAW_AT(v, i) && !dc_budget(child, left, depth + 1)) return 0;
       }
       return 1;
     }
@@ -1568,11 +1614,13 @@ static V dc_dup(V v, dctx_t *c) {
       if (c->overflow) return 0;
       if (c->share) dc_share_put(c->share, v, n);
       V *f = (V *)((char *)n + 8);
+      RAW_LAZY;
       for (uw i = 0; i < nf; i++) {
         /* dc_cell already copied immediate fields, including correlation
-         * IDs in request tuples. Only references can require rewriting. */
+         * IDs in request tuples and raw float fields. Only references can
+         * require rewriting. */
         V child = f[i];
-        if (!child || ISINT(child)) continue;
+        if (!child || ISINT(child) || RAW_AT(v, i)) continue;
         f[i] = dc_dup(child, c);
         if (c->overflow) return 0;
       }
@@ -1872,9 +1920,10 @@ uw fpr_msg_inline_size(V v, uw pid) {
   uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
   V *f = (V *)((char *)v + 8);
   uw ok = total;
+  RAW_LAZY;
   for (uw i = 0; i < nf; i++) {
     V x = f[i];
-    if (ISINT(x) || !x) continue;
+    if (ISINT(x) || !x || RAW_AT(v, i)) continue;
     if (fpr_in_heap(x)) {
       if (TID(x) == T_ACTOR) continue;
       ok = 0;
@@ -2025,7 +2074,8 @@ static V kp_dup(V v) {
       V n = fpr_alloc(total - FPR_MANAGED_PREFIX);
       __builtin_memcpy((void *)n, (void *)v, total - FPR_MANAGED_PREFIX);
       V *f = (V *)((char *)n + 8);
-      for (uw i = 0; i < nf; i++) f[i] = kp_dup(f[i]);
+      RAW_LAZY;
+      for (uw i = 0; i < nf; i++) if (CANDIDATE(f[i]) && !RAW_AT(v, i)) f[i] = kp_dup(f[i]);
       return n;
     }
   }
@@ -2072,7 +2122,8 @@ static int kp_reaches(V v, uw *left) {
       default: {
         uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
         V *f = (V *)((char *)v + 8);
-        for (uw i = 0; i < nf; i++) if (kp_reaches(f[i], left)) return 1;
+        RAW_LAZY;
+        for (uw i = 0; i < nf; i++) if (CANDIDATE(f[i]) && !RAW_AT(v, i) && kp_reaches(f[i], left)) return 1;
         return 0;
       }
     }
@@ -2132,8 +2183,9 @@ static int has_vec(V v) {
       uw total = PREHEADER(v);
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *f = (V *)((char *)v + 8);
+      RAW_LAZY;
       for (uw i = 0; i < nf; i++)
-        if (has_vec(f[i])) return 1;
+        if (CANDIDATE(f[i]) && !RAW_AT(v, i) && has_vec(f[i])) return 1;
       return 0;
     }
   }
@@ -2170,7 +2222,8 @@ static void vec_release_in(V v) {
       uw total = PREHEADER(v);
       uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
       V *f = (V *)((char *)v + 8);
-      for (uw i = 0; i < nf; i++) vec_release_in(f[i]);
+      RAW_LAZY;
+      for (uw i = 0; i < nf; i++) if (CANDIDATE(f[i]) && !RAW_AT(v, i)) vec_release_in(f[i]);
       return;
     }
   }
@@ -4202,60 +4255,90 @@ V fpr_apply3(V f, V a, V b, V c) {
   return r;
 }
 static inline V apply2(V f, V a, V b) { return fpr_apply2(f, a, b); }
+/* A comparator called n log n times is resolved ONCE: when it is a function
+ * value that takes exactly two more arguments and holds at most two, its
+ * code pointer and captured arguments are kept and every comparison is a
+ * direct call (std/mutmap's `byKey cmp` holds one).  Anything else goes
+ * through fpr_apply2 each time.  The callee's entry tick charges its fuel
+ * either way, exactly as callf's call does. */
+typedef struct { V f; uw fn, held; V c0, c1; } call2_t;
+static inline void call2_init(call2_t *c, V f) {
+  c->f = f; c->fn = 0; c->held = 3; c->c0 = c->c1 = 0;
+  if (ISINT(f) || TID(f) != T_PAP) return;
+  pap_t *p = (pap_t *)f;
+  if (p->nargs + 2 != p->arity || p->nargs > 2) return;
+  c->fn = p->fn; c->held = p->nargs;
+  if (p->nargs > 0) c->c0 = p->args[0];
+  if (p->nargs > 1) c->c1 = p->args[1];
+}
+/* `held` is a constant at every call (the merges below are instantiated per
+ * case), so the switch folds away and each comparison is one direct call */
+static inline __attribute__((always_inline)) V call2k(const call2_t *c, uw held, V a, V b) {
+  switch (held) {
+  case 0: return ((F2)c->fn)(a, b);
+  case 1: return ((F3)c->fn)(c->c0, a, b);
+  case 2: return ((F4)c->fn)(c->c0, c->c1, a, b);
+  default: return fpr_apply2(c->f, a, b);
+  }
+}
 /* cmp b a answers Less: b goes first.  The argument order is the FP-RISC
  * merge's (`cmp y x`, y from the right run): the comparator sees its
  * arguments in the same roles.  For a comparator that is a total preorder
  * the result is exactly the old merge's; one that is not may see fewer
  * questions (the in-order shortcut) and so may order differently. */
-static inline int sort_lt(V cmp, V b, V a) {
-  V r = apply2(cmp, b, a);
+static inline __attribute__((always_inline)) int sort_lt(const call2_t *cmp, uw held, V b, V a) {
+  V r = call2k(cmp, held, b, a);
   if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
   return ((hdr_t *)r)->var == 0;
 }
 /* merge runs src[lo..mid) and src[mid..hi) of indices into keys, to dst */
-static void sort_merge(V cmp, const V *keys, const uw *src, uw *dst, uw lo, uw mid, uw hi) {
+static inline __attribute__((always_inline)) void sort_merge_k(const call2_t *cmp0, uw held, const V *keys, const uw *src, uw *dst, uw lo, uw mid, uw hi) {
+  const call2_t c = *cmp0, *cmp = &c; /* a local copy: its fields stay in registers across the calls */
   uw i = lo, j = mid, k = lo;
-  if (mid > lo && mid < hi && !sort_lt(cmp, keys[src[mid]], keys[src[mid - 1]])) {
+  if (mid > lo && mid < hi && !sort_lt(cmp, held, keys[src[mid]], keys[src[mid - 1]])) {
     for (; k < hi; k++) dst[k] = src[k]; /* already in order: one comparison */
     return;
   }
-  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, keys[src[j]], keys[src[i]]) ? src[j++] : src[i++];
+  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, held, keys[src[j]], keys[src[i]]) ? src[j++] : src[i++];
   while (i < mid) dst[k++] = src[i++];
   while (j < hi) dst[k++] = src[j++];
 }
-/* merge runs src[lo..mid) and src[mid..hi) of element values directly, to dst */
-static void sort_merge_vals(V cmp, F2 fn2, const V *src, V *dst, uw lo, uw mid, uw hi) {
-  uw i = lo, j = mid, k = lo;
-  if (fn2) {
-    if (mid > lo && mid < hi) {
-      V r = fn2(src[mid], src[mid - 1]);
-      if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
-      if (((hdr_t *)r)->var != 0) {
-        for (; k < hi; k++) dst[k] = src[k];
-        return;
-      }
-    }
-    while (i < mid && j < hi) {
-      V r = fn2(src[j], src[i]);
-      if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
-      dst[k++] = (((hdr_t *)r)->var == 0) ? src[j++] : src[i++];
-    }
-  } else {
-    if (mid > lo && mid < hi && !sort_lt(cmp, src[mid], src[mid - 1])) {
-      for (; k < hi; k++) dst[k] = src[k];
-      return;
-    }
-    while (i < mid && j < hi) dst[k++] = sort_lt(cmp, src[j], src[i]) ? src[j++] : src[i++];
+static void sort_merge(const call2_t *cmp, const V *keys, const uw *src, uw *dst, uw lo, uw mid, uw hi) {
+  switch (cmp->held) {
+  case 0: sort_merge_k(cmp, 0, keys, src, dst, lo, mid, hi); break;
+  case 1: sort_merge_k(cmp, 1, keys, src, dst, lo, mid, hi); break;
+  case 2: sort_merge_k(cmp, 2, keys, src, dst, lo, mid, hi); break;
+  default: sort_merge_k(cmp, 3, keys, src, dst, lo, mid, hi); break;
   }
+}
+/* merge runs src[lo..mid) and src[mid..hi) of element values directly, to dst */
+static inline __attribute__((always_inline)) void sort_merge_vals_k(const call2_t *cmp0, uw held, const V *src, V *dst, uw lo, uw mid, uw hi) {
+  const call2_t c = *cmp0, *cmp = &c; /* a local copy: its fields stay in registers across the calls */
+  uw i = lo, j = mid, k = lo;
+  if (mid > lo && mid < hi && !sort_lt(cmp, held, src[mid], src[mid - 1])) {
+    for (; k < hi; k++) dst[k] = src[k]; /* already in order: one comparison */
+    return;
+  }
+  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, held, src[j], src[i]) ? src[j++] : src[i++];
   while (i < mid) dst[k++] = src[i++];
   while (j < hi) dst[k++] = src[j++];
+}
+static void sort_merge_vals(const call2_t *cmp, const V *src, V *dst, uw lo, uw mid, uw hi) {
+  switch (cmp->held) {
+  case 0: sort_merge_vals_k(cmp, 0, src, dst, lo, mid, hi); break;
+  case 1: sort_merge_vals_k(cmp, 1, src, dst, lo, mid, hi); break;
+  case 2: sort_merge_vals_k(cmp, 2, src, dst, lo, mid, hi); break;
+  default: sort_merge_vals_k(cmp, 3, src, dst, lo, mid, hi); break;
+  }
 }
 /* The stable order of keys[0..n) under cmp, as a permutation: answers the
  * buffer (idx or tmp, both n words) holding perm, keys[perm[0]] first.
  * Bottom-up: runs of width w merged into runs of 2w, ceil(log2 n) passes.
  * Shared by Vec.sortWith (vec.c), which moves every column by the same
  * permutation. */
-uw *fpr_sort_perm(V cmp, const V *keys, uw *idx, uw *tmp, uw n) {
+uw *fpr_sort_perm(V cmpv, const V *keys, uw *idx, uw *tmp, uw n) {
+  call2_t cmp0, *cmp = &cmp0;
+  call2_init(cmp, cmpv);
   for (uw i = 0; i < n; i++) idx[i] = i;
   uw *src = idx, *dst = tmp;
   for (uw w = 1; w < n; w *= 2) {
@@ -4278,16 +4361,13 @@ static V g_sortListWith(V cmp, V list) {
   V *src = buf, *dst = buf + n;
   uw i = 0;
   for (c = list; is_cons(c); c = ((V *)((char *)c + 8))[1]) src[i++] = ((V *)((char *)c + 8))[0];
-  F2 fn2 = (F2)0;
-  if (!ISINT(cmp) && TID(cmp) == T_PAP) {
-    pap_t *p = (pap_t *)cmp;
-    if (p->nargs == 0 && p->arity == 2) fn2 = (F2)p->fn;
-  }
+  call2_t c2;
+  call2_init(&c2, cmp);
   for (uw w = 1; w < n; w *= 2) {
     for (uw lo = 0; lo < n; lo += 2 * w) {
       uw mid = lo + w < n ? lo + w : n;
       uw hi = lo + 2 * w < n ? lo + 2 * w : n;
-      sort_merge_vals(cmp, fn2, src, dst, lo, mid, hi);
+      sort_merge_vals(&c2, src, dst, lo, mid, hi);
     }
     V *t = src; src = dst; dst = t;
   }
@@ -4632,7 +4712,20 @@ static int veq(V a0, V b0) {
       cap = ncap;
     }
     V *fa = (V *)((char *)a + 8), *fb = (V *)((char *)b + 8);
+#ifndef FPR_BUILTIN_RAW
+    uw f32 = 0, i64m = 0, raw = cell_raw(a) ? fpr_layout_raw_mask(TID(a), ((hdr_t *)a)->var, &f32, &i64m) : 0;
+#endif
     for (uw i = nf; i-- > 0;) { /* last first, so field 0 pops first */
+#ifndef FPR_BUILTIN_RAW
+      if (RAW_FIELD(raw, i)) { /* a float field: IEEE equality, as the builtin profile's 'd'/'f' kinds */
+        int same;
+        if (RAW_FIELD(i64m, i)) same = fa[i] == fb[i]; /* an I64 field (C6 stage 3c): its bits */
+        else if (RAW_FIELD(f32, i)) { union { uint32_t u; float f; } x = {(uint32_t)fa[i]}, y = {(uint32_t)fb[i]}; same = x.f == y.f; }
+        else { union { V u; double d; } x = {fa[i]}, y = {fb[i]}; same = x.d == y.d; }
+        if (!same) { eq = 0; goto done; }
+        continue;
+      }
+#endif
 #ifdef FPR_BUILTIN_RAW
       char k = fpr_builtin_field_kind(a, i);
       if (k != fpr_builtin_field_kind(b, i)) { eq = 0; goto done; }
@@ -4724,8 +4817,25 @@ static void rdec64(int64_t n) {
 }
 static void render(V v);
 static uw dtoa(char *,double,int);
+/* C6 stage 3b: a raw field of a user constructor, by its mask: 'd' (F64),
+ * 'f' (F32), 'w' (I64, stage 3c) or 0 (a word to render by its tag) */
+static char raw_field_kind(V obj,uw i) {
+  if (ISINT(obj) || !cell_raw(obj)) return 0;
+  uw f32, i64m, raw = fpr_layout_raw_mask(TID(obj), ((hdr_t *)obj)->var, &f32, &i64m);
+  return RAW_FIELD(raw, i) ? (RAW_FIELD(i64m, i) ? 'w' : RAW_FIELD(f32, i) ? 'f' : 'd') : 0;
+}
 static void renderField(V obj,uw i) {
   V v=((V *)(obj+8))[i];
+#ifndef FPR_BUILTIN_RAW
+  char rk=raw_field_kind(obj,i);
+  if(rk=='w') { rdec64((int64_t)v); return; } /* an I64 field: a signed decimal, as a boxed I64 prints */
+  if(rk) {
+    union { V u; double d; } d={v}; union { uint32_t u; float f; } f={(uint32_t)v};
+    char b[40]; uw n=dtoa(b,rk=='d'?d.d:(double)f.f,rk=='d'?15:7);
+    render_bytes(b, n);
+    return;
+  }
+#endif
 #ifdef FPR_BUILTIN_RAW
   char k=fpr_in_heap(obj)?fpr_builtin_field_kind(obj,i):'t';
   if(k=='w'||k=='a') { rdec((sw)v); return; }
@@ -4758,6 +4868,11 @@ static void render(V v);
 static void renderArg(V obj, int i) {
   V f = ((V *)((char *)obj + 8))[i];
   int paren = 0;
+#ifndef FPR_BUILTIN_RAW
+  char rk = raw_field_kind(obj, i);
+  if (rk) paren = rk == 'd' || rk == 'w' ? (sw)f < 0 : (int32_t)(uint32_t)f < 0; /* the sign bit: -1.5 as (-1.5), an I64 -3 as (-3) */
+  else
+#endif
   if (ISINT(f)) paren = UNTAG(f) < 0;
   else {
     hdr_t *fh = (hdr_t *)f;
@@ -5672,6 +5787,12 @@ static V vu64(uint64_t x) {
   return (V)b;
 }
 static V vi64(int64_t x) { return vu64((uint64_t)x); }
+/* C6 stage 3c: a constructor field declared I64 holds the integer's bits,
+ * not a box (the raw-field masks tell every walker never to follow it). The
+ * compiler stores a field through toField and reads one through ofField,
+ * which boxes it again for the code that uses it. */
+static V i64_toField(V a) { return (V)u64(a); }
+static V i64_ofField(V bits) { return vu64((uint64_t)bits); }
 static unsigned cnt64(V k) { return (unsigned)((uint64_t)UNTAG(k) & 63u); }
 
 static V result_of(unsigned var, V payload) {
@@ -5910,6 +6031,8 @@ FPR_FN(fpr_g_I64_x2eclz, i64_clz, 1);
 FPR_FN(fpr_g_I64_x2ectz, i64_ctz, 1);
 FPR_FN(fpr_g_I64_x2epopcnt, i64_popcnt, 1);
 FPR_FN(fpr_g_I64_x2eofInt, i64_ofInt, 1);
+FPR_FN(fpr_g_I64_x2etoField, i64_toField, 1);
+FPR_FN(fpr_g_I64_x2eofField, i64_ofField, 1);
 FPR_FN(fpr_g_I64_x2etoInt, i64_toInt, 1);
 FPR_FN(fpr_g_I64_x2ehi, i64_hi, 1);
 FPR_FN(fpr_g_I64_x2elo, i64_lo, 1);

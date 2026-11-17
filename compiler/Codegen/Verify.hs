@@ -98,6 +98,10 @@ opSignature tyOf = \case
     unless (n >= negate (2 ^ (63 :: Int)) && n < 2 ^ (63 :: Int)) (Left ("bits " ++ show n ++ " is not a signed 64-bit word"))
     pure (Just TVal)
   OFloatBin _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
+  OI64Arith Div _ _ -> Left "I64 division is the C entry's (its zero and overflow rules), never OI64Arith"
+  OI64Arith _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
+  OI64Bit _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
+  OI64Cmp _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
   OFloatOfInt a -> expect a TInt >> pure (Just TVal)
   OFloatCmp _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
   OFloatTree t -> do

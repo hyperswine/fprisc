@@ -13,7 +13,7 @@ import qualified Codegen.LowerTyped as Typed
 import Codegen.Policy (Policy)
 import qualified Compiler.Native.Core as Native
 import Compiler.Native.TypedCensus (census, censusNote, s1Functions)
-import Compiler.DataLayout (Layouts (..), wideTup)
+import Compiler.DataLayout (Layouts (..), wideTup, i64StoreAt, i64Fields)
 import Core.Typed.Pipeline (closedInput, closedLayouts)
 import Core.Typed.Program (programTypes)
 import Core.Typed.Syntax (TypeContext (..), Function (..))
@@ -124,7 +124,7 @@ context ext native emitted = (functions, prog, known, layout)
     functions = M.map Native.checkedFunction definitions
     source = Native.nativeProgram native
     stubs = M.fromList
-      [ (name, if arity == 0 then ([], CMk tid var []) else (params, CMk tid var (map CVar params)))
+      [ (name, if arity == 0 then ([], CMk tid var []) else (params, CMk tid var (i64StoreAt (i64Fields layouts name) (map CVar params))))
       | (name, (tid, var, arity)) <- M.toList (constructorLayouts layouts), M.notMember name source,
         let params = ["x" ++ show i | i <- [1 .. arity]] ]
     prog = source `M.union` stubs
@@ -133,7 +133,7 @@ context ext native emitted = (functions, prog, known, layout)
     layouts = closedLayouts closed
     TypeContext _ constructors = programTypes (closedInput closed)
     -- erasure's constructor layout: the declared ones, then the wide tuples
-    layout = Typed.Layout (\n -> maybe (wideTup n) Just (M.lookup n (constructorLayouts layouts))) (M.keys constructors) (shapeLayouts layouts)
+    layout = Typed.Layout (\n -> maybe (wideTup n) Just (M.lookup n (constructorLayouts layouts))) (M.keys constructors) (shapeLayouts layouts) (i64Fields layouts)
 
 data Outcome = AgreedWith ([String], Core) Fn | Refused String | BothRefused | EraseRefused | Disagree String
 

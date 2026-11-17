@@ -59,6 +59,7 @@ data IEnv = IEnv
     iPatterns :: M.Map PatternSite PatternInfo,
     iBinderTargets :: M.Map BinderId Name,
     iConstructorSchemes :: M.Map Name Scheme,
+    iTypeConstructors :: M.Map Name [Type], -- each nominal type's constructor types, for the print guard
     iLinSigs :: [(Name, ([LShape], LShape))] -- INFERRED linearity shapes
       -- per user bind (zonked types -> LShape): the linearity checker
       -- consumes these for functions WITHOUT an explicit sig, closing
@@ -105,4 +106,4 @@ initialIEnv capture = IEnv
     iLocalLayoutSchemes=M.empty, iLocalLayoutBindings=M.empty, iLayoutContracts=M.empty,
     iOperatorScopes=IM.empty, iCarrierChoices=IM.empty,
     iInterfaces=[], iEvidenceBuilder=Evidence.emptyBuilder <$> capture,
-    iDeferredDeclarations=[], iLinSigs=[], iPatterns=M.empty, iBinderTargets=M.empty, iConstructorSchemes=M.empty }
+    iDeferredDeclarations=[], iLinSigs=[], iPatterns=M.empty, iBinderTargets=M.empty, iConstructorSchemes=M.empty, iTypeConstructors=M.empty }

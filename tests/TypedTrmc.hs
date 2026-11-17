@@ -73,7 +73,7 @@ main=do
   check "builder cannot escape as closure" (failed (verifyBuilderGraph
     (entry {functionBody=e (TFn list (TFn list (TFn list list))) (ClosureValue key [])}) codes))
   let fresh _=do n<-get;put (n+1);pure ("erase"++show (n::Int))
-      layout=Layout fresh (\n->case n of "Cons"->Just (2,1,2);"Nil"->Just (2,0,0);_->Nothing) M.empty (\_ _ _->pure ())
+      layout=Layout fresh (\n->case n of "Cons"->Just (2,1,2);"Nil"->Just (2,0,0);_->Nothing) M.empty (\_ _ _->pure ()) (const [])
       erased=right (evalState (eraseFunctionWith contracts types layout (codeAsFunction code)) 0)
       hasStore expr=case expr of
         C.CApp (C.CApp (C.CVar "$trmc.setTail") _) _->True

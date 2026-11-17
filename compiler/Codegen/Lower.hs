@@ -187,6 +187,7 @@ inlineFloat cx env h args =
       [CInt _, CInt _] | h == "f64frombits" -> True
       [CInt _] | h == "f32frombits" -> True
       [_, _] -> M.member h floatBinOps || M.member h floatCmpOps || M.member h float32BinOps || M.member h float32CmpOps
+        || M.member h i64ArithOps || M.member h i64BitOps || M.member h i64CmpOps
       _ -> False))
   where literal = case (h,args) of
           ("f64frombits",[CInt _,CInt _]) -> True
@@ -388,6 +389,33 @@ shiftOps = M.fromList [(shiftName o, o) | o <- [minBound .. maxBound]]
 
 workerPrefix :: String
 workerPrefix = "$worker.scalar."
+
+-- runtime/fpr.h: an I64 box is a T_BITS cell of variant 4 (fpr_num64_t)
+i64BoxTid, i64BoxVariant :: Int
+i64BoxTid = 9004
+i64BoxVariant = 4
+
+-- the I64 operators lowered on the raw words (C6 stage 3d); / and % stay C
+i64ArithOps :: M.Map String ArithOp
+i64ArithOps = M.fromList [("I64.+", Add), ("I64.-", Sub), ("I64.*", Mul)]
+
+i64BitOps :: M.Map String BitOp
+i64BitOps = M.fromList [("I64.and", BAnd), ("I64.or", BOr), ("I64.xor", BXor)]
+
+i64CmpOps :: M.Map String CmpOp
+i64CmpOps = M.fromList [("I64.<", Lt), ("I64.>", Gt), ("I64.<=", Le), ("I64.>=", Ge), ("I64.==", Eq), ("I64.!=", Ne)]
+
+-- an I64 box's bits (fpr_num64_t: header, width, then the value at 16)
+i64Bits :: VId -> L VId
+i64Bits box = do
+  addr <- emit TAddr (OAddress box)
+  emit TVal (OLoad TVal addr 16)
+
+-- a fresh I64 box around raw bits, inline (the constructor path's bump)
+i64Box :: VId -> L VId
+i64Box bits = do
+  width <- emit TVal (OBits 64)
+  emit TVal (OMake i64BoxTid i64BoxVariant [width, bits])
 
 scalarPrefix :: String
 scalarPrefix = "$scalar."
@@ -887,6 +915,45 @@ lowerVal cx env = \case
           x <- lowerVal cx env a >>= asVal
           y <- lowerVal cx env b >>= asVal
           v <- emit TVal (OFloatBin o x y)
+          pure (v, TVal)
+      -- C6 stage 3c: an I64 constructor field's bits. Reading one boxes them
+      -- as the cell the runtime's vu64 builds (fpr_num64_t: T_BITS variant 4,
+      -- width 64, the bits), but inline: the constructor path's bump, not a
+      -- call into I64.ofField and fpr_alloc. Storing one loads the bits out of
+      -- the box (u64), not a call into I64.toField.
+      | isPrim cx env h, h == "I64.ofField", policyWidth (cxPolicy cx) == W64, [a] <- args -> do
+          bits <- lowerVal cx env a >>= asVal
+          width <- emit TVal (OBits 64)
+          v <- emit TVal (OMake i64BoxTid i64BoxVariant [width, bits])
+          pure (v, TVal)
+      -- I64 operators on the raw words (C6 stage 3d): each operand's bits
+      -- come out of its box (a load; Simplify.foldConversions forwards the
+      -- bits of a box made in the same function, so a field read or the
+      -- previous operation builds nothing), one wrapping instruction, and the
+      -- answer is boxed again the same inline way (comparisons answer a
+      -- predicate).  Division and remainder keep their C entries, with their
+      -- zero-divisor and INT64_MIN / -1 rules.
+      | isPrim cx env h, policyWidth (cxPolicy cx) == W64, Just o <- M.lookup h i64ArithOps, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal >>= i64Bits
+          y <- lowerVal cx env b >>= asVal >>= i64Bits
+          r <- emit TVal (OI64Arith o x y)
+          v <- i64Box r
+          pure (v, TVal)
+      | isPrim cx env h, policyWidth (cxPolicy cx) == W64, Just o <- M.lookup h i64BitOps, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal >>= i64Bits
+          y <- lowerVal cx env b >>= asVal >>= i64Bits
+          r <- emit TVal (OI64Bit o x y)
+          v <- i64Box r
+          pure (v, TVal)
+      | isPrim cx env h, policyWidth (cxPolicy cx) == W64, Just o <- M.lookup h i64CmpOps, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal >>= i64Bits
+          y <- lowerVal cx env b >>= asVal >>= i64Bits
+          p <- emit TPred (OI64Cmp o x y)
+          pure (p, TPred)
+      | isPrim cx env h, h == "I64.toField", policyWidth (cxPolicy cx) == W64, [a] <- args -> do
+          box <- lowerVal cx env a >>= asVal
+          addr <- emit TAddr (OAddress box)
+          v <- emit TVal (OLoad TVal addr 16)
           pure (v, TVal)
       -- an Int as the nearest F64: one conversion instruction (runtime.c F64.ofInt casts the same way)
       | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,

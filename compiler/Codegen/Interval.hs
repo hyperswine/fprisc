@@ -16,7 +16,7 @@ module Codegen.Interval (discharge) where
 
 import Codegen.IR
 import Codegen.ControlFlow
-import Data.List (foldl')
+import Data.List (foldl', isPrefixOf)
 import Data.Maybe (catMaybes)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -113,10 +113,11 @@ discharge width fn
     -- Direct producer bounds: constants, string byte lengths (>= 0), byte reads
     -- (0..255), and bitwise AND with a non-negative constant mask (in 0..mask).
     producerBounds :: M.Map VId (Integer, Integer)
-    producerBounds = M.fromListWith (\(l1, u1) (l2, u2) -> (max l1 l2, min u1 u2)) $ concat
+    producerBounds = M.fromListWith (\(l1, u1) (l2, u2) -> (max l1 l2, min u1 u2)) $ [(capNode, (capValue, capValue)) | capped] ++ concat
       [ case op of
           OConstInt n -> [(resolve v, (n, n))]
           OStrLen _ -> [(resolve v, (0, hi))]
+          OVectorView part _ | capped, lengthPart part -> [(resolve v, (0, capValue))]
           OLoadByte _ _ -> [(resolve v, (0, 255))]
           OCharAt _ _ -> [(resolve v, (0, 255))]
           OBit BAnd a b
@@ -130,7 +131,29 @@ discharge width fn
     instrFacts = \case
       Instr (Just (v, TInt)) (OArith o x y) -> stepFacts o v x y
       Instr (Just (v, TInt)) (OArithU o x y) -> stepFacts o v x y
+      Instr (Just (v, TInt)) (OVectorView part _) | capped, lengthPart part -> [(resolve v, capNode, 0)]
+      Instr _ (OCall c (a : _))
+        | capped, Foreign _ <- calleeKind c, vectorEntry (calleeName c), Just (OTag x) <- M.lookup a rawDefs ->
+            [(resolve x, capNode, -1), (capNode, resolve x, capValue)]
       _ -> []
+    -- No vector holds more than 2^57 elements on a 64-bit target: no
+    -- 64-bit target maps more than 2^57 bytes of virtual addresses, and
+    -- every element takes at least one byte of its column (runtime/vec.c
+    -- keeps each in a word slot). A column only grows by allocating its
+    -- whole new size first (col_grow, h_range, col_copy, mm_cols), and an
+    -- allocation that large fails visibly ("allocation size overflow" or
+    -- fpr_exhausted) before any length is stored, so this adds no trap and
+    -- no runtime cap. So a flat view's length is at most 2^57,
+    -- and a vector C entry that returns was given an index in [0, 2^57):
+    -- h_get, h_peek_get, h_at, h_set and h_put trap otherwise. Both facts
+    -- relate to one constant node (capNode, exactly 2^57), so a join of a
+    -- view's fast path and the C slow path keeps the index's upper bound
+    -- and `i + 1` after either is proven not to overflow (C6 stage 2).
+    capped = width == W64
+    capValue = 2 ^ (57 :: Int) :: Integer
+    capNode = VId (1 + maximum (0 : [n | b <- fnBlocks fn, (VId n, _) <- bParams b] ++ [n | b <- fnBlocks fn, Instr (Just (VId n, _)) _ <- bInstrs b]))
+    lengthPart part = part `elem` [ViewLength, ViewIntLength, ViewFloatLength]
+    vectorEntry n = any (`isPrefixOf` n) ["$vec.get", "$vec.at", "$vec.set", "$vec.put"] || n `elem` ["Vec.get", "Vec.at", "Vec.set", "Vec.put"]
     stepFacts o v x y =
       let rv = resolve v; rx = resolve x; ry = resolve y
        in case o of

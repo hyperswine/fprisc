@@ -660,6 +660,12 @@ selectInstr cfg immediates (Instr d op) = case op of
     Div -> emitI (rrr A.Divide r (vreg a) (vreg b)))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
   OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> A.And; BOr -> A.Or; BXor -> A.Xor) r (vreg a) (vreg b)))
+  -- I64 on the raw words: the machine's own wrapping instruction
+  OI64Arith o a b -> def (\r -> emitI (rrr (case o of Add -> A.Add; Sub -> A.Subtract; _ -> A.Multiply) r (vreg a) (vreg b)))
+  OI64Bit o a b -> def (\r -> emitI (rrr (case o of BAnd -> A.And; BOr -> A.Or; BXor -> A.Xor) r (vreg a) (vreg b)))
+  OI64Cmp o a b -> def $ \r -> do
+    emitI (cmp (vreg a) (vreg b))
+    emitI (cset (cond o) r)
   -- F64 on the bits: d16/d17 live only inside the expansion (no float
   -- register is allocated; AAPCS lets a call clobber them anyway)
   OFloatBin o a b -> def (\r -> emitI (rrr (A.FloatBinary O.WordBits O.Float64 o) r (vreg a) (vreg b)))

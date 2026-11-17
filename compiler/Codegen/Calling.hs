@@ -162,8 +162,10 @@ checkTransfers abi owner=go []
             (length (siDefs i)==length answered && and (zipWith fixed answered (siDefs i)))
           let definitions=[v | OV v _<-siDefs i]
           require "duplicate product result definition" (length definitions==length (nub definitions))
-          require "caller clobber set mismatch" (sort (siClobbers i)==sort (filter (`notElem` answered) (callerClobbers abi)))
-          require "call event mismatch" (case siUses i of OCode sym:_->siCalls i==[callEvent sym convention];_->False)
+          -- a runtime call through a register-keeping wrapper (x64 keepingWrappers) clobbers nothing
+          let keeping=convention==RuntimeCall && case siUses i of OCode sym:_->siCalls i==[Call sym PreservingRuntime];_->False
+          require "caller clobber set mismatch" (if keeping then null (siClobbers i) else sort (siClobbers i)==sort (filter (`notElem` answered) (callerClobbers abi)))
+          require "call event mismatch" (keeping || case siUses i of OCode sym:_->siCalls i==[callEvent sym convention];_->False)
           require "tail/return contract mismatch" ((result==TailTransfer)==(siOpcode i==O.Common O.TailJump) && siControl i==(if result `elem` [TailTransfer,NeverReturns] then Return else Next))
           require "staged argument cells mismatch or crossed a call/control boundary" (sort pending==sort cells)
           pure []
