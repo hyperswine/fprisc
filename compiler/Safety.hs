@@ -166,6 +166,7 @@ approvedLibraries =
     "std/job.fpr",
     "std/journal.fpr",
     "std/json.fpr",
+    "std/keyedlist.fpr",
     "std/kvlog.fpr",
     "std/lens.fpr",
     "std/list.fpr",

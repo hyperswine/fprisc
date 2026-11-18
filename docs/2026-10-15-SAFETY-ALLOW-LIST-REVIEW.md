@@ -30,6 +30,7 @@ three kinds, all of which the modules already on the list contain:
 | Pure bounded arithmetic (2026-10-17) | pagination | no recursion or unsafe helpers; positive-size/nonnegative-count contracts and checked scalar work/allocation declarations |
 | Measured test reporting (2026-10-31) | test | no unsafe helpers; `report` consumes its input list with `measure checks`; comparisons, checked counters, string interpolation and the existing `print` primitive implement the assertions and output |
 | Unified browser & client UI facade (2026-11-01) | browser | no unsafe helpers; re-exports measured `browsercalc`, `clientcalc`, `browsermedia`, `javascript`, `browserconsole`, `browserstorage`, `browserformfill`, `browserfeedback`, `browserautocomplete`, `livemetrics`, `livenotice`, and `money` |
+| Compiler-generated table (2026-11-18) | keyedlist | no unsafe helpers; the table a keyed-list fold is rewritten onto (`compiler/Frontend/KeyedListFold.hs`): tuple plumbing over std/mutmap's operations and primitives, and one recursion, `emit`, with `measure ord`; `fpr --stdcheck` passes |
 | Actor loops that run until stopped | readiness (`begin`, `waker`, `waking`, `loop`), watch (`watch`, a poll every 300 ms) | servers by design, as `std/poller` and `std/tcp` are |
 
 Eighteen modules have no `unsafe` function at all (appearance,
@@ -93,6 +94,10 @@ programs; `tests/check_trust.py`; the suites and the apps' own checks
 ## Added 17 November 2026
 
 - `std/game.fpr`: no unsafe helpers. Every recursion carries a measure, the test runner's task chain included (a fuel count that fails loudly when it runs out); `fpr --stdcheck` passes.
+
+## Added 18 November 2026
+
+- `std/keyedlist.fpr`: no unsafe helpers. The compiler puts it into programs it rewrites (keyed-list folds, [2026-11-18-KEYED-LIST-FOLDS.md](2026-11-18-KEYED-LIST-FOLDS.md)), so it must never be the reason a safe program is refused. Its one recursion, `emit`, carries `measure ord`, and `fpr --stdcheck` passes. It calls std/mutmap, which is still a known gap of the trust check. Admitting keyedlist trusts only keyedlist's own code; mutmap has no `unsafe` functions, so no taint passes through it.
 
 ## Open
 
