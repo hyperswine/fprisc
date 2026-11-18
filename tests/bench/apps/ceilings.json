@@ -8,6 +8,7 @@
   "records": 200,
   "treemap": 115,
   "treemap.fpr-mutmap": 180,
-  "sim": 16
+  "sim": 16,
+  "sim.fpr-vector": 16
  }
 }

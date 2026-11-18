@@ -1,7 +1,8 @@
 # run.py --build passes selected workload names and its compiler environment.
 B = use "../../../sol/lib/build".
 variants name = if or (name == "wordfreq") (name == "treemap") then
-  [("fpr",name),("fpr-mutmap","{name}_mutmap")] else [("fpr",name)].
+  [("fpr",name),("fpr-mutmap","{name}_mutmap")] else if name == "sim" then
+  [("fpr",name),("fpr-vector","sim_vector")] else [("fpr",name)].
 compile compiler root name (label, source) =
   target = "{root}/bin-fpr/{name}.{label}";
   _ = B.command [compiler,"build","-o",target,"{root}/{source}.fpr"];

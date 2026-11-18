@@ -69,24 +69,37 @@ From fprisc:
 For the recommended RV32 configuration:
 
 ```bash
-python3 tools/run_tangnano20k_examples.py --target qemu
-python3 tools/run_tangnano20k_examples.py --program examples/wc.fpr \
-  --root /path/to/files --arg=notes.txt --arg='two words.txt'
-FPR_PRESET=fprisc-48 sol machine/tangnano20k/build.sol examples/wc.fpr build/tangnano20k-wc
-python3 tools/run_tangnano20k_base.py build/tangnano20k-wc/base.bin \
-  --freq-mhz 48 --root /path/to/files --arg=notes.txt --arg='two words.txt'
+./fpr sol machine/tangnano20k/examples.sol --target qemu
+./fpr sol machine/tangnano20k/examples.sol --program examples/wc.fpr \
+  --root /path/to/files --arg=notes.txt '--arg=two words.txt'
+./fpr sol machine/tangnano20k/examples.sol --target board --preset arty-s7-81 \
+  --fpga-manifest ../simple-risc/output/artys7/pipeline-81/build-manifest.json
 ```
 
-The uploader requires the matching 48 MHz FPGA image already loaded.
-The unified runner's `--program` mode instead handles compilation and execution;
-with `--target board --fpga-manifest PATH` it also loads the verified FPGA image.
-It accepts repeated `--input` lines, explicit `--env NAME=VALUE` entries and a
-positive `--timeout`. Its default target is QEMU.
+`machine/tangnano20k/examples.sol` (2026-11-18) is the Sol port of the retired
+`run_tangnano20k_examples.py`, `run_tangnano20k_base.py` and
+`check_tangnano20k_dtree.py`. It builds the compiler (`--skip-compiler-build`
+when it is current), the SoftFloat archive if missing, and
+`machine/tangnano20k/board-host.c`, a native helper for what Sol cannot do: the
+serial port, the boot ROM's `I`/`U`/`C`/`G` upload and the guest's UART virtual
+device (for the board or a `qemu-system-riscv32` child), plus the classifier's
+libm reference. `--target board --fpga-manifest PATH` checks the preset build's
+manifest and artifact hashes, loads its bitstream into FPGA SRAM and checks the
+ROM identity (ISA, clocks, build id). Presets: `fprisc-48` (default), `fprisc-72`,
+`fprisc-81`, `fprisc-84` on the Tang Nano 20K and `arty-s7-81` on the Arty S7-50
+with DDR3 (simple-risc `boards/artys7/pipeline`; its FTDI bridge drops the first
+second after the port opens, so that preset waits `--settle 1`). The suite writes
+`build/tangnano20k-examples/TARGET/results.json`.
+`--program` mode accepts repeated `--input` lines, explicit `--env NAME=VALUE`
+entries and a positive `--timeout` in seconds. Its default target is QEMU.
 `--arg=` preserves an empty argument and `--arg=-n` preserves a leading dash.
 At most 256 arguments and 65,536 encoded bytes (including lengths) are allowed.
 Arguments are UTF-8, exclude NUL, and are never interpreted by a shell.
 The host supplies an empty list if no `--arg` options are given. A new guest
 asking an older host for arguments receives an explicit unavailable error.
+To run one built image directly, build the helper
+(`cc -O2 -o board-host machine/tangnano20k/board-host.c -lm`) and use
+`board-host board IMAGE --port DEV --mhz N [--settle S] --root DIR ...`.
 
 The following commands retain the original RV64 configuration:
 
@@ -96,8 +109,8 @@ sol machine/tangnano20k/build-softfloat.sol
 sol machine/tangnano20k/build.sol tests/tangnano20k_base.fpr
 mkdir -p build/tangnano20k-files
 cp tests/fixtures/uart-device/* build/tangnano20k-files/
-python3 tools/run_tangnano20k_base.py build/tangnano20k-base/base.bin \
-  --root build/tangnano20k-files --freq-mhz 27 --env TEST_UART=connected
+board-host board build/tangnano20k-base/base.bin --port DEV \
+  --root build/tangnano20k-files --mhz 27 --env TEST_UART=connected
 ```
 
 `FPR_CPU_MHZ` selects the runtime's cycle conversion; it must match the image.
@@ -116,8 +129,8 @@ for large Base programs. From fprisc:
 FPR_XLEN=32 sol machine/tangnano20k/build-softfloat.sol
 FPR_XLEN=32 FPR_RVC=1 FPR_CPU_MHZ=72 sol machine/tangnano20k/build.sol \
   tests/tangnano20k_rv32_host.fpr "$PWD/build/tangnano20k-rv32-host"
-python3 tools/run_tangnano20k_base.py build/tangnano20k-rv32-host/base.bin \
-  --root build/tangnano20k-rv32-host --freq-mhz 72 \
+board-host board build/tangnano20k-rv32-host/base.bin --port DEV \
+  --root build/tangnano20k-rv32-host --mhz 72 \
   --env TEST_UART=connected --input 'hello RV32'
 ```
 
@@ -254,8 +267,8 @@ clang -O1 -fno-builtin -fsanitize=undefined,address \
 /tmp/board-softfloat
 FPR_SOFTFLOAT_ROOT=/path/to/softfloat sol machine/tangnano20k/build.sol \
   tests/tangnano20k_wasm.fpr "$PWD/build/tangnano20k-wasm"
-python3 tools/run_tangnano20k_base.py build/tangnano20k-wasm/base.bin \
-  --root tests/fixtures/uart-device --freq-mhz 27 --timeout 180
+board-host board build/tangnano20k-wasm/base.bin --port DEV \
+  --root tests/fixtures/uart-device --mhz 27 --timeout 180
 ```
 
 ## Physical verification, 2026-10-06

@@ -622,7 +622,7 @@ soaDualMapOn prog f cap el capShape body0 = do
   -- peel alias lets again AFTER inlining: a helper taking the whole
   -- element (`total r`) inlines to `let r' = el in ..`, and an unpeeled
   -- alias reads as the element escaping
-  let body1 = peelDeepC (inlineSat (8 :: Int) (peelDeepC body0))
+  let body1 = peelDeepC (takeApartProducts (peelDeepC (inlineSat (8 :: Int) (peelDeepC body0))))
   (tv, fs) <- strip cap el Nothing body1
   let n = length fs
   if n == 0 then Nothing else Just () -- any width: cursors and results are frame slots
@@ -728,6 +728,45 @@ substE x v = go
     go (CTagEq t v' e) = CTagEq t v' (go e)
     go (CProj k e) = CProj k (go e)
     go e = e
+
+-- A helper that answers a tuple, taken apart at once: `(x, vx) = bounce p v`
+-- is a let of the inlined `if .. then (a, b) else (c, d)`, a tag test on
+-- it and a projection per name.  The per-field duals need the field's own
+-- arithmetic, so the lets are substituted (as strip does for its spine)
+-- and projections and tag tests move into the branches until they meet the
+-- construction: `proj 0 (if c then (a, b) else (c', d))` is
+-- `if c then a else c'`, a tuple's tag test is True.  An `if` on a known
+-- Bool, or whose arms are equal, is its arm.  Only what the duals compute
+-- changes shape: each field keeps the operations, in order, that it had.
+-- (sim's `move`, docs/2026-11-18-RECORD-VECTORS-AND-SORT.md.)
+takeApartProducts :: Core -> Core
+takeApartProducts e0 = let e1 = go e0 in if e1 == e0 then e0 else takeApartProducts e1
+  where
+    true = CMk 1 1 []
+    false = CMk 1 0 []
+    go e = case e of
+      CLet x a b -> substE x (go a) (go b)
+      CProj k x -> proj k (go x)
+      CTagEq t v x -> tagEq t v (go x)
+      CIf c a b -> iff (go c) (go a) (go b)
+      CApp a b -> CApp (go a) (go b)
+      CMk t v fs -> CMk t v (map go fs)
+      _ -> e
+    proj k x = case x of
+      CMk _ _ fs | k < length fs -> fs !! k
+      CIf c a b -> CIf c (proj k a) (proj k b)
+      CErr _ -> x
+      _ -> CProj k x
+    tagEq t v x = case x of
+      CMk t' v' fs | t' /= 1 || not (null fs) -> if t == t' && v == v' then true else false
+      CIf c a b -> CIf c (tagEq t v a) (tagEq t v b)
+      CErr _ -> x
+      _ -> CTagEq t v x
+    iff c a b
+      | c == true = a
+      | c == false = b
+      | a == b = a
+      | otherwise = CIf c a b
 
 peelDeepC :: Core -> Core
 peelDeepC e = case peel e of

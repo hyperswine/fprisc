@@ -293,6 +293,16 @@ static uw layout_extent(V address,uw record) {
 }
 #endif
 
+#if !defined(FPR_LAYOUT_CHECK) && !defined(FPR_COMPACT_CELLS)
+/* Targets without layout metadata (the builtin profile, 32-bit runtimes) have
+ * no raw-field masks: every field may be a pointer, as before C6 stage 3b.
+ * The walkers and veq below test these names on every target. */
+static inline uw cell_raw(V v) { (void)v; return 0; }
+#define RAW_FIELD(mask, i) ((i) < 8 * sizeof(uw) && (((mask) >> (i)) & 1))
+#define RAW_LAZY uw raw_mask_ = 0; int raw_known_ = 0
+#define RAW_AT(cell, i) (raw_known_ ? RAW_FIELD(raw_mask_, i) : (raw_known_ = 1, raw_mask_ = cell_raw(cell), RAW_FIELD(raw_mask_, i)))
+#define CANDIDATE(x) (!ISINT(x) && (x))
+#endif
 #if defined(FPR_LAYOUT_CHECK) || defined(FPR_COMPACT_CELLS)
 /* Managed extents come from the object's class and constructor metadata.
  * A legacy check compares with the size preheader; a compact check compares
@@ -4569,6 +4579,10 @@ static inline __attribute__((always_inline)) int sort_lt(const call2_t *cmp, uw 
   if (ISINT(r)) fpr_trap("sortWith: the comparator did not answer an Ordering");
   return ((hdr_t *)r)->var == 0;
 }
+/* how many elements ahead of each run's cursor the merge prefetches */
+#ifndef SORT_AHEAD
+#define SORT_AHEAD 24 /* records, 1M three-key sort on an M4: none 0.206 s, 6 0.195, 12 0.187, 24 0.183, 48 0.185 */
+#endif
 /* merge runs src[lo..mid) and src[mid..hi) of indices into keys, to dst */
 static inline __attribute__((always_inline)) void sort_merge_k(const call2_t *cmp0, uw held, const V *keys, const uw *src, uw *dst, uw lo, uw mid, uw hi) {
   const call2_t c = *cmp0, *cmp = &c; /* a local copy: its fields stay in registers across the calls */
@@ -4577,7 +4591,11 @@ static inline __attribute__((always_inline)) void sort_merge_k(const call2_t *cm
     for (; k < hi; k++) dst[k] = src[k]; /* already in order: one comparison */
     return;
   }
-  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, held, keys[src[j]], keys[src[i]]) ? src[j++] : src[i++];
+  while (i < mid && j < hi) {
+    if (i + SORT_AHEAD < mid) __builtin_prefetch((const void *)keys[src[i + SORT_AHEAD]]);
+    if (j + SORT_AHEAD < hi) __builtin_prefetch((const void *)keys[src[j + SORT_AHEAD]]);
+    dst[k++] = sort_lt(cmp, held, keys[src[j]], keys[src[i]]) ? src[j++] : src[i++];
+  }
   while (i < mid) dst[k++] = src[i++];
   while (j < hi) dst[k++] = src[j++];
 }
@@ -4597,7 +4615,14 @@ static inline __attribute__((always_inline)) void sort_merge_vals_k(const call2_
     for (; k < hi; k++) dst[k] = src[k]; /* already in order: one comparison */
     return;
   }
-  while (i < mid && j < hi) dst[k++] = sort_lt(cmp, held, src[j], src[i]) ? src[j++] : src[i++];
+  while (i < mid && j < hi) {
+    /* the next elements of both runs are known: fetch their cells ahead
+     * (once the runs are sorted, consecutive elements lie anywhere in
+     * memory, and every comparison would wait on two cache misses) */
+    if (i + SORT_AHEAD < mid) __builtin_prefetch((const void *)src[i + SORT_AHEAD]);
+    if (j + SORT_AHEAD < hi) __builtin_prefetch((const void *)src[j + SORT_AHEAD]);
+    dst[k++] = sort_lt(cmp, held, src[j], src[i]) ? src[j++] : src[i++];
+  }
   while (i < mid) dst[k++] = src[i++];
   while (j < hi) dst[k++] = src[j++];
 }
