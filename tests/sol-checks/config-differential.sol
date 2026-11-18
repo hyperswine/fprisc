@@ -15,7 +15,7 @@ configs = [
   ("no_x64_ra", [("FPR_NO_X64_RA","1")]), ("no_x64_split", [("FPR_NO_X64_SPLIT","1")]),
   ("no_shallow", [("FPR_NO_SHALLOW_STACK","1")]),
   ("harts4", [("FPR_HARTS","4")]),
-  ("no_list_rewrites", [("FPR_NO_KEYED_LIST_FOLD","1"),("FPR_NO_SHARED_MAP","1"),("FPR_NO_SNOC_FOLD","1")])].
+  ("no_list_rewrites", [("FPR_NO_KEYED_LIST_FOLD","1"),("FPR_NO_SNOC_FOLD","1")]), ("shared_map", [("FPR_SHARED_MAP","1")])].
 # Programs that need arguments, files or environment from the old check_std harness.
 needsHarness = ["store","storewire","storeconc","durable","posix","apps"].
 subset = ["list","string","map","json","foundation","codec","ifelse","pagination","sort","keyedlistfold"].

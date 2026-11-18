@@ -41,7 +41,9 @@ data CodegenOptions = CodegenOptions
     cgReuse :: Bool, cgSpecialize :: Bool, cgReceiveTurns :: Bool, cgBumpAlloc :: Bool, cgCompactCells :: Bool,
     cgPersistentLoop :: Maybe String, cgLoopRegions :: Bool, cgCallRegions :: Bool, cgInline :: Bool, cgOwnedMapFold :: Bool,
     -- keyed-list folds, shared-suffix maps, snoc folds (Frontend/KeyedListFold.hs,
-    -- Frontend/ListRewrites.hs); on unless FPR_NO_KEYED_LIST_FOLD / FPR_NO_SHARED_MAP / FPR_NO_SNOC_FOLD=1
+    -- Frontend/ListRewrites.hs); on unless FPR_NO_KEYED_LIST_FOLD / FPR_NO_SNOC_FOLD=1;
+    -- shared maps only with FPR_SHARED_MAP=1 (slower than List.map's own lowering on
+    -- an owned list; docs/2026-11-18-KEYED-LIST-FOLDS.md)
     cgKeyedListFold :: Bool, cgSharedMap :: Bool, cgSnocFold :: Bool } deriving (Eq,Show)
 data DiagnosticOptions = DiagnosticOptions
   { diagTypedIr :: Maybe String, diagReceiveNotes :: Bool, diagApply :: Bool,
@@ -90,7 +92,7 @@ parseCompilerOptions env = do
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
           cgReceiveTurns=enabled "RECEIVE_TURNS", cgBumpAlloc=enabled "BUMP_ALLOC", cgCompactCells=env "FPR_COMPACT_CELLS" /= Just "0", cgLoopRegions=enabled "LOOP_REGIONS",
           cgPersistentLoop=if enabled "PERSISTENT_COPY_OUT" then Just (maybe "*" id (env "FPR_PERSISTENT_LOOP")) else Nothing, cgCallRegions=enabled "CALL_REGIONS", cgInline=enabled "INLINE", cgOwnedMapFold=enabled "OWNED_MAP_FOLD",
-          cgKeyedListFold=enabled "KEYED_LIST_FOLD", cgSharedMap=enabled "SHARED_MAP", cgSnocFold=enabled "SNOC_FOLD" }
+          cgKeyedListFold=enabled "KEYED_LIST_FOLD", cgSharedMap=yes "FPR_SHARED_MAP", cgSnocFold=enabled "SNOC_FOLD" }
       diagnostic=DiagnosticOptions
         { diagTypedIr=env "FPR_TYPED_IR", diagReceiveNotes=yes "FPR_RECEIVE_NOTES",
           diagApply=yes "FPRC_APPLY", diagPreconditions=yes "FPR_PRECOND_NOTES",

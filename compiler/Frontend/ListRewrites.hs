@@ -15,7 +15,9 @@
 -- element first and again on the ones it copies: comparisons (== != < <= > >=)
 -- of variables, field reads and literals, joined by and/or/not, or a root
 -- helper `g a b = a == b` (or !=).  The new element is evaluated exactly when
--- and in the order the map would.  FPR_NO_SHARED_MAP=1 turns it off.
+-- and in the order the map would.  Off unless FPR_SHARED_MAP=1: measured
+-- slower than the map it replaces when the list is owned (List.map's own
+-- lowering reuses the cells; mapWhere is two passes through closure calls).
 --
 -- Snoc folds.  A fold that appends to the end of its accumulator,
 --

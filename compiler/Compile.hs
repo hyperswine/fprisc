@@ -382,8 +382,8 @@ compileWithReport accepted report = do
       -- a list kept by key in a fold is kept in a table and listed once
       -- (Frontend/KeyedListFold.hs; FPR_NO_KEYED_LIST_FOLD=1), a map that
       -- changes few elements shares the rest, and a fold that appends to its
-      -- list builds it reversed (Frontend/ListRewrites.hs; FPR_NO_SHARED_MAP=1,
-      -- FPR_NO_SNOC_FOLD=1).  Same profiles as the owned map folds.
+      -- list builds it reversed (Frontend/ListRewrites.hs; FPR_SHARED_MAP=1 turns
+      -- the first on, FPR_NO_SNOC_FOLD=1 the second off).  Same profiles as the owned map folds.
       (rootTopsKeyed, nKeyed) = if rootRewrites && Options.cgKeyedListFold codegen then keyedListFolds rootTopsOwned else (rootTopsOwned, [])
       (rootTopsShared, nShared) = if rootRewrites && Options.cgSharedMap codegen then sharedMaps rootTopsKeyed else (rootTopsKeyed, [])
       (rootTopsLoaded, nSnoc) = if rootRewrites && Options.cgSnocFold codegen then snocFolds rootTopsShared else (rootTopsShared, [])
