@@ -1,0 +1,5 @@
+#!/bin/bash
+# p1work.sh BIN TAG PORT N [prefix...]: one pos1 session on a fresh copy of the 23460-line log
+B=$1; T=$2; P=$3; N=$4; shift 4; D=/workspace/out/apps/run/pos1-$T-$P-$$; mkdir -p $D; cp /workspace/out/apps/data/pos1-big.log $D/pos1.log
+source /workspace/out/env.sh; cd $D
+/workspace/out/apps/venv/bin/python /workspace/out/apps/pos1drive.py $D $P $N -- "$@" $B --port=$P --store=$D/pos1.log > drive.txt 2>&1; echo "rc=$?" >> drive.txt; echo $D

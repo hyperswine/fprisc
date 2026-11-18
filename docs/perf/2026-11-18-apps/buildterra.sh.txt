@@ -1,0 +1,6 @@
+#!/bin/bash
+# buildterra.sh TAG HOME FPR [checks] : terra bench driver build; "checks" = qos.toml optimize="checks-only" flags
+n=$1; H=$2; F=$3; M=${4:-full}; A=/workspace/out/apps; source /workspace/out/env.sh
+export FPR_HOME=$H FPR_PATH=$A/terra/overlay:$A/qos-main/programs:$A/qos-main XDG_CACHE_HOME=$A/cache-terra-$n-$M
+[ $M = checks ] && export FPR_NO_SPEC=1 FPR_NO_INLINE=1 FPR_NO_REUSE=1 FPR_NO_VEC_PEEK=1 FPR_NO_VEC_FUSE=1 FPR_NO_RECEIVE_TURNS=1
+rm -rf $XDG_CACHE_HOME; cd $A/terra/drive && python3 $A/tm.py $F build drive.fpr -o $A/terra/drive-$n-$M > $A/terra/build-$n-$M.log 2>&1

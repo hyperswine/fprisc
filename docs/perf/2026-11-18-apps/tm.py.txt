@@ -1,0 +1,4 @@
+import sys,subprocess,time,resource
+t=time.perf_counter(); r=subprocess.call(sys.argv[1:]); w=time.perf_counter()-t
+u=resource.getrusage(resource.RUSAGE_CHILDREN)
+sys.stderr.write(f"TM wall={w:.3f}s user={u.ru_utime:.3f}s sys={u.ru_stime:.3f}s maxrss={u.ru_maxrss/1024:.1f}MiB rc={r}\n"); sys.exit(r)

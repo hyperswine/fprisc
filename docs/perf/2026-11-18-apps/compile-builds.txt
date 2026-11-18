@@ -1,0 +1,12 @@
+terra full old: TM wall=226.866s user=213.471s sys=15.155s maxrss=13040.1MiB rc=-9
+terra checks old: TM wall=19.529s user=18.429s sys=0.843s maxrss=418.6MiB rc=0
+inventory old: TM wall=81.063s user=79.600s sys=2.112s maxrss=1893.2MiB rc=0
+pos1 old: TM wall=81.799s user=80.598s sys=1.711s maxrss=1804.1MiB rc=0
+terra full mid: TM wall=41.347s user=40.348s sys=1.253s maxrss=864.4MiB rc=0
+terra checks mid: TM wall=18.501s user=17.916s sys=0.668s maxrss=439.9MiB rc=0
+inventory mid: TM wall=82.288s user=80.291s sys=2.609s maxrss=1743.6MiB rc=0
+pos1 mid: TM wall=88.392s user=83.453s sys=5.682s maxrss=1669.8MiB rc=0
+terra full new: TM wall=42.498s user=41.488s sys=1.231s maxrss=862.4MiB rc=0
+terra checks new: TM wall=19.000s user=18.276s sys=0.820s maxrss=423.4MiB rc=0
+inventory new: TM wall=82.902s user=81.926s sys=1.641s maxrss=1713.6MiB rc=0
+pos1 new: TM wall=83.922s user=82.748s sys=1.688s maxrss=1640.6MiB rc=0

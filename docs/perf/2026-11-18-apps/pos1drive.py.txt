@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""pos1 workload driver (bench only; adapted from qos/qos/tests-host/pos1-check.py).
+usage: pos1drive.py OUTDIR PORT N -- server argv...
+boots the server on its --store, signs in, rings N checkouts (every 10th voided,
+every 50th a restock), reads revenue, rebuilds (folds the log again), quits."""
+import asyncio, json, os, re, socket, subprocess, sys, time
+sys.path.insert(0, "/workspace/qos/qos/tests-host")
+import websockets
+from http_ready import wait_http_ready
+out, port, N = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+argv = sys.argv[sys.argv.index("--") + 1:]
+URL = f"ws://127.0.0.1:{port}/ws"
+
+class View:
+    def __init__(s): s.s, s.d = [], []
+    def apply(s, raw):
+        r = json.loads(raw)
+        if "s" in r: s.s, s.d = r["s"], r["d"]
+        else:
+            for k, v in r["d"].items(): s.d[int(k)] = v
+    def html(s):
+        o = ""
+        for i, x in enumerate(s.s):
+            o += x
+            if i < len(s.d): o += "\x00" + s.d[i] + "\x00"
+        return o
+
+async def main():
+    log = open(f"{out}/server.log", "wb")
+    t0 = time.perf_counter()
+    p = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT)
+    wait_http_ready(p, port, timeout=600)
+    t_ready = time.perf_counter() - t0
+    v = View(); rtt = []
+    ws = await websockets.connect(URL, proxy=None, open_timeout=60, ping_interval=None, max_size=None)
+    v.apply(await asyncio.wait_for(ws.recv(), 600))
+    W = lambda *a: "=" + json.dumps(list(a), separators=(",", ":"))
+    timeouts = [0]
+    async def send(wire, wait=True):
+        a = time.perf_counter()
+        await ws.send(json.dumps({"msg": wire, "arg": ""}, separators=(",", ":")))
+        if not wait: return
+        while True:
+            try: raw = await asyncio.wait_for(ws.recv(), 600 if not wire.startswith('=["Restock') else 2)
+            except asyncio.TimeoutError: timeouts[0] += 1; break
+            r = json.loads(raw)
+            if "s" in r or "d" in r: v.apply(raw); break
+        rtt.append((wire[3:wire.index('"', 3)], time.perf_counter() - a))
+    def cs(cart): return W("ClientState", {"tab": ["Register"], "open": 0, "tender": "", "delta": 10, "cmd": "", "name": "", "pin": "", "cart": cart})
+    await send(W("Login", "ana", "1234"))
+    toasts = []
+    t1 = time.perf_counter()
+    for i in range(N):
+        await send(cs([["FW", 2], ["BR", 1]]), wait=False)
+        await send(W("Cash", "50"))
+        m = re.search(r'receipt #(\d+) for ([0-9.]+)', v.html())
+        if m: toasts.append(m.group(1) + ":" + m.group(2))
+        if i % 10 == 9 and m: await send(W("Void", int(m.group(1))))
+        if i % 50 == 49: await send(W("Restock", "FW", 200)); await send(W("Restock", "BR", 200))
+    t_tx = time.perf_counter() - t1
+    a = time.perf_counter(); await send(W("Command", "get revenue")); t_rev = time.perf_counter() - a
+    rev = re.findall(r'revenue [0-9.]+ over \d+ sales', v.html())
+    a = time.perf_counter(); await send(W("Rebuild")); t_reb = time.perf_counter() - a
+    reb = re.findall(r'stock (?:matches|differs)[^\x00<\n]*', v.html())
+    st = open(f"/proc/{p.pid}/stat").read().rsplit(")", 1)[1].split()
+    cpu = (int(st[11]) + int(st[12])) / os.sysconf("SC_CLK_TCK")
+    await ws.send(json.dumps({"msg": W("Quit"), "arg": ""}))
+    try: p.wait(600)
+    except subprocess.TimeoutExpired: p.kill()
+    t_all = time.perf_counter() - t0
+    log.close()
+    slog = open(f"{out}/server.log", errors="replace").read()
+    fold = re.search(r'\[pos1\] log [^:]*: (\d+) lines folded in (\d+) us, (\d+) products, (\d+) sales, revenue ([0-9.]+)', slog)
+    tx = sorted(x for m, x in rtt if m == "Cash")
+    res = {"ready_s": t_ready, "tx_s": t_tx, "rev_rtt_s": t_rev, "rebuild_rtt_s": t_reb, "total_s": t_all,
+           "server_cpu_s": cpu, "timeouts": timeouts[0], "rtt_med_ms": 1000 * tx[len(tx)//2], "rtt_p90_ms": 1000 * tx[int(len(tx)*0.9)],
+           "fold": fold.groups() if fold else None, "receipts": len(toasts), "first": toasts[:1], "last": toasts[-1:],
+           "revenue_console": rev[-1:], "rebuild": reb[-1:], "rc": p.returncode,
+           "store_lines": sum(1 for _ in open([x for x in argv if x.startswith("--store=")][0][8:]))}
+    json.dump(res, open(f"{out}/result.json", "w"), indent=1); print(json.dumps(res))
+asyncio.run(main())

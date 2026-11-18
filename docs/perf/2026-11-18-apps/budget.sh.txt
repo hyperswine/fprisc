@@ -1,0 +1,6 @@
+#!/bin/bash
+# budget.sh: compile-budget style pos1 compile (fpr compile --system=posix, +RTS -t) with each build, 18fce327 pos1 source
+A=/workspace/out/apps; source /workspace/out/env.sh
+for n in old mid new; do w=$(readlink -f $A/bin-$n/fpr); w=${w%/fpr}; W=$A/budget/$n; rm -rf $W; mkdir -p $W
+ ( cd $A/pos1src && XDG_CACHE_HOME=$W/cache FPR_HOME=$w GHCRTS= python3 $A/tm.py $w/fpr compile --system=posix pos1.fpr $W/pos1.s +RTS -t$W/pos1.rts --machine-readable -RTS ) > $W/log 2>&1
+ echo "$n $(grep -oE '\("(bytes allocated|max_bytes_used|max_mem_in_use_bytes|mutator_cpu_seconds|GC_cpu_seconds)", "[0-9.]+"\)' $W/pos1.rts | tr '\n' ' ') $(tail -n1 $W/log)"; done

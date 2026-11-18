@@ -1,0 +1,29 @@
+# BENCH DRIVER (outside the repo): pos1's own fold (`replayed`, i.e. boot and
+# rebuild) and `commit` (the one path a checkout/void/restock takes into the
+# model), batch, no sockets.  pos1 source = fprisc 18fce327 examples/pos1.fpr.
+profile base.
+P = use "../pos1src/pos1".
+Program = use "std/program".
+S = use "std/string".
+List = use "std/list".
+fold3 ls = 
+  m1 = P.replayed P.initModel ls;
+  m2 = P.replayed P.initModel ls;
+  m3 = P.replayed P.initModel ls;
+  (m1, m2.events + m3.events).
+ringOne m k =
+  at = 1800000000 + k;
+  m1 = P.commit m "sale {m.nsale + 1} ana {at} cash 2000 1760 160 FW=2=500 BR=1=600";
+  m2 = case k % 10 == 9 of True -> P.commit m1 "void {m1.nsale} ana {at}" | False -> m1;
+  m3 = case k % 50 == 49 of True -> P.commit (P.commit m2 "restock FW 200 ana {at}") "restock BR 200 ana {at}" | False -> m2;
+  { m3 | pend = Nil }.
+ring m n = List.fold (fn mm k -> ringOne mm k) m (List.range 0 n).
+main = case Program.args Unit of
+    path :: r ->
+      o = P.openLog path;
+      (m, extra) = fold3 o.lines;
+      _ = print "fold: {m.events} lines (x3: +{extra}), {P.pCount m.cat} products, {List.length m.sales} sales, revenue {P.money m.revenue}";
+      m2 = ring m 2000;
+      _ = print "ring: {m2.events} events, {List.length m2.sales} sales, revenue {P.money m2.revenue}, FW {P.stockOf m2.cat "FW"} BR {P.stockOf m2.cat "BR"}";
+      0
+  | Nil -> Program.fail 2 "usage: drive LOG".

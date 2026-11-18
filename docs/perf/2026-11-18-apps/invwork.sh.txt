@@ -1,0 +1,11 @@
+#!/bin/bash
+# invwork.sh BIN TAG WORK [prefix...]: one inventory batch run on a fresh copy of the data
+# WORK=member : boot-replay the 16001-line journal, add a member (200 sha256 rounds), append, exit
+# WORK=import : boot-replay the journal, import 3000 Firestore docs (dedup vs live items), append, exit
+B=$1; T=$2; W=$3; shift 3; D=/workspace/out/apps/run/inv-$W-$T-$$; mkdir -p $D; cp /workspace/out/apps/data/inv-big.log $D/inv.log; cd $D
+source /workspace/out/env.sh
+case $W in
+ member) "$@" $B --store=$D/inv.log --member=bench --password=benchpassword1 > out.txt 2>&1;;
+ import) "$@" $B --store=$D/inv.log --import=/workspace/out/apps/data/firestore.json > out.txt 2>&1;;
+esac
+echo "rc=$?" >> out.txt; echo $D

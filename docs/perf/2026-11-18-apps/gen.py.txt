@@ -1,0 +1,55 @@
+# workload generators (bench data only, outside every repo)
+import json, random
+R = random.Random(20261118)
+# --- inventory journal: 1 member, 5000 items, 10000 moves/edits, 1000 deletes
+locs = ["Office","Garage","Kitchen","Shed","Bedroom","Attic","Workshop","Laundry"]
+subs = ["Shelf","Drawer","Box A","Box B","Cupboard","Bin",""]
+tags = ["electronics","tools","usb","cables","kitchen","garden","paint","spare","camping","books"]
+out = [json.dumps({"op":"member","name":"demo","salt":"00"*32,"hash":"11"*32,"at":1700000000},separators=(",",":"))]
+items = {}
+t = 1700000000
+def item(i, it, by, at):
+    return json.dumps({"op":"item","id":i,"name":it["name"],"loc":it["loc"],"sub":it["sub"],"desc":it["desc"],"tags":it["tags"],"by":by,"at":at,"created":it["created"]},separators=(",",":"))
+for i in range(1, 5001):
+    t += R.randint(1, 600)
+    it = {"name": f"thing {i} {R.choice(tags)}", "loc": R.choice(locs), "sub": R.choice(subs), "desc": "a household item " * R.randint(0, 6), "tags": R.sample(tags, R.randint(0, 3)), "created": t}
+    items[i] = it; out.append(item(i, it, "demo", t))
+live = list(items)
+for k in range(10000):
+    t += R.randint(1, 600); i = R.choice(live); it = items[i]
+    it["loc"] = R.choice(locs); it["sub"] = R.choice(subs)
+    out.append(item(i, it, "demo", t))
+for k in range(1000):
+    t += R.randint(1, 600); i = live.pop(R.randrange(len(live)))
+    out.append(json.dumps({"op":"del","id":i,"by":"demo","at":t},separators=(",",":")))
+open("data/inv-big.log","w").write("\n".join(out) + "\n")
+# --- Firestore listing: 3000 docs, a third of them already in the journal (same name and place)
+docs = []
+for k in range(3000):
+    if k % 3 == 0:
+        i = live[k % len(live)]; it = items[i]; name, loc, sub = it["name"], it["loc"], it["sub"]
+    else:
+        name, loc, sub = f"Imported {k} {R.choice(tags)}", R.choice(locs), R.choice(subs)
+    docs.append({"name": f"projects/x/databases/(default)/documents/inventory/{k}", "fields": {
+        "name": {"stringValue": name}, "location": {"stringValue": loc}, "subLocation": {"stringValue": sub},
+        "description": {"stringValue": "from the old app " * R.randint(0, 4)},
+        "tags": {"arrayValue": {"values": [{"stringValue": x} for x in R.sample(tags, R.randint(0, 3))]}},
+        "createdAt": {"timestampValue": "2025-06-01T12:34:56.789Z"}, "updatedAt": {"timestampValue": "2025-07-02T01:02:03.000Z"}}})
+json.dump({"documents": docs}, open("data/firestore.json","w"))
+# --- pos1 log: the seed, then 20000 sales, 1000 voids, 400 restocks, 50 price changes
+seed = ["product FW 500 12 flat white","product LB 400 12 long black","product CT 900 12 cheese toastie","product BR 600 12 brownie","product CC 700 12 carrot cake","product SW 300 12 sparkling water","staff ana 1234","staff ben 2222","tax 1000","lowat 3"]
+price = {"FW":500,"LB":400,"CT":900,"BR":600,"CC":700,"SW":300}
+lines = list(seed); t = 1700000000; n = 0
+for k in range(20000):
+    t += R.randint(5, 120)
+    if k % 50 == 0:
+        for s in price: lines.append(f"restock {s} 500 ana {t}")
+    if k % 400 == 0:
+        s = R.choice(list(price)); price[s] = R.choice([300,400,450,500,550,600,700,900]); lines.append(f"price {s} {price[s]} ben {t}")
+    n += 1; its = R.sample(list(price), R.randint(1, 4)); qs = [(s, R.randint(1, 3)) for s in its]
+    sub = sum(price[s]*q for s, q in qs); tax = sub // 10; tot = sub + tax
+    pay = R.choice(["cash","card"]); tend = ((tot + 999)//1000)*1000 if pay == "cash" else tot
+    lines.append(f"sale {n} {R.choice(['ana','ben'])} {t} {pay} {tend} {tot} {tax} " + " ".join(f"{s}={q}={price[s]}" for s, q in qs))
+    if k % 20 == 7: lines.append(f"void {R.randint(1, n)} ana {t+1}")
+open("data/pos1-big.log","w").write("\n".join(lines) + "\n")
+print(len(out), len(docs), len(lines))

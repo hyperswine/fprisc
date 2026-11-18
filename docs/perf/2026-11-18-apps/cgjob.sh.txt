@@ -1,0 +1,12 @@
+#!/bin/bash
+# cgjob.sh JOB : one callgrind run; appends "JOB instr" to cg/results.txt
+J=$1; A=/workspace/out/apps; source /workspace/out/env.sh; O=$A/cg/$J.cg
+VG="valgrind --tool=callgrind --callgrind-out-file=$O"
+IFS=- read app a b r <<< "$J"
+case $app in
+ terra) (cd $A/terra && $VG ./drive-$a-$b 300 > $A/cg/$J.out 2> $A/cg/$J.vg);;
+ inv) if [ $a = import ]; then d=$($A/invwork-300.sh $A/inventory/inventory-$b $b import $VG); else d=$($A/invwork.sh $A/inventory/inventory-$b $b member $VG); fi; cp $d/out.txt $A/cg/$J.out;;
+ p1d) cp $A/data/pos1-big.log $A/cg/$J.log; $VG $A/pos1/drv-$a $A/cg/$J.log > $A/cg/$J.out 2> $A/cg/$J.vg; rm -f $A/cg/$J.log;;
+ pos1) port=$((9000 + RANDOM % 900)); d=$($A/p1work.sh $A/pos1/pos1-$a $a $port 100 $VG); cp $d/drive.txt $A/cg/$J.out;;
+esac
+echo "$J $(grep -m1 '^summary:' $O | cut -d' ' -f2)" >> $A/cg/results.txt

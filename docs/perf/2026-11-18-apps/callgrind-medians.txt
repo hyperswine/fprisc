@@ -1,0 +1,19 @@
+inv-import-mid         med 18.9440G spread 0.002% n=3
+inv-import-new         med 17.2804G spread 0.000% n=3
+inv-import-old         med 24.3214G spread 0.001% n=3
+inv-member-mid         med 11.2868G spread 0.002% n=3
+inv-member-new         med 10.1762G spread 0.000% n=3
+inv-member-old         med 16.5969G spread 0.000% n=3
+p1d-mid-x              med 3.3947G spread 0.001% n=3
+p1d-new-x              med 3.2821G spread 0.000% n=3
+p1d-old-x              med 3.6490G spread 0.000% n=3
+terra-mid-checks       med 4.3994G spread 0.002% n=3
+terra-mid-full         med 3.5004G spread 0.001% n=3
+terra-new-checks       med 4.0499G spread 0.000% n=3
+terra-new-full         med 3.3376G spread 0.001% n=3
+terra-old-checks       med 4.6778G spread 0.001% n=3
+terra-*-checks old->mid -6.0% mid->new -7.9% old->new -13.4%
+inv-member-* old->mid -32.0% mid->new -9.8% old->new -38.7%
+inv-import-* old->mid -22.1% mid->new -8.8% old->new -28.9%
+p1d-*-x old->mid -7.0% mid->new -3.3% old->new -10.1%
+terra full mid->new -4.6% new full vs new checks -17.6%

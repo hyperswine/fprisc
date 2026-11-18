@@ -1,0 +1,4 @@
+#!/bin/bash
+# sess.sh ROUNDS: pos1 websocket sessions (N=300) interleaved old/mid/new; results -> sess/results.txt
+A=/workspace/out/apps; mkdir -p $A/sess; cd $A
+for r in $(seq 1 $1); do for t in old mid new; do d=$(./p1work.sh $A/pos1/pos1-$t $t $((8800 + r*10)) 300); echo "$t r$r $(head -n1 $d/drive.txt)" >> sess/results.txt; done; done; echo DONE >> sess/results.txt

@@ -1,0 +1,208 @@
+# BENCH DRIVER (outside the repo): terra-ii tests/headless/game.fpr minus the real-disk legs, plus a long match.
+# Terra II as its update loop sees it, with no window and no disk: Game.play
+# and Game.step feed keys and ticks through the game's own subscriptions, and
+# the test decides what the disk answers and when
+# (docs/2026-11-12-GAME-MVU.md, step 6).
+unsafe program.
+
+Game = use "std/game".
+Bd = use "../src/board".
+Cd = use "../src/cards".
+Gm = use "../src/game".
+Ru = use "../src/rules".
+Sv = use "../src/save".
+Program = use "std/program".
+S = use "std/string".
+
+app = Game.app Gm.init Gm.update Gm.subs (fn m -> Game.layers 0 0).
+tick = Game.Elapsed Gm.tickMs.
+ticks 0 = Nil.
+ticks n = tick :: ticks (n - 1).
+enter = Game.Key 28.
+check label ok = print (if ok then "ok  {label}" else "FAIL {label}").
+count Nil = 0.
+count (x :: r) = 1 + count r.
+has s Nil = False.
+has s (x :: r) = x == s or has s r.
+sounds Nil = 0.
+sounds (Game.ESound n v :: r) = 1 + sounds r.
+sounds (e :: r) = sounds r.
+tasks Nil = Nil.
+tasks (Game.ETask t f :: r) = t :: tasks r.
+tasks (e :: r) = tasks r.
+appends Nil = 0.
+appends (Game.Append name text :: r) = 1 + appends r.
+appends (t :: r) = appends r.
+replays Nil = 0.
+replays (Game.Replay name :: r) = 1 + replays r.
+replays (t :: r) = replays r.
+
+# a disk that stores everything and holds nothing yet
+disk (Game.Append name text) = Ok "".
+disk (Game.Replay name) = Ok "".
+disk (Game.ReadLatest name) = Err "no record".
+
+# feed inputs with NO disk answers: the model and every effect, tasks left pending
+go m Nil done = (m, done).
+go m (i :: r) done = case Game.step app i m of (m2, es) -> go m2 r (done + es).
+# the game after its two start-up answers: an empty profile, no saved game
+started u =
+  (m0, e0) = Game.start app 0;
+  (m1, e1) = Game.apply app (Gm.GotProfile (Ok "")) m0;
+  (m2, e2) = Game.apply app (Gm.GotGame (Err "no record")) m1;
+  m2.
+headId m = case m.out of Sv.Out id url text note unsure :: r -> id | Nil -> 0.
+headText m = case m.out of Sv.Out id url text note unsure :: r -> text | Nil -> "".
+
+noDisk u =
+  (n, en) = Game.play app 0 (enter :: ticks 120);
+  _ = check "no disk: said so, once" (has "[terra2] profile: no disk, games are not recorded" (Game.logged en));
+  _ = check "no disk: the game still starts" (n.title == 0 and has "[terra2] turn 1 side 0: supply 2 (rate 2)" (Game.logged en));
+  _ = check "no disk: nothing is announced as saved" (not (has "[terra2] game saved: turn 1" (Game.logged en)));
+  _ = check "no disk: nothing waits to be written" (count n.out == 0);
+  (n.tno, n.me.hq, n.en.hq).
+
+withDisk u =
+  (d, ed) = Game.playWith disk app 0 (enter :: ticks 120);
+  _ = check "disk: the profile is reported" (has "[terra2] profile: 0 games (0 won, 0 lost, 0 abandoned)" (Game.logged ed));
+  _ = check "disk: the save is announced once it is confirmed" (has "[terra2] game saved: turn 1" (Game.logged ed));
+  _ = check "disk: everything was acknowledged" (count d.out == 0 and d.busy == 0);
+  _ = check "disk: start event then snapshot, in order" (appends (tasks ed) == 2);
+  ((d.tno, d.me.hq, d.en.hq), sounds ed).
+
+idleSounds u =
+  (q, eq) = Game.playWith disk app 0 (enter :: ticks 320);
+  sounds eq.
+
+# the game three ticks after Enter, with no disk answers: the start event in flight
+sending u = go (started Unit) (enter :: ticks 3) Nil.
+# ... and 120 ticks on: a snapshot queued behind it
+queued u = case sending Unit of (s1, e1) -> go s1 (ticks 120) Nil.
+
+inFlight u =
+  (s1, e1) = sending Unit;
+  _ = check "the start event is sent, and waits" (s1.busy == 1 and count s1.out == 1 and appends (tasks e1) == 1);
+  (s2, e2) = queued Unit;
+  _ = check "a snapshot made meanwhile queues behind it, unsent" (count s2.out == 2 and appends (tasks e2) == 0);
+  (s3, e3) = Game.apply app (Gm.Wrote 999 (Ok "")) s2;
+  check "an answer for another save is ignored" (count s3.out == 2 and s3.busy == 1 and count e3 == 0).
+
+unconfirmed u =
+  (s2, e2) = queued Unit;
+  first = headId s2;
+  (u1, f1) = Game.apply app (Gm.Wrote first (Err "timeout")) s2;
+  _ = check "an unconfirmed profile event is not re-sent" (appends (tasks f1) == 0 and count u1.out == 2);
+  _ = check "the profile is read back instead" (replays (tasks f1) == 1);
+  (u2, f2) = Game.apply app (Gm.Checked first (Ok "{headText s2}\n")) u1;
+  _ = check "found on reading back: acknowledged, never duplicated" (count u2.out == 1 and has "[terra2] save confirmed on reading back" (Game.logged f2));
+  _ = check "and the snapshot behind it goes out" (appends (tasks f2) == 1);
+  (v2, g2) = Game.apply app (Gm.Checked first (Ok "")) u1;
+  check "not found: kept for later, nothing sent now" (count v2.out == 2 and appends (tasks g2) == 0 and v2.wait > 0).
+
+failed u =
+  (s2, e2) = queued Unit;
+  (w1, h1) = Game.apply app (Gm.Wrote (headId s2) (Ok "")) s2;
+  (w2, h2) = Game.apply app (Gm.Wrote (headId w1) (Err "disk full")) w1;
+  _ = check "a failed snapshot is kept" (count w2.out == 1 and w2.busy == 0 and w2.wait > 0);
+  _ = check "and not announced as saved" (not (has "[terra2] game saved: turn 1" (Game.logged h2)));
+  (w3, h3) = go w2 (ticks (Sv.retryTicks + 2)) Nil;
+  _ = check "after the rest it is sent again" (appends (tasks h3) == 1 and w3.busy == 1);
+  (w4, h4) = Game.apply app (Gm.Wrote (headId w3) (Ok "")) w3;
+  check "and announced when it lands" (has "[terra2] game saved: turn 1" (Game.logged h4) and count w4.out == 0).
+
+lateLoad u =
+  (l0, x0) = Game.start app 0;
+  (l1, x1) = Game.apply app (Gm.GotProfile (Ok "")) l0;
+  (l2, x2) = go l1 (enter :: ticks 60) Nil;
+  (l3, x3) = Game.apply app (Gm.GotGame (Ok "terra2 1\ng 1 0 9 0 0 0 0 0\n")) l2;
+  check "a late saved game does not overwrite the new one" (l3.tno == l2.tno and l3.cont == 0).
+
+latests Nil = 0.
+latests (Game.ELatest k r j f :: more) = 1 + latests more.
+latests (e :: more) = latests more.
+cancels Nil = 0.
+cancels (Game.ECancel k :: more) = 1 + cancels more.
+cancels (e :: more) = cancels more.
+
+tacticalHint u =
+  (m0, e0) = go (started Unit) (enter :: ticks 120) Nil;
+  # place two ready friendly units: Infantry at (1, 2) and charged Artillery at (1, 1)
+  uInf = { (Bd.mkU (Cd.cardOf 1) 0) | ready = 1 };
+  uArt = { (Bd.mkU (Cd.cardOf 3) 0) | ready = 1, chg = 1 };
+  p1 = Bd.setSlot (Bd.setSlot m0.me 1 2 uInf) 1 1 uArt;
+  m1 = { m0 | me = p1, zone = 1, cur = 2 };
+  # select unit at (1, 2): starts hint job
+  (m2, e2) = go m1 [enter, tick] Nil;
+  _ = check "hint: selecting a ready unit submits Latest" (latests e2 == 1 and m2.hintRev > 0);
+  rev1 = m2.hintRev;
+  # visual ticks do not invalidate or restart the search
+  (m3, e3) = go m2 (ticks 5) Nil;
+  _ = check "hint: visual ticks keep revision and do not cancel" (m3.hintRev == rev1 and latests e3 == 0 and cancels e3 == 0);
+  # rapid selection change before job completes: Esc, Left, Enter (one key per tick)
+  (m4, e4) = go m3 [Game.Key 1, tick, Game.Key 105, tick, enter, tick] Nil;
+  _ = check "hint: rapid re-selection advances revision" (m4.hintRev > rev1 and cancels e4 == 1 and latests e4 == 1);
+  q4 = Game.queueJobs e4 (Game.queueJobs e2 Nil);
+  (q5, m5, e5) = Game.drainJobs 10 app q4 m4 Nil;
+  _ = check "hint: replaced search completes with artillery hint" (m5.hint != "" and m5.hintRev == m4.hintRev);
+  # stale completion from rev1 is ignored
+  (m6, e6) = Game.apply app (Gm.GotHint rev1 "hint: stale") m5;
+  _ = check "hint: stale revision cannot overwrite current hint" (m6.hint == m5.hint);
+  # clearing selection cancels and clears hint
+  (m7, e7) = go m6 [Game.Key 1, tick] Nil;
+  check "hint: clearing selection cancels and clears hint" (cancels e7 == 1 and m7.hint == "").
+
+envFlashTest u =
+  (m0, e0) = go (started Unit) (enter :: ticks 120) Nil;
+  uInf = Bd.mkU (Cd.cardOf 1) 0;
+  p1 = Bd.setSlot m0.me 1 2 uInf;
+  mCalm = Ru.endTurn { m0 | me = p1, env = 0, fx = Nil } 0;
+  _ = check "env: no particles when env < 4" (count mCalm.fx == 0);
+  mEnv = Ru.endTurn { m0 | me = p1, env = 10, fx = Nil } 0;
+  _ = check "env: flashes field particles on ENV damage" (count mEnv.fx == 28);
+  (mAged, ea) = go mEnv (ticks 12) Nil;
+  check "env: field particles clear after flash duration" (count mAged.fx == 0).
+
+# ---- bench: many matches from varied seeds, driven by an LCG over the game's own keys ----
+endT = Game.Key 57.
+rounds 0 = Nil.
+rounds n = ticks 40 + (endT :: rounds (n - 1)).
+longMatch k = Game.play app 0 (enter :: rounds k).
+keyOf 0 = Game.Key 105.
+keyOf 1 = Game.Key 106.
+keyOf 2 = Game.Key 103.
+keyOf 3 = Game.Key 108.
+keyOf 4 = enter.
+keyOf 5 = endT.
+keyOf 6 = Game.Key 30.
+keyOf 7 = Game.Key 24.
+keyOf 8 = Game.Key 1.
+keyOf 9 = Game.Key 46.
+keyOf k = tick.
+lcg x = (x * 1103515245 + 12345) % 2147483648.
+inputs : Int -> (n : Int | measure n) -> List Game.Input .
+inputs x n | n <= 0 = Nil.
+inputs x n = (keyOf ((lcg x / 65536) % 16)) :: inputs (lcg x) (n - 1).
+matchDigest i =
+  (m, es) = go { (started Unit) | seed = 99 + i } (enter :: inputs i 400) Nil;
+  m.tno * 1000000 + (m.me.hq + 50) * 1000 + (m.en.hq + 50) + count es.
+matches : Int -> (n : Int | measure n) -> Int -> Int .
+matches i n acc | n <= 0 = acc.
+matches i n acc = matches (i + 1) (n - 1) ((acc * 31 + matchDigest i) % 1000000007).
+hints 0 acc = acc.
+hints n acc = _ = tacticalHint Unit; hints (n - 1) (acc + 1).
+main =
+  a = noDisk Unit;
+  (b, heard) = withDisk Unit;
+  _ = check "the disk does not change the match" (a == b);
+  _ = check "cues are asked for once: idle ticks add none" (idleSounds Unit == heard);
+  _ = inFlight Unit;
+  _ = unconfirmed Unit;
+  _ = failed Unit;
+  _ = lateLoad Unit;
+  _ = tacticalHint Unit;
+  _ = envFlashTest Unit;
+  (n, en) = longMatch 60;
+  _ = print "long match: turn {n.tno} hq {n.me.hq} {n.en.hq} logged {count (Game.logged en)} effects {count en}";
+  k = case Program.args Unit of x :: r -> (case S.toInt x of Ok v -> v | Err e -> 100) | Nil -> 100;
+  _ = print "matches {k}: digest {matches 1 k 7}";
+  print "terra2 bench: done".

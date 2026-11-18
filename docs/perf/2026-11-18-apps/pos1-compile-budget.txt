@@ -1,0 +1,3 @@
+old ("bytes allocated", "66511746104") ("max_bytes_used", "586146296") ("GC_cpu_seconds", "12.940193") ("max_mem_in_use_bytes", "1858076672")  TM wall=77.601s user=74.636s sys=3.588s maxrss=1804.3MiB rc=0
+mid ("bytes allocated", "66922029880") ("max_bytes_used", "544120752") ("GC_cpu_seconds", "11.807331") ("max_mem_in_use_bytes", "1714421760")  TM wall=76.474s user=76.040s sys=1.032s maxrss=1667.4MiB rc=0
+new ("bytes allocated", "68220784040") ("max_bytes_used", "528422496") ("GC_cpu_seconds", "11.316950") ("max_mem_in_use_bytes", "1686110208")  TM wall=75.772s user=74.920s sys=1.493s maxrss=1640.7MiB rc=0

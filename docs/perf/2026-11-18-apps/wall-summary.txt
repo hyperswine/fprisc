@@ -1,0 +1,17 @@
+terra-old-checks   wall med 3.194s min 3.139 max 4.057 user med 1.568 maxrss 3991MiB rc {0}
+terra-mid-checks   wall med 3.104s min 3.051 max 3.183 user med 1.515 maxrss 3992MiB rc {0}
+terra-new-checks   wall med 3.098s min 2.954 max 3.433 user med 1.572 maxrss 3992MiB rc {0}
+terra-mid-full     wall med 1.238s min 1.188 max 1.303 user med 1.205 maxrss 47MiB rc {0}
+terra-new-full     wall med 1.176s min 1.074 max 1.211 user med 1.147 maxrss 47MiB rc {0}
+inv-member-old     wall med 2.659s min 2.512 max 3.293 user med 1.789 maxrss 1963MiB rc {0}
+inv-import-old     wall med 4.072s min 3.972 max 4.717 user med 2.694 maxrss 3321MiB rc {0}
+p1d-old            wall med 1.145s min 1.110 max 1.249 user med 0.594 maxrss 1206MiB rc {0}
+inv-member-mid     wall med 2.369s min 2.214 max 2.522 user med 1.418 maxrss 1967MiB rc {0}
+inv-import-mid     wall med 3.794s min 3.633 max 4.382 user med 2.340 maxrss 3325MiB rc {0}
+p1d-mid            wall med 1.117s min 1.097 max 1.428 user med 0.627 maxrss 1209MiB rc {0}
+inv-member-new     wall med 2.286s min 2.253 max 2.676 user med 1.431 maxrss 1967MiB rc {0}
+inv-import-new     wall med 3.646s min 3.488 max 4.278 user med 2.253 maxrss 3325MiB rc {0}
+p1d-new            wall med 1.151s min 1.068 max 1.322 user med 0.622 maxrss 1208MiB rc {0}
+pos1-session-old: tx med 21.66s (all [31.54, 21.66, 19.71]) server_cpu med 22.49s cash rtt med 61.5ms p90 72.5ms rebuild 515ms revenue-cmd 55ms boot fold 332ms ready 0.45s timeouts 0 ['revenue 564238.40 over 20300 sales'] ['stock matches the log (20300 sales folded)'] receipts {300}
+pos1-session-mid: tx med 6.31s (all [6.39, 6.31, 6.2]) server_cpu med 7.48s cash rtt med 17.4ms p90 20.1ms rebuild 397ms revenue-cmd 12ms boot fold 387ms ready 0.50s timeouts 0 ['revenue 564238.40 over 20300 sales'] ['stock matches the log (20300 sales folded)'] receipts {300}
+pos1-session-new: tx med 6.42s (all [6.66, 6.42, 6.37]) server_cpu med 7.44s cash rtt med 18.3ms p90 20.5ms rebuild 383ms revenue-cmd 12ms boot fold 318ms ready 0.43s timeouts 0 ['revenue 564238.40 over 20300 sales'] ['stock matches the log (20300 sales folded)'] receipts {300}

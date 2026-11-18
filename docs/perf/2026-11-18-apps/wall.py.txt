@@ -1,0 +1,22 @@
+# wall.py ROUNDS OUT : interleaved wall/user/sys/maxrss (os.wait4) for every app workload x build, idle box
+import os, sys, time, subprocess, json, shutil
+A = "/workspace/out/apps"; R = int(sys.argv[1]); OUT = sys.argv[2]
+env = dict(os.environ, LD_LIBRARY_PATH="/opt/tc/fprdeps/lib")
+def fresh(src, name):
+    d = f"{A}/run/wall-{name}"; os.makedirs(d, exist_ok=True); shutil.copy(src, f"{d}/x.log"); return f"{d}/x.log"
+jobs = []
+for b in ["old-checks", "mid-checks", "new-checks", "mid-full", "new-full"]:
+    jobs.append((f"terra-{b}", lambda b=b: [f"{A}/terra/drive-{b}", "1000"]))
+for t in ["old", "mid", "new"]:
+    jobs.append((f"inv-member-{t}", lambda t=t: [f"{A}/inventory/inventory-{t}", "--store=" + fresh(f"{A}/data/inv-big.log", f"im-{t}"), "--member=bench", "--password=benchpassword1"]))
+    jobs.append((f"inv-import-{t}", lambda t=t: [f"{A}/inventory/inventory-{t}", "--store=" + fresh(f"{A}/data/inv-big.log", f"ii-{t}"), f"--import={A}/data/firestore-300.json"]))
+    jobs.append((f"p1d-{t}", lambda t=t: [f"{A}/pos1/drv-{t}", fresh(f"{A}/data/pos1-big.log", f"pd-{t}")]))
+res = {}
+for r in range(R):
+    for name, argv in jobs:
+        a = argv(); t0 = time.perf_counter()
+        p = subprocess.Popen(a, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+        _, st, ru = os.wait4(p.pid, 0); w = time.perf_counter() - t0
+        res.setdefault(name, []).append({"wall": w, "user": ru.ru_utime, "sys": ru.ru_stime, "maxrss_mib": ru.ru_maxrss / 1024, "rc": os.waitstatus_to_exitcode(st)})
+    print("round", r + 1, flush=True)
+json.dump(res, open(OUT, "w"), indent=1)
