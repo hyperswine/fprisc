@@ -39,8 +39,8 @@
  * virtio devices, the PLIC and the pin bus are drivers, and drivers are a
  * HAL's -- QOS Native adds them through hal_devtable_ext (devtable.h). */
 static const devtable_entry_t devtable[] = {
-  {"uart",  {T_DEVICE, 0, UART0_BASE}, NULL, NULL},
-  {"clint", {T_DEVICE, 0, CLINT_BASE}, NULL, NULL},
+  {"uart",  {T_DEVICE, 0, UART0_BASE}, NULL, NULL, .cls = FPR_DEV_SERIAL, .irq = 10},
+  {"clint", {T_DEVICE, 0, CLINT_BASE}, NULL, NULL, .cls = FPR_DEV_TIMER},
 };
 #define NDEVICES (sizeof(devtable) / sizeof(devtable[0]))
 __attribute__((weak)) const devtable_entry_t *hal_devtable_ext(uw *count) { *count = 0; return 0; }
@@ -95,6 +95,16 @@ static V h_device(V nameStr) {
   if (!e) fpr_cpanic("device: unknown device name");
   if (e->setup) e->setup();
   return (V)&e->dev;
+}
+
+const devtable_entry_t *hal_dev_by_class(uint16_t cls, uw idx) {
+  for (uw i = 0; i < NDEVICES; i++)
+    if (devtable[i].cls == cls && !idx--) return &devtable[i];
+  uw n = 0;
+  const devtable_entry_t *ext = hal_devtable_ext(&n);
+  for (uw i = 0; i < n; i++)
+    if (ext[i].cls == cls && !idx--) return &ext[i];
+  return 0;
 }
 
 /* ---- Registers ------------------------------------------------------- */
