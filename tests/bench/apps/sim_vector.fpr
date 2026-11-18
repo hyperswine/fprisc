@@ -1,0 +1,40 @@
+# sim (SPEC.md) with the particles in a Vector of records: the same steps and
+# output as sim.fpr. A Vector of records is stored a column per field, its Int
+# fields as raw words, and Vec.map over the owned vector writes the columns in
+# place.
+List = use "std/list".
+
+P = { px : Int, py : Int, vx : Int, vy : Int }.
+
+lcg : Int -> Int .
+lcg x = (x * 1103515245 + 12345) % 2147483648.
+
+gen : (n : Int) -> (i : Int | measure (n - i)) -> Int -> List P -> List P .
+gen n i x acc = if i >= n then List.reverse acc else
+  a = lcg x;
+  b = lcg a;
+  c = lcg b;
+  d = lcg c;
+  gen n (i + 1) d ({px = a % 1000000, py = b % 1000000, vx = c % 2001 - 1000, vy = d % 2001 - 1000} :: acc).
+
+bounce : Int -> Int -> (Int, Int) .
+bounce p v = if p < 0 then (0 - p, 0 - v) else if p > 1000000 then (2000000 - p, 0 - v) else (p, v).
+
+move : P -> P .
+move p =
+  vy0 = p.vy - 1;
+  (x, vx) = bounce (p.px + p.vx) p.vx;
+  (y, vy) = bounce (p.py + vy0) vy0;
+  {px = x, py = y, vx = vx, vy = vy}.
+
+run : (n : Int | measure n) -> Vector P -> Vector P .
+run n ps = if n <= 0 then ps else run (n - 1) (Vec.map move ps).
+
+main =
+  ps = run 2000 (Vec.fromList (gen 20000 0 1 Nil));
+  (sx, ps1) = Vec.fold (fn s p -> s + p.px) 0 ps;
+  (sy, ps2) = Vec.fold (fn s p -> s + p.py) 0 ps1;
+  (e, ps3) = Vec.fold (fn s p -> s + p.vx * p.vx + p.vy * p.vy) 0 ps2;
+  (n, ps4) = Vec.len ps3;
+  _ = Vec.free ps4;
+  print "particles {n} steps 2000 sx {sx} sy {sy} energy {e}".
