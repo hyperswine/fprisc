@@ -1,0 +1,32 @@
+[{id = 2, v = 1}, {id = 3, v = 8}, {id = 1, v = 15}]
+[{id = 2, v = 1}, {id = 3, v = 8}, {id = 1, v = 15}, {id = 5, v = 1}]
+[]
+[]
+[{n = 1, name = k2}, {n = 15, name = k3}, {n = 25, name = k1}]
+int 1 50 4: same
+string 1 50 4: same
+record 1 50 4: same
+  2 items, next 4, 9 deletes, 50 events
+int 7 400 16: same
+string 7 400 16: same
+record 7 400 16: same
+  13 items, next 16, 103 deletes, 400 events
+int 42 2000 64: same
+string 42 2000 64: same
+record 42 2000 64: same
+  47 items, next 64, 486 deletes, 2000 events
+int 99 3000 3: same
+string 99 3000 3: same
+record 99 3000 3: same
+  2 items, next 3, 750 deletes, 3000 events
+[{at = 17, id = 4, made = 49}, {at = 78, id = 3, made = 72}, {at = 36, id = 5, made = 64}]
+record from a non-empty model: same
+[{c = 1, k = (3, 4)}, {c = 2, k = (1, 2)}]
+[{by = , n = 1, voided = 0}, {by = , n = 2, voided = 0}, {by = jo, n = 3, voided = 1}, {by = , n = 4, voided = 0}, {by = , n = 5, voided = 0}, {by = , n = 6, voided = 0}, {by = , n = 0, voided = 0}, {by = , n = 1, voided = 0}, {by = , n = 2, voided = 0}, {by = jo, n = 3, voided = 1}, {by = , n = 4, voided = 0}, {by = , n = 5, voided = 0}, {by = , n = 6, voided = 0}, {by = , n = 0, voided = 0}, {by = , n = 1, voided = 0}, {by = , n = 2, voided = 0}, {by = jo, n = 3, voided = 1}, {by = , n = 4, voided = 0}, {by = , n = 5, voided = 0}, {by = , n = 6, voided = 0}]
+shared map: same
+shared map, no hit: same
+[{by = z, n = 1, voided = 0}, {by = z, n = 2, voided = 0}, {by = z, n = 3, voided = 0}, {by = z, n = 4, voided = 0}, {by = z, n = 5, voided = 0}, {by = , n = 6, voided = 0}, {by = z, n = 0, voided = 0}, {by = z, n = 1, voided = 0}]
+[20, 2, 40, 4, 60, 6, 80, 8]
+snoc fold: same
+[1, 2, 3, 6, 9, 12]
+[]

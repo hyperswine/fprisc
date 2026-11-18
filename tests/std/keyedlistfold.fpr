@@ -1,0 +1,95 @@
+# keyed-list folds, shared maps and snoc folds (Frontend/KeyedListFold.hs,
+# Frontend/ListRewrites.hs, docs/2026-11-18-KEYED-LIST-FOLDS.md): every
+# rewritten fold must give the list the fold as written gives.  Each case is
+# also folded by `byHand`, plain recursion the compiler leaves alone, and the
+# two are compared; the config differential builds this file with the
+# rewrites off too (no_list_rewrites).
+List = use "std/list".
+Option = use "std/option".
+
+byHand : (b -> a -> b) -> b -> (xs : List a | measure xs) -> b .
+byHand f acc xs = case xs of Nil -> acc | x :: r -> byHand f (f acc x) r.
+
+# a deterministic op stream: (kind, key, value), keys 0..k-1
+lcg s = (s * 1103515245 + 12345) % 2147483648.
+opsFrom s n k = case List.fold (fn st i -> nextOp k st) (s, Nil) (List.range 1 n) of (_, ops) -> List.reverse ops.
+nextOp k st = case st of (s, acc) ->
+  s1 = lcg s; s2 = lcg s1; s3 = lcg s2;
+  (s3, ((s1 / 65536) % 4, (s2 / 65536) % k, (s3 / 65536) % 100) :: acc).
+
+# list mode, Int key: upsert (find, then cons or replace), delete
+stepI acc op = case op of
+    (3, id, _) -> List.filter (fn x -> x.id != id) acc
+  | (_, id, v) -> (case List.find (fn x -> x.id == id) acc of
+        Option.None -> { id = id, v = v } :: acc
+      | Option.Some old -> List.map (fn x -> if x.id == id then { x | v = old.v + v } else x) acc).
+
+# list mode, String key, delete through `not (==)`
+stepS acc op = case op of
+    (3, id, _) -> List.filter (fn x -> not (x.name == "k{id}")) acc
+  | (_, id, v) -> (case List.find (fn x -> x.name == "k{id}") acc of
+        Option.None -> { name = "k{id}", n = v } :: acc
+      | Option.Some old -> List.map (fn x -> if x.name == "k{id}" then { x | n = old.n * 2 + v } else x) acc).
+
+# record mode through root functions (the inventory journal shape)
+findItem items id = List.find (fn x -> x.id == id) items.
+putItem m it = case findItem m.items it.id of
+    Option.None -> { m | items = it :: m.items, next = imax m.next (it.id + 1) }
+  | Option.Some old ->
+      new = { it | made = old.made };
+      { m | items = List.map (fn x -> (case x.id == it.id of True -> new | False -> x)) m.items }.
+imax a b = if a > b then a else b.
+applyOp m op = case op of
+    (3, id, _) -> { m | items = List.filter (fn it -> it.id != id) m.items, dels = m.dels + 1 }
+  | (_, id, v) -> putItem m { id = id, at = v, made = v }.
+replayed m ops = List.fold (fn mm op -> applyOp { mm | events = mm.events + 1 } op) m ops.
+replayedByHand m ops = byHand (fn mm op -> applyOp { mm | events = mm.events + 1 } op) m ops.
+model = { items = Nil, next = 0, dels = 0, events = 0 }.
+
+# a key that is neither Int nor String: the fold stays as written
+stepT acc p = case List.find (fn x -> x.k == p) acc of
+    Option.None -> { k = p, c = 1 } :: acc
+  | Option.Some o -> List.map (fn x -> if x.k == p then { x | c = o.c + 1 } else x) acc.
+
+# shared maps
+mark x n who | x.n == n = { x | voided = 1, by = who }.
+mark x n who = x.
+sales = List.map (fn i -> { n = i % 7, voided = 0, by = "" }) (List.range 1 20).
+markAll xs n = List.map (fn x -> mark x n "jo") xs.
+markAllByHand xs n = byHand (fn acc x -> acc + [mark x n "jo"]) [] xs.
+
+# snoc folds
+evensTimes xs = List.fold (fn acc x -> if x % 2 == 0 then acc + [x * 10, x] else acc) [] xs.
+evensFrom start xs = List.fold (fn acc x -> if x % 3 == 0 then List.append acc [x] else acc) start xs.
+evensByHand acc xs = byHand (fn a x -> if x % 2 == 0 then a + [x * 10, x] else a) acc xs.
+
+same label a b = print "{label}: {if a == b then "same" else "DIFFERENT"}".
+
+checkRun (s, n, k) =
+  ops = opsFrom s n k;
+  _ = same "int {s} {n} {k}" (List.fold stepI Nil ops) (byHand stepI Nil ops);
+  _ = same "string {s} {n} {k}" (List.fold stepS Nil ops) (byHand stepS Nil ops);
+  r = replayed model ops;
+  _ = same "record {s} {n} {k}" r (replayedByHand model ops);
+  print "  {List.length r.items} items, next {r.next}, {r.dels} deletes, {r.events} events".
+
+main =
+  small = [(0, 1, 10), (0, 2, 20), (1, 1, 5), (3, 2, 0), (0, 3, 7), (2, 2, 1), (3, 9, 0), (0, 3, 1)];
+  _ = print (List.fold stepI Nil small);
+  _ = print (List.fold stepI [{ id = 5, v = 1 }] small);
+  _ = print (List.fold stepI Nil Nil);
+  _ = print (List.fold stepI Nil [(3, 1, 0), (3, 2, 0)]);
+  _ = print (List.fold stepS Nil small);
+  _ = List.map checkRun [(1, 50, 4), (7, 400, 16), (42, 2000, 64), (99, 3000, 3)];
+  m = replayed model (opsFrom 5 30 6);
+  _ = print m.items;
+  _ = same "record from a non-empty model" (replayed m (opsFrom 6 300 9)) (replayedByHand m (opsFrom 6 300 9));
+  _ = print (List.fold stepT Nil [(1, 2), (3, 4), (1, 2)]);
+  _ = print (markAll sales 3);
+  _ = same "shared map" (markAll sales 6) (markAllByHand sales 6);
+  _ = same "shared map, no hit" (markAll sales 40) sales;
+  _ = print (List.map (fn x -> if x.n == 6 then x else { x | by = "z" }) (List.take 8 sales));
+  _ = print (evensTimes (List.range 1 9));
+  _ = same "snoc fold" (evensTimes (List.range 1 200)) (evensByHand [] (List.range 1 200));
+  _ = print (evensFrom [1, 2] (List.range 1 12));
+  print (evensFrom Nil Nil).

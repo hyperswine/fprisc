@@ -56,6 +56,8 @@ import Frontend.Syntax
 import Frontend.Parser (program)
 import Frontend.Desugar
 import Frontend.OwnedMapFold (ownedMapFolds)
+import Frontend.KeyedListFold (keyedListFolds)
+import Frontend.ListRewrites (sharedMaps, snocFolds)
 import Frontend.Paths
 import Frontend.Linearity
 import Frontend.Traverse
@@ -374,8 +376,21 @@ compileWithReport accepted report = do
     exitFailure
   -- an ordered Map built by a fold is built in a MutMap and frozen once
   -- (Frontend/OwnedMapFold.hs; FPR_NO_OWNED_MAP_FOLD=1 turns it off)
-  let ownedFolds = Options.cgOwnedMapFold codegen && not solView && not (oBuiltin opts) && not (oLib opts)
-      rootTopsLoaded = if ownedFolds then fst (ownedMapFolds rootTops) else rootTops
+  let rootRewrites = not solView && not (oBuiltin opts) && not (oLib opts)
+      ownedFolds = Options.cgOwnedMapFold codegen && rootRewrites
+      rootTopsOwned = if ownedFolds then fst (ownedMapFolds rootTops) else rootTops
+      -- a list kept by key in a fold is kept in a table and listed once
+      -- (Frontend/KeyedListFold.hs; FPR_NO_KEYED_LIST_FOLD=1), a map that
+      -- changes few elements shares the rest, and a fold that appends to its
+      -- list builds it reversed (Frontend/ListRewrites.hs; FPR_SHARED_MAP=1 turns
+      -- the first on, FPR_NO_SNOC_FOLD=1 the second off).  Same profiles as the owned map folds.
+      (rootTopsKeyed, nKeyed) = if rootRewrites && Options.cgKeyedListFold codegen then keyedListFolds rootTopsOwned else (rootTopsOwned, [])
+      (rootTopsShared, nShared) = if rootRewrites && Options.cgSharedMap codegen then sharedMaps rootTopsKeyed else (rootTopsKeyed, [])
+      (rootTopsLoaded, nSnoc) = if rootRewrites && Options.cgSnocFold codegen then snocFolds rootTopsShared else (rootTopsShared, [])
+  listNotes <- lookupEnv "FPR_LIST_REWRITE_NOTES"
+  when (listNotes == Just "1") $
+    hPutStrLn stderr ("list rewrites: " ++ show (length nKeyed) ++ " keyed-list folds, " ++ show (length nShared) ++ " shared maps, " ++ show (length nSnoc) ++ " snoc folds"
+                      ++ concat ["\n  " ++ kind ++ " in " ++ f | (kind, fs) <- [("keyed-list fold", nKeyed), ("shared map", nShared), ("snoc fold", nSnoc)], f <- fs])
   lr <- loadProgram preludeTops inp rootTopsLoaded
   case lr of
     Left e -> Editor.problem report "import" e Nothing >> putStrLn e >> exitFailure

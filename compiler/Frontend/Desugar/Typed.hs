@@ -109,6 +109,7 @@ data PNode = Ref T.Reference | LitInt Integer | LitString String | LitAtom Strin
   | Tuple [EPlan] | List [EPlan] | Record [(String,EPlan)]
   | Projection EPlan [String] | Update EPlan [([String],EPlan)]
   | Interpolation [Either String (Maybe String,EPlan)] | RenderApplication EPlan String EPlan
+  | KeyedTable String EPlan
 
 checkedNames :: CheckedPlans -> S.Set String
 checkedNames = M.keysSet . planEntries
@@ -227,6 +228,16 @@ prepareChecked result = do
             make (Interpolation ps)
           SMark _ _->children e >>= \case [a]->make (Note a); _->corrupt "source mark derivation"
           SApp (SVar "?hole") (SStrI [SegStr ""])->make (GeneratedTrap (anonymousTrap (E.expressionType e)))
+          -- the keyed-list fold (Frontend/KeyedListFold.hs): the decided site
+          -- keeps the fold as written, or applies the rewritten one to a new table
+          SApp (SApp (SVar "fprKeyedFold#") _) _->children e >>= \case
+            [o,f]->case [elaborationTarget x | x<-M.findWithDefault [] (E.expressionIdentity e) at,elaborationOperation x=="keyedfold!"] of
+              [OpPrim ""]->make (Note o)
+              [OpPrim ctor]->case planType f of
+                TFn arg _->global ctor (TFn (TC "Int") arg) >> make (KeyedTable ctor f)
+                _->corrupt "keyed-list fold derivation"
+              _->corrupt "keyed-list fold is not a single checked decision"
+            _->corrupt "keyed-list fold derivation"
           SApp _ _ | [OpDeclaredVector proof]<-[elaborationTarget x | x<-M.findWithDefault [] (E.expressionIdentity e) at]->
             layoutArgument proof >>= make . VectorConstructor BuildEmpty
           SApp _ _->children e >>= \case
@@ -546,6 +557,11 @@ typedFunction checked group@(name,clauses)=case M.lookup name (planEntries check
           Update a fs->T.RecordUpdate (lower a) [(path,lower x) | (path,x)<-fs]
           Interpolation ps->let parts=map part ps
                             in case parts of []->T.StringValue ""; x:xs->T.exprNode (foldl concatString x xs)
+          KeyedTable ctor f->case ty f of
+            TFn arg _->let ft=TFn (TC "Int") arg
+                           table=gen arg (T.Apply (gen ft (call ctor ft)) (gen (TC "Int") (T.IntValue 0)))
+                       in T.Apply (lower f) table
+            _->error "typed Core: keyed-list fold without a table parameter"
           RenderApplication f renderer a->
             let x=render renderer (lower a)
                 ft=TFn (TC "String") (E.expressionType e)
