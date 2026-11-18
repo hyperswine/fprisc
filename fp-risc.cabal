@@ -144,6 +144,8 @@ library
       Ownership.TypeShape
       Frontend.Linearity
       Frontend.OwnedMapFold
+      Frontend.KeyedListFold
+      Frontend.ListRewrites
       Home
       Exhaust
       Infer

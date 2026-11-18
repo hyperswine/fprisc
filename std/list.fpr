@@ -107,6 +107,29 @@ map f xs = mapGo f xs Nil.
 mapGo : (a -> b) -> (xs : List a | measure xs) -> List b -> List b .
 mapGo f xs acc = case xs of Nil -> reverse acc | x :: r -> mapGo f r (f x :: acc).
 
+# `map (fn x -> if p x then f x else x)`, sharing the list after the last
+# element p holds for instead of copying it: p is called on every element
+# (and again on the ones before that last one, so it should be cheap and
+# effect-free), f once per element p holds for, in order.  The compiler
+# rewrites such maps to this (Frontend/ListRewrites.hs; FPR_NO_SHARED_MAP=1).
+mapWhere : (a -> Bool) -> (a -> a) -> (xs : List a) -> List a | size mapWhere <= len xs
+  | work mapWhere <= 7 * (len xs + 1) + len xs * (work f + work p + 15) + (len xs + 1) * (work p + 9) + 16 | alloc mapWhere <= 24 * (len xs + 1) + len xs * (alloc f + alloc p + 24) + (len xs + 1) * alloc p + 32 .
+mapWhere p f xs = mapWhereFrom p f xs (lastWhere p xs 0 (0 - 1)).
+mapWhereFrom : (a -> Bool) -> (a -> a) -> List a -> Int -> List a .
+mapWhereFrom p f xs last = case last < 0 of
+    True -> xs
+  | False -> mapWhereGo p f xs last Nil.
+lastWhere : (a -> Bool) -> (xs : List a | measure xs) -> Int -> Int -> Int .
+lastWhere p xs i last = case xs of
+    Nil -> last
+  | x :: r -> lastWhere p r (i + 1) (case p x of True -> i | False -> last).
+mapWhereGo : (a -> Bool) -> (a -> a) -> (xs : List a | measure xs) -> Int -> List a -> List a .
+mapWhereGo p f xs n acc = case xs of
+    Nil -> revOnto acc Nil
+  | x :: r -> (case n < 0 of
+      True -> revOnto acc xs
+    | False -> mapWhereGo p f r (n - 1) ((case p x of True -> f x | False -> x) :: acc)).
+
 # each element with its position, from 0
 indexedMap : (Int -> a -> b) -> (xs : List a) -> List b | size indexedMap <= len xs .
 indexedMap f xs = imapGo f xs 0 Nil.

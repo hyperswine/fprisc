@@ -37,6 +37,19 @@ applySites globals tgts = go
                  in if entry `S.member` globals then entry else g
     call g = SApp (SVar (checked g))
     go = \case
+      -- the keyed-list fold (Frontend/KeyedListFold.hs): op#N#keyedfold
+      -- applied to the fold as written and to `fn table -> rewritten`.
+      -- OpPrim "" keeps the fold as written; a MutMap constructor binds the
+      -- rewritten fold's table to a fresh one
+      SApp (SApp (SVar op) o) f
+        | Just rest <- stripPrefix markerPrefix op,
+          (num, '#' : "keyedfold") <- break (== '#') rest,
+          Just tgt <- IM.lookup (read num) tgts ->
+            case tgt of
+              OpPrim ctor | not (null ctor) -> case go f of
+                SLam [t] b -> SBlock [SBind t [] (call ctor (SInt 0))] b
+                f' -> SApp f' (call ctor (SInt 0))
+              _ -> go o
       -- str! sites wrap an ARGUMENT: op#N#str! applied to e.  OpPrim ""
       -- strips the wrapper; OpPrim "F64.str" wraps the rendering prim.
       SApp (SVar op) a

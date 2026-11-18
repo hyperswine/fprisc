@@ -1180,6 +1180,18 @@ inferERaw ctx e0 = case e0 of
         pure (SegExpr (SApp (SVar (markerPrefix ++ show site ++ "#str!")) e'))
       o -> pure o
     pure (tStr, SStrI segs')
+  -- the keyed-list fold (Frontend/KeyedListFold.hs): the fold as written and
+  -- the fold rewritten onto a table are both typed, the rewritten one as a
+  -- function of a MutMap keyed by the list's key; the site picks the table's
+  -- kind once the key type is solved (Int, String), or the fold as written
+  SApp (SApp (SVar "fprKeyedFold#") orig) fast -> do
+    (to, o') <- inferE ctx orig
+    (tf, f') <- inferE ctx fast
+    k <- freshT
+    v <- freshT
+    unify "keyed-list fold" tf (TFn (tMutMap k v) to)
+    site <- newSite "keyedfold!" k
+    pure (to, SApp (SApp (SVar (markerPrefix ++ show site ++ "#keyedfold")) o') f')
   SApp (SVar h) arg | h `elem` ["str", "print"] -> do
     -- same guard as interpolation: str/print of a bare float routes
     -- through F64.str/F32.str (str of the resulting String is the
@@ -1575,6 +1587,11 @@ resolveSites prof sigs env = do
           TC "I64" -> OpPrim ("I64." ++ op)
           TC "I32" -> OpPrim ("I32." ++ op)
           _ -> OpPrim op
+      else if op == "keyedfold!"
+        then pure $ case t of
+          TC "Int" -> OpPrim "mutmapInts"
+          TC "String" -> OpPrim "mutmapStrings"
+          _ -> OpPrim ""
       else if op == "str!"
         then case t of
           -- the str/print/interpolation guard: bare floats render via

@@ -1,0 +1,88 @@
+# std/keyedlist.fpr -- the table a keyed-list fold is built in
+# (compiler/Frontend/KeyedListFold.hs, docs/2026-11-18-KEYED-LIST-FOLDS.md).
+#
+# The compiler rewrites a fold that keeps a list of records keyed by one field
+# (found, replaced, put at the front when absent, filtered out by key) into
+# these calls on a linear table, and turns the table back into the list once,
+# at the end.  A table is the pair (MutMap k v, List k): the entries, and the
+# keys in the order they were put at the front of the list, newest first.  A
+# key removed and put back is in that order twice; only its newest place
+# counts, as in the list.
+#
+# The `...Lazy` forms take the key as a function and call it only when the
+# table is not empty: the list operation they stand for evaluates its key once
+# per element, so never for an empty list.
+
+MM = use "mutmap".
+O = use "option".
+L = use "list".
+
+empty : MutMap k v -> (MutMap k v, List k)
+  | work empty <= 2 | alloc empty <= 40 .
+empty m = (m, Nil).
+
+find : k -> (MutMap k v, List k) -> (O.Option v, (MutMap k v, List k)) .
+find k t = case t of (m, ord) -> (case MM.get k m of (r, m1) -> (r, (m1, ord))).
+
+findLazy : (Unit -> k) -> (MutMap k v, List k) -> (O.Option v, (MutMap k v, List k)) .
+findLazy kf t = case t of (m, ord) -> (case findLazyIn kf m of (r, m1) -> (r, (m1, ord))).
+
+findLazyIn : (Unit -> k) -> MutMap k v -> (O.Option v, MutMap k v) .
+findLazyIn kf m =
+  (n, m1) = mutmapSize m;
+  if n == 0 then (O.None, m1) else MM.get (kf Unit) m1.
+
+# a key the caller knows is absent, put at the front
+insertNew : k -> v -> (MutMap k v, List k) -> (MutMap k v, List k) .
+insertNew k v t = case t of (m, ord) -> (mutmapInsert k v m, k :: ord).
+
+# the entry under k becomes f of it; nothing when there is none
+update : k -> (v -> v) -> (MutMap k v, List k) -> (MutMap k v, List k) .
+update k f t = case t of (m, ord) -> (updateIn k f m, ord).
+
+updateIn : k -> (v -> v) -> MutMap k v -> MutMap k v
+  | work updateIn <= len k + work f + len m * (len k + 1) + 15 | alloc updateIn <= alloc f + 48 .
+updateIn k f m =
+  (i, m1) = mutmapSlot k m;
+  if i < 0 then m1 else
+  (old, m2) = mutmapValueAt i m1;
+  mutmapSetAt i (f old) m2.
+
+updateLazy : (Unit -> k) -> (v -> v) -> (MutMap k v, List k) -> (MutMap k v, List k) .
+updateLazy kf f t = case t of (m, ord) -> (updateLazyIn kf f m, ord).
+
+updateLazyIn : (Unit -> k) -> (v -> v) -> MutMap k v -> MutMap k v .
+updateLazyIn kf f m =
+  (n, m1) = mutmapSize m;
+  if n == 0 then m1 else updateIn (kf Unit) f m1.
+
+remove : k -> (MutMap k v, List k) -> (MutMap k v, List k) .
+remove k t = case t of (m, ord) -> (mutmapRemove k m, ord).
+
+removeLazy : (Unit -> k) -> (MutMap k v, List k) -> (MutMap k v, List k) .
+removeLazy kf t = case t of (m, ord) -> (removeLazyIn kf m, ord).
+
+removeLazyIn : (Unit -> k) -> MutMap k v -> MutMap k v .
+removeLazyIn kf m =
+  (n, m1) = mutmapSize m;
+  if n == 0 then m1 else mutmapRemove (kf Unit) m1.
+
+# the list the fold would have built: newest first, each key at its newest place
+toList : (MutMap k v, List k) -> List v .
+toList t = case t of (m, ord) -> emit ord m Nil.
+
+# each key of the order at its first (newest) place: an entry is taken out of
+# the table as it is emitted, so an older place of the same key finds nothing
+emit : (ord : List k | measure ord) -> MutMap k v -> List v -> List v .
+emit ord m acc = case ord of
+    Nil -> emitDone m acc
+  | k :: rest ->
+      (i, m1) = mutmapSlot k m;
+      if i < 0 then emit rest m1 acc else
+      (v, m2) = mutmapValueAt i m1;
+      emit rest (mutmapRemoveAt i m2) (v :: acc).
+
+emitDone : MutMap k v -> List v -> List v .
+emitDone m acc =
+  _ = mutmapFree m;
+  L.reverse acc.
