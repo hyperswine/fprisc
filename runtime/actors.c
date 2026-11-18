@@ -2674,6 +2674,17 @@ int fpr_io_wait(int fd, int events) {
 /* Shared monotonic clock in the scheduler's 10 MHz units. */
 static V a_mtime(V ignored) { (void)ignored; return TAG((sw)hal_mtime()); }
 FPR_FN(fpr_g_Sys_x2emtime, a_mtime, 1);
+/* Sys.uptimeMs: milliseconds since boot, from the same 10 MHz timebase.
+ * The clock for deadlines on every target: as a 31-bit Int on RV32 it
+ * lasts 2^30 ms (12.4 days); Sys.mtime's ticks last 107 s there. Past the
+ * Int range it fails loudly rather than wrapping into a negative time. */
+static V a_uptime_ms(V ignored) {
+  (void)ignored;
+  uint64_t ms = hal_mtime() / 10000;
+  if (ms > (uint64_t)(UINTPTR_MAX >> 2)) fpr_cpanic("Sys.uptimeMs exceeds Int range");
+  return TAG((sw)ms);
+}
+FPR_FN(fpr_g_Sys_x2euptimeMs, a_uptime_ms, 1);
 
 /* ---- Sys.sleepUs: a PARKED sleep ------------------------------------
  * The sleeper leaves its hart: parked with a deadline on the hart's

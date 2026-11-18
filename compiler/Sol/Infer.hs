@@ -178,6 +178,7 @@ solBuiltins =
       ("intMin", mono (TFn tUnit tInt)),
       ("Sys.poolReset", scheme [0] (TFn tInt (sv 0))),
       ("Sys.mtime", mono (TFn tUnit tInt)),
+      ("Sys.uptimeMs", mono (TFn tUnit tInt)),
       ("Sys.sleepUs", mono (TFn tInt tUnit)),
       ("Sys.logAt", scheme [0] (TFn tInt (TFn tStr tUnit))),
       ("Sys.memStats", scheme [0] (TFn tInt (sv 0))),

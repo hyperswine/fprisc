@@ -1641,7 +1641,7 @@ impureViewPrimitives = S.fromList
     "receiveFrom", "receiveFromRes", "receiveFromNow",
     "spawn", "spawnCap", "spawnCapOn", "spawnOn", "spawnHeap",
     "myself", "myPid", "kill", "yield", "hartId",
-    "Sys.sleepUs", "Sys.mtime", "Sys.nextId", "Sys.actLive", "Sys.actInfo", "Sys.spawnApp", "Sys.poolReset",
+    "Sys.sleepUs", "Sys.mtime", "Sys.uptimeMs", "Sys.nextId", "Sys.actLive", "Sys.actInfo", "Sys.spawnApp", "Sys.poolReset",
     "Sys.logStage", "Sys.logStaged", "Sys.logInstall", "Sys.logger",
     "Sys.irqInstall", "Sys.irqRouter", "Sys.irqOpen", "Sys.irqDeliver", "Sys.irqTarget", "Sys.irqAck",
     "Sys.timerBind", "Sys.timerArm", "Mod.fn", "Mod.detachLast", "schedSetTau"

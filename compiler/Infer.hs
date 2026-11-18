@@ -851,6 +851,7 @@ builtinEnv =
       ("Mod.rowArity", mono (TFn tInt (TFn tInt tInt))),
       ("Mod.plugs", scheme [0] (TFn tInt tInt)),
       ("Sys.mtime", mono (TFn tUnit tInt)),
+      ("Sys.uptimeMs", mono (TFn tUnit tInt)),
       ("Mod.hashAt", mono (TFn tInt tStr)),
       ("Sys.actLive", scheme [0] (TFn tInt tInt)),
       ("Sys.nextId", mono (TFn tUnit tInt)),

@@ -55,9 +55,9 @@ main =
   message = receiveFrom me me;
   _ = check (message == Ok "unrelated") "caller message consumed";
   _ = drop message;
-  t0 = AC.nowUs Unit;
+  t0 = AC.nowMs Unit;
   _ = check (Task.mapBoundedWithin 20 2 stall (0 :: 1 :: 2 :: Nil) == Err "task: deadline exceeded") "stalled batch deadline";
-  _ = check (AC.nowUs Unit - t0 < 500000) "join timeout too long";
+  _ = check (AC.nowMs Unit - t0 < 500) "join timeout too long";
   _ = check (Task.mapWithin 0 stall (0 :: Nil) == Err "task: deadline exceeded") "expired join admission";
   _ = check (Task.mapBounded (0 - 1) stall Nil == Err "task: invalid concurrency limit") "negative limit";
   counter = spawn monitor;

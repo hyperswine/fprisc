@@ -82,18 +82,18 @@ main =
   _ = check (AC.callWithin 20 me slow "first" == Err "deadline exceeded (outcome unknown)") "live timeout";
   _ = check (AC.callWithin 500 me slow "second" == Ok "second") "late correlated reply reused";
   flood = spawn stale;
-  t0 = AC.nowUs Unit;
+  t0 = AC.nowMs Unit;
   _ = check (AC.callWithin 20 me flood 0 == Err "deadline exceeded (outcome unknown)") "stale stream resets budget";
-  _ = check (AC.nowUs Unit - t0 < 500000) "timeout took too long";
+  _ = check (AC.nowMs Unit - t0 < 500) "timeout took too long";
   _ = kill flood;
   _ = drainOwned me flood;
   raw = spawn legacy;
   first = spawn (AC.session me);
-  d1 = AC.nowUs Unit + 20000;
+  d1 = AC.nowMs Unit + 20;
   _ = check (AC.sessionCallUntil d1 me first raw (fn ret -> (ret, "first")) == Err "deadline exceeded (outcome unknown)") "legacy timeout";
   _ = kill first;
   second = spawn (AC.session me);
-  d2 = AC.nowUs Unit + 500000;
+  d2 = AC.nowMs Unit + 500;
   _ = check (AC.sessionCallUntil d2 me second raw (fn ret -> (ret, "second")) == Ok "second") "late legacy reply reused";
   _ = kill second;
   print "deadlines: selective/FIFO/overflow/death/admission/stale/late-reply contracts HOLDS".

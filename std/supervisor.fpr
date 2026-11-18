@@ -95,8 +95,8 @@ killAll live = L.fold (fn u pair -> case pair of (_, a) -> _ = kill a; Unit) Uni
 # again; past it the supervisor gives up, by name
 restart : Int -> State -> String -> String -> State .
 restart self st name why =
-  now = Sys.mtime Unit / 10;
-  recent = L.filter (fn at -> at > now - st.spec.windowMs * 1000) st.history;
+  now = Sys.uptimeMs Unit;
+  recent = L.filter (fn at -> at > now - st.spec.windowMs) st.history;
   n = L.length recent;
   if n >= st.spec.restarts then
     _ = killAll st.live;

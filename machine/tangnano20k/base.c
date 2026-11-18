@@ -69,6 +69,13 @@ static V h_mtime(V u){
 #endif
 }
 FPR_FN(fpr_g_Sys_x2emtime,h_mtime,1);
+/* Sys.uptimeMs: milliseconds of the cycle counter, the deadline clock. */
+static V h_uptime_ms(V u){
+ (void)u;uint64_t ms=cycles()/((uint64_t)FPR_CPU_MHZ*1000);
+ if(ms>(uint64_t)(UINTPTR_MAX>>2))fpr_cpanic("Sys.uptimeMs exceeds Int range");
+ return TAG((uw)ms);
+}
+FPR_FN(fpr_g_Sys_x2euptimeMs,h_uptime_ms,1);
 static uint64_t deadline;
 static unsigned byte(void){
  deadline=cycles()+(uint64_t)FPR_CPU_MHZ*1000000*5;

@@ -43,7 +43,7 @@ joinStep me parent deadline limit f state =
   if not (ownerAlive me parent) then
       _ = cancel active;
       (False, state)
-  else if deadline > 0 and A.nowUs Unit >= deadline then
+  else if deadline > 0 and A.nowMs Unit >= deadline then
       stop me parent active state (Err "task: deadline exceeded")
   else case xs of
       x :: rest -> if limit == 0 or count < limit then

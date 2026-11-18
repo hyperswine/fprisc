@@ -158,20 +158,23 @@ awaitFrom me a = case receiveFromRes me a of
   | Ok m -> replyKept m m.
 
 # ---- deadlines -------------------------------------------------------------
-# Deadlines are absolute monotonic microseconds; Within takes milliseconds.
+# Deadlines are absolute monotonic MILLISECONDS since boot (Sys.uptimeMs);
+# Within takes milliseconds too. Milliseconds, not the 10 MHz ticks of
+# Sys.mtime, so a deadline fits a 31-bit Int on RV32 for 12.4 days instead
+# of 107 s (until 2026-11-18 deadlines were microseconds, which wrapped there).
 # The SAME deadline covers admission, stale replies and the answer. A timeout
 # after admission leaves the operation's outcome unknown: never replay it
 # automatically. Only correlated calls may reuse the return address afterward.
-nowUs u = Sys.mtime u / 10.
+nowMs u = Sys.uptimeMs u.
 deadlineAfter ms =
-  now = nowUs Unit;
-  if ms < 0 or ms > (intMax Unit - now) / 1000 then Err "invalid deadline duration"
-  else Ok (now + ms * 1000).
+  now = nowMs Unit;
+  if ms < 0 or ms > intMax Unit - now then Err "invalid deadline duration"
+  else Ok (now + ms).
 # Sleep no further than the remaining budget; yielding on an expired budget
 # would let an already-expired request through. No helper actor per request.
 napUntil deadline =
-  left = deadline - nowUs Unit;
-  if left <= 0 then Unit else _ = Sys.sleepUs (if left < 100 then left else 100); Unit.
+  left = deadline - nowMs Unit;
+  if left <= 0 then Unit else _ = Sys.sleepUs 100; Unit.
 
 callWithin ms me a q = case deadlineAfter ms of
     Err why -> Err why
@@ -182,7 +185,7 @@ callSureWithin ms me a q = case deadlineAfter ms of
 callUntil : unsafe Int -> Int -> Int -> q -> Result r String .
 callUntil deadline me a q =
   id = Sys.nextId Unit;
-  if nowUs Unit >= deadline then Err "deadline exceeded before admission" else
+  if nowMs Unit >= deadline then Err "deadline exceeded before admission" else
   case send a (me, id, q) of
       Err why -> Err why
     | Ok u -> awaitReplyUntil deadline me a id.
@@ -194,7 +197,7 @@ callSureUntil deadline me a q =
     | Ok u -> awaitReplyUntil deadline me a id.
 sendSureUntil : unsafe Int -> Int -> Int -> a -> Result Unit String .
 sendSureUntil deadline me a msg =
-  if nowUs Unit >= deadline then Err "deadline exceeded before admission" else
+  if nowMs Unit >= deadline then Err "deadline exceeded before admission" else
   case send a msg of
       Ok u -> Ok u
     | Err why -> if why == "mailbox full" then
@@ -203,7 +206,7 @@ sendSureUntil deadline me a msg =
       else Err why.
 awaitReplyUntil : unsafe Int -> Int -> Int -> Int -> Result r String .
 awaitReplyUntil deadline me a id =
-  if nowUs Unit >= deadline then Err "deadline exceeded (outcome unknown)" else
+  if nowMs Unit >= deadline then Err "deadline exceeded (outcome unknown)" else
   case receiveFromNow me a of
       Err why -> if why == "empty" then
           _ = napUntil deadline;
@@ -220,13 +223,13 @@ replyUntil deadline me a id m =
 # retires on timeout; otherwise its late reply could answer a future call.
 sendAwaitUntil : unsafe Int -> Int -> Int -> q -> Result r String .
 sendAwaitUntil deadline me a msg =
-  if nowUs Unit >= deadline then Err "deadline exceeded before admission" else
+  if nowMs Unit >= deadline then Err "deadline exceeded before admission" else
   case send a msg of
       Err why -> Err why
     | Ok u -> awaitFromUntil deadline me a.
 awaitFromUntil : unsafe Int -> Int -> Int -> Result r String .
 awaitFromUntil deadline me a =
-  if nowUs Unit >= deadline then Err "deadline exceeded (outcome unknown)" else
+  if nowMs Unit >= deadline then Err "deadline exceeded (outcome unknown)" else
   case receiveFromNow me a of
       Err why -> if why == "empty" then
           _ = napUntil deadline;
@@ -254,7 +257,7 @@ sessionCallUntil : unsafe Int -> Int -> Int -> Int -> (Int -> q) -> Result r Str
 sessionCallUntil deadline me calls target makeRequest =
   # The session enforces the budget. Wait for its final answer/death so a
   # timeout result cannot arrive afterward and strand a root in the owner.
-  if nowUs Unit >= deadline then Err "deadline exceeded before admission" else
+  if nowMs Unit >= deadline then Err "deadline exceeded before admission" else
   case call me calls (target, deadline, makeRequest) of
       Err why -> Err why
     | Ok result -> result.
