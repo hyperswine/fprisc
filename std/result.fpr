@@ -25,6 +25,11 @@ isOk : Result a e -> Bool
 isOk (Ok _) = True.
 isOk (Err _) = False.
 
+isErr : Result a e -> Bool
+  | work isErr <= 5 | alloc isErr <= 16 .
+isErr (Ok _) = False.
+isErr (Err _) = True.
+
 rev : (xs : List a | measure xs) -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 

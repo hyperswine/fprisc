@@ -7,4 +7,5 @@ main =
   _ = print "opt: {Option.withDefault 0 (Option.Some 41 |> Option.map inc)} {Option.isNone (Option.andThen (fn x -> Option.None) (Option.Some 1))}";
   _ = print "ord: {Order.string "abc" "abd"} {Order.int 3 3} {Order.by (fn p -> strlen p) Order.int "aaa" "b"}";
   _ = print "res: {Result.collect (Ok 1 :: Ok 2 :: Nil)} {Result.collect (Ok 1 :: Err "bad" :: Nil)} {Result.oks (Ok 1 :: Err "x" :: Ok 3 :: Nil)}";
+  _ = print "isErr {Result.isOk (Ok 1)} {Result.isOk (Err "e")} {Result.isErr (Ok 1)} {Result.isErr (Err "e")}";
   print "done".

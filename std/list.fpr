@@ -230,6 +230,12 @@ last xs = head (reverse xs).
 get : Int -> List a -> O.Option a .
 get i xs = case i < 0 of True -> O.None | False -> head (drop i xs).
 
+# Like `get`, then `Option.withDefault`.  A negative index or one past the
+# end is a no-op: the default is answered, never a trap.  Matches terra-ii's
+# `nth l i d` (docs/2026-11-18-STD-USAGE-CENSUS.md).
+getWithDefault : a -> Int -> List a -> a .
+getWithDefault d i xs = O.withDefault d (get i xs).
+
 # ---- slicing -------------------------------------------------------------------------
 take : Int -> (xs : List a) -> List a | size take <= len xs .
 take n xs = takeGo n xs Nil.
@@ -242,6 +248,39 @@ drop : Int -> (xs : List a) -> List a | size drop <= len xs .
 drop n xs = dropGo n xs.
 dropGo : Int -> (xs : List a | measure xs) -> List a .
 dropGo n xs = case n <= 0 of True -> xs | False -> (case xs of Nil -> Nil | _ :: r -> dropGo (n - 1) r).
+
+# Replace the element at index `i` (from 0).  A negative index or one past
+# the end is a no-op: the list is answered unchanged, never a trap.  Matches
+# terra-ii's `setAt l i v`.
+setAt : Int -> a -> (xs : List a) -> List a | size setAt <= len xs .
+setAt i v xs = case i < 0 of True -> xs | False -> setAtGo i v xs Nil.
+setAtGo : Int -> a -> (xs : List a | measure xs) -> List a -> List a .
+setAtGo i v xs acc = case xs of
+    Nil -> reverse acc
+  | x :: r -> (case i == 0 of True -> revOnto acc (v :: r) | False -> setAtGo (i - 1) v r (x :: acc)).
+
+# Drop the element at index `i` (from 0).  A negative index or one past the
+# end is a no-op: the list is answered unchanged, never a trap.  Matches
+# terra-ii's `delAt l i`.
+removeAt : Int -> (xs : List a) -> List a | size removeAt <= len xs .
+removeAt i xs = case i < 0 of True -> xs | False -> removeAtGo i xs Nil.
+removeAtGo : Int -> (xs : List a | measure xs) -> List a -> List a .
+removeAtGo i xs acc = case xs of
+    Nil -> reverse acc
+  | x :: r -> (case i == 0 of True -> revOnto acc r | False -> removeAtGo (i - 1) r (x :: acc)).
+
+# `(prefix, suffix)` after `n` elements.  `n <= 0` answers `(Nil, xs)`;
+# `n` past the end answers `(xs, Nil)`.  Neither case traps.  terra-ii's
+# local `split l n acc` agrees on `n == 0` and on a past-the-end `n`
+# (with `acc = Nil`); a *negative* `n` there walks to the end and answers
+# `(xs, Nil)`, which this function does not — it treats every OOB `n`
+# as a no-op on the corresponding end, so `n < 0` is `(Nil, xs)`.
+splitAt : Int -> (xs : List a) -> (List a, List a) .
+splitAt n xs = case n <= 0 of True -> (Nil, xs) | False -> splitAtGo n xs Nil.
+splitAtGo : Int -> (xs : List a | measure xs) -> List a -> (List a, List a) .
+splitAtGo n xs acc = case n == 0 of
+    True -> (reverse acc, xs)
+  | False -> (case xs of Nil -> (reverse acc, Nil) | x :: r -> splitAtGo (n - 1) r (x :: acc)).
 
 takeWhile : (a -> Bool) -> (xs : List a) -> List a | size takeWhile <= len xs .
 takeWhile p xs = twGo p xs Nil.
