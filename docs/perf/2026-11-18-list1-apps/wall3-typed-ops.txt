@@ -1,0 +1,11 @@
+round 1
+round 2
+round 3
+round 4
+round 5
+inv-member-new wall med 0.196 rss med 170.2 rc [0]
+inv-import-new wall med 0.211 rss med 178.4 rc [0]
+inv-live-new wall med 1.580 rss med 993.3 rc [0]
+inv-member-ops wall med 0.191 rss med 170.7 rc [0]
+inv-import-ops wall med 0.201 rss med 180.9 rc [0]
+inv-live-ops wall med 1.518 rss med 994.5 rc [0]

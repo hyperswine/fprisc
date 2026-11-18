@@ -1,0 +1,32 @@
+{"op":"item","id":1,"name":"one","loc":"A","sub":"","desc":"d","tags":["a","b"],"by":"x","at":10,"created":10}
+{"op":"item","id":2,"name":"two","loc":"A","sub":"s","desc":"d","tags":["a","b"],"by":"x","at":11,"created":11}
+{"op":"item","id":3,"name":"three","loc":"B","sub":"","desc":"d","tags":["a","b"],"by":"x","at":12,"created":12}
+{"op":"item","id":2,"name":"two","loc":"C","sub":"s","desc":"d","tags":["a","b"],"by":"x","at":20,"created":20}
+{"op":"item","id":2,"name":"two","loc":"C","sub":"s","desc":"d","tags":["a","b"],"by":"x","at":21,"created":21}
+{"op":"item","why":"rename","id":1,"name":"one","loc":"Z","sub":"","desc":"d","tags":["a","b"],"by":"x","at":22,"created":22}
+{"op":"del","id":2,"by":"x","at":30}
+{"op":"item","id":2,"name":"two again","loc":"D","sub":"","desc":"d","tags":["a","b"],"by":"x","at":31,"created":31}
+not json
+
+{"op":"item","id":4,"name":"four","loc":"A","sub":"","desc":"d","tags":["a","b"],"by":"x","at":40,"created":0}
+{"op":"item","id":3,"name":"three","loc":"L0","sub":"","desc":"d","tags":["a","b"],"by":"x","at":50,"created":50}
+{"op":"item","id":3,"name":"three","loc":"L1","sub":"","desc":"d","tags":["a","b"],"by":"x","at":51,"created":51}
+{"op":"item","id":3,"name":"three","loc":"L2","sub":"","desc":"d","tags":["a","b"],"by":"x","at":52,"created":52}
+{"op":"item","id":3,"name":"three","loc":"L3","sub":"","desc":"d","tags":["a","b"],"by":"x","at":53,"created":53}
+{"op":"item","id":3,"name":"three","loc":"L4","sub":"","desc":"d","tags":["a","b"],"by":"x","at":54,"created":54}
+{"op":"del","id":99,"by":"x","at":60}
+{"op":"member","name":"m","salt":"s","hash":"h","at":1}
+{"op":"later","id":1,"at":5}
+{"op":5,"id":1,"name":"x"}
+{"id":1,"name":"no op"}
+{"op":"del","by":"x","at":6}
+{"op":"device","name":"ana","hash":"h1","at":7}
+{"op":"device","name":"ben","hash":"h2","at":8}
+{"op":"undevice","hash":"h1","at":9}
+{"op":"revoke","name":"ben","at":10}
+{"op":"device","name":"cy","hash":"h3","at":11}
+{"op":"member","name":"ana","salt":"s","hash":"h","at":12}
+{"op":"member","name":"ana","salt":"s2","hash":"h2","at":13}
+[1,2]
+"str"
+{"op":"item","why":"rename","id":40,"name":"fresh rename","loc":"Q","at":14}
