@@ -55,7 +55,34 @@ canonical e=step (runIdentity (mapChildrenM (pure . canonical) e))
           body {exprNode=CodeCall k caps (before++[rhs]++after)}
       MatchTail (FunctionMatch _) args [Alternative pats [] body] _
         | length args==length pats,Just pairs<-traverse pair (zip pats args)->canonical (renameUses (M.fromList pairs) body)
+      -- Clauses that only name the parameters and test at most one Bool guard
+      -- each are an if-chain: `f n acc | n <= 0 = rev acc Nil` then
+      -- `f n acc = f (n - 1) (x :: acc)`.  Each clause rebinds every parameter
+      -- (its own names), and the match reads the accumulator as an argument,
+      -- so the builder check below saw the accumulator used and declined.
+      -- Guards still run in clause order; the first clause without a guard
+      -- ends the chain (the ones after it, and the fallback, were unreachable).
+      MatchTail (FunctionMatch _) args alts fallback
+        | length alts>1,Just chain<-guardChain args alts fallback->canonical chain
       _->x
+      where
+        guardChain args alts fallback=foldr link (Just fallback) alts
+          where
+            link (Alternative pats gs body) next=do
+              if length pats/=length args then Nothing else Just ()
+              pairs<-traverse pairOrWild (zip pats args)
+              let names=M.fromList [p | Just p<-pairs]
+                  body'=renameUses names body
+              case gs of
+                [] -> Just body'
+                [BoolGuard g] -> do
+                  rest<-next
+                  Just x {exprNode=If (renameUses names g) body' rest}
+                _ -> Nothing
+        pairOrWild (p,a)=case (patNode p,exprNode a) of
+          (Bind b,Var (Local uid))->Just (Just (binderId b,uid))
+          (Wildcard,_)->Just Nothing
+          _->Nothing
     evaluatedLocal a=case exprNode a of Var (Local _)->True;IntValue _->True;BoolValue _->True;_->False
     pair (p,a)=case (patNode p,exprNode a) of (Bind b,Var (Local uid))->Just (binderId b,uid);_->Nothing
 

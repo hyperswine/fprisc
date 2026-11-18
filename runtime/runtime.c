@@ -1222,7 +1222,7 @@ void fpr_mutmap_note(void *map, V e) {
   (void)map; (void)e;
 #else
   vec_t *x = (vec_t *)map;
-  if (x->var & MM_EPH) return;
+  if ((x->var & MM_EPH) || !CANDIDATE(e) || !fpr_in_heap(e)) return; /* Ints and statics first: no hart lookup */
   fpr_hart_t *h = fpr_hart();
   fpr_pool_t *base = h ? (h->current ? fpr_acb_pool(h->current) : &h->pool) : 0;
   if (!base || mm_ephemeral(e, base)) x->var |= MM_EPH;
@@ -2696,6 +2696,14 @@ uw fpr_region_shared_copies_count(void) { return __atomic_load_n(&region_shared_
 #ifndef FPR_REGION_GROWTH
 #define FPR_REGION_GROWTH 2
 #endif
+/* ...but never sooner than a floor of bytes: a small state (a counting map's
+ * thousand entries, 70 KB) copied at every 2x was a quarter of csv's time,
+ * a sizing walk and a copy of the same keys every 140 KB.  The floor bounds
+ * the copy work at live/FLOOR of the allocation and adds at most FLOOR of
+ * garbage to an open region; a state past FLOOR/2 keeps the 2x rule. */
+#ifndef FPR_REGION_FLOOR
+#define FPR_REGION_FLOOR ((uw)1024 * 1024)
+#endif
 uw fpr_region_deferrals_count(void) { return __atomic_load_n(&region_deferrals, __ATOMIC_RELAXED); }
 uw fpr_region_opens_count(void) { return __atomic_load_n(&region_opens, __ATOMIC_RELAXED); }
 uw fpr_region_cycles_count(void) { return __atomic_load_n(&region_cycles, __ATOMIC_RELAXED); }
@@ -2893,6 +2901,7 @@ static V g_region_cycle(V seqv, V packed) {
    * later.  A receive loop cycles every slab: its cycle also releases the
    * messages its turns took. */
   if (!sc->receive && (sc->ap.allocated - sc->alloc_mark < (uw)FPR_REGION_GROWTH * sc->live_bytes ||
+                       (sc->live_bytes && sc->ap.allocated - sc->alloc_mark < (uw)FPR_REGION_FLOOR) ||
                        sc->ap.allocated < sc->retry_at)) {
     __atomic_fetch_add(&region_deferrals, 1, __ATOMIC_RELAXED);
     return packed;

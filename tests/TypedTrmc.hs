@@ -120,3 +120,20 @@ passChecks=do
       fakeSnapshot=right (catalog types (M.fromList [("revOnto",fake),("copy",before)]))
       (_,fakeLoops,_,fakeChanged)=right (trmcClosed (Namespace "pass") types (planTrmc fakeSnapshot) before)
   check "reverse spelling alone is not semantic evidence" (fakeLoops==0 && not fakeChanged)
+  -- Guard clauses rebind every parameter in each clause and match on the
+  -- parameters themselves (`f n acc | guard = revOnto acc Nil` then
+  -- `f n acc = f n (n :: acc)`): the accumulator is read only through
+  -- the clauses' own names, and the pass reads the clauses as an if-chain.
+  let gn=b 40 (TC "Int");ga=b 41 list
+      n1=b 42 (TC "Int");a1=b 43 list;n2=b 44 (TC "Int");a2=b 45 list
+      bindP ty x=Pattern ty "p" (Bind x)
+      guard'=e (TC "Bool") (BoolValue True)
+      clauses=e list (MatchTail (FunctionMatch "count") [ref gn,ref ga]
+        [Alternative [bindP (TC "Int") n1,bindP list a1] [BoolGuard guard'] (invoke "revOnto" [ref a1,nil]),
+         Alternative [bindP (TC "Int") n2,bindP list a2] [] (invoke "count" [ref n2,cons' n2 a2])]
+        (e list (Fail "no clause")))
+      countFn=close (Function "count" [gn,ga] clauses)
+      countSnapshot=right (catalog types (M.fromList [("revOnto",close reverseFn),("count",countFn)]))
+      (countAfter,countLoops,_,countChanged)=right (trmcClosed (Namespace "pass") types (planTrmc countSnapshot) countFn)
+  check "guard clauses that rebind the accumulator build front to back" (countChanged && countLoops==1
+    && verifyClosed types countAfter==Right ())
