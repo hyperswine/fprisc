@@ -76,9 +76,6 @@ Option = use "std/option".
 Result = use "std/result".
 
 Att = G.Att.
-strEq : String -> String -> Bool .
-strEq a b = a == b.
-
 # every message a register can send.  The fields that come from the page's own
 # inputs are the LAST ones, filled when the button is pressed (G.sendWith:
 # `Restock p.sku` and the page's restock delta, `Login` and its name and PIN).
@@ -121,12 +118,12 @@ initModel = { cat = Nil, tax = 0, lowAt = 3, sales = Nil, nsale = 0, revenue = 0
 # A Stat is a count, a sum and a maximum; the profile is only projected to a
 # session on the Admin tab, so measuring costs the other registers nothing.
 noStat = { n = 0, sum = 0, max = 0, last = 0 }.
-note st us = { n = st.n + 1, sum = st.sum + us, max = imax st.max us, last = us }.
+note st us = { n = st.n + 1, sum = st.sum + us, max = Int.max st.max us, last = us }.
 avg st = case st.n == 0 of True -> 0 | False -> st.sum / st.n.
 noProf = { bootUs = 0, bootLines = 0, upd = Nil, flush = noStat, nev = 0 }.
 noteUpd kind us prof = { prof | upd = noteKind prof.upd kind us, nev = prof.nev + 1 }.
-noteKind es kind us = case List.any (fn e -> case e of (k, _) -> strEq k kind) es of
-    True -> List.map (fn e -> case e of (k, st) -> (case strEq k kind of True -> (k, note st us) | False -> (k, st))) es
+noteKind es kind us = case List.any (fn e -> case e of (k, _) -> (k == kind)) es of
+    True -> List.map (fn e -> case e of (k, st) -> (case (k == kind) of True -> (k, note st us) | False -> (k, st))) es
   | False -> List.append es ((kind, note noStat us) :: Nil).
 kindOf ev = case ev of
     Live.Msg sid msg -> msgKind msg
@@ -154,7 +151,7 @@ rev l acc = l |> foldE (fn x xs -> x :: xs) acc.
 num s = numGo s 0 (strlen s) 0.
 numGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int .
 numGo s i n acc | i >= n = acc.
-numGo s i n acc | isDig (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i - 48).
+numGo s i n acc | S.isDigit (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i - 48).
 numGo s i n acc = acc.
 words s = S.words s.
 unwords ws = S.join " " ws.
@@ -165,10 +162,6 @@ seGo s st i n acc | i >= n = rev (substr s st (i - st) :: acc) Nil.
 seGo s st i n acc | charAt s i == 61 = seGo s (i + 1) (i + 1) n (substr s st (i - st) :: acc).
 seGo s st i n acc = seGo s st (i + 1) n acc.
 takeN l n = List.take n l.
-imax a b | a > b = a.
-imax a b = b.
-imin a b | a < b = a.
-imin a b = b.
 # a name for the log: letters and digits only, 1..16 of them
 wordy s = strlen s >= 1 and strlen s <= 16 and wdGo s 0 (strlen s).
 wdGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Bool .
@@ -185,14 +178,13 @@ cents s = cWhole s 0 (strlen s) 0.
 cWhole : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int .
 cWhole s i n acc | i >= n = acc * 100.
 cWhole s i n acc | charAt s i == 46 = acc * 100 + cFrac s (i + 1) n 10 0.
-cWhole s i n acc | isDig (charAt s i) = cWhole s (i + 1) n (acc * 10 + charAt s i - 48).
+cWhole s i n acc | S.isDigit (charAt s i) = cWhole s (i + 1) n (acc * 10 + charAt s i - 48).
 cWhole s i n acc = cWhole s (i + 1) n acc.
 cFrac : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int -> Int .
 cFrac s i n mul acc | i >= n = acc.
 cFrac s i n mul acc | mul == 0 = acc.
-cFrac s i n mul acc | isDig (charAt s i) = cFrac s (i + 1) n (mul / 10) (acc + (charAt s i - 48) * mul).
+cFrac s i n mul acc | S.isDigit (charAt s i) = cFrac s (i + 1) n (mul / 10) (acc + (charAt s i - 48) * mul).
 cFrac s i n mul acc = acc.
-isDig c = c >= 48 and c <= 57.
 bi True = 1.
 bi False = 0.
 
@@ -220,7 +212,7 @@ dayOf t = t / 86400.
 
 # ---- products -------------------------------------------------------------------------
 
-findP ps sku = case List.find (fn p -> strEq p.sku sku) ps of Option.Some p -> p | Option.None -> mkProduct "" 0 0 "".
+findP ps sku = case List.find (fn p -> (p.sku == sku)) ps of Option.Some p -> p | Option.None -> mkProduct "" 0 0 "".
 hasP cat sku =
   p = findP cat sku;
   strlen p.sku > 0.
@@ -228,7 +220,7 @@ priceOf cat sku = p = findP cat sku; p.price.
 stockOf cat sku = p = findP cat sku; p.stock.
 nameOf cat sku = p = findP cat sku; p.name.
 # the product sku changed by f
-mapP ps sku f = List.map (fn p -> case strEq p.sku sku of True -> f p | False -> p) ps.
+mapP ps sku f = List.map (fn p -> case (p.sku == sku) of True -> f p | False -> p) ps.
 setStock cat sku d = mapP cat sku (fn p -> { p | stock = p.stock + d }).
 live ps = List.filter (fn p -> p.retired != 1) ps.
 pCount cat = List.length (live cat).
@@ -240,25 +232,25 @@ apply m line =
   case words line of
     Nil -> m
   | w :: r -> applyW m w r.
-applyW m w r | strEq w "product" = (case r of
+applyW m w r | (w == "product") = (case r of
     sku :: price :: stock :: nameWs -> addP m sku (num price) (num stock) (unwords nameWs)
   | x -> m).
-applyW m w r | strEq w "retire" = (case r of
+applyW m w r | (w == "retire") = (case r of
     sku :: x -> { m | cat = mapP m.cat sku (fn p -> { p | retired = 1 }) }
   | x -> m).
-applyW m w r | strEq w "staff" = (case r of
+applyW m w r | (w == "staff") = (case r of
     name :: pin :: x -> { m | staff = (name, pin) :: dropStaff m.staff name }
   | x -> m).
-applyW m w r | strEq w "tax" = (case r of n :: x -> { m | tax = num n } | x -> m).
-applyW m w r | strEq w "lowat" = (case r of n :: x -> { m | lowAt = num n } | x -> m).
-applyW m w r | strEq w "price" = (case r of
+applyW m w r | (w == "tax") = (case r of n :: x -> { m | tax = num n } | x -> m).
+applyW m w r | (w == "lowat") = (case r of n :: x -> { m | lowAt = num n } | x -> m).
+applyW m w r | (w == "price") = (case r of
     sku :: c :: x -> { m | cat = mapP m.cat sku (fn p -> { p | price = num c }) }
   | x -> m).
-applyW m w r | strEq w "restock" = (case r of
+applyW m w r | (w == "restock") = (case r of
     sku :: d :: x -> addStock m sku (num d)
   | x -> m).
-applyW m w r | strEq w "sale" = applySale m r.
-applyW m w r | strEq w "void" = (case r of
+applyW m w r | (w == "sale") = applySale m r.
+applyW m w r | (w == "void") = (case r of
     n :: who :: at :: x -> applyVoid m (num n) who (num at)
   | x -> m).
 applyW m w r = m.
@@ -266,7 +258,7 @@ applyW m w r = m.
 addP m sku price stock name | hasP m.cat sku = m.
 addP m sku price stock name = { m | cat = m.cat + (mkProduct sku price stock name :: Nil) }.
 addStock m sku d = { m | cat = setStock m.cat sku d }.
-dropStaff es name = List.filter (fn e -> case e of (nm, _) -> not (strEq nm name)) es.
+dropStaff es name = List.filter (fn e -> case e of (nm, _) -> not ((nm == name))) es.
 
 # sale <n> <cashier> <at> <pay> <tendered> <total> <tax> <items...>
 applySale m r = case r of
@@ -274,7 +266,7 @@ applySale m r = case r of
       ls = items |> List.map (fn it -> lineOf m it);
       s = { n = num n, cashier = who, at = num at, pay = num pay, tendered = num tend, total = num total,
             tax = num tax, lines = ls, voided = 0, voidBy = "", voidAt = 0 };
-      { m | sales = s :: m.sales, nsale = imax m.nsale (num n), revenue = m.revenue + num total,
+      { m | sales = s :: m.sales, nsale = Int.max m.nsale (num n), revenue = m.revenue + num total,
             cat = ls |> foldE (fn l c -> takeLine c l) m.cat }
   | x -> m.
 takeLine cat (sku, q, pr, nm) = setStock cat sku (0 - q).
@@ -353,7 +345,7 @@ flush j m = case m.pend of
 # a product added or retired, a rebuild) and at boot, written beside and
 # renamed over so a reader never sees half of it.  The log is still the shop.
 stockMoved m n = not (n.cat == m.cat) or n.lowAt != m.lowAt.
-writeStock m | strEq m.metrics "" = 0.
+writeStock m | (m.metrics == "") = 0.
 writeStock m = case File.writeText "{m.metrics}.tmp" (promText m) of
     Err why -> _ = Sys.stderr "[pos1] metrics: {why}\n"; 1
   | Ok _ -> (case File.rename "{m.metrics}.tmp" m.metrics of
@@ -422,7 +414,7 @@ pMsg j sid msg m = case msg of
   | other -> withUser j sid other m (sGet m.sess sid).
 
 # a PIN has done its work once it is checked: the page forgets it
-signIn m sid m2 = s = sGet m2.sess sid; (m2, case strEq s.cashier "" of True -> Nil | False -> Live.setClient sid [G.assign @Client.pin ""] :: Nil).
+signIn m sid m2 = s = sGet m2.sess sid; (m2, case (s.cashier == "") of True -> Nil | False -> Live.setClient sid [G.assign @Client.pin ""] :: Nil).
 signOut m sid s = (forget m sid, Live.setClient sid (G.assign @Client.tender "" :: G.assign @Client.tab Register :: zeros s.cart) :: Nil).
 
 # signing in keeps what the page already mirrored (its tab, its cart)
@@ -456,11 +448,11 @@ sold m sid s m2 =
   case List.isEmpty s2.cart and not (List.isEmpty s.cart) of
     True -> (m2, Live.setClient sid (G.assign @Client.tender "" :: zeros s.cart) :: Nil)
   | False -> (m2, Nil).
-pinOk es name pin = case List.find (fn e -> case e of (nm, _) -> strEq nm name) es of
-    Option.Some (_, pn) -> strEq pn pin
+pinOk es name pin = case List.find (fn e -> case e of (nm, _) -> (nm == name)) es of
+    Option.Some (_, pn) -> (pn == pin)
   | Option.None -> False.
 
-withUser j sid msg m s | strEq s.cashier "" = (refuse m sid "sign in first", Nil).
+withUser j sid msg m s | (s.cashier == "") = (refuse m sid "sign in first", Nil).
 withUser j sid msg m s = case msg of
     Cash arg -> sold m sid s (checkout m sid s 0 (cents arg))
   | Card -> sold m sid s (checkout m sid s 1 0)
@@ -474,7 +466,7 @@ withUser j sid msg m s = case msg of
 
 # ---- the cart ------------------------------------------------------------------------------
 
-qtyOf ls sku = case List.find (fn l -> case l of (k, _) -> strEq k sku) ls of Option.Some (_, q) -> q | Option.None -> 0.
+qtyOf ls sku = case List.find (fn l -> case l of (k, _) -> (k == sku)) ls of Option.Some (_, q) -> q | Option.None -> 0.
 subtotal m cart = cart |> foldE (fn l acc -> acc + lineTotal m l) 0.
 lineTotal m (k, q) = q * priceOf m.cat k.
 taxOn m sub = Money.tax sub (activeRate m).
@@ -542,13 +534,13 @@ helpText = "help: get tax|lowat|revenue|price SKU|stock SKU; set tax N|lowat N|p
 run j m s ws = case ws of
     w :: r -> runW j m s w r
   | Nil -> (m, helpText).
-runW j m s w r | strEq w "help" = (m, helpText).
-runW j m s w r | strEq w "get" = (m, getV m r).
-runW j m s w r | strEq w "set" = setV m s r.
-runW j m s w r | strEq w "add" = addCmd m r.
-runW j m s w r | strEq w "retire" = retireCmd m s r.
-runW j m s w r | strEq w "staff" = staffCmd m r.
-runW j m s w r | strEq w "rebuild" = rebuild j m.
+runW j m s w r | (w == "help") = (m, helpText).
+runW j m s w r | (w == "get") = (m, getV m r).
+runW j m s w r | (w == "set") = setV m s r.
+runW j m s w r | (w == "add") = addCmd m r.
+runW j m s w r | (w == "retire") = retireCmd m s r.
+runW j m s w r | (w == "staff") = staffCmd m r.
+runW j m s w r | (w == "rebuild") = rebuild j m.
 runW j m s w r = (m, "unknown: {w} (try help)").
 
 addCmd m (sku :: price :: stock :: nameWs) | wordy sku and not (hasP m.cat sku) and List.length nameWs > 0 =
@@ -561,16 +553,16 @@ retireCmd m s r = (m, "retire SKU").
 staffCmd m (name :: pin :: x) | wordy name and wordy pin = (commit m "staff {name} {pin}", "staff {name} set").
 staffCmd m (name :: pin :: x) = (m, "staff NAME PIN: letters and digits").
 staffCmd m r = (m, "staff NAME PIN").
-getV m (k :: x) | strEq k "tax" = "tax {m.tax} basis points ({m.tax / 100}.{pad2 (m.tax % 100)}%)".
-getV m (k :: x) | strEq k "lowat" = "lowat {m.lowAt}".
-getV m (k :: x) | strEq k "revenue" = "revenue {money m.revenue} over {List.length m.sales} sales".
-getV m (k :: sku :: x) | strEq k "price" = "price {sku} {money (priceOf m.cat sku)}".
-getV m (k :: sku :: x) | strEq k "stock" = "stock {sku} {stockOf m.cat sku}".
+getV m (k :: x) | (k == "tax") = "tax {m.tax} basis points ({m.tax / 100}.{pad2 (m.tax % 100)}%)".
+getV m (k :: x) | (k == "lowat") = "lowat {m.lowAt}".
+getV m (k :: x) | (k == "revenue") = "revenue {money m.revenue} over {List.length m.sales} sales".
+getV m (k :: sku :: x) | (k == "price") = "price {sku} {money (priceOf m.cat sku)}".
+getV m (k :: sku :: x) | (k == "stock") = "stock {sku} {stockOf m.cat sku}".
 getV m r = "get tax|lowat|revenue|price SKU|stock SKU".
-setV m s (k :: n :: x) | strEq k "tax" = (commit m "tax {num n}", "tax {num n}").
-setV m s (k :: n :: x) | strEq k "lowat" = (commit m "lowat {num n}", "lowat {num n}").
-setV m s (k :: sku :: c :: x) | strEq k "price" and hasP m.cat sku = (commit m "price {sku} {num c} {s.cashier} {Clock.now Unit}", "price {sku} {money (num c)}").
-setV m s (k :: sku :: c :: x) | strEq k "price" = (m, "no such SKU").
+setV m s (k :: n :: x) | (k == "tax") = (commit m "tax {num n}", "tax {num n}").
+setV m s (k :: n :: x) | (k == "lowat") = (commit m "lowat {num n}", "lowat {num n}").
+setV m s (k :: sku :: c :: x) | (k == "price") and hasP m.cat sku = (commit m "price {sku} {num c} {s.cashier} {Clock.now Unit}", "price {sku} {money (num c)}").
+setV m s (k :: sku :: c :: x) | (k == "price") = (m, "no such SKU").
 setV m s r = (m, "set tax N|lowat N|price SKU CENTS").
 
 # every page mirrors its client state, twice a second when it changed
@@ -647,7 +639,7 @@ noRender = { st = noStat, hits = 0, misses = 0, cards = 0, rows = 0 }.
 view sid v old = case old of (cardsOld, rowsOld, rs) ->
   s = v.s;
   t0 = Sys.timeUs Unit;
-  (case strEq s.cashier "" of
+  (case (s.cashier == "") of
     True -> (G.renderStyled (pageRoot v [loginView s, Notice.view v.reloadNotice]), old)
   | False ->
     (case VC.many (fn i -> i.p.sku) renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat)) (VC.begin "pos1-card-v1" verify cardsOld) of (cards, cc) ->
@@ -705,7 +697,7 @@ toasts s =
   UI.hstack { UI.stack | gap = 2 }
     [ UI.toast UI.Success (roleText s "ok"), UI.toast UI.Accent (roleText s "celebrate")
     , UI.toast UI.Warning (roleText s "warn"), UI.toast UI.Danger (roleText s "bad") ].
-roleText s role | strEq s.role role = s.toast.
+roleText s role | (s.role == role) = s.toast.
 roleText s role = "".
 
 body v s cards rows rs =
@@ -731,7 +723,7 @@ productCard lowAt p =
     [ UI.label strong p.name
     , UI.hstack { UI.stack | justify = UI.Between, align = UI.Center }
         [ UI.text tabular "${money p.price}", stockBadge lowAt p ]
-    , UI.button pill [G.step (line p.sku) 1 0 (imin 999 p.stock)] "add" ].
+    , UI.button pill [G.step (line p.sku) 1 0 (Int.min 999 p.stock)] "add" ].
 # the badge takes a tone: sold out is danger, at or under the threshold warning
 stockBadge lowAt p = UI.status (stockTone lowAt p) [Att "data-role" "stock"] (stockText lowAt p).
 stockTone lowAt p | p.stock == 0 = UI.Danger.
@@ -761,9 +753,9 @@ totalRow label hook =
 cartLine p =
   UI.listRow { UI.stack | gap = 2, align = UI.Center, justify = UI.Between } [G.hideIf (line p.sku) 0, B.mark lineHook p.sku, B.mark priceHook "{p.price}"]
     [ UI.label { UI.txt | wrap = False, fill = UI.Grow } p.name
-    , UI.button pill [G.step (line p.sku) (0 - 1) 0 (imin 999 p.stock)] "-"
+    , UI.button pill [G.step (line p.sku) (0 - 1) 0 (Int.min 999 p.stock)] "-"
     , UI.localWith { tabular | align = UI.End } [count] (line p.sku)
-    , UI.button pill [G.step (line p.sku) 1 0 (imin 999 p.stock)] "+"
+    , UI.button pill [G.step (line p.sku) 1 0 (Int.min 999 p.stock)] "+"
     , UI.labelWith { tabular | align = UI.End } [figure, B.mark lineTotalHook p.sku] "$0.00"
     , UI.button pill [G.setTo (line p.sku) 0] "x" ].
 
