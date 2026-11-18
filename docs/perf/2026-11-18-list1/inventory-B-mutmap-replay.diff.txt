@@ -1,0 +1,55 @@
+--- inv-base/src/inventory.fpr	2026-11-18 13:56:25.202916899 +1100
++++ inv-protoB/src/inventory.fpr	2026-11-18 13:55:47.797168265 +1100
+@@ -79,6 +79,7 @@
+ Option = use "std/option".
+ Order = use "std/order".
+ Digest = use "std/digest".
++MutMap = use "std/mutmap".
+ 
+ Txt = G.Txt.
+ Dyn = G.Dyn.
+@@ -253,7 +254,43 @@
+   _ = (case m2.skipped > 0 of True -> Sys.stderr "[inventory] {m2.skipped} unreadable lines skipped\n" | False -> Unit);
+   _ = (case List.isEmpty m2.members of True -> Sys.stderr "[inventory] no members yet: add one with --member=NAME and INV_PASSWORD\n" | False -> Unit);
+   { m2 | path = path, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
+-replayed m ls = List.fold (fn mm l -> apply { mm | events = mm.events + 1 } l) m ls.
++replayed m ls = case m.items of
++    Nil -> replayOwned m ls
++  | _ -> List.fold (fn mm l -> apply { mm | events = mm.events + 1 } l) m ls.
++# PROTOTYPE: while the log is folded nothing else can see the items, so they are
++# kept in a linear id -> item table (written in place) plus the ids in the order
++# the list would hold them (newest first), and turned into the list once.
++itemOf v =
++  at = int "at" v;
++  made = int "created" v;
++  { id = int "id" v, name = txt "name" v, loc = txt "loc" v, sub = txt "sub" v, desc = txt "desc" v,
++    tags = strs "tags" v, created = (case made == 0 of True -> at | False -> made), at = at, by = txt "by" v, moves = Nil }.
++replayOwned m ls =
++  (m2, tbl, order) = List.fold (fn st l -> replayLine st l) (m, MutMap.ints Unit, Nil) ls;
++  (items, tbl2) = List.fold (fn acc id -> emitId acc id) (Nil, tbl) order;
++  _ = MutMap.free tbl2;
++  { m2 | items = List.reverse items }.
++emitId (acc, tbl) id = case MutMap.get id tbl of
++    (Option.Some it, t1) -> (it :: acc, MutMap.remove id t1)
++  | (Option.None, t1) -> (acc, t1).
++replayLine (mm, tbl, order) l =
++  m1 = { mm | events = mm.events + 1 };
++  case strlen (S.trim l) == 0 of
++    True -> (m1, tbl, order)
++  | False -> (case Json.parse l of
++      Err why -> ({ m1 | skipped = m1.skipped + 1 }, tbl, order)
++    | Ok v -> replayOp m1 tbl order (txt "op" v) v).
++replayOp m tbl order op v | strEq op "item" =
++  it = itemOf v;
++  renamed = strEq (txt "why" v) "rename";
++  m2 = { m | nextId = imax m.nextId (it.id + 1) };
++  case MutMap.get it.id tbl of
++    (Option.None, t1) -> (m2, MutMap.insert it.id it t1, it.id :: order)
++  | (Option.Some old, t1) ->
++      new = { it | created = old.created, moves = (case renamed of True -> old.moves | False -> movedFrom old it) };
++      (m2, MutMap.insert it.id new t1, order).
++replayOp m tbl order op v | strEq op "del" = (m, MutMap.remove (int "id" v) tbl, order).
++replayOp m tbl order op v = (applyOp m op v, tbl, order).
+ 
+ # The pending lines, oldest first, in ONE write.  A write that fails, or a
+ # file that is no longer the one the journal left (a backup restored over it,

@@ -1,0 +1,7 @@
+#!/bin/bash
+# cgj.sh VARIANT WORK REP
+v=$1; w=$2; r=$3; A=/workspace/out/apps; O=/workspace/l1/cg/$v-$w-r$r
+VG="valgrind --tool=callgrind --callgrind-out-file=$O.cg"
+if [ $w = import ]; then d=$($A/invwork-300.sh /workspace/l1/inv-$v/build/inventory l1$v import $VG); else d=$($A/invwork.sh /workspace/l1/inv-$v/build/inventory l1$v member $VG); fi
+cp $d/out.txt $O.out; tail -n +16002 $d/inv.log | sed 's/"salt":"[0-9a-f]*","hash":"[0-9a-f]*"/SALTHASH/' | md5sum > $O.tail
+echo "$v-$w-r$r $(grep -m1 '^summary:' $O.cg | cut -d' ' -f2)" >> /workspace/l1/cg/results.txt

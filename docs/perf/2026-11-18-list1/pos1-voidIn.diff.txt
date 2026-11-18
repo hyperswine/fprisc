@@ -1,0 +1,19 @@
+--- p1-base/pos1.fpr	2026-11-18 14:01:10.425749994 +1100
++++ p1-proto/pos1.fpr	2026-11-18 14:01:22.621015989 +1100
+@@ -288,9 +288,15 @@
+   case s.n == n and s.voided == 0 of
+     False -> m
+   | True ->
+-    { m | sales = m.sales |> List.map (fn x -> markVoid x n who at),
++    { m | sales = voidIn m.sales n who at,
+           revenue = m.revenue - s.total,
+           cat = s.lines |> foldE (fn l c -> giveLine c l) m.cat }.
++# PROTOTYPE: sale numbers are unique, so copy only the receipts in front of
++# the voided one (newest first: a recent void is a short prefix) and share the rest
++voidIn : (ss : List {n : Int, voided : Int, voidBy : String, voidAt : Int | r} | measure ss) -> Int -> String -> Int -> List {n : Int, voided : Int, voidBy : String, voidAt : Int | r} .
++voidIn ss n who at = case ss of
++    Nil -> Nil
++  | x :: r -> (case x.n == n of True -> { x | voided = 1, voidBy = who, voidAt = at } :: r | False -> x :: voidIn r n who at).
+ markVoid x n who at | x.n == n = { x | voided = 1, voidBy = who, voidAt = at }.
+ markVoid x n who at = x.
+ noSale = { n = 0, cashier = "", at = 0, pay = 0, tendered = 0, total = 0, tax = 0, lines = Nil, voided = 0, voidBy = "", voidAt = 0 }.

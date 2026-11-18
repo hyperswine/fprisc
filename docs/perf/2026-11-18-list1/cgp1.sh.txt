@@ -1,0 +1,5 @@
+#!/bin/bash
+# cgp1.sh VARIANT REP
+v=$1; r=$2; source /workspace/out/env.sh; d=/workspace/l1/run/p1-$v-$r; mkdir -p $d; cp /workspace/out/apps/data/pos1-big.log $d/p1.log; cd $d
+valgrind --tool=callgrind --callgrind-out-file=/workspace/l1/cg/p1$v-r$r.cg /workspace/l1/p1-$v/drv-bin p1.log > /workspace/l1/cg/p1$v-r$r.out 2> /workspace/l1/cg/p1$v-r$r.err
+ir=$(grep -o 'Collected : [0-9]*' /workspace/l1/cg/p1$v-r$r.err | grep -o '[0-9]*'); echo "p1$v-r$r $ir $(md5sum < /workspace/l1/cg/p1$v-r$r.out | cut -c1-8)" >> /workspace/l1/cg/p1results.txt

@@ -1,0 +1,4 @@
+#!/bin/bash
+v=$1; source /workspace/out/env.sh; export FPR_HOME=/workspace/fpr-l1 XDG_CACHE_HOME=/workspace/l1/cache-$v; cd /workspace/l1/inv-$v; mkdir -p build
+python3 /workspace/out/apps/tm.py /workspace/fpr-l1/fpr build src/inventory.fpr -o build/inventory > build/app.log 2>&1
+python3 /workspace/out/apps/tm.py /workspace/fpr-l1/fpr build tests/dump.fpr -o build/dump > build/dump.log 2>&1

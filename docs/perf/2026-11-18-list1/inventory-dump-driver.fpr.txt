@@ -1,0 +1,17 @@
+# BENCH/CHECK (outside the repo): fold a journal with the app's own `replayed`, print every item in list order
+App = use "../src/inventory".
+Journal = use "std/journal".
+Program = use "std/program".
+List = use "std/list".
+S = use "std/string".
+mv x = "{x.at}:{x.from}".
+row it = "{it.id}|{it.name}|{it.loc}|{it.sub}|{it.desc}|{S.join "," it.tags}|{it.created}|{it.at}|{it.by}|{S.join ";" (List.map mv it.moves)}".
+main = case Program.args Unit of
+    path :: r -> (case Journal.open path of
+        Ok o ->
+          m = App.replayed App.initModel o.lines;
+          _ = List.map (fn it -> print (row it)) m.items;
+          _ = print "events {m.events} items {List.length m.items} next {m.nextId} skipped {m.skipped} members {List.length m.members}";
+          0
+      | Err why -> Program.fail 1 why)
+  | Nil -> Program.fail 2 "usage: dump LOG".

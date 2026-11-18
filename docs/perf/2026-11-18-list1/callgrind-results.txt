@@ -1,0 +1,26 @@
+base-member-r1 10174651047
+proto-member-r1 4904903579
+protoB-member-r1 1071677390
+base-import-r1 17278956415
+base-member-r2 10174697832
+proto-import-r1 12009072176
+proto-member-r2 4904785424
+protoB-member-r2 1071657951
+protoB-import-r1 8175858756
+base-member-r3 10174643369
+proto-member-r3 4904926900
+protoB-member-r3 1071676967
+base-import-r2 17278940095
+proto-import-r2 12008995294
+protoB-import-r2 8175882057
+base-import-r3 17278834693
+proto-import-r3 12009021978
+protoB-import-r3 8175891294
+ALLDONE
+p1proto-r1 2534614177 f59de3c9
+p1base-r1 3240971225 f59de3c9
+p1proto-r2 2534617243 f59de3c9
+p1base-r2 3240927731 f59de3c9
+p1proto-r3 2534602139 f59de3c9
+p1base-r3 3240936276 f59de3c9
+ALLDONE

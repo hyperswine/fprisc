@@ -1,0 +1,30 @@
+--- inv-base/src/inventory.fpr	2026-11-18 13:56:25.202916899 +1100
++++ inv-proto/src/inventory.fpr	2026-11-18 13:55:30.558205839 +1100
+@@ -178,7 +178,7 @@
+   # a place renamed (the console's `rename`) is the same place: not a move
+   putItem (strEq (txt "why" v) "rename") m { id = int "id" v, name = txt "name" v, loc = txt "loc" v, sub = txt "sub" v, desc = txt "desc" v,
+               tags = strs "tags" v, created = (case made == 0 of True -> at | False -> made), at = at, by = txt "by" v, moves = Nil }.
+-applyOp m op v | strEq op "del" = { m | items = List.filter (fn it -> it.id != int "id" v) m.items }.
++applyOp m op v | strEq op "del" = { m | items = dropById m.items (int "id" v) }.
+ applyOp m op v | strEq op "member" =
+   { m | members = (txt "name" v, txt "salt" v, txt "hash" v) :: List.filter (fn mm -> not (strEq (memName mm) (txt "name" v))) m.members }.
+ applyOp m op v | strEq op "device" = { m | devices = (txt "hash" v, txt "name" v) :: m.devices }.
+@@ -191,7 +191,17 @@
+     Option.None -> { m | items = it :: m.items, nextId = imax m.nextId (it.id + 1) }
+   | Option.Some old ->
+       new = { it | created = old.created, moves = (case renamed of True -> old.moves | False -> movedFrom old it) };
+-      { m | items = List.map (fn x -> (case x.id == it.id of True -> new | False -> x)) m.items, nextId = imax m.nextId (it.id + 1) }.
++      { m | items = replaceById m.items it.id new, nextId = imax m.nextId (it.id + 1) }.
++# PROTOTYPE: copy only the prefix before the matching id and share the rest
++# (ids are unique in m.items, so the first match is the only one)
++replaceById : (xs : List Item | measure xs) -> Int -> Item -> List Item .
++replaceById xs id new = case xs of
++    Nil -> Nil
++  | x :: r -> (case x.id == id of True -> new :: r | False -> x :: replaceById r id new).
++dropById : (xs : List Item | measure xs) -> Int -> List Item .
++dropById xs id = case xs of
++    Nil -> Nil
++  | x :: r -> (case x.id == id of True -> r | False -> x :: dropById r id).
+ movedFrom old it | strEq (place old) (place it) = old.moves.
+ movedFrom old it = List.take 3 ({ at = it.at, from = place old } :: old.moves).
+ 
