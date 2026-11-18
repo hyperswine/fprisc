@@ -1,0 +1,5 @@
+#!/bin/bash
+# cgs.sh LABEL REP CMD...: one callgrind run of a batch driver; Ir + stdout md5 -> cg/results2.txt
+l=$1; r=$2; shift 2; O=/workspace/l1/cg/$l-r$r; export LD_LIBRARY_PATH=/opt/tc/fprdeps/lib
+valgrind --tool=callgrind --callgrind-out-file=$O.cg "$@" > $O.out 2> $O.err
+echo "$l-r$r $(grep -m1 '^summary:' $O.cg | cut -d' ' -f2) $(md5sum < $O.out | cut -c1-8)" >> /workspace/l1/cg/results2.txt

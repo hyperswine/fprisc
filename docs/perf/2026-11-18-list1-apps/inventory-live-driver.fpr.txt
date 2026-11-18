@@ -1,0 +1,13 @@
+# BENCH (outside the repo): the journal through the LIVE path, one App.apply a line
+App = use "../src/inventory".
+Journal = use "std/journal".
+Program = use "std/program".
+List = use "std/list".
+main = case Program.args Unit of
+    path :: r -> (case Journal.open path of
+        Ok o ->
+          m = List.fold (fn mm l -> App.apply mm l) App.initModel o.lines;
+          _ = print "items {List.length m.items} next {m.nextId} skipped {m.skipped} sum {List.fold (fn a it -> (a * 31 + it.id + List.length it.moves) % 1000000007) 0 m.items}";
+          0
+      | Err why -> Program.fail 1 why)
+  | Nil -> Program.fail 2 "usage: live LOG".

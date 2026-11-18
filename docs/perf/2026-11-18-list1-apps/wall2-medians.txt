@@ -1,0 +1,20 @@
+round 1
+round 2
+round 3
+round 4
+round 5
+inv-member-base wall med 2.346 rss med 1968.4 rc [0]
+inv-import-base wall med 3.706 rss med 3324.8 rc [0]
+inv-sugg-base wall med 2.801 rss med 2049.0 rc [0]
+inv-live-base wall med 2.305 rss med 1964.2 rc [0]
+terra-base wall med 0.428 rss med 46.6 rc [0]
+qrepo-base wall med 1.519 rss med 549.1 rc [0]
+inv-member-new wall med 0.192 rss med 170.1 rc [0]
+inv-import-new wall med 0.201 rss med 178.3 rc [0]
+inv-sugg-new wall med 0.554 rss med 304.5 rc [0]
+inv-live-new wall med 1.621 rss med 993.4 rc [0]
+terra-new wall med 0.346 rss med 46.7 rc [0]
+qrepo-new wall med 1.255 rss med 519.5 rc [0]
+pos1-mbase wall med 1.084 rss med 1186.6 rc [0]
+pos1-mnew wall med 0.826 rss med 620.9 rc [0]
+pos1-mvec wall med 0.859 rss med 609.1 rc [0]

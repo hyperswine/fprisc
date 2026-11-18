@@ -1,0 +1,15 @@
+# BENCH (outside the repo): the editor's autocomplete over the replayed items, 20 times
+App = use "../src/inventory".
+Journal = use "std/journal".
+Program = use "std/program".
+List = use "std/list".
+Digest = use "std/digest".
+main = case Program.args Unit of
+    path :: r -> (case Journal.open path of
+        Ok o ->
+          m = App.replayed App.initModel o.lines;
+          outs = List.map (fn k -> App.suggestJson "user{k % 4}" m.items) (List.range 0 20);
+          _ = List.map (fn s -> print (Digest.sha256 s)) outs;
+          0
+      | Err why -> Program.fail 1 why)
+  | Nil -> Program.fail 2 "usage: sugg LOG".

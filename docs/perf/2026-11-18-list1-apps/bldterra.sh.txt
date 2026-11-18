@@ -1,0 +1,5 @@
+#!/bin/bash
+# bldterra.sh VARIANT: terra logic driver on main f5a6bd9d (full pipeline)
+v=$1; A=/workspace/out/apps; source /workspace/out/env.sh
+export FPR_HOME=/workspace/fpr-l1 FPR_PATH=$A/terra/overlay:$A/qos-main/programs:$A/qos-main XDG_CACHE_HOME=/workspace/l1/cache-terra-$v
+cd /workspace/l1/terra-$v/drive && python3 $A/tm.py /workspace/fpr-l1/fpr build drive.fpr -o ../drive-bin > ../build.log 2>&1

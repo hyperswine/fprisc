@@ -1,0 +1,17 @@
+--- /workspace/l1/p1-mnew/pos1.fpr	2026-11-18 14:47:59.907641416 +1100
++++ /workspace/l1/p1-mvec/pos1.fpr	2026-11-18 14:47:59.919640693 +1100
+@@ -159,10 +159,10 @@
+ words s = S.words s.
+ unwords ws = S.join " " ws.
+ # "a=b=c" -> list of parts
+-splitEq s = seGo s 0 0 (strlen s) Nil.
+-seGo : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> List String -> List String .
+-seGo s st i n acc | i >= n = rev (substr s st (i - st) :: acc) Nil.
+-seGo s st i n acc | charAt s i == 61 = seGo s (i + 1) (i + 1) n (substr s st (i - st) :: acc).
++splitEq s = seGo s 0 0 (strlen s) (Vec.new Unit).
++seGo : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> Vector String -> List String .
++seGo s st i n acc | i >= n = Vec.toList (Vec.push (substr s st (i - st)) acc).
++seGo s st i n acc | charAt s i == 61 = seGo s (i + 1) (i + 1) n (Vec.push (substr s st (i - st)) acc).
+ seGo s st i n acc = seGo s st (i + 1) n acc.
+ takeN l n = List.take n l.
+ imax a b | a > b = a.

@@ -1,0 +1,3 @@
+#!/bin/bash
+v=$1; source /workspace/out/env.sh; export FPR_HOME=/workspace/fpr-l1 XDG_CACHE_HOME=/workspace/l1/cache-q$v; cd /workspace/l1/q-$v
+python3 /workspace/out/apps/tm.py /workspace/fpr-l1/fpr build bench.fpr --system=posix --harts 2 -o bench-bin > build.log 2>&1

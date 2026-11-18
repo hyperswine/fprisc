@@ -1,0 +1,24 @@
+# BENCH (outside the repo): qrepo's text diff and merge on generated texts
+unsafe base.
+T = use "text".
+L = use "std/list".
+Program = use "std/program".
+line k = "line {k * 7919 % 20011} of the file\n".
+base = L.map line (L.range 0 20000).
+# every 37th line changed, a block of 300 moved, every 101st dropped
+ours = L.map (fn k -> if k % 37 == 5 then "ours {k}\n" else line k) (L.filter (fn k -> k % 101 != 3) (L.range 0 20000)).
+theirs = L.append (L.map line (L.range 15000 15300)) (L.map (fn k -> if k % 53 == 7 then "theirs {k}\n" else line k) (L.filter (fn k -> k < 15000 or k > 15300) (L.range 0 20000))).
+digest ms = L.fold (fn a p -> case p of (i, j) -> (a * 31 + i * 7 + j) % 1000000007) 0 ms.
+main =
+  m1 = T.matches base ours;
+  m2 = T.matches base theirs;
+  m3 = T.matches ours theirs;
+  _ = print "matches {L.length m1} {digest m1} / {L.length m2} {digest m2} / {L.length m3} {digest m3}";
+  (a, r) = T.changeCounts base theirs;
+  _ = print "changes +{a} -{r}";
+  _ = (case T.merge3 True True base ours theirs of
+         Ok ls -> print "merge ok {L.length ls} lines, {strlen (T.textOf ls)} bytes"
+       | Err hs -> print "merge conflicts {L.length hs}");
+  r2 = T.resolve3 T.Both True base ours theirs;
+  _ = print "resolved {L.length r2} lines";
+  0.
