@@ -5811,8 +5811,42 @@ V fpr_prim_fn_F64_x2e_x21_x3d(V a, V b) { return BOOL(dbits(a) != dbits(b)); }
  * architecture we target and keep the builtin only for a genuinely
  * hosted link.  Exact and correctly rounded everywhere; no
  * -ffast-math, no errno, no libm dependency introduced. */
+#if defined(__riscv) && !defined(__riscv_flen)
+/* An exact, correctly rounded (nearest-even) IEEE-754 double square root
+ * on integers only: digit-by-digit over a 108-bit radicand, with a 64-bit
+ * remainder. For targets with no FPU and no libm. */
+static double soft_sqrt(double x) {
+  union { double d; uint64_t u; } v = {x};
+  uint64_t u = v.u, m = u & ((1ull << 52) - 1);
+  int e = (int)((u >> 52) & 0x7ff);
+  if (e == 0x7ff) { if (m || !(u >> 63)) return x; v.u = 0x7ff8000000000000ull; return v.d; } /* NaN, +inf; -inf -> NaN */
+  if (e == 0 && m == 0) return x;                                          /* +-0 */
+  if (u >> 63) { v.u = 0x7ff8000000000000ull; return v.d; }                  /* negative -> NaN */
+  if (e == 0) { e = 1; while (!(m & (1ull << 52))) { m <<= 1; e--; } }      /* subnormal */
+  else m |= 1ull << 52;
+  int k = e - 1023 - 52;                                                     /* x = m * 2^k */
+  if (k & 1) { m <<= 1; k--; }                                               /* m < 2^54, k even */
+  /* q = floor(sqrt(m << 54)): 54 bits, the 53-bit mantissa and a guard bit */
+  uint64_t q = 0, r = 0;
+  for (int i = 53; i >= 0; i--) {
+    int hi = 2 * i + 1, lo = 2 * i;
+    uint64_t pair = ((hi >= 54 ? (m >> (hi - 54)) & 1 : 0) << 1) | (lo >= 54 ? (m >> (lo - 54)) & 1 : 0);
+    r = (r << 2) | pair;
+    uint64_t t = (q << 2) | 1;
+    if (r >= t) { r -= t; q = (q << 1) | 1; } else q <<= 1;
+  }
+  uint64_t mant = q >> 1;
+  if ((q & 1) && (r || (mant & 1))) mant++;                                  /* nearest, ties to even */
+  int ex = k / 2 - 26;                                                       /* sqrt = mant * 2^ex */
+  if (mant >> 53) { mant >>= 1; ex++; }
+  v.u = ((uint64_t)(ex + 52 + 1023) << 52) | (mant & ((1ull << 52) - 1));
+  return v.d;
+}
+#endif
 static double fsqrt_(double x) {
-#if defined(__riscv) && defined(__riscv_flen) && __riscv_flen >= 64
+#if defined(__riscv) && !defined(__riscv_flen)
+  return soft_sqrt(x); /* RV32IM/IMAC: no FPU and no libm (QOS virt32, Spectre) */
+#elif defined(__riscv) && defined(__riscv_flen) && __riscv_flen >= 64
   double r;
   __asm__("fsqrt.d %0, %1" : "=f"(r) : "f"(x));
   return r;
