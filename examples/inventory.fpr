@@ -125,16 +125,11 @@ quickTags = ["electronics", "cables", "tools", "kitchen", "bathroom", "office", 
 
 # ---- little prelude -----------------------------------------------------------------
 
-strEq : String -> String -> Bool .
-strEq a b = a == b.
-imax a b | a > b = a.
-imax a b = b.
 num s = numGo s 0 (strlen s) 0.
 numGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int .
 numGo s i n acc | i >= n = acc.
-numGo s i n acc | isDig (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i - 48).
+numGo s i n acc | S.isDigit (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i - 48).
 numGo s i n acc = acc.
-isDig c = c >= 48 and c <= 57.
 # a member's name: lower-case letters and digits, 1..16 of them
 wordy s = strlen s >= 1 and strlen s <= 16 and wdGo s 0 (strlen s).
 wdGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Bool .
@@ -142,13 +137,10 @@ wdGo s i n | i >= n = True.
 wdGo s i n =
   c = charAt s i;
   case (c >= 48 and c <= 57) or (c >= 97 and c <= 122) of True -> wdGo s (i + 1) n | False -> False.
-clip n s | strlen s > n = substr s 0 n.
-clip n s = s.
-lower s = S.toLower s.
 place it | strlen it.sub == 0 = it.loc.
 place it = "{it.loc} / {it.sub}".
 # "USB, cables ,usb" -> ["usb", "cables"]
-tagsOf raw = List.unique (List.filter (fn t -> strlen t > 0) (List.map (fn t -> clip 32 (lower (S.trim t))) (S.split "," raw))).
+tagsOf raw = List.unique (List.filter (fn t -> strlen t > 0) (List.map (fn t -> S.left 32 (S.toLower (S.trim t))) (S.split "," raw))).
 
 memName (n, salt, hash) = n.
 memSalt (n, salt, hash) = salt.
@@ -172,27 +164,27 @@ apply m line = case Json.parse line of
     Err why -> { m | skipped = m.skipped + 1 }
   | Ok v -> applyOp m (txt "op" v) v.
 
-applyOp m op v | strEq op "item" =
+applyOp m op v | (op == "item") =
   at = int "at" v;
   made = int "created" v;
   # a place renamed (the console's `rename`) is the same place: not a move
-  putItem (strEq (txt "why" v) "rename") m { id = int "id" v, name = txt "name" v, loc = txt "loc" v, sub = txt "sub" v, desc = txt "desc" v,
+  putItem (((txt "why" v) == "rename")) m { id = int "id" v, name = txt "name" v, loc = txt "loc" v, sub = txt "sub" v, desc = txt "desc" v,
               tags = strs "tags" v, created = (case made == 0 of True -> at | False -> made), at = at, by = txt "by" v, moves = Nil }.
-applyOp m op v | strEq op "del" = { m | items = List.filter (fn it -> it.id != int "id" v) m.items }.
-applyOp m op v | strEq op "member" =
-  { m | members = (txt "name" v, txt "salt" v, txt "hash" v) :: List.filter (fn mm -> not (strEq (memName mm) (txt "name" v))) m.members }.
-applyOp m op v | strEq op "device" = { m | devices = (txt "hash" v, txt "name" v) :: m.devices }.
-applyOp m op v | strEq op "undevice" = { m | devices = List.filter (fn d -> not (strEq (devHash d) (txt "hash" v))) m.devices }.
-applyOp m op v | strEq op "revoke" = { m | devices = List.filter (fn d -> not (strEq (devName d) (txt "name" v))) m.devices }.
+applyOp m op v | (op == "del") = { m | items = List.filter (fn it -> it.id != int "id" v) m.items }.
+applyOp m op v | (op == "member") =
+  { m | members = (txt "name" v, txt "salt" v, txt "hash" v) :: List.filter (fn mm -> not (((memName mm) == (txt "name" v)))) m.members }.
+applyOp m op v | (op == "device") = { m | devices = (txt "hash" v, txt "name" v) :: m.devices }.
+applyOp m op v | (op == "undevice") = { m | devices = List.filter (fn d -> not (((devHash d) == (txt "hash" v)))) m.devices }.
+applyOp m op v | (op == "revoke") = { m | devices = List.filter (fn d -> not (((devName d) == (txt "name" v)))) m.devices }.
 applyOp m op v = m.
 
 findItem items id = List.find (fn x -> x.id == id) items.
 putItem renamed m it = case findItem m.items it.id of
-    Option.None -> { m | items = it :: m.items, nextId = imax m.nextId (it.id + 1) }
+    Option.None -> { m | items = it :: m.items, nextId = Int.max m.nextId (it.id + 1) }
   | Option.Some old ->
       new = { it | created = old.created, moves = (case renamed of True -> old.moves | False -> movedFrom old it) };
-      { m | items = List.map (fn x -> (case x.id == it.id of True -> new | False -> x)) m.items, nextId = imax m.nextId (it.id + 1) }.
-movedFrom old it | strEq (place old) (place it) = old.moves.
+      { m | items = List.map (fn x -> (case x.id == it.id of True -> new | False -> x)) m.items, nextId = Int.max m.nextId (it.id + 1) }.
+movedFrom old it | ((place old) == (place it)) = old.moves.
 movedFrom old it = List.take 3 ({ at = it.at, from = place old } :: old.moves).
 
 # a validated change: applied now, queued for the disk
@@ -227,11 +219,11 @@ pwHash salt pw = stretch 200 (Digest.sha256 "{salt}:{pw}") salt.
 stretch : (n : Int | measure n) -> String -> String -> String .
 stretch n h salt | n <= 0 = h.
 stretch n h salt = stretch (n - 1) (Digest.sha256 "{salt}{h}") salt.
-checkPw members name pw = case List.find (fn mm -> strEq (memName mm) name) members of
-    Option.Some mm -> strEq (pwHash (memSalt mm) pw) (memHash mm)
+checkPw members name pw = case List.find (fn mm -> ((memName mm) == name)) members of
+    Option.Some mm -> ((pwHash (memSalt mm) pw) == (memHash mm))
   | Option.None -> _ = pwHash "x" pw; False.   # the same work for a name that does not exist
-hasMember m name = List.any (fn mm -> strEq (memName mm) name) m.members.
-deviceUser devices h = case List.find (fn d -> strEq (devHash d) h) devices of
+hasMember m name = List.any (fn mm -> ((memName mm) == name)) m.members.
+deviceUser devices h = case List.find (fn d -> ((devHash d) == h)) devices of
     Option.Some d -> Option.Some (devName d)
   | Option.None -> Option.None.
 
@@ -327,12 +319,12 @@ clearToast m sid n =
 #   rtt     in the browser: from a click's send to the next frame received
 # A Stat is a count, a sum, a maximum and the last.
 noStat = { n = 0, sum = 0, max = 0, last = 0 }.
-note st us = { n = st.n + 1, sum = st.sum + us, max = imax st.max us, last = us }.
+note st us = { n = st.n + 1, sum = st.sum + us, max = Int.max st.max us, last = us }.
 avg st = case st.n == 0 of True -> 0 | False -> st.sum / st.n.
 noProf = { bootUs = 0, bootLines = 0, upd = Nil, flush = noStat, nev = 0 }.
 noteUpd kind us prof = { prof | upd = noteKind prof.upd kind us, nev = prof.nev + 1 }.
-noteKind es kind us = case List.any (fn e -> case e of (k, _) -> strEq k kind) es of
-    True -> List.map (fn e -> case e of (k, st) -> (case strEq k kind of True -> (k, note st us) | False -> (k, st))) es
+noteKind es kind us = case List.any (fn e -> case e of (k, _) -> (k == kind)) es of
+    True -> List.map (fn e -> case e of (k, st) -> (case (k == kind) of True -> (k, note st us) | False -> (k, st))) es
   | False -> List.append es ((kind, note noStat us) :: Nil).
 kindOf ev = case ev of
     Live.Msg sid msg -> msgKind msg
@@ -349,7 +341,7 @@ statLine label st = "{S.padRight 9 " " label} n {S.padLeft 6 " " "{st.n}"}  avg 
 # at most 8 wrong passwords in five minutes, for the whole house: a guesser
 # gains nothing by opening more tabs
 login m sid name0 pw =
-  name = lower (S.trim name0);
+  name = S.toLower (S.trim name0);
   now = Clock.now Unit;
   recent = List.filter (fn t -> t > now - 300) m.fails;
   case List.length recent >= 8 of
@@ -366,22 +358,22 @@ login m sid name0 pw =
 # signed in but holds a token is signed in by it, once per token.
 mirror m sid c =
   s0 = sGet m.sess sid;
-  q = clip 100 (S.trim c.q);
+  q = S.left 100 (S.trim c.q);
   # a new search or a new order starts at the first page
-  page = (case strEq q s0.q and c.sort == s0.sort of True -> s0.page | False -> 0);
+  page = (case (q == s0.q) and c.sort == s0.sort of True -> s0.page | False -> 0);
   s = { s0 | q = q, sort = c.sort, page = page, pane = c.pane,
              d = { name = c.name, loc = c.loc, sub = c.sub, desc = c.desc, tags = c.tags } };
   resume m sid s c.tok.
-resume m sid s tok | strlen s.user > 0 or strlen tok == 0 or strEq tok s.tried = (sPut m s, Nil).
+resume m sid s tok | strlen s.user > 0 or strlen tok == 0 or (tok == s.tried) = (sPut m s, Nil).
 resume m sid s tok = case deviceUser m.devices (Digest.sha256 tok) of
     Option.Some name -> (sPut m { s | user = name, tried = tok }, Nil)
   | Option.None -> (sPut m { s | tried = tok }, setLocals sid [G.assign @Client.tok ""] :: Nil).
 
-withUser sid msg m s | strEq s.user "" = refuse m sid "sign in first".
+withUser sid msg m s | (s.user == "") = refuse m sid "sign in first".
 withUser sid msg m s = case msg of
     Logout -> signOut m sid s
   | New -> (sPut m { s | editing = 0, d = noDraft }, setLocals sid (draftLocals noDraft) :: suggest sid s.user m :: Nil)
-  | Page n -> (sPut m { s | page = imax 0 n }, Nil)
+  | Page n -> (sPut m { s | page = Int.max 0 n }, Nil)
   | Edit id -> edit m sid s id
   | Cancel -> (sPut m { s | editing = 0 - 1 }, setLocals sid (draftLocals noDraft) :: Nil)
   | Save -> save m sid s
@@ -407,8 +399,8 @@ edit m sid s id = case findItem m.items id of
 
 save m sid s =
   d = s.d;
-  name = clip 120 (S.trim d.name);
-  loc = clip 60 (S.trim d.loc);
+  name = S.left 120 (S.trim d.name);
+  loc = S.left 60 (S.trim d.loc);
   isNew = s.editing <= 0;
   old = findItem m.items s.editing;
   case strlen name == 0 of
@@ -420,7 +412,7 @@ save m sid s =
       | False ->
           now = Clock.now Unit;
           id = (case isNew of True -> m.nextId | False -> s.editing);
-          it = { id = id, name = name, loc = loc, sub = clip 60 (S.trim d.sub), desc = clip 2000 (S.trim d.desc),
+          it = { id = id, name = name, loc = loc, sub = S.left 60 (S.trim d.sub), desc = S.left 2000 (S.trim d.desc),
                  tags = List.take 12 (tagsOf d.tags), created = (case old of Option.Some o -> o.created | Option.None -> now),
                  at = now, by = s.user, moves = Nil };
           m2 = sPut (commit m (itemLine it s.user now)) { s | editing = 0 - 1, d = noDraft };
@@ -448,16 +440,16 @@ addTag m sid s t =
 #   {"loc": [...], "sub": {"*": [...], "<room, lower case>": [...]}, "tags": [...]}
 suggest sid user m = Live.Emit sid "suggest" (suggestJson user m.items).
 suggestJson user items =
-  recent = List.sortBy (Order.reverse Order.int) (fn it -> it.at + (case strEq it.by user of True -> 2592000 | False -> 0)) items;
+  recent = List.sortBy (Order.reverse Order.int) (fn it -> it.at + (case (it.by == user) of True -> 2592000 | False -> 0)) items;
   locs = List.take 100 (uniqueCi (List.map (fn it -> it.loc) recent));
-  spots l = List.take 30 (uniqueCi (List.map (fn it -> it.sub) (List.filter (fn it -> strEq (lower it.loc) (lower l)) recent)));
+  spots l = List.take 30 (uniqueCi (List.map (fn it -> it.sub) (List.filter (fn it -> ((S.toLower it.loc) == (S.toLower l))) recent)));
   Json.render (Json.object
     [ ("loc", Json.strings locs)
     , ("sub", Json.object (("*", Json.strings (List.take 100 (uniqueCi (List.map (fn it -> it.sub) recent))))
-                           :: List.map (fn l -> (lower l, Json.strings (spots l))) locs))
+                           :: List.map (fn l -> (S.toLower l, Json.strings (spots l))) locs))
     , ("tags", Json.strings (List.take 100 (List.unique (List.concatMap (fn it -> it.tags) recent)))) ]).
 # the first spelling of each value, ignoring case and the empty one
-uniqueCi xs = List.reverse (List.fold (fn seen x -> (case strlen x == 0 or List.any (fn y -> strEq (lower y) (lower x)) seen of True -> seen | False -> x :: seen)) Nil xs).
+uniqueCi xs = List.reverse (List.fold (fn seen x -> (case strlen x == 0 or List.any (fn y -> ((S.toLower y) == (S.toLower x))) seen of True -> seen | False -> x :: seen)) Nil xs).
 
 # ---- the console: the data, live -------------------------------------------------------------------
 # A command and what it answered go on this tab's console (the newest 40
@@ -467,26 +459,26 @@ console m sid s cmd =
   line = S.trim cmd;
   (m2, out) = run m s line;
   s2 = sGet m2.sess sid;
-  con = (case strEq line "clear" of True -> Nil | False -> List.take 40 (out :: "> {line}" :: s2.con));
+  con = (case (line == "clear") of True -> Nil | False -> List.take 40 (out :: "> {line}" :: s2.con));
   (sPut m2 { s2 | con = con }, setLocals sid [G.assign @Client.cmd ""] :: Nil).
 
 run m s line = case S.words line of
     Nil -> (m, helpText)
-  | w :: r -> runW m s (lower w) (S.trim (S.dropLeft (strlen w) line)).
-runW m s w rest | strEq w "help" = (m, helpText).
-runW m s w rest | strEq w "clear" = (m, "").
-runW m s w rest | strEq w "stats" = (m, statsText m).
-runW m s w rest | strEq w "find" = (m, findText m rest).
-runW m s w rest | strEq w "show" = (m, withItem m rest showText).
-runW m s w rest | strEq w "history" = (m, historyText m (idOf rest)).
-runW m s w rest | strEq w "places" = (m, countsText (ranked (List.map (fn it -> it.loc) m.items))).
-runW m s w rest | strEq w "tags" = (m, countsText (ranked (List.concatMap (fn it -> it.tags) m.items))).
-runW m s w rest | strEq w "spots" = (m, spotsText m rest).
-runW m s w rest | strEq w "move" = moveCmd m s (splitArrow rest).
-runW m s w rest | strEq w "rename" = renameCmd m s (splitArrow rest).
-runW m s w rest | strEq w "retag" = retagCmd m s (splitArrow rest).
-runW m s w rest | strEq w "delete" = deleteCmd m s (idOf rest).
-runW m s w rest | strEq w "rebuild" = rebuildCmd m.
+  | w :: r -> runW m s (S.toLower w) (S.trim (S.dropLeft (strlen w) line)).
+runW m s w rest | (w == "help") = (m, helpText).
+runW m s w rest | (w == "clear") = (m, "").
+runW m s w rest | (w == "stats") = (m, statsText m).
+runW m s w rest | (w == "find") = (m, findText m rest).
+runW m s w rest | (w == "show") = (m, withItem m rest showText).
+runW m s w rest | (w == "history") = (m, historyText m (idOf rest)).
+runW m s w rest | (w == "places") = (m, countsText (ranked (List.map (fn it -> it.loc) m.items))).
+runW m s w rest | (w == "tags") = (m, countsText (ranked (List.concatMap (fn it -> it.tags) m.items))).
+runW m s w rest | (w == "spots") = (m, spotsText m rest).
+runW m s w rest | (w == "move") = moveCmd m s (splitArrow rest).
+runW m s w rest | (w == "rename") = renameCmd m s (splitArrow rest).
+runW m s w rest | (w == "retag") = retagCmd m s (splitArrow rest).
+runW m s w rest | (w == "delete") = deleteCmd m s (idOf rest).
+runW m s w rest | (w == "rebuild") = rebuildCmd m.
 runW m s w rest = (m, "unknown: {w} (try help)").
 
 helpText = S.join "\n"
@@ -522,7 +514,7 @@ plural 1 one many = "1 {one}".
 plural n one many = "{n} {many}".
 
 statsText m =
-  places = List.length (List.unique (List.map (fn it -> lower it.loc) m.items));
+  places = List.length (List.unique (List.map (fn it -> S.toLower it.loc) m.items));
   tags = List.length (List.unique (List.concatMap (fn it -> it.tags) m.items));
   S.join "\n"
     [ "{plural (List.length m.items) "item" "items"} in {plural places "place" "places"}, {plural tags "tag" "tags"}"
@@ -533,7 +525,7 @@ statsText m =
 
 findText m words | strlen words == 0 = "find WORDS".
 findText m words =
-  hits = List.filter (matches (lower words)) m.items;
+  hits = List.filter (matches (S.toLower words)) m.items;
   case hits of
     Nil -> "nothing matches \"{words}\""
   | _ -> S.join "\n" (List.map itemRow (List.take 25 hits) + (case List.length hits > 25 of True -> ["... and {List.length hits - 25} more"] | False -> Nil)).
@@ -551,15 +543,15 @@ historyText m id = case File.lines m.path of
     Err why -> "cannot read the log: {why}"
   | Ok ls ->
       evs = List.filterMap (fn l -> (case Json.parse l of
-                Ok v -> (case int "id" v == id and (strEq (txt "op" v) "item" or strEq (txt "op" v) "del") of True -> Option.Some v | False -> Option.None)
+                Ok v -> (case int "id" v == id and (((txt "op" v) == "item") or ((txt "op" v) == "del")) of True -> Option.Some v | False -> Option.None)
               | Err _ -> Option.None)) ls;
       case evs of
         Nil -> "no item #{id} in the log"
-      | _ -> S.join "\n" (List.map histLine (List.drop (imax 0 (List.length evs - 30)) evs)).
-histLine v | strEq (txt "op" v) "del" = "{Clock.stamp (int "at" v)}  {S.padRight 8 " " (txt "by" v)} deleted".
+      | _ -> S.join "\n" (List.map histLine (List.drop (Int.max 0 (List.length evs - 30)) evs)).
+histLine v | ((txt "op" v) == "del") = "{Clock.stamp (int "at" v)}  {S.padRight 8 " " (txt "by" v)} deleted".
 histLine v =
   where = (case strlen (txt "sub" v) == 0 of True -> txt "loc" v | False -> "{txt "loc" v} / {txt "sub" v}");
-  why = (case strEq (txt "why" v) "rename" of True -> " (place renamed)" | False -> "");
+  why = (case ((txt "why" v) == "rename") of True -> " (place renamed)" | False -> "");
   "{Clock.stamp (int "at" v)}  {S.padRight 8 " " (txt "by" v)} {txt "name" v} @ {where}  [{S.join ", " (strs "tags" v)}]{why}".
 
 countsText kcs | List.isEmpty kcs = "none yet".
@@ -567,7 +559,7 @@ countsText kcs = S.join "\n" (List.map (fn kc -> (case kc of (k, c) -> "{S.padLe
 
 spotsText m p | strlen p == 0 = "spots PLACE".
 spotsText m p =
-  here = List.filter (fn it -> strEq (lower it.loc) (lower p)) m.items;
+  here = List.filter (fn it -> ((S.toLower it.loc) == (S.toLower p))) m.items;
   case here of
     Nil -> "no items in {p}"
   | _ -> countsText (ranked (List.map (fn it -> (case strlen it.sub == 0 of True -> "(no spot)" | False -> it.sub)) here)).
@@ -579,16 +571,16 @@ moveCmd m s (l, r) = case findItem m.items (idOf l) of
       (case strlen loc == 0 of
         True -> (m, "move ID -> PLACE [/ SPOT]")
       | False ->
-          new = { it | loc = clip 60 loc, sub = clip 60 sub };
+          new = { it | loc = S.left 60 loc, sub = S.left 60 sub };
           (commit m (itemLine new s.user (Clock.now Unit)), "#{it.id} {it.name}: {place it} -> {place new}")).
 
 renameCmd m s (old, new) | strlen old == 0 or strlen new == 0 = (m, "rename OLD -> NEW").
 renameCmd m s (old, new) =
-  hits = List.filter (fn it -> strEq (lower it.loc) (lower old)) m.items;
+  hits = List.filter (fn it -> ((S.toLower it.loc) == (S.toLower old))) m.items;
   now = Clock.now Unit;
   case hits of
     Nil -> (m, "no items in {old} (places lists them)")
-  | _ -> (List.fold (fn mm it -> commit mm (renameLine { it | loc = clip 60 new } s.user now)) m hits,
+  | _ -> (List.fold (fn mm it -> commit mm (renameLine { it | loc = S.left 60 new } s.user now)) m hits,
           "{old} -> {new} on {plural (List.length hits) "item" "items"}").
 
 retagCmd m s (l, r) = case findItem m.items (idOf l) of
@@ -615,7 +607,7 @@ rebuildCmd m = case File.lines m.path of
 # ---- the household ---------------------------------------------------------------------------
 
 addMember m sid s (name0, pw) =
-  name = lower (S.trim name0);
+  name = S.toLower (S.trim name0);
   case not (wordy name) of
     True -> refuse m sid "a name is 1 to 16 letters or digits"
   | False -> (case hasMember m name of
@@ -636,10 +628,10 @@ password m sid s pw =
 # every device of this member is forgotten, then this one is remembered again
 forgetDevices m sid s =
   now = Clock.now Unit;
-  n = List.length (List.filter (fn d -> strEq (devName d) s.user) m.devices);
+  n = List.length (List.filter (fn d -> ((devName d) == s.user)) m.devices);
   m2 = commit m (revokeLine s.user now);
   m3 = (case strlen s.tried > 0 of True -> commit m2 (deviceLine s.user (Digest.sha256 s.tried) now) | False -> m2);
-  say m3 sid "signed out {imax 0 (n - 1)} other devices".
+  say m3 sid "signed out {Int.max 0 (n - 1)} other devices".
 
 # every page mirrors its locals, a third of a second after they change
 subs m = Live.SyncClientState 300 (ClientState client) :: Nil.
@@ -649,12 +641,12 @@ subs m = Live.SyncClientState 300 (ClientState client) :: Nil.
 # whose projection did not change renders nothing.
 
 matches q it = List.all (fn w -> hit w it) (S.words q).
-hit w it = S.contains w (lower it.name) or S.contains w (lower it.loc) or S.contains w (lower it.sub)
-        or S.contains w (lower it.desc) or List.any (fn t -> S.contains w t) it.tags.
+hit w it = S.contains w (S.toLower it.name) or S.contains w (S.toLower it.loc) or S.contains w (S.toLower it.sub)
+        or S.contains w (S.toLower it.desc) or List.any (fn t -> S.contains w t) it.tags.
 
 sorted key items = case key of
-    ByName -> List.sortBy Order.string (fn it -> lower it.name) items
-  | ByPlace -> List.sortBy Order.string (fn it -> lower "{place it} {it.name}") items
+    ByName -> List.sortBy Order.string (fn it -> S.toLower it.name) items
+  | ByPlace -> List.sortBy Order.string (fn it -> S.toLower "{place it} {it.name}") items
   | Recent -> List.sortBy (Order.reverse Order.int) (fn it -> it.at) items.
 
 # the most used values first: (value, count).  groupBy groups RUNS of equal
@@ -673,10 +665,10 @@ noView = { signed = 0, user = "", toast = "", role = "", theme = 1, editing = 0 
 # the admin pane gets them, so the others do not re-render for them.
 project size keep sid m =
   s = sGet m.sess sid;
-  case strEq s.user "" of
+  case (s.user == "") of
     True -> { noView | toast = s.toast, role = s.role, theme = s.theme }
   | False ->
-      hits = sorted s.sort (List.filter (matches (lower s.q)) m.items);
+      hits = sorted s.sort (List.filter (matches (S.toLower s.q)) m.items);
       n = List.length hits;
       page = Pagination.plan size n s.page;
       onAdmin = s.pane == Admin;
@@ -688,7 +680,7 @@ project size keep sid m =
         places = List.take 8 places, tags = List.take 12 tags,
         quick = List.take 18 (List.unique (tags + quickTags)),
         members = List.map memName m.members,
-        devices = List.length (List.filter (fn d -> strEq (devName d) s.user) m.devices),
+        devices = List.length (List.filter (fn d -> ((devName d) == s.user)) m.devices),
         online = List.length (List.filter (fn x -> strlen x.user > 0) m.sess),
         events = m.events, booted = m.booted, con = s.con,
         nplaces = List.length places, ntags = List.length tags, ndevices = List.length m.devices, skipped = m.skipped,
@@ -761,7 +753,7 @@ signedIn v cards rs =
   , itemsPane v cards
   , housePane v
   , adminPane v rs ].
-roleText v role | strEq v.role role = v.toast.
+roleText v role | (v.role == role) = v.toast.
 roleText v role = "".
 
 # on a phone the title takes its own line and the pane buttons go below it
@@ -783,7 +775,7 @@ itemsPane v cards =
     :: UI.hstack { UI.stack | gap = 2, wrap = True, align = UI.Center }
         [ UI.label caption "sort", sortBtn Recent "recent", sortBtn ByName "a-z", sortBtn ByPlace "by place"
         , UI.button chip [G.hideIf @Client.q "", G.setTo @Client.q "", now] "clear search" ]
-    :: chipRow (List.map (fn p -> UI.button { chip | vary = [UI.Always [UI.Rigid]] } [G.setTo @Client.q (lower p), now] p) v.places)
+    :: chipRow (List.map (fn p -> UI.button { chip | vary = [UI.Always [UI.Rigid]] } [G.setTo @Client.q (S.toLower p), now] p) v.places)
     :: chipRow (List.map (fn t -> UI.button { chip | vary = [UI.Always [UI.Rigid]] } [G.setTo @Client.q t, now] "#{t}") v.tags)
     :: (case v.editing == 0 of True -> [editor v] | False -> Nil)
     + [ UI.textWith caption [B.mark listHook ""] (countText v)
@@ -983,7 +975,7 @@ importFirestore path store = case File.readText path of
         m = boot o store;
         docs = Option.withDefault Nil (Option.andThen Json.asList (Json.field "documents" v));
         its = List.filterMap fsItem docs;
-        fresh = List.filter (fn it -> not (List.any (fn x -> strEq (lower x.name) (lower it.name) and strEq (lower (place x)) (lower (place it))) m.items)) its;
+        fresh = List.filter (fn it -> not (List.any (fn x -> ((S.toLower x.name) == (S.toLower it.name)) and ((S.toLower (place x)) == (S.toLower (place it)))) m.items)) its;
         numbered = List.indexedMap (fn i it -> { it | id = m.nextId + i }) fresh;
         _ = (case Journal.append (List.map (fn it -> itemLine it "import" it.at) numbered) o.journal of
                Ok _ -> Unit | Err why -> Program.fail 1 "inventory: {why}");
@@ -1000,8 +992,8 @@ fsItem doc =
   upd = fsTime "updatedAt" doc;
   case strlen name == 0 of
     True -> Option.None
-  | False -> Option.Some { id = 0, name = clip 120 name, loc = clip 60 (S.trim (fsStr "location" doc)), sub = clip 60 (S.trim (fsStr "subLocation" doc)),
-                           desc = clip 2000 (S.trim (fsStr "description" doc)), tags = tagsOf (S.join "," (fsTags doc)),
+  | False -> Option.Some { id = 0, name = S.left 120 name, loc = S.left 60 (S.trim (fsStr "location" doc)), sub = S.left 60 (S.trim (fsStr "subLocation" doc)),
+                           desc = S.left 2000 (S.trim (fsStr "description" doc)), tags = tagsOf (S.join "," (fsTags doc)),
                            created = made, at = (case upd == 0 of True -> made | False -> upd), by = "import", moves = Nil }.
 # "2025-06-01T12:34:56.789Z" -> epoch seconds (UTC)
 isoSecs s | strlen s < 19 = 0.
@@ -1018,7 +1010,7 @@ days y0 mo d =
 # ---- a member from the command line ------------------------------------------------------------
 
 addMemberCli store name0 pw =
-  name = lower (S.trim name0);
+  name = S.toLower (S.trim name0);
   o = openLog store;
   m = boot o store;
   case not (wordy name) of
@@ -1056,9 +1048,9 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6720), (
             address = setting Decode.string "address" v;
             # Config decoding remains fallible; historical nonpositive values
             # normalize to one before entering the contracted arithmetic core.
-            size = imax 1 (setting Decode.int "page-size" v);
+            size = Int.max 1 (setting Decode.int "page-size" v);
             # at least a page: the cards on show are always kept
-            keep = imax size (setting Decode.int "cache-items" v);
+            keep = Int.max size (setting Decode.int "cache-items" v);
             # the inventory is the log, folded at boot; std/live's own store holds
             # nothing of the model, it is there because the driver wants one
             cfg = { address = address, port = port, title = "Home inventory", store = "{store}.kvlog", journal = False,
