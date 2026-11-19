@@ -10,7 +10,7 @@ import Core.Syntax ( Name )
 import Data.List ( isPrefixOf, nub )
 import Frontend.Syntax ( STop(TSig, TBind) )
 import qualified Data.Map.Strict as M
-    ( lookup, toList, fromList, Map )
+    ( fromList, Map )
 
 type Anchors = M.Map Name (FilePath, Int)
 

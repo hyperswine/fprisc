@@ -1,8 +1,7 @@
 -- Resolve structured diagnostics against source context, then render CLI text.
 -- The legacy adapter is for old API callers; native/Sol inference bypass it.
 module Diagnostic.Render
-  (Sources,Anchors,LocatedDiagnostic,resolveDiagnostic,locatedDiagnostic,
-   diagnosticLocation,locatedSpan,renderLocated,renderSourceDiagnostic,anchorLegacyMessage,legacyDiagnostic) where
+  (Sources,Anchors,LocatedDiagnostic,resolveDiagnostic,diagnosticLocation,locatedSpan,renderLocated,renderSourceDiagnostic,anchorLegacyMessage,legacyDiagnostic) where
 import Diagnostic.Syntax
 import Source.Span
 import Data.List (isPrefixOf)
@@ -12,8 +11,6 @@ import qualified Data.Map.Strict as M
 type Sources=M.Map FilePath String
 type Anchors=M.Map String (FilePath,Int)
 data LocatedDiagnostic=LocatedDiagnostic Diagnostic (Maybe SourceLocation) (Maybe SourceSpan)
-locatedDiagnostic :: LocatedDiagnostic -> Diagnostic
-locatedDiagnostic (LocatedDiagnostic d _ _)=d
 diagnosticLocation :: LocatedDiagnostic -> Maybe SourceLocation
 diagnosticLocation (LocatedDiagnostic _ p _)=p
 locatedSpan :: LocatedDiagnostic -> Maybe SourceSpan

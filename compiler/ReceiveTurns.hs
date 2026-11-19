@@ -24,7 +24,7 @@ module ReceiveTurns
    generatedState,generatedSourceInterface,Group,groupMembers,groupPure,groupLooped,groupBoundaries,
    groupInvariants,groupLive,rewriteGroups,rewriteCallTargets,rewriteInput,validateSource,publish) where
 
-import Data.List (intercalate, foldl')
+import Data.List (intercalate)
 import Data.Graph (SCC (..), stronglyConnComp)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S

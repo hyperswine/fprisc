@@ -5,8 +5,8 @@
 -- Linearity checking over surface syntax and ownership-shape evidence.
 module Frontend.Linearity
   (LinInfo(..), LinearityResult, checkLinearity, linearityDiagnostics, linearityConstraints,
-   primNames, shapeOfTy, shapeOfTyIn, buildLinInfo, builtinConSh, builtinConAr,
-   conFields, Cnt, LRes, lcheck, lcheckOnce, wildLinErrs, bindPat, linExpr) where
+   shapeOfTyIn, buildLinInfo, builtinConSh, builtinConAr,
+   conFields, Cnt, LRes, lcheck, wildLinErrs, bindPat, linExpr) where
 
 import Core.Syntax ( Name )
 import qualified Diagnostic.Syntax as Diagnostic
@@ -73,28 +73,6 @@ import qualified Data.Map.Strict as M
       Map )
 import qualified Data.Set as S ( notMember, empty, insert )
 
-primNames :: [Name]
-primNames =
-  [ "+",
-    "-",
-    "*",
-    "/",
-    "%",
-    "^",
-    "==",
-    "!=",
-    "<",
-    ">",
-    "<=",
-    ">=",
-    "!",
-    "print",
-    "String.len",
-    "str",
-    "strcat",
-    "error"
-  ]
-
 
 --------------------------------------------------------------------------------
 -- Linearity checker (static, pre-desugar).
@@ -114,9 +92,6 @@ data LinInfo = LinInfo
     -- constructor has no function-typed field)
     liConFnFields :: M.Map Name [LShape]
   }
-
-shapeOfTy :: [Name] -> Ty -> LShape
-shapeOfTy lin = shapeOfTyIn lin M.empty
 
 -- A NAMED record type (`Cols = { xs : Vector Int, ... }`, a TShape) is the
 -- record it names: its owned fields are owned through a declared signature
@@ -245,9 +220,6 @@ checkLinearity li tops = go (M.map (sort . nub) (M.unionWith (++) (liUnres li) p
 -- coupled in the named result and never inspect encoded string markers.
 lcheck :: LinInfo -> [STop] -> [String]
 lcheck li=map Diagnostic.renderLegacyDiagnostic . linearityDiagnostics . checkLinearity li
-lcheckOnce :: LinInfo -> [STop] -> ([String], M.Map Name [Name])
-lcheckOnce li tops=let result=checkLinearityRound li tops
-  in (map Diagnostic.renderLegacyDiagnostic (linearityDiagnostics result),linearityConstraints result)
 checkLinearityRound :: LinInfo -> [STop] -> LinearityResult
 checkLinearityRound li tops = LinearityResult (concat [es | (_, es, _) <- results])
   (M.unionWith merge (liUnres li) (M.fromList [(n, cs) | (n, _, cs) <- results, not (null cs)]))

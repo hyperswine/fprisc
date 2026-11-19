@@ -21,9 +21,9 @@
 module Manifest (Manifest (..), readManifest, parseManifest, renderNs, parseDuration) where
 
 import Data.Char (isSpace)
-import Data.List (dropWhileEnd, isPrefixOf)
+import Data.List (dropWhileEnd)
 import qualified Data.Map.Strict as M
-import Data.Ratio (denominator, numerator, (%))
+import Data.Ratio ((%))
 
 data Manifest = Manifest
   { mName :: String,
@@ -117,9 +117,3 @@ renderNs ns
           (w, f) = scaled `divMod` 100
        in if f == 0 then show w else show w ++ "." ++ (if f < 10 then "0" else "") ++ show (stripZero f)
     stripZero f = if f `mod` 10 == 0 then f `div` 10 else f
-
-_unused :: Rational -> (Integer, Integer)
-_unused r = (numerator r, denominator r)
-
-_unused2 :: String -> Bool
-_unused2 = isPrefixOf ""

@@ -60,7 +60,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (isSuffixOf)
 import Data.Maybe (isJust)
-import Control.Monad (forM, unless, when, foldM, zipWithM)
+import Control.Monad (forM, unless, when)
 import Control.Monad.State.Strict
 import Frontend.Syntax
 import Core.Syntax (Name)

@@ -7,7 +7,6 @@ module Core.Typed.Callable
 import Core.Typed.Syntax
 import Core.Typed.Callback.Model (Target(..),Slot(..),Template(..),spine)
 import Core.Typed.Walk (mapChildrenM)
-import Core.Identity (BinderId)
 import Type.Syntax (Type(..))
 import Source.Span (SourceOffset)
 import Control.Monad (when,liftM2)

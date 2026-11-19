@@ -42,14 +42,14 @@ import qualified Sol.Cache
 import qualified Sol.Txn
 import System.Directory
   ( XdgDirectory (..), canonicalizePath, createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
-    findExecutable, getCurrentDirectory, getHomeDirectory, getXdgDirectory, listDirectory, makeAbsolute,
+    findExecutable, getCurrentDirectory, getXdgDirectory, listDirectory, makeAbsolute,
     setCurrentDirectory )
 import System.Environment (getExecutablePath, lookupEnv)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath (isRelative, joinPath, makeRelative, normalise, splitDirectories, takeDirectory, takeExtension, takeFileName, (</>))
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import qualified System.Info
-import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
+import System.Process (proc, readCreateProcessWithExitCode, readProcessWithExitCode)
 import Data.Time.Clock (diffUTCTime, getCurrentTime)
 import Numeric (showFFloat)
 import Text.Read (readMaybe)

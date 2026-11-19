@@ -28,7 +28,6 @@ module Sol.Width where
 
 import Data.List (foldl')
 import qualified Data.Map.Strict as M
-import qualified Data.Set as S
 import Sol.Lang
 
 -- ---- intervals --------------------------------------------------------------

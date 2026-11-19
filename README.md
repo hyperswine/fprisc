@@ -158,8 +158,9 @@ Standalone FP-RISC still needs neither variable.
 
 Both repositories retain the original monorepo history and tags; the split is a new
 working-tree change on `main`. Old tags describe the old combined layout. No Git
-remote is configured for this new repository. `SPLIT-SOURCE.json` records the source
-commit. See `../qos/docs/2026-09-18-REPOSITORY-SPLIT.md` for ownership and release migration.
+remote is configured for this new repository. The split was taken from `qos-fpr` at
+`8936d1967e654304ff12755219e7e380583763f1` (manifest `../qos/docs/SPLIT-MANIFEST.json`).
+See `../qos/docs/2026-09-18-REPOSITORY-SPLIT.md` for ownership and release migration.
 
 For the unsafe, scheduler-free RV64 build and memory/bit API, see
 [BareMetal–Builtin](docs/2026-09-18-BAREMETAL-BUILTIN.md). Start with

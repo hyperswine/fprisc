@@ -15,7 +15,6 @@ import qualified Core.Region.Syntax as R
 import Core.Region.Runtime (Hook(..),hookName)
 import Core.Analysis.Alpha (sameFunction)
 import Core.Opt.Representation (eraseLayoutCasts)
-import Core.Identity
 import Core.Syntax (Name)
 import Compiler.DataLayout
 import Type.Syntax (Scheme(..))

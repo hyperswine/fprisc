@@ -1,5 +1,4 @@
 import Infer
-import Infer.Result
 import Core.Identity
 import Core.Syntax
 import Core.CacheIdentity

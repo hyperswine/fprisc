@@ -3,7 +3,7 @@
 -- checked private definition into a different artifact or invent its arity.
 module Compiler.Native.Imports
   (CodeDeclarations,codeDeclarations,withRegions,CodeDeclaration,DeclarationContract(..),declarationHome,declarationSource,
-   declarationCode,declarationContract,declarationArity,preservedCode,
+   declarationContract,declarationArity,preservedCode,
    ReadyProgram,prepareEmission,prepareEmissionWithImports,readyProgram,readySymbols,readyImports,readyTemplates,importArities) where
 import Compiler.Native.Linked
 import qualified Compiler.Native.Regions.Typed as Regions
@@ -22,8 +22,6 @@ declarationHome :: CodeDeclaration -> ArtifactId
 declarationHome (CodeDeclaration home _ _ _)=home
 declarationSource :: CodeDeclaration -> String
 declarationSource (CodeDeclaration _ source _ _)=source
-declarationCode :: CodeDeclaration -> CodeId
-declarationCode (CodeDeclaration _ _ code _)=code
 declarationContract :: CodeDeclaration -> DeclarationContract
 declarationContract (CodeDeclaration _ _ _ contract)=contract
 declarationArity :: CodeDeclaration -> Int

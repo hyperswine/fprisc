@@ -4,9 +4,9 @@
 -- These contracts do not describe arbitrary C stack/FP argument signatures.
 module Codegen.Calling
   (module Codegen.Calling.Types, ABI(..), ArgumentPlace(..),
-   argumentRegisters, resultRegister, secondResultRegister, productRegisters, resultPlaces, callerClobbers, argumentPlaces, nativePlaces,
+   argumentRegisters, resultRegister, productRegisters, resultPlaces, callerClobbers, argumentPlaces, nativePlaces,
    cellSymbol, cellOffset, calleeCall, nativeCall, callEvent,
-   selectTransfer, selectPairTransfer, selectProductTransfer, stagedArguments, arrivalArguments, checkTransfers) where
+   selectTransfer, selectProductTransfer, stagedArguments, arrivalArguments, checkTransfers) where
 
 import Codegen.Calling.Types
 import Codegen.IR (Callee,calleeConvention,arityCeiling)
@@ -29,9 +29,6 @@ argumentRegisters abi=map Phys $ case abi of
   RiscV->["a"++show n | n<-[0::Int ..7]]
 resultRegister :: ABI -> Phys
 resultRegister abi=Phys $ case abi of AArch64->"x0";X86_64->"rax";RiscV->"a0"
--- the register a pair worker answers its second word in: the next result register of the ABI
-secondResultRegister :: ABI -> Phys
-secondResultRegister abi=Phys $ case abi of AArch64->"x1";X86_64->"rdx";RiscV->"a1"
 -- Private FPR products use volatile integer registers. This is deliberately
 -- not a claim about the platform C ABI: foreign aggregates need an adapter.
 -- x64 preserves its established first two results and leaves r11 available
@@ -110,11 +107,6 @@ selectTransfer abi convention result sym vs value base=do
      siControl=if result `elem` [TailTransfer,NeverReturns] then Return else Next,
      siCalls=[callEvent sym convention],
      siTransfer=Just (Transfer convention (length vs) result)}
-
--- a call that answers two words: the first in the result register, the second
--- in the second result register; both leave the clobber set
-selectPairTransfer :: ABI -> CallConvention -> CodeSymbol -> [VReg] -> VReg -> VReg -> SInstr -> Either String SInstr
-selectPairTransfer abi convention sym vs first second=selectProductTransfer abi convention sym vs [first,second]
 
 selectProductTransfer :: ABI -> CallConvention -> CodeSymbol -> [VReg] -> [VReg] -> SInstr -> Either String SInstr
 selectProductTransfer abi convention sym vs values base=do

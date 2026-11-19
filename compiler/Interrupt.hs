@@ -3,8 +3,7 @@
 -- on lifted Core before ownership instrumentation. Raw memory remains unsafe:
 -- the programmer must not touch the allocator, ARC objects or reserved stacks.
 module Interrupt
-  (checkInterrupt, checkRawUnit, checkInterruptWithStorage, checkRawUnitWithStorage,
-   checkInterruptWithProducts, checkRawUnitWithProducts, rawRoots,
+  (checkInterruptWithProducts, checkRawUnitWithProducts, rawRoots,
    checkLoweredProducts) where
 import Core.Syntax (Core(..), Prog)
 import Representation (primitiveShape)
@@ -16,12 +15,6 @@ import Control.Monad (foldM, unless)
 import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-
-checkInterrupt :: Prog -> Either String ()
-checkInterrupt=checkInterruptWithStorage M.empty
-
-checkInterruptWithStorage :: M.Map Core (Int,Int) -> Prog -> Either String ()
-checkInterruptWithStorage scalars=checkInterruptWithProducts scalars M.empty
 
 checkInterruptWithProducts :: M.Map Core (Int,Int) -> M.Map Core ProductShape -> Prog -> Either String ()
 checkInterruptWithProducts scalars products prog
@@ -48,12 +41,6 @@ rawPrim n = n `notElem`
 -- temporaries, which is the allocator, which ... (the first heap.fpr
 -- image died exactly that way).  Unlike a handler, a raw unit may touch
 -- CSRs and interrupt control: drivers live here.
-checkRawUnit :: Prog -> Either String ()
-checkRawUnit=checkRawUnitWithStorage M.empty
-
-checkRawUnitWithStorage :: M.Map Core (Int,Int) -> Prog -> Either String ()
-checkRawUnitWithStorage scalars=checkRawUnitWithProducts scalars M.empty S.empty
-
 checkRawUnitWithProducts :: M.Map Core (Int,Int) -> M.Map Core ProductShape -> S.Set String -> Prog -> Either String ()
 checkRawUnitWithProducts scalars products pinned prog =
   checkFrom scalars products "raw unit" rawPrim prog (rawRoots pinned prog)

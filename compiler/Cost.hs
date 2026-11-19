@@ -34,7 +34,7 @@ import Data.List (intercalate, nub, sort, isPrefixOf, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
-import Data.Ratio (denominator, numerator, (%))
+import Data.Ratio (denominator, numerator)
 import Core.Syntax (Core(..), Name, Prog)
 import Core.Primitives (entryTickName)
 import Frontend.Syntax (SExpr(..), STop(..))
@@ -1223,9 +1223,6 @@ renderVerdict = \case
   Proven -> "PROVEN"
   Over m -> "OVER (" ++ m ++ ")"
   Unproved os -> "UNPROVED (opaque: " ++ intercalate ", " os ++ ")"
-
-_unusedRatio :: Rational
-_unusedRatio = 1 % 1
 
 -- | A declared bound's named coefficients, bound by the manifest.
 substCoefs :: M.Map Name Integer -> Cost -> Cost

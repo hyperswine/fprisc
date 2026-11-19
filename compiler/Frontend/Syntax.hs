@@ -62,9 +62,6 @@ data SGuard
   | GPat SPat SExpr -- pattern-match binding `pat <- expr`
   deriving (Show, Generic, NFData, Binary)
 
-guardBools :: [SGuard] -> [SExpr]
-guardBools gs = [e | GBool e <- gs]
-
 mapGuardE :: (SExpr -> SExpr) -> SGuard -> SGuard
 mapGuardE f' (GBool e) = GBool (f' e)
 mapGuardE f' (GPat p e) = GPat p (f' e)

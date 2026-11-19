@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
-module Core.Opt.Vector (vecSpec, pipelinePlan, nestPipelines,nestPipelinesWithImports, specUsesFloat, arithClosure, planCapKinds) where
+module Core.Opt.Vector (vecSpec, pipelinePlan, nestPipelinesWithImports, specUsesFloat, arithClosure, planCapKinds) where
 import Core.Syntax
 import Core.Utils
 import Core.Primitives
@@ -82,8 +82,6 @@ pipelinePlan checked prog local expr = do
 -- Only adjacent, single-consumer lets are nested; a successfully planned
 -- pipeline proves that moved captures/seed are already values. Bindings remain
 -- lexical, and a retained intermediate prevents this rewrite.
-nestPipelines :: Prog -> Prog
-nestPipelines=nestPipelinesWithImports M.empty M.empty
 nestPipelinesWithImports :: CheckedKinds -> Prog -> Prog -> Prog
 nestPipelinesWithImports checked imports prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b)) prog
   where

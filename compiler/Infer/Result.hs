@@ -4,8 +4,7 @@
 module Infer.Result
   (InferenceResult, resultFromState, inferenceErrors, inferenceDiagnostics, inferenceNotes,
    inferenceHoles, inferenceLinearity, inferenceTops, inferenceInterfaces,
-   inferenceEvidence, inferenceElaborations, inferenceSchemes, inferenceLayoutRequirements,
-   inferencePatterns, inferenceConstructors, inferenceBinderNames, inferenceLayoutContracts,
+   inferenceEvidence, inferenceElaborations, inferenceSchemes, inferencePatterns, inferenceConstructors, inferenceBinderNames, inferenceLayoutContracts,
    inferenceConstructorTraps, inferenceSignatures, inferenceStructures, inferenceDefaultingWork) where
 import Diagnostic.Syntax (Diagnostic,renderLegacyDiagnostic)
 import Core.Syntax (Name)
@@ -64,8 +63,6 @@ inferenceElaborations :: InferenceResult -> [ElaborationFact]
 inferenceElaborations = resultElaborations
 inferenceSchemes :: InferenceResult -> M.Map Name Scheme
 inferenceSchemes = resultSchemes
-inferenceLayoutRequirements :: InferenceResult -> M.Map Name [Type]
-inferenceLayoutRequirements = resultLayouts
 inferencePatterns :: InferenceResult -> M.Map PatternSite PatternInfo
 inferencePatterns = resultPatterns
 inferenceConstructors :: InferenceResult -> M.Map Name Scheme

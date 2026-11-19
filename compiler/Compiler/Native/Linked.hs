@@ -3,7 +3,7 @@
 -- one artifact emits each symbol. Private code keeps its source owner/contract.
 module Compiler.Native.Linked
   (ArtifactId(..),NativeArtifact,artifact,artifactId,artifactCore,artifactExports,artifactElided,
-   LinkedProgram,linkArtifacts,specializeLinked,specializeLinkedWithDecisions,inlineLinked,inlineLinkedWithDecisions,planVectorReadsLinked,normalizeLinked,caseKnownLinked,fuseLinked,fuseListLinked,fuseListLinkedWithHelpers,trmcLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
+   LinkedProgram,linkArtifacts,specializeLinked,specializeLinkedWithDecisions,inlineLinked,inlineLinkedWithDecisions,planVectorReadsLinked,normalizeLinked,caseKnownLinked,fuseLinked,fuseListLinkedWithHelpers,trmcLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
 import Compiler.Native.Core
 import Compiler.DataLayout
 import Core.Typed.Program
@@ -197,9 +197,6 @@ caseKnownLinked p=do
       Nothing->pure (a,False)
       Just c->(\x->(x,True)) <$> artifact (artifactId a) (artifactExports a) (artifactElided a) c) (M.elems (linkedArtifacts p))
   if any snd stepped then linkArtifacts (map fst stepped) else pure p
-
-fuseListLinked :: LinkedProgram -> Either String (LinkedProgram,[FusionNote])
-fuseListLinked=fuseListLinkedWithHelpers False False
 
 fuseListLinkedWithHelpers :: Bool -> Bool -> LinkedProgram -> Either String (LinkedProgram,[FusionNote])
 fuseListLinkedWithHelpers reporting helpers p=do

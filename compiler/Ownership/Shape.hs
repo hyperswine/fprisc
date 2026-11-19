@@ -5,7 +5,7 @@
 -- Ownership vocabulary/substitution independent of either AST or inference.
 module Ownership.Shape where
 
-import Ownership.Finding (Finding(..),renderLegacyFinding)
+import Ownership.Finding (Finding(..))
 import Data.List ( nub )
 import Data.Maybe ( fromMaybe )
 import qualified Data.Map.Strict as M
@@ -117,17 +117,6 @@ demandOwnership s msg
   | isLin s = [RequireUnrestricted v | v <- lvars s]
   | otherwise = []
 
--- Old helper API projections. The frontend uses the typed functions below.
-demandL :: LShape -> String -> [String]
-demandL shape message=map renderLegacyFinding (demandOwnership shape message)
-
-constraintMark :: String -> String
-constraintMark v = '\1' : v
-
-isConstraintMark :: String -> Bool
-isConstraintMark ('\1' : _) = True
-isConstraintMark _ = False
-
 -- A case result must retain ownership from every live arm. In particular an
 -- unrestricted first arm cannot erase a linear closure returned by a later arm.
 joinLShape :: LShape -> LShape -> LShape
@@ -171,13 +160,6 @@ updateOwnership (field : path) new sh =
       (errs, result) = updateOwnership path new (fromMaybe LU (lookup field fs))
       unknown = concat [demandOwnership sh "cannot replace an unknown field in an owned open record; its ownership is unknown" | open, field `notElem` map fst fs]
    in (unknown ++ errs, LRecS (M.toList (M.insert field result (M.fromList fs))) open)
-
-projectLShape :: [String] -> LShape -> ([String], LShape)
-projectLShape fields shape=let (findings,result)=projectOwnership fields shape
-  in (map renderLegacyFinding findings,result)
-updateLShape :: [String] -> LShape -> LShape -> ([String], LShape)
-updateLShape fields new old=let (findings,result)=updateOwnership fields new old
-  in (map renderLegacyFinding findings,result)
 
 -- Callable ownership (docs/2026-11-09-CALLABLE-OWNERSHIP.md).
 --

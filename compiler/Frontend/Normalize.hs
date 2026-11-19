@@ -5,7 +5,6 @@
 -- Profile inspection, eval desugaring and native arity normalization.
 module Frontend.Normalize where
 
-import Core.Syntax ( Name )
 import Core.Primitives ( corePrims, primArities )
 import Frontend.Syntax
     ( Ty(TCon),
@@ -165,12 +164,6 @@ etaPrimitiveValues = map top
 -- paths, docs/2026-08-25-MEMORY.md) was retired on 2026-10-24: a received
 -- message root dies with the turn that took it, released by the runtime at
 -- the turn boundary (docs/2026-10-24-REGIONS-STAGE1.md).
-
-adHeadName :: SExpr -> Maybe Name
-adHeadName (SMark _ e) = adHeadName e
-adHeadName (SVar n) = Just n
-adHeadName (SApp f _) = adHeadName f
-adHeadName _ = Nothing
 
 -- fold the `> e.` statements into a synthesized `main` (a block whose
 -- statements bind throwaways, last one is the result).  An explicit

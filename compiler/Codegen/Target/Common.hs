@@ -1,8 +1,8 @@
 {-# LANGUAGE LambdaCase #-}
 -- Shared native output and symbol identity, independent of instruction set.
 module Codegen.Target.Common
-  ( ObjectFormat (..), NativeFn (..), usesTick, usesBump, BumpCell (..), bumpCell, bumpCellFor, bumpSlabCell, bumpBucketsCell, bumpRegionCell, pendStackCell, pendEntryWords, bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated, mangleName, functionSymbol, calleeCodeSymbol,
-    stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry, shallowReserve, shallowFrameLimit,
+  ( ObjectFormat (..), NativeFn (..), usesTick, usesBump, BumpCell (..), bumpCellFor, bumpSlabCell, bumpBucketsCell, bumpRegionCell, pendStackCell, pendEntryWords, bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated, mangleName, functionSymbol, calleeCodeSymbol,
+    stringLabel, stringObjectWidth, rodataDirective, shallowEntry, shallowFrameLimit,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
     boxedFloatLabel, boxedFloatObject, BumpRefills, planBumpRefills, bumpRefill,
     weighTicks, tickWeightOf,
@@ -74,7 +74,7 @@ entrySlot n = -2000 - n
 --   2. Its call pads 8 bytes and pushes the 8-byte return address.
 --   3. The shallow leaf allocates its frame, lyBytes <= 1024.
 --   4. So no generated code in a shallow leaf runs below stk_lo - 1048
---      (shallowReserve).
+--      (the reserve: 8 + 16 + shallowFrameLimit).
 -- What reaches a shallow leaf:
 --   * A shallow leaf calls no generated function (deepens), so only a
 --     checked caller or a tail transfer reaches it.
@@ -93,8 +93,6 @@ entrySlot n = -2000 - n
 -- The remaining tick declares the tick protocol's clobbers (none: its slow
 -- path saves every allocatable register); allocation assumed the entry's
 -- larger set, which is safe.
-shallowReserve :: Int
-shallowReserve = 8 + 16 + shallowFrameLimit -- the check's slack, call pad and return address, the frame
 shallowFrameLimit :: Int
 shallowFrameLimit = 1024
 
@@ -205,9 +203,6 @@ stringLabel s = ".Ltirstr_" ++ showHex (foldl step 14695981039346656037 (utf8Byt
 -- a String object as Codegen.strFor emits it: {tid 9000, var 0, byte length,
 -- bytes}, UTF-8 for codepoints from 0x100, raw bytes below (wire data); the
 -- label in the format's spelling (Mach-O's private prefix is `L`)
-stringObject :: ObjectFormat -> String -> [String]
-stringObject = stringObjectWidth IR.W64
-
 stringObjectWidth :: IR.Width -> ObjectFormat -> String -> [String]
 stringObjectWidth width fmt s =
   let bs = utf8Bytes s
@@ -414,9 +409,6 @@ data BumpCell = BumpCell { bcPrefix :: Integer, bcRaw :: Integer, bcTotal :: Int
 -- immediate and reads the bucket head at 8*index from the bucket array, so a
 -- cell is inline when its total fits in 2032 bytes (250 fields); a larger
 -- cell is no less correct on the call path, and none exists in practice.
-bumpCell :: Integer -> Maybe BumpCell
-bumpCell = bumpCellWith 16
-
 bumpCellFor :: Policy -> Integer -> Maybe BumpCell
 bumpCellFor policy = bumpCellWith (if polCompactCells policy then 8 else 16)
 

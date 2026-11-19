@@ -31,7 +31,7 @@
 module Codegen.Liveness
   ( Pos, Interval (..), Liveness (..), SBlock (..),
     analyseLiveness, blocksOf, reservedAt, instrUses, instrDefs,
-    containsPos, crossesPos, instrLiveSets, loopDepths,
+    instrLiveSets, loopDepths,
   ) where
 
 import Codegen.Selected
@@ -81,13 +81,6 @@ reservedAt i =
         ++ [p | OV _ (Fix p) <- siDefs i ++ siUses i]
         ++ [p | OP p <- siDefs i ++ siUses i]
     )
-
-containsPos :: Interval -> Pos -> Bool
-containsPos iv p = ivStart iv <= p && p <= ivEnd iv
-
--- strictly inside: the value is live before and after the instruction there
-crossesPos :: Interval -> Pos -> Bool
-crossesPos iv p = ivStart iv < p && p < ivEnd iv
 
 -- the basic blocks of a stream: a label starts a block (consecutive labels
 -- share one), an instruction whose control is not Next ends one; the

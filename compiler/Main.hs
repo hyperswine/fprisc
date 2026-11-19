@@ -31,7 +31,6 @@ import qualified Commit
 import qualified Compile
 import qualified Sol.Main
 import qualified Sol.Http
-import Data.List (elem)
 import System.Environment (getArgs, getProgName, withArgs)
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)

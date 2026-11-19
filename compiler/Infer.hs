@@ -33,7 +33,7 @@ module Infer (module Infer, module Type.Syntax, module Infer.State, module Infer
 
 import qualified Data.Binary as Bin
 import Control.DeepSeq (force)
-import Control.Monad (foldM, forM, forM_, unless, when, zipWithM, zipWithM_)
+import Control.Monad (foldM, forM, forM_, unless, when, zipWithM_)
 import Control.Monad.State.Strict
 import Data.Graph (SCC (..), stronglyConnComp)
 import qualified Data.IntSet as IS
@@ -49,7 +49,6 @@ import Compiler.VectorLayout
 import Compiler.Trap
 import Frontend.Syntax
 import Frontend.Traverse
-import Frontend.Linearity
 import Ownership.Shape
 import Ownership.TypeShape
 import Type.Syntax
@@ -64,7 +63,6 @@ import Infer.Elaboration
 import Infer.Trace
 import qualified Infer.Evidence as Evidence
 import Core.Identity (Namespace, ExprId)
-import Precond (checkedName)
 import Struct (Sigs, Structs)
 
 -- ---- types ------------------------------------------------------------------
@@ -362,11 +360,6 @@ mono = Forall [] []
 
 -- ---- Ty (surface annotations) -> Type ---------------------------------------
 
--- named surface vars (a, b, t) map through a shared table so `t` is the
--- same var across a sig's fields; unseen names allocate fresh
-tyToType :: M.Map Name Type -> Ty -> I (Type, M.Map Name Type)
-tyToType = tyToTypeA M.empty
-
 -- with named record aliases (`MyRecord = {a : String, b : Int}.`): a bare
 -- TCon hit in the alias table becomes its (closed) record type
 type ShapeAliases = M.Map Name [(Name, Ty)]
@@ -375,6 +368,8 @@ keepBoth :: Type -> Type -> Type
 keepBoth a (TTupT xs) = TTupT (a : xs)
 keepBoth a b = TTupT [a, b]
 
+-- named surface vars (a, b, t) map through a shared table so `t` is the
+-- same var across a sig's fields; unseen names allocate fresh
 tyToTypeA :: ShapeAliases -> M.Map Name Type -> Ty -> I (Type, M.Map Name Type)
 tyToTypeA aliases tbl0 ty = runStateT (go ty) tbl0
   where
@@ -935,11 +930,6 @@ sigAnnEnv aliases tops = M.fromList <$> mapM one [(n, ps, r) | TSig n (ps, r) _ 
       pure (n, Forall (S.toList (tvs S.\\ holes)) (S.toList rvs) t)
 
 -- ---- pattern inference ------------------------------------------------------
-
-inferPat :: TEnv -> SPat -> I (Type, TEnv)
-inferPat cons p = do
-  (t,env,_) <- inferPattern cons p
-  pure (t,env)
 
 inferPattern :: TEnv -> SPat -> I (Type,TEnv,PatternInfo)
 inferPattern cons p = do
@@ -1771,10 +1761,6 @@ prepareVectorEvidence binds = do
 
 -- ---- top-level driver -------------------------------------------------------
 
--- infer all top-level bindings; returns errors (empty = well-typed)
-typecheck :: Sigs -> Structs -> [STop] -> [String]
-typecheck sigs structs tops = let (e, _, _, _, _) = inferTops sigs structs tops in e
-
 -- the BUILTIN prims' linearity shapes, derived from builtinEnv itself
 -- so this table can never drift from the types: Vec.push consumes and
 -- returns a Vector because its type says so, and any prim added later
@@ -1811,14 +1797,6 @@ builtinLinShapesFor env linNs =
     arrows _ = 0 :: Int
     peelFn (TFn a b) = let (as, r) = peelFn b in (a : as, r)
     peelFn t = ([], t)
-
-inferTops :: Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [(Name, ([LShape], LShape))], [STop])
-inferTops = inferTopsWith aotProf
-
-inferTopsWith :: IProf -> Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [(Name, ([LShape], LShape))], [STop])
-inferTopsWith prof sigs structs tops =
-  let (es, ns, hs, ls, rw, _) = inferTopsInterfaces prof sigs structs tops
-   in (es, ns, hs, ls, rw)
 
 inferTopsInterfaces :: IProf -> Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [(Name, ([LShape], LShape))], [STop], [(Name, Type)])
 inferTopsInterfaces prof sigs structs tops =

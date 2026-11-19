@@ -39,7 +39,6 @@ import Control.Concurrent (ThreadId, myThreadId, threadDelay, forkIOWithUnmask, 
 import Control.Exception (SomeException, bracket, catch, IOException, finally, mask, mask_, onException, throwIO, try)
 import Control.Monad (foldM, forM_, unless, when)
 import Data.IORef
-import Data.Maybe (mapMaybe)
 import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CInt (..))
 import System.Environment (getEnvironment, lookupEnv)
@@ -48,7 +47,7 @@ import Text.Read (readMaybe)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.UTF8 as BSU
 import qualified Data.IntMap.Strict as IM
-import Data.List (dropWhileEnd, isInfixOf, isPrefixOf, isSuffixOf, nub, sort)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, sort)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import System.Directory
@@ -59,15 +58,13 @@ import System.Directory
     doesDirectoryExist,
     doesFileExist,
     getTemporaryDirectory,
-    getFileSize,
-    getModificationTime,
     listDirectory,
     removeDirectory,
     removeFile,
     removePathForcibly,
     renamePath,
   )
-import Data.Time.Clock.POSIX (getPOSIXTime, utcTimeToPOSIXSeconds)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, takeFileName, hasTrailingPathSeparator, dropTrailingPathSeparator, (</>))
 import System.IO (readFile', openTempFile, hClose, hIsTerminalDevice, openBinaryFile, IOMode(ReadMode))
@@ -75,7 +72,7 @@ import System.IO.Error (ioeGetErrorType, isAlreadyExistsError, isDoesNotExistErr
 import Foreign.C.Error (Errno (..), eACCES, eEXIST, eXDEV, eISDIR, eLOOP, eMLINK, eNOENT, eNOTDIR, ePERM)
 import GHC.IO.Exception (IOException (..), IOErrorType (..))
 import System.IO (hFlush, hGetContents', hIsEOF, hGetLine, stderr, stdin, stdout, hPutStr, hPutStrLn)
-import System.Process (CreateProcess (..), StdStream (..), getPid, terminateProcess, createProcess, proc, shell, waitForProcess)
+import System.Process (CreateProcess (..), StdStream (..), getPid, terminateProcess, createProcess, proc, waitForProcess)
 import System.Timeout (timeout)
 import qualified System.Posix.Files as PF
 import qualified System.Posix.Directory.ByteString as PDB
@@ -175,9 +172,6 @@ emptyTx = TxState
   , txSagaJournal=Nothing, txTemps=[], txIO=Nothing, txProcesses=Nothing, txRetryPolicy=GuardedRetry
   , txExternal=S.empty, txReplayableThreads=M.empty, txSaga=Nothing, txPivot=False, txLogs=[]
   }
-
-resetTx :: IORef TxState -> IO ()
-resetTx ref = txCleanup ref >> (newTx >>= readIORef >>= writeIORef ref)
 
 txRuntime :: IORef TxState -> IO ScriptIO.Runtime
 txRuntime ref = readIORef ref >>= maybe (ioError (userError "missing script I/O runtime")) pure . txIO

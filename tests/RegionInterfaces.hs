@@ -44,8 +44,6 @@ import Frontend.Parser (program)
 import Frontend.Syntax
 import Struct (sigTable,structTable,expandStructs)
 import Infer
-import Infer.Result
-import Type.Syntax
 import Control.Monad (unless)
 import Data.List (isInfixOf,isSuffixOf)
 import qualified Data.Map.Strict as M

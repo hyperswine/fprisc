@@ -181,9 +181,6 @@ buildStrings=M.map (\fn@(ps,b)->if hasChain b then (ps,go b) else fn)
 -- two to eight fields is not copied: its leaves become $product.packN and
 -- the typed lowering gives the tree one join with a parameter per field
 -- (Codegen.Lower productWidth). The branches are tested once, as written.
-localProducts :: Prog -> Prog
-localProducts=localProductsWith (const True) Nothing
-
 localProductsWith :: (Int -> Bool) -> Maybe (Int -> Name) -> Prog -> Prog
 localProductsWith wanted pack=M.map (\fn@(ps,b)->if any isCandidate (lets b) then (ps,go (uses b) b) else fn)
   where

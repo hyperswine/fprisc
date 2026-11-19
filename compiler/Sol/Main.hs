@@ -54,12 +54,11 @@ import Sol.HandJIT (JitCtx, initJIT)
 import System.Environment (getArgs, lookupEnv)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import System.Exit (ExitCode (..), exitFailure, exitSuccess, exitWith)
-import System.IO (hFlush, hGetLine, hIsTerminalDevice, hPutStr, hPutStrLn, putStr, stderr, stdin, stdout)
+import System.IO (hFlush, hGetLine, hIsTerminalDevice, hPutStr, hPutStrLn, stderr, stdin, stdout)
 import System.IO.Error (ioeGetErrorString, isUserError)
-import System.Directory (canonicalizePath, getCurrentDirectory, getTemporaryDirectory)
+import System.Directory (getCurrentDirectory, getTemporaryDirectory)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified System.Console.Haskeline as HL
-import System.Console.Haskeline.Completion (completeWord, simpleCompletion)
 import System.FilePath (dropExtension, takeDirectory, takeExtension, (</>))
 import Text.Megaparsec (errorBundlePretty, parse)
 import Sol.Txn
@@ -984,13 +983,6 @@ numberEvals tops = (map fst numbered, [n | (_, Just n) <- numbered])
       let n = "top__" ++ show i
        in (TBind n [] [] e, Just n) : go (i + 1) rest
     go i (t : rest) = (t, Nothing) : go i rest
-
--- THE FOLD, COMPLETE: one grammar (FPRISC.program, re-exported through
--- Sol.Lang).  There is no second parser to fall back to.
-parseOrDie :: String -> String -> IO [STop]
-parseOrDie name src = case parse program name src of
-  Left e -> diagnostic (errorBundlePretty e) >> exitFailure >> pure []
-  Right t -> pure t
 
 -- ---- compile-time module import ---------------------------------------------
 -- Recognize `m = use "name#hash".` at top level: resolve + hash-verify the

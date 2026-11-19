@@ -2,7 +2,7 @@
 -- is serialized at the boundary; its element type and lexical slot stay data.
 module Compiler.VectorLayout
   (VectorBuilder(..), LayoutSlot(..), LayoutEvidence(..), LayoutContract(..), LayoutOwner(..),
-   layoutParameterName, layoutEvidenceType, mapLayoutEvidenceM,
+   layoutParameterName, mapLayoutEvidenceM,
    builderName, builderRuntimeName, builderArity, plainBuilder, unresolvedLayoutType, canonicalLayout, validLayout) where
 import Type.Syntax
 import Data.List (sortOn)
@@ -17,9 +17,6 @@ data LayoutContract=LayoutContract
    layoutBodyRequirements :: [Type]} deriving (Show)
 layoutParameterName :: LayoutSlot -> String
 layoutParameterName (LayoutSlot owner index)="$vectorLayout."++owner++"."++show index
-layoutEvidenceType :: LayoutEvidence -> Type
-layoutEvidenceType (StaticLayout t _)=t
-layoutEvidenceType (ForwardLayout t _)=t
 mapLayoutEvidenceM :: Functor m => (Type -> m Type) -> LayoutEvidence -> m LayoutEvidence
 mapLayoutEvidenceM f (StaticLayout t s)=(`StaticLayout` s) <$> f t
 mapLayoutEvidenceM f (ForwardLayout t s)=(`ForwardLayout` s) <$> f t

@@ -2,8 +2,7 @@
 -- Checked region control is a distinct program product. Source expressions
 -- retain their annotations; protocol sorts never enter the source type system.
 module Compiler.Native.Regions.Typed
-  (Program,build,programNative,programFunctions,programHelpers,programFallback,
-   verifyProgram,rewriteHelpers,emitProgram) where
+  (Program,build,programFunctions,programHelpers,verifyProgram,rewriteHelpers,emitProgram) where
 import qualified Compiler.Native.Core as Native
 import qualified Core.Typed.Syntax as T
 import Core.Region.Flow
@@ -22,13 +21,11 @@ import qualified ReceiveTurns as Turns
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Control.Monad.State.Strict
-import Control.Monad (unless,forM,forM_)
+import Control.Monad (unless, forM)
 
 data Program=Program Native.NativeCore Turns.Rewrite (M.Map Name R.Function) (S.Set Name) (S.Set Name)
-programNative (Program p _ _ _ _)=p
 programFunctions (Program _ _ fs _ _)=fs
 programHelpers (Program _ _ fs names _)=M.map R.functionContract (M.restrictKeys fs names)
-programFallback (Program _ rewrite fs _ _)=M.keysSet (Turns.rewriteProgram rewrite) S.\\ M.keysSet fs
 
 -- Later helper-body passes publish and verify a complete changed graph.
 -- Original parent definitions are not editable through this projection.

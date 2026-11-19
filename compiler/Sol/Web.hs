@@ -377,9 +377,6 @@ collectDyn shapes conNames = go M.empty
 conIndex :: Cons -> M.Map (Int, Int) String
 conIndex cons = M.fromList [((t, v), n) | (n, (t, v)) <- M.toList cons]
 
-jsonV :: Shapes -> Value -> String
-jsonV shapes = jsonVC shapes M.empty
-
 -- with the constructor table: the typed view DSL's Html ADT (lib/ui.sol)
 -- serializes to the generated client protocol; element classes are local atom
 -- values rather than global style names. Constructors match by their name's last

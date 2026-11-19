@@ -5,7 +5,6 @@ import Frontend.Desugar.Typed (SourceSelection)
 import qualified Core.Typed.Decision as D
 import Core.Typed.Pipeline
 import Core.Typed.Close
-import Core.Typed.Callback (CallbackMode(..))
 import Core.Typed.Callback.Model (Target(..),Template(..),ClonePlan(..))
 import Core.Typed.Callback.Trim (trimCallbacks)
 import Core.Typed.Contract (codeContracts)

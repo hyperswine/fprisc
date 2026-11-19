@@ -23,7 +23,6 @@
 module Sol.Gpu (GpuCtx, initGPU, gpuMinLen, glslOfFn, gpuMapF64) where
 
 import Data.IORef
-import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CLong (..))
@@ -31,7 +30,6 @@ import qualified Foreign.C.Types as C
 import Foreign.Marshal.Array (peekArray, withArray)
 import Foreign.Ptr (Ptr)
 import Foreign.Marshal.Alloc (allocaBytes)
-import Foreign.Storable (peekElemOff)
 import Sol.Lang (Core (..), Prog, Name)
 import Sol.Bytecode (cmpNames)
 import System.Environment (lookupEnv)

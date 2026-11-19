@@ -37,10 +37,6 @@ guardExprs gs = [e | g <- gs, e <- case g of GBool e' -> [e']; GPat _ e' -> [e']
 guardPats :: [SGuard] -> [SPat]
 guardPats gs = [p | GPat p _ <- gs]
 
-mapGuardP :: (SPat -> SPat) -> SGuard -> SGuard
-mapGuardP _ (GBool e) = GBool e
-mapGuardP f (GPat p e) = GPat (f p) e
-
 -- ---- UTF-8 decode: bytes (shared lexer) -> Chars (the VM) -------------------
 
 decodeU8 :: String -> String

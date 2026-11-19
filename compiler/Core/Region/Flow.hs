@@ -7,7 +7,6 @@ module Core.Region.Flow
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Walk
 import qualified Core.Region.Syntax as R
-import Core.Identity
 import Control.Monad.State.Strict
 import Control.Monad (unless,forM_)
 import Data.Functor.Const (Const(..))

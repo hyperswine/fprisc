@@ -6,7 +6,7 @@
 -- globals are shape-verified against their catalog templates (std/list's
 -- content hash changes on every edit, so a name alone is not an identity);
 -- safety evidence and the Int-overflow relaxation are Core.FusionPolicy's.
-module Core.Typed.ListFusion (fuseListClosed,fuseListClosedAfterInline) where
+module Core.Typed.ListFusion (fuseListClosedAfterInline) where
 import Core.Typed.Syntax
 import Core.Typed.Close
 import Core.Typed.Callback.Catalog
@@ -57,9 +57,6 @@ directUses e=case exprNode e of
 children e=getConst (mapChildrenM (Const . (:[])) e)
 occurs uid e=uid `elem` directUses e || any (occurs uid) (children e)
 occurrences uid e=length (filter (==uid) (directUses e))+sum (map (occurrences uid) (children e))
-
-fuseListClosed :: Namespace -> TypeContext -> Catalog -> CodeLibrary -> ClosedFunction -> Either String (ClosedFunction,[FusionNote],Bool)
-fuseListClosed=fuseListClosedAfterInline False
 
 fuseListClosedAfterInline :: Bool -> Namespace -> TypeContext -> Catalog -> CodeLibrary -> ClosedFunction -> Either String (ClosedFunction,[FusionNote],Bool)
 fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linears _) snapshot library input=do

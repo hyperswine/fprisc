@@ -1,4 +1,4 @@
-module Core.Opt.Fusion (fuseVecFix,fuseVecFixWithImports,fuseCompatibilityWithImports) where
+module Core.Opt.Fusion (fuseVecFixWithImports,fuseCompatibilityWithImports) where
 import Core.Syntax
 import Core.Utils
 import Core.Primitives (primArities)
@@ -27,8 +27,6 @@ fuseCompatibilityWithImports kinds checked imports source=
 -- recursively), so a fully collapsed chain still dualizes.  The bound
 -- is a backstop, not a budget: a chain of length n needs n-1 rounds
 -- and real programs stop far short of it.
-fuseVecFix :: Prog -> (Prog, [String])
-fuseVecFix=fuseVecFixWithImports M.empty M.empty
 fuseVecFixWithImports :: CheckedKinds -> Prog -> Prog -> (Prog,[String])
 fuseVecFixWithImports kinds imports prog = go (0 :: Int) (nestPipelinesWithImports kinds imports prog)
   where

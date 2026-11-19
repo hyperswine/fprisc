@@ -28,7 +28,7 @@ import qualified Core.VectorRead as VectorRead
 import qualified Codegen.Target.RV as RV
 import qualified Codegen as Backend (tgtW)
 import Codegen.Target.Common (Tune (..), dataSyntax, functionSymbol)
-import Codegen (Target, codegenRev, productBackendWidth, emitProductProgramWithImports, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtSpineBuilders, tgtMapBodies, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative, foreignEntries, normalizesLiterals)
+import Codegen (codegenRev, productBackendWidth, emitTypedProductProgramWithImports, TypedUse (..), Emission (..), NativeMode (..), NativeBackend (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHeapProof, tgtStackReport, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtPairReturns, tgtFieldWorkers, tgtTupleScalars, tgtPipelineInline, tgtReuse, tgtSpineBuilders, tgtMapBodies, tgtPoolResetters, tgtTypedIr, tgtPolicy, tgtNative, foreignEntries, normalizesLiterals)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth, registerBudget)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -51,7 +51,6 @@ import Core.CacheIdentity (CallArities(..),coreCacheIdentityWithBuilders)
 import qualified Compiler.Options as Options
 import Compiler.CommandLine
 import Core.Identity (Namespace(..))
-import Core.Pretty
 import Frontend.Syntax
 import Frontend.Parser (program)
 import Frontend.Desugar
@@ -70,12 +69,11 @@ import qualified Source.Span as Source
 import qualified Data.List.NonEmpty as NE
 import qualified Diagnostic.Remark as Remark
 import qualified Compiler.Remarks as Remarks
-import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
 import Infer.Result
 import Frontend.Desugar.Typed (prepareChecked,selectCheckedUnit,checkedCallArities,specializeCheckedSource,specializedTops,checkedTransportCatalog,selectUnit,selectSpecialized)
-import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTopsInterfaces)
+import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith)
 import Safety (measureCheck, checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import qualified Cost
 import qualified Resource.Analysis as Resource
@@ -87,7 +85,6 @@ import Precond (PreNote (..), PreStatus (..), applyPreconds, checkedName, preTab
 import Home (fprHome, underHome)
 import System.Directory (canonicalizePath, createDirectoryIfMissing, doesFileExist, renameFile)
 import System.Environment (getArgs, lookupEnv)
-import qualified System.Info
 import StdBridge (runStdCheck)
 import System.Exit (ExitCode (..), exitFailure, exitSuccess, exitWith)
 import Control.Exception (SomeException, try)
@@ -1526,11 +1523,6 @@ nativeSummary enabled what asm =
     unless (null parsed) $ do
       hPutStrLn stderr ("[native-insns-v1] "++what++": "++show (length parsed)++" function(s), max segment "++show (maximum (map distance parsed))++" target instructions between safepoints")
       mapM_ (\(fn,kvs) -> hPutStrLn stderr ("[native-insns-v1]   "++fn++"  segmax="++maybe "?" id (lookup "segmax" kvs)++"  exittail="++maybe "?" id (lookup "exittail" kvs)++"  ccalls="++maybe "?" id (lookup "ccalls" kvs))) top
-
-splitOn :: Char -> String -> [String]
-splitOn c str = case break (== c) str of
-  (a, []) -> [a]
-  (a, _ : rest) -> a : splitOn c rest
 
 
 -- Shared host modules resolve externally visible addresses through the GOT.

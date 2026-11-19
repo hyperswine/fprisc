@@ -1,5 +1,4 @@
 import Infer
-import Infer.Result
 import Core.Identity
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Verify
@@ -16,7 +15,6 @@ import Frontend.Desugar
 import Frontend.Desugar.Checked
 import Struct (sigTable,structTable,expandStructs,erasePSig)
 import Ownership.Shape (LShape(..))
-import Ownership.TypeShape (linShapeT)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Control.Monad.State.Strict (runState)

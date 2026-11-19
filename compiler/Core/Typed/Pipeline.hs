@@ -2,7 +2,7 @@
 -- Native semantic passes operate on a complete owned program before erasure.
 -- Layout authority stays attached to the closed product it helped construct.
 module Core.Typed.Pipeline
-  (ClosedProgram,closeProgram,specializeProgramWith,specializePrograms,specializeProgramsWithDecisions,inlinePrograms,inlineProgramsWithDecisions,closedDecisions,closedTouched,planVectorReads,normalizeProgram,caseKnownProgram,fusePrograms,fuseListPrograms,fuseListProgramsWithHelpers,trmcPrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
+  (ClosedProgram,closeProgram,specializeProgramWith,specializeProgramsWithDecisions,inlineProgramsWithDecisions,closedDecisions,closedTouched,planVectorReads,normalizeProgram,caseKnownProgram,fusePrograms,fuseListProgramsWithHelpers,trmcPrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
 import qualified Core.Typed.Decision as D
 import Core.Typed.Program
 import Core.Typed.Syntax
@@ -81,8 +81,6 @@ specializeProgramWith _ providers p=do
 
 -- Share a checked catalog across all linked artifacts. Constructor elision
 -- selects a unique template owner without replacing an artifact's own stubs.
-specializePrograms :: Ord key => CallbackMode -> M.Map key (S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
-specializePrograms=specializeProgramsWithDecisions False
 specializeProgramsWithDecisions :: Ord key => Bool -> CallbackMode -> M.Map key (S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
 specializeProgramsWithDecisions _ PreserveCallbacks inputs=Right (M.map snd inputs)
 specializeProgramsWithDecisions reporting _ inputs=case map snd (M.elems inputs) of
@@ -131,8 +129,6 @@ specializeSnapshot reporting elided snapshot templates p=do
 -- All owned artifacts advance against one immutable snapshot per round.
 -- Forbidden globals are linker-private source entries from other artifacts;
 -- their bodies cannot be copied into a caller without an import contract.
-inlinePrograms :: Ord key => Int -> Int -> Int -> M.Map key (S.Set String,S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
-inlinePrograms=inlineProgramsWithDecisions False
 inlineProgramsWithDecisions :: Ord key => Bool -> Int -> Int -> Int -> M.Map key (S.Set String,S.Set String,ClosedProgram) -> Either String (M.Map key ClosedProgram)
 inlineProgramsWithDecisions reporting rounds limit loopLimit inputs=do
   unless (rounds>=0 && limit>=0 && loopLimit>=0) (Left "typed inline pipeline: negative round/node budget")
@@ -233,9 +229,6 @@ fusePrograms inputs=case map snd (M.elems inputs) of
             (S.fromList [name | (name,(_,_,fused))<-M.toList changed,fused])
       verifyLinkedStep output
       pure (output,concatMap (\(_,notes,_)->notes) (M.elems changed))) inputs
-
-fuseListPrograms :: Ord key => M.Map key (S.Set String,ClosedProgram) -> Either String (M.Map key (ClosedProgram,[Fusion.FusionNote]))
-fuseListPrograms=fuseListProgramsWithHelpers False False . M.map (\(elided,p)->(S.empty,elided,p))
 
 -- Share the existing catalog with bounded helper exposure. Rebuilding and
 -- relinking the whole program for a separate preliminary inline pass costs

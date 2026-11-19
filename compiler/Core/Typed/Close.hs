@@ -3,7 +3,7 @@
 -- checked schemes; generated code never re-infers an erased expression.
 module Core.Typed.Close
   (ClosedFunction,closeFunction,closeFunctionWith,closedRoot,closedCode,closedGlobals,closedContracts,
-   closedOwnedContracts,closedImports,CodeLibrary,codeLibrary,libraryContracts,importClosedLibrary,importClosedCode,mergeClosedLibrary,CloneOrigin(..),closedOrigins,
+   closedOwnedContracts,closedImports,CodeLibrary,codeLibrary,mergeClosedLibrary,CloneOrigin(..),closedOrigins,
    mapClosed,mapClosedChanged,rewriteClosed,rewriteClosedWithOrigins,verifyClosed) where
 import Core.Typed.Syntax
 import Core.Typed.Verify
@@ -44,8 +44,6 @@ closedContracts p=closedOwnedContracts p `M.union` closedImports p
 -- Derive a declaration library once from verified owners. Attaching this
 -- snapshot to another caller does not recheck/re-generalize every provider.
 newtype CodeLibrary=CodeLibrary (M.Map CodeId CodeContract)
-libraryContracts :: CodeLibrary -> M.Map CodeId CodeContract
-libraryContracts (CodeLibrary contracts)=contracts
 codeLibrary :: [ClosedFunction] -> Either String CodeLibrary
 codeLibrary providers=do
   -- ClosedFunction is opaque; every producer verifies its changed graph.
@@ -54,17 +52,6 @@ codeLibrary providers=do
       contracts=M.fromList entries
   unless (length entries==M.size contracts) (Left "typed closure: duplicate code library identity")
   pure (CodeLibrary contracts)
-
--- Import declarations only from verified owners. Bodies remain at home;
--- cloning a source body must never copy the PAP of its nested lambda.
-importClosedCode :: TypeContext -> [ClosedFunction] -> ClosedFunction -> Either String ClosedFunction
-importClosedCode types providers input=codeLibrary providers >>= \library->importClosedLibrary types library input
-
-importClosedLibrary :: TypeContext -> CodeLibrary -> ClosedFunction -> Either String ClosedFunction
-importClosedLibrary types library input=do
-  let result=mergeClosedLibrary library input
-  verifyClosed types result
-  pure result
 
 -- The merge itself, for callers that verify their own product downstream.
 -- Existing imports win over library duplicates, and entries colliding with

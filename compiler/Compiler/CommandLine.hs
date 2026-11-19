@@ -56,7 +56,7 @@ parseCompileArguments = resolveHost . foldl step defaults
         oStdCheck=False, oSol=False, oPrelude=Nothing, oNoSafety=False,
         oFiles=[], oForeign=[], oNoInline=False, oCallables=Nothing, oCost=False,
         oEditorJSON=False, oCheckOnly=False, oManifest=Nothing, oStackBudget=Nothing, oHeapBudget=Nothing, oStackReport=False, oRemarks=Nothing }
-    -- profile aliases (Target.hs): the AOT profiles resolved to their
+    -- profile aliases: the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
     -- qos-native -> rv64 .qa is built by tools, so the alias maps the
     -- codegen the same way; qos-portable -> qx64 (x86-64 build host).

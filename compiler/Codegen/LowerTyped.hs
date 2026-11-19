@@ -22,7 +22,6 @@ import Codegen.Policy
 import Core.Identity (BinderId (..), Namespace (..))
 import Core.Primitives (entryTickName)
 import Core.Syntax (Core (..), Prog)
-import Type.Syntax (Type (..))
 import Core.Typed.Syntax hiding (Local)
 import qualified Core.Typed.Syntax as T
 import Control.Monad (when)
@@ -148,8 +147,6 @@ data V
   | VCore -- lowered by Codegen.Lower from the node's Core (constructors, projections)
 
 type TEnv = M.Map Key (VId, Ty)
-
-data Plan = Plan {planLayout :: Layout, planNext :: Int}
 
 lowerFn :: Bool -> Policy -> Layout -> Prog -> M.Map String Int -> M.Map String Prim -> Function -> Either Reason Fn
 -- the Core the plan stands for (parameters and body): what the erased

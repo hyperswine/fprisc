@@ -61,9 +61,7 @@ builtinCons =
       ("Err", (3, 1, 1))
     ] `M.union` DataLayout.smallTupleLayouts
 
-boolT, listT, atomT :: Int
-boolT = 1
-listT = 2
+atomT :: Int
 atomT = 6
 
 -- CONTENT-ADDRESSED typeids (separate compilation): a type's id is a
@@ -283,9 +281,6 @@ tupCon :: Int -> D String
 tupCon n
   | n >= 2 = pure ("Tup" ++ show n)
   | otherwise = error ("tuple of " ++ show n ++ " elements")
-
-tupWideBase :: Int
-tupWideBase = DataLayout.tupWideBase
 
 wideTup :: Name -> Maybe (Int, Int, Int)
 wideTup=DataLayout.wideTup

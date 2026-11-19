@@ -1,7 +1,7 @@
 -- Preserve checked interface and local aggregate evidence at ARC's erased
 -- compatibility boundary. Open source slots retain their tagged fallback;
 -- closed local instantiations do not depend on function specialization.
-module Compiler.Native.Representation (signatures, signaturesFor, prepareFor) where
+module Compiler.Native.Representation (prepareFor) where
 import qualified Compiler.Native.Core as Native
 import qualified Core.Typed.Syntax as Core
 import Core.Typed.Walk (mapChildrenM)
@@ -17,16 +17,6 @@ import qualified Type.Substitution as Type
 import Type.Syntax (Type(..))
 import Representation.Types
 import qualified Data.Map.Strict as M
-
-signatures :: Native.NativeCore -> Either String (M.Map String CallSignature, LayoutTable)
-signatures=signaturesFor True
-
--- Explicit raw units cannot allocate fallback boxes. Their open helper
--- variables retain the existing inferred raw ABI; exports remain concrete.
-signaturesFor :: Bool -> Native.NativeCore -> Either String (M.Map String CallSignature, LayoutTable)
-signaturesFor uniform native=do
-  (signatures,layouts,_,_)<-prepareFor uniform native
-  pure (signatures,layouts)
 
 -- Markers are scoped to this exact checked projection and consumed by ARC.
 -- They never become runtime calls or authority for compatibility definitions.

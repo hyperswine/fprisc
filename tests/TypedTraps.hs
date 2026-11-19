@@ -1,9 +1,6 @@
 import Infer
-import Infer.Result
 import Compiler.Trap
 import Core.Identity
-import qualified Core.Typed.Syntax as T
-import Core.Typed.Verify
 import Core.Typed.Close
 import qualified Codegen.Lower as Lower
 import Codegen.Policy (m2Policy)

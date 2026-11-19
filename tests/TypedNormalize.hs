@@ -12,7 +12,6 @@ import qualified Core.Typed.Syntax as T
 import qualified Codegen.Lower as Lower
 import qualified Codegen.Eval as E
 import Codegen.Policy (m2Policy)
-import Core.Identity (BinderId)
 import Control.Monad (unless,forM_)
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M

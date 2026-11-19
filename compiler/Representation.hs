@@ -19,8 +19,7 @@
 --      belongs to the selected target linker; hosted compiler cost is gated
 --      by the compile-budget suite.
 module Representation
-  ( represent,
-    representWith,
+  ( representWith,
     representWithOptions,
     representWithOwnership,
     representWithCheckedLayouts,
@@ -352,9 +351,6 @@ repType typeSpec = \case
                 f <- field (tid, inst, v, i)
                 maybe (pure ()) (\rep -> repType typeSpec rep >>= unify f) known
             pure ty
-
-represent :: Prog -> Either String (Prog, M.Map Core Kind, M.Map String [Kind])
-represent = representWith M.empty
 
 representWith :: M.Map String CallSignature -> Prog -> Either String (Prog, M.Map Core Kind, M.Map String [Kind])
 representWith declarations input = do

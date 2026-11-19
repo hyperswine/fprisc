@@ -4,7 +4,6 @@
 module Codegen.Annotation
   (RestoreSupport(..),EntryPoint(..),checkAnnotations,checkSaveGroups,entryLabel) where
 import Codegen.Selected
-import Codegen.Call (callPreserves)
 import qualified Codegen.Opcode as O
 import qualified Codegen.Opcode.A64 as A
 import qualified Codegen.Opcode.RV as R

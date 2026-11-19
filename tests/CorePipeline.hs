@@ -9,7 +9,7 @@ import KernelKinds (Kind(..))
 import Control.Monad (unless, forM_)
 import Control.Exception (ErrorCall(..), evaluate, try)
 import Workers (Agreement(..), scalarWorkersWith)
-import Data.List (isInfixOf,isPrefixOf)
+import Data.List (isInfixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
