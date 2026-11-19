@@ -51,7 +51,6 @@ import Core.CacheIdentity (CallArities(..),coreCacheIdentityWithBuilders)
 import qualified Compiler.Options as Options
 import Compiler.CommandLine
 import Core.Identity (Namespace(..))
-import Core.Pretty
 import Frontend.Syntax
 import Frontend.Parser (program)
 import Frontend.Desugar

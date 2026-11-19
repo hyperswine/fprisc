@@ -9,7 +9,6 @@ module FPRISC
    module Frontend.MemoryLayout,
    module Frontend.Paths,
    module Frontend.Desugar,
-   module Core.Pretty,
    module Frontend.Traverse,
    module Frontend.Diagnostics,
    module Ownership.Shape,
@@ -22,7 +21,6 @@ import Frontend.Normalize
 import Frontend.MemoryLayout
 import Frontend.Paths
 import Frontend.Desugar
-import Core.Pretty
 import Frontend.Traverse
 import Frontend.Diagnostics
 import Ownership.Shape
