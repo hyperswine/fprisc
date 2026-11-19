@@ -4,7 +4,7 @@
 -- erasure with Codegen.Lower and its typed body with Codegen.LowerTyped; the
 -- two native functions must be equal. Nothing the typed lowering produces is
 -- emitted.
-module Compiler.Native.TypedLowering (Report (..), check, reportNote, stagesNote, Lowered (..), typedFunctions, firstDifference) where
+module Compiler.Native.TypedLowering (Report (..), check, stagesNote, Lowered (..), typedFunctions, firstDifference) where
 
 import Codegen.IR (Fn (..), Block (..))
 import Codegen.Lower (Prim)
@@ -144,12 +144,6 @@ firstDifference a b
   | otherwise = case [(x, y) | (x, y) <- zip (fnBlocks a) (fnBlocks b), x /= y] of
       (x, y) : _ -> "first differing block: erased " ++ show x ++ " against typed " ++ show y
       [] -> "block count " ++ show (length (fnBlocks a)) ++ " (erased) against " ++ show (length (fnBlocks b)) ++ " (typed)"
-
-reportNote :: Report -> String
-reportNote r = "# typed lowering: s1=" ++ show (reportS1 r) ++ " agreed=" ++ show (reportAgreed r)
-  ++ " refused=" ++ show (length (reportRefused r)) ++ " both_refused=" ++ show (reportBothRefused r)
-  ++ " erase_refused=" ++ show (reportEraseRefused r)
-  ++ concat [" refused_by=" ++ intercalate ";" (take 3 [n ++ ":" ++ why | (n, why) <- reportRefused r]) | not (null (reportRefused r))]
 
 -- P2 typed lowering, slice 2 count (FPR_TYPED_LOWER_STAGES=1): for every
 -- agreed S1 function, the first stage after the boundary whose body differs

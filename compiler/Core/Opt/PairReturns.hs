@@ -3,7 +3,7 @@
 -- The original tagged entry
 -- remains available for escapes and unsupported target widths. This is a
 -- call-site allocation optimization, not checked builtin aggregate storage.
-module Core.Opt.PairReturns (pairReturnProgram, productReturnProgram, productReturnProgramWithVariants, productWorkerWidth, pairWorker, pairWorkerName) where
+module Core.Opt.PairReturns (productReturnProgramWithVariants, productWorkerWidth) where
 import Core.Syntax (Core(..), Prog, Name)
 import Core.Utils (spineOf)
 import qualified Core.Opt.VariantReturns as Variant
@@ -28,12 +28,6 @@ productWorkerWidth name = do
   n <- readMaybe digits
   -- ret1 deliberately uses the ordinary value convention, not TProduct 1.
   if n >= 2 && n <= 8 && not (null suffix) && digits == show n then Just n else Nothing
-
-pairWorker :: Name -> Bool
-pairWorker = isPrefixOf "$worker.ret2."
-
-pairWorkerName :: Name -> Name
-pairWorkerName = productWorkerName 2
 
 type Shape = (Int, Int, Int)
 
@@ -211,12 +205,6 @@ twinBody arities products = go
             Just ar <- M.lookup h arities, length args == ar ->
               foldl CApp (CVar (productWorkerName width h)) args
         _ -> e
-
-pairReturnProgram :: Prog -> ScalarSignatures -> (Prog, ScalarSignatures, [String])
-pairReturnProgram = productReturnProgram 2
-
-productReturnProgram :: Int -> Prog -> ScalarSignatures -> (Prog, ScalarSignatures, [String])
-productReturnProgram=productReturnProgramWithVariants M.empty
 
 productReturnProgramWithVariants :: M.Map Name VariantLayout -> Int -> Prog -> ScalarSignatures -> (Prog,ScalarSignatures,[String])
 productReturnProgramWithVariants checked width prog sigs

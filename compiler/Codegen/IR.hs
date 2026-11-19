@@ -28,7 +28,7 @@ module Codegen.IR
     ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), simdCaptures, simdRegisters, ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign, calleeConvention,
     productCallResults, Op (..), ViewPart (..), headerWord, Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
-    intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
+    intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, arityCeiling,
   ) where
 
 import Codegen.Calling.Types (EntryConvention(..))
@@ -566,12 +566,6 @@ bitName = \case BAnd -> "band"; BOr -> "bor"; BXor -> "bxor"
 
 shiftName :: ShiftOp -> String
 shiftName = \case Shl -> "BITSHIFTL"; Shr -> "BITSHIFTR"
-
--- the low 63 bits of a two's-complement value, sign-extended: what
--- `slli 1; ori 1` then `srai 1` leave of a 64-bit result (the inline
--- shift expansions and bits.c's TAG((sw)...))
-wrap63 :: Integer -> Integer
-wrap63 v = let m = v `mod` (2 ^ (63 :: Int)) in if m > intMax then m - 2 ^ (63 :: Int) else m
 
 widthBits :: Width -> Int
 widthBits W32 = 32

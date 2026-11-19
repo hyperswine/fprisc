@@ -166,12 +166,6 @@ etaPrimitiveValues = map top
 -- message root dies with the turn that took it, released by the runtime at
 -- the turn boundary (docs/2026-10-24-REGIONS-STAGE1.md).
 
-adHeadName :: SExpr -> Maybe Name
-adHeadName (SMark _ e) = adHeadName e
-adHeadName (SVar n) = Just n
-adHeadName (SApp f _) = adHeadName f
-adHeadName _ = Nothing
-
 -- fold the `> e.` statements into a synthesized `main` (a block whose
 -- statements bind throwaways, last one is the result).  An explicit
 -- `main` alongside `>` statements is a conflict, reported by Main.

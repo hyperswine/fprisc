@@ -975,15 +975,6 @@ jitCallable env scheme f = case f of
     toTV (VNum d) = Just (d2b d, JD)
     toTV _ = Nothing
 
--- marshal Sol Int lists <-> unboxed arrays: the builder->freeze boundary
-toInts :: Value -> Maybe [Int64]
-toInts (VData t 1 [VInt x, r]) | t == listT = (fromIntegral x :) <$> toInts r
-toInts (VData t 0 []) | t == listT = Just []
-toInts _ = Nothing
-
-fromInts :: [Int64] -> Value
-fromInts = foldr (\x acc -> VData listT 1 [VInt (fromIntegral x), acc]) (VData listT 0 [])
-
 -- hand the native code a fuel cell; reconcile with the VM counter after.
 -- Native code only decrements (accounting, per the function-entry contract);
 -- exhaustion mid-scheme is impossible to act on there — which is fine,
@@ -1017,9 +1008,6 @@ withFuelCell env body = alloca $ \p -> do
 -- runtime uses a table of refs keyed by a fresh Int id -- the same bridge
 -- Handle uses.  (This table IS the BStr representation.)
 type BStrTable = IORef (IM.IntMap (IORef BStrStore))
-
-newBStrTable :: IO BStrTable
-newBStrTable = newIORef IM.empty
 
 bstInsert :: BStrTable -> IORef BStrStore -> IO Int
 bstInsert tbl ref = atomicModifyIORef' tbl $ \m ->

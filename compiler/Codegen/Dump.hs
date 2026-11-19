@@ -3,14 +3,11 @@
 -- diagnostics, fixtures and reviews.  Blocks print in the function's
 -- order, values and blocks by their numbers; no map iteration order
 -- leaks into the text.
-module Codegen.Dump (dumpFn, dumpProgram) where
+module Codegen.Dump (dumpFn) where
 
 import Codegen.IR
 import Data.List (intercalate)
 import qualified Data.Map.Strict as M
-
-dumpProgram :: Program -> String
-dumpProgram p = intercalate "\n" (map dumpFn (M.elems p))
 
 dumpFn :: Fn -> String
 dumpFn fn =

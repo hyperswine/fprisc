@@ -1526,11 +1526,6 @@ nativeSummary enabled what asm =
       hPutStrLn stderr ("[native-insns-v1] "++what++": "++show (length parsed)++" function(s), max segment "++show (maximum (map distance parsed))++" target instructions between safepoints")
       mapM_ (\(fn,kvs) -> hPutStrLn stderr ("[native-insns-v1]   "++fn++"  segmax="++maybe "?" id (lookup "segmax" kvs)++"  exittail="++maybe "?" id (lookup "exittail" kvs)++"  ccalls="++maybe "?" id (lookup "ccalls" kvs))) top
 
-splitOn :: Char -> String -> [String]
-splitOn c str = case break (== c) str of
-  (a, []) -> [a]
-  (a, _ : rest) -> a : splitOn c rest
-
 
 -- Shared host modules resolve externally visible addresses through the GOT.
 -- Local labels keep direct PC-relative addresses. x64 borrows main's static

@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 -- Inline checked closed entries, before region planning and erasure. Templates
 -- retain their code homes; only lexical binders are cloned into the caller.
-module Core.Typed.Inline (Inlining,planInlining,planListHelpers,hasListHelperPipeline,inlineClosed,inlineClosedWithDecisions) where
+module Core.Typed.Inline (Inlining,planInlining,planListHelpers,hasListHelperPipeline,inlineClosedWithDecisions) where
 import qualified Core.Typed.Decision as D
 import Core.Typed.Syntax
 import Core.Typed.Close
@@ -91,10 +91,6 @@ planInliningSelected select limit loopLimit snapshot=do
       void (mapChildrenM (\x->weigh x>>pure x) e)
     globals e=(case exprNode e of Var (Global n _)->S.singleton n;_->S.empty)
       <>getConst (mapChildrenM (Const . globals) e)
-
-inlineClosed :: S.Set String -> Namespace -> TypeContext -> M.Map String Int -> Inlining -> ClosedFunction -> Either String ClosedFunction
-inlineClosed forbidden namespace types arities plan input=
-  (\(f,_,_)->f) <$> inlineClosedWithDecisions False forbidden namespace types arities plan input
 
 -- The Bool reports whether anything was inlined, propagated or renamed.
 -- When nothing fired the original product is returned with its existing

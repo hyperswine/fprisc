@@ -52,9 +52,6 @@ type Generics = M.Map Name [(Int, Name)] -- fn -> sig-annotated param positions
 sigTable :: [STop] -> Sigs
 sigTable tops = M.fromList [(n, fs) | TSigDef n fs <- tops]
 
-sigFieldNames :: Sigs -> Name -> [Name]
-sigFieldNames sigs sg = maybe [] (map fst) (M.lookup sg sigs)
-
 structTable :: [STop] -> Structs
 structTable tops = M.fromList [(n, (sigs, map fst fs)) | TStruct n sigs fs <- tops]
 
@@ -117,9 +114,6 @@ specName f chosen = f ++ concat ["#" ++ s | (_, s) <- chosen]
 -- binder-aware substitution for one specialized clone:
 --   s.f ...rest  ->  (N.f) ...rest      (direct flat global)
 --   s            ->  N                  (the record, for pass-through)
-substStruct :: M.Map Name Name -> SExpr -> SExpr
-substStruct = substStructWith id
-
 substStructWith :: (Name -> Name) -> M.Map Name Name -> SExpr -> SExpr
 substStructWith entry sub = transformE step S.empty
   where
@@ -323,12 +317,3 @@ erasePSig = map top
     ep (PCon c ps) = PCon c (map ep ps)
     ep (PTup ps) = PTup (map ep ps)
     ep p = p
-
--- the whole pass: expand structs, check, specialize, erase
-structPass :: [STop] -> ([String], [STop])
-structPass tops =
-  let sigs = sigTable tops
-      (e1, tops1) = expandStructs sigs tops
-      structs = structTable tops -- from the ORIGINAL tops (pre-expansion)
-      (e2, tops2) = specialize sigs structs tops1
-   in (e1 ++ e2, erasePSig tops2)

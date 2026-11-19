@@ -93,10 +93,6 @@ vFalse = VData boolT 0 []
 vBool :: Bool -> Value
 vBool b = if b then vTrue else vFalse
 
-isUnit :: Value -> Bool
-isUnit (VData 0 0 []) = True
-isUnit _ = False
-
 veq :: Value -> Value -> Bool
 veq (VInt a) (VInt b) = a == b
 veq (VNum a) (VNum b) = a == b
@@ -186,10 +182,6 @@ bsContent ref = do
   st <- readIORef ref
   pure (BSU.toString (BS.take (bsUsed st) (bsBuf st)))
 
--- number of BYTES (fast)
-bsByteLen :: IORef BStrStore -> IO Int
-bsByteLen ref = bsUsed <$> readIORef ref
-
 -- number of UTF-8 codepoints; O(n) but cached at the Sol level via BStr.len
 bsCpLen :: IORef BStrStore -> IO Int
 bsCpLen ref = do
@@ -238,11 +230,6 @@ bsAppendStr ref s = do
 vsStr :: Value -> IO String
 vsStr (VStr s) = pure s
 vsStr v = ioError (userError ("string op: not a string: " ++ render v))
-
--- is a Value any string variant?
-isStrVal :: Value -> Bool
-isStrVal (VStr _) = True
-isStrVal _ = False
 
 data ColKind = KInt | KNum | KBox deriving (Eq)
 

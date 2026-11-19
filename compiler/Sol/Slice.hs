@@ -9,7 +9,7 @@
 -- small program.  Over-inclusion is always safe; the caller treats any
 -- rejection of the sliced program as "inconclusive" and recompiles with the
 -- full prelude, so diagnostics are always the full pipeline's.
-module Sol.Slice (slicePrelude, sliceIndices, mentions, injectedNames, shapeSeed, orderedShapes) where
+module Sol.Slice (sliceIndices, mentions, injectedNames, shapeSeed, orderedShapes) where
 
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -83,10 +83,7 @@ members t = case t of
 -- their own operand types). Under-inclusion is never silent: a name the
 -- slice lacks is unbound or unresolvable, the sliced compile is rejected,
 -- and the caller compiles with the whole prelude.
-slicePrelude :: S.Set Name -> S.Set Name -> [STop] -> [STop]
-slicePrelude seeds fixed ptops = [t | (i, t) <- zip [0 ..] ptops, S.member i (sliceIndices seeds fixed ptops)]
-
--- The positions slicePrelude keeps. Used over prelude ++ verified libraries
+-- Used over prelude ++ verified libraries
 -- (Sol.Main), which are sliced as one body of trusted, already-checked code.
 sliceIndices :: S.Set Name -> S.Set Name -> [STop] -> S.Set Int
 sliceIndices seeds fixed ptops = kept

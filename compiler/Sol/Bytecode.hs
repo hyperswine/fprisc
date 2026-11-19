@@ -81,8 +81,7 @@ arithOps =
 -- exist, which is what killed the drift class where three tiers
 -- whitelisted "/=" while the language's operator is "!=" (so !=
 -- silently declined them all).
-arithNames, cmpNames :: [Name]
-arithNames = [n | (n, op) <- M.toList arithOps, op `elem` [OAdd, OSub, OMul, ODiv]]
+cmpNames :: [Name]
 cmpNames = [n | (n, op) <- M.toList arithOps, op `notElem` [OAdd, OSub, OMul, ODiv]]
 
 data Fn = Fn

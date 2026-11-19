@@ -8,7 +8,7 @@
 -- typeid, variant and fields), fuel is counted and never runs out, the
 -- stack never fills.  Anything it cannot evaluate is `Stuck`, which is
 -- a coverage gap or a compiler bug, never a program behaviour.
-module Codegen.Eval (RV (..), Event (..), Failure (..), Outcome (..), evalProgram, evalProgramWidth, rvInt, rvBool, rvUnit) where
+module Codegen.Eval (RV (..), Event (..), Failure (..), Outcome (..), evalProgram, evalProgramWidth, rvBool, rvUnit) where
 
 import Compiler.DataLayout (storedListTid,storedListVariant)
 import Codegen.IR
@@ -24,9 +24,6 @@ import qualified Data.Map.Strict as M
 -- immortal object known only by its symbol (a primitive's object, a HAL
 -- contract): opaque, equal only to itself
 data RV = RInt Integer | RObj Int Int [RV] | RPap Name [RV] | RString [Int] | RSym String deriving (Eq, Ord, Show)
-
-rvInt :: Integer -> RV
-rvInt = RInt
 
 rvBool :: Bool -> RV
 rvBool b = RObj 1 (if b then 1 else 0) []

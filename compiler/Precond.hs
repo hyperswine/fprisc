@@ -108,15 +108,6 @@ splitMeasure e = case e of
               (Nothing, y) -> y
           )
 
--- `(x : T | measure e)` is a TERMINATION declaration, not a value
--- precondition: route it to Safety.measureCheck and keep it out of
--- the obligation machinery (it is not in the decidable value
--- fragment, and it must never become a runtime check)
-isMeasureP :: SExpr -> Bool
-isMeasureP e = case e of
-  SApp (SVar "measure") _ -> True
-  _ -> False
-
 -- the decidable fragment: cmp atoms over +,-,* of vars/ints, and2/or2
 validatePre :: PreTable -> [String]
 validatePre tab =

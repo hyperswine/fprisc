@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 -- Existing embedded runtime protocols. One owner supplies and checks their
 -- effects; target renderers retain the actual instruction sequences.
-module Codegen.Protocol (Embedded(..),EntryChecks(..),entryChecks,entryOpcode,embedded,protocolCalls,protocolFlags,protocolControl,selectProtocol,keepingEntry,keepingEntryWith,keptCalls,checkProtocols) where
+module Codegen.Protocol (Embedded(..),EntryChecks(..),entryChecks,entryOpcode,embedded,protocolCalls,protocolFlags,protocolControl,selectProtocol,keepingEntryWith,keptCalls,checkProtocols) where
 import Codegen.Selected
 import Codegen.Call
 import Codegen.Calling (ABI(..),argumentRegisters,resultRegister,callerClobbers)
@@ -60,8 +60,6 @@ keptCalls protocol=map runtimeEvent <$> case protocol of
   CheckAndTick->Just [GrowStackSaveEntry,FuelSaveEntry]
   CheckStack->Just [GrowStackSaveEntry]
   _->Nothing
-keepingEntry :: ABI -> SInstr -> SInstr
-keepingEntry=keepingEntryWith False
 -- C9 stage 2 (lean): a kept fuel-only tick (hart read into r10, the
 -- subtraction, the wrapper that pushes and pops rax..r11) never writes rax,
 -- so with lean set it does not claim it: a value may stay in rax across

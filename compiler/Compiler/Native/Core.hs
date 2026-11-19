@@ -2,7 +2,7 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,eraseDefinitions,compileSelection,compileSelectionAt,compileSelectionBase,compileSelectionTypeSpecialized,compileSelectionTypeSpecializedKeepingEntries,specializeNativeWith,specializeNativePrograms,specializeNativeProgramsWithDecisions,inlineNativePrograms,inlineNativeProgramsWithDecisions,planNativeVectorReads,normalizeNative,caseKnownNative,fuseNativePrograms,fuseListNativePrograms,fuseListNativeProgramsWithHelpers,trmcNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,nativeTypeSpecNotes,nativeTypeInstances,annotatedProgram,
+  (NativeCore,eraseDefinitions,compileSelection,compileSelectionAt,compileSelectionBase,compileSelectionTypeSpecialized,compileSelectionTypeSpecializedKeepingEntries,specializeNativeWith,specializeNativeProgramsWithDecisions,inlineNativePrograms,inlineNativeProgramsWithDecisions,planNativeVectorReads,normalizeNative,caseKnownNative,fuseNativePrograms,fuseListNativeProgramsWithHelpers,trmcNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,nativeTypeSpecNotes,nativeTypeInstances,annotatedProgram,
    CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts,nativeTypeInstanceDeclarations) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
@@ -122,8 +122,6 @@ specializeNativeWith mode providers (NativeCore closed p js compatibility declar
   specialized<-specializeProgramWith mode (map nativeClosed providers) closed
   inheritTypeInstances (M.unions (map typeInstanceCatalog providers)) <$> replaceClosed specialized (NativeCore closed p js compatibility declarations constructors serial notes typeInstances)
 
-specializeNativePrograms :: Ord key => CallbackMode -> M.Map key (S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
-specializeNativePrograms=specializeNativeProgramsWithDecisions False
 specializeNativeProgramsWithDecisions :: Ord key => Bool -> CallbackMode -> M.Map key (S.Set String,NativeCore) -> Either String (M.Map key NativeCore)
 specializeNativeProgramsWithDecisions reporting mode inputs=do
   changed<-specializeProgramsWithDecisions reporting mode (M.map (\(elided,core)->(elided,nativeClosed core)) inputs)
@@ -151,9 +149,6 @@ caseKnownNative :: S.Set String -> NativeCore -> Either String (Maybe NativeCore
 caseKnownNative elided input=do
   stepped<-caseKnownProgram elided (nativeClosed input)
   if S.null (closedTouched stepped) then pure Nothing else Just <$> replaceClosed stepped input
-
-fuseListNativePrograms :: Ord key => M.Map key (S.Set String,NativeCore) -> Either String (M.Map key (NativeCore,[FusionNote]))
-fuseListNativePrograms=fuseListNativeProgramsWithHelpers False False . M.map (\(elided,core)->(S.empty,elided,core))
 
 fuseListNativeProgramsWithHelpers :: Ord key => Bool -> Bool -> M.Map key (S.Set String,S.Set String,NativeCore) -> Either String (M.Map key (NativeCore,[FusionNote]))
 fuseListNativeProgramsWithHelpers reporting helpers inputs=do

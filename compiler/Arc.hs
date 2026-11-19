@@ -5,11 +5,8 @@
 -- Cleanup is sequenced before tail transfers, never after them.
 module Arc
   ( lowerArc,
-    lowerRaw,
     lowerArcWith,
-    lowerRawWith,
     lowerArcWithOptions,
-    lowerRawWithOptions,
     lowerArcWithLayouts,
     lowerArcWithEvidence,
     lowerArcWithProductEvidence,
@@ -182,16 +179,6 @@ lowerArcWithProductEvidence capacity evidence layouts typeSpec pinned declaratio
 -- unboxed, prims through the raw adapters), the allocation-free contract
 -- on every function (Interrupt.checkRawUnit), and NO ownership
 -- instrumentation -- nothing here owns anything
-lowerRaw :: M.Map String Int -> Prog -> Either String Prog
-lowerRaw = lowerRawWith M.empty
-
-lowerRawWith :: M.Map String CallSignature -> M.Map String Int -> Prog -> Either String Prog
-lowerRawWith declarations external input =
-  fst <$> lowerRawWithOptions True S.empty declarations external input
-
-lowerRawWithOptions :: Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String, String)])
-lowerRawWithOptions = lowerRawWithLayouts M.empty
-
 lowerRawWithLayouts :: LayoutTable -> Bool -> S.Set String -> M.Map String CallSignature -> M.Map String Int -> Prog -> Either String (Prog, [(String, String)])
 lowerRawWithLayouts=lowerRawWithEvidence M.empty
 
@@ -215,9 +202,6 @@ lowerRawWithProductEvidence capacity evidence layouts typeSpec pinned declaratio
 -- exact constructor bodies. No effect, entry tick or boundary adapter is
 -- copied or dropped. The checked definition establishes eligible nominal ids;
 -- the solver still selects each instantiated layout (including boxed ones).
-exposeScalarConstructors :: M.Map String Rep -> LayoutTable -> Prog -> Prog
-exposeScalarConstructors=exposeConstructors 0
-
 exposeConstructors :: Int -> M.Map String Rep -> LayoutTable -> Prog -> Prog
 exposeConstructors capacity evidence layouts input=M.map (\(ps,b)->(ps,walk (S.fromList ps) b)) input
   where

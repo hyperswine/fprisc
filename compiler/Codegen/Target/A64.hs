@@ -57,7 +57,7 @@
 module Codegen.Target.A64
   ( A64Config (..), ObjectFormat (..), HartAccess (..), NativeFn (..),
     a64InterfaceRev, a64HostedInterfaceRev, a64SelectionRev, emitFnA64, emitFnA64WithSymbols, a64RegisterFile, mangleName, functionSymbol,
-    placement, allocConfig, fuelSaveWrapper, allocSaveWrapper, stackGrowWrapper,
+    allocConfig, fuelSaveWrapper, allocSaveWrapper, stackGrowWrapper,
   ) where
 
 import Compiler.DataLayout (storedListTid)
@@ -139,16 +139,6 @@ a64RegisterFile = RegisterFile classOf reserved
     below limit d = not (null d) && all (\c -> c >= '0' && c <= '9') d
       && foldl (\n c -> n * 10 + (fromEnum c - fromEnum '0')) 0 d < (limit :: Int)
     reserved = [Phys "sp", x 16, x 17, x 18, x 27, x 28, x 29, x 30]
-
--- what a C call destroys (AAPCS64 caller-saved integer registers and the
--- link register); x18 is the platform register and never holds a value
-callerSaved :: [Phys]
-callerSaved = Calling.callerClobbers Calling.AArch64
-
--- the placement's scratch: caller-saved registers the runtime ABI leaves
--- free and the expansions do not use (x16/x17 are the expansions')
-scratchPool :: [Phys]
-scratchPool = map x [9 .. 15]
 
 -- M3 allocation (Codegen.Allocate): the budget is x19..x26, the registers
 -- the context switch preserves (docs/2026-10-19-REGISTER-ALLOCATION.md 3.3;
@@ -1005,15 +995,6 @@ condBranch fn b whenTrue whenFalse t as e bs = case (null movesT, null movesE) o
 -- of it is this backend's ceiling, refused by name beyond
 frameCeiling :: Int
 frameCeiling = 32768
-
-placement :: S.Set VReg -> Placement
-placement managed =
-  Placement
-    { plScratch = \case GPR -> scratchPool; FPR -> [],
-      plLoad = \p ref -> plain (O.A64 A.FrameLoad) [OP p] [OF ref 0],
-      plStore = \p ref -> plain (O.A64 A.FrameStore) [] [OP p, OF ref 0],
-      plSlot = \v@(VReg n) -> frameObj n 8 8 (SpillSlot n) (S.member v managed)
-    }
 
 -- the allocator's view of this target (M3)
 allocConfig :: Maybe CodeSymbol -> S.Set VReg -> AllocConfig

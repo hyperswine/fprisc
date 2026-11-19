@@ -985,13 +985,6 @@ numberEvals tops = (map fst numbered, [n | (_, Just n) <- numbered])
        in (TBind n [] [] e, Just n) : go (i + 1) rest
     go i (t : rest) = (t, Nothing) : go i rest
 
--- THE FOLD, COMPLETE: one grammar (FPRISC.program, re-exported through
--- Sol.Lang).  There is no second parser to fall back to.
-parseOrDie :: String -> String -> IO [STop]
-parseOrDie name src = case parse program name src of
-  Left e -> diagnostic (errorBundlePretty e) >> exitFailure >> pure []
-  Right t -> pure t
-
 -- ---- compile-time module import ---------------------------------------------
 -- Recognize `m = use "name#hash".` at top level: resolve + hash-verify the
 -- module, recursively expand ITS uses, rename every top-level definition

@@ -1224,9 +1224,6 @@ renderVerdict = \case
   Over m -> "OVER (" ++ m ++ ")"
   Unproved os -> "UNPROVED (opaque: " ++ intercalate ", " os ++ ")"
 
-_unusedRatio :: Rational
-_unusedRatio = 1 % 1
-
 -- | A declared bound's named coefficients, bound by the manifest.
 substCoefs :: M.Map Name Integer -> Cost -> Cost
 substCoefs ks = go

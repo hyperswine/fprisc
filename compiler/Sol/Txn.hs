@@ -176,9 +176,6 @@ emptyTx = TxState
   , txExternal=S.empty, txReplayableThreads=M.empty, txSaga=Nothing, txPivot=False, txLogs=[]
   }
 
-resetTx :: IORef TxState -> IO ()
-resetTx ref = txCleanup ref >> (newTx >>= readIORef >>= writeIORef ref)
-
 txRuntime :: IORef TxState -> IO ScriptIO.Runtime
 txRuntime ref = readIORef ref >>= maybe (ioError (userError "missing script I/O runtime")) pure . txIO
 

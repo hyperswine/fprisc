@@ -15,7 +15,7 @@
 -- Parameters are parked before any entry check/tick, and rsp is restored
 -- from rbp at exit to preserve the runtime stack-segment contract.
 module Codegen.Target.X64
-  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, placement, allocConfig, fuelSaveWrapper, allocSaveWrapper, stackGrowWrapper ) where
+  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, allocConfig, fuelSaveWrapper, allocSaveWrapper, stackGrowWrapper ) where
 
 import Compiler.DataLayout (storedListTid)
 import qualified Codegen.Calling as Calling
@@ -131,10 +131,9 @@ x64RegisterClasses = M.fromList $
   [(p, GPR) | p <- ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp"] ++ ["r" ++ show n | n <- [8 :: Int .. 15]]]
   ++ [("xmm" ++ show n, FPR) | n <- [0 :: Int .. 15]]
 
-callerSaved, argRegs, scratchPool, calleeBudget, callerPool, allocScratch :: [Phys]
+callerSaved, argRegs, calleeBudget, callerPool, allocScratch :: [Phys]
 callerSaved = Calling.callerClobbers Calling.X86_64
 argRegs = Calling.argumentRegisters Calling.X86_64
-scratchPool = map r ["r8", "r9", "rsi", "rdi", "rcx", "rax", "rdx"]
 -- M3: the budget (docs/2026-10-19-REGISTER-ALLOCATION.md 3.3: s1..s5, what
 -- ctx_x64.S saves), the caller-saved pool, and the never-allocated scratch
 -- (r10 and r11 are the expansions' own scratch inside the entry sequence
@@ -1108,14 +1107,6 @@ selectTerm cfg fn facts nextBlock b = case bTerm b of
     emitI (Protocol.selectProtocol Calling.X86_64 (plain (O.X64 O.Panic) [] [OAddr (StaticObject (stringLabel msg))]))
   where
     paramsOf bid = M.findWithDefault [] bid (fParams facts)
-
--- ---- placement, frame layout and rendering ------------------------------
-placement :: S.Set VReg -> Placement
-placement managed = Placement
-  { plScratch = \case GPR -> scratchPool; FPR -> floatScratch,
-    plLoad = \p ref -> plain (O.X64 O.FrameLoad) [OP p] [OF ref 0],
-    plStore = \p ref -> plain (O.X64 O.FrameStore) [] [OP p, OF ref 0],
-    plSlot = \v@(VReg n) -> frameObj n 8 8 (SpillSlot n) (S.member v managed) }
 
 -- the allocator's view of this target (M3): the first six parameters
 -- arrive in the SysV registers, seven and eight are read from the private
