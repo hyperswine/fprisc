@@ -13,7 +13,7 @@ module Sol.Slice (sliceIndices, mentions, injectedNames, shapeSeed, orderedShape
 
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.List (foldl', sortOn)
+import Data.List (sortOn)
 import Frontend.Syntax (STop (..), Ty (TOther))
 import Sol.Lang (Name)
 

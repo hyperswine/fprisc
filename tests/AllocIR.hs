@@ -188,9 +188,6 @@ simulatePath decisions original physical = step (10000 :: Int) decisions (M.from
       where
         reg q = M.findWithDefault "<undefined>" q regs
 
-physicalLines :: Allocation -> [String]
-physicalLines a = [siOp i ++ " " ++ unwords (map show (siDefs i)) ++ " <- " ++ unwords (map show (siUses i)) | I i <- alBody a]
-
 -- a copy the simulator pairs with its twin (it reads physical "mv" as the allocator's)
 cp :: Int -> Int -> SInstr
 cp d x = plain "copy" [gpr d] [gpr x]

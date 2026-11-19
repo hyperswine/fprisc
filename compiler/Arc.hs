@@ -126,7 +126,6 @@ arcRev :: Int
 arcRev = 24
 
 type G = StateT Int (Either String)
-type Env = M.Map String String
 fresh :: G String
 fresh = do n <- get; put (n+1); pure ("$arc.local." ++ show n)
 failArc :: String -> G a

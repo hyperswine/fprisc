@@ -13,7 +13,7 @@ import Control.Applicative ((<|>))
 import Workers (ScalarSignatures)
 import KernelKinds (Kind(..))
 import Data.Graph (flattenSCC, stronglyConnComp)
-import Data.List (foldl', isPrefixOf, stripPrefix)
+import Data.List (foldl', stripPrefix)
 import Text.Read (readMaybe)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S

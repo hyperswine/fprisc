@@ -6,7 +6,7 @@
 -- emitted.
 module Compiler.Native.TypedLowering (Report (..), check, stagesNote, Lowered (..), typedFunctions, firstDifference) where
 
-import Codegen.IR (Fn (..), Block (..))
+import Codegen.IR (Fn (..))
 import Codegen.Lower (Prim)
 import qualified Codegen.Lower as Lower
 import qualified Codegen.LowerTyped as Typed

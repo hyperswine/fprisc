@@ -34,7 +34,7 @@ import Data.List (intercalate, nub, sort, isPrefixOf, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
-import Data.Ratio (denominator, numerator, (%))
+import Data.Ratio (denominator, numerator)
 import Core.Syntax (Core(..), Name, Prog)
 import Core.Primitives (entryTickName)
 import Frontend.Syntax (SExpr(..), STop(..))

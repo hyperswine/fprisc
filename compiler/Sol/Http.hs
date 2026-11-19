@@ -3,7 +3,7 @@
 module Sol.Http where
 
 import Control.Exception
-import Control.Monad (forM, forM_, unless, when)
+import Control.Monad (forM_, unless, when)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Data.Char (isAscii, isAlphaNum, toLower, ord)
@@ -12,7 +12,7 @@ import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Marshal.Alloc (alloca, allocaBytes)
 import Foreign.Storable (peek, poke)
-import Foreign.Ptr (Ptr, castPtr)
+import Foreign.Ptr (Ptr)
 import Data.Word (Word64)
 import System.Directory (getTemporaryDirectory, removePathForcibly)
 import System.Environment (getExecutablePath)

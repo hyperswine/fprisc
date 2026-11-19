@@ -1,5 +1,4 @@
 import Infer
-import Infer.Result
 import Core.Identity
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Close

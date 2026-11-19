@@ -33,7 +33,7 @@ module Infer (module Infer, module Type.Syntax, module Infer.State, module Infer
 
 import qualified Data.Binary as Bin
 import Control.DeepSeq (force)
-import Control.Monad (foldM, forM, forM_, unless, when, zipWithM, zipWithM_)
+import Control.Monad (foldM, forM, forM_, unless, when, zipWithM_)
 import Control.Monad.State.Strict
 import Data.Graph (SCC (..), stronglyConnComp)
 import qualified Data.IntSet as IS
@@ -49,7 +49,6 @@ import Compiler.VectorLayout
 import Compiler.Trap
 import Frontend.Syntax
 import Frontend.Traverse
-import Frontend.Linearity
 import Ownership.Shape
 import Ownership.TypeShape
 import Type.Syntax
@@ -64,7 +63,6 @@ import Infer.Elaboration
 import Infer.Trace
 import qualified Infer.Evidence as Evidence
 import Core.Identity (Namespace, ExprId)
-import Precond (checkedName)
 import Struct (Sigs, Structs)
 
 -- ---- types ------------------------------------------------------------------

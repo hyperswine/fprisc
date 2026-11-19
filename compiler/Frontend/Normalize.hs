@@ -5,7 +5,6 @@
 -- Profile inspection, eval desugaring and native arity normalization.
 module Frontend.Normalize where
 
-import Core.Syntax ( Name )
 import Core.Primitives ( corePrims, primArities )
 import Frontend.Syntax
     ( Ty(TCon),

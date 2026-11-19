@@ -7,7 +7,6 @@ module Codegen.Dump (dumpFn) where
 
 import Codegen.IR
 import Data.List (intercalate)
-import qualified Data.Map.Strict as M
 
 dumpFn :: Fn -> String
 dumpFn fn =

@@ -17,7 +17,6 @@ import Compiler.Options (Granularity(..), Strict(..))
 import Control.Monad (when, unless)
 import Control.Monad.State.Strict (evalStateT,get,put,lift)
 import Data.List (intercalate, isPrefixOf, sort)
-import qualified Codegen.Call as Call
 import qualified Codegen.Heap as Heap
 import qualified Codegen.Target.A64 as A64
 import qualified Data.Map.Strict as M
@@ -39,11 +38,11 @@ import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectForm
 import Codegen.Target.Common (rodataDirective, stringLabel, stringObjectWidth, boxedFloatObject)
 import Codegen.Bounds (Report (..))
 import qualified Codegen.Stack as Stack
-import Codegen.Verify (verifyProgram, verifyProgramWidth, simdExprOk)
+import Codegen.Verify (verifyProgramWidth, simdExprOk)
 import Codegen.Dump (dumpFn)
 import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgramWidth)
 import KernelKinds (Kind(..))
-import Workers (ScalarSignatures, internalWorker, scalarPrimitives)
+import Workers (ScalarSignatures, scalarPrimitives)
 
 import Core.Syntax (Core (..), Prog, freeVars)
 import Core.Alpha (canonical, substituteLiterals)

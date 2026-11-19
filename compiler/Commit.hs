@@ -36,10 +36,9 @@ import Control.Monad (unless, when)
 import qualified Compile
 import qualified Data.IORef
 import Data.IORef (newIORef, readIORef)
-import Data.List (intercalate, isInfixOf, isPrefixOf, sort)
+import Data.List (isInfixOf, isPrefixOf, sort)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
-import Core.Syntax (Name)
 import Frontend.Syntax
 import Frontend.Traverse (stripPosTops)
 import Modules (ModUnit (..), loadModule)

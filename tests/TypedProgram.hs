@@ -27,12 +27,9 @@ import Frontend.Parser (program)
 import Frontend.Syntax
 import Struct (sigTable,structTable,expandStructs)
 import Infer
-import Infer.Result
 import qualified Compiler.Native.Representation as NativeRep
 import qualified Representation.Types as Rep
 import qualified Arc
-import Type.Syntax
-import Ownership.TypeShape (linShapeT)
 import qualified Codegen.Lower as Lower
 import qualified Codegen.Eval as Eval
 import qualified Cost

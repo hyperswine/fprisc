@@ -21,7 +21,7 @@ import qualified ReceiveTurns as Turns
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Control.Monad.State.Strict
-import Control.Monad (unless,forM,forM_)
+import Control.Monad (unless, forM)
 
 data Program=Program Native.NativeCore Turns.Rewrite (M.Map Name R.Function) (S.Set Name) (S.Set Name)
 programFunctions (Program _ _ fs _ _)=fs

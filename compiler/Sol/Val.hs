@@ -30,7 +30,7 @@ import qualified Data.Array as A
 import Data.Unique (Unique)
 import Sol.Effects (DeferredRef)
 import qualified Sol.Digest as Digest
-import Data.Array.IO (IOArray, getElems, newArray_, readArray, writeArray)
+import Data.Array.IO (IOArray, newArray_, readArray, writeArray)
 import Data.IORef
 import Data.Int (Int64)
 import Data.Word (Word64)

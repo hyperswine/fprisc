@@ -36,10 +36,9 @@ module StdCheck where
 import Data.List (intercalate, nub)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
-import System.IO (hSetEncoding, stdout, utf8)
 
 --------------------------------------------------------------------------
 -- 1. The interval abstract domain

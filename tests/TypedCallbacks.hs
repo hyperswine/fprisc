@@ -1,13 +1,11 @@
 import Core.Identity
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Close
-import Core.Typed.Stage
 import Core.Typed.Callback
 import qualified Core.Typed.Callback.Catalog as Catalog
 import qualified Core.Typed.Decision as D
 import Core.Typed.Erase
-import Core.Typed.Walk (allBinders,mapChildrenM)
-import Core.Typed.Verify
+import Core.Typed.Walk (allBinders)
 import Core.Syntax
 import Type.Syntax
 import Ownership.TypeShape (linShapeT)
@@ -15,13 +13,10 @@ import Frontend.Desugar (DEnv(..),fresh)
 import qualified Codegen.Lower as Lower
 import qualified Codegen.Eval as Eval
 import Codegen.Policy (m2Policy)
-import Mono (specializeFunctions)
 import Control.Monad (unless)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.Functor.Const (Const(..))
-import Data.Monoid (Sum(..))
 
 check name ok=unless ok (error name)
 right=either error id

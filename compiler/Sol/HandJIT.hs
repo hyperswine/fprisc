@@ -45,7 +45,6 @@ import qualified Data.Set as S
 import Data.Word (Word8)
 import Foreign.Marshal.Array (allocaArray, peekArray, withArray, withArrayLen)
 import Foreign.Ptr
-import Foreign.Storable
 import Sol.AsmA64 (assembleA64)
 import Sol.AsmX64 (assembleX64)
 import Sol.JitCore

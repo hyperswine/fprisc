@@ -57,15 +57,12 @@ import Data.Int (Int64)
 import qualified Data.IntMap.Strict as IM
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Ptr (Ptr)
-import Foreign.Storable (peek, peekElemOff, poke, pokeElemOff)
-import System.Environment (lookupEnv)
-import System.IO.Unsafe (unsafePerformIO)
+import Foreign.Storable (peekElemOff, poke, pokeElemOff)
 import Data.IORef
 import Data.List (intercalate)
 import qualified Data.Map.Strict as M
-import Control.Monad (unless, when)
-import Control.Applicative (liftA2)
-import System.IO (hFlush, hGetContents', hPutStrLn, stderr, stdin, stdout)
+import Control.Monad (unless)
+import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import System.IO.Error (ioeGetFileName)
 import Sol.Txn
 import Sol.Native

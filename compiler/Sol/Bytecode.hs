@@ -30,7 +30,6 @@ import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import Control.Monad (foldM)
 import Control.Monad.State.Strict
-import Data.List (foldl')
 import Data.Array (Array, listArray, assocs)
 import qualified Data.Map.Strict as M
 import Sol.Lang (Core (..), Name, Prog)

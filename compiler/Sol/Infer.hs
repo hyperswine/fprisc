@@ -25,7 +25,6 @@ import Infer (IProf (..), TEnv, InferenceResult, inferTopsResult, inferTopsSessi
 import Infer.Session (CheckedDefinitions)
 import Type.Syntax (Type(..), tBool, tInt, tFixedMap, tList, tMutMap, tStr, tUnit, tcon)
 import qualified Data.Map.Strict as M
-import Ownership.Shape (LShape)
 import Core.Syntax (Name)
 import Frontend.Syntax (STop)
 import Struct (Sigs, Structs)

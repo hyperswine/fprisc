@@ -4,7 +4,6 @@ import Core.Typed.Close
 import Core.Typed.Stage
 import Core.Typed.Erase
 import Core.Typed.Walk (allBinders,mapChildrenM)
-import Core.Typed.Verify
 import Core.Syntax
 import Type.Syntax
 import Ownership.TypeShape (linShapeT)

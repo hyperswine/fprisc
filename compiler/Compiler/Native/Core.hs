@@ -22,7 +22,7 @@ import Compiler.DataLayout
 import Frontend.Desugar.Typed
 import qualified Frontend.Desugar as Legacy
 import Control.Monad.State.Strict
-import Control.Monad (unless,forM)
+import Control.Monad (unless)
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S

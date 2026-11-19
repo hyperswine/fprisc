@@ -7,14 +7,12 @@ import Core.Typed.Verify
 import Core.Typed.Walk (mapChildrenM)
 import Type.Syntax
 import Infer
-import Infer.Result
 import Frontend.Parser (program)
 import Frontend.Syntax
 import Frontend.Desugar hiding (fresh)
 import Frontend.Desugar.Checked
 import Struct (sigTable,structTable,expandStructs,erasePSig)
 import Text.Megaparsec (parse,errorBundlePretty)
-import Ownership.TypeShape (linShapeT)
 import Control.Monad (unless)
 import Control.Monad.State.Strict
 import Data.Functor.Const (Const(..))

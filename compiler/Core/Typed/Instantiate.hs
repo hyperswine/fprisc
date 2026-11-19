@@ -10,7 +10,7 @@ import Ownership.TypeShape (linShapeT)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Functor.Const (Const(..))
-import Type.Syntax (Type(..),Row(..),Scheme(..))
+import Type.Syntax (Type(..), Scheme(..))
 import Control.Monad.Identity
 
 -- The owning unit and any private instantiation must agree on constructor

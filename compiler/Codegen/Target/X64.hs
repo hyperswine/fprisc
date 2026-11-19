@@ -23,11 +23,10 @@ import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(.
 import qualified Codegen.Call as Call
 import qualified Codegen.Protocol as Protocol
 import Codegen.Allocate
-import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
+import Codegen.Bounds (Flow (..), Tok (..), analyse, reportLine)
 import Codegen.Frame
 import qualified Codegen.Stack as Stack
 import Codegen.IR
-import Codegen.Place
 import Codegen.Policy
 import Codegen.Selected hiding (plain)
 import Codegen.Annotation (EntryPoint(..),entryLabel)
