@@ -185,7 +185,7 @@ void hal_irq_raise(uw src) {
 static V h_irq_raise(V srcv) {
   if (!ISINT(srcv) || UNTAG(srcv) < 1) fpr_cpanic("Sys.irqRaise: a source is an Int >= 1");
   hal_irq_raise((uw)UNTAG(srcv));
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 FPR_FN(fpr_g_Sys_x2eirqRaise, h_irq_raise, 1);
 

@@ -435,11 +435,15 @@ selectBlock cfg fn tyMap b = do
             Just n -> emitI (cmpi (vreg x) n)
             Nothing -> emitI (cmp (vreg x) (vreg y))
           branch (cmpCond o) (cmpCond (negateOp o))
+        OVariantTest tg c v | Just imm <- immediateNullary tg c -> do
+          run (init rest)
+          emitI (cmpi (vreg v) imm)
+          branch O.Equal O.NotEqual
         OVariantTest tg c v -> do
           run (init rest)
-          -- a tagged Int is no match; else the header word against the pair
+          -- a tagged Int or 010 immediate is no match; else the header word against the pair
           bit <- freshV False
-          emitI (rri A.AndImmediate bit (vreg v) 1)
+          emitI (rri A.AndImmediate bit (vreg v) 7)
           emitI (cbnz bit (blockLabel e))
           hdr <- freshV False
           want <- freshV False
@@ -447,12 +451,16 @@ selectBlock cfg fn tyMap b = do
           emitI (li want (headerWord tg c))
           emitI (cmp hdr want)
           branch O.Equal O.NotEqual
+        OTagTest tg c v | Just imm <- immediateNullary tg c -> do
+          run (init rest)
+          emitI (cmpi (vreg v) imm)
+          branch O.Equal O.NotEqual
         -- typeid and variant both in [0, 2^31): the two sign-extended words
         -- compare equal exactly when the one header word does
         OTagTest tg c v | headerFits tg c -> do
           run (init rest)
           bit <- freshV False
-          emitI (rri A.AndImmediate bit (vreg v) 1)
+          emitI (rri A.AndImmediate bit (vreg v) 7)
           emitI (cbnz bit (blockLabel e))
           hdr <- freshV False
           want <- freshV False
@@ -462,9 +470,9 @@ selectBlock cfg fn tyMap b = do
           branch O.Equal O.NotEqual
         OTagTest tg c v -> do
           run (init rest)
-          -- a tagged Int is no match; then the typeid word, then the variant
+          -- a tagged Int or 010 immediate is no match; then the typeid word, then the variant
           bit <- freshV False
-          emitI (rri A.AndImmediate bit (vreg v) 1)
+          emitI (rri A.AndImmediate bit (vreg v) 7)
           emitI (cbnz bit (blockLabel e))
           tid <- freshV False
           want <- freshV False
@@ -542,7 +550,9 @@ selectInstr cfg immediates (Instr d op) = case op of
     emitI (cmpi scaled (65536 * 8))
     emitI (cset O.UnsignedBelow r)
   OBits n -> def (\r -> emitI (li r n))
-  ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
+  ONullary t v -> def $ \r -> case immediateNullary t v of
+    Just imm -> emitI (li r imm)
+    Nothing -> nullarySymbol t v >>= emitI . la r
   OString text -> def $ \rd -> do
     modify (\st -> st {selStrings = S.insert text (selStrings st)})
     emitI (la rd (StaticObject (stringLabel text)))
@@ -584,21 +594,21 @@ selectInstr cfg immediates (Instr d op) = case op of
     emitI (rri A.OrImmediate r t 1)
   OUntag v -> def (\r -> emitI (rri A.ShiftRightArithmeticImmediate r (vreg v) 1))
   OBoolOf p -> def $ \r -> do
-    f <- freshV True
-    t <- freshV True
-    emitI (la f (StaticObject "fpr_false"))
-    emitI (la t (StaticObject "fpr_true"))
-    emitI (cmpi (vreg p) 0)
-    emitI (csel O.NotEqual r t f)
-  OTruth v -> def (\r -> emitI (ldrsw r (vreg v) 4))
+    sh <- freshV False
+    emitI (rri A.ShiftLeftImmediate sh (vreg p) 8)
+    emitI (rri A.AddImmediate r sh 10)
+  OTruth v -> def (\r -> emitI (rri A.ShiftRightArithmeticImmediate r (vreg v) 8))
   ONot p -> def (\r -> emitI (rri A.XorImmediate r (vreg p) 1))
   OIsInt v -> def (\r -> emitI (rri A.AndImmediate r (vreg v) 1))
+  OTagTest t c v | Just imm <- immediateNullary t c -> def $ \r -> do
+    emitI (cmpi (vreg v) imm)
+    emitI (cset O.Equal r)
   OTagTest t c v | headerFits t c -> selectInstr cfg immediates (Instr d (OVariantTest t c v))
   OTagTest t c v -> def $ \r -> do
     miss <- freshL "tagno"
     done <- freshL "tagdone"
     bit <- freshV False
-    emitI (rri A.AndImmediate bit (vreg v) 1)
+    emitI (rri A.AndImmediate bit (vreg v) 7)
     emitI (cbnz bit miss)
     tid <- freshV False
     want <- freshV False
@@ -616,13 +626,16 @@ selectInstr cfg immediates (Instr d op) = case op of
     emitL miss
     emitI (li r 0)
     emitL done
+  OVariantTest t c v | Just imm <- immediateNullary t c -> def $ \r -> do
+    emitI (cmpi (vreg v) imm)
+    emitI (cset O.Equal r)
   -- OTagTest's answer with one header load: typeid (+0) and variant (+4)
-  -- compared as one little-endian word, after the Int check
+  -- compared as one little-endian word, after the non-pointer check
   OVariantTest t c v -> def $ \r -> do
     miss <- freshL "varno"
     done <- freshL "vardone"
     bit <- freshV False
-    emitI (rri A.AndImmediate bit (vreg v) 1)
+    emitI (rri A.AndImmediate bit (vreg v) 7)
     emitI (cbnz bit miss)
     hdr <- freshV False
     want <- freshV False
@@ -705,7 +718,7 @@ selectInstr cfg immediates (Instr d op) = case op of
     emitL slow
     res <- freshV True
     call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (cmpSym o))) Calling.RuntimeCall [vreg a, vreg b] (Just res)
-    emitI (ldrsw r res 4)
+    emitI (rri A.ShiftRightArithmeticImmediate r res 8)
     emitL done
   OEqVal eq a b -> def $ \r -> do
     slow <- freshL "eqslow"
@@ -721,7 +734,7 @@ selectInstr cfg immediates (Instr d op) = case op of
     emitL slow
     res <- freshV True
     call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a, vreg b] (Just res)
-    emitI (ldrsw r res 4)
+    emitI (rri A.ShiftRightArithmeticImmediate r res 8)
     emitL done
   OCallProduct _ _ -> refuse "internal: a product call outside its result packet"
   OResult _ -> refuse "internal: a product word without its call"
@@ -1490,7 +1503,7 @@ renderItem cfg ly large fname frameless pairs restores pools (I i) = map indent 
             captured h = ["ldr x" ++ show k ++ ", [x0, #" ++ show (32 + 8 * k) ++ "]" | k <- reverse [0 .. h - 1]]
             -- the code pointer first: the explicit args of an h = 0 call overwrite x0
             arm h = [label h ++ ":", "ldr x16, [x0, #8]"] ++ explicit h ++ captured h ++ ["blr x16", "b 2f"]
-         in [ "ldr x0, [sp, #" ++ show (16 * n) ++ "]", "tbnz x0, #0, 1f",
+         in [ "ldr x0, [sp, #" ++ show (16 * n) ++ "]", "tst x0, #7", "b.ne 1f",
               "ldr w9, [x0]", "mov w10, #9001", "cmp w9, w10", "b.ne 1f",
               "ldp x9, x10, [x0, #16]", "sub x9, x9, x10", "cmp x9, #" ++ show n, "b.ne 1f" ]
             ++ concat [["cmp x10, #" ++ show h, "b.eq " ++ label h ++ "f"] | h <- held]

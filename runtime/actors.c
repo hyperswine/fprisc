@@ -1668,9 +1668,9 @@ static V a_irq_install(V av) {
   acb_t *a = want_actor(av, "Sys.irqInstall: not an actor");
   acb_t *none = 0;
   if (!__atomic_compare_exchange_n(&irq_router, &none, a, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
-    return (V)&fpr_false;
+    return V_FALSE;
   __atomic_store_n(&irq_bound, 1, __ATOMIC_RELEASE);
-  return (V)&fpr_true;
+  return V_TRUE;
 }
 /* Sys.irqRouter () -> the router, or 0 before one is installed */
 static V a_irq_router(V u) {
@@ -1684,7 +1684,7 @@ static V a_irq_open(V srcv) {
   fpr_confined_refuse("Sys.irqOpen (a hardware interrupt)");
   if (!ISINT(srcv) || UNTAG(srcv) < 1) fpr_cpanic("Sys.irqOpen: a source is an Int >= 1");
   hal_irq_open((uw)UNTAG(srcv));
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 /* Sys.irqDeliver a src -> Result Unit String: the router hands a claimed
  * source to its actor on the deliveries' channel; a full mailbox refuses
@@ -1701,13 +1701,13 @@ static V a_irq_deliver(V av, V srcv) {
 static V a_irq_target(V n) {
   if (!ISINT(n)) fpr_trap("Sys.irqTarget: not an Int");
   fpr_hart()->current->irq_target = UNTAG(n) != 0;
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 static V a_irq_ack(V irqv) {
   fpr_confined_refuse("Sys.irqAck (a hardware interrupt)");
   if (!ISINT(irqv)) fpr_cpanic("Sys.irqAck: irq must be an Int");
   hal_irq_ack((uw)UNTAG(irqv));
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 FPR_FN(fpr_g_Sys_x2eirqInstall, a_irq_install, 1);
 FPR_FN(fpr_g_Sys_x2eirqRouter, a_irq_router, 1);
@@ -1785,7 +1785,7 @@ static V a_timer_arm(V dv) {
   tmr_dl_set(hal_mtime() + (uint64_t)d);
   if (fpr_hart()->id != fpr_irq_hart)
     hal_ipi_send(fpr_irq_hart); /* wake it to re-arm its mtimecmp */
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 FPR_FN(fpr_g_Sys_x2etimerBind, a_timer_bind, 1);
 FPR_FN(fpr_g_Sys_x2etimerArm, a_timer_arm, 1);
@@ -2732,10 +2732,10 @@ static void sleeper_unlink_local(acb_t *a) {
 static V a_sleep_us(V usv) {
   if (!ISINT(usv)) fpr_trap("Sys.sleepUs: microseconds must be an Int");
   sw us = UNTAG(usv);
-  if (us <= 0) return (V)&fpr_unit;
+  if (us <= 0) return V_UNIT;
   if (fpr_plane_actors) {
     fpr_plane_actors->sleep_us((uw)us);
-    return (V)&fpr_unit;
+    return V_UNIT;
   }
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
@@ -2745,7 +2745,7 @@ static V a_sleep_us(V usv) {
 #endif
   if (!a || !now || !FPR_PARKED_SLEEP) { /* no actor to park, or no clock: the host sleep */
     fpr_hal_sleep_us((uw)us);
-    return (V)&fpr_unit;
+    return V_UNIT;
   }
   /* A sleeper woken EARLY by a message returned still linked on the list, and
    * its next sleep linked it a second time: when it was the head it then pointed
@@ -2771,7 +2771,7 @@ static V a_sleep_us(V usv) {
   sleeper_link(h, a, now + (uint64_t)us * 10);
   while (!p_sleep(a, 0)) block_unless(a, p_sleep, 0, WAIT_ANY);
   sleeper_unlink_local(a);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 void fpr_actor_sleep_us(uw us) {
   if (fpr_plane_actors) { fpr_plane_actors->sleep_us(us); return; }
@@ -3493,7 +3493,7 @@ FPR_FN(fpr_g_myPid, a_mypid, 1);
  * hid every burst that outran a consumer).  The sender decides: retry,
  * back off, drop, or die -- std wraps the common policies, and
  * services spawn Dynamic so a burst costs memory, not messages. */
-static const struct { hdr_t h; V f; } ok_unit_s = {{T_RESULT, 0}, (V)&fpr_unit};
+static const struct { hdr_t h; V f; } ok_unit_s = {{T_RESULT, 0}, V_UNIT};
 #define OK_UNIT ((V)&ok_unit_s)
 static V send_err(const char *why) { fpr_send_full++; return fpr_mkresult(1, why); }
 int fpr_sent(V r) { return !ISINT(r) && TID(r) == T_RESULT && ((hdr_t *)r)->var == 0; }
@@ -4277,7 +4277,7 @@ static V a_yield(V me) {
     if (ISINT(me) || (acb_t *)me != h->current)
       fpr_cpanic("yield: not the current actor's handle");
     fpr_plane_actors->fuel();
-    return (V)&fpr_unit;
+    return V_UNIT;
   }
   fpr_hart_t *h = fpr_hart();
   if (ISINT(me) || (acb_t *)me != h->current)
@@ -4285,7 +4285,7 @@ static V a_yield(V me) {
   TR(h->current, 9);
   enq(h, h->current);
   to_sched();
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 
 static V a_kill(V av) {
@@ -4309,7 +4309,7 @@ static V a_kill(V av) {
   uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
   while (st != ST_DEAD &&
          !__atomic_compare_exchange_n(&a->var, &st, ST_DEAD, 0, __ATOMIC_SEQ_CST, __ATOMIC_ACQUIRE)) {}
-  if (st == ST_DEAD) return (V)&fpr_unit; /* already ended: its watchers were woken then */
+  if (st == ST_DEAD) return V_UNIT; /* already ended: its watchers were woken then */
   wake_watchers(a);
   if (a == fpr_hart()->current) {
     to_sched(); /* never resumed: deq skips DEAD */
@@ -4322,7 +4322,7 @@ static V a_kill(V av) {
    * switched out before deq or the backlog scan reaps it (reap is idempotent,
    * and a sleeper's list entry is unlinked by slp_drain). */
   if (st == ST_BLOCKED) ship(a);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 
 static V a_myself(V dummy) {
@@ -4363,7 +4363,7 @@ static V g_harts(V d) { (void)d; return TAG((sw)fpr_live_harts); }
 
 /* scheduler introspection + tuning (docs/2026-10-02-SCHED-MODEL.md) */
 static V g_sched_tau(V d) { (void)d; return TAG((sw)__atomic_load_n(&g_tau, __ATOMIC_RELAXED)); }
-static V g_sched_set_tau(V n) { __atomic_store_n(&g_tau, (uw)UNTAG(n), __ATOMIC_RELAXED); return (V)&fpr_unit; }
+static V g_sched_set_tau(V n) { __atomic_store_n(&g_tau, (uw)UNTAG(n), __ATOMIC_RELAXED); return V_UNIT; }
 static V g_sched_max_wait(V d) {
   (void)d;
   uw maximum = 0;
@@ -4383,7 +4383,7 @@ static V g_sched_steals(V d) {
 static V g_sched_set_weight(V av, V w) {
   sw weight = UNTAG(w);
   __atomic_store_n(&((acb_t *)av)->weight, weight > 0 ? (uw)weight : 1, __ATOMIC_RELAXED);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 
 /* fuel introspection, for /proc */
@@ -4490,7 +4490,7 @@ V fpr_process_result_get(void) { return fpr_process_result; }
  * The ledger is append-only over immortal acbs, so walking it is
  * always safe; counts are a snapshot, racing spawns tolerated. */
 static V mklist4(uw a, uw b, uw c, uw d) {
-  V list = (V)&fpr_list_nil;
+  V list = V_NIL;
   uw vals[4] = {d, c, b, a};
   for (int i = 0; i < 4; i++) {
     V *cell = (V *)fpr_alloc(sizeof(hdr_t) + 2 * sizeof(V));
@@ -4522,7 +4522,7 @@ static V g_actLive(V u) {
 
 static V g_actInfo(V iv) {
   sw want = UNTAG(iv);
-  if (want < 0) return (V)&fpr_list_nil;
+  if (want < 0) return V_NIL;
   for (acb_t *a = __atomic_load_n(&g_all, __ATOMIC_ACQUIRE); a; a = a->all_nx) {
     uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
     if (st == ST_DEAD) continue;
@@ -4532,7 +4532,7 @@ static V g_actInfo(V iv) {
       return mklist4(a->id, st == ST_BLOCKED ? 1 : 0, a->parent, code);
     }
   }
-  return (V)&fpr_list_nil;
+  return V_NIL;
 }
 FPR_FN(fpr_g_Sys_x2eactLive, g_actLive, 1);
 
@@ -4859,7 +4859,7 @@ static V mem_body(V me) {
     } else
       buddy_free((void *)(x << 1));
   }
-  return (V)&fpr_unit; /* not reached: the owner never exits */
+  return V_UNIT; /* not reached: the owner never exits */
 }
 FPR_FN(mem_entry, mem_body, 1);
 void fpr_mem_spawn(void) {

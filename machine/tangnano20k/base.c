@@ -111,7 +111,7 @@ static V h_exists(V p){const str_t *s=string(p);unsigned e;V v=rpc(2,s->bytes,s-
 static V file_put(V p,V d,unsigned op){
  const str_t *s=string(p),*t=string(d);uint8_t *path=(uint8_t *)fpr_alloc_raw(s->len+1);
  memcpy(path,s->bytes,s->len);path[s->len]=0;unsigned e;V v=rpc(op,path,s->len+1,t->bytes,t->len,&e);
- fpr_free_raw((V)path);return result(e,e?v:(V)&fpr_unit);
+ fpr_free_raw((V)path);return result(e,e?v:V_UNIT);
 }
 static V h_write(V p,V d){return file_put(p,d,3);}
 static V h_append(V p,V d){return file_put(p,d,4);}
@@ -152,7 +152,7 @@ static V h_args(V u){
   starts[i]=(uint32_t)offset;lengths[i]=n;offset+=n;
  }
  if(offset!=s->len)fpr_cpanic("virtual arguments trailing bytes");
- static const hdr_t nil={T_LIST,0};V list=(V)&nil;
+ V list=V_NIL;
  while(count){
   --count;V text=(V)mktext((const char *)s->bytes+starts[count],lengths[count]);
   V node=fpr_alloc(8+2*sizeof(V));((hdr_t *)node)->tid=T_LIST;((hdr_t *)node)->var=1;
@@ -160,8 +160,8 @@ static V h_args(V u){
  }
  return list;
 }
-static V h_exit(V code){if(!ISINT(code))fpr_cpanic("Sys.exit expected Int");hal_poweroff(UNTAG(code));return (V)&fpr_unit;}
-static V h_stderr(V text){const str_t *s=string(text);for(uw i=0;i<s->len;i++)hal_putc(s->bytes[i]);return (V)&fpr_unit;}
+static V h_exit(V code){if(!ISINT(code))fpr_cpanic("Sys.exit expected Int");hal_poweroff(UNTAG(code));return V_UNIT;}
+static V h_stderr(V text){const str_t *s=string(text);for(uw i=0;i<s->len;i++)hal_putc(s->bytes[i]);return V_UNIT;}
 static V h_line(V u){(void)u;unsigned e;V v=rpc(8,0,0,0,0,&e);return result(e,v);}
 FPR_FN(fpr_g_fileRead,h_read,1);
 FPR_FN(fpr_g_fileExists,h_exists,1);
@@ -180,7 +180,7 @@ FPR_FN(fpr_g_Sys_x2ereadLine,h_line,1);
 
 static V h_osread(V p){const str_t *s=string(p);unsigned e;V v=rpc(1,s->bytes,s->len,0,0,&e);return result(e,v);}
 FPR_FN(fpr_g_Os_x2ereadFile,h_osread,1);
-static V h_sleep(V us){if(!ISINT(us)||UNTAG(us)<0)fpr_cpanic("Sys.sleepUs expected nonnegative Int");uint64_t end=cycles()+(uint64_t)UNTAG(us)*FPR_CPU_MHZ;while(cycles()<end){}return (V)&fpr_unit;}
+static V h_sleep(V us){if(!ISINT(us)||UNTAG(us)<0)fpr_cpanic("Sys.sleepUs expected nonnegative Int");uint64_t end=cycles()+(uint64_t)UNTAG(us)*FPR_CPU_MHZ;while(cycles()<end){}return V_UNIT;}
 FPR_FN(fpr_g_Sys_x2esleepUs,h_sleep,1);
 static V h_next(V u){(void)u;static sw id;return TAG(++id);}
 FPR_FN(fpr_g_Sys_x2enextId,h_next,1);

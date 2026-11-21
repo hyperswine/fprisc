@@ -142,7 +142,7 @@ static V h_write(V rv, V x) {
   if (r->var == 1) *(volatile uint8_t *)r->addr = (uint8_t)v;
   else *(volatile uint32_t *)r->addr = (uint32_t)v;
   __asm__ volatile("fence io, io" ::: "memory");
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 
 /* ---- Array Bit ------------------------------------------------------- */

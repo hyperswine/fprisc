@@ -55,6 +55,6 @@ V fpr_fn__x24arc_x2euniformTagEq(V value,V tid,V variant) {
   int equal=value && !ISINT(value) && TID(value)==(uw)UNTAG(tid)
       && ((hdr_t*)value)->var==(uw)UNTAG(variant);
   fpr_builtin_release(value);
-  return equal ? (V)&fpr_true : (V)&fpr_false;
+  return equal ? V_TRUE : V_FALSE;
 }
 #include "uniform-aggregate.inc"

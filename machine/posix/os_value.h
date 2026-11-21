@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const hdr_t os_nil = {T_LIST, 0};
+#define os_nil_v V_NIL
 
 static inline V os_str(const char *s, uw n) { return (V)fpr_mkstr((const uint8_t *)s, n); }
 static inline V os_cell(uint32_t tid, uint32_t var, int n, const V *f) {
@@ -50,5 +50,5 @@ static inline int buf_room(buf_t *b, size_t more) {
 static inline V os_again_or_errno(void) { return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINPROGRESS) ? os_err("again") : os_errno(); }
 static inline int want_fd(V v, const char *who) { if (!ISINT(v)) fpr_cpanic(who); return (int)UNTAG(v); }
 
-static inline V os_unit_or_errno(int r) { return r ? os_errno() : os_ok((V)&fpr_unit); }
+static inline V os_unit_or_errno(int r) { return r ? os_errno() : os_ok(V_UNIT); }
 #endif

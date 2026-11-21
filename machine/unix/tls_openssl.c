@@ -218,7 +218,7 @@ static V tls_step(V id, V opv, V bytes, V count) {
   return out;
 }
 FPR_FN_CSTACK(fpr_g_TlsHost_x2estep, tls_step, 4);
-static V tls_close(V id) { const char *why; return fpr_owned_close(id, OWN_TLS, &why) ? os_ok((V)&fpr_unit) : os_err(why); }
+static V tls_close(V id) { const char *why; return fpr_owned_close(id, OWN_TLS, &why) ? os_ok(V_UNIT) : os_err(why); }
 FPR_FN(fpr_g_TlsHost_x2eclose, tls_close, 1);
 
 static V tls_pending(V id) {

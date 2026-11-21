@@ -2,6 +2,7 @@
 -- Shared native output and symbol identity, independent of instruction set.
 module Codegen.Target.Common
   ( ObjectFormat (..), NativeFn (..), usesTick, usesBump, BumpCell (..), bumpCellFor, bumpSlabCell, bumpBucketsCell, bumpRegionCell, pendStackCell, pendEntryWords, bumpSlabOwner, bumpSlabHp, bumpSlabEnd, bumpPoolAllocated, mangleName, functionSymbol, calleeCodeSymbol,
+    immediateNullary,
     stringLabel, stringObjectWidth, rodataDirective, shallowEntry, shallowFrameLimit,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
     boxedFloatLabel, boxedFloatObject, BumpRefills, planBumpRefills, bumpRefill,
@@ -157,6 +158,20 @@ data NativeFn = NativeFn
 -- the symbol encoding of Codegen.mangle (ASCII alphanumerics stay, every
 -- other character is `_xHH`); repeated here so this module needs nothing
 -- from Codegen
+-- v1.0 §1.3 / Q12: 010 small immediates: (payload << 8) | (code << 3) | 2
+--   code 0 = Unit (0, 0) -> 2
+--   code 1 = Bool (1, 0) -> 10, (1, 1) -> 266
+--   code 2 = List Nil (2, 0) -> 18
+--   code 3 = Byte (reserved)
+--   code 4 = Option None (7, 0) -> 34
+immediateNullary :: Int -> Int -> Maybe Integer
+immediateNullary 0 0 = Just 2
+immediateNullary 1 0 = Just 10
+immediateNullary 1 1 = Just 266
+immediateNullary 2 0 = Just 18
+immediateNullary 7 0 = Just 34
+immediateNullary _ _ = Nothing
+
 mangleName :: String -> String
 mangleName = concatMap enc
   where

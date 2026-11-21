@@ -125,7 +125,7 @@ static V dns_poll(V id) {
   pthread_mutex_unlock(&j->mu); fpr_owned_unlock();
   if (!copy) return os_err("out of memory");
   fpr_resource_t scratch; fpr_actor_resource_add(&scratch, snapshot_free, copy);
-  V out = (V)&os_nil;
+  V out = V_NIL;
   if (error) {
 #ifdef FPR_ESP_IDF
     out = os_err("address lookup failed");
@@ -149,9 +149,9 @@ static V dns_poll(V id) {
   fpr_actor_resource_remove(&scratch); free(copy); return out;
 }
 FPR_FN_CSTACK(fpr_g_DnsHost_x2epoll, dns_poll, 1);
-static V dns_abandon(V id) { const char *why; return fpr_owned_close(id, OWN_DNS_JOB, &why) ? os_ok((V)&fpr_unit) : os_err(why); }
+static V dns_abandon(V id) { const char *why; return fpr_owned_close(id, OWN_DNS_JOB, &why) ? os_ok(V_UNIT) : os_err(why); }
 FPR_FN(fpr_g_DnsHost_x2eabandon, dns_abandon, 1);
-static V dns_close(V id) { const char *why; return fpr_owned_close(id, OWN_DNS_POOL, &why) ? os_ok((V)&fpr_unit) : os_err(why); }
+static V dns_close(V id) { const char *why; return fpr_owned_close(id, OWN_DNS_POOL, &why) ? os_ok(V_UNIT) : os_err(why); }
 FPR_FN(fpr_g_DnsHost_x2eclose, dns_close, 1);
 
 #endif

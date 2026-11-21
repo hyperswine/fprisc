@@ -115,7 +115,7 @@ static V conn_status(V id) {
   fpr_owned_unlock();
   if (saved) connection_failure(5, fd, saved);
   if (saved) { errno = saved; return os_errno(); }
-  return os_ok(connected ? (V)&fpr_true : (V)&fpr_false);
+  return os_ok(connected ? V_TRUE : V_FALSE);
 }
 FPR_FN(fpr_g_ConnHost_x2estatus, conn_status, 1);
 static void free_buffer(void *p) { free(p); }

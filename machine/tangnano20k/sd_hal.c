@@ -29,18 +29,18 @@ static unsigned index_of(V v) {
   return (unsigned)n;
 }
 static V h_select(V on) {
-  if (ISINT(on) || !on || TID(on) != T_BOOL || ((const hdr_t *)on)->var > 1)
+  if (!ISBOOL(on))
     fpr_cpanic("SdSpi.select: expected Bool");
-  control = (control & ~1u) | ((const hdr_t *)on)->var;
+  control = (control & ~1u) | (unsigned)BOOL_VAL(on);
   REG_WRITE(2, control);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 static V h_divider(V v) {
   sw n = integer(v);
   if (n < 0 || n > 255) fpr_cpanic("SdSpi.divider: outside 0..255");
   control = (control & 1u) | ((uint32_t)n << 8);
   REG_WRITE(2, control);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 static V h_transfer(V v) {
   sw n = integer(v);
@@ -59,7 +59,7 @@ static V h_set(V iv, V bv) {
   sw b = integer(bv);
   if (b < 0 || b > 255) fpr_cpanic("SdSpi.bufferSet: outside 0..255");
   sector[i] = (uint8_t)b;
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 static V h_text(V v) {
   sw n = integer(v);

@@ -65,7 +65,7 @@ static V h_prepare_socket(V fdv) {
   if (getpeername(fd, (struct sockaddr *)&peer, &len)) return os_errno();
   int flags = fcntl(fd, F_GETFL, 0);
   if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) return os_errno();
-  return os_ok((V)&fpr_unit);
+  return os_ok(V_UNIT);
 }
 FPR_FN(fpr_g_Os_x2eprepareSocket, h_prepare_socket, 1);
 

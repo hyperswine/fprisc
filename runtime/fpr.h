@@ -73,10 +73,42 @@ V fpr_f32_from_bits32(uint32_t bits);
 #define TAG(n) ((V)((((uw)(n)) << 1) | 1))
 #define UNTAG(v) (((sw)(v)) >> 1)
 #define ISINT(v) ((v) & 1)
-#define TID(v) (((hdr_t *)(v))->tid)
-#define BOOL(b) ((b) ? (V)&fpr_true : (V)&fpr_false)
+/* v1.0 §1.3 / Q12: 010 small immediates: (payload << 8) | (code << 3) | 2.
+ * Heap pointers are 8-aligned (low 3 bits 000) and non-null. */
+#define ISIMM(v) (((v) & 7u) == 2u)
+#define ISPTR(v) ((v) && (((v) & 7u) == 0u))
+#define ISNONPTR(v) (!(v) || (((v) & 7u) != 0u))
+#define IMM_MAKE(code, payload) ((V)((((uw)(payload)) << 8) | (((uw)(code)) << 3) | 2u))
+#define IMM_CODE(v) ((((uw)(v)) >> 3) & 31u)
+#define IMM_PAYLOAD(v) (((uw)(v)) >> 8)
+enum {
+  IMM_UNIT = 0,
+  IMM_BOOL = 1,
+  IMM_NIL  = 2,
+  IMM_BYTE = 3,
+  IMM_NONE = 4,
+};
+#define V_UNIT  IMM_MAKE(IMM_UNIT, 0) /* 0x002 */
+#define V_FALSE IMM_MAKE(IMM_BOOL, 0) /* 0x00A */
+#define V_TRUE  IMM_MAKE(IMM_BOOL, 1) /* 0x10A */
+#define V_NIL   IMM_MAKE(IMM_NIL,  0) /* 0x012 */
+#define V_NONE  IMM_MAKE(IMM_NONE, 0) /* 0x022 */
+#define BOOL(b) ((b) ? V_TRUE : V_FALSE)
+#define ISBOOL(v) ((v) == V_FALSE || (v) == V_TRUE)
+#define BOOL_VAL(v) ((v) == V_TRUE)
 
-extern const hdr_t fpr_true, fpr_false, fpr_unit, fpr_list_nil, fpr_none;
+static inline uint32_t fpr_imm_tid(V v) {
+  switch (IMM_CODE(v)) {
+    case IMM_UNIT: return T_UNIT;
+    case IMM_BOOL: return T_BOOL;
+    case IMM_NIL:  return T_LIST;
+    case IMM_NONE: return T_OPTION;
+    default: return 0xffffffffu;
+  }
+}
+static inline uint32_t fpr_imm_var(V v) { return (uint32_t)IMM_PAYLOAD(v); }
+#define TID(v) (ISIMM(v) ? fpr_imm_tid(v) : ((hdr_t *)(v))->tid)
+#define VAR(v) (ISIMM(v) ? fpr_imm_var(v) : ((hdr_t *)(v))->var)
 
 /* ---- SMP: the per-hart control block ---------------------------------
  * Every hart's tp register points at its fpr_hart_t FOR THE LIFE OF THE

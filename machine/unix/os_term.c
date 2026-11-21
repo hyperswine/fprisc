@@ -22,9 +22,9 @@ static void tty_signal(int sig) {
   raise(sig);
 }
 static V h_tty_raw(V onv) {
-  int on = !ISINT(onv) && ((hdr_t *)onv)->var != 0;
-  if (!on) { tty_restore(); return os_ok((V)&fpr_unit); }
-  if (tty_is_raw) return os_ok((V)&fpr_unit);
+  int on = BOOL_VAL(onv);
+  if (!on) { tty_restore(); return os_ok(V_UNIT); }
+  if (tty_is_raw) return os_ok(V_UNIT);
   if (!isatty(0)) return os_err("stdin is not a terminal");
   if (tcgetattr(0, &tty_saved)) return os_errno();
   struct termios t = tty_saved;
@@ -36,7 +36,7 @@ static V h_tty_raw(V onv) {
   static int hooked;
   if (!hooked) { hooked = 1; atexit(tty_restore); signal(SIGINT, tty_signal); signal(SIGTERM, tty_signal); signal(SIGHUP, tty_signal); }
   tty_is_raw = 1;
-  return os_ok((V)&fpr_unit);
+  return os_ok(V_UNIT);
 }
 FPR_FN(fpr_g_Os_x2ettyRaw, h_tty_raw, 1);
 

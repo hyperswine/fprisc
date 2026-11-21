@@ -102,7 +102,6 @@ static V error(const char *s) {
   uw n=0;while(s[n])n++;
   return result(1,(V)fpr_mkstr((const uint8_t *)s,n));
 }
-static const hdr_t i32_none = {T_OPTION, 0};
 static V some(V value) {
 #if defined(FPR_BUILTIN_ARC) || defined(FPR_BUILTIN_RAW)
   V r=fpr_builtin_alloc_adt(8+sizeof(V),1);
@@ -115,43 +114,43 @@ static V some(V value) {
 static V ofInt(V v) {
   if (ISINT(v)) {
     int64_t n=(int64_t)UNTAG(v);
-    if (n<(int64_t)INT32_MIN || n>(int64_t)INT32_MAX) return (V)&i32_none;
+    if (n<(int64_t)INT32_MIN || n>(int64_t)INT32_MAX) return V_NONE;
     return some(fpr_i32_pack((uint32_t)(int32_t)n));
   }
-  if (!v || TID(v)!=T_BIGINT) return (V)&i32_none;
+  if (!ISPTR(v) || TID(v)!=T_BIGINT) return V_NONE;
 #if UINTPTR_MAX > 0xFFFFFFFFu
   /* Normalized T_BIGINT on 64-bit is strictly outside 63-bit tagged Int, hence outside I32. */
-  return (V)&i32_none;
+  return V_NONE;
 #else
   const bigint_t *b=(const bigint_t *)v;
-  if (b->len!=1) return (V)&i32_none;
+  if (b->len!=1) return V_NONE;
   uint64_t m=b->limbs[0];
   if (!b->var) {
-    if (m>(uint64_t)INT32_MAX) return (V)&i32_none;
+    if (m>(uint64_t)INT32_MAX) return V_NONE;
     return some(fpr_i32_pack((uint32_t)m));
   }
-  if (m>0x80000000ULL) return (V)&i32_none;
+  if (m>0x80000000ULL) return V_NONE;
   return some(fpr_i32_pack((uint32_t)(0u-(uint32_t)m)));
 #endif
 }
 static V ofIntU(V v) {
   if (ISINT(v)) {
     int64_t n=(int64_t)UNTAG(v);
-    if (n<0 || n>(int64_t)UINT32_MAX) return (V)&i32_none;
+    if (n<0 || n>(int64_t)UINT32_MAX) return V_NONE;
     return some(fpr_i32_pack((uint32_t)n));
   }
-  if (!v || TID(v)!=T_BIGINT) return (V)&i32_none;
+  if (!ISPTR(v) || TID(v)!=T_BIGINT) return V_NONE;
 #if UINTPTR_MAX > 0xFFFFFFFFu
-  return (V)&i32_none;
+  return V_NONE;
 #else
   const bigint_t *b=(const bigint_t *)v;
-  if (b->var || b->len!=1 || b->limbs[0]>(uint64_t)UINT32_MAX) return (V)&i32_none;
+  if (b->var || b->len!=1 || b->limbs[0]>(uint64_t)UINT32_MAX) return V_NONE;
   return some(fpr_i32_pack((uint32_t)b->limbs[0]));
 #endif
 }
 static V trunc_(V v) {
   if (ISINT(v)) return fpr_i32_pack((uint32_t)UNTAG(v));
-  if (!v || TID(v)!=T_BIGINT) fpr_cpanic("I32.trunc: not an Int");
+  if (!ISPTR(v) || TID(v)!=T_BIGINT) fpr_cpanic("I32.trunc: not an Int");
   const bigint_t *b=(const bigint_t *)v;
   uint32_t lo=(uint32_t)b->limbs[0];
   return fpr_i32_pack(b->var ? (0u-lo) : lo);

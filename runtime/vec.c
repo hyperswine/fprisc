@@ -90,7 +90,7 @@ static void col_free(col_t *c) {
 /* ---- vector object ---------------------------------------------------- */
 
 static vec_t *vchk(V v, const char *who) {
-  if (ISINT(v) || TID(v) != T_VEC) fpr_cpanic(who);
+  if (!ISPTR(v) || TID(v) != T_VEC) fpr_cpanic(who);
   return (vec_t *)v;
 }
 
@@ -207,7 +207,7 @@ static void fix_layout(vec_t *x, V v); /* fwd */
 static V h_range(V lov, V hiv) {
   if (!ISINT(lov) || !ISINT(hiv)) fpr_cpanic("Vec.range: bounds must be Ints");
   sw lo = UNTAG(lov), hi = UNTAG(hiv);
-  vec_t *x = (vec_t *)h_new((V)&fpr_unit);
+  vec_t *x = (vec_t *)h_new(V_UNIT);
   if (hi < lo) return (V)x;
   fix_layout(x, lov); /* one raw Int column */
   col_t *c = x->cols[0];
@@ -235,6 +235,7 @@ static uw tuple_arity(uw tid) {
  * Shape tids live in the content-addressed 0x00010000+ window
  * (FPRISC.hs shapeIdFor).  Any width: the descriptor is sized to it. */
 static uw value_arity(V v) {
+  if (!ISPTR(v)) return 0;
   uw tid = TID(v);
   uw t = tuple_arity(tid);
   if (t) return t;
@@ -335,13 +336,13 @@ static void tree_layout(vec_t *x, str_t *sp) {
   for (uw k=0; k<x->ncols; k++) x->cols[k]=col_new();
 }
 static V h_newAs(V specv) {
-  if (ISINT(specv) || TID(specv) != T_STR)
+  if (!ISPTR(specv) || TID(specv) != T_STR)
     fpr_cpanic("Vec.newAs: spec must be a String like \"d\" or \"iddd\"");
   str_t *sp = (str_t *)specv;
-  if (sp->len == 0) return h_new((V)&fpr_unit); /* inferred non-float evidence */
+  if (sp->len == 0) return h_new(V_UNIT); /* inferred non-float evidence */
   if (sp->len >= (uw)(T_TUPN_END - T_TUPN))
     fpr_cpanic("Vec.newAs: spec must name at least one column");
-  vec_t *x = (vec_t *)h_new((V)&fpr_unit);
+  vec_t *x = (vec_t *)h_new(V_UNIT);
   if (sp->bytes[0] == '(') { tree_layout(x, sp); return (V)x; }
   vdir_alloc(x, sp->len);
   for (uw k = 0; k < sp->len; k++) {
@@ -371,7 +372,7 @@ static V h_newAs(V specv) {
  * build for a declared (float-bearing) source, since h_new + first-push
  * inference cannot recover a float layout from a float value. */
 static V h_new_like(vec_t *src) {
-  vec_t *x = (vec_t *)h_new((V)&fpr_unit);
+  vec_t *x = (vec_t *)h_new(V_UNIT);
   vdir_like(x, src);
   for (uw k = 0; k < x->ncols; k++) x->cols[k] = col_new();
   return (V)x;
@@ -380,7 +381,7 @@ static V h_new_like(vec_t *src) {
 static void tree_put(vec_t *x, uw *cursor, uw row, V value) {
   vec_shape_t *n=&x->shape[(*cursor)++];
   if (n->column != VS_PRODUCT) { put_cell(x,n->column,row,value); return; }
-  if (ISINT(value) || value_arity(value) != n->arity)
+  if (!ISPTR(value) || value_arity(value) != n->arity)
     fpr_cpanic("Vec: nested product shape differs from declared layout");
   if (!n->tid) { n->tid=TID(value); n->var=((hdr_t *)value)->var; }
   if (n->tid != TID(value) || n->var != ((hdr_t *)value)->var)
@@ -413,11 +414,11 @@ static V h_push(V v, V vec) {
       put_cell(x, 0, x->len, v);
       break;
     case VR_SOA: {
-      if (x->eltid == 0 && !ISINT(v) && value_arity(v) == x->ncols) {
+      if (x->eltid == 0 && ISPTR(v) && value_arity(v) == x->ncols) {
         x->eltid = TID(v); /* a declared layout meets its first value */
         x->elvar = ((hdr_t *)v)->var;
       }
-      if (ISINT(v) || TID(v) != x->eltid)
+      if (!ISPTR(v) || TID(v) != x->eltid)
         fpr_cpanic("Vec.push: tuple shape differs from first push (or from the declared column count)");
       for (uw k = 0; k < x->ncols; k++)
         put_cell(x, k, x->len, *(V *)((char *)v + 8 + k * sizeof(uw)));
@@ -483,11 +484,11 @@ static V h_set(V iv, V v, V vec) {
       put_cell(x, 0, (uw)i, v);
       break;
     default:
-      if (x->eltid == 0 && !ISINT(v) && value_arity(v) == x->ncols) {
+      if (x->eltid == 0 && ISPTR(v) && value_arity(v) == x->ncols) {
         x->eltid = TID(v);
         x->elvar = ((hdr_t *)v)->var;
       }
-      if (ISINT(v) || TID(v) != x->eltid) fpr_cpanic("Vec.set: tuple shape differs");
+      if (!ISPTR(v) || TID(v) != x->eltid) fpr_cpanic("Vec.set: tuple shape differs");
       for (uw k = 0; k < x->ncols; k++)
         put_cell(x, k, (uw)i, *(V *)((char *)v + 8 + k * sizeof(uw)));
   }
@@ -503,7 +504,7 @@ static void vfree(vec_t *x) {
 
 static V h_free(V vec) {
   vfree(vchk(vec, "Vec.free: not a Vector"));
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 
 /* ---- schemes: the generic (interpreted) tier -------------------------
@@ -518,7 +519,7 @@ V fpr_vec_map(V f, V vec) {
   /* This runtime entry implements the same-element map: checked source
    * calls preserve the element type and therefore its float layout.
    * Type-changing maps are lowered to mapAs with output layout evidence. */
-  V out = vhas_float(x) ? h_new_like(x) : h_new((V)&fpr_unit);
+  V out = vhas_float(x) ? h_new_like(x) : h_new(V_UNIT);
   for (uw i = 0; i < x->len; i++) out = h_push(fpr_apply(f, row_at(x, i)), out);
   vfree(x); /* consumed input */
   return out;
@@ -530,7 +531,7 @@ V fpr_vec_map(V f, V vec) {
 static V h_mapAs(V spec, V f, V vec) {
   vec_t *x = vchk(vec, "Vec.map: not a Vector");
   str_t *sp = (str_t *)spec;
-  V out = sp->len ? h_newAs(spec) : h_new((V)&fpr_unit);
+  V out = sp->len ? h_newAs(spec) : h_new(V_UNIT);
   for (uw i = 0; i < x->len; i++) out = h_push(fpr_apply(f, row_at(x, i)), out);
   vfree(x);
   return out;
@@ -550,7 +551,7 @@ V fpr_vec_filter(V f, V vec) {
   for (uw i = 0; i < x->len; i++) {
     V row = row_at(x, i);
     V keep = fpr_apply(f, row);
-    if (!ISINT(keep) && ((hdr_t *)keep)->var) {
+    if (BOOL_VAL(keep)) {
       if (j != i)
         for (uw k = 0; k < x->ncols; k++)
           *vl_slot(x->cols[k], j) = *vl_slot(x->cols[k], i);
@@ -574,8 +575,8 @@ V fpr_vec_fold(V f, V z, V vec) {
 }
 
 static V h_fromList(V xs) {
-  V out = h_new((V)&fpr_unit);
-  while (!ISINT(xs) && TID(xs) == T_LIST && ((hdr_t *)xs)->var == 1) {
+  V out = h_new(V_UNIT);
+  while (ISPTR(xs) && TID(xs) == T_LIST && ((hdr_t *)xs)->var == 1) {
     out = h_push(*(V *)((char *)xs + 8), out);
     xs = *(V *)((char *)xs + 8 + sizeof(uw));
   }
@@ -584,7 +585,7 @@ static V h_fromList(V xs) {
 
 static V h_fromListAs(V spec, V xs) {
   V out = h_newAs(spec);
-  while (!ISINT(xs) && TID(xs) == T_LIST && ((hdr_t *)xs)->var == 1) {
+  while (ISPTR(xs) && TID(xs) == T_LIST && ((hdr_t *)xs)->var == 1) {
     out = h_push(*(V *)((char *)xs + 8), out);
     xs = *(V *)((char *)xs + 8 + sizeof(uw));
   }
@@ -593,12 +594,7 @@ static V h_fromListAs(V spec, V xs) {
 
 static V h_toList(V vec) {
   vec_t *x = vchk(vec, "Vec.toList: not a Vector");
-  V acc = 0;
-  /* Nil */
-  hdr_t *nil = (hdr_t *)fpr_alloc(8);
-  nil->tid = T_LIST;
-  nil->var = 0;
-  acc = (V)nil;
+  V acc = V_NIL;
   for (uw i = x->len; i > 0; i--) {
     hdr_t *c = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
     c->tid = T_LIST;
@@ -621,8 +617,8 @@ static V h_split(V nv, V vec) {
   sw n = UNTAG(nv);
   if (n < 0) n = 0;
   if ((uw)n > x->len) n = (sw)x->len;
-  V lo = vhas_float(x) ? h_new_like(x) : h_new((V)&fpr_unit);
-  V hi = vhas_float(x) ? h_new_like(x) : h_new((V)&fpr_unit);
+  V lo = vhas_float(x) ? h_new_like(x) : h_new(V_UNIT);
+  V hi = vhas_float(x) ? h_new_like(x) : h_new(V_UNIT);
   for (uw i = 0; i < (uw)n; i++) lo = h_push(row_at(x, i), lo);
   for (uw i = (uw)n; i < x->len; i++) hi = h_push(row_at(x, i), hi);
   vfree(x); /* consumed input */
@@ -814,7 +810,7 @@ static int gpu_axpb_exact(vec_t *x, sw a, sw b) {
 static V h_iota(V nv) {
   if (!ISINT(nv)) fpr_cpanic("Vec.iota: not an Int");
   sw n = UNTAG(nv);
-  V v = h_new((V)&fpr_unit);
+  V v = h_new(V_UNIT);
   for (sw i = 0; i < n; i++) v = h_push(TAG(i), v);
   return v;
 }
@@ -946,7 +942,7 @@ static V h_slice(V ov, V nv, V vec) {
   if (!ISINT(ov) || !ISINT(nv)) fpr_cpanic("Vec.slice: bounds not Ints");
   sw off = UNTAG(ov), n = UNTAG(nv);
   if (off < 0 || n < 0 || (uw)(off + n) > x->len) fpr_cpanic("Vec.slice: out of range");
-  V c = h_new((V)&fpr_unit);
+  V c = h_new(V_UNIT);
   for (sw i = 0; i < n; i++) c = h_push(TAG(*(sw *)vl_slot(x->cols[0], (uw)(off + i))), c);
   return mktup2(c, (V)x);
 }
@@ -1137,7 +1133,7 @@ static uw mm_bytes_hash(const uint8_t *p, uw n) {
 #endif
 
 static uw mm_str_hash(V s) {
-  if (ISINT(s) || TID(s) != T_STR) fpr_cpanic("strHash: not a String");
+  if (!ISPTR(s) || TID(s) != T_STR) fpr_cpanic("strHash: not a String");
   str_t *t = (str_t *)s;
   return mm_bytes_hash(t->bytes, t->len);
 }
@@ -1172,7 +1168,7 @@ static uw mm_key_hash(vec_t *x, V k) {
     if (!ISINT(k)) fpr_cpanic("MutMap: an Int-keyed map got a non-Int key");
     return mm_int_hash(UNTAG(k)) | MM_TOP;
   }
-  if (ISINT(k) || TID(k) != T_STR) fpr_cpanic("MutMap: a String-keyed map got a non-String key");
+  if (!ISPTR(k) || TID(k) != T_STR) fpr_cpanic("MutMap: a String-keyed map got a non-String key");
   return mm_str_hash(k) | MM_TOP;
 }
 static inline uw mm_key_raw(vec_t *x, V k) { return MM_KIND(x) == MM_KINT ? (uw)UNTAG(k) : (uw)k; }
@@ -1424,10 +1420,7 @@ static V g_mutmapFold(V f, V z, V m) {
 /* (the (key, value) pairs in slot order, the map) */
 static V g_mutmapToList(V m) {
   vec_t *x = mchk(m, "MutMap.toList: not a MutMap");
-  hdr_t *nil = (hdr_t *)fpr_alloc(8);
-  nil->tid = T_LIST;
-  nil->var = 0;
-  V acc = (V)nil;
+  V acc = V_NIL;
   for (uw i = x->len; i > 0; i--) {
     if (!mm_h(x)[i - 1]) continue;
     V pair = mktup2(mm_key_val(x, i - 1), (V)mm_v(x)[i - 1]);
@@ -1442,7 +1435,7 @@ static V g_mutmapToList(V m) {
 }
 static V g_mutmapFree(V m) {
   vfree(mchk(m, "MutMap.free: not a MutMap"));
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 
 

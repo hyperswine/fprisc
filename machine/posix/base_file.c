@@ -68,6 +68,6 @@ static V h_file_exists(V pathv) {
   char path[1024];
   cpath(pathv, "fileExists", path, sizeof path);
   struct stat st;
-  return stat(path, &st) == 0 ? (V)&fpr_true : (V)&fpr_false;
+  return stat(path, &st) == 0 ? V_TRUE : V_FALSE;
 }
 FPR_FN_CSTACK(fpr_g_fileExists, h_file_exists, 1);

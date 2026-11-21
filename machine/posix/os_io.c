@@ -136,14 +136,14 @@ FPR_FN_CSTACK(fpr_g_Os_x2eopen, h_open, 2);
 static V h_ready(V fdv) {
   struct pollfd p = {want_fd(fdv, "Os.ready: the stream is not an Int"), POLLIN, 0};
   int r = poll(&p, 1, 0);
-  return (r > 0 || (r < 0 && errno != EINTR)) ? (V)&fpr_true : (V)&fpr_false;
+  return (r > 0 || (r < 0 && errno != EINTR)) ? V_TRUE : V_FALSE;
 }
 FPR_FN(fpr_g_Os_x2eready, h_ready, 1);
 
 /* Directional zero-time readiness; no retry/deadline policy lives here.
  * Static successful results keep quiet readiness checks allocation-free. */
-static const struct { hdr_t h; V value; } ready_yes = {{T_RESULT, 0}, (V)&fpr_true};
-static const struct { hdr_t h; V value; } ready_no = {{T_RESULT, 0}, (V)&fpr_false};
+static const struct { hdr_t h; V value; } ready_yes = {{T_RESULT, 0}, V_TRUE};
+static const struct { hdr_t h; V value; } ready_no = {{T_RESULT, 0}, V_FALSE};
 static V h_ready_for(V fdv, V maskv) {
   int fd = want_fd(fdv, "Os.readyFor: descriptor must be an Int");
   if (UNTAG(fdv) < 0 || UNTAG(fdv) > INT_MAX) return os_err("descriptor outside host range");
@@ -164,8 +164,8 @@ FPR_FN(fpr_g_Os_x2ereadyFor, h_ready_for, 2);
  * learn why from the read. */
 static V h_poll(V fdsv) {
   size_t n = 0;
-  for (V c = fdsv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) n++;
-  if (!n) return (V)&os_nil;
+  for (V c = fdsv; ISPTR(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) n++;
+  if (!n) return V_NIL;
   struct pollfd small[64], *p = n <= 64 ? small : malloc(n * sizeof *p);
   if (!p) fpr_cpanic("out of memory");
   size_t i = 0;
@@ -175,7 +175,7 @@ static V h_poll(V fdsv) {
     p[i].events = POLLIN;
     p[i++].revents = 0;
   }
-  V out = (V)&os_nil;
+  V out = V_NIL;
   if (poll(p, (nfds_t)n, 0) > 0)
     for (i = n; i-- > 0;)
       if (p[i].revents) out = os_cons(TAG(p[i].fd), out);

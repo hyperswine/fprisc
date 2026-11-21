@@ -45,7 +45,7 @@ static V frame_append(V id, V bytes) {
   frame_t *b = r->data;
   if (s->len > b->cap - b->used) { fpr_owned_unlock(); return os_err("frame capacity exceeded"); }
   memcpy(b->bytes + b->used, s->bytes, s->len); b->used += s->len;
-  fpr_owned_unlock(); return os_ok((V)&fpr_unit);
+  fpr_owned_unlock(); return os_ok(V_UNIT);
 }
 FPR_FN(fpr_g_FrameHost_x2eappend, frame_append, 2);
 static V frame_finish(V id) {
@@ -68,7 +68,7 @@ static V frame_finish(V id) {
 FPR_FN_CSTACK(fpr_g_FrameHost_x2efinish, frame_finish, 1);
 static V frame_close(V id) {
   const char *why;
-  return fpr_owned_close(id, OWN_FRAME, &why) ? os_ok((V)&fpr_unit) : os_err(why);
+  return fpr_owned_close(id, OWN_FRAME, &why) ? os_ok(V_UNIT) : os_err(why);
 }
 FPR_FN(fpr_g_FrameHost_x2eclose, frame_close, 1);
 static V frame_usage(V unit) {

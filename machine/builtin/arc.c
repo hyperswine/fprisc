@@ -5,18 +5,18 @@
 #include "builtin.h"
 #ifdef FPR_BUILTIN_ARC
 V fpr_fn__x24arc_x2eretain(V v) { return fpr_builtin_retain(v); }
-V fpr_fn__x24arc_x2erelease(V v) { fpr_builtin_release(v); return (V)&fpr_unit; }
-V fpr_fn__x24arc_x2esetLayout(V v,V layout) { fpr_builtin_set_layout(v,layout); return (V)&fpr_unit; }
+V fpr_fn__x24arc_x2erelease(V v) { fpr_builtin_release(v); return V_UNIT; }
+V fpr_fn__x24arc_x2esetLayout(V v,V layout) { fpr_builtin_set_layout(v,layout); return V_UNIT; }
 /* The checked TRMC capability proof confines cursor mutation to fresh cells.
  * Both inputs are owned: transfer value into the field, release its previous
  * edge, then release the temporary cursor reference. Root/cursor aliases are
  * expected; requiring a unique RC here would reject the builder protocol. */
 V fpr_fn__x24arc_x2etrmcSetTail(V cursor,V value) {
   fpr_builtin_trmc_set_tail(cursor,value);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
-V fpr_fn__x24arc_x2erawEq(V a,V b) { return a==b?(V)&fpr_true:(V)&fpr_false; }
-V fpr_fn__x24arc_x2erawNe(V a,V b) { return a!=b?(V)&fpr_true:(V)&fpr_false; }
+V fpr_fn__x24arc_x2erawEq(V a,V b) { return a==b?V_TRUE:V_FALSE; }
+V fpr_fn__x24arc_x2erawNe(V a,V b) { return a!=b?V_TRUE:V_FALSE; }
 extern V fpr_prim_fn_str(V), fpr_prim_fn_print(V);
 V fpr_fn__x24arc_x2ewordStr(V a) { bits_t b={T_BITS,2,64,a}; return fpr_prim_fn_str((V)&b); }
 V fpr_fn__x24arc_x2ewordPrint(V a) { bits_t b={T_BITS,2,64,a}; return fpr_prim_fn_print((V)&b); }

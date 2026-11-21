@@ -247,7 +247,7 @@ static V uniform_value(uniform_graph *g,V source,uw shape,uw parent,uw *created)
   if(node.convert) {
     target=fpr_builtin_alloc_adt(8+v.count*sizeof(V),v.count);
     ((hdr_t *)target)->tid=node.tid;((hdr_t *)target)->var=v.tag;
-    for(uw f=0;f<v.count;f++)((V *)(target+8))[f]=(V)&fpr_unit;
+    for(uw f=0;f<v.count;f++)((V *)(target+8))[f]=V_UNIT;
     if(g->unbox)fpr_builtin_set_layout(target,(V)v.layout);
   } else target=fpr_builtin_retain(source); /* validate without copying */
   uw index=g->count++;

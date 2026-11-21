@@ -103,10 +103,10 @@ static V crypto_poll(V id) {
   pthread_mutex_unlock(&j->mu);
   if(!done)return os_err("again");
   if(failed){free(copy);return os_err("native crypto operation failed");}
-  V fields[2]={verified ? (V)&fpr_true : (V)&fpr_false,os_str((const char *)(copy?copy:(unsigned char *)""),n)};
+  V fields[2]={verified ? V_TRUE : V_FALSE,os_str((const char *)(copy?copy:(unsigned char *)""),n)};
   if(copy){OPENSSL_cleanse(copy,n);free(copy);}
   return os_ok(os_cell(T_TUP2,0,2,fields));
 }
 FPR_FN(fpr_g_CryptoHost_x2epoll,crypto_poll,1);
-static V crypto_close(V id){const char *why;return fpr_owned_close(id,OWN_CRYPTO,&why)?os_ok((V)&fpr_unit):os_err(why);}
+static V crypto_close(V id){const char *why;return fpr_owned_close(id,OWN_CRYPTO,&why)?os_ok(V_UNIT):os_err(why);}
 FPR_FN(fpr_g_CryptoHost_x2eclose,crypto_close,1);

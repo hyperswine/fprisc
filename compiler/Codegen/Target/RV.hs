@@ -357,11 +357,11 @@ select cfg fn = do
         li limit (65536 * 8)
         rr R.LessUnsigned d scaled limit
       OBits n -> li d n
-      ONullary t v -> do
-        sym <- case (t,v) of
-          (0,0) -> pure "fpr_unit"; (1,0) -> pure "fpr_false"; (1,1) -> pure "fpr_true"
-          _ -> modify (\s -> s {nulls = S.insert (t,v) (nulls s)}) >> pure (".Lnul_" ++ show t ++ "_" ++ show v)
-        address d (StaticObject sym)
+      ONullary t v -> case immediateNullary t v of
+        Just imm -> li d imm
+        Nothing -> do
+          modify (\s -> s {nulls = S.insert (t,v) (nulls s)})
+          address d (StaticObject (".Lnul_" ++ show t ++ "_" ++ show v))
       OString s -> modify (\st -> st {strings = S.insert s (strings st)}) >> address d (StaticObject (stringLabel s))
       OBoxedFloat width bits -> do
         unless (cfgWidth cfg == W32) (lift (Left "boxed float constants require RV32"))
@@ -373,22 +373,26 @@ select cfg fn = do
       OUntag v -> ri R.ShiftRightArithmeticImmediate d (vreg v) 1
       ONot v -> ri R.XorImmediate d (vreg v) 1
       OIsInt v -> ri R.AndImmediate d (vreg v) 1
-      OTruth v -> loadAt R.Load32 d (vreg v) 4
+      OTruth v -> ri R.ShiftRightArithmeticImmediate d (vreg v) 8
       OBoolOf v -> do
-        yes <- freshLabel; done <- freshLabel
-        branch (vreg v) yes; address d (StaticObject "fpr_false"); jump done
-        mark yes; address d (StaticObject "fpr_true"); mark done
+        sh <- fresh
+        ri R.ShiftLeftImmediate sh (vreg v) 8
+        ri R.OrImmediate d sh 10
+      OTagTest t variant v | Just imm <- immediateNullary t variant -> do
+        want <- fresh; li want imm; rr (R.Compare Eq) d (vreg v) want
       OTagTest t variant v -> do
         miss <- freshLabel; done <- freshLabel
-        bit <- fresh; ri R.AndImmediate bit (vreg v) 1; branch bit miss
+        bit <- fresh; ri R.AndImmediate bit (vreg v) 7; branch bit miss
         actual <- fresh; want <- fresh; bad <- fresh
         loadAt R.Load32 actual (vreg v) 0; li want (fromIntegral t); rr (R.Compare Ne) bad actual want; branch bad miss
         loadAt R.Load32 actual (vreg v) 4; li want (fromIntegral variant); rr (R.Compare Eq) d actual want; jump done
         mark miss; li d 0; mark done
+      OVariantTest t variant v | Just imm <- immediateNullary t variant -> do
+        want <- fresh; li want imm; rr (R.Compare Eq) d (vreg v) want
       -- OTagTest's answer; RV64 compares the whole header word at once
       OVariantTest t variant v -> do
         miss <- freshLabel; done <- freshLabel
-        bit <- fresh; ri R.AndImmediate bit (vreg v) 1; branch bit miss
+        bit <- fresh; ri R.AndImmediate bit (vreg v) 7; branch bit miss
         if cfgWidth cfg == W64
           then do
             hdr <- fresh; want <- fresh
@@ -473,11 +477,11 @@ select cfg fn = do
         mark slow
         t <- fresh
         call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (cmpSym op))) Calling.RuntimeCall [vreg a, vreg b] (Just t) False
-        loadAt R.Load32 d t 4
+        ri R.ShiftRightArithmeticImmediate d t 8
         mark done
       OEqVal eq a b -> do
         t <- fresh; call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a,vreg b] (Just t) False
-        loadAt R.Load32 d t 4
+        ri R.ShiftRightArithmeticImmediate d t 8
       OCall c vs -> do
         inlined <- rawAdapter c (map vreg vs) d
         unless inlined (call (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) (Just d) False)
@@ -518,8 +522,8 @@ select cfg fn = do
       | cfgWidth cfg==W64,Just adapter<-Scalar.scalarAdapter c (length vs) = scalar adapter vs >> pure True
       | otherwise = case (calleeName c,vs) of
           (n,[a]) | n `elem` ["$arc.retain","$arc.release"] -> yes (guarded (\slow -> do
-            bit <- fresh; ri R.AndImmediate bit a 1; bad <- fresh; ri R.XorImmediate bad bit 1; branch bad slow) $
-              if n=="$arc.retain" then emit (plain (O.RV R.Move) [anyV d] [anyV a]) else address d (StaticObject "fpr_unit"))
+            bit <- fresh; ri R.AndImmediate bit a 7; z <- fresh; li z 0; isPtr <- fresh; rr (R.Compare Eq) isPtr bit z; branch isPtr slow) $
+              if n=="$arc.retain" then emit (plain (O.RV R.Move) [anyV d] [anyV a]) else li d 2)
           (n,[a,b]) | Just op <- M.lookup n intBinary -> yes (do
             x <- fresh; y <- fresh; result <- fresh
             ri R.ShiftRightArithmeticImmediate x a 1; ri R.ShiftRightArithmeticImmediate y b 1
@@ -547,8 +551,8 @@ select cfg fn = do
             if small then do t <- fresh; loadAt op t a 0; tagged t d else loadAt op d a 0)
           (n,[a,b]) | Just (op,alignment,small) <- M.lookup n writes -> yes (memoryGuard a alignment $ do
             v <- if small then do t <- fresh; ri R.ShiftRightArithmeticImmediate t b 1; pure t else pure b
-            storeAt op a v 0; address d (StaticObject "fpr_unit"))
-          ("$arc.memfence",[_]) -> yes (emit (plain (O.RV R.Fence) [] []) >> address d (StaticObject "fpr_unit"))
+            storeAt op a v 0; li d 2)
+          ("$arc.memfence",[_]) -> yes (emit (plain (O.RV R.Fence) [] []) >> li d 2)
           _ -> pure False
       where
         scalar adapter args = case (adapter,args) of
@@ -564,8 +568,7 @@ select cfg fn = do
           _->lift (Left "compiler error: checked scalar adapter arity")
         yes action = action >> pure True
         tagged a result = do t <- fresh; ri R.ShiftLeftImmediate t a 1; ri R.OrImmediate result t 1
-        bool t = do yesLabel <- freshLabel; done <- freshLabel; branch t yesLabel
-                    address d (StaticObject "fpr_false"); jump done; mark yesLabel; address d (StaticObject "fpr_true"); mark done
+        bool t = do sh <- fresh; ri R.ShiftLeftImmediate sh t 8; ri R.OrImmediate d sh 10
         guarded check body = do slow <- freshLabel; done <- freshLabel
                                 check slow; body; jump done; mark slow
                                 call (calleeSym c) Calling.RuntimeCall vs (Just d) False; mark done

@@ -450,7 +450,7 @@ static V h_moddetachlast(V u) {
   fpr_lock(&xlock);
   if (nxtabs > 0) __atomic_store_n(&nxtabs, nxtabs - 1, __ATOMIC_RELEASE);
   fpr_unlock(&xlock);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 
 FPR_FN(fpr_g_Mod_x2efn, h_modfn, 2);

@@ -23,7 +23,7 @@
 extern int fpr_posix_argc;
 extern char **fpr_posix_argv;
 
-static const hdr_t base_nil = {T_LIST, 0};
+#define base_nil_v V_NIL
 
 static V cons(V h, V t) {
   V c = fpr_alloc((V)(8 + 2 * sizeof(uw)));
@@ -55,7 +55,7 @@ static void cpath(V v, const char *who, char *out, size_t cap) {
 
 static V h_args(V u) {
   (void)u;
-  V l = (V)&base_nil;
+  V l = V_NIL;
   for (int i = fpr_posix_argc - 1; i >= 1; i--)
     l = cons(mkstr(fpr_posix_argv[i], (uw)strlen(fpr_posix_argv[i])), l);
   return l;
@@ -79,7 +79,7 @@ static V h_exit(V code) {
   /* a process status is one byte; 300 used to become 44 without a word */
   if (UNTAG(code) < 0 || UNTAG(code) > 255) fpr_cpanic_num("Sys.exit: status ", UNTAG(code), " is not 0..255");
   hal_poweroff((int)UNTAG(code));
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 FPR_FN(fpr_g_Sys_x2eexit, h_exit, 1);
 
@@ -120,7 +120,7 @@ static V h_stderr(V s) {
   fflush(stdout);
   fwrite(t->bytes, 1, t->len, stderr);
   fflush(stderr);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 FPR_FN(fpr_g_Sys_x2estderr, h_stderr, 1);
 

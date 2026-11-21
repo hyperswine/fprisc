@@ -535,28 +535,34 @@ selectBlock cfg fn facts next b = do
             Just (_, _, n) -> emitI (cmpi (vreg x) n)
             Nothing -> emitI (cmp (vreg x) (vreg y))
           flags (cmpCond o)
-        -- a tagged Int is no match; else the header word against the pair
+        OVariantTest tg c v | Just imm <- immediateNullary tg c -> do
+          emitI (cmpi (vreg v) imm)
+          flags O.Equal
+        -- a tagged Int or 010 immediate is no match; else the header word against the pair
         OVariantTest tg c v -> testBranch $ \miss -> do
-          emitI (testi (vreg v) 1)
+          emitI (testi (vreg v) 7)
           emitI (bcond O.NotEqual miss)
           hdr <- freshV False
           emitI (plain (O.X64 O.LoadField) [any' hdr] [any' (vreg v), OI 0])
           cmpConst hdr (headerWord tg c)
-        -- a tagged Int is no match; then the typeid word and the variant
+        OTagTest tg c v | Just imm <- immediateNullary tg c -> do
+          emitI (cmpi (vreg v) imm)
+          flags O.Equal
+        -- a tagged Int or 010 immediate is no match; then the typeid word and the variant
         -- word.  Both are 32-bit fields of one little-endian header word, so
         -- when the pair is in [0, 2^31) (every tid the compiler assigns) the
         -- two sign-extending loads and compares are exactly one 64-bit
         -- compare against the header word, as OVariantTest does.
         OTagTest tg c v
           | inHalf tg && inHalf c -> testBranch $ \miss -> do
-              emitI (testi (vreg v) 1)
+              emitI (testi (vreg v) 7)
               emitI (bcond O.NotEqual miss)
               hdr <- freshV False
               emitI (plain (O.X64 O.LoadField) [any' hdr] [any' (vreg v), OI 0])
               cmpConst hdr (headerWord tg c)
           where inHalf n = n >= 0 && toInteger n < 2 ^ (31 :: Int)
         OTagTest tg c v -> testBranch $ \miss -> do
-          emitI (testi (vreg v) 1)
+          emitI (testi (vreg v) 7)
           emitI (bcond O.NotEqual miss)
           tid <- freshV False
           emitI (ldrsw tid (vreg v) 0)
@@ -730,7 +736,9 @@ selectInstr cfg facts (Instr d op) = case op of
     emitI (cmpi scaled (65536 * 8))
     emitI (cset O.UnsignedBelow r)
   OBits n -> def (\r -> emitI (li r n))
-  ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
+  ONullary t v -> def $ \r -> case immediateNullary t v of
+    Just imm -> emitI (li r imm)
+    Nothing -> nullarySymbol t v >>= emitI . la r
   OString text -> def $ \rd -> do
     modify (\st -> st {selStrings = S.insert text (selStrings st)})
     emitI (la rd (StaticObject (stringLabel text)))
@@ -767,20 +775,20 @@ selectInstr cfg facts (Instr d op) = case op of
   OTag v -> def (\r -> emitI (tagw r (vreg v)))
   OUntag v -> def (\r -> emitI (rri O.ShiftRightArithmeticImmediate r (vreg v) 1))
   OBoolOf p -> def $ \r -> do
-    f <- freshV True
-    t <- freshV True
-    emitI (la f (StaticObject "fpr_false"))
-    emitI (la t (StaticObject "fpr_true"))
-    emitI (cmpi (vreg p) 0)
-    emitI (csel O.NotEqual r t f)
-  OTruth v -> def (\r -> emitI (ldrsw r (vreg v) 4))
+    sh <- freshV False
+    emitI (rri O.ShiftLeftImmediate sh (vreg p) 8)
+    emitI (addi r sh 10)
+  OTruth v -> def (\r -> emitI (rri O.ShiftRightArithmeticImmediate r (vreg v) 8))
   ONot p -> def (\r -> emitI (rri O.XorImmediate r (vreg p) 1))
   OIsInt v -> def (\r -> emitI (rri O.AndImmediate r (vreg v) 1))
+  OTagTest t c v | Just imm <- immediateNullary t c -> def $ \r -> do
+    emitI (cmpi (vreg v) imm)
+    emitI (cset O.Equal r)
   OTagTest t c v -> def $ \r -> do
     miss <- freshL "tagno"
     done <- freshL "tagdone"
     bit <- freshV False
-    emitI (rri O.AndImmediate bit (vreg v) 1)
+    emitI (rri O.AndImmediate bit (vreg v) 7)
     emitI (cbnz bit miss)
     tid <- freshV False
     want <- freshV False
@@ -798,13 +806,16 @@ selectInstr cfg facts (Instr d op) = case op of
     emitL miss
     emitI (li r 0)
     emitL done
+  OVariantTest t c v | Just imm <- immediateNullary t c -> def $ \r -> do
+    emitI (cmpi (vreg v) imm)
+    emitI (cset O.Equal r)
   -- OTagTest's answer with one header load: typeid (+0) and variant (+4)
-  -- compared as one little-endian word, after the Int check
+  -- compared as one little-endian word, after the non-pointer check
   OVariantTest t c v -> def $ \r -> do
     miss <- freshL "varno"
     done <- freshL "vardone"
     bit <- freshV False
-    emitI (rri O.AndImmediate bit (vreg v) 1)
+    emitI (rri O.AndImmediate bit (vreg v) 7)
     emitI (cbnz bit miss)
     hdr <- freshV False
     want <- freshV False
@@ -890,7 +901,7 @@ selectInstr cfg facts (Instr d op) = case op of
     if cfgFrames cfg && keepingEnabled cfg
       then emitKeepingCall cmpSym' [vreg a, vreg b] res
       else emitCall cmpSym' Calling.RuntimeCall [vreg a, vreg b] (Just res)
-    emitI (ldrsw r res 4)
+    emitI (rri O.ShiftRightArithmeticImmediate r res 8)
     emitL done
   OEqVal eq a b -> def $ \r -> do
     slow <- freshL "eqslow"
@@ -912,7 +923,7 @@ selectInstr cfg facts (Instr d op) = case op of
     if cfgFrames cfg && keepingEnabled cfg
       then emitKeepingCall eqSym [vreg a, vreg b] res
       else emitCall eqSym Calling.RuntimeCall [vreg a, vreg b] (Just res)
-    emitI (ldrsw r res 4)
+    emitI (rri O.ShiftRightArithmeticImmediate r res 8)
     emitL done
   OCallProduct _ _ -> refuse "internal: a product call outside its result packet"
   OResult _ -> refuse "internal: a product word without its call"
@@ -1756,7 +1767,7 @@ renderItem cfg ly large fname saveLines restores pools (I i) = map indent (go (s
             captured h = ["movq " ++ show (32 + 8 * k) ++ "(%rax), " ++ argReg k | k <- [0 .. h - 1]]
             arm h = [label h ++ ":", "movq 8(%rax), %r11"] ++ explicit h ++ captured h
               ++ ["subq $8, %rsp", "call *%r11", "addq $8, %rsp", "jmp 2f"]
-         in [ "movq " ++ show (16 * n) ++ "(%rsp), %rax", "testq $1, %rax", "jnz 1f",
+         in [ "movq " ++ show (16 * n) ++ "(%rsp), %rax", "testq $7, %rax", "jnz 1f",
               "cmpl $9001, (%rax)", "jne 1f",
               "movq 16(%rax), %r10", "subq 24(%rax), %r10", "cmpq $" ++ show n ++ ", %r10", "jne 1f",
               "movq 24(%rax), %r10" ]

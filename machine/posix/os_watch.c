@@ -218,7 +218,7 @@ FPR_FN(fpr_g_Os_x2ewatchOpen, h_watch_open, 1);
 
 static V h_watch_arm(V irqv, V fdsv) {
   size_t n = 0;
-  for (V c = fdsv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) n++;
+  for (V c = fdsv; ISPTR(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) n++;
   watcher_t *w = watcher_of(irqv);
   /* the same set, already armed: nothing to tell the thread */
   int same = w->armed && !w->deadline_us && n == w->nwant;
@@ -239,7 +239,7 @@ static V h_watch_arm(V irqv, V fdsv) {
     if (w->polling) watch_wake_signal(w->wake); /* interrupt the old set's poll */
   }
   pthread_mutex_unlock(&w->mu);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 FPR_FN(fpr_g_Os_x2ewatchArm, h_watch_arm, 2);
 
@@ -249,7 +249,7 @@ FPR_FN(fpr_g_Os_x2ewatchArm, h_watch_arm, 2);
 static V h_watch_arm_events(V irqv, V eventsv, V usv) {
   if (!ISINT(usv) || UNTAG(usv) < -1) return os_err("invalid watcher timeout");
   size_t n = 0;
-  for (V c = eventsv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = FPR_FLD(c, 1)) {
+  for (V c = eventsv; ISPTR(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = FPR_FLD(c, 1)) {
     V pair = FPR_FLD(c, 0);
     if (ISINT(pair) || TID(pair) != T_TUP2) return os_err("watch event must be (fd, mask)");
     V fd = FPR_FLD(pair, 0), mask = FPR_FLD(pair, 1);
@@ -282,7 +282,7 @@ static V h_watch_arm_events(V irqv, V eventsv, V usv) {
   if (w->armed) pthread_cond_signal(&w->cv);
   if (w->polling) watch_wake_signal(w->wake);
   pthread_mutex_unlock(&w->mu);
-  return os_ok((V)&fpr_unit);
+  return os_ok(V_UNIT);
 }
 FPR_FN(fpr_g_Os_x2ewatchArmEvents, h_watch_arm_events, 3);
 
@@ -296,7 +296,7 @@ static V watch_take(V irqv, int events) {
   memcpy(got, w->ready, n * sizeof *got);
   w->nready = 0;
   pthread_mutex_unlock(&w->mu);
-  V out = (V)&os_nil;
+  V out = V_NIL;
   for (size_t i = n; i-- > 0;) {
     V item = TAG(got[i].fd);
     if (events) {
@@ -333,7 +333,7 @@ static V h_watch_close(V irqv) {
     free(w);
     hal_irq_host_free((uw)irq); /* the source is free for the next watcher or job */
     pthread_mutex_unlock(&watch_mu);
-    return (V)&fpr_true;
+    return V_TRUE;
   }
   if (!w->closing) {
     w->closing = 1;
@@ -342,6 +342,6 @@ static V h_watch_close(V irqv) {
   }
   pthread_mutex_unlock(&w->mu);
   pthread_mutex_unlock(&watch_mu);
-  return (V)&fpr_false;
+  return V_FALSE;
 }
 FPR_FN(fpr_g_Os_x2ewatchClose, h_watch_close, 1);

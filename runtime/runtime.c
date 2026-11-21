@@ -15,10 +15,7 @@
 #include "qos_abi.h"
 #endif
 
-const hdr_t fpr_true = {T_BOOL, 1};
-const hdr_t fpr_false = {T_BOOL, 0};
-const hdr_t fpr_unit = {T_UNIT, 0};
-const hdr_t fpr_none = {T_OPTION, 0};
+/* Unit, Bool, Nil, and None are 010 immediates (V_UNIT/V_TRUE/V_FALSE/V_NIL/V_NONE in fpr.h). */
 
 /* ---- allocator: bump + owning slab + segregated free list ------------
  * Compact managed cells carry an 8-byte slab prefix and derive their size
@@ -302,7 +299,7 @@ static inline uw cell_raw(V v) { (void)v; return 0; }
 #define RAW_FIELD(mask, i) ((i) < 8 * sizeof(uw) && (((mask) >> (i)) & 1))
 #define RAW_LAZY uw raw_mask_ = 0; int raw_known_ = 0
 #define RAW_AT(cell, i) (raw_known_ ? RAW_FIELD(raw_mask_, i) : (raw_known_ = 1, raw_mask_ = cell_raw(cell), RAW_FIELD(raw_mask_, i)))
-#define CANDIDATE(x) (!ISINT(x) && (x))
+#define CANDIDATE(x) ISPTR(x)
 #endif
 #if defined(FPR_LAYOUT_CHECK) || defined(FPR_COMPACT_CELLS)
 /* Managed extents come from the object's class and constructor metadata.
@@ -341,7 +338,7 @@ static inline uw cell_raw(V v) {
  * never asks. Declare RAW_LAZY once per cell, then test RAW_AT(cell, i). */
 #define RAW_LAZY uw raw_mask_ = 0; int raw_known_ = 0
 #define RAW_AT(cell, i) (raw_known_ ? RAW_FIELD(raw_mask_, i) : (raw_known_ = 1, raw_mask_ = cell_raw(cell), RAW_FIELD(raw_mask_, i)))
-#define CANDIDATE(x) (!ISINT(x) && (x))
+#define CANDIDATE(x) ISPTR(x)
 /* Round the combined prefix and payload, exactly as fpr_alloc does. Actor
  * handles are not allocated cells; managed Device/Register values are fixed. */
 static uw layout_total(V v) {
@@ -434,16 +431,17 @@ static void allocation_header(char *p,uw total,fpr_slab_t *sl,uw prefix) {
 }
 #ifndef FPR_BUILTIN
 int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
+  if (!ISPTR(v)) return 0;
   /* a loaded process's IMAGE lives inside the span (the fixed slot)
    * but its cells are statics without alloc preheaders -- exclude the
    * window before either span test below can claim them */
-  if (!ISINT(v) && (char *)v >= fpr_static_lo && (char *)v < fpr_static_hi)
+  if ((char *)v >= fpr_static_lo && (char *)v < fpr_static_hi)
     return 0;
-  if (!ISINT(v) && in_image((const void *)v)) /* a loaded image's statics */
+  if (in_image((const void *)v)) /* a loaded image's statics */
     return 0;
   if (fpr_plane_memory) /* shared plane: the KERNEL's span is the heap */
-    return !ISINT(v) && (char *)v >= fpr_plane_memory->heap_lo && (char *)v < fpr_plane_memory->heap_hi;
-  return !ISINT(v) && (char *)v >= fpr_heap_lo && (char *)v < fpr_heap_hi;
+    return (char *)v >= fpr_plane_memory->heap_lo && (char *)v < fpr_plane_memory->heap_hi;
+  return (char *)v >= fpr_heap_lo && (char *)v < fpr_heap_hi;
 }
 
 #endif
@@ -1356,12 +1354,12 @@ static int dc_outside(V v, struct fpr_pool *region) {
   return o && o != region;
 }
 static int dc_retained(V v, fpr_slab_t *retain) {
-  if (!retain || ISINT(v) || !v) return 0;
+  if (!retain || !ISPTR(v)) return 0;
   uw address = (uw)v;
   return address >= (uw)(retain + 1) && address < (uw)retain->hp && slab_of(v) == retain;
 }
 static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
-  if (ISINT(v) || !v) return 0;
+  if (!ISPTR(v)) return 0;
   if (z && z->mut_root && v == z->mut_root) {
     struct fpr_pool *r = z->region;
     z->mut_root = 0; z->region = 0; z->in_mut = z->quick;
@@ -1470,7 +1468,7 @@ static int budget_cells(uw *left, uw count, uw width) {
   return budget_take(left, dc_rawsz(count * width));
 }
 static int dc_budget(V v, uw *left, unsigned depth) {
-  if (ISINT(v) || !v) return 1;
+  if (!ISPTR(v)) return 1;
   if (depth > 256) return 0;
   if (!fpr_in_heap(v)) {
     uw pid = img_foreign((const void *)v);
@@ -1564,7 +1562,7 @@ static V dc_bump(dctx_t *c,uw raw) { return dc_bump_size(c,raw,FPR_MANAGED_PREFI
 static V dc_buffer(dctx_t *c,uw raw) { return dc_bump_size(c,raw,FPR_RAW_PREFIX); }
 
 static V dc_dup(V v, dctx_t *c) {
-  if (ISINT(v) || !v) return v;
+  if (!ISPTR(v)) return v;
   if (c && c->mut_root && v == c->mut_root) {
     struct fpr_pool *r = c->region;
     c->mut_root = 0; c->region = 0;
@@ -1767,7 +1765,7 @@ uw fpr_msg_slab_charge(uw need) {
  * buddy rounding. Allocator arenas and the sender's reusable hold are separate.
  * Size walking does not allocate or park, so the hart-local copy pid is safe. */
 uw fpr_msg_charge_to(V v, uw pid, int shared, uw limit) {
-  if (ISINT(v) || !v) return 0;
+  if (!ISPTR(v)) return 0;
   fpr_hart_t *h = fpr_hart();
   uw prior = h ? h->copy_pid : 0;
   if (h) h->copy_pid = pid;
@@ -1814,7 +1812,7 @@ static fpr_slab_t *msg_slab_new(uw need) {
  * the sender's pool. The caller owns the slab hold until ARC promotion. */
 uw fpr_msg_concat_size(V left, V right) {
   str_t *x = (str_t *)left, *y = (str_t *)right;
-  if (ISINT(left) || ISINT(right) || x->tid != T_STR || y->tid != T_STR)
+  if (!ISPTR(left) || !ISPTR(right) || x->tid != T_STR || y->tid != T_STR)
     fpr_trap("sendConcat: not strings");
   uw overhead = sizeof(str_t) + FPR_MANAGED_PREFIX + 15 + sizeof(fpr_slab_t) + FPR_SLAB_PAD;
   if (x->len > (uw)-1 - overhead || y->len > (uw)-1 - overhead - x->len)
@@ -1888,7 +1886,7 @@ void fpr_slabs_unhold(fpr_slab_t **sls, uw n) {
 }
 static void slab_free_ownerless(fpr_slab_t *sl); /* fwd: defined by the state copies */
 static V msg_copy_held_in(V v, int fresh, uw pid, fpr_slab_t **hold) {
-  if (ISINT(v) || !v) {
+  if (!ISPTR(v)) {
 #ifdef FPR_COST_PROBE
     fpr_hart_t *probe_hart = fpr_hart();
     FPR_COST_ADD(probe_hart, cost_copies, 1);
@@ -2864,18 +2862,18 @@ static V g_region_mark(V u) {
  * had regions. */
 static V g_region_room(V mark) {
   uw now = fpr_hart()->region_bytes & REGION_MASK;
-  return ((now - (uw)UNTAG(mark)) & REGION_MASK) < (uw)FPR_REGION_SLAB ? (V)&fpr_true : (V)&fpr_false;
+  return ((now - (uw)UNTAG(mark)) & REGION_MASK) < (uw)FPR_REGION_SLAB ? V_TRUE : V_FALSE;
 }
 /* A checked receive boundary has evaluated its next state but has not entered
  * the next activation. Copy that state and release the preceding roots before
  * an empty/selective receive can park. After cycling, no roots remain above
  * rx_mark, so the boundary proceeds rather than repeatedly cycling. */
 static V g_receive_ready(V kind, V peer) {
-  if (fpr_plane_memory) return (V)&fpr_true;
+  if (fpr_plane_memory) return V_TRUE;
   fpr_hart_t *h = fpr_hart();
-  if (!h || !h->current) return (V)&fpr_true;
+  if (!h || !h->current) return V_TRUE;
   struct fpr_scope *sc = *scope_head(h);
-  if (!sc || fpr_acb_rx(h->current)->n <= sc->rx_mark) return (V)&fpr_true;
+  if (!sc || fpr_acb_rx(h->current)->n <= sc->rx_mark) return V_TRUE;
   return BOOL(fpr_actor_receive_ready((uw)UNTAG(kind), peer));
 }
 /* a receive loop's entry: its region opens now, so every message its turns
@@ -2996,10 +2994,10 @@ static V g_call_pend(V u) {
 /* A private multiword result is already in registers. Materialize a
  * copy root only when this pending call actually opened a region. */
 static V g_call_active(V tok) {
-  if (fpr_plane_memory) return (V)&fpr_false;
+  if (fpr_plane_memory) return V_FALSE;
   fpr_pends_t *ps = pends_of(fpr_hart());
   if (!ps->n || ps->n - 1 != (uw)UNTAG(tok)) fpr_cpanic("call region: left out of order");
-  return ps->v[ps->n - 1].scope ? (V)&fpr_true : (V)&fpr_false;
+  return ps->v[ps->n - 1].scope ? V_TRUE : V_FALSE;
 }
 FPR_FN(fpr_g__x24callActive, g_call_active, 1);
 static V g_call_leave(V tok, V r) {
@@ -3065,10 +3063,10 @@ static V g_region_seq(V u) { (void)u; return TAG((sw)((++region_seq_next) & REGI
 static V g_region_mark(V u) { (void)u; return TAG((sw)(fpr_hart()->region_bytes & REGION_MASK)); }
 static V g_region_room(V mark) {
   uw now = fpr_hart()->region_bytes & REGION_MASK;
-  return ((now - (uw)UNTAG(mark)) & REGION_MASK) < (uw)FPR_REGION_SLAB ? (V)&fpr_true : (V)&fpr_false;
+  return ((now - (uw)UNTAG(mark)) & REGION_MASK) < (uw)FPR_REGION_SLAB ? V_TRUE : V_FALSE;
 }
 static V g_region_open(V seqv) { fpr_builtin_region_open((uw)UNTAG(seqv)); return seqv; }
-static V g_receive_ready(V kind, V peer) { (void)kind; (void)peer; return (V)&fpr_true; }
+static V g_receive_ready(V kind, V peer) { (void)kind; (void)peer; return V_TRUE; }
 static V g_region_cycle(V seqv, V packed) {
   uw seq = (uw)UNTAG(seqv);
   if (fpr_builtin_region_seq() != seq) { fpr_builtin_region_open(seq); return packed; }
@@ -3107,8 +3105,8 @@ static V g_arena(V f) {
 #ifdef FPR_BUILTIN
   /* the builtin heap's region: the call's allocations die at its end, the
    * result copied out first (machine/builtin/heap.c) */
-  if (!fpr_builtin_region_open(0)) return fpr_apply(f, (V)&fpr_unit); /* ARC builds: no regions */
-  return region_close_builtin(fpr_apply(f, (V)&fpr_unit), 0);
+  if (!fpr_builtin_region_open(0)) return fpr_apply(f, V_UNIT); /* ARC builds: no regions */
+  return region_close_builtin(fpr_apply(f, V_UNIT), 0);
 #else
   /* Capture actor-owned storage, not its current hart: allocation and the
    * thunk may park, and a resumed actor can migrate before teardown. */
@@ -3119,7 +3117,7 @@ static V g_arena(V f) {
   fpr_pool_t ap;
   arena_open(slot, &ap);
   scope.arena = &ap;
-  V r = fpr_apply(f, (V)&fpr_unit);
+  V r = fpr_apply(f, V_UNIT);
   /* its own slab: survives the teardown, freed below */
   V t = transfer_copy(r, &scope, "Sys.arena: Vector results cannot escape an arena "
                                  "(their storage IS the arena) -- return scalars/trees, "
@@ -3203,9 +3201,9 @@ static V g_loop_in(V s, V f, int movevec) {
       fpr_cpanic("Sys.loop: a step must return (continue, state)");
     V go = FPR_FLD(r, 0);
     V nx = FPR_FLD(r, 1);
-    if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
+    if (!ISBOOL(go))
       fpr_cpanic("Sys.loop: continue must be a Bool");
-    if (((hdr_t *)go)->var != 1) return regions ? region_close_builtin(nx, 0) : nx;
+    if (!BOOL_VAL(go)) return regions ? region_close_builtin(nx, 0) : nx;
     if (regions) {
       fpr_builtin_region_cycle_begin();
       state = kp_dup(nx);
@@ -3229,12 +3227,12 @@ static V g_loop_in(V s, V f, int movevec) {
   for (;;) {
     FPR_COST_ADD(fpr_hart(), cost_turns, 1);
     V r = fpr_apply(f, state);
-    if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP2)
+    if (!ISPTR(r) || !fpr_in_heap(r) || TID(r) != T_TUP2)
       fpr_cpanic("Sys.loop: a step must return (continue, state)");
     V go = FPR_FLD(r, 0), nx = FPR_FLD(r, 1);
-    if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
+    if (!ISBOOL(go))
       fpr_cpanic("Sys.loop: continue must be a Bool");
-    int more = ((hdr_t *)go)->var == 1;
+    int more = BOOL_VAL(go);
     V t = transfer_copy_in(nx, &scope, movevec ? 0 : "Sys.loop: the state may not hold a Vector (use Sys.loopWith)", movevec, 0, 0, 0);
     scope_roots_die(&scope);
     arena_reset(&ap);
@@ -3264,7 +3262,7 @@ FPR_FN(fpr_g_Sys_x2eloop, g_loop, 2);
 static V receive_step(V thunk) {
   if (ISINT(thunk) || !thunk || TID(thunk) != T_PAP)
     fpr_cpanic("receive loop: expected a next-turn closure");
-  return fpr_apply(thunk, (V)&fpr_unit);
+  return fpr_apply(thunk, V_UNIT);
 }
 static const pap0_t receive_step_fn = {T_PAP, 0, (uw)(uintptr_t)receive_step, 1, 0};
 /* `packed` is the stub's word on the thunk's one argument: the number of
@@ -3304,9 +3302,9 @@ static V g_loop_with(V vec, V s, V f) {
       fpr_cpanic("Sys.loopWith: a step must return (continue, state, vector)");
     V go = FPR_FLD(r, 0);
     state = FPR_FLD(r, 1); v = FPR_FLD(r, 2);
-    if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
+    if (!ISBOOL(go))
       fpr_cpanic("Sys.loopWith: continue must be a Bool");
-    if (((hdr_t *)go)->var != 1) break;
+    if (!BOOL_VAL(go)) break;
   }
   hdr_t *tup = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
   tup->tid = T_TUP2; tup->var = 0;
@@ -3314,7 +3312,7 @@ static V g_loop_with(V vec, V s, V f) {
   *(V *)((char *)tup + 8 + sizeof(uw)) = v;
   return (V)tup; }
 #else
-  if (ISINT(vec) || !fpr_in_heap(vec) || TID(vec) != T_VEC)
+  if (!ISPTR(vec) || !fpr_in_heap(vec) || TID(vec) != T_VEC)
     fpr_cpanic("Sys.loopWith: not a Vector");
   no_vec_out(s, "Sys.loopWith: the state may not hold a Vector "
                 "(thread the one buffer, keep the rest in it)");
@@ -3331,7 +3329,7 @@ static V g_loop_with(V vec, V s, V f) {
   for (;;) {
     FPR_COST_ADD(fpr_hart(), cost_turns, 1);
     V r = fpr_apply2(f, state, vec);
-    if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP3)
+    if (!ISPTR(r) || !fpr_in_heap(r) || TID(r) != T_TUP3)
       fpr_cpanic("Sys.loopWith: a step must return (continue, state, vector)");
     V go = *(V *)((char *)r + 8);
     V nx = *(V *)((char *)r + 8 + sizeof(uw));
@@ -3344,7 +3342,7 @@ static V g_loop_with(V vec, V s, V f) {
     V t = transfer_copy(nx, &scope, "Sys.loopWith: the state may not hold a Vector "
                                     "(thread the one buffer, keep the rest in it)");
     scope_roots_die(&scope);
-    int more = !ISINT(go) && TID(go) == T_BOOL && ((hdr_t *)go)->var == 1;
+    int more = BOOL_VAL(go);
     arena_reset(&ap);
     transfer_retire(&scope);
     state = scope.held = t;
@@ -3683,7 +3681,7 @@ void fpr_arc_teardown_pool(fpr_pool_t *pool) {
  * free cell lives in a slab this walk just recycled or orphaned. */
 static V g_poolReset(V u) {
   (void)u;
-  if (fpr_plane_memory) { fpr_plane_memory->pool_reset(); return (V)&fpr_unit; }
+  if (fpr_plane_memory) { fpr_plane_memory->pool_reset(); return V_UNIT; }
   fpr_hart_t *h = fpr_hart();
   fpr_pool_t *pool = cur_pool(h);
   fpr_bump_close(h);
@@ -3701,7 +3699,7 @@ static V g_poolReset(V u) {
     if (pool->buckets)
       for (int i = 0; i < FPR_NBUCKETS; i++) pool->buckets[i] = 0;
     fpr_unlock(&arc_lock);
-    return (V)&fpr_unit;
+    return V_UNIT;
   }
   while (sl) {
     fpr_slab_t *nx = sl->next;
@@ -3715,10 +3713,10 @@ static V g_poolReset(V u) {
   if (pool->buckets)
     for (int i = 0; i < FPR_NBUCKETS; i++) pool->buckets[i] = 0;
   fpr_unlock(&arc_lock);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 FPR_FN(fpr_g_Sys_x2epoolReset, g_poolReset, 1);
-void fpr_pool_reset_c(void) { g_poolReset((V)&fpr_unit); }
+void fpr_pool_reset_c(void) { g_poolReset(V_UNIT); }
 uw fpr_arc_live_count(void) { return arc_live; }
 
 /* sendArc's promotion (actors.c): count = HOLDERS.  A value with no
@@ -3899,7 +3897,7 @@ static V g_drop(V v) {
 #else
   fpr_arc_decref(v);
 #endif
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 
 /* There are exactly 256 one-byte Strings. Like a string literal, each is an
@@ -3977,7 +3975,7 @@ static str_t *want_str(V v, const char *who) {
   if (ISINT(v) || TID(v) != T_STR) fpr_trap(who);
   return (str_t *)v;
 }
-static int is_cons(V v) { return !ISINT(v) && TID(v) == T_LIST && ((hdr_t *)v)->var == 1; }
+static int is_cons(V v) { return ISPTR(v) && TID(v) == T_LIST && ((hdr_t *)v)->var == 1; }
 static V g_strJoin(V sepv, V list) {
   str_t *sep = want_str(sepv, "strJoin: the separator is not a String");
   uw total = 0, n = 0;
@@ -4206,9 +4204,9 @@ static V g_strDigits(V sv, V iv, V nv) {
  * empty maps all carry).  Anything else answers False, and the caller takes
  * its general path. */
 static V g_fn_is(V f, V g) {
-  if (ISINT(f) || ISINT(g) || !f || !g || TID(f) != T_PAP || TID(g) != T_PAP) return (V)&fpr_false;
+  if (ISINT(f) || ISINT(g) || !f || !g || TID(f) != T_PAP || TID(g) != T_PAP) return V_FALSE;
   pap_t *a = (pap_t *)f, *b = (pap_t *)g;
-  return a->fn == b->fn && a->nargs == 0 && b->nargs == 0 && a->arity == b->arity ? (V)&fpr_true : (V)&fpr_false;
+  return a->fn == b->fn && a->nargs == 0 && b->nargs == 0 && a->arity == b->arity ? V_TRUE : V_FALSE;
 }
 /* ---- nodeGet / nodeWith / nodeSet: a constructor cell read and written
  * by field NUMBER (std/hashmap's trie node: sixteen children, the one to
@@ -4466,6 +4464,7 @@ static V callf(uw fn, uw ar, V *a) {
 
 V fpr_apply(V f, V a) {
   if (ISINT(f)) fpr_trap("apply: applied an integer");
+  if (!ISPTR(f)) fpr_trap("apply: not a function value");
   pap_t *p = (pap_t *)f;
   if (p->tid != T_PAP) fpr_trap("apply: not a function value");
   uw n = p->nargs;
@@ -4700,6 +4699,7 @@ V fpr_applyN(V f, uw n, V *rargs) {
 #define RARG(i) (rargs[(16 / sizeof(uw)) * (n - 1 - (i))]) /* 16-byte push stride */
   for (;;) {
     if (ISINT(f)) fpr_trap("apply: applied an integer");
+    if (!ISPTR(f)) fpr_trap("apply: not a function value");
     pap_t *p = (pap_t *)f;
     if (p->tid != T_PAP) fpr_trap("apply: not a function value");
     uw have = p->nargs, need = p->arity - have;
@@ -4733,7 +4733,7 @@ FPR_FN(fpr_g_Sys_x2eharts, g_sys_harts, 1);
 
 int fpr_list_ints(V list, uw *out, uw n) {
   for (uw i = 0; i < n; i++) {
-    if (ISINT(list) || !list) return 0;
+    if (!ISPTR(list)) return 0;
     hdr_t *c = (hdr_t *)list;
     if (c->tid != T_LIST || c->var != 1) return 0; /* Nil before n, or not a list */
     V *f = (V *)((char *)c + 8);
@@ -4924,7 +4924,7 @@ extern char fpr_builtin_field_kind(V,uw);
 #endif
 /* one pair, without descending: 0 differ, 1 equal, 2 compare the fields */
 static int veq_shallow(V a, V b) {
-  if (ISINT(a) || ISINT(b)) return a == b;
+  if (ISINT(a) || ISINT(b) || ISIMM(a) || ISIMM(b)) return a == b;
   /* IEEE equality also applies when both references name the same NaN. */
   if (a && b && TID(a) == T_BITS && TID(b) == T_BITS &&
       ((hdr_t *)a)->var == ((hdr_t *)b)->var) {
@@ -5195,6 +5195,7 @@ static void renderArg(V obj, int i) {
   else
 #endif
   if (ISINT(f)) paren = UNTAG(f) < 0;
+  else if (ISIMM(f)) paren = 0;
   else {
     hdr_t *fh = (hdr_t *)f;
     const fpr_con_t *c = fh->tid >= 0x20000000u ? con_find(fh->tid, fh->var) : 0;
@@ -5213,6 +5214,16 @@ static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
 }
 static void render(V v) {
   if (ISINT(v)) { rdec(UNTAG(v)); return; }
+  if (ISIMM(v)) {
+    switch (IMM_CODE(v)) {
+      case IMM_UNIT: remits("()"); return;
+      case IMM_BOOL: remits(IMM_PAYLOAD(v) ? "True" : "False"); return;
+      case IMM_NIL:  remits("[]"); return;
+      case IMM_NONE: remits("None"); return;
+      case IMM_BYTE: rdec((sw)IMM_PAYLOAD(v)); return;
+      default: remits("<imm>"); return;
+    }
+  }
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_STR: {
@@ -5230,7 +5241,7 @@ static void render(V v) {
         V *cf = (V *)((char *)c + 8);
         renderField(c,0);
         c = cf[1];
-        if (ISINT(c) || ((hdr_t *)c)->tid != T_LIST || ((hdr_t *)c)->var != 1) break;
+        if (!ISPTR(c) || ((hdr_t *)c)->tid != T_LIST || ((hdr_t *)c)->var != 1) break;
         remits(", ");
       }
       remit(']');
@@ -5469,10 +5480,10 @@ static V g_logStage(V sevv, V sv) {
   if (ISINT(sv) || TID(sv) != T_STR) fpr_trap("Sys.logStage: not a String");
   str_t *t = (str_t *)sv;
   fpr_logput((int)UNTAG(sevv), (const char *)t->bytes, t->len);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 
-const hdr_t fpr_list_nil = {T_LIST, 0};
+/* List Nil is the 010 immediate V_NIL (fpr.h). */
 
 static V log_tup2(V a, V b) {
   hdr_t *t = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
@@ -5490,7 +5501,7 @@ static V g_logStaged(V u) {
   (void)u;
   fpr_confined_refuse("Sys.logStaged (the system log)");
   static const struct { hdr_t hdr; V dropped, entries; } empty = {
-    {T_TUP2, 0}, TAG(0), (V)&fpr_list_nil
+    {T_TUP2, 0}, TAG(0), V_NIL
   };
   unsigned char *buf = 0;
   uw n, dropped, cap = 0;
@@ -5515,7 +5526,7 @@ static V g_logStaged(V u) {
     if (buf) fpr_free_raw((V)buf);
     return (V)&empty;
   }
-  V list = (V)&fpr_list_nil;
+  V list = V_NIL;
   for (uw at = 0; at < n;) { /* oldest first, consed: the head is newest */
     uw len = (uw)buf[at + 1] | (uw)buf[at + 2] << 8 | (uw)buf[at + 3] << 16 | (uw)buf[at + 4] << 24;
     V line = (V)fpr_mkstr(buf + at + STAGE_HDR, len);
@@ -5538,7 +5549,7 @@ static V g_logInstall(V av) {
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("Sys.logInstall: not an actor");
   V none = 0;
   return __atomic_compare_exchange_n(&log_actor, &none, av, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
-             ? (V)&fpr_true : (V)&fpr_false;
+             ? V_TRUE : V_FALSE;
 }
 /* a confined process holds no system actor: it is shown a log actor that
  * has ended, and the prelude's `log` then takes C's way -- the line is
@@ -5578,7 +5589,7 @@ static V g_meminfo(V u) {
   (void)u;
   /* build the cells FIRST: the list itself may be the caller's first
    * allocation, and the numbers should include the slab that costs */
-  V list = (V)&fpr_list_nil;
+  V list = V_NIL;
   V *cells[8];
   for (int i = 7; i >= 0; i--) {
     V *cell = (V *)fpr_alloc(sizeof(hdr_t) + 2 * sizeof(V));
@@ -5604,7 +5615,7 @@ FPR_FN(fpr_g_Sys_x2ememInfo, g_meminfo, 1);
  * slot (seq changed while copying) is skipped rather than lied about. */
 static V g_growlog(V u) {
   (void)u;
-  V list = (V)&fpr_list_nil;
+  V list = V_NIL;
   uw newest = __atomic_load_n(&fpr_grow_count, __ATOMIC_RELAXED);
   uw have = newest < GROWLOG_N ? newest : GROWLOG_N;
   /* build oldest -> newest by consing, so the head is newest */
@@ -5670,7 +5681,7 @@ V fpr_prim_fn_print(V v) {
   hal_console_bytes(out, n);
   hal_putc('\n');
   fpr_unlock(&fpr_con_lock);
-  return (V)&fpr_unit;
+  return V_UNIT;
 }
 
 /* String.len -- mangled: '.' = _x2e */
@@ -5685,7 +5696,7 @@ V fpr_prim_fn__x21(V xs, V iv) {
   sw i = UNTAG(iv);
   V c = xs;
   for (;;) {
-    if (i < 0 || ISINT(c) || TID(c) != T_LIST || ((hdr_t *)c)->var != 1)
+    if (i < 0 || !ISPTR(c) || TID(c) != T_LIST || ((hdr_t *)c)->var != 1)
       fpr_trap_num("!: index out of range (", UNTAG(iv), ")");
     V *f = (V *)((char *)c + 8);
     if (i == 0) return f[0];
@@ -6290,12 +6301,12 @@ static V some_v(V x) {
 }
 static V i64_ofInt(V a) {
   int64_t x;
-  if (!bi_to_i64_checked(a, &x)) return (V)&fpr_none;
+  if (!bi_to_i64_checked(a, &x)) return V_NONE;
   return some_v(vi64(x));
 }
 static V i64_ofIntU(V a) {
   uint64_t x;
-  if (!bi_to_u64_checked(a, &x)) return (V)&fpr_none;
+  if (!bi_to_u64_checked(a, &x)) return V_NONE;
   return some_v(vu64(x));
 }
 static V i64_trunc(V a) { return vu64(bi_trunc_u64(a)); }

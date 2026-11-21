@@ -98,9 +98,8 @@ renderAdapter checked=
     convert reg c=case c of
       WordIdentity->[]
       TagInt->["    slli "++reg++", "++reg++", 1","    ori "++reg++", "++reg++", 1"]
-      BoxBool->["    beqz "++reg++", 1f","    la "++reg++", fpr_true","    j 2f",
-                "1:  la "++reg++", fpr_false","2:"]
-      BoxUnit->["    la "++reg++", fpr_unit"]
+      BoxBool->["    snez "++reg++", "++reg,"    slli "++reg++", "++reg++", 8","    ori "++reg++", "++reg++", 10"]
+      BoxUnit->["    li "++reg++", 2"]
       F64Bits->error "checked RV64 export: floating conversion for a word source"
       F32Bits->error "checked RV64 export: floating conversion for a word source"
       BoxRaw kind | reg=="a0"->["    call "++uniformHelper "Box" kind]
@@ -108,7 +107,7 @@ renderAdapter checked=
     result c=case c of
       ReturnWord->[]
       UntagInt->["    srai a0, a0, 1"]
-      UnboxBool->["    lw a0, 4(a0)"]
+      UnboxBool->["    srai a0, a0, 8"]
       ReturnF64->["    fmv.d.x fa0, a0"]
       ReturnF32->["    fmv.w.x fa0, a0"]
       UnboxRaw kind rest->["    call "++uniformHelper "Unbox" kind]++result rest

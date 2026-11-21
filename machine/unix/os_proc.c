@@ -25,7 +25,7 @@ static V h_run(V argvv, V cwdv, V inv, V envv, V limitv) {
   if (ISINT(inv) || TID(inv) != T_STR) fpr_cpanic("Os.run: stdin is not a String");
   const str_t *in = (const str_t *)inv;
   size_t argc = 0;
-  for (V c = argvv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) argc++;
+  for (V c = argvv; ISPTR(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) argc++;
   if (!argc) return os_err("no program named");
   char **argv = calloc(argc + 1, sizeof *argv);
   if (!argv) fpr_cpanic("out of memory");
@@ -33,7 +33,7 @@ static V h_run(V argvv, V cwdv, V inv, V envv, V limitv) {
   for (V c = argvv; i < argc; c = ((V *)((char *)c + 8))[1]) argv[i++] = os_cstr(((V *)((char *)c + 8))[0], "Os.run: an argument is not a String");
   char *cwd = os_cstr(cwdv, "Os.run: the directory is not a String");
   size_t envc = 0;
-  for (V c = envv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) envc++;
+  for (V c = envv; ISPTR(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) envc++;
   char **envs = calloc(envc + 1, sizeof *envs);
   if (!envs) fpr_cpanic("out of memory");
   { size_t k = 0; for (V c = envv; k < envc; c = ((V *)((char *)c + 8))[1]) envs[k++] = os_cstr(((V *)((char *)c + 8))[0], "Os.run: an environment entry is not a String"); }
@@ -137,7 +137,7 @@ static void clean_for_exec(void) {
 
 static V h_exec(V argvv) {
   size_t argc = 0;
-  for (V c = argvv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) argc++;
+  for (V c = argvv; ISPTR(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) argc++;
   if (!argc) return os_err("no program named");
   char **argv = calloc(argc + 1, sizeof *argv);
   if (!argv) fpr_cpanic("out of memory");
