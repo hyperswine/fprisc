@@ -34,6 +34,7 @@
 
 List = use "std/list".
 Map = use "std/map".
+Math = use "std/math".
 O = use "std/option".
 String = use "std/string".
 
@@ -243,10 +244,10 @@ ibin32 IRemU _ 0 = Err divZero.
 ibin32 IRemU a b = Ok (a - (a / b) * b).
 ibin32 IDivS _ 0 = Err divZero.
 ibin32 IDivS a b | a == two31 and b == ones = Err intOverflow.
-ibin32 IDivS a b = Ok (m32 (s32 a / s32 b)).
+ibin32 IDivS a b = Ok (m32 (Math.quot (s32 a) (s32 b))).
 ibin32 IRemS _ 0 = Err divZero.
 ibin32 IRemS _ b | b == ones = Ok 0.
-ibin32 IRemS a b = Ok (m32 (s32 a - (s32 a / s32 b) * s32 b)).
+ibin32 IRemS a b = Ok (m32 (Math.rem (s32 a) (s32 b))).
 ibin32 IAnd a b = Ok (band a b).
 ibin32 IOr a b = Ok (bor a b).
 ibin32 IXor a b = Ok (bxor a b).
@@ -313,9 +314,9 @@ ibin64 IRemU _ b | b == zero64 = Err divZero.
 ibin64 IRemU a b = Ok (I64.remU a b).
 ibin64 IDivS _ b | b == zero64 = Err divZero.
 ibin64 IDivS a b | a == minS64 and b == allOnes64 = Err intOverflow.
-ibin64 IDivS a b = Ok (a / b).
+ibin64 IDivS a b = Ok (I64.quot a b).
 ibin64 IRemS _ b | b == zero64 = Err divZero.
-ibin64 IRemS a b = Ok (a % b).
+ibin64 IRemS a b = Ok (I64.rem a b).
 ibin64 IAnd a b = Ok (I64.and a b).
 ibin64 IOr a b = Ok (I64.or a b).
 ibin64 IXor a b = Ok (I64.xor a b).

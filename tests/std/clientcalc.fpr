@@ -21,6 +21,8 @@ positive = C.Not negative.
 expressions =
   [C.Quot (C.Literal (0 - 7)) (C.Literal 3),
    C.Rem (C.Literal (0 - 7)) (C.Literal 3),
+   C.Mod (C.Literal (0 - 7)) (C.Literal 3),
+   C.Mod (C.Literal 7) (C.Literal (0 - 3)),
    C.Add (C.Literal 9007199254740993) (C.Literal 2),
    C.Sub (C.Literal (intMin Unit)) (C.Literal 0),
    C.IfInt negative (C.Literal 7) bad].
@@ -50,6 +52,7 @@ main = case P.args Unit of
   | _ ->
       _ = check "negative quotient/remainder" (int (C.Quot (C.Literal (0 - 7)) (C.Literal 3)) == (0 - 2));
       _ = check "remainder sign" (int (C.Rem (C.Literal (0 - 7)) (C.Literal 3)) == (0 - 1));
+      _ = check "floored mod" (int (C.Mod (C.Literal (0 - 7)) (C.Literal 3)) == 2 and int (C.Mod (C.Literal 7) (C.Literal (0 - 3))) == (0 - 2));
       _ = check "money" (M.format (0 - 101) == "-1.01" and M.format 9 == "0.09");
       _ = check "minimum Int money" (M.format (intMin Unit) == "-46116860184273879.04");
       _ = check "half cent rounds up" (M.tax 5 1000 == 1 and M.tax 4 1000 == 0);

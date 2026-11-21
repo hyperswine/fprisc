@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 257 -- guard-clause accumulators build front to back: Trmc reads guard-only clauses as if-chains (256: C9: hosted x86-64 shallow leaves by default (255: C9 stage 2: hosted x86-64 spill moves, cold-call saves, move hints, the lean tick (254: C9 stage 1: hosted x86-64 frames (entry args, entry split, shrink-wrapped saves, short epilogue, live-set equality slow paths).)))
+codegenRev = 258 -- v1.0 floored Int/I64/I32 division and modulo, wrapping min / -1 (257: guard-clause accumulators build front to back)
 -- 253 merge of main's raw I64 locals (251) into the x64 closure fast path (252).
 -- 220 Forward range/map fusion.
 -- 219 -- QOS app images take the receive-loop form; slot-carried small messages (218: weighted ticks: a tick charges the worst-case instruction count of the code it covers 217: early IR loops and String-scan versioning (several strings) by default; raw loop-carried Ints (216: A64 compare-and-branch, one-word String guard))

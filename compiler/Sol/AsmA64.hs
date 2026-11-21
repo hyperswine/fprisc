@@ -96,10 +96,13 @@ opFrag f = \case
       AddI -> [0x8B010000] -- add x0,x0,x1
       SubI -> [0xCB010000]
       MulI -> [0x9B017C00] -- madd x0,x0,x1,xzr
-      DivI -> -- cbnz x1, ok; poison the fuel cell, x0 = 0; b done; ok: sdiv x0,x0,x1
+      DivI -> -- cbnz x1, ok; poison the fuel cell, x0 = 0; b done; ok: floored div
         let poison = movImm64 0 fuelPoison
-            skip = fromIntegral (length poison + 4) -- words from the cbnz to the sdiv
-         in [0xB5000001 .|. (skip `shiftL` 5)] ++ poison ++ [strX 0 19, 0xD2800000, 0x14000002, 0x9AC10C00]
+            skip = fromIntegral (length poison + 4) -- words from the cbnz to ok
+         in [0xB5000001 .|. (skip `shiftL` 5)]
+              ++ poison
+              ++ [strX 0 19, 0xD2800000, 0x14000008]
+              ++ [0x9AC10C02, 0x9B018040, 0xB4000080, 0xCA010009, 0xB6F80049, subImm 2 2 1, 0xAA0203E0]
       AddD -> fop 0x1E612800
       SubD -> fop 0x1E613800
       MulD -> fop 0x1E610800

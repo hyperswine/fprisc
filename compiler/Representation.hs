@@ -305,6 +305,8 @@ primitiveShape n = M.lookup n shapes
                      "-",
                      "*",
                      "/",
+                     "mod",
+                     "quot",
                      "rem",
                      "divU",
                      "remU",

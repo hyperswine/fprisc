@@ -62,7 +62,7 @@ Int = Struct Arith Eq Ord {
   abs = fn a -> case a < 0 of True -> 0 - a | False -> a,
   min = fn a b -> case a < b of True -> a | False -> b,
   max = fn a b -> case a > b of True -> a | False -> b,
-  mod = fn a b -> a - (a / b) * b,
+  mod = fn a b -> q = a / b; case q < 0 of True -> (a - (q + 1) * b) + b | False -> a - q * b,
   neg = fn a -> 0 - a,
   pow = fn a n -> intPow a n
 }.
@@ -95,7 +95,7 @@ wireDigits s i acc neg = case i >= strlen s of
         True -> Ok acc
       | False -> (case acc == intMin Unit of True -> Err "out of range" | False -> Ok (0 - acc)))
   | False -> (case charAt s i >= 48 and charAt s i <= 57 of
-      True -> (case acc < (intMin Unit + (charAt s i - 48)) / 10 of
+      True -> (case acc < (intMin Unit + (charAt s i - 48) + 9) / 10 of
           True -> Err "out of range"
         | False -> wireDigits s (i + 1) (acc * 10 - (charAt s i - 48)) neg)
     | False -> Err "not a number").

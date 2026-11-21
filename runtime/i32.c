@@ -16,7 +16,23 @@ static V mul(V a,V b) { return fpr_i32_pack(fpr_i32_bits(a)*fpr_i32_bits(b)); }
 static V divs(V a,V b) {
   int32_t x=s32(a),y=s32(b);
   if (!y) fpr_trap("I32: division by zero");
-  if (x==INT32_MIN && y==-1) fpr_trap("I32: division overflow (INT32_MIN / -1)");
+  if (x==INT32_MIN && y==-1) return fpr_i32_pack((uint32_t)INT32_MIN);
+  int32_t q=x/y, r=x%y;
+  if (r!=0 && ((r<0)!=(y<0))) q-=1;
+  return fpr_i32_pack((uint32_t)q);
+}
+static V mods(V a,V b) {
+  int32_t x=s32(a),y=s32(b);
+  if (!y) fpr_trap("I32: division by zero");
+  if (y==-1) return fpr_i32_pack(0);
+  int32_t r=x%y;
+  if (r!=0 && ((r<0)!=(y<0))) r+=y;
+  return fpr_i32_pack((uint32_t)r);
+}
+static V quots(V a,V b) {
+  int32_t x=s32(a),y=s32(b);
+  if (!y) fpr_trap("I32: division by zero");
+  if (x==INT32_MIN && y==-1) return fpr_i32_pack((uint32_t)INT32_MIN);
   return fpr_i32_pack((uint32_t)(x/y));
 }
 static V rems(V a,V b) {
@@ -143,6 +159,7 @@ static V parse(V value) {
 
 FPR_FN(fpr_g_I32_x2e_x2b,add,2); FPR_FN(fpr_g_I32_x2e_x2d,sub,2);
 FPR_FN(fpr_g_I32_x2e_x2a,mul,2); FPR_FN(fpr_g_I32_x2e_x2f,divs,2);
+FPR_FN(fpr_g_I32_x2emod,mods,2); FPR_FN(fpr_g_I32_x2equot,quots,2);
 FPR_FN(fpr_g_I32_x2erem,rems,2); FPR_FN(fpr_g_I32_x2edivU,divu,2); FPR_FN(fpr_g_I32_x2eremU,remu,2);
 FPR_FN(fpr_g_I32_x2e_x3c,lt,2); FPR_FN(fpr_g_I32_x2e_x3e,gt,2);
 FPR_FN(fpr_g_I32_x2e_x3c_x3d,le,2); FPR_FN(fpr_g_I32_x2e_x3e_x3d,ge,2);

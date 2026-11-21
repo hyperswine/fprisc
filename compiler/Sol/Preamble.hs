@@ -240,11 +240,10 @@ prelude =
       "StreamOps = Sig { filter : (a -> Bool) -> t a -> t a, fold : (b -> a -> b) -> b -> t a -> b, find : (a -> Bool) -> t a -> t a, any : (a -> Bool) -> t a -> Bool, all : (a -> Bool) -> t a -> Bool }.",
       -- ---- Int: the operator globals `%` and `^` resolve to.  In Sol the
       -- surface number is Int (VNum underneath), so these serve floats too:
-      -- % is the truncated remainder (C, RISC-V rem), ^ is exponentiation
-      -- by squaring for an integer exponent (negative -> inexact
-      -- reciprocal); a fractional exponent is refused by name.
+      -- % is floored modulo (D5/D8), ^ is exponentiation by squaring for an
+      -- integer exponent; a fractional exponent is refused by name.
       "Int = Struct {",
-      "  mod = fn a b -> a - Int.trunc (a / b) * b,",
+      "  mod = fn a b -> a - Num.floor (a / b) * b,",
       "  trunc = fn x -> case x < 0 of True -> 0 - Num.floor (0 - x) | False -> Num.floor x,",
       "  sq = fn a -> a * a,",
       "  pow = fn a n -> case n != Num.floor n of True -> error \"(^): the exponent is not an integer\" | False -> (case n < 0 of True -> error \"(^): negative exponent; the inexact reciprocal is Num.div 1 (a ^ n)\" | False -> Int.powGo a n),",

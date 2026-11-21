@@ -1,16 +1,17 @@
 # Small, pure client computations (ExtBase). These values can be evaluated
 # natively or lowered to JavaScript. No raw-code constructor is provided.
 # JavaScript uses checked BigInt arithmetic with this target's Int bounds,
-# including truncation toward zero and a check after EACH operation.
+# with Quot/Rem truncated toward zero, Mod floored, and a check after EACH operation.
 S = use "string".
 J = use "json".
 L = use "list".
+M = use "math".
 O = use "order".
 Opt = use "option".
 
 IntExpr = Type (Literal Int | Number String | Add IntExpr IntExpr |
   Sub IntExpr IntExpr | Mul IntExpr IntExpr | Quot IntExpr IntExpr |
-  Rem IntExpr IntExpr | IfInt BoolExpr IntExpr IntExpr |
+  Rem IntExpr IntExpr | Mod IntExpr IntExpr | IfInt BoolExpr IntExpr IntExpr |
   Length IntListExpr | Sum IntListExpr | Maximum IntListExpr IntExpr |
   At IntListExpr IntExpr | TextLength TextListExpr).
 BoolExpr = Type (Equal IntExpr IntExpr | Less IntExpr IntExpr |
@@ -66,8 +67,9 @@ intGo env e = case e of
   | Add a b -> intGo env a + intGo env b
   | Sub a b -> intGo env a - intGo env b
   | Mul a b -> intGo env a * intGo env b
-  | Quot a b -> intGo env a / intGo env b
-  | Rem a b -> intGo env a % intGo env b
+  | Quot a b -> M.quot (intGo env a) (intGo env b)
+  | Rem a b -> M.rem (intGo env a) (intGo env b)
+  | Mod a b -> intGo env a % intGo env b
   | IfInt p a b -> if boolGo env p then intGo env a else intGo env b
   | Length xs -> L.length (listGo env xs)
   | Sum xs -> L.sum (listGo env xs)
@@ -151,6 +153,7 @@ astInt e = case e of
   | Mul a b -> arithmetic JS.Multiply (astInt a) (astInt b)
   | Quot a b -> arithmetic JS.Divide (astInt a) (astInt b)
   | Rem a b -> arithmetic JS.Modulo (astInt a) (astInt b)
+  | Mod a b -> JS.Call (JS.Function ["a", "b"] [JS.Return (checked (JS.Binary JS.Modulo (JS.Binary JS.Add (JS.Binary JS.Modulo (n "a") (n "b")) (n "b")) (n "b")))]) [astInt a, astInt b]
   | IfInt p a b -> JS.Choose (astBool p) (astInt a) (astInt b)
   | Length xs -> checked (call "BigInt" [JS.Field (astList xs) "length"])
   | TextLength xs -> checked (call "BigInt" [JS.Field (astTexts xs) "length"])

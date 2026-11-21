@@ -37,21 +37,36 @@ sign n | n < 0 = 0 - 1.
 sign n | n == 0 = 0.
 sign _ = 1.
 
-# the remainder with the sign of the DIVISOR (so `mod (0 - 1) 12` is 11)
+# the remainder with the sign of the DIVISOR (so `mod (0 - 1) 12` is 11);
+# matches `/` and `%` (floored, D5/D8). Avoids q * b overflow when a is near intMin/intMax.
 mod : Int -> (b : Int | b != 0) -> Int
-  | work mod <= 20 | alloc mod <= 32 .
+  | work mod <= 14 | alloc mod <= 16 .
 mod a b =
-  r = a - (a / b) * b;
-  if r != 0 and ((r < 0) != (b < 0)) then r + b else r.
+  q = a / b;
+  if q < 0 then (a - (q + 1) * b) + b else a - q * b.
 
-# the remainder with the sign of the dividend, as `/` truncates
+# the truncated quotient (toward zero, D8): `quot (0 - 7) 2 == -3`
+quot : Int -> (b : Int | b != 0) -> Int
+  | work quot <= 20 | alloc quot <= 32 .
+quot a b =
+  q = a / b;
+  if q < 0 then (if (a - (q + 1) * b) + b == 0 then q else q + 1) else q.
+
+# the truncated remainder (sign of the dividend, D8): `rem (0 - 7) 2 == -1`
+remNeg : Int -> Int -> Int -> Int
+  | work remNeg <= 10 | alloc remNeg <= 16 .
+remNeg a b q =
+  r0 = a - (q + 1) * b;
+  if r0 + b == 0 then 0 else r0.
 rem : Int -> (b : Int | b != 0) -> Int
-  | work rem <= 6 | alloc rem <= 0 .
-rem a b = a - (a / b) * b.
+  | work rem <= 20 | alloc rem <= 32 .
+rem a b =
+  q = a / b;
+  if q < 0 then remNeg a b q else a - q * b.
 
 isEven : Int -> Bool
   | work isEven <= 10 | alloc isEven <= 16 .
-isEven n = rem n 2 == 0.
+isEven n = n - (n / 2) * 2 == 0.
 
 gcd : Int -> Int -> Int .
 gcd a b = gcdGo (abs a) (abs b).

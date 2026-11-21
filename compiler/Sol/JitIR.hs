@@ -70,7 +70,7 @@ data Op
   | SetLocal Int -- pop -> slot i
   | LoadIx -- pop idx, pop base; push mem[base + 8*idx]
   | StoreIx -- pop idx, pop base, pop val; mem[base + 8*idx] = val
-  | Bin BinOp -- pop b, pop a; push a op b   (DivI is quot: trunc toward 0)
+  | Bin BinOp -- pop b, pop a; push a op b   (DivI is floored div toward -inf)
   | Cmp Ty CC -- pop b, pop a; push (a cc b) as 0/1
   | IToD -- pop i64; push f64 bits (exact int -> inexact, sitofp)
   | DToI -- pop f64 bits; push i64 (truncating fptosi; used after floor/rint)

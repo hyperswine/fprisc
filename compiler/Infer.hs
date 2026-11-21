@@ -696,6 +696,8 @@ builtinEnv =
       ("I32.strU", mono (TFn tI32 tStr)),
       ("I32.hex", mono (TFn tI32 tStr)),
       ("I32.parse", mono (TFn tStr (tcon "Result" [tI32, tStr]))),
+      ("I32.mod", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32.quot", mono (TFn tI32 (TFn tI32 tI32))),
       ("I32.rem", mono (TFn tI32 (TFn tI32 tI32))),
       ("I32.divU", mono (TFn tI32 (TFn tI32 tI32))),
       ("I32.remU", mono (TFn tI32 (TFn tI32 tI32))),
@@ -735,6 +737,8 @@ builtinEnv =
       ("I64.strU", mono (TFn tI64 tStr)),
       ("I64.hex", mono (TFn tI64 tStr)),
       ("I64.parse", mono (TFn tStr (tcon "Result" [tI64, tStr]))),
+      ("I64.mod", mono (TFn tI64 (TFn tI64 tI64))),
+      ("I64.quot", mono (TFn tI64 (TFn tI64 tI64))),
       ("I64.rem", mono (TFn tI64 (TFn tI64 tI64))),
       ("I64.divU", mono (TFn tI64 (TFn tI64 tI64))),
       ("I64.remU", mono (TFn tI64 (TFn tI64 tI64))),
@@ -1617,11 +1621,11 @@ resolveSites prof sigs env = do
                  | otherwise -> pure (OpPrim ("F64." ++ op))
         TC "F32" | op `elem` ["%", "^"] -> OpPrim op <$ report ("(" ++ op ++ ") is not defined for F32")
                  | otherwise -> pure (OpPrim ("F32." ++ op))
-        -- % is C's remainder (the sign of the dividend), as I64.rem
-        TC "I64" | op == "%" -> pure (OpPrim "I64.rem")
+        -- % is floored modulo, matching Int and Math.mod (I64.rem / I32.rem are truncated)
+        TC "I64" | op == "%" -> pure (OpPrim "I64.mod")
                  | op == "^" -> OpPrim op <$ report "(^) is not defined for I64"
                  | otherwise -> pure (OpPrim ("I64." ++ op))
-        TC "I32" | op == "%" -> pure (OpPrim "I32.rem")
+        TC "I32" | op == "%" -> pure (OpPrim "I32.mod")
                  | op == "^" -> OpPrim op <$ report "(^) is not defined for I32"
                  | otherwise -> pure (OpPrim ("I32." ++ op))
         TC "String"

@@ -648,7 +648,7 @@ selectInstr cfg immediates (Instr d op) = case op of
     Add -> emitI (rrr A.Add r (vreg a) (vreg b))
     Sub -> emitI (rrr A.Subtract r (vreg a) (vreg b))
     Mul -> emitI (rrr A.Multiply r (vreg a) (vreg b))
-    Div -> emitI (rrr A.Divide r (vreg a) (vreg b)))
+    Div -> floorDiv r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
   OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> A.And; BOr -> A.Or; BXor -> A.Xor) r (vreg a) (vreg b)))
   -- I64 on the raw words: the machine's own wrapping instruction
@@ -848,7 +848,7 @@ selectInstr cfg immediates (Instr d op) = case op of
           fit t slow
         Div -> do
           emitI (cbz b slow)
-          emitI (rrr A.Divide t a b)
+          floorDiv t a b
           fit t slow
       emitI (mov r t)
       emitI (jump done)
@@ -875,6 +875,25 @@ selectInstr cfg immediates (Instr d op) = case op of
         trapPrim (primSymbol o) [ta', tb']
         emitI (li r 0)
       emitL done
+    -- Floored signed division: sdiv truncates toward zero, so when the
+    -- remainder r = a - q * b is nonzero and has opposite sign to b (r ^ b < 0),
+    -- adjust q = q - 1.
+    floorDiv t a b = do
+      ok <- freshL "fdivok"
+      q <- freshV False
+      p <- freshV False
+      remV <- freshV False
+      xr <- freshV False
+      emitI (rrr A.Divide q a b)
+      emitI (mov t q)
+      emitI (rrr A.Multiply p q b)
+      emitI (rrr A.Subtract remV a p)
+      emitI (cbz remV ok)
+      emitI (rrr A.Xor xr remV b)
+      emitI (cmpi xr 0)
+      emitI (bcond O.GreaterEqual ok)
+      emitI (rri A.SubtractImmediate t q 1)
+      emitL ok
     -- the 63-bit fit check: sign-extend the low 63 bits and compare
     fit t slow = do
       n <- freshV False

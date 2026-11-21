@@ -4843,9 +4843,11 @@ V fpr_prim_fn__x2a(V a, V b) {
 V fpr_prim_fn__x2f(V a, V b) {
   sw x = UNTAG(a), y = UNTAG(b);
   if (y == 0) fpr_trap("division by zero");
-  sw r = x / y; /* the one overflow: the most negative Int / -1 */
-  if (!fits_int(r)) int_overflow("/", x, y);
-  return TAG(r);
+  sw q = x / y;
+  sw rem = x % y;
+  if (rem != 0 && ((rem < 0) != (y < 0))) q -= 1;
+  if (!fits_int(q)) int_overflow("/", x, y);
+  return TAG(q);
 }
 V fpr_prim_fn__x3c(V a, V b) { return BOOL(UNTAG(a) < UNTAG(b)); }
 V fpr_prim_fn__x3e(V a, V b) { return BOOL(UNTAG(a) > UNTAG(b)); }
@@ -6148,9 +6150,26 @@ static V i64_add(V a, V b) { return vu64(u64(a) + u64(b)); }
 static V i64_sub(V a, V b) { return vu64(u64(a) - u64(b)); }
 static V i64_mul(V a, V b) { return vu64(u64(a) * u64(b)); }
 static V i64_div(V a, V b) {
-  if (i64(b) == 0) fpr_trap("I64: division by zero");
-  if (i64(a) == INT64_MIN && i64(b) == -1) fpr_trap("I64: division overflow (INT64_MIN / -1)");
-  return vi64(i64(a) / i64(b));
+  int64_t x = i64(a), y = i64(b);
+  if (y == 0) fpr_trap("I64: division by zero");
+  if (x == INT64_MIN && y == -1) return vi64(INT64_MIN);
+  int64_t q = x / y, r = x % y;
+  if (r != 0 && ((r < 0) != (y < 0))) q -= 1;
+  return vi64(q);
+}
+static V i64_mod(V a, V b) {
+  int64_t x = i64(a), y = i64(b);
+  if (y == 0) fpr_trap("I64: division by zero");
+  if (y == -1) return vi64(0);
+  int64_t r = x % y;
+  if (r != 0 && ((r < 0) != (y < 0))) r += y;
+  return vi64(r);
+}
+static V i64_quot(V a, V b) {
+  int64_t x = i64(a), y = i64(b);
+  if (y == 0) fpr_trap("I64: division by zero");
+  if (x == INT64_MIN && y == -1) return vi64(INT64_MIN);
+  return vi64(x / y);
 }
 /* the C remainder: its sign is the dividend's; INT64_MIN rem -1 is 0 */
 static V i64_rem(V a, V b) {
@@ -6339,6 +6358,8 @@ FPR_FN(fpr_g_I64_x2e_x2b, i64_add, 2);
 FPR_FN(fpr_g_I64_x2e_x2d, i64_sub, 2);
 FPR_FN(fpr_g_I64_x2e_x2a, i64_mul, 2);
 FPR_FN(fpr_g_I64_x2e_x2f, i64_div, 2);
+FPR_FN(fpr_g_I64_x2emod, i64_mod, 2);
+FPR_FN(fpr_g_I64_x2equot, i64_quot, 2);
 FPR_FN(fpr_g_I64_x2erem, i64_rem, 2);
 FPR_FN(fpr_g_I64_x2edivU, i64_divU, 2);
 FPR_FN(fpr_g_I64_x2eremU, i64_remU, 2);

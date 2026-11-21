@@ -569,8 +569,8 @@ foldDivisors fn=fn {fnBlocks=map block (fnBlocks fn)}
     mulOf o=case o of OArith Mul l r -> Just (l,r); OArithU Mul l r -> Just (l,r); _ -> Nothing
     block b=b {bInstrs=map instr (bInstrs b)}
     instr i=case i of
-      Instr d@(Just _) (OArith Div x b) | Just a<-literal x, Just k<-literal b, safe k -> Instr d (OConstInt (a `quot` k))
-      Instr d@(Just _) (OArithU Div x b) | Just a<-literal x, Just k<-literal b, safe k -> Instr d (OConstInt (a `quot` k))
+      Instr d@(Just _) (OArith Div x b) | Just a<-literal x, Just k<-literal b, safe k -> Instr d (OConstInt (a `div` k))
+      Instr d@(Just _) (OArithU Div x b) | Just a<-literal x, Just k<-literal b, safe k -> Instr d (OConstInt (a `div` k))
       Instr d@(Just _) (OArith Div x b) | Just k<-literal b, safe k -> Instr d (OArithU Div x b)
       Instr d@(Just (v,_)) (OArith Mul l r) | Just _<-product' v -> Instr d (OArithU Mul l r)
       Instr d@(Just _) (OArith Sub x p) | Just x'<-product' p, x'==x -> Instr d (OArithU Sub x p)

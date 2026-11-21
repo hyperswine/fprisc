@@ -179,7 +179,17 @@ arith w kernel op d x y = do
     Div -> do
       isZero <- fresh; z <- fresh; li z 0
       rr (R.Compare Eq) isZero y z; branch isZero (if kernel then zero else slow)
+      ok <- freshLabel
+      p <- fresh; remV <- fresh; xr <- fresh; rZero <- fresh; nonNeg <- fresh; one <- fresh
       rr R.Divide result x y
+      rr R.Multiply p result y
+      rr R.Subtract remV x p
+      rr (R.Compare Eq) rZero remV z; branch rZero ok
+      rr R.Xor xr remV y
+      rr (R.Compare Ge) nonNeg xr z; branch nonNeg ok
+      li one 1
+      rr R.Subtract result result one
+      mark ok
   shifted <- fresh; fit <- fresh
   ri R.ShiftLeftImmediate shifted result 1; ri R.ShiftRightArithmeticImmediate fit shifted 1
   failUnlessEqual fit result

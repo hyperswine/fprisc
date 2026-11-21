@@ -363,9 +363,8 @@ arith op (VInt a) (VInt b) = case op of
   OAdd -> pure (VInt (a + b))
   OSub -> pure (VInt (a - b))
   OMul -> pure (VInt (a * b))
-  -- `quot` (truncate toward zero): matches x86 idiv, A64 sdiv, C, and RISC-V DIV —
-  -- the interpreter follows the hardware, not Haskell's flooring div
-  ODiv -> if b == 0 then vmPanic "division by zero" else pure (VInt (a `quot` b))
+  -- `div` (floored toward -infinity): matches v1.0 spec (D8) across native and Sol
+  ODiv -> if b == 0 then vmPanic "division by zero" else pure (VInt (a `div` b))
   OLt -> pure (vBool (a < b))
   OLe -> pure (vBool (a <= b))
   OGt -> pure (vBool (a > b))

@@ -12,8 +12,8 @@ expect what got want = case got == want of
     True -> print "ok  {what}"
   | False -> error "FAIL {what}: got {got}, wanted {want}".
 
-# ---- numbers: % is the truncated remainder, ^ is exact exponentiation ----
-> expect "% ints"            (7 % 3, -7 % 3, 10 % 5) (1, -1, 0).
+# ---- numbers: % is floored modulo, ^ is exact exponentiation ----
+> expect "% ints"            (7 % 3, -7 % 3, 10 % 5) (1, 2, 0).
 > expect "% inexact"         (7.5 % 2) 1.5.
 > expect "^ exact"           (2 ^ 10, 3 ^ 3, 10 ^ 0, (-2) ^ 3) (1024, 27, 1, -8).
 > expect "^ inexact base"    (2.5 ^ 2) 6.25.

@@ -1020,7 +1020,19 @@ selectInstr cfg facts (Instr d op) = case op of
           fit t slow
         Div -> do
           emitI (cbz b slow)
+          ok <- freshL "fdivok"
+          p <- freshV False
+          remV <- freshV False
+          xr <- freshV False
           emitI (divide t a b)
+          emitI (rrr O.Multiply p t b)
+          emitI (rrr O.Subtract remV a p)
+          emitI (cbz remV ok)
+          emitI (rrr O.Xor xr remV b)
+          emitI (cmpi xr 0)
+          emitI (bcond (cond Ge) ok)
+          emitI (addi t t (-1))
+          emitL ok
           fit t slow
       when (o `elem` [Mul, Div]) $ do
         emitI (mov r t)

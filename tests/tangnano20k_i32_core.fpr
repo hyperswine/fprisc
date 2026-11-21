@@ -24,11 +24,12 @@ run u =
   _ = expect "multiply wrap" (max32 * I32.ofInt 2 == I32.ofInt -2);
   _ = expect "multiply modulo32" (parsed "1073741824" * I32.ofInt 4 == zero);
   _ = expect "ordinary sub" (I32.ofInt 5 - I32.ofInt 7 == I32.ofInt -2);
-  _ = expect "negative div/rem" (I32.ofInt -7 / I32.ofInt 2 == I32.ofInt -3 and I32.ofInt -7 % I32.ofInt 2 == minus1);
-  _ = expect "negative divisor" (I32.ofInt 7 / I32.ofInt -2 == I32.ofInt -3 and I32.ofInt 7 % I32.ofInt -2 == one);
-  _ = expect "both negative" (I32.ofInt -7 / I32.ofInt -2 == I32.ofInt 3 and I32.ofInt -7 % I32.ofInt -2 == minus1);
+  _ = expect "negative div/mod" (I32.ofInt -7 / I32.ofInt 2 == I32.ofInt -4 and I32.ofInt -7 % I32.ofInt 2 == one);
+  _ = expect "negative divisor div/mod" (I32.ofInt 7 / I32.ofInt -2 == I32.ofInt -4 and I32.ofInt 7 % I32.ofInt -2 == minus1);
+  _ = expect "both negative div/mod" (I32.ofInt -7 / I32.ofInt -2 == I32.ofInt 3 and I32.ofInt -7 % I32.ofInt -2 == minus1);
+  _ = expect "truncated quot/rem" (I32.quot (I32.ofInt -7) (I32.ofInt 2) == I32.ofInt -3 and I32.rem (I32.ofInt -7) (I32.ofInt 2) == minus1 and I32.quot (I32.ofInt 7) (I32.ofInt -2) == I32.ofInt -3 and I32.rem (I32.ofInt 7) (I32.ofInt -2) == one);
   _ = expect "minimum divided" (I32.str (min32 / I32.ofInt 2) == "-1073741824");
-  _ = expect "minimum rem -1" (I32.rem min32 minus1 == zero);
+  _ = expect "minimum div/quot/mod/rem -1" (min32 / minus1 == min32 and I32.quot min32 minus1 == min32 and min32 % minus1 == zero and I32.rem min32 minus1 == zero);
   _ = expect "unsigned divide" (I32.divU minus1 (I32.ofInt 2) == max32);
   _ = expect "unsigned remainder" (I32.remU minus1 (I32.ofInt 10) == I32.ofInt 5);
   _ = expect "signed comparisons" (min32 < minus1 and minus1 < zero and max32 > one and min32 <= min32 and max32 >= max32);

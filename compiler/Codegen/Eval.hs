@@ -318,8 +318,7 @@ applyN width program f args = case f of
         if null rest then pure r' else applyN width program r' rest
 
 -- Int + - * / as runtime/runtime.c states them: the result must fit the
--- Int range; / refuses a zero divisor first; division truncates toward
--- zero like the C primitive.
+-- Int range; / refuses a zero divisor first; division is floored (D8).
 arith :: Width -> ArithOp -> Integer -> Integer -> E Integer
 arith width o x y = case o of
   Add -> fit (x + y)
@@ -327,7 +326,7 @@ arith width o x y = case o of
   Mul -> fit (x * y)
   Div
     | y == 0 -> trap "division by zero"
-    | otherwise -> fit (x `quot` y)
+    | otherwise -> fit (x `div` y)
   where
     fit r
       | intFitsWidth width r = pure r
