@@ -1,5 +1,21 @@
 # Compiler source architecture review
 
+> **Status, 2026-11-21.** Commit `d2a07465` resolved findings 2 (the
+> transaction attempt loops unified onto `runTxAttempts` + `TxAttemptConfig`),
+> 4 (`checkedInterface` takes `CompileArguments` directly), 5 (unified cache
+> identity in `Sol/Cache.hs`), 6 (`FPR_TIMINGS` instrumentation in
+> `Compile.hs`), 7 (`Sol.KIR` renamed `Sol.JitIR`), 8 (`deploy/README.md`)
+> and 9 (root relics removed). Finding 10 is partially addressed
+> (`Compile.hs` restructured internally, still 1748 lines); findings 1 (the
+> dual-assembler/JIT decision) and 3 (`Txn.hs` split, 2106 lines) remain
+> open. Verified post-unification on both paths: the script path retries a
+> forced conflict and lands deferred effects exactly once
+> (`tests/procdefer.sol` under `SOL_FORCE_RETRY=1`); the REPL ignores
+> `SOL_FORCE_RETRY` by config gate and commits on attempt 1; the check
+> suite runs 87 PASS with 4 pre-existing representation/ordering failures
+> (`result-sizes`, `layout-raw`, `layout-raw-i64`, `reactor`) unrelated to
+> the transaction machinery.
+
 Date: 2026-11-18. Kind: review. Applies to `main` at `69da12ca` plus the
 uncommitted P2 typed-lowering working tree (that in-flight work is noted,
 not judged). **Method:** a source reading of the module tree, both compile
