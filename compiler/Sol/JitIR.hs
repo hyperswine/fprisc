@@ -30,7 +30,7 @@
 module Sol.JitIR
   ( Ty (..), CC (..), BinOp (..), Op (..), Fn (..), Unit (..), Label,
     LowerEnv (..), VecAcc (..), lowerVariant, lowerDual,
-    driverList, driverVec, driverVecMapR, mangleV, showUnit, fuelPoison, fuelTrap,
+    driverList, driverVec, driverVecMapR, mangleV, showUnit, fuelOverflow, fuelPoison, fuelTrap,
   ) where
 
 import Control.Monad (forM_, when)
@@ -45,6 +45,13 @@ import Sol.JitCore
 import Sol.Lang (Core (..), Name)
 
 type Label = String
+
+-- signed 64-bit integer overflow inside a native kernel: poison the fuel
+-- cell so the VM discards the native result and re-runs the scheme in the
+-- exact arbitrary-precision interpreter. First poison wins (subsequent
+-- poisons do not overwrite an already-poisoned cell).
+fuelOverflow :: Int64
+fuelOverflow = -2305843009213693952 -- -2^61
 
 -- integer division by zero cannot panic from inside native code, so the
 -- kernel POISONS the fuel cell with this value (and yields 0) and the VM

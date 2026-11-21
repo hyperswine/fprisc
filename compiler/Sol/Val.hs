@@ -271,8 +271,11 @@ initialCap = 8
 newVec :: IO Value
 newVec = VVec <$> newIORef (VecStore 0 [] RUnset)
 
+fitsI64Val :: Integer -> Bool
+fitsI64Val x = x >= toInteger (minBound :: Int64) && x <= toInteger (maxBound :: Int64)
+
 kindOf :: Value -> ColKind
-kindOf (VInt _) = KInt
+kindOf (VInt x) = if fitsI64Val x then KInt else KBox
 kindOf (VNum _) = KNum
 kindOf _ = KBox
 
@@ -349,6 +352,33 @@ repFor (VData t 0 fs) | not (null fs), t /= listT, t /= atomT = RSoA t (map kind
 repFor (VData t v fs) | t >= recT0, v == length fs, not (null fs) = RSoA t (map kindOf fs)
 repFor v = RScalar (kindOf v)
 
+-- If an unboxed i64 column receives an exact Integer outside Int64 range,
+-- promote that column to boxed (CB) so no value is silently truncated.
+promoteBignumCols :: VecStore -> [Value] -> IO VecStore
+promoteBignumCols st fs =
+  if any needsBox (zip (vCols st) fs)
+    then do
+      cols' <- mapM (\(c, f) -> if needsBox (c, f) then boxCol (vLen st) c else pure c) (zip (vCols st) fs)
+      let kinds' = map colKind cols'
+          rep' = case vRep st of
+            RScalar _ -> case kinds' of (k : _) -> RScalar k; [] -> RUnset
+            RSoA tid _ -> RSoA tid kinds'
+            RUnset -> RUnset
+      pure st {vCols = cols', vRep = rep'}
+    else pure st
+  where
+    needsBox (CI _ _, VInt x) = not (fitsI64Val x)
+    needsBox _ = False
+    colKind CI {} = KInt
+    colKind CD {} = KNum
+    colKind CB {} = KBox
+    boxCol len (CI cap fp) = do
+      a <- newArray_ (0, cap - 1)
+      withForeignPtr fp $ \p ->
+        mapM_ (\idx -> peekElemOff p idx >>= writeArray a idx . VInt . fromIntegral) [0 .. len - 1]
+      pure (CB cap a)
+    boxCol _ c = pure c
+
 pushVec :: IORef VecStore -> Value -> IO ()
 pushVec ref v = do
   st <- readIORef ref
@@ -364,8 +394,9 @@ pushVec ref v = do
       then do cols' <- mapM (growCol (vLen st1)) (vCols st1); pure st1 {vCols = cols'}
       else pure st1
   fs <- fieldsFor (vRep st2) v
-  mapM_ (\(c, f) -> writeCol c (vLen st2) f) (zip (vCols st2) fs)
-  writeIORef ref st2 {vLen = vLen st2 + 1}
+  st3 <- promoteBignumCols st2 fs
+  mapM_ (\(c, f) -> writeCol c (vLen st3) f) (zip (vCols st3) fs)
+  writeIORef ref st3 {vLen = vLen st3 + 1}
 
 -- O(1) access, 0-indexed internally; RECONSTRUCTS the product from columns
 getVec :: IORef VecStore -> Int -> IO Value
@@ -387,7 +418,9 @@ setVec ref i v = do
     then ioError (userError "*** SOL PANIC: Vec.set: index out of range ***")
     else do
       fs <- fieldsFor (vRep st) v
-      mapM_ (\(c, f) -> writeCol c i f) (zip (vCols st) fs)
+      st' <- promoteBignumCols st fs
+      mapM_ (\(c, f) -> writeCol c i f) (zip (vCols st') fs)
+      writeIORef ref st'
 
 lenVec :: IORef VecStore -> IO Int
 lenVec ref = vLen <$> readIORef ref

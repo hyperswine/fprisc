@@ -121,22 +121,43 @@ opFrag f = \case
   Call l n -> Frag ([0xE8, 0, 0, 0, 0] ++ [0x48, 0x81, 0xC4] ++ imm32 (8 * n) ++ pushRax) [(1, l)]
   Ret -> bytes (popRax ++ epilogue)
   FuelTick -> bytes [0x48, 0x83, 0x2B, 0x01] -- sub qword [rbx], 1
-  Trap -> bytes ([0x48, 0xB8] ++ imm64 fuelTrap ++ [0x48, 0x89, 0x03, 0x6A, 0x00]) -- mov rax,imm64; mov [rbx],rax; push 0
+  Trap -> bytes (poisonIfClear fuelTrap ++ [0x6A, 0x00]) -- poison; push 0
   where
     unD b = bytes (popRax ++ movqXmm0Rax ++ b ++ movqRaxXmm0 ++ pushRax)
+    -- Store pval into [rbx] only if [rbx] > fuelOverflow (first poison wins).
+    -- Clobbers rax, rdx.
+    poisonIfClear pval =
+      let loadVal = [0x48, 0xB8] ++ imm64 pval ++ [0x48, 0x89, 0x03] -- mov rax,pval; mov [rbx],rax
+       in [0x48, 0xBA] ++ imm64 fuelOverflow -- mov rdx,fuelOverflow
+            ++ [0x48, 0x39, 0x13] -- cmp [rbx],rdx
+            ++ [0x7E, fromIntegral (length loadVal)] -- jle skip
+            ++ loadVal
+    ovf = poisonIfClear fuelOverflow
     binOp o = case o of
-      AddI -> [0x4C, 0x01, 0xD8]
-      SubI -> [0x4C, 0x29, 0xD8]
-      MulI -> [0x49, 0x0F, 0xAF, 0xC3]
-      DivI -> -- test r11,r11; jnz ok; poison the fuel cell, rax = 0; jmp done; ok: floored div (with -1 wrap)
-        [0x4D, 0x85, 0xDB, 0x75, 0x11]
-          ++ [0x48, 0xB8] ++ imm64 fuelPoison ++ [0x48, 0x89, 0x03] -- mov rax,imm64; mov [rbx],rax
-          ++ [0x31, 0xC0, 0xEB, 0x1D] -- xor eax,eax; jmp +29
-          ++ [0x49, 0x83, 0xFB, 0xFF, 0x75, 0x05, 0x48, 0xF7, 0xD8, 0xEB, 0x12] -- cmp r11,-1; jne +5; neg rax; jmp +18
-          ++ [0x48, 0x99, 0x49, 0xF7, 0xFB] -- cqo; idiv r11
-          ++ [0x48, 0x85, 0xD2, 0x74, 0x08] -- test rdx,rdx; jz +8
-          ++ [0x4C, 0x31, 0xDA, 0x79, 0x03] -- xor rdx,r11; jns +3
-          ++ [0x48, 0xFF, 0xC8] -- dec rax
+      AddI -> [0x4C, 0x01, 0xD8, 0x71, fromIntegral (length ovf)] ++ ovf -- add rax,r11; jno ok
+      SubI -> [0x4C, 0x29, 0xD8, 0x71, fromIntegral (length ovf)] ++ ovf -- sub rax,r11; jno ok
+      MulI -> [0x49, 0x0F, 0xAF, 0xC3, 0x71, fromIntegral (length ovf)] ++ ovf -- imul rax,r11; jno ok
+      DivI -> -- check r11==0 (fuelPoison), then r11==-1 && rax==INT64_MIN (fuelOverflow), else floored div
+        let pZero = poisonIfClear fuelPoison ++ [0x31, 0xC0] -- poison; xor eax,eax
+            divBody =
+              [0x48, 0x99, 0x49, 0xF7, 0xFB] -- cqo; idiv r11
+                ++ [0x48, 0x85, 0xD2, 0x74, 0x08] -- test rdx,rdx; jz +8
+                ++ [0x4C, 0x31, 0xDA, 0x79, 0x03] -- xor rdx,r11; jns +3
+                ++ [0x48, 0xFF, 0xC8] -- dec rax
+            neg1Body =
+              [0x48, 0xF7, 0xD8] -- neg rax
+                ++ [0x71, fromIntegral (length ovf + 2 + length divBody)] -- jno done
+                ++ ovf
+                ++ [0xEB, fromIntegral (length divBody)] -- jmp done
+            checkNeg1 =
+              [0x49, 0x83, 0xFB, 0xFF] -- cmp r11,-1
+                ++ [0x75, fromIntegral (length neg1Body)] -- jne doDiv
+                ++ neg1Body
+            rest = checkNeg1 ++ divBody
+         in [0x4D, 0x85, 0xDB, 0x75, fromIntegral (length pZero + 2)] -- test r11,r11; jnz checkNeg1
+              ++ pZero
+              ++ [0xEB, fromIntegral (length rest)] -- jmp done
+              ++ rest
       AddD -> fop 0x58
       SubD -> fop 0x5C
       MulD -> fop 0x59

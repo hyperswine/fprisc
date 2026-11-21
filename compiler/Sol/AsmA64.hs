@@ -59,8 +59,27 @@ fmovXD d n = 0x9E660000 .|. fromIntegral (n `shiftL` 5) .|. fromIntegral d
 cset :: Int -> I -> I -- cset x0, cond  (csinc x0, xzr, xzr, !cond)
 cset r cond = 0x9A9F07E0 .|. ((cond .|. 1) - (cond .&. 1)) `shiftL` 12 .|. fromIntegral r
 
-condEQ, condNE, condMI, condLS, condGE, condLT, condGT, condLE :: I
-condEQ = 0; condNE = 1; condMI = 4; condLS = 9; condGE = 10; condLT = 11; condGT = 12; condLE = 13
+condEQ, condNE, condMI, condVS, condVC, condLS, condGE, condLT, condGT, condLE :: I
+condEQ = 0; condNE = 1; condMI = 4; condVS = 6; condVC = 7; condLS = 9; condGE = 10; condLT = 11; condGT = 12; condLE = 13
+
+bCond :: I -> Int -> I -- b.cond #imm19 (word delta)
+bCond cond d = 0x54000000 .|. ((fromIntegral d .&. 0x7FFFF) `shiftL` 5) .|. cond
+
+bUncond :: Int -> I -- b #imm26 (word delta)
+bUncond d = 0x14000000 .|. (fromIntegral d .&. 0x3FFFFFF)
+
+-- Store pval into [x19] only if [x19] > fuelOverflow (first poison wins).
+-- Clobbers x9, x10.
+poisonIfClear :: Int64 -> [I]
+poisonIfClear pval =
+  let loadLim = movImm64 10 fuelOverflow
+      loadVal = movImm64 10 pval
+      skip = length loadVal + 2
+   in [ldrX 9 19]
+        ++ loadLim
+        ++ [0xEB0A013F, bCond condLE skip] -- cmp x9, x10; b.le skip
+        ++ loadVal
+        ++ [strX 10 19]
 
 -- ---- one op -> words with fixups ---------------------------------------------
 data Frag = Frag [I] [(Int, Label, Bool)] -- (word index, label, isCbz)
@@ -89,20 +108,40 @@ opFrag f = \case
   Call l n -> Frag ([0x94000000] ++ addSp (16 * n) ++ [push 0]) [(0, l, False)]
   Ret -> ws (pop 0 : epilogue)
   FuelTick -> ws [ldrX 0 19, subImm 0 0 1, strX 0 19]
-  Trap -> ws (movImm64 0 fuelTrap ++ [strX 0 19, 0xD2800000, push 0]) -- poison; x0 = 0; push
+  Trap -> ws (poisonIfClear fuelTrap ++ [0xD2800000, push 0]) -- poison; x0 = 0; push
   where
     unD i = ws [pop 0, fmovDX 0 0, i, fmovXD 0 0, push 0]
+    ovf = poisonIfClear fuelOverflow
     bin o = case o of
-      AddI -> [0x8B010000] -- add x0,x0,x1
-      SubI -> [0xCB010000]
-      MulI -> [0x9B017C00] -- madd x0,x0,x1,xzr
-      DivI -> -- cbnz x1, ok; poison the fuel cell, x0 = 0; b done; ok: floored div
-        let poison = movImm64 0 fuelPoison
-            skip = fromIntegral (length poison + 4) -- words from the cbnz to ok
-         in [0xB5000001 .|. (skip `shiftL` 5)]
-              ++ poison
-              ++ [strX 0 19, 0xD2800000, 0x14000008]
-              ++ [0x9AC10C02, 0x9B018040, 0xB4000080, 0xCA010009, 0xB6F80049, subImm 2 2 1, 0xAA0203E0]
+      AddI -> [0xAB010000, bCond condVC (length ovf + 1)] ++ ovf -- adds x0,x0,x1; b.vc ok
+      SubI -> [0xEB010000, bCond condVC (length ovf + 1)] ++ ovf -- subs x0,x0,x1; b.vc ok
+      MulI ->
+        [ 0x9B017C02, -- mul x2, x0, x1
+          0x9B417C09, -- smulh x9, x0, x1
+          0xAA0203E0, -- mov x0, x2
+          0x937FFC4A, -- asr x10, x2, #63
+          0xEB0A013F, -- cmp x9, x10
+          bCond condEQ (length ovf + 1)
+        ] ++ ovf
+      DivI -> -- check b==0 (fuelPoison), then b==-1 && a==INT64_MIN (fuelOverflow), else floored div
+        let pZero = poisonIfClear fuelPoison
+            divBody = [0x9AC10C02, 0x9B018040, 0xB4000080, 0xCA010009, 0xB6F80049, subImm 2 2 1, 0xAA0203E0]
+            nDiv = length divBody
+            nOvf = length ovf
+            neg1Block =
+              [ 0xB100043F, -- cmn x1, #1
+                bCond condNE (4 + nOvf),
+                0xEB0003E0, -- negs x0, x0
+                bCond condVC (2 + nOvf + nDiv)
+              ]
+                ++ ovf
+                ++ [bUncond (1 + nDiv)]
+            skipZero = fromIntegral (length pZero + 3) :: I
+         in [0xB5000001 .|. (skipZero `shiftL` 5)]
+              ++ pZero
+              ++ [0xD2800000, bUncond (1 + length neg1Block + nDiv)]
+              ++ neg1Block
+              ++ divBody
       AddD -> fop 0x1E612800
       SubD -> fop 0x1E613800
       MulD -> fop 0x1E610800

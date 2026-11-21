@@ -45,7 +45,7 @@ import Data.Time.Format (formatTime, defaultTimeLocale)
 import System.Environment (lookupEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import Sol.HandJIT
-import Sol.JitIR (fuelPoison, fuelTrap)
+import Sol.JitIR (fuelOverflow, fuelPoison, fuelTrap)
 import Sol.Lang (Name)
 import qualified Sol.Lang as Lang
 import Control.Concurrent (ThreadId, forkIO, killThread, myThreadId, threadDelay)
@@ -820,6 +820,9 @@ b2d = castWord64ToDouble . fromIntegral
 -- classify a list for the typed tier: all-VInt rides as i64s (JI); any
 -- VNum promotes every element to f64 bits — all-VNum is JD, a mixture is
 -- JW (each element COULD have been an Int the interpreter would keep exact)
+fitsI64 :: Integer -> Bool
+fitsI64 i = i >= toInteger (minBound :: Int64) && i <= toInteger (maxBound :: Int64)
+
 toTyped :: Value -> Maybe (JTy, [Int64])
 toTyped v0 = do
   xs <- nums v0
@@ -831,7 +834,7 @@ toTyped v0 = do
   -- computed on zeros (the NN's row lists were the first witness).
   ety <-
     if all isI xs
-      then Just JI
+      then if all fitsInt xs then Just JI else Nothing
       else
         if all isD xs
           then Just JD
@@ -843,6 +846,8 @@ toTyped v0 = do
     nums _ = Nothing
     isI VInt {} = True
     isI _ = False
+    fitsInt (VInt i) = fitsI64 i
+    fitsInt _ = False
     isD VNum {} = True
     isD _ = False
     enc JI (VInt i) = fromIntegral i
@@ -862,7 +867,7 @@ bitsVal _ r = VNum (b2d r)
 
 accTyOf :: Maybe Value -> Maybe JTy
 accTyOf Nothing = Just JI
-accTyOf (Just (VInt _)) = Just JI
+accTyOf (Just (VInt i)) = if fitsI64 i then Just JI else Nothing
 accTyOf (Just (VNum _)) = Just JD
 accTyOf _ = Nothing
 
@@ -910,15 +915,21 @@ schemeCall env name args = case (name, args) of
             not (ety == JW && scheme /= "foldl") ->
               compileScheme jc (vmCore env) scheme g ety aty0 >>= \case
                 Nothing -> fallback -- not jittable: interpreter's job
-                Just (addr, accTy, retTy) -> withFuelCell env $ \pfuel ->
-                  if scheme == "foldl"
-                    then do
-                      let Just a0 = macc
-                      bitsVal retTy <$> runFold addr pfuel (valBits accTy a0) bits
-                    else do
-                      (_, out) <- runMapFilter addr pfuel bits
-                      let outTy = if scheme == "map" then retTy else ety
-                      pure (foldr (\x acc -> VData listT 1 [bitsVal outTy x, acc]) (VData listT 0 []) out)
+                Just (addr, accTy, retTy) -> do
+                  res <- withFuelCell env $ \pfuel ->
+                    if scheme == "foldl"
+                      then do
+                        let Just a0 = macc
+                        bitsVal retTy <$> runFold addr pfuel (valBits accTy a0) bits
+                      else do
+                        (_, out) <- runMapFilter addr pfuel bits
+                        let outTy = if scheme == "map" then retTy else ety
+                        pure (foldr (\x acc -> VData listT 1 [bitsVal outTy x, acc]) (VData listT 0 []) out)
+                  case res of
+                    Just v -> pure v
+                    Nothing -> do
+                      verbose ("[jit] " ++ scheme ++ "<" ++ g ++ "> overflowed i64; falling back to interpreter")
+                      fallback
         _ -> fallback
 
     unappliedFn (VPap g [] _) | M.member g (vmProg env) = Just g
@@ -967,7 +978,7 @@ jitCallable env scheme f = case f of
   where
     -- captured scalars carry their own definite type: a VNum weight rides
     -- as f64 bits, a VInt as a plain i64 (typed inside the driver)
-    toTV (VInt i) = Just (fromIntegral i, JI)
+    toTV (VInt i) = if fitsI64 i then Just (fromIntegral i, JI) else Nothing
     toTV (VNum d) = Just (d2b d, JD)
     toTV _ = Nothing
 
@@ -975,23 +986,27 @@ jitCallable env scheme f = case f of
 -- Native code only decrements (accounting, per the function-entry contract);
 -- exhaustion mid-scheme is impossible to act on there — which is fine,
 -- because the schemes are bounded — so the refill/preempt bookkeeping
--- happens here, once, on return.
-withFuelCell :: VMEnv -> (Ptr Int64 -> IO a) -> IO a
+-- happens here, once, on return. Returns Nothing when the native kernel
+-- overflowed i64 (fuelOverflow), signalling the caller to re-run in the
+-- exact arbitrary-precision interpreter.
+withFuelCell :: VMEnv -> (Ptr Int64 -> IO a) -> IO (Maybe a)
 withFuelCell env body = alloca $ \p -> do
   f0 <- readIORef (vmFuel env)
   poke p (fromIntegral f0)
   r <- body p
   f1 <- peek p
-  -- poisoned cells (minus any ticks after the poison): a trap is the
-  -- deeper value, so test it first
+  -- poisoned cells (minus any ticks after the poison): deepest band first
   when (f1 <= fuelTrap + 1152921504606846976) (vmPanic "error raised inside a native kernel (rerun with SOL_JIT=0 for the message)")
-  when (f1 <= fuelPoison) (vmPanic "division by zero")
-  if f1 <= 0
-    then do
-      modifyIORef' (vmPreempts env) (+ 1)
-      writeIORef (vmFuel env) fuelQuantum
-    else writeIORef (vmFuel env) (fromIntegral f1)
-  pure r
+  when (f1 <= fuelPoison + 1152921504606846976) (vmPanic "division by zero")
+  if f1 <= fuelOverflow + 1152921504606846976
+    then pure Nothing
+    else do
+      if f1 <= 0
+        then do
+          modifyIORef' (vmPreempts env) (+ 1)
+          writeIORef (vmFuel env) fuelQuantum
+        else writeIORef (vmFuel env) (fromIntegral f1)
+      pure (Just r)
 
 -- ---- the HAL: prims + transactional file IO -------------------------------
 --
@@ -2287,11 +2302,11 @@ vecScheme env scheme f macc r = do
               | scheme == "vecmap" ->
                   compileVecMapR jc (vmCore env) g scalar (map kindTy ks) sig (map snd extras) >>= \case
                     Nothing -> pure Nothing
-                    Just (addr, tid, ftys) -> fmap Just $ withColPtrs st $ \cols -> withFuelCell env $ \pfuel ->
+                    Just (addr, tid, ftys) -> withColPtrs st $ \cols -> withFuelCell env $ \pfuel ->
                       vecFromColsM n tid [if t == JI then KInt else KNum | t <- ftys] $ \outs ->
                         runVecMapR addr pfuel (map fst extras) cols n outs
             Nothing -> pure Nothing
-            Just (addr, accTy, retTy) -> fmap Just $ withColPtrs st $ \cols -> withFuelCell env $ \pfuel ->
+            Just (addr, accTy, retTy) -> withColPtrs st $ \cols -> withFuelCell env $ \pfuel ->
               case scheme of
                 "vecfold" -> do
                   let Just a0 = macc

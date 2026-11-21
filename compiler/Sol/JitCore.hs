@@ -17,10 +17,14 @@ module Sol.JitCore
   ) where
 
 import qualified Sol.Bytecode as B
+import Data.Int (Int64)
 import Data.List (nub)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Sol.Lang (Core (..), Name, Prog)
+
+fitsI64 :: Integer -> Bool
+fitsI64 i = i >= toInteger (minBound :: Int64) && i <= toInteger (maxBound :: Int64)
 
 -- JB is the inference-only bottom: the type of an in-flight recursive
 -- return before the fixpoint converges (and of code that never returns).
@@ -102,7 +106,7 @@ jitOK :: M.Map Name Int -> [Name] -> Core -> Bool
 jitOK fnAr = ok
   where
     ok locals = \case
-      CInt _ -> True
+      CInt i -> fitsI64 i
       -- a refusal by name inside a kernel: compiles to a TRAP (the fuel
       -- cell is poisoned and the VM panics on return), so guards that
       -- `error` out no longer demote the whole scheme to the interpreter
@@ -390,7 +394,7 @@ jitOKVec :: M.Map Name Int -> Bool -> [Bool] -> Name -> [Name] -> Core -> Bool
 jitOKVec fnAr scalar loadable elemP0 locals0 = ok (S.singleton elemP0) locals0
   where
     ok es locals = \case
-      CInt _ -> True
+      CInt i -> fitsI64 i
       CApp (CVar "error") (CStr _) -> True
       CVar v | S.member v es -> scalar && loadable == [True]
       CVar v -> v `elem` locals || M.lookup v fnAr == Just 0
