@@ -94,17 +94,21 @@ callLike :: Op -> Bool
 callLike op = case op of
   OStrLen _ -> True
   OCharAt _ _ -> True
+  OArithVal {} -> False
+  OCmpVal {} -> False
   _ -> opEffect op `elem` [AnyEffect, RuntimeCall]
 
 -- operations whose hosted x86-64 expansion (C9 stage 1) keeps every
 -- allocatable register: the tick and entry wrappers, and the deep
--- equality's live-set slow path
+-- equality / exact Int bignum live-set slow paths
 preservedOnX64 :: Op -> Bool
 preservedOnX64 op = case op of
   OSafepoint -> True
   OSafepointN _ -> True
   OStackCheck -> True
   OEqVal _ _ _ -> True
+  OArithVal {} -> True
+  OCmpVal {} -> True
   _ -> False
 
 blockUses :: Block -> [VId]

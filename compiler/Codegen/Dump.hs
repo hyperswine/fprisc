@@ -54,10 +54,12 @@ dumpFn fn =
       OApply f as -> "apply " ++ value f ++ args as
       OKernelArith o a b -> "kernel." ++ show o ++ " " ++ value a ++ " " ++ value b
       OArith o a b -> "arith " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
+      OArithVal o a b -> "arithval " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
       OArithU o a b -> "arith! " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
       OBit o a b -> "bit " ++ bitName o ++ " " ++ value a ++ ", " ++ value b
       OShift o a b -> "shift " ++ shiftName o ++ " " ++ value a ++ ", " ++ value b
       OCmp o a b -> "cmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
+      OCmpVal o a b -> "cmpval " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OEqVal eq a b -> (if eq then "eqval " else "neval ") ++ value a ++ ", " ++ value b
       OBits n -> "bits " ++ show n
       OFloatBin o a b -> "fbin " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/"; FSqrt -> "sqrt") ++ " " ++ value a ++ ", " ++ value b

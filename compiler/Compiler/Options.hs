@@ -88,7 +88,7 @@ parseCompilerOptions env = do
           cgStringScan=on "FPR_TYPED_IR_STRING_SCAN",
           cgEarlyLoops=on "FPR_TYPED_IR_EARLY_LOOPS" && nativeSelfLoops native,
           cgFramelessEntry=yes "FPR_TYPED_IR_FRAMELESS_ENTRY",
-          cgScalarWorkers=enabled "SCALAR_WORKERS", cgTrmc=enabled "TRMC", cgTickBatch=enabled "TICK_BATCH", cgTickWeight=enabled "TICK_WEIGHT", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
+          cgScalarWorkers=yes "FPR_SCALAR_WORKERS", cgTrmc=enabled "TRMC", cgTickBatch=enabled "TICK_BATCH", cgTickWeight=enabled "TICK_WEIGHT", cgPairReturns=enabled "PAIR_RETURNS", cgFieldWorkers=enabled "FIELD_WORKERS", cgTupleScalars=enabled "TUPLE_SCALARS",
           cgPipelineInline=enabled "PIPELINE_INLINE", cgReuse=enabled "REUSE", cgSpecialize=enabled "SPEC",
           cgReceiveTurns=enabled "RECEIVE_TURNS", cgBumpAlloc=enabled "BUMP_ALLOC", cgCompactCells=env "FPR_COMPACT_CELLS" /= Just "0", cgLoopRegions=enabled "LOOP_REGIONS",
           cgPersistentLoop=if enabled "PERSISTENT_COPY_OUT" then Just (maybe "*" id (env "FPR_PERSISTENT_LOOP")) else Nothing, cgCallRegions=enabled "CALL_REGIONS", cgInline=enabled "INLINE", cgOwnedMapFold=enabled "OWNED_MAP_FOLD",

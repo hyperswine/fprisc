@@ -348,6 +348,7 @@ static uw layout_total(V v) {
   uw raw;
   switch (TID(v)) {
     case T_STR: raw = sizeof(str_t) + ((str_t *)v)->len; break;
+    case T_BIGINT: raw = sizeof(bigint_t) + ((bigint_t *)v)->len * sizeof(uint64_t); break;
     case T_SSTR: raw = sizeof(sstr_t); break;
     case T_BITS:
       raw = (((bits_t *)v)->var == 4 || ((bits_t *)v)->var == 5)
@@ -374,7 +375,7 @@ static void layout_report(V v) {
   const char *name;
   switch (TID(v)) {
     case T_STR: case T_SSTR: bit = 1; name = "string"; break;
-    case T_BITS: bit = 2; name = "bits"; break;
+    case T_BITS: case T_BIGINT: bit = 2; name = "bits"; break;
     case T_PAP: bit = 4; name = "pap"; break;
     case T_VEC: bit = 8; name = "vector"; break;
     case T_ACTOR: case T_DEVICE: case T_REGISTER: return;
@@ -1125,7 +1126,7 @@ static void dc_release(V v) {
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: fpr_vec_release(v); return;
-    case T_ACTOR: case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER:
+    case T_ACTOR: case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER:
     case T_SSTR: return;
     case T_PAP: {
       pap_t *p = (pap_t *)v;
@@ -1265,7 +1266,7 @@ static uw img_static_raw(V v, uw pid) {
       (void)pid;
       fpr_actor_fail("send: a function of another process cannot leave it "
                      "(its code goes when that process ends)");
-    case T_STORED_LIST: case T_TUP2: case T_TUP3: case T_ATOM: case T_REGISTER: case T_BITS:
+    case T_STORED_LIST: case T_BIGINT: case T_TUP2: case T_TUP3: case T_ATOM: case T_REGISTER: case T_BITS:
     case T_ACTOR: case T_VEC: case T_SSTR:
       fpr_actor_fail("send: a static of an unexpected kind in another process's image");
     default:
@@ -1412,7 +1413,7 @@ static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
     }
     case T_SSTR: fpr_cpanic("send/keep: SString is linear-local");
     case T_DEVICE: case T_REGISTER: if (immutable) *immutable = 0; return total;
-    case T_STR: case T_BITS: return total;
+    case T_STR: case T_BIGINT: case T_BITS: return total;
     case T_PAP: {
       pap_t *p = (pap_t *)v;
       if (img_foreign((const void *)p->fn))
@@ -1498,7 +1499,7 @@ static int dc_budget(V v, uw *left, unsigned depth) {
       return 1;
     }
     case T_SSTR: fpr_cpanic("send/keep: SString is linear-local");
-    case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER: return budget_take(left, total);
+    case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER: return budget_take(left, total);
     case T_PAP: {
       pap_t *p = (pap_t *)v;
       if (img_foreign((const void *)p->fn))
@@ -1662,7 +1663,7 @@ static V dc_dup(V v, dctx_t *c) {
       return (V)n;
     }
     case T_ACTOR: return v;
-    case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER: {
+    case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER: {
       V n = dc_cell(v, c, total);
       if (n && c->share) dc_share_put(c->share, v, n);
       return n;
@@ -2012,7 +2013,7 @@ static fpr_slab_t inl_mark;
 uw fpr_msg_inline_size(V v, uw pid) {
   if (ISINT(v) || !v || !fpr_in_heap(v)) return 0;
   uw tid = TID(v);
-  if (tid == T_LIST || (tid >= T_STR && tid <= T_STORED_LIST)) return 0;
+  if (tid == T_LIST || (tid >= T_STR && tid <= T_BIGINT)) return 0;
   uw total = PREHEADER(v);
   if (total > FPR_INL_CELL) return 0;
   uw nf = (total - FPR_MANAGED_PREFIX - 8) / sizeof(uw);
@@ -2160,7 +2161,7 @@ static V kp_dup(V v) {
     }
     case T_ACTOR: return v;
     case T_SSTR: fpr_cpanic("keep: SString is linear-local");
-    case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER: {
+    case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER: {
       V n = fpr_alloc(total - FPR_MANAGED_PREFIX);
       __builtin_memcpy((void *)n, (void *)v, total - FPR_MANAGED_PREFIX);
       return n;
@@ -2226,7 +2227,7 @@ static int kp_reaches(V v, uw *left) {
     if (total >= *left) return 1;
     *left -= total;
     switch (h->tid) {
-      case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER: return 0;
+      case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER: return 0;
       case T_PAP: {
         pap_t *pp = (pap_t *)v;
         for (uw i = 0; i < pp->nargs; i++) if (kp_reaches((V)pp->args[i], left)) return 1;
@@ -2276,7 +2277,7 @@ static int has_vec(V v) {
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: return 1;
-    case T_ACTOR: case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER:
+    case T_ACTOR: case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER:
     case T_SSTR: return 0;
     case T_PAP: {
       pap_t *p = (pap_t *)v;
@@ -2321,7 +2322,7 @@ static void vec_release_in(V v) {
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: if (!vec_movable_here(v) && !map_inplace(v)) fpr_vec_release(v); return; /* moved, or kept in place */
-    case T_ACTOR: case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER:
+    case T_ACTOR: case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER:
     case T_SSTR: return;
     case T_PAP: {
       pap_t *p = (pap_t *)v;
@@ -4232,7 +4233,7 @@ static V g_fn_is(V f, V g) {
 static inline void node_check(const char *who, V i, V x) {
   if ((uw)i > (uw)TAG(NODE_MAX_FIELDS - 1)) fpr_cpanic(who);
 #ifdef FPR_NODE_CHECK
-  if (!ISINT(i) || !x || ISINT(x) || (TID(x) >= T_STR && TID(x) <= T_STORED_LIST)) fpr_cpanic(who);
+  if (!ISINT(i) || !x || ISINT(x) || (TID(x) >= T_STR && TID(x) <= T_BIGINT)) fpr_cpanic(who);
   if ((uw)UNTAG(i) >= fpr_layout_fields(TID(x), ((hdr_t *)x)->var)) fpr_cpanic(who);
 #else
   (void)x;
@@ -4827,34 +4828,46 @@ void fpr_int_overflow_kernel(void) {
   fpr_trap_n(buf, (uw)(p - buf));
 }
 void fpr_div_zero_kernel(void) { fpr_trap("division by zero"); }
+#include "bigint.inc"
+
 V fpr_prim_fn__x2b(V a, V b) {
-  sw x = UNTAG(a), y = UNTAG(b), r;
-  if (__builtin_add_overflow(x, y, &r) || !fits_int(r)) int_overflow("+", x, y);
-  return TAG(r);
+  if (ISINT(a) && ISINT(b)) {
+    sw x = UNTAG(a), y = UNTAG(b), r;
+    if (!__builtin_add_overflow(x, y, &r) && fits_int(r)) return TAG(r);
+  }
+  return bi_add(a, b);
 }
 V fpr_prim_fn__x2d(V a, V b) {
-  sw x = UNTAG(a), y = UNTAG(b), r;
-  if (__builtin_sub_overflow(x, y, &r) || !fits_int(r)) int_overflow("-", x, y);
-  return TAG(r);
+  if (ISINT(a) && ISINT(b)) {
+    sw x = UNTAG(a), y = UNTAG(b), r;
+    if (!__builtin_sub_overflow(x, y, &r) && fits_int(r)) return TAG(r);
+  }
+  return bi_sub(a, b);
 }
 V fpr_prim_fn__x2a(V a, V b) {
-  sw x = UNTAG(a), y = UNTAG(b), r;
-  if (__builtin_mul_overflow(x, y, &r) || !fits_int(r)) int_overflow("*", x, y);
-  return TAG(r);
+  if (ISINT(a) && ISINT(b)) {
+    sw x = UNTAG(a), y = UNTAG(b), r;
+    if (!__builtin_mul_overflow(x, y, &r) && fits_int(r)) return TAG(r);
+  }
+  return bi_mul(a, b);
 }
 V fpr_prim_fn__x2f(V a, V b) {
-  sw x = UNTAG(a), y = UNTAG(b);
-  if (y == 0) fpr_trap("division by zero");
-  sw q = x / y;
-  sw rem = x % y;
-  if (rem != 0 && ((rem < 0) != (y < 0))) q -= 1;
-  if (!fits_int(q)) int_overflow("/", x, y);
-  return TAG(q);
+  if (ISINT(a) && ISINT(b)) {
+    sw x = UNTAG(a), y = UNTAG(b);
+    if (y == 0) fpr_trap("division by zero");
+    if (!(x == INT_MIN_TAGGED && y == -1)) {
+      sw q = x / y;
+      sw rem = x % y;
+      if (rem != 0 && ((rem < 0) != (y < 0))) q -= 1;
+      if (fits_int(q)) return TAG(q);
+    }
+  }
+  return bi_div_floor(a, b);
 }
-V fpr_prim_fn__x3c(V a, V b) { return BOOL(UNTAG(a) < UNTAG(b)); }
-V fpr_prim_fn__x3e(V a, V b) { return BOOL(UNTAG(a) > UNTAG(b)); }
-V fpr_prim_fn__x3c_x3d(V a, V b) { return BOOL(UNTAG(a) <= UNTAG(b)); }
-V fpr_prim_fn__x3e_x3d(V a, V b) { return BOOL(UNTAG(a) >= UNTAG(b)); }
+V fpr_prim_fn__x3c(V a, V b) { return BOOL(bi_cmp(a, b) < 0); }
+V fpr_prim_fn__x3e(V a, V b) { return BOOL(bi_cmp(a, b) > 0); }
+V fpr_prim_fn__x3c_x3d(V a, V b) { return BOOL(bi_cmp(a, b) <= 0); }
+V fpr_prim_fn__x3e_x3d(V a, V b) { return BOOL(bi_cmp(a, b) >= 0); }
 
 /* == : ints by value, strings by content, and DEEP over the fields of
  * lists, tuples, constructors and records.
@@ -4928,7 +4941,7 @@ static int veq_shallow(V a, V b) {
      * Opaque handles, vectors and scalar leaves keep identity equality. */
     if (!fpr_in_heap(a)) return 1;
     switch (TID(a)) {
-      case T_STR: case T_BITS: case T_VEC: case T_ACTOR: case T_PAP:
+      case T_STR: case T_BIGINT: case T_BITS: case T_VEC: case T_ACTOR: case T_PAP:
       case T_DEVICE: case T_REGISTER: case T_SSTR: return 1;
       default: break;
     }
@@ -4944,6 +4957,13 @@ static int veq_shallow(V a, V b) {
     if (s->len != t->len) return 0;
     for (uw i = 0; i < s->len; i++)
       if (s->bytes[i] != t->bytes[i]) return 0;
+    return 1;
+  }
+  if (x->tid == T_BIGINT) {
+    const bigint_t *s = (const bigint_t *)a, *t = (const bigint_t *)b;
+    if (s->len != t->len) return 0;
+    for (uw i = 0; i < s->len; i++)
+      if (s->limbs[i] != t->limbs[i]) return 0;
     return 1;
   }
   if (x->tid == T_BITS && x->var == 4) return u64(a) == u64(b);
@@ -5179,6 +5199,7 @@ static void renderArg(V obj, int i) {
     hdr_t *fh = (hdr_t *)f;
     const fpr_con_t *c = fh->tid >= 0x20000000u ? con_find(fh->tid, fh->var) : 0;
     paren = fh->tid == T_RESULT || (fh->tid == T_OPTION && fh->var == 1) || (c && c->arity > 0) ||
+            (fh->tid == T_BIGINT && fh->var != 0) ||
             (fh->tid == T_BITS && fh->var == 4 && (int64_t)u64(f) < 0) ||
             (fh->tid == T_BITS && fh->var == 7 &&
              (int32_t)(uint32_t)((bits_t *)f)->val < 0);
@@ -5228,6 +5249,11 @@ static void render(V v) {
       remit('(');
       for (uw i = 0; i < ta; i++) { if (i) remits(", "); renderField(v,i); }
       remit(')');
+      break;
+    }
+    case T_BIGINT: {
+      str_t *s = bi_to_str((const bigint_t *)v);
+      render_bytes(s->bytes, s->len);
       break;
     }
     case T_BITS:
@@ -5289,6 +5315,7 @@ V fpr_prim_fn_str(V v) {
     return (V)out;
   }
   if (TID(v) == T_STR) return v;
+  if (TID(v) == T_BIGINT) return (V)bi_to_str((const bigint_t *)v);
   rpos = 0;
   render(v);
   /* Allocating can park this actor for a slab grant. Another actor on the
@@ -5326,6 +5353,7 @@ V fpr_prim_fn__x24strcatT(V t) {
     uw len;
     if (ISINT(v)) len = decimal_width(UNTAG(v));
     else if (TID(v) == T_STR) len = ((str_t *)v)->len;
+    else if (TID(v) == T_BIGINT) len = bi_to_str((const bigint_t *)v)->len;
     else { rpos = 0; render(v); len = (uw)rpos; }
     if (i < PIECES_KEPT) kept[i] = len;
     if (len > ~(uw)0 - sizeof(str_t) - total) fpr_trap("string pieces: size overflow");
@@ -5345,6 +5373,10 @@ V fpr_prim_fn__x24strcatT(V t) {
       at += width;
     } else if (TID(v) == T_STR) {
       str_t *x = (str_t *)v;
+      str_copy(out->bytes + at, x->bytes, x->len);
+      at += x->len;
+    } else if (TID(v) == T_BIGINT) {
+      str_t *x = bi_to_str((const bigint_t *)v);
       str_copy(out->bytes + at, x->bytes, x->len);
       at += x->len;
     } else {
@@ -5624,6 +5656,10 @@ V fpr_prim_fn_print(V v) {
   if (!ISINT(v) && TID(v) == T_STR) {
     out = (const char *)((str_t *)v)->bytes;
     n = ((str_t *)v)->len;
+  } else if (!ISINT(v) && TID(v) == T_BIGINT) {
+    str_t *s = bi_to_str((const bigint_t *)v);
+    out = (const char *)s->bytes;
+    n = s->len;
   } else {
     rpos = 0;
     render(v);
@@ -5869,7 +5905,7 @@ static double fsqrt_(double x) {
 #endif
 }
 V fpr_prim_fn_F64_x2esqrt(V a) { return bitsd(fsqrt_(dbits(a))); }
-V fpr_prim_fn_F64_x2eofInt(V a) { return bitsd((double)UNTAG(a)); }
+V fpr_prim_fn_F64_x2eofInt(V a) { return bitsd(bi_to_double(a)); }
 static V float_toInt(double d) {
   /* Check the full signed machine range before C's float-to-int cast,
    * then check the truncated integer's tagged range. On RV32, a value
@@ -5903,7 +5939,7 @@ V fpr_prim_fn_F32_x2e_x21_x3d(V a, V b) { return BOOL(fbits(a) != fbits(b)); }
  * to f32 is correctly rounded for every finite input, and it avoids a
  * second instruction-vs-libm question for fsqrt.s. */
 V fpr_prim_fn_F32_x2esqrt(V a) { return bitsf((float)fsqrt_((double)fbits(a))); }
-V fpr_prim_fn_F32_x2eofInt(V a) { return bitsf((float)UNTAG(a)); }
+V fpr_prim_fn_F32_x2eofInt(V a) { return bitsf(bi_to_float(a)); }
 
 /* ---- transcendentals: freestanding, double path -----------------------
  * No libm in any of these links, so log/exp/pow/sin/cos are here whole:
@@ -6252,23 +6288,18 @@ static V some_v(V x) {
   FPR_FLD(r, 0) = x;
   return r;
 }
-static V i64_ofInt(V a) { return some_v(vi64((int64_t)UNTAG(a))); }
+static V i64_ofInt(V a) {
+  int64_t x;
+  if (!bi_to_i64_checked(a, &x)) return (V)&fpr_none;
+  return some_v(vi64(x));
+}
 static V i64_ofIntU(V a) {
-  sw n = UNTAG(a);
-  if (n < 0) return (V)&fpr_none;
-  return some_v(vu64((uint64_t)n));
+  uint64_t x;
+  if (!bi_to_u64_checked(a, &x)) return (V)&fpr_none;
+  return some_v(vu64(x));
 }
-static V i64_trunc(V a) { return vi64((int64_t)UNTAG(a)); }
-static V i64_toInt(V a) {
-  int64_t x = i64(a);
-  if (x > INT_MAX_TAGGED || x < INT_MIN_TAGGED)
-#if UINTPTR_MAX > 0xFFFFFFFFu
-    return err_c("I64.toInt: does not fit an Int (63 bits)");
-#else
-    return err_c("I64.toInt: does not fit an Int (31 bits)");
-#endif
-  return ok_v(TAG((sw)x));
-}
+static V i64_trunc(V a) { return vu64(bi_trunc_u64(a)); }
+static V i64_toInt(V a) { return ok_v(bi_from_i64(i64(a))); }
 /* the halves as unsigned 32-bit Ints, and back (each half masked to 32 bits) */
 static V i64_half(uint32_t x) {
 #if UINTPTR_MAX <= 0xFFFFFFFFu

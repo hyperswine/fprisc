@@ -675,10 +675,10 @@ lowerVal cx env te = case view te of
     compareWith Eq ra rb
   VApp h args
     | isPrimName cx h, Just o <- M.lookup h arithOps, [a, b] <- args -> do
-        x <- lowerVal cx env a >>= asInt
-        y <- lowerVal cx env b >>= asInt
-        v <- emit TInt (OArith o x y)
-        pure (v, TInt)
+        x <- lowerVal cx env a >>= asVal
+        y <- lowerVal cx env b >>= asVal
+        v <- emit TVal (OArithVal o x y)
+        pure (v, TVal)
     | isPrimName cx h, Just o <- M.lookup h cmpOps, [a, b] <- args -> do
         ra <- lowerVal cx env a
         rb <- lowerVal cx env b
@@ -701,15 +701,16 @@ lowerVal cx env te = case view te of
     int n
       | intFitsWidth (policyWidth (cxPolicy cx)) n = (\v -> (v, TInt)) <$> emit TInt (OConstInt n)
       | otherwise = refuse ("the literal " ++ show n ++ " does not fit an Int")
-    -- an ordering is Int by typing; == and != are deep unless both sides are already Ints
+    -- == and != are deep unless both sides are small TInt; orderings use OCmpVal when either side may be T_BIGINT
     compareWith o ra rb = do
       p <- case (o, snd ra, snd rb) of
         (Eq, ta, tb) | ta /= TInt || tb /= TInt -> deep True ra rb
         (Ne, ta, tb) | ta /= TInt || tb /= TInt -> deep False ra rb
+        (_, TInt, TInt) -> emit TPred (OCmp o (fst ra) (fst rb))
         _ -> do
-          x <- asInt ra
-          y <- asInt rb
-          emit TPred (OCmp o x y)
+          x <- asVal ra
+          y <- asVal rb
+          emit TPred (OCmpVal o x y)
       pure (p, TPred)
     deep eq ra rb = do
       x <- asVal ra

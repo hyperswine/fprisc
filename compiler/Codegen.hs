@@ -58,7 +58,7 @@ import Core.Opt.ProductParameters
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 259 -- v1.0 Core Option (T_OPTION=7), checked I32/I64.ofInt/ofIntU, wrapping I32/I64.trunc (258: floored Int/I64/I32 division and modulo, wrapping min / -1)
+codegenRev = 260 -- v1.0 exact Int bignum promotion (T_BIGINT, OArithVal/OCmpVal) (259: Core Option, checked I32/I64.ofInt/ofIntU, wrapping I32/I64.trunc)
 -- 253 merge of main's raw I64 locals (251) into the x64 closure fast path (252).
 -- 220 Forward range/map fusion.
 -- 219 -- QOS app images take the receive-loop form; slot-carried small messages (218: weighted ticks: a tick charges the worst-case instruction count of the code it covers 217: early IR loops and String-scan versioning (several strings) by default; raw loop-carried Ints (216: A64 compare-and-branch, one-word String guard))

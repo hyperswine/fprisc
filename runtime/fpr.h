@@ -45,6 +45,9 @@ enum {
   /* Hosted private list: 1..8 tagged payload slots, then a tail. The
    * nominal alternative occupies the upper bits of var. Nil stays Nil. */
   T_STORED_LIST = 9008,
+  /* Arbitrary-precision Int promoted past the tagged immediate range.
+   * Normalized: values in [INT_MIN_TAGGED, INT_MAX_TAGGED] stay tagged. */
+  T_BIGINT = 9009,
 };
 
 typedef struct { volatile uw v; } fpr_lock_t; /* the spinlock (actors.c fpr_lock); declared here for the hart's backlog lock */
@@ -52,6 +55,7 @@ typedef struct { uint32_t tid, var; } __attribute__((aligned(8))) hdr_t;
 typedef struct { uint32_t tid, var; uw fn, arity, nargs, args[]; } __attribute__((aligned(8))) pap_t;
 typedef struct { uint32_t tid, var; uw fn, arity, nargs; } __attribute__((aligned(8))) pap0_t;
 typedef struct { uint32_t tid, var; uw len; uint8_t bytes[]; } __attribute__((aligned(8))) str_t;
+typedef struct { uint32_t tid, var; /* var: 0 = pos, 1 = neg */ uw len; uint64_t limbs[]; } __attribute__((aligned(8))) bigint_t;
 typedef struct { uint32_t tid, var; uw base; } __attribute__((aligned(8))) fpr_dev_t;
 typedef struct { uint32_t tid, var /* = width in bytes */; uw addr; } __attribute__((aligned(8))) reg_t;
 typedef struct { uint32_t tid, var /* 0 LE, 1 BE; Builtin: 2 Word, 3 Addr; 6 boxed F32; 7 boxed I32 */; uw len, val; } __attribute__((aligned(8))) bits_t;

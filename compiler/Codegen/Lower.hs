@@ -879,8 +879,8 @@ lowerVal cx env = \case
               result<-ScalarVector.lowerRead builder plan
               pure (result,TVal)
             Nothing->(\result->(result,TVal)) <$> emit TVal (OCall callee values)
-      -- tagged Int arithmetic and comparison (the base profile's operators)
-      | isPrim cx env h, Just o <- M.lookup h arithOps, [a, b] <- args -> arith o a b
+      -- exact Int arithmetic (fast tagged path, T_BIGINT slow path) and comparison
+      | isPrim cx env h, Just o <- M.lookup h arithOps, [a, b] <- args -> arithVal o a b
       | isPrim cx env h, Just o <- M.lookup h cmpOps, [a, b] <- args -> compare' o a b
       -- the bitwise primitives and the shifts: declared HAL names of arity
       -- two (band/bor/bxor/BITSHIFTL/BITSHIFTR; their slow path is the
@@ -955,12 +955,16 @@ lowerVal cx env = \case
           addr <- emit TAddr (OAddress box)
           v <- emit TVal (OLoad TVal addr 16)
           pure (v, TVal)
-      -- an Int as the nearest F64: one conversion instruction (runtime.c F64.ofInt casts the same way)
+      -- an Int as the nearest F64: inline when statically small TInt, runtime call for TVal (may be T_BIGINT)
       | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
         h == "F64.ofInt", [a] <- args -> do
-          x <- lowerVal cx env a >>= asInt
-          v <- emit TVal (OFloatOfInt x)
-          pure (v, TVal)
+          r <- lowerVal cx env a
+          case r of
+            (x, TInt) -> (\v -> (v, TVal)) <$> emit TVal (OFloatOfInt x)
+            _ -> do
+              v <- asVal r
+              let c = Callee h (Foreign "fpr_prim_fn_F64_x2eofInt") [TVal] TVal
+              (\res -> (res, TVal)) <$> emit TVal (OCall c [v])
       -- the square root is one instruction, correctly rounded like the C entry's
       | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
         h == "F64.sqrt" || h == "F32.sqrt", [a] <- args -> do
@@ -1088,17 +1092,23 @@ lowerVal cx env = \case
       y <- lowerVal cx env b >>= asInt
       v <- emit TInt (OArith o x y)
       pure (v, TInt)
-    -- an ordering is Int by typing; == and != are deep unless both sides are already Ints
+    arithVal o a b = do
+      x <- lowerVal cx env a >>= asVal
+      y <- lowerVal cx env b >>= asVal
+      v <- emit TVal (OArithVal o x y)
+      pure (v, TVal)
+    -- == and != are deep unless both sides are small TInt; orderings use OCmpVal when either side may be T_BIGINT
     compare' o a b = do
       ra <- lowerVal cx env a
       rb <- lowerVal cx env b
       p <- case (o, snd ra, snd rb) of
         (Eq, ta, tb) | ta /= TInt || tb /= TInt -> deep True ra rb
         (Ne, ta, tb) | ta /= TInt || tb /= TInt -> deep False ra rb
+        (_, TInt, TInt) -> emit TPred (OCmp o (fst ra) (fst rb))
         _ -> do
-          x <- asInt ra
-          y <- asInt rb
-          emit TPred (OCmp o x y)
+          x <- asVal ra
+          y <- asVal rb
+          emit TPred (OCmpVal o x y)
       pure (p, TPred)
     deep eq ra rb = do
       x <- asVal ra

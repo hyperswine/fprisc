@@ -1,0 +1,68 @@
+# bigint.fpr -- v1.0 exact Int bignum promotion (T_BIGINT).
+profile base.
+
+expect : String -> String -> String -> Unit .
+expect name got want | got == want = print "ok {name}".
+expect name got want = error "FAIL {name}: [{got}] vs [{want}]".
+
+pow : unsafe Int -> Int -> Int .
+pow _ 0 = 1.
+pow b n = b * pow b (n - 1).
+
+fact : unsafe Int -> Int .
+fact 0 = 1.
+fact n = n * fact (n - 1).
+
+fibGo : unsafe Int -> Int -> Int -> Int .
+fibGo 0 a _ = a.
+fibGo n a b = fibGo (n - 1) b (a + b).
+fib : unsafe Int -> Int .
+fib n = fibGo n 0 1.
+
+echo parent me = case receiveRes me of
+    Ok v -> send parent (Ok v)
+  | Err why -> send parent (Err why).
+
+roundTrip : Int -> String .
+roundTrip v =
+  me = myself 0;
+  child = spawn (echo me);
+  _ = send child (Ok (v, [v, 0 - v]));
+  case receiveRes me of
+    Ok (x, xs) -> "{x == v} {xs}"
+  | Err why -> why.
+
+main =
+  mx = intMax Unit;
+  mn = intMin Unit;
+  big1 = mx + 1;
+  bigNeg1 = mn - 1;
+  _ = expect "intMax + 1" "{big1}" "4611686018427387904";
+  _ = expect "intMin - 1" "{bigNeg1}" "-4611686018427387905";
+  _ = expect "demote +" "{big1 - 1 == mx} {bigNeg1 + 1 == mn}" "True True";
+  _ = expect "demote 0" "{big1 - big1} {big1 - big1 == 0}" "0 True";
+  _ = expect "2^100" "{pow 2 100}" "1267650600228229401496703205376";
+  _ = expect "fact 30" "{fact 30}" "265252859812191058636308480000000";
+  _ = expect "fact 50" "{fact 50}" "30414093201713378043612608166064768844377641568960512000000000000";
+  _ = expect "fib 150" "{fib 150}" "9969216677189303386214405760200";
+  p100 = pow 2 100;
+  p50 = pow 2 50;
+  _ = expect "big / small" "{p100 / p50 == p50}" "True";
+  _ = expect "big / big" "{(p100 * 3 + 7) / p100} {(p100 * 3 + 7) % p100}" "3 7";
+  _ = expect "neg big / pos" "{(0 - (p100 + 1)) / p100} {(0 - (p100 + 1)) % p100}" "-2 1267650600228229401496703205375";
+  _ = expect "pos big / neg" "{(p100 + 1) / (0 - p100)} {(p100 + 1) % (0 - p100)}" "-2 -1267650600228229401496703205375";
+  _ = expect "neg big / neg" "{(0 - (p100 + 7)) / (0 - p100)} {(0 - (p100 + 7)) % (0 - p100)}" "1 -7";
+  _ = expect "intMin / -1" "{mn / (0 - 1)}" "4611686018427387904";
+  _ = expect "cmp mixed" "{mx < big1} {big1 > mx} {bigNeg1 < mn} {mn <= big1} {big1 >= mx}" "True True True True True";
+  _ = expect "cmp big" "{p100 < p100 + 1} {0 - p100 < p100} {0 - p100 < 0 - (p100 - 1)}" "True True True";
+  _ = expect "eq ne" "{p100 == pow 2 100} {p100 != p100 + 1} {p100 == 0} {big1 == mx}" "True True False False";
+  _ = expect "str neg in ctor" "{Some bigNeg1}" "Some (-4611686018427387905)";
+  _ = expect "I32.ofInt big" "{I32.ofInt big1} {I32.ofIntU big1}" "None None";
+  _ = expect "I32.trunc big" (I32.str (I32.trunc (p100 + 5))) "5";
+  _ = expect "I64.ofInt big" "{I64.ofInt big1} {I64.ofInt (p100)}" "Some 4611686018427387904 None";
+  _ = expect "I64.ofIntU big" "{I64.ofIntU (pow 2 64 - 1)} {I64.ofIntU (pow 2 64)}" "Some (-1) None";
+  _ = expect "I64.trunc big" (I64.str (I64.trunc (p100 + 9))) "9";
+  _ = expect "I64.toInt min" "{I64.toInt (I64.shl (I64.trunc 1) 63)}" "Ok (-9223372036854775808)";
+  _ = expect "F64.ofInt big" (F64.str (F64.ofInt (pow 2 70) / F64.ofInt (pow 2 69))) "2";
+  _ = expect "actor send big" (roundTrip p100) "True [1267650600228229401496703205376, -1267650600228229401496703205376]";
+  print "bigint: all ok".

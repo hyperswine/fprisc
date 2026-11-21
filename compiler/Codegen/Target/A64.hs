@@ -640,6 +640,7 @@ selectInstr cfg immediates (Instr d op) = case op of
   OArith o a b | o `elem` [Add, Sub], Just n <- M.lookup b immediates -> def (\r -> arithImm o r (vreg a) n)
   OArith Add a b | Just n <- M.lookup a immediates -> def (\r -> arithImm Add r (vreg b) n)
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
+  OArithVal o a b -> def (\r -> arithVal o r (vreg a) (vreg b))
   -- proven not to trap: the bare instruction
   OArithU o a b | o `elem` [Add, Sub], Just n <- M.lookup b immediates ->
     def (\r -> emitI (rri (if o == Add then A.AddImmediate else A.SubtractImmediate) r (vreg a) n))
@@ -690,6 +691,22 @@ selectInstr cfg immediates (Instr d op) = case op of
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
     emitI (cset (cond o) r)
+  OCmpVal o a b -> def $ \r -> do
+    slow <- freshL "cmpslow"
+    done <- freshL "cmpdone"
+    both <- freshV False
+    bit <- freshV False
+    emitI (rrr A.And both (vreg a) (vreg b))
+    emitI (rri A.AndImmediate bit both 1)
+    emitI (cbz bit slow)
+    emitI (cmp (vreg a) (vreg b))
+    emitI (cset (cond o) r)
+    emitI (jump done)
+    emitL slow
+    res <- freshV True
+    call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (cmpSym o))) Calling.RuntimeCall [vreg a, vreg b] (Just res)
+    emitI (ldrsw r res 4)
+    emitL done
   OEqVal eq a b -> def $ \r -> do
     slow <- freshL "eqslow"
     done <- freshL "eqdone"
@@ -818,6 +835,52 @@ selectInstr cfg immediates (Instr d op) = case op of
       emitI (rri A.OrImmediate tb' tb 1)
       trapPrim (primSymbol o) [ta', tb']
       emitI (li r 0)
+      emitL done
+    cmpSym = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
+    arithVal o r a b = do
+      slow <- freshL "avslow"
+      done <- freshL "avdone"
+      both <- freshV False
+      bit <- freshV False
+      emitI (rrr A.And both a b)
+      emitI (rri A.AndImmediate bit both 1)
+      emitI (cbz bit slow)
+      xa <- freshV False
+      yb <- freshV False
+      t <- freshV False
+      emitI (rri A.ShiftRightArithmeticImmediate xa a 1)
+      emitI (rri A.ShiftRightArithmeticImmediate yb b 1)
+      case o of
+        Add -> emitI (rrr A.Add t xa yb) >> fit t slow
+        Sub -> emitI (rrr A.Subtract t xa yb) >> fit t slow
+        Mul -> do
+          wide <- freshL "avwide"
+          fitL <- freshL "avfit"
+          emitI (rrr A.Multiply t xa yb)
+          forM_ [xa, yb] $ \opnd -> do
+            n <- freshV False
+            emitI (rri A.SignExtend31 n opnd 0)
+            emitI (cmp n opnd)
+            emitI (bcond O.NotEqual wide)
+          emitI (jump fitL)
+          emitL wide
+          emitI (cbz yb fitL)
+          q <- freshV False
+          emitI (rrr A.Divide q t yb)
+          emitI (cmp q xa)
+          emitI (bcond O.NotEqual slow)
+          emitL fitL
+          fit t slow
+        Div -> do
+          emitI (cbz yb slow)
+          floorDiv t xa yb
+          fit t slow
+      sh <- freshV False
+      emitI (rri A.ShiftLeftImmediate sh t 1)
+      emitI (rri A.OrImmediate r sh 1)
+      emitI (jump done)
+      emitL slow
+      call (CodeSymbol (primSymbol o)) Calling.RuntimeCall [a, b] (Just r)
       emitL done
     arith kernel o r a b = do
       slow <- freshL "slow"

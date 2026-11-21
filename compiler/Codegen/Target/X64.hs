@@ -821,6 +821,7 @@ selectInstr cfg facts (Instr d op) = case op of
   -- makes the constant, for the C primitive)
   OArith o _ _ | Just (x, _, n) <- immediateForm (fImmediates facts) op -> def (\r -> arithImm o r (vreg x) n)
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
+  OArithVal o a b -> def (\r -> arithVal o r (vreg a) (vreg b))
   OArithU o _ _ | Just (x, _, n) <- immediateForm (fImmediates facts) op ->
     def (\r -> emitI (addi r (vreg x) (if o == Sub then negate n else n)))
   -- proven not to trap; Mul/Div keep the checked form here (correct, not
@@ -872,6 +873,25 @@ selectInstr cfg facts (Instr d op) = case op of
       Just (_, _, n) -> emitI (cmpi (vreg a) n)
       Nothing -> emitI (cmp (vreg a) (vreg b))
     emitI (cset (cond o) r)
+  OCmpVal o a b -> def $ \r -> do
+    slow <- freshL "cmpslow"
+    done <- freshL "cmpdone"
+    both <- freshV False
+    bit <- freshV False
+    emitI (rrr O.And both (vreg a) (vreg b))
+    emitI (rri O.AndImmediate bit both 1)
+    emitI (cbz bit slow)
+    emitI (cmp (vreg a) (vreg b))
+    emitI (cset (cond o) r)
+    emitI (jump done)
+    emitL slow
+    res <- freshV True
+    let cmpSym' = CodeSymbol ("fpr_prim_fn_" ++ mangleName (cmpSym o))
+    if cfgFrames cfg && keepingEnabled cfg
+      then emitKeepingCall cmpSym' [vreg a, vreg b] res
+      else emitCall cmpSym' Calling.RuntimeCall [vreg a, vreg b] (Just res)
+    emitI (ldrsw r res 4)
+    emitL done
   OEqVal eq a b -> def $ \r -> do
     slow <- freshL "eqslow"
     done <- freshL "eqdone"
@@ -1007,6 +1027,50 @@ selectInstr cfg facts (Instr d op) = case op of
         then emitKeepingCall (CodeSymbol (primSymbol o)) [ta', tb'] res
         else emitCall (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
       emitI (rri O.ShiftRightArithmeticImmediate r res 1)
+    cmpSym = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
+    arithVal o r a b = do
+      slow <- freshL "avslow"
+      done <- freshL "avdone"
+      both <- freshV False
+      bit <- freshV False
+      emitI (rrr O.And both a b)
+      emitI (rri O.AndImmediate bit both 1)
+      emitI (cbz bit slow)
+      xa <- freshV False
+      yb <- freshV False
+      t <- freshV False
+      emitI (rri O.ShiftRightArithmeticImmediate xa a 1)
+      emitI (rri O.ShiftRightArithmeticImmediate yb b 1)
+      case o of
+        Add -> emitI (rrr O.Add t xa yb) >> fit t slow
+        Sub -> emitI (rrr O.Subtract t xa yb) >> fit t slow
+        Mul -> do
+          emitI (rrr O.Multiply t xa yb)
+          emitI (bcond O.Overflow slow)
+          fit t slow
+        Div -> do
+          emitI (cbz yb slow)
+          ok <- freshL "avfdivok"
+          p <- freshV False
+          remV <- freshV False
+          xr <- freshV False
+          emitI (divide t xa yb)
+          emitI (rrr O.Multiply p t yb)
+          emitI (rrr O.Subtract remV xa p)
+          emitI (cbz remV ok)
+          emitI (rrr O.Xor xr remV yb)
+          emitI (cmpi xr 0)
+          emitI (bcond (cond Ge) ok)
+          emitI (addi t t (-1))
+          emitL ok
+          fit t slow
+      emitI (tagw r t)
+      emitI (jump done)
+      emitL slow
+      if cfgFrames cfg && keepingEnabled cfg
+        then emitKeepingCall (CodeSymbol (primSymbol o)) [a, b] r
+        else emitCall (CodeSymbol (primSymbol o)) Calling.RuntimeCall [a, b] (Just r)
+      emitL done
     arith kernel o r a b = do
       slow <- freshL "slow"
       done <- freshL "done"

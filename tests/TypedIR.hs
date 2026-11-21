@@ -257,10 +257,10 @@ main = do
   check "fib 20 ticks once per activation" (length [() | EvSafepoint _ <- ocEvents fib20] == 21891)
   check "sum 100 0 = 5050" (ocResult sum100 == Right (RInt 5050))
   check "sum's loop ticks on every turn" (length [() | EvSafepoint _ <- ocEvents sum100] == 101)
-  check "the checked + traps with the primitive's text"
-    (ocResult ovf == Left (Trap "Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps"))
-  check "the trap is the last event, after the entry safepoint" (take 2 (ocEvents ovf) == [EvCall "addovf" [], EvStackCheck "addovf"] || case ocEvents ovf of
-    [EvCall "addovf" _, EvStackCheck "addovf", EvSafepoint "addovf", EvTrap _] -> True
+  check "exact Int + promotes past intMax instead of trapping"
+    (ocResult ovf == Right (RInt (intMax + 1)))
+  check "the exact Int + runs after the entry safepoint" (case ocEvents ovf of
+    [EvCall "addovf" _, EvStackCheck "addovf", EvSafepoint "addovf"] -> True
     _ -> False)
   -- the bitwise primitives and the shifts (increment 1 of
   -- docs/2026-10-21-TYPED-IR-COVERAGE.md): lowered only as declared HAL
@@ -414,9 +414,9 @@ main = do
               after = evalProgram simplified fn args
           unless (before == after) (error ("FAIL: " ++ name ++ ": simplification changed " ++ fn ++ " " ++ show args ++ "\n  " ++ show before ++ "\n  " ++ show after))) calls
         pure (simplified, removed)
-  (simpl1, removed1) <- differential "scalar fixtures" lowered [("fib", [RInt 20]), ("fib", [RInt 0]), ("sum", [RInt 100, RInt 0]), ("addovf", [RInt intMax, RInt 1]), ("addovf", [RInt 1, RInt 2])]
-  check "sum's repeated untag of n is shared" (M.lookup "sum" removed1 == Just 1 && length (filter ("untag v0" `isInfixOf`) (lines (dumpFn (simpl1 M.! "sum")))) == 1)
-  check "fib's two untags of n are shared" (M.lookup "fib" removed1 == Just 1)
+  (simpl1, _removed1) <- differential "scalar fixtures" lowered [("fib", [RInt 20]), ("fib", [RInt 0]), ("sum", [RInt 100, RInt 0]), ("addovf", [RInt intMax, RInt 1]), ("addovf", [RInt 1, RInt 2])]
+  check "sum lowers exact Int ops without untagging" ("arithval" `isInfixOf` dumpFn (simpl1 M.! "sum") && not ("untag v0" `isInfixOf` dumpFn (simpl1 M.! "sum")))
+  check "fib lowers exact Int ops without untagging" ("arithval" `isInfixOf` dumpFn (simpl1 M.! "fib") && "cmpval" `isInfixOf` dumpFn (simpl1 M.! "fib"))
   _ <- differential "bit operations" bitIr [("shl", [RInt 1, RInt 3]), ("shl", [RInt 1, RInt 64]), ("shr", [RInt (-8), RInt 1]), ("andf", [RInt 12, RInt 10])]
   _ <- differential "increment-3 shapes" ir3 [("deadTail", [RInt 1]), ("deadTail", [RInt 2]), ("deadValue", [RInt 0]), ("deadValue", [RInt 5]), ("useCaf", [RInt 8])]
   _ <- differential "generic applications" irA [("partial", [RInt 3]), ("over", [RInt 5]), ("computed", [RInt 4]), ("applyInt", [RInt 3])]
@@ -535,9 +535,7 @@ main = do
       (ir32, failures32) = lowerProgram p32 M.empty prog prog M.empty M.empty
       hi32 = 1073741823
   check "RV32 lowering verifies under explicit width" (null failures32 && verifyProgramWidth W32 ir32 == Right ())
-  check "RV32 Int overflow uses the 31-bit boundary" (case ocResult (evalProgramWidth W32 ir32 "addovf" [RInt hi32, RInt 1]) of
-    Left (Trap reason) -> "(-1073741824..1073741823)" `isInfixOf` reason
-    _ -> False)
+  check "RV32 exact Int promotes past the 31-bit boundary" (ocResult (evalProgramWidth W32 ir32 "addovf" [RInt hi32, RInt 1]) == Right (RInt (hi32 + 1)))
   check "RV32 shifts use 32-bit logical width and 31-bit wrapping"
     (ocResult (evalProgramWidth W32 bitIr "shr" [RInt (-1), RInt 31]) == Right (RInt 1)
       && ocResult (evalProgramWidth W32 bitIr "shl" [RInt 1, RInt 30]) == Right (RInt (-1073741824))

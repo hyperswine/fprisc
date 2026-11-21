@@ -89,10 +89,12 @@ opSignature tyOf = \case
     pure (Just TVal)
   OKernelArith _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OArith _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
+  OArithVal _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
   OArithU _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OBit _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OShift _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OCmp _ a b -> expect a TInt >> expect b TInt >> pure (Just TPred)
+  OCmpVal _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
   OEqVal _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
   OBits n -> do
     unless (n >= negate (2 ^ (63 :: Int)) && n < 2 ^ (63 :: Int)) (Left ("bits " ++ show n ++ " is not a signed 64-bit word"))

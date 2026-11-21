@@ -113,16 +113,49 @@ static V some(V value) {
   FPR_FLD(r,0)=value;return r;
 }
 static V ofInt(V v) {
-  int64_t n=(int64_t)UNTAG(v);
-  if (n<(int64_t)INT32_MIN || n>(int64_t)INT32_MAX) return (V)&i32_none;
-  return some(fpr_i32_pack((uint32_t)(int32_t)n));
+  if (ISINT(v)) {
+    int64_t n=(int64_t)UNTAG(v);
+    if (n<(int64_t)INT32_MIN || n>(int64_t)INT32_MAX) return (V)&i32_none;
+    return some(fpr_i32_pack((uint32_t)(int32_t)n));
+  }
+  if (!v || TID(v)!=T_BIGINT) return (V)&i32_none;
+#if UINTPTR_MAX > 0xFFFFFFFFu
+  /* Normalized T_BIGINT on 64-bit is strictly outside 63-bit tagged Int, hence outside I32. */
+  return (V)&i32_none;
+#else
+  const bigint_t *b=(const bigint_t *)v;
+  if (b->len!=1) return (V)&i32_none;
+  uint64_t m=b->limbs[0];
+  if (!b->var) {
+    if (m>(uint64_t)INT32_MAX) return (V)&i32_none;
+    return some(fpr_i32_pack((uint32_t)m));
+  }
+  if (m>0x80000000ULL) return (V)&i32_none;
+  return some(fpr_i32_pack((uint32_t)(0u-(uint32_t)m)));
+#endif
 }
 static V ofIntU(V v) {
-  int64_t n=(int64_t)UNTAG(v);
-  if (n<0 || n>(int64_t)UINT32_MAX) return (V)&i32_none;
-  return some(fpr_i32_pack((uint32_t)n));
+  if (ISINT(v)) {
+    int64_t n=(int64_t)UNTAG(v);
+    if (n<0 || n>(int64_t)UINT32_MAX) return (V)&i32_none;
+    return some(fpr_i32_pack((uint32_t)n));
+  }
+  if (!v || TID(v)!=T_BIGINT) return (V)&i32_none;
+#if UINTPTR_MAX > 0xFFFFFFFFu
+  return (V)&i32_none;
+#else
+  const bigint_t *b=(const bigint_t *)v;
+  if (b->var || b->len!=1 || b->limbs[0]>(uint64_t)UINT32_MAX) return (V)&i32_none;
+  return some(fpr_i32_pack((uint32_t)b->limbs[0]));
+#endif
 }
-static V trunc_(V v) { return fpr_i32_pack((uint32_t)UNTAG(v)); }
+static V trunc_(V v) {
+  if (ISINT(v)) return fpr_i32_pack((uint32_t)UNTAG(v));
+  if (!v || TID(v)!=T_BIGINT) fpr_cpanic("I32.trunc: not an Int");
+  const bigint_t *b=(const bigint_t *)v;
+  uint32_t lo=(uint32_t)b->limbs[0];
+  return fpr_i32_pack(b->var ? (0u-lo) : lo);
+}
 static V toInt(V v) {
   int32_t n=s32(v);
 #if UINTPTR_MAX <= 0xFFFFFFFFu

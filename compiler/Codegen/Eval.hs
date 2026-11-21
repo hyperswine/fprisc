@@ -218,6 +218,12 @@ callFn width program name args = do
           y <- int env b
           r <- arith width o x y
           pure (Just (VInt r))
+        OArithVal o a b -> do
+          x <- val env a >>= \case RInt n -> pure n; v -> stuck ("an Int was needed, found " ++ show v)
+          y <- val env b >>= \case RInt n -> pure n; v -> stuck ("an Int was needed, found " ++ show v)
+          when (o == Div && y == 0) (trap "division by zero")
+          let r = case o of Add -> x + y; Sub -> x - y; Mul -> x * y; Div -> x `div` y
+          pure (Just (VVal (RInt r)))
         -- proven not to trap (Codegen.Interval, Simplify.foldDivisors); the
         -- evaluator still checks, so a wrong proof shows as a trap here
         OArithU o a b -> do
@@ -237,6 +243,10 @@ callFn width program name args = do
         OCmp o a b -> do
           x <- int env a
           y <- int env b
+          pure (Just (VPred (cmp o x y)))
+        OCmpVal o a b -> do
+          x <- val env a >>= \case RInt n -> pure n; v -> stuck ("an Int was needed, found " ++ show v)
+          y <- val env b >>= \case RInt n -> pure n; v -> stuck ("an Int was needed, found " ++ show v)
           pure (Just (VPred (cmp o x y)))
         OEqVal eq a b -> do
           x <- val env a

@@ -214,10 +214,12 @@ data Op
   | OApply VId [VId] -- TVal, TVal.. -> TVal: the generic application through the runtime (fpr_applyN): partial, over-saturated, or of a computed head; allocates PAPs in the runtime, calls anything
   | OKernelArith ArithOp VId VId -- checked TInt arithmetic with the vector-kernel overflow/zero diagnostics
   | OArith ArithOp VId VId -- TInt TInt -> TInt; traps in program order with the primitive's message
+  | OArithVal ArithOp VId VId -- TVal TVal -> TVal: exact Int + - * / (fast tagged path, slow path promotes/computes T_BIGINT)
   | OArithU ArithOp VId VId -- TInt TInt -> TInt, proven not to trap: no overflow check (Add/Sub: a difference-bound proof, Codegen.Interval; Div by a literal other than 0 and -1, and the Mul/Sub of a remainder by it: Simplify.foldDivisors), no zero test
   | OBit BitOp VId VId -- TInt TInt -> TInt: and, or, xor of the untagged values
   | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
   | OCmp CmpOp VId VId -- TInt TInt -> TPred
+  | OCmpVal CmpOp VId VId -- TVal TVal -> TPred: exact Int < > <= >= (fast tagged path, slow path compares T_BIGINT)
   | OEqVal Bool VId VId -- TVal TVal -> TPred: deep structural equality (True) or inequality (False)
   | OBits Integer -- TVal: a raw 64-bit word, signed form (an F64 literal's IEEE bits)
   | OFloatBin FloatOp VId VId -- TVal TVal -> TVal: F64 arithmetic on the bits; semantics shared with Codegen.Eval
@@ -343,10 +345,12 @@ opEffect = \case
   OApply _ _ -> AnyEffect
   OKernelArith _ _ _ -> MayTrap
   OArith _ _ _ -> MayTrap
+  OArithVal _ _ _ -> RuntimeCall -- slow path promotes to T_BIGINT in the runtime
   OArithU _ _ _ -> Pure -- proven: no zero divisor, no overflow
   OBit _ _ _ -> Pure
   OShift _ _ _ -> MayTrap
   OCmp _ _ _ -> Pure
+  OCmpVal _ _ _ -> RuntimeCall -- slow path compares T_BIGINT in the runtime
   OEqVal _ _ _ -> RuntimeCall -- deep equality is the C primitive unless both are tagged Ints
   OBits _ -> Pure
   OFloatBin _ _ _ -> Pure
@@ -409,10 +413,12 @@ opUses = \case
   OApply f as -> f : as
   OKernelArith _ a b -> [a,b]
   OArith _ a b -> [a, b]
+  OArithVal _ a b -> [a, b]
   OArithU _ a b -> [a, b]
   OBit _ a b -> [a, b]
   OShift _ a b -> [a, b]
   OCmp _ a b -> [a, b]
+  OCmpVal _ a b -> [a, b]
   OEqVal _ a b -> [a, b]
   OBits _ -> []
   OFloatBin _ a b -> [a, b]
@@ -484,10 +490,12 @@ mapOpUses f = \case
   OApply h as -> OApply (f h) (map f as)
   OKernelArith o a b -> OKernelArith o (f a) (f b)
   OArith o a b -> OArith o (f a) (f b)
+  OArithVal o a b -> OArithVal o (f a) (f b)
   OArithU o a b -> OArithU o (f a) (f b)
   OBit o a b -> OBit o (f a) (f b)
   OShift o a b -> OShift o (f a) (f b)
   OCmp o a b -> OCmp o (f a) (f b)
+  OCmpVal o a b -> OCmpVal o (f a) (f b)
   OEqVal e a b -> OEqVal e (f a) (f b)
   OBits n -> OBits n
   OFloatBin o a b -> OFloatBin o (f a) (f b)

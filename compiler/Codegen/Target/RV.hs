@@ -163,6 +163,55 @@ boxed v = do t <- fresh; d <- fresh; ri R.ShiftLeftImmediate t v 1; ri R.OrImmed
 -- A zero divisor branches to the slow path BEFORE dividing: RISC-V div by
 -- zero returns -1 instead of trapping, and -1 would pass the fit check.
 arith :: Integer -> Bool -> ArithOp -> VReg -> VReg -> VReg -> S ()
+cmpSym :: CmpOp -> String
+cmpSym = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
+
+arithVal :: Integer -> ArithOp -> VReg -> VReg -> VReg -> S ()
+arithVal w op d a b = do
+  slow <- freshLabel; done <- freshLabel
+  both <- fresh; bit <- fresh; badTag <- fresh
+  rr R.And both a b
+  ri R.AndImmediate bit both 1
+  ri R.XorImmediate badTag bit 1
+  branch badTag slow
+  x <- fresh; y <- fresh; result <- fresh
+  ri R.ShiftRightArithmeticImmediate x a 1
+  ri R.ShiftRightArithmeticImmediate y b 1
+  let failUnlessEqual lhs rhs = do bad <- fresh; rr (R.Compare Ne) bad lhs rhs; branch bad slow
+  case op of
+    Add -> rr R.Add result x y
+    Sub -> rr R.Subtract result x y
+    Mul -> do
+      rr R.Multiply result x y
+      high <- fresh; sign <- fresh
+      rr R.MultiplyHigh high x y
+      ri R.ShiftRightArithmeticImmediate sign result (8*w-1)
+      failUnlessEqual high sign
+    Div -> do
+      isZero <- fresh; z <- fresh; li z 0
+      rr (R.Compare Eq) isZero y z; branch isZero slow
+      ok <- freshLabel
+      p <- fresh; remV <- fresh; xr <- fresh; rZero <- fresh; nonNeg <- fresh; one <- fresh
+      rr R.Divide result x y
+      rr R.Multiply p result y
+      rr R.Subtract remV x p
+      rr (R.Compare Eq) rZero remV z; branch rZero ok
+      rr R.Xor xr remV y
+      rr (R.Compare Ge) nonNeg xr z; branch nonNeg ok
+      li one 1
+      rr R.Subtract result result one
+      mark ok
+  shifted <- fresh; fit <- fresh
+  ri R.ShiftLeftImmediate shifted result 1; ri R.ShiftRightArithmeticImmediate fit shifted 1
+  failUnlessEqual fit result
+  sh <- fresh
+  ri R.ShiftLeftImmediate sh result 1
+  ri R.OrImmediate d sh 1
+  jump done
+  mark slow
+  call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [a, b] (Just d) False
+  mark done
+
 arith w kernel op d x y = do
   slow <- freshLabel; zero <- freshLabel; done <- freshLabel
   result <- fresh
@@ -362,6 +411,7 @@ select cfg fn = do
       OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call (CodeSymbol "fpr_g_charAt_call2") Calling.RuntimeCall [vreg s,i] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
       OKernelArith op a b -> arith w True op d (vreg a) (vreg b)
       OArith op a b -> arith w False op d (vreg a) (vreg b)
+      OArithVal op a b -> arithVal w op d (vreg a) (vreg b)
       -- the difference-bound proof removed the overflow check: a plain
       -- instruction where the checked form keeps the C primitive; Mul/Div
       -- keep the call (the pass produces only Add/Sub)
@@ -411,6 +461,20 @@ select cfg fn = do
         call (CodeSymbol (if op == Shl then "fpr_g_BITSHIFTL_call2" else "fpr_g_BITSHIFTR_call2")) Calling.RuntimeCall [x,y] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 1
       OCmp op a b -> rr (R.Compare op) d (vreg a) (vreg b)
+      OCmpVal op a b -> do
+        slow <- freshLabel; done <- freshLabel
+        both <- fresh; bit <- fresh; badTag <- fresh
+        rr R.And both (vreg a) (vreg b)
+        ri R.AndImmediate bit both 1
+        ri R.XorImmediate badTag bit 1
+        branch badTag slow
+        rr (R.Compare op) d (vreg a) (vreg b)
+        jump done
+        mark slow
+        t <- fresh
+        call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (cmpSym op))) Calling.RuntimeCall [vreg a, vreg b] (Just t) False
+        loadAt R.Load32 d t 4
+        mark done
       OEqVal eq a b -> do
         t <- fresh; call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a,vreg b] (Just t) False
         loadAt R.Load32 d t 4
