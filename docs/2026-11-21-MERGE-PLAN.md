@@ -103,6 +103,9 @@ the Sol suites, board/QEMU gates unchanged).
 ## Suggested order
 
 1. `Compiler/Encoding/A64.hs` vocabulary + JIT adoption (A64 slice).
+   [Delivered 2026-11-21](2026-11-21-ENCODING-A64.md): 49 GNU-as-pinned
+   byte-identity checks, silent branch masking replaced by range errors,
+   JIT differentials byte-identical.
 2. AOT A64 emitter adoption for shared forms; then the X64 pair.
 3. Mechanical placements in one rename commit (passes home, `Sol/Hal.hs`,
    kind cross-references, diagnostics map paragraphs).

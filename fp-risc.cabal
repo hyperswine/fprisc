@@ -160,6 +160,7 @@ library
       Core.Typed.Program
       Core.Typed.Pipeline
       Compiler.DataLayout
+      Compiler.Encoding.A64
       Compiler.Native.Core
       Compiler.Native.Linked
       Compiler.Native.Imports
@@ -370,6 +371,11 @@ test-suite CompilerOptions
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            CompilerOptions.hs
+
+test-suite EncodingA64
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            EncodingA64.hs
 
 test-suite CorePipeline
   import:             unit-test
