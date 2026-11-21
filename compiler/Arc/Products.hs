@@ -150,7 +150,7 @@ lowerProducts instrument pinned prog ann paramKinds immortals immortalArgs scala
         physical <- mapM (const fresh) [1..maybe 1 width abi]
         pure (source,shape,abi,physical)
       let parameters = concat [ns | (_,_,_,ns)<-slots]
-          owners = [head ns | ((_,shape,_,ns),kind,immortal)<-zip3 slots (paramKinds M.! name)
+          owners = [n0 | ((_,shape,_,n0:_),kind,immortal)<-zip3 slots (paramKinds M.! name)
                             (M.findWithDefault (repeat False) name immortalArgs),
                             shape==Nothing, kind==Managed, not immortal]
           enter [] env pending = tailE (resultABI name) env pending body

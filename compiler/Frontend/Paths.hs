@@ -46,17 +46,16 @@ expandPathLits tbl ttbl tops = (nub (concatMap errsTop tops), map top tops)
 
     pathTarget e = case e of
       SApp (SVar "Path") (SStrI [SegStr p])
-        | (root : fields) <- splitDots p,
-          not (null root),
-          isUpper (head root),
+        | (root@(rc : _) : fields) <- splitDots p,
+          isUpper rc,
           Just fs <- M.lookup root tbl ->
             Just (p, root, fields, fs)
       _ -> Nothing
 
     -- `@Msg` where Msg is a declared SUM type: its wire codec (codecFor)
     codecTarget e = case e of
-      SApp (SVar "Path") (SStrI [SegStr p])
-        | not (null p), isUpper (head p), '.' `notElem` p,
+      SApp (SVar "Path") (SStrI [SegStr p@(pc : _)])
+        | isUpper pc, '.' `notElem` p,
           M.notMember p tbl, Just cs <- M.lookup p ttbl -> Just (p, cs)
       _ -> Nothing
 

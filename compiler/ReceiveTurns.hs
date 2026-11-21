@@ -496,8 +496,9 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
               cyclic = [c | CyclicSCC c <- stronglyConnComp [(n, n, filter (`S.notMember` bs) (localGraph M.! n)) | n <- rest]]
            in case cyclic of
                 [] -> if S.null bs then S.fromList (take 1 ns) else bs
-                (c : _) -> complete (S.insert (pickOf c) bs)
-        pickOf c = case [n | n <- c, S.notMember n joins] of (n : _) -> n; [] -> head c
+                (c@(c0 : _) : _) -> complete (S.insert (pickOf c0 c) bs)
+                ([] : _) -> bs
+        pickOf fallback c = case [n | n <- c, S.notMember n joins] of (n : _) -> n; [] -> fallback
     -- loop-invariant parameter slots of a group: (function, index) classes
     -- joined by every call inside the group that passes a caller's own
     -- parameter; a class any call feeds with anything else is variable.

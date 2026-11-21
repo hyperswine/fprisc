@@ -143,10 +143,11 @@ analyseLiveness items = Liveness instrs blocks intervals live
     exits = M.fromListWith max (concatMap lastOf blocks)
     intervals =
       M.fromList
-        [ (v, Interval (fst (head segs)) (snd (last segs)) ds us segs)
+        [ (v, Interval (fst s0) (snd (last segs)) ds us segs)
           | (v, us) <- M.toList usePositions,
             let ds = M.findWithDefault [] v defPositions
-                segs = merge (M.findWithDefault [] v pieces)
+                segs = merge (M.findWithDefault [] v pieces),
+            (s0 : _) <- [segs]
         ]
     -- Segments: per block, a value occupies from its entry (live in) or its
     -- first definition or use there, to its exit (live out) or its last

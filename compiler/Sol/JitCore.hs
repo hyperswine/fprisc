@@ -292,7 +292,7 @@ tyExprV sigs cl scalar colTys es0 env0 e0 = goV es0 env0 e0
   where
     goV es env e = case e of
       CApp (CVar "error") (CStr _) -> Just (JB, [])
-      CVar v | S.member v es -> if scalar then Just (head colTys, []) else Nothing
+      CVar v | S.member v es -> case colTys of (t0 : _) | scalar -> Just (t0, []); _ -> Nothing
       CProj k (CVar v) | S.member v es -> Just (colTys !! k, [])
       CLet x (CVar v) b | S.member v es -> goV (S.insert x es) env b
       CLet x a b -> do

@@ -205,7 +205,7 @@ expandViews fn
       (before,rest@(Instr _ (OVectorView _ vec):_))->do
         let (run,after)=span (\(Instr _ op)->case op of OVectorView _ h->h==vec;_->False) rest
             parts=nub [which | Instr _ (OVectorView which _)<-run]
-            first which=head [d | Instr (Just (d,_)) (OVectorView w _)<-run,w==which]
+            first which=case [d | Instr (Just (d,_)) (OVectorView w _)<-run,w==which] of (d:_) -> d; [] -> error "vector read: missing view"
         modify (\(v,l,copies)->(v,l,[(d,first which) | which<-parts,Instr (Just (d,_)) (OVectorView w _)<-run,w==which,d/=first which]++copies))
         join<-freshBlock
         results<-mapM (\which->if which `elem` parts then pure (first which) else freshValue) [minBound..maxBound]

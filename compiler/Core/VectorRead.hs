@@ -57,4 +57,6 @@ storeNames=map fst stores
 storeElement :: String -> Maybe (String,Element)
 storeElement name=lookup name stores
 storeNameAs :: Element -> String -> String
-storeNameAs element name=head ([typed | (typed,(source,e))<-stores,source==name,e==element]++[name])
+storeNameAs element name=case [typed | (typed,(source,e))<-stores,source==name,e==element] of
+  (typed:_) -> typed
+  [] -> name

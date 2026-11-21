@@ -33,12 +33,13 @@ pipelinePlan checked prog local expr = do
   let elems=[last ks | (_,_,_,ks)<-stages]
   element <- case elems of k:rest | k/=KB && all (==k) rest -> Just k; _ -> Nothing
   let names=[f | (_,f,_,_)<-stages]
+  firstName <- case names of (n : _) -> Just n; [] -> Nothing
   cl <- arithClosure prog names
   if S.size cl > 64 || not (all (fusionSafe prog) names) ||
      not (acyclic cl) then Nothing else Just ()
   let pipeline=PipePlan [(op,f,slots) | (op,f,slots,_)<-stages] element acc
       result=maybe element snd acc
-      plan=SpecPlan (FusedPipeline pipeline) (head names) True cl Nothing Nothing Nothing
+      plan=SpecPlan (FusedPipeline pipeline) firstName True cl Nothing Nothing Nothing
              (case result of KD->Just Float64; KS->Just Float32; _->Nothing)
              (length args) (Just (kinds++[element],result))
   pure (plan,args++[vector])

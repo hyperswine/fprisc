@@ -56,7 +56,7 @@ lowerName :: P Name
 lowerName = try $ do
   segs <- dottedIdent
   case segs of
-    [s] | isLower (head s) -> pure s
+    [s@(c : _)] | isLower c -> pure s
     _ -> fail "expected simple lowercase identifier"
 
 pName :: P Name
@@ -77,7 +77,7 @@ upperName :: P Name
 upperName = try $ do
   segs <- dottedIdent
   case segs of
-    (s : _) | isUpper (head s) -> pure (intercalate "." segs)
+    (s@(c : _) : _) | isUpper c -> pure (intercalate "." segs)
     _ -> fail "expected uppercase identifier"
 
 integer :: P Integer

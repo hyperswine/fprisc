@@ -104,7 +104,7 @@ resolveModuleParsedWith record prefExt baseDir spec = do
   let path = case (hits, [h | Just h <- homeHits]) of
         (f : _, _) -> mkPath f
         ([], h : _) -> h
-        _ -> mkPath (head cands)
+        _ -> case cands of (c : _) -> mkPath c; [] -> mkPath ""
   r <- parseModuleSourceWith record path
   pure $ case r of
     Left e -> Left e

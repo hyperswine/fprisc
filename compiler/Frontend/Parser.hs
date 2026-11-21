@@ -257,8 +257,8 @@ varOrProj :: P SExpr
 varOrProj = try $ do
   segs <- dottedIdent
   case segs of
-    [s] | isLower (head s) -> pure (SVar s)
-    (s : rest) | isLower (head s) -> pure (SProj (SVar s) rest)
+    [s@(c : _)] | isLower c -> pure (SVar s)
+    (s@(c : _) : rest) | isLower c -> pure (SProj (SVar s) rest)
     _ -> fail "not a lowercase name"
 
 parensOrTuple :: P SExpr

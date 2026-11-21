@@ -113,10 +113,12 @@ trimCallbacks types@(TypeContext linears _) arities schemas templates plans remo
         <>getConst (mapChildrenM (Const . globalNames) e)
       reservedNames=S.fromList (map binderName existing++map functionName (root0:map codeAsFunction (M.elems graph)))
         <>S.unions (map (globalNames . functionBody) (root0:map codeAsFunction (M.elems graph)))
-      dummy label=head [Binder uid name (Forall [] [] (TC "Int")) (linShapeT linears (TC "Int"))
+      dummy label=case [Binder uid name (Forall [] [] (TC "Int")) (linShapeT linears (TC "Int"))
         | n<-[0..],let uid=BinderId (Namespace ("callback-join/"++show label)) n,
           let name="$typed_cb_join_unit_"++show n,
-          all ((/=uid) . binderId) existing,name `S.notMember` reservedNames]
+          all ((/=uid) . binderId) existing,name `S.notMember` reservedNames] of
+            (b:_) -> b
+            [] -> error "typed callbacks: unreachable fresh dummy binder"
       rewrite e=let child=runIdentity (mapChildrenM (pure . rewrite) e) in case exprNode child of
         CodeCall label cs ps->child {exprNode=CodeCall label (keepCaps label cs) (keepArgs label ps)}
         JoinCall label cs ps->child {exprNode=JoinCall label (keepCaps label cs) (keepArgs label ps)}

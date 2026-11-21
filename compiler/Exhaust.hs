@@ -99,8 +99,8 @@ checkArms sibs pats = unreachable ++ missing
 -- built from the unguarded clauses alone -- which is equally why a guarded
 -- clause cannot make a later one unreachable.
 checkClauses :: Siblings -> Name -> [([SPat], Bool)] -> [String]
-checkClauses sibs f cls
-  | null cls = []
+checkClauses _ _ [] = []
+checkClauses sibs f cls@((ps0, _) : _)
   | arity == 0 = [] -- a value, not a function: nothing to match on
   | any ((/= arity) . length . fst) cls = [] -- arity disagreement is its own error
   | otherwise = case witness sibs arity [ps | (ps, False) <- cls] of
@@ -113,7 +113,7 @@ checkClauses sibs f cls
             ++ "` (add a clause for it, or a catch-all)"
         ]
   where
-    arity = length (fst (head cls))
+    arity = length ps0
 
 -- A vector of values no row matches, when one exists: Maranget's I, the
 -- counterexample that falls out of the same specialization the usefulness
@@ -141,8 +141,8 @@ witness sibs n rows = case complete sibs heads of
         | Just sib <- sibs c,
           (n', a) : _ <- [(m, a') | (m, a') <- sib, HCon m `notElem` heads] ->
             PCon n' (replicate a PWild)
-      HInt _ : _ -> PInt (head [i | i <- [0 ..], HInt i `notElem` heads])
-      HStr _ : _ -> PStr (head [s | s <- "" : ["x" ++ replicate k '\'' | k <- [0 ..]], HStr s `notElem` heads])
+      HInt _ : _ -> case [i | i <- [0 ..], HInt i `notElem` heads] of (i : _) -> PInt i; [] -> PWild
+      HStr _ : _ -> case [s | s <- "" : ["x" ++ replicate k '\'' | k <- [0 ..]], HStr s `notElem` heads] of (s : _) -> PStr s; [] -> PWild
       _ -> PWild
 
 patOf :: Head -> [SPat] -> SPat

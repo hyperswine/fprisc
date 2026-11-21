@@ -97,7 +97,15 @@ programs; `tests/check_trust.py`; the suites and the apps' own checks
 
 ## Added 18 November 2026
 
-- `std/keyedlist.fpr`: no unsafe helpers. The compiler puts it into programs it rewrites (keyed-list folds, [2026-11-18-KEYED-LIST-FOLDS.md](2026-11-18-KEYED-LIST-FOLDS.md)), so it must never be the reason a safe program is refused. Its one recursion, `emit`, carries `measure ord`, and `fpr --stdcheck` passes. It calls std/mutmap, which is still a known gap of the trust check. Admitting keyedlist trusts only keyedlist's own code; mutmap has no `unsafe` functions, so no taint passes through it.
+- `std/keyedlist.fpr`: no unsafe helpers. The compiler puts it into programs it rewrites (keyed-list folds, [2026-11-18-KEYED-LIST-FOLDS.md](2026-11-18-KEYED-LIST-FOLDS.md)), so it must never be the reason a safe program is refused. Its one recursion, `emit`, carries `measure ord`, and `fpr --stdcheck` passes. It calls std/mutmap, which is now also admitted below.
+
+## Added 21 November 2026
+
+- `std/bytes.fpr`: no unsafe helpers; non-recursive byte buffer wrapper over `Vec.set` and `Vec.pack`.
+- `std/fixedmap.fpr`: no unsafe helpers; non-recursive linear wrapper over `fixedmap*` primitives.
+- `std/hashmap.fpr`: no unsafe helpers; every recursive helper (`insertAllGo`, `getGo`, `bucketGet`, `bucketPut`, `bucketDrop`, `pair`, `insGo`, `altGo`, `foldGo`, `foldBucket`, `rev`, `mapGo`, `mapBucket`) carries a verified termination `measure`. Privileged `nodeGet`/`nodeWith`/`nodeSet` access remains gated separately in `compiler/Compile.hs`.
+- `std/mutmap.fpr`: no unsafe helpers; linear wrapper over `mutmap*` primitives, and its one recursion (`insertAll`) carries `measure kvs`.
+- `std/vector.fpr`: no unsafe helpers; non-recursive linear wrapper over `Vec.*` primitives.
 
 ## Open
 

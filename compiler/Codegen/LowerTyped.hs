@@ -327,12 +327,12 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
            in (PLet k scrut (foldr (\(tid, idx, ar) rest -> PIf (PTag tid ar (PRef k)) (PProj idx (PRef k)) rest)
                   (PErr ("no shape with field ." ++ name ++ " matched")) many), n + 1)
     update scrut assigns n0 = do
-      let roots = nub [head path | (path, _) <- assigns, not (null path)]
+      let roots = nub [r | (r : _, _) <- assigns]
           cands = [(fs, tid) | (fs, tid) <- M.toList (layoutRecords layout), all (`elem` fs) roots]
       when (null cands) (Left ("typed lowering: no record shape has fields " ++ show roots))
       (arms, n1) <- foldM (\(acc, n) (fs, tid) -> do
           (vals, n') <- foldM (\(vs, k) (idx, name) ->
-              case [(path, e) | (path, e) <- assigns, not (null path), head path == name] of
+              case [(path, e) | (path@(r : _), e) <- assigns, r == name] of
                 [] -> pure (vs ++ [PProj idx scrut], k)
                 [([_], e)] -> do (v, k') <- go k e; pure (vs ++ [v], k')
                 deeper -> do (v, k') <- update (PProj idx scrut) [(drop 1 path, e) | (path, e) <- deeper] k; pure (vs ++ [v], k'))
@@ -457,7 +457,6 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
           -- KScrut (-1): a placeholder no counter produces
           x <- either Left (Right . fst) (project (Just (patType p)) scrut name (-1))
           pure (PLet (KBinder (binderId b)) (rekey (KScrut (-1)) (KField (binderId b)) x) k)) (pure ok) fs
-      _ -> Left ("typed lowering: the pattern " ++ patDisplay p)
     -- erasure's matchFields: the last field's test innermost
     matchFields = matchFieldsRaw []
     -- C6 stage 3c: erasure's I64 fields, bound through a fresh box

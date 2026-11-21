@@ -1022,7 +1022,9 @@ representWithProductEvidence capacity evidence layouts typeSpec pinned declarati
           target =
             if M.notMember stem pMap
               then stem
-              else head [c | k <- [1 :: Int ..], let c = stem ++ "$" ++ show k, M.notMember c pMap]
+              else case [c | k <- [1 :: Int ..], let c = stem ++ "$" ++ show k, M.notMember c pMap] of
+                (c : _) -> c
+                [] -> stem
       ns <- mapM (const freshName) psOrig
       b' <- rename (M.insert n target (M.fromList (zip psOrig ns))) bodyOrig
       asT <- mapM (const fresh) ns

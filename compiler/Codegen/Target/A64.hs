@@ -361,7 +361,9 @@ select cfg fn = do
   pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st, selStrings st)
 
 entryBlock :: Fn -> Block
-entryBlock fn = head [b | b <- fnBlocks fn, bId b == fnEntry fn]
+entryBlock fn = case [b | b <- fnBlocks fn, bId b == fnEntry fn] of
+  (b : _) -> b
+  [] -> error ("a64: missing entry block " ++ show (fnEntry fn))
 
 selectBlock :: A64Config -> Fn -> M.Map VId Ty -> Block -> Se ()
 selectBlock cfg fn tyMap b = do
@@ -914,13 +916,12 @@ parallelMoves :: [(VReg, VReg)] -> Se ()
 parallelMoves = go . filter (uncurry (/=))
   where
     go [] = pure ()
-    go ms = case [m | m@(d, _) <- ms, d `notElem` map snd ms] of
+    go ms@((d0, s0) : msRest) = case [m | m@(d, _) <- ms, d `notElem` map snd ms] of
       ((d, s) : _) -> emitI (mov d s) >> go (filter (/= (d, s)) ms)
       [] -> do
-        let (d, s) = head ms
         t <- freshV True -- a tagged word may travel through it
-        emitI (mov t s)
-        go ((d, t) : [(d', if s' == s then t else s') | (d', s') <- tail ms])
+        emitI (mov t s0)
+        go ((d0, t) : [(d', if s' == s0 then t else s') | (d', s') <- msRest])
 
 selectTerm :: A64Config -> Fn -> Block -> Se ()
 selectTerm cfg fn b = case bTerm b of
@@ -1157,7 +1158,6 @@ emitFnA64WithSymbols symbols cfg fn = do
       floatable it = case it of
         ILabel _ -> True
         I s -> isEntryPseudo it || siOpcode s == O.Common O.Params || siOpcode s == O.A64 A.Move
-        _ -> False
       (headRun, restBody) = span floatable allocatedBody
       entryPseudos = filter isEntryPseudo headRun
       frameless = cfgFramelessEntry cfg && not large && null entrySlots
@@ -1693,6 +1693,9 @@ movImm d n
   | otherwise =
       let w = fromIntegral n :: Word64
           hws = [(w `shiftR` s) .&. 0xffff | s <- [0, 16, 32, 48]]
-       in ("movz " ++ d ++ ", #" ++ show (head hws))
-            : ["movk " ++ d ++ ", #" ++ show h ++ ", lsl #" ++ show s | (h, s) <- zip (tail hws) [16 :: Int, 32, 48], h /= 0]
+       in case hws of
+            (h0 : hrest) ->
+              ("movz " ++ d ++ ", #" ++ show h0)
+                : ["movk " ++ d ++ ", #" ++ show h ++ ", lsl #" ++ show s | (h, s) <- zip hrest [16 :: Int, 32, 48], h /= 0]
+            [] -> []
 

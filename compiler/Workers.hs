@@ -576,7 +576,9 @@ fieldWorkersStep products tupleScalars allowedWorkers input =
       _ -> e
     pushCall f worker before argI after =
       let avoid = boundIn argI `S.union` S.unions (map freeIn (before ++ after))
-          freshArg idx = head [n | k <- [idx, idx + 100 ..], let n = prefix ++ "arg." ++ show k ++ "." ++ f, S.notMember n avoid]
+          freshArg idx = case [n | k <- [idx, idx + 100 ..], let n = prefix ++ "arg." ++ show k ++ "." ++ f, S.notMember n avoid] of
+            (n : _) -> n
+            [] -> prefix ++ "arg." ++ show idx ++ "." ++ f
           bindBefore (idx, a)
             | isTrivial a && S.null (boundIn argI `S.intersection` freeIn a) = (id, a)
             | otherwise = let tmp = freshArg idx in (CLet tmp a, CVar tmp)

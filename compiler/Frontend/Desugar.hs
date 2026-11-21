@@ -315,7 +315,7 @@ projField scrut f = do
 updateRecord :: Core -> [([Name], SExpr)] -> D Core
 updateRecord scrut assigns = do
   shapes <- gets dShapes
-  let roots = nub (map (head . fst) assigns)
+  let roots = nub [r | (r : _, _) <- assigns]
       cands = [(fs, tid) | (fs, tid) <- M.toList shapes, all (`elem` fs) roots]
   when (null cands) $ error ("no record shape has fields " ++ show roots)
   arms <- mapM rebuild cands
@@ -333,11 +333,11 @@ updateRecord scrut assigns = do
       pure (tid, length fs, CMk tid (length fs) fields)
       where
         fieldValue _ (idx, f) =
-          case [(path, e) | (path, e) <- assigns, head path == f] of
+          case [(path, e) | (path@(r : _), e) <- assigns, r == f] of
             [] -> pure (CProj idx scrut)
             [([_], e)] -> dExpr e
             deeper -> do
-              let subAssigns = [(tail p, e) | (p, e) <- deeper]
+              let subAssigns = [(drop 1 p, e) | (p, e) <- deeper]
               updateRecord (CProj idx scrut) subAssigns
 
 compileArms :: Core -> [(SPat, Maybe SExpr, SExpr)] -> Core -> D Core

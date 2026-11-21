@@ -375,10 +375,10 @@ getVec ref i = do
     then ioError (userError ("*** SOL PANIC: Vec: index " ++ show (i + 1) ++ " out of range (len " ++ show (vLen st) ++ ") ***"))
     else do
       fs <- mapM (`readCol` i) (vCols st)
-      pure $ case vRep st of
-        RScalar _ -> head fs
-        RSoA tid ks -> VData tid (soaVar tid ks) fs
-        RUnset -> vUnit
+      pure $ case (vRep st, fs) of
+        (RScalar _, f0 : _) -> f0
+        (RSoA tid ks, _) -> VData tid (soaVar tid ks) fs
+        _ -> vUnit
 
 setVec :: IORef VecStore -> Int -> Value -> IO ()
 setVec ref i v = do

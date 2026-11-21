@@ -309,12 +309,12 @@ eraseWith annotation region contracts types layout f = runExceptT $ do
         _->foldr (\(tid,arity,body) rest->CIf (CTagEq tid arity scrut) body rest)
           (CErr "record update: no shape matched") arms
     update env names scrut assigns = do
-      let roots=nub [head path | (path,_)<-assigns,not (null path)]
+      let roots=nub [r | (r:_,_)<-assigns]
           cands=[(fs,tid) | (fs,tid)<-M.toList (recordLayouts layout),all (`elem` fs) roots]
       unless (not (null cands)) (throwError ("typed Core layout: no record shape has fields "++show roots))
       arms<-forM cands $ \(fs,tid) -> do
         vals<-forM (zip [0..] (sort fs)) $ \(idx,name) ->
-          case [(path,e) | (path,e)<-assigns,not (null path),head path==name] of
+          case [(path,e) | (path@(r:_),e)<-assigns,r==name] of
             [] -> pure (CProj idx scrut)
             [([_],e)] -> go env names e
             deeper -> update env names (CProj idx scrut) [(drop 1 p,e) | (p,e)<-deeper]

@@ -159,7 +159,7 @@ inlineProgramsWithDecisions reporting rounds limit loopLimit inputs=do
           owners=M.unions (M.elems owned)
       unless (M.size owners==sum (map M.size (M.elems owned)))
         (Left "typed inline pipeline: duplicate source owner")
-      let types=programTypes (closedInput (head allPrograms))
+      let types=case allPrograms of (firstProgram:_) -> programTypes (closedInput firstProgram); [] -> error "typed inline pipeline: empty programs"
       snapshot<-Callbacks.catalogPrograms types (map closedInput allPrograms) owners
       inlining<-Inline.planInlining limit loopLimit snapshot
       advanced<-M.traverseWithKey (\key p->do

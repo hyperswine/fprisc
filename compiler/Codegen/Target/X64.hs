@@ -428,7 +428,9 @@ select cfg fn = do
   pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st, selStrings st)
 
 entryBlock :: Fn -> Block
-entryBlock fn = head [b | b <- fnBlocks fn, bId b == fnEntry fn]
+entryBlock fn = case [b | b <- fnBlocks fn, bId b == fnEntry fn] of
+  (b : _) -> b
+  [] -> error ("x64: missing entry block " ++ show (fnEntry fn))
 
 -- What selection reads of the whole function, made once: the constants an
 -- instruction can take as an immediate operand (a signed 32-bit field, its
@@ -1076,13 +1078,12 @@ parallelMoves :: [(VReg, VReg)] -> Se ()
 parallelMoves = go . filter (uncurry (/=))
   where
     go [] = pure ()
-    go ms = case [m | m@(d, _) <- ms, d `notElem` map snd ms] of
+    go ms@((d0, s0) : msRest) = case [m | m@(d, _) <- ms, d `notElem` map snd ms] of
       ((d, s) : _) -> emitI (mov d s) >> go (filter (/= (d, s)) ms)
       [] -> do
-        let (d, s) = head ms
         t <- freshV True -- a tagged word may travel through it
-        emitI (mov t s)
-        go ((d, t) : [(d', if s' == s then t else s') | (d', s') <- tail ms])
+        emitI (mov t s0)
+        go ((d0, t) : [(d', if s' == s0 then t else s') | (d', s') <- msRest])
 
 selectTerm :: X64Config -> Fn -> Facts -> Maybe BId -> Block -> Se ()
 selectTerm cfg fn facts nextBlock b = case bTerm b of

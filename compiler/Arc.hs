@@ -212,10 +212,10 @@ exposeConstructors capacity evidence layouts input=M.map (\(ps,b)->(ps,walk (S.f
     strip (CApp (CVar marker) value) | M.member marker evidence=strip value
     strip value=value
     walk bound e=case e of
-      CApp {}->case spine e of
+      CApp f x->case spine e of
         (CVar n,args) | S.notMember n bound,Just (tid,v,arity)<-M.lookup n stubs,arity==length args->
           CMk tid v (map (walk bound) args)
-        _->case e of CApp f x->CApp (walk bound f) (walk bound x);_->e
+        _->CApp (walk bound f) (walk bound x)
       CLet n a b->CLet n (walk bound a) (walk (S.insert n bound) b)
       CIf c a b->CIf (walk bound c) (walk bound a) (walk bound b)
       CMk t v fs->CMk t v (map (walk bound) fs)

@@ -232,9 +232,8 @@ allocateFn cfg fn = do
             ordered = if crossesCallV v then callee else if crossesClobberV v then callee ++ caller else caller ++ callee
          in filter (`S.notMember` avoid) ordered ++ filter (`S.member` avoid) ordered
       tiedOtherUses v p = case IM.lookup p byPos of
-        Just i | not (null [() | OV d (Tied _) <- siDefs i, d == v]) ->
-          let k = head [k' | OV d (Tied k') <- siDefs i, d == v]
-           in [u | (j, OV u _) <- zip [0 :: Int ..] (siUses i), j /= k]
+        Just i | (k : _) <- [k' | OV d (Tied k') <- siDefs i, d == v] ->
+           [u | (j, OV u _) <- zip [0 :: Int ..] (siUses i), j /= k]
         _ -> []
       order = sortOn (\(v, iv) -> (ivStart iv, ivEnd iv, v)) (M.toList ivs)
       -- Two values may share a register when their segments (the
@@ -335,7 +334,10 @@ allocateFn cfg fn = do
       extraNeed = M.unionsWith max [M.fromListWith (+) [(kindOfV v, 1 :: Int) | (v, _) <- s] | s <- IM.elems saverMap]
       extraSlots =
         let base = length slotObjs
-            mk (n, (k, j)) = (k, j, (acSlot cfg n (head [v | s <- IM.elems saverMap, (v, _) <- s, kindOfV v == k])) {foRef = FrameRef n, foKind = SpillSlot n})
+            firstOf k = case [v | s <- IM.elems saverMap, (v, _) <- s, kindOfV v == k] of
+              (v : _) -> v
+              [] -> error "allocate: missing saver value"
+            mk (n, (k, j)) = (k, j, (acSlot cfg n (firstOf k)) {foRef = FrameRef n, foKind = SpillSlot n})
          in map mk (zip [base ..] [(k, j) | (k, c) <- M.toList extraNeed, j <- [0 .. c - 1]])
       saveSlotsAt p = case IM.lookup p saverMap of
         Nothing -> []
@@ -344,7 +346,9 @@ allocateFn cfg fn = do
               assign used ((v, r) : rest) =
                 let k = kindOfV v
                     j = M.findWithDefault 0 k used
-                    o = head [obj | (k', j', obj) <- extraSlots, k' == k, j' == j]
+                    o = case [obj | (k', j', obj) <- extraSlots, k' == k, j' == j] of
+                      (obj : _) -> obj
+                      [] -> error "allocate: missing extra spill slot"
                  in (r, foRef o) : assign (M.insert k (j + 1) used) rest
            in assign M.empty s
   -- the rewrite, labels kept in place
@@ -453,12 +457,11 @@ loopForm cfg here fn = case acSelfLoop cfg of
     parallel = go . filter (uncurry (/=))
       where
         go [] = []
-        go ms = case [m | m@(d, _) <- ms, d `notElem` map snd ms] of
+        go ms@((d0, src0) : msRest) = case [m | m@(d, _) <- ms, d `notElem` map snd ms] of
           ((d, src) : _) -> vmove d src : go (filter (/= (d, src)) ms)
           [] ->
-            let (d, src) = head ms
-                t = VReg maxV
-             in vmove t src : go ((d, t) : [(d2, if s2 == src then t else s2) | (d2, s2) <- tail ms])
+            let t = VReg maxV
+             in vmove t src0 : go ((d0, t) : [(d2, if s2 == src0 then t else s2) | (d2, s2) <- msRest])
 
 -- one instruction: the copies before it, the instruction over physical
 -- registers, the copies after it
@@ -622,7 +625,7 @@ resolveCopies cfg here raw = do
             (m@(d, s) : _) -> (emit d s :) <$> schedule (filter (/= m) pending)
             [] ->
               -- every destination is a source: a cycle (sources are all registers)
-              let (_, s) = head pending
+              let ((_, s) : _) = pending
                   -- A completed destination still holds a result. This also
                   -- includes identity copies removed above: using one as
                   -- cycle scratch would destroy that already-placed value.
@@ -654,7 +657,7 @@ checkAllocation cfg name items = do
       defsOf i = map k ([p | OP p <- siDefs i] ++ siImplicitDefs i ++ siClobbers i)
       sets = instrLiveSets usesOf defsOf items
       preserved = IS.fromList (map k (acCalleeSaved cfg ++ acPreserved cfg))
-      name' p = head [r | (r, n) <- M.toList key, n == p]
+      name' p = case [r | (r, n) <- M.toList key, n == p] of (r : _) -> r; [] -> error "allocate: unknown register"
   forM_ (zip [0 :: Int ..] sets) $ \(n, (i, _, out)) -> do
     let where' = "checkAllocation " ++ name ++ " #" ++ show n ++ " " ++ siOp i ++ ": "
     forM_ (siClobbers i) $ \p -> when (IS.member (k p) out && not (any (\o -> o == OP p) (siDefs i))) $

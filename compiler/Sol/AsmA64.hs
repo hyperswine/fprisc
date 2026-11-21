@@ -50,7 +50,7 @@ movImm64 r v =
       hs = [(fromIntegral ((u `shiftR` (16 * k)) .&. 0xFFFF) :: I, k) | k <- [0 .. 3]]
       movz (h, k) = 0xD2800000 .|. (fromIntegral k `shiftL` 21) .|. (h `shiftL` 5) .|. fromIntegral r
       movk (h, k) = 0xF2800000 .|. (fromIntegral k `shiftL` 21) .|. (h `shiftL` 5) .|. fromIntegral r
-   in movz (head hs) : [movk hk | hk@(h, _) <- tail hs, h /= 0]
+   in case hs of (h0 : rest) -> movz h0 : [movk hk | hk@(h, _) <- rest, h /= 0]; [] -> []
 
 fmovDX, fmovXD :: Int -> Int -> I -- fmov dD, xN  /  fmov xD, dN
 fmovDX d n = 0x9E670000 .|. fromIntegral (n `shiftL` 5) .|. fromIntegral d

@@ -69,7 +69,7 @@ expandLayout l fs0 = do
         then Left ("Layout " ++ l ++ ": field `" ++ f ++ "` at offset " ++ show o ++ " is not aligned to its " ++ show w ++ "-byte type " ++ t)
         else ((f, t, o) :) <$> place (o + w) rest
     fieldDefs f t o =
-      let cap = toUpper (head f) : tail f
+      let cap = case f of (c : cs) -> toUpper c : cs; [] -> []
           at = if o == 0 then addrOf else call "Addr.add" [addrOf, SInt o]
           here = at
           (fty, get, set) = case t of

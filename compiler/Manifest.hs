@@ -70,7 +70,7 @@ parseManifest path src = do
           [] -> Right m
     at ln msg = path ++ ":" ++ show ln ++ ": " ++ msg
     trim = dropWhileEnd isSpace . dropWhile isSpace
-    quoted t = let u = trim t in if length u >= 2 && head u == '"' && last u == '"' then init (tail u) else u
+    quoted t = case trim t of ('"' : rest) | not (null rest), last rest == '"' -> init rest; u -> u
     integer ln v = case reads v of
       [(n, "")] -> Right n
       _ -> Left (at ln ("not an integer: " ++ v))

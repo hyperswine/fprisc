@@ -98,10 +98,12 @@ analyse equations
           positive=any ((/=zero) . own) es || any (\k->case boundOf k of Bounded d->d/=zero;_->False) outside
           cost e=foldl' plus (own e) [d | k<-calls e,Bounded d<-[boundOf k]]
             `plus` maximumDemand [d | k<-flow e,Bounded d<-[boundOf k]]
+          firstKey = case es of (e0 : _) -> show (key e0); [] -> "?"
           answer | not (null problems) = Unproved problems
-                 | recursive && positive = Unproved ["allocating-cycle:"++show (key (head es))]
+                 | recursive && positive = Unproved ["allocating-cycle:"++firstKey]
                  | recursive = Bounded zero
-                 | otherwise = Bounded (cost (head es))
+                 | (e0 : _) <- es = Bounded (cost e0)
+                 | otherwise = Bounded zero
       in (M.insert i answer children,answer)
 
 -- Audited builtin C ARC contracts. Generic aggregate conversions and arbitrary

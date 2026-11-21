@@ -72,8 +72,10 @@ analyse toks
     -- A conditional transfer ends a basic block even without an explicit
     -- source label afterward. Otherwise a later reset can incorrectly cut
     -- a back-edge that branches BEFORE it (and understate the segment bound).
-    prefix = head [p | n <- [0 :: Int ..], let p = "%bound" ++ show n ++ ":",
-                       all (\l -> take (length p) l /= p) labels]
+    prefix = case [p | n <- [0 :: Int ..], let p = "%bound" ++ show n ++ ":",
+                       all (\l -> take (length p) l /= p) labels] of
+               (p : _) -> p
+               [] -> "%bound:"
     split = concat [case t of
       TIns {tFlow = flow} | flow /= FNext -> [t, TLabel (prefix ++ show n)]
       _ -> [t] | (n,t) <- zip [0 :: Int ..] toks]
@@ -111,7 +113,7 @@ analyse toks
       | otherwise = case M.lookup l bmap of
           Nothing -> (m, Just 0)
           Just b ->
-            let r1 = head (bRuns b)
+            let r1 = case bRuns b of (r : _) -> r; [] -> 0
              in if length (bRuns b) > 1
                   then (M.insert l (Just r1) m, Just r1)
                   else
@@ -148,7 +150,7 @@ analyse toks
           Just b
             | length (bRuns b) > 1 -> (M.insert l (Right Nothing) m, Right Nothing) -- a boundary inside: no boundary-free path to an exit starts here
             | otherwise ->
-                let r1 = head (bRuns b)
+                let r1 = case bRuns b of (r : _) -> r; [] -> 0
                     step (mm, acc) s = let (mm1, v) = tvisit (S.insert l grey) mm s in (mm1, v : acc)
                     (m1, vs) = foldl' step (m, []) (bSuccs b)
                     here = [r1 | bExit b]
@@ -196,7 +198,9 @@ tickWeights marked
     targets = concat [case tFlow t of FCond ls -> ls; FJump l -> [l]; _ -> [] | t@TIns {} <- toks]
     invalid = length labels /= S.size labelSet || S.member "%entry" labelSet || any (`S.notMember` labelSet) targets
     -- a conditional or unconditional transfer ends its block, as in `analyse`
-    prefixName = head [q | n <- [0 :: Int ..], let q = "%tick" ++ show n ++ ":", all (\l -> take (length q) l /= q) labels]
+    prefixName = case [q | n <- [0 :: Int ..], let q = "%tick" ++ show n ++ ":", all (\l -> take (length q) l /= q) labels] of
+      (q : _) -> q
+      [] -> "%tick:"
     split = concat [case t of
       TIns {tFlow = flow} | flow /= FNext -> [(t, k), (TLabel (prefixName ++ show n), False)]
       _ -> [(t, k)] | (n, (t, k)) <- zip [0 :: Int ..] marked]
