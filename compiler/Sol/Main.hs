@@ -631,27 +631,52 @@ reachableFns bprog = go S.empty
     refs (MkPap _ g) = [g]
     refs _ = []
 
--- run every `>` statement in order inside one transaction, then commit;
--- on read-set conflict, reset and re-run the whole script
-runTxLoop :: RetryPolicy -> FilePath -> [String] -> FilePath -> FilePath -> M.Map Name (Int, Int) -> M.Map Int [Name] -> BProg -> Prog -> Maybe JitCtx -> M.Map Name (Int, Int, Int) -> [Name] -> RtCounts -> Int -> IO ()
-runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt attempt = bracket newTx txCleanup $ \tx -> do
-  txSetRetryPolicy tx retryPolicy
-  txSetSagaJournal tx journalFile
+-- Shared transaction attempt loop for both script execution (`runTxLoop`) and
+-- REPL commands (`replExecCommit`). Keeps transaction setup, actor lifecycle,
+-- commit/conflict reporting, and retry arithmetic in one place.
+data TxAttemptConfig = TxAttemptConfig
+  { txCfgRetryPolicy :: RetryPolicy,
+    txCfgMaxAttempts :: Int,
+    txCfgBase :: FilePath,
+    txCfgScriptArgs :: [String],
+    txCfgDataFile :: FilePath,
+    txCfgJournalFile :: FilePath,
+    txCfgConsTV :: M.Map Name (Int, Int),
+    txCfgShapeNames :: M.Map Int [Name],
+    txCfgBProg :: BProg,
+    txCfgCore :: Prog,
+    txCfgJit :: Maybe JitCtx,
+    txCfgInitGpu :: IO (Maybe Gpu.GpuCtx),
+    txCfgCons :: M.Map Name (Int, Int, Int),
+    txCfgTopNames :: [Name],
+    txCfgRt :: RtCounts,
+    txCfgDumpTabStats :: Bool,
+    txCfgAllowForceRetry :: Bool,
+    txCfgCommitOnExit :: Bool,
+    txCfgExitOnFailure :: Bool,
+    txCfgRetryNoun :: String
+  }
+
+runTxAttempts :: TxAttemptConfig -> Int -> IO ()
+runTxAttempts cfg attempt = bracket newTx txCleanup $ \tx -> do
+  txSetRetryPolicy tx (txCfgRetryPolicy cfg)
+  txSetSagaJournal tx (txCfgJournalFile cfg)
   fuel <- newIORef fuelQuantum
   preempts <- newIORef 0
-  gpu <- phaseIO "gpu-init" Gpu.initGPU
+  gpu <- txCfgInitGpu cfg
   tabFlag <- lookupEnv "SOL_TABLE"
   tab <- if tabFlag == Just "0" then pure Nothing else Just <$> newIORef M.empty
   actors <- VM.newActorRuntime
   requestedExit <- newIORef 0
-  let env = VMEnv base dataFile consTV shapeNames bprog core jc gpu tab (mkHal cons scriptArgs tx preempts rt) fuel preempts tx actors
+  let env = VMEnv (txCfgBase cfg) (txCfgDataFile cfg) (txCfgConsTV cfg) (txCfgShapeNames cfg) (txCfgBProg cfg) (txCfgCore cfg) (txCfgJit cfg) gpu tab (mkHal (txCfgCons cfg) (txCfgScriptArgs cfg) tx preempts (txCfgRt cfg)) fuel preempts tx actors
       cleanup = VM.shutdownActorRuntime actors
   res <- (do
-    (forM_ topNames $ \n -> do
+    (forM_ (txCfgTopNames cfg) $ \n -> do
       _ <- execFn env n []
       pure ()) `catch` \(ScriptIO.ScriptExit code) -> writeIORef requestedExit code
-    statsFlag <- lookupEnv "SOL_TABLE_STATS"
-    when (statsFlag == Just "1") $ VM.dumpTabStats env
+    when (txCfgDumpTabStats cfg) $ do
+      statsFlag <- lookupEnv "SOL_TABLE_STATS"
+      when (statsFlag == Just "1") $ VM.dumpTabStats env
     -- Every attempt owns its actor world. Actors still live at the boundary
     -- are cancelled and joined before commit or retry, so they cannot retain
     -- a discarded TxState or leave messages for the next attempt.
@@ -662,11 +687,16 @@ runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bpr
                   ++ "(join first: have each send a done message and receive it before the script ends)")
     cleanup
     txCleanupProcesses tx
-    forceN <- lookupEnv "SOL_FORCE_RETRY"
-    let force = maybe 0 read forceN :: Int
-    if attempt < force
-      then pure (Conflict ["<forced>"]) -- discard this attempt's effects
-      else phaseIO "transaction-commit" (commit tx journalFile)) `onException` (cleanup `finally` rollbackSaga tx)
+    code <- readIORef requestedExit
+    if not (txCfgCommitOnExit cfg) && code /= 0
+      then throwIO (ScriptIO.ScriptExit code)
+      else do
+        forced <- if txCfgAllowForceRetry cfg
+          then maybe 0 read <$> lookupEnv "SOL_FORCE_RETRY"
+          else pure (0 :: Int)
+        if attempt < forced
+          then pure (Conflict ["<forced>"]) -- discard this attempt's effects
+          else phaseIO "transaction-commit" (commit tx (txCfgJournalFile cfg))) `onException` (cleanup `finally` rollbackSaga tx)
   case res of
     Committed n ncmd sfail efail -> do
       -- the receipt names every effect class that landed: files AND the
@@ -678,9 +708,9 @@ runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bpr
       when efail $ diagnostic ("[sol] committed " ++ show n ++ " file(s); FAILED: a file effect did not reach its goal state (named above; later queued commands skipped)")
       -- if the run left the transaction at any point, say so plainly: the
       -- file commit does not make immediate external effects atomic
-      total <- rtTotal rt
+      total <- rtTotal (txCfgRt cfg)
       when (total > 0) $ do
-        kinds <- rtReport rt
+        kinds <- rtReport (txCfgRt cfg)
         diagnostic ("[sol] NOT atomic overall: " ++ show total
                     ++ " realtime escape(s) — " ++ intercalate ", " kinds)
       -- `log` lines mean what they say happened: only a run whose every
@@ -689,27 +719,60 @@ runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bpr
       if sfail || efail
         then do
           unless (null logs) $ diagnostic ("[sol] " ++ show (length logs) ++ " log line(s) withheld: the commit did not complete")
-          exitFailure
+          when (txCfgExitOnFailure cfg) exitFailure
         else do
           mapM_ putStrLn logs >> hFlush stdout
-          code <- readIORef requestedExit
-          when (code /= 0) (exitWith (ExitFailure code))
+          when (txCfgCommitOnExit cfg) $ do
+            code <- readIORef requestedExit
+            when (code /= 0) (exitWith (ExitFailure code))
     Conflict stale -> do
       unsafe <- txRetryRefusal tx
       rollbackSaga tx `finally` txCleanup tx
       unless (null unsafe) $ do
         diagnostic ("[sol] conflict on " ++ show stale ++ "; guarded retry refused after immediate external effects: " ++ intercalate ", " unsafe)
         diagnostic "[sol] partial external execution may have occurred; buffered file effects were discarded. Mark only known repeatable work with Script.replayable/Proc.queryReplayable, or explicitly select --retry-policy=legacy."
-        exitFailure
-      retry stale
+        when (txCfgExitOnFailure cfg) exitFailure
+      when (null unsafe) $ retry stale
   where
+    maxA = txCfgMaxAttempts cfg
+    noun = txCfgRetryNoun cfg
     retry stale
-      | attempt + 1 >= maxRetries = do
-          diagnostic ("[sol] giving up after " ++ show maxRetries ++ " attempts (conflicts on " ++ show stale ++ ")")
-          exitFailure
+      | attempt + 1 >= maxA = do
+          let suffix = if null noun then "" else "; effects discarded"
+              onWhat = if null noun then "" else " on this " ++ noun
+          diagnostic ("[sol] giving up" ++ onWhat ++ " after " ++ show maxA ++ " attempts (conflicts on " ++ show stale ++ ")" ++ suffix)
+          when (txCfgExitOnFailure cfg) exitFailure
       | otherwise = do
-          diagnostic ("[sol] conflict on " ++ show stale ++ " — retrying (attempt " ++ show (attempt + 2) ++ ")")
-          runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt (attempt + 1)
+          let label = if null noun then "" else " " ++ noun
+          diagnostic ("[sol] conflict on " ++ show stale ++ " — retrying" ++ label ++ " (attempt " ++ show (attempt + 2) ++ ")")
+          runTxAttempts cfg (attempt + 1)
+
+-- run every `>` statement in order inside one transaction, then commit;
+-- on read-set conflict, reset and re-run the whole script
+runTxLoop :: RetryPolicy -> FilePath -> [String] -> FilePath -> FilePath -> M.Map Name (Int, Int) -> M.Map Int [Name] -> BProg -> Prog -> Maybe JitCtx -> M.Map Name (Int, Int, Int) -> [Name] -> RtCounts -> Int -> IO ()
+runTxLoop retryPolicy base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt attempt =
+  runTxAttempts TxAttemptConfig
+    { txCfgRetryPolicy = retryPolicy,
+      txCfgMaxAttempts = maxRetries,
+      txCfgBase = base,
+      txCfgScriptArgs = scriptArgs,
+      txCfgDataFile = dataFile,
+      txCfgJournalFile = journalFile,
+      txCfgConsTV = consTV,
+      txCfgShapeNames = shapeNames,
+      txCfgBProg = bprog,
+      txCfgCore = core,
+      txCfgJit = jc,
+      txCfgInitGpu = phaseIO "gpu-init" Gpu.initGPU,
+      txCfgCons = cons,
+      txCfgTopNames = topNames,
+      txCfgRt = rt,
+      txCfgDumpTabStats = True,
+      txCfgAllowForceRetry = True,
+      txCfgCommitOnExit = True,
+      txCfgExitOnFailure = True,
+      txCfgRetryNoun = ""
+    } attempt
 
 -- ---- the REPL: one command, one transaction -------------------------------
 -- docs/2026-10-29-SOL-REPL-DESIGN.md. The session is a growing source text:
@@ -916,63 +979,30 @@ runReplCommand base scriptArgs dataFile journalFile ptops isTrusted seenRef trus
 
 -- the command's own mini runTxLoop: fresh transaction, run the new evals,
 -- commit; clean conflicts retry the command, guarded refusals stop it
+replExecCommit :: FilePath -> [String] -> FilePath -> FilePath -> M.Map Name (Int, Int) -> M.Map Int [Name] -> BProg -> Prog -> Maybe JitCtx -> Maybe Gpu.GpuCtx -> M.Map Name (Int, Int, Int) -> [Name] -> RtCounts -> Int -> IO ()
 replExecCommit base scriptArgs dataFile journalFile consTV shapeNames bprog prog jc gpu cons newRuns rt attempt =
-  bracket newTx txCleanup $ \tx -> do
-    txSetRetryPolicy tx GuardedRetry
-    txSetSagaJournal tx journalFile
-    fuel <- newIORef fuelQuantum
-    preempts <- newIORef 0
-    tabFlag <- lookupEnv "SOL_TABLE"
-    tab <- if tabFlag == Just "0" then pure Nothing else Just <$> newIORef M.empty
-    actors <- VM.newActorRuntime
-    let env = VMEnv base dataFile consTV shapeNames bprog prog jc gpu tab (mkHal cons scriptArgs tx preempts rt) fuel preempts tx actors
-        cleanup = VM.shutdownActorRuntime actors
-    res <- (do
-      requestedExit <- newIORef 0
-      (forM_ newRuns $ \n -> do
-        _ <- execFn env n []
-        pure ()) `catch` \(ScriptIO.ScriptExit code) -> writeIORef requestedExit code
-      liveA <- VM.liveSpawnedActors actors
-      unless (null liveA) $
-        diagnostic ("[sol] WARNING: " ++ show (length liveA) ++ " spawned actor(s) still running at the transaction boundary — "
-                    ++ "cancelling them before the transaction boundary "
-                    ++ "(join first: have each send a done message and receive it before the script ends)")
-      cleanup
-      txCleanupProcesses tx
-      code <- readIORef requestedExit
-      if code /= 0
-        then throwIO (ScriptIO.ScriptExit code)
-        else phaseIO "transaction-commit" (commit tx journalFile)) `onException` (cleanup `finally` rollbackSaga tx)
-    case res of
-      Committed n ncmd sfail efail -> do
-        let cmds = if ncmd > 0 then " + " ++ show ncmd ++ " deferred command(s)" else ""
-        when ((n > 0 || ncmd > 0) && not sfail && not efail) $
-          verbose ("[sol] committed " ++ show n ++ " file(s)" ++ cmds ++ " (file transaction committed; external commands are not atomic)")
-        when (sfail && not efail) $
-          diagnostic ("[sol] committed " ++ show n ++ " file(s); NOT atomic: a deferred command failed (later queued commands skipped; file effects all applied)")
-        when efail $
-          diagnostic ("[sol] committed " ++ show n ++ " file(s); FAILED: a file effect did not reach its goal state (named above; later queued commands skipped)")
-        total <- rtTotal rt
-        when (total > 0) $ do
-          kinds <- rtReport rt
-          diagnostic ("[sol] NOT atomic overall: " ++ show total ++ " realtime escape(s) — " ++ intercalate ", " kinds)
-        logs <- txTakeLogs tx
-        if sfail || efail
-          then unless (null logs) $
-                 diagnostic ("[sol] " ++ show (length logs) ++ " log line(s) withheld: the commit did not complete")
-          else mapM_ putStrLn logs >> hFlush stdout
-      Conflict stale -> do
-        unsafe <- txRetryRefusal tx
-        rollbackSaga tx `finally` txCleanup tx
-        unless (null unsafe) $ do
-          diagnostic ("[sol] conflict on " ++ show stale ++ "; guarded retry refused after immediate external effects: " ++ intercalate ", " unsafe)
-          diagnostic "[sol] partial external execution may have occurred; buffered file effects were discarded. Mark only known repeatable work with Script.replayable/Proc.queryReplayable, or explicitly select --retry-policy=legacy."
-        when (null unsafe) $
-          if attempt + 1 >= replMaxAttempts
-            then diagnostic ("[sol] giving up on this command after " ++ show replMaxAttempts ++ " attempts (conflicts on " ++ show stale ++ "); effects discarded")
-            else do
-              diagnostic ("[sol] conflict on " ++ show stale ++ " — retrying command (attempt " ++ show (attempt + 2) ++ ")")
-              replExecCommit base scriptArgs dataFile journalFile consTV shapeNames bprog prog jc gpu cons newRuns rt (attempt + 1)
+  runTxAttempts TxAttemptConfig
+    { txCfgRetryPolicy = GuardedRetry,
+      txCfgMaxAttempts = replMaxAttempts,
+      txCfgBase = base,
+      txCfgScriptArgs = scriptArgs,
+      txCfgDataFile = dataFile,
+      txCfgJournalFile = journalFile,
+      txCfgConsTV = consTV,
+      txCfgShapeNames = shapeNames,
+      txCfgBProg = bprog,
+      txCfgCore = prog,
+      txCfgJit = jc,
+      txCfgInitGpu = pure gpu,
+      txCfgCons = cons,
+      txCfgTopNames = newRuns,
+      txCfgRt = rt,
+      txCfgDumpTabStats = False,
+      txCfgAllowForceRetry = False,
+      txCfgCommitOnExit = False,
+      txCfgExitOnFailure = False,
+      txCfgRetryNoun = "command"
+    } attempt
 
 numberEvals :: [STop] -> ([STop], [Name])
 numberEvals tops = (map fst numbered, [n | (_, Just n) <- numbered])

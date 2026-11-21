@@ -17,7 +17,7 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.Int (Int64)
 import qualified Data.Map.Strict as M
 import Data.Word (Word32, Word8)
-import Sol.KIR
+import Sol.JitIR
 
 type I = Word32
 

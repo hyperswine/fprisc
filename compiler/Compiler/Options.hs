@@ -48,7 +48,7 @@ data CodegenOptions = CodegenOptions
 data DiagnosticOptions = DiagnosticOptions
   { diagTypedIr :: Maybe String, diagReceiveNotes :: Bool, diagApply :: Bool,
     diagPreconditions :: Bool, diagUnsafeSuggest :: Bool,
-    diagCore :: Maybe String, diagNativeInsns :: Bool } deriving (Eq,Show)
+    diagCore :: Maybe String, diagNativeInsns :: Bool, diagTimings :: Bool } deriving (Eq,Show)
 data DriverOptions = DriverOptions
   { driverCC :: Maybe String, driverCostProbe :: Bool, driverNoRunCache :: Bool,
     -- the layout-check build of the runtime (C1 piece 2a, slice 1): compare the
@@ -97,7 +97,7 @@ parseCompilerOptions env = do
         { diagTypedIr=env "FPR_TYPED_IR", diagReceiveNotes=yes "FPR_RECEIVE_NOTES",
           diagApply=yes "FPRC_APPLY", diagPreconditions=yes "FPR_PRECOND_NOTES",
           diagUnsafeSuggest=yes "FPR_UNSAFE_SUGGEST", diagCore=env "FPR_DUMP_CORE",
-          diagNativeInsns=yes "FPRC_NATIVE_INSNS" }
+          diagNativeInsns=yes "FPRC_NATIVE_INSNS", diagTimings=yes "FPR_TIMINGS" }
       driver=DriverOptions
         { driverCC=env "FPR_CC", driverCostProbe=yes "FPR_COST_PROBE",
           driverLayoutCheck=yes "FPR_LAYOUT_CHECK", driverLayoutFault=yes "FPR_LAYOUT_FAULT",

@@ -117,8 +117,8 @@ main = do
     -- subcommand, and a mistyped one used to be answered with fprc's usage --
     -- which names no subcommand at all, so the one thing it could not tell
     -- you was what you should have typed.
-    (a : _)
-      | not (null a), head a /= '-', '/' `notElem` a, '.' `notElem` a ->
+    (a@(c : _) : _)
+      | c /= '-', '/' `notElem` a, '.' `notElem` a ->
           hPutStrLn stderr ("fpr: unknown subcommand `" ++ a ++ "`\n") >> hPutStrLn stderr usage >> exitFailure
     _ | "--target=bytecode" `elem` args ->
           withArgs ("--asm" : [a | a <- args, a /= "--target=bytecode"]) Sol.Main.main

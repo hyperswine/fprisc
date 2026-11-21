@@ -78,6 +78,23 @@ traceCache msg = do
 ignoreIO :: IO () -> IO ()
 ignoreIO action = action `catch` (\(_ :: IOException) -> pure ())
 
+cacheIdentity :: IO (Int, String, (String, String, String, String))
+cacheIdentity = do
+  exe <- getExecutablePath >>= makeAbsolute
+  st <- getFileStatus exe
+  let statId = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
+  pure (schema, statId, (arch, os, compilerName, show compilerVersion))
+
+cacheSlot :: Binary a => Maybe FilePath -> a -> IO (FilePath, BS.ByteString)
+cacheSlot msubdir payload = do
+  ident <- cacheIdentity
+  dir <- cacheDirectory
+  let key = BL.toStrict (encode (ident, payload))
+      name = showHex (fingerprint key) "" ++ ".cache"
+      file = maybe (dir </> name) (\sub -> dir </> sub </> name) msubdir
+  _ <- evaluate (BS.length key)
+  pure (file, key)
+
 -- Stat identity avoids reading/hash-scanning the entire executable on every
 -- tiny invocation. Replacement/rebuild changes inode, size, mtime or ctime;
 -- compiler/runtime ABI and schema are also part of the exact input key.
@@ -88,7 +105,7 @@ cached path src prelude importStamps compile = do
   if flag == Just "0" || Just "1" `elem` inspect
     then traceCache "disabled" >> compile
     else do
-      context <- phaseIO "cache-key" cacheContext `catch` (\(_ :: IOException) -> pure Nothing)
+      context <- phaseIO "cache-key" (Just <$> cacheContext) `catch` (\(_ :: IOException) -> pure Nothing)
       case context of
         Nothing -> traceCache "unavailable" >> compile
         Just (file, key) -> do
@@ -106,16 +123,9 @@ cached path src prelude importStamps compile = do
   where
     cacheContext = do
       preludeStamp <- sourceDigest prelude
-      exe <- getExecutablePath >>= makeAbsolute
-      st <- getFileStatus exe
       absolute <- makeAbsolute path
       options <- mapM lookupEnv ["SOL_NOTYPES", "SOL_NO_SAFETY", "FPR_HOME", "FPR_PATH", "FPR_NO_SPEC"]
-      let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
-          key = BL.toStrict (encode (schema, identity, (arch, os, compilerName, show compilerVersion), absolute, path, src, preludeStamp, importStamps, options))
-          slot = showHex (fingerprint key) "" ++ ".cache"
-      dir <- cacheDirectory
-      _ <- evaluate (BS.length key)
-      pure (Just (dir </> slot, key))
+      cacheSlot Nothing (absolute, path, src, preludeStamp, importStamps, options)
 
 -- Entries are private local build products. This checksum detects accidental
 -- corruption, not deliberate rewriting by an attacker who owns the cache.
@@ -199,14 +209,8 @@ cachedParse subdir path src parseIt = do
   where
     moduleContext = do
       sourceKey <- if subdir == "prelude" then sourceDigest src else pure (TE.encodeUtf8 (T.pack src))
-      exe <- getExecutablePath >>= makeAbsolute
-      st <- getFileStatus exe
       absolute <- makeAbsolute path
-      dir <- cacheDirectory
-      let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
-          key = BL.toStrict (encode (schema, identity, arch, os, absolute, path, sourceKey))
-          file = dir </> subdir </> (showHex (fingerprint key) "" ++ ".cache")
-      pure (file, key)
+      cacheSlot (Just subdir) (absolute, path, sourceKey)
 
 -- ---- checked-library verdicts (docs/2026-10-29-SOL-LIBRARY-CHECK-CACHE.md) --
 -- A verdict records whether this exact set of spliced `use` libraries (their
@@ -215,15 +219,7 @@ cachedParse subdir path src parseIt = do
 -- executable and these options, together with the libraries' ordered record
 -- shape declarations so sliced compiles need not re-expand all library structs.
 libraryKey :: String -> [String] -> IO (Maybe (FilePath, BS.ByteString))
-libraryKey digest options = (Just <$> context) `catch` (\(_ :: IOException) -> pure Nothing)
-  where
-    context = do
-      exe <- getExecutablePath >>= makeAbsolute
-      st <- getFileStatus exe
-      dir <- cacheDirectory
-      let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
-          key = BL.toStrict (encode (schema, identity, arch, os, options, digest))
-      pure (dir </> "libchecks" </> (showHex (fingerprint key) "" ++ ".cache"), key)
+libraryKey digest options = (Just <$> cacheSlot (Just "libchecks") (options, digest)) `catch` (\(_ :: IOException) -> pure Nothing)
 
 -- Nothing: no verdict yet. Just (True, shapes): the libraries compile on their
 -- own with those record shapes. Just (False, []): they do not (they need

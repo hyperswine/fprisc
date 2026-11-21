@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 
--- Sol/KIR.hs -- the kernel IR of the hand-rolled JIT tier, and the
+-- Sol/JitIR.hs -- the JIT IR of the hand-rolled JIT tier, and the
 -- lowering from typed Core into it.
 --
 -- One IR, two assemblers (Sol/AsmX64.hs, Sol/AsmA64.hs).  The IR is a
@@ -27,7 +27,7 @@
 -- Fuel is REIFIED the way the interpreter and the old LLVM tier did it:
 -- every internal function decrements the cell at entry (FuelTick), the
 -- driver never does, and the VM reconciles the cell on return.
-module Sol.KIR
+module Sol.JitIR
   ( Ty (..), CC (..), BinOp (..), Op (..), Fn (..), Unit (..), Label,
     LowerEnv (..), VecAcc (..), lowerVariant, lowerDual,
     driverList, driverVec, driverVecMapR, mangleV, showUnit, fuelPoison, fuelTrap,

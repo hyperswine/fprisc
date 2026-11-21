@@ -45,7 +45,7 @@ import Data.Time.Format (formatTime, defaultTimeLocale)
 import System.Environment (lookupEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import Sol.HandJIT
-import Sol.KIR (fuelPoison, fuelTrap)
+import Sol.JitIR (fuelPoison, fuelTrap)
 import Sol.Lang (Name)
 import qualified Sol.Lang as Lang
 import Control.Concurrent (ThreadId, forkIO, killThread, myThreadId, threadDelay)

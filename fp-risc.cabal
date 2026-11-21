@@ -251,7 +251,7 @@ library
       Sol.HandJIT
       Sol.Infer
       Sol.JitCore
-      Sol.KIR
+      Sol.JitIR
       Sol.AsmX64
       Sol.AsmA64
       Sol.Lang

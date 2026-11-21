@@ -329,7 +329,9 @@ nativeSelect typed placed reference tgt spec nm vkinds sigs ext exps prog emitte
             declined = failures ++ refusals
             nativeNote nf = "typed-ir-backend: " ++ nfName nf ++ " native (frame " ++ frameOf nf ++ ", native-insns-v1 segmax=" ++ bound (rSegMax (nfReport nf)) ++ " exittail=" ++ bound (rExitTail (nfReport nf)) ++ " ccalls=" ++ show (rCCalls (nfReport nf)) ++ ")"
             -- the header's layout and allocation facts: `frame=N saved=... values=... spills=...` (M3)
-            frameOf nf = case dropWhile (not . isPrefixOf "frame=") (words (head (nfLines nf))) of (f : rest) -> unwords (drop 6 f : rest); [] -> "?"
+            frameOf nf = case nfLines nf of
+              (hdr : _) -> case dropWhile (not . isPrefixOf "frame=") (words hdr) of (f : rest) -> unwords (drop 6 f : rest); [] -> "?"
+              [] -> "?"
             bound = maybe "UNBOUNDED" show
             unbounded = [n | polFuel (tgtPolicy tgt), (n, nf) <- M.toList accepted, rSegMax (nfReport nf) == Nothing]
          in if not (null errors)
@@ -677,8 +679,8 @@ typedKernelPlan sym p
             (if folding then Just (k,accKind) else Nothing) [K.Stage op (spFn p) [0..k-1]] Nothing False)
   -- the write-back fold Vec.fold f z (Vec.map g v): one pass that stores
   -- g(el) and folds f over it, the pipeline shape with map then fold
-  | Just g <- wfoldG p, Just (ks,_) <- spKinds p, spScalar p =
-      Right (K.Kernel sym [head ks] (last ks) (Just (0,head ks)) [K.Stage Map g [], K.Stage Fold (spFn p) []] Nothing False)
+  | Just g <- wfoldG p, Just (ks@(k0 : _), _) <- spKinds p, spScalar p =
+      Right (K.Kernel sym [k0] (last ks) (Just (0, k0)) [K.Stage Map g [], K.Stage Fold (spFn p) []] Nothing False)
   | otherwise = Left ("typed " ++ operationKey (spOp p) ++ " record/SIMD kernel not implemented")
 
 -- Reuse the planner's column duals as ordinary Core functions, so callback

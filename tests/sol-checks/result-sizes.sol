@@ -29,8 +29,8 @@ execute root work name exe probe expected = List.concat (List.map (fn h ->
   counters probe name h err) ["1","4"]).
 counters probe name h err = if not probe then [] else
   (r, b) = costProbe err;
-  if r == 3 and b == 112 then [] else
-    _ = print "FAIL allocation-counters: {name} on {h} harts: {r} requests / {b} bytes, want 3 / 112"; ["allocation-counters"].
+  if r == 1 and b == 48 then [] else
+    _ = print "FAIL allocation-counters: {name} on {h} harts: {r} requests / {b} bytes, want 1 / 48"; ["allocation-counters"].
 # "  name@...: declared size ... PROVEN"
 sizeProven out name = List.any (fn l -> Str.startsWith "  {name}@" l and Str.contains ": declared size" l and Str.endsWith "PROVEN" l) (Str.lines out).
 # "combine: declared alloc <= 80   derived 80   PROVEN", whitespace-insensitive

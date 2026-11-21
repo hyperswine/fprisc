@@ -18,7 +18,7 @@ import Data.Bits (shiftR, (.&.))
 import Data.Int (Int64)
 import qualified Data.Map.Strict as M
 import Data.Word (Word8)
-import Sol.KIR
+import Sol.JitIR
 
 type B = [Word8]
 

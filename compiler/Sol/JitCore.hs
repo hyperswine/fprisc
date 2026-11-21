@@ -6,7 +6,7 @@
 -- closure gather + join-point saturation, and the Julia-style per-
 -- callsite type inference (JI exact int / JD inexact f64 / JW
 -- ambiguous / JB bottom).  Nothing here knows how code is emitted; the
--- hand-rolled backends (Sol/HandJIT.hs, Sol/KIR.hs) consume the typed
+-- hand-rolled backends (Sol/HandJIT.hs, Sol/JitIR.hs) consume the typed
 -- closure this module produces.  It was carved out of the former
 -- LLVM tier verbatim so the accepted fragment and the typing rules are
 -- unchanged by the backend swap.

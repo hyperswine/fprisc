@@ -48,7 +48,7 @@ import Foreign.Ptr
 import Sol.AsmA64 (assembleA64)
 import Sol.AsmX64 (assembleX64)
 import Sol.JitCore
-import Sol.KIR
+import Sol.JitIR
 import Sol.Lang (Core (..), Name, Prog)
 import System.Environment (lookupEnv)
 import System.IO (IOMode (..), hPutBuf, withBinaryFile)
