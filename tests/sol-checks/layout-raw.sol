@@ -19,7 +19,7 @@ fixture = "profile base.\nP = Type (P F64 Int | Q Int).\nW a = Type (W a F64 F32
   "  _ = send child (Ok [P 2.5 3, Q 4]);\n  case receiveRes me of\n    Ok [P a b, Q c] -> (case w of W x f g y -> print (F64.toInt (a * 2.0) + b + c + x + y))\n  | _ -> print 0.\n".
 walk = "profile base.\nP = Type (P F64 Int | Q Int).\nW a = Type (W a F64 F32 a).\n" +
   "echo parent me = case receiveRes me of\n    Ok v -> send parent (Ok v)\n  | Err why -> send parent (Err why).\n" +
-  "main =\n  me = myself 0;\n  child = spawn (echo me);\n  big = P (I64.toF64Bits (I64.ofInt 1099511631872)) 7;\n" +
+  "main =\n  me = myself 0;\n  child = spawn (echo me);\n  big = P (I64.toF64Bits (I64.trunc 1099511631872)) 7;\n" +
   "  ws = [W 1 (0.0 - 1.5) (F32.ofF64 0.25) 2, W 3 2.0e300 (F32.ofF64 (0.0 - 0.5)) 4];\n" +
   "  _ = send child (Ok (big, ws, [P 2.5 3, Q 4]));\n  case receiveRes me of\n    Ok (b, w2, xs) ->\n" +
   "      _ = print xs;\n      _ = print w2;\n      _ = print (b == big);\n      _ = print (w2 == ws);\n" +

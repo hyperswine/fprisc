@@ -14,7 +14,7 @@ prog = "profile base.\n" +
   "# copy-out and in-place reuse, and print and compare by value.\n" +
   "T = Type (T I64 Int | N).\n" +
   "sweep : unsafe Int -> Int -> List T -> List T.\n" +
-  "sweep lo k acc = if k == 0 then acc else sweep lo (k - 1) (T (I64.ofInt (lo + k * 2147483648)) k :: acc).\n" +
+  "sweep lo k acc = if k == 0 then acc else sweep lo (k - 1) (T (I64.trunc (lo + k * 2147483648)) k :: acc).\n" +
   "total : unsafe List T -> I64 -> Int -> (I64, Int).\n" +
   "total xs s n = case xs of\n" +
   "    T a k :: rest -> total rest (s + a) (n + k)\n" +
@@ -22,7 +22,7 @@ prog = "profile base.\n" +
   "  | [] -> (s, n).\n" +
   "incr : unsafe List T -> List T.\n" +
   "incr xs = case xs of\n" +
-  "    T a k :: rest -> T (a + I64.ofInt 1) k :: incr rest\n" +
+  "    T a k :: rest -> T (a + I64.trunc 1) k :: incr rest\n" +
   "  | x :: rest -> x :: incr rest\n" +
   "  | [] -> [].\n" +
   "echo : unsafe Int -> a.\n" +
@@ -32,7 +32,7 @@ prog = "profile base.\n" +
   "sharer me =\n" +
   "  m = receive me;\n" +
   "  (who, xs) = m;\n" +
-  "  (s, n) = total xs (I64.ofInt 0) 0;\n" +
+  "  (s, n) = total xs (I64.trunc 0) 0;\n" +
   "  _ = send who (s, n);\n" +
   "  _ = drop m;\n" +
   "  sharer me.\n" +
@@ -44,14 +44,14 @@ prog = "profile base.\n" +
   "  xs = sweep 138538465099776 1024 (sweep 93458488360960 1024 [N]);\n" +
   "  _ = send far (me, xs);\n" +
   "  ys = receiveFrom me far;\n" +
-  "  (s0, n0) = total xs (I64.ofInt 0) 0;\n" +
-  "  (s1, n1) = total ys (I64.ofInt 0) 0;\n" +
+  "  (s0, n0) = total xs (I64.trunc 0) 0;\n" +
+  "  (s1, n1) = total ys (I64.trunc 0) 0;\n" +
   "  _ = print (s0, n0);\n" +
   "  _ = print (s1, n1);\n" +
   "  _ = print (incr xs == ys);\n" +
   "  _ = print (xs == ys);\n" +
   "  _ = print (List.take ys 2);\n" +
-  "  _ = print (incr (sweep 0 3 [T (I64.shl (I64.ofInt 1) 63) 0]));\n" +
+  "  _ = print (incr (sweep 0 3 [T (I64.shl (I64.trunc 1) 63) 0]));\n" +
   "  _ = sendArc arc (me, ys);\n" +
   "  shared = receiveFrom me arc;\n" +
   "  print shared.\n".

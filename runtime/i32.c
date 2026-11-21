@@ -102,7 +102,27 @@ static V error(const char *s) {
   uw n=0;while(s[n])n++;
   return result(1,(V)fpr_mkstr((const uint8_t *)s,n));
 }
-static V ofInt(V v) { return fpr_i32_pack((uint32_t)UNTAG(v)); }
+static const hdr_t i32_none = {T_OPTION, 0};
+static V some(V value) {
+#if defined(FPR_BUILTIN_ARC) || defined(FPR_BUILTIN_RAW)
+  V r=fpr_builtin_alloc_adt(8+sizeof(V),1);
+#else
+  V r=fpr_alloc(8+sizeof(V));
+#endif
+  ((hdr_t *)r)->tid=T_OPTION;((hdr_t *)r)->var=1;
+  FPR_FLD(r,0)=value;return r;
+}
+static V ofInt(V v) {
+  int64_t n=(int64_t)UNTAG(v);
+  if (n<(int64_t)INT32_MIN || n>(int64_t)INT32_MAX) return (V)&i32_none;
+  return some(fpr_i32_pack((uint32_t)(int32_t)n));
+}
+static V ofIntU(V v) {
+  int64_t n=(int64_t)UNTAG(v);
+  if (n<0 || n>(int64_t)UINT32_MAX) return (V)&i32_none;
+  return some(fpr_i32_pack((uint32_t)n));
+}
+static V trunc_(V v) { return fpr_i32_pack((uint32_t)UNTAG(v)); }
 static V toInt(V v) {
   int32_t n=s32(v);
 #if UINTPTR_MAX <= 0xFFFFFFFFu
@@ -171,6 +191,7 @@ FPR_FN(fpr_g_I32_x2enot,not_,1); FPR_FN(fpr_g_I32_x2eneg,neg,1);
 FPR_FN(fpr_g_I32_x2eshl,shl,2); FPR_FN(fpr_g_I32_x2eshr,shr,2); FPR_FN(fpr_g_I32_x2esar,sar,2);
 FPR_FN(fpr_g_I32_x2erotl,rotl,2); FPR_FN(fpr_g_I32_x2erotr,rotr,2);
 FPR_FN(fpr_g_I32_x2eclz,clz,1); FPR_FN(fpr_g_I32_x2ectz,ctz,1); FPR_FN(fpr_g_I32_x2epopcnt,popcnt,1);
-FPR_FN(fpr_g_I32_x2eofInt,ofInt,1); FPR_FN(fpr_g_I32_x2etoInt,toInt,1); FPR_FN(fpr_g_I32_x2etoIntU,toIntU,1);
+FPR_FN(fpr_g_I32_x2eofInt,ofInt,1); FPR_FN(fpr_g_I32_x2eofIntU,ofIntU,1); FPR_FN(fpr_g_I32_x2etrunc,trunc_,1);
+FPR_FN(fpr_g_I32_x2etoInt,toInt,1); FPR_FN(fpr_g_I32_x2etoIntU,toIntU,1);
 FPR_FN(fpr_g_I32_x2estr,str,1); FPR_FN(fpr_g_I32_x2estrU,strU,1); FPR_FN(fpr_g_I32_x2ehex,hex,1);
 FPR_FN(fpr_g_I32_x2eparse,parse,1);

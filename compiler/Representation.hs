@@ -203,6 +203,7 @@ primitiveShape n = M.lookup n shapes
     b = KnownValue (DataRep 1)
     u = KnownValue (DataRep 0)
     r = KnownValue (DataRep 3)
+    o = KnownValue (DataRep 7)
     sh = PrimitiveShape
     shapes =
       M.fromList $
@@ -321,7 +322,8 @@ primitiveShape n = M.lookup n shapes
                    ]
              ]
           ++ [("I32." ++ x, sh [t, t] b) | x <- ["<", ">", "<=", ">=", "==", "!=", "ltU", "gtU", "leU", "geU"]]
-          ++ [("I32." ++ x, sh [t] t) | x <- ["not", "neg", "clz", "ctz", "popcnt", "ofInt"]]
+          ++ [("I32." ++ x, sh [t] t) | x <- ["not", "neg", "clz", "ctz", "popcnt", "trunc"]]
+          ++ [("I32.ofInt", sh [t] o), ("I32.ofIntU", sh [t] o)]
           ++ [("I32." ++ x, sh [t] s) | x <- ["str", "strU", "hex"]]
           ++ [("I32.toInt", sh [t] r), ("I32.toIntU", sh [t] r), ("I32.parse", sh [s] r)]
           ++ [("$uniform."++direction++name,shape)

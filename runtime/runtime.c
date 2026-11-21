@@ -18,6 +18,7 @@
 const hdr_t fpr_true = {T_BOOL, 1};
 const hdr_t fpr_false = {T_BOOL, 0};
 const hdr_t fpr_unit = {T_UNIT, 0};
+const hdr_t fpr_none = {T_OPTION, 0};
 
 /* ---- allocator: bump + owning slab + segregated free list ------------
  * Compact managed cells carry an 8-byte slab prefix and derive their size
@@ -1259,6 +1260,7 @@ static uw img_static_raw(V v, uw pid) {
   switch (h->tid) {
     case T_STR: return 16 + ((str_t *)v)->len;
     case T_RESULT: case T_DEVICE: return 16;
+    case T_OPTION: return h->var ? 16 : 8;
     case T_PAP:
       (void)pid;
       fpr_actor_fail("send: a function of another process cannot leave it "
@@ -1372,7 +1374,7 @@ static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
     uw pid = img_foreign((const void *)v);
     if (!pid) return 0; /* an immortal static, or the receiver's own image */
     uw n = dc_cellsz(img_static_raw(v, pid));
-    if (TID(v) == T_RESULT) n += dc_size_in(*(V *)((char *)v + 8), z, immutable);
+    if (TID(v) == T_RESULT || (TID(v) == T_OPTION && ((hdr_t *)v)->var == 1)) n += dc_size_in(*(V *)((char *)v + 8), z, immutable);
     return n;
   }
   if (dc_retained(v, retain) || dc_outside(v, region)) return 0;
@@ -1474,7 +1476,7 @@ static int dc_budget(V v, uw *left, unsigned depth) {
     if (!pid) return 1;
     uw raw = img_static_raw(v, pid);
     if (raw > (uw)-1 - 31 || !budget_take(left, dc_cellsz(raw))) return 0;
-    return TID(v) != T_RESULT || dc_budget(*(V *)((char *)v + 8), left, depth + 1);
+    return (TID(v) != T_RESULT && !(TID(v) == T_OPTION && ((hdr_t *)v)->var == 1)) || dc_budget(*(V *)((char *)v + 8), left, depth + 1);
   }
   uw total = PREHEADER(v);
   switch (TID(v)) {
@@ -1576,7 +1578,7 @@ static V dc_dup(V v, dctx_t *c) {
     V n = dc_bump(c, raw);
     if (c->overflow) return 0;
     __builtin_memcpy((char *)n, (char *)v, raw);
-    if (TID(v) == T_RESULT) {
+    if (TID(v) == T_RESULT || (TID(v) == T_OPTION && ((hdr_t *)v)->var == 1)) {
       *(V *)((char *)n + 8) = dc_dup(*(V *)((char *)v + 8), c);
       if (c->overflow) return 0;
     }
@@ -5176,7 +5178,8 @@ static void renderArg(V obj, int i) {
   else {
     hdr_t *fh = (hdr_t *)f;
     const fpr_con_t *c = fh->tid >= 0x20000000u ? con_find(fh->tid, fh->var) : 0;
-    paren = fh->tid == T_RESULT || (c && c->arity > 0) ||
+    paren = fh->tid == T_RESULT || (fh->tid == T_OPTION && fh->var == 1) || (c && c->arity > 0) ||
+            (fh->tid == T_BITS && fh->var == 4 && (int64_t)u64(f) < 0) ||
             (fh->tid == T_BITS && fh->var == 7 &&
              (int32_t)(uint32_t)((bits_t *)f)->val < 0);
   }
@@ -5212,6 +5215,7 @@ static void render(V v) {
       remit(']');
       break;
     case T_RESULT: remits(h->var ? "Err " : "Ok "); renderArg(v, 0); break;
+    case T_OPTION: if (h->var) { remits("Some "); renderArg(v, 0); } else { remits("None"); } break;
     case T_TUP2:
       remit('('); renderField(v,0); remits(", "); renderField(v,1); remit(')');
       break;
@@ -6241,8 +6245,20 @@ static V i64_clz(V a) { return TAG(clz64(u64(a))); }
 static V i64_ctz(V a) { return TAG(ctz64(u64(a))); }
 static V i64_popcnt(V a) { return TAG(popcnt64(u64(a))); }
 
-/* conversions with Int: every Int fits; the reverse is checked */
-static V i64_ofInt(V a) { return vi64((int64_t)UNTAG(a)); }
+/* conversions with Int: checked Option I64, plus explicit wrapping trunc */
+static V some_v(V x) {
+  V r = fpr_alloc(8 + sizeof(V));
+  ((hdr_t *)r)->tid = T_OPTION; ((hdr_t *)r)->var = 1;
+  FPR_FLD(r, 0) = x;
+  return r;
+}
+static V i64_ofInt(V a) { return some_v(vi64((int64_t)UNTAG(a))); }
+static V i64_ofIntU(V a) {
+  sw n = UNTAG(a);
+  if (n < 0) return (V)&fpr_none;
+  return some_v(vu64((uint64_t)n));
+}
+static V i64_trunc(V a) { return vi64((int64_t)UNTAG(a)); }
 static V i64_toInt(V a) {
   int64_t x = i64(a);
   if (x > INT_MAX_TAGGED || x < INT_MIN_TAGGED)
@@ -6387,6 +6403,8 @@ FPR_FN(fpr_g_I64_x2eclz, i64_clz, 1);
 FPR_FN(fpr_g_I64_x2ectz, i64_ctz, 1);
 FPR_FN(fpr_g_I64_x2epopcnt, i64_popcnt, 1);
 FPR_FN(fpr_g_I64_x2eofInt, i64_ofInt, 1);
+FPR_FN(fpr_g_I64_x2eofIntU, i64_ofIntU, 1);
+FPR_FN(fpr_g_I64_x2etrunc, i64_trunc, 1);
 FPR_FN(fpr_g_I64_x2etoField, i64_toField, 1);
 FPR_FN(fpr_g_I64_x2eofField, i64_ofField, 1);
 FPR_FN(fpr_g_I64_x2etoInt, i64_toInt, 1);

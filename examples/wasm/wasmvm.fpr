@@ -50,7 +50,7 @@ typeOf (VF32 _) = TF32.
 typeOf (VF64 _) = TF64.
 
 zeroOf TI32 = VI32 0.
-zeroOf TI64 = VI64 (I64.ofInt 0).
+zeroOf TI64 = VI64 (I64.trunc 0).
 zeroOf TF32 = VF32 (F32.ofInt 0).
 zeroOf TF64 = VF64 0.0.
 
@@ -296,9 +296,9 @@ signFill : Int -> Int | work signFill <= 2 | alloc signFill <= 0 .
 signFill l | l >= 2147483648 = 4294967295.
 signFill _ = 0.
 
-zero64 = I64.ofInt 0.
+zero64 = I64.trunc 0.
 minS64 = I64.fromParts 2147483648 0.
-allOnes64 = I64.ofInt (0 - 1).
+allOnes64 = I64.trunc (0 - 1).
 
 # a 32-bit word as the i64 it sign-extends to
 widened : Int -> I64 .
@@ -327,9 +327,9 @@ ibin64 IRotl a b = Ok (I64.rotl a (I64.lo b)).
 ibin64 IRotr a b = Ok (I64.rotr a (I64.lo b)).
 
 iun64 : IUn -> I64 -> I64 .
-iun64 IClz x = I64.ofInt (I64.clz x).
-iun64 ICtz x = I64.ofInt (I64.ctz x).
-iun64 IPopcnt x = I64.ofInt (I64.popcnt x).
+iun64 IClz x = I64.trunc (I64.clz x).
+iun64 ICtz x = I64.trunc (I64.ctz x).
+iun64 IPopcnt x = I64.trunc (I64.popcnt x).
 iun64 IExt8S x = widened (sext 8 (I64.lo x)).
 iun64 IExt16S x = widened (sext 16 (I64.lo x)).
 iun64 IExt32S x = widened (I64.lo x).
@@ -538,7 +538,7 @@ convErr = Err "type error in conversion".
 cvt : Cvt -> Val -> Result Val String .
 cvt Wrap (VI64 x) = Ok (VI32 (I64.lo x)).
 cvt ExtendS (VI32 w) = Ok (VI64 (widened w)).
-cvt ExtendU (VI32 w) = Ok (VI64 (I64.ofInt w)).
+cvt ExtendU (VI32 w) = Ok (VI64 (I64.trunc w)).
 cvt (TruncS sz _) (VF32 f) = truncFloat True sz False (F64.ofF32 f).
 cvt (TruncS sz _) (VF64 d) = truncFloat True sz False d.
 cvt (TruncU sz _) (VF32 f) = truncFloat False sz False (F64.ofF32 f).
@@ -735,7 +735,7 @@ loaded : ValType -> Int -> Bool -> Int -> Int -> Val .
 loaded TI32 bytes signed lo _ = VI32 (narrow bytes signed lo).
 loaded TI64 8 _ lo hi = VI64 (I64.fromParts hi lo).
 loaded TI64 bytes True lo _ = VI64 (narrow bytes True lo |> widened).
-loaded TI64 _ False lo _ = VI64 (I64.ofInt lo).
+loaded TI64 _ False lo _ = VI64 (I64.trunc lo).
 loaded TF32 _ _ lo _ = VF32 (f32frombits lo).
 loaded TF64 _ _ lo hi = VF64 (f64frombits hi lo).
 

@@ -87,7 +87,7 @@ entryWidth volume = if volume.wide then 4 else 2.
 entrySector volume cluster = volume.fat + cluster / (512 / entryWidth volume).
 entryOffset volume cluster = cluster % (512 / entryWidth volume) * entryWidth volume.
 entryValue volume at text = if volume.wide then
-  case I32.toIntU (I32.and (Sd.u32 at text) (I32.ofInt 268435455)) of Ok n -> n | Err _ -> -1
+  case I32.toIntU (I32.and (Sd.u32 at text) (I32.trunc 268435455)) of Ok n -> n | Err _ -> -1
 else Sd.u16 at text.
 fatGet volume cluster = if validCluster volume cluster == False then Err "FAT cluster out of range" else
   bind (fn text -> Ok (entryValue volume (entryOffset volume cluster) text)) (Sd.read volume.card (entrySector volume cluster)).
@@ -186,7 +186,7 @@ markCopies volume cluster copy = if copy >= 2 then Ok Unit else if copy >= volum
     if entryValue volume at text != 0 then Err "FAT allocation changed during create" else
     bytes = if volume.wide then strcat (put16 65535) (strcat (chr 255) (chr (bor (band (charAt text (at + 3)) 240) 15))) else put16 65535;
     bind (fn unit -> markCopies volume cluster (copy + 1)) (Sd.write volume.card sector (replace at bytes text))) (Sd.read volume.card sector).
-infoValid text = Sd.u32 0 text == I32.or (I32.ofInt 21074) (I32.shl (I32.ofInt 16737) 16) and Sd.u32 484 text == I32.or (I32.ofInt 29298) (I32.shl (I32.ofInt 24897) 16) and Sd.u32 508 text == I32.shl (I32.ofInt 43605) 16.
+infoValid text = Sd.u32 0 text == I32.or (I32.trunc 21074) (I32.shl (I32.trunc 16737) 16) and Sd.u32 484 text == I32.or (I32.trunc 29298) (I32.shl (I32.trunc 24897) 16) and Sd.u32 508 text == I32.shl (I32.trunc 43605) 16.
 invalidateInfo volume sector = if sector < 0 then Ok Unit else
   bind (fn text -> if infoValid text == False then Ok Unit else
     unknown = S.repeat 4 (chr 255);

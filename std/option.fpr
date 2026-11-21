@@ -7,7 +7,9 @@
 # value that may simply not be there (a key not in a map, an empty list's head).
 # Data comes last everywhere in std, so functions compose with `|>`.
 
-Option a = Type (None | Some a).
+# `Option a = None | Some a` is a Core builtin type (like `Result a e`), so
+# `Option`, `None`, and `Some` are in scope everywhere without importing this
+# module; `O.Option`, `O.None`, `O.Some` also continue to resolve to them.
 
 map : (a -> b) -> Option a -> Option b .
 map _ None = None.

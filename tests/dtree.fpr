@@ -323,9 +323,9 @@ depthT (Split col thr l r) = 1 + Int.max (depthT l) (depthT r).
 
 lcgN : I64 -> I64 .
 lcgN s =
-  multiplier = I64.shl (I64.ofInt 33676) 15 + I64.ofInt 20077;
-  modulus = I64.shl (I64.ofInt 1) 31;
-  (multiplier * s + I64.ofInt 12345) % modulus.
+  multiplier = I64.shl (I64.trunc 33676) 15 + I64.trunc 20077;
+  modulus = I64.shl (I64.trunc 1) 31;
+  (multiplier * s + I64.trunc 12345) % modulus.
 
 fillM : unsafe Int -> I64 -> (Vector _) -> _ .
 fillM cnt s v = case cnt == 0 of
@@ -357,7 +357,7 @@ lblOne i n xs zs ns ys =
 
 gen : unsafe Int -> Int -> _ .
 gen seed n =
-  (xs, s1) = fillM n (I64.ofInt seed) (Vec.newAs "d");
+  (xs, s1) = fillM n (I64.trunc seed) (Vec.newAs "d");
   (zs, s2) = fillM n s1 (Vec.newAs "d");
   (ns, s3) = fillU n s2 (Vec.newAs "d");
   (ys, xs2, zs2, ns2) = lbl 0 n xs zs ns (Vec.newAs "i");

@@ -23,7 +23,7 @@ import Sol.Lang (Name)
 -- Path codecs (wire*) are introduced before slicing and found as mentions.
 injectedNames :: [Name]
 injectedNames =
-  [ "and", "or", "not", "and2", "or2", "error", "Ok", "Err", "Result", "Cons", "Nil", "True", "False", "Unit", "Bool"
+  [ "and", "or", "not", "and2", "or2", "error", "Ok", "Err", "Result", "Option", "None", "Some", "Cons", "Nil", "True", "False", "Unit", "Bool"
   , "Path", "Int.mod", "Int.pow", "String", "$cast", "$unsafe", "main"
   , "measure", "mulMV", "mulMM", "f64frombits", "f32frombits", "Vec.newAs", "Vec.map"
   ]

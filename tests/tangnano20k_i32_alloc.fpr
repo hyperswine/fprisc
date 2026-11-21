@@ -7,11 +7,12 @@ spin n multiplier increment value = spin (n - 1) multiplier increment (value * m
 main : unsafe Unit .
 main =
   _ = if intMax Unit > 1073741823 then Unit else error "allocation fixture requires 64-bit values";
-  seed = I32.ofInt 0;
-  multiplier = I32.ofInt 1664525;
-  increment = I32.ofInt 1013904223;
-  # On a 64-bit host, ofInt takes the low 32 bits even beyond UINT32_MAX.
-  _ = if I32.ofInt 4294967297 == I32.ofInt 1 then Unit else error "ofInt did not wrap";
+  seed = I32.trunc 0;
+  multiplier = I32.trunc 1664525;
+  increment = I32.trunc 1013904223;
+  # On a 64-bit host, trunc takes the low 32 bits even beyond UINT32_MAX, while ofInt returns None.
+  _ = if I32.trunc 4294967297 == I32.trunc 1 then Unit else error "trunc did not wrap";
+  _ = case I32.ofInt 4294967297 of None -> Unit | Some _ -> error "ofInt did not reject overflow";
   before = heapUsed Unit;
   answer = spin 10000000 multiplier increment seed;
   after = heapUsed Unit;

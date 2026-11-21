@@ -20,14 +20,14 @@ sumRow a row = a + row.x * F64.ofInt row.i.
 
 main : Unit .
 main =
-  one = I64.ofInt 1;
-  minus1 = I64.ofInt -1;
+  one = I64.trunc 1;
+  minus1 = I64.trunc -1;
   max64 = parsed "9223372036854775807";
   min64 = parsed "-9223372036854775808";
   _ = expect "i64 wrap" (I64.str (max64 + one) == "-9223372036854775808");
-  _ = expect "i64 unsigned" (I64.strU (I64.divU minus1 (I64.ofInt 2)) == "9223372036854775807");
-  _ = expect "i64 multiply" (I64.str (parsed "4294967296" * I64.ofInt 3) == "12884901888");
-  _ = expect "i64 signed" (I64.str (I64.ofInt -7 / I64.ofInt 2) == "-3");
+  _ = expect "i64 unsigned" (I64.strU (I64.divU minus1 (I64.trunc 2)) == "9223372036854775807");
+  _ = expect "i64 multiply" (I64.str (parsed "4294967296" * I64.trunc 3) == "12884901888");
+  _ = expect "i64 signed" (I64.str (I64.trunc -7 / I64.trunc 2) == "-4");
   _ = expect "i64 shifts" (I64.hex (I64.rotr one 1) == "8000000000000000");
   _ = expect "i64 counts" (I64.popcnt minus1 == 64);
   _ = expect "i64 toInt refuses" (rejected (I64.toInt max64));

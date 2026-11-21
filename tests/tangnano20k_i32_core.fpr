@@ -9,9 +9,9 @@ intSaid (Err _) = "Err".
 
 run : Unit -> Unit .
 run u =
-  zero = I32.ofInt 0;
-  one = I32.ofInt 1;
-  minus1 = I32.ofInt -1;
+  zero = I32.trunc 0;
+  one = I32.trunc 1;
+  minus1 = I32.trunc -1;
   min32 = parsed "-2147483648";
   max32 = parsed "2147483647";
   hi = parsed "0x80000000";
@@ -21,22 +21,22 @@ run u =
   _ = expect "hex" (I32.hex minus1 == "ffffffff" and I32.hex zero == "0");
   _ = expect "add upper wrap" (max32 + one == min32);
   _ = expect "sub lower wrap" (min32 - one == max32);
-  _ = expect "multiply wrap" (max32 * I32.ofInt 2 == I32.ofInt -2);
-  _ = expect "multiply modulo32" (parsed "1073741824" * I32.ofInt 4 == zero);
-  _ = expect "ordinary sub" (I32.ofInt 5 - I32.ofInt 7 == I32.ofInt -2);
-  _ = expect "negative div/mod" (I32.ofInt -7 / I32.ofInt 2 == I32.ofInt -4 and I32.ofInt -7 % I32.ofInt 2 == one);
-  _ = expect "negative divisor div/mod" (I32.ofInt 7 / I32.ofInt -2 == I32.ofInt -4 and I32.ofInt 7 % I32.ofInt -2 == minus1);
-  _ = expect "both negative div/mod" (I32.ofInt -7 / I32.ofInt -2 == I32.ofInt 3 and I32.ofInt -7 % I32.ofInt -2 == minus1);
-  _ = expect "truncated quot/rem" (I32.quot (I32.ofInt -7) (I32.ofInt 2) == I32.ofInt -3 and I32.rem (I32.ofInt -7) (I32.ofInt 2) == minus1 and I32.quot (I32.ofInt 7) (I32.ofInt -2) == I32.ofInt -3 and I32.rem (I32.ofInt 7) (I32.ofInt -2) == one);
-  _ = expect "minimum divided" (I32.str (min32 / I32.ofInt 2) == "-1073741824");
+  _ = expect "multiply wrap" (max32 * I32.trunc 2 == I32.trunc -2);
+  _ = expect "multiply modulo32" (parsed "1073741824" * I32.trunc 4 == zero);
+  _ = expect "ordinary sub" (I32.trunc 5 - I32.trunc 7 == I32.trunc -2);
+  _ = expect "negative div/mod" (I32.trunc -7 / I32.trunc 2 == I32.trunc -4 and I32.trunc -7 % I32.trunc 2 == one);
+  _ = expect "negative divisor div/mod" (I32.trunc 7 / I32.trunc -2 == I32.trunc -4 and I32.trunc 7 % I32.trunc -2 == minus1);
+  _ = expect "both negative div/mod" (I32.trunc -7 / I32.trunc -2 == I32.trunc 3 and I32.trunc -7 % I32.trunc -2 == minus1);
+  _ = expect "truncated quot/rem" (I32.quot (I32.trunc -7) (I32.trunc 2) == I32.trunc -3 and I32.rem (I32.trunc -7) (I32.trunc 2) == minus1 and I32.quot (I32.trunc 7) (I32.trunc -2) == I32.trunc -3 and I32.rem (I32.trunc 7) (I32.trunc -2) == one);
+  _ = expect "minimum divided" (I32.str (min32 / I32.trunc 2) == "-1073741824");
   _ = expect "minimum div/quot/mod/rem -1" (min32 / minus1 == min32 and I32.quot min32 minus1 == min32 and min32 % minus1 == zero and I32.rem min32 minus1 == zero);
-  _ = expect "unsigned divide" (I32.divU minus1 (I32.ofInt 2) == max32);
-  _ = expect "unsigned remainder" (I32.remU minus1 (I32.ofInt 10) == I32.ofInt 5);
+  _ = expect "unsigned divide" (I32.divU minus1 (I32.trunc 2) == max32);
+  _ = expect "unsigned remainder" (I32.remU minus1 (I32.trunc 10) == I32.trunc 5);
   _ = expect "signed comparisons" (min32 < minus1 and minus1 < zero and max32 > one and min32 <= min32 and max32 >= max32);
   _ = expect "unsigned comparisons" (I32.ltU one hi and I32.gtU minus1 hi and I32.leU hi hi and I32.geU minus1 minus1);
   _ = expect "comparison disagreement" (hi < one and I32.ltU hi one == False and I32.gtU one hi == False);
   _ = expect "equality" (hi == min32 and hi != max32);
-  _ = expect "and/or/xor" (I32.hex (I32.xor (I32.or (I32.and minus1 (I32.ofInt 240)) one) (I32.ofInt 3)) == "f2");
+  _ = expect "and/or/xor" (I32.hex (I32.xor (I32.or (I32.and minus1 (I32.trunc 240)) one) (I32.trunc 3)) == "f2");
   _ = expect "not" (I32.not zero == minus1 and I32.not min32 == max32);
   _ = expect "neg minimum" (I32.neg min32 == min32 and I32.neg one == minus1);
   _ = expect "shl counts0/31" (I32.shl one 0 == one and I32.shl one 31 == min32);
@@ -53,9 +53,9 @@ run u =
   _ = expect "clz" (I32.clz zero == 32 and I32.clz minus1 == 0 and I32.clz one == 31 and I32.clz min32 == 0);
   _ = expect "ctz" (I32.ctz zero == 32 and I32.ctz minus1 == 0 and I32.ctz one == 0 and I32.ctz min32 == 31);
   _ = expect "popcnt" (I32.popcnt zero == 0 and I32.popcnt minus1 == 32 and I32.popcnt min32 == 1 and I32.popcnt pattern == 13);
-  _ = expect "ofInt signed" (I32.ofInt -42 == parsed "-42");
-  _ = expect "toInt small" (intSaid (I32.toInt (I32.ofInt -42)) == "-42");
-  _ = expect "toIntU small" (intSaid (I32.toIntU (I32.ofInt 42)) == "42");
+  _ = expect "ofInt signed" (I32.trunc -42 == parsed "-42");
+  _ = expect "toInt small" (intSaid (I32.toInt (I32.trunc -42)) == "-42");
+  _ = expect "toIntU small" (intSaid (I32.toIntU (I32.trunc 42)) == "42");
   _ = expect "toInt tagged max" (intSaid (I32.toInt (parsed "1073741823")) == "1073741823");
   _ = expect "toInt tagged min" (intSaid (I32.toInt (parsed "-1073741824")) == "-1073741824");
   _ = expect "toInt unsigned tagged max" (intSaid (I32.toIntU (parsed "1073741823")) == "1073741823");

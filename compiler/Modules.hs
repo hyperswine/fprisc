@@ -275,7 +275,8 @@ data REnv = REnv
     -- (through `R = M.Rand.`) must qualify the HEAD only -- unlike plain
     -- module members, where the whole name qualifies.
     reSelfStructs :: S.Set Name, -- this unit's own struct tops
-    reDepStructs :: M.Map Name (S.Set Name) -- import alias -> dep's struct tops
+    reDepStructs :: M.Map Name (S.Set Name), -- import alias -> dep's struct tops
+    reDepSelfNames :: M.Map Name (S.Set Name) -- import alias -> dep's own defined names
   }
 
 -- resolve one name occurrence (non-binding position).
@@ -305,7 +306,10 @@ refName env conPos bound nm0
             (s, '.' : fld)
               | S.member s (M.findWithDefault S.empty a (reDepStructs env)) ->
                   Left (qualify h s ++ "." ++ fld)
-            _ -> Left (qualify h rest)
+            _ | rest `elem` ["Option", "None", "Some", "Result", "Ok", "Err"],
+                S.notMember rest (M.findWithDefault S.empty a (reDepSelfNames env)) ->
+                  Left rest
+              | otherwise -> Left (qualify h rest)
       | Just q <- reSelf env nm = Left q
       -- `Rand.next` inside the module that declares struct Rand: the
       -- head qualifies to this unit's hash, the field stays
@@ -450,26 +454,23 @@ loadProgram preludeTops rootPath rootTops = do
       -- notes from nested (module-internal) unpinned uses:
       depNotes <- fmap concat . forM units $ \mu ->
         pure ["  (inside a module) use of unpinned dep resolves to #" ++ h | (_, h) <- muAliases mu, False] -- deps are pin-normalized silently
-      let unitPairs = [(muHash mu, qualifyUnit unitStructs' mu) | mu <- units]
-          unitStructs' =
-            M.fromList
-              [(muHash mu, S.fromList [n | TStruct n _ _ <- muTops mu]) | mu <- units]
-          unitTops = map snd unitPairs
+      let unitSelfNames =
+            M.fromList [(muHash mu, unitDefinedNames (muTops mu)) | mu <- units]
           unitStructs =
             M.fromList
               [(muHash mu, S.fromList [n | TStruct n _ _ <- muTops mu]) | mu <- units]
-          depStructsFor aliases =
-            M.fromList
-              [ (a, M.findWithDefault S.empty h unitStructs)
-                | (a, h) <- aliases
-              ]
+          unitPairs = [(muHash mu, qualifyUnit unitStructs unitSelfNames mu) | mu <- units]
+          unitTops = map snd unitPairs
+          depMap m aliases =
+            M.fromList [(a, M.findWithDefault S.empty h m) | (a, h) <- aliases]
           rootEnv =
             REnv
               { reSelf = const Nothing, -- root names stay unqualified
                 reAliases = M.fromList rootAliases,
                 reAliasSubst = M.fromList [(a, b) | TAlias a b <- rootTops],
                 reSelfStructs = S.empty, -- root structs keep their names; refs already match
-                reDepStructs = depStructsFor rootAliases
+                reDepStructs = depMap unitStructs rootAliases,
+                reDepSelfNames = depMap unitSelfNames rootAliases
               }
           root' = renameTops rootEnv "" rootTops
           merged = preludeTops ++ concat unitTops ++ root'
@@ -489,8 +490,22 @@ loadProgram preludeTops rootPath rootTops = do
           hs = maybe "?" id (lookup a aliases)
        in TUse a (nm ++ "#" ++ hs)
     pinRoot _ t = t
-    qualifyUnit unitStructs mu =
-      let env =
+    unitDefinedNames tops =
+      S.fromList $
+        concat
+          [ case t of
+              TBind n _ _ _ -> [n]
+              TSig n _ _ | n `elem` [b | TBind b _ _ _ <- tops] -> [n] -- a bare signature is foreign: see renameTops
+              TSig {} -> []
+              TSigDef n _ -> [n]
+              TStruct n _ _ -> [n]
+              TType n _ _ cons -> n : map fst cons
+              _ -> []
+            | t <- tops
+          ]
+    qualifyUnit unitStructs unitSelfNames mu =
+      let selfNames = unitDefinedNames (muTops mu)
+          env =
             REnv
               { reSelf = \n -> if S.member n selfNames then Just (qualify (muHash mu) n) else Nothing,
                 reAliases = M.fromList (muAliases mu),
@@ -500,19 +515,11 @@ loadProgram preludeTops rootPath rootTops = do
                   M.fromList
                     [ (a, M.findWithDefault S.empty h unitStructs)
                       | (a, h) <- muAliases mu
+                    ],
+                reDepSelfNames =
+                  M.fromList
+                    [ (a, M.findWithDefault S.empty h unitSelfNames)
+                      | (a, h) <- muAliases mu
                     ]
               }
-          selfNames =
-            S.fromList $
-              concat
-                [ case t of
-                    TBind n _ _ _ -> [n]
-                    TSig n _ _ | n `elem` [b | TBind b _ _ _ <- muTops mu] -> [n] -- a bare signature is foreign: see renameTops
-                    TSig {} -> []
-                    TSigDef n _ -> [n]
-                    TStruct n _ _ -> [n]
-                    TType n _ _ cons -> n : map fst cons
-                    _ -> []
-                  | t <- muTops mu
-                ]
        in renameTops env (muHash mu) (muTops mu)

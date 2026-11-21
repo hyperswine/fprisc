@@ -58,7 +58,9 @@ builtinCons =
       ("Nil", (2, 0, 0)),
       ("Cons", (2, 1, 2)),
       ("Ok", (3, 0, 1)),
-      ("Err", (3, 1, 1))
+      ("Err", (3, 1, 1)),
+      ("None", (7, 0, 0)),
+      ("Some", (7, 1, 1))
     ] `M.union` DataLayout.smallTupleLayouts
 
 atomT :: Int

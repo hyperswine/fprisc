@@ -21,7 +21,7 @@ Program = use "std/program".
 Expect = Type (Returns (List V.Val) | Traps String).
 
 i32c n = V.VI32 (V.m32 n).
-i64c n = V.VI64 (I64.ofInt n).
+i64c n = V.VI64 (I64.trunc n).
 f32c : F64 -> V.Val .
 f32c x = V.VF32 (F32.ofF64 x).
 f64c : F64 -> V.Val .

@@ -170,12 +170,14 @@ builtinConSh =
   M.fromList
     [ ("Ok", (LCon "Result" False [LVar "a", LVar "e"], [LVar "a"])),
       ("Err", (LCon "Result" False [LVar "a", LVar "e"], [LVar "e"])),
+      ("None", (LCon "Option" False [LVar "a"], [])),
+      ("Some", (LCon "Option" False [LVar "a"], [LVar "a"])),
       ("Cons", (LCon "List" False [LVar "a"], [LVar "a", LCon "List" False [LVar "a"]])),
       ("Nil", (LCon "List" False [LVar "a"], []))
     ]
 
 builtinConAr :: M.Map Name Int
-builtinConAr = M.fromList [("Ok", 1), ("Err", 1), ("Cons", 2), ("Nil", 0)]
+builtinConAr = M.fromList [("Ok", 1), ("Err", 1), ("None", 0), ("Some", 1), ("Cons", 2), ("Nil", 0)]
 
 -- the fields a constructor pattern binds, instantiated from the scrutinee's
 -- shape.  A scrutinee whose structure is unknown but owned (a plain LL,

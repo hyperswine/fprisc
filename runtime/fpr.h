@@ -33,7 +33,7 @@ typedef intptr_t sw;
 
 enum {
   T_UNIT = 0, T_BOOL = 1, T_LIST = 2, T_RESULT = 3,
-  T_TUP2 = 4, T_TUP3 = 5, T_ATOM = 6,
+  T_TUP2 = 4, T_TUP3 = 5, T_ATOM = 6, T_OPTION = 7,
   /* wide tuples (Codegen builtinCons): 10..14 = Tup4..Tup8 */
   T_TUP4 = 10, T_TUP5 = 11, T_TUP6 = 12, T_TUP7 = 13, T_TUP8 = 14,
   /* a tuple wider than 8 is T_TUPN + its arity (FPRISC.hs tupWideBase): a range
@@ -72,7 +72,7 @@ V fpr_f32_from_bits32(uint32_t bits);
 #define TID(v) (((hdr_t *)(v))->tid)
 #define BOOL(b) ((b) ? (V)&fpr_true : (V)&fpr_false)
 
-extern const hdr_t fpr_true, fpr_false, fpr_unit, fpr_list_nil;
+extern const hdr_t fpr_true, fpr_false, fpr_unit, fpr_list_nil, fpr_none;
 
 /* ---- SMP: the per-hart control block ---------------------------------
  * Every hart's tp register points at its fpr_hart_t FOR THE LIFE OF THE

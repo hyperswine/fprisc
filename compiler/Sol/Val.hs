@@ -134,6 +134,8 @@ render (VData 0 0 []) = "()"
 -- Result (tid 3): the Ok/Err default pattern renders by name
 render (VData 3 0 [x]) = "Ok " ++ render x
 render (VData 3 1 [x]) = "Err " ++ render x
+render (VData 7 0 []) = "None"
+render (VData 7 1 [x]) = "Some " ++ render x
 render (VData 4 0 [a, b]) = "(" ++ render a ++ ", " ++ render b ++ ")"
 render (VData 5 0 [a, b, c]) = "(" ++ render a ++ ", " ++ render b ++ ", " ++ render c ++ ")"
 -- wide tuples: tids 10..14 = Tup4..Tup8 (FPRISC builtinCons / fpr.h)
@@ -146,6 +148,7 @@ render (VData t v fs)
     arg x = case x of
       VInt i | i < 0 -> "(" ++ render x ++ ")"
       VData 3 _ [_] -> "(" ++ render x ++ ")"
+      VData 7 1 [_] -> "(" ++ render x ++ ")"
       VData t' v' fs' | not (null fs'), Just _ <- lookup (t', v', length fs') (unsafePerformIO (readIORef conNames)) -> "(" ++ render x ++ ")"
       _ -> render x
 render (VData t v fs) = "<" ++ show t ++ "." ++ show v ++ (if null fs then "" else " " ++ unwords (map render fs)) ++ ">"

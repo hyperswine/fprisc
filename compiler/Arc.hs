@@ -113,7 +113,7 @@ primitiveContracts =
         ("and",2,"and"),("or",2,"or"),("xor",2,"xor"),("not",1,"not"),("neg",1,"neg"),
         ("shl",2,"shl"),("shr",2,"shr"),("sar",2,"sar"),("rotl",2,"rotl"),("rotr",2,"rotr"),
         ("clz",1,"clz"),("ctz",1,"ctz"),("popcnt",1,"popcnt"),
-        ("ofInt",1,"ofInt"),("toInt",1,"toInt"),("toIntU",1,"toIntU"),
+        ("ofInt",1,"ofInt"),("ofIntU",1,"ofIntU"),("trunc",1,"trunc"),("toInt",1,"toInt"),("toIntU",1,"toIntU"),
         ("str",1,"str"),("strU",1,"strU"),("hex",1,"hex"),("parse",1,"parse")]]
 
 arcExterns :: M.Map String Int
@@ -123,7 +123,7 @@ arcExterns = M.fromList $ [("$arc.retain",1),("$arc.release",1),("$arc.setLayout
 
 -- Bump when ownership lowering or its runtime ABI changes: keys unit caches.
 arcRev :: Int
-arcRev = 24
+arcRev = 25
 
 type G = StateT Int (Either String)
 fresh :: G String

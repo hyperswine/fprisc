@@ -33,7 +33,7 @@ response : (tries : Int | measure tries) -> Result Int String .
 response tries = if tries <= 0 then Err "SD command response timeout" else
   byte = SdSpi.transfer 255;
   if byte < 0 then Err "SD SPI timeout" else if byte < 128 then Ok byte else response (tries - 1).
-octet value shift = case I32.toIntU (I32.and (I32.shr value shift) (I32.ofInt 255)) of Ok n -> n | Err _ -> 0.
+octet value shift = case I32.toIntU (I32.and (I32.shr value shift) (I32.trunc 255)) of Ok n -> n | Err _ -> 0.
 crc7Bits : Int -> Int -> (count : Int | measure count) -> Int .
 crc7Bits crc byte count = if count <= 0 then crc else
   feedback = band (bxor (crc / 64) (byte / 128)) 1;
@@ -56,7 +56,7 @@ read32 : Unit -> Result I32 String .
 read32 unit =
   a = SdSpi.transfer 255; b = SdSpi.transfer 255; c = SdSpi.transfer 255; d = SdSpi.transfer 255;
   if a < 0 or b < 0 or c < 0 or d < 0 then Err "SD SPI timeout reading response" else
-  Ok (I32.or (I32.or (I32.shl (I32.ofInt a) 24) (I32.shl (I32.ofInt b) 16)) (I32.or (I32.shl (I32.ofInt c) 8) (I32.ofInt d))).
+  Ok (I32.or (I32.or (I32.shl (I32.trunc a) 24) (I32.shl (I32.trunc b) 16)) (I32.or (I32.shl (I32.trunc c) 8) (I32.trunc d))).
 
 token : (tries : Int | measure tries) -> Result Unit String .
 token tries = if tries <= 0 then Err "SD data token timeout" else
@@ -81,7 +81,7 @@ dataBlock count = bind (fn unit -> bind (fn done -> Ok (SdSpi.bufferText count))
 
 idle : (tries : Int | measure tries) -> Result Unit String .
 idle tries = if tries <= 0 then Err "SD CMD0 did not enter idle" else
-  case command 0 (I32.ofInt 0) 149 of
+  case command 0 (I32.trunc 0) 149 of
     Ok 1 -> Ok Unit
   | _ -> idle (tries - 1).
 # CMD55's R1 becomes 0 once ready; allow both valid states.
@@ -89,7 +89,7 @@ start : Bool -> (tries : Int | measure tries) -> Result Unit String .
 start version2 tries = if tries <= 0 then Err "SD ACMD41 initialization timeout" else
   bind (fn prefix -> if prefix > 1 then Err "SD CMD55 response {prefix}" else
     bind (fn r -> if r == 0 then Ok Unit else if r == 1 then start version2 (tries - 1) else Err "SD ACMD41 response {r}")
-      (command 41 (if version2 then I32.shl (I32.ofInt 1) 30 else I32.ofInt 0) 1)) (command 55 (I32.ofInt 0) 1).
+      (command 41 (if version2 then I32.shl (I32.trunc 1) 30 else I32.trunc 0) 1)) (command 55 (I32.trunc 0) 1).
 
 capacity text =
   first = charAt text 0 / 64;
@@ -104,21 +104,21 @@ capacity text =
     if size > intMax Unit / multiplier then Err "SD capacity exceeds this target's Int block range" else Ok (size * multiplier)
   else Err "SD unsupported CSD version".
 
-register index = bind (fn unit -> dataBlock 16) (expect index (I32.ofInt 0) 1 0).
+register index = bind (fn unit -> dataBlock 16) (expect index (I32.trunc 0) 1 0).
 identified high value divider =
   bind (fn csdText -> if (charAt csdText 0 / 64 == 1) != high then Err "SD OCR/CSD addressing mode mismatch" else bind (fn count ->
     if high == False and count > 8388608 then Err "SD byte-addressed card capacity exceeds 32-bit address range" else bind (fn cidText ->
     _ = SdSpi.divider divider;
     Ok (Card high count value csdText cidText)) (register 10)) (capacity csdText)) (register 9).
 afterOcr divider value =
-  high = I32.and value (I32.shl (I32.ofInt 1) 30) != I32.ofInt 0;
-  if high then identified True value divider else bind (fn unit -> identified False value divider) (expect 16 (I32.ofInt 512) 1 0).
+  high = I32.and value (I32.shl (I32.trunc 1) 30) != I32.trunc 0;
+  if high then identified True value divider else bind (fn unit -> identified False value divider) (expect 16 (I32.trunc 512) 1 0).
 afterVersion divider version2 = bind (fn unit -> bind (fn enabled ->
-  if version2 then bind (fn ignored -> bind (afterOcr divider) (read32 Unit)) (expect 58 (I32.ofInt 0) 1 0)
-  else bind (fn ignored -> identified False (I32.ofInt 0) divider) (expect 16 (I32.ofInt 512) 1 0)) (expect 59 (I32.ofInt 1) 1 0)) (start version2 20000).
+  if version2 then bind (fn ignored -> bind (afterOcr divider) (read32 Unit)) (expect 58 (I32.trunc 0) 1 0)
+  else bind (fn ignored -> identified False (I32.trunc 0) divider) (expect 16 (I32.trunc 512) 1 0)) (expect 59 (I32.trunc 1) 1 0)) (start version2 20000).
 interface divider = bind (fn r ->
-  if r == 1 then bind (fn echo -> if I32.and echo (I32.ofInt 4095) == I32.ofInt 426 then afterVersion divider True else Err "SD CMD8 voltage/check pattern mismatch") (read32 Unit)
-  else if band r 4 == 4 then afterVersion divider False else Err "SD CMD8 response {r}") (command 8 (I32.ofInt 426) 135).
+  if r == 1 then bind (fn echo -> if I32.and echo (I32.trunc 4095) == I32.trunc 426 then afterVersion divider True else Err "SD CMD8 voltage/check pattern mismatch") (read32 Unit)
+  else if band r 4 == 4 then afterVersion divider False else Err "SD CMD8 response {r}") (command 8 (I32.trunc 426) 135).
 
 # Divider 255 keeps identification below 400 kHz even at 96 MHz.
 # Divider 7 is a conservative 3 MHz transfer clock at 48 MHz.
@@ -130,7 +130,7 @@ open divider = if divider < 0 or divider > 255 then Err "SD divider must be 0..2
   _ = SdSpi.select True;
   finish (bind (fn unit -> interface divider) (idle 20)).
 
-address card block = if highCapacity card then I32.ofInt block else I32.shl (I32.ofInt block) 9.
+address card block = if highCapacity card then I32.trunc block else I32.shl (I32.trunc block) 9.
 inRange card block = block >= 0 and block < blocks card.
 read : Card -> Int -> Result String String .
 read card block = if inRange card block == False then Err "SD block out of range" else
@@ -150,7 +150,7 @@ programmed crc =
   if accepted == False then Err "SD card rejected data {responseByte}" else
   bind (fn first -> if first != 0 then Err "SD CMD13 response {first}" else
     status = SdSpi.transfer 255;
-    if status == 0 then Ok Unit else Err "SD write status {status}; write outcome uncertain") (command 13 (I32.ofInt 0) 1).
+    if status == 0 then Ok Unit else Err "SD write status {status}; write outcome uncertain") (command 13 (I32.trunc 0) 1).
 write : Card -> Int -> String -> Result Unit String .
 write card block text = if inRange card block == False then Err "SD block out of range" else
   if strlen text != 512 then Err "SD write requires exactly 512 bytes" else
@@ -160,5 +160,5 @@ write card block text = if inRange card block == False then Err "SD block out of
 
 # Little-endian sector fields stay full width until checked for target Int fit.
 u16 at text = charAt text at + charAt text (at + 1) * 256.
-u32 at text = I32.or (I32.or (I32.ofInt (u16 at text)) (I32.shl (I32.ofInt (u16 (at + 2) text)) 16)) (I32.ofInt 0).
+u32 at text = I32.or (I32.or (I32.trunc (u16 at text)) (I32.shl (I32.trunc (u16 (at + 2) text)) 16)) (I32.trunc 0).
 int32 at text = case I32.toIntU (u32 at text) of Ok n -> Ok n | Err _ -> Err "SD sector field exceeds this target's Int range".

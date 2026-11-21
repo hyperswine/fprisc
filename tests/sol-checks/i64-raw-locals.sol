@@ -9,29 +9,29 @@ H = use "helpers".
 prog = 
   "profile base.\n" +
   "mx : Unit -> I64.\n" +
-  "mx u = I64.shl (I64.ofInt 1) 63 - I64.ofInt 1.\n" +
+  "mx u = I64.shl (I64.trunc 1) 63 - I64.trunc 1.\n" +
   "mn : Unit -> I64.\n" +
-  "mn u = I64.shl (I64.ofInt 1) 63.\n" +
+  "mn u = I64.shl (I64.trunc 1) 63.\n" +
   "acc : unsafe Int -> I64 -> I64 -> I64.\n" +
-  "acc k s step = if k == 0 then s else acc (k - 1) (s * step + I64.ofInt k) step.\n" +
+  "acc k s step = if k == 0 then s else acc (k - 1) (s * step + I64.trunc k) step.\n" +
   "sumTo : unsafe Int -> I64 -> I64.\n" +
-  "sumTo k s = if k == 0 then s else (if k % 3 == 0 then sumTo (k - 1) (s - I64.ofInt k) else sumTo (k - 1) (s + I64.ofInt k)).\n" +
+  "sumTo k s = if k == 0 then s else (if k % 3 == 0 then sumTo (k - 1) (s - I64.trunc k) else sumTo (k - 1) (s + I64.trunc k)).\n" +
   "bits : unsafe Int -> I64 -> I64.\n" +
-  "bits k s = if k == 0 then s else bits (k - 1) (I64.xor (I64.or (I64.and s (I64.ofInt 1048575)) (I64.ofInt (k * 4096))) (s * I64.ofInt 31)).\n" +
+  "bits k s = if k == 0 then s else bits (k - 1) (I64.xor (I64.or (I64.and s (I64.trunc 1048575)) (I64.trunc (k * 4096))) (s * I64.trunc 31)).\n" +
   "count : unsafe Int -> I64 -> I64 -> Int -> Int.\n" +
-  "count k lim s n = if k == 0 then n else (if s < lim then count (k - 1) lim (s + s + I64.ofInt 1) (n + 1) else count (k - 1) lim (s + s + I64.ofInt 1) n).\n" +
+  "count k lim s n = if k == 0 then n else (if s < lim then count (k - 1) lim (s + s + I64.trunc 1) (n + 1) else count (k - 1) lim (s + s + I64.trunc 1) n).\n" +
   "main : unsafe Unit -> Unit.\n" +
   "main u =\n" +
-  "  _ = print (mx Unit + I64.ofInt 1 == mn Unit);\n" +
-  "  _ = print (mn Unit - I64.ofInt 1 == mx Unit);\n" +
-  "  _ = print (mx Unit * I64.ofInt 2);\n" +
-  "  _ = print (mn Unit * I64.ofInt (-1));\n" +
-  "  _ = print (mn Unit < mx Unit, mx Unit > mn Unit, mn Unit <= mn Unit, mx Unit >= mx Unit, mn Unit != mx Unit, I64.ofInt (-3) < I64.ofInt 2);\n" +
-  "  _ = print (acc 50 (I64.ofInt 7) (I64.ofInt 1000003));\n" +
-  "  _ = print (sumTo 100000 (I64.ofInt 0));\n" +
-  "  _ = print (bits 1000 (I64.ofInt 12345));\n" +
-  "  _ = print (count 70 (I64.ofInt 1000000) (I64.ofInt 0) 0);\n" +
-  "  print (I64.ofInt (-7) / I64.ofInt 2, I64.rem (I64.ofInt (-7)) (I64.ofInt 2)).\n".
+  "  _ = print (mx Unit + I64.trunc 1 == mn Unit);\n" +
+  "  _ = print (mn Unit - I64.trunc 1 == mx Unit);\n" +
+  "  _ = print (mx Unit * I64.trunc 2);\n" +
+  "  _ = print (mn Unit * I64.trunc (-1));\n" +
+  "  _ = print (mn Unit < mx Unit, mx Unit > mn Unit, mn Unit <= mn Unit, mx Unit >= mx Unit, mn Unit != mx Unit, I64.trunc (-3) < I64.trunc 2);\n" +
+  "  _ = print (acc 50 (I64.trunc 7) (I64.trunc 1000003));\n" +
+  "  _ = print (sumTo 100000 (I64.trunc 0));\n" +
+  "  _ = print (bits 1000 (I64.trunc 12345));\n" +
+  "  _ = print (count 70 (I64.trunc 1000000) (I64.trunc 0) 0);\n" +
+  "  print (I64.trunc (-7) / I64.trunc 2, I64.rem (I64.trunc (-7)) (I64.trunc 2)).\n".
 want =
   "True\n" +
   "True\n" +
@@ -42,7 +42,7 @@ want =
   "1666683334\n" +
   "6463574126994362368\n" +
   "26\n" +
-  "(-3, -1)\n".
+  "(-4, -1)\n".
 main : unsafe Unit -> Unit.
 main u = root = H.root Unit; work = tempDir "fpr-i64-raw-locals";
   src = "{work}/t.fpr"; asm = "{work}/t.s"; exe = "{work}/t";
