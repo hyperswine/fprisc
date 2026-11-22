@@ -107,6 +107,14 @@ the Sol suites, board/QEMU gates unchanged).
    byte-identity checks, silent branch masking replaced by range errors,
    JIT differentials byte-identical.
 2. AOT A64 emitter adoption for shared forms; then the X64 pair.
+   [Slice 1 delivered 2026-11-21](2026-11-21-ENCODING-A64.md);
+   [slice 2 delivered 2026-11-22](2026-11-22-ENCODING-CONTRACT.md) and
+   [slice 3 delivered 2026-11-22](2026-11-22-ENCODING-CONTRACT.md) with a
+   deliberate deviation: no `Encoding.X64` extraction — the JIT's x86-64
+   assembler is a fixed-register-plan byte table with exact rel32 patching
+   (no masking hazard, no second definition to unify), so the X64 slice is
+   the spelling contract alone: 17 families whose hand bytes are proven
+   against the AOT renderer's spellings through the system assembler.
    [Shape corrected 2026-11-22](#1-the-encoder-unification-finding-1-now-actionable),
    after reading the AOT's emission architecture: the AOT already has an
    instruction ADT with mnemonics (`Codegen.Opcode.A64`, consumed by typed
