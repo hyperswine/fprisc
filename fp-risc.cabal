@@ -271,6 +271,7 @@ library
       Sol.Effects
       Sol.Txn
       Sol.TxnState
+      Sol.Escapes
       Sol.VM
       Sol.MutMap
       Sol.Val
