@@ -107,6 +107,17 @@ the Sol suites, board/QEMU gates unchanged).
    byte-identity checks, silent branch masking replaced by range errors,
    JIT differentials byte-identical.
 2. AOT A64 emitter adoption for shared forms; then the X64 pair.
+   [Shape corrected 2026-11-22](#1-the-encoder-unification-finding-1-now-actionable),
+   after reading the AOT's emission architecture: the AOT already has an
+   instruction ADT with mnemonics (`Codegen.Opcode.A64`, consumed by typed
+   renderers into the .s lines). The convergence is NOT "add render" but a
+   SPELLING CONTRACT: for each family the two tiers share,
+   `Encoding.render`'s output and the AOT renderer's line must assemble to
+   the identical word, proven by a differential test feeding both
+   spellings to `as` and byte-comparing (`test:EncodingA64`'s oracle,
+   generalized). No structural merge of the two ADTs -- their operand
+   models differ legitimately (allocation-resolved frame operands vs bare
+   JIT forms).
 3. Mechanical placements in one rename commit (passes home, `Sol/Hal.hs`,
    kind cross-references, diagnostics map paragraphs).
 4. `Txn.hs` split when the P2 typed-lowering branch lands.
