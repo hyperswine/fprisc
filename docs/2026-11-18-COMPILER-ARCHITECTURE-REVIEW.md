@@ -64,7 +64,7 @@ as owners; `FPRISC.hs` remains as a marked compatibility facade).
 | 7 | Three unrelated meanings of "kernel" | naming | confusion |
 | 8 | Non-compiler projects in this repo (`deploy/`, printer tools) | repo | placement |
 | 9 | Repo-root relics and build artifacts | repo | hygiene |
-| 10 | `Compile.hs` is the last un-split giant driver | structural | cohesion |
+| 10 | `Compile.hs` is the last un-split giant driver | structural | cohesion — **partially resolved 2026-11-22**: the leaf helpers (policy tables, view-purity checks, parse/emission plumbing, 376 lines) extracted into `Compiler.Compile.Support`; the orchestration body remains (1430 lines) with its phase map as the next session's survey input |
 
 ### 1. Two A64 + two X64 emitters (confirmed)
 

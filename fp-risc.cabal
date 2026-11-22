@@ -160,6 +160,7 @@ library
       Core.Typed.Program
       Core.Typed.Pipeline
       Compiler.DataLayout
+      Compiler.Compile.Support
       Compiler.Encoding.A64
       Compiler.Native.Core
       Compiler.Native.Linked
