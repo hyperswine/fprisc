@@ -69,3 +69,34 @@ unchanged by construction. `make fpr` rebuilt clean.
   range checks live in `Encoding.encode` (slice 1), not here.
 - The assembler is invoked per family (28 `as` processes); the suite runs
   in seconds. Windows hosts have no `as`.
+
+## The X64 pair (same day)
+
+The x86-64 side joined the same contract test (`test:EncodingContract`
+grew an X64 section; cross-assembled on the arm64 host with
+`as -arch x86_64`). The X64 arc deliberately deviates from the A64
+pattern: **no `Encoding.X64` extraction**. The JIT's `Sol/AsmX64.hs` is a
+fixed-register-plan byte table (rax, r11, rdx, xmm0/1, rbp, rbx — every
+IR op is a fixed byte pattern), with exact rel32 delta patching and no
+masking hazard; extracting named constants would add indirection without
+removing duplication, because the AOT side renders text and shares no
+encoder code. The drift risk is one-sided: the hand bytes could silently
+stop being the canonical encodings of the AOT's spellings — the contract
+now checks exactly that. 17 families: the fixed-plan bytes (movq forms,
+rbp-relative load/store with disp32, cmp/add/sub/imul/cqo/idiv/xor,
+setcc+movzbq pairs, movabsq, push-imm32, testq+jz, jno) are each
+assembled via the AOT renderer's spelling for the same instruction and
+registers, and the object bytes must equal the hand bytes.
+
+Assembly findings recorded by the test: backward branch references
+within rel8 range make `as` pick the SHORT form (the contract's jno uses
+a matched 4-byte backward layout: label, 2 nops, jno rel8 -4); forward
+rel32 references are assembler-RELOCATED (the .o carries zeros), so the
+testq+jz family compares its opcode prefix bytes (0F 84) only, with the
+displacement documented as linker-produced.
+
+Non-covered, deliberate: the xmm families (the AOT renderer hardcodes
+xmm8+; the JIT's fixed plan uses xmm0/1 — encodings differ by the REX
+bits, not by form), the operand-stack push/pop discipline (no AOT
+equivalent — the JIT's stack is its own), and the AOT's push strategy
+(subq+movq vs the JIT's push).

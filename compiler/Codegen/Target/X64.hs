@@ -15,7 +15,7 @@
 -- Parameters are parked before any entry check/tick, and rsp is restored
 -- from rbp at exit to preserve the runtime stack-segment contract.
 module Codegen.Target.X64
-  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, allocConfig, fuelSaveWrapper, allocSaveWrapper, stackGrowWrapper ) where
+  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, allocConfig, fuelSaveWrapper, allocSaveWrapper, stackGrowWrapper, renderItem ) where
 
 import Compiler.DataLayout (storedListTid)
 import qualified Codegen.Calling as Calling
