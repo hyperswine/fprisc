@@ -57,7 +57,7 @@ as owners; `FPRISC.hs` remains as a marked compatibility facade).
 |---|---|---|---|
 | 1 | Two A64 and two X64 instruction emitters in one binary | structural | redundancy (decision needed) |
 | 2 | Three transaction attempt loops in the Sol driver | structural | redundancy |
-| 3 | `Sol/Txn.hs` is an everything-module (2112 lines, ~143 functions) | structural | cohesion |
+| 3 | `Sol/Txn.hs` is an everything-module (2112 lines, ~143 functions) | structural | cohesion — **resolved 2026-11-22**: the state/filesystem layer split into `Sol.TxnState` (1020 lines); the protocol remains `Sol.Txn` (1146), one-way import, re-export keeps importers unchanged ([record](2026-11-22-TXN-SPLIT.md)) |
 | 4 | `checkedInterface` re-enters the compiler by mutating argv | mechanism | inelegance |
 | 5 | Five cache key derivations re-derive identity independently | mechanical | drift risk |
 | 6 | Only one of the two compile drivers is instrumented | mechanical | asymmetry |
