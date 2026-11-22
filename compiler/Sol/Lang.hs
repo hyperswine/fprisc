@@ -239,3 +239,73 @@ qualifyUses aliases = map top
       -- the same reference when the parser gave it as ONE dotted name
       SVar v | retgt v /= v, not (S.member (takeWhile (/= '.') v) bs) -> SVar (retgt v)
       _ -> e
+
+-- ---- Core builtin names across module splices --------------------------------
+--
+-- `Option`, `None`, `Some`, `Result`, `Ok` and `Err` are Core builtins (v1.0
+-- spec; std/option.fpr no longer declares `Option`).  Splicing renames a
+-- module's definitions under its alias, and that renaming used to capture a
+-- builtin a module only REFERS to: std/map's bare `Option` became `CLI.Option`
+-- inside sol/lib/cli.sol, which declares a type of that name, and its bare
+-- `None` met the preamble's `Cmd` constructor of the same spelling.  Two
+-- steps keep the builtin meaning:
+--
+--  * when an .fpr module is spliced, the builtin names it uses but does not
+--    define are marked (`@None`), which no later rename touches;
+--  * resolveCoreBuiltins, over the preamble and the expanded program, turns
+--    marks back into the builtins, sends a qualified `O.None` whose module
+--    does not define `None` to the builtin (the rule Modules.hs applies to
+--    FP-RISC programs), and renames the preamble's `Cmd` constructor `None`
+--    to `Cmd.None`, so Sol code that writes a bare `None` for "no command"
+--    keeps meaning what it meant in 0.13 while the builtin `None` stays free.
+--    The VM prints a user constructor by its base name, so it still shows as
+--    `None`, and the web runtime matches it by that name.
+
+coreBuiltinNames :: [Name]
+coreBuiltinNames = ["Option", "None", "Some", "Result", "Ok", "Err"]
+
+-- the marks a spliced .fpr module's own references get
+coreBuiltinMarks :: [Name] -> M.Map Name Name
+coreBuiltinMarks defined = M.fromList [(b, '@' : b) | b <- coreBuiltinNames, b `notElem` defined]
+
+resolveCoreBuiltins :: [STop] -> [STop] -> ([STop], [STop])
+resolveCoreBuiltins prel prog = (map (renameNamesBy prelName) prel, map (renameNamesBy progName) prog)
+  where
+    everything = prel ++ prog
+    defined = S.fromList (topNames everything)
+    -- only the preamble's Cmd carries a None of its own; a program that
+    -- declares another type with a `None` constructor keeps its own meaning
+    otherNone = or [True | TType n _ _ cs <- everything, n /= "Cmd", ("None", _) <- cs]
+    cmdNone = not otherNone && or [True | TType "Cmd" _ _ cs <- prel, ("None", _) <- cs]
+    prelName n
+      | cmdNone, n == "None" = "Cmd.None"
+      | otherwise = n
+    progName n = case n of
+      '@' : b | b `elem` coreBuiltinNames -> b
+      "None" | cmdNone -> "Cmd.None"
+      _ | '.' `elem` n,
+          base <- reverse (takeWhile (/= '.') (reverse n)),
+          base `elem` coreBuiltinNames,
+          S.notMember n defined -> base
+        | otherwise -> n
+
+-- rename every constructor, type and value reference (and constructor
+-- definitions) by a function; locals are lowercase, so no binder can collide
+renameNamesBy :: (Name -> Name) -> STop -> STop
+renameNamesBy f = top
+  where
+    rp = \case
+      PCon c ps -> PCon (f c) (map rp ps)
+      PTup ps -> PTup (map rp ps)
+      o -> o
+    rt = renameTypeNames f
+    re bs = transformEP (\_ e -> case e of SVar v -> SVar (f v); _ -> e) rp bs
+    top = \case
+      TBind n ps g b ->
+        let (bs, g') = renGuards re rp (S.fromList (concatMap patVars ps)) g
+         in TBind n (map rp ps) g' (re bs b)
+      TEval e -> TEval (re S.empty e)
+      TStruct n sigs fs -> TStruct n sigs [(x, re S.empty e) | (x, e) <- fs]
+      TSig n (ps, r) pcs -> TSig n (map rt ps, rt r) pcs
+      TType n l ps cs -> TType n l ps [(f c, map rt tys) | (c, tys) <- cs]
+      other -> other

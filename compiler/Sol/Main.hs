@@ -401,7 +401,7 @@ compileScriptWith :: Editor.Report -> Slicing -> Maybe [STop] -> FilePath -> Str
 compileScriptWith = compileScriptSession Nothing
 
 compileScriptSession :: Maybe (IORef (Maybe CheckedDefinitions)) -> Editor.Report -> Slicing -> Maybe [STop] -> FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
-compileScriptSession session report slicing mLibShapes path src ptopsAll utops utopsX0' trusted = do
+compileScriptSession session report slicing mLibShapes path src ptopsAll0 utops utopsX0' trusted = do
   noteRef <- newIORef []
   let note msg = modifyIORef' noteRef (msg :) >> diagnostic msg
   let sources=M.singleton path src
@@ -414,7 +414,8 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll utops u
   -- canonical spliced name, so field calls hit the flat globals and
   -- struct-literal call sites still monomorphize. (Targets that are types
   -- or constructors keep the existing TAlias behavior untouched.)
-  let utopsX1 = aliasStructRefs utopsX0'
+  let (ptopsAll, utopsCore) = resolveCoreBuiltins ptopsAll0 utopsX0'
+      utopsX1 = aliasStructRefs utopsCore
 
   -- first-class paths (docs/2026-08-27-PATHS.md): the same surface rewrite the AOT
   -- pipeline runs -- @Shape.field literals validate against the merged
@@ -1070,7 +1071,11 @@ expandUsesWith report depth prefix isTrusted trustRef seenRef stampsRef impExt b
             modifyIORef' seenRef (M.insert h (prefix ++ mn))
             mtops1 <- expandUsesWith report (depth - 1) (prefix ++ mn ++ ".") isTrusted trustRef seenRef stampsRef (takeExtension mpath) (takeDirectory mpath) mtops0
             let defs = [t | t <- mtops1, notEval t]
-                rn = M.fromList [(n, mn ++ "." ++ n) | n <- topNames defs]
+                own = topNames defs
+                -- an .fpr module's references to Core builtins it does not
+                -- define stay builtin (resolveCoreBuiltins, Sol.Lang)
+                marks = if takeExtension mpath == ".fpr" then coreBuiltinMarks own else M.empty
+                rn = M.union (M.fromList [(n, mn ++ "." ++ n) | n <- own]) marks
             pure (renameTops rn defs, (mn, mn))
   let aliasMap = M.fromList (map snd pairs)
   pure (concatMap fst pairs ++ qualifyUses aliasMap tops)

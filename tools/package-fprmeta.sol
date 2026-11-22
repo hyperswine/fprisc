@@ -9,7 +9,7 @@ stable reported = case Str.split 32 reported of
         [a,b,c] -> if List.all digits [a,b,c] then version else error "expected stable manager version"
       | _ -> error "expected stable manager version")
   | _ -> error "expected fprmeta version".
-package : unsafe String -> String -> String -> Unit .
+package : String -> String -> String -> Unit .
 package root binary output =
   _ = (if B.query ["git","-C",root,"status","--porcelain"] != "" then error "commit source changes before packaging" else Unit);
   revision = B.query ["git","-C",root,"rev-parse","HEAD"];
@@ -36,7 +36,7 @@ package root binary output =
   _ = writePath "{output}/SHA256SUMS" "{hash}  {filename}\n";
   _ = writePath "{output}/release.json" (text + "\n");
   print text.
-main : unsafe Unit -> Unit .
+main : Unit -> Unit .
 > argsParsed = unwrap (CLI.parse [CLI.Option "binary" "" CLI.One,CLI.Option "output" "" CLI.One] (args Unit));
   root = B.query ["git","rev-parse","--show-toplevel"];
   binary = CLI.valueOr "{root}/build/fprmeta/fprmeta" "binary" argsParsed;
