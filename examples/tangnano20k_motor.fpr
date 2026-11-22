@@ -1,0 +1,36 @@
+profile base.
+
+# A DC motor switched by an NPN transistor from Tang Nano pin 76 (wiring in
+# qos hal/spectre/actors/motor/wiring.md), on simple-risc's SDRAM_SERVO=1
+# fprisc-84 image. The hardware only holds the pin level; this program owns
+# the whole test: how many on/off pairs and how long each half lasts.
+#   --arg=PAIRS --arg=ON_MS --arg=OFF_MS   (defaults 15, 1000, 1000)
+Pin = use "std/tangnano20k/pin76".
+
+setting : List String -> Int -> Int -> Int .
+setting given index fallback = case listDrop given index of
+    [] -> fallback
+  | text :: _ -> parseInt text.
+
+pairs : (left : Int | measure left) -> Int -> Int -> Int -> Unit .
+pairs left done onMs offMs = if left <= 0 then Unit else
+  _ = Pin.level True;
+  _ = print "motor on {done + 1}";
+  _ = Sys.sleepUs (onMs * 1000);
+  _ = Pin.level False;
+  _ = print "motor off {done + 1}";
+  _ = Sys.sleepUs (offMs * 1000);
+  pairs (left - 1) (done + 1) onMs offMs.
+
+main : Unit .
+main =
+  given = Sys.args Unit;
+  count = setting given 0 15;
+  onMs = setting given 1 1000;
+  offMs = setting given 2 1000;
+  _ = if count < 1 or onMs < 1 or offMs < 1 then error "PAIRS, ON_MS and OFF_MS must be positive" else Unit;
+  _ = Pin.off Unit;
+  _ = print "motor test: {count} pairs, {onMs} ms on, {offMs} ms off";
+  _ = pairs count 0 onMs offMs;
+  _ = Pin.off Unit;
+  print "motor output disabled".

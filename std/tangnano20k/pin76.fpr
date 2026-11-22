@@ -1,0 +1,23 @@
+# Tang Nano 20K package pin 76 on simple-risc's SDRAM_SERVO=1 image.
+# The hardware holds one word: a servo pulse width, or an on/off level.
+# Everything else is the program's: when to switch, for how long, how many
+# times. Pin76.store is the only C (machine/tangnano20k/pin76_hal.c).
+# Any other image faults on the store: run this only on that image.
+
+Pin76.store : Int -> Unit .
+
+# Drive the pin high or low at once, for a load switched by a transistor
+# (pin 76 -> base resistor -> NPN low-side switch). The level holds until
+# the next call or an FPGA reset.
+level : Bool -> Unit .
+level on = Pin76.store (if on then 1 else 0).
+
+# Servo pulse width in microseconds, applied from the next 20 ms frame.
+# The SG90 range is 1000..2000; anything else is refused here.
+pulseUs : Int -> Result Unit String .
+pulseUs us = if us < 1000 or us > 2000 then Err "servo pulse width {us} us outside 1000..2000"
+  else Ok (Pin76.store us).
+
+# Pin low and servo output off (a pulse in progress finishes).
+off : Unit -> Unit .
+off _ = Pin76.store 0.

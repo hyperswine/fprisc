@@ -36,6 +36,7 @@ FP-RISC semantics. The board C code supplies allocation, UART and ABI mechanisms
 | F32 / F64 arithmetic | Software floating point; raw bits on RV64, boxed values on RV32 |
 | Whole-file read, exists, replace, append | Rooted host file device over UART |
 | On-card sector I/O and small FAT16/FAT32 root files | Explicit `std/tangnano20k/sd` and `fat` modules on the SPI-enabled RV32 SDRAM image; new 8.3 files up to 512 bytes |
+| Package pin 76 (servo PWM or on/off level) | `std/tangnano20k/pin76` on simple-risc's `SDRAM_SERVO=1` fprisc-84 image only (other images fault on the store); one C register store, all timing in FP-RISC; `examples/tangnano20k_motor.fpr`, `examples/tangnano20k_servo.fpr` |
 | `Sys.env` | Explicit `--env NAME=value` entries; no host environment inheritance |
 | `Sys.timeUs` | Host monotonic microseconds |
 | `Sys.mtime` | Local cycle counter converted to the shared 10 MHz tick contract |

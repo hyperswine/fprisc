@@ -1,0 +1,27 @@
+profile base.
+
+# An SG90 on Tang Nano pin 76, on simple-risc's SDRAM_SERVO=1 fprisc-84
+# image. The hardware generates the 20 ms frame; this program chooses every
+# position and how long to hold it.
+#   --arg=WIDTH_US ... (default 1500 1400 1600 1500); each is held one second
+Pin = use "std/tangnano20k/pin76".
+
+hold : (widths : List Int | measure widths) -> Unit .
+hold widths = case widths of
+    [] -> Unit
+  | us :: rest -> case Pin.pulseUs us of
+      Err why -> error why
+    | Ok _ ->
+        _ = print "servo pulse width (us): {us}";
+        _ = Sys.sleepUs 1000000;
+        hold rest.
+
+main : Unit .
+main =
+  given = Sys.args Unit;
+  widths = case given of
+      [] -> [1500, 1400, 1600, 1500]
+    | _ -> listMap parseInt given;
+  _ = hold widths;
+  _ = Pin.off Unit;
+  print "servo output disabled".

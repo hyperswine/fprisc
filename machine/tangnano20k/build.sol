@@ -11,7 +11,7 @@ inputs width argv =
   case argv of [] -> (defaultProg,defaultOut)
   | [prog] -> (prog,defaultOut) | [prog,out] -> (prog,out)
   | _ -> error "usage: sol machine/tangnano20k/build.sol [PROGRAM [OUT]]".
-sources = ["machine/tangnano20k/crt0.S","machine/tangnano20k/base.c","machine/tangnano20k/sd_hal.c",
+sources = ["machine/tangnano20k/crt0.S","machine/tangnano20k/base.c","machine/tangnano20k/sd_hal.c","machine/tangnano20k/pin76_hal.c",
   "machine/tangnano20k/unsupported.c","machine/builtin/heap.c","runtime/runtime.c","machine/builtin/unsafe.c",
   "machine/builtin/tangnano20k/machine.c","runtime/i32.c","runtime/bits.c","runtime/vec.c","runtime/sstr.c",
   "runtime/mod.c","machine/virt/memshim.c"].
