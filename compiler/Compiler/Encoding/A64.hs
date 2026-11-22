@@ -77,8 +77,9 @@ data Insn
     SDivX Reg Reg Reg
   | -- | asr\/lsl\/extract forms via bitfield move: sbfm xD, xN, #immr, #imms
     SBfmX Reg Reg Int Int
-  | -- | cset xD, !cond (csinc xD, xzr, xzr, cond inverted): sets 1 iff the
-    -- given condition is FALSE; callers pair it with the opposite b.cond
+  | -- | csinc xD, xzr, xzr, !cond: sets 1 iff the named condition HOLDS
+    -- (the inverted field is the encoding mechanism). The render spells the
+    -- inverted condition -- the alias that assembles to this same word.
     CSetX Reg Cond
   | -- | b\/bl \/b.cond \/cbz\/cbnz: WORD deltas, range-checked in encode
     BX Int
@@ -247,7 +248,7 @@ render insn = case insn of
   SMulHX d n m -> rrr "smulh" d n m
   SDivX d n m -> rrr "sdiv" d n m
   SBfmX d n immr imms -> "sbfm " ++ regStr d ++ ", " ++ regStr n ++ ", #" ++ show immr ++ ", #" ++ show imms
-  CSetX r c -> "cset " ++ regStr r ++ ", " ++ condSuffix (condCode c `xor` 1)
+  CSetX r c -> "cset " ++ regStr r ++ ", " ++ condSuffix (condCode c)
   BX d -> rel "b" d
   BL d -> rel "bl" d
   BCndX c d -> rel (condSuffix (condCode c)) d

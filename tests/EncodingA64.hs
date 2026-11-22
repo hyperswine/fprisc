@@ -85,7 +85,7 @@ renders =
     ("ret", RetX),
     ("msub x0, x2, x1, x0", MSubX 0 2 1 0),
     ("cmp x0, x1", CmpXReg 0 1),
-    ("cset x0, ne", CSetX 0 Eq)
+    ("cset x0, eq", CSetX 0 Eq)
   ]
 
 main :: IO ()

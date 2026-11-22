@@ -373,6 +373,11 @@ test-suite CompilerOptions
   type:               exitcode-stdio-1.0
   main-is:            CompilerOptions.hs
 
+test-suite EncodingContract
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            EncodingContract.hs
+
 test-suite EncodingA64
   import:             unit-test
   type:               exitcode-stdio-1.0

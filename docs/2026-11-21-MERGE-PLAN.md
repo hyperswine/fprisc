@@ -118,6 +118,12 @@ the Sol suites, board/QEMU gates unchanged).
    generalized). No structural merge of the two ADTs -- their operand
    models differ legitimately (allocation-resolved frame operands vs bare
    JIT forms).
+   [Delivered 2026-11-22](2026-11-22-ENCODING-CONTRACT.md): 14 families
+   proven through `test:EncodingContract` (both spellings assembled by the
+   system `as`, words equal); the contract's first run caught and fixed an
+   inverted CSetX render. AOT per-family delegation of the rendered lines
+   to `Encoding.render` remains optional follow-up -- the WORDS are now
+   proven identical, which was the drift risk.
 3. Mechanical placements in one rename commit (passes home, `Sol/Hal.hs`,
    kind cross-references, diagnostics map paragraphs).
 4. `Txn.hs` split when the P2 typed-lowering branch lands.

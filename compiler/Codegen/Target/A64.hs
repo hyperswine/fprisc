@@ -58,6 +58,7 @@ module Codegen.Target.A64
   ( A64Config (..), ObjectFormat (..), HartAccess (..), NativeFn (..),
     a64InterfaceRev, a64HostedInterfaceRev, a64SelectionRev, emitFnA64, emitFnA64WithSymbols, a64RegisterFile, mangleName, functionSymbol,
     allocConfig, fuelSaveWrapper, allocSaveWrapper, stackGrowWrapper,
+    renderItem,
   ) where
 
 import Compiler.DataLayout (storedListTid)
