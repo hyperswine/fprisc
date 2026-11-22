@@ -3,7 +3,7 @@ import Codegen.Policy (Policy(..),Profile(..),StackPolicy(..))
 import FPRISC (Core(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, isSuffixOf)
 import Control.Monad (unless)
 
 check name yes = unless yes (error name)
@@ -32,5 +32,7 @@ main = do
     (length (filter (== ".Lnul_42_2:") (lines base))==1)
   let unit=fst (emitProgram rv64 False False [] M.empty S.empty S.empty
                     (M.singleton "unit" ([],CMk 0 0 [])))
-  check "Unit references the canonical runtime object" (", fpr_unit" `isInfixOf` unit)
-  putStrLn "Native constants: elided constructors, unique definitions, unused constructors, shadowing, Base and canonical Unit PASS"
+  -- v1.0 small immediates: Unit is the word 0x002, never a static object
+  check "Unit is the 010 immediate" (any (\l -> "li " `isInfixOf` l && ", 2" `isSuffixOf` l) (lines unit))
+  check "Unit names no static object" (not ("fpr_unit" `isInfixOf` unit))
+  putStrLn "Native constants: elided constructors, unique definitions, unused constructors, shadowing, Base and immediate Unit PASS"

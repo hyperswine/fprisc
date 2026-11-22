@@ -237,9 +237,13 @@ $(BUILD)/prog.s: fprc $(PROG) core/prelude.fpr FORCE
 # the virt HAL's PLIC and CLINT drivers are FP-RISC (machine/virt/virt.mk)
 FPRC ?= ./fprc
 include $(MACHINE)/virt/virt.mk
+# -nostdlib drops libgcc too, and the runtime needs its helpers where the
+# ISA has no instruction (__clzdi2/__ctzdi2/__bswapdi2 without Zbb), as the
+# RV32 builtin profile already links it (BUILTIN_LDFLAGS).
+BARE_LIBGCC = $(shell $(CROSS)gcc $(ARCHFLAGS) -print-libgcc-file-name)
 bare-metal: $(BUILD)/prog.s $(RT_VIRT) $(VIRT_FPR) $(EXTRA_RT) $(RT_CORE) $(MACHINE)/virt/link.ld
 	$(CROSS)gcc $(CFLAGS) -T $(MACHINE)/virt/link.ld -I$(RUNTIME) -I$(MACHINE)/virt \
-	  $(RT_VIRT) $(VIRT_FPR) $(EXTRA_RT) $(BUILD)/prog.s $$(cat $(BUILD)/prog.s.units) $(RT_CORE) -o $(IMAGE)
+	  $(RT_VIRT) $(VIRT_FPR) $(EXTRA_RT) $(BUILD)/prog.s $$(cat $(BUILD)/prog.s.units) $(RT_CORE) $(BARE_LIBGCC) -o $(IMAGE)
 
 bare-metal-run: bare-metal
 	$(TIMEOUT) 20 $(QEMU) $(ACCEL) -machine virt -smp $(HARTS) -m 256M \

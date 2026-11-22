@@ -10,6 +10,8 @@ strings size bound = "make : Int -> String | size make <= {size}.\nmake n = subs
 duplicate = "duplicate : (xs : List Int | measure xs) -> List Int | size duplicate <= len xs.\nduplicate xs = case xs of [] -> [] | x :: r -> x :: x :: duplicate r.\ncopy : (xs : List Int | measure xs) -> List Int.\ncopy xs = case xs of [] -> [] | x :: r -> x :: copy r.\ncombine : (xs : List Int) -> List Int | alloc combine <= 72 * len xs + 72.\ncombine xs = copy (duplicate xs).\nmain = combine [1,2,3].\n".
 library = "L = use \"std/list\".\nmain =\n  _ = print (L.length (L.repeat (-3) 7));\n  _ = print (L.length (L.range 4 2));\n  _ = print (L.length (L.range 4611686018427387903 4611686018427387903));\n  _ = print (L.length (L.map (fn x -> x + 1) [1,2,3]));\n  _ = print (L.length (L.zip [1,2,3] [4,5]));\n  _ = print (L.length (L.unique [1,2,1,3,2]));\n  print (L.length (L.append [1,2] [3,4,5])).\n".
 byteString = "literal = \"éλ🙂\\x00\\xff\".\nmain = print (strlen literal).\n".
+# The range ends at the smallest tagged Int: exact Int (v1.0) must answer 1, where
+# it used to overflow; a size lemma must not turn that into a trap or a wrong count.
 minTrap = "L = use \"std/list\".\nmain = _ = print \"before\"; print (L.length (L.range (0 - 4611686018427387903 - 1) (0 - 4611686018427387903 - 1))).\n".
 must what ok detail = if ok then Unit else error "{what}\n{detail}".
 envFor root work probe = List.append [("FPR_HOME",root),("FPR_PATH",root),("XDG_CACHE_HOME","{work}/cache"),("FPR_NO_CALL_REGIONS","1"),("FPR_NO_LOOP_REGIONS","1")]
@@ -61,7 +63,7 @@ main u = root = H.root Unit; work = tempDir "fpr-result-sizes";
   (tc, tout, terr, texe) = build root work "minimum-trap" minTrap False;
   _ = must "minimum-trap build exit {tc}" (tc == 0) (tout + terr);
   _ = List.map (fn h -> ProcessResult rc ro re = H.call [texe] (("FPR_HARTS",h) :: envFor root work False) 30000;
-      must "minimum-trap on {h} harts: want a nonzero exit, stdout 'before' and an overflow, got exit {rc}" (rc != 0 and ro == "before\n" and Str.contains "overflow" (Str.lower (ro + re))) (ro + re)) ["1","4"];
-  _ = print "Partial-correctness size lemmas preserve endpoint overflow and its effect prefix PASS";
+      must "minimum-trap on {h} harts: want exit 0 and stdout 'before' then the exact length 1, got exit {rc}" (rc == 0 and ro == "before\n1\n") (ro + re)) ["1","4"];
+  _ = print "Size lemmas at the Int endpoint keep the exact answer and its effect prefix PASS";
   H.settle "result-sizes" root (List.fold (fn acc i -> if List.has i acc then acc else List.append acc [i]) [] failed).
 > main Unit.
