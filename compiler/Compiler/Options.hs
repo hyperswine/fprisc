@@ -147,10 +147,10 @@ nativeOptionFlags fpAvailable n =
     StrictNames names->"-strict"++take 12 (showHex (fnv (intercalate "," names)) "")
 
 optimizationFlags :: CodegenOptions -> String
-optimizationFlags c = (case cgPersistentLoop c of { Just "*" -> ""; Just n -> "-persist" ++ showHex (fnv n) ""; Nothing -> "-nopersist" }) ++ flag (not (cgCompactCells c)) "-c16" ++ flag (cgLoopMotion c) "-licm" ++ flag (not (cgEarlyLoops c)) "-noearlyloops" ++ flag (not (cgStringScan c)) "-nostrscan" ++ flag (cgFramelessEntry c) "-frameless" ++ concat
+optimizationFlags c = (case cgPersistentLoop c of { Just "*" -> ""; Just n -> "-persist" ++ showHex (fnv n) ""; Nothing -> "-nopersist" }) ++ flag (not (cgCompactCells c)) "-c16" ++ flag (cgLoopMotion c) "-licm" ++ flag (not (cgEarlyLoops c)) "-noearlyloops" ++ flag (not (cgStringScan c)) "-nostrscan" ++ flag (cgFramelessEntry c) "-frameless" ++ flag (cgScalarWorkers c) "-scalar" ++ concat
   [flag (not enabled) suffix | (enabled,suffix)<-
     [(cgPipelineInline c,"-nopinline"),(cgReuse c,"-noreuse"),
-     (cgScalarWorkers c,"-noscalar"),(cgTrmc c,"-notrmc"),(cgTickBatch c,"-notickbatch"),(cgTickWeight c,"-notickweight"),(cgPairReturns c,"-nopairret"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),
+     (cgTrmc c,"-notrmc"),(cgTickBatch c,"-notickbatch"),(cgTickWeight c,"-notickweight"),(cgPairReturns c,"-nopairret"),(cgFieldWorkers c,"-nofields"),(cgTupleScalars c,"-notuplescalars"),
      (cgTypeSpec c,"-notypespec"),(cgTypedCase c,"-notypedcase"),(cgBumpAlloc c,"-nobump"),(cgIndexedMemory c,"-noidx"),(cgReceiveTurns c,"-nort"),
      (cgLoopRegions c,"-nolr"),(cgCallRegions c,"-nocr"),
      (cgSpecialize c,"-nospec"),(cgInline c,"-noinl"),

@@ -26,13 +26,17 @@ main=do
   -- Every code-affecting environment control must distinguish an executable
   -- cache entry. The receive-turn control was absent from Build's old list.
   forM_ ([ ("FPR_NO_"++name,"1") | name<-
-    ["PIPELINE_INLINE","REUSE","VEC_FUSE","VEC_SIMD","SCALAR_WORKERS","TRMC","TICK_BATCH","PAIR_RETURNS","FIELD_WORKERS","TUPLE_SCALARS","TYPE_SPEC","TYPED_CASE",
+    ["PIPELINE_INLINE","REUSE","VEC_FUSE","VEC_SIMD","TRMC","TICK_BATCH","PAIR_RETURNS","FIELD_WORKERS","TUPLE_SCALARS","TYPE_SPEC","TYPED_CASE",
      "F64_INLINE","INLINE","VEC_PEEK","VEC_FAST","SPEC","INDEXED_MEMORY","RECEIVE_TURNS","LOOP_REGIONS","CALL_REGIONS","PERSISTENT_COPY_OUT"]]
     ++ [("FPR_TYPED_IR_"++name,value) | (name,value)<-
       [("BACKEND","1"),("STRICT","all"),("SELF_LOOPS","0"),("FP_POOL","0"),
        ("SHALLOW_STACK","1"),("FORWARD_PARAMS","1"),("ENTRY_ARGS","1"),
        ("SPLIT_ENTRY","1"),("SHRINK_WRAP","1"),("LINK_PAIRS","0"),("LOOP_MOTION","1"),("EARLY_LOOPS","0"),("STRING_SCAN","0")]]) $ \value ->
     require (identity [value]/=baseline) ("missing cache control: "++show value)
+  -- scalar workers pass Int arguments unboxed, and an exact Int argument may
+  -- be a bignum (v1.0), so they are opt-in since 1695e4de; the opt-in still
+  -- names its own cache entry
+  require (identity [("FPR_SCALAR_WORKERS","1")]/=baseline) "missing cache control: FPR_SCALAR_WORKERS"
   forM_ ["FPR_TYPED_IR","FPR_RECEIVE_NOTES","FPRC_APPLY","FPR_PRECOND_NOTES",
          "FPR_UNSAFE_SUGGEST","FPR_DUMP_CORE","FPRC_NATIVE_INSNS"] $ \name ->
     require (identity [(name,"1")]==baseline) ("diagnostic alters codegen identity: "++name)

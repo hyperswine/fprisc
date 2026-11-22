@@ -378,8 +378,11 @@ main = do
         [ Block (BId 0) []
             ([Instr Nothing OStackCheck, Instr Nothing OSafepoint]
               ++ [Instr (Just (VId n, TInt)) (OConstInt (fromIntegral n)) | n <- [0 .. 4199]]
-              ++ [Instr (Just (VId (4200 + n), TVal)) (OTag (VId n)) | n <- [0 .. 4199]])
-            (TRet (VId 8399)) ]
+              -- consumed by an add each (a tag of a literal is one literal
+              -- and keeps nothing live), then the last answer tagged
+              ++ [Instr (Just (VId (4200 + n), TInt)) (OArithU Add (VId n) (VId n)) | n <- [0 .. 4199]]
+              ++ [Instr (Just (VId 8400, TVal)) (OTag (VId 8399))])
+            (TRet (VId 8400)) ]
   wideX64 <- either (error . ("FAIL: sized x64 frame: " ++)) pure
     (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True False noTune X64.HartTls False) wide)
   check "sized x64 frame reserves before entry" ("reserve=yes" `isInfixOf` unlines (nfLines wideX64) &&

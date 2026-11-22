@@ -82,6 +82,7 @@ import Data.Bits (shiftR, (.&.))
 import Data.List (intercalate, isInfixOf, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+import Data.Maybe (isJust)
 import Data.Word (Word64)
 import Codegen.Target.Common
 
@@ -390,8 +391,27 @@ selectBlock cfg fn tyMap b = do
         callProduct (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (map vreg results)
         run more
       run (i@(Instr (Just (v, _)) (OConstInt _)) : more) | S.member v immediateOnly = run more
-      run (i : more) = selectInstr cfg immediates i >> run more
+      run (Instr (Just (v, _)) (OTag _) : more) | S.member v lazyTags = run more
+      run (Instr (Just (v, _)) (OConstInt _) : more) | S.member v tagOnlyConsts = run more
+      run (i : more) = selectInstrK cfg immediates (SmallInts consts tagSrc lazyTags) i >> run more
       run [] = pure ()
+      -- exact Int operations know a TVal is small when it is `OTag` of a raw
+      -- Int (a TInt always fits); such a tag is made only where a slow path
+      -- needs the word, when every use of it is one of those operations
+      consts = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk]
+      tagSrc = M.fromList [(v, u) | blk <- fnBlocks fn, Instr (Just (v, TVal)) (OTag u) <- bInstrs blk]
+      smallAware v (Instr _ o) = v `elem` opUses o && case o of
+        OArithVal {} -> True; OCmpVal {} -> True; OEqVal {} -> True; _ -> False
+      -- a constant only ever tagged is never made raw: its tag is one literal
+      -- and a fast path that needs it raw loads it there (rawV)
+      tagOnlyConsts = S.fromList [v | v <- M.keys consts,
+                                      let users = [o | blk <- fnBlocks fn, Instr _ o <- bInstrs blk, v `elem` opUses o],
+                                      not (null users), all (\o -> case o of OTag _ -> True; _ -> False) users,
+                                      v `notElem` concat [termUses (bTerm blk) | blk <- fnBlocks fn]]
+      lazyTags = S.fromList [v | v <- M.keys tagSrc,
+                                 let users = [i | blk <- fnBlocks fn, i@(Instr _ o) <- bInstrs blk, v `elem` opUses o],
+                                 not (null users), all (smallAware v) users,
+                                 v `notElem` concat [termUses (bTerm blk) | blk <- fnBlocks fn]]
       -- constants (0..4095) an add or subtract can take as an immediate,
       -- function-wide; those used only that way are never made
       immediates = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk, n >= 0, n < 4096]
@@ -519,7 +539,17 @@ headerFits :: Int -> Int -> Bool
 headerFits t c = t >= 0 && c >= 0 && t < 2147483648 && c < 2147483648
 
 selectInstr :: A64Config -> M.Map VId Integer -> Instr -> Se ()
-selectInstr cfg immediates (Instr d op) = case op of
+selectInstr cfg immediates = selectInstrK cfg immediates (SmallInts M.empty M.empty S.empty)
+
+-- What the exact Int operations may know about an operand (v1.0 §1.2):
+-- consts holds every OConstInt; siTag maps a TVal defined as `OTag u` to its
+-- raw Int u, which always fits the small range, so it needs no tag test and
+-- is never a bignum; siLazy are those tags not materialized at their
+-- definition, rebuilt only on a slow path (taggedV).
+data SmallInts = SmallInts { siConst :: M.Map VId Integer, siTag :: M.Map VId VId, siLazy :: S.Set VId }
+
+selectInstrK :: A64Config -> M.Map VId Integer -> SmallInts -> Instr -> Se ()
+selectInstrK cfg immediates small (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq Protocol.FuelOnly -- an inlined callee's tick mid-block
   OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq Protocol.FuelOnly l) {siOpcode = O.Common O.TickN, siUses = [OI (fromIntegral n)]})
@@ -588,6 +618,7 @@ selectInstr cfg immediates (Instr d op) = case op of
   OApply f as -> def $ \r -> do
     forM_ (f : as) $ \v -> emitI (Protocol.selectProtocol Calling.AArch64 (plain (O.A64 A.Push) [] [any' (vreg v)]))
     emitI (Protocol.selectProtocol Calling.AArch64 (plain (O.A64 A.ApplyN) [fix r (x 0)] [OI (fromIntegral (length as))]))
+  OTag v | Just n <- M.lookup v (siConst small) -> def (\r -> emitI (li r (2 * n + 1)))
   OTag v -> def $ \r -> do
     t <- freshV False
     emitI (rri A.ShiftLeftImmediate t (vreg v) 1)
@@ -603,7 +634,7 @@ selectInstr cfg immediates (Instr d op) = case op of
   OTagTest t c v | Just imm <- immediateNullary t c -> def $ \r -> do
     emitI (cmpi (vreg v) imm)
     emitI (cset O.Equal r)
-  OTagTest t c v | headerFits t c -> selectInstr cfg immediates (Instr d (OVariantTest t c v))
+  OTagTest t c v | headerFits t c -> selectInstrK cfg immediates small (Instr d (OVariantTest t c v))
   OTagTest t c v -> def $ \r -> do
     miss <- freshL "tagno"
     done <- freshL "tagdone"
@@ -653,6 +684,14 @@ selectInstr cfg immediates (Instr d op) = case op of
   OArith o a b | o `elem` [Add, Sub], Just n <- M.lookup b immediates -> def (\r -> arithImm o r (vreg a) n)
   OArith Add a b | Just n <- M.lookup a immediates -> def (\r -> arithImm Add r (vreg b) n)
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
+  OArithVal o a b | Just ua <- rawOf a, Just ub <- rawOf b -> def (\r -> arithSmall o r (Just ua) (Just ub) a b)
+  OArithVal Add a b | Just k <- constOf b -> def (\r -> addConst r (vreg a) (2 * k) a b Add)
+  OArithVal Add a b | Just k <- constOf a -> def (\r -> addConst r (vreg b) (2 * k) a b Add)
+  OArithVal Sub a b | Just k <- constOf b -> def (\r -> addConst r (vreg a) (negate (2 * k)) a b Sub)
+  OArithVal Mul a b | Just k <- constOf b, abs k < 2 ^ (30 :: Int) -> def (\r -> mulConst r (vreg a) k a b)
+  OArithVal Mul a b | Just k <- constOf a, abs k < 2 ^ (30 :: Int) -> def (\r -> mulConst r (vreg b) k a b)
+  OArithVal o a b | Just ua <- rawOf a -> def (\r -> arithSmall o r (Just ua) Nothing a b)
+  OArithVal o a b | Just ub <- rawOf b -> def (\r -> arithSmall o r Nothing (Just ub) a b)
   OArithVal o a b -> def (\r -> arithVal o r (vreg a) (vreg b))
   -- proven not to trap: the bare instruction
   OArithU o a b | o `elem` [Add, Sub], Just n <- M.lookup b immediates ->
@@ -704,11 +743,40 @@ selectInstr cfg immediates (Instr d op) = case op of
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
     emitI (cset (cond o) r)
+  -- both small: the raw words order as the Ints do; no tag test, no slow path
+  OCmpVal o a b | Just ua <- rawOf a, Just ub <- rawOf b -> def $ \r -> do
+    xa <- rawV ua
+    xb <- rawV ub
+    emitI (cmp xa xb)
+    emitI (cset (cond o) r)
+  -- one side small: only the other side's tag is tested, then raw against raw
+  OCmpVal o a b | isJust (rawOf a) || isJust (rawOf b) -> def $ \r -> do
+    slow <- freshL "cmpslow"
+    done <- freshL "cmpdone"
+    bit <- freshV False
+    let other = if isJust (rawOf a) then b else a
+    emitI (rri A.AndImmediate bit (vreg other) 1)
+    emitI (cbz bit slow)
+    xo <- freshV False
+    emitI (rri A.ShiftRightArithmeticImmediate xo (vreg other) 1)
+    let side v = maybe (pure xo) rawV (rawOf v)
+    sa <- side a
+    sb <- side b
+    emitI (cmp sa sb)
+    emitI (cset (cond o) r)
+    emitI (jump done)
+    emitL slow
+    ta <- taggedV a
+    tb <- taggedV b
+    res <- freshV True
+    call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (cmpSym o))) Calling.RuntimeCall [ta, tb] (Just res)
+    emitI (rri A.ShiftRightArithmeticImmediate r res 8)
+    emitL done
   OCmpVal o a b -> def $ \r -> do
     slow <- freshL "cmpslow"
     done <- freshL "cmpdone"
-    both <- freshV False
     bit <- freshV False
+    both <- freshV False
     emitI (rrr A.And both (vreg a) (vreg b))
     emitI (rri A.AndImmediate bit both 1)
     emitI (cbz bit slow)
@@ -720,6 +788,18 @@ selectInstr cfg immediates (Instr d op) = case op of
     call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (cmpSym o))) Calling.RuntimeCall [vreg a, vreg b] (Just res)
     emitI (rri A.ShiftRightArithmeticImmediate r res 8)
     emitL done
+  -- both small: raw equality; one small: the tagged word is the Int, and a
+  -- bignum (an even pointer) never equals a small Int's odd word
+  OEqVal eq a b | Just ua <- rawOf a, Just ub <- rawOf b -> def $ \r -> do
+    xa <- rawV ua
+    xb <- rawV ub
+    emitI (cmp xa xb)
+    emitI (cset (if eq then O.Equal else O.NotEqual) r)
+  OEqVal eq a b | isJust (rawOf a) || isJust (rawOf b) -> def $ \r -> do
+    ta <- taggedV a
+    tb <- taggedV b
+    emitI (cmp ta tb)
+    emitI (cset (if eq then O.Equal else O.NotEqual) r)
   OEqVal eq a b -> def $ \r -> do
     slow <- freshL "eqslow"
     done <- freshL "eqdone"
@@ -850,6 +930,149 @@ selectInstr cfg immediates (Instr d op) = case op of
       emitI (li r 0)
       emitL done
     cmpSym = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
+    rawOf v = M.lookup v (siTag small)
+    -- a raw Int operand: a constant is loaded where it is needed
+    rawV u = case M.lookup u (siConst small) of
+      Just n -> do
+        t <- freshV False
+        emitI (li t n)
+        pure t
+      Nothing -> pure (vreg u)
+    constOf v = rawOf v >>= \u -> M.lookup u (siConst small)
+    -- the tagged word of an operand, rebuilt where its definition was skipped
+    taggedV v = case rawOf v of
+      Just u | S.member v (siLazy small) -> case M.lookup u (siConst small) of
+        Just n -> do
+          t <- freshV False
+          emitI (li t (2 * n + 1))
+          pure t
+        Nothing -> do
+          sh <- freshV False
+          t <- freshV False
+          emitI (rri A.ShiftLeftImmediate sh (vreg u) 1)
+          emitI (rri A.OrImmediate t sh 1)
+          pure t
+      _ -> pure (vreg v)
+    -- the raw kernel of an exact Int operation on two untagged words: t on
+    -- the fast path, a branch to slow when the answer leaves the small range
+    rawKernel o t xa yb slow = case o of
+      Add -> emitI (rrr A.Add t xa yb) >> fit t slow
+      Sub -> emitI (rrr A.Subtract t xa yb) >> fit t slow
+      Mul -> do
+        wide <- freshL "skwide"
+        fitL <- freshL "skfit"
+        emitI (rrr A.Multiply t xa yb)
+        forM_ [xa, yb] $ \opnd -> do
+          n <- freshV False
+          emitI (rri A.SignExtend31 n opnd 0)
+          emitI (cmp n opnd)
+          emitI (bcond O.NotEqual wide)
+        emitI (jump fitL)
+        emitL wide
+        emitI (cbz yb fitL)
+        q <- freshV False
+        emitI (rrr A.Divide q t yb)
+        emitI (cmp q xa)
+        emitI (bcond O.NotEqual slow)
+        emitL fitL
+        fit t slow
+      Div -> do
+        emitI (cbz yb slow)
+        floorDiv t xa yb
+        fit t slow
+    -- an exact Int operation where at least one operand is known small: the
+    -- other (if any) is tag-tested and untagged, nothing is retested
+    arithSmall o r ma mb a b = do
+      slow <- freshL "asslow"
+      done <- freshL "asdone"
+      let unknown = [v | (v, Nothing) <- [(a, ma), (b, mb)]]
+      case unknown of
+        [v] -> do
+          bit <- freshV False
+          emitI (rri A.AndImmediate bit (vreg v) 1)
+          emitI (cbz bit slow)
+        _ -> pure ()
+      let rawSide v m = case m of
+            Just u -> rawV u
+            Nothing -> do
+              x <- freshV False
+              emitI (rri A.ShiftRightArithmeticImmediate x (vreg v) 1)
+              pure x
+      xa <- rawSide a ma
+      yb <- rawSide b mb
+      t <- freshV False
+      rawKernel o t xa yb slow
+      sh <- freshV False
+      emitI (rri A.ShiftLeftImmediate sh t 1)
+      emitI (rri A.OrImmediate r sh 1)
+      emitI (jump done)
+      emitL slow
+      ta <- taggedV a
+      tb <- taggedV b
+      call (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta, tb] (Just r)
+      emitL done
+    -- x + k for a literal k, on the tagged word: 2x+1 + 2k is 2(x+k)+1, and
+    -- the 64-bit add wrapped exactly when x+k left the small range (the sum
+    -- moved the wrong way past x); the slow path gets the original operands
+    addConst r x d oa ob o = do
+      slow <- freshL "acslow"
+      done <- freshL "acdone"
+      bit <- freshV False
+      t <- freshV False
+      emitI (rri A.AndImmediate bit x 1)
+      emitI (cbz bit slow)
+      if d == 0 then emitI (mov t x)
+      else if d > 0 && d < 4096 then emitI (rri A.AddImmediate t x d)
+      else if d < 0 && d > -4096 then emitI (rri A.SubtractImmediate t x (negate d))
+      else do
+        dv <- freshV False
+        emitI (li dv d)
+        emitI (rrr A.Add t x dv)
+      when (d /= 0) $ do
+        emitI (cmp t x)
+        emitI (bcond (if d > 0 then O.Less else O.Greater) slow)
+      emitI (mov r t)
+      emitI (jump done)
+      emitL slow
+      ta <- taggedV oa
+      tb <- taggedV ob
+      call (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta, tb] (Just r)
+      emitL done
+    -- x * k for a literal |k| < 2^30: x within 31 bits cannot overflow;
+    -- otherwise the division check (k /= 0), then the 63-bit fit
+    mulConst r x k oa ob = do
+      slow <- freshL "mcslow"
+      done <- freshL "mcdone"
+      fitL <- freshL "mcfit"
+      bit <- freshV False
+      xa <- freshV False
+      kv <- freshV False
+      t <- freshV False
+      emitI (rri A.AndImmediate bit x 1)
+      emitI (cbz bit slow)
+      emitI (rri A.ShiftRightArithmeticImmediate xa x 1)
+      emitI (li kv k)
+      emitI (rrr A.Multiply t xa kv)
+      n <- freshV False
+      emitI (rri A.SignExtend31 n xa 0)
+      emitI (cmp n xa)
+      emitI (bcond O.Equal fitL)
+      when (k /= 0) $ do
+        q <- freshV False
+        emitI (rrr A.Divide q t kv)
+        emitI (cmp q xa)
+        emitI (bcond O.NotEqual slow)
+      emitL fitL
+      fit t slow
+      sh <- freshV False
+      emitI (rri A.ShiftLeftImmediate sh t 1)
+      emitI (rri A.OrImmediate r sh 1)
+      emitI (jump done)
+      emitL slow
+      ta <- taggedV oa
+      tb <- taggedV ob
+      call (CodeSymbol (primSymbol Mul)) Calling.RuntimeCall [ta, tb] (Just r)
+      emitL done
     arithVal o r a b = do
       slow <- freshL "avslow"
       done <- freshL "avdone"
