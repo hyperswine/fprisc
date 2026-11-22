@@ -292,8 +292,8 @@ playInput (Err e) g = addLog "no such card" g.
 attackInput (Ok k) g = doAttack k g.
 attackInput (Err e) g = addLog "no such lane" g.
 
-update ("connected", v) model = (model, None).
-update (ev, val) model = ({model | g = Persistent (step ev val (unwrapG model))}, None).
+update ("connected", v) model = (model, Cmd.None).
+update (ev, val) model = ({model | g = Persistent (step ev val (unwrapG model))}, Cmd.None).
 
 # ---- view -----------------------------------------------------------------------
 

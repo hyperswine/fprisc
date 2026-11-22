@@ -16,10 +16,10 @@ doLogin v model =
 
 doAuth stored model =
   case stored == "" of
-    True -> ({model | note = "no such user"}, None)
+    True -> ({model | note = "no such user"}, Cmd.None)
   | False -> case stored == model.pendp of
       True -> (model, Msg "setuser" model.pendu)
-    | False -> ({model | note = "wrong password"}, None).
+    | False -> ({model | note = "wrong password"}, Cmd.None).
 
 doReg v model =
   (u, p) = base.splitFirst v;
@@ -28,7 +28,7 @@ doReg v model =
 doRegchk stored model =
   case stored == "" of
     True -> (model, Batch [Put "user:{model.pendu}" model.pendp, Msg "setuser" model.pendu])
-  | False -> ({model | note = "user already exists"}, None).
+  | False -> ({model | note = "user already exists"}, Cmd.None).
 
 loginView heading model =
   ui.card [

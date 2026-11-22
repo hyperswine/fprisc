@@ -8,12 +8,12 @@ ui = use "../lib/ui".
 unwrapU model = case model.user of Persistent u -> u.
 
 doLogin v model = (u, p) = base.splitFirst v; ({model | pendu = u, pendp = p}, Get "user:{u}" "auth").
-doAuth stored model | stored == "" = ({model | note = "no such user"}, None).
+doAuth stored model | stored == "" = ({model | note = "no such user"}, Cmd.None).
 doAuth stored model | stored == model.pendp = (model, Msg "setuser" model.pendu).
-doAuth stored model = ({model | note = "wrong password"}, None).
+doAuth stored model = ({model | note = "wrong password"}, Cmd.None).
 doReg v model = (u, p) = base.splitFirst v; ({model | pendu = u, pendp = p}, Get "user:{u}" "regchk").
 doRegchk stored model | stored == "" = (model, Batch [Put "user:{model.pendu}" model.pendp, Msg "setuser" model.pendu]).
-doRegchk stored model = ({model | note = "user already exists"}, None).
+doRegchk stored model = ({model | note = "user already exists"}, Cmd.None).
 
 catalog = [("flat white", 5), ("long black", 4), ("cheese toastie", 9), ("brownie", 6)].
 
@@ -31,21 +31,21 @@ update ("auth", v) model = doAuth v model.
 update ("register", v) model = doReg v model.
 update ("regchk", v) model = doRegchk v model.
 update ("setuser", u) model = ({model | user = Persistent u, note = ""}, Msg "refresh" "").
-update ("logout", v) model = ({model | user = Persistent "", cart = []}, None).
+update ("logout", v) model = ({model | user = Persistent "", cart = []}, Cmd.None).
 update ("connected", v) model = (model, Msg "refresh" "").
-update ("refresh", v) model | unwrapU model == "" = (model, None).
+update ("refresh", v) model | unwrapU model == "" = (model, Cmd.None).
 update ("refresh", v) model = (model, Get "revenue" "gotrev").
-update ("gotrev", v) model = ({model | revenue = str (base.pI v)}, None).
+update ("gotrev", v) model = ({model | revenue = str (base.pI v)}, Cmd.None).
 update ("buy", v) model = buy (Try.parseInt v) model.
-update ("void", v) model = ({model | cart = []}, None).
-update ("checkout", v) model | model.cart == [] = (model, None).
+update ("void", v) model = ({model | cart = []}, Cmd.None).
+update ("checkout", v) model | model.cart == [] = (model, Cmd.None).
 update ("checkout", v) model = (model, Get "revenue" "dorev").
 update ("dorev", v) model = sale (base.pI v + cartTotal model.cart) model.
-update msg model = (model, None).
+update msg model = (model, Cmd.None).
 
 # the browser names a catalog position; anything else is a forged or stale
 # request, logged and ignored rather than allowed to panic the update
-buy (Ok i) model | i >= 0, i < List.len catalog = ({model | cart = (catalog ! i) :: model.cart}, None).
+buy (Ok i) model | i >= 0, i < List.len catalog = ({model | cart = (catalog ! i) :: model.cart}, Cmd.None).
 buy (Ok i) model = (model, Print "ignored buy: no catalog item {i}").
 buy (Err e) model = (model, Print "ignored buy: {e}").
 

@@ -256,10 +256,11 @@ qualifyUses aliases = map top
 --    marks back into the builtins, sends a qualified `O.None` whose module
 --    does not define `None` to the builtin (the rule Modules.hs applies to
 --    FP-RISC programs), and renames the preamble's `Cmd` constructor `None`
---    to `Cmd.None`, so Sol code that writes a bare `None` for "no command"
---    keeps meaning what it meant in 0.13 while the builtin `None` stays free.
---    The VM prints a user constructor by its base name, so it still shows as
---    `None`, and the web runtime matches it by that name.
+--    to `Cmd.None`.  A bare `None` is always the builtin, as in FP-RISC
+--    (v1.0 spec Q6, decided 2026-11-22); "no command" is written `Cmd.None`,
+--    as an FP-RISC game writes `G.None`.  The VM prints a user constructor by
+--    its base name, so it still shows as `None`, and the web runtime matches
+--    it by that name.
 
 coreBuiltinNames :: [Name]
 coreBuiltinNames = ["Option", "None", "Some", "Result", "Ok", "Err"]
@@ -273,16 +274,12 @@ resolveCoreBuiltins prel prog = (map (renameNamesBy prelName) prel, map (renameN
   where
     everything = prel ++ prog
     defined = S.fromList (topNames everything)
-    -- only the preamble's Cmd carries a None of its own; a program that
-    -- declares another type with a `None` constructor keeps its own meaning
-    otherNone = or [True | TType n _ _ cs <- everything, n /= "Cmd", ("None", _) <- cs]
-    cmdNone = not otherNone && or [True | TType "Cmd" _ _ cs <- prel, ("None", _) <- cs]
     prelName n
-      | cmdNone, n == "None" = "Cmd.None"
+      | n == "None" = "Cmd.None"
       | otherwise = n
     progName n = case n of
       '@' : b | b `elem` coreBuiltinNames -> b
-      "None" | cmdNone -> "Cmd.None"
+      "Cmd.None" -> n
       _ | '.' `elem` n,
           base <- reverse (takeWhile (/= '.') (reverse n)),
           base `elem` coreBuiltinNames,

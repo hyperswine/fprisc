@@ -15,16 +15,16 @@ doLogin v model =
   (u, p) = base.splitFirst v;
   ({model | pendu = u, pendp = p}, Get "user:{u}" "auth").
 
-doAuth stored model | stored == "" = ({model | note = "no such user"}, None).
+doAuth stored model | stored == "" = ({model | note = "no such user"}, Cmd.None).
 doAuth stored model | stored == model.pendp = (model, Msg "setuser" model.pendu).
-doAuth stored model = ({model | note = "wrong password"}, None).
+doAuth stored model = ({model | note = "wrong password"}, Cmd.None).
 
 doReg v model =
   (u, p) = base.splitFirst v;
   ({model | pendu = u, pendp = p}, Get "user:{u}" "regchk").
 
 doRegchk stored model | stored == "" = (model, Batch [Put "user:{model.pendu}" model.pendp, Msg "setuser" model.pendu]).
-doRegchk stored model = ({model | note = "user already exists"}, None).
+doRegchk stored model = ({model | note = "user already exists"}, Cmd.None).
 
 # ---- todos: serialized one per line as "<done> <text>" in KV -------------
 parseItem line = (d, x) = base.splitFirst line; (base.pI d, x).
@@ -53,15 +53,15 @@ update ("auth", v) model = doAuth v model.
 update ("register", v) model = doReg v model.
 update ("regchk", v) model = doRegchk v model.
 update ("setuser", u) model = ({model | user = Persistent u, note = ""}, Msg "refresh" "").
-update ("logout", v) model = ({model | user = Persistent "", todos = []}, None).
+update ("logout", v) model = ({model | user = Persistent "", todos = []}, Cmd.None).
 update ("connected", v) model = (model, Msg "refresh" "").
-update ("refresh", v) model | unwrapU model == "" = (model, None).
+update ("refresh", v) model | unwrapU model == "" = (model, Cmd.None).
 update ("refresh", v) model = (model, Get "todos:{unwrapU model}" "gottodos").
-update ("gottodos", v) model = ({model | todos = parseTodos v}, None).
+update ("gottodos", v) model = ({model | todos = parseTodos v}, Cmd.None).
 update ("add", v) model = save ((0, v) :: model.todos) model.
 update ("toggle", v) model = toggle (Try.parseInt v) model.
 update ("clear", v) model = save (List.filter isOpen model.todos) model.
-update msg model = (model, None).
+update msg model = (model, Cmd.None).
 
 # the browser names a row; a non-number is a forged or stale request, logged
 # and ignored (an out-of-range row already toggles nothing)

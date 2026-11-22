@@ -14,15 +14,15 @@ doLogin v model = (u, p) = base.splitFirst v; ({model | pendu = u, pendp = p}, G
 
 
 # check if user exists and password matches; if so, set as current user
-doAuth stored model | stored == "" = ({model | note = "no such user"}, None).
+doAuth stored model | stored == "" = ({model | note = "no such user"}, Cmd.None).
 doAuth stored model | stored == model.pendp = (model, Msg "setuser" model.pendu).
-doAuth stored model = ({model | note = "wrong password"}, None).
+doAuth stored model = ({model | note = "wrong password"}, Cmd.None).
 
 doReg v model = (u, p) = base.splitFirst v; ({model | pendu = u, pendp = p}, Get "user:{u}" "regchk").
 
 # check if user exists; if not, create it and set as current user. If exists, return error note.
 doRegchk stored model | stored == "" = (model, Batch [Put "user:{model.pendu}" model.pendp, Msg "setuser" model.pendu]).
-doRegchk stored model = ({model | note = "user already exists"}, None).
+doRegchk stored model = ({model | note = "user already exists"}, Cmd.None).
 
 init tok = {user = Persistent "", pendu = "", pendp = "", note = "", series = [], reqs = 0, logins = ""}.
 
@@ -34,15 +34,15 @@ update ("register", v) model = doReg v model.
 update ("regchk", v) model = doRegchk v model.
 update ("setuser", u) model = ({model | user = Persistent u, note = ""}, Batch [Msg "refresh" "", Get "logins" "bump"]).
 update ("bump", v) model = (model, Batch [Put "logins" (str (base.pI v + 1)), Msg "gotlogins" (str (base.pI v + 1))]).
-update ("logout", v) model = ({model | user = Persistent ""}, None).
+update ("logout", v) model = ({model | user = Persistent ""}, Cmd.None).
 update ("connected", v) model = (model, Msg "refresh" "").
-update ("refresh", v) model | unwrapU model == "" = (model, None).
+update ("refresh", v) model | unwrapU model == "" = (model, Cmd.None).
 update ("refresh", v) model = (model, Get "logins" "gotlogins").
-update ("gotlogins", v) model = ({model | logins = v}, None).
-update ("tick", v) model | unwrapU model == "" = (model, None).
+update ("gotlogins", v) model = ({model | logins = v}, Cmd.None).
+update ("tick", v) model | unwrapU model == "" = (model, Cmd.None).
 update ("tick", v) model = (model, Rng 20 95 "sample").
-update ("sample", v) model = ({model | reqs = Str.parse v, series = List.take 10 (Str.parse v :: model.series)}, None).
-update msg model = (model, None).
+update ("sample", v) model = ({model | reqs = Str.parse v, series = List.take 10 (Str.parse v :: model.series)}, Cmd.None).
+update msg model = (model, Cmd.None).
 
 bar n = Str.repeat n "#".
 

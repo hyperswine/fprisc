@@ -30,16 +30,16 @@ init tok = {tab = Persistent 0, comments = Persistent [], lucky = 0, ticks = 0, 
 
 update msg model =
   case msg of
-    ("tab", v) -> ({model | tab = Persistent (Str.parse v)}, None)
+    ("tab", v) -> ({model | tab = Persistent (Str.parse v)}, Cmd.None)
   | ("comment", v) ->
       ({model | comments = Persistent ((unwrapP model.tab, v) :: unwrapP model.comments)},
        Print "new comment: {v}")
   | ("luck", v) -> (model, Rng 1 100 "lucky")
-  | ("lucky", v) -> ({model | lucky = Str.parse v}, None)
+  | ("lucky", v) -> ({model | lucky = Str.parse v}, Cmd.None)
   | ("motd", v) -> (model, ReadFile "/tmp/motd.txt" "gotmotd")
-  | ("gotmotd", v) -> ({model | motd = v}, None)
-  | ("tick", v) -> ({model | ticks = model.ticks + 1}, None)
-  | _ -> (model, None).
+  | ("gotmotd", v) -> ({model | motd = v}, Cmd.None)
+  | ("tick", v) -> ({model | ticks = model.ticks + 1}, Cmd.None)
+  | _ -> (model, Cmd.None).
 
 tabCls cur i = case cur == i of True -> [ui.Style.tab, ui.Style.tabactive] | False -> [ui.Style.tab].
 

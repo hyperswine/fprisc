@@ -4,7 +4,7 @@
 
 base = use "../lib/base#f9616700c2a16d11".
 ui = use "../lib/ui#988049e34e798b84".
-auth = use "../lib/auth#668a459dce40f198".
+auth = use "../lib/auth#bd3a35ba7e0555ee".
 
 # ---- todos: one per line as "<done> <text>" in KV --------------------------
 parseItem line = (d, x) = base.splitFirst line; (base.pI d, x).
@@ -33,15 +33,15 @@ update ("auth", v) model = auth.doAuth v model.
 update ("register", v) model = auth.doReg v model.
 update ("regchk", v) model = auth.doRegchk v model.
 update ("setuser", u) model = ({model | user = Persistent u, note = ""}, Msg "refresh" "").
-update ("logout", v) model = ({model | user = Persistent "", todos = []}, None).
+update ("logout", v) model = ({model | user = Persistent "", todos = []}, Cmd.None).
 update ("connected", v) model = (model, Msg "refresh" "").
-update ("refresh", v) model | auth.unwrapU model == "" = (model, None).
+update ("refresh", v) model | auth.unwrapU model == "" = (model, Cmd.None).
 update ("refresh", v) model = (model, Get "todos:{auth.unwrapU model}" "gottodos").
-update ("gottodos", v) model = ({model | todos = parseTodos v}, None).
+update ("gottodos", v) model = ({model | todos = parseTodos v}, Cmd.None).
 update ("add", v) model = save ((0, v) :: model.todos) model.
 update ("toggle", v) model = toggle (Try.parseInt v) model.
 update ("clear", v) model = save (List.filter isOpen model.todos) model.
-update msg model = (model, None).
+update msg model = (model, Cmd.None).
 
 # the browser names a row; a non-number is a forged or stale request, logged
 # and ignored (an out-of-range row already toggles nothing)

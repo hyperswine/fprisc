@@ -197,7 +197,7 @@ processMsg rt depth tok (ev, val) = do
       results <- runCmd rt cmdV
       forM_ results (processMsg rt (depth - 1) tok)
 
--- Cmd interpreter: None | Print s | ReadFile p ev | Rng lo hi ev | Batch cs
+-- Cmd interpreter: Cmd.None | Print s | ReadFile p ev | Rng lo hi ev | Batch cs
 runCmd :: Rt -> Value -> IO [(String, String)]
 runCmd rt cmdV = case cmdV of
   VData 0 0 [] -> pure [] -- unit: no cmd

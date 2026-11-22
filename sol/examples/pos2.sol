@@ -83,25 +83,25 @@ update ("auth", v) m = auth.doAuth v m.
 update ("register", v) m = auth.doReg v m.
 update ("regchk", v) m = auth.doRegchk v m.
 update ("setuser", u) m = ({m | user = Persistent u, note = ""}, Msg "refresh" "").
-update ("logout", _) m = ({m | user = Persistent "", cart = [], tab = "register"}, None).
+update ("logout", _) m = ({m | user = Persistent "", cart = [], tab = "register"}, Cmd.None).
 update ("connected", _) m = (m, Msg "refresh" "").
-update ("refresh", _) m | auth.unwrapU m == "" = (m, None).
+update ("refresh", _) m | auth.unwrapU m == "" = (m, Cmd.None).
 update ("refresh", _) m = (m, refreshCmds).
-update ("gotrev", v) m = ({m | revenue = str (base.pI v)}, None).
-update ("gotstk", v) m = ({m | stock = decStock v}, None).
-update ("gotrcp", v) m = ({m | receipts = v}, None).
-update ("tab", v) m = ({m | tab = v}, None).
-update ("buy", v) m | inStock (base.pI v) m.stock = ({m | cart = base.pI v :: m.cart}, None).
-update ("buy", _) m = ({m | note = "out of stock"}, None).
-update ("void", _) m = ({m | cart = []}, None).
+update ("gotrev", v) m = ({m | revenue = str (base.pI v)}, Cmd.None).
+update ("gotstk", v) m = ({m | stock = decStock v}, Cmd.None).
+update ("gotrcp", v) m = ({m | receipts = v}, Cmd.None).
+update ("tab", v) m = ({m | tab = v}, Cmd.None).
+update ("buy", v) m | inStock (base.pI v) m.stock = ({m | cart = base.pI v :: m.cart}, Cmd.None).
+update ("buy", _) m = ({m | note = "out of stock"}, Cmd.None).
+update ("void", _) m = ({m | cart = []}, Cmd.None).
 update ("restock", v) m = restocked (restock (base.pI v) m.stock) m.
-update ("checkout", _) m | m.cart == [] = (m, None).
+update ("checkout", _) m | m.cart == [] = (m, Cmd.None).
 update ("checkout", _) m = (m, Get "revenue" "dorev").
 update ("dorev", v) m = settle (base.pI v + cartTotal m.cart) m.
 update ("dorcp", v) m = record v m.
-update _ m = (m, None).
+update _ m = (m, Cmd.None).
 
-restocked : unsafe List a101 -> _ -> (_, Cmd) .
+restocked : unsafe List Int -> _ -> (_, Cmd) .
 restocked ns m = ({m | stock = ns}, Batch [Put "stock" (encStock ns), Msg "gotstk" (encStock ns)]).
 
 # checkout, step 1: revenue arrived — bank it, take stock, fetch the log
