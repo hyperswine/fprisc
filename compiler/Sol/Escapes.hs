@@ -7,15 +7,6 @@
 -- These observe or act on the world directly and never participate in
 -- validation; Sol.Txn imports this layer to publish buffered effects.
 module Sol.Escapes (module Sol.Escapes, module Sol.TxnState, module Sol.Effects) where
-{-# LANGUAGE TupleSections, ScopedTypeVariables #-}
-{-# OPTIONS_GHC -Wno-missing-export-lists #-}
-
--- Txn.hs -- the commit protocol that publishes a TxnState: locks, the redo
--- journal and its recovery, the Git saga, realtime escapes, process
--- plumbing, and the commit itself (validate under lock, journal, replay,
--- unlock). The transaction's state and filesystem layer lives in
--- Sol.TxnState (one-way import, no cycles).
-
 
 import Sol.Diagnostic (diagnostic)
 import Sol.Native
