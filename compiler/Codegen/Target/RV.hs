@@ -215,6 +215,33 @@ arithVal w op d a b = do
 arith w kernel op d x y = do
   slow <- freshLabel; zero <- freshLabel; done <- freshLabel
   result <- fresh
+  exactSmall w op result x y slow (if kernel then zero else slow)
+  emit (plain (O.RV R.Move) [anyV d] [anyV result]); jump done
+  mark slow
+  if kernel then trapCall "fpr_int_overflow_kernel" else do
+    tx <- boxed x; ty <- boxed y; t <- fresh
+    call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [tx,ty] (Just t) False
+    ri R.ShiftRightArithmeticImmediate d t 1
+  when kernel $ do
+    mark zero; trapCall "fpr_div_zero_kernel"
+    li d 0 -- both trap entries are noreturn; define d for the allocation oracle
+  mark done
+
+-- OArithFits (Codegen.RawInts): 1 when the exact result of two small Ints
+-- is a small Int (Div: and the divisor is not 0), else 0
+arithFits :: Integer -> ArithOp -> VReg -> VReg -> VReg -> S ()
+arithFits w op d x y = do
+  no <- freshLabel; done <- freshLabel
+  result <- fresh
+  exactSmall w op result x y no no
+  li d 1; jump done
+  mark no
+  li d 0
+  mark done
+
+-- the exact operation on two untagged small Ints into result, branching to
+-- slow when it leaves the small range and to zero on a zero divisor
+exactSmall w op result x y slow zero = do
   let failUnlessEqual lhs rhs = do bad <- fresh; rr (R.Compare Ne) bad lhs rhs; branch bad slow
   case op of
     Add -> rr R.Add result x y
@@ -227,7 +254,7 @@ arith w kernel op d x y = do
       failUnlessEqual high sign
     Div -> do
       isZero <- fresh; z <- fresh; li z 0
-      rr (R.Compare Eq) isZero y z; branch isZero (if kernel then zero else slow)
+      rr (R.Compare Eq) isZero y z; branch isZero zero
       ok <- freshLabel
       p <- fresh; remV <- fresh; xr <- fresh; rZero <- fresh; nonNeg <- fresh; one <- fresh
       rr R.Divide result x y
@@ -242,16 +269,6 @@ arith w kernel op d x y = do
   shifted <- fresh; fit <- fresh
   ri R.ShiftLeftImmediate shifted result 1; ri R.ShiftRightArithmeticImmediate fit shifted 1
   failUnlessEqual fit result
-  emit (plain (O.RV R.Move) [anyV d] [anyV result]); jump done
-  mark slow
-  if kernel then trapCall "fpr_int_overflow_kernel" else do
-    tx <- boxed x; ty <- boxed y; t <- fresh
-    call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [tx,ty] (Just t) False
-    ri R.ShiftRightArithmeticImmediate d t 1
-  when kernel $ do
-    mark zero; trapCall "fpr_div_zero_kernel"
-    li d 0 -- both trap entries are noreturn; define d for the allocation oracle
-  mark done
 parallel :: [(VReg,VReg)] -> S ()
 parallel pairs = do
   -- Simultaneous block arguments: first copy every source to a fresh value.
@@ -415,6 +432,7 @@ select cfg fn = do
       OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call (CodeSymbol "fpr_g_charAt_call2") Calling.RuntimeCall [vreg s,i] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
       OKernelArith op a b -> arith w True op d (vreg a) (vreg b)
       OArith op a b -> arith w False op d (vreg a) (vreg b)
+      OArithFits op a b -> arithFits w op d (vreg a) (vreg b)
       OArithVal op a b -> arithVal w op d (vreg a) (vreg b)
       -- the difference-bound proof removed the overflow check: a plain
       -- instruction where the checked form keeps the C primitive; Mul/Div

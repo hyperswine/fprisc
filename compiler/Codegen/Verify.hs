@@ -91,6 +91,7 @@ opSignature tyOf = \case
   OArith _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OArithVal _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
   OArithU _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
+  OArithFits _ a b -> expect a TInt >> expect b TInt >> pure (Just TPred)
   OBit _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OShift _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OCmp _ a b -> expect a TInt >> expect b TInt >> pure (Just TPred)

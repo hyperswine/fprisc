@@ -34,6 +34,7 @@ import Codegen.ControlFlow (analyze,dominators,predecessors,reachable)
 import Codegen.StringScan (versionScan)
 import Codegen.VectorRead (expandViews)
 import Codegen.Interval (discharge)
+import Codegen.RawInts (versionRawInts)
 import Codegen.LoopOptimize (moveInvariants, moveViews, carryRaw, carryRawI64, dropUnusedParameters)
 import Codegen.Policy (Policy (..), Profile (..), RegisterBudget, policyWidth)
 import Codegen.Pressure (clobbersRegisters)
@@ -65,6 +66,9 @@ passesWith options=
     ("share-pure-in-block", dropDeadPure . sharePureInBlock)
   ] ++ [("hoist-vector-views",\f -> if hasView f && hasCycle f then moveViews f else f)]
     ++ [("move-loop-invariants",\f -> if hasCycle f then dropDeadPure (moveInvariants (registerBudget options) (inlineFloats options) f) else f) | moveLoopInvariants options]
+    -- raw-word copies of Int loops (Codegen.RawInts), before the proof
+    -- that drops the copies' fit tests
+    ++ [("version-raw-ints", \f -> if hasCycle f then dropDeadPure (versionRawInts f) else f) | Just W64 <- [intervalWidth options]]
     ++ [("discharge-proven-checks", dropDeadPure . discharge width) | Just width <- [intervalWidth options]]
     ++ [("share-pure-across-blocks", dropDeadPure . sharePureAcrossBlocks (inlineFloats options)) | intervalWidth options /= Nothing]
     -- a versioned function's fast copy has no slow-path calls, so its
@@ -84,7 +88,7 @@ passesWith options=
     ++ [("forward-empty-blocks-again", forwardEmptyBlocks)]
     -- last: a vector view is one operation for every pass above (shared,
     -- moved out of loops) and its tests and loads for the targets
-    ++ [("expand-vector-views", \f -> let f' = expandViews f in if f' == f then f else dropUnusedParameters f')]
+    ++ [("expand-vector-views", \f -> let f' = expandViews f in if f' == f then f else dropUnusedParameters (dropDeadPure (foldConversions f')))]
 
 hasView :: Fn -> Bool
 hasView = any (any (\(Instr _ op) -> case op of OVectorView {} -> True; _ -> False) . bInstrs) . fnBlocks
@@ -291,6 +295,9 @@ foldConversions fn =
           Just (ONullary 1 0)->Just False
           Just (ONullary 1 1)->Just True
           _->Nothing
+        -- a tag of a raw Int is a tagged Int (a raw-Int copy's index into
+        -- a vector view, Codegen.RawInts)
+        Just (OIsInt w)|Just (OTag _)<-M.lookup w defs->Just True
         _->Nothing
       changed = M.fromList [(bId b,if yes then TBr t as else TBr e bs)
                           | b<-fnBlocks fn',TCondBr p t as e bs<-[bTerm b],Just yes<-[bool p]]
@@ -504,7 +511,7 @@ crossShareable = \case
   OTruth {} -> True; OBoolOf {} -> True; ONot {} -> True; OIsInt {} -> True
   OTagTest {} -> True; OVariantTest {} -> True
   OAddress {} -> True; OIndex {} -> True; OIndexByte {} -> True; OVectorView {} -> True
-  OArithU {} -> True; OBit {} -> True; OCmp {} -> True
+  OArithU {} -> True; OArithFits {} -> True; OBit {} -> True; OCmp {} -> True
   _ -> False
 
 -- Single-use F64/F32 arithmetic within a block becomes a tree, including

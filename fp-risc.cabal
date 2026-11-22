@@ -223,6 +223,7 @@ library
       Codegen.StringRead
       Codegen.ControlFlow
       Codegen.Interval
+      Codegen.RawInts
       Codegen.LoopOptimize
       Codegen.InlineCalls
       Codegen.StringScan
@@ -492,6 +493,11 @@ test-suite Interval
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            Interval.hs
+
+test-suite RawInts
+  import:             unit-test
+  type:               exitcode-stdio-1.0
+  main-is:            RawInts.hs
 
 test-suite GeneralizeClosed
   import:             unit-test

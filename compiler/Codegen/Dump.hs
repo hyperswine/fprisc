@@ -56,6 +56,7 @@ dumpFn fn =
       OArith o a b -> "arith " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
       OArithVal o a b -> "arithval " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
       OArithU o a b -> "arith! " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
+      OArithFits o a b -> "fits " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
       OBit o a b -> "bit " ++ bitName o ++ " " ++ value a ++ ", " ++ value b
       OShift o a b -> "shift " ++ shiftName o ++ " " ++ value a ++ ", " ++ value b
       OCmp o a b -> "cmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b

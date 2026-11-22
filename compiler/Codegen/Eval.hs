@@ -224,6 +224,11 @@ callFn width program name args = do
           when (o == Div && y == 0) (trap "division by zero")
           let r = case o of Add -> x + y; Sub -> x - y; Mul -> x * y; Div -> x `div` y
           pure (Just (VVal (RInt r)))
+        OArithFits o a b -> do
+          x <- int env a
+          y <- int env b
+          let r = case o of Add -> Just (x + y); Sub -> Just (x - y); Mul -> Just (x * y); Div -> if y == 0 then Nothing else Just (x `div` y)
+          pure (Just (VPred (maybe False (intFitsWidth width) r)))
         -- proven not to trap (Codegen.Interval, Simplify.foldDivisors); the
         -- evaluator still checks, so a wrong proof shows as a trap here
         OArithU o a b -> do

@@ -832,6 +832,26 @@ selectInstr cfg facts (Instr d op) = case op of
   -- makes the constant, for the C primitive)
   OArith o _ _ | Just (x, _, n) <- immediateForm (fImmediates facts) op -> def (\r -> arithImm o r (vreg x) n)
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
+  -- a raw-Int copy's fit test (Codegen.RawInts): 1 when the exact result
+  -- of the two small Ints is a small Int (Div: the divisor is not 0); the
+  -- truncated quotient leaves the range exactly when the floored one does
+  OArithFits o a b -> def (\r -> do
+    no <- freshL "nofit"
+    done <- freshL "fitdone"
+    t <- freshV False
+    case o of
+      Add -> emitI (rrr O.Add t (vreg a) (vreg b))
+      Sub -> emitI (rrr O.Subtract t (vreg a) (vreg b))
+      Mul -> emitI (rrr O.Multiply t (vreg a) (vreg b)) >> emitI (bcond O.Overflow no)
+      Div -> emitI (cbz (vreg b) no) >> emitI (divide t (vreg a) (vreg b))
+    n <- freshV False
+    emitI (rri O.ShiftLeftImmediate n t 1)
+    emitI (bcond O.Overflow no)
+    emitI (li r 1)
+    emitI (jump done)
+    emitL no
+    emitI (li r 0)
+    emitL done)
   OArithVal o a b -> def (\r -> arithVal o r (vreg a) (vreg b))
   OArithU o _ _ | Just (x, _, n) <- immediateForm (fImmediates facts) op ->
     def (\r -> emitI (addi r (vreg x) (if o == Sub then negate n else n)))

@@ -433,7 +433,7 @@ selectBlock cfg fn tyMap b = do
       -- a comparison leaves its answer in the flags, which the edge moves
       -- keep; the tag tests branch to the else block mid-test, so they fuse
       -- only when that edge carries nothing
-      fusable op bare = case op of OCmp {} -> True; OVariantTest {} -> bare; OTagTest {} -> bare; _ -> False
+      fusable op bare = case op of OCmp {} -> True; OVariantTest {} -> bare; OTagTest {} -> bare; OArithFits {} -> bare; _ -> False
       -- a small constant this block makes for the comparison alone: an
       -- immediate operand, and no register
       immediateOf y = case [n | Instr (Just (v, _)) (OConstInt n) <- rest, v == y] of
@@ -506,6 +506,12 @@ selectBlock cfg fn tyMap b = do
           emitI (li wantv (fromIntegral c))
           emitI (cmp var wantv)
           branch O.Equal O.NotEqual
+        -- a raw-Int copy's fit test: the exact operation, then branch on
+        -- the 63-bit fit; a zero divisor or a wide product leaves early
+        OArithFits o x y -> do
+          run (init rest)
+          fitsCompare o (vreg x) (vreg y) (blockLabel e)
+          branch O.Equal O.NotEqual
         _ -> refuse "internal: an unfusable branch condition"
     Nothing -> do
       run rest
@@ -547,6 +553,43 @@ selectInstr cfg immediates = selectInstrK cfg immediates (SmallInts M.empty M.em
 -- is never a bignum; siLazy are those tags not materialized at their
 -- definition, rebuilt only on a slow path (taggedV).
 data SmallInts = SmallInts { siConst :: M.Map VId Integer, siTag :: M.Map VId VId, siLazy :: S.Set VId }
+
+-- OArithFits (Codegen.RawInts): the exact operation on two untagged small
+-- Ints, ending in a compare whose Equal means the result is a small Int;
+-- a zero divisor, or a product that leaves 64 bits, branches to `no` first
+fitsCompare :: ArithOp -> VReg -> VReg -> Label -> Se ()
+fitsCompare o a b no = do
+  t <- freshV False
+  case o of
+    Add -> emitI (rrr A.Add t a b)
+    Sub -> emitI (rrr A.Subtract t a b)
+    Div -> do
+      -- the truncated quotient leaves the range exactly when the floored one
+      -- does (only the smallest Int by -1), and both never trap in 64 bits
+      emitI (cbz b no)
+      emitI (rrr A.Divide t a b)
+    Mul -> do
+      wide <- freshL "fitwide"
+      ok <- freshL "fitmul"
+      emitI (rrr A.Multiply t a b)
+      -- both operands within 31 bits: the product is exact; else the
+      -- division check (b is not 0 there: a 31-bit operand)
+      forM_ [a, b] $ \opnd -> do
+        n <- freshV False
+        emitI (rri A.SignExtend31 n opnd 0)
+        emitI (cmp n opnd)
+        emitI (bcond O.NotEqual wide)
+      emitI (jump ok)
+      emitL wide
+      emitI (cbz b ok)
+      q <- freshV False
+      emitI (rrr A.Divide q t b)
+      emitI (cmp q a)
+      emitI (bcond O.NotEqual no)
+      emitL ok
+  n <- freshV False
+  emitI (rri A.SignExtend63 n t 0)
+  emitI (cmp n t)
 
 selectInstrK :: A64Config -> M.Map VId Integer -> SmallInts -> Instr -> Se ()
 selectInstrK cfg immediates small (Instr d op) = case op of
@@ -684,6 +727,16 @@ selectInstrK cfg immediates small (Instr d op) = case op of
   OArith o a b | o `elem` [Add, Sub], Just n <- M.lookup b immediates -> def (\r -> arithImm o r (vreg a) n)
   OArith Add a b | Just n <- M.lookup a immediates -> def (\r -> arithImm Add r (vreg b) n)
   OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
+  OArithFits o a b -> def (\r -> do
+    no <- freshL "nofit"
+    done <- freshL "fitdone"
+    fitsCompare o (vreg a) (vreg b) no
+    emitI (bcond O.NotEqual no)
+    emitI (li r 1)
+    emitI (jump done)
+    emitL no
+    emitI (li r 0)
+    emitL done)
   OArithVal o a b | Just ua <- rawOf a, Just ub <- rawOf b -> def (\r -> arithSmall o r (Just ua) (Just ub) a b)
   OArithVal Add a b | Just k <- constOf b -> def (\r -> addConst r (vreg a) (2 * k) a b Add)
   OArithVal Add a b | Just k <- constOf a -> def (\r -> addConst r (vreg b) (2 * k) a b Add)

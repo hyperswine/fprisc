@@ -55,7 +55,7 @@ clobbersRegisters inlineFloats = \case
   OFloatTree {} -> not inlineFloats; OFloatCmpTree {} -> not inlineFloats
   OFloat32Bin {} -> not inlineFloats; OFloat32Cmp {} -> not inlineFloats
   OFloat32Tree {} -> not inlineFloats; OFloat32CmpTree {} -> not inlineFloats
-  OSafepoint -> False; OSafepointN {} -> False; OKernelArith {} -> False; OArithU {} -> False
+  OSafepoint -> False; OSafepointN {} -> False; OKernelArith {} -> False; OArithU {} -> False; OArithFits {} -> False
   _ -> True
 
 floatOp :: Op -> Bool

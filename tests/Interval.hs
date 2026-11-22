@@ -32,6 +32,7 @@ off=Options False Nothing True Nothing False
 simplified o=fst (either error id (simplifyProgramWith o lowered))
 operations fn=[op | b<-fnBlocks fn,Instr _ op<-bInstrs b]
 unchecked fn=[() | OArithU {} <- operations fn]
+fits fn=[o | OArithFits o _ _ <- operations fn]
 condbrs fn=[() | b<-fnBlocks fn,TCondBr {}<-[bTerm b]]
 maxI=4611686018427387903 :: Integer
 
@@ -177,12 +178,14 @@ main=do
   let fast=simplified on
       slow=simplified off
   check "both pipelines verify" (verifyProgramWidth W64 fast==Right () && verifyProgramWidth W64 slow==Right ())
-  check "count's guarded i + 1 discharges" (length (unchecked (fast M.! "count"))==1)
+  -- exact Int (v1.0): the loops' raw-word copies (Codegen.RawInts) carry
+  -- the proofs; each `+` is a fit test (OArithFits) and an unchecked add
+  check "count's guarded i + 1 discharges" (length (unchecked (fast M.! "count"))==2 && fits (fast M.! "count")==[Add])
   check "nothing discharges without the pass" (all (null . unchecked) (M.elems slow))
-  check "fib's two subtractions discharge" (length (unchecked (fast M.! "fib"))==2)
-  check "the accumulator add keeps its check" (1==length [() | OArith Add _ _<-operations (fast M.! "count")])
-  check "over's i + 1 can overflow at the last iteration: it keeps its check"
-    (null (unchecked (fast M.! "over")))
+  check "fib is no loop: no raw copy, its exact operations stay" (null (unchecked (fast M.! "fib")) && null (fits (fast M.! "fib")))
+  check "the accumulator add keeps its check" (fits (fast M.! "count")==[Add])
+  check "over's i + 1 can leave the range at the last iteration: it keeps its fit test"
+    (Add `elem` fits (fast M.! "over"))
   check "the twice-tested comparison's inner branch is threaded"
     (length (condbrs (fast M.! "twice"))==1 && length (condbrs (slow M.! "twice"))==2)
   -- Arithmetic step chains, join intersection, loop induction, producer bounds, and cross-block sharing
@@ -209,11 +212,13 @@ main=do
   -- the evaluator sees the same results, traps and texts before and after
   forM_ [("count",[RInt 0,RInt 1000000,RInt 0]),("count",[RInt 5,RInt 5,RInt 7]),
          ("fib",[RInt 20]),("twice",[RInt 3,RInt 4]),("twice",[RInt 9,RInt 4])] $ \(fn,args)->
-    check (fn++" evaluates identically") (evalProgram lowered fn args==evalProgram fast fn args)
+    -- a loop's raw copy enters through a new entry that checks the stack
+    -- once (as Codegen.LoopForm does: the frame is constant); every other
+    -- event, the result and every trap text are the same
+    check (fn++" evaluates identically") (sansStack (evalProgram lowered fn args)==sansStack (evalProgram fast fn args))
   check "count computes" (ocResult (evalProgram fast "count" [RInt 0,RInt 1000000,RInt 0])==Right (RInt 499999500000))
-  check "overflow at the last iteration keeps the exact runtime trap"
-    (case ocResult (evalProgram fast "over" [RInt (maxI-1),RInt maxI,RInt 0]) of
-       Left (Trap reason)->"Int overflow" `prefix` reason; _->False)
+  check "the last iteration steps past the small range exactly"
+    (ocResult (evalProgram fast "over" [RInt (maxI-1),RInt maxI,RInt 0])==Right (RInt 0))
   check "a discharged counter reaches maxInt exactly without trapping"
     (ocResult (evalProgram fast "count" [RInt (maxI-1),RInt maxI,RInt 0])==Right (RInt (maxI-1)))
   let (ladderSimpl,_)=either error id (simplifyFnWith on M.empty ladderFn)
@@ -228,3 +233,4 @@ main=do
     (null (unchecked (vectorJoin W64 "$vec.len")) && null (unchecked (vectorJoin W64 "Str.get")))
   putStrLn "Interval discharge: guarded-counter proofs, step chains, join intersection, loop induction, producer bounds, the path ladder, the vector length cap, cross-block sharing and evaluator differential PASS"
   where prefix p s=take (length p) s==p
+        sansStack o=o {ocEvents=[e | e<-ocEvents o, case e of EvStackCheck _->False; _->True]}

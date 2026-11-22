@@ -108,7 +108,16 @@ discharge width fn
     resolve v =
       let v' = resolveParam v
        in M.findWithDefault v' v' repOf
-    cmps = M.fromList [(resolve v, (o, resolve a, resolve b)) | Instr (Just (v, TPred)) (OCmp o a b) <- instrs]
+    -- An exact comparison of tagged Ints is a fact about the same integers:
+    -- the walks use it like a raw one. A tagged node has no bound of its own
+    -- (it may be a bignum), so it bounds nothing through the domain's range.
+    cmps = M.fromList ([(resolve v, (o, resolve a, resolve b)) | Instr (Just (v, TPred)) (OCmp o a b) <- instrs]
+                       ++ [(resolve v, (o, resolve a, resolve b)) | Instr (Just (v, TPred)) (OCmpVal o a b) <- instrs])
+    tagged = S.fromList ([v | Instr (Just (v, TVal)) _ <- instrs] ++ [v | b <- fnBlocks fn, (v, TVal) <- bParams b])
+    -- a tag of a raw Int is that Int (an identity, true wherever both exist)
+    tagFacts = concat [[(rv, rx, 0), (rx, rv, 0)] | Instr (Just (v, TVal)) (OTag x) <- instrs, let rv = resolve v, let rx = resolve x, rv /= rx]
+    domHi v = if S.member v tagged then Nothing else Just hi
+    domLo v = if S.member v tagged then Nothing else Just lo
     consts = M.fromList [(resolve v, n) | Instr (Just (v, TInt)) (OConstInt n) <- instrs]
     -- Direct producer bounds: constants, string byte lengths (>= 0), byte reads
     -- (0..255), and bitwise AND with a non-negative constant mask (in 0..mask).
@@ -229,13 +238,13 @@ discharge width fn
     -- simple path did, in polynomial time: on a function of many diamonds
     -- (QOS's guishell main) the path search never finished.
     ubWith extraUB fs x = minimum'
-      [ d + own v | (v, d) <- M.toList (distances (forward fs) x) ]
+      [ d + o | (v, d) <- M.toList (distances (forward fs) x), Just o <- [own v] ]
       where
-        own v = minimum (catMaybes [snd <$> M.lookup v producerBounds, M.lookup v extraUB, Just hi])
+        own v = minimum' (catMaybes [snd <$> M.lookup v producerBounds, M.lookup v extraUB, domHi v])
     lbWith extraLB fs x = maximum'
-      [ own v - d | (v, d) <- M.toList (distances (backward fs) x) ]
+      [ o - d | (v, d) <- M.toList (distances (backward fs) x), Just o <- [own v] ]
       where
-        own v = maximum (catMaybes [fst <$> M.lookup v producerBounds, M.lookup v extraLB, Just lo])
+        own v = maximum' (catMaybes [fst <$> M.lookup v producerBounds, M.lookup v extraLB, domLo v])
     minimum' xs = if null xs then Nothing else Just (minimum xs)
     maximum' xs = if null xs then Nothing else Just (maximum xs)
     diffUBWith extraLB extraUB fs a b =
@@ -320,7 +329,7 @@ discharge width fn
       | b <- fnBlocks fn
       , let bid = bId b
       , let domSet = M.findWithDefault S.empty bid doms
-      , let base = M.findWithDefault [] bid preLoopFacts
+      , let base = tagFacts ++ M.findWithDefault [] bid preLoopFacts
       , let loopFs = concat [fs | s <- S.toList domSet, Just (fs, _, _) <- [M.lookup s loopHeaderResults]]
       , let loopLB = M.unionsWith max [l | s <- S.toList domSet, Just (_, l, _) <- [M.lookup s loopHeaderResults]]
       , let loopUB = M.unionsWith min [u | s <- S.toList domSet, Just (_, _, u) <- [M.lookup s loopHeaderResults]] ]
@@ -542,6 +551,11 @@ discharge width fn
             , cmpHolds extraLB extraUB fsEnd o a b' -> TBr yes ys
             | Just (o, a, b') <- M.lookup (resolve p) cmps
             , cmpHolds extraLB extraUB fsEnd (negateCmp o) a b' -> TBr no ns
+            -- a raw-Int copy's fit test (Codegen.RawInts): the exact result
+            -- stays small when the operands' bounds say so
+            | Just (OArithFits o x y) <- M.lookup p rawDefs
+            , o `elem` [Add, Sub, Mul]
+            , arithProof extraLB extraUB fsEnd o x y -> TBr yes ys
           t -> t
     results = map rewrite (fnBlocks fn)
     changed = any fst results
