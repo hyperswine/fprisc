@@ -270,6 +270,7 @@ library
       Sol.Http
       Sol.Effects
       Sol.Txn
+      Sol.TxnState
       Sol.VM
       Sol.MutMap
       Sol.Val
