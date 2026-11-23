@@ -28,7 +28,7 @@ list(REMOVE_ITEM FPR_POSIX_SRCS "${FPR_ROOT}/machine/posix/os_module.c")
 idf_component_register(
   SRCS ${FPR_M}/main.c ${FPR_M}/hal.c ${FPR_M}/esp.c ${FPR_M}/fs.c ${FPR_M}/ctx.S ${FPR_ROOT}/machine/virt/ctx_fab.c
        ${FPR_RT}/runtime.c ${FPR_RT}/i32.c ${FPR_RT}/actors.c ${FPR_RT}/bits.c ${FPR_RT}/vec.c
-       ${FPR_RT}/sstr.c ${FPR_RT}/mod.c ${FPR_RT}/buddy.c
+       ${FPR_RT}/mod.c ${FPR_RT}/buddy.c
        ${FPR_POSIX_SRCS}
        ${FPR_P}/radio.c ${FPR_P}/wifi.c ${FPR_P}/bluetooth.c ${FPR_P}/gpio.c
        ${FPR_GEN}

@@ -51,7 +51,7 @@ property finite functions (ValueModel linears declarations)=check S.empty
       TFn _ _->functions
       _->case spine ty of
         (TC n,as)
-          | n `elem` ["Int","Bool","Unit","Atom","I64","Word","F64","I32"]->null as
+          | n `elem` ["Int","Bool","Unit","I64","Word","F64","I32"]->null as
           | n=="String"->not finite && null as
           | n=="Vector"->length as==1 -- the existing move/copy-by-handle rule
           -- a MutMap is a vec_t too (runtime/vec.c, VR_MAP): its handle has

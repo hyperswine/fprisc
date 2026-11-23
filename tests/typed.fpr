@@ -1,12 +1,11 @@
-# typed.fpr — the ML-style modules + SString regression.
+# typed.fpr — the ML-style modules regression.
 #
 # Exercises, ON THE METAL (QEMU virt):
 #   1. operator dispatch: + on Int (prim opcode) and String (Str.+)
 #   2. structure methods as flat globals: Int.max / Int.mod / Str.len
 #   3. a generic over a sig carrier, monomorphized at compile time:
 #      total (s : Add) resolves s.(+) / s.zero per structure
-#   4. SString: the fixed 128B linear inline string, push/at/toStr
-#   5. SoA vector operations (mapSame/fold/free)
+#   4. SoA vector operations (mapSame/fold/free)
 
 # generic over the Add sig: works for any structure implementing it
 # sig-generic AND scheme-carried: the fold does the recursion, the
@@ -27,18 +26,7 @@ main =
   si = total Int [1, 2, 3, 4];
   ss = total Str ["a", "b", "c"];
 
-  # -- 4. SString: linear 128B inline string --
-  s0 = SStr.new Unit;
-  s1 = SStr.push s0 104;
-  s2 = SStr.push s1 105;
-  # reads THREAD the handle (the Vec.len convention; enforced now that
-  # the linearity checker sees inferred and builtin shapes)
-  (ln, s3) = SStr.len s2;
-  (c1, s4) = SStr.at s3 1;
-  (hs, s5) = SStr.toStr s4;
-  _ = drop s5;
-
-  # -- 5. SoA vector --
+  # -- 4. SoA vector --
   v0 = Vec.fromList [1, 2, 3];
   v1 = Vec.mapSame (fn x -> x * 10) v0;
   # the fold answers (sum, the vector): the handle is ours to free
@@ -48,5 +36,4 @@ main =
   _ = print "ops: {a} {b}";
   _ = print "methods: max={m} mod={d} len={n}";
   _ = print "generic: total Int={si} total Str={ss}";
-  _ = print "sstring: len={ln} at1={c1} str={hs}";
   print "vec: fold={sm}".

@@ -5,7 +5,7 @@
 -- contracts, with no source syntax. Existing Show output is diagnostic ABI.
 module Type.Syntax
   (Type(..), Row(..), Scheme(..), tcon, tInt, tStr, tBool, tUnit,
-   tF64, tF32, tI64, tI32, tList, tVector, tMutMap, tFixedMap, tSString, mentionsFloat) where
+   tF64, tF32, tI64, tI32, tList, tVector, tMutMap, tFixedMap, mentionsFloat) where
 import Data.List (foldl')
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
@@ -78,7 +78,4 @@ tMutMap k v = TAp (TAp (TC "MutMap") k) v
 -- the fixed-capacity linear hash table (core/prelude.fpr `FixedMap 1 k v`, std/fixedmap.fpr)
 tFixedMap :: Type -> Type -> Type
 tFixedMap k v = TAp (TAp (TC "FixedMap") k) v
-
-tSString :: Type
-tSString = TC "SString"
 

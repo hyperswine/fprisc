@@ -311,7 +311,7 @@ receiveTurns rawFloats loopRegions callRegionsOn receiveLoops persistentLoop con
           Just (TAp (TC "Vector") t) -> flatElement t
           _ -> False
         flatElement t = case t of
-          TC c -> c `elem` ["Int","Bool","Unit","Atom","I64","Word","F64","F32","I32","String"]
+          TC c -> c `elem` ["Int","Bool","Unit","I64","Word","F64","F32","I32","String"]
           TAp _ _ -> not (isRow t)
           _ -> False
         isRow t = case spineT t of (TC c, _) -> c `notElem` ["List","Vector","Result","Option","Map"]; _ -> True

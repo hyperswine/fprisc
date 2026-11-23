@@ -387,7 +387,7 @@ static void release_legacy(V v) {
   block *b = find(v); uw *m = meta(b);
   if (m[1] > 1) { m[1]--; return; }
   hdr_t *h = (hdr_t *)v;
-  if (h->tid == T_VEC || h->tid == T_SSTR || h->tid == T_ACTOR || h->tid == T_PAP)
+  if (h->tid == T_VEC || h->tid == T_ACTOR || h->tid == T_PAP)
     fpr_cpanic("Builtin: unsupported Rc object");
   if (h->tid != T_STR && h->tid != T_BITS && h->tid != T_DEVICE && h->tid != T_REGISTER) {
     V *fields = (V *)(v + 8);

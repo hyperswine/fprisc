@@ -2,7 +2,7 @@
 // Behavioral summaries for primitives without useful per-name source comments.
 // Names and types still come from the compiler, never from this supplement.
 // Contracts: compiler/Infer.hs, compiler/Sol/{Infer,VM}.hs, core/prelude.fpr,
-// runtime/{actors,runtime,vec,sstr,mod}.c and docs/{2026-10-18-I32,
+// runtime/{actors,runtime,vec,mod}.c and docs/{2026-10-18-I32,
 // 2026-10-05-I64,2026-10-12-INT-OVERFLOW,2026-10-01-TYPED-VECTORS}.md.
 const docs = {
   'Sys.name': 'Return the last path component of argv[0]. Native launchers use it to distinguish command names such as fpr, sol and qos; std/program exposes it as Program.name.',
@@ -247,13 +247,7 @@ const vectors = {
   blend: 'Select lanes from two integer vectors using a mask vector.', slice: 'Extract a slice by offset and length, returning its vector and the retained source owner.',
   burst: 'Copy a source vector into a destination vector at the supplied offset.', absv: 'Take the absolute value of every integer lane.', eqS: 'Compare each integer lane with the scalar for equality, producing mask lanes.',
 };
-const sstrings = {
-  sstrNew: 'Create an empty fixed-capacity inline string.', sstrLen: 'Return the byte length together with the successor string owner.',
-  sstrAt: 'Read a byte at the supplied index, returning its code and the successor string owner.',
-  sstrPut: 'Replace the byte at the supplied index and return the successor string owner.',
-  sstrPush: 'Append a byte code and return the successor string owner.', sstrFromStr: 'Copy a heap string into the fixed-capacity inline string representation.',
-  sstrToStr: 'Return a heap String copy together with the successor inline-string owner.', sstrClear: 'Clear an inline string and return its successor owner.',
-};
+
 module.exports = function describe(name, profile) {
   if (profile === 'sol') {
     if (/^spawn(Cap(On)?|On)$/.test(name)) return 'Start a Sol actor using the supplied entry function. The VM accepts but ignores hart placement and mailbox capacity/mode; its actor queues are unbounded.';
@@ -267,7 +261,6 @@ module.exports = function describe(name, profile) {
     if (name === 'keep') return 'Preserve the value; Sol’s garbage-collected runtime does not need an AOT borrowed-message copy.';
   }
   if (docs[name]) return docs[name];
-  if (sstrings[name]) return sstrings[name] + ' SString is linear and has a fixed 128-byte capacity.';
   if (/^Tup[2-8]$/.test(name)) return `Construct a ${name.slice(3)}-element tuple; ordinary tuple syntax is (a, b, …).`;
   const [family, member] = name.split('.');
   if (family === 'I32' || family === 'I64') {

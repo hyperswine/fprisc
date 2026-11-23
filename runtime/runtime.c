@@ -346,7 +346,6 @@ static uw layout_total(V v) {
   switch (TID(v)) {
     case T_STR: raw = sizeof(str_t) + ((str_t *)v)->len; break;
     case T_BIGINT: raw = sizeof(bigint_t) + ((bigint_t *)v)->len * sizeof(uint64_t); break;
-    case T_SSTR: raw = sizeof(sstr_t); break;
     case T_BITS:
       raw = (((bits_t *)v)->var == 4 || ((bits_t *)v)->var == 5)
               ? sizeof(fpr_num64_t) : sizeof(bits_t);
@@ -371,7 +370,7 @@ static void layout_report(V v) {
   uw bit;
   const char *name;
   switch (TID(v)) {
-    case T_STR: case T_SSTR: bit = 1; name = "string"; break;
+    case T_STR: bit = 1; name = "string"; break;
     case T_BITS: case T_BIGINT: bit = 2; name = "bits"; break;
     case T_PAP: bit = 4; name = "pap"; break;
     case T_VEC: bit = 8; name = "vector"; break;
@@ -1096,7 +1095,6 @@ void fpr_free_raw(V v) { free_block(v,FPR_RAW_PREFIX,RAW_TOTAL(v)); }
  *                                      data all land in the slab --
  *                                      vec_layout.h is the contract)
  *   T_ACTOR                            immortal acb: share pointer
- *   T_SSTR                             linear-local: refused honestly
  *   T_LIST var 1                       spine iterated, not recursed
  * Statics (out of heap) and ints copy by value.  Sharing inside one
  * message duplicates (values are immutable trees; DAGs cost bytes,
@@ -1124,8 +1122,7 @@ static void dc_release(V v) {
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: fpr_vec_release(v); return;
-    case T_ACTOR: case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER:
-    case T_SSTR: return;
+    case T_ACTOR: case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER: return;
     case T_PAP: {
       pap_t *p = (pap_t *)v;
       for (uw i = 0; i < p->nargs; i++) dc_release((V)p->args[i]);
@@ -1265,7 +1262,7 @@ static uw img_static_raw(V v, uw pid) {
       fpr_actor_fail("send: a function of another process cannot leave it "
                      "(its code goes when that process ends)");
     case T_STORED_LIST: case T_BIGINT: case T_TUP2: case T_TUP3: case T_ATOM: case T_REGISTER: case T_BITS:
-    case T_ACTOR: case T_VEC: case T_SSTR:
+    case T_ACTOR: case T_VEC:
       fpr_actor_fail("send: a static of an unexpected kind in another process's image");
     default:
       if (h->tid >= T_TUP4 && h->tid <= T_TUP8)
@@ -1409,7 +1406,6 @@ static uw dc_size_in(V v, dc_sz_t *z, int *immutable) {
       }
       return n;
     }
-    case T_SSTR: fpr_cpanic("send/keep: SString is linear-local");
     case T_DEVICE: case T_REGISTER: if (immutable) *immutable = 0; return total;
     case T_STR: case T_BIGINT: case T_BITS: return total;
     case T_PAP: {
@@ -1496,7 +1492,6 @@ static int dc_budget(V v, uw *left, unsigned depth) {
       }
       return 1;
     }
-    case T_SSTR: fpr_cpanic("send/keep: SString is linear-local");
     case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER: return budget_take(left, total);
     case T_PAP: {
       pap_t *p = (pap_t *)v;
@@ -2158,7 +2153,6 @@ static V kp_dup(V v) {
       return (V)n;
     }
     case T_ACTOR: return v;
-    case T_SSTR: fpr_cpanic("keep: SString is linear-local");
     case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER: {
       V n = fpr_alloc(total - FPR_MANAGED_PREFIX);
       __builtin_memcpy((void *)n, (void *)v, total - FPR_MANAGED_PREFIX);
@@ -2200,7 +2194,7 @@ static int kp_reaches(V v, uw *left) {
   for (;;) {
     if (ISINT(v) || !v || !fpr_in_heap(v)) return 0;
     hdr_t *h = (hdr_t *)v;
-    if (h->tid == T_ACTOR || h->tid == T_SSTR) return 0; /* shared; refused by the copy */
+    if (h->tid == T_ACTOR) return 0; /* shared; refused by the copy */
     if (h->tid == T_VEC) {
       fpr_hart_t *mh = fpr_hart();
       if (mh && mh->copy_movevec && vec_movable_here(v)) return 0;
@@ -2275,8 +2269,7 @@ static int has_vec(V v) {
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: return 1;
-    case T_ACTOR: case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER:
-    case T_SSTR: return 0;
+    case T_ACTOR: case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER: return 0;
     case T_PAP: {
       pap_t *p = (pap_t *)v;
       for (uw i = 0; i < p->nargs; i++)
@@ -2320,8 +2313,7 @@ static void vec_release_in(V v) {
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: if (!vec_movable_here(v) && !map_inplace(v)) fpr_vec_release(v); return; /* moved, or kept in place */
-    case T_ACTOR: case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER:
-    case T_SSTR: return;
+    case T_ACTOR: case T_STR: case T_BIGINT: case T_BITS: case T_DEVICE: case T_REGISTER: return;
     case T_PAP: {
       pap_t *p = (pap_t *)v;
       for (uw i = 0; i < p->nargs; i++) vec_release_in((V)p->args[i]);
@@ -4942,7 +4934,7 @@ static int veq_shallow(V a, V b) {
     if (!fpr_in_heap(a)) return 1;
     switch (TID(a)) {
       case T_STR: case T_BIGINT: case T_BITS: case T_VEC: case T_ACTOR: case T_PAP:
-      case T_DEVICE: case T_REGISTER: case T_SSTR: return 1;
+      case T_DEVICE: case T_REGISTER: return 1;
       default: break;
     }
 #else
@@ -4973,7 +4965,7 @@ static int veq_shallow(V a, V b) {
     return ((bits_t *)a)->val == ((bits_t *)b)->val;
   switch (x->tid) {
     case T_VEC: case T_ACTOR: case T_PAP:
-    case T_DEVICE: case T_REGISTER: case T_BITS: case T_SSTR:
+    case T_DEVICE: case T_REGISTER: case T_BITS:
       return 0; /* identity only, and a == b was already taken above */
     default: break;
   }

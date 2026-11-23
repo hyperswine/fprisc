@@ -442,7 +442,7 @@ runCallbacks reporting (Namespace ns) types@(TypeContext linears constructorSche
 
 poly (Forall ts rs _)=not (null ts && null rs)
 plain ty=case ty of
-  TC n->n `elem` ["Int","Bool","String","Atom","F32","F64","Unit"]
+  TC n->n `elem` ["Int","Bool","String","F32","F64","Unit"]
   TLayout _->True
   TTupT xs->all plain xs
   TRec row->fields row

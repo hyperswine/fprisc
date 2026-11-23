@@ -61,7 +61,7 @@ resolveCalls types input=do
           _->False
         _->False)
     plain ty=case ty of
-      TC n->n `elem` ["Int","Bool","Atom","F32","F64","String","Unit"]
+      TC n->n `elem` ["Int","Bool","F32","F64","String","Unit"]
       TLayout _->True
       TTupT xs->all plain xs
       TRec row->fields row

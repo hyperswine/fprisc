@@ -33,11 +33,6 @@ and a b = case a of True -> b | False -> False.
 or a b = case a of True -> True | False -> b.
 not b = case b of True -> False | False -> True.
 
-# SString: a fixed 128-byte inline string. No heap, no ARC -- it lives in
-# a caller-provided slab, cheap to pass on bare metal. Width hardcoded
-# (SStr.cap) system-wide for now; `SString n` (indexed width) is a
-# deliberate future step, not in this cut.
-SString 1 = Type Int.
 
 # ---- signatures (rows; `t` is the carrier convention) -----------------------
 
@@ -709,19 +704,6 @@ List = Struct Add Functor {
   drop = fn l n -> listDrop l n
 }.
 
-# ---- SString: fixed 128B inline string (runtime: sstr.c) --------------------
-
-SStr = Struct {
-  cap = 128,
-  new = fn u -> sstrNew u,
-  len = fn s -> sstrLen s,
-  at = fn s i -> sstrAt s i,
-  put = fn s i c -> sstrPut s i c,
-  push = fn s c -> sstrPush s c,
-  fromStr = fn str -> sstrFromStr str,
-  toStr = fn s -> sstrToStr s,
-  clear = fn s -> sstrClear s
-}.
 
 # ---- namespace-only structures over the HAL (no sig, pure grouping) ---------
 

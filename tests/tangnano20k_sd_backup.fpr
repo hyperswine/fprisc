@@ -3,18 +3,13 @@ profile base.
 # partition. No write operation is called. The host saves each tagged sector.
 Sd = use "std/tangnano20k/sd".
 need r = case r of Ok value -> value | Err why -> error why.
-fill : (at : Int | measure (end - at)) -> (end : Int) -> String -> SString -> SString .
-fill at end text buffer = if at >= end then buffer else
+fill : (at : Int | measure (end - at)) -> (end : Int) -> String -> List String -> List String .
+fill at end text acc = if at >= end then acc else
   byte = charAt text at;
   digits = "0123456789abcdef";
-  high = SStr.push buffer (charAt digits (byte / 16));
-  both = SStr.push high (charAt digits (byte % 16));
-  fill (at + 1) end text both.
-chunk at text =
-  buffer = fill at (at + 64) text (SStr.new Unit);
-  (part, done) = SStr.toStr buffer;
-  _ = drop done;
-  part.
+  pair = strcat (chr (charAt digits (byte / 16))) (chr (charAt digits (byte % 16)));
+  fill (at + 1) end text (pair :: acc).
+chunk at text = strJoin "" (wireRev (fill at (at + 64) text Nil) Nil).
 hex text = strJoin "" [chunk 0 text, chunk 64 text, chunk 128 text,
   chunk 192 text, chunk 256 text, chunk 320 text, chunk 384 text, chunk 448 text].
 dump card block = print "SD BACKUP {block} {hex (need (Sd.read card block))}".

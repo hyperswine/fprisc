@@ -13,7 +13,7 @@ inputs width argv =
   | _ -> error "usage: sol machine/tangnano20k/build.sol [PROGRAM [OUT]]".
 sources = ["machine/tangnano20k/crt0.S","machine/tangnano20k/base.c","machine/tangnano20k/sd_hal.c","machine/tangnano20k/pin76_hal.c",
   "machine/tangnano20k/unsupported.c","machine/builtin/heap.c","runtime/runtime.c","machine/builtin/unsafe.c",
-  "machine/builtin/tangnano20k/machine.c","runtime/i32.c","runtime/bits.c","runtime/vec.c","runtime/sstr.c",
+  "machine/builtin/tangnano20k/machine.c","runtime/i32.c","runtime/bits.c","runtime/vec.c",
   "runtime/mod.c","machine/virt/memshim.c"].
 > _ = Preset.apply Unit; width = B.setting "FPR_XLEN" "64"; abi = Board.abi width;
   (prog,out) = inputs width (args Unit); clock = B.setting "FPR_CPU_MHZ" "27";

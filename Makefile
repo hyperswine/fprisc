@@ -17,7 +17,7 @@ BUILD   ?= build
 IMAGE   ?= image.elf
 
 RT_CORE = $(RUNTIME)/runtime.c $(RUNTIME)/i32.c $(RUNTIME)/actors.c $(RUNTIME)/bits.c \
-          $(RUNTIME)/vec.c $(RUNTIME)/sstr.c $(RUNTIME)/mod.c $(RUNTIME)/buddy.c
+          $(RUNTIME)/vec.c $(RUNTIME)/mod.c $(RUNTIME)/buddy.c
 RT_VIRT = $(MACHINE)/virt/crt0.S $(MACHINE)/virt/ctx.S $(MACHINE)/virt/ctx_fab.c \
           $(MACHINE)/virt/hal.c $(MACHINE)/virt/memshim.c
 # EXTRA_RT: sources a HAL ABOVE the machine layer adds to a bare-metal image

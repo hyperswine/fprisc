@@ -501,15 +501,6 @@ builtinEnv =
       ("Rc.release", scheme [0] (TFn (sv 0) tUnit)),
       -- string / conversion prims (compiler-emitted or fpr_g_)
       ("str", scheme [0] (TFn (sv 0) tStr)),
-      -- SString: fixed 128B inline string (sstr.c fpr_g_ externs)
-      ("sstrNew", mono (TFn tUnit tSString)),
-      ("sstrLen", mono (TFn tSString (TTupT [tInt, tSString]))),
-      ("sstrAt", mono (TFn tSString (TFn tInt (TTupT [tInt, tSString])))),
-      ("sstrPut", mono (TFn tSString (TFn tInt (TFn tInt tSString)))),
-      ("sstrPush", mono (TFn tSString (TFn tInt tSString))),
-      ("sstrFromStr", mono (TFn tStr tSString)),
-      ("sstrToStr", mono (TFn tSString (TTupT [tStr, tSString]))),
-      ("sstrClear", mono (TFn tSString tSString)),
       ("strcat", mono (TFn tStr (TFn tStr tStr))),
       ("strlen", mono (TFn tStr tInt)),
       ("String.len", mono (TFn tStr tInt)),
@@ -1921,7 +1912,7 @@ inferTopsSession session previous capture prof sigs structs tops =
       -- record pretty schemes for reporting (user binds, in file order),
       -- and the same types as LINEARITY SHAPES: params peeled to the
       -- bind's own clause arity, so the checker can enforce
-      -- exactly-once on Vec/Handle/SString params even when the user
+      -- exactly-once on Vec/Handle params even when the user
       -- wrote no signature (the audited unannotated-main hole)
       let linNs = nub [n | TType n True _ _ <- tops]
       forM_ bindNames $ \n ->

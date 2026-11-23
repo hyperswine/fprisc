@@ -41,7 +41,7 @@ enum {
   T_TUPN = 0x10000000, T_TUPN_END = 0x10000000 + (1 << 24),
   /* runtime-internal typeids, far above user types (10+) and shapes (100+) */
   T_STR = 9000, T_PAP = 9001, T_DEVICE = 9002, T_REGISTER = 9003, T_BITS = 9004,
-  T_ACTOR = 9005, T_VEC = 9006, T_SSTR = 9007,
+  T_ACTOR = 9005, T_VEC = 9006,
   /* Hosted private list: 1..8 tagged payload slots, then a tail. The
    * nominal alternative occupies the upper bits of var. Nil stays Nil. */
   T_STORED_LIST = 9008,
@@ -1228,8 +1228,5 @@ V fpr_esp_cstack(void *fn, V a, V b, V c);
 #define FPR_FN_CSTACK(sym, cfn, ar) FPR_FN(sym, cfn, ar)
 #endif
 
-/* SString: fixed 128-byte inline string (sstr.c). len is the live count. */
-#define SSTR_CAP 128
-typedef struct { uint32_t tid, var; uw len; uint8_t bytes[SSTR_CAP]; } __attribute__((aligned(8))) sstr_t;
 
 #endif /* FPR_H */
