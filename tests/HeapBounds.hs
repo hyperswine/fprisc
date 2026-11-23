@@ -50,8 +50,8 @@ main=do
   need (case M.lookup root (H.analyse (H.fromFn True fn)) of Just (H.Unproved _)->True;_->False) "weak entry admitted"
   need (H.runtimeDemand (CodeSymbol "fpr_fn__x24arc_x2euniformBoxWord")==Just unit) "uniform box missing"
   need (H.runtimeDemand (CodeSymbol "fpr_alloc")==Nothing) "unbounded allocator guessed"
-  let scalarNames=[(n,2) | n<-["wordadd","wordsub","wordand","wordor","wordxor","wordeq","rawEq","rawNe","lt","gt","le","ge","addradd","addreq"]]
-        ++[(n,1) | n<-["wordnot","wordfromInt","wordtoInt","wordbits","addrfromWord","addrtoWord","addrnull"]]
+  let scalarNames=[(n,2) | n<-["I64add","I64sub","I64and","I64or","I64xor","I64eq","I64ne","I64lt","I64gt","I64le","I64ge","rawEq","rawNe","lt","gt","le","ge","addradd","addreq"]]
+        ++[(n,1) | n<-["I64not","I64trunc","I64toInt","addrofI64","addrtoI64","addrnull"]]
       adapter n ar=I.Callee ("$arc."++n) (I.Foreign (functionSymbol ("$arc."++n))) (replicate ar I.TVal) I.TVal
       callFn c ar tailCall=let args=map I.VId [0..ar-1];r=I.VId ar in
         I.Fn "scalar" (map (('p':) . show) [0..ar-1]) I.TVal (I.BId 0)
@@ -60,11 +60,11 @@ main=do
       scalarBound c ar tailCall=M.lookup (H.Entry (CodeSymbol "fpr_fn_scalar")) (H.analyse (H.fromFn False (callFn c ar tailCall)))
   forM_ scalarNames $ \(n,ar)->forM_ [False,True] $ \tailCall->do
     need (scalarBound (adapter n ar) ar tailCall==Just (H.Bounded H.zero)) ("selected scalar still treated as a runtime call: "++n)
-  let valid=adapter "wordadd" 2
+  let valid=adapter "I64add" 2
   forM_ [valid {I.calleeKind=I.Local},valid {I.calleeKind=I.Foreign "another_symbol"},
          valid {I.calleeName="another_name"},valid {I.calleeParams=[I.TVal]},valid {I.calleeResult=I.TInt}] $ \c->
     need (scalarAdapter c 2==Nothing) "spelling, target or incomplete signature supplied scalar evidence"
-  forM_ [("add",2),("div",2),("wordshl",2),("wordshr",2),("wordmask",2),("memread8",1),("memwriteWord",2),("cpuirqEnable",1)] $ \(n,ar)->
+  forM_ [("add",2),("div",2),("I64shl",2),("I64shr",2),("I64mask",2),("memread8",1),("memwrite64",2),("cpuirqEnable",1)] $ \(n,ar)->
     need (case scalarBound (adapter n ar) ar False of Just (H.Unproved _)->True;_->False) ("guarded/unsafe adapter admitted: "++n)
   forM_ [H.zero,H.Demand 1 0,H.Demand 1 24,H.Demand 7 130,H.Demand 500 12000] $ \d->do
     bytes<-either error pure (H.arenaBytes d)

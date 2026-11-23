@@ -18,7 +18,7 @@ static V uniform_unbox(V value, unsigned variant, unsigned width) {
 #define UNIFORM_SCALAR(name,variant,width) \
   V fpr_fn__x24arc_x2euniformBox##name(V v) { return uniform_box(v,variant,width); } \
   V fpr_fn__x24arc_x2euniformUnbox##name(V v) { return uniform_unbox(v,variant,width); }
-UNIFORM_SCALAR(Word,2,64)
+UNIFORM_SCALAR(Word,4,64)
 UNIFORM_SCALAR(Addr,3,64)
 UNIFORM_SCALAR(F64,5,64)
 UNIFORM_SCALAR(F32,6,32)
@@ -36,7 +36,7 @@ V fpr_fn__x24arc_x2euniformUnboxData(V value,V tid) {
   if(!ISINT(tid) || !value || ISINT(value) || TID(value)!=(uw)UNTAG(tid))
     fpr_cpanic("Builtin: uniform nominal representation mismatch");
   if((UNTAG(tid)==T_BOOL || UNTAG(tid)==T_UNIT) &&
-      (fpr_in_heap(value) || ((hdr_t *)value)->var>(UNTAG(tid)==T_BOOL?1u:0u)))
+      (fpr_in_heap(value) || VAR(value)>(UNTAG(tid)==T_BOOL?1u:0u)))
     fpr_cpanic("Builtin: uniform immortal representation mismatch");
   return value;
 }
@@ -53,7 +53,7 @@ V fpr_fn__x24arc_x2euniformTagEq(V value,V tid,V variant) {
   if(!ISINT(tid) || !ISINT(variant) || UNTAG(tid)<0 || UNTAG(variant)<0)
     fpr_cpanic("Builtin: uniform tag test descriptor mismatch");
   int equal=value && !ISINT(value) && TID(value)==(uw)UNTAG(tid)
-      && ((hdr_t*)value)->var==(uw)UNTAG(variant);
+      && VAR(value)==(uw)UNTAG(variant);
   fpr_builtin_release(value);
   return equal ? V_TRUE : V_FALSE;
 }

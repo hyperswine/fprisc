@@ -1,10 +1,10 @@
 profile builtin.
 check ok = case ok of True -> Unit | False -> error "SDRAM builtin check failed".
 writePages p n = case n == 32 of True -> Unit | False ->
-  _ = Mem.writeWord (Addr.add p (n * 65536)) (Word.fromInt (n + 12345));
+  _ = Mem.write32 (Addr.add p (n * 65536)) (I32.trunc (n + 12345));
   writePages p (n + 1).
 readPages p n = case n == 32 of True -> Unit | False ->
-  _ = check (Word.eq (Mem.readWord (Addr.add p (n * 65536))) (Word.fromInt (n + 12345)));
+  _ = check (Mem.read32 (Addr.add p (n * 65536)) == I32.trunc (n + 12345));
   readPages p (n + 1).
 main =
   _ = print "SDRAM ALLOC START";

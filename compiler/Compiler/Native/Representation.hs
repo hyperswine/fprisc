@@ -57,7 +57,7 @@ prepareFor uniform native=do
       -- unconstrained slots, while concrete incompatible evidence must still
       -- reach the representation check and fail.
       in if name=="machineInterrupt"
-         then (map (rootSlot (TC "Word")) ps,rootSlot (TC "Unit") r)
+         then (map (rootSlot (TC "I64")) ps,rootSlot (TC "Unit") r)
          else (ps,r)
     rootSlot expected (TV _)=expected
     rootSlot _ concrete=concrete

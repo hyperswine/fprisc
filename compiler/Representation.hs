@@ -227,30 +227,10 @@ primitiveShape n = M.lookup n shapes
               ("$uniform.unboxData",sh [tagged,t] AnyValue),
               ("$uniform.project",sh [tagged,t] tagged),
               ("$uniform.tagEq",sh [tagged,t,t] b)]
-          ++ [ ("Word." ++ x, sh ps result)
-               | (x, ps, result) <-
-                   [ ("fromInt", [t], w),
-                     ("toInt", [w], t),
-                     ("bits", [u], t),
-                     ("and", [w, w], w),
-                     ("or", [w, w], w),
-                     ("xor", [w, w], w),
-                     ("add", [w, w], w),
-                     ("sub", [w, w], w),
-                     ("not", [w], w),
-                     ("shl", [w, t], w),
-                     ("shr", [w, t], w),
-                     ("mask", [t, t], w),
-                     ("eq", [w, w], b),
-                     ("bitSet", [w, t], w),
-                     ("bitClear", [w, t], w),
-                     ("bitTest", [w, t], b)
-                   ]
-             ]
           ++ [ ("Addr." ++ x, sh ps result)
                | (x, ps, result) <-
-                   [ ("fromWord", [w], a),
-                     ("toWord", [a], w),
+                   [ ("ofI64", [w], a),
+                     ("toI64", [a], w),
                      ("add", [a, t], a),
                      ("null", [u], a),
                      ("eq", [a, a], b)
@@ -260,12 +240,12 @@ primitiveShape n = M.lookup n shapes
                | (x, ps, result) <-
                    [ ("read8", [a], t),
                      ("read16", [a], t),
-                     ("read32", [a], w),
-                     ("readWord", [a], w),
+                     ("read32", [a], t),
+                     ("read64", [a], w),
                      ("write8", [a, t], u),
                      ("write16", [a, t], u),
-                     ("write32", [a, w], u),
-                     ("writeWord", [a, w], u),
+                     ("write32", [a, t], u),
+                     ("write64", [a, w], u),
                      ("atomicExchange", [a, w], w),
                      ("compareExchange", [a, w, w], w),
                      ("alloc", [t], a),
@@ -316,14 +296,26 @@ primitiveShape n = M.lookup n shapes
                      "shr",
                      "sar",
                      "rotl",
-                     "rotr"
+                     "rotr",
+                     "setBit",
+                     "clearBit",
+                     "mask"
                    ]
              ]
-          ++ [("I32." ++ x, sh [t, t] b) | x <- ["<", ">", "<=", ">=", "==", "!=", "ltU", "gtU", "leU", "geU"]]
+          ++ [("I32." ++ x, sh [t, t] b) | x <- ["<", ">", "<=", ">=", "==", "!=", "ltU", "gtU", "leU", "geU", "testBit"]]
           ++ [("I32." ++ x, sh [t] t) | x <- ["not", "neg", "clz", "ctz", "popcnt", "trunc"]]
           ++ [("I32.ofInt", sh [t] o), ("I32.ofIntU", sh [t] o)]
           ++ [("I32." ++ x, sh [t] s) | x <- ["str", "strU", "hex"]]
           ++ [("I32.toInt", sh [t] r), ("I32.toIntU", sh [t] r), ("I32.parse", sh [s] r)]
+          ++ [("I64." ++ x, sh [w, w] w) | x <- ["+", "-", "*", "/", "mod", "quot", "rem", "divU", "remU", "and", "or", "xor"]]
+          ++ [("I64." ++ x, sh [w, t] w) | x <- ["shl", "shr", "sar", "rotl", "rotr", "setBit", "clearBit"]]
+          ++ [("I64." ++ x, sh [w, w] b) | x <- ["<", ">", "<=", ">=", "==", "!=", "ltU", "gtU", "leU", "geU"]]
+          ++ [("I64.testBit", sh [w, t] b), ("I64.mask", sh [t, t] w)]
+          ++ [("I64." ++ x, sh [w] w) | x <- ["not", "neg"]]
+          ++ [("I64." ++ x, sh [w] t) | x <- ["clz", "ctz", "popcnt", "toInt"]]
+          ++ [("I64.trunc", sh [t] w), ("I64.ofInt", sh [t] o), ("I64.ofIntU", sh [t] o)]
+          ++ [("I64." ++ x, sh [w] s) | x <- ["str", "strU", "hex"]]
+          ++ [("I64.parse", sh [s] r)]
           ++ [("$uniform."++direction++name,shape)
               | (name,rep)<-[("Word",w),("Addr",a),("F64",d),("F32",f)],
                 (direction,shape)<-[("box",sh [rep] tagged),("unbox",sh [tagged] rep)]]

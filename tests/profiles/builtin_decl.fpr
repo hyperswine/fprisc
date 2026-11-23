@@ -1,2 +1,2 @@
 profile builtin.
-main = Word.toInt (Word.add (Word.fromInt 2) (Word.fromInt 3)).
+main = I64.toInt (I64.trunc 2 + I64.trunc 3).

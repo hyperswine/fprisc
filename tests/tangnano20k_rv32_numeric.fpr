@@ -30,11 +30,11 @@ main =
   _ = expect "i64 signed" (I64.str (I64.trunc -7 / I64.trunc 2) == "-4");
   _ = expect "i64 shifts" (I64.hex (I64.rotr one 1) == "8000000000000000");
   _ = expect "i64 counts" (I64.popcnt minus1 == 64);
-  _ = expect "i64 toInt promotes" ("{I64.toInt max64}" == "Ok 9223372036854775807");
+  _ = expect "i64 toInt promotes" ("{I64.toInt max64}" == "9223372036854775807");
   _ = expect "i64 parse refuses" (rejected (I64.parse "18446744073709551616"));
-  _ = expect "i64 full-word halves" (I64.hex (I64.fromWords (I64.hiWord minus1) (I64.loWord minus1)) == "ffffffffffffffff");
+  _ = expect "i64 full-word halves" (I64.hex (I64.fromI32s (I64.hi32 minus1) (I64.lo32 minus1)) == "ffffffffffffffff");
   parts = parsed "0x12345678fedcba98";
-  _ = expect "i64 mixed-word halves" (I64.hex (I64.fromWords (I64.hiWord parts) (I64.loWord parts)) == "12345678fedcba98");
+  _ = expect "i64 mixed-word halves" (I64.hex (I64.fromI32s (I64.hi32 parts) (I64.lo32 parts)) == "12345678fedcba98");
   _ = print "NUMERIC I64 HOLDS";
   _ = expect "f64 finite literal" (I64.hex (I64.ofF64Bits 1.23456789012345) == "3ff3c0ca428c59dd");
   _ = expect "f64 literal bits" (I64.hex (I64.ofF64Bits -0.0) == "8000000000000000");

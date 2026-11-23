@@ -368,6 +368,8 @@ BUILTIN_COMPILER_FLAGS = --target=rv32
 BUILTIN_LDFLAGS += $(shell $(CROSS)gcc -march=rv32im -mabi=ilp32 -print-libgcc-file-name)
 else ifneq ($(BUILTIN_BOARD),virt)
 $(error unknown BUILTIN_BOARD=$(BUILTIN_BOARD))
+else
+BUILTIN_LDFLAGS += $(BARE_LIBGCC)
 endif
 ifeq ($(ARC),1)
 BUILTIN_COMPILER_FLAGS = --arc

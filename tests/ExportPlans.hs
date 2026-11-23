@@ -133,7 +133,7 @@ checkRepresentations=do
   let polyProg=M.fromList
         [("identity",(["x"],Core.CVar "x")),
          ("main",([],Core.CLet "a" (Core.CApp (Core.CVar "identity") (Core.CInt 1))
-                     (Core.CApp (Core.CVar "identity") (Core.CApp (Core.CVar "Word.fromInt") (Core.CInt 2)))))]
+                     (Core.CApp (Core.CVar "identity") (Core.CApp (Core.CVar "I64.trunc") (Core.CInt 2)))))]
       (specProg,_,_,declined)=right (Representation.representWithOptions True mempty M.empty polyProg)
       (arcProg,arcDeclined)=right (Arc.lowerArcWithOptions True mempty M.empty M.empty polyProg)
   check "representation-polymorphic identity clones on demand under C2"
@@ -144,16 +144,16 @@ checkRepresentations=do
     (Representation.representWithOptions False mempty M.empty polyProg)
   let listProg=M.fromList
         [("buildI",(["n"],Core.CMk 2 1 [Core.CVar "n",Core.CMk 2 0 []])),
-         ("buildW",(["n"],Core.CMk 2 1 [Core.CApp (Core.CVar "Word.fromInt") (Core.CVar "n"),Core.CMk 2 0 []])),
+         ("buildW",(["n"],Core.CMk 2 1 [Core.CApp (Core.CVar "I64.trunc") (Core.CVar "n"),Core.CMk 2 0 []])),
          ("main",([],Core.CLet "xs" (Core.CApp (Core.CVar "buildI") (Core.CInt 1))
                      (Core.CLet "ys" (Core.CApp (Core.CVar "buildW") (Core.CInt 2)) (Core.CInt 0))))]
       (_,listKinds,_,listDeclined)=right (Representation.representWithOptions True mempty M.empty listProg)
-      wordFields=[k | (Core.CApp (Core.CVar "Word.fromInt") _,k)<-M.toList listKinds]
+      wordFields=[k | (Core.CApp (Core.CVar "I64.trunc") _,k)<-M.toList listKinds]
       nominalTids=[tid | (Core.CMk tid _ _, _)<-M.toList listKinds]
   -- The two instances stay apart through the per-instance field table, not
   -- through a synthetic runtime type id: every walker in runtime.c recognises
   -- a List by its nominal tid, so a synthetic id is C1 piece 2 work.
-  check "disjoint List Int and List Word instances specialize without merging"
+  check "disjoint List Int and List I64 instances specialize without merging"
     (null listDeclined && wordFields==[Rep.RawWord] && all (==2) nominalTids)
   -- Two cells of one list must agree; the source checker owns element
   -- homogeneity, so the representation check is exercised where two instances
@@ -161,6 +161,6 @@ checkRepresentations=do
   let mixedBranches=M.fromList
         [("main",([],Core.CIf (Core.CMk 1 1 [])
                      (Core.CMk 2 1 [Core.CInt 1,Core.CMk 2 0 []])
-                     (Core.CMk 2 1 [Core.CApp (Core.CVar "Word.fromInt") (Core.CInt 2),Core.CMk 2 0 []])))]
-  refused "List Int and List Word values meeting in one branch are refused" "incompatible representations"
+                     (Core.CMk 2 1 [Core.CApp (Core.CVar "I64.trunc") (Core.CInt 2),Core.CMk 2 0 []])))]
+  refused "List Int and List I64 values meeting in one branch are refused" "incompatible representations"
     (Representation.representWithOptions True mempty M.empty mixedBranches)

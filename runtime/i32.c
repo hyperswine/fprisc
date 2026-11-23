@@ -70,6 +70,20 @@ static V rotr(V a,V k) {
   uint32_t x=fpr_i32_bits(a);unsigned n=count(k);
   return fpr_i32_pack(n ? (x>>n)|(x<<(32-n)) : x);
 }
+static unsigned bit32(V k) {
+  sw n=UNTAG(k);
+  if (n<0 || n>=32) fpr_trap("I32: bit index out of range");
+  return (unsigned)n;
+}
+static V setBit(V a,V k) { return fpr_i32_pack(fpr_i32_bits(a)|(1u<<bit32(k))); }
+static V clearBit(V a,V k) { return fpr_i32_pack(fpr_i32_bits(a)&~(1u<<bit32(k))); }
+static V testBit(V a,V k) { return BOOL((fpr_i32_bits(a)>>bit32(k))&1u); }
+static V mask32(V countV,V offsetV) {
+  sw n=UNTAG(countV),k=UNTAG(offsetV);
+  if (n<0 || k<0 || (uint32_t)n>32u || (uint32_t)k>32u-(uint32_t)n)
+    fpr_trap("I32.mask: out of range");
+  return fpr_i32_pack(!n ? 0u : ((~(uint32_t)0>>(32u-(uint32_t)n))<<k));
+}
 /* Written without compiler bit builtins: manual bare-metal links do not
  * require libgcc merely to count a word's bits. */
 static V clz(V a) {
@@ -222,6 +236,8 @@ FPR_FN(fpr_g_I32_x2eand,and_,2); FPR_FN(fpr_g_I32_x2eor,or_,2); FPR_FN(fpr_g_I32
 FPR_FN(fpr_g_I32_x2enot,not_,1); FPR_FN(fpr_g_I32_x2eneg,neg,1);
 FPR_FN(fpr_g_I32_x2eshl,shl,2); FPR_FN(fpr_g_I32_x2eshr,shr,2); FPR_FN(fpr_g_I32_x2esar,sar,2);
 FPR_FN(fpr_g_I32_x2erotl,rotl,2); FPR_FN(fpr_g_I32_x2erotr,rotr,2);
+FPR_FN(fpr_g_I32_x2esetBit,setBit,2); FPR_FN(fpr_g_I32_x2eclearBit,clearBit,2);
+FPR_FN(fpr_g_I32_x2etestBit,testBit,2); FPR_FN(fpr_g_I32_x2emask,mask32,2);
 FPR_FN(fpr_g_I32_x2eclz,clz,1); FPR_FN(fpr_g_I32_x2ectz,ctz,1); FPR_FN(fpr_g_I32_x2epopcnt,popcnt,1);
 FPR_FN(fpr_g_I32_x2eofInt,ofInt,1); FPR_FN(fpr_g_I32_x2eofIntU,ofIntU,1); FPR_FN(fpr_g_I32_x2etrunc,trunc_,1);
 FPR_FN(fpr_g_I32_x2etoInt,toInt,1); FPR_FN(fpr_g_I32_x2etoIntU,toIntU,1);

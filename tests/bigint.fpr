@@ -62,7 +62,7 @@ main =
   _ = expect "I64.ofInt big" "{I64.ofInt big1} {I64.ofInt (p100)}" "Some 4611686018427387904 None";
   _ = expect "I64.ofIntU big" "{I64.ofIntU (pow 2 64 - 1)} {I64.ofIntU (pow 2 64)}" "Some (-1) None";
   _ = expect "I64.trunc big" (I64.str (I64.trunc (p100 + 9))) "9";
-  _ = expect "I64.toInt min" "{I64.toInt (I64.shl (I64.trunc 1) 63)}" "Ok (-9223372036854775808)";
+  _ = expect "I64.toInt min" "{I64.toInt (I64.shl (I64.trunc 1) 63)}" "-9223372036854775808";
   _ = expect "F64.ofInt big" (F64.str (F64.ofInt (pow 2 70) / F64.ofInt (pow 2 69))) "2";
   _ = expect "actor send big" (roundTrip p100) "True [1267650600228229401496703205376, -1267650600228229401496703205376]";
   print "bigint: all ok".

@@ -345,7 +345,7 @@ impureViewPrimitives = S.fromList
   [ "print", "Sys.stderr", "Sys.readLine", "Sys.env", "Sys.args", "Sys.name", "Sys.exit", "Sys.timeUs",
     "fileRead", "fileWrite", "fileAppend", "fileExists",
     "read", "write", "Mem.read8", "Mem.write8", "Mem.read16", "Mem.write16",
-    "Mem.read32", "Mem.write32", "Mem.readWord", "Mem.writeWord",
+    "Mem.read32", "Mem.write32", "Mem.read64", "Mem.write64",
     "Mem.alloc", "Mem.realloc", "Mem.free", "Mem.atomicExchange", "Mem.compareExchange", "Mem.fence",
     "CPU.csrRead", "CPU.csrWrite", "CPU.irqSave", "CPU.irqRestore", "CPU.irqEnable", "CPU.wait", "CPU.instructionFence",
     "device", "reg8", "reg32",

@@ -3,7 +3,7 @@
 # The original C allocator -- single-threaded, coalescing, first-fit,
 # a 16-byte meta pair (capacity, reference count) before every payload,
 # the ARC release worklist threaded through dead blocks -- written over
-# Word/Addr and raw memory only, so it allocates nothing to allocate.
+# I64/Addr and raw memory only, so it allocates nothing to allocate.
 # Compiled as a LIBRARY unit (make ... HEAP=fpr) its exports carry the
 # C symbols heap.c defined, and the C runtime, the ARC adapters and the
 # program link against it unchanged.
@@ -22,7 +22,7 @@
 # added to the language to end: a Block is not an Addr, `next` cannot be
 # handed a payload, and the compiler owns the numbers.  The code it
 # generates is the code the offsets generated (docs/2026-09-19-LAYOUTS.md).
-# Sizes and counts are compared as Ints (Word.toInt keeps 63 bits, which
+# Sizes and counts are compared as Ints (I64.toInt keeps 63 bits, which
 # is every size and address this machine has).
 #
 # One grammar rule this file lives by: a `case` is never written inside
@@ -37,32 +37,32 @@ profile builtin.
 
 # ---- the layouts ------------------------------------------------------------------------
 Block = Layout {
-  size    : Word,    # the whole block, header included
+  size    : I64,     # the whole block, header included
   prev    : Block,
   next    : Block,
-  used    : Word,
-  fields  : Word,    # an ADT's field count (0: a plain allocation)
+  used    : I64,
+  fields  : I64,     # an ADT's field count (0: a plain allocation)
   pending : Block,   # the ARC release worklist, threaded through dead blocks
   layout  : Desc,    # which fields own their referent; null = all of them
-  _       : Word,
-  cap     : Word,    # the meta pair the C runtime reads: capacity,
-  rc      : Word     # and the reference count
+  _       : I64,
+  cap     : I64,     # the meta pair the C runtime reads: capacity,
+  rc      : I64      # and the reference count
 }.
 # the allocator's one piece of state, at a linker symbol
-Heap = Layout { head : Block, low : Word, high : Word }.
+Heap = Layout { head : Block, low : I64, high : I64 }.
 # a field descriptor: magic, count, then one kind byte per field
-Desc = Layout { magic : U32, count : Word @ 8 }.
+Desc = Layout { magic : U32, count : I64 @ 8 }.
 
 # ---- words, the state cell ---------------------------------------------------------------
-w n = Word.fromInt n.
-i x = Word.toInt x.
+w n = I64.trunc n.
+i x = I64.toInt x.
 notB b = case b of True -> False | False -> True.
 both a b = case a of True -> b | False -> False.
 st u = Heap.at (Addr.symbol "_heap_state").
 headB u = Heap.head (st Unit).
 low u = Heap.low (st Unit).
 high u = Heap.high (st Unit).
-alignUp x = Word.and (Word.add x (w 15)) (Word.not (w 15)).
+alignUp x = I64.and (x + w 15) (I64.not (w 15)).
 
 used b = i (Block.used b) != 0.
 fields b = i (Block.fields b).
@@ -73,24 +73,24 @@ kindAt lay k = Mem.read8 (Addr.add (Desc.addr lay) (Desc.sizeOf Unit + k)).
 zeroWords a n = case n <= 0 of
     True -> Unit
   | False ->
-    _ = Mem.writeWord a (w 0);
+    _ = Mem.write64 a (w 0);
     zeroWords (Addr.add a 8) (n - 1).
 copyWords dst src n = case n <= 0 of
     True -> Unit
   | False ->
-    _ = Mem.writeWord dst (Mem.readWord src);
+    _ = Mem.write64 dst (Mem.read64 src);
     copyWords (Addr.add dst 8) (Addr.add src 8) (n - 1).
 
 # ---- init ------------------------------------------------------------------------------
 heapInit : Addr -> Addr -> Unit .
 heapInit start end =
-  lo = alignUp (Addr.toWord start);
-  hi = Word.and (Addr.toWord end) (Word.not (w 15));
+  lo = alignUp (Addr.toI64 start);
+  hi = I64.and (Addr.toI64 end) (I64.not (w 15));
   _ = case i hi <= i lo of True -> error "Builtin: heap too small" | False -> Unit;
-  _ = case i (Word.sub hi lo) < 96 of True -> error "Builtin: heap too small" | False -> Unit;
-  h = Block.at (Addr.fromWord lo);
+  _ = case i (hi - lo) < 96 of True -> error "Builtin: heap too small" | False -> Unit;
+  h = Block.at (Addr.ofI64 lo);
   _ = zeroWords (Block.addr h) 8;
-  _ = Block.setSize h (Word.sub hi lo);
+  _ = Block.setSize h (hi - lo);
   _ = Heap.setHead (st Unit) h;
   _ = Heap.setLow (st Unit) lo;
   Heap.setHigh (st Unit) hi.
@@ -99,8 +99,8 @@ heapInit start end =
 # a live heap payload: not a tagged Int, inside [low + prefix, high)
 inHeap : Addr -> Bool .
 inHeap v =
-  x = Addr.toWord v;
-  case Word.bitTest x 0 of
+  x = Addr.toI64 v;
+  case I64.testBit x 0 of
     True -> False
   | False -> both (i x >= i (low Unit) + Block.sizeOf Unit) (i x < i (high Unit)).
 
@@ -113,19 +113,19 @@ findHere b v = case both (Addr.eq (payload b) v) (used b) of
   | False -> findFrom (Block.next b) v.
 find v = findFrom (headB Unit) v.
 
-liveAllocations : Unit -> Word .
+liveAllocations : Unit -> I64 .
 liveAllocations u = w (countUsed (headB Unit) 0).
 countUsed b n = case Block.isNull b of
     True -> n
   | False -> countUsed (Block.next b) (case used b of True -> n + 1 | False -> n).
 
 # ---- alloc / free / realloc -----------------------------------------------------------
-split b size = case i (Word.sub (Block.size b) size) < 96 of
+split b size = case i (Block.size b - size) < 96 of
     True -> Unit
   | False ->
     n = Block.at (Addr.add (Block.addr b) (i size));
     _ = zeroWords (Block.addr n) 8;
-    _ = Block.setSize n (Word.sub (Block.size b) size);
+    _ = Block.setSize n (Block.size b - size);
     _ = Block.setPrev n b;
     _ = Block.setNext n (Block.next b);
     _ = linkBack (Block.next b) n;
@@ -139,7 +139,7 @@ claim b size =
   _ = Block.setFields b (w 0);
   _ = Block.setPending b (Block.null Unit);
   _ = Block.setLayout b (Desc.null Unit);
-  _ = Block.setCap b (Word.sub (Block.size b) (w 64));
+  _ = Block.setCap b (Block.size b - w 64);
   _ = Block.setRc b (w 1);
   p = payload b;
   _ = zeroWords p ((i (Block.size b) - Block.sizeOf Unit) / 8);
@@ -152,12 +152,12 @@ fitHere b size = case both (notB (used b)) (i (Block.size b) >= i size) of
     True -> claim b size
   | False -> firstFit (Block.next b) size.
 
-alloc : Word -> Addr .
+alloc : I64 -> Addr .
 alloc bytes =
-  _ = case Word.bitTest bytes 62 of True -> error "Builtin: allocation overflow" | False -> Unit;
-  _ = case Word.bitTest bytes 63 of True -> error "Builtin: allocation overflow" | False -> Unit;
-  size0 = Word.add (w 80) (alignUp bytes);
-  size = case Word.eq size0 (w 80) of True -> w 96 | False -> size0;
+  _ = case I64.testBit bytes 62 of True -> error "Builtin: allocation overflow" | False -> Unit;
+  _ = case I64.testBit bytes 63 of True -> error "Builtin: allocation overflow" | False -> Unit;
+  size0 = w 80 + alignUp bytes;
+  size = case size0 == w 80 of True -> w 96 | False -> size0;
   firstFit (headB Unit) size.
 
 merge b =
@@ -169,7 +169,7 @@ mergeNext b n = case used n of
     True -> Unit
   | False -> absorb b n.
 absorb b n =
-  _ = Block.setSize b (Word.add (Block.size b) (Block.size n));
+  _ = Block.setSize b (Block.size b + Block.size n);
   _ = Block.setNext b (Block.next n);
   linkBack (Block.next n) b.
 
@@ -180,7 +180,7 @@ free v = case Addr.eq v (Addr.null Unit) of
 # (a panic's text must be a LITERAL at the call: a raw unit is checked
 # allocation-free, and `error` through a variable cannot be)
 freeLive b =
-  _ = case Word.eq (Block.rc b) (w 1) of True -> Unit | False -> error "Builtin: free of shared allocation";
+  _ = case Block.rc b == w 1 of True -> Unit | False -> error "Builtin: free of shared allocation";
   _ = Block.setUsed b (w 0);
   _ = merge b;
   mergePrev (Block.prev b).
@@ -192,18 +192,18 @@ mergeIfFree p = case used p of True -> Unit | False -> merge p.
 # (a `case` arm whose body is a `_ = e; body` block takes the arms after
 # it into the block, so the blocks live in helpers)
 freeNull v = _ = free v; Addr.null Unit.
-realloc : Addr -> Word -> Addr .
+realloc : Addr -> I64 -> Addr .
 realloc v bytes = case Addr.eq v (Addr.null Unit) of
     True -> allocOrNull bytes
   | False -> reallocLive (find v) v bytes.
-allocOrNull bytes = case Word.eq bytes (w 0) of True -> Addr.null Unit | False -> alloc bytes.
+allocOrNull bytes = case bytes == w 0 of True -> Addr.null Unit | False -> alloc bytes.
 reallocLive b v bytes =
-  _ = case Word.eq (Block.rc b) (w 1) of True -> Unit | False -> error "Builtin: realloc of shared allocation";
-  case Word.eq bytes (w 0) of
+  _ = case Block.rc b == w 1 of True -> Unit | False -> error "Builtin: realloc of shared allocation";
+  case bytes == w 0 of
     True -> freeNull v
   | False -> grow b v bytes.
 grow b v bytes =
-  cap = Word.sub (Block.size b) (w (Block.sizeOf Unit));
+  cap = Block.size b - w (Block.sizeOf Unit);
   case i bytes <= i cap of
     True -> v
   | False -> move v bytes (i cap).
@@ -219,11 +219,11 @@ retain v = case inHeap v of
     False -> v
   | True -> retainLive (find v) v.
 retainLive b v =
-  _ = case Word.eq (Block.rc b) (Word.not (w 0)) of True -> error "Builtin: reference count overflow" | False -> Unit;
-  _ = Block.setRc b (Word.add (Block.rc b) (w 1));
+  _ = case Block.rc b == I64.not (w 0) of True -> error "Builtin: reference count overflow" | False -> Unit;
+  _ = Block.setRc b (Block.rc b + w 1);
   v.
 
-allocAdt : Word -> Word -> Addr .
+allocAdt : I64 -> I64 -> Addr .
 allocAdt bytes n =
   _ = case i bytes < 8 of True -> error "Builtin: invalid ADT layout" | False -> Unit;
   _ = case i n > (i bytes - 8) / 8 of True -> error "Builtin: invalid ADT layout" | False -> Unit;
@@ -241,10 +241,10 @@ enqueue v work = case inHeap v of
     False -> work
   | True -> enqueueLive (find v) work.
 enqueueLive b work =
-  _ = case Word.eq (Block.rc b) (w 0) of True -> error "Builtin: duplicate ownership or cycle" | False -> Unit;
-  left = Word.sub (Block.rc b) (w 1);
+  _ = case Block.rc b == w 0 of True -> error "Builtin: duplicate ownership or cycle" | False -> Unit;
+  left = Block.rc b - w 1;
   _ = Block.setRc b left;
-  case Word.eq left (w 0) of
+  case left == w 0 of
     True -> push b work
   | False -> work.
 push b work = _ = Block.setPending b work; b.
@@ -265,7 +265,7 @@ visit b fp k n work = case k >= n of
     True -> work
   | False -> visit b (Addr.add fp 8) (k + 1) n (visitField (Block.layout b) fp k work).
 visitField lay fp k work = case isManaged lay k of
-    True -> enqueue (Addr.fromWord (Mem.readWord fp)) work
+    True -> enqueue (Addr.ofI64 (Mem.read64 fp)) work
   | False -> work.
 isManaged lay k = case Desc.isNull lay of
     True -> True
@@ -276,14 +276,14 @@ setLayout : Addr -> Addr -> Unit .
 setLayout v descriptor =
   b = find v;
   d = Desc.at descriptor;
-  _ = case Word.eq (Desc.magic d) (w 9000) of True -> Unit | False -> error "Builtin: invalid field descriptor";
+  _ = case Desc.magic d == I32.trunc 9000 of True -> Unit | False -> error "Builtin: invalid field descriptor";
   _ = case i (Desc.count d) == fields b of True -> Unit | False -> error "Builtin: invalid field descriptor";
   Block.setLayout b d.
 
-fieldCount : Addr -> Word .
+fieldCount : Addr -> I64 .
 fieldCount v = w (fields (find v)).
 
-fieldKind : Addr -> Word -> Word .
+fieldKind : Addr -> I64 -> I64 .
 fieldKind v k =
   b = find v;
   _ = case i k >= fields b of True -> error "Builtin: field index out of range" | False -> Unit;

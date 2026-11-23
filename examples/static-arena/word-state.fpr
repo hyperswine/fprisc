@@ -1,7 +1,7 @@
 profile builtin.
-seed : Word -> Word.
+seed : I64 -> I64.
 seed n = n.
-advance : Word -> Word -> Word.
-advance state n = Word.add state n.
-choose : Bool -> Word -> Word -> Word.
+advance : I64 -> I64 -> I64.
+advance state n = state + n.
+choose : Bool -> I64 -> I64 -> I64.
 choose b x y = if b then x else y.

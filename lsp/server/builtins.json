@@ -1,208 +1,13 @@
 {
- "Word.fromInt": {
-  "sig": "Word.fromInt : Int -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.fromInt : Int -> Word",
-    "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.toInt": {
-  "sig": "Word.toInt : Word -> Int",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.toInt : Word -> Int",
-    "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.bits": {
-  "sig": "Word.bits : Unit -> Int",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.bits : Unit -> Int",
-    "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.and": {
-  "sig": "Word.and : Word -> Word -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Bitwise AND on an unsigned machine Word.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.and : Word -> Word -> Word",
-    "doc": "Bitwise AND on an unsigned machine Word.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.or": {
-  "sig": "Word.or : Word -> Word -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Bitwise OR on an unsigned machine Word.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.or : Word -> Word -> Word",
-    "doc": "Bitwise OR on an unsigned machine Word.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.xor": {
-  "sig": "Word.xor : Word -> Word -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Bitwise exclusive OR on an unsigned machine Word.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.xor : Word -> Word -> Word",
-    "doc": "Bitwise exclusive OR on an unsigned machine Word.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.add": {
-  "sig": "Word.add : Word -> Word -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "- the raw primitive adapters are expanded in place (`Codegen.hs`,\n  `inlineTable`): `Word.add` is one `add`, `Mem.readWord` one `ld`\n  behind an alignment check, tagged `Int` arithmetic a few ALU ops.\n  Where the adapter can panic (a shift count outside 0..63, an\n  unaligned access, division by zero, deep `==` on two heap values) the\n  fast path branches to a slow path that simply calls the adapter, so\n  the check and its message stay in `unsafe.c`;\n- small non-recursive functions are inlined at saturated sites\n  (`Inline.hs`), so `rd a o = Mem.readWord (Addr.add a o)` costs two\n  instructions where it is used;\n- conditions compile as jumping code: a comparison, a nested `if`, a\n  tag test o …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.add : Word -> Word -> Word",
-    "doc": "- the raw primitive adapters are expanded in place (`Codegen.hs`,\n  `inlineTable`): `Word.add` is one `add`, `Mem.readWord` one `ld`\n  behind an alignment check, tagged `Int` arithmetic a few ALU ops.\n  Where the adapter can panic (a shift count outside 0..63, an\n  unaligned access, division by zero, deep `==` on two heap values) the\n  fast path branches to a slow path that simply calls the adapter, so\n  the check and its message stay in `unsafe.c`;\n- small non-recursive functions are inlined at saturated sites\n  (`Inline.hs`), so `rd a o = Mem.readWord (Addr.add a o)` costs two\n  instructions where it is used;\n- conditions compile as jumping code: a comparison, a nested `if`, a\n  tag test o …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.sub": {
-  "sig": "Word.sub : Word -> Word -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Subtract unsigned machine words, wrapping at the target word width.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.sub : Word -> Word -> Word",
-    "doc": "Subtract unsigned machine words, wrapping at the target word width.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.not": {
-  "sig": "Word.not : Word -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Bitwise complement on an unsigned machine Word.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.not : Word -> Word",
-    "doc": "Bitwise complement on an unsigned machine Word.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.shl": {
-  "sig": "Word.shl : Word -> Int -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Left shift on an unsigned machine Word.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.shl : Word -> Int -> Word",
-    "doc": "Left shift on an unsigned machine Word.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.shr": {
-  "sig": "Word.shr : Word -> Int -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Logical right shift (zero fill) on an unsigned machine Word.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.shr : Word -> Int -> Word",
-    "doc": "Logical right shift (zero fill) on an unsigned machine Word.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.mask": {
-  "sig": "Word.mask : Int -> Int -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.mask : Int -> Int -> Word",
-    "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.eq": {
-  "sig": "Word.eq : Word -> Word -> Bool",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "`Int` remains a signed tagged integer with 63 payload bits on RV64. `Word`\nand `Addr` are distinct opaque types that preserve all 64 bits. They are\nunboxed in automatic ARC builds: arithmetic, conversions and raw memory accesses\ndo not allocate. The default manual-ownership ABI still uses heap boxes. `==`/`!=` compare their values; explicit `Word.eq` and\n`Addr.eq` are also available. Their current generic printed form is signed\nnumeric, not a hexadecimal address formatter.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.eq : Word -> Word -> Bool",
-    "doc": "`Int` remains a signed tagged integer with 63 payload bits on RV64. `Word`\nand `Addr` are distinct opaque types that preserve all 64 bits. They are\nunboxed in automatic ARC builds: arithmetic, conversions and raw memory accesses\ndo not allocate. The default manual-ownership ABI still uses heap boxes. `==`/`!=` compare their values; explicit `Word.eq` and\n`Addr.eq` are also available. Their current generic printed form is signed\nnumeric, not a hexadecimal address formatter.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Addr.fromWord": {
-  "sig": "Addr.fromWord : Word -> Addr",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Addr.fromWord : Word -> Addr",
-    "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Addr.toWord": {
-  "sig": "Addr.toWord : Addr -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Addr.toWord : Addr -> Word",
-    "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
  "Addr.add": {
   "sig": "Addr.add : Addr -> Int -> Addr",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
+  "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0\u201363 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Addr.add : Addr -> Int -> Addr",
-    "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
+    "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0\u201363 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -210,12 +15,12 @@
  "Addr.null": {
   "sig": "Addr.null : Unit -> Addr",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
+  "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0\u201363 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Addr.null : Unit -> Addr",
-    "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0–63 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> …",
+    "doc": "| Operation | Type / behavior |\n| --- | --- |\n| `Word.fromInt` | `Int -> Word`; sign extends negative numbers |\n| `Word.toInt` | `Word -> Int`; keeps the low 63 bits and interprets them as signed |\n| `Word.bits` | `Unit -> Int`; 64 on this implementation |\n| `Word.and`, `or`, `xor`, `add`, `sub` | `Word -> Word -> Word`; arithmetic wraps modulo 2^64 |\n| `Word.not` | `Word -> Word` |\n| `Word.shl`, `shr` | `Word -> Int -> Word`; logical shifts, count 0\u201363 |\n| `Word.mask` | `Int -> Int -> Word`; width then bit offset; zero/full-width masks supported |\n| `Word.eq` | `Word -> Word -> Bool` |\n| `Addr.fromWord`, `Addr.toWord` | lossless conversion between `Word` and `Addr` |\n| `Addr.add` | `Addr -> \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -299,56 +104,24 @@
   }
  },
  "Mem.read32": {
-  "sig": "Mem.read32 : Addr -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Operation | Type |\n| --- | --- |\n| `Mem.read8`, `read16` | `Addr -> Int` |\n| `Mem.read32`, `readWord` | `Addr -> Word` |\n| `Mem.write8`, `write16` | `Addr -> Int -> Unit` |\n| `Mem.write32`, `writeWord` | `Addr -> Word -> Unit` |\n| `Mem.alloc` | `Int -> Addr` |\n| `Mem.realloc` | `Addr -> Int -> Addr` |\n| `Mem.free` | `Addr -> Unit` |\n| `Mem.fence` | `Unit -> Unit` |",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Mem.read32 : Addr -> Word",
-    "doc": "| Operation | Type |\n| --- | --- |\n| `Mem.read8`, `read16` | `Addr -> Int` |\n| `Mem.read32`, `readWord` | `Addr -> Word` |\n| `Mem.write8`, `write16` | `Addr -> Int -> Unit` |\n| `Mem.write32`, `writeWord` | `Addr -> Word -> Unit` |\n| `Mem.alloc` | `Int -> Addr` |\n| `Mem.realloc` | `Addr -> Int -> Addr` |\n| `Mem.free` | `Addr -> Unit` |\n| `Mem.fence` | `Unit -> Unit` |",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
+  "sig": "Mem.read32 : Addr -> I32",
+  "doc": "Volatile 4-byte aligned 32-bit read.",
+  "overloads": [
+   {
+    "sig": "Mem.read32 : Addr -> I32",
+    "doc": "Volatile 4-byte aligned 32-bit read."
    }
-  }
+  ]
  },
  "Mem.write32": {
-  "sig": "Mem.write32 : Addr -> Word -> Unit",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Operation | Type |\n| --- | --- |\n| `Mem.read8`, `read16` | `Addr -> Int` |\n| `Mem.read32`, `readWord` | `Addr -> Word` |\n| `Mem.write8`, `write16` | `Addr -> Int -> Unit` |\n| `Mem.write32`, `writeWord` | `Addr -> Word -> Unit` |\n| `Mem.alloc` | `Int -> Addr` |\n| `Mem.realloc` | `Addr -> Int -> Addr` |\n| `Mem.free` | `Addr -> Unit` |\n| `Mem.fence` | `Unit -> Unit` |",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Mem.write32 : Addr -> Word -> Unit",
-    "doc": "| Operation | Type |\n| --- | --- |\n| `Mem.read8`, `read16` | `Addr -> Int` |\n| `Mem.read32`, `readWord` | `Addr -> Word` |\n| `Mem.write8`, `write16` | `Addr -> Int -> Unit` |\n| `Mem.write32`, `writeWord` | `Addr -> Word -> Unit` |\n| `Mem.alloc` | `Int -> Addr` |\n| `Mem.realloc` | `Addr -> Int -> Addr` |\n| `Mem.free` | `Addr -> Unit` |\n| `Mem.fence` | `Unit -> Unit` |",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
+  "sig": "Mem.write32 : Addr -> I32 -> Unit",
+  "doc": "Volatile 4-byte aligned 32-bit write.",
+  "overloads": [
+   {
+    "sig": "Mem.write32 : Addr -> I32 -> Unit",
+    "doc": "Volatile 4-byte aligned 32-bit write."
    }
-  }
- },
- "Mem.readWord": {
-  "sig": "Mem.readWord : Addr -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Read one machine word at an Addr. The caller is responsible for valid address, alignment and access permissions.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Mem.readWord : Addr -> Word",
-    "doc": "Read one machine word at an Addr. The caller is responsible for valid address, alignment and access permissions.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Mem.writeWord": {
-  "sig": "Mem.writeWord : Addr -> Word -> Unit",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Write one machine word at an Addr. The caller is responsible for valid address, alignment and access permissions.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Mem.writeWord : Addr -> Word -> Unit",
-    "doc": "Write one machine word at an Addr. The caller is responsible for valid address, alignment and access permissions.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
+  ]
  },
  "Mem.liveAllocations": {
   "sig": "Mem.liveAllocations : Unit -> Int",
@@ -402,80 +175,35 @@
    }
   }
  },
- "Word.bitSet": {
-  "sig": "Word.bitSet : Word -> Int -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.bitSet : Word -> Int -> Word",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.bitClear": {
-  "sig": "Word.bitClear : Word -> Int -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.bitClear : Word -> Int -> Word",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "Word.bitTest": {
-  "sig": "Word.bitTest : Word -> Int -> Bool",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Word.bitTest : Word -> Int -> Bool",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
  "CPU.csrRead": {
-  "sig": "CPU.csrRead : Int -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "CPU.csrRead : Int -> Word",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
+  "sig": "CPU.csrRead : Int -> I64",
+  "doc": "Read a RISC-V CSR (zero-extended to 64 bits on RV32).",
+  "overloads": [
+   {
+    "sig": "CPU.csrRead : Int -> I64",
+    "doc": "Read a RISC-V CSR (zero-extended to 64 bits on RV32)."
    }
-  }
+  ]
  },
  "CPU.csrWrite": {
-  "sig": "CPU.csrWrite : Int -> Word -> Unit",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "CPU.csrWrite : Int -> Word -> Unit",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
+  "sig": "CPU.csrWrite : Int -> I64 -> Unit",
+  "doc": "Write a RISC-V CSR.",
+  "overloads": [
+   {
+    "sig": "CPU.csrWrite : Int -> I64 -> Unit",
+    "doc": "Write a RISC-V CSR."
    }
-  }
+  ]
  },
  "CPU.irqSave": {
   "sig": "CPU.irqSave : Unit -> Int",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
+  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0\u201363 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0\u201363 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0\u20134095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "CPU.irqSave : Unit -> Int",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
+    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0\u201363 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0\u201363 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0\u20134095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -483,12 +211,12 @@
  "CPU.irqRestore": {
   "sig": "CPU.irqRestore : Int -> Unit",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
+  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0\u201363 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0\u201363 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0\u20134095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "CPU.irqRestore : Int -> Unit",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
+    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0\u201363 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0\u201363 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0\u20134095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -496,12 +224,12 @@
  "CPU.irqEnable": {
   "sig": "CPU.irqEnable : Unit -> Unit",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
+  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0\u201363 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0\u201363 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0\u20134095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "CPU.irqEnable : Unit -> Unit",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
+    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0\u201363 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0\u201363 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0\u20134095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -509,12 +237,12 @@
  "CPU.wait": {
   "sig": "CPU.wait : Unit -> Unit",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
+  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0\u201363 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0\u201363 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0\u20134095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "CPU.wait : Unit -> Unit",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
+    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0\u201363 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0\u201363 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0\u20134095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -522,41 +250,35 @@
  "CPU.instructionFence": {
   "sig": "CPU.instructionFence : Unit -> Unit",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
+  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0\u201363 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0\u201363 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0\u20134095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "CPU.instructionFence : Unit -> Unit",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
+    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0\u201363 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0\u201363 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0\u20134095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
  },
  "Mem.atomicExchange": {
-  "sig": "Mem.atomicExchange : Addr -> Word -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Mem.atomicExchange : Addr -> Word -> Word",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
+  "sig": "Mem.atomicExchange : Addr -> I64 -> I64",
+  "doc": "Atomic 64-bit exchange (aqrl).",
+  "overloads": [
+   {
+    "sig": "Mem.atomicExchange : Addr -> I64 -> I64",
+    "doc": "Atomic 64-bit exchange (aqrl)."
    }
-  }
+  ]
  },
  "Mem.compareExchange": {
-  "sig": "Mem.compareExchange : Addr -> Word -> Word -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "Mem.compareExchange : Addr -> Word -> Word -> Word",
-    "doc": "| Primitive | Type | Contract |\n| --- | --- | --- |\n| `Word.bitSet`, `Word.bitClear` | `Word -> Int -> Word` | Return a fresh word; index 0–63 |\n| `Word.bitTest` | `Word -> Int -> Bool` | Test one bit; index 0–63 |\n| `CPU.csrRead` | `Int -> Word` | Read a RISC-V CSR, address 0–4095 |\n| `CPU.csrWrite` | `Int -> Word -> Unit` | Write a CSR |\n| `CPU.irqSave` | `Unit -> Int` | Clear machine interrupt enable; return previous MIE bit (0 or 8) |\n| `CPU.irqRestore` | `Int -> Unit` | Restore only MIE from a saved token; reject other values |\n| `CPU.irqEnable` | `Unit -> Unit` | Set MIE; caller must have configured interrupt sources/handlers |\n| `CPU.wait` | `Unit -> Unit` | Execute WFI; may return sp …",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
+  "sig": "Mem.compareExchange : Addr -> I64 -> I64 -> I64",
+  "doc": "Atomic 64-bit compare-and-exchange.",
+  "overloads": [
+   {
+    "sig": "Mem.compareExchange : Addr -> I64 -> I64 -> I64",
+    "doc": "Atomic 64-bit compare-and-exchange."
    }
-  }
+  ]
  },
  "Mem.fence": {
   "sig": "Mem.fence : Unit -> Unit",
@@ -574,12 +296,12 @@
  "Rc.retain": {
   "sig": "Rc.retain : a -> a",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "These are **explicit unsafe ownership operations** for the default manual mode.\nThey are rejected when automatic ARC is enabled to prevent ownership being released twice.\nSupported values are acyclic, pointer/tagged-value ADTs, strings, words and\naddresses. Constructor fields consume ownership: call `Rc.retain` before putting\na shared child into an additional owning field or preserving an owning alias.\nDropping the last reference recursively releases owned fields. Immediate integers\nand image-static values are immortal. Borrowed references must not be released.\nA retain returns the same object; it does not copy it. Raw-buffer free/realloc\nrefuse shared allocations. …",
+  "doc": "These are **explicit unsafe ownership operations** for the default manual mode.\nThey are rejected when automatic ARC is enabled to prevent ownership being released twice.\nSupported values are acyclic, pointer/tagged-value ADTs, strings, words and\naddresses. Constructor fields consume ownership: call `Rc.retain` before putting\na shared child into an additional owning field or preserving an owning alias.\nDropping the last reference recursively releases owned fields. Immediate integers\nand image-static values are immortal. Borrowed references must not be released.\nA retain returns the same object; it does not copy it. Raw-buffer free/realloc\nrefuse shared allocations. \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Rc.retain : a -> a",
-    "doc": "These are **explicit unsafe ownership operations** for the default manual mode.\nThey are rejected when automatic ARC is enabled to prevent ownership being released twice.\nSupported values are acyclic, pointer/tagged-value ADTs, strings, words and\naddresses. Constructor fields consume ownership: call `Rc.retain` before putting\na shared child into an additional owning field or preserving an owning alias.\nDropping the last reference recursively releases owned fields. Immediate integers\nand image-static values are immortal. Borrowed references must not be released.\nA retain returns the same object; it does not copy it. Raw-buffer free/realloc\nrefuse shared allocations. …",
+    "doc": "These are **explicit unsafe ownership operations** for the default manual mode.\nThey are rejected when automatic ARC is enabled to prevent ownership being released twice.\nSupported values are acyclic, pointer/tagged-value ADTs, strings, words and\naddresses. Constructor fields consume ownership: call `Rc.retain` before putting\na shared child into an additional owning field or preserving an owning alias.\nDropping the last reference recursively releases owned fields. Immediate integers\nand image-static values are immortal. Borrowed references must not be released.\nA retain returns the same object; it does not copy it. Raw-buffer free/realloc\nrefuse shared allocations. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -587,12 +309,12 @@
  "Rc.release": {
   "sig": "Rc.release : a -> Unit",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "- Code loads at address zero. Unified RAM is exactly `[0, 65536)`. Startup sets\n  `gp` and `sp`, clears BSS, initializes the hart spill/render context and the\n  heap, then calls the generated `main`. No FPU setup. The current processor\n  supports Zicsr and direct machine traps; startup/exit clear `mtvec` for the\n  legacy host `DONE` protocol.\n- The upper 8 KiB is reserved for the downward-growing stack. The linker refuses\n  an image leaving less than 4 KiB between BSS and the stack reservation for the\n  heap. There is no runtime stack-overflow guard; call depth is the program's\n  responsibility. …",
+  "doc": "- Code loads at address zero. Unified RAM is exactly `[0, 65536)`. Startup sets\n  `gp` and `sp`, clears BSS, initializes the hart spill/render context and the\n  heap, then calls the generated `main`. No FPU setup. The current processor\n  supports Zicsr and direct machine traps; startup/exit clear `mtvec` for the\n  legacy host `DONE` protocol.\n- The upper 8 KiB is reserved for the downward-growing stack. The linker refuses\n  an image leaving less than 4 KiB between BSS and the stack reservation for the\n  heap. There is no runtime stack-overflow guard; call depth is the program's\n  responsibility. \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Rc.release : a -> Unit",
-    "doc": "- Code loads at address zero. Unified RAM is exactly `[0, 65536)`. Startup sets\n  `gp` and `sp`, clears BSS, initializes the hart spill/render context and the\n  heap, then calls the generated `main`. No FPU setup. The current processor\n  supports Zicsr and direct machine traps; startup/exit clear `mtvec` for the\n  legacy host `DONE` protocol.\n- The upper 8 KiB is reserved for the downward-growing stack. The linker refuses\n  an image leaving less than 4 KiB between BSS and the stack reservation for the\n  heap. There is no runtime stack-overflow guard; call depth is the program's\n  responsibility. …",
+    "doc": "- Code loads at address zero. Unified RAM is exactly `[0, 65536)`. Startup sets\n  `gp` and `sp`, clears BSS, initializes the hart spill/render context and the\n  heap, then calls the generated `main`. No FPU setup. The current processor\n  supports Zicsr and direct machine traps; startup/exit clear `mtvec` for the\n  legacy host `DONE` protocol.\n- The upper 8 KiB is reserved for the downward-growing stack. The linker refuses\n  an image leaving less than 4 KiB between BSS and the stack reservation for the\n  heap. There is no runtime stack-overflow guard; call depth is the program's\n  responsibility. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -900,12 +622,12 @@
  "Sys.args": {
   "sig": "Sys.args : Unit -> List String",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.args : Unit -> List String",
-    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -926,12 +648,12 @@
  "Sys.exit": {
   "sig": "Sys.exit : Int -> a",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.exit : Int -> a",
-    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -939,12 +661,12 @@
  "Sys.env": {
   "sig": "Sys.env : String -> Result String String",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.env : String -> Result String String",
-    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -952,12 +674,12 @@
  "Sys.readLine": {
   "sig": "Sys.readLine : Unit -> Result String String",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.readLine : Unit -> Result String String",
-    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -965,12 +687,12 @@
  "Sys.stderr": {
   "sig": "Sys.stderr : String -> Unit",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.stderr : String -> Unit",
-    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -978,12 +700,12 @@
  "Sys.timeUs": {
   "sig": "Sys.timeUs : Unit -> Int",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+  "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.timeUs : Unit -> Int",
-    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` …",
+    "doc": "| name | type | meaning |\n|---|---|---|\n| `print` | `a -> Unit` | the value rendered to stdout |\n| `Sys.stderr` | `String -> Unit` | bytes to stderr, as given |\n| `Sys.readLine` | `Unit -> Result String String` | one line of stdin without its newline; `Err \"eof\"` at the end |\n| `Sys.args` | `Unit -> List String` | the command line after the program name |\n| `Sys.env` | `String -> Result String String` | a variable, or `Err \"unset\"` |\n| `Sys.exit` | `Int -> a` | end the process with that status (0..255) |\n| `Sys.timeUs` | `Unit -> Int` | monotonic microseconds |\n| `fileRead` | `String -> String` | the whole file; panics when it cannot |\n| `fileWrite` | `String -> String -> Result Unit String` \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -1037,7 +759,7 @@
    },
    "sol": {
     "sig": "read : a -> b",
-    "doc": "read/write: THE two HAL doors. What comes back (read) or is accepted (write) depends on the path/query value the HAL decodes, so both are maximally generic — the same stance `stat` already took.",
+    "doc": "read/write: THE two HAL doors. What comes back (read) or is accepted (write) depends on the path/query value the HAL decodes, so both are maximally generic \u2014 the same stance `stat` already took.",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -1045,17 +767,17 @@
  "write": {
   "sig": "write : Int -> Int -> Unit",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "The first limit above is gone. The front no longer forwards a write and waits\nfor the shard; it ROUTES. A writer asks it which shard holds the key\n(`FRouteW`, which starts a shard that does not exist yet), sends the put or\nremoval to that shard itself, and reports the shard's answer back\n(`FCounted idx n ver`). The answer carries the shard's **write version**, one\nmore for every put or removal; the front keeps the highest version per shard,\nso two writers' reports arriving out of order cannot roll a count back. …",
+  "doc": "The first limit above is gone. The front no longer forwards a write and waits\nfor the shard; it ROUTES. A writer asks it which shard holds the key\n(`FRouteW`, which starts a shard that does not exist yet), sends the put or\nremoval to that shard itself, and reports the shard's answer back\n(`FCounted idx n ver`). The answer carries the shard's **write version**, one\nmore for every put or removal; the front keeps the highest version per shard,\nso two writers' reports arriving out of order cannot roll a count back. \u2026",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "write : Int -> Int -> Unit",
-    "doc": "The first limit above is gone. The front no longer forwards a write and waits\nfor the shard; it ROUTES. A writer asks it which shard holds the key\n(`FRouteW`, which starts a shard that does not exist yet), sends the put or\nremoval to that shard itself, and reports the shard's answer back\n(`FCounted idx n ver`). The answer carries the shard's **write version**, one\nmore for every put or removal; the front keeps the highest version per shard,\nso two writers' reports arriving out of order cannot roll a count back. …",
+    "doc": "The first limit above is gone. The front no longer forwards a write and waits\nfor the shard; it ROUTES. A writer asks it which shard holds the key\n(`FRouteW`, which starts a shard that does not exist yet), sends the put or\nremoval to that shard itself, and reports the shard's answer back\n(`FCounted idx n ver`). The answer carries the shard's **write version**, one\nmore for every put or removal; the front keeps the highest version per shard,\nso two writers' reports arriving out of order cannot roll a count back. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    },
    "sol": {
     "sig": "write : a -> b -> Unit",
-    "doc": "The first limit above is gone. The front no longer forwards a write and waits\nfor the shard; it ROUTES. A writer asks it which shard holds the key\n(`FRouteW`, which starts a shard that does not exist yet), sends the put or\nremoval to that shard itself, and reports the shard's answer back\n(`FCounted idx n ver`). The answer carries the shard's **write version**, one\nmore for every put or removal; the front keeps the highest version per shard,\nso two writers' reports arriving out of order cannot roll a count back. …",
+    "doc": "The first limit above is gone. The front no longer forwards a write and waits\nfor the shard; it ROUTES. A writer asks it which shard holds the key\n(`FRouteW`, which starts a shard that does not exist yet), sends the put or\nremoval to that shard itself, and reports the shard's answer back\n(`FCounted idx n ver`). The answer carries the shard's **write version**, one\nmore for every put or removal; the front keeps the highest version per shard,\nso two writers' reports arriving out of order cannot roll a count back. \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -2558,7 +2280,7 @@
    },
    "sol": {
     "sig": "f64frombits : Int -> Int -> Int",
-    "doc": "Decode IEEE float-literal bits into Sol’s Numeric representation.",
+    "doc": "Decode IEEE float-literal bits into Sol\u2019s Numeric representation.",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -2576,7 +2298,7 @@
    },
    "sol": {
     "sig": "f32frombits : Int -> Int",
-    "doc": "Decode IEEE float-literal bits into Sol’s Numeric representation.",
+    "doc": "Decode IEEE float-literal bits into Sol\u2019s Numeric representation.",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -2727,12 +2449,12 @@
  "F64.str": {
   "sig": "F64.str : F64 -> String",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Compiler-created objects use `fpr_builtin_alloc_adt(bytes, fields)`. The allocation\nrecords the exact field count, followed by a compiler-installed immutable\ndescriptor distinguishing managed/tagged, Word, Addr, F32 and F64 fields. Leaf\nprimitive results record zero fields. Destruction follows only managed fields,\nnever guessed pointer-looking bits or rounded allocation capacity. Raw fields may\ncontain any bits, including bits equal to a live heap address. Raw-aware structural\nequality and rendering use the same metadata; source-level restrictions on generic\nfloat-containing rendering still apply. …",
+  "doc": "Compiler-created objects use `fpr_builtin_alloc_adt(bytes, fields)`. The allocation\nrecords the exact field count, followed by a compiler-installed immutable\ndescriptor distinguishing managed/tagged, Word, Addr, F32 and F64 fields. Leaf\nprimitive results record zero fields. Destruction follows only managed fields,\nnever guessed pointer-looking bits or rounded allocation capacity. Raw fields may\ncontain any bits, including bits equal to a live heap address. Raw-aware structural\nequality and rendering use the same metadata; source-level restrictions on generic\nfloat-containing rendering still apply. \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "F64.str : F64 -> String",
-    "doc": "Compiler-created objects use `fpr_builtin_alloc_adt(bytes, fields)`. The allocation\nrecords the exact field count, followed by a compiler-installed immutable\ndescriptor distinguishing managed/tagged, Word, Addr, F32 and F64 fields. Leaf\nprimitive results record zero fields. Destruction follows only managed fields,\nnever guessed pointer-looking bits or rounded allocation capacity. Raw fields may\ncontain any bits, including bits equal to a live heap address. Raw-aware structural\nequality and rendering use the same metadata; source-level restrictions on generic\nfloat-containing rendering still apply. …",
+    "doc": "Compiler-created objects use `fpr_builtin_alloc_adt(bytes, fields)`. The allocation\nrecords the exact field count, followed by a compiler-installed immutable\ndescriptor distinguishing managed/tagged, Word, Addr, F32 and F64 fields. Leaf\nprimitive results record zero fields. Destruction follows only managed fields,\nnever guessed pointer-looking bits or rounded allocation capacity. Raw fields may\ncontain any bits, including bits equal to a live heap address. Raw-aware structural\nequality and rendering use the same metadata; source-level restrictions on generic\nfloat-containing rendering still apply. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -2870,12 +2592,12 @@
  "F32.str": {
   "sig": "F32.str : F32 -> String",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Compiler-created objects use `fpr_builtin_alloc_adt(bytes, fields)`. The allocation\nrecords the exact field count, followed by a compiler-installed immutable\ndescriptor distinguishing managed/tagged, Word, Addr, F32 and F64 fields. Leaf\nprimitive results record zero fields. Destruction follows only managed fields,\nnever guessed pointer-looking bits or rounded allocation capacity. Raw fields may\ncontain any bits, including bits equal to a live heap address. Raw-aware structural\nequality and rendering use the same metadata; source-level restrictions on generic\nfloat-containing rendering still apply. …",
+  "doc": "Compiler-created objects use `fpr_builtin_alloc_adt(bytes, fields)`. The allocation\nrecords the exact field count, followed by a compiler-installed immutable\ndescriptor distinguishing managed/tagged, Word, Addr, F32 and F64 fields. Leaf\nprimitive results record zero fields. Destruction follows only managed fields,\nnever guessed pointer-looking bits or rounded allocation capacity. Raw fields may\ncontain any bits, including bits equal to a live heap address. Raw-aware structural\nequality and rendering use the same metadata; source-level restrictions on generic\nfloat-containing rendering still apply. \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "F32.str : F32 -> String",
-    "doc": "Compiler-created objects use `fpr_builtin_alloc_adt(bytes, fields)`. The allocation\nrecords the exact field count, followed by a compiler-installed immutable\ndescriptor distinguishing managed/tagged, Word, Addr, F32 and F64 fields. Leaf\nprimitive results record zero fields. Destruction follows only managed fields,\nnever guessed pointer-looking bits or rounded allocation capacity. Raw fields may\ncontain any bits, including bits equal to a live heap address. Raw-aware structural\nequality and rendering use the same metadata; source-level restrictions on generic\nfloat-containing rendering still apply. …",
+    "doc": "Compiler-created objects use `fpr_builtin_alloc_adt(bytes, fields)`. The allocation\nrecords the exact field count, followed by a compiler-installed immutable\ndescriptor distinguishing managed/tagged, Word, Addr, F32 and F64 fields. Leaf\nprimitive results record zero fields. Destruction follows only managed fields,\nnever guessed pointer-looking bits or rounded allocation capacity. Raw fields may\ncontain any bits, including bits equal to a live heap address. Raw-aware structural\nequality and rendering use the same metadata; source-level restrictions on generic\nfloat-containing rendering still apply. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -3026,12 +2748,12 @@
  "I32.toInt": {
   "sig": "I32.toInt : I32 -> Result Int String",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Convert the signed value to tagged Int; return Err if it does not fit the target’s Int range. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
+  "doc": "Convert the signed value to tagged Int; return Err if it does not fit the target\u2019s Int range. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "I32.toInt : I32 -> Result Int String",
-    "doc": "Convert the signed value to tagged Int; return Err if it does not fit the target’s Int range. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
+    "doc": "Convert the signed value to tagged Int; return Err if it does not fit the target\u2019s Int range. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -3039,12 +2761,12 @@
  "I32.toIntU": {
   "sig": "I32.toIntU : I32 -> Result Int String",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Convert the unsigned bit pattern to tagged Int; return Err if it does not fit the target’s Int range. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
+  "doc": "Convert the unsigned bit pattern to tagged Int; return Err if it does not fit the target\u2019s Int range. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "I32.toIntU : I32 -> Result Int String",
-    "doc": "Convert the unsigned bit pattern to tagged Int; return Err if it does not fit the target’s Int range. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
+    "doc": "Convert the unsigned bit pattern to tagged Int; return Err if it does not fit the target\u2019s Int range. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -3273,12 +2995,12 @@
  "I32.rem": {
   "sig": "I32.rem : I32 -> I32 -> I32",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Signed remainder with the dividend’s sign. Zero divisor traps; minimum value remainder -1 is zero. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
+  "doc": "Signed remainder with the dividend\u2019s sign. Zero divisor traps; minimum value remainder -1 is zero. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "I32.rem : I32 -> I32 -> I32",
-    "doc": "Signed remainder with the dividend’s sign. Zero divisor traps; minimum value remainder -1 is zero. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
+    "doc": "Signed remainder with the dividend\u2019s sign. Zero divisor traps; minimum value remainder -1 is zero. Uses the distinct 32-bit I32 type; no implicit mixing with Int.",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -3544,17 +3266,14 @@
   }
  },
  "I64.toInt": {
-  "sig": "I64.toInt : I64 -> Result Int String",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Convert the signed value to tagged Int; return Err if it does not fit the target’s Int range. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "I64.toInt : I64 -> Result Int String",
-    "doc": "Convert the signed value to tagged Int; return Err if it does not fit the target’s Int range. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
+  "sig": "I64.toInt : I64 -> Int",
+  "doc": "Convert an I64 to an exact Int.",
+  "overloads": [
+   {
+    "sig": "I64.toInt : I64 -> Int",
+    "doc": "Convert an I64 to an exact Int."
    }
-  }
+  ]
  },
  "I64.fromParts": {
   "sig": "I64.fromParts : Int -> Int -> I64",
@@ -3591,45 +3310,6 @@
    "fpr": {
     "sig": "I64.lo : I64 -> Int",
     "doc": "Extract the low unsigned 32-bit half as Int. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "I64.fromWords": {
-  "sig": "I64.fromWords : Word -> Word -> I64",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Combine high and low 32-bit Word halves into an I64. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "I64.fromWords : Word -> Word -> I64",
-    "doc": "Combine high and low 32-bit Word halves into an I64. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "I64.hiWord": {
-  "sig": "I64.hiWord : I64 -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Extract the high 32-bit half as Word. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "I64.hiWord : I64 -> Word",
-    "doc": "Extract the high 32-bit half as Word. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
-    "section": "FP-RISC builtins (compiler/Infer.hs)"
-   }
-  }
- },
- "I64.loWord": {
-  "sig": "I64.loWord : I64 -> Word",
-  "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Extract the low 32-bit half as Word. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
-  "profile": "fpr",
-  "variants": {
-   "fpr": {
-    "sig": "I64.loWord : I64 -> Word",
-    "doc": "Extract the low 32-bit half as Word. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -3767,12 +3447,12 @@
  "I64.rem": {
   "sig": "I64.rem : I64 -> I64 -> I64",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Signed remainder with the dividend’s sign. Zero divisor traps; minimum value remainder -1 is zero. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
+  "doc": "Signed remainder with the dividend\u2019s sign. Zero divisor traps; minimum value remainder -1 is zero. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "I64.rem : I64 -> I64 -> I64",
-    "doc": "Signed remainder with the dividend’s sign. Zero divisor traps; minimum value remainder -1 is zero. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
+    "doc": "Signed remainder with the dividend\u2019s sign. Zero divisor traps; minimum value remainder -1 is zero. Uses the distinct 64-bit I64 type; no implicit mixing with Int.",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -4037,7 +3717,7 @@
    },
    "sol": {
     "sig": "Sys.sleepUs : Int -> Unit",
-    "doc": "* An actor that must wait YIELDS (receive, fuel safepoint, and now\n  `Sys.sleepUs`: a parked sleep with a deadline on its hart's sleeper\n  list, woken by the hart loop — it used to nanosleep the hart\n  THREAD on qosp, so every actor sharing that hart waited out the\n  sleep; a sleeper is not a deadlock to the detector) — it never\n  holds a core.\n* Any CAS retry loop backs off EXPONENTIALLY (capped) before trying\n  again — contention degrades bandwidth, never livelocks a hart.\n  `fpr_lock` implements this today as the transitional form.\n* The end-state has no locks at all: each shared structure is owned\n  by one actor and mutated only through its mailbox — buddy/grants\n  behind Memory.qa, prom …",
+    "doc": "* An actor that must wait YIELDS (receive, fuel safepoint, and now\n  `Sys.sleepUs`: a parked sleep with a deadline on its hart's sleeper\n  list, woken by the hart loop \u2014 it used to nanosleep the hart\n  THREAD on qosp, so every actor sharing that hart waited out the\n  sleep; a sleeper is not a deadlock to the detector) \u2014 it never\n  holds a core.\n* Any CAS retry loop backs off EXPONENTIALLY (capped) before trying\n  again \u2014 contention degrades bandwidth, never livelocks a hart.\n  `fpr_lock` implements this today as the transitional form.\n* The end-state has no locks at all: each shared structure is owned\n  by one actor and mutated only through its mailbox \u2014 buddy/grants\n  behind Memory.qa, prom \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -4045,12 +3725,12 @@
  "Sys.arena": {
   "sig": "Sys.arena : (Unit -> a) -> a",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "| # | finding | status | evidence |\n| --- | --- | --- | --- |\n| 1 | `Sys.arena` leaves `bigfree` uninitialized | **FIXED** | `fpr_pool_init` exists (`runtime/fpr.h:127-132`) and sets all four fields; all 7 creation sites call it (`runtime.c:65,978`, `actors.c:1371,1410`, `entry.c:209`, `proc_entry.c:160`).  The arena site carries the war story as a comment (`runtime.c:978-980`). |\n| 2 | `Vec.filter` skips copy-on-write | **CHANGED** | CoW is gone entirely -- `send` deep-copies (`vec.c:76-82`).  `fpr_vec_filter` compacts in place and the header now states why that is sound: \"one owner, real copies\" (`vec.c:399`). …",
+  "doc": "| # | finding | status | evidence |\n| --- | --- | --- | --- |\n| 1 | `Sys.arena` leaves `bigfree` uninitialized | **FIXED** | `fpr_pool_init` exists (`runtime/fpr.h:127-132`) and sets all four fields; all 7 creation sites call it (`runtime.c:65,978`, `actors.c:1371,1410`, `entry.c:209`, `proc_entry.c:160`).  The arena site carries the war story as a comment (`runtime.c:978-980`). |\n| 2 | `Vec.filter` skips copy-on-write | **CHANGED** | CoW is gone entirely -- `send` deep-copies (`vec.c:76-82`).  `fpr_vec_filter` compacts in place and the header now states why that is sound: \"one owner, real copies\" (`vec.c:399`). \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.arena : (Unit -> a) -> a",
-    "doc": "| # | finding | status | evidence |\n| --- | --- | --- | --- |\n| 1 | `Sys.arena` leaves `bigfree` uninitialized | **FIXED** | `fpr_pool_init` exists (`runtime/fpr.h:127-132`) and sets all four fields; all 7 creation sites call it (`runtime.c:65,978`, `actors.c:1371,1410`, `entry.c:209`, `proc_entry.c:160`).  The arena site carries the war story as a comment (`runtime.c:978-980`). |\n| 2 | `Vec.filter` skips copy-on-write | **CHANGED** | CoW is gone entirely -- `send` deep-copies (`vec.c:76-82`).  `fpr_vec_filter` compacts in place and the header now states why that is sound: \"one owner, real copies\" (`vec.c:399`). …",
+    "doc": "| # | finding | status | evidence |\n| --- | --- | --- | --- |\n| 1 | `Sys.arena` leaves `bigfree` uninitialized | **FIXED** | `fpr_pool_init` exists (`runtime/fpr.h:127-132`) and sets all four fields; all 7 creation sites call it (`runtime.c:65,978`, `actors.c:1371,1410`, `entry.c:209`, `proc_entry.c:160`).  The arena site carries the war story as a comment (`runtime.c:978-980`). |\n| 2 | `Vec.filter` skips copy-on-write | **CHANGED** | CoW is gone entirely -- `send` deep-copies (`vec.c:76-82`).  `fpr_vec_filter` compacts in place and the header now states why that is sound: \"one owner, real copies\" (`vec.c:399`). \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -4296,7 +3976,7 @@
    },
    "sol": {
     "sig": "drop : a -> Unit",
-    "doc": "Compatibility release operation for Sol’s garbage-collected runtime.",
+    "doc": "Compatibility release operation for Sol\u2019s garbage-collected runtime.",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -4314,7 +3994,7 @@
    },
    "sol": {
     "sig": "keep : a -> a",
-    "doc": "Preserve the value; Sol’s garbage-collected runtime does not need an AOT borrowed-message copy.",
+    "doc": "Preserve the value; Sol\u2019s garbage-collected runtime does not need an AOT borrowed-message copy.",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -4690,12 +4370,12 @@
  "Mod.rowFn": {
   "sig": "Mod.rowFn : Int -> Int -> a",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Read the callable value of a module export row. Its use must agree with that row’s interface.",
+  "doc": "Read the callable value of a module export row. Its use must agree with that row\u2019s interface.",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Mod.rowFn : Int -> Int -> a",
-    "doc": "Read the callable value of a module export row. Its use must agree with that row’s interface.",
+    "doc": "Read the callable value of a module export row. Its use must agree with that row\u2019s interface.",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -4716,12 +4396,12 @@
  "Mod.plugs": {
   "sig": "Mod.plugs : Int -> Int",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "`runtime/mod.c` registers attached tables and reads rows: `Mod.plugs`,\n`Mod.hashAt`, `Mod.rows t`, `Mod.rowHash/rowName/rowIface/rowFn/rowArity t\ni` (table -1 is the image's own). `Mod.find` (newest attachment wins),\n`Mod.findAt`, `Mod.resolve`, `Mod.has` and the live-reload gate\n`Mod.compatAt` are a `Mod` structure in the prelude, with the same refusal\ntexts. `Mod.fn` stays C only because `fn` is a keyword and cannot be a field\nname. Attach and detach take a writer lock, an attach publishes the slot before\nthe count, and readers load the count with acquire. Row counts are taken once\nat attach, so a row index is bounds-checked in O(1). …",
+  "doc": "`runtime/mod.c` registers attached tables and reads rows: `Mod.plugs`,\n`Mod.hashAt`, `Mod.rows t`, `Mod.rowHash/rowName/rowIface/rowFn/rowArity t\ni` (table -1 is the image's own). `Mod.find` (newest attachment wins),\n`Mod.findAt`, `Mod.resolve`, `Mod.has` and the live-reload gate\n`Mod.compatAt` are a `Mod` structure in the prelude, with the same refusal\ntexts. `Mod.fn` stays C only because `fn` is a keyword and cannot be a field\nname. Attach and detach take a writer lock, an attach publishes the slot before\nthe count, and readers load the count with acquire. Row counts are taken once\nat attach, so a row index is bounds-checked in O(1). \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Mod.plugs : Int -> Int",
-    "doc": "`runtime/mod.c` registers attached tables and reads rows: `Mod.plugs`,\n`Mod.hashAt`, `Mod.rows t`, `Mod.rowHash/rowName/rowIface/rowFn/rowArity t\ni` (table -1 is the image's own). `Mod.find` (newest attachment wins),\n`Mod.findAt`, `Mod.resolve`, `Mod.has` and the live-reload gate\n`Mod.compatAt` are a `Mod` structure in the prelude, with the same refusal\ntexts. `Mod.fn` stays C only because `fn` is a keyword and cannot be a field\nname. Attach and detach take a writer lock, an attach publishes the slot before\nthe count, and readers load the count with acquire. Row counts are taken once\nat attach, so a row index is bounds-checked in O(1). …",
+    "doc": "`runtime/mod.c` registers attached tables and reads rows: `Mod.plugs`,\n`Mod.hashAt`, `Mod.rows t`, `Mod.rowHash/rowName/rowIface/rowFn/rowArity t\ni` (table -1 is the image's own). `Mod.find` (newest attachment wins),\n`Mod.findAt`, `Mod.resolve`, `Mod.has` and the live-reload gate\n`Mod.compatAt` are a `Mod` structure in the prelude, with the same refusal\ntexts. `Mod.fn` stays C only because `fn` is a keyword and cannot be a field\nname. Attach and detach take a writer lock, an attach publishes the slot before\nthe count, and readers load the count with acquire. Row counts are taken once\nat attach, so a row index is bounds-checked in O(1). \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -4729,17 +4409,17 @@
  "Sys.mtime": {
   "sig": "Sys.mtime : Unit -> Int",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "- **dedup ratchet**: `compiler/Sol/Infer.hs` had grown to 131 lines, all\n  primitive declarations (`Sys.mtime`, `receiveFromNow`, `intMax`,\n  `intMin`), which the ratchet's own comment admits; with `Sys.loop` below\n  it is 132, and `tools/dedup-ratchet.sh` says so with the reason.\n- **sketch tier**: std/mvu runs its turns on `Sys.loop`, which `fpr sol`\n  did not have. The Sol profile has it now (its type in Sol/Infer.hs, the\n  VM applies the step until it answers `False`), and QOS's\n  `tests/sketch-mvutick.sol` runs again.\n- **Vec record folds**: the leg expected x64 to say its specialization tier\n  is off; it has been on since `28dcacc` (2026-10-03). …",
+  "doc": "- **dedup ratchet**: `compiler/Sol/Infer.hs` had grown to 131 lines, all\n  primitive declarations (`Sys.mtime`, `receiveFromNow`, `intMax`,\n  `intMin`), which the ratchet's own comment admits; with `Sys.loop` below\n  it is 132, and `tools/dedup-ratchet.sh` says so with the reason.\n- **sketch tier**: std/mvu runs its turns on `Sys.loop`, which `fpr sol`\n  did not have. The Sol profile has it now (its type in Sol/Infer.hs, the\n  VM applies the step until it answers `False`), and QOS's\n  `tests/sketch-mvutick.sol` runs again.\n- **Vec record folds**: the leg expected x64 to say its specialization tier\n  is off; it has been on since `28dcacc` (2026-10-03). \u2026",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Sys.mtime : Unit -> Int",
-    "doc": "- **dedup ratchet**: `compiler/Sol/Infer.hs` had grown to 131 lines, all\n  primitive declarations (`Sys.mtime`, `receiveFromNow`, `intMax`,\n  `intMin`), which the ratchet's own comment admits; with `Sys.loop` below\n  it is 132, and `tools/dedup-ratchet.sh` says so with the reason.\n- **sketch tier**: std/mvu runs its turns on `Sys.loop`, which `fpr sol`\n  did not have. The Sol profile has it now (its type in Sol/Infer.hs, the\n  VM applies the step until it answers `False`), and QOS's\n  `tests/sketch-mvutick.sol` runs again.\n- **Vec record folds**: the leg expected x64 to say its specialization tier\n  is off; it has been on since `28dcacc` (2026-10-03). …",
+    "doc": "- **dedup ratchet**: `compiler/Sol/Infer.hs` had grown to 131 lines, all\n  primitive declarations (`Sys.mtime`, `receiveFromNow`, `intMax`,\n  `intMin`), which the ratchet's own comment admits; with `Sys.loop` below\n  it is 132, and `tools/dedup-ratchet.sh` says so with the reason.\n- **sketch tier**: std/mvu runs its turns on `Sys.loop`, which `fpr sol`\n  did not have. The Sol profile has it now (its type in Sol/Infer.hs, the\n  VM applies the step until it answers `False`), and QOS's\n  `tests/sketch-mvutick.sol` runs again.\n- **Vec record folds**: the leg expected x64 to say its specialization tier\n  is off; it has been on since `28dcacc` (2026-10-03). \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    },
    "sol": {
     "sig": "Sys.mtime : Unit -> Int",
-    "doc": "- **dedup ratchet**: `compiler/Sol/Infer.hs` had grown to 131 lines, all\n  primitive declarations (`Sys.mtime`, `receiveFromNow`, `intMax`,\n  `intMin`), which the ratchet's own comment admits; with `Sys.loop` below\n  it is 132, and `tools/dedup-ratchet.sh` says so with the reason.\n- **sketch tier**: std/mvu runs its turns on `Sys.loop`, which `fpr sol`\n  did not have. The Sol profile has it now (its type in Sol/Infer.hs, the\n  VM applies the step until it answers `False`), and QOS's\n  `tests/sketch-mvutick.sol` runs again.\n- **Vec record folds**: the leg expected x64 to say its specialization tier\n  is off; it has been on since `28dcacc` (2026-10-03). …",
+    "doc": "- **dedup ratchet**: `compiler/Sol/Infer.hs` had grown to 131 lines, all\n  primitive declarations (`Sys.mtime`, `receiveFromNow`, `intMax`,\n  `intMin`), which the ratchet's own comment admits; with `Sys.loop` below\n  it is 132, and `tools/dedup-ratchet.sh` says so with the reason.\n- **sketch tier**: std/mvu runs its turns on `Sys.loop`, which `fpr sol`\n  did not have. The Sol profile has it now (its type in Sol/Infer.hs, the\n  VM applies the step until it answers `False`), and QOS's\n  `tests/sketch-mvutick.sol` runs again.\n- **Vec record folds**: the leg expected x64 to say its specialization tier\n  is off; it has been on since `28dcacc` (2026-10-03). \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -4747,12 +4427,12 @@
  "Mod.hashAt": {
   "sig": "Mod.hashAt : Int -> String",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "`runtime/mod.c` registers attached tables and reads rows: `Mod.plugs`,\n`Mod.hashAt`, `Mod.rows t`, `Mod.rowHash/rowName/rowIface/rowFn/rowArity t\ni` (table -1 is the image's own). `Mod.find` (newest attachment wins),\n`Mod.findAt`, `Mod.resolve`, `Mod.has` and the live-reload gate\n`Mod.compatAt` are a `Mod` structure in the prelude, with the same refusal\ntexts. `Mod.fn` stays C only because `fn` is a keyword and cannot be a field\nname. Attach and detach take a writer lock, an attach publishes the slot before\nthe count, and readers load the count with acquire. Row counts are taken once\nat attach, so a row index is bounds-checked in O(1). …",
+  "doc": "`runtime/mod.c` registers attached tables and reads rows: `Mod.plugs`,\n`Mod.hashAt`, `Mod.rows t`, `Mod.rowHash/rowName/rowIface/rowFn/rowArity t\ni` (table -1 is the image's own). `Mod.find` (newest attachment wins),\n`Mod.findAt`, `Mod.resolve`, `Mod.has` and the live-reload gate\n`Mod.compatAt` are a `Mod` structure in the prelude, with the same refusal\ntexts. `Mod.fn` stays C only because `fn` is a keyword and cannot be a field\nname. Attach and detach take a writer lock, an attach publishes the slot before\nthe count, and readers load the count with acquire. Row counts are taken once\nat attach, so a row index is bounds-checked in O(1). \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Mod.hashAt : Int -> String",
-    "doc": "`runtime/mod.c` registers attached tables and reads rows: `Mod.plugs`,\n`Mod.hashAt`, `Mod.rows t`, `Mod.rowHash/rowName/rowIface/rowFn/rowArity t\ni` (table -1 is the image's own). `Mod.find` (newest attachment wins),\n`Mod.findAt`, `Mod.resolve`, `Mod.has` and the live-reload gate\n`Mod.compatAt` are a `Mod` structure in the prelude, with the same refusal\ntexts. `Mod.fn` stays C only because `fn` is a keyword and cannot be a field\nname. Attach and detach take a writer lock, an attach publishes the slot before\nthe count, and readers load the count with acquire. Row counts are taken once\nat attach, so a row index is bounds-checked in O(1). …",
+    "doc": "`runtime/mod.c` registers attached tables and reads rows: `Mod.plugs`,\n`Mod.hashAt`, `Mod.rows t`, `Mod.rowHash/rowName/rowIface/rowFn/rowArity t\ni` (table -1 is the image's own). `Mod.find` (newest attachment wins),\n`Mod.findAt`, `Mod.resolve`, `Mod.has` and the live-reload gate\n`Mod.compatAt` are a `Mod` structure in the prelude, with the same refusal\ntexts. `Mod.fn` stays C only because `fn` is a keyword and cannot be a field\nname. Attach and detach take a writer lock, an attach publishes the slot before\nthe count, and readers load the count with acquire. Row counts are taken once\nat attach, so a row index is bounds-checked in O(1). \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -4817,12 +4497,12 @@
  "Sys.logStaged": {
   "sig": "Sys.logStaged : Unit -> (Int, List (Int, String))",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. …",
+  "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.logStaged : Unit -> (Int, List (Int, String))",
-    "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. …",
+    "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -4830,12 +4510,12 @@
  "Sys.logInstall": {
   "sig": "Sys.logInstall : Int -> Bool",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. …",
+  "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.logInstall : Int -> Bool",
-    "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. …",
+    "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -4843,12 +4523,12 @@
  "Sys.logger": {
   "sig": "Sys.logger : Unit -> Int",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. …",
+  "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.logger : Unit -> Int",
-    "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. …",
+    "doc": "Some writers cannot message an actor: a panic, an actor failing, a hosted\nprogram's host threads (QOS Portable's `entry.c`, severity 3). For them C\nkeeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes\nit at once under C's own copy of the rate rule -- the console never waits on\nan actor, and a panic's last words print as before. (Decided with the user:\n\"echo now, ring later\" over routing every echo through the actor, which\nwould print a host thread's line late, or never if the system is stuck.)\nThe log actor takes what is staged before every answer, so C's lines are\ncounted and snapshotted with everyone else's. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -4856,17 +4536,17 @@
  "Sys.memStats": {
   "sig": "Sys.memStats : Int -> a",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "- The language: evaluation order, types and inference, linearity,\n  `unsafe` vs `measure`, equality (deep now -- was header-only until\n  last week), integers and overflow, strings (UTF-8? bytes? 1-based\n  in Sol), records and update, paths (`@Model.x`), modules and pins,\n  holes, the `>` effect view.\n- The OS: what a *service* is, what a *driver* is, what a *process*\n  is, what a *capability* is, how memory is granted, how IRQs reach\n  an actor, what the ABI promises.\n- Today there are THREE idioms for reaching a service and that is the\n  first decision to make (counts re-measured at HEAD -- all three are\n  bigger than they looked, so the migration is a three-figure edit):\n    - path strings …",
+  "doc": "- The language: evaluation order, types and inference, linearity,\n  `unsafe` vs `measure`, equality (deep now -- was header-only until\n  last week), integers and overflow, strings (UTF-8? bytes? 1-based\n  in Sol), records and update, paths (`@Model.x`), modules and pins,\n  holes, the `>` effect view.\n- The OS: what a *service* is, what a *driver* is, what a *process*\n  is, what a *capability* is, how memory is granted, how IRQs reach\n  an actor, what the ABI promises.\n- Today there are THREE idioms for reaching a service and that is the\n  first decision to make (counts re-measured at HEAD -- all three are\n  bigger than they looked, so the migration is a three-figure edit):\n    - path strings \u2026",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Sys.memStats : Int -> a",
-    "doc": "- The language: evaluation order, types and inference, linearity,\n  `unsafe` vs `measure`, equality (deep now -- was header-only until\n  last week), integers and overflow, strings (UTF-8? bytes? 1-based\n  in Sol), records and update, paths (`@Model.x`), modules and pins,\n  holes, the `>` effect view.\n- The OS: what a *service* is, what a *driver* is, what a *process*\n  is, what a *capability* is, how memory is granted, how IRQs reach\n  an actor, what the ABI promises.\n- Today there are THREE idioms for reaching a service and that is the\n  first decision to make (counts re-measured at HEAD -- all three are\n  bigger than they looked, so the migration is a three-figure edit):\n    - path strings …",
+    "doc": "- The language: evaluation order, types and inference, linearity,\n  `unsafe` vs `measure`, equality (deep now -- was header-only until\n  last week), integers and overflow, strings (UTF-8? bytes? 1-based\n  in Sol), records and update, paths (`@Model.x`), modules and pins,\n  holes, the `>` effect view.\n- The OS: what a *service* is, what a *driver* is, what a *process*\n  is, what a *capability* is, how memory is granted, how IRQs reach\n  an actor, what the ABI promises.\n- Today there are THREE idioms for reaching a service and that is the\n  first decision to make (counts re-measured at HEAD -- all three are\n  bigger than they looked, so the migration is a three-figure edit):\n    - path strings \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    },
    "sol": {
     "sig": "Sys.memStats : Int -> a",
-    "doc": "- The language: evaluation order, types and inference, linearity,\n  `unsafe` vs `measure`, equality (deep now -- was header-only until\n  last week), integers and overflow, strings (UTF-8? bytes? 1-based\n  in Sol), records and update, paths (`@Model.x`), modules and pins,\n  holes, the `>` effect view.\n- The OS: what a *service* is, what a *driver* is, what a *process*\n  is, what a *capability* is, how memory is granted, how IRQs reach\n  an actor, what the ABI promises.\n- Today there are THREE idioms for reaching a service and that is the\n  first decision to make (counts re-measured at HEAD -- all three are\n  bigger than they looked, so the migration is a three-figure edit):\n    - path strings …",
+    "doc": "- The language: evaluation order, types and inference, linearity,\n  `unsafe` vs `measure`, equality (deep now -- was header-only until\n  last week), integers and overflow, strings (UTF-8? bytes? 1-based\n  in Sol), records and update, paths (`@Model.x`), modules and pins,\n  holes, the `>` effect view.\n- The OS: what a *service* is, what a *driver* is, what a *process*\n  is, what a *capability* is, how memory is granted, how IRQs reach\n  an actor, what the ABI promises.\n- Today there are THREE idioms for reaching a service and that is the\n  first decision to make (counts re-measured at HEAD -- all three are\n  bigger than they looked, so the migration is a three-figure edit):\n    - path strings \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -4892,17 +4572,17 @@
  "Sys.spawnApp": {
   "sig": "Sys.spawnApp : (Int -> a) -> Int",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "With the memory actor owning the arena, a second app image is just\nmore actors on the same plane: `LD.launch me ld \"appa\"` (std/\nloader.fpr) reads `apps/appa.qa` off the disk, attaches it through the\nsame host gate every module passes (the shell-stamp check), finds its\n`app` export and spawns it under a FRESH pid with `Sys.spawnApp` --\nthe shell's actors stay pid 0, the app's root gets the next pid and\neverything it spawns inherits it (`myPid`, `Sys.actInfo`). …",
+  "doc": "With the memory actor owning the arena, a second app image is just\nmore actors on the same plane: `LD.launch me ld \"appa\"` (std/\nloader.fpr) reads `apps/appa.qa` off the disk, attaches it through the\nsame host gate every module passes (the shell-stamp check), finds its\n`app` export and spawns it under a FRESH pid with `Sys.spawnApp` --\nthe shell's actors stay pid 0, the app's root gets the next pid and\neverything it spawns inherits it (`myPid`, `Sys.actInfo`). \u2026",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Sys.spawnApp : (Int -> a) -> Int",
-    "doc": "With the memory actor owning the arena, a second app image is just\nmore actors on the same plane: `LD.launch me ld \"appa\"` (std/\nloader.fpr) reads `apps/appa.qa` off the disk, attaches it through the\nsame host gate every module passes (the shell-stamp check), finds its\n`app` export and spawns it under a FRESH pid with `Sys.spawnApp` --\nthe shell's actors stay pid 0, the app's root gets the next pid and\neverything it spawns inherits it (`myPid`, `Sys.actInfo`). …",
+    "doc": "With the memory actor owning the arena, a second app image is just\nmore actors on the same plane: `LD.launch me ld \"appa\"` (std/\nloader.fpr) reads `apps/appa.qa` off the disk, attaches it through the\nsame host gate every module passes (the shell-stamp check), finds its\n`app` export and spawns it under a FRESH pid with `Sys.spawnApp` --\nthe shell's actors stay pid 0, the app's root gets the next pid and\neverything it spawns inherits it (`myPid`, `Sys.actInfo`). \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    },
    "sol": {
     "sig": "Sys.spawnApp : (Int -> a) -> Int",
-    "doc": "With the memory actor owning the arena, a second app image is just\nmore actors on the same plane: `LD.launch me ld \"appa\"` (std/\nloader.fpr) reads `apps/appa.qa` off the disk, attaches it through the\nsame host gate every module passes (the shell-stamp check), finds its\n`app` export and spawns it under a FRESH pid with `Sys.spawnApp` --\nthe shell's actors stay pid 0, the app's root gets the next pid and\neverything it spawns inherits it (`myPid`, `Sys.actInfo`). …",
+    "doc": "With the memory actor owning the arena, a second app image is just\nmore actors on the same plane: `LD.launch me ld \"appa\"` (std/\nloader.fpr) reads `apps/appa.qa` off the disk, attaches it through the\nsame host gate every module passes (the shell-stamp check), finds its\n`app` export and spawns it under a FRESH pid with `Sys.spawnApp` --\nthe shell's actors stay pid 0, the app's root gets the next pid and\neverything it spawns inherits it (`myPid`, `Sys.actInfo`). \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -4923,12 +4603,12 @@
  "Sys.growLog": {
   "sig": "Sys.growLog : Int -> a",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "* **Buddy, owned by the memory actor (Memory.qa, stage 1 -- LIVE).**\n  The image that runs `buddy_init` -- a machine boot, or the qosp app\n  over the arena the host hands it whole (ABI v12: nothing past the\n  loaded image belongs to the host any more) -- spawns ONE actor that\n  owns the buddy, second in hart 0's queue after actor 0.  Every block\n  the runtime needs from actor context is a message to it: pool\n  slabs, message slabs, stacks, the acb and channel-block carves, a\n  ring that doubles, the ARC table's next size. …",
+  "doc": "* **Buddy, owned by the memory actor (Memory.qa, stage 1 -- LIVE).**\n  The image that runs `buddy_init` -- a machine boot, or the qosp app\n  over the arena the host hands it whole (ABI v12: nothing past the\n  loaded image belongs to the host any more) -- spawns ONE actor that\n  owns the buddy, second in hart 0's queue after actor 0.  Every block\n  the runtime needs from actor context is a message to it: pool\n  slabs, message slabs, stacks, the acb and channel-block carves, a\n  ring that doubles, the ARC table's next size. \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.growLog : Int -> a",
-    "doc": "* **Buddy, owned by the memory actor (Memory.qa, stage 1 -- LIVE).**\n  The image that runs `buddy_init` -- a machine boot, or the qosp app\n  over the arena the host hands it whole (ABI v12: nothing past the\n  loaded image belongs to the host any more) -- spawns ONE actor that\n  owns the buddy, second in hart 0's queue after actor 0.  Every block\n  the runtime needs from actor context is a message to it: pool\n  slabs, message slabs, stacks, the acb and channel-block carves, a\n  ring that doubles, the ARC table's next size. …",
+    "doc": "* **Buddy, owned by the memory actor (Memory.qa, stage 1 -- LIVE).**\n  The image that runs `buddy_init` -- a machine boot, or the qosp app\n  over the arena the host hands it whole (ABI v12: nothing past the\n  loaded image belongs to the host any more) -- spawns ONE actor that\n  owns the buddy, second in hart 0's queue after actor 0.  Every block\n  the runtime needs from actor context is a message to it: pool\n  slabs, message slabs, stacks, the acb and channel-block carves, a\n  ring that doubles, the ARC table's next size. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -4936,17 +4616,17 @@
  "Sys.poolReset": {
   "sig": "Sys.poolReset : Int -> a",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "* **Buddy, owned by the memory actor (Memory.qa, stage 1 -- LIVE).**\n  The image that runs `buddy_init` -- a machine boot, or the qosp app\n  over the arena the host hands it whole (ABI v12: nothing past the\n  loaded image belongs to the host any more) -- spawns ONE actor that\n  owns the buddy, second in hart 0's queue after actor 0.  Every block\n  the runtime needs from actor context is a message to it: pool\n  slabs, message slabs, stacks, the acb and channel-block carves, a\n  ring that doubles, the ARC table's next size. …",
+  "doc": "* **Buddy, owned by the memory actor (Memory.qa, stage 1 -- LIVE).**\n  The image that runs `buddy_init` -- a machine boot, or the qosp app\n  over the arena the host hands it whole (ABI v12: nothing past the\n  loaded image belongs to the host any more) -- spawns ONE actor that\n  owns the buddy, second in hart 0's queue after actor 0.  Every block\n  the runtime needs from actor context is a message to it: pool\n  slabs, message slabs, stacks, the acb and channel-block carves, a\n  ring that doubles, the ARC table's next size. \u2026",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Sys.poolReset : Int -> a",
-    "doc": "* **Buddy, owned by the memory actor (Memory.qa, stage 1 -- LIVE).**\n  The image that runs `buddy_init` -- a machine boot, or the qosp app\n  over the arena the host hands it whole (ABI v12: nothing past the\n  loaded image belongs to the host any more) -- spawns ONE actor that\n  owns the buddy, second in hart 0's queue after actor 0.  Every block\n  the runtime needs from actor context is a message to it: pool\n  slabs, message slabs, stacks, the acb and channel-block carves, a\n  ring that doubles, the ARC table's next size. …",
+    "doc": "* **Buddy, owned by the memory actor (Memory.qa, stage 1 -- LIVE).**\n  The image that runs `buddy_init` -- a machine boot, or the qosp app\n  over the arena the host hands it whole (ABI v12: nothing past the\n  loaded image belongs to the host any more) -- spawns ONE actor that\n  owns the buddy, second in hart 0's queue after actor 0.  Every block\n  the runtime needs from actor context is a message to it: pool\n  slabs, message slabs, stacks, the acb and channel-block carves, a\n  ring that doubles, the ARC table's next size. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    },
    "sol": {
     "sig": "Sys.poolReset : Int -> a",
-    "doc": "* **Buddy, owned by the memory actor (Memory.qa, stage 1 -- LIVE).**\n  The image that runs `buddy_init` -- a machine boot, or the qosp app\n  over the arena the host hands it whole (ABI v12: nothing past the\n  loaded image belongs to the host any more) -- spawns ONE actor that\n  owns the buddy, second in hart 0's queue after actor 0.  Every block\n  the runtime needs from actor context is a message to it: pool\n  slabs, message slabs, stacks, the acb and channel-block carves, a\n  ring that doubles, the ARC table's next size. …",
+    "doc": "* **Buddy, owned by the memory actor (Memory.qa, stage 1 -- LIVE).**\n  The image that runs `buddy_init` -- a machine boot, or the qosp app\n  over the arena the host hands it whole (ABI v12: nothing past the\n  loaded image belongs to the host any more) -- spawns ONE actor that\n  owns the buddy, second in hart 0's queue after actor 0.  Every block\n  the runtime needs from actor context is a message to it: pool\n  slabs, message slabs, stacks, the acb and channel-block carves, a\n  ring that doubles, the ARC table's next size. \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -4954,12 +4634,12 @@
  "Mod.detachLast": {
   "sig": "Mod.detachLast : Unit -> Unit",
   "section": "FP-RISC builtins (compiler/Infer.hs)",
-  "doc": "- std/livereload.fpr 33-37: `initialIdentity` takes the refusal branch for\n  a plug-count mismatch as well as a hash mismatch, and `rollback` always\n  calls `Mod.detachLast` -- if this call attached nothing, it detaches\n  another caller's table.\n- std/reload.fpr 20-21 and 63-64: a wrong table count returns Err without\n  detaching; right when none was attached, a leak when two were.\n- std/file.fpr 78-84 `File.withOpen`: the close Result is discarded (the\n  draft: keep the primary error and attach the cleanup error), and a\n  raising `f` skips the close. …",
+  "doc": "- std/livereload.fpr 33-37: `initialIdentity` takes the refusal branch for\n  a plug-count mismatch as well as a hash mismatch, and `rollback` always\n  calls `Mod.detachLast` -- if this call attached nothing, it detaches\n  another caller's table.\n- std/reload.fpr 20-21 and 63-64: a wrong table count returns Err without\n  detaching; right when none was attached, a leak when two were.\n- std/file.fpr 78-84 `File.withOpen`: the close Result is discarded (the\n  draft: keep the primary error and attach the cleanup error), and a\n  raising `f` skips the close. \u2026",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Mod.detachLast : Unit -> Unit",
-    "doc": "- std/livereload.fpr 33-37: `initialIdentity` takes the refusal branch for\n  a plug-count mismatch as well as a hash mismatch, and `rollback` always\n  calls `Mod.detachLast` -- if this call attached nothing, it detaches\n  another caller's table.\n- std/reload.fpr 20-21 and 63-64: a wrong table count returns Err without\n  detaching; right when none was attached, a leak when two were.\n- std/file.fpr 78-84 `File.withOpen`: the close Result is discarded (the\n  draft: keep the primary error and attach the cleanup error), and a\n  raising `f` skips the close. …",
+    "doc": "- std/livereload.fpr 33-37: `initialIdentity` takes the refusal branch for\n  a plug-count mismatch as well as a hash mismatch, and `rollback` always\n  calls `Mod.detachLast` -- if this call attached nothing, it detaches\n  another caller's table.\n- std/reload.fpr 20-21 and 63-64: a wrong table count returns Err without\n  detaching; right when none was attached, a leak when two were.\n- std/file.fpr 78-84 `File.withOpen`: the close Result is discarded (the\n  draft: keep the primary error and attach the cleanup error), and a\n  raising `f` skips the close. \u2026",
     "section": "FP-RISC builtins (compiler/Infer.hs)"
    }
   }
@@ -5106,17 +4786,17 @@
  "Tup2": {
   "sig": "Tup2 : a -> b -> (a, b)",
   "section": "Constructors",
-  "doc": "Construct a 2-element tuple; ordinary tuple syntax is (a, b, …).",
+  "doc": "Construct a 2-element tuple; ordinary tuple syntax is (a, b, \u2026).",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Tup2 : a -> b -> (a, b)",
-    "doc": "Construct a 2-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 2-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    },
    "sol": {
     "sig": "Tup2 : a -> b -> (a, b)",
-    "doc": "Construct a 2-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 2-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    }
   }
@@ -5124,17 +4804,17 @@
  "Tup3": {
   "sig": "Tup3 : a -> b -> c -> (a, b, c)",
   "section": "Constructors",
-  "doc": "Construct a 3-element tuple; ordinary tuple syntax is (a, b, …).",
+  "doc": "Construct a 3-element tuple; ordinary tuple syntax is (a, b, \u2026).",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Tup3 : a -> b -> c -> (a, b, c)",
-    "doc": "Construct a 3-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 3-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    },
    "sol": {
     "sig": "Tup3 : a -> b -> c -> (a, b, c)",
-    "doc": "Construct a 3-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 3-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    }
   }
@@ -5142,17 +4822,17 @@
  "Tup4": {
   "sig": "Tup4 : a -> b -> c -> d -> (a, b, c, d)",
   "section": "Constructors",
-  "doc": "Construct a 4-element tuple; ordinary tuple syntax is (a, b, …).",
+  "doc": "Construct a 4-element tuple; ordinary tuple syntax is (a, b, \u2026).",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Tup4 : a -> b -> c -> d -> (a, b, c, d)",
-    "doc": "Construct a 4-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 4-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    },
    "sol": {
     "sig": "Tup4 : a -> b -> c -> d -> (a, b, c, d)",
-    "doc": "Construct a 4-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 4-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    }
   }
@@ -5160,17 +4840,17 @@
  "Tup5": {
   "sig": "Tup5 : a -> b -> c -> d -> e -> (a, b, c, d, e)",
   "section": "Constructors",
-  "doc": "Construct a 5-element tuple; ordinary tuple syntax is (a, b, …).",
+  "doc": "Construct a 5-element tuple; ordinary tuple syntax is (a, b, \u2026).",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Tup5 : a -> b -> c -> d -> e -> (a, b, c, d, e)",
-    "doc": "Construct a 5-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 5-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    },
    "sol": {
     "sig": "Tup5 : a -> b -> c -> d -> e -> (a, b, c, d, e)",
-    "doc": "Construct a 5-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 5-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    }
   }
@@ -5178,17 +4858,17 @@
  "Tup6": {
   "sig": "Tup6 : a -> b -> c -> d -> e -> f -> (a, b, c, d, e, f)",
   "section": "Constructors",
-  "doc": "Construct a 6-element tuple; ordinary tuple syntax is (a, b, …).",
+  "doc": "Construct a 6-element tuple; ordinary tuple syntax is (a, b, \u2026).",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Tup6 : a -> b -> c -> d -> e -> f -> (a, b, c, d, e, f)",
-    "doc": "Construct a 6-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 6-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    },
    "sol": {
     "sig": "Tup6 : a -> b -> c -> d -> e -> f -> (a, b, c, d, e, f)",
-    "doc": "Construct a 6-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 6-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    }
   }
@@ -5196,17 +4876,17 @@
  "Tup7": {
   "sig": "Tup7 : a -> b -> c -> d -> e -> f -> g -> (a, b, c, d, e, f, g)",
   "section": "Constructors",
-  "doc": "Construct a 7-element tuple; ordinary tuple syntax is (a, b, …).",
+  "doc": "Construct a 7-element tuple; ordinary tuple syntax is (a, b, \u2026).",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Tup7 : a -> b -> c -> d -> e -> f -> g -> (a, b, c, d, e, f, g)",
-    "doc": "Construct a 7-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 7-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    },
    "sol": {
     "sig": "Tup7 : a -> b -> c -> d -> e -> f -> g -> (a, b, c, d, e, f, g)",
-    "doc": "Construct a 7-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 7-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    }
   }
@@ -5214,17 +4894,17 @@
  "Tup8": {
   "sig": "Tup8 : a -> b -> c -> d -> e -> f -> g -> h -> (a, b, c, d, e, f, g, h)",
   "section": "Constructors",
-  "doc": "Construct a 8-element tuple; ordinary tuple syntax is (a, b, …).",
+  "doc": "Construct a 8-element tuple; ordinary tuple syntax is (a, b, \u2026).",
   "profile": "both",
   "variants": {
    "fpr": {
     "sig": "Tup8 : a -> b -> c -> d -> e -> f -> g -> h -> (a, b, c, d, e, f, g, h)",
-    "doc": "Construct a 8-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 8-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    },
    "sol": {
     "sig": "Tup8 : a -> b -> c -> d -> e -> f -> g -> h -> (a, b, c, d, e, f, g, h)",
-    "doc": "Construct a 8-element tuple; ordinary tuple syntax is (a, b, …).",
+    "doc": "Construct a 8-element tuple; ordinary tuple syntax is (a, b, \u2026).",
     "section": "Constructors"
    }
   }
@@ -5245,12 +4925,12 @@
  "Try.parseNum": {
   "sig": "Try.parseNum : String -> Result Int String",
   "section": "Sol builtins (compiler/Sol/Infer.hs)",
-  "doc": "| operation | spellings in scope | corpus use | status |\n| --- | --- | --- | --- |\n| string length | `Str.len`, `String.len`, `strlen` | Sol examples 8 / 2 / 0; FP-RISC tests 2 / 0 / 50 | decision point D1 |\n| char code at i | `Str.at s i`, `charAt s i` | Sol libs used both | fixed now: libs use `Str.at` |\n| code -> string | `Str.fromCode`, `chr` | 8 / 8 across libs | fixed now: libs use `Str.fromCode` |\n| substring | `Str.sub s i n`, `Str.slice s i j`, `substr s i n`, `base.substr` (= slice) | mixed | fixed now: `base.substr` retired |\n| fold | `List.fold`, `foldl` | 16 / 2 | de facto decided: `List.fold` |\n| map / filter | `List.map`, bare `map` | 51 / 13 | de facto decided: `List.map` |\n| …",
+  "doc": "| operation | spellings in scope | corpus use | status |\n| --- | --- | --- | --- |\n| string length | `Str.len`, `String.len`, `strlen` | Sol examples 8 / 2 / 0; FP-RISC tests 2 / 0 / 50 | decision point D1 |\n| char code at i | `Str.at s i`, `charAt s i` | Sol libs used both | fixed now: libs use `Str.at` |\n| code -> string | `Str.fromCode`, `chr` | 8 / 8 across libs | fixed now: libs use `Str.fromCode` |\n| substring | `Str.sub s i n`, `Str.slice s i j`, `substr s i n`, `base.substr` (= slice) | mixed | fixed now: `base.substr` retired |\n| fold | `List.fold`, `foldl` | 16 / 2 | de facto decided: `List.fold` |\n| map / filter | `List.map`, bare `map` | 51 / 13 | de facto decided: `List.map` |\n| \u2026",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "Try.parseNum : String -> Result Int String",
-    "doc": "| operation | spellings in scope | corpus use | status |\n| --- | --- | --- | --- |\n| string length | `Str.len`, `String.len`, `strlen` | Sol examples 8 / 2 / 0; FP-RISC tests 2 / 0 / 50 | decision point D1 |\n| char code at i | `Str.at s i`, `charAt s i` | Sol libs used both | fixed now: libs use `Str.at` |\n| code -> string | `Str.fromCode`, `chr` | 8 / 8 across libs | fixed now: libs use `Str.fromCode` |\n| substring | `Str.sub s i n`, `Str.slice s i j`, `substr s i n`, `base.substr` (= slice) | mixed | fixed now: `base.substr` retired |\n| fold | `List.fold`, `foldl` | 16 / 2 | de facto decided: `List.fold` |\n| map / filter | `List.map`, bare `map` | 51 / 13 | de facto decided: `List.map` |\n| …",
+    "doc": "| operation | spellings in scope | corpus use | status |\n| --- | --- | --- | --- |\n| string length | `Str.len`, `String.len`, `strlen` | Sol examples 8 / 2 / 0; FP-RISC tests 2 / 0 / 50 | decision point D1 |\n| char code at i | `Str.at s i`, `charAt s i` | Sol libs used both | fixed now: libs use `Str.at` |\n| code -> string | `Str.fromCode`, `chr` | 8 / 8 across libs | fixed now: libs use `Str.fromCode` |\n| substring | `Str.sub s i n`, `Str.slice s i j`, `substr s i n`, `base.substr` (= slice) | mixed | fixed now: `base.substr` retired |\n| fold | `List.fold`, `foldl` | 16 / 2 | de facto decided: `List.fold` |\n| map / filter | `List.map`, bare `map` | 51 / 13 | de facto decided: `List.map` |\n| \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -5284,12 +4964,12 @@
  "Try.stat": {
   "sig": "Try.stat : String -> Result (Int, Int) FsError",
   "section": "Sol builtins (compiler/Sol/Infer.hs)",
-  "doc": "- [x] Add regression cases for the directory panics and missing-list ambiguity\n  before changing the implementation.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md): `tools/sol-fs-check.py`,\n  22 checks, registered in Base)\n- [x] Define one hosted filesystem result/error model: operation, path and\n  distinguishable missing, denied, wrong-kind, symlink-loop and other OS errors.\n  Add fallible entrypoints; retain convenience wrappers that fail clearly.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-RESULT-MODEL.md): the\n  observation surface — `Try.ls`/`Try.stat`/`Try.exists` with a structured\n  `FsError`, classified panics for the plain spellings. …",
+  "doc": "- [x] Add regression cases for the directory panics and missing-list ambiguity\n  before changing the implementation.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md): `tools/sol-fs-check.py`,\n  22 checks, registered in Base)\n- [x] Define one hosted filesystem result/error model: operation, path and\n  distinguishable missing, denied, wrong-kind, symlink-loop and other OS errors.\n  Add fallible entrypoints; retain convenience wrappers that fail clearly.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-RESULT-MODEL.md): the\n  observation surface \u2014 `Try.ls`/`Try.stat`/`Try.exists` with a structured\n  `FsError`, classified panics for the plain spellings. \u2026",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "Try.stat : String -> Result (Int, Int) FsError",
-    "doc": "- [x] Add regression cases for the directory panics and missing-list ambiguity\n  before changing the implementation.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md): `tools/sol-fs-check.py`,\n  22 checks, registered in Base)\n- [x] Define one hosted filesystem result/error model: operation, path and\n  distinguishable missing, denied, wrong-kind, symlink-loop and other OS errors.\n  Add fallible entrypoints; retain convenience wrappers that fail clearly.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-RESULT-MODEL.md): the\n  observation surface — `Try.ls`/`Try.stat`/`Try.exists` with a structured\n  `FsError`, classified panics for the plain spellings. …",
+    "doc": "- [x] Add regression cases for the directory panics and missing-list ambiguity\n  before changing the implementation.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md): `tools/sol-fs-check.py`,\n  22 checks, registered in Base)\n- [x] Define one hosted filesystem result/error model: operation, path and\n  distinguishable missing, denied, wrong-kind, symlink-loop and other OS errors.\n  Add fallible entrypoints; retain convenience wrappers that fail clearly.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-RESULT-MODEL.md): the\n  observation surface \u2014 `Try.ls`/`Try.stat`/`Try.exists` with a structured\n  `FsError`, classified panics for the plain spellings. \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -5297,12 +4977,12 @@
  "Try.exists": {
   "sig": "Try.exists : String -> Result Bool FsError",
   "section": "Sol builtins (compiler/Sol/Infer.hs)",
-  "doc": "- [x] Add regression cases for the directory panics and missing-list ambiguity\n  before changing the implementation.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md): `tools/sol-fs-check.py`,\n  22 checks, registered in Base)\n- [x] Define one hosted filesystem result/error model: operation, path and\n  distinguishable missing, denied, wrong-kind, symlink-loop and other OS errors.\n  Add fallible entrypoints; retain convenience wrappers that fail clearly.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-RESULT-MODEL.md): the\n  observation surface — `Try.ls`/`Try.stat`/`Try.exists` with a structured\n  `FsError`, classified panics for the plain spellings. …",
+  "doc": "- [x] Add regression cases for the directory panics and missing-list ambiguity\n  before changing the implementation.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md): `tools/sol-fs-check.py`,\n  22 checks, registered in Base)\n- [x] Define one hosted filesystem result/error model: operation, path and\n  distinguishable missing, denied, wrong-kind, symlink-loop and other OS errors.\n  Add fallible entrypoints; retain convenience wrappers that fail clearly.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-RESULT-MODEL.md): the\n  observation surface \u2014 `Try.ls`/`Try.stat`/`Try.exists` with a structured\n  `FsError`, classified panics for the plain spellings. \u2026",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "Try.exists : String -> Result Bool FsError",
-    "doc": "- [x] Add regression cases for the directory panics and missing-list ambiguity\n  before changing the implementation.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md): `tools/sol-fs-check.py`,\n  22 checks, registered in Base)\n- [x] Define one hosted filesystem result/error model: operation, path and\n  distinguishable missing, denied, wrong-kind, symlink-loop and other OS errors.\n  Add fallible entrypoints; retain convenience wrappers that fail clearly.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-RESULT-MODEL.md): the\n  observation surface — `Try.ls`/`Try.stat`/`Try.exists` with a structured\n  `FsError`, classified panics for the plain spellings. …",
+    "doc": "- [x] Add regression cases for the directory panics and missing-list ambiguity\n  before changing the implementation.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-METADATA.md): `tools/sol-fs-check.py`,\n  22 checks, registered in Base)\n- [x] Define one hosted filesystem result/error model: operation, path and\n  distinguishable missing, denied, wrong-kind, symlink-loop and other OS errors.\n  Add fallible entrypoints; retain convenience wrappers that fail clearly.\n  ([delivered 2026-10-28](2026-10-28-SOL-FS-RESULT-MODEL.md): the\n  observation surface \u2014 `Try.ls`/`Try.stat`/`Try.exists` with a structured\n  `FsError`, classified panics for the plain spellings. \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -5310,12 +4990,12 @@
  "Try.lstat": {
   "sig": "Try.lstat : String -> Result FsKind FsError",
   "section": "Sol builtins (compiler/Sol/Infer.hs)",
-  "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. …",
+  "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. \u2026",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "Try.lstat : String -> Result FsKind FsError",
-    "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. …",
+    "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -5323,12 +5003,12 @@
  "Try.statKind": {
   "sig": "Try.statKind : String -> Result FsKind FsError",
   "section": "Sol builtins (compiler/Sol/Infer.hs)",
-  "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. …",
+  "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. \u2026",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "Try.statKind : String -> Result FsKind FsError",
-    "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. …",
+    "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -5362,12 +5042,12 @@
  "Try.tempFile": {
   "sig": "Try.tempFile : String -> Result String FsError",
   "section": "Sol builtins (compiler/Sol/Infer.hs)",
-  "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. …",
+  "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. \u2026",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "Try.tempFile : String -> Result String FsError",
-    "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. …",
+    "doc": "- `.fpr`: effects are calls into the HAL through `Sys.*` and services\n  (Part II).  `print` is immediate.  (today)\n- `.sol`: a run owns ONE file transaction; buffered writes land at commit.\n  A pre-commit panic discards buffered work. `print` and explicit immediate\n  I/O are outside rollback. Guarded retry is the default: a conflict after\n  immediate external work fails without replay. Explicit legacy mode or a\n  thread-scoped Script.replayable assertion accepts repetition. Later deferred failure\n  does not undo applied files. \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -5564,12 +5244,12 @@
  "Num.sqrt": {
   "sig": "Num.sqrt : Int -> Int",
   "section": "Sol builtins (compiler/Sol/Infer.hs)",
-  "doc": "Compute the square root using Sol’s Numeric arithmetic.",
+  "doc": "Compute the square root using Sol\u2019s Numeric arithmetic.",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "Num.sqrt : Int -> Int",
-    "doc": "Compute the square root using Sol’s Numeric arithmetic.",
+    "doc": "Compute the square root using Sol\u2019s Numeric arithmetic.",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -5577,12 +5257,12 @@
  "Num.floor": {
   "sig": "Num.floor : Int -> Int",
   "section": "Sol builtins (compiler/Sol/Infer.hs)",
-  "doc": "* int `/` is quot (`idiv` / `sdiv`); f64 `/` is IEEE division.\n* exact ints promote to f64 on contact (`cvtsi2sd` / `scvtf`).\n* `Num.floor` is `roundsd 9` / `frintm`; `Num.round` is `roundsd 8` /\n  `frintn` (nearest, ties to even = Haskell `round`); both then `fptosi`.\n* f64 compares are ordered: every relation and `==` are false on NaN,\n  `!=` is true -- Haskell's `Double` instance.\n* integer division by zero cannot panic from native code, so the\n  kernel POISONS the fuel cell (`fuelPoison`, -2^62) and yields 0; the\n  VM turns the poisoned cell into the interpreter's\n  `SOL PANIC: division by zero` on return. …",
+  "doc": "* int `/` is quot (`idiv` / `sdiv`); f64 `/` is IEEE division.\n* exact ints promote to f64 on contact (`cvtsi2sd` / `scvtf`).\n* `Num.floor` is `roundsd 9` / `frintm`; `Num.round` is `roundsd 8` /\n  `frintn` (nearest, ties to even = Haskell `round`); both then `fptosi`.\n* f64 compares are ordered: every relation and `==` are false on NaN,\n  `!=` is true -- Haskell's `Double` instance.\n* integer division by zero cannot panic from native code, so the\n  kernel POISONS the fuel cell (`fuelPoison`, -2^62) and yields 0; the\n  VM turns the poisoned cell into the interpreter's\n  `SOL PANIC: division by zero` on return. \u2026",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "Num.floor : Int -> Int",
-    "doc": "* int `/` is quot (`idiv` / `sdiv`); f64 `/` is IEEE division.\n* exact ints promote to f64 on contact (`cvtsi2sd` / `scvtf`).\n* `Num.floor` is `roundsd 9` / `frintm`; `Num.round` is `roundsd 8` /\n  `frintn` (nearest, ties to even = Haskell `round`); both then `fptosi`.\n* f64 compares are ordered: every relation and `==` are false on NaN,\n  `!=` is true -- Haskell's `Double` instance.\n* integer division by zero cannot panic from native code, so the\n  kernel POISONS the fuel cell (`fuelPoison`, -2^62) and yields 0; the\n  VM turns the poisoned cell into the interpreter's\n  `SOL PANIC: division by zero` on return. …",
+    "doc": "* int `/` is quot (`idiv` / `sdiv`); f64 `/` is IEEE division.\n* exact ints promote to f64 on contact (`cvtsi2sd` / `scvtf`).\n* `Num.floor` is `roundsd 9` / `frintm`; `Num.round` is `roundsd 8` /\n  `frintn` (nearest, ties to even = Haskell `round`); both then `fptosi`.\n* f64 compares are ordered: every relation and `==` are false on NaN,\n  `!=` is true -- Haskell's `Double` instance.\n* integer division by zero cannot panic from native code, so the\n  kernel POISONS the fuel cell (`fuelPoison`, -2^62) and yields 0; the\n  VM turns the poisoned cell into the interpreter's\n  `SOL PANIC: division by zero` on return. \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -5590,12 +5270,12 @@
  "Num.round": {
   "sig": "Num.round : Int -> Int",
   "section": "Sol builtins (compiler/Sol/Infer.hs)",
-  "doc": "* int `/` is quot (`idiv` / `sdiv`); f64 `/` is IEEE division.\n* exact ints promote to f64 on contact (`cvtsi2sd` / `scvtf`).\n* `Num.floor` is `roundsd 9` / `frintm`; `Num.round` is `roundsd 8` /\n  `frintn` (nearest, ties to even = Haskell `round`); both then `fptosi`.\n* f64 compares are ordered: every relation and `==` are false on NaN,\n  `!=` is true -- Haskell's `Double` instance.\n* integer division by zero cannot panic from native code, so the\n  kernel POISONS the fuel cell (`fuelPoison`, -2^62) and yields 0; the\n  VM turns the poisoned cell into the interpreter's\n  `SOL PANIC: division by zero` on return. …",
+  "doc": "* int `/` is quot (`idiv` / `sdiv`); f64 `/` is IEEE division.\n* exact ints promote to f64 on contact (`cvtsi2sd` / `scvtf`).\n* `Num.floor` is `roundsd 9` / `frintm`; `Num.round` is `roundsd 8` /\n  `frintn` (nearest, ties to even = Haskell `round`); both then `fptosi`.\n* f64 compares are ordered: every relation and `==` are false on NaN,\n  `!=` is true -- Haskell's `Double` instance.\n* integer division by zero cannot panic from native code, so the\n  kernel POISONS the fuel cell (`fuelPoison`, -2^62) and yields 0; the\n  VM turns the poisoned cell into the interpreter's\n  `SOL PANIC: division by zero` on return. \u2026",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "Num.round : Int -> Int",
-    "doc": "* int `/` is quot (`idiv` / `sdiv`); f64 `/` is IEEE division.\n* exact ints promote to f64 on contact (`cvtsi2sd` / `scvtf`).\n* `Num.floor` is `roundsd 9` / `frintm`; `Num.round` is `roundsd 8` /\n  `frintn` (nearest, ties to even = Haskell `round`); both then `fptosi`.\n* f64 compares are ordered: every relation and `==` are false on NaN,\n  `!=` is true -- Haskell's `Double` instance.\n* integer division by zero cannot panic from native code, so the\n  kernel POISONS the fuel cell (`fuelPoison`, -2^62) and yields 0; the\n  VM turns the poisoned cell into the interpreter's\n  `SOL PANIC: division by zero` on return. …",
+    "doc": "* int `/` is quot (`idiv` / `sdiv`); f64 `/` is IEEE division.\n* exact ints promote to f64 on contact (`cvtsi2sd` / `scvtf`).\n* `Num.floor` is `roundsd 9` / `frintm`; `Num.round` is `roundsd 8` /\n  `frintn` (nearest, ties to even = Haskell `round`); both then `fptosi`.\n* f64 compares are ordered: every relation and `==` are false on NaN,\n  `!=` is true -- Haskell's `Double` instance.\n* integer division by zero cannot panic from native code, so the\n  kernel POISONS the fuel cell (`fuelPoison`, -2^62) and yields 0; the\n  VM turns the poisoned cell into the interpreter's\n  `SOL PANIC: division by zero` on return. \u2026",
     "section": "Sol builtins (compiler/Sol/Infer.hs)"
    }
   }
@@ -7822,12 +7502,12 @@
  "NativeGit.query": {
   "sig": "NativeGit.query : Int -> String -> GitOperation -> Result String String",
   "section": "Sol prelude (compiler/Sol/Preamble.hs)",
-  "doc": "Perform a typed Git query under the caller’s budget; return output text or an error.",
+  "doc": "Perform a typed Git query under the caller\u2019s budget; return output text or an error.",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "NativeGit.query : Int -> String -> GitOperation -> Result String String",
-    "doc": "Perform a typed Git query under the caller’s budget; return output text or an error.",
+    "doc": "Perform a typed Git query under the caller\u2019s budget; return output text or an error.",
     "section": "Sol prelude (compiler/Sol/Preamble.hs)"
    }
   }
@@ -8344,12 +8024,12 @@
  "Vec.mmul": {
   "sig": "Vec.mmul : Int -> Int -> Int -> Vector Int -> Vector Int -> (Vector Int, Vector Int, Vector Int)",
   "section": "Sol prelude (compiler/Sol/Preamble.hs)",
-  "doc": "- A helper named for one of these operations (`dotProd`, `strConcat`,\n  `listAppend`, `mod2`) is wrong: write the operator.  `List.append`,\n  `Numeric.mod`, `strcat` remain as the operators' definitions, not as\n  the spelling to use.\n- `^` binds tighter than `* / %`, which bind tighter than `+ -`; `^` is\n  right-associative (`2 ^ 3 ^ 2 = 2 ^ 9`).\n- Operators on linear values (Vector, Matrix) CONSUME both operands and\n  return one fresh value; use the `M.mul` / `Vec.mmul` threading forms\n  when an operand is needed again.\n- Mixed operand types (`Matrix * Vector`, `Int * Vector`) resolve to a\n  struct operator whose two parameter types match; same-type sites\n  resolve on the first parameter al …",
+  "doc": "- A helper named for one of these operations (`dotProd`, `strConcat`,\n  `listAppend`, `mod2`) is wrong: write the operator.  `List.append`,\n  `Numeric.mod`, `strcat` remain as the operators' definitions, not as\n  the spelling to use.\n- `^` binds tighter than `* / %`, which bind tighter than `+ -`; `^` is\n  right-associative (`2 ^ 3 ^ 2 = 2 ^ 9`).\n- Operators on linear values (Vector, Matrix) CONSUME both operands and\n  return one fresh value; use the `M.mul` / `Vec.mmul` threading forms\n  when an operand is needed again.\n- Mixed operand types (`Matrix * Vector`, `Int * Vector`) resolve to a\n  struct operator whose two parameter types match; same-type sites\n  resolve on the first parameter al \u2026",
   "profile": "sol",
   "variants": {
    "sol": {
     "sig": "Vec.mmul : Int -> Int -> Int -> Vector Int -> Vector Int -> (Vector Int, Vector Int, Vector Int)",
-    "doc": "- A helper named for one of these operations (`dotProd`, `strConcat`,\n  `listAppend`, `mod2`) is wrong: write the operator.  `List.append`,\n  `Numeric.mod`, `strcat` remain as the operators' definitions, not as\n  the spelling to use.\n- `^` binds tighter than `* / %`, which bind tighter than `+ -`; `^` is\n  right-associative (`2 ^ 3 ^ 2 = 2 ^ 9`).\n- Operators on linear values (Vector, Matrix) CONSUME both operands and\n  return one fresh value; use the `M.mul` / `Vec.mmul` threading forms\n  when an operand is needed again.\n- Mixed operand types (`Matrix * Vector`, `Int * Vector`) resolve to a\n  struct operator whose two parameter types match; same-type sites\n  resolve on the first parameter al …",
+    "doc": "- A helper named for one of these operations (`dotProd`, `strConcat`,\n  `listAppend`, `mod2`) is wrong: write the operator.  `List.append`,\n  `Numeric.mod`, `strcat` remain as the operators' definitions, not as\n  the spelling to use.\n- `^` binds tighter than `* / %`, which bind tighter than `+ -`; `^` is\n  right-associative (`2 ^ 3 ^ 2 = 2 ^ 9`).\n- Operators on linear values (Vector, Matrix) CONSUME both operands and\n  return one fresh value; use the `M.mul` / `Vec.mmul` threading forms\n  when an operand is needed again.\n- Mixed operand types (`Matrix * Vector`, `Int * Vector`) resolve to a\n  struct operator whose two parameter types match; same-type sites\n  resolve on the first parameter al \u2026",
     "section": "Sol prelude (compiler/Sol/Preamble.hs)"
    }
   }
@@ -8547,12 +8227,12 @@
  "Str": {
   "sig": "Str ",
   "section": "Sol prelude (compiler/Sol/Preamble.hs)",
-  "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nStr = Struct Add {\n  (+) = fn a b -> strcat a b,\n  (-) = fn a b -> case Str.endsWith b a of True -> substr a 0 (strlen a - strlen b) | False -> a,\n  zero = \"\",\n  len = fn s -> strlen s,\n  cat = fn a b -> strcat a b,\n  at = fn s i -> charAt s i,\n  fromCode = fn c -> chr c,\n  parse = fn s -> parseInt s,\n  sub = fn s i n -> substr s i n,\n  slice = fn s i j -> substr s i (j - i),\n  find = fn c s -> Str.findFrom c s 0,\n  findFrom = fn c s i -> case i >= strlen s of True -> 0 - 1 | False -> (case charAt s i == c of True -> i | False -> Str.findFrom c s (i + 1)),\n  indexOf = fn p s -> strIndexOf p s,\n  indexFrom = fn p s i -> case or (p == \"\") (i + strlen p > strlen s) of True -> 0 - 1 | False -> ( …\n```",
+  "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nStr = Struct Add {\n  (+) = fn a b -> strcat a b,\n  (-) = fn a b -> case Str.endsWith b a of True -> substr a 0 (strlen a - strlen b) | False -> a,\n  zero = \"\",\n  len = fn s -> strlen s,\n  cat = fn a b -> strcat a b,\n  at = fn s i -> charAt s i,\n  fromCode = fn c -> chr c,\n  parse = fn s -> parseInt s,\n  sub = fn s i n -> substr s i n,\n  slice = fn s i j -> substr s i (j - i),\n  find = fn c s -> Str.findFrom c s 0,\n  findFrom = fn c s i -> case i >= strlen s of True -> 0 - 1 | False -> (case charAt s i == c of True -> i | False -> Str.findFrom c s (i + 1)),\n  indexOf = fn p s -> strIndexOf p s,\n  indexFrom = fn p s i -> case or (p == \"\") (i + strlen p > strlen s) of True -> 0 - 1 | False -> ( \u2026\n```",
   "profile": "both",
   "variants": {
    "sol": {
     "sig": "Str ",
-    "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nStr = Struct Add {\n  (+) = fn a b -> strcat a b,\n  (-) = fn a b -> case Str.endsWith b a of True -> substr a 0 (strlen a - strlen b) | False -> a,\n  zero = \"\",\n  len = fn s -> strlen s,\n  cat = fn a b -> strcat a b,\n  at = fn s i -> charAt s i,\n  fromCode = fn c -> chr c,\n  parse = fn s -> parseInt s,\n  sub = fn s i n -> substr s i n,\n  slice = fn s i j -> substr s i (j - i),\n  find = fn c s -> Str.findFrom c s 0,\n  findFrom = fn c s i -> case i >= strlen s of True -> 0 - 1 | False -> (case charAt s i == c of True -> i | False -> Str.findFrom c s (i + 1)),\n  indexOf = fn p s -> strIndexOf p s,\n  indexFrom = fn p s i -> case or (p == \"\") (i + strlen p > strlen s) of True -> 0 - 1 | False -> ( …\n```",
+    "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nStr = Struct Add {\n  (+) = fn a b -> strcat a b,\n  (-) = fn a b -> case Str.endsWith b a of True -> substr a 0 (strlen a - strlen b) | False -> a,\n  zero = \"\",\n  len = fn s -> strlen s,\n  cat = fn a b -> strcat a b,\n  at = fn s i -> charAt s i,\n  fromCode = fn c -> chr c,\n  parse = fn s -> parseInt s,\n  sub = fn s i n -> substr s i n,\n  slice = fn s i j -> substr s i (j - i),\n  find = fn c s -> Str.findFrom c s 0,\n  findFrom = fn c s i -> case i >= strlen s of True -> 0 - 1 | False -> (case charAt s i == c of True -> i | False -> Str.findFrom c s (i + 1)),\n  indexOf = fn p s -> strIndexOf p s,\n  indexFrom = fn p s i -> case or (p == \"\") (i + strlen p > strlen s) of True -> 0 - 1 | False -> ( \u2026\n```",
     "section": "Sol prelude (compiler/Sol/Preamble.hs)"
    },
    "fpr": {
@@ -8884,12 +8564,12 @@
  "List": {
   "sig": "List ",
   "section": "Sol prelude (compiler/Sol/Preamble.hs)",
-  "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nList = Struct Add Functor StreamOps {\n  (+) = fn a b -> List.append a b,\n  (-) = fn a b -> List.subGo a b (List.len a) (List.len b),\n  subGo = fn a b la lb -> case lb > la of True -> a | False -> (case List.drop (la - lb) a == b of True -> List.take (la - lb) a | False -> a),\n  zero = [],\n  append = fn a b -> case a of Nil -> b | x :: rest -> x :: (List.append rest b),\n  map = fn f xs -> map f xs,\n  filter = fn p xs -> filter p xs,\n  fold = fn f z xs -> foldl f z xs,\n  find = fn p xs -> case filter p xs of Nil -> [] | x :: rest -> [x],\n  any = fn p xs -> case filter p xs of Nil -> False | _ -> True,\n  all = fn p xs -> case filter (fn x -> case p x of True -> False | False -> True) xs of Nil …\n```",
+  "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nList = Struct Add Functor StreamOps {\n  (+) = fn a b -> List.append a b,\n  (-) = fn a b -> List.subGo a b (List.len a) (List.len b),\n  subGo = fn a b la lb -> case lb > la of True -> a | False -> (case List.drop (la - lb) a == b of True -> List.take (la - lb) a | False -> a),\n  zero = [],\n  append = fn a b -> case a of Nil -> b | x :: rest -> x :: (List.append rest b),\n  map = fn f xs -> map f xs,\n  filter = fn p xs -> filter p xs,\n  fold = fn f z xs -> foldl f z xs,\n  find = fn p xs -> case filter p xs of Nil -> [] | x :: rest -> [x],\n  any = fn p xs -> case filter p xs of Nil -> False | _ -> True,\n  all = fn p xs -> case filter (fn x -> case p x of True -> False | False -> True) xs of Nil \u2026\n```",
   "profile": "both",
   "variants": {
    "sol": {
     "sig": "List ",
-    "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nList = Struct Add Functor StreamOps {\n  (+) = fn a b -> List.append a b,\n  (-) = fn a b -> List.subGo a b (List.len a) (List.len b),\n  subGo = fn a b la lb -> case lb > la of True -> a | False -> (case List.drop (la - lb) a == b of True -> List.take (la - lb) a | False -> a),\n  zero = [],\n  append = fn a b -> case a of Nil -> b | x :: rest -> x :: (List.append rest b),\n  map = fn f xs -> map f xs,\n  filter = fn p xs -> filter p xs,\n  fold = fn f z xs -> foldl f z xs,\n  find = fn p xs -> case filter p xs of Nil -> [] | x :: rest -> [x],\n  any = fn p xs -> case filter p xs of Nil -> False | _ -> True,\n  all = fn p xs -> case filter (fn x -> case p x of True -> False | False -> True) xs of Nil …\n```",
+    "doc": "Definition in Sol prelude (compiler/Sol/Preamble.hs):\n\n```\nList = Struct Add Functor StreamOps {\n  (+) = fn a b -> List.append a b,\n  (-) = fn a b -> List.subGo a b (List.len a) (List.len b),\n  subGo = fn a b la lb -> case lb > la of True -> a | False -> (case List.drop (la - lb) a == b of True -> List.take (la - lb) a | False -> a),\n  zero = [],\n  append = fn a b -> case a of Nil -> b | x :: rest -> x :: (List.append rest b),\n  map = fn f xs -> map f xs,\n  filter = fn p xs -> filter p xs,\n  fold = fn f z xs -> foldl f z xs,\n  find = fn p xs -> case filter p xs of Nil -> [] | x :: rest -> [x],\n  any = fn p xs -> case filter p xs of Nil -> False | _ -> True,\n  all = fn p xs -> case filter (fn x -> case p x of True -> False | False -> True) xs of Nil \u2026\n```",
     "section": "Sol prelude (compiler/Sol/Preamble.hs)"
    },
    "fpr": {
@@ -10518,12 +10198,12 @@
  "Sys.logKeep": {
   "sig": "Sys.logKeep n",
   "section": "FP-RISC prelude (core/prelude.fpr)",
-  "doc": "Change the log service’s retained-line limit.",
+  "doc": "Change the log service\u2019s retained-line limit.",
   "profile": "fpr",
   "variants": {
    "fpr": {
     "sig": "Sys.logKeep n",
-    "doc": "Change the log service’s retained-line limit.",
+    "doc": "Change the log service\u2019s retained-line limit.",
     "section": "FP-RISC prelude (core/prelude.fpr)"
    }
   }
@@ -12630,5 +12310,155 @@
   "section": "Types",
   "profile": "fpr",
   "doc": "Interned atom value used by the compiler/runtime."
+ },
+ "Addr.ofI64": {
+  "sig": "Addr.ofI64 : I64 -> Addr",
+  "doc": "Convert a 64-bit integer to an Addr (checked against XLEN on RV32).",
+  "overloads": [
+   {
+    "sig": "Addr.ofI64 : I64 -> Addr",
+    "doc": "Convert a 64-bit integer to an Addr (checked against XLEN on RV32)."
+   }
+  ]
+ },
+ "Addr.toI64": {
+  "sig": "Addr.toI64 : Addr -> I64",
+  "doc": "Convert an Addr to an unsigned 64-bit integer.",
+  "overloads": [
+   {
+    "sig": "Addr.toI64 : Addr -> I64",
+    "doc": "Convert an Addr to an unsigned 64-bit integer."
+   }
+  ]
+ },
+ "Mem.read64": {
+  "sig": "Mem.read64 : Addr -> I64",
+  "doc": "Volatile 8-byte aligned 64-bit read.",
+  "overloads": [
+   {
+    "sig": "Mem.read64 : Addr -> I64",
+    "doc": "Volatile 8-byte aligned 64-bit read."
+   }
+  ]
+ },
+ "Mem.write64": {
+  "sig": "Mem.write64 : Addr -> I64 -> Unit",
+  "doc": "Volatile 8-byte aligned 64-bit write.",
+  "overloads": [
+   {
+    "sig": "Mem.write64 : Addr -> I64 -> Unit",
+    "doc": "Volatile 8-byte aligned 64-bit write."
+   }
+  ]
+ },
+ "I32.setBit": {
+  "sig": "I32.setBit : I32 -> Int -> I32",
+  "doc": "Set bit i (0 <= i < 32) of an I32.",
+  "overloads": [
+   {
+    "sig": "I32.setBit : I32 -> Int -> I32",
+    "doc": "Set bit i (0 <= i < 32) of an I32."
+   }
+  ]
+ },
+ "I32.clearBit": {
+  "sig": "I32.clearBit : I32 -> Int -> I32",
+  "doc": "Clear bit i (0 <= i < 32) of an I32.",
+  "overloads": [
+   {
+    "sig": "I32.clearBit : I32 -> Int -> I32",
+    "doc": "Clear bit i (0 <= i < 32) of an I32."
+   }
+  ]
+ },
+ "I32.testBit": {
+  "sig": "I32.testBit : I32 -> Int -> Bool",
+  "doc": "Test bit i (0 <= i < 32) of an I32.",
+  "overloads": [
+   {
+    "sig": "I32.testBit : I32 -> Int -> Bool",
+    "doc": "Test bit i (0 <= i < 32) of an I32."
+   }
+  ]
+ },
+ "I32.mask": {
+  "sig": "I32.mask : Int -> Int -> I32",
+  "doc": "Build a 32-bit bitmask of width n at bit offset k.",
+  "overloads": [
+   {
+    "sig": "I32.mask : Int -> Int -> I32",
+    "doc": "Build a 32-bit bitmask of width n at bit offset k."
+   }
+  ]
+ },
+ "I64.setBit": {
+  "sig": "I64.setBit : I64 -> Int -> I64",
+  "doc": "Set bit i (0 <= i < 64) of an I64.",
+  "overloads": [
+   {
+    "sig": "I64.setBit : I64 -> Int -> I64",
+    "doc": "Set bit i (0 <= i < 64) of an I64."
+   }
+  ]
+ },
+ "I64.clearBit": {
+  "sig": "I64.clearBit : I64 -> Int -> I64",
+  "doc": "Clear bit i (0 <= i < 64) of an I64.",
+  "overloads": [
+   {
+    "sig": "I64.clearBit : I64 -> Int -> I64",
+    "doc": "Clear bit i (0 <= i < 64) of an I64."
+   }
+  ]
+ },
+ "I64.testBit": {
+  "sig": "I64.testBit : I64 -> Int -> Bool",
+  "doc": "Test bit i (0 <= i < 64) of an I64.",
+  "overloads": [
+   {
+    "sig": "I64.testBit : I64 -> Int -> Bool",
+    "doc": "Test bit i (0 <= i < 64) of an I64."
+   }
+  ]
+ },
+ "I64.mask": {
+  "sig": "I64.mask : Int -> Int -> I64",
+  "doc": "Build a 64-bit bitmask of width n at bit offset k.",
+  "overloads": [
+   {
+    "sig": "I64.mask : Int -> Int -> I64",
+    "doc": "Build a 64-bit bitmask of width n at bit offset k."
+   }
+  ]
+ },
+ "I64.fromI32s": {
+  "sig": "I64.fromI32s : I32 -> I32 -> I64",
+  "doc": "Combine high and low 32-bit halves into an I64.",
+  "overloads": [
+   {
+    "sig": "I64.fromI32s : I32 -> I32 -> I64",
+    "doc": "Combine high and low 32-bit halves into an I64."
+   }
+  ]
+ },
+ "I64.hi32": {
+  "sig": "I64.hi32 : I64 -> I32",
+  "doc": "Extract the high 32-bit half of an I64.",
+  "overloads": [
+   {
+    "sig": "I64.hi32 : I64 -> I32",
+    "doc": "Extract the high 32-bit half of an I64."
+   }
+  ]
+ },
+ "I64.lo32": {
+  "sig": "I64.lo32 : I64 -> I32",
+  "doc": "Extract the low 32-bit half of an I64.",
+  "overloads": [
+   {
+    "sig": "I64.lo32 : I64 -> I32",
+    "doc": "Extract the low 32-bit half of an I64."
+   }
+  ]
  }
 }

@@ -336,7 +336,8 @@ primCostOf :: Name -> [Cost] -> Maybe (Cost, Cost)
 primCostOf g lens
   | g == entryTickName, [_] <- lens = unit -- entry scheduling work, no actor allocation
   | g `elem` ["+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "and", "or", "not", "and2", "or2", "neg"] = unit
-  | g `elem` ["Word." ++ w | w <- ["fromInt", "toInt", "and", "or", "xor", "add", "sub", "not", "shl", "shr", "mask", "eq", "bitSet", "bitClear", "bitTest"]] = unit
+  | g `elem` ["I32." ++ w | w <- ["+", "-", "*", "/", "mod", "quot", "rem", "divU", "remU", "<", ">", "<=", ">=", "==", "!=", "ltU", "gtU", "leU", "geU", "and", "or", "xor", "not", "neg", "shl", "shr", "sar", "rotl", "rotr", "setBit", "clearBit", "testBit", "mask", "clz", "ctz", "popcnt", "trunc"]] = unit
+  | g `elem` ["I64." ++ w | w <- ["+", "-", "*", "/", "mod", "quot", "rem", "divU", "remU", "<", ">", "<=", ">=", "==", "!=", "ltU", "gtU", "leU", "geU", "and", "or", "xor", "not", "neg", "shl", "shr", "sar", "rotl", "rotr", "setBit", "clearBit", "testBit", "mask", "clz", "ctz", "popcnt", "trunc", "toInt"]] = unit
   | g `elem` ["error", "drop"] = unit
   | g == "keep" = Just (CN 0, CN 0)
   | g `elem` ["strlen", "String.len", "charAt"] = unit

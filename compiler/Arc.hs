@@ -46,14 +46,11 @@ primitiveContracts =
   ++ [("$uniform.unbox"++kind,arity,"uniformUnbox"++kind)
       | (kind,arity)<-[("Tagged",1),("Text",1),("Data",2)]]
   ++ [("$uniform.project",2,"uniformProject"),("$uniform.tagEq",3,"uniformTagEq")]
-  ++ [("Word." ++ n,a,"word" ++ n) | (n,a) <-
-       [("fromInt",1),("toInt",1),("bits",1),("and",2),("or",2),("xor",2),
-        ("add",2),("sub",2),("not",1),("shl",2),("shr",2),("mask",2),("eq",2),("bitSet",2),("bitClear",2),("bitTest",2)]]
   ++ [("Addr." ++ n,a,"addr" ++ n) | (n,a) <-
-       [("fromWord",1),("toWord",1),("add",2),("null",1),("eq",2)]]
+       [("ofI64",1),("toI64",1),("add",2),("null",1),("eq",2)]]
   ++ [("Mem." ++ n,a,"mem" ++ n) | (n,a) <-
-       [("read8",1),("read16",1),("read32",1),("readWord",1),
-        ("write8",2),("write16",2),("write32",2),("writeWord",2),
+       [("read8",1),("read16",1),("read32",1),("read64",1),
+        ("write8",2),("write16",2),("write32",2),("write64",2),
         ("atomicExchange",2),("compareExchange",3),("alloc",1),("realloc",2),("free",1),("fence",1),("liveAllocations",1)]]
 
   ++ [("CPU." ++ n,a,"cpu" ++ n) | (n,a) <-
@@ -111,8 +108,20 @@ primitiveContracts =
         ("ltU",2,"ltU"),("gtU",2,"gtU"),("leU",2,"leU"),("geU",2,"geU"),
         ("and",2,"and"),("or",2,"or"),("xor",2,"xor"),("not",1,"not"),("neg",1,"neg"),
         ("shl",2,"shl"),("shr",2,"shr"),("sar",2,"sar"),("rotl",2,"rotl"),("rotr",2,"rotr"),
+        ("setBit",2,"setBit"),("clearBit",2,"clearBit"),("testBit",2,"testBit"),("mask",2,"mask"),
         ("clz",1,"clz"),("ctz",1,"ctz"),("popcnt",1,"popcnt"),
         ("ofInt",1,"ofInt"),("ofIntU",1,"ofIntU"),("trunc",1,"trunc"),("toInt",1,"toInt"),("toIntU",1,"toIntU"),
+        ("str",1,"str"),("strU",1,"strU"),("hex",1,"hex"),("parse",1,"parse")]]
+  ++ [("I64." ++ n,a,"I64" ++ adapter) | (n,a,adapter) <-
+       [("+",2,"add"),("-",2,"sub"),("*",2,"mul"),("/",2,"div"),
+        ("mod",2,"mod"),("quot",2,"quot"),("rem",2,"rem"),("divU",2,"divU"),("remU",2,"remU"),
+        ("<",2,"lt"),(">",2,"gt"),("<=",2,"le"),(">=",2,"ge"),("==",2,"eq"),("!=",2,"ne"),
+        ("ltU",2,"ltU"),("gtU",2,"gtU"),("leU",2,"leU"),("geU",2,"geU"),
+        ("and",2,"and"),("or",2,"or"),("xor",2,"xor"),("not",1,"not"),("neg",1,"neg"),
+        ("shl",2,"shl"),("shr",2,"shr"),("sar",2,"sar"),("rotl",2,"rotl"),("rotr",2,"rotr"),
+        ("setBit",2,"setBit"),("clearBit",2,"clearBit"),("testBit",2,"testBit"),("mask",2,"mask"),
+        ("clz",1,"clz"),("ctz",1,"ctz"),("popcnt",1,"popcnt"),
+        ("ofInt",1,"ofInt"),("ofIntU",1,"ofIntU"),("trunc",1,"trunc"),("toInt",1,"toInt"),
         ("str",1,"str"),("strU",1,"strU"),("hex",1,"hex"),("parse",1,"parse")]]
 
 arcExterns :: M.Map String Int

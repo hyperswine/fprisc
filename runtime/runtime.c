@@ -6157,12 +6157,22 @@ V fpr_prim_fn_F32_x2estr(V a) {
  * veq compares its value, and render prints it as a signed decimal.  So
  * an I64 can sit in lists, records, vectors and polymorphic code.  The
  * price is one 24-byte cell per result (docs/2026-10-05-I64.md). */
-static uint64_t u64(V v) { return ((fpr_num64_t *)v)->val; }
+static uint64_t u64(V v) {
+#if defined(FPR_BUILTIN_RAW) && UINTPTR_MAX > 0xFFFFFFFFu
+  return (uint64_t)v;
+#else
+  return ((fpr_num64_t *)v)->val;
+#endif
+}
 static int64_t i64(V v) { return (int64_t)u64(v); }
 static V vu64(uint64_t x) {
+#if defined(FPR_BUILTIN_RAW) && UINTPTR_MAX > 0xFFFFFFFFu
+  return (V)x;
+#else
   fpr_num64_t *b = (fpr_num64_t *)fpr_alloc(sizeof(fpr_num64_t));
   *b = (fpr_num64_t){T_BITS, 4, 64, x};
   return (V)b;
+#endif
 }
 static V vi64(int64_t x) { return vu64((uint64_t)x); }
 /* C6 stage 3c: a constructor field declared I64 holds the integer's bits,
@@ -6246,6 +6256,20 @@ static V i64_shr(V a, V k) { return vu64(u64(a) >> cnt64(k)); }
 static V i64_sar(V a, V k) { return vi64(i64(a) >> cnt64(k)); } /* arithmetic on every target we build */
 static V i64_rotl(V a, V k) { unsigned n = cnt64(k); return n ? vu64((u64(a) << n) | (u64(a) >> (64 - n))) : vu64(u64(a)); }
 static V i64_rotr(V a, V k) { unsigned n = cnt64(k); return n ? vu64((u64(a) >> n) | (u64(a) << (64 - n))) : vu64(u64(a)); }
+static unsigned bit64(V k) {
+  sw n = UNTAG(k);
+  if (n < 0 || n >= 64) fpr_trap("I64: bit index out of range");
+  return (unsigned)n;
+}
+static V i64_setBit(V a, V k) { return vu64(u64(a) | ((uint64_t)1 << bit64(k))); }
+static V i64_clearBit(V a, V k) { return vu64(u64(a) & ~((uint64_t)1 << bit64(k))); }
+static V i64_testBit(V a, V k) { return BOOL((u64(a) >> bit64(k)) & 1u); }
+static V i64_mask(V countV, V offsetV) {
+  sw n = UNTAG(countV), k = UNTAG(offsetV);
+  if (n < 0 || k < 0 || (uint64_t)n > 64u || (uint64_t)k > 64u - (uint64_t)n)
+    fpr_trap("I64.mask: out of range");
+  return vu64(!n ? 0u : ((~(uint64_t)0 >> (64u - (uint64_t)n)) << k));
+}
 /* Bit counts written out: without the Zbb extension gcc turns the clz,
  * ctz and popcount builtins into libgcc calls (__clzdi2, ...), and the
  * virt and native links are -nostdlib with no -lgcc.  A zero argument
@@ -6299,13 +6323,22 @@ static V i64_ofIntU(V a) {
   if (!bi_to_u64_checked(a, &x)) return V_NONE;
   return some_v(vu64(x));
 }
-static V i64_trunc(V a) { return vu64(bi_trunc_u64(a)); }
-static V i64_toInt(V a) { return ok_v(bi_from_i64(i64(a))); }
+static V i64_trunc(V a) {
+  if (ISINT(a)) return vu64((uint64_t)(int64_t)UNTAG(a));
+  return vu64(bi_trunc_u64(a));
+}
+static V i64_toInt(V a) {
+#if defined(FPR_BUILTIN_RAW) && UINTPTR_MAX > 0xFFFFFFFFu
+  return TAG((sw)i64(a));
+#else
+  return bi_from_i64(i64(a));
+#endif
+}
 /* the halves as unsigned 32-bit Ints, and back (each half masked to 32 bits) */
 static V i64_half(uint32_t x) {
 #if UINTPTR_MAX <= 0xFFFFFFFFu
   if ((uint64_t)x > (uint64_t)INT_MAX_TAGGED)
-    fpr_trap("I64.hi/lo: unsigned half does not fit an Int; use hiWord/loWord");
+    fpr_trap("I64.hi/lo: unsigned half does not fit an Int; use hi32/lo32");
 #endif
   return TAG((sw)x);
 }
@@ -6314,28 +6347,10 @@ static V i64_lo(V a) { return i64_half((uint32_t)u64(a)); }
 static V i64_fromParts(V hi, V lo) {
   return vu64(((uint64_t)UNTAG(hi) & 0xFFFFFFFFu) << 32 | ((uint64_t)UNTAG(lo) & 0xFFFFFFFFu));
 }
-static V i64_halfWord(uint32_t x) {
-#ifdef FPR_BUILTIN_RAW
-  return (V)x;
-#else
-  bits_t *b = (bits_t *)fpr_alloc(sizeof(bits_t));
-  *b = (bits_t){T_BITS, 2, sizeof(uw) * 8, (uw)x};
-  return (V)b;
-#endif
-}
-static V i64_hiWord(V a) { return i64_halfWord((uint32_t)(u64(a) >> 32)); }
-static V i64_loWord(V a) { return i64_halfWord((uint32_t)u64(a)); }
-static uw i64_wordBits(V v) {
-#ifdef FPR_BUILTIN_RAW
-  return (uw)v;
-#else
-  if (ISINT(v) || !v || TID(v) != T_BITS || ((hdr_t *)v)->var != 2)
-    fpr_cpanic("I64.fromWords: not a Word");
-  return ((bits_t *)v)->val;
-#endif
-}
-static V i64_fromWords(V hi, V lo) {
-  return vu64(((uint64_t)(uint32_t)i64_wordBits(hi) << 32) | (uint32_t)i64_wordBits(lo));
+static V i64_hi32(V a) { return fpr_i32_pack((uint32_t)(u64(a) >> 32)); }
+static V i64_lo32(V a) { return fpr_i32_pack((uint32_t)u64(a)); }
+static V i64_fromI32s(V hi, V lo) {
+  return vu64(((uint64_t)fpr_i32_bits(hi) << 32) | (uint64_t)fpr_i32_bits(lo));
 }
 
 /* floats: to a double rounds to nearest; from one truncates toward zero
@@ -6431,6 +6446,10 @@ FPR_FN(fpr_g_I64_x2eshr, i64_shr, 2);
 FPR_FN(fpr_g_I64_x2esar, i64_sar, 2);
 FPR_FN(fpr_g_I64_x2erotl, i64_rotl, 2);
 FPR_FN(fpr_g_I64_x2erotr, i64_rotr, 2);
+FPR_FN(fpr_g_I64_x2esetBit, i64_setBit, 2);
+FPR_FN(fpr_g_I64_x2eclearBit, i64_clearBit, 2);
+FPR_FN(fpr_g_I64_x2etestBit, i64_testBit, 2);
+FPR_FN(fpr_g_I64_x2emask, i64_mask, 2);
 FPR_FN(fpr_g_I64_x2eclz, i64_clz, 1);
 FPR_FN(fpr_g_I64_x2ectz, i64_ctz, 1);
 FPR_FN(fpr_g_I64_x2epopcnt, i64_popcnt, 1);
@@ -6443,9 +6462,9 @@ FPR_FN(fpr_g_I64_x2etoInt, i64_toInt, 1);
 FPR_FN(fpr_g_I64_x2ehi, i64_hi, 1);
 FPR_FN(fpr_g_I64_x2elo, i64_lo, 1);
 FPR_FN(fpr_g_I64_x2efromParts, i64_fromParts, 2);
-FPR_FN(fpr_g_I64_x2ehiWord, i64_hiWord, 1);
-FPR_FN(fpr_g_I64_x2eloWord, i64_loWord, 1);
-FPR_FN(fpr_g_I64_x2efromWords, i64_fromWords, 2);
+FPR_FN(fpr_g_I64_x2ehi32, i64_hi32, 1);
+FPR_FN(fpr_g_I64_x2elo32, i64_lo32, 1);
+FPR_FN(fpr_g_I64_x2efromI32s, i64_fromI32s, 2);
 FPR_FN(fpr_g_I64_x2etoF64, i64_toF64, 1);
 FPR_FN(fpr_g_I64_x2etoF64U, i64_toF64U, 1);
 FPR_FN(fpr_g_I64_x2eofF64, i64_ofF64, 1);

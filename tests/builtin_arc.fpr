@@ -27,12 +27,12 @@ strings n =
   both = strcat s alias;
   check (String.len both == String.len s * 2).
 words n =
-  bits = Word.not (Word.fromInt n);
+  bits = I64.not (I64.trunc n);
   p = Mem.alloc 16;
-  _ = Mem.writeWord p bits;
-  _ = check (Mem.readWord p == bits);
+  _ = Mem.write64 p bits;
+  _ = check (Mem.read64 p == bits);
   q = Mem.realloc p 32;
-  _ = check (Mem.readWord q == bits);
+  _ = check (Mem.read64 q == bits);
   _ = Mem.free q;
   Unit.
 main =

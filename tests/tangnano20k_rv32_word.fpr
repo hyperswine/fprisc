@@ -1,16 +1,15 @@
 profile base.
-# Word preserves all 32 bits; it does not provide the proposed signed I32 API.
-check yes = if yes then Unit else error "RV32 Word check failed".
+# Explicit 32-bit fixed-width integer bit and wrapping operations.
+check yes = if yes then Unit else error "RV32 I32 check failed".
 main : Unit .
 main =
-  zero = Word.fromInt 0;
-  one = Word.fromInt 1;
-  hi = Word.shl one 31;
-  all = Word.not zero;
-  _ = check (Word.bits Unit == 32);
-  _ = check (Word.bitTest hi 31);
-  _ = check (Word.eq (Word.shr hi 31) one);
-  _ = check (Word.eq (Word.add all one) zero);
-  _ = check (Word.eq (Word.sub zero one) all);
-  _ = check (Word.eq (Word.or hi one) (Word.bitSet hi 0));
+  zero = I32.trunc 0;
+  one = I32.trunc 1;
+  hi = I32.shl one 31;
+  all = I32.not zero;
+  _ = check (I32.testBit hi 31);
+  _ = check (I32.shr hi 31 == one);
+  _ = check (all + one == zero);
+  _ = check (zero - one == all);
+  _ = check (I32.or hi one == I32.setBit hi 0);
   print "RV32 WORD32 HOLDS".

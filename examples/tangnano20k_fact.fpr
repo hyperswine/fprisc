@@ -54,8 +54,8 @@ session status rx =
       session status rx.
 
 main =
-  # Built once: in manual mode every Word or Addr value is a heap box.
-  status = Addr.fromWord (Word.fromInt 268435460);
-  rx = Addr.fromWord (Word.fromInt 268435464);
+  # Built once: in manual mode every I64 or Addr value is a heap box.
+  status = Addr.ofI64 (I64.trunc 268435460);
+  rx = Addr.ofI64 (I64.trunc 268435464);
   _ = print "factorial on SimpleRisc RV32IM: answer each prompt with a number, an empty line to stop";
   session status rx.

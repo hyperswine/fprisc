@@ -18,7 +18,7 @@ import qualified Data.Set as S
 scalar :: Type -> Maybe Rep
 scalar ty=case ty of
   TC "$uniform.value"->Just UniformRep
-  TC "Word"->Just (ScalarRep RawWord)
+  TC "I64"->Just (ScalarRep RawWord)
   TC "Addr"->Just (ScalarRep RawAddr)
   TC "F64"->Just (ScalarRep RawF64)
   TC "F32"->Just (ScalarRep RawF32)

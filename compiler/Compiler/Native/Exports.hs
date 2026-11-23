@@ -54,10 +54,10 @@ prepareWith planner checked abi requests declarations arities target=traverse on
 ckindOf :: Ty -> Either String CKind
 ckindOf ty=case ty of
   TCon "Int" []->Right KInt
-  TCon "Word" []->Right KWord
+  TCon "I64" []->Right KWord
   TCon "Addr" []->Right KAddr
   TCon "Bool" []->Right KBool
   TCon "Unit" []->Right KUnit
   TCon "F64" []->Right KF64
   TCon "F32" []->Right KF32
-  _->Left ("not a C-representable type: "++show ty++" (Int, Word, Addr, Bool, Unit, F64, F32 cross the boundary)")
+  _->Left ("not a C-representable type: "++show ty++" (Int, I64, Addr, Bool, Unit, F64, F32 cross the boundary)")

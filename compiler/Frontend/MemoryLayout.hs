@@ -73,16 +73,17 @@ expandLayout l fs0 = do
           at = if o == 0 then addrOf else call "Addr.add" [addrOf, SInt o]
           here = at
           (fty, get, set) = case t of
-            "Word" -> (ty "Word", call "Mem.readWord" [here], call "Mem.writeWord" [here, v "x"])
-            "Addr" -> (ty "Addr", call "Addr.fromWord" [call "Mem.readWord" [here]], call "Mem.writeWord" [here, call "Addr.toWord" [v "x"]])
-            "Int" -> (ty "Int", call "Word.toInt" [call "Mem.readWord" [here]], call "Mem.writeWord" [here, call "Word.fromInt" [v "x"]])
+            "I64" -> (ty "I64", call "Mem.read64" [here], call "Mem.write64" [here, v "x"])
+            "I32" -> (ty "I32", call "Mem.read32" [here], call "Mem.write32" [here, v "x"])
+            "Addr" -> (ty "Addr", call "Addr.ofI64" [call "Mem.read64" [here]], call "Mem.write64" [here, call "Addr.toI64" [v "x"]])
+            "Int" -> (ty "Int", call "I64.toInt" [call "Mem.read64" [here]], call "Mem.write64" [here, call "I64.trunc" [v "x"]])
             "U8" -> (ty "Int", call "Mem.read8" [here], call "Mem.write8" [here, v "x"])
             "U16" -> (ty "Int", call "Mem.read16" [here], call "Mem.write16" [here, v "x"])
-            "U32" -> (ty "Word", call "Mem.read32" [here], call "Mem.write32" [here, v "x"])
+            "U32" -> (ty "I32", call "Mem.read32" [here], call "Mem.write32" [here, v "x"])
             other ->
               ( ty other,
-                castTo other (call "Addr.fromWord" [call "Mem.readWord" [here]]),
-                call "Mem.writeWord" [here, call "Addr.toWord" [castFrom other (v "x")]]
+                castTo other (call "Addr.ofI64" [call "Mem.read64" [here]]),
+                call "Mem.write64" [here, call "Addr.toI64" [castFrom other (v "x")]]
               )
        in def (f ++ "At") [ty l] (ty "Addr") ["p"] at
             ++ def f [ty l] fty ["p"] get

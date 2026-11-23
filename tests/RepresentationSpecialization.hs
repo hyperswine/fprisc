@@ -28,7 +28,7 @@ refused label needle result = case result of
   Left why -> check (label ++ ": " ++ why) (needle `isInfixOf` why)
   Right _ -> error ("accepted " ++ label)
 call n = foldl CApp (CVar n)
-word n = call "Word.fromInt" [CInt n]
+word n = call "I64.trunc" [CInt n]
 sequenceOf = foldr (CLet "ignored") (CInt 0)
 solve = R.representWithOptions True S.empty M.empty
 padding n = foldr (\i -> CLet ("unused" ++ show i) (CInt i)) (CVar "x") [1..n]
@@ -135,7 +135,7 @@ immortalOwnership = do
 checkedLayouts = do
   let a=Ty.TV 0
       list=Ty.tList
-      wordTy=Ty.TC "Word"
+      wordTy=Ty.TC "I64"
       wordList=list wordTy
       nested=list wordList
       schemas=M.fromList
@@ -257,7 +257,7 @@ uniformCalls = do
   refused "raw units cannot acquire allocating uniform conversion edges" "raw unit"
     (Arc.lowerRawWithLayouts M.empty False S.empty scalarSigs M.empty scalar)
   let handler=M.fromList [identity,("machineInterrupt",(["c","p","v"],
-        call "Mem.writeWord" [call "Addr.fromWord" [CVar "p"],call "identity" [CVar "c"]]))]
+        call "Mem.write64" [call "Addr.ofI64" [CVar "p"],call "identity" [CVar "c"]]))]
       handlerSigs=M.fromList [("identity",generic),("machineInterrupt",
         ClosedSignature (replicate 3 (Just (ScalarRep RawWord))) (Just (DataRep 0)))]
   refused "interrupts cannot acquire allocating uniform conversion edges" "interrupt contract"
@@ -287,13 +287,13 @@ typedInstances = do
       identity = T.Function "identity" [parameter] local
       schema = Ty.Forall [0] [] (Ty.TFn (Ty.TV 0) (Ty.TV 0))
       int = e Ty.tInt (T.IntValue 1)
-      wordSchema = Ty.Forall [] [] (Ty.TFn Ty.tInt (Ty.TC "Word"))
-      word = e (Ty.TC "Word") (T.Apply (e (Ty.TFn Ty.tInt (Ty.TC "Word")) (T.Var (T.Global "Word.fromInt" wordSchema))) int)
+      wordSchema = Ty.Forall [] [] (Ty.TFn Ty.tInt (Ty.TC "I64"))
+      word = e (Ty.TC "I64") (T.Apply (e (Ty.TFn Ty.tInt (Ty.TC "I64")) (T.Var (T.Global "I64.trunc" wordSchema))) int)
       use n sc x r = e r (T.Apply (e (Ty.TFn (T.exprType x) r) (T.Var (T.Global n sc))) x)
       mainFor xs = T.Function "main" [] (e (Ty.TTupT (map T.exprType xs)) (T.TupleValue xs))
       source fn sc mainFn = right (P.program ns context
-        (M.fromList [(T.functionName fn,sc),("main",Ty.Forall [] [] (T.functionType mainFn)),("Word.fromInt",wordSchema)])
-        (M.fromList [(T.functionName fn,1),("main",0),("Word.fromInt",1)])
+        (M.fromList [(T.functionName fn,sc),("main",Ty.Forall [] [] (T.functionType mainFn)),("I64.trunc",wordSchema)])
+        (M.fromList [(T.functionName fn,1),("main",0),("I64.trunc",1)])
         (M.fromList [(T.functionName fn,fn),("main",mainFn)]))
       run pins keep = right . Mono.monomorphize pins keep
       build xs = source identity schema (mainFor [use "identity" schema x (T.exprType x) | x<-xs])
@@ -306,7 +306,7 @@ typedInstances = do
     (names [word] `S.isSubsetOf` forward && names [word,word] == names [word])
   check "closed clone types are independent of the first caller"
     (S.fromList [T.functionType f | (n,f)<-M.toList (result [word,int]), n/="main"]
-      == S.fromList [Ty.TFn Ty.tInt Ty.tInt, Ty.TFn (Ty.TC "Word") (Ty.TC "Word")])
+      == S.fromList [Ty.TFn Ty.tInt Ty.tInt, Ty.TFn (Ty.TC "I64") (Ty.TC "I64")])
   check "only explicitly retained generic entries remain alongside clones"
     (M.member "identity" (P.programFunctions (run S.empty (S.singleton "identity") (build [word])))
       && M.notMember "identity" (result [word]))
@@ -324,8 +324,8 @@ typedInstances = do
   check "typed expanding recursion retains a bounded instance and its generic fallback"
     (M.size (P.programFunctions bounded)==3 && M.member "identity" (P.programFunctions bounded)
       && growthNotes==[("identity","expanding recursive type specialization; using tagged generic entry")])
-  let rowA = Ty.TRec (Ty.RExt "a" Ty.tInt (Ty.RExt "b" (Ty.TC "Word") Ty.RNil))
-      rowB = Ty.TRec (Ty.RExt "b" (Ty.TC "Word") (Ty.RExt "a" Ty.tInt Ty.RNil))
+  let rowA = Ty.TRec (Ty.RExt "a" Ty.tInt (Ty.RExt "b" (Ty.TC "I64") Ty.RNil))
+      rowB = Ty.TRec (Ty.RExt "b" (Ty.TC "I64") (Ty.RExt "a" Ty.tInt Ty.RNil))
   check "closed row ordering cannot fragment instance identity" (Mono.typeKey rowA == Mono.typeKey rowB)
   refused "open type key" "open type" (Mono.typeKey (Ty.TV 30))
   let shorter = e (Ty.tList Ty.tInt) (T.ListValue [int])
@@ -367,12 +367,12 @@ scalarStorage = do
   let a=Ty.TV 0;wrap t=Ty.TAp (Ty.TC "Wrap") t
       schemas=M.singleton "Wrap" (Ty.Forall [0] [] (Ty.TFn a (wrap a)))
       physical=Layouts (M.singleton "Wrap" (40,0,1)) M.empty M.empty
-      roots=[wrap (Ty.TC "Word"),wrap Ty.tInt,wrap Ty.tStr,wrap a,wrap (wrap (Ty.TC "Word"))]
+      roots=[wrap (Ty.TC "I64"),wrap Ty.tInt,wrap Ty.tStr,wrap a,wrap (wrap (Ty.TC "I64"))]
       table=right (Layout.layoutsFor physical (T.TypeContext [] schemas) roots)
       key=right . Mono.typeKey . Layout.uniformType
   check "storage is determined by the instantiated definition and not root order"
     (table==right (Layout.layoutsFor physical (T.TypeContext [] schemas) (reverse roots))
-      && M.lookup (key (wrap (Ty.TC "Word"))) table==Just (ScalarLayoutDef 40 0 (ScalarRep RawWord))
+      && M.lookup (key (wrap (Ty.TC "I64"))) table==Just (ScalarLayoutDef 40 0 (ScalarRep RawWord))
       && M.lookup (key (wrap Ty.tStr)) table==Just (LayoutDef 40 (M.singleton 0 [Just TextRep]))
       && M.lookup (key (wrap a)) table==Just (LayoutDef 40 (M.singleton 0 [Just UniformRep])))
   putStrLn "Scalar storage: canonical selection, nominal printing, nested erasure, rollback and raw admission passed"
@@ -388,7 +388,7 @@ productValuesCheck = do
         [("make",(["w"],CMk 901 0 [CVar "w",CVar "w"])),
          ("identity",(["p"],CVar "p")),
          ("pick",(["p"],CProj 1 (CVar "p"))),
-         ("main",([],call "print" [call "Word.toInt" [call "pick" [call "identity" [call "make" [word 7]]]]]))]
+         ("main",([],call "print" [call "I64.toInt" [call "pick" [call "identity" [call "make" [word 7]]]]]))]
       ((_,_,_,_,_,_,_),proof)=right (R.representWithProductEvidence 8 M.empty layout True S.empty declarations program)
       (lowered,_)=right (Arc.lowerArcWithProductEvidence 8 M.empty layout True S.empty declarations M.empty program)
   check "product evidence comes from complete checked definitions"
@@ -465,7 +465,7 @@ productValuesCheck = do
         ("get",ClosedSignature [outer] wordRep),("entry",ClosedSignature [wordRep] wordRep)]
       nestedProgram=M.fromList
         [("make",(["w"],CMk 903 0 [CMk 901 0 [CVar "w",CVar "w"],CVar "w"])),
-         ("get",(["p"],call "Word.add" [CProj 1 (CProj 0 (CVar "p")),CProj 1 (CVar "p")])),
+         ("get",(["p"],call "I64.+" [CProj 1 (CProj 0 (CVar "p")),CProj 1 (CVar "p")])),
          ("entry",(["w"],call "get" [call "make" [CVar "w"]]))]
       (nestedRaw,_)=right (Arc.lowerRawWithProductEvidence 8 M.empty nestedScalar True (S.singleton "entry") nestedSigs M.empty nestedProgram)
   check "nested raw products flatten calls and projections without boxes"
@@ -503,8 +503,8 @@ rawProductsCheck = do
       wideSigs=M.insert "wide" (ClosedSignature (replicate 5 pair) wordRep) signatures
   refused "raw physical arguments are checked after expansion" "after product expansion"
     (lower S.empty wideSigs wide)
-  let handler=M.insert "machineInterrupt" (["cause","pc","value"],call "Mem.writeWord"
-        [call "Addr.fromWord" [CVar "pc"],call "get" [call "make" [CVar "cause"]]]) source
+  let handler=M.insert "machineInterrupt" (["cause","pc","value"],call "Mem.write64"
+        [call "Addr.ofI64" [CVar "pc"],call "get" [call "make" [CVar "cause"]]]) source
       handlerSigs=M.insert "machineInterrupt" (ClosedSignature (replicate 3 wordRep) (Just (DataRep 0))) signatures
       (lowered,_)=right (Arc.lowerArcWithProductEvidence 8 M.empty layouts True S.empty handlerSigs M.empty handler)
   check "interrupt helpers use checked products without materialization"

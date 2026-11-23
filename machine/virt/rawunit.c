@@ -19,17 +19,17 @@
 #define RAW1(name, why) V fpr_fn__x24arc_x2e##name(V a) { (void)a; fpr_cpanic(why); }
 #define RAW2(name, why) V fpr_fn__x24arc_x2e##name(V a, V b) { (void)a; (void)b; fpr_cpanic(why); }
 
-RAW1(memreadWord, "raw unit: unaligned 64-bit read")
+RAW1(memread64, "raw unit: unaligned 64-bit read")
 RAW1(memread32, "raw unit: unaligned 32-bit read")
 RAW1(memread16, "raw unit: unaligned 16-bit read")
-RAW2(memwriteWord, "raw unit: unaligned 64-bit write")
+RAW2(memwrite64, "raw unit: unaligned 64-bit write")
 RAW2(memwrite32, "raw unit: unaligned 32-bit write")
 RAW2(memwrite16, "raw unit: unaligned 16-bit write")
-RAW2(wordshl, "raw unit: shift out of range")
-RAW2(wordshr, "raw unit: shift out of range")
-RAW2(wordbitSet, "raw unit: bit index out of range")
-RAW2(wordbitClear, "raw unit: bit index out of range")
-RAW2(wordbitTest, "raw unit: bit index out of range")
+RAW2(I64shl, "raw unit: shift out of range")
+RAW2(I64shr, "raw unit: shift out of range")
+RAW2(I64setBit, "raw unit: bit index out of range")
+RAW2(I64clearBit, "raw unit: bit index out of range")
+RAW2(I64testBit, "raw unit: bit index out of range")
 
 /* Int + - * / TRAP on overflow (docs/2026-10-12-INT-OVERFLOW.md): the
  * inline guards of a raw unit branch to these adapters when the result

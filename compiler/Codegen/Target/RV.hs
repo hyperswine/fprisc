@@ -650,14 +650,14 @@ select cfg fn = do
             both <- fresh; ri R.AndImmediate both a 1; bit <- fresh; ri R.AndImmediate bit b 1
             rr R.And both both bit; bad <- fresh; ri R.XorImmediate bad both 1; branch bad slow) $ do
               t <- fresh; rr (R.Compare (if n=="$arc.eq" then Eq else Ne)) t a b; bool t)
-          (n,[a,b]) | n `elem` ["$arc.wordshl","$arc.wordshr","$arc.wordbitSet","$arc.wordbitClear","$arc.wordbitTest"] -> yes (do
+          (n,[a,b]) | n `elem` ["$arc.I64shl","$arc.I64shr","$arc.I64setBit","$arc.I64clearBit","$arc.I64testBit"] -> yes (do
             count <- fresh; ri R.ShiftRightArithmeticImmediate count b 1
             guarded (\slow -> do limit <- fresh; li limit 64; valid <- fresh; rr R.LessUnsigned valid count limit; bad <- fresh; ri R.XorImmediate bad valid 1; branch bad slow) $ case n of
-              "$arc.wordshl" -> rr R.ShiftLeft d a count
-              "$arc.wordshr" -> rr R.ShiftRight d a count
-              "$arc.wordbitTest" -> do t <- fresh; rr R.ShiftRight t a count; ri R.AndImmediate t t 1; bool t
+              "$arc.I64shl" -> rr R.ShiftLeft d a count
+              "$arc.I64shr" -> rr R.ShiftRight d a count
+              "$arc.I64testBit" -> do t <- fresh; rr R.ShiftRight t a count; ri R.AndImmediate t t 1; bool t
               _ -> do one <- fresh; li one 1; mask <- fresh; rr R.ShiftLeft mask one count
-                      if n == "$arc.wordbitClear" then ri R.XorImmediate mask mask (-1) >> rr R.And d a mask else rr R.Or d a mask)
+                      if n == "$arc.I64clearBit" then ri R.XorImmediate mask mask (-1) >> rr R.And d a mask else rr R.Or d a mask)
           (n,[a]) | Just (op,alignment,small) <- M.lookup n reads -> yes (memoryGuard a alignment $ do
             if small then do t <- fresh; loadAt op t a 0; tagged t d else loadAt op d a 0)
           (n,[a,b]) | Just (op,alignment,small) <- M.lookup n writes -> yes (memoryGuard a alignment $ do
@@ -671,7 +671,6 @@ select cfg fn = do
           (Scalar.WordNot,[a])->ri R.XorImmediate d a (-1)
           (Scalar.WordFromInt,[a])->ri R.ShiftRightArithmeticImmediate d a 1
           (Scalar.WordToInt,[a])->tagged a d
-          (Scalar.WordBits,[_])->li d 129
           (Scalar.Compare op,[a,b])->do t<-fresh;rr (R.Compare op) t a b;bool t
           (Scalar.AddressIdentity,[a])->emit (plain (O.RV R.Move) [anyV d] [anyV a])
           (Scalar.AddressNull,[_])->li d 0
@@ -690,8 +689,8 @@ select cfg fn = do
         memoryGuard a mask body = guarded (aligned a mask) body
         aligned a mask slow = when (mask /= 0) $ do t <- fresh; ri R.AndImmediate t a mask; branch t slow
         intBinary = M.fromList [("$arc."++n,op) | (n,op)<-[("add",R.Add),("sub",R.Subtract),("mul",R.Multiply),("div",R.Divide)]]
-        reads = M.fromList [("$arc.memread"++n,(op,mask,small)) | (n,op,mask,small)<-[("8",R.LoadByte,0,True),("16",R.LoadHalf,1,True),("32",R.LoadUnsigned32,3,False),("Word",R.Load64,7,False)]]
-        writes = M.fromList [("$arc.memwrite"++n,(op,mask,small)) | (n,op,mask,small)<-[("8",R.StoreByte,0,True),("16",R.StoreHalf,1,True),("32",R.Store32,3,False),("Word",R.Store64,7,False)]]
+        reads = M.fromList [("$arc.memread"++n,(op,mask,small)) | (n,op,mask,small)<-[("8",R.LoadByte,0,True),("16",R.LoadHalf,1,True),("32",R.Load32,3,True),("64",R.Load64,7,False)]]
+        writes = M.fromList [("$arc.memwrite"++n,(op,mask,small)) | (n,op,mask,small)<-[("8",R.StoreByte,0,True),("16",R.StoreHalf,1,True),("32",R.Store32,3,True),("64",R.Store64,7,False)]]
 
 -- The tick's slow path: a unit-local wrapper saves ra, t0..t6 and a0..a7
 -- on the actor's stack around fpr_fuel_exhausted (16 words, 16-byte aligned).

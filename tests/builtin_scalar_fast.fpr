@@ -12,8 +12,8 @@ get16 p i = a = Addr.add p i; v = Mem.read16 a; _ = Rc.release a; v.
 put16 p i v = a = Addr.add p i; _ = Mem.write16 a v; Rc.release a.
 get32 p i = a = Addr.add p i; v = Mem.read32 a; _ = Rc.release a; v.
 put32 p i v = a = Addr.add p i; _ = Mem.write32 a v; Rc.release a.
-getWord p i = a = Addr.add p i; v = Mem.readWord a; _ = Rc.release a; v.
-putWord p i v = a = Addr.add p i; _ = Mem.writeWord a v; Rc.release a.
+getWord p i = a = Addr.add p i; v = Mem.read64 a; _ = Rc.release a; v.
+putWord p i v = a = Addr.add p i; _ = Mem.write64 a v; Rc.release a.
 escaped p i = Addr.add p i.
 writeEffect p = a = Addr.add p 3; _ = Mem.write8 a (effect + 1); Rc.release a.
 loop p n = case n == 0 of True -> Unit | False ->
@@ -46,16 +46,17 @@ main =
   _ = check (Helpers.get p 0 == 171);
   _ = check (Mem.liveAllocations Unit == before);
   _ = put16 p 2 48879; _ = check (get16 p 2 == 48879);
-  zero = Word.fromInt 0; all = Word.not zero; _ = Rc.release zero;
-  _ = put32 p 8 all; got32 = get32 p 8;
-  low32 = Word.mask 32 0;
-  _ = check (Word.eq got32 low32); _ = Rc.release got32;
+  zero = I64.trunc 0; all = I64.not zero; _ = Rc.release zero;
+  all32 = I32.not (I32.trunc 0);
+  _ = put32 p 8 all32; got32 = get32 p 8;
+  low32 = I32.mask 32 0;
+  _ = check (got32 == low32); _ = Rc.release got32;
   _ = putWord p 16 all; gotWord = getWord p 16;
-  _ = check (Word.eq gotWord all); _ = Rc.release gotWord;
+  _ = check (gotWord == all); _ = Rc.release gotWord;
   a = escaped p 1;
-  _ = check (Mem.liveAllocations Unit == before + 3);
+  _ = check (Mem.liveAllocations Unit == before + 2);
   _ = Rc.release a;
   _ = writeEffect p; _ = check (get p 3 == 8);
-  _ = Rc.release all; _ = Rc.release low32;
+  _ = Rc.release all; _ = Rc.release all32; _ = Rc.release low32;
   _ = Mem.free p; _ = Rc.release p;
   print "SCALAR FAST HOLDS".

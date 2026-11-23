@@ -13,25 +13,25 @@
 profile builtin.
 
 Msip = Layout { pending : U32 }.     # base + 4 * hart: write 1 to ring, 0 to clear
-Cmp  = Layout { deadline : Word }.   # base + 0x4000 + 8 * hart
-Time = Layout { now : Word }.        # base + 0xBFF8, in 10 MHz ticks on virt
+Cmp  = Layout { deadline : I64 }.    # base + 0x4000 + 8 * hart
+Time = Layout { now : I64 }.         # base + 0xBFF8, in 10 MHz ticks on virt
 
-w n = Word.fromInt n.
-base u = Addr.fromWord (w 33554432).                        # 0x02000000
-msip hart = Msip.index (Msip.at (base Unit)) (Word.toInt hart).
-cmp hart = Cmp.index (Cmp.at (Addr.add (base Unit) 16384)) (Word.toInt hart).
+w n = I64.trunc n.
+base u = Addr.ofI64 (w 33554432).                           # 0x02000000
+msip hart = Msip.index (Msip.at (base Unit)) (I64.toInt hart).
+cmp hart = Cmp.index (Cmp.at (Addr.add (base Unit) 16384)) (I64.toInt hart).
 clock u = Time.at (Addr.add (base Unit) 49144).
 
-ipiSend : Word -> Unit .
-ipiSend hart = Msip.setPending (msip hart) (w 1).
-ipiClear : Word -> Unit .
-ipiClear hart = Msip.setPending (msip hart) (w 0).
+ipiSend : I64 -> Unit .
+ipiSend hart = Msip.setPending (msip hart) (I32.trunc 1).
+ipiClear : I64 -> Unit .
+ipiClear hart = Msip.setPending (msip hart) (I32.trunc 0).
 
-mtime : Unit -> Word .
+mtime : Unit -> I64 .
 mtime u = Time.now (clock Unit).
 
 # ~0: a deadline that never comes, so MTIP stays down and wfi can sleep
-timerPark : Word -> Unit .
-timerPark hart = Cmp.setDeadline (cmp hart) (Word.not (w 0)).
-timerArm : Word -> Word -> Unit .
-timerArm hart delta = Cmp.setDeadline (cmp hart) (Word.add (Time.now (clock Unit)) delta).
+timerPark : I64 -> Unit .
+timerPark hart = Cmp.setDeadline (cmp hart) (I64.not (w 0)).
+timerArm : I64 -> I64 -> Unit .
+timerArm hart delta = Cmp.setDeadline (cmp hart) (Time.now (clock Unit) + delta).

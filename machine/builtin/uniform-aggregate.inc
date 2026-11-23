@@ -93,7 +93,7 @@ static void uniform_plan(uniform_graph *g,V plan,V descriptors) {
       if(v->tag>UINT32_MAX)uniform_bad();
       for(uw prior=node->first;prior<vi;prior++)if(g->variants[prior].tag==v->tag)uniform_bad();
       if(!descriptors || ISINT(descriptors) || TID(descriptors)!=UNIFORM_DESCRIPTOR_TID ||
-          ((hdr_t *)descriptors)->var!=1 || !fpr_in_heap(descriptors) ||
+          VAR(descriptors)!=1 || !fpr_in_heap(descriptors) ||
           fpr_builtin_field_count(descriptors)!=2)uniform_bad();
       V *pair=(V *)(descriptors+8);V descriptor=pair[0];descriptors=pair[1];
       if(!descriptor || ISINT(descriptor) || TID(descriptor)!=T_STR || fpr_in_heap(descriptor))uniform_bad();
@@ -104,7 +104,7 @@ static void uniform_plan(uniform_graph *g,V plan,V descriptors) {
       }
     }
   }
-  if(!descriptors || ISINT(descriptors) || TID(descriptors)!=UNIFORM_DESCRIPTOR_TID || ((hdr_t *)descriptors)->var)uniform_bad();
+  if(!descriptors || ISINT(descriptors) || TID(descriptors)!=UNIFORM_DESCRIPTOR_TID || VAR(descriptors))uniform_bad();
   if(g->storage) {
     g->scalar_path=uniform_array(g->node_count,sizeof(*g->scalar_path));
     /* Resolve scalar chains iteratively and cache their physical kinds. A
@@ -186,7 +186,7 @@ static V uniform_scalar(uniform_graph *g,V source,uw shape) {
     g->scalar_path[depth++]=shape-g->node_base;
     if(g->unbox) {
       if(!source || ISINT(source) || TID(source)!=node.tid ||
-          ((hdr_t *)source)->var!=v.tag || !fpr_in_heap(source) ||
+          VAR(source)!=v.tag || !fpr_in_heap(source) ||
           fpr_builtin_field_count(source)!=1 || fpr_builtin_field_kind(source,0)!='t')uniform_bad();
       source=((V *)(source+8))[0]; /* borrowed until the owning root is released */
     }
@@ -207,7 +207,7 @@ static V uniform_value(uniform_graph *g,V source,uw shape,uw parent,uw *created)
   *created=UNIFORM_NONE;
   if(!shape)return fpr_builtin_retain(source);
   if(shape<5) {
-    unsigned variant=shape==1?2:shape==2?3:shape==3?5:6;
+    unsigned variant=shape==1?4:shape==2?3:shape==3?5:6;
     unsigned width=shape==4?32:64;
     return g->unbox ? uniform_unbox(fpr_builtin_retain(source),variant,width)
                     : uniform_box(source,variant,width);
@@ -217,7 +217,7 @@ static V uniform_value(uniform_graph *g,V source,uw shape,uw parent,uw *created)
     else if(shape==6)fpr_fn__x24arc_x2euniformUnboxText(source);
     else {
       fpr_fn__x24arc_x2euniformUnboxData(source,TAG(shape==7?T_BOOL:T_UNIT));
-      if(((hdr_t *)source)->var>(shape==7?1u:0u) ||
+      if(VAR(source)>(shape==7?1u:0u) ||
           (fpr_in_heap(source) && fpr_builtin_field_count(source)!=0))uniform_bad();
     }
     return fpr_builtin_retain(source);
@@ -226,7 +226,7 @@ static V uniform_value(uniform_graph *g,V source,uw shape,uw parent,uw *created)
   if(node.scalar)return uniform_scalar(g,source,shape);
   if(!source || ISINT(source) || TID(source)!=node.tid)uniform_bad();
   uw vi=node.first;
-  while(vi<node.first+node.count && g->variants[vi].tag!=((hdr_t *)source)->var)vi++;
+  while(vi<node.first+node.count && g->variants[vi].tag!=VAR(source))vi++;
   if(vi==node.first+node.count)uniform_bad();
   uniform_variant v=g->variants[vi];
   if(fpr_in_heap(source)) {

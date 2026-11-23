@@ -2,8 +2,8 @@
 # Linked beside a program unit (tests/builtin_export_main.fpr) and called
 # from C (tests/builtin_export_probe.c wraps main and calls each entry).
 Cell = Type (Cell a b).
-mix : Word -> Int -> Bool -> Word .
-mix x n b = Word.xor (Word.add x (Word.fromInt n)) (case b of True -> Word.fromInt 1 | False -> Word.fromInt 0).
+mix : I64 -> Int -> Bool -> I64 .
+mix x n b = I64.xor (x + I64.trunc n) (case b of True -> I64.trunc 1 | False -> I64.trunc 0).
 # twelve parameters: eight arrive in C's registers, four on C's stack, and the
 # entry moves those into the hart's spill cells (docs/2026-09-19-BOUNDS.md).  A Bool among
 # the stacked ones proves the conversion runs there too.
@@ -15,10 +15,10 @@ isEven : Int -> Bool .
 isEven n = n - (n / 2) * 2 == 0.
 scale : F64 -> Int -> F64 .
 scale x k = x * F64.ofInt k.
-poke : Addr -> Word -> Unit .
-poke a v = Mem.writeWord a v.
-peek : Addr -> Word .
-peek a = Mem.readWord a.
+poke : Addr -> I64 -> Unit .
+poke a v = Mem.write64 a v.
+peek : Addr -> I64 .
+peek a = Mem.read64 a.
 where : Unit -> Addr .
 where u = Addr.symbol "_heap_state".
 # managed data inside the library is fine; it just cannot cross the boundary
