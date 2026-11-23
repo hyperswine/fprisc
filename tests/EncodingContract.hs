@@ -3,8 +3,8 @@ module Main (main) where
 -- The A64 spelling contract (docs/2026-11-21-MERGE-PLAN.md, slice 2): for
 -- each instruction family the two native tiers share, the AOT renderer's
 -- line (renderItem -- the real renderer, not a copy) and the JIT
--- vocabulary's word must agree: both spellings are assembled by the
--- system's `as`, and the encoded words must be EQUAL, and equal to
+-- vocabulary's word must agree: both spellings are assembled by an
+-- AArch64 `as` (the host's, or the aarch64-linux-gnu cross pair), and the encoded words must be EQUAL, and equal to
 -- Compiler.Encoding.A64's `encode`.
 --
 -- Families the tiers do NOT share are deliberately absent, recorded here:
@@ -39,10 +39,10 @@ import Data.Char (isHexDigit)
 import Data.Word (Word32, Word8)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import System.Directory (createDirectoryIfMissing, getTemporaryDirectory)
+import System.Directory (createDirectoryIfMissing, findExecutable, getTemporaryDirectory)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
-import System.Info (os)
+import System.Info (arch, os)
 import System.Process (readProcess)
 import Control.Exception (SomeException, displayException, evaluate, try)
 
@@ -127,9 +127,24 @@ encLines (Family _ item i) =
 asArgs :: [String]
 asArgs = if os == "darwin" then ["-arch", "x86_64"] else []
 
-wordsOf :: FilePath -> IO [Word32]
-wordsOf obj = do
-  out <- readProcess "objdump" ["-d", obj] ""
+-- The A64 section's assembler and disassembler. On an AArch64 host the
+-- system `as`/`objdump` are native. Elsewhere (the x86-64 Linux CI) the
+-- GNU cross pair aarch64-linux-gnu-{as,objdump} (Debian package
+-- binutils-aarch64-linux-gnu) is used; when neither is present the A64
+-- section is skipped with a message and the x86-64 section still runs.
+data A64Tools = A64Tools { a64As :: String, a64Objdump :: String }
+
+findA64Tools :: IO (Maybe A64Tools)
+findA64Tools
+  | arch == "aarch64" = pure (Just (A64Tools "as" "objdump"))
+  | otherwise = do
+      a <- findExecutable "aarch64-linux-gnu-as"
+      d <- findExecutable "aarch64-linux-gnu-objdump"
+      pure (A64Tools <$> a <*> d)
+
+wordsOfWith :: String -> FilePath -> IO [Word32]
+wordsOfWith objdump obj = do
+  out <- readProcess objdump ["-d", obj] ""
   pure
     [ fromIntegral (read ("0x" ++ w) :: Integer)
     | ln <- lines out
@@ -145,19 +160,27 @@ main = do
   tmp <- getTemporaryDirectory
   let dir = tmp </> "sol-encoding-contract"
   createDirectoryIfMissing True dir
-  results <- mapM (one dir) families
-  putStrLn "a64 section done"
+  tools <- findA64Tools
+  results <- case tools of
+    Just t -> do
+      rs <- mapM (one t dir) families
+      putStrLn "a64 section done"
+      pure rs
+    Nothing -> do
+      putStrLn ("a64 section SKIPPED: host is " ++ os ++ "/" ++ arch ++ " and no aarch64-linux-gnu-as/objdump on PATH (install binutils-aarch64-linux-gnu)")
+      pure []
   x64ok <- runX64 dir
   putStrLn "x64 section done"
   let bad = [what | ((False, _), Family what _ _) <- zip results families]
+      a64n = if null results then "0 (skipped)" else show (length families)
   if null bad && x64ok
-    then putStrLn ("spelling contract: " ++ show (length families) ++ " a64 families and " ++ show (length x64Families) ++ " x64 families assemble identically through both renderers")
+    then putStrLn ("spelling contract: " ++ a64n ++ " a64 families and " ++ show (length x64Families) ++ " x64 families assemble identically through both renderers")
     else do
       mapM_ putStrLn (map ("CONTRACT MISMATCH: " ++) bad)
       if not x64ok then putStrLn "x64 contract failed" else pure ()
       exitFailure
   where
-    one dir f@(Family what item i) = do
+    one tools dir f@(Family what item i) = do
       let aot = unlines (aotLines f)
           enc = unlines (encLines f)
           sf = dir </> (what ++ "-aot.s")
@@ -166,10 +189,10 @@ main = do
           oe = dir </> (what ++ "-enc.o")
       writeFile sf aot
       writeFile se enc
-      _ <- readProcess "as" [sf, "-o", of'] ""
-      _ <- readProcess "as" [se, "-o", oe] ""
-      wa <- wordsOf of'
-      we <- wordsOf oe
+      _ <- readProcess (a64As tools) [sf, "-o", of'] ""
+      _ <- readProcess (a64As tools) [se, "-o", oe] ""
+      wa <- wordsOfWith (a64Objdump tools) of'
+      we <- wordsOfWith (a64Objdump tools) oe
       if wa /= we then putStrLn ("DETAIL " ++ what ++ ": aot " ++ show wa ++ " enc " ++ show we) else pure ()
       let encWord = case encode i of Right w -> w; Left e -> error ("contract: encode failed: " ++ e)
       -- both spellings assemble to identical words, and the family's first

@@ -32,6 +32,8 @@ jobs:
       - name: Native build dependencies
         run: |
           apt-get install -y --no-install-recommends make gcc pkg-config ghc cabal-install libghc-megaparsec-dev libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev libcurl4-openssl-dev libegl-dev libgl-dev
+          # the EncodingContract unit suite assembles A64 with the cross pair on x86-64
+          apt-get install -y --no-install-recommends binutils-aarch64-linux-gnu
       - name: Build compiler
         run: |
           rm -f cabal.project.freeze
