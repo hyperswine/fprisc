@@ -13,6 +13,7 @@ import qualified Data.Set as S
 import qualified Codegen.Lower as Lower
 import qualified Codegen.LowerTyped as Typed
 import Core.Identity (BinderId (..), Namespace (..))
+import qualified Core.Region.Syntax as R
 import Core.Syntax (Core (..))
 import Core.Typed.Syntax
 import Ownership.Shape (LShape (..))
@@ -245,4 +246,54 @@ main = do
   check "the typed function emits the same code" (emNative good == emNative plain)
   check "a differing typed function is a disagreement and the erased code stays"
     (map (\(f, _, _) -> f) (tuDisagree (emTypedUse wrong)) == ["pick"] && null (tuTyped (emTypedUse wrong)) && emNative wrong == emNative plain)
-  putStrLn "LowerTyped: fib, a guarded match tail and a covered Bool case agree with the erased lowering; refusals hold; emission takes agreeing typed functions and reports a differing one"
+
+  -- typed region bodies: LoopEntry, LoopInner, LoopCycle, ReceiveEntry, ReceiveThunk
+  let cMark = R.Control (BinderId (Namespace "test") 50) "$mark" R.Mark
+      cSeq = R.Control (BinderId (Namespace "test") 51) "$seq" R.Sequence
+      cState = R.Control (BinderId (Namespace "test") 52) "$state" (R.State [Forall [] [] tInt])
+      cTick = R.Control (BinderId (Namespace "test") 53) "$tick" R.Tick
+      rHal = foreignEntries rv64 {tgtHal = M.fromList
+        [("$regionSeq", 1), ("$regionOpen", 1), ("$regionMark", 1), ("$regionRoom", 1),
+         ("$regionCycle", 2), ("$loopLeave", 2), ("$receiveLoop", 2)]}
+      loopEntryErased = CLet "$seq" (app "$regionSeq" [CInt 0])
+        (CLet "$mark" (app "$regionMark" [CInt 0])
+          (app "$loopLeave" [CVar "$seq", app "$loop.in" [CVar "n", CVar "$mark", CVar "$seq"]]))
+      loopInnerErased = CIf (app "$regionRoom" [CVar "$mark"])
+        (CIf (app "==" [CVar "n", CInt 0]) (CInt 0)
+          (app "$loop.in" [app "-" [CVar "n", CInt 1], CVar "$mark", CVar "$seq"]))
+        (app "$loop.cycle" [CVar "n", CVar "$mark", CVar "$seq"])
+      loopCycleErased = CLet "$packed" (app "$regionCycle" [CVar "$seq", CVar "n"])
+        (CLet "$mark2" (app "$regionMark" [CInt 0])
+          (app "$loop.in" [CVar "$packed", CVar "$mark2", CVar "$seq"]))
+      recvEntryErased = app "$receiveLoop" [app "$recv.thunk" [CVar "n"], CInt 1]
+      recvThunkErased = CLet "n" (CVar "$state") (CMk 4 0 [CMk 1 0 [], CVar "n"])
+      rProg = M.fromList
+        [ ("loop", (["n"], loopEntryErased))
+        , ("$loop.in", (["n", "$mark", "$seq"], loopInnerErased))
+        , ("$loop.cycle", (["n", "$mark", "$seq"], loopCycleErased))
+        , ("recv", (["n"], recvEntryErased))
+        , ("$recv.thunk", (["$state", "$tick"], recvThunkErased)) ]
+      dummySrc name = Function name [n] (local n)
+      route = R.Route "loop" "$loop.in" False [0] [n]
+      stepCall = either error id (R.makeCall (M.singleton (binderId n) n) route (call tInt "loop" [call tInt "-" [local n, int 1]]))
+      loopEntryRf = R.Function "loop" "loop" "loop" (dummySrc "loop") [R.ValueParameter n] (R.ValueResult tInt)
+        (R.LoopEntry False "$loop.in" [n] cMark cSeq) M.empty []
+      loopInnerRf = R.Function "$loop.in" "loop" "loop" (dummySrc "loop") [R.ValueParameter n, R.ControlParameter cMark, R.ControlParameter cSeq] (R.ValueResult tInt)
+        (R.LoopInner (Just (R.AllocationBoundary "$loop.cycle")) [n] cMark cSeq
+          (R.Branch (call tBool "==" [local n, int 0]) (R.Value (int 0)) (R.Tail stepCall))) M.empty []
+      loopCycleRf = R.Function "$loop.cycle" "loop" "loop" (dummySrc "loop") [R.ValueParameter n, R.ControlParameter cMark, R.ControlParameter cSeq] (R.ValueResult tInt)
+        (R.LoopCycle "$loop.in" [n] [0] cMark cSeq) M.empty []
+      recvEntryRf = R.Function "recv" "recv" "recv" (dummySrc "recv") [R.ValueParameter n] (R.ValueResult tInt)
+        (R.ReceiveEntry "$recv.thunk" [n] [0]) M.empty []
+      recvThunkRf = R.Function "$recv.thunk" "recv" "recv" (dummySrc "recv") [R.ControlParameter cState, R.ControlParameter cTick] (R.ReceiveStep tInt)
+        (R.ReceiveThunk cState cTick [R.LiveSlot n 0] (R.Value (local n))) M.empty []
+      regionAgrees name rf =
+        let e = Lower.lowerFn m2Policy M.empty rProg M.empty rHal name (rProg M.! name)
+            t = Typed.lowerRegionFn True m2Policy layout rProg M.empty rHal rf
+         in sameFn e t
+  check "LoopEntry region lowering agrees" (regionAgrees "loop" loopEntryRf)
+  check "LoopInner region lowering agrees" (regionAgrees "$loop.in" loopInnerRf)
+  check "LoopCycle region lowering agrees" (regionAgrees "$loop.cycle" loopCycleRf)
+  check "ReceiveEntry region lowering agrees" (regionAgrees "recv" recvEntryRf)
+  check "ReceiveThunk region lowering agrees" (regionAgrees "$recv.thunk" recvThunkRf)
+  putStrLn "LowerTyped: fib, guarded match tail, covered Bool case, and typed region bodies agree with erased lowering; refusals hold; emission takes agreeing typed functions and reports a differing one"

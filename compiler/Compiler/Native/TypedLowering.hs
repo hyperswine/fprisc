@@ -96,23 +96,30 @@ data Lowered = Lowered
 typedFunctions :: Bool -> Policy -> M.Map String Int -> M.Map String Prim -> Native.NativeCore -> Maybe RT.Program -> S.Set String -> S.Set String -> Prog -> Lowered
 typedFunctions normalizes policy ext hal native regions placed emitted local =
   Lowered (censusNote (census known functions)) (S.size s1)
-    (M.fromList [(n, fn) | (n, Right fn) <- results]) [(n, why) | (n, Left why) <- results]
-    (S.fromList [n | (n, Right _) <- results, M.member n fromRegions])
+    (M.fromList [(n, fn) | (n, Right fn) <- allResults]) [(n, why) | (n, Left why) <- allResults]
+    (S.fromList [n | (n, Right _) <- regionResults])
     -- lazy: read only for the few functions whose typed and erased native
     -- functions differ (a plan that lowered also plans)
-    (ML.fromList [(n, either (const ([], CErr "typed lowering: no plan")) id (Typed.planCore normalizes layout fn))
-                 | (n, Right _) <- results, Just fn <- [input n]])
+    (ML.fromList
+      ([ (n, either (const ([], CErr "typed lowering: no plan")) id (Typed.planRegionCore normalizes layout rf))
+       | (n, Right _) <- regionResults, Just rf <- [M.lookup n fromRegions] ]
+       ++ [ (n, either (const ([], CErr "typed lowering: no plan")) id (Typed.planCore normalizes layout fn))
+          | (n, Right _) <- plainResults, Just fn <- [M.lookup n functions] ]))
   where
     (functions, prog, known, layout) = context ext native emitted
     s1 = s1Functions known functions
     calls = local `M.union` prog
-    results = [(n, Typed.lowerFn normalizes policy layout calls ext hal fn) | n <- S.toAscList s1, Just fn <- [input n]]
-    -- a placed function without an ordinary region body keeps its boundary
-    -- body: emission then keeps the erased function (counted as placed)
+    regionFns = maybe M.empty RT.programFunctions regions
+    -- Any S1 function rewritten by region placement (Ordinary, LoopEntry,
+    -- ReceiveEntry) AND any generated region helper whose source is in S1.
     fromRegions = M.fromList
-      [ (n, (R.functionSource f) {functionBody = body})
-      | n <- S.toList placed, Just f <- [M.lookup n (maybe M.empty RT.programFunctions regions)], R.Ordinary body <- [R.functionBody f] ]
-    input n = maybe (M.lookup n functions) Just (M.lookup n fromRegions)
+      [ (n, rf)
+      | (n, rf) <- M.toList regionFns
+      , S.member (R.functionSourceName rf) s1
+      , case R.functionBody rf of R.Original -> False; _ -> True ]
+    regionResults = [(n, Typed.lowerRegionFn normalizes policy layout calls ext hal rf) | (n, rf) <- M.toList fromRegions]
+    plainResults = [(n, Typed.lowerFn normalizes policy layout calls ext hal fn) | n <- S.toAscList s1, M.notMember n fromRegions, Just fn <- [M.lookup n functions]]
+    allResults = regionResults ++ plainResults
 
 -- the checked functions the unit emits, the boundary program with the
 -- constructor stubs emission adds (Compile.erasedConstructorStubs), the

@@ -10,9 +10,11 @@
 -- authoritative; optimized and ownership/region exemptions remain explicit.
 -- Pattern evaluation and failure order follow Core.Typed.Erase, with typed
 -- leaves and binder identities retained through planning.
-module Codegen.LowerTyped (lowerFn, planCore, Layout (..)) where
+module Codegen.LowerTyped (lowerFn, planCore, lowerRegionFn, planRegionCore, Layout (..)) where
 
+import Compiler.DataLayout (tupWideBase)
 import Core.Region.Runtime (Hook (..), hookName)
+import qualified Core.Region.Syntax as R
 import qualified Codegen.Lower as Lower
 import Codegen.IR
 import Codegen.Lower (Prim, Reason, L, Cx (..), lowerEntry, refuse, ended, newBlock, newBlock1,
@@ -32,6 +34,7 @@ import Core.Typed.Layout (recordShapes, closedRowShape)
 import Compiler.VectorLayout (builderRuntimeName)
 import qualified Core.VectorRead as Read
 import Type.Relation (fieldType)
+import Type.Syntax (Type)
 import qualified Data.Map.Strict as M
 
 -- The constructor facts a Bool pattern needs, from the closed program
@@ -161,11 +164,142 @@ lowerFn normalizes policy layout prog ext hal f = do
   lowerEntry policy M.empty prog ext hal (functionName f) (map binderName (functionParameters f)) $ \cx pvs ->
     lowerTail cx (M.fromList (zip (map (KBinder . binderId) (functionParameters f)) pvs)) planned
 
+planRegionCore :: Bool -> Layout -> R.Function -> Either Reason ([String], Core)
+planRegionCore normalizes layout rf = do
+  planned <- planRegion normalizes layout rf
+  pure (map (keyName . KBinder . R.parameterId) (R.functionParameters rf), toCore planned)
+
+lowerRegionFn :: Bool -> Policy -> Layout -> Prog -> M.Map String Int -> M.Map String Prim -> R.Function -> Either Reason Fn
+lowerRegionFn normalizes policy layout prog ext hal rf = do
+  planned <- planRegion normalizes layout rf
+  lowerEntry policy M.empty prog ext hal (R.functionLabel rf) (map R.parameterName (R.functionParameters rf)) $ \cx pvs ->
+    lowerTail cx (M.fromList (zip (map (KBinder . R.parameterId) (R.functionParameters rf)) pvs)) planned
+
 -- Plan the whole body once, before lowering, with one supply of scrutinee
 -- names: the plan is pure, and erasure's fallback duplication lowers the same
 -- subtree more than once.
 plan :: Bool -> Layout -> Expr -> Either Reason TE
-plan normalizes layout body = (if normalizes then literalLets else id) . fst <$> go 0 body
+plan normalizes layout body = (if normalizes then literalLets else id) . fst <$> planExpr layout 0 body
+
+planRegion :: Bool -> Layout -> R.Function -> Either Reason TE
+planRegion normalizes layout rf = (if normalizes then literalLets else id) . fst <$> planRegionBody layout rf
+
+planRegionBody :: Layout -> R.Function -> Either Reason (TE, Int)
+planRegionBody layout rf = case R.functionBody rf of
+  R.Original -> planExpr layout 0 (functionBody (R.functionSource rf))
+  R.Ordinary e -> planExpr layout 0 e
+  R.LoopEntry eager inner ps mark seqn ->
+    let kSeq = KBinder (R.controlId seqn)
+        kMark = KBinder (R.controlId mark)
+        seqExpr = if eager then PApp (hookName Open) [PApp (hookName SequenceNumber) [PInt 0]]
+                  else PApp (hookName SequenceNumber) [PInt 0]
+     in pure (PLet kSeq seqExpr
+          (PLet kMark (PApp (hookName PoolMark) [PInt 0])
+            (PApp (hookName LoopLeave) [PRef kSeq, PApp inner (map (PRef . KBinder . binderId) ps ++ [PRef kMark, PRef kSeq])])), 0)
+  R.LoopInner boundary ps mark seqn flow -> do
+    let kMark = KBinder (R.controlId mark)
+        kSeq = KBinder (R.controlId seqn)
+    (inner, n1) <- planFlow layout False (Just (kMark, kSeq)) 0 flow
+    pure $ case boundary of
+      Nothing -> (inner, n1)
+      Just gate ->
+        let cold = PApp (R.boundaryLabel gate) (map (PRef . KBinder . binderId) ps ++ [PRef kMark, PRef kSeq])
+            ready = case gate of
+              R.AllocationBoundary _ -> inner
+              R.ReceiveBoundary _ probe -> PIf (receiveReadyTE probe ps) inner cold
+         in (PIf (PApp (hookName HasRoom) [PRef kMark]) ready cold, n1)
+  R.LoopCycle inner ps changing _ seqn ->
+    let kPacked = KScrut 0
+        kMark2 = KScrut 1
+        kSeq = KBinder (R.controlId seqn)
+        slot i = case lookup i (zip changing [0 :: Int ..]) of
+          Nothing -> PRef (KBinder (binderId (ps !! i)))
+          Just k -> if length changing == 1 then PRef kPacked else PProj k (PRef kPacked)
+     in pure (PLet kPacked (PApp (hookName Cycle) [PRef kSeq, packStateTE [PRef (KBinder (binderId (ps !! i))) | i <- changing]])
+          (PLet kMark2 (PApp (hookName PoolMark) [PInt 0])
+            (PApp inner ([slot i | i <- [0 .. length ps - 1]] ++ [PRef kMark2, PRef kSeq]))), 2)
+  R.ReceiveEntry helper ps live ->
+    pure (PApp (hookName ReceiveLoop)
+      [PCall (PGlobal helper) [packStateTE [PRef (KBinder (binderId (ps !! i))) | i <- live]], PInt (fromIntegral (length live))], 0)
+  R.ReceiveThunk state _ slots flow -> do
+    (result, n1) <- planFlow layout True Nothing 0 flow
+    let count = length [() | R.LiveSlot {} <- slots]
+        kState = KBinder (R.controlId state)
+        one slot rest = case slot of
+          R.DeadSlot b -> PLet (KBinder (binderId b)) (PInt 0) rest
+          R.LiveSlot b i -> PLet (KBinder (binderId b)) (if count == 1 then PRef kState else PProj i (PRef kState)) rest
+    pure (foldr one result slots, n1)
+  R.ReceiveLocal flow -> planFlow layout True Nothing 0 flow
+
+packStateTE :: [TE] -> TE
+packStateTE [] = PInt 0
+packStateTE [x] = x
+packStateTE xs = PMk (case length xs of 2 -> 4; 3 -> 5; k | k <= 8 -> k + 6; k -> tupWideBase + k) 0 xs
+
+receiveReadyTE :: R.ReceiveProbe -> [Binder] -> TE
+receiveReadyTE probe ps = PApp (hookName ReceiveReady) [PInt mode, peer]
+  where
+    (mode, peer) = case probe of
+      R.UnknownReceive -> (0, PInt 0)
+      R.AnyMessage -> (1, PInt 0)
+      R.SenderMessage i -> (2, PRef (KBinder (binderId (ps !! i))))
+      R.SenderMessageOrDead i -> (3, PRef (KBinder (binderId (ps !! i))))
+      R.ResultMessage -> (4, PInt 0)
+      R.NonBlocking -> (5, PInt 0)
+
+finishTE :: Bool -> TE -> TE
+finishTE False e = e
+finishTE True (PLet k a b) = PLet k a (finishTE True b)
+finishTE True (PIf c a b) = PIf c (finishTE True a) (finishTE True b)
+finishTE True e = PMk 4 0 [PBool False, e]
+
+planFlow :: Layout -> Bool -> Maybe (Key, Key) -> Int -> R.Flow -> Either Reason (TE, Int)
+planFlow layout receiving controls n flow = case flow of
+  R.Value e -> do
+    (e', n1) <- planExpr layout n e
+    pure (finishTE receiving e', n1)
+  R.Bind b rhs body -> do
+    (rhs', n1) <- planExpr layout n rhs
+    (body', n2) <- planFlow layout receiving controls n1 body
+    pure (PLet (KBinder (binderId b)) rhs' body', n2)
+  R.BindPattern p rhs body ->
+    planBindPattern layout n p rhs (\k -> planFlow layout receiving controls k body)
+      (finishTE receiving (PErr ("let pattern: no match; pattern was " ++ patDisplay p)))
+  R.Then a b -> do
+    (a', n1) <- planExpr layout (n + 1) a
+    (b', n2) <- planFlow layout receiving controls n1 b
+    pure (PLet (KScrut n) a' b', n2)
+  R.Branch c a b -> do
+    (c', n1) <- planExpr layout n c
+    (a', n2) <- planFlow layout receiving controls n1 a
+    (b', n3) <- planFlow layout receiving controls n2 b
+    pure (PIf c' a' b', n3)
+  R.Note body -> planFlow layout receiving controls n body
+  R.Match style args alternatives fallback -> do
+    (xs, n1) <- planExprList layout n args
+    (next, n2) <- planFlow layout receiving controls n1 fallback
+    let alts = [(ps, gs, body) | R.Alternative ps gs body <- alternatives]
+        emitBody = planFlow layout receiving controls
+    case (style, xs) of
+      (CaseMatch, [scrut]) -> planCaseArmsWith layout emitBody n2 False next scrut alts
+      (FunctionMatch _, _) -> planFunctionArmsWith layout emitBody n2 False next xs alts
+      _ -> Left "typed lowering: a malformed region match arity"
+  R.Tail call -> do
+    (args, n1) <- planExprList layout n (R.callArguments call)
+    let route = R.callRoute call
+    if not receiving then case controls of
+      Just (kMark, kSeq) -> pure (PApp (R.routeLabel route) (args ++ [PRef kMark, PRef kSeq]), n1)
+      Nothing -> Left "typed lowering: absent loop control cells"
+    else do
+      let saved = [KScrut (n1 + i) | i <- [0 .. length args - 1]]
+          state = packStateTE [PRef (saved !! i) | i <- R.routeLive route]
+          next = if R.routeBoundary route
+            then PMk 4 0 [PBool True, PCall (PGlobal (R.routeLabel route)) [state]]
+            else PApp (R.routeLabel route) (map PRef saved)
+      pure (foldr (\(k, v) rest -> PLet k v rest) next (zip saved args), n1 + length args)
+
+planExpr :: Layout -> Int -> Expr -> Either Reason (TE, Int)
+planExpr layout = go
   where
     go :: Int -> Expr -> Either Reason (TE, Int)
     go n e = case exprNode e of
@@ -296,35 +430,28 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
         (arg', n1) <- go n arg
         let k = KScrut n1
             message = "case: no matching pattern; arms were [" ++ intercalate "," [patDisplay p | Alternative [p] _ _ <- alts] ++ "]"
-        (arms, n2) <- caseArms (n1 + 1) True (PErr message) (PRef k) alts
+        (arms, n2) <- planCaseArmsWith layout go (n1 + 1) True (PErr message) (PRef k) (map arm alts)
         pure (PLet k arg' arms, n2)
       Match (FunctionMatch owner) args alts -> do
         (args', n1) <- goList n args
-        functionArms n1 True (PErr ("no matching clause for " ++ owner)) args' alts
+        planFunctionArmsWith layout go n1 True (PErr ("no matching clause for " ++ owner)) args' (map arm alts)
       MatchTail CaseMatch [arg] alts fallback -> do
         (arg', n1) <- go n arg
         (fb, n2) <- go n1 fallback
-        caseArms n2 False fb arg' alts
+        planCaseArmsWith layout go n2 False fb arg' (map arm alts)
       MatchTail (FunctionMatch _) args alts fallback -> do
         (args', n1) <- goList n args
         (fb, n2) <- go n1 fallback
-        functionArms n2 False fb args' alts
+        planFunctionArmsWith layout go n2 False fb args' (map arm alts)
       Match {} -> Left "typed lowering: a malformed case arity"
       MatchTail {} -> Left "typed lowering: a malformed match tail"
       other -> Left ("typed lowering: the form " ++ formName other)
+    arm (Alternative ps gs b) = (ps, gs, b)
     shape fs = maybe (Left ("typed lowering: unknown record " ++ show fs)) Right (M.lookup (sort fs) (layoutRecords layout))
-    -- erasure's projection: one shape with a closed row projects; several
-    -- dispatch on the variant
-    project recordType scrut name n = do
-      let cands = [(tid, length (takeWhile (/= name) (sort fs)), length fs)
-                  | (fs, tid) <- recordShapes (layoutRecords layout) recordType [name]]
-      pure $ case cands of
-        [] -> (PErr ("no record shape has field ." ++ name), n)
-        [(_, idx, _)] | closedRowShape recordType -> (PProj idx scrut, n)
-        many ->
-          let k = KScrut n
-           in (PLet k scrut (foldr (\(tid, idx, ar) rest -> PIf (PTag tid ar (PRef k)) (PProj idx (PRef k)) rest)
-                  (PErr ("no shape with field ." ++ name ++ " matched")) many), n + 1)
+    project = planProject layout
+    bindPattern = planBindPattern layout
+    constructor = planConstructor layout
+    goList = planExprList layout
     update scrut assigns n0 = do
       let roots = nub [r | (r : _, _) <- assigns]
           cands = [(fs, tid) | (fs, tid) <- M.toList (layoutRecords layout), all (`elem` fs) roots]
@@ -359,122 +486,156 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
       pure $ case arms of
         [(_, _, b)] | closedRowShape recordType -> (b, n1)
         _ -> (foldr (\(tid, ar, b) rest -> PIf (PTag tid ar scrut) b rest) (PErr "record update: no shape matched") arms, n1)
-    goList n [] = pure ([], n)
-    goList n (x : xs) = do
-      (x', n1) <- go n x
-      (xs', n2) <- goList n1 xs
-      pure (x' : xs', n2)
     spine x acc = case exprNode x of
       Apply f a -> spine f (a : acc)
       Note y -> spine y acc
       _ -> (x, acc)
-    caseArms n0 makeJoins fallback scrut alts = loop n0 True alts
-      where
-        loop n _ [] = pure (fallback, n)
-        loop n first (Alternative [p] gs body : rest) = do
-          (next, n1) <- loop n False rest
-          when (makeJoins && not (trivial next) && tests p + length gs > 1)
-            (Left "typed lowering: a case fallback join (erasure builds a lambda)")
-          (body', n2) <- go n1 body
-          (inner, n3) <- guards n2 gs body' next
-          certain <- if null rest && not first && all (\(Alternative _ g _) -> null g) alts
-            then coveredHead p else pure False
-          matched <- if certain then case patNode p of
-              ConstructorPattern name ps -> matchFieldsRaw (layoutI64 layout name) scrut ps inner next
-              TuplePattern ps -> matchFields scrut ps inner next
-              _ -> matchPat scrut p inner next
-            else matchPat scrut p inner next
-          pure (matched, n3)
-        loop _ _ _ = Left "typed lowering: a case pattern arity"
-        coveredHead p = case patNode p of
-          ConstructorPattern name _ -> do
-            (tid, _, _) <- constructor name
-            let earlier = [c | Alternative [q] _ _ <- init alts, ConstructorPattern c ps <- [patNode q], all irrefutable ps]
-                siblings = [c | c <- layoutConstructors layout, Just (t, _, _) <- [layoutConstructor layout c], t == tid, c /= name]
-            pure (all (`elem` earlier) siblings)
-          _ -> pure False
-    functionArms n0 makeJoins bottom args alts = loop n0 alts
-      where
-        loop n [] = pure (bottom, n)
-        loop n (Alternative ps gs body : rest) = do
-          (next, n1) <- loop n rest
-          when (makeJoins && sum (map tests ps) + length gs > 1 && not (trivial next))
-            (Left "typed lowering: a function clause join")
-          when (length ps /= length args) (Left "typed lowering: a function clause arity")
-          (body', n2) <- go n1 body
-          (inner, n3) <- guards n2 gs body' next
-          matched <- foldr (\(x, p) k -> k >>= \b -> matchPat x p b next) (pure inner) (zip args ps)
-          pure (matched, n3)
-    guards n [] ok _ = pure (ok, n)
-    guards n (g : rest) ok fallback = case g of
-      BoolGuard e -> do
-        (e', n1) <- go n e
-        (inner, n2) <- guards n1 rest ok fallback
-        pure (PIf e' inner fallback, n2)
-      -- a pattern guard (slice 3d-iii): the value bound to a temporary and
-      -- matched, the remaining guards inside
-      PatternGuard p e -> bindPattern n p e (\k -> guards k rest ok fallback) fallback
-    -- Pair-free reads snapshot the old handle before matching either binder.
-    -- Keep the read/check even when its element is discarded.
-    bindPattern n p rhs continuation failure = case (exprNode rhs, patNode p) of
-      (VectorReadPair op indices handle, TuplePattern [valuePat, handlePat]) -> do
-        when (length indices /= Read.indexArity op)
-          (Left "typed lowering: vector read index arity")
-        (args, n1) <- goList n indices
-        (original, n2) <- go n1 handle
-        let saved = KScrut n2
-            value = KScrut (n2 + 1)
-        (next, n3) <- continuation (n2 + 2)
-        afterHandle <- matchPat (PRef saved) handlePat next failure
-        matched <- matchPat (PRef value) valuePat afterHandle failure
-        pure (PLet saved original (PLet value
-          (PApp (Read.peekNameAs (Read.elementOf (exprType handle)) op) (args ++ [PRef saved])) matched), n3)
-      _ -> do
-        (v, n1) <- go n rhs
-        let k = KScrut n1
-        (next, n2) <- continuation (n1 + 1)
-        matched <- matchPat (PRef k) p next failure
-        pure (PLet k v matched, n2)
-    matchPat scrut p ok failed = case patNode p of
-      Wildcard -> pure ok
-      Bind b -> pure (PLet (KBinder (binderId b)) scrut ok)
-      IntegerPattern i -> pure (PIf (PEqInt scrut i) ok failed)
-      StringPattern str -> pure (PIf (PStrEq scrut str) ok failed)
-      ConstructorPattern name ps -> do
-        (tid, variant, ar) <- constructor name
-        when (ar /= length ps) (Left "typed lowering: a constructor pattern layout arity")
-        inner <- matchFieldsRaw (layoutI64 layout name) scrut ps ok failed
-        pure (PIf (PTag tid variant scrut) inner failed)
-      TuplePattern ps -> do
-        (tid, variant, _) <- constructor ("Tup" ++ show (length ps))
-        inner <- matchFields scrut ps ok failed
-        pure (PIf (PTag tid variant scrut) inner failed)
-      -- each field projected and bound; a dispatching projection's
-      -- temporary is keyed by the field's binder
-      RecordPattern fs -> foldr (\(name, b) rest -> do
-          k <- rest
-          -- KScrut (-1): a placeholder no counter produces
-          x <- either Left (Right . fst) (project (Just (patType p)) scrut name (-1))
-          pure (PLet (KBinder (binderId b)) (rekey (KScrut (-1)) (KField (binderId b)) x) k)) (pure ok) fs
-    -- erasure's matchFields: the last field's test innermost
-    matchFields = matchFieldsRaw []
-    -- C6 stage 3c: erasure's I64 fields, bound through a fresh box
-    matchFieldsRaw raw scrut ps ok failed =
-      foldr (\(i, q) rest -> rest >>= \k ->
-          matchPat (if i `elem` raw then PApp "I64.ofField" [PProj i scrut] else PProj i scrut) q k failed)
-        (pure ok) (zip [0 ..] ps)
-    constructor name = maybe (Left ("typed lowering: unknown constructor " ++ name)) Right (layoutConstructor layout name)
-    tests p = case patNode p of
-      IntegerPattern _ -> 1 :: Int
-      StringPattern _ -> 1
-      ConstructorPattern _ ps -> 1 + sum (map tests ps)
-      TuplePattern ps -> 1 + sum (map tests ps)
-      _ -> 0
-    irrefutable p = case patNode p of Bind _ -> True; Wildcard -> True; RecordPattern _ -> True; _ -> False
-    -- erasure's `trivial`: the fallback erases to CErr
-    trivial = \case
-      PErr _ -> True
-      _ -> False
+
+planExprList :: Layout -> Int -> [Expr] -> Either Reason ([TE], Int)
+planExprList _ n [] = pure ([], n)
+planExprList layout n (x : xs) = do
+  (x', n1) <- planExpr layout n x
+  (xs', n2) <- planExprList layout n1 xs
+  pure (x' : xs', n2)
+
+-- erasure's projection: one shape with a closed row projects; several
+-- dispatch on the variant
+planProject :: Layout -> Maybe Type -> TE -> String -> Int -> Either Reason (TE, Int)
+planProject layout recordType scrut name n = do
+  let cands = [(tid, length (takeWhile (/= name) (sort fs)), length fs)
+              | (fs, tid) <- recordShapes (layoutRecords layout) recordType [name]]
+  pure $ case cands of
+    [] -> (PErr ("no record shape has field ." ++ name), n)
+    [(_, idx, _)] | closedRowShape recordType -> (PProj idx scrut, n)
+    many ->
+      let k = KScrut n
+       in (PLet k scrut (foldr (\(tid, idx, ar) rest -> PIf (PTag tid ar (PRef k)) (PProj idx (PRef k)) rest)
+              (PErr ("no shape with field ." ++ name ++ " matched")) many), n + 1)
+
+planCaseArmsWith :: Layout -> (Int -> a -> Either Reason (TE, Int)) -> Int -> Bool -> TE -> TE -> [([Pattern], [Guard], a)] -> Either Reason (TE, Int)
+planCaseArmsWith layout emitBody n0 makeJoins fallback scrut alts = loop n0 True alts
+  where
+    loop n _ [] = pure (fallback, n)
+    loop n first (([p], gs, body) : rest) = do
+      (next, n1) <- loop n False rest
+      when (makeJoins && not (planTrivial next) && planTests p + length gs > 1)
+        (Left "typed lowering: a case fallback join (erasure builds a lambda)")
+      (body', n2) <- emitBody n1 body
+      (inner, n3) <- planGuards layout n2 gs body' next
+      certain <- if null rest && not first && all (\(_, g, _) -> null g) alts
+        then coveredHead p else pure False
+      matched <- if certain then case patNode p of
+          ConstructorPattern name ps -> planMatchFieldsRaw layout (layoutI64 layout name) scrut ps inner next
+          TuplePattern ps -> planMatchFieldsRaw layout [] scrut ps inner next
+          _ -> planMatchPat layout scrut p inner next
+        else planMatchPat layout scrut p inner next
+      pure (matched, n3)
+    loop _ _ _ = Left "typed lowering: a case pattern arity"
+    coveredHead p = case patNode p of
+      ConstructorPattern name _ -> do
+        (tid, _, _) <- planConstructor layout name
+        let earlier = [c | ([q], _, _) <- init alts, ConstructorPattern c ps <- [patNode q], all planIrrefutable ps]
+            siblings = [c | c <- layoutConstructors layout, Just (t, _, _) <- [layoutConstructor layout c], t == tid, c /= name]
+        pure (all (`elem` earlier) siblings)
+      _ -> pure False
+
+planFunctionArmsWith :: Layout -> (Int -> a -> Either Reason (TE, Int)) -> Int -> Bool -> TE -> [TE] -> [([Pattern], [Guard], a)] -> Either Reason (TE, Int)
+planFunctionArmsWith layout emitBody n0 makeJoins bottom args alts = loop n0 alts
+  where
+    loop n [] = pure (bottom, n)
+    loop n ((ps, gs, body) : rest) = do
+      (next, n1) <- loop n rest
+      when (makeJoins && sum (map planTests ps) + length gs > 1 && not (planTrivial next))
+        (Left "typed lowering: a function clause join")
+      when (length ps /= length args) (Left "typed lowering: a function clause arity")
+      (body', n2) <- emitBody n1 body
+      (inner, n3) <- planGuards layout n2 gs body' next
+      matched <- foldr (\(x, p) k -> k >>= \b -> planMatchPat layout x p b next) (pure inner) (zip args ps)
+      pure (matched, n3)
+
+planGuards :: Layout -> Int -> [Guard] -> TE -> TE -> Either Reason (TE, Int)
+planGuards _ n [] ok _ = pure (ok, n)
+planGuards layout n (g : rest) ok fallback = case g of
+  BoolGuard e -> do
+    (e', n1) <- planExpr layout n e
+    (inner, n2) <- planGuards layout n1 rest ok fallback
+    pure (PIf e' inner fallback, n2)
+  -- a pattern guard (slice 3d-iii): the value bound to a temporary and
+  -- matched, the remaining guards inside
+  PatternGuard p e -> planBindPattern layout n p e (\k -> planGuards layout k rest ok fallback) fallback
+
+-- Pair-free reads snapshot the old handle before matching either binder.
+-- Keep the read/check even when its element is discarded.
+planBindPattern :: Layout -> Int -> Pattern -> Expr -> (Int -> Either Reason (TE, Int)) -> TE -> Either Reason (TE, Int)
+planBindPattern layout n p rhs continuation failure = case (exprNode rhs, patNode p) of
+  (VectorReadPair op indices handle, TuplePattern [valuePat, handlePat]) -> do
+    when (length indices /= Read.indexArity op)
+      (Left "typed lowering: vector read index arity")
+    (args, n1) <- planExprList layout n indices
+    (original, n2) <- planExpr layout n1 handle
+    let saved = KScrut n2
+        value = KScrut (n2 + 1)
+    (next, n3) <- continuation (n2 + 2)
+    afterHandle <- planMatchPat layout (PRef saved) handlePat next failure
+    matched <- planMatchPat layout (PRef value) valuePat afterHandle failure
+    pure (PLet saved original (PLet value
+      (PApp (Read.peekNameAs (Read.elementOf (exprType handle)) op) (args ++ [PRef saved])) matched), n3)
+  _ -> do
+    (v, n1) <- planExpr layout n rhs
+    let k = KScrut n1
+    (next, n2) <- continuation (n1 + 1)
+    matched <- planMatchPat layout (PRef k) p next failure
+    pure (PLet k v matched, n2)
+
+planMatchPat :: Layout -> TE -> Pattern -> TE -> TE -> Either Reason TE
+planMatchPat layout scrut p ok failed = case patNode p of
+  Wildcard -> pure ok
+  Bind b -> pure (PLet (KBinder (binderId b)) scrut ok)
+  IntegerPattern i -> pure (PIf (PEqInt scrut i) ok failed)
+  StringPattern str -> pure (PIf (PStrEq scrut str) ok failed)
+  ConstructorPattern name ps -> do
+    (tid, variant, ar) <- planConstructor layout name
+    when (ar /= length ps) (Left "typed lowering: a constructor pattern layout arity")
+    inner <- planMatchFieldsRaw layout (layoutI64 layout name) scrut ps ok failed
+    pure (PIf (PTag tid variant scrut) inner failed)
+  TuplePattern ps -> do
+    (tid, variant, _) <- planConstructor layout ("Tup" ++ show (length ps))
+    inner <- planMatchFieldsRaw layout [] scrut ps ok failed
+    pure (PIf (PTag tid variant scrut) inner failed)
+  -- each field projected and bound; a dispatching projection's
+  -- temporary is keyed by the field's binder
+  RecordPattern fs -> foldr (\(name, b) rest -> do
+      k <- rest
+      -- KScrut (-1): a placeholder no counter produces
+      x <- either Left (Right . fst) (planProject layout (Just (patType p)) scrut name (-1))
+      pure (PLet (KBinder (binderId b)) (rekey (KScrut (-1)) (KField (binderId b)) x) k)) (pure ok) fs
+
+-- C6 stage 3c: erasure's I64 fields, bound through a fresh box
+planMatchFieldsRaw :: Layout -> [Int] -> TE -> [Pattern] -> TE -> TE -> Either Reason TE
+planMatchFieldsRaw layout raw scrut ps ok failed =
+  foldr (\(i, q) rest -> rest >>= \k ->
+      planMatchPat layout (if i `elem` raw then PApp "I64.ofField" [PProj i scrut] else PProj i scrut) q k failed)
+    (pure ok) (zip [0 ..] ps)
+
+planConstructor :: Layout -> String -> Either Reason (Int, Int, Int)
+planConstructor layout name = maybe (Left ("typed lowering: unknown constructor " ++ name)) Right (layoutConstructor layout name)
+
+planTests :: Pattern -> Int
+planTests p = case patNode p of
+  IntegerPattern _ -> 1
+  StringPattern _ -> 1
+  ConstructorPattern _ ps -> 1 + sum (map planTests ps)
+  TuplePattern ps -> 1 + sum (map planTests ps)
+  _ -> 0
+
+planIrrefutable :: Pattern -> Bool
+planIrrefutable p = case patNode p of Bind _ -> True; Wildcard -> True; RecordPattern _ -> True; _ -> False
+
+-- erasure's `trivial`: the fallback erases to CErr
+planTrivial :: TE -> Bool
+planTrivial = \case
+  PErr _ -> True
+  _ -> False
 
 -- Read a plan node as the Core shape Codegen.Lower dispatches on.
 view :: TE -> V
