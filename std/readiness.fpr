@@ -67,10 +67,10 @@ rejectAll me why entries = M.fold (fn u id entry -> case entry of Entry _ _ _ wh
   _ = A.sendSure me who (Done id (Err why)); Unit) Unit entries.
 events entries = M.fold (fn acc id entry -> case entry of Entry fd mask _ _ -> (fd, mask) :: acc) Nil entries.
 nearest entries = M.fold (fn best id entry -> case entry of Entry _ _ deadline _ ->
-  if deadline < best then deadline else best) (intMax Unit) entries.
-remaining now entries = if M.isEmpty entries then 0 - 1 else
-  d = nearest entries;
-  if now >= d then 0 else d - now.
+  case best of None -> Some deadline | Some d -> Some (if deadline < d then deadline else d)) None entries.
+remaining now entries = case nearest entries of
+    None -> 0 - 1
+  | Some d -> if now >= d then 0 else d - now.
 # A re-arm replaces the native generation and clears pending old events. This
 # happens before Retired, so late IRQs cannot revive a removed registration.
 arm me irq entries =

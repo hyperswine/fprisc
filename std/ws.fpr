@@ -145,7 +145,8 @@ beInt s i acc = if i >= strlen s then acc else beInt s (i + 1) (acc * 256 + char
 beLength : unsafe String -> Int -> Int -> Result Int String .
 beLength bytes at n = if at >= strlen bytes then Ok n else
   byte = charAt bytes at;
-  if n > (intMax Unit - byte) / 256 then Err "message too large" else beLength bytes (at + 1) (n * 256 + byte).
+  maxLen = 2 ^ 62 - 1;
+  if n > (maxLen - byte) / 256 then Err "message too large" else beLength bytes (at + 1) (n * 256 + byte).
 bodyThenWith limit fin opcode masked n r = if (opcode >= 8 and (not fin or n > 125)) or n < 0 then (Err "invalid control frame", r) else
   if opcode < 8 and limit >= 0 and n > limit then (Err "message too large", r) else bodyThen fin opcode masked n r.
 bodyThen fin opcode masked n r =

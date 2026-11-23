@@ -79,20 +79,19 @@ wireInt : String -> Result Int String .
 wireInt s = case strlen s == 0 of
     True -> Err "not a number"
   | False -> (case charAt s 0 == 45 of
-      True -> (case strlen s == 1 of True -> Err "not a number" | False -> wireDigits s 1 0 True)
-    | False -> wireDigits s 0 0 False).
-# The digits accumulate NEGATIVELY so the most negative Int is readable; a
-# value past the Int is an Err, never a trap (Int arithmetic traps on
-# overflow, docs/2026-10-12-INT-OVERFLOW.md, and wire input is untrusted).
-wireDigits : unsafe String -> Int -> Int -> Bool -> Result Int String .
-wireDigits s i acc neg = case i >= strlen s of
+      True -> (case strlen s == 1 of True -> Err "not a number" | False -> wireDigits s 1 0 True (0 - (2 ^ 62)))
+    | False -> wireDigits s 0 0 False (0 - (2 ^ 62))).
+# The digits accumulate NEGATIVELY so the most negative 63-bit wire Int is
+# readable; wire input is untrusted so values past 63 bits are rejected.
+wireDigits : unsafe String -> Int -> Int -> Bool -> Int -> Result Int String .
+wireDigits s i acc neg lo = case i >= strlen s of
     True -> (case neg of
         True -> Ok acc
-      | False -> (case acc == intMin Unit of True -> Err "out of range" | False -> Ok (0 - acc)))
+      | False -> (case acc == lo of True -> Err "out of range" | False -> Ok (0 - acc)))
   | False -> (case charAt s i >= 48 and charAt s i <= 57 of
-      True -> (case acc < (intMin Unit + (charAt s i - 48) + 9) / 10 of
+      True -> (case acc < (lo + (charAt s i - 48) + 9) / 10 of
           True -> Err "out of range"
-        | False -> wireDigits s (i + 1) (acc * 10 - (charAt s i - 48)) neg)
+        | False -> wireDigits s (i + 1) (acc * 10 - (charAt s i - 48)) neg lo)
     | False -> Err "not a number").
 
 # ---- Wire: the neutral tree a generated codec speaks (FPRISC.hs encE / decE) --------
@@ -211,15 +210,15 @@ parseInt : String -> Int .
 parseInt s = case strlen s == 0 of
     True -> 0
   | False -> (case charAt s 0 == 45 of
-      True -> 0 - parseDigits s 1 0
-    | False -> parseDigits s 0 0).
-parseDigits : unsafe String -> Int -> Int -> Int .
-parseDigits s i acc = case i >= strlen s of
+      True -> 0 - parseDigits s 1 0 (2 ^ 62 - 1)
+    | False -> parseDigits s 0 0 (2 ^ 62 - 1)).
+parseDigits : unsafe String -> Int -> Int -> Int -> Int .
+parseDigits s i acc hi = case i >= strlen s of
     True -> acc
-  | False -> parseDigit s i acc (charAt s i).
-parseDigit : unsafe String -> Int -> Int -> Int -> Int .
-parseDigit s i acc c = case c >= 48 and c <= 57 and acc <= (intMax Unit - (c - 48)) / 10 of
-    True -> parseDigits s (i + 1) (acc * 10 + (c - 48))
+  | False -> parseDigit s i acc (charAt s i) hi.
+parseDigit : unsafe String -> Int -> Int -> Int -> Int -> Int .
+parseDigit s i acc c hi = case c >= 48 and c <= 57 and acc <= (hi - (c - 48)) / 10 of
+    True -> parseDigits s (i + 1) (acc * 10 + (c - 48)) hi
   | False -> acc.
 
 # ---- module tables: lookup and compatibility (were C in runtime/mod.c) ------

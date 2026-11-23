@@ -48,9 +48,9 @@ received packets client = case packets of
       (next, more) = received rest updated;
       (next, L.append notices more).
 wakeBudget budget session =
-  ms = SS.nextDeadline session;
-  deadline = if ms > intMax Unit / 1000 then T.deadline budget else
-    if ms * 1000 < T.deadline budget then ms * 1000 else T.deadline budget;
+  deadline = case SS.nextDeadline session of
+    Option.None -> T.deadline budget
+  | Option.Some ms -> if ms * 1000 < T.deadline budget then ms * 1000 else T.deadline budget;
   case budget of T.Uncancelled _ -> T.Uncancelled deadline | T.Budget _ cancelled -> T.Budget deadline cancelled.
 next budget client = if T.isCancelled budget then lost T.Cancelled client else
   if Sys.timeUs Unit >= T.deadline budget then (Ok Nil, client) else

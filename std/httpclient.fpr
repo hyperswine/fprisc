@@ -30,11 +30,11 @@ fieldValue s i = if i >= strlen s then True else
   c = charAt s i;
   (c == 9 or (c >= 32 and c != 127)) and fieldValue s (i + 1).
 # Decimal accumulation is checked before multiplication, including on RV32.
-decimal text = if strlen text == 0 then invalid "empty content-length" else digits text 0 0.
-digits : unsafe String -> Int -> Int -> Result Int T.Failure .
-digits text i n = if i >= strlen text then Ok n else
+decimal text = if strlen text == 0 then invalid "empty content-length" else digits text 0 0 (2 ^ 62 - 1).
+digits : unsafe String -> Int -> Int -> Int -> Result Int T.Failure .
+digits text i n hi = if i >= strlen text then Ok n else
   d = charAt text i - 48;
-  if d < 0 or d > 9 or n > (intMax Unit - d) / 10 then invalid "invalid content-length" else digits text (i + 1) (n * 10 + d).
+  if d < 0 or d > 9 or n > (hi - d) / 10 then invalid "invalid content-length" else digits text (i + 1) (n * 10 + d) hi.
 firstDelimiter : unsafe String -> Int -> Int .
 firstDelimiter s i = if i >= strlen s then i else
   c = charAt s i;
@@ -155,11 +155,11 @@ untilEnd budget limit count acc conn = if count > limit then (invalid "HTTP body
 chunkSize text =
   semicolon = strIndexOf ";" text;
   digits = if semicolon < 0 then text else S.left semicolon text;
-  if strlen digits == 0 or not (fieldValue text 0) then invalid "invalid HTTP chunk size" else hexGo digits 0 0.
-hexGo : unsafe String -> Int -> Int -> Result Int T.Failure .
-hexGo text i n = if i >= strlen text then Ok n else
+  if strlen digits == 0 or not (fieldValue text 0) then invalid "invalid HTTP chunk size" else hexGo digits 0 0 (2 ^ 62 - 1).
+hexGo : unsafe String -> Int -> Int -> Int -> Result Int T.Failure .
+hexGo text i n hi = if i >= strlen text then Ok n else
   d = E.hexVal (charAt text i);
-  if d < 0 or n > (intMax Unit - d) / 16 then invalid "invalid HTTP chunk size" else hexGo text (i + 1) (n * 16 + d).
+  if d < 0 or n > (hi - d) / 16 then invalid "invalid HTTP chunk size" else hexGo text (i + 1) (n * 16 + d) hi.
 chunked : unsafe T.Budget -> Options -> Int -> Int -> List String -> String -> T.Connection s -> (Result String T.Failure, T.Connection s) .
 chunked budget options count chunks acc pending conn = if chunks >= 65536 then (invalid "too many HTTP chunks", conn) else
   case line budget options.headerBytes pending conn of

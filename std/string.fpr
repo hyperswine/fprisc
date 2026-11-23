@@ -282,12 +282,16 @@ toIntGo s neg =
   n = strlen s;
   first = if neg then 1 else 0;
   v = if first >= n then 1 else digitsGo s first n;
-  if neg then v else if v == intMin Unit then 2 else v.
+  min63 = 0 - (2 ^ 62);
+  if neg then v else if v == min63 then 2 else v.
 # the failures, apart, so toInt stays small enough to inline (a caller's
 # match on its Ok then needs no box)
 toIntErr : String -> Int -> String .
 toIntErr s v | v == 1 = "not a number: \"{s}\"".
-toIntErr s _ = "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})".
+toIntErr s _ =
+  min63 = 0 - (2 ^ 62);
+  max63 = 2 ^ 62 - 1;
+  "out of range: \"{s}\" (an Int holds {min63}..{max63})".
 # The digits accumulate NEGATIVELY so the most negative Int is reachable,
 # which leaves the positive answers for the failures, unboxed: 1, not a
 # digit; 2, the value would pass the 63-bit Int (it used to wrap silently:

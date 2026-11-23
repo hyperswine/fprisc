@@ -54,7 +54,7 @@
 
 Encoding = use "encoding".
 L = use "list".
-Set = use "set".
+M = use "map".
 
 Attr = Type (Cls String | Utilities (List Utility) | LocalStyle String String (List Decl) | Att String String | Local String String
            | OnClick String String | OnSet String String | ShowIf String
@@ -492,14 +492,14 @@ entryName (CssName name) = name.
 # Walking the list backwards makes the first sighting the last occurrence,
 # and consing onto the answer puts the kept entries back in their order.
 nubEntries : List CssEntry -> List CssEntry .
-nubEntries entries = keepUnseen (rev entries) Set.strings Nil.
-keepUnseen : (entries : List CssEntry | measure entries) -> Set.Set String -> List CssEntry -> List CssEntry .
+nubEntries entries = keepUnseen (rev entries) M.strings Nil.
+keepUnseen : (entries : List CssEntry | measure entries) -> M.Map String Unit -> List CssEntry -> List CssEntry .
 keepUnseen entries seen acc = case entries of
     Nil -> acc
   | entry :: rest ->
       name = entryName entry;
-      if Set.member name seen then keepUnseen rest seen acc
-      else keepUnseen rest (Set.insert name seen) (entry :: acc).
+      if M.member name seen then keepUnseen rest seen acc
+      else keepUnseen rest (M.insert name Unit seen) (entry :: acc).
 atomEntries : (atoms : List Atom | measure atoms) -> List CssEntry .
 atomEntries atoms = case atoms of
     Nil -> Nil
@@ -793,7 +793,7 @@ lenCss len = case len of
   | Less a b -> "calc({lenCss a} - {lenCss b})"
   | Auto -> "auto"
   | Inherit -> "inherit".
-scaledLength n suffix = if n == intMin Unit then error "View: scaled length exceeds range" else
+scaledLength n suffix =
   value = if n < 0 then 0 - n else n;
   "{(if n < 0 then "-" else "")}{value / 1000}.{(if value % 1000 < 100 then "0" else "")}{(if value % 1000 < 10 then "0" else "")}{value % 1000}{suffix}".
 

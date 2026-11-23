@@ -35,7 +35,8 @@ neverCancel : Unit -> Bool .
 neverCancel u = False.
 deadlineFrom : Int -> Int -> Result Int Failure .
 deadlineFrom now ms = if now < 0 or ms < 0 then Err (Invalid "negative clock or duration") else
-  if ms > (intMax Unit - now) / 1000 then Err (Invalid "deadline exceeds Int range") else Ok (now + ms * 1000).
+  maxUs = 2 ^ 62 - 1;
+  if ms > (maxUs - now) / 1000 then Err (Invalid "deadline exceeds Int range") else Ok (now + ms * 1000).
 gate : Budget -> Connection s -> Result Unit Failure .
 gate budget conn = case conn of
     Shut _ -> Err Closed

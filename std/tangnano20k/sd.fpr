@@ -93,15 +93,16 @@ start version2 tries = if tries <= 0 then Err "SD ACMD41 initialization timeout"
 
 capacity text =
   first = charAt text 0 / 64;
+  maxBlocks = 1073741823;
   if first == 1 then
     size = band (charAt text 7) 63 * 65536 + charAt text 8 * 256 + charAt text 9 + 1;
-    if size > intMax Unit / 1024 then Err "SD capacity exceeds this target's Int block range" else Ok (size * 1024)
+    if size > maxBlocks / 1024 then Err "SD capacity exceeds this target's Int block range" else Ok (size * 1024)
   else if first == 0 then
     size = band (charAt text 6) 3 * 1024 + charAt text 7 * 4 + charAt text 8 / 64 + 1;
     exponent = band (charAt text 9) 3 * 2 + charAt text 10 / 128 + 2 + band (charAt text 5) 15 - 9;
     if exponent < 0 or exponent > 29 then Err "SD unsupported CSD v1 block size" else
     multiplier = BITSHIFTL 1 exponent;
-    if size > intMax Unit / multiplier then Err "SD capacity exceeds this target's Int block range" else Ok (size * multiplier)
+    if size > maxBlocks / multiplier then Err "SD capacity exceeds this target's Int block range" else Ok (size * multiplier)
   else Err "SD unsupported CSD version".
 
 register index = bind (fn unit -> dataBlock 16) (expect index (I32.trunc 0) 1 0).

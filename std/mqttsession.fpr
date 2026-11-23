@@ -46,9 +46,9 @@ admit now item packet id state = case Q.encode packet of
       ({state | pending = pending, order = if id == 0 then state.order else L.append state.order [id], lastSent = now, nextId = if id == 0 then state.nextId else if id == 65535 then 1 else id + 1}, [Send state.epoch packet]).
 step event state =
   now = case event of Start n -> n | Received _ n _ -> n | PublishMsg n _ _ _ _ -> n | SubscribeTo n _ -> n | UnsubscribeFrom n _ -> n | Tick n -> n | Lost _ _ -> state.lastSent | Stop n -> n;
-  if now < 0 or now > intMax Unit - ackMs state.config or now > intMax Unit - keepMs state.config then (state, [Rejected "invalid MQTT clock"]) else
+  if now < 0 then (state, [Rejected "invalid MQTT clock"]) else
   case event of
-    Start _ -> if state.epoch == intMax Unit then (state, [Rejected "MQTT connection epoch exhausted"]) else
+    Start _ ->
       if state.phase != Offline then (state, [Rejected "already connected/connecting"]) else
       (case state.config of Config client clean keepalive _ _ auth ->
         epoch = state.epoch + 1;
@@ -107,8 +107,9 @@ tick now state = if state.phase == Connecting then
   | O.None -> if keepMs state.config > 0 and now - state.lastSent >= keepMs state.config then
       ({state | lastSent = now, ping = O.Some (now + ackMs state.config)}, [Send state.epoch Q.PingReq])
     else (state, Nil).
+minDeadline a b = case (a, b) of (O.None, x) -> x | (x, O.None) -> x | (O.Some x, O.Some y) -> O.Some (if x < y then x else y).
 nextDeadline state =
-  base = if state.phase == Connecting then state.connDeadline else intMax Unit;
-  pending = M.fold (fn d id pair -> case pair of (_, deadline) -> if deadline < d then deadline else d) base state.pending;
-  ping = case state.ping of O.Some deadline -> deadline | O.None -> if state.phase == Online and keepMs state.config > 0 then state.lastSent + keepMs state.config else intMax Unit;
-  if ping < pending then ping else pending.
+  base = if state.phase == Connecting then O.Some state.connDeadline else O.None;
+  pending = M.fold (fn d id pair -> case pair of (_, deadline) -> minDeadline d (O.Some deadline)) base state.pending;
+  ping = case state.ping of O.Some deadline -> O.Some deadline | O.None -> if state.phase == Online and keepMs state.config > 0 then O.Some (state.lastSent + keepMs state.config) else O.None;
+  minDeadline ping pending.

@@ -38,7 +38,7 @@ sign n | n == 0 = 0.
 sign _ = 1.
 
 # the remainder with the sign of the DIVISOR (so `mod (0 - 1) 12` is 11);
-# matches `/` and `%` (floored, D5/D8). Avoids q * b overflow when a is near intMin/intMax.
+# matches `/` and `%` (floored, D5/D8). Avoids q * b overflow for large values.
 mod : Int -> (b : Int | b != 0) -> Int
   | work mod <= 14 | alloc mod <= 16 .
 mod a b =

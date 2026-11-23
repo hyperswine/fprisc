@@ -168,7 +168,8 @@ awaitFrom me a = case receiveFromRes me a of
 nowMs u = Sys.uptimeMs u.
 deadlineAfter ms =
   now = nowMs Unit;
-  if ms < 0 or ms > intMax Unit - now then Err "invalid deadline duration"
+  maxMs = 2 ^ 62 - 1;
+  if ms < 0 or ms > maxMs - now then Err "invalid deadline duration"
   else Ok (now + ms).
 # Sleep no further than the remaining budget; yielding on an expired budget
 # would let an already-expired request through. No helper actor per request.

@@ -99,7 +99,7 @@ validInterval : Int -> Bool .
 validInterval ms = ms >= 1 and (ms / 1000000000 < 2 or (ms / 1000000000 == 2 and ms % 1000000000 <= 147483647)).
 runtime u = JS.program (runtimeNodes u).
 runtimeNodes u =
-  [JS.Define "_int" ["n"] [JS.If (JS.Binary JS.Or (JS.Binary JS.Less (n "n") (JS.BigInteger (intMin Unit))) (JS.Binary JS.Greater (n "n") (JS.BigInteger (intMax Unit)))) [JS.Throw (call "Error" [t "BrowserCalc: Int overflow"])] Nil, JS.Return (n "n")],
+  [JS.Define "_int" ["n"] [JS.If (JS.Binary JS.Or (JS.Binary JS.Less (n "n") (JS.BigInteger (0 - (2 ^ 62)))) (JS.Binary JS.Greater (n "n") (JS.BigInteger (2 ^ 62 - 1)))) [JS.Throw (call "Error" [t "BrowserCalc: Int overflow"])] Nil, JS.Return (n "n")],
    JS.Define "_at" ["xs", "i"] [JS.If (outOfBounds Unit) [JS.Throw (call "Error" [t "ClientCalc.At: index out of bounds"])] Nil, JS.Return (JS.Index (n "xs") (call "Number" [n "i"]))],
    JS.Define "_textAt" ["xs", "i"] [JS.Return (JS.Choose (outOfBounds Unit) (t "") (JS.Index (n "xs") (call "Number" [n "i"])))],
    JS.Define "_loadTexts" ["key"] [JS.Try [JS.Const "xs" (method (n "JSON") "parse" [JS.Binary JS.Or (method (n "localStorage") "getItem" [n "key"]) (t "[]")]), JS.Return (JS.Choose (JS.Binary JS.And (method (n "Array") "isArray" [n "xs"]) (method (n "xs") "every" [JS.Function ["x"] [JS.Return (equal (JS.Unary JS.TypeOf (n "x")) (t "string"))]])) (n "xs") (JS.Array Nil))] "e" [JS.Return (JS.Array Nil)] Nil],
