@@ -166,6 +166,7 @@ library
       Compiler.Compile.Cost
       Compiler.Compile.Link
       Compiler.Compile.TypedReport
+      Compiler.Compile.Emit
       Compiler.Encoding.A64
       Compiler.Native.Core
       Compiler.Native.Linked
