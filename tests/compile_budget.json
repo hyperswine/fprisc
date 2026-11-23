@@ -1,16 +1,16 @@
 {
   "ghc-9.6.6 x86_64-unknown-linux": {
     "hello": {
-      "allocated_bytes": 1533390688,
-      "max_bytes_used": 46279688
+      "allocated_bytes": 1742539856,
+      "max_bytes_used": 47262816
     },
     "pos1": {
-      "allocated_bytes": 70914254352,
-      "max_bytes_used": 623059016
+      "allocated_bytes": 75786112520,
+      "max_bytes_used": 663740480
     },
     "std-live": {
-      "allocated_bytes": 34312233976,
-      "max_bytes_used": 374199576
+      "allocated_bytes": 37764584656,
+      "max_bytes_used": 386434840
     }
   },
   "ghc-9.8.2 aarch64-apple-darwin": {
