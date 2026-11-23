@@ -11,12 +11,12 @@
 #include <unistd.h>
 
 /* ---- the reactor: descriptor waits off the harts (overhead plan R2) -------
- * One thread waits in epoll_wait for every descriptor an actor is parked on
- * (actors.c fpr_io_wait) and hands each ready one back by its token
- * (fpr_io_fire), which wakes the actor on its hart.  Started on the first
- * wait.  A registration is one-shot and is removed by the waiter after it
- * wakes.  Linux only for now: elsewhere hal_io_arm stays the runtime's weak
- * "no reactor" and a read waits in the kernel as it did. */
+ * One thread waits in epoll_wait (Linux) or kevent (macOS) for every
+ * descriptor an actor is parked on (actors.c fpr_io_wait) and hands each ready
+ * one back by its token (fpr_io_fire), which wakes the actor on its hart.
+ * Started on the first wait.  A registration is one-shot and is removed by the
+ * waiter after it wakes.  Elsewhere hal_io_arm stays the runtime's weak "no
+ * reactor" and a read waits in the kernel as it did. */
 int fpr_io_wait(int fd, int events);
 #if defined(__linux__) && !defined(FPR_ESP_IDF)
 #include <sys/epoll.h>
@@ -66,11 +66,64 @@ int hal_io_arm(int fd, int events, uint64_t token) {
 void hal_io_disarm(int fd) {
   if (reactor_ep >= 0) (void)epoll_ctl(reactor_ep, EPOLL_CTL_DEL, fd, 0);
 }
+#elif defined(__APPLE__) && !defined(FPR_ESP_IDF)
+#include <sys/event.h>
+#include <pthread.h>
+#include <errno.h>
+void fpr_io_fire(uint64_t token);
+static int reactor_kq = -1;
+static pthread_once_t reactor_once = PTHREAD_ONCE_INIT;
+static void *reactor_loop(void *arg) {
+  (void)arg;
+  struct kevent ev[64];
+  for (;;) {
+    int n = kevent(reactor_kq, 0, 0, ev, 64, 0);
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      fpr_cpanic("reactor: kevent failed");
+    }
+    for (int i = 0; i < n; i++) fpr_io_fire((uint64_t)(uintptr_t)ev[i].udata);
+  }
+  return 0;
+}
+static void reactor_start(void) {
+  int kq = kqueue();
+  if (kq < 0) return;
+  (void)fcntl(kq, F_SETFD, FD_CLOEXEC);
+  reactor_kq = kq;
+  sigset_t all, old;
+  sigfillset(&all); /* the harts' signals stay with the harts */
+  pthread_sigmask(SIG_BLOCK, &all, &old);
+  pthread_attr_t at;
+  pthread_attr_init(&at);
+  pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+  pthread_t t;
+  if (pthread_create(&t, &at, reactor_loop, 0)) { close(kq); reactor_kq = -1; }
+  pthread_attr_destroy(&at);
+  pthread_sigmask(SIG_SETMASK, &old, 0);
+}
+int hal_io_arm(int fd, int events, uint64_t token) {
+  pthread_once(&reactor_once, reactor_start);
+  if (reactor_kq < 0) return -1;
+  struct kevent ev[2];
+  int n = 0;
+  if (events & 1) EV_SET(&ev[n++], (uintptr_t)fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_ONESHOT, 0, 0, (void *)(uintptr_t)token);
+  if (events & 2) EV_SET(&ev[n++], (uintptr_t)fd, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_ONESHOT, 0, 0, (void *)(uintptr_t)token);
+  if (!n) return -1;
+  return kevent(reactor_kq, ev, n, 0, 0, 0) < 0 ? -1 : 0;
+}
+void hal_io_disarm(int fd) {
+  if (reactor_kq < 0) return;
+  struct kevent ev[2];
+  EV_SET(&ev[0], (uintptr_t)fd, EVFILT_READ, EV_DELETE, 0, 0, 0);
+  EV_SET(&ev[1], (uintptr_t)fd, EVFILT_WRITE, EV_DELETE, 0, 0, 0);
+  (void)kevent(reactor_kq, ev, 2, 0, 0, 0);
+}
 #endif
 /* a blocking descriptor with nothing to read yet: park the actor until it has
  * (or until it hangs up), instead of the hart; a non-blocking one keeps its
  * "again" answer */
-#if defined(__linux__) && !defined(FPR_ESP_IDF)
+#if (defined(__linux__) || defined(__APPLE__)) && !defined(FPR_ESP_IDF)
 /* descriptors Os.open opened on a regular file (until Os.close): a read of
  * one never waits, so it skips the readiness check (a system call a read).
  * A stale bit -- the descriptor closed some other way and reused -- only
@@ -94,7 +147,7 @@ static void reg_note(int fd) { (void)fd; }
 static void reg_forget(int fd) { (void)fd; }
 #endif
 static void wait_readable(int fd) {
-#if defined(__linux__) && !defined(FPR_ESP_IDF)
+#if (defined(__linux__) || defined(__APPLE__)) && !defined(FPR_ESP_IDF)
   if (reg_is(fd)) return;
   struct pollfd p = {fd, POLLIN, 0};
   int r;

@@ -26,7 +26,7 @@ import Core.Typed.Syntax hiding (Local)
 import qualified Core.Typed.Syntax as T
 import Control.Monad (when)
 import Control.Monad.Except (throwError)
-import Data.List (intercalate, nub, sort, sortOn)
+import Data.List (intercalate, isPrefixOf, nub, sort, sortOn)
 import Control.Monad (foldM)
 import Core.Typed.Layout (recordShapes, closedRowShape)
 import Compiler.VectorLayout (builderRuntimeName)
@@ -44,7 +44,7 @@ data Layout = Layout
 
 -- A local the lowering bound: a checked binder, or a scrutinee the match
 -- plan names (erasure's fresh `scrut`).
-data Key = KBinder BinderId | KScrut Int | KField BinderId deriving (Eq, Ord, Show)
+data Key = KBinder BinderId | KScrut Int | KField BinderId | KFact String deriving (Eq, Ord, Show)
 
 -- The planned body: the shapes erasure produces for S1, with typed leaves.
 data TE
@@ -544,6 +544,7 @@ keyName k = case k of
   KBinder (BinderId (Namespace ns) i) -> "%typed.binder." ++ ns ++ "." ++ show i
   KScrut n -> "%typed.scrut." ++ show n
   KField (BinderId (Namespace ns) i) -> "%typed.field." ++ ns ++ "." ++ show i
+  KFact s -> s
 
 -- the erased form a plan node stands for
 toCore :: TE -> Core
@@ -611,6 +612,10 @@ lowerTail cx env expr = ended (go expr) >> pure ()
 lowerBind :: Cx -> TEnv -> Key -> TE -> L TEnv
 lowerBind cx env k a = case view a of
   VVar y | Just b <- M.lookup y env -> pure (M.insert k b env)
+  _ | Just access <- Lower.vectorAccess cx (coreEnv env) (toCore a) -> do
+        (env', result) <- Lower.lowerVector cx (coreEnv env) access
+        let facts = M.fromList [(KFact f, v) | (f, v) <- M.toList env', "\0vector." `isPrefixOf` f]
+        pure (M.insert k result (M.union facts env))
   _ -> do
     r <- lowerVal cx env a
     pure (M.insert k r env)

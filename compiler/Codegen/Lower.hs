@@ -21,7 +21,7 @@ module Codegen.Lower
     open, suspend, resume, emit, emitDo, close, coerce, asVal, asInt, asPred, unify,
     calleeOf, isPrimName, lowerGlobal, nullaryValue, arithOps, cmpOps, isStaticNominalTid,
     -- the primitive dispatch, which the typed lowering delegates to
-    Env, lowerVal, lowerTail ) where
+    Env, lowerVal, lowerTail, VectorAccess, vectorAccess, lowerVector ) where
 
 import Codegen.IR
 import Codegen.LoopForm (formSelfLoop)

@@ -33,7 +33,7 @@ quad s = parseInt (Str.trim (Str.replace ".quad" "" s)).
 # the count word, then each row's raw, F32 and I64 masks, after the fpr_layout_raw label
 rawRows : unsafe List String -> List Int.
 rawRows ls = case ls of
-  l :: rest -> if Str.trim l == "fpr_layout_raw:" then (case rest of
+  l :: rest -> if Str.trim l == "fpr_layout_raw:" or Str.trim l == "_fpr_layout_raw:" then (case rest of
       c :: more -> n = quad c; nth k = quad (List.fold (fn acc x -> x) "" (List.take k more));
         quad c :: List.concat (List.map (fn i -> [nth (5 * i + 3), nth (5 * i + 4), nth (5 * i + 5)]) (List.range 0 (n - 1)))
     | [] -> []) else rawRows rest

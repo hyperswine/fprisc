@@ -65,8 +65,9 @@ showHead label n m =
   t2 = showHead "centered/tweaked a" 3 tweaked;
 
   # matmul: a (6x4) * a^T (4x6) -> gram (6x6); operands thread back out
-  at = M.transpose t2;
-  (gram, t3, at2) = M.mul t2 at;
+  (t2rows, t2b) = M.mapRows (fn r -> r) t2;
+  at = M.transpose (M.fromRows t2rows);
+  (gram, t3, at2) = M.mul t2b at;
   u7 = M.free at2;
   g2 = showHead "gram = a * a^T" 2 gram;
 

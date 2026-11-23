@@ -44,10 +44,10 @@ lSum xs = x :: r = xs; x + lSum r.
 
 lScale k xs = map (fn x -> k * x) xs.
 
-lSub : List a2 -> List a2 -> List a2 .
+lSub : List Int -> List Int -> List Int .
 lSub xs ys = zip2W (fn a b -> a - b) xs ys.
 
-lAdd : List b2 -> List b2 -> List b2 .
+lAdd : List Int -> List Int -> List Int .
 lAdd xs ys = zip2W (fn a b -> a + b) xs ys.
 
 lZeros : (n : Int | measure n) -> List Int .

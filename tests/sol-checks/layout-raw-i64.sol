@@ -62,7 +62,7 @@ want = "(239818879180734464, 1049600)\n(239818879180736512, 1049600)\nTrue\nFals
 quad s = parseInt (Str.trim (Str.replace ".quad" "" s)).
 rawRows : unsafe List String -> List Int.
 rawRows ls = case ls of
-  l :: rest -> if Str.trim l == "fpr_layout_raw:" then (case rest of
+  l :: rest -> if Str.trim l == "fpr_layout_raw:" or Str.trim l == "_fpr_layout_raw:" then (case rest of
       c :: more -> quad c :: List.map quad (List.take (5 * quad c) more)
     | [] -> []) else rawRows rest
 | [] -> [].
