@@ -1,0 +1,5 @@
+dm : (n : Int | measure n) -> Int -> (Int, Int) .
+dm n x = if n <= 0 then (x / 7, x % 7) else dm (n - 1) (x + 1).
+loop : unsafe Int -> Int -> Int .
+loop i acc = if i == 0 then acc else (case dm 1 i of (q, r) -> loop (i - 1) (band (acc + q + r) 1048575)).
+main = print "{loop 10000000 0}".

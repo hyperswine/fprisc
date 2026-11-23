@@ -1,0 +1,7 @@
+build : (n : Int | measure n) -> Vector Int -> Vector Int .
+build n v = if n <= 0 then v else build (n - 1) (Vec.push n v).
+sumv : (i : Int | measure (1000 - i)) -> Int -> Vector Int -> (Int, Vector Int) .
+sumv i acc v = if i >= 1000 then (acc, v) else (x, v2) = Vec.get i v; sumv (i + 1) (acc + x) v2.
+rep : unsafe Int -> Int -> Vector Int -> Int .
+rep k acc v = if k == 0 then _ = Vec.free v; acc else (s, v2) = sumv 0 0 v; rep (k - 1) (band (acc + s) 1048575) v2.
+main = print "{rep 10000 0 (build 1000 (Vec.new Unit))}".

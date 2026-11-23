@@ -1,0 +1,5 @@
+add3 : {x : Int, y : Int, z : Int} -> {x : Int, y : Int, z : Int} -> {x : Int, y : Int, z : Int} .
+add3 a b = {x = a.x + b.x, y = a.y + b.y, z = a.z * 1 + b.z}.
+loop : unsafe Int -> {x : Int, y : Int, z : Int} -> Int .
+loop i v = if i == 0 then v.x + v.y + v.z else loop (i - 1) (add3 v {x = 1, y = 2, z = 3}).
+main = print "{loop 10000000 {x = 0, y = 0, z = 0}}".

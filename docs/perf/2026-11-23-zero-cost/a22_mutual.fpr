@@ -1,0 +1,5 @@
+ev : unsafe Int -> Int -> Int .
+ev n acc = if n == 0 then acc else od (n - 1) (acc + 1).
+od : unsafe Int -> Int -> Int .
+od n acc = if n == 0 then acc else ev (n - 1) (acc + 2).
+main = print "{ev 10000000 0}".

@@ -1,0 +1,5 @@
+ap : Int -> Int -> Int -> Int .
+ap op a b = if op == 0 then a + b else if op == 1 then a - b else if op == 2 then band (a * b) 65535 else bxor a b.
+loop : unsafe Int -> Int -> Int .
+loop i acc = if i == 0 then acc else loop (i - 1) (band (ap (band i 3) acc i) 1048575).
+main = print "{loop 10000000 0}".

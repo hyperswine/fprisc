@@ -1,0 +1,8 @@
+List = use "std/list".
+mk : (n : Int | measure n) -> List F64 -> List F64 .
+mk n acc = if n <= 0 then acc else mk (n - 1) (F64.ofInt n :: acc).
+sumk : (xs : List F64 | measure xs) -> F64 -> F64 .
+sumk xs a = case xs of Nil -> a | x :: r -> sumk r (a + x).
+rep : unsafe List F64 -> Int -> F64 -> F64 .
+rep xs k acc = if k == 0 then acc else rep xs (k - 1) (acc * 0.5 + sumk xs 0.0).
+main = print "{F64.toInt (rep (mk 1000 Nil) 10000 0.0)}".

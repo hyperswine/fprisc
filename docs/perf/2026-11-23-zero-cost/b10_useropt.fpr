@@ -1,0 +1,6 @@
+MyOpt = Type (No | Yes Int).
+half : Int -> MyOpt .
+half x = if band x 1 == 0 then Yes (x / 2) else No.
+loop : unsafe Int -> Int -> Int .
+loop i acc = if i == 0 then acc else loop (i - 1) (case half i of Yes y -> acc + y | No -> acc + 1).
+main = print "{loop 10000000 0}".

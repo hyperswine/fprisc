@@ -1,0 +1,6 @@
+List = use "std/list".
+go : (xs : List Int | measure xs) -> Int -> Int -> Int .
+go xs k a = case xs of Nil -> a | x :: r -> go r k (if band (x * k) 1 == 0 then a + x * k else a).
+rep : unsafe List Int -> Int -> Int -> Int .
+rep xs k acc = if k == 0 then acc else rep xs (k - 1) (acc + go xs k 0).
+main = print "{rep (List.range 1 1000) 10000 0}".

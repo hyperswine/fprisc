@@ -1,0 +1,6 @@
+O = use "std/option".
+half : Int -> O.Option Int .
+half x = if band x 1 == 0 then O.Some (x / 2) else O.None.
+loop : unsafe Int -> Int -> Int .
+loop i acc = if i == 0 then acc else loop (i - 1) (case half i of O.Some y -> acc + y | O.None -> acc + 1).
+main = print "{loop 10000000 0}".

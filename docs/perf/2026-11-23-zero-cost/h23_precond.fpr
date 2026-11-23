@@ -1,0 +1,3 @@
+loop : unsafe Int -> Int -> Int .
+loop i acc = if i == 0 then acc else loop (i - 1) (band (acc + 1000000 / (bor i 1)) 1048575).
+main = print "{loop 10000000 0}".

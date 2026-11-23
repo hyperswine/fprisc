@@ -1,0 +1,5 @@
+applyN : unsafe (Int -> Int) -> Int -> Int -> Int .
+applyN f n x = if n == 0 then x else applyN f (n - 1) (f x).
+run : unsafe Int -> Int .
+run k = applyN (fn x -> band (x + k) 1048575) 10000000 0.
+main = print "{run 7}".

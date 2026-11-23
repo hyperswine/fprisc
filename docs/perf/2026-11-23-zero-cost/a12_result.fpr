@@ -1,0 +1,5 @@
+sdiv : Int -> Int -> Result Int String .
+sdiv a b = if b == 0 then Err "div0" else Ok (a / b).
+loop : unsafe Int -> Int -> Int .
+loop i acc = if i == 0 then acc else loop (i - 1) (case sdiv 1000000 (band i 15) of Ok q -> acc + q | Err _ -> acc + 1).
+main = print "{loop 10000000 0}".
