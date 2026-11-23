@@ -1,5 +1,10 @@
 -- Kinds of the raw-word callback ABI, solved independently for every argument
 -- and result. Conflicts/unsupported Core decline to the ordinary tagged path.
+--
+-- Cross-reference: AOT raw-word specialization uses `Kind` (KI/KD/KS/KB:
+-- raw Int, F64, F32, boxed), whereas Sol's JIT uses `Sol.JitCore.JTy`
+-- (JB/JI/JD/JW: bottom, exact i64, inexact f64, ambiguous numeric). They are
+-- intentionally separate lattices; see `compiler/Sol/JitCore.hs`.
 module KernelKinds (Kind(..), signature, signatureStrict, componentSignatures, verifyComponent) where
 import Core.Syntax (Core(..), Prog)
 import Control.Monad.State.Strict

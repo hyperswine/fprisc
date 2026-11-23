@@ -1,4 +1,5 @@
 -- Script output belongs to the program; host diagnostics belong to stderr.
+-- See `Diagnostic.Render` for the full compiler diagnostics map.
 module Sol.Diagnostic (diagnostic, verbose, withBufferedDiagnostics, tryBufferedDiagnostics) where
 
 import Control.Exception (SomeException, onException, try)

@@ -161,6 +161,9 @@ library
       Core.Typed.Pipeline
       Compiler.DataLayout
       Compiler.Compile.Support
+      Compiler.Compile.Tables
+      Compiler.Compile.Target
+      Compiler.Compile.Cost
       Compiler.Encoding.A64
       Compiler.Native.Core
       Compiler.Native.Linked
@@ -273,6 +276,7 @@ library
       Sol.Txn
       Sol.TxnState
       Sol.Escapes
+      Sol.Hal
       Sol.VM
       Sol.MutMap
       Sol.Val

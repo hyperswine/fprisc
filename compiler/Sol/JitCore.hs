@@ -31,6 +31,12 @@ fitsI64 i = i >= toInteger (minBound :: Int64) && i <= toInteger (maxBound :: In
 -- It is the identity for joins and promotions, so optimistic iteration
 -- reaches the LEAST fixed point -- without it, a recursive call would
 -- poison `join` into JW and stick there.
+--
+-- Cross-reference: Sol's JIT uses `JTy` (JB/JI/JD/JW: bottom, exact i64,
+-- inexact f64, ambiguous numeric) for dynamic numeric promotion in Sol
+-- kernels, whereas the AOT compiler uses `KernelKinds.Kind` (KI/KD/KS/KB:
+-- raw Int, F64, F32, boxed) for static raw-word callback ABIs. They are
+-- intentionally distinct representations; see `compiler/KernelKinds.hs`.
 data JTy = JB | JI | JD | JW deriving (Eq, Show, Ord)
 
 joinT :: JTy -> JTy -> JTy

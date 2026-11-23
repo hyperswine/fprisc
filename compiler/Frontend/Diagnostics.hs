@@ -3,6 +3,8 @@
 {-# LANGUAGE LambdaCase, TupleSections #-}
 
 -- Source definition anchors and compatibility API for diagnostic rendering.
+-- See `Diagnostic.Render` for the full compiler diagnostics map (structured
+-- diagnostics, `Compiler.Remarks`, and `Sol.Diagnostic`).
 module Frontend.Diagnostics where
 
 import qualified Diagnostic.Render as Render

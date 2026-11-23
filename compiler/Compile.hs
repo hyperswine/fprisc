@@ -95,6 +95,9 @@ import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Text.Megaparsec (errorBundlePretty, parse, bundleErrors, errorOffset)
 import Text.Printf (printf)
 import Compiler.Compile.Support
+import Compiler.Compile.Tables (renderRootTables)
+import Compiler.Compile.Target (TargetConfig (..), validateProfileMatrix, buildTargetConfig)
+import Compiler.Compile.Cost (runCostAnalysis)
 
 -- a module reached by two spellings (`ep` and `../programs/mods/ep`, a pin
 -- and a path) is ONE unit: its hash is its identity.  Listed twice it was
@@ -203,50 +206,7 @@ compileWithReport opts0 accepted report = do
   let system = fromMaybe "bare-metal" (oSystem opts0)
       espHost = oHost opts0 == Just "esp-idf" -- the posix system on an ESP-IDF board (docs/2026-09-23-ESP-IDF.md)
       opts = opts0 {oBuiltin = profile == "builtin", oSol = oSol opts0 || profile == "sol", oNoInline = not (Options.cgInline codegen)}
-  -- the posix system's hosts: this machine (unix, the default) and esp-idf
-  case oHost opts0 of
-    Just h | h /= "esp-idf" -> refuse ("--host=" ++ h ++ ": the posix system's hosts are unix (this machine, the default) and esp-idf")
-    Just h | system /= "posix" -> refuse ("--host=" ++ h ++ " is a kind of posix host: it goes with --system=posix, not " ++ system)
-    _ -> pure ()
-  -- the matrix (docs/2026-09-19-PROFILES.md): builtin is bare metal only, sol is
-  -- the posix host only, base and extbase run anywhere with a HAL
-  when (profile == "builtin" && system /= "bare-metal") $
-    refuse ("profile builtin runs on the bare-metal system only, not " ++ system ++ " (--system=bare-metal)")
-  when (espHost && (oA64 opts0 || oX64 opts0 || oQosApp opts0 || oPlugin opts0 || oRvv opts0 || tgtName (oTarget opts0) /= "rv32")) $
-    refuse "--host=esp-idf is rv32 code for an ESP-IDF application: no other --target, QOS app image, plugin or RVV"
-  when (system == "posix" && not espHost && tgtName (oTarget opts0) /= "rv64") $
-    refuse "--system=posix on Unix requires a 64-bit target (a64, x64 or rv64)"
-  when (profile == "sol" && system /= "posix") $
-    refuse ("profile sol runs on the posix system (the VM: `fpr run`), not " ++ system)
-  when (profile == "sol" && espHost) $
-    refuse "profile sol runs on the VM (`fpr run`) on this machine, not on the esp-idf host"
-  when (oBuiltin opts && (oA64 opts || oX64 opts || oQosApp opts || oRvv opts || tgtName (oTarget opts) `notElem` ["rv64", "rv32"])) $ do
-    hPutStrLn stderr "profile builtin supports scalar RV64 or RV32 only"
-    exitFailure
-  when (oBuiltin opts && oArc opts && tgtName (oTarget opts) == "rv32") $ do
-    hPutStrLn stderr "profile builtin RV32 currently supports manual ownership only; --arc/--raw/--export require RV64"
-    exitFailure
-  when (oBase opts && (oBuiltin opts || oQosApp opts || oRvv opts)) $ do
-    hPutStrLn stderr "--system=posix supports hosted executables/modules: no builtin/arc, no QOS app image, no RVV"
-    exitFailure
-  when (oArc opts && not (oBuiltin opts)) $ do
-    hPutStrLn stderr "--arc needs profile builtin (the raw ABI)"
-    exitFailure
-  when (oRaw opts && not (oArc opts)) $ do
-    hPutStrLn stderr "--raw needs --arc (it is the raw ABI without the ownership instrumentation)"
-    exitFailure
-  when (not checkOnly && (oLib opts || not (null (oExports opts))) && not (oArc opts && oBuiltin opts)) $ do
-    hPutStrLn stderr "--lib / --export need profile builtin with --arc (the raw ABI is the C ABI)"
-    exitFailure
-  when (oArc opts && oPlugin opts) $ do
-    hPutStrLn stderr "--arc does not yet support plugin/foreign ownership boundaries"
-    exitFailure
-  when (isJust stackBudget && not (oBuiltin opts && oArc opts && oLib opts && not (null (oExports opts))
-                                  && tgtName (oTarget opts)=="rv64" && not (oA64 opts || oX64 opts || oQosApp opts || oRvv opts))) $
-    refuse "--stack-budget requires builtin RV64 --arc --lib with explicit --export entries"
-  when (isJust heapBudget && not (oBuiltin opts && oArc opts && oLib opts && not (null (oExports opts))
-                                  && tgtName (oTarget opts)=="rv64" && not (oA64 opts || oX64 opts || oQosApp opts || oRvv opts))) $
-    refuse "--heap-budget requires builtin RV64 --arc --lib with explicit --export entries"
+  validateProfileMatrix opts0 opts profile system espHost checkOnly stackBudget heapBudget refuse
   -- --prelude=FILE as given; no flag = the prelude beside the binary
   -- (core/prelude.fpr under Home.fprHome), so `fpr compile x.fpr x.s`
   -- means the same thing from any directory; --prelude= (empty) = none
@@ -680,100 +640,7 @@ compileWithReport opts0 accepted report = do
       when (oCost opts || declaredAny) $ do
         let costInput = compileRaw finalTops
             costProg = fst (turnPassWith False costInput)
-            (measTable, _) = measureCheck tops
-            surface = Resource.surfaceNames finalTops
-            coefs = maybe M.empty mCoefs manifest
-            prims = maybe M.empty mPrims manifest
-            analysis = Resource.analyze
-              (if oCost opts || isJust manifest then M.keysSet costProg else S.empty)
-              measTable coefs finalTops (Regions.programNative costInput) costProg
-            declared = Resource.declarations analysis
-            declErrs = Resource.declarationErrors analysis
-            verifiedSizes = Resource.sizes analysis
-            eqs = Resource.equations analysis
-            rootNames = [n | n <- S.toList rootBinds, M.member n costProg]
-            priceW g = fst <$> M.lookup g prims
-            priceA g = snd <$> M.lookup g prims
-            -- checked and printed in the function's surface parameter names
-            verdicts =
-              [ (n, kind, derivedC', declC, verdict)
-                | (n, d) <- M.toList declared,
-                  Just (Cost.CostEq w a l _, _) <- [M.lookup n eqs],
-                  (kind, derivedC, Just declC, price) <- [("work", w, Cost.dWork d, priceW), ("alloc", a, Cost.dAlloc d, priceA), ("live", l, Cost.dLive d, priceA)],
-                  let derivedC' = Cost.resolvePrims price derivedC
-                      verdict = case Cost.coefsIn declC of
-                        [] -> Cost.checkBoundsUnderWith (nonnegativeInputs n) (renamerFor n) derivedC' declC
-                        ks -> Cost.Unproved ["coefficient " ++ k ++ " (bind it in a manifest: --manifest=FILE)" | k <- ks]
-              ]
-            -- These are the original signature predicates, already enforced
-            -- by applyPreconds at direct, escaped and partial call boundaries.
-            -- A termination measure alone is NOT an input-domain predicate.
-            nonnegativeInputs n = S.fromList
-              [p | (p, Just (v, predicate)) <- zip
-                    (fst (M.findWithDefault ([], CErr "") n costProg))
-                    (M.findWithDefault [] n preTab),
-                   Precond.entails (Precond.conjuncts predicate) (SBin ">=" (SVar v) (SInt 0))]
-            renamerFor n =
-              let ren = M.fromList (zip (fst (M.findWithDefault ([], CErr "") n costProg)) (M.findWithDefault [] n surface))
-                  r p = M.findWithDefault p p ren
-                  rn c = case c of
-                    Cost.CP p -> Cost.CP (r p)
-                    Cost.CLen p -> Cost.CLen (r p)
-                    Cost.CW p -> Cost.CW (r p)
-                    Cost.CA p -> Cost.CA (r p)
-                    _ -> c
-               in rn
-            failed = [v | v@(_, _, _, _, verdict) <- verdicts, verdict /= Cost.Proven]
-            renderV (n, kind, d, c, v) = n ++ ": declared " ++ kind ++ " <= " ++ Cost.prettyIn surface costProg n c ++ "   derived " ++ Cost.prettyIn surface costProg n d ++ "   " ++ Cost.renderVerdict v
-        when (oCost opts) $ do
-          putStrLn "cost (work in abstract ops; alloc in requested cell bytes; live where it differs; ω = opaque):"
-          mapM_ putStrLn (Cost.renderReport surface costProg (M.map fst eqs) (M.keysSet (M.filter (\d -> Cost.dLive d /= Nothing) declared)) rootNames)
-          unless (null verdicts) $ do
-            putStrLn "declared bounds:"
-            mapM_ (putStrLn . ("  " ++) . renderV) verdicts
-          let sizes = [(n, sz) | (n, d) <- M.toList declared, Just sz <- [Cost.dSize d]]
-          unless (null sizes) $ do
-            putStrLn "result size candidates (callers use independently verified bounds only):"
-            mapM_ (\(n, sz) -> putStrLn ("  " ++ n ++ ": declared size <= " ++ Cost.prettyIn surface costProg n sz
-              ++ case M.lookup n verifiedSizes of
-                Nothing -> "   UNPROVED (no result-size lemma; annotation is not used)"
-                Just actual -> "   verified size <= " ++ Cost.prettyIn surface costProg n actual ++ "   "
-                  ++ Cost.renderVerdict (Cost.checkBoundsUnderWith (nonnegativeInputs n) (renamerFor n) actual sz))) sizes
-        -- ---- the judgement against a target (stage 3) ----
-        let orDash x = if null x then "-" else x
-        budgetFails <- case manifest of
-          Nothing -> pure []
-          Just m -> do
-            putStrLn ("target " ++ mName m ++ ": compiler " ++ orDash (mCompiler m) ++ ", runtime " ++ orDash (mRuntime m) ++ ", " ++ orDash (mHardware m) ++ "; " ++ show (fromRational (mNsPerOp m) :: Double) ++ " ns/op")
-            unless (null (mAssume m)) $ putStrLn ("assumptions: " ++ intercalate "; " (mAssume m))
-            let judge n = case M.lookup n eqs of
-                  Nothing -> Nothing
-                  Just (Cost.CostEq w _ _ _, _) ->
-                    let w' = Cost.resolvePrims priceW w
-                        shown = Cost.prettyIn surface costProg n w'
-                        budget = M.lookup n (mBudgets m)
-                        line = case (Cost.evalConst w', Cost.omegas w', budget) of
-                          (Just ops, _, Just b) ->
-                            let ns = fromIntegral ops * mNsPerOp m
-                             in (ns <= b, "work " ++ show ops ++ " ops → " ++ renderNs ns ++ (if ns <= b then "   PROVEN within budget " else "   OVER budget ") ++ renderNs b)
-                          (Just ops, _, Nothing) -> (True, "work " ++ show ops ++ " ops → " ++ renderNs (fromIntegral ops * mNsPerOp m))
-                          (Nothing, [], Just b) -> (False, "work <= " ++ shown ++ "   UNPROVED against budget " ++ renderNs b ++ " (parametric: bound the parameters with preconditions)")
-                          (Nothing, [], Nothing) -> (True, "work <= " ++ shown ++ "   (parametric; × " ++ show (fromRational (mNsPerOp m) :: Double) ++ " ns)")
-                          (Nothing, os, Just b) -> (False, "work <= " ++ shown ++ "   UNPROVED against budget " ++ renderNs b ++ " (opaque: " ++ intercalate ", " os ++ ")")
-                          (Nothing, os, Nothing) -> (True, "work <= " ++ shown ++ "   UNPROVED (opaque: " ++ intercalate ", " os ++ ")")
-                     in Just line
-                width = maximum (8 : map length rootNames)
-                rows = [(n, l) | n <- rootNames, Just l <- [judge n]]
-            mapM_ (\(n, (_, l)) -> putStrLn ("  " ++ n ++ replicate (width - length n) ' ' ++ "  " ++ l)) rows
-            let unknownBudgets = [f | f <- M.keys (mBudgets m), f `notElem` rootNames]
-            unless (null unknownBudgets) $ putStrLn ("  (budgets for names not in this program: " ++ intercalate ", " unknownBudgets ++ ")")
-            pure [n ++ ": " ++ l | (n, (ok, l)) <- rows, not ok]
-        unless (null declErrs && null failed && null budgetFails) $ do
-          putStrLn "=== COST: ERRORS ==="
-          mapM_ (putStrLn . ("  * " ++)) (anchored declErrs)
-          mapM_ (putStrLn . ("  * " ++) . renderV) failed
-          mapM_ (putStrLn . ("  * " ++)) budgetFails
-          exitFailure
+        runCostAnalysis opts manifest finalTops tops preTab rootBinds anchored costInput costProg
       -- A root-declared nominal type changes its runtime tid with unit hash,
       -- even when its written constructor shape is identical. Structural
       -- records keep their field-based identity; imported nominals already
@@ -905,75 +772,16 @@ compileWithReport opts0 accepted report = do
                   M.fromList ([("$callActive",1) | oBase opts]++VectorRead.peekArities++[("$receiveLoop", 2), ("$regionSeq", 1), ("$regionOpen", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$receiveReady", 2), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2), ("$fnIs", 2)]) ]
             arrows (TFn _ r) = 1 + arrows r
             arrows _ = 0 :: Int
-            tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHeapProof = isJust heapBudget, tgtStackReport = oStackReport opts || isJust stackBudget || not (null (oExports opts)), tgtHal = halAr, tgtFloatInline = (Options.cgFloatInline codegen), tgtSimd=(oA64 opts || oX64 opts) && (Options.cgSimd codegen), tgtFusion=(Options.cgFusion codegen),
-                                 tgtScalarFast = True, tgtIndexedMemory = (Options.cgIndexedMemory codegen), tgtScalarWorkers = (Options.cgScalarWorkers codegen), tgtPairReturns = (Options.cgPairReturns codegen), tgtFieldWorkers = (Options.cgFieldWorkers codegen), tgtTupleScalars = (Options.cgTupleScalars codegen), tgtPipelineInline = (Options.cgPipelineInline codegen), tgtReuse = (Options.cgReuse codegen), tgtTypedIr = (Options.diagTypedIr diagnostic), tgtPolicy = irPolicy, tgtNative = nativeMode}
-            a64 = oA64 opts
-            a64mac = oA64Mac opts
-            x64 = oX64 opts
-            x64mac = oX64Mac opts
-            qapp = oQosApp opts
-            qsingle = oQosSingle opts
-            -- the profile the typed-IR lowering states; everything but hosted
-            -- Base is refused by name (Codegen.Policy)
-            irPolicy = Policy
-              { polProfile = if oArc opts then BuiltinArc
-                             else if oBuiltin opts then (if tgtName (oTarget opts) == "rv32" then Builtin32 else Builtin)
-                             else if tgtName (oTarget opts) == "rv32" then Rv32
-                             else if qapp then QosApp
-                             else HostedBase,
-                polFuel = not (oBuiltin opts),
-                polTickBatch = Options.cgTickBatch codegen,
-                polTickWeight = Options.cgTickWeight codegen,
-                -- hosted x86-64 (not a QOS app) skips the check in small
-                -- leaves by default (FPR_NO_SHALLOW_STACK=1 keeps every check);
-                -- FPR_TYPED_IR_SHALLOW_STACK opts the other hosted targets in
-                polStackCheck = if oBuiltin opts then StackStatic
-                                else if Options.nativeShallowStack native then StackCheckShallow
-                                else if Options.nativeShallowDefault native && x64 && not qapp && tgtName (oTarget opts) /= "rv32" then StackCheckShallow
-                                else StackCheckEveryEntry,
-                polFloatInline = (Options.cgFloatInline codegen),
-                polLoopMotion = Options.cgLoopMotion codegen,
-                polStringScan = Options.cgStringScan codegen,
-                polEarlyLoops = Options.cgEarlyLoops codegen,
-                polVectorFast = Options.cgVectorFast codegen,
-                polStringFast = Options.cgStringFast codegen,
-                polInterval = Options.cgInterval codegen,
-                polTypedCase = Options.cgTypedCase codegen,
-                polBumpAlloc = Options.cgBumpAlloc codegen,
-                polCompactCells = Options.cgCompactCells codegen && not (oBuiltin opts) && tgtName (oTarget opts) /= "rv32",
-                polRegisters = registerBudget (if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts)) }
-            -- direct backends: the AArch64 hart read follows the
-            -- target runtime ABI (x28 under fpr build, the TLV cell on a64mac
-            -- without --base, local-exec TLS on a64 ELF)
-            nativeMode = Just NativeMode
-                { nmGranularity = Options.nativeGranularity native,
-                  nmStrict = (Options.nativeStrict native),
-                  nmTargetName = if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts),
-                  nmBackend = if a64 && not qapp
-                                then Just (DirectA64 (if a64mac then MachO else ELF) (if oBase opts then HartX28 else if a64mac then HartTlvMachO else HartTlsElf))
-                                -- a loaded QOS app (and plugin): the hart is x28, or the
-                                -- global cell under qa64single (docs/2026-10-22-TYPED-IR-QOS.md)
-                                else if a64 && qapp
-                                  then Just (DirectA64 (if a64mac then MachO else ELF) (if oQosSingle opts then HartGlobal else HartX28))
-                                else if x64 then Just (if qapp then DirectQX64 else DirectX64 (if x64mac then MachO else ELF))
-                                -- a posix module (--module on rv64) reads the hart through
-                                -- initial-exec TLS and is assembled under .option pic
-                                -- (docs/2026-10-23-TYPED-RV64-MODULES.md). Plain bare-metal
-                                -- plugins retain tp, just like bare-metal executables.
-                                -- a QOS RISC-V app or plugin (qrv64) borrows the host's hart cell through
-                                -- fpr_g_tlsoff (docs/2026-10-23-TYPED-QRV64.md)
-                                -- the ESP-IDF host (rv32) keeps its hart in fpr_esp_hart
-                                -- (docs/2026-10-23-TYPED-QRV64.md)
-                                else if not a64 && not x64 && tgtName (oTarget opts) `elem` ["rv32", "rv64"]
-                                        && (not qapp || tgtName (oTarget opts) == "rv64")
-                                  then Just (DirectRV (policyWidth irPolicy)
-                                               (if espHost then RV.HartTlsEsp else if qapp then RV.HartQos else if oBase opts && oPlugin opts then RV.HartTlsIe else if oBase opts then RV.HartTls else RV.HartTp))
-                                else Nothing,
-                  nmSelfLoops = (Options.nativeSelfLoops native), nmForwardParams = (Options.nativeForwardParams native),
-                  nmTune = Tune (Options.nativeEntryArgs native) (Options.nativeShrinkWrap native) (Options.nativeFpPool native) (Options.nativeLinkPairs native) (Options.nativeX64Split native), nmSplitEntry = (Options.nativeSplitEntry native),
-                  nmFramelessEntry = Options.cgFramelessEntry codegen, nmX64Ra = Options.nativeX64Ra native }
-            -- Every selected backend owns the whole output. A named subset can
-            -- no longer permit another function or kernel to bypass typed IR.
+            contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
+            targetCfg = buildTargetConfig opts codegen native diagnostic espHost heapBudget halAr contractHash
+            tgt = tcTarget targetCfg
+            irPolicy = tcPolicy targetCfg
+            nativeMode = tcNativeMode targetCfg
+            tname = tcTargetName targetCfg
+            tag = tcCacheTag targetCfg
+            rvv = tcRvv targetCfg
+            moduleFinal = tcModuleFinal targetCfg
+            spec = True -- x64 lowers the extra saved registers through its shadow bank
             strictCheck what fallbacks = unless (null fallbacks) (strictFail what fallbacks)
             strictFail what fallbacks = do
               hPutStrLn stderr ("typed-ir strict: " ++ what ++ ": " ++ show (length fallbacks) ++ " function(s) did not take the native backend:")
@@ -982,43 +790,6 @@ compileWithReport opts0 accepted report = do
             directCheck what emission = do
               strictCheck what (emScalarFallbacks emission)
               strictCheck what (emRefusals emission)
-            -- a loaded posix module reaches external symbols through the GOT;
-            -- the pass works on target syntax and leaves its own output
-            -- alone, so it also covers the typed backend's text and a
-            -- translation-free unit (docs/2026-10-22-TYPED-IR-RETIREMENT.md)
-            moduleFinal = if oBase opts && oPlugin opts
-                            then (if a64 || x64 then id else \t -> if null t then t else "    .option pic\n" ++ t) . posixPic a64 (a64mac || x64mac)
-                            else id
-            rvv = oRvv opts && not a64 && not x64 -- no RVV lowering in the PoCs
-            spec = True -- x64 lowers the extra saved registers through its shadow bank
-            -- every distinct lowering its own cache tag: a QOS app on Apple Silicon
-            -- and a hosted posix program once shared "a64macr" while generating
-            -- different code, and hosted AArch64 now reads its hart from x28
-            tname0 = if qsingle then "qa64singler" ++ show a64InterfaceRev
-                    else if a64mac && qapp then "qa64macr" ++ show a64InterfaceRev
-                    else if a64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "a64macx28r" ++ show a64HostedInterfaceRev
-                    else if a64 && qapp then "qa64r" ++ show a64InterfaceRev
-                    else if a64 then "a64x28r" ++ show a64HostedInterfaceRev
-                    else if x64 && qapp then "qx64r" ++ show x64InterfaceRev
-                    else if x64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "x64macr" ++ show x64InterfaceRev
-                    else if x64 then "x64r" ++ show x64InterfaceRev
-                    else if espHost then "rv32-idftls1"
-                    else if qapp then "qrv64r" ++ show RV.rvSelectionRev
-                    else if oBase opts then "rv64posixr" ++ show RV.rvSelectionRev
-                    else tgtName tgt
-            tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
-            -- A root can constrain a global foreign primitive used inside an
-            -- unchanged imported unit. Cache that contract context as well as
-            -- source/prelude/shape identity so another root cannot reuse raw calls.
-            contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
-            -- A separate native-only cache policy prevents old fallback units
-            -- bypassing directCheck, while tname retains module ABI identity.
-            backendTag = "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev)
-              ++ (if a64 || x64 then "-native1" else "")
-              ++ Options.nativeOptionFlags (a64 && not qapp) native
-            tag = "g" ++ show codegenRev ++ backendTag ++ Options.optimizationFlags codegen
-              ++ "rt3pc6-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "")
-              ++ Options.vectorOptionFlags codegen ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
             unitDir = takeDirectory out </> "units"
             -- --arc: lower ownership, then inline the small helpers at
             -- their sites (Inline.hs) before the generator sees the unit
@@ -1328,66 +1099,10 @@ compileWithReport opts0 accepted report = do
         tramps <- forM exports $ \entry -> do
           putStrLn (Exports.exportDescription entry)
           pure (renderAdapter (Exports.exportAdapter entry))
-        -- the constructor-name table: what lets `print` say `Some 42` instead of
-        -- `<613153155.1 42>`.  The root unit sees every unit's constructors
-        -- (consAll), so it carries one table for the whole image; the runtime
-        -- holds a weak empty one (runtime.c fpr_contab) for images without.
-        let conRows = [ (tid, var, ar, reverse (takeWhile (/= '.') (reverse (takeWhile (/= '@') c))))
-                      | (c, (tid, var, ar)) <- M.toList consAll, tid >= 0x20000000 ]
-                      -- a record shape: its field names in storage order, comma-separated
-                      ++ [ (sid, 0, length fs, intercalate "," fs) | (fs, sid) <- M.toList shapes ]
-            dir = if tgtName tgt == "rv32" then ".word" else ".quad"
-            conTab
-              | oBuiltin opts || oLib opts || oPlugin opts = ""
-              | otherwise = unlines $
-                  [ "", "# constructor names, for render", "    .section .rodata", "    .balign 8" ]
-                    ++ concat [ [ ".Lfprcon" ++ show i ++ ":", "    .byte " ++ intercalate ", " (map (show . ord) nm ++ ["0"]) ]
-                              | (i, (_, _, _, nm)) <- zip [0 :: Int ..] conRows ]
-                    ++ [ "    .balign 8", "    .globl fpr_contab", "fpr_contab:" ]
-                    ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var,
-                                  "    " ++ dir ++ " " ++ show ar, "    " ++ dir ++ " .Lfprcon" ++ show i ]
-                              | (i, (tid, var, ar, _)) <- zip [0 :: Int ..] conRows ]
-                    ++ [ "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "" ]
-            -- C1 piece 2a, slice 1: (tid, variant) -> field count for every
-            -- constructor cell in the image. The runtime reads it only when it is
-            -- built with FPR_LAYOUT_CHECK, where every walker asserts that the
-            -- count it derives from the preheader agrees with this table; that is
-            -- what makes the table -- not the preheader -- the authority later.
-            layoutRows = M.toList (M.fromList (
-                           [ ((tid, var), ar) | (_, (tid, var, ar)) <- M.toList consAll, tid >= 0 ]
-                           -- record shapes: a record cell carries its field count in
-                           -- the variant word (Core.Typed.Erase's RecordValue), so the
-                           -- table is keyed by it; var 0 also answers the name table.
-                           ++ concat [ [ ((sid, length fs), length fs), ((sid, 0), length fs) ]
-                                     | (fs, sid) <- M.toList shapes ]))
-            layoutTab
-              -- A plugin owns a private alias so ELF symbol interposition cannot
-              -- bind its module metadata to the host table. Library units and
-              -- builtin profiles do not publish a runtime layout table.
-              | oBuiltin opts || oLib opts = ""
-              | otherwise = unlines $
-                  [ "", "# constructor layout: count, then (tid, variant, fields) triples", "    .balign 8", "    .globl fpr_layout_table", "fpr_layout_table:", ".Lfpr_layout_table:" ]
-                    ++ [ "    " ++ dir ++ " " ++ show (length layoutRows) ]
-                    ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var, "    " ++ dir ++ " " ++ show ar ]
-                              | ((tid, var), ar) <- layoutRows ]
-            -- C6 stage 3a: the raw-field masks beside the layout table, for 64-bit
-            -- images that publish one (the same owners, and not a plugin, whose
-            -- rows the runtime registers without masks). A row names a
-            -- (tid, variant) the layout table has, a mask below 2^fields and an F32
-            -- mask inside it; the
-            -- runtime refuses the whole table otherwise. Nothing reads the masks
-            -- yet: a field without a bit is walked as it always was.
-            rawRows = [ (k, m) | (k, m) <- M.toList rawAll, k `M.member` M.fromList layoutRows ]
-            layoutRawTab
-              | oBuiltin opts || oLib opts || oPlugin opts || dir /= ".quad" = ""
-              | otherwise = unlines $
-                  [ "", "# raw constructor fields: count, then (tid, variant, raw mask, F32 mask, I64 mask) rows", "    .balign 8", "    .globl fpr_layout_raw", "fpr_layout_raw:" ]
-                    ++ [ "    " ++ dir ++ " " ++ show (length rawRows) ]
-                    ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var, "    " ++ dir ++ " " ++ show m, "    " ++ dir ++ " " ++ show f32, "    " ++ dir ++ " " ++ show i64 ]
-                              | ((tid, var), (m, f32, i64)) <- rawRows ]
-        let rootAsm = moduleFinal (unlines (["# typed IR: no translation"] ++ emNative rootEmission ++ emData rootEmission
-                                     ++ dataSyntax directFormat (lines conTab ++ lines layoutTab ++ lines layoutRawTab))) ++ unlines (concat tramps ++ callbackNotes)
-            directFormat = if a64mac || x64mac then MachO else ELF
+        let dir = if tgtName tgt == "rv32" then ".word" else ".quad"
+            rootTables = renderRootTables (oBuiltin opts) (oLib opts) (oPlugin opts) dir consAll shapes rawAll
+            rootAsm = moduleFinal (unlines (["# typed IR: no translation"] ++ emNative rootEmission ++ emData rootEmission
+                                     ++ dataSyntax (tcDirectFormat targetCfg) rootTables)) ++ unlines (concat tramps ++ callbackNotes)
         directCheck "root" rootEmission
         admitted <- case stackBudget of
           Nothing->pure []

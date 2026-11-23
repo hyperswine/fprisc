@@ -1,5 +1,6 @@
 -- Adapt retained pass facts to the public remark vocabulary. No decisions
 -- are rediscovered by parsing rendered notes or generated assembly.
+-- See `Diagnostic.Render` for the full compiler diagnostics map.
 module Compiler.Remarks (collect,writeRemarks) where
 import qualified Core.Typed.Decision as D
 import Core.Typed.Pipeline (closedDecisions)

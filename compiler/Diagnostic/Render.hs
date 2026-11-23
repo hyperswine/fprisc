@@ -1,5 +1,14 @@
 -- Resolve structured diagnostics against source context, then render CLI text.
 -- The legacy adapter is for old API callers; native/Sol inference bypass it.
+--
+-- Diagnostics map across the compiler:
+--   * `Diagnostic.Syntax` / `Diagnostic.Render` / `Diagnostic.Remark`:
+--     structured diagnostics, source-span resolution, and remark rendering.
+--   * `Frontend.Diagnostics`: source definition anchors (`bindAnchors`,
+--     `evalAnchors`) and legacy string-anchoring compatibility wrapper.
+--   * `Compiler.Remarks`: adapts retained native optimization/region facts to
+--     `Diagnostic.Remark`.
+--   * `Sol.Diagnostic`: Sol runtime/trial stderr buffering and verbose logging.
 module Diagnostic.Render
   (Sources,Anchors,LocatedDiagnostic,resolveDiagnostic,diagnosticLocation,locatedSpan,renderLocated,renderSourceDiagnostic,anchorLegacyMessage,legacyDiagnostic) where
 import Diagnostic.Syntax
