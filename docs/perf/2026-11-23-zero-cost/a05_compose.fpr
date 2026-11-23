@@ -1,0 +1,6 @@
+compose f g = fn x -> f (g x).
+inc x = x + 1.
+msk x = band x 1048575.
+applyN : unsafe (Int -> Int) -> Int -> Int -> Int .
+applyN f n x = if n == 0 then x else applyN f (n - 1) (f x).
+main = print "{applyN (compose msk inc) 10000000 0}".

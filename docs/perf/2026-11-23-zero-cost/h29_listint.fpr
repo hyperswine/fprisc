@@ -1,0 +1,8 @@
+List = use "std/list".
+mk : (n : Int | measure n) -> List Int -> List Int .
+mk n acc = if n <= 0 then acc else mk (n - 1) (n :: acc).
+sumk : (xs : List Int | measure xs) -> Int -> Int .
+sumk xs a = case xs of Nil -> a | x :: r -> sumk r (a + x).
+rep : unsafe List Int -> Int -> Int -> Int .
+rep xs k acc = if k == 0 then acc else rep xs (k - 1) (band (acc + sumk xs 0) 1048575).
+main = print "{rep (mk 1000 Nil) 10000 0}".

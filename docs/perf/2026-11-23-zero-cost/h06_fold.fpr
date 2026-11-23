@@ -1,0 +1,6 @@
+List = use "std/list".
+sumk : (xs : List Int | measure xs) -> Int -> Int -> Int .
+sumk xs k a = case xs of Nil -> a | x :: r -> sumk r k (a + x * k).
+rep : unsafe List Int -> Int -> Int -> Int .
+rep xs k acc = if k == 0 then acc else rep xs (k - 1) (acc + sumk xs k 0).
+main = print "{rep (List.range 1 1000) 10000 0}".

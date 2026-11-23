@@ -1,0 +1,8 @@
+Op = Type (Add | Sub | Mul | Xor).
+opOf : Int -> Op .
+opOf n = case band n 3 of 0 -> Add | 1 -> Sub | 2 -> Mul | _ -> Xor.
+ap : Op -> Int -> Int -> Int .
+ap op a b = case op of Add -> a + b | Sub -> a - b | Mul -> band (a * b) 65535 | Xor -> bxor a b.
+loop : unsafe Int -> Int -> Int .
+loop i acc = if i == 0 then acc else loop (i - 1) (band (ap (opOf i) acc i) 1048575).
+main = print "{loop 10000000 0}".

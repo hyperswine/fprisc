@@ -1,0 +1,7 @@
+isSmall : Int -> Bool .
+isSmall x = band x 255 < 100.
+both : Bool -> Bool -> Bool .
+both a b = a and b.
+loop : unsafe Int -> Int -> Int .
+loop i acc = if i == 0 then acc else loop (i - 1) (if both (isSmall i) (isSmall (i / 3)) then acc + 1 else acc).
+main = print "{loop 10000000 0}".
