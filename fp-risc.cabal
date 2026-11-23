@@ -164,6 +164,8 @@ library
       Compiler.Compile.Tables
       Compiler.Compile.Target
       Compiler.Compile.Cost
+      Compiler.Compile.Link
+      Compiler.Compile.TypedReport
       Compiler.Encoding.A64
       Compiler.Native.Core
       Compiler.Native.Linked
