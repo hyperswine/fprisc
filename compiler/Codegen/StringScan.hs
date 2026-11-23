@@ -53,12 +53,18 @@ versionScan fn
     candidateFor whole loop = do
       preId <- loopPreheader loop
       let inBody b = S.member b (loopBlocks loop)
-          -- empty blocks that only forward the loop's answer out of it
-          -- (an exit split by a join) go with the loop
-          tails = S.fromList [bId b | b <- blocks, not (inBody (bId b)), null (bInstrs b),
-                                      TBr t _ <- [bTerm b], not (inBody t),
-                                      Just ps <- [M.lookup (bId b) (predecessors flow)],
-                                      not (S.null ps), all inBody (S.toList ps)]
+          -- exit blocks owned solely by the loop (forwarding exits, return
+          -- exits, and raw-Int deopt stubs) go with the loop so the fast copy
+          -- can leave cleanly without values escaping outside `loopOnly`
+          tails = grow S.empty
+          grow acc =
+            let inNow b = inBody b || S.member b acc
+                added = S.fromList
+                  [ bId b | b <- blocks, not (inNow (bId b)),
+                    all (not . inBody . fst) (termSuccs (bTerm b)),
+                    Just ps <- [M.lookup (bId b) (predecessors flow)],
+                    not (S.null ps), all inNow (S.toList ps) ]
+             in if S.null added then acc else grow (S.union acc added)
           inLoop' b = inBody b || S.member b tails
           loopOnly = [b | b <- blocks, inLoop' (bId b)]
           -- the whole function, or the loop alone, is copied: the same
@@ -112,7 +118,7 @@ versionScan fn
                                       (bInstrs b)]
           bound s = nub [n | (no,n) <- limits, all (dom no) (readBlocks s)]
           admitted = [(s,bound s) | s <- strings, not (null (bound s)),
-                                    any (\b -> any (\(Instr _ o) -> o==OTagTest 9000 0 s || o==OVariantTest 9000 0 s) (bInstrs b)) blocks]
+                                    any (\b -> any (\(Instr _ o) -> o==OTagTest 9000 0 s || o==OVariantTest 9000 0 s) (bInstrs b)) loopOnly]
       if not (null admitted) && length admitted == length strings then pure () else Nothing
       pure (pre,header,param,ty,arrivals !! slot,admitted,rawSource,if whole then filter ((/= bId pre) . bId) blocks else loopOnly)
     build (pre,header,param,ty,start,admitted,rawSource,copied) = compact (sweep result)

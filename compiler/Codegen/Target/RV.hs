@@ -28,10 +28,11 @@ import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.List (isPrefixOf, intercalate)
 import qualified Data.Map.Strict as M
+import Data.Maybe (isJust)
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 32 -- shared refill tails keyed by placed destination and raw size
+rvSelectionRev = 33 -- known-small exact-Int fast paths for OArithVal/OCmpVal/OEqVal and small-Int OEqVal fast path
 
 -- Native startup, shared by every RVV unit. The runtime calls the surviving
 -- COMDAT definition on each hart; ordinary builds retain its weak no-op.
@@ -177,33 +178,7 @@ arithVal w op d a b = do
   x <- fresh; y <- fresh; result <- fresh
   ri R.ShiftRightArithmeticImmediate x a 1
   ri R.ShiftRightArithmeticImmediate y b 1
-  let failUnlessEqual lhs rhs = do bad <- fresh; rr (R.Compare Ne) bad lhs rhs; branch bad slow
-  case op of
-    Add -> rr R.Add result x y
-    Sub -> rr R.Subtract result x y
-    Mul -> do
-      rr R.Multiply result x y
-      high <- fresh; sign <- fresh
-      rr R.MultiplyHigh high x y
-      ri R.ShiftRightArithmeticImmediate sign result (8*w-1)
-      failUnlessEqual high sign
-    Div -> do
-      isZero <- fresh; z <- fresh; li z 0
-      rr (R.Compare Eq) isZero y z; branch isZero slow
-      ok <- freshLabel
-      p <- fresh; remV <- fresh; xr <- fresh; rZero <- fresh; nonNeg <- fresh; one <- fresh
-      rr R.Divide result x y
-      rr R.Multiply p result y
-      rr R.Subtract remV x p
-      rr (R.Compare Eq) rZero remV z; branch rZero ok
-      rr R.Xor xr remV y
-      rr (R.Compare Ge) nonNeg xr z; branch nonNeg ok
-      li one 1
-      rr R.Subtract result result one
-      mark ok
-  shifted <- fresh; fit <- fresh
-  ri R.ShiftLeftImmediate shifted result 1; ri R.ShiftRightArithmeticImmediate fit shifted 1
-  failUnlessEqual fit result
+  exactSmall w op result x y slow slow
   sh <- fresh
   ri R.ShiftLeftImmediate sh result 1
   ri R.OrImmediate d sh 1
@@ -290,8 +265,79 @@ select cfg fn = do
   pure (SFn (fnName fn) params (reverse (items st)), managed, st)
   where
     w = toInteger (wordBytes cfg)
+    minSmall = if cfgWidth cfg == W32 then -(2 ^ (30 :: Int)) else -(2 ^ (62 :: Int))
     ld = if cfgWidth cfg == W32 then R.Load32 else R.Load64
     stWord = if cfgWidth cfg == W32 then R.Store32 else R.Store64
+    allOps = [o | blk <- fnBlocks fn, Instr _ o <- bInstrs blk]
+    termSet = S.fromList (concat [termUses (bTerm blk) | blk <- fnBlocks fn])
+    consts = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk]
+    tagSrc = M.fromList [(v, u) | blk <- fnBlocks fn, Instr (Just (v, TVal)) (OTag u) <- bInstrs blk]
+    smallAware o = case o of OArithVal {} -> True; OCmpVal {} -> True; OEqVal {} -> True; _ -> False
+    tagOnlyConsts = S.fromList
+      [ v | v <- M.keys consts, S.notMember v termSet,
+            let users = [o | o <- allOps, v `elem` opUses o],
+            not (null users), all (\o -> case o of OTag _ -> True; _ -> False) users ]
+    lazyTags = S.fromList
+      [ v | v <- M.keys tagSrc, S.notMember v termSet,
+            let users = [o | o <- allOps, v `elem` opUses o],
+            not (null users), all smallAware users ]
+    rawOf v = M.lookup v tagSrc
+    constOf v = rawOf v >>= \u -> M.lookup u consts
+    rawV u = case M.lookup u consts of
+      Just n -> do t <- fresh; li t n; pure t
+      Nothing -> pure (vreg u)
+    taggedV v = case rawOf v of
+      Just u | S.member v lazyTags -> case M.lookup u consts of
+        Just n -> do t <- fresh; li t (2 * n + 1); pure t
+        Nothing -> boxed (vreg u)
+      _ -> pure (vreg v)
+    arithSmall op d ma mb a b = do
+      slow <- freshLabel; done <- freshLabel
+      case [v | (v, Nothing) <- [(a, ma), (b, mb)]] of
+        [v] -> do
+          bit <- fresh; badTag <- fresh
+          ri R.AndImmediate bit (vreg v) 1
+          ri R.XorImmediate badTag bit 1
+          branch badTag slow
+        _ -> pure ()
+      let rawSide v m = case m of
+            Just u -> rawV u
+            Nothing -> do x <- fresh; ri R.ShiftRightArithmeticImmediate x (vreg v) 1; pure x
+      xa <- rawSide a ma
+      yb <- rawSide b mb
+      result <- fresh
+      exactSmall w op result xa yb slow slow
+      sh <- fresh
+      ri R.ShiftLeftImmediate sh result 1
+      ri R.OrImmediate d sh 1
+      jump done
+      mark slow
+      ta <- taggedV a
+      tb <- taggedV b
+      call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [ta, tb] (Just d) False
+      mark done
+    addConst d x delta oa ob op = do
+      slow <- freshLabel; done <- freshLabel
+      bit <- fresh; badTag <- fresh
+      ri R.AndImmediate bit x 1
+      ri R.XorImmediate badTag bit 1
+      branch badTag slow
+      t <- fresh
+      if delta == 0
+        then emit (plain (O.RV R.Move) [anyV t] [anyV x])
+        else do
+          dv <- fresh; li dv delta
+          rr R.Add t x dv
+          bad <- fresh
+          rr (R.Compare (if delta > 0 then Lt else Gt)) bad t x
+          branch bad slow
+      emit (plain (O.RV R.Move) [anyV d] [anyV t])
+      jump done
+      mark slow
+      ta <- taggedV oa
+      tb <- taggedV ob
+      call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [ta, tb] (Just d) False
+      mark done
     block b = do
       mark (label (bId b))
       let (prefix, rest) = span (\(Instr _ op) -> op `elem` [OStackCheck,OSafepoint]) (bInstrs b)
@@ -311,6 +357,8 @@ select cfg fn = do
             (results, more) <- either (lift . Left) pure (productCallResults c d following)
             callProduct (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (map vreg results)
             run more
+          run (Instr (Just (v, _)) (OConstInt _) : more) | S.member v tagOnlyConsts = run more
+          run (Instr (Just (v, _)) (OTag _) : more) | S.member v lazyTags = run more
           run (i : more) = instruction i >> run more
           run [] = pure ()
       run rest
@@ -386,6 +434,7 @@ select cfg fn = do
         address d (StaticObject (boxedFloatLabel width bits))
       OSymbol s -> address d (ExternalAddress s)
       OFunValue n -> address d (StaticObject ("fpr_obj_" ++ mangleName n))
+      OTag v | Just n <- M.lookup v consts -> li d (2 * n + 1)
       OTag v -> do t <- fresh; ri R.ShiftLeftImmediate t (vreg v) 1; ri R.OrImmediate d t 1
       OUntag v -> ri R.ShiftRightArithmeticImmediate d (vreg v) 1
       ONot v -> ri R.XorImmediate d (vreg v) 1
@@ -433,6 +482,12 @@ select cfg fn = do
       OKernelArith op a b -> arith w True op d (vreg a) (vreg b)
       OArith op a b -> arith w False op d (vreg a) (vreg b)
       OArithFits op a b -> arithFits w op d (vreg a) (vreg b)
+      OArithVal op a b | Just ua <- rawOf a, Just ub <- rawOf b -> arithSmall op d (Just ua) (Just ub) a b
+      OArithVal Add a b | Just k <- constOf b -> addConst d (vreg a) (2 * k) a b Add
+      OArithVal Add a b | Just k <- constOf a -> addConst d (vreg b) (2 * k) a b Add
+      OArithVal Sub a b | Just k <- constOf b, k /= minSmall -> addConst d (vreg a) (negate (2 * k)) a b Sub
+      OArithVal op a b | Just ua <- rawOf a -> arithSmall op d (Just ua) Nothing a b
+      OArithVal op a b | Just ub <- rawOf b -> arithSmall op d Nothing (Just ub) a b
       OArithVal op a b -> arithVal w op d (vreg a) (vreg b)
       -- the difference-bound proof removed the overflow check: a plain
       -- instruction where the checked form keeps the C primitive; Mul/Div
@@ -483,6 +538,27 @@ select cfg fn = do
         call (CodeSymbol (if op == Shl then "fpr_g_BITSHIFTL_call2" else "fpr_g_BITSHIFTR_call2")) Calling.RuntimeCall [x,y] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 1
       OCmp op a b -> rr (R.Compare op) d (vreg a) (vreg b)
+      OCmpVal op a b | Just ua <- rawOf a, Just ub <- rawOf b -> do
+        xa <- rawV ua; xb <- rawV ub
+        rr (R.Compare op) d xa xb
+      OCmpVal op a b | isJust (rawOf a) || isJust (rawOf b) -> do
+        slow <- freshLabel; done <- freshLabel
+        let other = if isJust (rawOf a) then b else a
+        bit <- fresh; badTag <- fresh
+        ri R.AndImmediate bit (vreg other) 1
+        ri R.XorImmediate badTag bit 1
+        branch badTag slow
+        xo <- fresh
+        ri R.ShiftRightArithmeticImmediate xo (vreg other) 1
+        let side v = maybe (pure xo) rawV (rawOf v)
+        sa <- side a; sb <- side b
+        rr (R.Compare op) d sa sb
+        jump done
+        mark slow
+        ta <- taggedV a; tb <- taggedV b; t <- fresh
+        call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (cmpSym op))) Calling.RuntimeCall [ta, tb] (Just t) False
+        ri R.ShiftRightArithmeticImmediate d t 8
+        mark done
       OCmpVal op a b -> do
         slow <- freshLabel; done <- freshLabel
         both <- fresh; bit <- fresh; badTag <- fresh
@@ -497,9 +573,26 @@ select cfg fn = do
         call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (cmpSym op))) Calling.RuntimeCall [vreg a, vreg b] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 8
         mark done
+      OEqVal eq a b | Just ua <- rawOf a, Just ub <- rawOf b -> do
+        xa <- rawV ua; xb <- rawV ub
+        rr (R.Compare (if eq then Eq else Ne)) d xa xb
+      OEqVal eq a b | isJust (rawOf a) || isJust (rawOf b) -> do
+        ta <- taggedV a; tb <- taggedV b
+        rr (R.Compare (if eq then Eq else Ne)) d ta tb
       OEqVal eq a b -> do
-        t <- fresh; call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a,vreg b] (Just t) False
+        slow <- freshLabel; done <- freshLabel
+        both <- fresh; bit <- fresh; badTag <- fresh
+        rr R.And both (vreg a) (vreg b)
+        ri R.AndImmediate bit both 1
+        ri R.XorImmediate badTag bit 1
+        branch badTag slow
+        rr (R.Compare (if eq then Eq else Ne)) d (vreg a) (vreg b)
+        jump done
+        mark slow
+        t <- fresh
+        call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a, vreg b] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 8
+        mark done
       OCall c vs -> do
         inlined <- rawAdapter c (map vreg vs) d
         unless inlined (call (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) (Just d) False)

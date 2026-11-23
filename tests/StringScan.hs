@@ -55,8 +55,8 @@ main=do
   let loops=naturalLoops b (analyze b)
       loopOps l=[o | block<-fnBlocks b,S.member (bId block) (loopBlocks l),Instr _ o<-bInstrs block]
       calls l=[c | OCall c _<-loopOps l,calleeName c=="charAt"]
-  check "checked and fast loops coexist" (length loops==2 && any (null . calls) loops && any (not . null . calls) loops)
-  check "fast loop keeps accumulator overflow check" (all (any (\o->case o of OArith Add _ _->True;_->False) . loopOps) loops)
+  check "checked and fast loops coexist" (length loops>=2 && any (null . calls) loops && any (not . null . calls) loops)
+  check "fast loop keeps accumulator overflow check" (any (\l->null (calls l) && any (\o->case o of OArithFits Add _ _->True;OArith Add _ _->True;_->False) (loopOps l)) loops)
   check "fast loop has no descriptor reload or type test" (any (\l->null (calls l) && not (any descriptor (loopOps l))) loops)
   -- Exhaustive small domains include arbitrary callers, all bytes, early exits,
   -- bounds misses after several successful iterations, and wrong String values.
@@ -82,7 +82,7 @@ main=do
            [RString [1],RInt (-1),RInt 1,RInt 0]] $ \args->
       check "option composition exact outcome/events" (evalProgram before "scan" args==evalProgram after "scan" args)
   check "independent sum" (ocResult (evalProgram fast "scan" [RString [1,127,128,255],RInt 0,RInt 4,RInt 0])==Right (RInt 511))
-  check "independent accumulator overflow" (case ocResult (evalProgram fast "scan" [RString [1],RInt 0,RInt 1,RInt hi]) of Left (Trap _)->True;_->False)
+  check "independent accumulator exact promotion" (ocResult (evalProgram fast "scan" [RString [1],RInt 0,RInt 1,RInt hi])==Right (RInt (hi+1)))
   forM_ [("inclusive",scan ">" (CInt 1) False),("stride two",scan ">=" (CInt 2) False),
          ("descending",scan ">=" (CInt (-1)) False),("changing bound",scan ">=" (CInt 1) True),
          ("mixed backedges",scan ">=" (CIf (app "==" [CVar "i",CInt 0]) (CInt 1) (CInt 2)) False)] $ \(label,body)->do
@@ -105,8 +105,8 @@ main=do
            [RString [1],RInt 0,RInt 2,RInt 0]] $ \args->
       check "two-latch outcomes/events" (evalProgram before "scan" args==evalProgram after "scan" args)
   let inclusive=simplify (policy {polStringScan=True}) (lower policy (scan ">" (CInt 1) False))
-  check "index overflow precedes invalid string" (case ocResult (evalProgram inclusive "scan" [RInt 9,RInt hi,RInt hi,RInt 0]) of
-      Left (Trap message)->take 12 message=="Int overflow";_->False)
+  check "index promotion still traps on invalid string" (case ocResult (evalProgram inclusive "scan" [RInt 9,RInt hi,RInt hi,RInt 0]) of
+      Left (Trap message)->message=="charAt: not a string";_->False)
   forM_ [policy {polProfile=Rv32},policy {polStringFast=False},policy {polEarlyLoops=False}] $ \p->do
     let plain=simplify p (lower p (scan ">=" (CInt 1) False))
         candidate=simplify (p {polStringScan=True}) (lower p (scan ">=" (CInt 1) False))
