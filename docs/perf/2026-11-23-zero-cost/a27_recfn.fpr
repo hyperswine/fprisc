@@ -1,0 +1,4 @@
+ops k = {step = (fn x -> band (x + k) 1048575), done = (fn n -> n == 0)}.
+loop : unsafe {step : Int -> Int, done : Int -> Bool} -> Int -> Int -> Int .
+loop o n x = if o.done n then x else loop o (n - 1) (o.step x).
+main = print "{loop (ops 7) 10000000 0}".

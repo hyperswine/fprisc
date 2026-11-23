@@ -1,0 +1,6 @@
+Meters = Type (Meters Int).
+addM : Meters -> Meters -> Meters .
+addM a b = case a of Meters x -> (case b of Meters y -> Meters (band (x + y) 1048575)).
+loop : unsafe Int -> Int -> Int .
+loop i m = if i == 0 then m else loop (i - 1) (case addM (Meters m) (Meters i) of Meters v -> v).
+main = print "{loop 10000000 0}".

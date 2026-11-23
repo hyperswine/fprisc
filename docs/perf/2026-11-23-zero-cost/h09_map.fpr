@@ -1,0 +1,8 @@
+List = use "std/list".
+mapk : (xs : List Int | measure xs) -> Int -> List Int .
+mapk xs k = case xs of Nil -> Nil | x :: r -> (x + k) :: mapk r k.
+len : (xs : List Int | measure xs) -> Int -> Int .
+len xs a = case xs of Nil -> a | _ :: r -> len r (a + 1).
+rep : unsafe List Int -> Int -> Int -> Int .
+rep xs k acc = if k == 0 then acc else ys = mapk xs k; rep xs (k - 1) (acc + len ys 0 + (case ys of Nil -> 0 | y :: _ -> y)).
+main = print "{rep (List.range 1 1000) 10000 0}".

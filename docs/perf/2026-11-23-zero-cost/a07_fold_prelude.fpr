@@ -1,0 +1,5 @@
+rep : unsafe List Int -> Int -> Int -> Int .
+rep xs k acc = if k == 0 then acc else rep xs (k - 1) (acc + List.fold (fn x a -> a + x * k) 0 xs).
+mk : (n : Int | measure n) -> List Int -> List Int .
+mk n acc = if n <= 0 then acc else mk (n - 1) (n :: acc).
+main = print "{rep (mk 1000 Nil) 10000 0}".

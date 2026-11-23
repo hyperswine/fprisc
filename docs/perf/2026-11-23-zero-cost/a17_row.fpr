@@ -1,0 +1,4 @@
+getX r = r.x.
+loop : unsafe Int -> Int -> Int .
+loop i acc = if i == 0 then acc else a = {x = i, y = 2}; b = {w = 1, x = 3, z = i}; loop (i - 1) (band (acc + getX a + getX b) 1048575).
+main = print "{loop 10000000 0}".

@@ -1,0 +1,3 @@
+loop : unsafe Int -> Int -> Int .
+loop n x = if n == 0 then x else loop (n - 1) (band (x + 1) 1048575).
+main = print "{loop 10000000 0}".

@@ -1,0 +1,4 @@
+List = use "std/list".
+rep : unsafe List Int -> Int -> Int -> Int .
+rep xs k acc = if k == 0 then acc else ys = List.map (fn x -> x + k) xs; rep xs (k - 1) (acc + List.length ys + (case ys of Nil -> 0 | y :: _ -> y)).
+main = print "{rep (List.range 1 1000) 10000 0}".

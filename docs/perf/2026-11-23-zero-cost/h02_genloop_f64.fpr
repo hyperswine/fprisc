@@ -1,0 +1,3 @@
+loop : unsafe F64 -> Int -> F64 .
+loop acc n = if n == 0 then acc else loop (acc * 0.5 + F64.ofInt (band n 7)) (n - 1).
+main = print "{F64.toInt (loop 0.0 10000000)}".

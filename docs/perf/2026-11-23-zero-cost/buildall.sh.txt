@@ -1,0 +1,6 @@
+# Reproduce helper, not a repo script. Paste into a bash shell.
+source /workspace/out/env.sh
+export FPR_HOME=/workspace/zc/fprisc
+FPR=/workspace/zc/fprisc/dist-newstyle/build/x86_64-linux/ghc-9.8.2/fp-risc-0.15.0/x/fpr/build/fpr/fpr
+cd /workspace/zc/mb
+ls *.fpr | sed 's/\.fpr$//' | xargs -P 2 -I{} sh -c "$FPR build -o {}.bin {}.fpr > {}.blog 2>&1 || echo FAIL {}"
