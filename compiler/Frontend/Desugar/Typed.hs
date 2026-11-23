@@ -96,7 +96,7 @@ data Plan = Plan [T.Binder] [Clause] [([SPat],[SGuard],SExpr)]
 data Clause = Clause [T.Pattern] [GuardPlan] EPlan
 data GuardPlan = Boolean EPlan | Matching T.Pattern EPlan
 data EPlan = EP E.ExprFact PNode
-data PNode = Ref T.Reference | LitInt Integer | LitString String | LitAtom String
+data PNode = Ref T.Reference | LitInt Integer | LitString String
   | Application EPlan EPlan | Lambda [T.Binder] EPlan
   | HiddenReference T.Reference [T.Expr] | VectorConstructor VectorBuilder T.Expr
   | GeneratedTrap TrapPlan
@@ -212,7 +212,6 @@ prepareChecked result = do
               (Just reference,SVar n) | Just (_,sc)<-globalReference reference->make (Ref (T.Global n sc))
               _->defer "generated reference wrapper not yet migrated"
           SInt n->make (LitInt n)
-          SAtom n->make (LitAtom n)
           SStrI segs->do
             cs<-children e
             let rs=[elaborationTarget x | x<-M.findWithDefault [] (E.expressionIdentity e) at,elaborationOperation x=="str!"]
@@ -520,7 +519,6 @@ typedFunction checked group@(name,clauses)=case M.lookup name (planEntries check
             _->T.VectorBuild builder layout
           LitInt v->T.IntValue v
           LitString s->T.StringValue s
-          LitAtom s->T.AtomValue s
           Application a b->T.Apply (lower a) (lower b)
           Lambda ps b->T.Lambda ps (lower b)
           Binding p ps a b->

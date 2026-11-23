@@ -8,7 +8,7 @@
 # sig carrier the operator becomes s.(+) and specializes.
 #
 # The flat HAL names (send, read, Vec.push, strlen) still work; the
-# structures are ADDITIONS that make Int.max / Str.len / VList.fold
+# structures are ADDITIONS that make Int.max / Str.len / List.fold
 # available and let generics typecheck.
 
 # ---- linear runtime types (the `1` marks linear; the checker keys on it) ----
@@ -721,31 +721,6 @@ SStr = Struct {
   fromStr = fn str -> sstrFromStr str,
   toStr = fn s -> sstrToStr s,
   clear = fn s -> sstrClear s
-}.
-
-# ---- VList: the SoA vector (vec.c), linear carrier --------------------------
-# Vector a is a linear carrier with an explicit element type. VList groups
-# its operations; reads/length thread the consumed handle through the result.
-
-vListFromList : List Int -> Vector Int .
-vListFromList xs = Vec.fromList xs.
-
-VList = Struct {
-  map = fn f v -> Vec.mapSame f v,
-  # a fold or a length answers (result, the vector): the handle comes back,
-  # it is not dropped (the ownership checker refuses the drop now that it
-  # sees through the tuple's type variables)
-  fold = fn f z v -> Vec.fold f z v,
-  len = fn v -> Vec.len v,
-  new = fn u -> Vec.newAs "i",
-  push = fn x v -> Vec.push x v,
-  get = fn i v -> Vec.get i v,
-  set = fn i x v -> Vec.set i x v,
-  filter = fn p v -> Vec.filter p v,
-  split = fn i v -> Vec.split i v,
-  fromList = fn xs -> vListFromList xs,
-  toList = fn v -> Vec.toList v,
-  free = fn v -> Vec.free v
 }.
 
 # ---- namespace-only structures over the HAL (no sig, pure grouping) ---------

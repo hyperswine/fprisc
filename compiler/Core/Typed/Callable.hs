@@ -207,7 +207,6 @@ analyze limits roots templates = Analysis summaries finalSites status rounds lim
         IntValue _->pure emptyValue
         StringValue _->pure emptyValue
         BoolValue _->pure emptyValue
-        AtomValue _->pure emptyValue
         LayoutLiteral _->pure emptyValue
         EntryTick->pure emptyValue
         -- Until container/lifetime consumers share precise facts, their

@@ -621,7 +621,6 @@ effectFree prog bound0 e0 = go S.empty bound0 e0
       SVar v | S.member v bound -> True
              | otherwise -> headOk seen bound (SVar v)
       SInt _ -> True
-      SAtom _ -> True
       SStrI segs -> and [go seen bound g | SegExpr g <- segs]
       SLam ps b -> go seen (bound `S.union` S.fromList ps) b
       SBlock ss r -> let (ok, bd) = foldl (\(o, b) s -> case s of

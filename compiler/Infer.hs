@@ -1168,7 +1168,6 @@ inferERaw ctx e0 = case e0 of
     site <- newSite ("vec-declared:" ++ spec) el
     pure (tVector el, SApp (SVar (markerPrefix ++ show site ++ "#vec")) e0)
   SInt n -> pure (tInt, SInt n)
-  SAtom a -> pure (tAtom, SAtom a)
   SStrI segs -> do
     segs' <- forM segs $ \case
       SegExpr e -> do

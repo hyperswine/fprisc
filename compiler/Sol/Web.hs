@@ -408,7 +408,6 @@ jsonVC shapes conNames = go
     goPlain v@(VData t _ _) | t == listT = "[" ++ intercalateC (map go (listItemsV v)) ++ "]"
     goPlain (VData 4 0 [a, b]) = "[" ++ go a ++ "," ++ go b ++ "]"
     goPlain (VData 5 0 [a, b, c]) = "[" ++ go a ++ "," ++ go b ++ "," ++ go c ++ "]"
-    goPlain (VData t 0 [VStr a]) | t == atomT = jstr (":" ++ a)
     goPlain (VData tid 0 fs)
       | Just names <- M.lookup tid shapes,
         length names == length fs =

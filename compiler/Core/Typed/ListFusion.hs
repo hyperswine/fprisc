@@ -820,7 +820,6 @@ fuseListClosedAfterInline inlined (Namespace namespace) types@(TypeContext linea
     sumProduct _ _=False
     isNil e=case exprNode (unNote e) of
       Var (Global "Nil" _)->True
-      AtomValue "Nil"->True
       Construct "Nil" []->True
       _->False
     isIntLiteral e=case exprNode (unNote e) of IntValue _->True;_->False

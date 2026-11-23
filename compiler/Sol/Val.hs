@@ -45,10 +45,9 @@ import Foreign.Storable (peekElemOff, pokeElemOff)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.UTF8 as BSU
 
-boolT, listT, atomT :: Int
+boolT, listT :: Int
 boolT = 1
 listT = 2
-atomT = 6
 
 data Value
   = VInt !Integer
@@ -129,7 +128,6 @@ render v@(VData t 1 [_, _]) | t == listT = "[" ++ intercalate ", " (renderList v
 render (VData t 0 []) | t == listT = "[]"
 render (VData 1 0 []) = "False"
 render (VData 1 1 []) = "True"
-render (VData 6 0 [VStr a]) = ":" ++ a
 render (VData 0 0 []) = "()"
 -- Result (tid 3): the Ok/Err default pattern renders by name
 render (VData 3 0 [x]) = "Ok " ++ render x
@@ -351,7 +349,7 @@ fieldsFor RUnset _ = ioError (userError "*** SOL PANIC: Vec: unset layout ***")
 -- field -- the record case is what puts {x1,x2,y}-style ML rows into
 -- unboxed f64 columns instead of a boxed scalar column.
 repFor :: Value -> VecRep
-repFor (VData t 0 fs) | not (null fs), t /= listT, t /= atomT = RSoA t (map kindOf fs)
+repFor (VData t 0 fs) | not (null fs), t /= listT = RSoA t (map kindOf fs)
 repFor (VData t v fs) | t >= recT0, v == length fs, not (null fs) = RSoA t (map kindOf fs)
 repFor v = RScalar (kindOf v)
 

@@ -188,7 +188,6 @@ plan normalizes layout body = (if normalizes then literalLets else id) . fst <$>
         (tid, var, _) <- constructor ("Tup" ++ show (length xs))
         (xs', n1) <- goList n xs
         pure (PMk tid var xs', n1)
-      AtomValue a -> pure (PMk 6 0 [PStr a], n)
       -- a string literal (slice 3e)
       StringValue str -> pure (PStr str, n)
       LayoutLiteral spec -> pure (PStr spec, n)
@@ -505,7 +504,6 @@ formName = \case
   Lambda _ _ -> "lambda"
   LetRec {} -> "recursive let"
   Construct {} -> "constructor"
-  AtomValue _ -> "atom"
   TupleValue _ -> "tuple"
   ListValue _ -> "list literal"
   RecordValue _ -> "record"

@@ -394,7 +394,6 @@ renameTops env qh tops = concatMap top tops
         | isUpper (head' n) -> refVar env bound n
         | otherwise -> if S.member n bound then SVar n else refVar env bound n
       SInt i -> SInt i
-      SAtom a -> SAtom a
       SStrI segs -> SStrI (map seg segs)
       -- A module's @Msg / @Model.field literal refers to its own type,
       -- exactly as an ordinary type occurrence does. Qualify the type head

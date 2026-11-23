@@ -108,7 +108,6 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
         require "constructor value arity" (length xs==arity declared)
         require "constructor value signature" (instanceOf sc (foldr (TFn . exprType) (exprType e) xs))
         pure u
-      AtomValue _ -> fixed (TC "Atom")
       TupleValue xs -> do
         u<-foldM (check env) used xs
         require "tuple type" (sameType (exprType e) (TTupT (map exprType xs)))

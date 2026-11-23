@@ -207,7 +207,6 @@ analyze tops =
       STup es -> (TopIv, foldMap (snd . goE env) es)
       SList es -> (TopIv, foldMap (snd . goE env) es)
       SStrI segs -> (TopIv, foldMap (\case SegExpr x -> snd (goE env x); _ -> mempty) segs)
-      _ -> (TopIv, mempty)
 
 -- advisory report: per-function counts, plus fully-narrow candidates
 widthReport :: [STop] -> [String]

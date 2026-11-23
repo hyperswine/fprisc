@@ -56,7 +56,7 @@ rewrite (TypeContext _ constructors) input=(input {functionBody=body},changed)
       Note x->spine x args
       _->(e,args)
     trivial e=case exprNode (unNote e) of
-      Var {}->True;IntValue _->True;StringValue _->True;BoolValue _->True;AtomValue _->True;ClosureValue {}->True
+      Var {}->True;IntValue _->True;StringValue _->True;BoolValue _->True;ClosureValue {}->True
       _->False
     known e=case exprNode e of
       Construct n xs->Just (Con n xs)

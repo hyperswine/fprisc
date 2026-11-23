@@ -214,7 +214,6 @@ approvedLibraries =
     "std/resolver.fpr",
     "std/result.fpr",
     "std/sessionauth.fpr",
-    "std/set.fpr",
     "std/sockettransport.fpr",
     "std/std.fpr",
     "std/std.sol",

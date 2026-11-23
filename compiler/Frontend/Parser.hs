@@ -206,7 +206,6 @@ term =
       try floatLit,
       SInt <$> integer,
       holeLit,
-      atomLit,
       pathLit,
       stringLit,
       caseE,
@@ -246,12 +245,6 @@ pathLit = lexeme . try $ do
     pathElem =
       satisfy (\c -> pathOk c && c /= '.')
         <|> try (char '.' <* lookAhead (satisfy pathOk))
-
-atomLit :: P SExpr
-atomLit = lexeme . try $ do
-  _ <- char ':'
-  s <- (:) <$> satisfy isLower <*> takeWhileP Nothing identChar
-  pure (SAtom s)
 
 varOrProj :: P SExpr
 varOrProj = try $ do

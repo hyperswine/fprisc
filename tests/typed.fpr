@@ -6,7 +6,7 @@
 #   3. a generic over a sig carrier, monomorphized at compile time:
 #      total (s : Add) resolves s.(+) / s.zero per structure
 #   4. SString: the fixed 128B linear inline string, push/at/toStr
-#   5. VList grouping over the SoA vector (map/fold via the namespace)
+#   5. SoA vector operations (mapSame/fold/free)
 
 # generic over the Add sig: works for any structure implementing it
 # sig-generic AND scheme-carried: the fold does the recursion, the
@@ -38,15 +38,15 @@ main =
   (hs, s5) = SStr.toStr s4;
   _ = drop s5;
 
-  # -- 5. VList over the SoA vector --
+  # -- 5. SoA vector --
   v0 = Vec.fromList [1, 2, 3];
-  v1 = VList.map (fn x -> x * 10) v0;
+  v1 = Vec.mapSame (fn x -> x * 10) v0;
   # the fold answers (sum, the vector): the handle is ours to free
-  (sm, v2) = VList.fold (fn acc x -> acc + x) 0 v1;
-  _ = VList.free v2;
+  (sm, v2) = Vec.fold (fn acc x -> acc + x) 0 v1;
+  _ = Vec.free v2;
 
   _ = print "ops: {a} {b}";
   _ = print "methods: max={m} mod={d} len={n}";
   _ = print "generic: total Int={si} total Str={ss}";
   _ = print "sstring: len={ln} at1={c1} str={hs}";
-  print "vlist: fold={sm}".
+  print "vec: fold={sm}".

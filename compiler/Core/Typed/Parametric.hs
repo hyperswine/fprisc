@@ -161,5 +161,4 @@ transportClosure catalog name original physical = do
           IntValue _ -> pure ()
           StringValue _ -> pure ()
           BoolValue _ -> pure ()
-          AtomValue _ -> pure ()
           _ -> refuse "unproved local representation operation"

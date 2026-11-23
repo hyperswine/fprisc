@@ -365,7 +365,6 @@ linExpr li env0 = go env0
         Just s -> ([], Just zero, s)
         Nothing -> ([], Just zero, globalShape v)
       SInt _ -> ([], Just zero, LU)
-      SAtom _ -> ([], Just zero, LU)
       SStrI segs ->
         let rs = [go env e | SegExpr e <- segs]
          in (concat [e | (e, _, _) <- rs], foldl' plus (Just zero) [c | (_, c, _) <- rs], LU)

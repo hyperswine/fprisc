@@ -157,7 +157,6 @@ bodyFeatures e = here <> getConst (mapChildrenM (Const . bodyFeatures) e) <> pat
       LetPattern _ _ _ -> S.singleton FPattern
       StringValue _ -> S.singleton FString
       Construct _ _ -> S.singleton FConstruct
-      AtomValue _ -> S.singleton FConstruct
       TupleValue _ -> S.singleton FConstruct
       RecordValue _ -> S.singleton FProduct
       RecordField _ _ -> S.singleton FProduct

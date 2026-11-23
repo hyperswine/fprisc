@@ -106,12 +106,6 @@
       "note": "Shared pure implementation; hosted representative call tested."
     },
     {
-      "module": "std/set.fpr",
-      "status": "hosted",
-      "gate": "import-and-call",
-      "note": "Shared pure implementation; hosted representative call tested."
-    },
-    {
       "module": "std/string.fpr",
       "status": "hosted",
       "gate": "import-and-call",

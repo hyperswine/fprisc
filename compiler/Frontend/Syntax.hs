@@ -24,7 +24,6 @@ data SExpr
                      -- mark into its diagnostics ("@OFF~ "), which the
                      -- error sinks resolve to file:line:col.
   | SInt Integer
-  | SAtom Name
   | SStrI [Seg]
   | SApp SExpr SExpr
   | SLam [Name] SExpr

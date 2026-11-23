@@ -324,7 +324,6 @@ privilegedMentions tops = List.nub (concatMap topM tops)
       SVar v -> [v | hit v]
       SMark _ e -> exprM e
       SInt _ -> []
-      SAtom _ -> []
       SStrI segs -> concat [exprM e | SegExpr e <- segs]
       SApp a b -> exprM a ++ exprM b
       SLam _ e -> exprM e
@@ -441,7 +440,6 @@ viewPurityErrors gameApps impureNames tops
       SList es -> concatMap (exprRefs bs) es
       SStrI segs -> concat [exprRefs bs e | SegExpr e <- segs]
       SInt _ -> []
-      SAtom _ -> []
     stmtsRefs bs [] = ([], bs)
     stmtsRefs bs (SBind n ps e : rest) =
       let bs1 = S.insert n bs

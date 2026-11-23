@@ -219,7 +219,6 @@ specializeCarriers reporting home catalog pinned input
             IntValue n->pure (IntValue n)
             StringValue s->pure (StringValue s)
             BoolValue b->pure (BoolValue b)
-            AtomValue n->pure (AtomValue n)
             Fail s->pure (Fail s)
             _->refuse "unproved carrier operation"
           pure e {exprType=new,exprShape=linShapeT linears new,exprNode=node}

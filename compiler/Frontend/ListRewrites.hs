@@ -109,7 +109,6 @@ sharedMaps tops = case listAliases tops of
     plain v = case unmark v of
       SVar _ -> True
       SInt _ -> True
-      SAtom _ -> True
       SStrI segs -> all (\case SegStr _ -> True; _ -> False) segs
       SProj a _ -> plain a
       _ -> False

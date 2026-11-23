@@ -63,9 +63,6 @@ builtinCons =
       ("Some", (7, 1, 1))
     ] `M.union` DataLayout.smallTupleLayouts
 
-atomT :: Int
-atomT = 6
-
 -- CONTENT-ADDRESSED typeids (separate compilation): a type's id is a
 -- function of (owning unit's hash, type name), so the defining unit and
 -- every importer -- compiled separately -- assign the same id from the
@@ -200,7 +197,6 @@ dExpr = \case
       Just (_, _, _) -> CVar n
       Nothing -> CVar n
   SInt i -> pure (CInt i)
-  SAtom a -> pure (CMk atomT 0 [CStr a])
   SApp a b -> CApp <$> dExpr a <*> dExpr b
   SLam ps e -> CLam ps <$> dExpr e
   SBlock stmts e -> go stmts

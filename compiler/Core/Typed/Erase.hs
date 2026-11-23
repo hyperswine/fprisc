@@ -117,7 +117,6 @@ eraseWith annotation region contracts types layout f = runExceptT $ do
         (tid,var,ar)<-con name
         unless (ar==length xs) (throwError "typed Core constructor value layout arity")
         CMk tid var . i64StoreAt (constructorI64 layout name) <$> mapM (go env names) xs
-      AtomValue a -> pure (CMk 6 0 [CStr a])
       TupleValue xs -> do
         (tid,var,_)<-con ("Tup"++show (length xs))
         CMk tid var <$> mapM (go env names) xs

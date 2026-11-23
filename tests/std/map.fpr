@@ -1,10 +1,8 @@
 unsafe base.
 Map = use "std/map".
-Set = use "std/set".
 List = use "std/list".
 String = use "std/string".
 Option = use "std/option".
-Order = use "std/order".
 bump old = Option.Some (1 + Option.withDefault 0 old).
 main =
   text = "the cat and the dog and the bird";
@@ -39,7 +37,4 @@ main =
   one = Map.alter 5 (fn o -> Option.Some 50) Map.ints;
   _ = print "alter empty: add {Map.entries one} size {Map.size one}; None {Map.size (Map.alter 5 (fn o -> Option.None) Map.ints)}; drop the only key {Map.entries (Map.alter 5 (fn o -> Option.None) one)} size {Map.size (Map.alter 5 (fn o -> Option.None) one)}; replace {Map.entries (Map.alter 5 (fn o -> Option.map (fn v -> v + 1) o) one)}; insertWith {Map.entries (Map.insertWith (fn o n -> o + n) 5 7 one)}";
   gone = Map.keys byAlter |> List.fold (fn m k -> Map.alter k (fn o -> Option.None) m) byAlter;
-  _ = print "alter every key away: size {Map.size gone} entries {Map.entries gone}";
-  a = Set.fromList Order.int (3 :: 1 :: 2 :: 3 :: Nil);
-  b = Set.fromList Order.int (2 :: 3 :: 4 :: Nil);
-  print "set {Set.toList a} union {Set.toList (Set.union a b)} intersect {Set.toList (Set.intersect a b)} diff {Set.toList (Set.diff a b)} member {Set.member 4 a}".
+  print "alter every key away: size {Map.size gone} entries {Map.entries gone}".

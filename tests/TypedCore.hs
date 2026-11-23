@@ -67,7 +67,6 @@ source = unlines
   , "guardShadow x p | Yes x <- p = x."
   , "guardShadow x _ = x."
   , "ints n = [n,n + 1]."
-  , "atom = :hello."
   , "render n = print \"value={n + 0.5}\"."
   , "bare n = print (n + 0.5)."
   , "boolSyntax a b = a and b."
@@ -96,7 +95,7 @@ main = do
   check "struct expansion" (null expansionErrors)
   check ("source typing "++show (inferenceErrors result)) (null (inferenceErrors result))
   let plans=right (prepareChecked result)
-      expected=S.fromList ["identity","add","fp","cmp","capture","captureCall","deepCapture","deepCall","polyCapture","shadow","local","choose","inverse","pipeline","sequence","text","take","aggregate","classify","nested","wild","tupleArg","recordArg","record","other","outer","project","change","deep","bindShadow","guarded","guardShadow","ints","atom","render","bare","boolSyntax","chain","localFn","recur","recAnon","recNoCapture","recNested","recEscape","recEscapeCall","recPartial","recPoly","recInner","recShadow","ProbeOps.ofInt","ProbeOps.+","ProbeOps","carrier","carrierLeft","carrierRight"]
+      expected=S.fromList ["identity","add","fp","cmp","capture","captureCall","deepCapture","deepCall","polyCapture","shadow","local","choose","inverse","pipeline","sequence","text","take","aggregate","classify","nested","wild","tupleArg","recordArg","record","other","outer","project","change","deep","bindShadow","guarded","guardShadow","ints","render","bare","boolSyntax","chain","localFn","recur","recAnon","recNoCapture","recNested","recEscape","recEscapeCall","recPartial","recPoly","recInner","recShadow","ProbeOps.ofInt","ProbeOps.+","ProbeOps","carrier","carrierLeft","carrierRight"]
   check ("coverage "++show (checkedDeclines plans)) (checkedNames plans==expected)
   let Just (Forall _ _ (TFn dict (TFn _ output)))=M.lookup "carrier" (inferenceSchemes result)
   check "unannotated operator member is constrained before generalization"

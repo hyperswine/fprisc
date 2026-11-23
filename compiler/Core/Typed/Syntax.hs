@@ -35,7 +35,6 @@ data Node
   | BoolTest Bool Expr
   | Note Expr
   | Construct String [Expr]
-  | AtomValue String
   | TupleValue [Expr]
   | ListValue [Expr]
   | RecordValue [(String,Expr)]

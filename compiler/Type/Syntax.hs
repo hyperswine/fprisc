@@ -4,7 +4,7 @@
 -- live in Core.Identity. TLayout is private to compiler evidence/calling
 -- contracts, with no source syntax. Existing Show output is diagnostic ABI.
 module Type.Syntax
-  (Type(..), Row(..), Scheme(..), tcon, tInt, tStr, tBool, tUnit, tAtom,
+  (Type(..), Row(..), Scheme(..), tcon, tInt, tStr, tBool, tUnit,
    tF64, tF32, tI64, tI32, tList, tVector, tMutMap, tFixedMap, tSString, mentionsFloat) where
 import Data.List (foldl')
 import Control.DeepSeq (NFData)
@@ -31,7 +31,7 @@ data Scheme = Forall [Int] [Int] Type deriving (Show, Generic, NFData) -- tvars,
 tcon :: String -> [Type] -> Type
 tcon n = foldl' TAp (TC n)
 
-tInt, tStr, tBool, tUnit, tAtom :: Type
+tInt, tStr, tBool, tUnit :: Type
 tInt = TC "Int"
 
 tF64, tF32, tI64, tI32 :: Type
@@ -64,7 +64,6 @@ mentionsFloat = \case
 tStr = TC "String"
 tBool = TC "Bool"
 tUnit = TC "Unit"
-tAtom = TC "Atom"
 
 tList :: Type -> Type
 tList a = TAp (TC "List") a
