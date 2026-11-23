@@ -38,7 +38,6 @@ primitiveContracts =
    ("==",2,"eq"),("!=",2,"ne"),("<",2,"lt"),(">",2,"gt"),
    ("<=",2,"le"),(">=",2,"ge"),("print",1,"print"),("str",1,"str"),
    ("strcat",2,"strcat"),("String.len",1,"strlen"),("error",1,"error"),
-   ("intMax",1,"intMax"),("intMin",1,"intMin"),
    ("$trmc.setTail",2,"trmcSetTail")]
   ++ [("$uniform."++direction++kind,1,"uniform"++capital++kind)
       | (direction,capital)<-[("box","Box"),("unbox","Unbox")],kind<-["Word","Addr","F64","F32"]]

@@ -32,19 +32,19 @@ vectors = L.append
 rollback = B.program [B.SetNumber "n" (C.Literal 0), B.SetSequence "xs" (values Nil)]
   [B.On "test:bad" [B.SetNumber "n" (C.Literal 1), B.SetSequence "xs" (C.Snoc (C.Sequence "xs") (C.Literal 1)),
     B.PutText (B.Id "rollback") (C.Text "wrong"),
-    B.SetNumber "overflow" (C.Add (C.Literal (intMax Unit)) (C.Literal 1))],
+    B.SetNumber "overflow" (C.Add (C.Literal (2 ^ 62 - 1)) (C.Literal 1))],
    B.On "test:show" [B.PutText (B.Id "rollback") (C.Concat [C.Decimal (C.Number "n"), C.Text ":", C.Decimal (C.Length (C.Sequence "xs"))])]].
 snapshot = J.object [("runtime", J.Text (B.runtime Unit)),
   ("vectors", J.Sequence vectors), ("script", J.Text (M.script (B.Id "rtt") "")),
   ("rollback", J.Text rollback), ("transport", J.Text (JS.src Unit)),
   ("errors", J.strings [C.jsInt (C.At (values [1]) (C.Literal (0 - 1))),
     C.jsInt (C.At (values [1]) (C.Literal 1)),
-    C.jsInt (C.Sum (values [intMax Unit, 1, 0 - 1]))])].
+    C.jsInt (C.Sum (values [2 ^ 62 - 1, 1, 0 - 1]))])].
 main = case P.args Unit of
     ["snapshot"] -> _ = print (J.render snapshot); 0
   | ["bad-take"] -> _ = print (C.jsList (C.TakeLast (0 - 1) (values Nil))); 0
   | ["bad-at"] -> _ = print (C.evalInt env (C.At (values [1]) (C.Literal 1))); 0
-  | ["bad-sum"] -> _ = print (C.evalInt env (C.Sum (values [intMax Unit, 1, 0 - 1]))); 0
+  | ["bad-sum"] -> _ = print (C.evalInt env (C.Sum (values [2 ^ 62 - 1, 1, 0 - 1]))); 0
   | ["bad-interval"] -> _ = print (B.program Nil [B.Every 0 Nil]); 0
   | _ ->
       _ = check "last 32" (C.evalList env (C.TakeLast 32 (values (L.range 1 40))) == L.range 9 40);

@@ -170,8 +170,6 @@ solBuiltins =
       -- and no pool, so heapUsed is an honest zero -- std/actor's `tidy`
       -- then simply never decides it is time to reset one
       ("heapUsed", mono (TFn tUnit tInt)),
-      ("intMax", mono (TFn tUnit tInt)),
-      ("intMin", mono (TFn tUnit tInt)),
       ("Sys.poolReset", scheme [0] (TFn tInt (sv 0))),
       ("Sys.mtime", mono (TFn tUnit tInt)),
       ("Sys.uptimeMs", mono (TFn tUnit tInt)),

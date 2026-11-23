@@ -4,7 +4,7 @@ unsafe base.
 # (an index past the end, a code that is not a byte), a kill; an actor that
 # returned is plain "dead actor".  The program is still running afterwards.
 boom self = case receive self of who -> error "boom".
-over self = case receive self of (who, n) -> _ = send who (n + intMax Unit); Unit.
+over self = case receive self of (who, n) -> _ = send who (n + (2 ^ 62 - 1)); Unit.
 divz self = case receive self of (who, n) -> _ = send who (n / (n - 1)); Unit.
 calm self = case receive self of who -> Unit.
 oob self = case receive self of (who, n) -> _ = send who (charAt "abc" n); Unit.

@@ -33,8 +33,8 @@ roundTrip v =
   | Err why -> why.
 
 main =
-  mx = intMax Unit;
-  mn = intMin Unit;
+  mx = 2 ^ 62 - 1;
+  mn = 0 - (2 ^ 62);
   big1 = mx + 1;
   bigNeg1 = mn - 1;
   _ = expect "intMax + 1" "{big1}" "4611686018427387904";

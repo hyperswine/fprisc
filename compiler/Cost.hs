@@ -345,7 +345,6 @@ primCostOf g lens
   -- and a store are a word; nodeWith copies a sixteen-field cell
   | g `elem` ["nodeGet", "nodeSet"] = unit
   | g == "nodeWith" = Just (CN 18, CN 152)
-  | g `elem` ["intMax", "intMin"] = unit
   | g == "strcat", [a, b] <- lens = Just (CAdd [CN 1, a, b], CAdd [CN 16, a, b])
   | g == "substr", (a : _) <- lens = Just (CAdd [CN 1, a], CAdd [CN 16, a])
   | g == "parseInt", [a] <- lens = Just (CAdd [CN 1, a], CN 0)

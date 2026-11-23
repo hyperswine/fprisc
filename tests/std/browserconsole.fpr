@@ -19,7 +19,7 @@ vectors = L.concat
   [L.map (fn ws -> textRow (C.Trim (C.Text ("{ws}café{ws}"))) (env Nil 0 "")) C.spaces,
    L.concatMap (fn at -> L.map (fn delta -> intRow (Console.recallIndex delta) (env history at "")) [0 - 1, 1]) (L.range 0 4),
    L.map (fn cmd -> textsRow (Console.remembered 3) (env history 3 cmd)) ["", "  \t", "help", "  café  ", " new ", "<img src=x onerror=alert(1)>"],
-   L.map (fn at -> textRow (C.TextAt (C.TextSequence "history") (C.Literal at)) (env history 0 "")) [0 - 1, 0, 1, 3, intMax Unit],
+   L.map (fn at -> textRow (C.TextAt (C.TextSequence "history") (C.Literal at)) (env history 0 "")) [0 - 1, 0, 1, 3, 2 ^ 62 - 1],
    [textsRow (C.TextTakeLast 0 (C.TextSequence "history")) (env history 0 ""),
     textsRow (C.TextTakeLast 50 (C.TextSequence "history")) (env (L.map str (L.range 1 60)) 0 ""),
     textsRow (C.IfTexts (C.Equal (C.Literal 1) (C.Literal 1)) (C.Texts [C.Text "lazy"])

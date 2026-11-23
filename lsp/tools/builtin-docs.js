@@ -100,8 +100,6 @@ const docs = {
   fixedmapFold: 'std/fixedmap\'s engine: fold f acc k v over the entries in slot order; call FixedMap.fold instead.',
   fixedmapToList: 'std/fixedmap\'s engine: the (key, value) pairs in slot order, and the map; call FixedMap.toList instead.',
   fixedmapFree: 'std/fixedmap\'s engine: release a FixedMap\'s storage; call FixedMap.free or FixedMap.freeze instead.',
-  intMax: 'Return the largest tagged Int on this target. Use Unit as the argument. Int arithmetic traps on overflow; use I32/I64 for explicit wrapping arithmetic in AOT programs.',
-  intMin: 'Return the smallest tagged Int on this target. Use Unit as the argument. This value has no positive Int counterpart: negating it overflows.',
   fileRead: 'Read a file into a string through the selected host machine implementation.',
   fileWrite: 'Replace the contents of a file. Return Ok Unit or Err with the host error.',
   fileAppend: 'Append text to a file. Return Ok Unit or Err with the host error.',

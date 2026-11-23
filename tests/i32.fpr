@@ -25,7 +25,7 @@ run u =
   min32 = parsed "-2147483648";
   max32 = parsed "2147483647";
   _ = expect "ofInt signed bounds" (I32.ofInt 0 == Some zero and I32.ofInt -1 == Some minus1 and I32.ofInt 2147483647 == Some max32 and I32.ofInt -2147483648 == Some min32);
-  _ = expect "ofInt signed overflow" (I32.ofInt 2147483648 == None and I32.ofInt -2147483649 == None and I32.ofInt (intMax Unit) == None);
+  _ = expect "ofInt signed overflow" (I32.ofInt 2147483648 == None and I32.ofInt -2147483649 == None and I32.ofInt (2 ^ 62 - 1) == None);
   _ = expect "ofIntU unsigned bounds" (I32.ofIntU 0 == Some zero and I32.ofIntU 4294967295 == Some minus1 and I32.ofIntU -1 == None and I32.ofIntU 4294967296 == None);
   _ = expect "trunc wraps" (I32.trunc 4294967297 == one and I32.trunc 2147483648 == min32);
   _ = expect "Option render" (str (I32.ofInt -3) == "Some (-3)" and str (I32.ofInt 2147483648) == "None");

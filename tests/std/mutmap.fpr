@@ -149,7 +149,7 @@ main =
   _ = verdictS "String keys, universe 2000, 100,000 ops" (runStrs 100000 2000 99 (0, MutMap.strings Unit, Map.strings));
 
   # negative and huge Int keys hash like any other
-  n = MutMap.insertAll ((0 - 1, 1) :: (intMin Unit, 2) :: (intMax Unit, 3) :: (0, 4) :: Nil) (MutMap.ints Unit);
+  n = MutMap.insertAll ((0 - 1, 1) :: (0 - (2 ^ 62), 2) :: (2 ^ 62 - 1, 3) :: (0, 4) :: Nil) (MutMap.ints Unit);
   nm = MutMap.freeze Order.int n;
   _ = print "extreme Int keys: {Map.values nm}";
 

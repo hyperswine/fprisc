@@ -76,7 +76,7 @@ main =
   _ = check (AC.callSureWithin 20 me full 0 == Err "deadline exceeded before admission") "admission budget";
   _ = check (AC.callWithin 0 me full 0 == Err "deadline exceeded before admission") "zero budget";
   _ = check (AC.callWithin (0 - 1) me full 0 == Err "invalid deadline duration") "negative budget";
-  _ = check (AC.callWithin (intMax Unit) me full 0 == Err "invalid deadline duration") "overflow budget";
+  _ = check (AC.callWithin (2 ^ 62 - 1) me full 0 == Err "invalid deadline duration") "overflow budget";
   _ = kill full;
   slow = spawn late;
   _ = check (AC.callWithin 20 me slow "first" == Err "deadline exceeded (outcome unknown)") "live timeout";

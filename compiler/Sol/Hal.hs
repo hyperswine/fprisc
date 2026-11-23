@@ -114,9 +114,6 @@ mkHal cons scriptArgs tx preempts rt =
       -- MutMap's hashes (Sol.MutMap; the native 64-bit values, Strings as UTF-8)
       ("strHash", (1, \[v] -> MM.strHashV <$> vsStr v)),
       ("intHash", (1, \[v] -> case v of VInt i -> pure (MM.intHashV i); _ -> vmPanic "intHash: not an Int")),
-      -- the host's Int is the tagged 63-bit value (docs/2026-10-12-INT-OVERFLOW.md)
-      ("intMax", (1, \[_] -> pure (VInt (2 ^ (62 :: Int) - 1)))),
-      ("intMin", (1, \[_] -> pure (VInt (negate (2 ^ (62 :: Int)))))),
       ("charAt", (2, charAtH)),
       -- std/string's byte scans (runtime.c g_strFindByte/g_strFindSpace/g_strDigits):
       -- charFrom, wordEnd and digitsGo's loops, a charAt a step

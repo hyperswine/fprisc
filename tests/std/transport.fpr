@@ -83,7 +83,7 @@ main =
   _ = check "operation and cleanup failures both survive" (both == Err (T.CleanupFailed (T.Io "body") (T.Io "release")));
   closeOnly = T.withConnection cleanup (fn c -> (Ok 1, c));
   _ = check "cleanup failure on success" (closeOnly == Err (T.Io "release"));
-  _ = check "deadline arithmetic refuses overflow" (T.deadlineFrom (intMax Unit) 1 == Err (T.Invalid "deadline exceeds Int range"));
+  _ = check "deadline arithmetic refuses overflow" (T.deadlineFrom (2 ^ 62 - 1) 1 == Err (T.Invalid "deadline exceeds Int range"));
   _ = check "duration validation" (T.deadlineFrom 0 (0 - 1) == Err (T.Invalid "negative clock or duration"));
   _ = print "transport: fragmented I/O, readiness direction, absolute budgets, cancellation, progress, driver validation and cleanup PASS";
   0.

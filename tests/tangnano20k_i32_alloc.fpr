@@ -6,7 +6,7 @@ spin n multiplier increment value | n <= 0 = value.
 spin n multiplier increment value = spin (n - 1) multiplier increment (value * multiplier + increment).
 main : unsafe Unit .
 main =
-  _ = if intMax Unit > 1073741823 then Unit else error "allocation fixture requires 64-bit values";
+  _ = case I32.toInt (case I32.parse "2147483647" of Ok x -> x | Err why -> error why) of Ok _ -> Unit | Err _ -> error "allocation fixture requires 64-bit values";
   seed = I32.trunc 0;
   multiplier = I32.trunc 1664525;
   increment = I32.trunc 1013904223;

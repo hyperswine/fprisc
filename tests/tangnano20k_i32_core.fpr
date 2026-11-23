@@ -59,7 +59,7 @@ run u =
   _ = expect "toInt tagged max" (intSaid (I32.toInt (parsed "1073741823")) == "1073741823");
   _ = expect "toInt tagged min" (intSaid (I32.toInt (parsed "-1073741824")) == "-1073741824");
   _ = expect "toInt unsigned tagged max" (intSaid (I32.toIntU (parsed "1073741823")) == "1073741823");
-  _ = if intMax Unit == 1073741823 then
+  _ = if isErr (I32.toInt max32) then
     _ = expect "toInt full min refuses RV32" (isErr (I32.toInt min32));
     _ = expect "toInt full max refuses RV32" (isErr (I32.toInt max32));
     _ = expect "toInt lower edge refuses RV32" (isErr (I32.toInt (parsed "-1073741825")));

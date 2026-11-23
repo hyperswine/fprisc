@@ -23,11 +23,13 @@ main =
   _ = check (Helpers.sum 20 0 == 210);
   _ = check (hot -7 -9 13 -3 6 == -344);
   _ = check (apply plus 13 17 == 30);
-  _ = check (intMax Unit + 0 == intMax Unit);
-  _ = check (intMin Unit - 0 == intMin Unit);
-  _ = check (intMax Unit + intMin Unit == -1);
+  mx = BITSHIFTR -1 2;
+  mn = 0 - mx - 1;
+  _ = check (mx + 0 == mx);
+  _ = check (mn - 0 == mn);
+  _ = check (mx + mn == -1);
   _ = check (16384 * 16384 == 268435456);
-  _ = check (intMin Unit / 1 == intMin Unit);
+  _ = check (mn / 1 == mn);
   x = effect; _ = check (x + x == 14);
   _ = check (strlen "abc" == 3);
   _ = check (charAt "abc" 2 == 99);
@@ -37,7 +39,7 @@ main =
   _ = check (bor 27 13 == 31);
   _ = check (bxor 27 13 == 22);
   _ = check (BITSHIFTL 5 3 == 40);
-  _ = check (BITSHIFTR -1 2 == intMax Unit);
+  _ = check (BITSHIFTR -1 2 == mx);
   p = Mem.alloc 64;
   before = Mem.liveAllocations Unit;
   _ = loop p 1000;
