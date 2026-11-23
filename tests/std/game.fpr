@@ -3,14 +3,17 @@
 Game = use "std/game".
 O = use "std/option".
 
-Msg = Type (Bump n | Say | Shot | Leave | Beat | Save | Saved r | Fetch | Fetched r).
+Msg = Type (Bump n | Say | Shot | Leave | Beat | Save | Saved r | Fetch | Fetched r | Hold | Release).
 
-init flags = ({ n = flags, beats = 0 }, Game.log "start {flags}").
+init flags = ({ n = flags, beats = 0, held = 0 }, Game.log "start {flags}").
 update (Bump k) m = ({ m | n = m.n + k }, Game.none).
 update Say m = (m, Game.batch [Game.log "n is {m.n}", Game.sound "blip" m.n, Game.log "said"]).
 update Shot m = (m, Game.capture).
 update Leave m = (m, Game.batch [Game.log "bye", Game.quit]).
 update Beat m = ({ m | beats = m.beats + 1 }, Game.none).
+# a key held is model state: the press adds it, the release takes it away
+update Hold m = ({ m | held = m.held + 1 }, Game.none).
+update Release m = ({ m | held = if m.held > 0 then m.held - 1 else 0 }, Game.none).
 # a save is asked for, and only its result says it happened; a fetch chains a save
 update Save m = (m, Game.attempt (Game.append "log" "n {m.n}") Saved).
 update (Saved (Ok r)) m = ({ m | n = m.n + 100 }, Game.log "saved").
@@ -28,9 +31,14 @@ decode 25 = O.Some Shot.
 decode 16 = O.Some Leave.
 decode 31 = O.Some Save.
 decode 33 = O.Some Fetch.
+decode 42 = O.Some Hold.
 decode k = O.None.
+# the release table: the same key, as a release; anything else is nobody's
+decodeUp 42 = O.Some Release.
+decodeUp k = O.None.
 # the tick is asked for only while n is not negative: a model that stops time
-subs m = if m.n < 0 then [Game.keys decode] else [Game.keys decode, Game.tick 40 Beat].
+subs m = if m.n < 0 then [Game.keys decode, Game.keysUp decodeUp]
+         else [Game.keys decode, Game.keysUp decodeUp, Game.tick 40 Beat].
 view m = Game.layers m.n m.beats.
 
 a = Game.app init update subs view.
@@ -46,14 +54,14 @@ effect (Game.ETask (Game.Replay name) f) = "task replay {name}".
 effect (Game.ELatest key rev j f) = "latest {key} r{rev}".
 effect (Game.ECancel key) = "cancel {key}".
 show label inputs = case Game.play a 5 inputs of (m, es) ->
-  _ = print "{label}: n={m.n} beats={m.beats}";
+  _ = print "{label}: n={m.n} beats={m.beats} held={m.held}";
   showAll es.
 disk (Game.Append name text) = Ok "".
 disk (Game.ReadLatest name) = Ok "n 5".
 disk (Game.Replay name) = Ok "n 5\n".
 empty task = Err "no record".
 showWith label answer inputs = case Game.playWith answer a 5 inputs of (m, es) ->
-  _ = print "{label}: n={m.n} beats={m.beats}";
+  _ = print "{label}: n={m.n} beats={m.beats} held={m.held}";
   showAll es.
 count : (xs : List b | measure xs) -> Int .
 count xs = case xs of Nil -> 0 | x :: more -> 1 + count more.
@@ -72,6 +80,8 @@ main =
   _ = show "ticks" [Game.Elapsed 40, Game.Elapsed 40, Game.Elapsed 16, Game.Key 57];
   _ = show "no tick below zero" [Game.Key 108, Game.Key 108, Game.Key 108, Game.Key 108, Game.Key 108, Game.Key 108, Game.Elapsed 40, Game.Elapsed 40];
   # tasks: play refuses them; playWith answers them, in order, before the next input
+  _ = show "press then release" [Game.Key 42, Game.Key 42, Game.KeyUp 42, Game.KeyUp 999];
+  _ = show "a release alone" [Game.KeyUp 42, Game.KeyUp 42];
   _ = show "a refused save" [Game.Key 31, Game.Key 57];
   _ = showWith "a stored save" disk [Game.Key 31, Game.Key 57];
   _ = showWith "a fetch chains a save" disk [Game.Key 33];

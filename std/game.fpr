@@ -93,11 +93,17 @@ append name text = Append name text.
 # ---- what the model is interested in ---------------------------------------------------------
 # Tick ms msg    msg every ms milliseconds
 # Keys decode    a pressed key's code -> the game's message, or None
+# KeysUp decode  a released key's code -> the game's message, or None
 # Wheel decode   a wheel movement (dy, dx) -> the game's message, or None
-Sub = Type (Tick ms msg | Keys decode | Wheel decode).
+#
+# A press and a release are separate inputs, so a game that holds state while
+# a key is down asks for `Keys` to fill it and `KeysUp` to empty it. A decoder
+# may answer None on either; the input is then nobody's.
+Sub = Type (Tick ms msg | Keys decode | KeysUp decode | Wheel decode).
 
 tick ms msg = Tick ms msg.
 keys decode = Keys decode.
+keysUp decode = KeysUp decode.
 wheel decode = Wheel decode.
 
 # ---- what view answers -----------------------------------------------------------------------
@@ -113,8 +119,8 @@ app init update subs view = App init update subs view.
 # ---- the pure core: one input, one transition ------------------------------------------------
 # What a runner hands in. A runner turns its platform's events into these;
 # Elapsed carries the tick's own period, so two tick subscriptions of
-# different periods are told apart.
-Input = Type (Key code | Scroll dy dx | Elapsed ms).
+# different periods are told apart. Key is a press, KeyUp a release.
+Input = Type (Key code | KeyUp code | Scroll dy dx | Elapsed ms).
 
 # What a runner performs, flat and in order.
 Effect = Type (ELog s | ESound n v | EMusic n v | ECapture | EQuit | ETask task toMsg | ELatest key rev job onResult | ECancel key).
@@ -148,6 +154,7 @@ decode subs input = case subs of
       | O.None -> decode more input).
 taken : Sub -> Input -> O.Option msg .
 taken (Keys f) (Key code) = f code.
+taken (KeysUp f) (KeyUp code) = f code.
 taken (Wheel f) (Scroll dy dx) = f dy dx.
 taken (Tick ms msg) (Elapsed period) = if ms == period then O.Some msg else O.None.
 taken s input = O.None.
@@ -167,10 +174,13 @@ periods subs = case subs of
     Nil -> Nil
   | Tick ms msg :: more -> ms :: periods more
   | s :: more -> periods more.
+# whether the model hears any key event at all: a runner turns its input
+# drain on for this, and both presses and releases then reach the decoders
 wantsKeys : (subs : List Sub | measure subs) -> Bool .
 wantsKeys subs = case subs of
     Nil -> False
   | Keys f :: more -> True
+  | KeysUp f :: more -> True
   | s :: more -> wantsKeys more.
 
 # start: the first model and what init asked for
