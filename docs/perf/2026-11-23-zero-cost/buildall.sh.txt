@@ -1,4 +1,4 @@
-#!/bin/bash
+# Reproduce helper, not a repo script. Paste into a bash shell.
 source /workspace/out/env.sh
 export FPR_HOME=/workspace/zc/fprisc
 FPR=/workspace/zc/fprisc/dist-newstyle/build/x86_64-linux/ghc-9.8.2/fp-risc-0.15.0/x/fpr/build/fpr/fpr

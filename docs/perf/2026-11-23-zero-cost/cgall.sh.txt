@@ -1,4 +1,4 @@
-#!/bin/bash
+# Reproduce helper, not a repo script. Paste into a bash shell.
 cd /workspace/zc/mb
 for b in *.bin; do for r in 1 2 3; do echo "$b $r"; done; done | xargs -P 2 -n 2 sh -c 'valgrind --tool=callgrind --callgrind-out-file=cg/$0.$1.out ./$0 >/dev/null 2>cg/$0.$1.err'
 for b in *.bin; do
