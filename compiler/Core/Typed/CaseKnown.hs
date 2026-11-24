@@ -55,6 +55,14 @@ rewrite (TypeContext _ constructors) input=go (4::Int) False (functionBody input
             Just _ | binderId b `notElem` localUses body' ->
               tell (Any True) >> pure (rhsWrap body')
             _->pure e'
+      MatchTail (FunctionMatch _) args [Alternative ps [] body] _
+        | length ps == length args, Just wrap <- irrefutableBinds ps args -> do
+            tell (Any True)
+            walk env (wrap body)
+      Match (FunctionMatch _) args [Alternative ps [] body]
+        | length ps == length args, Just wrap <- irrefutableBinds ps args -> do
+            tell (Any True)
+            walk env (wrap body)
       MatchTail CaseMatch [x] alts fb -> do
         alts'<-mapM (walkAlt env) alts
         fb'<-walk env fb
@@ -73,6 +81,13 @@ rewrite (TypeContext _ constructors) input=go (4::Int) False (functionBody input
               tell (Any True) >> pure r
           _->pure e'
       _->mapChildrenM (walk env) e
+
+    irrefutableBinds ps args=foldr step (Just id) (zip ps args)
+      where
+        step (p,a) acc=case (patNode p,acc) of
+          (Bind b,Just w) | sameType (binderType b) (exprType a)->Just (\r->generated r (Let b a (w r)))
+          (Wildcard,Just w)->Just (\r->if trivial a then w r else generated r (Sequence a (w r)))
+          _->Nothing
 
     walkAlt env (Alternative ps gs body)=do
       gs'<-mapM (walkGuard env) gs
