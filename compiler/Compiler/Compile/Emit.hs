@@ -47,7 +47,7 @@ import Core.CacheIdentity (CallArities (..), coreCacheIdentityWithBuilders)
 import Core.Opt.Normalize (normArc)
 import Core.Opt.ProductParameters (withImportedVariantResults, withoutVariantResults)
 import Core.Opt.Representation (eraseLayoutCasts)
-import Core.Syntax (Core (..), Name)
+import Core.Syntax (Core (..), Name, freeVars)
 import Core.Typed.Callback (CallbackMode (..))
 import qualified Core.Typed.Syntax as TCore
 import qualified Core.VectorRead as VectorRead
@@ -58,8 +58,8 @@ import Data.Maybe (isJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Diagnostic.Remark as Remark
-import Frontend.Desugar.Typed (CheckedPlans, CheckedUnit, SourceSelection, checkedCallArities, selectCheckedUnit)
-import Frontend.Syntax (STop (..))
+import Frontend.Desugar.Typed (CheckedPlans, CheckedUnit, SourceSelection, checkedCallArities, checkedUnitTops, selectCheckedUnit)
+import Frontend.Syntax (SExpr (..), SGuard (..), SPat (..), STop (..), SStmt (..), Seg (..))
 import Frontend.Traverse (stripPosTops)
 import Infer (builtinEnv, canonicalTypeWith)
 import Inline (inlineCompatibilityWithImports, inlineSmall, vecPeekCompatibility)
@@ -199,7 +199,102 @@ emitNative ei = do
       timed = phaseTime (Options.diagTimings diagnostic)
       owned uts = either error id (selectCheckedUnit checkedLowering (bindNames uts))
       preludeChecked = owned preludeE'
-      checkedUnits = [(h, uts, owned uts) | (h, uts) <- units']
+      preludeNative = nativeUnit ("prelude." ++ preludeHash) preludeCons preludeChecked
+      checkedUnits = [(h, uts, owned uts) | (h, uts) <- usedUnits]
+      -- Imported units emit only the definitions the program can reach
+      -- (docs/2026-11-25-USED-DEFINITIONS.md). Checking, preconditions,
+      -- safety, measures and cost bounds above all ran on the whole merged
+      -- program; only native emission is narrowed. The unit cache stays sound
+      -- because each unit file is keyed on the core identity of exactly the
+      -- definitions it emits (emitUnit's -c... component).
+      pruneEligible = unitsEmitted && not (oArc opts || oBuiltin opts || oLib opts || oPlugin opts)
+      pruneUnits = pruneEligible && not reflective
+      -- The image's module table (fpr_modtab) lists every unit export so that
+      -- Mod.resolve / Mod.find and the row readers can reach them by name at
+      -- run time. A program that can reach any row reader keeps the complete
+      -- table, and so every definition; otherwise its table lists only the
+      -- emitted exports, and nothing can observe the difference.
+      -- Only lookups that can start at the image's own table (-1) observe it:
+      -- the prelude's modResolve/modHas (FPRLive resolve probes), Mod.fn, and
+      -- a row reader called from anywhere except the prelude helpers that
+      -- read attached plugin tables only (modFindAt, modFind, modCompatAt and
+      -- their row walkers).
+      reflective = pruneEligible && not (null imageTableReaders)
+      imageTableReaders =
+        filter (`S.member` nativeReach) ["modResolve", "modResolveFrom", "modHas", "modHasFrom", "Mod.fn"]
+          ++ [ n
+               | n <- S.toList nativeReach,
+                 S.notMember (liftedOwner n) attachedTableHelpers,
+                 any (`S.member` M.findWithDefault S.empty n nativeGraph) modRowReaders
+             ]
+      -- a lambda lifted out of f is named $typed_lifted_<i>.<j>.f
+      liftedOwner n = if "$typed_lifted_" `isPrefixOf` n then reverse (takeWhile (/= '.') (reverse n)) else n
+      modRowReaders = ["Mod.rows", "Mod.rowName", "Mod.rowHash", "Mod.rowIface", "Mod.rowFn", "Mod.rowArity"]
+      attachedTableHelpers = S.fromList ["modMiss", "modRow", "modRowIn", "modHit", "modFindAt", "modFind", "modFindDown", "modCompatAt", "modCompatRows", "modCompatRow", "modCompatMatch", "modResolveFrom", "modHasFrom"]
+      nativeGraph =
+        M.unions
+          ( edgesOf rootNative
+              : [edgesOf preludeNative | preludeEmitted]
+              ++ map edgesOf (M.elems usedNative)
+          )
+      edgesOf core = M.map (S.fromList . freeVars . snd) (NativeCore.nativeProgram core)
+      nativeReach = walk S.empty (M.keys (NativeCore.nativeProgram rootNative))
+        where
+          walk seen [] = seen
+          walk seen (n : ns)
+            | S.member n seen = walk seen ns
+            | otherwise = walk (S.insert n seen) (S.toList (M.findWithDefault S.empty n nativeGraph) ++ ns)
+      prunedNames = if pruneUnits then allUnitDefs S.\\ usedUnitNames else S.empty
+      usedUnits
+        | pruneUnits = [(h, keepUsed uts) | (h, uts) <- units']
+        | otherwise = units'
+      keepUsed = keepIn usedUnitNames
+      allUnitDefs = S.fromList [n | (_, uts) <- units', TBind n _ _ _ <- uts]
+      -- Conservative source edges: every name spelled anywhere in a checked
+      -- (operator-resolved) unit definition that is itself a unit definition.
+      unitEdges =
+        M.unionWith S.union contractEdges . M.unionWith S.union fusionEdges $
+          M.fromListWith
+            S.union
+            [ (n, topNames t `S.intersection` allUnitDefs)
+              | (_, uts) <- units',
+                not (null [() | TBind {} <- uts]),
+                t@(TBind n _ _ _) <- checkedUnitTops (owned uts)
+            ]
+      -- List fusion (Core.Typed.ListFusion) rewrites a fold/map/filter/range
+      -- pipeline into a call to a sibling worker of the same module, named
+      -- by base name and the combinator's module hash (foldRange@h,
+      -- mapRange@h, ...), which no source mentions. Keeping one combinator of
+      -- a module keeps that module's whole worker family.
+      -- An exported function with a precondition is listed in the module
+      -- table under its checked entry ($precondK.name), so keep those too.
+      contractEdges = M.fromListWith S.union [(drop 1 (dropWhile (/= '.') m), S.singleton m) | m <- S.toList allUnitDefs, "$precond" `isPrefixOf` m, '.' `elem` m]
+      fusionFamily = S.fromList ["map", "filter", "fold", "sum", "product", "length", "range", "mapFilter", "filterMapped", "mapRange", "mapRangeForward", "buildRange", "foldRange", "lengthRange"]
+      baseOf n = takeWhile (/= '@') n
+      hashOf n = drop 1 (dropWhile (/= '@') n)
+      familyOf = M.fromListWith S.union [(hashOf n, S.singleton n) | n <- S.toList allUnitDefs, S.member (baseOf n) fusionFamily, '@' `elem` n]
+      fusionEdges = M.fromList [(n, M.findWithDefault S.empty (hashOf n) familyOf) | n <- S.toList allUnitDefs, S.member (baseOf n) fusionFamily, '@' `elem` n]
+      nativeRefs core = S.fromList (concat [freeVars body | (_, body) <- M.elems (NativeCore.nativeProgram core)]) `S.intersection` allUnitDefs
+      reach seen [] = seen
+      reach seen (n : ns)
+        | S.member n seen = reach seen ns
+        | otherwise = reach (S.insert n seen) (S.toList (M.findWithDefault S.empty n unitEdges) ++ ns)
+      -- Roots: what the root and prelude artifacts reference after native
+      -- lowering. Then a fixpoint over the lowered units themselves, so a
+      -- reference introduced by desugaring or specialization (not spelled in
+      -- the source) still keeps its target.
+      seedNames =
+        nativeRefs rootNative
+          `S.union` (if preludeEmitted then nativeRefs preludeNative else S.empty)
+      (usedUnitNames, usedNative) = settle (reach S.empty (S.toList seedNames))
+      settle used =
+        let lowered = M.fromList [(h, nativeUnit ("unit." ++ h) (unitConsOf h) (owned (keepIn used uts))) | (h, uts) <- units']
+            missing = S.unions (map nativeRefs (M.elems lowered)) S.\\ used
+         in if S.null missing then (used, lowered) else settle (reach used (S.toList missing))
+      keepIn used uts = [t | t <- uts, case t of TBind n _ _ _ -> S.member n used; _ -> True]
+      unitNative h unit
+        | pruneUnits = usedNative M.! h
+        | otherwise = nativeUnit ("unit." ++ h) (unitConsOf h) unit
       reportTurnsOf = reportTurns opts codegen diagnostic
       typedInput = prepareTypedInput linkedTgt
       typedLowering = reportTypedLowering linkedTgt
@@ -308,14 +403,14 @@ emitNative ei = do
                 (Linked.PreludeArtifact preludeHash)
                 (bindNames preludeE' `S.union` preludeCons)
                 preludeElided
-                (nativeUnit ("prelude." ++ preludeHash) preludeCons preludeChecked)
+                preludeNative
               | preludeEmitted
             ]
           ++ [ Linked.artifact
                  (Linked.DependencyArtifact h)
                  (bindNames uts `S.union` unitConsOf h)
                  (unitElided h)
-                 (nativeUnit ("unit." ++ h) (unitConsOf h) unit)
+                 (unitNative h unit)
                | (h, uts, unit) <- checkedUnits,
                  unitsEmitted
              ]
@@ -499,7 +594,7 @@ emitNative ei = do
             TBind n ps _ _ <- rootProgTops,
             S.member n rootNames
         ]
-      rawExports = [e {meArity = M.findWithDefault (meArity e) (meQual e) extFor} | e <- exports] ++ rootExports
+      rawExports = [e {meArity = M.findWithDefault (meArity e) (meQual e) extFor} | e <- exports, S.notMember (meQual e) prunedNames] ++ rootExports
       checkedTypes = M.fromList interfaces
       contractTops = stripPosTops tops
       contractFor n = [(as, r, pres) | TSig q (as, r) pres <- contractTops, q == n]
@@ -683,8 +778,56 @@ emitNative ei = do
   writeFile (out ++ ".units") (unlines (map fst (preludeOut ++ unitOuts)))
   writeFile (out ++ ".abirev") (show codegenRev)
   forM_ (preludeOut ++ unitOuts) $ \(p, note) -> putStrLn ("unit " ++ p ++ " (" ++ note ++ ")")
+  when pruneEligible $
+    putStrLn
+      ( "used definitions: "
+          ++ ( if reflective
+                 then "the image's module table is read by name (" ++ unwords (take 4 imageTableReaders) ++ "), so all " ++ show (S.size allUnitDefs)
+                 else show (S.size usedUnitNames) ++ " of " ++ show (S.size allUnitDefs)
+             )
+          ++ " imported unit definitions emitted"
+      )
   putStrLn ("wrote " ++ out ++ " (" ++ show (M.size rootProg) ++ " supercombinators, linearity OK)")
   when (not (null imageExports)) $
     putStrLn ("module table: " ++ show (length [e | e <- imageExports, meArity e >= 1]) ++ " remote-callable exports")
   putStrLn "assumed external symbols (the fpr_g_ HAL/runtime contract):"
   putStrLn ("  " ++ unwords (externals extFor rootProg))
+
+-- Every name spelled in a definition (variables, operators, constructors,
+-- fields, binders). A superset of its global references, which is all the
+-- used-definition reachability needs: extra names only keep extra code.
+topNames :: STop -> S.Set Name
+topNames t = case t of
+  TBind n ps gs b -> S.fromList (n : concatMap patN ps ++ concatMap guardN gs ++ exprN b)
+  _ -> S.empty
+  where
+    exprN e = case e of
+      SVar n -> [n]
+      SMark _ x -> exprN x
+      SInt _ -> []
+      SStrI segs -> concat [exprN x | SegExpr x <- segs]
+      SApp a b -> exprN a ++ exprN b
+      SLam ns b -> ns ++ exprN b
+      SBlock ss b -> concatMap stmtN ss ++ exprN b
+      SCase x alts -> exprN x ++ concat [patN p ++ exprN a | (p, a) <- alts]
+      SBin op a b -> op : exprN a ++ exprN b
+      SProj x ns -> exprN x ++ ns
+      SRec fs -> concat [f : exprN x | (f, x) <- fs]
+      SUpd x us -> exprN x ++ concat [fs ++ exprN y | (fs, y) <- us]
+      STup xs -> concatMap exprN xs
+      SList xs -> concatMap exprN xs
+    stmtN st = case st of
+      SBind n ns x -> n : ns ++ exprN x
+      SBindPat p x -> patN p ++ exprN x
+    guardN g = case g of
+      GBool x -> exprN x
+      GPat p x -> patN p ++ exprN x
+    patN p = case p of
+      PVar n -> [n]
+      PWild -> []
+      PInt _ -> []
+      PStr _ -> []
+      PCon n qs -> n : concatMap patN qs
+      PTup qs -> concatMap patN qs
+      PRec ns -> ns
+      PSig a b -> [a, b]
