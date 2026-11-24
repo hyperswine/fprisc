@@ -257,7 +257,8 @@ versionAt fn h
     -- way in, and results computed from those. A loop whose Ints only come
     -- and go through tagged memory (read a field, add, store) runs as fast
     -- on tagged words, and its copy would only cost code
-    gain = or
+    gain = pairGain || accumulates
+    pairGain = or
       [ cheap a && cheap b
       | b' <- regionBlocks, Instr _ op <- bInstrs b'
       , (a, b) <- case op of
@@ -265,6 +266,31 @@ versionAt fn h
           OCmpVal _ x y -> [(x, y)]
           OEqVal _ x y -> [(x, y)]
           _ -> [] ]
+
+    -- also worth a copy: an accumulator, a + - * whose result goes around
+    -- the loop into a raw header parameter with one cheap operand (that
+    -- parameter, a counter, an invariant). The other operand may be tested
+    -- on the way (a list element, a field): the running value stays raw
+    -- from one iteration to the next instead of being untagged, retagged
+    -- and tag-tested at every step. This is std List.fold's monomorphised
+    -- worker (`a + x * k`, `a + x`, `a * x` over list cells), which has no
+    -- operation with two cheap operands and ran tagged
+    -- (docs/2026-11-22-RAW-INTS.md, "Accumulators")
+    accumulates = or
+      [ cheap a || cheap c
+      | b' <- regionBlocks, Instr (Just (v, _)) (OArithVal o a c) <- bInstrs b'
+      , o `elem` [Add, Sub, Mul], raw v, raw a, raw c, S.member v carried ]
+    -- what reaches a raw header parameter around the loop, through the raw
+    -- parameters of the region's join blocks on the way
+    carried = grow S.empty [p | (p, _) <- bParams hBlock, raw p]
+      where
+        grow seen [] = seen
+        grow seen (x : xs)
+          | S.member x seen = grow seen xs
+          | otherwise = grow (S.insert x seen) (more x ++ xs)
+        more x = case M.lookup x paramBlock of
+          Just pb | inRegion pb, raw x -> [a | (src, a) <- M.findWithDefault [] x argsOf, inRegion src]
+          _ -> []
 
     cheapSet = grow (S.filter (\v -> raw v && seed v) rawSet)
       where
