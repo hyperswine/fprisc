@@ -36,9 +36,12 @@ import qualified Codegen.Target.A64 as A64
 import Codegen.Target.A64 (A64Config(..), ObjectFormat(..), HartAccess(..))
 import Control.Monad (unless, forM_)
 import Data.List (isInfixOf)
+import Data.Bits ((.&.))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import System.Directory (findExecutable)
+import System.Environment (lookupEnv)
+import Codegen.Dump (dumpFn)
 import Text.Megaparsec (parse, errorBundlePretty)
 
 check :: String -> Bool -> IO ()
@@ -230,6 +233,7 @@ main = do
   g8FusedBranches
   g9PhantomRegions
   g10Interval
+  hotspots
   hardening
   putStrLn "Opt regression: G1-G10 properties, CaseKnown/record/strcat/linear probes and dropPhantom exhaustive match PASS"
 
@@ -531,6 +535,43 @@ g10Interval = do
   expectInt "G10 bor x 1 != 0 is total" core "flag" [0] 1
   expectInt "G10 bor x 1 != 0 on negatives" core "flag" [-3] (-2)
   expectInt "G10 loop-invariant parameter alias" core "alias" [0, 5, 0] 10
+
+-- The zero-cost hot spots of 25 November (docs/2026-11-22-RAW-INTS.md,
+-- "Branches and conversions"): pair 26 evaluates both tests before
+-- branching, F64 loop 02 converted every element through the runtime.
+hotspots :: IO ()
+hotspots = do
+  let src = unlines
+        [ "boolpred i n acc = a = band i 255 < 100; b = band (i / 3) 255 < 100; if n == 0 then acc else boolpred (i - 1) (n - 1) (if a then (if b then acc + 1 else acc) else acc)."
+        , "floats acc n = if n == 0 then acc else floats (acc * 0.5 + F64.ofInt (band n 7)) (n - 1)."
+        ]
+      core = compile "hotspots" src (S.fromList ["boolpred", "floats"])
+      fast = simplified core
+      bp = opsOf fast "boolpred"
+      fl = opsOf fast "floats"
+      ofIntCall op = case op of OCall (Callee _ (Foreign "fpr_prim_fn_F64_x2eofInt") _ _) _ -> True; _ -> False
+  dump <- lookupEnv "OPTREG_DUMP"
+  forM_ dump $ \n -> maybe (pure ()) (putStrLn . dumpFn) (M.lookup n fast)
+  -- pair 26: the raw copy divides by the literal with no fit test (no test
+  -- point that the first comparison's live predicate would stop splitting)
+  -- and masks the quotient on raw words
+  check "pair 26: i / 3 is raw division with no fit test"
+    (hasOp (\op -> case op of OArithU Div _ _ -> True; _ -> False) bp
+     && not (hasOp (\op -> case op of OArithFits Div _ _ -> True; _ -> False) bp))
+  check "pair 26: both band are raw OBit in the copy"
+    (countOp (\op -> case op of OBit BAnd _ _ -> True; _ -> False) bp >= 2)
+  check "pair 26: the quotient's band is not a tagged OBitVal in the copy"
+    (countOp (\op -> case op of OBitVal {} -> True; _ -> False) bp <= 2)
+  let boolRef i n = toInteger (length [() | k <- [i - n + 1 .. i], (k .&. 255) < 100, ((k `div` 3) .&. 255) < 100])
+      maxI = 4611686018427387903
+  forM_ [(1000, 1000), (maxI + 10, 30), (negate maxI + 5, 12)] $ \(i, n) ->
+    check ("pair 26: boolpred " ++ show (i, n) ++ " is exact across the small range")
+      (E.ocResult (E.evalProgram fast "boolpred" [E.RInt i, E.RInt n, E.RInt 0]) == Right (E.RInt (boolRef i n)))
+  -- loop 02: F64.ofInt of a raw word is one conversion, not the runtime call
+  check "loop 02: F64.ofInt of the raw band is OFloatOfInt in the copy"
+    (hasOp (\op -> case op of OFloatOfInt _ -> True; _ -> False) fl)
+  check "loop 02: the runtime F64.ofInt stays only on the original loop"
+    (countOp ofIntCall fl <= 1)
 
 -- Hardening probes: trapping sibling record fields, linear Vector fields,
 -- and strcat evaluation order.
