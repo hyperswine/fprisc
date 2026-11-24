@@ -41,7 +41,7 @@ import Data.Maybe (isJust)
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 41 -- G8: fuse OArithFits/OIsInt/ONot/ORegionRoom/OI64Cmp/known-small OEqVal/OCmpVal branches + bare OArithU Mul (40: OVariantOf)
+x64SelectionRev = 42 -- OBitVal exact-Int band/bor/bxor (41: G8 fused branches + bare OArithU Mul)
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -465,7 +465,7 @@ fnFacts fn = Facts immediates only uses params consts tagSrc tagOnlyConsts lazyT
     -- needs the word, when every use of it is one of those operations
     consts = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk]
     tagSrc = M.fromList [(v, u) | blk <- fnBlocks fn, Instr (Just (v, TVal)) (OTag u) <- bInstrs blk]
-    smallAware o = case o of OArithVal {} -> True; OCmpVal {} -> True; OEqVal {} -> True; _ -> False
+    smallAware o = case o of OArithVal {} -> True; OBitVal {} -> True; OCmpVal {} -> True; OEqVal {} -> True; _ -> False
     tagOnlyConsts = S.fromList
       [ v | v <- M.keys consts, S.notMember v termSet,
             let users = [o | o <- ops, v `elem` opUses o],
@@ -976,7 +976,54 @@ selectInstr cfg facts (Instr d op) = case op of
     Mul -> emitI (rrr O.Multiply r (vreg a) (vreg b))
     _ -> arith False o r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
-  OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> O.And; BOr -> O.Or; BXor -> O.Xor) r (vreg a) (vreg b)))
+  OBit o a b -> def (\r -> emitI (rrr (bitX64 o) r (vreg a) (vreg b)))
+  -- exact Int band/bor/bxor: both small, or one small, or a tag test and a
+  -- T_BIGINT slow path through fpr_g_band/bor/bxor_call2
+  OBitVal o a b | Just ua <- rawOf a, Just ub <- rawOf b -> def $ \r -> do
+    xa <- rawV ua
+    xb <- rawV ub
+    t <- freshV False
+    emitI (rrr (bitX64 o) t xa xb)
+    emitI (tagw r t)
+  OBitVal o a b | isJust (rawOf a) || isJust (rawOf b) -> def $ \r -> do
+    slow <- freshL "bitslow"
+    done <- freshL "bitdone"
+    let other = if isJust (rawOf a) then b else a
+    emitI (testi (vreg other) 1)
+    emitI (bcond O.Equal slow)
+    xo <- freshV False
+    emitI (rri O.ShiftRightArithmeticImmediate xo (vreg other) 1)
+    let side v = maybe (pure xo) rawV (rawOf v)
+    sa <- side a
+    sb <- side b
+    t <- freshV False
+    emitI (rrr (bitX64 o) t sa sb)
+    emitI (tagw r t)
+    emitI (jump done)
+    emitL slow
+    ta <- taggedV a
+    tb <- taggedV b
+    exactCall ("fpr_g_" ++ bitName o ++ "_call2") [ta, tb] r
+    emitL done
+  OBitVal o a b -> def $ \r -> do
+    slow <- freshL "bitslow"
+    done <- freshL "bitdone"
+    both <- freshV False
+    bit <- freshV False
+    xa <- freshV False
+    yb <- freshV False
+    t <- freshV False
+    emitI (rrr O.And both (vreg a) (vreg b))
+    emitI (rri O.AndImmediate bit both 1)
+    emitI (cbz bit slow)
+    emitI (rri O.ShiftRightArithmeticImmediate xa (vreg a) 1)
+    emitI (rri O.ShiftRightArithmeticImmediate yb (vreg b) 1)
+    emitI (rrr (bitX64 o) t xa yb)
+    emitI (tagw r t)
+    emitI (jump done)
+    emitL slow
+    exactCall ("fpr_g_" ++ bitName o ++ "_call2") [vreg a, vreg b] r
+    emitL done
   -- I64 on the raw words: the machine's own wrapping instruction
   OI64Arith o a b -> def (\r -> emitI (rrr (case o of Add -> O.Add; Sub -> O.Subtract; _ -> O.Multiply) r (vreg a) (vreg b)))
   OI64Bit o a b -> def (\r -> emitI (rrr (case o of BAnd -> O.And; BOr -> O.Or; BXor -> O.Xor) r (vreg a) (vreg b)))
@@ -1207,6 +1254,7 @@ selectInstr cfg facts (Instr d op) = case op of
         else emitCall (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
       emitI (rri O.ShiftRightArithmeticImmediate r res 1)
     cmpSym = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
+    bitX64 = \case BAnd -> O.And; BOr -> O.Or; BXor -> O.Xor
     exactCall sym args res =
       if cfgFrames cfg && keepingEnabled cfg
         then emitKeepingCall (CodeSymbol sym) args res

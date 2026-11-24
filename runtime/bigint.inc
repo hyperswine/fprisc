@@ -508,3 +508,89 @@ static uint64_t bi_trunc_u64(V v) {
   uint64_t lo = b->limbs[0];
   return b->var ? (0ULL - lo) : lo;
 }
+
+/* Two's-complement infinite bitwise ops (v1.0: like Haskell Bits Integer).
+ * Sign-magnitude limbs are converted to two's complement with a sign limb,
+ * the word-wise op is applied with sign extension, and the result is
+ * converted back and normalised (small results demote to a tagged Int). */
+static uw bi_to_twos(uint64_t *dst, int neg, const uint64_t *limbs, uw n) {
+  if (!neg) {
+    for (uw i = 0; i < n; i++) dst[i] = limbs[i];
+    dst[n] = 0;
+    return n + 1u;
+  }
+  uint64_t carry = 1;
+  for (uw i = 0; i < n; i++) {
+    uint64_t inv = ~limbs[i];
+    uint64_t sum = inv + carry;
+    dst[i] = sum;
+    carry = (sum < inv) ? 1u : 0u;
+  }
+  dst[n] = ~(uint64_t)0 + carry;
+  return n + 1u;
+}
+
+static V bi_from_twos(const uint64_t *limbs, uw n) {
+  if (n == 0) return TAG(0);
+  int neg = (limbs[n - 1] >> 63) != 0;
+  if (!neg) {
+    while (n > 0 && limbs[n - 1] == 0) n--;
+    return bi_from_mag(0, limbs, n);
+  }
+  uint64_t stack[BI_STACK_LIMBS];
+  uint64_t *mag = n <= BI_STACK_LIMBS ? stack : (uint64_t *)fpr_alloc_raw((V)(n * sizeof(uint64_t)));
+  uint64_t carry = 1;
+  for (uw i = 0; i < n; i++) {
+    uint64_t inv = ~limbs[i];
+    uint64_t sum = inv + carry;
+    mag[i] = sum;
+    carry = (sum < inv) ? 1u : 0u;
+  }
+  while (n > 0 && mag[n - 1] == 0) n--;
+  V res = bi_from_mag(1, mag, n);
+  if (mag != stack) fpr_free_raw((V)mag);
+  return res;
+}
+
+static V bi_bit(V av, V bv, int op) {
+  if (ISINT(av) && ISINT(bv)) {
+    sw x = UNTAG(av), y = UNTAG(bv), r;
+    if (op == 0) r = x & y;
+    else if (op == 1) r = x | y;
+    else r = x ^ y;
+    return TAG(r);
+  }
+  int aneg, bneg;
+  const uint64_t *a, *b;
+  uw an, bn;
+  uint64_t atmp, btmp;
+  bi_view(av, &aneg, &a, &an, &atmp);
+  bi_view(bv, &bneg, &b, &bn, &btmp);
+  uw na = an + 1u, nb = bn + 1u;
+  uw n = na > nb ? na : nb;
+  uint64_t stack[BI_STACK_LIMBS * 3u];
+  uw need = n * 3u;
+  uint64_t *buf = need <= (BI_STACK_LIMBS * 3u) ? stack : (uint64_t *)fpr_alloc_raw((V)(need * sizeof(uint64_t)));
+  uint64_t *ta = buf;
+  uint64_t *tb = buf + n;
+  uint64_t *tr = buf + 2u * n;
+  uw ga = bi_to_twos(ta, aneg, a, an);
+  uw gb = bi_to_twos(tb, bneg, b, bn);
+  uint64_t asign = aneg ? ~(uint64_t)0 : 0;
+  uint64_t bsign = bneg ? ~(uint64_t)0 : 0;
+  for (uw i = 0; i < n; i++) {
+    uint64_t xa = i < ga ? ta[i] : asign;
+    uint64_t yb = i < gb ? tb[i] : bsign;
+    if (op == 0) tr[i] = xa & yb;
+    else if (op == 1) tr[i] = xa | yb;
+    else tr[i] = xa ^ yb;
+  }
+  V res = bi_from_twos(tr, n);
+  if (buf != stack) fpr_free_raw((V)buf);
+  return res;
+}
+
+V fpr_int_band(V a, V b) { return bi_bit(a, b, 0); }
+V fpr_int_bor(V a, V b) { return bi_bit(a, b, 1); }
+V fpr_int_bxor(V a, V b) { return bi_bit(a, b, 2); }
+

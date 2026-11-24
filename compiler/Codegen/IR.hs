@@ -219,6 +219,7 @@ data Op
   | OArithFits ArithOp VId VId -- TInt TInt -> TPred: the exact result of a op b on two small Ints is a small Int (Div: and b /= 0); the raw-Int loop copies (Codegen.RawInts) branch on it before OArithU, and Codegen.Interval discharges it from the operands' bounds
   | OArithU ArithOp VId VId -- TInt TInt -> TInt, proven not to trap: no overflow check (Add/Sub: a difference-bound proof, Codegen.Interval; Div by a literal other than 0 and -1, and the Mul/Sub of a remainder by it: Simplify.foldDivisors), no zero test
   | OBit BitOp VId VId -- TInt TInt -> TInt: and, or, xor of the untagged values
+  | OBitVal BitOp VId VId -- TVal TVal -> TVal: exact Int band/bor/bxor (fast tagged path; slow path is bits.c, including T_BIGINT)
   | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
   | OCmp CmpOp VId VId -- TInt TInt -> TPred
   | OCmpVal CmpOp VId VId -- TVal TVal -> TPred: exact Int < > <= >= (fast tagged path, slow path compares T_BIGINT)
@@ -352,6 +353,7 @@ opEffect = \case
   OArithU _ _ _ -> Pure -- proven: no zero divisor, no overflow
   OArithFits _ _ _ -> Pure
   OBit _ _ _ -> Pure
+  OBitVal _ _ _ -> RuntimeCall -- slow path may allocate a T_BIGINT
   OShift _ _ _ -> MayTrap
   OCmp _ _ _ -> Pure
   OCmpVal _ _ _ -> RuntimeCall -- slow path compares T_BIGINT in the runtime
@@ -422,6 +424,7 @@ opUses = \case
   OArithU _ a b -> [a, b]
   OArithFits _ a b -> [a, b]
   OBit _ a b -> [a, b]
+  OBitVal _ a b -> [a, b]
   OShift _ a b -> [a, b]
   OCmp _ a b -> [a, b]
   OCmpVal _ a b -> [a, b]
@@ -501,6 +504,7 @@ mapOpUses f = \case
   OArithU o a b -> OArithU o (f a) (f b)
   OArithFits o a b -> OArithFits o (f a) (f b)
   OBit o a b -> OBit o (f a) (f b)
+  OBitVal o a b -> OBitVal o (f a) (f b)
   OShift o a b -> OShift o (f a) (f b)
   OCmp o a b -> OCmp o (f a) (f b)
   OCmpVal o a b -> OCmpVal o (f a) (f b)

@@ -32,7 +32,7 @@ import Data.Maybe (isJust)
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 34 -- OVariantOf multi-arm dispatch hoisting (33: known-small exact-Int fast paths for OArithVal/OCmpVal/OEqVal)
+rvSelectionRev = 35 -- OBitVal exact-Int band/bor/bxor (34: OVariantOf multi-arm dispatch)
 
 -- Native startup, shared by every RVV unit. The runtime calls the surviving
 -- COMDAT definition on each hart; ordinary builds retain its weak no-op.
@@ -167,6 +167,9 @@ arith :: Integer -> Bool -> ArithOp -> VReg -> VReg -> VReg -> S ()
 cmpSym :: CmpOp -> String
 cmpSym = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
 
+bitRV :: BitOp -> R.Opcode
+bitRV = \case BAnd -> R.And; BOr -> R.Or; BXor -> R.Xor
+
 arithVal :: Integer -> ArithOp -> VReg -> VReg -> VReg -> S ()
 arithVal w op d a b = do
   slow <- freshLabel; done <- freshLabel
@@ -272,7 +275,7 @@ select cfg fn = do
     termSet = S.fromList (concat [termUses (bTerm blk) | blk <- fnBlocks fn])
     consts = M.fromList [(v, n) | blk <- fnBlocks fn, Instr (Just (v, _)) (OConstInt n) <- bInstrs blk]
     tagSrc = M.fromList [(v, u) | blk <- fnBlocks fn, Instr (Just (v, TVal)) (OTag u) <- bInstrs blk]
-    smallAware o = case o of OArithVal {} -> True; OCmpVal {} -> True; OEqVal {} -> True; _ -> False
+    smallAware o = case o of OArithVal {} -> True; OBitVal {} -> True; OCmpVal {} -> True; OEqVal {} -> True; _ -> False
     tagOnlyConsts = S.fromList
       [ v | v <- M.keys consts, S.notMember v termSet,
             let users = [o | o <- allOps, v `elem` opUses o],
@@ -505,7 +508,52 @@ select cfg fn = do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
         call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [x,y] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 1
-      OBit op a b -> rr (case op of BAnd -> R.And; BOr -> R.Or; BXor -> R.Xor) d (vreg a) (vreg b)
+      OBit op a b -> rr (bitRV op) d (vreg a) (vreg b)
+      -- exact Int band/bor/bxor: both small, or one small, or a tag test and a
+      -- T_BIGINT slow path through fpr_g_band/bor/bxor_call2
+      OBitVal op a b | Just ua <- rawOf a, Just ub <- rawOf b -> do
+        xa <- rawV ua; xb <- rawV ub
+        t <- fresh; sh <- fresh
+        rr (bitRV op) t xa xb
+        ri R.ShiftLeftImmediate sh t 1
+        ri R.OrImmediate d sh 1
+      OBitVal op a b | isJust (rawOf a) || isJust (rawOf b) -> do
+        slow <- freshLabel; done <- freshLabel
+        let other = if isJust (rawOf a) then b else a
+        bit <- fresh; badTag <- fresh
+        ri R.AndImmediate bit (vreg other) 1
+        ri R.XorImmediate badTag bit 1
+        branch badTag slow
+        xo <- fresh
+        ri R.ShiftRightArithmeticImmediate xo (vreg other) 1
+        let side v = maybe (pure xo) rawV (rawOf v)
+        sa <- side a; sb <- side b
+        t <- fresh; sh <- fresh
+        rr (bitRV op) t sa sb
+        ri R.ShiftLeftImmediate sh t 1
+        ri R.OrImmediate d sh 1
+        jump done
+        mark slow
+        ta <- taggedV a; tb <- taggedV b
+        call (CodeSymbol ("fpr_g_" ++ bitName op ++ "_call2")) Calling.RuntimeCall [ta, tb] (Just d) False
+        mark done
+      OBitVal op a b -> do
+        slow <- freshLabel; done <- freshLabel
+        both <- fresh; bit <- fresh; badTag <- fresh
+        xa <- fresh; yb <- fresh; t <- fresh; sh <- fresh
+        rr R.And both (vreg a) (vreg b)
+        ri R.AndImmediate bit both 1
+        ri R.XorImmediate badTag bit 1
+        branch badTag slow
+        ri R.ShiftRightArithmeticImmediate xa (vreg a) 1
+        ri R.ShiftRightArithmeticImmediate yb (vreg b) 1
+        rr (bitRV op) t xa yb
+        ri R.ShiftLeftImmediate sh t 1
+        ri R.OrImmediate d sh 1
+        jump done
+        mark slow
+        call (CodeSymbol ("fpr_g_" ++ bitName op ++ "_call2")) Calling.RuntimeCall [vreg a, vreg b] (Just d) False
+        mark done
       OI64Arith op a b -> rr (case op of Add -> R.Add; Sub -> R.Subtract; _ -> R.Multiply) d (vreg a) (vreg b)
       OI64Bit op a b -> rr (case op of BAnd -> R.And; BOr -> R.Or; BXor -> R.Xor) d (vreg a) (vreg b)
       OI64Cmp op a b -> rr (R.Compare op) d (vreg a) (vreg b)

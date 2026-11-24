@@ -35,6 +35,36 @@ unchecked fn=[() | OArithU {} <- operations fn]
 fits fn=[o | OArithFits o _ _ <- operations fn]
 condbrs fn=[() | b<-fnBlocks fn,TCondBr {}<-[bTerm b]]
 maxI=4611686018427387903 :: Integer
+minI=negate (maxI+1)
+
+-- Hand IR used to check floored division (D8) on OArithU / OKernelArith and
+-- exact band/bor/bxor on OBitVal. foldDivisors turns a Div by a literal
+-- other than 0 and -1 into OArithU; the evaluator must then agree with
+-- native floorDiv, including on negative operands.
+progOf fn=M.singleton (fnName fn) fn
+evalFn fn=evalProgram (progOf fn) (fnName fn)
+divByLitFn name k=Fn name ["x"] TInt (BId 0)
+  [Block (BId 0) [(VId 0,TVal)]
+     [Instr (Just (VId 1,TInt)) (OUntag (VId 0)),
+      Instr (Just (VId 2,TInt)) (OConstInt k),
+      Instr (Just (VId 3,TInt)) (OArith Div (VId 1) (VId 2))]
+     (TRet (VId 3))]
+arithUDivFn=Fn "udiv" ["x","y"] TInt (BId 0)
+  [Block (BId 0) [(VId 0,TVal),(VId 1,TVal)]
+     [Instr (Just (VId 2,TInt)) (OUntag (VId 0)),
+      Instr (Just (VId 3,TInt)) (OUntag (VId 1)),
+      Instr (Just (VId 4,TInt)) (OArithU Div (VId 2) (VId 3))]
+     (TRet (VId 4))]
+kernelDivFn=Fn "kdiv" ["x","y"] TInt (BId 0)
+  [Block (BId 0) [(VId 0,TVal),(VId 1,TVal)]
+     [Instr (Just (VId 2,TInt)) (OUntag (VId 0)),
+      Instr (Just (VId 3,TInt)) (OUntag (VId 1)),
+      Instr (Just (VId 4,TInt)) (OKernelArith Div (VId 2) (VId 3))]
+     (TRet (VId 4))]
+bitValFn name o=Fn name ["x","y"] TVal (BId 0)
+  [Block (BId 0) [(VId 0,TVal),(VId 1,TVal)]
+     [Instr (Just (VId 2,TVal)) (OBitVal o (VId 0) (VId 1))]
+     (TRet (VId 2))]
 
 -- Both outcomes enter b1. Having one predecessor block does not establish
 -- either i < n or i >= n there. In particular i=maxInt must still trap.
@@ -231,6 +261,39 @@ main=do
     (null (unchecked (vectorJoin W32 "$vec.get.int")))
   check "vectorJoin: a call that is not a vector entry proves nothing about i"
     (null (unchecked (vectorJoin W64 "$vec.len")) && null (unchecked (vectorJoin W64 "Str.get")))
-  putStrLn "Interval discharge: guarded-counter proofs, step chains, join intersection, loop induction, producer bounds, the path ladder, the vector length cap, cross-block sharing and evaluator differential PASS"
+  -- Floored division on proven-safe OArithU, OKernelArith, and OArithVal-style
+  -- negatives; minInt / -1 overflows the small range (exact Int promotes in
+  -- the runtime, but these untagged forms trap so a wrong proof is visible).
+  let (halfSimpl,_)=either error id (simplifyFnWith on M.empty (divByLitFn "half" 2))
+      floorCases=[((-7),2,(-4)),((-7),(-2),3),(7,(-2),(-4)),((-8),2,(-4)),(7,2,3),(0,2,0)]
+      p100=2^(100::Int)
+  check "foldDivisors discharges / 2 to OArithU Div"
+    (verifyFn M.empty halfSimpl==Right () && length [() | OArithU Div _ _<-operations halfSimpl]==1 && null [() | OArith Div _ _<-operations halfSimpl])
+  forM_ floorCases $ \(a,b,q) -> do
+    check ("OArithU Div "++show a++"/"++show b++" is floored")
+      (ocResult (evalFn arithUDivFn [RInt a,RInt b])==Right (RInt q))
+    check ("OKernelArith Div "++show a++"/"++show b++" is floored")
+      (ocResult (evalFn kernelDivFn [RInt a,RInt b])==Right (RInt q))
+    check ("discharged / 2 of "++show a++" is floored")
+      (b==2 && ocResult (evalFn halfSimpl [RInt a])==Right (RInt q) || b/=2)
+  check "OArithU Div by zero still traps"
+    (ocResult (evalFn arithUDivFn [RInt 1,RInt 0])==Left (Trap "division by zero"))
+  check "OArithU minInt / -1 is the exact quotient (unbounded, like Add overflow)"
+    (ocResult (evalFn arithUDivFn [RInt minI,RInt (-1)])==Right (RInt (maxI+1)))
+  check "OKernelArith minInt / -1 traps as a kernel overflow"
+    (case ocResult (evalFn kernelDivFn [RInt minI,RInt (-1)]) of Left (Trap msg) -> prefix "Int overflow in a vector kernel" msg; _ -> False)
+  -- OBitVal: two's-complement infinite, including values outside the small range
+  let bandP=bitValFn "band" BAnd
+      borP=bitValFn "bor" BOr
+      bxorP=bitValFn "bxor" BXor
+  check "OBitVal band on small negatives" (ocResult (evalFn bandP [RInt (-7),RInt 3])==Right (RInt 1))
+  check "OBitVal bor on small negatives" (ocResult (evalFn borP [RInt (-7),RInt 3])==Right (RInt (-5)))
+  check "OBitVal bxor on small negatives" (ocResult (evalFn bxorP [RInt (-7),RInt 3])==Right (RInt (-6)))
+  check "OBitVal band mixed small and bigint" (ocResult (evalFn bandP [RInt (p100+7),RInt 15])==Right (RInt 7))
+  check "OBitVal band demotes to 0" (ocResult (evalFn bandP [RInt p100,RInt 255])==Right (RInt 0))
+  check "OBitVal bxor of a bignum with itself demotes to 0" (ocResult (evalFn bxorP [RInt p100,RInt p100])==Right (RInt 0))
+  check "OBitVal bor keeps a bignum" (ocResult (evalFn borP [RInt p100,RInt 7])==Right (RInt (p100+7)))
+  check "OBitVal band of -1 and a bignum is the bignum" (ocResult (evalFn bandP [RInt (-1),RInt p100])==Right (RInt p100))
+  putStrLn "Interval discharge: guarded-counter proofs, step chains, join intersection, loop induction, producer bounds, the path ladder, the vector length cap, cross-block sharing, evaluator differential, floored OArithU/OKernelArith division and OBitVal PASS"
   where prefix p s=take (length p) s==p
         sansStack o=o {ocEvents=[e | e<-ocEvents o, case e of EvStackCheck _->False; _->True]}

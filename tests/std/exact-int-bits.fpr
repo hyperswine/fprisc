@@ -1,0 +1,27 @@
+# Floored Int division on negatives and minInt / -1, and exact
+# two's-complement-infinite band/bor/bxor including T_BIGINT (demotion,
+# mixed small + bignum, and a fused List.map pipeline).
+unsafe base.
+List = use "std/list".
+
+pow : unsafe Int -> Int -> Int .
+pow _ 0 = 1.
+pow b n = b * pow b (n - 1).
+
+main =
+  mx = 2 ^ 62 - 1;
+  mn = 0 - (2 ^ 62);
+  big1 = mx + 1;
+  p100 = pow 2 100;
+  _ = print "div {(0 - 7) / 2} {(0 - 7) / (0 - 2)} {7 / (0 - 2)} {(0 - 8) / 2}";
+  _ = print "mod {(0 - 7) % 2} {(0 - 7) % (0 - 2)} {7 % (0 - 2)}";
+  _ = print "minDiv {mn / (0 - 1)} {mn % (0 - 1)}";
+  _ = print "bandSmall {band (0 - 7) 3} {band (0 - 1) 5} {band 12 10}";
+  _ = print "borSmall {bor (0 - 7) 3} {bor (0 - 1) 5}";
+  _ = print "bxorSmall {bxor (0 - 7) 3} {bxor (0 - 1) 5}";
+  _ = print "bandBig {band p100 255} {band (p100 + 7) 15} {band (0 - 1) p100} {band big1 (big1 - 1)}";
+  _ = print "borBig {bor p100 7} {bor (0 - p100) 1}";
+  _ = print "bxorBig {bxor p100 p100} {bxor p100 p100 == 0} {bxor p100 7}";
+  xs = p100 :: (0 - 3) :: 15 :: big1 :: Nil;
+  _ = print "fused {xs |> List.map (fn x -> band x 15)}";
+  print "ok".

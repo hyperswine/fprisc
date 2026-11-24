@@ -1,11 +1,13 @@
 /* bits.c — bitwise primitives on Int.
  *
- * Mechanism only: each is one or two machine instructions.  Codegen inlines
- * band/bor/bxor and the shifts behind a range guard (Codegen.hs shiftOk);
- * these C bodies are what a closure, a generic call and the guard's slow
- * path reach, so the range check that makes the inline code safe is here
- * too: an index or shift outside 0..XLEN-1 is a named panic, never C's
- * undefined behaviour.  The Array Bit tier (bitsLE/bitsBE/bitlen/toInt)
+ * Mechanism only: each is one or two machine instructions on a small Int.
+ * Codegen inlines band/bor/bxor on proven-small TInt operands and uses a
+ * tagged fast path (OBitVal) otherwise, whose slow path is these C bodies
+ * (also what a closure or a generic call reaches). band/bor/bxor implement
+ * exact two's-complement-infinite ops, including T_BIGINT, via fpr_int_band
+ * / bor / bxor. Shifts still require a small Int value and a count in
+ * 0..XLEN-1: an index or shift outside that range is a named panic, never
+ * C's undefined behaviour.  The Array Bit tier (bitsLE/bitsBE/bitlen/toInt)
  * had no users and is gone.
  */
 #include "fpr.h"
@@ -16,6 +18,9 @@
 #endif
 
 static uw bit_index(V i, const char *who) {
+  /* A T_BIGINT is outside the small Int range, hence outside 0..XLEN-1.
+   * Reuse the existing range trap rather than inventing a new failure. */
+  if (!ISINT(i)) fpr_trap(who);
   sw k = UNTAG(i);
   if (k < 0 || (uw)k >= sizeof(uw) * 8) fpr_trap(who);
   return (uw)k;
@@ -37,21 +42,24 @@ static V h_bitclear(V b, V i) {
   return TAG((sw)((uw)UNTAG(b) & ~((uw)1 << k)));
 }
 static V h_bitmask(V w, V o) {
+  if (!ISINT(w) || !ISINT(o)) fpr_trap("BITMASK: bad width/offset");
   sw width = UNTAG(w), off = UNTAG(o);
   if (width < 0 || width > (sw)(sizeof(uw) * 8 - 1) || off < 0 || (uw)off >= sizeof(uw) * 8) fpr_trap("BITMASK: bad width/offset");
   return TAG((sw)(((width == (sw)(sizeof(uw) * 8 - 1) ? ~(uw)0 >> 1 : ((uw)1 << width) - 1)) << off));
 }
 static V h_shiftl(V v, V k) {
   uw n = bit_index(k, "BITSHIFTL: shift must be 0.." BIT_LIMIT);
+  if (!ISINT(v)) fpr_cpanic("BITSHIFTL: not an Int");
   return TAG((sw)((uw)UNTAG(v) << n));
 }
 static V h_shiftr(V v, V k) {
   uw n = bit_index(k, "BITSHIFTR: shift must be 0.." BIT_LIMIT);
+  if (!ISINT(v)) fpr_cpanic("BITSHIFTR: not an Int");
   return TAG((sw)((uw)UNTAG(v) >> n));
 }
-static V h_band(V a, V b) { return TAG(UNTAG(a) & UNTAG(b)); }
-static V h_bor(V a, V b) { return TAG(UNTAG(a) | UNTAG(b)); }
-static V h_bxor(V a, V b) { return TAG(UNTAG(a) ^ UNTAG(b)); }
+static V h_band(V a, V b) { return fpr_int_band(a, b); }
+static V h_bor(V a, V b) { return fpr_int_bor(a, b); }
+static V h_bxor(V a, V b) { return fpr_int_bxor(a, b); }
 
 FPR_FN(fpr_g_BITTEST, h_bittest, 2);
 FPR_FN(fpr_g_BITSET, h_bitset, 2);
