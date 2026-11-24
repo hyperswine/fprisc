@@ -6,7 +6,7 @@
 #   fpr run examples/report.fpr <directory> [report.json]
 profile base.
 
-Dir = use "std/dir".
+Dir = use "std/file".
 File = use "std/file".
 Path = use "std/path".
 GitRevision = use "lib/gitrevision".

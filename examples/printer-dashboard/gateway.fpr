@@ -1,6 +1,6 @@
 # Public HTTP gateway in FP-RISC. Private Live/camera services are actors in
 # the same process. Checked byte relays preserve protocols and recheck sessions.
-Auth = use "std/sessionauth".
+Auth = use "sessionauth".
 PT = use "printertelemetry".
 A = use "std/actor".
 T = use "std/transport".

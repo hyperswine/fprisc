@@ -3,7 +3,7 @@ unsafe base.
 G = use "examples/printer-dashboard/gateway".
 A = use "../std/actor".
 L = use "../std/list".
-Auth = use "../std/sessionauth".
+Auth = use "../examples/printer-dashboard/sessionauth".
 J = use "../std/json".
 idle me = _ = receive me; Unit.
 main =

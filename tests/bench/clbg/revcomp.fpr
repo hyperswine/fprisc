@@ -1,7 +1,7 @@
 # revcomp (SPEC.md): reverse complement of each fasta sequence, 60 characters a line
 String = use "std/string".
 List = use "std/list".
-Bytes = use "std/bytes".
+Bytes = use "std/binary".
 
 # complement by character code: a 128-byte table, upper and lower case
 table : String .

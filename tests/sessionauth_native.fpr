@@ -1,6 +1,6 @@
 T = use "../std/transport".
 unsafe base.
-Auth = use "../std/sessionauth".
+Auth = use "../examples/printer-dashboard/sessionauth".
 Crypto = use "../std/crypto".
 E = use "../std/encoding".
 P = use "../std/program".

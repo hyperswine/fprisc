@@ -1,7 +1,7 @@
 # Same report, CLI and failure behavior as ../report.fpr.
 profile base.
 
-Dir = use "std/dir".
+Dir = use "std/file".
 File = use "std/file".
 Path = use "std/path".
 GitRevision = use "../lib/gitrevision".

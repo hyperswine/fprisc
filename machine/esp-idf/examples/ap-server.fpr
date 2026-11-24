@@ -14,7 +14,6 @@
 # open http://192.168.4.1/ (or: curl http://192.168.4.1/).
 unsafe base.
 Esp = use "std/esp".
-Wifi = use "std/wifi".
 Http = use "std/http".
 TCP = use "std/tcp".
 ST = use "std/stream".
@@ -56,7 +55,7 @@ selftest u =
   check (S.contains "Hello from FP-RISC" text) "self-test: the page did not come back".
 
 watch t0 = _ = Sys.sleepUs 15000000;
-  ss = need (Wifi.stations Unit);
+  ss = need (Esp.wifiStations Unit);
   _ = print "[{secs t0} s] {List.length ss} station(s) joined";
   _ = List.each (fn s -> print "  {s.mac} at {s.rssi} dBm") ss;
   watch t0.
@@ -64,13 +63,13 @@ watch t0 = _ = Sys.sleepUs 15000000;
 main =
   me = myself 0;
   t0 = Esp.ms Unit;
-  _ = check (refused (Wifi.startAp "fpr-p4-test" "short")) "a 5-character password was not refused";
-  _ = check (refused (Wifi.startAp (S.repeat 33 "x") "fpr-risc-long-enough")) "a 33-byte SSID was not refused";
-  _ = check (refused (Wifi.startAp "fpr-p4-test" (S.repeat 64 "g"))) "a 64-character key that is not hex was not refused";
-  _ = (case Wifi.startAp "fpr-p4-test" "short" of Err why -> print "  refused: {why}" | Ok _ -> Unit);
+  _ = check (refused (Esp.wifiStartAp "fpr-p4-test" "short")) "a 5-character password was not refused";
+  _ = check (refused (Esp.wifiStartAp (S.repeat 33 "x") "fpr-risc-long-enough")) "a 33-byte SSID was not refused";
+  _ = check (refused (Esp.wifiStartAp "fpr-p4-test" (S.repeat 64 "g"))) "a 64-character key that is not hex was not refused";
+  _ = (case Esp.wifiStartAp "fpr-p4-test" "short" of Err why -> print "  refused: {why}" | Ok _ -> Unit);
   _ = print "password rule: short password, 33-byte SSID and non-hex key refused";
   pass = "fpr-risc-{Esp.random Unit % 1000000}";
-  ap = need (Wifi.startAp "fpr-p4-test" pass);
+  ap = need (Esp.wifiStartAp "fpr-p4-test" pass);
   _ = print "  access point {ap.ssid} on channel {ap.channel}, {ap.auth}, at {ap.ip}";
   l = need (TCP.listen "" 80);
   poll = PL.start Unit;

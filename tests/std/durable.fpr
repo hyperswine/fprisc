@@ -7,7 +7,7 @@ KV = use "std/kvlog".
 Program = use "std/program".
 List = use "std/list".
 S = use "std/string".
-Dir = use "std/dir".
+Dir = use "std/file".
 File = use "std/file".
 Ord = use "std/order".
 

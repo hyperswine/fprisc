@@ -1,6 +1,6 @@
 unsafe base.
 File = use "std/file".
-Dir = use "std/dir".
+Dir = use "std/file".
 Path = use "std/path".
 Proc = use "std/proc".
 Program = use "std/program".

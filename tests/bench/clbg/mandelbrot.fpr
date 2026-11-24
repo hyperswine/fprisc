@@ -1,7 +1,7 @@
 # mandelbrot (SPEC.md): a binary PBM of the Mandelbrot set
 String = use "std/string".
 List = use "std/list".
-Bytes = use "std/bytes".
+Bytes = use "std/binary".
 OS = use "std/os".
 
 inSet : (k : Int | measure k) -> F64 -> F64 -> F64 -> F64 -> F64 -> F64 -> Bool .

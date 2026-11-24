@@ -59,7 +59,6 @@ G = use "std/view".
 UI = use "std/ui".
 Appearance = use "lib/appearance".
 LJ = use "std/livejs".
-VC = use "std/viewcache".
 List = use "std/list".
 Pagination = use "lib/pagination".
 S = use "std/string".
@@ -715,11 +714,11 @@ view keep sid v old = case old of (cardsOld, rs) ->
     True -> (G.renderStyled (root v [loginView v]), old)
   | False ->
       t0 = Sys.timeUs Unit;
-      (case VC.many (fn it -> "{it.id}") itemCard v.items (VC.begin "inventory-card-v1" verify cardsOld) of (cards, cc) ->
+      (case G.cacheMany (fn it -> "{it.id}") itemCard v.items (G.cacheBegin "inventory-card-v1" verify cardsOld) of (cards, cc) ->
         out = G.renderStyled (root v (signedIn v cards rs));
-        kept = VC.retain keep cc;
-        (h, mi, n) = VC.stats cc;
-        (out, (kept, { st = note rs.st (Sys.timeUs Unit - t0), hits = rs.hits + h, misses = rs.misses + mi, kept = VC.size kept })))).
+        kept = G.cacheRetain keep cc;
+        (h, mi, n) = G.cacheStats cc;
+        (out, (kept, { st = note rs.st (Sys.timeUs Unit - t0), hits = rs.hits + h, misses = rs.misses + mi, kept = G.cacheSize kept })))).
 verify = Program.envOr "0" "INV_VIEW_VERIFY" == "1".
 
 # the household's buttons: pills a thumb can hit; chips are the small ones
@@ -1053,5 +1052,5 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6720), (
             o = openLog store;
             _ = Live.serveProjectedBody UI.body cfg { init = boot o store, update = update o.journal, subs = subs, fields = Nil, codec = codec,
                                           project = project size keep, same = (fn a b -> a == b),
-                                          view = view keep, cache = (VC.empty Unit, noRender), css = cssAll };
+                                          view = view keep, cache = (G.cacheEmpty Unit, noRender), css = cssAll };
             0)).

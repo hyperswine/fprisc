@@ -33,7 +33,6 @@ Result = use "std/result".
 Clock = use "std/clock".
 Order = use "std/order".
 G = use "std/view".
-VC = use "std/viewcache".
 Store = use "std/store".
 UI = use "std/ui".
 LJ = use "std/livejs".
@@ -278,15 +277,15 @@ renderCard input = entryCard input.editing input.entry.
 cachedView store verify sid v old = case old of (cardsOld, sectionsOld) ->
   d = load store v;
   inputs = List.map (fn e -> {entry = e, editing = v.editing == e.id}) d.rows;
-  (case VC.many (fn input -> str input.entry.id) renderCard inputs (VC.begin "logbook-card-v1" verify cardsOld) of (cards, next) ->
-    (case VC.many sectionKey renderSection (sectionsOf v d) (VC.begin "logbook-section-v1" verify sectionsOld) of (secs, snext) ->
+  (case G.cacheMany (fn input -> str input.entry.id) renderCard inputs (G.cacheBegin "logbook-card-v1" verify cardsOld) of (cards, next) ->
+    (case G.cacheMany sectionKey renderSection (sectionsOf v d) (G.cacheBegin "logbook-section-v1" verify sectionsOld) of (secs, snext) ->
       rendered = G.renderStyled (pageOf secs (listNode v.q d.count cards));
       _ = (if verify and rendered != G.renderStyled (view sid v d) then error "logbook: cached view differs from fresh rendering" else Unit);
-      (rendered, (VC.finish next, VC.finish snext)))).
+      (rendered, (G.cacheFinish next, G.cacheFinish snext)))).
 cachedAppOf store verify =
   { init = init, update = updateWith store, subs = subs, fields = fields, codec = codec,
     project = project, same = (fn a b -> a == b),
-    view = cachedView store verify, cache = (VC.empty Unit, VC.empty Unit), css = css }.
+    view = cachedView store verify, cache = (G.cacheEmpty Unit, G.cacheEmpty Unit), css = css }.
 
 # A log written before the store -- entries as kvlog records (Live.each) or as
 # one list -- moves in once, the first time the store opens empty.

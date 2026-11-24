@@ -2,7 +2,7 @@
 T = use "std/transport".
 unsafe base.
 Gateway = use "printer-dashboard/gateway".
-Auth = use "std/sessionauth".
+Auth = use "printer-dashboard/sessionauth".
 AuthService = use "printer-dashboard/authservice".
 Registry = use "printer-dashboard/registry".
 Camera = use "printer-dashboard/cameraservice".

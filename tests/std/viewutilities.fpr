@@ -1,6 +1,5 @@
 unsafe base.
 G = use "std/view".
-C = use "std/viewcache".
 P = use "std/program".
 E = use "std/encoding".
 check label yes = if yes then Unit else error "viewutilities: {label}".
@@ -52,7 +51,7 @@ main = case P.args Unit of
       _ = check "wide" (has css "@media (min-width:761px)\{\n.{name 2 "width:240px"}\{width:240px}");
       _ = check "state precedence" (strIndexOf ":disabled\{color:rgb(0,100,0)}" css > strIndexOf ":focus-visible\{color:rgb(0,0,200)}" css and strIndexOf ":focus-visible\{color:rgb(0,0,200)}" css > strIndexOf ":hover\{color:rgb(200,0,0)}" css);
       _ = check "no unused rule" (not (has css (name 0 "height:42px")));
-      cached = C.fragment (C.output tree);
+      cached = G.cacheFragment (G.cacheOutput tree);
       _ = check "cached fragment retains styling" (G.render cached == G.render tree and G.cssFor cached == css);
       _ = check "styled rendering works through cached fragments" (G.renderStyled cached == G.renderStyled tree);
       _ = check "styled rendering carries CSS" (case G.renderStyled tree of (first :: _, _) -> has first "<style data-lv-local-css" and has first "width:220px" | _ -> False);

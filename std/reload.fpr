@@ -58,3 +58,9 @@ parseCatalog = Catalog.parse.
 catalogEvent = Catalog.event.
 catalogImage = Catalog.image.
 catalogIdentity = Catalog.identity.
+
+# ---- Trusted POSIX shared modules (formerly std/native.fpr) --------------------
+Native.attach : String -> Result String String .
+nativeAttach path = Native.attach path.
+nativeLoadAt baseline path = attachAt baseline Native.attach path.
+nativeLoadVersionAt baseline from to path = attachVersionAt baseline from to Native.attach path.

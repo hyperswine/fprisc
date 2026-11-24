@@ -1,7 +1,7 @@
 # Printer-specific persistent sessions. The generic Ed25519 challenge policy
 # stays in std/sessionauth; only token digests and absolute expiries reach disk.
 unsafe base.
-Auth = use "std/sessionauth".
+Auth = use "sessionauth".
 A = use "std/actor".
 C = use "std/clock".
 D = use "std/digest".

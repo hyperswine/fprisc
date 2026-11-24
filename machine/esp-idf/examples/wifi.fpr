@@ -6,7 +6,6 @@
 #   4. who has joined, sampled for 60 s
 unsafe base.
 Esp = use "std/esp".
-Wifi = use "std/wifi".
 List = use "std/list".
 
 T = Type (Tick Int).
@@ -19,7 +18,7 @@ need r = case r of Ok x -> x | Err why -> error why.
 stations : unsafe Int -> Int .
 stations n = if n == 0 then 0 else
   _ = Sys.sleepUs 10000000;
-  ss = need (Wifi.stations Unit);
+  ss = need (Esp.wifiStations Unit);
   _ = print "[{Esp.ms Unit / 1000} s] {List.length ss} station(s) on the access point";
   _ = List.each (fn s -> print "  {s.mac} at {s.rssi} dBm") ss;
   stations (n - 1).
@@ -28,15 +27,15 @@ main =
   me = myself 0;
   _ = spawnOn 1 (ticker me 8);
   t0 = Esp.ms Unit;
-  r = need (Wifi.info Unit);
+  r = need (Esp.wifiInfo Unit);
   _ = print "radio: station {r.station}, access point {r.ap}, mode {r.mode}";
-  nets = need (Wifi.scan Unit);
+  nets = need (Esp.wifiScan Unit);
   _ = List.each (fn n -> print "  {n.ssid} | {n.rssi} dBm | channel {n.channel} | {n.auth}") nets;
   _ = print "{List.length nets} network(s) in {Esp.ms Unit - t0} ms";
   tick = receive me;
   _ = (case tick of Tick c -> print "ticker on core {c} finished its 2 s while Wi-Fi jobs ran");
   pass = "fpr-risc-{Esp.random Unit % 1000000}";
-  ap = need (Wifi.startAp "fpr-p4-test" pass);
+  ap = need (Esp.wifiStartAp "fpr-p4-test" pass);
   _ = print "access point {ap.ssid} on channel {ap.channel}, {ap.auth}, at {ap.ip} ({ap.bssid}); password {pass}";
   _ = stations 6;
   "wifi: done".

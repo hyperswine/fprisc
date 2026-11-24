@@ -1,6 +1,6 @@
 unsafe base.
 Store = use "../examples/printer-dashboard/authservice".
-Auth = use "../std/sessionauth".
+Auth = use "../examples/printer-dashboard/sessionauth".
 D = use "../std/digest".
 J = use "../std/json".
 check why yes = if yes then Unit else error "session persistence: {why}".

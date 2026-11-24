@@ -4,7 +4,6 @@
 #   3. an actor on core 1 keeps counting while the radio jobs run
 unsafe base.
 Esp = use "std/esp".
-Ble = use "std/ble".
 List = use "std/list".
 
 T = Type (Count Int).
@@ -17,7 +16,7 @@ need r = case r of Ok x -> x | Err why -> error why.
 scans : unsafe Int -> Int .
 scans n = if n == 0 then 0 else
   t0 = Esp.ms Unit;
-  heard = need (Ble.scan 5000);
+  heard = need (Esp.bleScan 5000);
   named = List.filter (fn d -> strlen d.name > 0) heard;
   _ = print "[{Esp.ms Unit / 1000} s] scan: {List.length heard} device(s) in {Esp.ms Unit - t0} ms, {List.length named} named";
   _ = List.each (fn d -> print "  {d.address} | {d.rssi} | {d.name}") (List.take 12 heard);
@@ -26,9 +25,9 @@ scans n = if n == 0 then 0 else
 main =
   me = myself 0;
   _ = spawnOn 1 (counter me 0 (Esp.ms Unit + 20000));
-  a = need (Ble.advertise "fpr-p4-ble" 60000);
+  a = need (Esp.bleAdvertise "fpr-p4-ble" 60000);
   _ = print "advertising as {a.name} from {a.address}";
-  refused = (case Ble.advertise "a-name-far-too-long-for-an-advertisement" 1000 of Ok _ -> "accepted?" | Err why -> why);
+  refused = (case Esp.bleAdvertise "a-name-far-too-long-for-an-advertisement" 1000 of Ok _ -> "accepted?" | Err why -> why);
   _ = print "an over-long name: {refused}";
   _ = scans 3;
   c = receive me;

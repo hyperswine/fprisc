@@ -63,3 +63,37 @@ putU32le v = strcat (putU16le (band v 65535)) (putU16le (band (BITSHIFTR v 16) 6
 
 putU32be : Int -> String .
 putU32be v = strcat (putU16be (band (BITSHIFTR v 16) 65535)) (putU16be (band v 65535)).
+
+# ---- Mutable linear byte buffer (formerly std/bytes.fpr) -----------------------
+# std/bytes.fpr -- a byte buffer: bytes written in place, packed into a String once.
+#
+#   Bytes = use "std/bytes".
+#   b0 = Bytes.new 60                      # room for 60 bytes
+#   b1 = Bytes.put 0 71 b0                 # byte 0 is 'G', in place
+#   (line, b2) = Bytes.pack 0 1 b1         # "G", and the buffer back to refill
+#
+# A String is immutable, so building one a character at a time (a list of
+# codes, then String.fromCodes) allocates a cell per character.  A buffer is a
+# linear `Vector Int` holding one byte per element: `put` overwrites in place
+# and `pack` copies a range out as one String.  The buffer comes back from
+# every operation, so one buffer serves every line of an output.
+#
+# A value outside 0..255 is stored as given and refused by `pack`, which
+# names it; nothing is truncated.  An index outside the buffer traps.
+
+# a buffer of n bytes; their initial values are unspecified, write before packing
+new : Int -> Vector Int .
+new n = Vec.range 1 n.
+
+put : Int -> Int -> Vector Int -> Vector Int .
+put i byte b = Vec.set i byte b.
+
+get : Int -> Vector Int -> (Int, Vector Int) .
+get i b = Vec.get i b.
+
+# the n bytes from `from` as a String
+pack : Int -> Int -> Vector Int -> (String, Vector Int) .
+pack from n b = Vec.pack from n b.
+
+free : Vector Int -> Unit .
+free b = Vec.free b.

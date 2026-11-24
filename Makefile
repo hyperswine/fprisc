@@ -8,7 +8,7 @@ FPR_TOOLCHAIN ?= .
 HARTS   ?= 2
 CROSS    = riscv64-unknown-elf-
 PROG    ?= tests/demo.fpr
-FILE    ?= std/checkdemo.fpr
+FILE    ?= examples/checkdemo.fpr
 QA_OUT  ?= app.qa
 # where per-program intermediates go (qos.py points this at the
 # project's .qos/build so an installed tree is never written to); the

@@ -10,7 +10,7 @@
 #      directory: paths are absolute)
 unsafe base.
 File = use "std/file".
-Dir = use "std/dir".
+Dir = use "std/file".
 ST = use "std/stream".
 S = use "std/string".
 List = use "std/list".

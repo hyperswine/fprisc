@@ -5,7 +5,7 @@
 # Attachment is serialized at MVU event boundaries. Failed bindings roll back
 # their registry entry; mapped images remain alive for old function values.
 W = use "std/watch".
-N = use "std/native".
+N = use "std/reload".
 MV = use "std/mvu".
 
 # Missing export names are ordinary binding refusals rather than panics.
@@ -23,7 +23,7 @@ openJournal spec journal result = case result of
   | Ok pair ->
       (cursor, candidate) = pair;
       table = Mod.plugs 0;
-      opened spec journal cursor table candidate (N.attach (W.image candidate)).
+      opened spec journal cursor table candidate (N.nativeAttach (W.image candidate)).
 opened spec journal cursor table candidate result = case result of
     Err why -> Err why
   | Ok unit -> initialIdentity spec journal cursor table (W.identity candidate).
@@ -43,7 +43,7 @@ reload spec me info session = case info.name == session.name of
     | False -> resolve spec info session (W.imageFor session.journal session.name info.to).
 resolve spec info session result = case result of
     Err why -> Err why
-  | Ok image -> attached spec info session (N.loadVersionAt session.table session.hash info.to image).
+  | Ok image -> attached spec info session (N.nativeLoadVersionAt session.table session.hash info.to image).
 attached spec info session result = case result of
     Err why -> Err why
   | Ok table -> rebound info session table (spec.bind table).

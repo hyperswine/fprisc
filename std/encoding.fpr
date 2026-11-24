@@ -8,7 +8,7 @@
 # A String is bytes, so these work on any data.
 
 S = use "string".
-Bytes = use "bytes".
+Bytes = use "binary".
 
 rev : (xs : List a | measure xs) -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).

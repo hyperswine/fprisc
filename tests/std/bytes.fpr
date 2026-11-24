@@ -1,5 +1,5 @@
 # std golden: std/bytes, a byte buffer written in place and packed into a String
-Bytes = use "std/bytes".
+Bytes = use "std/binary".
 
 fill : (n : Int) -> (i : Int | measure (n - i)) -> Vector Int -> Vector Int .
 fill n i b = if i >= n then b else fill n (i + 1) (Bytes.put i (97 + i % 26) b).

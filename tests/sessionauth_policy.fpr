@@ -1,5 +1,5 @@
 unsafe base.
-Auth = use "../std/sessionauth".
+Auth = use "../examples/printer-dashboard/sessionauth".
 O = use "../std/option".
 check why yes = if yes then Unit else error "auth policy: {why}".
 main =

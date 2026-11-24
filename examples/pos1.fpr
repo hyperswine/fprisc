@@ -60,7 +60,6 @@ Appearance = use "lib/appearance".
 C = use "std/clientcalc".
 Money = use "lib/money".
 LJ = use "std/livejs".
-VC = use "std/viewcache".
 List = use "std/list".
 S = use "std/string".
 File = use "std/file".
@@ -640,13 +639,13 @@ view sid v old = case old of (cardsOld, rowsOld, rs) ->
   (case (s.cashier == "") of
     True -> (G.renderStyled (pageRoot v [loginView s, B.noticeView v.reloadNotice]), old)
   | False ->
-    (case VC.many (fn i -> i.p.sku) renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat)) (VC.begin "pos1-card-v1" verify cardsOld) of (cards, cc) ->
-    (case VC.many (fn x -> "{x.n}") receiptRow v.sales (VC.begin "pos1-receipt-v1" verify rowsOld) of (rows, rc) ->
+    (case G.cacheMany (fn i -> i.p.sku) renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat)) (G.cacheBegin "pos1-card-v1" verify cardsOld) of (cards, cc) ->
+    (case G.cacheMany (fn x -> "{x.n}") receiptRow v.sales (G.cacheBegin "pos1-receipt-v1" verify rowsOld) of (rows, rc) ->
       out = G.renderStyled (pageRoot v (B.noticeView v.reloadNotice :: nav v s :: toasts s :: body v s cards rows rs));
-      (ch, cm, cn) = VC.stats cc;
-      (rh, rm, rn) = VC.stats rc;
+      (ch, cm, cn) = G.cacheStats cc;
+      (rh, rm, rn) = G.cacheStats rc;
       rs2 = { st = note rs.st (Sys.timeUs Unit - t0), hits = rs.hits + ch + rh, misses = rs.misses + cm + rm, cards = cn, rows = rn };
-      (out, (VC.finish cc, VC.finish rc, rs2))))).
+      (out, (G.cacheFinish cc, G.cacheFinish rc, rs2))))).
 verify = Program.envOr "0" "POS1_VIEW_VERIFY" == "1".
 
 # the same page with nothing remembered: the stylesheet's sample, and the check
@@ -944,5 +943,5 @@ main = case Config.load { defaults = Json.object (("port", Json.Integer 6710) ::
               script = script, watch = Nil, rebuild = Nil, restart = Nil };
       _ = Live.serveProjectedBody UI.screenBody cfg { init = bootPricing o store metrics reloadNotice, update = update o.journal, subs = subs, fields = Nil, codec = codec,
                                     project = project, same = (fn a b -> a == b),
-                                    view = view, cache = (VC.empty Unit, VC.empty Unit, noRender), css = cssAll };
+                                    view = view, cache = (G.cacheEmpty Unit, G.cacheEmpty Unit, noRender), css = cssAll };
       0.

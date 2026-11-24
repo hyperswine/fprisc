@@ -1,15 +1,15 @@
 # Ed25519 challenge/session policy. The native engine supplies only entropy and
 # signature verification. No private key is loaded by this service.
-J = use "json".
-M = use "map".
-L = use "list".
-S = use "string".
-O = use "option".
-E = use "encoding".
-D = use "digest".
-A = use "actor".
-C = use "crypto".
-T = use "transport".
+J = use "std/json".
+M = use "std/map".
+L = use "std/list".
+S = use "std/string".
+O = use "std/option".
+E = use "std/encoding".
+D = use "std/digest".
+A = use "std/actor".
+C = use "std/crypto".
+T = use "std/transport".
 Key = {name : String, public : String}.
 Pending = {id : String, binding : String, origin : String, message : String, until : Int}.
 Session = {digest : String, origin : String, until : Int}.
