@@ -47,7 +47,7 @@ clobbersRegisters inlineFloats = \case
   OAddress {} -> False; OVectorView {} -> False; OIndex {} -> False; OIndexByte {} -> False; OLoad {} -> False; OLoadByte {} -> False
   OStore {} -> False; OSetField {} -> False; OField {} -> False; OTag {} -> False; OUntag {} -> False
   OBoolOf {} -> False; OTruth {} -> False; ONot {} -> False; OIsInt {} -> False
-  OTagTest {} -> False; OVariantTest {} -> False; OSymbol {} -> False; OFunValue {} -> False
+  OTagTest {} -> False; OVariantTest {} -> False; OVariantOf {} -> False; OSymbol {} -> False; OFunValue {} -> False
   OBit {} -> False; OCmp {} -> False; OBits {} -> False
   OI64Arith {} -> False; OI64Bit {} -> False; OI64Cmp {} -> False
   ORvvVlMax {} -> False; ORvvLanes {} -> False; ORvvSumLoaded {} -> False

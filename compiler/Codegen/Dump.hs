@@ -49,6 +49,7 @@ dumpFn fn =
       OIsInt v -> "isint " ++ value v
       OTagTest t c v -> "tagtest " ++ show t ++ " " ++ show c ++ " " ++ value v
       OVariantTest t c v -> "vartest " ++ show t ++ " " ++ show c ++ " " ++ value v
+      OVariantOf t v -> "varof " ++ show t ++ " " ++ value v
       OSymbol sym -> "symbol " ++ sym
       OFunValue n -> "funvalue " ++ n
       OApply f as -> "apply " ++ value f ++ args as

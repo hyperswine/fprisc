@@ -207,6 +207,7 @@ data Op
   | OIsInt VId -- TVal -> TPred: the tag bit (a tagged Int, not an object)
   | OTagTest Int Int VId -- TVal -> TPred: typeid and variant match (a tagged Int never matches)
   | OVariantTest Int Int VId -- TVal -> TPred: same answer as OTagTest (an Int or another type is no match), but
+  | OVariantOf Int VId -- TVal -> TInt: variant (>= 0) when the value is an object with this typeid, else -1
   -- the typeid and variant words are compared as one 64-bit header word. A nominal
   -- type is not trusted: received messages are typed by their use, not checked.
   | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a core primitive's object (fpr_prim_obj_), a HAL contract (fpr_g_)
@@ -341,6 +342,7 @@ opEffect = \case
   OIsInt _ -> Pure
   OTagTest _ _ _ -> Pure
   OVariantTest _ _ _ -> Pure
+  OVariantOf _ _ -> Pure
   OSymbol _ -> Pure
   OFunValue _ -> Pure
   OApply _ _ -> AnyEffect
@@ -410,6 +412,7 @@ opUses = \case
   OIsInt v -> [v]
   OTagTest _ _ v -> [v]
   OVariantTest _ _ v -> [v]
+  OVariantOf _ v -> [v]
   OSymbol _ -> []
   OFunValue _ -> []
   OApply f as -> f : as
@@ -488,6 +491,7 @@ mapOpUses f = \case
   OIsInt v -> OIsInt (f v)
   OTagTest t c v -> OTagTest t c (f v)
   OVariantTest t c v -> OVariantTest t c (f v)
+  OVariantOf t v -> OVariantOf t (f v)
   OSymbol s -> OSymbol s
   OFunValue n -> OFunValue n
   OApply h as -> OApply (f h) (map f as)

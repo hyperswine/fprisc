@@ -32,7 +32,7 @@ import Data.Maybe (isJust)
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 33 -- known-small exact-Int fast paths for OArithVal/OCmpVal/OEqVal and small-Int OEqVal fast path
+rvSelectionRev = 34 -- OVariantOf multi-arm dispatch hoisting (33: known-small exact-Int fast paths for OArithVal/OCmpVal/OEqVal)
 
 -- Native startup, shared by every RVV unit. The runtime calls the surviving
 -- COMDAT definition on each hart; ordinary builds retain its weak no-op.
@@ -469,6 +469,13 @@ select cfg fn = do
             loadAt R.Load32 actual (vreg v) 4; li want (fromIntegral variant); rr (R.Compare Eq) d actual want
         jump done
         mark miss; li d 0; mark done
+      OVariantOf t v -> do
+        miss <- freshLabel; done <- freshLabel
+        bit <- fresh; ri R.AndImmediate bit (vreg v) 7; branch bit miss
+        actual <- fresh; want <- fresh; bad <- fresh
+        loadAt R.Load32 actual (vreg v) 0; li want (fromIntegral t); rr (R.Compare Ne) bad actual want; branch bad miss
+        loadAt R.Load32 d (vreg v) 4; jump done
+        mark miss; li d (-1); mark done
       OMake tid variant fields -> makeCell d tid (Left variant) fields
       OMakeSpine ordinal fields
         | polProfile (cfgPolicy cfg)==HostedBase && cfgWidth cfg==W64 -> makeCell d storedListTid (Right ordinal) fields

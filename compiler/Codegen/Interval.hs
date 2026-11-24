@@ -103,7 +103,7 @@ discharge width fn
       OAddress {} -> True; OIndex {} -> True; OIndexByte {} -> True; OVectorView {} -> True
       OField {} -> True; OTag {} -> True; OUntag {} -> True
       OTruth {} -> True; OBoolOf {} -> True; ONot {} -> True; OIsInt {} -> True
-      OTagTest {} -> True; OVariantTest {} -> True
+      OTagTest {} -> True; OVariantTest {} -> True; OVariantOf {} -> True
       OSymbol {} -> True; OFunValue {} -> True; OArithU {} -> True; OBit {} -> True; OCmp {} -> True
       _ -> False
     normOp = mapOpUses resolveParam

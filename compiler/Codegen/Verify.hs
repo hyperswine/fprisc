@@ -76,6 +76,10 @@ opSignature tyOf = \case
     when (t < 0 || toInteger t > 2147483647) (Left "typeid is outside signed 32-bit layout")
     expect v TVal
     pure (Just TPred)
+  OVariantOf t v -> do
+    when (t < 0 || toInteger t > 2147483647) (Left "typeid is outside signed 32-bit layout")
+    expect v TVal
+    pure (Just TInt)
   OSymbol sym -> do
     when (null sym) (Left "an empty symbol")
     pure (Just TVal)

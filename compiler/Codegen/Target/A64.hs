@@ -100,7 +100,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 33 -- fall-through layout, compares fused across edge moves, loop-carried floats in the float registers (32: shared refill tails keyed by placed destination and raw size)
+a64SelectionRev = 34 -- OVariantOf multi-arm dispatch hoisting (33: fall-through layout, compares fused across edge moves, loop-carried floats in the float registers)
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -721,6 +721,23 @@ selectInstrK cfg immediates small (Instr d op) = case op of
     emitI (jump done)
     emitL miss
     emitI (li r 0)
+    emitL done
+  OVariantOf t v -> def $ \r -> do
+    miss <- freshL "vofno"
+    done <- freshL "vofdone"
+    bit <- freshV False
+    emitI (rri A.AndImmediate bit (vreg v) 7)
+    emitI (cbnz bit miss)
+    tid <- freshV False
+    want <- freshV False
+    emitI (ldrsw tid (vreg v) 0)
+    emitI (li want (fromIntegral t))
+    emitI (cmp tid want)
+    emitI (bcond O.NotEqual miss)
+    emitI (ldrsw r (vreg v) 4)
+    emitI (jump done)
+    emitL miss
+    emitI (li r (-1))
     emitL done
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
   -- a small constant operand of + or -: the immediate form (the slow path

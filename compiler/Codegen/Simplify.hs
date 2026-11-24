@@ -38,6 +38,7 @@ import Codegen.RawInts (versionRawInts)
 import Codegen.LoopOptimize (moveInvariants, moveViews, carryRaw, carryRawI64, dropUnusedParameters)
 import Codegen.Policy (Policy (..), Profile (..), RegisterBudget, policyWidth)
 import Codegen.Pressure (clobbersRegisters)
+import Codegen.Target.Common (immediateNullary)
 import Codegen.Verify (verifyFn)
 import Codegen.Dump (dumpFn)
 import Control.Monad (when)
@@ -87,6 +88,7 @@ passesWith options=
     ++ [("fold-constant-divisors", dropDeadPure . foldConversions . foldDivisors)]
     ++ [("fuse-float-trees", dropDeadPure . fuseFloatTrees)]
     ++ [("forward-empty-blocks-again", forwardEmptyBlocks)]
+    ++ [("hoist-variant-dispatch", hoistVariantDispatch)]
     -- last: a vector view is one operation for every pass above (shared,
     -- moved out of loops) and its tests and loads for the targets
     ++ [("expand-vector-views", \f -> let f' = expandViews f in if f' == f then f else dropUnusedParameters (dropDeadPure (foldConversions f')))]
@@ -602,7 +604,7 @@ crossShareable :: Op -> Bool
 crossShareable = \case
   OUntag {} -> True; OTag {} -> True; OField {} -> True
   OTruth {} -> True; OBoolOf {} -> True; ONot {} -> True; OIsInt {} -> True
-  OTagTest {} -> True; OVariantTest {} -> True
+  OTagTest {} -> True; OVariantTest {} -> True; OVariantOf {} -> True
   OAddress {} -> True; OIndex {} -> True; OIndexByte {} -> True; OVectorView {} -> True
   OArithU {} -> True; OArithFits {} -> True; OBit {} -> True; OCmp {} -> True
   _ -> False
@@ -687,6 +689,61 @@ carryRawAll f
 
 -- a loop at all (a depth-first walk from the entry, linear): the loop
 -- passes compute dominators, which most functions do not need
+-- Multi-arm ADT/enum dispatch (G7): hoist the pointer-tag check, typeid
+-- check, and 32-bit variant load out of a linear chain of 2+ OVariantTest /
+-- OTagTest checks on the same (tid, scrutinee) into a single OVariantOf,
+-- replacing each arm test with a direct integer compare against the variant.
+hoistVariantDispatch :: Fn -> Fn
+hoistVariantDispatch fn
+  | not hasTest = fn
+  | M.null rewrites = fn
+  | otherwise = fn {fnBlocks = [M.findWithDefault b (bId b) rewrites | b <- fnBlocks fn]}
+  where
+    hasTest = any (any (\(Instr _ op) -> case op of OVariantTest {} -> True; OTagTest {} -> True; _ -> False) . bInstrs) (fnBlocks fn)
+    byId = M.fromList [(bId b, b) | b <- fnBlocks fn]
+    predCounts = M.fromListWith (+) [(dst, 1 :: Int) | b <- fnBlocks fn, (dst, _) <- termSuccs (bTerm b)]
+    useCounts = M.fromListWith (+) [(u, 1 :: Int) | b <- fnBlocks fn, u <- concatMap (\(Instr _ op) -> opUses op) (bInstrs b) ++ termUses (bTerm b)]
+    validTest = \case
+      OVariantTest tid c x | tid >= 0 && toInteger tid <= 2147483647 && c >= 0 && immediateNullary tid c == Nothing -> Just (tid, c, x)
+      OTagTest tid c x | tid >= 0 && toInteger tid <= 2147483647 && c >= 0 && immediateNullary tid c == Nothing -> Just (tid, c, x)
+      _ -> Nothing
+    headTest b = case (reverse (bInstrs b), bTerm b) of
+      (Instr (Just (p, TPred)) op : _, TCondBr p' _ _ e [])
+        | p == p', M.lookup p useCounts == Just 1, Just (tid, c, x) <- validTest op -> Just (p, tid, c, x, e)
+      _ -> Nothing
+    linkTest tid x bid = case M.lookup bid byId of
+      Just b | bid /= fnEntry fn, null (bParams b), M.lookup bid predCounts == Just 1 ->
+        case (bInstrs b, bTerm b) of
+          ([Instr (Just (p, TPred)) op], TCondBr p' _ _ e bs)
+            | p == p', M.lookup p useCounts == Just 1, Just (tid', c, x') <- validTest op, tid' == tid, x' == x ->
+                Just (b, p, c, if null bs then Just e else Nothing)
+          _ -> Nothing
+      _ -> Nothing
+    follow tid x seen bid
+      | S.member bid seen = []
+      | otherwise = case linkTest tid x bid of
+          Nothing -> []
+          Just (b, p, c, mNext) ->
+            (b, p, c) : maybe [] (follow tid x (S.insert bid seen)) mNext
+    maxV0 = maximum (0 : [n | b <- fnBlocks fn, (VId n, _) <- blockDefs b])
+    (_, _, rewrites) = foldl' step (maxV0 + 1, S.empty, M.empty) (fnBlocks fn)
+    step st@(nextV, claimed, acc) b
+      | S.member (bId b) claimed = st
+      | Just (p0, tid, c0, x, e0) <- headTest b =
+          case follow tid x (S.singleton (bId b)) e0 of
+            [] -> st
+            chain ->
+              let vVar = VId nextV
+                  k0 = VId (nextV + 1)
+                  b0' = b {bInstrs = init (bInstrs b) ++ [Instr (Just (vVar, TInt)) (OVariantOf tid x), Instr (Just (k0, TInt)) (OConstInt (fromIntegral c0)), Instr (Just (p0, TPred)) (OCmp Eq vVar k0)]}
+                  (nextV', chainBlocks) = foldl' (\(nv, bs) (eb, pe, ce) ->
+                    let ke = VId nv
+                        eb' = eb {bInstrs = [Instr (Just (ke, TInt)) (OConstInt (fromIntegral ce)), Instr (Just (pe, TPred)) (OCmp Eq vVar ke)]}
+                     in (nv + 1, (bId eb, eb') : bs)) (nextV + 2, [(bId b, b0')]) chain
+                  claimed' = S.union claimed (S.fromList (map fst chainBlocks))
+               in (nextV', claimed', M.union (M.fromList chainBlocks) acc)
+      | otherwise = st
+
 hasCycle :: Fn -> Bool
 hasCycle f = go S.empty S.empty [(fnEntry f, False)]
   where

@@ -199,6 +199,13 @@ callFn width program name args = do
           RSym s -> stuck ("a variant test on the immortal object " ++ s ++ ", whose typeid the evaluator does not model")
           RString _ -> pure (Just (VPred False))
           RPap _ _ -> pure (Just (VPred False))
+        OVariantOf t v -> val env v >>= \case
+          RObj t' c' _ | t == t' -> pure (Just (VInt (fromIntegral c')))
+          RObj {} -> pure (Just (VInt (-1)))
+          RInt _ -> pure (Just (VInt (-1)))
+          RSym s -> stuck ("a variant read on the immortal object " ++ s ++ ", whose typeid the evaluator does not model")
+          RString _ -> pure (Just (VInt (if t == 9000 then 0 else -1)))
+          RPap _ _ -> pure (Just (VInt (-1)))
         OSymbol sym -> pure (Just (VVal (RSym sym)))
         OFunValue n -> pure (Just (VVal (RPap n [])))
         OApply f as -> do

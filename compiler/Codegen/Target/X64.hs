@@ -41,7 +41,7 @@ import Data.Maybe (isJust)
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 39 -- known-small exact-Int fast paths for OArithVal/OCmpVal/OEqVal (38: C9 stage 2 under cfgFrames: spill moves, cold-call saves, move hints, ticks keep rax)
+x64SelectionRev = 40 -- OVariantOf multi-arm dispatch hoisting (39: known-small exact-Int fast paths for OArithVal/OCmpVal/OEqVal)
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -848,6 +848,20 @@ selectInstr cfg facts (Instr d op) = case op of
     emitI (jump done)
     emitL miss
     emitI (li r 0)
+    emitL done
+  OVariantOf t v -> def $ \r -> do
+    miss <- freshL "vofno"
+    done <- freshL "vofdone"
+    emitI (testi (vreg v) 7)
+    emitI (bcond O.NotEqual miss)
+    tid <- freshV False
+    emitI (ldrsw tid (vreg v) 0)
+    cmpConst tid (fromIntegral t)
+    emitI (bcond O.NotEqual miss)
+    emitI (ldrsw r (vreg v) 4)
+    emitI (jump done)
+    emitL miss
+    emitI (li r (-1))
     emitL done
   OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
   -- a constant operand of + or -: the immediate instruction (the slow path
