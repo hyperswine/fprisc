@@ -273,4 +273,4 @@ watchWait poller interest budget fd = if interest == Progress then _ = resolverN
     | Budget d cancelled -> R.awaitChecking fd m d cancelled poller;
   case result of Ok _ -> Ok Unit | Err why -> Err (watchFailure why).
 adoptOn : R.Poller -> Int -> ST.Stream -> Result (Connection SocketState) Failure .
-adoptOn poller chunk stream = adoptWith (watchWait poller) chunk stream.
+adoptOn poller chunk stream = adoptWith (fn interest budget fd -> watchWait poller interest budget fd) chunk stream.
