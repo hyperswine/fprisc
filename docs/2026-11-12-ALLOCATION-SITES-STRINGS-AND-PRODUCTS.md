@@ -60,6 +60,51 @@ function (`--chains` shows whole chains). Every change below started from that t
 
   format: 15 allocations per line become 2, the pieces tuple and the line.
 
+### Three and four pieces (25 Nov 2026)
+
+Zero-cost pair 25b (`strlen "k={band i 7};x"` in a loop) was 15.7x the
+folded literal: 382.4 Ir per iteration against 24.6. Each interpolation
+built a tuple of its pieces, and `$strcatT` tested each piece's tag in both
+passes, then called `fpr_alloc` (about 66 Ir).
+
+- `buildStrings` now passes three pieces to `$strcat3` and four to
+  `$strcat4` as arguments, with no tuple. Five or more still use
+  `$strcatT`.
+- The runtime's `strcat_pieces` is inlined into each entry point and
+  unrolled for 3 and 4 pieces. The sizing pass records each piece's kind
+  and width, and the copy pass dispatches on that record.
+- The result comes from the inline bump window (`fpr.h` `bump_slab`), the
+  same way generated code takes a constructor cell. It falls back to
+  `fpr_alloc` when the window is closed (cost-probe builds, the shared
+  plane), when the window is full, or when the size class has a recycled
+  block. `str` of a wide Int uses the same window.
+- Rendering doesn't change: every piece renders as `str` would.
+
+Results (callgrind, x86-64, median of 3, `FPR_NO_RUN_CACHE=1 fpr build`;
+c16fe82a vs this change):
+
+- b25: 382.4 -> 236.9 Ir/iter, so 25b is now 9.6x.
+- `empty` (startup): 259693 -> 228892 Ir.
+- Every other zero-cost binary is within 0.3%, and all 72 outputs are
+  identical.
+
+Compile allocation is unchanged within noise: hello -0.09%, std-live -0.18%,
+pos1 -0.00%.
+
+Gates:
+
+- OptRegression G5 checks that a three-piece chain becomes `$strcat3`,
+  four pieces become `$strcat4`, and five stay `$strcatT`. chainFromRhs now
+  requires the n-ary build to be present.
+- `tests/sol-checks/str-interp-pieces.sol` checks the three call shapes in
+  the typed-IR dump. It also checks the output for negative, 0-9, wide,
+  small-range-edge and bignum Ints, empty and UTF-8 Strings, a tuple, a
+  float, a list, and a 6000-byte piece that doesn't fit the window.
+
+The rest of the gap is the per-iteration `str` of the Int and the copy. A
+template whose fixed bytes are known at compile time would close more of
+it.
+
 ## 2. Owned maps
 
 - **The `Map` wrapper.** Once a twin has consumed the map on a path, a `Map` built on that path takes the
