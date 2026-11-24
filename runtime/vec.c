@@ -849,6 +849,45 @@ static V h_dup(V vec) {
   return mktup2((V)vcopy(x), (V)x);
 }
 
+/* Vec.copyInto src dst: overwrite dst in place with src's elements, reusing
+ * dst's descriptor and column storage when the layout matches and capacity
+ * suffices (zero bulk allocation on hot scratch-vector loops). */
+static V h_copyInto(V srcv, V dstv) {
+  vec_t *s = vchk(srcv, "Vec.copyInto: source is not a Vector");
+  vec_t *d = vchk(dstv, "Vec.copyInto: destination is not a Vector");
+  if (s == d) return mktup2(srcv, dstv);
+  if (VREP(s) == VR_UNSET) {
+    d->len = 0;
+    return mktup2(srcv, dstv);
+  }
+  /* Fast path: matching rep, column count, element identity, and column kinds */
+  int same = (VREP(d) == VREP(s) && d->ncols == s->ncols && d->eltid == s->eltid
+              && d->elvar == s->elvar && d->shape_len == s->shape_len);
+  if (same) {
+    for (uw k = 0; k < s->ncols; k++) {
+      if (d->kinds[k] != s->kinds[k]) { same = 0; break; }
+    }
+  }
+  if (!same) {
+    for (uw k = 0; k < d->ncols; k++)
+      if (d->cols[k]) col_free(d->cols[k]);
+    vdir_free(d);
+    vdir_like(d, s);
+    for (uw k = 0; k < d->ncols; k++) d->cols[k] = col_new();
+  }
+  uw n = s->len;
+  for (uw k = 0; k < s->ncols; k++) {
+    col_t *dc = d->cols[k];
+    if (dc->cap < n) {
+      if (n > COL_CAP_MAX) fpr_cpanic("Vec: capacity out of range");
+      while (dc->cap < n) col_grow(dc);
+    }
+    if (n) __builtin_memcpy(dc->base, s->cols[k]->base, n * sizeof(uw));
+  }
+  d->len = n;
+  return mktup2(srcv, dstv);
+}
+
 static V h_axpb(V av, V bv, V vec) {
   vec_t *x = vnum(vec, "Vec.axpb: not a Vector");
   sw a = UNTAG(av), b = UNTAG(bv);
@@ -988,6 +1027,7 @@ static V h_eqS(V kv, V vec) {
 
 FPR_FN(fpr_g_Vec_x2eiota, h_iota, 1);
 FPR_FN(fpr_g_Vec_x2edup, h_dup, 1);
+FPR_FN(fpr_g_Vec_x2ecopyInto, h_copyInto, 2);
 FPR_FN(fpr_g_Vec_x2eaxpb, h_axpb, 3);
 FPR_FN(fpr_g_Vec_x2esar, h_sar, 2);
 FPR_FN(fpr_g_Vec_x2eminS, h_minS, 2);

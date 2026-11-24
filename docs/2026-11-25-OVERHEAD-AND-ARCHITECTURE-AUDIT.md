@@ -154,3 +154,10 @@ Quick and independent: 7 (cleanup), 2 (strict state), 5 (cache key), 3 (qos CI
 step), 8 (qos glue). Needs design or measurement first: 1 (`Vec.dup` lowering),
 4 (budget metric), 6 (Sol library unification), and the frozen-version
 question, which blocks the QOS move to FP-RISC `main`.
+
+## Progress log (25 November)
+
+- **#1 (`Vec.copyInto`)**: Added `Vec.copyInto : Vector a -> Vector a -> (Vector a, Vector a)` (`runtime/vec.c`, `compiler/Infer.hs`) to overwrite a destination vector in place without bulk allocation when layout matches and capacity suffices. Updated `tests/bench/clbg/fannkuchredux.fpr` to reuse one scratch vector: `fannkuch-redux 11` dropped from **5.24 s real / 4.91 s user** to **4.45 s real / 4.10 s user** (-15.1% wall / -16.5% user, identical `556355` / `Pfannkuchen(11) = 51`).
+- **#2, #4, #5, #6 (quick wins)**: Landed in `1b1072b2` (strict `Lower.hs` `St`/`Cur` + `modify'`, report-only `max_bytes_used` in `compile-budget.sol`, executable `(size, mtime)` FNV-1a stamp in unit cache keys, `Str.words` ASCII whitespace, `writeBytesNow`/`writeTextNow` in `sol/lib/base.sol`, and Sol prelude-shadowing warning).
+- **#3, #8 (qos)**: Committed locally on `qos` `main` (`61f7f24`): added CI type-checking for the 7 active QOS apps and 3 core modules (`gamerun`, `guishell`, `qsys`), switched `qos-app.mk` / `tools/ccobj.sol` to `$(FPRC) sol`, and stripped retired Python arguments from `tools/pi4/compiler-sdk*.sol`.
+- **#7 (branch hygiene)**: Audited `origin` remote branches — 39 are already merged into `origin/main` (safe to prune whenever pushing) and 11 remain unmerged (`ari/chan-index`, `ari/chan-sender-line`, `ari/inline-strcompare`, `ari/overhead-audit-2026-11-16`, `ari/profile-2026-11-14`, `ari/regalloc-split`, `ari/review-2026-11-15`, `ari/unbox-f64`, `ari/unbox-notes`, `ari/unbox-range`, `ari/v1-arc-amendment`).

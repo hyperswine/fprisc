@@ -557,6 +557,7 @@ builtinEnv =
       -- sortListWith).  std/vector is the caller.
       ("sortVecWith", scheme [0, 1] (TFn (TFn (sv 0) (TFn (sv 0) (sv 1))) (TFn (tVector (sv 0)) (tVector (sv 0))))),
       ("Vec.dup", scheme [0] (TFn (tVector (sv 0)) (TTupT [tVector (sv 0), tVector (sv 0)]))),
+      ("Vec.copyInto", scheme [0] (TFn (tVector (sv 0)) (TFn (tVector (sv 0)) (TTupT [tVector (sv 0), tVector (sv 0)])))),
       -- std/mutmap's engine (runtime/vec.c, the MutMap section): a linear
       -- hash table keyed by Int or String.  Every operation consumes the map
       -- and hands it back; reads answer (result, map).  std/mutmap.fpr is
