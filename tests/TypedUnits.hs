@@ -10,7 +10,8 @@ import Codegen.Policy (m2Policy)
 import Frontend.Parser (program)
 import Frontend.Syntax (STop(..))
 import Frontend.Desugar
-import Frontend.Desugar.Checked
+import Frontend.Desugar.Typed
+import Compiler.Native.Core
 import Control.Monad (unless)
 import Control.Monad.State.Strict (evalState)
 import qualified Data.Map.Strict as M

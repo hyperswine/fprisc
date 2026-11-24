@@ -10,7 +10,8 @@ import Infer
 import Frontend.Parser (program)
 import Frontend.Syntax
 import Frontend.Desugar hiding (fresh)
-import Frontend.Desugar.Checked
+import Frontend.Desugar.Typed
+import Compiler.Native.Core
 import Struct (sigTable,structTable,expandStructs,erasePSig)
 import Text.Megaparsec (parse,errorBundlePretty)
 import Control.Monad (unless)

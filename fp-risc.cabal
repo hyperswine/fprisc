@@ -84,22 +84,18 @@ library
       Codegen.Split
       Codegen.Policy
       Codegen.Selected
-      Codegen.Symbol
       Codegen.Call
       Codegen.Protocol
       Codegen.Annotation
       Codegen.Calling
-      Codegen.Calling.Types
       Codegen.Export.Plan
       Codegen.Target.RV.Export
       Compiler.Native.Exports
       Codegen.Opcode
       Codegen.Opcode.Types
-      Codegen.Opcode.X64
       Codegen.Opcode.A64
       Codegen.Opcode.RV
       Codegen.Frame
-      Codegen.Place
       Codegen.Liveness
       Codegen.Allocate
       Codegen.Bounds
@@ -139,7 +135,6 @@ library
       Frontend.Traverse
       Frontend.Diagnostics
       Ownership.Shape
-      Ownership.Finding
       Ownership.TypeShape
       Frontend.Linearity
       Frontend.OwnedMapFold
@@ -203,7 +198,6 @@ library
       Core.Typed.Layout
       Core.Typed.Verify
       Core.Typed.Erase
-      Frontend.Desugar.Checked
       Type.Syntax
       Type.Relation
       Type.Substitution
@@ -237,7 +231,6 @@ library
       Codegen.LoopForm
       Codegen.Placement
       Codegen.Pressure
-      Compiler.VectorOperation
       Compiler.Trap
       Inline
       ReceiveTurns

@@ -11,7 +11,7 @@ import Struct (sigTable,structTable)
 import qualified Safety
 import Frontend.Linearity
 import Frontend.Syntax
-import Ownership.Finding
+import Ownership.Shape
 import qualified Cost
 import qualified Core.Syntax as Core
 import Ownership.Shape (LShape(..),demandOwnership)

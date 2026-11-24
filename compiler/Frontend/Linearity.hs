@@ -10,7 +10,7 @@ module Frontend.Linearity
 
 import Core.Syntax ( Name )
 import qualified Diagnostic.Syntax as Diagnostic
-import Ownership.Finding (Finding(..),atFinding)
+import Ownership.Shape (Finding(..),atFinding)
 import Source.Span (SourceOffset(..))
 import Data.List ( foldl', intercalate, isPrefixOf, nub, sort, stripPrefix )
 import Data.Maybe ( fromMaybe, isJust, isNothing )

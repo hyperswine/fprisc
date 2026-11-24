@@ -6,7 +6,7 @@ module Codegen.Heap
   ( Demand(..), Equation(..), Key(..), Bound(..), fromFn, analyse, zero, plus, runtimeDemand, arenaBytes, admit ) where
 
 import qualified Codegen.IR as I
-import Codegen.Symbol (CodeSymbol(..))
+import Codegen.IR (CodeSymbol(..))
 import Codegen.Target.Common (calleeCodeSymbol,functionSymbol)
 import Codegen.Target.RV.ScalarAdapters (scalarAdapter)
 import Data.Graph (SCC(..),stronglyConnComp)

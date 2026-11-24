@@ -31,7 +31,7 @@
 -- this vocabulary.
 --
 -- Nothing here chooses a physical register for a virtual one.  That is
--- placement (Codegen.Place.placeInSlots in M2: every virtual register in a
+-- placement (Codegen.Allocate.placeInSlots in M2: every virtual register in a
 -- frame slot) or allocation (M3).
 module Codegen.Selected
   ( VReg (..), RegClass (..), Phys (..), Constraint (..), Operand (..),
@@ -39,11 +39,11 @@ module Codegen.Selected
     CodeSymbol(..),AddressSymbol(..),addressName, Annotation(..), AllocationEvent(..),
     SInstr (..), Item (..), Label (..), SFn (..),
     RegisterFile (..), plain, plainOpcode, siOp, checkFn, itemLabels, instrVRegs, operandVReg,
+    FuelEntry(..), CallConvention(..), TransferResult(..), Transfer(..), ArgumentCell(..),
   ) where
 
-import Codegen.Symbol
+import Codegen.IR
 import Codegen.Call
-import Codegen.Calling.Types (Transfer, ArgumentCell)
 import Codegen.Frame (FrameRef)
 import qualified Codegen.Opcode as Op
 import Control.Monad (forM_, unless, when)
@@ -227,3 +227,21 @@ checkFn rf fn = mapLeft (("selected " ++ sfName fn ++ ": ") ++) $ do
         Nothing -> Left (here ++ show p ++ " is not a register")
         Just _ -> pure ()
     mapLeft f = either (Left . f) Right
+
+-- Call transfer types (formerly Codegen.Calling.Types)
+data CallConvention = FprCall FuelEntry | RuntimeCall deriving (Eq,Ord,Show)
+-- NeverReturns: a call into a noreturn runtime entry (a trap); control ends
+-- with it, so nothing is live after it and nothing must survive it
+-- ProductResult: a private generated-code result, never a native C aggregate.
+-- PairResult retains the established two-word contract.
+data TransferResult = WordResult | PairResult | ProductResult Int | DiscardResult | TailTransfer | NeverReturns deriving (Eq,Ord,Show)
+data Transfer = Transfer
+  { transferConvention :: CallConvention,
+    transferArity :: Int,
+    transferResult :: TransferResult
+  } deriving (Eq,Ord,Show)
+
+-- Private x64 argument cells, distinct from linker symbols and hart indices.
+data ArgumentCell = Argument7 | Argument8 deriving (Eq,Ord,Show)
+
+

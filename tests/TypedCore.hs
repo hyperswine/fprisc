@@ -12,7 +12,8 @@ import Core.Syntax
 import Frontend.Syntax
 import Frontend.Parser (program)
 import Frontend.Desugar
-import Frontend.Desugar.Checked
+import Frontend.Desugar.Typed
+import Compiler.Native.Core
 import Struct (sigTable,structTable,expandStructs,erasePSig)
 import Ownership.Shape (LShape(..))
 import qualified Data.Map.Strict as M

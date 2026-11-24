@@ -2,8 +2,8 @@
 -- no independent pair of runtime/safepoint Booleans to contradict a call role.
 module Codegen.Call
   (Call(..),CallEffect(..),callSafepoint,callRuntime,callPreserves,RuntimeEntry(..),runtimeSymbol,runtimeEvent,runtimeName) where
-import Codegen.Symbol
-import Codegen.Calling.Types (FuelEntry(..))
+import Codegen.IR
+import Codegen.IR (FuelEntry(..))
 -- PreservingFuel: the fuel tick's slow path through the unit's register-
 -- saving wrapper (fpr_fuel_save_local, emitted beside the code): a
 -- safepoint that preserves every allocatable register, so values live

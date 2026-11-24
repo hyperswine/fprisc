@@ -1,6 +1,6 @@
 module Main where
 import qualified Codegen.Heap as H
-import Codegen.Symbol (CodeSymbol(..))
+import Codegen.IR (CodeSymbol(..))
 import Codegen.Target.Common (functionSymbol)
 import Codegen.Target.RV.ScalarAdapters (scalarAdapter)
 import qualified Codegen.IR as I

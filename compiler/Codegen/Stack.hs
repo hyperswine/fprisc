@@ -5,7 +5,6 @@ module Codegen.Stack
   ( ABI(..), Edge(..), Frame(..), Bound(..), selectedFrame, analyse, admit, reportLine ) where
 
 import Codegen.Call
-import Codegen.Calling.Types (Transfer(..),TransferResult(..))
 import Codegen.Frame (Layout(..))
 import qualified Codegen.Opcode as O
 import Codegen.Protocol (embedded,Embedded(..))

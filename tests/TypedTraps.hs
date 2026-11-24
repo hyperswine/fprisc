@@ -7,7 +7,8 @@ import Codegen.Policy (m2Policy)
 import qualified Codegen.Eval as Eval
 import Frontend.Parser (program)
 import Frontend.Desugar
-import Frontend.Desugar.Checked
+import Frontend.Desugar.Typed
+import Compiler.Native.Core
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Control.Monad (unless)

@@ -3,7 +3,8 @@ import Core.Identity
 import Compiler.VectorLayout
 import Frontend.Parser (program)
 import Frontend.Desugar
-import Frontend.Desugar.Checked
+import Frontend.Desugar.Typed
+import Compiler.Native.Core
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Verify
 import Core.Typed.Close

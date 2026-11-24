@@ -22,7 +22,7 @@
 --            Codegen.Allocate.checkAllocation, the oracle that recomputes
 --            liveness over the physical stream and refuses a clobbered
 --            live register or a value across a call outside x19..x27
---            (M2's Codegen.Place.placeInSlots remains for its tests)
+--            (M2's Codegen.Allocate.placeInSlots remains for its tests)
 --   layout   Codegen.Frame.layout: the generated-code frame (ra at fp-8, the
 --            caller's fp at fp-16, the saved callee-saved registers, then
 --            the spill slots, 16-aligned)

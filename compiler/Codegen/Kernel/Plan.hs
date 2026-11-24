@@ -5,7 +5,7 @@ module Codegen.Kernel.Plan
   (Stage(..), Kernel(..), ElementOp(..), CheckedKernel, checkKernel, kernelInput,
    stageFallback, RecordOp(..), RecordKernel(..), CheckedRecord, checkRecordKernel, recordInput,
    MapAsKernel(..), CheckedMapAs, checkMapAsKernel, mapAsInput) where
-import Compiler.VectorOperation
+import Compiler.VectorABI
 import Codegen.IR
 import Codegen.Policy
 import Codegen.Verify (simdExprOk, verifyProgramWidth)

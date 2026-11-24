@@ -8,7 +8,7 @@ import Core.Typed.Callback.Model
 import qualified Core.Typed.FusionSafety as Safety
 import Core.Typed.Walk (allBinders,localUses,mapChildrenM)
 import Core.Identity
-import Compiler.VectorOperation
+import Compiler.VectorABI
 import Type.Syntax
 import Ownership.TypeShape (linShapeT)
 import Control.Monad.State.Strict

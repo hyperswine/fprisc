@@ -3,13 +3,12 @@
 -- generated entries additionally use the private hart cells up to arity 64.
 -- These contracts do not describe arbitrary C stack/FP argument signatures.
 module Codegen.Calling
-  (module Codegen.Calling.Types, ABI(..), ArgumentPlace(..),
+  (EntryConvention(..), FuelEntry(..), CallConvention(..), TransferResult(..), Transfer(..), ArgumentCell(..), ABI(..), ArgumentPlace(..),
    argumentRegisters, resultRegister, productRegisters, resultPlaces, callerClobbers, argumentPlaces, nativePlaces,
    cellSymbol, cellOffset, calleeCall, nativeCall, callEvent,
    selectTransfer, selectProductTransfer, stagedArguments, arrivalArguments, checkTransfers) where
 
-import Codegen.Calling.Types
-import Codegen.IR (Callee,calleeConvention,arityCeiling)
+import Codegen.IR (EntryConvention(..), FuelEntry(..), Callee, calleeConvention, arityCeiling)
 import Codegen.Policy (Policy,polFuel)
 import Codegen.Selected
 import qualified Codegen.Opcode as O

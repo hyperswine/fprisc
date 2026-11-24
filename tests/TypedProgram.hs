@@ -21,7 +21,7 @@ import Codegen.Target.Common (visibilityFor,Visibility(..))
 import Compiler.DataLayout
 import Frontend.Desugar.Typed
 import Frontend.Desugar (collectCons,collectShapes,DEnv(..))
-import qualified Frontend.Desugar.Checked as Compat
+import qualified Compiler.Native.Core as Compat
 import Control.Monad.State.Strict (evalState,get,put)
 import Frontend.Parser (program)
 import Frontend.Syntax

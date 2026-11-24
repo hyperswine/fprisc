@@ -29,9 +29,10 @@ module Codegen.IR
     productCallResults, Op (..), ViewPart (..), headerWord, Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, arityCeiling,
+    EntryConvention (..), FuelEntry (..),
+    CodeSymbol (..), AddressSymbol (..), addressName,
   ) where
 
-import Codegen.Calling.Types (EntryConvention(..))
 import qualified Data.Map.Strict as M
 
 type Name = String
@@ -600,3 +601,13 @@ intFitsWidth width n = let (lo,hi) = intBounds width in n >= lo && n <= hi
 wrapInt :: Width -> Integer -> Integer
 wrapInt width n = let modulus = 2 ^ (widthBits width - 1); m = n `mod` modulus
                   in if m > snd (intBounds width) then m - modulus else m
+
+-- Calling convention & linker symbol types
+data EntryConvention = FprWords | CWords deriving (Eq,Ord,Show)
+data FuelEntry = TicksFuel | NoFuel deriving (Eq,Ord,Show)
+
+newtype CodeSymbol = CodeSymbol {codeName :: String} deriving (Eq,Ord,Show)
+data AddressSymbol = StaticObject String | CodeAddress CodeSymbol | ExternalAddress String
+  deriving (Eq,Ord,Show)
+addressName :: AddressSymbol -> String
+addressName address=case address of StaticObject name->name;CodeAddress code->codeName code;ExternalAddress name->name

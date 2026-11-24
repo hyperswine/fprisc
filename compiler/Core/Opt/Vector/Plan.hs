@@ -6,7 +6,7 @@ module Core.Opt.Vector.Plan
 import Core.Syntax
 import Core.Primitives (FloatWidth)
 import KernelKinds (Kind)
-import Compiler.VectorOperation
+import Compiler.VectorABI
 import qualified Data.Set as S
 
 data VectorOp = ScalarOp ElementOp | RecordMap | RecordFilter

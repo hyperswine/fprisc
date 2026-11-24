@@ -5,7 +5,7 @@
 -- Ownership vocabulary/substitution independent of either AST or inference.
 module Ownership.Shape where
 
-import Ownership.Finding (Finding(..))
+import Source.Span
 import Data.List ( nub )
 import Data.Maybe ( fromMaybe )
 import qualified Data.Map.Strict as M
@@ -293,3 +293,9 @@ repeatedCallbackPrims =
 -- that argument rather than failing outright.
 closureShape :: [LShape] -> LShape
 closureShape = lcon "fn" . filter isLin
+
+data Finding = RequireUnrestricted String | Violation (Maybe SourceOffset) String
+  deriving (Eq,Ord,Show)
+atFinding :: SourceOffset -> Finding -> Finding
+atFinding offset (Violation Nothing message)=Violation (Just offset) message
+atFinding _ finding=finding

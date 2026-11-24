@@ -12,7 +12,8 @@ import Codegen.Policy (m2Policy)
 import Frontend.Parser (program)
 import Frontend.Syntax
 import Frontend.Desugar
-import Frontend.Desugar.Checked
+import Frontend.Desugar.Typed
+import Compiler.Native.Core
 import Struct (sigTable,structTable,expandStructs,erasePSig)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S

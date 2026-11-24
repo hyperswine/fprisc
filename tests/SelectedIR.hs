@@ -13,7 +13,7 @@ import qualified Codegen.Protocol as Protocol
 import Codegen.Bounds
 import Codegen.Frame
 import Codegen.IR
-import Codegen.Place
+import Codegen.Allocate
 import Codegen.Policy (m2Policy, StackPolicy (..), Policy (..), Profile (..))
 import Codegen.Target.Common (shallowEntry, noTune, shrinkWrap)
 import qualified Codegen.Opcode as Opcode

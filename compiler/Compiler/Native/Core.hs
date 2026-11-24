@@ -3,12 +3,17 @@
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
   (NativeCore,eraseDefinitions,compileSelection,compileSelectionAt,compileSelectionBase,compileSelectionTypeSpecialized,compileSelectionTypeSpecializedKeepingEntries,specializeNativeWith,specializeNativeProgramsWithDecisions,inlineNativePrograms,inlineNativeProgramsWithDecisions,planNativeVectorReads,normalizeNative,caseKnownNative,fuseNativePrograms,fuseListNativeProgramsWithHelpers,trmcNativePrograms,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh,nativeTypeSpecNotes,nativeTypeInstances,annotatedProgram,
-   CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts,nativeTypeInstanceDeclarations) where
+   CheckedDefinition,nativeDefinitions,checkedOwner,checkedFunction,checkedContracts,nativeTypeInstanceDeclarations,
+   Desugared,desugaredCore,desugaredTyped,desugaredClosed,desugaredTypeContext,
+   desugarCheckedUnit,lowerCheckedUnit,desugarCheckedUnitWith,lowerCheckedUnitWith,
+   desugarSpecialized,lowerSpecialized,desugarSpecializedWith,lowerSpecializedWith,
+   compileTopChecked,lowerToUntyped) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
 import Core.Typed.Pipeline
 import Core.Typed.Close
 import Core.Typed.Callback (CallbackMode(..))
+import qualified Core.Typed.Callback as Callback
 import qualified Core.Typed.BaseTransport as BaseTransport
 import qualified Core.Typed.Carrier as Carrier
 import Core.Typed.Parametric (Catalog)
@@ -17,10 +22,12 @@ import Core.Typed.Fusion (FusionNote)
 import Core.Typed.Erase
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Core.Syntax
+import Frontend.Syntax (STop)
 import qualified Core.Calling as Calling
 import Compiler.DataLayout
 import Frontend.Desugar.Typed
 import qualified Frontend.Desugar as Legacy
+import qualified Frontend.Desugar.Typed as TypedDesugar
 import Control.Monad.State.Strict
 import Control.Monad (unless)
 import Data.Functor.Const (Const(..))
@@ -248,3 +255,41 @@ noLambda e=case e of
   CTagEq _ _ x->noLambda x
   CProj _ x->noLambda x
   _->True
+
+-- Test/migration compatibility facade (formerly Frontend.Desugar.Checked)
+newtype Desugared=Desugared NativeCore
+desugaredCore (Desugared p)=nativeProgram p
+desugaredTyped (Desugared p)=programFunctions (closedInput (nativeClosed p))
+desugaredClosed (Desugared p)=closedDefinitions (nativeClosed p)
+desugaredTypeContext (Desugared p)=programTypes (closedInput (nativeClosed p))
+
+bridge :: Callback.CallbackMode -> (S.Set String -> Either String TypedDesugar.SourceSelection) -> Legacy.D Desugared
+bridge mode select=do
+  state<-get
+  selected<-either error pure (select (M.keysSet (Legacy.dCons state)))
+  output<-either error pure (compileSelectionAt (Legacy.dFresh state) mode (Layouts (Legacy.dCons state) (Legacy.dShapes state) (Legacy.dI64 state)) selected)
+  modify (\s->s {Legacy.dFresh=nativeFresh output,Legacy.dJoins=S.toList (nativeJoins output)++Legacy.dJoins s})
+  pure (Desugared output)
+
+desugarCheckedUnit :: TypedDesugar.CheckedUnit -> Legacy.D Desugared
+desugarCheckedUnit=desugarCheckedUnitWith Callback.PreserveCallbacks
+desugarCheckedUnitWith :: Callback.CallbackMode -> TypedDesugar.CheckedUnit -> Legacy.D Desugared
+desugarCheckedUnitWith mode unit=bridge mode (\constructors->TypedDesugar.selectUnit constructors unit)
+lowerCheckedUnit :: TypedDesugar.CheckedUnit -> Legacy.D Prog
+lowerCheckedUnit=lowerCheckedUnitWith Callback.PreserveCallbacks
+lowerCheckedUnitWith :: Callback.CallbackMode -> TypedDesugar.CheckedUnit -> Legacy.D Prog
+lowerCheckedUnitWith mode=fmap desugaredCore . desugarCheckedUnitWith mode
+
+desugarSpecialized :: TypedDesugar.SpecializedSource -> S.Set String -> Legacy.D Desugared
+desugarSpecialized=desugarSpecializedWith Callback.PreserveCallbacks
+desugarSpecializedWith :: Callback.CallbackMode -> TypedDesugar.SpecializedSource -> S.Set String -> Legacy.D Desugared
+desugarSpecializedWith mode source names=bridge mode (\constructors->TypedDesugar.selectSpecialized constructors source names)
+lowerSpecialized :: TypedDesugar.SpecializedSource -> S.Set String -> Legacy.D Prog
+lowerSpecialized=lowerSpecializedWith Callback.PreserveCallbacks
+lowerSpecializedWith :: Callback.CallbackMode -> TypedDesugar.SpecializedSource -> S.Set String -> Legacy.D Prog
+lowerSpecializedWith mode source names=desugaredCore <$> desugarSpecializedWith mode source names
+
+compileTopChecked :: TypedDesugar.CheckedPlans -> [STop] -> Legacy.D Desugared
+compileTopChecked plans tops=bridge Callback.PreserveCallbacks (\constructors->TypedDesugar.selectClauses constructors plans tops)
+lowerToUntyped :: TypedDesugar.CheckedPlans -> [STop] -> Legacy.D Prog
+lowerToUntyped plans tops=desugaredCore <$> compileTopChecked plans tops
