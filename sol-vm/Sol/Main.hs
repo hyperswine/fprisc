@@ -415,6 +415,10 @@ compileScriptSession session report slicing mLibShapes path src ptopsAll0 utops 
   -- or constructors keep the existing TAlias behavior untouched.)
   let (ptopsAll, utopsCore) = resolveCoreBuiltins ptopsAll0 utopsX0'
       utopsX1 = aliasStructRefs utopsCore
+      preludeBindNames = S.fromList [n | TBind n _ _ _ <- ptopsAll0]
+      shadowedPrelude = S.toList (S.intersection preludeBindNames (S.fromList [n | TBind n _ _ _ <- utops]))
+  unless (null shadowedPrelude) $
+    note ("[sol] WARNING: script defines prelude name(s): " ++ unwords shadowedPrelude ++ " (shadows prelude binding)")
 
   -- first-class paths (docs/2026-08-27-PATHS.md): the same surface rewrite the AOT
   -- pipeline runs -- @Shape.field literals validate against the merged

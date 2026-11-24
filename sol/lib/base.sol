@@ -33,3 +33,12 @@ firstOr d (x :: _) = x.
 
 # print each line, in order; the result counts them
 say lines = List.fold (fn n l -> u = print l; n + 1) 0 lines.
+
+# immediate streaming writes: bypass the file transaction so scripts that
+# write files and then run external processes do not trip the queued-write check
+writeBytesNow path bytes =
+  writer = unwrap (Stream.openWrite path (Bytes.len bytes));
+  (result, next) = Stream.writeChunk bytes writer;
+  _ = unwrap result;
+  Stream.closeWrite next.
+writeTextNow path text = writeBytesNow path (unwrap (Utf8.encode text)).

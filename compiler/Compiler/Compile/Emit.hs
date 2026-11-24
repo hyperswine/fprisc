@@ -68,7 +68,13 @@ import Mono (qualifyAux, specializeCompatibilityWithProducts)
 import Precond (PreTable, checkedName)
 import Reuse (mapBodiesOf, poolResetters, spineBuilders)
 import Safety (measureCheck)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import Control.Exception (SomeException, try)
+import Data.Bits (xor)
+import Data.Char (ord)
+import Data.Word (Word64)
+import Numeric (showHex)
+import System.Directory (createDirectoryIfMissing, doesFileExist, getFileSize, getModificationTime)
+import System.Environment (getExecutablePath)
 import System.Exit (exitFailure)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 import System.IO (hPutStrLn, stderr)
@@ -123,8 +129,27 @@ data EmitInputs = EmitInputs
     eiPrepareRegions :: NativeCore.NativeCore -> Regions.Program
   }
 
+-- Fast, zero-allocation-overhead executable fingerprint (size + mtime) so
+-- rebuilding ./fpr invalidates unit caches automatically without bumping
+-- codegenRev (which stays the explicit binary/module ABI revision).
+compilerBinaryStamp :: IO String
+compilerBinaryStamp = do
+  res <- tryAny $ do
+    exe <- getExecutablePath
+    sz <- getFileSize exe
+    mt <- getModificationTime exe
+    let raw = show sz ++ ":" ++ show mt
+        h = foldl (\acc c -> (acc `xor` fromIntegral (ord c)) * 1099511628211) (14695981039346656037 :: Word64) raw
+        hex = showHex h ""
+    pure (replicate (max 0 (12 - length hex)) '0' ++ take 12 hex)
+  pure (either (const "") id res)
+  where
+    tryAny :: IO a -> IO (Either SomeException a)
+    tryAny = try
+
 emitNative :: EmitInputs -> IO ()
 emitNative ei = do
+  compilerStamp <- compilerBinaryStamp
   let opts = eiOpts ei
       codegen = eiCodegen ei
       native = eiNative ei
@@ -200,7 +225,7 @@ emitNative ei = do
       arrows (TFn _ r) = 1 + arrows r
       arrows _ = 0 :: Int
       contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
-      targetCfg = buildTargetConfig opts codegen native diagnostic espHost heapBudget halAr contractHash
+      targetCfg = buildTargetConfig opts codegen native diagnostic espHost heapBudget halAr contractHash compilerStamp
       tgt = tcTarget targetCfg
       irPolicy = tcPolicy targetCfg
       nativeMode = tcNativeMode targetCfg

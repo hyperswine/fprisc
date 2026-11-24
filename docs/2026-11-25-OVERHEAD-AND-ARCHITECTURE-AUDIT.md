@@ -134,7 +134,7 @@ the same change (or say in the commit which branch it supersedes).
   Python arguments (`py`, `stdlib`, `extensions`) through every step; they are
   always empty.
 
-## Related: removing a primitive orphans frozen module versions
+## Related: removing a primitive orphans frozen module versions (Resolved)
 
 Found while starting the QOS port to FP-RISC `main` (24 November). v1.0 removed
 `intMax`/`intMin` (`34175b74`). QOS pins three frozen versions of `std/actor`
@@ -144,10 +144,9 @@ Found while starting the QOS port to FP-RISC `main` (24 November). v1.0 removed
 one is exactly what fails to compile. Every removal from the language will meet
 this in any repository with a store.
 
-Options: keep removed primitives as deprecated values that frozen versions may
-use but new code may not (smallest, keeps every pin valid); let `fpr commit`
-mint a major version without comparing against an uncompilable predecessor; or
-allow removed primitives only when compiling store versions. Undecided.
+Resolved: kept `intMax`/`intMin` as deprecated values fixed at the old 64-bit
+bounds so frozen pins continue to compile while `fpr commit` refuses them in
+new code, and shipped QOS Portable SDK `0.5.0` against `main`.
 
 ## Order of work
 

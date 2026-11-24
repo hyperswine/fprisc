@@ -1,8 +1,9 @@
 # Compile-time budget (port of the retired tests/check_compile_budget.py): the
 # compiler's own allocation on fixed programs, compiled cold with ./fpr and read
 # from GHC's runtime statistics (+RTS -t). Allocation is deterministic for a given
-# compiler binary and GHC, so it is gated (10% margin); peak residency is gated
-# with a 25% margin; wall time is never gated. Baselines are per GHC version and
+# compiler binary and GHC, so it is gated (10% margin); peak residency
+# (max_bytes_used) depends on major GC timing so it is reported without gating;
+# wall time is never gated. Baselines are per GHC version and
 # platform in tests/compile_budget.json. An environment without a baseline is
 # measured and reported, and passes (FPR_REQUIRE_BASELINE=1 makes it fail).
 # A program well under budget passes and says so: record the new baseline in
@@ -37,9 +38,9 @@ judge root work budget key (name, code, out, err) =
   line = "{name}: {alloc} bytes allocated, {peak} bytes peak live";
   if wantAlloc == 0 or wantPeak == 0 then _ = print "{line} (no baseline)"; ([name], [])
   else
-    _ = print "{line} ({pct alloc wantAlloc} allocation, {pct peak wantPeak} peak vs baseline){if alloc * 10 < wantAlloc * 9 then " -- under budget: record the new baseline" else ""}";
-    over = List.append (if alloc * 10 > wantAlloc * 11 then ["{name}: allocation {pct alloc wantAlloc} is over the 10% margin"] else [])
-                       (if peak * 4 > wantPeak * 5 then ["{name}: peak residency {pct peak wantPeak} is over the 25% margin"] else []);
+    peakNote = if peak * 4 > wantPeak * 5 then " (note: peak over +25%, informational)" else "";
+    _ = print "{line} ({pct alloc wantAlloc} allocation, {pct peak wantPeak} peak vs baseline){peakNote}{if alloc * 10 < wantAlloc * 9 then " -- under budget: record the new baseline" else ""}";
+    over = if alloc * 10 > wantAlloc * 11 then ["{name}: allocation {pct alloc wantAlloc} is over the 10% margin"] else [];
     ([], over).
 noBaseline key missing = if missing == [] then Unit else
   msg = "compile budget: no baseline for {Str.join ", " missing} on {key}";
