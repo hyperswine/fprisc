@@ -1,8 +1,8 @@
 module Core.Opt.Fusion (fuseVecFixWithImports,fuseCompatibilityWithImports) where
 import Core.Syntax
-import Core.Utils
+import Core.Syntax
 import Core.Primitives (primArities)
-import Core.Analysis.FusionSafety
+import Core.Analysis
 import Core.Opt.Vector (nestPipelinesWithImports)
 import Core.Opt.ProductParameters (CheckedKinds)
 import qualified Data.Map.Strict as M

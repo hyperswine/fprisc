@@ -23,7 +23,7 @@ import Core.Typed.Erase
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Core.Syntax
 import Frontend.Syntax (STop)
-import qualified Core.Calling as Calling
+import qualified Type.Syntax as Calling
 import Compiler.DataLayout
 import Frontend.Desugar.Typed
 import qualified Frontend.Desugar as Legacy

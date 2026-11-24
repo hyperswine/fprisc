@@ -3,8 +3,8 @@
 module Core.Opt.NestedReturns (Nested(..), nestedPlans, nestedReader) where
 
 import Core.Syntax (Core(..), Name, Prog, freeVars, occurs)
-import Core.Utils (spineOf)
-import Core.ProductABI (packName)
+import Core.Syntax (spineOf)
+import Core.Syntax (packName)
 import Control.Monad (guard, foldM, zipWithM)
 import Control.Monad.State.Strict (StateT, runStateT, get, put, modify', lift)
 import Data.Graph (flattenSCC, stronglyConnComp)

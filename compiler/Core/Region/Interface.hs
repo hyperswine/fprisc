@@ -7,7 +7,7 @@ module Core.Region.Interface
 import Core.Typed.Syntax
 import Core.Typed.Pipeline
 import Core.Typed.Close
-import Core.Calling
+import Type.Syntax
 import Type.Syntax
 import Ownership.Shape (LShape)
 import qualified Data.Map.Strict as M

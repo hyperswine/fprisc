@@ -2,7 +2,7 @@
 -- Inline checked closed entries, before region planning and erasure. Templates
 -- retain their code homes; only lexical binders are cloned into the caller.
 module Core.Typed.Inline (Inlining,planInlining,planListHelpers,hasListHelperPipeline,inlineClosedWithDecisions) where
-import qualified Core.Typed.Decision as D
+import qualified Core.Typed.Syntax as D
 import Core.Typed.Syntax
 import Core.Typed.Close
 import Core.Typed.Contract

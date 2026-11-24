@@ -9,7 +9,7 @@ import Data.Functor.Const (Const(..))
 import qualified Core.Syntax as Erased
 import qualified Data.Set as S
 import Control.Monad (unless)
-import qualified Core.Calling as Calling
+import qualified Type.Syntax as Calling
 import qualified Core.Typed.Pipeline as Pipeline
 import qualified Core.Typed.Program as Program
 import qualified Compiler.Native.TypeLayout as Layout

@@ -4,7 +4,10 @@
 {-# LANGUAGE LambdaCase #-}
 -- The native Core syntax and lexical queries, independent of parsing/inference.
 -- Constructor order and Binary encoding remain compatible with FPRISC.Core.
-module Core.Syntax (Name, Core(..), Prog, occurs, freeVars) where
+module Core.Syntax (Name, Core(..), Prog, occurs, freeVars,
+  ProductMarker(..), productMarker, packName, valueName, storedNodeName, spineOf, floatLitBits
+) where
+import Data.List (stripPrefix)
 import Control.DeepSeq (NFData)
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
@@ -59,4 +62,33 @@ freeVars e = walk S.empty e []
       CTagEq _ _ x -> walk bound x rest
       CProj _ x -> walk bound x rest
       _ -> rest
+
+-- Product ABI markers (formerly Core.Syntax)
+data ProductMarker = PackWords Int | JoinWords Int deriving (Eq,Show)
+packName n = "$product.pack"++show n
+valueName n = "$product.value"++show n
+productMarker name = do
+  suffix <- stripPrefix "$product." name
+  lookup suffix ([("pack"++show n,PackWords n) | n<-[2..8]]
+    ++ [("value"++show n,JoinWords n) | n<-[2..8]])
+
+storedNodeName :: String
+storedNodeName="$storage.makeNode"
+
+-- Core utilities (formerly Core.Syntax)
+spineOf :: Core -> (Core, [Core])
+spineOf = go []
+  where
+    go acc (CApp f a) = go (a : acc) f
+    go acc f = (f, acc)
+
+-- a float LITERAL inside an unboxable body: the desugarer emits
+-- f64frombits hi lo (or f32frombits bits) with constant arguments, so
+-- it folds to one `li` of the bit pattern.  Without this, any body
+-- mentioning 2.0 would fail admission and lose its specialized loop.
+floatLitBits :: Core -> Maybe Integer
+floatLitBits e = case spineOf e of
+  (CVar "f64frombits", [CInt hi, CInt lo]) -> Just ((hi * 4294967296) + (lo `mod` 4294967296))
+  (CVar "f32frombits", [CInt b]) -> Just b
+  _ -> Nothing
 

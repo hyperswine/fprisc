@@ -7,7 +7,7 @@ import Frontend.Parser (program)
 import Frontend.Syntax
 import Infer
 import qualified Sol.Infer as Sol
-import Sol.ReplParse (appendCommand)
+import Sol.Main (appendCommand)
 import Struct (sigTable, structTable)
 import Text.Megaparsec (parse, errorBundlePretty)
 

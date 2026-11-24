@@ -5,7 +5,7 @@
 module Arc.Products (lowerProducts, productEntryName) where
 
 import Core.Syntax
-import Core.ProductABI (packName,valueName)
+import Core.Syntax (packName,valueName)
 import Representation.Types
 import Control.Monad.State.Strict
 import Control.Monad (forM,forM_,when)

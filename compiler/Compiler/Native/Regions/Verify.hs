@@ -12,8 +12,8 @@ import Core.Typed.Erase
 import Core.Region.Flow
 import qualified Core.Region.Receive as Receive
 import qualified Core.Region.Syntax as R
-import Core.Region.Runtime (Hook(..),hookName)
-import Core.Analysis.Alpha (sameFunction)
+import Core.Region.Syntax (Hook(..),hookName)
+import Core.Analysis (sameFunction)
 import Core.Opt.Representation (eraseLayoutCasts)
 import Core.Syntax (Name)
 import Compiler.DataLayout

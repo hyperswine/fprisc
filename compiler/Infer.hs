@@ -56,7 +56,7 @@ import Type.Relation (sameType, fieldType)
 import qualified Diagnostic.Syntax as Diag
 import Source.Span (SourceOffset(..))
 import Infer.State
-import Infer.Pattern
+import Infer.Result
 import Infer.Result
 import Infer.Session
 import Infer.Elaboration

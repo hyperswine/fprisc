@@ -3,7 +3,7 @@
 -- Layout authority stays attached to the closed product it helped construct.
 module Core.Typed.Pipeline
   (ClosedProgram,closeProgram,specializeProgramWith,specializeProgramsWithDecisions,inlineProgramsWithDecisions,closedDecisions,closedTouched,planVectorReads,normalizeProgram,caseKnownProgram,fusePrograms,fuseListProgramsWithHelpers,trmcPrograms,closedInput,closedDefinitions,closedLayouts,verifyClosedProgram) where
-import qualified Core.Typed.Decision as D
+import qualified Core.Typed.Syntax as D
 import Core.Typed.Program
 import Core.Typed.Syntax
 import Core.Typed.Layout

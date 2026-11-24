@@ -13,7 +13,7 @@
 module Codegen.LowerTyped (lowerFn, planCore, lowerRegionFn, planRegionCore, Layout (..)) where
 
 import Compiler.DataLayout (tupWideBase)
-import Core.Region.Runtime (Hook (..), hookName)
+import Core.Region.Syntax (Hook (..), hookName)
 import qualified Core.Region.Syntax as R
 import qualified Codegen.Lower as Lower
 import Codegen.IR

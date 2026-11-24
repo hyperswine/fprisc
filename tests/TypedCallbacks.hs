@@ -3,7 +3,7 @@ import qualified Core.Typed.Syntax as T
 import Core.Typed.Close
 import Core.Typed.Callback
 import qualified Core.Typed.Callback.Catalog as Catalog
-import qualified Core.Typed.Decision as D
+import qualified Core.Typed.Syntax as D
 import Core.Typed.Erase
 import Core.Typed.Walk (allBinders)
 import Core.Syntax

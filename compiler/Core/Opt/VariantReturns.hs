@@ -4,8 +4,8 @@ module Core.Opt.VariantReturns (Plan,plans,entry,reader,regionResult) where
 
 import Compiler.DataLayout (smallTupleLayouts)
 import Core.Syntax
-import Core.Utils (spineOf)
-import Core.ProductABI (packName)
+import Core.Syntax (spineOf)
+import Core.Syntax (packName)
 import Core.Opt.ProductParameters (VariantLayout)
 import Control.Monad (guard)
 import Data.Graph (stronglyConnComp,flattenSCC)

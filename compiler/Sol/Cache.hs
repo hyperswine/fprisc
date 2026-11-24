@@ -17,8 +17,10 @@ module Sol.Cache
     cachedPrelude,
     checkedLibraries,
     recordCheckedLibraries,
-    sourceDigest
-  ) where
+    sourceDigest,
+  phase, phaseIO
+) where
+import System.IO (hPutStrLn, stderr)
 
 import Control.DeepSeq (NFData, force)
 import Control.Exception (IOException, bracketOnError, catch, evaluate)
@@ -35,6 +37,8 @@ import qualified Sol.Digest as Digest
 import GHC.Generics (Generic)
 import Numeric (showHex)
 import System.Directory (createDirectoryIfMissing, getHomeDirectory, makeAbsolute, removeFile, renameFile)
+import GHC.Clock (getMonotonicTimeNSec)
+import Text.Printf (printf)
 import System.Environment (getExecutablePath, lookupEnv)
 import System.FilePath ((</>), takeDirectory)
 import System.Info (arch, os, compilerName, compilerVersion)
@@ -43,7 +47,6 @@ import System.Posix.Files (deviceID, fileID, fileSize, getFileStatus, modificati
 import Sol.Bytecode (BProg)
 import Sol.Diagnostic (diagnostic)
 import Sol.Lang (Name, Prog, STop)
-import Sol.Startup (phase, phaseIO)
 
 data Prepared = Prepared
   { preparedCons :: M.Map Name (Int, Int, Int),
@@ -239,3 +242,26 @@ recordCheckedLibraries digest options verdict = do
   if disabled then pure () else do
     k <- libraryKey digest options
     mapM_ (\(file, key) -> writeEntry file key verdict) k
+
+-- Optional phase wall times (formerly Sol.Cache)
+phase :: NFData a => String -> IO a -> IO a
+phase name action = do
+  enabled <- (== Just "1") <$> lookupEnv "SOL_TIMINGS"
+  if not enabled then action else do
+    start <- getMonotonicTimeNSec
+    result <- action >>= evaluate . force
+    end <- getMonotonicTimeNSec
+    hPutStrLn stderr (printf "[sol timing] %s: %.3f ms" name (fromIntegral (end - start) / 1e6 :: Double))
+    pure result
+
+-- For completed I/O operations such as commit, whose work is performed before
+-- returning. Unlike phase this does not force a pure result's internal fields.
+phaseIO :: String -> IO a -> IO a
+phaseIO name action = do
+  enabled <- (== Just "1") <$> lookupEnv "SOL_TIMINGS"
+  if not enabled then action else do
+    start <- getMonotonicTimeNSec
+    result <- action
+    end <- getMonotonicTimeNSec
+    hPutStrLn stderr (printf "[sol timing] %s: %.3f ms" name (fromIntegral (end - start) / 1e6 :: Double))
+    pure result

@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 module Core.Opt.Normalize (normArc, normIn, indexedMemory) where
 import Core.Syntax
-import Core.Utils (spineOf)
+import Core.Syntax (spineOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Maybe (fromMaybe)

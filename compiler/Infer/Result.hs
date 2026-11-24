@@ -5,7 +5,7 @@ module Infer.Result
   (InferenceResult, resultFromState, inferenceErrors, inferenceDiagnostics, inferenceNotes,
    inferenceHoles, inferenceLinearity, inferenceTops, inferenceInterfaces,
    inferenceEvidence, inferenceElaborations, inferenceSchemes, inferencePatterns, inferenceConstructors, inferenceBinderNames, inferenceLayoutContracts,
-   inferenceConstructorTraps, inferenceSignatures, inferenceStructures, inferenceDefaultingWork) where
+   inferenceConstructorTraps, inferenceSignatures, inferenceStructures, inferenceDefaultingWork, PatternInfo(..), PatternSite(..), mapPatternTypesM, bindPattern) where
 import Diagnostic.Syntax (Diagnostic,renderLegacyDiagnostic)
 import Core.Syntax (Name)
 import Core.Identity (BinderId)
@@ -16,7 +16,6 @@ import qualified Data.Set as S
 import Ownership.Shape (LShape)
 import Infer.State
 import Infer.Elaboration (ElaborationFact)
-import Infer.Pattern (PatternSite,PatternInfo)
 import qualified Infer.Evidence as E
 import Compiler.VectorLayout (LayoutContract)
 import Struct (Sigs,Structs)

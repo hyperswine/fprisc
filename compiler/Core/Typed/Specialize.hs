@@ -4,7 +4,7 @@
 -- a local reference can never be mistaken for a same-spelled generic global.
 module Core.Typed.Specialize
   (Context(..),Specialized,specialize,functions,cloneNames,declines,callingSchemes) where
-import Core.Typed.Syntax
+import Core.Typed.Syntax hiding (CallbackReason(..))
 import Core.Typed.Walk
 import Core.Typed.Instantiate
 import Core.Typed.Verify

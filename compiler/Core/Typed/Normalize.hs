@@ -12,7 +12,7 @@ import Type.Syntax (Type(..))
 import Core.Primitives (entryTickName)
 import Compiler.VectorLayout (builderRuntimeName)
 import qualified Core.VectorRead as Read
-import Core.Region.Runtime (Hook(..),hookName)
+import Core.Region.Syntax (Hook(..),hookName)
 import Control.Monad.Writer
 import Control.Monad (foldM)
 import Data.Monoid (Any(..))

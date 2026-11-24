@@ -32,7 +32,7 @@ import Core.Syntax
 import Compiler.DataLayout (tupWideBase)
 import Core.Region.Interface
 import qualified Core.VectorRead as VectorRead
-import Core.Region.Runtime (receiveReady)
+import Core.Region.Syntax (receiveReady)
 import qualified Core.Region.Receive as Receive
 import qualified Core.Region.Types as Region
 import qualified Core.Region.CallSites as Sites

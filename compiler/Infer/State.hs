@@ -1,5 +1,6 @@
 -- Inference state/context ownership; no dependency on the inference engine.
 module Infer.State where
+import Frontend.Syntax (SPat)
 import Core.Syntax (Name)
 import Core.Identity (BinderId, ExprId, Namespace)
 import Type.Syntax (Type, Row, Scheme)
@@ -7,7 +8,6 @@ import Ownership.Shape (LShape)
 import Struct (Sigs)
 import Diagnostic.Syntax (Diagnostic)
 import Source.Span (SourceOffset)
-import Infer.Pattern (PatternSite, PatternInfo)
 import Compiler.VectorLayout (LayoutContract)
 import qualified Infer.Evidence as Evidence
 import qualified Data.Map.Strict as M
@@ -107,3 +107,15 @@ initialIEnv capture = IEnv
     iOperatorScopes=IM.empty, iCarrierChoices=IM.empty,
     iInterfaces=[], iEvidenceBuilder=Evidence.emptyBuilder <$> capture,
     iDeferredDeclarations=[], iLinSigs=[], iPatterns=M.empty, iBinderTargets=M.empty, iConstructorSchemes=M.empty, iTypeConstructors=M.empty }
+
+-- Pattern derivation sites (formerly Infer.Pattern)
+data PatternSite = ParameterOf String Int Int | GuardOf String Int Int
+                 | ArmOf ExprId Int | BindingOf ExprId Int | LocalOf ExprId Int
+  deriving (Eq,Ord,Show)
+data PatternInfo = PatternInfo
+  { matchedSource :: SPat, matchedType :: !Type,
+    matchedChildren :: [PatternInfo], matchedBindings :: M.Map String BinderId } deriving (Show)
+mapPatternTypesM :: Monad m => (Type -> m Type) -> PatternInfo -> m PatternInfo
+mapPatternTypesM solve (PatternInfo p t cs bs) = (\t' cs' -> PatternInfo p t' cs' bs) <$> solve t <*> traverse (mapPatternTypesM solve) cs
+bindPattern :: M.Map String BinderId -> PatternInfo -> PatternInfo
+bindPattern bs (PatternInfo p t cs _) = PatternInfo p t (map (bindPattern bs) cs) bs

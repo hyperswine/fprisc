@@ -24,7 +24,7 @@ module Codegen.Lower
     Env, lowerVal, lowerTail, VectorAccess, vectorAccess, lowerVector ) where
 
 import Codegen.IR
-import Codegen.LoopForm (formSelfLoop)
+import Codegen.LoopOptimize (formSelfLoop)
 import Codegen.Placement (placeTicks)
 import Core.Primitives (entryTickName)
 import Codegen.Policy
@@ -40,7 +40,7 @@ import qualified Data.Map.Strict as M
 import KernelKinds (Kind (..))
 import Workers (ScalarSignatures)
 import Core.Opt.PairReturns (productWorkerWidth)
-import Core.ProductABI (ProductMarker(..),productMarker,storedNodeName)
+import Core.Syntax (ProductMarker(..),productMarker,storedNodeName)
 import Compiler.DataLayout (storedListTid)
 import Core.Syntax (Core (..), Prog)
 
@@ -906,7 +906,7 @@ lowerVal cx env = \case
       -- F64 + - * / and comparisons on the 64-bit word: inline
       -- (floatBinOps/floatCmpOps);
       -- the values stay IEEE bits in TVal, nothing new crosses a call
-      -- an F64 literal: its bits (Core.Utils.floatLitBits), instead of a
+      -- an F64 literal: its bits (Core.Syntax.floatLitBits), instead of a
       -- runtime f64frombits call
       | isPrim cx env h, policyWidth (cxPolicy cx) == W32,
         h == "f64frombits", [CInt hi, CInt lo] <- args -> boxedFloat W64 (hi*4294967296 + lo `mod` 4294967296)

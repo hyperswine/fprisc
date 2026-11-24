@@ -4,8 +4,8 @@
 module Core.Opt.StoredLists (storeLists) where
 
 import Core.Syntax
-import Core.Utils (spineOf)
-import Core.ProductABI (packName,storedNodeName)
+import Core.Syntax (spineOf)
+import Core.Syntax (packName,storedNodeName)
 import Compiler.DataLayout (storedListTid,storedListVariant,smallTupleLayouts)
 import Core.Opt.ProductParameters (ProductParameters,StorageLayout(..),StorageField(..),storagePlans)
 import Control.Monad (guard,foldM)

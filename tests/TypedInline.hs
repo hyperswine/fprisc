@@ -2,7 +2,7 @@ module TypedInline (checkInlining) where
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Linked as Linked
 import Frontend.Desugar.Typed (SourceSelection)
-import qualified Core.Typed.Decision as D
+import qualified Core.Typed.Syntax as D
 import Core.Typed.Pipeline
 import Core.Typed.Close
 import Core.Typed.Callback.Model (Target(..),Template(..),ClonePlan(..))

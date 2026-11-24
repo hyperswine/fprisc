@@ -12,7 +12,7 @@ import qualified Codegen.Eval as Eval
 import qualified Codegen.Lower as Lower
 import Codegen.Policy (m2Policy)
 import Mono (specializeCompatibilityWithProducts)
-import qualified Core.Calling as Calling
+import qualified Type.Syntax as Calling
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Regions as R
 import qualified Compiler.Native.Regions.Typed as Typed
@@ -31,8 +31,8 @@ import qualified Compiler.Native.Imports as Imports
 import Codegen.Target.Common (visibilityFor,Visibility(..))
 import qualified Cost
 import qualified ReceiveTurns as Turns
-import Core.Analysis.Scope
-import Core.Analysis.Alpha (sameFunction)
+import Core.Analysis
+import Core.Analysis (sameFunction)
 import qualified Core.Region.Receive as Receive
 import qualified Core.Region.Flow as Flow
 import Core.Identity

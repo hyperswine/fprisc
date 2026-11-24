@@ -8,7 +8,7 @@ import Core.Primitives (entryTickName)
 import qualified Core.VectorRead as Read
 import qualified Core.Region.Syntax as R
 import Core.Region.Flow (functionFlow,flowSource)
-import Core.Region.Runtime (Hook(..),hookName,packState,receiveReady)
+import Core.Region.Syntax (Hook(..),hookName,packState,receiveReady)
 import Core.Typed.Verify (verifyFunctionWith)
 import Core.Typed.Layout (recordShapes,closedRowShape)
 import Type.Relation (fieldType)

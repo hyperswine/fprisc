@@ -188,7 +188,7 @@ expandMutualTail peers = go S.empty
 
 -- When mutual tail splicing introduces a back-edge to fnEntry, separate the
 -- entry prefix (stack check + initial fuel tick) into a dedicated entry block
--- just like Codegen.LoopForm.formSelfLoop, so downstream RawInts and native
+-- just like Codegen.LoopOptimize.formSelfLoop, so downstream RawInts and native
 -- backends see a clean preheader + loop header with an entry fuel tick.
 splitSelfLoop :: Fn -> Fn
 splitSelfLoop fn = case [b | b <- fnBlocks fn, bId b == fnEntry fn] of

@@ -5,7 +5,7 @@
 -- producer-only map over range collapses to a single-pass builder. Candidate
 -- globals are shape-verified against their catalog templates (std/list's
 -- content hash changes on every edit, so a name alone is not an identity);
--- safety evidence and the Int-overflow relaxation are Core.FusionPolicy's.
+-- safety evidence and the Int-overflow relaxation are Core.Analysis's.
 module Core.Typed.ListFusion (fuseListClosedAfterInline) where
 import Core.Typed.Syntax
 import Core.Typed.Close
@@ -13,7 +13,7 @@ import Core.Typed.Callback.Catalog
 import Core.Typed.Callback.Model
 import qualified Core.Typed.FusionSafety as Safety
 import Core.Typed.Fusion (FusionNote(..),Decline(..))
-import Core.FusionPolicy (safePrimitives,safePrimitiveArity)
+import Core.Analysis (safePrimitives,safePrimitiveArity)
 import Core.Typed.Walk (allBinders,mapChildrenM,renameUses)
 import Core.Identity
 import Type.Syntax

@@ -5,7 +5,7 @@
 -- call-site allocation optimization, not checked builtin aggregate storage.
 module Core.Opt.PairReturns (productReturnProgramWithVariants, productWorkerWidth) where
 import Core.Syntax (Core(..), Prog, Name)
-import Core.Utils (spineOf)
+import Core.Syntax (spineOf)
 import qualified Core.Opt.VariantReturns as Variant
 import Core.Opt.ProductParameters (VariantLayout)
 import qualified Core.Opt.NestedReturns as Nested

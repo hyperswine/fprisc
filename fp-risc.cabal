@@ -49,16 +49,13 @@ library
       Representation.Types
       Arc.Uniform
       Arc.Products
-      Core.ProductABI
       Compiler.Native.Representation
       Compiler.Native.TypeLayout
       Interrupt
       Core.Syntax
       Core.CacheIdentity
-      Core.Utils
       Core.Primitives
       Core.VectorRead
-      Core.Analysis.FusionSafety
       Core.Opt.Normalize
       Core.Opt.Fusion
       Core.Opt.Vector
@@ -148,7 +145,6 @@ library
       Infer.Evidence
       Infer.Result
       Infer.Session
-      Infer.Pattern
       Infer.Elaboration
       Core.Identity
       Core.Typed.Syntax
@@ -171,18 +167,15 @@ library
       Compiler.Native.Regions.Verify
       Compiler.Native.TypedCensus
       Compiler.Native.TypedLowering
-      Core.Calling
       Core.Region.Interface
       Core.Region.Types
       Core.Region.Syntax
-      Core.Region.Runtime
       Core.Region.Analysis
       Core.Region.Flow
       Core.Region.Receive
       Core.Region.CallSites
       Core.Opt.Representation
-      Core.Analysis.Scope
-      Core.Analysis.Alpha
+      Core.Analysis
       Frontend.Desugar.Typed
       Core.Typed.Walk
       Core.Typed.Close
@@ -202,7 +195,6 @@ library
       Type.Relation
       Type.Substitution
       Core.Typed.Instantiate
-      Core.Typed.Decision
       Core.Typed.Inline
       Core.Typed.VectorRead
       Core.Typed.Normalize
@@ -212,7 +204,6 @@ library
       Core.Typed.Trmc
       Core.Typed.TrmcProof
       Core.Typed.ListFusion
-      Core.FusionPolicy
       Core.Typed.Specialize
       Core.Typed.BaseTransport
       Core.Typed.Parametric
@@ -228,7 +219,6 @@ library
       Codegen.LoopOptimize
       Codegen.InlineCalls
       Codegen.StringScan
-      Codegen.LoopForm
       Codegen.Placement
       Codegen.Pressure
       Compiler.Trap
@@ -245,7 +235,6 @@ library
       StdBridge
       StdCheck
       Struct
-      Sol.Startup
       Sol.Cache
       Sol.Diagnostic
       Sol.Bytecode
@@ -258,7 +247,6 @@ library
       Sol.AsmA64
       Sol.Lang
       Sol.Main
-      Sol.ReplParse
       Sol.Mod
       Sol.Native
       Sol.Preamble

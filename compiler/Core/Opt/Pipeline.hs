@@ -18,7 +18,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Maybe (isJust)
 import Compiler.DataLayout (tupWideBase)
-import Core.ProductABI (packName)
+import Core.Syntax (packName)
 
 data OptimizationOptions = OptimizationOptions
   { optFusion :: Bool, optWorkers :: Bool, optFieldWorkers :: Bool, optTupleScalars :: Bool,

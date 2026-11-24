@@ -5,7 +5,7 @@
 module Mono (specializeFunctions,specializeFunctionsWithImports,specializeCompatibility,specializeCompatibilityWithProducts, qualifyAux, references) where
 
 import Core.Syntax (Core(..), Name, Prog, freeVars)
-import Core.Analysis.Scope (qualifyPrivate)
+import Core.Analysis (qualifyPrivate)
 import Core.Opt.ProductParameters
 import Data.Graph (SCC(..), stronglyConnComp)
 import Control.Monad.State.Strict

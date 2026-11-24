@@ -5,7 +5,9 @@ module Core.Typed.Syntax
   ( Binder(..), Reference(..), Origin(..), Expr(..), Node(..), Function(..), TypeContext(..), Pattern(..), PatNode(..), Alternative(..), Guard(..), MatchStyle(..), patternBinders,
     CodeId(..), CodeKind(..), CodeFunction(..), CodeContract(..), codeContract, codeAsFunction,
     UpdatePlan(..), UpdateBranch(..), UpdateField(..),
-    binderType, functionType, lambdaView ) where
+    binderType, functionType, lambdaView,
+  Decision(..), InlineReason(..), CallbackReason(..)
+) where
 import Source.Span (SourceOffset)
 import Core.Identity
 import Type.Syntax (Type(..), Scheme(..))
@@ -115,3 +117,15 @@ lambdaView e=case exprNode e of
   Note x->lambdaView x
   Lambda ps body | not (null ps)->Just (ps,body)
   _->Nothing
+
+-- Advisory pass decisions (formerly Core.Typed.Syntax)
+data InlineReason=Inlined | RecursiveCallee | NullaryCallee
+  | OverWeight Int Int -- observed weight (or lower bound), limit
+  | UsesForbiddenGlobal [String] | ArityMismatch Int Int Int Int
+  | ContractInstantiation deriving (Eq,Ord,Show)
+data CallbackReason=Specialized | OverArity Int Int | TooDeep Int Int
+  | TooManyClones Int Int | OverNodeBudget Int Int | Unification
+  | EscapingType | RetainedArityOverflow | NoKnownArgument | Unstable | UnsafeArgument | UnknownTarget
+  deriving (Eq,Ord,Show)
+data Decision=InlineDecision String String InlineReason
+  | CallbackDecision String String CallbackReason deriving (Eq,Ord,Show)

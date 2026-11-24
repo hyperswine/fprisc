@@ -4,7 +4,7 @@
 -- stack a headroom check per frame; Codegen.Lower emits both at the entry,
 -- and an inlined callee brings its entry tick with it (Inline.hs,
 -- Core.Typed.Inline). This module is the one place that moves or removes
--- such obligations. It runs inside lowering, after Codegen.LoopForm and
+-- such obligations. It runs inside lowering, after Codegen.LoopOptimize and
 -- before the evaluator/simplifier boundary, so the evaluator's oracle and
 -- the backends see the same ticks and Codegen.Simplify keeps its rule that
 -- it never touches one (docs/2026-11-07-CHECK-PLACEMENT-AND-TYPED-LOWERING.md,

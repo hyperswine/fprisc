@@ -46,8 +46,8 @@ import Workers (ScalarSignatures, scalarPrimitives)
 
 import Core.Syntax (Core (..), Prog, freeVars)
 import Core.Alpha (canonical, substituteLiterals)
-import Core.ProductABI (productMarker)
-import Core.Utils
+import Core.Syntax (productMarker)
+import Core.Syntax
 import Core.Primitives (corePrims, primArities, entryTickName)
 import Core.Opt.Normalize (normIn, indexedMemory)
 import Core.Opt.Vector

@@ -3,7 +3,7 @@
 module Diagnostic.Remark
   (Mode(..),parseMode,Heat(..),EffectCause(..),Reason(..),Remark(..),kind,
    selected,toDiagnostic,renderText,renderJSON,renderInputs) where
-import qualified Core.Typed.Decision as D
+import qualified Core.Typed.Syntax as D
 import Diagnostic.Syntax
 import qualified Diagnostic.Render as D
 import Source.Span

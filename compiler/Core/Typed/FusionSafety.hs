@@ -3,7 +3,7 @@ module Core.Typed.FusionSafety (Safety,Reason(..),planSafety,unsafeTarget,unsafe
 import Core.Typed.Syntax
 import Core.Typed.Callback.Model
 import Core.Typed.Walk (mapChildrenM)
-import Core.FusionPolicy (safePrimitives,trapFreePrimitives,safePrimitiveArity)
+import Core.Analysis (safePrimitives,trapFreePrimitives,safePrimitiveArity)
 import Core.Primitives (primArities,entryTickName)
 import Data.Functor.Const (Const(..))
 import qualified Data.Map.Lazy as M

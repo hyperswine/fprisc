@@ -19,8 +19,8 @@ import qualified Core.Region.CallSites as Sites
 import qualified Core.Region.Types as Region
 import Core.Opt.Representation (eraseLayoutCasts)
 import Core.Opt.ProductParameters
-import Core.Analysis.Scope (qualifyPrivate,programNames)
-import Core.Analysis.Alpha (sameFunction)
+import Core.Analysis (qualifyPrivate,programNames)
+import Core.Analysis (sameFunction)
 import qualified ReceiveTurns as Turns
 import qualified Cost
 import Safety (Measure(..))

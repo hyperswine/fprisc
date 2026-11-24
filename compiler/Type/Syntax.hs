@@ -5,7 +5,9 @@
 -- contracts, with no source syntax. Existing Show output is diagnostic ABI.
 module Type.Syntax
   (Type(..), Row(..), Scheme(..), tcon, tInt, tStr, tBool, tUnit,
-   tF64, tF32, tI64, tI32, tList, tVector, tMutMap, tFixedMap, mentionsFloat) where
+   tF64, tF32, tI64, tI32, tList, tVector, tMutMap, tFixedMap, mentionsFloat,
+  Calling, calling, callingArguments, callingResult, callingArity
+) where
 import Data.List (foldl')
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
@@ -79,3 +81,16 @@ tMutMap k v = TAp (TAp (TC "MutMap") k) v
 tFixedMap :: Type -> Type -> Type
 tFixedMap k v = TAp (TAp (TC "FixedMap") k) v
 
+-- Counted calling interface (formerly Type.Syntax)
+data Calling=Calling [Type] Type deriving Show
+calling :: Int -> Type -> Maybe Calling
+calling count _ | count<0=Nothing
+calling 0 ty=Just (Calling [] ty)
+calling n (TFn a b)=do Calling as result<-calling (n-1) b;pure (Calling (a:as) result)
+calling _ _=Nothing
+callingArguments :: Calling -> [Type]
+callingArguments (Calling as _)=as
+callingResult :: Calling -> Type
+callingResult (Calling _ r)=r
+callingArity :: Calling -> Int
+callingArity=length . callingArguments

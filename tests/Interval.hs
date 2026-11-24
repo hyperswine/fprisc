@@ -243,7 +243,7 @@ main=do
   forM_ [("count",[RInt 0,RInt 1000000,RInt 0]),("count",[RInt 5,RInt 5,RInt 7]),
          ("fib",[RInt 20]),("twice",[RInt 3,RInt 4]),("twice",[RInt 9,RInt 4])] $ \(fn,args)->
     -- a loop's raw copy enters through a new entry that checks the stack
-    -- once (as Codegen.LoopForm does: the frame is constant); every other
+    -- once (as Codegen.LoopOptimize does: the frame is constant); every other
     -- event, the result and every trap text are the same
     check (fn++" evaluates identically") (sansStack (evalProgram lowered fn args)==sansStack (evalProgram fast fn args))
   check "count computes" (ocResult (evalProgram fast "count" [RInt 0,RInt 1000000,RInt 0])==Right (RInt 499999500000))

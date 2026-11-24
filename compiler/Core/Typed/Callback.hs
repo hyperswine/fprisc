@@ -3,7 +3,7 @@
 -- cloning; callback object arguments survive wherever their identity escapes.
 module Core.Typed.Callback
   (CallbackMode(..),Callbacks,specializeCallbacks,specializeCallbacksWith,specializeFromCatalog,specializeClosedFromCatalog,specializeClosedWithDecisions,callbackClosed,callbackClones,callbackDecisions) where
-import qualified Core.Typed.Decision as D
+import qualified Core.Typed.Syntax as D
 import Core.Typed.Syntax
 import Core.Typed.Callback.Model
 import Core.Typed.Callback.Catalog

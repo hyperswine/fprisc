@@ -1,7 +1,7 @@
 module Main where
 import Codegen.IR
 import Codegen.Policy
-import Codegen.LoopForm
+import Codegen.LoopOptimize
 import Codegen.ControlFlow
 import Codegen.Lower (lowerProgram)
 import Codegen.Simplify

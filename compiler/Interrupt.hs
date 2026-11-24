@@ -8,7 +8,7 @@ module Interrupt
 import Core.Syntax (Core(..), Prog)
 import Representation (primitiveShape)
 import Representation.Types (ProductShape(..),productOwners,productParts,productFields)
-import Core.ProductABI (ProductMarker(..),productMarker)
+import Core.Syntax (ProductMarker(..),productMarker)
 import Core.Opt.PairReturns (productWorkerWidth)
 import Control.Monad.State.Strict (evalStateT,get,modify,lift)
 import Control.Monad (foldM, unless)

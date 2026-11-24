@@ -6,7 +6,7 @@ import Control.Applicative ((<|>))
 import Core.Opt.Normalize (normIn)
 import Core.Syntax (Core(..), Prog, Name)
 import Core.Primitives (primArities,entryTickName)
-import Core.Region.Runtime (Hook(..),hookName)
+import Core.Region.Syntax (Hook(..),hookName)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (isPrefixOf, stripPrefix)

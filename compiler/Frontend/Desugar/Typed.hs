@@ -8,7 +8,7 @@ module Frontend.Desugar.Typed
    SourceSelection,selectionProgram,selectionCompatibility,selectionConstructors,Compatibility,
    compatibilityClauses,compatibilityReason,compatibilityDeclaration,selectUnit,selectSpecialized,selectClauses) where
 import Core.Identity
-import qualified Core.Calling as Calling
+import qualified Type.Syntax as Calling
 import Core.Typed.Parametric (Catalog(..))
 import Core.Typed.Instantiate (constructorFunction)
 import qualified Core.Typed.Syntax as T
@@ -26,7 +26,7 @@ import Ownership.TypeShape (linShapeT)
 import Frontend.Syntax
 import Frontend.Traverse (sFree,sourceGroups)
 import Infer.Result
-import Infer.Pattern
+import Infer.Result
 import qualified Infer.Evidence as E
 import Infer.Elaboration
 import Precond (checkedName)

@@ -15,7 +15,7 @@ module Sol.Main where
 import qualified Compiler.Editor as Editor
 import Mono (specializeFunctions)
 import Sol.Cache (Prepared (..), ImportStamp, cached, cachedPrelude, checkedLibraries, recordCheckedLibraries, sourceDigest)
-import Sol.Startup (phase, phaseIO)
+import Sol.Cache (phase, phaseIO)
 import Control.DeepSeq (force)
 import Sol.Diagnostic (diagnostic, tryBufferedDiagnostics, verbose, withBufferedDiagnostics)
 import qualified Sol.ScriptIO as ScriptIO
@@ -39,7 +39,6 @@ import Safety (checkSafety, safetyDiagnostics, safetySuggestions, trustedLibrary
 import Precond (applyPreconds, preTable, validatePre, validatePreUses)
 import Sol.Infer (inferResult, inferSession, builtinNames, solBuiltins)
 import Infer.Session (CheckedDefinitions)
-import Sol.ReplParse (appendCommand)
 import Sol.Slice (injectedNames, mentions, orderedShapes, shapeSeed, sliceIndices)
 import qualified Sol.Digest as Digest
 import qualified Data.Binary as Bin
@@ -1198,3 +1197,15 @@ exprVars = go
     go _ = []
     stmt (SBind _ _ e) = go e
     stmt (SBindPat _ e) = go e
+
+-- Incremental REPL command parsing (formerly Sol.Main)
+appendCommand :: Int -> [STop] -> [STop] -> [STop]
+appendCommand offset accepted = (accepted ++) . map shiftTop
+  where
+    shift = transformE (\_ -> \case SMark n e -> SMark (offset+n) e; e -> e) S.empty
+    shiftTop = \case
+      TBind n ps gs e -> TBind n ps (map (mapGuardE shift) gs) (shift e)
+      TEval e -> TEval (shift e)
+      TStruct n ss fs -> TStruct n ss [(f,shift e) | (f,e) <- fs]
+      TSig n ty pre -> TSig n ty [fmap (\(v,e) -> (v,shift e)) p | p <- pre]
+      t -> t

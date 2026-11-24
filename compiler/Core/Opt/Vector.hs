@@ -2,9 +2,9 @@
 {-# LANGUAGE TupleSections #-}
 module Core.Opt.Vector (vecSpec, pipelinePlan, nestPipelinesWithImports, specUsesFloat, arithClosure, planCapKinds) where
 import Core.Syntax
-import Core.Utils
+import Core.Syntax
 import Core.Primitives
-import Core.Analysis.FusionSafety
+import Core.Analysis
 import Core.Opt.Vector.Plan
 import KernelKinds (Kind(..), signature, signatureStrict, verifyComponent)
 import Core.Opt.ProductParameters (CheckedKinds)
