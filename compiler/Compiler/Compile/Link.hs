@@ -7,6 +7,7 @@ import qualified Compiler.Native.Linked as Linked
 import qualified Compiler.Options as Options
 import Core.Typed.Callback (CallbackMode)
 import Core.Typed.Fusion (FusionNote)
+import qualified Data.Map.Strict as M
 import qualified Diagnostic.Remark as Remark
 
 linkAndOptimize ::
@@ -30,9 +31,14 @@ linkAndOptimize opts codegen irPolicy remarkMode callbackMode artifactResults = 
       else do
         inlined1 <- checkedStage "checked Base inlining" (Linked.inlineLinkedWithDecisions (remarkMode /= Remark.Off) 3 24 64 original)
         specialized2 <- checkedStage "callback specialization after inlining" (Linked.specializeLinkedWithDecisions (remarkMode /= Remark.Off) callbackMode inlined1)
-        inlined2 <- checkedStage "checked Base inlining after specialization" (Linked.inlineLinkedWithDecisions (remarkMode /= Remark.Off) 3 24 64 specialized2)
-        specialized3 <- checkedStage "callback specialization round 3" (Linked.specializeLinkedWithDecisions (remarkMode /= Remark.Off) callbackMode inlined2)
-        checkedStage "checked Base inlining round 3" (Linked.inlineLinkedWithDecisions (remarkMode /= Remark.Off) 3 24 64 specialized3)
+        if M.size (Linked.linkedSymbols specialized2) == M.size (Linked.linkedSymbols inlined1)
+          then pure specialized2
+          else do
+            inlined2 <- checkedStage "checked Base inlining after specialization" (Linked.inlineLinkedWithDecisions (remarkMode /= Remark.Off) 1 24 64 specialized2)
+            specialized3 <- checkedStage "callback specialization round 3" (Linked.specializeLinkedWithDecisions (remarkMode /= Remark.Off) callbackMode inlined2)
+            if M.size (Linked.linkedSymbols specialized3) == M.size (Linked.linkedSymbols inlined2)
+              then pure specialized3
+              else checkedStage "checked Base inlining round 3" (Linked.inlineLinkedWithDecisions (remarkMode /= Remark.Off) 1 24 64 specialized3)
   known <-
     if not (Options.cgCaseKnown codegen) || ((oArc opts || oBuiltin opts) && not (Options.cgTypeSpec codegen))
       then pure inlined
