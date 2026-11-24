@@ -40,6 +40,7 @@ import Codegen.Policy (Policy (..), Profile (..), RegisterBudget, policyWidth)
 import Codegen.Pressure (clobbersRegisters)
 import Codegen.Verify (verifyFn)
 import Codegen.Dump (dumpFn)
+import Control.Monad (when)
 import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -200,7 +201,99 @@ simplifyProgram=simplifyProgramWith defaultOptions
 simplifyProgramWith :: Options -> Program -> Either String (Program,M.Map Name Int)
 simplifyProgramWith options program = do
   results <- mapM (\(n, f) -> (\(f', k) -> (n, (f', k))) <$> simplifyFnWith options program f) (M.toList program)
-  pure (M.fromList [(n, f) | (n, (f, _)) <- results], M.fromList [(n, k) | (n, (_, k)) <- results, k > 0])
+  let simplified0 = M.fromList [(n, f) | (n, (f, _)) <- results]
+      (simplified, droppedRegions) = dropPhantomLoopRegions simplified0
+  mapM_ (\(n, f) -> when (M.lookup n simplified0 /= Just f) $ case verifyFn simplified f of
+    Left err -> Left ("simplify drop-phantom-loop-regions on " ++ n ++ ": " ++ err)
+    Right () -> Right ()) (M.toList simplified)
+  pure (simplified, M.unionWith (+) (M.fromList [(n, k) | (n, (_, k)) <- results, k > 0]) droppedRegions)
+
+-- Phantom loop regions (G9): after CaseKnown, VectorRead, LocalProducts,
+-- PairReturns, BuildStrings, RawInts and Interval have eliminated every
+-- allocation inside a loop, its ORegionRoom back-edge check is always true.
+-- Drop the check (and its dead cycle edge) whenever neither the entry path
+-- to the check nor any cycle through its taken arm can allocate on the heap.
+dropPhantomLoopRegions :: Program -> (Program, M.Map Name Int)
+dropPhantomLoopRegions prog =
+  let allocFreeFns = fix (M.keysSet prog)
+        where
+          fix s =
+            let s' = S.filter (\n -> maybe False (fnAllocFree s) (M.lookup n prog)) s
+             in if s' == s then s else fix s'
+          fnAllocFree s fn =
+            let live = reachable (analyze fn)
+             in all (\b -> S.notMember (bId b) live || not (blockAllocates s b)) (fnBlocks fn)
+      opAllocates s = \case
+        OMake {} -> True
+        OMakeSpine {} -> True
+        OApply {} -> True
+        OArithVal {} -> True
+        OCall c _ -> not (calleeKind c == Local && S.member (calleeName c) s)
+        OCallProduct c _ -> not (calleeKind c == Local && S.member (calleeName c) s)
+        _ -> False
+      termAllocates s = \case
+        TTailCall c _ -> not (calleeKind c == Local && S.member (calleeName c) s)
+        _ -> False
+      blockAllocates s b = any (\(Instr _ op) -> opAllocates s op) (bInstrs b) || termAllocates s (bTerm b)
+      sizeOf f = sum (map (length . bInstrs) (fnBlocks f))
+      dropInFn fn
+        | not (any (any (\(Instr _ op) -> case op of ORegionRoom {} -> True; _ -> False) . bInstrs) (fnBlocks fn)) = (fn, 0)
+        | otherwise =
+            let byId = M.fromList [(bId b, b) | b <- fnBlocks fn]
+                roomPreds = S.fromList [v | b <- fnBlocks fn, Instr (Just (v, TPred)) (ORegionRoom _) <- bInstrs b]
+                -- Walk successors without taking the false edge of `skipBid`.
+                fwd skipBid starts = go S.empty starts
+                  where
+                    go seen [] = seen
+                    go seen (x : xs)
+                      | S.member x seen = go seen xs
+                      | otherwise =
+                          let next = case M.lookup x byId of
+                                Nothing -> []
+                                Just blk -> case bTerm blk of
+                                  TCondBr _ t _ _ _ | x == skipBid -> [t]
+                                  term -> map fst (termSuccs term)
+                           in go (S.insert x seen) (next ++ xs)
+                -- Walk predecessors without using the false edge of `skipBid`.
+                predsWithout skipBid = M.fromListWith (++) $ concat
+                  [ case bTerm blk of
+                      TCondBr _ t _ _ _ | bId blk == skipBid -> [(t, [bId blk])]
+                      term -> [(dst, [bId blk]) | (dst, _) <- termSuccs term]
+                  | blk <- fnBlocks fn ]
+                bwd skipBid target = go S.empty [target]
+                  where
+                    pmap = predsWithout skipBid
+                    go seen [] = seen
+                    go seen (x : xs)
+                      | S.member x seen = go seen xs
+                      | otherwise = go (S.insert x seen) (M.findWithDefault [] x pmap ++ xs)
+                canDrop b yes =
+                  let bid = bId b
+                      reachB = bwd bid bid
+                      loopBody = S.insert bid (S.intersection (fwd bid [yes]) reachB)
+                      entryPath = S.intersection (fwd bid [fnEntry fn]) reachB
+                      relevant = S.union loopBody entryPath
+                   in all (\x -> maybe True (not . blockAllocates allocFreeFns) (M.lookup x byId)) (S.toList relevant)
+                changedTerms = M.fromList
+                  [ (bId b, TBr yes ys)
+                  | b <- fnBlocks fn
+                  , TCondBr p yes ys _ _ <- [bTerm b]
+                  , S.member p roomPreds
+                  , canDrop b yes ]
+             in if M.null changedTerms
+                then (fn, 0)
+                else
+                  let fn1 = fn {fnBlocks = [b {bTerm = M.findWithDefault (bTerm b) (bId b) changedTerms} | b <- fnBlocks fn]}
+                      live = reachable (analyze fn1)
+                      fn2 = fn1 {fnBlocks = [b | b <- fnBlocks fn1, S.member (bId b) live]}
+                      used = usesOf fn2
+                      dropDeadRoom (Instr (Just (v, TPred)) (ORegionRoom _)) = S.notMember v used
+                      dropDeadRoom _ = False
+                      fn3 = fn2 {fnBlocks = [b {bInstrs = filter (not . dropDeadRoom) (bInstrs b)} | b <- fnBlocks fn2]}
+                      fn4 = forwardEmptyBlocks (dropDeadPure fn3)
+                   in (fn4, max 0 (sizeOf fn - sizeOf fn4))
+      rewritten = M.map dropInFn prog
+   in (M.map fst rewritten, M.filter (> 0) (M.map snd rewritten))
 
 -- ---- shared helpers ------------------------------------------------------
 

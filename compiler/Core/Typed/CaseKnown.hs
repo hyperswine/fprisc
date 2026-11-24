@@ -64,6 +64,14 @@ rewrite (TypeContext _ constructors) input=go (4::Int) False (functionBody input
             Just r<-evalStateT (select e' alts' x k) S.empty ->
               tell (Any True) >> pure r
           _->pure e'
+      Match CaseMatch [x] alts -> do
+        alts'<-mapM (walkAlt env) alts
+        let e'=e {exprNode=Match CaseMatch [x] alts'}
+        case exprNode (unNote x) of
+          Var (Local sid) | Just k<-M.lookup sid env,
+            Just r<-evalStateT (select e' alts' x k) S.empty ->
+              tell (Any True) >> pure r
+          _->pure e'
       _->mapChildrenM (walk env) e
 
     walkAlt env (Alternative ps gs body)=do
@@ -93,6 +101,9 @@ rewrite (TypeContext _ constructors) input=go (4::Int) False (functionBody input
       MatchTail CaseMatch [x] alts fb
         | Var (Local xid)<-exprNode (unNote x), xid==sid, not (usedInArms sid alts fb) ->
             Just (id,alts,fb)
+      Match CaseMatch [x] alts
+        | Var (Local xid)<-exprNode (unNote x), xid==sid, not (any (usedInAlt sid) alts) ->
+            Just (id,alts,body)
       Sequence a rest | isEntryTick a -> do
         (w,alts,fb)<-peelCaseTarget sid rest
         pure (\x->generated x (Sequence a (w x)),alts,fb)
@@ -104,9 +115,9 @@ rewrite (TypeContext _ constructors) input=go (4::Int) False (functionBody input
             peelCaseTarget (binderId b) rest
       _->Nothing
 
-    usedInArms sid alts fb=sid `elem` localUses fb || any usedInAlt alts
+    usedInArms sid alts fb=sid `elem` localUses fb || any (usedInAlt sid) alts
+    usedInAlt sid (Alternative _ gs b)=sid `elem` localUses b || any (elem sid . guardUses) gs
       where
-        usedInAlt (Alternative _ gs b)=sid `elem` localUses b || any (elem sid . guardUses) gs
         guardUses (BoolGuard g)=localUses g
         guardUses (PatternGuard _ g)=localUses g
     arity name=case M.lookup name constructors of

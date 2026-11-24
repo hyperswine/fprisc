@@ -42,11 +42,15 @@ linkAndOptimize opts codegen irPolicy remarkMode callbackMode artifactResults = 
     if oArc opts || oBuiltin opts || Backend.tgtW (oTarget opts) /= 8 || not (Options.cgReuse codegen)
       then pure vectors
       else checkedStage "checked Base normalization" (Linked.normalizeLinked vectors)
+  knownAfterNorm <-
+    if not (Options.cgCaseKnown codegen) || ((oArc opts || oBuiltin opts) && not (Options.cgTypeSpec codegen))
+      then pure normalized
+      else checkedStage "checked case of known constructor after normalization" (Linked.caseKnownLinked normalized)
   (fused, notes) <-
     if oArc opts || not (Options.cgFusion codegen)
-      then pure (normalized, listNotes)
+      then pure (knownAfterNorm, listNotes)
       else do
-        (fused, vecNotes) <- checkedStage "checked vector fusion" (Linked.fuseLinked normalized)
+        (fused, vecNotes) <- checkedStage "checked vector fusion" (Linked.fuseLinked knownAfterNorm)
         pure (fused, listNotes ++ vecNotes)
   -- ARC erasure routes the proven store through its consuming adapter.
   -- The allocation-free raw runtime and 32-bit ABI remain excluded.
