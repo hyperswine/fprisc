@@ -155,10 +155,15 @@ coreHas name = go
     go (CLam _ b) = go b
     go _ = False
 
+-- n-ary string builds: $strcatT (a tuple of five or more pieces) and
+-- $strcat3 / $strcat4 (the pieces as arguments)
 strcatTCount :: Core -> Int
-strcatTCount = go
+strcatTCount = strcatNamed ["$strcatT", "$strcat3", "$strcat4"]
+
+strcatNamed :: [String] -> Core -> Int
+strcatNamed names = go
   where
-    go (CVar "$strcatT") = 1
+    go (CVar v) | v `elem` names = 1
     go (CApp a b) = go a + go b
     go (CLet _ a b) = go a + go b
     go (CIf c a b) = go c + go a + go b
@@ -324,8 +329,10 @@ g5Strcat = do
         [ "lit u = strcat (strcat (strcat \"k\" \"=\") \"v\") \";\"."
         , "len u = strlen (lit u)."
         , "chain a b = strcat (strcat (strcat \"L\" a) b) \"R\"."
+        , "three a = strcat (strcat \"L\" a) \"R\"."
+        , "five a b c = strcat (strcat (strcat (strcat \"L\" a) b) c) \"R\"."
         ]
-      core0 = compile "g5" src (S.fromList ["lit", "len", "chain"])
+      core0 = compile "g5" src (S.fromList ["lit", "len", "chain", "three", "five"])
       inlined = right (Native.inlineNativePrograms 3 24 64 (M.singleton () (S.empty, S.empty, core0))) M.! ()
       -- BuildStrings (G5 n-ary $strcatT) runs under optReuse.
       opts = Opt.OptimizationOptions False False False False False False 2 True True S.empty M.empty M.empty
@@ -334,8 +341,12 @@ g5Strcat = do
     (case M.lookup "lit" opted of
        Just (_, body) -> strcatTCount body <= 1 && (strcatTCount body == 1 || litFolded body)
        Nothing -> False)
-  check "G5: a four-piece + chain becomes one $strcatT"
-    (maybe False (\(_, body) -> strcatTCount body == 1) (M.lookup "chain" opted))
+  check "G5: a four-piece + chain becomes one $strcat4 (pieces as arguments, no tuple)"
+    (maybe False (\(_, body) -> strcatNamed ["$strcat4"] body == 1 && strcatTCount body == 1) (M.lookup "chain" opted))
+  check "G5: a three-piece + chain becomes one $strcat3"
+    (maybe False (\(_, body) -> strcatNamed ["$strcat3"] body == 1 && strcatTCount body == 1) (M.lookup "three" opted))
+  check "G5: a five-piece + chain stays one $strcatT of a tuple"
+    (maybe False (\(_, body) -> strcatNamed ["$strcatT"] body == 1 && strcatTCount body == 1) (M.lookup "five" opted))
   where
     litFolded body = go body
       where
@@ -547,10 +558,11 @@ hardening = do
       opts = Opt.OptimizationOptions False False False False False False 2 True True S.empty M.empty M.empty
       opted = Opt.optimizedProgram (right (Opt.optimizeCore opts S.empty coreF))
       body = maybe (error "no f") snd (M.lookup "f" opted)
-      -- A wrong hoist would wrap $strcatT in `let k = error "right"`,
-      -- running the later trap before the earlier "left" piece.
+      -- A wrong hoist would wrap the n-ary build ($strcat4 here) in
+      -- `let k = error "right"`, running the later trap before the earlier
+      -- "left" piece.
       hoistedWrong e = case e of
-        CLet _ (CErr "right") b | coreHas "$strcatT" b && hasErr "left" b -> True
+        CLet _ (CErr "right") b | strcatTCount b > 0 && hasErr "left" b -> True
         CApp a b -> hoistedWrong a || hoistedWrong b
         CLet _ a b -> hoistedWrong a || hoistedWrong b
         CMk _ _ fs -> any hoistedWrong fs
@@ -564,7 +576,7 @@ hardening = do
         CIf c a b -> hasErr msg c || hasErr msg a || hasErr msg b
         _ -> False
   check "hardening: chainFromRhs does not hoist a trapping let ahead of earlier pieces"
-    (not (hoistedWrong body) && hasErr "left" body && hasErr "right" body)
+    (strcatTCount body == 1 && not (hoistedWrong body) && hasErr "left" body && hasErr "right" body)
 
   -- Linear Vector fields: a single use through a constructor/record is
   -- accepted and evaluates; a second use is still refused by linearity.
