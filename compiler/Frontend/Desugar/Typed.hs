@@ -26,7 +26,6 @@ import Ownership.TypeShape (linShapeT)
 import Frontend.Syntax
 import Frontend.Traverse (sFree,sourceGroups)
 import Infer.Result
-import Infer.Result
 import qualified Infer.Evidence as E
 import Infer.Elaboration
 import Precond (checkedName)

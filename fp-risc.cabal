@@ -42,8 +42,6 @@ library
     ghc-options:      -O0
   exposed-modules:
       Arc
-      Build
-      Project
       Publish
       Representation
       Representation.Types
@@ -235,6 +233,35 @@ library
       StdBridge
       StdCheck
       Struct
+  build-depends:
+      base          >=4.16 && <5
+    , binary
+    , deepseq
+    , array
+    , bytestring
+    , containers
+    , directory
+    , filepath
+    , megaparsec   >=9
+    , mtl
+    , process
+    , text
+    , unix >=2.8
+    , time
+    , utf8-string
+
+library sol-vm
+  -- Sol VM, native JIT, GPU Vec tier, transactional runtime, and CLI
+  -- project/build drivers. Core compiler modules and non-Sol unit tests
+  -- build without compiling or linking this library or its C shims.
+  hs-source-dirs:     sol-vm
+  default-language:   Haskell2010
+  ghc-options:        -O1
+  if flag(dev)
+    ghc-options:      -O0
+  exposed-modules:
+      Build
+      Project
       Sol.Cache
       Sol.Diagnostic
       Sol.Bytecode
@@ -281,6 +308,7 @@ library
     extra-libraries:  EGL GL
   build-depends:
       base          >=4.16 && <5
+    , fp-risc
     , binary
     , deepseq
     , array
@@ -315,6 +343,7 @@ executable fpr
   build-depends:
       base
     , fp-risc
+    , sol-vm
 
 -- The Haskell checks in tests/: `cabal test` builds them against the
 -- library once and runs them all.  Frontend and FrameEmitters take
@@ -358,6 +387,7 @@ test-suite ProjectWorkflow
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            ProjectWorkflow.hs
+  build-depends: sol-vm
 
 test-suite CompilerOptions
   import:             unit-test
@@ -394,6 +424,7 @@ test-suite Diagnostics
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            Diagnostics.hs
+  build-depends: sol-vm
 
 test-suite InferenceEvidence
   import:             unit-test
@@ -580,6 +611,7 @@ test-suite SolReplIncremental
   import:             unit-test
   type:               exitcode-stdio-1.0
   main-is:            SolReplIncremental.hs
+  build-depends: sol-vm
 
 test-suite CallableAnalysis
   import:             unit-test

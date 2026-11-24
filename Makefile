@@ -90,8 +90,8 @@ $(FPR_HOST_STAMP):
 	@rm -f build/.fpr-host-*
 	@touch $@
 
-# Every compiler module is an input, including nested Core/Type owners.
-FPR_COMPILER_HS := $(if $(wildcard compiler),$(shell find compiler -type f -name '*.hs'))
+# Every compiler and sol-vm module is an input, including nested Core/Type owners.
+FPR_COMPILER_HS := $(if $(wildcard compiler),$(shell find compiler $(wildcard sol-vm) -type f -name '*.hs'))
 
 # an INSTALLED tree (../.installed, written by `qos.py install`) ships
 # the binary: the rule is then a presence check, so `make qos-app` never
@@ -119,7 +119,7 @@ fpr: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/fsx.c compiler/cbits/ve
 	  gcc -c compiler/cbits/native_host.c -o compiler/cbits/native_host.o; \
 	  gcc -c compiler/cbits/sol_digest.c -o compiler/cbits/sol_digest.o; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libcurl) -c compiler/cbits/sol_http.c -o compiler/cbits/sol_http.o; \
-	  (cd compiler && ghc -O1 -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -o ../"$$fresh" Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o cbits/native_git.o cbits/native_archive.o cbits/native_host.o cbits/sol_digest.o cbits/sol_http.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
+	  (cd compiler && ghc -O1 -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i.:../sol-vm -o ../"$$fresh" Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o cbits/native_git.o cbits/native_archive.o cbits/native_host.o cbits/sol_digest.o cbits/sol_http.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" fpr
 	ln -sf fpr fprc
 endif
@@ -154,7 +154,7 @@ fpr-dev: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/*.c fp-risc.cabal M
 	  gcc -c compiler/cbits/native_host.c -o build/ghc-dev/native_host.o; \
 	  gcc -c compiler/cbits/sol_digest.c -o build/ghc-dev/sol_digest.o; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libcurl) -c compiler/cbits/sol_http.c -o build/ghc-dev/sol_http.o; \
-	  (cd compiler && ghc -O0 -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -outputdir ../build/ghc-dev -o ../"$$fresh" Main.hs ../build/ghc-dev/*.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
+	  (cd compiler && ghc -O0 -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i.:../sol-vm -outputdir ../build/ghc-dev -o ../"$$fresh" Main.hs ../build/ghc-dev/*.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" fpr
 	ln -sf fpr fprc
 
@@ -177,7 +177,7 @@ fpr-opt: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/*.c fp-risc.cabal M
 	  gcc -c compiler/cbits/native_host.c -o build/ghc$(GHCOPT)/native_host.o; \
 	  gcc -c compiler/cbits/sol_digest.c -o build/ghc$(GHCOPT)/sol_digest.o; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libcurl) -c compiler/cbits/sol_http.c -o build/ghc$(GHCOPT)/sol_http.o; \
-	  (cd compiler && ghc $(GHCOPT) -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -outputdir ../build/ghc$(GHCOPT) -o ../"$$fresh" Main.hs ../build/ghc$(GHCOPT)/*.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
+	  (cd compiler && ghc $(GHCOPT) -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i.:../sol-vm -outputdir ../build/ghc$(GHCOPT) -o ../"$$fresh" Main.hs ../build/ghc$(GHCOPT)/*.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" build/fpr-opt
 
 # the compiler with GHC's profiler (late cost centres: the -O1 code, with
@@ -291,7 +291,7 @@ clean-cabal:
 	rm -rf dist dist-newstyle dist-dev dist-opt-O* build/Setup
 
 clean:
-	rm -rf build image.elf app.qa fpr fprc compiler/*.o compiler/*.hi compiler/Sol/*.o compiler/Sol/*.hi compiler/cbits/*.o
+	rm -rf build image.elf app.qa fpr fprc compiler/*.o compiler/*.hi sol-vm/*.o sol-vm/*.hi sol-vm/Sol/*.o sol-vm/Sol/*.hi compiler/cbits/*.o
 
 FORCE:
 .PHONY: all stdcheck bare-metal bare-metal-run sol clean FORCE pipeline-baseline pipeline-baseline-check pipeline-baseline-rv64 pipeline-reference-audit
