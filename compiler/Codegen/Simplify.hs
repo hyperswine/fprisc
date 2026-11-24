@@ -230,6 +230,7 @@ dropPhantomLoopRegions prog =
         OMakeSpine {} -> True
         OApply {} -> True
         OArithVal {} -> True
+        OBitVal {} -> True
         OCall c _ -> not (calleeKind c == Local && S.member (calleeName c) s)
         OCallProduct c _ -> not (calleeKind c == Local && S.member (calleeName c) s)
         _ -> False

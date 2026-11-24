@@ -13,8 +13,11 @@ safePrimitives = [op | op<-uPrims,op/="/"]
   ++["and","or","not","and2","or2"]
   ++bitwisePrimitives
 
--- What cannot trap at all: comparisons, Boolean operators, bitwise ops on
--- untagged Ints, and float arithmetic other than division. Int +, - and * trap on overflow.
+-- What cannot trap at all: comparisons, Boolean operators, bitwise ops, and
+-- float arithmetic other than division. band/bor/bxor are total on exact Int
+-- (including T_BIGINT): they may allocate a bignum result but never trap on a
+-- well-typed Int. FusionSafety is an effect-order judgement, not a no-heap
+-- one, so allocation does not make them unsafe to fuse. Int +, - and * trap on overflow.
 trapFreePrimitives :: [String]
 trapFreePrimitives = ["==","!=","<",">","<=",">="]
   ++[op | width<-[Float64,Float32],op<-fPrimsOf width,not ("/" `isSuffixOf` op)]
