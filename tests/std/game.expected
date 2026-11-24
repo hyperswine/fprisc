@@ -1,51 +1,55 @@
-two bindings: n=7 beats=0
+two bindings: n=7 beats=0 held=0
   log start 5
   log n is 7
   sound blip 7
   log said
-unknown key: n=5 beats=0
+unknown key: n=5 beats=0 held=0
   log start 5
   log n is 5
   sound blip 5
   log said
-capture once: n=5 beats=0
+capture once: n=5 beats=0 held=0
   log start 5
   capture
   log n is 5
   sound blip 5
   log said
-quit ends the run: n=6 beats=0
+quit ends the run: n=6 beats=0 held=0
   log start 5
   log bye
   quit
-ticks: n=5 beats=2
+ticks: n=5 beats=2 held=0
   log start 5
   log n is 5
   sound blip 5
   log said
-no tick below zero: n=-1 beats=0
+no tick below zero: n=-1 beats=0 held=0
   log start 5
-a refused save: n=5 beats=0
+press then release: n=5 beats=0 held=1
+  log start 5
+a release alone: n=5 beats=0 held=0
+  log start 5
+a refused save: n=5 beats=0 held=0
   log start 5
   task append log [n 5]
   log not saved: no storage
   log n is 5
   sound blip 5
   log said
-a stored save: n=105 beats=0
+a stored save: n=105 beats=0 held=0
   log start 5
   task append log [n 5]
   log saved
   log n is 105
   sound blip 105
   log said
-a fetch chains a save: n=105 beats=0
+a fetch chains a save: n=105 beats=0 held=0
   log start 5
   task readLatest log
   log fetched n 5
   task append log [seen]
   log saved
-an empty store: n=5 beats=0
+an empty store: n=5 beats=0 held=0
   log start 5
   task readLatest log
   log nothing stored: no record
