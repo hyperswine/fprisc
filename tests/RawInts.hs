@@ -6,7 +6,7 @@ module Main where
 import Core.Syntax
 import Codegen.IR
 import Codegen.Policy
-import Codegen.Lower (lowerProgram)
+import Codegen.Lower (lowerProgram, Prim (..))
 import Codegen.Simplify (Options(..),simplifyProgramWith)
 import Codegen.Verify (verifyProgramWidth)
 import Codegen.Eval
@@ -14,6 +14,7 @@ import Codegen.Dump (dumpFn)
 import System.Environment (lookupEnv)
 import Control.Monad (unless,forM_)
 import qualified Data.Map.Strict as M
+import Data.Bits ((.&.))
 
 check :: String -> Bool -> IO ()
 check label ok=unless ok (error ("raw ints: "++label))
@@ -53,6 +54,24 @@ prog=M.fromList
       (app "equal" [app "+" [CVar "i",CInt 1],CVar "n",
                     CIf (app "==" [CVar "i",CInt 7]) (app "+" [CVar "c",CInt 100]) (app "+" [CVar "c",CInt 1])])))]
 
+-- the zero-cost pair 26 shape: `both (isSmall i) (isSmall (i / 3))` with
+-- both arguments evaluated before the call (a let each), where `p and q`
+-- divides only on the branch that reaches q
+-- boolpred i n acc = if n == 0 then acc else
+--   j = i - 1; m = n - 1; a = band i 255 < 100; b = band (i / 3) 255 < 100;
+--   boolpred j m (if a then (if b then acc + 1 else acc) else acc)
+boolProg :: M.Map String ([String], Core)
+boolProg=M.fromList
+  [("boolpred",(["i","n","acc"],CIf (app "==" [CVar "n",CInt 0]) (CVar "acc")
+      (CLet "j" (app "-" [CVar "i",CInt 1]) (CLet "m" (app "-" [CVar "n",CInt 1])
+      (CLet "a" (app "<" [app "band" [CVar "i",CInt 255],CInt 100])
+        (CLet "b" (app "<" [app "band" [app "/" [CVar "i",CInt 3],CInt 255],CInt 100])
+          (app "boolpred" [CVar "j",CVar "m",
+                           CIf (CVar "a") (CIf (CVar "b") (app "+" [CVar "acc",CInt 1]) (CVar "acc")) (CVar "acc")])))))))]
+
+bitHal :: M.Map String Prim
+bitHal=M.fromList [(n,Prim 2 (Just ("fpr_g_"++n++"_call2")) (Just ("fpr_g_"++n))) | n<-["band","bor","bxor"]]
+
 listTid :: Int
 listTid=7
 
@@ -83,12 +102,18 @@ maxI, minI :: Integer
 maxI=4611686018427387903
 minI=negate maxI-1
 
+-- the block an instruction is in, and the blocks that branch to a block
+blockOf :: Fn -> (Op -> Bool) -> [Block]
+blockOf fn p=[b | b<-fnBlocks fn,any (\(Instr _ op)->p op) (bInstrs b)]
+predsOf :: Fn -> BId -> [Block]
+predsOf fn t=[b | b<-fnBlocks fn,t `elem` map fst (termSuccs (bTerm b))]
+
 main :: IO ()
 main=do
   let fast=simplified on
       slow=simplified off
   dump<-lookupEnv "RAWINTS_DUMP"
-  forM_ dump $ \n->putStrLn (dumpFn (fast M.! n))
+  forM_ dump $ \n->maybe (pure ()) (putStrLn . dumpFn) (M.lookup n fast)
   check "both pipelines verify" (verifyProgramWidth W64 fast==Right () && verifyProgramWidth W64 slow==Right ())
   check "no copy without the interval pass" (all (null . fits) (M.elems slow) && all (null . unchecked) (M.elems slow))
   -- count: i + 1 is proven (i < n, n small); acc + i keeps its fit test
@@ -133,4 +158,27 @@ main=do
   check "fold with a bignum element is exact" (ocResult (evalProgram fast "foldk" [list [1,maxI+1,2],RInt 1,RInt 0])==Right (RInt (maxI+4)))
   check "fold of absolute values through a join is exact" (ocResult (evalProgram fast "foldabs" [list [maxI,minI,7],RInt 0])==Right (RInt (2*maxI+8)))
   check "fold product grows into a bignum" (ocResult (evalProgram fast "foldprod" [list [1..30],RInt 1])==Right (RInt (product [1..30])))
+  -- pair 26: the division by 3 is raw with no fit test (no test point to
+  -- split, though the first comparison's predicate is live across it), both
+  -- band are raw OBit, and the division moves under the first test's branch
+  let (boolIr,boolFail)=lowerProgram m2Policy M.empty boolProg boolProg M.empty bitHal
+      boolFast=fst (either error id (simplifyProgramWith on boolIr))
+      bp=boolFast M.! "boolpred"
+  check "boolpred lowers" (null boolFail && verifyProgramWidth W64 boolFast==Right ())
+  forM_ dump $ \n->if n=="boolpred" then putStrLn (dumpFn bp) else pure ()
+  check "boolpred's i / 3 is raw with no fit test" (Div `elem` unchecked bp && Div `notElem` fits bp)
+  check "boolpred's band of the quotient is raw" (length [() | OBit BAnd _ _<-operations bp]>=2)
+  check "boolpred's division runs only under the first test"
+    (case blockOf bp (\op->case op of OArithU Div _ _->True; _->False) of
+       [b] -> case predsOf bp (bId b) of
+         [p] -> case bTerm p of TCondBr {} -> True; _ -> False
+         _ -> False
+       _ -> False)
+  -- exact across the small range: the same answers as the original loop and
+  -- as Integer's own two's-complement bits (bignum i, floored division)
+  let boolRef i n=toInteger (length [() | k<-[i-n+1..i],(k .&. 255)<100,((k `div` 3) .&. 255)<100])
+  forM_ [(1000,1000),(5,0),(maxI+10,30),(minI+3,10),(-7,20)] $ \(i,n)->
+    check ("boolpred "++show (i,n)++" is exact")
+      (ocResult (evalProgram boolFast "boolpred" [RInt i,RInt n,RInt 0])==Right (RInt (boolRef i n))
+         && ocResult (evalProgram boolIr "boolpred" [RInt i,RInt n,RInt 0])==Right (RInt (boolRef i n)))
   putStrLn "Raw-Int loop copies: fit tests proven or kept, raw comparisons, exact answers across the small range PASS"
